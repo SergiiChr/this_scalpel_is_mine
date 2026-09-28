@@ -80,10 +80,10 @@ tools/blender/   Blender models (pip install bpy, Python 3.11): python -m tools.
 ## Tests
 
 ```bash
-godot --headless --path . res://tests/smoke_test.tscn     # every scenario, every tool, every event
-godot --headless --path . res://tests/net_test.tscn -- --role=host &
-godot --headless --path . res://tests/net_test.tscn -- --role=client
+./build.sh test    # import, tissue, every scenario, two-process co-op; fails on any error
 xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --out=/tmp/shots
 ```
+
+Every tested case is listed in [tests/TEST_CASES.md](tests/TEST_CASES.md). `./build.sh` runs the tests before exporting, and CI runs them on every push and pull request.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for architecture, data formats and the mechanics list.
