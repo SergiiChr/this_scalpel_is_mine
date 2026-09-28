@@ -18,6 +18,10 @@ const ARREST_DEATH := 80.0
 const TOURNIQUET_SAFE := 300.0
 ## Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.
 const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
+## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
+const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
+## Gap in meters that counts as a fully opened wound.
+const FULL_GAP := 0.012
 
 var body: PatientBody
 var vitals := Vitals.new()
@@ -56,13 +60,12 @@ var _tick_acc := 0.0
 var _sync_acc := 0.0
 var _voice_cooldown := 0.0
 var _breath_cooldown := 0.0
-var _pulls: Dictionary = {}
 var _stroke_wounds: Dictionary = {}
 var _initial_suction: float = 1.0
 var _blood_pools: Dictionary = {}
 var _organ_strain: Dictionary = {}
 var _organ_damage: Dictionary = {}
-var _open_painted: Dictionary = {}
+var _tear_notice_msec := -100000
 
 
 func _ready() -> void:
@@ -83,6 +86,9 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	age = scenario.patient_age
 	mods = Modifiers.from_rolls(rolls, Db.patient_quirks)
 	var tone: Color = SKIN_TONES[rng.randi_range(0, SKIN_TONES.size() - 1)]
+	body.fat_thickness = 0.012 * (1.0 + mods.num("fat_depth") * 1.5)
+	body.tissue.break_mult = mods.mult("tear_threshold_mult")
+	body.tissue.tearing = multiplayer.is_server()
 	body.build(scenario.site, tone, {"child": 0.72, "elderly": 0.96}.get(age, 1.0))
 	body.set_orientation(scenario.start_orientation)
 	blood_type = "Bombay" if mods.flag("rare_blood") else BLOOD_TYPES[rng.randi_range(0, BLOOD_TYPES.size() - 1)]
@@ -100,7 +106,6 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 		var wound := _new_wound(Wound.Kind.get(str(data.kind).to_upper(), Wound.Kind.CUT), _uv(points[0]), data.get("depth", 0.5))
 		for p: Array in points.slice(1):
 			wound.extend(_uv(p))
-		wound.opened = data.get("opened", 0.0)
 		wound.held = data.get("held", 0.0)
 		_paint_wound_local(wound)
 	for data: Dictionary in scenario.burns:
@@ -139,7 +144,7 @@ func _physics_process(delta: float) -> void:
 	_sync_acc += delta
 	if _sync_acc >= SYNC_INTERVAL:
 		_sync_acc = 0.0
-		_sync.rpc(vitals.to_dict(), targets.map(func(t: CavityTarget) -> Array: return t.state()), body.organ_states(), _pulls.values(), cavity_blood_ml)
+		_sync.rpc(vitals.to_dict(), targets.map(func(t: CavityTarget) -> Array: return t.state()), body.organ_states(), body.tissue.grips(), cavity_blood_ml)
 
 
 # --- Simulation ------------------------------------------------------------------------------------
@@ -155,6 +160,8 @@ func _simulate(dt: float) -> void:
 	var total := 0.0
 	var heal := mods.num("heal_rate")
 	for wound in wounds:
+		if not wound.is_internal():
+			wound.opened = clampf(body.tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN) / FULL_GAP, 0.0, 1.0)
 		var rate := wound.bleed_rate(site_m, bleed_mult)
 		total += rate
 		if wound.is_internal() or wound.opened > 0.3:
@@ -165,9 +172,10 @@ func _simulate(dt: float) -> void:
 			wound.held = maxf(wound.held - dt * 0.004, 0.0)
 		if heal > 0.0:
 			for i in wound.bins.size():
-				wound.bins[i] = minf(wound.bins[i] + heal * dt, 1.0)
-			wound.opened = maxf(wound.opened - heal * dt * 2.0, 0.0)
-			_refresh_opening(wound)
+				var before := wound.bins[i]
+				wound.bins[i] = minf(before + heal * dt, 1.0)
+				if before < 1.0 and wound.bins[i] >= 1.0 and not wound.is_internal():
+					_tissue_stitch.rpc(wound.bin_position(i), STITCH_TENSION[0], TissueSim.TISSUE_BREAK)
 	v.bleed_rate = total
 	v.blood_ml = clampf(v.blood_ml - total * dt + fx.volume_ml * dt, 0.0, v.max_blood_ml * 1.1)
 	cavity_blood_ml = maxf(cavity_blood_ml, 0.0)
@@ -506,6 +514,7 @@ func _strain_closures(strength: float) -> void:
 		if wound.closure() > 0.0 and rng.randf() < strength * (1.0 - wound.closure_quality):
 			for i in wound.bins.size():
 				wound.bins[i] *= 0.4
+			_tissue_burst.rpc(wound.midpoint(), wound.length_uv() * 0.5 + 0.03)
 			Surgery.current.announce("A closure bursts open!")
 			_paint_wound(wound)
 
@@ -548,9 +557,7 @@ func cut(stroke_key: int, a: Vector2, b: Vector2, depth: float, sharpness: float
 	var jagged := speed > 0.25 or sharpness < 0.8
 	var jitter := 0.004 * (1.0 - sharpness) + (0.003 if speed > 0.25 else 0.0)
 	paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, a, b, 0.004 + depth * 0.003, minf(depth * 0.75, 0.7), WoundMap.Mode.MAX, jitter)
-	if depth >= 0.7:
-		wound.opened = maxf(wound.opened, 0.25)
-		_refresh_opening(wound)
+	_tissue_cut.rpc(a, b, _tissue_depth(depth))
 	hurt(0.12 * depth, a)
 	if dirty:
 		_contaminate()
@@ -579,9 +586,13 @@ func cut_cavity(tip_uv: Vector2, depth_m: float, power: float, dirty: bool, dt: 
 
 func tear(from: Vector2, direction: Vector2, length_uv: float) -> void:
 	var to := from + direction.normalized() * length_uv
+	_tissue_cut.rpc(from, to, TissueSim.Depth.FAT)
+	_add_tear(from, to)
+
+
+func _add_tear(from: Vector2, to: Vector2) -> void:
 	var wound := _new_wound(Wound.Kind.TEAR, from, 0.8)
 	wound.extend(to)
-	wound.opened = 0.4
 	_paint_wound(wound)
 	hurt(0.5, from)
 	add_flag("tears")
@@ -616,6 +627,7 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 		if rng.randf() < 0.2 / mods.mult("tear_threshold_mult"):
 			wound.bins[bin] = 0.3
 			tear(wound.bin_position(bin), Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)), 0.02)
+			_tissue_burst.rpc(wound.bin_position(bin), 0.03)
 			Surgery.current.scoring.add("suture_tear_through")
 			Surgery.current.announce("Pulled too tight. The stitch tore through the skin.", true)
 			return false
@@ -623,6 +635,8 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 		var p := wound.bin_position(bin)
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, p, p, 0.012, 0.35, WoundMap.Mode.MIN)
 		paint(WoundMap.Layer.WOUNDS, WoundMap.STITCH, p - Vector2(0.006, 0.0), p + Vector2(0.006, 0.0), 0.002, 1.0, WoundMap.Mode.MAX)
+		var tension := STITCH_TENSION[pressure] if def.id in TENSIONED_CLOSURES else STITCH_TENSION[0]
+		_tissue_stitch.rpc(p, tension, 1.2 + quality)
 		if def.id == "office_stapler":
 			add_flag("office_staples")
 		elif def.id == "duct_tape":
@@ -796,10 +810,12 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 				wound.clamped = 0.9
 				return {"type": "vessel", "wound": wound.id}
 	var wound := _nearest_wound(uv, 0.03, false)
-	if wound and zone in ["site", "cavity"]:
-		if wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6 and zone == "cavity":
-			wound.clamped = 0.85
-		return {"type": "wound", "wound": wound.id, "anchor": uv, "base_open": wound.opened}
+	if wound and zone == "cavity" and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
+		wound.clamped = 0.85
+	# Skin can be pinched anywhere on the site, but from inside the cavity only near a wound edge.
+	if zone == "site" or zone == "cavity" and wound:
+		body.tissue.grip(tool_uid, uv)
+		return {"type": "skin", "wound": wound.id if wound else 0, "anchor": uv}
 	return {"type": "none"}
 
 
@@ -828,38 +844,23 @@ func update_grip(tool_uid: int, grip_info: Dictionary, tip: Vector3, power: floa
 				return {"type": "carry", "target": target.index}
 		"carry":
 			targets[grip_info.target].global_position = tip
-		"wound":
-			var wound := _wound(grip_info.wound)
-			if wound == null:
-				return {"type": "none"}
-			var anchor_world := body.uv_to_world(grip_info.anchor)
-			var pull := tip - anchor_world
-			var pull_len := Vector2(pull.x, pull.z).length()
-			wound.opened = clampf(grip_info.base_open + pull_len / 0.03 * power * 0.5 / (1.0 + mods.num("fat_depth")), 0.0, 1.0)
-			_pulls[tool_uid] = Vector4(grip_info.anchor.x, grip_info.anchor.y, pull.x, pull.z)
-			_refresh_opening(wound)
-			var tear_at := 0.045 * mods.mult("tear_threshold_mult") * (0.8 + power * 0.2)
-			if pull_len > tear_at:
-				tear(grip_info.anchor, Vector2(pull.x, pull.z), 0.04)
-				_pulls.erase(tool_uid)
-				return {"type": "none"}
+		"skin":
+			body.tissue.move_grip(tool_uid, body.site.to_local(tip))
 	return grip_info
 
 
 func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) -> void:
-	_pulls.erase(tool_uid)
+	body.tissue.release(tool_uid)
 	match grip_info.get("type", "none"):
 		"target", "carry":
 			targets[grip_info.target].gripped_by = 0
 		"vessel":
 			if not self_retaining:
 				_wound(grip_info.wound).clamped = 0.0
-		"wound":
+		"skin":
 			var wound := _wound(grip_info.wound)
 			if wound and not self_retaining:
 				wound.clamped = 0.0
-				wound.opened = maxf(grip_info.base_open, wound.opened * 0.6)
-				_refresh_opening(wound)
 
 
 func _covered(target: CavityTarget) -> bool:
@@ -1005,26 +1006,10 @@ func _bleed_visual(wound: Wound, ml: float) -> void:
 		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, wound.midpoint(), wound.midpoint(), 0.02 + sqrt(pool) * 0.012, 0.9, WoundMap.Mode.MAX)
 
 
-## Repaints the open (see-through) part of a wound when retraction changes noticeably.
-func _refresh_opening(wound: Wound) -> void:
-	if wound.is_internal() or wound.points.size() < 2:
-		return
-	var last: float = _open_painted.get(wound.id, 0.0)
-	if absf(wound.opened - last) < 0.08:
-		return
-	_open_painted[wound.id] = wound.opened
-	for i in range(1, wound.points.size()):
-		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[i - 1], wound.points[i], 0.03, 0.6, WoundMap.Mode.MIN)
-		if wound.opened > 0.2 and wound.closure() < 0.5:
-			paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[i - 1], wound.points[i], 0.003 + wound.opened * 0.025, 1.0, WoundMap.Mode.MAX)
-
-
 func _paint_wound(wound: Wound) -> void:
 	for i in range(1, wound.points.size()):
 		var jitter := 0.006 if wound.kind == Wound.Kind.TEAR else 0.0
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[i - 1], wound.points[i], 0.005, minf(wound.depth * 0.75, 0.7), WoundMap.Mode.MAX, jitter)
-	_open_painted.erase(wound.id)
-	_refresh_opening(wound)
 
 
 ## Setup-time painting, run locally on every peer (no RPC, clients may not be listening yet).
@@ -1032,13 +1017,14 @@ func _paint_wound_local(wound: Wound) -> void:
 	var map := body.wound_map
 	for i in range(1, wound.points.size()):
 		map.stroke(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[i - 1], wound.points[i], 0.006, minf(wound.depth * 0.75, 0.7), WoundMap.Mode.MAX, 0.003 if wound.kind == Wound.Kind.TEAR else 0.0, wound.id)
-		if wound.opened > 0.2:
-			map.stroke(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[i - 1], wound.points[i], 0.003 + wound.opened * 0.025, 1.0, WoundMap.Mode.MAX)
+		body.tissue.cut(wound.points[i - 1], wound.points[i], _tissue_depth(wound.depth))
 		map.stroke(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, wound.points[i - 1], wound.points[i], 0.02, 0.8, WoundMap.Mode.MAX)
 	if wound.points.size() == 1:
 		map.disk(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[0], 0.012, 0.7, WoundMap.Mode.MAX, false)
 		map.disk(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, wound.points[0], 0.04, 0.9, WoundMap.Mode.MAX)
-	_open_painted[wound.id] = wound.opened
+		# A puncture is a small cross-shaped hole in the grid.
+		for d: Vector2 in [Vector2(0.025, 0.0), Vector2(0.0, 0.025)]:
+			body.tissue.cut(wound.points[0] - d, wound.points[0] + d, _tissue_depth(wound.depth))
 
 
 func _add_burn_local(uv: Vector2, radius: float) -> void:
@@ -1111,28 +1097,84 @@ func _paint(layer: int, channel: int, a: Vector2, b: Vector2, radius: float, val
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, pulls: Array, cavity_ml: float) -> void:
+func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, grips: Array, cavity_ml: float) -> void:
 	vitals.from_dict(vital_data)
 	for i in mini(target_states.size(), targets.size()):
 		targets[i].apply_state(target_states[i])
 	body.apply_organ_states(organ_positions)
 	body.set_cavity_blood(cavity_ml / 350.0)
-	_apply_pulls(pulls)
+	body.tissue.set_grips(grips)
 
 
 func _process(delta: float) -> void:
 	body.animator.animate(vitals, alive, delta)
-	if multiplayer.is_server() and body.skin_material:
-		_apply_pulls(_pulls.values())
+	if body.skin_material:
+		body.skin_material.set_shader_parameter("pallor", clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
+	if multiplayer.is_server():
+		for entry: Array in body.tissue.snapped:
+			_on_snap(entry[0], entry[1], entry[2])
+		body.tissue.snapped.clear()
 
 
-func _apply_pulls(pulls: Array) -> void:
-	var packed := PackedVector4Array([Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO])
-	for i in mini(pulls.size(), 4):
-		packed[i] = pulls[i]
-	body.skin_material.set_shader_parameter("pulls", packed)
-	body.skin_material.set_shader_parameter("pull_count", mini(pulls.size(), 4))
-	body.skin_material.set_shader_parameter("pallor", clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
+## Host: a spring in the tissue sim was stretched too far and snapped.
+func _on_snap(a: Vector2, b: Vector2, kind: int) -> void:
+	var mid := (a + b) * 0.5
+	_tissue_snap.rpc(mid, kind)
+	if not Surgery.current or not Surgery.current.running:
+		return
+	var wound := _nearest_wound(mid, 0.04, false)
+	if kind == TissueSim.Kind.STITCH:
+		if wound:
+			wound.bins[wound.bin_at(mid)] = 0.3
+			paint(WoundMap.Layer.WOUNDS, WoundMap.STITCH, mid, mid, 0.008, 0.0, WoundMap.Mode.MIN)
+		Surgery.current.scoring.add("suture_tear_through")
+		_tear_notice("A stitch tore through the skin.")
+		hurt(0.3, mid)
+		return
+	# Neighbouring springs tend to go together; grow the fresh tear instead of making one wound per spring.
+	if wound and wound.kind == Wound.Kind.TEAR and wound.points[wound.points.size() - 1].distance_to(mid) < 0.06:
+		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.points[wound.points.size() - 1], mid, 0.005, 0.6, WoundMap.Mode.MAX, 0.006)
+		wound.extend(mid)
+		return
+	_add_tear(a, b)
+	_tear_notice("The skin tore!")
+
+
+func _tear_notice(text: String) -> void:
+	if Time.get_ticks_msec() - _tear_notice_msec > 3000:
+		_tear_notice_msec = Time.get_ticks_msec()
+		Surgery.current.announce(text, true)
+
+
+## Wound depth (0..1) to how many tissue layers the cut goes through.
+static func _tissue_depth(depth: float) -> int:
+	if depth < 0.4:
+		return TissueSim.Depth.SKIN
+	return TissueSim.Depth.FAT if depth < 0.7 else TissueSim.Depth.MUSCLE
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_cut(a: Vector2, b: Vector2, depth: int) -> void:
+	body.tissue.cut(a, b, depth)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_stitch(uv: Vector2, tension: float, strength: float) -> void:
+	body.tissue.stitch(uv, tension, strength)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_burst(uv: Vector2, radius: float) -> void:
+	body.tissue.burst(uv, radius)
+
+
+## The host's sim already snapped the spring; clients mirror it.
+@rpc("authority", "call_remote", "reliable")
+func _tissue_snap(uv: Vector2, kind: int) -> void:
+	if kind == TissueSim.Kind.STITCH:
+		body.tissue.burst(uv, 0.01)
+	else:
+		body.tissue.sever_near(uv, TissueSim.Depth.SKIN)
 
 
 @rpc("authority", "call_local", "reliable")

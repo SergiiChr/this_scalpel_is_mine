@@ -13,6 +13,6 @@ so a replacement `.glb` only needs the same file name, node names and material n
 | `organs/` | bowel, lobe, sac (unit radius) | |
 | `targets/` | bullet, knife, appendix, tumor, clot, figurine, bone, fragment, fluid, air | |
 
-Special material names: `skin` (patient skin, carved open by the wound map), `tint` (recolored per instance),
+Special material names: `skin` (patient skin, cut away under the surgical site where the simulated skin layer takes over), `tint` (recolored per instance),
 `flame` (unshaded glow), `organ` (wet flesh shader).
 Tools: grip at the origin, tip at `(0, 0, -length)` with `length` from `data/tools.cfg`.

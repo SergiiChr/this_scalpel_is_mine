@@ -247,6 +247,7 @@ func _say(text: String, voice_id: String) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _jolt(strength: float) -> void:
+	patient.body.tissue.shake(strength * 0.003)
 	if local_surgeon:
 		local_surgeon.jolt(strength)
 

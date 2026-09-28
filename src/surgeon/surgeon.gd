@@ -309,7 +309,7 @@ func _surface_below(p: Vector3) -> Dictionary:
 		return {"y": -INF, "open": false}
 	if (hit.collider as Object).has_meta("site"):
 		var body := Surgery.current.patient.body
-		if body.wound_map.is_open(body.world_to_uv(hit.position)):
+		if body.is_open(body.world_to_uv(hit.position)):
 			query.collision_mask = PatientBody.CAVITY_LAYER
 			var floor_hit := space.intersect_ray(query)
 			return {"y": floor_hit.position.y if not floor_hit.is_empty() else hit.position.y - 0.1, "open": true}

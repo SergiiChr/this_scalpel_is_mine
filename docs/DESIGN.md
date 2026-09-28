@@ -13,7 +13,8 @@ Autoloads (src/autoload)
 Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   Room        builds geometry, lights and stations per environment (or, ambulance, sidewalk)
   Patient     host-authoritative simulation (vitals, wounds, drugs, targets, grips)
-    PatientBody   mannequin, surgical site, cavity, organs, wound map (every peer)
+    PatientBody   mannequin, surgical site tissue layers, cavity, organs, wound map (every peer)
+      TissueSim   soft tissue sim of the site skin (every peer, tears decided by the host)
   Tools       ToolManager: every grabbable item, grab/release/belt requests
   Surgeons    one Surgeon per player: input, hands with two-bone IK, personal gauges
   Systems     Objectives, EventDirector, Scoring, Nurse, Lab (host only)
@@ -28,7 +29,9 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   This keeps all game logic in one place and makes cheating or desync between two co-op players a non-issue.
 - **Skin damage is painted by broadcast.** The host decides what to paint and sends paint ops (reliable),
   every peer paints its own copy of the wound map, so textures stay identical without sending images.
-- Vitals, targets, organs and skin pulls sync at 5 Hz. Free-falling tools sync at 10 Hz.
+- **Tissue topology is broadcast the same way.** Cuts, stitches, bursts and snapped springs are reliable RPCs,
+  every peer runs its own copy of the tissue sim. Only the host lets springs snap, then tells the others which one.
+- Vitals, targets, organs and tissue grips sync at 5 Hz. Free-falling tools sync at 10 Hz.
 - Solo play is the same code with an offline peer. There is no separate single player path.
 - Every peer builds the same patient and tray from the session seed, so setup needs no RPCs.
 
@@ -37,9 +40,16 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Cel shading (`toon.gdshader`): banded light angle, hard specular, rim light, procedural grime.
   Room surfaces use a smooth variant so walls don't band.
 - Ink outline via inverted hull (`outline.gdshader`).
-- Skin damage (`skin.gdshader` + `WoundMap`): two painted textures drive cuts, opening, burns (red halo to charred core),
-  bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Grabbing skin tents and pulls it.
-  Opened areas are discarded so the real cavity, organs and targets show through.
+- Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
+  - The skin is a grid of particles joined by springs under tension, loosely anchored to the body.
+    Cutting severs springs, so an incision gapes on its own; forceps and retractors pin particles and stretch it further.
+  - Each severed spring remembers how deep the cut went: skin, fat or muscle.
+    Skin, fat and muscle are three meshes rebuilt from the sim; each one drops the triangles over a gap cut down to it.
+    So a shallow cut shows yellow fat, a deeper one red muscle, and only a full depth cut opens into the cavity.
+  - Overstretched springs snap into a tear (host only). Stitches are extra springs across the cut, their length is the tension.
+  - The sim sleeps when nothing moves.
+- Skin damage (`skin.gdshader` + `WoundMap`): two painted textures drive cut grooves, burns (red halo to charred core),
+  bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
 - Screen grading (`post_grime.gdshader`): desaturated sick-green tint, vignette, film grain, chromatic split.
   Sickness wobbles and blurs the view, passing out blacks it out.
@@ -144,7 +154,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Two-hand control, one active at a time, idle hand frozen mid-action. Pressure levels, tilt and twist.
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
-- Cuts with depth and speed (clean vs jagged), deep cuts open the body, retraction widens, overpull tears.
+- Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
@@ -184,7 +194,7 @@ Asset libraries were not used; everything is built from code so it can be regene
 - **Models**: lofted superellipse tubes, lathes, rounded boxes and extrusions exported to `.glb` with named parts.
   The game swaps materials for the cel shader by name (`src/visual/model_slot.gd`).
 - **Patient skin**: `site_heights.json` is baked by raycasting the body, so the surgical site hugs the body.
-  The body itself cuts holes where the wound map says the skin is open, and the site patch only draws damage.
+  The body model is cut away under the site and the simulated skin layer takes its place.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`patient_animator.gd`): breathing at the respiration rate (surgical site rises with the chest), eyes open when conscious,
     jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.

@@ -1,7 +1,11 @@
 class_name PatientBody
 extends Node3D
-## The patient you see and touch: mannequin, surgical site skin, the cavity under it, organs and colliders.
-## Exists on every peer. Game state lives in Patient; this node only knows geometry and the wound map.
+## The patient you see and touch: body model, the layered tissue at the surgical site, the cavity, organs and colliders.
+## Exists on every peer. Game state lives in Patient; this node knows geometry, the wound map and the tissue sim.
+##
+## The surgical site is real layered tissue, not a painted decal:
+## skin (TissueSim, soft and under tension) over subcutaneous fat over muscle over the cavity.
+## Each layer only opens where a cut went deep enough and the sim pulled the edges apart.
 ##
 ## Body space: patient lies along X with the head at +X, origin at the body's center line.
 ## Site space: a plane whose local XZ maps to wound map UV, +Y points out of the skin.
@@ -13,6 +17,11 @@ const SITE_LAYER := 4
 const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
 
+const SKIN_THICKNESS := 0.004
+const MUSCLE_THICKNESS := 0.006
+## How much each layer follows the skin's movement (deeper layers are more tethered).
+const LAYER_FOLLOW: Array[float] = [1.0, 0.8, 0.55]
+const LAYER_DEPTH: Array[int] = [TissueSim.Depth.SKIN, TissueSim.Depth.FAT, TissueSim.Depth.MUSCLE]
 const ORGAN_MODELS: PackedStringArray = ["bowel", "lobe", "sac"]
 const LIMB_SITES: PackedStringArray = ["forearm", "shoulder", "thigh", "lower_leg"]
 
@@ -21,6 +30,9 @@ var site_id: String
 var site_size: Vector2
 var site: Node3D
 var skin_material: ShaderMaterial
+var tissue := TissueSim.new()
+## Subcutaneous fat, thicker on obese patients (set before build()).
+var fat_thickness := 0.012
 var cavity_blood: MeshInstance3D
 var organs: Array[RigidBody3D] = []
 var animator := PatientAnimator.new()
@@ -31,6 +43,12 @@ var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
 var _site_base_y := 0.0
 var _heights := PackedFloat32Array()
+var _layers: Array[MeshInstance3D] = []
+var _layer_version := -1
+var _layer_steps := -1
+var _layer_uvs := PackedVector2Array()
+var _organ_last: Array[Vector3] = []
+var _jiggle: Array[Vector2] = []
 
 
 func build(site_name: String, tone: Color, age_scale: float) -> void:
@@ -49,8 +67,12 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	_build_site(tone)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	wound_map.flush()
+	tissue.step(delta)
+	if tissue.topology_version != _layer_version or tissue.steps_done != _layer_steps:
+		_rebuild_layers()
+	_jiggle_organs(delta)
 
 
 func is_limb_site() -> bool:
@@ -120,7 +142,7 @@ func probe(p: Vector3) -> Dictionary:
 	if on_site and height > -cavity_depth():
 		if height > 0.012:
 			return {"zone": "air", "uv": uv, "depth": 0.0}
-		if wound_map.is_open(uv) or height < -0.01 and _is_open_near(uv):
+		if tissue.is_open(uv):
 			return {"zone": "cavity", "uv": uv, "depth": -height}
 		return {"zone": "site", "uv": uv, "depth": maxf(0.0, -height)}
 	var part := part_at(p)
@@ -141,12 +163,9 @@ func part_at(p: Vector3, radius: float = 0.025) -> String:
 	return ""
 
 
-func _is_open_near(uv: Vector2) -> bool:
-	var r := 0.02
-	for offset: Vector2 in [Vector2.ZERO, Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r)]:
-		if wound_map.is_open(uv + offset):
-			return true
-	return false
+## Cut through every layer and pulled open, so tools reach into the cavity.
+func is_open(uv: Vector2) -> bool:
+	return tissue.is_open(uv)
 
 
 # --- Construction ----------------------------------------------------------------------------------
@@ -182,12 +201,15 @@ func _build_site(tone: Color) -> void:
 	_body_root.add_child(site)
 
 	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
-	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1], site_size)
-	var mesh := MeshInstance3D.new()
-	mesh.name = "Skin"
-	mesh.mesh = _skin_mesh()
-	mesh.material_override = skin_material
-	site.add_child(mesh)
+	tissue.build(site_size, surface_height)
+	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
+	for i in 3:
+		var layer := MeshInstance3D.new()
+		layer.name = ["Skin", "Fat", "Muscle"][i]
+		layer.mesh = ArrayMesh.new()
+		layer.material_override = skin_material if i == 0 else Materials.tissue_layer(i - 1, wound_map.textures[1])
+		site.add_child(layer)
+		_layers.append(layer)
 
 	var collider := Shapes.static_box(site, Vector3(site_size.x, 0.004, site_size.y), Vector3(0, -0.002, 0), SITE_LAYER)
 	collider.set_meta("site", true)
@@ -195,27 +217,44 @@ func _build_site(tone: Color) -> void:
 	_update_carve.call_deferred()
 
 
-## Skin patch as a grid that follows the baked body heights, so it hugs curves and limbs.
-func _skin_mesh() -> ArrayMesh:
-	const RES := 40
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for j in RES + 1:
-		for i in RES + 1:
-			var uv := Vector2(float(i) / RES, float(j) / RES)
-			st.set_uv(uv)
-			st.add_vertex(Vector3((uv.x - 0.5) * site_size.x, surface_height(uv) + 0.002, (uv.y - 0.5) * site_size.y))
-	for j in RES:
-		for i in RES:
-			var a := j * (RES + 1) + i
-			st.add_index(a)
-			st.add_index(a + 1)
-			st.add_index(a + RES + 1)
-			st.add_index(a + 1)
-			st.add_index(a + RES + 2)
-			st.add_index(a + RES + 1)
-	st.generate_normals()
-	return st.commit()
+## Rebuilds the skin, fat and muscle meshes from the tissue sim.
+## Deeper layers sit lower and follow the skin less. Triangles over an open gap are left out, so you see through.
+func _rebuild_layers() -> void:
+	_layer_version = tissue.topology_version
+	_layer_steps = tissue.steps_done
+	var res := TissueSim.RES
+	var severed := tissue.any_severed()
+	if _layer_uvs.is_empty():
+		for k in tissue.rest.size():
+			_layer_uvs.append(tissue.uv_of(k))
+	for layer in 3:
+		var instance := _layers[layer]
+		var mesh := instance.mesh as ArrayMesh
+		mesh.clear_surfaces()
+		instance.visible = layer == 0 or severed
+		if not instance.visible:
+			continue
+		var down := Vector3(0, [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
+		var follow := LAYER_FOLLOW[layer]
+		var verts := PackedVector3Array()
+		verts.resize(tissue.rest.size())
+		for k in verts.size():
+			verts[k] = tissue.rest[k] + (tissue.pos[k] - tissue.rest[k]) * follow - down
+		# Smooth grid normals from neighbouring particles (cross of the z and x tangents points out of the skin).
+		var normals := PackedVector3Array()
+		normals.resize(verts.size())
+		for j in res + 1:
+			for i in res + 1:
+				var dx := verts[tissue.index(mini(i + 1, res), j)] - verts[tissue.index(maxi(i - 1, 0), j)]
+				var dz := verts[tissue.index(i, mini(j + 1, res))] - verts[tissue.index(i, maxi(j - 1, 0))]
+				normals[tissue.index(i, j)] = dz.cross(dx).normalized()
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
+		arrays[Mesh.ARRAY_INDEX] = tissue.triangles(LAYER_DEPTH[layer])
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 
 
 ## Cavity walls whose rim follows the skin just underneath it, so nothing pokes out of the body.
@@ -231,8 +270,8 @@ func _cavity_mesh(depth: float) -> ArrayMesh:
 		for i in STEPS:
 			var u0 := a.lerp(b, float(i) / STEPS)
 			var u1 := a.lerp(b, float(i + 1) / STEPS)
-			var top0 := _site_point(u0, surface_height(u0) - 0.004)
-			var top1 := _site_point(u1, surface_height(u1) - 0.004)
+			var top0 := _site_point(u0, surface_height(u0) - SKIN_THICKNESS)
+			var top1 := _site_point(u1, surface_height(u1) - SKIN_THICKNESS)
 			var bottom0 := _site_point(u0, -depth)
 			var bottom1 := _site_point(u1, -depth)
 			for v: Vector3 in [top0, bottom0, top1, top1, bottom0, bottom1]:
@@ -294,6 +333,8 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color) -> RigidB
 	organ.position = Vector3((uv.x - 0.5) * site_size.x, -depth, (uv.y - 0.5) * site_size.y)
 	organs.append(organ)
 	_organ_rest.append(organ.position)
+	_organ_last.append(organ.position)
+	_jiggle.append(Vector2.ZERO)
 	return organ
 
 
@@ -302,6 +343,25 @@ func settle_organs() -> void:
 	for i in organs.size():
 		var organ := organs[i]
 		organ.apply_central_force((_organ_rest[i] - organ.position) * 40.0 * organ.mass)
+
+
+## Soft organs: a damped spring squashes and stretches each organ when it's pushed, on every peer.
+func _jiggle_organs(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	for i in organs.size():
+		var organ := organs[i]
+		var velocity := (organ.position - _organ_last[i]) / delta
+		_organ_last[i] = organ.position
+		var state := _jiggle[i]
+		state.y += (-state.x * 180.0 - state.y * 9.0 + clampf(velocity.length() * 6.0, 0.0, 3.0)) * delta
+		state.x += state.y * delta
+		_jiggle[i] = state
+		var squash := clampf(state.x, -0.25, 0.25)
+		var model := organ.get_node_or_null("Model") as Node3D
+		if model:
+			var radius := (organ.get_child(0) as CollisionShape3D).shape.get("radius") as float
+			model.scale = Vector3(1.0 + squash, 1.0 - squash, 1.0 + squash) * radius
 
 
 func organ_offset(index: int) -> float:
@@ -336,6 +396,7 @@ func set_cavity_blood(level: float) -> void:
 	cavity_blood.position.y = -depth + 0.002 + clampf(level, 0.0, 1.0) * depth * 0.85
 
 
+## The body model is cut away under the whole site; the simulated skin layer takes its place.
 func _update_carve() -> void:
 	for mat in _body_materials:
-		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, wound_map.textures[0])
+		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, Materials.white())

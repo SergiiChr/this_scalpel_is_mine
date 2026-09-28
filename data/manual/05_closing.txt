@@ -18,5 +18,6 @@ A wound is only closed when you've gone along [b]all[/b] of it. Move the tool al
 • Loose: quick, but the wound never fully seals and keeps oozing.
 • Right: what you want.
 • Tight: strongest seal, but every stitch can tear through. Thin skin tears twice as often.
+Pulling hard on stitched skin can tear stitches out too.
 
 Seizures, coughing, falls and bumps strain closures. Weak closures burst open. Internal wounds (stomach, bowel, arteries) close with sutures or cautery inside the cavity.

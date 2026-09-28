@@ -17,8 +17,6 @@ const BLOOD := 0
 const INK := 1
 const IODINE := 2
 const GRIME := 3
-## Cut value at which the skin is open (keep in sync with skin.gdshader open_threshold).
-const OPEN := 0.82
 
 var images: Array[Image] = []
 var textures: Array[ImageTexture] = []
@@ -65,17 +63,6 @@ func disk(layer: Layer, channel: int, center: Vector2, radius: float, value: flo
 			pixel[channel] = current
 			image.set_pixel(x, y, pixel)
 	_dirty[layer] = true
-
-
-func sample(layer: Layer, channel: int, uv: Vector2) -> float:
-	var p := (uv * SIZE).floor()
-	if p.x < 0 or p.y < 0 or p.x >= SIZE or p.y >= SIZE:
-		return 0.0
-	return images[layer].get_pixel(int(p.x), int(p.y))[channel]
-
-
-func is_open(uv: Vector2) -> bool:
-	return sample(Layer.WOUNDS, CUT, uv) > OPEN
 
 
 ## Uploads changed images to the GPU. Call once per frame.

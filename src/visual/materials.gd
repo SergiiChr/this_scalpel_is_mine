@@ -6,6 +6,7 @@ const TOON := preload("res://assets/shaders/toon.gdshader")
 const OUTLINE := preload("res://assets/shaders/outline.gdshader")
 const FLESH := preload("res://assets/shaders/flesh.gdshader")
 const SKIN := preload("res://assets/shaders/skin.gdshader")
+const TISSUE_LAYER := preload("res://assets/shaders/tissue_layer.gdshader")
 
 const SKIN_TONES: Array[Color] = [
 	Color(0.87, 0.7, 0.6), Color(0.78, 0.58, 0.45), Color(0.6, 0.42, 0.3), Color(0.42, 0.28, 0.2),
@@ -71,14 +72,30 @@ static func flesh(color: Color = Color(0.55, 0.12, 0.12)) -> ShaderMaterial:
 	return mat
 
 
-static func skin_site(tone: Color, wound_tex: Texture2D, fluid_tex: Texture2D, size: Vector2) -> ShaderMaterial:
+static func skin_site(tone: Color, wound_tex: Texture2D, fluid_tex: Texture2D) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = SKIN
 	mat.set_shader_parameter("skin_color", tone)
 	mat.set_shader_parameter("wound_map", wound_tex)
 	mat.set_shader_parameter("fluid_map", fluid_tex)
-	mat.set_shader_parameter("site_size", size)
 	return mat
+
+
+## Fat (layer 0) or muscle (layer 1) under the surgical site skin.
+static func tissue_layer(layer: int, fluid_tex: Texture2D) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = TISSUE_LAYER
+	mat.set_shader_parameter("layer", layer)
+	mat.set_shader_parameter("fluid_map", fluid_tex)
+	return mat
+
+
+static func white() -> Texture2D:
+	if not _cache.has("white"):
+		var image := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		image.fill(Color.WHITE)
+		_cache["white"] = ImageTexture.create_from_image(image)
+	return _cache["white"]
 
 
 static func glow(color: Color) -> StandardMaterial3D:

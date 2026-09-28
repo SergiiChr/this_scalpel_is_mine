@@ -32,9 +32,12 @@ func _ready() -> void:
 	patient.cut(1, Vector2(0.25, 0.6), Vector2(0.5, 0.55), 1.0, 1.0, false, 0.1)
 	patient.cut(1, Vector2(0.5, 0.55), Vector2(0.72, 0.62), 1.0, 1.0, false, 0.1)
 	patient.cut(2, Vector2(0.3, 0.3), Vector2(0.55, 0.25), 0.5, 0.5, false, 0.5)
-	for w in patient.wounds:
-		w.opened = 0.7
-		patient._refresh_opening(w)
+	# Retract the long incision with two pins, like forceps holding the edges apart.
+	var tissue := patient.body.tissue
+	for pull: Array in [[Vector2(0.48, 0.52), Vector3(0, 0.004, -0.025)], [Vector2(0.48, 0.6), Vector3(0, 0.004, 0.025)]]:
+		var key := 900 + tissue.grips().size()
+		tissue.grip(key, pull[0])
+		tissue.move_grip(key, tissue.pos[tissue.nearest(pull[0])] + (pull[1] as Vector3))
 	var def := Db.tool("cautery")
 	patient.cauterize_at("site", Vector2(0.75, 0.3), 0.0, Db.tool("lighter"), 0.5)
 	patient.cauterize_at("site", Vector2(0.8, 0.35), 0.0, def, 0.5)
@@ -58,6 +61,10 @@ func _ready() -> void:
 	camera.global_position = site + Vector3(0.0, 0.35, 0.25)
 	camera.look_at(site)
 	await _shot(out, "03_site_closeup")
+	var incision := patient.body.uv_to_world(Vector2(0.45, 0.5))
+	camera.global_position = incision + Vector3(0.0, 0.16, 0.1)
+	camera.look_at(incision)
+	await _shot(out, "03b_tissue_layers")
 	camera.global_position = Vector3(3.0, 2.4, 3.0)
 	camera.look_at(Vector3(0, 0.9, 0))
 	await _shot(out, "04_room")
