@@ -1,4 +1,4 @@
-"""Surgeon body, head, arm segments and the gloved hand.
+"""Surgeon body, head and arm segments (the gloved hand comes from tools/blender).
 
 Body: origin at the feet, facing -Z. Head: origin at eye level. Glove: origin at the grip, tool handle along -Z,
 right hand (the game mirrors it for the left). Finger joints rotate around Z to curl around the handle.
@@ -68,40 +68,5 @@ def _arm_segments() -> list[Model]:
     return [upper, fore]
 
 
-def _finger(model: Model, name: str, knuckle: tuple[float, float, float], lengths: tuple[float, float, float], radius: float, parent: str) -> None:
-    """Three segments pointing -X from the knuckle (open hand). Each joint's node origin is at its base."""
-    x, y, z = knuckle
-    base = parent
-    for i, length in enumerate(lengths):
-        r = radius * (1.0 - 0.12 * i)
-        segment = tube([(x, y, z), (x - length * 0.5, y, z), (x - length, y, z)], [(r, r * 1.05), (r * 0.97, r), (r * 0.9, r * 0.95)], ring=12)
-        tip = ellipsoid((r * 0.9, r * 0.9, r * 0.95), (x - length, y, z)) if i == 2 else None
-        mesh = merge(segment, tip) if tip is not None else segment
-        joint = f"{name}{i + 1}"
-        model.add(joint, mesh, "glove", (x, y, z), base)
-        base = joint
-        x -= length
-
-
-def _glove() -> Model:
-    """Right hand, palm on the +X side of the handle, fingers ready to wrap over it."""
-    model = Model("surgeon", "glove")
-    palm = superellipsoid((0.03, 0.085, 0.09), 0.45, (0.028, 0.0, 0.005))
-    wrist = tube([(0.03, 0.0, 0.05), (0.032, 0.0, 0.1)], [(0.03, 0.022), (0.031, 0.024)], smooth=1, up=(1, 0, 0))
-    model.add("Palm", merge(palm, wrist), "glove")
-    fingers = (
-        ("Index", -0.03, 0.0095, (0.045, 0.027, 0.022)),
-        ("Middle", -0.01, 0.01, (0.048, 0.03, 0.023)),
-        ("Ring", 0.01, 0.0095, (0.045, 0.027, 0.021)),
-        ("Pinky", 0.028, 0.008, (0.035, 0.021, 0.018)),
-    )
-    for name, z, radius, lengths in fingers:
-        _finger(model, name, (0.018, 0.038, z), lengths, radius, "Palm")
-    thumb_base = (0.022, -0.03, -0.035)
-    thumb = tube([thumb_base, (0.0, -0.035, -0.055), (-0.02, -0.035, -0.07)], [(0.012, 0.012), (0.011, 0.011), (0.01, 0.01)], ring=12)
-    model.add("Thumb", merge(thumb, ellipsoid((0.01, 0.01, 0.01), (-0.02, -0.035, -0.07))), "glove", thumb_base, "Palm")
-    return model
-
-
 def build() -> list[Model]:
-    return [_body(), _head(), _glove(), *_arm_segments()]
+    return [_body(), _head(), *_arm_segments()]

@@ -14,6 +14,15 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | P2 | The Linux export builds and includes the data files | CI export step |
 | P3 | The asset generator passes ruff and strict mypy | CI `assetgen` job |
 
+## Models (`tests/models_test.gd`)
+
+| ID | Case |
+|---|---|
+| M1 | The patient model has a skeleton with every bone the animator drives (trunk, neck, head, jaw, arms, legs) |
+| M2 | The patient model has separate EyeL, EyeR and closed-Lids parts |
+| M3 | The surgeon glove has a skeleton with Hand and three bones per finger and thumb |
+| M4 | Every organ model and every target kind used by any scenario has a model file |
+
 ## Soft tissue (`tests/tissue_test.gd`)
 
 | ID | Case |

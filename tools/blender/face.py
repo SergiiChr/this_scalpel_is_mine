@@ -67,17 +67,6 @@ def eyelid_shells() -> list[bpy.types.Object]:
     return shells
 
 
-def _lips() -> list[tuple[NDArray[np.float64], NDArray[np.float64]]]:
-    """(centerline points, radii) of the upper and lower lip. They follow the curve of the teeth,
-    fuller in the middle, and the upper lip has a cupid's bow."""
-    t = np.linspace(-1.0, 1.0, 13)
-    body = np.sqrt(np.clip(1.0 - t * t, 0.0, None))
-    bow = -0.0011 * np.exp(-((t / 0.14) ** 2)) + 0.0007 * np.exp(-(((np.abs(t) - 0.3) / 0.14) ** 2))
-    upper = np.column_stack([0.6098 + 0.0025 * body + bow, 0.1062 + 0.0058 * body, 0.021 * t])
-    lower = np.column_stack([0.6043 - 0.0012 * body, 0.1048 + 0.0056 * body, 0.018 * t])
-    return [(upper, 0.0034 * (0.25 + 0.75 * body**0.6)), (lower, 0.0043 * (0.2 + 0.8 * body**0.5))]
-
-
 def mouth_shells() -> list[bpy.types.Object]:
     """Nose wings as rolled rims, like the eyelids: crisp borders a sculpt stroke can't make."""
     shells = []
@@ -85,17 +74,6 @@ def mouth_shells() -> list[bpy.types.Object]:
         wing = [_m(p, side) for p in ((0.631, 0.115, 0.006), (0.633, 0.111, 0.0135), (0.628, 0.104, 0.0165), (0.622, 0.1, 0.0135), (0.621, 0.103, 0.009))]
         shells.append(scene.curve_tube(f"NoseWing{side}", wing, 0.0034, [0.6, 1.0, 1.0, 0.9, 0.6]))
     return shells
-
-
-def lip_objects() -> tuple[bpy.types.Object, bpy.types.Object]:
-    """The lips as their own meshes sitting on the mouth: a crisp border against the skin, their own color,
-    and the lower lip rides the jaw while the upper stays with the head."""
-    out = []
-    for name, (points, radii) in zip(("UpperLip", "LowerLip"), _lips(), strict=True):
-        path: list[Vec3] = [(float(p[0]), float(p[1]), float(p[2])) for p in points]
-        lip = scene.curve_tube(name, path, 1.0, [float(r) for r in radii], resolution=12)
-        out.append(scene.finish(lip, scene.material("lips", (0.66, 0.38, 0.36), roughness=0.4, subsurface=0.2)))
-    return out[0], out[1]
 
 
 def ear_shells() -> list[bpy.types.Object]:

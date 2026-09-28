@@ -2,7 +2,7 @@
 
 Run from the repo root with Blender's Python module installed (pip install bpy, Python 3.11):
     python -m tools.blender [model ...]
-Output goes to build/blender_review/ until the models are approved and moved into assets/models.
+Review renders go to build/blender_review/, the models themselves into assets/models/ for the game.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ ASSETS = ROOT / "assets" / "models"
 def _hand() -> list[Path]:
     rig = hand.build()
     scene.export(OUT / "glove.glb")
+    scene.export(ASSETS / "surgeon" / "glove.glb")
     views = [("back", (0.0, 1.0, 0.05)), ("palm", (0.1, -1.0, 0.1)), ("thumb_side", (0.2, 0.1, -1.0)), ("three_quarter", (0.7, 0.7, -0.6))]
     shots = scene.render_views(OUT, "glove_open", views)
     hand.curl(rig, 0.85)
@@ -30,6 +31,8 @@ def _hand() -> list[Path]:
 def _patient() -> list[Path]:
     rig = patient.build()
     scene.export(OUT / "patient.glb")
+    scene.export(ASSETS / "patient" / "body.glb")
+    patient.bake_site_heights()
     shots = scene.render_views(OUT, "patient", [("top", (0.0, 1.0, 0.02)), ("left_side", (0.0, 0.15, 1.0)), ("three_quarter", (-0.6, 0.8, 0.7))])
     face = ((0.655, 0.05, 0.0), 0.13)
     head_up = (1.0, 0.0, 0.0)
@@ -64,14 +67,14 @@ def _still(name: str, build: Callable[[], None], ship: str = "") -> Callable[[],
 MODELS: dict[str, Callable[[], list[Path]]] = {
     "patient": _patient,
     "glove": _hand,
-    "bowel": _still("bowel", anatomy.bowel),
-    "lobe": _still("lobe", anatomy.lobe),
-    "sac": _still("sac", anatomy.sac),
-    "appendix": _still("appendix", anatomy.appendix),
-    "tumor": _still("tumor", anatomy.tumor),
-    "clot": _still("clot", anatomy.clot),
-    "bone": _still("bone", anatomy.bone),
-    "fragment": _still("fragment", anatomy.fragment),
+    "bowel": _still("bowel", anatomy.bowel, ship="organs"),
+    "lobe": _still("lobe", anatomy.lobe, ship="organs"),
+    "sac": _still("sac", anatomy.sac, ship="organs"),
+    "appendix": _still("appendix", anatomy.appendix, ship="targets"),
+    "tumor": _still("tumor", anatomy.tumor, ship="targets"),
+    "clot": _still("clot", anatomy.clot, ship="targets"),
+    "bone": _still("bone", anatomy.bone, ship="targets"),
+    "fragment": _still("fragment", anatomy.fragment, ship="targets"),
     "rib": _still("rib", anatomy.rib, ship="targets"),
     "splinter": _still("splinter", anatomy.splinter, ship="targets"),
 }

@@ -8,6 +8,9 @@ const FOREARM := 0.34
 const TILT_RANGE := Vector2(-1.5, -0.2)
 const LIFT_HEIGHT := 0.12
 const SPEED_WINDOW_MSEC := 250
+const FINGERS: PackedStringArray = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
+## Radians each finger joint bends at full curl, knuckle first.
+const JOINT_BEND: PackedFloat32Array = [0.9, 1.2, 0.8]
 
 var index := 0
 ## Where the hand wants to be, world space, before tremor and lift.
@@ -31,8 +34,10 @@ var _history: Array = []
 ## Set by the surgeon each frame; drives how far the fingers curl.
 var holding := false
 var _curl := 0.2
-var _fingers: Dictionary = {}
 var _glove: Node3D
+var _glove_rig: BoneRig
+## Where the glove's wrist sits in the hand's frame; the forearm ends there, not at the grip.
+var _wrist := Vector3.ZERO
 var _upper: Node3D
 var _fore: Node3D
 var _pusher: AnimatableBody3D
@@ -45,11 +50,13 @@ func build(hand_index: int, scrubs: Color) -> void:
 	name = "LeftHand" if index == 0 else "RightHand"
 	var sleeve := {"tint": Materials.toon(scrubs, 0.35)}
 	_glove = ModelSlot.instantiate("surgeon", "glove", self)
-	if index == 0:
-		_glove.scale.x = -1.0
-	for joint in _glove.find_children("*", "Node3D", true, false):
-		if joint.name.begins_with("Index") or joint.name.begins_with("Middle") or joint.name.begins_with("Ring") or joint.name.begins_with("Pinky") or joint.name == "Thumb":
-			_fingers[joint] = (joint as Node3D).transform
+	# The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
+	# Here the tool handle runs along the hand's Z axis through the origin (tip toward -Z): the palm wraps it from
+	# the +X side, fingers point down to curl under it, the thumb sits toward the tip. The left hand is the mirror.
+	var grip := Transform3D(Basis(Vector3.DOWN, Vector3.RIGHT, Vector3.BACK), Vector3(0.03, 0.075, 0.0))
+	_glove.transform = Transform3D(Basis.from_scale(Vector3(-1, 1, 1)), Vector3.ZERO) * grip if index == 0 else grip
+	_glove_rig = BoneRig.find(_glove)
+	_wrist = _glove.transform.origin
 	_upper = ModelSlot.instantiate("surgeon", "upper_arm", self, sleeve)
 	_fore = ModelSlot.instantiate("surgeon", "forearm", self, sleeve)
 	for segment in [_upper, _fore]:
@@ -114,12 +121,15 @@ func _track_speed() -> void:
 func _animate_fingers(delta: float) -> void:
 	var target := 1.0 if holding and engaged else 0.75 if holding else 0.15
 	_curl = move_toward(_curl, target, delta * 4.0)
-	for joint: Node3D in _fingers:
-		var rest: Transform3D = _fingers[joint]
-		var bend := _curl * (0.9 if joint.name.ends_with("1") else 1.2 if joint.name.ends_with("2") else 0.8)
-		if joint.name == "Thumb":
-			bend = -_curl * 0.7
-		joint.transform = Transform3D(rest.basis * Basis(Vector3.BACK, bend), rest.origin)
+	if _glove_rig == null:
+		return
+	for finger: String in FINGERS:
+		for joint in 3:
+			var bone := "%s%d" % [finger, joint + 1]
+			# Each joint bends its bone toward the palm (the glove's -Y); the thumb folds in less.
+			var bend := _curl * JOINT_BEND[joint] * (0.55 if finger == "Thumb" else 1.0)
+			var axis := _glove_rig.direction(bone).cross(Vector3.DOWN).normalized()
+			_glove_rig.rotate(bone, Basis(axis, bend))
 
 
 func _solve_arm(shoulder: Vector3) -> void:
@@ -134,7 +144,8 @@ func _solve_arm(shoulder: Vector3) -> void:
 	pole = (pole - dir * pole.dot(dir)).normalized()
 	var elbow := shoulder + dir * along + pole * height
 	_place_segment(_upper, shoulder, elbow)
-	_place_segment(_fore, elbow.lerp(global_position, _forearm_start), global_position)
+	var wrist := global_transform * _wrist
+	_place_segment(_fore, elbow.lerp(wrist, _forearm_start), wrist)
 
 
 static func _place_segment(mesh: Node3D, a: Vector3, b: Vector3) -> void:

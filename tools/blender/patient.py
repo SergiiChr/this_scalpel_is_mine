@@ -7,6 +7,9 @@ Rigid parts on the Head bone: Eyes, Irises, Lids (closed eyelids, shown while un
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import bpy
 
 from . import face, scene
@@ -167,18 +170,50 @@ def build() -> bpy.types.Object:
     brows = face.eyebrows(body)
     eye_l, eye_r, lids = face.eyes()
     upper_teeth, lower_teeth, tongue = face.teeth_and_tongue()
-    upper_lip, lower_lip = face.lip_objects()
 
     rig = scene.armature("PatientRig", BONES)
     scene.bind(body, rig)
     scene.bind(gown, rig)
     scene.reweight(body, "Jaw", face.jaw_weight, "Head")
-    for part in (hair, brows, eye_l, eye_r, lids, upper_teeth, upper_lip):
+    for part in (hair, brows, eye_l, eye_r, lids, upper_teeth):
         scene.attach(part, rig, "Head")
-    for part in (lower_teeth, tongue, lower_lip):
+    for part in (lower_teeth, tongue):
         scene.attach(part, rig, "Jaw")
     show_lids(False)
     return rig
+
+
+SITES_FILE = Path(__file__).resolve().parents[2] / "data" / "patient_sites.json"
+HEIGHTS_FILE = Path(__file__).resolve().parents[2] / "assets" / "models" / "patient" / "site_heights.json"
+SITE_GRID = 33
+
+
+def bake_site_heights() -> None:
+    """Skin height above or below each flat surgical site plane (rest pose), so the operable patch hugs the body.
+    Rays start 15 cm out along the site normal; a miss means the site hangs off the body there."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    trees = [BVHTree.FromObject(bpy.data.objects[name], depsgraph) for name in ("Body", "Gown")]
+    sites = {k: v for k, v in json.loads(SITES_FILE.read_text()).items() if not k.startswith("_")}
+    result: dict[str, object] = {"grid": SITE_GRID}
+    lin = [i / (SITE_GRID - 1) - 0.5 for i in range(SITE_GRID)]
+    for name, site in sites.items():
+        up = -1.0 if site.get("back") else 1.0
+        px, py, pz = site["pos"]
+        w, h = site["size"]
+        heights = []
+        for z in lin:
+            for x in lin:
+                origin = scene.to_blender((px + x * w, py + up * 0.15, pz + z * h))
+                hits = [t.ray_cast(origin, Vector((0.0, 0.0, -up)), 0.3) for t in trees]
+                dists = [hit[3] for hit in hits if hit[0] is not None]
+                height = 0.15 - min(dists) if dists else -0.06
+                heights.append(round(min(max(height, -0.06), 0.03), 4))
+        result[name] = heights
+    HEIGHTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    HEIGHTS_FILE.write_text(json.dumps(result))
 
 
 def show_lids(visible: bool) -> None:

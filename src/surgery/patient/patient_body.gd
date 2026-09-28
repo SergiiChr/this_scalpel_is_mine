@@ -13,6 +13,7 @@ extends Node3D
 enum Orientation { FACE_UP, SIDE, FACE_DOWN }
 
 const HALF_HEIGHT := 0.11
+const GOWN_COLOR := Color(0.5, 0.58, 0.55)
 const SITE_LAYER := 4
 const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
@@ -59,8 +60,10 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	_body_root.scale = Vector3.ONE * age_scale
 	add_child(_body_root)
 	var skin := Materials.body_skin(tone)
-	_body_materials.append(skin)
-	var model := ModelSlot.instantiate("patient", "body", _body_root, {"skin": skin})
+	# The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
+	var gown := Materials.body_skin(GOWN_COLOR)
+	_body_materials.append_array([skin, gown])
+	var model := ModelSlot.instantiate("patient", "body", _body_root, {"skin": skin, "gown": gown})
 	add_child(animator)
 	animator.setup(self, model)
 	_build_colliders()
