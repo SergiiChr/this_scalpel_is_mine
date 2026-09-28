@@ -74,6 +74,7 @@ scenes/          Scene files (menus, surgery)
 src/             Code, see docs/DESIGN.md for the architecture
 tests/           Headless smoke test, network test, screenshot tool
 tools/assetgen/  Model and sound generator (Python)
+tools/blender/   Blender models (pip install bpy, Python 3.11): python -m tools.blender renders review sheets to build/blender_review
 ```
 
 ## Tests
