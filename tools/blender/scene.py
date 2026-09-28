@@ -231,11 +231,11 @@ def fracture(obj: bpy.types.Object, cuts: Sequence[tuple[Vec3, Vec3, Vec3]]) -> 
     return obj
 
 
-def subtract(obj: bpy.types.Object, cutter: bpy.types.Object) -> bpy.types.Object:
-    """Boolean difference; the cutter is consumed."""
+def subtract(obj: bpy.types.Object, cutter: bpy.types.Object, fast: bool = False) -> bpy.types.Object:
+    """Boolean difference; the cutter is consumed. fast=True for million-face meshes where the exact solver crawls."""
     mod = obj.modifiers.new("Subtract", "BOOLEAN")
     mod.operation = "DIFFERENCE"
-    mod.solver = "EXACT"
+    mod.solver = "FLOAT" if fast else "EXACT"
     mod.object = cutter
     cutter.hide_render = True
     result = bake(obj)
@@ -378,6 +378,14 @@ def assign(obj: bpy.types.Object, mat: bpy.types.Material, mask: Callable[[NDArr
     return obj
 
 
+def set_origin(obj: bpy.types.Object, point: Vec3) -> bpy.types.Object:
+    """Moves the object's origin (its pivot) to a game-space point without moving the geometry."""
+    offset = to_blender(point)
+    obj.data.transform(Matrix.Translation(-offset))
+    obj.location = offset
+    return obj
+
+
 def armature(name: str, bones: Sequence[tuple[str, Vec3, Vec3, str | None]]) -> bpy.types.Object:
     """Armature from (bone, head, tail, parent) in game space. Bones keep their names as node names in the glTF."""
     data = bpy.data.armatures.new(name)
@@ -414,8 +422,32 @@ def bind(mesh: bpy.types.Object, rig: bpy.types.Object) -> None:
     bpy.context.view_layer.update()
     used = {e.group for v in mesh.data.vertices for e in v.groups if e.weight > 0.01}
     empty = [g.name for g in mesh.vertex_groups if g.index not in used]
-    if empty:
+    if len(empty) == len(mesh.vertex_groups):
         print(f"warning: no skin weights for {empty} on {mesh.name}")
+
+
+def reweight(mesh: bpy.types.Object, bone: str, weight: Callable[[NDArray[np.float64]], NDArray[np.float64]], giver: str) -> None:
+    """Hands part of each vertex over to `bone` (weight() in game space, 0..1), scaling its other weights down to make room.
+    Whatever automatic weighting gave `bone` before goes to `giver` first, so only the function decides. Used for the jaw."""
+    count = len(mesh.data.vertices)
+    co = np.empty(count * 3)
+    mesh.data.vertices.foreach_get("co", co)
+    b = co.reshape(-1, 3)
+    w = weight(np.column_stack([b[:, 0], b[:, 2], -b[:, 1]]))
+    target = mesh.vertex_groups[bone]
+    source = mesh.vertex_groups[giver]
+    for vertex in mesh.data.vertices:
+        index = vertex.index
+        old = {mesh.vertex_groups[g.group].name: g.weight for g in vertex.groups}
+        moved = old.pop(bone, 0.0)
+        if moved == 0.0 and w[index] == 0.0:
+            continue
+        old[giver] = old.get(giver, 0.0) + moved
+        total = sum(old.values()) or 1.0
+        for name, value in old.items():
+            mesh.vertex_groups[name].add([index], value / total * (1.0 - float(w[index])), "REPLACE")
+        target.add([index], float(w[index]), "REPLACE")
+    del source
 
 
 def attach(obj: bpy.types.Object, rig: bpy.types.Object, bone: str) -> None:

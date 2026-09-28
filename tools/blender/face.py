@@ -41,8 +41,9 @@ def base() -> list[Blob]:
         elements += [
             # Chewing muscle fills out the side of the jaw.
             ellipsoid(_m((0.607, 0.03, 0.049), side), (0.03, 0.028, 0.014), 2.0),
-            # Nostril holes, opening toward the chin.
+            # Nostril holes, opening toward the chin, and the passage running up into the nose.
             ellipsoid(_m((0.624, 0.111, 0.0075), side), (0.004, 0.0035, 0.003), -2.0),
+            capsule(_m((0.624, 0.111, 0.0075), side), _m((0.644, 0.107, 0.0045), side), 0.0024, -2.5),
             # The eye sits in a socket: carve the space the eyeball and lids fill.
             ellipsoid(_m((0.675, 0.094, 0.032), side), (0.009, 0.0075, 0.0135), -2.0),
         ]
@@ -72,8 +73,8 @@ def _lips() -> list[tuple[NDArray[np.float64], NDArray[np.float64]]]:
     t = np.linspace(-1.0, 1.0, 13)
     body = np.sqrt(np.clip(1.0 - t * t, 0.0, None))
     bow = -0.0011 * np.exp(-((t / 0.14) ** 2)) + 0.0007 * np.exp(-(((np.abs(t) - 0.3) / 0.14) ** 2))
-    upper = np.column_stack([0.6105 + 0.0025 * body + bow, 0.0995 + 0.0062 * body, 0.021 * t])
-    lower = np.column_stack([0.6027 - 0.0012 * body, 0.098 + 0.006 * body, 0.018 * t])
+    upper = np.column_stack([0.6098 + 0.0025 * body + bow, 0.0995 + 0.0062 * body, 0.021 * t])
+    lower = np.column_stack([0.6043 - 0.0012 * body, 0.098 + 0.006 * body, 0.018 * t])
     return [(upper, 0.0034 * (0.25 + 0.75 * body**0.6)), (lower, 0.0043 * (0.2 + 0.8 * body**0.5))]
 
 
@@ -89,16 +90,16 @@ def mouth_shells() -> list[bpy.types.Object]:
     return shells
 
 
-def lips_mask(p: NDArray[np.float64]) -> NDArray[np.bool_]:
-    """Faces on the front of the lips (game-space face centers), for the lip color."""
-    chosen = np.zeros(len(p), dtype=bool)
-    for points, radii in _lips():
-        for a, b, ra, rb in zip(points[:-1], points[1:], radii[:-1], radii[1:], strict=True):
-            seg = b - a
-            t = np.clip((p - a) @ seg / float(seg @ seg), 0.0, 1.0)
-            dist = np.linalg.norm(p - (a + t[:, None] * seg), axis=1)
-            chosen |= (dist < (ra + (rb - ra) * t) * 1.45 + 0.0006) & (p[:, 1] > a[1] - 0.0015)
-    return chosen
+def lip_objects() -> tuple[bpy.types.Object, bpy.types.Object]:
+    """The colored lips as their own shells, a hair over the sculpted lip shape: clean edges, and the lower lip
+    rides the jaw while the upper stays with the head."""
+    out = []
+    # The lower lip sits in a softer, fuller part of the sculpt, so its shell needs to stand out further to show.
+    for name, (points, radii), extra in zip(("UpperLip", "LowerLip"), _lips(), (0.0013, 0.0022), strict=True):
+        path: list[Vec3] = [(float(p[0]), float(p[1]), float(p[2])) for p in points]
+        lip = scene.curve_tube(name, path, 1.0, [float(r) * 1.1 + extra for r in radii], resolution=12)
+        out.append(scene.finish(lip, scene.material("lips", (0.66, 0.38, 0.36), roughness=0.4, subsurface=0.2)))
+    return out[0], out[1]
 
 
 def ear_shells() -> list[bpy.types.Object]:
@@ -188,15 +189,86 @@ def eyebrows(head: bpy.types.Object) -> bpy.types.Object:
     return scene.finish(scene.displace(brows, 0.0004, 0.0012, detail=3, seed=51), scene.material("hair", (0.12, 0.09, 0.07), roughness=0.8))
 
 
+# The mouth: a slit between the lips into a cavity, with teeth and a tongue. Everything below the line from the
+# mouth corners back to the jaw hinge follows the Jaw bone, so the mouth opens.
+MOUTH_LINE_X = 0.6068
+JAW_HINGE: Vec3 = (0.645, 0.025, 0.0)
+CAVITY: tuple[Vec3, Vec3] = ((0.606, 0.085, 0.0), (0.012, 0.019, 0.023))
+
+
+def carve_mouth(head: bpy.types.Object) -> bpy.types.Object:
+    """Cuts the slit between the lips and hollows out the mouth behind it (lined with the dark mouth material)."""
+    cavity = scene.blobs("Cavity", [ellipsoid(*CAVITY, 2.0)], resolution=0.001)
+    slit = scene.box("Slit", (MOUTH_LINE_X, 0.1, 0.0), (0.0013, 0.022, 0.04))
+    head = scene.subtract(scene.subtract(head, slit, fast=True), cavity, fast=True)
+    center, size = np.array(CAVITY[0]), np.array(CAVITY[1]) * 1.03
+
+    def inside(p: NDArray[np.float64]) -> NDArray[np.bool_]:
+        # The cavity walls plus the two faces of the slit, but none of the skin around the lips.
+        cavity_wall = np.sum(((p - center) / size) ** 2, axis=1) < 1.0
+        slit_wall = (np.abs(p[:, 0] - MOUTH_LINE_X) < 0.0009) & (np.abs(p[:, 2]) < 0.02) & (p[:, 1] < 0.11)
+        return np.asarray(cavity_wall | slit_wall, dtype=np.bool_)
+
+    return scene.assign(head, scene.material("mouth", (0.35, 0.08, 0.09), roughness=0.3, subsurface=0.1), inside)
+
+
+def jaw_weight(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """How much each point follows the jaw (0..1): hard at the lips so they part cleanly, softer toward the hinge."""
+    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+    depth = np.clip((0.106 - y) / (0.106 - JAW_HINGE[1]), 0.0, 1.0)
+    boundary = MOUTH_LINE_X + depth * (JAW_HINGE[0] - MOUTH_LINE_X)
+    # Sharp only across the slit between the lips; past the mouth corners the cheek stretches over a wide blend.
+    at_slit = np.clip((0.021 - np.abs(z)) / 0.002, 0.0, 1.0) * np.clip((y - 0.09) / 0.004, 0.0, 1.0)
+    width = at_slit * 0.0008 + (1.0 - at_slit) * (0.01 + 0.012 * depth)
+    below = np.clip((boundary - x) / width + 0.5, 0.0, 1.0)
+    # Only the face: not the ears, not the back of the head, fading into the neck under the chin.
+    face = np.clip((0.068 - np.abs(z)) / 0.012, 0.0, 1.0) * np.clip((y - 0.005) / 0.02, 0.0, 1.0) * np.clip((x - 0.54) / 0.03, 0.0, 1.0)
+    return np.asarray(below * face, dtype=np.float64)
+
+
+def teeth_and_tongue() -> tuple[bpy.types.Object, bpy.types.Object, bpy.types.Object]:
+    """Upper teeth (on the head), lower teeth and tongue (on the jaw), just behind the lips."""
+    rows = []
+    for name, x, height in (("UpperTeeth", 0.6095, 0.009), ("LowerTeeth", 0.6025, 0.008)):
+        z = np.linspace(-0.021, 0.021, 15)
+        arch: list[Vec3] = [(x, float(0.0965 - 32.0 * v * v), float(v)) for v in z]
+        row = scene.curve_tube(name, arch, height * 0.5, [0.6, *([1.0] * 13), 0.6], resolution=8)
+        # A shallow groove between each tooth.
+        row = scene.sculpt(row, [dab((x, 0.0965 - 32.0 * v * v + 0.003, float(v)), (0.006, 0.003, 0.0008), -0.0006) for v in np.linspace(-0.0195, 0.0195, 12)])
+        rows.append(scene.finish(row, scene.material("teeth", (0.86, 0.83, 0.72), roughness=0.3)))
+    tongue = scene.blobs("Tongue", [ellipsoid((0.6, 0.08, 0.0), (0.006, 0.014, 0.016), 2.5)], resolution=0.001)
+    scene.finish(tongue, scene.material("tongue", (0.62, 0.26, 0.28), roughness=0.35, subsurface=0.2))
+    return rows[0], rows[1], tongue
+
+
 def eyes() -> tuple[bpy.types.Object, bpy.types.Object, bpy.types.Object]:
-    """Eyeballs, irises with a dark pupil, and the closed lids shown while unconscious."""
-    balls, irises, lids = [], [], []
-    for side in (1.0, -1.0):
+    """EyeL and EyeR: separate objects (eyeball plus iris) with their origin at the eye's center so they can look around.
+    Lids: the closed eyelids, shown while unconscious."""
+    out = []
+    for side, suffix in ((1.0, "L"), (-1.0, "R")):
         c = _m(EYE_CENTER, side)
-        balls.append(ellipsoid(c, (EYE_RADIUS,) * 3, 3.0))
-        irises.append(ellipsoid((c[0] + 0.0004, c[1] + EYE_RADIUS * 0.9, c[2] - 0.0006 * side), (0.0055, 0.0022, 0.0055), 3.0))
-        lids.append(ellipsoid((c[0] + 0.0005, c[1] + 0.0008, c[2]), (EYE_RADIUS * 1.02, EYE_RADIUS * 1.03, EYE_RADIUS * 1.28), 3.0))
-    eye = scene.finish(scene.blobs("Eyes", balls, resolution=0.0008), scene.material("eye", (0.9, 0.88, 0.84), roughness=0.08))
-    iris = scene.finish(scene.blobs("Irises", irises, resolution=0.0004), scene.material("iris", (0.2, 0.24, 0.16), roughness=0.08))
+        ball = scene.finish(
+            scene.blobs(f"Eye{suffix}", [ellipsoid(c, (EYE_RADIUS,) * 3, 3.0)], resolution=0.0008), scene.material("eye", (0.9, 0.88, 0.84), roughness=0.08)
+        )
+        iris = scene.blobs(
+            f"Iris{suffix}", [ellipsoid((c[0] + 0.0004, c[1] + EYE_RADIUS * 0.9, c[2] - 0.0006 * side), (0.0055, 0.0022, 0.0055), 3.0)], resolution=0.0004
+        )
+        scene.finish(iris, scene.material("iris", (0.2, 0.24, 0.16), roughness=0.08))
+        eye = scene.join(f"Eye{suffix}", ball, iris)
+        scene.set_origin(eye, c)
+        out.append(eye)
+    lids = [
+        ellipsoid((c[0] + 0.0005, c[1] + 0.0008, c[2]), (EYE_RADIUS * 1.02, EYE_RADIUS * 1.03, EYE_RADIUS * 1.28), 3.0)
+        for c in (_m(EYE_CENTER, 1.0), _m(EYE_CENTER, -1.0))
+    ]
     lid = scene.cut_below(scene.blobs("Lids", lids, resolution=0.0008), 1, EYE_CENTER[1] + 0.001)
-    return eye, iris, lid
+    scene.finish(lid, scene.material("skin", (0.8, 0.6, 0.5), roughness=0.55, subsurface=0.2))
+    return out[0], out[1], lid
+
+
+def ear_canals() -> list[bpy.types.Object]:
+    """Cutters for the ear canals, from the bowl of each ear into the head."""
+    return [
+        scene.curve_tube(f"EarCanal{side}", [_m((0.664, 0.003, 0.095), side), _m((0.666, 0.001, 0.078), side), _m((0.668, 0.0, 0.062), side)], 0.0032)
+        for side in (1.0, -1.0)
+    ]

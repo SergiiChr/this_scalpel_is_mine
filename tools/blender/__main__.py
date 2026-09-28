@@ -38,7 +38,9 @@ def _patient() -> list[Path]:
     patient.show_lids(True)
     shots += scene.render_views(OUT, "patient_face_asleep", [("three_quarter", (0.2, 1.0, 0.6))], focus=face, up=head_up)
     patient.show_lids(False)
+    shots += scene.render_views(OUT, "patient_shoulders", [("top", (0.0, 1.0, 0.0))], focus=((0.3, 0.0, 0.0), 0.32))
     patient.test_pose(rig)
+    shots += scene.render_views(OUT, "patient_mouth_open", [("three_quarter", (0.1, 1.0, 0.45))], focus=face, up=head_up)
     return shots + scene.render_views(OUT, "patient_posed", [("three_quarter", (-0.3, 0.8, 0.8))])
 
 
