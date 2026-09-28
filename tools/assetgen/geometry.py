@@ -150,7 +150,7 @@ def superellipsoid(size: Sequence[float], roundness: float = 0.25, center: Seque
     v = np.linspace(-np.pi, np.pi, detail * 2, endpoint=False)
 
     def f(w: NDArray[np.float64], m: float) -> NDArray[np.float64]:
-        return np.sign(w) * np.abs(w) ** m
+        return np.asarray(np.sign(w) * np.abs(w) ** m, dtype=np.float64)
 
     verts = []
     for a in u:

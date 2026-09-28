@@ -71,7 +71,7 @@ def tone(freq: float | Wave, seconds: float, shape: str = "sine") -> Wave:
         return np.asarray(signal.sawtooth(phase), dtype=np.float64)
     if shape == "square":
         return np.asarray(signal.square(phase), dtype=np.float64)
-    return np.sin(phase)
+    return np.asarray(np.sin(phase), dtype=np.float64)
 
 
 def partials(freqs: list[float], decays: list[float], seconds: float) -> Wave:
@@ -104,7 +104,7 @@ def normalize(x: Wave, peak: float = 0.8) -> Wave:
 def cut_skin() -> Wave:
     x = band(noise(0.35), 1500, 6000) * env(int(0.35 * RATE), 0.03, 0.15)
     squelch = band(noise(0.35), 200, 700) * (0.5 + 0.5 * np.sin(2 * np.pi * 18 * t(0.35))) * env(int(0.35 * RATE), 0.05, 0.1)
-    return x + squelch * 0.6
+    return np.asarray(x + squelch * 0.6, dtype=np.float64)
 
 
 def cut_deep() -> Wave:
@@ -124,7 +124,7 @@ def tear_skin() -> Wave:
 def suture_pull() -> Wave:
     sweep = np.linspace(5000, 1500, int(0.5 * RATE))
     x = noise(0.5) * env(int(0.5 * RATE), 0.08, 0.3)
-    return band(x, 1000, 7000) * (0.6 + 0.4 * np.sin(2 * np.pi * np.cumsum(sweep / 40) / RATE))
+    return np.asarray(band(x, 1000, 7000) * (0.6 + 0.4 * np.sin(2 * np.pi * np.cumsum(sweep / 40) / RATE)), dtype=np.float64)
 
 
 def staple() -> Wave:
@@ -278,7 +278,7 @@ def body_fall() -> Wave:
 
 def sip() -> Wave:
     n = int(0.35 * RATE)
-    return band(noise(0.35), 1500, 6000) * env(n, 0.05, 0.15) * (0.5 + 0.5 * np.sin(2 * np.pi * 25 * t(0.35)))
+    return np.asarray(band(noise(0.35), 1500, 6000) * env(n, 0.05, 0.15) * (0.5 + 0.5 * np.sin(2 * np.pi * 25 * t(0.35))), dtype=np.float64)
 
 
 def page_turn() -> Wave:

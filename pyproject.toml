@@ -1,9 +1,4 @@
-[project]
-name = "this-scalpel-is-mine-assetgen"
-version = "0.1.0"
-description = "Procedural models and sounds for This Scalpel Is Mine"
-requires-python = ">=3.11"
-dependencies = ["numpy>=2.0", "trimesh>=4.0", "shapely>=2.0", "mapbox_earcut>=1.0", "scipy>=1.11"]
+# Tool settings only. Python dependencies live in requirements.txt and requirements-dev.txt (./build.sh dev installs them).
 
 [tool.ruff]
 line-length = 160

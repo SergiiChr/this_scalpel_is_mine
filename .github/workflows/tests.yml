@@ -15,7 +15,8 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install ruff mypy numpy trimesh shapely mapbox_earcut scipy
+      # bpy is left out: it's a large download and the lint and type checks don't need it.
+      - run: pip install -r requirements.txt ruff==0.16.9 mypy==2.3.1
       - run: ruff check tools
       - run: ruff format --check tools
       - run: mypy tools
@@ -34,7 +35,7 @@ jobs:
             ~/.local/share/godot/export_templates
           key: godot-${{ hashFiles('build.sh') }}
       - run: ./build.sh test
-      - run: SKIP_TESTS=1 ./build.sh
+      - run: SKIP_TESTS=1 ./build.sh build
       - if: always()
         uses: actions/upload-artifact@v4
         with:
