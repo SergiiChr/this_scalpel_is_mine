@@ -56,11 +56,15 @@ def _coil(rng: np.random.Generator, steps: int, spacing: float, bounds: NDArray[
 
 
 def bowel() -> None:
-    """Small intestine: one long tube piled into loops, the way it spills out when you open the belly."""
-    path = _coil(np.random.default_rng(8), 260, 0.27, np.array([0.8, 0.36, 0.8]))
-    gut = scene.curve_tube("Bowel", path, 0.125, resolution=16)
-    gut = scene.displace(scene.remesh(gut, 0.012, smooth=4), 0.012, 0.25, seed=2)
-    scene.finish(scene.decimate(gut, 0.3), _wet("organ", ORGAN))
+    """Small intestine: one long separate tube looping loosely over itself, never fused into a clump.
+    The walk keeps loops a little more than a tube's width apart; the ends taper shut."""
+    path = _coil(np.random.default_rng(8), 190, 0.34, np.array([1.0, 0.42, 1.0]))
+    count = len(path)
+    ends = np.clip(np.minimum(np.arange(count), np.arange(count)[::-1]) / 3.0, 0.0, 1.0)
+    radii = [float(0.35 + 0.65 * np.sqrt(e)) for e in ends]
+    gut = scene.curve_tube("Bowel", path, 0.12, radii, resolution=16)
+    gut = scene.displace(gut, 0.006, 0.3, seed=2)
+    scene.finish(gut, _wet("organ", ORGAN))
 
 
 def _liver_shape(p: NDArray[np.float64]) -> NDArray[np.float64]:

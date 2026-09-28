@@ -57,7 +57,8 @@ def build() -> bpy.types.Object:
         "Palm",
         [
             ellipsoid((0.05, 0.0, -0.001), (0.05, 0.014, 0.04)),
-            ellipsoid((0.084, -0.004, 0.0), (0.017, 0.013, 0.043)),
+            # Knuckle row: no wider than the outer fingers, or it bulges out the sides of the hand.
+            ellipsoid((0.084, -0.004, 0.001), (0.017, 0.013, 0.033)),
             ellipsoid((0.028, -0.011, -0.022), (0.034, 0.016, 0.019)),
             ellipsoid((0.042, -0.009, 0.026), (0.038, 0.012, 0.014)),
             ellipsoid((-0.02, 0.0, 0.0), (0.06, 0.019, 0.027)),

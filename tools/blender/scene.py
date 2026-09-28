@@ -11,8 +11,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import bmesh
 import bpy
+
+# isort: split
+# bmesh only exists once bpy has been imported.
+import bmesh
 import numpy as np
 from mathutils import Matrix, Vector
 from numpy.typing import NDArray
@@ -304,11 +307,74 @@ def deform(obj: bpy.types.Object, fn: Callable[[NDArray[np.float64]], NDArray[np
     return obj
 
 
+@dataclass(frozen=True)
+class Stroke:
+    """One sculpt brush stroke in game space: raises (amount > 0) or carves the surface along its normal.
+    A dab at `center` with ellipsoid `radius`, or a line from `center` to `end` with round falloff radius[0].
+    Falloff is smooth (Gaussian), like a soft sculpt brush."""
+
+    center: Vec3
+    radius: Vec3
+    amount: float
+    end: Vec3 | None = None
+
+
+def dab(center: Vec3, radius: Vec3, amount: float) -> Stroke:
+    return Stroke(center, radius, amount)
+
+
+def line(a: Vec3, b: Vec3, radius: float, amount: float) -> Stroke:
+    return Stroke(a, (radius, radius, radius), amount, b)
+
+
+def sculpt(obj: bpy.types.Object, strokes: Sequence[Stroke]) -> bpy.types.Object:
+    """Applies brush strokes one after another, each along the current vertex normals."""
+    mesh = obj.data
+    count = len(mesh.vertices)
+    for stroke in strokes:
+        mesh.update()
+        co = np.empty(count * 3)
+        normals = np.empty(count * 3)
+        mesh.vertices.foreach_get("co", co)
+        mesh.vertices.foreach_get("normal", normals)
+        p = co.reshape(-1, 3)
+        n = normals.reshape(-1, 3)
+        c = np.array(to_blender(stroke.center))
+        if stroke.end is None:
+            r = np.array([stroke.radius[0], stroke.radius[2], stroke.radius[1]])
+            d2 = np.sum(((p - c) / r) ** 2, axis=1)
+        else:
+            e = np.array(to_blender(stroke.end))
+            seg = e - c
+            t = np.clip((p - c) @ seg / max(float(seg @ seg), 1e-12), 0.0, 1.0)
+            d2 = np.sum((p - (c + t[:, None] * seg)) ** 2, axis=1) / stroke.radius[0] ** 2
+        weight = np.exp(-2.0 * d2)
+        p += n * (stroke.amount * weight)[:, None]
+        mesh.vertices.foreach_set("co", p.ravel())
+    mesh.update()
+    return obj
+
+
 def finish(obj: bpy.types.Object, mat: bpy.types.Material, smooth: bool = True) -> bpy.types.Object:
     obj.data.materials.clear()
     obj.data.materials.append(mat)
     for poly in obj.data.polygons:
         poly.use_smooth = smooth
+    return obj
+
+
+def assign(obj: bpy.types.Object, mat: bpy.types.Material, mask: Callable[[NDArray[np.float64]], NDArray[np.bool_]]) -> bpy.types.Object:
+    """Gives the faces whose centers pass mask (game space) a second material, like lip color on the face."""
+    obj.data.materials.append(mat)
+    index = len(obj.data.materials) - 1
+    centers = np.empty(len(obj.data.polygons) * 3)
+    obj.data.polygons.foreach_get("center", centers)
+    b = centers.reshape(-1, 3)
+    chosen = mask(np.column_stack([b[:, 0], b[:, 2], -b[:, 1]]))
+    indices = np.zeros(len(obj.data.polygons), dtype=np.int32)
+    obj.data.polygons.foreach_get("material_index", indices)
+    indices[chosen] = index
+    obj.data.polygons.foreach_set("material_index", indices)
     return obj
 
 

@@ -55,6 +55,23 @@ Every model and sound is generated from code; nothing is downloaded or made by h
 
 The generated files are committed, so you only need `./build.sh assets` after changing a generator.
 
+## Sources of truth
+
+Design lives in plain files; the game reads them at startup, so change the file, not the code.
+
+| What | Where |
+|---|---|
+| Patient and surgeon quirks (effects, icons, flavor) | [data/quirks/patient_quirks.md](data/quirks/patient_quirks.md), [data/quirks/surgeon_quirks.md](data/quirks/surgeon_quirks.md) |
+| Scenarios (patient, wounds, targets, tools, objectives) | [data/scenarios/](data/scenarios) |
+| Tools, drugs, random events, run modifiers | [data/tools.cfg](data/tools.cfg), [data/drugs.cfg](data/drugs.cfg), [data/events.cfg](data/events.cfg), [data/run_modifiers.cfg](data/run_modifiers.cfg) |
+| Scoring and post-op consequences | [data/scoring.cfg](data/scoring.cfg), [data/consequences.cfg](data/consequences.cfg) |
+| Surgical sites on the body | [data/patient_sites.json](data/patient_sites.json) |
+| Patient dialogue, sounds | [data/dialogue/](data/dialogue), [data/audio.cfg](data/audio.cfg) |
+| In-game manual | [data/manual/](data/manual) |
+| Tested cases | [tests/TEST_CASES.md](tests/TEST_CASES.md) |
+| Model names, parts and bones the game expects | [assets/models/README.md](assets/models/README.md) |
+| Architecture, data formats, mechanics list | [docs/DESIGN.md](docs/DESIGN.md) |
+
 ## Multiplayer
 
 Host-client over ENet, default port **24565** (UDP).

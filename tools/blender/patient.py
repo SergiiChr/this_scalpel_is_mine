@@ -99,7 +99,7 @@ def _arm(side: float) -> tuple[list[Blob], list[Blob], list[list[Blob]]]:
     ]
     hand = [
         ellipsoid(_mirror((-0.14, -0.042, 0.258), side), (0.022, 0.018, 0.03), 2.5),
-        ellipsoid(_mirror((-0.19, -0.048, 0.26), side), (0.048, 0.014, 0.041)),
+        ellipsoid(_mirror((-0.19, -0.048, 0.26), side), (0.048, 0.014, 0.035)),
     ]
     fingers = []
     for i, (dz, length, spread) in enumerate(((-0.027, 0.075, -0.004), (-0.009, 0.082, -0.001), (0.009, 0.077, 0.002), (0.026, 0.062, 0.006))):
