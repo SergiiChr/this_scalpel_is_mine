@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 from . import scene
 from .scene import Blob, Stroke, Vec3, capsule, dab, ellipsoid, line
 
-EYE_CENTER: Vec3 = (0.675, 0.0805, 0.032)
+EYE_CENTER: Vec3 = (0.675, 0.0845, 0.032)
 EYE_RADIUS = 0.0118
 
 
@@ -30,12 +30,12 @@ def base() -> list[Blob]:
         ellipsoid((0.722, 0.058, 0.0), (0.04, 0.04, 0.058)),
         ellipsoid((0.648, 0.05, 0.0), (0.06, 0.05, 0.056)),
         ellipsoid((0.598, 0.045, 0.0), (0.036, 0.05, 0.05)),
-        ellipsoid((0.569, 0.079, 0.0), (0.019, 0.021, 0.025), 2.0),
+        ellipsoid((0.569, 0.083, 0.0), (0.019, 0.021, 0.025), 2.0),
         # Nose: bridge, then the tip.
         capsule((0.684, 0.098, 0.0), (0.64, 0.118, 0.0), 0.0072, 3.0),
         ellipsoid((0.634, 0.119, 0.0), (0.009, 0.0085, 0.0095), 3.0),
         # Muzzle: the teeth and lips push the mouth area forward.
-        ellipsoid((0.607, 0.091, 0.0), (0.02, 0.017, 0.025), 2.5),
+        ellipsoid((0.607, 0.095, 0.0), (0.02, 0.017, 0.025), 2.5),
     ]
     for side in (1.0, -1.0):
         elements += [
@@ -45,7 +45,7 @@ def base() -> list[Blob]:
             ellipsoid(_m((0.624, 0.111, 0.0075), side), (0.004, 0.0035, 0.003), -2.0),
             capsule(_m((0.624, 0.111, 0.0075), side), _m((0.644, 0.107, 0.0045), side), 0.0024, -2.5),
             # The eye sits in a socket: carve the space the eyeball and lids fill.
-            ellipsoid(_m((0.675, 0.094, 0.032), side), (0.009, 0.0075, 0.0135), -2.0),
+            ellipsoid(_m((0.675, 0.098, 0.032), side), (0.0085, 0.006, 0.0125), -1.5),
         ]
     return elements
 
@@ -73,17 +73,14 @@ def _lips() -> list[tuple[NDArray[np.float64], NDArray[np.float64]]]:
     t = np.linspace(-1.0, 1.0, 13)
     body = np.sqrt(np.clip(1.0 - t * t, 0.0, None))
     bow = -0.0011 * np.exp(-((t / 0.14) ** 2)) + 0.0007 * np.exp(-(((np.abs(t) - 0.3) / 0.14) ** 2))
-    upper = np.column_stack([0.6098 + 0.0025 * body + bow, 0.0995 + 0.0062 * body, 0.021 * t])
-    lower = np.column_stack([0.6043 - 0.0012 * body, 0.098 + 0.006 * body, 0.018 * t])
+    upper = np.column_stack([0.6098 + 0.0025 * body + bow, 0.1062 + 0.0058 * body, 0.021 * t])
+    lower = np.column_stack([0.6043 - 0.0012 * body, 0.1048 + 0.0056 * body, 0.018 * t])
     return [(upper, 0.0034 * (0.25 + 0.75 * body**0.6)), (lower, 0.0043 * (0.2 + 0.8 * body**0.5))]
 
 
 def mouth_shells() -> list[bpy.types.Object]:
-    """Lips and nose wings as rolled rims, like the eyelids: crisp borders a sculpt stroke can't make."""
+    """Nose wings as rolled rims, like the eyelids: crisp borders a sculpt stroke can't make."""
     shells = []
-    for i, (points, radii) in enumerate(_lips()):
-        path: list[Vec3] = [(float(p[0]), float(p[1]), float(p[2])) for p in points]
-        shells.append(scene.curve_tube(f"Lip{i}", path, 1.0, [float(r) for r in radii]))
     for side in (1.0, -1.0):
         wing = [_m(p, side) for p in ((0.631, 0.115, 0.006), (0.633, 0.111, 0.0135), (0.628, 0.104, 0.0165), (0.622, 0.1, 0.0135), (0.621, 0.103, 0.009))]
         shells.append(scene.curve_tube(f"NoseWing{side}", wing, 0.0034, [0.6, 1.0, 1.0, 0.9, 0.6]))
@@ -91,13 +88,12 @@ def mouth_shells() -> list[bpy.types.Object]:
 
 
 def lip_objects() -> tuple[bpy.types.Object, bpy.types.Object]:
-    """The colored lips as their own shells, a hair over the sculpted lip shape: clean edges, and the lower lip
-    rides the jaw while the upper stays with the head."""
+    """The lips as their own meshes sitting on the mouth: a crisp border against the skin, their own color,
+    and the lower lip rides the jaw while the upper stays with the head."""
     out = []
-    # The lower lip sits in a softer, fuller part of the sculpt, so its shell needs to stand out further to show.
-    for name, (points, radii), extra in zip(("UpperLip", "LowerLip"), _lips(), (0.0013, 0.0022), strict=True):
+    for name, (points, radii) in zip(("UpperLip", "LowerLip"), _lips(), strict=True):
         path: list[Vec3] = [(float(p[0]), float(p[1]), float(p[2])) for p in points]
-        lip = scene.curve_tube(name, path, 1.0, [float(r) * 1.1 + extra for r in radii], resolution=12)
+        lip = scene.curve_tube(name, path, 1.0, [float(r) for r in radii], resolution=12)
         out.append(scene.finish(lip, scene.material("lips", (0.66, 0.38, 0.36), roughness=0.4, subsurface=0.2)))
     return out[0], out[1]
 
@@ -142,13 +138,13 @@ def strokes() -> list[Stroke]:
         line((0.672, 0.105, 0.0), (0.648, 0.116, 0.0), 0.005, 0.0012),
         dab((0.63, 0.119, 0.0), (0.004, 0.004, 0.004), -0.0035),
         # Philtrum: two ridges from nose to lip with a groove between, and the cupid's bow.
-        line((0.624, 0.104, 0.0), (0.614, 0.106, 0.0), 0.0025, -0.0012),
+        line((0.624, 0.107, 0.0), (0.614, 0.109, 0.0), 0.0025, -0.001),
         # The mouth line where the lips meet.
-        line((0.6068, 0.106, -0.02), (0.6068, 0.106, 0.02), 0.001, -0.0016),
+        line((0.6068, 0.109, -0.02), (0.6068, 0.109, 0.02), 0.001, -0.0012),
         # A small dip under the lower lip.
-        line((0.59, 0.098, -0.012), (0.59, 0.098, 0.012), 0.004, -0.0012),
+        line((0.59, 0.101, -0.012), (0.59, 0.101, 0.012), 0.004, -0.0008),
         # Chin: slight cleft, square jaw corners, a clean jawline.
-        dab((0.566, 0.098, 0.0), (0.004, 0.003, 0.004), -0.001),
+        dab((0.566, 0.101, 0.0), (0.004, 0.003, 0.004), -0.001),
     ]
     for side in (1.0, -1.0):
         s += [
@@ -159,15 +155,15 @@ def strokes() -> list[Stroke]:
             # The crease around each nose wing.
             line(_m((0.636, 0.106, 0.02), side), _m((0.623, 0.101, 0.02), side), 0.0015, -0.0012),
             # Philtrum ridges.
-            line(_m((0.624, 0.105, 0.0045), side), _m((0.614, 0.107, 0.005), side), 0.0018, 0.0008),
+            line(_m((0.624, 0.108, 0.0045), side), _m((0.614, 0.11, 0.005), side), 0.0018, 0.0008),
             # Nasolabial folds from the nose wing down past the mouth corner.
             line(_m((0.626, 0.1, 0.022), side), _m((0.602, 0.093, 0.03), side), 0.003, -0.0006),
             line(_m((0.626, 0.096, 0.028), side), _m((0.602, 0.089, 0.035), side), 0.005, 0.0005),
             # Mouth corners tuck in.
-            dab(_m((0.606, 0.098, 0.024), side), (0.0025, 0.0025, 0.0025), -0.0012),
+            dab(_m((0.606, 0.101, 0.024), side), (0.0025, 0.0025, 0.0025), -0.0008),
             # Upper eyelid crease and the bag under the eye.
-            line(_m((0.682, 0.094, 0.02), side), _m((0.683, 0.09, 0.046), side), 0.0018, -0.0014),
-            line(_m((0.664, 0.092, 0.022), side), _m((0.662, 0.087, 0.044), side), 0.003, 0.0008),
+            line(_m((0.683, 0.098, 0.02), side), _m((0.684, 0.094, 0.046), side), 0.0018, -0.0008),
+            line(_m((0.664, 0.096, 0.022), side), _m((0.662, 0.091, 0.044), side), 0.003, 0.0005),
             # Jaw angle and the line under the jaw.
             dab(_m((0.588, 0.012, 0.053), side), (0.01, 0.012, 0.007), 0.0015),
             # The neck meets the jaw in a crisp line, not a double chin.
@@ -183,8 +179,8 @@ def eyebrows(head: bpy.types.Object) -> bpy.types.Object:
     parts = []
     for side in (1.0, -1.0):
         arc = [_m(p, side) for p in ((0.688, 0.104, 0.011), (0.691, 0.103, 0.023), (0.692, 0.099, 0.034), (0.689, 0.093, 0.044))]
-        path = scene.on_surface(head, arc, 0.0012)
-        parts.append(scene.curve_tube(f"Brow{side}", path, 0.0033, list(np.linspace(1.0, 0.5, len(path))), resolution=8))
+        path = scene.on_surface(head, arc, -0.0003)
+        parts.append(scene.curve_tube(f"Brow{side}", path, 0.0029, list(np.linspace(1.0, 0.5, len(path))), resolution=8))
     brows = scene.join("Brows", *parts)
     return scene.finish(scene.displace(brows, 0.0004, 0.0012, detail=3, seed=51), scene.material("hair", (0.12, 0.09, 0.07), roughness=0.8))
 
@@ -193,13 +189,13 @@ def eyebrows(head: bpy.types.Object) -> bpy.types.Object:
 # mouth corners back to the jaw hinge follows the Jaw bone, so the mouth opens.
 MOUTH_LINE_X = 0.6068
 JAW_HINGE: Vec3 = (0.645, 0.025, 0.0)
-CAVITY: tuple[Vec3, Vec3] = ((0.606, 0.085, 0.0), (0.012, 0.019, 0.023))
+CAVITY: tuple[Vec3, Vec3] = ((0.606, 0.088, 0.0), (0.012, 0.019, 0.023))
 
 
 def carve_mouth(head: bpy.types.Object) -> bpy.types.Object:
     """Cuts the slit between the lips and hollows out the mouth behind it (lined with the dark mouth material)."""
     cavity = scene.blobs("Cavity", [ellipsoid(*CAVITY, 2.0)], resolution=0.001)
-    slit = scene.box("Slit", (MOUTH_LINE_X, 0.1, 0.0), (0.0013, 0.022, 0.04))
+    slit = scene.box("Slit", (MOUTH_LINE_X, 0.103, 0.0), (0.0013, 0.022, 0.04))
     head = scene.subtract(scene.subtract(head, slit, fast=True), cavity, fast=True)
     center, size = np.array(CAVITY[0]), np.array(CAVITY[1]) * 1.03
 
@@ -215,7 +211,7 @@ def carve_mouth(head: bpy.types.Object) -> bpy.types.Object:
 def jaw_weight(p: NDArray[np.float64]) -> NDArray[np.float64]:
     """How much each point follows the jaw (0..1): hard at the lips so they part cleanly, softer toward the hinge."""
     x, y, z = p[:, 0], p[:, 1], p[:, 2]
-    depth = np.clip((0.106 - y) / (0.106 - JAW_HINGE[1]), 0.0, 1.0)
+    depth = np.clip((0.109 - y) / (0.109 - JAW_HINGE[1]), 0.0, 1.0)
     boundary = MOUTH_LINE_X + depth * (JAW_HINGE[0] - MOUTH_LINE_X)
     # Sharp only across the slit between the lips; past the mouth corners the cheek stretches over a wide blend.
     at_slit = np.clip((0.021 - np.abs(z)) / 0.002, 0.0, 1.0) * np.clip((y - 0.09) / 0.004, 0.0, 1.0)
@@ -231,12 +227,12 @@ def teeth_and_tongue() -> tuple[bpy.types.Object, bpy.types.Object, bpy.types.Ob
     rows = []
     for name, x, height in (("UpperTeeth", 0.6095, 0.009), ("LowerTeeth", 0.6025, 0.008)):
         z = np.linspace(-0.021, 0.021, 15)
-        arch: list[Vec3] = [(x, float(0.0965 - 32.0 * v * v), float(v)) for v in z]
+        arch: list[Vec3] = [(x, float(0.0995 - 32.0 * v * v), float(v)) for v in z]
         row = scene.curve_tube(name, arch, height * 0.5, [0.6, *([1.0] * 13), 0.6], resolution=8)
         # A shallow groove between each tooth.
-        row = scene.sculpt(row, [dab((x, 0.0965 - 32.0 * v * v + 0.003, float(v)), (0.006, 0.003, 0.0008), -0.0006) for v in np.linspace(-0.0195, 0.0195, 12)])
+        row = scene.sculpt(row, [dab((x, 0.0995 - 32.0 * v * v + 0.003, float(v)), (0.006, 0.003, 0.0008), -0.0006) for v in np.linspace(-0.0195, 0.0195, 12)])
         rows.append(scene.finish(row, scene.material("teeth", (0.86, 0.83, 0.72), roughness=0.3)))
-    tongue = scene.blobs("Tongue", [ellipsoid((0.6, 0.08, 0.0), (0.006, 0.014, 0.016), 2.5)], resolution=0.001)
+    tongue = scene.blobs("Tongue", [ellipsoid((0.6, 0.083, 0.0), (0.006, 0.014, 0.016), 2.5)], resolution=0.001)
     scene.finish(tongue, scene.material("tongue", (0.62, 0.26, 0.28), roughness=0.35, subsurface=0.2))
     return rows[0], rows[1], tongue
 
