@@ -58,11 +58,12 @@ def _coil(rng: np.random.Generator, steps: int, spacing: float, bounds: NDArray[
 def bowel() -> None:
     """Small intestine: one long separate tube looping loosely over itself, never fused into a clump.
     The walk keeps loops a little more than a tube's width apart; the ends taper shut."""
-    path = _coil(np.random.default_rng(8), 190, 0.34, np.array([1.0, 0.42, 1.0]))
+    # Every other walk step is plenty for a smooth curve and keeps the triangle count down.
+    path = _coil(np.random.default_rng(8), 190, 0.34, np.array([1.0, 0.42, 1.0]))[::2]
     count = len(path)
-    ends = np.clip(np.minimum(np.arange(count), np.arange(count)[::-1]) / 3.0, 0.0, 1.0)
+    ends = np.clip(np.minimum(np.arange(count), np.arange(count)[::-1]) / 2.0, 0.0, 1.0)
     radii = [float(0.35 + 0.65 * np.sqrt(e)) for e in ends]
-    gut = scene.curve_tube("Bowel", path, 0.12, radii, resolution=16)
+    gut = scene.curve_tube("Bowel", path, 0.12, radii, resolution=10)
     gut = scene.displace(gut, 0.006, 0.3, seed=2)
     scene.finish(gut, _wet("organ", ORGAN))
 

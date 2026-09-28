@@ -40,16 +40,24 @@ def joints(knuckle: Vec3, lengths: tuple[float, float, float], spread: float) ->
     return [(float(p[0]), float(p[1]), float(p[2])) for p in points]
 
 
+def smooth_digit(name: str, points: list[Vec3], radii: list[float], steps: int = 4) -> bpy.types.Object:
+    """A finger as many short overlapping capsules whose radius changes a little at a time:
+    it tapers smoothly with no rings at the joints, and its root melts into the palm like the rest of the hand."""
+    p = np.array(points)
+    r = np.array(radii)
+    t = np.linspace(0.0, len(p) - 1, (len(p) - 1) * steps + 1)
+    samples = np.array([np.interp(t, np.arange(len(p)), p[:, k]) for k in range(3)]).T
+    sizes = np.interp(t, np.arange(len(p)), r)
+    elements = [capsule(tuple(samples[i]), tuple(samples[i + 1]), float(max(sizes[i], sizes[i + 1])), 3.0) for i in range(len(samples) - 1)]
+    tip = samples[-1] + (samples[-1] - samples[-2]) * 0.2
+    elements.append(ellipsoid((float(tip[0]), float(tip[1] - sizes[-1] * 0.15), float(tip[2])), (float(sizes[-1]) * 0.95,) * 3, 3.0))
+    return scene.blobs(name, elements, resolution=0.0011)
+
+
 def _finger(name: str, chain: list[Vec3], radius: float) -> bpy.types.Object:
-    radii = (radius, radius * 0.9, radius * 0.82)
     base = np.array(chain[0]) - (np.array(chain[1]) - np.array(chain[0])) * 0.35
-    elements = [capsule((float(base[0]), float(base[1]), float(base[2])), chain[0], radius * 1.08, 3.0)]
-    for i in range(3):
-        elements.append(capsule(chain[i], chain[i + 1], radii[i], 3.0))
-    tip = np.array(chain[3])
-    pad = tip - (tip - np.array(chain[2])) * 0.35 + np.array([0.0, -radii[2] * 0.25, 0.0])
-    elements.append(ellipsoid((float(pad[0]), float(pad[1]), float(pad[2])), (radii[2] * 1.05, radii[2] * 0.85, radii[2] * 1.02), 3.0))
-    return scene.blobs(name, elements, resolution=0.0012)
+    start: Vec3 = (float(base[0]), float(base[1]), float(base[2]))
+    return smooth_digit(name, [start, *chain[:3], chain[3]], [radius * 1.05, radius, radius * 0.93, radius * 0.86, radius * 0.72])
 
 
 def build() -> bpy.types.Object:
@@ -58,7 +66,8 @@ def build() -> bpy.types.Object:
         [
             ellipsoid((0.05, 0.0, -0.001), (0.05, 0.014, 0.04)),
             # Knuckle row: no wider than the outer fingers, or it bulges out the sides of the hand.
-            ellipsoid((0.084, -0.004, 0.001), (0.017, 0.013, 0.033)),
+            # Thick enough that the finger roots sink into it instead of standing proud as slots.
+            ellipsoid((0.086, -0.001, 0.001), (0.019, 0.016, 0.033)),
             ellipsoid((0.028, -0.011, -0.022), (0.034, 0.016, 0.019)),
             ellipsoid((0.042, -0.009, 0.026), (0.038, 0.012, 0.014)),
             ellipsoid((-0.02, 0.0, 0.0), (0.06, 0.019, 0.027)),
@@ -72,9 +81,7 @@ def build() -> bpy.types.Object:
     parts = [palm]
     for name, knuckle, lengths, radius, spread in FINGERS:
         parts.append(_finger(name, joints(knuckle, lengths, spread), radius))
-    thumb = [capsule(THUMB[i], THUMB[i + 1], THUMB_RADII[i], 3.0) for i in range(3)]
-    thumb += [ellipsoid(THUMB[i], (THUMB_RADII[i],) * 3, 3.0) for i in range(1, 3)]
-    parts.append(scene.blobs("Thumb", thumb, resolution=0.0012))
+    parts.append(smooth_digit("Thumb", list(THUMB), [THUMB_RADII[0], THUMB_RADII[1], THUMB_RADII[2], THUMB_RADII[2] * 0.82]))
     hand = scene.remesh(scene.join("Glove", *parts), voxel=0.0008, smooth=10)
     hand = scene.decimate(scene.cut_below(hand, 0, OPENING), 0.06)
     scene.finish(hand, scene.material("glove", GLOVE, roughness=0.38, subsurface=0.05))

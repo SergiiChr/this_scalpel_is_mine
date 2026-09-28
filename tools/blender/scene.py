@@ -397,16 +397,30 @@ def armature(name: str, bones: Sequence[tuple[str, Vec3, Vec3, str | None]]) -> 
 
 
 def bind(mesh: bpy.types.Object, rig: bpy.types.Object) -> None:
-    """Skins the mesh to the rig with Blender's bone heat weights."""
+    """Skins the mesh to the rig with Blender's bone heat weights.
+    Heat weighting fails on centimeter-sized meshes, so both are bound at 100x scale and scaled back."""
+    for obj in (mesh, rig):
+        obj.scale = (100.0, 100.0, 100.0)
+    bpy.context.view_layer.update()
     bpy.ops.object.select_all(action="DESELECT")
     mesh.select_set(True)
     rig.select_set(True)
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    rig.scale = (1.0, 1.0, 1.0)
+    mesh.scale = (1.0, 1.0, 1.0)
+    # The parent inverse was taken at 100x; both are back at identity now, so no correction is needed.
+    mesh.matrix_parent_inverse = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    used = {e.group for v in mesh.data.vertices for e in v.groups if e.weight > 0.01}
+    empty = [g.name for g in mesh.vertex_groups if g.index not in used]
+    if empty:
+        print(f"warning: no skin weights for {empty} on {mesh.name}")
 
 
 def attach(obj: bpy.types.Object, rig: bpy.types.Object, bone: str) -> None:
     """Rigid attachment (eyes, nails): parented straight to a bone."""
+    bpy.context.view_layer.update()
     world = obj.matrix_world.copy()
     obj.parent = rig
     obj.parent_type = "BONE"
