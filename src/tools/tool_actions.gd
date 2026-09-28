@@ -31,7 +31,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.003:
 					patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, DEPTH_BY_PRESSURE[hand.pressure], def.sharpness, not tool.sterile, hand.speed)
 					patient.debride_at(uv)
-					Sfx.play("cut_deep" if hand.pressure >= 3 else "cut_skin", tip)
+					Surgery.current.sound("cut_deep" if hand.pressure >= 3 else "cut_skin", tip)
 				if tool.last_uv.x < 0.0 or tool.last_uv.distance_to(uv) > 0.003:
 					tool.last_uv = uv
 			elif engaged and zone == "cavity":
@@ -56,14 +56,18 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.set_attached(hand.peer, tool.slot, false)
 		"suture":
 			if engaged and zone == "site" and tool.charges != 0:
-				if patient.close_at(uv, def, dt, mods.mult("improvised_mult")):
+				if patient.close_at(uv, def, dt, mods.mult("improvised_mult"), hand.pressure):
 					tool.charges -= 1 if tool.charges > 0 else 0
-					Sfx.play({"skin_stapler": "staple", "office_stapler": "office_staple"}.get(def.id, "suture_pull"), tip)
+					Surgery.current.sound({"skin_stapler": "staple", "office_stapler": "office_staple", "surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
 			elif engaged and zone == "cavity":
 				patient.close_internal_at(uv, probe.depth, def, dt)
 		"cauterize":
+			if pressed and def.id == "lighter":
+				Surgery.current.sound("lighter_flick", tip)
 			if engaged and zone in ["site", "cavity"] and tool.charges != 0:
 				patient.cauterize_at(zone, uv, probe.depth, def, dt)
+				if randf() < dt * 1.2:
+					Surgery.current.sound("cautery_sizzle", tip)
 				if def.id == "lighter" and randf() < dt:
 					tool.charges -= 1
 		"mark":
@@ -79,17 +83,17 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.announce("%s goes on the IV stand, not in the patient." % def.name, true)
 				else:
 					patient.administer(def.drug, "direct")
-					Sfx.play("syringe_inject", tip)
+					Surgery.current.sound("syringe_inject", tip)
 					_use_charge(tool)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
 			if engaged and on_chest:
 				if tool.charge_time == 0.0:
-					Sfx.play("defib_charge", tip)
+					Surgery.current.sound("defib_charge", tip)
 				tool.charge_time += dt
 			elif released and tool.charge_time >= DEFIB_CHARGE_TIME * mods.mult("defib_charge_mult"):
 				patient.shock(def.power * 0.5)
-				Sfx.play("defib_shock", tip)
+				Surgery.current.sound("defib_shock", tip)
 				Surgery.current.shock_bystanders(hand.peer)
 				tool.charge_time = 0.0
 			elif not engaged:
@@ -99,7 +103,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if not patient.saw_at(uv, def, dt) and zone == "site" and tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.004:
 					patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, 1.0, 0.3, not tool.sterile, 0.5)
 				if randf() < dt * 2.0:
-					Sfx.play("saw_bone", tip)
+					Surgery.current.sound("saw_bone", tip)
 				tool.last_uv = uv
 		"smash":
 			if pressed and touching:
@@ -107,6 +111,8 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		"suction":
 			if engaged and zone in ["site", "cavity"]:
 				patient.suction_at(zone, uv, def, dt)
+				if randf() < dt * 1.2:
+					Surgery.current.sound("suction_slurp", tip)
 				if def.id == "metal_straw":
 					Surgery.current.add_sickness(hand.peer, dt * 0.08)
 		"swab":

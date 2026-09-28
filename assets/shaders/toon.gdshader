@@ -14,9 +14,11 @@ uniform vec4 grime_color : source_color = vec4(0.25, 0.22, 0.15, 1.0);
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 // Contamination glow for the Germaphobe quirk, set per tool.
 uniform float contamination = 0.0;
-// Patient body only: fragments inside this box (surgical cavity) are cut away so the cavity shows through.
+// Patient body only: where the wound map says the skin is opened, the body is cut away so the cavity shows.
+uniform sampler2D carve_map : filter_linear, hint_default_black;
 uniform mat4 carve_inverse;
-uniform vec3 carve_extent = vec3(0.0);
+// x, z: half size of the surgical site, y: cavity depth. Zero disables carving.
+uniform vec3 carve_box = vec3(0.0);
 
 varying vec3 world_pos;
 
@@ -36,8 +38,12 @@ void vertex() {
 }
 
 void fragment() {
-	if (carve_extent.x > 0.0 && all(lessThan(abs((carve_inverse * vec4(world_pos, 1.0)).xyz), carve_extent))) {
-		discard;
+	if (carve_box.x > 0.0) {
+		vec3 lp = (carve_inverse * vec4(world_pos, 1.0)).xyz;
+		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
+		if (all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) && lp.y > -carve_box.y && texture(carve_map, cuv).r > 0.82) {
+			discard;
+		}
 	}
 	vec3 base = albedo.rgb * texture(albedo_texture, UV).rgb;
 	float n = noise(world_pos.xz * grime_scale) * 0.6 + noise(world_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;

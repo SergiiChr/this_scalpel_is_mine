@@ -58,8 +58,20 @@ func _drive(role: String, driver: Node) -> void:
 			await tree.physics_frame
 		hand.engaged = false
 		await tree.create_timer(1.0).timeout
+		# Hand the tool across the table: both surgeons reach over the patient.
+		hand.pressure = 2
+		hand.local_target = me.to_local(Vector3(0.0, 1.3, -0.02))
+		await tree.create_timer(1.5).timeout
+		me.active = 1
+		me.call("_grab_or_release")
+		await tree.create_timer(1.0).timeout
+		print("[client] after handoff, holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 	else:
-		await tree.create_timer(4.0).timeout
+		var host_me := surgery.local_surgeon
+		host_me.hands[0].local_target = host_me.to_local(Vector3(0.0, 1.3, 0.02))
+		await tree.create_timer(6.0).timeout
+		var got := host_me.held_tool(0)
+		print("[host] partner handed me: ", got.def.id if got else "nothing")
 	var surgeon_wounds := surgery.patient.wounds.filter(func(w: Wound) -> bool: return w.made_by_surgeon).size()
 	var painted := 0
 	var image := surgery.patient.body.wound_map.images[0]

@@ -19,6 +19,10 @@ const SWITCH_DELAY := 0.25
 const MAX_BELT := 4
 const LOOK_PITCH := Vector2(-1.3, 0.6)
 const INTERACT_RANGE := 1.8
+## How close a partner's empty hand must be to hand a tool over instead of dropping it.
+const PASS_DISTANCE := 0.18
+## Hand speed (m/s) above which a handoff fumbles.
+const FUMBLE_SPEED := 0.35
 
 var peer_id := 1
 var display_name := "Doctor"
@@ -33,7 +37,15 @@ var is_local := false
 var focused: Interactable = null
 
 var _head: Node3D
+var _body: Node3D
+var _face: Node3D
 var _camera: Camera3D
+var _joints: Dictionary = {}
+var _rest: Dictionary = {}
+var _walk_phase := 0.0
+var _collapse := 0.0
+var _last_position := Vector3.ZERO
+var _remote_out := false
 var _switch_timer := 0.0
 var _sync_acc := 0.0
 var _jolt := Vector3.ZERO
@@ -49,10 +61,12 @@ func setup(peer: int, player_name: String, rolls: Array, spawn: Transform3D) -> 
 	quirk_rolls = rolls
 	mods = Modifiers.from_rolls(rolls, Db.surgeon_quirks)
 	status = SurgeonStatus.new(mods)
+	status.cold_tremor = 0.0015 if Surgery.current and Surgery.current.run_mods.flag("cold") else 0.0
 	is_local = peer == multiplayer.get_unique_id()
 	set_multiplayer_authority(peer)
 	global_transform = spawn
 	_net_position = spawn.origin
+	_last_position = spawn.origin
 	_net_yaw = rotation.y
 	collision_layer = 16
 	collision_mask = 1 | 16
@@ -67,14 +81,20 @@ func setup(peer: int, player_name: String, rolls: Array, spawn: Transform3D) -> 
 	for i in 2:
 		var hand := SurgeonHand.new()
 		add_child(hand)
-		hand.build(i, Color(0.2, 0.36, 0.34), Color(0.55, 0.7, 0.8))
+		hand.build(i, _scrubs_color())
 		hand.local_target = Vector3(-0.17 if i == 0 else 0.17, 1.18, -0.45)
 		hand.puppet = not is_local
 		hand.target = to_global(hand.local_target)
 		hands.append(hand)
 	if is_local:
+		for hand in hands:
+			hand.hide_upper_arm()
 		_camera.make_current()
 		Sfx.deaf = mods.flag("deaf")
+
+
+func camera() -> Camera3D:
+	return _camera
 
 
 func belt_capacity() -> int:
@@ -109,28 +129,55 @@ func blocked_reason(def: ToolDef) -> String:
 	return ""
 
 
+func _scrubs_color() -> Color:
+	return Color(0.2, 0.36, 0.34) if peer_id == 1 else Color(0.36, 0.26, 0.4)
+
+
 func _build_visuals() -> void:
-	var scrubs := Color(0.2, 0.36, 0.34) if peer_id == 1 else Color(0.36, 0.26, 0.4)
-	var torso := Shapes.capsule(self, 0.22, 1.3, scrubs, Vector3(0, 0.95, 0))
+	var scrubs := {"tint": Materials.toon(_scrubs_color(), 0.35)}
+	_body = ModelSlot.instantiate("surgeon", "body", self, scrubs)
 	_head = Node3D.new()
 	_head.name = "Head"
 	_head.position.y = EYE_HEIGHT
 	add_child(_head)
-	var face := Node3D.new()
-	face.name = "Face"
-	_head.add_child(face)
-	Shapes.sphere(face, 0.11, Color(0.8, 0.65, 0.55), Vector3(0, 0, 0.02))
-	Shapes.box(face, Vector3(0.16, 0.08, 0.04), Color(0.5, 0.7, 0.75), Vector3(0, -0.04, -0.09))
+	_face = ModelSlot.instantiate("surgeon", "head", _head, {"tint": Materials.toon(_scrubs_color().darkened(0.2), 0.35), "skin": Materials.toon(Color(0.8, 0.64, 0.54), 0.1)})
 	_camera = Camera3D.new()
+	_camera.name = "Camera"
 	_camera.fov = 70.0
 	_camera.near = 0.03
 	_head.add_child(_camera)
+	for joint: String in ["Torso", "LegL", "LegR"]:
+		var node := _body.find_child(joint, true, false) as Node3D
+		if node:
+			_joints[joint] = node
+			_rest[joint] = node.transform
 	if peer_id == multiplayer.get_unique_id():
-		face.visible = false
-		torso.visible = false
+		_face.visible = false
+		_body.visible = false
 	var tag := Shapes.label(self, "", Vector3(0, 2.0, 0), 48)
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	tag.text = display_name if peer_id != multiplayer.get_unique_id() else ""
+
+
+## Walk cycle from actual movement speed, collapse while passed out. Works the same for local and remote surgeons.
+func _animate_body(delta: float) -> void:
+	var speed := Vector2(global_position.x - _last_position.x, global_position.z - _last_position.z).length() / maxf(delta, 0.0001)
+	_last_position = global_position
+	_walk_phase += delta * speed * 7.0
+	var stride := clampf(speed / WALK_SPEED, 0.0, 1.0) * 0.45
+	var out := status.is_out() if is_local else _remote_out
+	_collapse = move_toward(_collapse, 1.0 if out else 0.0, delta * 2.5)
+	_pose("LegL", Vector3(sin(_walk_phase) * stride, 0, 0))
+	_pose("LegR", Vector3(-sin(_walk_phase) * stride, 0, 0))
+	_pose("Torso", Vector3(-_collapse * 1.3 + absf(sin(_walk_phase)) * stride * 0.05, 0, 0))
+	_head.position.y = EYE_HEIGHT - _collapse * 1.1
+
+
+func _pose(joint: String, euler: Vector3) -> void:
+	var node: Node3D = _joints.get(joint)
+	if node:
+		var rest: Transform3D = _rest[joint]
+		node.transform = Transform3D(rest.basis * Basis.from_euler(euler), rest.origin)
 
 
 # --- Local control ---------------------------------------------------------------------------------
@@ -184,7 +231,11 @@ func _physics_process(delta: float) -> void:
 		global_position = global_position.lerp(_net_position, minf(delta * 15.0, 1.0))
 		rotation.y = lerp_angle(rotation.y, _net_yaw, minf(delta * 15.0, 1.0))
 	_head.rotation.x = pitch
+	# The camera pitches fully, the visible head only half as much so it doesn't look broken-necked.
+	_face.rotation.x = -pitch * 0.5
+	_animate_body(delta)
 	for i in 2:
+		hands[i].holding = held_tool(i) != null
 		hands[i].update_pose(shoulder(i), delta)
 
 
@@ -271,12 +322,27 @@ func _switch_hand() -> void:
 	_switch_timer = SWITCH_DELAY * mods.mult("switch_delay_mult")
 
 
+## A partner's empty hand close enough to take what this hand holds: [Surgeon, hand index], or [] if none.
+func pass_target(hand: int) -> Array:
+	var from := hands[hand].global_position
+	for other: Surgeon in Surgery.current.surgeons.values():
+		if other == self:
+			continue
+		for i in 2:
+			if other.held_tool(i) == null and other.hands[i].global_position.distance_to(from) < PASS_DISTANCE:
+				return [other, i]
+	return []
+
+
 func _grab_or_release() -> void:
 	var hand := hands[active]
 	var tool := held_tool(active)
 	if tool:
 		hand.engaged = false
-		Surgery.current.tools.request_release(active, Vector3.ZERO)
+		if not pass_target(active).is_empty() and not hand.attached:
+			Surgery.current.tools.request_pass(active)
+		else:
+			Surgery.current.tools.request_release(active, Vector3.ZERO)
 		return
 	var near := Surgery.current.tools.nearest_grabbable(hand.global_position + hand.tip_offset(0.05))
 	if near:
@@ -378,7 +444,7 @@ func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
 		hand_data.append([h.effective_position(), h.tilt, h.twist, h.engaged, h.pressure, h.lifted])
-	return [global_position, rotation.y, pitch, active, hand_data, _strain]
+	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out()]
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
@@ -387,6 +453,7 @@ func _sync_state(data: Array) -> void:
 	_net_yaw = data[1]
 	pitch = data[2]
 	active = data[3]
+	_remote_out = data[6]
 	for i in 2:
 		var h := hands[i]
 		var d: Array = data[4][i]

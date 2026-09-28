@@ -16,10 +16,12 @@ func request(peer: int, tool_id: String, surgery: Surgery) -> void:
 		surgery.tell(peer, "The nurse is still busy (%d s)." % ceili(cooldown_left))
 		return
 	var surgeon: Surgeon = surgery.surgeons.get(peer)
-	var delay := def.delay * (surgeon.mods.mult("nurse_delay_mult") if surgeon else 1.0)
+	var delay := def.delay * (surgeon.mods.mult("nurse_delay_mult") if surgeon else 1.0) * surgery.run_mods.mult("nurse_delay_mult")
+	if def.drug.begins_with("blood"):
+		delay *= surgery.run_mods.mult("blood_delay_mult")
 	_pending.append({"id": tool_id, "eta": delay})
-	cooldown_left = COOLDOWN
-	Sfx.play("nurse_bell")
+	cooldown_left = COOLDOWN * surgery.run_mods.mult("nurse_cooldown_mult")
+	surgery.sound("nurse_bell")
 	surgery.announce("Nurse: \"%s. Give me %d seconds.\"" % [def.name, ceili(delay)])
 
 
@@ -30,5 +32,5 @@ func tick(delta: float, surgery: Surgery) -> void:
 		if order.eta <= 0.0:
 			_pending.erase(order)
 			surgery.tools.spawn(order.id, surgery.room.delivery_spot())
-			Sfx.play("nurse_delivery")
+			surgery.sound("nurse_delivery")
 			surgery.announce("Nurse drops the %s on the cart and leaves." % Db.tool(order.id).name)

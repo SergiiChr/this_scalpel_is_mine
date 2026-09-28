@@ -27,6 +27,7 @@ var charge_time := 0.0
 var reported: Dictionary = {}
 
 var _model: Node3D
+var _animator := ToolAnimator.new()
 
 
 func setup(tool_uid: int, tool_def: ToolDef) -> void:
@@ -48,8 +49,19 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	shape.position.z = -def.length * 0.5
 	add_child(shape)
 	_model = ToolModel.build(def, self)
+	_animator.setup(_model)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
+
+
+func _process(delta: float) -> void:
+	var active := false
+	var closed := state == State.STANDING
+	if state == State.HELD and Surgery.current and Surgery.current.surgeons.has(holder):
+		var hand: SurgeonHand = (Surgery.current.surgeons[holder] as Surgeon).hands[slot]
+		active = hand.engaged
+		closed = hand.attached
+	_animator.animate(active, closed, delta)
 
 
 func tip_position() -> Vector3:

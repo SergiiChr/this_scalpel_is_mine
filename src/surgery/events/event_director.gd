@@ -15,9 +15,11 @@ var _ramble_timer := 6.0
 var _ramble_index := 0
 var _time_limit := 1200.0
 var _rng := RandomNumberGenerator.new()
+var _chart_update_at := INF
 
 
 func setup(scenario: ScenarioDef, seed_value: int) -> void:
+	_chart_update_at = (scenario.time_limit if scenario.time_limit > 0 else 900.0) * randf_range(0.25, 0.5)
 	_pool = PackedStringArray(scenario.events)
 	_scripted = scenario.scripted_events.duplicate(true)
 	_time_limit = scenario.time_limit if scenario.time_limit > 0 else 1200.0
@@ -26,6 +28,8 @@ func setup(scenario: ScenarioDef, seed_value: int) -> void:
 
 func tick(delta: float, surgery: Surgery) -> void:
 	var elapsed := surgery.elapsed
+	if surgery.run_mods.flag("card_error") and not surgery.chart_corrected and elapsed >= _chart_update_at:
+		surgery.correct_chart()
 	for event: Dictionary in _scripted:
 		if not event.get("fired", false) and elapsed >= event.at:
 			event.fired = true
@@ -89,6 +93,8 @@ func _pick(elapsed: float, surgery: Surgery) -> String:
 	var options: Array = []
 	for id in _pool + PackedStringArray(["lights_flicker"]):
 		var weight: float = Db.events.get_value(id, "weight", 0.0)
+		if id == "lights_flicker":
+			weight += surgery.run_mods.num("flicker_weight")
 		if weight <= 0.0 or not _off_cooldown(id) or elapsed < float(Db.events.get_value(id, "min_time", 0.0)):
 			continue
 		if Db.events.get_value(id, "requires", "") == "awake" and not surgery.patient.vitals.is_awake():

@@ -18,14 +18,12 @@ var _alarm_timer := 0.0
 
 
 func build() -> void:
-	Shapes.box(self, Vector3(0.42, 0.3, 0.06), Color(0.12, 0.13, 0.13))
-	var glass := Shapes.box(self, Vector3(0.38, 0.25, 0.01), Color.BLACK, Vector3(0, 0, 0.031), 0.0)
-	glass.material_override = Materials.glow(Color(0.02, 0.05, 0.04))
-	_screen = Shapes.label(self, "", Vector3(-0.17, 0.1, 0.04), 36)
+	ModelSlot.instantiate("props", "monitor", self, {"screen": Materials.glow(Color(0.02, 0.05, 0.04))})
+	_screen = Shapes.label(self, "", Vector3(-0.17, 0.11, 0.012), 36)
 	_screen.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_screen.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_screen.modulate = Color(0.4, 1.0, 0.55)
-	_lab = Shapes.label(self, "", Vector3(-0.17, -0.2, 0.04), 24)
+	_lab = Shapes.label(self, "", Vector3(-0.17, -0.22, 0.012), 24)
 	_lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_lab.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_lab.modulate = Color(0.85, 0.85, 0.5)

@@ -28,6 +28,7 @@ func _run(scenario: ScenarioDef) -> void:
 	Net.session_seed = rng.randi()
 	Net.roster = {1: {"name": "Tester", "quirks": QuirkRoller.roll_surgeon(rng), "ready": true}}
 	Net.patient_quirks = QuirkRoller.roll_patient(scenario, rng)
+	Net.run_modifiers = Array(Db.run_modifiers.get_sections())
 	var surgery: Surgery = SURGERY.instantiate()
 	add_child(surgery)
 	await _frames(5)
@@ -57,6 +58,7 @@ func _run(scenario: ScenarioDef) -> void:
 			print("    %-20s zone=%-6s uv=%s wounds=%d" % [tool.def.id, probe.zone, probe.uv, surgery.patient.wounds.size()])
 		surgery.tools._req_release(1, Vector3.ZERO)
 		await _frames(2)
+	await _new_mechanics(surgery)
 	for id: String in Db.events.get_sections():
 		surgery.director.fire(id, surgery)
 	for drug: String in Db.drugs:
@@ -79,6 +81,35 @@ func _run(scenario: ScenarioDef) -> void:
 	print("    wounds=%d score=%d flags=%s" % [surgery.patient.wounds.size(), surgery.scoring.points, surgery.patient.flags.keys()])
 	surgery.queue_free()
 	await _frames(3)
+
+
+func _new_mechanics(surgery: Surgery) -> void:
+	var patient := surgery.patient
+	var needle := Db.tool("needle")
+	for wound in patient.wounds:
+		if not wound.is_internal() and wound.points.size() > 1:
+			for pressure in [1, 2, 3]:
+				for i in 30:
+					patient.close_at(wound.midpoint(), needle, 0.1, 1.0, pressure)
+	for organ in patient.body.organs:
+		organ.position += Vector3(0.05, 0.0, 0.0)
+	patient._handle_organs(6.0)
+	surgery.tools._req_pass(1)
+	surgery.correct_chart()
+	surgery.hud.open_card()
+	surgery.hud.close_overlay()
+	var cart := surgery.room.xray
+	if cart:
+		cart._req_push()
+		await _frames(10)
+		cart._req_push()
+		cart.global_position = patient.global_position + Vector3(0.0, -Room.TABLE_HEIGHT, 1.0)
+		cart._req_expose()
+		await _frames(int(XrayCart.EXPOSE_TIME * 60) + 10)
+		assert(not cart.print_data.is_empty(), "x-ray print missing")
+		surgery.hud.open_xray(cart)
+		await _frames(3)
+		surgery.hud.close_overlay()
 
 
 func _frames(count: int) -> void:

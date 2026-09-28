@@ -78,6 +78,8 @@ func _process(delta: float) -> void:
 	_update_hands(me)
 	_update_gauges(me)
 	_prompt.text = "[%s] %s" % [InputActions.binding_text("interact"), me.focused.prompt] if me.focused and _overlay == null else ""
+	if _prompt.text.is_empty() and me.held_tool(me.active) and not me.pass_target(me.active).is_empty():
+		_prompt.text = "[%s] Pass to %s" % [InputActions.binding_text("grab"), (me.pass_target(me.active)[0] as Surgeon).display_name]
 	_subtitle_timer -= delta
 	if _subtitle_timer <= 0.0:
 		_subtitle.text = ""
@@ -161,6 +163,18 @@ func _on_nurse_pick(tool_id: String) -> void:
 func _on_lab_pick(kind: String) -> void:
 	surgery.order_lab(kind)
 	close_overlay()
+
+
+func open_xray(cart: XrayCart) -> void:
+	var box := Ui.vbox(12)
+	var photo := XrayPhoto.new(cart)
+	box.add_child(photo)
+	var close := Ui.button("Put it down  [Esc]", close_overlay)
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(close)
+	var center := CenterContainer.new()
+	center.add_child(box)
+	_open(Ui.fullscreen(center, Color(0, 0, 0, 0.8)))
 
 
 func run_qte(sequence: PackedStringArray, window: float, done: Callable) -> void:
@@ -303,8 +317,10 @@ func _update_hands(me: Surgeon) -> void:
 		if me.hands[i].attached:
 			text += " [holding]"
 		parts.append(("▶ " + text + " ◀") if i == me.active else text)
-	var pressure: String = ["", "light", "normal", "DEEP"][me.hands[me.active].pressure]
-	_hands.text = "   ".join(parts) + "   pressure: " + pressure
+	var active_tool := me.held_tool(me.active)
+	var tension := active_tool != null and active_tool.def.id in Patient.TENSIONED_CLOSURES
+	var level: String = (["", "loose", "right", "TIGHT"] if tension else ["", "light", "normal", "DEEP"])[me.hands[me.active].pressure]
+	_hands.text = "   ".join(parts) + ("   tension: " if tension else "   pressure: ") + level
 	var capacity := me.belt_capacity()
 	while _belt.get_child_count() < capacity:
 		var slot := Ui.label("", 16, Ui.DIM)

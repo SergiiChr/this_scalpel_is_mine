@@ -16,6 +16,8 @@ const BLOOD_TYPES: PackedStringArray = ["O+", "O-", "A+", "A-", "B+", "AB+"]
 const VFIB_TO_ASYSTOLE := 40.0
 const ARREST_DEATH := 80.0
 const TOURNIQUET_SAFE := 300.0
+## Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.
+const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
 
 var body: PatientBody
 var vitals := Vitals.new()
@@ -53,10 +55,13 @@ var _paint_seed := 0
 var _tick_acc := 0.0
 var _sync_acc := 0.0
 var _voice_cooldown := 0.0
+var _breath_cooldown := 0.0
 var _pulls: Dictionary = {}
 var _stroke_wounds: Dictionary = {}
 var _initial_suction: float = 1.0
 var _blood_pools: Dictionary = {}
+var _organ_strain: Dictionary = {}
+var _organ_damage: Dictionary = {}
 var _open_painted: Dictionary = {}
 
 
@@ -126,6 +131,7 @@ func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server() or not alive or not Surgery.current or not Surgery.current.running:
 		return
 	body.settle_organs()
+	_handle_organs(delta)
 	_tick_acc += delta
 	while _tick_acc >= TICK:
 		_tick_acc -= TICK
@@ -212,12 +218,35 @@ func _simulate(dt: float) -> void:
 		_mh_active = true
 	if _has_active("mh_cure"):
 		_mh_active = false
-	v.temperature += ((0.03 if _mh_active else 0.0) + (36.8 - v.temperature) * 0.01 + fx.temp * 0.01) * dt
+	var baseline := 35.4 if Surgery.current.run_mods.flag("cold") else 36.8
+	v.temperature += ((0.03 if _mh_active else 0.0) + (baseline - v.temperature) * 0.01 + fx.temp * 0.01) * dt
 
 	_restart_window = maxf(_restart_window - dt, 0.0)
 	_update_seizure(dt)
 	_update_misc(dt)
 	_check_death(fx)
+
+
+## Organs held out of place too long, or shoved hard, bruise and start bleeding.
+func _handle_organs(delta: float) -> void:
+	for i in body.organs.size():
+		var organ := body.organs[i]
+		var strain: float = _organ_strain.get(i, 0.0)
+		if body.organ_offset(i) > 0.035:
+			strain += delta
+		if organ.linear_velocity.length() > 0.5:
+			strain += delta * 4.0
+		strain = maxf(strain - delta * 0.3, 0.0)
+		if strain > 5.0:
+			strain = 0.0
+			_organ_damage[i] = minf(_organ_damage.get(i, 0.0) + 0.35, 1.0)
+			_set_organ_damage.rpc(i, _organ_damage[i])
+			var uv := Vector2(organ.position.x / body.site_size.x + 0.5, organ.position.z / body.site_size.y + 0.5)
+			var wound := _new_wound(Wound.Kind.INTERNAL, uv, 0.4)
+			wound.depth_m = -organ.position.y
+			Surgery.current.scoring.add("organ_bruise")
+			Surgery.current.announce("You've been manhandling an organ. It's bruising and oozing.", true)
+		_organ_strain[i] = strain
 
 
 func _roll_arrest(dt: float, fx: DrugEffects) -> void:
@@ -264,6 +293,10 @@ func _update_misc(dt: float) -> void:
 	if vitals.is_awake() and mods.num("cough_chance") > 0.0 and rng.randf() < mods.num("cough_chance") * dt:
 		Surgery.current.jolt_all(0.3, "The patient coughs violently.")
 		_strain_closures(0.15)
+	_breath_cooldown -= dt
+	if vitals.is_awake() and vitals.panic > 0.6 and _breath_cooldown <= 0.0:
+		_breath_cooldown = 2.0
+		_vocal.rpc("patient_breath")
 	_voice_cooldown -= dt
 	if vitals.is_awake() and _voice_cooldown <= 0.0:
 		_ambient_voice()
@@ -321,7 +354,8 @@ func _has_active(flag: String) -> bool:
 
 
 func _add_drug(def: DrugDef, strength: float, onset_scale: float) -> void:
-	active_drugs.append({"def": def, "age": 0.0, "strength": strength, "onset": maxf(def.onset * onset_scale, 0.1)})
+	var potency := Surgery.current.run_mods.mult("drug_strength_mult") if Surgery.current else 1.0
+	active_drugs.append({"def": def, "age": 0.0, "strength": strength * potency, "onset": maxf(def.onset * onset_scale, 0.1)})
 
 
 ## route: "iv" (smooth, needs a line) or "direct" (fast spike).
@@ -403,6 +437,7 @@ func start_seizure() -> void:
 func spontaneous_bleed(uv: Vector2) -> void:
 	var wound := _new_wound(Wound.Kind.INTERNAL, uv, 0.7)
 	wound.depth_m = minf(0.04, body.cavity_depth() * 0.6)
+	Surgery.current.sound("blood_spurt", body.uv_to_world(uv))
 
 
 func wake_up() -> void:
@@ -451,7 +486,7 @@ func heavy_drop(at: Vector3) -> void:
 		bruise(body.world_to_uv(at).clamp(Vector2.ZERO, Vector2.ONE), 0.08, 0.8)
 		hurt(0.7)
 		add_flag("fracture")
-		Sfx.play("bone_crack", at)
+		Surgery.current.sound("bone_crack", at)
 		Surgery.current.announce("Something cracked under that. A fragile bone broke!")
 		_reveal("bones")
 
@@ -551,11 +586,11 @@ func tear(from: Vector2, direction: Vector2, length_uv: float) -> void:
 	hurt(0.5, from)
 	add_flag("tears")
 	Surgery.current.scoring.add("skin_tear")
-	Sfx.play("tear_skin", body.uv_to_world(from))
+	Surgery.current.sound("tear_skin", body.uv_to_world(from))
 	_reveal("thin_skin")
 
 
-func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float) -> bool:
+func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pressure: int) -> bool:
 	var wound := _nearest_wound(uv, 0.02, false)
 	if wound == null:
 		return false
@@ -567,10 +602,24 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float) -> b
 		quality *= 0.5
 	if def.improvised:
 		quality = lerpf(quality, 1.0, 1.0 - improvised_mult)
+	var cap := 1.0
+	if def.id in TENSIONED_CLOSURES:
+		if pressure == 1:
+			quality *= 0.6
+			cap = 0.9
+		elif pressure == 3:
+			quality = minf(quality * 1.05, 1.0)
 	var before := wound.bins[bin]
-	wound.bins[bin] = minf(before + def.power * 1.5 * dt, 1.0)
+	wound.bins[bin] = minf(before + def.power * 1.5 * dt, cap)
 	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.2)
-	if before < 1.0 and wound.bins[bin] >= 1.0:
+	if def.id in TENSIONED_CLOSURES and pressure == 3 and before < cap and wound.bins[bin] >= cap:
+		if rng.randf() < 0.2 / mods.mult("tear_threshold_mult"):
+			wound.bins[bin] = 0.3
+			tear(wound.bin_position(bin), Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)), 0.02)
+			Surgery.current.scoring.add("suture_tear_through")
+			Surgery.current.announce("Pulled too tight. The stitch tore through the skin.", true)
+			return false
+	if before < cap and wound.bins[bin] >= cap:
 		var p := wound.bin_position(bin)
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, p, p, 0.012, 0.35, WoundMap.Mode.MIN)
 		paint(WoundMap.Layer.WOUNDS, WoundMap.STITCH, p - Vector2(0.006, 0.0), p + Vector2(0.006, 0.0), 0.002, 1.0, WoundMap.Mode.MAX)
@@ -671,13 +720,13 @@ func saw_at(tip_uv: Vector2, def: ToolDef, dt: float) -> bool:
 func smash_at(tip_uv: Vector2, def: ToolDef) -> void:
 	bruise(tip_uv, body.meters_to_uv(0.04), 0.5 * def.power)
 	hurt(0.4, tip_uv)
-	Sfx.play("mallet_hit", body.uv_to_world(tip_uv))
+	Surgery.current.sound("mallet_hit", body.uv_to_world(tip_uv))
 	for target in targets:
 		if target.remove_with in ["saw", "smash"] and not target.extracted and target.uv.distance_to(tip_uv) < 0.1:
 			target.anchor = maxf(target.anchor - def.power * 0.12, 0.0)
 			if target.anchor <= 0.0:
 				_extract(target)
-				Sfx.play("bone_crack", body.uv_to_world(tip_uv))
+				Surgery.current.sound("bone_crack", body.uv_to_world(tip_uv))
 
 
 func bruise(uv: Vector2, radius: float, strength: float) -> void:
@@ -831,6 +880,7 @@ func _extract(target: CavityTarget) -> void:
 		var wound := _new_wound(Wound.Kind.INTERNAL, target.uv, clampf(0.4 + target.surge * 0.15, 0.0, 1.0))
 		wound.depth_m = target.depth
 		Surgery.current.announce("Blood wells up where it came out!")
+		Surgery.current.sound("blood_spurt", body.uv_to_world(target.uv))
 	Surgery.current.announce("%s: done." % target.kind.capitalize())
 
 
@@ -929,7 +979,7 @@ func _uv(raw: Array) -> Vector2:
 
 
 func _site_local(uv: Vector2, depth: float) -> Vector3:
-	return Vector3((uv.x - 0.5) * body.site_size.x, -depth, (uv.y - 0.5) * body.site_size.y)
+	return Vector3((uv.x - 0.5) * body.site_size.x, body.surface_height(uv) - depth, (uv.y - 0.5) * body.site_size.y)
 
 
 func _cell(uv: Vector2) -> int:
@@ -949,6 +999,8 @@ func _mark_grid(grid: PackedFloat32Array, uv: Vector2, radius: float, strength: 
 func _bleed_visual(wound: Wound, ml: float) -> void:
 	var pool: float = _blood_pools.get(wound.id, 0.0) + ml
 	_blood_pools[wound.id] = pool
+	if rng.randf() < 0.05:
+		Surgery.current.sound("blood_drip", body.uv_to_world(wound.midpoint()))
 	if rng.randf() < 0.3:
 		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, wound.midpoint(), wound.midpoint(), 0.02 + sqrt(pool) * 0.012, 0.9, WoundMap.Mode.MAX)
 
@@ -1016,6 +1068,9 @@ func _speak(trigger: String, force: bool = false) -> void:
 	if not force and _voice_cooldown > 0.0 and trigger in ["pain", "calm"]:
 		return
 	_voice_cooldown = maxf(_voice_cooldown, 4.0)
+	var sound: String = {"pain": "patient_groan", "panic": "patient_scream", "tickle": "patient_groan"}.get(trigger, "")
+	if sound:
+		_vocal.rpc(sound)
 	var lines: Array = Db.dialogue.get_value(trigger, age, Db.dialogue.get_value(trigger, "any", []))
 	if lines.is_empty():
 		return
@@ -1065,7 +1120,8 @@ func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array,
 	_apply_pulls(pulls)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	body.animator.animate(vitals, alive, delta)
 	if multiplayer.is_server() and body.skin_material:
 		_apply_pulls(_pulls.values())
 
@@ -1077,6 +1133,16 @@ func _apply_pulls(pulls: Array) -> void:
 	body.skin_material.set_shader_parameter("pulls", packed)
 	body.skin_material.set_shader_parameter("pull_count", mini(pulls.size(), 4))
 	body.skin_material.set_shader_parameter("pallor", clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
+
+
+@rpc("authority", "call_local", "reliable")
+func _set_organ_damage(index: int, amount: float) -> void:
+	body.set_organ_damage(index, amount)
+
+
+@rpc("authority", "call_local", "reliable")
+func _vocal(sound: String) -> void:
+	Sfx.play(sound, body.global_position + Vector3(0.7, 0.2, 0), "Voice")
 
 
 @rpc("authority", "call_local", "reliable")

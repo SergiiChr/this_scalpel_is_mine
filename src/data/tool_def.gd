@@ -24,7 +24,6 @@ var self_retaining: bool
 var model: String
 var length: float
 var width: float
-var tip: String
 var color: Color
 
 
@@ -52,6 +51,5 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.model = cfg.get_value(section, "model", "")
 	def.length = cfg.get_value(section, "length", 0.12)
 	def.width = cfg.get_value(section, "width", 0.012)
-	def.tip = cfg.get_value(section, "tip", "point")
 	def.color = cfg.get_value(section, "color", Color.GRAY)
 	return def

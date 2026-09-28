@@ -17,6 +17,11 @@ var events := ConfigFile.new()
 var scoring := ConfigFile.new()
 var consequences := ConfigFile.new()
 var audio := ConfigFile.new()
+var run_modifiers := ConfigFile.new()
+## Surgical sites on the patient body, see data/patient_sites.json.
+var patient_sites: Dictionary = {}
+## Baked skin heights per site (tools/assetgen), empty when the file is missing.
+var site_heights: Dictionary = {}
 
 
 func _ready() -> void:
@@ -40,6 +45,9 @@ func _ready() -> void:
 	scoring = _load_cfg("res://data/scoring.cfg")
 	consequences = _load_cfg("res://data/consequences.cfg")
 	audio = _load_cfg("res://data/audio.cfg")
+	run_modifiers = _load_cfg("res://data/run_modifiers.cfg")
+	patient_sites = _load_json("res://data/patient_sites.json")
+	site_heights = _load_json("res://assets/models/patient/site_heights.json")
 
 
 func scenario(id: String) -> ScenarioDef:
@@ -57,6 +65,14 @@ func drug(id: String) -> DrugDef:
 	return drugs.get(id)
 
 
+## Combined effects of the given run modifier ids.
+func run_modifier_effects(ids: Array) -> Modifiers:
+	var mods := Modifiers.new()
+	for id: String in ids:
+		mods.add(Modifiers.parse_effects(run_modifiers.get_value(id, "effects", "")))
+	return mods
+
+
 func quirk(kind: QuirkDef.Kind, id: String) -> QuirkDef:
 	return (patient_quirks if kind == QuirkDef.Kind.PATIENT else surgeon_quirks).get(id)
 
@@ -67,6 +83,13 @@ func _load_cfg(path: String) -> ConfigFile:
 	if err != OK:
 		push_error("Can't read %s (%s)" % [path, error_string(err)])
 	return cfg
+
+
+func _load_json(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary else {}
 
 
 func _list(dir: String, extension: String) -> PackedStringArray:

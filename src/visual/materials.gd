@@ -48,16 +48,20 @@ static func toon_unique(color: Color, grime: float = 0.25, outline: bool = true,
 ## Patient body skin with its own outline, both able to carve out the cavity box (see set_carve).
 static func body_skin(tone: Color) -> ShaderMaterial:
 	var mat := toon_unique(tone, 0.12, false, 0.6)
+	mat.set_shader_parameter("specular_strength", 0.12)
+	mat.set_shader_parameter("rim_strength", 0.2)
 	var outline := ShaderMaterial.new()
 	outline.shader = OUTLINE
 	mat.next_pass = outline
 	return mat
 
 
-static func set_carve(mat: ShaderMaterial, box: Transform3D, extent: Vector3) -> void:
+## Cuts the body open wherever the wound map marks opened skin. site is the surgical site's global transform.
+static func set_carve(mat: ShaderMaterial, site: Transform3D, half_size: Vector2, depth: float, wound_map: Texture2D) -> void:
 	for pass_mat: ShaderMaterial in [mat, mat.next_pass as ShaderMaterial]:
-		pass_mat.set_shader_parameter("carve_inverse", Projection(box.affine_inverse()))
-		pass_mat.set_shader_parameter("carve_extent", extent)
+		pass_mat.set_shader_parameter("carve_inverse", Projection(site.affine_inverse()))
+		pass_mat.set_shader_parameter("carve_box", Vector3(half_size.x, depth, half_size.y))
+		pass_mat.set_shader_parameter("carve_map", wound_map)
 
 
 static func flesh(color: Color = Color(0.55, 0.12, 0.12)) -> ShaderMaterial:

@@ -11,6 +11,9 @@ Clamps and forceps toggle: press once to grab, press again to let go.
 [b]Holding on[/b]
 A hand that holds tissue stays put when you walk. Walk too far and you tear what you're holding. Let go first.
 
+[b]Handing over[/b]
+Hold a tool near your partner's empty hand and press [b]Grab[/b] to hand it over. Both hands still, or it hits the floor.
+
 [b]Bumping[/b]
 Your hands knock into your partner's hands. Hold [b]Lift[/b] to pass over them and over tall tools.
 

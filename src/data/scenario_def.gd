@@ -53,10 +53,10 @@ static func load_file(path: String) -> ScenarioDef:
 
 
 ## Picks the tools that actually spawn on the tray for this run.
-func roll_tools(rng: RandomNumberGenerator) -> PackedStringArray:
+func roll_tools(rng: RandomNumberGenerator, extra_missing_chance: float = 0.0) -> PackedStringArray:
 	var tools := PackedStringArray()
 	for tool_id: String in starting_tools:
-		if rng.randf() >= missing_tool_chance:
+		if rng.randf() >= missing_tool_chance + extra_missing_chance:
 			tools.append(tool_id)
 	var extras := random_tools.duplicate()
 	for i in mini(random_tool_count, extras.size()):

@@ -19,6 +19,8 @@ var coffee_left := 0.0
 var whiskey_left := 0.0
 var since_coffee := 0.0
 var _drip_timer := 20.0
+## Broken heating run modifier: stiff, slightly shaky fingers for everyone.
+var cold_tremor := 0.0
 var _cough_cooldown := 0.0
 
 
@@ -40,7 +42,7 @@ func add_sickness(amount: float) -> void:
 
 
 func tremor_amount() -> float:
-	var amount := mods.num("tremor") + (0.0015 if coffee_left > 0.0 else 0.0) + maxf(stress - 0.6, 0.0) * 0.006
+	var amount := mods.num("tremor") + (0.0015 if coffee_left > 0.0 else 0.0) + maxf(stress - 0.6, 0.0) * 0.006 + cold_tremor
 	if whiskey_left > 0.0 and mods.flag("drink_steady"):
 		amount *= 0.2
 	if holding_breath and breath > 0.0:

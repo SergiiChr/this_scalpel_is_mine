@@ -13,19 +13,7 @@ const SITE_LAYER := 4
 const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
 
-## Where each scenario site sits on the body. "back" sites face down until the patient is turned over.
-const SITES: Dictionary = {
-	"abdomen": {"pos": Vector3(0.0, 0.112, 0.0), "size": Vector2(0.3, 0.3), "depth": 0.12},
-	"chest": {"pos": Vector3(0.3, 0.112, 0.0), "size": Vector2(0.26, 0.3), "depth": 0.12},
-	"back": {"pos": Vector3(0.15, -0.112, 0.0), "size": Vector2(0.3, 0.3), "depth": 0.12, "back": true},
-	"neck": {"pos": Vector3(0.5, 0.06, 0.0), "size": Vector2(0.12, 0.1), "depth": 0.05},
-	"head": {"pos": Vector3(0.72, 0.13, 0.0), "size": Vector2(0.12, 0.14), "depth": 0.05},
-	"face": {"pos": Vector3(0.64, 0.135, 0.0), "size": Vector2(0.1, 0.1), "depth": 0.05},
-	"shoulder": {"pos": Vector3(0.38, 0.112, 0.15), "size": Vector2(0.14, 0.14), "depth": 0.05},
-	"forearm": {"pos": Vector3(0.2, 0.027, 0.25), "size": Vector2(0.22, 0.09), "depth": 0.05},
-	"thigh": {"pos": Vector3(-0.55, 0.052, 0.1), "size": Vector2(0.25, 0.14), "depth": 0.05},
-	"lower_leg": {"pos": Vector3(-0.95, 0.052, 0.1), "size": Vector2(0.25, 0.14), "depth": 0.05},
-}
+const ORGAN_MODELS: PackedStringArray = ["bowel", "lobe", "sac"]
 const LIMB_SITES: PackedStringArray = ["forearm", "shoulder", "thigh", "lower_leg"]
 
 var wound_map := WoundMap.new()
@@ -35,11 +23,14 @@ var site: Node3D
 var skin_material: ShaderMaterial
 var cavity_blood: MeshInstance3D
 var organs: Array[RigidBody3D] = []
+var animator := PatientAnimator.new()
 var orientation: int = Orientation.FACE_UP
 var _on_back := false
 var _body_root: Node3D
 var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
+var _site_base_y := 0.0
+var _heights := PackedFloat32Array()
 
 
 func build(site_name: String, tone: Color, age_scale: float) -> void:
@@ -49,7 +40,11 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	_body_root.position.y = HALF_HEIGHT * age_scale
 	_body_root.scale = Vector3.ONE * age_scale
 	add_child(_body_root)
-	ModelSlot.instantiate("patient", "body", _body_root, func(root: Node3D) -> void: _build_mannequin(root, tone))
+	var skin := Materials.body_skin(tone)
+	_body_materials.append(skin)
+	var model := ModelSlot.instantiate("patient", "body", _body_root, {"skin": skin})
+	add_child(animator)
+	animator.setup(self, model)
 	_build_colliders()
 	_build_site(tone)
 
@@ -63,7 +58,7 @@ func is_limb_site() -> bool:
 
 
 func cavity_depth() -> float:
-	return SITES.get(site_id, SITES.abdomen).depth
+	return _site_def().depth
 
 
 func site_active() -> bool:
@@ -85,12 +80,27 @@ func world_to_uv(p: Vector3) -> Vector2:
 
 
 func uv_to_world(uv: Vector2, depth: float = 0.0) -> Vector3:
-	return site.to_global(Vector3((uv.x - 0.5) * site_size.x, -depth, (uv.y - 0.5) * site_size.y))
+	return site.to_global(Vector3((uv.x - 0.5) * site_size.x, surface_height(uv) - depth, (uv.y - 0.5) * site_size.y))
 
 
-## Meters between the site surface and p along the skin normal. Negative = under the skin.
+## Meters between the skin and p along the site normal. Negative = under the skin.
 func height_above_site(p: Vector3) -> float:
-	return site.to_local(p).y
+	var local := site.to_local(p)
+	return local.y - surface_height(Vector2(local.x / site_size.x + 0.5, local.z / site_size.y + 0.5))
+
+
+## Skin height relative to the flat site plane at uv, from the baked height grid (0 when flat).
+func surface_height(uv: Vector2) -> float:
+	var grid := int(Db.site_heights.get("grid", 0))
+	if _heights.size() != grid * grid or grid < 2:
+		return 0.0
+	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)
+	var x0 := mini(int(p.x), grid - 2)
+	var y0 := mini(int(p.y), grid - 2)
+	var f := p - Vector2(x0, y0)
+	var top := lerpf(_heights[y0 * grid + x0], _heights[y0 * grid + x0 + 1], f.x)
+	var bottom := lerpf(_heights[(y0 + 1) * grid + x0], _heights[(y0 + 1) * grid + x0 + 1], f.x)
+	return lerpf(top, bottom, f.y)
 
 
 func uv_to_meters(uv_length: float) -> float:
@@ -142,39 +152,6 @@ func _is_open_near(uv: Vector2) -> bool:
 # --- Construction ----------------------------------------------------------------------------------
 
 
-func _build_mannequin(root: Node3D, tone: Color) -> void:
-	var skin := Materials.body_skin(tone)
-	_body_materials.append(skin)
-	var gown := Materials.toon(Color(0.42, 0.52, 0.5), 0.45)
-	_part_mesh(root, BoxMesh.new(), Vector3(0.62, 0.22, 0.38), Vector3(0.12, 0, 0), skin)
-	_part_mesh(root, BoxMesh.new(), Vector3(0.22, 0.2, 0.36), Vector3(-0.3, -0.005, 0), gown)
-	_capsule(root, 0.055, 0.16, Vector3(0.5, 0.0, 0.0), skin, true)
-	Shapes.sphere(root, 0.105, tone, Vector3(0.67, 0.03, 0.0), skin)
-	for side: float in [-1.0, 1.0]:
-		_capsule(root, 0.045, 0.62, Vector3(0.12, -0.02, 0.25 * side), skin, true)
-		_capsule(root, 0.07, 0.9, Vector3(-0.8, -0.02, 0.1 * side), skin, true)
-
-
-func _capsule(root: Node3D, radius: float, height: float, pos: Vector3, mat: Material, along_x: bool) -> void:
-	var mesh := CapsuleMesh.new()
-	mesh.radius = radius
-	mesh.height = height
-	var instance := _part_mesh(root, mesh, Vector3.ZERO, pos, mat)
-	if along_x:
-		instance.rotation.z = PI / 2
-
-
-func _part_mesh(root: Node3D, mesh: PrimitiveMesh, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
-	if mesh is BoxMesh:
-		(mesh as BoxMesh).size = size
-	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
-	instance.material_override = mat
-	instance.position = pos
-	root.add_child(instance)
-	return instance
-
-
 func _build_colliders() -> void:
 	var parts: Dictionary = {
 		"torso": [Vector3(0.62, 0.22, 0.38), Vector3(0.12, 0, 0)],
@@ -193,24 +170,22 @@ func _build_colliders() -> void:
 
 
 func _build_site(tone: Color) -> void:
-	var def: Dictionary = SITES.get(site_id, SITES.abdomen)
-	site_size = def.size
+	var def := _site_def()
+	site_size = Vector2(def.size[0], def.size[1])
 	_on_back = def.get("back", false)
 	site = Node3D.new()
 	site.name = "Site"
-	site.position = def.pos + Vector3(0, -0.002 if _on_back else 0.002, 0)
+	site.position = Vector3(def.pos[0], def.pos[1], def.pos[2])
 	if _on_back:
 		site.rotation.x = PI
+	_site_base_y = site.position.y
 	_body_root.add_child(site)
 
-	var plane := PlaneMesh.new()
-	plane.size = site_size
-	plane.subdivide_width = 48
-	plane.subdivide_depth = 48
+	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1], site_size)
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Skin"
-	mesh.mesh = plane
+	mesh.mesh = _skin_mesh()
 	mesh.material_override = skin_material
 	site.add_child(mesh)
 
@@ -220,16 +195,69 @@ func _build_site(tone: Color) -> void:
 	_update_carve.call_deferred()
 
 
+## Skin patch as a grid that follows the baked body heights, so it hugs curves and limbs.
+func _skin_mesh() -> ArrayMesh:
+	const RES := 40
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for j in RES + 1:
+		for i in RES + 1:
+			var uv := Vector2(float(i) / RES, float(j) / RES)
+			st.set_uv(uv)
+			st.add_vertex(Vector3((uv.x - 0.5) * site_size.x, surface_height(uv) + 0.002, (uv.y - 0.5) * site_size.y))
+	for j in RES:
+		for i in RES:
+			var a := j * (RES + 1) + i
+			st.add_index(a)
+			st.add_index(a + 1)
+			st.add_index(a + RES + 1)
+			st.add_index(a + 1)
+			st.add_index(a + RES + 2)
+			st.add_index(a + RES + 1)
+	st.generate_normals()
+	return st.commit()
+
+
+## Cavity walls whose rim follows the skin just underneath it, so nothing pokes out of the body.
+func _cavity_mesh(depth: float) -> ArrayMesh:
+	const STEPS := 24
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var inset := 0.02
+	var corners := [Vector2(inset, inset), Vector2(1 - inset, inset), Vector2(1 - inset, 1 - inset), Vector2(inset, 1 - inset)]
+	for side in 4:
+		var a: Vector2 = corners[side]
+		var b: Vector2 = corners[(side + 1) % 4]
+		for i in STEPS:
+			var u0 := a.lerp(b, float(i) / STEPS)
+			var u1 := a.lerp(b, float(i + 1) / STEPS)
+			var top0 := _site_point(u0, surface_height(u0) - 0.004)
+			var top1 := _site_point(u1, surface_height(u1) - 0.004)
+			var bottom0 := _site_point(u0, -depth)
+			var bottom1 := _site_point(u1, -depth)
+			for v: Vector3 in [top0, bottom0, top1, top1, bottom0, bottom1]:
+				st.add_vertex(v)
+	var floor_corners: Array = corners.map(func(c: Vector2) -> Vector3: return _site_point(c, -depth))
+	for v: Vector3 in [floor_corners[0], floor_corners[1], floor_corners[2], floor_corners[0], floor_corners[2], floor_corners[3]]:
+		st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
+
+
+func _site_point(uv: Vector2, height: float) -> Vector3:
+	return Vector3((uv.x - 0.5) * site_size.x, height, (uv.y - 0.5) * site_size.y)
+
+
+func _site_def() -> Dictionary:
+	return Db.patient_sites.get(site_id, Db.patient_sites.get("abdomen", {}))
+
+
 func _build_cavity() -> void:
 	var depth := cavity_depth()
-	var walls := BoxMesh.new()
-	walls.size = Vector3(site_size.x * 0.96, depth, site_size.y * 0.96)
-	walls.flip_faces = true
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
-	cavity.mesh = walls
+	cavity.mesh = _cavity_mesh(depth)
 	cavity.material_override = Materials.flesh()
-	cavity.position.y = -depth * 0.5
 	site.add_child(cavity)
 	Shapes.static_box(site, Vector3(site_size.x, 0.01, site_size.y), Vector3(0, -depth - 0.005, 0), CAVITY_LAYER)
 
@@ -259,8 +287,9 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color) -> RigidB
 	sphere.radius = radius
 	shape.shape = sphere
 	organ.add_child(shape)
-	var mesh := Shapes.sphere(organ, radius, color, Vector3.ZERO, Materials.flesh(color))
-	mesh.scale = Vector3(1.3, 0.7, 1.0)
+	var model := ModelSlot.instantiate("organs", ORGAN_MODELS[organs.size() % ORGAN_MODELS.size()], organ, {"organ": Materials.flesh(color)})
+	model.name = "Model"
+	model.scale = Vector3.ONE * radius
 	site.add_child(organ)
 	organ.position = Vector3((uv.x - 0.5) * site_size.x, -depth, (uv.y - 0.5) * site_size.y)
 	organs.append(organ)
@@ -275,6 +304,17 @@ func settle_organs() -> void:
 		organ.apply_central_force((_organ_rest[i] - organ.position) * 40.0 * organ.mass)
 
 
+func organ_offset(index: int) -> float:
+	return organs[index].position.distance_to(_organ_rest[index])
+
+
+func set_organ_damage(index: int, amount: float) -> void:
+	for mesh in organs[index].find_children("*", "MeshInstance3D", true, false):
+		var mat := (mesh as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
+		if mat:
+			mat.set_shader_parameter("damage", amount)
+
+
 func organ_states() -> Array:
 	return organs.map(func(o: RigidBody3D) -> Vector3: return o.position)
 
@@ -284,14 +324,18 @@ func apply_organ_states(positions: Array) -> void:
 		organs[i].position = positions[i]
 
 
+## Breathing lifts sites that sit on top of the torso together with the chest.
+func set_breath_offset(offset: float) -> void:
+	if site_id in ["abdomen", "chest", "shoulder"]:
+		site.position.y = _site_base_y + offset
+		_update_carve()
+
+
 func set_cavity_blood(level: float) -> void:
 	var depth := cavity_depth()
 	cavity_blood.position.y = -depth + 0.002 + clampf(level, 0.0, 1.0) * depth * 0.85
 
 
 func _update_carve() -> void:
-	var depth := cavity_depth()
-	var box := site.global_transform.translated_local(Vector3(0, -depth * 0.5 + 0.01, 0))
-	var extent := Vector3(site_size.x * 0.48, depth * 0.5 + 0.012, site_size.y * 0.48)
 	for mat in _body_materials:
-		Materials.set_carve(mat, box, extent)
+		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, wound_map.textures[0])

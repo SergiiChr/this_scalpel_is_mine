@@ -21,6 +21,8 @@ var roster: Dictionary = {}
 var scenario_id := ""
 var session_seed := 0
 var patient_quirks: Array = []
+## Run modifier ids (data/run_modifiers.cfg), rolled in the lobby so players see them before starting.
+var run_modifiers: Array = []
 var _rng := RandomNumberGenerator.new()
 
 
@@ -99,6 +101,7 @@ func all_ready() -> bool:
 func _start_hosting(scenario: String) -> void:
 	_rng.randomize()
 	scenario_id = scenario
+	run_modifiers = _roll_run_modifiers()
 	roster = {1: _new_player(Progress.player_name)}
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 
@@ -112,10 +115,18 @@ func change_scenario(id: String) -> void:
 	if not is_host():
 		return
 	scenario_id = id
+	run_modifiers = _roll_run_modifiers()
 	for peer_id: int in roster:
 		roster[peer_id].quirks = QuirkRoller.roll_surgeon(_rng)
 		roster[peer_id].ready = false
-	_sync_lobby.rpc(roster, scenario_id)
+	_sync_lobby.rpc(roster, scenario_id, run_modifiers)
+
+
+## One or two per run, never the same twice.
+func _roll_run_modifiers() -> Array:
+	var ids := Array(Db.run_modifiers.get_sections())
+	ids.shuffle()
+	return ids.slice(0, _rng.randi_range(1, 2))
 
 
 ## Host only, after everyone readied up.
@@ -124,7 +135,7 @@ func start_session() -> void:
 		return
 	session_seed = _rng.randi()
 	patient_quirks = QuirkRoller.roll_patient(scenario(), _rng)
-	_begin.rpc(session_seed, patient_quirks, roster, scenario_id)
+	_begin.rpc(session_seed, patient_quirks, roster, scenario_id, run_modifiers)
 
 
 ## Host only. Back to the lobby after a report, with fresh quirks.
@@ -143,7 +154,7 @@ func _request_ready(value: bool) -> void:
 	var sender := _sender()
 	if is_host() and roster.has(sender):
 		roster[sender].ready = value
-		_sync_lobby.rpc(roster, scenario_id)
+		_sync_lobby.rpc(roster, scenario_id, run_modifiers)
 
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -151,15 +162,16 @@ func _register(player_name: String) -> void:
 	if not is_host():
 		return
 	roster[_sender()] = _new_player(player_name)
-	_sync_lobby.rpc(roster, scenario_id)
+	_sync_lobby.rpc(roster, scenario_id, run_modifiers)
 
 
 # --- Everyone --------------------------------------------------------------------------------------
 
 
 @rpc("authority", "call_local", "reliable")
-func _sync_lobby(new_roster: Dictionary, new_scenario: String) -> void:
+func _sync_lobby(new_roster: Dictionary, new_scenario: String, modifiers: Array) -> void:
 	roster = new_roster
+	run_modifiers = modifiers
 	if new_scenario != scenario_id:
 		scenario_id = new_scenario
 		scenario_changed.emit()
@@ -167,8 +179,9 @@ func _sync_lobby(new_roster: Dictionary, new_scenario: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _begin(seed_value: int, patient: Array, final_roster: Dictionary, scenario: String) -> void:
+func _begin(seed_value: int, patient: Array, final_roster: Dictionary, scenario: String, modifiers: Array) -> void:
 	session_seed = seed_value
+	run_modifiers = modifiers
 	patient_quirks = patient
 	roster = final_roster
 	scenario_id = scenario
@@ -195,7 +208,7 @@ func _on_peer_connected(_id: int) -> void:
 func _on_peer_disconnected(id: int) -> void:
 	roster.erase(id)
 	if is_host():
-		_sync_lobby.rpc(roster, scenario_id)
+		_sync_lobby.rpc(roster, scenario_id, run_modifiers)
 
 
 func _on_server_gone() -> void:

@@ -67,6 +67,10 @@ func request_release(hand: int, velocity: Vector3) -> void:
 	_req_release.rpc_id(1, hand, velocity)
 
 
+func request_pass(hand: int) -> void:
+	_req_pass.rpc_id(1, hand)
+
+
 func request_belt(hand: int, belt_slot: int) -> void:
 	_req_belt.rpc_id(1, hand, belt_slot)
 
@@ -111,6 +115,31 @@ func _req_release(hand: int, velocity: Vector3) -> void:
 	_set_state.rpc(tool.uid, SurgicalTool.State.FREE, peer, -1, tool.global_transform)
 	tool.linear_velocity = velocity
 	tool.set_meta("falling", true)
+
+
+## Hand-to-hand handoff. Moving hands fumble it and the tool falls.
+@rpc("any_peer", "call_local", "reliable")
+func _req_pass(hand: int) -> void:
+	var giver: Surgeon = Surgery.current.surgeons.get(Net._sender())
+	var tool := tool_in_hand(Net._sender(), hand)
+	if giver == null or tool == null or not tool.grip_info.is_empty():
+		return
+	var target := giver.pass_target(hand)
+	if target.is_empty():
+		return
+	var receiver: Surgeon = target[0]
+	var receiving_hand: int = target[1]
+	var blocked := receiver.blocked_reason(tool.def)
+	if blocked:
+		Surgery.current.tell(giver.peer_id, "%s can't take it: %s" % [receiver.display_name, blocked])
+		return
+	if giver.hands[hand].speed > Surgeon.FUMBLE_SPEED or receiver.hands[receiving_hand].speed > Surgeon.FUMBLE_SPEED:
+		_set_state.rpc(tool.uid, SurgicalTool.State.FREE, giver.peer_id, -1, tool.global_transform)
+		tool.set_meta("falling", true)
+		Surgery.current.announce("Fumbled the handoff!")
+		return
+	_set_state.rpc(tool.uid, SurgicalTool.State.HELD, receiver.peer_id, receiving_hand, tool.global_transform)
+	Surgery.current.tell(receiver.peer_id, "%s hands you the %s." % [giver.display_name, tool.def.name])
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -213,7 +242,7 @@ func _check_drop(tool: SurgicalTool) -> void:
 		tool.remove_meta("falling")
 		_set_state.rpc(tool.uid, SurgicalTool.State.INSIDE, 0, -1, tool.global_transform)
 		Surgery.current.scoring.add("dropped_in_cavity")
-		Sfx.play("tool_drop_flesh", tool.global_position)
+		Surgery.current.sound("tool_drop_flesh", tool.global_position)
 		if tool.def.action in ["cut", "saw"]:
 			patient.cut_cavity(probe.uv, probe.depth, 1.0, not tool.sterile, 2.0)
 		if not tool.sterile:
@@ -224,7 +253,7 @@ func _check_drop(tool: SurgicalTool) -> void:
 			tool.remove_meta("falling")
 			_set_sterile.rpc(tool.uid, false)
 			Surgery.current.scoring.add("dropped_tool")
-			Sfx.play("tool_drop_metal", tool.global_position)
+			Surgery.current.sound("tool_drop_metal", tool.global_position)
 			return
 		if body.has_meta("part"):
 			tool.remove_meta("falling")

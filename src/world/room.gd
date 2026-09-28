@@ -2,7 +2,7 @@ class_name Room
 extends Node3D
 ## Builds the place where the surgery happens: geometry, lighting and the stations you walk to.
 ## Layout per environment lives in LAYOUTS, positions are meters with the table at the origin.
-## Props use ModelSlot, so dropping assets/models/props/<name>.glb in replaces the placeholder.
+## Props are generated models (tools/assetgen/props.py) loaded through ModelSlot.
 
 const TABLE_HEIGHT := 0.85
 
@@ -19,6 +19,7 @@ const LAYOUTS: Dictionary = {
 		"iv": Vector3(0.95, 0.0, 0.85),
 		"monitor": Vector3(1.25, 1.55, -0.95),
 		"delivery": Vector3(-3.0, 0.0, 2.3),
+		"xray": Vector3(-2.3, 0.0, -2.4),
 	},
 	"ambulance": {
 		"size": Vector3(4.2, 2.1, 2.3),
@@ -48,6 +49,7 @@ const LAYOUTS: Dictionary = {
 var environment_id := "or"
 var layout: Dictionary
 var monitor: PatientMonitor
+var xray: XrayCart
 var _flicker_lights: Array[OmniLight3D] = []
 
 
@@ -59,6 +61,7 @@ func build(env: String, surgery: Surgery) -> void:
 	_build_table()
 	_build_tray()
 	_build_stations(surgery)
+	Sfx.play_loop({"or": "fluorescent_buzz", "ambulance": "ambulance_rumble", "sidewalk": "street_ambience"}[environment_id], self)
 
 
 func spawn_transform(index: int) -> Transform3D:
@@ -157,35 +160,51 @@ func _build_shell() -> void:
 
 func _build_street(size: Vector3) -> void:
 	Shapes.slab(self, Vector3(size.x, 0.15, 2.0), Color(0.35, 0.35, 0.35), Vector3(0, 0.075, -size.z * 0.35), 0.8)
-	var pole := Shapes.cylinder(self, 0.06, 4.5, Color(0.2, 0.22, 0.2), Vector3(3.0, 2.25, 2.0))
-	pole.name = "StreetLight"
+	var pole := ModelSlot.instantiate("props", "streetlight", self)
+	pole.position = Vector3(3.0, 0.0, 2.9)
+	var coat := {"tint": Materials.toon(Color(0.12, 0.12, 0.14), 0.5), "mask": Materials.toon(Color(0.2, 0.18, 0.16), 0.5), "skin": Materials.toon(Color(0.7, 0.55, 0.45), 0.2)}
 	for i in 6:
 		var angle := TAU * i / 6.0 + 0.3
-		var bystander := Shapes.capsule(self, 0.22, 1.7, Color(0.12, 0.12, 0.14), Vector3(cos(angle) * 3.2, 0.85, sin(angle) * 2.6))
+		var bystander := Node3D.new()
 		bystander.name = "Bystander%d" % i
+		add_child(bystander)
+		bystander.position = Vector3(cos(angle) * 3.2, 0.0, sin(angle) * 2.6)
+		bystander.look_at(Vector3(0, 0, 0))
+		ModelSlot.instantiate("surgeon", "body", bystander, coat)
+		var head := ModelSlot.instantiate("surgeon", "head", bystander, coat)
+		head.position.y = 1.62
+		for part_name: String in ["Mask", "Cap"]:
+			var part := head.find_child(part_name, true, false) as Node3D
+			if part:
+				part.visible = false
 
 
 func _build_table() -> void:
-	ModelSlot.instantiate("props", "operating_table", self, _table_prop)
+	ModelSlot.instantiate("props", "operating_table", self)
 	Shapes.static_box(self, Vector3(2.0, TABLE_HEIGHT, 0.62), Vector3(0, TABLE_HEIGHT * 0.5, 0))
+	if environment_id != "or":
+		ModelSlot.instantiate("props", "straps", self)
+	var lamp := ModelSlot.instantiate("props", "surgical_lamp", self)
+	lamp.position = Vector3(0.0, 2.35, 0.0) if environment_id == "or" else Vector3(0.0, 1.95, 0.0)
+	lamp.visible = environment_id != "sidewalk"
 
 
 func _build_tray() -> void:
-	var tray := ModelSlot.instantiate("props", "instrument_tray", self, _tray_prop)
+	var tray := ModelSlot.instantiate("props", "instrument_tray", self)
 	tray.position = layout.tray
 	Shapes.static_box(self, Vector3(0.7, 0.05, 0.8), layout.tray + Vector3(0, 0.89, 0))
 
 
 func _build_stations(s: Surgery) -> void:
-	_station("manual", "Read the manual", Vector3(0.6, 1.8, 0.4), _shelf_prop, s.open_manual)
-	_station("card", "Read the patient card", Vector3(0.3, 0.4, 0.2), _card_prop, s.open_card, 0.75)
+	_station("manual", "Read the manual", Vector3(0.6, 1.8, 0.4), s.open_manual)
+	_station("card", "Read the patient card", Vector3(0.3, 0.4, 0.2), s.open_card, 0.75)
 	if s.scenario.nurse and layout.has("bell"):
-		_station("bell", "Ring for the nurse", Vector3(0.5, 1.2, 0.5), _bell_prop, s.open_nurse)
+		_station("bell", "Ring for the nurse", Vector3(0.5, 1.2, 0.5), s.open_nurse)
 	if layout.has("gloves"):
-		_station("gloves", "Change gloves", Vector3(0.4, 1.2, 0.4), _glove_box_prop, s.change_gloves)
+		_station("gloves", "Change gloves", Vector3(0.4, 1.2, 0.4), s.change_gloves)
 	if layout.has("sanitizer"):
-		_station("sanitizer", "Sanitize held tool", Vector3(0.5, 1.2, 0.5), _sanitizer_prop, s.sanitize_tool)
-	_station("iv", "Use held drug on the IV line", Vector3(0.4, 2.0, 0.4), _iv_stand_prop, s.use_iv)
+		_station("sanitizer", "Sanitize held tool", Vector3(0.5, 1.2, 0.5), s.sanitize_tool)
+	_station("iv", "Use held drug on the IV line", Vector3(0.4, 2.0, 0.4), s.use_iv)
 	monitor = PatientMonitor.new()
 	monitor.name = "Monitor"
 	add_child(monitor)
@@ -195,55 +214,17 @@ func _build_stations(s: Surgery) -> void:
 	Interactable.create(self, "Order blood work", Vector3(0.5, 0.5, 0.3), layout.monitor, s.open_lab)
 	for side: float in [-1.0, 1.0]:
 		Interactable.create(self, "Turn the patient", Vector3(0.3, 0.3, 0.2), Vector3(-0.35, 1.0, 0.38 * side), s.turn_patient)
+	if layout.has("xray"):
+		xray = XrayCart.new()
+		xray.name = "XrayCart"
+		add_child(xray)
+		xray.position = layout.xray
+		xray.build(s)
 	Interactable.create(self, "Talk to the patient", Vector3(0.25, 0.3, 0.3), Vector3(0.92, 1.05, 0.0), s.comfort_patient)
 
 
-# --- Placeholder props -----------------------------------------------------------------------------
-
-
-func _table_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(2.0, 0.08, 0.62), Color(0.25, 0.28, 0.3), Vector3(0, TABLE_HEIGHT - 0.04, 0), 0.4)
-	Shapes.box(root, Vector3(1.95, 0.05, 0.58), Color(0.15, 0.3, 0.3), Vector3(0, TABLE_HEIGHT, 0), 0.5)
-	Shapes.cylinder(root, 0.08, TABLE_HEIGHT - 0.08, Color(0.5, 0.52, 0.55), Vector3(0, (TABLE_HEIGHT - 0.08) * 0.5, 0))
-
-
-func _tray_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(0.7, 0.03, 0.8), Color(0.72, 0.74, 0.76), Vector3(0, 0.9, 0), 0.3)
-	Shapes.cylinder(root, 0.03, 0.88, Color(0.5, 0.52, 0.55), Vector3(0, 0.44, 0))
-
-
-func _shelf_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(0.8, 0.05, 0.35), Color(0.3, 0.22, 0.15), Vector3(0, 1.2, 0))
-	Shapes.box(root, Vector3(0.05, 1.2, 0.35), Color(0.3, 0.22, 0.15), Vector3(-0.4, 0.6, 0))
-	Shapes.box(root, Vector3(0.2, 0.28, 0.06), Color(0.45, 0.08, 0.06), Vector3(0.1, 1.37, 0))
-
-
-func _card_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(0.22, 0.3, 0.01), Color(0.9, 0.88, 0.8), Vector3(0, 0.75, 0.02), 0.5)
-
-
-func _bell_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(0.9, 0.9, 0.5), Color(0.35, 0.37, 0.38), Vector3(0, 0.45, 0))
-	Shapes.sphere(root, 0.05, Color(0.8, 0.7, 0.3), Vector3(0, 0.95, 0))
-
-
-func _glove_box_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(0.5, 0.9, 0.4), Color(0.35, 0.37, 0.38), Vector3(0, 0.45, 0))
-	Shapes.box(root, Vector3(0.25, 0.12, 0.12), Color(0.55, 0.7, 0.8), Vector3(0, 0.96, 0))
-
-
-func _sanitizer_prop(root: Node3D) -> void:
-	Shapes.box(root, Vector3(0.5, 0.9, 0.4), Color(0.35, 0.37, 0.38), Vector3(0, 0.45, 0))
-	Shapes.box(root, Vector3(0.4, 0.15, 0.3), Color(0.6, 0.65, 0.7), Vector3(0, 0.97, 0), 0.2)
-
-
-func _iv_stand_prop(root: Node3D) -> void:
-	Shapes.cylinder(root, 0.015, 1.9, Color(0.6, 0.62, 0.65), Vector3(0, 0.95, 0))
-	Shapes.box(root, Vector3(0.1, 0.18, 0.04), Color(0.85, 0.9, 0.95), Vector3(0, 1.75, 0), 0.1)
-
-
-func _station(key: String, prompt: String, size: Vector3, placeholder: Callable, callback: Callable, height: float = 1.0) -> void:
+func _station(key: String, prompt: String, size: Vector3, callback: Callable, height: float = 1.0) -> void:
 	var pos: Vector3 = layout[key]
-	var root := ModelSlot.instantiate("props", key, self, placeholder)
+	var root := ModelSlot.instantiate("props", key, self)
 	root.position = pos
 	Interactable.create(self, prompt, size, pos + Vector3(0, height, 0), callback)

@@ -24,6 +24,7 @@ func _ready() -> void:
 	Net.session_seed = 42
 	Net.roster = {1: {"name": "Tester", "quirks": [{"id": "normal_dude", "variant": ""}], "ready": true}}
 	Net.patient_quirks = []
+	Net.run_modifiers = []
 	var surgery: Surgery = SURGERY.instantiate()
 	add_child(surgery)
 	await _frames(10)
@@ -43,10 +44,16 @@ func _ready() -> void:
 	patient.swab_at("site", Vector2(0.6, 0.8), Db.tool("iodine_swab"), 1.0)
 	await _frames(20)
 	var me := surgery.local_surgeon
-	var camera := get_viewport().get_camera_3d()
+	var camera := Camera3D.new()
+	add_child(camera)
+	camera.global_transform = get_viewport().get_camera_3d().global_transform
+	camera.current = true
 	await _shot(out, "01_first_person")
+	camera.current = false
+	me.camera().current = true
 	me.pitch = -1.0
 	await _shot(out, "02_looking_down")
+	camera.current = true
 	var site := patient.body.site.global_position
 	camera.global_position = site + Vector3(0.0, 0.35, 0.25)
 	camera.look_at(site)
@@ -54,10 +61,44 @@ func _ready() -> void:
 	camera.global_position = Vector3(3.0, 2.4, 3.0)
 	camera.look_at(Vector3(0, 0.9, 0))
 	await _shot(out, "04_room")
-	if OS.get_cmdline_user_args().has("--no-tubes"):
-		for light in surgery.room.find_children("*", "OmniLight3D", true, false):
-			light.visible = false
-		await _shot(out, "04b_room_no_tubes")
+	var tray: Vector3 = surgery.room.layout.tray + Vector3(0, 0.95, 0)
+	camera.global_position = tray + Vector3(0.45, 0.45, 0.0)
+	camera.look_at(tray)
+	await _shot(out, "07_tray")
+	var scalpel: SurgicalTool = null
+	for tool: SurgicalTool in surgery.tools.tools.values():
+		if tool.def.action == "cut" and tool.state == SurgicalTool.State.FREE:
+			scalpel = tool
+	var forceps: SurgicalTool = null
+	for tool: SurgicalTool in surgery.tools.tools.values():
+		if tool.def.action == "clamp" and tool.state == SurgicalTool.State.FREE:
+			forceps = tool
+	if scalpel:
+		surgery.tools._req_grab(scalpel.uid, 1)
+	if forceps:
+		surgery.tools._req_grab(forceps.uid, 0)
+	me.hands[1].local_target = me.to_local(site + Vector3(0.05, 0.1, 0.05))
+	me.hands[0].local_target = me.to_local(site + Vector3(-0.08, 0.12, 0.05))
+	me.pitch = -0.75
+	await _frames(10)
+	me.camera().current = true
+	await _shot(out, "08_hands")
+	camera.current = true
+	camera.global_position = me.global_position + Vector3(0.9, 1.7, 0.6)
+	camera.look_at(me.global_position + Vector3(0, 1.1, -0.4))
+	for child in me.find_children("*", "Node3D", false, false):
+		child.visible = true
+	for face in me.find_children("Face", "Node3D", true, false):
+		face.get_parent().set("visible", true)
+	await _shot(out, "09_surgeon")
+	var cart := surgery.room.xray
+	cart.global_position = patient.global_position + Vector3(-0.3, -Room.TABLE_HEIGHT, 1.1)
+	cart._req_expose()
+	await _frames(int(XrayCart.EXPOSE_TIME * 60) + 30)
+	await get_tree().create_timer(6.5).timeout
+	surgery.hud.open_xray(cart)
+	await _shot(out, "14_xray_print")
+	surgery.hud.close_overlay()
 	surgery.hud.open_manual()
 	await _shot(out, "05_manual")
 	surgery.hud.open_card()
@@ -80,6 +121,7 @@ func _menus(out: String) -> void:
 	menu.queue_free()
 	Net.roster = {1: {"name": "Doctor", "quirks": [{"id": "shaky_hands", "variant": ""}, {"id": "hand_size", "variant": "big"}, {"id": "divine_knowledge", "variant": ""}], "ready": true}}
 	Net.scenario_id = "appendectomy"
+	Net.run_modifiers = ["chart_error", "understaffed"]
 	var lobby: Control = load("res://scenes/ui/lobby.tscn").instantiate()
 	add_child(lobby)
 	await _shot(out, "13_lobby")

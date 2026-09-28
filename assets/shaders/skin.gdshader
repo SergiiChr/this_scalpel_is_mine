@@ -1,4 +1,4 @@
-// Surgical site skin. Everything that happens to the patient's skin is painted into two maps by WoundMap
+// Surgical site damage decal. Everything that happens to the patient's skin is painted into two maps by WoundMap
 // and rendered here, so damage looks specific instead of a generic red flash.
 //   wound_map: R = cut depth (above open_threshold the skin is gone and the cavity shows through)
 //              G = burn (red halo -> charred core), B = bruise, A = stitches / staples
@@ -38,7 +38,9 @@ void vertex() {
 void fragment() {
 	vec4 w = texture(wound_map, UV);
 	vec4 f = texture(fluid_map, UV);
-	if (w.r > open_threshold) {
+	// Opened skin shows the cavity. Undamaged skin is drawn by the body itself, this patch is only a decal.
+	float marks = max(max(w.r, w.g), max(w.b, w.a)) + max(max(f.r, f.g), max(f.b, f.a));
+	if (w.r > open_threshold || marks < 0.04) {
 		discard;
 	}
 	vec3 c = mix(skin_color.rgb, vec3(0.78, 0.8, 0.8), pallor * 0.5);

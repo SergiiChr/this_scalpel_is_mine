@@ -36,6 +36,7 @@ static func build(surgery: Surgery, success: bool, reason: String) -> Dictionary
 			total += bonus
 			consequences.append(["Finished with %d s to spare." % int(scenario.time_limit - surgery.elapsed), bonus])
 
+	total = int(total * surgery.run_mods.mult("score_mult"))
 	var events: Array = []
 	for entry: Dictionary in surgery.scoring.entries.values():
 		events.append([entry.text, entry.points, entry.count])

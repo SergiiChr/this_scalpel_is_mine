@@ -17,6 +17,17 @@ static func build(patient: Patient, seed_value: int, on_close: Callable) -> Cont
 	rng.seed = seed_value + 5
 	var age := {"child": rng.randi_range(6, 11), "elderly": rng.randi_range(78, 94)}.get(patient.age, rng.randi_range(22, 64)) as int
 	var lines := patient.revealed_card_lines()
+	var blood := patient.blood_type
+	var wrong := Surgery.current.run_mods.flag("card_error") and not Surgery.current.chart_corrected
+	if wrong:
+		# Chart mix-up: someone else's blood type and allergy, and one real condition missing.
+		# Own RNG so the rest of the card (name, age) stays the same once it's corrected.
+		var error_rng := RandomNumberGenerator.new()
+		error_rng.seed = seed_value + 9
+		blood = Patient.BLOOD_TYPES[(Patient.BLOOD_TYPES.find(blood) + 2) % Patient.BLOOD_TYPES.size()]
+		if not lines.is_empty():
+			lines.remove_at(error_rng.randi_range(0, lines.size() - 1))
+		lines.append("Known allergy: %s." % Db.drug(["cefazolin", "morphine", "lidocaine"][error_rng.randi_range(0, 2)]).name)
 	for i in rng.randi_range(2, 3):
 		lines.append(RED_HERRINGS[rng.randi_range(0, RED_HERRINGS.size() - 1)])
 	var shuffled := Array(lines)
@@ -35,9 +46,10 @@ static func build(patient: Patient, seed_value: int, on_close: Callable) -> Cont
 	paper.bg_color = Ui.PAPER
 	paper.set_content_margin_all(48)
 	text.add_theme_stylebox_override("normal", paper)
-	text.text = "[font_size=36][b]PATIENT CHART[/b][/font_size]\n\n" + \
+	var header := "[font_size=36][b]PATIENT CHART[/b][/font_size]%s\n\n" % ("   [color=#8a1c1c][i](corrected copy)[/i][/color]" if Surgery.current.chart_corrected else "")
+	text.text = header + \
 		"[b]Name:[/b] %s %s     [b]Age:[/b] %d\n" % [FIRST_NAMES[rng.randi_range(0, FIRST_NAMES.size() - 1)], LAST_NAMES[rng.randi_range(0, LAST_NAMES.size() - 1)], age] + \
-		"[b]Blood type:[/b] %s\n\n" % ("unknown, lab pending" if rng.randf() < 0.3 else patient.blood_type) + \
+		"[b]Blood type:[/b] %s\n\n" % ("unknown, lab pending" if rng.randf() < 0.3 else blood) + \
 		"[b]Admission:[/b] %s\n\n" % patient.scenario.description + \
 		"[b]History and notes:[/b]\n" + "\n".join(shuffled.map(func(l: String) -> String: return "  • " + l)) + \
 		"\n\n[i]Anesthesia plan: %s[/i]" % patient.scenario.anesthesia

@@ -7,6 +7,7 @@ const UPPER_ARM := 0.34
 const FOREARM := 0.34
 const TILT_RANGE := Vector2(-1.5, -0.2)
 const LIFT_HEIGHT := 0.12
+const SPEED_WINDOW_MSEC := 250
 
 var index := 0
 ## Where the hand wants to be, world space, before tremor and lift.
@@ -25,21 +26,34 @@ var speed := 0.0
 var puppet := false
 
 var _lift := 0.0
-var _last_position := Vector3.ZERO
-var _glove: MeshInstance3D
-var _upper: MeshInstance3D
-var _fore: MeshInstance3D
+## Recent [msec, position] samples. Speed over a short window ignores tremor and network jitter.
+var _history: Array = []
+## Set by the surgeon each frame; drives how far the fingers curl.
+var holding := false
+var _curl := 0.2
+var _fingers: Dictionary = {}
+var _glove: Node3D
+var _upper: Node3D
+var _fore: Node3D
 var _pusher: AnimatableBody3D
+## Fraction of the forearm hidden at the elbow end (local player only, keeps the view clear).
+var _forearm_start := 0.0
 
 
-func build(hand_index: int, sleeve: Color, glove: Color) -> void:
+func build(hand_index: int, scrubs: Color) -> void:
 	index = hand_index
 	name = "LeftHand" if index == 0 else "RightHand"
-	_glove = Shapes.box(self, Vector3(0.07, 0.03, 0.09), glove, Vector3(0, 0, 0.02), 0.05)
-	_upper = Shapes.cylinder(self, 0.045, 1.0, sleeve)
-	_fore = Shapes.cylinder(self, 0.035, 1.0, glove)
-	for mesh in [_upper, _fore]:
-		mesh.top_level = true
+	var sleeve := {"tint": Materials.toon(scrubs, 0.35)}
+	_glove = ModelSlot.instantiate("surgeon", "glove", self)
+	if index == 0:
+		_glove.scale.x = -1.0
+	for joint in _glove.find_children("*", "Node3D", true, false):
+		if joint.name.begins_with("Index") or joint.name.begins_with("Middle") or joint.name.begins_with("Ring") or joint.name.begins_with("Pinky") or joint.name == "Thumb":
+			_fingers[joint] = (joint as Node3D).transform
+	_upper = ModelSlot.instantiate("surgeon", "upper_arm", self, sleeve)
+	_fore = ModelSlot.instantiate("surgeon", "forearm", self, sleeve)
+	for segment in [_upper, _fore]:
+		segment.top_level = true
 	_pusher = AnimatableBody3D.new()
 	_pusher.collision_layer = PatientBody.CAVITY_LAYER
 	_pusher.collision_mask = 0
@@ -50,6 +64,15 @@ func build(hand_index: int, sleeve: Color, glove: Color) -> void:
 	_pusher.add_child(shape)
 	_pusher.top_level = true
 	add_child(_pusher)
+
+
+## The local player sees forearms and gloves only; the upper arm would sit right under the camera.
+func hide_upper_arm() -> void:
+	_upper.visible = false
+	_forearm_start = 0.2
+	var cuff := _fore.find_child("Cuff", true, false) as Node3D
+	if cuff:
+		cuff.visible = false
 
 
 ## Final world position: target plus lift and tremor.
@@ -70,11 +93,33 @@ func tip_offset(tool_length: float) -> Vector3:
 func update_pose(shoulder: Vector3, delta: float) -> void:
 	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * 0.8)
 	global_position = effective_position()
-	speed = global_position.distance_to(_last_position) / maxf(delta, 0.0001)
-	_last_position = global_position
+	_track_speed()
 	global_basis = grip_transform().basis
 	_pusher.global_position = global_position
 	_solve_arm(shoulder)
+	_animate_fingers(delta)
+
+
+func _track_speed() -> void:
+	var now := Time.get_ticks_msec()
+	_history.append([now, global_position])
+	while _history.size() > 2 and now - int(_history[0][0]) > SPEED_WINDOW_MSEC:
+		_history.pop_front()
+	var oldest: Array = _history[0]
+	var span := maxf((now - int(oldest[0])) * 0.001, 0.016)
+	speed = global_position.distance_to(oldest[1]) / span
+
+
+## Relaxed when empty, wrapped around a held tool, squeezed while using it.
+func _animate_fingers(delta: float) -> void:
+	var target := 1.0 if holding and engaged else 0.75 if holding else 0.15
+	_curl = move_toward(_curl, target, delta * 4.0)
+	for joint: Node3D in _fingers:
+		var rest: Transform3D = _fingers[joint]
+		var bend := _curl * (0.9 if joint.name.ends_with("1") else 1.2 if joint.name.ends_with("2") else 0.8)
+		if joint.name == "Thumb":
+			bend = -_curl * 0.7
+		joint.transform = Transform3D(rest.basis * Basis(Vector3.BACK, bend), rest.origin)
 
 
 func _solve_arm(shoulder: Vector3) -> void:
@@ -89,10 +134,10 @@ func _solve_arm(shoulder: Vector3) -> void:
 	pole = (pole - dir * pole.dot(dir)).normalized()
 	var elbow := shoulder + dir * along + pole * height
 	_place_segment(_upper, shoulder, elbow)
-	_place_segment(_fore, elbow, global_position)
+	_place_segment(_fore, elbow.lerp(global_position, _forearm_start), global_position)
 
 
-static func _place_segment(mesh: MeshInstance3D, a: Vector3, b: Vector3) -> void:
+static func _place_segment(mesh: Node3D, a: Vector3, b: Vector3) -> void:
 	var y := (b - a)
 	var length := y.length()
 	if length < 0.001:

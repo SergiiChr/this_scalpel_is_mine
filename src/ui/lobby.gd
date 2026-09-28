@@ -53,6 +53,8 @@ func _refresh() -> void:
 	if scenario:
 		_header.add_child(Ui.label("PRE-OP BRIEFING: %s" % (scenario.title if not scenario.hidden else "???"), 32, Ui.PIP))
 		_header.add_child(Ui.label("%s   %s" % [scenario.stars_text(), scenario.description if not scenario.hidden else "One injection. Then you listen."], 18, Ui.INK, true))
+		for id: String in Net.run_modifiers:
+			_header.add_child(Ui.label("RUN MODIFIER  %s: %s" % [Db.run_modifiers.get_value(id, "name", id), Db.run_modifiers.get_value(id, "description", "")], 18, Color(0.95, 0.8, 0.35), true))
 		if _scenario_picker:
 			_scenario_picker.select(Db.scenarios.find(scenario))
 	for child in _roster_box.get_children():

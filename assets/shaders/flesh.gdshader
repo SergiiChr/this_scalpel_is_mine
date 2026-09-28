@@ -1,5 +1,6 @@
 // Wet interior tissue: cavity walls and organs. `damage` darkens and bruises an organ that got nicked.
 shader_type spatial;
+render_mode cull_disabled;
 
 uniform vec4 albedo : source_color = vec4(0.55, 0.12, 0.12, 1.0);
 uniform float damage = 0.0;

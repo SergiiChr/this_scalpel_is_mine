@@ -32,6 +32,10 @@ var elapsed := 0.0
 var rng := RandomNumberGenerator.new()
 ## Last status from the host, for the HUD: objectives, score, cooldowns.
 var status: Dictionary = {}
+## Effects of this run's modifiers (data/run_modifiers.cfg).
+var run_mods := Modifiers.new()
+## Chart mix-up modifier: false until the nurse brings the corrected patient card.
+var chart_corrected := false
 
 var _loaded: Dictionary = {}
 var _announced: Dictionary = {}
@@ -53,6 +57,7 @@ func _ready() -> void:
 		_start_test_session()
 	scenario = Net.scenario()
 	rng.seed = Net.session_seed
+	run_mods = Db.run_modifier_effects(Net.run_modifiers)
 	room.build(scenario.environment, self)
 	patient.position = Vector3(0, Room.TABLE_HEIGHT, 0)
 	patient.setup(scenario, Net.patient_quirks, Net.session_seed)
@@ -63,7 +68,7 @@ func _ready() -> void:
 	for i in peers.size():
 		var surgeon := _spawn_surgeon(peers[i], i)
 		personal[peers[i]] = surgeon.mods.list("items")
-	tools.spawn_initial(scenario.roll_tools(rng), room.tray_spots(), personal)
+	tools.spawn_initial(scenario.roll_tools(rng, run_mods.num("missing_tool_chance")), room.tray_spots(), personal)
 	objectives.setup(scenario)
 	director.setup(scenario, Net.session_seed)
 	hud.setup(self)
@@ -82,6 +87,7 @@ func _start_test_session() -> void:
 	Net.session_seed = test_rng.randi()
 	Net.roster = {1: {"name": Progress.player_name, "quirks": QuirkRoller.roll_surgeon(test_rng), "ready": true}}
 	Net.patient_quirks = QuirkRoller.roll_patient(def, test_rng)
+	Net.run_modifiers = []
 
 
 func _spawn_surgeon(peer: int, index: int) -> Surgeon:
@@ -153,6 +159,11 @@ func tell(peer: int, text: String) -> void:
 	_toast.rpc_id(peer, text)
 
 
+## Host: play a sound on every peer.
+func sound(id: String, at: Vector3 = Vector3.INF) -> void:
+	_sound.rpc(id, at)
+
+
 func say(text: String, voice_id: String) -> void:
 	_say.rpc(text, voice_id)
 
@@ -167,7 +178,7 @@ func jolt_peer(peer: int, strength: float) -> void:
 
 
 func broadcast_stress(amount: float) -> void:
-	_stress.rpc(amount)
+	_stress.rpc(amount * run_mods.mult("stress_mult"))
 
 
 func add_sickness(peer: int, amount: float) -> void:
@@ -182,6 +193,11 @@ func set_attached(peer: int, hand: int, value: bool) -> void:
 
 func flicker_lights() -> void:
 	_flicker.rpc(randf_range(1.0, 3.0))
+
+
+## Host: the nurse brings the corrected chart (Chart mix-up modifier).
+func correct_chart() -> void:
+	_chart_corrected.rpc()
 
 
 func publish_lab(text: String) -> void:
@@ -217,9 +233,15 @@ func _toast(text: String) -> void:
 	hud.toast(text)
 
 
+@rpc("authority", "call_local", "unreliable")
+func _sound(id: String, at: Vector3) -> void:
+	Sfx.play(id, at)
+
+
 @rpc("authority", "call_local", "reliable")
 func _say(text: String, voice_id: String) -> void:
 	hud.subtitle(text)
+	patient.body.animator.talk(clampf(text.length() / 14.0, 1.0, 6.0))
 	Sfx.play_voice(voice_id, patient.global_position + Vector3(0.7, 0.2, 0))
 
 
@@ -252,6 +274,12 @@ func _zapped() -> void:
 @rpc("authority", "call_local", "reliable")
 func _flicker(duration: float) -> void:
 	room.flicker(duration)
+
+
+@rpc("authority", "call_local", "reliable")
+func _chart_corrected() -> void:
+	chart_corrected = true
+	hud.toast("Nurse: \"Corrected chart. The old one belonged to someone else. Sorry.\"")
 
 
 @rpc("authority", "call_local", "reliable")
@@ -486,7 +514,7 @@ func _resolve_qte() -> void:
 		scoring.add("patient_fell")
 		announce("The patient slides off the table and hits the floor!")
 		patient.turn_over(patient.body.orientation, true)
-		Sfx.play("body_fall", patient.global_position)
+		sound("body_fall", patient.global_position)
 	elif misses > 0:
 		announce("They slide back. Try again, together this time.")
 	else:

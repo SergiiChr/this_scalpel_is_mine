@@ -1,0 +1,19 @@
+[project]
+name = "this-scalpel-is-mine-assetgen"
+version = "0.1.0"
+description = "Procedural models and sounds for This Scalpel Is Mine"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0", "trimesh>=4.0", "shapely>=2.0", "mapbox_earcut>=1.0", "scipy>=1.11"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ANN"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+# trimesh, scipy and shapely ship without type hints.
+disallow_untyped_calls = false

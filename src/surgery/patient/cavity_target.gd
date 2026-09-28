@@ -37,7 +37,7 @@ func setup(target_index: int, data: Dictionary, mirrored: bool) -> void:
 	surge = data.get("surge", 0.0)
 	covered = data.get("covered", false)
 	name = "%s_%d" % [kind.capitalize(), index]
-	ModelSlot.instantiate("targets", kind, self, _placeholder)
+	ModelSlot.instantiate("targets", kind, self)
 
 
 func is_suction_target() -> bool:
@@ -68,36 +68,3 @@ func apply_state(data: Array) -> void:
 func _update_look() -> void:
 	if is_suction_target():
 		scale = Vector3.ONE * clampf(amount / 6.0, 0.05, 1.5)
-
-
-func _placeholder(root: Node3D) -> void:
-	match kind:
-		"bullet":
-			var slug := Shapes.capsule(root, 0.005, 0.018, Color(0.6, 0.5, 0.2))
-			slug.rotation.z = PI / 2
-		"knife":
-			Shapes.box(root, Vector3(0.004, 0.09, 0.025), Color(0.8, 0.82, 0.85), Vector3(0, -0.02, 0), 0.1)
-			Shapes.box(root, Vector3(0.02, 0.1, 0.03), Color(0.15, 0.1, 0.08), Vector3(0, 0.08, 0))
-		"appendix":
-			var appendix := Shapes.capsule(root, 0.008, 0.07, Color(0.7, 0.35, 0.3), Vector3.ZERO, Materials.flesh(Color(0.7, 0.35, 0.3)))
-			appendix.rotation.z = PI / 2
-		"tumor":
-			Shapes.sphere(root, 0.018, Color.WHITE, Vector3.ZERO, Materials.flesh(Color(0.55, 0.5, 0.35)))
-		"clot":
-			Shapes.sphere(root, 0.01, Color.WHITE, Vector3.ZERO, Materials.flesh(Color(0.2, 0.02, 0.04)))
-		"figurine":
-			Shapes.capsule(root, 0.012, 0.09, Color(0.85, 0.65, 0.15), Vector3.ZERO, Materials.toon(Color(0.85, 0.65, 0.15), 0.1, true, 0.2))
-		"bone":
-			var bone := Shapes.cylinder(root, 0.014, 0.18, Color(0.9, 0.88, 0.78))
-			bone.rotation.z = PI / 2
-		"fragment":
-			var fragment := Shapes.cylinder(root, 0.012, 0.07, Color(0.9, 0.86, 0.75))
-			fragment.rotation.z = PI / 2
-		"fluid":
-			var fluid := Shapes.sphere(root, 0.03, Color.WHITE, Vector3.ZERO, Materials.flesh(Color(0.75, 0.65, 0.3)))
-			fluid.scale.y = 0.4
-		"air":
-			var air := Shapes.sphere(root, 0.03, Color(0.8, 0.85, 0.9))
-			air.transparency = 0.7
-		_:
-			Shapes.sphere(root, 0.01, Color.MAGENTA)

@@ -29,6 +29,23 @@ func play(id: String, at: Vector3 = Vector3.INF, bus: String = "SFX", volume_db:
 	player.call("play")
 
 
+## Looping background sound (room tone, engine, street). Returns the player so the caller can stop it.
+func play_loop(id: String, parent: Node, volume_db: float = -12.0) -> AudioStreamPlayer:
+	var stream := _stream(id) as AudioStreamWAV
+	var player := AudioStreamPlayer.new()
+	player.bus = "SFX"
+	player.volume_db = volume_db
+	parent.add_child(player)
+	if stream == null or deaf:
+		return player
+	var looped := stream.duplicate() as AudioStreamWAV
+	looped.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	looped.loop_end = int(stream.get_length() * stream.mix_rate)
+	player.stream = looped
+	player.play()
+	return player
+
+
 ## Optional recorded patient lines: assets/audio/voice/<trigger>_<index>.ogg
 func play_voice(voice_id: String, at: Vector3) -> void:
 	var path := "res://assets/audio/voice/%s.ogg" % voice_id
