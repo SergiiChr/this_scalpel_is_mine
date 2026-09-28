@@ -37,8 +37,8 @@ var _curl := 0.2
 var _posed_curl := -1.0
 var _glove: Node3D
 var _glove_rig: BoneRig
-## Where the glove's wrist sits in the hand's frame; the forearm ends there, not at the grip.
-var _wrist := Vector3.ZERO
+## The glove point (in glove model space) that holds the tool: the hollow of the curled fingers.
+const GRIP_POINT := Vector3(0.07, -0.028, 0.0)
 var _upper: Node3D
 var _fore: Node3D
 var _pusher: AnimatableBody3D
@@ -52,12 +52,10 @@ func build(hand_index: int, scrubs: Color) -> void:
 	var sleeve := {"tint": Materials.toon(scrubs, 0.35)}
 	_glove = ModelSlot.instantiate("surgeon", "glove", self)
 	# The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
-	# Here the tool handle runs along the hand's Z axis through the origin (tip toward -Z): the palm wraps it from
-	# the +X side, fingers point down to curl under it, the thumb sits toward the tip. The left hand is the mirror.
-	var grip := Transform3D(Basis(Vector3.DOWN, Vector3.RIGHT, Vector3.BACK), Vector3(0.03, 0.075, 0.0))
-	_glove.transform = Transform3D(Basis.from_scale(Vector3(-1, 1, 1)), Vector3.ZERO) * grip if index == 0 else grip
+	# It follows the forearm (see _place_glove()), so the wrist never bends backwards whatever the tool's tilt;
+	# the tool passes through the curled fingers at its own angle, like a pen.
+	_glove.top_level = true
 	_glove_rig = BoneRig.find(_glove)
-	_wrist = _glove.transform.origin
 	_upper = ModelSlot.instantiate("surgeon", "upper_arm", self, sleeve)
 	_fore = ModelSlot.instantiate("surgeon", "forearm", self, sleeve)
 	for segment in [_upper, _fore]:
@@ -147,8 +145,22 @@ func _solve_arm(shoulder: Vector3) -> void:
 	pole = (pole - dir * pole.dot(dir)).normalized()
 	var elbow := shoulder + dir * along + pole * height
 	_place_segment(_upper, shoulder, elbow)
-	var wrist := global_transform * _wrist
+	var wrist := _place_glove(elbow, owner_basis)
 	_place_segment(_fore, elbow.lerp(wrist, _forearm_start), wrist)
+
+
+## Glove along the forearm, palm down, the grip point on the tool. Returns the wrist, where the forearm ends.
+## The left glove is the right one mirrored (thumb on the other side).
+func _place_glove(elbow: Vector3, owner_basis: Basis) -> Vector3:
+	var along := (global_position - elbow).normalized()
+	var up := (Vector3.UP - along * Vector3.UP.dot(along)).normalized()
+	if up.length_squared() < 0.5:
+		up = owner_basis.z
+	var side := along.cross(up)
+	var frame := Basis(along, up, side if index == 1 else -side)
+	var wrist := global_position - frame * GRIP_POINT
+	_glove.global_transform = Transform3D(frame, wrist)
+	return wrist
 
 
 static func _place_segment(mesh: Node3D, a: Vector3, b: Vector3) -> void:
