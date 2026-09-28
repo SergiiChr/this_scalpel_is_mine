@@ -14,6 +14,7 @@ var _objectives: VBoxContainer
 var _hands: Label
 var _belt: HBoxContainer
 var _prompt: Label
+var _net_warning: Label
 var _toasts: VBoxContainer
 var _subtitle: Label
 var _subtitle_timer := 0.0
@@ -52,6 +53,10 @@ func setup(owner_surgery: Surgery) -> void:
 	_subtitle.position = Vector2(-500, -190)
 	_subtitle.custom_minimum_size.x = 1000
 	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_net_warning = _corner_label(Control.PRESET_CENTER_TOP, 20, Ui.ALERT)
+	_net_warning.position = Vector2(-400, 44)
+	_net_warning.custom_minimum_size.x = 800
+	_net_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_build_bottom_bar()
 	_build_gauges()
 	_build_controls_hint()
@@ -75,6 +80,7 @@ func _process(delta: float) -> void:
 	var left := surgery.time_left()
 	_clock.text = "%s   %s" % [surgery.scenario.title, "%d:%02d" % [int(left) / 60, int(left) % 60] if left >= 0.0 else "no time limit"]
 	_update_objectives()
+	_update_net_warning()
 	_update_hands(me)
 	_update_gauges(me)
 	_prompt.text = "[%s] %s" % [InputActions.binding_text("interact"), me.focused.prompt] if me.focused and _overlay == null else ""
@@ -88,6 +94,17 @@ func _process(delta: float) -> void:
 	_post.set_shader_parameter("blackout", 1.0 if me.status.is_out() else 0.0)
 	_post.set_shader_parameter("wobble", me.status.sickness)
 	_post.set_shader_parameter("blur", me.status.sickness * 1.5)
+
+
+## A lag spike shows up after a moment; the game carries on and the connection only drops after Net.TIMEOUT_MAX_MSEC.
+func _update_net_warning() -> void:
+	var worst := Net.worst_silence()
+	var seconds: float = worst[1]
+	if seconds < 1.5:
+		_net_warning.text = ""
+		return
+	var who: String = "the host" if worst[0] == 1 else str(Net.roster.get(worst[0], {}).get("name", "your partner"))
+	_net_warning.text = "Connection to %s is unstable (%d s). Waiting..." % [who, int(seconds)]
 
 
 func _unhandled_input(event: InputEvent) -> void:

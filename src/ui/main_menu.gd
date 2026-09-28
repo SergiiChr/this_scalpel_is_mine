@@ -32,7 +32,12 @@ func _ready() -> void:
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	layout.add_child(_content)
 	_selected_scenario = Db.scenarios[0] if not Db.scenarios.is_empty() else null
-	_show_scenarios()
+	if Net.last_error:
+		_show_multiplayer()
+		_on_connection_failed(Net.last_error)
+		Net.last_error = ""
+	else:
+		_show_scenarios()
 
 
 func _set_content(panel: Control) -> void:
@@ -163,6 +168,8 @@ func _join(ip: String, port: int) -> void:
 	var err := Net.join(ip, port)
 	if err != OK:
 		_on_connection_failed("Could not connect (%s)." % error_string(err))
+	else:
+		_on_connection_failed("Connecting to %s:%d..." % [ip, port])
 
 
 func _on_connection_failed(reason: String) -> void:

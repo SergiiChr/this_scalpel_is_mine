@@ -59,8 +59,9 @@ func _drive(role: String, driver: Node) -> void:
 		hand.engaged = false
 		await tree.create_timer(1.0).timeout
 		# Hand the tool across the table: both surgeons reach over the patient.
+		# 12 cm apart: close enough to pass (Surgeon.PASS_DISTANCE), not so close the hands bump and drop it.
 		hand.pressure = 2
-		hand.local_target = me.to_local(Vector3(0.0, 1.3, -0.02))
+		hand.local_target = me.to_local(Vector3(0.0, 1.3, -0.06))
 		await tree.create_timer(1.5).timeout
 		me.active = 1
 		me.call("_grab_or_release")
@@ -68,7 +69,7 @@ func _drive(role: String, driver: Node) -> void:
 		print("[client] after handoff, holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 	else:
 		var host_me := surgery.local_surgeon
-		host_me.hands[0].local_target = host_me.to_local(Vector3(0.0, 1.3, 0.02))
+		host_me.hands[0].local_target = host_me.to_local(Vector3(0.0, 1.3, 0.06))
 		await tree.create_timer(6.0).timeout
 		var got := host_me.held_tool(0)
 		print("[host] partner handed me: ", got.def.id if got else "nothing")

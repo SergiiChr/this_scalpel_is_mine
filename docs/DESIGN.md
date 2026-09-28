@@ -34,6 +34,14 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Vitals, targets, organs and tissue grips sync at 5 Hz. Free-falling tools sync at 10 Hz.
 - Solo play is the same code with an offline peer. There is no separate single player path.
 - Every peer builds the same patient and tray from the session seed, so setup needs no RPCs.
+- **Spotty connections don't end the session.** ENet drops a peer only after 15-45 s without answers
+  (`Net.TIMEOUT_*`, ENet's own default is about 5 s). Reliable RPCs queue up and arrive once the link recovers,
+  unreliable state just picks up with the next packet.
+  A 4 Hz heartbeat tracks how long each peer has been silent: after 0.75 s the host pauses that surgeon's tools
+  (not released, so a charged defibrillator doesn't fire and clamps keep their grip), after 1.5 s the HUD says
+  who the connection is waiting on. Joining gives up after 10 s if the host never answers.
+- A partner who drops out for good leaves the room and their tools fall where they were. The host refuses joins
+  while a surgery runs. A client that loses the host goes back to the menu with the reason shown.
 
 ### Look
 

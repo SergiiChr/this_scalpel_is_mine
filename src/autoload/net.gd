@@ -3,6 +3,10 @@ extends Node
 ## Solo play uses the same code path with an offline peer, so there is no separate single player mode.
 ##
 ## Flow: host()/join() -> lobby (quirks rolled by host, everyone readies up) -> start_session() -> surgery scene.
+##
+## Spotty connections: ENet only drops a peer after TIMEOUT_MAX_MSEC without any answer (its default gives up after
+## about 5 s). Until then everyone keeps playing: a heartbeat tracks how long each peer has been silent, the HUD warns
+## about it, and the host stops applying a silent player's last input (see Surgeon.hand_state()).
 
 signal roster_changed
 signal scenario_changed
@@ -15,6 +19,13 @@ const MAX_CLIENTS := 1
 const LOBBY_SCENE := "res://scenes/ui/lobby.tscn"
 const SURGERY_SCENE := "res://scenes/surgery.tscn"
 const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
+## ENet drops a peer once a reliable packet stays unanswered this long (or TIMEOUT_MIN_MSEC after TIMEOUT_LIMIT resends).
+const TIMEOUT_LIMIT := 64
+const TIMEOUT_MIN_MSEC := 15000
+const TIMEOUT_MAX_MSEC := 45000
+## Joining gives up on a host that never answers after this long, instead of waiting out the full timeout.
+const CONNECT_TIMEOUT := 10.0
+const HEARTBEAT_INTERVAL := 0.25
 
 ## peer id -> {"name": String, "quirks": Array[Dictionary], "ready": bool}
 var roster: Dictionary = {}
@@ -25,15 +36,55 @@ var patient_quirks: Array = []
 var run_modifiers: Array = []
 ## True from the start of a surgery until everyone is back in the lobby. Nobody can join in the middle.
 var in_session := false
+## Why the last session ended, shown on the main menu. Empty after a normal exit.
+var last_error := ""
 var _rng := RandomNumberGenerator.new()
+## peer id -> Time.get_ticks_msec() of the last heartbeat from them.
+var _last_heard: Dictionary = {}
+var _heartbeat_acc := 0.0
+var _connect_timer: SceneTreeTimer
 
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
-	multiplayer.connection_failed.connect(func() -> void: connection_failed.emit("Could not reach the host."))
+	multiplayer.connection_failed.connect(_on_connect_failed.bind("Could not reach the host."))
 	multiplayer.server_disconnected.connect(_on_server_gone)
+
+
+func _process(delta: float) -> void:
+	if not is_online():
+		return
+	_heartbeat_acc += delta
+	if _heartbeat_acc >= HEARTBEAT_INTERVAL:
+		_heartbeat_acc = 0.0
+		_heartbeat.rpc()
+
+
+## Seconds since anything was heard from the peer. 0 when playing solo or for yourself.
+func silence(peer: int) -> float:
+	if not is_online() or peer == local_id() or not _last_heard.has(peer):
+		return 0.0
+	return (Time.get_ticks_msec() - int(_last_heard[peer])) * 0.001
+
+
+## The longest any other player has been silent: [peer id, seconds], or [0, 0.0] if everyone is fine.
+func worst_silence() -> Array:
+	var worst: Array = [0, 0.0]
+	for peer: int in _last_heard:
+		if silence(peer) > worst[1]:
+			worst = [peer, silence(peer)]
+	return worst
+
+
+@rpc("any_peer", "call_remote", "unreliable")
+func _heartbeat() -> void:
+	_last_heard[multiplayer.get_remote_sender_id()] = Time.get_ticks_msec()
+
+
+static func _tolerate_lag(peer: ENetPacketPeer) -> void:
+	peer.set_timeout(TIMEOUT_LIMIT, TIMEOUT_MIN_MSEC, TIMEOUT_MAX_MSEC)
 
 
 func is_host() -> bool:
@@ -68,9 +119,16 @@ func join(ip: String, port: int = DEFAULT_PORT) -> Error:
 	leave()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(ip, port)
-	if err == OK:
-		multiplayer.multiplayer_peer = peer
-	return err
+	if err != OK:
+		return err
+	var host_peer := peer.get_peer(1)
+	if host_peer:
+		_tolerate_lag(host_peer)
+	multiplayer.multiplayer_peer = peer
+	# The connect attempt itself would wait out the whole lag timeout; a host that never answers fails sooner.
+	_connect_timer = get_tree().create_timer(CONNECT_TIMEOUT)
+	_connect_timer.timeout.connect(_on_connect_timeout.bind(_connect_timer))
+	return OK
 
 
 func leave() -> void:
@@ -79,6 +137,8 @@ func leave() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	roster.clear()
 	in_session = false
+	_last_heard.clear()
+	_connect_timer = null
 
 
 func back_to_menu() -> void:
@@ -205,23 +265,41 @@ func _go_to_lobby() -> void:
 
 
 func _on_connected() -> void:
+	_connect_timer = null
+	_last_heard[1] = Time.get_ticks_msec()
 	_register.rpc_id(1, Progress.player_name)
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 
 
-func _on_peer_connected(_id: int) -> void:
-	pass
+func _on_peer_connected(id: int) -> void:
+	_last_heard[id] = Time.get_ticks_msec()
+	if is_host() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+		_tolerate_lag((multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id))
 
 
 func _on_peer_disconnected(id: int) -> void:
 	roster.erase(id)
+	_last_heard.erase(id)
 	if is_host():
 		_sync_lobby.rpc(roster, scenario_id, run_modifiers)
 
 
 func _on_server_gone() -> void:
+	last_error = "Lost the connection to the host."
 	disconnected.emit()
 	back_to_menu()
+
+
+func _on_connect_timeout(timer: SceneTreeTimer) -> void:
+	# Only the attempt this timer was started for; a later join has its own.
+	if timer == _connect_timer and multiplayer.multiplayer_peer is ENetMultiplayerPeer and multiplayer.get_unique_id() != 1:
+		if (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTING:
+			_on_connect_failed("The host didn't answer within %d seconds." % CONNECT_TIMEOUT)
+
+
+func _on_connect_failed(reason: String) -> void:
+	leave()
+	connection_failed.emit(reason)
 
 
 ## Remote sender id, or our own id for local calls.

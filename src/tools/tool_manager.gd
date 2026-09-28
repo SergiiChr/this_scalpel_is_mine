@@ -227,7 +227,8 @@ func _physics_process(delta: float) -> void:
 		match tool.state:
 			SurgicalTool.State.HELD:
 				var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
-				if surgeon:
+				# Paused, not released: a lag spike must not fire a charged defibrillator or drop a clamp's grip.
+				if surgeon and not surgeon.is_stalled():
 					ToolActions.update(tool, surgeon.hand_state(tool.slot), surgery.patient, delta)
 			SurgicalTool.State.STANDING:
 				ToolActions.update_standing(tool, surgery.patient, delta)

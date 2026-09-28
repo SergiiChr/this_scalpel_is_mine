@@ -23,6 +23,9 @@ const INTERACT_RANGE := 1.8
 const PASS_DISTANCE := 0.18
 ## Hand speed (m/s) above which a handoff fumbles.
 const FUMBLE_SPEED := 0.35
+## A remote surgeon silent this long counts as frozen: the host pauses their tools until they're heard from again,
+## so a lag spike doesn't leave a cautery burning or a saw running on its own.
+const STALL_SECONDS := 0.75
 
 var peer_id := 1
 var display_name := "Doctor"
@@ -118,6 +121,10 @@ func held_tool(hand: int) -> SurgicalTool:
 func hand_state(hand: int) -> Dictionary:
 	var h := hands[hand]
 	return {"engaged": h.engaged and not status.is_out(), "pressure": h.pressure, "speed": h.speed, "peer": peer_id, "mods": mods}
+
+
+func is_stalled() -> bool:
+	return not is_local and Net.silence(peer_id) > STALL_SECONDS
 
 
 ## Empty string if this surgeon can use the tool, otherwise why not.

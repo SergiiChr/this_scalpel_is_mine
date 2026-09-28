@@ -63,4 +63,24 @@ if [[ "$(state "$LOGS/net_host.log")" != "$(state "$LOGS/net_client.log")" ]]; t
 	failed=1
 fi
 
+# Spotty connection: freeze the client for 10 s mid-surgery (longer than ENet's default timeout), then let it go on.
+timeout 180 "$GODOT" --headless --path "$ROOT" res://tests/net_stall_test.tscn -- --role=host >"$LOGS/net_stall_host.log" 2>&1 &
+host=$!
+sleep 2
+timeout 180 "$GODOT" --headless --path "$ROOT" res://tests/net_stall_test.tscn -- --role=client >"$LOGS/net_stall_client.log" 2>&1 &
+client=$!
+for _ in $(seq 1 600); do
+	grep -q "\[client\] running" "$LOGS/net_stall_client.log" && break
+	sleep 0.1
+done
+# Freeze Godot itself, not the timeout wrapper around it.
+godot_pid=$(pgrep -P "$client")
+kill -STOP "$godot_pid"
+sleep 10
+kill -CONT "$godot_pid"
+wait "$client"
+wait "$host"
+check net_stall_host "$LOGS/net_stall_host.log" "input paused: true, partner still here: true"
+check net_stall_client "$LOGS/net_stall_client.log" "still in surgery: true"
+
 exit $failed

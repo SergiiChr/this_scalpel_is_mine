@@ -76,6 +76,7 @@ Two real game processes on localhost, one hosting and one joining.
 | N3 | The client hands the tool across the table to the host's hand |
 | N4 | Host and client end with the same painted wound map |
 | N5 | Host and client end with the same cut tissue (same number of severed springs) |
+| N6 | Spotty connection: the client process is frozen for 10 s mid-surgery (past ENet's default timeout). Nobody gets disconnected, both are still in the same surgery afterwards, and the host paused the silent player's tool while they were gone (`tests/net_stall_test.gd`) |
 
 ## Visual checks (not automated)
 
