@@ -7,19 +7,23 @@ extends Node3D
 const TABLE_HEIGHT := 0.85
 
 const LAYOUTS: Dictionary = {
+	# A cramped old operating room: about 1.3 m between the table and the cabinets behind you.
+	# Stations stand against the walls, so reaching them still means walking away from the table.
 	"or": {
-		"size": Vector3(8.0, 3.2, 7.0),
+		"size": Vector3(5.2, 2.8, 4.4),
 		"spawns": [Vector3(0.0, 0.0, 0.95), Vector3(0.0, 0.0, -0.95)],
 		"tray": Vector3(-1.4, 0.0, 0.0),
-		"manual": Vector3(3.3, 0.0, -2.8),
+		"manual": Vector3(1.9, 0.0, -2.0),
 		"card": Vector3(1.05, 0.0, 0.5),
-		"bell": Vector3(-3.4, 0.0, 2.7),
-		"gloves": Vector3(-3.4, 0.0, 1.9),
-		"sanitizer": Vector3(-3.4, 0.0, 1.1),
+		"bell": Vector3(-2.25, 0.0, 1.92),
+		"gloves": Vector3(-1.55, 0.0, 1.92),
+		"sanitizer": Vector3(2.25, 0.0, 1.92),
 		"iv": Vector3(0.95, 0.0, 0.85),
 		"monitor": Vector3(1.25, 1.55, -0.95),
-		"delivery": Vector3(-3.0, 0.0, 2.3),
-		"xray": Vector3(-2.3, 0.0, -2.4),
+		"delivery": Vector3(-2.25, 0.0, 1.92),
+		"xray": Vector3(-1.9, 0.0, -1.7),
+		# Stations turned to face the room (radians), the rest face +Z.
+		"yaw": {"bell": PI, "gloves": PI, "sanitizer": PI},
 	},
 	"ambulance": {
 		"size": Vector3(4.2, 2.1, 2.3),
@@ -158,7 +162,7 @@ func _build_environment() -> void:
 	overhead.shadow_enabled = true
 	add_child(overhead)
 	_flicker_lights.append(overhead)
-	var tubes := [Vector3(-2.0, size.y - 0.2, 1.5), Vector3(2.0, size.y - 0.2, -1.5)] if environment_id == "or" else [Vector3(0, size.y - 0.2, 0)]
+	var tubes := [Vector3(-size.x * 0.28, size.y - 0.2, size.z * 0.28), Vector3(size.x * 0.28, size.y - 0.2, -size.z * 0.28)] if environment_id == "or" else [Vector3(0, size.y - 0.2, 0)]
 	if not indoors:
 		tubes = [Vector3(3.0, 4.5, 2.0)]
 	for pos: Vector3 in tubes:
@@ -221,6 +225,9 @@ func _build_table() -> void:
 		ModelSlot.instantiate("props", "straps", self)
 	var lamp := ModelSlot.instantiate("props", "surgical_lamp", self)
 	lamp.position = Vector3(0.0, _lamp_height(), 0.0)
+	# The lamp head hangs right under the ceiling light; its shadow would black out the middle of the table.
+	for mesh in lamp.find_children("*", "MeshInstance3D", true, false):
+		(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	lamp.visible = environment_id != "sidewalk"
 
 
@@ -254,6 +261,7 @@ func _build_stations(s: Surgery) -> void:
 		xray.name = "XrayCart"
 		add_child(xray)
 		xray.position = layout.xray
+		xray.bounds = Vector2(layout.size.x, layout.size.z) * 0.5 - Vector2(0.45, 0.45)
 		xray.build(s)
 	Interactable.create(self, "Talk to the patient", Vector3(0.25, 0.3, 0.3), Vector3(0.92, 1.05, 0.0), s.comfort_patient)
 
@@ -262,4 +270,5 @@ func _station(key: String, prompt: String, size: Vector3, callback: Callable, he
 	var pos: Vector3 = layout[key]
 	var root := ModelSlot.instantiate("props", key, self)
 	root.position = pos
+	root.rotation.y = layout.get("yaw", {}).get(key, 0.0)
 	Interactable.create(self, prompt, size, pos + Vector3(0, height, 0), callback)

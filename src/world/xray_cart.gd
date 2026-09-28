@@ -15,6 +15,8 @@ const PRINT_SPOT := Vector3(0.0, 0.4, 0.45)
 var print_data: Dictionary = {}
 var printed_at_msec := 0
 var pusher := 0
+## Half the room's floor minus the cart's size: pushing it never shoves it into a wall. Zero means no walls.
+var bounds := Vector2.ZERO
 var _cooldown := 0.0
 var _exposing := 0.0
 var _sync_acc := 0.0
@@ -53,6 +55,8 @@ func _physics_process(delta: float) -> void:
 	if surgeon == null:
 		return
 	var target := surgeon.global_position - surgeon.global_basis.z * PUSH_OFFSET
+	if bounds != Vector2.ZERO:
+		target = Vector3(clampf(target.x, -bounds.x, bounds.x), 0.0, clampf(target.z, -bounds.y, bounds.y))
 	global_position = global_position.lerp(Vector3(target.x, 0.0, target.z), minf(delta * 8.0, 1.0))
 	rotation.y = lerp_angle(rotation.y, surgeon.rotation.y + PI, minf(delta * 8.0, 1.0))
 	_sync_acc += delta

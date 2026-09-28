@@ -65,7 +65,7 @@ func _ready() -> void:
 	camera.global_position = incision + Vector3(0.0, 0.16, 0.1)
 	camera.look_at(incision)
 	await _shot(out, "03b_tissue_layers")
-	camera.global_position = Vector3(3.0, 2.4, 3.0)
+	camera.global_position = Vector3(2.3, 2.5, 1.9)
 	camera.look_at(Vector3(0, 0.9, 0))
 	await _shot(out, "04_room")
 	var tray: Vector3 = surgery.room.layout.tray + Vector3(0, 0.95, 0)
