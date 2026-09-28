@@ -14,8 +14,11 @@ func _init(source: XrayCart) -> void:
 	custom_minimum_size = SIZE
 
 
+## Redraws only while the print develops; once it's done the picture never changes.
 func _process(_delta: float) -> void:
 	queue_redraw()
+	if cart.developed() >= 1.0:
+		set_process(false)
 
 
 func _draw() -> void:

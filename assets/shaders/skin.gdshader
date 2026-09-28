@@ -65,8 +65,10 @@ void light() {
 	float lit = floor(ndl * bands + 0.5) / bands * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	float spec = step(mix(0.96, 0.999, ROUGHNESS), dot(NORMAL, halfway)) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.8, 1.0 - ROUGHNESS) / PI;
+	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
+	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
+	float spec = step(mix(0.995, 0.9, ROUGHNESS), dot(NORMAL, halfway)) * ATTENUATION;
+	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.8, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * step(0.5, rim) * rim_strength * lit / PI;
 }

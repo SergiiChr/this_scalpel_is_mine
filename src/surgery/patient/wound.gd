@@ -8,6 +8,8 @@ enum Kind { CUT, TEAR, BURN, PUNCTURE, GUNSHOT, INTERNAL }
 ## ml/s per meter of fully deep, fully open wound.
 const BLEED_PER_METER := 35.0
 const BIN_LENGTH_UV := 0.015
+## A stroke reports a point every frame; closer than this the last point just moves, so long cuts stay cheap to query.
+const POINT_SPACING_UV := 0.006
 
 var id: int
 var kind: Kind
@@ -27,6 +29,7 @@ var made_by_surgeon := false
 var bins := PackedFloat32Array()
 ## Weighted closure quality, lower bursts easier.
 var closure_quality := 1.0
+var _length := 0.0
 
 
 func _init(wound_id: int, wound_kind: Kind, a: Vector2, wound_depth: float) -> void:
@@ -42,15 +45,18 @@ func is_internal() -> bool:
 
 
 func extend(point: Vector2) -> void:
-	points.append(point)
+	var last := points.size() - 1
+	if last >= 1 and points[last - 1].distance_to(point) < POINT_SPACING_UV:
+		_length += points[last - 1].distance_to(point) - points[last - 1].distance_to(points[last])
+		points[last] = point
+	else:
+		_length += points[last].distance_to(point)
+		points.append(point)
 	_resize_bins()
 
 
 func length_uv() -> float:
-	var total := 0.0
-	for i in range(1, points.size()):
-		total += points[i - 1].distance_to(points[i])
-	return total
+	return _length
 
 
 func closure() -> float:
@@ -114,5 +120,6 @@ func midpoint() -> Vector2:
 	return bin_position(bins.size() / 2) if points.size() > 1 else points[0]
 
 
+## Bins only grow: moving the last point back a little never throws away closure progress.
 func _resize_bins() -> void:
-	bins.resize(maxi(1, ceili(length_uv() / BIN_LENGTH_UV)))
+	bins.resize(maxi(maxi(bins.size(), ceili(_length / BIN_LENGTH_UV)), 1))

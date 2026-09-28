@@ -23,6 +23,8 @@ var session_seed := 0
 var patient_quirks: Array = []
 ## Run modifier ids (data/run_modifiers.cfg), rolled in the lobby so players see them before starting.
 var run_modifiers: Array = []
+## True from the start of a surgery until everyone is back in the lobby. Nobody can join in the middle.
+var in_session := false
 var _rng := RandomNumberGenerator.new()
 
 
@@ -76,6 +78,7 @@ func leave() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	roster.clear()
+	in_session = false
 
 
 func back_to_menu() -> void:
@@ -161,6 +164,9 @@ func _request_ready(value: bool) -> void:
 func _register(player_name: String) -> void:
 	if not is_host():
 		return
+	if in_session:
+		multiplayer.multiplayer_peer.disconnect_peer(_sender())
+		return
 	roster[_sender()] = _new_player(player_name)
 	_sync_lobby.rpc(roster, scenario_id, run_modifiers)
 
@@ -185,6 +191,7 @@ func _begin(seed_value: int, patient: Array, final_roster: Dictionary, scenario:
 	patient_quirks = patient
 	roster = final_roster
 	scenario_id = scenario
+	in_session = true
 	for roll: Dictionary in local_quirks():
 		Progress.unlock(Db.quirk(QuirkDef.Kind.SURGEON, roll.id), roll.variant)
 	session_started.emit()
@@ -193,6 +200,7 @@ func _begin(seed_value: int, patient: Array, final_roster: Dictionary, scenario:
 
 @rpc("authority", "call_local", "reliable")
 func _go_to_lobby() -> void:
+	in_session = false
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 
 

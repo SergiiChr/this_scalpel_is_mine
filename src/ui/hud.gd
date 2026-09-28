@@ -78,8 +78,10 @@ func _process(delta: float) -> void:
 	_update_hands(me)
 	_update_gauges(me)
 	_prompt.text = "[%s] %s" % [InputActions.binding_text("interact"), me.focused.prompt] if me.focused and _overlay == null else ""
-	if _prompt.text.is_empty() and me.held_tool(me.active) and not me.pass_target(me.active).is_empty():
-		_prompt.text = "[%s] Pass to %s" % [InputActions.binding_text("grab"), (me.pass_target(me.active)[0] as Surgeon).display_name]
+	if _prompt.text.is_empty() and me.held_tool(me.active):
+		var partner := me.pass_target(me.active)
+		if not partner.is_empty():
+			_prompt.text = "[%s] Pass to %s" % [InputActions.binding_text("grab"), (partner[0] as Surgeon).display_name]
 	_subtitle_timer -= delta
 	if _subtitle_timer <= 0.0:
 		_subtitle.text = ""

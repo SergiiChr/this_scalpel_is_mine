@@ -50,7 +50,7 @@ var environment_id := "or"
 var layout: Dictionary
 var monitor: PatientMonitor
 var xray: XrayCart
-var _flicker_lights: Array[OmniLight3D] = []
+var _flicker_lights: Array[Light3D] = []
 
 
 func build(env: String, surgery: Surgery) -> void:
@@ -84,14 +84,20 @@ func delivery_spot() -> Vector3:
 	return layout.delivery + Vector3(randf_range(-0.1, 0.1), 1.0, randf_range(-0.1, 0.1))
 
 
-## Flickering tubes, the one cheap trick every horror hospital needs.
+## Flickering room lights, the one cheap trick every horror hospital needs. The surgical lamp stays on.
 func flicker(duration: float) -> void:
 	for light in _flicker_lights:
+		# Remember the steady brightness so a flicker that starts during another one doesn't dim the room for good.
+		var energy: float = light.get_meta("energy", light.light_energy)
+		light.set_meta("energy", energy)
+		if light.has_meta("tween"):
+			(light.get_meta("tween") as Tween).kill()
 		var tween := create_tween()
+		light.set_meta("tween", tween)
 		for i in int(duration * 6.0):
-			tween.tween_property(light, "light_energy", randf_range(0.0, 0.1), 0.06)
-			tween.tween_property(light, "light_energy", randf_range(0.2, 0.4), 0.1)
-		tween.tween_property(light, "light_energy", 0.3, 0.1)
+			tween.tween_property(light, "light_energy", randf_range(0.0, 0.2) * energy, 0.06)
+			tween.tween_property(light, "light_energy", randf_range(0.6, 1.0) * energy, 0.1)
+		tween.tween_property(light, "light_energy", energy, 0.1)
 
 
 func _build_environment() -> void:
@@ -100,7 +106,7 @@ func _build_environment() -> void:
 	env.background_color = Color(0.02, 0.025, 0.03) if environment_id != "sidewalk" else Color(0.03, 0.035, 0.06)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.3, 0.42, 0.42)
-	env.ambient_light_energy = 0.3
+	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
 	env.glow_intensity = 0.4
@@ -114,30 +120,59 @@ func _build_environment() -> void:
 	world.environment = env
 	add_child(world)
 
+	var size: Vector3 = layout.size
+	var indoors := environment_id != "sidewalk"
+	# The surgical lamp's light starts just under its lens: from inside the lamp head it would shadow itself.
 	var lamp := SpotLight3D.new()
 	lamp.name = "SurgicalLamp"
-	lamp.position = Vector3(0, 2.4, 0)
+	lamp.position = Vector3(0, _lamp_height() - 0.14, 0)
 	lamp.rotation.x = -PI / 2
-	lamp.spot_range = 3.5
-	lamp.spot_angle = 28.0
-	lamp.light_energy = 1.4
-	lamp.spot_attenuation = 0.6
+	lamp.spot_range = 3.0
+	lamp.spot_angle = 30.0
+	lamp.light_energy = 1.0
+	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.9)
 	lamp.shadow_enabled = true
 	add_child(lamp)
-	var size: Vector3 = layout.size
-	var tubes := [Vector3(-2.0, size.y - 0.2, 1.5), Vector3(2.0, size.y - 0.2, -1.5)] if environment_id == "or" else [Vector3(0, 2.0, 0)]
-	if environment_id == "sidewalk":
+	# Overhead room light: a ceiling panel over the table that lights the whole room from above.
+	if indoors:
+		var panel := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(1.4, 0.04, 0.5)
+		panel.mesh = box
+		panel.material_override = Materials.glow(Color(0.95, 1.0, 0.97))
+		panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		panel.position = Vector3(0, size.y - 0.03, 0)
+		add_child(panel)
+	var overhead := SpotLight3D.new()
+	overhead.name = "Overhead"
+	overhead.position = Vector3(0, size.y - 0.08, 0) if indoors else Vector3(3.0, 4.6, 2.9)
+	overhead.rotation.x = -PI / 2 if indoors else -0.75
+	# Outside it hangs off the streetlight and leans toward the table.
+	overhead.rotation.y = 0.0 if indoors else 0.8
+	overhead.spot_range = 12.0
+	overhead.spot_angle = 70.0
+	overhead.spot_attenuation = 0.3
+	overhead.light_energy = 0.9 if indoors else 1.1
+	overhead.light_color = Color(0.92, 1.0, 0.95) if indoors else Color(1.0, 0.75, 0.45)
+	overhead.shadow_enabled = true
+	add_child(overhead)
+	_flicker_lights.append(overhead)
+	var tubes := [Vector3(-2.0, size.y - 0.2, 1.5), Vector3(2.0, size.y - 0.2, -1.5)] if environment_id == "or" else [Vector3(0, size.y - 0.2, 0)]
+	if not indoors:
 		tubes = [Vector3(3.0, 4.5, 2.0)]
 	for pos: Vector3 in tubes:
 		var tube := OmniLight3D.new()
 		tube.position = pos
 		tube.omni_range = 9.0
-		tube.light_color = Color(0.75, 0.95, 0.85) if environment_id != "sidewalk" else Color(1.0, 0.7, 0.35)
-		tube.light_energy = 0.3
-		tube.shadow_enabled = environment_id == "sidewalk"
+		tube.light_color = Color(0.75, 0.95, 0.85) if indoors else Color(1.0, 0.7, 0.35)
+		tube.light_energy = 0.6
 		add_child(tube)
 		_flicker_lights.append(tube)
+
+
+func _lamp_height() -> float:
+	return 2.35 if environment_id == "or" else 1.95
 
 
 func _build_shell() -> void:
@@ -185,7 +220,7 @@ func _build_table() -> void:
 	if environment_id != "or":
 		ModelSlot.instantiate("props", "straps", self)
 	var lamp := ModelSlot.instantiate("props", "surgical_lamp", self)
-	lamp.position = Vector3(0.0, 2.35, 0.0) if environment_id == "or" else Vector3(0.0, 1.95, 0.0)
+	lamp.position = Vector3(0.0, _lamp_height(), 0.0)
 	lamp.visible = environment_id != "sidewalk"
 
 

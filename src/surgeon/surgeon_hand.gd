@@ -34,6 +34,7 @@ var _history: Array = []
 ## Set by the surgeon each frame; drives how far the fingers curl.
 var holding := false
 var _curl := 0.2
+var _posed_curl := -1.0
 var _glove: Node3D
 var _glove_rig: BoneRig
 ## Where the glove's wrist sits in the hand's frame; the forearm ends there, not at the grip.
@@ -121,8 +122,10 @@ func _track_speed() -> void:
 func _animate_fingers(delta: float) -> void:
 	var target := 1.0 if holding and engaged else 0.75 if holding else 0.15
 	_curl = move_toward(_curl, target, delta * 4.0)
-	if _glove_rig == null:
+	# Posing 15 bones only matters while the curl changes, which is a fraction of the time.
+	if _glove_rig == null or _curl == _posed_curl:
 		return
+	_posed_curl = _curl
 	for finger: String in FINGERS:
 		for joint in 3:
 			var bone := "%s%d" % [finger, joint + 1]

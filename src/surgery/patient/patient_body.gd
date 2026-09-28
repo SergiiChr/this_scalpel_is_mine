@@ -50,6 +50,9 @@ var _layer_steps := -1
 var _layer_uvs := PackedVector2Array()
 var _organ_last: Array[Vector3] = []
 var _jiggle: Array[Vector2] = []
+## Reused by part_at(), which runs every physics frame for every held tool.
+var _part_query := PhysicsShapeQueryParameters3D.new()
+var _part_sphere := SphereShape3D.new()
 
 
 func build(site_name: String, tone: Color, age_scale: float) -> void:
@@ -153,13 +156,11 @@ func probe(p: Vector3) -> Dictionary:
 
 
 func part_at(p: Vector3, radius: float = 0.025) -> String:
-	var query := PhysicsShapeQueryParameters3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = radius
-	query.shape = sphere
-	query.transform = Transform3D(Basis.IDENTITY, p)
-	query.collision_mask = PATIENT_LAYER
-	for hit in get_world_3d().direct_space_state.intersect_shape(query, 4):
+	_part_sphere.radius = radius
+	_part_query.shape = _part_sphere
+	_part_query.transform = Transform3D(Basis.IDENTITY, p)
+	_part_query.collision_mask = PATIENT_LAYER
+	for hit in get_world_3d().direct_space_state.intersect_shape(_part_query, 4):
 		var collider: Object = hit.collider
 		if collider.has_meta("part"):
 			return collider.get_meta("part")

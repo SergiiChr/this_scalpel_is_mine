@@ -75,14 +75,20 @@ func is_improvised() -> bool:
 ## Germaphobe quirk: unsterile tools glow for this player only.
 func show_contamination(visible_to_me: bool) -> void:
 	var glow := 0.0 if sterile or not visible_to_me else 1.0
-	for mesh in _model.find_children("*", "MeshInstance3D", true, false):
-		var mat := (mesh as MeshInstance3D).material_override
-		if mat is ShaderMaterial and (mat as ShaderMaterial).shader == Materials.TOON:
-			if glow > 0.0 and not mesh.has_meta("unique"):
-				mat = (mat as ShaderMaterial).duplicate()
-				(mesh as MeshInstance3D).material_override = mat
-				mesh.set_meta("unique", true)
-			(mat as ShaderMaterial).set_shader_parameter("contamination", glow)
+	for node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		# Toon materials are shared between tools, so a tool glows on copies of its own.
+		var copy := glow > 0.0 and not mesh.has_meta("unique")
+		for i in mesh.get_surface_override_material_count():
+			var mat := mesh.get_surface_override_material(i) as ShaderMaterial
+			if mat == null or mat.shader != Materials.TOON:
+				continue
+			if copy:
+				mat = mat.duplicate() as ShaderMaterial
+				mesh.set_surface_override_material(i, mat)
+			mat.set_shader_parameter("contamination", glow)
+		if copy:
+			mesh.set_meta("unique", true)
 
 
 func set_state(new_state: State, new_holder: int, new_slot: int) -> void:

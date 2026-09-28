@@ -193,6 +193,18 @@ func drink(peer: int, hand: int) -> String:
 	return tool.def.id
 
 
+## Host: a surgeon left, so everything in their hands and on their belt drops. Standing clamps keep holding.
+func drop_all(peer: int) -> void:
+	for tool: SurgicalTool in tools.values():
+		if tool.holder != peer or not tool.state in [SurgicalTool.State.HELD, SurgicalTool.State.BELT]:
+			continue
+		if not tool.grip_info.is_empty():
+			Surgery.current.patient.release_grip(tool.uid, tool.grip_info, false)
+			tool.grip_info = {}
+		_set_state.rpc(tool.uid, SurgicalTool.State.FREE, 0, -1, tool.global_transform)
+		tool.set_meta("falling", true)
+
+
 func retained_count() -> int:
 	return tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.INSIDE).size()
 

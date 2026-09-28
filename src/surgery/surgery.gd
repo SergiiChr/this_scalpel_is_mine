@@ -11,6 +11,8 @@ static var current: Surgery
 const STATUS_INTERVAL := 0.5
 const QTE_KEYS: PackedStringArray = ["move_forward", "move_back", "move_left", "move_right"]
 const QTE_TIMEOUT := 10.0
+## Tools report their sound every physics frame while in use; one per this many msec per sound is plenty.
+const SOUND_REPEAT_MSEC := 90
 
 @onready var room: Room = $Room
 @onready var patient: Patient = $Patient
@@ -41,6 +43,7 @@ var _loaded: Dictionary = {}
 var _announced: Dictionary = {}
 var _status_acc := 0.0
 var _qte: Dictionary = {}
+var _sound_msec: Dictionary = {}
 
 
 func _enter_tree() -> void:
@@ -72,6 +75,7 @@ func _ready() -> void:
 	objectives.setup(scenario)
 	director.setup(scenario, Net.session_seed)
 	hud.setup(self)
+	multiplayer.peer_disconnected.connect(_on_peer_left)
 	_peer_ready.rpc_id(1)
 
 
@@ -122,6 +126,24 @@ func _physics_process(delta: float) -> void:
 		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "nurse": nurse.cooldown_left, "lab": lab.cooldown_left, "elapsed": elapsed})
 
 
+## A partner dropped out: their tools fall where they are and their surgeon leaves the room.
+## Clients only ever see the host leave, and Net takes them back to the menu for that.
+func _on_peer_left(peer: int) -> void:
+	var surgeon: Surgeon = surgeons.get(peer)
+	if surgeon == null:
+		return
+	if multiplayer.is_server():
+		tools.drop_all(peer)
+		if _qte.has("peers"):
+			_qte.peers.erase(peer)
+			_qte.results.erase(peer)
+		announce("%s left the operation." % surgeon.display_name)
+		if not running:
+			_try_start()
+	surgeons.erase(peer)
+	surgeon.queue_free()
+
+
 func time_left() -> float:
 	return maxf(scenario.time_limit - elapsed, 0.0) if scenario.time_limit > 0 else -1.0
 
@@ -161,6 +183,10 @@ func tell(peer: int, text: String) -> void:
 
 ## Host: play a sound on every peer.
 func sound(id: String, at: Vector3 = Vector3.INF) -> void:
+	var now := Time.get_ticks_msec()
+	if now - int(_sound_msec.get(id, -SOUND_REPEAT_MSEC)) < SOUND_REPEAT_MSEC:
+		return
+	_sound_msec[id] = now
 	_sound.rpc(id, at)
 
 
@@ -318,7 +344,11 @@ func _show_report(report: Dictionary) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _peer_ready() -> void:
 	_loaded[Net._sender()] = true
-	if Net.roster.keys().all(func(peer: int) -> bool: return _loaded.has(peer)):
+	_try_start()
+
+
+func _try_start() -> void:
+	if not running and Net.roster.keys().all(func(peer: int) -> bool: return _loaded.has(peer)):
 		_start.rpc()
 
 
@@ -457,6 +487,9 @@ func _req_turn() -> void:
 		return
 	var center := patient.global_position
 	var near := surgeons.keys().filter(func(p: int) -> bool: return (surgeons[p] as Surgeon).global_position.distance_to(center) < 1.5)
+	if near.is_empty():
+		tell(peer, "Get closer to the table to turn them.")
+		return
 	var sides := near.map(func(p: int) -> float: return signf((surgeons[p] as Surgeon).global_position.z))
 	if sides.any(func(s: float) -> bool: return s != sides[0]):
 		tell(peer, "Get on the same side of the table to turn them.")
