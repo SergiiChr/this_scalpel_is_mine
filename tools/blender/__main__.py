@@ -15,6 +15,7 @@ from . import anatomy, hand, patient, scene
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build" / "blender_review"
+ASSETS = ROOT / "assets" / "models"
 
 
 def _hand() -> list[Path]:
@@ -44,12 +45,15 @@ def _patient() -> list[Path]:
 TURNAROUND = [("top", (0.1, 1.0, 0.15)), ("front", (0.0, 0.25, 1.0)), ("side", (1.0, 0.25, 0.0)), ("three_quarter", (0.8, 0.7, 0.8))]
 
 
-def _still(name: str, build: Callable[[], None]) -> Callable[[], list[Path]]:
-    """A model with no rig: build, export, render it from four sides."""
+def _still(name: str, build: Callable[[], None], ship: str = "") -> Callable[[], list[Path]]:
+    """A model with no rig: build, export, render it from four sides.
+    ship = "category" also writes it into assets/models/<category>/ for the game (approved or brand-new models)."""
 
     def run() -> list[Path]:
         build()
         scene.export(OUT / f"{name}.glb")
+        if ship:
+            scene.export(ASSETS / ship / f"{name}.glb")
         return scene.render_views(OUT, name, TURNAROUND)
 
     return run
@@ -66,6 +70,8 @@ MODELS: dict[str, Callable[[], list[Path]]] = {
     "clot": _still("clot", anatomy.clot),
     "bone": _still("bone", anatomy.bone),
     "fragment": _still("fragment", anatomy.fragment),
+    "rib": _still("rib", anatomy.rib, ship="targets"),
+    "splinter": _still("splinter", anatomy.splinter, ship="targets"),
 }
 
 

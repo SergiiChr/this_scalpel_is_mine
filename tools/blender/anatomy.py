@@ -194,3 +194,76 @@ def fragment() -> None:
     marrow = scene.remesh(scene.curve_tube("Marrow", [(-0.034, 0.0, 0.0), (0.028, 0.0, 0.0)], 0.0054, resolution=24), 0.0004)
     marrow = scene.displace(marrow, 0.0012, 0.0012, detail=3, seed=4)
     scene.finish(scene.decimate(marrow, 0.3), _wet("marrow", MARROW))
+
+
+def _rib_curve(z: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Ribs bow back toward the spine as they run out to the side."""
+    return -1.4 * z * z
+
+
+def _flatten_rib(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """A rib is a flat bar, not a rod: squash the tube front to back and keep its height."""
+    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+    center = _rib_curve(np.clip(z, 0.0, None))
+    return np.column_stack([x, center + (y - center) * 0.42, z])
+
+
+# Boxes that snap the rib at the origin into a jagged, spiked break (center, size, rotation in degrees).
+RIB_BREAK: list[tuple[Vec3, Vec3, Vec3]] = [
+    ((0.006, 0.0, -0.009), (0.016, 0.03, 0.02), (0.0, 30.0, 0.0)),
+    ((-0.007, 0.0, -0.006), (0.014, 0.03, 0.02), (0.0, -38.0, 0.0)),
+    ((0.0, 0.009, -0.005), (0.03, 0.012, 0.016), (-25.0, 0.0, 0.0)),
+    ((0.003, -0.006, 0.0005), (0.006, 0.006, 0.006), (20.0, 35.0, 10.0)),
+]
+
+
+def _rib_bar(name: str, radius: float) -> bpy.types.Object:
+    zs = np.linspace(-0.012, 0.078, 10)
+    path: list[Vec3] = [(0.0, float(_rib_curve(np.array([max(z, 0.0)]))[0]), float(z)) for z in zs]
+    bar = scene.remesh(scene.curve_tube(name, path, radius, resolution=24), 0.0004)
+    return scene.remesh(scene.deform(bar, _flatten_rib), 0.0004, smooth=3)
+
+
+def rib() -> None:
+    """One end of a broken rib: a curved flat bar from the jagged break at the origin out along +Z.
+    Hard bone outside, spongy red marrow inside that shows at the break."""
+    shell = scene.subtract(_rib_bar("Rib", 0.0066), _rib_bar("Hollow", 0.0048))
+    shell = scene.fracture(shell, RIB_BREAK)
+    shell = scene.displace(shell, 0.0001, 0.004, seed=32)
+    scene.finish(scene.decimate(shell, 0.3), scene.material("bone", BONE, roughness=0.55, subsurface=0.05))
+    core = scene.fracture(_rib_bar("Marrow", 0.0049), RIB_BREAK)
+    core = scene.displace(core, 0.00035, 0.0008, detail=3, seed=33)
+    scene.finish(scene.decimate(core, 0.3), _wet("marrow", MARROW))
+
+
+def splinter() -> None:
+    """A sliver of rib that broke off and stuck in the lung: long flat facets where it split,
+    a ragged blunt end where it snapped off, a needle point that went in."""
+    rng = np.random.default_rng(5)
+    # Irregular cross-section, wider than thick, like a strip of cortex.
+    angles = np.array([0.0, 0.9, 1.7, 2.9, 3.6, 4.7, 5.5])
+    radii = np.array([1.0, 0.75, 0.9, 1.0, 0.7, 0.85, 0.8])
+    section = np.column_stack([np.sin(angles) * radii * 0.0021, np.cos(angles) * radii * 0.0036])
+    xs = np.array([-0.014, -0.0125, -0.008, -0.002, 0.004, 0.009, 0.0125, 0.0155])
+    scale = np.array([0.72, 0.95, 1.0, 0.95, 0.75, 0.48, 0.22, 0.02])
+    verts: list[Vec3] = []
+    for x, k in zip(xs, scale, strict=True):
+        wobble = rng.normal(size=(len(angles), 2)) * 0.00025 * (1.0 if x < -0.013 else 0.3)
+        bend = 6.0 * x * x
+        for (y, z), (dy, dz) in zip(section * k, wobble, strict=True):
+            verts.append((float(x), float(y + dy + bend), float(z + dz)))
+    n = len(angles)
+    faces: list[list[int]] = []
+    for i in range(len(xs) - 1):
+        for j in range(n):
+            a, b = i * n + j, i * n + (j + 1) % n
+            faces.append([a, b, b + n, a + n])
+    faces.append(list(range(n))[::-1])
+    faces.append([(len(xs) - 1) * n + j for j in range(n)])
+    shard = scene.mesh_object("Splinter", verts, faces)
+    # Keep the split facets crisp but break up their flat faces with fine grain.
+    sub = shard.modifiers.new("Detail", "SUBSURF")
+    sub.subdivision_type = "SIMPLE"
+    sub.levels = sub.render_levels = 3
+    shard = scene.displace(scene.bake(shard), 0.00007, 0.0006, detail=3, seed=41)
+    scene.finish(shard, scene.material("bone", BONE, roughness=0.55, subsurface=0.05))

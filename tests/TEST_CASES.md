@@ -35,7 +35,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 
 Runs each of the 23 scenarios solo, with rolled surgeon and patient quirks and **all** run modifiers on at once:
 
-hand_stitch, hand_stitch_child, appendectomy, bullet_muscle, sidewalk_stab, ambulance_bullet, open_fracture, slit_throat, knife_back, bullet_stomach, collapsed_lung, lung_fluid, gangrene_amputation, burn_graft, nose_job, oscar_figurine, blocked_artery, heart_attack, colon_cancer, bullet_near_heart, leg_extension, brain_tumor, euthanasia.
+hand_stitch, hand_stitch_child, appendectomy, bullet_muscle, sidewalk_stab, ambulance_bullet, open_fracture, slit_throat, knife_back, bullet_stomach, broken_ribs, lung_fluid, gangrene_amputation, burn_graft, nose_job, oscar_figurine, blocked_artery, heart_attack, colon_cancer, bullet_near_heart, leg_extension, brain_tumor, euthanasia.
 
 For each scenario, with no script errors:
 

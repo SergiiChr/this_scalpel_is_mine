@@ -37,6 +37,8 @@ func setup(target_index: int, data: Dictionary, mirrored: bool) -> void:
 	surge = data.get("surge", 0.0)
 	covered = data.get("covered", false)
 	name = "%s_%d" % [kind.capitalize(), index]
+	# Degrees around the vertical, e.g. to lay a rib across the chest.
+	rotation.y = deg_to_rad(data.get("yaw", 0.0))
 	ModelSlot.instantiate("targets", kind, self)
 
 
@@ -44,8 +46,9 @@ func is_suction_target() -> bool:
 	return remove_with == "suction"
 
 
+## Broken bone ends to line back up (the align objective), not something to take out.
 func is_fragment() -> bool:
-	return kind == "fragment"
+	return kind in ["fragment", "rib"]
 
 
 func is_aligned(tolerance: float = 0.01) -> bool:

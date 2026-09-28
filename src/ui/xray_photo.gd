@@ -47,14 +47,16 @@ func _draw_anatomy(site: String, fade: Callable) -> void:
 	var soft: Color = fade.call(Color(0.14, 0.16, 0.17))
 	draw_rect(FILM.grow(-30), soft)
 	match site:
+		# Site u runs along the body (head to the right), v across it: the spine is horizontal, ribs cross it.
 		"chest", "abdomen", "back", "shoulder":
-			draw_rect(Rect2(_uv(Vector2(0.46, 0.0)), Vector2(0.08, 1.0) * FILM.size), bone)
+			draw_rect(Rect2(_uv(Vector2(0.0, 0.46)), Vector2(1.0, 0.08) * FILM.size), bone)
 			if site != "abdomen":
+				var r := FILM.size.y * 0.5
 				for i in 6:
-					var y := 0.1 + i * 0.15
-					draw_arc(_uv(Vector2(0.5, y + 0.25)), FILM.size.x * 0.42, PI * 1.15, PI * 1.85, 24, bone, 7.0)
+					var apex := _uv(Vector2(0.18 + i * 0.14, 0.5))
+					draw_arc(apex - Vector2(r, 0.0), r, -PI * 0.3, PI * 0.3, 24, bone, 7.0)
 			else:
-				draw_arc(_uv(Vector2(0.5, 1.15)), FILM.size.x * 0.45, PI * 1.1, PI * 1.9, 32, bone, 16.0)
+				draw_arc(_uv(Vector2(-0.15, 0.5)), FILM.size.y * 0.45, -PI * 0.4, PI * 0.4, 32, bone, 16.0)
 		"head", "face":
 			draw_circle(_uv(Vector2(0.5, 0.5)), FILM.size.x * 0.42, bone)
 			draw_circle(_uv(Vector2(0.5, 0.5)), FILM.size.x * 0.39, soft)
@@ -76,6 +78,12 @@ func _draw_shape(shape: Array, fade: Callable) -> void:
 		"tool":
 			var dir := Vector2.UP.rotated(float(shape[3]))
 			draw_line(at - dir * 70.0, at + dir * 70.0, metal, 7.0)
+		"rib":
+			# A rib end runs from the break toward the side it came from (yaw 180 points the other way).
+			var along := Vector2(0.0, -70.0 if absf(float(shape[3])) > PI * 0.5 else 70.0)
+			draw_line(at, at + along + Vector2(-6.0, 0.0), fade.call(Color(0.7, 0.7, 0.68)), 9.0)
+		"splinter":
+			draw_line(at - Vector2(10.0, 12.0), at + Vector2(10.0, 12.0), fade.call(Color(0.75, 0.75, 0.72)), 4.0)
 		"bone", "fragment":
 			draw_rect(Rect2(at - Vector2(120, 14), Vector2(240, 28)), fade.call(Color(0.62, 0.62, 0.6)))
 		"tumor", "clot", "appendix":

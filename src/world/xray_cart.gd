@@ -78,7 +78,7 @@ func _develop() -> void:
 	var shapes: Array = []
 	for target in patient.targets:
 		if not target.extracted or target.remove_with in ["saw", "smash"]:
-			shapes.append([target.kind, target.uv, target.depth])
+			shapes.append([target.kind, target.uv, target.depth, target.rotation.y])
 	for tool: SurgicalTool in _surgery.tools.tools.values():
 		if tool.state == SurgicalTool.State.INSIDE:
 			shapes.append(["tool", patient.body.world_to_uv(tool.global_position), 0.05, tool.global_rotation.y])

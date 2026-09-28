@@ -207,6 +207,27 @@ def remesh(obj: bpy.types.Object, voxel: float, smooth: int = 0) -> bpy.types.Ob
     return bake(obj)
 
 
+def box(name: str, center: Vec3, size: Vec3, rotation: Vec3 = (0.0, 0.0, 0.0)) -> bpy.types.Object:
+    """A box in game space (full size, rotation in degrees around game X, Y, Z), mostly used as a boolean cutter."""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    rx, ry, rz = (math.radians(a) for a in rotation)
+    # Game axes X, Y, Z are Blender X, Z, -Y.
+    turn = Matrix.Rotation(rx, 4, "X") @ Matrix.Rotation(ry, 4, "Z") @ Matrix.Rotation(-rz, 4, "Y")
+    bmesh.ops.transform(bm, matrix=Matrix.Translation(to_blender(center)) @ turn @ Matrix.Diagonal((size[0], size[2], size[1], 1.0)), verts=bm.verts)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    return link(bpy.data.objects.new(name, mesh))
+
+
+def fracture(obj: bpy.types.Object, cuts: Sequence[tuple[Vec3, Vec3, Vec3]]) -> bpy.types.Object:
+    """Chips flat, angular facets off a mesh with (center, size, rotation) boxes, like a snapped bone or shard."""
+    for i, (center, size, rotation) in enumerate(cuts):
+        obj = subtract(obj, box(f"Chip{i}", center, size, rotation))
+    return obj
+
+
 def subtract(obj: bpy.types.Object, cutter: bpy.types.Object) -> bpy.types.Object:
     """Boolean difference; the cutter is consumed."""
     mod = obj.modifiers.new("Subtract", "BOOLEAN")
