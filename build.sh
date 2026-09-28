@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # One-stop launcher and builder for Fedora (or any x86_64 Linux).
-#   ./build.sh          Export a standalone executable to build/ThisScalpelIsMine.x86_64
+#   ./build.sh          Run the tests, then export a standalone executable to build/ThisScalpelIsMine.x86_64
+#   ./build.sh test     Run the tests only (tests/run_tests.sh, cases in tests/TEST_CASES.md)
 #   ./build.sh run      Run the game straight from source
 #   ./build.sh editor   Open the project in the Godot editor
+# SKIP_TESTS=1 ./build.sh exports without testing.
 # Godot is downloaded into ./.tools on first use.
 # Export templates (~1 GB download, only the Linux ones are kept) go where Godot expects them.
 # Set GODOT_BIN to use your own Godot binary of the same version instead.
@@ -49,7 +51,11 @@ case "${1:-build}" in
 	editor)
 		exec "$GODOT" --editor --path "$ROOT"
 		;;
+	test)
+		GODOT="$GODOT" exec "$ROOT/tests/run_tests.sh"
+		;;
 	build)
+		[[ "${SKIP_TESTS:-0}" == 1 ]] || GODOT="$GODOT" "$ROOT/tests/run_tests.sh"
 		fetch_templates
 		import_project
 		mkdir -p "$ROOT/build"
@@ -57,7 +63,7 @@ case "${1:-build}" in
 		echo "Done: $OUTPUT"
 		;;
 	*)
-		echo "Usage: $0 [build|run|editor]" >&2
+		echo "Usage: $0 [build|test|run|editor]" >&2
 		exit 1
 		;;
 esac
