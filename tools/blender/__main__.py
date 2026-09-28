@@ -50,12 +50,14 @@ def _patient() -> list[Path]:
 TURNAROUND = [("top", (0.1, 1.0, 0.15)), ("front", (0.0, 0.25, 1.0)), ("side", (1.0, 0.25, 0.0)), ("three_quarter", (0.8, 0.7, 0.8))]
 
 
-def _still(name: str, build: Callable[[], None], ship: str = "") -> Callable[[], list[Path]]:
-    """A model with no rig: build, export, render it from four sides.
+def _still(name: str, build: Callable[[], None], budget: int, ship: str = "") -> Callable[[], list[Path]]:
+    """A model with no rig: build, trim to its triangle budget, export, render it from four sides.
     ship = "category" also writes it into assets/models/<category>/ for the game (approved or brand-new models)."""
 
     def run() -> list[Path]:
         build()
+        scene.clean()
+        scene.fit_all(budget)
         scene.export(OUT / f"{name}.glb")
         if ship:
             scene.export(ASSETS / ship / f"{name}.glb")
@@ -64,19 +66,34 @@ def _still(name: str, build: Callable[[], None], ship: str = "") -> Callable[[],
     return run
 
 
+# Triangles per model. Organs and targets are small on screen and several can be out at once;
+# tests/models_test.gd holds the shipped files to the same numbers.
+BUDGETS = {
+    "bowel": 7000,
+    "lobe": 5000,
+    "sac": 5000,
+    "appendix": 4000,
+    "tumor": 4000,
+    "clot": 2500,
+    "bone": 5000,
+    "fragment": 4000,
+    "rib": 4000,
+    "splinter": 2000,
+}
+
 MODELS: dict[str, Callable[[], list[Path]]] = {
     "patient": _patient,
     "glove": _hand,
-    "bowel": _still("bowel", anatomy.bowel, ship="organs"),
-    "lobe": _still("lobe", anatomy.lobe, ship="organs"),
-    "sac": _still("sac", anatomy.sac, ship="organs"),
-    "appendix": _still("appendix", anatomy.appendix, ship="targets"),
-    "tumor": _still("tumor", anatomy.tumor, ship="targets"),
-    "clot": _still("clot", anatomy.clot, ship="targets"),
-    "bone": _still("bone", anatomy.bone, ship="targets"),
-    "fragment": _still("fragment", anatomy.fragment, ship="targets"),
-    "rib": _still("rib", anatomy.rib, ship="targets"),
-    "splinter": _still("splinter", anatomy.splinter, ship="targets"),
+    "bowel": _still("bowel", anatomy.bowel, BUDGETS["bowel"], ship="organs"),
+    "lobe": _still("lobe", anatomy.lobe, BUDGETS["lobe"], ship="organs"),
+    "sac": _still("sac", anatomy.sac, BUDGETS["sac"], ship="organs"),
+    "appendix": _still("appendix", anatomy.appendix, BUDGETS["appendix"], ship="targets"),
+    "tumor": _still("tumor", anatomy.tumor, BUDGETS["tumor"], ship="targets"),
+    "clot": _still("clot", anatomy.clot, BUDGETS["clot"], ship="targets"),
+    "bone": _still("bone", anatomy.bone, BUDGETS["bone"], ship="targets"),
+    "fragment": _still("fragment", anatomy.fragment, BUDGETS["fragment"], ship="targets"),
+    "rib": _still("rib", anatomy.rib, BUDGETS["rib"], ship="targets"),
+    "splinter": _still("splinter", anatomy.splinter, BUDGETS["splinter"], ship="targets"),
 }
 
 

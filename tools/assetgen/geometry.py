@@ -144,8 +144,12 @@ def lathe(profile: Sequence[tuple[float, float]], segments: int = 32) -> trimesh
     return finish(trimesh.Trimesh(verts, np.array(faces), process=True))
 
 
-def superellipsoid(size: Sequence[float], roundness: float = 0.25, center: Sequence[float] = (0, 0, 0), detail: int = 20) -> trimesh.Trimesh:
-    """Rounded box (roundness near 0) through ellipsoid (1). size is the full extent."""
+def superellipsoid(size: Sequence[float], roundness: float = 0.25, center: Sequence[float] = (0, 0, 0), detail: int = 0) -> trimesh.Trimesh:
+    """Rounded box (roundness near 0) through ellipsoid (1). size is the full extent.
+    detail 0 picks it from the shape: the power law already bunches samples at a boxy shape's corners, so boxes and small
+    parts need far fewer rings than big round ones."""
+    if not detail:
+        detail = 8 if max(size) < 0.03 else 12 if roundness <= 0.25 else 20
     u = np.linspace(-np.pi / 2, np.pi / 2, detail)
     v = np.linspace(-np.pi, np.pi, detail * 2, endpoint=False)
 

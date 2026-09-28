@@ -34,13 +34,13 @@ def _targets() -> list[Model]:
     out.append(figurine)
 
     fluid = Model("targets", "fluid")
-    fluid.add("Fluid", scaled(bumpy(ellipsoid((0.03, 0.012, 0.025), subdivisions=4), 0.002, 9, 200.0), (1, 1, 1)), "iodine")
+    fluid.add("Fluid", scaled(bumpy(ellipsoid((0.03, 0.012, 0.025), subdivisions=3), 0.002, 9, 200.0), (1, 1, 1)), "iodine")
     out.append(fluid)
 
     air = Model("targets", "air")
     air.add(
         "Pocket",
-        merge(*[ellipsoid((r, r, r), c) for r, c in ((0.012, (0, 0, 0)), (0.008, (0.014, 0.004, 0.006)), (0.006, (-0.012, -0.002, 0.008)))]),
+        merge(*[ellipsoid((r, r, r), c, 2) for r, c in ((0.012, (0, 0, 0)), (0.008, (0.014, 0.004, 0.006)), (0.006, (-0.012, -0.002, 0.008)))]),
         "clear_plastic",
     )
     out.append(air)

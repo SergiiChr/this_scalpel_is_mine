@@ -22,6 +22,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | M2 | The patient model has separate EyeL, EyeR and closed-Lids parts |
 | M3 | The surgeon glove has a skeleton with Hand and three bones per finger and thumb |
 | M4 | Every organ model and every target kind used by any scenario has a model file |
+| M5 | Every model stays within its category's triangle budget (patient 52k, surgeon parts 16k, organs 7k, targets 5k, tools 6k, props 15k) |
 
 ## Soft tissue (`tests/tissue_test.gd`)
 

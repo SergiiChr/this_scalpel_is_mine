@@ -220,7 +220,7 @@ def _swab(m: Model, length: float, iodine: bool) -> None:
         m.add("Stick", rod(0.003, 0.04, -length + 0.02, sections=10), "plastic")
         m.add("Sponge", superellipsoid((0.022, 0.014, 0.03), 0.6, (0.0, 0.0, -length + 0.012)), "iodine")
         return
-    layers = merge(*[superellipsoid((0.06, 0.004, 0.06), 0.3, (0.0, i * 0.0035, -length * 0.5)) for i in range(4)])
+    layers = merge(*[superellipsoid((0.06, 0.004, 0.06), 0.3, (0.0, i * 0.0035, -length * 0.5), detail=10) for i in range(4)])
     m.add("Pad", layers, "cotton")
 
 

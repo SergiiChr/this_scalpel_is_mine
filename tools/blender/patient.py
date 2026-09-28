@@ -145,6 +145,22 @@ def _hair(body: bpy.types.Object) -> bpy.types.Object:
     return scene.finish(hair, scene.material("hair", HAIR, roughness=0.8))
 
 
+# Triangles per part, about 50k in all. The face and hands get most of the body's share because the decimation
+# keeps curvature, and the player looks at them from up close.
+BUDGETS = {
+    "Body": 34000,
+    "Gown": 5000,
+    "Hair": 4000,
+    "Brows": 800,
+    "EyeL": 1200,
+    "EyeR": 1200,
+    "Lids": 1200,
+    "UpperTeeth": 800,
+    "LowerTeeth": 800,
+    "Tongue": 500,
+}
+
+
 def build() -> bpy.types.Object:
     shells = [scene.blobs("Torso", _torso(), resolution=0.006), scene.blobs("Head", face.base(), resolution=0.0015)]
     shells += face.ear_shells() + face.eyelid_shells() + face.mouth_shells()
@@ -164,12 +180,15 @@ def build() -> bpy.types.Object:
     for canal in face.ear_canals():
         body = scene.subtract(body, canal, fast=True)
     body = face.carve_mouth(body)
-    body = scene.decimate(body, 0.011)
+    body = scene.fit(body, BUDGETS["Body"])
     gown = _gown(body)
     hair = _hair(body)
     brows = face.eyebrows(body)
     eye_l, eye_r, lids = face.eyes()
     upper_teeth, lower_teeth, tongue = face.teeth_and_tongue()
+    for part in (gown, hair, brows, eye_l, eye_r, lids, upper_teeth, lower_teeth, tongue):
+        scene.fit(part, BUDGETS[part.name])
+    scene.clean()
 
     rig = scene.armature("PatientRig", BONES)
     scene.bind(body, rig)

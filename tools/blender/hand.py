@@ -83,10 +83,12 @@ def build() -> bpy.types.Object:
         parts.append(_finger(name, joints(knuckle, lengths, spread), radius))
     parts.append(smooth_digit("Thumb", list(THUMB), [THUMB_RADII[0], THUMB_RADII[1], THUMB_RADII[2], THUMB_RADII[2] * 0.82]))
     hand = scene.remesh(scene.join("Glove", *parts), voxel=0.0008, smooth=10)
-    hand = scene.decimate(scene.cut_below(hand, 0, OPENING), 0.06)
+    # Up to four gloves are on screen in co-op, so the whole hand stays under 8k triangles.
+    hand = scene.fit(scene.cut_below(hand, 0, OPENING), 7000)
     scene.finish(hand, scene.material("glove", GLOVE, roughness=0.38, subsurface=0.05))
-    rim = scene.rim("GloveRim", hand, 0.0022)
+    rim = scene.fit(scene.rim("GloveRim", hand, 0.0022), 800)
     scene.finish(rim, scene.material("glove", GLOVE))
+    scene.clean()
 
     bones: list[tuple[str, Vec3, Vec3, str | None]] = [("Hand", (0.0, 0.0, 0.0), (0.09, 0.0, 0.0), None)]
     for name, knuckle, lengths, _radius, spread in FINGERS:

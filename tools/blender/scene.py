@@ -278,6 +278,39 @@ def decimate(obj: bpy.types.Object, ratio: float) -> bpy.types.Object:
     return bake(obj)
 
 
+def triangles(obj: bpy.types.Object) -> int:
+    return sum(len(p.vertices) - 2 for p in obj.data.polygons)
+
+
+def fit(obj: bpy.types.Object, budget: int) -> bpy.types.Object:
+    """Decimates the mesh down to about `budget` triangles, in place: parent, bone attachment and skin weights survive."""
+    count = triangles(obj)
+    if count <= budget:
+        return obj
+    mod = obj.modifiers.new("Fit", "DECIMATE")
+    mod.ratio = budget / count
+    # Applied on its own, underneath any armature modifier that comes first in the stack.
+    with bpy.context.temp_override(object=obj):
+        bpy.ops.object.modifier_move_to_index(modifier=mod.name, index=0)
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    return obj
+
+
+def clean(merge: float = 1e-6) -> None:
+    """Welds duplicate vertices and drops zero-area faces and loose vertices on every mesh, then clears unused data blocks."""
+    for obj in bpy.context.scene.objects:
+        if obj.type != "MESH":
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=merge)
+        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges, dist=merge)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.to_mesh(obj.data)
+        bm.free()
+    bpy.data.orphans_purge(do_recursive=True)
+
+
 def displace(obj: bpy.types.Object, strength: float, scale: float, detail: int = 2, seed: int = 0) -> bpy.types.Object:
     """Organic lumpiness from a cloud noise texture along the normals."""
     tex = bpy.data.textures.new(f"{obj.name}_noise", "CLOUDS")
@@ -470,15 +503,25 @@ def pose(rig: bpy.types.Object, rotations: dict[str, Vec3]) -> None:
 
 def export(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # glTF mesh names come from the mesh data, which picks up ".001" suffixes along the way; name them after their objects.
+    for obj in meshes():
+        obj.data.name = obj.name
     bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB", export_apply=True, export_yup=True, export_animations=False)
 
 
+def meshes() -> list[bpy.types.Object]:
+    return [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+
+
 def triangle_count() -> int:
-    total = 0
-    for obj in bpy.context.scene.objects:
-        if obj.type == "MESH":
-            total += sum(len(p.vertices) - 2 for p in obj.data.polygons)
-    return total
+    return sum(triangles(obj) for obj in meshes())
+
+
+def fit_all(budget: int) -> None:
+    """Shares a triangle budget across every mesh in the scene in proportion to its current size."""
+    total = triangle_count()
+    for obj in meshes():
+        fit(obj, int(triangles(obj) * budget / total))
 
 
 # --- Review renders ---------------------------------------------------------------------------------

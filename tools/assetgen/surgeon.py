@@ -1,7 +1,6 @@
 """Surgeon body, head and arm segments (the gloved hand comes from tools/blender).
 
-Body: origin at the feet, facing -Z. Head: origin at eye level. Glove: origin at the grip, tool handle along -Z,
-right hand (the game mirrors it for the left). Finger joints rotate around Z to curl around the handle.
+Body: origin at the feet, facing -Z. Head: origin at eye level. Arm segments: unit length, stretched by the game.
 """
 
 from __future__ import annotations
@@ -35,8 +34,8 @@ def _head() -> Model:
     skull = ellipsoid((0.085, 0.11, 0.1), (0.0, 0.0, 0.03), 4)
     ears = merge(ellipsoid((0.012, 0.03, 0.02), (0.085, -0.01, 0.04)), ellipsoid((0.012, 0.03, 0.02), (-0.085, -0.01, 0.04)))
     model.add("Face", merge(neck, skull, ears), "skin")
-    eyes = merge(ellipsoid((0.013, 0.011, 0.008), (0.032, 0.0, -0.067)), ellipsoid((0.013, 0.011, 0.008), (-0.032, 0.0, -0.067)))
-    irises = merge(ellipsoid((0.006, 0.006, 0.004), (0.032, 0.0, -0.074)), ellipsoid((0.006, 0.006, 0.004), (-0.032, 0.0, -0.074)))
+    eyes = merge(ellipsoid((0.013, 0.011, 0.008), (0.032, 0.0, -0.067), 2), ellipsoid((0.013, 0.011, 0.008), (-0.032, 0.0, -0.067), 2))
+    irises = merge(ellipsoid((0.006, 0.006, 0.004), (0.032, 0.0, -0.074), 2), ellipsoid((0.006, 0.006, 0.004), (-0.032, 0.0, -0.074), 2))
     model.add("Eyes", eyes, "eye", (0, 0, 0), "Face")
     model.add("Irises", irises, "iris", (0, 0, 0), "Face")
     cap = superellipsoid((0.19, 0.12, 0.22), 0.7, (0.0, 0.075, 0.035))
