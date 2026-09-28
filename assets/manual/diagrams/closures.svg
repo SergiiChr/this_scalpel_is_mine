@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="170" viewBox="0 0 560 170">
+  <g stroke="#1e1a16" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 60 L160 60"/><path d="M35 48 L45 72 M60 48 L70 72 M85 48 L95 72 M110 48 L120 72 M135 48 L145 72"/>
+    <path d="M210 60 L350 60"/><path d="M225 50 L225 70 L240 70 L240 50 M265 50 L265 70 L280 70 L280 50 M305 50 L305 70 L320 70 L320 50"/>
+    <path d="M400 60 L540 60"/><rect x="410" y="45" width="30" height="30"/><rect x="455" y="45" width="30" height="30"/><rect x="500" y="45" width="30" height="30"/>
+  </g>
+  <g font-family="sans-serif" font-size="18" fill="#1e1a16" text-anchor="middle">
+    <text x="90" y="115">sutures</text><text x="90" y="140">slow, strong</text>
+    <text x="280" y="115">staples</text><text x="280" y="140">fast, good</text>
+    <text x="470" y="115">tape</text><text x="470" y="140">shallow only</text>
+  </g>
+</svg>

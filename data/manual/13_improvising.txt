@@ -1,0 +1,18 @@
+tags: improvised_mult, items
+title: Improvising
+Things go wrong. Most mistakes can be undone. Here's how to cheat.
+
+[table=3]
+[cell][b]Item[/b][/cell][cell][b]Instead of[/b][/cell][cell][b]Cost[/b][/cell]
+[cell]Switchblade[/cell][cell]Scalpel[/cell][cell]Jagged cuts. Sanitize it first[/cell]
+[cell]Lighter[/cell][cell]Cautery[/cell][cell]Wide burns, scars[/cell]
+[cell]Office stapler[/cell][cell]Skin stapler[/cell][cell]Bursts, internal bleeding later[/cell]
+[cell]Paper clips[/cell][cell]Stitches[/cell][cell]Weak[/cell]
+[cell]Duct tape[/cell][cell]Everything[/cell][cell]Holds. Takes skin with it later[/cell]
+[cell]Metal straw[/cell][cell]Suction[/cell][cell]You suck. Nausea[/cell]
+[cell]Screwdriver[/cell][cell]Chisel[/cell][cell]Weak, dirty[/cell]
+[cell]Whiskey[/cell][cell]Antiseptic, sedative[/cell][cell]Stings open wounds[/cell]
+[/table]
+
+[b]Dropped something inside?[/b] Suction the blood, find it, grab it, fix what it cut. Leaving it in is worse than anything it did.
+[b]Dropped on the floor?[/b] It's dirty now. Alcohol bath by the door.

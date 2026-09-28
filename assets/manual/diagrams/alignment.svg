@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="160" viewBox="0 0 480 160">
+  <g stroke="#1e1a16" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 100 L190 70"/><path d="M290 60 L450 90"/>
+    <path d="M200 40 L200 20 M200 20 L185 30 M200 20 L215 30"/><path d="M280 110 L280 135 M280 135 L265 125 M280 135 L295 125"/>
+    <path d="M30 150 L450 150" stroke-dasharray="8 8"/>
+  </g>
+  <g font-family="sans-serif" font-size="18" fill="#1e1a16"><text x="30" y="30">surgeon A pulls</text><text x="300" y="30">surgeon B lines up</text><text x="150" y="145">target line: hold until it ticks</text></g>
+</svg>
