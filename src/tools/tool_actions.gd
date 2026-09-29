@@ -128,7 +128,11 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if patient.close_at(uv, def, dt, mods.mult("improvised_mult"), level):
 					tool.charges -= 1 if tool.charges > 0 else 0
 					Surgery.current.sound({"skin_stapler": "staple", "office_stapler": "office_staple", "surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
-			elif lowered and level > 0 and zone == "cavity":
+			elif lowered and level > 0 and zone == "cavity" and tool.charges != 0:
+				# Inside a wound through the muscle, the muscle comes first; deeper down, internal injuries.
+				if patient.close_muscle_at(uv, def, dt):
+					tool.charges -= 1 if tool.charges > 0 else 0
+					Surgery.current.sound("suture_pull", tip)
 				patient.close_internal_at(uv, probe.depth, def, dt)
 		"cauterize":
 			if level_up and level == 1 and def.id == "lighter":

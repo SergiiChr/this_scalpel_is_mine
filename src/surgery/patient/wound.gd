@@ -10,6 +10,8 @@ const BLEED_PER_METER := 35.0
 const BIN_LENGTH_UV := 0.015
 ## A stroke reports a point every frame; closer than this the last point just moves, so long cuts stay cheap to query.
 const POINT_SPACING_UV := 0.006
+## Wound depth (0..1) from which it goes through the muscle, see Patient._tissue_depth().
+const MUSCLE_DEPTH := 0.7
 
 var id: int
 var kind: Kind
@@ -27,6 +29,8 @@ var dirty := false
 var made_by_surgeon := false
 ## Closure progress per bin, 0..1.
 var bins := PackedFloat32Array()
+## Muscle closure per bin, 0..1, for wounds through the muscle (sewn from inside the opening, before the skin).
+var muscle := PackedFloat32Array()
 ## Weighted closure quality, lower bursts easier.
 var closure_quality := 1.0
 var _length := 0.0
@@ -66,6 +70,11 @@ func closure() -> float:
 	for value in bins:
 		total += value
 	return total / bins.size()
+
+
+## Cut through the muscle: its muscle has to be sewn before the skin will close over it.
+func through_muscle() -> bool:
+	return not is_internal() and kind != Kind.BURN and depth >= MUSCLE_DEPTH
 
 
 func bleed_rate(site_size: float, bleed_mult: float) -> float:
@@ -123,3 +132,4 @@ func midpoint() -> Vector2:
 ## Bins only grow: moving the last point back a little never throws away closure progress.
 func _resize_bins() -> void:
 	bins.resize(maxi(maxi(bins.size(), ceili(_length / BIN_LENGTH_UV)), 1))
+	muscle.resize(bins.size())

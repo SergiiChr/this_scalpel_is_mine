@@ -40,6 +40,10 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T10 | A burst closure gapes again |
 | T11 | The sim sleeps when nothing moves and a sleeping sim does no work |
 | T12 | A jolt wakes the sim |
+| T13 | A slow 3 cm pull on intact skin doesn't tear it, and skin 4 cm away follows by more than 8 mm |
+| T14 | All skin that moved visibly is inside the simulated region |
+| T15 | A cut through the muscle gapes wider than one into the fat and leaves the muscle open |
+| T16 | Sewing the muscle along the cut closes the muscle layer and the cavity; the skin still gapes until stitched |
 
 ## Every scenario (`tests/smoke_test.gd`)
 
@@ -74,6 +78,7 @@ For each scenario, with no script errors:
 | S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
 | S22 | The patient has a plausible weight; a syringe draws from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
 | S23 | Wiping iodine with a soaked pad never takes more than 3 ms of one frame (no stutter) |
+| S24 | Skin won't close over a cut through open muscle, a tight stitch tears there, and after the muscle is sewn from inside the skin closes |
 
 ## Co-op over the network (`tests/net_test.gd`)
 

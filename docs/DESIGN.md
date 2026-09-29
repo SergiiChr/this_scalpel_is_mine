@@ -61,8 +61,12 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     Skin, fat and muscle are three meshes rebuilt from the sim; each one drops the triangles over a gap cut down to it.
     So a shallow cut shows yellow fat, a deeper one red muscle, and only a full depth cut opens into the cavity.
   - Overstretched springs snap into a tear (host only). Stitches are extra springs across the cut, their length is the tension.
+  - A grip drags a patch of skin around it along (never across a cut), so pulls spread and the skin stretches
+    visibly over several centimeters before it tears. Everything that moved is shown simulated.
+  - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
+    `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
   - The sim sleeps when nothing moves.
-- Skin damage (`skin.gdshader` + `WoundMap`): two painted textures drive cut grooves, burns (red halo to charred core),
+- Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
 - Screen grading (`post_grime.gdshader`): desaturated sick-green tint, vignette, film grain, chromatic split.

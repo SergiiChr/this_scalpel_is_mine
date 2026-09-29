@@ -23,6 +23,8 @@ const CAVITY_SPILL_ML := 280.0
 const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
 ## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
+## How far (uv) from a point of a wound its muscle counts as underneath it.
+const MUSCLE_REACH := 0.03
 ## Gap in meters that counts as a fully opened wound.
 const FULL_GAP := 0.012
 ## Where a line set before the surgery goes in: the back of the right hand, in body space.
@@ -667,6 +669,19 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 			cap = 0.9
 		elif pressure == 3:
 			quality = minf(quality * 1.05, 1.0)
+	# Skin pulled shut over open muscle carries the muscle's pull: the edges won't meet, and a tight stitch
+	# gets them there only to tear through.
+	if wound.through_muscle() and body.tissue.muscle_open_near(wound.bin_position(bin), MUSCLE_REACH):
+		if not (def.id in TENSIONED_CLOSURES and pressure == 3):
+			_tear_notice("The skin won't meet over the open muscle. Sew the muscle first.")
+			return false
+		wound.bins[bin] = minf(wound.bins[bin] + def.power * 1.5 * dt, cap)
+		if wound.bins[bin] >= cap:
+			wound.bins[bin] = 0.0
+			tear(wound.bin_position(bin), Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)), 0.02)
+			Surgery.current.scoring.add("suture_tear_through")
+			_tear_notice("The stitch tore through: the muscle under it is still open.")
+		return false
 	var before := wound.bins[bin]
 	wound.bins[bin] = minf(before + def.power * 1.5 * dt, cap)
 	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.2)
@@ -691,6 +706,22 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 		if wound.closure() >= 0.99 and wound.closure_quality > 0.9:
 			add_flag("neat_closure")
 			Surgery.current.scoring.add("good_suture", true)
+		hurt(0.06, uv)
+		return true
+	return false
+
+
+## Sewing inside the opening of a wound through the muscle closes the muscle, bin by bin. Tape can't.
+## Returns true when a bin of muscle closed.
+func close_muscle_at(uv: Vector2, def: ToolDef, dt: float) -> bool:
+	var wound := _nearest_wound(uv, 0.03, false)
+	if wound == null or not wound.through_muscle() or def.id in ["surgical_tape", "duct_tape"]:
+		return false
+	var bin := wound.bin_at(uv)
+	var before := wound.muscle[bin]
+	wound.muscle[bin] = minf(before + def.power * 1.5 * dt, 1.0)
+	if before < 1.0 and wound.muscle[bin] >= 1.0:
+		_tissue_muscle.rpc(wound.bin_position(bin), MUSCLE_REACH)
 		hurt(0.06, uv)
 		return true
 	return false
@@ -1219,7 +1250,7 @@ func _tear_notice(text: String) -> void:
 static func _tissue_depth(depth: float) -> int:
 	if depth < 0.4:
 		return TissueSim.Depth.SKIN
-	return TissueSim.Depth.FAT if depth < 0.7 else TissueSim.Depth.MUSCLE
+	return TissueSim.Depth.FAT if depth < Wound.MUSCLE_DEPTH else TissueSim.Depth.MUSCLE
 
 
 @rpc("authority", "call_local", "reliable")
@@ -1230,6 +1261,11 @@ func _tissue_cut(a: Vector2, b: Vector2, depth: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _tissue_stitch(uv: Vector2, tension: float, strength: float) -> void:
 	body.tissue.stitch(uv, tension, strength)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_muscle(uv: Vector2, radius: float) -> void:
+	body.tissue.muscle_stitch(uv, radius)
 
 
 @rpc("authority", "call_local", "reliable")

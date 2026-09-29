@@ -5,6 +5,8 @@ title: 6. Wound closure
 ## 6.1 Principle
 A wound is closed only when the closure spans its entire length. Draw the instrument along the wound line while applying it.
 
+A wound through the muscle is closed in layers. The cut muscle retracts and holds the wound open: sew it first, working inside the wound with the needle (or a stapler), along its whole length. Skin will not meet over open muscle, and a tight stitch pulled across it tears through. Adhesive strips cannot close muscle.
+
 ## 6.2 Methods
 [table=3]
 [cell][b]Method[/b][/cell][cell][b]Speed[/b][/cell][cell][b]Security[/b][/cell]

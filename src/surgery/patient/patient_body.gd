@@ -69,6 +69,8 @@ var _part_sphere := SphereShape3D.new()
 
 func build(site_name: String, tone: Color, age_scale: float) -> void:
 	site_id = site_name
+	var def := _site_def()
+	wound_map = WoundMap.new(WoundMap.size_for(Vector2(def.size[0], def.size[1])))
 	_body_root = Node3D.new()
 	_body_root.name = "BodyRoot"
 	_body_root.position.y = HALF_HEIGHT * age_scale

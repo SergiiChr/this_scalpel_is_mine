@@ -7,19 +7,31 @@ extends RefCounted
 ##   Cut the springs along an incision and the edges pull apart on their own.
 ## - Every particle is weakly anchored to where it sits on the body (fascia).
 ##   Near an incision the anchor is loosened, like undermined skin.
-## - Tools pin particles to their tip: forceps and retractors stretch the skin.
+## - Tools pin particles to their tip: forceps and retractors stretch the skin. A grip drags a patch of skin
+##   around it along with falloff (a pinched fold, not a single point), so a pull spreads out and the skin stretches
+##   over a wide area instead of tearing right beside the tip.
 ## - Springs stretched past their limit snap (host only). The host turns that into a tear.
 ## - Sutures add new springs across a cut. Their rest length is the stitch tension.
+## - A cut through the muscle retracts: the muscle pulls the edges further apart until it's stitched itself
+##   (muscle_stitch()). Skin can't be closed over open muscle, see Patient.close_at().
 ## - The sim sleeps when nothing moves, so an untouched patient costs nothing.
 
 const RES := 24
 const TENSION := 0.93
-const ANCHOR := 0.05
+const ANCHOR := 0.02
+## How far cut muscle pulls each edge back from the cut, and how firmly (meters, anchor strength).
+const MUSCLE_RETRACT := 0.015
+const MUSCLE_PULL := 0.05
 const LOOSE_ANCHOR := 0.006
 const LOOSE_RADIUS := 0.045
+## How far (uv) a grip drags the skin around it along, and how firmly per solver iteration at its center.
+const GRIP_PATCH := 0.15
+const GRIP_DRAG := 1.0
+## Skin that moved further than this (meters) from where the body model has it is shown simulated.
+const REGION_MOVE := 0.001
 const DAMPING := 0.88
 const ITERATIONS := 4
-const TISSUE_BREAK := 1.9
+const TISSUE_BREAK := 2.3
 const STEP := 1.0 / 30.0
 const SLEEP_EPSILON := 0.00002
 const SLEEP_STEPS := 20
@@ -44,6 +56,10 @@ var c_active := PackedByteArray()
 var c_kind := PackedByteArray()
 var c_break := PackedFloat32Array()
 var c_depth := PackedByteArray()
+## 1 for springs cut through the muscle whose muscle has been stitched: they count as cut only into the fat.
+var c_muscle_closed := PackedByteArray()
+## Where the anchor pulls each particle: its rest position, moved back from a cut through open muscle.
+var anchor_target := PackedVector3Array()
 ## Only the host decides when springs snap, so tears happen once for everyone.
 var tearing := false
 ## Springs that snapped since the host last read them: [uv a, uv b, Kind].
@@ -55,7 +71,13 @@ var topology_version := 0
 ## Counts simulation steps, so meshes only rebuild when something moved.
 var steps_done := 0
 
+## key -> [particle, target]
 var _pins: Dictionary = {}
+## Particle -> [particles, weights] it drags along when gripped, for the topology it was worked out for.
+var _patches: Dictionary = {}
+var _patch_version := -1
+## Spring indices touching each particle.
+var _springs_of: Array[PackedInt32Array] = []
 var _still_steps := 0
 var _accumulator := 0.0
 var _edge_to_stitch: Dictionary = {}
@@ -85,6 +107,7 @@ func build(site_size: Vector2, height_at: Callable) -> void:
 			fixed[k] = 1 if i == 0 or j == 0 or i == RES or j == RES else 0
 	pos = rest.duplicate()
 	prev = rest.duplicate()
+	anchor_target = rest.duplicate()
 	_free.resize(count)
 	_right.resize(count)
 	_down.resize(count)
@@ -119,8 +142,8 @@ func any_severed() -> bool:
 	return not _severed.is_empty()
 
 
-## Grid points where the simulated skin has to take over from the body model: within `reach` points of a cut
-## or of skin a tool is holding. 1 inside, 0 outside, one byte per particle. Elsewhere the skin never moves.
+## Grid points where the simulated skin has to take over from the body model: within `reach` points of a cut,
+## of skin a tool is holding, or of skin that moved visibly. 1 inside, 0 outside, one byte per particle.
 func region(reach: int = 1) -> PackedByteArray:
 	var out := PackedByteArray()
 	out.resize(rest.size())
@@ -130,6 +153,9 @@ func region(reach: int = 1) -> PackedByteArray:
 		seeds.append(c_b[s])
 	for key: int in _pins:
 		seeds.append(_pins[key][0])
+	for k in pos.size():
+		if pos[k].distance_squared_to(rest[k]) > REGION_MOVE * REGION_MOVE:
+			seeds.append(k)
 	for k in seeds:
 		var i := k % (RES + 1)
 		var j := k / (RES + 1)
@@ -158,8 +184,36 @@ func cut(a: Vector2, b: Vector2, depth: int) -> void:
 		var uv := uv_of(k)
 		if uv.distance_to(Geometry2D.get_closest_point_to_segment(uv, a, b)) < LOOSE_RADIUS:
 			anchor[k] = LOOSE_ANCHOR
+	_update_retraction()
 	topology_version += 1
 	wake()
+
+
+## Stitches the muscle under every spring cut through it near uv. Returns how many springs it closed.
+func muscle_stitch(uv: Vector2, radius: float) -> int:
+	var closed := 0
+	for s in _severed:
+		if c_depth[s] == Depth.MUSCLE and c_muscle_closed[s] == 0 and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
+			c_muscle_closed[s] = 1
+			closed += 1
+	if closed > 0:
+		_update_retraction()
+		topology_version += 1
+		wake()
+	return closed
+
+
+## True while muscle cut near uv hasn't been stitched: skin closed over it would be under too much tension.
+func muscle_open_near(uv: Vector2, radius: float) -> bool:
+	for s in _severed:
+		if depth_of(s) == Depth.MUSCLE and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
+			return true
+	return false
+
+
+## How deep spring s counts as cut: stitched muscle leaves only skin and fat open.
+func depth_of(s: int) -> int:
+	return Depth.FAT if c_muscle_closed[s] == 1 else c_depth[s]
 
 
 ## Pins the particle nearest uv to follow a tool. Returns false if there is no tissue there.
@@ -257,7 +311,7 @@ func gap_at(uv: Vector2, radius: float = 0.04, depth: int = Depth.SKIN) -> float
 func gap_along(points: PackedVector2Array, radius: float, depth: int) -> float:
 	var gap := 0.0
 	for s in _severed:
-		if c_depth[s] < depth:
+		if depth_of(s) < depth:
 			continue
 		var a := c_a[s]
 		var b := c_b[s]
@@ -279,7 +333,7 @@ func triangles(depth: int) -> PackedInt32Array:
 	for s in _severed:
 		var a := c_a[s]
 		var b := c_b[s]
-		if c_depth[s] >= depth and not _stitched(a, b) and pos[a].distance_to(pos[b]) - rest[a].distance_to(rest[b]) > OPEN_GAP * 0.5:
+		if depth_of(s) >= depth and not _stitched(a, b) and pos[a].distance_to(pos[b]) - rest[a].distance_to(rest[b]) > OPEN_GAP * 0.5:
 			open[s] = 1
 	var out := PackedInt32Array()
 	for j in RES:
@@ -324,6 +378,13 @@ func _substep() -> void:
 		for key: int in _pins:
 			var pin: Array = _pins[key]
 			pos[pin[0]] = pin[1]
+			var pull: Vector3 = pin[1] - anchor_target[pin[0]]
+			var patch := _patch(pin[0])
+			var around: PackedInt32Array = patch[0]
+			var weights: PackedFloat32Array = patch[1]
+			for n in around.size():
+				var j := around[n]
+				pos[j] += (anchor_target[j] + pull * weights[n] - pos[j]) * GRIP_DRAG * weights[n] * _free[j]
 		for s in c_a.size():
 			if c_active[s] == 0:
 				continue
@@ -341,7 +402,7 @@ func _substep() -> void:
 			pos[a] += correction * wa
 			pos[b] -= correction * wb
 		for k in pos.size():
-			pos[k] += (rest[k] - pos[k]) * anchor[k] * _free[k]
+			pos[k] += (anchor_target[k] - pos[k]) * anchor[k] * _free[k]
 	for k in pos.size():
 		moved = maxf(moved, pos[k].distance_squared_to(prev[k]))
 	if tearing:
@@ -372,9 +433,44 @@ func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION,
 	c_kind.append(kind)
 	c_break.append(strength)
 	c_depth.append(Depth.NONE)
+	c_muscle_closed.append(0)
 	if kind == Kind.STITCH:
 		_edge_to_stitch[_edge_key(a, b)] = c_a.size() - 1
 	return c_a.size() - 1
+
+
+## The skin a grip on particle k drags along: particles within GRIP_PATCH reached without crossing a cut,
+## weighted falling off in a straight line to 0 at the edge of the patch.
+func _patch(k: int) -> Array:
+	if _patch_version != topology_version:
+		_patches.clear()
+		_patch_version = topology_version
+	if _patches.has(k):
+		return _patches[k]
+	if _springs_of.is_empty():
+		_springs_of.resize(rest.size())
+		for s in c_a.size():
+			_springs_of[c_a[s]].append(s)
+			_springs_of[c_b[s]].append(s)
+	var around := PackedInt32Array()
+	var weights := PackedFloat32Array()
+	var seen := {k: true}
+	var queue: Array[int] = [k]
+	while not queue.is_empty():
+		var at: int = queue.pop_front()
+		for s in _springs_of[at]:
+			if c_active[s] == 0 or c_kind[s] != Kind.TISSUE:
+				continue
+			var other := c_b[s] if c_a[s] == at else c_a[s]
+			var dist := uv_of(other).distance_to(uv_of(k))
+			if seen.has(other) or dist >= GRIP_PATCH:
+				continue
+			seen[other] = true
+			queue.append(other)
+			around.append(other)
+			weights.append(1.0 - dist / GRIP_PATCH)
+	_patches[k] = [around, weights]
+	return _patches[k]
 
 
 func _sever(s: int, depth: int) -> void:
@@ -382,6 +478,27 @@ func _sever(s: int, depth: int) -> void:
 		c_active[s] = 0
 		_severed.append(s)
 	c_depth[s] = maxi(c_depth[s], depth)
+	if depth == Depth.MUSCLE:
+		c_muscle_closed[s] = 0
+
+
+## Particles on either side of open muscle are pulled back from the cut, sideways along the skin.
+func _update_retraction() -> void:
+	var pull := PackedVector3Array()
+	pull.resize(rest.size())
+	for s in _severed:
+		if depth_of(s) != Depth.MUSCLE:
+			continue
+		var across := (rest[c_a[s]] - rest[c_b[s]]) * Vector3(1, 0, 1)
+		pull[c_a[s]] += across
+		pull[c_b[s]] -= across
+	for k in rest.size():
+		var back := pull[k].normalized() * MUSCLE_RETRACT if pull[k].length_squared() > 0.0 else Vector3.ZERO
+		anchor_target[k] = rest[k] + back
+		if back != Vector3.ZERO:
+			anchor[k] = maxf(anchor[k], MUSCLE_PULL)
+		elif anchor[k] == MUSCLE_PULL:
+			anchor[k] = LOOSE_ANCHOR
 
 
 func _stitched(a: int, b: int) -> bool:
