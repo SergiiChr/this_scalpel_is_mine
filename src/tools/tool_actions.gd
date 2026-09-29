@@ -31,6 +31,9 @@ const PAD_DRAIN := 0.12
 const VIAL_REACH := 0.05
 ## Share of a syringe's barrel the plunger moves per second at the top level.
 const PLUNGER_RATE := 0.25
+## Wipes paint big soft disks: at most this often, or once the tool moved PAINT_MOVE (uv) since the last one.
+const PAINT_INTERVAL := 1.0 / 15.0
+const PAINT_MOVE := 0.02
 
 
 ## Where a blade's edge runs on the skin: where the blade plane meets a flat surface, so rotating the tool turns it.
@@ -209,7 +212,9 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			if def.id == "cotton_pad" and lowered and level > 0:
 				_wipe(tool, zone, uv, tip, patient, dt * effort, true)
 			elif lowered and level > 0 and zone in ["site", "cavity"]:
-				patient.swab_at(zone, uv, def, dt * effort)
+				var wiped := _gather(tool, uv, dt * effort)
+				if wiped > 0.0:
+					patient.swab_at(zone, uv, def, wiped)
 		"pour":
 			if lowered and level > 0:
 				var dish := Surgery.current.tools.nearest_of("iodine_dish", tip, DISH_REACH)
@@ -259,13 +264,27 @@ static func _wipe(pad: SurgicalTool, zone: String, uv: Vector2, tip: Vector3, pa
 			tools.set_fill(dish, dish.fill - soak / PADS_PER_DISH)
 		return
 	var soaked := pad.fill > 0.0
-	patient.swab_at(zone, uv, pad.def, dt, "iodine" if soaked else "")
+	var wiped := _gather(pad, uv, dt)
+	if wiped > 0.0:
+		patient.swab_at(zone, uv, pad.def, wiped, "iodine" if soaked else "")
 	if soaked:
 		tools.set_fill(pad, pad.fill - PAD_DRAIN * dt)
 		if (gloved or not pad.sterile) and zone == "site" and not pad.reported.has("dirty"):
 			pad.reported["dirty"] = true
 			patient.contaminate_site("")
 			Surgery.current.scoring.add("dirty_tool")
+
+
+## Collects wiping time and returns it once it's worth painting (0 until then), so a pad held still or moved
+## slowly paints a few times a second instead of every physics frame.
+static func _gather(tool: SurgicalTool, uv: Vector2, dt: float) -> float:
+	tool.paint_dt += dt
+	if tool.paint_dt < PAINT_INTERVAL and tool.paint_uv.distance_to(uv) < PAINT_MOVE:
+		return 0.0
+	var gathered := tool.paint_dt
+	tool.paint_dt = 0.0
+	tool.paint_uv = uv
+	return gathered
 
 
 ## Standing (self-retaining) clamps keep holding their grip after the hand lets go.

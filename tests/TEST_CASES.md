@@ -73,6 +73,7 @@ For each scenario, with no script errors:
 | S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
 | S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
 | S22 | The patient has a plausible weight; a syringe draws from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
+| S23 | Wiping iodine with a soaked pad never takes more than 3 ms of one frame (no stutter) |
 
 ## Co-op over the network (`tests/net_test.gd`)
 

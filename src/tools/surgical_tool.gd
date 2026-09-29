@@ -42,6 +42,9 @@ var stroke := 0
 var last_uv := Vector2(-1, -1)
 var last_tip := Vector3.INF
 var charge_time := 0.0
+## Wiping time not painted yet, and where it was last painted (see ToolActions._gather()).
+var paint_dt := 0.0
+var paint_uv := Vector2(-1, -1)
 var reported: Dictionary = {}
 
 var _model: Node3D

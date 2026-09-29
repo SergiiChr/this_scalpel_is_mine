@@ -735,14 +735,16 @@ func swab_at(zone: String, uv: Vector2, def: ToolDef, dt: float, soaked_in: Stri
 	var radius := body.meters_to_uv(def.radius)
 	var sanitize := drug in ["iodine", "whiskey"]
 	if zone == "site":
+		# One pass over the disk for every channel: a wipe runs every physics frame, so it has to be cheap.
+		var ops: Array = [[WoundMap.BLOOD, def.power * dt * 2.0, WoundMap.Mode.SUB]]
 		if sanitize:
 			var strength := 1.0 if drug == "iodine" else 0.5
 			_mark_grid(_sanitized, uv, radius, strength)
-			paint(WoundMap.Layer.FLUIDS, WoundMap.IODINE if drug == "iodine" else WoundMap.GRIME, uv, uv, radius, 0.3 * dt * 10.0, WoundMap.Mode.ADD)
-			paint(WoundMap.Layer.FLUIDS, WoundMap.GRIME, uv, uv, radius, dt * 2.0, WoundMap.Mode.SUB)
+			ops.append([WoundMap.GRIME, dt * 2.0, WoundMap.Mode.SUB])
+			ops.append([WoundMap.IODINE if drug == "iodine" else WoundMap.GRIME, 0.3 * dt * 10.0, WoundMap.Mode.ADD])
 			if drug == "whiskey" and _nearest_wound(uv, 0.03, false):
 				hurt(0.5 * dt * 10.0, uv)
-		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, uv, radius, def.power * dt * 2.0, WoundMap.Mode.SUB)
+		_paint_ops.rpc(WoundMap.Layer.FLUIDS, uv, radius, ops)
 		var wound := _nearest_wound(uv, 0.02, false)
 		if wound and def.id == "gauze":
 			wound.held = minf(wound.held + dt * 2.0, 0.7)
@@ -1155,6 +1157,11 @@ func _paint(layer: int, channel: int, a: Vector2, b: Vector2, radius: float, val
 		body.wound_map.disk(layer as WoundMap.Layer, channel, a, radius, value, mode as WoundMap.Mode)
 	else:
 		body.wound_map.stroke(layer as WoundMap.Layer, channel, a, b, radius, value, mode as WoundMap.Mode, jitter, seed_value)
+
+
+@rpc("authority", "call_local", "reliable")
+func _paint_ops(layer: int, uv: Vector2, radius: float, ops: Array) -> void:
+	body.wound_map.disk_ops(layer as WoundMap.Layer, uv, radius, ops)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")

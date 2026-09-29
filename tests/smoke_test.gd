@@ -285,6 +285,18 @@ func _iodine_checks(surgery: Surgery) -> void:
 	ToolActions._wipe(pad, "site", uv, wiped, surgery.patient, 0.5, false)
 	if surgery.patient.sanitized_fraction() <= 0.0 or pad.fill >= 0.99:
 		print("FAIL: the soaked pad didn't sanitize the skin")
+	# A second of wiping, one physics frame at a time: no single frame may take a big bite out of the frame budget.
+	tools.set_fill(pad, 1.0)
+	var worst_ms := 0.0
+	for i in 60:
+		var at := Vector2(0.3 + i * 0.006, 0.5)
+		var started := Time.get_ticks_usec()
+		ToolActions._wipe(pad, "site", at, surgery.patient.body.uv_to_world(at), surgery.patient, 1.0 / 60.0, false)
+		surgery.patient.body.wound_map.flush()
+		worst_ms = maxf(worst_ms, (Time.get_ticks_usec() - started) / 1000.0)
+	print("    iodine wipe: worst frame %.2f ms" % worst_ms)
+	if worst_ms > 3.0:
+		print("FAIL: wiping iodine takes %.2f ms in one frame (stutters)" % worst_ms)
 	tools._req_release(1, Vector3.ZERO)
 	await _frames(3)
 	if pad.state != SurgicalTool.State.FREE:

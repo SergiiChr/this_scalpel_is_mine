@@ -104,8 +104,7 @@ func _spawn(delta: float) -> void:
 func _puddle(uv: Vector2, ml: float, paint: bool) -> float:
 	var key := Vector2i((uv * 100.0).round())
 	var map := body.wound_map
-	var at := (uv.clamp(Vector2.ZERO, Vector2.ONE) * (WoundMap.SIZE - 1)).floor()
-	if _pooled.has(key) and map.images[WoundMap.Layer.FLUIDS].get_pixelv(at).r < 0.3:
+	if _pooled.has(key) and map.value(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv) < 0.3:
 		_pooled[key] = 0.0
 	var pooled: float = _pooled.get(key, 0.0) + ml
 	_pooled[key] = pooled
