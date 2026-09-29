@@ -267,7 +267,10 @@ func _iodine_checks(surgery: Surgery) -> void:
 		print("FAIL: the pad didn't soak up iodine from the dish: pad=%.2f dish=%.2f" % [pad.fill, dish.fill])
 	surgery.patient._sanitized.fill(0.0)
 	var uv := Vector2(0.5, 0.5)
-	ToolActions._wipe(pad, "site", uv, surgery.patient.body.uv_to_world(uv), surgery.patient, 0.5, false)
+	var wiped := surgery.patient.body.uv_to_world(uv)
+	# A dish left beside the site must not turn the wipe into a dip.
+	dish.global_position = wiped
+	ToolActions._wipe(pad, "site", uv, wiped, surgery.patient, 0.5, false)
 	if surgery.patient.sanitized_fraction() <= 0.0 or pad.fill >= 0.99:
 		print("FAIL: the soaked pad didn't sanitize the skin")
 	tools._req_release(1, Vector3.ZERO)

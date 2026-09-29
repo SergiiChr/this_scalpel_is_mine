@@ -220,14 +220,13 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 ## Iodine only stays sterile on the way in if a clean pad is held with forceps: a glove on it spoils the site.
 static func _wipe(pad: SurgicalTool, zone: String, uv: Vector2, tip: Vector3, patient: Patient, dt: float, gloved: bool) -> void:
 	var tools := Surgery.current.tools
-	var dish := tools.nearest_of("iodine_dish", tip, DISH_REACH)
-	if dish:
-		var soak := minf(minf(dt * 2.0, 1.0 - pad.fill), dish.fill * PADS_PER_DISH)
+	# On the patient it always wipes, even with a dish left right beside the site.
+	if not zone in ["site", "cavity"]:
+		var dish := tools.nearest_of("iodine_dish", tip, DISH_REACH)
+		var soak := minf(minf(dt * 2.0, 1.0 - pad.fill), dish.fill * PADS_PER_DISH) if dish else 0.0
 		if soak > 0.0:
 			tools.set_fill(pad, pad.fill + soak)
 			tools.set_fill(dish, dish.fill - soak / PADS_PER_DISH)
-		return
-	if not zone in ["site", "cavity"]:
 		return
 	var soaked := pad.fill > 0.0
 	patient.swab_at(zone, uv, pad.def, dt, "iodine" if soaked else "")
