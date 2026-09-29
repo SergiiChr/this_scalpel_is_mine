@@ -57,12 +57,28 @@ static func body_skin(tone: Color) -> ShaderMaterial:
 	return mat
 
 
-## Cuts the body open wherever the wound map marks opened skin. site is the surgical site's global transform.
-static func set_carve(mat: ShaderMaterial, site: Transform3D, half_size: Vector2, depth: float, wound_map: Texture2D) -> void:
+## Places the surgical site on the body: region marks where the simulated skin replaces the body (cut away there),
+## the wound maps draw the damage on the body everywhere else. site is the surgical site's global transform.
+## region has one texel per tissue grid point (TissueSim.RES + 1 wide).
+static func set_carve(mat: ShaderMaterial, site: Transform3D, half_size: Vector2, depth: float, region: Texture2D) -> void:
 	for pass_mat: ShaderMaterial in [mat, mat.next_pass as ShaderMaterial]:
 		pass_mat.set_shader_parameter("carve_inverse", Projection(site.affine_inverse()))
 		pass_mat.set_shader_parameter("carve_box", Vector3(half_size.x, depth, half_size.y))
-		pass_mat.set_shader_parameter("carve_map", wound_map)
+		pass_mat.set_shader_parameter("carve_map", region)
+		pass_mat.set_shader_parameter("carve_grid", float(region.get_width()))
+
+
+## Cavity walls: only drawn inside the region (see flesh.gdshader).
+static func set_reveal(mat: ShaderMaterial, site: Transform3D, half_size: Vector2, region: Texture2D) -> void:
+	mat.set_shader_parameter("region_inverse", Projection(site.affine_inverse()))
+	mat.set_shader_parameter("region_box", Vector3(half_size.x, 1.0, half_size.y))
+	mat.set_shader_parameter("region_map", region)
+	mat.set_shader_parameter("region_grid", float(region.get_width()))
+
+
+static func set_site_maps(mat: ShaderMaterial, wounds: Texture2D, fluids: Texture2D) -> void:
+	mat.set_shader_parameter("site_wounds", wounds)
+	mat.set_shader_parameter("site_fluids", fluids)
 
 
 static func flesh(color: Color = Color(0.55, 0.12, 0.12)) -> ShaderMaterial:
@@ -88,14 +104,6 @@ static func tissue_layer(layer: int, fluid_tex: Texture2D) -> ShaderMaterial:
 	mat.set_shader_parameter("layer", layer)
 	mat.set_shader_parameter("fluid_map", fluid_tex)
 	return mat
-
-
-static func white() -> Texture2D:
-	if not _cache.has("white"):
-		var image := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-		image.fill(Color.WHITE)
-		_cache["white"] = ImageTexture.create_from_image(image)
-	return _cache["white"]
 
 
 static func glow(color: Color) -> StandardMaterial3D:

@@ -3,9 +3,10 @@ extends Node3D
 ## The patient you see and touch: body model, the layered tissue at the surgical site, the cavity, organs and colliders.
 ## Exists on every peer. Game state lives in Patient; this node knows geometry, the wound map and the tissue sim.
 ##
-## The surgical site is real layered tissue, not a painted decal:
-## skin (TissueSim, soft and under tension) over subcutaneous fat over muscle over the cavity.
-## Each layer only opens where a cut went deep enough and the sim pulled the edges apart.
+## The surgical site is real layered tissue: skin (TissueSim, soft and under tension) over subcutaneous fat over
+## muscle over the cavity. Each layer only opens where a cut went deep enough and the sim pulled the edges apart.
+## Where nothing is cut or held, the body model itself is the skin and shows the painted damage (wound maps);
+## around cuts and pinched skin the model is cut away and the simulated layers take over (the region).
 ##
 ## Body space: patient lies along X with the head at +X, origin at the body's center line.
 ## Site space: a plane whose local XZ maps to wound map UV, +Y points out of the skin.
@@ -39,6 +40,7 @@ var fat_thickness := 0.012
 var cavity_blood: MeshInstance3D
 var organs: Array[RigidBody3D] = []
 var animator := PatientAnimator.new()
+var blood := BloodFlow.new()
 var orientation: int = Orientation.FACE_UP
 var _on_back := false
 var _body_root: Node3D
@@ -52,6 +54,11 @@ var _layer_steps := -1
 var _layer_uvs := PackedVector2Array()
 var _organ_last: Array[Vector3] = []
 var _jiggle: Array[Vector2] = []
+## Where the simulated skin replaces the body model, one texel per tissue grid point (see TissueSim.region()).
+var region_texture: ImageTexture
+var _region := PackedByteArray()
+var _region_image: Image
+var _cavity_material: ShaderMaterial
 ## Reused by part_at(), which runs every physics frame for every held tool.
 var _part_query := PhysicsShapeQueryParameters3D.new()
 var _part_sphere := SphereShape3D.new()
@@ -68,11 +75,16 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	# The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
 	var gown := Materials.body_skin(GOWN_COLOR)
 	_body_materials.append_array([skin, gown])
+	for mat in _body_materials:
+		Materials.set_site_maps(mat, wound_map.textures[0], wound_map.textures[1])
 	var model := ModelSlot.instantiate("patient", "body", _body_root, {"skin": skin, "gown": gown})
 	add_child(animator)
 	animator.setup(self, model)
 	_build_colliders()
 	_build_site(tone)
+	blood.name = "BloodFlow"
+	add_child(blood)
+	blood.setup(self)
 
 
 func _process(delta: float) -> void:
@@ -213,6 +225,8 @@ func _build_site(tone: Color) -> void:
 
 	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
 	tissue.build(site_size, surface_height)
+	_region_image = Image.create(TissueSim.RES + 1, TissueSim.RES + 1, false, Image.FORMAT_L8)
+	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
 	for i in 3:
 		var layer := MeshInstance3D.new()
@@ -234,7 +248,7 @@ func _rebuild_layers() -> void:
 	_layer_version = tissue.topology_version
 	_layer_steps = tissue.steps_done
 	var res := TissueSim.RES
-	var severed := tissue.any_severed()
+	_update_region()
 	if _layer_uvs.is_empty():
 		for k in tissue.rest.size():
 			_layer_uvs.append(tissue.uv_of(k))
@@ -242,10 +256,12 @@ func _rebuild_layers() -> void:
 		var instance := _layers[layer]
 		var mesh := instance.mesh as ArrayMesh
 		mesh.clear_surfaces()
-		instance.visible = layer == 0 or severed
+		var triangles := _in_region(tissue.triangles(LAYER_DEPTH[layer]))
+		instance.visible = not triangles.is_empty()
 		if not instance.visible:
 			continue
-		var down := Vector3(0, [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
+		# The skin sits a hair above the body it replaces, so their overlap at the region's edge never flickers.
+		var down := Vector3(0, [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
 		var follow := LAYER_FOLLOW[layer]
 		var verts := PackedVector3Array()
 		verts.resize(tissue.rest.size())
@@ -264,8 +280,29 @@ func _rebuild_layers() -> void:
 		arrays[Mesh.ARRAY_VERTEX] = verts
 		arrays[Mesh.ARRAY_NORMAL] = normals
 		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
-		arrays[Mesh.ARRAY_INDEX] = tissue.triangles(LAYER_DEPTH[layer])
+		arrays[Mesh.ARRAY_INDEX] = triangles
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+
+## Keeps the triangles that touch the region. They reach a little past where the body is cut away (the body's
+## cut edge is halfway between region and non-region points), so there's never a hole between the two.
+func _in_region(triangles: PackedInt32Array) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for t in range(0, triangles.size(), 3):
+		if _region[triangles[t]] + _region[triangles[t + 1]] + _region[triangles[t + 2]] > 0:
+			out.append_array(triangles.slice(t, t + 3))
+	return out
+
+
+func _update_region() -> void:
+	var region := tissue.region()
+	if region == _region:
+		return
+	_region = region
+	for k in region.size():
+		var uv := tissue.uv_of(k) * TissueSim.RES
+		_region_image.set_pixel(roundi(uv.x), roundi(uv.y), Color.WHITE if region[k] else Color.BLACK)
+	region_texture.update(_region_image)
 
 
 ## Cavity walls whose rim follows the skin just underneath it, so nothing pokes out of the body.
@@ -307,7 +344,8 @@ func _build_cavity() -> void:
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
 	cavity.mesh = _cavity_mesh(depth)
-	cavity.material_override = Materials.flesh()
+	_cavity_material = Materials.flesh()
+	cavity.material_override = _cavity_material
 	site.add_child(cavity)
 	Shapes.static_box(site, Vector3(site_size.x, 0.01, site_size.y), Vector3(0, -depth - 0.005, 0), CAVITY_LAYER)
 
@@ -407,7 +445,14 @@ func set_cavity_blood(level: float) -> void:
 	cavity_blood.position.y = -depth + 0.002 + clampf(level, 0.0, 1.0) * depth * 0.85
 
 
-## The body model is cut away under the whole site; the simulated skin layer takes its place.
+## Where the body model is cut away (the region), the simulated skin layers take over.
 func _update_carve() -> void:
 	for mat in _body_materials:
-		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, Materials.white())
+		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, region_texture)
+	Materials.set_reveal(_cavity_material, site.global_transform, site_size * 0.5, region_texture)
+
+
+## Blood loss drains the color from the skin, body and site alike.
+func set_pallor(value: float) -> void:
+	skin_material.set_shader_parameter("pallor", value)
+	_body_materials[0].set_shader_parameter("pallor", value)

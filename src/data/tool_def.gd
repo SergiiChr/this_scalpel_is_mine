@@ -26,6 +26,7 @@ var model: String
 var length: float
 var width: float
 var color: Color
+var grip: String
 
 
 static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
@@ -54,4 +55,5 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.length = cfg.get_value(section, "length", 0.12)
 	def.width = cfg.get_value(section, "width", 0.012)
 	def.color = cfg.get_value(section, "color", Color.GRAY)
+	def.grip = cfg.get_value(section, "grip", "pencil")
 	return def

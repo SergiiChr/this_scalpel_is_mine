@@ -56,6 +56,13 @@ func _ready() -> void:
 	me.camera().current = true
 	me.pitch = -1.0
 	await _shot(out, "02_looking_down")
+	# What a player sees zoomed all the way in on the site.
+	me.zoom = Surgeon.ZOOM_FOV.size() - 1
+	me.pitch = -0.8
+	await _frames(40)
+	await _shot(out, "02b_zoomed")
+	me.zoom = 0
+	await _frames(40)
 	camera.current = true
 	var site := patient.body.site.global_position
 	camera.global_position = site + Vector3(0.0, 0.35, 0.25)

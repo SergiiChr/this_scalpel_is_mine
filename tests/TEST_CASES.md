@@ -64,6 +64,10 @@ For each scenario, with no script errors:
 | S11 | Lab results, a nurse request and turning the patient (including a failed turn) work |
 | S12 | Manual, patient card and nurse overlays open and close |
 | S13 | The surgery finishes and the post-op report builds with a score |
+| S14 | The defibrillator waits on its own cart in every room |
+| S15 | A nurse delivery lands on the delivery tray (operating room) |
+| S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
+| S17 | Walking through the IV tubing at full speed rips the line out |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -90,3 +94,5 @@ Two real game processes on localhost, one hosting and one joining.
 | V4 | Room overview and instrument tray |
 | V5 | Hands holding a scalpel and forceps |
 | V6 | Menus (`--menus`) |
+| V7 | Zoomed-in first person view (`02b_zoomed`) |
+| V8 | Every tool held in the right hand, or the left with `--left`, from the side and from the eyes (`tests/grip_gallery.tscn`) |

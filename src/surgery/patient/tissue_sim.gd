@@ -119,6 +119,26 @@ func any_severed() -> bool:
 	return not _severed.is_empty()
 
 
+## Grid points where the simulated skin has to take over from the body model: within `reach` points of a cut
+## or of skin a tool is holding. 1 inside, 0 outside, one byte per particle. Elsewhere the skin never moves.
+func region(reach: int = 1) -> PackedByteArray:
+	var out := PackedByteArray()
+	out.resize(rest.size())
+	var seeds := PackedInt32Array()
+	for s in _severed:
+		seeds.append(c_a[s])
+		seeds.append(c_b[s])
+	for key: int in _pins:
+		seeds.append(_pins[key][0])
+	for k in seeds:
+		var i := k % (RES + 1)
+		var j := k / (RES + 1)
+		for y in range(maxi(j - reach, 0), mini(j + reach, RES) + 1):
+			for x in range(maxi(i - reach, 0), mini(i + reach, RES) + 1):
+				out[index(x, y)] = 1
+	return out
+
+
 func is_sleeping() -> bool:
 	return _still_steps >= SLEEP_STEPS and _pins.is_empty()
 

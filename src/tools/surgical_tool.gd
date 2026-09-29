@@ -46,13 +46,15 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	continuous_cd = true
 	contact_monitor = true
 	max_contacts_reported = 2
+	_model = ToolModel.build(def, self)
+	# The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.
+	var bounds := _model_bounds()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(maxf(def.width, 0.01), maxf(def.width * 0.6, 0.01), def.length)
+	box.size = bounds.size.max(Vector3.ONE * 0.006)
 	shape.shape = box
-	shape.position.z = -def.length * 0.5
+	shape.position = bounds.get_center()
 	add_child(shape)
-	_model = ToolModel.build(def, self)
 	_animator.setup(_model)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
@@ -66,6 +68,18 @@ func _process(delta: float) -> void:
 		active = hand.engaged
 		closed = hand.attached
 	_animator.animate(active, closed, delta)
+
+
+## The model's bounding box in the tool's own space. Falls back to a thin box along the tool if there's no model.
+func _model_bounds() -> AABB:
+	var bounds := AABB(Vector3(-def.width * 0.5, -def.width * 0.3, -def.length), Vector3(def.width, def.width * 0.6, def.length))
+	var first := true
+	for node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		var box := (global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
+		bounds = box if first else bounds.merge(box)
+		first = false
+	return bounds
 
 
 func tip_position() -> Vector3:

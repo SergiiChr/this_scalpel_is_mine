@@ -1,5 +1,5 @@
 // Cel shading with hard light bands, a hard specular spot, rim light and procedural grime.
-// Used for everything that isn't skin. Tune per material from Materials.toon().
+// Used for everything except the simulated site skin. Tune per material from Materials.toon().
 shader_type spatial;
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
@@ -14,13 +14,22 @@ uniform vec4 grime_color : source_color = vec4(0.25, 0.22, 0.15, 1.0);
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 // Contamination glow for the Germaphobe quirk, set per tool.
 uniform float contamination = 0.0;
-// Patient body only: where the wound map says the skin is opened, the body is cut away so the cavity shows.
+// Patient body only. carve_map marks where the simulated skin takes over (around cuts and pinched skin):
+// the body is cut away there so the tissue layers and the cavity show. Everywhere else in the site the body
+// itself shows the damage from the wound maps.
 uniform sampler2D carve_map : filter_linear, hint_default_black;
 uniform mat4 carve_inverse;
 // x, z: half size of the surgical site, y: cavity depth. Zero disables carving.
 uniform vec3 carve_box = vec3(0.0);
+// Points in carve_map: one texel per tissue grid point, so texel centers sit exactly on the grid.
+uniform float carve_grid = 1.0;
+uniform sampler2D site_wounds : filter_linear, hint_default_black;
+uniform sampler2D site_fluids : filter_linear, hint_default_black;
+uniform float pallor = 0.0;
 
 varying vec3 world_pos;
+
+#include "res://assets/shaders/wound.gdshaderinc"
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -38,18 +47,25 @@ void vertex() {
 }
 
 void fragment() {
-	if (carve_box.x > 0.0) {
-		vec3 lp = (carve_inverse * vec4(world_pos, 1.0)).xyz;
-		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
-		if (all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) && lp.y > -carve_box.y && texture(carve_map, cuv).r > 0.82) {
-			discard;
-		}
-	}
 	vec3 base = albedo.rgb * texture(albedo_texture, UV).rgb;
 	float n = noise(world_pos.xz * grime_scale) * 0.6 + noise(world_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
+	float wet = 0.0;
+	if (carve_box.x > 0.0) {
+		vec3 lp = (carve_inverse * vec4(world_pos, 1.0)).xyz;
+		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
+		bool in_site = all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) && lp.y > -carve_box.y;
+		if (in_site && texture(carve_map, (cuv * (carve_grid - 1.0) + 0.5) / carve_grid).r > 0.5) {
+			discard;
+		}
+		base = mix(base, vec3(0.78, 0.8, 0.8), pallor * 0.5);
+		// Only the skin facing out of the site gets its damage, not the far side of the body under it.
+		if (in_site && lp.y > -0.04) {
+			wet = apply_wounds(base, texture(site_wounds, cuv), texture(site_fluids, cuv));
+		}
+	}
 	ALBEDO = base;
-	ROUGHNESS = roughness;
+	ROUGHNESS = mix(roughness, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
 	EMISSION = emission_color.rgb + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
 }

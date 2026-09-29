@@ -175,10 +175,10 @@ def _xray() -> Model:
 
 
 def _photo() -> Model:
-    """Instant print from the X-ray. Origin at its center, image facing +Y."""
+    """The developed X-ray: a full-size film sheet (35 x 43 cm) lying on the cart. Origin at its center, image up."""
     m = Model("props", "xray_print")
-    m.add("Frame", superellipsoid((0.09, 0.002, 0.11), 0.1, (0.0, 0.0, 0.0)), "paper")
-    m.add("Image", superellipsoid((0.078, 0.001, 0.078), 0.05, (0.0, 0.0012, -0.008)), "tint")
+    m.add("Image", superellipsoid((0.35, 0.002, 0.43), 0.05, (0.0, 0.0, 0.0)), "tint")
+    m.add("Clip", superellipsoid((0.06, 0.006, 0.02), 0.2, (0.0, 0.002, -0.21)), "steel")
     return m
 
 

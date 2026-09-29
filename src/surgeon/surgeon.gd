@@ -18,6 +18,8 @@ const LOOK_SENSITIVITY := 0.003
 const HOVER_GAP := 0.01
 ## Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
 const PULL_SPEED := 0.05
+## Where hands hang when nothing within reach is under them (the floor while standing): about waist height.
+const CARRY_HEIGHT := 1.05
 ## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
 const CROUCH_DROP := 0.75
 const CROUCH_SPEED := 0.35
@@ -276,7 +278,9 @@ func _physics_process(delta: float) -> void:
 	_face.rotation.x = -pitch * 0.5
 	_animate_body(delta)
 	for i in 2:
-		hands[i].holding = held_tool(i) != null
+		var tool := held_tool(i)
+		hands[i].holding = tool != null
+		hands[i].grip = tool.def.grip if tool else "pencil"
 		hands[i].update_pose(shoulder(i), delta)
 
 
@@ -333,12 +337,15 @@ func _constrain(hand: SurgeonHand) -> void:
 	var offset := hand.tip_offset(tool.def.length) if tool else Vector3(0, -0.03, 0)
 	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
+	var from := shoulder(hand.index)
 	if surface.y != -INF:
 		var tip_y: float = surface.y + HOVER_GAP
 		if hand.engaged and not surface.open:
 			tip_y = surface.y - hand.pressure * 0.004
 		hand.target.y = tip_y - offset.y
-	var from := shoulder(hand.index)
+		# Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
+		if hand.target.y < from.y - REACH * 0.9:
+			hand.target.y = global_position.y + CARRY_HEIGHT - crouch * CROUCH_DROP
 	if hand.target.distance_to(from) > REACH:
 		hand.target = from + (hand.target - from).normalized() * REACH
 	if not hand.attached:

@@ -18,4 +18,6 @@ Everything on the tray is sterile unless it touched the floor. Personal items on
 [/table]
 
 [b]Fine[/b] tools can't be used with big hands. [b]Heavy[/b] tools can't be used with small hands.
-Missing something? Ring the nurse. One request at a time, and she's slow.
+Missing something? Ring the nurse: pick a group, then the item. One request at a time, and she's slow.
+Whatever she brings waits on the delivery tray next to the bell.
+The defibrillator never sits on the tray. It has its own cart.

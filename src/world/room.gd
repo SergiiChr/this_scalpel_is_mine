@@ -22,7 +22,8 @@ const LAYOUTS: Dictionary = {
 	# Stations stand against the walls, so reaching them still means walking away from the table.
 	"or": {
 		"size": Vector3(5.2, 2.8, 4.4),
-		"spawns": [Vector3(0.0, 0.0, 0.95), Vector3(0.0, 0.0, -0.95)],
+		# Right at the table edge: from here both of you reach the middle of the patient.
+		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(0.0, 0.0, -0.62)],
 		"tray": Vector3(-1.4, 0.0, 0.0),
 		"manual": Vector3(1.9, 0.0, -2.0),
 		"card": Vector3(1.05, 0.0, 0.5),
@@ -40,7 +41,7 @@ const LAYOUTS: Dictionary = {
 	},
 	"ambulance": {
 		"size": Vector3(4.2, 2.1, 2.3),
-		"spawns": [Vector3(0.0, 0.0, 0.8), Vector3(-0.5, 0.0, -0.8)],
+		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(-0.5, 0.0, -0.62)],
 		"tray": Vector3(-1.45, 0.0, 0.6),
 		"manual": Vector3(1.8, 0.0, -0.85),
 		"card": Vector3(1.0, 0.0, 0.5),
@@ -53,7 +54,7 @@ const LAYOUTS: Dictionary = {
 	},
 	"sidewalk": {
 		"size": Vector3(14.0, 0.0, 10.0),
-		"spawns": [Vector3(0.0, 0.0, 0.95), Vector3(0.0, 0.0, -0.95)],
+		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(0.0, 0.0, -0.62)],
 		"tray": Vector3(-1.4, 0.0, 0.3),
 		"manual": Vector3(1.6, 0.0, 1.6),
 		"card": Vector3(1.05, 0.0, 0.5),
@@ -144,7 +145,9 @@ func _build_environment() -> void:
 	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
-	env.glow_intensity = 0.4
+	env.glow_intensity = 0.3
+	# Only real light sources glow (lamp lens, screens); lit skin up close must not bloom the whole view white.
+	env.glow_hdr_threshold = 1.6
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.25, 0.32, 0.3)
 	env.fog_density = 0.02
@@ -164,7 +167,7 @@ func _build_environment() -> void:
 	lamp.rotation.x = -PI / 2
 	lamp.spot_range = 3.0
 	lamp.spot_angle = 30.0
-	lamp.light_energy = 1.0
+	lamp.light_energy = 0.55
 	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.9)
 	lamp.shadow_enabled = true
@@ -188,7 +191,7 @@ func _build_environment() -> void:
 	overhead.spot_range = 12.0
 	overhead.spot_angle = 70.0
 	overhead.spot_attenuation = 0.3
-	overhead.light_energy = 0.9 if indoors else 1.1
+	overhead.light_energy = 0.55 if indoors else 1.0
 	overhead.light_color = Color(0.92, 1.0, 0.95) if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
 	add_child(overhead)
@@ -201,7 +204,7 @@ func _build_environment() -> void:
 		tube.position = pos
 		tube.omni_range = 9.0
 		tube.light_color = Color(0.75, 0.95, 0.85) if indoors else Color(1.0, 0.7, 0.35)
-		tube.light_energy = 0.6
+		tube.light_energy = 0.35
 		add_child(tube)
 		_flicker_lights.append(tube)
 

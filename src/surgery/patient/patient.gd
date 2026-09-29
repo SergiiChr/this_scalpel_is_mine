@@ -64,7 +64,6 @@ var _voice_cooldown := 0.0
 var _breath_cooldown := 0.0
 var _stroke_wounds: Dictionary = {}
 var _initial_suction: float = 1.0
-var _blood_pools: Dictionary = {}
 var _organ_strain: Dictionary = {}
 var _organ_damage: Dictionary = {}
 var _tear_notice_msec := -100000
@@ -151,7 +150,7 @@ func _physics_process(delta: float) -> void:
 	_sync_acc += delta
 	if _sync_acc >= SYNC_INTERVAL:
 		_sync_acc = 0.0
-		_sync.rpc(vitals.to_dict(), targets.map(func(t: CavityTarget) -> Array: return t.state()), body.organ_states(), body.tissue.grips(), cavity_blood_ml)
+		_sync.rpc(vitals.to_dict(), targets.map(func(t: CavityTarget) -> Array: return t.state()), body.organ_states(), body.tissue.grips(), cavity_blood_ml, body.blood.sources)
 
 
 # --- Simulation ------------------------------------------------------------------------------------
@@ -166,6 +165,7 @@ func _simulate(dt: float) -> void:
 		bleed_mult *= 0.1
 	var total := 0.0
 	var heal := mods.num("heal_rate")
+	var sources: Array = []
 	for wound in wounds:
 		if not wound.is_internal():
 			wound.opened = clampf(body.tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN) / FULL_GAP, 0.0, 1.0)
@@ -174,7 +174,9 @@ func _simulate(dt: float) -> void:
 		if wound.is_internal() or wound.opened > 0.3:
 			cavity_blood_ml += rate * dt * 0.6
 		elif rate > 0.05:
-			_bleed_visual(wound, rate * dt)
+			sources.append([wound.midpoint(), rate])
+			if rng.randf() < dt * 0.5:
+				Surgery.current.sound("blood_drip", body.uv_to_world(wound.midpoint()))
 		if not wound.made_by_surgeon or wound.kind != Wound.Kind.CUT:
 			wound.held = maxf(wound.held - dt * 0.004, 0.0)
 		if heal > 0.0:
@@ -184,6 +186,9 @@ func _simulate(dt: float) -> void:
 				if before < 1.0 and wound.bins[i] >= 1.0 and not wound.is_internal():
 					_tissue_stitch.rpc(wound.bin_position(i), STITCH_TENSION[0], TissueSim.TISSUE_BREAK)
 	v.bleed_rate = total
+	# The worst few external bleeds run as fluid on every peer (BloodFlow); the rest is too little to see.
+	sources.sort_custom(func(a: Array, b: Array) -> bool: return a[1] > b[1])
+	body.blood.sources = sources.slice(0, 6)
 	v.blood_ml = clampf(v.blood_ml - total * dt + fx.volume_ml * dt, 0.0, v.max_blood_ml * 1.1)
 	cavity_blood_ml = maxf(cavity_blood_ml, 0.0)
 	body.set_cavity_blood(cavity_blood_ml / 350.0)
@@ -1024,15 +1029,6 @@ func _mark_grid(grid: PackedFloat32Array, uv: Vector2, radius: float, strength: 
 				grid[y * GRID + x] = maxf(grid[y * GRID + x], strength)
 
 
-func _bleed_visual(wound: Wound, ml: float) -> void:
-	var pool: float = _blood_pools.get(wound.id, 0.0) + ml
-	_blood_pools[wound.id] = pool
-	if rng.randf() < 0.05:
-		Surgery.current.sound("blood_drip", body.uv_to_world(wound.midpoint()))
-	if rng.randf() < 0.3:
-		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, wound.midpoint(), wound.midpoint(), 0.02 + sqrt(pool) * 0.012, 0.9, WoundMap.Mode.MAX)
-
-
 func _paint_wound(wound: Wound) -> void:
 	for i in range(1, wound.points.size()):
 		var jitter := 0.006 if wound.kind == Wound.Kind.TEAR else 0.0
@@ -1124,7 +1120,8 @@ func _paint(layer: int, channel: int, a: Vector2, b: Vector2, radius: float, val
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, grips: Array, cavity_ml: float) -> void:
+func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, grips: Array, cavity_ml: float, bleeds: Array) -> void:
+	body.blood.sources = bleeds
 	vitals.from_dict(vital_data)
 	for i in mini(target_states.size(), targets.size()):
 		targets[i].apply_state(target_states[i])
@@ -1136,7 +1133,7 @@ func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array,
 func _process(delta: float) -> void:
 	body.animator.animate(vitals, alive, delta)
 	if body.skin_material:
-		body.skin_material.set_shader_parameter("pallor", clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
+		body.set_pallor(clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
 	if multiplayer.is_server():
 		for entry: Array in body.tissue.snapped:
 			_on_snap(entry[0], entry[1], entry[2])

@@ -9,7 +9,8 @@ const COOLDOWN := 30.0
 const REACH := 1.5
 const PUSH_OFFSET := 0.85
 const SYNC_INTERVAL := 0.1
-const PRINT_SPOT := Vector3(0.0, 0.4, 0.45)
+## The developed film lies on the cart's base, in front of the column.
+const PRINT_SPOT := Vector3(0.0, 0.34, 0.1)
 
 ## Last print: {"shapes": Array, "site": String}. Empty until the first exposure.
 var print_data: Dictionary = {}
@@ -40,7 +41,7 @@ func build(surgery: Surgery) -> void:
 	add_child(body)
 	Interactable.create(self, "Push / let go of the X-ray cart", Vector3(0.5, 0.2, 0.2), Vector3(0, 0.93, 0.38), func(_s: Surgeon) -> void: _req_push.rpc_id(1))
 	Interactable.create(self, "Take an X-ray", Vector3(0.35, 0.25, 0.1), Vector3(0, 0.6, 0.38), func(_s: Surgeon) -> void: _req_expose.rpc_id(1))
-	Interactable.create(self, "Look at the X-ray print", Vector3(0.2, 0.1, 0.2), PRINT_SPOT, func(_s: Surgeon) -> void: _open_print())
+	Interactable.create(self, "Look at the X-ray film", Vector3(0.36, 0.1, 0.44), PRINT_SPOT, func(_s: Surgeon) -> void: _open_print())
 
 
 func _physics_process(delta: float) -> void:
