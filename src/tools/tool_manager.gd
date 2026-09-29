@@ -63,6 +63,27 @@ func nearest_grabbable(at: Vector3) -> SurgicalTool:
 	return best
 
 
+## The closest tool of this kind within reach of a point (measured to its middle), wherever it is but on a belt or used up.
+func nearest_of(id: String, at: Vector3, reach: float) -> SurgicalTool:
+	var best: SurgicalTool = null
+	var best_dist := reach
+	for tool: SurgicalTool in tools.values():
+		if tool.def.id == id and not tool.state in [SurgicalTool.State.BELT, SurgicalTool.State.CONSUMED]:
+			var dist := (tool.global_transform * Vector3(0, 0, -tool.def.length * 0.5)).distance_to(at)
+			if dist < best_dist:
+				best_dist = dist
+				best = tool
+	return best
+
+
+## What this tool holds at its tip (a cotton pad in forceps), or null.
+func carried_by(tool: SurgicalTool) -> SurgicalTool:
+	for other: SurgicalTool in tools.values():
+		if other.state == SurgicalTool.State.CARRIED and other.holder == tool.uid:
+			return other
+	return null
+
+
 # --- Requests (any peer) ---------------------------------------------------------------------------
 
 
@@ -208,6 +229,29 @@ func leave_standing(tool: SurgicalTool) -> void:
 	_set_state.rpc(tool.uid, SurgicalTool.State.STANDING, tool.holder, -1, tool.global_transform)
 
 
+func carry(item: SurgicalTool, by: SurgicalTool) -> void:
+	_set_state.rpc(item.uid, SurgicalTool.State.CARRIED, by.uid, -1, item.global_transform)
+
+
+func drop_carried(by: SurgicalTool) -> void:
+	var item := carried_by(by)
+	if item:
+		_let_fall(item)
+
+
+func _let_fall(tool: SurgicalTool) -> void:
+	_set_state.rpc(tool.uid, SurgicalTool.State.FREE, 0, -1, tool.global_transform)
+	tool.set_meta("falling", true)
+
+
+## Host: exact amount here, everyone else sees it change in tenths (and the moment it runs dry).
+func set_fill(tool: SurgicalTool, amount: float) -> void:
+	var step := ceili(tool.fill * 10.0)
+	tool.fill = clampf(amount, 0.0, 1.0)
+	if ceili(tool.fill * 10.0) != step:
+		_show_fill.rpc(tool.uid, tool.fill)
+
+
 func consume(tool: SurgicalTool) -> void:
 	if tool.state == SurgicalTool.State.HELD:
 		Surgery.current.set_attached(tool.holder, tool.slot, false)
@@ -245,6 +289,11 @@ func _physics_process(delta: float) -> void:
 	if surgery == null:
 		return
 	for tool: SurgicalTool in tools.values():
+		if tool.state == SurgicalTool.State.CARRIED and tools.has(tool.holder):
+			# Centered on the carrier's tip.
+			var by: SurgicalTool = tools[tool.holder]
+			tool.global_transform = Transform3D(by.global_basis, by.tip_position() + by.global_basis.z * tool.def.length * 0.5)
+			continue
 		var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
 		if surgeon == null:
 			continue
@@ -265,6 +314,10 @@ func _physics_process(delta: float) -> void:
 				ToolActions.update_standing(tool, surgery.patient, delta)
 			SurgicalTool.State.FREE:
 				_check_drop(tool)
+			SurgicalTool.State.CARRIED:
+				var by: SurgicalTool = tools.get(tool.holder)
+				if by == null or by.state != SurgicalTool.State.HELD:
+					_let_fall(tool)
 	_sync_acc += delta
 	if _sync_acc >= SYNC_INTERVAL:
 		_sync_acc = 0.0
@@ -365,6 +418,15 @@ func _set_blood(uid: int, amount: float) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
 		tool.set_blood(amount)
+
+
+@rpc("authority", "call_local", "reliable")
+func _show_fill(uid: int, amount: float) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		if not multiplayer.is_server():
+			tool.fill = amount
+		tool.show_fill(amount)
 
 
 @rpc("authority", "call_local", "reliable")

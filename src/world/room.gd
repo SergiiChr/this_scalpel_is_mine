@@ -77,6 +77,8 @@ var xray: XrayCart
 var iv_line: IvLine
 var _iv_stand: Node3D
 var _flicker_lights: Array[Light3D] = []
+## Over the bell: the order on its way and the nurse's cooldown.
+var _nurse_board: Label3D
 
 
 func build(env: String, surgery: Surgery) -> void:
@@ -88,6 +90,21 @@ func build(env: String, surgery: Surgery) -> void:
 	_build_tray()
 	_build_stations(surgery)
 	Sfx.play_loop({"or": "fluorescent_buzz", "ambulance": "ambulance_rumble", "sidewalk": "street_ambience"}[environment_id], self)
+
+
+func _process(_delta: float) -> void:
+	if _nurse_board and Surgery.current:
+		_nurse_board.text = nurse_board_text(Surgery.current.status)
+
+
+## status: the host's last status (Surgery.status).
+static func nurse_board_text(status: Dictionary) -> String:
+	var order: Array = status.get("order", [])
+	if not order.is_empty():
+		var done := roundi(order[2] * 10.0)
+		return "%s\n%s  %d s" % [order[0], "■".repeat(done) + "□".repeat(10 - done), ceili(order[1])]
+	var cooldown: float = status.get("nurse", 0.0)
+	return "Nurse is busy for %d s" % ceili(cooldown) if cooldown > 0.0 else "Nurse ready"
 
 
 func spawn_transform(index: int) -> Transform3D:
@@ -279,6 +296,8 @@ func _build_stations(s: Surgery) -> void:
 	_station("card", "Read the patient card", Vector3(0.3, 0.4, 0.2), s.open_card, 0.75)
 	if s.scenario.nurse and layout.has("bell"):
 		_station("bell", "Ring for the nurse", Vector3(0.5, 1.2, 0.5), s.open_nurse)
+		_nurse_board = Shapes.label(self, "", (layout.bell as Vector3) + Vector3(0, 1.5, 0), 40)
+		_nurse_board.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	if layout.has("gloves"):
 		_station("gloves", "Change gloves", Vector3(0.4, 1.2, 0.4), s.change_gloves)
 	if layout.has("sanitizer"):

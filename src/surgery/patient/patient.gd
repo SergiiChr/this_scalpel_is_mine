@@ -699,16 +699,18 @@ func mark(a: Vector2, b: Vector2) -> void:
 	paint(WoundMap.Layer.FLUIDS, WoundMap.INK, a, b, 0.004, 1.0, WoundMap.Mode.MAX)
 
 
-func swab_at(zone: String, uv: Vector2, def: ToolDef, dt: float) -> void:
+## drug: what the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in iodine).
+func swab_at(zone: String, uv: Vector2, def: ToolDef, dt: float, soaked_in: String = "") -> void:
+	var drug := soaked_in if soaked_in else def.drug
 	var radius := body.meters_to_uv(def.radius)
-	var sanitize := def.drug in ["iodine", "whiskey"]
+	var sanitize := drug in ["iodine", "whiskey"]
 	if zone == "site":
 		if sanitize:
-			var strength := 1.0 if def.drug == "iodine" else 0.5
+			var strength := 1.0 if drug == "iodine" else 0.5
 			_mark_grid(_sanitized, uv, radius, strength)
-			paint(WoundMap.Layer.FLUIDS, WoundMap.IODINE if def.drug == "iodine" else WoundMap.GRIME, uv, uv, radius, 0.3 * dt * 10.0, WoundMap.Mode.ADD)
+			paint(WoundMap.Layer.FLUIDS, WoundMap.IODINE if drug == "iodine" else WoundMap.GRIME, uv, uv, radius, 0.3 * dt * 10.0, WoundMap.Mode.ADD)
 			paint(WoundMap.Layer.FLUIDS, WoundMap.GRIME, uv, uv, radius, dt * 2.0, WoundMap.Mode.SUB)
-			if def.drug == "whiskey" and _nearest_wound(uv, 0.03, false):
+			if drug == "whiskey" and _nearest_wound(uv, 0.03, false):
 				hurt(0.5 * dt * 10.0, uv)
 		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, uv, radius, def.power * dt * 2.0, WoundMap.Mode.SUB)
 		var wound := _nearest_wound(uv, 0.02, false)

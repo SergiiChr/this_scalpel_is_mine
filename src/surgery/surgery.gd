@@ -128,7 +128,7 @@ func _physics_process(delta: float) -> void:
 	_status_acc += delta
 	if _status_acc >= STATUS_INTERVAL:
 		_status_acc = 0.0
-		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "log": scoring.recent, "nurse": nurse.cooldown_left, "lab": lab.cooldown_left, "elapsed": elapsed})
+		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "log": scoring.recent, "nurse": nurse.cooldown_left, "order": nurse.order(), "lab": lab.cooldown_left, "elapsed": elapsed})
 
 
 ## A partner dropped out: their tools fall where they are and their surgeon leaves the room.
