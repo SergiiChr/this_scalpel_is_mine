@@ -12,6 +12,13 @@ const SKIN_TONES: Array[Color] = [
 	Color(0.87, 0.7, 0.6), Color(0.78, 0.58, 0.45), Color(0.6, 0.42, 0.3), Color(0.42, 0.28, 0.2),
 ]
 
+## Hospital palette. Surgical green for walls and linens (it's easy on eyes that stare at red all day),
+## ceil blue for the second surgeon's scrubs, one cool fluorescent white for every room light but the surgical lamp.
+const SURGICAL_GREEN := Color(0.4, 0.55, 0.5)
+const PATIENT_GOWN := Color(0.52, 0.64, 0.6)
+const SCRUBS: Array[Color] = [Color(0.22, 0.4, 0.36), Color(0.26, 0.38, 0.52)]
+const FLUORESCENT := Color(0.88, 1.0, 0.94)
+
 static var _cache: Dictionary = {}
 
 

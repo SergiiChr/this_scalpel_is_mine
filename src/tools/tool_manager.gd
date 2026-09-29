@@ -219,6 +219,9 @@ func _req_wash(hand: int) -> void:
 	var peer := Net._sender()
 	var tool := tool_in_hand(peer, hand)
 	if tool == null:
+		var surgeon: Surgeon = Surgery.current.surgeons.get(peer)
+		if surgeon:
+			surgeon.clean_gloves.rpc()
 		Surgery.current.tell(peer, "You wash your gloves. They're still gloves.")
 		return
 	_set_soiled.rpc(tool.uid, false)

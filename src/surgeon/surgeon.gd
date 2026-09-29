@@ -43,6 +43,8 @@ const FUMBLE_SPEED := 0.35
 ## A remote surgeon silent this long counts as frozen: the host pauses their tools until they're heard from again,
 ## so a lag spike doesn't leave a cautery burning or a saw running on its own.
 const STALL_SECONDS := 0.75
+## Scrubs stain per second per fully bloody glove: hands get wiped on them without thinking.
+const STAIN_RATE := 0.004
 
 var peer_id := 1
 var display_name := "Doctor"
@@ -65,6 +67,9 @@ var _held_uid: Array[int] = [0, 0]
 
 var _head: Node3D
 var _body: Node3D
+## Shared by the body and both sleeves, so blood wiped off the gloves stains them all.
+var _scrubs: ShaderMaterial
+var _stains := 0.0
 var _face: Node3D
 var _camera: Camera3D
 var _joints: Dictionary = {}
@@ -109,7 +114,7 @@ func setup(peer: int, player_name: String, rolls: Array, spawn: Transform3D) -> 
 	for i in 2:
 		var hand := SurgeonHand.new()
 		add_child(hand)
-		hand.build(i, _scrubs_color())
+		hand.build(i, _scrubs)
 		hand.local_target = Vector3(-0.17 if i == 0 else 0.17, 1.18, -0.45)
 		hand.puppet = not is_local
 		hand.target = to_global(hand.local_target)
@@ -174,13 +179,21 @@ func blocked_reason(def: ToolDef) -> String:
 	return ""
 
 
+func _stain_scrubs(delta: float) -> void:
+	var stains := minf(_stains + (hands[0].blood + hands[1].blood) * STAIN_RATE * delta, 1.0)
+	# Shader parameters only change in visible steps.
+	if snappedf(stains, 0.02) != snappedf(_stains, 0.02):
+		_scrubs.set_shader_parameter("stains", stains)
+	_stains = stains
+
+
 func _scrubs_color() -> Color:
-	return Color(0.2, 0.36, 0.34) if peer_id == 1 else Color(0.36, 0.26, 0.4)
+	return Materials.SCRUBS[0 if peer_id == 1 else 1]
 
 
 func _build_visuals() -> void:
-	var scrubs := {"tint": Materials.toon(_scrubs_color(), 0.35)}
-	_body = ModelSlot.instantiate("surgeon", "body", self, scrubs)
+	_scrubs = Materials.toon_unique(_scrubs_color(), 0.35)
+	_body = ModelSlot.instantiate("surgeon", "body", self, {"tint": _scrubs})
 	_head = Node3D.new()
 	_head.name = "Head"
 	_head.position.y = EYE_HEIGHT
@@ -312,7 +325,9 @@ func _physics_process(delta: float) -> void:
 			_held_uid[i] = uid
 			hands[i].level = 0
 		hands[i].grip = tool.def.grip if tool else "pencil"
+		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
+	_stain_scrubs(delta)
 
 
 func _local_update(delta: float) -> void:
@@ -579,6 +594,15 @@ func _sync_state(data: Array) -> void:
 		for i in 2:
 			if strain[i]:
 				Surgery.current.overstretched(peer_id, i)
+
+
+## The sink or a fresh pair takes the blood off the gloves. The scrubs keep their stains.
+@rpc("any_peer", "call_local", "reliable")
+func clean_gloves() -> void:
+	if Net._sender() not in [1, peer_id]:
+		return
+	for hand in hands:
+		hand.set_blood(0.0)
 
 
 ## Host tells the owner a hand is now holding onto something (or let go). Attached hands don't follow the body.

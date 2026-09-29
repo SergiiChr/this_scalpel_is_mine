@@ -6,6 +6,9 @@ extends Node3D
 ## to the table or the floor and collect into pools that grow. Strong bleeds also spurt droplets into the air.
 ## Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
 
+## Blood thrown up right in front of the local surgeon's eyes hits their view (see Hud), amount 0..1.
+signal splashed(amount: float)
+
 const MAX_RIVULETS := 48
 const MAX_DROPS := 96
 ## Rivulets per ml of blood lost.
@@ -26,6 +29,8 @@ const PUDDLE_START := 0.015
 const PUDDLE_GROWTH := 0.012
 const PUDDLE_MAX := 0.14
 const PUDDLE_PAINT_INTERVAL := 0.2
+## Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.
+const SPLASH_REACH := 0.75
 
 var body: PatientBody
 ## [[uv, ml per second], ...] of the wounds bleeding onto the skin.
@@ -91,6 +96,7 @@ func _spawn(delta: float) -> void:
 			var up := body.site.global_basis.y
 			var spray := up * _rng.randf_range(0.6, 1.3) + Vector3(_rng.randf_range(-0.4, 0.4), 0.0, _rng.randf_range(-0.4, 0.4))
 			_add_drop(body.uv_to_world(uv), spray)
+			_splash(body.uv_to_world(uv), 0.04)
 
 
 ## Grows the puddle around a wound by ml and returns its radius (uv). Swabbing it away (the fluid map comes back
@@ -147,6 +153,18 @@ func spray(at: Vector3, count: int, speed: float) -> void:
 	for i in count:
 		var out := Vector3(_rng.randf_range(-1, 1), 0.0, _rng.randf_range(-1, 1)) * 0.6
 		_add_drop(at + up * 0.004, (up + out).normalized() * speed * _rng.randf_range(0.5, 1.0))
+	_splash(at, count * speed * 0.05)
+
+
+## Closer and more head-on hits more.
+func _splash(at: Vector3, amount: float) -> void:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	var to := at - camera.global_position
+	var facing := to.normalized().dot(-camera.global_basis.z)
+	if to.length() < SPLASH_REACH and facing > 0.7:
+		splashed.emit(amount * (1.0 - to.length() / SPLASH_REACH) * 2.0)
 
 
 func _add_drop(at: Vector3, velocity: Vector3) -> void:

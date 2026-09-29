@@ -161,7 +161,7 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.025, 0.03) if environment_id != "sidewalk" else Color(0.03, 0.035, 0.06)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.3, 0.42, 0.42)
+	env.ambient_light_color = Materials.SURGICAL_GREEN.darkened(0.2)
 	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
@@ -198,7 +198,7 @@ func _build_environment() -> void:
 		var box := BoxMesh.new()
 		box.size = Vector3(1.4, 0.04, 0.5)
 		panel.mesh = box
-		panel.material_override = Materials.glow(Color(0.95, 1.0, 0.97))
+		panel.material_override = Materials.glow(Materials.FLUORESCENT)
 		panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		panel.position = Vector3(0, size.y - 0.03, 0)
 		add_child(panel)
@@ -212,7 +212,7 @@ func _build_environment() -> void:
 	overhead.spot_angle = 70.0
 	overhead.spot_attenuation = 0.3
 	overhead.light_energy = 0.55 if indoors else 1.0
-	overhead.light_color = Color(0.92, 1.0, 0.95) if indoors else Color(1.0, 0.75, 0.45)
+	overhead.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
 	add_child(overhead)
 	_flicker_lights.append(overhead)
@@ -223,7 +223,7 @@ func _build_environment() -> void:
 		var tube := OmniLight3D.new()
 		tube.position = pos
 		tube.omni_range = 9.0
-		tube.light_color = Color(0.75, 0.95, 0.85) if indoors else Color(1.0, 0.7, 0.35)
+		tube.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.7, 0.35)
 		tube.light_energy = 0.35
 		add_child(tube)
 		_flicker_lights.append(tube)
@@ -242,7 +242,7 @@ func _build_shell() -> void:
 	if environment_id == "sidewalk":
 		_build_street(size)
 		return
-	var wall := Color(0.45, 0.52, 0.5) if environment_id == "or" else Color(0.75, 0.78, 0.8)
+	var wall := Materials.SURGICAL_GREEN if environment_id == "or" else Color(0.75, 0.78, 0.8)
 	for side: float in [-1.0, 1.0]:
 		Shapes.slab(self, Vector3(size.x, size.y, 0.1), wall, Vector3(0, size.y * 0.5, side * size.z * 0.5), 0.6)
 		Shapes.static_box(self, Vector3(size.x, size.y, 0.1), Vector3(0, size.y * 0.5, side * size.z * 0.5))

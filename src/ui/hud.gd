@@ -41,12 +41,18 @@ var _subtitle_timer := 0.0
 var _gauges: Dictionary = {}
 var _overlay: Control
 var _post: ShaderMaterial
+## Blood on the view (0..1), how long since it was clean, and where its drops sit (a new pattern per clean start).
+var _lens_blood := 0.0
+var _lens_age := 0.0
+## Blood on the view clears in about this many seconds.
+const LENS_CLEAR_SECONDS := 8.0
 var _root: Control
 
 
 func setup(owner_surgery: Surgery) -> void:
 	surgery = owner_surgery
 	_build_post_fx()
+	surgery.patient.body.blood.splashed.connect(_on_blood_splashed)
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -119,6 +125,18 @@ func _process(delta: float) -> void:
 	_post.set_shader_parameter("blackout", 1.0 if me.status.is_out() else 0.0)
 	_post.set_shader_parameter("wobble", me.status.sickness)
 	_post.set_shader_parameter("blur", me.status.sickness * 1.5)
+	if _lens_blood > 0.0:
+		_lens_blood = maxf(_lens_blood - delta / LENS_CLEAR_SECONDS, 0.0)
+		_lens_age += delta
+		_post.set_shader_parameter("lens_blood", _lens_blood)
+		_post.set_shader_parameter("lens_age", _lens_age)
+
+
+func _on_blood_splashed(amount: float) -> void:
+	if _lens_blood <= 0.0:
+		_lens_age = 0.0
+		_post.set_shader_parameter("lens_seed", randf() * 100.0)
+	_lens_blood = minf(_lens_blood + amount, 1.0)
 
 
 ## A lag spike shows up after a moment; the game carries on and the connection only drops after Net.TIMEOUT_MAX_MSEC.

@@ -14,7 +14,6 @@ extends Node3D
 enum Orientation { FACE_UP, SIDE, FACE_DOWN }
 
 const HALF_HEIGHT := 0.11
-const GOWN_COLOR := Color(0.5, 0.58, 0.55)
 const SITE_LAYER := 4
 const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
@@ -77,7 +76,7 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	add_child(_body_root)
 	var skin := Materials.body_skin(tone)
 	# The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
-	var gown := Materials.body_skin(GOWN_COLOR)
+	var gown := Materials.body_skin(Materials.PATIENT_GOWN)
 	_body_materials.append_array([skin, gown])
 	for mat in _body_materials:
 		Materials.set_site_maps(mat, wound_map.textures[0], wound_map.textures[1])

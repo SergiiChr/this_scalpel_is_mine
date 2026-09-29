@@ -113,6 +113,16 @@ func _ready() -> void:
 	await _frames(10)
 	me.camera().current = true
 	await _shot(out, "08_hands")
+	# Later in a bloody surgery: gloves soaked, scrubs stained, a spurt just hit the view.
+	for hand in me.hands:
+		hand.set_blood(0.8)
+	me._stains = 0.6
+	me._scrubs.set_shader_parameter("stains", 0.6)
+	surgery.hud._on_blood_splashed(0.8)
+	await _frames(2)
+	await _shot(out, "08c_bloody")
+	surgery.hud._lens_blood = 0.0
+	surgery.hud._post.set_shader_parameter("lens_blood", 0.0)
 	# Hands working over the thighs: nothing may sink into the legs or the table.
 	var spot := me.global_position
 	me.global_position = patient.global_position + Vector3(-0.45, -Room.TABLE_HEIGHT, 0.62)

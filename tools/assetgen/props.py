@@ -165,7 +165,7 @@ def _xray() -> Model:
     m.add(
         "Emitter",
         merge(superellipsoid((0.28, 0.2, 0.28), 0.3, (0.0, 1.48, 0.7)), cylinder(0.08, (0.0, 1.38, 0.7), (0.0, 1.33, 0.7), 20)),
-        "yellow_plastic",
+        "plastic",
         (0.0, 1.6, 0.7),
         "Arm",
     )
