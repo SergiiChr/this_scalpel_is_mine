@@ -14,7 +14,7 @@ Godot adds LODs on import.
 | `surgeon/` | `glove` (skinned) | `tools/blender` | Bones: Hand, Index/Middle/Ring/Pinky/Thumb 1-3 |
 | `surgeon/` | `body`, `head`, `upper_arm`, `forearm` | `tools/assetgen` | Torso, LegL/R |
 | `organs/` | bowel, lobe, sac (unit radius) | `tools/blender` | |
-| `targets/` | appendix, tumor, clot, bone, fragment, rib, splinter | `tools/blender` | |
+| `targets/` | appendix, tumor, clot, bone (femur), fragment, rib, splinter, nasal_hump, skull_flap, sternum | `tools/blender` | |
 | `targets/` | bullet, knife, figurine, fluid, air | `tools/assetgen` | |
 | `tools/` | one per tool id or `model=` in tools.cfg | `tools/assetgen` | JawA/JawB, Plunger, Trigger, Blade, Flame, Glow, Light |
 | `props/` | table, tray, IV stand, shelf, clipboard, stations, lamp, monitor, X-ray cart and print, straps, streetlight | `tools/assetgen` | X-ray `Arm` |

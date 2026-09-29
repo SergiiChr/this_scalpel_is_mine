@@ -5,6 +5,8 @@ extends CharacterBody3D
 ##
 ## Controls: mouse moves the active hand, hold look to turn the head instead, WASD moves the body.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
+## Hands have no height control: the tool tip rests just above whatever is under it (skin, tray, organs, a target
+## in an open cavity), or higher while lifted. Crouching brings everything down within reach of the floor.
 
 const WALK_SPEED := 1.6
 const REACH := 0.72
@@ -12,7 +14,19 @@ const EYE_HEIGHT := 1.62
 const SHOULDER := Vector3(0.19, 1.4, -0.08)
 const HAND_SENSITIVITY := 0.0009
 const LOOK_SENSITIVITY := 0.003
-const HOVER_STEP := 0.01
+## Gap between a resting tool tip and the surface under it.
+const HOVER_GAP := 0.01
+## Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
+const PULL_SPEED := 0.05
+## Room between the hand (or forearm) and the surface under it: about half a hand's thickness.
+const HAND_CLEARANCE := 0.03
+## Where hands hang when nothing within reach is under them (the floor while standing): about waist height.
+const CARRY_HEIGHT := 1.05
+## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
+const CROUCH_DROP := 0.75
+const CROUCH_SPEED := 0.35
+## Zoom steps on the mouse wheel: camera field of view, widest first. Hand motion scales with it for precision.
+const ZOOM_FOV: Array[float] = [70.0, 55.0, 42.0, 32.0, 24.0]
 const SYNC_INTERVAL := 1.0 / 30.0
 const BUMP_DISTANCE := 0.07
 const SWITCH_DELAY := 0.25
@@ -38,6 +52,11 @@ var pitch := -0.55
 var input_locked := false
 var is_local := false
 var focused: Interactable = null
+## Tool the active hand would pick up right now (local surgeon only), shown highlighted.
+var hovered: SurgicalTool = null
+## 0 standing, 1 fully crouched. Synced so everyone sees you duck.
+var crouch := 0.0
+var zoom := 0
 
 var _head: Node3D
 var _body: Node3D
@@ -46,6 +65,7 @@ var _camera: Camera3D
 var _joints: Dictionary = {}
 var _rest: Dictionary = {}
 var _walk_phase := 0.0
+var _ground_speed := 0.0
 var _collapse := 0.0
 var _last_position := Vector3.ZERO
 var _remote_out := false
@@ -96,6 +116,18 @@ func setup(peer: int, player_name: String, rolls: Array, spawn: Transform3D) -> 
 		Sfx.deaf = mods.flag("deaf")
 
 
+## Where the active hand is working: its tool's tip, or just past the fingers when empty (what Grab reaches for).
+func aim_point() -> Vector3:
+	var hand := hands[active]
+	var tool := held_tool(active)
+	return hand.global_position + hand.tip_offset(tool.def.length if tool else 0.05)
+
+
+## How fast the body moves across the floor (m/s), measured the same way on every peer.
+func walk_speed() -> float:
+	return _ground_speed
+
+
 func camera() -> Camera3D:
 	return _camera
 
@@ -110,7 +142,7 @@ func belt_transform(belt_slot: int) -> Transform3D:
 
 
 func shoulder(hand: int) -> Vector3:
-	return to_global(Vector3(SHOULDER.x * (-1.0 if hand == 0 else 1.0), SHOULDER.y, SHOULDER.z))
+	return to_global(Vector3(SHOULDER.x * (-1.0 if hand == 0 else 1.0), SHOULDER.y - crouch * CROUCH_DROP, SHOULDER.z))
 
 
 func held_tool(hand: int) -> SurgicalTool:
@@ -169,15 +201,18 @@ func _build_visuals() -> void:
 ## Walk cycle from actual movement speed, collapse while passed out. Works the same for local and remote surgeons.
 func _animate_body(delta: float) -> void:
 	var speed := Vector2(global_position.x - _last_position.x, global_position.z - _last_position.z).length() / maxf(delta, 0.0001)
+	_ground_speed = speed
 	_last_position = global_position
 	_walk_phase += delta * speed * 7.0
 	var stride := clampf(speed / WALK_SPEED, 0.0, 1.0) * 0.45
 	var out := status.is_out() if is_local else _remote_out
 	_collapse = move_toward(_collapse, 1.0 if out else 0.0, delta * 2.5)
-	_pose("LegL", Vector3(sin(_walk_phase) * stride, 0, 0))
-	_pose("LegR", Vector3(-sin(_walk_phase) * stride, 0, 0))
-	_pose("Torso", Vector3(-_collapse * 1.3 + absf(sin(_walk_phase)) * stride * 0.05, 0, 0))
-	_head.position.y = EYE_HEIGHT - _collapse * 1.1
+	# Crouching folds the legs forward and drops the whole body, the torso leaning over the knees.
+	_pose("LegL", Vector3(sin(_walk_phase) * stride - crouch * 1.3, 0, 0))
+	_pose("LegR", Vector3(-sin(_walk_phase) * stride - crouch * 1.3, 0, 0))
+	_pose("Torso", Vector3(-_collapse * 1.3 - crouch * 0.35 + absf(sin(_walk_phase)) * stride * 0.05, 0, 0))
+	_body.position.y = -crouch * 0.42
+	_head.position.y = EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP
 
 
 func _pose(joint: String, euler: Vector3) -> void:
@@ -200,15 +235,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			rotation.y -= motion.x * LOOK_SENSITIVITY
 			pitch = clampf(pitch - motion.y * LOOK_SENSITIVITY, LOOK_PITCH.x, LOOK_PITCH.y)
 		elif _switch_timer <= 0.0:
-			var step := motion * HAND_SENSITIVITY * status.hand_speed()
+			# Zoomed in, the same mouse motion moves the hand less: finer control where you're looking closely.
+			var step := motion * HAND_SENSITIVITY * status.hand_speed() * ZOOM_FOV[zoom] / ZOOM_FOV[0]
 			_move_hand(hand, Vector3(step.x, 0, step.y))
-	elif event.is_action_pressed("hand_up") or event.is_action_pressed("hand_down"):
-		var up := 1 if event.is_action_pressed("hand_up") else -1
-		var over_open: bool = _surface_below(hand.target).open
-		if hand.engaged and not over_open:
-			hand.pressure = clampi(hand.pressure + up, 1, 3)
+	elif event.is_action_pressed("zoom_in") or event.is_action_pressed("zoom_out"):
+		var step := 1 if event.is_action_pressed("zoom_in") else -1
+		# While pressing a tool down the wheel sets pressure (cut depth, stitch tension) instead of zooming.
+		if hand.engaged and held_tool(active):
+			hand.pressure = clampi(hand.pressure + step, 1, 3)
 		else:
-			_move_hand(hand, Vector3(0, HOVER_STEP * up, 0), true)
+			zoom = clampi(zoom + step, 0, ZOOM_FOV.size() - 1)
+	elif event.is_action_pressed("pressure"):
+		hand.pressure = hand.pressure % 3 + 1
 	elif event.is_action_pressed("use_tool"):
 		hand.engaged = true
 	elif event.is_action_released("use_tool"):
@@ -238,19 +276,25 @@ func _physics_process(delta: float) -> void:
 		global_position = global_position.lerp(_net_position, minf(delta * 15.0, 1.0))
 		rotation.y = lerp_angle(rotation.y, _net_yaw, minf(delta * 15.0, 1.0))
 	_head.rotation.x = pitch
+	if is_local:
+		_camera.fov = lerpf(_camera.fov, ZOOM_FOV[zoom], minf(delta * 12.0, 1.0))
 	# The camera pitches fully, the visible head only half as much so it doesn't look broken-necked.
 	_face.rotation.x = -pitch * 0.5
 	_animate_body(delta)
 	for i in 2:
-		hands[i].holding = held_tool(i) != null
+		var tool := held_tool(i)
+		hands[i].holding = tool != null
+		hands[i].grip = tool.def.grip if tool else "pencil"
 		hands[i].update_pose(shoulder(i), delta)
 
 
 func _local_update(delta: float) -> void:
 	_switch_timer = maxf(_switch_timer - delta, 0.0)
 	var can_act := not input_locked and not status.is_out()
+	crouch = move_toward(crouch, 1.0 if can_act and Input.is_action_pressed("crouch") else 0.0, delta * 4.0)
 	var dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back") if can_act else Vector2.ZERO
-	var move := global_basis * Vector3(dir.x, 0, dir.y) * WALK_SPEED * mods.mult("move_speed_mult")
+	var speed := lerpf(WALK_SPEED, CROUCH_SPEED, crouch) * mods.mult("move_speed_mult")
+	var move := global_basis * Vector3(dir.x, 0, dir.y) * speed
 	velocity = Vector3(move.x, velocity.y - 9.8 * delta if not is_on_floor() else 0.0, move.z)
 	move_and_slide()
 	var hand := hands[active]
@@ -259,7 +303,9 @@ func _local_update(delta: float) -> void:
 		var twist_input := Input.get_axis("twist_left", "twist_right")
 		hand.tilt = clampf(hand.tilt - tilt_input * delta * 1.5, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
 		hand.twist = wrapf(hand.twist + twist_input * delta * 2.0, -PI, PI)
-		hand.lifted = Input.is_action_pressed("lift")
+		hand.lifted = Input.is_action_pressed("lift") and not hand.attached
+		if hand.attached and Input.is_action_pressed("lift"):
+			hand.target.y += PULL_SPEED * delta
 		status.holding_breath = Input.is_action_pressed("steady") and status.breath > 0.0
 	for i in 2:
 		var h := hands[i]
@@ -273,6 +319,7 @@ func _local_update(delta: float) -> void:
 	_jolt = _jolt.lerp(Vector3.ZERO, minf(delta * 8.0, 1.0))
 	_check_bumps()
 	_update_focus()
+	_update_hover()
 	_handle_status_events(status.update(delta, _status_context()))
 
 
@@ -287,40 +334,67 @@ func _move_hand(hand: SurgeonHand, delta_local: Vector3, vertical: bool = false)
 		hand.local_target = to_local(hand.target)
 
 
-## Keeps the tool tip on top of whatever is under it. While using a tool on skin, presses into it by pressure level.
+## Rests the tool tip just above whatever is under it. While using a tool on skin, presses into it by pressure level.
+## Then keeps the hand within reach: far out, or down at the floor while standing, it stops short in the air.
 func _constrain(hand: SurgeonHand) -> void:
 	var tool := held_tool(hand.index)
 	var offset := hand.tip_offset(tool.def.length) if tool else Vector3(0, -0.03, 0)
-	var tip := hand.target + offset
-	var surface := _surface_below(tip)
-	if surface.y == -INF:
-		return
-	var tip_y: float = surface.y + 0.004
-	if hand.engaged and not surface.open:
-		tip_y = surface.y - hand.pressure * 0.004
+	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
+	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
+	var from := shoulder(hand.index)
+	if surface.y != -INF:
+		var tip_y: float = surface.y + HOVER_GAP
+		if hand.engaged and not surface.open:
+			tip_y = surface.y - hand.pressure * 0.004
 		hand.target.y = tip_y - offset.y
-	elif tip.y < tip_y:
-		hand.target.y += tip_y - tip.y
-	else:
-		return
+		# Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
+		if hand.target.y < from.y - REACH * 0.9:
+			hand.target.y = global_position.y + CARRY_HEIGHT - crouch * CROUCH_DROP
+		# The hand and the end of the forearm stay out of whatever is under them (a leg, the table edge):
+		# the hand rises instead, lifting the tool tip off if it has to.
+		for point: Vector3 in [hand.target, from.lerp(hand.target, 0.75)]:
+			var under: Dictionary = _surface_below(point)
+			if under.y != -INF and not under.open:
+				hand.target.y += maxf(float(under.y) + HAND_CLEARANCE - point.y, 0.0)
+	if hand.target.distance_to(from) > REACH:
+		hand.target = from + (hand.target - from).normalized() * REACH
 	if not hand.attached:
 		hand.local_target = to_local(hand.target)
 
 
 ## {"y": surface height under p (or -INF), "open": true when p is over an opened incision}
+## Over an opening it finds what's inside: organs and targets, or the cavity floor.
+## Rests on the patient's real skin (PatientBody.SURFACE_LAYER), the table, trays and the floor.
 func _surface_below(p: Vector3) -> Dictionary:
 	var space := get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.35, p + Vector3.DOWN * 0.4, 1 | 2 | 4)
+	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.35, p + Vector3.DOWN * 2.0, 4)
+	# An opening is looked for on the site plane first: the skin mesh around it would hide it from above.
+	var site_hit := space.intersect_ray(query)
+	if not site_hit.is_empty():
+		var body := Surgery.current.patient.body
+		if body.is_open(body.world_to_uv(site_hit.position)):
+			query.collision_mask = PatientBody.CAVITY_LAYER | CavityTarget.LAYER
+			var inside := space.intersect_ray(query)
+			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true}
+	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false}
-	if (hit.collider as Object).has_meta("site"):
-		var body := Surgery.current.patient.body
-		if body.is_open(body.world_to_uv(hit.position)):
-			query.collision_mask = PatientBody.CAVITY_LAYER
-			var floor_hit := space.intersect_ray(query)
-			return {"y": floor_hit.position.y if not floor_hit.is_empty() else hit.position.y - 0.1, "open": true}
 	return {"y": hit.position.y, "open": false}
+
+
+## The tool the active hand would pick up: the free tool nearest the hand's tip, highlighted with its name shown.
+func _update_hover() -> void:
+	var hand := hands[active]
+	var near: SurgicalTool = null
+	if held_tool(active) == null and not input_locked:
+		near = Surgery.current.tools.nearest_grabbable(hand.global_position + hand.tip_offset(0.05))
+	if near != hovered:
+		if is_instance_valid(hovered):
+			hovered.set_highlight(false)
+		if near:
+			near.set_highlight(true)
+		hovered = near
 
 
 func _switch_hand() -> void:
@@ -451,7 +525,7 @@ func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
 		hand_data.append([h.effective_position(), h.tilt, h.twist, h.engaged, h.pressure, h.lifted])
-	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out()]
+	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out(), crouch]
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
@@ -461,6 +535,7 @@ func _sync_state(data: Array) -> void:
 	pitch = data[2]
 	active = data[3]
 	_remote_out = data[6]
+	crouch = data[7]
 	for i in 2:
 		var h := hands[i]
 		var d: Array = data[4][i]

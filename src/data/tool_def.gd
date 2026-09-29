@@ -15,6 +15,7 @@ var size: String
 var improvised: bool
 var orderable: bool
 var delay: float
+var category: String
 var charges: int
 var drug: String
 var drinkable: bool
@@ -25,6 +26,7 @@ var model: String
 var length: float
 var width: float
 var color: Color
+var grip: String
 
 
 static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
@@ -42,6 +44,7 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.improvised = cfg.get_value(section, "improvised", false)
 	def.orderable = cfg.get_value(section, "orderable", false)
 	def.delay = cfg.get_value(section, "delay", 20.0)
+	def.category = cfg.get_value(section, "category", "Supplies")
 	def.charges = cfg.get_value(section, "charges", -1)
 	def.drug = cfg.get_value(section, "drug", "")
 	def.drinkable = cfg.get_value(section, "drinkable", false)
@@ -52,4 +55,5 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.length = cfg.get_value(section, "length", 0.12)
 	def.width = cfg.get_value(section, "width", 0.012)
 	def.color = cfg.get_value(section, "color", Color.GRAY)
+	def.grip = cfg.get_value(section, "grip", "pencil")
 	return def

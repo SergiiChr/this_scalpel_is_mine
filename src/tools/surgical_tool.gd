@@ -15,7 +15,12 @@ var holder := 0
 ## Hand index while HELD, belt slot while on the BELT.
 var slot := -1
 var sterile := true
+## Fell on the floor: visibly dirty. Needs the sink before the sanitizer can make it sterile again.
+var soiled := false
 var charges := -1
+## How bloody the working end is (0..1), for everyone. Host-side exposure builds up in blood_exposure.
+var blood := 0.0
+var blood_exposure := 0.0
 
 # Host-side use state, see ToolActions.
 var grip_info: Dictionary = {}
@@ -28,6 +33,8 @@ var reported: Dictionary = {}
 
 var _model: Node3D
 var _animator := ToolAnimator.new()
+## This tool's own copies of its toon materials, made the first time it needs to look different from the rest.
+var _own_materials: Array[ShaderMaterial] = []
 
 
 func setup(tool_uid: int, tool_def: ToolDef) -> void:
@@ -42,13 +49,15 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	continuous_cd = true
 	contact_monitor = true
 	max_contacts_reported = 2
+	_model = ToolModel.build(def, self)
+	# The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.
+	var bounds := _model_bounds()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(maxf(def.width, 0.01), maxf(def.width * 0.6, 0.01), def.length)
+	box.size = bounds.size.max(Vector3.ONE * 0.006)
 	shape.shape = box
-	shape.position.z = -def.length * 0.5
+	shape.position = bounds.get_center()
 	add_child(shape)
-	_model = ToolModel.build(def, self)
 	_animator.setup(_model)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
@@ -62,6 +71,21 @@ func _process(delta: float) -> void:
 		active = hand.engaged
 		closed = hand.attached
 	_animator.animate(active, closed, delta)
+	if blood > 0.0:
+		for mat in _own_materials:
+			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
+
+
+## The model's bounding box in the tool's own space. Falls back to a thin box along the tool if there's no model.
+func _model_bounds() -> AABB:
+	var bounds := AABB(Vector3(-def.width * 0.5, -def.width * 0.3, -def.length), Vector3(def.width, def.width * 0.6, def.length))
+	var first := true
+	for node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		var box := (global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
+		bounds = box if first else bounds.merge(box)
+		first = false
+	return bounds
 
 
 func tip_position() -> Vector3:
@@ -75,20 +99,50 @@ func is_improvised() -> bool:
 ## Germaphobe quirk: unsterile tools glow for this player only.
 func show_contamination(visible_to_me: bool) -> void:
 	var glow := 0.0 if sterile or not visible_to_me else 1.0
-	for node in _model.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		# Toon materials are shared between tools, so a tool glows on copies of its own.
-		var copy := glow > 0.0 and not mesh.has_meta("unique")
-		for i in mesh.get_surface_override_material_count():
-			var mat := mesh.get_surface_override_material(i) as ShaderMaterial
-			if mat == null or mat.shader != Materials.TOON:
-				continue
-			if copy:
-				mat = mat.duplicate() as ShaderMaterial
-				mesh.set_surface_override_material(i, mat)
+	if glow > 0.0 or not _own_materials.is_empty():
+		for mat in _materials():
 			mat.set_shader_parameter("contamination", glow)
-		if copy:
-			mesh.set_meta("unique", true)
+
+
+## Floor dirt shows as heavy grime on the tool for everyone.
+func set_soiled(value: bool) -> void:
+	soiled = value
+	if value or not _own_materials.is_empty():
+		for mat in _materials():
+			mat.set_shader_parameter("grime", 0.95 if value else mat.get_meta("grime", 0.1))
+
+
+## Blood on the working end. Gauze and swabs soak through along their whole length; instruments only near the tip.
+func set_blood(amount: float) -> void:
+	blood = amount
+	if amount > 0.0 or not _own_materials.is_empty():
+		var soaks := def.action == "swab"
+		for mat in _materials():
+			mat.set_shader_parameter("coat", amount)
+			mat.set_shader_parameter("coat_length", def.length)
+			mat.set_shader_parameter("coat_reach", def.length * (1.2 if soaks else 0.12 + 0.3 * amount))
+			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
+
+
+## The tool your hand would pick up glows faintly (local player only).
+func set_highlight(on: bool) -> void:
+	for mat in _materials():
+		mat.set_shader_parameter("emission_color", Color(0.25, 0.3, 0.22) if on else Color.BLACK)
+
+
+## Toon materials are shared between tools, so the first per-tool change swaps in copies of its own.
+func _materials() -> Array[ShaderMaterial]:
+	if _own_materials.is_empty():
+		for node in _model.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			for i in mesh.get_surface_override_material_count():
+				var mat := mesh.get_surface_override_material(i) as ShaderMaterial
+				if mat and mat.shader == Materials.TOON:
+					mat = mat.duplicate() as ShaderMaterial
+					mat.set_meta("grime", mat.get_shader_parameter("grime"))
+					mesh.set_surface_override_material(i, mat)
+					_own_materials.append(mat)
+	return _own_materials
 
 
 func set_state(new_state: State, new_holder: int, new_slot: int) -> void:

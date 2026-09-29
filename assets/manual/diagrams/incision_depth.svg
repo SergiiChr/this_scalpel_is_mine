@@ -6,6 +6,6 @@
   </g>
   <g font-family="sans-serif" font-size="18" fill="#1e1a16">
     <text x="20" y="45">skin</text><text x="20" y="112">fat</text><text x="20" y="165">cavity</text>
-    <text x="60" y="190">light</text><text x="235" y="190">normal</text><text x="425" y="190">deep (opens)</text>
+    <text x="60" y="190">1 skin</text><text x="235" y="190">2 fat</text><text x="395" y="190">3 muscle (cavity)</text>
   </g>
 </svg>

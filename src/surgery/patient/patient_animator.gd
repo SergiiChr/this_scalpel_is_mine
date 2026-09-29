@@ -13,6 +13,7 @@ var _parts: Dictionary = {}
 var _breath_phase := 0.0
 var _talk_left := 0.0
 var _flinch := 0.0
+var _jolt := 0.0
 var _last_pain := 0.0
 var _locked_side := ""
 
@@ -31,6 +32,11 @@ func talk(seconds: float) -> void:
 
 
 ## Every motion is a rotation in model space (X toward the head, Y up, Z the patient's left) about the joint.
+## A defibrillator shock: every muscle contracts at once for an instant.
+func jolt() -> void:
+	_jolt = 1.0
+
+
 func animate(vitals: Vitals, alive: bool, delta: float) -> void:
 	if _rig == null:
 		return
@@ -40,7 +46,8 @@ func animate(vitals: Vitals, alive: bool, delta: float) -> void:
 	_breath_phase += delta * rate * TAU if breathing else 0.0
 	var breath := (sin(_breath_phase) * 0.5 + 0.5) * BREATH_DEPTH * (1.0 + vitals.panic)
 	# The whole trunk rises with the surgical site; legs, neck and arms stay put so only the torso skin moves.
-	var rise := Vector3(0, TORSO_TOP * breath, 0)
+	_jolt = move_toward(_jolt, 0.0, delta * 5.0)
+	var rise := Vector3(0, TORSO_TOP * breath + _jolt * 0.025, 0)
 	_rig.shift("Torso", rise)
 	for held: String in ["ThighL", "ThighR", "Neck", "UpperArmL", "UpperArmR"]:
 		_rig.hold(held, rise)
@@ -71,7 +78,7 @@ func animate(vitals: Vitals, alive: bool, delta: float) -> void:
 	for side: String in ["L", "R"]:
 		var mirror := 1.0 if side == "L" else -1.0
 		var still := side == _locked_side
-		var amount := 0.0 if still else shake + _flinch * 0.2
+		var amount := 0.0 if still else shake + _flinch * 0.2 + _jolt * 0.35
 		# Panicking patients lift their arms off the table: the arms point toward the feet, so a negative turn about Z raises them.
 		var lift := 0.0 if still or not awake else vitals.panic * 0.15
 		_rig.rotate("UpperArm" + side, Basis.from_euler(Vector3(0, 0, -lift) + _jitter(amount, t, 2.0 + mirror)))

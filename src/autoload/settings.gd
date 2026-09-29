@@ -13,6 +13,9 @@ var mouse_sensitivity := 1.0
 var volumes: Dictionary = {"Master": 0.8, "SFX": 1.0, "Voice": 1.0, "Music": 0.6}
 ## action -> encoded binding, only for actions the player changed.
 var bindings: Dictionary = {}
+## Debug mode: shows what the game tracks behind the scenes (objectives, scored actions).
+## Off in normal play, where finding out what to do is the game.
+var debug := false
 
 
 func _ready() -> void:
@@ -29,6 +32,7 @@ func load_settings() -> void:
 	fullscreen = cfg.get_value("display", "fullscreen", fullscreen)
 	mouse_sensitivity = cfg.get_value("input", "mouse_sensitivity", mouse_sensitivity)
 	bindings = cfg.get_value("input", "bindings", {})
+	debug = cfg.get_value("debug", "enabled", debug)
 	for bus in BUSES:
 		volumes[bus] = cfg.get_value("audio", bus, volumes[bus])
 
@@ -39,6 +43,7 @@ func save_settings() -> void:
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("input", "mouse_sensitivity", mouse_sensitivity)
 	cfg.set_value("input", "bindings", bindings)
+	cfg.set_value("debug", "enabled", debug)
 	for bus in BUSES:
 		cfg.set_value("audio", bus, volumes[bus])
 	cfg.save(PATH)

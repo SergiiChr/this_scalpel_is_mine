@@ -1,0 +1,25 @@
+tags: improvised_mult, items
+title: 14. Improvised equipment
+[b]14.1 Scope[/b]
+For use only when standard equipment is unavailable. None of the substitutions below is endorsed by any professional body. Each carries a complication that must be accepted and documented.
+
+[table=3]
+[cell][b]Item[/b][/cell][cell][b]Substitutes for[/b][/cell][cell][b]Complication[/b][/cell]
+[cell]Switchblade[/cell][cell]Scalpel[/cell][cell]Ragged incisions. Sanitize before use[/cell]
+[cell]Lighter[/cell][cell]Electrocautery[/cell][cell]Wide burns, scarring[/cell]
+[cell]Office stapler[/cell][cell]Skin stapler[/cell][cell]Dehiscence, later internal bleeding[/cell]
+[cell]Paper clips[/cell][cell]Sutures[/cell][cell]Weak closure[/cell]
+[cell]Duct tape[/cell][cell]Any closure[/cell][cell]Secure, but strips skin on removal[/cell]
+[cell]Metal straw[/cell][cell]Suction[/cell][cell]Aspiration by mouth; operator nausea[/cell]
+[cell]Screwdriver[/cell][cell]Osteotome[/cell][cell]Weak, non-sterile[/cell]
+[cell]Whiskey[/cell][cell]Antiseptic, sedative[/cell][cell]Painful on open wounds[/cell]
+[/table]
+
+[b]14.2 Retained items[/b]
+An object dropped into the cavity must be retrieved: aspirate the blood, locate it, remove it with forceps and repair any injury it caused. A retained foreign body is worse than the injury.
+
+[b]14.3 Contaminated items[/b]
+An item that has touched the floor is non-sterile. Wash it at the sink, then sanitize it.
+
+[font_size=16][b]References[/b]
+No reference. Field expedients of this kind are described only in anecdote.[/font_size]

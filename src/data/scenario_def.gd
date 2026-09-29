@@ -7,7 +7,10 @@ var order: int
 var title: String
 var difficulty: int
 var group: String
+## Teaser for the menu and lobby. Never says what to do.
 var description: String
+## What the patient chart says brought them in: symptoms and history only, no treatment plan.
+var complaint: String
 var hidden: bool
 var time_limit: float
 var anesthesia: String

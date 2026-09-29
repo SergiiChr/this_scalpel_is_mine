@@ -44,6 +44,8 @@ var _announced: Dictionary = {}
 var _status_acc := 0.0
 var _qte: Dictionary = {}
 var _sound_msec: Dictionary = {}
+var _effect_msec: Dictionary = {}
+var _effects := ToolEffects.new()
 
 
 func _enter_tree() -> void:
@@ -65,13 +67,16 @@ func _ready() -> void:
 	patient.position = Vector3(0, Room.TABLE_HEIGHT, 0)
 	patient.setup(scenario, Net.patient_quirks, Net.session_seed)
 	patient.died.connect(_on_patient_died)
+	_effects.name = "Effects"
+	_effects.patient = patient
+	add_child(_effects)
 	var peers := Net.roster.keys()
 	peers.sort()
 	var personal: Dictionary = {}
 	for i in peers.size():
 		var surgeon := _spawn_surgeon(peers[i], i)
 		personal[peers[i]] = surgeon.mods.list("items")
-	tools.spawn_initial(scenario.roll_tools(rng, run_mods.num("missing_tool_chance")), room.tray_spots(), personal)
+	tools.spawn_initial(scenario.roll_tools(rng, run_mods.num("missing_tool_chance")), room.tray_spots(), personal, room.station_tools())
 	objectives.setup(scenario)
 	director.setup(scenario, Net.session_seed)
 	hud.setup(self)
@@ -123,7 +128,7 @@ func _physics_process(delta: float) -> void:
 	_status_acc += delta
 	if _status_acc >= STATUS_INTERVAL:
 		_status_acc = 0.0
-		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "nurse": nurse.cooldown_left, "lab": lab.cooldown_left, "elapsed": elapsed})
+		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "log": scoring.recent, "nurse": nurse.cooldown_left, "lab": lab.cooldown_left, "elapsed": elapsed})
 
 
 ## A partner dropped out: their tools fall where they are and their surgeon leaves the room.
@@ -176,6 +181,12 @@ func announce(text: String, throttled: bool = false) -> void:
 	_toast.rpc(text)
 
 
+## Host: toast only players in debug mode see (objective progress and other things the game keeps to itself).
+func announce_debug(text: String) -> void:
+	if multiplayer.is_server():
+		_toast_debug.rpc(text)
+
+
 ## Host: toast for one peer.
 func tell(peer: int, text: String) -> void:
 	_toast.rpc_id(peer, text)
@@ -188,6 +199,15 @@ func sound(id: String, at: Vector3 = Vector3.INF) -> void:
 		return
 	_sound_msec[id] = now
 	_sound.rpc(id, at)
+
+
+## Host: a tool effect on every peer (ToolEffects), at most one per kind every min_msec.
+func effect(kind: String, at: Vector3, min_msec: int = 120) -> void:
+	var now := Time.get_ticks_msec()
+	if now - int(_effect_msec.get(kind, -min_msec)) < min_msec:
+		return
+	_effect_msec[kind] = now
+	_effect.rpc(kind, at)
 
 
 func say(text: String, voice_id: String) -> void:
@@ -259,9 +279,20 @@ func _toast(text: String) -> void:
 	hud.toast(text)
 
 
+@rpc("authority", "call_local", "reliable")
+func _toast_debug(text: String) -> void:
+	if Settings.debug:
+		hud.toast("[debug] " + text)
+
+
 @rpc("authority", "call_local", "unreliable")
 func _sound(id: String, at: Vector3) -> void:
 	Sfx.play(id, at)
+
+
+@rpc("authority", "call_local", "unreliable")
+func _effect(kind: String, at: Vector3) -> void:
+	_effects.play(kind, at)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -460,7 +491,11 @@ func change_gloves(surgeon: Surgeon) -> void:
 
 func sanitize_tool(surgeon: Surgeon) -> void:
 	tools.request_sterilize(surgeon.active)
-	hud.toast("Dipped in alcohol.")
+
+
+func wash_tool(surgeon: Surgeon) -> void:
+	tools.request_wash(surgeon.active)
+	Sfx.play("sink_water", surgeon.global_position)
 
 
 func use_iv(surgeon: Surgeon) -> void:

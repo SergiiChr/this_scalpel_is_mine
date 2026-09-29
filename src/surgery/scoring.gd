@@ -4,10 +4,13 @@ extends Node
 ## Every scored event also rattles both surgeons by its stress value.
 
 const THROTTLE_SECONDS := 4.0
+const LOG_SIZE := 8
 
 var points := 0
 ## id -> {"text": String, "points": int, "count": int}
 var entries: Dictionary = {}
+## The latest scored actions, newest last: [text, points]. Shown in debug mode.
+var recent: Array = []
 var _last_time: Dictionary = {}
 
 
@@ -25,6 +28,9 @@ func add(id: String, throttled: bool = false) -> void:
 	entry.points += value
 	entry.count += 1
 	entries[id] = entry
+	recent.append([entry.text, value])
+	if recent.size() > LOG_SIZE:
+		recent.pop_front()
 	var stress: float = Db.scoring.get_value(id, "stress", 0.0)
 	if stress > 0.0 and Surgery.current:
 		Surgery.current.broadcast_stress(stress)

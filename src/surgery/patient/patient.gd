@@ -16,12 +16,17 @@ const BLOOD_TYPES: PackedStringArray = ["O+", "O-", "A+", "A-", "B+", "AB+"]
 const VFIB_TO_ASYSTOLE := 40.0
 const ARREST_DEATH := 80.0
 const TOURNIQUET_SAFE := 300.0
+## Blood (ml) that fills the cavity to the top, and from how much it spills over open wounds onto the skin.
+const CAVITY_FULL_ML := 350.0
+const CAVITY_SPILL_ML := 280.0
 ## Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.
 const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
 ## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
 ## Gap in meters that counts as a fully opened wound.
 const FULL_GAP := 0.012
+## Where a line set before the surgery goes in: the back of the right hand, in body space.
+const PREOP_IV_POINT := Vector3(-0.2, 0.03, 0.26)
 
 var body: PatientBody
 var vitals := Vitals.new()
@@ -62,7 +67,6 @@ var _voice_cooldown := 0.0
 var _breath_cooldown := 0.0
 var _stroke_wounds: Dictionary = {}
 var _initial_suction: float = 1.0
-var _blood_pools: Dictionary = {}
 var _organ_strain: Dictionary = {}
 var _organ_damage: Dictionary = {}
 var _tear_notice_msec := -100000
@@ -100,6 +104,8 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	vitals.glucose += mods.num("glucose_drift") * 300.0
 	vitals.from_dict(scenario.start_vitals)
 	iv_set = scenario.preop.get("iv", false)
+	if iv_set:
+		_connect_iv(PREOP_IV_POINT)
 
 	for data: Dictionary in scenario.wounds:
 		var points: Array = data.points
@@ -137,6 +143,9 @@ func _physics_process(delta: float) -> void:
 		return
 	body.settle_organs()
 	_handle_organs(delta)
+	var tripped: Surgeon = Surgery.current.room.iv_line.tripped_by(Surgery.current.surgeons.values())
+	if tripped:
+		pull_iv(tripped)
 	_tick_acc += delta
 	while _tick_acc >= TICK:
 		_tick_acc -= TICK
@@ -144,7 +153,7 @@ func _physics_process(delta: float) -> void:
 	_sync_acc += delta
 	if _sync_acc >= SYNC_INTERVAL:
 		_sync_acc = 0.0
-		_sync.rpc(vitals.to_dict(), targets.map(func(t: CavityTarget) -> Array: return t.state()), body.organ_states(), body.tissue.grips(), cavity_blood_ml)
+		_sync.rpc(vitals.to_dict(), targets.map(func(t: CavityTarget) -> Array: return t.state()), body.organ_states(), body.tissue.grips(), cavity_blood_ml, body.blood.sources)
 
 
 # --- Simulation ------------------------------------------------------------------------------------
@@ -159,15 +168,20 @@ func _simulate(dt: float) -> void:
 		bleed_mult *= 0.1
 	var total := 0.0
 	var heal := mods.num("heal_rate")
+	var sources: Array = []
 	for wound in wounds:
 		if not wound.is_internal():
 			wound.opened = clampf(body.tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN) / FULL_GAP, 0.0, 1.0)
 		var rate := wound.bleed_rate(site_m, bleed_mult)
 		total += rate
+		# An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
+		var spills := not wound.is_internal() and cavity_blood_ml > CAVITY_SPILL_ML
 		if wound.is_internal() or wound.opened > 0.3:
 			cavity_blood_ml += rate * dt * 0.6
-		elif rate > 0.05:
-			_bleed_visual(wound, rate * dt)
+		if rate > 0.05 and (spills or not (wound.is_internal() or wound.opened > 0.3)):
+			sources.append([wound.midpoint(), rate])
+			if rng.randf() < dt * 0.5:
+				Surgery.current.sound("blood_drip", body.uv_to_world(wound.midpoint()))
 		if not wound.made_by_surgeon or wound.kind != Wound.Kind.CUT:
 			wound.held = maxf(wound.held - dt * 0.004, 0.0)
 		if heal > 0.0:
@@ -177,9 +191,12 @@ func _simulate(dt: float) -> void:
 				if before < 1.0 and wound.bins[i] >= 1.0 and not wound.is_internal():
 					_tissue_stitch.rpc(wound.bin_position(i), STITCH_TENSION[0], TissueSim.TISSUE_BREAK)
 	v.bleed_rate = total
+	# The worst few external bleeds run as fluid on every peer (BloodFlow); the rest is too little to see.
+	sources.sort_custom(func(a: Array, b: Array) -> bool: return a[1] > b[1])
+	body.blood.sources = sources.slice(0, 6)
 	v.blood_ml = clampf(v.blood_ml - total * dt + fx.volume_ml * dt, 0.0, v.max_blood_ml * 1.1)
 	cavity_blood_ml = maxf(cavity_blood_ml, 0.0)
-	body.set_cavity_blood(cavity_blood_ml / 350.0)
+	body.set_cavity_blood(cavity_blood_ml / CAVITY_FULL_ML)
 
 	v.anesthesia = clampf(fx.anesthesia * mods.mult("sedation_mult"), 0.0, 1.0)
 	v.local_block = clampf(fx.local_block, 0.0, 1.0)
@@ -753,11 +770,31 @@ func apply_tourniquet() -> void:
 	add_flag("tourniquet")
 
 
-func set_iv() -> void:
+## A catheter went into the arm at `at` (world space): tubing now runs from the stand to there.
+func set_iv(at: Vector3) -> void:
 	if not iv_set:
 		iv_set = true
 		hurt(0.1)
-		Surgery.current.announce("IV line in.")
+		_iv_placed.rpc(body.root().to_local(at))
+
+
+## Someone walked into the tubing: the catheter rips out of the arm and the stand rattles.
+func pull_iv(surgeon: Surgeon) -> void:
+	if not iv_set:
+		return
+	iv_set = false
+	hurt(0.35)
+	add_flag("iv_pulled")
+	Surgery.current.scoring.add("iv_pulled")
+	Surgery.current.sound("cable_yank", surgeon.global_position)
+	Surgery.current.announce("%s catches the IV line. It rips out of the arm." % surgeon.display_name)
+	Surgery.current.jolt_peer(surgeon.peer_id, 0.8)
+	_iv_removed.rpc()
+
+
+func _connect_iv(point: Vector3) -> void:
+	if Surgery.current and Surgery.current.room.iv_line:
+		Surgery.current.room.connect_iv(body.root(), point)
 
 
 func graft_at(uv: Vector2, def: ToolDef) -> bool:
@@ -976,7 +1013,8 @@ func _nearest_wound(uv: Vector2, max_dist: float, internal: bool) -> Wound:
 
 
 func _uv(raw: Array) -> Vector2:
-	return Vector2(1.0 - raw[0] if mods.flag("mirrored") else raw[0], raw[1])
+	# Mirrored anatomy flips left and right: uv.y runs across the body.
+	return Vector2(raw[0], 1.0 - raw[1] if mods.flag("mirrored") else raw[1])
 
 
 func _site_local(uv: Vector2, depth: float) -> Vector3:
@@ -995,15 +1033,6 @@ func _mark_grid(grid: PackedFloat32Array, uv: Vector2, radius: float, strength: 
 		for x in range(center.x - r, center.x + r + 1):
 			if x >= 0 and y >= 0 and x < GRID and y < GRID:
 				grid[y * GRID + x] = maxf(grid[y * GRID + x], strength)
-
-
-func _bleed_visual(wound: Wound, ml: float) -> void:
-	var pool: float = _blood_pools.get(wound.id, 0.0) + ml
-	_blood_pools[wound.id] = pool
-	if rng.randf() < 0.05:
-		Surgery.current.sound("blood_drip", body.uv_to_world(wound.midpoint()))
-	if rng.randf() < 0.3:
-		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, wound.midpoint(), wound.midpoint(), 0.02 + sqrt(pool) * 0.012, 0.9, WoundMap.Mode.MAX)
 
 
 func _paint_wound(wound: Wound) -> void:
@@ -1097,19 +1126,20 @@ func _paint(layer: int, channel: int, a: Vector2, b: Vector2, radius: float, val
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, grips: Array, cavity_ml: float) -> void:
+func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, grips: Array, cavity_ml: float, bleeds: Array) -> void:
+	body.blood.sources = bleeds
 	vitals.from_dict(vital_data)
 	for i in mini(target_states.size(), targets.size()):
 		targets[i].apply_state(target_states[i])
 	body.apply_organ_states(organ_positions)
-	body.set_cavity_blood(cavity_ml / 350.0)
+	body.set_cavity_blood(cavity_ml / CAVITY_FULL_ML)
 	body.tissue.set_grips(grips)
 
 
 func _process(delta: float) -> void:
 	body.animator.animate(vitals, alive, delta)
 	if body.skin_material:
-		body.skin_material.set_shader_parameter("pallor", clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
+		body.set_pallor(clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
 	if multiplayer.is_server():
 		for entry: Array in body.tissue.snapped:
 			_on_snap(entry[0], entry[1], entry[2])
@@ -1175,6 +1205,18 @@ func _tissue_snap(uv: Vector2, kind: int) -> void:
 		body.tissue.burst(uv, 0.01)
 	else:
 		body.tissue.sever_near(uv, TissueSim.Depth.SKIN)
+
+
+@rpc("authority", "call_local", "reliable")
+func _iv_placed(point: Vector3) -> void:
+	iv_set = true
+	_connect_iv(point)
+
+
+@rpc("authority", "call_local", "reliable")
+func _iv_removed() -> void:
+	iv_set = false
+	Surgery.current.room.iv_line.detach()
 
 
 @rpc("authority", "call_local", "reliable")

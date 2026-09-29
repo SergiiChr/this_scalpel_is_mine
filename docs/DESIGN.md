@@ -181,6 +181,26 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Manual with Divine knowledge highlights, patient card with red herrings.
 - Scoring, stars, delayed consequences, codex unlocks, 23 scenarios.
 
+### First feedback round
+
+- **Figure it out**: no objectives, score or "done" toasts on screen, and the chart shows only the complaint (symptoms
+  and history), never a plan. The manual is the one reference. Everything is still tracked internally; the debug
+  setting shows the objectives, score and every scored action. Easy scenarios (1-2 stars) have no time limit.
+- **Hands**: no height control. A hand rests the tool tip just above whatever is under it (skin, tray, organs or a
+  target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
+  end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
+  it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
+  floor and walks slowly. The wheel zooms (hand motion scales with it for precision) or sets pressure while pressing.
+  The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
+- **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
+  curls each finger. The glove then turns around the tool to keep the wrist in line with the forearm.
+  `tests/grip_gallery.tscn` renders every tool held, for checking.
+- **Stations**: the nurse menu is grouped (`category` in tools.cfg) and deliveries land on a delivery tray.
+  The defibrillator always waits on its own cart. Station cabinets are solid.
+- **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
+- **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
+  (`src/world/iv_line.gd`). Walking into it at full speed rips it out; crouch-walking steps over it.
+
 ### Approved mechanics (in this build)
 
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
@@ -190,8 +210,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,
   until the nurse brings the corrected copy partway through.
-- **X-ray cart**: push it to the table, take an exposure, and an instant print develops over six seconds.
-  It shows metal (bullets, knives, retained tools), bone, masses and trapped air.
+- **X-ray cart**: push it to the table, take an exposure, and a full-size film develops over six seconds.
+  Viewed on a lightbox, it shows metal (bullets, knives, retained tools), bone, masses and trapped air.
 
 ### Ideas not yet approved
 
@@ -208,8 +228,21 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
 - **Hard-surface models** (`tools/assetgen`, trimesh): props and instruments from lofted tubes, lathes, rounded boxes
   and extrusions, exported to `.glb` with named parts.
 - The game swaps materials for the cel shader by name (`src/visual/model_slot.gd`).
-- **Patient skin**: `site_heights.json` is baked by raycasting the body at rest, so the surgical site hugs the body.
-  The body (and gown) is cut away under the site and the simulated skin layer takes its place.
+- **Patient skin**: the body model draws the wound and fluid maps itself (`wound.gdshaderinc`, shared with the site
+  skin shader), so cuts, burns, bruises, blood and iodine sit on the model. Only around cuts and skin a tool holds
+  (TissueSim.region()) is the model cut away and replaced by the simulated skin, fat and muscle layers.
+  `site_heights.json` (baked by raycasting the body) makes those layers hug the body. The cavity under them is a
+  bowl that rises to just under the skin at the site's edges, so on a round limb it stays inside the body.
+- **Blood** (`src/visual/blood_flow.gd`): bleeding wounds well up into a puddle that grows with the blood lost and
+  release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
+  on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
+  The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
+  whose rim catches the light.
+- **Tool effects** (`src/visual/tool_effects.gd`, sent by the host through `Surgery.effect()`): cautery and lighter
+  smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
+  the body jerking, a bead of blood where a needle or catheter goes in. Lasting marks (cuts, burns, stitches, ink,
+  iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
+  through (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`patient_animator.gd`, bones posed through `bone_rig.gd` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,
@@ -224,7 +257,8 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
 
 ## Known limits of this iteration
 
-- Hands have finger curl but no per-tool grip poses.
+- Grips are four styles, not a pose per tool; a tool passes between the fingers rather than touching them exactly.
 - Physics pushing of organs runs on the host only; clients see synced positions.
 - Tilt and twist change tool orientation and tip position, but no target yet requires a specific twist.
 - Late joining mid-surgery isn't supported. Both players join in the lobby.
+- Blood rivulets, drips and pools are drawn by each peer on its own, so they differ slightly between players.

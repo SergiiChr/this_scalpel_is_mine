@@ -1,10 +1,13 @@
 class_name XrayPhoto
 extends Control
-## The instant X-ray print, drawn from the shapes the cart captured. It develops from black over a few seconds.
-## Metal glows white, bone is light gray, masses are soft gray, gas pockets are dark.
+## The X-ray film, full size on a lightbox, drawn from the shapes the cart captured.
+## It develops slowly, from black, over a few seconds. Metal glows white, bone is light gray, masses are soft gray,
+## gas pockets are dark.
 
-const SIZE := Vector2(620, 740)
-const FILM := Rect2(40, 40, 540, 540)
+const SIZE := Vector2(860, 1000)
+## A portrait film sheet on the lightbox. Shape sizes below were tuned on a 540 px film and scale with it.
+const FILM := Rect2(50, 50, 760, 900)
+const SCALE := 760.0 / 540.0
 
 var cart: XrayCart
 
@@ -23,21 +26,27 @@ func _process(_delta: float) -> void:
 
 func _draw() -> void:
 	var develop := cart.developed()
-	draw_rect(Rect2(Vector2.ZERO, SIZE), Color(0.93, 0.92, 0.88))
-	draw_rect(FILM, Color(0.02, 0.025, 0.03))
-	var fade := func(c: Color) -> Color: return Color(0.02, 0.025, 0.03).lerp(c, develop)
+	# Lightbox: a gray bezel around a cool white panel, the film clipped on top.
+	draw_rect(Rect2(Vector2.ZERO, SIZE), Color(0.2, 0.21, 0.22))
+	draw_rect(Rect2(Vector2(20, 20), SIZE - Vector2(40, 40)), Color(0.86, 0.9, 0.94))
+	draw_rect(FILM, Color(0.02, 0.025, 0.035))
+	var fade := func(c: Color) -> Color: return Color(0.02, 0.025, 0.035).lerp(c, develop)
 	_draw_anatomy(cart.print_data.site, fade)
 	for shape: Array in cart.print_data.shapes:
 		_draw_shape(shape, fade)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = cart.printed_at_msec
-	for i in 400:
+	for i in 900:
 		var p := FILM.position + Vector2(rng.randf(), rng.randf()) * FILM.size
-		draw_rect(Rect2(p, Vector2.ONE * 2), Color(1, 1, 1, rng.randf() * 0.08 * develop))
+		draw_rect(Rect2(p, Vector2.ONE * 2), Color(1, 1, 1, rng.randf() * 0.07 * develop))
 	var font := get_theme_default_font()
-	draw_string(font, Vector2(52, 72), "L", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, fade.call(Color(0.9, 0.9, 0.9)))
-	draw_string(font, Vector2(40, 640), "PORTABLE AP  -  %s" % str(cart.print_data.site).to_upper().replace("_", " "), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.15, 0.13, 0.12))
-	draw_string(font, Vector2(40, 680), "Wait for it to develop. Don't shake it.", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.35, 0.3, 0.28))
+	var ink: Color = fade.call(Color(0.9, 0.92, 0.95))
+	draw_string(font, FILM.position + Vector2(24, 52), "L", HORIZONTAL_ALIGNMENT_LEFT, -1, 40, ink)
+	var label := "PORTABLE AP   %s" % str(cart.print_data.site).to_upper().replace("_", " ")
+	draw_string(font, FILM.position + Vector2(24, 44), label, HORIZONTAL_ALIGNMENT_RIGHT, FILM.size.x - 48, 20, ink)
+	# Film clips at the top of the lightbox.
+	for x: float in [FILM.position.x + 120, FILM.end.x - 120]:
+		draw_rect(Rect2(Vector2(x - 20, FILM.position.y - 14), Vector2(40, 22)), Color(0.55, 0.57, 0.6))
 
 
 func _uv(uv: Vector2) -> Vector2:
@@ -57,9 +66,9 @@ func _draw_anatomy(site: String, fade: Callable) -> void:
 				var r := FILM.size.y * 0.5
 				for i in 6:
 					var apex := _uv(Vector2(0.18 + i * 0.14, 0.5))
-					draw_arc(apex - Vector2(r, 0.0), r, -PI * 0.3, PI * 0.3, 24, bone, 7.0)
+					draw_arc(apex - Vector2(r, 0.0), r, -PI * 0.3, PI * 0.3, 24, bone, 7.0 * SCALE)
 			else:
-				draw_arc(_uv(Vector2(-0.15, 0.5)), FILM.size.y * 0.45, -PI * 0.4, PI * 0.4, 32, bone, 16.0)
+				draw_arc(_uv(Vector2(-0.15, 0.5)), FILM.size.y * 0.45, -PI * 0.4, PI * 0.4, 32, bone, 16.0 * SCALE)
 		"head", "face":
 			draw_circle(_uv(Vector2(0.5, 0.5)), FILM.size.x * 0.42, bone)
 			draw_circle(_uv(Vector2(0.5, 0.5)), FILM.size.x * 0.39, soft)
@@ -73,27 +82,42 @@ func _draw_shape(shape: Array, fade: Callable) -> void:
 	var metal: Color = fade.call(Color(0.97, 0.97, 0.95))
 	match kind:
 		"bullet":
-			draw_circle(at, 9.0, metal)
+			draw_circle(at, 9.0 * SCALE, metal)
 		"knife":
-			draw_line(at, at + Vector2(0, 160), metal, 10.0)
+			draw_line(at, at + Vector2(0, 160) * SCALE, metal, 10.0 * SCALE)
 		"figurine":
-			draw_rect(Rect2(at - Vector2(14, 60), Vector2(28, 120)), metal)
+			draw_rect(Rect2(at - Vector2(14, 60) * SCALE, Vector2(28, 120) * SCALE), metal)
 		"tool":
 			var dir := Vector2.UP.rotated(float(shape[3]))
-			draw_line(at - dir * 70.0, at + dir * 70.0, metal, 7.0)
+			draw_line(at - dir * 70.0 * SCALE, at + dir * 70.0 * SCALE, metal, 7.0 * SCALE)
 		"rib":
 			# A rib end runs from the break toward the side it came from (yaw 180 points the other way).
-			var along := Vector2(0.0, -70.0 if absf(float(shape[3])) > PI * 0.5 else 70.0)
-			draw_line(at, at + along + Vector2(-6.0, 0.0), fade.call(Color(0.7, 0.7, 0.68)), 9.0)
+			var along := Vector2(0.0, -70.0 if absf(float(shape[3])) > PI * 0.5 else 70.0) * SCALE
+			draw_line(at, at + along + Vector2(-6.0, 0.0), fade.call(Color(0.7, 0.7, 0.68)), 9.0 * SCALE)
 		"splinter":
-			draw_line(at - Vector2(10.0, 12.0), at + Vector2(10.0, 12.0), fade.call(Color(0.75, 0.75, 0.72)), 4.0)
+			draw_line(at - Vector2(10.0, 12.0) * SCALE, at + Vector2(10.0, 12.0) * SCALE, fade.call(Color(0.75, 0.75, 0.72)), 4.0 * SCALE)
+		"nasal_hump":
+			# The bridge of the nose, running along the body, with the bump on top.
+			var bone: Color = fade.call(Color(0.64, 0.64, 0.62))
+			draw_line(at + Vector2(55, 10) * SCALE, at - Vector2(45, 6) * SCALE, bone, 10.0 * SCALE)
+			draw_circle(at + Vector2(0, -2) * SCALE, 9.0 * SCALE, bone)
+		"sternum":
+			# The breastbone runs along the body: wide at the top (toward the head, +u), narrow at the tip.
+			var sternum: Color = fade.call(Color(0.66, 0.66, 0.64))
+			draw_colored_polygon(PackedVector2Array([
+				at + Vector2(110, -26) * SCALE, at + Vector2(70, -30) * SCALE, at + Vector2(-80, -20) * SCALE,
+				at + Vector2(-115, 0) * SCALE, at + Vector2(-80, 20) * SCALE, at + Vector2(70, 30) * SCALE, at + Vector2(110, 26) * SCALE,
+			]), sternum)
+		"skull_flap":
+			# Seen from above: the outline of the flap the saw will cut, brighter at its edges.
+			draw_rect(Rect2(at - Vector2(95, 80) * SCALE, Vector2(190, 160) * SCALE), fade.call(Color(0.6, 0.6, 0.58)), false, 8.0 * SCALE)
 		"bone", "fragment":
-			draw_rect(Rect2(at - Vector2(120, 14), Vector2(240, 28)), fade.call(Color(0.62, 0.62, 0.6)))
+			draw_rect(Rect2(at - Vector2(120, 14) * SCALE, Vector2(240, 28) * SCALE), fade.call(Color(0.62, 0.62, 0.6)))
 		"tumor", "clot", "appendix":
-			draw_circle(at, 22.0, fade.call(Color(0.3, 0.32, 0.33)))
+			draw_circle(at, 22.0 * SCALE, fade.call(Color(0.3, 0.32, 0.33)))
 		"organ":
-			draw_circle(at, 55.0, fade.call(Color(0.2, 0.22, 0.23)))
+			draw_circle(at, 55.0 * SCALE, fade.call(Color(0.2, 0.22, 0.23)))
 		"air":
-			draw_circle(at, 45.0, fade.call(Color(0.0, 0.0, 0.0)))
+			draw_circle(at, 45.0 * SCALE, fade.call(Color(0.0, 0.0, 0.0)))
 		"fluid":
-			draw_circle(at, 50.0, fade.call(Color(0.28, 0.3, 0.3)))
+			draw_circle(at, 50.0 * SCALE, fade.call(Color(0.28, 0.3, 0.3)))

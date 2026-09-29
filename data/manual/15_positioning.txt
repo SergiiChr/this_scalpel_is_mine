@@ -1,0 +1,14 @@
+title: 15. Patient positioning
+[img=520]res://assets/manual/diagrams/turning.svg[/img]
+
+[b]15.1 Repositioning[/b]
+Supine, lateral, prone: one step at a time, never directly from supine to prone.
+1. All staff at the table stand on the same side.
+2. Release all tissue and instruments. No one holds the patient's tissue during a turn.
+3. Follow the prompts together as they appear. A mistimed movement rolls the patient off the table.
+
+[b]15.2 Falls[/b]
+A fall from the table can fracture the hip, disrupt closures and cause further blood loss. It must be reported.
+
+[font_size=16][b]References[/b]
+Association of periOperative Registered Nurses. Guideline for Positioning the Patient. In: Guidelines for Perioperative Practice. AORN; 2023.[/font_size]

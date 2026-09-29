@@ -5,48 +5,67 @@ extends Node3D
 ## Props are generated models (tools/assetgen/props.py) loaded through ModelSlot.
 
 const TABLE_HEIGHT := 0.85
+## Table top ends along x: the feet lie toward FOOT, the head toward HEAD.
+const TABLE_FOOT := -1.3
+const TABLE_HEAD := 1.0
+## Bottom of the drip chamber on the IV stand model, where the tubing starts.
+const IV_DRIP_POINT := Vector3(0.08, 1.6, 0.0)
+## Solid footprint (width, height, depth) of props you can put things on and can't walk through.
+const STATION_SOLIDS: Dictionary = {
+	"bell": Vector3(0.6, 0.9, 0.45),
+	"gloves": Vector3(0.6, 0.9, 0.45),
+	"sanitizer": Vector3(0.6, 0.9, 0.45),
+	"sink": Vector3(0.7, 0.9, 0.5),
+	"delivery_tray": Vector3(0.5, 0.92, 0.38),
+	"defib_cart": Vector3(0.55, 1.06, 0.45),
+}
 
 const LAYOUTS: Dictionary = {
 	# A cramped old operating room: about 1.3 m between the table and the cabinets behind you.
 	# Stations stand against the walls, so reaching them still means walking away from the table.
 	"or": {
 		"size": Vector3(5.2, 2.8, 4.4),
-		"spawns": [Vector3(0.0, 0.0, 0.95), Vector3(0.0, 0.0, -0.95)],
-		"tray": Vector3(-1.4, 0.0, 0.0),
+		# Right at the table edge: from here both of you reach the middle of the patient.
+		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(0.0, 0.0, -0.62)],
+		"tray": Vector3(-1.7, 0.0, 0.0),
 		"manual": Vector3(1.9, 0.0, -2.0),
 		"card": Vector3(1.05, 0.0, 0.5),
 		"bell": Vector3(-2.25, 0.0, 1.92),
 		"gloves": Vector3(-1.55, 0.0, 1.92),
+		"delivery_tray": Vector3(-0.85, 0.0, 1.95),
+		"sink": Vector3(1.5, 0.0, 1.9),
 		"sanitizer": Vector3(2.25, 0.0, 1.92),
 		"iv": Vector3(0.95, 0.0, 0.85),
 		"monitor": Vector3(1.25, 1.55, -0.95),
-		"delivery": Vector3(-2.25, 0.0, 1.92),
+		"defib_cart": Vector3(0.3, 0.0, -1.95),
 		"xray": Vector3(-1.9, 0.0, -1.7),
 		# Stations turned to face the room (radians), the rest face +Z.
-		"yaw": {"bell": PI, "gloves": PI, "sanitizer": PI},
+		"yaw": {"bell": PI, "gloves": PI, "delivery_tray": PI, "sink": PI, "sanitizer": PI},
 	},
 	"ambulance": {
 		"size": Vector3(4.2, 2.1, 2.3),
-		"spawns": [Vector3(0.0, 0.0, 0.8), Vector3(-0.5, 0.0, -0.8)],
-		"tray": Vector3(-1.45, 0.0, 0.6),
+		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(-0.5, 0.0, -0.62)],
+		"tray": Vector3(-1.72, 0.0, 0.55),
 		"manual": Vector3(1.8, 0.0, -0.85),
 		"card": Vector3(1.0, 0.0, 0.5),
 		"gloves": Vector3(1.8, 0.0, 0.85),
 		"sanitizer": Vector3(-1.8, 0.0, -0.8),
 		"iv": Vector3(0.85, 0.0, -0.75),
 		"monitor": Vector3(1.4, 1.4, -1.05),
-		"delivery": Vector3(-1.45, 0.0, 0.6),
+		"defib_cart": Vector3(1.8, 0.0, 0.0),
+		"yaw": {"defib_cart": -PI / 2},
 	},
 	"sidewalk": {
 		"size": Vector3(14.0, 0.0, 10.0),
-		"spawns": [Vector3(0.0, 0.0, 0.95), Vector3(0.0, 0.0, -0.95)],
-		"tray": Vector3(-1.4, 0.0, 0.3),
+		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(0.0, 0.0, -0.62)],
+		"tray": Vector3(-1.7, 0.0, 0.3),
 		"manual": Vector3(1.6, 0.0, 1.6),
 		"card": Vector3(1.05, 0.0, 0.5),
 		"gloves": Vector3(-1.6, 0.0, -1.5),
 		"iv": Vector3(0.95, 0.0, 0.85),
 		"monitor": Vector3(1.4, 1.1, -1.0),
-		"delivery": Vector3(-1.4, 0.0, 0.3),
+		"defib_cart": Vector3(-0.6, 0.0, 1.8),
+		"yaw": {"defib_cart": PI},
 	},
 }
 
@@ -54,6 +73,9 @@ var environment_id := "or"
 var layout: Dictionary
 var monitor: PatientMonitor
 var xray: XrayCart
+## Tubing from the IV stand to the patient, shown once a line is in.
+var iv_line: IvLine
+var _iv_stand: Node3D
 var _flicker_lights: Array[Light3D] = []
 
 
@@ -84,8 +106,21 @@ func tray_spots() -> Array[Vector3]:
 	return spots
 
 
+## On top of the delivery tray, or the instrument tray where there's no nurse (they bring nothing there anyway).
 func delivery_spot() -> Vector3:
-	return layout.delivery + Vector3(randf_range(-0.1, 0.1), 1.0, randf_range(-0.1, 0.1))
+	if layout.has("delivery_tray"):
+		return layout.delivery_tray + Vector3(randf_range(-0.12, 0.12), 1.0, randf_range(-0.08, 0.08))
+	return layout.tray + Vector3(randf_range(-0.2, 0.2), 1.0, randf_range(-0.2, 0.2))
+
+
+## Tools that live on their own station instead of the tray: [[tool id, Transform3D], ...].
+## The defibrillator always waits on its cart, whatever the scenario put on the tray.
+func station_tools() -> Array:
+	if not layout.has("defib_cart"):
+		return []
+	var yaw: float = layout.get("yaw", {}).get("defib_cart", 0.0)
+	var basis := Basis(Vector3.UP, yaw)
+	return [["defibrillator", Transform3D(basis, layout.defib_cart + basis * Vector3(0.0, 1.1, 0.12))]]
 
 
 ## Flickering room lights, the one cheap trick every horror hospital needs. The surgical lamp stays on.
@@ -113,7 +148,9 @@ func _build_environment() -> void:
 	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
-	env.glow_intensity = 0.4
+	env.glow_intensity = 0.3
+	# Only real light sources glow (lamp lens, screens); lit skin up close must not bloom the whole view white.
+	env.glow_hdr_threshold = 1.6
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.25, 0.32, 0.3)
 	env.fog_density = 0.02
@@ -133,7 +170,7 @@ func _build_environment() -> void:
 	lamp.rotation.x = -PI / 2
 	lamp.spot_range = 3.0
 	lamp.spot_angle = 30.0
-	lamp.light_energy = 1.0
+	lamp.light_energy = 0.55
 	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.9)
 	lamp.shadow_enabled = true
@@ -157,7 +194,7 @@ func _build_environment() -> void:
 	overhead.spot_range = 12.0
 	overhead.spot_angle = 70.0
 	overhead.spot_attenuation = 0.3
-	overhead.light_energy = 0.9 if indoors else 1.1
+	overhead.light_energy = 0.55 if indoors else 1.0
 	overhead.light_color = Color(0.92, 1.0, 0.95) if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
 	add_child(overhead)
@@ -170,7 +207,7 @@ func _build_environment() -> void:
 		tube.position = pos
 		tube.omni_range = 9.0
 		tube.light_color = Color(0.75, 0.95, 0.85) if indoors else Color(1.0, 0.7, 0.35)
-		tube.light_energy = 0.6
+		tube.light_energy = 0.35
 		add_child(tube)
 		_flicker_lights.append(tube)
 
@@ -220,7 +257,7 @@ func _build_street(size: Vector3) -> void:
 
 func _build_table() -> void:
 	ModelSlot.instantiate("props", "operating_table", self)
-	Shapes.static_box(self, Vector3(2.0, TABLE_HEIGHT, 0.62), Vector3(0, TABLE_HEIGHT * 0.5, 0))
+	Shapes.static_box(self, Vector3(TABLE_HEAD - TABLE_FOOT, TABLE_HEIGHT, 0.62), Vector3((TABLE_HEAD + TABLE_FOOT) * 0.5, TABLE_HEIGHT * 0.5, 0))
 	if environment_id != "or":
 		ModelSlot.instantiate("props", "straps", self)
 	var lamp := ModelSlot.instantiate("props", "surgical_lamp", self)
@@ -246,7 +283,16 @@ func _build_stations(s: Surgery) -> void:
 		_station("gloves", "Change gloves", Vector3(0.4, 1.2, 0.4), s.change_gloves)
 	if layout.has("sanitizer"):
 		_station("sanitizer", "Sanitize held tool", Vector3(0.5, 1.2, 0.5), s.sanitize_tool)
-	_station("iv", "Use held drug on the IV line", Vector3(0.4, 2.0, 0.4), s.use_iv)
+	if layout.has("sink"):
+		_station("sink", "Wash held tool", Vector3(0.6, 1.2, 0.5), s.wash_tool)
+	if layout.has("delivery_tray"):
+		_prop("delivery_tray")
+	if layout.has("defib_cart"):
+		_prop("defib_cart")
+	_iv_stand = _station("iv", "Use held drug on the IV line", Vector3(0.4, 2.0, 0.4), s.use_iv)
+	iv_line = IvLine.new()
+	iv_line.name = "IvLine"
+	add_child(iv_line)
 	monitor = PatientMonitor.new()
 	monitor.name = "Monitor"
 	add_child(monitor)
@@ -266,9 +312,27 @@ func _build_stations(s: Surgery) -> void:
 	Interactable.create(self, "Talk to the patient", Vector3(0.25, 0.3, 0.3), Vector3(0.92, 1.05, 0.0), s.comfort_patient)
 
 
-func _station(key: String, prompt: String, size: Vector3, callback: Callable, height: float = 1.0) -> void:
+func _station(key: String, prompt: String, size: Vector3, callback: Callable, height: float = 1.0) -> Node3D:
+	var root := _prop(key)
+	Interactable.create(self, prompt, size, (layout[key] as Vector3) + Vector3(0, height, 0), callback)
+	return root
+
+
+## Runs the IV tubing from the stand's drip chamber to a point on the patient (local to `to`).
+func connect_iv(to: Node3D, point: Vector3) -> void:
+	iv_line.attach(_iv_stand, IV_DRIP_POINT, to, point)
+
+
+## Places a layout prop, turned by its yaw, solid if it has a footprint in STATION_SOLIDS.
+func _prop(key: String) -> Node3D:
 	var pos: Vector3 = layout[key]
+	var yaw: float = layout.get("yaw", {}).get(key, 0.0)
 	var root := ModelSlot.instantiate("props", key, self)
 	root.position = pos
-	root.rotation.y = layout.get("yaw", {}).get(key, 0.0)
-	Interactable.create(self, prompt, size, pos + Vector3(0, height, 0), callback)
+	root.rotation.y = yaw
+	if STATION_SOLIDS.has(key):
+		var solid: Vector3 = STATION_SOLIDS[key]
+		if absf(sin(yaw)) > 0.5:
+			solid = Vector3(solid.z, solid.y, solid.x)
+		Shapes.static_box(self, solid, pos + Vector3(0, solid.y * 0.5, 0))
+	return root

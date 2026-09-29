@@ -24,10 +24,11 @@ def _operating_table() -> Model:
     m = Model("props", "operating_table")
     m.add("Base", superellipsoid((0.7, 0.08, 0.45), 0.25, (0.0, 0.04, 0.0)), "dark_steel")
     m.add("Column", superellipsoid((0.22, TABLE_HEIGHT - 0.2, 0.16), 0.3, (0.0, (TABLE_HEIGHT - 0.2) / 2 + 0.08, 0.0)), "steel")
-    m.add("Frame", superellipsoid((2.0, 0.05, 0.56), 0.15, (0.0, TABLE_HEIGHT - 0.075, 0.0)), "steel")
-    pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.7, 0.58), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
+    # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it.
+    m.add("Frame", superellipsoid((2.3, 0.05, 0.56), 0.15, (-0.15, TABLE_HEIGHT - 0.075, 0.0)), "steel")
+    pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
     m.add("Pads", merge(*pads), "mattress")
-    rails = [cylinder(0.008, (-0.95, TABLE_HEIGHT - 0.07, s * 0.3), (0.95, TABLE_HEIGHT - 0.07, s * 0.3), 8) for s in (-1, 1)]
+    rails = [cylinder(0.008, (-1.25, TABLE_HEIGHT - 0.07, s * 0.3), (0.95, TABLE_HEIGHT - 0.07, s * 0.3), 8) for s in (-1, 1)]
     m.add("Rails", merge(*rails), "chrome")
     m.add("Pedals", merge(*[superellipsoid((0.08, 0.02, 0.05), 0.4, (x, 0.09, 0.25)) for x in (-0.12, 0.12)]), "black_plastic")
     return m
@@ -63,8 +64,7 @@ def _iv_stand() -> Model:
     m.add("Bag", superellipsoid((0.09, 0.16, 0.03), 0.35, (0.08, 1.78, 0.0)), "clear_plastic")
     m.add("Fluid", superellipsoid((0.08, 0.11, 0.025), 0.4, (0.08, 1.75, 0.0)), "tint")
     m.add("Chamber", merge(cylinder(0.008, (0.08, 1.66, 0.0), (0.08, 1.6, 0.0), 12), ellipsoid((0.004, 0.005, 0.004), (0.08, 1.63, 0.0))), "clear_plastic")
-    line = tube([(0.08, 1.6, 0.0), (0.1, 1.3, 0.05), (0.05, 1.05, 0.2), (-0.1, 0.95, 0.45)], [(0.0025, 0.0025)] * 4, ring=6)
-    m.add("Line", line, "clear_plastic")
+    # The tubing itself is drawn by the game (src/world/iv_line.gd), from the chamber to wherever the line goes in.
     return m
 
 
@@ -176,10 +176,10 @@ def _xray() -> Model:
 
 
 def _photo() -> Model:
-    """Instant print from the X-ray. Origin at its center, image facing +Y."""
+    """The developed X-ray: a full-size film sheet (35 x 43 cm) lying on the cart. Origin at its center, image up."""
     m = Model("props", "xray_print")
-    m.add("Frame", superellipsoid((0.09, 0.002, 0.11), 0.1, (0.0, 0.0, 0.0)), "paper")
-    m.add("Image", superellipsoid((0.078, 0.001, 0.078), 0.05, (0.0, 0.0012, -0.008)), "tint")
+    m.add("Image", superellipsoid((0.35, 0.002, 0.43), 0.05, (0.0, 0.0, 0.0)), "tint")
+    m.add("Clip", superellipsoid((0.06, 0.006, 0.02), 0.2, (0.0, 0.002, -0.21)), "steel")
     return m
 
 
@@ -200,6 +200,52 @@ def _streetlight() -> Model:
     return m
 
 
+def _delivery_tray() -> Model:
+    """Where the nurse leaves what you ordered: a small trolley with a rimmed top at 0.9 m."""
+    m = Model("props", "delivery_tray")
+    m.add("Base", _wheels(0.022, 0.2), "dark_steel")
+    m.add("Pole", cylinder(0.018, (0.0, 0.05, 0.0), (0.0, 0.88, 0.0), 12), "steel")
+    top = superellipsoid((0.5, 0.02, 0.38), 0.12, (0.0, 0.895, 0.0))
+    rim = merge(
+        *[
+            superellipsoid(size, 0.2, c)
+            for size, c in (
+                ((0.52, 0.04, 0.015), (0.0, 0.92, 0.19)),
+                ((0.52, 0.04, 0.015), (0.0, 0.92, -0.19)),
+                ((0.015, 0.04, 0.38), (0.25, 0.92, 0.0)),
+                ((0.015, 0.04, 0.38), (-0.25, 0.92, 0.0)),
+            )
+        ]
+    )
+    m.add("Tray", merge(top, rim), "steel")
+    m.add("Tag", superellipsoid((0.16, 0.05, 0.004), 0.1, (0.0, 0.915, 0.198)), "yellow_plastic")
+    return m
+
+
+def _defib_cart() -> Model:
+    """Crash cart: red drawers, the defibrillator unit on top with its screen facing +Z. The paddles rest on the top."""
+    m = Model("props", "defib_cart")
+    m.add("Body", superellipsoid((0.55, 0.85, 0.45), 0.08, (0.0, 0.47, 0.0)), "red_plastic")
+    drawers = [superellipsoid((0.48, 0.02, 0.01), 0.2, (0.0, y, 0.228)) for y in (0.25, 0.45, 0.65)]
+    m.add("Handles", merge(*drawers), "steel")
+    m.add("Wheels", merge(*[cylinder(0.035, (x - 0.01, 0.035, z), (x + 0.01, 0.035, z), 12) for x in (-0.22, 0.22) for z in (-0.17, 0.17)]), "black_plastic")
+    m.add("Unit", superellipsoid((0.34, 0.16, 0.26), 0.2, (0.0, 0.98, -0.07)), "plastic")
+    m.add("Screen", superellipsoid((0.2, 0.1, 0.01), 0.1, (0.0, 1.0, 0.062)), "screen")
+    return m
+
+
+def _sink() -> Model:
+    """Scrub sink: a steel basin on a cabinet with a gooseneck tap. Basin rim at 0.9 m, front toward +Z."""
+    m = Model("props", "sink")
+    m.add("Cabinet", superellipsoid((0.7, 0.82, 0.5), 0.05, (0.0, 0.41, 0.0)), "steel")
+    # Out along the bottom and up the wall, then back down the inside: a hollow bowl.
+    basin = lathe([(0.0, 0.0), (0.2, 0.0), (0.26, 0.12), (0.27, 0.13), (0.25, 0.13), (0.19, 0.02), (0.0, 0.02)], 28)
+    m.add("Basin", moved(basin, (0.0, 0.78, 0.02)), "dark_steel")
+    m.add("Tap", tube([(0.0, 0.91, -0.2), (0.0, 1.12, -0.2), (0.0, 1.16, -0.1), (0.0, 1.06, -0.02)], [(0.012, 0.012)] * 4, ring=10), "chrome")
+    m.add("Lever", cylinder(0.008, (-0.06, 1.0, -0.2), (0.06, 1.0, -0.2), 8), "chrome")
+    return m
+
+
 def build() -> list[Model]:
     return [
         _operating_table(),
@@ -216,4 +262,7 @@ def build() -> list[Model]:
         _photo(),
         _stretcher_straps(),
         _streetlight(),
+        _delivery_tray(),
+        _defib_cart(),
+        _sink(),
     ]

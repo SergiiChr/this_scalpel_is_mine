@@ -88,16 +88,21 @@ Shown in the bottom right corner in game. Everything can be rebound in **Setting
 | Move active hand | Mouse |
 | Look around | Hold RMB |
 | Use tool (hold) / toggle clamp | LMB |
-| Hand height, or pressure / stitch tension while using | Mouse wheel |
-| Grab / release (near a partner's empty hand: pass the tool) | E |
-| Interact (manual, card, nurse, IV, lab, X-ray cart, turn patient) | F |
+| Blade pressure / stitch tension: step through 1-3 (shown beside the aim dot) | Q |
+| Zoom, or pressure / stitch tension while pressing a tool down | Mouse wheel |
+| Grab / release the highlighted tool (near a partner's empty hand: pass the tool) | E |
+| Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
 | Switch hand | Tab |
-| Lift hand over hands and tall tools | Hold Shift |
+| Lift hand over hands and tall tools; pull slowly on what it holds | Hold Shift |
+| Crouch (reach the floor, step over the IV line) | Hold C |
 | Hold breath (steady hands) | Hold Space |
 | Tilt / twist tool | R, T / Z, X |
 | Drink / wear | H |
 | Belt slots | 1-4 |
 | Move | WASD |
+
+The game never tells you what to do next: the manual on the shelf is the reference. **Settings > Debug mode**
+shows what the game tracks behind the scenes (the scenario's steps, the score and every scored action).
 
 ## Project layout
 

@@ -23,6 +23,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 	var touching := zone in ["site", "cavity", "body"]
 	if engaged and touching:
 		_on_contact(tool, zone, probe, patient)
+		_bloody(tool, zone, uv, patient, dt)
 	var def := tool.def
 	var mods: Modifiers = hand.mods
 	match def.action:
@@ -66,6 +67,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				Surgery.current.sound("lighter_flick", tip)
 			if engaged and zone in ["site", "cavity"] and tool.charges != 0:
 				patient.cauterize_at(zone, uv, probe.depth, def, dt)
+				Surgery.current.effect("smoke", tip, 180)
 				if randf() < dt * 1.2:
 					Surgery.current.sound("cautery_sizzle", tip)
 				if def.id == "lighter" and randf() < dt:
@@ -84,6 +86,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				else:
 					patient.administer(def.drug, "direct")
 					Surgery.current.sound("syringe_inject", tip)
+					Surgery.current.effect("bead", tip, 0)
 					_use_charge(tool)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
@@ -94,13 +97,19 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			elif released and tool.charge_time >= DEFIB_CHARGE_TIME * mods.mult("defib_charge_mult"):
 				patient.shock(def.power * 0.5)
 				Surgery.current.sound("defib_shock", tip)
+				Surgery.current.effect("spark", tip, 0)
+				if zone == "site":
+					# Paddle contact leaves a faint red mark on the skin.
+					patient.paint(WoundMap.Layer.WOUNDS, WoundMap.BURN, uv, uv, 0.06, 0.1, WoundMap.Mode.MAX)
 				Surgery.current.shock_bystanders(hand.peer)
 				tool.charge_time = 0.0
 			elif not engaged:
 				tool.charge_time = 0.0
 		"saw":
 			if engaged and zone in ["site", "cavity"]:
-				if not patient.saw_at(uv, def, dt) and zone == "site" and tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.004:
+				if patient.saw_at(uv, def, dt):
+					Surgery.current.effect("dust", tip, 150)
+				elif zone == "site" and tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.004:
 					patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, 1.0, 0.3, not tool.sterile, 0.5)
 				if randf() < dt * 2.0:
 					Surgery.current.sound("saw_bone", tip)
@@ -108,6 +117,8 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		"smash":
 			if pressed and touching:
 				patient.smash_at(uv, def)
+				if zone in ["site", "cavity"]:
+					Surgery.current.effect("spatter", tip, 0)
 		"suction":
 			if engaged and zone in ["site", "cavity"]:
 				patient.suction_at(zone, uv, def, dt)
@@ -127,9 +138,11 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			if engaged and zone == "site" and tool.charges != 0 and patient.graft_at(uv, def):
 				_use_charge(tool)
 		"iv_line":
+			# Held against an arm, not only on the frame the button went down: the tip may land a moment later.
 			var arm: bool = str(probe.get("part", "")).begins_with("arm") or zone == "site" and patient.scenario.site == "forearm"
-			if pressed and arm:
-				patient.set_iv()
+			if engaged and arm and not patient.iv_set:
+				patient.set_iv(tip)
+				Surgery.current.effect("bead", tip, 0)
 				_use_charge(tool)
 
 
@@ -152,6 +165,16 @@ static func _on_contact(tool: SurgicalTool, zone: String, probe: Dictionary, pat
 	if tool.is_improvised() and not tool.reported.has("improvised"):
 		tool.reported["improvised"] = true
 		Surgery.current.scoring.add("improvised_tool")
+
+
+## Working in blood leaves it on the tool: blades, clamps and suction pick it up fast, gauze soaks it up.
+static func _bloody(tool: SurgicalTool, zone: String, uv: Vector2, patient: Patient, dt: float) -> void:
+	var wet := patient.body.blood_at(uv) if zone == "site" else 0.0
+	if zone == "cavity" or tool.def.action == "cut" and zone == "site":
+		wet = maxf(wet, 0.6)
+	if wet > 0.15:
+		var rate := 1.2 if tool.def.action == "swab" else 0.5
+		Surgery.current.tools.add_blood(tool, wet * rate * dt)
 
 
 static func _use_charge(tool: SurgicalTool) -> void:

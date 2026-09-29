@@ -33,4 +33,4 @@ func tick(delta: float, surgery: Surgery) -> void:
 			_pending.erase(order)
 			surgery.tools.spawn(order.id, surgery.room.delivery_spot())
 			surgery.sound("nurse_delivery")
-			surgery.announce("Nurse drops the %s on the cart and leaves." % Db.tool(order.id).name)
+			surgery.announce("Nurse leaves the %s on the delivery tray." % Db.tool(order.id).name)

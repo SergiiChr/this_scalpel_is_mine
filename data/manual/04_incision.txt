@@ -1,0 +1,32 @@
+tags: fat_depth, tear_threshold_mult, thin_skin, obese, heal_rate, regeneration, mirrored
+title: 4. Incision and exposure
+[img=560]res://assets/manual/diagrams/incision_depth.svg[/img]
+
+[b]4.1 Blade pressure[/b]
+Depth of the incision is set by blade pressure, not by the number of passes. There are three levels. The current level is shown beside the aiming point whenever a blade is held, and on the status line.
+[table=3]
+[cell][b]Level[/b][/cell][cell][b]Divides[/b][/cell][cell][b]Use[/b][/cell]
+[cell]1  Skin[/cell][cell]Epidermis and dermis[/cell][cell]Skin incision, scoring the line[/cell]
+[cell]2  Fat[/cell][cell]Down to subcutaneous fat[/cell][cell]Deepening the wound under vision[/cell]
+[cell]3  Muscle[/cell][cell]Fascia and muscle, into the cavity[/cell][cell]Entering the body cavity[/cell]
+[/table]
+[b]Setting it:[/b] press [b]Pressure[/b] (default Q) to step through the levels before the blade touches the skin. While the blade is down, the mouse wheel adjusts it: forward increases, back decreases.
+Start at level 1 and deepen in layers. A full-depth stroke from the outset gives no control over what lies beneath.
+In obese patients the subcutaneous layer is thicker: one level shallower than expected is reached at each setting.
+
+[b]4.2 Technique[/b]
+Draw the blade along the marked line in one steady stroke. Slow strokes leave clean edges; fast strokes leave ragged edges that bleed more. A dull or improvised blade always tears the edge.
+
+[b]4.3 Exposure[/b]
+Skin is under tension and the edges part once divided. Beneath the skin lies yellow subcutaneous fat, then red muscle. The cavity is entered only when all three are divided.
+To widen the exposure, grasp an edge with forceps or a retractor and draw it laterally. Excessive traction tears the skin and creates a second wound.
+
+[b]4.4 Inside the cavity[/b]
+Dividing tissue next to a target frees it; dividing anything else injures it. Displace organs by hand before reaching beneath them; they return when released. Prolonged or forceful handling bruises viscera and causes oozing. Hold them with a retractor rather than by hand.
+
+[b]4.5 Special cases[/b]
+Regenerating tissue closes incisions spontaneously. Work in short stages and keep retractors in place.
+Situs inversus (chart: "dextrocardia"): all viscera are mirrored. Confirm the anatomy before marking.
+
+[font_size=16][b]References[/b]
+Townsend CM, Beauchamp RD, Evers BM, Mattox KL. Sabiston Textbook of Surgery. 21st ed. Elsevier; 2021.[/font_size]

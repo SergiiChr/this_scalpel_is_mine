@@ -56,6 +56,13 @@ func _ready() -> void:
 	me.camera().current = true
 	me.pitch = -1.0
 	await _shot(out, "02_looking_down")
+	# What a player sees zoomed all the way in on the site.
+	me.zoom = Surgeon.ZOOM_FOV.size() - 1
+	me.pitch = -0.8
+	await _frames(40)
+	await _shot(out, "02b_zoomed")
+	me.zoom = 0
+	await _frames(40)
 	camera.current = true
 	var site := patient.body.site.global_position
 	camera.global_position = site + Vector3(0.0, 0.35, 0.25)
@@ -68,6 +75,10 @@ func _ready() -> void:
 	camera.global_position = Vector3(2.3, 2.5, 1.9)
 	camera.look_at(Vector3(0, 0.9, 0))
 	await _shot(out, "04_room")
+	# The feet end of the table, with the instrument tray past it.
+	camera.global_position = Vector3(-1.0, 1.5, 1.4)
+	camera.look_at(Vector3(-1.4, 0.9, 0))
+	await _shot(out, "04b_table_foot")
 	var tray: Vector3 = surgery.room.layout.tray + Vector3(0, 0.95, 0)
 	camera.global_position = tray + Vector3(0.45, 0.45, 0.0)
 	camera.look_at(tray)
@@ -90,6 +101,16 @@ func _ready() -> void:
 	await _frames(10)
 	me.camera().current = true
 	await _shot(out, "08_hands")
+	# Hands working over the thighs: nothing may sink into the legs or the table.
+	var spot := me.global_position
+	me.global_position = patient.global_position + Vector3(-0.45, -Room.TABLE_HEIGHT, 0.62)
+	var legs := patient.global_position + Vector3(-0.5, 0.0, 0.0)
+	me.hands[1].local_target = me.to_local(legs + Vector3(0.05, 0.05, 0.09))
+	me.hands[0].local_target = me.to_local(legs + Vector3(-0.08, 0.05, -0.05))
+	me.pitch = -0.9
+	await _frames(20)
+	await _shot(out, "08b_hands_on_legs")
+	me.global_position = spot
 	camera.current = true
 	camera.global_position = me.global_position + Vector3(0.9, 1.7, 0.6)
 	camera.look_at(me.global_position + Vector3(0, 1.1, -0.4))

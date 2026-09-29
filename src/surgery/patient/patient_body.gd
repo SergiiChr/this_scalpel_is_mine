@@ -3,9 +3,10 @@ extends Node3D
 ## The patient you see and touch: body model, the layered tissue at the surgical site, the cavity, organs and colliders.
 ## Exists on every peer. Game state lives in Patient; this node knows geometry, the wound map and the tissue sim.
 ##
-## The surgical site is real layered tissue, not a painted decal:
-## skin (TissueSim, soft and under tension) over subcutaneous fat over muscle over the cavity.
-## Each layer only opens where a cut went deep enough and the sim pulled the edges apart.
+## The surgical site is real layered tissue: skin (TissueSim, soft and under tension) over subcutaneous fat over
+## muscle over the cavity. Each layer only opens where a cut went deep enough and the sim pulled the edges apart.
+## Where nothing is cut or held, the body model itself is the skin and shows the painted damage (wound maps);
+## around cuts and pinched skin the model is cut away and the simulated layers take over (the region).
 ##
 ## Body space: patient lies along X with the head at +X, origin at the body's center line.
 ## Site space: a plane whose local XZ maps to wound map UV, +Y points out of the skin.
@@ -17,6 +18,11 @@ const GOWN_COLOR := Color(0.5, 0.58, 0.55)
 const SITE_LAYER := 4
 const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
+## Hands push organs aside on their own layer, so rays looking for what's in the cavity don't hit the hands.
+const PUSHER_LAYER := 128
+## The patient's real skin (body and gown meshes at rest), for resting hands and tools on. The boxes on
+## PATIENT_LAYER stay for what a tool touches, they're too rough to rest a hand on without sinking into a leg.
+const SURFACE_LAYER := 256
 
 const SKIN_THICKNESS := 0.004
 const MUSCLE_THICKNESS := 0.006
@@ -37,6 +43,7 @@ var fat_thickness := 0.012
 var cavity_blood: MeshInstance3D
 var organs: Array[RigidBody3D] = []
 var animator := PatientAnimator.new()
+var blood := BloodFlow.new()
 var orientation: int = Orientation.FACE_UP
 var _on_back := false
 var _body_root: Node3D
@@ -50,6 +57,12 @@ var _layer_steps := -1
 var _layer_uvs := PackedVector2Array()
 var _organ_last: Array[Vector3] = []
 var _jiggle: Array[Vector2] = []
+## Where the simulated skin replaces the body model, one texel per tissue grid point (see TissueSim.region()).
+var region_texture: ImageTexture
+var _region := PackedByteArray()
+var _region_image: Image
+var _cavity_material: ShaderMaterial
+var _pool_height := -INF
 ## Reused by part_at(), which runs every physics frame for every held tool.
 var _part_query := PhysicsShapeQueryParameters3D.new()
 var _part_sphere := SphereShape3D.new()
@@ -66,11 +79,17 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	# The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
 	var gown := Materials.body_skin(GOWN_COLOR)
 	_body_materials.append_array([skin, gown])
+	for mat in _body_materials:
+		Materials.set_site_maps(mat, wound_map.textures[0], wound_map.textures[1])
 	var model := ModelSlot.instantiate("patient", "body", _body_root, {"skin": skin, "gown": gown})
 	add_child(animator)
 	animator.setup(self, model)
 	_build_colliders()
+	_build_surface(model)
 	_build_site(tone)
+	blood.name = "BloodFlow"
+	add_child(blood)
+	blood.setup(self)
 
 
 func _process(delta: float) -> void:
@@ -79,6 +98,11 @@ func _process(delta: float) -> void:
 	if tissue.topology_version != _layer_version or tissue.steps_done != _layer_steps:
 		_rebuild_layers()
 	_jiggle_organs(delta)
+
+
+## The node that carries the body model, colliders and site. It turns with the patient.
+func root() -> Node3D:
+	return _body_root
 
 
 func is_limb_site() -> bool:
@@ -129,6 +153,14 @@ func surface_height(uv: Vector2) -> float:
 	var top := lerpf(_heights[y0 * grid + x0], _heights[y0 * grid + x0 + 1], f.x)
 	var bottom := lerpf(_heights[(y0 + 1) * grid + x0], _heights[(y0 + 1) * grid + x0 + 1], f.x)
 	return lerpf(top, bottom, f.y)
+
+
+## Blood on the skin at uv, 0..1, from the fluid map.
+func blood_at(uv: Vector2) -> float:
+	if uv.x < 0.0 or uv.y < 0.0 or uv.x > 1.0 or uv.y > 1.0:
+		return 0.0
+	var at := (uv * (WoundMap.SIZE - 1)).floor()
+	return wound_map.images[WoundMap.Layer.FLUIDS].get_pixelv(at)[WoundMap.BLOOD]
 
 
 func uv_to_meters(uv_length: float) -> float:
@@ -192,6 +224,22 @@ func _build_colliders() -> void:
 		body.set_meta("part", part)
 
 
+func _build_surface(model: Node3D) -> void:
+	for part_name in ["Body", "Gown"]:
+		var mesh := model.find_child(part_name, true, false) as MeshInstance3D
+		if mesh == null:
+			continue
+		var surface := StaticBody3D.new()
+		surface.name = part_name + "Surface"
+		surface.collision_layer = SURFACE_LAYER
+		surface.collision_mask = 0
+		var shape := CollisionShape3D.new()
+		shape.shape = mesh.mesh.create_trimesh_shape()
+		surface.add_child(shape)
+		_body_root.add_child(surface)
+		surface.transform = _body_root.global_transform.affine_inverse() * mesh.global_transform
+
+
 func _build_site(tone: Color) -> void:
 	var def := _site_def()
 	site_size = Vector2(def.size[0], def.size[1])
@@ -206,6 +254,8 @@ func _build_site(tone: Color) -> void:
 
 	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
 	tissue.build(site_size, surface_height)
+	_region_image = Image.create(TissueSim.RES + 1, TissueSim.RES + 1, false, Image.FORMAT_L8)
+	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
 	for i in 3:
 		var layer := MeshInstance3D.new()
@@ -227,7 +277,7 @@ func _rebuild_layers() -> void:
 	_layer_version = tissue.topology_version
 	_layer_steps = tissue.steps_done
 	var res := TissueSim.RES
-	var severed := tissue.any_severed()
+	_update_region()
 	if _layer_uvs.is_empty():
 		for k in tissue.rest.size():
 			_layer_uvs.append(tissue.uv_of(k))
@@ -235,10 +285,12 @@ func _rebuild_layers() -> void:
 		var instance := _layers[layer]
 		var mesh := instance.mesh as ArrayMesh
 		mesh.clear_surfaces()
-		instance.visible = layer == 0 or severed
+		var triangles := _in_region(tissue.triangles(LAYER_DEPTH[layer]))
+		instance.visible = not triangles.is_empty()
 		if not instance.visible:
 			continue
-		var down := Vector3(0, [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
+		# The skin sits a hair above the body it replaces, so their overlap at the region's edge never flickers.
+		var down := Vector3(0, [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
 		var follow := LAYER_FOLLOW[layer]
 		var verts := PackedVector3Array()
 		verts.resize(tissue.rest.size())
@@ -257,32 +309,59 @@ func _rebuild_layers() -> void:
 		arrays[Mesh.ARRAY_VERTEX] = verts
 		arrays[Mesh.ARRAY_NORMAL] = normals
 		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
-		arrays[Mesh.ARRAY_INDEX] = tissue.triangles(LAYER_DEPTH[layer])
+		arrays[Mesh.ARRAY_INDEX] = triangles
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 
 
-## Cavity walls whose rim follows the skin just underneath it, so nothing pokes out of the body.
-func _cavity_mesh(depth: float) -> ArrayMesh:
-	const STEPS := 24
+## Keeps the triangles that touch the region. They reach a little past where the body is cut away (the body's
+## cut edge is halfway between region and non-region points), so there's never a hole between the two.
+func _in_region(triangles: PackedInt32Array) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for t in range(0, triangles.size(), 3):
+		if _region[triangles[t]] + _region[triangles[t + 1]] + _region[triangles[t + 2]] > 0:
+			out.append_array(triangles.slice(t, t + 3))
+	return out
+
+
+func _update_region() -> void:
+	var region := tissue.region()
+	if region == _region:
+		return
+	_region = region
+	for k in region.size():
+		var uv := tissue.uv_of(k) * TissueSim.RES
+		_region_image.set_pixel(roundi(uv.x), roundi(uv.y), Color.WHITE if region[k] else Color.BLACK)
+	region_texture.update(_region_image)
+
+
+## Cavity grid points per side.
+const CAVITY_STEPS := 24
+
+
+## Height of the cavity floor at uv: a bowl that is deepest (cavity_depth) in the middle and rises to just under the
+## skin at the site's edges. It follows the skin, so on a round limb it never pokes out of the sides.
+func _cavity_floor(uv: Vector2) -> float:
+	var under_skin := surface_height(uv) - SKIN_THICKNESS - 0.003
+	var edge := Vector2(absf(uv.x * 2.0 - 1.0), absf(uv.y * 2.0 - 1.0))
+	var bowl := (1.0 - pow(edge.x, 4.0)) * (1.0 - pow(edge.y, 4.0))
+	return minf(lerpf(under_skin, -cavity_depth(), bowl), under_skin)
+
+
+func _cavity_uv(i: int, j: int) -> Vector2:
+	return Vector2(i, j) / CAVITY_STEPS
+
+
+## Grid triangles over the site, for quads whose four corners pass keep(i, j).
+func _cavity_grid(height: Callable, keep: Callable) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var inset := 0.02
-	var corners := [Vector2(inset, inset), Vector2(1 - inset, inset), Vector2(1 - inset, 1 - inset), Vector2(inset, 1 - inset)]
-	for side in 4:
-		var a: Vector2 = corners[side]
-		var b: Vector2 = corners[(side + 1) % 4]
-		for i in STEPS:
-			var u0 := a.lerp(b, float(i) / STEPS)
-			var u1 := a.lerp(b, float(i + 1) / STEPS)
-			var top0 := _site_point(u0, surface_height(u0) - SKIN_THICKNESS)
-			var top1 := _site_point(u1, surface_height(u1) - SKIN_THICKNESS)
-			var bottom0 := _site_point(u0, -depth)
-			var bottom1 := _site_point(u1, -depth)
-			for v: Vector3 in [top0, bottom0, top1, top1, bottom0, bottom1]:
-				st.add_vertex(v)
-	var floor_corners: Array = corners.map(func(c: Vector2) -> Vector3: return _site_point(c, -depth))
-	for v: Vector3 in [floor_corners[0], floor_corners[1], floor_corners[2], floor_corners[0], floor_corners[2], floor_corners[3]]:
-		st.add_vertex(v)
+	for j in CAVITY_STEPS:
+		for i in CAVITY_STEPS:
+			if not (keep.call(i, j) and keep.call(i + 1, j) and keep.call(i + 1, j + 1) and keep.call(i, j + 1)):
+				continue
+			for c: Vector2i in [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i + 1, j + 1), Vector2i(i, j), Vector2i(i + 1, j + 1), Vector2i(i, j + 1)]:
+				var uv := _cavity_uv(c.x, c.y)
+				st.add_vertex(_site_point(uv, height.call(uv)))
 	st.generate_normals()
 	return st.commit()
 
@@ -299,18 +378,16 @@ func _build_cavity() -> void:
 	var depth := cavity_depth()
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
-	cavity.mesh = _cavity_mesh(depth)
-	cavity.material_override = Materials.flesh()
+	cavity.mesh = _cavity_grid(_cavity_floor, func(_i: int, _j: int) -> bool: return true)
+	_cavity_material = Materials.flesh()
+	cavity.material_override = _cavity_material
 	site.add_child(cavity)
 	Shapes.static_box(site, Vector3(site_size.x, 0.01, site_size.y), Vector3(0, -depth - 0.005, 0), CAVITY_LAYER)
 
-	var pool := PlaneMesh.new()
-	pool.size = site_size * 0.95
 	cavity_blood = MeshInstance3D.new()
 	cavity_blood.name = "CavityBlood"
-	cavity_blood.mesh = pool
 	cavity_blood.material_override = Materials.blood_pool()
-	cavity_blood.position.y = -depth + 0.002
+	cavity_blood.visible = false
 	site.add_child(cavity_blood)
 
 
@@ -319,7 +396,7 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color) -> RigidB
 	var organ := RigidBody3D.new()
 	organ.name = "Organ%d" % organs.size()
 	organ.collision_layer = CAVITY_LAYER
-	organ.collision_mask = CAVITY_LAYER
+	organ.collision_mask = CAVITY_LAYER | PUSHER_LAYER
 	organ.gravity_scale = 0.0
 	organ.linear_damp = 6.0
 	organ.angular_damp = 6.0
@@ -395,12 +472,28 @@ func set_breath_offset(offset: float) -> void:
 		_update_carve()
 
 
+## Blood filling the cavity bowl, level 0..1. The surface only covers the part of the bowl that is under it and
+## still under the skin, so it never shows outside the body. Rebuilt only when the level moves a millimeter or so.
 func set_cavity_blood(level: float) -> void:
-	var depth := cavity_depth()
-	cavity_blood.position.y = -depth + 0.002 + clampf(level, 0.0, 1.0) * depth * 0.85
+	var height := -cavity_depth() + 0.002 + clampf(level, 0.0, 1.0) * cavity_depth() * 0.85
+	cavity_blood.visible = level > 0.01
+	if not cavity_blood.visible or absf(height - _pool_height) < 0.0015:
+		return
+	_pool_height = height
+	var keep := func(i: int, j: int) -> bool:
+		var uv := _cavity_uv(i, j)
+		return _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
+	cavity_blood.mesh = _cavity_grid(func(_uv: Vector2) -> float: return height, keep)
 
 
-## The body model is cut away under the whole site; the simulated skin layer takes its place.
+## Where the body model is cut away (the region), the simulated skin layers take over.
 func _update_carve() -> void:
 	for mat in _body_materials:
-		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, Materials.white())
+		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, region_texture)
+	Materials.set_reveal(_cavity_material, site.global_transform, site_size * 0.5, region_texture)
+
+
+## Blood loss drains the color from the skin, body and site alike.
+func set_pallor(value: float) -> void:
+	skin_material.set_shader_parameter("pallor", value)
+	_body_materials[0].set_shader_parameter("pallor", value)
