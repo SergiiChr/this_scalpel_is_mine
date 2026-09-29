@@ -75,6 +75,10 @@ func _ready() -> void:
 	camera.global_position = Vector3(2.3, 2.5, 1.9)
 	camera.look_at(Vector3(0, 0.9, 0))
 	await _shot(out, "04_room")
+	# The feet end of the table, with the instrument tray past it.
+	camera.global_position = Vector3(-1.0, 1.5, 1.4)
+	camera.look_at(Vector3(-1.4, 0.9, 0))
+	await _shot(out, "04b_table_foot")
 	var tray: Vector3 = surgery.room.layout.tray + Vector3(0, 0.95, 0)
 	camera.global_position = tray + Vector3(0.45, 0.45, 0.0)
 	camera.look_at(tray)

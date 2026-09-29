@@ -5,6 +5,9 @@ extends Node3D
 ## Props are generated models (tools/assetgen/props.py) loaded through ModelSlot.
 
 const TABLE_HEIGHT := 0.85
+## Table top ends along x: the feet lie toward FOOT, the head toward HEAD.
+const TABLE_FOOT := -1.3
+const TABLE_HEAD := 1.0
 ## Bottom of the drip chamber on the IV stand model, where the tubing starts.
 const IV_DRIP_POINT := Vector3(0.08, 1.6, 0.0)
 ## Solid footprint (width, height, depth) of props you can put things on and can't walk through.
@@ -24,7 +27,7 @@ const LAYOUTS: Dictionary = {
 		"size": Vector3(5.2, 2.8, 4.4),
 		# Right at the table edge: from here both of you reach the middle of the patient.
 		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(0.0, 0.0, -0.62)],
-		"tray": Vector3(-1.4, 0.0, 0.0),
+		"tray": Vector3(-1.7, 0.0, 0.0),
 		"manual": Vector3(1.9, 0.0, -2.0),
 		"card": Vector3(1.05, 0.0, 0.5),
 		"bell": Vector3(-2.25, 0.0, 1.92),
@@ -42,7 +45,7 @@ const LAYOUTS: Dictionary = {
 	"ambulance": {
 		"size": Vector3(4.2, 2.1, 2.3),
 		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(-0.5, 0.0, -0.62)],
-		"tray": Vector3(-1.45, 0.0, 0.6),
+		"tray": Vector3(-1.72, 0.0, 0.55),
 		"manual": Vector3(1.8, 0.0, -0.85),
 		"card": Vector3(1.0, 0.0, 0.5),
 		"gloves": Vector3(1.8, 0.0, 0.85),
@@ -55,7 +58,7 @@ const LAYOUTS: Dictionary = {
 	"sidewalk": {
 		"size": Vector3(14.0, 0.0, 10.0),
 		"spawns": [Vector3(0.0, 0.0, 0.62), Vector3(0.0, 0.0, -0.62)],
-		"tray": Vector3(-1.4, 0.0, 0.3),
+		"tray": Vector3(-1.7, 0.0, 0.3),
 		"manual": Vector3(1.6, 0.0, 1.6),
 		"card": Vector3(1.05, 0.0, 0.5),
 		"gloves": Vector3(-1.6, 0.0, -1.5),
@@ -254,7 +257,7 @@ func _build_street(size: Vector3) -> void:
 
 func _build_table() -> void:
 	ModelSlot.instantiate("props", "operating_table", self)
-	Shapes.static_box(self, Vector3(2.0, TABLE_HEIGHT, 0.62), Vector3(0, TABLE_HEIGHT * 0.5, 0))
+	Shapes.static_box(self, Vector3(TABLE_HEAD - TABLE_FOOT, TABLE_HEIGHT, 0.62), Vector3((TABLE_HEAD + TABLE_FOOT) * 0.5, TABLE_HEIGHT * 0.5, 0))
 	if environment_id != "or":
 		ModelSlot.instantiate("props", "straps", self)
 	var lamp := ModelSlot.instantiate("props", "surgical_lamp", self)

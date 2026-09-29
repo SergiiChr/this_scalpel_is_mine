@@ -118,7 +118,7 @@ func _fall(delta: float) -> void:
 	for drop in _drops.duplicate():
 		drop.vel += Vector3.DOWN * 9.8 * delta
 		var pos: Vector3 = drop.pos + drop.vel * delta
-		var on_table := absf(pos.x) < 1.0 and absf(pos.z) < 0.31
+		var on_table := pos.x > Room.TABLE_FOOT and pos.x < Room.TABLE_HEAD and absf(pos.z) < 0.31
 		var ground := table_top if on_table and (drop.pos as Vector3).y >= table_top else FLOOR_Y
 		if pos.y <= ground:
 			_pool(Vector3(pos.x, ground, pos.z))

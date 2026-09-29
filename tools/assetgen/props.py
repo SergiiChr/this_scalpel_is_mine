@@ -24,10 +24,11 @@ def _operating_table() -> Model:
     m = Model("props", "operating_table")
     m.add("Base", superellipsoid((0.7, 0.08, 0.45), 0.25, (0.0, 0.04, 0.0)), "dark_steel")
     m.add("Column", superellipsoid((0.22, TABLE_HEIGHT - 0.2, 0.16), 0.3, (0.0, (TABLE_HEIGHT - 0.2) / 2 + 0.08, 0.0)), "steel")
-    m.add("Frame", superellipsoid((2.0, 0.05, 0.56), 0.15, (0.0, TABLE_HEIGHT - 0.075, 0.0)), "steel")
-    pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.7, 0.58), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
+    # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it.
+    m.add("Frame", superellipsoid((2.3, 0.05, 0.56), 0.15, (-0.15, TABLE_HEIGHT - 0.075, 0.0)), "steel")
+    pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
     m.add("Pads", merge(*pads), "mattress")
-    rails = [cylinder(0.008, (-0.95, TABLE_HEIGHT - 0.07, s * 0.3), (0.95, TABLE_HEIGHT - 0.07, s * 0.3), 8) for s in (-1, 1)]
+    rails = [cylinder(0.008, (-1.25, TABLE_HEIGHT - 0.07, s * 0.3), (0.95, TABLE_HEIGHT - 0.07, s * 0.3), 8) for s in (-1, 1)]
     m.add("Rails", merge(*rails), "chrome")
     m.add("Pedals", merge(*[superellipsoid((0.08, 0.02, 0.05), 0.4, (x, 0.09, 0.25)) for x in (-0.12, 0.12)]), "black_plastic")
     return m
