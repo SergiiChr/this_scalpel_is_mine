@@ -29,6 +29,7 @@ Needs everything above plus Python 3.11 (`python3.11` on Fedora) and Xvfb (`xorg
 
 ```bash
 ./build.sh dev      # one-time setup, see below
+./build.sh setup    # only Godot and the project import, no sudo (enough to test and take screenshots)
 ./build.sh editor   # open the Godot editor
 ./build.sh test     # run every automated test (about 5 minutes)
 ./build.sh build    # run the tests, then export build/ThisScalpelIsMine.x86_64
@@ -129,7 +130,7 @@ tools/blender/   Organic and rigged models built with Blender (Python)
 
 ```bash
 ./build.sh test    # import, tissue, every scenario, two-process co-op; fails on any error
-xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --out=/tmp/shots
+./build.sh shots   # screenshots of a scenario in a virtual display: ./build.sh shots [scenario] [out dir]
 ```
 
 Every tested case is listed in [tests/TEST_CASES.md](tests/TEST_CASES.md). `./build.sh` runs the tests before exporting, and CI runs them on every push and pull request.

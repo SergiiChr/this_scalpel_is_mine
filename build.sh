@@ -4,7 +4,10 @@
 #   ./build.sh play      Play the game from source. Downloads Godot on first use.
 #   ./build.sh dev       Set up everything for development: system packages, Godot, export templates,
 #                        the Python virtualenv (.venv) for the asset generators, then imports the project.
+#   ./build.sh setup     Download Godot and import the project, nothing else (no sudo). Enough for test and shots.
 #   ./build.sh test      Run the automated tests (tests/run_tests.sh, cases in tests/TEST_CASES.md).
+#   ./build.sh shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
+#                        ./build.sh shots [scenario] [out dir], default appendectomy into build/shots.
 #   ./build.sh build     Run the tests, then export a standalone executable to build/ThisScalpelIsMine.x86_64.
 #                        SKIP_TESTS=1 exports without testing.
 #   ./build.sh editor    Open the project in the Godot editor.
@@ -24,6 +27,11 @@ GODOT="${GODOT_BIN:-$TOOLS/godot-$GODOT_VERSION}"
 TEMPLATES="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$GODOT_VERSION.stable"
 BASE_URL="https://github.com/godotengine/godot/releases/download/$GODOT_VERSION-stable"
 OUTPUT="$ROOT/build/ThisScalpelIsMine.x86_64"
+
+# Downloads a release file. GitHub release downloads fail now and then, so retry before giving up.
+download() {
+	curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 30 -o "$2" "$1"
+}
 
 # Installs missing system packages with dnf (asks for sudo), or says what to install elsewhere.
 # Arguments are "command:fedora-package" pairs.
@@ -47,7 +55,7 @@ fetch_godot() {
 	require curl:curl unzip:unzip
 	echo "Downloading Godot $GODOT_VERSION..."
 	mkdir -p "$TOOLS"
-	curl -fL -o "$TOOLS/godot.zip" "$BASE_URL/Godot_v$GODOT_VERSION-stable_linux.x86_64.zip"
+	download "$BASE_URL/Godot_v$GODOT_VERSION-stable_linux.x86_64.zip" "$TOOLS/godot.zip"
 	unzip -o -q "$TOOLS/godot.zip" -d "$TOOLS"
 	mv "$TOOLS/Godot_v$GODOT_VERSION-stable_linux.x86_64" "$GODOT"
 	rm "$TOOLS/godot.zip"
@@ -58,7 +66,7 @@ fetch_templates() {
 	require curl:curl unzip:unzip
 	echo "Downloading export templates (large, one time only)..."
 	mkdir -p "$TOOLS" "$TEMPLATES"
-	curl -fL -o "$TOOLS/templates.tpz" "$BASE_URL/Godot_v$GODOT_VERSION-stable_export_templates.tpz"
+	download "$BASE_URL/Godot_v$GODOT_VERSION-stable_export_templates.tpz" "$TOOLS/templates.tpz"
 	unzip -o -q -j "$TOOLS/templates.tpz" \
 		templates/linux_release.x86_64 templates/linux_debug.x86_64 templates/version.txt -d "$TEMPLATES"
 	rm "$TOOLS/templates.tpz"
@@ -98,9 +106,24 @@ case "${1:-}" in
 		echo
 		echo "Ready. ./build.sh play to play, ./build.sh editor to edit, ./build.sh test to run the tests."
 		;;
+	setup)
+		fetch_godot
+		import_project
+		echo "Ready. ./build.sh test to run the tests, ./build.sh shots to render screenshots."
+		;;
 	test)
 		fetch_godot
 		GODOT="$GODOT" exec "$ROOT/tests/run_tests.sh"
+		;;
+	shots)
+		fetch_godot
+		import_project
+		out="${3:-$ROOT/build/shots}"
+		mkdir -p "$out"
+		# The compatibility renderer works on software OpenGL, so this runs without a GPU.
+		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method gl_compatibility res://tests/screenshot.tscn -- \
+			--scenario="${2:-appendectomy}" --out="$out"
+		echo "Screenshots in $out"
 		;;
 	build)
 		fetch_godot
@@ -129,7 +152,7 @@ case "${1:-}" in
 		"$VENV/bin/mypy" tools
 		;;
 	*)
-		sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
 		exit 1
 		;;
 esac
