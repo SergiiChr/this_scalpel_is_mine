@@ -12,6 +12,7 @@ const LEVEL_STEPS: Dictionary = {
 	"cut": ["Resting on skin", "Skin", "Fat", "Muscle, into cavity"],
 	"tension": ["Off", "Loose", "Correct", "Tight"],
 	"inject": ["Not pushed", "A third in", "Two thirds in", "All in"],
+	"syringe": ["Still", "Slow", "Steady", "Fast"],
 	"effort": ["Off", "Low", "Medium", "High"],
 }
 ## Length of the blade edge line drawn on the skin (m).
@@ -385,7 +386,7 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("Mouse  Move %s hand" % side)
 	if tool:
 		var action := tool.def.action
-		lines.append("%s (hold)  Lower %s" % [key.call("lower_tool"), tool.def.name])
+		lines.append("%s (hold)  Lower %s" % [key.call("lower_tool"), tool.label()])
 		if ToolActions.TRIGGER_NAMES.has(action):
 			lines.append("%s  %s" % [key.call("tool_action"), ToolActions.TRIGGER_NAMES[action]])
 		if me.uses_level(me.active):
@@ -397,7 +398,7 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("%s / %s  Tilt   %s / %s  Rotate" % [key.call("tilt_forward"), key.call("tilt_back"), key.call("twist_left"), key.call("twist_right")])
 		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
 	else:
-		lines.append("%s  Grab%s" % [key.call("grab"), " " + me.hovered.def.name if is_instance_valid(me.hovered) else ""])
+		lines.append("%s  Grab%s" % [key.call("grab"), " " + me.hovered.label() if is_instance_valid(me.hovered) else ""])
 		lines.append("Wheel  Zoom")
 	lines.append("%s (hold)  %s" % [key.call("lift"), "Pull up" if hand.attached else "Lift hand over"])
 	lines.append("%s (hold)  Hold breath" % key.call("steady"))
@@ -454,7 +455,7 @@ func _update_dot(me: Surgeon) -> void:
 		var light := _blade.get_child(0) as Line2D
 		light.points = _blade.points
 		light.default_color = Color(1.0, 0.42, 0.35) if cutting else Color(1.0, 1.0, 0.9)
-	_dot_label.text = me.hovered.def.name if is_instance_valid(me.hovered) else ""
+	_dot_label.text = me.hovered.label() if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
 	_levels.text = _level_text(me)
 	_levels.visible = not _levels.text.is_empty()
@@ -492,7 +493,7 @@ func _update_hands(me: Surgeon) -> void:
 	var parts := PackedStringArray()
 	for i in 2:
 		var tool := me.held_tool(i)
-		var text := "%s: %s" % ["L" if i == 0 else "R", tool.def.name if tool else "empty"]
+		var text := "%s: %s" % ["L" if i == 0 else "R", tool.label() if tool else "empty"]
 		if tool and not tool.sterile and me.mods.flag("contamination_vision"):
 			text += " (dirty)"
 		if me.hands[i].attached:
@@ -511,7 +512,7 @@ func _update_hands(me: Surgeon) -> void:
 		_belt.add_child(slot)
 	for i in capacity:
 		var tool := surgery.tools.tool_on_belt(me.peer_id, i)
-		(_belt.get_child(i) as Label).text = "[%d] %s" % [i + 1, tool.def.name if tool else "—"]
+		(_belt.get_child(i) as Label).text = "[%d] %s" % [i + 1, tool.label() if tool else "—"]
 
 
 func _update_gauges(me: Surgeon) -> void:

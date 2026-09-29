@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://cih7b805wnet6"
-path="res://.godot/imported/syringe.glb-31f6390c97422762cb8d561753f2c76f.scn"
+uid="uid://f6t71rm5cdyj"
+path="res://.godot/imported/syringe_10.glb-3a79e18b5c631ba59fc332a64510ccbe.scn"
 
 [deps]
 
-source_file="res://assets/models/tools/syringe.glb"
-dest_files=["res://.godot/imported/syringe.glb-31f6390c97422762cb8d561753f2c76f.scn"]
+source_file="res://assets/models/tools/syringe_10.glb"
+dest_files=["res://.godot/imported/syringe_10.glb-3a79e18b5c631ba59fc332a64510ccbe.scn"]
 
 [params]
 

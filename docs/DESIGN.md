@@ -153,7 +153,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - `tools.cfg`: every item, its action and numbers. Backup tools reuse actions with worse numbers.
 - `starter_kit.cfg`: the tools every surgery starts with. With a nurse, a scenario's `starting_tools` and
   `random_tools` add only what she can't fetch; without one (sidewalk, ambulance) they add their whole kit.
-- `drugs.cfg`: effects, onset, duration, flags, dangerous combinations, blood types.
+- `drugs.cfg`: effects, onset, duration, flags, dangerous combinations, blood types, dose per kg.
 - `events.cfg`: random escalation events, weights and cooldowns.
 - `scoring.cfg`: points and stress per action, star thresholds.
 - `consequences.cfg`: post-op report rules (infection, burst staples, lawsuits).
@@ -212,7 +212,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Tools with a range take an effort level 0-3 from the wheel while lowered (cut depth, stitch tension, heat, saw speed,
   suction, gauze pressure, syringe plunger), 0 does nothing. Single actions are on RMB: clamps pinch and let go,
   the mallet strikes, the tourniquet tightens, a graft goes on, the defibrillator charges while held and shocks on release.
-  A syringe goes in while lowered and gives its dose when the plunger reaches the end.
+  A syringe draws in a vial and pushes anywhere else (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -220,12 +220,27 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 ### Starter kit and ordering
 
 - **Same tray every time** (`data/starter_kit.cfg`): scalpel, forceps, kidney dish, cotton pads, iodine bottle with
-  its dish, IV catheter and saline bag. Everything else is ordered.
+  its dish, a 3, 10 and 50 ml syringe, IV catheter and saline bag. Everything else is ordered.
 - **Nurse**: one order at a time, a 15 s cooldown after each delivery. A board over the bell shows the item on its way
   with a progress bar, then the cooldown.
 - **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish, pinch a cotton pad with forceps
   (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up off the floor contaminates the site.
   A dish soaks about four pads; a soaked pad runs dry after about 8 s of wiping.
+
+### Vials and syringes
+
+- **Drugs come in labelled vials** (`vial_*` in tools.cfg): the name is the label, with the strength per ml.
+  Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
+  what's in which. The barrel is glass with a tick every tenth; the liquid and plunger show how much is in it.
+- **Filling** (`ToolActions`, action `syringe`): lowered with its needle in a vial the plunger draws, anywhere else
+  it pushes, at a speed set by the wheel. A syringe holds ml plus an amount of each drug, so drawing from a second
+  vial mixes (`ToolManager.transfer()`). Pushing into the patient collects the dose; it's given when the needle
+  comes out. At the IV stand the whole syringe goes into the line.
+- **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
+  Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
+  only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
+- **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
+- **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
 
 ### Approved mechanics (in this build)
 

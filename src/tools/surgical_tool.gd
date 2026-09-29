@@ -23,8 +23,15 @@ var charges := -1
 ## How bloody the working end is (0..1), for everyone. Host-side exposure builds up in blood_exposure.
 var blood := 0.0
 var blood_exposure := 0.0
-## How full of liquid it is (0..1): iodine in the dish, soaked into a cotton pad. Exact on the host, in steps elsewhere.
+## How full of liquid it is (0..1): iodine in the dish, soaked into a cotton pad, a syringe or vial.
+## Exact on the host, in steps elsewhere.
 var fill := 0.0
+## Host only: ml of liquid in a syringe or vial, and how much of each drug is in it (drug id -> amount in its unit).
+## A syringe drawn from two vials holds a mix.
+var ml := 0.0
+var contents: Dictionary = {}
+## Host only: what a syringe pushed into the patient since the needle went in, given when it comes out.
+var injecting: Dictionary = {}
 
 # Host-side use state, see ToolActions.
 var grip_info: Dictionary = {}
@@ -65,8 +72,12 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	shape.position = bounds.get_center()
 	add_child(shape)
 	_animator.setup(_model)
-	if _model.find_child("Liquid", true, false):
-		show_fill(0.0)
+	if def.action == "vial":
+		ml = def.volume
+		contents[def.drug] = def.volume * def.concentration
+		fill = 1.0
+	if _model.find_child("Liquid", true, false) or _model.find_child("Level", true, false):
+		show_fill(fill)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
 
@@ -98,6 +109,13 @@ func _model_bounds() -> AABB:
 
 func tip_position() -> Vector3:
 	return global_transform * Vector3(0, 0, -def.length)
+
+
+## The name the HUD shows. Syringes carry no drug name, only whether there's anything in them.
+func label() -> String:
+	if def.action == "syringe":
+		return "%s (%s)" % [def.name, "full" if fill > 0.0 else "empty"]
+	return def.name
 
 
 func is_improvised() -> bool:
@@ -132,8 +150,15 @@ func set_blood(amount: float) -> void:
 			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
 
 
-## Liquid shows as the model's "Liquid" part (the dish) or tints the whole tool (a soaked pad).
+## Liquid shows as the model's "Level" part stretching from its end (syringe, vial), its "Liquid" part (the dish),
+## or tints the whole tool (a soaked pad).
 func show_fill(amount: float) -> void:
+	var level := _model.find_child("Level", true, false) as Node3D
+	if level:
+		level.visible = amount > 0.0
+		level.scale = Vector3(1.0, 1.0, maxf(amount, 0.001))
+		_animator.fill = amount
+		return
 	var liquid := _model.find_child("Liquid", true, false) as Node3D
 	if liquid:
 		liquid.visible = amount > 0.0

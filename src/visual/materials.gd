@@ -23,6 +23,18 @@ static func toon(color: Color, grime: float = 0.25, outline: bool = true, roughn
 	return _cache[key]
 
 
+## See-through glass (syringe barrels, vials), so the liquid level inside shows. No outline: it would hide the liquid.
+static func glass() -> StandardMaterial3D:
+	if not _cache.has("glass"):
+		var mat := StandardMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(0.85, 0.93, 0.97, 0.22)
+		mat.roughness = 0.1
+		mat.metallic_specular = 0.8
+		_cache["glass"] = mat
+	return _cache["glass"]
+
+
 ## Walls, floors and big furniture: no highlights, no outline, heavier grime.
 static func environment(color: Color, grime: float = 0.6) -> ShaderMaterial:
 	var key := "env|%s|%.2f" % [color.to_html(), grime]

@@ -18,6 +18,9 @@ var delay: float
 var category: String
 var charges: int
 var drug: String
+var volume: float
+var concentration: float
+var fragile: bool
 var drinkable: bool
 var iv_only: bool
 var tall: bool
@@ -47,6 +50,9 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.category = cfg.get_value(section, "category", "Supplies")
 	def.charges = cfg.get_value(section, "charges", -1)
 	def.drug = cfg.get_value(section, "drug", "")
+	def.volume = cfg.get_value(section, "volume", 0.0)
+	def.concentration = cfg.get_value(section, "concentration", 0.0)
+	def.fragile = cfg.get_value(section, "fragile", false)
 	def.drinkable = cfg.get_value(section, "drinkable", false)
 	def.iv_only = cfg.get_value(section, "iv_only", false)
 	def.tall = cfg.get_value(section, "tall", false)

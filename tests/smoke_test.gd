@@ -177,6 +177,7 @@ func _feedback_checks(surgery: Surgery) -> void:
 		print("FAIL: the IV line doesn't hang low enough to trip on")
 	await _effect_checks(surgery)
 	await _iodine_checks(surgery)
+	await _syringe_checks(surgery)
 	_nurse_checks(surgery)
 
 
@@ -277,6 +278,59 @@ func _iodine_checks(surgery: Surgery) -> void:
 	await _frames(3)
 	if pad.state != SurgicalTool.State.FREE:
 		print("FAIL: the pad stayed on forceps that were let go")
+
+
+## A syringe draws from a vial, a roughly right dose works and too little doesn't, drugs mix, the floor breaks it.
+func _syringe_checks(surgery: Surgery) -> void:
+	var tools := surgery.tools
+	var patient := surgery.patient
+	if patient.weight_kg < 15.0 or patient.weight_kg > 150.0:
+		print("FAIL: odd patient weight %.0f kg" % patient.weight_kg)
+	var spot: Vector3 = surgery.room.tray_spots()[13]
+	var made: Array[SurgicalTool] = []
+	for id in ["vial_propofol", "vial_morphine", "syringe_50"]:
+		tools.spawn(id, spot)
+		made.append(tools.tools.values()[-1])
+	var vial := made[0]
+	var syringe := made[2]
+	await _frames(3)
+	var hand := {"lowered": true, "trigger": false, "level": 3, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
+	var vial_middle := vial.global_transform * Vector3(0, 0, -vial.def.length * 0.5)
+	syringe.global_transform = Transform3D(Basis.IDENTITY, vial_middle + Vector3(0, 0, syringe.def.length))
+	ToolActions.update(syringe, hand, patient, 1.0)
+	var drawn := syringe.def.volume * ToolActions.PLUNGER_RATE
+	if absf(syringe.ml - drawn) > 0.01 or absf(vial.ml - (vial.def.volume - drawn)) > 0.01 or syringe.label().ends_with("(empty)"):
+		print("FAIL: the syringe didn't draw from the vial: syringe=%.2f ml vial=%.2f ml" % [syringe.ml, vial.ml])
+	# The right dose, pushed into the patient, counts once the needle comes out.
+	var right_ml := Db.drug("propofol").dose * patient.weight_kg / vial.def.concentration
+	tools.transfer(vial, syringe, right_ml - syringe.ml)
+	patient.flags.erase("drug_propofol")
+	var site := patient.body.uv_to_world(Vector2(0.5, 0.5))
+	syringe.global_transform = Transform3D(Basis.IDENTITY, site + Vector3(0, 0, syringe.def.length))
+	ToolActions.update(syringe, hand, patient, 4.0)
+	hand.lowered = false
+	ToolActions.update(syringe, hand, patient, 0.1)
+	if syringe.ml > 0.0 or not patient.flags.has("drug_propofol"):
+		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s" % [syringe.ml, patient.flags.keys()])
+	# A third of the dose doesn't do the job.
+	patient.flags.erase("drug_propofol")
+	tools.transfer(vial, syringe, right_ml * 0.3)
+	syringe.injecting = tools.transfer(syringe, null, syringe.ml)
+	ToolActions.finish_injection(syringe, patient)
+	if patient.flags.has("drug_propofol"):
+		print("FAIL: a third of the dose counted as a full one")
+	# Two vials into one syringe make a mix.
+	tools.transfer(vial, syringe, 1.0)
+	tools.transfer(made[1], syringe, 1.0)
+	if not (syringe.contents.has("propofol") and syringe.contents.has("morphine")) or absf(syringe.ml - 2.0) > 0.01:
+		print("FAIL: drugs from two vials didn't mix: ", syringe.contents)
+	# Dropped on the floor, it shatters.
+	syringe.global_position = surgery.room.spawn_transform(1).origin + Vector3(0, 0.6, 0)
+	syringe.linear_velocity = Vector3.ZERO
+	syringe.set_meta("falling", true)
+	await _frames(90)
+	if syringe.state != SurgicalTool.State.CONSUMED:
+		print("FAIL: a syringe dropped on the floor didn't break")
 
 
 ## One order at a time: the board shows it on its way, the cooldown starts after the delivery.

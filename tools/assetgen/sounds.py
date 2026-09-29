@@ -359,6 +359,16 @@ def cable_yank() -> Wave:
     return x
 
 
+def glass_break() -> Wave:
+    """A syringe hitting the floor: a sharp crack, then a scatter of high tinkling shards."""
+    x = highpass(noise(0.03), 2500) * env(int(0.03 * RATE), 0.001, 0.02) * 1.2
+    x = np.concatenate([x, np.zeros(int(0.67 * RATE))])
+    for _ in range(14):
+        shard = partials(list(rng.uniform(3500, 9000, 3)), [0.03, 0.02, 0.015], 0.12)
+        place(x, shard, float(rng.uniform(0.005, 0.45)), float(rng.uniform(0.2, 0.7)))
+    return x
+
+
 SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     "cut_skin": ("tissue", cut_skin),
     "cut_deep": ("tissue", cut_deep),
@@ -400,6 +410,7 @@ SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     # New sounds go last: they share one random generator, so earlier sounds stay the same.
     "sink_water": ("room", sink_water),
     "cable_yank": ("room", cable_yank),
+    "glass_break": ("tools", glass_break),
 }
 
 

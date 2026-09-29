@@ -3,6 +3,8 @@
 Special names the game treats differently:
 - "skin": the patient's skin (cavity carving, skin tone) or the surgeon's face.
 - "tint": recolored per instance (drug color, scrubs color).
+- "glass": see-through, so the liquid inside a syringe or vial shows.
+- "marks": fine print (syringe graduations), drawn without the ink outline that would blot it out.
 """
 
 from __future__ import annotations
@@ -34,6 +36,9 @@ PALETTE: dict[str, Swatch] = {
     "chrome": Swatch((0.88, 0.9, 0.92), 0.12, 1.0),
     "plastic": Swatch((0.88, 0.88, 0.86), 0.5),
     "clear_plastic": Swatch((0.85, 0.92, 0.95), 0.2),
+    "glass": Swatch((0.85, 0.93, 0.97), 0.1),
+    "drug": Swatch((0.62, 0.8, 0.92), 0.2),
+    "marks": Swatch((0.05, 0.05, 0.06), 0.6),
     "black_plastic": Swatch((0.08, 0.08, 0.09), 0.5),
     "rubber": Swatch((0.12, 0.12, 0.12), 0.9),
     "blue_plastic": Swatch((0.2, 0.35, 0.6), 0.5),

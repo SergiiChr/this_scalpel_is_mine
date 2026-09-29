@@ -5,6 +5,8 @@ extends Node3D
 
 const SYNC_INTERVAL := 0.1
 const GRAB_RADIUS := 0.09
+## Everyone but the host sees fill levels in steps this fine: enough to read a syringe's graduation marks.
+const FILL_STEPS := 50.0
 
 var tools: Dictionary = {}
 var _next_uid := 1
@@ -65,10 +67,19 @@ func nearest_grabbable(at: Vector3) -> SurgicalTool:
 
 ## The closest tool of this kind within reach of a point (measured to its middle), wherever it is but on a belt or used up.
 func nearest_of(id: String, at: Vector3, reach: float) -> SurgicalTool:
+	return _nearest(at, reach, func(tool: SurgicalTool) -> bool: return tool.def.id == id)
+
+
+## Like nearest_of(), for any tool with this action (any vial).
+func nearest_with_action(action: String, at: Vector3, reach: float) -> SurgicalTool:
+	return _nearest(at, reach, func(tool: SurgicalTool) -> bool: return tool.def.action == action)
+
+
+func _nearest(at: Vector3, reach: float, wanted: Callable) -> SurgicalTool:
 	var best: SurgicalTool = null
 	var best_dist := reach
 	for tool: SurgicalTool in tools.values():
-		if tool.def.id == id and not tool.state in [SurgicalTool.State.BELT, SurgicalTool.State.CONSUMED]:
+		if wanted.call(tool) and not tool.state in [SurgicalTool.State.BELT, SurgicalTool.State.CONSUMED]:
 			var dist := (tool.global_transform * Vector3(0, 0, -tool.def.length * 0.5)).distance_to(at)
 			if dist < best_dist:
 				best_dist = dist
@@ -244,12 +255,36 @@ func _let_fall(tool: SurgicalTool) -> void:
 	tool.set_meta("falling", true)
 
 
-## Host: exact amount here, everyone else sees it change in tenths (and the moment it runs dry).
+## Host: exact amount here, everyone else sees it change in FILL_STEPS (and the moment it runs dry).
 func set_fill(tool: SurgicalTool, amount: float) -> void:
-	var step := ceili(tool.fill * 10.0)
+	var step := ceili(tool.fill * FILL_STEPS)
 	tool.fill = clampf(amount, 0.0, 1.0)
-	if ceili(tool.fill * 10.0) != step:
+	if ceili(tool.fill * FILL_STEPS) != step:
 		_show_fill.rpc(tool.uid, tool.fill)
+
+
+## Host: moves up to `amount` ml of liquid out of a syringe or vial, into another one or (to == null) out of it.
+## Drugs go along in proportion, so a mix stays mixed. Returns what moved: drug id -> amount in its unit.
+func transfer(from: SurgicalTool, to: SurgicalTool, amount: float) -> Dictionary:
+	var moved: Dictionary = {}
+	amount = minf(amount, from.ml)
+	if amount <= 0.0:
+		return moved
+	var share := amount / from.ml
+	for drug: String in from.contents:
+		moved[drug] = from.contents[drug] * share
+		from.contents[drug] -= moved[drug]
+		if to:
+			to.contents[drug] = to.contents.get(drug, 0.0) + moved[drug]
+	from.ml -= amount
+	if from.ml <= 0.0001:
+		from.ml = 0.0
+		from.contents.clear()
+	set_fill(from, from.ml / from.def.volume)
+	if to:
+		to.ml += amount
+		set_fill(to, to.ml / to.def.volume)
+	return moved
 
 
 func consume(tool: SurgicalTool) -> void:
@@ -304,6 +339,8 @@ func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server() or not surgery.running:
 		return
 	for tool: SurgicalTool in tools.values():
+		if tool.state != SurgicalTool.State.HELD:
+			ToolActions.finish_injection(tool, surgery.patient)
 		match tool.state:
 			SurgicalTool.State.HELD:
 				var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
@@ -346,6 +383,13 @@ func _check_drop(tool: SurgicalTool) -> void:
 			patient.contaminate_site("")
 		return
 	for body in tool.get_colliding_bodies():
+		if body.has_meta("floor") and tool.def.fragile:
+			tool.remove_meta("falling")
+			consume(tool)
+			Surgery.current.scoring.add("broken_syringe")
+			Surgery.current.sound("glass_break", tool.global_position)
+			Surgery.current.announce("The %s shatters on the floor." % tool.def.name)
+			return
 		if body.has_meta("floor"):
 			tool.remove_meta("falling")
 			_set_sterile.rpc(tool.uid, false)
@@ -376,7 +420,7 @@ func _create(uid: int, id: String, xform: Transform3D) -> SurgicalTool:
 	tool.global_transform = xform
 	tools[uid] = tool
 	_next_uid = maxi(_next_uid, uid + 1)
-	if Surgery.current and Surgery.current.scenario and Surgery.current.scenario.dirty_start and not def.id.begins_with("syringe"):
+	if Surgery.current and Surgery.current.scenario and Surgery.current.scenario.dirty_start and not def.action in ["syringe", "vial"]:
 		tool.sterile = false
 	return tool
 

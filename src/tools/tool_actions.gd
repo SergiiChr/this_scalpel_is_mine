@@ -7,7 +7,7 @@ extends RefCounted
 ## Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
 const LEVEL_NAMES: Dictionary = {
 	"cut": "Depth", "suture": "Tension", "cauterize": "Heat", "saw": "Speed", "suction": "Suction",
-	"swab": "Pressure", "inject": "Plunger", "pour": "Pour",
+	"swab": "Pressure", "inject": "Plunger", "syringe": "Plunger", "pour": "Pour",
 }
 ## Actions listed here do their thing on Tool action (RMB) instead, named by the value.
 const TRIGGER_NAMES: Dictionary = {
@@ -27,6 +27,10 @@ const DISH_REACH := 0.07
 ## A full dish soaks this many pads. A soaked pad runs dry after 1 / PAD_DRAIN seconds of wiping.
 const PADS_PER_DISH := 4.0
 const PAD_DRAIN := 0.12
+## How close a syringe's needle has to be to a vial (its middle) to draw from it.
+const VIAL_REACH := 0.05
+## Share of a syringe's barrel the plunger moves per second at the top level.
+const PLUNGER_RATE := 0.25
 
 
 ## Where a blade's edge runs on the skin: where the blade plane meets a flat surface, so rotating the tool turns it.
@@ -149,6 +153,20 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.sound("syringe_inject", tip)
 					Surgery.current.effect("bead", tip, 0)
 					_use_charge(tool)
+		"syringe":
+			# In a vial the plunger draws, anywhere else it pushes: into the patient, or squirted away in the air.
+			var tools := Surgery.current.tools
+			var amount := def.volume * PLUNGER_RATE * effort * dt
+			var vial := tools.nearest_with_action("vial", tip, VIAL_REACH) if lowered and level > 0 else null
+			if vial:
+				tools.transfer(vial, tool, minf(amount, def.volume - tool.ml))
+			elif lowered and level > 0:
+				var pushed := tools.transfer(tool, null, amount)
+				if touching:
+					for drug: String in pushed:
+						tool.injecting[drug] = tool.injecting.get(drug, 0.0) + pushed[drug]
+			if not (lowered and touching):
+				finish_injection(tool, patient)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
 			if trigger and lowered and on_chest:
@@ -214,6 +232,18 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				patient.set_iv(tip)
 				Surgery.current.effect("bead", tip, 0)
 				_use_charge(tool)
+
+
+## The needle came out (or the syringe left the hand): everything pushed in takes effect as one dose.
+static func finish_injection(tool: SurgicalTool, patient: Patient) -> void:
+	if tool.injecting.is_empty():
+		return
+	for drug: String in tool.injecting:
+		patient.administer(drug, "direct", tool.injecting[drug])
+	tool.injecting.clear()
+	var tip := tool.tip_position()
+	Surgery.current.sound("syringe_inject", tip)
+	Surgery.current.effect("bead", tip, 0)
 
 
 ## A cotton pad soaks up iodine in the dish, then leaves it on the skin until it runs dry.

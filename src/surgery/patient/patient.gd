@@ -34,6 +34,8 @@ var mods := Modifiers.new()
 var rolls: Array = []
 var scenario: ScenarioDef
 var age := "adult"
+## Body weight for drug doses, on the chart. The body model is scaled to match.
+var weight_kg := 75.0
 var blood_type := "O+"
 var wounds: Array[Wound] = []
 var targets: Array[CavityTarget] = []
@@ -93,7 +95,7 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	body.fat_thickness = 0.012 * (1.0 + mods.num("fat_depth") * 1.5)
 	body.tissue.break_mult = mods.mult("tear_threshold_mult")
 	body.tissue.tearing = multiplayer.is_server()
-	body.build(scenario.site, tone, {"child": 0.72, "elderly": 0.96}.get(age, 1.0))
+	body.build(scenario.site, tone, _roll_weight(seed_value))
 	body.set_orientation(scenario.start_orientation)
 	blood_type = "Bombay" if mods.flag("rare_blood") else BLOOD_TYPES[rng.randi_range(0, BLOOD_TYPES.size() - 1)]
 
@@ -383,15 +385,25 @@ func _add_drug(def: DrugDef, strength: float, onset_scale: float) -> void:
 	active_drugs.append({"def": def, "age": 0.0, "strength": strength * potency, "onset": maxf(def.onset * onset_scale, 0.1)})
 
 
+## Says so when there's no line to give anything through.
+func iv_ready() -> bool:
+	if not iv_set:
+		Surgery.current.announce("Nothing happens. There's no IV line in.")
+	return iv_set
+
+
 ## route: "iv" (smooth, needs a line) or "direct" (fast spike).
-func administer(drug_id: String, route: String) -> void:
+## amount: how much was given in the drug's unit (see DrugDef.dose). Negative means just the right dose (bags, masks).
+func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 	var def := Db.drug(drug_id)
 	if def == null:
 		return
-	if route == "iv" and not iv_set:
-		Surgery.current.announce("Nothing happens. There's no IV line in.")
+	if route == "iv" and not iv_ready():
 		return
-	add_flag("drug_" + drug_id)
+	var share := amount / (def.dose * weight_kg) if amount >= 0.0 and def.dose > 0.0 else 1.0
+	if share >= DrugDef.DOSE_OVERDOSE:
+		add_flag("overdose")
+		Surgery.current.scoring.add("overdose")
 	if drug_id in mods.list("allergen"):
 		vitals.swelling = minf(vitals.swelling + 0.6, 1.0)
 		vitals.systolic -= 30.0
@@ -411,6 +423,13 @@ func administer(drug_id: String, route: String) -> void:
 			Surgery.current.announce("Blood pressure spikes through the roof!")
 			if rng.randf() < 0.5:
 				arrest()
+	var strength := DrugDef.dose_strength(share) * (1.3 if route == "direct" else 1.0)
+	var onset_scale := 0.4 if route == "direct" else 1.5
+	if share < DrugDef.DOSE_EFFECTIVE:
+		# Too little to do its job: a faint effect and nothing else.
+		_add_drug(def, strength, onset_scale)
+		return
+	add_flag("drug_" + drug_id)
 	if def.has_flag("restart"):
 		_restart_window = 60.0
 		vitals.swelling = maxf(vitals.swelling - 0.4, 0.0)
@@ -428,7 +447,18 @@ func administer(drug_id: String, route: String) -> void:
 	if drug_id == "whiskey" and mods.flag("whiskey_friendly"):
 		_add_drug(Db.drug("diazepam"), 0.5, 1.0)
 		return
-	_add_drug(def, 1.3 if route == "direct" else 1.0, 0.4 if route == "direct" else 1.5)
+	_add_drug(def, strength, onset_scale)
+
+
+## Rolls the weight on its own generator (so the rest of the patient stays the same) and returns the body scale for it.
+## Size follows the cube root of weight: twice as heavy is about a quarter bigger. Heavy build quirks add weight.
+func _roll_weight(seed_value: int) -> float:
+	var weight_rng := RandomNumberGenerator.new()
+	weight_rng.seed = seed_value + 3
+	var ranges := {"child": [18.0, 34.0, 26.0, 0.72], "elderly": [45.0, 85.0, 68.0, 0.96]}
+	var r: Array = ranges.get(age, [55.0, 105.0, 75.0, 1.0])
+	weight_kg = roundf(weight_rng.randf_range(r[0], r[1]) * (1.0 + mods.num("fat_depth") * 0.3))
+	return float(r[3]) * pow(weight_kg / float(r[2]), 1.0 / 3.0)
 
 
 func _blood_compatible(pack: String) -> bool:
