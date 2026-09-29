@@ -215,13 +215,28 @@ def _suction(m: Model, length: float, straw: bool) -> None:
         m.add("Hose", tube([(0.0, 0.0, 0.05), (0.0, -0.02, 0.1), (0.02, -0.08, 0.14)], [(0.007, 0.007)] * 3, ring=12), "clear_plastic")
 
 
-def _swab(m: Model, length: float, iodine: bool) -> None:
-    if iodine:
-        m.add("Stick", rod(0.003, 0.04, -length + 0.02, sections=10), "plastic")
-        m.add("Sponge", superellipsoid((0.022, 0.014, 0.03), 0.6, (0.0, 0.0, -length + 0.012)), "iodine")
-        return
+def _swab(m: Model, length: float) -> None:
     layers = merge(*[superellipsoid((0.06, 0.004, 0.06), 0.3, (0.0, i * 0.0035, -length * 0.5), detail=10) for i in range(4)])
     m.add("Pad", layers, "cotton")
+
+
+def _cotton_pad(m: Model, length: float) -> None:
+    m.add("Pad", superellipsoid((length, 0.006, length), 0.9, (0.0, 0.0, -length * 0.5)), "cotton")
+
+
+def _iodine_bottle(m: Model, length: float) -> None:
+    """Brown bottle with a pouring spout at the tip."""
+    m.add("Bottle", along_z(lathe([(0.0, 0.0), (0.024, 0.0), (0.024, length * 0.62), (0.01, length * 0.75), (0.0, length * 0.75)], 24)), "tint")
+    m.add("Label", along_z(lathe([(0.0, length * 0.15), (0.0245, length * 0.15), (0.0245, length * 0.5), (0.0, length * 0.5)], 24)), "paper")
+    m.add("Spout", along_z(lathe([(0.0, length * 0.74), (0.011, length * 0.74), (0.006, length * 0.94), (0.003, length), (0.0, length)], 16)), "plastic")
+
+
+def _iodine_dish(m: Model, length: float) -> None:
+    """Round steel bowl. The game shows Liquid while there's iodine in it."""
+    bowl = lathe([(0.0, 0.0), (0.035, 0.0), (0.045, 0.022), (0.042, 0.023), (0.032, 0.004), (0.0, 0.004)], 32)
+    liquid = lathe([(0.0, 0.004), (0.031, 0.004), (0.0355, 0.012), (0.0, 0.012)], 32)
+    m.add("Dish", moved(bowl, (0.0, -0.01, -length * 0.5)), "steel")
+    m.add("Liquid", moved(liquid, (0.0, -0.01, -length * 0.5)), "iodine", (0.0, -0.006, -length * 0.5))
 
 
 def _misc(m: Model, kind: str, length: float) -> None:
@@ -305,8 +320,10 @@ def build() -> list[Model]:
         "screwdriver": _screwdriver,
         "suction": lambda m, length: _suction(m, length, False),
         "metal_straw": lambda m, length: _suction(m, length, True),
-        "gauze": lambda m, length: _swab(m, length, False),
-        "iodine_swab": lambda m, length: _swab(m, length, True),
+        "gauze": _swab,
+        "cotton_pad": _cotton_pad,
+        "iodine_bottle": _iodine_bottle,
+        "iodine_dish": _iodine_dish,
     }
     for kind in ("switchblade", "lighter", "paper_clips", "gas_mask", "cocaine", "tourniquet", "iv_catheter", "skin_graft", "surgical_cap", "kidney_dish"):
         makers[kind] = partial(_misc_maker, kind)

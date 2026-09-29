@@ -186,9 +186,7 @@ func open_nurse() -> void:
 			if not groups.has(def.category):
 				groups[def.category] = []
 			(groups[def.category] as Array).append(["%s  (%d s)" % [def.name, def.delay], def.id])
-	var cooldown: float = surgery.status.get("nurse", 0.0)
-	var subtitle_text := "Nurse is busy for %d s." % ceili(cooldown) if cooldown > 0.0 else "One request at a time. It comes to the delivery tray."
-	_open(ChoiceMenu.build_grouped("Ring for the nurse", subtitle_text, groups, _on_nurse_pick, close_overlay))
+	_open(ChoiceMenu.build_grouped("Ring for the nurse", Room.nurse_board_text(surgery.status), groups, _on_nurse_pick, close_overlay))
 
 
 func open_lab() -> void:

@@ -5,7 +5,7 @@ title: 1. Preoperative preparation
 [b]1.1 Sequence[/b]
 Complete the following before the first incision:
 1. Establish intravenous access (section 2).
-2. Prepare the skin: apply povidone-iodine with the swab until the whole operative field is stained orange-brown. Unprepared skin carries a high risk of surgical site infection.
+2. Prepare the skin (1.5) until the whole operative field is stained orange-brown. Unprepared skin carries a high risk of surgical site infection.
 3. Provide anesthesia appropriate to the procedure (1.2).
 4. Mark the planned incision with the skin marker. Marked incisions are shorter, straighter and easier to close.
 
@@ -22,6 +22,14 @@ Verify blood group and allergies against the chart. Where a records discrepancy 
 
 [b]1.4 The conscious patient[/b]
 Agitated patients move unpredictably. Reassure them verbally from the head of the table, or sedate with diazepam.
+
+[b]1.5 Skin preparation[/b]
+1. Pour povidone-iodine from the bottle into the iodine dish ([b]Lower tool[/b] over the dish, wheel to pour).
+2. Take a cotton pad with the forceps: lower the forceps onto the pad and close them ([b]Tool action[/b]).
+3. Lower the pad into the dish to soak it.
+4. Wipe the operative field with the soaked pad. Re-soak it when it runs dry; one dish soaks about four pads.
+5. Open the forceps to drop the used pad.
+Never handle the pad with the glove: a hand-held pad contaminates the field it is meant to clean. A pad that has touched the floor is not sterile.
 
 [font_size=16][b]References[/b]
 World Health Organization. WHO Guidelines for Safe Surgery. Geneva: WHO; 2009.

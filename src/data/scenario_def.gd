@@ -55,15 +55,22 @@ static func load_file(path: String) -> ScenarioDef:
 	return def
 
 
-## Picks the tools that actually spawn on the tray for this run.
+## Picks the tools that actually spawn on the tray for this run: the starter kit plus the scenario's own tools.
+## With a nurse, the scenario adds only what she can't fetch; the rest has to be ordered.
 func roll_tools(rng: RandomNumberGenerator, extra_missing_chance: float = 0.0) -> PackedStringArray:
-	var tools := PackedStringArray()
-	for tool_id: String in starting_tools:
-		if rng.randf() >= missing_tool_chance + extra_missing_chance:
-			tools.append(tool_id)
+	var own := starting_tools.duplicate()
 	var extras := random_tools.duplicate()
 	for i in mini(random_tool_count, extras.size()):
-		tools.append(extras.pop_at(rng.randi_range(0, extras.size() - 1)))
+		own.append(extras.pop_at(rng.randi_range(0, extras.size() - 1)))
+	if nurse:
+		own = own.filter(func(id: String) -> bool: return Db.tool(id) == null or not Db.tool(id).orderable)
+	# The starter kit already covers one of each of its tools.
+	for id: String in Db.starter_kit:
+		own.erase(id)
+	var tools := PackedStringArray()
+	for tool_id: String in Db.starter_kit + own:
+		if rng.randf() >= missing_tool_chance + extra_missing_chance:
+			tools.append(tool_id)
 	return tools
 
 
