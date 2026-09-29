@@ -1,10 +1,10 @@
 tags: allergen, cefazolin, clindamycin, morphine, ketamine, lidocaine, propofol
 title: 7. Drug formulary
-[b]7.1 Routes[/b]
+## 7.1 Routes
 • [b]Direct injection[/b] (syringe into the patient): rapid onset, high peak effect.
 • [b]Intravenous infusion[/b] (at the infusion stand): slower, smoother onset. Requires a patent line (section 2). Blood products and crystalloids are given by this route only.
 
-[b]7.2 Formulary[/b]
+## 7.2 Formulary
 [table=2]
 [cell][b]Drug[/b][/cell][cell][b]Indication[/b][/cell]
 [cell]Adrenaline (epinephrine)[/cell][cell]Asystole, with defibrillation. Anaphylaxis[/cell]

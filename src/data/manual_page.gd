@@ -1,8 +1,9 @@
 class_name ManualPage
 extends RefCounted
 ## One page of the in-game manual, loaded from data/manual/*.txt.
-## First line "tags: a, b" lists patient effect keys and drug ids that make the page glow for Divine knowledge.
-## Second line "title: ..." is the heading. The rest is BBCode.
+## First line "tags: a, b" lists patient effect keys and drug ids that Divine knowledge marks the page for.
+## Second line "title: ..." is the heading. The rest is BBCode, with two additions handled by ManualView:
+## a line starting with "## " is a numbered section heading, one starting with "> " a hand written note.
 
 var title: String
 var tags: PackedStringArray

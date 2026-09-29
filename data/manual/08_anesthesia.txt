@@ -1,19 +1,19 @@
 tags: anesthesia_decay_mult, sedation_mult, mh_trigger, malignant_hyperthermia, alcoholic, anesthesia_resistant, propofol, sevoflurane
 title: 8. Anesthesia management
-[b]8.1 Depth[/b]
+## 8.1 Depth
 Adequate depth is indicated by absent spontaneous respiration on the monitor. A patient who begins to speak is lightening.
 
-[b]8.2 Increased requirement[/b]
+## 8.2 Increased requirement
 • Anesthetic resistance: agents are cleared at twice the usual rate. Prepare a second dose and give it before the patient surfaces.
 • Chronic alcohol use: higher doses are required; sedatives are about 40% less effective.
 
-[b]8.3 Malignant hyperthermia[/b]
+## 8.3 Malignant hyperthermia
 A pharmacogenetic reaction to volatile anesthetic agents. Core temperature rises about one degree every thirty seconds and is fatal above 42.5 °C.
 1. Discontinue the inhaled agent. Continue with propofol or ketamine.
 2. Give dantrolene. Onset about twenty seconds.
-A family history of "anesthesia complications" on the chart indicates susceptibility.
+> A family history of "anesthesia complications" on the chart indicates susceptibility.
 
-[b]8.4 Sequence[/b]
+## 8.4 Sequence
 IV access, then induction, then skin preparation. Skin preparation may be done in the conscious patient; incision may not.
 
 [font_size=16][b]References[/b]

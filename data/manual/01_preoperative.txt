@@ -1,15 +1,15 @@
 tags: anesthesia_decay_mult, sedation_mult, ticklish, panicker, chatterbox
 title: 1. Preoperative preparation
-[img=520]res://assets/manual/diagrams/setup_order.svg[/img]
+[center][img=640]res://assets/manual/diagrams/setup_order.svg[/img][/center]
 
-[b]1.1 Sequence[/b]
+## 1.1 Sequence
 Complete the following before the first incision:
 1. Establish intravenous access (section 2).
 2. Prepare the skin (1.5) until the whole operative field is stained orange-brown. Unprepared skin carries a high risk of surgical site infection.
 3. Provide anesthesia appropriate to the procedure (1.2).
 4. Mark the planned incision with the skin marker. Marked incisions are shorter, straighter and easier to close.
 
-[b]1.2 Choice of anesthesia[/b]
+## 1.2 Choice of anesthesia
 The patient record does not specify the technique. Select it from the indication:
 • [b]Local infiltration[/b] (lidocaine at the site): superficial wounds of the limbs or face in a cooperative, alert patient. The patient remains conscious and must stay still.
 • [b]Local with anxiolysis[/b] (lidocaine and diazepam): children and anxious patients. Assign one team member to reassure the patient at the head of the table.
@@ -17,19 +17,19 @@ The patient record does not specify the technique. Select it from the indication
 • [b]None[/b]: cardiac arrest or exsanguinating hemorrhage in the field. Control the emergency first.
 • [b]Awake craniotomy[/b]: induce for the approach, allow the patient to lighten for resection near eloquent cortex.
 
-[b]1.3 Records[/b]
+## 1.3 Records
 Verify blood group and allergies against the chart. Where a records discrepancy has been reported, treat both as unknown until the corrected chart arrives from the nurse.
 
-[b]1.4 The conscious patient[/b]
+## 1.4 The conscious patient
 Agitated patients move unpredictably. Reassure them verbally from the head of the table, or sedate with diazepam.
 
-[b]1.5 Skin preparation[/b]
+## 1.5 Skin preparation
 1. Pour povidone-iodine from the bottle into the iodine dish ([b]Lower tool[/b] over the dish, wheel to pour).
 2. Take a cotton pad with the forceps: lower the forceps onto the pad and close them ([b]Tool action[/b]).
 3. Lower the pad into the dish to soak it.
 4. Wipe the operative field with the soaked pad. Re-soak it when it runs dry; one dish soaks about four pads.
 5. Open the forceps to drop the used pad.
-Never handle the pad with the glove: a hand-held pad contaminates the field it is meant to clean. A pad that has touched the floor is not sterile.
+> Never handle the pad with the glove: a hand-held pad contaminates the field it is meant to clean. A pad that has touched the floor is not sterile.
 
 [font_size=16][b]References[/b]
 World Health Organization. WHO Guidelines for Safe Surgery. Geneva: WHO; 2009.

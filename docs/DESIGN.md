@@ -114,7 +114,7 @@ Surgeon effect keys:
 | bump_resist | 0..1 less likely to drop tools when jolted |
 | belt_slots | belt capacity change (default 4) |
 | items | personal tool ids spawned on the belt |
-| manual_highlight | manual pages matching the patient glow |
+| manual_highlight | manual pages matching the patient are marked with a pointing hand |
 | fine_tools_blocked / heavy_tools_blocked | tool size restrictions |
 | grip_strength_mult | clamp and retractor pull strength |
 | bad_breath | sickness per second given to a partner closer than 0.9 m |

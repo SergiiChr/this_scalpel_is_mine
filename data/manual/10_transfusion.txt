@@ -1,21 +1,21 @@
 tags: rare_blood, blood_ml_mult, blood_count, bleed_mult, clot_risk
 title: 10. Blood transfusion
-[img=520]res://assets/manual/diagrams/blood_types.svg[/img]
+[center][img=560]res://assets/manual/diagrams/blood_types.svg[/img][/center]
 
-[b]10.1 Group selection[/b]
+## 10.1 Group selection
 Group O RhD-negative is the universal donor for red cells. Use it when the recipient's group is unknown.
-The chart may list a blood group. The laboratory confirms it.
+> The chart may list a blood group. The laboratory confirms it.
 
-[b]10.2 Administration[/b]
+## 10.2 Administration
 Blood products are given only through an established intravenous line (section 2), at the infusion stand.
 
-[b]10.3 Incompatibility[/b]
+## 10.3 Incompatibility
 An ABO-incompatible transfusion causes an acute hemolytic reaction: fever, swelling, hypotension and acute kidney injury. Stop the transfusion.
 
-[b]10.4 Bombay phenotype[/b]
+## 10.4 Bombay phenotype
 Incompatible with all standard groups, including O-negative. Only Bombay-phenotype blood is compatible. Sourcing takes about two minutes: order it as soon as the phenotype appears on the chart.
 
-[b]10.5 Low blood volume[/b]
+## 10.5 Low blood volume
 Patients with a low blood count start with a smaller reserve. Plan for less time.
 
 [font_size=16][b]References[/b]
