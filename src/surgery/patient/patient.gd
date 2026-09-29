@@ -1008,7 +1008,8 @@ func _nearest_wound(uv: Vector2, max_dist: float, internal: bool) -> Wound:
 
 
 func _uv(raw: Array) -> Vector2:
-	return Vector2(1.0 - raw[0] if mods.flag("mirrored") else raw[0], raw[1])
+	# Mirrored anatomy flips left and right: uv.y runs across the body.
+	return Vector2(raw[0], 1.0 - raw[1] if mods.flag("mirrored") else raw[1])
 
 
 func _site_local(uv: Vector2, depth: float) -> Vector3:

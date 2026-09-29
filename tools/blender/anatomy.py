@@ -272,3 +272,120 @@ def splinter() -> None:
     sub.levels = sub.render_levels = 3
     shard = scene.displace(scene.bake(shard), 0.00007, 0.0006, detail=3, seed=41)
     scene.finish(shard, scene.material("bone", BONE, roughness=0.55, subsurface=0.05))
+
+
+# The bridge of the nose drops this much per meter toward the forehead (face.py's nose runs 0.098 -> 0.118 over 4.4 cm).
+NOSE_SLOPE = -0.45
+
+
+def _bridge_y(x: float) -> float:
+    """Height of the nasal ridge at x (+X toward the forehead), zero at the hump."""
+    return NOSE_SLOPE * x + 0.0022 * float(np.exp(-(((x - 0.002) / 0.006) ** 2))) - 0.0022
+
+
+def _tent(name: str, xs: NDArray[np.float64], half: NDArray[np.float64], drop: NDArray[np.float64], thick: float) -> bpy.types.Object:
+    """A thin shell with an inverted-V cross section lofted along x: the two plates of the nose meeting in a ridge.
+    half: how far each plate reaches to the side, drop: how far its edge hangs below the ridge, per x."""
+    rings = []
+    for x, h, d in zip(xs, half, drop, strict=True):
+        y = _bridge_y(float(x))
+        # Outer surface left edge, ridge, right edge, then back along the inner surface.
+        rings.append([(-h, y - d), (0.0, y), (h, y - d), (h - thick, y - d), (0.0, y - thick * 1.6), (-h + thick, y - d)])
+    n = len(rings[0])
+    verts: list[Vec3] = [(float(x), float(py), float(pz)) for x, ring in zip(xs, rings, strict=True) for pz, py in ring]
+    faces: list[list[int]] = []
+    for i in range(len(rings) - 1):
+        for j in range(n):
+            a, b = i * n + j, i * n + (j + 1) % n
+            faces.append([a, b, b + n, a + n])
+    faces.append(list(range(n))[::-1])
+    faces.append([(len(rings) - 1) * n + j for j in range(n)])
+    shell = scene.mesh_object(name, verts, faces)
+    sub = shell.modifiers.new("Smooth", "SUBSURF")
+    sub.levels = sub.render_levels = 2
+    return scene.bake(shell)
+
+
+def nasal_hump() -> None:
+    """The bony hump a nose job takes down: two thin nasal bones meeting in a ridge along the bridge, a bump in the
+    middle, the pale upper cartilage carrying on toward the tip. About 3.5 cm long, the hump's top at the origin.
+    +X runs toward the forehead, +Y out of the face, like the patient's face lying up."""
+    xs = np.linspace(0.02, -0.011, 14)
+    # Wider and deeper at the root between the eyes, narrowing toward the tip.
+    bone = _tent("NasalBone", xs, 0.0062 + 0.12 * np.clip(xs, 0.0, None), 0.0065 + 0.08 * np.clip(xs, 0.0, None), 0.0013)
+    bone = scene.displace(scene.remesh(bone, 0.00035, smooth=3), 0.00012, 0.003, seed=61)
+    scene.finish(bone, scene.material("bone", BONE, roughness=0.55, subsurface=0.05))
+    # Upper lateral cartilage: softer, paler and bluish, spreading into the tip.
+    tip = np.linspace(-0.0105, -0.025, 8)
+    cartilage = _tent("Cartilage", tip, 0.0062 - 0.1 * (tip + 0.0105), 0.0062 - 0.05 * (tip + 0.0105), 0.0011)
+    cartilage = scene.remesh(cartilage, 0.00035, smooth=3)
+    scene.finish(cartilage, scene.material("cartilage", (0.86, 0.84, 0.82), roughness=0.3, subsurface=0.3))
+
+
+def _loft(name: str, rings: list[list[Vec3]], smooth: int = 2) -> bpy.types.Object:
+    """Closed mesh through rings of points (same count each), capped at both ends, rounded by subdivision."""
+    n = len(rings[0])
+    verts = [p for ring in rings for p in ring]
+    faces: list[list[int]] = []
+    for i in range(len(rings) - 1):
+        for j in range(n):
+            a, b = i * n + j, i * n + (j + 1) % n
+            faces.append([a, b, b + n, a + n])
+    faces.append(list(range(n))[::-1])
+    faces.append([(len(rings) - 1) * n + j for j in range(n)])
+    obj = scene.mesh_object(name, verts, faces)
+    sub = obj.modifiers.new("Smooth", "SUBSURF")
+    sub.levels = sub.render_levels = smooth
+    return scene.bake(obj)
+
+
+def skull_flap() -> None:
+    """The piece of skull a craniotomy lifts: a curved plate cut from the dome, about 7 x 6 cm and 6 mm thick,
+    its top at the origin, +Y out of the head. Sawn edges all round."""
+    radius = 0.09
+    thick = 0.0065
+
+    def dome(x: float, z: float) -> float:
+        return float(np.sqrt(max(radius * radius - x * x - (z / 0.92) ** 2, 0.0)) - radius)
+
+    rings: list[list[Vec3]] = []
+    for x in np.linspace(-0.036, 0.036, 16):
+        zs = np.linspace(-0.03, 0.03, 12)
+        top = [(float(x), dome(float(x), float(z)), float(z)) for z in zs]
+        under = [(float(x), dome(float(x), float(z)) - thick, float(z)) for z in zs[::-1]]
+        rings.append(top + under)
+    flap = _loft("SkullFlap", rings, smooth=1)
+    flap = scene.displace(flap, 0.00025, 0.004, seed=71)
+    scene.finish(flap, scene.material("bone", BONE, roughness=0.55, subsurface=0.05))
+
+
+def sternum() -> None:
+    """The breastbone a chest opening saws through: the wide manubrium at the top (+X, toward the head), the long flat
+    body, the small xiphoid tip at the bottom, and stubs of rib cartilage along both sides. Top face at y 0."""
+    # (x, half width) along the bone; the body narrows a little between the rib notches.
+    outline = [
+        (0.078, 0.012),
+        (0.07, 0.024),
+        (0.055, 0.025),
+        (0.045, 0.015),
+        (0.03, 0.017),
+        (0.0, 0.019),
+        (-0.03, 0.018),
+        (-0.055, 0.013),
+        (-0.065, 0.006),
+        (-0.082, 0.003),
+    ]
+    rings: list[list[Vec3]] = []
+    for x, w in outline:
+        angles = np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False)
+        rings.append([(x, float(-0.0045 + np.sin(a) * 0.0045), float(np.cos(a) * w)) for a in angles])
+    body = _loft("Sternum", rings)
+    body = scene.displace(body, 0.00015, 0.004, seed=73)
+    scene.finish(body, scene.material("bone", BONE, roughness=0.55, subsurface=0.05))
+    stubs = []
+    for x in (0.058, 0.03, 0.005, -0.02, -0.042):
+        for side in (1.0, -1.0):
+            stubs.append(capsule((x, -0.005, side * 0.014), (x - 0.006, -0.008, side * 0.04), 0.0038, 3.0))
+    cartilage = scene.blobs("RibCartilage", stubs, resolution=0.0008)
+    cartilage = scene.remesh(cartilage, 0.0006, smooth=3)
+    scene.finish(cartilage, scene.material("cartilage", (0.86, 0.84, 0.82), roughness=0.3, subsurface=0.3))

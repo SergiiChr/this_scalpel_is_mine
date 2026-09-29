@@ -79,6 +79,9 @@ BUDGETS = {
     "fragment": 4000,
     "rib": 4000,
     "splinter": 2000,
+    "nasal_hump": 3000,
+    "skull_flap": 3000,
+    "sternum": 4000,
 }
 
 MODELS: dict[str, Callable[[], list[Path]]] = {
@@ -94,6 +97,9 @@ MODELS: dict[str, Callable[[], list[Path]]] = {
     "fragment": _still("fragment", anatomy.fragment, BUDGETS["fragment"], ship="targets"),
     "rib": _still("rib", anatomy.rib, BUDGETS["rib"], ship="targets"),
     "splinter": _still("splinter", anatomy.splinter, BUDGETS["splinter"], ship="targets"),
+    "nasal_hump": _still("nasal_hump", anatomy.nasal_hump, BUDGETS["nasal_hump"], ship="targets"),
+    "skull_flap": _still("skull_flap", anatomy.skull_flap, BUDGETS["skull_flap"], ship="targets"),
+    "sternum": _still("sternum", anatomy.sternum, BUDGETS["sternum"], ship="targets"),
 }
 
 

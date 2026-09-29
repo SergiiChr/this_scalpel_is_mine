@@ -96,6 +96,21 @@ func _draw_shape(shape: Array, fade: Callable) -> void:
 			draw_line(at, at + along + Vector2(-6.0, 0.0), fade.call(Color(0.7, 0.7, 0.68)), 9.0 * SCALE)
 		"splinter":
 			draw_line(at - Vector2(10.0, 12.0) * SCALE, at + Vector2(10.0, 12.0) * SCALE, fade.call(Color(0.75, 0.75, 0.72)), 4.0 * SCALE)
+		"nasal_hump":
+			# The bridge of the nose, running along the body, with the bump on top.
+			var bone: Color = fade.call(Color(0.64, 0.64, 0.62))
+			draw_line(at + Vector2(55, 10) * SCALE, at - Vector2(45, 6) * SCALE, bone, 10.0 * SCALE)
+			draw_circle(at + Vector2(0, -2) * SCALE, 9.0 * SCALE, bone)
+		"sternum":
+			# The breastbone runs along the body: wide at the top (toward the head, +u), narrow at the tip.
+			var sternum: Color = fade.call(Color(0.66, 0.66, 0.64))
+			draw_colored_polygon(PackedVector2Array([
+				at + Vector2(110, -26) * SCALE, at + Vector2(70, -30) * SCALE, at + Vector2(-80, -20) * SCALE,
+				at + Vector2(-115, 0) * SCALE, at + Vector2(-80, 20) * SCALE, at + Vector2(70, 30) * SCALE, at + Vector2(110, 26) * SCALE,
+			]), sternum)
+		"skull_flap":
+			# Seen from above: the outline of the flap the saw will cut, brighter at its edges.
+			draw_rect(Rect2(at - Vector2(95, 80) * SCALE, Vector2(190, 160) * SCALE), fade.call(Color(0.6, 0.6, 0.58)), false, 8.0 * SCALE)
 		"bone", "fragment":
 			draw_rect(Rect2(at - Vector2(120, 14) * SCALE, Vector2(240, 28) * SCALE), fade.call(Color(0.62, 0.62, 0.6)))
 		"tumor", "clot", "appendix":

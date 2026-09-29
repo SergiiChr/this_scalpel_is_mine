@@ -31,7 +31,8 @@ func setup(target_index: int, data: Dictionary, mirrored: bool) -> void:
 	kind = data.get("kind", "bullet")
 	remove_with = data.get("remove_with", "clamp")
 	var raw: Array = data.get("uv", [0.5, 0.5])
-	rest_uv = Vector2(1.0 - raw[0] if mirrored else raw[0], raw[1])
+	# uv.y runs across the body (the patient's left), so a mirrored patient flips it; uv.x runs head to feet.
+	rest_uv = Vector2(raw[0], 1.0 - raw[1] if mirrored else raw[1])
 	var offset: Array = data.get("offset", [0.0, 0.0])
 	uv = rest_uv + Vector2(offset[0], offset[1])
 	depth = data.get("depth", 0.05)
