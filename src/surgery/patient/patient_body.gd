@@ -20,6 +20,9 @@ const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
 ## Hands push organs aside on their own layer, so rays looking for what's in the cavity don't hit the hands.
 const PUSHER_LAYER := 128
+## The patient's real skin (body and gown meshes at rest), for resting hands and tools on. The boxes on
+## PATIENT_LAYER stay for what a tool touches, they're too rough to rest a hand on without sinking into a leg.
+const SURFACE_LAYER := 256
 
 const SKIN_THICKNESS := 0.004
 const MUSCLE_THICKNESS := 0.006
@@ -81,6 +84,7 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	add_child(animator)
 	animator.setup(self, model)
 	_build_colliders()
+	_build_surface(model)
 	_build_site(tone)
 	blood.name = "BloodFlow"
 	add_child(blood)
@@ -209,6 +213,22 @@ func _build_colliders() -> void:
 		var body := Shapes.static_box(_body_root, parts[part][0], parts[part][1], PATIENT_LAYER)
 		body.name = part.to_pascal_case()
 		body.set_meta("part", part)
+
+
+func _build_surface(model: Node3D) -> void:
+	for part_name in ["Body", "Gown"]:
+		var mesh := model.find_child(part_name, true, false) as MeshInstance3D
+		if mesh == null:
+			continue
+		var surface := StaticBody3D.new()
+		surface.name = part_name + "Surface"
+		surface.collision_layer = SURFACE_LAYER
+		surface.collision_mask = 0
+		var shape := CollisionShape3D.new()
+		shape.shape = mesh.mesh.create_trimesh_shape()
+		surface.add_child(shape)
+		_body_root.add_child(surface)
+		surface.transform = _body_root.global_transform.affine_inverse() * mesh.global_transform
 
 
 func _build_site(tone: Color) -> void:

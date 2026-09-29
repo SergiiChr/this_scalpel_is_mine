@@ -187,7 +187,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   and history), never a plan. The manual is the one reference. Everything is still tracked internally; the debug
   setting shows the objectives, score and every scored action. Easy scenarios (1-2 stars) have no time limit.
 - **Hands**: no height control. A hand rests the tool tip just above whatever is under it (skin, tray, organs or a
-  target in an open cavity); Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
+  target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
+  end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. The wheel zooms (hand motion scales with it for precision) or sets pressure while pressing.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.

@@ -18,6 +18,8 @@ const LOOK_SENSITIVITY := 0.003
 const HOVER_GAP := 0.01
 ## Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
 const PULL_SPEED := 0.05
+## Room between the hand (or forearm) and the surface under it: about half a hand's thickness.
+const HAND_CLEARANCE := 0.03
 ## Where hands hang when nothing within reach is under them (the floor while standing): about waist height.
 const CARRY_HEIGHT := 1.05
 ## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
@@ -346,6 +348,12 @@ func _constrain(hand: SurgeonHand) -> void:
 		# Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
 		if hand.target.y < from.y - REACH * 0.9:
 			hand.target.y = global_position.y + CARRY_HEIGHT - crouch * CROUCH_DROP
+		# The hand and the end of the forearm stay out of whatever is under them (a leg, the table edge):
+		# the hand rises instead, lifting the tool tip off if it has to.
+		for point: Vector3 in [hand.target, from.lerp(hand.target, 0.75)]:
+			var under: Dictionary = _surface_below(point)
+			if under.y != -INF and not under.open:
+				hand.target.y += maxf(float(under.y) + HAND_CLEARANCE - point.y, 0.0)
 	if hand.target.distance_to(from) > REACH:
 		hand.target = from + (hand.target - from).normalized() * REACH
 	if not hand.attached:
@@ -354,18 +362,22 @@ func _constrain(hand: SurgeonHand) -> void:
 
 ## {"y": surface height under p (or -INF), "open": true when p is over an opened incision}
 ## Over an opening it finds what's inside: organs and targets, or the cavity floor.
+## Rests on the patient's real skin (PatientBody.SURFACE_LAYER), the table, trays and the floor.
 func _surface_below(p: Vector3) -> Dictionary:
 	var space := get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.35, p + Vector3.DOWN * 2.0, 1 | 2 | 4)
+	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.35, p + Vector3.DOWN * 2.0, 4)
+	# An opening is looked for on the site plane first: the skin mesh around it would hide it from above.
+	var site_hit := space.intersect_ray(query)
+	if not site_hit.is_empty():
+		var body := Surgery.current.patient.body
+		if body.is_open(body.world_to_uv(site_hit.position)):
+			query.collision_mask = PatientBody.CAVITY_LAYER | CavityTarget.LAYER
+			var inside := space.intersect_ray(query)
+			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true}
+	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false}
-	if (hit.collider as Object).has_meta("site"):
-		var body := Surgery.current.patient.body
-		if body.is_open(body.world_to_uv(hit.position)):
-			query.collision_mask = PatientBody.CAVITY_LAYER | CavityTarget.LAYER
-			var inside := space.intersect_ray(query)
-			return {"y": inside.position.y if not inside.is_empty() else hit.position.y - 0.1, "open": true}
 	return {"y": hit.position.y, "open": false}
 
 

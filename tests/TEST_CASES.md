@@ -95,4 +95,5 @@ Two real game processes on localhost, one hosting and one joining.
 | V5 | Hands holding a scalpel and forceps |
 | V6 | Menus (`--menus`) |
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
+| V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from the side and from the eyes (`tests/grip_gallery.tscn`) |

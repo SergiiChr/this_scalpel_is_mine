@@ -97,6 +97,16 @@ func _ready() -> void:
 	await _frames(10)
 	me.camera().current = true
 	await _shot(out, "08_hands")
+	# Hands working over the thighs: nothing may sink into the legs or the table.
+	var spot := me.global_position
+	me.global_position = patient.global_position + Vector3(-0.45, -Room.TABLE_HEIGHT, 0.62)
+	var legs := patient.global_position + Vector3(-0.5, 0.0, 0.0)
+	me.hands[1].local_target = me.to_local(legs + Vector3(0.05, 0.05, 0.09))
+	me.hands[0].local_target = me.to_local(legs + Vector3(-0.08, 0.05, -0.05))
+	me.pitch = -0.9
+	await _frames(20)
+	await _shot(out, "08b_hands_on_legs")
+	me.global_position = spot
 	camera.current = true
 	camera.global_position = me.global_position + Vector3(0.9, 1.7, 0.6)
 	camera.look_at(me.global_position + Vector3(0, 1.1, -0.4))
