@@ -51,6 +51,7 @@ void fragment() {
 	float n = noise(world_pos.xz * grime_scale) * 0.6 + noise(world_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
 	float wet = 0.0;
+	float blood = 0.0;
 	if (carve_box.x > 0.0) {
 		vec3 lp = (carve_inverse * vec4(world_pos, 1.0)).xyz;
 		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
@@ -60,9 +61,19 @@ void fragment() {
 		}
 		base = mix(base, vec3(0.78, 0.8, 0.8), pallor * 0.5);
 		// Only the skin facing out of the site gets its damage, not the far side of the body under it.
-		if (in_site && lp.y > -0.04) {
-			wet = apply_wounds(base, texture(site_wounds, cuv), texture(site_fluids, cuv));
+		// Its up axis is the second row of the world-to-site matrix (column-major: [column][row]).
+		vec3 site_up = normalize((VIEW_MATRIX * vec4(carve_inverse[0][1], carve_inverse[1][1], carve_inverse[2][1], 0.0)).xyz);
+		float facing = smoothstep(-0.3, 0.2, dot(NORMAL, site_up));
+		if (in_site && facing > 0.0) {
+			vec4 f = texture(site_fluids, cuv);
+			// The fluid map ends at the site's edges: blood thins out toward them instead of stopping at a line.
+			vec2 inside = min(cuv, 1.0 - cuv);
+			f.r *= smoothstep(0.0, 0.1, min(inside.x, inside.y)) * facing;
+			f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
+			blood = f.r;
+			wet = apply_wounds(base, texture(site_wounds, cuv), f);
 		}
+		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
 	}
 	ALBEDO = base;
 	ROUGHNESS = mix(roughness, 0.08, wet);
@@ -76,9 +87,11 @@ void light() {
 	float lit = (bands > 0.0 ? floor(ndl * bands + 0.5) / bands : ndl) * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	float spec_size = mix(0.995, 0.9, roughness);
+	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a bright glint.
+	float wet = clamp((roughness - ROUGHNESS) / max(roughness - 0.08, 0.01), 0.0, 1.0);
+	float spec_size = mix(mix(0.995, 0.9, roughness), 0.994, wet);
 	float spec = step(spec_size, dot(NORMAL, halfway)) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * specular_strength / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * step(0.5, rim) * rim_strength * lit / PI;
 }

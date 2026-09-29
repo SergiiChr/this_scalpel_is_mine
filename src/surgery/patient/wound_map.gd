@@ -7,7 +7,7 @@ extends RefCounted
 enum Layer { WOUNDS, FLUIDS }
 enum Mode { MAX, ADD, SUB, MIN }
 
-const SIZE := 256
+const SIZE := 512
 ## Channel ids, for readable call sites.
 const CUT := 0
 const BURN := 1

@@ -31,13 +31,16 @@ float noise(vec2 p) {
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec4 w = textureLod(wound_map, UV, 0.0);
-	// Cuts sink a little, bruises and burns swell.
+	// Cuts sink a little, bruises and burns swell, blood stands on top.
 	VERTEX.y += -smoothstep(0.1, 0.8, w.r) * 0.0015 + w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;
+	VERTEX.y += blood_thickness(textureLod(fluid_map, UV, 0.0).r);
 }
 
 void fragment() {
 	vec4 w = texture(wound_map, UV);
 	vec4 f = texture(fluid_map, UV);
+	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
+	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
 	float n = noise(world_pos.xz * 14.0) * 0.6 + noise(world_pos.xy * 6.3 + 7.0) * 0.4;
 	vec3 c = mix(skin_color.rgb, skin_color.rgb * vec3(0.25, 0.22, 0.15) * 1.6, grime * smoothstep(0.35, 0.9, n));
 	c = mix(c, vec3(0.78, 0.8, 0.8), pallor * 0.5);
@@ -54,8 +57,8 @@ void light() {
 	vec3 halfway = normalize(VIEW + LIGHT);
 	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
-	float spec = step(mix(0.995, 0.9, ROUGHNESS), dot(NORMAL, halfway)) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.8, wet) / PI;
+	float spec = step(mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet), dot(NORMAL, halfway)) * ATTENUATION;
+	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * step(0.5, rim) * rim_strength * lit / PI;
 }

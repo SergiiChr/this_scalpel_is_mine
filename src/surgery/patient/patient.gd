@@ -16,6 +16,9 @@ const BLOOD_TYPES: PackedStringArray = ["O+", "O-", "A+", "A-", "B+", "AB+"]
 const VFIB_TO_ASYSTOLE := 40.0
 const ARREST_DEATH := 80.0
 const TOURNIQUET_SAFE := 300.0
+## Blood (ml) that fills the cavity to the top, and from how much it spills over open wounds onto the skin.
+const CAVITY_FULL_ML := 350.0
+const CAVITY_SPILL_ML := 280.0
 ## Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.
 const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
 ## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
@@ -171,9 +174,11 @@ func _simulate(dt: float) -> void:
 			wound.opened = clampf(body.tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN) / FULL_GAP, 0.0, 1.0)
 		var rate := wound.bleed_rate(site_m, bleed_mult)
 		total += rate
+		# An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
+		var spills := not wound.is_internal() and cavity_blood_ml > CAVITY_SPILL_ML
 		if wound.is_internal() or wound.opened > 0.3:
 			cavity_blood_ml += rate * dt * 0.6
-		elif rate > 0.05:
+		if rate > 0.05 and (spills or not (wound.is_internal() or wound.opened > 0.3)):
 			sources.append([wound.midpoint(), rate])
 			if rng.randf() < dt * 0.5:
 				Surgery.current.sound("blood_drip", body.uv_to_world(wound.midpoint()))
@@ -191,7 +196,7 @@ func _simulate(dt: float) -> void:
 	body.blood.sources = sources.slice(0, 6)
 	v.blood_ml = clampf(v.blood_ml - total * dt + fx.volume_ml * dt, 0.0, v.max_blood_ml * 1.1)
 	cavity_blood_ml = maxf(cavity_blood_ml, 0.0)
-	body.set_cavity_blood(cavity_blood_ml / 350.0)
+	body.set_cavity_blood(cavity_blood_ml / CAVITY_FULL_ML)
 
 	v.anesthesia = clampf(fx.anesthesia * mods.mult("sedation_mult"), 0.0, 1.0)
 	v.local_block = clampf(fx.local_block, 0.0, 1.0)
@@ -1127,7 +1132,7 @@ func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array,
 	for i in mini(target_states.size(), targets.size()):
 		targets[i].apply_state(target_states[i])
 	body.apply_organ_states(organ_positions)
-	body.set_cavity_blood(cavity_ml / 350.0)
+	body.set_cavity_blood(cavity_ml / CAVITY_FULL_ML)
 	body.tissue.set_grips(grips)
 
 

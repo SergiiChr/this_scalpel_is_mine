@@ -231,9 +231,13 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
 - **Patient skin**: the body model draws the wound and fluid maps itself (`wound.gdshaderinc`, shared with the site
   skin shader), so cuts, burns, bruises, blood and iodine sit on the model. Only around cuts and skin a tool holds
   (TissueSim.region()) is the model cut away and replaced by the simulated skin, fat and muscle layers.
-  `site_heights.json` (baked by raycasting the body) makes those layers hug the body.
-- **Blood** (`src/visual/blood_flow.gd`): bleeding wounds release rivulets that run downhill over the skin and stain
-  it, drip off the body as droplets and pool on the table and the floor; strong bleeds spurt.
+  `site_heights.json` (baked by raycasting the body) makes those layers hug the body. The cavity under them is a
+  bowl that rises to just under the skin at the site's edges, so on a round limb it stays inside the body.
+- **Blood** (`src/visual/blood_flow.gd`): bleeding wounds well up into a puddle that grows with the blood lost and
+  release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
+  on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
+  The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
+  whose rim catches the light.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`patient_animator.gd`, bones posed through `bone_rig.gd` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,

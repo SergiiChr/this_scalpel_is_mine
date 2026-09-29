@@ -62,6 +62,7 @@ var region_texture: ImageTexture
 var _region := PackedByteArray()
 var _region_image: Image
 var _cavity_material: ShaderMaterial
+var _pool_height := -INF
 ## Reused by part_at(), which runs every physics frame for every held tool.
 var _part_query := PhysicsShapeQueryParameters3D.new()
 var _part_sphere := SphereShape3D.new()
@@ -325,28 +326,34 @@ func _update_region() -> void:
 	region_texture.update(_region_image)
 
 
-## Cavity walls whose rim follows the skin just underneath it, so nothing pokes out of the body.
-func _cavity_mesh(depth: float) -> ArrayMesh:
-	const STEPS := 24
+## Cavity grid points per side.
+const CAVITY_STEPS := 24
+
+
+## Height of the cavity floor at uv: a bowl that is deepest (cavity_depth) in the middle and rises to just under the
+## skin at the site's edges. It follows the skin, so on a round limb it never pokes out of the sides.
+func _cavity_floor(uv: Vector2) -> float:
+	var under_skin := surface_height(uv) - SKIN_THICKNESS - 0.003
+	var edge := Vector2(absf(uv.x * 2.0 - 1.0), absf(uv.y * 2.0 - 1.0))
+	var bowl := (1.0 - pow(edge.x, 4.0)) * (1.0 - pow(edge.y, 4.0))
+	return minf(lerpf(under_skin, -cavity_depth(), bowl), under_skin)
+
+
+func _cavity_uv(i: int, j: int) -> Vector2:
+	return Vector2(i, j) / CAVITY_STEPS
+
+
+## Grid triangles over the site, for quads whose four corners pass keep(i, j).
+func _cavity_grid(height: Callable, keep: Callable) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var inset := 0.02
-	var corners := [Vector2(inset, inset), Vector2(1 - inset, inset), Vector2(1 - inset, 1 - inset), Vector2(inset, 1 - inset)]
-	for side in 4:
-		var a: Vector2 = corners[side]
-		var b: Vector2 = corners[(side + 1) % 4]
-		for i in STEPS:
-			var u0 := a.lerp(b, float(i) / STEPS)
-			var u1 := a.lerp(b, float(i + 1) / STEPS)
-			var top0 := _site_point(u0, surface_height(u0) - SKIN_THICKNESS)
-			var top1 := _site_point(u1, surface_height(u1) - SKIN_THICKNESS)
-			var bottom0 := _site_point(u0, -depth)
-			var bottom1 := _site_point(u1, -depth)
-			for v: Vector3 in [top0, bottom0, top1, top1, bottom0, bottom1]:
-				st.add_vertex(v)
-	var floor_corners: Array = corners.map(func(c: Vector2) -> Vector3: return _site_point(c, -depth))
-	for v: Vector3 in [floor_corners[0], floor_corners[1], floor_corners[2], floor_corners[0], floor_corners[2], floor_corners[3]]:
-		st.add_vertex(v)
+	for j in CAVITY_STEPS:
+		for i in CAVITY_STEPS:
+			if not (keep.call(i, j) and keep.call(i + 1, j) and keep.call(i + 1, j + 1) and keep.call(i, j + 1)):
+				continue
+			for c: Vector2i in [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i + 1, j + 1), Vector2i(i, j), Vector2i(i + 1, j + 1), Vector2i(i, j + 1)]:
+				var uv := _cavity_uv(c.x, c.y)
+				st.add_vertex(_site_point(uv, height.call(uv)))
 	st.generate_normals()
 	return st.commit()
 
@@ -363,19 +370,16 @@ func _build_cavity() -> void:
 	var depth := cavity_depth()
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
-	cavity.mesh = _cavity_mesh(depth)
+	cavity.mesh = _cavity_grid(_cavity_floor, func(_i: int, _j: int) -> bool: return true)
 	_cavity_material = Materials.flesh()
 	cavity.material_override = _cavity_material
 	site.add_child(cavity)
 	Shapes.static_box(site, Vector3(site_size.x, 0.01, site_size.y), Vector3(0, -depth - 0.005, 0), CAVITY_LAYER)
 
-	var pool := PlaneMesh.new()
-	pool.size = site_size * 0.95
 	cavity_blood = MeshInstance3D.new()
 	cavity_blood.name = "CavityBlood"
-	cavity_blood.mesh = pool
 	cavity_blood.material_override = Materials.blood_pool()
-	cavity_blood.position.y = -depth + 0.002
+	cavity_blood.visible = false
 	site.add_child(cavity_blood)
 
 
@@ -460,9 +464,18 @@ func set_breath_offset(offset: float) -> void:
 		_update_carve()
 
 
+## Blood filling the cavity bowl, level 0..1. The surface only covers the part of the bowl that is under it and
+## still under the skin, so it never shows outside the body. Rebuilt only when the level moves a millimeter or so.
 func set_cavity_blood(level: float) -> void:
-	var depth := cavity_depth()
-	cavity_blood.position.y = -depth + 0.002 + clampf(level, 0.0, 1.0) * depth * 0.85
+	var height := -cavity_depth() + 0.002 + clampf(level, 0.0, 1.0) * cavity_depth() * 0.85
+	cavity_blood.visible = level > 0.01
+	if not cavity_blood.visible or absf(height - _pool_height) < 0.0015:
+		return
+	_pool_height = height
+	var keep := func(i: int, j: int) -> bool:
+		var uv := _cavity_uv(i, j)
+		return _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
+	cavity_blood.mesh = _cavity_grid(func(_uv: Vector2) -> float: return height, keep)
 
 
 ## Where the body model is cut away (the region), the simulated skin layers take over.
