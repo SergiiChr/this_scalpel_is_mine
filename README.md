@@ -82,25 +82,30 @@ Over the internet the host needs to forward UDP 24565 (or pick another port in t
 
 ## Controls
 
-Shown in the bottom right corner in game. Everything can be rebound in **Settings**.
+Shown in the bottom right corner in game, for what you're doing right now (they change while you hold a hand key
+or lower a tool). Everything can be rebound in **Settings**.
 
 | Action | Default |
 |---|---|
-| Move active hand | Mouse |
-| Look around | Hold RMB |
-| Use tool (hold) / toggle clamp | LMB |
-| Blade pressure / stitch tension: step through 1-3 (shown beside the aim dot) | Q |
-| Zoom, or pressure / stitch tension while pressing a tool down | Mouse wheel |
-| Grab / release the highlighted tool (near a partner's empty hand: pass the tool) | E |
+| Look around | Mouse |
+| Move left / right hand (that hand becomes the active one) | Hold Q / Hold E |
+| Lower the active hand's tool onto its spot | Hold LMB |
+| Tool action: pinch / let go, strike, tighten, place graft, charge and shock | RMB |
+| Effort level 0-3 of a lowered tool: cut depth, stitch tension, heat, saw speed, suction, gauze pressure, syringe plunger | Mouse wheel |
+| Zoom (while the tool isn't lowered) | Mouse wheel |
+| Grab / release the highlighted tool (near a partner's empty hand: pass the tool) | G |
 | Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
-| Switch hand | Tab |
 | Lift hand over hands and tall tools; pull slowly on what it holds | Hold Shift |
-| Crouch (reach the floor, step over the IV line) | Hold C |
+| Crouch (reach the floor, step over the IV line) | Hold Ctrl |
 | Hold breath (steady hands) | Hold Space |
-| Tilt / twist tool | R, T / Z, X |
+| Tilt / rotate tool | R, T / C, V |
 | Drink / wear | H |
 | Belt slots | 1-4 |
 | Move | WASD |
+
+The aim shows where the tool works: a dot for point tools, a line along a blade's edge. A blade only cuts along that
+line (rotate the tool to turn it); moving it sideways just drags it. A syringe goes in while lowered and gives its dose
+when the plunger is pushed all the way.
 
 The game never tells you what to do next: the manual on the shelf is the reference. **Settings > Debug mode**
 shows what the game tracks behind the scenes (the scenario's steps, the score and every scored action).

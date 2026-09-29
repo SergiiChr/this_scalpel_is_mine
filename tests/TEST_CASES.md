@@ -52,7 +52,7 @@ For each scenario, with no script errors:
 | ID | Case |
 |---|---|
 | S1 | The surgery scene builds and starts (room, patient, surgeons, tray) |
-| S2 | Every tool on the tray is grabbed, used on the site at normal and deep pressure, and released |
+| S2 | Every tool on the tray is grabbed, lowered onto the site, worked at medium and full effort with its tool action held, and released |
 | S3 | Every wound is stitched at loose, right and tight tension |
 | S4 | Organs pushed out of place for 6 s bruise (organ handling damage) |
 | S5 | Passing a tool to your other hand works |
@@ -68,7 +68,8 @@ For each scenario, with no script errors:
 | S15 | A nurse delivery lands on the delivery tray (operating room) |
 | S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
 | S17 | Walking through the IV tubing at full speed rips the line out |
-| S18 | Every tool effect plays; a tool in blood gets bloody and the sink washes it; the pressure key steps the level |
+| S18 | Every tool effect plays; a tool in blood gets bloody and the sink washes it |
+| S19 | The wheel raises a lowered blade's depth level; the controls shown change while a hand key is held |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -77,7 +78,7 @@ Two real game processes on localhost, one hosting and one joining.
 | ID | Case |
 |---|---|
 | N1 | The client joins, both ready up, and the surgery starts on both with two surgeons |
-| N2 | The client grabs a cutting tool and cuts the patient; the host simulates the cut |
+| N2 | The client grabs a cutting tool, lowers it and cuts along the blade edge; the host simulates the cut |
 | N3 | The client hands the tool across the table to the host's hand |
 | N4 | Host and client end with the same painted wound map |
 | N5 | Host and client end with the same cut tissue (same number of severed springs) |

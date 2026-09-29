@@ -39,21 +39,24 @@ func _run(scenario: ScenarioDef) -> void:
 	for tool: SurgicalTool in surgery.tools.tools.values().duplicate():
 		if tool.state != SurgicalTool.State.FREE:
 			continue
-		me.hands[1].engaged = false
+		me.hands[1].lowered = false
 		surgery.tools._req_grab(tool.uid, 1)
 		await _frames(2)
 		var hand := me.hands[1]
 		hand.attached = false
 		hand.local_target = me.to_local(site + Vector3(0, 0.12, 0))
 		hand.target = site + Vector3(0, 0.12, 0)
-		for pressure in [2, 3]:
-			hand.pressure = pressure
-			hand.engaged = true
+		# Lowered, worked at medium then full effort with the tool action held, moving along a blade's edge.
+		hand.lowered = true
+		for level in [2, 3]:
+			hand.level = level
+			hand.trigger = true
 			for i in 20:
-				hand.local_target += Vector3(0.002, 0, 0.001)
+				hand.local_target += Vector3(0.0005, 0, 0.002)
 				await get_tree().physics_frame
-			hand.engaged = false
+			hand.trigger = false
 			await _frames(2)
+		hand.lowered = false
 		if OS.get_cmdline_user_args().has("--verbose"):
 			var probe := surgery.patient.body.probe(tool.tip_position())
 			print("    %-20s zone=%-6s uv=%s wounds=%d" % [tool.def.id, probe.zone, probe.uv, surgery.patient.wounds.size()])
@@ -175,7 +178,7 @@ func _feedback_checks(surgery: Surgery) -> void:
 	await _effect_checks(surgery)
 
 
-## Every tool effect plays on the body, tools pick up blood and wash clean, the pressure key steps through levels.
+## Every tool effect plays on the body, tools pick up blood and wash clean.
 func _effect_checks(surgery: Surgery) -> void:
 	var at := surgery.patient.body.uv_to_world(Vector2(0.5, 0.5))
 	for kind in ["smoke", "dust", "spatter", "spark", "bead"]:
@@ -195,14 +198,33 @@ func _effect_checks(surgery: Surgery) -> void:
 		if tool.blood > 0.0:
 			print("FAIL: washing didn't take the blood off")
 		surgery.tools._req_release(1, Vector3.ZERO)
+	await _control_checks(surgery)
+
+
+## The wheel sets a lowered tool's effort level, and the on-screen controls follow a held hand key.
+func _control_checks(surgery: Surgery) -> void:
+	var me := surgery.local_surgeon
+	var blades: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and t.def.action == "cut" and me.blocked_reason(t.def).is_empty())
+	if blades.is_empty():
+		return
+	surgery.tools._req_grab((blades[0] as SurgicalTool).uid, me.active)
+	await _frames(2)
 	var hand := me.hands[me.active]
-	var before := hand.pressure
-	var press := InputEventAction.new()
-	press.action = "pressure"
-	press.pressed = true
-	me._unhandled_input(press)
-	if hand.pressure == before:
-		print("FAIL: the pressure key didn't change the pressure level")
+	var looking := Hud.control_lines(me)
+	hand.lowered = true
+	var wheel := InputEventAction.new()
+	wheel.action = "zoom_in"
+	wheel.pressed = true
+	me._unhandled_input(wheel)
+	if hand.level != 1:
+		print("FAIL: the wheel didn't raise a lowered blade's depth: ", hand.level)
+	hand.lowered = false
+	Input.action_press("move_right_hand")
+	if Hud.control_lines(me) == looking:
+		print("FAIL: the controls shown didn't change while holding a hand key")
+	Input.action_release("move_right_hand")
+	surgery.tools._req_release(me.active, Vector3.ZERO)
+	await _frames(2)
 
 
 func _frames(count: int) -> void:

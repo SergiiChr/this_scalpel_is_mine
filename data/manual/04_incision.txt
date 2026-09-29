@@ -3,18 +3,19 @@ title: 4. Incision and exposure
 [img=560]res://assets/manual/diagrams/incision_depth.svg[/img]
 
 [b]4.1 Blade pressure[/b]
-Depth of the incision is set by blade pressure, not by the number of passes. There are three levels. The current level is shown beside the aiming point whenever a blade is held, and on the status line.
+Depth of the incision is set by blade pressure, not by the number of passes. There are three levels above rest. The current level is shown beside the aiming point whenever a blade is held, and on the status line.
 [table=3]
 [cell][b]Level[/b][/cell][cell][b]Divides[/b][/cell][cell][b]Use[/b][/cell]
 [cell]1  Skin[/cell][cell]Epidermis and dermis[/cell][cell]Skin incision, scoring the line[/cell]
 [cell]2  Fat[/cell][cell]Down to subcutaneous fat[/cell][cell]Deepening the wound under vision[/cell]
 [cell]3  Muscle[/cell][cell]Fascia and muscle, into the cavity[/cell][cell]Entering the body cavity[/cell]
 [/table]
-[b]Setting it:[/b] press [b]Pressure[/b] (default Q) to step through the levels before the blade touches the skin. While the blade is down, the mouse wheel adjusts it: forward increases, back decreases.
+[b]Setting it:[/b] lower the blade onto the skin ([b]Lower tool[/b], default LMB). At level 0 it only rests there; the mouse wheel sets the depth while it is down: forward increases, back decreases.
 Start at level 1 and deepen in layers. A full-depth stroke from the outset gives no control over what lies beneath.
 In obese patients the subcutaneous layer is thicker: one level shallower than expected is reached at each setting.
 
 [b]4.2 Technique[/b]
+The aiming line shows the cutting edge on the skin. A blade divides tissue only when drawn along its edge; rotate the instrument to align the edge with the marked line. Drawn sideways it merely drags.
 Draw the blade along the marked line in one steady stroke. Slow strokes leave clean edges; fast strokes leave ragged edges that bleed more. A dull or improvised blade always tears the edge.
 
 [b]4.3 Exposure[/b]

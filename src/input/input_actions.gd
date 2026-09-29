@@ -9,21 +9,21 @@ const DEFAULTS: Array[Dictionary] = [
 	{"action": "move_back", "label": "Move back", "key": KEY_S},
 	{"action": "move_left", "label": "Move left", "key": KEY_A},
 	{"action": "move_right", "label": "Move right", "key": KEY_D},
-	{"action": "use_tool", "label": "Use tool", "mouse": MOUSE_BUTTON_LEFT},
-	{"action": "look", "label": "Look around (hold)", "mouse": MOUSE_BUTTON_RIGHT},
-	{"action": "zoom_in", "label": "Zoom in / more pressure while pressing", "mouse": MOUSE_BUTTON_WHEEL_UP},
-	{"action": "zoom_out", "label": "Zoom out / less pressure while pressing", "mouse": MOUSE_BUTTON_WHEEL_DOWN},
-	{"action": "pressure", "label": "Blade pressure / stitch tension", "key": KEY_Q},
-	{"action": "grab", "label": "Grab / release", "key": KEY_E},
+	{"action": "move_left_hand", "label": "Move left hand (hold)", "key": KEY_Q},
+	{"action": "move_right_hand", "label": "Move right hand (hold)", "key": KEY_E},
+	{"action": "lower_tool", "label": "Lower tool (hold)", "mouse": MOUSE_BUTTON_LEFT},
+	{"action": "tool_action", "label": "Tool action", "mouse": MOUSE_BUTTON_RIGHT},
+	{"action": "zoom_in", "label": "Zoom in / more effort while lowered", "mouse": MOUSE_BUTTON_WHEEL_UP},
+	{"action": "zoom_out", "label": "Zoom out / less effort while lowered", "mouse": MOUSE_BUTTON_WHEEL_DOWN},
+	{"action": "grab", "label": "Grab / release", "key": KEY_G},
 	{"action": "interact", "label": "Interact", "key": KEY_F},
-	{"action": "switch_hand", "label": "Switch hand", "key": KEY_TAB},
 	{"action": "lift", "label": "Lift hand over (hold)", "key": KEY_SHIFT},
-	{"action": "crouch", "label": "Crouch (hold)", "key": KEY_C},
+	{"action": "crouch", "label": "Crouch (hold)", "key": KEY_CTRL},
 	{"action": "steady", "label": "Hold breath (hold)", "key": KEY_SPACE},
 	{"action": "tilt_forward", "label": "Tilt tool forward", "key": KEY_R},
 	{"action": "tilt_back", "label": "Tilt tool back", "key": KEY_T},
-	{"action": "twist_left", "label": "Twist tool left", "key": KEY_Z},
-	{"action": "twist_right", "label": "Twist tool right", "key": KEY_X},
+	{"action": "twist_left", "label": "Rotate tool left", "key": KEY_C},
+	{"action": "twist_right", "label": "Rotate tool right", "key": KEY_V},
 	{"action": "drink", "label": "Drink / wear", "key": KEY_H},
 	{"action": "belt_1", "label": "Belt slot 1", "key": KEY_1},
 	{"action": "belt_2", "label": "Belt slot 2", "key": KEY_2},
@@ -31,12 +31,6 @@ const DEFAULTS: Array[Dictionary] = [
 	{"action": "belt_4", "label": "Belt slot 4", "key": KEY_4},
 	{"action": "pause", "label": "Pause", "key": KEY_ESCAPE},
 ]
-
-## Shown in the bottom right corner during surgery.
-const HINT_ACTIONS: PackedStringArray = [
-	"use_tool", "pressure", "grab", "interact", "switch_hand", "look", "lift", "crouch", "steady", "tilt_forward", "twist_left", "drink", "belt_1",
-]
-
 
 ## "key:87" / "mouse:1" <-> InputEvent. Strings keep the settings file readable.
 static func encode(event: InputEvent) -> String:

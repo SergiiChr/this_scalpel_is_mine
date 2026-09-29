@@ -7,11 +7,15 @@ const POST_FX := preload("res://assets/shaders/post_grime.gdshader")
 const TOAST_TIME := 5.0
 const SUBTITLE_TIME := 6.0
 
-## What each pressure level does, for the tools where it matters (see pressure_kind()).
-const PRESSURE_LEVELS: Dictionary = {
-	"cut": ["Skin", "Fat", "Muscle, into cavity"],
-	"tension": ["Loose", "Correct", "Tight"],
+## What each effort level (0..3) does, for tools that take one (see level_kind()).
+const LEVEL_STEPS: Dictionary = {
+	"cut": ["Resting on skin", "Skin", "Fat", "Muscle, into cavity"],
+	"tension": ["Off", "Loose", "Correct", "Tight"],
+	"inject": ["Not pushed", "A third in", "Two thirds in", "All in"],
+	"effort": ["Off", "Low", "Medium", "High"],
 }
+## Length of the blade edge line drawn on the skin (m).
+const BLADE_LINE := 0.04
 
 var surgery: Surgery
 var _vitals: Label
@@ -21,11 +25,15 @@ var _hands: Label
 var _belt: HBoxContainer
 var _prompt: Label
 var _net_warning: Label
-## Aim dot at the active tool tip, and the name of the tool the hand would pick up.
+## Aim at the active tool tip: a dot, or for blades a line along the edge where it will cut.
+## Beside it, the name of the tool the hand would pick up.
 var _dot: Panel
+var _blade: Line2D
+## Controls for what the player is doing right now, bottom right. Changes while a hand key or a tool is held.
+var _hint: Label
 var _dot_label: Label
-## Pressure levels of the active tool beside the aim dot, when the tool has any (see PRESSURE_LEVELS).
-var _pressure: RichTextLabel
+## Effort levels of the active tool beside the aim, when the tool has any (see LEVEL_STEPS).
+var _levels: RichTextLabel
 var _toasts: VBoxContainer
 var _subtitle: Label
 var _subtitle_timer := 0.0
@@ -96,6 +104,9 @@ func _process(delta: float) -> void:
 	_update_dot(me)
 	_update_hands(me)
 	_update_gauges(me)
+	var hint := "\n".join(control_lines(me))
+	if _hint.text != hint:
+		_hint.text = hint
 	_prompt.text = "[%s] %s" % [InputActions.binding_text("interact"), me.focused.prompt] if me.focused and _overlay == null else ""
 	if _prompt.text.is_empty() and me.held_tool(me.active):
 		var partner := me.pass_target(me.active)
@@ -239,7 +250,7 @@ func _open(overlay: Control) -> void:
 	add_child(overlay)
 	if surgery.local_surgeon:
 		surgery.local_surgeon.input_locked = true
-		surgery.local_surgeon.hands[surgery.local_surgeon.active].engaged = false
+		surgery.local_surgeon.hands[surgery.local_surgeon.active].lowered = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -293,20 +304,31 @@ func _build_dot() -> void:
 	_dot.size = Vector2(8, 8)
 	_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_dot)
+	# A dark line with a light one on top, so it shows on pale skin and in blood alike.
+	_blade = Line2D.new()
+	_blade.width = 5.0
+	_blade.default_color = Color(0.0, 0.0, 0.0, 0.6)
+	var edge := Line2D.new()
+	edge.width = 2.5
+	for line: Line2D in [_blade, edge]:
+		line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_blade.add_child(edge)
+	_root.add_child(_blade)
 	_dot_label = Ui.label("", 16, Ui.INK)
 	_dot_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_root.add_child(_dot_label)
-	_pressure = RichTextLabel.new()
-	_pressure.bbcode_enabled = true
-	_pressure.fit_content = true
-	_pressure.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_pressure.scroll_active = false
-	_pressure.custom_minimum_size.x = 260
-	_pressure.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pressure.add_theme_font_size_override("normal_font_size", 15)
-	_pressure.add_theme_constant_override("outline_size", 4)
-	_pressure.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_root.add_child(_pressure)
+	_levels = RichTextLabel.new()
+	_levels.bbcode_enabled = true
+	_levels.fit_content = true
+	_levels.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_levels.scroll_active = false
+	_levels.custom_minimum_size.x = 260
+	_levels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_levels.add_theme_font_size_override("normal_font_size", 15)
+	_levels.add_theme_constant_override("outline_size", 4)
+	_levels.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_root.add_child(_levels)
 
 
 func _build_bottom_bar() -> void:
@@ -340,18 +362,54 @@ func _build_gauges() -> void:
 
 
 func _build_controls_hint() -> void:
+	_hint = Ui.label("", 14, Ui.HINT)
+	_hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
+	_hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_root.add_child(_hint)
+
+
+## The controls that do something right now. Holding a hand key swaps looking for moving that hand,
+## lowering a tool turns the wheel from zoom into its effort level.
+static func control_lines(me: Surgeon) -> PackedStringArray:
+	var key := InputActions.binding_text
+	var moving := me.moving_hand()
+	var hand := me.hands[me.active]
+	var tool := me.held_tool(me.active)
+	var side := "left" if me.active == 0 else "right"
 	var lines := PackedStringArray()
-	for action in InputActions.HINT_ACTIONS:
-		lines.append("%s  %s" % [InputActions.binding_text(action), InputActions.label_for(action)])
-	lines.append("%s  Move" % "/".join(["move_forward", "move_left", "move_back", "move_right"].map(InputActions.binding_text)))
-	lines.append("Wheel  Zoom (pressure while pressing a blade)")
-	var hint := Ui.label("\n".join(lines), 14, Ui.HINT)
-	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
-	hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_root.add_child(hint)
+	if moving < 0:
+		lines.append("Mouse  Look around")
+		lines.append("%s / %s (hold)  Move left / right hand" % [key.call("move_left_hand"), key.call("move_right_hand")])
+	else:
+		lines.append("Mouse  Move %s hand" % side)
+	if tool:
+		var action := tool.def.action
+		lines.append("%s (hold)  Lower %s" % [key.call("lower_tool"), tool.def.name])
+		if ToolActions.TRIGGER_NAMES.has(action):
+			lines.append("%s  %s" % [key.call("tool_action"), ToolActions.TRIGGER_NAMES[action]])
+		if me.uses_level(me.active):
+			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
+		elif ToolActions.LEVEL_NAMES.has(action):
+			lines.append("Wheel  Zoom (%s while lowered)" % ToolActions.LEVEL_NAMES[action].to_lower())
+		else:
+			lines.append("Wheel  Zoom")
+		lines.append("%s / %s  Tilt   %s / %s  Rotate" % [key.call("tilt_forward"), key.call("tilt_back"), key.call("twist_left"), key.call("twist_right")])
+		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
+	else:
+		lines.append("%s  Grab%s" % [key.call("grab"), " " + me.hovered.def.name if is_instance_valid(me.hovered) else ""])
+		lines.append("Wheel  Zoom")
+	lines.append("%s (hold)  %s" % [key.call("lift"), "Pull up" if hand.attached else "Lift hand over"])
+	lines.append("%s (hold)  Hold breath" % key.call("steady"))
+	if moving < 0:
+		lines.append("%s  Move" % "/".join(["move_forward", "move_left", "move_back", "move_right"].map(key)))
+		lines.append("%s (hold)  Crouch" % key.call("crouch"))
+		lines.append("%s  Interact" % key.call("interact"))
+		lines.append("%s  Drink / wear" % key.call("drink"))
+		lines.append("%s-%s  Belt slots" % [key.call("belt_1"), key.call("belt_4")])
+	return lines
 
 
 # --- Updating --------------------------------------------------------------------------------------
@@ -380,39 +438,53 @@ func _update_objectives() -> void:
 func _update_dot(me: Surgeon) -> void:
 	var camera := me.camera()
 	var aim := me.aim_point()
-	_dot.visible = _overlay == null and not camera.is_position_behind(aim)
-	if not _dot.visible:
+	var tool := me.held_tool(me.active)
+	var shown := _overlay == null and not camera.is_position_behind(aim)
+	var blade := shown and tool != null and tool.def.action == "cut"
+	_dot.visible = shown and not blade
+	_blade.visible = blade
+	if not shown:
 		_dot_label.text = ""
+		_levels.visible = false
 		return
 	var at := camera.unproject_position(aim)
 	_dot.position = at - _dot.size * 0.5
+	if blade:
+		var edge := ToolActions.blade_direction(tool) * BLADE_LINE * 0.5
+		_blade.points = PackedVector2Array([camera.unproject_position(aim - edge), camera.unproject_position(aim + edge)])
+		var cutting := me.hands[me.active].lowered and me.hands[me.active].level > 0
+		var light := _blade.get_child(0) as Line2D
+		light.points = _blade.points
+		light.default_color = Color(1.0, 0.42, 0.35) if cutting else Color(1.0, 1.0, 0.9)
 	_dot_label.text = me.hovered.def.name if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
-	_pressure.text = _pressure_text(me)
-	_pressure.visible = not _pressure.text.is_empty()
-	_pressure.position = at + Vector2(14, 12)
+	_levels.text = _level_text(me)
+	_levels.visible = not _levels.text.is_empty()
+	_levels.position = at + Vector2(14, 12)
 
 
-## "cut" for blades, "tension" for tensioned closures, "" when pressure changes nothing worth showing.
-static func pressure_kind(tool: SurgicalTool) -> String:
-	if tool == null:
+## Which LEVEL_STEPS names a tool's effort levels, "" when it takes none.
+static func level_kind(tool: SurgicalTool) -> String:
+	if tool == null or not ToolActions.LEVEL_NAMES.has(tool.def.action):
 		return ""
 	if tool.def.id in Patient.TENSIONED_CLOSURES:
 		return "tension"
-	return "cut" if tool.def.action == "cut" else ""
+	return tool.def.action if LEVEL_STEPS.has(tool.def.action) else "effort"
 
 
-## The three levels, the current one marked; red while the tool is pressed down (cutting or stitching now).
-func _pressure_text(me: Surgeon) -> String:
-	var kind := pressure_kind(me.held_tool(me.active))
+## The levels, the current one marked; red while the tool is working at it.
+func _level_text(me: Surgeon) -> String:
+	var tool := me.held_tool(me.active)
+	var kind := level_kind(tool)
 	if kind.is_empty():
 		return ""
 	var hand := me.hands[me.active]
-	var lines := PackedStringArray()
-	for level in range(1, 4):
-		var text := "%d  %s" % [level, PRESSURE_LEVELS[kind][level - 1]]
-		if level == hand.pressure:
-			lines.append("[color=%s][b]▶ %s[/b][/color]" % ["#ff6a5a" if hand.engaged else "#fff4c8", text])
+	var working := ToolActions.in_use(tool.def.action, hand.lowered, hand.trigger, hand.level)
+	var lines := PackedStringArray([ToolActions.LEVEL_NAMES[tool.def.action]])
+	for level in 4:
+		var text := "%d  %s" % [level, LEVEL_STEPS[kind][level]]
+		if level == hand.level:
+			lines.append("[color=%s][b]▶ %s[/b][/color]" % ["#ff6a5a" if working else "#fff4c8", text])
 		else:
 			lines.append("[color=#ffffff80]   %s[/color]" % text)
 	return "\n".join(lines)
@@ -428,10 +500,11 @@ func _update_hands(me: Surgeon) -> void:
 		if me.hands[i].attached:
 			text += " [holding]"
 		parts.append(("▶ " + text + " ◀") if i == me.active else text)
-	var kind := pressure_kind(me.held_tool(me.active))
+	var active_tool := me.held_tool(me.active)
+	var kind := level_kind(active_tool)
 	if not kind.is_empty():
-		var pressure := me.hands[me.active].pressure
-		parts.append("%s: %d %s" % ["tension" if kind == "tension" else "blade", pressure, PRESSURE_LEVELS[kind][pressure - 1]])
+		var level := me.hands[me.active].level
+		parts.append("%s: %d %s" % [ToolActions.LEVEL_NAMES[active_tool.def.action].to_lower(), level, LEVEL_STEPS[kind][level]])
 	_hands.text = "   ".join(parts)
 	var capacity := me.belt_capacity()
 	while _belt.get_child_count() < capacity:

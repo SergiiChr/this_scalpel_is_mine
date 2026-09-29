@@ -41,7 +41,7 @@ func _drive(role: String) -> void:
 	var surgery := Surgery.current
 	if role == "client":
 		# Holding the tool down when the freeze hits: the host must not keep using it.
-		surgery.local_surgeon.hands[1].engaged = true
+		surgery.local_surgeon.hands[1].lowered = true
 		await tree.create_timer(1.0).timeout
 		print("[client] running")
 		# The shell freezes this process now. A long gap between two short waits means it happened.
@@ -68,7 +68,7 @@ func _drive(role: String) -> void:
 			if not is_instance_valid(partner):
 				break
 			var silent := Net.silence(partner.peer_id)
-			engaged_before = engaged_before or partner.hands[1].engaged and silent < 0.5
+			engaged_before = engaged_before or partner.hands[1].lowered and silent < 0.5
 			longest = maxf(longest, silent)
 			paused = paused or partner.is_stalled()
 			if longest > 5.0 and silent < 0.5:

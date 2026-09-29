@@ -4,7 +4,7 @@ title: 9. Cardiac arrest
 
 [b]9.1 Ventricular fibrillation[/b] (irregular waveform, alarm). Shockable.
 1. Stand clear. Anyone in contact with the patient during discharge receives the shock.
-2. Apply the paddles to the chest. Press and hold to charge (two seconds); release to discharge.
+2. Apply the paddles to the chest ([b]Lower tool[/b]). Hold [b]Tool action[/b] to charge (two seconds); release to discharge.
 3. If unsuccessful, give amiodarone and repeat the shock.
 After forty seconds, ventricular fibrillation degenerates to asystole.
 

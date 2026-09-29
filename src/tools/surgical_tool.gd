@@ -24,7 +24,9 @@ var blood_exposure := 0.0
 
 # Host-side use state, see ToolActions.
 var grip_info: Dictionary = {}
-var engaged_before := false
+var lowered_before := false
+var trigger_before := false
+var level_before := 0
 var stroke := 0
 var last_uv := Vector2(-1, -1)
 var last_tip := Vector3.INF
@@ -68,7 +70,7 @@ func _process(delta: float) -> void:
 	var closed := state == State.STANDING
 	if state == State.HELD and Surgery.current and Surgery.current.surgeons.has(holder):
 		var hand: SurgeonHand = (Surgery.current.surgeons[holder] as Surgeon).hands[slot]
-		active = hand.engaged
+		active = ToolActions.in_use(def.action, hand.lowered, hand.trigger, hand.level)
 		closed = hand.attached
 	_animator.animate(active, closed, delta)
 	if blood > 0.0:
@@ -154,5 +156,7 @@ func set_state(new_state: State, new_holder: int, new_slot: int) -> void:
 	collision_layer = TOOL_LAYER if state in [State.FREE, State.STANDING, State.INSIDE] else 0
 	freeze = not (physical and multiplayer.is_server())
 	if state != State.HELD:
-		engaged_before = false
+		lowered_before = false
+		trigger_before = false
+		level_before = 0
 		last_tip = Vector3.INF

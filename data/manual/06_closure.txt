@@ -17,7 +17,7 @@ A wound is closed only when the closure spans its entire length. Draw the instru
 [/table]
 
 [b]6.3 Suture tension[/b]
-For sutures (and paper clips), tension uses the same three levels as blade pressure: [b]Pressure[/b] (default Q) steps through them, the mouse wheel adjusts them while stitching.
+For sutures (and paper clips), tension uses the same three levels as blade pressure: with the instrument lowered onto the wound, the mouse wheel sets them. At level 0 no stitches are placed.
 • Loose: rapid, but the wound edges do not meet and continue to ooze.
 • Correct: edges apposed without blanching. The intended setting.
 • Tight: strongest seal, but sutures may cut through. Thin skin tears at twice the usual rate.

@@ -3,7 +3,10 @@ extends CharacterBody3D
 ## A player in the room. The owning peer reads input, moves the body and hands, and streams its state.
 ## Everyone else (including the host) sees a puppet that follows the stream.
 ##
-## Controls: mouse moves the active hand, hold look to turn the head instead, WASD moves the body.
+## Controls: the mouse looks around, holding a hand's key (Q/E) moves that hand instead and makes it the active one.
+## Lower tool (LMB) rests the active hand's tool on its spot, Tool action (RMB) and the wheel work it
+## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). WASD moves the body.
+## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
 ## Hands have no height control: the tool tip rests just above whatever is under it (skin, tray, organs, a target
 ## in an open cavity), or higher while lifted. Crouching brings everything down within reach of the floor.
@@ -57,6 +60,8 @@ var hovered: SurgicalTool = null
 ## 0 standing, 1 fully crouched. Synced so everyone sees you duck.
 var crouch := 0.0
 var zoom := 0
+## Uid of the tool each hand held last frame: a new tool starts at effort level 0.
+var _held_uid: Array[int] = [0, 0]
 
 var _head: Node3D
 var _body: Node3D
@@ -152,7 +157,8 @@ func held_tool(hand: int) -> SurgicalTool:
 ## What the host needs to drive a tool held in this hand.
 func hand_state(hand: int) -> Dictionary:
 	var h := hands[hand]
-	return {"engaged": h.engaged and not status.is_out(), "pressure": h.pressure, "speed": h.speed, "peer": peer_id, "mods": mods}
+	var out := status.is_out()
+	return {"lowered": h.lowered and not out, "trigger": h.trigger and not out, "level": h.level, "speed": h.speed, "peer": peer_id, "mods": mods}
 
 
 func is_stalled() -> bool:
@@ -231,28 +237,32 @@ func _unhandled_input(event: InputEvent) -> void:
 	var hand := hands[active]
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := (event as InputEventMouseMotion).relative * Settings.mouse_sensitivity
-		if Input.is_action_pressed("look"):
+		if moving_hand() < 0:
 			rotation.y -= motion.x * LOOK_SENSITIVITY
 			pitch = clampf(pitch - motion.y * LOOK_SENSITIVITY, LOOK_PITCH.x, LOOK_PITCH.y)
 		elif _switch_timer <= 0.0:
 			# Zoomed in, the same mouse motion moves the hand less: finer control where you're looking closely.
 			var step := motion * HAND_SENSITIVITY * status.hand_speed() * ZOOM_FOV[zoom] / ZOOM_FOV[0]
 			_move_hand(hand, Vector3(step.x, 0, step.y))
+	elif event.is_action_pressed("move_left_hand") or event.is_action_pressed("move_right_hand"):
+		var index := 0 if event.is_action_pressed("move_left_hand") else 1
+		if index != active:
+			_switch_hand()
 	elif event.is_action_pressed("zoom_in") or event.is_action_pressed("zoom_out"):
 		var step := 1 if event.is_action_pressed("zoom_in") else -1
-		# While pressing a tool down the wheel sets pressure (cut depth, stitch tension) instead of zooming.
-		if hand.engaged and held_tool(active):
-			hand.pressure = clampi(hand.pressure + step, 1, 3)
+		# While a tool is lowered the wheel sets its effort level (cut depth, stitch tension, plunger) instead of zooming.
+		if uses_level(active):
+			hand.level = clampi(hand.level + step, 0, 3)
 		else:
 			zoom = clampi(zoom + step, 0, ZOOM_FOV.size() - 1)
-	elif event.is_action_pressed("pressure"):
-		hand.pressure = hand.pressure % 3 + 1
-	elif event.is_action_pressed("use_tool"):
-		hand.engaged = true
-	elif event.is_action_released("use_tool"):
-		hand.engaged = false
-	elif event.is_action_pressed("switch_hand"):
-		_switch_hand()
+	elif event.is_action_pressed("lower_tool"):
+		hand.lowered = true
+	elif event.is_action_released("lower_tool"):
+		hand.lowered = false
+	elif event.is_action_pressed("tool_action"):
+		hand.trigger = true
+	elif event.is_action_released("tool_action"):
+		hand.trigger = false
 	elif event.is_action_pressed("grab"):
 		_grab_or_release()
 	elif event.is_action_pressed("interact") and focused:
@@ -263,6 +273,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		for i in MAX_BELT:
 			if event.is_action_pressed("belt_%d" % (i + 1)):
 				Surgery.current.tools.request_belt(active, i)
+
+
+## The hand the mouse moves right now (its key held), or -1 while the mouse looks around.
+func moving_hand() -> int:
+	if Input.is_action_pressed("move_left_hand"):
+		return 0
+	return 1 if Input.is_action_pressed("move_right_hand") else -1
+
+
+## The wheel sets this hand's effort level: its tool is lowered and takes one (ToolActions.LEVEL_NAMES).
+func uses_level(hand: int) -> bool:
+	var tool := held_tool(hand)
+	return hands[hand].lowered and tool != null and ToolActions.LEVEL_NAMES.has(tool.def.action)
 
 
 func _physics_process(delta: float) -> void:
@@ -284,6 +307,10 @@ func _physics_process(delta: float) -> void:
 	for i in 2:
 		var tool := held_tool(i)
 		hands[i].holding = tool != null
+		var uid := tool.uid if tool else 0
+		if uid != _held_uid[i]:
+			_held_uid[i] = uid
+			hands[i].level = 0
 		hands[i].grip = tool.def.grip if tool else "pencil"
 		hands[i].update_pose(shoulder(i), delta)
 
@@ -334,7 +361,7 @@ func _move_hand(hand: SurgeonHand, delta_local: Vector3, vertical: bool = false)
 		hand.local_target = to_local(hand.target)
 
 
-## Rests the tool tip just above whatever is under it. While using a tool on skin, presses into it by pressure level.
+## Rests the tool tip just above whatever is under it. Lowered onto skin, it touches and presses in by effort level.
 ## Then keeps the hand within reach: far out, or down at the floor while standing, it stops short in the air.
 func _constrain(hand: SurgeonHand) -> void:
 	var tool := held_tool(hand.index)
@@ -344,8 +371,8 @@ func _constrain(hand: SurgeonHand) -> void:
 	var from := shoulder(hand.index)
 	if surface.y != -INF:
 		var tip_y: float = surface.y + HOVER_GAP
-		if hand.engaged and not surface.open:
-			tip_y = surface.y - hand.pressure * 0.004
+		if hand.lowered and not surface.open:
+			tip_y = surface.y - 0.002 - hand.level * 0.004
 		hand.target.y = tip_y - offset.y
 		# Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
 		if hand.target.y < from.y - REACH * 0.9:
@@ -398,7 +425,6 @@ func _update_hover() -> void:
 
 
 func _switch_hand() -> void:
-	hands[active].engaged = hands[active].engaged and held_tool(active) != null
 	active = 1 - active
 	_switch_timer = SWITCH_DELAY * mods.mult("switch_delay_mult")
 
@@ -419,7 +445,8 @@ func _grab_or_release() -> void:
 	var hand := hands[active]
 	var tool := held_tool(active)
 	if tool:
-		hand.engaged = false
+		hand.lowered = false
+		hand.trigger = false
 		if not pass_target(active).is_empty() and not hand.attached:
 			Surgery.current.tools.request_pass(active)
 		else:
@@ -461,14 +488,15 @@ func jolt(strength: float) -> void:
 	status.add_stress(strength * 0.05)
 	var drop_chance := strength * 0.35 * (1.0 - clampf(mods.num("bump_resist"), 0.0, 1.0))
 	if randf() < drop_chance and held_tool(active) and not hands[active].attached:
-		hands[active].engaged = false
+		hands[active].lowered = false
 		Surgery.current.tools.request_release(active, _jolt * 10.0)
 		Surgery.current.hud.toast("It slips out of your hand!")
 
 
 func drop_everything() -> void:
 	for i in 2:
-		hands[i].engaged = false
+		hands[i].lowered = false
+		hands[i].trigger = false
 		if held_tool(i):
 			Surgery.current.tools.request_release(i, Vector3.ZERO)
 
@@ -524,7 +552,7 @@ func _handle_status_events(events: PackedStringArray) -> void:
 func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
-		hand_data.append([h.effective_position(), h.tilt, h.twist, h.engaged, h.pressure, h.lifted])
+		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted])
 	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out(), crouch]
 
 
@@ -542,9 +570,10 @@ func _sync_state(data: Array) -> void:
 		h.target = d[0]
 		h.tilt = d[1]
 		h.twist = d[2]
-		h.engaged = d[3]
-		h.pressure = d[4]
-		h.lifted = d[5]
+		h.lowered = d[3]
+		h.trigger = d[4]
+		h.level = d[5]
+		h.lifted = d[6]
 	if multiplayer.is_server():
 		var strain: Array = data[5]
 		for i in 2:
