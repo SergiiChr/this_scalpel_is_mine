@@ -2,6 +2,7 @@
 
 Moving parts are separate nodes the game animates (src/tools/tool_animator.gd):
 JawA/JawB open and close, Plunger slides, Trigger squeezes, Blade oscillates, Flame/Glow/Light show while in use.
+Level is liquid the game stretches along Z from its node origin by how full the tool is (syringe, vial).
 """
 
 from __future__ import annotations
@@ -137,17 +138,37 @@ def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
         m.add("Button", superellipsoid((0.004, 0.003, 0.012), 0.4, (0.0, 0.006, -0.01)), "yellow_plastic")
 
 
-def _syringe(m: Model, length: float) -> None:
+def _syringe(m: Model, length: float, radius: float) -> None:
+    """Glass barrel with a tick every tenth of its volume. Built empty: the game pulls the plunger back as it fills."""
     barrel_len = length * 0.62
-    barrel = lathe([(0.0, 0.0), (0.0058, 0.0), (0.0058, barrel_len), (0.0, barrel_len)], 20)
-    m.add("Barrel", along_z(barrel), "clear_plastic")
-    liquid = lathe([(0.0, 0.004), (0.005, 0.004), (0.005, barrel_len * 0.7), (0.0, barrel_len * 0.7)], 16)
-    m.add("Liquid", along_z(liquid), "tint")
-    flange = superellipsoid((0.03, 0.003, 0.008), 0.4, (0.0, 0.0, 0.0))
-    m.add("Flange", flange, "clear_plastic")
-    plunger = merge(rod(0.002, 0.03, -0.004), superellipsoid((0.018, 0.018, 0.003), 0.5, (0.0, 0.0, 0.032)), rod(0.0055, -0.001, -0.005))
-    m.add("Plunger", plunger, "plastic")
+    front = -barrel_len + 0.002
+    travel = barrel_len * 0.85
+    barrel = lathe([(0.0, 0.0), (radius, 0.0), (radius, barrel_len), (0.0, barrel_len)], 20)
+    m.add("Barrel", along_z(barrel), "glass")
+    m.add("Level", rod(radius * 0.9, front, front + travel), "drug", (0.0, 0.0, front))
+    ticks = []
+    for i in range(1, 11):
+        half = radius * (0.9 if i % 5 == 0 else 0.5)
+        z = front + travel * i / 10
+        ticks.append(superellipsoid((half, 0.0004, 0.0005), 0.3, (0.0, radius + 0.0002, z)))
+    m.add("Marks", merge(*ticks), "marks")
+    m.add("Flange", superellipsoid((radius * 2.0 + 0.012, 0.003, 0.008), 0.4, (0.0, 0.0, 0.0)), "clear_plastic")
+    stopper = rod(radius * 0.95, front + 0.004, front)
+    stem = rod(radius * 0.3, front + 0.004, 0.012)
+    thumb = superellipsoid((radius * 3.0, radius * 3.0, 0.003), 0.5, (0.0, 0.0, 0.014))
+    m.add("Plunger", merge(stopper, stem, thumb), "rubber")
     m.add("Needle", merge(rod(0.0022, -barrel_len, -barrel_len - 0.006), rod(0.0005, -barrel_len - 0.006, -length)), "chrome")
+
+
+def _vial(m: Model, length: float) -> None:
+    """Glass vial with a paper label and a tinted cap at the tip. Level is the drug left in it."""
+    radius = 0.012
+    body_len = length * 0.72
+    m.add("Glass", along_z(lathe([(0.0, 0.0), (radius, 0.0), (radius, body_len), (radius * 0.55, body_len + 0.004), (0.0, body_len + 0.004)], 20)), "glass")
+    m.add("Level", rod(radius * 0.88, -0.002, -body_len + 0.002), "drug", (0.0, 0.0, -0.002))
+    label = [(0.0, body_len * 0.4), (radius + 0.0004, body_len * 0.4), (radius + 0.0004, body_len * 0.75), (0.0, body_len * 0.75)]
+    m.add("Label", along_z(lathe(label, 20)), "paper")
+    m.add("Cap", rod(radius * 0.7, -body_len - 0.004, -length), "tint")
 
 
 def _bag(m: Model, length: float) -> None:
@@ -309,7 +330,10 @@ def build() -> list[Model]:
         "duct_tape": lambda m, length: _tape(m, length, "dark_steel"),
         "cautery": lambda m, length: _pen(m, length, "green_plastic", "chrome", True),
         "marker": lambda m, length: _pen(m, length, "tint", "black_plastic", False),
-        "syringe": _syringe,
+        "syringe_3": partial(_syringe, radius=0.0045),
+        "syringe_10": partial(_syringe, radius=0.0065),
+        "syringe_50": partial(_syringe, radius=0.013),
+        "vial": _vial,
         "iv_bag": _bag,
         "whiskey_flask": _flask,
         "coffee_thermos": _thermos,
@@ -327,7 +351,7 @@ def build() -> list[Model]:
     }
     for kind in ("switchblade", "lighter", "paper_clips", "gas_mask", "cocaine", "tourniquet", "iv_catheter", "skin_graft", "surgical_cap", "kidney_dish"):
         makers[kind] = partial(_misc_maker, kind)
-    shared_length = {"syringe": lengths.get("syringe_adrenaline", 0.1), "iv_bag": lengths.get("saline_bag", 0.15)}
+    shared_length = {"vial": lengths.get("vial_propofol", 0.06), "iv_bag": lengths.get("saline_bag", 0.15)}
     models = []
     for name, maker in makers.items():
         model = Model("tools", name)

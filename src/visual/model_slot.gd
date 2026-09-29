@@ -31,6 +31,11 @@ static func toonify(root: Node, overrides: Dictionary = {}) -> void:
 			var key := source.resource_name if source else ""
 			if overrides.has(key):
 				mesh_instance.set_surface_override_material(i, overrides[key])
+			elif key == "marks":
+				# Fine print: an outline would blot it out.
+				mesh_instance.set_surface_override_material(i, Materials.toon(Color(0.05, 0.05, 0.06), 0.1, false))
+			elif key == "glass":
+				mesh_instance.set_surface_override_material(i, Materials.glass())
 			elif key == "flame":
 				mesh_instance.set_surface_override_material(i, Materials.glow(Color(1.0, 0.62, 0.2)))
 			elif source is BaseMaterial3D:

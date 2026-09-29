@@ -14,7 +14,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 4. The giving set connects automatically and the tubing runs from the stand to the site. The catheter is single use.
 
 ## 2.4 Administering an infusion
-1. Hold the fluid bag, blood pack or syringe.
+1. Hold the fluid bag, blood pack or filled syringe. A syringe empties into the line in one go.
 2. At the infusion stand, select [b]Use held drug on the IV line[/b].
 3. Onset is slower and smoother than direct injection. Fluids and blood products are given by this route only.
 > Without a patent line, anything given at the stand is wasted.

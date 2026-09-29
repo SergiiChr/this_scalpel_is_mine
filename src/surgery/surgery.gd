@@ -432,8 +432,15 @@ func _incident(kind: String) -> void:
 func _req_iv(hand: int) -> void:
 	var peer := Net._sender()
 	var tool := tools.tool_in_hand(peer, hand)
+	if tool and tool.def.action == "syringe" and tool.ml > 0.0:
+		# The whole syringe goes into the line.
+		if patient.iv_ready():
+			var given := tools.transfer(tool, null, tool.ml)
+			for drug: String in given:
+				patient.administer(drug, "iv", given[drug])
+		return
 	if tool == null or tool.def.action != "inject" or tool.charges == 0:
-		tell(peer, "You need a syringe, bag or drug in hand.")
+		tell(peer, "You need a filled syringe, bag or drug in hand.")
 		return
 	patient.administer(tool.def.drug, "iv")
 	if tool.charges > 0:

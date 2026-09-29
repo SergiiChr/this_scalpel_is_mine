@@ -48,7 +48,7 @@ static func build(patient: Patient, seed_value: int, on_close: Callable) -> Cont
 	text.add_theme_stylebox_override("normal", paper)
 	var header := "[font_size=36][b]PATIENT CHART[/b][/font_size]%s\n\n" % ("   [color=#8a1c1c][i](corrected copy)[/i][/color]" if Surgery.current.chart_corrected else "")
 	text.text = header + \
-		"[b]Name:[/b] %s %s     [b]Age:[/b] %d\n" % [FIRST_NAMES[rng.randi_range(0, FIRST_NAMES.size() - 1)], LAST_NAMES[rng.randi_range(0, LAST_NAMES.size() - 1)], age] + \
+		"[b]Name:[/b] %s %s     [b]Age:[/b] %d     [b]Weight:[/b] %d kg\n" % [FIRST_NAMES[rng.randi_range(0, FIRST_NAMES.size() - 1)], LAST_NAMES[rng.randi_range(0, LAST_NAMES.size() - 1)], age, patient.weight_kg] + \
 		"[b]Blood type:[/b] %s\n\n" % ("unknown, lab pending" if rng.randf() < 0.3 else blood) + \
 		"[b]Admission:[/b] %s\n\n" % patient.scenario.complaint + \
 		"[b]History and notes:[/b]\n" + "\n".join(shuffled.map(func(l: String) -> String: return "  • " + l))
