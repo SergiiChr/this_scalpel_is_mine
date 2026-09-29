@@ -69,6 +69,14 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
+- **Anatomy** (`anatomy` in `data/patient_sites.json`, `PatientBody.build_anatomy()`): the chest holds the lungs and
+  the heart over the aorta under a rib cage and breastbone, the belly the liver, stomach and bowel over the kidneys and
+  the aorta, under the lower rib margin. Arms, legs and the shoulder have their bones. Bones lie right under the muscle,
+  organs are placed by how far under the muscle their top lies, so they stay inside on any patient. The cavity floor
+  follows the skin. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
+  The heart beats with the pulse (still in asystole, a quiver in V-fib), the lungs swell with each breath.
+- A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.ANCHOR_REACH`), so an
+  H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
 - Screen grading (`post_grime.gdshader`): desaturated sick-green tint, vignette, film grain, chromatic split.
   Sickness wobbles and blurs the view, passing out blacks it out.
   Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
@@ -183,7 +191,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
 - Cardiac arrest: V-fib, asystole, shocks, adrenaline windows, zapping a partner who's touching the patient.
 - Seizures, malignant hyperthermia, diabetes drift, anesthesia wearing off, panicking awake patients.
-- Organs you push aside, targets you free by cutting, sawing, slow pulling or suction.
+- Organs you push or hold aside, targets you free by cutting, sawing, slow pulling or suction. Deep cuts reach bone.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
 - Sterility tracking into the post-op report (infection, amputation).
 - Nurse orders with a cooldown, blood panels with narrow/fast vs full/slow choices.
@@ -253,6 +261,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
+- **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
+  its tick marks toward them. Liquid and plunger follow the ml exactly (clients see it in 2% steps).
+
+### Tourniquet
+
+- Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.limb_ring()`
+  measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off.
 
 ### Approved mechanics (in this build)
 

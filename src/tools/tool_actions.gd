@@ -228,10 +228,11 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				elif touching:
 					Surgery.current.announce("Pour the %s into the iodine dish." % def.name.to_lower(), true)
 		"tourniquet":
-			var limb: bool = str(probe.get("part", "")).begins_with("arm") or str(probe.get("part", "")).begins_with("leg") or zone == "site" and patient.body.is_limb_site()
-			if pressed and lowered and limb:
+			# Pressed onto an arm or a leg, the band goes around the limb there and stays when the hand lets go.
+			var ring := patient.body.limb_ring(tip) if pressed and lowered else {}
+			if not ring.is_empty():
 				patient.apply_tourniquet()
-				Surgery.current.tools.leave_standing(tool)
+				Surgery.current.tools.wrap(tool, ring)
 		"graft":
 			if pressed and lowered and zone == "site" and tool.charges != 0 and patient.graft_at(uv, def):
 				_use_charge(tool)

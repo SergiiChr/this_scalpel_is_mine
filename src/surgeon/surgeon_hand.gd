@@ -58,6 +58,8 @@ var trigger := false
 var level := 0
 var lifted := false
 var attached := false
+## Held up in front of the eyes, turned across the view with its markings toward them (reading a syringe).
+var inspecting := false
 var tremor := Vector3.ZERO
 var speed := 0.0
 ## Remote copies receive the final position already including lift and tremor.
@@ -82,6 +84,9 @@ var _glove_materials: Array[ShaderMaterial] = []
 const COAT_FRAME := Transform3D(Basis(Vector3.FORWARD, Vector3.UP, Vector3.RIGHT), Vector3.ZERO)
 ## Wrist to fingertips along the glove's X.
 const GLOVE_LENGTH := 0.19
+## About how thick a finger is around its bones, and the palm above and below its bone.
+const FINGER_RADIUS := 0.009
+const PALM_HALF_THICKNESS := 0.014
 ## Glove blood gained per second while the held tool is bloodier than the glove.
 const SOAK_RATE := 0.15
 ## Inside the glove's cuff, behind the wrist (glove model space): where a holding hand's forearm ends.
@@ -140,9 +145,20 @@ func effective_position() -> Vector3:
 
 
 func grip_transform() -> Transform3D:
+	if inspecting:
+		return Transform3D(inspect_basis(), global_position)
 	var yaw := (get_parent() as Node3D).global_rotation.y
 	var rot := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt) * Basis(Vector3.FORWARD, twist)
 	return Transform3D(rot, global_position)
+
+
+## A tool held up to look at: its tip across the view toward the other hand's side, and its top (+Y, where the back
+## of the hand is in every grip) turned away from the eyes, so the hand is behind the tool and doesn't hide it.
+func inspect_basis() -> Basis:
+	var eyes := (get_parent() as Surgeon).camera().global_basis.orthonormalized()
+	var along := eyes.x * (1.0 if index == 1 else -1.0)
+	var top := -eyes.z
+	return Basis(top.cross(along), top, along)
 
 
 func tip_offset(tool_length: float) -> Vector3:
@@ -157,6 +173,36 @@ func update_pose(shoulder: Vector3, delta: float) -> void:
 	_pusher.global_position = global_position
 	_solve_arm(shoulder)
 	_animate_fingers(delta)
+	glove_drop = _glove_lowest() - global_position.y
+
+
+## How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon keeps that
+## clear of tables and trays, not only the hand's middle.
+var glove_drop := -0.03
+
+
+func _glove_lowest() -> float:
+	var lowest := global_position.y - 0.03
+	for point: Array in bone_points():
+		lowest = minf(lowest, (point[0] as Vector3).y - float(point[1]))
+	return lowest
+
+
+## Points along the glove's bones as it's posed now (world space), each with how thick the glove is around it:
+## [[position, radius], ...]. Inside the fingers and the palm, so nothing solid should be at them.
+func bone_points() -> Array:
+	var points: Array = []
+	if _glove_rig == null:
+		return points
+	var skeleton := _glove_rig.skeleton
+	for i in skeleton.get_bone_count():
+		var at := skeleton.global_transform * skeleton.get_bone_global_pose(i).origin
+		var children := skeleton.get_bone_children(i)
+		var to := skeleton.global_transform * skeleton.get_bone_global_pose(children[0]).origin if not children.is_empty() else at
+		var radius := PALM_HALF_THICKNESS if skeleton.get_bone_name(i) == "Hand" else FINGER_RADIUS
+		for t: float in [0.0, 0.5, 1.0]:
+			points.append([at.lerp(to, t), radius])
+	return points
 	if blood > 0.0:
 		for mat in _glove_materials:
 			mat.set_shader_parameter("coat_inverse", Projection(COAT_FRAME * _glove.global_transform.affine_inverse()))

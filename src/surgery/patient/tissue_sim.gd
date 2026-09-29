@@ -19,6 +19,8 @@ extends RefCounted
 const RES := 24
 const TENSION := 0.93
 const ANCHOR := 0.02
+## Skin pulled this far (meters) from its spot isn't held there any more, see _substep().
+const ANCHOR_REACH := 0.05
 ## How far cut muscle pulls each edge back from the cut, and how firmly (meters, anchor strength).
 const MUSCLE_RETRACT := 0.015
 const MUSCLE_PULL := 0.05
@@ -27,6 +29,8 @@ const LOOSE_RADIUS := 0.045
 ## How far (uv) a grip drags the skin around it along, and how firmly per solver iteration at its center.
 const GRIP_PATCH := 0.15
 const GRIP_DRAG := 1.0
+## Pulls up to this far (meters) drag the patch fully, twice as far not at all.
+const DRAG_REACH := 0.035
 ## Skin that moved further than this (meters) from where the body model has it is shown simulated.
 const REGION_MOVE := 0.001
 const DAMPING := 0.88
@@ -374,18 +378,26 @@ func _substep() -> void:
 		_free[k] = 1.0 - fixed[k]
 	for key: int in _pins:
 		_free[_pins[key][0]] = 0.0
+	var springs := c_a.size()
 	for iteration in ITERATIONS:
 		for key: int in _pins:
 			var pin: Array = _pins[key]
 			pos[pin[0]] = pin[1]
 			var pull: Vector3 = pin[1] - anchor_target[pin[0]]
+			# The patch is dragged along by translating it, which only looks right for a modest pull. A flap swung
+			# far back is left to the springs, or the translated patch would fight the way it turns.
+			var drag := GRIP_DRAG * clampf(2.0 - pull.length() / DRAG_REACH, 0.0, 1.0)
+			if drag <= 0.0:
+				continue
 			var patch := _patch(pin[0])
 			var around: PackedInt32Array = patch[0]
 			var weights: PackedFloat32Array = patch[1]
 			for n in around.size():
 				var j := around[n]
-				pos[j] += (anchor_target[j] + pull * weights[n] - pos[j]) * GRIP_DRAG * weights[n] * _free[j]
-		for s in c_a.size():
+				pos[j] += (anchor_target[j] + pull * weights[n] - pos[j]) * drag * weights[n] * _free[j]
+		# Sweeping the springs forward then backward keeps corrections from always flowing one way across the grid.
+		for n in springs:
+			var s := n if iteration % 2 == 0 else springs - 1 - n
 			if c_active[s] == 0:
 				continue
 			var a := c_a[s]
@@ -402,7 +414,9 @@ func _substep() -> void:
 			pos[a] += correction * wa
 			pos[b] -= correction * wb
 		for k in pos.size():
-			pos[k] += (anchor_target[k] - pos[k]) * anchor[k] * _free[k]
+			# Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back.
+			var back := anchor_target[k] - pos[k]
+			pos[k] += back * anchor[k] * _free[k] * clampf(1.0 - back.length() / ANCHOR_REACH, 0.0, 1.0)
 	for k in pos.size():
 		moved = maxf(moved, pos[k].distance_squared_to(prev[k]))
 	if tearing:

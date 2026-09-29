@@ -8,7 +8,7 @@ The monitor displays total blood loss rate in ml/s. A rate above 1 ml/s is a sur
 2. [b]Clamping[/b] the vessel with a hemostat. Leave it in place while you work.
 3. [b]Electrocautery[/b] for small bleeding points. Adjacent healthy tissue is coagulated as well.
 4. [b]Closure[/b] of the full length of the wound with sutures or staples.
-5. [b]Tourniquet[/b], limbs only. Near-complete control. Distal ischemia begins after five minutes of application in this facility's protocol.
+5. [b]Tourniquet[/b], limbs only. Press it onto the limb above the wound ([b]Use tool[/b]) and it is wrapped round and tightened. Near-complete control. Distal ischemia begins after five minutes of application in this facility's protocol. Take it off by picking it up.
 
 ## 5.3 Pooled blood
 Blood on the skin obscures the wound; blood in the cavity obscures the target. Aspirate with suction or absorb with gauze before proceeding.

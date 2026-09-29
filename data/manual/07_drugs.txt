@@ -10,7 +10,7 @@ Drugs come in labelled vials; the label gives the strength per ml. Syringes are 
 2. Dose in mg = weight in kg × dose per kg. Volume in ml = dose ÷ strength of the vial.
 3. Lower the needle into the vial and draw with the plunger up to the right mark.
 4. Lower the needle into the patient and push the plunger. The dose counts once the needle comes out.
-A syringe that has held one drug keeps what is left in it; a second drug drawn into it mixes. [b]Remember what is in each syringe.[/b] Glass syringes do not survive the floor.
+A syringe that has held one drug keeps what is left in it; a second drug drawn into it mixes. [b]Remember what is in each syringe.[/b] Glass syringes do not survive the floor. To read the volume, hold the syringe up to the eye ([b]Inspect[/b]): the barrel is marked in tenths of its capacity, the long marks at the half and the full.
 > Roughly right is right. Half a dose barely works, twice the dose is twice the trouble.
 
 ## 7.3 Formulary

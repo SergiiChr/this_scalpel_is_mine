@@ -79,6 +79,12 @@ For each scenario, with no script errors:
 | S22 | The patient has a plausible weight; a syringe draws from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
 | S23 | Wiping iodine with a soaked pad never takes more than 3 ms of one frame (no stutter) |
 | S24 | Skin won't close over a cut through open muscle, a tight stitch tears there, and after the muscle is sewn from inside the skin closes |
+| S25 | Chest and belly: an H-shaped incision through the muscle, both flaps folded back without tearing, leaves no skin, fat or muscle over the top layer of organs (lungs and heart; liver, stomach and bowel) or the ribs; there are organs under the top layer |
+| S26 | Forceps in the open chest or belly take hold of the top organ over a lower one; moving it aside shows the lower one |
+| S27 | Chest, belly, arms, legs and shoulder: bones lie right under the muscle inside the cavity (ribs and breastbone, the lower rib margin, limb bones); under a deep cut the bone is the first thing inside, and the blade grates on it |
+| S28 | The heart beats with the pulse, the lungs swell with each breath, and the heart lies still in asystole |
+| S29 | Holding Inspect brings a syringe up in front of the eyes, across the view, tick marks toward them; the liquid and the plunger show exactly how many ml it holds |
+| S30 | A tourniquet pressed onto a thigh wraps around it as a snug band (not lying on top), leaves the hand, and taking it off loosens it |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -108,3 +114,4 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from the side and from the eyes (`tests/grip_gallery.tscn`) |
+| V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |

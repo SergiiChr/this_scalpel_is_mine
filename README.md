@@ -95,6 +95,7 @@ or hold a tool). Everything can be rebound in **Settings**.
 | Zoom, three steps | Shift |
 | Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
 | Lift hand over hands and tall tools; pull slowly on what it holds | Hold Alt |
+| Hold the tool up to look at it (read a syringe) | Hold X |
 | Crouch (reach the floor, step over the IV line) | Hold Ctrl |
 | Hold breath (steady hands) | Hold Space |
 | Tilt / rotate tool | R, T / C, V |

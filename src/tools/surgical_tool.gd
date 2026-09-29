@@ -8,6 +8,10 @@ enum State { FREE, HELD, BELT, STANDING, INSIDE, CONSUMED, CARRIED }
 
 const TOOL_LAYER := 8
 const IODINE_COLOR := Color(0.55, 0.3, 0.12)
+## Smallest size (meters) a tool counts as across for how hard it is to turn, see setup().
+const MIN_TURNING_SIZE := 0.04
+## How thick a tourniquet's band is where it wraps a limb.
+const BAND_THICKNESS := 0.012
 
 var uid: int
 var def: ToolDef
@@ -47,6 +51,11 @@ var paint_dt := 0.0
 var paint_uv := Vector2(-1, -1)
 var reported: Dictionary = {}
 
+## The model's box in the tool's own space (the grip at the origin).
+var bounds := AABB()
+## The band around a limb while this tool is wrapped around one (a tourniquet), see wrap_around().
+var band: MeshInstance3D = null
+
 var _model: Node3D
 var _animator := ToolAnimator.new()
 ## This tool's own copies of its toon materials, made the first time it needs to look different from the rest.
@@ -67,13 +76,18 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	max_contacts_reported = 2
 	_model = ToolModel.build(def, self)
 	# The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.
-	var bounds := _model_bounds()
+	bounds = _model_bounds()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = bounds.size.max(Vector3.ONE * 0.006)
 	shape.shape = box
 	shape.position = bounds.get_center()
 	add_child(shape)
+	# A thin blade has next to no inertia about its length, so contacts would set it spinning and it would never
+	# settle, rocking half into the tray. Treat every tool as at least a few centimeters thick for turning.
+	var turning := bounds.size.max(Vector3.ONE * MIN_TURNING_SIZE)
+	inertia = mass / 12.0 * Vector3(turning.y * turning.y + turning.z * turning.z, turning.x * turning.x + turning.z * turning.z, turning.x * turning.x + turning.y * turning.y)
+	angular_damp = 1.0
 	_animator.setup(_model)
 	if def.action == "vial":
 		ml = def.volume
@@ -100,14 +114,14 @@ func _process(delta: float) -> void:
 
 ## The model's bounding box in the tool's own space. Falls back to a thin box along the tool if there's no model.
 func _model_bounds() -> AABB:
-	var bounds := AABB(Vector3(-def.width * 0.5, -def.width * 0.3, -def.length), Vector3(def.width, def.width * 0.6, def.length))
+	var all := AABB(Vector3(-def.width * 0.5, -def.width * 0.3, -def.length), Vector3(def.width, def.width * 0.6, def.length))
 	var first := true
 	for node in _model.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
 		var box := (global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
-		bounds = box if first else bounds.merge(box)
+		all = box if first else all.merge(box)
 		first = false
-	return bounds
+	return all
 
 
 func tip_position() -> Vector3:
@@ -188,10 +202,41 @@ func _materials() -> Array[ShaderMaterial]:
 	return _own_materials
 
 
+## Wrapped around a limb (a tourniquet): the tool's own model gives way to a band around it, snug on the skin.
+## The tool itself sits on top of the band, where a hand reaches for it to take it off again.
+func wrap_around(center: Vector3, axis: Vector3, radius: float) -> void:
+	unwrap()
+	band = MeshInstance3D.new()
+	band.name = "Band"
+	var torus := TorusMesh.new()
+	torus.inner_radius = radius
+	torus.outer_radius = radius + BAND_THICKNESS
+	torus.rings = 32
+	band.mesh = torus
+	band.material_override = Materials.toon(def.color, 0.2)
+	band.top_level = true
+	add_child(band)
+	# A torus turns about its Y axis.
+	var side := axis.cross(Vector3.UP).normalized()
+	band.global_transform = Transform3D(Basis(side, axis, side.cross(axis)), center)
+	var up := (Vector3.UP - axis * axis.dot(Vector3.UP)).normalized()
+	global_transform = Transform3D(Basis(side, up, side.cross(up)) if side.length_squared() > 0.5 else global_basis, center + up * (radius + BAND_THICKNESS))
+	_model.visible = false
+
+
+func unwrap() -> void:
+	if band:
+		band.queue_free()
+		band = null
+	_model.visible = true
+
+
 func set_state(new_state: State, new_holder: int, new_slot: int) -> void:
 	state = new_state
 	holder = new_holder
 	slot = new_slot
+	if state != State.STANDING:
+		unwrap()
 	var physical := state == State.FREE
 	visible = state != State.CONSUMED
 	collision_layer = TOOL_LAYER if state in [State.FREE, State.STANDING, State.INSIDE] else 0

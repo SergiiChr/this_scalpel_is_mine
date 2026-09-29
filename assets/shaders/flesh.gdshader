@@ -39,13 +39,16 @@ void fragment() {
 	vec3 c = mix(albedo.rgb, albedo.rgb * 0.5, veins * 0.5);
 	c = mix(c, vec3(0.18, 0.02, 0.08), clamp(damage, 0.0, 1.0));
 	ALBEDO = c;
+	// A little of the tissue's own color even in shadow deep in a cavity, the way light scatters through it.
+	EMISSION = c * 0.12;
 	ROUGHNESS = 1.0 - wetness;
 }
 
 void light() {
-	float ndl = max(dot(NORMAL, LIGHT), 0.0);
+	// Wrapped diffuse: wet tissue scatters light, so organs deep in a cavity still read on the sides the lamp misses.
+	float ndl = clamp((dot(NORMAL, LIGHT) + 0.6) / 1.6, 0.0, 1.0);
 	float lit = ndl * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.96, 0.98, dot(NORMAL, halfway)) * ATTENUATION * wetness / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.96, 0.98, dot(NORMAL, halfway)) * ATTENUATION * wetness * 0.5 / PI;
 }

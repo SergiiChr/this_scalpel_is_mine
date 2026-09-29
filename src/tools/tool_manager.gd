@@ -22,9 +22,12 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 			tray_ids.remove_at(tray_ids.find(at_station))
 		_create(_next_uid, at_station, entry[1])
 	var spot := 0
+	var on_tray: Array[SurgicalTool] = []
 	for id in tray_ids:
-		_create(_next_uid, id, Transform3D(Basis.IDENTITY, tray_spots[spot % tray_spots.size()]))
+		on_tray.append(_create(_next_uid, id, Transform3D(Basis.IDENTITY, tray_spots[spot % tray_spots.size()])))
 		spot += 1
+	if Surgery.current and Surgery.current.room:
+		_lay_out(on_tray, Surgery.current.room)
 	var peers := personal.keys()
 	peers.sort()
 	for peer: int in peers:
@@ -37,6 +40,32 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 				belt_slot += 1
 			else:
 				spot += 1
+
+
+## Lays tools out side by side on the tray, in columns, each resting right on it: nothing overlaps, so nothing gets
+## shoved into the tray or its neighbour when the physics starts. Longest first; what doesn't fit goes on top.
+func _lay_out(on_tray: Array[SurgicalTool], room: Room) -> void:
+	const GAP := 0.012
+	var area := room.tray_area()
+	var sorted := on_tray.duplicate()
+	sorted.sort_custom(func(a: SurgicalTool, b: SurgicalTool) -> bool: return a.bounds.size.z > b.bounds.size.z)
+	var x := area.position.x
+	var z := area.position.y
+	var column := 0.0
+	var layer := 0.0
+	for tool: SurgicalTool in sorted:
+		var size := tool.bounds.size
+		if z + size.z > area.end.y:
+			x += column + GAP
+			z = area.position.y
+			column = 0.0
+		if x + size.x > area.end.x:
+			x = area.position.x
+			layer += 0.03
+		var at := Vector3(x - tool.bounds.position.x, room.tray_top() + layer - tool.bounds.position.y + 0.001, z - tool.bounds.position.z)
+		tool.global_transform = Transform3D(Basis.IDENTITY, at)
+		z += size.z + GAP
+		column = maxf(column, size.x)
 
 
 func tool_in_hand(peer: int, hand: int) -> SurgicalTool:
@@ -140,6 +169,8 @@ func _req_grab(uid: int, hand: int) -> void:
 	_set_state.rpc(uid, SurgicalTool.State.HELD, peer, hand, tool.global_transform)
 	if was_standing and not tool.grip_info.is_empty():
 		Surgery.current.set_attached(peer, hand, true)
+	if was_standing and tool.def.action == "tourniquet":
+		Surgery.current.patient.remove_tourniquet()
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -241,6 +272,19 @@ func spawn(id: String, at: Vector3) -> void:
 func leave_standing(tool: SurgicalTool) -> void:
 	Surgery.current.set_attached(tool.holder, tool.slot, false)
 	_set_state.rpc(tool.uid, SurgicalTool.State.STANDING, tool.holder, -1, tool.global_transform)
+
+
+## Host: the tool leaves the hand and wraps around a limb (a tourniquet), see PatientBody.limb_ring().
+func wrap(tool: SurgicalTool, ring: Dictionary) -> void:
+	leave_standing(tool)
+	_wrap.rpc(tool.uid, ring.center, ring.axis, ring.radius)
+
+
+@rpc("authority", "call_local", "reliable")
+func _wrap(uid: int, center: Vector3, axis: Vector3, radius: float) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.wrap_around(center, axis, radius)
 
 
 func carry(item: SurgicalTool, by: SurgicalTool) -> void:

@@ -11,6 +11,7 @@ var body: PatientBody
 var _rig: BoneRig
 var _parts: Dictionary = {}
 var _breath_phase := 0.0
+var _beat_phase := 0.0
 var _talk_left := 0.0
 var _flinch := 0.0
 var _jolt := 0.0
@@ -52,6 +53,8 @@ func animate(vitals: Vitals, alive: bool, delta: float) -> void:
 	for held: String in ["ThighL", "ThighR", "Neck", "UpperArmL", "UpperArmR"]:
 		_rig.hold(held, rise)
 	body.set_breath_offset(TORSO_TOP * breath)
+	body.breath = sin(_breath_phase) * 0.5 + 0.5 if breathing else body.breath
+	body.heartbeat = _heartbeat(vitals, alive, delta)
 
 	var awake := alive and vitals.is_awake()
 	for eye in ["EyeL", "EyeR"]:
@@ -86,6 +89,16 @@ func animate(vitals: Vitals, alive: bool, delta: float) -> void:
 		_rig.rotate("Hand" + side, Basis.from_euler(_jitter(amount * 1.5, t, 4.0 + mirror)))
 		_rig.rotate("Thigh" + side, Basis.from_euler(_jitter(amount * 0.4, t, 5.0 + mirror)))
 		_rig.rotate("Shin" + side, Basis.from_euler(_jitter(amount * 0.4, t, 6.0 + mirror)))
+
+
+## Heart contraction 0..1: a quick squeeze once per beat in sinus rhythm, a feeble quiver in V-fib, still in asystole.
+func _heartbeat(vitals: Vitals, alive: bool, delta: float) -> float:
+	if not alive or vitals.rhythm == Vitals.Rhythm.ASYSTOLE:
+		return 0.0
+	if vitals.rhythm == Vitals.Rhythm.VFIB:
+		return randf() * 0.15
+	_beat_phase = fmod(_beat_phase + delta * vitals.heart_rate / 60.0, 1.0)
+	return pow(maxf(sin(_beat_phase * TAU), 0.0), 3.0)
 
 
 func _set_visible(part: String, value: bool) -> void:

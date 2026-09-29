@@ -132,7 +132,15 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 		if target.covered:
 			body.add_organ(target.uv + Vector2(0.03, -0.02), target.depth - 0.03, 0.04, Color(0.6, 0.35, 0.3))
 	_initial_suction = maxf(targets.filter(func(t: CavityTarget) -> bool: return t.is_suction_target()).reduce(func(acc: float, t: CavityTarget) -> float: return acc + t.amount, 0.0), 1.0)
-	if body.cavity_depth() > 0.1:
+	if Db.patient_sites.get(scenario.site, {}).has("anatomy"):
+		var avoid: Array[Vector2] = []
+		var skip := PackedStringArray()
+		for target in targets:
+			if not target.covered:
+				avoid.append(target.rest_uv)
+			skip.append(target.kind)
+		body.build_anatomy(avoid, skip)
+	elif body.cavity_depth() > 0.1:
 		for i in 3:
 			body.add_organ(Vector2(rng.randf_range(0.2, 0.8), rng.randf_range(0.2, 0.8)), 0.06, rng.randf_range(0.03, 0.045), Color(0.55, 0.2, 0.2).lerp(Color(0.7, 0.5, 0.4), rng.randf()))
 	if scenario.dirty_start:
@@ -617,6 +625,16 @@ func cut(stroke_key: int, a: Vector2, b: Vector2, depth: float, sharpness: float
 func cut_cavity(tip_uv: Vector2, depth_m: float, power: float, dirty: bool, dt: float) -> void:
 	if dirty:
 		_contaminate()
+	# Down to the bone: the blade grates on it instead of nicking what's below.
+	var bone := body.bone_at(body.uv_to_world(tip_uv, depth_m))
+	if bone:
+		add_flag("bone_scraped", dt)
+		if not flags.has("bone_notice"):
+			add_flag("bone_notice")
+			Surgery.current.announce("The blade grates on %s." % {"rib": "a rib", "sternum": "the breastbone"}.get(bone, "bone"))
+		if rng.randf() < dt * 2.0:
+			Surgery.current.sound("saw_bone", body.uv_to_world(tip_uv, depth_m))
+		return
 	for target in targets:
 		if not target.extracted and target.anchor > 0.0 and target.uv.distance_to(tip_uv) < 0.06:
 			target.anchor = maxf(target.anchor - power * dt * 0.5, 0.0)
@@ -835,6 +853,10 @@ func apply_tourniquet() -> void:
 	add_flag("tourniquet")
 
 
+func remove_tourniquet() -> void:
+	tourniquet_on = false
+
+
 ## A catheter went into the arm at `at` (world space): tubing now runs from the stand to there.
 func set_iv(at: Vector3) -> void:
 	if not iv_set:
@@ -911,6 +933,11 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 			if wound.is_internal() and wound.points[0].distance_to(uv) < 0.05:
 				wound.clamped = 0.9
 				return {"type": "vessel", "wound": wound.id}
+		# An organ in the way can be taken hold of and moved aside, to get at what's under it.
+		var organ := body.organ_at(body.uv_to_world(uv, depth_m), 0.02)
+		if organ >= 0:
+			body.hold_organ(organ, body.organs[organ].position)
+			return {"type": "organ", "organ": organ, "offset": body.organs[organ].position - body.site.to_local(body.uv_to_world(uv, depth_m))}
 	var wound := _nearest_wound(uv, 0.03, false)
 	if wound and zone == "cavity" and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
 		wound.clamped = 0.85
@@ -948,6 +975,8 @@ func update_grip(tool_uid: int, grip_info: Dictionary, tip: Vector3, power: floa
 			targets[grip_info.target].global_position = tip
 		"skin":
 			body.tissue.move_grip(tool_uid, body.site.to_local(tip))
+		"organ":
+			body.hold_organ(grip_info.organ, body.site.to_local(tip) + (grip_info.offset as Vector3))
 	return grip_info
 
 
@@ -956,6 +985,8 @@ func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) ->
 	match grip_info.get("type", "none"):
 		"target", "carry":
 			targets[grip_info.target].gripped_by = 0
+		"organ":
+			body.release_organ(grip_info.organ)
 		"vessel":
 			if not self_retaining:
 				_wound(grip_info.wound).clamped = 0.0
@@ -968,7 +999,7 @@ func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) ->
 func _covered(target: CavityTarget) -> bool:
 	for organ in body.organs:
 		var organ_uv := Vector2(organ.position.x / body.site_size.x + 0.5, organ.position.z / body.site_size.y + 0.5)
-		if organ_uv.distance_to(target.uv) < 0.07 and organ.position.y > -target.depth:
+		if organ_uv.distance_to(target.uv) < 0.07 and organ.position.y > body.surface_height(target.uv) - target.depth:
 			return true
 	return false
 

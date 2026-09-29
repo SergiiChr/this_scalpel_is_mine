@@ -139,7 +139,8 @@ def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
 
 
 def _syringe(m: Model, length: float, radius: float) -> None:
-    """Glass barrel with a tick every tenth of its volume. Built empty: the game pulls the plunger back as it fills."""
+    """Glass barrel with a line all the way round every tenth of its volume, heavier at the half and the full, so it
+    reads from any side. Built empty: the game pulls the plunger back as it fills."""
     barrel_len = length * 0.62
     front = -barrel_len + 0.002
     travel = barrel_len * 0.85
@@ -148,9 +149,9 @@ def _syringe(m: Model, length: float, radius: float) -> None:
     m.add("Level", rod(radius * 0.9, front, front + travel), "drug", (0.0, 0.0, front))
     ticks = []
     for i in range(1, 11):
-        half = radius * (0.9 if i % 5 == 0 else 0.5)
+        half = 0.0006 if i % 5 == 0 else 0.0003
         z = front + travel * i / 10
-        ticks.append(superellipsoid((half, 0.0004, 0.0005), 0.3, (0.0, radius + 0.0002, z)))
+        ticks.append(rod(radius + 0.0003, z - half, z + half, sections=20))
     m.add("Marks", merge(*ticks), "marks")
     m.add("Flange", superellipsoid((radius * 2.0 + 0.012, 0.003, 0.008), 0.4, (0.0, 0.0, 0.0)), "clear_plastic")
     stopper = rod(radius * 0.95, front + 0.004, front)
