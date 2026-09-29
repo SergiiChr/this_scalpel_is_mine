@@ -3,13 +3,13 @@ extends RefCounted
 ## What each tool action does to the patient. Host only, runs every physics frame for held and standing tools.
 ## Tools share actions: a lighter and a cautery pen both "cauterize", with different ToolDef numbers.
 
-## How each action is controlled. Every tool is lowered onto its spot with Lower tool (LMB) first.
+## How each action is controlled. Use tool (LMB, held) lowers every tool onto its spot and presses its trigger.
 ## Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
 const LEVEL_NAMES: Dictionary = {
 	"cut": "Depth", "suture": "Tension", "cauterize": "Heat", "saw": "Speed", "suction": "Suction",
 	"swab": "Pressure", "inject": "Plunger", "syringe": "Plunger", "pour": "Pour",
 }
-## Actions listed here do their thing on Tool action (RMB) instead, named by the value.
+## Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
 const TRIGGER_NAMES: Dictionary = {
 	"clamp": "Pinch / let go", "smash": "Strike", "tourniquet": "Tighten", "graft": "Place graft",
 	"shock": "Charge (hold), let go to shock",
@@ -101,7 +101,8 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			var pad := tools.carried_by(tool)
 			var loose_pad := tools.nearest_of("cotton_pad", tip, PAD_REACH) if pressed and lowered and def.id in PAD_HOLDERS else null
 			if pad:
-				if pressed:
+				# Use lowers the pad to wipe or dip it; pressed in the air, away from the dish, it lets the pad go.
+				if pressed and not touching and tools.nearest_of("iodine_dish", tip, DISH_REACH) == null:
 					tools.drop_carried(tool)
 				elif lowered:
 					_wipe(pad, zone, uv, tip, patient, dt, false)

@@ -198,7 +198,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
-  floor and walks slowly. The wheel zooms (hand motion scales with it for precision).
+  floor and walks slowly. Zoom steps through three levels (hand motion scales with it for precision).
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool to keep the wrist in line with the forearm.
@@ -214,10 +214,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Look by default**: the mouse looks around like a regular first person game. Holding a hand's key (Q left, E right)
   moves that hand instead and makes it the active one. Hands turn and walk with the body unless they hold onto
   something (a gripped clamp or retractor), then they stay put.
-- **Separate controls per tool** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): LMB lowers the active tool onto its spot.
-  Tools with a range take an effort level 0-3 from the wheel while lowered (cut depth, stitch tension, heat, saw speed,
-  suction, gauze pressure, syringe plunger), 0 does nothing. Single actions are on RMB: clamps pinch and let go,
-  the mallet strikes, the tourniquet tightens, a graft goes on, the defibrillator charges while held and shocks on release.
+- **One button per job** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
+  active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
+  the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
+  a cotton pad wipe or dip it, and let it go when used in the air away from the dish.
+  Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
+  suction, gauze pressure, syringe plunger), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
   A syringe draws in a vial and pushes anywhere else (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.

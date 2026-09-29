@@ -215,30 +215,55 @@ func _effect_checks(surgery: Surgery) -> void:
 	await _control_checks(surgery)
 
 
-## The wheel sets a lowered tool's effort level, and the on-screen controls follow a held hand key.
+## Controls: RMB picks up and puts down, LMB lowers and works the tool, the wheel sets its level, Shift steps the
+## zoom through three levels, and the controls shown follow a held hand key.
 func _control_checks(surgery: Surgery) -> void:
 	var me := surgery.local_surgeon
 	var blades: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and t.def.action == "cut" and me.blocked_reason(t.def).is_empty())
 	if blades.is_empty():
 		return
-	surgery.tools._req_grab((blades[0] as SurgicalTool).uid, me.active)
-	await _frames(2)
+	var blade: SurgicalTool = blades[0]
 	var hand := me.hands[me.active]
+	me.hovered = null
+	hand.local_target = me.to_local(blade.global_position - hand.tip_offset(0.05))
+	hand.target = me.to_global(hand.local_target)
+	hand.global_position = hand.target
+	me._unhandled_input(_action("grab", true))
+	await _frames(2)
+	if me.held_tool(me.active) != blade:
+		print("FAIL: RMB (grab) didn't pick up the tool under the hand")
+		return
 	var looking := Hud.control_lines(me)
-	hand.lowered = true
-	var wheel := InputEventAction.new()
-	wheel.action = "zoom_in"
-	wheel.pressed = true
-	me._unhandled_input(wheel)
+	me._unhandled_input(_action("level_up", true))
 	if hand.level != 1:
-		print("FAIL: the wheel didn't raise a lowered blade's depth: ", hand.level)
-	hand.lowered = false
+		print("FAIL: the wheel didn't raise a blade's depth: ", hand.level)
+	me._unhandled_input(_action("use_tool", true))
+	if not (hand.lowered and hand.trigger):
+		print("FAIL: LMB (use) didn't lower and work the tool")
+	me._unhandled_input(_action("use_tool", false))
+	if hand.lowered or hand.trigger:
+		print("FAIL: letting go of LMB left the tool working")
+	var zooms: Array[int] = []
+	for i in Surgeon.ZOOM_FOV.size():
+		me._unhandled_input(_action("zoom", true))
+		zooms.append(me.zoom)
+	if Surgeon.ZOOM_FOV.size() != 3 or zooms != [1, 2, 0]:
+		print("FAIL: Shift doesn't step through three zoom levels: ", zooms)
 	Input.action_press("move_right_hand")
 	if Hud.control_lines(me) == looking:
 		print("FAIL: the controls shown didn't change while holding a hand key")
 	Input.action_release("move_right_hand")
-	surgery.tools._req_release(me.active, Vector3.ZERO)
+	me._unhandled_input(_action("grab", true))
 	await _frames(2)
+	if me.held_tool(me.active) != null:
+		print("FAIL: RMB (grab) didn't put the tool down")
+
+
+static func _action(action: String, pressed: bool) -> InputEventAction:
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = pressed
+	return event
 
 
 func _frames(count: int) -> void:

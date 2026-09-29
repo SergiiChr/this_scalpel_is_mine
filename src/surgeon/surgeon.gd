@@ -4,8 +4,9 @@ extends CharacterBody3D
 ## Everyone else (including the host) sees a puppet that follows the stream.
 ##
 ## Controls: the mouse looks around, holding a hand's key (Q/E) moves that hand instead and makes it the active one.
-## Lower tool (LMB) rests the active hand's tool on its spot, Tool action (RMB) and the wheel work it
-## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). WASD moves the body.
+## Use tool (LMB, held) rests the active hand's tool on its spot and works it, the wheel sets its effort level
+## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). Grab (RMB) picks up and puts down. Zoom (Shift) steps through
+## three zoom levels. WASD moves the body.
 ## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
 ## Hands have no height control: the tool tip rests just above whatever is under it (skin, tray, organs, a target
@@ -28,8 +29,8 @@ const CARRY_HEIGHT := 1.05
 ## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
 const CROUCH_DROP := 0.75
 const CROUCH_SPEED := 0.35
-## Zoom steps on the mouse wheel: camera field of view, widest first. Hand motion scales with it for precision.
-const ZOOM_FOV: Array[float] = [70.0, 55.0, 42.0, 32.0, 24.0]
+## Zoom steps, cycled by the zoom key: camera field of view, widest first. Hand motion scales with it for precision.
+const ZOOM_FOV: Array[float] = [70.0, 45.0, 28.0]
 const SYNC_INTERVAL := 1.0 / 30.0
 const BUMP_DISTANCE := 0.07
 const SWITCH_DELAY := 0.25
@@ -261,20 +262,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		var index := 0 if event.is_action_pressed("move_left_hand") else 1
 		if index != active:
 			_switch_hand()
-	elif event.is_action_pressed("zoom_in") or event.is_action_pressed("zoom_out"):
-		var step := 1 if event.is_action_pressed("zoom_in") else -1
-		# While a tool is lowered the wheel sets its effort level (cut depth, stitch tension, plunger) instead of zooming.
+	elif event.is_action_pressed("level_up") or event.is_action_pressed("level_down"):
 		if uses_level(active):
-			hand.level = clampi(hand.level + step, 0, 3)
-		else:
-			zoom = clampi(zoom + step, 0, ZOOM_FOV.size() - 1)
-	elif event.is_action_pressed("lower_tool"):
+			hand.level = clampi(hand.level + (1 if event.is_action_pressed("level_up") else -1), 0, 3)
+	elif event.is_action_pressed("zoom"):
+		zoom = (zoom + 1) % ZOOM_FOV.size()
+	elif event.is_action_pressed("use_tool"):
+		# One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
 		hand.lowered = true
-	elif event.is_action_released("lower_tool"):
-		hand.lowered = false
-	elif event.is_action_pressed("tool_action"):
 		hand.trigger = true
-	elif event.is_action_released("tool_action"):
+	elif event.is_action_released("use_tool"):
+		hand.lowered = false
 		hand.trigger = false
 	elif event.is_action_pressed("grab"):
 		_grab_or_release()
@@ -295,10 +293,11 @@ func moving_hand() -> int:
 	return 1 if Input.is_action_pressed("move_right_hand") else -1
 
 
-## The wheel sets this hand's effort level: its tool is lowered and takes one (ToolActions.LEVEL_NAMES).
+## The wheel sets this hand's effort level: its tool takes one (ToolActions.LEVEL_NAMES). It can be set before
+## lowering the tool, so a blade goes in at the depth picked.
 func uses_level(hand: int) -> bool:
 	var tool := held_tool(hand)
-	return hands[hand].lowered and tool != null and ToolActions.LEVEL_NAMES.has(tool.def.action)
+	return tool != null and ToolActions.LEVEL_NAMES.has(tool.def.action)
 
 
 func _physics_process(delta: float) -> void:

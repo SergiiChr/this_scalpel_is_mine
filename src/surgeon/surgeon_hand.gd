@@ -50,9 +50,9 @@ var target := Vector3.ZERO
 var local_target := Vector3.ZERO
 var tilt := -1.1
 var twist := 0.0
-## Lower tool held: the tool rests on its spot instead of hovering over it.
+## Use tool held: the tool rests on its spot instead of hovering over it.
 var lowered := false
-## Tool action held.
+## Use tool held, for tools with a single action (ToolActions.TRIGGER_NAMES): on press, while held, on release.
 var trigger := false
 ## Effort level 0..3 from the wheel (cut depth, stitch tension, heat, plunger...), see ToolActions.LEVEL_NAMES.
 var level := 0

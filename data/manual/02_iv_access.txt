@@ -10,7 +10,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 ## 2.3 Cannulation
 1. Choose a site on the forearm or the back of the hand, away from the operative field. Prefer the arm on the side of the infusion stand, so the tubing does not cross the walkway.
 2. Take the catheter in the working hand.
-3. Rest the tip on the skin over the vein and lower it ([b]Lower tool[/b]) until the catheter seats. Hold it steady; a moving hand misses the vein.
+3. Rest the tip on the skin over the vein and lower it ([b]Use tool[/b]) until the catheter seats. Hold it steady; a moving hand misses the vein.
 4. The giving set connects automatically and the tubing runs from the stand to the site. The catheter is single use.
 
 ## 2.4 Administering an infusion
