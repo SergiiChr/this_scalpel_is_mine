@@ -196,10 +196,21 @@ func _effect_checks(surgery: Surgery) -> void:
 		surgery.tools.add_blood(tool, 0.6)
 		if tool.blood < 0.5:
 			print("FAIL: working in blood didn't bloody the tool: ", tool.blood)
+		await _frames(30)
+		if me.hands[1].blood <= 0.0:
+			print("FAIL: a bloody tool didn't bloody the glove holding it")
 		surgery.tools._req_wash(1)
 		if tool.blood > 0.0:
 			print("FAIL: washing didn't take the blood off")
 		surgery.tools._req_release(1, Vector3.ZERO)
+		surgery.tools._req_wash(1)
+		await _frames(2)
+		if me.hands[1].blood > 0.0:
+			print("FAIL: washing empty hands didn't clean the glove")
+	surgery.patient.body.blood.splashed.emit(1.0)
+	await _frames(2)
+	if surgery.hud._lens_blood <= 0.0:
+		print("FAIL: blood splashed on the view didn't show")
 	await _control_checks(surgery)
 
 

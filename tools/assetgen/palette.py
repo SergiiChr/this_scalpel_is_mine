@@ -26,7 +26,7 @@ PALETTE: dict[str, Swatch] = {
     "lips": Swatch((0.62, 0.38, 0.36), 0.5),
     "eye": Swatch((0.92, 0.9, 0.86), 0.2),
     "iris": Swatch((0.15, 0.12, 0.1), 0.2),
-    "gown": Swatch((0.42, 0.52, 0.5), 0.9),
+    "gown": Swatch((0.4, 0.55, 0.5), 0.9),
     "glove": Swatch((0.56, 0.7, 0.82), 0.45),
     "mask": Swatch((0.55, 0.72, 0.78), 0.9),
     "steel": Swatch((0.78, 0.8, 0.83), 0.25, 1.0),

@@ -62,6 +62,8 @@ var tremor := Vector3.ZERO
 var speed := 0.0
 ## Remote copies receive the final position already including lift and tremor.
 var puppet := false
+## How bloody the glove is (0..1). Every peer soaks it from the held tool's synced blood, so it matches everywhere.
+var blood := 0.0
 
 var _lift := 0.0
 ## Recent [msec, position] samples. Speed over a short window ignores tremor and network jitter.
@@ -75,6 +77,13 @@ var _curl := 0.2
 var _posed: Array = []
 var _glove: Node3D
 var _glove_rig: BoneRig
+var _glove_materials: Array[ShaderMaterial] = []
+## The toon shader's coat runs back from a tip at -Z, the glove's fingers point along +X.
+const COAT_FRAME := Transform3D(Basis(Vector3.FORWARD, Vector3.UP, Vector3.RIGHT), Vector3.ZERO)
+## Wrist to fingertips along the glove's X.
+const GLOVE_LENGTH := 0.19
+## Glove blood gained per second while the held tool is bloodier than the glove.
+const SOAK_RATE := 0.15
 ## Inside the glove's cuff, behind the wrist (glove model space): where a holding hand's forearm ends.
 const CUFF_POINT := Vector3(-0.06, 0.0, 0.0)
 ## Most a held tool's angle in the fingers gives way to keep the wrist straight (radians).
@@ -88,11 +97,14 @@ var _pusher: AnimatableBody3D
 var _forearm_start := 0.0
 
 
-func build(hand_index: int, scrubs: Color) -> void:
+func build(hand_index: int, scrubs: ShaderMaterial) -> void:
 	index = hand_index
 	name = "LeftHand" if index == 0 else "RightHand"
-	var sleeve := {"tint": Materials.toon(scrubs, 0.35)}
+	var sleeve := {"tint": scrubs}
 	_glove = ModelSlot.instantiate("surgeon", "glove", self)
+	_glove_materials = ModelSlot.own_materials(_glove)
+	for mat in _glove_materials:
+		mat.set_shader_parameter("coat_length", GLOVE_LENGTH)
 	# The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
 	# Empty, it follows the forearm (see _place_glove()). Holding a tool, it sits on the tool by its grip (GRIPS).
 	_glove.top_level = true
@@ -145,6 +157,22 @@ func update_pose(shoulder: Vector3, delta: float) -> void:
 	_pusher.global_position = global_position
 	_solve_arm(shoulder)
 	_animate_fingers(delta)
+	if blood > 0.0:
+		for mat in _glove_materials:
+			mat.set_shader_parameter("coat_inverse", Projection(COAT_FRAME * _glove.global_transform.affine_inverse()))
+
+
+## Blood works its way from a bloody tool onto the fingers, then the palm. It never drips off on its own.
+func soak(tool_blood: float, delta: float) -> void:
+	if tool_blood * 0.8 > blood:
+		set_blood(minf(blood + SOAK_RATE * delta, tool_blood * 0.8))
+
+
+func set_blood(amount: float) -> void:
+	blood = amount
+	for mat in _glove_materials:
+		mat.set_shader_parameter("coat", amount)
+		mat.set_shader_parameter("coat_reach", GLOVE_LENGTH * (0.3 + amount))
 
 
 func _track_speed() -> void:

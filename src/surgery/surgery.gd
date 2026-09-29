@@ -486,6 +486,7 @@ func order_lab(kind: String) -> void:
 
 func change_gloves(surgeon: Surgeon) -> void:
 	surgeon.status.sweat = 0.0
+	surgeon.clean_gloves.rpc()
 	hud.toast("Fresh gloves.")
 
 

@@ -154,15 +154,9 @@ func set_highlight(on: bool) -> void:
 ## Toon materials are shared between tools, so the first per-tool change swaps in copies of its own.
 func _materials() -> Array[ShaderMaterial]:
 	if _own_materials.is_empty():
-		for node in _model.find_children("*", "MeshInstance3D", true, false):
-			var mesh := node as MeshInstance3D
-			for i in mesh.get_surface_override_material_count():
-				var mat := mesh.get_surface_override_material(i) as ShaderMaterial
-				if mat and mat.shader == Materials.TOON:
-					mat = mat.duplicate() as ShaderMaterial
-					mat.set_meta("grime", mat.get_shader_parameter("grime"))
-					mesh.set_surface_override_material(i, mat)
-					_own_materials.append(mat)
+		_own_materials = ModelSlot.own_materials(_model)
+		for mat in _own_materials:
+			mat.set_meta("grime", mat.get_shader_parameter("grime"))
 	return _own_materials
 
 

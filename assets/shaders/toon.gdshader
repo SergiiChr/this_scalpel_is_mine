@@ -31,8 +31,11 @@ uniform float coat = 0.0;
 uniform float coat_length = 0.1;
 uniform float coat_reach = 0.02;
 uniform mat4 coat_inverse;
+// Surgeon scrubs only: old blood wiped off the gloves (0..1). Drawn in the model's own space so the blotches ride along.
+uniform float stains = 0.0;
 
 varying vec3 world_pos;
+varying vec3 local_pos;
 
 #include "res://assets/shaders/wound.gdshaderinc"
 
@@ -49,12 +52,18 @@ float noise(vec2 p) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	local_pos = VERTEX;
 }
 
 void fragment() {
 	vec3 base = albedo.rgb * texture(albedo_texture, UV).rgb;
 	float n = noise(world_pos.xz * grime_scale) * 0.6 + noise(world_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
+	if (stains > 0.0) {
+		float s = noise(local_pos.xy * 16.0 + local_pos.z * 7.0) * 0.65 + noise(local_pos.zy * 40.0) * 0.35;
+		float edge = 1.0 - stains * 0.55;
+		base = mix(base, vec3(0.3, 0.03, 0.04), smoothstep(edge, edge + 0.04, s) * 0.85);
+	}
 	float wet = 0.0;
 	float blood = 0.0;
 	if (carve_box.x > 0.0) {

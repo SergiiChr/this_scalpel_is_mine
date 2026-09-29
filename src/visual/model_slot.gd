@@ -39,6 +39,20 @@ static func toonify(root: Node, overrides: Dictionary = {}) -> void:
 				mesh_instance.set_surface_override_material(i, Materials.toon(base.albedo_color, 0.08 if metal else 0.3, true, base.roughness))
 
 
+## Swaps the model's shared toon materials for copies of its own, for per-object tweaks (blood, grime), and returns them.
+static func own_materials(root: Node) -> Array[ShaderMaterial]:
+	var own: Array[ShaderMaterial] = []
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		for i in mesh.get_surface_override_material_count():
+			var mat := mesh.get_surface_override_material(i) as ShaderMaterial
+			if mat and mat.shader == Materials.TOON:
+				mat = mat.duplicate() as ShaderMaterial
+				mesh.set_surface_override_material(i, mat)
+				own.append(mat)
+	return own
+
+
 ## Named part lookup for procedural animation. Missing parts are simply absent from the result.
 static func parts(root: Node, names: PackedStringArray) -> Dictionary:
 	var found: Dictionary = {}

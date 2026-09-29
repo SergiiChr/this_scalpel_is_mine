@@ -45,6 +45,9 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 
 ### Look
 
+- Palette (`Materials`): surgical green for walls, gowns and drapes, cool fluorescent white for every room light,
+  a warmer white only for the surgical lamp. The two surgeons wear green and ceil blue scrubs.
+  Colors outside that family are for things that should stand out: the red crash cart, blood, drug labels.
 - Lighting: a ceiling panel light over the table lights the room from above, the surgical lamp's spot focuses
   on the site, dim tubes fill the corners. Outside, the streetlight does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
@@ -64,6 +67,9 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
 - Screen grading (`post_grime.gdshader`): desaturated sick-green tint, vignette, film grain, chromatic split.
   Sickness wobbles and blurs the view, passing out blacks it out.
+  Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
+- Gloves pick up blood from the tool they hold, fingertips first, and the sink or a fresh pair cleans them.
+  Bloody gloves slowly stain the scrubs, which stay stained for the rest of the surgery.
 - The patient monitor beep is generated in code and its pitch follows SpO2, like a real pulse oximeter.
 
 ## Data formats
