@@ -1,9 +1,9 @@
 tags: allergen, allergy, cefazolin, morphine, lidocaine, propofol, clindamycin, ketamine, cocaine
 title: 11. Drug allergy
-[b]11.1 Identification[/b]
+## 11.1 Identification
 The chart records only "known drug allergy". Order the allergy screen from the laboratory to identify the agent.
 
-[b]11.2 Alternatives[/b]
+## 11.2 Alternatives
 [table=3]
 [cell][b]Allergy[/b][/cell][cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
 [cell]Cefazolin[/cell][cell]Clindamycin[/cell][cell]Longer delivery time[/cell]
@@ -12,7 +12,7 @@ The chart records only "known drug allergy". Order the allergy screen from the l
 [cell]Propofol[/cell][cell]Ketamine or inhaled agent[/cell][cell]No inhaled agent with hyperthermia risk[/cell]
 [/table]
 
-[b]11.3 Reactions[/b]
+## 11.3 Reactions
 Urticaria and swelling: diphenhydramine.
 Falling blood pressure and oxygen saturation indicate anaphylaxis: adrenaline immediately.
 

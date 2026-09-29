@@ -1,28 +1,28 @@
 title: 2. Intravenous access and infusion
-[b]2.1 Indications[/b]
+## 2.1 Indications
 Required before any intravenous drug, fluid or blood product. Establish the line before induction: once the patient is under, access is harder and every minute counts.
 
-[b]2.2 Equipment[/b]
+## 2.2 Equipment
 • IV catheter (from the tray, or order it from the nurse: Blood and fluids).
 • Infusion stand with giving set, positioned beside the table.
 • The drug, fluid bag or blood pack to be given.
 
-[b]2.3 Cannulation[/b]
+## 2.3 Cannulation
 1. Choose a site on the forearm or the back of the hand, away from the operative field. Prefer the arm on the side of the infusion stand, so the tubing does not cross the walkway.
 2. Take the catheter in the working hand.
 3. Rest the tip on the skin over the vein and lower it ([b]Lower tool[/b]) until the catheter seats. Hold it steady; a moving hand misses the vein.
 4. The giving set connects automatically and the tubing runs from the stand to the site. The catheter is single use.
 
-[b]2.4 Administering an infusion[/b]
+## 2.4 Administering an infusion
 1. Hold the fluid bag, blood pack or syringe.
 2. At the infusion stand, select [b]Use held drug on the IV line[/b].
 3. Onset is slower and smoother than direct injection. Fluids and blood products are given by this route only.
-Without a patent line, anything given at the stand is wasted.
+> Without a patent line, anything given at the stand is wasted.
 
-[b]2.5 Line security[/b]
+## 2.5 Line security
 The tubing hangs low across the floor between stand and patient. Walking through it at speed pulls the catheter out of the vein: the line is lost, the patient is hurt and the line must be re-sited with a new catheter. Move slowly near the tubing, or crouch and step over it.
 
-[b]2.6 Fluid choice[/b]
+## 2.6 Fluid choice
 • Crystalloid (0.9% saline, 500 ml): restores circulating volume after moderate blood loss.
 • Blood products: see section 10. Confirm the group before connecting.
 

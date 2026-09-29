@@ -1,11 +1,11 @@
 tags: office_stapler, duct_tape, thin_skin, tear_threshold_mult
 title: 6. Wound closure
-[img=560]res://assets/manual/diagrams/closures.svg[/img]
+[center][img=640]res://assets/manual/diagrams/closures.svg[/img][/center]
 
-[b]6.1 Principle[/b]
+## 6.1 Principle
 A wound is closed only when the closure spans its entire length. Draw the instrument along the wound line while applying it.
 
-[b]6.2 Methods[/b]
+## 6.2 Methods
 [table=3]
 [cell][b]Method[/b][/cell][cell][b]Speed[/b][/cell][cell][b]Security[/b][/cell]
 [cell]Interrupted sutures[/cell][cell]Slow[/cell][cell]Highest[/cell]
@@ -16,14 +16,14 @@ A wound is closed only when the closure spans its entire length. Draw the instru
 [cell]Duct tape[/cell][cell]Fast[/cell][cell]Holds; damages skin on removal[/cell]
 [/table]
 
-[b]6.3 Suture tension[/b]
+## 6.3 Suture tension
 For sutures (and paper clips), tension uses the same three levels as blade pressure: with the instrument lowered onto the wound, the mouse wheel sets them. At level 0 no stitches are placed.
 • Loose: rapid, but the wound edges do not meet and continue to ooze.
 • Correct: edges apposed without blanching. The intended setting.
 • Tight: strongest seal, but sutures may cut through. Thin skin tears at twice the usual rate.
-Traction on a sutured wound can pull sutures through.
+> Traction on a sutured wound can pull sutures through.
 
-[b]6.4 Strain on the closure[/b]
+## 6.4 Strain on the closure
 Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
 
 [font_size=16][b]References[/b]

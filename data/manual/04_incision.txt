@@ -1,8 +1,8 @@
 tags: fat_depth, tear_threshold_mult, thin_skin, obese, heal_rate, regeneration, mirrored
 title: 4. Incision and exposure
-[img=560]res://assets/manual/diagrams/incision_depth.svg[/img]
+[center][img=640]res://assets/manual/diagrams/incision_depth.svg[/img][/center]
 
-[b]4.1 Blade pressure[/b]
+## 4.1 Blade pressure
 Depth of the incision is set by blade pressure, not by the number of passes. There are three levels above rest. The current level is shown beside the aiming point whenever a blade is held, and on the status line.
 [table=3]
 [cell][b]Level[/b][/cell][cell][b]Divides[/b][/cell][cell][b]Use[/b][/cell]
@@ -12,20 +12,20 @@ Depth of the incision is set by blade pressure, not by the number of passes. The
 [/table]
 [b]Setting it:[/b] lower the blade onto the skin ([b]Lower tool[/b], default LMB). At level 0 it only rests there; the mouse wheel sets the depth while it is down: forward increases, back decreases.
 Start at level 1 and deepen in layers. A full-depth stroke from the outset gives no control over what lies beneath.
-In obese patients the subcutaneous layer is thicker: one level shallower than expected is reached at each setting.
+> In obese patients the subcutaneous layer is thicker: one level shallower than expected is reached at each setting.
 
-[b]4.2 Technique[/b]
+## 4.2 Technique
 The aiming line shows the cutting edge on the skin. A blade divides tissue only when drawn along its edge; rotate the instrument to align the edge with the marked line. Drawn sideways it merely drags.
 Draw the blade along the marked line in one steady stroke. Slow strokes leave clean edges; fast strokes leave ragged edges that bleed more. A dull or improvised blade always tears the edge.
 
-[b]4.3 Exposure[/b]
+## 4.3 Exposure
 Skin is under tension and the edges part once divided. Beneath the skin lies yellow subcutaneous fat, then red muscle. The cavity is entered only when all three are divided.
 To widen the exposure, grasp an edge with forceps or a retractor and draw it laterally. Excessive traction tears the skin and creates a second wound.
 
-[b]4.4 Inside the cavity[/b]
+## 4.4 Inside the cavity
 Dividing tissue next to a target frees it; dividing anything else injures it. Displace organs by hand before reaching beneath them; they return when released. Prolonged or forceful handling bruises viscera and causes oozing. Hold them with a retractor rather than by hand.
 
-[b]4.5 Special cases[/b]
+## 4.5 Special cases
 Regenerating tissue closes incisions spontaneously. Work in short stages and keep retractors in place.
 Situs inversus (chart: "dextrocardia"): all viscera are mirrored. Confirm the anatomy before marking.
 

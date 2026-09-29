@@ -1,15 +1,15 @@
 tags: glucose_drift, seizure_chance, diabetes, epilepsy, insulin, glucose, diazepam
 title: 12. Glucose and seizures
-[b]12.1 Diabetic patients[/b]
+## 12.1 Diabetic patients
 Blood glucose rises during surgery, faster under stress.
 • Above 15 mmol/l: consciousness falls.
 • Below 3 mmol/l: seizures.
 Insulin acts slowly and for a long time; glucose acts quickly. Check levels with the glucose panel (fifteen seconds).
 
-[b]12.2 Seizures[/b]
+## 12.2 Seizures
 A seizure shakes the table. Hands in contact with the patient are jolted, instruments slip and closures are strained.
 Diazepam terminates an active seizure and prevents recurrence for five minutes.
-Patients with epilepsy seize without warning. Give diazepam before any delicate step.
+> Patients with epilepsy seize without warning. Give diazepam before any delicate step.
 
 [font_size=16][b]References[/b]
 American Diabetes Association. Standards of Care in Diabetes. Diabetes Care; current edition, section on diabetes care in the hospital.

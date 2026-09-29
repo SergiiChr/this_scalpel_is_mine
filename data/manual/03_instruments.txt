@@ -1,9 +1,11 @@
 title: 3. Instruments
-[b]3.1 Sterility[/b]
+[center][img=660]res://assets/manual/diagrams/instruments.svg[/img][/center]
+
+## 3.1 Sterility
 Instruments on the tray are sterile until they touch the floor or a non-sterile surface. Personal items carried on the belt are not sterile.
 An instrument that falls to the floor must be washed at the sink and then sanitized before it returns to the field.
 
-[b]3.2 Standard set[/b]
+## 3.2 Standard set
 [table=3]
 [cell][b]Instrument[/b][/cell][cell][b]Function[/b][/cell][cell][b]Notes[/b][/cell]
 [cell]Scalpel[/cell][cell]Incision[/cell][cell]Depth set by blade pressure (4.1)[/cell]
@@ -20,10 +22,10 @@ An instrument that falls to the floor must be washed at the sink and then saniti
 [cell]Bone saw[/cell][cell]Osteotomy[/cell][cell]Ineffective on dense bone[/cell]
 [/table]
 
-[b]3.3 Handling[/b]
-Fine instruments cannot be used with large hands; heavy instruments cannot be used with small hands.
+## 3.3 Handling
+> Fine instruments cannot be used with large hands; heavy instruments cannot be used with small hands.
 
-[b]3.4 Requests[/b]
+## 3.4 Requests
 Missing items are ordered from the nurse with the call bell: select the category, then the item. One request is handled at a time. Delivered items are placed on the delivery tray beside the bell.
 
 [font_size=16][b]References[/b]

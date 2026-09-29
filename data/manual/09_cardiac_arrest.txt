@@ -1,18 +1,20 @@
 tags: arrest_mult, heart, pacemaker, adrenaline, amiodarone, atropine
 title: 9. Cardiac arrest
-[img=560]res://assets/manual/diagrams/rhythms.svg[/img]
+[center][img=640]res://assets/manual/diagrams/rhythms.svg[/img][/center]
 
-[b]9.1 Ventricular fibrillation[/b] (irregular waveform, alarm). Shockable.
+## 9.1 Ventricular fibrillation
+Irregular waveform, alarm. Shockable.
 1. Stand clear. Anyone in contact with the patient during discharge receives the shock.
 2. Apply the paddles to the chest ([b]Lower tool[/b]). Hold [b]Tool action[/b] to charge (two seconds); release to discharge.
 3. If unsuccessful, give amiodarone and repeat the shock.
-After forty seconds, ventricular fibrillation degenerates to asystole.
+> After forty seconds, ventricular fibrillation degenerates to asystole.
 
-[b]9.2 Asystole[/b] (flat line, continuous tone). Not shockable alone.
+## 9.2 Asystole
+Flat line, continuous tone. Not shockable alone.
 1. Give adrenaline.
 2. Defibrillate within the following minute.
 
-[b]9.3 Cautions[/b]
+## 9.3 Cautions
 Never defibrillate an organized, perfusing rhythm: it may induce the arrest it was meant to treat.
 Implanted pacemakers malfunction near electrocautery and defibrillation. On the chest, close with staples. Paced patients arrest less often.
 Patients with poor cardiac reserve arrest sooner from blood loss, pain and adverse drug combinations.
