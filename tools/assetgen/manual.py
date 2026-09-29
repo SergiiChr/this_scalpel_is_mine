@@ -293,15 +293,18 @@ def setup_order() -> Sketch:
     sk.hatch([(x + 46, y + 52), (x + 86, y + 52), (x + 87, y + 70), (x + 75, y + 80), (x + 55, y + 80), (x + 43, y + 70)], 45, 4)
     sk.line([(x + 65, y + 82), (x + 65, y + 92), (x + 60, y + 104), (x + 80, y + 108), (x + 102, y + 100)], 1.2)
     sk.ellipse(x + 65, y + 14, 6, 4, 1.2)
-    # 2: iodine bottle and swab.
+    # 2: iodine bottle, its dish and a soaked pad held in forceps.
     x, y = boxes[1]
-    bottle = [(x + 30, y + 40), (x + 62, y + 40), (x + 62, y + 100), (x + 30, y + 100)]
+    bottle = [(x + 14, y + 44), (x + 42, y + 44), (x + 42, y + 102), (x + 14, y + 102)]
     sk.shape(bottle, 1.6)
-    sk.shape([(x + 38, y + 26), (x + 54, y + 26), (x + 54, y + 40), (x + 38, y + 40)], 1.4)
-    sk.fill([(x + 32, y + 62), (x + 60, y + 62), (x + 60, y + 98), (x + 32, y + 98)], "#9a4a1c", 0.8)
+    sk.shape([(x + 21, y + 30), (x + 35, y + 30), (x + 35, y + 44), (x + 21, y + 44)], 1.4)
+    sk.fill([(x + 16, y + 66), (x + 40, y + 66), (x + 40, y + 100), (x + 16, y + 100)], "#9a4a1c", 0.8)
     sk.hatch(bottle, 70, 5)
-    sk.line([(x + 76, y + 96), (x + 112, y + 34)], 2.0)
-    sk.ellipse(x + 114, y + 30, 7, 5, 1.2, fill="#c87a3c")
+    sk.ellipse(x + 88, y + 98, 30, 8, 1.5, fill=PALE)
+    sk.ellipse(x + 88, y + 97, 22, 4, 0.8, fill="#9a4a1c", passes=1)
+    sk.line([(x + 120, y + 22), (x + 88, y + 74)], 1.6)
+    sk.line([(x + 124, y + 26), (x + 92, y + 76)], 1.6)
+    sk.ellipse(x + 88, y + 80, 10, 6, 1.2, fill="#c87a3c")
     # 3: anaesthetic mask.
     x, y = boxes[2]
     mask = [(x + 30, y + 88), (x + 50, y + 44), (x + 80, y + 44), (x + 100, y + 88)]

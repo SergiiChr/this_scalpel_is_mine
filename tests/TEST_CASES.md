@@ -70,6 +70,8 @@ For each scenario, with no script errors:
 | S17 | Walking through the IV tubing at full speed rips the line out |
 | S18 | Every tool effect plays; a tool in blood gets bloody and the sink washes it |
 | S19 | The wheel raises a lowered blade's depth level; the controls shown change while a hand key is held |
+| S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
+| S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
 
 ## Co-op over the network (`tests/net_test.gd`)
 

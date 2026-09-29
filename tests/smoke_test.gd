@@ -176,6 +176,8 @@ func _feedback_checks(surgery: Surgery) -> void:
 	else:
 		print("FAIL: the IV line doesn't hang low enough to trip on")
 	await _effect_checks(surgery)
+	await _iodine_checks(surgery)
+	_nurse_checks(surgery)
 
 
 ## Every tool effect plays on the body, tools pick up blood and wash clean.
@@ -230,3 +232,64 @@ func _control_checks(surgery: Surgery) -> void:
 func _frames(count: int) -> void:
 	for i in count:
 		await get_tree().physics_frame
+
+
+## The rolled tray holds the starter kit; iodine goes bottle to dish, soaks a pad held in forceps and sanitizes the skin.
+func _iodine_checks(surgery: Surgery) -> void:
+	var tools := surgery.tools
+	var rolled := surgery.scenario.roll_tools(RandomNumberGenerator.new())
+	if surgery.scenario.missing_tool_chance == 0.0 and Db.starter_kit.any(func(id: String) -> bool: return not rolled.has(id)):
+		print("FAIL: the starter kit isn't all on the tray: ", rolled)
+	var spot: Vector3 = surgery.room.tray_spots()[12]
+	var made: Array[SurgicalTool] = []
+	for id in ["forceps", "cotton_pad", "iodine_dish"]:
+		tools.spawn(id, spot)
+		made.append(tools.tools.values()[-1])
+	var forceps := made[0]
+	var pad := made[1]
+	var dish := made[2]
+	await _frames(10)
+	if forceps.def.id != "forceps" or pad.def.id != "cotton_pad" or dish.def.id != "iodine_dish":
+		print("FAIL: spawned the wrong tools for the iodine check")
+		return
+	var me := surgery.local_surgeon
+	if not me.blocked_reason(forceps.def).is_empty():
+		return
+	tools._req_grab(forceps.uid, 1)
+	tools.carry(pad, forceps)
+	await _frames(3)
+	if pad.state != SurgicalTool.State.CARRIED or pad.global_position.distance_to(forceps.tip_position()) > 0.05:
+		print("FAIL: forceps didn't pick up the cotton pad")
+	tools.set_fill(dish, 1.0)
+	var dish_middle := dish.global_transform * Vector3(0, 0, -dish.def.length * 0.5)
+	ToolActions._wipe(pad, "none", Vector2.ZERO, dish_middle, surgery.patient, 1.0, false)
+	if pad.fill < 0.9 or dish.fill > 0.9:
+		print("FAIL: the pad didn't soak up iodine from the dish: pad=%.2f dish=%.2f" % [pad.fill, dish.fill])
+	surgery.patient._sanitized.fill(0.0)
+	var uv := Vector2(0.5, 0.5)
+	var wiped := surgery.patient.body.uv_to_world(uv)
+	# A dish left beside the site must not turn the wipe into a dip.
+	dish.global_position = wiped
+	ToolActions._wipe(pad, "site", uv, wiped, surgery.patient, 0.5, false)
+	if surgery.patient.sanitized_fraction() <= 0.0 or pad.fill >= 0.99:
+		print("FAIL: the soaked pad didn't sanitize the skin")
+	tools._req_release(1, Vector3.ZERO)
+	await _frames(3)
+	if pad.state != SurgicalTool.State.FREE:
+		print("FAIL: the pad stayed on forceps that were let go")
+
+
+## One order at a time: the board shows it on its way, the cooldown starts after the delivery.
+func _nurse_checks(surgery: Surgery) -> void:
+	var nurse := surgery.nurse
+	nurse.tick(1000.0, surgery)
+	nurse.cooldown_left = 0.0
+	nurse.request(1, "gauze", surgery)
+	if nurse.order().is_empty() or not Room.nurse_board_text({"order": nurse.order()}).contains("Gauze"):
+		print("FAIL: the nurse board doesn't show the order on its way")
+	nurse.tick(1000.0, surgery)
+	if not nurse.order().is_empty() or nurse.cooldown_left <= 0.0:
+		print("FAIL: the nurse cooldown didn't start after the delivery")
+	nurse.request(1, "gauze", surgery)
+	if not nurse.order().is_empty():
+		print("FAIL: the nurse took an order during her cooldown")

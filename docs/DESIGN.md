@@ -151,6 +151,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 ### Other data
 
 - `tools.cfg`: every item, its action and numbers. Backup tools reuse actions with worse numbers.
+- `starter_kit.cfg`: the tools every surgery starts with. With a nurse, a scenario's `starting_tools` and
+  `random_tools` add only what she can't fetch; without one (sidewalk, ambulance) they add their whole kit.
 - `drugs.cfg`: effects, onset, duration, flags, dangerous combinations, blood types.
 - `events.cfg`: random escalation events, weights and cooldowns.
 - `scoring.cfg`: points and stress per action, star thresholds.
@@ -174,7 +176,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Organs you push aside, targets you free by cutting, sawing, slow pulling or suction.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
 - Sterility tracking into the post-op report (infection, amputation).
-- Nurse orders with a global cooldown, blood panels with narrow/fast vs full/slow choices.
+- Nurse orders with a cooldown, blood panels with narrow/fast vs full/slow choices.
 - Turning the patient as a shared quick time event, all surgeons on one side.
 - Personal gauges: stress (pass out), sickness (vomit), breath (steady hands), sweat (slippery gloves, drips).
 - Belt inventory, personal quirk items, drinking and wearing items.
@@ -214,6 +216,16 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
+
+### Starter kit and ordering
+
+- **Same tray every time** (`data/starter_kit.cfg`): scalpel, forceps, kidney dish, cotton pads, iodine bottle with
+  its dish, IV catheter and saline bag. Everything else is ordered.
+- **Nurse**: one order at a time, a 15 s cooldown after each delivery. A board over the bell shows the item on its way
+  with a progress bar, then the cooldown.
+- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish, pinch a cotton pad with forceps
+  (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up off the floor contaminates the site.
+  A dish soaks about four pads; a soaked pad runs dry after about 8 s of wiping.
 
 ### Approved mechanics (in this build)
 

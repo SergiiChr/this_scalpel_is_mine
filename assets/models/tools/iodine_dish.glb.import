@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ct1w6bve4fs2"
-path="res://.godot/imported/iodine_swab.glb-2805348f7f4a5f67ecd02a22b57416b2.scn"
+uid="uid://dl5xmky40rix8"
+path="res://.godot/imported/iodine_dish.glb-d94c0e2ac124a433439e919489f45484.scn"
 
 [deps]
 
-source_file="res://assets/models/tools/iodine_swab.glb"
-dest_files=["res://.godot/imported/iodine_swab.glb-2805348f7f4a5f67ecd02a22b57416b2.scn"]
+source_file="res://assets/models/tools/iodine_dish.glb"
+dest_files=["res://.godot/imported/iodine_dish.glb-d94c0e2ac124a433439e919489f45484.scn"]
 
 [params]
 

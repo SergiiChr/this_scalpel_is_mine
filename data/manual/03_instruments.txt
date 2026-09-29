@@ -6,6 +6,7 @@ Instruments on the tray are sterile until they touch the floor or a non-sterile 
 An instrument that falls to the floor must be washed at the sink and then sanitized before it returns to the field.
 
 ## 3.2 Standard set
+Every procedure starts with the same tray: scalpel, forceps, kidney dish for removed items, cotton pads, iodine bottle with its dish, IV catheter and saline bag. Everything else is ordered from the nurse (3.4).
 [table=3]
 [cell][b]Instrument[/b][/cell][cell][b]Function[/b][/cell][cell][b]Notes[/b][/cell]
 [cell]Scalpel[/cell][cell]Incision[/cell][cell]Depth set by blade pressure (4.1)[/cell]
@@ -17,6 +18,8 @@ An instrument that falls to the floor must be washed at the sink and then saniti
 [cell]Electrocautery[/cell][cell]Hemostasis[/cell][cell]Coagulates all tissue it contacts[/cell]
 [cell]Suction[/cell][cell]Clearing blood and fluid[/cell][cell]Required for visibility in the cavity[/cell]
 [cell]Gauze[/cell][cell]Absorption, direct pressure[/cell][cell]Pressure slows bleeding[/cell]
+[cell]Cotton pad[/cell][cell]Skin preparation[/cell][cell]Hold with forceps, soak in the iodine dish (1.5)[/cell]
+[cell]Iodine bottle[/cell][cell]Skin preparation[/cell][cell]Pour into the iodine dish, never onto the patient[/cell]
 [cell]Skin marker[/cell][cell]Planning the incision[/cell][cell]Fine instrument[/cell]
 [cell]Defibrillator[/cell][cell]Cardioversion[/cell][cell]On its own cart. Heavy instrument[/cell]
 [cell]Bone saw[/cell][cell]Osteotomy[/cell][cell]Ineffective on dense bone[/cell]
@@ -26,7 +29,7 @@ An instrument that falls to the floor must be washed at the sink and then saniti
 > Fine instruments cannot be used with large hands; heavy instruments cannot be used with small hands.
 
 ## 3.4 Requests
-Missing items are ordered from the nurse with the call bell: select the category, then the item. One request is handled at a time. Delivered items are placed on the delivery tray beside the bell.
+Missing items are ordered from the nurse with the call bell: select the category, then the item. One request is handled at a time. Delivered items are placed on the delivery tray beside the bell. The board over the bell shows the item on its way, and after each delivery how long until the nurse takes the next request.
 
 [font_size=16][b]References[/b]
 Association of periOperative Registered Nurses. Guidelines for Perioperative Practice. AORN; 2023.

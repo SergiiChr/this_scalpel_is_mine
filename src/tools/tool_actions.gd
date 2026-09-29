@@ -7,7 +7,7 @@ extends RefCounted
 ## Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
 const LEVEL_NAMES: Dictionary = {
 	"cut": "Depth", "suture": "Tension", "cauterize": "Heat", "saw": "Speed", "suction": "Suction",
-	"swab": "Pressure", "inject": "Plunger",
+	"swab": "Pressure", "inject": "Plunger", "pour": "Pour",
 }
 ## Actions listed here do their thing on Tool action (RMB) instead, named by the value.
 const TRIGGER_NAMES: Dictionary = {
@@ -19,6 +19,14 @@ const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
 const DEFIB_CHARGE_TIME := 2.0
 ## A blade only cuts along its edge: a move further off the edge line than this (cosine) just drags it.
 const ALONG_BLADE := 0.8
+## Clamps that can pinch a cotton pad, and how close to the pad their tip has to be.
+const PAD_HOLDERS: PackedStringArray = ["forceps", "hemostat"]
+const PAD_REACH := 0.04
+## How close to the iodine dish a bottle or pad has to be to pour into it or dip in it.
+const DISH_REACH := 0.07
+## A full dish soaks this many pads. A soaked pad runs dry after 1 / PAD_DRAIN seconds of wiping.
+const PADS_PER_DISH := 4.0
+const PAD_DRAIN := 0.12
 
 
 ## Where a blade's edge runs on the skin: where the blade plane meets a flat surface, so rotating the tool turns it.
@@ -82,8 +90,18 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				tool.last_uv = Vector2(-1, -1)
 		"clamp":
 			var power := def.power * mods.mult("grip_strength_mult")
+			var tools := Surgery.current.tools
+			var pad := tools.carried_by(tool)
+			var loose_pad := tools.nearest_of("cotton_pad", tip, PAD_REACH) if pressed and lowered and def.id in PAD_HOLDERS else null
+			if pad:
+				if pressed:
+					tools.drop_carried(tool)
+				elif lowered:
+					_wipe(pad, zone, uv, tip, patient, dt, false)
+			elif loose_pad and tool.grip_info.is_empty():
+				tools.carry(loose_pad, tool)
 			# Pinching takes hold only on something the jaws were lowered onto; letting go works anywhere.
-			if pressed and (lowered or not tool.grip_info.is_empty()):
+			elif pressed and (lowered or not tool.grip_info.is_empty()):
 				if tool.grip_info.is_empty():
 					tool.grip_info = patient.grip(tool.uid, zone, uv, probe.depth)
 					if tool.grip_info.type == "none":
@@ -170,8 +188,17 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if def.id == "metal_straw":
 					Surgery.current.add_sickness(hand.peer, dt * 0.08)
 		"swab":
-			if lowered and level > 0 and zone in ["site", "cavity"]:
+			if def.id == "cotton_pad" and lowered and level > 0:
+				_wipe(tool, zone, uv, tip, patient, dt * effort, true)
+			elif lowered and level > 0 and zone in ["site", "cavity"]:
 				patient.swab_at(zone, uv, def, dt * effort)
+		"pour":
+			if lowered and level > 0:
+				var dish := Surgery.current.tools.nearest_of("iodine_dish", tip, DISH_REACH)
+				if dish:
+					Surgery.current.tools.set_fill(dish, dish.fill + def.power * effort * dt)
+				elif touching:
+					Surgery.current.announce("Pour the %s into the iodine dish." % def.name.to_lower(), true)
 		"tourniquet":
 			var limb: bool = str(probe.get("part", "")).begins_with("arm") or str(probe.get("part", "")).begins_with("leg") or zone == "site" and patient.body.is_limb_site()
 			if pressed and lowered and limb:
@@ -187,6 +214,28 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				patient.set_iv(tip)
 				Surgery.current.effect("bead", tip, 0)
 				_use_charge(tool)
+
+
+## A cotton pad soaks up iodine in the dish, then leaves it on the skin until it runs dry.
+## Iodine only stays sterile on the way in if a clean pad is held with forceps: a glove on it spoils the site.
+static func _wipe(pad: SurgicalTool, zone: String, uv: Vector2, tip: Vector3, patient: Patient, dt: float, gloved: bool) -> void:
+	var tools := Surgery.current.tools
+	# On the patient it always wipes, even with a dish left right beside the site.
+	if not zone in ["site", "cavity"]:
+		var dish := tools.nearest_of("iodine_dish", tip, DISH_REACH)
+		var soak := minf(minf(dt * 2.0, 1.0 - pad.fill), dish.fill * PADS_PER_DISH) if dish else 0.0
+		if soak > 0.0:
+			tools.set_fill(pad, pad.fill + soak)
+			tools.set_fill(dish, dish.fill - soak / PADS_PER_DISH)
+		return
+	var soaked := pad.fill > 0.0
+	patient.swab_at(zone, uv, pad.def, dt, "iodine" if soaked else "")
+	if soaked:
+		tools.set_fill(pad, pad.fill - PAD_DRAIN * dt)
+		if (gloved or not pad.sterile) and zone == "site" and not pad.reported.has("dirty"):
+			pad.reported["dirty"] = true
+			patient.contaminate_site("")
+			Surgery.current.scoring.add("dirty_tool")
 
 
 ## Standing (self-retaining) clamps keep holding their grip after the hand lets go.

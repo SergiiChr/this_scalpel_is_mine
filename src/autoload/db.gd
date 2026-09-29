@@ -18,6 +18,8 @@ var scoring := ConfigFile.new()
 var consequences := ConfigFile.new()
 var audio := ConfigFile.new()
 var run_modifiers := ConfigFile.new()
+## Tool ids every surgery starts with, see data/starter_kit.cfg.
+var starter_kit: Array = []
 ## Surgical sites on the patient body, see data/patient_sites.json.
 var patient_sites: Dictionary = {}
 ## Baked skin heights per site (tools/assetgen), empty when the file is missing.
@@ -46,6 +48,7 @@ func _ready() -> void:
 	consequences = _load_cfg("res://data/consequences.cfg")
 	audio = _load_cfg("res://data/audio.cfg")
 	run_modifiers = _load_cfg("res://data/run_modifiers.cfg")
+	starter_kit = _load_cfg("res://data/starter_kit.cfg").get_value("starter_kit", "tools", [])
 	patient_sites = _load_json("res://data/patient_sites.json")
 	site_heights = _load_json("res://assets/models/patient/site_heights.json")
 

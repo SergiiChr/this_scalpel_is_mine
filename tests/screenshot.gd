@@ -44,7 +44,7 @@ func _ready() -> void:
 	patient.bruise(Vector2(0.2, 0.25), 0.1, 0.8)
 	patient.mark(Vector2(0.2, 0.8), Vector2(0.8, 0.82))
 	patient.paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, Vector2(0.45, 0.62), Vector2(0.45, 0.62), 0.08, 1.0, WoundMap.Mode.MAX)
-	patient.swab_at("site", Vector2(0.6, 0.8), Db.tool("iodine_swab"), 1.0)
+	patient.swab_at("site", Vector2(0.6, 0.8), Db.tool("cotton_pad"), 1.0, "iodine")
 	await _frames(20)
 	var me := surgery.local_surgeon
 	var camera := Camera3D.new()
@@ -79,10 +79,22 @@ func _ready() -> void:
 	camera.global_position = Vector3(-1.0, 1.5, 1.4)
 	camera.look_at(Vector3(-1.4, 0.9, 0))
 	await _shot(out, "04b_table_foot")
+	# Iodine in the dish and one soaked pad.
+	for tool: SurgicalTool in surgery.tools.tools.values():
+		if tool.def.id in ["iodine_dish", "cotton_pad"]:
+			surgery.tools.set_fill(tool, 1.0)
 	var tray: Vector3 = surgery.room.layout.tray + Vector3(0, 0.95, 0)
 	camera.global_position = tray + Vector3(0.45, 0.45, 0.0)
 	camera.look_at(tray)
 	await _shot(out, "07_tray")
+	# The board over the bell with an order on its way.
+	if surgery.room.layout.has("bell"):
+		surgery.nurse.request(1, "gauze", surgery)
+		await _frames(40)
+		var bell: Vector3 = surgery.room.layout.bell
+		camera.global_position = bell + Vector3(0.3, 1.5, -1.3)
+		camera.look_at(bell + Vector3(0, 1.3, 0))
+		await _shot(out, "07b_bell")
 	var scalpel: SurgicalTool = null
 	for tool: SurgicalTool in surgery.tools.tools.values():
 		if tool.def.action == "cut" and tool.state == SurgicalTool.State.FREE:

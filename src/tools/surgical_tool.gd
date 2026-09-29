@@ -3,9 +3,11 @@ extends RigidBody3D
 ## A grabbable item. Physics runs on the host only, clients get transforms from ToolManager.
 ## The grip is at the origin and the tip at -Z * length.
 
-enum State { FREE, HELD, BELT, STANDING, INSIDE, CONSUMED }
+## CARRIED: pinched at another tool's tip (a cotton pad in forceps), holder is that tool's uid.
+enum State { FREE, HELD, BELT, STANDING, INSIDE, CONSUMED, CARRIED }
 
 const TOOL_LAYER := 8
+const IODINE_COLOR := Color(0.55, 0.3, 0.12)
 
 var uid: int
 var def: ToolDef
@@ -21,6 +23,8 @@ var charges := -1
 ## How bloody the working end is (0..1), for everyone. Host-side exposure builds up in blood_exposure.
 var blood := 0.0
 var blood_exposure := 0.0
+## How full of liquid it is (0..1): iodine in the dish, soaked into a cotton pad. Exact on the host, in steps elsewhere.
+var fill := 0.0
 
 # Host-side use state, see ToolActions.
 var grip_info: Dictionary = {}
@@ -61,6 +65,8 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	shape.position = bounds.get_center()
 	add_child(shape)
 	_animator.setup(_model)
+	if _model.find_child("Liquid", true, false):
+		show_fill(0.0)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
 
@@ -124,6 +130,19 @@ func set_blood(amount: float) -> void:
 			mat.set_shader_parameter("coat_length", def.length)
 			mat.set_shader_parameter("coat_reach", def.length * (1.2 if soaks else 0.12 + 0.3 * amount))
 			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
+
+
+## Liquid shows as the model's "Liquid" part (the dish) or tints the whole tool (a soaked pad).
+func show_fill(amount: float) -> void:
+	var liquid := _model.find_child("Liquid", true, false) as Node3D
+	if liquid:
+		liquid.visible = amount > 0.0
+		liquid.scale = Vector3.ONE * lerpf(0.6, 1.0, amount)
+		return
+	for mat in _materials():
+		if not mat.has_meta("albedo"):
+			mat.set_meta("albedo", mat.get_shader_parameter("albedo"))
+		mat.set_shader_parameter("albedo", (mat.get_meta("albedo") as Color).lerp(IODINE_COLOR, minf(amount * 2.0, 1.0)))
 
 
 ## The tool your hand would pick up glows faintly (local player only).
