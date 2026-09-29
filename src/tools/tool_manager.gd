@@ -190,6 +190,8 @@ func _req_wash(hand: int) -> void:
 		Surgery.current.tell(peer, "You wash your gloves. They're still gloves.")
 		return
 	_set_soiled.rpc(tool.uid, false)
+	tool.blood_exposure = 0.0
+	_set_blood.rpc(tool.uid, 0.0)
 	Surgery.current.tell(peer, "Scrubbed clean. Still not sterile.")
 
 
@@ -348,6 +350,21 @@ func _set_sterile(uid: int, value: bool) -> void:
 		tool.sterile = value
 		var local := Surgery.current.local_surgeon
 		tool.show_contamination(local != null and local.mods.flag("contamination_vision"))
+
+
+## Host: builds up blood on a tool working in blood; everyone sees it in steps of a quarter.
+func add_blood(tool: SurgicalTool, amount: float) -> void:
+	tool.blood_exposure = minf(tool.blood_exposure + amount, 1.0)
+	var shown := snappedf(tool.blood_exposure, 0.25)
+	if shown > tool.blood:
+		_set_blood.rpc(tool.uid, shown)
+
+
+@rpc("authority", "call_local", "reliable")
+func _set_blood(uid: int, amount: float) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.set_blood(amount)
 
 
 @rpc("authority", "call_local", "reliable")

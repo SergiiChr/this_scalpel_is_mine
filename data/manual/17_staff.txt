@@ -1,0 +1,23 @@
+tags: tremor, stress_mult, sweat_rate, blood_sickness_rate, bad_breath
+title: 17. Operating team
+[b]17.1 Stress[/b]
+Stress rises with errors, alarms and patient distress, and falls when the theatre is calm. At its limit the operator faints briefly and drops whatever is held.
+
+[b]17.2 Nausea[/b]
+Nausea rises with exposure to blood (in susceptible staff), halitosis at close range and a colleague's vomiting. At its limit the operator vomits: turn away from the field.
+
+[b]17.3 Tremor[/b]
+Holding the breath steadies the hands for as long as the breath lasts.
+
+[b]17.4 Perspiration[/b]
+Sweat makes gloves slippery: change them at the glove box. A surgical cap prevents sweat dripping into an open wound.
+
+[b]17.5 Working together[/b]
+• [b]Instrument handover:[/b] hold the instrument close to your colleague's empty hand and hand it over ([b]Grab[/b]). Both hands must be still, or it is dropped.
+• [b]Crossing hands:[/b] two hands in the same space collide. Lift one over the other ([b]Lift[/b]), or agree on sides beforehand.
+• [b]Traction while moving:[/b] a hand holding tissue stays where it is when you walk. Moving too far tears the tissue. Release before stepping away.
+• [b]Changing hands:[/b] the hand you are not using stays exactly where it was and keeps doing what it was doing. A closed clamp stays closed; active cautery keeps burning.
+
+[font_size=16][b]References[/b]
+Flin R, O'Connor P, Crichton M. Safety at the Sharp End: A Guide to Non-Technical Skills. Ashgate; 2008.
+World Health Organization. WHO Guidelines for Safe Surgery. Geneva: WHO; 2009.[/font_size]

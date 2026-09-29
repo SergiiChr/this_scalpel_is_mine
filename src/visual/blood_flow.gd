@@ -141,6 +141,14 @@ func _slope(uv: Vector2) -> Vector2:
 	return Vector2(dx / body.site_size.x, dy / body.site_size.y) / (2.0 * E) * 8.0
 
 
+## Throws count droplets up and out from at (an impact, a saw), speed in m/s.
+func spray(at: Vector3, count: int, speed: float) -> void:
+	var up := body.site.global_basis.y
+	for i in count:
+		var out := Vector3(_rng.randf_range(-1, 1), 0.0, _rng.randf_range(-1, 1)) * 0.6
+		_add_drop(at + up * 0.004, (up + out).normalized() * speed * _rng.randf_range(0.5, 1.0))
+
+
 func _add_drop(at: Vector3, velocity: Vector3) -> void:
 	if _drops.size() < MAX_DROPS:
 		_drops.append({"pos": at, "vel": velocity})

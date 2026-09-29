@@ -1,0 +1,31 @@
+title: 3. Instruments
+[b]3.1 Sterility[/b]
+Instruments on the tray are sterile until they touch the floor or a non-sterile surface. Personal items carried on the belt are not sterile.
+An instrument that falls to the floor must be washed at the sink and then sanitized before it returns to the field.
+
+[b]3.2 Standard set[/b]
+[table=3]
+[cell][b]Instrument[/b][/cell][cell][b]Function[/b][/cell][cell][b]Notes[/b][/cell]
+[cell]Scalpel[/cell][cell]Incision[/cell][cell]Depth set by blade pressure (4.1)[/cell]
+[cell]Forceps[/cell][cell]Grasping, traction, retrieval[/cell][cell]Closes on first press, opens on second[/cell]
+[cell]Hemostat[/cell][cell]Vessel occlusion[/cell][cell]Self-retaining; remains closed when released[/cell]
+[cell]Retractor[/cell][cell]Holding the wound open[/cell][cell]Strong traction. Tall: lift the hand over it[/cell]
+[cell]Suture needle[/cell][cell]Wound closure[/cell][cell]Slow, strongest closure. Fine instrument[/cell]
+[cell]Skin stapler[/cell][cell]Wound closure[/cell][cell]Fast, slightly weaker[/cell]
+[cell]Electrocautery[/cell][cell]Hemostasis[/cell][cell]Coagulates all tissue it contacts[/cell]
+[cell]Suction[/cell][cell]Clearing blood and fluid[/cell][cell]Required for visibility in the cavity[/cell]
+[cell]Gauze[/cell][cell]Absorption, direct pressure[/cell][cell]Pressure slows bleeding[/cell]
+[cell]Skin marker[/cell][cell]Planning the incision[/cell][cell]Fine instrument[/cell]
+[cell]Defibrillator[/cell][cell]Cardioversion[/cell][cell]On its own cart. Heavy instrument[/cell]
+[cell]Bone saw[/cell][cell]Osteotomy[/cell][cell]Ineffective on dense bone[/cell]
+[/table]
+
+[b]3.3 Handling[/b]
+Fine instruments cannot be used with large hands; heavy instruments cannot be used with small hands.
+
+[b]3.4 Requests[/b]
+Missing items are ordered from the nurse with the call bell: select the category, then the item. One request is handled at a time. Delivered items are placed on the delivery tray beside the bell.
+
+[font_size=16][b]References[/b]
+Association of periOperative Registered Nurses. Guidelines for Perioperative Practice. AORN; 2023.
+World Health Organization. WHO Guidelines for Safe Surgery. Geneva: WHO; 2009.[/font_size]

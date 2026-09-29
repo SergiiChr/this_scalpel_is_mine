@@ -155,6 +155,14 @@ func surface_height(uv: Vector2) -> float:
 	return lerpf(top, bottom, f.y)
 
 
+## Blood on the skin at uv, 0..1, from the fluid map.
+func blood_at(uv: Vector2) -> float:
+	if uv.x < 0.0 or uv.y < 0.0 or uv.x > 1.0 or uv.y > 1.0:
+		return 0.0
+	var at := (uv * (WoundMap.SIZE - 1)).floor()
+	return wound_map.images[WoundMap.Layer.FLUIDS].get_pixelv(at)[WoundMap.BLOOD]
+
+
 func uv_to_meters(uv_length: float) -> float:
 	return uv_length * (site_size.x + site_size.y) * 0.5
 

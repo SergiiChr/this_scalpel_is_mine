@@ -44,6 +44,8 @@ var _announced: Dictionary = {}
 var _status_acc := 0.0
 var _qte: Dictionary = {}
 var _sound_msec: Dictionary = {}
+var _effect_msec: Dictionary = {}
+var _effects := ToolEffects.new()
 
 
 func _enter_tree() -> void:
@@ -65,6 +67,9 @@ func _ready() -> void:
 	patient.position = Vector3(0, Room.TABLE_HEIGHT, 0)
 	patient.setup(scenario, Net.patient_quirks, Net.session_seed)
 	patient.died.connect(_on_patient_died)
+	_effects.name = "Effects"
+	_effects.patient = patient
+	add_child(_effects)
 	var peers := Net.roster.keys()
 	peers.sort()
 	var personal: Dictionary = {}
@@ -196,6 +201,15 @@ func sound(id: String, at: Vector3 = Vector3.INF) -> void:
 	_sound.rpc(id, at)
 
 
+## Host: a tool effect on every peer (ToolEffects), at most one per kind every min_msec.
+func effect(kind: String, at: Vector3, min_msec: int = 120) -> void:
+	var now := Time.get_ticks_msec()
+	if now - int(_effect_msec.get(kind, -min_msec)) < min_msec:
+		return
+	_effect_msec[kind] = now
+	_effect.rpc(kind, at)
+
+
 func say(text: String, voice_id: String) -> void:
 	_say.rpc(text, voice_id)
 
@@ -274,6 +288,11 @@ func _toast_debug(text: String) -> void:
 @rpc("authority", "call_local", "unreliable")
 func _sound(id: String, at: Vector3) -> void:
 	Sfx.play(id, at)
+
+
+@rpc("authority", "call_local", "unreliable")
+func _effect(kind: String, at: Vector3) -> void:
+	_effects.play(kind, at)
 
 
 @rpc("authority", "call_local", "reliable")

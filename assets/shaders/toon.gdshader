@@ -26,6 +26,12 @@ uniform float carve_grid = 1.0;
 uniform sampler2D site_wounds : filter_linear, hint_default_black;
 uniform sampler2D site_fluids : filter_linear, hint_default_black;
 uniform float pallor = 0.0;
+// Tools only: blood on the working end. coat is how bloody (0..1), reaching coat_reach meters back from the tip.
+// coat_inverse is the world-to-tool transform (tip at -Z * coat_length), updated while the tool is bloody.
+uniform float coat = 0.0;
+uniform float coat_length = 0.1;
+uniform float coat_reach = 0.02;
+uniform mat4 coat_inverse;
 
 varying vec3 world_pos;
 
@@ -74,6 +80,14 @@ void fragment() {
 			wet = apply_wounds(base, texture(site_wounds, cuv), f);
 		}
 		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
+	}
+	if (coat > 0.0) {
+		vec3 tp = (coat_inverse * vec4(world_pos, 1.0)).xyz;
+		float from_tip = tp.z + coat_length;
+		float edge = coat_reach * (0.75 + 0.5 * noise(tp.xy * 500.0 + tp.z * 260.0));
+		float blood_coat = coat * (1.0 - smoothstep(edge * 0.7, edge, from_tip));
+		base = mix(base, vec3(0.42, 0.02, 0.04), blood_coat * 0.9);
+		wet = max(wet, blood_coat);
 	}
 	ALBEDO = base;
 	ROUGHNESS = mix(roughness, 0.08, wet);

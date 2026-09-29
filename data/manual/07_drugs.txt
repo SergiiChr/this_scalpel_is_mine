@@ -1,0 +1,29 @@
+tags: allergen, cefazolin, clindamycin, morphine, ketamine, lidocaine, propofol
+title: 7. Drug formulary
+[b]7.1 Routes[/b]
+• [b]Direct injection[/b] (syringe into the patient): rapid onset, high peak effect.
+• [b]Intravenous infusion[/b] (at the infusion stand): slower, smoother onset. Requires a patent line (section 2). Blood products and crystalloids are given by this route only.
+
+[b]7.2 Formulary[/b]
+[table=2]
+[cell][b]Drug[/b][/cell][cell][b]Indication[/b][/cell]
+[cell]Adrenaline (epinephrine)[/cell][cell]Asystole, with defibrillation. Anaphylaxis[/cell]
+[cell]Atropine[/cell][cell]Symptomatic bradycardia[/cell]
+[cell]Amiodarone[/cell][cell]Shock-refractory ventricular fibrillation[/cell]
+[cell]Propofol[/cell][cell]Induction of general anesthesia (IV)[/cell]
+[cell]Inhaled agent (mask)[/cell][cell]General anesthesia. Contraindicated with malignant hyperthermia risk[/cell]
+[cell]Ketamine[/cell][cell]Anesthesia with preserved blood pressure[/cell]
+[cell]Lidocaine[/cell][cell]Local infiltration anesthesia[/cell]
+[cell]Morphine[/cell][cell]Analgesia. Depresses respiration[/cell]
+[cell]Naloxone[/cell][cell]Opioid reversal[/cell]
+[cell]Diazepam[/cell][cell]Seizure termination, anxiolysis[/cell]
+[cell]Diphenhydramine[/cell][cell]Mild allergic reactions[/cell]
+[cell]Cefazolin / Clindamycin[/cell][cell]Antibiotic prophylaxis after any opening of the body[/cell]
+[cell]Insulin / Glucose[/cell][cell]Lowers / raises blood glucose[/cell]
+[cell]Heparin / Tranexamic acid[/cell][cell]Anticoagulant / antifibrinolytic[/cell]
+[cell]Dantrolene[/cell][cell]Malignant hyperthermia[/cell]
+[/table]
+
+[font_size=16][b]References[/b]
+Joint Formulary Committee. British National Formulary (BNF). BMJ Group and Pharmaceutical Press; current edition.
+Brunton LL, Knollmann BC, eds. Goodman & Gilman's The Pharmacological Basis of Therapeutics. 14th ed. McGraw Hill; 2023.[/font_size]

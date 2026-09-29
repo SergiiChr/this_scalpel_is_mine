@@ -21,8 +21,8 @@ static func build(highlight_keys: PackedStringArray, on_close: Callable) -> Cont
 	paper.set_content_margin_all(40)
 	page.add_theme_stylebox_override("normal", paper)
 
-	toc.add_child(Ui.label("SURGICAL FIELD MANUAL", 26, Ui.PIP))
-	toc.add_child(Ui.label("rev. 7, water damaged", 14, Ui.DIM))
+	toc.add_child(Ui.label("OPERATING THEATRE PROCEDURES", 24, Ui.PIP))
+	toc.add_child(Ui.label("Revision 7", 14, Ui.DIM))
 	for p in Db.manual:
 		var glowing := not highlight_keys.is_empty() and p.matches(highlight_keys)
 		var entry := Ui.button(("✦ " if glowing else "") + p.title, func() -> void: _show(page, p))
@@ -31,7 +31,7 @@ static func build(highlight_keys: PackedStringArray, on_close: Callable) -> Cont
 			entry.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
 		toc.add_child(entry)
 	toc.add_child(Control.new())
-	toc.add_child(Ui.button("Put it back  [Esc]", on_close))
+	toc.add_child(Ui.button("Close  [Esc]", on_close))
 	book.add_child(Ui.scroll(toc))
 	book.add_child(page)
 	if not Db.manual.is_empty():

@@ -11,8 +11,9 @@ const DEFAULTS: Array[Dictionary] = [
 	{"action": "move_right", "label": "Move right", "key": KEY_D},
 	{"action": "use_tool", "label": "Use tool", "mouse": MOUSE_BUTTON_LEFT},
 	{"action": "look", "label": "Look around (hold)", "mouse": MOUSE_BUTTON_RIGHT},
-	{"action": "zoom_in", "label": "Zoom in / more pressure", "mouse": MOUSE_BUTTON_WHEEL_UP},
-	{"action": "zoom_out", "label": "Zoom out / less pressure", "mouse": MOUSE_BUTTON_WHEEL_DOWN},
+	{"action": "zoom_in", "label": "Zoom in / more pressure while pressing", "mouse": MOUSE_BUTTON_WHEEL_UP},
+	{"action": "zoom_out", "label": "Zoom out / less pressure while pressing", "mouse": MOUSE_BUTTON_WHEEL_DOWN},
+	{"action": "pressure", "label": "Blade pressure / stitch tension", "key": KEY_Q},
 	{"action": "grab", "label": "Grab / release", "key": KEY_E},
 	{"action": "interact", "label": "Interact", "key": KEY_F},
 	{"action": "switch_hand", "label": "Switch hand", "key": KEY_TAB},
@@ -33,7 +34,7 @@ const DEFAULTS: Array[Dictionary] = [
 
 ## Shown in the bottom right corner during surgery.
 const HINT_ACTIONS: PackedStringArray = [
-	"use_tool", "grab", "interact", "switch_hand", "look", "lift", "crouch", "steady", "tilt_forward", "twist_left", "drink", "belt_1",
+	"use_tool", "pressure", "grab", "interact", "switch_hand", "look", "lift", "crouch", "steady", "tilt_forward", "twist_left", "drink", "belt_1",
 ]
 
 

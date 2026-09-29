@@ -21,6 +21,8 @@ var _to_point := Vector3.ZERO
 var _mesh: MeshInstance3D
 var _points := PackedVector3Array()
 var _last_ends: Array[Vector3] = [Vector3.INF, Vector3.INF]
+## Transparent film dressing over the catheter where the line goes in, stuck to the patient.
+var _dressing: MeshInstance3D
 
 
 func _ready() -> void:
@@ -40,11 +42,23 @@ func attach(from: Node3D, from_point: Vector3, to: Node3D, to_point: Vector3) ->
 	_to_point = to_point
 	_last_ends = [Vector3.INF, Vector3.INF]
 	visible = true
+	if _dressing:
+		_dressing.queue_free()
+	_dressing = MeshInstance3D.new()
+	var pad := BoxMesh.new()
+	pad.size = Vector3(0.035, 0.003, 0.028)
+	_dressing.mesh = pad
+	_dressing.material_override = Materials.toon(Color(0.93, 0.95, 0.96), 0.05, false, 0.2)
+	to.add_child(_dressing)
+	_dressing.position = to_point
 
 
 func detach() -> void:
 	_to = null
 	visible = false
+	if _dressing:
+		_dressing.queue_free()
+		_dressing = null
 
 
 func is_attached() -> bool:

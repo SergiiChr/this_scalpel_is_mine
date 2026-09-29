@@ -7,6 +7,12 @@ const POST_FX := preload("res://assets/shaders/post_grime.gdshader")
 const TOAST_TIME := 5.0
 const SUBTITLE_TIME := 6.0
 
+## What each pressure level does, for the tools where it matters (see pressure_kind()).
+const PRESSURE_LEVELS: Dictionary = {
+	"cut": ["Skin", "Fat", "Muscle, into cavity"],
+	"tension": ["Loose", "Correct", "Tight"],
+}
+
 var surgery: Surgery
 var _vitals: Label
 var _clock: Label
@@ -18,6 +24,8 @@ var _net_warning: Label
 ## Aim dot at the active tool tip, and the name of the tool the hand would pick up.
 var _dot: Panel
 var _dot_label: Label
+## Pressure levels of the active tool beside the aim dot, when the tool has any (see PRESSURE_LEVELS).
+var _pressure: RichTextLabel
 var _toasts: VBoxContainer
 var _subtitle: Label
 var _subtitle_timer := 0.0
@@ -288,6 +296,17 @@ func _build_dot() -> void:
 	_dot_label = Ui.label("", 16, Ui.INK)
 	_dot_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_root.add_child(_dot_label)
+	_pressure = RichTextLabel.new()
+	_pressure.bbcode_enabled = true
+	_pressure.fit_content = true
+	_pressure.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_pressure.scroll_active = false
+	_pressure.custom_minimum_size.x = 260
+	_pressure.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pressure.add_theme_font_size_override("normal_font_size", 15)
+	_pressure.add_theme_constant_override("outline_size", 4)
+	_pressure.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_root.add_child(_pressure)
 
 
 func _build_bottom_bar() -> void:
@@ -325,7 +344,7 @@ func _build_controls_hint() -> void:
 	for action in InputActions.HINT_ACTIONS:
 		lines.append("%s  %s" % [InputActions.binding_text(action), InputActions.label_for(action)])
 	lines.append("%s  Move" % "/".join(["move_forward", "move_left", "move_back", "move_right"].map(InputActions.binding_text)))
-	lines.append("Wheel  Zoom (pressure while using a tool)")
+	lines.append("Wheel  Zoom (pressure while pressing a blade)")
 	var hint := Ui.label("\n".join(lines), 14, Ui.HINT)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -369,6 +388,34 @@ func _update_dot(me: Surgeon) -> void:
 	_dot.position = at - _dot.size * 0.5
 	_dot_label.text = me.hovered.def.name if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
+	_pressure.text = _pressure_text(me)
+	_pressure.visible = not _pressure.text.is_empty()
+	_pressure.position = at + Vector2(14, 12)
+
+
+## "cut" for blades, "tension" for tensioned closures, "" when pressure changes nothing worth showing.
+static func pressure_kind(tool: SurgicalTool) -> String:
+	if tool == null:
+		return ""
+	if tool.def.id in Patient.TENSIONED_CLOSURES:
+		return "tension"
+	return "cut" if tool.def.action == "cut" else ""
+
+
+## The three levels, the current one marked; red while the tool is pressed down (cutting or stitching now).
+func _pressure_text(me: Surgeon) -> String:
+	var kind := pressure_kind(me.held_tool(me.active))
+	if kind.is_empty():
+		return ""
+	var hand := me.hands[me.active]
+	var lines := PackedStringArray()
+	for level in range(1, 4):
+		var text := "%d  %s" % [level, PRESSURE_LEVELS[kind][level - 1]]
+		if level == hand.pressure:
+			lines.append("[color=%s][b]▶ %s[/b][/color]" % ["#ff6a5a" if hand.engaged else "#fff4c8", text])
+		else:
+			lines.append("[color=#ffffff80]   %s[/color]" % text)
+	return "\n".join(lines)
 
 
 func _update_hands(me: Surgeon) -> void:
@@ -381,10 +428,11 @@ func _update_hands(me: Surgeon) -> void:
 		if me.hands[i].attached:
 			text += " [holding]"
 		parts.append(("▶ " + text + " ◀") if i == me.active else text)
-	var active_tool := me.held_tool(me.active)
-	var tension := active_tool != null and active_tool.def.id in Patient.TENSIONED_CLOSURES
-	var level: String = (["", "loose", "right", "TIGHT"] if tension else ["", "light", "normal", "DEEP"])[me.hands[me.active].pressure]
-	_hands.text = "   ".join(parts) + ("   tension: " if tension else "   pressure: ") + level
+	var kind := pressure_kind(me.held_tool(me.active))
+	if not kind.is_empty():
+		var pressure := me.hands[me.active].pressure
+		parts.append("%s: %d %s" % ["tension" if kind == "tension" else "blade", pressure, PRESSURE_LEVELS[kind][pressure - 1]])
+	_hands.text = "   ".join(parts)
 	var capacity := me.belt_capacity()
 	while _belt.get_child_count() < capacity:
 		var slot := Ui.label("", 16, Ui.DIM)

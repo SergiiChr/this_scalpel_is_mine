@@ -238,6 +238,11 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
   on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.
+- **Tool effects** (`src/visual/tool_effects.gd`, sent by the host through `Surgery.effect()`): cautery and lighter
+  smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
+  the body jerking, a bead of blood where a needle or catheter goes in. Lasting marks (cuts, burns, stitches, ink,
+  iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
+  through (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`patient_animator.gd`, bones posed through `bone_rig.gd` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,

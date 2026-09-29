@@ -68,6 +68,7 @@ For each scenario, with no script errors:
 | S15 | A nurse delivery lands on the delivery tray (operating room) |
 | S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
 | S17 | Walking through the IV tubing at full speed rips the line out |
+| S18 | Every tool effect plays; a tool in blood gets bloody and the sink washes it; the pressure key steps the level |
 
 ## Co-op over the network (`tests/net_test.gd`)
 

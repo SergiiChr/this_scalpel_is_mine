@@ -245,6 +245,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			hand.pressure = clampi(hand.pressure + step, 1, 3)
 		else:
 			zoom = clampi(zoom + step, 0, ZOOM_FOV.size() - 1)
+	elif event.is_action_pressed("pressure"):
+		hand.pressure = hand.pressure % 3 + 1
 	elif event.is_action_pressed("use_tool"):
 		hand.engaged = true
 	elif event.is_action_released("use_tool"):

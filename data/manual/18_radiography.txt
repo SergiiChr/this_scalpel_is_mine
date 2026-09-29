@@ -1,0 +1,27 @@
+tags: mirrored, bone_hardness
+title: 18. Intraoperative radiography
+[b]18.1 Indications[/b]
+Localization of radiopaque foreign bodies (bullets, blades, retained instruments), assessment of bone, and a count check before closure.
+
+[b]18.2 Procedure[/b]
+1. Take hold of the mobile unit's handle ([b]Interact[/b]). It follows until released.
+2. Position it beside the table.
+3. Expose. All staff stand clear during the exposure, which lasts a few seconds.
+4. The film is delivered onto the cart. It develops over about six seconds.
+The unit requires about thirty seconds between exposures.
+
+[b]18.3 Interpretation[/b]
+[table=2]
+[cell][b]Appearance[/b][/cell][cell][b]Finding[/b][/cell]
+[cell]Bright white[/cell][cell]Metal: projectiles, blades, instruments[/cell]
+[cell]Light grey, linear[/cell][cell]Bone[/cell]
+[cell]Soft grey, rounded[/cell][cell]Soft tissue mass, organ, clot[/cell]
+[cell]Black[/cell][cell]Trapped air[/cell]
+[/table]
+
+[b]18.4 Before closure[/b]
+Take a film. A retained instrument will be found on the next film regardless of who takes it.
+
+[font_size=16][b]References[/b]
+Whitley AS, et al. Clark's Positioning in Radiography. 13th ed. CRC Press; 2015.
+Association of periOperative Registered Nurses. Guideline for Prevention of Unintentionally Retained Surgical Items. AORN; 2023.[/font_size]

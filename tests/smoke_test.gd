@@ -172,6 +172,37 @@ func _feedback_checks(surgery: Surgery) -> void:
 			print("FAIL: walking through the IV line didn't pull it out")
 	else:
 		print("FAIL: the IV line doesn't hang low enough to trip on")
+	await _effect_checks(surgery)
+
+
+## Every tool effect plays on the body, tools pick up blood and wash clean, the pressure key steps through levels.
+func _effect_checks(surgery: Surgery) -> void:
+	var at := surgery.patient.body.uv_to_world(Vector2(0.5, 0.5))
+	for kind in ["smoke", "dust", "spatter", "spark", "bead"]:
+		surgery._effect(kind, at)
+	await _frames(20)
+	if surgery.get_node("Effects").get_child_count() == 0:
+		print("FAIL: tool effects left nothing on screen")
+	var me := surgery.local_surgeon
+	var free: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and me.blocked_reason(t.def).is_empty())
+	if not free.is_empty():
+		var tool: SurgicalTool = free[0]
+		surgery.tools._req_grab(tool.uid, 1)
+		surgery.tools.add_blood(tool, 0.6)
+		if tool.blood < 0.5:
+			print("FAIL: working in blood didn't bloody the tool: ", tool.blood)
+		surgery.tools._req_wash(1)
+		if tool.blood > 0.0:
+			print("FAIL: washing didn't take the blood off")
+		surgery.tools._req_release(1, Vector3.ZERO)
+	var hand := me.hands[me.active]
+	var before := hand.pressure
+	var press := InputEventAction.new()
+	press.action = "pressure"
+	press.pressed = true
+	me._unhandled_input(press)
+	if hand.pressure == before:
+		print("FAIL: the pressure key didn't change the pressure level")
 
 
 func _frames(count: int) -> void:

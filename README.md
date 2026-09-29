@@ -88,7 +88,8 @@ Shown in the bottom right corner in game. Everything can be rebound in **Setting
 | Move active hand | Mouse |
 | Look around | Hold RMB |
 | Use tool (hold) / toggle clamp | LMB |
-| Zoom, or pressure / stitch tension while using | Mouse wheel |
+| Blade pressure / stitch tension: step through 1-3 (shown beside the aim dot) | Q |
+| Zoom, or pressure / stitch tension while pressing a tool down | Mouse wheel |
 | Grab / release the highlighted tool (near a partner's empty hand: pass the tool) | E |
 | Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
 | Switch hand | Tab |

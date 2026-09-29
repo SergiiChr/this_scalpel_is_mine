@@ -5,8 +5,8 @@
     <path d="M400 60 L540 60"/><rect x="410" y="45" width="30" height="30"/><rect x="455" y="45" width="30" height="30"/><rect x="500" y="45" width="30" height="30"/>
   </g>
   <g font-family="sans-serif" font-size="18" fill="#1e1a16" text-anchor="middle">
-    <text x="90" y="115">sutures</text><text x="90" y="140">slow, strong</text>
-    <text x="280" y="115">staples</text><text x="280" y="140">fast, good</text>
-    <text x="470" y="115">tape</text><text x="470" y="140">shallow only</text>
+    <text x="90" y="115">sutures</text><text x="90" y="140">slow, strongest</text>
+    <text x="280" y="115">staples</text><text x="280" y="140">fast, secure</text>
+    <text x="470" y="115">adhesive strips</text><text x="470" y="140">superficial only</text>
   </g>
 </svg>

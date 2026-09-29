@@ -1,0 +1,29 @@
+tags: anesthesia_decay_mult, sedation_mult, ticklish, panicker, chatterbox
+title: 1. Preoperative preparation
+[img=520]res://assets/manual/diagrams/setup_order.svg[/img]
+
+[b]1.1 Sequence[/b]
+Complete the following before the first incision:
+1. Establish intravenous access (section 2).
+2. Prepare the skin: apply povidone-iodine with the swab until the whole operative field is stained orange-brown. Unprepared skin carries a high risk of surgical site infection.
+3. Provide anesthesia appropriate to the procedure (1.2).
+4. Mark the planned incision with the skin marker. Marked incisions are shorter, straighter and easier to close.
+
+[b]1.2 Choice of anesthesia[/b]
+The patient record does not specify the technique. Select it from the indication:
+• [b]Local infiltration[/b] (lidocaine at the site): superficial wounds of the limbs or face in a cooperative, alert patient. The patient remains conscious and must stay still.
+• [b]Local with anxiolysis[/b] (lidocaine and diazepam): children and anxious patients. Assign one team member to reassure the patient at the head of the table.
+• [b]General anesthesia[/b] (propofol IV, or inhaled agent by mask): laparotomy, thoracotomy, craniotomy, osteotomy and any lengthy procedure. Begin only when the monitor shows no spontaneous respiration.
+• [b]None[/b]: cardiac arrest or exsanguinating hemorrhage in the field. Control the emergency first.
+• [b]Awake craniotomy[/b]: induce for the approach, allow the patient to lighten for resection near eloquent cortex.
+
+[b]1.3 Records[/b]
+Verify blood group and allergies against the chart. Where a records discrepancy has been reported, treat both as unknown until the corrected chart arrives from the nurse.
+
+[b]1.4 The conscious patient[/b]
+Agitated patients move unpredictably. Reassure them verbally from the head of the table, or sedate with diazepam.
+
+[font_size=16][b]References[/b]
+World Health Organization. WHO Guidelines for Safe Surgery. Geneva: WHO; 2009.
+Centers for Disease Control and Prevention. Guideline for the Prevention of Surgical Site Infection. JAMA Surg. 2017.
+Gropper MA, ed. Miller's Anesthesia. 9th ed. Elsevier; 2020.[/font_size]

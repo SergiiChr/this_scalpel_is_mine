@@ -18,6 +18,9 @@ var sterile := true
 ## Fell on the floor: visibly dirty. Needs the sink before the sanitizer can make it sterile again.
 var soiled := false
 var charges := -1
+## How bloody the working end is (0..1), for everyone. Host-side exposure builds up in blood_exposure.
+var blood := 0.0
+var blood_exposure := 0.0
 
 # Host-side use state, see ToolActions.
 var grip_info: Dictionary = {}
@@ -68,6 +71,9 @@ func _process(delta: float) -> void:
 		active = hand.engaged
 		closed = hand.attached
 	_animator.animate(active, closed, delta)
+	if blood > 0.0:
+		for mat in _own_materials:
+			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
 
 
 ## The model's bounding box in the tool's own space. Falls back to a thin box along the tool if there's no model.
@@ -104,6 +110,18 @@ func set_soiled(value: bool) -> void:
 	if value or not _own_materials.is_empty():
 		for mat in _materials():
 			mat.set_shader_parameter("grime", 0.95 if value else mat.get_meta("grime", 0.1))
+
+
+## Blood on the working end. Gauze and swabs soak through along their whole length; instruments only near the tip.
+func set_blood(amount: float) -> void:
+	blood = amount
+	if amount > 0.0 or not _own_materials.is_empty():
+		var soaks := def.action == "swab"
+		for mat in _materials():
+			mat.set_shader_parameter("coat", amount)
+			mat.set_shader_parameter("coat_length", def.length)
+			mat.set_shader_parameter("coat_reach", def.length * (1.2 if soaks else 0.12 + 0.3 * amount))
+			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
 
 
 ## The tool your hand would pick up glows faintly (local player only).
