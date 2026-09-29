@@ -3,45 +3,87 @@ extends RefCounted
 ## What each tool action does to the patient. Host only, runs every physics frame for held and standing tools.
 ## Tools share actions: a lighter and a cautery pen both "cauterize", with different ToolDef numbers.
 
-## Skin depth per pressure level (1 light, 2 normal, 3 deep). 0.7+ goes through the skin.
-const DEPTH_BY_PRESSURE: Array[float] = [0.0, 0.3, 0.6, 1.0]
+## How each action is controlled. Every tool is lowered onto its spot with Lower tool (LMB) first.
+## Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
+const LEVEL_NAMES: Dictionary = {
+	"cut": "Depth", "suture": "Tension", "cauterize": "Heat", "saw": "Speed", "suction": "Suction",
+	"swab": "Pressure", "inject": "Plunger",
+}
+## Actions listed here do their thing on Tool action (RMB) instead, named by the value.
+const TRIGGER_NAMES: Dictionary = {
+	"clamp": "Pinch / let go", "smash": "Strike", "tourniquet": "Tighten", "graft": "Place graft",
+	"shock": "Charge (hold), let go to shock",
+}
+## Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.
+const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
 const DEFIB_CHARGE_TIME := 2.0
+## A blade only cuts along its edge: a move further off the edge line than this (cosine) just drags it.
+const ALONG_BLADE := 0.8
 
 
-## hand: {"engaged": bool, "pressure": int, "speed": float, "peer": int, "mods": Modifiers}
+## Where a blade's edge runs on the skin: where the blade plane meets a flat surface, so rotating the tool turns it.
+static func blade_direction(tool: SurgicalTool) -> Vector3:
+	var edge := tool.global_basis.x.cross(Vector3.UP)
+	if edge.length() < 0.2:
+		edge = -tool.global_basis.z * Vector3(1, 0, 1)
+	return edge.normalized()
+
+
+## The tool is doing its job right now (for animation and fingers), not only resting on something.
+static func in_use(action: String, lowered: bool, trigger: bool, level: int) -> bool:
+	if TRIGGER_NAMES.has(action):
+		return trigger
+	return lowered and (level > 0 or not LEVEL_NAMES.has(action))
+
+
+## hand: {"lowered": bool, "trigger": bool, "level": int, "speed": float, "peer": int, "mods": Modifiers}
 static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: float) -> void:
-	var engaged: bool = hand.engaged
-	var pressed := engaged and not tool.engaged_before
-	var released := not engaged and tool.engaged_before
-	tool.engaged_before = engaged
-	if pressed:
+	var lowered: bool = hand.lowered
+	var trigger: bool = hand.trigger
+	var level: int = hand.level
+	var pressed := trigger and not tool.trigger_before
+	var released := not trigger and tool.trigger_before
+	var level_up := level > tool.level_before
+	tool.trigger_before = trigger
+	tool.level_before = level
+	if lowered and not tool.lowered_before:
 		tool.stroke += 1
+	tool.lowered_before = lowered
+	# Powered and pressed tools work harder at higher levels.
+	var effort := level / 3.0
 	var tip := tool.tip_position()
 	var probe := patient.body.probe(tip)
 	var zone: String = probe.zone
 	var uv: Vector2 = probe.uv
 	var touching := zone in ["site", "cavity", "body"]
-	if engaged and touching:
+	if lowered and touching:
 		_on_contact(tool, zone, probe, patient)
 		_bloody(tool, zone, uv, patient, dt)
 	var def := tool.def
 	var mods: Modifiers = hand.mods
 	match def.action:
 		"cut":
-			if engaged and zone == "site":
+			if lowered and level > 0 and zone == "site":
 				if tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.003:
-					patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, DEPTH_BY_PRESSURE[hand.pressure], def.sharpness, not tool.sterile, hand.speed)
-					patient.debride_at(uv)
-					Surgery.current.sound("cut_deep" if hand.pressure >= 3 else "cut_skin", tip)
+					var moved := (tip - tool.last_tip) * Vector3(1, 0, 1)
+					if absf(moved.normalized().dot(blade_direction(tool))) >= ALONG_BLADE:
+						patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, DEPTH_BY_LEVEL[level], def.sharpness, not tool.sterile, hand.speed)
+						patient.debride_at(uv)
+						Surgery.current.sound("cut_deep" if level >= 3 else "cut_skin", tip)
+					else:
+						# Dragged sideways: the next stroke starts here.
+						tool.stroke += 1
 				if tool.last_uv.x < 0.0 or tool.last_uv.distance_to(uv) > 0.003:
 					tool.last_uv = uv
-			elif engaged and zone == "cavity":
-				patient.cut_cavity(uv, probe.depth, def.sharpness, not tool.sterile, dt)
+					tool.last_tip = tip
+			elif lowered and level > 0 and zone == "cavity":
+				patient.cut_cavity(uv, probe.depth, def.sharpness, not tool.sterile, dt * effort)
 			else:
 				tool.last_uv = Vector2(-1, -1)
 		"clamp":
 			var power := def.power * mods.mult("grip_strength_mult")
-			if pressed:
+			# Pinching takes hold only on something the jaws were lowered onto; letting go works anywhere.
+			if pressed and (lowered or not tool.grip_info.is_empty()):
 				if tool.grip_info.is_empty():
 					tool.grip_info = patient.grip(tool.uid, zone, uv, probe.depth)
 					if tool.grip_info.type == "none":
@@ -56,31 +98,32 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					tool.grip_info = {}
 					Surgery.current.set_attached(hand.peer, tool.slot, false)
 		"suture":
-			if engaged and zone == "site" and tool.charges != 0:
-				if patient.close_at(uv, def, dt, mods.mult("improvised_mult"), hand.pressure):
+			if lowered and level > 0 and zone == "site" and tool.charges != 0:
+				if patient.close_at(uv, def, dt, mods.mult("improvised_mult"), level):
 					tool.charges -= 1 if tool.charges > 0 else 0
 					Surgery.current.sound({"skin_stapler": "staple", "office_stapler": "office_staple", "surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
-			elif engaged and zone == "cavity":
+			elif lowered and level > 0 and zone == "cavity":
 				patient.close_internal_at(uv, probe.depth, def, dt)
 		"cauterize":
-			if pressed and def.id == "lighter":
+			if level_up and level == 1 and def.id == "lighter":
 				Surgery.current.sound("lighter_flick", tip)
-			if engaged and zone in ["site", "cavity"] and tool.charges != 0:
-				patient.cauterize_at(zone, uv, probe.depth, def, dt)
+			if lowered and level > 0 and zone in ["site", "cavity"] and tool.charges != 0:
+				patient.cauterize_at(zone, uv, probe.depth, def, dt * effort)
 				Surgery.current.effect("smoke", tip, 180)
 				if randf() < dt * 1.2:
 					Surgery.current.sound("cautery_sizzle", tip)
 				if def.id == "lighter" and randf() < dt:
 					tool.charges -= 1
 		"mark":
-			if engaged and zone == "site":
+			if lowered and zone == "site":
 				if tool.last_uv.x >= 0.0:
 					patient.mark(tool.last_uv, uv)
 				tool.last_uv = uv
 			else:
 				tool.last_uv = Vector2(-1, -1)
 		"inject":
-			if pressed and touching and tool.charges != 0:
+			# The needle goes in while lowered; pushing the plunger all the way gives the dose.
+			if lowered and touching and level_up and level == 3 and tool.charges != 0:
 				if def.iv_only:
 					Surgery.current.announce("%s goes on the IV stand, not in the patient." % def.name, true)
 				else:
@@ -90,7 +133,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					_use_charge(tool)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
-			if engaged and on_chest:
+			if trigger and lowered and on_chest:
 				if tool.charge_time == 0.0:
 					Surgery.current.sound("defib_charge", tip)
 				tool.charge_time += dt
@@ -103,11 +146,11 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					patient.paint(WoundMap.Layer.WOUNDS, WoundMap.BURN, uv, uv, 0.06, 0.1, WoundMap.Mode.MAX)
 				Surgery.current.shock_bystanders(hand.peer)
 				tool.charge_time = 0.0
-			elif not engaged:
+			elif not trigger:
 				tool.charge_time = 0.0
 		"saw":
-			if engaged and zone in ["site", "cavity"]:
-				if patient.saw_at(uv, def, dt):
+			if lowered and level > 0 and zone in ["site", "cavity"]:
+				if patient.saw_at(uv, def, dt * effort):
 					Surgery.current.effect("dust", tip, 150)
 				elif zone == "site" and tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.004:
 					patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, 1.0, 0.3, not tool.sterile, 0.5)
@@ -115,32 +158,32 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.sound("saw_bone", tip)
 				tool.last_uv = uv
 		"smash":
-			if pressed and touching:
+			if pressed and lowered and touching:
 				patient.smash_at(uv, def)
 				if zone in ["site", "cavity"]:
 					Surgery.current.effect("spatter", tip, 0)
 		"suction":
-			if engaged and zone in ["site", "cavity"]:
-				patient.suction_at(zone, uv, def, dt)
+			if lowered and level > 0 and zone in ["site", "cavity"]:
+				patient.suction_at(zone, uv, def, dt * effort)
 				if randf() < dt * 1.2:
 					Surgery.current.sound("suction_slurp", tip)
 				if def.id == "metal_straw":
 					Surgery.current.add_sickness(hand.peer, dt * 0.08)
 		"swab":
-			if engaged and zone in ["site", "cavity"]:
-				patient.swab_at(zone, uv, def, dt)
+			if lowered and level > 0 and zone in ["site", "cavity"]:
+				patient.swab_at(zone, uv, def, dt * effort)
 		"tourniquet":
 			var limb: bool = str(probe.get("part", "")).begins_with("arm") or str(probe.get("part", "")).begins_with("leg") or zone == "site" and patient.body.is_limb_site()
-			if pressed and limb:
+			if pressed and lowered and limb:
 				patient.apply_tourniquet()
 				Surgery.current.tools.leave_standing(tool)
 		"graft":
-			if engaged and zone == "site" and tool.charges != 0 and patient.graft_at(uv, def):
+			if pressed and lowered and zone == "site" and tool.charges != 0 and patient.graft_at(uv, def):
 				_use_charge(tool)
 		"iv_line":
 			# Held against an arm, not only on the frame the button went down: the tip may land a moment later.
 			var arm: bool = str(probe.get("part", "")).begins_with("arm") or zone == "site" and patient.scenario.site == "forearm"
-			if engaged and arm and not patient.iv_set:
+			if lowered and arm and not patient.iv_set:
 				patient.set_iv(tip)
 				Surgery.current.effect("bead", tip, 0)
 				_use_charge(tool)

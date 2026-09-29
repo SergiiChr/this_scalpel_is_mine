@@ -50,17 +50,21 @@ func _drive(role: String, driver: Node) -> void:
 		print("[client] holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 		var site := surgery.patient.body.site.global_position
 		var hand := me.hands[1]
-		hand.local_target = me.to_local(site + Vector3(0, 0.12, 0))
-		hand.pressure = 3
-		hand.engaged = true
+		# The hand sits behind the tip: start it short of the site so the blade lands in the middle.
+		hand.local_target = me.to_local(site + Vector3(0.06, 0.12, -0.08))
+		hand.level = 3
+		hand.lowered = true
+		# Rotated a quarter turn, the blade's edge runs sideways: along the cut.
+		hand.twist = PI / 2
 		for i in 60:
 			hand.local_target += Vector3(0.002, 0, 0.0)
 			await tree.physics_frame
-		hand.engaged = false
+		hand.lowered = false
+		hand.twist = 0.0
 		await tree.create_timer(1.0).timeout
 		# Hand the tool across the table: both surgeons reach over the patient.
 		# 12 cm apart: close enough to pass (Surgeon.PASS_DISTANCE), not so close the hands bump and drop it.
-		hand.pressure = 2
+		hand.level = 0
 		hand.local_target = me.to_local(Vector3(0.0, 1.3, -0.06))
 		await tree.create_timer(1.5).timeout
 		me.active = 1

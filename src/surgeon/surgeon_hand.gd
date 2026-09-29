@@ -50,8 +50,12 @@ var target := Vector3.ZERO
 var local_target := Vector3.ZERO
 var tilt := -1.1
 var twist := 0.0
-var engaged := false
-var pressure := 2
+## Lower tool held: the tool rests on its spot instead of hovering over it.
+var lowered := false
+## Tool action held.
+var trigger := false
+## Effort level 0..3 from the wheel (cut depth, stitch tension, heat, plunger...), see ToolActions.LEVEL_NAMES.
+var level := 0
 var lifted := false
 var attached := false
 var tremor := Vector3.ZERO
@@ -155,7 +159,7 @@ func _track_speed() -> void:
 
 ## Relaxed when empty, closed around a held tool as its grip says, squeezed a little tighter while using it.
 func _animate_fingers(delta: float) -> void:
-	var target := (1.1 if engaged else 1.0) if holding else 0.15
+	var target := (1.1 if lowered or trigger else 1.0) if holding else 0.15
 	_curl = move_toward(_curl, target, delta * 4.0)
 	# Posing 15 bones only matters while the curl changes, which is a fraction of the time.
 	var pose: Array = [_curl, grip, holding]

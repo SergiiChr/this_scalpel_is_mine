@@ -162,7 +162,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 ### In this draft
 
-- Two-hand control, one active at a time, idle hand frozen mid-action. Pressure levels, tilt and twist.
+- Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels, tilt and twist.
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
@@ -190,7 +190,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
-  floor and walks slowly. The wheel zooms (hand motion scales with it for precision) or sets pressure while pressing.
+  floor and walks slowly. The wheel zooms (hand motion scales with it for precision).
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool to keep the wrist in line with the forearm.
@@ -201,11 +201,25 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
   (`src/world/iv_line.gd`). Walking into it at full speed rips it out; crouch-walking steps over it.
 
+### Controls rework
+
+- **Look by default**: the mouse looks around like a regular first person game. Holding a hand's key (Q left, E right)
+  moves that hand instead and makes it the active one. Hands turn and walk with the body unless they hold onto
+  something (a gripped clamp or retractor), then they stay put.
+- **Separate controls per tool** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): LMB lowers the active tool onto its spot.
+  Tools with a range take an effort level 0-3 from the wheel while lowered (cut depth, stitch tension, heat, saw speed,
+  suction, gauze pressure, syringe plunger), 0 does nothing. Single actions are on RMB: clamps pinch and let go,
+  the mallet strikes, the tourniquet tightens, a graft goes on, the defibrillator charges while held and shocks on release.
+  A syringe goes in while lowered and gives its dose when the plunger reaches the end.
+- **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
+  meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
+- **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
+
 ### Approved mechanics (in this build)
 
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
 - **Organ handling damage**: organs held out of place for more than a few seconds, or shoved hard, bruise (they darken) and ooze.
-- **Suture tension**: the pressure level sets stitch tension for the needle and paper clips. Loose leaks, tight can tear through.
+- **Suture tension**: the effort level sets stitch tension for the needle and paper clips. Loose leaks, tight can tear through.
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,

@@ -256,7 +256,7 @@ func shock_bystanders(source_peer: int) -> void:
 		if peer == source_peer:
 			continue
 		for hand in surgeons[peer].hands:
-			if hand.engaged and patient.body.probe(hand.global_position).zone != "none":
+			if hand.lowered and patient.body.probe(hand.global_position).zone != "none":
 				_zapped.rpc_id(peer)
 				break
 
