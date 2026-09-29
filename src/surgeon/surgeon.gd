@@ -326,6 +326,7 @@ func _physics_process(delta: float) -> void:
 			_held_uid[i] = uid
 			hands[i].level = 0
 		hands[i].grip = tool.def.grip if tool else "pencil"
+		hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)

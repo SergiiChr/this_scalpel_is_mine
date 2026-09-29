@@ -63,7 +63,8 @@ def _scalpel(m: Model, length: float, dull: bool) -> None:
     start = -0.035
     edge = [(start, 0.004), (start - 0.012, 0.006), (-length + 0.015, 0.004), (-length, -0.001), (-length + 0.02, -0.006), (start, -0.004)]
     blade = extrude([(z, y) for z, y in edge], 0.0012)
-    m.add("Blade", rotated(rotated(blade, np.pi / 2, Y), 0.0, Z), "dark_steel" if dull else "chrome")
+    # The outline runs along -Z from the handle; a quarter turn the other way would point the blade back through the hand.
+    m.add("Blade", rotated(blade, -np.pi / 2, Y), "dark_steel" if dull else "chrome")
 
 
 def _tweezers(m: Model, length: float, jaw_len: float, width: float, ringed: bool, material: str) -> None:

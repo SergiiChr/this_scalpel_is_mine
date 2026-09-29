@@ -10,6 +10,7 @@ const PATIENT_BONES: PackedStringArray = [
 ]
 const PATIENT_PARTS: PackedStringArray = ["EyeL", "EyeR", "Lids"]
 const ORGANS: PackedStringArray = ["bowel", "lobe", "sac"]
+const GripCheck := preload("res://tests/grip_check.gd")
 ## Most triangles any one model of a category may have. The generators aim under these
 ## (tools/blender/__main__.py BUDGETS, tools/blender/patient.py BUDGETS).
 const BUDGETS: Dictionary = {
@@ -28,6 +29,11 @@ func _ready() -> void:
 	_rig("surgeon", "glove", glove_bones, [], holder)
 	for organ in ORGANS:
 		_exists("organs", organ)
+	# Every organ any site's anatomy puts in the body needs a model.
+	for site: Variant in Db.patient_sites.values():
+		if site is Dictionary:
+			for organ: Dictionary in (site as Dictionary).get("anatomy", {}).get("organs", []):
+				_exists("organs", organ.model)
 	# Every target kind any scenario uses needs a model.
 	var kinds: Dictionary = {}
 	for scenario: ScenarioDef in Db.scenarios:
@@ -36,8 +42,52 @@ func _ready() -> void:
 	for kind: String in kinds:
 		_exists("targets", kind)
 	_check_budgets(holder)
+	for hand_index in 2:
+		await _grip_clearance(holder, hand_index)
+		_hand_turn(holder, hand_index)
 	print("models_test: done")
 	get_tree().quit()
+
+
+## Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in:
+## the back of the hand up, or for a fist round a handle facing out to the hand's own side, never palm up.
+func _hand_turn(holder: Node3D, hand_index: int) -> void:
+	var hand := GripCheck.make_hand(holder, hand_index)
+	var side := -1.0 if hand_index == 0 else 1.0
+	var outward := Vector3(side, 0, 0)
+	for grip: String in SurgeonHand.GRIPS:
+		var def: ToolDef = Db.tools.values().filter(func(d: ToolDef) -> bool: return d.grip == grip).front()
+		hand.holding = true
+		hand.grip = grip
+		hand.fit = Db.grip_fit(def, hand_index)
+		for at: Vector3 in [Vector3(0.17, 1.05, -0.42), Vector3(0.4, 0.95, -0.3), Vector3(0.05, 0.9, -0.5), Vector3(0.25, 1.2, -0.3)]:
+			hand.target = Vector3(at.x * side, at.y, at.z)
+			hand.snap_pose(GripCheck.shoulder(hand))
+			var back := hand._glove.global_basis.y.normalized()
+			var facing := back.dot(outward) if grip == "fist" else back.dot(Vector3.UP)
+			if facing < 0.3:
+				print("FAIL: the %s hand holding a %s at %s is twisted (back of the hand %s)" % ["left" if hand_index == 0 else "right", def.id, hand.target, back])
+	hand.get_parent().queue_free()
+
+
+## Every tool held in a glove the way the game holds it, fitted by data/grips.json: nothing of the tool is inside the
+## glove's fingers or palm. A tool may pass between the fingers or rest against them, not through them.
+func _grip_clearance(holder: Node3D, hand_index: int) -> void:
+	var hand := GripCheck.make_hand(holder, hand_index)
+	var seen: Dictionary = {}
+	for def: ToolDef in Db.tools.values():
+		var model_id := def.model if def.model else def.id
+		if seen.has(model_id):
+			continue
+		seen[model_id] = true
+		var tool := GripCheck.hold(hand, def, Db.grip_fit(def, hand_index), holder)
+		await get_tree().physics_frame
+		var clipped := GripCheck.clipped(hand)
+		if clipped > 0:
+			print("FAIL: the %s goes through the %s glove holding it (%d points)" % [model_id, "left" if hand_index == 0 else "right", clipped])
+		tool.queue_free()
+		await get_tree().physics_frame
+	hand.get_parent().queue_free()
 
 
 func _exists(category: String, model_name: String) -> bool:

@@ -2,6 +2,7 @@ extends Node3D
 ## Renders every tool model held in a right hand, from the side and from the holder's eyes, for checking grips.
 ## Needs a real renderer:
 ##   xvfb-run godot --path . --rendering-method gl_compatibility res://tests/grip_gallery.tscn -- --out=/tmp/grips [--left]
+##   [--only=scalpel,needle] renders just those models.
 
 const EYE := Vector3(0.0, 1.62, 0.0)
 const HAND_AT := Vector3(0.17, 1.05, -0.42)
@@ -10,9 +11,12 @@ const HAND_AT := Vector3(0.17, 1.05, -0.42)
 func _ready() -> void:
 	var out := "user://grips"
 	var left := false
+	var only := PackedStringArray()
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out = arg.get_slice("=", 1)
+		elif arg.begins_with("--only="):
+			only = arg.get_slice("=", 1).split(",")
 		left = left or arg == "--left"
 	DirAccess.make_dir_recursive_absolute(out)
 	_light()
@@ -20,7 +24,7 @@ func _ready() -> void:
 	add_child(body)
 	var hand := SurgeonHand.new()
 	body.add_child(hand)
-	hand.build(0 if left else 1, Color(0.2, 0.36, 0.34))
+	hand.build(0 if left else 1, Materials.toon_unique(Color(0.2, 0.36, 0.34)))
 	var camera := Camera3D.new()
 	camera.fov = 40.0
 	add_child(camera)
@@ -28,7 +32,7 @@ func _ready() -> void:
 	var seen: Dictionary = {}
 	for def: ToolDef in Db.tools.values():
 		var model_id := def.model if def.model else def.id
-		if seen.has(model_id):
+		if seen.has(model_id) or not only.is_empty() and not model_id in only:
 			continue
 		seen[model_id] = true
 		var holder := Node3D.new()
@@ -36,6 +40,7 @@ func _ready() -> void:
 		ToolModel.build(def, holder)
 		hand.holding = true
 		hand.grip = def.grip
+		hand.fit = Db.grip_fit(def, 0 if left else 1)
 		var at := Vector3(-HAND_AT.x if left else HAND_AT.x, HAND_AT.y, HAND_AT.z)
 		hand.target = at
 		var shoulder := Vector3(-0.19 if left else 0.19, 1.4, -0.08)

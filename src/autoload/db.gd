@@ -24,6 +24,8 @@ var starter_kit: Array = []
 var patient_sites: Dictionary = {}
 ## Baked skin heights per site (tools/assetgen), empty when the file is missing.
 var site_heights: Dictionary = {}
+## How each tool model's grip is fitted to the glove, per hand, see SurgeonHand.fit and tests/fit_grips.tscn.
+var grip_fits: Dictionary = {}
 
 
 func _ready() -> void:
@@ -51,6 +53,7 @@ func _ready() -> void:
 	starter_kit = _load_cfg("res://data/starter_kit.cfg").get_value("starter_kit", "tools", [])
 	patient_sites = _load_json("res://data/patient_sites.json")
 	site_heights = _load_json("res://assets/models/patient/site_heights.json")
+	grip_fits = _load_json("res://data/grips.json")
 
 
 func scenario(id: String) -> ScenarioDef:
@@ -62,6 +65,12 @@ func scenario(id: String) -> ScenarioDef:
 
 func tool(id: String) -> ToolDef:
 	return tools.get(id)
+
+
+## How a hand's grip is fitted to this tool's model: {"lift": meters, "curl": [5 floats]} or empty.
+func grip_fit(def: ToolDef, hand: int) -> Dictionary:
+	var fits: Dictionary = grip_fits.get(def.model if def.model else def.id, {})
+	return fits.get("left" if hand == 0 else "right", {})
 
 
 func drug(id: String) -> DrugDef:

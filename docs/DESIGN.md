@@ -213,7 +213,11 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   floor and walks slowly. Zoom steps through three levels (hand motion scales with it for precision).
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
-  curls each finger. The glove then turns around the tool to keep the wrist in line with the forearm.
+  curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
+  (`SurgeonHand.MAX_ROLL`), so the back of the hand stays up. `data/grips.json` fits each tool model to the glove
+  (moves it off the tool, opens or closes fingers) so no tool goes through the hand; `tests/fit_grips.tscn` makes it.
+- **Tools on hard surfaces**: tools lie on the tray side by side at the start, a lowered tool only presses into skin,
+  and every corner of a held tool and the glove clear tables, trays and tools lying there. Physics is Jolt.
   `tests/grip_gallery.tscn` renders every tool held, for checking.
 - **Stations**: the nurse menu is grouped (`category` in tools.cfg) and deliveries land on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.

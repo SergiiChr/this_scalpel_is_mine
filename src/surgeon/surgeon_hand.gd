@@ -74,6 +74,11 @@ var _history: Array = []
 var holding := false
 ## ToolDef.grip of the tool in this hand, set with `holding`. Empty hands follow the forearm, open.
 var grip := "pencil"
+## How this hand's grip is fitted to the tool it holds (data/grips.json, made by tests/fit_grips.tscn), so the tool
+## doesn't pass through the glove: "lift" moves the glove off the tool toward the back of the hand and "shift" toward
+## the pinky side, so the tool sits more in the web of the thumb (meters); "curl" replaces the grip's finger curl.
+## Empty: the grip as it is.
+var fit: Dictionary = {}
 var _curl := 0.2
 ## [curl, grip, holding] the fingers were last posed for.
 var _posed: Array = []
@@ -91,8 +96,11 @@ const PALM_HALF_THICKNESS := 0.014
 const SOAK_RATE := 0.15
 ## Inside the glove's cuff, behind the wrist (glove model space): where a holding hand's forearm ends.
 const CUFF_POINT := Vector3(-0.06, 0.0, 0.0)
-## Most a held tool's angle in the fingers gives way to keep the wrist straight (radians).
-const MAX_TOOL_TIP := 0.6
+## Most a held tool's angle in the fingers gives way to keep the wrist straight (radians). More and the fingers swing
+## into the tool.
+const MAX_TOOL_TIP := 0.3
+## Most the hand turns about the tool to face the elbow (radians), from the grip's own pose with the back of the hand up.
+const MAX_ROLL := 0.45
 ## Empty hand: the glove point (glove model space) at the hand's position, the hollow of the fingers.
 const GRIP_POINT := Vector3(0.07, -0.028, 0.0)
 var _upper: Node3D
@@ -181,6 +189,13 @@ func update_pose(shoulder: Vector3, delta: float) -> void:
 var glove_drop := -0.03
 
 
+## Poses the hand at once, fingers already closed as far as they go (no easing in). For fitting and checking grips.
+func snap_pose(shoulder: Vector3) -> void:
+	_curl = (1.1 if lowered or trigger else 1.0) if holding else 0.15
+	update_pose(shoulder, 0.0)
+	_pose_fingers()
+
+
 func _glove_lowest() -> float:
 	var lowest := global_position.y - 0.03
 	for point: Array in bone_points():
@@ -188,20 +203,31 @@ func _glove_lowest() -> float:
 	return lowest
 
 
-## Points along the glove's bones as it's posed now (world space), each with how thick the glove is around it:
-## [[position, radius], ...]. Inside the fingers and the palm, so nothing solid should be at them.
-func bone_points() -> Array:
+## Points inside the glove as it's posed now (world space), each with how thick the glove is around it:
+## [[position, radius], ...]: along the finger bones and through the palm, so nothing solid should be at them.
+## part: "Palm" or a finger (FINGERS) for just that part, empty for all of it.
+func bone_points(part: String = "") -> Array:
 	var points: Array = []
 	if _glove_rig == null:
 		return points
 	var skeleton := _glove_rig.skeleton
 	for i in skeleton.get_bone_count():
+		var bone := skeleton.get_bone_name(i)
+		if bone == "Hand" or part and not bone.begins_with(part):
+			continue
 		var at := skeleton.global_transform * skeleton.get_bone_global_pose(i).origin
 		var children := skeleton.get_bone_children(i)
 		var to := skeleton.global_transform * skeleton.get_bone_global_pose(children[0]).origin if not children.is_empty() else at
-		var radius := PALM_HALF_THICKNESS if skeleton.get_bone_name(i) == "Hand" else FINGER_RADIUS
 		for t: float in [0.0, 0.5, 1.0]:
-			points.append([at.lerp(to, t), radius])
+			points.append([at.lerp(to, t), FINGER_RADIUS])
+	if part and part != "Palm":
+		return points
+	# The palm is wide and flat: a grid through it, glove model space (fingers +X, back of the hand +Y).
+	for i in 7:
+		for j in 5:
+			for y: float in [-PALM_HALF_THICKNESS * 0.5, 0.0, PALM_HALF_THICKNESS * 0.5]:
+				var at := Vector3(0.085 * i / 6.0, y, -0.024 + 0.012 * j)
+				points.append([_glove.global_transform * at, PALM_HALF_THICKNESS * 0.5])
 	return points
 	if blood > 0.0:
 		for mat in _glove_materials:
@@ -235,12 +261,16 @@ func _track_speed() -> void:
 func _animate_fingers(delta: float) -> void:
 	var target := (1.1 if lowered or trigger else 1.0) if holding else 0.15
 	_curl = move_toward(_curl, target, delta * 4.0)
-	# Posing 15 bones only matters while the curl changes, which is a fraction of the time.
-	var pose: Array = [_curl, grip, holding]
+	_pose_fingers()
+
+
+## Bends the finger bones for the current curl. Posing 15 bones only matters while it changes, a fraction of the time.
+func _pose_fingers() -> void:
+	var pose: Array = [_curl, grip, holding, fit]
 	if _glove_rig == null or pose == _posed:
 		return
 	_posed = pose
-	var amounts: Array = GRIPS.get(grip, GRIPS.pencil).curl if holding else [1.0, 1.0, 1.0, 1.0, 1.0]
+	var amounts: Array = fit.get("curl", GRIPS.get(grip, GRIPS.pencil).curl) if holding else [1.0, 1.0, 1.0, 1.0, 1.0]
 	for f in FINGERS.size():
 		var finger := FINGERS[f]
 		for joint in 3:
@@ -277,7 +307,7 @@ func _place_glove(elbow: Vector3, owner_basis: Basis) -> Vector3:
 		var contact := tool_frame * ((style.on as Vector3) * mirror)
 		var frame := tool_frame.basis * Basis.from_scale(mirror) * (style.basis as Basis)
 		frame = _turn_to_forearm(frame, tool_frame.basis * Vector3.FORWARD, contact, elbow, grip != "fist")
-		var wrist := contact - frame * (style.at as Vector3)
+		var wrist := contact - frame * (style.at as Vector3) + frame.y.normalized() * float(fit.get("lift", 0.0)) + frame.z.normalized() * float(fit.get("shift", 0.0))
 		_glove.global_transform = Transform3D(frame, wrist)
 		# The forearm runs into the glove's loose cuff, so the cuff never shows as an open tube end.
 		return _glove.global_transform * CUFF_POINT
@@ -298,7 +328,8 @@ func _place_glove(elbow: Vector3, owner_basis: Basis) -> Vector3:
 func _turn_to_forearm(frame: Basis, axis: Vector3, contact: Vector3, elbow: Vector3, can_tip: bool) -> Basis:
 	var to_elbow := (elbow - contact).normalized()
 	var wrist_dir := -frame.x.normalized()
-	var roll := _signed_angle(wrist_dir - axis * wrist_dir.dot(axis), to_elbow - axis * to_elbow.dot(axis), axis)
+	# Only as far as a forearm turns: turned further, the hand ends up palm up and twisted outward.
+	var roll := clampf(_signed_angle(wrist_dir - axis * wrist_dir.dot(axis), to_elbow - axis * to_elbow.dot(axis), axis), -MAX_ROLL, MAX_ROLL)
 	frame = Basis(axis, roll) * frame
 	if can_tip:
 		wrist_dir = -frame.x.normalized()

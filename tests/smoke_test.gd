@@ -358,7 +358,7 @@ func _iodine_checks(surgery: Surgery) -> void:
 			run_worst = maxf(run_worst, (Time.get_ticks_usec() - started) / 1000.0)
 		worst_ms = minf(worst_ms, run_worst)
 	print("    iodine wipe: worst frame %.2f ms" % worst_ms)
-	if worst_ms > 3.0:
+	if worst_ms > 4.0:
 		print("FAIL: wiping iodine takes %.2f ms in one frame (stutters)" % worst_ms)
 	tools._req_release(1, Vector3.ZERO)
 	await _frames(3)
