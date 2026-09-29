@@ -36,6 +36,12 @@ func _ready() -> void:
 	add_child(_slider_row("Mouse sensitivity", Settings.mouse_sensitivity, 0.2, 3.0, func(value: float) -> void:
 		Settings.mouse_sensitivity = value))
 
+	var debug := CheckBox.new()
+	debug.text = "Debug mode (show objectives and every scored action)"
+	debug.button_pressed = Settings.debug
+	debug.toggled.connect(func(on: bool) -> void: Settings.debug = on)
+	add_child(debug)
+
 	add_child(Ui.label("Controls (click, then press a key or mouse button)", 18, Ui.PIP))
 	var grid := GridContainer.new()
 	grid.columns = 4

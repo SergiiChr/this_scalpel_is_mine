@@ -15,6 +15,7 @@ var size: String
 var improvised: bool
 var orderable: bool
 var delay: float
+var category: String
 var charges: int
 var drug: String
 var drinkable: bool
@@ -42,6 +43,7 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.improvised = cfg.get_value(section, "improvised", false)
 	def.orderable = cfg.get_value(section, "orderable", false)
 	def.delay = cfg.get_value(section, "delay", 20.0)
+	def.category = cfg.get_value(section, "category", "Supplies")
 	def.charges = cfg.get_value(section, "charges", -1)
 	def.drug = cfg.get_value(section, "drug", "")
 	def.drinkable = cfg.get_value(section, "drinkable", false)

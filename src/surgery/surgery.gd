@@ -71,7 +71,7 @@ func _ready() -> void:
 	for i in peers.size():
 		var surgeon := _spawn_surgeon(peers[i], i)
 		personal[peers[i]] = surgeon.mods.list("items")
-	tools.spawn_initial(scenario.roll_tools(rng, run_mods.num("missing_tool_chance")), room.tray_spots(), personal)
+	tools.spawn_initial(scenario.roll_tools(rng, run_mods.num("missing_tool_chance")), room.tray_spots(), personal, room.station_tools())
 	objectives.setup(scenario)
 	director.setup(scenario, Net.session_seed)
 	hud.setup(self)
@@ -123,7 +123,7 @@ func _physics_process(delta: float) -> void:
 	_status_acc += delta
 	if _status_acc >= STATUS_INTERVAL:
 		_status_acc = 0.0
-		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "nurse": nurse.cooldown_left, "lab": lab.cooldown_left, "elapsed": elapsed})
+		_sync_status.rpc({"objectives": objectives.snapshot(), "score": scoring.points, "log": scoring.recent, "nurse": nurse.cooldown_left, "lab": lab.cooldown_left, "elapsed": elapsed})
 
 
 ## A partner dropped out: their tools fall where they are and their surgeon leaves the room.
@@ -174,6 +174,12 @@ func announce(text: String, throttled: bool = false) -> void:
 		return
 	_announced[text] = now
 	_toast.rpc(text)
+
+
+## Host: toast only players in debug mode see (objective progress and other things the game keeps to itself).
+func announce_debug(text: String) -> void:
+	if multiplayer.is_server():
+		_toast_debug.rpc(text)
 
 
 ## Host: toast for one peer.
@@ -257,6 +263,12 @@ func overstretched(peer: int, hand: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _toast(text: String) -> void:
 	hud.toast(text)
+
+
+@rpc("authority", "call_local", "reliable")
+func _toast_debug(text: String) -> void:
+	if Settings.debug:
+		hud.toast("[debug] " + text)
 
 
 @rpc("authority", "call_local", "unreliable")
@@ -460,7 +472,11 @@ func change_gloves(surgeon: Surgeon) -> void:
 
 func sanitize_tool(surgeon: Surgeon) -> void:
 	tools.request_sterilize(surgeon.active)
-	hud.toast("Dipped in alcohol.")
+
+
+func wash_tool(surgeon: Surgeon) -> void:
+	tools.request_wash(surgeon.active)
+	Sfx.play("sink_water", surgeon.global_position)
 
 
 func use_iv(surgeon: Surgeon) -> void:

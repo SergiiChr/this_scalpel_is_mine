@@ -22,6 +22,8 @@ const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
 ## Gap in meters that counts as a fully opened wound.
 const FULL_GAP := 0.012
+## Where a line set before the surgery goes in: the back of the right hand, in body space.
+const PREOP_IV_POINT := Vector3(-0.2, 0.03, 0.26)
 
 var body: PatientBody
 var vitals := Vitals.new()
@@ -100,6 +102,8 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	vitals.glucose += mods.num("glucose_drift") * 300.0
 	vitals.from_dict(scenario.start_vitals)
 	iv_set = scenario.preop.get("iv", false)
+	if iv_set:
+		_connect_iv(PREOP_IV_POINT)
 
 	for data: Dictionary in scenario.wounds:
 		var points: Array = data.points
@@ -137,6 +141,9 @@ func _physics_process(delta: float) -> void:
 		return
 	body.settle_organs()
 	_handle_organs(delta)
+	var tripped: Surgeon = Surgery.current.room.iv_line.tripped_by(Surgery.current.surgeons.values())
+	if tripped:
+		pull_iv(tripped)
 	_tick_acc += delta
 	while _tick_acc >= TICK:
 		_tick_acc -= TICK
@@ -753,11 +760,31 @@ func apply_tourniquet() -> void:
 	add_flag("tourniquet")
 
 
-func set_iv() -> void:
+## A catheter went into the arm at `at` (world space): tubing now runs from the stand to there.
+func set_iv(at: Vector3) -> void:
 	if not iv_set:
 		iv_set = true
 		hurt(0.1)
-		Surgery.current.announce("IV line in.")
+		_iv_placed.rpc(body.root().to_local(at))
+
+
+## Someone walked into the tubing: the catheter rips out of the arm and the stand rattles.
+func pull_iv(surgeon: Surgeon) -> void:
+	if not iv_set:
+		return
+	iv_set = false
+	hurt(0.35)
+	add_flag("iv_pulled")
+	Surgery.current.scoring.add("iv_pulled")
+	Surgery.current.sound("cable_yank", surgeon.global_position)
+	Surgery.current.announce("%s catches the IV line. It rips out of the arm." % surgeon.display_name)
+	Surgery.current.jolt_peer(surgeon.peer_id, 0.8)
+	_iv_removed.rpc()
+
+
+func _connect_iv(point: Vector3) -> void:
+	if Surgery.current and Surgery.current.room.iv_line:
+		Surgery.current.room.connect_iv(body.root(), point)
 
 
 func graft_at(uv: Vector2, def: ToolDef) -> bool:
@@ -1175,6 +1202,18 @@ func _tissue_snap(uv: Vector2, kind: int) -> void:
 		body.tissue.burst(uv, 0.01)
 	else:
 		body.tissue.sever_near(uv, TissueSim.Depth.SKIN)
+
+
+@rpc("authority", "call_local", "reliable")
+func _iv_placed(point: Vector3) -> void:
+	iv_set = true
+	_connect_iv(point)
+
+
+@rpc("authority", "call_local", "reliable")
+func _iv_removed() -> void:
+	iv_set = false
+	Surgery.current.room.iv_line.detach()
 
 
 @rpc("authority", "call_local", "reliable")

@@ -21,6 +21,10 @@ var extracted := false
 ## Tool uid currently holding it, 0 if none.
 var gripped_by := 0
 
+## A small solid the resting tool tip lands on, so tools inside an open cavity come down onto the target.
+const LAYER := 64
+const TOUCH_RADIUS := 0.012
+
 
 func setup(target_index: int, data: Dictionary, mirrored: bool) -> void:
 	index = target_index
@@ -40,6 +44,16 @@ func setup(target_index: int, data: Dictionary, mirrored: bool) -> void:
 	# Degrees around the vertical, e.g. to lay a rib across the chest.
 	rotation.y = deg_to_rad(data.get("yaw", 0.0))
 	ModelSlot.instantiate("targets", kind, self)
+	var touch := StaticBody3D.new()
+	touch.name = "Touch"
+	touch.collision_layer = LAYER
+	touch.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = TOUCH_RADIUS
+	shape.shape = sphere
+	touch.add_child(shape)
+	add_child(touch)
 
 
 func is_suction_target() -> bool:

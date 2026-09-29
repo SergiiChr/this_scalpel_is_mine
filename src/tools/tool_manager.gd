@@ -11,7 +11,14 @@ var _next_uid := 1
 var _sync_acc := 0.0
 
 
-func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], personal: Dictionary) -> void:
+## station_tools: [[id, Transform3D], ...] that sit on their own station (see Room.station_tools()).
+## A tool the station provides is never also put on the tray.
+func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], personal: Dictionary, station_tools: Array = []) -> void:
+	for entry: Array in station_tools:
+		var at_station: String = entry[0]
+		while tray_ids.has(at_station):
+			tray_ids.remove_at(tray_ids.find(at_station))
+		_create(_next_uid, at_station, entry[1])
 	var spot := 0
 	for id in tray_ids:
 		_create(_next_uid, id, Transform3D(Basis.IDENTITY, tray_spots[spot % tray_spots.size()]))
@@ -77,6 +84,10 @@ func request_belt(hand: int, belt_slot: int) -> void:
 
 func request_sterilize(hand: int) -> void:
 	_req_sterilize.rpc_id(1, hand)
+
+
+func request_wash(hand: int) -> void:
+	_req_wash.rpc_id(1, hand)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -158,10 +169,28 @@ func _req_belt(hand: int, belt_slot: int) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _req_sterilize(hand: int) -> void:
-	var tool := tool_in_hand(Net._sender(), hand)
-	if tool:
+	var peer := Net._sender()
+	var tool := tool_in_hand(peer, hand)
+	if tool == null:
+		Surgery.current.tell(peer, "Nothing in your hand to dip.")
+	elif tool.soiled:
+		Surgery.current.tell(peer, "Alcohol won't cut through that much dirt. Wash it first.")
+	else:
 		_set_sterile.rpc(tool.uid, true)
 		tool.reported.erase("dirty")
+		Surgery.current.tell(peer, "Dipped in alcohol.")
+
+
+## The sink takes the dirt off, it doesn't make anything sterile.
+@rpc("any_peer", "call_local", "reliable")
+func _req_wash(hand: int) -> void:
+	var peer := Net._sender()
+	var tool := tool_in_hand(peer, hand)
+	if tool == null:
+		Surgery.current.tell(peer, "You wash your gloves. They're still gloves.")
+		return
+	_set_soiled.rpc(tool.uid, false)
+	Surgery.current.tell(peer, "Scrubbed clean. Still not sterile.")
 
 
 # --- Host ------------------------------------------------------------------------------------------
@@ -265,6 +294,7 @@ func _check_drop(tool: SurgicalTool) -> void:
 		if body.has_meta("floor"):
 			tool.remove_meta("falling")
 			_set_sterile.rpc(tool.uid, false)
+			_set_soiled.rpc(tool.uid, true)
 			Surgery.current.scoring.add("dropped_tool")
 			Surgery.current.sound("tool_drop_metal", tool.global_position)
 			return
@@ -318,6 +348,13 @@ func _set_sterile(uid: int, value: bool) -> void:
 		tool.sterile = value
 		var local := Surgery.current.local_surgeon
 		tool.show_contamination(local != null and local.mods.flag("contamination_vision"))
+
+
+@rpc("authority", "call_local", "reliable")
+func _set_soiled(uid: int, value: bool) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.set_soiled(value)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")

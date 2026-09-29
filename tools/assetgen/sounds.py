@@ -344,6 +344,21 @@ def patient_breath() -> Wave:
     return loopable(x, 0.05)
 
 
+def sink_water() -> Wave:
+    """Tap running into a steel basin: broadband hiss with a gurgling wobble."""
+    wobble = 0.75 + 0.25 * np.sin(2 * np.pi * 5.3 * t(1.6)) * np.sin(2 * np.pi * 0.7 * t(1.6))
+    return np.asarray(band(noise(1.6), 500, 6000) * wobble * env(int(1.6 * RATE), 0.08, 0.4, 1.0), dtype=np.float64)
+
+
+def cable_yank() -> Wave:
+    """A foot catching the IV line: a rattle of the stand and a rubbery snap."""
+    rattle = band(noise(0.35), 900, 5000) * env(int(0.35 * RATE), 0.002, 0.25)
+    snap = tone(np.linspace(420, 90, int(0.12 * RATE)), 0.12) * env(int(0.12 * RATE), 0.001, 0.08)
+    x = rattle * 0.6
+    place(x, snap, 0.02, 0.9)
+    return x
+
+
 SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     "cut_skin": ("tissue", cut_skin),
     "cut_deep": ("tissue", cut_deep),
@@ -382,6 +397,9 @@ SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     "patient_groan": ("patient", patient_groan),
     "patient_scream": ("patient", patient_scream),
     "patient_breath": ("patient", patient_breath),
+    # New sounds go last: they share one random generator, so earlier sounds stay the same.
+    "sink_water": ("room", sink_water),
+    "cable_yank": ("room", cable_yank),
 }
 
 

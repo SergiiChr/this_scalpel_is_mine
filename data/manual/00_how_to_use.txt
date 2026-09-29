@@ -4,6 +4,14 @@ Read it before you need it. You can't hold a scalpel and a book.
 [b]Hands[/b]
 You control one hand at a time. The mouse moves the active hand. Switch hands and the other one freezes exactly where it was, still doing what it was doing. A clamp stays clamped. A cautery pen left pressed keeps burning.
 
+[b]Height[/b]
+Hands rest just above whatever is under them: skin, tray, or what's inside an open wound. There is no height to set.
+Hold [b]Lift[/b] to raise a hand over your partner's hands or tall tools. While a hand holds onto something, Lift pulls it up, slowly and steadily.
+Hold [b]Crouch[/b] to get down to the floor. Anything that lands there is dirty: wash it at the sink, then sanitize it.
+
+[b]Looking closer[/b]
+The mouse wheel zooms. Zoomed in, the hand moves finer. The dot shows where the tool is working, and what your empty hand would pick up is highlighted.
+
 [b]Using a tool[/b]
 Hold [b]Use tool[/b] to press it onto the patient. The mouse wheel sets pressure while pressing: light, normal, deep. Deep goes through the skin.
 Clamps and forceps toggle: press once to grab, press again to let go.

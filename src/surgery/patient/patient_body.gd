@@ -17,6 +17,8 @@ const GOWN_COLOR := Color(0.5, 0.58, 0.55)
 const SITE_LAYER := 4
 const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
+## Hands push organs aside on their own layer, so rays looking for what's in the cavity don't hit the hands.
+const PUSHER_LAYER := 128
 
 const SKIN_THICKNESS := 0.004
 const MUSCLE_THICKNESS := 0.006
@@ -79,6 +81,11 @@ func _process(delta: float) -> void:
 	if tissue.topology_version != _layer_version or tissue.steps_done != _layer_steps:
 		_rebuild_layers()
 	_jiggle_organs(delta)
+
+
+## The node that carries the body model, colliders and site. It turns with the patient.
+func root() -> Node3D:
+	return _body_root
 
 
 func is_limb_site() -> bool:
@@ -319,7 +326,7 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color) -> RigidB
 	var organ := RigidBody3D.new()
 	organ.name = "Organ%d" % organs.size()
 	organ.collision_layer = CAVITY_LAYER
-	organ.collision_mask = CAVITY_LAYER
+	organ.collision_mask = CAVITY_LAYER | PUSHER_LAYER
 	organ.gravity_scale = 0.0
 	organ.linear_damp = 6.0
 	organ.angular_damp = 6.0

@@ -15,6 +15,8 @@ var holder := 0
 ## Hand index while HELD, belt slot while on the BELT.
 var slot := -1
 var sterile := true
+## Fell on the floor: visibly dirty. Needs the sink before the sanitizer can make it sterile again.
+var soiled := false
 var charges := -1
 
 # Host-side use state, see ToolActions.
@@ -28,6 +30,8 @@ var reported: Dictionary = {}
 
 var _model: Node3D
 var _animator := ToolAnimator.new()
+## This tool's own copies of its toon materials, made the first time it needs to look different from the rest.
+var _own_materials: Array[ShaderMaterial] = []
 
 
 func setup(tool_uid: int, tool_def: ToolDef) -> void:
@@ -75,20 +79,38 @@ func is_improvised() -> bool:
 ## Germaphobe quirk: unsterile tools glow for this player only.
 func show_contamination(visible_to_me: bool) -> void:
 	var glow := 0.0 if sterile or not visible_to_me else 1.0
-	for node in _model.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		# Toon materials are shared between tools, so a tool glows on copies of its own.
-		var copy := glow > 0.0 and not mesh.has_meta("unique")
-		for i in mesh.get_surface_override_material_count():
-			var mat := mesh.get_surface_override_material(i) as ShaderMaterial
-			if mat == null or mat.shader != Materials.TOON:
-				continue
-			if copy:
-				mat = mat.duplicate() as ShaderMaterial
-				mesh.set_surface_override_material(i, mat)
+	if glow > 0.0 or not _own_materials.is_empty():
+		for mat in _materials():
 			mat.set_shader_parameter("contamination", glow)
-		if copy:
-			mesh.set_meta("unique", true)
+
+
+## Floor dirt shows as heavy grime on the tool for everyone.
+func set_soiled(value: bool) -> void:
+	soiled = value
+	if value or not _own_materials.is_empty():
+		for mat in _materials():
+			mat.set_shader_parameter("grime", 0.95 if value else mat.get_meta("grime", 0.1))
+
+
+## The tool your hand would pick up glows faintly (local player only).
+func set_highlight(on: bool) -> void:
+	for mat in _materials():
+		mat.set_shader_parameter("emission_color", Color(0.25, 0.3, 0.22) if on else Color.BLACK)
+
+
+## Toon materials are shared between tools, so the first per-tool change swaps in copies of its own.
+func _materials() -> Array[ShaderMaterial]:
+	if _own_materials.is_empty():
+		for node in _model.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			for i in mesh.get_surface_override_material_count():
+				var mat := mesh.get_surface_override_material(i) as ShaderMaterial
+				if mat and mat.shader == Materials.TOON:
+					mat = mat.duplicate() as ShaderMaterial
+					mat.set_meta("grime", mat.get_shader_parameter("grime"))
+					mesh.set_surface_override_material(i, mat)
+					_own_materials.append(mat)
+	return _own_materials
 
 
 func set_state(new_state: State, new_holder: int, new_slot: int) -> void:

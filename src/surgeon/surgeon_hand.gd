@@ -61,7 +61,7 @@ func build(hand_index: int, scrubs: Color) -> void:
 	for segment in [_upper, _fore]:
 		segment.top_level = true
 	_pusher = AnimatableBody3D.new()
-	_pusher.collision_layer = PatientBody.CAVITY_LAYER
+	_pusher.collision_layer = PatientBody.PUSHER_LAYER
 	_pusher.collision_mask = 0
 	var shape := CollisionShape3D.new()
 	var sphere := SphereShape3D.new()

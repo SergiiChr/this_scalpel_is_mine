@@ -15,6 +15,9 @@ var _hands: Label
 var _belt: HBoxContainer
 var _prompt: Label
 var _net_warning: Label
+## Aim dot at the active tool tip, and the name of the tool the hand would pick up.
+var _dot: Panel
+var _dot_label: Label
 var _toasts: VBoxContainer
 var _subtitle: Label
 var _subtitle_timer := 0.0
@@ -57,6 +60,7 @@ func setup(owner_surgery: Surgery) -> void:
 	_net_warning.position = Vector2(-400, 44)
 	_net_warning.custom_minimum_size.x = 800
 	_net_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_dot()
 	_build_bottom_bar()
 	_build_gauges()
 	_build_controls_hint()
@@ -64,7 +68,7 @@ func setup(owner_surgery: Surgery) -> void:
 
 func begin() -> void:
 	_capture_mouse()
-	toast("%s. %s" % [surgery.scenario.title, surgery.scenario.description])
+	toast(surgery.scenario.title)
 
 
 func _process(delta: float) -> void:
@@ -81,6 +85,7 @@ func _process(delta: float) -> void:
 	_clock.text = "%s   %s" % [surgery.scenario.title, "%d:%02d" % [int(left) / 60, int(left) % 60] if left >= 0.0 else "no time limit"]
 	_update_objectives()
 	_update_net_warning()
+	_update_dot(me)
 	_update_hands(me)
 	_update_gauges(me)
 	_prompt.text = "[%s] %s" % [InputActions.binding_text("interact"), me.focused.prompt] if me.focused and _overlay == null else ""
@@ -156,13 +161,15 @@ func open_card() -> void:
 
 
 func open_nurse() -> void:
-	var choices: Array = []
+	var groups: Dictionary = {}
 	for def: ToolDef in Db.tools.values():
 		if def.orderable:
-			choices.append(["%s  (%d s)" % [def.name, def.delay], def.id])
+			if not groups.has(def.category):
+				groups[def.category] = []
+			(groups[def.category] as Array).append(["%s  (%d s)" % [def.name, def.delay], def.id])
 	var cooldown: float = surgery.status.get("nurse", 0.0)
-	var subtitle_text := "Nurse is busy for %d s." % ceili(cooldown) if cooldown > 0.0 else "One request at a time. Pick carefully."
-	_open(ChoiceMenu.build("Ring for the nurse", subtitle_text, choices, _on_nurse_pick, close_overlay))
+	var subtitle_text := "Nurse is busy for %d s." % ceili(cooldown) if cooldown > 0.0 else "One request at a time. It comes to the delivery tray."
+	_open(ChoiceMenu.build_grouped("Ring for the nurse", subtitle_text, groups, _on_nurse_pick, close_overlay))
 
 
 func open_lab() -> void:
@@ -267,6 +274,22 @@ func _corner_label(preset: Control.LayoutPreset, size: int, color: Color) -> Lab
 	return l
 
 
+func _build_dot() -> void:
+	_dot = Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1.0, 1.0, 0.9, 0.85)
+	style.border_color = Color(0.0, 0.0, 0.0, 0.6)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	_dot.add_theme_stylebox_override("panel", style)
+	_dot.size = Vector2(8, 8)
+	_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_dot)
+	_dot_label = Ui.label("", 16, Ui.INK)
+	_dot_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_root.add_child(_dot_label)
+
+
 func _build_bottom_bar() -> void:
 	var bar := Ui.vbox(4)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
@@ -302,7 +325,7 @@ func _build_controls_hint() -> void:
 	for action in InputActions.HINT_ACTIONS:
 		lines.append("%s  %s" % [InputActions.binding_text(action), InputActions.label_for(action)])
 	lines.append("%s  Move" % "/".join(["move_forward", "move_left", "move_back", "move_right"].map(InputActions.binding_text)))
-	lines.append("Wheel  Hand height / pressure")
+	lines.append("Wheel  Zoom (pressure while using a tool)")
 	var hint := Ui.label("\n".join(lines), 14, Ui.HINT)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -315,8 +338,17 @@ func _build_controls_hint() -> void:
 # --- Updating --------------------------------------------------------------------------------------
 
 
+## Debug mode only: the steps the game checks and the latest scored actions. Normal play shows neither.
 func _update_objectives() -> void:
+	_objectives.visible = Settings.debug
+	if not Settings.debug:
+		return
 	var data: Array = surgery.status.get("objectives", [])
+	var recent: Array = surgery.status.get("log", [])
+	var score_lines := PackedStringArray(["", "Score %d" % surgery.status.get("score", 0)])
+	for entry: Array in recent:
+		score_lines.append("%+d  %s" % [entry[1], entry[0]])
+	data = data + [["\n".join(score_lines), false, false, false]]
 	while _objectives.get_child_count() < data.size():
 		_objectives.add_child(Ui.label("", 18, Ui.INK, true))
 	for i in data.size():
@@ -324,6 +356,19 @@ func _update_objectives() -> void:
 		var l := _objectives.get_child(i) as Label
 		l.text = "%s %s%s" % ["☑" if entry[1] else "▶" if entry[3] else "☐", entry[0], "  (bonus)" if entry[2] else ""]
 		l.add_theme_color_override("font_color", Ui.DIM if entry[1] else Ui.PIP if entry[3] else Ui.INK)
+
+
+func _update_dot(me: Surgeon) -> void:
+	var camera := me.camera()
+	var aim := me.aim_point()
+	_dot.visible = _overlay == null and not camera.is_position_behind(aim)
+	if not _dot.visible:
+		_dot_label.text = ""
+		return
+	var at := camera.unproject_position(aim)
+	_dot.position = at - _dot.size * 0.5
+	_dot_label.text = me.hovered.def.name if is_instance_valid(me.hovered) else ""
+	_dot_label.position = at + Vector2(10, -10)
 
 
 func _update_hands(me: Surgeon) -> void:

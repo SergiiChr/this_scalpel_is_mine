@@ -50,9 +50,8 @@ static func build(patient: Patient, seed_value: int, on_close: Callable) -> Cont
 	text.text = header + \
 		"[b]Name:[/b] %s %s     [b]Age:[/b] %d\n" % [FIRST_NAMES[rng.randi_range(0, FIRST_NAMES.size() - 1)], LAST_NAMES[rng.randi_range(0, LAST_NAMES.size() - 1)], age] + \
 		"[b]Blood type:[/b] %s\n\n" % ("unknown, lab pending" if rng.randf() < 0.3 else blood) + \
-		"[b]Admission:[/b] %s\n\n" % patient.scenario.description + \
-		"[b]History and notes:[/b]\n" + "\n".join(shuffled.map(func(l: String) -> String: return "  • " + l)) + \
-		"\n\n[i]Anesthesia plan: %s[/i]" % patient.scenario.anesthesia
+		"[b]Admission:[/b] %s\n\n" % patient.scenario.complaint + \
+		"[b]History and notes:[/b]\n" + "\n".join(shuffled.map(func(l: String) -> String: return "  • " + l))
 	var box := Ui.vbox(16)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	var center := CenterContainer.new()

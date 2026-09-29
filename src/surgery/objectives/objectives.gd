@@ -34,7 +34,7 @@ func tick(delta: float, surgery: Surgery) -> void:
 		if ObjectiveChecks.check(steps[i], states[i], surgery, delta):
 			states[i].done = true
 			surgery.scoring.add("optional_done" if optional else "objective_done")
-			surgery.announce("Done: %s" % steps[i].label)
+			surgery.announce_debug("Done: %s" % steps[i].label)
 
 
 ## Compact state for the HUD: [[label, done, optional, is_current], ...]

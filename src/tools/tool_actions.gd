@@ -127,9 +127,10 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			if engaged and zone == "site" and tool.charges != 0 and patient.graft_at(uv, def):
 				_use_charge(tool)
 		"iv_line":
+			# Held against an arm, not only on the frame the button went down: the tip may land a moment later.
 			var arm: bool = str(probe.get("part", "")).begins_with("arm") or zone == "site" and patient.scenario.site == "forearm"
-			if pressed and arm:
-				patient.set_iv()
+			if engaged and arm and not patient.iv_set:
+				patient.set_iv(tip)
 				_use_charge(tool)
 
 

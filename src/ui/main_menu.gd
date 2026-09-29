@@ -81,7 +81,7 @@ func _fill_details(details: VBoxContainer) -> void:
 	details.add_child(Ui.label("???" if secret else s.title, 34, Ui.PIP))
 	details.add_child(Ui.label("Difficulty %s    Group: %s" % [s.stars_text(), s.group], 18, Ui.DIM))
 	details.add_child(Ui.label("Description hidden. Trust us." if secret else s.description, 20, Ui.INK, true))
-	var facts := "Anesthesia: %s   Time: %s   Nurse: %s" % [s.anesthesia, "%d min" % (s.time_limit / 60) if s.time_limit > 0 else "none", "yes" if s.nurse else "no"]
+	var facts := "Time limit: %s   Nurse: %s" % ["%d min" % (s.time_limit / 60) if s.time_limit > 0 else "none", "yes" if s.nurse else "no"]
 	details.add_child(Ui.label(facts, 16, Ui.DIM))
 	var similar := Db.scenarios.filter(func(o: ScenarioDef) -> bool: return o != s and o.group.get_slice(" ", 0) == s.group.get_slice(" ", 0) and not o.hidden)
 	if not similar.is_empty():
