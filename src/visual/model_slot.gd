@@ -2,7 +2,7 @@ class_name ModelSlot
 extends RefCounted
 ## Loads the model for assets/models/<category>/<name>.glb (or .gltf/.tscn).
 ## Generated models come from tools/assetgen; replace a file to replace the art.
-## Imported materials are swapped for the game's cel-shaded ones by material name.
+## Imported materials are swapped for the game's shaded ones by material name.
 
 const ROOT := "res://assets/models"
 
@@ -22,7 +22,7 @@ static func instantiate(category: String, model_name: String, parent: Node3D, ov
 	return empty
 
 
-## Replaces imported glTF materials with the game's cel shading, keeping each material's color.
+## Replaces imported glTF materials with the game's shading, keeping each material's color.
 static func toonify(root: Node, overrides: Dictionary = {}) -> void:
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D

@@ -6,7 +6,6 @@ render_mode cull_disabled;
 
 uniform int layer = 0;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
-uniform float bands = 3.0;
 
 varying vec3 local_pos;
 
@@ -52,8 +51,8 @@ void fragment() {
 
 void light() {
 	float ndl = max(dot(NORMAL, LIGHT), 0.0);
-	float lit = floor(ndl * bands + 0.5) / bands * ATTENUATION;
+	float lit = ndl * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	SPECULAR_LIGHT += LIGHT_COLOR * step(0.96, dot(NORMAL, halfway)) * ATTENUATION * (1.0 - ROUGHNESS) / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.96, 0.98, dot(NORMAL, halfway)) * ATTENUATION * (1.0 - ROUGHNESS) / PI;
 }

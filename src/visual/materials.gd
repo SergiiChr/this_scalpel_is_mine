@@ -23,12 +23,11 @@ static func toon(color: Color, grime: float = 0.25, outline: bool = true, roughn
 	return _cache[key]
 
 
-## Walls, floors and big furniture: smooth shading, no outline, heavier grime.
+## Walls, floors and big furniture: no highlights, no outline, heavier grime.
 static func environment(color: Color, grime: float = 0.6) -> ShaderMaterial:
 	var key := "env|%s|%.2f" % [color.to_html(), grime]
 	if not _cache.has(key):
 		var mat := toon_unique(color, grime, false, 0.85)
-		mat.set_shader_parameter("bands", 0.0)
 		mat.set_shader_parameter("rim_strength", 0.0)
 		mat.set_shader_parameter("specular_strength", 0.0)
 		_cache[key] = mat

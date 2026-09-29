@@ -7,7 +7,6 @@ shader_type spatial;
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 uniform sampler2D wound_map : filter_linear, hint_default_black;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
-uniform float bands = 3.0;
 uniform float rim_strength = 0.2;
 uniform float specular_strength = 0.12;
 uniform float grime = 0.12;
@@ -49,16 +48,17 @@ void fragment() {
 	ROUGHNESS = mix(0.6, 0.08, wet);
 }
 
-// Same banded light as toon.gdshader so the site blends into the rest of the body.
+// Same light as toon.gdshader so the site blends into the rest of the body.
 void light() {
 	float ndl = max(dot(NORMAL, LIGHT), 0.0);
-	float lit = floor(ndl * bands + 0.5) / bands * ATTENUATION;
+	float lit = ndl * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
 	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
-	float spec = step(mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet), dot(NORMAL, halfway)) * ATTENUATION;
+	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
+	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
 	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
-	DIFFUSE_LIGHT += LIGHT_COLOR * step(0.5, rim) * rim_strength * lit / PI;
+	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }
