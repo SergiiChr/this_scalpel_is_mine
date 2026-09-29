@@ -6,7 +6,6 @@ render_mode cull_disabled;
 
 uniform vec4 albedo : source_color = vec4(0.55, 0.12, 0.12, 1.0);
 uniform float damage = 0.0;
-uniform float bands = 3.0;
 uniform float wetness = 0.8;
 
 uniform sampler2D region_map : filter_linear, hint_default_white;
@@ -45,9 +44,8 @@ void fragment() {
 
 void light() {
 	float ndl = max(dot(NORMAL, LIGHT), 0.0);
-	// Band the angle only, keep distance falloff smooth so lights don't draw hard circles on walls.
-	float lit = floor(ndl * bands + 0.5) / bands * ATTENUATION;
+	float lit = ndl * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	SPECULAR_LIGHT += LIGHT_COLOR * step(0.96, dot(NORMAL, halfway)) * ATTENUATION * wetness / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.96, 0.98, dot(NORMAL, halfway)) * ATTENUATION * wetness / PI;
 }

@@ -3,7 +3,6 @@ extends RefCounted
 ## Room architecture (walls, floors), invisible colliders and 3D labels. Everything else is a model.
 
 
-## Room surfaces: smooth shading so big flat walls don't show light bands.
 static func slab(parent: Node3D, size: Vector3, color: Color, pos: Vector3, grime: float = 0.6) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size

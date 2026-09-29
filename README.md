@@ -115,7 +115,7 @@ data/            Everything designers edit. The game reads these at startup.
 assets/          Art and sound, organized for review and replacement
   icons/         Quirk icons (Pip-Boy style SVG), app icon
   manual/        Manual diagrams
-  shaders/       Cel shading, outline, skin damage, fat and muscle layers, flesh, screen grime
+  shaders/       Shading, outline, skin damage, fat and muscle layers, flesh, screen grime
   models/        Generated models (see README there)
   audio/         Generated sounds (see README there)
 scenes/          Scene files (menus, surgery)

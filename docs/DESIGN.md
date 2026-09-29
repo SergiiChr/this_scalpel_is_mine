@@ -48,8 +48,8 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Lighting: a ceiling panel light over the table lights the room from above, the surgical lamp's spot focuses
   on the site, dim tubes fill the corners. Outside, the streetlight does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
-- Cel shading (`toon.gdshader`): banded light angle, hard specular, rim light, procedural grime.
-  Room surfaces use a smooth variant so walls don't band.
+- Shading (`toon.gdshader`): smooth diffuse, soft specular, rim light, procedural grime.
+  Room surfaces skip specular and rim.
 - Ink outline via inverted hull (`outline.gdshader`).
 - Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
   - The skin is a grid of particles joined by springs under tension, loosely anchored to the body.

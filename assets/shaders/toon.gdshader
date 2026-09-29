@@ -1,10 +1,9 @@
-// Cel shading with hard light bands, a hard specular spot, rim light and procedural grime.
+// Smooth diffuse light, a soft specular spot, rim light and procedural grime.
 // Used for everything except the simulated site skin. Tune per material from Materials.toon().
 shader_type spatial;
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, hint_default_white;
-uniform float bands = 3.0;
 uniform float rim_strength = 0.3;
 uniform float specular_strength = 0.4;
 uniform float roughness : hint_range(0.0, 1.0) = 0.7;
@@ -97,15 +96,14 @@ void fragment() {
 
 void light() {
 	float ndl = max(dot(NORMAL, LIGHT), 0.0);
-	// Band the angle only, keep distance falloff smooth. bands = 0 means smooth shading (room surfaces).
-	float lit = (bands > 0.0 ? floor(ndl * bands + 0.5) / bands : ndl) * ATTENUATION;
+	float lit = ndl * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
 	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a bright glint.
 	float wet = clamp((roughness - ROUGHNESS) / max(roughness - 0.08, 0.01), 0.0, 1.0);
 	float spec_size = mix(mix(0.995, 0.9, roughness), 0.994, wet);
-	float spec = step(spec_size, dot(NORMAL, halfway)) * ATTENUATION;
+	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
 	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
-	DIFFUSE_LIGHT += LIGHT_COLOR * step(0.5, rim) * rim_strength * lit / PI;
+	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }
