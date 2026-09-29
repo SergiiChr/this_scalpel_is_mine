@@ -1,0 +1,47 @@
+# Every push and pull request runs the full test suite (tests/TEST_CASES.md) and a real export build.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  assetgen:
+    name: Asset generator lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # bpy is left out: it's a large download and the lint and type checks don't need it.
+      - run: pip install -r requirements.txt ruff==0.16.9 mypy==2.3.1
+      - run: ruff check tools
+      - run: ruff format --check tools
+      - run: mypy tools
+
+  game:
+    name: Game tests and export
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # Godot and its export templates are large, keep them between runs.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .tools
+            ~/.local/share/godot/export_templates
+          key: godot-${{ hashFiles('build.sh') }}
+      - run: ./build.sh test
+      - run: SKIP_TESTS=1 ./build.sh build
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/test-logs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ThisScalpelIsMine-linux
+          path: build/ThisScalpelIsMine.x86_64

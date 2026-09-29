@@ -1,0 +1,9 @@
+title: Turning the patient
+[img=520]res://assets/manual/diagrams/turning.svg[/img]
+
+Face up, side, face down. Always one step at a time.
+• Everyone near the table must be on the [b]same side[/b].
+• Let go of everything first. Nobody holds tissue during a turn.
+• Press the keys as they appear, together. A wrong key and they go over the edge.
+
+A dropped patient breaks a hip, bursts closures and loses blood. It also looks very bad in the report.

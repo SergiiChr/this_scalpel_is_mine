@@ -1,0 +1,23 @@
+tags: office_stapler, duct_tape, thin_skin, tear_threshold_mult
+title: Closing
+[img=560]res://assets/manual/diagrams/closures.svg[/img]
+
+A wound is only closed when you've gone along [b]all[/b] of it. Move the tool along the line while pressing.
+
+[table=3]
+[cell][b]Method[/b][/cell][cell][b]Speed[/b][/cell][cell][b]Holds[/b][/cell]
+[cell]Suture needle[/cell][cell]slow[/cell][cell]best[/cell]
+[cell]Skin stapler[/cell][cell]fast[/cell][cell]good[/cell]
+[cell]Surgical tape[/cell][cell]fast[/cell][cell]shallow wounds only[/cell]
+[cell]Office stapler[/cell][cell]fast[/cell][cell]bursts under strain[/cell]
+[cell]Paper clips[/cell][cell]slow[/cell][cell]barely[/cell]
+[cell]Duct tape[/cell][cell]fast[/cell][cell]holds, ruins skin[/cell]
+[/table]
+
+[b]Stitch tension[/b] (needle, paper clips): the mouse wheel sets it while stitching.
+• Loose: quick, but the wound never fully seals and keeps oozing.
+• Right: what you want.
+• Tight: strongest seal, but every stitch can tear through. Thin skin tears twice as often.
+Pulling hard on stitched skin can tear stitches out too.
+
+Seizures, coughing, falls and bumps strain closures. Weak closures burst open. Internal wounds (stomach, bowel, arteries) close with sutures or cautery inside the cavity.

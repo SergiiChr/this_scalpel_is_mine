@@ -1,0 +1,7 @@
+# Asset generator (tools/assetgen): procedural models and sounds.
+mapbox_earcut==2.1.0
+numpy>=1.26,<3
+pillow==12.3.0
+scipy==1.17.1
+shapely==2.1.2
+trimesh==5.1.0

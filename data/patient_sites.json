@@ -1,0 +1,13 @@
+{
+	"_about": "Surgical sites in patient body space (head at +X, face up +Y, meters). depth = cavity depth. back = faces down until the patient is turned. tools/assetgen bakes skin heights for each site into assets/models/patient/site_heights.json.",
+	"abdomen": {"pos": [0.0, 0.112, 0.0], "size": [0.3, 0.3], "depth": 0.12},
+	"chest": {"pos": [0.3, 0.112, 0.0], "size": [0.26, 0.3], "depth": 0.12},
+	"back": {"pos": [0.15, -0.112, 0.0], "size": [0.3, 0.3], "depth": 0.12, "back": true},
+	"neck": {"pos": [0.5, 0.06, 0.0], "size": [0.12, 0.1], "depth": 0.05},
+	"head": {"pos": [0.72, 0.115, 0.0], "size": [0.12, 0.14], "depth": 0.05},
+	"face": {"pos": [0.64, 0.125, 0.0], "size": [0.1, 0.1], "depth": 0.05},
+	"shoulder": {"pos": [0.38, 0.112, 0.15], "size": [0.14, 0.14], "depth": 0.05},
+	"forearm": {"pos": [0.2, 0.03, 0.25], "size": [0.22, 0.09], "depth": 0.05},
+	"thigh": {"pos": [-0.55, 0.06, 0.1], "size": [0.25, 0.14], "depth": 0.05},
+	"lower_leg": {"pos": [-0.95, 0.025, 0.1], "size": [0.25, 0.1], "depth": 0.05}
+}

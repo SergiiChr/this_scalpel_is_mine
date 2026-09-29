@@ -1,0 +1,68 @@
+class_name ScenarioDef
+extends RefCounted
+## One data/scenarios/*.cfg file. See docs/DESIGN.md#scenarios for the format.
+
+var id: String
+var order: int
+var title: String
+var difficulty: int
+var group: String
+var description: String
+var hidden: bool
+var time_limit: float
+var anesthesia: String
+var site: String
+var side: String
+var start_orientation: int
+var patient_age: String
+var environment: String
+var nurse: bool
+var dirty_start: bool
+var patient_quirks_min: int
+var patient_quirks_max: int
+var patient_quirk_pool: Array
+var fixed_patient_quirks: Array
+var starting_tools: Array
+var random_tools: Array
+var random_tool_count: int
+var missing_tool_chance: float
+var events: Array
+var scripted_events: Array
+var start_vitals: Dictionary
+var preop: Dictionary
+var wounds: Array
+var burns: Array
+var internal: Array
+var targets: Array
+var steps: Array
+
+
+static func load_file(path: String) -> ScenarioDef:
+	var cfg := ConfigFile.new()
+	if cfg.load(path) != OK:
+		push_error("Can't read scenario %s" % path)
+		return null
+	var def := ScenarioDef.new()
+	def.id = path.get_file().get_basename().substr(3)
+	for key: String in cfg.get_section_keys("scenario"):
+		def.set(key, cfg.get_value("scenario", key))
+	for section: String in ["patient", "objectives"]:
+		for key: String in cfg.get_section_keys(section):
+			def.set(key, cfg.get_value(section, key))
+	return def
+
+
+## Picks the tools that actually spawn on the tray for this run.
+func roll_tools(rng: RandomNumberGenerator, extra_missing_chance: float = 0.0) -> PackedStringArray:
+	var tools := PackedStringArray()
+	for tool_id: String in starting_tools:
+		if rng.randf() >= missing_tool_chance + extra_missing_chance:
+			tools.append(tool_id)
+	var extras := random_tools.duplicate()
+	for i in mini(random_tool_count, extras.size()):
+		tools.append(extras.pop_at(rng.randi_range(0, extras.size() - 1)))
+	return tools
+
+
+func stars_text() -> String:
+	return "★".repeat(difficulty) + "☆".repeat(5 - difficulty)

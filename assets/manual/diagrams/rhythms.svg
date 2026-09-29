@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="220" viewBox="0 0 560 220">
+  <g stroke="#1e1a16" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 50 L90 50 L100 20 L110 80 L120 50 L200 50 L210 20 L220 80 L230 50 L310 50 L320 20 L330 80 L340 50 L420 50 L430 20 L440 80 L450 50 L540 50"/>
+    <path d="M20 120 Q35 95 50 125 T80 118 T110 130 T140 105 T170 128 T200 112 T230 132 T260 102 T290 126 T320 110 T350 130 T380 104 T410 127 T440 112 T470 131 T500 108 T540 120"/>
+    <path d="M20 180 L540 180"/>
+  </g>
+  <g font-family="sans-serif" font-size="18" fill="#1e1a16">
+    <text x="20" y="18">SINUS: fine</text><text x="20" y="98">V-FIB: shock (amiodarone helps)</text><text x="20" y="208">ASYSTOLE: adrenaline, then shock</text>
+  </g>
+</svg>

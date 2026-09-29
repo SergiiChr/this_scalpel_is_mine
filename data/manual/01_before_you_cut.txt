@@ -1,0 +1,18 @@
+tags: anesthesia_decay_mult, sedation_mult, ticklish, panicker, chatterbox
+title: Before you cut
+[img=520]res://assets/manual/diagrams/setup_order.svg[/img]
+
+[b]1. IV line.[/b] Use the IV catheter on an arm. Without a line, anything you give through the IV stand does nothing.
+
+[b]2. Sanitize.[/b] Paint the site with the iodine swab until it's orange-brown. Unsanitized skin means infection later.
+
+[b]3. Numb or sleep.[/b]
+• [b]General:[/b] propofol (IV) or anesthetic gas mask. Wait for the monitor to show no respiration count, then start.
+• [b]Local:[/b] lidocaine at the site. The patient stays awake and talks. Keep them calm.
+• [b]None:[/b] some scenarios. Work fast, talk to them.
+
+[b]4. Mark.[/b] Draw the line before you cut it. Marked incisions score better and keep you honest.
+
+[b]Read the chart[/b], but on some nights the records get mixed up. If the lobby warned you about a chart mix-up, don't trust the blood type or allergies until the nurse brings the corrected copy.
+
+Awake patients panic. Panicking patients thrash. Talk to them at the head of the bed, or sedate with diazepam.

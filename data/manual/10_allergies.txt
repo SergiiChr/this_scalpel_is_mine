@@ -1,0 +1,15 @@
+tags: allergen, allergy, cefazolin, morphine, lidocaine, propofol, clindamycin, ketamine, cocaine
+title: Allergies and substitutes
+The card only says "known drug allergy". The [b]allergy screen[/b] at the lab tells you which.
+
+[table=3]
+[cell][b]Allergic to[/b][/cell][cell][b]Use instead[/b][/cell][cell][b]Watch out[/b][/cell]
+[cell]Cefazolin[/cell][cell]Clindamycin[/cell][cell]Slower to arrive[/cell]
+[cell]Morphine[/cell][cell]Ketamine[/cell][cell]Raises heart rate[/cell]
+[cell]Lidocaine[/cell][cell]General anesthesia, or cocaine (topical)[/cell][cell]Cocaine + adrenaline = cardiac event[/cell]
+[cell]Propofol[/cell][cell]Ketamine or gas[/cell][cell]Not gas if hyperthermia risk[/cell]
+[/table]
+
+[b]Reactions[/b]
+Hives and swelling: diphenhydramine.
+Blood pressure crashing, oxygen dropping: that's anaphylaxis. Adrenaline, now.

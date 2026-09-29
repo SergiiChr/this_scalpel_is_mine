@@ -1,0 +1,18 @@
+tags: arrest_mult, heart, pacemaker, adrenaline, amiodarone, atropine
+title: When the heart stops
+[img=560]res://assets/manual/diagrams/rhythms.svg[/img]
+
+[b]V-FIB[/b] (chaotic squiggle, alarm): shockable.
+1. Clear the table. Anyone touching the patient during a shock gets shocked too.
+2. Paddles on the chest. Hold to charge (2 s), release to shock.
+3. Didn't take? Amiodarone, then shock again.
+After 40 seconds of V-fib the heart goes flat.
+
+[b]ASYSTOLE[/b] (flat line, constant tone): not shockable on its own.
+1. Adrenaline first.
+2. Then shock within the next minute.
+
+[b]Never shock a beating heart.[/b] You can cause the arrest you were trying to fix.
+
+[b]Pacemakers[/b] misfire near cautery and shocks. Use staples on the chest. Pacemaker patients arrest less.
+[b]Weak hearts[/b] arrest from blood loss, pain and bad drug combos far sooner.

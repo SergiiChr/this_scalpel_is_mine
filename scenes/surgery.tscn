@@ -1,0 +1,47 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://src/surgery/surgery.gd" id="1"]
+[ext_resource type="Script" path="res://src/world/room.gd" id="2"]
+[ext_resource type="Script" path="res://src/surgery/patient/patient.gd" id="3"]
+[ext_resource type="Script" path="res://src/tools/tool_manager.gd" id="4"]
+[ext_resource type="Script" path="res://src/surgery/objectives/objectives.gd" id="5"]
+[ext_resource type="Script" path="res://src/surgery/events/event_director.gd" id="6"]
+[ext_resource type="Script" path="res://src/surgery/scoring.gd" id="7"]
+[ext_resource type="Script" path="res://src/surgery/nurse.gd" id="8"]
+[ext_resource type="Script" path="res://src/surgery/lab.gd" id="9"]
+[ext_resource type="Script" path="res://src/ui/hud.gd" id="10"]
+
+[node name="Surgery" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Room" type="Node3D" parent="."]
+script = ExtResource("2")
+
+[node name="Patient" type="Node3D" parent="."]
+script = ExtResource("3")
+
+[node name="Tools" type="Node3D" parent="."]
+script = ExtResource("4")
+
+[node name="Surgeons" type="Node3D" parent="."]
+
+[node name="Systems" type="Node" parent="."]
+
+[node name="Objectives" type="Node" parent="Systems"]
+script = ExtResource("5")
+
+[node name="Director" type="Node" parent="Systems"]
+script = ExtResource("6")
+
+[node name="Scoring" type="Node" parent="Systems"]
+script = ExtResource("7")
+
+[node name="Nurse" type="Node" parent="Systems"]
+script = ExtResource("8")
+
+[node name="Lab" type="Node" parent="Systems"]
+script = ExtResource("9")
+
+[node name="Hud" type="CanvasLayer" parent="."]
+layer = 2
+script = ExtResource("10")

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="150" viewBox="0 0 520 150">
+  <g stroke="#1e1a16" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="20" y="70" width="130" height="30" rx="14"/><circle cx="135" cy="60" r="12"/>
+    <path d="M165 85 L190 85 M182 77 L190 85 L182 93"/>
+    <rect x="200" y="50" width="40" height="70" rx="14"/><circle cx="220" cy="38" r="12"/>
+    <path d="M255 85 L280 85 M272 77 L280 85 L272 93"/>
+    <rect x="300" y="70" width="130" height="30" rx="14"/><circle cx="415" cy="108" r="12"/>
+  </g>
+  <g font-family="sans-serif" font-size="18" fill="#1e1a16" text-anchor="middle"><text x="85" y="135">face up</text><text x="220" y="140">side</text><text x="365" y="140">face down</text><text x="470" y="85">same side!</text></g>
+</svg>

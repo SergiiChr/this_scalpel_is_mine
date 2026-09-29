@@ -1,0 +1,21 @@
+title: How to use this manual
+Read it before you need it. You can't hold a scalpel and a book.
+
+[b]Hands[/b]
+You control one hand at a time. The mouse moves the active hand. Switch hands and the other one freezes exactly where it was, still doing what it was doing. A clamp stays clamped. A cautery pen left pressed keeps burning.
+
+[b]Using a tool[/b]
+Hold [b]Use tool[/b] to press it onto the patient. The mouse wheel sets pressure while pressing: light, normal, deep. Deep goes through the skin.
+Clamps and forceps toggle: press once to grab, press again to let go.
+
+[b]Holding on[/b]
+A hand that holds tissue stays put when you walk. Walk too far and you tear what you're holding. Let go first.
+
+[b]Handing over[/b]
+Hold a tool near your partner's empty hand and press [b]Grab[/b] to hand it over. Both hands still, or it hits the floor.
+
+[b]Bumping[/b]
+Your hands knock into your partner's hands. Hold [b]Lift[/b] to pass over them and over tall tools.
+
+[b]Pages in this book[/b]
+Basics first, then combinations. When a page doesn't match what you see on the monitor, trust the monitor.
