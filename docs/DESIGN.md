@@ -56,6 +56,12 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   terminator with a red tint), glove rubber, cloth (no highlight, soft sheen), metal (tinted highlight, a fake
   ceiling/floor reflection), plastic and wet tissue. The model's color, roughness, metallic and texture maps are kept.
   Grime rides on the model; only walls and floors keep theirs fixed in the world. Room surfaces skip specular and rim.
+- Fine relief per family (`Materials.Detail`): skin pores, glove creases, cloth weave and folds, brushed steel.
+  It only tilts the normal, so silhouettes and collisions are the model's own.
+- Surgical drape (`drape.gd`, operating room only): a sheet over the torso and legs laid from the body's rest mesh,
+  1.2 cm off the skin so breathing never pushes the body through it, rising with the trunk. Its opening frames the
+  site and covers the site's edge. It hides while the patient is turned away from the site; hands rest on it.
+- Organs and cavity walls (`flesh.gdshader`) show branching vessels and mottling.
 - Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
   so a blade gets a hairline and furniture a full line.
 - Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
