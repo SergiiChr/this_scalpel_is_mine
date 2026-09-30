@@ -410,12 +410,19 @@ func _contact_audio() -> void:
 func _iv_line_clearance(holder: Node3D) -> void:
 	var line := IvLine.new()
 	holder.add_child(line)
-	line._rebuild(Vector3(0.0, 1.6, 0.0), Vector3(1.0, 1.4, 0.0))
+	var stand := Node3D.new()
+	var patient := Node3D.new()
+	holder.add_child(stand)
+	holder.add_child(patient)
+	patient.position.x = 1.0
+	line.attach(stand, Vector3(0.0, 1.6, 0.0), patient, Vector3(0.0, 1.4, 0.0))
 	var lowest := INF
 	for point in line._points:
 		lowest = minf(lowest, point.y)
-	_check(lowest < IvLine.TRIP_HEIGHT - 0.04, "IV tubing reaches walking trip height with high endpoints")
+	_check(line._points.size() == IvLine.SAMPLES and lowest < IvLine.TRIP_HEIGHT - 0.04, "IV attachment immediately builds tubing at walking trip height")
 	line.queue_free()
+	stand.queue_free()
+	patient.queue_free()
 
 
 static func _triangles(root: Node) -> int:

@@ -51,6 +51,12 @@ func attach(from: Node3D, from_point: Vector3, to: Node3D, to_point: Vector3) ->
 	_dressing.material_override = Materials.toon(Color(0.93, 0.95, 0.96), 0.05, false, 0.2)
 	to.add_child(_dressing)
 	_dressing.position = to_point
+	# Build immediately so collision/trip queries never observe points from a
+	# previous attachment while waiting for this node's next process callback.
+	var a := _from.to_global(_from_point)
+	var b := _to.to_global(_to_point)
+	_last_ends = [a, b]
+	_rebuild(a, b)
 
 
 func detach() -> void:

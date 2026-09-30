@@ -864,7 +864,9 @@ func set_iv(at: Vector3) -> void:
 	if not iv_set:
 		iv_set = true
 		hurt(0.1)
-		_iv_placed.rpc(body.root().to_local(at))
+	# Placement is idempotent: if local state says an IV exists but its visual
+	# line was detached or attached to stale geometry, restore it at this point.
+	_iv_placed.rpc(body.root().to_local(at))
 
 
 ## Someone walked into the tubing: the catheter rips out of the arm and the stand rattles.
