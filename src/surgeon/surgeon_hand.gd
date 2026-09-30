@@ -17,11 +17,12 @@ const JOINT_BEND: PackedFloat32Array = [0.9, 1.2, 0.8]
 ## at: the glove point (glove model space) that sits on `on`, a point of the tool.
 ## curl: how far each finger closes (index, middle, ring, pinky, thumb) while holding.
 const GRIPS: Dictionary = {
-	# Between thumb and index, fingers running toward the tip and a little flatter than the tool, wrist behind it.
+	# Pinched between the tips of the thumb and index, the back of the tool resting in the web of the thumb and the
+	# other fingers curled under it. The tool runs down from the fingertips at about 40 degrees to the back of the hand.
 	"pencil": {
-		"basis": Basis(Vector3(0.0, 0.42, -0.91), Vector3(0.0, 0.91, 0.42), Vector3(1.0, 0.0, 0.0)),
-		"at": Vector3(0.095, -0.03, -0.012), "on": Vector3(0.0, 0.0, 0.0),
-		"curl": [0.45, 0.6, 0.75, 0.85, 0.45],
+		"basis": Basis(Vector3(-0.21, 0.628, -0.749), Vector3(0.0, 0.766, 0.642), Vector3(0.978, 0.135, -0.161)),
+		"at": Vector3(0.088, -0.066, -0.024), "on": Vector3(0.0, 0.0, 0.0),
+		"curl": [0.8, 0.9, 1.0, 1.0, 0.7],
 	},
 	# Thumb and ring finger through the rings at the back, index laid along the shaft.
 	"rings": {
