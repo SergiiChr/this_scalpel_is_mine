@@ -204,10 +204,13 @@ func _build_environment() -> void:
 	lamp.spot_range = 3.0
 	lamp.spot_angle = 30.0
 	# Bright enough to pick the site out of the room, not so bright it bleaches skin and gloves under it.
-	lamp.light_energy = 0.38
+	lamp.light_energy = 0.32
 	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.9)
 	lamp.shadow_enabled = true
+	# Soft-edged shadows, like under a dish of bulbs. Only blurred: a sized light would also spread every glossy
+	# highlight (blood, wet tissue) into a big white patch.
+	lamp.shadow_blur = 2.0
 	add_child(lamp)
 	# Overhead room light: a ceiling panel over the table that lights the whole room from above.
 	if indoors:
@@ -231,6 +234,7 @@ func _build_environment() -> void:
 	overhead.light_energy = 0.55 if indoors else 1.0
 	overhead.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
+	overhead.shadow_blur = 2.5
 	add_child(overhead)
 	_flicker_lights.append(overhead)
 	var tubes := [Vector3(-size.x * 0.28, size.y - 0.2, size.z * 0.28), Vector3(size.x * 0.28, size.y - 0.2, -size.z * 0.28)] if environment_id == "or" else [Vector3(0, size.y - 0.2, 0)]

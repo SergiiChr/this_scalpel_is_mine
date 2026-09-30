@@ -1,7 +1,8 @@
 """Surgeon's gloved right hand, rigged.
 
 Rest pose: wrist at the origin, fingers along +X, palm facing down (-Y), thumb on the -Z side, fingers slightly relaxed.
-Bones: Hand, Index1-3, Middle1-3, Ring1-3, Pinky1-3, Thumb1-3 (local X bends toward the palm).
+Bones: Hand, Index1-3, Middle1-3, Ring1-3, Pinky1-3, Thumb1-3 (local X bends toward the palm), and Cuff, pointing
+back from the wrist: the game aims it down the forearm so the cuff stays on the sleeve however the wrist bends.
 Each finger is its own metaball shell so fingers don't melt together; a voxel remesh fuses them into the palm.
 """
 
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 import bpy
 import numpy as np
+from numpy.typing import NDArray
 
 from . import scene
 from .scene import Vec3, capsule, ellipsoid
@@ -16,6 +18,8 @@ from .scene import Vec3, capsule, ellipsoid
 # Nitrile blue: saturated enough to read as a glove, not skin, under the white surgical light.
 GLOVE = (0.3, 0.45, 0.8)
 OPENING = -0.1
+# Distance behind the wrist over which the glove goes from following the hand to following the cuff.
+CUFF_BLEND = 0.045
 
 # name, knuckle (MCP) position, phalanx lengths, proximal radius, spread (radians around Y, + toward the pinky side)
 FINGERS: tuple[tuple[str, Vec3, tuple[float, float, float], float, float], ...] = (
@@ -72,8 +76,8 @@ def build() -> bpy.types.Object:
             ellipsoid((0.028, -0.011, -0.022), (0.034, 0.016, 0.019)),
             ellipsoid((0.042, -0.009, 0.026), (0.038, 0.012, 0.014)),
             ellipsoid((-0.02, 0.0, 0.0), (0.06, 0.019, 0.027)),
-            # The cuff flares past the wrist, wide enough to go over the gown's sleeve.
-            ellipsoid((-0.09, 0.0, 0.0), (0.05, 0.027, 0.034)),
+            # The cuff past the wrist, just wide enough to go over the gown's knit sleeve cuff (tools/assetgen/surgeon.py).
+            ellipsoid((-0.09, 0.0, 0.0), (0.05, 0.026, 0.026)),
             # Hollow of the palm.
             ellipsoid((0.058, -0.022, 0.002), (0.028, 0.007, 0.018), -1.5),
         ],
@@ -98,10 +102,19 @@ def build() -> bpy.types.Object:
             bones.append((f"{name}{i + 1}", chain[i], chain[i + 1], "Hand" if i == 0 else f"{name}{i}"))
     for i in range(3):
         bones.append((f"Thumb{i + 1}", THUMB[i], THUMB[i + 1], "Hand" if i == 0 else f"Thumb{i}"))
+    bones.append(("Cuff", (0.0, 0.0, 0.0), (OPENING, 0.0, 0.0), "Hand"))
     rig = scene.armature("GloveRig", bones)
     scene.bind(hand, rig)
-    scene.attach(rim, rig, "Hand")
+    scene.reweight(hand, "Cuff", cuff_weight, "Hand")
+    scene.attach(rim, rig, "Cuff")
     return rig
+
+
+def cuff_weight(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """How much each point follows the cuff (0..1): all of it past CUFF_BLEND behind the wrist, none of the hand,
+    blended smoothly between, so a bent wrist stretches the glove over it instead of kinking."""
+    t = np.clip(-p[:, 0] / CUFF_BLEND, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
 
 
 def curl(rig: bpy.types.Object, amount: float) -> None:

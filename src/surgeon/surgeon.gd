@@ -14,6 +14,8 @@ extends CharacterBody3D
 
 const WALK_SPEED := 1.6
 const REACH := 0.72
+## Closest a hand comes to its shoulder (meters): an elbow folds only so far, closer the forearm would squash.
+const MIN_REACH := 0.18
 const EYE_HEIGHT := 1.62
 const SHOULDER := Vector3(0.19, 1.4, -0.08)
 const HAND_SENSITIVITY := 0.0009
@@ -383,10 +385,17 @@ func _move_hand(hand: SurgeonHand, delta_local: Vector3, vertical: bool = false)
 	var step := yaw_basis * delta_local if not vertical else delta_local
 	hand.target += step
 	var from := shoulder(hand.index)
-	if hand.target.distance_to(from) > REACH:
-		hand.target = from + (hand.target - from).normalized() * REACH
+	hand.target = _in_reach(hand.target, from)
 	if not hand.attached:
 		hand.local_target = to_local(hand.target)
+
+
+## p kept between MIN_REACH and REACH from the shoulder at `from`.
+func _in_reach(p: Vector3, from: Vector3) -> Vector3:
+	var out := p - from
+	if out.length() < 0.001:
+		out = -global_basis.z * 0.001
+	return from + out.normalized() * clampf(out.length(), MIN_REACH, REACH)
 
 
 ## Rests the tool tip just above whatever is under it. Lowered onto skin, it touches and presses in by effort level.
@@ -432,8 +441,7 @@ func _constrain(hand: SurgeonHand) -> void:
 		var under_hand: Dictionary = _surface_below(hand.target)
 		if under_hand.y != -INF and not under_hand.open and not under_hand.soft:
 			hand.target.y += maxf(float(under_hand.y) + 0.002 - (hand.target.y + hand.glove_drop), 0.0)
-	if hand.target.distance_to(from) > REACH:
-		hand.target = from + (hand.target - from).normalized() * REACH
+	hand.target = _in_reach(hand.target, from)
 	if not hand.attached:
 		hand.local_target = to_local(hand.target)
 
@@ -462,11 +470,11 @@ func _surface_below(p: Vector3) -> Dictionary:
 			var inside := space.intersect_ray(query)
 			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true, "soft": true}
 	# Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the tray).
-	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | SurgicalTool.TOOL_LAYER
+	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}
-	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER)) != 0
+	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
 	# The body's collider is its rest shape: skin lifted by a grip lies above it.
 	if not site_hit.is_empty():
 		var body := Surgery.current.patient.body

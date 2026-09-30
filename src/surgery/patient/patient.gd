@@ -98,6 +98,8 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	body.tissue.break_mult = mods.mult("tear_threshold_mult")
 	body.tissue.tearing = multiplayer.is_server()
 	body.build(scenario.site, tone, _roll_weight(seed_value))
+	if scenario.environment == "or":
+		body.add_drape()
 	body.set_orientation(scenario.start_orientation)
 	blood_type = "Bombay" if mods.flag("rare_blood") else BLOOD_TYPES[rng.randi_range(0, BLOOD_TYPES.size() - 1)]
 

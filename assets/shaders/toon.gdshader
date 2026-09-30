@@ -24,6 +24,10 @@ uniform float grime_scale = 14.0;
 // Grime fixed in the world, for walls and floors that never move. Anything else carries its own, so it doesn't
 // slide across a moving model.
 uniform bool world_grime = false;
+// Fine surface relief in the model's own space (Materials.Detail): 1 skin pores, 2 rubber creases, 3 cloth weave
+// and soft folds, 4 brushed steel. Only tilts the normal, so the silhouette stays the model's.
+uniform int detail = 0;
+uniform float detail_strength = 1.0;
 uniform vec4 grime_color : source_color = vec4(0.25, 0.22, 0.15, 1.0);
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 // Contamination glow for the Germaphobe quirk, set per tool.
@@ -63,6 +67,26 @@ float noise(vec2 p) {
 	vec2 f = fract(p);
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+// Height of the fine relief at a point of the model (meters), see `detail`.
+float relief(vec3 p) {
+	if (detail == 1) {
+		return (noise(p.xz * 900.0 + p.y * 300.0) + noise(p.xy * 700.0) - 1.0) * 0.00004;
+	}
+	if (detail == 2) {
+		// Creases run across the fingers (the glove's X), with a faint grain everywhere.
+		return noise(vec2(p.x * 260.0, p.z * 35.0 + p.y * 35.0)) * 0.00012 + noise(p.yz * 1400.0) * 0.00002;
+	}
+	if (detail == 3) {
+		float weave = sin(p.x * 2600.0) * sin(p.z * 2600.0) * 0.00002;
+		float folds = noise(p.xz * 18.0) * 0.0025 + noise(p.xz * 55.0 + 3.0) * 0.0008;
+		return weave + folds;
+	}
+	if (detail == 4) {
+		return noise(vec2(p.z * 4.0, (p.x + p.y) * 2400.0)) * 0.000015;
+	}
+	return 0.0;
 }
 
 void vertex() {
@@ -105,6 +129,9 @@ void fragment() {
 		}
 		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
 	}
+	if (detail > 0) {
+		NORMAL = blood_normal(NORMAL, VERTEX, relief(local_pos) * detail_strength);
+	}
 	if (coat > 0.0) {
 		vec3 tp = (coat_inverse * vec4(world_pos, 1.0)).xyz;
 		float from_tip = tp.z + coat_length;
@@ -125,8 +152,9 @@ void fragment() {
 		float sky = smoothstep(mix(0.6, -0.2, rough), 1.0, r.y);
 		reflection = base * mix(0.18, 0.7, sky) * metal;
 	}
+	// METALLIC stays 0: the engine would scale the lit diffuse down by it and turn steel black. Metal is handled here
+	// and in light(), which reads the uniform.
 	ALBEDO = base * (1.0 - metal * 0.4);
-	METALLIC = metal;
 	ROUGHNESS = mix(rough, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
 	EMISSION = emission_color.rgb + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
@@ -144,7 +172,7 @@ void light() {
 	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
 	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
 	// Metal highlights take the metal's color; everything else reflects the light's own.
-	vec3 spec_color = mix(vec3(1.0), ALBEDO / max(1.0 - METALLIC * 0.4, 0.6), METALLIC);
+	vec3 spec_color = mix(vec3(1.0), ALBEDO / (1.0 - metallic * 0.4), metallic);
 	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;

@@ -56,6 +56,12 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   terminator with a red tint), glove rubber, cloth (no highlight, soft sheen), metal (tinted highlight, a fake
   ceiling/floor reflection), plastic and wet tissue. The model's color, roughness, metallic and texture maps are kept.
   Grime rides on the model; only walls and floors keep theirs fixed in the world. Room surfaces skip specular and rim.
+- Fine relief per family (`Materials.Detail`): skin pores, glove creases, cloth weave and folds, brushed steel.
+  It only tilts the normal, so silhouettes and collisions are the model's own.
+- Surgical drape (`drape.gd`, operating room only): a sheet over the torso and legs laid from the body's rest mesh,
+  1.2 cm off the skin so breathing never pushes the body through it, rising with the trunk. Its opening frames the
+  site and covers the site's edge. It hides while the patient is turned away from the site; hands rest on it.
+- Organs and cavity walls (`flesh.gdshader`) show branching vessels and mottling.
 - Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
   so a blade gets a hairline and furniture a full line.
 - Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
@@ -313,6 +319,10 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
   (TissueSim.region()) is the model cut away and replaced by the simulated skin, fat and muscle layers.
   `site_heights.json` (baked by raycasting the body) makes those layers hug the body. The cavity under them is a
   bowl that rises to just under the skin at the site's edges, so on a round limb it stays inside the body.
+  The bake also lists grid points off the body: where the site overhangs it, or the body under the skin is too thin
+  for skin, fat and muscle (the edge of a limb or the flank). Nothing of the site is drawn, carved or probed there,
+  so it never sticks out past the body's outline. Flank points deeper than 6 cm under the site plane are still held
+  at 6 cm, a known limit until the site becomes a proper surface patch.
 - **Blood** (`src/visual/blood_flow.gd`): bleeding wounds well up into a puddle that grows with the blood lost and
   release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
   on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
@@ -329,6 +339,7 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
     jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.
   - Surgeon: walk cycle from movement speed, collapse when passed out, head tilt from camera pitch,
     two-bone IK arms, glove finger bones relax, wrap around a held tool and squeeze while using it.
+    The glove's cuff has its own bone aimed down the forearm, so a bent wrist stretches the glove over the sleeve.
   - Tools (`tool_animator.gd`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
 - **Sounds**: 37 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,

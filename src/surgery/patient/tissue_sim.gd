@@ -62,6 +62,10 @@ var pos := PackedVector3Array()
 var prev := PackedVector3Array()
 var anchor := PackedFloat32Array()
 var fixed := PackedByteArray()
+## 1 for particles where the site hangs off the body (past a limb's or the flank's edge): not drawn and not part of
+## the region while they hang there, so the site can't stick out of the body (see hanging_off()). They're still
+## simulated, so skin next to them moves as it always did.
+var off := PackedByteArray()
 ## Constraint arrays, one entry per spring.
 var c_a := PackedInt32Array()
 var c_b := PackedInt32Array()
@@ -74,6 +78,10 @@ var c_depth := PackedByteArray()
 var c_muscle_closed := PackedByteArray()
 ## Where the anchor pulls each particle: its rest position, moved back from a cut through open muscle.
 var anchor_target := PackedVector3Array()
+## What exposed skin folded out of the site can't go below (the drape): site-local (x, z) -> height, NAN where
+## there's nothing. Unset: nothing to lie on. Only particles marked in `exposed` are held up by it.
+var floor_at: Callable
+var exposed := PackedByteArray()
 ## Where each particle rests under the skin's own tension before anything touches it (see _settle()).
 var settled := PackedVector3Array()
 ## Only the host decides when springs snap, so tears happen once for everyone.
@@ -115,19 +123,21 @@ var _bins: Array[PackedInt32Array] = []
 var _bins_for := [-1, -1]
 
 
-## height_at(uv) -> skin height above the site plane.
-func build(site_size: Vector2, height_at: Callable) -> void:
+## height_at(uv) -> skin height above the site plane. on_body(uv) -> false where the site is off the body.
+func build(site_size: Vector2, height_at: Callable, on_body: Callable = Callable()) -> void:
 	size = site_size
 	var count := (RES + 1) * (RES + 1)
 	rest.resize(count)
 	anchor.resize(count)
 	fixed.resize(count)
+	off.resize(count)
 	for j in RES + 1:
 		for i in RES + 1:
 			var uv := Vector2(float(i) / RES, float(j) / RES)
 			var k := index(i, j)
 			rest[k] = Vector3((uv.x - 0.5) * size.x, height_at.call(uv), (uv.y - 0.5) * size.y)
 			anchor[k] = ANCHOR
+			off[k] = 0 if on_body.is_null() or on_body.call(uv) else 1
 			fixed[k] = 1 if i == 0 or j == 0 or i == RES or j == RES else 0
 	pos = rest.duplicate()
 	prev = rest.duplicate()
@@ -200,6 +210,16 @@ func region(reach: int = 1) -> PackedByteArray:
 		for y in range(maxi(j - reach, 0), mini(j + reach, RES) + 1):
 			for x in range(maxi(i - reach, 0), mini(i + reach, RES) + 1):
 				out[index(x, y)] = 1
+	# Off the body, and right next to it: triangles touching skin off the body aren't drawn, so the body model has to
+	# cover up to there, or its cut-away edge (halfway between region points) would leave a gap.
+	var hanging := hanging_off()
+	for k in out.size():
+		if hanging[k] == 1:
+			var i := k % (RES + 1)
+			var j := k / (RES + 1)
+			for y in range(maxi(j - 1, 0), mini(j + 1, RES) + 1):
+				for x in range(maxi(i - 1, 0), mini(i + 1, RES) + 1):
+					out[index(x, y)] = 0
 	return out
 
 
@@ -263,7 +283,7 @@ func grip(key: int, uv: Vector2) -> bool:
 
 func move_grip(key: int, target: Vector3) -> void:
 	if _pins.has(key):
-		_pins[key][1] = target
+		_pins[key][1] = _above_floor(_pins[key][0], target)
 
 
 func release(key: int) -> void:
@@ -384,24 +404,39 @@ func stretch(a: int, b: int) -> float:
 	return pos[a].distance_to(pos[b]) / maxf(rest[a].distance_to(rest[b]), 0.0001)
 
 
+## 1 for particles off the body, 0 elsewhere, except for skin folded out on top of the drape (see floor_at): that
+## can't stick out of the body, it lies on the sheet, and is shown like any other.
+func hanging_off() -> PackedByteArray:
+	var out := off.duplicate()
+	if not floor_at.is_valid():
+		return out
+	for k in out.size():
+		if out[k] == 1:
+			var floor_y: float = floor_at.call(pos[k].x, pos[k].z)
+			if not is_nan(floor_y) and pos[k].y >= floor_y - 0.002:
+				out[k] = 0
+	return out
+
+
 ## Triangle indices of the grid, minus triangles spanning a gap cut at least `depth` deep and pulled open,
-## so a layer mesh built from them shows a hole there.
+## so a layer mesh built from them shows a hole there, and minus triangles off the body.
 func triangles(depth: int) -> PackedInt32Array:
 	var open := PackedByteArray()
 	open.resize(c_a.size())
 	for s in _severed:
 		if depth_of(s) >= depth and _open_gap(s) > 0.0:
 			open[s] = 1
+	var hanging := hanging_off()
 	var out := PackedInt32Array()
 	for j in RES:
 		for i in RES:
 			var a := index(i, j)
 			var c := a + RES + 1
-			if open[_right[a]] + open[_diag[a]] + open[_down[a]] == 0:
+			if open[_right[a]] + open[_diag[a]] + open[_down[a]] + hanging[a] + hanging[a + 1] + hanging[c] == 0:
 				out.append(a)
 				out.append(a + 1)
 				out.append(c)
-			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] == 0:
+			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] + hanging[a + 1] + hanging[c + 1] + hanging[c] == 0:
 				out.append(a + 1)
 				out.append(c + 1)
 				out.append(c)
@@ -474,6 +509,8 @@ func _substep() -> void:
 			# Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back.
 			var back := anchor_target[k] - pos[k]
 			pos[k] += back * anchor[k] * _free[k] * clampf(1.0 - back.length() / ANCHOR_REACH, 0.0, 1.0)
+		# Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
+		_stay_above_floor()
 	for k in pos.size():
 		moved = maxf(moved, pos[k].distance_squared_to(prev[k]))
 	if tearing:
@@ -494,6 +531,25 @@ func _solve(s: int) -> void:
 	var correction := d * ((length - c_rest[s]) / (length * (wa + wb)))
 	pos[a] += correction * wa
 	pos[b] -= correction * wb
+
+
+## Skin that started out exposed (inside the drape's opening) and is folded out over the drape lies on it.
+func _stay_above_floor() -> void:
+	if not floor_at.is_valid():
+		return
+	for k in pos.size():
+		if _free[k] > 0.0:
+			pos[k] = _above_floor(k, pos[k])
+
+
+## p, where particle k is, lifted onto the floor if it's exposed skin below it.
+func _above_floor(k: int, p: Vector3) -> Vector3:
+	if not floor_at.is_valid() or exposed[k] == 0:
+		return p
+	var floor_y: float = floor_at.call(p.x, p.z)
+	if not is_nan(floor_y) and p.y < floor_y:
+		p.y = floor_y
+	return p
 
 
 func _snap_overstretched() -> void:

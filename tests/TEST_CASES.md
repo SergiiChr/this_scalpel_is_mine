@@ -27,6 +27,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | M7 | Every tool model held in either glove, fitted by `data/grips.json`: nothing of the tool is inside the glove's fingers or palm (`tests/fit_grips.tscn` makes the fits) |
 | M8 | Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in: back of the hand up, or out to its own side for a fist round a handle, never twisted palm up |
 | M9 | Empty and in every grip, with the arm stretched past its reach, folded up to the shoulder or reaching straight along the elbow's bend, both hands stay finite and the left glove is exactly the right one mirrored |
+| M10 | Both gloves, empty and in every grip, from working spots to the arm's limits: the cuff follows the forearm, the end of the sleeve under it stays inside the glove, and the cuff hugs the sleeve (never more than 8 mm off it) |
 
 ## Soft tissue (`tests/tissue_test.gd`)
 
@@ -52,6 +53,8 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T18 | A client mirroring the host's snapped springs by their index ends with exactly the host's tissue topology, diagonal tears and a torn stitch included |
 | T19 | Skin contact follows the deformed skin: higher where a grip lifts it, unchanged far from it, none over an open incision |
 | T20 | Untouched skin over a round body (25 cm radius) settles when it's built, then stays put: it isn't shown simulated and sleeps |
+| T21 | Where the site hangs off the body, its skin is never drawn and never shown simulated, even with a cut through it and a pull right next to it |
+| T22 | Skin folded out of the drape's opening lies on the drape instead of passing through it; skin that starts under the drape stays under it |
 
 ## Every scenario (`tests/smoke_test.gd`)
 

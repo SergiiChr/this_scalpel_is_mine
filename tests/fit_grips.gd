@@ -1,7 +1,8 @@
 extends Node3D
 ## Fits every tool model's grip to the glove and writes data/grips.json (see SurgeonHand.fit): for each hand, the glove
 ## moves off the tool (toward the back of the hand, and sideways) just until the palm clears it, then each finger opens
-## or closes just until it clears too. Run it again after changing tool models, the glove or the grips:
+## or closes just until it clears too, and finally closes onto the tool so it rests on it (_touch()). Run it again after
+## changing tool models, the glove or the grips:
 ##   godot --headless --path . res://tests/fit_grips.tscn
 
 const GripCheck := preload("res://tests/grip_check.gd")
@@ -10,6 +11,8 @@ const LIFT_STEP := 0.003
 const MAX_LIFT := 0.045
 const MAX_SHIFT := 0.03
 const CURL_STEP := 0.05
+## Most extra curl a finger closes to reach the tool (see _touch()).
+const TOUCH_REACH := 0.4
 ## A finger bent further than this folds into the palm.
 const MAX_CURL := 1.3
 
@@ -37,6 +40,8 @@ func _ready() -> void:
 				_fit_lift(hand, fit, "")
 				for f in SurgeonHand.FINGERS.size():
 					_fit_finger(hand, fit, f)
+			for f in SurgeonHand.FINGERS.size():
+				_touch(hand, fit, f)
 			if fit.lift != 0.0 or fit.shift != 0.0 or fit.curl != style:
 				var entry: Dictionary = fits.get(model_id, {})
 				entry[side] = {"lift": snappedf(fit.lift, 0.001), "shift": snappedf(fit.shift, 0.001), "curl": (fit.curl as Array).map(func(c: float) -> float: return snappedf(c, 0.01))}
@@ -99,6 +104,24 @@ func _fit_finger(hand: SurgeonHand, fit: Dictionary, finger: int) -> void:
 		if clipped == 0:
 			break
 	curl[finger] = best_curl
+
+
+## Closes a clear finger onto the tool: a step at a time, up to TOUCH_REACH more curl, stopping at the last pose before
+## it would go into the tool, so it rests on it instead of hovering. A finger that meets nothing in that range (it
+## curls past the tool) keeps its curl.
+func _touch(hand: SurgeonHand, fit: Dictionary, finger: int) -> void:
+	var curl: Array = fit.curl
+	var start := float(curl[finger])
+	if _try(hand, fit, SurgeonHand.FINGERS[finger]) > 0:
+		return
+	var value := start
+	while value + CURL_STEP <= minf(start + TOUCH_REACH, MAX_CURL) + 0.0001:
+		curl[finger] = value + CURL_STEP
+		if _try(hand, fit, SurgeonHand.FINGERS[finger]) > 0:
+			curl[finger] = value
+			return
+		value += CURL_STEP
+	curl[finger] = start
 
 
 func _try(hand: SurgeonHand, fit: Dictionary, part: String) -> int:

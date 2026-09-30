@@ -30,7 +30,13 @@ const LAYER_FOLLOW: Array[float] = [1.0, 0.8, 0.55]
 const LAYER_DEPTH: Array[int] = [TissueSim.Depth.SKIN, TissueSim.Depth.FAT, TissueSim.Depth.MUSCLE]
 ## Skin pulled this far (meters) takes its deeper layers fully along, see layer_point().
 const FLAP_MOVE := 0.04
-const ORGAN_MODELS: PackedStringArray = ["bowel", "lobe", "sac"]
+## Grid step of the drape's height under folded-out skin (meters, see _lay_skin_on_drape()).
+const DRAPE_FLOOR_CELL := 0.01
+## Organs that belong under each site, for organs placed without a model of their own (one over a hidden target,
+## filler in a deep site without anatomy data), in the order they're used.
+const SITE_ORGANS: Dictionary = {
+	"abdomen": ["bowel", "lobe", "sac"], "chest": ["lung", "heart", "lung"], "back": ["kidney", "bowel", "kidney"],
+}
 const LIMB_SITES: PackedStringArray = ["forearm", "shoulder", "thigh", "lower_leg"]
 const BONE_COLOR := Color(0.86, 0.81, 0.68)
 ## How much the heart shrinks at full contraction, and the lungs swell full of air.
@@ -57,10 +63,15 @@ var blood := BloodFlow.new()
 var orientation: int = Orientation.FACE_UP
 var _on_back := false
 var _body_root: Node3D
+## The surgical drape (operating room only), null without one.
+var drape: Drape
 var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
 var _site_base_y := 0.0
 var _heights := PackedFloat32Array()
+## Per baked grid point: 1 on the body, 0 where the site hangs off it or the body is too thin under it for the layers
+## (tools/blender/patient.py bake_site_heights()).
+var _on_body := PackedByteArray()
 var _layers: Array[MeshInstance3D] = []
 var _layer_version := -1
 var _layer_steps := -1
@@ -144,6 +155,55 @@ func set_orientation(value: int) -> void:
 	orientation = value
 	_body_root.rotation.x = [0.0, PI / 2, PI][value]
 	_update_carve()
+	# Turned away from the site, the drape would lie between the patient and the table.
+	if drape:
+		drape.visible = site_active()
+
+
+## Skin flaps folded out of the drape's opening lie on the drape instead of passing through it: the drape's height
+## over and around the site (site space, a grid out to a site's size past each edge). Only the skin is held up, the
+## layers drawn under it stay under the drape: lifting the flap by their thickness too would tear it off its edge.
+## Only skin that starts inside the opening is held up; the site's edge stays under the drape's frame.
+func _lay_skin_on_drape() -> void:
+	var drape_mesh := TriangleMesh.new()
+	var faces := PackedVector3Array()
+	for v in drape.mesh.get_faces():
+		faces.append(site.transform.affine_inverse() * (drape.transform * v))
+	drape_mesh.create_from_faces(faces)
+	var cell := DRAPE_FLOOR_CELL
+	var columns := ceili(site_size.x * 3.0 / cell) + 1
+	var rows := ceili(site_size.y * 3.0 / cell) + 1
+	var heights := PackedFloat32Array()
+	heights.resize(columns * rows)
+	for j in rows:
+		for i in columns:
+			var at := Vector3(-site_size.x * 1.5 + i * cell, 0.5, -site_size.y * 1.5 + j * cell)
+			var hit := drape_mesh.intersect_ray(at, Vector3.DOWN)
+			heights[j * columns + i] = (hit.position as Vector3).y + 0.004 if not hit.is_empty() else NAN
+	var origin := Vector2(-site_size.x * 1.5, -site_size.y * 1.5)
+	tissue.floor_at = func(x: float, z: float) -> float:
+		var c := Vector2i(((Vector2(x, z) - origin) / cell).round())
+		if c.x < 0 or c.y < 0 or c.x >= columns or c.y >= rows:
+			return NAN
+		return heights[c.y * columns + c.x]
+	tissue.exposed.resize(tissue.rest.size())
+	for k in tissue.rest.size():
+		var uv := tissue.uv_of(k)
+		tissue.exposed[k] = 1 if uv.x > Drape.FRAME and uv.x < 1.0 - Drape.FRAME and uv.y > Drape.FRAME and uv.y < 1.0 - Drape.FRAME else 0
+
+
+## Lays the surgical drape over the patient, open over the site (operating room only; call after build()).
+func add_drape() -> void:
+	var meshes: Array[MeshInstance3D] = []
+	for part_name in ["Body", "Gown"]:
+		var mesh := _body_root.find_child(part_name, true, false) as MeshInstance3D
+		if mesh:
+			meshes.append(mesh)
+	drape = Drape.new()
+	_body_root.add_child(drape)
+	drape.build(_body_root, meshes, site, site_size, -1.0 if _on_back else 1.0)
+	drape.visible = site_active()
+	_lay_skin_on_drape()
 
 
 # --- Space conversion ------------------------------------------------------------------------------
@@ -189,6 +249,15 @@ func surface_height(uv: Vector2) -> float:
 	return lerpf(top, bottom, f.y)
 
 
+## False where the site hangs off the body, or the body under it is too thin to hold the site's layers.
+func on_body(uv: Vector2) -> bool:
+	var grid := int(Db.site_heights.get("grid", 0))
+	if _on_body.size() != grid * grid or grid < 2:
+		return true
+	var cell := Vector2i((uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)).round())
+	return _on_body[cell.y * grid + cell.x] == 1
+
+
 ## Blood on the skin at uv, 0..1, from the fluid map.
 func blood_at(uv: Vector2) -> float:
 	if uv.x < 0.0 or uv.y < 0.0 or uv.x > 1.0 or uv.y > 1.0:
@@ -209,7 +278,7 @@ func meters_to_uv(meters: float) -> float:
 func probe(p: Vector3) -> Dictionary:
 	var uv := world_to_uv(p)
 	var height := height_above_site(p)
-	var on_site := site_active() and uv.x >= 0.0 and uv.x <= 1.0 and uv.y >= 0.0 and uv.y <= 1.0
+	var on_site := site_active() and uv.x >= 0.0 and uv.x <= 1.0 and uv.y >= 0.0 and uv.y <= 1.0 and on_body(uv)
 	if on_site and height > -cavity_depth():
 		if height > 0.012:
 			return {"zone": "air", "uv": uv, "depth": 0.0}
@@ -324,7 +393,11 @@ func _build_site(tone: Color) -> void:
 	_body_root.add_child(site)
 
 	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
-	tissue.build(site_size, surface_height)
+	_on_body.resize(_heights.size())
+	_on_body.fill(1)
+	for i: int in Db.site_heights.get("off", {}).get(site_id, []):
+		_on_body[i] = 0
+	tissue.build(site_size, surface_height, on_body)
 	_region_image = Image.create(TissueSim.RES + 1, TissueSim.RES + 1, false, Image.FORMAT_L8)
 	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
@@ -347,11 +420,19 @@ func _build_site(tone: Color) -> void:
 func _rebuild_layers() -> void:
 	_layer_version = tissue.topology_version
 	_layer_steps = tissue.steps_done
-	var res := TissueSim.RES
 	_update_region()
 	if _layer_uvs.is_empty():
 		for k in tissue.rest.size():
 			_layer_uvs.append(tissue.uv_of(k))
+	var skin := PackedVector3Array()
+	for k in tissue.rest.size():
+		skin.append(layer_point(0, k))
+	# Deeper layers lie under the skin: straight down where it's in place, along its own normal on a flap pulled far,
+	# so a flap folded over shows its fat on top instead of drawing it under the skin, through the drape.
+	var inward := _grid_normals(skin)
+	for k in inward.size():
+		var t := clampf((tissue.pos[k] - tissue.rest[k]).length() / FLAP_MOVE, 0.0, 1.0)
+		inward[k] = Vector3.UP.lerp(inward[k], t).normalized()
 	for layer in 3:
 		var instance := _layers[layer]
 		var mesh := instance.mesh as ArrayMesh
@@ -361,26 +442,31 @@ func _rebuild_layers() -> void:
 		if not instance.visible:
 			continue
 		# The skin sits a hair above the body it replaces, so their overlap at the region's edge never flickers.
-		var down := Vector3(0, [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
+		var depth: float = [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer]
 		var verts := PackedVector3Array()
 		verts.resize(tissue.rest.size())
 		for k in verts.size():
-			verts[k] = layer_point(layer, k) - down
-		# Smooth grid normals from neighbouring particles (cross of the z and x tangents points out of the skin).
-		var normals := PackedVector3Array()
-		normals.resize(verts.size())
-		for j in res + 1:
-			for i in res + 1:
-				var dx := verts[tissue.index(mini(i + 1, res), j)] - verts[tissue.index(maxi(i - 1, 0), j)]
-				var dz := verts[tissue.index(i, mini(j + 1, res))] - verts[tissue.index(i, maxi(j - 1, 0))]
-				normals[tissue.index(i, j)] = dz.cross(dx).normalized()
+			verts[k] = layer_point(layer, k) - inward[k] * depth
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = verts
-		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_NORMAL] = _grid_normals(verts)
 		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
 		arrays[Mesh.ARRAY_INDEX] = triangles
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+
+## Smooth normals of the tissue grid from neighbouring points (cross of the z and x tangents points out of the skin).
+func _grid_normals(points: PackedVector3Array) -> PackedVector3Array:
+	var res := TissueSim.RES
+	var normals := PackedVector3Array()
+	normals.resize(points.size())
+	for j in res + 1:
+		for i in res + 1:
+			var dx := points[tissue.index(mini(i + 1, res), j)] - points[tissue.index(maxi(i - 1, 0), j)]
+			var dz := points[tissue.index(i, mini(j + 1, res))] - points[tissue.index(i, maxi(j - 1, 0))]
+			normals[tissue.index(i, j)] = dz.cross(dx).normalized()
+	return normals
 
 
 ## Where a layer's grid point k is now, before it's moved down to its depth. Deeper layers are tethered and follow
@@ -455,7 +541,8 @@ func _site_def() -> Dictionary:
 func _build_cavity() -> void:
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
-	cavity.mesh = _cavity_grid(_cavity_floor, func(_i: int, _j: int) -> bool: return true)
+	# Only under the body: past its edge the bowl would hang in the air.
+	cavity.mesh = _cavity_grid(_cavity_floor, func(i: int, j: int) -> bool: return on_body(_cavity_uv(i, j)))
 	_cavity_material = Materials.flesh()
 	cavity.material_override = _cavity_material
 	site.add_child(cavity)
@@ -492,7 +579,8 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color, spec: Dic
 	organ.mass = 0.3
 	organ.freeze = not multiplayer.is_server()
 	organ.rotation.y = deg_to_rad(float(spec.get("yaw", 0.0)))
-	var model_name: String = spec.get("model", ORGAN_MODELS[organs.size() % ORGAN_MODELS.size()])
+	var choices: Array = SITE_ORGANS.get(site_id, SITE_ORGANS.abdomen)
+	var model_name: String = spec.get("model", choices[organs.size() % choices.size()])
 	var model := ModelSlot.instantiate("organs", model_name, organ, {"organ": Materials.flesh(color)})
 	model.name = "Model"
 	var base := Vector3(1, 1, -1 if spec.get("mirror", false) else 1) * radius
@@ -780,6 +868,9 @@ func set_breath_offset(offset: float) -> void:
 	if site_id in ["abdomen", "chest", "shoulder"]:
 		site.position.y = _site_base_y + offset
 		_update_carve()
+	# The drape lies on the trunk, so it rises with it.
+	if drape:
+		drape.position.y = offset
 
 
 ## Blood filling the cavity bowl, level 0..1. The surface only covers the part of the bowl that is under it and
@@ -792,7 +883,7 @@ func set_cavity_blood(level: float) -> void:
 	_pool_height = height
 	var keep := func(i: int, j: int) -> bool:
 		var uv := _cavity_uv(i, j)
-		return _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
+		return on_body(uv) and _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
 	cavity_blood.mesh = _cavity_grid(func(_uv: Vector2) -> float: return height, keep)
 
 

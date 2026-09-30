@@ -46,6 +46,10 @@ def _torso() -> list[Blob]:
     ]
     for side in (1.0, -1.0):
         elements += [
+            # Neck muscles from behind the ear down to the top of the breastbone, so the neck isn't a plain tube.
+            capsule(_mirror((0.575, 0.0, 0.042), side), (0.43, 0.035, 0.016 * side), 0.013, 2.5),
+            # Pectoral fold: the chest's lower edge rolls into the armpit instead of melting into the arm.
+            capsule(_mirror((0.2, 0.05, 0.1), side), _mirror((0.31, 0.02, 0.19), side), 0.022, 2.5),
             ellipsoid(_mirror((0.22, 0.058, 0.075), side), (0.075, 0.035, 0.07)),
             # Deltoid caps and the lats that run from the armpit down the back.
             ellipsoid(_mirror((0.345, -0.006, 0.205), side), (0.058, 0.052, 0.042), 2.0),
@@ -65,6 +69,10 @@ def _arm(side: float) -> tuple[list[Blob], list[Blob], list[tuple[list[Vec3], li
         capsule(_mirror((0.13, -0.025, 0.25), side), _mirror((-0.02, -0.03, 0.254), side), 0.038, 3.0),
         capsule(_mirror((-0.02, -0.03, 0.254), side), _mirror((-0.14, -0.04, 0.258), side), 0.026, 3.0),
         ellipsoid(_mirror((0.06, -0.022, 0.252), side), (0.07, 0.034, 0.042), 2.5),
+        # Point of the elbow, and the wrist bones standing out on either side of a slimmer wrist.
+        ellipsoid(_mirror((0.13, -0.05, 0.25), side), (0.018, 0.016, 0.018), 3.0),
+        ellipsoid(_mirror((-0.13, -0.036, 0.237), side), (0.009, 0.008, 0.008), 3.0),
+        ellipsoid(_mirror((-0.13, -0.036, 0.279), side), (0.009, 0.008, 0.008), 3.0),
     ]
     hand = [
         ellipsoid(_mirror((-0.14, -0.042, 0.258), side), (0.022, 0.018, 0.03), 2.5),
@@ -205,11 +213,18 @@ def build() -> bpy.types.Object:
 SITES_FILE = Path(__file__).resolve().parents[2] / "data" / "patient_sites.json"
 HEIGHTS_FILE = Path(__file__).resolve().parents[2] / "assets" / "models" / "patient" / "site_heights.json"
 SITE_GRID = 33
+# Body thinner than this under the skin (meters) can't hold the site's skin, fat and muscle: off the body.
+MIN_THICKNESS = 0.035
+# Deepest a site's skin is stored under its plane (meters). The layers, bones and organs are all placed from these
+# heights, so they're kept as they are; deeper flank points stay at this depth.
+DEEPEST = 0.06
 
 
 def bake_site_heights() -> None:
     """Skin height above or below each flat surgical site plane (rest pose), so the operable patch hugs the body.
-    Rays start 15 cm out along the site normal; a miss means the site hangs off the body there."""
+    Rays start 15 cm out along the site normal. Where one misses, or the body under the skin is too thin to hold
+    skin, fat and muscle (at the edge of a limb or the flank), that grid point is off the body: listed under "off"
+    so the game never draws, carves or probes the site there."""
     from mathutils import Vector
     from mathutils.bvhtree import BVHTree
 
@@ -217,20 +232,32 @@ def bake_site_heights() -> None:
     trees = [BVHTree.FromObject(bpy.data.objects[name], depsgraph) for name in ("Body", "Gown")]
     sites = {k: v for k, v in json.loads(SITES_FILE.read_text()).items() if not k.startswith("_")}
     result: dict[str, object] = {"grid": SITE_GRID}
+    off: dict[str, list[int]] = {}
     lin = [i / (SITE_GRID - 1) - 0.5 for i in range(SITE_GRID)]
     for name, site in sites.items():
         up = -1.0 if site.get("back") else 1.0
+        down = Vector((0.0, 0.0, -up))
         px, py, pz = site["pos"]
         w, h = site["size"]
-        heights = []
+        heights: list[float] = []
+        off[name] = []
         for z in lin:
             for x in lin:
                 origin = scene.to_blender((px + x * w, py + up * 0.15, pz + z * h))
-                hits = [t.ray_cast(origin, Vector((0.0, 0.0, -up)), 0.3) for t in trees]
-                dists = [hit[3] for hit in hits if hit[0] is not None]
-                height = 0.15 - min(dists) if dists else -0.06
-                heights.append(round(min(max(height, -0.06), 0.03), 4))
+                hits = [(hit, tree) for tree in trees if (hit := tree.ray_cast(origin, down, 0.3))[0] is not None]
+                if not hits:
+                    off[name].append(len(heights))
+                    heights.append(-DEEPEST)
+                    continue
+                (location, _normal, _index, distance), tree = min(hits, key=lambda h: h[0][3])
+                height = 0.15 - distance
+                # The body's thickness under this point: where the same ray comes out of it again.
+                exit_hit = tree.ray_cast(location + down * 0.001, down, 0.3)
+                if exit_hit[0] is None or exit_hit[3] < MIN_THICKNESS:
+                    off[name].append(len(heights))
+                heights.append(round(min(max(height, -DEEPEST), 0.03), 4))
         result[name] = heights
+    result["off"] = off
     HEIGHTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     HEIGHTS_FILE.write_text(json.dumps(result))
 

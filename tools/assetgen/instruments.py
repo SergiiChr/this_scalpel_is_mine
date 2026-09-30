@@ -57,14 +57,16 @@ def flat(outline: list[tuple[float, float]], thickness: float, plane: str = "yz"
 
 def _scalpel(m: Model, length: float, dull: bool) -> None:
     """A scalpel, or with dull a switchblade. The blade stands in the YZ plane, edge down, and the flat handle
-    lies in the same plane (thin across X), like a real one: the game cuts along where that plane meets the skin."""
-    handle_len = length * 0.62
-    handle = superellipsoid((0.004, 0.011, handle_len), 0.3, (0.0, 0.0, handle_len * 0.5 - 0.035))
+    lies in the same plane (thin across X), like a real one: the game cuts along where that plane meets the skin.
+    A scalpel is a #3 handle with a #10 blade, about 4 cm of it showing; the switchblade's blade is most of its length."""
+    start = -0.035 if dull else -length + 0.04
+    back = length * 0.62 - 0.035 if dull else 0.075
+    handle = superellipsoid((0.004, 0.011, back - start), 0.3, (0.0, 0.0, (back + start) * 0.5))
     grip = merge(*[superellipsoid((0.005, 0.012, 0.003), 0.4, (0.0, 0.0, z)) for z in np.linspace(-0.02, 0.02, 6)])
     m.add("Handle", merge(handle, grip), "black_plastic" if dull else "steel")
-    start = -0.035
+    # Straight spine on top, the belly of the edge curving down to the point.
     edge = [(start, 0.004), (start - 0.012, 0.006), (-length + 0.015, 0.004), (-length, -0.001), (-length + 0.02, -0.006), (start, -0.004)]
-    blade = extrude([(z, y) for z, y in edge], 0.0012)
+    blade = extrude([(z, y) for z, y in edge], 0.0012 if dull else 0.0008)
     # The outline runs along -Z from the handle; a quarter turn the other way would point the blade back through the hand.
     m.add("Blade", rotated(blade, -np.pi / 2, Y), "dark_steel" if dull else "chrome")
 
