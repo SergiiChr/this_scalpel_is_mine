@@ -18,6 +18,11 @@ const BUDGETS: Dictionary = {
 }
 
 
+func _check(ok: bool, what: String) -> void:
+	if not ok:
+		print("FAIL: ", what)
+
+
 func _ready() -> void:
 	var holder := Node3D.new()
 	add_child(holder)
@@ -41,6 +46,9 @@ func _ready() -> void:
 			kinds[target.get("kind", "bullet")] = true
 	for kind: String in kinds:
 		_exists("targets", kind)
+	_imported_materials()
+	_hand_pose_limits(holder)
+	_blade_tips(holder)
 	_check_budgets(holder)
 	for hand_index in 2:
 		await _grip_clearance(holder, hand_index)
@@ -321,6 +329,61 @@ func _check_budgets(holder: Node3D) -> void:
 			if count > int(BUDGETS[category]):
 				print("FAIL: %s/%s has %d triangles, budget %d" % [category, file, count, BUDGETS[category]])
 			model.queue_free()
+
+
+func _imported_materials() -> void:
+	var pixel := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	pixel.fill(Color(0.5, 0.4, 0.3))
+	var map := ImageTexture.create_from_image(pixel)
+	var source := StandardMaterial3D.new()
+	source.resource_name = "instrument_steel"
+	source.albedo_texture = map
+	source.roughness_texture = map
+	source.metallic_texture = map
+	source.normal_enabled = true
+	source.normal_texture = map
+	source.roughness = 0.23
+	source.metallic = 0.8
+	source.uv1_scale = Vector3(2.0, 3.0, 1.0)
+	var converted := Materials.imported(source)
+	_check(converted.get_shader_parameter("albedo_texture") == map, "import keeps albedo map")
+	_check(converted.get_shader_parameter("roughness_texture") == map and converted.get_shader_parameter("metallic_texture") == map, "import keeps packed surface maps")
+	_check(converted.get_shader_parameter("normal_texture") == map and converted.get_shader_parameter("normal_enabled"), "import keeps normal map")
+	_check(is_equal_approx(converted.get_shader_parameter("metallic"), 0.8) and is_equal_approx(converted.get_shader_parameter("roughness"), 0.23), "import keeps metal and roughness values")
+	_check(converted.get_shader_parameter("uv_scale") == Vector2(2, 3), "import keeps UV transform")
+	_check(Materials.imported(source) == converted and Materials.imported(StandardMaterial3D.new()) != converted, "import cache keys source resource")
+
+
+func _hand_pose_limits(holder: Node3D) -> void:
+	var scrubs := Materials.toon_unique(Materials.SCRUBS[0], 0.08, false, 0.9)
+	for side in 2:
+		var hand := SurgeonHand.new()
+		holder.add_child(hand)
+		hand.build(side, scrubs)
+		var shoulder := Vector3(-0.2 if side == 0 else 0.2, 1.4, 0)
+		for target in [shoulder, shoulder + Vector3.DOWN * 0.68, shoulder + Vector3.UP * 0.25]:
+			hand.target = target
+			for grip in SurgeonHand.GRIPS:
+				hand.grip = grip
+				hand.holding = true
+				hand.update_pose(shoulder, 1.0 / 30.0)
+				for part: Node3D in [hand._upper, hand._fore, hand._glove]:
+					var basis := part.global_basis
+					_check(part.global_position.is_finite() and basis.x.is_finite() and basis.y.is_finite() and basis.z.is_finite() and absf(basis.determinant()) > 0.00001, "finite mirrored %s pose at limit" % grip)
+		hand.queue_free()
+
+
+func _blade_tips(holder: Node3D) -> void:
+	for name in ["scalpel", "switchblade"]:
+		var tool := ModelSlot.instantiate("tools", name, holder)
+		var blade := tool.find_child("Blade", true, false) as MeshInstance3D
+		var handle := tool.find_child("Handle", true, false) as MeshInstance3D
+		_check(blade != null and handle != null, "%s has separate blade and handle" % name)
+		if blade and handle:
+			var blade_box := blade.mesh.get_aabb()
+			var handle_box := handle.mesh.get_aabb()
+			_check(blade_box.position.z < -0.13 and handle_box.end.z > 0.04, "%s blade points toward -Z working tip" % name)
+		tool.queue_free()
 
 
 static func _triangles(root: Node) -> int:

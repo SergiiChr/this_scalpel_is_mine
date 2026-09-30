@@ -1,33 +1,31 @@
 // Smooth diffuse light, a soft specular spot, rim light and procedural grime.
-// Used for everything except the simulated site skin. Materials.imported() picks the settings per material family
-// (skin, rubber, cloth, metal, plastic, tissue), Materials.toon() makes the plain ones.
+// Used for everything except the simulated site skin. Tune per material from Materials.toon().
 shader_type spatial;
+render_mode diffuse_burley, specular_schlick_ggx;
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, hint_default_white;
-// Maps carried over from the imported model. The channel vectors pick which channel of the texture holds the value.
-uniform sampler2D normal_texture : hint_normal, filter_linear_mipmap;
-uniform bool use_normal_texture = false;
+uniform vec2 uv_scale = vec2(1.0);
+uniform vec2 uv_offset = vec2(0.0);
 uniform sampler2D roughness_texture : filter_linear_mipmap, hint_default_white;
-uniform vec4 roughness_channel = vec4(1.0, 0.0, 0.0, 0.0);
 uniform sampler2D metallic_texture : filter_linear_mipmap, hint_default_white;
+uniform sampler2D normal_texture : hint_normal, filter_linear_mipmap;
+uniform sampler2D ao_texture : filter_linear_mipmap, hint_default_white;
+uniform sampler2D emission_texture : source_color, filter_linear_mipmap, hint_default_white;
+uniform vec4 roughness_channel = vec4(1.0, 0.0, 0.0, 0.0);
 uniform vec4 metallic_channel = vec4(1.0, 0.0, 0.0, 0.0);
-uniform float metallic : hint_range(0.0, 1.0) = 0.0;
-uniform float rim_strength = 0.3;
+uniform vec4 ao_channel = vec4(1.0, 0.0, 0.0, 0.0);
+uniform float ao_light_affect = 0.0;
+uniform bool normal_enabled = false;
+uniform float normal_scale = 1.0;
+uniform float metallic = 0.0;
+uniform float rim_strength = 0.0;
 uniform float specular_strength = 0.4;
 uniform float roughness : hint_range(0.0, 1.0) = 0.7;
-// Light that wraps past the terminator, tinted (skin: red, like light scattered under it). 0 for hard surfaces.
-uniform float wrap = 0.0;
-uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float grime : hint_range(0.0, 1.0) = 0.25;
 uniform float grime_scale = 14.0;
-// Grime fixed in the world, for walls and floors that never move. Anything else carries its own, so it doesn't
-// slide across a moving model.
 uniform bool world_grime = false;
-// Fine surface relief in the model's own space (Materials.Detail): 1 skin pores, 2 rubber creases, 3 cloth weave
-// and soft folds, 4 brushed steel. Only tilts the normal, so the silhouette stays the model's.
-uniform int detail = 0;
-uniform float detail_strength = 1.0;
+uniform float surface_detail = 0.0;
 uniform vec4 grime_color : source_color = vec4(0.25, 0.22, 0.15, 1.0);
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 // Contamination glow for the Germaphobe quirk, set per tool.
@@ -69,35 +67,16 @@ float noise(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
 
-// Height of the fine relief at a point of the model (meters), see `detail`.
-float relief(vec3 p) {
-	if (detail == 1) {
-		return (noise(p.xz * 900.0 + p.y * 300.0) + noise(p.xy * 700.0) - 1.0) * 0.00004;
-	}
-	if (detail == 2) {
-		// Creases run across the fingers (the glove's X), with a faint grain everywhere.
-		return noise(vec2(p.x * 260.0, p.z * 35.0 + p.y * 35.0)) * 0.00012 + noise(p.yz * 1400.0) * 0.00002;
-	}
-	if (detail == 3) {
-		float weave = sin(p.x * 2600.0) * sin(p.z * 2600.0) * 0.00002;
-		float folds = noise(p.xz * 18.0) * 0.0025 + noise(p.xz * 55.0 + 3.0) * 0.0008;
-		return weave + folds;
-	}
-	if (detail == 4) {
-		return noise(vec2(p.z * 4.0, (p.x + p.y) * 2400.0)) * 0.000015;
-	}
-	return 0.0;
-}
-
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	local_pos = VERTEX;
 }
 
 void fragment() {
-	vec3 base = albedo.rgb * texture(albedo_texture, UV).rgb;
-	vec3 grime_pos = world_grime ? world_pos : local_pos;
-	float n = noise(grime_pos.xz * grime_scale) * 0.6 + noise(grime_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
+	vec2 material_uv = UV * uv_scale + uv_offset;
+	vec3 base = albedo.rgb * texture(albedo_texture, material_uv).rgb;
+	vec3 gp = world_grime ? world_pos : local_pos;
+	float n = noise(gp.xz * grime_scale) * 0.6 + noise(gp.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
 	if (stains > 0.0) {
 		float s = noise(local_pos.xy * 16.0 + local_pos.z * 7.0) * 0.65 + noise(local_pos.zy * 40.0) * 0.35;
@@ -129,9 +108,6 @@ void fragment() {
 		}
 		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
 	}
-	if (detail > 0) {
-		NORMAL = blood_normal(NORMAL, VERTEX, relief(local_pos) * detail_strength);
-	}
 	if (coat > 0.0) {
 		vec3 tp = (coat_inverse * vec4(world_pos, 1.0)).xyz;
 		float from_tip = tp.z + coat_length;
@@ -140,40 +116,18 @@ void fragment() {
 		base = mix(base, vec3(0.42, 0.02, 0.04), blood_coat * 0.9);
 		wet = max(wet, blood_coat);
 	}
-	if (use_normal_texture) {
-		NORMAL_MAP = texture(normal_texture, UV).rgb;
+	ALBEDO = base;
+	float detail = noise(local_pos.xy * 650.0 + local_pos.z * 150.0) - 0.5;
+	ROUGHNESS = mix(clamp(roughness * dot(texture(roughness_texture, material_uv), roughness_channel) + detail * surface_detail, 0.08, 1.0), 0.12, wet);
+	METALLIC = metallic * dot(texture(metallic_texture, material_uv), metallic_channel) * (1.0 - wet);
+	SPECULAR = mix(specular_strength, 0.5, wet);
+	RIM = rim_strength;
+	AO = dot(texture(ao_texture, material_uv), ao_channel);
+	AO_LIGHT_AFFECT = ao_light_affect;
+	if (normal_enabled) {
+		NORMAL_MAP = texture(normal_texture, material_uv).rgb;
+		NORMAL_MAP_DEPTH = normal_scale;
 	}
-	float metal = metallic * dot(texture(metallic_texture, UV), metallic_channel) * (1.0 - wet);
-	float rough = roughness * dot(texture(roughness_texture, UV), roughness_channel);
-	vec3 reflection = vec3(0.0);
-	if (metal > 0.0) {
-		// No reflection probes here: metal mirrors a bright ceiling above and a dark floor below, sharper when polished.
-		vec3 r = (INV_VIEW_MATRIX * vec4(reflect(-VIEW, NORMAL), 0.0)).xyz;
-		float sky = smoothstep(mix(0.6, -0.2, rough), 1.0, r.y);
-		reflection = base * mix(0.18, 0.7, sky) * metal;
-	}
-	// METALLIC stays 0: the engine would scale the lit diffuse down by it and turn steel black. Metal is handled here
-	// and in light(), which reads the uniform.
-	ALBEDO = base * (1.0 - metal * 0.4);
-	ROUGHNESS = mix(rough, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
-	EMISSION = emission_color.rgb + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
-}
-
-void light() {
-	float facing = dot(NORMAL, LIGHT);
-	float ndl = max(facing, 0.0);
-	float lit = ndl * ATTENUATION;
-	float wrapped = max((facing + wrap) / (1.0 + wrap), 0.0);
-	DIFFUSE_LIGHT += LIGHT_COLOR * (lit + scatter_tint.rgb * (wrapped - ndl) * ATTENUATION) / PI;
-	vec3 halfway = normalize(VIEW + LIGHT);
-	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a bright glint.
-	float wet = clamp((roughness - ROUGHNESS) / max(roughness - 0.08, 0.01), 0.0, 1.0);
-	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
-	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
-	// Metal highlights take the metal's color; everything else reflects the light's own.
-	vec3 spec_color = mix(vec3(1.0), ALBEDO / (1.0 - metallic * 0.4), metallic);
-	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.5, wet) / PI;
-	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
-	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
+	EMISSION = emission_color.rgb * texture(emission_texture, material_uv).rgb + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
 }

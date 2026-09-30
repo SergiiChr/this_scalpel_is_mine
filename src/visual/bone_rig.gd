@@ -50,6 +50,8 @@ func _parent_rest(i: int) -> Basis:
 ## Model-space direction the bone points at rest: toward its first child, or on from its parent at the tips.
 func direction(bone: String) -> Vector3:
 	var i := skeleton.find_bone(bone)
+	if i < 0:
+		return Vector3.RIGHT
 	var at := skeleton.get_bone_global_rest(i).origin
 	var children := skeleton.get_bone_children(i)
 	if not children.is_empty():

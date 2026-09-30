@@ -5,8 +5,6 @@ extends Node3D
 ## Props are generated models (tools/assetgen/props.py) loaded through ModelSlot.
 
 const TABLE_HEIGHT := 0.85
-## Height of the instrument tray's surface above its base.
-const TRAY_SURFACE := 0.915
 ## Table top ends along x: the feet lie toward FOOT, the head toward HEAD.
 const TABLE_FOOT := -1.3
 const TABLE_HEAD := 1.0
@@ -116,17 +114,6 @@ func spawn_transform(index: int) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, facing), pos)
 
 
-## Height of the instrument tray's surface (world space).
-func tray_top() -> float:
-	return (layout.tray as Vector3).y + TRAY_SURFACE
-
-
-## Where tools can lie on the tray, seen from above: x and z (world space), a little in from the rim.
-func tray_area() -> Rect2:
-	var tray: Vector3 = layout.tray
-	return Rect2(tray.x - 0.32, tray.z - 0.37, 0.64, 0.74)
-
-
 func tray_spots() -> Array[Vector3]:
 	var spots: Array[Vector3] = []
 	var origin: Vector3 = layout.tray + Vector3(0, 0.93, 0)
@@ -174,12 +161,20 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.025, 0.03) if environment_id != "sidewalk" else Color(0.03, 0.035, 0.06)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Materials.SURGICAL_GREEN.darkened(0.2)
-	env.ambient_light_energy = 0.5
+	env.ambient_light_color = Color(0.48, 0.52, 0.54)
+	env.ambient_light_energy = 0.3
+	# Metals need reflected illumination as well as direct light.
+	# A quiet studio-like radiance field stands in for the ceiling and floor; the room backdrop stays opaque.
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color(0.32, 0.38, 0.42)
+	sky_material.sky_horizon_color = Color(0.62, 0.66, 0.65)
+	sky_material.ground_horizon_color = Color(0.32, 0.36, 0.35)
+	sky_material.ground_bottom_color = Color(0.08, 0.10, 0.11)
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	env.sky = sky
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	# Highlights roll off instead of clipping: pale skin and white linen keep their shape under the lamp.
-	env.tonemap_white = 2.5
-	env.tonemap_exposure = 1.15
 	env.glow_enabled = true
 	env.glow_intensity = 0.3
 	# Only real light sources glow (lamp lens, screens); lit skin up close must not bloom the whole view white.
@@ -189,7 +184,7 @@ func _build_environment() -> void:
 	env.fog_density = 0.02
 	env.ssao_enabled = true
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 0.85
+	env.adjustment_saturation = 1.0
 	var world := WorldEnvironment.new()
 	world.environment = env
 	add_child(world)
@@ -203,14 +198,10 @@ func _build_environment() -> void:
 	lamp.rotation.x = -PI / 2
 	lamp.spot_range = 3.0
 	lamp.spot_angle = 30.0
-	# Bright enough to pick the site out of the room, not so bright it bleaches skin and gloves under it.
-	lamp.light_energy = 0.32
+	lamp.light_energy = 0.5
 	lamp.spot_attenuation = 0.5
-	lamp.light_color = Color(1.0, 0.97, 0.9)
+	lamp.light_color = Color(1.0, 0.97, 0.94)
 	lamp.shadow_enabled = true
-	# Soft-edged shadows, like under a dish of bulbs. Only blurred: a sized light would also spread every glossy
-	# highlight (blood, wet tissue) into a big white patch.
-	lamp.shadow_blur = 2.0
 	add_child(lamp)
 	# Overhead room light: a ceiling panel over the table that lights the whole room from above.
 	if indoors:
@@ -231,10 +222,9 @@ func _build_environment() -> void:
 	overhead.spot_range = 12.0
 	overhead.spot_angle = 70.0
 	overhead.spot_attenuation = 0.3
-	overhead.light_energy = 0.55 if indoors else 1.0
-	overhead.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.75, 0.45)
+	overhead.light_energy = 0.35 if indoors else 1.0
+	overhead.light_color = Color(0.94, 0.98, 1.0) if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
-	overhead.shadow_blur = 2.5
 	add_child(overhead)
 	_flicker_lights.append(overhead)
 	var tubes := [Vector3(-size.x * 0.28, size.y - 0.2, size.z * 0.28), Vector3(size.x * 0.28, size.y - 0.2, -size.z * 0.28)] if environment_id == "or" else [Vector3(0, size.y - 0.2, 0)]
@@ -245,7 +235,7 @@ func _build_environment() -> void:
 		tube.position = pos
 		tube.omni_range = 9.0
 		tube.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.7, 0.35)
-		tube.light_energy = 0.35
+		tube.light_energy = 0.18
 		add_child(tube)
 		_flicker_lights.append(tube)
 
@@ -257,7 +247,7 @@ func _lamp_height() -> float:
 func _build_shell() -> void:
 	var size: Vector3 = layout.size
 	var floor_color := Color(0.28, 0.3, 0.29) if environment_id != "sidewalk" else Color(0.2, 0.2, 0.21)
-	Shapes.slab(self, Vector3(size.x, 0.1, size.z), floor_color, Vector3(0, -0.05, 0), 0.4)
+	Shapes.slab(self, Vector3(size.x, 0.1, size.z), floor_color, Vector3(0, -0.05, 0), 0.7)
 	var floor_body := Shapes.static_box(self, Vector3(size.x, 0.1, size.z), Vector3(0, -0.05, 0))
 	floor_body.set_meta("floor", true)
 	if environment_id == "sidewalk":
@@ -265,11 +255,11 @@ func _build_shell() -> void:
 		return
 	var wall := Materials.SURGICAL_GREEN if environment_id == "or" else Color(0.75, 0.78, 0.8)
 	for side: float in [-1.0, 1.0]:
-		Shapes.slab(self, Vector3(size.x, size.y, 0.1), wall, Vector3(0, size.y * 0.5, side * size.z * 0.5), 0.3)
+		Shapes.slab(self, Vector3(size.x, size.y, 0.1), wall, Vector3(0, size.y * 0.5, side * size.z * 0.5), 0.6)
 		Shapes.static_box(self, Vector3(size.x, size.y, 0.1), Vector3(0, size.y * 0.5, side * size.z * 0.5))
-		Shapes.slab(self, Vector3(0.1, size.y, size.z), wall, Vector3(side * size.x * 0.5, size.y * 0.5, 0), 0.3)
+		Shapes.slab(self, Vector3(0.1, size.y, size.z), wall, Vector3(side * size.x * 0.5, size.y * 0.5, 0), 0.6)
 		Shapes.static_box(self, Vector3(0.1, size.y, size.z), Vector3(side * size.x * 0.5, size.y * 0.5, 0))
-	Shapes.slab(self, Vector3(size.x, 0.1, size.z), wall.darkened(0.5), Vector3(0, size.y, 0), 0.45)
+	Shapes.slab(self, Vector3(size.x, 0.1, size.z), wall.darkened(0.5), Vector3(0, size.y, 0), 0.8)
 
 
 func _build_street(size: Vector3) -> void:
@@ -309,7 +299,7 @@ func _build_table() -> void:
 func _build_tray() -> void:
 	var tray := ModelSlot.instantiate("props", "instrument_tray", self)
 	tray.position = layout.tray
-	Shapes.static_box(self, Vector3(0.7, 0.05, 0.8), layout.tray + Vector3(0, TRAY_SURFACE - 0.025, 0))
+	Shapes.static_box(self, Vector3(0.7, 0.05, 0.8), layout.tray + Vector3(0, 0.89, 0))
 
 
 func _build_stations(s: Surgery) -> void:

@@ -165,9 +165,9 @@ def superellipsoid(size: Sequence[float], roundness: float = 0.25, center: Seque
     faces = []
     for i in range(len(u) - 1):
         for j in range(ring):
-            a, b = i * ring + j, i * ring + (j + 1) % ring
-            c, d = a + ring, b + ring
-            faces += [[a, b, c], [b, d, c]]
+            ia, ib = i * ring + j, i * ring + (j + 1) % ring
+            ic, id_ = ia + ring, ib + ring
+            faces += [[ia, ib, ic], [ib, id_, ic]]
     return finish(trimesh.Trimesh(verts_arr, np.array(faces), process=True))
 
 

@@ -3,17 +3,13 @@
 // Openings aren't painted: the sim pulls cut edges apart and gaping triangles are left out of the mesh,
 // so you look through the skin into the fat and muscle layers below.
 shader_type spatial;
+render_mode diffuse_burley, specular_schlick_ggx;
 
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 uniform sampler2D wound_map : filter_linear, hint_default_black;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
-uniform float rim_strength = 0.2;
-uniform float specular_strength = 0.12;
-uniform float grime = 0.12;
+uniform float grime = 0.025;
 uniform float pallor = 0.0;
-// Set from Materials.FAMILIES.skin, like the body's skin (toon.gdshader).
-uniform float wrap = 0.0;
-uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 
 varying vec3 world_pos;
 
@@ -48,22 +44,6 @@ void fragment() {
 	c = mix(c, vec3(0.78, 0.8, 0.8), pallor * 0.5);
 	float wet = apply_wounds(c, w, f);
 	ALBEDO = c;
-	ROUGHNESS = mix(0.6, 0.08, wet);
-}
-
-// Same light as toon.gdshader so the site blends into the rest of the body.
-void light() {
-	float facing = dot(NORMAL, LIGHT);
-	float ndl = max(facing, 0.0);
-	float lit = ndl * ATTENUATION;
-	float wrapped = max((facing + wrap) / (1.0 + wrap), 0.0);
-	DIFFUSE_LIGHT += LIGHT_COLOR * (lit + scatter_tint.rgb * (wrapped - ndl) * ATTENUATION) / PI;
-	vec3 halfway = normalize(VIEW + LIGHT);
-	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
-	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
-	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
-	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
-	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
-	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
+	ROUGHNESS = mix(0.6, 0.12, wet);
+	SPECULAR = mix(0.3, 0.5, wet);
 }

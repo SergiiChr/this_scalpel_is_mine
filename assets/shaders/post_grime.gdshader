@@ -1,15 +1,14 @@
-// Full screen grading: a restrained cool-green tint, vignette and a trace of film grain. The chromatic split stays
-// barely there until sickness wobbles the view; the grading must never wash out skin, gloves and steel.
+// Full screen grading: desaturated sick-green tint, vignette, film grain, slight chromatic split.
 // Surgeon state drives the extra uniforms (sickness wobble, blackout when passing out, blur, blood on the view).
 shader_type canvas_item;
 
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
-uniform vec3 tint = vec3(0.96, 1.0, 0.97);
-uniform float desaturate : hint_range(0.0, 1.0) = 0.12;
-uniform float contrast = 1.06;
-uniform float vignette : hint_range(0.0, 1.0) = 0.4;
-uniform float grain : hint_range(0.0, 0.3) = 0.02;
-uniform float aberration = 0.0003;
+uniform vec3 tint = vec3(0.93, 1.0, 0.94);
+uniform float desaturate : hint_range(0.0, 1.0) = 0.1;
+uniform float contrast = 1.02;
+uniform float vignette : hint_range(0.0, 1.0) = 0.28;
+uniform float grain : hint_range(0.0, 0.3) = 0.008;
+uniform float aberration = 0.0;
 uniform float wobble = 0.0;
 uniform float blur = 0.0;
 uniform float blackout : hint_range(0.0, 1.0) = 0.0;
@@ -58,7 +57,7 @@ void fragment() {
 	}
 	uv.x += sin(uv.y * 10.0 + TIME * 1.7) * 0.006 * wobble;
 	uv.y += cos(uv.x * 8.0 + TIME * 1.3) * 0.004 * wobble;
-	float split = aberration * (1.0 + wobble * 4.0);
+	float split = aberration + wobble * 0.0012;
 	vec3 col = vec3(
 		textureLod(screen_texture, uv + vec2(split, 0.0), blur).r,
 		textureLod(screen_texture, uv, blur).g,
