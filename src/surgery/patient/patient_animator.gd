@@ -6,6 +6,8 @@ extends Node
 
 const BREATH_DEPTH := 0.018
 const TORSO_TOP := 0.215
+## How long the eyes stay shut in a blink (seconds).
+const BLINK := 0.12
 
 var body: PatientBody
 var _rig: BoneRig
@@ -17,6 +19,9 @@ var _flinch := 0.0
 var _jolt := 0.0
 var _last_pain := 0.0
 var _locked_side := ""
+## Seconds until the next blink, and how much of the current one is left.
+var _blink_in := 3.0
+var _blink_left := 0.0
 
 
 func setup(patient_body: PatientBody, model: Node3D) -> void:
@@ -57,9 +62,16 @@ func animate(vitals: Vitals, alive: bool, delta: float) -> void:
 	body.heartbeat = _heartbeat(vitals, alive, delta)
 
 	var awake := alive and vitals.is_awake()
+	# Awake patients blink every few seconds, more often in pain or panic.
+	_blink_in -= delta * (1.0 + vitals.pain + vitals.panic * 2.0) if awake else 0.0
+	if _blink_in <= 0.0:
+		_blink_in = randf_range(2.5, 6.0)
+		_blink_left = BLINK
+	_blink_left = maxf(_blink_left - delta, 0.0)
+	var open := awake and _blink_left <= 0.0
 	for eye in ["EyeL", "EyeR"]:
-		_set_visible(eye, awake)
-	_set_visible("Lids", not awake)
+		_set_visible(eye, open)
+	_set_visible("Lids", not open)
 	_talk_left = maxf(_talk_left - delta, 0.0)
 	var jaw_open := (absf(sin(t * 11.0)) * 0.25 if _talk_left > 0.0 else 0.0) + (0.15 if vitals.pain > 0.6 and awake else 0.0)
 	# The jaw hinges about the ear-to-ear axis; a positive turn swings the chin toward the chest.

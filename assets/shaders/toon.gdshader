@@ -125,8 +125,9 @@ void fragment() {
 		float sky = smoothstep(mix(0.6, -0.2, rough), 1.0, r.y);
 		reflection = base * mix(0.18, 0.7, sky) * metal;
 	}
+	// METALLIC stays 0: the engine would scale the lit diffuse down by it and turn steel black. Metal is handled here
+	// and in light(), which reads the uniform.
 	ALBEDO = base * (1.0 - metal * 0.4);
-	METALLIC = metal;
 	ROUGHNESS = mix(rough, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
 	EMISSION = emission_color.rgb + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
@@ -144,7 +145,7 @@ void light() {
 	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
 	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
 	// Metal highlights take the metal's color; everything else reflects the light's own.
-	vec3 spec_color = mix(vec3(1.0), ALBEDO / max(1.0 - METALLIC * 0.4, 0.6), METALLIC);
+	vec3 spec_color = mix(vec3(1.0), ALBEDO / (1.0 - metallic * 0.4), metallic);
 	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
