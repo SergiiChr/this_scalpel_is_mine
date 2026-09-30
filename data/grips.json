@@ -2,8 +2,8 @@
 	"_about": "Grip fits per tool model and hand, made by tests/fit_grips.tscn. lift, shift: meters the glove moves off the tool toward the back of the hand and toward the pinky side. curl: how far each finger closes (index, middle, ring, pinky, thumb).",
 	"scalpel": {
 		"left": {
-			"lift": 0.018,
-			"shift": 0.0,
+			"lift": 0.0,
+			"shift": 0.018,
 			"curl": [
 				0.45,
 				0.6,
@@ -13,8 +13,8 @@
 			]
 		},
 		"right": {
-			"lift": 0.018,
-			"shift": 0.0,
+			"lift": 0.0,
+			"shift": 0.018,
 			"curl": [
 				0.45,
 				0.6,
@@ -26,7 +26,7 @@
 	},
 	"switchblade": {
 		"left": {
-			"lift": 0.006,
+			"lift": 0.003,
 			"shift": 0.018,
 			"curl": [
 				0.45,
@@ -37,7 +37,7 @@
 			]
 		},
 		"right": {
-			"lift": 0.003,
+			"lift": 0.0,
 			"shift": 0.018,
 			"curl": [
 				0.45,

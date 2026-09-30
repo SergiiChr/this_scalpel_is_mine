@@ -15,6 +15,10 @@ func _ready() -> void:
 	_sleeps()
 	_elastic()
 	_muscle_first()
+	_loose_stitch_gapes()
+	_exact_snaps()
+	_deformed_surface()
+	_rests_on_curved_body()
 	print("tissue_test: done")
 	get_tree().quit()
 
@@ -89,9 +93,10 @@ func _thin_skin_holds_at_rest() -> void:
 	_check(sim.snapped.is_empty(), "thin skin (tear threshold x0.5) doesn't tear from its own tension")
 
 
+## Into the fat: skin can't be closed over open muscle (see _muscle_first()).
 func _stitches_close() -> void:
 	var sim := _sim()
-	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.MUSCLE)
+	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.FAT)
 	_settle(sim)
 	var u := 0.2
 	while u <= 0.8:
@@ -135,7 +140,7 @@ func _elastic() -> void:
 	var region := sim.region()
 	var hidden := 0
 	for p in sim.pos.size():
-		if sim.pos[p].distance_to(sim.rest[p]) > 0.002 and region[p] == 0:
+		if sim.pos[p].distance_to(sim.settled[p]) > 0.002 and region[p] == 0:
 			hidden += 1
 	_check(hidden == 0, "all visibly moved skin is inside the simulated region (%d points outside)" % hidden)
 
@@ -160,3 +165,71 @@ func _muscle_first() -> void:
 	_check(not sim.is_open(MID), "sewn muscle closes the cavity")
 	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == TissueSim.RES * TissueSim.RES * 6, "sewn muscle shows no hole in the muscle layer")
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "the skin over sewn muscle still gapes until it's stitched")
+
+
+## A stitch closes the cut only where it pulls the edges together: a loose one leaves the rest of the gap open.
+func _loose_stitch_gapes() -> void:
+	var sims: Array[TissueSim] = []
+	for tension: float in [0.95, 1.6]:
+		var sim := _sim()
+		sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.FAT)
+		_settle(sim)
+		var u := 0.2
+		while u <= 0.8:
+			sim.stitch(Vector2(u, 0.51), tension, 2.2)
+			u += 0.01
+		_settle(sim)
+		sims.append(sim)
+	_check(sims[0].gap_at(MID) == 0.0, "a tight stitch closes the gap")
+	_check(sims[1].gap_at(MID) > TissueSim.OPEN_GAP * 0.5, "a loose stitch leaves the gap open (%.1f mm)" % (sims[1].gap_at(MID) * 1000.0))
+	_check(sims[1].triangles(TissueSim.Depth.SKIN).size() < TissueSim.RES * TissueSim.RES * 6, "a loosely stitched cut still shows its opening")
+
+
+## A client mirrors the host's tears spring by spring, diagonals included, and ends with identical topology.
+func _exact_snaps() -> void:
+	var host := _sim()
+	var client := _sim()
+	client.tearing = false
+	for sim: TissueSim in [host, client]:
+		sim.cut(Vector2(0.2, 0.3), Vector2(0.8, 0.7), TissueSim.Depth.FAT)
+		sim.stitch(Vector2(0.5, 0.5), 1.0, 1.05)
+	var edge := Vector2(0.45, 0.55)
+	host.grip(1, edge)
+	host.move_grip(1, host.rest[host.nearest(edge)] + Vector3(-0.03, 0.01, 0.06))
+	_settle(host)
+	_check(not host.snapped.is_empty(), "a hard diagonal pull tears springs")
+	for entry: Array in host.snapped:
+		client.snap_spring(entry[3])
+	_check(client.topology_hash() == host.topology_hash(), "the client's torn springs match the host's exactly")
+
+
+## Contact follows the skin as it's deformed: lifted by a grip it's higher, over an opening there's no skin.
+func _deformed_surface() -> void:
+	var sim := _sim()
+	var spot := Vector2(0.5, 0.3)
+	_check(absf(sim.skin_height(spot)) < 0.0001, "resting skin lies on the body")
+	sim.grip(1, spot)
+	sim.move_grip(1, sim.rest[sim.nearest(spot)] + Vector3(0, 0.012, 0))
+	_settle(sim)
+	_check(sim.skin_height(spot) > 0.008, "skin lifted by a grip is higher where it's lifted (%.1f mm)" % (sim.skin_height(spot) * 1000.0))
+	_check(absf(sim.skin_height(Vector2(0.1, 0.9))) < 0.001, "skin far from the grip stays put")
+	sim.release(1)
+	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.MUSCLE)
+	_settle(sim, 120)
+	_check(is_nan(sim.skin_height(Vector2(0.5, 0.51))), "no skin over an open incision")
+
+
+## Skin under tension over a round body (a 25 cm radius, like a torso) settles once when it's built and then rests:
+## not shown simulated, asleep.
+func _rests_on_curved_body() -> void:
+	var sim := TissueSim.new()
+	sim.build(SIZE, func(uv: Vector2) -> float:
+		var x := (uv.x - 0.5) * SIZE.x
+		return sqrt(0.25 * 0.25 - x * x) - 0.25)
+	_settle(sim)
+	var moved := 0.0
+	for k in sim.pos.size():
+		moved = maxf(moved, sim.pos[k].distance_to(sim.settled[k]))
+	_check(moved < TissueSim.REGION_MOVE, "skin over a round body stays where it settled (moved %.1f mm)" % (moved * 1000.0))
+	_check(sim.region().count(1) == 0, "untouched skin over a round body isn't shown simulated")
+	_check(sim.is_sleeping(), "untouched skin over a round body sleeps")

@@ -11,6 +11,9 @@ uniform float rim_strength = 0.2;
 uniform float specular_strength = 0.12;
 uniform float grime = 0.12;
 uniform float pallor = 0.0;
+// Set from Materials.FAMILIES.skin, like the body's skin (toon.gdshader).
+uniform float wrap = 0.0;
+uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 
 varying vec3 world_pos;
 
@@ -50,9 +53,11 @@ void fragment() {
 
 // Same light as toon.gdshader so the site blends into the rest of the body.
 void light() {
-	float ndl = max(dot(NORMAL, LIGHT), 0.0);
+	float facing = dot(NORMAL, LIGHT);
+	float ndl = max(facing, 0.0);
 	float lit = ndl * ATTENUATION;
-	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
+	float wrapped = max((facing + wrap) / (1.0 + wrap), 0.0);
+	DIFFUSE_LIGHT += LIGHT_COLOR * (lit + scatter_tint.rgb * (wrapped - ndl) * ATTENUATION) / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
 	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);

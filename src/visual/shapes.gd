@@ -3,7 +3,7 @@ extends RefCounted
 ## Room architecture (walls, floors), invisible colliders and 3D labels. Everything else is a model.
 
 
-static func slab(parent: Node3D, size: Vector3, color: Color, pos: Vector3, grime: float = 0.6) -> MeshInstance3D:
+static func slab(parent: Node3D, size: Vector3, color: Color, pos: Vector3, grime: float = 0.35) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	var instance := MeshInstance3D.new()

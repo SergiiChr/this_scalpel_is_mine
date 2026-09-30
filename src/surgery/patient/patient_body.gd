@@ -161,7 +161,18 @@ func uv_to_world(uv: Vector2, depth: float = 0.0) -> Vector3:
 ## Meters between the skin and p along the site normal. Negative = under the skin.
 func height_above_site(p: Vector3) -> float:
 	var local := site.to_local(p)
-	return local.y - surface_height(Vector2(local.x / site_size.x + 0.5, local.z / site_size.y + 0.5))
+	return local.y - skin_height(Vector2(local.x / site_size.x + 0.5, local.z / site_size.y + 0.5))
+
+
+## Skin height at uv as it's drawn now: the simulated skin where it replaces the body (pulled, pressed or cut),
+## the body's own rest surface everywhere else and over an opening.
+func skin_height(uv: Vector2) -> float:
+	var k := tissue.nearest(uv)
+	if k < _region.size() and _region[k] == 1:
+		var height := tissue.skin_height(uv)
+		if not is_nan(height):
+			return height
+	return surface_height(uv)
 
 
 ## Skin height relative to the flat site plane at uv, from the baked height grid (0 when flat).
@@ -718,13 +729,15 @@ func settle_organs() -> void:
 func _jiggle_organs(delta: float) -> void:
 	if delta <= 0.0:
 		return
+	# The wobble spring is stiff: stepped over a long frame (a hitch, a slow renderer) it would blow up to NaN.
+	var step := minf(delta, 1.0 / 30.0)
 	for i in organs.size():
 		var organ := organs[i]
 		var velocity := (organ.position - _organ_last[i]) / delta
 		_organ_last[i] = organ.position
 		var state := _jiggle[i]
-		state.y += (-state.x * 180.0 - state.y * 9.0 + clampf(velocity.length() * 6.0, 0.0, 3.0)) * delta
-		state.x += state.y * delta
+		state.y += (-state.x * 180.0 - state.y * 9.0 + clampf(velocity.length() * 6.0, 0.0, 3.0)) * step
+		state.x += state.y * step
 		_jiggle[i] = state
 		var squash := clampf(state.x, -0.25, 0.25)
 		var model := organ.get_node_or_null("Model") as Node3D

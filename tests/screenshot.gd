@@ -1,6 +1,8 @@
 extends Node
 ## Renders a few views of a scenario with staged damage, for checking the look without playing.
 ## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
+## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
+## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -30,6 +32,9 @@ func _ready() -> void:
 	await _frames(10)
 	if OS.get_cmdline_user_args().has("--anatomy"):
 		await _anatomy(surgery, out)
+		return
+	if OS.get_cmdline_user_args().has("--materials"):
+		await _materials(surgery, out)
 		return
 	var patient := surgery.patient
 	patient.cut(1, Vector2(0.25, 0.6), Vector2(0.5, 0.55), 1.0, 1.0, false, 0.1)
@@ -223,6 +228,85 @@ func _anatomy(surgery: Surgery, out: String) -> void:
 			await _shot(out, "24_syringe_held_up")
 			Input.action_release("inspect")
 			break
+	get_tree().quit()
+
+
+## A row of samples on a stand over the site, lit like the site: the four skin tones, glove rubber, scrubs and gown
+## cloth, steel tools, wet tissue and blood. Then both hands in each grip at the arm's limits.
+func _materials(surgery: Surgery, out: String) -> void:
+	var site := surgery.patient.body.site.global_position + Vector3(0, 0.12, 0)
+	var board := Node3D.new()
+	add_child(board)
+	var samples: Array[Material] = []
+	for tone in Materials.SKIN_TONES:
+		samples.append(Materials.body_skin(tone))
+	samples.append_array([Materials.family_unique("cloth", Materials.SCRUBS[0], 0.9), Materials.family_unique("cloth", Materials.PATIENT_GOWN, 0.9), Materials.flesh(), Materials.blood_pool()])
+	for i in samples.size():
+		var ball := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.025
+		sphere.height = 0.05
+		ball.mesh = sphere
+		ball.material_override = samples[i]
+		board.add_child(ball)
+		ball.global_position = site + Vector3(-0.21 + i * 0.06, 0.0, -0.05)
+	var glove := ModelSlot.instantiate("surgeon", "glove", board)
+	glove.global_position = site + Vector3(-0.2, -0.01, 0.06)
+	for i in 3:
+		var holder := Node3D.new()
+		board.add_child(holder)
+		ToolModel.build(Db.tool(["scalpel", "forceps", "needle"][i]), holder)
+		holder.global_transform = Transform3D(Basis(Vector3.UP, PI / 2) * Basis(Vector3.RIGHT, -0.2), site + Vector3(0.0 + i * 0.07, 0.0, 0.06))
+	await _frames(20)
+	var camera := Camera3D.new()
+	add_child(camera)
+	camera.current = true
+	# About where a surgeon's eyes are, then close up.
+	camera.global_position = site + Vector3(0.0, 0.35, 0.45)
+	camera.look_at(site)
+	await _shot(out, "30_materials")
+	camera.global_position = site + Vector3(-0.1, 0.12, 0.2)
+	camera.look_at(site + Vector3(-0.1, 0.0, 0.0))
+	await _shot(out, "31_materials_close")
+	board.queue_free()
+	var me := surgery.local_surgeon
+	me.visible = false
+	for grip: String in SurgeonHand.GRIPS:
+		var def: ToolDef = Db.tools.values().filter(func(d: ToolDef) -> bool: return d.grip == grip).front()
+		var body := Node3D.new()
+		add_child(body)
+		# Standing on the floor at the table's side, facing the site.
+		body.global_position = Vector3(site.x, 0.0, site.z + 0.55)
+		var hands: Array[SurgeonHand] = []
+		var tools: Array[Node3D] = []
+		for index in 2:
+			var hand := SurgeonHand.new()
+			body.add_child(hand)
+			hand.build(index, Materials.family_unique("cloth", Materials.SCRUBS[0], 0.9))
+			hand.holding = true
+			hand.grip = grip
+			hand.fit = Db.grip_fit(def, index)
+			hands.append(hand)
+			var holder := Node3D.new()
+			add_child(holder)
+			ToolModel.build(def, holder)
+			tools.append(holder)
+		for limit: String in ["stretched", "folded"]:
+			for hand in hands:
+				var side := -1.0 if hand.index == 0 else 1.0
+				var shoulder := body.to_global(Vector3(0.19 * side, 1.4, -0.08))
+				var reach := Vector3(0.2 * side, -0.3, -0.6) if limit == "stretched" else Vector3(0.05 * side, -0.12, -0.12)
+				hand.target = shoulder + reach
+				hand.snap_pose(shoulder)
+				tools[hand.index].global_transform = hand.grip_transform()
+			# From across the table, a little above the hands.
+			var between := hands[0].global_position.lerp(hands[1].global_position, 0.5)
+			camera.global_position = between + Vector3(0.0, 0.3, -0.6)
+			camera.look_at(between)
+			await _shot(out, "32_grip_%s_%s" % [grip, limit])
+		body.queue_free()
+		for tool in tools:
+			tool.queue_free()
 	get_tree().quit()
 
 

@@ -22,7 +22,8 @@ static func instantiate(category: String, model_name: String, parent: Node3D, ov
 	return empty
 
 
-## Replaces imported glTF materials with the game's shading, keeping each material's color.
+## Replaces imported glTF materials with the game's shading by material family (Materials.imported()), keeping each
+## material's color, roughness, metallic and texture maps.
 static func toonify(root: Node, overrides: Dictionary = {}) -> void:
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
@@ -39,9 +40,8 @@ static func toonify(root: Node, overrides: Dictionary = {}) -> void:
 			elif key == "flame":
 				mesh_instance.set_surface_override_material(i, Materials.glow(Color(1.0, 0.62, 0.2)))
 			elif source is BaseMaterial3D:
-				var base := source as BaseMaterial3D
-				var metal := base.metallic > 0.5
-				mesh_instance.set_surface_override_material(i, Materials.toon(base.albedo_color, 0.08 if metal else 0.3, true, base.roughness))
+				var outline := Materials.outline_size(mesh_instance.mesh.get_aabb())
+				mesh_instance.set_surface_override_material(i, Materials.imported(source as BaseMaterial3D, outline))
 
 
 ## Swaps the model's shared toon materials for copies of its own, for per-object tweaks (blood, grime), and returns them.

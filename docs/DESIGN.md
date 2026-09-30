@@ -52,20 +52,28 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   on the site, dim tubes fill the corners. Outside, the streetlight does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
 - Shading (`toon.gdshader`): smooth diffuse, soft specular, rim light, procedural grime.
-  Room surfaces skip specular and rim.
-- Ink outline via inverted hull (`outline.gdshader`).
+  Every model material belongs to a family (`Materials.FAMILIES`, by material name): skin (light wraps past the
+  terminator with a red tint), glove rubber, cloth (no highlight, soft sheen), metal (tinted highlight, a fake
+  ceiling/floor reflection), plastic and wet tissue. The model's color, roughness, metallic and texture maps are kept.
+  Grime rides on the model; only walls and floors keep theirs fixed in the world. Room surfaces skip specular and rim.
+- Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
+  so a blade gets a hairline and furniture a full line.
 - Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
   - The skin is a grid of particles joined by springs under tension, loosely anchored to the body.
     Cutting severs springs, so an incision gapes on its own; forceps and retractors pin particles and stretch it further.
   - Each severed spring remembers how deep the cut went: skin, fat or muscle.
     Skin, fat and muscle are three meshes rebuilt from the sim; each one drops the triangles over a gap cut down to it.
     So a shallow cut shows yellow fat, a deeper one red muscle, and only a full depth cut opens into the cavity.
-  - Overstretched springs snap into a tear (host only). Stitches are extra springs across the cut, their length is the tension.
+  - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index.
+    Stitches are extra springs across the cut, their length is the tension. Thread is stiffer than skin (solved more
+    often). A cut counts as closed only where its edges meet: a loose stitch leaves a gap that stays open and bleeds.
+  - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`, triangles sorted into bins), not
+    the body's rest shape, so a lifted fold is where it's drawn.
   - A grip drags a patch of skin around it along (never across a cut), so pulls spread and the skin stretches
     visibly over several centimeters before it tears. Everything that moved is shown simulated.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
     `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
-  - The sim sleeps when nothing moves.
+  - The skin settles under its own tension when it's built, so it starts asleep. The sim sleeps when nothing moves.
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
@@ -77,7 +85,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   The heart beats with the pulse (still in asystole, a quiver in V-fib), the lungs swell with each breath.
 - A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.ANCHOR_REACH`), so an
   H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
-- Screen grading (`post_grime.gdshader`): desaturated sick-green tint, vignette, film grain, chromatic split.
+- Screen grading (`post_grime.gdshader`): a restrained cool-green tint, vignette, a trace of grain and chromatic split.
   Sickness wobbles and blurs the view, passing out blacks it out.
   Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
 - Gloves pick up blood from the tool they hold, fingertips first, and the sink or a fresh pair cleans them.

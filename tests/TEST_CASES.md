@@ -26,6 +26,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | M6 | Every organ a site's anatomy uses has a model |
 | M7 | Every tool model held in either glove, fitted by `data/grips.json`: nothing of the tool is inside the glove's fingers or palm (`tests/fit_grips.tscn` makes the fits) |
 | M8 | Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in: back of the hand up, or out to its own side for a fist round a handle, never twisted palm up |
+| M9 | Empty and in every grip, with the arm stretched past its reach, folded up to the shoulder or reaching straight along the elbow's bend, both hands stay finite and the left glove is exactly the right one mirrored |
 
 ## Soft tissue (`tests/tissue_test.gd`)
 
@@ -39,14 +40,18 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T6 | Pulling a cut edge 8 cm tears the skin |
 | T7 | Only the host tears tissue: a client's sim never snaps springs itself |
 | T8 | Thin skin (tear threshold ×0.5) doesn't tear from its own tension |
-| T9 | Stitching along a whole cut closes the gap and the hole in the skin |
+| T9 | Stitching along a whole cut into the fat closes the gap and the hole in the skin |
 | T10 | A burst closure gapes again |
 | T11 | The sim sleeps when nothing moves and a sleeping sim does no work |
 | T12 | A jolt wakes the sim |
 | T13 | A slow 3 cm pull on intact skin doesn't tear it, and skin 4 cm away follows by more than 8 mm |
-| T14 | All skin that moved visibly is inside the simulated region |
+| T14 | All skin that moved visibly since it settled is inside the simulated region |
 | T15 | A cut through the muscle gapes wider than one into the fat and leaves the muscle open |
 | T16 | Sewing the muscle along the cut closes the muscle layer and the cavity; the skin still gapes until stitched |
+| T17 | A stitch closes a cut only where the edges meet: a tight one closes it, a loose one leaves the gap and the hole in the skin open |
+| T18 | A client mirroring the host's snapped springs by their index ends with exactly the host's tissue topology, diagonal tears and a torn stitch included |
+| T19 | Skin contact follows the deformed skin: higher where a grip lifts it, unchanged far from it, none over an open incision |
+| T20 | Untouched skin over a round body (25 cm radius) settles when it's built, then stays put: it isn't shown simulated and sleeps |
 
 ## Every scenario (`tests/smoke_test.gd`)
 
@@ -100,7 +105,7 @@ Two real game processes on localhost, one hosting and one joining.
 | N2 | The client grabs a cutting tool, lowers it and cuts along the blade edge; the host simulates the cut |
 | N3 | The client hands the tool across the table to the host's hand |
 | N4 | Host and client end with the same painted wound map |
-| N5 | Host and client end with the same cut tissue (same number of severed springs) |
+| N5 | Host and client end with the same cut tissue: the same severed springs and the same topology hash (`TissueSim.topology_hash()`) |
 | N6 | Spotty connection: the client process is frozen for 10 s mid-surgery (past ENet's default timeout). Nobody gets disconnected, both are still in the same surgery afterwards, and the host paused the silent player's tool while they were gone (`tests/net_stall_test.gd`) |
 
 ## Visual checks (not automated)

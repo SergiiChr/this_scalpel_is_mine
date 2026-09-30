@@ -195,13 +195,14 @@ func _scrubs_color() -> Color:
 
 
 func _build_visuals() -> void:
-	_scrubs = Materials.toon_unique(_scrubs_color(), 0.35)
+	_scrubs = Materials.family_unique("cloth", _scrubs_color(), 0.9)
+	_scrubs.next_pass = Materials.outline_for(0.003)
 	_body = ModelSlot.instantiate("surgeon", "body", self, {"tint": _scrubs})
 	_head = Node3D.new()
 	_head.name = "Head"
 	_head.position.y = EYE_HEIGHT
 	add_child(_head)
-	_face = ModelSlot.instantiate("surgeon", "head", _head, {"tint": Materials.toon(_scrubs_color().darkened(0.2), 0.35), "skin": Materials.toon(Color(0.8, 0.64, 0.54), 0.1)})
+	_face = ModelSlot.instantiate("surgeon", "head", _head, {"tint": Materials.toon(_scrubs_color().darkened(0.2), 0.35), "skin": Materials.family_unique("skin", Color(0.8, 0.64, 0.54), 0.6)})
 	_camera = Camera3D.new()
 	_camera.name = "Camera"
 	_camera.fov = 70.0
@@ -396,6 +397,7 @@ func _constrain(hand: SurgeonHand) -> void:
 	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
 	var from := shoulder(hand.index)
+	hand.on_hard = false
 	if surface.y != -INF:
 		if surface.open:
 			hand.target.y = surface.y + HOVER_GAP - offset.y
@@ -406,6 +408,7 @@ func _constrain(hand: SurgeonHand) -> void:
 			# Anything hard (a tray, the table, a tool lying there) doesn't: every corner of the tool clears
 			# whatever is under that corner, not only its tip.
 			var gap := 0.001 if hand.lowered else HOVER_GAP
+			hand.on_hard = true
 			var basis := hand.grip_transform().basis
 			var needed: float = surface.y + gap - _lowest_point(hand, tool)
 			for i in 8:
@@ -464,6 +467,13 @@ func _surface_below(p: Vector3) -> Dictionary:
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}
 	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER)) != 0
+	# The body's collider is its rest shape: skin lifted by a grip lies above it.
+	if not site_hit.is_empty():
+		var body := Surgery.current.patient.body
+		var local := body.site.to_local(p)
+		var skin := body.site.to_global(Vector3(local.x, body.skin_height(body.world_to_uv(p)), local.z))
+		if skin.y > hit.position.y:
+			return {"y": skin.y, "open": false, "soft": true}
 	return {"y": hit.position.y, "open": false, "soft": soft}
 
 

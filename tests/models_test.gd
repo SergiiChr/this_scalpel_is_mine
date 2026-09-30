@@ -45,6 +45,7 @@ func _ready() -> void:
 	for hand_index in 2:
 		await _grip_clearance(holder, hand_index)
 		_hand_turn(holder, hand_index)
+	_arm_limits(holder)
 	print("models_test: done")
 	get_tree().quit()
 
@@ -68,6 +69,40 @@ func _hand_turn(holder: Node3D, hand_index: int) -> void:
 			if facing < 0.3:
 				print("FAIL: the %s hand holding a %s at %s is twisted (back of the hand %s)" % ["left" if hand_index == 0 else "right", def.id, hand.target, back])
 	hand.get_parent().queue_free()
+
+
+## At the arm's limits (stretched out, folded up to the shoulder, reaching straight along the elbow's bend) both hands
+## stay finite, and the left one is the right one mirrored.
+func _arm_limits(holder: Node3D) -> void:
+	var hands: Array[SurgeonHand] = [GripCheck.make_hand(holder, 0), GripCheck.make_hand(holder, 1)]
+	var reach := SurgeonHand.UPPER_ARM + SurgeonHand.FOREARM
+	var bend := Vector3(0.6, -1.0, 0.0).normalized()
+	var limits: Dictionary = {
+		"stretched": Vector3(0.3, -0.25, -1.0).normalized() * reach * 1.2, "folded": Vector3(-0.02, -0.03, -0.04),
+		"along the bend": bend * reach * 0.6,
+	}
+	for grip: String in [""] + SurgeonHand.GRIPS.keys():
+		for limit: String in limits:
+			var gloves: Array[Transform3D] = []
+			for hand in hands:
+				var side := -1.0 if hand.index == 0 else 1.0
+				var shoulder := GripCheck.shoulder(hand)
+				var offset: Vector3 = limits[limit]
+				hand.holding = grip != ""
+				hand.grip = grip if grip else "pencil"
+				hand.fit = {}
+				hand.target = shoulder + Vector3(offset.x * side, offset.y, offset.z)
+				hand.snap_pose(shoulder)
+				var parts: Array[Transform3D] = [hand._glove.global_transform, hand._fore.global_transform, hand._upper.global_transform]
+				if not parts.all(func(t: Transform3D) -> bool: return t.is_finite()):
+					print("FAIL: the %s hand %s, arm %s, isn't finite" % ["left" if hand.index == 0 else "right", "holding by " + grip if grip else "empty", limit])
+				gloves.append(hand._glove.global_transform)
+			# Mirrored across the body's middle, the left glove lands exactly on the right one.
+			var left := Transform3D(Basis.from_scale(Vector3(-1, 1, 1)), Vector3.ZERO) * gloves[0]
+			if left.origin.distance_to(gloves[1].origin) > 0.002 or not left.basis.is_equal_approx(gloves[1].basis):
+				print("FAIL: the hands %s, arm %s, don't mirror each other (left %s, right %s)" % ["holding by " + grip if grip else "empty", limit, gloves[0], gloves[1]])
+	for hand in hands:
+		hand.get_parent().queue_free()
 
 
 ## Every tool held in a glove the way the game holds it, fitted by data/grips.json: nothing of the tool is inside the

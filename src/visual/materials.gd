@@ -19,6 +19,30 @@ const PATIENT_GOWN := Color(0.52, 0.64, 0.6)
 const SCRUBS: Array[Color] = [Color(0.22, 0.4, 0.36), Color(0.26, 0.38, 0.52)]
 const FLUORESCENT := Color(0.88, 1.0, 0.94)
 
+## How each kind of surface responds to light, so skin, gloves, steel and cloth read apart under the same lamp.
+## specular: highlight strength, rim: edge light (cloth sheen), wrap/scatter: light past the terminator (skin),
+## grime: procedural dirt, metallic: 1 for metal. Roughness comes from the model's own material.
+const FAMILIES: Dictionary = {
+	"skin": {"specular": 0.15, "rim": 0.12, "wrap": 0.35, "scatter": Color(1.0, 0.42, 0.32), "grime": 0.05},
+	"rubber": {"specular": 0.18, "rim": 0.08, "grime": 0.0},
+	"cloth": {"specular": 0.0, "rim": 0.2, "wrap": 0.25, "scatter": Color(1.0, 1.0, 1.0), "grime": 0.12},
+	"metal": {"specular": 0.9, "rim": 0.04, "grime": 0.02, "metallic": 1.0},
+	"plastic": {"specular": 0.35, "rim": 0.12, "grime": 0.1},
+	"tissue": {"specular": 0.55, "rim": 0.1, "wrap": 0.4, "scatter": Color(1.0, 0.3, 0.25), "grime": 0.0},
+}
+## Model material name -> family. Names not listed are plastic.
+const FAMILY_OF: Dictionary = {
+	"skin": "skin", "lips": "skin",
+	"glove": "rubber",
+	"tint": "cloth", "gown": "cloth", "mask": "cloth", "knit": "cloth", "fabric_white": "cloth", "fabric_dark": "cloth",
+	"mattress": "cloth", "cotton": "cloth", "paper": "cloth", "hair": "cloth", "leather": "cloth",
+	"steel": "metal", "dark_steel": "metal", "chrome": "metal", "brass": "metal", "gold": "metal",
+	"flesh": "tissue", "organ": "tissue", "vessel": "tissue", "cartilage": "tissue", "bone": "tissue", "mouth": "tissue",
+	"tongue": "tissue", "teeth": "tissue", "eye": "tissue", "iris": "tissue", "blood_bag": "tissue",
+}
+## Outline width for a part, as a share of its middle dimension (see outline_for()).
+const OUTLINE_SHARE := 0.06
+
 static var _cache: Dictionary = {}
 
 
@@ -42,13 +66,14 @@ static func glass() -> StandardMaterial3D:
 	return _cache["glass"]
 
 
-## Walls, floors and big furniture: no highlights, no outline, heavier grime.
-static func environment(color: Color, grime: float = 0.6) -> ShaderMaterial:
+## Walls, floors and big furniture: no highlights, no outline, heavier grime fixed in the world.
+static func environment(color: Color, grime: float = 0.35) -> ShaderMaterial:
 	var key := "env|%s|%.2f" % [color.to_html(), grime]
 	if not _cache.has(key):
 		var mat := toon_unique(color, grime, false, 0.85)
 		mat.set_shader_parameter("rim_strength", 0.0)
 		mat.set_shader_parameter("specular_strength", 0.0)
+		mat.set_shader_parameter("world_grime", true)
 		_cache[key] = mat
 	return _cache[key]
 
@@ -60,17 +85,80 @@ static func toon_unique(color: Color, grime: float = 0.25, outline: bool = true,
 	mat.set_shader_parameter("grime", grime)
 	mat.set_shader_parameter("roughness", roughness)
 	if outline:
-		mat.next_pass = _outline()
+		mat.next_pass = outline_for(0.003)
 	return mat
+
+
+## A model's own material in the game's shading, by its family (FAMILIES): keeps its color, roughness, metallic and
+## texture maps. outline: most the outline may grow (meters), from the part's size, 0 for none.
+static func imported(source: BaseMaterial3D, outline: float) -> ShaderMaterial:
+	var family_name: String = FAMILY_OF.get(source.resource_name, "plastic")
+	var textured := source.albedo_texture or source.normal_texture or source.roughness_texture or source.metallic_texture
+	var metallic := float(FAMILIES[family_name].get("metallic", 0.0)) if source.metallic > 0.5 or source.metallic_texture else 0.0
+	var key := "imported|%s|%s|%.2f|%.1f|%.4f" % [source.resource_name, source.albedo_color.to_html(), source.roughness, metallic, outline]
+	if not textured and _cache.has(key):
+		return _cache[key]
+	var mat := family_unique(family_name, source.albedo_color, source.roughness)
+	mat.set_shader_parameter("metallic", metallic)
+	if source.albedo_texture:
+		mat.set_shader_parameter("albedo_texture", source.albedo_texture)
+	if source.normal_enabled and source.normal_texture:
+		mat.set_shader_parameter("normal_texture", source.normal_texture)
+		mat.set_shader_parameter("use_normal_texture", true)
+	if source.roughness_texture:
+		mat.set_shader_parameter("roughness_texture", source.roughness_texture)
+		mat.set_shader_parameter("roughness_channel", _channel(source.roughness_texture_channel))
+	if source.metallic_texture:
+		mat.set_shader_parameter("metallic_texture", source.metallic_texture)
+		mat.set_shader_parameter("metallic_channel", _channel(source.metallic_texture_channel))
+	if outline > 0.0:
+		mat.next_pass = outline_for(outline)
+	if not textured:
+		_cache[key] = mat
+	return mat
+
+
+## A new material of a family (FAMILIES) with no outline, for per-object tweaks.
+static func family_unique(family_name: String, color: Color, roughness: float) -> ShaderMaterial:
+	var family: Dictionary = FAMILIES[family_name]
+	var mat := toon_unique(color, family.grime, false, roughness)
+	mat.set_shader_parameter("specular_strength", family.specular)
+	mat.set_shader_parameter("rim_strength", family.rim)
+	mat.set_shader_parameter("wrap", family.get("wrap", 0.0))
+	mat.set_shader_parameter("scatter_tint", family.get("scatter", Color.WHITE))
+	mat.set_shader_parameter("metallic", family.get("metallic", 0.0))
+	return mat
+
+
+## Most outline a part of this size gets: a hairline on a scalpel blade, a full line round a table.
+static func outline_size(bounds: AABB) -> float:
+	var sizes := [bounds.size.x, bounds.size.y, bounds.size.z]
+	sizes.sort()
+	return clampf(float(sizes[1]) * OUTLINE_SHARE, 0.0003, 0.003)
+
+
+## The shared outline pass that grows at most max_thickness meters (outline.gdshader).
+static func outline_for(max_thickness: float) -> ShaderMaterial:
+	var key := "outline|%.4f" % max_thickness
+	if not _cache.has(key):
+		var mat := ShaderMaterial.new()
+		mat.shader = OUTLINE
+		mat.set_shader_parameter("max_thickness", max_thickness)
+		_cache[key] = mat
+	return _cache[key]
+
+
+## Channel mask for a BaseMaterial3D texture channel (red, green, blue, alpha, grayscale).
+static func _channel(channel: int) -> Vector4:
+	return [Vector4(1, 0, 0, 0), Vector4(0, 1, 0, 0), Vector4(0, 0, 1, 0), Vector4(0, 0, 0, 1), Vector4(0.333, 0.333, 0.333, 0)][channel]
 
 
 ## Patient body skin with its own outline, both able to carve out the cavity box (see set_carve).
 static func body_skin(tone: Color) -> ShaderMaterial:
-	var mat := toon_unique(tone, 0.12, false, 0.6)
-	mat.set_shader_parameter("specular_strength", 0.12)
-	mat.set_shader_parameter("rim_strength", 0.2)
+	var mat := family_unique("skin", tone, 0.6)
 	var outline := ShaderMaterial.new()
 	outline.shader = OUTLINE
+	outline.set_shader_parameter("max_thickness", 0.002)
 	mat.next_pass = outline
 	return mat
 
@@ -110,6 +198,13 @@ static func skin_site(tone: Color, wound_tex: Texture2D, fluid_tex: Texture2D) -
 	var mat := ShaderMaterial.new()
 	mat.shader = SKIN
 	mat.set_shader_parameter("skin_color", tone)
+	# Lit like the body's skin around it (body_skin()).
+	var family: Dictionary = FAMILIES.skin
+	mat.set_shader_parameter("specular_strength", family.specular)
+	mat.set_shader_parameter("rim_strength", family.rim)
+	mat.set_shader_parameter("grime", family.grime)
+	mat.set_shader_parameter("wrap", family.wrap)
+	mat.set_shader_parameter("scatter_tint", family.scatter)
 	mat.set_shader_parameter("wound_map", wound_tex)
 	mat.set_shader_parameter("fluid_map", fluid_tex)
 	return mat
@@ -137,11 +232,3 @@ static func blood_pool() -> StandardMaterial3D:
 	mat.roughness = 0.05
 	mat.metallic_specular = 0.9
 	return mat
-
-
-static func _outline() -> ShaderMaterial:
-	if not _cache.has("outline"):
-		var mat := ShaderMaterial.new()
-		mat.shader = OUTLINE
-		_cache["outline"] = mat
-	return _cache["outline"]

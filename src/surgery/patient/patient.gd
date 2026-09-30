@@ -1243,14 +1243,14 @@ func _process(delta: float) -> void:
 		body.set_pallor(clampf(1.0 - vitals.blood_ratio() * 1.4 + 0.4, 0.0, 1.0))
 	if multiplayer.is_server():
 		for entry: Array in body.tissue.snapped:
-			_on_snap(entry[0], entry[1], entry[2])
+			_on_snap(entry[0], entry[1], entry[2], entry[3])
 		body.tissue.snapped.clear()
 
 
 ## Host: a spring in the tissue sim was stretched too far and snapped.
-func _on_snap(a: Vector2, b: Vector2, kind: int) -> void:
+func _on_snap(a: Vector2, b: Vector2, kind: int, spring: int) -> void:
 	var mid := (a + b) * 0.5
-	_tissue_snap.rpc(mid, kind)
+	_tissue_snap.rpc(spring)
 	if not Surgery.current or not Surgery.current.running:
 		return
 	var wound := _nearest_wound(mid, 0.04, false)
@@ -1306,11 +1306,8 @@ func _tissue_burst(uv: Vector2, radius: float) -> void:
 
 ## The host's sim already snapped the spring; clients mirror it.
 @rpc("authority", "call_remote", "reliable")
-func _tissue_snap(uv: Vector2, kind: int) -> void:
-	if kind == TissueSim.Kind.STITCH:
-		body.tissue.burst(uv, 0.01)
-	else:
-		body.tissue.sever_near(uv, TissueSim.Depth.SKIN)
+func _tissue_snap(spring: int) -> void:
+	body.tissue.snap_spring(spring)
 
 
 @rpc("authority", "call_local", "reliable")

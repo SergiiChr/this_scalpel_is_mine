@@ -1,14 +1,29 @@
 // Smooth diffuse light, a soft specular spot, rim light and procedural grime.
-// Used for everything except the simulated site skin. Tune per material from Materials.toon().
+// Used for everything except the simulated site skin. Materials.imported() picks the settings per material family
+// (skin, rubber, cloth, metal, plastic, tissue), Materials.toon() makes the plain ones.
 shader_type spatial;
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, hint_default_white;
+// Maps carried over from the imported model. The channel vectors pick which channel of the texture holds the value.
+uniform sampler2D normal_texture : hint_normal, filter_linear_mipmap;
+uniform bool use_normal_texture = false;
+uniform sampler2D roughness_texture : filter_linear_mipmap, hint_default_white;
+uniform vec4 roughness_channel = vec4(1.0, 0.0, 0.0, 0.0);
+uniform sampler2D metallic_texture : filter_linear_mipmap, hint_default_white;
+uniform vec4 metallic_channel = vec4(1.0, 0.0, 0.0, 0.0);
+uniform float metallic : hint_range(0.0, 1.0) = 0.0;
 uniform float rim_strength = 0.3;
 uniform float specular_strength = 0.4;
 uniform float roughness : hint_range(0.0, 1.0) = 0.7;
+// Light that wraps past the terminator, tinted (skin: red, like light scattered under it). 0 for hard surfaces.
+uniform float wrap = 0.0;
+uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float grime : hint_range(0.0, 1.0) = 0.25;
 uniform float grime_scale = 14.0;
+// Grime fixed in the world, for walls and floors that never move. Anything else carries its own, so it doesn't
+// slide across a moving model.
+uniform bool world_grime = false;
 uniform vec4 grime_color : source_color = vec4(0.25, 0.22, 0.15, 1.0);
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 // Contamination glow for the Germaphobe quirk, set per tool.
@@ -57,7 +72,8 @@ void vertex() {
 
 void fragment() {
 	vec3 base = albedo.rgb * texture(albedo_texture, UV).rgb;
-	float n = noise(world_pos.xz * grime_scale) * 0.6 + noise(world_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
+	vec3 grime_pos = world_grime ? world_pos : local_pos;
+	float n = noise(grime_pos.xz * grime_scale) * 0.6 + noise(grime_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
 	if (stains > 0.0) {
 		float s = noise(local_pos.xy * 16.0 + local_pos.z * 7.0) * 0.65 + noise(local_pos.zy * 40.0) * 0.35;
@@ -97,22 +113,39 @@ void fragment() {
 		base = mix(base, vec3(0.42, 0.02, 0.04), blood_coat * 0.9);
 		wet = max(wet, blood_coat);
 	}
-	ALBEDO = base;
-	ROUGHNESS = mix(roughness, 0.08, wet);
+	if (use_normal_texture) {
+		NORMAL_MAP = texture(normal_texture, UV).rgb;
+	}
+	float metal = metallic * dot(texture(metallic_texture, UV), metallic_channel) * (1.0 - wet);
+	float rough = roughness * dot(texture(roughness_texture, UV), roughness_channel);
+	vec3 reflection = vec3(0.0);
+	if (metal > 0.0) {
+		// No reflection probes here: metal mirrors a bright ceiling above and a dark floor below, sharper when polished.
+		vec3 r = (INV_VIEW_MATRIX * vec4(reflect(-VIEW, NORMAL), 0.0)).xyz;
+		float sky = smoothstep(mix(0.6, -0.2, rough), 1.0, r.y);
+		reflection = base * mix(0.18, 0.7, sky) * metal;
+	}
+	ALBEDO = base * (1.0 - metal * 0.4);
+	METALLIC = metal;
+	ROUGHNESS = mix(rough, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
-	EMISSION = emission_color.rgb + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
+	EMISSION = emission_color.rgb + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
 }
 
 void light() {
-	float ndl = max(dot(NORMAL, LIGHT), 0.0);
+	float facing = dot(NORMAL, LIGHT);
+	float ndl = max(facing, 0.0);
 	float lit = ndl * ATTENUATION;
-	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
+	float wrapped = max((facing + wrap) / (1.0 + wrap), 0.0);
+	DIFFUSE_LIGHT += LIGHT_COLOR * (lit + scatter_tint.rgb * (wrapped - ndl) * ATTENUATION) / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
 	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a bright glint.
 	float wet = clamp((roughness - ROUGHNESS) / max(roughness - 0.08, 0.01), 0.0, 1.0);
-	float spec_size = mix(mix(0.995, 0.9, roughness), 0.994, wet);
+	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
 	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
+	// Metal highlights take the metal's color; everything else reflects the light's own.
+	vec3 spec_color = mix(vec3(1.0), ALBEDO / max(1.0 - METALLIC * 0.4, 0.6), METALLIC);
+	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }
