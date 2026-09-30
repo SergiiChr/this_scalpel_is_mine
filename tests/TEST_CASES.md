@@ -32,6 +32,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | M12 | Both hands have finite, non-degenerate poses at coincident, straight and pole-aligned arm targets for every grip |
 | M13 | Scalpel and switchblade blades extend toward the game's -Z working tip, away from their handles |
 | M14 | Contact audio reuses a loop per tool, caps simultaneous loops by priority, and fades stale contacts |
+| M15 | IV tubing maintains walk-height clearance even when both attachment points are high |
 
 ## Soft tissue (`tests/tissue_test.gd`)
 

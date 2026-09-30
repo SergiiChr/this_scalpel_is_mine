@@ -92,7 +92,13 @@ func _process(_delta: float) -> void:
 
 ## A quadratic curve pulled down in the middle, like tubing hanging under its own weight.
 func _rebuild(a: Vector3, b: Vector3) -> void:
-	var control := (a + b) * 0.5 + Vector3.DOWN * SAG
+	var midpoint := (a + b) * 0.5
+	# Preserve the normal sag, but high catheter placements still need a low
+	# section a walking surgeon can catch. For a quadratic Bezier, its midpoint
+	# is halfway between this control point and the endpoint midpoint.
+	var target_y := minf(midpoint.y - SAG * 0.5, TRIP_HEIGHT - 0.08)
+	var control := midpoint
+	control.y = 2.0 * target_y - midpoint.y
 	control.y = maxf(control.y, 0.05)
 	_points.resize(SAMPLES)
 	for i in SAMPLES:

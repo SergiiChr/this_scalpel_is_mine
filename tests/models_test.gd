@@ -50,6 +50,7 @@ func _ready() -> void:
 	_hand_pose_limits(holder)
 	_blade_tips(holder)
 	_contact_audio()
+	_iv_line_clearance(holder)
 	_check_budgets(holder)
 	for hand_index in 2:
 		await _grip_clearance(holder, hand_index)
@@ -404,6 +405,17 @@ func _contact_audio() -> void:
 		Sfx._contacts[key].last = Time.get_ticks_msec() - Sfx.CONTACT_TIMEOUT_MSEC - 1
 	Sfx._process(1.0)
 	_check(Sfx._contacts.is_empty(), "stale contact loops fade away")
+
+
+func _iv_line_clearance(holder: Node3D) -> void:
+	var line := IvLine.new()
+	holder.add_child(line)
+	line._rebuild(Vector3(0.0, 1.6, 0.0), Vector3(1.0, 1.4, 0.0))
+	var lowest := INF
+	for point in line._points:
+		lowest = minf(lowest, point.y)
+	_check(lowest < IvLine.TRIP_HEIGHT - 0.04, "IV tubing reaches walking trip height with high endpoints")
+	line.queue_free()
 
 
 static func _triangles(root: Node) -> int:
