@@ -89,6 +89,14 @@ def _tweezers(m: Model, length: float, jaw_len: float, width: float, ringed: boo
                 [(0.0012, 0.004), (0.0012, 0.0045), (0.001, 0.003), (0.0008, 0.0015)],
                 ring=10,
             )
+        # The contact end carries three low-profile interlocking teeth. Keep
+        # these in the animated jaw mesh so they open with the forceps rather
+        # than appearing as detached ornaments at the wound.
+        teeth = [
+            superellipsoid((0.0011, 0.00065, 0.001), 0.35, (side * (0.00085 + i * 0.00018), 0.0, -length + 0.004 + i * 0.0025))
+            for i in range(3)
+        ]
+        mesh = merge(mesh, *teeth)
         m.add(name, mesh, material, (0.0, 0.0, hinge_z))
 
 

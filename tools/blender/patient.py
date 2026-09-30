@@ -14,7 +14,7 @@ import bpy
 
 from . import face, scene
 from .hand import smooth_digit
-from .scene import Blob, Vec3, capsule, ellipsoid
+from .scene import Blob, Vec3, capsule, dab, ellipsoid, line
 
 SKIN = (0.8, 0.6, 0.5)
 GOWN = (0.5, 0.58, 0.55)
@@ -58,6 +58,23 @@ def _torso() -> list[Blob]:
             ellipsoid(_mirror((-0.24, 0.02, 0.13), side), (0.06, 0.05, 0.04)),
         ]
     return elements
+
+
+def _body_landmarks() -> list[scene.Stroke]:
+    """Small surface cues around the surgical field without changing its silhouette.
+
+    The navel and costal edges are shallow enough to keep the generated site
+    height map smooth, but give the otherwise featureless torso a readable scale.
+    """
+    marks = [
+        dab((-0.118, 0.104, 0.0), (0.014, 0.012, 0.012), -0.0035),
+        dab((-0.121, 0.103, 0.0), (0.004, 0.008, 0.004), -0.001),
+        line((-0.03, 0.103, 0.0), (0.04, 0.103, 0.0), 0.018, -0.0007),
+    ]
+    for side in (1.0, -1.0):
+        marks.append(line((0.08, 0.09, 0.025 * side), (0.19, 0.076, 0.105 * side), 0.025, -0.0012))
+        marks.append(dab((-0.24, 0.089, 0.11 * side), (0.038, 0.02, 0.02), -0.0009))
+    return marks
 
 
 def _arm(side: float) -> tuple[list[Blob], list[Blob], list[tuple[list[Vec3], list[float]]]]:
@@ -182,7 +199,7 @@ def build() -> bpy.types.Object:
         shells += [smooth_digit(f"Finger{side}{i}", points, radii) for i, (points, radii) in enumerate(fingers)]
     # Fine enough for the face; the sculpt strokes and the decimation keep detail where it matters.
     body = scene.remesh(scene.join("Body", *shells), voxel=0.0012, smooth=12)
-    body = scene.sculpt(body, face.strokes())
+    body = scene.sculpt(body, face.strokes() + _body_landmarks())
     scene.finish(body, scene.material("skin", SKIN, roughness=0.55, subsurface=0.2))
     # Cut the canals and the mouth while the mesh is still dense, so their edges stay clean after decimating.
     for canal in face.ear_canals():

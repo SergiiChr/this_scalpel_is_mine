@@ -14,7 +14,7 @@ not measured usage, a spending limit or a promise. Art iteration and debugging c
 | 1 | Rig/pose bug fixes, glove/sleeve separation, stable mirrored grips and visual review tooling | 3–6k | Done in evaluation tranche |
 | 2 | Material preservation/families, calibrated lighting, restrained outlines and grading | 5–10k | Done in evaluation tranche |
 | 3 | Tissue correctness: residual stitch gaps, exact tear replication, deformed contact queries | 8–15k | Done in evaluation tranche |
-| 4 | Hero geometry: glove deformation topology, patient landmarks, tool detail and contact poses | 15–30k | Planned |
+| 4 | Hero geometry: glove deformation topology, patient landmarks, tool detail and contact poses | 15–30k | Done in geometry tranche |
 | 5 | Continuous contact-driven tool audio, mix priorities, deformation-aware blood flow | 15–30k | Planned |
 | 6 | Incision topology, continuous wound walls, independent layer response and local organ deformation | 30–60k+ | Planned |
 
@@ -25,8 +25,10 @@ separate milestones so the inexpensive improvements can be judged first.
 The tissue now provides contact against projected, deformed triangles, with a local spatial bin rebuilt after
 motion. It still uses the original shared particle cage and coarse triangle removal; the continuous cut lips,
 layer walls and independent layer response in package 6 are needed for the concept art's smooth incisions.
-The visible hand and patient meshes also retain their current sculpted topology, so package 4 remains the
-largest visual improvement still open.
+The geometry tranche rebuilds the rigged glove with joint/cuff folds, adds shallow abdominal landmarks to
+the patient mesh and its site-height bake, and gives the moving forceps, hemostat and needle-holder jaws
+contact teeth. These are deliberately small sculpt changes; broader character proportions and facial art
+still need dedicated art direction beyond this procedural pass.
 
 ## Acceptance gates
 
