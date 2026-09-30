@@ -53,6 +53,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T18 | A client mirroring the host's snapped springs by their index ends with exactly the host's tissue topology, diagonal tears and a torn stitch included |
 | T19 | Skin contact follows the deformed skin: higher where a grip lifts it, unchanged far from it, none over an open incision |
 | T20 | Untouched skin over a round body (25 cm radius) settles when it's built, then stays put: it isn't shown simulated and sleeps |
+| T21 | Where the site hangs off the body, its skin is never drawn and never shown simulated, even with a cut through it and a pull right next to it |
 
 ## Every scenario (`tests/smoke_test.gd`)
 

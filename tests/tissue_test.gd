@@ -19,6 +19,7 @@ func _ready() -> void:
 	_exact_snaps()
 	_deformed_surface()
 	_rests_on_curved_body()
+	_stays_on_body()
 	print("tissue_test: done")
 	get_tree().quit()
 
@@ -233,3 +234,28 @@ func _rests_on_curved_body() -> void:
 	_check(moved < TissueSim.REGION_MOVE, "skin over a round body stays where it settled (moved %.1f mm)" % (moved * 1000.0))
 	_check(sim.region().count(1) == 0, "untouched skin over a round body isn't shown simulated")
 	_check(sim.is_sleeping(), "untouched skin over a round body sleeps")
+
+
+## Where the site hangs off the body (here past uv.x 0.8), the skin is never drawn and never shown simulated,
+## whatever is cut or pulled next to it.
+func _stays_on_body() -> void:
+	var sim := TissueSim.new()
+	sim.tearing = true
+	sim.build(SIZE, func(_uv: Vector2) -> float: return 0.0, func(uv: Vector2) -> bool: return uv.x <= 0.8)
+	sim.cut(Vector2(0.1, 0.51), Vector2(0.95, 0.51), TissueSim.Depth.MUSCLE)
+	var edge := Vector2(0.75, 0.46)
+	sim.grip(1, edge)
+	sim.move_grip(1, sim.rest[sim.nearest(edge)] + Vector3(0.01, 0.01, -0.02))
+	_settle(sim)
+	var drawn := sim.triangles(TissueSim.Depth.SKIN)
+	var region := sim.region()
+	var drawn_off := 0
+	for k in drawn:
+		drawn_off += sim.off[k]
+	var shown_off := 0
+	for k in sim.pos.size():
+		if sim.off[k] == 1:
+			shown_off += region[k]
+	_check(sim.off.count(1) > 0, "the test site has skin off the body")
+	_check(drawn_off == 0, "no skin is drawn off the body (%d triangle corners)" % drawn_off)
+	_check(shown_off == 0, "no skin off the body is shown simulated (%d points)" % shown_off)

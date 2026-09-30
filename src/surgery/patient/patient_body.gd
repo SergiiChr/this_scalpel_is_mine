@@ -61,6 +61,9 @@ var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
 var _site_base_y := 0.0
 var _heights := PackedFloat32Array()
+## Per baked grid point: 1 on the body, 0 where the site hangs off it or the body is too thin under it for the layers
+## (tools/blender/patient.py bake_site_heights()).
+var _on_body := PackedByteArray()
 var _layers: Array[MeshInstance3D] = []
 var _layer_version := -1
 var _layer_steps := -1
@@ -189,6 +192,15 @@ func surface_height(uv: Vector2) -> float:
 	return lerpf(top, bottom, f.y)
 
 
+## False where the site hangs off the body, or the body under it is too thin to hold the site's layers.
+func on_body(uv: Vector2) -> bool:
+	var grid := int(Db.site_heights.get("grid", 0))
+	if _on_body.size() != grid * grid or grid < 2:
+		return true
+	var cell := Vector2i((uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)).round())
+	return _on_body[cell.y * grid + cell.x] == 1
+
+
 ## Blood on the skin at uv, 0..1, from the fluid map.
 func blood_at(uv: Vector2) -> float:
 	if uv.x < 0.0 or uv.y < 0.0 or uv.x > 1.0 or uv.y > 1.0:
@@ -209,7 +221,7 @@ func meters_to_uv(meters: float) -> float:
 func probe(p: Vector3) -> Dictionary:
 	var uv := world_to_uv(p)
 	var height := height_above_site(p)
-	var on_site := site_active() and uv.x >= 0.0 and uv.x <= 1.0 and uv.y >= 0.0 and uv.y <= 1.0
+	var on_site := site_active() and uv.x >= 0.0 and uv.x <= 1.0 and uv.y >= 0.0 and uv.y <= 1.0 and on_body(uv)
 	if on_site and height > -cavity_depth():
 		if height > 0.012:
 			return {"zone": "air", "uv": uv, "depth": 0.0}
@@ -324,7 +336,11 @@ func _build_site(tone: Color) -> void:
 	_body_root.add_child(site)
 
 	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
-	tissue.build(site_size, surface_height)
+	_on_body.resize(_heights.size())
+	_on_body.fill(1)
+	for i: int in Db.site_heights.get("off", {}).get(site_id, []):
+		_on_body[i] = 0
+	tissue.build(site_size, surface_height, on_body)
 	_region_image = Image.create(TissueSim.RES + 1, TissueSim.RES + 1, false, Image.FORMAT_L8)
 	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
@@ -455,7 +471,8 @@ func _site_def() -> Dictionary:
 func _build_cavity() -> void:
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
-	cavity.mesh = _cavity_grid(_cavity_floor, func(_i: int, _j: int) -> bool: return true)
+	# Only under the body: past its edge the bowl would hang in the air.
+	cavity.mesh = _cavity_grid(_cavity_floor, func(i: int, j: int) -> bool: return on_body(_cavity_uv(i, j)))
 	_cavity_material = Materials.flesh()
 	cavity.material_override = _cavity_material
 	site.add_child(cavity)
@@ -792,7 +809,7 @@ func set_cavity_blood(level: float) -> void:
 	_pool_height = height
 	var keep := func(i: int, j: int) -> bool:
 		var uv := _cavity_uv(i, j)
-		return _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
+		return on_body(uv) and _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
 	cavity_blood.mesh = _cavity_grid(func(_uv: Vector2) -> float: return height, keep)
 
 

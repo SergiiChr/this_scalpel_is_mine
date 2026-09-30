@@ -62,6 +62,10 @@ var pos := PackedVector3Array()
 var prev := PackedVector3Array()
 var anchor := PackedFloat32Array()
 var fixed := PackedByteArray()
+## 1 for particles where the site hangs off the body (past a limb's or the flank's edge): never drawn and never part
+## of the region, so the site can't stick out of the body. They're still simulated, so skin next to them moves as
+## it always did.
+var off := PackedByteArray()
 ## Constraint arrays, one entry per spring.
 var c_a := PackedInt32Array()
 var c_b := PackedInt32Array()
@@ -115,19 +119,21 @@ var _bins: Array[PackedInt32Array] = []
 var _bins_for := [-1, -1]
 
 
-## height_at(uv) -> skin height above the site plane.
-func build(site_size: Vector2, height_at: Callable) -> void:
+## height_at(uv) -> skin height above the site plane. on_body(uv) -> false where the site is off the body.
+func build(site_size: Vector2, height_at: Callable, on_body: Callable = Callable()) -> void:
 	size = site_size
 	var count := (RES + 1) * (RES + 1)
 	rest.resize(count)
 	anchor.resize(count)
 	fixed.resize(count)
+	off.resize(count)
 	for j in RES + 1:
 		for i in RES + 1:
 			var uv := Vector2(float(i) / RES, float(j) / RES)
 			var k := index(i, j)
 			rest[k] = Vector3((uv.x - 0.5) * size.x, height_at.call(uv), (uv.y - 0.5) * size.y)
 			anchor[k] = ANCHOR
+			off[k] = 0 if on_body.is_null() or on_body.call(uv) else 1
 			fixed[k] = 1 if i == 0 or j == 0 or i == RES or j == RES else 0
 	pos = rest.duplicate()
 	prev = rest.duplicate()
@@ -200,6 +206,8 @@ func region(reach: int = 1) -> PackedByteArray:
 		for y in range(maxi(j - reach, 0), mini(j + reach, RES) + 1):
 			for x in range(maxi(i - reach, 0), mini(i + reach, RES) + 1):
 				out[index(x, y)] = 1
+	for k in out.size():
+		out[k] *= 1 - off[k]
 	return out
 
 
@@ -385,7 +393,7 @@ func stretch(a: int, b: int) -> float:
 
 
 ## Triangle indices of the grid, minus triangles spanning a gap cut at least `depth` deep and pulled open,
-## so a layer mesh built from them shows a hole there.
+## so a layer mesh built from them shows a hole there, and minus triangles off the body.
 func triangles(depth: int) -> PackedInt32Array:
 	var open := PackedByteArray()
 	open.resize(c_a.size())
@@ -397,11 +405,11 @@ func triangles(depth: int) -> PackedInt32Array:
 		for i in RES:
 			var a := index(i, j)
 			var c := a + RES + 1
-			if open[_right[a]] + open[_diag[a]] + open[_down[a]] == 0:
+			if open[_right[a]] + open[_diag[a]] + open[_down[a]] + off[a] + off[a + 1] + off[c] == 0:
 				out.append(a)
 				out.append(a + 1)
 				out.append(c)
-			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] == 0:
+			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] + off[a + 1] + off[c + 1] + off[c] == 0:
 				out.append(a + 1)
 				out.append(c + 1)
 				out.append(c)
