@@ -39,6 +39,11 @@ window/stretch/mode="canvas_items"
 3d_physics/layer_6="cavity"
 3d_physics/layer_7="interactables"
 
+[physics]
+
+3d/physics_engine="Jolt Physics"
+jolt_physics_3d/simulation/penetration_slop=0.002
+
 [rendering]
 
 anti_aliasing/quality/msaa_3d=2

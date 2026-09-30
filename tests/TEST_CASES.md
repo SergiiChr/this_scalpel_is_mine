@@ -23,6 +23,9 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | M3 | The surgeon glove has a skeleton with Hand and three bones per finger and thumb |
 | M4 | Every organ model and every target kind used by any scenario has a model file |
 | M5 | Every model stays within its category's triangle budget (patient 52k, surgeon parts 16k, organs 7k, targets 5k, tools 6k, props 15k) |
+| M6 | Every organ a site's anatomy uses has a model |
+| M7 | Every tool model held in either glove, fitted by `data/grips.json`: nothing of the tool is inside the glove's fingers or palm (`tests/fit_grips.tscn` makes the fits) |
+| M8 | Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in: back of the hand up, or out to its own side for a fist round a handle, never twisted palm up |
 
 ## Soft tissue (`tests/tissue_test.gd`)
 
@@ -40,6 +43,10 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T10 | A burst closure gapes again |
 | T11 | The sim sleeps when nothing moves and a sleeping sim does no work |
 | T12 | A jolt wakes the sim |
+| T13 | A slow 3 cm pull on intact skin doesn't tear it, and skin 4 cm away follows by more than 8 mm |
+| T14 | All skin that moved visibly is inside the simulated region |
+| T15 | A cut through the muscle gapes wider than one into the fat and leaves the muscle open |
+| T16 | Sewing the muscle along the cut closes the muscle layer and the cavity; the skin still gapes until stitched |
 
 ## Every scenario (`tests/smoke_test.gd`)
 
@@ -69,10 +76,19 @@ For each scenario, with no script errors:
 | S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
 | S17 | Walking through the IV tubing at full speed rips the line out |
 | S18 | Every tool effect plays; a tool in blood gets bloody, so does the glove holding it, and the sink washes both; a splash lands blood on the view |
-| S19 | The wheel raises a lowered blade's depth level; the controls shown change while a hand key is held |
+| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift steps through three zoom levels; the controls shown change while a hand key is held |
 | S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
 | S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
 | S22 | The patient has a plausible weight; a syringe draws from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
+| S23 | Wiping iodine with a soaked pad never takes more than 4 ms of one frame (no stutter; it used to take 7-20 ms every frame) |
+| S24 | Skin won't close over a cut through open muscle, a tight stitch tears there, and after the muscle is sewn from inside the skin closes |
+| S25 | Chest and belly: an H-shaped incision through the muscle, both flaps folded back without tearing, leaves no skin, fat or muscle over the top layer of organs (lungs and heart; liver, stomach and bowel) or the ribs; there are organs under the top layer |
+| S26 | Forceps in the open chest or belly take hold of the top organ over a lower one; moving it aside shows the lower one |
+| S27 | Chest, belly, arms, legs and shoulder: bones lie right under the muscle inside the cavity (ribs and breastbone, the lower rib margin, limb bones); under a deep cut the bone is the first thing inside, and the blade grates on it |
+| S28 | The heart beats with the pulse, the lungs swell with each breath, and the heart lies still in asystole |
+| S29 | Holding Inspect brings a syringe up in front of the eyes, across the view, tick marks toward them; the liquid and the plunger show exactly how many ml it holds |
+| S30 | A tourniquet pressed onto a thigh wraps around it as a snug band (not lying on top), leaves the hand, and taking it off loosens it |
+| S31 | Tools lie on the tray at the start without sinking into it; lowered onto it with full effort, neither the tool nor the glove goes into it; put down, it settles on top (every kind of tool in the first scenario, one in the others) |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -102,3 +118,4 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from the side and from the eyes (`tests/grip_gallery.tscn`) |
+| V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |

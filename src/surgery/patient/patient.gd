@@ -23,6 +23,8 @@ const CAVITY_SPILL_ML := 280.0
 const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
 ## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
+## How far (uv) from a point of a wound its muscle counts as underneath it.
+const MUSCLE_REACH := 0.03
 ## Gap in meters that counts as a fully opened wound.
 const FULL_GAP := 0.012
 ## Where a line set before the surgery goes in: the back of the right hand, in body space.
@@ -130,7 +132,15 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 		if target.covered:
 			body.add_organ(target.uv + Vector2(0.03, -0.02), target.depth - 0.03, 0.04, Color(0.6, 0.35, 0.3))
 	_initial_suction = maxf(targets.filter(func(t: CavityTarget) -> bool: return t.is_suction_target()).reduce(func(acc: float, t: CavityTarget) -> float: return acc + t.amount, 0.0), 1.0)
-	if body.cavity_depth() > 0.1:
+	if Db.patient_sites.get(scenario.site, {}).has("anatomy"):
+		var avoid: Array[Vector2] = []
+		var skip := PackedStringArray()
+		for target in targets:
+			if not target.covered:
+				avoid.append(target.rest_uv)
+			skip.append(target.kind)
+		body.build_anatomy(avoid, skip)
+	elif body.cavity_depth() > 0.1:
 		for i in 3:
 			body.add_organ(Vector2(rng.randf_range(0.2, 0.8), rng.randf_range(0.2, 0.8)), 0.06, rng.randf_range(0.03, 0.045), Color(0.55, 0.2, 0.2).lerp(Color(0.7, 0.5, 0.4), rng.randf()))
 	if scenario.dirty_start:
@@ -615,6 +625,16 @@ func cut(stroke_key: int, a: Vector2, b: Vector2, depth: float, sharpness: float
 func cut_cavity(tip_uv: Vector2, depth_m: float, power: float, dirty: bool, dt: float) -> void:
 	if dirty:
 		_contaminate()
+	# Down to the bone: the blade grates on it instead of nicking what's below.
+	var bone := body.bone_at(body.uv_to_world(tip_uv, depth_m))
+	if bone:
+		add_flag("bone_scraped", dt)
+		if not flags.has("bone_notice"):
+			add_flag("bone_notice")
+			Surgery.current.announce("The blade grates on %s." % {"rib": "a rib", "sternum": "the breastbone"}.get(bone, "bone"))
+		if rng.randf() < dt * 2.0:
+			Surgery.current.sound("saw_bone", body.uv_to_world(tip_uv, depth_m))
+		return
 	for target in targets:
 		if not target.extracted and target.anchor > 0.0 and target.uv.distance_to(tip_uv) < 0.06:
 			target.anchor = maxf(target.anchor - power * dt * 0.5, 0.0)
@@ -667,6 +687,19 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 			cap = 0.9
 		elif pressure == 3:
 			quality = minf(quality * 1.05, 1.0)
+	# Skin pulled shut over open muscle carries the muscle's pull: the edges won't meet, and a tight stitch
+	# gets them there only to tear through.
+	if wound.through_muscle() and body.tissue.muscle_open_near(wound.bin_position(bin), MUSCLE_REACH):
+		if not (def.id in TENSIONED_CLOSURES and pressure == 3):
+			_tear_notice("The skin won't meet over the open muscle. Sew the muscle first.")
+			return false
+		wound.bins[bin] = minf(wound.bins[bin] + def.power * 1.5 * dt, cap)
+		if wound.bins[bin] >= cap:
+			wound.bins[bin] = 0.0
+			tear(wound.bin_position(bin), Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)), 0.02)
+			Surgery.current.scoring.add("suture_tear_through")
+			_tear_notice("The stitch tore through: the muscle under it is still open.")
+		return false
 	var before := wound.bins[bin]
 	wound.bins[bin] = minf(before + def.power * 1.5 * dt, cap)
 	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.2)
@@ -691,6 +724,22 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 		if wound.closure() >= 0.99 and wound.closure_quality > 0.9:
 			add_flag("neat_closure")
 			Surgery.current.scoring.add("good_suture", true)
+		hurt(0.06, uv)
+		return true
+	return false
+
+
+## Sewing inside the opening of a wound through the muscle closes the muscle, bin by bin. Tape can't.
+## Returns true when a bin of muscle closed.
+func close_muscle_at(uv: Vector2, def: ToolDef, dt: float) -> bool:
+	var wound := _nearest_wound(uv, 0.03, false)
+	if wound == null or not wound.through_muscle() or def.id in ["surgical_tape", "duct_tape"]:
+		return false
+	var bin := wound.bin_at(uv)
+	var before := wound.muscle[bin]
+	wound.muscle[bin] = minf(before + def.power * 1.5 * dt, 1.0)
+	if before < 1.0 and wound.muscle[bin] >= 1.0:
+		_tissue_muscle.rpc(wound.bin_position(bin), MUSCLE_REACH)
 		hurt(0.06, uv)
 		return true
 	return false
@@ -735,14 +784,16 @@ func swab_at(zone: String, uv: Vector2, def: ToolDef, dt: float, soaked_in: Stri
 	var radius := body.meters_to_uv(def.radius)
 	var sanitize := drug in ["iodine", "whiskey"]
 	if zone == "site":
+		# One pass over the disk for every channel: a wipe runs every physics frame, so it has to be cheap.
+		var ops: Array = [[WoundMap.BLOOD, def.power * dt * 2.0, WoundMap.Mode.SUB]]
 		if sanitize:
 			var strength := 1.0 if drug == "iodine" else 0.5
 			_mark_grid(_sanitized, uv, radius, strength)
-			paint(WoundMap.Layer.FLUIDS, WoundMap.IODINE if drug == "iodine" else WoundMap.GRIME, uv, uv, radius, 0.3 * dt * 10.0, WoundMap.Mode.ADD)
-			paint(WoundMap.Layer.FLUIDS, WoundMap.GRIME, uv, uv, radius, dt * 2.0, WoundMap.Mode.SUB)
+			ops.append([WoundMap.GRIME, dt * 2.0, WoundMap.Mode.SUB])
+			ops.append([WoundMap.IODINE if drug == "iodine" else WoundMap.GRIME, 0.3 * dt * 10.0, WoundMap.Mode.ADD])
 			if drug == "whiskey" and _nearest_wound(uv, 0.03, false):
 				hurt(0.5 * dt * 10.0, uv)
-		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, uv, radius, def.power * dt * 2.0, WoundMap.Mode.SUB)
+		_paint_ops.rpc(WoundMap.Layer.FLUIDS, uv, radius, ops)
 		var wound := _nearest_wound(uv, 0.02, false)
 		if wound and def.id == "gauze":
 			wound.held = minf(wound.held + dt * 2.0, 0.7)
@@ -800,6 +851,10 @@ func apply_tourniquet() -> void:
 	tourniquet_on = true
 	tourniquet_time = 0.0
 	add_flag("tourniquet")
+
+
+func remove_tourniquet() -> void:
+	tourniquet_on = false
 
 
 ## A catheter went into the arm at `at` (world space): tubing now runs from the stand to there.
@@ -878,6 +933,11 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 			if wound.is_internal() and wound.points[0].distance_to(uv) < 0.05:
 				wound.clamped = 0.9
 				return {"type": "vessel", "wound": wound.id}
+		# An organ in the way can be taken hold of and moved aside, to get at what's under it.
+		var organ := body.organ_at(body.uv_to_world(uv, depth_m), 0.02)
+		if organ >= 0:
+			body.hold_organ(organ, body.organs[organ].position)
+			return {"type": "organ", "organ": organ, "offset": body.organs[organ].position - body.site.to_local(body.uv_to_world(uv, depth_m))}
 	var wound := _nearest_wound(uv, 0.03, false)
 	if wound and zone == "cavity" and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
 		wound.clamped = 0.85
@@ -915,6 +975,8 @@ func update_grip(tool_uid: int, grip_info: Dictionary, tip: Vector3, power: floa
 			targets[grip_info.target].global_position = tip
 		"skin":
 			body.tissue.move_grip(tool_uid, body.site.to_local(tip))
+		"organ":
+			body.hold_organ(grip_info.organ, body.site.to_local(tip) + (grip_info.offset as Vector3))
 	return grip_info
 
 
@@ -923,6 +985,8 @@ func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) ->
 	match grip_info.get("type", "none"):
 		"target", "carry":
 			targets[grip_info.target].gripped_by = 0
+		"organ":
+			body.release_organ(grip_info.organ)
 		"vessel":
 			if not self_retaining:
 				_wound(grip_info.wound).clamped = 0.0
@@ -935,7 +999,7 @@ func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) ->
 func _covered(target: CavityTarget) -> bool:
 	for organ in body.organs:
 		var organ_uv := Vector2(organ.position.x / body.site_size.x + 0.5, organ.position.z / body.site_size.y + 0.5)
-		if organ_uv.distance_to(target.uv) < 0.07 and organ.position.y > -target.depth:
+		if organ_uv.distance_to(target.uv) < 0.07 and organ.position.y > body.surface_height(target.uv) - target.depth:
 			return true
 	return false
 
@@ -1157,6 +1221,11 @@ func _paint(layer: int, channel: int, a: Vector2, b: Vector2, radius: float, val
 		body.wound_map.stroke(layer as WoundMap.Layer, channel, a, b, radius, value, mode as WoundMap.Mode, jitter, seed_value)
 
 
+@rpc("authority", "call_local", "reliable")
+func _paint_ops(layer: int, uv: Vector2, radius: float, ops: Array) -> void:
+	body.wound_map.disk_ops(layer as WoundMap.Layer, uv, radius, ops)
+
+
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _sync(vital_data: Dictionary, target_states: Array, organ_positions: Array, grips: Array, cavity_ml: float, bleeds: Array) -> void:
 	body.blood.sources = bleeds
@@ -1212,7 +1281,7 @@ func _tear_notice(text: String) -> void:
 static func _tissue_depth(depth: float) -> int:
 	if depth < 0.4:
 		return TissueSim.Depth.SKIN
-	return TissueSim.Depth.FAT if depth < 0.7 else TissueSim.Depth.MUSCLE
+	return TissueSim.Depth.FAT if depth < Wound.MUSCLE_DEPTH else TissueSim.Depth.MUSCLE
 
 
 @rpc("authority", "call_local", "reliable")
@@ -1223,6 +1292,11 @@ func _tissue_cut(a: Vector2, b: Vector2, depth: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _tissue_stitch(uv: Vector2, tension: float, strength: float) -> void:
 	body.tissue.stitch(uv, tension, strength)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_muscle(uv: Vector2, radius: float) -> void:
+	body.tissue.muscle_stitch(uv, radius)
 
 
 @rpc("authority", "call_local", "reliable")

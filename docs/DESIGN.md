@@ -61,10 +61,22 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     Skin, fat and muscle are three meshes rebuilt from the sim; each one drops the triangles over a gap cut down to it.
     So a shallow cut shows yellow fat, a deeper one red muscle, and only a full depth cut opens into the cavity.
   - Overstretched springs snap into a tear (host only). Stitches are extra springs across the cut, their length is the tension.
+  - A grip drags a patch of skin around it along (never across a cut), so pulls spread and the skin stretches
+    visibly over several centimeters before it tears. Everything that moved is shown simulated.
+  - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
+    `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
   - The sim sleeps when nothing moves.
-- Skin damage (`skin.gdshader` + `WoundMap`): two painted textures drive cut grooves, burns (red halo to charred core),
+- Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
+- **Anatomy** (`anatomy` in `data/patient_sites.json`, `PatientBody.build_anatomy()`): the chest holds the lungs and
+  the heart over the aorta under a rib cage and breastbone, the belly the liver, stomach and bowel over the kidneys and
+  the aorta, under the lower rib margin. Arms, legs and the shoulder have their bones. Bones lie right under the muscle,
+  organs are placed by how far under the muscle their top lies, so they stay inside on any patient. The cavity floor
+  follows the skin. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
+  The heart beats with the pulse (still in asystole, a quiver in V-fib), the lungs swell with each breath.
+- A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.ANCHOR_REACH`), so an
+  H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
 - Screen grading (`post_grime.gdshader`): desaturated sick-green tint, vignette, film grain, chromatic split.
   Sickness wobbles and blurs the view, passing out blacks it out.
   Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
@@ -179,7 +191,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
 - Cardiac arrest: V-fib, asystole, shocks, adrenaline windows, zapping a partner who's touching the patient.
 - Seizures, malignant hyperthermia, diabetes drift, anesthesia wearing off, panicking awake patients.
-- Organs you push aside, targets you free by cutting, sawing, slow pulling or suction.
+- Organs you push or hold aside, targets you free by cutting, sawing, slow pulling or suction. Deep cuts reach bone.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
 - Sterility tracking into the post-op report (infection, amputation).
 - Nurse orders with a cooldown, blood panels with narrow/fast vs full/slow choices.
@@ -198,10 +210,14 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
-  floor and walks slowly. The wheel zooms (hand motion scales with it for precision).
+  floor and walks slowly. Zoom steps through three levels (hand motion scales with it for precision).
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
-  curls each finger. The glove then turns around the tool to keep the wrist in line with the forearm.
+  curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
+  (`SurgeonHand.MAX_ROLL`), so the back of the hand stays up. `data/grips.json` fits each tool model to the glove
+  (moves it off the tool, opens or closes fingers) so no tool goes through the hand; `tests/fit_grips.tscn` makes it.
+- **Tools on hard surfaces**: tools lie on the tray side by side at the start, a lowered tool only presses into skin,
+  and every corner of a held tool and the glove clear tables, trays and tools lying there. Physics is Jolt.
   `tests/grip_gallery.tscn` renders every tool held, for checking.
 - **Stations**: the nurse menu is grouped (`category` in tools.cfg) and deliveries land on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.
@@ -214,10 +230,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Look by default**: the mouse looks around like a regular first person game. Holding a hand's key (Q left, E right)
   moves that hand instead and makes it the active one. Hands turn and walk with the body unless they hold onto
   something (a gripped clamp or retractor), then they stay put.
-- **Separate controls per tool** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): LMB lowers the active tool onto its spot.
-  Tools with a range take an effort level 0-3 from the wheel while lowered (cut depth, stitch tension, heat, saw speed,
-  suction, gauze pressure, syringe plunger), 0 does nothing. Single actions are on RMB: clamps pinch and let go,
-  the mallet strikes, the tourniquet tightens, a graft goes on, the defibrillator charges while held and shocks on release.
+- **One button per job** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
+  active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
+  the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
+  a cotton pad wipe or dip it, and let it go when used in the air away from the dish.
+  Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
+  suction, gauze pressure, syringe plunger), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
   A syringe draws in a vial and pushes anywhere else (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
@@ -247,6 +265,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
+- **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
+  its tick marks toward them. Liquid and plunger follow the ml exactly (clients see it in 2% steps).
+
+### Tourniquet
+
+- Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.limb_ring()`
+  measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off.
 
 ### Approved mechanics (in this build)
 

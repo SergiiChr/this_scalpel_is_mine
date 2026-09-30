@@ -28,8 +28,14 @@ const MUSCLE_THICKNESS := 0.006
 ## How much each layer follows the skin's movement (deeper layers are more tethered).
 const LAYER_FOLLOW: Array[float] = [1.0, 0.8, 0.55]
 const LAYER_DEPTH: Array[int] = [TissueSim.Depth.SKIN, TissueSim.Depth.FAT, TissueSim.Depth.MUSCLE]
+## Skin pulled this far (meters) takes its deeper layers fully along, see layer_point().
+const FLAP_MOVE := 0.04
 const ORGAN_MODELS: PackedStringArray = ["bowel", "lobe", "sac"]
 const LIMB_SITES: PackedStringArray = ["forearm", "shoulder", "thigh", "lower_leg"]
+const BONE_COLOR := Color(0.86, 0.81, 0.68)
+## How much the heart shrinks at full contraction, and the lungs swell full of air.
+const HEART_SQUEEZE := 0.12
+const LUNG_SWELL := 0.08
 
 var wound_map := WoundMap.new()
 var site_id: String
@@ -41,6 +47,11 @@ var tissue := TissueSim.new()
 var fat_thickness := 0.012
 var cavity_blood: MeshInstance3D
 var organs: Array[RigidBody3D] = []
+## Bones under the site (ribs, breastbone, limb bones), each a StaticBody3D on CAVITY_LAYER with meta "bone".
+var bones: Array[StaticBody3D] = []
+## Heart contraction 0..1 and lung fill 0..1, set by the animator from the vitals every frame.
+var heartbeat := 0.0
+var breath := 0.0
 var animator := PatientAnimator.new()
 var blood := BloodFlow.new()
 var orientation: int = Orientation.FACE_UP
@@ -56,6 +67,8 @@ var _layer_steps := -1
 var _layer_uvs := PackedVector2Array()
 var _organ_last: Array[Vector3] = []
 var _jiggle: Array[Vector2] = []
+## Organ index -> site-local point a tool is holding it at (host only).
+var _held_organs: Dictionary = {}
 ## Where the simulated skin replaces the body model, one texel per tissue grid point (see TissueSim.region()).
 var region_texture: ImageTexture
 var _region := PackedByteArray()
@@ -69,6 +82,8 @@ var _part_sphere := SphereShape3D.new()
 
 func build(site_name: String, tone: Color, age_scale: float) -> void:
 	site_id = site_name
+	var def := _site_def()
+	wound_map = WoundMap.new(WoundMap.size_for(Vector2(def.size[0], def.size[1])))
 	_body_root = Node3D.new()
 	_body_root.name = "BodyRoot"
 	_body_root.position.y = HALF_HEIGHT * age_scale
@@ -108,8 +123,17 @@ func is_limb_site() -> bool:
 	return site_id in LIMB_SITES
 
 
+## How deep the cavity is under the skin in the middle of the site: at least deep enough for the site's bones.
 func cavity_depth() -> float:
-	return _site_def().depth
+	var depth: float = _site_def().depth
+	for bone: Dictionary in _site_def().get("anatomy", {}).get("bones", []):
+		depth = maxf(depth, muscle_bottom() + 0.003 + float(bone.radius) * 2.0 + 0.004)
+	return depth
+
+
+## How far under the skin the muscle layer ends: bones lie right under it, organs further down.
+func muscle_bottom() -> float:
+	return SKIN_THICKNESS + fat_thickness + MUSCLE_THICKNESS
 
 
 func site_active() -> bool:
@@ -158,8 +182,7 @@ func surface_height(uv: Vector2) -> float:
 func blood_at(uv: Vector2) -> float:
 	if uv.x < 0.0 or uv.y < 0.0 or uv.x > 1.0 or uv.y > 1.0:
 		return 0.0
-	var at := (uv * (WoundMap.SIZE - 1)).floor()
-	return wound_map.images[WoundMap.Layer.FLUIDS].get_pixelv(at)[WoundMap.BLOOD]
+	return wound_map.value(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv)
 
 
 func uv_to_meters(uv_length: float) -> float:
@@ -198,6 +221,41 @@ func part_at(p: Vector3, radius: float = 0.025) -> String:
 	return ""
 
 
+## The ring of a limb's skin around p (world space), for something wrapped around it: {center, axis, radius}, empty
+## when p isn't on an arm or a leg. Arms and legs lie along the body; rays cast out from inside the limb find its skin.
+func limb_ring(p: Vector3) -> Dictionary:
+	# The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides.
+	var part := part_at(p, 0.08)
+	if not (part.begins_with("arm") or part.begins_with("leg")):
+		return {}
+	var box := _body_root.find_child(part.to_pascal_case(), false, false) as Node3D
+	var axis := _body_root.global_basis.x.normalized()
+	var inside := box.global_position + axis * axis.dot(p - box.global_position)
+	var space := get_world_3d().direct_space_state
+	var hits := PackedVector3Array()
+	for i in 16:
+		var out := Basis(axis, TAU * i / 16.0) * _body_root.global_basis.y.normalized()
+		var query := PhysicsRayQueryParameters3D.create(inside, inside + out * 0.2, SURFACE_LAYER)
+		query.hit_back_faces = true
+		query.hit_from_inside = true
+		var hit := space.intersect_ray(query)
+		if not hit.is_empty():
+			hits.append(hit.position)
+	if hits.size() < 8:
+		return {}
+	var center := Vector3.ZERO
+	for hit in hits:
+		center += hit
+	center /= hits.size()
+	var radius := 0.0
+	for hit in hits:
+		radius = maxf(radius, (hit - center).slide(axis).length())
+	# Only when p is right at this limb's skin, not somewhere above it.
+	if (p - center).slide(axis).length() > radius + 0.03:
+		return {}
+	return {"center": center, "axis": axis, "radius": radius}
+
+
 ## Cut through every layer and pulled open, so tools reach into the cavity.
 func is_open(uv: Vector2) -> bool:
 	return tissue.is_open(uv)
@@ -233,7 +291,10 @@ func _build_surface(model: Node3D) -> void:
 		surface.collision_layer = SURFACE_LAYER
 		surface.collision_mask = 0
 		var shape := CollisionShape3D.new()
-		shape.shape = mesh.mesh.create_trimesh_shape()
+		var skin := mesh.mesh.create_trimesh_shape()
+		# So rays from inside a limb find its skin too (limb_ring()).
+		skin.backface_collision = true
+		shape.shape = skin
 		surface.add_child(shape)
 		_body_root.add_child(surface)
 		surface.transform = _body_root.global_transform.affine_inverse() * mesh.global_transform
@@ -290,11 +351,10 @@ func _rebuild_layers() -> void:
 			continue
 		# The skin sits a hair above the body it replaces, so their overlap at the region's edge never flickers.
 		var down := Vector3(0, [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
-		var follow := LAYER_FOLLOW[layer]
 		var verts := PackedVector3Array()
 		verts.resize(tissue.rest.size())
 		for k in verts.size():
-			verts[k] = tissue.rest[k] + (tissue.pos[k] - tissue.rest[k]) * follow - down
+			verts[k] = layer_point(layer, k) - down
 		# Smooth grid normals from neighbouring particles (cross of the z and x tangents points out of the skin).
 		var normals := PackedVector3Array()
 		normals.resize(verts.size())
@@ -310,6 +370,13 @@ func _rebuild_layers() -> void:
 		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
 		arrays[Mesh.ARRAY_INDEX] = triangles
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+
+## Where a layer's grid point k is now, before it's moved down to its depth. Deeper layers are tethered and follow
+## the skin only partly (a stepped wound edge), but a flap pulled far back takes all of its layers along.
+func layer_point(layer: int, k: int) -> Vector3:
+	var moved := tissue.pos[k] - tissue.rest[k]
+	return tissue.rest[k] + moved * lerpf(LAYER_FOLLOW[layer], 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0))
 
 
 ## Keeps the triangles that touch the region. They reach a little past where the body is cut away (the body's
@@ -337,13 +404,14 @@ func _update_region() -> void:
 const CAVITY_STEPS := 24
 
 
-## Height of the cavity floor at uv: a bowl that is deepest (cavity_depth) in the middle and rises to just under the
-## skin at the site's edges. It follows the skin, so on a round limb it never pokes out of the sides.
+## Height of the cavity floor at uv: a bowl that is deepest (cavity_depth under the skin) in the middle and rises to
+## just under the skin at the site's edges. It follows the skin, so on a round limb it never pokes out of the sides
+## and is as deep on a sloping shoulder as on a flat belly.
 func _cavity_floor(uv: Vector2) -> float:
 	var under_skin := surface_height(uv) - SKIN_THICKNESS - 0.003
 	var edge := Vector2(absf(uv.x * 2.0 - 1.0), absf(uv.y * 2.0 - 1.0))
 	var bowl := (1.0 - pow(edge.x, 4.0)) * (1.0 - pow(edge.y, 4.0))
-	return minf(lerpf(under_skin, -cavity_depth(), bowl), under_skin)
+	return minf(lerpf(under_skin, surface_height(uv) - cavity_depth(), bowl), under_skin)
 
 
 func _cavity_uv(i: int, j: int) -> Vector2:
@@ -374,14 +442,21 @@ func _site_def() -> Dictionary:
 
 
 func _build_cavity() -> void:
-	var depth := cavity_depth()
 	var cavity := MeshInstance3D.new()
 	cavity.name = "Cavity"
 	cavity.mesh = _cavity_grid(_cavity_floor, func(_i: int, _j: int) -> bool: return true)
 	_cavity_material = Materials.flesh()
 	cavity.material_override = _cavity_material
 	site.add_child(cavity)
-	Shapes.static_box(site, Vector3(site_size.x, 0.01, site_size.y), Vector3(0, -depth - 0.005, 0), CAVITY_LAYER)
+	# What a tool reaching into an opening comes down on when nothing else is in the way: the bowl itself.
+	var floor_body := StaticBody3D.new()
+	floor_body.name = "CavityFloor"
+	floor_body.collision_layer = CAVITY_LAYER
+	floor_body.collision_mask = 0
+	var floor_shape := CollisionShape3D.new()
+	floor_shape.shape = cavity.mesh.create_trimesh_shape()
+	floor_body.add_child(floor_shape)
+	site.add_child(floor_body)
 
 	cavity_blood = MeshInstance3D.new()
 	cavity_blood.name = "CavityBlood"
@@ -390,27 +465,53 @@ func _build_cavity() -> void:
 	site.add_child(cavity_blood)
 
 
-## Adds a pushable organ blob. Only the host simulates them, clients get transforms from Patient.
-func add_organ(uv: Vector2, depth: float, radius: float, color: Color) -> RigidBody3D:
+## Adds a pushable organ. Only the host simulates them, clients get transforms from Patient.
+## spec (optional): model, yaw (degrees), mirror, motion ("beat", "breath"), layer (0 on top). Without a model it's a
+## round blob with a sphere collider; an anatomical organ collides as the box around its model.
+func add_organ(uv: Vector2, depth: float, radius: float, color: Color, spec: Dictionary = {}) -> RigidBody3D:
 	var organ := RigidBody3D.new()
 	organ.name = "Organ%d" % organs.size()
 	organ.collision_layer = CAVITY_LAYER
-	organ.collision_mask = CAVITY_LAYER | PUSHER_LAYER
+	# Organs lie on top of each other without pushing each other around; hands push them aside.
+	organ.collision_mask = PUSHER_LAYER
 	organ.gravity_scale = 0.0
 	organ.linear_damp = 6.0
 	organ.angular_damp = 6.0
+	organ.lock_rotation = true
 	organ.mass = 0.3
 	organ.freeze = not multiplayer.is_server()
-	var shape := CollisionShape3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = radius
-	shape.shape = sphere
-	organ.add_child(shape)
-	var model := ModelSlot.instantiate("organs", ORGAN_MODELS[organs.size() % ORGAN_MODELS.size()], organ, {"organ": Materials.flesh(color)})
+	organ.rotation.y = deg_to_rad(float(spec.get("yaw", 0.0)))
+	var model_name: String = spec.get("model", ORGAN_MODELS[organs.size() % ORGAN_MODELS.size()])
+	var model := ModelSlot.instantiate("organs", model_name, organ, {"organ": Materials.flesh(color)})
 	model.name = "Model"
-	model.scale = Vector3.ONE * radius
+	var base := Vector3(1, 1, -1 if spec.get("mirror", false) else 1) * radius
+	model.scale = base
+	organ.set_meta("scale", base)
+	organ.set_meta("motion", spec.get("motion", ""))
+	organ.set_meta("layer", int(spec.get("layer", 0)))
+	organ.set_meta("kind", model_name)
+	var shape := CollisionShape3D.new()
+	var height := surface_height(uv) - depth
+	if spec.has("model"):
+		var bounds := _local_bounds(model, organ)
+		var box := BoxShape3D.new()
+		box.size = bounds.size
+		shape.shape = box
+		shape.position = bounds.get_center()
+		# spec.top: how far under the muscle the organ's top lies, so it stays under the muscle and ribs on any patient.
+		# Measured from the lowest skin over it: the body curves, the box's top is flat.
+		var lowest := INF
+		for corner: Vector3 in [bounds.position, bounds.position + Vector3(bounds.size.x, 0, 0), bounds.position + Vector3(0, 0, bounds.size.z), bounds.end]:
+			var at := Basis(Vector3.UP, organ.rotation.y) * corner
+			lowest = minf(lowest, surface_height(uv + Vector2(at.x / site_size.x, at.z / site_size.y)))
+		height = minf(lowest, surface_height(uv)) - muscle_bottom() - float(spec.get("top", 0.0)) - bounds.end.y
+	else:
+		var sphere := SphereShape3D.new()
+		sphere.radius = radius
+		shape.shape = sphere
+	organ.add_child(shape)
 	site.add_child(organ)
-	organ.position = Vector3((uv.x - 0.5) * site_size.x, -depth, (uv.y - 0.5) * site_size.y)
+	organ.position = Vector3((uv.x - 0.5) * site_size.x, height, (uv.y - 0.5) * site_size.y)
 	organs.append(organ)
 	_organ_rest.append(organ.position)
 	_organ_last.append(organ.position)
@@ -418,14 +519,202 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color) -> RigidB
 	return organ
 
 
-## Host: organs drift back to where they belong once you stop pushing them.
+## The box around every mesh under node, in the space of `space` (an ancestor). Works before they're in the tree.
+static func _local_bounds(node: Node3D, space: Node3D) -> AABB:
+	var bounds := AABB()
+	var first := true
+	for child in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh := child as MeshInstance3D
+		var xform := Transform3D.IDENTITY
+		var at: Node = mesh
+		while at != space and at is Node3D:
+			xform = (at as Node3D).transform * xform
+			at = at.get_parent()
+		var box := xform * mesh.get_aabb()
+		bounds = box if first else bounds.merge(box)
+		first = false
+	return bounds
+
+
+## Builds the site's anatomy (patient_sites.json "anatomy"): organs in layers, the rib cage, limb bones.
+## avoid: uv of targets that must stay in view, top layer organs over one move aside. skip_bones: a scenario
+## target takes the bones' place (a femur to saw, a sternum to open), so the anatomical ones are left out.
+func build_anatomy(avoid: Array[Vector2], skip_bones: PackedStringArray) -> void:
+	var anatomy: Dictionary = _site_def().get("anatomy", {})
+	for spec: Dictionary in anatomy.get("organs", []):
+		var uv := Vector2(spec.uv[0], spec.uv[1])
+		var raw: Array = spec.get("color", [0.6, 0.3, 0.3])
+		add_organ(uv, 0.0, spec.size, Color(raw[0], raw[1], raw[2]), spec)
+		if int(spec.get("layer", 0)) == 0:
+			_clear_view(organs.size() - 1, avoid)
+	if not "bone" in skip_bones:
+		for spec: Dictionary in anatomy.get("bones", []):
+			_add_bone("Bone", [Vector2(spec.from[0], spec.from[1]), Vector2(spec.to[0], spec.to[1])], spec.radius, 1.0)
+	if anatomy.has("sternum") and not "sternum" in skip_bones:
+		var spec: Dictionary = anatomy.sternum
+		_add_bone("Sternum", [Vector2(spec.from[0], spec.from[1]), Vector2(spec.to[0], spec.to[1])], spec.radius, 0.4)
+	if anatomy.has("ribs"):
+		var ribs: Dictionary = anatomy.ribs
+		for row: float in ribs.rows:
+			for side: float in [-1.0, 1.0]:
+				# From beside the breastbone out to the side of the site, dropping toward the feet as it goes.
+				var points: Array[Vector2] = []
+				for i in 7:
+					var t := i / 6.0
+					var y := 0.5 + side * lerpf(float(ribs.inner), 0.5, t)
+					points.append(Vector2(row - float(ribs.drop) * t * t, y))
+				if "rib" in skip_bones and points.any(func(p: Vector2) -> bool: return avoid.any(func(a: Vector2) -> bool: return a.distance_to(p) < 0.08)):
+					continue
+				_add_bone("Rib", points, ribs.radius, 0.55)
+
+
+## Moves a top layer organ off a target that has to stay in view, just far enough that its box clears it.
+func _clear_view(index: int, avoid: Array[Vector2]) -> void:
+	var organ := organs[index]
+	var box := ((organ.get_child(organ.get_child_count() - 1) as CollisionShape3D).shape as BoxShape3D).size
+	var reach := maxf(box.x / site_size.x, box.z / site_size.y) * 0.5
+	for target in avoid:
+		var uv := Vector2(organ.position.x / site_size.x + 0.5, organ.position.z / site_size.y + 0.5)
+		var away := uv - target
+		if away.length() >= reach:
+			continue
+		uv = (target + (away.normalized() if away.length() > 0.001 else Vector2.RIGHT) * reach).clamp(Vector2.ONE * 0.1, Vector2.ONE * 0.9)
+		organ.position.x = (uv.x - 0.5) * site_size.x
+		organ.position.z = (uv.y - 0.5) * site_size.y
+		_organ_rest[index] = organ.position
+		_organ_last[index] = organ.position
+
+
+## A bone along a polyline in uv, lying right under the muscle: a tube, flattened to `flat` of its width for ribs
+## and the breastbone, with capsules along it for tools to rest on.
+func _add_bone(kind: String, points: Array[Vector2], radius: float, flat: float) -> void:
+	var top := muscle_bottom() + 0.003
+	var path := PackedVector3Array()
+	# Short steps, so a straight bone still follows the curve of the skin over it.
+	var dense: Array[Vector2] = [points[0]]
+	for i in range(1, points.size()):
+		var steps := maxi(1, ceili(points[i - 1].distance_to(points[i]) / 0.08))
+		for s in steps:
+			dense.append(points[i - 1].lerp(points[i], float(s + 1) / steps))
+	for uv in dense:
+		# Toward the site's edges the cavity rises to the skin; a bone that no longer fits under the muscle there ends.
+		var height := surface_height(uv) - top - radius * flat
+		if height - radius * flat < _cavity_floor(uv) + 0.001:
+			continue
+		path.append(_site_point(uv, height))
+	if path.size() < 2:
+		return
+	var bone := StaticBody3D.new()
+	bone.name = "%s%d" % [kind, bones.size()]
+	bone.collision_layer = CAVITY_LAYER
+	bone.collision_mask = 0
+	bone.set_meta("bone", kind.to_lower())
+	var mesh := MeshInstance3D.new()
+	mesh.name = "Mesh"
+	mesh.mesh = _tube(path, radius, radius * flat)
+	mesh.material_override = Materials.toon(BONE_COLOR, 0.2)
+	bone.add_child(mesh)
+	for i in range(1, path.size()):
+		var a := path[i - 1]
+		var b := path[i]
+		var shape := CollisionShape3D.new()
+		var capsule := CapsuleShape3D.new()
+		capsule.radius = radius * flat
+		capsule.height = a.distance_to(b) + capsule.radius * 2.0
+		shape.shape = capsule
+		# A capsule runs along its Y axis.
+		var along := (b - a).normalized()
+		var side := along.cross(Vector3.UP if absf(along.y) < 0.9 else Vector3.RIGHT).normalized()
+		shape.transform = Transform3D(Basis(side, along, side.cross(along)), (a + b) * 0.5)
+		bone.add_child(shape)
+	site.add_child(bone)
+	bones.append(bone)
+
+
+## A closed tube with an elliptic cross section (width across the path, height up) along a path in site space.
+static func _tube(path: PackedVector3Array, width: float, height: float) -> ArrayMesh:
+	const SIDES := 12
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rings: Array[PackedVector3Array] = []
+	for i in path.size():
+		var along := (path[mini(i + 1, path.size() - 1)] - path[maxi(i - 1, 0)]).normalized()
+		var side := along.cross(Vector3.UP).normalized()
+		if side.length_squared() < 0.5:
+			side = Vector3.RIGHT
+		var up := side.cross(along).normalized()
+		var ring := PackedVector3Array()
+		for k in SIDES:
+			var angle := TAU * k / SIDES
+			ring.append(path[i] + side * cos(angle) * width + up * sin(angle) * height)
+		rings.append(ring)
+	for i in range(1, rings.size()):
+		for k in SIDES:
+			var n := (k + 1) % SIDES
+			# Clockwise seen from outside: Godot's front faces.
+			for v: Vector3 in [rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]]:
+				st.add_vertex(v)
+	for end: int in [0, rings.size() - 1]:
+		for k in SIDES:
+			var tri: Array[Vector3] = [path[end], rings[end][(k + 1) % SIDES], rings[end][k]]
+			if end != 0:
+				tri.reverse()
+			for v in tri:
+				st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
+
+
+## The bone within `radius` of p (world space), "" when there's none: "rib", "sternum" or "bone".
+func bone_at(p: Vector3, radius: float = 0.015) -> String:
+	_part_sphere.radius = radius
+	_part_query.shape = _part_sphere
+	_part_query.transform = Transform3D(Basis.IDENTITY, p)
+	_part_query.collision_mask = CAVITY_LAYER
+	for hit in get_world_3d().direct_space_state.intersect_shape(_part_query, 32):
+		var collider: Object = hit.collider
+		if collider.has_meta("bone"):
+			return collider.get_meta("bone")
+	return ""
+
+
+## The organ at p (world space), or -1.
+func organ_at(p: Vector3, radius: float = 0.012) -> int:
+	_part_sphere.radius = radius
+	_part_query.shape = _part_sphere
+	_part_query.transform = Transform3D(Basis.IDENTITY, p)
+	_part_query.collision_mask = CAVITY_LAYER
+	var best := -1
+	for hit in get_world_3d().direct_space_state.intersect_shape(_part_query, 32):
+		var index := organs.find(hit.collider as RigidBody3D)
+		# Of two organs lying on top of each other, the one on top is what the tool meets.
+		if index >= 0 and (best < 0 or organs[index].position.y > organs[best].position.y):
+			best = index
+	return best
+
+
+## Host: a tool holding an organ drags it to a site-local point; released, it drifts back where it belongs.
+func hold_organ(index: int, at: Vector3) -> void:
+	_held_organs[index] = at
+
+
+func release_organ(index: int) -> void:
+	_held_organs.erase(index)
+
+
+## Host: organs drift back to where they belong once you stop pushing them. Held ones go where the tool takes them.
 func settle_organs() -> void:
 	for i in organs.size():
 		var organ := organs[i]
+		if _held_organs.has(i):
+			organ.position = _held_organs[i]
+			organ.linear_velocity = Vector3.ZERO
+			continue
 		organ.apply_central_force((_organ_rest[i] - organ.position) * 40.0 * organ.mass)
 
 
 ## Soft organs: a damped spring squashes and stretches each organ when it's pushed, on every peer.
+## The heart beats and the lungs fill with the vitals.
 func _jiggle_organs(delta: float) -> void:
 	if delta <= 0.0:
 		return
@@ -440,8 +729,17 @@ func _jiggle_organs(delta: float) -> void:
 		var squash := clampf(state.x, -0.25, 0.25)
 		var model := organ.get_node_or_null("Model") as Node3D
 		if model:
-			var radius := (organ.get_child(0) as CollisionShape3D).shape.get("radius") as float
-			model.scale = Vector3(1.0 + squash, 1.0 - squash, 1.0 + squash) * radius
+			model.scale = Vector3(1.0 + squash, 1.0 - squash, 1.0 + squash) * (organ.get_meta("scale") as Vector3) * organ_motion(i)
+
+
+## How much bigger than at rest the organ is drawn right now: the heart shrinks as it contracts, lungs swell.
+func organ_motion(index: int) -> float:
+	match organs[index].get_meta("motion", ""):
+		"beat":
+			return 1.0 - HEART_SQUEEZE * heartbeat
+		"breath":
+			return 1.0 + LUNG_SWELL * breath
+	return 1.0
 
 
 func organ_offset(index: int) -> float:
@@ -474,7 +772,7 @@ func set_breath_offset(offset: float) -> void:
 ## Blood filling the cavity bowl, level 0..1. The surface only covers the part of the bowl that is under it and
 ## still under the skin, so it never shows outside the body. Rebuilt only when the level moves a millimeter or so.
 func set_cavity_blood(level: float) -> void:
-	var height := -cavity_depth() + 0.002 + clampf(level, 0.0, 1.0) * cavity_depth() * 0.85
+	var height := _cavity_floor(Vector2(0.5, 0.5)) + 0.002 + clampf(level, 0.0, 1.0) * cavity_depth() * 0.85
 	cavity_blood.visible = level > 0.01
 	if not cavity_blood.visible or absf(height - _pool_height) < 0.0015:
 		return

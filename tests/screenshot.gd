@@ -28,6 +28,9 @@ func _ready() -> void:
 	var surgery: Surgery = SURGERY.instantiate()
 	add_child(surgery)
 	await _frames(10)
+	if OS.get_cmdline_user_args().has("--anatomy"):
+		await _anatomy(surgery, out)
+		return
 	var patient := surgery.patient
 	patient.cut(1, Vector2(0.25, 0.6), Vector2(0.5, 0.55), 1.0, 1.0, false, 0.1)
 	patient.cut(1, Vector2(0.5, 0.55), Vector2(0.72, 0.62), 1.0, 1.0, false, 0.1)
@@ -153,6 +156,73 @@ func _ready() -> void:
 	await _shot(out, "05_manual")
 	surgery.hud.open_card()
 	await _shot(out, "06_card")
+	get_tree().quit()
+
+
+## --anatomy: the site opened wide (chest, belly) or cut to the bone (limbs), a top organ held aside,
+## a tourniquet on the thigh and a syringe held up to read.
+func _anatomy(surgery: Surgery, out: String) -> void:
+	var smoke := preload("res://tests/smoke_test.gd")
+	var patient := surgery.patient
+	var body := patient.body
+	var camera := Camera3D.new()
+	add_child(camera)
+	camera.current = true
+	var site := body.site.global_position
+	if body.organs.is_empty():
+		patient.cut(5, Vector2(0.15, 0.51), Vector2(0.85, 0.51), 1.0, 1.0, false, 0.1)
+		for pull: Array in [[Vector2(0.5, 0.46), -1.0], [Vector2(0.5, 0.56), 1.0]]:
+			body.tissue.grip(950 + int(pull[1]), pull[0])
+		for step in 30:
+			for pull: Array in [[Vector2(0.5, 0.46), -1.0], [Vector2(0.5, 0.56), 1.0]]:
+				body.tissue.move_grip(950 + int(pull[1]), body.tissue.rest[body.tissue.nearest(pull[0])] + Vector3(0, 0.004, float(pull[1]) * 0.001 * (step + 1)))
+			body.tissue._substep()
+	else:
+		smoke.open_wide(patient)
+	await _frames(30)
+	camera.global_position = site + body.site.global_basis.y * 0.42 + Vector3(0.0, 0.0, 0.12)
+	camera.look_at(site)
+	await _shot(out, "20_open_from_above")
+	var me := surgery.local_surgeon
+	me.camera().current = true
+	me.pitch = -1.05
+	me.zoom = 1
+	await _frames(30)
+	await _shot(out, "21_open_first_person")
+	var top := body.organs.find_custom(func(o: RigidBody3D) -> bool: return int(o.get_meta("layer", 0)) == 0)
+	if top >= 0:
+		body.hold_organ(top, body.organs[top].position + Vector3(0, 0.04, 0) + Vector3(body.organs[top].position.x, 0, body.organs[top].position.z).normalized() * 0.1)
+		for i in 20:
+			body.settle_organs()
+			await get_tree().physics_frame
+		camera.current = true
+		await _shot(out, "22_top_organ_aside")
+		body.release_organ(top)
+	camera.current = true
+	var thigh := body.root().to_global(Vector3(-0.75, 0.0, 0.1))
+	var ring := body.limb_ring(thigh + Vector3.UP * 0.06)
+	if not ring.is_empty():
+		surgery.tools.spawn("tourniquet", thigh)
+		await _frames(2)
+		var tourniquet: SurgicalTool = surgery.tools.tools.values()[-1]
+		tourniquet.wrap_around(ring.center, ring.axis, ring.radius)
+		camera.global_position = thigh + Vector3(0.1, 0.3, 0.35)
+		camera.look_at(thigh)
+		await _shot(out, "23_tourniquet")
+	for tool: SurgicalTool in surgery.tools.tools.values():
+		if tool.def.action == "syringe" and tool.state == SurgicalTool.State.FREE:
+			tool.ml = tool.def.volume * 0.35
+			surgery.tools.set_fill(tool, 0.35)
+			surgery.tools._req_grab(tool.uid, 1)
+			me.active = 1
+			me.camera().current = true
+			me.pitch = -0.3
+			me.zoom = 0
+			Input.action_press("inspect")
+			await _frames(30)
+			await _shot(out, "24_syringe_held_up")
+			Input.action_release("inspect")
+			break
 	get_tree().quit()
 
 

@@ -268,6 +268,7 @@ func _open(overlay: Control) -> void:
 	if surgery.local_surgeon:
 		surgery.local_surgeon.input_locked = true
 		surgery.local_surgeon.hands[surgery.local_surgeon.active].lowered = false
+		surgery.local_surgeon.hands[surgery.local_surgeon.active].trigger = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -388,8 +389,7 @@ func _build_controls_hint() -> void:
 	_root.add_child(_hint)
 
 
-## The controls that do something right now. Holding a hand key swaps looking for moving that hand,
-## lowering a tool turns the wheel from zoom into its effort level.
+## The controls that do something right now. Holding a hand key swaps looking for moving that hand.
 static func control_lines(me: Surgeon) -> PackedStringArray:
 	var key := InputActions.binding_text
 	var moving := me.moving_hand()
@@ -404,20 +404,15 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("Mouse  Move %s hand" % side)
 	if tool:
 		var action := tool.def.action
-		lines.append("%s (hold)  Lower %s" % [key.call("lower_tool"), tool.label()])
-		if ToolActions.TRIGGER_NAMES.has(action):
-			lines.append("%s  %s" % [key.call("tool_action"), ToolActions.TRIGGER_NAMES[action]])
+		lines.append("%s (hold)  %s %s" % [key.call("use_tool"), ToolActions.TRIGGER_NAMES.get(action, "Use"), tool.label()])
 		if me.uses_level(me.active):
 			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
-		elif ToolActions.LEVEL_NAMES.has(action):
-			lines.append("Wheel  Zoom (%s while lowered)" % ToolActions.LEVEL_NAMES[action].to_lower())
-		else:
-			lines.append("Wheel  Zoom")
 		lines.append("%s / %s  Tilt   %s / %s  Rotate" % [key.call("tilt_forward"), key.call("tilt_back"), key.call("twist_left"), key.call("twist_right")])
+		lines.append("%s (hold)  Look at it" % key.call("inspect"))
 		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
 	else:
-		lines.append("%s  Grab%s" % [key.call("grab"), " " + me.hovered.label() if is_instance_valid(me.hovered) else ""])
-		lines.append("Wheel  Zoom")
+		lines.append("%s  Pick up%s" % [key.call("grab"), " " + me.hovered.label() if is_instance_valid(me.hovered) else ""])
+	lines.append("%s  Zoom %d/%d" % [key.call("zoom"), me.zoom + 1, Surgeon.ZOOM_FOV.size()])
 	lines.append("%s (hold)  %s" % [key.call("lift"), "Pull up" if hand.attached else "Lift hand over"])
 	lines.append("%s (hold)  Hold breath" % key.call("steady"))
 	if moving < 0:

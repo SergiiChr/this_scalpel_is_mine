@@ -4,8 +4,9 @@ extends CharacterBody3D
 ## Everyone else (including the host) sees a puppet that follows the stream.
 ##
 ## Controls: the mouse looks around, holding a hand's key (Q/E) moves that hand instead and makes it the active one.
-## Lower tool (LMB) rests the active hand's tool on its spot, Tool action (RMB) and the wheel work it
-## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). WASD moves the body.
+## Use tool (LMB, held) rests the active hand's tool on its spot and works it, the wheel sets its effort level
+## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). Grab (RMB) picks up and puts down. Zoom (Shift) steps through
+## three zoom levels. WASD moves the body.
 ## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
 ## Hands have no height control: the tool tip rests just above whatever is under it (skin, tray, organs, a target
@@ -28,8 +29,10 @@ const CARRY_HEIGHT := 1.05
 ## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
 const CROUCH_DROP := 0.75
 const CROUCH_SPEED := 0.35
-## Zoom steps on the mouse wheel: camera field of view, widest first. Hand motion scales with it for precision.
-const ZOOM_FOV: Array[float] = [70.0, 55.0, 42.0, 32.0, 24.0]
+## Zoom steps, cycled by the zoom key: camera field of view, widest first. Hand motion scales with it for precision.
+const ZOOM_FOV: Array[float] = [70.0, 45.0, 28.0]
+## How far in front of the eyes a tool is held up to look at it (Inspect).
+const INSPECT_DISTANCE := 0.26
 const SYNC_INTERVAL := 1.0 / 30.0
 const BUMP_DISTANCE := 0.07
 const SWITCH_DELAY := 0.25
@@ -261,20 +264,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		var index := 0 if event.is_action_pressed("move_left_hand") else 1
 		if index != active:
 			_switch_hand()
-	elif event.is_action_pressed("zoom_in") or event.is_action_pressed("zoom_out"):
-		var step := 1 if event.is_action_pressed("zoom_in") else -1
-		# While a tool is lowered the wheel sets its effort level (cut depth, stitch tension, plunger) instead of zooming.
+	elif event.is_action_pressed("level_up") or event.is_action_pressed("level_down"):
 		if uses_level(active):
-			hand.level = clampi(hand.level + step, 0, 3)
-		else:
-			zoom = clampi(zoom + step, 0, ZOOM_FOV.size() - 1)
-	elif event.is_action_pressed("lower_tool"):
+			hand.level = clampi(hand.level + (1 if event.is_action_pressed("level_up") else -1), 0, 3)
+	elif event.is_action_pressed("zoom"):
+		zoom = (zoom + 1) % ZOOM_FOV.size()
+	elif event.is_action_pressed("use_tool"):
+		# One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
 		hand.lowered = true
-	elif event.is_action_released("lower_tool"):
-		hand.lowered = false
-	elif event.is_action_pressed("tool_action"):
 		hand.trigger = true
-	elif event.is_action_released("tool_action"):
+	elif event.is_action_released("use_tool"):
+		hand.lowered = false
 		hand.trigger = false
 	elif event.is_action_pressed("grab"):
 		_grab_or_release()
@@ -295,10 +295,11 @@ func moving_hand() -> int:
 	return 1 if Input.is_action_pressed("move_right_hand") else -1
 
 
-## The wheel sets this hand's effort level: its tool is lowered and takes one (ToolActions.LEVEL_NAMES).
+## The wheel sets this hand's effort level: its tool takes one (ToolActions.LEVEL_NAMES). It can be set before
+## lowering the tool, so a blade goes in at the depth picked.
 func uses_level(hand: int) -> bool:
 	var tool := held_tool(hand)
-	return hands[hand].lowered and tool != null and ToolActions.LEVEL_NAMES.has(tool.def.action)
+	return tool != null and ToolActions.LEVEL_NAMES.has(tool.def.action)
 
 
 func _physics_process(delta: float) -> void:
@@ -325,6 +326,7 @@ func _physics_process(delta: float) -> void:
 			_held_uid[i] = uid
 			hands[i].level = 0
 		hands[i].grip = tool.def.grip if tool else "pencil"
+		hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)
@@ -351,6 +353,16 @@ func _local_update(delta: float) -> void:
 		status.holding_breath = Input.is_action_pressed("steady") and status.breath > 0.0
 	for i in 2:
 		var h := hands[i]
+		var tool := held_tool(i)
+		h.inspecting = can_act and i == active and tool != null and not h.attached and Input.is_action_pressed("inspect")
+		if h.inspecting:
+			# Held up in front of the eyes, the grip off to the hand's side so the whole tool crosses the view.
+			h.lowered = false
+			h.trigger = false
+			var side := 1.0 if i == 1 else -1.0
+			h.target = _camera.global_transform * Vector3(side * tool.def.length * 0.5, -0.04, -INSPECT_DISTANCE)
+			_strain[i] = false
+			continue
 		if not h.attached:
 			h.target = to_global(h.local_target)
 		_strain[i] = h.attached and h.target.distance_to(shoulder(i)) > REACH + 0.06
@@ -385,10 +397,25 @@ func _constrain(hand: SurgeonHand) -> void:
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
 	var from := shoulder(hand.index)
 	if surface.y != -INF:
-		var tip_y: float = surface.y + HOVER_GAP
-		if hand.lowered and not surface.open:
-			tip_y = surface.y - 0.002 - hand.level * 0.004
-		hand.target.y = tip_y - offset.y
+		if surface.open:
+			hand.target.y = surface.y + HOVER_GAP - offset.y
+		elif hand.lowered and surface.soft:
+			# Skin gives: a lowered tip presses into it, deeper with effort.
+			hand.target.y = surface.y - 0.002 - hand.level * 0.004 - offset.y
+		elif tool:
+			# Anything hard (a tray, the table, a tool lying there) doesn't: every corner of the tool clears
+			# whatever is under that corner, not only its tip.
+			var gap := 0.001 if hand.lowered else HOVER_GAP
+			var basis := hand.grip_transform().basis
+			var needed: float = surface.y + gap - _lowest_point(hand, tool)
+			for i in 8:
+				var corner := basis * tool.bounds.get_endpoint(i)
+				var under: Dictionary = _surface_below(hand.target + corner)
+				if under.y != -INF and not under.open:
+					needed = maxf(needed, float(under.y) + gap - corner.y)
+			hand.target.y = needed
+		else:
+			hand.target.y = surface.y + HOVER_GAP - offset.y
 		# Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
 		if hand.target.y < from.y - REACH * 0.9:
 			hand.target.y = global_position.y + CARRY_HEIGHT - crouch * CROUCH_DROP
@@ -398,15 +425,28 @@ func _constrain(hand: SurgeonHand) -> void:
 			var under: Dictionary = _surface_below(point)
 			if under.y != -INF and not under.open:
 				hand.target.y += maxf(float(under.y) + HAND_CLEARANCE - point.y, 0.0)
+		# Fingers wrapped round a tool can reach below the hand's middle: they stay out of hard surfaces too.
+		var under_hand: Dictionary = _surface_below(hand.target)
+		if under_hand.y != -INF and not under_hand.open and not under_hand.soft:
+			hand.target.y += maxf(float(under_hand.y) + 0.002 - (hand.target.y + hand.glove_drop), 0.0)
 	if hand.target.distance_to(from) > REACH:
 		hand.target = from + (hand.target - from).normalized() * REACH
 	if not hand.attached:
 		hand.local_target = to_local(hand.target)
 
 
-## {"y": surface height under p (or -INF), "open": true when p is over an opened incision}
+## How far below the hand the lowest point of its tool is (negative: below), the way the hand holds it now.
+static func _lowest_point(hand: SurgeonHand, tool: SurgicalTool) -> float:
+	var basis := hand.grip_transform().basis
+	var lowest := INF
+	for i in 8:
+		lowest = minf(lowest, (basis * tool.bounds.get_endpoint(i)).y)
+	return lowest
+
+
+## {"y": surface height under p (or -INF), "open": true when p is over an opened incision, "soft": skin}
 ## Over an opening it finds what's inside: organs and targets, or the cavity floor.
-## Rests on the patient's real skin (PatientBody.SURFACE_LAYER), the table, trays and the floor.
+## Rests on the patient's real skin (PatientBody.SURFACE_LAYER), the table, trays, tools lying there and the floor.
 func _surface_below(p: Vector3) -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.35, p + Vector3.DOWN * 2.0, 4)
@@ -417,12 +457,14 @@ func _surface_below(p: Vector3) -> Dictionary:
 		if body.is_open(body.world_to_uv(site_hit.position)):
 			query.collision_mask = PatientBody.CAVITY_LAYER | CavityTarget.LAYER
 			var inside := space.intersect_ray(query)
-			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true}
-	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER
+			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true, "soft": true}
+	# Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the tray).
+	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | SurgicalTool.TOOL_LAYER
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
-		return {"y": -INF, "open": false}
-	return {"y": hit.position.y, "open": false}
+		return {"y": -INF, "open": false, "soft": false}
+	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER)) != 0
+	return {"y": hit.position.y, "open": false, "soft": soft}
 
 
 ## The tool the active hand would pick up: the free tool nearest the hand's tip, highlighted with its name shown.
@@ -567,7 +609,7 @@ func _handle_status_events(events: PackedStringArray) -> void:
 func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
-		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted])
+		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted, h.inspecting])
 	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out(), crouch]
 
 
@@ -589,6 +631,7 @@ func _sync_state(data: Array) -> void:
 		h.trigger = d[4]
 		h.level = d[5]
 		h.lifted = d[6]
+		h.inspecting = d[7]
 	if multiplayer.is_server():
 		var strain: Array = data[5]
 		for i in 2:

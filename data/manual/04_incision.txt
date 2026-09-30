@@ -10,7 +10,7 @@ Depth of the incision is set by blade pressure, not by the number of passes. The
 [cell]2  Fat[/cell][cell]Down to subcutaneous fat[/cell][cell]Deepening the wound under vision[/cell]
 [cell]3  Muscle[/cell][cell]Fascia and muscle, into the cavity[/cell][cell]Entering the body cavity[/cell]
 [/table]
-[b]Setting it:[/b] lower the blade onto the skin ([b]Lower tool[/b], default LMB). At level 0 it only rests there; the mouse wheel sets the depth while it is down: forward increases, back decreases.
+[b]Setting it:[/b] lower the blade onto the skin ([b]Use tool[/b], default LMB). At level 0 it only rests there; the mouse wheel sets the depth, before or while it is down: forward increases, back decreases.
 Start at level 1 and deepen in layers. A full-depth stroke from the outset gives no control over what lies beneath.
 > In obese patients the subcutaneous layer is thicker: one level shallower than expected is reached at each setting.
 

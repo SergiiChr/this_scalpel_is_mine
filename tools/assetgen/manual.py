@@ -16,6 +16,7 @@ import numpy as np
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.ttLib import TTFont
+from numpy.typing import NDArray
 from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -533,9 +534,9 @@ def paper(width: int = 1400, height: int = 1800) -> Image.Image:
     """Pale parchment: faint blotches, fibres and slightly darker edges."""
     rng = np.random.default_rng(7)
 
-    def smooth(scale: int) -> np.ndarray:
+    def smooth(scale: int) -> NDArray[np.float32]:
         small = (rng.random((height // scale + 2, width // scale + 2)) * 255).astype(np.uint8)
-        return np.asarray(Image.fromarray(small).resize((width, height), Image.Resampling.BICUBIC), dtype=np.float32) / 255
+        return np.asarray(Image.fromarray(small).resize((width, height), Image.Resampling.BICUBIC), dtype=np.float32) / np.float32(255)
 
     blotch = 0.5 * smooth(300) + 0.3 * smooth(90) + 0.2 * smooth(25)
     yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)

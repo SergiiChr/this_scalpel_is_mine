@@ -13,6 +13,8 @@ func _ready() -> void:
 	_thin_skin_holds_at_rest()
 	_stitches_close()
 	_sleeps()
+	_elastic()
+	_muscle_first()
 	print("tissue_test: done")
 	get_tree().quit()
 
@@ -113,3 +115,48 @@ func _sleeps() -> void:
 	_check(sim.steps_done == before, "a sleeping sim does no work")
 	sim.shake(0.003)
 	_check(not sim.is_sleeping(), "a jolt wakes the sim")
+
+
+## Skin is elastic: a slow 3 cm pull on intact skin drags the skin around it along without tearing,
+## and all of the moved skin is shown simulated (inside the region).
+func _elastic() -> void:
+	var sim := _sim()
+	_settle(sim)
+	var k := sim.nearest(MID)
+	sim.grip(1, MID)
+	for i in 30:
+		sim.move_grip(1, sim.rest[k] + Vector3(0.001 * (i + 1), 0, 0))
+		sim._substep()
+	_settle(sim)
+	_check(sim.snapped.is_empty(), "a slow 3 cm pull on intact skin doesn't tear it")
+	var behind := k - 3
+	var moved := sim.pos[behind].distance_to(sim.rest[behind])
+	_check(moved > 0.008, "skin 4 cm behind a 3 cm pull follows it by more than 8 mm (%.1f mm)" % (moved * 1000.0))
+	var region := sim.region()
+	var hidden := 0
+	for p in sim.pos.size():
+		if sim.pos[p].distance_to(sim.rest[p]) > 0.002 and region[p] == 0:
+			hidden += 1
+	_check(hidden == 0, "all visibly moved skin is inside the simulated region (%d points outside)" % hidden)
+
+
+## A cut through the muscle retracts and keeps the cavity open until the muscle is sewn. Sewn muscle closes the
+## muscle layer and the cavity; the skin still gapes on its own until it's stitched too.
+func _muscle_first() -> void:
+	var fat := _sim()
+	fat.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.FAT)
+	_settle(fat, 120)
+	var sim := _sim()
+	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.MUSCLE)
+	_settle(sim, 120)
+	_check(sim.gap_at(MID) > fat.gap_at(MID) + 0.002, "cut muscle retracts: its gap is wider than a cut into the fat (%.1f vs %.1f mm)" % [sim.gap_at(MID) * 1000.0, fat.gap_at(MID) * 1000.0])
+	_check(sim.muscle_open_near(MID, 0.03), "a cut through the muscle leaves the muscle open")
+	var u := 0.2
+	while u <= 0.8:
+		sim.muscle_stitch(Vector2(u, 0.51), 0.03)
+		u += 0.015
+	_settle(sim, 120)
+	_check(not sim.muscle_open_near(MID, 0.03), "sewing along the muscle closes it")
+	_check(not sim.is_open(MID), "sewn muscle closes the cavity")
+	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == TissueSim.RES * TissueSim.RES * 6, "sewn muscle shows no hole in the muscle layer")
+	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "the skin over sewn muscle still gapes until it's stitched")

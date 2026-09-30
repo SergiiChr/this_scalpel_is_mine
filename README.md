@@ -83,19 +83,19 @@ Over the internet the host needs to forward UDP 24565 (or pick another port in t
 ## Controls
 
 Shown in the bottom right corner in game, for what you're doing right now (they change while you hold a hand key
-or lower a tool). Everything can be rebound in **Settings**.
+or hold a tool). Everything can be rebound in **Settings**.
 
 | Action | Default |
 |---|---|
 | Look around | Mouse |
 | Move left / right hand (that hand becomes the active one) | Hold Q / Hold E |
-| Lower the active hand's tool onto its spot | Hold LMB |
-| Tool action: pinch / let go, strike, tighten, place graft, charge and shock | RMB |
-| Effort level 0-3 of a lowered tool: cut depth, stitch tension, heat, saw speed, suction, gauze pressure, syringe plunger | Mouse wheel |
-| Zoom (while the tool isn't lowered) | Mouse wheel |
-| Grab / release the highlighted tool (near a partner's empty hand: pass the tool) | G |
+| Use the active hand's tool: lower it onto its spot and work it (pinch / let go, strike, tighten, place graft, charge and shock) | Hold LMB |
+| Effort level 0-3: cut depth, stitch tension, heat, saw speed, suction, gauze pressure, syringe plunger | Mouse wheel |
+| Pick up / put down the highlighted tool (near a partner's empty hand: pass the tool) | RMB |
+| Zoom, three steps | Shift |
 | Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
-| Lift hand over hands and tall tools; pull slowly on what it holds | Hold Shift |
+| Lift hand over hands and tall tools; pull slowly on what it holds | Hold Alt |
+| Hold the tool up to look at it (read a syringe) | Hold X |
 | Crouch (reach the floor, step over the IV line) | Hold Ctrl |
 | Hold breath (steady hands) | Hold Space |
 | Tilt / rotate tool | R, T / C, V |

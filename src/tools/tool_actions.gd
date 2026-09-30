@@ -3,13 +3,13 @@ extends RefCounted
 ## What each tool action does to the patient. Host only, runs every physics frame for held and standing tools.
 ## Tools share actions: a lighter and a cautery pen both "cauterize", with different ToolDef numbers.
 
-## How each action is controlled. Every tool is lowered onto its spot with Lower tool (LMB) first.
+## How each action is controlled. Use tool (LMB, held) lowers every tool onto its spot and presses its trigger.
 ## Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
 const LEVEL_NAMES: Dictionary = {
 	"cut": "Depth", "suture": "Tension", "cauterize": "Heat", "saw": "Speed", "suction": "Suction",
 	"swab": "Pressure", "inject": "Plunger", "syringe": "Plunger", "pour": "Pour",
 }
-## Actions listed here do their thing on Tool action (RMB) instead, named by the value.
+## Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
 const TRIGGER_NAMES: Dictionary = {
 	"clamp": "Pinch / let go", "smash": "Strike", "tourniquet": "Tighten", "graft": "Place graft",
 	"shock": "Charge (hold), let go to shock",
@@ -31,6 +31,9 @@ const PAD_DRAIN := 0.12
 const VIAL_REACH := 0.05
 ## Share of a syringe's barrel the plunger moves per second at the top level.
 const PLUNGER_RATE := 0.25
+## Wipes paint big soft disks: at most this often, or once the tool moved PAINT_MOVE (uv) since the last one.
+const PAINT_INTERVAL := 1.0 / 15.0
+const PAINT_MOVE := 0.02
 
 
 ## Where a blade's edge runs on the skin: where the blade plane meets a flat surface, so rotating the tool turns it.
@@ -98,7 +101,8 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			var pad := tools.carried_by(tool)
 			var loose_pad := tools.nearest_of("cotton_pad", tip, PAD_REACH) if pressed and lowered and def.id in PAD_HOLDERS else null
 			if pad:
-				if pressed:
+				# Use lowers the pad to wipe or dip it; pressed in the air, away from the dish, it lets the pad go.
+				if pressed and not touching and tools.nearest_of("iodine_dish", tip, DISH_REACH) == null:
 					tools.drop_carried(tool)
 				elif lowered:
 					_wipe(pad, zone, uv, tip, patient, dt, false)
@@ -124,7 +128,11 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if patient.close_at(uv, def, dt, mods.mult("improvised_mult"), level):
 					tool.charges -= 1 if tool.charges > 0 else 0
 					Surgery.current.sound({"skin_stapler": "staple", "office_stapler": "office_staple", "surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
-			elif lowered and level > 0 and zone == "cavity":
+			elif lowered and level > 0 and zone == "cavity" and tool.charges != 0:
+				# Inside a wound through the muscle, the muscle comes first; deeper down, internal injuries.
+				if patient.close_muscle_at(uv, def, dt):
+					tool.charges -= 1 if tool.charges > 0 else 0
+					Surgery.current.sound("suture_pull", tip)
 				patient.close_internal_at(uv, probe.depth, def, dt)
 		"cauterize":
 			if level_up and level == 1 and def.id == "lighter":
@@ -209,7 +217,9 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			if def.id == "cotton_pad" and lowered and level > 0:
 				_wipe(tool, zone, uv, tip, patient, dt * effort, true)
 			elif lowered and level > 0 and zone in ["site", "cavity"]:
-				patient.swab_at(zone, uv, def, dt * effort)
+				var wiped := _gather(tool, uv, dt * effort)
+				if wiped > 0.0:
+					patient.swab_at(zone, uv, def, wiped)
 		"pour":
 			if lowered and level > 0:
 				var dish := Surgery.current.tools.nearest_of("iodine_dish", tip, DISH_REACH)
@@ -218,10 +228,11 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				elif touching:
 					Surgery.current.announce("Pour the %s into the iodine dish." % def.name.to_lower(), true)
 		"tourniquet":
-			var limb: bool = str(probe.get("part", "")).begins_with("arm") or str(probe.get("part", "")).begins_with("leg") or zone == "site" and patient.body.is_limb_site()
-			if pressed and lowered and limb:
+			# Pressed onto an arm or a leg, the band goes around the limb there and stays when the hand lets go.
+			var ring := patient.body.limb_ring(tip) if pressed and lowered else {}
+			if not ring.is_empty():
 				patient.apply_tourniquet()
-				Surgery.current.tools.leave_standing(tool)
+				Surgery.current.tools.wrap(tool, ring)
 		"graft":
 			if pressed and lowered and zone == "site" and tool.charges != 0 and patient.graft_at(uv, def):
 				_use_charge(tool)
@@ -259,13 +270,27 @@ static func _wipe(pad: SurgicalTool, zone: String, uv: Vector2, tip: Vector3, pa
 			tools.set_fill(dish, dish.fill - soak / PADS_PER_DISH)
 		return
 	var soaked := pad.fill > 0.0
-	patient.swab_at(zone, uv, pad.def, dt, "iodine" if soaked else "")
+	var wiped := _gather(pad, uv, dt)
+	if wiped > 0.0:
+		patient.swab_at(zone, uv, pad.def, wiped, "iodine" if soaked else "")
 	if soaked:
 		tools.set_fill(pad, pad.fill - PAD_DRAIN * dt)
 		if (gloved or not pad.sterile) and zone == "site" and not pad.reported.has("dirty"):
 			pad.reported["dirty"] = true
 			patient.contaminate_site("")
 			Surgery.current.scoring.add("dirty_tool")
+
+
+## Collects wiping time and returns it once it's worth painting (0 until then), so a pad held still or moved
+## slowly paints a few times a second instead of every physics frame.
+static func _gather(tool: SurgicalTool, uv: Vector2, dt: float) -> float:
+	tool.paint_dt += dt
+	if tool.paint_dt < PAINT_INTERVAL and tool.paint_uv.distance_to(uv) < PAINT_MOVE:
+		return 0.0
+	var gathered := tool.paint_dt
+	tool.paint_dt = 0.0
+	tool.paint_uv = uv
+	return gathered
 
 
 ## Standing (self-retaining) clamps keep holding their grip after the hand lets go.

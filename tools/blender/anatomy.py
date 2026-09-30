@@ -389,3 +389,100 @@ def sternum() -> None:
     cartilage = scene.blobs("RibCartilage", stubs, resolution=0.0008)
     cartilage = scene.remesh(cartilage, 0.0006, smooth=3)
     scene.finish(cartilage, scene.material("cartilage", (0.86, 0.84, 0.82), roughness=0.3, subsurface=0.3))
+
+
+HEART = (0.55, 0.13, 0.11)
+LUNG = (0.8, 0.52, 0.52)
+KIDNEY = (0.45, 0.14, 0.11)
+
+
+def heart() -> None:
+    """Heart, unit size: the ventricles' cone with the apex toward the feet and the patient's left (-X, +Z),
+    the atria on top toward the head, the aorta arching out of it and the pulmonary trunk beside it.
+    Coronary vessels in fat run down the grooves."""
+    body = scene.blobs(
+        "Heart",
+        [
+            ellipsoid((-0.05, 0.0, 0.0), (0.72, 0.55, 0.6)),
+            ellipsoid((-0.45, -0.05, 0.2), (0.42, 0.36, 0.36), 2.5),
+            ellipsoid((0.42, 0.08, -0.22), (0.34, 0.32, 0.3), 2.5),
+            ellipsoid((0.4, 0.05, 0.25), (0.3, 0.28, 0.28), 2.5),
+        ],
+        resolution=0.03,
+    )
+
+    def cone(p: NDArray[np.float64]) -> NDArray[np.float64]:
+        # The ventricles narrow into the apex.
+        x, y, z = p[:, 0], p[:, 1], p[:, 2]
+        taper = 1.0 - 0.6 * np.clip((0.2 - x) / 1.1, 0.0, 1.0) ** 1.4
+        return np.column_stack([x, y * taper, 0.12 + (z - 0.12) * taper])
+
+    body = scene.remesh(scene.deform(body, cone), 0.025, smooth=6)
+    body = scene.sculpt(body, [scene.line((0.3, 0.5, 0.0), (-0.75, 0.2, 0.3), 0.07, -0.035)])
+    body = scene.displace(body, 0.01, 0.35, seed=41)
+    body = scene.finish(scene.decimate(body, 0.35), _wet("organ", HEART))
+    aorta = scene.curve_tube("Aorta", [(0.3, 0.2, 0.0), (0.65, 0.42, 0.02), (0.9, 0.42, -0.12), (0.95, 0.25, -0.35)], 0.14, resolution=14)
+    trunk = scene.curve_tube("Trunk", [(0.25, 0.25, 0.18), (0.55, 0.42, 0.26), (0.7, 0.4, 0.42)], 0.12, [1.0, 0.95, 0.8], resolution=14)
+    scene.finish(scene.remesh(scene.join("Vessels", aorta, trunk), 0.02, smooth=2), _wet("vessel", VESSEL))
+    grooves = [[(0.3, 0.45, 0.05), (0.0, 0.52, 0.15), (-0.4, 0.4, 0.3), (-0.75, 0.1, 0.35)], [(0.3, 0.3, -0.35), (-0.1, 0.1, -0.55), (-0.5, -0.1, -0.35)]]
+    _vessels(body, grooves, 0.035)
+
+
+def lung() -> None:
+    """Right lung, unit size: a tall rounded wedge along X (apex toward the head at +X), the flat medial face toward +Z
+    hollowed where the heart sits, the thin front edge lapping over. Mirror it for the left one."""
+    lobes = scene.blobs(
+        "Lung",
+        [
+            ellipsoid((-0.35, 0.0, 0.0), (0.7, 0.48, 0.62)),
+            ellipsoid((0.35, 0.04, -0.04), (0.6, 0.38, 0.46), 2.5),
+            ellipsoid((0.85, 0.05, -0.08), (0.3, 0.22, 0.24), 2.5),
+        ],
+        resolution=0.03,
+    )
+
+    def shape(p: NDArray[np.float64]) -> NDArray[np.float64]:
+        x, y, z = p[:, 0], p[:, 1], p[:, 2]
+        medial = np.clip(z / 0.5, 0.0, 1.0)
+        z = z - 0.25 * medial**2 * np.clip(1.0 - ((x + 0.2) / 0.7) ** 2, 0.0, 1.0)
+        y = y * (1.0 - 0.35 * medial)
+        return np.column_stack([x, y, z])
+
+    lobes = scene.remesh(scene.deform(lobes, shape), 0.022, smooth=6)
+    # The fissures between the lobes.
+    fissures = [scene.line((0.45, 0.5, -0.55), (-0.55, 0.45, 0.35), 0.05, -0.05), scene.line((0.0, 0.5, -0.2), (0.1, 0.45, -0.7), 0.04, -0.04)]
+    lobes = scene.sculpt(lobes, fissures)
+    lobes = scene.displace(lobes, 0.012, 0.25, detail=3, seed=43)
+    scene.finish(scene.decimate(lobes, 0.3), _wet("organ", LUNG))
+
+
+def kidney() -> None:
+    """Kidney, unit size: a bean along X with the dent (hilum) toward +Z where the vessels and the ureter come out,
+    sitting in a cushion of fat."""
+    bean = scene.blobs("Kidney", [ellipsoid((0.0, 0.0, 0.0), (1.0, 0.42, 0.58))], resolution=0.03)
+
+    def dent(p: NDArray[np.float64]) -> NDArray[np.float64]:
+        x, y, z = p[:, 0], p[:, 1], p[:, 2]
+        hollow = 0.3 * np.clip(1.0 - (x / 0.45) ** 2, 0.0, 1.0) * np.clip(z / 0.5, 0.0, 1.0)
+        return np.column_stack([x, y, z - hollow])
+
+    bean = scene.remesh(scene.deform(bean, dent), 0.02, smooth=6)
+    bean = scene.displace(bean, 0.006, 0.4, seed=45)
+    scene.finish(scene.decimate(bean, 0.35), _wet("organ", KIDNEY))
+    ureter = scene.curve_tube("Ureter", [(0.0, -0.05, 0.3), (-0.2, -0.1, 0.55), (-0.8, -0.15, 0.7)], 0.08, [1.0, 0.8, 0.7], resolution=10)
+    scene.finish(ureter, _wet("vessel", (0.85, 0.75, 0.6)))
+    vessels = scene.curve_tube("Hilum", [(0.1, 0.05, 0.3), (0.15, 0.1, 0.75)], 0.1, resolution=10)
+    scene.finish(vessels, _wet("vessel", VESSEL))
+
+
+def aorta() -> None:
+    """A length of aorta, unit size along X, with branch stubs and a vein running beside it."""
+    main = scene.curve_tube("Aorta", [(-1.0, 0.0, 0.0), (-0.3, 0.03, 0.02), (0.4, 0.02, -0.02), (1.0, 0.0, 0.0)], 0.13, resolution=16)
+    stubs = [(0.5, 1.0), (0.5, -1.0), (-0.1, 1.0), (-0.1, -1.0), (0.2, 0.0)]
+    branches = [
+        scene.curve_tube(f"Branch{i}", [(x, 0.05, 0.0), (x - 0.1, 0.1, side * 0.35)], 0.05, [1.0, 0.7], resolution=10) for i, (x, side) in enumerate(stubs)
+    ]
+    artery = scene.remesh(scene.join("Aorta", main, *branches), 0.018, smooth=2)
+    scene.finish(scene.decimate(artery, 0.5), _wet("organ", VESSEL))
+    vein = scene.curve_tube("Vein", [(-1.0, -0.02, -0.3), (0.0, 0.0, -0.28), (1.0, -0.02, -0.3)], 0.12, resolution=14)
+    scene.finish(vein, _wet("vessel", (0.25, 0.1, 0.25)))

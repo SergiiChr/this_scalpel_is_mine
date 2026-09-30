@@ -24,8 +24,8 @@ Verify blood group and allergies against the chart. Where a records discrepancy 
 Agitated patients move unpredictably. Reassure them verbally from the head of the table, or sedate with diazepam.
 
 ## 1.5 Skin preparation
-1. Pour povidone-iodine from the bottle into the iodine dish ([b]Lower tool[/b] over the dish, wheel to pour).
-2. Take a cotton pad with the forceps: lower the forceps onto the pad and close them ([b]Tool action[/b]).
+1. Pour povidone-iodine from the bottle into the iodine dish ([b]Use tool[/b] over the dish, wheel to pour).
+2. Take a cotton pad with the forceps: lower the forceps onto the pad ([b]Use tool[/b]); they close on it. Used in the air away from the dish, they let the pad go.
 3. Lower the pad into the dish to soak it.
 4. Wipe the operative field with the soaked pad. Re-soak it when it runs dry; one dish soaks about four pads.
 5. Open the forceps to drop the used pad.
