@@ -231,11 +231,9 @@ static func glow(color: Color) -> StandardMaterial3D:
 	return mat
 
 
-## Standing blood: glossy, but not a mirror. The lamp is a wide dish of bulbs (Room), so a mirror would show a big
-## white disc of it instead of a wet glint.
 static func blood_pool() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.22, 0.0, 0.02)
-	mat.roughness = 0.22
-	mat.metallic_specular = 0.6
+	mat.roughness = 0.05
+	mat.metallic_specular = 0.9
 	return mat

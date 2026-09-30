@@ -208,8 +208,8 @@ func _build_environment() -> void:
 	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.9)
 	lamp.shadow_enabled = true
-	# A surgical lamp is a wide dish of bulbs: soft-edged shadows, not a pinpoint's hard ones.
-	lamp.light_size = 0.3
+	# Soft-edged shadows, like under a dish of bulbs. Only blurred: a sized light would also spread every glossy
+	# highlight (blood, wet tissue) into a big white patch.
 	lamp.shadow_blur = 2.0
 	add_child(lamp)
 	# Overhead room light: a ceiling panel over the table that lights the whole room from above.
@@ -234,7 +234,6 @@ func _build_environment() -> void:
 	overhead.light_energy = 0.55 if indoors else 1.0
 	overhead.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
-	overhead.light_size = 0.5
 	overhead.shadow_blur = 2.5
 	add_child(overhead)
 	_flicker_lights.append(overhead)

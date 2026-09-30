@@ -35,18 +35,22 @@ func build(root: Node3D, meshes: Array[MeshInstance3D], site: Node3D, site_size:
 	var columns := ceili((TO_X - FROM_X) / CELL) + 1
 	var rows := ceili(HALF_WIDTH * 2.0 / CELL) + 1
 	var heights := _lay(body, columns, rows, up)
+	# Grid points inside the opening move out onto its edge, so the opening is a clean rectangle, not grid steps.
+	var points := PackedVector3Array()
+	var inside := PackedByteArray()
+	for j in rows:
+		for i in columns:
+			var p := _point(i, j, heights, columns)
+			inside.append(1 if _in_opening(site, site_size, p) else 0)
+			points.append(_to_edge(body, site, site_size, p, up) if inside[-1] == 1 else p)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for j in rows - 1:
 		for i in columns - 1:
-			var corners: Array[Vector3] = [
-				_point(i, j, heights, columns), _point(i + 1, j, heights, columns),
-				_point(i + 1, j + 1, heights, columns), _point(i, j + 1, heights, columns),
-			]
-			var center := (corners[0] + corners[2]) * 0.5
-			if _in_opening(site, site_size, center):
+			var ids: Array[int] = [j * columns + i, j * columns + i + 1, (j + 1) * columns + i + 1, (j + 1) * columns + i]
+			if ids.all(func(k: int) -> bool: return inside[k] == 1):
 				continue
-			_quad(st, corners, up)
+			_quad(st, ids.map(func(k: int) -> Vector3: return points[k]), up)
 	# Hems: the sheet hangs a little over its long sides and its ends instead of stopping in the air.
 	for i in columns - 1:
 		for j: int in [0, rows - 1]:
@@ -114,6 +118,21 @@ static func _in_opening(site: Node3D, site_size: Vector2, p: Vector3) -> bool:
 	var local := site.transform.affine_inverse() * p
 	var uv := Vector2(local.x / site_size.x + 0.5, local.z / site_size.y + 0.5)
 	return uv.x > FRAME and uv.x < 1.0 - FRAME and uv.y > FRAME and uv.y < 1.0 - FRAME
+
+
+## A point inside the opening moved to its nearest edge, back on the skin (plus OFFSET).
+static func _to_edge(body: TriangleMesh, site: Node3D, site_size: Vector2, p: Vector3, up: float) -> Vector3:
+	var local := site.transform.affine_inverse() * p
+	var uv := Vector2(local.x / site_size.x + 0.5, local.z / site_size.y + 0.5)
+	var gaps := [uv.x - FRAME, 1.0 - FRAME - uv.x, uv.y - FRAME, 1.0 - FRAME - uv.y]
+	match gaps.find(gaps.min()):
+		0: uv.x = FRAME
+		1: uv.x = 1.0 - FRAME
+		2: uv.y = FRAME
+		3: uv.y = 1.0 - FRAME
+	var edge := site.transform * Vector3((uv.x - 0.5) * site_size.x, local.y, (uv.y - 0.5) * site_size.y)
+	var hit := body.intersect_ray(Vector3(edge.x, up * 0.5, edge.z), Vector3.DOWN * up)
+	return Vector3(edge.x, (hit.position as Vector3).y + up * OFFSET if not hit.is_empty() else p.y, edge.z)
 
 
 ## Two triangles, wound so the side facing `up` is the front.
