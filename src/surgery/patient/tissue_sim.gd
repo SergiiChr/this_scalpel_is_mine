@@ -206,8 +206,15 @@ func region(reach: int = 1) -> PackedByteArray:
 		for y in range(maxi(j - reach, 0), mini(j + reach, RES) + 1):
 			for x in range(maxi(i - reach, 0), mini(i + reach, RES) + 1):
 				out[index(x, y)] = 1
+	# Off the body, and right next to it: triangles touching skin off the body aren't drawn, so the body model has to
+	# cover up to there, or its cut-away edge (halfway between region points) would leave a gap.
 	for k in out.size():
-		out[k] *= 1 - off[k]
+		if off[k] == 1:
+			var i := k % (RES + 1)
+			var j := k / (RES + 1)
+			for y in range(maxi(j - 1, 0), mini(j + 1, RES) + 1):
+				for x in range(maxi(i - 1, 0), mini(i + 1, RES) + 1):
+					out[index(x, y)] = 0
 	return out
 
 
