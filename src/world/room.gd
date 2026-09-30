@@ -249,7 +249,7 @@ func _lamp_height() -> float:
 func _build_shell() -> void:
 	var size: Vector3 = layout.size
 	var floor_color := Color(0.28, 0.3, 0.29) if environment_id != "sidewalk" else Color(0.2, 0.2, 0.21)
-	Shapes.slab(self, Vector3(size.x, 0.1, size.z), floor_color, Vector3(0, -0.05, 0), 0.7)
+	Shapes.slab(self, Vector3(size.x, 0.1, size.z), floor_color, Vector3(0, -0.05, 0), 0.4)
 	var floor_body := Shapes.static_box(self, Vector3(size.x, 0.1, size.z), Vector3(0, -0.05, 0))
 	floor_body.set_meta("floor", true)
 	if environment_id == "sidewalk":
@@ -257,11 +257,11 @@ func _build_shell() -> void:
 		return
 	var wall := Materials.SURGICAL_GREEN if environment_id == "or" else Color(0.75, 0.78, 0.8)
 	for side: float in [-1.0, 1.0]:
-		Shapes.slab(self, Vector3(size.x, size.y, 0.1), wall, Vector3(0, size.y * 0.5, side * size.z * 0.5), 0.6)
+		Shapes.slab(self, Vector3(size.x, size.y, 0.1), wall, Vector3(0, size.y * 0.5, side * size.z * 0.5), 0.3)
 		Shapes.static_box(self, Vector3(size.x, size.y, 0.1), Vector3(0, size.y * 0.5, side * size.z * 0.5))
-		Shapes.slab(self, Vector3(0.1, size.y, size.z), wall, Vector3(side * size.x * 0.5, size.y * 0.5, 0), 0.6)
+		Shapes.slab(self, Vector3(0.1, size.y, size.z), wall, Vector3(side * size.x * 0.5, size.y * 0.5, 0), 0.3)
 		Shapes.static_box(self, Vector3(0.1, size.y, size.z), Vector3(side * size.x * 0.5, size.y * 0.5, 0))
-	Shapes.slab(self, Vector3(size.x, 0.1, size.z), wall.darkened(0.5), Vector3(0, size.y, 0), 0.8)
+	Shapes.slab(self, Vector3(size.x, 0.1, size.z), wall.darkened(0.5), Vector3(0, size.y, 0), 0.45)
 
 
 func _build_street(size: Vector3) -> void:

@@ -84,6 +84,6 @@ func _drive(role: String, driver: Node) -> void:
 		for x in range(0, image.get_width(), 4):
 			painted += 1 if image.get_pixel(x, y).r > 0.1 else 0
 	var tissue := surgery.patient.body.tissue
-	print("[%s] surgeon wounds (host state)=%d, painted texels=%d, severed springs=%d, vitals hr=%d" % [role, surgeon_wounds, painted, tissue.c_active.count(0), surgery.patient.vitals.heart_rate])
+	print("[%s] surgeon wounds (host state)=%d, painted texels=%d, severed springs=%d, topology=%d, vitals hr=%d" % [role, surgeon_wounds, painted, tissue.c_active.count(0), tissue.topology_hash(), surgery.patient.vitals.heart_rate])
 	await tree.create_timer(1.0).timeout
 	tree.quit()

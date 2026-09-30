@@ -8,6 +8,7 @@
 #   ./build.sh test      Run the automated tests (tests/run_tests.sh, cases in tests/TEST_CASES.md).
 #   ./build.sh shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
 #                        ./build.sh shots [scenario] [out dir], default appendectomy into build/shots.
+#                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
 #   ./build.sh build     Run the tests, then export a standalone executable to build/ThisScalpelIsMine.x86_64.
 #                        SKIP_TESTS=1 exports without testing.
 #   ./build.sh editor    Open the project in the Godot editor.
@@ -121,8 +122,11 @@ case "${1:-}" in
 		out="${3:-$ROOT/build/shots}"
 		mkdir -p "$out"
 		# The compatibility renderer works on software OpenGL, so this runs without a GPU.
-		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method gl_compatibility res://tests/screenshot.tscn -- \
-			--scenario="${2:-appendectomy}" --out="$out"
+		# RENDERER=forward_plus checks the default renderer instead (needs Vulkan: lavapipe works, mesa-vulkan-drivers).
+		# SHOTS_ARGS adds screenshot options, e.g. SHOTS_ARGS=--materials for the material board and grips.
+		# shellcheck disable=SC2086
+		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method "${RENDERER:-gl_compatibility}" res://tests/screenshot.tscn -- \
+			--scenario="${2:-appendectomy}" --out="$out" ${SHOTS_ARGS:-}
 		echo "Screenshots in $out"
 		;;
 	build)

@@ -11,7 +11,8 @@ extends RefCounted
 ##   around it along with falloff (a pinched fold, not a single point), so a pull spreads out and the skin stretches
 ##   over a wide area instead of tearing right beside the tip.
 ## - Springs stretched past their limit snap (host only). The host turns that into a tear.
-## - Sutures add new springs across a cut. Their rest length is the stitch tension.
+## - Sutures add new springs across a cut. Their rest length is the stitch tension. A cut only counts as closed
+##   where its edges have actually come together: a loose stitch leaves a gap that stays open (and bleeds).
 ## - A cut through the muscle retracts: the muscle pulls the edges further apart until it's stitched itself
 ##   (muscle_stitch()). Skin can't be closed over open muscle, see Patient.close_at().
 ## - The sim sleeps when nothing moves, so an untouched patient costs nothing.
@@ -35,6 +36,9 @@ const DRAG_REACH := 0.035
 const REGION_MOVE := 0.001
 const DAMPING := 0.88
 const ITERATIONS := 4
+## Extra solver passes over the stitches each iteration. Thread is far stiffer than skin: solved as often as the
+## skin, a stitch would give way to the stretched skin around it and the edges would never meet.
+const STITCH_PASSES := 3
 const TISSUE_BREAK := 2.3
 const STEP := 1.0 / 30.0
 const SLEEP_EPSILON := 0.00002
@@ -45,6 +49,10 @@ enum Kind { TISSUE, STITCH }
 enum Depth { NONE, SKIN, FAT, MUSCLE }
 ## A gap counts as open once it's pulled this far apart (meters).
 const OPEN_GAP := 0.004
+## Cells per side of the grid that sorts skin triangles by where they lie now, for skin_height().
+## It covers the site and a margin around it, since pulled skin can leave the site's rectangle.
+const BINS := 16
+const BIN_MARGIN := 0.1
 
 var size := Vector2.ONE
 var rest := PackedVector3Array()
@@ -66,7 +74,8 @@ var c_muscle_closed := PackedByteArray()
 var anchor_target := PackedVector3Array()
 ## Only the host decides when springs snap, so tears happen once for everyone.
 var tearing := false
-## Springs that snapped since the host last read them: [uv a, uv b, Kind].
+## Springs that snapped since the host last read them: [uv a, uv b, Kind, spring index].
+## Springs are only ever appended, so the index names the same spring on every peer (see snap_spring()).
 var snapped: Array[Array] = []
 ## Scales how far past its rest length a spring stretches before it snaps (thin skin tears sooner).
 var break_mult := 1.0
@@ -91,8 +100,15 @@ var _down := PackedInt32Array()
 var _diag := PackedInt32Array()
 ## Tissue springs that are cut or snapped. Gap and mesh queries only look at these.
 var _severed := PackedInt32Array()
+## Every stitch spring, active or not.
+var _stitches := PackedInt32Array()
 ## 1 for particles the solver may move, 0 for the fixed border and pinned particles.
 var _free := PackedFloat32Array()
+## Skin triangles (particle indices) and, per bin, the first index in them of each triangle overlapping it.
+var _bin_triangles := PackedInt32Array()
+var _bins: Array[PackedInt32Array] = []
+## [topology_version, steps_done] the bins were sorted for.
+var _bins_for := [-1, -1]
 
 
 ## height_at(uv) -> skin height above the site plane.
@@ -277,20 +293,23 @@ func burst(uv: Vector2, radius: float) -> void:
 	wake()
 
 
-## Snaps the intact tissue spring nearest uv (mirrors a tear the host detected).
-func sever_near(uv: Vector2, depth: int) -> void:
-	var best := -1
-	var best_dist := 0.06
-	for s in c_a.size():
-		if c_kind[s] == Kind.TISSUE and c_active[s] == 1:
-			var dist := ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv)
-			if dist < best_dist:
-				best_dist = dist
-				best = s
-	if best >= 0:
-		_sever(best, depth)
-		topology_version += 1
-		wake()
+## Snaps spring s exactly as the host's sim did (clients mirror host tears). Searching by position instead would be
+## ambiguous: both diagonals of a grid cell share a midpoint, and several stitches can sit within any radius.
+func snap_spring(s: int) -> void:
+	if s < 0 or s >= c_a.size():
+		push_error("Tissue out of sync: no spring %d (%d springs)" % [s, c_a.size()])
+		return
+	if c_kind[s] == Kind.TISSUE:
+		_sever(s, Depth.SKIN)
+	else:
+		c_active[s] = 0
+	topology_version += 1
+	wake()
+
+
+## Changes with every cut, stitch, burst or snap, and is the same on peers whose tissue was cut the same way.
+func topology_hash() -> int:
+	return hash([c_active, c_depth, c_muscle_closed, c_kind.size()])
 
 
 ## Seizures, coughs and bumps shake the tissue (visual, every peer).
@@ -319,9 +338,27 @@ func gap_along(points: PackedVector2Array, radius: float, depth: int) -> float:
 			continue
 		var a := c_a[s]
 		var b := c_b[s]
-		if _distance_to_line((uv_of(a) + uv_of(b)) * 0.5, points) < radius and not _stitched(a, b):
-			gap = maxf(gap, pos[a].distance_to(pos[b]) - rest[a].distance_to(rest[b]))
+		if _distance_to_line((uv_of(a) + uv_of(b)) * 0.5, points) < radius:
+			gap = maxf(gap, _open_gap(s))
 	return gap
+
+
+## Height (site-local y) of the skin at uv as it's deformed now, NAN over an opening or where no skin lies.
+## Tools and hands touch this, not the body's rest shape, so a lifted or pressed fold is where it's drawn.
+func skin_height(uv: Vector2) -> float:
+	_sort_bins()
+	var p := Vector2((uv.x - 0.5) * size.x, (uv.y - 0.5) * size.y)
+	var cell := _bin_of(p)
+	if cell.x < 0 or cell.x >= BINS or cell.y < 0 or cell.y >= BINS:
+		return NAN
+	for t in _bins[cell.y * BINS + cell.x]:
+		var a := pos[_bin_triangles[t]]
+		var b := pos[_bin_triangles[t + 1]]
+		var c := pos[_bin_triangles[t + 2]]
+		var weights := _barycentric(p, Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(c.x, c.z))
+		if weights.x >= 0.0 and weights.y >= 0.0 and weights.z >= 0.0:
+			return a.y * weights.x + b.y * weights.y + c.y * weights.z
+	return NAN
 
 
 ## Current stretch of the quad edge between two particles, relative to its rest length.
@@ -335,9 +372,7 @@ func triangles(depth: int) -> PackedInt32Array:
 	var open := PackedByteArray()
 	open.resize(c_a.size())
 	for s in _severed:
-		var a := c_a[s]
-		var b := c_b[s]
-		if depth_of(s) >= depth and not _stitched(a, b) and pos[a].distance_to(pos[b]) - rest[a].distance_to(rest[b]) > OPEN_GAP * 0.5:
+		if depth_of(s) >= depth and _open_gap(s) > 0.0:
 			open[s] = 1
 	var out := PackedInt32Array()
 	for j in RES:
@@ -413,6 +448,10 @@ func _substep() -> void:
 			var correction := d * ((length - c_rest[s]) / (length * (wa + wb)))
 			pos[a] += correction * wa
 			pos[b] -= correction * wb
+		for pass_index in STITCH_PASSES:
+			for s in _stitches:
+				if c_active[s] == 1:
+					_solve(s)
 		for k in pos.size():
 			# Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back.
 			var back := anchor_target[k] - pos[k]
@@ -422,6 +461,21 @@ func _substep() -> void:
 	if tearing:
 		_snap_overstretched()
 	_still_steps = _still_steps + 1 if moved < SLEEP_EPSILON * SLEEP_EPSILON else 0
+
+
+## Moves the ends of spring s toward its rest length (the loop in _substep() does the same inline, for speed).
+func _solve(s: int) -> void:
+	var a := c_a[s]
+	var b := c_b[s]
+	var wa := _free[a]
+	var wb := _free[b]
+	var d := pos[b] - pos[a]
+	var length := d.length()
+	if wa + wb == 0.0 or length < 0.00001:
+		return
+	var correction := d * ((length - c_rest[s]) / (length * (wa + wb)))
+	pos[a] += correction * wa
+	pos[b] -= correction * wb
 
 
 func _snap_overstretched() -> void:
@@ -435,7 +489,7 @@ func _snap_overstretched() -> void:
 				_sever(s, Depth.SKIN)
 			else:
 				c_active[s] = 0
-			snapped.append([uv_of(a), uv_of(b), c_kind[s]])
+			snapped.append([uv_of(a), uv_of(b), c_kind[s], s])
 			topology_version += 1
 
 
@@ -450,6 +504,7 @@ func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION,
 	c_muscle_closed.append(0)
 	if kind == Kind.STITCH:
 		_edge_to_stitch[_edge_key(a, b)] = c_a.size() - 1
+		_stitches.append(c_a.size() - 1)
 	return c_a.size() - 1
 
 
@@ -513,6 +568,53 @@ func _update_retraction() -> void:
 			anchor[k] = maxf(anchor[k], MUSCLE_PULL)
 		elif anchor[k] == MUSCLE_PULL:
 			anchor[k] = LOOSE_ANCHOR
+
+
+## How far severed spring s is pulled apart past its rest length (meters). Pulled together by a stitch it counts as
+## closed only once the edges nearly meet (within half of OPEN_GAP); a loose stitch leaves the rest of the gap open.
+func _open_gap(s: int) -> float:
+	var a := c_a[s]
+	var b := c_b[s]
+	var gap := pos[a].distance_to(pos[b]) - rest[a].distance_to(rest[b])
+	return gap if gap > OPEN_GAP * 0.5 else 0.0
+
+
+## Re-sorts the skin triangles into bins after the skin moved or was cut. Only runs when queried.
+func _sort_bins() -> void:
+	if _bins_for == [topology_version, steps_done]:
+		return
+	_bins_for = [topology_version, steps_done]
+	_bin_triangles = triangles(Depth.SKIN)
+	_bins.resize(BINS * BINS)
+	_bins.fill(PackedInt32Array())
+	for t in range(0, _bin_triangles.size(), 3):
+		var low := Vector2(INF, INF)
+		var high := Vector2(-INF, -INF)
+		for n in 3:
+			var at := pos[_bin_triangles[t + n]]
+			low = low.min(Vector2(at.x, at.z))
+			high = high.max(Vector2(at.x, at.z))
+		var from := _bin_of(low).clamp(Vector2i.ZERO, Vector2i(BINS - 1, BINS - 1))
+		var to := _bin_of(high).clamp(Vector2i.ZERO, Vector2i(BINS - 1, BINS - 1))
+		for y in range(from.y, to.y + 1):
+			for x in range(from.x, to.x + 1):
+				_bins[y * BINS + x].append(t)
+
+
+## Bin of a site-local point (x, z). Out of range off the binned area.
+func _bin_of(p: Vector2) -> Vector2i:
+	var extent := size * (1.0 + BIN_MARGIN * 2.0)
+	var cell := (p + extent * 0.5) / extent * BINS
+	return Vector2i(floori(cell.x), floori(cell.y))
+
+
+static func _barycentric(p: Vector2, a: Vector2, b: Vector2, c: Vector2) -> Vector3:
+	var area := (b - a).cross(c - a)
+	if absf(area) < 1e-12:
+		return Vector3(-1, -1, -1)
+	var wb := (p - a).cross(c - a) / area
+	var wc := (b - a).cross(p - a) / area
+	return Vector3(1.0 - wb - wc, wb, wc)
 
 
 func _stitched(a: int, b: int) -> bool:

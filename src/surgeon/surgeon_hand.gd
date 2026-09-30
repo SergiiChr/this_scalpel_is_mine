@@ -182,6 +182,10 @@ func update_pose(shoulder: Vector3, delta: float) -> void:
 	_solve_arm(shoulder)
 	_animate_fingers(delta)
 	glove_drop = _glove_lowest() - global_position.y
+	# The blood coat is drawn in the glove's own frame, so it has to follow the glove around.
+	if blood > 0.0:
+		for mat in _glove_materials:
+			mat.set_shader_parameter("coat_inverse", Projection(COAT_FRAME * _glove.global_transform.affine_inverse()))
 
 
 ## How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon keeps that
@@ -229,9 +233,6 @@ func bone_points(part: String = "") -> Array:
 				var at := Vector3(0.085 * i / 6.0, y, -0.024 + 0.012 * j)
 				points.append([_glove.global_transform * at, PALM_HALF_THICKNESS * 0.5])
 	return points
-	if blood > 0.0:
-		for mat in _glove_materials:
-			mat.set_shader_parameter("coat_inverse", Projection(COAT_FRAME * _glove.global_transform.affine_inverse()))
 
 
 ## Blood works its way from a bloody tool onto the fingers, then the palm. It never drips off on its own.
@@ -290,6 +291,9 @@ func _solve_arm(shoulder: Vector3) -> void:
 	var side := -1.0 if index == 0 else 1.0
 	var owner_basis := (get_parent() as Node3D).global_basis
 	var pole := (owner_basis.x * side * 0.6 + Vector3.DOWN).normalized()
+	# Reaching straight along the pole (down and out) leaves no bend direction: bend the elbow back instead.
+	if absf(pole.dot(dir)) > 0.98:
+		pole = owner_basis.z
 	pole = (pole - dir * pole.dot(dir)).normalized()
 	var elbow := shoulder + dir * along + pole * height
 	_place_segment(_upper, shoulder, elbow)

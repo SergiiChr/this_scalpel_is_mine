@@ -21,6 +21,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 - `./build.sh shots [scenario] [out dir]`: renders views of a scenario through `xvfb-run` with the compatibility
   renderer (software OpenGL, no GPU needed). Look at the PNGs for anything visual: shaders, lighting, models.
   Rendering is slow here, allow up to 10 minutes.
+- `RENDERER=forward_plus ./build.sh shots` checks the default renderer. It needs software Vulkan: `apt-get install mesa-vulkan-drivers`.
+  `SHOTS_ARGS=--materials ./build.sh shots` renders the material board (families and skin tones) and both hands in every grip.
 - Shader errors only show up when something is rendered: headless tests don't compile shaders, screenshots do.
 - `./build.sh lint`: ruff and strict mypy on the Python tools.
 
@@ -28,3 +30,4 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 
 - After adding a script with a new `class_name`, run `./build.sh setup` (it re-imports) or the class isn't found.
 - `./build.sh assets` rewrites many `.glb` files with byte-only differences. Commit only the models you meant to change.
+- Generator colors are display (sRGB) values, converted to linear when written to glTF. Pick them like any color picker.

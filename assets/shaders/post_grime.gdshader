@@ -1,14 +1,15 @@
-// Full screen grading: desaturated sick-green tint, vignette, film grain, slight chromatic split.
+// Full screen grading: a restrained cool-green tint, vignette and a trace of film grain. The chromatic split stays
+// barely there until sickness wobbles the view; the grading must never wash out skin, gloves and steel.
 // Surgeon state drives the extra uniforms (sickness wobble, blackout when passing out, blur, blood on the view).
 shader_type canvas_item;
 
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
-uniform vec3 tint = vec3(0.93, 1.0, 0.94);
-uniform float desaturate : hint_range(0.0, 1.0) = 0.3;
-uniform float contrast = 1.1;
-uniform float vignette : hint_range(0.0, 1.0) = 0.5;
-uniform float grain : hint_range(0.0, 0.3) = 0.05;
-uniform float aberration = 0.0012;
+uniform vec3 tint = vec3(0.96, 1.0, 0.97);
+uniform float desaturate : hint_range(0.0, 1.0) = 0.12;
+uniform float contrast = 1.06;
+uniform float vignette : hint_range(0.0, 1.0) = 0.4;
+uniform float grain : hint_range(0.0, 0.3) = 0.02;
+uniform float aberration = 0.0003;
 uniform float wobble = 0.0;
 uniform float blur = 0.0;
 uniform float blackout : hint_range(0.0, 1.0) = 0.0;

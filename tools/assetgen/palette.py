@@ -29,7 +29,8 @@ PALETTE: dict[str, Swatch] = {
     "eye": Swatch((0.92, 0.9, 0.86), 0.2),
     "iris": Swatch((0.15, 0.12, 0.1), 0.2),
     "gown": Swatch((0.4, 0.55, 0.5), 0.9),
-    "glove": Swatch((0.56, 0.7, 0.82), 0.45),
+    "glove": Swatch((0.3, 0.45, 0.8), 0.55),
+    "knit": Swatch((0.8, 0.82, 0.78), 1.0),
     "mask": Swatch((0.55, 0.72, 0.78), 0.9),
     "steel": Swatch((0.78, 0.8, 0.83), 0.25, 1.0),
     "dark_steel": Swatch((0.35, 0.37, 0.4), 0.35, 1.0),
@@ -65,7 +66,14 @@ PALETTE: dict[str, Swatch] = {
 }
 
 
+def to_linear(c: float) -> float:
+    """sRGB display value to linear."""
+    return c / 12.92 if c <= 0.04045 else float(((c + 0.055) / 1.055) ** 2.4)
+
+
 def material(name: str) -> trimesh.visual.material.PBRMaterial:
+    """Swatch colors are display (sRGB) colors, like a color picker's. glTF stores base colors linear, and the game's
+    importer turns them back, so they arrive as picked instead of washed out."""
     swatch = PALETTE[name]
-    rgba = [int(c * 255) for c in swatch.color] + [255]
+    rgba = [round(to_linear(c) * 255) for c in swatch.color] + [255]
     return trimesh.visual.material.PBRMaterial(name=name, baseColorFactor=rgba, roughnessFactor=swatch.roughness, metallicFactor=swatch.metallic)

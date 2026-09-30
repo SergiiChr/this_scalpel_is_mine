@@ -56,8 +56,8 @@ if grep -q "partner handed me: nothing" "$LOGS/net_host.log"; then
 	echo "FAIL net: tool handoff between players did not arrive"
 	failed=1
 fi
-# Both peers must end with the same painted wound map and the same cut tissue.
-state() { grep -o "painted texels=[0-9]*, severed springs=[0-9]*" "$1"; }
+# Both peers must end with the same painted wound map and exactly the same cut, stitched and torn springs.
+state() { grep -o "painted texels=[0-9]*, severed springs=[0-9]*, topology=-*[0-9]*" "$1"; }
 if [[ "$(state "$LOGS/net_host.log")" != "$(state "$LOGS/net_client.log")" ]]; then
 	echo "FAIL net: host and client disagree: '$(state "$LOGS/net_host.log")' vs '$(state "$LOGS/net_client.log")'"
 	failed=1

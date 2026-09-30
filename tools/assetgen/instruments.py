@@ -56,9 +56,11 @@ def flat(outline: list[tuple[float, float]], thickness: float, plane: str = "yz"
 
 
 def _scalpel(m: Model, length: float, dull: bool) -> None:
+    """A scalpel, or with dull a switchblade. The blade stands in the YZ plane, edge down, and the flat handle
+    lies in the same plane (thin across X), like a real one: the game cuts along where that plane meets the skin."""
     handle_len = length * 0.62
-    handle = superellipsoid((0.011, 0.004, handle_len), 0.3, (0.0, 0.0, handle_len * 0.5 - 0.035))
-    grip = merge(*[superellipsoid((0.012, 0.005, 0.003), 0.4, (0.0, 0.0, z)) for z in np.linspace(-0.02, 0.02, 6)])
+    handle = superellipsoid((0.004, 0.011, handle_len), 0.3, (0.0, 0.0, handle_len * 0.5 - 0.035))
+    grip = merge(*[superellipsoid((0.005, 0.012, 0.003), 0.4, (0.0, 0.0, z)) for z in np.linspace(-0.02, 0.02, 6)])
     m.add("Handle", merge(handle, grip), "black_plastic" if dull else "steel")
     start = -0.035
     edge = [(start, 0.004), (start - 0.012, 0.006), (-length + 0.015, 0.004), (-length, -0.001), (-length + 0.02, -0.006), (start, -0.004)]

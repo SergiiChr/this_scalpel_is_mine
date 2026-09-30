@@ -37,8 +37,15 @@ def link(obj: bpy.types.Object) -> bpy.types.Object:
     return obj
 
 
+def to_linear(c: float) -> float:
+    """sRGB display value to linear."""
+    return c / 12.92 if c <= 0.04045 else float(((c + 0.055) / 1.055) ** 2.4)
+
+
 def material(name: str, color: Sequence[float], roughness: float = 0.5, subsurface: float = 0.0, metallic: float = 0.0) -> bpy.types.Material:
-    """Principled material. The game only reads the name (see model_slot.gd) and base color; the rest is for review renders."""
+    """Principled material. The game reads the name (see model_slot.gd), base color, roughness and metallic.
+    color is a display (sRGB) color, like a color picker's; Blender and glTF store it linear."""
+    color = [to_linear(c) for c in color[:3]]
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     if mat.node_tree is None:
         mat.use_nodes = True

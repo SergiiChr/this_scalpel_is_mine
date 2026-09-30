@@ -13,7 +13,8 @@ import numpy as np
 from . import scene
 from .scene import Vec3, capsule, ellipsoid
 
-GLOVE = (0.56, 0.7, 0.82)
+# Nitrile blue: saturated enough to read as a glove, not skin, under the white surgical light.
+GLOVE = (0.3, 0.45, 0.8)
 OPENING = -0.1
 
 # name, knuckle (MCP) position, phalanx lengths, proximal radius, spread (radians around Y, + toward the pinky side)
@@ -71,8 +72,8 @@ def build() -> bpy.types.Object:
             ellipsoid((0.028, -0.011, -0.022), (0.034, 0.016, 0.019)),
             ellipsoid((0.042, -0.009, 0.026), (0.038, 0.012, 0.014)),
             ellipsoid((-0.02, 0.0, 0.0), (0.06, 0.019, 0.027)),
-            # The cuff hangs loose past the wrist.
-            ellipsoid((-0.09, 0.0, 0.0), (0.05, 0.022, 0.03)),
+            # The cuff flares past the wrist, wide enough to go over the gown's sleeve.
+            ellipsoid((-0.09, 0.0, 0.0), (0.05, 0.027, 0.034)),
             # Hollow of the palm.
             ellipsoid((0.058, -0.022, 0.002), (0.028, 0.007, 0.018), -1.5),
         ],
@@ -85,7 +86,7 @@ def build() -> bpy.types.Object:
     hand = scene.remesh(scene.join("Glove", *parts), voxel=0.0008, smooth=10)
     # Up to four gloves are on screen in co-op, so the whole hand stays under 8k triangles.
     hand = scene.fit(scene.cut_below(hand, 0, OPENING), 7000)
-    scene.finish(hand, scene.material("glove", GLOVE, roughness=0.38, subsurface=0.05))
+    scene.finish(hand, scene.material("glove", GLOVE, roughness=0.55, subsurface=0.05))
     rim = scene.fit(scene.rim("GloveRim", hand, 0.0022), 800)
     scene.finish(rim, scene.material("glove", GLOVE))
     scene.clean()
