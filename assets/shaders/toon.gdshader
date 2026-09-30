@@ -127,6 +127,17 @@ void fragment() {
 	if (normal_enabled) {
 		NORMAL_MAP = texture(normal_texture, material_uv).rgb;
 		NORMAL_MAP_DEPTH = normal_scale;
+	} else if (surface_detail > 0.001) {
+		// Fine object-space breakup for untextured rubber and cloth. Derivatives
+		// turn the procedural height into a view-space surface gradient, so the
+		// detail remains attached to a moving glove rather than swimming on screen.
+		float micro_height = noise(local_pos.xy * 210.0 + local_pos.z * 97.0);
+		vec3 dpdx = mat3(VIEW_MATRIX) * dFdx(world_pos);
+		vec3 dpdy = mat3(VIEW_MATRIX) * dFdy(world_pos);
+		float dhdx = dFdx(micro_height);
+		float dhdy = dFdy(micro_height);
+		vec3 gradient = dhdx * cross(dpdy, NORMAL) + dhdy * cross(NORMAL, dpdx);
+		NORMAL = normalize(NORMAL - gradient * surface_detail * 0.7);
 	}
 	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
 	EMISSION = emission_color.rgb * texture(emission_texture, material_uv).rgb + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;

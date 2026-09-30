@@ -56,10 +56,10 @@ static func imported(base: BaseMaterial3D) -> ShaderMaterial:
 	match family:
 		"glove":
 			mat.set_shader_parameter("albedo", Color(0.22, 0.38, 0.52))
-			mat.set_shader_parameter("roughness", 0.72)
-			mat.set_shader_parameter("specular_strength", 0.25)
+			mat.set_shader_parameter("roughness", 0.58)
+			mat.set_shader_parameter("specular_strength", 0.34)
 			mat.set_shader_parameter("grime", 0.015)
-			mat.set_shader_parameter("surface_detail", 0.10)
+			mat.set_shader_parameter("surface_detail", 0.18)
 			mat.next_pass = null
 		"fabric_white", "fabric_dark", "gown", "mask", "cotton":
 			mat.set_shader_parameter("roughness", 0.92)
@@ -227,9 +227,9 @@ static func glow(color: Color) -> StandardMaterial3D:
 
 static func blood_pool() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.22, 0.0, 0.02)
-	mat.roughness = 0.05
-	mat.metallic_specular = 0.9
+	mat.albedo_color = Color(0.16, 0.006, 0.012)
+	mat.roughness = 0.2
+	mat.metallic_specular = 0.52
 	return mat
 
 
