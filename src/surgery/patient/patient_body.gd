@@ -30,7 +30,11 @@ const LAYER_FOLLOW: Array[float] = [1.0, 0.8, 0.55]
 const LAYER_DEPTH: Array[int] = [TissueSim.Depth.SKIN, TissueSim.Depth.FAT, TissueSim.Depth.MUSCLE]
 ## Skin pulled this far (meters) takes its deeper layers fully along, see layer_point().
 const FLAP_MOVE := 0.04
-const ORGAN_MODELS: PackedStringArray = ["bowel", "lobe", "sac"]
+## Organs that belong under each site, for organs placed without a model of their own (one over a hidden target,
+## filler in a deep site without anatomy data), in the order they're used.
+const SITE_ORGANS: Dictionary = {
+	"abdomen": ["bowel", "lobe", "sac"], "chest": ["lung", "heart", "lung"], "back": ["kidney", "bowel", "kidney"],
+}
 const LIMB_SITES: PackedStringArray = ["forearm", "shoulder", "thigh", "lower_leg"]
 const BONE_COLOR := Color(0.86, 0.81, 0.68)
 ## How much the heart shrinks at full contraction, and the lungs swell full of air.
@@ -57,6 +61,8 @@ var blood := BloodFlow.new()
 var orientation: int = Orientation.FACE_UP
 var _on_back := false
 var _body_root: Node3D
+## The surgical drape (operating room only), null without one.
+var drape: Drape
 var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
 var _site_base_y := 0.0
@@ -147,6 +153,22 @@ func set_orientation(value: int) -> void:
 	orientation = value
 	_body_root.rotation.x = [0.0, PI / 2, PI][value]
 	_update_carve()
+	# Turned away from the site, the drape would lie between the patient and the table.
+	if drape:
+		drape.visible = site_active()
+
+
+## Lays the surgical drape over the patient, open over the site (operating room only; call after build()).
+func add_drape() -> void:
+	var meshes: Array[MeshInstance3D] = []
+	for part_name in ["Body", "Gown"]:
+		var mesh := _body_root.find_child(part_name, true, false) as MeshInstance3D
+		if mesh:
+			meshes.append(mesh)
+	drape = Drape.new()
+	_body_root.add_child(drape)
+	drape.build(_body_root, meshes, site, site_size, -1.0 if _on_back else 1.0)
+	drape.visible = site_active()
 
 
 # --- Space conversion ------------------------------------------------------------------------------
@@ -509,7 +531,8 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color, spec: Dic
 	organ.mass = 0.3
 	organ.freeze = not multiplayer.is_server()
 	organ.rotation.y = deg_to_rad(float(spec.get("yaw", 0.0)))
-	var model_name: String = spec.get("model", ORGAN_MODELS[organs.size() % ORGAN_MODELS.size()])
+	var choices: Array = SITE_ORGANS.get(site_id, SITE_ORGANS.abdomen)
+	var model_name: String = spec.get("model", choices[organs.size() % choices.size()])
 	var model := ModelSlot.instantiate("organs", model_name, organ, {"organ": Materials.flesh(color)})
 	model.name = "Model"
 	var base := Vector3(1, 1, -1 if spec.get("mirror", false) else 1) * radius
@@ -797,6 +820,9 @@ func set_breath_offset(offset: float) -> void:
 	if site_id in ["abdomen", "chest", "shoulder"]:
 		site.position.y = _site_base_y + offset
 		_update_carve()
+	# The drape lies on the trunk, so it rises with it.
+	if drape:
+		drape.position.y = offset
 
 
 ## Blood filling the cavity bowl, level 0..1. The surface only covers the part of the bowl that is under it and

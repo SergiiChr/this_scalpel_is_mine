@@ -21,6 +21,23 @@ float hash(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
 
+float noise(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	vec3 u = f * f * (3.0 - 2.0 * f);
+	return mix(
+		mix(mix(hash(i), hash(i + vec3(1, 0, 0)), u.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), u.x), u.y),
+		mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), u.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), u.x), u.y),
+		u.z);
+}
+
+// Vessels branching over the surface: thin lines where a warped noise crosses its middle. 0..1, 1 on a vessel.
+float vessels(vec3 p, float scale, float width) {
+	vec3 warp = vec3(noise(p * scale * 0.5), noise(p * scale * 0.5 + 17.0), noise(p * scale * 0.5 + 31.0)) - 0.5;
+	float n = noise(p * scale + warp * 1.5);
+	return 1.0 - smoothstep(0.0, width, abs(n - 0.5));
+}
+
 void vertex() {
 	local_pos = VERTEX;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -35,8 +52,13 @@ void fragment() {
 			discard;
 		}
 	}
-	float veins = smoothstep(0.85, 1.0, hash(floor(local_pos * 180.0)));
-	vec3 c = mix(albedo.rgb, albedo.rgb * 0.5, veins * 0.5);
+	// Large vessels darker and bluer (veins under the surface), fine ones a faint red web; the surface is mottled.
+	float large = vessels(local_pos, 22.0, 0.035);
+	float fine = vessels(local_pos + 5.0, 70.0, 0.05) * 0.5;
+	float mottle = noise(local_pos * 45.0);
+	vec3 c = albedo.rgb * mix(0.85, 1.1, mottle);
+	c = mix(c, vec3(0.28, 0.06, 0.16), large * 0.6);
+	c = mix(c, albedo.rgb * vec3(1.15, 0.6, 0.6), fine * (1.0 - large) * 0.5);
 	c = mix(c, vec3(0.18, 0.02, 0.08), clamp(damage, 0.0, 1.0));
 	ALBEDO = c;
 	// A little of the tissue's own color even in shadow deep in a cavity, the way light scatters through it.

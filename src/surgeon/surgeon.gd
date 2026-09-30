@@ -462,11 +462,11 @@ func _surface_below(p: Vector3) -> Dictionary:
 			var inside := space.intersect_ray(query)
 			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true, "soft": true}
 	# Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the tray).
-	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | SurgicalTool.TOOL_LAYER
+	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}
-	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER)) != 0
+	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
 	# The body's collider is its rest shape: skin lifted by a grip lies above it.
 	if not site_hit.is_empty():
 		var body := Surgery.current.patient.body
