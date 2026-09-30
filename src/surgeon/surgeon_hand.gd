@@ -61,6 +61,8 @@ var attached := false
 ## Held up in front of the eyes, turned across the view with its markings toward them (reading a syringe).
 var inspecting := false
 var tremor := Vector3.ZERO
+## Set by the surgeon while the held tool rests on something hard (a tray, the table): the tremor can't push it in.
+var on_hard := false
 var speed := 0.0
 ## Remote copies receive the final position already including lift and tremor.
 var puppet := false
@@ -149,7 +151,9 @@ func hide_upper_arm() -> void:
 
 ## Final world position: target plus lift and tremor.
 func effective_position() -> Vector3:
-	return target if puppet else target + Vector3(0, _lift, 0) + tremor
+	if puppet:
+		return target
+	return target + Vector3(0, _lift, 0) + (Vector3(tremor.x, maxf(tremor.y, 0.0), tremor.z) if on_hard else tremor)
 
 
 func grip_transform() -> Transform3D:

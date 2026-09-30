@@ -397,6 +397,7 @@ func _constrain(hand: SurgeonHand) -> void:
 	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
 	var from := shoulder(hand.index)
+	hand.on_hard = false
 	if surface.y != -INF:
 		if surface.open:
 			hand.target.y = surface.y + HOVER_GAP - offset.y
@@ -407,6 +408,7 @@ func _constrain(hand: SurgeonHand) -> void:
 			# Anything hard (a tray, the table, a tool lying there) doesn't: every corner of the tool clears
 			# whatever is under that corner, not only its tip.
 			var gap := 0.001 if hand.lowered else HOVER_GAP
+			hand.on_hard = true
 			var basis := hand.grip_transform().basis
 			var needed: float = surface.y + gap - _lowest_point(hand, tool)
 			for i in 8:
