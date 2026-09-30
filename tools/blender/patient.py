@@ -46,6 +46,10 @@ def _torso() -> list[Blob]:
     ]
     for side in (1.0, -1.0):
         elements += [
+            # Neck muscles from behind the ear down to the top of the breastbone, so the neck isn't a plain tube.
+            capsule(_mirror((0.575, 0.0, 0.042), side), (0.43, 0.035, 0.016 * side), 0.013, 2.5),
+            # Pectoral fold: the chest's lower edge rolls into the armpit instead of melting into the arm.
+            capsule(_mirror((0.2, 0.05, 0.1), side), _mirror((0.31, 0.02, 0.19), side), 0.022, 2.5),
             ellipsoid(_mirror((0.22, 0.058, 0.075), side), (0.075, 0.035, 0.07)),
             # Deltoid caps and the lats that run from the armpit down the back.
             ellipsoid(_mirror((0.345, -0.006, 0.205), side), (0.058, 0.052, 0.042), 2.0),
@@ -65,6 +69,10 @@ def _arm(side: float) -> tuple[list[Blob], list[Blob], list[tuple[list[Vec3], li
         capsule(_mirror((0.13, -0.025, 0.25), side), _mirror((-0.02, -0.03, 0.254), side), 0.038, 3.0),
         capsule(_mirror((-0.02, -0.03, 0.254), side), _mirror((-0.14, -0.04, 0.258), side), 0.026, 3.0),
         ellipsoid(_mirror((0.06, -0.022, 0.252), side), (0.07, 0.034, 0.042), 2.5),
+        # Point of the elbow, and the wrist bones standing out on either side of a slimmer wrist.
+        ellipsoid(_mirror((0.13, -0.05, 0.25), side), (0.018, 0.016, 0.018), 3.0),
+        ellipsoid(_mirror((-0.13, -0.036, 0.237), side), (0.009, 0.008, 0.008), 3.0),
+        ellipsoid(_mirror((-0.13, -0.036, 0.279), side), (0.009, 0.008, 0.008), 3.0),
     ]
     hand = [
         ellipsoid(_mirror((-0.14, -0.042, 0.258), side), (0.022, 0.018, 0.03), 2.5),

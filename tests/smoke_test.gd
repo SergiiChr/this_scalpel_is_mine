@@ -192,6 +192,10 @@ func _feedback_checks(surgery: Surgery) -> void:
 		tools._req_release(1, Vector3.ZERO)
 	# Walking into the IV tubing at full speed rips the line out.
 	var patient := surgery.patient
+	# The catheter pressed on the patient earlier may already have put a line in somewhere else (it depends on where
+	# the shaky tip landed): take it out, so the line runs to the back of the hand like a pre-op one.
+	if patient.iv_set:
+		patient._iv_removed()
 	patient.set_iv(patient.body.root().to_global(Patient.PREOP_IV_POINT))
 	await _frames(5)
 	var low: PackedVector3Array = room.iv_line._points
@@ -207,7 +211,8 @@ func _feedback_checks(surgery: Surgery) -> void:
 		if patient.iv_set:
 			print("FAIL: walking through the IV line didn't pull it out")
 	else:
-		print("FAIL: the IV line doesn't hang low enough to trip on")
+		var line := room.iv_line
+		print("FAIL: the IV line doesn't hang low enough to trip on (attached %s, iv set %s, ends %s, %d points)" % [line.is_attached(), patient.iv_set, line._last_ends, low.size()])
 	await _effect_checks(surgery)
 	await _iodine_checks(surgery)
 	await _syringe_checks(surgery)
