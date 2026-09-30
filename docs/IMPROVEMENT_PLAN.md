@@ -15,7 +15,7 @@ not measured usage, a spending limit or a promise. Art iteration and debugging c
 | 2 | Material preservation/families, calibrated lighting, restrained outlines and grading | 5–10k | Done in evaluation tranche |
 | 3 | Tissue correctness: residual stitch gaps, exact tear replication, deformed contact queries | 8–15k | Done in evaluation tranche |
 | 4 | Hero geometry: glove deformation topology, patient landmarks, tool detail and contact poses | 15–30k | Done in geometry tranche |
-| 5 | Continuous contact-driven tool audio, mix priorities, deformation-aware blood flow | 15–30k | Planned |
+| 5 | Continuous contact-driven tool audio, mix priorities, deformation-aware blood flow | 15–30k | Done in audio/flow tranche |
 | 6 | Incision topology, continuous wound walls, independent layer response and local organ deformation | 30–60k+ | Planned |
 
 The first evaluation tranche covers packages 1–3. It also corrects the procedural scalpel and switchblade
@@ -29,6 +29,11 @@ The geometry tranche rebuilds the rigged glove with joint/cuff folds, adds shall
 the patient mesh and its site-height bake, and gives the moving forceps, hemostat and needle-holder jaws
 contact teeth. These are deliberately small sculpt changes; broader character proportions and facial art
 still need dedicated art direction beyond this procedural pass.
+
+The audio/flow tranche adds loop-safe blade, swab and suction beds. The host sends bounded contact updates;
+each peer fades loops in and out as contact changes, caps simultaneous channels by surgical priority, and
+keeps high-impact one-shots separate. Surface blood now follows the deformed tissue height and drains at
+open incisions instead of streaking across an absent skin triangle.
 
 ## Acceptance gates
 

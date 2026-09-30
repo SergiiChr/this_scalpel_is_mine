@@ -49,12 +49,14 @@ func _ready() -> void:
 	_imported_materials()
 	_hand_pose_limits(holder)
 	_blade_tips(holder)
+	_contact_audio()
 	_check_budgets(holder)
 	for hand_index in 2:
 		await _grip_clearance(holder, hand_index)
 		_hand_turn(holder, hand_index)
 	_arm_limits(holder)
 	await _cuff_fit(holder)
+	await get_tree().process_frame
 	print("models_test: done")
 	get_tree().quit()
 
@@ -384,6 +386,24 @@ func _blade_tips(holder: Node3D) -> void:
 			var handle_box := handle.mesh.get_aabb()
 			_check(blade_box.position.z < -0.13 and handle_box.end.z > 0.04, "%s blade points toward -Z working tip" % name)
 		tool.queue_free()
+
+
+func _contact_audio() -> void:
+	Sfx.contact(9101, "contact_cut", Vector3.ZERO, 0.5)
+	_check(Sfx._contacts.has(9101), "contact audio starts a blade loop")
+	if not Sfx._contacts.has(9101):
+		return
+	var player: AudioStreamPlayer3D = Sfx._contacts[9101].player
+	Sfx.contact(9101, "contact_cut", Vector3.ONE, 1.0)
+	_check(Sfx._contacts[9101].player == player and player.position == Vector3.ONE, "contact audio reuses and moves its loop")
+	Sfx.contact(9102, "saw_bone", Vector3.ZERO, 0.5)
+	Sfx.contact(9103, "cautery_sizzle", Vector3.ZERO, 0.5)
+	Sfx.contact(9104, "contact_swab", Vector3.ZERO, 0.5)
+	_check(Sfx._contacts.size() == Sfx.CONTACT_LIMIT and not Sfx._contacts.has(9104), "quiet swab does not evict a surgical loop")
+	for key: int in Sfx._contacts:
+		Sfx._contacts[key].last = Time.get_ticks_msec() - Sfx.CONTACT_TIMEOUT_MSEC - 1
+	Sfx._process(1.0)
+	_check(Sfx._contacts.is_empty(), "stale contact loops fade away")
 
 
 static func _triangles(root: Node) -> int:

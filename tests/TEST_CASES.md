@@ -28,6 +28,10 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | M8 | Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in: back of the hand up, or out to its own side for a fist round a handle, never twisted palm up |
 | M9 | Empty and in every grip, with the arm stretched past its reach, folded up to the shoulder or reaching straight along the elbow's bend, both hands stay finite and the left glove is exactly the right one mirrored |
 | M10 | Both gloves, empty and in every grip, from working spots to the arm's limits: the cuff follows the forearm, the end of the sleeve under it stays inside the glove, and the cuff hugs the sleeve (never more than 8 mm off it) |
+| M11 | Imported materials retain texture channels, UV transforms, normal maps and metallic/roughness values without aliasing unrelated materials |
+| M12 | Both hands have finite, non-degenerate poses at coincident, straight and pole-aligned arm targets for every grip |
+| M13 | Scalpel and switchblade blades extend toward the game's -Z working tip, away from their handles |
+| M14 | Contact audio reuses a loop per tool, caps simultaneous loops by priority, and fades stale contacts |
 
 ## Soft tissue (`tests/tissue_test.gd`)
 

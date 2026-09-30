@@ -120,6 +120,11 @@ func _flow(delta: float) -> void:
 	var down := body.site.global_basis.inverse() * Vector3.DOWN
 	for rivulet in _rivulets.duplicate():
 		var uv: Vector2 = rivulet.uv
+		# A full-depth opening has no supporting surface; let the blood drain
+		# into the cavity instead of drawing a bridge across the wound.
+		if body.surface_contact(uv).is_empty():
+			_rivulets.erase(rivulet)
+			continue
 		var slope := _slope(uv)
 		var along := Vector2(down.x, down.z) + slope * down.y
 		if along.length() < 0.05:
@@ -127,6 +132,9 @@ func _flow(delta: float) -> void:
 		var dir := along.normalized().rotated(sin(Time.get_ticks_msec() * 0.0015 + rivulet.wander * 9.0) * 0.2)
 		var step := dir * RIVULET_SPEED * delta / ((body.site_size.x + body.site_size.y) * 0.5)
 		var next := uv + step
+		if next.x >= 0.0 and next.y >= 0.0 and next.x <= 1.0 and next.y <= 1.0 and body.surface_contact(next).is_empty():
+			_rivulets.erase(rivulet)
+			continue
 		body.wound_map.stroke(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, next, STAIN_RADIUS, 0.55, WoundMap.Mode.MAX)
 		rivulet.uv = next
 		rivulet.volume -= delta * 0.25
@@ -138,11 +146,19 @@ func _flow(delta: float) -> void:
 			_rivulets.erase(rivulet)
 
 
-## Skin slope at uv (height change per uv unit), from the baked skin heights.
+## Skin slope at uv from the visible deformed surface. The painted fluid map
+## already follows material UVs, so direction must follow the same geometry.
 func _slope(uv: Vector2) -> Vector2:
 	const E := 0.02
-	var dx := body.surface_height(uv + Vector2(E, 0)) - body.surface_height(uv - Vector2(E, 0))
-	var dy := body.surface_height(uv + Vector2(0, E)) - body.surface_height(uv - Vector2(0, E))
+	var center := body.surface_contact(uv)
+	if center.is_empty():
+		return Vector2.ZERO
+	var left := body.surface_contact(uv - Vector2(E, 0))
+	var right := body.surface_contact(uv + Vector2(E, 0))
+	var back := body.surface_contact(uv - Vector2(0, E))
+	var front := body.surface_contact(uv + Vector2(0, E))
+	var dx := float(right.get("height", center.height)) - float(left.get("height", center.height))
+	var dy := float(front.get("height", center.height)) - float(back.get("height", center.height))
 	return Vector2(dx / body.site_size.x, dy / body.site_size.y) / (2.0 * E) * 8.0
 
 

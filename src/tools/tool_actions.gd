@@ -76,6 +76,36 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		_bloody(tool, zone, uv, patient, dt)
 	var def := tool.def
 	var mods: Modifiers = hand.mods
+	if lowered and zone in ["site", "cavity"]:
+		var contact_id := ""
+		var contact_level := 0.0
+		match def.action:
+			"cut":
+				if level > 0 and hand.speed > 0.015:
+					contact_id = "contact_cut"
+					contact_level = clampf(hand.speed * 2.5, 0.2, 1.0)
+			"swab":
+				if level > 0 and hand.speed > 0.01:
+					contact_id = "contact_swab"
+					contact_level = clampf(hand.speed * 2.0, 0.15, 0.75)
+			"clamp":
+				if not tool.grip_info.is_empty() and hand.speed > 0.01:
+					contact_id = "contact_swab"
+					contact_level = clampf(hand.speed * 1.5, 0.15, 0.6)
+			"saw":
+				if level > 0:
+					contact_id = "saw_bone"
+					contact_level = effort
+			"cauterize":
+				if level > 0:
+					contact_id = "cautery_sizzle"
+					contact_level = effort
+			"suction":
+				if level > 0:
+					contact_id = "contact_suction"
+					contact_level = effort
+		if not contact_id.is_empty():
+			Surgery.current.contact_sound(tool.uid, contact_id, tip, contact_level)
 	match def.action:
 		"cut":
 			if lowered and level > 0 and zone == "site":
@@ -84,7 +114,6 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					if absf(moved.normalized().dot(blade_direction(tool))) >= ALONG_BLADE:
 						patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, DEPTH_BY_LEVEL[level], def.sharpness, not tool.sterile, hand.speed)
 						patient.debride_at(uv)
-						Surgery.current.sound("cut_deep" if level >= 3 else "cut_skin", tip)
 					else:
 						# Dragged sideways: the next stroke starts here.
 						tool.stroke += 1
@@ -140,8 +169,6 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			if lowered and level > 0 and zone in ["site", "cavity"] and tool.charges != 0:
 				patient.cauterize_at(zone, uv, probe.depth, def, dt * effort)
 				Surgery.current.effect("smoke", tip, 180)
-				if randf() < dt * 1.2:
-					Surgery.current.sound("cautery_sizzle", tip)
 				if def.id == "lighter" and randf() < dt:
 					tool.charges -= 1
 		"mark":
@@ -198,8 +225,6 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.effect("dust", tip, 150)
 				elif zone == "site" and tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.004:
 					patient.cut(tool.uid * 1000 + tool.stroke, tool.last_uv, uv, 1.0, 0.3, not tool.sterile, 0.5)
-				if randf() < dt * 2.0:
-					Surgery.current.sound("saw_bone", tip)
 				tool.last_uv = uv
 		"smash":
 			if pressed and lowered and touching:
@@ -209,8 +234,6 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		"suction":
 			if lowered and level > 0 and zone in ["site", "cavity"]:
 				patient.suction_at(zone, uv, def, dt * effort)
-				if randf() < dt * 1.2:
-					Surgery.current.sound("suction_slurp", tip)
 				if def.id == "metal_straw":
 					Surgery.current.add_sickness(hand.peer, dt * 0.08)
 		"swab":
