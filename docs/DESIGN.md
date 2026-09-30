@@ -73,7 +73,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     visibly over several centimeters before it tears. Everything that moved is shown simulated.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
     `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
-  - The sim sleeps when nothing moves.
+  - The skin settles under its own tension when it's built, so it starts asleep. The sim sleeps when nothing moves.
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.

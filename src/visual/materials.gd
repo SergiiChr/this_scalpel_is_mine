@@ -24,7 +24,7 @@ const FLUORESCENT := Color(0.88, 1.0, 0.94)
 ## grime: procedural dirt, metallic: 1 for metal. Roughness comes from the model's own material.
 const FAMILIES: Dictionary = {
 	"skin": {"specular": 0.15, "rim": 0.12, "wrap": 0.35, "scatter": Color(1.0, 0.42, 0.32), "grime": 0.05},
-	"rubber": {"specular": 0.3, "rim": 0.1, "wrap": 0.1, "scatter": Color(0.8, 0.85, 1.0), "grime": 0.0},
+	"rubber": {"specular": 0.18, "rim": 0.08, "grime": 0.0},
 	"cloth": {"specular": 0.0, "rim": 0.2, "wrap": 0.25, "scatter": Color(1.0, 1.0, 1.0), "grime": 0.12},
 	"metal": {"specular": 0.9, "rim": 0.04, "grime": 0.02, "metallic": 1.0},
 	"plastic": {"specular": 0.35, "rim": 0.12, "grime": 0.1},

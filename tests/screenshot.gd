@@ -299,8 +299,10 @@ func _materials(surgery: Surgery, out: String) -> void:
 				hand.target = shoulder + reach
 				hand.snap_pose(shoulder)
 				tools[hand.index].global_transform = hand.grip_transform()
-			camera.global_position = body.to_global(Vector3(0.0, 1.62, 0.0))
-			camera.look_at(hands[0].global_position.lerp(hands[1].global_position, 0.5))
+			# From across the table, a little above the hands.
+			var between := hands[0].global_position.lerp(hands[1].global_position, 0.5)
+			camera.global_position = between + Vector3(0.0, 0.3, -0.6)
+			camera.look_at(between)
 			await _shot(out, "32_grip_%s_%s" % [grip, limit])
 		body.queue_free()
 		for tool in tools:

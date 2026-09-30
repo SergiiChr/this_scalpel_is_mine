@@ -32,7 +32,7 @@ const GRIP_PATCH := 0.15
 const GRIP_DRAG := 1.0
 ## Pulls up to this far (meters) drag the patch fully, twice as far not at all.
 const DRAG_REACH := 0.035
-## Skin that moved further than this (meters) from where the body model has it is shown simulated.
+## Skin that moved further than this (meters) from where it settled is shown simulated.
 const REGION_MOVE := 0.001
 const DAMPING := 0.88
 const ITERATIONS := 4
@@ -43,6 +43,8 @@ const TISSUE_BREAK := 2.3
 const STEP := 1.0 / 30.0
 const SLEEP_EPSILON := 0.00002
 const SLEEP_STEPS := 20
+## Most solver steps the skin gets to settle at build time (see _settle()).
+const SETTLE_STEPS := 300
 
 enum Kind { TISSUE, STITCH }
 ## How deep a severed spring was cut: through the skin, into the fat, or through the muscle into the cavity.
@@ -72,6 +74,8 @@ var c_depth := PackedByteArray()
 var c_muscle_closed := PackedByteArray()
 ## Where the anchor pulls each particle: its rest position, moved back from a cut through open muscle.
 var anchor_target := PackedVector3Array()
+## Where each particle rests under the skin's own tension before anything touches it (see _settle()).
+var settled := PackedVector3Array()
 ## Only the host decides when springs snap, so tears happen once for everyone.
 var tearing := false
 ## Springs that snapped since the host last read them: [uv a, uv b, Kind, spring index].
@@ -142,6 +146,20 @@ func build(site_size: Vector2, height_at: Callable) -> void:
 			if i < RES and j < RES:
 				_diag[k] = _spring(index(i + 1, j), index(i, j + 1))
 				_spring(k, index(i + 1, j + 1))
+	_settle()
+
+
+## Lets the skin settle under its own tension before anything touches it. Over a curved body tension pulls the sheet a
+## few millimeters off the body's shape at the site's edges; that's where it rests, not a movement (see region()).
+## A flat site is settled at once and falls asleep within SLEEP_STEPS.
+func _settle() -> void:
+	for step_index in SETTLE_STEPS:
+		if is_sleeping():
+			break
+		_substep()
+	settled = pos.duplicate()
+	prev = pos.duplicate()
+	steps_done = 0
 
 
 func index(i: int, j: int) -> int:
@@ -174,7 +192,7 @@ func region(reach: int = 1) -> PackedByteArray:
 	for key: int in _pins:
 		seeds.append(_pins[key][0])
 	for k in pos.size():
-		if pos[k].distance_squared_to(rest[k]) > REGION_MOVE * REGION_MOVE:
+		if pos[k].distance_squared_to(settled[k]) > REGION_MOVE * REGION_MOVE:
 			seeds.append(k)
 	for k in seeds:
 		var i := k % (RES + 1)

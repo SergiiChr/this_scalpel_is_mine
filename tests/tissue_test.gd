@@ -18,6 +18,7 @@ func _ready() -> void:
 	_loose_stitch_gapes()
 	_exact_snaps()
 	_deformed_surface()
+	_rests_on_curved_body()
 	print("tissue_test: done")
 	get_tree().quit()
 
@@ -139,7 +140,7 @@ func _elastic() -> void:
 	var region := sim.region()
 	var hidden := 0
 	for p in sim.pos.size():
-		if sim.pos[p].distance_to(sim.rest[p]) > 0.002 and region[p] == 0:
+		if sim.pos[p].distance_to(sim.settled[p]) > 0.002 and region[p] == 0:
 			hidden += 1
 	_check(hidden == 0, "all visibly moved skin is inside the simulated region (%d points outside)" % hidden)
 
@@ -216,3 +217,19 @@ func _deformed_surface() -> void:
 	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.MUSCLE)
 	_settle(sim, 120)
 	_check(is_nan(sim.skin_height(Vector2(0.5, 0.51))), "no skin over an open incision")
+
+
+## Skin under tension over a round body (a 25 cm radius, like a torso) settles once when it's built and then rests:
+## not shown simulated, asleep.
+func _rests_on_curved_body() -> void:
+	var sim := TissueSim.new()
+	sim.build(SIZE, func(uv: Vector2) -> float:
+		var x := (uv.x - 0.5) * SIZE.x
+		return sqrt(0.25 * 0.25 - x * x) - 0.25)
+	_settle(sim)
+	var moved := 0.0
+	for k in sim.pos.size():
+		moved = maxf(moved, sim.pos[k].distance_to(sim.settled[k]))
+	_check(moved < TissueSim.REGION_MOVE, "skin over a round body stays where it settled (moved %.1f mm)" % (moved * 1000.0))
+	_check(sim.region().count(1) == 0, "untouched skin over a round body isn't shown simulated")
+	_check(sim.is_sleeping(), "untouched skin over a round body sleeps")

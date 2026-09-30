@@ -45,12 +45,13 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T11 | The sim sleeps when nothing moves and a sleeping sim does no work |
 | T12 | A jolt wakes the sim |
 | T13 | A slow 3 cm pull on intact skin doesn't tear it, and skin 4 cm away follows by more than 8 mm |
-| T14 | All skin that moved visibly is inside the simulated region |
+| T14 | All skin that moved visibly since it settled is inside the simulated region |
 | T15 | A cut through the muscle gapes wider than one into the fat and leaves the muscle open |
 | T16 | Sewing the muscle along the cut closes the muscle layer and the cavity; the skin still gapes until stitched |
 | T17 | A stitch closes a cut only where the edges meet: a tight one closes it, a loose one leaves the gap and the hole in the skin open |
 | T18 | A client mirroring the host's snapped springs by their index ends with exactly the host's tissue topology, diagonal tears and a torn stitch included |
 | T19 | Skin contact follows the deformed skin: higher where a grip lifts it, unchanged far from it, none over an open incision |
+| T20 | Untouched skin over a round body (25 cm radius) settles when it's built, then stays put: it isn't shown simulated and sleeps |
 
 ## Every scenario (`tests/smoke_test.gd`)
 

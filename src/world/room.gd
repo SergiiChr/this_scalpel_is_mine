@@ -177,6 +177,9 @@ func _build_environment() -> void:
 	env.ambient_light_color = Materials.SURGICAL_GREEN.darkened(0.2)
 	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# Highlights roll off instead of clipping: pale skin and white linen keep their shape under the lamp.
+	env.tonemap_white = 2.5
+	env.tonemap_exposure = 1.15
 	env.glow_enabled = true
 	env.glow_intensity = 0.3
 	# Only real light sources glow (lamp lens, screens); lit skin up close must not bloom the whole view white.
@@ -200,7 +203,8 @@ func _build_environment() -> void:
 	lamp.rotation.x = -PI / 2
 	lamp.spot_range = 3.0
 	lamp.spot_angle = 30.0
-	lamp.light_energy = 0.55
+	# Bright enough to pick the site out of the room, not so bright it bleaches skin and gloves under it.
+	lamp.light_energy = 0.38
 	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.9)
 	lamp.shadow_enabled = true
