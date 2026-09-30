@@ -42,6 +42,7 @@ const BONE_COLOR := Color(0.86, 0.81, 0.68)
 ## How much the heart shrinks at full contraction, and the lungs swell full of air.
 const HEART_SQUEEZE := 0.12
 const LUNG_SWELL := 0.08
+const DRAPED_SITES: PackedStringArray = ["abdomen", "chest"]
 
 var wound_map := WoundMap.new()
 var site_id: String
@@ -112,6 +113,7 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	_build_colliders()
 	_build_surface(model)
 	_build_site(tone)
+	_build_drape()
 	blood.name = "BloodFlow"
 	add_child(blood)
 	blood.setup(self)
@@ -202,7 +204,9 @@ func add_drape() -> void:
 	drape = Drape.new()
 	_body_root.add_child(drape)
 	drape.build(_body_root, meshes, site, site_size, -1.0 if _on_back else 1.0)
-	drape.visible = site_active()
+	# Keep main's fitted mesh as the physical drape and tissue floor. The clean
+	# four-panel SurgicalDrape built above supplies the selected visible form.
+	drape.visible = false
 	_lay_skin_on_drape()
 
 
@@ -413,6 +417,65 @@ func _build_site(tone: Color) -> void:
 	collider.set_meta("site", true)
 	_build_cavity()
 	_update_carve.call_deferred()
+
+
+## A four-piece fenestrated sheet frames torso operations. Keeping the opening
+## as separate panels gives it a real silhouette and lets the cloth fall over
+## the patient's sides instead of reading as a flat color painted on the body.
+func _build_drape() -> void:
+	if site_id not in DRAPED_SITES:
+		return
+	var root := Node3D.new()
+	root.name = "SurgicalDrape"
+	site.add_child(root)
+	var bounds := Rect2(Vector2(-0.78, -0.48), Vector2(1.42, 0.96))
+	var half_window := site_size * Vector2(0.62, 0.56)
+	var window := Rect2(-half_window, half_window * 2.0)
+	var panels: Array[Array] = [
+		["FootPanel", Rect2(bounds.position, Vector2(window.position.x - bounds.position.x, bounds.size.y))],
+		["HeadPanel", Rect2(Vector2(window.end.x, bounds.position.y), Vector2(bounds.end.x - window.end.x, bounds.size.y))],
+		["NearPanel", Rect2(Vector2(window.position.x, bounds.position.y), Vector2(window.size.x, window.position.y - bounds.position.y))],
+		["FarPanel", Rect2(Vector2(window.position.x, window.end.y), Vector2(window.size.x, bounds.end.y - window.end.y))],
+	]
+	var material := Materials.surgical_drape()
+	for panel in panels:
+		var mesh := MeshInstance3D.new()
+		mesh.name = panel[0]
+		mesh.mesh = _drape_mesh(panel[1])
+		mesh.material_override = material
+		root.add_child(mesh)
+
+
+func _drape_mesh(rect: Rect2) -> ArrayMesh:
+	const STEPS := 12
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	for j in STEPS + 1:
+		for i in STEPS + 1:
+			var uv := Vector2(float(i) / STEPS, float(j) / STEPS)
+			var p := rect.position + rect.size * uv
+			var side := smoothstep(0.27, 0.48, absf(p.y))
+			var foot := smoothstep(0.48, 0.78, absf(p.x))
+			var y := 0.014 - side * 0.13 - foot * 0.018
+			y += sin(p.x * 17.0 + p.y * 9.0) * 0.004 * (0.35 + side)
+			vertices.append(Vector3(p.x, y, p.y))
+			normals.append(Vector3.UP)
+			uvs.append(uv)
+	for j in STEPS:
+		for i in STEPS:
+			var a := j * (STEPS + 1) + i
+			indices.append_array(PackedInt32Array([a, a + 1, a + STEPS + 2, a, a + STEPS + 2, a + STEPS + 1]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 ## Rebuilds the skin, fat and muscle meshes from the tissue sim.

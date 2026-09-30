@@ -161,30 +161,32 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.025, 0.03) if environment_id != "sidewalk" else Color(0.03, 0.035, 0.06)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.48, 0.52, 0.54)
-	env.ambient_light_energy = 0.3
+	env.ambient_light_color = Color(0.38, 0.46, 0.48)
+	env.ambient_light_energy = 0.18
 	# Metals need reflected illumination as well as direct light.
 	# A quiet studio-like radiance field stands in for the ceiling and floor; the room backdrop stays opaque.
 	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color(0.32, 0.38, 0.42)
-	sky_material.sky_horizon_color = Color(0.62, 0.66, 0.65)
-	sky_material.ground_horizon_color = Color(0.32, 0.36, 0.35)
-	sky_material.ground_bottom_color = Color(0.08, 0.10, 0.11)
+	sky_material.sky_top_color = Color(0.16, 0.22, 0.24)
+	sky_material.sky_horizon_color = Color(0.38, 0.45, 0.44)
+	sky_material.ground_horizon_color = Color(0.20, 0.26, 0.25)
+	sky_material.ground_bottom_color = Color(0.04, 0.055, 0.06)
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 	env.sky = sky
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
-	env.glow_intensity = 0.3
+	env.glow_intensity = 0.18
 	# Only real light sources glow (lamp lens, screens); lit skin up close must not bloom the whole view white.
 	env.glow_hdr_threshold = 1.6
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.25, 0.32, 0.3)
-	env.fog_density = 0.02
+	env.fog_density = 0.012
 	env.ssao_enabled = true
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.0
+	env.adjustment_brightness = 0.9
+	env.adjustment_contrast = 1.08
+	env.adjustment_saturation = 0.9
 	var world := WorldEnvironment.new()
 	world.environment = env
 	add_child(world)
@@ -197,8 +199,8 @@ func _build_environment() -> void:
 	lamp.position = Vector3(0, _lamp_height() - 0.14, 0)
 	lamp.rotation.x = -PI / 2
 	lamp.spot_range = 3.0
-	lamp.spot_angle = 30.0
-	lamp.light_energy = 0.5
+	lamp.spot_angle = 27.0
+	lamp.light_energy = 0.82
 	lamp.spot_attenuation = 0.5
 	lamp.light_color = Color(1.0, 0.97, 0.94)
 	lamp.shadow_enabled = true
@@ -222,7 +224,7 @@ func _build_environment() -> void:
 	overhead.spot_range = 12.0
 	overhead.spot_angle = 70.0
 	overhead.spot_attenuation = 0.3
-	overhead.light_energy = 0.35 if indoors else 1.0
+	overhead.light_energy = 0.18 if indoors else 1.0
 	overhead.light_color = Color(0.94, 0.98, 1.0) if indoors else Color(1.0, 0.75, 0.45)
 	overhead.shadow_enabled = true
 	add_child(overhead)
@@ -235,7 +237,7 @@ func _build_environment() -> void:
 		tube.position = pos
 		tube.omni_range = 9.0
 		tube.light_color = Materials.FLUORESCENT if indoors else Color(1.0, 0.7, 0.35)
-		tube.light_energy = 0.18
+		tube.light_energy = 0.08
 		add_child(tube)
 		_flicker_lights.append(tube)
 

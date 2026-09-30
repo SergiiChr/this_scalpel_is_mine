@@ -7,6 +7,7 @@ const OUTLINE := preload("res://assets/shaders/outline.gdshader")
 const FLESH := preload("res://assets/shaders/flesh.gdshader")
 const SKIN := preload("res://assets/shaders/skin.gdshader")
 const TISSUE_LAYER := preload("res://assets/shaders/tissue_layer.gdshader")
+const SURGICAL_DRAPE := preload("res://assets/shaders/surgical_drape.gdshader")
 
 const SKIN_TONES: Array[Color] = [
 	Color(0.87, 0.7, 0.6), Color(0.78, 0.58, 0.45), Color(0.6, 0.42, 0.3), Color(0.42, 0.28, 0.2),
@@ -147,14 +148,14 @@ static func outline_for(_max_thickness: float) -> ShaderMaterial:
 
 ## Patient body skin with its own outline, both able to carve out the cavity box (see set_carve).
 static func body_skin(tone: Color) -> ShaderMaterial:
-	var mat := toon_unique(tone.darkened(0.12), 0.025, false, 0.6)
+	# Keep light skin from turning cream under the surgical lamp while retaining
+	# separation in darker tones. A small red bias reads as perfused skin rather
+	# than yellow plastic in the Compatibility renderer.
+	var clinical := Color(tone.r * 0.94, tone.g * 0.87, tone.b * 0.88, tone.a)
+	var mat := toon_unique(clinical.darkened(0.08), 0.025, false, 0.66)
 	mat.set_shader_parameter("specular_strength", 0.3)
 	mat.set_shader_parameter("rim_strength", 0.0)
 	mat.set_shader_parameter("world_grime", true)
-	var outline := ShaderMaterial.new()
-	outline.shader = OUTLINE
-	outline.set_shader_parameter("thickness", 0.0006)
-	mat.next_pass = outline
 	return mat
 
 
@@ -162,7 +163,10 @@ static func body_skin(tone: Color) -> ShaderMaterial:
 ## the wound maps draw the damage on the body everywhere else. site is the surgical site's global transform.
 ## region has one texel per tissue grid point (TissueSim.RES + 1 wide).
 static func set_carve(mat: ShaderMaterial, site: Transform3D, half_size: Vector2, depth: float, region: Texture2D) -> void:
-	for pass_mat: ShaderMaterial in [mat, mat.next_pass as ShaderMaterial]:
+	var passes: Array[ShaderMaterial] = [mat]
+	if mat.next_pass is ShaderMaterial:
+		passes.append(mat.next_pass as ShaderMaterial)
+	for pass_mat in passes:
 		pass_mat.set_shader_parameter("carve_inverse", Projection(site.affine_inverse()))
 		pass_mat.set_shader_parameter("carve_box", Vector3(half_size.x, depth, half_size.y))
 		pass_mat.set_shader_parameter("carve_map", region)
@@ -192,9 +196,16 @@ static func flesh(color: Color = Color(0.55, 0.12, 0.12)) -> ShaderMaterial:
 static func skin_site(tone: Color, wound_tex: Texture2D, fluid_tex: Texture2D) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = SKIN
-	mat.set_shader_parameter("skin_color", tone.darkened(0.12))
+	var clinical := Color(tone.r * 0.94, tone.g * 0.87, tone.b * 0.88, tone.a)
+	mat.set_shader_parameter("skin_color", clinical.darkened(0.08))
 	mat.set_shader_parameter("wound_map", wound_tex)
 	mat.set_shader_parameter("fluid_map", fluid_tex)
+	return mat
+
+
+static func surgical_drape() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = SURGICAL_DRAPE
 	return mat
 
 
