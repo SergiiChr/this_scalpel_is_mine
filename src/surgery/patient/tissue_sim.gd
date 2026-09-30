@@ -62,9 +62,9 @@ var pos := PackedVector3Array()
 var prev := PackedVector3Array()
 var anchor := PackedFloat32Array()
 var fixed := PackedByteArray()
-## 1 for particles where the site hangs off the body (past a limb's or the flank's edge): never drawn and never part
-## of the region, so the site can't stick out of the body. They're still simulated, so skin next to them moves as
-## it always did.
+## 1 for particles where the site hangs off the body (past a limb's or the flank's edge): not drawn and not part of
+## the region while they hang there, so the site can't stick out of the body (see hanging_off()). They're still
+## simulated, so skin next to them moves as it always did.
 var off := PackedByteArray()
 ## Constraint arrays, one entry per spring.
 var c_a := PackedInt32Array()
@@ -212,8 +212,9 @@ func region(reach: int = 1) -> PackedByteArray:
 				out[index(x, y)] = 1
 	# Off the body, and right next to it: triangles touching skin off the body aren't drawn, so the body model has to
 	# cover up to there, or its cut-away edge (halfway between region points) would leave a gap.
+	var hanging := hanging_off()
 	for k in out.size():
-		if off[k] == 1:
+		if hanging[k] == 1:
 			var i := k % (RES + 1)
 			var j := k / (RES + 1)
 			for y in range(maxi(j - 1, 0), mini(j + 1, RES) + 1):
@@ -403,6 +404,20 @@ func stretch(a: int, b: int) -> float:
 	return pos[a].distance_to(pos[b]) / maxf(rest[a].distance_to(rest[b]), 0.0001)
 
 
+## 1 for particles off the body, 0 elsewhere, except for skin folded out on top of the drape (see floor_at): that
+## can't stick out of the body, it lies on the sheet, and is shown like any other.
+func hanging_off() -> PackedByteArray:
+	var out := off.duplicate()
+	if not floor_at.is_valid():
+		return out
+	for k in out.size():
+		if out[k] == 1:
+			var floor_y: float = floor_at.call(pos[k].x, pos[k].z)
+			if not is_nan(floor_y) and pos[k].y >= floor_y - 0.002:
+				out[k] = 0
+	return out
+
+
 ## Triangle indices of the grid, minus triangles spanning a gap cut at least `depth` deep and pulled open,
 ## so a layer mesh built from them shows a hole there, and minus triangles off the body.
 func triangles(depth: int) -> PackedInt32Array:
@@ -411,16 +426,17 @@ func triangles(depth: int) -> PackedInt32Array:
 	for s in _severed:
 		if depth_of(s) >= depth and _open_gap(s) > 0.0:
 			open[s] = 1
+	var hanging := hanging_off()
 	var out := PackedInt32Array()
 	for j in RES:
 		for i in RES:
 			var a := index(i, j)
 			var c := a + RES + 1
-			if open[_right[a]] + open[_diag[a]] + open[_down[a]] + off[a] + off[a + 1] + off[c] == 0:
+			if open[_right[a]] + open[_diag[a]] + open[_down[a]] + hanging[a] + hanging[a + 1] + hanging[c] == 0:
 				out.append(a)
 				out.append(a + 1)
 				out.append(c)
-			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] + off[a + 1] + off[c + 1] + off[c] == 0:
+			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] + hanging[a + 1] + hanging[c + 1] + hanging[c] == 0:
 				out.append(a + 1)
 				out.append(c + 1)
 				out.append(c)

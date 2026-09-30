@@ -105,6 +105,10 @@ const CUFF_REST := Vector3(-1.0, 0.0, 0.0)
 const MAX_TOOL_TIP := 0.3
 ## Most the hand turns about the tool to face the elbow (radians), from the grip's own pose with the back of the hand up.
 const MAX_ROLL := 0.45
+## How much a held tool's direction decides where the elbow goes, against the arm hanging down and out (0..1).
+const FOREARM_PULL := 0.7
+## How far under the shoulder a held tool can raise the elbow (meters).
+const ELBOW_BELOW_SHOULDER := 0.1
 ## Empty hand: the glove point (glove model space) at the hand's position, the hollow of the fingers.
 const GRIP_POINT := Vector3(0.07, -0.028, 0.0)
 var _upper: Node3D
@@ -302,6 +306,18 @@ func _solve_arm(shoulder: Vector3) -> void:
 		pole = owner_basis.z
 	pole = (pole - dir * pole.dot(dir)).normalized()
 	var elbow := shoulder + dir * along + pole * height
+	if holding:
+		# The held tool sets which way the wrist points: the elbow goes toward the forearm's line from there, so the
+		# wrist doesn't bend over backwards when the hand comes close. Only as far as it stays under the shoulder.
+		_place_glove(elbow, owner_basis)
+		var line := _glove.global_position - _glove.global_basis.x.normalized() * FOREARM - shoulder
+		var toward := line - dir * line.dot(dir)
+		if toward.length() > 0.001:
+			for pull: float in [FOREARM_PULL, FOREARM_PULL * 0.75, FOREARM_PULL * 0.5, FOREARM_PULL * 0.25]:
+				var bent := shoulder + dir * along + (toward.normalized() * pull + pole * (1.0 - pull)).normalized() * height
+				if bent.y < shoulder.y - ELBOW_BELOW_SHOULDER:
+					elbow = bent
+					break
 	_place_segment(_upper, shoulder, elbow)
 	var wrist := _place_glove(elbow, owner_basis)
 	var cuff_end := wrist + _aim_cuff(elbow, wrist) * CUFF_DEPTH

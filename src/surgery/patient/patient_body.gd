@@ -420,11 +420,19 @@ func _build_site(tone: Color) -> void:
 func _rebuild_layers() -> void:
 	_layer_version = tissue.topology_version
 	_layer_steps = tissue.steps_done
-	var res := TissueSim.RES
 	_update_region()
 	if _layer_uvs.is_empty():
 		for k in tissue.rest.size():
 			_layer_uvs.append(tissue.uv_of(k))
+	var skin := PackedVector3Array()
+	for k in tissue.rest.size():
+		skin.append(layer_point(0, k))
+	# Deeper layers lie under the skin: straight down where it's in place, along its own normal on a flap pulled far,
+	# so a flap folded over shows its fat on top instead of drawing it under the skin, through the drape.
+	var inward := _grid_normals(skin)
+	for k in inward.size():
+		var t := clampf((tissue.pos[k] - tissue.rest[k]).length() / FLAP_MOVE, 0.0, 1.0)
+		inward[k] = Vector3.UP.lerp(inward[k], t).normalized()
 	for layer in 3:
 		var instance := _layers[layer]
 		var mesh := instance.mesh as ArrayMesh
@@ -434,26 +442,31 @@ func _rebuild_layers() -> void:
 		if not instance.visible:
 			continue
 		# The skin sits a hair above the body it replaces, so their overlap at the region's edge never flickers.
-		var down := Vector3(0, [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer] as float, 0)
+		var depth: float = [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer]
 		var verts := PackedVector3Array()
 		verts.resize(tissue.rest.size())
 		for k in verts.size():
-			verts[k] = layer_point(layer, k) - down
-		# Smooth grid normals from neighbouring particles (cross of the z and x tangents points out of the skin).
-		var normals := PackedVector3Array()
-		normals.resize(verts.size())
-		for j in res + 1:
-			for i in res + 1:
-				var dx := verts[tissue.index(mini(i + 1, res), j)] - verts[tissue.index(maxi(i - 1, 0), j)]
-				var dz := verts[tissue.index(i, mini(j + 1, res))] - verts[tissue.index(i, maxi(j - 1, 0))]
-				normals[tissue.index(i, j)] = dz.cross(dx).normalized()
+			verts[k] = layer_point(layer, k) - inward[k] * depth
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = verts
-		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_NORMAL] = _grid_normals(verts)
 		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
 		arrays[Mesh.ARRAY_INDEX] = triangles
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+
+## Smooth normals of the tissue grid from neighbouring points (cross of the z and x tangents points out of the skin).
+func _grid_normals(points: PackedVector3Array) -> PackedVector3Array:
+	var res := TissueSim.RES
+	var normals := PackedVector3Array()
+	normals.resize(points.size())
+	for j in res + 1:
+		for i in res + 1:
+			var dx := points[tissue.index(mini(i + 1, res), j)] - points[tissue.index(maxi(i - 1, 0), j)]
+			var dz := points[tissue.index(i, mini(j + 1, res))] - points[tissue.index(i, maxi(j - 1, 0))]
+			normals[tissue.index(i, j)] = dz.cross(dx).normalized()
+	return normals
 
 
 ## Where a layer's grid point k is now, before it's moved down to its depth. Deeper layers are tethered and follow
