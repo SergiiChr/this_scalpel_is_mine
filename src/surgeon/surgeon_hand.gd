@@ -16,13 +16,14 @@ const JOINT_BEND: PackedFloat32Array = [0.9, 1.2, 0.8]
 ## basis: the glove's axes (fingers, back of the hand, pinky side) in tool space, for the right hand.
 ## at: the glove point (glove model space) that sits on `on`, a point of the tool.
 ## curl: how far each finger closes (index, middle, ring, pinky, thumb) while holding.
+## oppose: radians the thumb swings across the palm toward the index, for pinching (none if missing).
 const GRIPS: Dictionary = {
-	# Pinched between the tips of the thumb and index, the back of the tool resting in the web of the thumb and the
-	# other fingers curled under it. The tool runs down from the fingertips at about 40 degrees to the back of the hand.
+	# Pinched between the thumb pad on top and the curled index tip under it, the thumb swung across to meet the index.
+	# The back of the tool runs up between the thumb and index into the web, the other fingers curled under it.
 	"pencil": {
-		"basis": Basis(Vector3(-0.21, 0.628, -0.749), Vector3(0.0, 0.766, 0.642), Vector3(0.978, 0.135, -0.161)),
-		"at": Vector3(0.088, -0.066, -0.024), "on": Vector3(0.0, 0.0, 0.0),
-		"curl": [0.8, 0.9, 1.0, 1.0, 0.7],
+		"basis": Basis(Vector3(0.243, 0.527, -0.815), Vector3(0.0, 0.84, 0.543), Vector3(0.97, -0.132, 0.204)),
+		"at": Vector3(0.1, -0.056, -0.031), "on": Vector3(0.0, 0.0, 0.0),
+		"curl": [0.75, 0.95, 1.0, 1.0, 0.3], "oppose": 0.35,
 	},
 	# Thumb and ring finger through the rings at the back, index laid along the shaft.
 	"rings": {
@@ -282,7 +283,10 @@ func _pose_fingers() -> void:
 	if _glove_rig == null or pose == _posed:
 		return
 	_posed = pose
-	var amounts: Array = fit.get("curl", GRIPS.get(grip, GRIPS.pencil).curl) if holding else [1.0, 1.0, 1.0, 1.0, 1.0]
+	var style: Dictionary = GRIPS.get(grip, GRIPS.pencil)
+	var amounts: Array = fit.get("curl", style.curl) if holding else [1.0, 1.0, 1.0, 1.0, 1.0]
+	# The thumb swings across under the index from its root, as far as the fingers are closed.
+	var oppose := float(style.get("oppose", 0.0)) * minf(_curl, 1.0) if holding else 0.0
 	for f in FINGERS.size():
 		var finger := FINGERS[f]
 		for joint in 3:
@@ -290,7 +294,10 @@ func _pose_fingers() -> void:
 			# Each joint bends its bone toward the palm (the glove's -Y); the thumb folds in less.
 			var bend := minf(_curl * float(amounts[f]), 1.0) * JOINT_BEND[joint] * (0.55 if finger == "Thumb" else 1.0)
 			var axis := _glove_rig.direction(bone).cross(Vector3.DOWN).normalized()
-			_glove_rig.rotate(bone, Basis(axis, bend))
+			var turn := Basis(axis, bend)
+			if bone == "Thumb1":
+				turn = Basis(Vector3.DOWN, oppose) * turn
+			_glove_rig.rotate(bone, turn)
 
 
 func _solve_arm(shoulder: Vector3) -> void:
