@@ -117,9 +117,12 @@ func spawn_transform(index: int) -> Transform3D:
 func tray_spots() -> Array[Vector3]:
 	var spots: Array[Vector3] = []
 	var origin: Vector3 = layout.tray + Vector3(0, 0.93, 0)
-	for row in 5:
+	# Use the far, middle and near rows first. Most cases start with about 15
+	# items, so this fills three clearly separated rows before using the two
+	# intermediate overflow rows.
+	for row in [0, 2, 4, 1, 3]:
 		for col in 5:
-			spots.append(origin + Vector3(-0.25 + col * 0.125, 0.0, -0.28 + row * 0.14))
+			spots.append(origin + Vector3(-0.25 + row * 0.125, 0.0, -0.28 + col * 0.14))
 	return spots
 
 
@@ -301,6 +304,14 @@ func _build_table() -> void:
 func _build_tray() -> void:
 	var tray := ModelSlot.instantiate("props", "instrument_tray", self)
 	tray.position = layout.tray
+	# Quiet guides divide the cloth into the same three-by-five layout used by
+	# the common starter set. They keep small needles and pads from reading as
+	# random specks without adding labels to the game world.
+	var guide_color := Color(0.38, 0.50, 0.47)
+	for x in [-0.125, 0.125]:
+		Shapes.slab(self, Vector3(0.0012, 0.0005, 0.66), guide_color, layout.tray + Vector3(x, 0.911, 0.0), 0.02)
+	for z in [-0.21, -0.07, 0.07, 0.21]:
+		Shapes.slab(self, Vector3(0.58, 0.0005, 0.0012), guide_color, layout.tray + Vector3(0.0, 0.911, z), 0.02)
 	Shapes.static_box(self, Vector3(0.7, 0.05, 0.8), layout.tray + Vector3(0, 0.89, 0))
 
 

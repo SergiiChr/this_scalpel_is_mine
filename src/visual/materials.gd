@@ -70,6 +70,23 @@ static func imported(base: BaseMaterial3D) -> ShaderMaterial:
 			mat.set_shader_parameter("grime", 0.025)
 			mat.set_shader_parameter("specular_strength", 0.3)
 			mat.set_shader_parameter("rim_strength", 0.0)
+		"steel":
+			mat.set_shader_parameter("roughness", 0.26)
+			mat.set_shader_parameter("specular_strength", 0.72)
+			mat.set_shader_parameter("rim_strength", 0.055)
+			mat.set_shader_parameter("grime", 0.015)
+			mat.next_pass = null
+		"chrome":
+			mat.set_shader_parameter("roughness", 0.13)
+			mat.set_shader_parameter("specular_strength", 0.86)
+			mat.set_shader_parameter("rim_strength", 0.085)
+			mat.set_shader_parameter("grime", 0.008)
+			mat.next_pass = null
+		"dark_steel":
+			mat.set_shader_parameter("roughness", 0.34)
+			mat.set_shader_parameter("specular_strength", 0.58)
+			mat.set_shader_parameter("rim_strength", 0.035)
+			mat.next_pass = null
 	_imported[base] = mat
 	return mat
 
