@@ -30,6 +30,8 @@ const LAYER_FOLLOW: Array[float] = [1.0, 0.8, 0.55]
 const LAYER_DEPTH: Array[int] = [TissueSim.Depth.SKIN, TissueSim.Depth.FAT, TissueSim.Depth.MUSCLE]
 ## Skin pulled this far (meters) takes its deeper layers fully along, see layer_point().
 const FLAP_MOVE := 0.04
+## Grid step of the drape's height under folded-out skin (meters, see _lay_skin_on_drape()).
+const DRAPE_FLOOR_CELL := 0.01
 ## Organs that belong under each site, for organs placed without a model of their own (one over a hidden target,
 ## filler in a deep site without anatomy data), in the order they're used.
 const SITE_ORGANS: Dictionary = {
@@ -158,6 +160,38 @@ func set_orientation(value: int) -> void:
 		drape.visible = site_active()
 
 
+## Skin flaps folded out of the drape's opening lie on the drape instead of passing through it: the drape's height
+## over and around the site (site space, a grid out to a site's size past each edge). Only the skin is held up, the
+## layers drawn under it stay under the drape: lifting the flap by their thickness too would tear it off its edge.
+## Only skin that starts inside the opening is held up; the site's edge stays under the drape's frame.
+func _lay_skin_on_drape() -> void:
+	var drape_mesh := TriangleMesh.new()
+	var faces := PackedVector3Array()
+	for v in drape.mesh.get_faces():
+		faces.append(site.transform.affine_inverse() * (drape.transform * v))
+	drape_mesh.create_from_faces(faces)
+	var cell := DRAPE_FLOOR_CELL
+	var columns := ceili(site_size.x * 3.0 / cell) + 1
+	var rows := ceili(site_size.y * 3.0 / cell) + 1
+	var heights := PackedFloat32Array()
+	heights.resize(columns * rows)
+	for j in rows:
+		for i in columns:
+			var at := Vector3(-site_size.x * 1.5 + i * cell, 0.5, -site_size.y * 1.5 + j * cell)
+			var hit := drape_mesh.intersect_ray(at, Vector3.DOWN)
+			heights[j * columns + i] = (hit.position as Vector3).y + 0.004 if not hit.is_empty() else NAN
+	var origin := Vector2(-site_size.x * 1.5, -site_size.y * 1.5)
+	tissue.floor_at = func(x: float, z: float) -> float:
+		var c := Vector2i(((Vector2(x, z) - origin) / cell).round())
+		if c.x < 0 or c.y < 0 or c.x >= columns or c.y >= rows:
+			return NAN
+		return heights[c.y * columns + c.x]
+	tissue.exposed.resize(tissue.rest.size())
+	for k in tissue.rest.size():
+		var uv := tissue.uv_of(k)
+		tissue.exposed[k] = 1 if uv.x > Drape.FRAME and uv.x < 1.0 - Drape.FRAME and uv.y > Drape.FRAME and uv.y < 1.0 - Drape.FRAME else 0
+
+
 ## Lays the surgical drape over the patient, open over the site (operating room only; call after build()).
 func add_drape() -> void:
 	var meshes: Array[MeshInstance3D] = []
@@ -169,6 +203,7 @@ func add_drape() -> void:
 	_body_root.add_child(drape)
 	drape.build(_body_root, meshes, site, site_size, -1.0 if _on_back else 1.0)
 	drape.visible = site_active()
+	_lay_skin_on_drape()
 
 
 # --- Space conversion ------------------------------------------------------------------------------

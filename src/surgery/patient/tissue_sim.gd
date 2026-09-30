@@ -78,6 +78,10 @@ var c_depth := PackedByteArray()
 var c_muscle_closed := PackedByteArray()
 ## Where the anchor pulls each particle: its rest position, moved back from a cut through open muscle.
 var anchor_target := PackedVector3Array()
+## What exposed skin folded out of the site can't go below (the drape): site-local (x, z) -> height, NAN where
+## there's nothing. Unset: nothing to lie on. Only particles marked in `exposed` are held up by it.
+var floor_at: Callable
+var exposed := PackedByteArray()
 ## Where each particle rests under the skin's own tension before anything touches it (see _settle()).
 var settled := PackedVector3Array()
 ## Only the host decides when springs snap, so tears happen once for everyone.
@@ -278,7 +282,7 @@ func grip(key: int, uv: Vector2) -> bool:
 
 func move_grip(key: int, target: Vector3) -> void:
 	if _pins.has(key):
-		_pins[key][1] = target
+		_pins[key][1] = _above_floor(_pins[key][0], target)
 
 
 func release(key: int) -> void:
@@ -489,6 +493,8 @@ func _substep() -> void:
 			# Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back.
 			var back := anchor_target[k] - pos[k]
 			pos[k] += back * anchor[k] * _free[k] * clampf(1.0 - back.length() / ANCHOR_REACH, 0.0, 1.0)
+		# Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
+		_stay_above_floor()
 	for k in pos.size():
 		moved = maxf(moved, pos[k].distance_squared_to(prev[k]))
 	if tearing:
@@ -509,6 +515,25 @@ func _solve(s: int) -> void:
 	var correction := d * ((length - c_rest[s]) / (length * (wa + wb)))
 	pos[a] += correction * wa
 	pos[b] -= correction * wb
+
+
+## Skin that started out exposed (inside the drape's opening) and is folded out over the drape lies on it.
+func _stay_above_floor() -> void:
+	if not floor_at.is_valid():
+		return
+	for k in pos.size():
+		if _free[k] > 0.0:
+			pos[k] = _above_floor(k, pos[k])
+
+
+## p, where particle k is, lifted onto the floor if it's exposed skin below it.
+func _above_floor(k: int, p: Vector3) -> Vector3:
+	if not floor_at.is_valid() or exposed[k] == 0:
+		return p
+	var floor_y: float = floor_at.call(p.x, p.z)
+	if not is_nan(floor_y) and p.y < floor_y:
+		p.y = floor_y
+	return p
 
 
 func _snap_overstretched() -> void:

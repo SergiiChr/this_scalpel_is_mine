@@ -295,7 +295,7 @@ func _materials(surgery: Surgery, out: String) -> void:
 			for hand in hands:
 				var side := -1.0 if hand.index == 0 else 1.0
 				var shoulder := body.to_global(Vector3(0.19 * side, 1.4, -0.08))
-				var reach := Vector3(0.2 * side, -0.3, -0.6) if limit == "stretched" else Vector3(0.05 * side, -0.12, -0.12)
+				var reach := Vector3(0.2 * side, -0.3, -0.6) if limit == "stretched" else Vector3(0.06 * side, -0.18, -0.17)
 				hand.target = shoulder + reach
 				hand.snap_pose(shoulder)
 				tools[hand.index].global_transform = hand.grip_transform()
