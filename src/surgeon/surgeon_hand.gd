@@ -96,8 +96,10 @@ const FINGER_RADIUS := 0.009
 const PALM_HALF_THICKNESS := 0.014
 ## Glove blood gained per second while the held tool is bloodier than the glove.
 const SOAK_RATE := 0.15
-## Inside the glove's cuff, behind the wrist (glove model space): where a holding hand's forearm ends.
-const CUFF_POINT := Vector3(-0.06, 0.0, 0.0)
+## How far (meters) the forearm reaches past the wrist into the glove's cuff, so the cuff never shows as an open end.
+const CUFF_DEPTH := 0.06
+## Where the glove's cuff bone points at rest (glove model space): back from the wrist (tools/blender/hand.py).
+const CUFF_REST := Vector3(-1.0, 0.0, 0.0)
 ## Most a held tool's angle in the fingers gives way to keep the wrist straight (radians). More and the fingers swing
 ## into the tool.
 const MAX_TOOL_TIP := 0.3
@@ -221,7 +223,7 @@ func bone_points(part: String = "") -> Array:
 	var skeleton := _glove_rig.skeleton
 	for i in skeleton.get_bone_count():
 		var bone := skeleton.get_bone_name(i)
-		if bone == "Hand" or part and not bone.begins_with(part):
+		if bone in ["Hand", "Cuff"] or part and not bone.begins_with(part):
 			continue
 		var at := skeleton.global_transform * skeleton.get_bone_global_pose(i).origin
 		var children := skeleton.get_bone_children(i)
@@ -302,10 +304,24 @@ func _solve_arm(shoulder: Vector3) -> void:
 	var elbow := shoulder + dir * along + pole * height
 	_place_segment(_upper, shoulder, elbow)
 	var wrist := _place_glove(elbow, owner_basis)
-	_place_segment(_fore, elbow.lerp(wrist, _forearm_start), wrist)
+	var cuff_end := wrist + _aim_cuff(elbow, wrist) * CUFF_DEPTH
+	_place_segment(_fore, elbow.lerp(cuff_end, _forearm_start), cuff_end)
 
 
-## Places the glove and returns the wrist, where the forearm ends. The left glove is the right one mirrored.
+## Aims the glove's cuff bone down the forearm and returns that direction (world space). However the wrist bends,
+## the cuff stays on the sleeve and the glove stretches from the hand over it.
+func _aim_cuff(elbow: Vector3, wrist: Vector3) -> Vector3:
+	var back := (elbow - wrist).normalized()
+	if _glove_rig == null or not _glove_rig.has("Cuff"):
+		return back
+	# The cuff bone starts at the wrist, where its parent does, so BoneRig.direction() can't tell where it points.
+	var aim := (_glove.global_basis.inverse() * back).normalized()
+	var axis := CUFF_REST.cross(aim)
+	_glove_rig.rotate("Cuff", Basis(axis.normalized(), CUFF_REST.angle_to(aim)) if axis.length() > 0.0001 else Basis.IDENTITY)
+	return back
+
+
+## Places the glove and returns the wrist (the glove's origin). The left glove is the right one mirrored.
 ## Holding a tool, the glove sits on it by its grip. Empty, it points along the forearm, palm down.
 func _place_glove(elbow: Vector3, owner_basis: Basis) -> Vector3:
 	if holding:
@@ -317,8 +333,7 @@ func _place_glove(elbow: Vector3, owner_basis: Basis) -> Vector3:
 		frame = _turn_to_forearm(frame, tool_frame.basis * Vector3.FORWARD, contact, elbow, grip != "fist")
 		var wrist := contact - frame * (style.at as Vector3) + frame.y.normalized() * float(fit.get("lift", 0.0)) + frame.z.normalized() * float(fit.get("shift", 0.0))
 		_glove.global_transform = Transform3D(frame, wrist)
-		# The forearm runs into the glove's loose cuff, so the cuff never shows as an open tube end.
-		return _glove.global_transform * CUFF_POINT
+		return wrist
 	var along := (global_position - elbow).normalized()
 	var up := (Vector3.UP - along * Vector3.UP.dot(along)).normalized()
 	if up.length_squared() < 0.5:

@@ -61,10 +61,11 @@ def _arm_segments() -> list[Model]:
     fore = Model("surgeon", "forearm")
     fore.add(
         "Sleeve",
-        tube([(0, -0.5, 0), (0, -0.1, 0), (0, 0.2, 0), (0, 0.32, 0)], [(0.05, 0.047), (0.047, 0.044), (0.038, 0.035), (0.032, 0.03)], up=(0, 0, 1)),
+        tube([(0, -0.5, 0), (0, -0.1, 0), (0, 0.12, 0), (0, 0.24, 0)], [(0.05, 0.047), (0.047, 0.044), (0.038, 0.035), (0.029, 0.028)], up=(0, 0, 1)),
         "tint",
     )
-    fore.add("WristCuff", tube([(0, 0.28, 0), (0, 0.4, 0), (0, 0.5, 0)], [(0.028, 0.027), (0.025, 0.024), (0.023, 0.022)], up=(0, 0, 1)), "knit")
+    # Snug under the glove's cuff (tools/blender/hand.py), which the game keeps on this end of the sleeve.
+    fore.add("WristCuff", tube([(0, 0.2, 0), (0, 0.35, 0), (0, 0.5, 0)], [(0.026, 0.026), (0.024, 0.024), (0.023, 0.023)], up=(0, 0, 1)), "knit")
     fore.add("Cuff", tube([(0, -0.5, 0), (0, -0.42, 0)], [(0.05, 0.047), (0.05, 0.047)], smooth=1, up=(0, 0, 1)), "tint")
     return [upper, fore]
 

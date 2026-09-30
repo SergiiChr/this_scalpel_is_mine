@@ -46,6 +46,7 @@ func _ready() -> void:
 		await _grip_clearance(holder, hand_index)
 		_hand_turn(holder, hand_index)
 	_arm_limits(holder)
+	await _cuff_fit(holder)
 	print("models_test: done")
 	get_tree().quit()
 
@@ -103,6 +104,166 @@ func _arm_limits(holder: Node3D) -> void:
 				print("FAIL: the hands %s, arm %s, don't mirror each other (left %s, right %s)" % ["holding by " + grip if grip else "empty", limit, gloves[0], gloves[1]])
 	for hand in hands:
 		hand.get_parent().queue_free()
+
+
+## The glove's cuff follows the forearm and wraps the sleeve: the end of the sleeve that reaches into the cuff stays
+## inside the glove, and the cuff hugs the sleeve instead of standing off it. Both hands, empty and in every grip,
+## wherever the hand works and at the arm's limits.
+func _cuff_fit(holder: Node3D) -> void:
+	for hand_index in 2:
+		var hand := GripCheck.make_hand(holder, hand_index)
+		var side := -1.0 if hand_index == 0 else 1.0
+		var shoulder := GripCheck.shoulder(hand)
+		for grip: String in [""] + SurgeonHand.GRIPS.keys():
+			var def: ToolDef = Db.tools.values().filter(func(d: ToolDef) -> bool: return d.grip == grip).front() if grip else null
+			hand.holding = grip != ""
+			hand.grip = grip if grip else "pencil"
+			hand.fit = Db.grip_fit(def, hand_index) if def else {}
+			for at: Vector3 in CUFF_SPOTS:
+				hand.target = shoulder + Vector3(at.x * side, at.y, at.z)
+				hand.snap_pose(shoulder)
+				var what := "the %s hand %s at %s" % ["left" if hand_index == 0 else "right", "holding by " + grip if grip else "empty", at]
+				_check_cuff(hand, what)
+		hand.get_parent().queue_free()
+
+
+## Hand positions from the shoulder for _cuff_fit(), right hand (the left one mirrors x): working spots in front,
+## out to the side and low, the arm stretched out past its reach and folded up to the shoulder.
+const CUFF_SPOTS: Array[Vector3] = [
+	Vector3(-0.02, -0.35, -0.34), Vector3(0.2, -0.45, -0.22), Vector3(-0.14, -0.5, -0.42), Vector3(0.06, -0.2, -0.22),
+	Vector3(0.2, -0.2, -0.8), Vector3(-0.02, -0.03, -0.04),
+]
+## Where the glove's cuff starts, behind the wrist (meters, glove model space along -X).
+const CUFF_FROM := 0.035
+## How far the cuff may stand off the sleeve before it reads as sticking out (meters).
+const CUFF_STANDOFF := 0.008
+## The end of the sleeve this far into the cuff must be inside the glove (meters from the sleeve's end).
+const CUFF_INSIDE := 0.03
+
+
+func _check_cuff(hand: SurgeonHand, what: String) -> void:
+	# The forearm model runs along its Y from -0.5 (elbow) to 0.5 (the end in the cuff).
+	var end := hand._fore.global_transform * Vector3(0, 0.5, 0)
+	var back := (hand._fore.global_transform * Vector3(0, -0.5, 0) - end).normalized()
+	var sleeve := PackedVector3Array()
+	for node in hand._fore.find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).visible:
+			sleeve.append_array(_posed_faces(node as MeshInstance3D))
+	# Only the glove's cuff: the hand itself can bend back beside the sleeve without being part of it.
+	var glove := PackedVector3Array()
+	for node in hand._glove.find_children("*", "MeshInstance3D", true, false):
+		glove.append_array(_posed_faces(node as MeshInstance3D, -CUFF_FROM))
+	# Under the glove means a ray from the forearm's axis out through a point of the sleeve meets the glove no nearer
+	# than the sleeve's surface there. Glove triangles by 5 mm slice along the forearm, so each ray tries only a few.
+	var slices: Dictionary = {}
+	for t in range(0, glove.size(), 3):
+		var low := INF
+		var high := -INF
+		for n in 3:
+			var along := (glove[t + n] - end).dot(back)
+			low = minf(low, along)
+			high = maxf(high, along)
+		for slice in range(floori(low / 0.005), floori(high / 0.005) + 1):
+			var list: PackedInt32Array = slices.get(slice, PackedInt32Array())
+			list.append(t)
+			slices[slice] = list
+	var poking := 0
+	for p in sleeve:
+		# The very end of the sleeve is its cap, deep inside the glove.
+		var along := (p - end).dot(back)
+		if along < 0.003 or along >= CUFF_INSIDE:
+			continue
+		var axis := end + back * along
+		var out := (p - axis).normalized()
+		var covered := false
+		for t: int in slices.get(floori(along / 0.005), PackedInt32Array()):
+			var hit: Variant = Geometry3D.ray_intersects_triangle(axis, out, glove[t], glove[t + 1], glove[t + 2])
+			if hit != null and axis.distance_to(hit) >= _radius(p, end, back) - 0.0005:
+				covered = true
+				break
+		if not covered:
+			poking += 1
+	if poking > 0:
+		print("FAIL: the sleeve pokes through the glove's cuff, %s (%d points)" % [what, poking])
+	# The cuff proper (well behind the wrist, still over the sleeve) keeps close to the sleeve all round.
+	var rings := _sleeve_rings(sleeve, end, back)
+	var standing := 0
+	for p in glove:
+		# Past the sleeve's end there's no sleeve to hug.
+		var along := (p - end).dot(back)
+		if along > 0.004 and _radius(p, end, back) > _sleeve_radius(rings, along) + CUFF_STANDOFF:
+			standing += 1
+	if standing > 0:
+		print("FAIL: the glove's cuff sticks out from the sleeve, %s (%d points)" % [what, standing])
+
+
+## The sleeve's rings: millimeters along it from its end -> its radius there. Its vertices all lie on a few rings.
+static func _sleeve_rings(sleeve: PackedVector3Array, end: Vector3, back: Vector3) -> Dictionary:
+	var rings: Dictionary = {}
+	for q in sleeve:
+		var mm := roundi((q - end).dot(back) * 1000.0)
+		rings[mm] = maxf(rings.get(mm, 0.0), _radius(q, end, back))
+	return rings
+
+
+## The sleeve's radius a distance along it: the wider of the rings on either side.
+static func _sleeve_radius(rings: Dictionary, along: float) -> float:
+	var mm := along * 1000.0
+	var below := -INF
+	var above := INF
+	for at: int in rings:
+		if at <= mm:
+			below = maxf(below, at)
+		if at >= mm:
+			above = minf(above, at)
+	return maxf(rings.get(int(below), 0.0), rings.get(int(above), 0.0))
+
+
+static func _radius(p: Vector3, end: Vector3, back: Vector3) -> float:
+	var d := p - end
+	return (d - back * d.dot(back)).length()
+
+
+## A mesh's triangles where it's drawn now (world space), skinned by its skeleton's current pose if it has one.
+## Headless there's no renderer to bake a skinned pose, so this does the skinning itself.
+## behind: only triangles whose rest pose lies wholly behind this model-space x (the glove's cuff: behind the wrist).
+static func _posed_faces(mesh: MeshInstance3D, behind: float = INF) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var skeleton := mesh.get_node_or_null(mesh.skeleton) as Skeleton3D
+	if mesh.skin == null or skeleton == null:
+		# Riding a bone (the glove's rim on its cuff): where the bone is now, before the attachment catches up.
+		var attachment := mesh.get_parent() as BoneAttachment3D
+		var xform := mesh.global_transform
+		if attachment:
+			var rig := attachment.get_parent() as Skeleton3D
+			xform = rig.global_transform * rig.get_bone_global_pose(attachment.bone_idx) * mesh.transform
+		for v in mesh.mesh.get_faces():
+			out.append(xform * v)
+		return out
+	var binds: Array[Transform3D] = []
+	for b in mesh.skin.get_bind_count():
+		var bone := mesh.skin.get_bind_bone(b)
+		if bone < 0:
+			bone = skeleton.find_bone(mesh.skin.get_bind_name(b))
+		binds.append(skeleton.global_transform * skeleton.get_bone_global_pose(bone) * mesh.skin.get_bind_pose(b))
+	for surface in mesh.mesh.get_surface_count():
+		var arrays := mesh.mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+		var per := bones.size() / vertices.size()
+		var posed := PackedVector3Array()
+		posed.resize(vertices.size())
+		for v in vertices.size():
+			var at := Vector3.ZERO
+			for n in per:
+				at += binds[bones[v * per + n]] * vertices[v] * weights[v * per + n]
+			posed[v] = at
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		for t in range(0, indices.size(), 3):
+			if vertices[indices[t]].x < behind and vertices[indices[t + 1]].x < behind and vertices[indices[t + 2]].x < behind:
+				out.append_array([posed[indices[t]], posed[indices[t + 1]], posed[indices[t + 2]]])
+	return out
 
 
 ## Every tool held in a glove the way the game holds it, fitted by data/grips.json: nothing of the tool is inside the

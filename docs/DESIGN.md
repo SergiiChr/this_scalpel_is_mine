@@ -329,6 +329,7 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
     jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.
   - Surgeon: walk cycle from movement speed, collapse when passed out, head tilt from camera pitch,
     two-bone IK arms, glove finger bones relax, wrap around a held tool and squeeze while using it.
+    The glove's cuff has its own bone aimed down the forearm, so a bent wrist stretches the glove over the sleeve.
   - Tools (`tool_animator.gd`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
 - **Sounds**: 37 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
