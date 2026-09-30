@@ -7,6 +7,11 @@ render_mode cull_disabled;
 uniform vec4 albedo : source_color = vec4(0.55, 0.12, 0.12, 1.0);
 uniform float damage = 0.0;
 uniform float wetness = 0.8;
+// Unit model space: a local compression with a compensating raised rim.
+// The radial kernel integrates to zero on a flat patch, keeping volume close
+// to constant without shrinking the entire organ when it is pushed.
+uniform vec3 press_direction = vec3(0.0, 1.0, 0.0);
+uniform float press_strength = 0.0;
 
 uniform sampler2D region_map : filter_linear, hint_default_white;
 uniform mat4 region_inverse;
@@ -21,24 +26,27 @@ float hash(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
 
-float noise(vec3 p) {
+float noise3(vec3 p) {
 	vec3 i = floor(p);
 	vec3 f = fract(p);
-	vec3 u = f * f * (3.0 - 2.0 * f);
-	return mix(
-		mix(mix(hash(i), hash(i + vec3(1, 0, 0)), u.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), u.x), u.y),
-		mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), u.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), u.x), u.y),
-		u.z);
-}
-
-// Vessels branching over the surface: thin lines where a warped noise crosses its middle. 0..1, 1 on a vessel.
-float vessels(vec3 p, float scale, float width) {
-	vec3 warp = vec3(noise(p * scale * 0.5), noise(p * scale * 0.5 + 17.0), noise(p * scale * 0.5 + 31.0)) - 0.5;
-	float n = noise(p * scale + warp * 1.5);
-	return 1.0 - smoothstep(0.0, width, abs(n - 0.5));
+	f = f * f * (3.0 - 2.0 * f);
+	float a = mix(hash(i), hash(i + vec3(1.0, 0.0, 0.0)), f.x);
+	float b = mix(hash(i + vec3(0.0, 1.0, 0.0)), hash(i + vec3(1.0, 1.0, 0.0)), f.x);
+	float c = mix(hash(i + vec3(0.0, 0.0, 1.0)), hash(i + vec3(1.0, 0.0, 1.0)), f.x);
+	float d = mix(hash(i + vec3(0.0, 1.0, 1.0)), hash(i + vec3(1.0)), f.x);
+	return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
 }
 
 void vertex() {
+	if (press_strength > 0.0001) {
+		vec3 axis = normalize(press_direction);
+		vec3 relative = VERTEX - axis * 0.8;
+		float along = dot(relative, axis);
+		vec3 radial = relative - axis * along;
+		float q = dot(radial, radial) / 0.45;
+		float dent_and_rim = (1.0 - q) * exp(-q) * exp(-along * along * 3.0);
+		VERTEX -= axis * press_strength * dent_and_rim;
+	}
 	local_pos = VERTEX;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	// Slow breathing/peristalsis wobble so organs never look like plastic.
@@ -52,25 +60,22 @@ void fragment() {
 			discard;
 		}
 	}
-	// Large vessels darker and bluer (veins under the surface), fine ones a faint red web; the surface is mottled.
-	float large = vessels(local_pos, 22.0, 0.035);
-	float fine = vessels(local_pos + 5.0, 70.0, 0.05) * 0.5;
-	float mottle = noise(local_pos * 45.0);
-	vec3 c = albedo.rgb * mix(0.85, 1.1, mottle);
-	c = mix(c, vec3(0.28, 0.06, 0.16), large * 0.6);
-	c = mix(c, albedo.rgb * vec3(1.15, 0.6, 0.6), fine * (1.0 - large) * 0.5);
+	float coarse = noise3(world_pos * 38.0);
+	float fine = noise3(world_pos * 110.0 + vec3(13.0));
+	float vessels = smoothstep(0.78, 0.91, coarse) * smoothstep(0.35, 0.72, fine);
+	vec3 c = albedo.rgb * mix(0.78, 1.12, coarse);
+	c = mix(c, vec3(0.20, 0.018, 0.045), vessels * 0.42);
 	c = mix(c, vec3(0.18, 0.02, 0.08), clamp(damage, 0.0, 1.0));
 	ALBEDO = c;
-	// A little of the tissue's own color even in shadow deep in a cavity, the way light scatters through it.
-	EMISSION = c * 0.12;
-	ROUGHNESS = 1.0 - wetness;
+	ROUGHNESS = 1.0 - wetness * 0.82;
+	EMISSION = c * 0.08;
 }
 
 void light() {
-	// Wrapped diffuse: wet tissue scatters light, so organs deep in a cavity still read on the sides the lamp misses.
-	float ndl = clamp((dot(NORMAL, LIGHT) + 0.6) / 1.6, 0.0, 1.0);
+	float ndl = max((dot(NORMAL, LIGHT) + 0.14) / 1.14, 0.0);
 	float lit = ndl * ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.96, 0.98, dot(NORMAL, halfway)) * ATTENUATION * wetness * 0.5 / PI;
+	float broad = pow(max(dot(NORMAL, halfway), 0.0), 14.0);
+	SPECULAR_LIGHT += LIGHT_COLOR * broad * ATTENUATION * wetness * 0.28 / PI;
 }

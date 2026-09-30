@@ -35,6 +35,10 @@ each peer fades loops in and out as contact changes, caps simultaneous channels 
 keeps high-impact one-shots separate. Surface blood now follows the deformed tissue height and drains at
 open incisions instead of streaking across an absent skin triangle.
 
+The tissue material follow-up replaces planar fat circles and razor-thin muscle stripes with volumetric
+lobules, warped muscle bundles and sparse fascia. Wrapped diffuse response and restrained red bounce keep
+vertical wound walls and the cavity readable beneath the theatre lamp without making wet tissue look metallic.
+
 ## Acceptance gates
 
 - Inspect the same deterministic screenshot views before/after in Compatibility and Forward+.
