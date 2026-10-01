@@ -1,5 +1,6 @@
 // Layers under the skin, seen through an opened incision.
-// layer 0 = subcutaneous fat (rounded lobules), layer 1 = muscle and fascia.
+// layer 0 = subcutaneous fat (rounded lobules), layer 1 = muscle and fascia (red striated, white sheen),
+// layer 2 = the dermis showing in the walls of a cut through the skin (pale pink, flecked with tiny vessels).
 // Blood from the fluid map runs down into them.
 shader_type spatial;
 render_mode cull_disabled;
@@ -45,9 +46,22 @@ void vertex() {
 	local_pos = VERTEX;
 }
 
+// The normal tilted by a height field over the surface (meters), from its screen-space slope.
+vec3 bumped(vec3 normal, vec3 view_pos, float height) {
+	vec3 dpdx = dFdx(view_pos);
+	vec3 dpdy = dFdy(view_pos);
+	vec3 r1 = cross(dpdy, normal);
+	vec3 r2 = cross(normal, dpdx);
+	float det = dot(dpdx, r1);
+	vec3 grad = sign(det) * (dFdx(height) * r1 + dFdy(height) * r2);
+	return normalize(abs(det) * normal - grad);
+}
+
 void fragment() {
 	vec3 c;
 	float wet;
+	// Lobules and fibers are bumpy, so the lamp breaks into small glints instead of one mirror-like sheet.
+	float height = 0.0;
 	if (layer == 0) {
 		float lobe = cells3(local_pos * 105.0);
 		float membrane = smoothstep(0.47, 0.64, lobe);
@@ -55,7 +69,12 @@ void fragment() {
 		c = mix(vec3(0.76, 0.47, 0.18), vec3(0.48, 0.22, 0.08), membrane * 0.42);
 		c *= mix(0.86, 1.08, mottling);
 		c = mix(c, vec3(0.82, 0.70, 0.52), smoothstep(0.58, 0.72, lobe) * 0.18);
+		height = (1.0 - lobe) * 0.0004;
 		wet = 0.62;
+	} else if (layer == 2) {
+		float speck = smoothstep(0.92, 1.0, hash3(floor(local_pos * 900.0)));
+		c = mix(vec3(0.93, 0.78, 0.72), vec3(0.75, 0.25, 0.25), speck * 0.6);
+		wet = 0.6;
 	} else {
 		float warp = noise3(local_pos * 42.0) * 3.0;
 		float fibers = sin(dot(local_pos, normalize(vec3(1.0, 0.16, 0.28))) * 430.0 + warp) * 0.5 + 0.5;
@@ -63,8 +82,10 @@ void fragment() {
 		c = mix(vec3(0.40, 0.035, 0.055), vec3(0.62, 0.105, 0.09), fibers * 0.45 + bundles * 0.3);
 		float fascia = smoothstep(0.91, 0.98, noise3(local_pos * 31.0 + vec3(7.0)));
 		c = mix(c, vec3(0.72, 0.62, 0.57), fascia * 0.36);
+		height = fibers * 0.0002;
 		wet = 0.78;
 	}
+	NORMAL = bumped(NORMAL, VERTEX, height);
 	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV).r);
 	ALBEDO = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
 	ROUGHNESS = 1.0 - wet * 0.82;

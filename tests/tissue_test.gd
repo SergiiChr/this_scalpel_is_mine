@@ -57,7 +57,7 @@ func _depth_layers() -> void:
 	var sim := _sim()
 	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.FAT)
 	_settle(sim)
-	var full := (TissueSim.RES * TissueSim.RES * 2) * 3
+	var full := sim.triangle_count() * 3
 	_check(sim.triangles(TissueSim.Depth.SKIN).size() < full, "skin layer has a hole over a fat deep cut")
 	_check(sim.triangles(TissueSim.Depth.FAT).size() < full, "fat layer has a hole over a fat deep cut")
 	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == full, "muscle layer stays whole under a fat deep cut")
@@ -106,7 +106,7 @@ func _stitches_close() -> void:
 		u += 0.01
 	_settle(sim)
 	_check(sim.gap_at(MID) == 0.0, "stitching along the whole cut closes it")
-	_check(sim.triangles(TissueSim.Depth.SKIN).size() == TissueSim.RES * TissueSim.RES * 6, "a stitched cut shows no hole")
+	_check(sim.triangles(TissueSim.Depth.SKIN).size() == sim.triangle_count() * 3, "a stitched cut shows no hole")
 	sim.burst(MID, 0.5)
 	_settle(sim)
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "a burst closure gapes again")
@@ -136,7 +136,8 @@ func _elastic() -> void:
 		sim._substep()
 	_settle(sim)
 	_check(sim.snapped.is_empty(), "a slow 3 cm pull on intact skin doesn't tear it")
-	var behind := k - 3
+	# 4 cm behind the grip, against the pull.
+	var behind := k - roundi(0.04 / (SIZE.x / sim.res_x))
 	var moved := sim.pos[behind].distance_to(sim.rest[behind])
 	_check(moved > 0.008, "skin 4 cm behind a 3 cm pull follows it by more than 8 mm (%.1f mm)" % (moved * 1000.0))
 	var region := sim.region()
@@ -165,7 +166,7 @@ func _muscle_first() -> void:
 	_settle(sim, 120)
 	_check(not sim.muscle_open_near(MID, 0.03), "sewing along the muscle closes it")
 	_check(not sim.is_open(MID), "sewn muscle closes the cavity")
-	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == TissueSim.RES * TissueSim.RES * 6, "sewn muscle shows no hole in the muscle layer")
+	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == sim.triangle_count() * 3, "sewn muscle shows no hole in the muscle layer")
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "the skin over sewn muscle still gapes until it's stitched")
 
 
@@ -184,7 +185,7 @@ func _loose_stitch_gapes() -> void:
 		sims.append(sim)
 	_check(sims[0].gap_at(MID) == 0.0, "a tight stitch closes the gap")
 	_check(sims[1].gap_at(MID) > TissueSim.OPEN_GAP * 0.5, "a loose stitch leaves the gap open (%.1f mm)" % (sims[1].gap_at(MID) * 1000.0))
-	_check(sims[1].triangles(TissueSim.Depth.SKIN).size() < TissueSim.RES * TissueSim.RES * 6, "a loosely stitched cut still shows its opening")
+	_check(sims[1].triangles(TissueSim.Depth.SKIN).size() < sims[1].triangle_count() * 3, "a loosely stitched cut still shows its opening")
 
 
 ## A client mirrors the host's tears spring by spring, diagonals included, and ends with identical topology.

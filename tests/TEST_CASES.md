@@ -138,22 +138,27 @@ Two real game processes on localhost, one hosting and one joining.
 | N5 | Host and client end with the same cut tissue: the same severed springs and the same topology hash (`TissueSim.topology_hash()`) |
 | N6 | Spotty connection: the client process is frozen for 10 s mid-surgery (past ENet's default timeout). Nobody gets disconnected, both are still in the same surgery afterwards, and the host paused the silent player's tool while they were gone (`tests/net_stall_test.gd`) |
 
-## Close up slicing (`tests/slicing_test.gd`, not in the pass/fail run yet)
+## Close up slicing (`tests/slicing_test.gd`)
 
-The scalpel is driven through the surgeon's hand like a player does it: lowered, a depth level picked, moved 2 cm along the blade's edge.
-Run with screenshots after every step: `xvfb-run -a .tools/godot-4.7.2 --path . --rendering-method gl_compatibility res://tests/slicing_test.tscn -- --out=build/slicing`.
+The scalpel is driven through the surgeon's hand like a player does it: lowered, a depth level picked, moved 2 cm along
+the blade's edge (steered back onto its line if the tip drifts). An awake patient with local anesthesia; on a limb the
+cut runs along it, over the bone.
+Run with screenshots of every stage, straight down and 45° off the side:
+`xvfb-run -a .tools/godot-4.7.2 --path . --rendering-method gl_compatibility res://tests/slicing_test.tscn -- --out=build/slicing`.
 Headless it runs the same checks without screenshots, and its frame times are the game code's alone. `--case=arm|thigh|belly` runs one case.
-It's a baseline for now: many of these fail.
+The software renderer runs several physics steps per drawn frame, so the hand looks faster than it is against the wall
+clock: its speed check and the frame rate only mean something headless. `run_tests.sh` runs it headless with
+`--fps-report`: frame rates depend on the machine, so there they're printed, not checked.
 
 | ID | Case |
 |---|---|
-| C1 | Arm, no fat: intact skin; lowered at level 0 nothing happens; pressed at low it goes through the skin |
-| C2 | Arm: moved 2 cm at low, a small clean incision shows muscle; pressed at medium it digs deeper |
-| C3 | Arm: moved 2 cm at medium, the muscle is cut and the bone shows; pressed at high it hits the bone and hurts through local anesthesia |
-| C4 | Thigh, fat over muscle over bone: same start; moved 2 cm at low the fat shows; at medium the fat is cut and the muscle shows |
-| C5 | Thigh: pressed at high it digs deeper; moved 2 cm the muscle is cut and the bone shows |
-| C6 | Belly, fat over muscle over organs: same steps as the thigh, the organs show at the end |
-| C7 | Every move stays a clean incision: no tears, the hand under jagged cut speed |
+| C1 | Every case: intact skin; lowered at level 0 nothing happens and the blade stays clean; pressed at low it goes through the skin only |
+| C2 | Arm, no fat: moved 2 cm at low, the skin opens onto the muscle; pressed at medium it digs deeper; moved 2 cm, the muscle is cut over the bone |
+| C3 | Arm: pressed at high it hits the bone, which hurts through the local block |
+| C4 | Thigh and belly: moved 2 cm at low the skin opens onto the fat; at medium the fat is cut and the muscle shows; pressed at high it digs deeper |
+| C5 | Thigh and belly: moved 2 cm at high the muscle is cut, the bone (thigh) or organs (belly) lie under it, nothing inside is nicked |
+| C6 | Every move stays a clean incision: no tears, the hand under jagged cut speed |
+| C7 | The incision opens like a zipper: widest along it, closed at both ends |
 | C8 | Every case holds 60 fps on average and in its 1% low frames |
 
 ## Visual checks (not automated)

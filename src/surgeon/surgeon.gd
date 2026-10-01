@@ -25,6 +25,9 @@ const HAND_SENSITIVITY := 0.0009
 const LOOK_SENSITIVITY := 0.003
 ## Gap between a resting tool tip and the surface under it.
 const HOVER_GAP := 0.01
+## How far above what's inside an opening (meters) a lowered blade stays at each effort level: at full effort it goes
+## all the way down to it, close enough to grate on a bone (Patient.BLADE_REACH), short of cutting an organ.
+const BLADE_IN_OPENING: Array[float] = [HOVER_GAP, 0.008, 0.005, 0.002]
 ## Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
 const PULL_SPEED := 0.05
 ## Room between the hand (or forearm) and the surface under it: about half a hand's thickness.
@@ -482,7 +485,9 @@ func _constrain(hand: SurgeonHand) -> void:
 	hand.on_hard = false
 	if surface.y != -INF:
 		if surface.open:
-			hand.target.y = surface.y + HOVER_GAP - offset.y
+			# A lowered blade goes into an opening as deep as its level: onto what's inside only at full effort.
+			var gap := BLADE_IN_OPENING[hand.level] if hand.lowered and tool and tool.def.action == "cut" else HOVER_GAP
+			hand.target.y = surface.y + gap - offset.y
 		elif hand.lowered and surface.soft:
 			# Skin gives: a lowered tip presses into it, deeper with effort.
 			hand.target.y = surface.y - 0.002 - hand.level * 0.004 - offset.y
@@ -547,15 +552,18 @@ func _surface_below(p: Vector3) -> Dictionary:
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}
-	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
+	var layer := (hit.collider as CollisionObject3D).collision_layer
+	var soft := (layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
 	# The body's collider is its rest shape: skin lifted by a grip lies above it. The site's own collider is a flat
-	# plane over the site, above skin that curves away under it (a belly): there the skin as drawn now is what's touched.
+	# plane over the site, above skin that curves away under it (a belly), and the gown's collider isn't cut away over
+	# the site: there the skin as drawn now is what's touched.
 	if not site_hit.is_empty():
 		var body := Surgery.current.patient.body
-		var local := body.site.to_local(p)
 		var uv := body.world_to_uv(p)
+		var local := body.site.to_local(p)
 		var skin := body.site.to_global(Vector3(local.x, body.skin_height(uv), local.z))
-		if skin.y > hit.position.y or (hit.collider as Node).has_meta("site") and body.on_body(uv):
+		var over_site := (hit.collider as Node).has_meta("site") or (layer & PatientBody.SURFACE_LAYER) != 0
+		if skin.y > hit.position.y or over_site and body.on_body(uv):
 			return {"y": skin.y, "open": false, "soft": true}
 	return {"y": hit.position.y, "open": false, "soft": soft}
 

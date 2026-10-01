@@ -1,12 +1,15 @@
 class_name TissueSim
 extends RefCounted
 ## Position-based soft tissue for the surgical site skin.
-## A grid of particles joined by springs, all in site-local space.
+## A grid of particles joined by springs, all in site-local space. Cells are about CELL meters square on every site.
 ##
 ## - Springs are a little shorter than the grid spacing, so the skin is under tension.
 ##   Cut the springs along an incision and the edges pull apart on their own.
 ## - Every particle is weakly anchored to where it sits on the body (fascia).
-##   Near an incision the anchor is loosened, like undermined skin.
+##   Near an incision the anchor is loosened, like undermined skin, and the cut edges are drawn back a little, more
+##   the deeper the cut: skin gapes, fat bulges apart, cut muscle retracts.
+## - Each severed spring remembers where along it the blade crossed (c_cross), so the layers are drawn split exactly
+##   along the blade's path, not along the grid (PatientBody._rebuild_layers()).
 ## - Tools pin particles to their tip: forceps and retractors stretch the skin. A grip drags a patch of skin
 ##   around it along with falloff (a pinched fold, not a single point), so a pull spreads out and the skin stretches
 ##   over a wide area instead of tearing right beside the tip.
@@ -15,21 +18,37 @@ extends RefCounted
 ##   where its edges have actually come together: a loose stitch leaves a gap that stays open (and bleeds).
 ## - A cut through the muscle retracts: the muscle pulls the edges further apart until it's stitched itself
 ##   (muscle_stitch()). Skin can't be closed over open muscle, see Patient.close_at().
-## - The sim sleeps when nothing moves, so an untouched patient costs nothing.
+## - Only an active window is simulated: the cells around cuts, grips and skin that moved, plus a margin. The rest
+##   of the grid holds still where it settled. The sim sleeps when nothing moves, so an untouched patient costs nothing.
 
-const RES := 24
+## Grid spacing (meters). The site's size sets how many cells it has along each side, within MIN_RES..MAX_RES.
+const CELL := 0.006
+const MIN_RES := 6
+const MAX_RES := 56
 const TENSION := 0.93
 const ANCHOR := 0.02
 ## Skin pulled this far (meters) from its spot isn't held there any more, see _substep().
 const ANCHOR_REACH := 0.05
-## How far cut muscle pulls each edge back from the cut, and how firmly (meters, anchor strength).
-const MUSCLE_RETRACT := 0.015
+## How far each edge of a cut is drawn back from it (meters) by cut depth (none, skin, fat, muscle), and how firmly.
+## Skin gapes a little under its own tension, cut fat bulges apart, cut muscle retracts hard.
+## The pull fades out over RETRACT_SPREAD (meters) from the cut, so the stretch is shared by the skin around it,
+## and over RETRACT_TAPER (meters) toward the cut's ends, where it stays closed: the cut opens like a lens.
+const RETRACT: Array[float] = [0.0, 0.0022, 0.0035, 0.015]
+const RETRACT_SPREAD: Array[float] = [0.0, 0.03, 0.045, 0.04]
+const RETRACT_TAPER: Array[float] = [0.0, 0.008, 0.012, 0.03]
+const GAPE_PULL := 0.03
 const MUSCLE_PULL := 0.05
 const LOOSE_ANCHOR := 0.006
-const LOOSE_RADIUS := 0.045
+## Skin this close to a cut (meters) is loosened from what's under it.
+const LOOSE_RADIUS := 0.012
 ## How far (uv) a grip drags the skin around it along, and how firmly per solver iteration at its center.
 const GRIP_PATCH := 0.15
 const GRIP_DRAG := 1.0
+## Skin this close to a grip (meters, at rest) is held by it outright: forceps hold a few millimeters of skin, not a
+## point, so a fine grid doesn't tear right beside the jaws.
+const GRIP_HOLD := 0.008
+## Skin under the drape stays at least this far (meters) below the height folded-out skin lies at on top of it.
+const UNDER_DRAPE := 0.006
 ## Pulls up to this far (meters) drag the patch fully, twice as far not at all.
 const DRAG_REACH := 0.035
 ## Skin that moved further than this (meters) from where it settled is shown simulated.
@@ -40,23 +59,38 @@ const ITERATIONS := 4
 ## skin, a stitch would give way to the stretched skin around it and the edges would never meet.
 const STITCH_PASSES := 3
 const TISSUE_BREAK := 2.3
+## One stitch pulls together every cut spring this close to it (meters, at rest): a stitch closes a few millimeters
+## of the cut, however fine the grid.
+const STITCH_REACH := 0.005
+## Closest to either end of a spring (share of its length) the lip of a cut through it is drawn.
+const CROSS_MARGIN := 0.2
 const STEP := 1.0 / 30.0
+## Most solver steps one frame may run to catch up, so a long frame doesn't turn into a longer one.
+const MAX_CATCH_UP := 2
 const SLEEP_EPSILON := 0.00002
 const SLEEP_STEPS := 20
 ## Most solver steps the skin gets to settle at build time (see _settle()).
 const SETTLE_STEPS := 300
+## Cells of still skin simulated around the active area, and how often (solver steps) the window is redrawn.
+## Skin that moved further than WINDOW_MOVE (meters) widens it; less than that, it's drawn by the body model anyway.
+const WINDOW_MARGIN := 4
+const WINDOW_MOVE := 0.002
+const WINDOW_REFRESH := 6
 
 enum Kind { TISSUE, STITCH }
 ## How deep a severed spring was cut: through the skin, into the fat, or through the muscle into the cavity.
 enum Depth { NONE, SKIN, FAT, MUSCLE }
 ## A gap counts as open once it's pulled this far apart (meters).
 const OPEN_GAP := 0.004
-## Cells per side of the grid that sorts skin triangles by where they lie now, for skin_height().
-## It covers the site and a margin around it, since pulled skin can leave the site's rectangle.
+## Cells per side of the grid that sorts skin triangles by where they lie now, for skin_height() once the skin
+## moved far (a flap folded back). It covers the site and a margin around it.
 const BINS := 16
 const BIN_MARGIN := 0.1
 
 var size := Vector2.ONE
+## Cells along u and v; particles per row is res_x + 1.
+var res_x := 24
+var res_y := 24
 var rest := PackedVector3Array()
 var pos := PackedVector3Array()
 var prev := PackedVector3Array()
@@ -74,9 +108,20 @@ var c_active := PackedByteArray()
 var c_kind := PackedByteArray()
 var c_break := PackedFloat32Array()
 var c_depth := PackedByteArray()
+## Where along a severed spring (0 at c_a, 1 at c_b) the blade crossed it. A tear splits it in the middle.
+var c_cross := PackedFloat32Array()
+## Which way the cut ran where it crossed a severed spring (site x, z): its edges are drawn back square to it.
+var c_cut_dir := PackedVector2Array()
 ## 1 for springs cut through the muscle whose muscle has been stitched: they count as cut only into the fat.
 var c_muscle_closed := PackedByteArray()
-## Where the anchor pulls each particle: its rest position, moved back from a cut through open muscle.
+## Grid springs leaving each particle (-1 past the grid's edge): to the right, down, the (i+1, j)-(i, j+1) diagonal
+## and the other diagonal. The drawn triangles of cell (i, j) use the first three of particle (i, j) and its
+## neighbours, see triangles().
+var spring_right := PackedInt32Array()
+var spring_down := PackedInt32Array()
+var spring_diag := PackedInt32Array()
+var spring_anti := PackedInt32Array()
+## Where the anchor pulls each particle: its rest position, moved back from a cut.
 var anchor_target := PackedVector3Array()
 ## What exposed skin folded out of the site can't go below (the drape): site-local (x, z) -> height, NAN where
 ## there's nothing. Unset: nothing to lie on. Only particles marked in `exposed` are held up by it.
@@ -98,7 +143,7 @@ var steps_done := 0
 
 ## key -> [particle, target]
 var _pins: Dictionary = {}
-## Particle -> [particles, weights] it drags along when gripped, for the topology it was worked out for.
+## Particle -> [particles, weights, held particles] it drags along when gripped, for the topology it was worked out for.
 var _patches: Dictionary = {}
 var _patch_version := -1
 ## Spring indices touching each particle.
@@ -106,88 +151,155 @@ var _springs_of: Array[PackedInt32Array] = []
 var _still_steps := 0
 var _accumulator := 0.0
 var _edge_to_stitch: Dictionary = {}
-## Spring index of the grid edges leaving each particle: to the right, down, and the (i+1, j)-(i, j+1) diagonal.
-var _right := PackedInt32Array()
-var _down := PackedInt32Array()
-var _diag := PackedInt32Array()
 ## Tissue springs that are cut or snapped. Gap and mesh queries only look at these.
 var _severed := PackedInt32Array()
 ## Every stitch spring, active or not.
 var _stitches := PackedInt32Array()
-## 1 for particles the solver may move, 0 for the fixed border and pinned particles.
+## 1 for particles the solver may move this step, 0 for the fixed border, pinned particles and still skin outside the
+## active window.
 var _free := PackedFloat32Array()
+## The active window: particle columns and rows [x0, x1] x [y0, y1], empty when nothing needs simulating.
+var _win := Rect2i()
+## Movable particles inside the window, and every grid spring touching one.
+var _win_particles := PackedInt32Array()
+var _win_springs := PackedInt32Array()
+var _win_steps := 0
+var _win_dirty := true
+## While the skin settles at build time the whole grid is simulated.
+var _win_locked := false
+## Every cut as [a, b] uv pairs, in the order they were made.
+var _cut_segments := PackedVector2Array()
+## Strokes: runs of segments each starting where the last one ended (a blade moved without lifting it), as
+## [where it started, the point of it farthest from there]. Those two are its ends.
+var _strokes: Array[PackedVector2Array] = []
+## Which stroke each segment belongs to.
+var _segment_stroke := PackedInt32Array()
+## The ends of the cuts (uv), worked out again whenever a cut is added.
+var _cut_ends := PackedVector2Array()
+var _cut_ends_for := -1
+## Set when the sim falls asleep: the next window is picked afresh, otherwise it only grows while the skin moves
+## (shrinking a window around moving skin would hold skin at its edge where it doesn't rest, and it moves again).
+var _win_fresh := true
+## Particles drawn back from a cut (see _update_retraction()), so the next update can let go of them.
+var _retracted := PackedInt32Array()
+## Per particle, while _update_retraction() works: the summed pull away from cuts and how far it reaches.
+var _pull := PackedVector3Array()
+var _pull_amount := PackedFloat32Array()
+var _retract_dirty := false
+## Farthest any particle has moved from its rest position (meters, squared), as of the last step.
+var _farthest := 0.0
 ## Skin triangles (particle indices) and, per bin, the first index in them of each triangle overlapping it.
 var _bin_triangles := PackedInt32Array()
 var _bins: Array[PackedInt32Array] = []
 ## [topology_version, steps_done] the bins were sorted for.
 var _bins_for := [-1, -1]
+## Particles off the body (see off).
+var _off_list := PackedInt32Array()
+var _hanging := PackedByteArray()
+var _hanging_for := []
 
 
 ## height_at(uv) -> skin height above the site plane. on_body(uv) -> false where the site is off the body.
 func build(site_size: Vector2, height_at: Callable, on_body: Callable = Callable()) -> void:
 	size = site_size
-	var count := (RES + 1) * (RES + 1)
+	res_x = clampi(ceili(size.x / CELL), MIN_RES, MAX_RES)
+	res_y = clampi(ceili(size.y / CELL), MIN_RES, MAX_RES)
+	var count := (res_x + 1) * (res_y + 1)
 	rest.resize(count)
 	anchor.resize(count)
 	fixed.resize(count)
 	off.resize(count)
-	for j in RES + 1:
-		for i in RES + 1:
-			var uv := Vector2(float(i) / RES, float(j) / RES)
+	for j in res_y + 1:
+		for i in res_x + 1:
+			var uv := Vector2(float(i) / res_x, float(j) / res_y)
 			var k := index(i, j)
 			rest[k] = Vector3((uv.x - 0.5) * size.x, height_at.call(uv), (uv.y - 0.5) * size.y)
 			anchor[k] = ANCHOR
 			off[k] = 0 if on_body.is_null() or on_body.call(uv) else 1
-			fixed[k] = 1 if i == 0 or j == 0 or i == RES or j == RES else 0
+			fixed[k] = 1 if i == 0 or j == 0 or i == res_x or j == res_y else 0
 	pos = rest.duplicate()
 	prev = rest.duplicate()
 	anchor_target = rest.duplicate()
+	_off_list = PackedInt32Array()
+	for k in count:
+		if off[k] == 1:
+			_off_list.append(k)
 	_free.resize(count)
-	_right.resize(count)
-	_down.resize(count)
-	_diag.resize(count)
-	for j in RES + 1:
-		for i in RES + 1:
+	for list: PackedInt32Array in [spring_right, spring_down, spring_diag, spring_anti]:
+		list.resize(count)
+		list.fill(-1)
+	for j in res_y + 1:
+		for i in res_x + 1:
 			var k := index(i, j)
-			if i < RES:
-				_right[k] = _spring(k, index(i + 1, j))
-			if j < RES:
-				_down[k] = _spring(k, index(i, j + 1))
-			if i < RES and j < RES:
-				_diag[k] = _spring(index(i + 1, j), index(i, j + 1))
-				_spring(k, index(i + 1, j + 1))
+			if i < res_x:
+				spring_right[k] = _spring(k, index(i + 1, j))
+			if j < res_y:
+				spring_down[k] = _spring(k, index(i, j + 1))
+			if i < res_x and j < res_y:
+				spring_diag[k] = _spring(index(i + 1, j), index(i, j + 1))
+				spring_anti[k] = _spring(k, index(i + 1, j + 1))
 	_settle()
 
 
 ## Lets the skin settle under its own tension before anything touches it. Over a curved body tension pulls the sheet a
 ## few millimeters off the body's shape at the site's edges; that's where it rests, not a movement (see region()).
 ## A flat site is settled at once and falls asleep within SLEEP_STEPS.
+## Springs left stretched far at the edge of a round limb (where the site hangs off it) would snap the moment a cut
+## wakes the skin, so their breaking point is moved past how far they're stretched at rest. Springs to the site's
+## fixed border or to skin off the body never snap: neither is ever drawn, a tear there would only be a bleed nobody
+## can see or reach.
 func _settle() -> void:
+	_set_window(Rect2i(0, 0, res_x, res_y))
+	_win_locked = true
 	for step_index in SETTLE_STEPS:
 		if is_sleeping():
 			break
 		_substep()
+	_win_locked = false
 	settled = pos.duplicate()
 	prev = pos.duplicate()
 	steps_done = 0
+	for s in c_a.size():
+		var stretched := pos[c_a[s]].distance_to(pos[c_b[s]]) / c_rest[s]
+		c_break[s] = maxf(c_break[s], 1.0 + 2.0 * (stretched * 1.4 - 1.0))
+		if fixed[c_a[s]] + fixed[c_b[s]] + off[c_a[s]] + off[c_b[s]] > 0:
+			c_break[s] = INF
+	_win_dirty = true
 
 
 func index(i: int, j: int) -> int:
-	return j * (RES + 1) + i
+	return j * (res_x + 1) + i
 
 
 func uv_of(k: int) -> Vector2:
-	return Vector2(float(k % (RES + 1)) / RES, float(k / (RES + 1)) / RES)
+	return Vector2(float(k % (res_x + 1)) / res_x, float(k / (res_x + 1)) / res_y)
+
+
+## Column and row of particle k.
+func cell_of(k: int) -> Vector2i:
+	return Vector2i(k % (res_x + 1), k / (res_x + 1))
 
 
 func nearest(uv: Vector2) -> int:
-	var i := clampi(roundi(uv.x * RES), 1, RES - 1)
-	var j := clampi(roundi(uv.y * RES), 1, RES - 1)
+	var i := clampi(roundi(uv.x * res_x), 1, res_x - 1)
+	var j := clampi(roundi(uv.y * res_y), 1, res_y - 1)
 	return index(i, j)
 
 
 func any_severed() -> bool:
 	return not _severed.is_empty()
+
+
+## Tissue springs that are cut or snapped.
+func severed() -> PackedInt32Array:
+	return _severed
+
+
+## How deep spring s is cut (Depth.NONE while it's whole). Stitched muscle counts as cut only into the fat.
+func cut_depth(s: int) -> int:
+	if s < 0 or c_active[s] == 1 or c_kind[s] != Kind.TISSUE:
+		return Depth.NONE
+	return depth_of(s)
 
 
 ## Grid points where the simulated skin has to take over from the body model: within `reach` points of a cut,
@@ -201,24 +313,23 @@ func region(reach: int = 1) -> PackedByteArray:
 		seeds.append(c_b[s])
 	for key: int in _pins:
 		seeds.append(_pins[key][0])
-	for k in pos.size():
+	# Only skin in the window moves: everything outside it holds still where it settled.
+	for k in _win_particles:
 		if pos[k].distance_squared_to(settled[k]) > REGION_MOVE * REGION_MOVE:
 			seeds.append(k)
 	for k in seeds:
-		var i := k % (RES + 1)
-		var j := k / (RES + 1)
-		for y in range(maxi(j - reach, 0), mini(j + reach, RES) + 1):
-			for x in range(maxi(i - reach, 0), mini(i + reach, RES) + 1):
+		var at := cell_of(k)
+		for y in range(maxi(at.y - reach, 0), mini(at.y + reach, res_y) + 1):
+			for x in range(maxi(at.x - reach, 0), mini(at.x + reach, res_x) + 1):
 				out[index(x, y)] = 1
 	# Off the body, and right next to it: triangles touching skin off the body aren't drawn, so the body model has to
 	# cover up to there, or its cut-away edge (halfway between region points) would leave a gap.
 	var hanging := hanging_off()
-	for k in out.size():
+	for k in _off_list:
 		if hanging[k] == 1:
-			var i := k % (RES + 1)
-			var j := k / (RES + 1)
-			for y in range(maxi(j - 1, 0), mini(j + 1, RES) + 1):
-				for x in range(maxi(i - 1, 0), mini(i + 1, RES) + 1):
+			var at := cell_of(k)
+			for y in range(maxi(at.y - 1, 0), mini(at.y + 1, res_y) + 1):
+				for x in range(maxi(at.x - 1, 0), mini(at.x + 1, res_x) + 1):
 					out[index(x, y)] = 0
 	return out
 
@@ -231,20 +342,59 @@ func wake() -> void:
 	_still_steps = 0
 
 
-## Severs every tissue spring crossing the segment down to the given depth and loosens the skin around it.
+## Severs every tissue spring the segment crosses down to the given depth and loosens the skin around it.
+## A point exactly on the cut's line counts as on its left, so a cut through a grid point severs each spring once.
 func cut(a: Vector2, b: Vector2, depth: int) -> void:
-	for s in c_a.size():
-		if c_kind[s] != Kind.TISSUE:
-			continue
-		if Geometry2D.segment_intersects_segment(uv_of(c_a[s]), uv_of(c_b[s]), a, b) != null:
-			_sever(s, depth)
-	for k in rest.size():
-		var uv := uv_of(k)
-		if uv.distance_to(Geometry2D.get_closest_point_to_segment(uv, a, b)) < LOOSE_RADIUS:
-			anchor[k] = LOOSE_ANCHOR
-	_update_retraction()
+	if a.is_equal_approx(b):
+		return
+	var count := _cut_segments.size()
+	if _strokes.is_empty() or count == 0 or not _cut_segments[count - 1].is_equal_approx(a):
+		_strokes.append(PackedVector2Array([a, a]))
+	var stroke := _strokes[-1]
+	if ((b - stroke[0]) * size).length() > ((stroke[1] - stroke[0]) * size).length():
+		stroke[1] = b
+		_strokes[-1] = stroke
+	_cut_segments.append_array([a, b])
+	_segment_stroke.append(_strokes.size() - 1)
+	var low := Vector2i(floori(minf(a.x, b.x) * res_x) - 1, floori(minf(a.y, b.y) * res_y) - 1).clamp(Vector2i.ZERO, Vector2i(res_x, res_y))
+	var high := Vector2i(ceili(maxf(a.x, b.x) * res_x) + 1, ceili(maxf(a.y, b.y) * res_y) + 1).clamp(Vector2i.ZERO, Vector2i(res_x, res_y))
+	for j in range(low.y, high.y + 1):
+		for i in range(low.x, high.x + 1):
+			var k := index(i, j)
+			for s: int in [spring_right[k], spring_down[k], spring_diag[k], spring_anti[k]]:
+				if s < 0 or c_kind[s] != Kind.TISSUE:
+					continue
+				var t := _crossing(uv_of(c_a[s]), uv_of(c_b[s]), a, b)
+				if t >= 0.0:
+					# A cut right through a grid point would split the triangles around it into slivers: the lip is
+					# drawn a little off it instead (at most a fifth of a cell).
+					_sever(s, depth, clampf(t, CROSS_MARGIN, 1.0 - CROSS_MARGIN), (b - a) * size)
+	var reach := Vector2i(ceili(LOOSE_RADIUS / size.x * res_x), ceili(LOOSE_RADIUS / size.y * res_y))
+	for j in range(maxi(low.y - reach.y, 0), mini(high.y + reach.y, res_y) + 1):
+		for i in range(maxi(low.x - reach.x, 0), mini(high.x + reach.x, res_x) + 1):
+			var k := index(i, j)
+			var uv := uv_of(k)
+			if ((uv - Geometry2D.get_closest_point_to_segment(uv, a, b)) * size).length() < LOOSE_RADIUS:
+				anchor[k] = LOOSE_ANCHOR
+	_retract_dirty = true
 	topology_version += 1
+	_win_dirty = true
 	wake()
+
+
+## Where segment a-b crosses the line from p to q, as a share of the way from p (0..1), or -1 if it doesn't.
+## Half open on both: a point on the cut's line is on its left, the cut's end belongs to the next segment.
+static func _crossing(p: Vector2, q: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var sp := ab.cross(p - a)
+	var sq := ab.cross(q - a)
+	if (sp >= 0.0) == (sq >= 0.0):
+		return -1.0
+	var t := sp / (sp - sq)
+	var along := (p.lerp(q, t) - a).dot(ab) / ab.length_squared()
+	if along < 0.0 or along >= 1.0:
+		return -1.0
+	return t
 
 
 ## Stitches the muscle under every spring cut through it near uv. Returns how many springs it closed.
@@ -257,6 +407,7 @@ func muscle_stitch(uv: Vector2, radius: float) -> int:
 	if closed > 0:
 		_update_retraction()
 		topology_version += 1
+		_win_dirty = true
 		wake()
 	return closed
 
@@ -277,6 +428,7 @@ func depth_of(s: int) -> int:
 ## Pins the particle nearest uv to follow a tool. Returns false if there is no tissue there.
 func grip(key: int, uv: Vector2) -> bool:
 	_pins[key] = [nearest(uv), pos[nearest(uv)]]
+	_win_dirty = true
 	wake()
 	return true
 
@@ -288,6 +440,7 @@ func move_grip(key: int, target: Vector3) -> void:
 
 func release(key: int) -> void:
 	_pins.erase(key)
+	_win_dirty = true
 	wake()
 
 
@@ -297,14 +450,18 @@ func grips() -> Array:
 
 ## Clients mirror the host's grips: [[key, particle, target], ...].
 func set_grips(list: Array) -> void:
+	var before := _pins.keys()
 	_pins.clear()
 	for entry: Array in list:
 		_pins[entry[0]] = [entry[1], entry[2]]
+	if _pins.keys() != before:
+		_win_dirty = true
 	if not list.is_empty():
 		wake()
 
 
-## Closes the nearest severed spring near uv with a stitch. tension scales its rest length (loose > 1 > tight).
+## Closes the severed springs nearest uv with stitches: the nearest one within reach, and every other one within
+## STITCH_REACH of it. tension scales their rest length (loose > 1 > tight).
 func stitch(uv: Vector2, tension: float, strength: float) -> bool:
 	var best := -1
 	var best_dist := 0.05
@@ -316,18 +473,25 @@ func stitch(uv: Vector2, tension: float, strength: float) -> bool:
 			best = s
 	if best < 0:
 		return false
-	_spring(c_a[best], c_b[best], Kind.STITCH, tension, strength)
+	var center := (rest[c_a[best]] + rest[c_b[best]]) * 0.5
+	for s in _severed.duplicate():
+		if s == best or (not _stitched(c_a[s], c_b[s]) and ((rest[c_a[s]] + rest[c_b[s]]) * 0.5).distance_to(center) < STITCH_REACH):
+			_spring(c_a[s], c_b[s], Kind.STITCH, tension, strength)
+	_update_retraction()
 	topology_version += 1
+	_win_dirty = true
 	wake()
 	return true
 
 
 ## Removes stitches near uv (a closure bursting open).
 func burst(uv: Vector2, radius: float) -> void:
-	for s in c_a.size():
-		if c_kind[s] == Kind.STITCH and c_active[s] == 1 and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
+	for s in _stitches:
+		if c_active[s] == 1 and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
 			c_active[s] = 0
+	_update_retraction()
 	topology_version += 1
+	_win_dirty = true
 	wake()
 
 
@@ -338,10 +502,12 @@ func snap_spring(s: int) -> void:
 		push_error("Tissue out of sync: no spring %d (%d springs)" % [s, c_a.size()])
 		return
 	if c_kind[s] == Kind.TISSUE:
-		_sever(s, Depth.SKIN)
+		_sever(s, Depth.SKIN, 0.5)
 	else:
 		c_active[s] = 0
+	_update_retraction()
 	topology_version += 1
+	_win_dirty = true
 	wake()
 
 
@@ -350,17 +516,30 @@ func topology_hash() -> int:
 	return hash([c_active, c_depth, c_muscle_closed, c_kind.size()])
 
 
-## Seizures, coughs and bumps shake the tissue (visual, every peer).
+## Seizures, coughs and bumps shake the tissue (visual, every peer). Only skin that's being simulated shakes: the rest
+## lies still under the body model anyway.
 func shake(amount: float) -> void:
-	for k in pos.size():
-		if fixed[k] == 0:
-			prev[k] = pos[k] - Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * amount
+	for k in _win_particles:
+		prev[k] = pos[k] - Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * amount
 	wake()
 
 
-## True when the tissue at uv is cut down to at least `depth` and pulled open.
+## True when uv lies inside an opening: between the lips of a cut at least `depth` deep, pulled open.
 func is_open(uv: Vector2, depth: int = Depth.MUSCLE) -> bool:
-	return gap_at(uv, 0.04, depth) > OPEN_GAP
+	var cell := maxf(size.x / res_x, size.y / res_y)
+	for s in _severed:
+		if depth_of(s) < depth:
+			continue
+		var gap := _open_gap(s)
+		if gap <= OPEN_GAP:
+			continue
+		# Within half the gap of where the blade crossed, across the cut, and no further along it than the springs lie.
+		var offset := (uv - uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s])) * size
+		var across := ((uv_of(c_b[s]) - uv_of(c_a[s])) * size).normalized()
+		var side := offset.dot(across)
+		if absf(side) < gap * 0.5 and (offset - across * side).length() < cell * 0.6:
+			return true
+	return false
 
 
 ## Meters the tissue has pulled apart across springs severed at least `depth` deep near uv.
@@ -368,24 +547,51 @@ func gap_at(uv: Vector2, radius: float = 0.04, depth: int = Depth.SKIN) -> float
 	return gap_along(PackedVector2Array([uv]), radius, depth)
 
 
-## Widest gap near a polyline (a wound), same rules as gap_at().
+## Widest gap near a polyline (a wound), same rules as gap_at(). Measured where the blade crossed each spring.
 func gap_along(points: PackedVector2Array, radius: float, depth: int) -> float:
 	var gap := 0.0
 	for s in _severed:
 		if depth_of(s) < depth:
 			continue
-		var a := c_a[s]
-		var b := c_b[s]
-		if _distance_to_line((uv_of(a) + uv_of(b)) * 0.5, points) < radius:
+		if _distance_to_line(uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s]), points) < radius:
 			gap = maxf(gap, _open_gap(s))
 	return gap
 
 
 ## Height (site-local y) of the skin at uv as it's deformed now, NAN over an opening or where no skin lies.
 ## Tools and hands touch this, not the body's rest shape, so a lifted or pressed fold is where it's drawn.
+## Skin that only moved a little is searched for around where it rests; a flap moved far is found through bins.
 func skin_height(uv: Vector2) -> float:
-	_sort_bins()
 	var p := Vector2((uv.x - 0.5) * size.x, (uv.y - 0.5) * size.y)
+	var reach := 2
+	if _farthest > pow(reach * minf(size.x / res_x, size.y / res_y) * 0.8, 2.0):
+		return _binned_height(p)
+	var hanging := hanging_off()
+	var ci := clampi(floori(uv.x * res_x), 0, res_x - 1)
+	var cj := clampi(floori(uv.y * res_y), 0, res_y - 1)
+	for j in range(maxi(cj - reach, 0), mini(cj + reach, res_y - 1) + 1):
+		for i in range(maxi(ci - reach, 0), mini(ci + reach, res_x - 1) + 1):
+			var a := index(i, j)
+			var c := a + res_x + 1
+			for tri: PackedInt32Array in [PackedInt32Array([a, a + 1, c, spring_right[a], spring_diag[a], spring_down[a]]), PackedInt32Array([a + 1, c + 1, c, spring_down[a + 1], spring_right[c], spring_diag[a]])]:
+				if hanging[tri[0]] + hanging[tri[1]] + hanging[tri[2]] > 0 or _gaping(tri[3]) or _gaping(tri[4]) or _gaping(tri[5]):
+					continue
+				var pa := pos[tri[0]]
+				var pb := pos[tri[1]]
+				var pc := pos[tri[2]]
+				var weights := _barycentric(p, Vector2(pa.x, pa.z), Vector2(pb.x, pb.z), Vector2(pc.x, pc.z))
+				if weights.x >= 0.0 and weights.y >= 0.0 and weights.z >= 0.0:
+					return pa.y * weights.x + pb.y * weights.y + pc.y * weights.z
+	return NAN
+
+
+## Spring s is cut and pulled open, so no skin lies across it.
+func _gaping(s: int) -> bool:
+	return c_active[s] == 0 and c_kind[s] == Kind.TISSUE and _open_gap(s) > 0.0
+
+
+func _binned_height(p: Vector2) -> float:
+	_sort_bins()
 	var cell := _bin_of(p)
 	if cell.x < 0 or cell.x >= BINS or cell.y < 0 or cell.y >= BINS:
 		return NAN
@@ -405,21 +611,24 @@ func stretch(a: int, b: int) -> float:
 
 
 ## 1 for particles off the body, 0 elsewhere, except for skin folded out on top of the drape (see floor_at): that
-## can't stick out of the body, it lies on the sheet, and is shown like any other.
+## can't stick out of the body, it lies on the sheet, and is shown like any other. Worked out once per step.
 func hanging_off() -> PackedByteArray:
-	var out := off.duplicate()
-	if not floor_at.is_valid():
-		return out
-	for k in out.size():
-		if out[k] == 1:
-			var floor_y: float = floor_at.call(pos[k].x, pos[k].z)
-			if not is_nan(floor_y) and pos[k].y >= floor_y - 0.002:
-				out[k] = 0
-	return out
+	if _hanging_for == [steps_done, floor_at.is_valid()] and _hanging.size() == off.size():
+		return _hanging
+	_hanging_for = [steps_done, floor_at.is_valid()]
+	_hanging = off.duplicate()
+	if floor_at.is_valid():
+		for k in _off_list:
+			if _hanging[k] == 1:
+				var floor_y: float = floor_at.call(pos[k].x, pos[k].z)
+				if not is_nan(floor_y) and pos[k].y >= floor_y - 0.002:
+					_hanging[k] = 0
+	return _hanging
 
 
-## Triangle indices of the grid, minus triangles spanning a gap cut at least `depth` deep and pulled open,
-## so a layer mesh built from them shows a hole there, and minus triangles off the body.
+## Triangle indices of the whole grid, minus triangles spanning a gap cut at least `depth` deep and pulled open,
+## and minus triangles off the body. The meshes split triangles along the cut instead (PatientBody), this is what
+## tests and contact count as open.
 func triangles(depth: int) -> PackedInt32Array:
 	var open := PackedByteArray()
 	open.resize(c_a.size())
@@ -428,24 +637,30 @@ func triangles(depth: int) -> PackedInt32Array:
 			open[s] = 1
 	var hanging := hanging_off()
 	var out := PackedInt32Array()
-	for j in RES:
-		for i in RES:
+	for j in res_y:
+		for i in res_x:
 			var a := index(i, j)
-			var c := a + RES + 1
-			if open[_right[a]] + open[_diag[a]] + open[_down[a]] + hanging[a] + hanging[a + 1] + hanging[c] == 0:
+			var c := a + res_x + 1
+			if open[spring_right[a]] + open[spring_diag[a]] + open[spring_down[a]] + hanging[a] + hanging[a + 1] + hanging[c] == 0:
 				out.append(a)
 				out.append(a + 1)
 				out.append(c)
-			if open[_down[a + 1]] + open[_right[c]] + open[_diag[a]] + hanging[a + 1] + hanging[c + 1] + hanging[c] == 0:
+			if open[spring_down[a + 1]] + open[spring_right[c]] + open[spring_diag[a]] + hanging[a + 1] + hanging[c + 1] + hanging[c] == 0:
 				out.append(a + 1)
 				out.append(c + 1)
 				out.append(c)
 	return out
 
 
-func step(delta: float) -> void:
-	_accumulator = minf(_accumulator + delta, STEP * 4.0)
-	while _accumulator >= STEP:
+## Triangles in the whole grid (indices, three per triangle), for comparing with triangles().
+func triangle_count() -> int:
+	return res_x * res_y * 2
+
+
+## Advances the sim by delta seconds in steps of STEP. With run false the time only adds up, for the next call.
+func step(delta: float, run: bool = true) -> void:
+	_accumulator = minf(_accumulator + delta, STEP * MAX_CATCH_UP)
+	while run and _accumulator >= STEP:
 		_accumulator -= STEP
 		if is_sleeping():
 			_accumulator = 0.0
@@ -455,23 +670,28 @@ func step(delta: float) -> void:
 
 func _substep() -> void:
 	steps_done += 1
+	_win_steps += 1
+	# Asleep (stepped anyway), the window waits for something to wake it.
+	if not _win_locked and (_win_dirty or (_win_steps >= WINDOW_REFRESH and not _win_fresh)):
+		_refresh_window()
 	var moved := 0.0
-	for k in pos.size():
-		if fixed[k] == 1:
-			continue
+	var farthest := 0.0
+	for k in _win_particles:
 		var p := pos[k]
 		pos[k] = p + (p - prev[k]) * DAMPING
 		prev[k] = p
-	for k in pos.size():
-		_free[k] = 1.0 - fixed[k]
+		_free[k] = 1.0
 	for key: int in _pins:
 		_free[_pins[key][0]] = 0.0
-	var springs := c_a.size()
+		for j in _patch(_pins[key][0])[2]:
+			_free[j] = 0.0
 	for iteration in ITERATIONS:
 		for key: int in _pins:
 			var pin: Array = _pins[key]
 			pos[pin[0]] = pin[1]
 			var pull: Vector3 = pin[1] - anchor_target[pin[0]]
+			for j in _patch(pin[0])[2]:
+				pos[j] = _above_floor(j, anchor_target[j] + pull)
 			# The patch is dragged along by translating it, which only looks right for a modest pull. A flap swung
 			# far back is left to the springs, or the translated patch would fight the way it turns.
 			var drag := GRIP_DRAG * clampf(2.0 - pull.length() / DRAG_REACH, 0.0, 1.0)
@@ -484,8 +704,9 @@ func _substep() -> void:
 				var j := around[n]
 				pos[j] += (anchor_target[j] + pull * weights[n] - pos[j]) * drag * weights[n] * _free[j]
 		# Sweeping the springs forward then backward keeps corrections from always flowing one way across the grid.
-		for n in springs:
-			var s := n if iteration % 2 == 0 else springs - 1 - n
+		var count := _win_springs.size()
+		for n in count:
+			var s := _win_springs[n if iteration % 2 == 0 else count - 1 - n]
 			if c_active[s] == 0:
 				continue
 			var a := c_a[s]
@@ -501,21 +722,105 @@ func _substep() -> void:
 			var correction := d * ((length - c_rest[s]) / (length * (wa + wb)))
 			pos[a] += correction * wa
 			pos[b] -= correction * wb
-		for pass_index in STITCH_PASSES:
+		for pass_index in STITCH_PASSES + 1:
 			for s in _stitches:
 				if c_active[s] == 1:
 					_solve(s)
-		for k in pos.size():
+		for k in _win_particles:
 			# Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back.
 			var back := anchor_target[k] - pos[k]
 			pos[k] += back * anchor[k] * _free[k] * clampf(1.0 - back.length() / ANCHOR_REACH, 0.0, 1.0)
 		# Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
 		_stay_above_floor()
-	for k in pos.size():
+	for k in _win_particles:
 		moved = maxf(moved, pos[k].distance_squared_to(prev[k]))
+		farthest = maxf(farthest, pos[k].distance_squared_to(rest[k]))
+	_farthest = farthest
 	if tearing:
 		_snap_overstretched()
+	if _retract_dirty:
+		_update_retraction()
 	_still_steps = _still_steps + 1 if moved < SLEEP_EPSILON * SLEEP_EPSILON else 0
+	if _still_steps >= SLEEP_STEPS:
+		_win_fresh = true
+
+
+## Picks the cells to simulate: around cuts, grips and skin that moved, plus WINDOW_MARGIN cells of still skin.
+## While the skin moves the window only grows; once it fell asleep the next one is picked afresh.
+func _refresh_window() -> void:
+	_win_dirty = false
+	_win_steps = 0
+	var low := Vector2i(res_x + 1, res_y + 1)
+	var high := Vector2i(-1, -1)
+	var seeds := PackedInt32Array()
+	for s in _severed:
+		seeds.append(c_a[s])
+		seeds.append(c_b[s])
+	for s in _stitches:
+		if c_active[s] == 1:
+			seeds.append(c_a[s])
+	for k in _win_particles:
+		if pos[k].distance_squared_to(settled[k]) > WINDOW_MOVE * WINDOW_MOVE:
+			seeds.append(k)
+	for k in seeds:
+		var at := cell_of(k)
+		low = low.min(at)
+		high = high.max(at)
+	for key: int in _pins:
+		# A grip drags a whole patch along: all of it moves.
+		var at := cell_of(_pins[key][0])
+		var patch := Vector2i(ceili(GRIP_PATCH * res_x), ceili(GRIP_PATCH * res_y))
+		low = low.min(at - patch)
+		high = high.max(at + patch)
+	var fresh := _win_fresh or _win.size == Vector2i.ZERO
+	_win_fresh = false
+	if high.x < 0:
+		if fresh:
+			_set_window(Rect2i())
+		return
+	var margin := Vector2i(WINDOW_MARGIN, WINDOW_MARGIN)
+	low = (low - margin).max(Vector2i.ZERO)
+	high = (high + margin).min(Vector2i(res_x, res_y))
+	if not fresh:
+		low = low.min(_win.position)
+		high = high.max(_win.end)
+	var window := Rect2i(low, high - low)
+	if window != _win:
+		_set_window(window)
+
+
+func _set_window(window: Rect2i) -> void:
+	var before := _win
+	for k in _win_particles:
+		_free[k] = 0.0
+	_win = window
+	_win_particles = PackedInt32Array()
+	_win_springs = PackedInt32Array()
+	if window.size == Vector2i.ZERO:
+		return
+	for j in range(window.position.y, window.end.y + 1):
+		for i in range(window.position.x, window.end.x + 1):
+			var k := index(i, j)
+			if fixed[k] == 0:
+				_win_particles.append(k)
+	# Every spring with an end inside: springs leaving each particle in the window and the ones arriving from the row
+	# above and the column to the left of it.
+	for j in range(maxi(window.position.y - 1, 0), window.end.y + 1):
+		for i in range(maxi(window.position.x - 1, 0), window.end.x + 1):
+			var k := index(i, j)
+			for s: int in [spring_right[k], spring_down[k], spring_diag[k], spring_anti[k]]:
+				if s >= 0:
+					_win_springs.append(s)
+	for k in _win_particles:
+		_free[k] = 1.0
+		# Skin coming back into the window starts out still, not with whatever motion it had when it left.
+		if not _inside(before, cell_of(k)):
+			prev[k] = pos[k]
+
+
+## Column and row `at` lie in window rect (both ends included); nothing lies in an empty one.
+static func _inside(rect: Rect2i, at: Vector2i) -> bool:
+	return rect.size != Vector2i.ZERO and at.x >= rect.position.x and at.y >= rect.position.y and at.x <= rect.end.x and at.y <= rect.end.y
 
 
 ## Moves the ends of spring s toward its rest length (the loop in _substep() does the same inline, for speed).
@@ -533,18 +838,26 @@ func _solve(s: int) -> void:
 	pos[b] -= correction * wb
 
 
-## Skin that started out exposed (inside the drape's opening) and is folded out over the drape lies on it.
+## Skin that started out exposed (inside the drape's opening) and is folded out over the drape lies on it. Skin that
+## starts under the drape stays under it: a flap pulled out over the drape can't lift it through the sheet.
 func _stay_above_floor() -> void:
 	if not floor_at.is_valid():
 		return
-	for k in pos.size():
-		if _free[k] > 0.0:
+	for k in _win_particles:
+		if _free[k] == 0.0:
+			continue
+		if exposed[k] == 1:
 			pos[k] = _above_floor(k, pos[k])
+		elif settled.size() == pos.size():
+			# No higher than the drape lets it, or where it rested if the drape's frame lies lower than that.
+			var floor_y: float = floor_at.call(pos[k].x, pos[k].z)
+			if not is_nan(floor_y):
+				pos[k].y = minf(pos[k].y, maxf(floor_y - UNDER_DRAPE, settled[k].y))
 
 
 ## p, where particle k is, lifted onto the floor if it's exposed skin below it.
 func _above_floor(k: int, p: Vector3) -> Vector3:
-	if not floor_at.is_valid() or exposed[k] == 0:
+	if not floor_at.is_valid() or exposed.size() <= k or exposed[k] == 0:
 		return p
 	var floor_y: float = floor_at.call(p.x, p.z)
 	if not is_nan(floor_y) and p.y < floor_y:
@@ -553,18 +866,26 @@ func _above_floor(k: int, p: Vector3) -> Vector3:
 
 
 func _snap_overstretched() -> void:
-	for s in c_a.size():
-		if c_active[s] == 0:
-			continue
-		var a := c_a[s]
-		var b := c_b[s]
-		if pos[a].distance_to(pos[b]) / c_rest[s] > 1.0 + (c_break[s] - 1.0) * break_mult:
-			if c_kind[s] == Kind.TISSUE:
-				_sever(s, Depth.SKIN)
-			else:
-				c_active[s] = 0
-			snapped.append([uv_of(a), uv_of(b), c_kind[s], s])
-			topology_version += 1
+	for s in _win_springs:
+		_check_snap(s)
+	for s in _stitches:
+		_check_snap(s)
+
+
+func _check_snap(s: int) -> void:
+	if c_active[s] == 0:
+		return
+	var a := c_a[s]
+	var b := c_b[s]
+	if pos[a].distance_to(pos[b]) / c_rest[s] > 1.0 + (c_break[s] - 1.0) * break_mult:
+		if c_kind[s] == Kind.TISSUE:
+			_sever(s, Depth.SKIN, 0.5)
+		else:
+			c_active[s] = 0
+		snapped.append([uv_of(a), uv_of(b), c_kind[s], s])
+		topology_version += 1
+		_retract_dirty = true
+		_win_dirty = true
 
 
 func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION, strength: float = TISSUE_BREAK) -> int:
@@ -575,15 +896,19 @@ func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION,
 	c_kind.append(kind)
 	c_break.append(strength)
 	c_depth.append(Depth.NONE)
+	c_cross.append(0.5)
+	c_cut_dir.append(Vector2.ZERO)
 	c_muscle_closed.append(0)
+	var s := c_a.size() - 1
 	if kind == Kind.STITCH:
-		_edge_to_stitch[_edge_key(a, b)] = c_a.size() - 1
-		_stitches.append(c_a.size() - 1)
-	return c_a.size() - 1
+		_edge_to_stitch[_edge_key(a, b)] = s
+		_stitches.append(s)
+	return s
 
 
 ## The skin a grip on particle k drags along: particles within GRIP_PATCH reached without crossing a cut,
-## weighted falling off in a straight line to 0 at the edge of the patch.
+## weighted falling off in a straight line from the edge of the skin the grip holds (GRIP_HOLD) to 0 at the edge of
+## the patch.
 func _patch(k: int) -> Array:
 	if _patch_version != topology_version:
 		_patches.clear()
@@ -597,6 +922,8 @@ func _patch(k: int) -> Array:
 			_springs_of[c_b[s]].append(s)
 	var around := PackedInt32Array()
 	var weights := PackedFloat32Array()
+	var held := PackedInt32Array()
+	var reach := GRIP_PATCH * (size.x + size.y) * 0.5 - GRIP_HOLD
 	var seen := {k: true}
 	var queue: Array[int] = [k]
 	while not queue.is_empty():
@@ -611,37 +938,122 @@ func _patch(k: int) -> Array:
 			seen[other] = true
 			queue.append(other)
 			around.append(other)
-			weights.append(1.0 - dist / GRIP_PATCH)
-	_patches[k] = [around, weights]
+			var meters := rest[other].distance_to(rest[k])
+			weights.append(clampf(1.0 - (meters - GRIP_HOLD) / reach, 0.0, 1.0))
+			if meters < GRIP_HOLD and fixed[other] == 0:
+				held.append(other)
+	_patches[k] = [around, weights, held]
 	return _patches[k]
 
 
-func _sever(s: int, depth: int) -> void:
+## A tear (no cut_dir) runs square to the spring it snapped.
+func _sever(s: int, depth: int, cross: float, cut_dir: Vector2 = Vector2.ZERO) -> void:
 	if c_active[s] == 1:
 		c_active[s] = 0
+		c_cross[s] = cross
+		if cut_dir == Vector2.ZERO:
+			var along := rest[c_b[s]] - rest[c_a[s]]
+			cut_dir = Vector2(-along.z, along.x)
+		c_cut_dir[s] = cut_dir.normalized()
 		_severed.append(s)
 	c_depth[s] = maxi(c_depth[s], depth)
 	if depth == Depth.MUSCLE:
 		c_muscle_closed[s] = 0
 
 
-## Particles on either side of open muscle are pulled back from the cut, sideways along the skin.
+## Particles on either side of a cut are drawn back from it, sideways along the skin, as far as the deepest cut near
+## them retracts (RETRACT): less the further they are from it, and less toward the cut's ends, where its edges still
+## hold together. Each cut spring pulls the strip of skin across from it. Stitched springs don't pull: the thread
+## holds their edges together.
 func _update_retraction() -> void:
-	var pull := PackedVector3Array()
-	pull.resize(rest.size())
-	for s in _severed:
-		if depth_of(s) != Depth.MUSCLE:
-			continue
-		var across := (rest[c_a[s]] - rest[c_b[s]]) * Vector3(1, 0, 1)
-		pull[c_a[s]] += across
-		pull[c_b[s]] -= across
-	for k in rest.size():
-		var back := pull[k].normalized() * MUSCLE_RETRACT if pull[k].length_squared() > 0.0 else Vector3.ZERO
-		anchor_target[k] = rest[k] + back
-		if back != Vector3.ZERO:
-			anchor[k] = maxf(anchor[k], MUSCLE_PULL)
-		elif anchor[k] == MUSCLE_PULL:
+	_retract_dirty = false
+	for k in _retracted:
+		anchor_target[k] = rest[k]
+		_pull[k] = Vector3.ZERO
+		_pull_amount[k] = 0.0
+		if anchor[k] == MUSCLE_PULL or anchor[k] == GAPE_PULL:
 			anchor[k] = LOOSE_ANCHOR
+	if _pull.size() != rest.size():
+		_pull.resize(rest.size())
+		_pull_amount.resize(rest.size())
+	_retracted = PackedInt32Array()
+	_find_cut_ends()
+	var cell := minf(size.x / res_x, size.y / res_y)
+	for s in _severed:
+		var depth := depth_of(s)
+		if depth == Depth.NONE or _stitched(c_a[s], c_b[s]):
+			continue
+		var crossing := uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s])
+		var to_end := INF
+		for end in _cut_ends:
+			to_end = minf(to_end, ((crossing - end) * size).length())
+		var taper := smoothstep(0.0, RETRACT_TAPER[depth], to_end)
+		if taper <= 0.0:
+			continue
+		# Square to the cut, toward c_a's side, rising and falling with the skin like the spring does.
+		var spring := rest[c_a[s]] - rest[c_b[s]]
+		var square := Vector2(-c_cut_dir[s].y, c_cut_dir[s].x)
+		if square.dot(Vector2(spring.x, spring.z)) < 0.0:
+			square = -square
+		var flat := Vector2(spring.x, spring.z).dot(square)
+		var across := Vector3(square.x, spring.y / maxf(flat, 0.0005), square.y).normalized()
+		var across_uv := Vector2(square.x / size.x, square.y / size.y)
+		var middle := rest[c_a[s]].lerp(rest[c_b[s]], c_cross[s])
+		var spread: float = RETRACT_SPREAD[depth]
+		var reach := ceili(spread / cell)
+		# The strip of skin straight across the cut from this spring, a grid point at a time.
+		for n in range(-reach, reach + 1):
+			var at := crossing + across_uv * (n * cell)
+			var i := roundi(at.x * res_x)
+			var j := roundi(at.y * res_y)
+			if i < 1 or j < 1 or i >= res_x or j >= res_y:
+				continue
+			var k := index(i, j)
+			var offset := Vector2(rest[k].x - middle.x, rest[k].z - middle.z)
+			var side := offset.dot(square)
+			var weight := (1.0 - absf(side) / spread) * clampf(1.0 - (offset - square * side).length() / cell, 0.0, 1.0) * taper
+			# The spring's own ends: on the side they are on, even if the crossing was right at one of them.
+			if k == c_a[s]:
+				side = 1.0
+			elif k == c_b[s]:
+				side = -1.0
+			if weight <= 0.0 or side == 0.0:
+				continue
+			if _pull_amount[k] == 0.0 and _pull[k] == Vector3.ZERO:
+				_retracted.append(k)
+			_pull[k] += across * signf(side) * weight
+			_pull_amount[k] = maxf(_pull_amount[k], RETRACT[depth] * weight)
+	for k in _retracted:
+		var direction := _pull[k]
+		if direction.length_squared() < 1e-8:
+			continue
+		var retract := _pull_amount[k]
+		anchor_target[k] = rest[k] + direction.normalized() * retract
+		anchor[k] = maxf(anchor[k], MUSCLE_PULL if retract >= RETRACT[Depth.SKIN] * 4.0 else GAPE_PULL)
+
+
+## The ends of the cuts: where each stroke started and the point of it farthest from there, unless another stroke runs
+## through that point (a blade pressed in where the cut already runs makes a short cut inside the incision).
+func _find_cut_ends() -> void:
+	if _cut_ends_for == _cut_segments.size():
+		return
+	_cut_ends_for = _cut_segments.size()
+	_cut_ends = PackedVector2Array()
+	for n in _strokes.size():
+		for p in _strokes[n]:
+			if not _cut_ends.has(p) and not _on_other_stroke(p, n):
+				_cut_ends.append(p)
+
+
+## p lies within a millimeter of a segment of a stroke other than stroke n.
+func _on_other_stroke(p: Vector2, n: int) -> bool:
+	for m in _segment_stroke.size():
+		if _segment_stroke[m] == n:
+			continue
+		var nearest := Geometry2D.get_closest_point_to_segment(p, _cut_segments[m * 2], _cut_segments[m * 2 + 1])
+		if ((nearest - p) * size).length() < 0.001:
+			return true
+	return false
 
 
 ## How far severed spring s is pulled apart past its rest length (meters). Pulled together by a stitch it counts as

@@ -27,6 +27,16 @@ const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
 const MUSCLE_REACH := 0.03
 ## Gap in meters that counts as a fully opened wound.
 const FULL_GAP := 0.012
+## How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
+const DEEP_BLOCK := 0.3
+## Wound depth (0..1) below which a cut is only through the skin, see _tissue_depth().
+const SKIN_DEPTH := 0.4
+## Pain from the blade scraping bone: a jolt when it first touches, then per second while it grates.
+const BONE_JOLT := 0.35
+const BONE_PAIN := 0.6
+## How close (meters) to the blade's tip a bone has to be for the blade to grate on it, and an organ for it to be cut.
+const BLADE_REACH := 0.005
+const ORGAN_REACH := 0.001
 ## Where a line set before the surgery goes in: the back of the right hand, in body space.
 const PREOP_IV_POINT := Vector3(-0.2, 0.03, 0.26)
 
@@ -72,6 +82,8 @@ var _sync_acc := 0.0
 var _voice_cooldown := 0.0
 var _breath_cooldown := 0.0
 var _stroke_wounds: Dictionary = {}
+## When (seconds) a blade last grated on a bone, so touching it again after a pause hurts with a jolt again.
+var _bone_touched := -INF
 var _initial_suction: float = 1.0
 var _organ_strain: Dictionary = {}
 var _organ_damage: Dictionary = {}
@@ -96,7 +108,7 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	age = scenario.patient_age
 	mods = Modifiers.from_rolls(rolls, Db.patient_quirks)
 	var tone: Color = SKIN_TONES[rng.randi_range(0, SKIN_TONES.size() - 1)]
-	body.fat_thickness = 0.012 * (1.0 + mods.num("fat_depth") * 1.5)
+	body.fat_thickness = float(Db.patient_sites.get(scenario.site, {}).get("fat", PatientBody.FAT)) * (1.0 + mods.num("fat_depth") * 1.5)
 	body.tissue.break_mult = mods.mult("tear_threshold_mult")
 	body.tissue.tearing = multiplayer.is_server()
 	body.build(scenario.site, tone, _roll_weight(seed_value))
@@ -596,10 +608,11 @@ func add_flag(key: String, amount: float = 1.0) -> void:
 	flags[key] = flags.get(key, 0.0) + amount
 
 
-func hurt(amount: float, uv: Vector2 = Vector2(-1, -1)) -> void:
+## Pain at a spot on the site (uv) is dulled by a local block; deep pain (the blade on a bone) mostly gets through it.
+func hurt(amount: float, uv: Vector2 = Vector2(-1, -1), deep: bool = false) -> void:
 	var numb := vitals.anesthesia
 	if uv.x >= 0.0:
-		numb = maxf(numb, vitals.local_block)
+		numb = maxf(numb, vitals.local_block * (DEEP_BLOCK if deep else 1.0))
 	vitals.pain = clampf(vitals.pain + amount * (1.0 - numb) * mods.mult("pain_mult"), 0.0, 1.0)
 	if vitals.is_awake() and amount * (1.0 - numb) > 0.15:
 		_speak("pain")
@@ -614,8 +627,11 @@ func touch(_part: String) -> void:
 
 
 ## One continuous scalpel stroke per tool grows one wound.
+## Where there's no fat under the skin (a forearm), a cut deeper than the skin goes into the muscle.
 func cut(stroke_key: int, a: Vector2, b: Vector2, depth: float, sharpness: float, dirty: bool, speed: float) -> void:
 	depth = clampf(depth - mods.num("fat_depth") * 0.25, 0.1, 1.0)
+	if body.fat_thickness < 0.0005 and depth >= SKIN_DEPTH:
+		depth = maxf(depth, Wound.MUSCLE_DEPTH)
 	var wound: Wound = _stroke_wounds.get(stroke_key)
 	if wound == null or wound.points[wound.points.size() - 1].distance_to(a) > 0.02:
 		wound = _new_wound(Wound.Kind.CUT, a, depth)
@@ -634,19 +650,13 @@ func cut(stroke_key: int, a: Vector2, b: Vector2, depth: float, sharpness: float
 	Surgery.current.scoring.add("jagged_cut" if jagged else "clean_cut", true)
 
 
-## Cutting inside the body frees attached targets, or nicks whatever is in the way.
+## Cutting inside the body frees attached targets, or nicks whatever the blade touches. The blade grates on a bone it
+## touches, which hurts through a local block.
 func cut_cavity(tip_uv: Vector2, depth_m: float, power: float, dirty: bool, dt: float) -> void:
 	if dirty:
 		_contaminate()
-	# Down to the bone: the blade grates on it instead of nicking what's below.
-	var bone := body.bone_at(body.uv_to_world(tip_uv, depth_m))
-	if bone:
-		add_flag("bone_scraped", dt)
-		if not flags.has("bone_notice"):
-			add_flag("bone_notice")
-			Surgery.current.announce("The blade grates on %s." % {"rib": "a rib", "sternum": "the breastbone"}.get(bone, "bone"))
-		if rng.randf() < dt * 2.0:
-			Surgery.current.sound("saw_bone", body.uv_to_world(tip_uv, depth_m))
+	var tip := body.uv_to_world(tip_uv, depth_m)
+	if scrape_bone(tip_uv, tip, dt):
 		return
 	for target in targets:
 		if not target.extracted and target.anchor > 0.0 and target.uv.distance_to(tip_uv) < 0.06:
@@ -656,12 +666,32 @@ func cut_cavity(tip_uv: Vector2, depth_m: float, power: float, dirty: bool, dt: 
 				var wound := _new_wound(Wound.Kind.INTERNAL, target.uv, 0.6)
 				wound.depth_m = target.depth
 			return
-	if rng.randf() < dt * 0.8:
+	if body.organ_at(tip, ORGAN_REACH) >= 0 and rng.randf() < dt * 0.8:
 		var wound := _new_wound(Wound.Kind.INTERNAL, tip_uv, 0.5)
 		wound.depth_m = depth_m
 		wound.made_by_surgeon = true
 		Surgery.current.scoring.add("organ_nick", true)
 		Surgery.current.announce("That wasn't the target. Something is bleeding in there.")
+
+
+## A blade touching a bone at tip (world space) grates on it, which hurts through a local block. False if there's no
+## bone there.
+func scrape_bone(tip_uv: Vector2, tip: Vector3, dt: float) -> bool:
+	var bone := body.bone_at(tip, BLADE_REACH)
+	if bone.is_empty():
+		return false
+	var now := Time.get_ticks_msec() * 0.001
+	if now - _bone_touched > 0.5:
+		hurt(BONE_JOLT, tip_uv, true)
+	_bone_touched = now
+	hurt(BONE_PAIN * dt, tip_uv, true)
+	add_flag("bone_scraped", dt)
+	if not flags.has("bone_notice"):
+		add_flag("bone_notice")
+		Surgery.current.announce("The blade grates on %s." % {"rib": "a rib", "sternum": "the breastbone"}.get(bone, "bone"))
+	if rng.randf() < dt * 2.0:
+		Surgery.current.sound("saw_bone", tip)
+	return true
 
 
 func tear(from: Vector2, direction: Vector2, length_uv: float) -> void:
@@ -1297,7 +1327,7 @@ func _tear_notice(text: String) -> void:
 
 ## Wound depth (0..1) to how many tissue layers the cut goes through.
 static func _tissue_depth(depth: float) -> int:
-	if depth < 0.4:
+	if depth < SKIN_DEPTH:
 		return TissueSim.Depth.SKIN
 	return TissueSim.Depth.FAT if depth < Wound.MUSCLE_DEPTH else TissueSim.Depth.MUSCLE
 

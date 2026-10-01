@@ -17,6 +17,8 @@ const TRIGGER_NAMES: Dictionary = {
 ## Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.
 const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
 const DEFIB_CHARGE_TIME := 2.0
+## How long a cut the point of a blade makes pressed straight in (meters).
+const STAB_LENGTH := 0.006
 ## A blade only cuts along its edge: a move further off the edge line than this (cosine) just drags it.
 const ALONG_BLADE := 0.8
 ## Clamps that can pinch a cotton pad, and how close to the pad their tip has to be.
@@ -63,6 +65,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 	tool.level_before = level
 	if lowered and not tool.lowered_before:
 		tool.stroke += 1
+		tool.stabbed_level = 0
 	tool.lowered_before = lowered
 	# Powered and pressed tools work harder at higher levels.
 	var effort := level / 3.0
@@ -80,7 +83,22 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		_contact_sound(tool, hand.speed, level, effort, tip)
 	match def.action:
 		"cut":
-			if lowered and level > 0 and zone == "site":
+			if lowered and level > 0 and zone == "site" and level > tool.stabbed_level:
+				# Pressed in at a new depth: the point goes in as wide as the blade, before it's moved at all.
+				tool.stabbed_level = level
+				var half := blade_direction(tool) * STAB_LENGTH * 0.5
+				var from := patient.body.world_to_uv(tip - half)
+				var to := patient.body.world_to_uv(tip + half)
+				patient.cut(tool.uid * 1000 + tool.stroke, from, to, DEPTH_BY_LEVEL[level], def.sharpness, not tool.sterile, 0.0)
+				Surgery.current.sound("cut_deep" if level >= 3 else "cut_skin", tip)
+			# Pressed in at full effort where the muscle is thin (no fat over it), the point reaches the bone under it.
+			if lowered and level == 3 and zone == "site" and probe.depth >= patient.body.muscle_bottom():
+				patient.scrape_bone(uv, tip, dt)
+			# Moved along its edge, the blade cuts what it passes through, also where it runs on past the end of an
+			# opening it's already in.
+			if lowered and level > 0 and zone in ["site", "cavity"]:
+				if zone == "cavity":
+					patient.cut_cavity(uv, probe.depth, def.sharpness, not tool.sterile, dt * effort)
 				if tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.003:
 					var moved := (tip - tool.last_tip) * Vector3(1, 0, 1)
 					if absf(moved.normalized().dot(blade_direction(tool))) >= ALONG_BLADE:
@@ -93,8 +111,6 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if tool.last_uv.x < 0.0 or tool.last_uv.distance_to(uv) > 0.003:
 					tool.last_uv = uv
 					tool.last_tip = tip
-			elif lowered and level > 0 and zone == "cavity":
-				patient.cut_cavity(uv, probe.depth, def.sharpness, not tool.sterile, dt * effort)
 			else:
 				tool.last_uv = Vector2(-1, -1)
 		"clamp":
@@ -425,9 +441,11 @@ static func _on_contact(tool: SurgicalTool, zone: String, probe: Dictionary, pat
 
 
 ## Working in blood leaves it on the tool: blades, clamps and suction pick it up fast, gauze soaks it up.
+## A blade comes away bloody from skin it has cut, not from resting on whole skin.
 static func _bloody(tool: SurgicalTool, zone: String, uv: Vector2, patient: Patient, dt: float) -> void:
 	var wet := patient.body.blood_at(uv) if zone == "site" else 0.0
-	if zone == "cavity" or tool.def.action == "cut" and zone == "site":
+	var cut := tool.def.action == "cut" and zone == "site" and patient.body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, uv) > 0.1
+	if zone == "cavity" or cut:
 		wet = maxf(wet, 0.6)
 	if wet > 0.15:
 		var rate := 1.2 if tool.def.action == "swab" else 0.5

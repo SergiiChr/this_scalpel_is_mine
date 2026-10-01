@@ -56,8 +56,10 @@ var site_size: Vector2
 var site: Node3D
 var skin_material: ShaderMaterial
 var tissue := TissueSim.new()
-## Subcutaneous fat, thicker on obese patients (set before build()).
-var fat_thickness := 0.012
+## Subcutaneous fat where a site doesn't say ("fat" in patient_sites.json).
+const FAT := 0.012
+## Subcutaneous fat under this site, thicker on obese patients (set before build()). None on a forearm.
+var fat_thickness := FAT
 var cavity_blood: MeshInstance3D
 var organs: Array[RigidBody3D] = []
 ## Bones under the site (ribs, breastbone, limb bones), each a StaticBody3D on CAVITY_LAYER with meta "bone".
@@ -87,7 +89,19 @@ var _on_body := PackedByteArray()
 var _layers: Array[MeshInstance3D] = []
 var _layer_version := -1
 var _layer_steps := -1
-var _layer_uvs := PackedVector2Array()
+var _rebuilt_last := false
+## Scratch space for _rebuild_layers(), one entry per particle (per spring end for _xmap), reused between rebuilds:
+## the vertex each particle or crossing got in the layer being built (-1: none yet), where it lies in that layer,
+## which way is out of the skin there, and a mark for particles already worked out.
+var _vmap := PackedInt32Array()
+var _xmap := PackedInt32Array()
+var _point_of := PackedVector3Array()
+var _outward := PackedVector3Array()
+var _normal := PackedVector3Array()
+var _corner_data := PackedByteArray()
+var _uv_of := PackedVector2Array()
+## The layer being built (see _lip_slide()).
+var _layer_now := 0
 var _organ_last: Array[Vector3] = []
 var _jiggle: Array[Vector2] = []
 ## Organ index -> site-local point a tool is holding it at (host only).
@@ -132,9 +146,14 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 
 func _process(delta: float) -> void:
 	wound_map.flush()
-	tissue.step(delta)
-	if tissue.topology_version != _layer_version or tissue.steps_done != _layer_steps:
+	# The meshes catch up with the sim on the frame after it stepped, so a frame that steps the sim (30 times a second)
+	# isn't also the frame that rebuilds them: the two costs land on alternate frames.
+	var stale := tissue.topology_version != _layer_version or tissue.steps_done != _layer_steps
+	var rebuild := stale and not _rebuilt_last
+	if rebuild:
 		_rebuild_layers()
+	_rebuilt_last = rebuild
+	tissue.step(delta, not rebuild)
 	_jiggle_organs(delta)
 
 
@@ -202,7 +221,10 @@ func _lay_skin_on_drape() -> void:
 	tissue.exposed.resize(tissue.rest.size())
 	for k in tissue.rest.size():
 		var uv := tissue.uv_of(k)
-		tissue.exposed[k] = 1 if uv.x > Drape.FRAME and uv.x < 1.0 - Drape.FRAME and uv.y > Drape.FRAME and uv.y < 1.0 - Drape.FRAME else 0
+		# Inside the opening, and not under the drape's edge where it slopes down to the skin.
+		var floor_y: float = tissue.floor_at.call(tissue.settled[k].x, tissue.settled[k].z)
+		var open := is_nan(floor_y) or floor_y <= tissue.settled[k].y + 0.002
+		tissue.exposed[k] = 1 if open and uv.x > Drape.FRAME and uv.x < 1.0 - Drape.FRAME and uv.y > Drape.FRAME and uv.y < 1.0 - Drape.FRAME else 0
 
 
 ## Lays the surgical drape over the patient, open over the site (operating room only; call after build()).
@@ -509,14 +531,17 @@ func _build_site(tone: Color) -> void:
 	for i: int in Db.site_heights.get("off", {}).get(site_id, []):
 		_on_body[i] = 0
 	tissue.build(site_size, surface_height, on_body)
-	_region_image = Image.create(TissueSim.RES + 1, TissueSim.RES + 1, false, Image.FORMAT_L8)
+	_region_image = Image.create(tissue.res_x + 1, tissue.res_y + 1, false, Image.FORMAT_L8)
 	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
 	for i in 3:
 		var layer := MeshInstance3D.new()
 		layer.name = ["Skin", "Fat", "Muscle"][i]
 		layer.mesh = ArrayMesh.new()
-		layer.material_override = skin_material if i == 0 else Materials.tissue_layer(i - 1, wound_map.textures[1])
+		# The walls of a cut through the skin show the dermis; fat and muscle walls are fat and muscle.
+		var flesh := Materials.tissue_layer(i - 1 if i > 0 else 2, wound_map.textures[1])
+		layer.set_meta("sheet", skin_material if i == 0 else flesh)
+		layer.set_meta("walls", flesh)
 		site.add_child(layer)
 		_layers.append(layer)
 
@@ -526,58 +551,263 @@ func _build_site(tone: Color) -> void:
 	_update_carve.call_deferred()
 
 
-## Rebuilds the skin, fat and muscle meshes from the tissue sim.
-## Deeper layers sit lower and follow the skin less. Triangles over an open gap are left out, so you see through.
+## Rebuilds the skin, fat and muscle meshes from the tissue sim, only where the simulated skin replaces the body
+## (the region). Deeper layers sit lower and follow the skin less.
+## A layer cut through is split exactly where the blade crossed each spring (TissueSim.c_cross), not along the grid:
+## each side of the cut keeps its part of the triangle and moves with it, so the lips pull apart along the blade's
+## path and the cut opens from the middle and stays closed at its ends, like a zipper. Walls run down each lip
+## through the layer's thickness (dermis under the skin, fat, muscle), so the cut has depth.
 func _rebuild_layers() -> void:
 	_layer_version = tissue.topology_version
 	_layer_steps = tissue.steps_done
 	_update_region()
-	if _layer_uvs.is_empty():
-		for k in tissue.rest.size():
-			_layer_uvs.append(tissue.uv_of(k))
-	var skin := PackedVector3Array()
-	for k in tissue.rest.size():
-		skin.append(layer_point(0, k))
-	# Deeper layers lie under the skin: straight down where it's in place, along its own normal on a flap pulled far,
-	# so a flap folded over shows its fat on top instead of drawing it under the skin, through the drape.
-	var inward := _grid_normals(skin)
-	for k in inward.size():
-		var t := clampf((tissue.pos[k] - tissue.rest[k]).length() / FLAP_MOVE, 0.0, 1.0)
-		inward[k] = Vector3.UP.lerp(inward[k], t).normalized()
+	var hanging := tissue.hanging_off()
+	var stride := tissue.res_x + 1
+	var count := tissue.rest.size()
+	if _vmap.size() != count:
+		_uv_of.resize(count)
+		for k in count:
+			_uv_of[k] = tissue.uv_of(k)
+		_vmap.resize(count)
+		_vmap.fill(-1)
+		_xmap.resize(tissue.c_a.size() * 2 + 64)
+		_xmap.fill(-1)
+		_corner_data.resize(count)
+		_point_of.resize(count)
+		_outward.resize(count)
+		_normal.resize(count)
+	if _xmap.size() < tissue.c_a.size() * 2:
+		var grown := _xmap.size()
+		_xmap.resize(tissue.c_a.size() * 2 + 64)
+		for i in range(grown, _xmap.size()):
+			_xmap[i] = -1
+	# The triangles to draw: those touching the region, none of whose corners hang off the body. Six entries each:
+	# three particles, then the springs of the edges between them in order.
+	var marked := PackedByteArray()
+	marked.resize(tissue.res_x * tissue.res_y)
+	var triangles := PackedInt32Array()
+	var cut_depths := PackedByteArray()
+	for k in count:
+		if _region[k] == 0:
+			continue
+		var at := tissue.cell_of(k)
+		for j in range(maxi(at.y - 1, 0), mini(at.y, tissue.res_y - 1) + 1):
+			for i in range(maxi(at.x - 1, 0), mini(at.x, tissue.res_x - 1) + 1):
+				var cell := j * tissue.res_x + i
+				if marked[cell] == 1:
+					continue
+				marked[cell] = 1
+				var a := j * stride + i
+				var c := a + stride
+				if hanging[a] + hanging[a + 1] + hanging[c] == 0 and _region[a] + _region[a + 1] + _region[c] > 0:
+					triangles.append_array([a, a + 1, c, tissue.spring_right[a], tissue.spring_diag[a], tissue.spring_down[a]])
+				if hanging[a + 1] + hanging[c + 1] + hanging[c] == 0 and _region[a + 1] + _region[c + 1] + _region[c] > 0:
+					triangles.append_array([a + 1, c + 1, c, tissue.spring_down[a + 1], tissue.spring_right[c], tissue.spring_diag[a]])
+	var touched := PackedInt32Array()
+	for t in range(0, triangles.size(), 6):
+		for n in 3:
+			cut_depths.append(tissue.cut_depth(triangles[t + 3 + n]))
+			var k := triangles[t + n]
+			if _corner_data[k] == 1:
+				continue
+			_corner_data[k] = 1
+			touched.append(k)
+			# Out of the skin. Straight up where the skin is in place, along its own normal on a flap pulled far, so a
+			# flap folded over shows its fat on top instead of drawing it under the skin, through the drape.
+			var normal := _grid_normal(k)
+			_normal[k] = normal
+			var moved := clampf((tissue.pos[k] - tissue.rest[k]).length() / FLAP_MOVE, 0.0, 1.0)
+			_outward[k] = Vector3.UP.lerp(normal, moved).normalized()
+	for k in touched:
+		_corner_data[k] = 0
 	for layer in 3:
+		_layer_now = layer
 		var instance := _layers[layer]
 		var mesh := instance.mesh as ArrayMesh
 		mesh.clear_surfaces()
-		var triangles := _in_region(tissue.triangles(LAYER_DEPTH[layer]))
-		instance.visible = not triangles.is_empty()
+		# No fat on this part of the body: the muscle lies right under the skin.
+		instance.visible = not triangles.is_empty() and (layer != 1 or fat_thickness > 0.0005)
 		if not instance.visible:
 			continue
-		# The skin sits a hair above the body it replaces, so their overlap at the region's edge never flickers.
 		var depth: float = [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer]
-		var verts := PackedVector3Array()
-		verts.resize(tissue.rest.size())
-		for k in verts.size():
-			verts[k] = layer_point(layer, k) - inward[k] * depth
-		var arrays := []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = verts
-		arrays[Mesh.ARRAY_NORMAL] = _grid_normals(verts)
-		arrays[Mesh.ARRAY_TEX_UV] = _layer_uvs
-		arrays[Mesh.ARRAY_INDEX] = triangles
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		for k in touched:
+			_point_of[k] = layer_point(layer, k) - _outward[k] * depth
+		var built := _layer_mesh(layer, triangles, cut_depths)
+		for k in touched:
+			_vmap[k] = -1
+		for i in range(0, built.size(), 2):
+			var arrays: Array = built[i]
+			if (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty():
+				continue
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			mesh.surface_set_material(mesh.get_surface_count() - 1, instance.get_meta(built[i + 1]) as Material)
 
 
-## Smooth normals of the tissue grid from neighbouring points (cross of the z and x tangents points out of the skin).
-func _grid_normals(points: PackedVector3Array) -> PackedVector3Array:
-	var res := TissueSim.RES
-	var normals := PackedVector3Array()
-	normals.resize(points.size())
-	for j in res + 1:
-		for i in res + 1:
-			var dx := points[tissue.index(mini(i + 1, res), j)] - points[tissue.index(maxi(i - 1, 0), j)]
-			var dz := points[tissue.index(i, mini(j + 1, res))] - points[tissue.index(i, maxi(j - 1, 0))]
-			normals[tissue.index(i, j)] = dz.cross(dx).normalized()
-	return normals
+## One layer's sheet and the walls of its cuts: [sheet arrays, "sheet", wall arrays, "walls"].
+## Within a triangle, particles still joined by an uncut edge stay together; a triangle cut through the layer is drawn
+## as one polygon per side, bounded by where the blade crossed its edges. Layer positions come from _point_of.
+func _layer_mesh(layer: int, triangles: PackedInt32Array, cut_depths: PackedByteArray) -> Array:
+	var thickness: float = [SKIN_THICKNESS, fat_thickness, MUSCLE_THICKNESS][layer]
+	var cut_at: int = LAYER_DEPTH[layer]
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	var wall_verts := PackedVector3Array()
+	var wall_norms := PackedVector3Array()
+	var wall_uvs := PackedVector2Array()
+	var wall_indices := PackedInt32Array()
+	var crossed := PackedInt32Array()
+	var corners := PackedInt32Array([0, 0, 0])
+	var edges := PackedInt32Array([0, 0, 0])
+	var cut := PackedByteArray([0, 0, 0])
+	var side := PackedInt32Array([0, 1, 2])
+	# One polygon at a time: its vertex indices, and the particle owning each (-1 - particle for a crossing point).
+	var polygon := PackedInt32Array()
+	var owners := PackedInt32Array()
+	for t in range(0, triangles.size(), 6):
+		var any_cut := false
+		for n in 3:
+			corners[n] = triangles[t + n]
+			edges[n] = triangles[t + 3 + n]
+			cut[n] = 1 if cut_depths[t / 2 + n] >= cut_at else 0
+			any_cut = any_cut or cut[n] == 1
+			side[n] = n
+		if any_cut:
+			# Which side of the cut each corner is on: corners joined by an uncut edge share one.
+			for n in 3:
+				if cut[n] == 0:
+					var from := side[(n + 1) % 3]
+					for m in 3:
+						if side[m] == from:
+							side[m] = side[n]
+		if not any_cut or (side[0] == side[1] and side[1] == side[2]):
+			for n in 3:
+				var k := corners[n]
+				var v := _vmap[k]
+				if v < 0:
+					v = verts.size()
+					_vmap[k] = v
+					verts.append(_point_of[k])
+					norms.append(_normal[k])
+					uvs.append(_uv_of[k])
+				indices.append(v)
+			continue
+		var groups := 0
+		for group in 3:
+			if side[0] != group and side[1] != group and side[2] != group:
+				continue
+			groups += 1
+			# Around the triangle's edge in its own order, so every polygon faces the way the triangle does.
+			polygon.resize(0)
+			owners.resize(0)
+			for n in 3:
+				if side[n] == group:
+					polygon.append(_own_vertex(corners[n], verts, norms, uvs))
+					owners.append(corners[n])
+				var here := side[n] == group
+				if cut[n] == 1 and here != (side[(n + 1) % 3] == group):
+					var k := corners[n] if here else corners[(n + 1) % 3]
+					polygon.append(_cross_vertex(edges[n], k, verts, norms, uvs, crossed))
+					owners.append(-1 - k)
+			for n in range(1, polygon.size() - 1):
+				indices.append_array([polygon[0], polygon[n], polygon[n + 1]])
+			if thickness <= 0.0005:
+				continue
+			# Each stretch of the polygon's edge between two crossings is a lip of the cut: a wall goes down from it.
+			var middle := Vector3.ZERO
+			var mine := 0
+			for n in polygon.size():
+				if owners[n] >= 0:
+					middle += verts[polygon[n]]
+					mine += 1
+			middle /= maxf(mine, 1)
+			for n in polygon.size():
+				var next := (n + 1) % polygon.size()
+				if owners[n] >= 0 or owners[next] >= 0:
+					continue
+				var top_a := verts[polygon[n]]
+				var top_b := verts[polygon[next]]
+				var bottom_a := top_a - _outward[-1 - owners[n]] * thickness
+				var bottom_b := top_b - _outward[-1 - owners[next]] * thickness
+				var normal := (top_b - top_a).cross(bottom_a - top_a).normalized()
+				# Facing into the cut, away from this side's own skin.
+				if normal.dot(top_a - middle) < 0.0:
+					normal = -normal
+				var base := wall_verts.size()
+				wall_verts.append_array([top_a, top_b, bottom_b, bottom_a])
+				wall_norms.append_array([normal, normal, normal, normal])
+				wall_uvs.append_array([uvs[polygon[n]], uvs[polygon[next]], uvs[polygon[next]], uvs[polygon[n]]])
+				# Godot's front faces wind clockwise seen from the side the normal points to.
+				if (bottom_b - top_a).cross(top_b - top_a).dot(normal) > 0.0:
+					wall_indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+				else:
+					wall_indices.append_array([base, base + 2, base + 1, base, base + 3, base + 2])
+	for key in crossed:
+		_xmap[key] = -1
+	return [_arrays(verts, norms, uvs, indices), "sheet", _arrays(wall_verts, wall_norms, wall_uvs, wall_indices), "walls"]
+
+
+## The vertex of particle k in the layer being built, added the first time it's used.
+func _own_vertex(k: int, verts: PackedVector3Array, norms: PackedVector3Array, uvs: PackedVector2Array) -> int:
+	if _vmap[k] < 0:
+		_vmap[k] = verts.size()
+		verts.append(_point_of[k])
+		norms.append(_normal[k])
+		uvs.append(_uv_of[k])
+	return _vmap[k]
+
+
+## The vertex where the blade crossed spring s, on the side of its end k: as far from k as it was at rest, so each lip
+## moves with its own side. Added the first time it's used; its key goes in `crossed` to be cleared after.
+func _cross_vertex(s: int, k: int, verts: PackedVector3Array, norms: PackedVector3Array, uvs: PackedVector2Array, crossed: PackedInt32Array) -> int:
+	var at_start := tissue.c_a[s] == k
+	var key := s * 2 + (0 if at_start else 1)
+	if _xmap[key] < 0:
+		_xmap[key] = verts.size()
+		crossed.append(key)
+		var other := tissue.c_b[s] if at_start else tissue.c_a[s]
+		var share := tissue.c_cross[s] if at_start else 1.0 - tissue.c_cross[s]
+		verts.append(_point_of[k] + (tissue.rest[other] - tissue.rest[k] + _lip_slide(s, k, other)) * share)
+		norms.append(_normal[k])
+		uvs.append(_uv_of[tissue.c_a[s]].lerp(_uv_of[tissue.c_b[s]], tissue.c_cross[s]))
+	return _xmap[key]
+
+
+## How differently the lip on k's side moves at the far end of spring s than at k (layer being built). A diagonal
+## spring's far end lies a cell along the cut from k: there the lip moves like k's neighbour that way (if they're still
+## joined), so the lip doesn't step from cell to cell. Straight across, it moves like k.
+func _lip_slide(s: int, k: int, other: int) -> Vector3:
+	var at := tissue.cell_of(k)
+	var step := tissue.cell_of(other) - at
+	var dir := tissue.c_cut_dir[s]
+	step = Vector2i(step.x, 0) if absf(dir.x) >= absf(dir.y) else Vector2i(0, step.y)
+	if step == Vector2i.ZERO:
+		return Vector3.ZERO
+	var m := tissue.index(at.x + step.x, at.y + step.y)
+	var low := mini(k, m)
+	var joined := tissue.spring_right[low] if step.x != 0 else tissue.spring_down[low]
+	if joined < 0 or tissue.c_active[joined] == 0:
+		return Vector3.ZERO
+	return (layer_point(_layer_now, m) - tissue.rest[m]) - (layer_point(_layer_now, k) - tissue.rest[k])
+
+
+static func _arrays(verts: PackedVector3Array, normals: PackedVector3Array, uvs: PackedVector2Array, indices: PackedInt32Array) -> Array:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	return arrays
+
+
+## Smooth normal of the skin at grid point k, from its neighbours (cross of the z and x tangents points out).
+func _grid_normal(k: int) -> Vector3:
+	var at := tissue.cell_of(k)
+	var dx := layer_point(0, tissue.index(mini(at.x + 1, tissue.res_x), at.y)) - layer_point(0, tissue.index(maxi(at.x - 1, 0), at.y))
+	var dz := layer_point(0, tissue.index(at.x, mini(at.y + 1, tissue.res_y))) - layer_point(0, tissue.index(at.x, maxi(at.y - 1, 0)))
+	return dz.cross(dx).normalized()
 
 
 ## Where a layer's grid point k is now, before it's moved down to its depth. Deeper layers are tethered and follow
@@ -587,24 +817,16 @@ func layer_point(layer: int, k: int) -> Vector3:
 	return tissue.rest[k] + moved * lerpf(LAYER_FOLLOW[layer], 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0))
 
 
-## Keeps the triangles that touch the region. They reach a little past where the body is cut away (the body's
-## cut edge is halfway between region and non-region points), so there's never a hole between the two.
-func _in_region(triangles: PackedInt32Array) -> PackedInt32Array:
-	var out := PackedInt32Array()
-	for t in range(0, triangles.size(), 3):
-		if _region[triangles[t]] + _region[triangles[t + 1]] + _region[triangles[t + 2]] > 0:
-			out.append_array(triangles.slice(t, t + 3))
-	return out
-
-
 func _update_region() -> void:
 	var region := tissue.region()
 	if region == _region:
 		return
 	_region = region
-	for k in region.size():
-		var uv := tissue.uv_of(k) * TissueSim.RES
-		_region_image.set_pixel(roundi(uv.x), roundi(uv.y), Color.WHITE if region[k] else Color.BLACK)
+	# One byte per particle, row by row: the image's own layout.
+	var texels := region.duplicate()
+	for k in texels.size():
+		texels[k] *= 255
+	_region_image.set_data(tissue.res_x + 1, tissue.res_y + 1, false, Image.FORMAT_L8, texels)
 	region_texture.update(_region_image)
 
 
