@@ -705,10 +705,11 @@ func _switch_hand() -> void:
 
 
 ## A partner's empty hand close enough to take what this hand holds: [Surgeon, hand index], or [] if none.
+## A partner knocked out on the floor takes nothing.
 func pass_target(hand: int) -> Array:
 	var from := hands[hand].global_position
 	for other: Surgeon in Surgery.current.surgeons.values():
-		if other == self:
+		if other == self or other.is_down():
 			continue
 		for i in 2:
 			if other.held_tool(i) == null and other.hands[i].global_position.distance_to(from) < PASS_DISTANCE:
