@@ -450,7 +450,7 @@ func _sedation(bench: Bench, out: String) -> void:
 		partner.hands[i].target = partner.to_global((Surgeon.LYING_HAND + Vector3(-0.25 * i, 0, 0)) * Vector3(1, 1, 1))
 	var camera := Camera3D.new()
 	add_child(camera)
-	camera.global_position = partner.to_global(Vector3(-0.8, 1.7, 1.2))
+	camera.global_position = partner.to_global(Vector3(-0.8, 1.7, -0.8))
 	camera.look_at(partner.to_global(Vector3(-0.8, 0.2, 0.0)))
 	camera.current = true
 	await bench.frames(10)

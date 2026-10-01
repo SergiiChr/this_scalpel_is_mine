@@ -107,7 +107,7 @@ func _process(delta: float) -> void:
 	_update_dot(me)
 	_update_hands(me)
 	_update_gauges(me)
-	var hint := "\n".join(control_lines(me))
+	var hint := "" if me.status.is_out() else "\n".join(control_lines(me))
 	if _hint.text != hint:
 		_hint.text = hint
 	_prompt.text = "[%s] %s" % [InputActions.binding_text("interact"), me.focused.prompt] if me.focused and _overlay == null else ""

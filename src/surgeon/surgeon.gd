@@ -62,10 +62,12 @@ const STALL_SECONDS := 0.75
 const STAIN_RATE := 0.004
 ## Knocked out, the surgeon tips over sideways from the feet and lies on their side, facing the table: the body
 ## model this far up off the floor (half the shoulders' width), the hands on the floor in front of the chest (local,
-## for a fall to the left), and the camera's pitch, enough to see the table from the floor.
+## for a fall to the left), and the camera's pitch, enough to see the table from the floor. On the way down they
+## stagger back to this far (m) from the middle of the table, walls allowing, so the table isn't right overhead.
 const LYING_LIFT := 0.2
 const LYING_HAND := Vector3(-0.8, 0.05, -0.25)
-const LYING_PITCH := 0.2
+const LYING_PITCH := 0.3
+const LYING_DISTANCE := 1.4
 ## How much floor (m) a falling surgeon looks for beside them, to pick the side they fall to.
 const FALL_ROOM := 2.0
 ## Close enough to a glove's middle (m) for a needle to be in the hand; around the spine for it to be in the body.
@@ -553,10 +555,11 @@ func _apply_delayed(can_act: bool) -> void:
 
 ## Knocked out: lying on the floor facing the table, hands limp in front, nothing the player can do.
 func _lie_still(delta: float) -> void:
-	velocity = Vector3.ZERO
 	crouch = move_toward(crouch, 0.0, delta * 4.0)
 	pitch = lerpf(pitch, LYING_PITCH, minf(delta * 3.0, 1.0))
-	var table := Surgery.current.patient.global_position - global_position
+	var table := (Surgery.current.patient.global_position - global_position) * Vector3(1, 0, 1)
+	velocity = -table.normalized() * WALK_SPEED if _down < 1.0 and table.length() < LYING_DISTANCE else Vector3.ZERO
+	move_and_slide()
 	rotation.y = lerp_angle(rotation.y, atan2(-table.x, -table.z), minf(delta * 3.0, 1.0))
 	for i in 2:
 		var h := hands[i]
