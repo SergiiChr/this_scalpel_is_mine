@@ -3,6 +3,9 @@ extends Node
 ## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
+## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
+## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
+## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*). --only=<case> renders one.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -21,6 +24,9 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	if OS.get_cmdline_user_args().has("--menus"):
 		await _menus(out)
+		return
+	if OS.get_cmdline_user_args().has("--syringe"):
+		await _syringe(out, only)
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
@@ -222,8 +228,7 @@ func _anatomy(surgery: Surgery, out: String) -> void:
 		await _shot(out, "23_tourniquet")
 	for tool: SurgicalTool in surgery.tools.tools.values():
 		if tool.def.action == "syringe" and tool.state == SurgicalTool.State.FREE:
-			tool.ml = tool.def.volume * 0.35
-			surgery.tools.set_fill(tool, 0.35)
+			surgery.tools.add_liquid(tool, tool.def.volume * 0.35)
 			surgery.tools._req_grab(tool.uid, 1)
 			me.active = 1
 			me.camera().current = true
@@ -313,6 +318,76 @@ func _materials(surgery: Surgery, out: String) -> void:
 		body.queue_free()
 		for tool in tools:
 			tool.queue_free()
+	get_tree().quit()
+
+
+func _syringe(out: String, only: String) -> void:
+	var bench := preload("res://tests/syringe_bench.gd").new()
+	add_child(bench)
+	await bench.start()
+	var me := bench.surgery.local_surgeon
+	for case: Dictionary in bench.CASES:
+		if only and case.name != only:
+			continue
+		await bench.stage(case)
+		me.zoom = Surgeon.ZOOM_FOV.size() - 1
+		await bench.frames(40)
+		await _shot(out, "40_%s_1_needle_in" % case.name)
+		var notches: int = case.notches
+		for i in absi(notches):
+			if i == absi(notches) / 2:
+				await _shot(out, "40_%s_2_halfway" % case.name)
+			await bench.notch(notches > 0)
+		await bench.frames(10)
+		await _shot(out, "40_%s_3_done" % case.name)
+		me.zoom = 0
+		if case.name == "vial_pull":
+			# Held up to read, the printed scale toward the eyes.
+			Input.action_press("inspect")
+			await bench.frames(30)
+			await _shot(out, "41_syringe_held_up")
+			Input.action_release("inspect")
+	for case: Dictionary in bench.CATHETER_CASES:
+		if only and case.name != only:
+			continue
+		await bench.stage_catheter(case.miss)
+		me.zoom = Surgeon.ZOOM_FOV.size() - 1
+		await bench.frames(40)
+		await _shot(out, "42_%s_1_aimed" % case.name)
+		await bench.press()
+		# Once it's in, the catheter is used up and the view eases back: look again from where the needle view was.
+		var camera := Camera3D.new()
+		add_child(camera)
+		camera.fov = Surgeon.ZOOM_FOV[-1]
+		camera.global_transform = me._needle_view
+		camera.current = true
+		# Past the needle view easing out (it would set the hands solid again), then faded as in the needle view.
+		await bench.frames(30)
+		for hand in me.hands:
+			hand.set_see_through(Surgeon.NEEDLE_SEE_THROUGH)
+		await _shot(out, "42_%s_2_in" % case.name)
+		for hand in me.hands:
+			hand.set_see_through(0.0)
+		# The tubing from the stand's drip chamber down to the arm.
+		var stand := bench.surgery.tools.drip_bag().tip_position()
+		var arm := bench.vein_point()
+		var middle := stand.lerp(arm, 0.5)
+		camera.fov = 60.0
+		camera.global_transform = Transform3D(Basis.IDENTITY, middle + (arm - stand).cross(Vector3.UP).normalized() * 1.1 + Vector3.UP * 0.4).looking_at(middle)
+		await _shot(out, "42_%s_3_line" % case.name)
+		# Close up on the catheter taped to the arm: film, hub, tape and the tubing leaving it.
+		var dressing: Node3D = bench.surgery.room.iv_line._dressing
+		var over := dressing.global_transform * Vector3(-0.03, 0.13, 0.07)
+		camera.fov = 35.0
+		camera.global_transform = Transform3D(Basis.IDENTITY, over).looking_at(dressing.global_transform * Vector3(-0.03, 0.0, 0.0), dressing.global_basis.x)
+		for hand in me.hands:
+			hand.visible = false
+		await _shot(out, "42_%s_4_dressing" % case.name)
+		for hand in me.hands:
+			hand.visible = true
+		camera.queue_free()
+		me.camera().current = true
+		me.zoom = 0
 	get_tree().quit()
 
 

@@ -25,6 +25,8 @@ var drinkable: bool
 var iv_only: bool
 var tall: bool
 var self_retaining: bool
+## Stays where it is: no hand picks it up (the IV drip on its stand).
+var fixed: bool
 var model: String
 var length: float
 var width: float
@@ -57,6 +59,7 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.iv_only = cfg.get_value(section, "iv_only", false)
 	def.tall = cfg.get_value(section, "tall", false)
 	def.self_retaining = cfg.get_value(section, "self_retaining", false)
+	def.fixed = cfg.get_value(section, "fixed", false)
 	def.model = cfg.get_value(section, "model", "")
 	def.length = cfg.get_value(section, "length", 0.12)
 	def.width = cfg.get_value(section, "width", 0.012)

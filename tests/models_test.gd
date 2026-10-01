@@ -392,7 +392,7 @@ func _iv_line_clearance(holder: Node3D) -> void:
 	holder.add_child(stand)
 	holder.add_child(patient)
 	patient.position.x = 1.0
-	line.attach(stand, Vector3(0.0, 1.6, 0.0), patient, Vector3(0.0, 1.4, 0.0))
+	line.attach(stand, Vector3(0.0, 1.6, 0.0), patient, Transform3D(Basis.IDENTITY, Vector3(0.0, 1.4, 0.0)), 0.035)
 	var lowest := INF
 	for point in line._points:
 		lowest = minf(lowest, point.y)

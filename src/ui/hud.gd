@@ -12,7 +12,6 @@ const LEVEL_STEPS: Dictionary = {
 	"cut": ["Resting on skin", "Skin", "Fat", "Muscle, into cavity"],
 	"tension": ["Off", "Loose", "Correct", "Tight"],
 	"inject": ["Not pushed", "A third in", "Two thirds in", "All in"],
-	"syringe": ["Still", "Slow", "Steady", "Fast"],
 	"effort": ["Off", "Low", "Medium", "High"],
 }
 ## Length of the blade edge line drawn on the skin (m).
@@ -404,15 +403,19 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("Mouse  Move %s hand" % side)
 	if tool:
 		var action := tool.def.action
-		lines.append("%s (hold)  %s %s" % [key.call("use_tool"), ToolActions.TRIGGER_NAMES.get(action, "Use"), tool.label()])
-		if me.uses_level(me.active):
+		lines.append("%s (hold)  %s %s" % [key.call("use_tool"), ToolActions.TRIGGER_NAMES.get(action, "Press in" if action == "syringe" else "Use"), tool.label()])
+		if action == "syringe":
+			lines.append("%s  Pull plunger 1 ml" % key.call("level_down"))
+			lines.append("%s  Push plunger 1 ml" % key.call("level_up"))
+		elif me.uses_level(me.active):
 			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
 		lines.append("%s / %s  Tilt   %s / %s  Rotate" % [key.call("tilt_forward"), key.call("tilt_back"), key.call("twist_left"), key.call("twist_right")])
 		lines.append("%s (hold)  Look at it" % key.call("inspect"))
 		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
 	else:
 		lines.append("%s  Pick up%s" % [key.call("grab"), " " + me.hovered.label() if is_instance_valid(me.hovered) else ""])
-	lines.append("%s  Zoom %d/%d" % [key.call("zoom"), me.zoom + 1, Surgeon.ZOOM_FOV.size()])
+	var needle_view := tool and tool.def.action in Surgeon.NEEDLE_ACTIONS and me.zoom == Surgeon.ZOOM_FOV.size() - 1
+	lines.append("%s  Zoom %d/%d%s" % [key.call("zoom"), me.zoom + 1, Surgeon.ZOOM_FOV.size(), ", needle view" if needle_view else ""])
 	lines.append("%s (hold)  %s" % [key.call("lift"), "Pull up" if hand.attached else "Lift hand over"])
 	lines.append("%s (hold)  Hold breath" % key.call("steady"))
 	if moving < 0:

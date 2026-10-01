@@ -145,12 +145,19 @@ func delivery_spot() -> Vector3:
 
 ## Tools that live on their own station instead of the tray: [[tool id, Transform3D], ...].
 ## The defibrillator always waits on its cart, whatever the scenario put on the tray.
+## The bag hangs on the IV stand's hook, its port down at the drip chamber.
 func station_tools() -> Array:
-	if not layout.has("defib_cart"):
-		return []
-	var yaw: float = layout.get("yaw", {}).get("defib_cart", 0.0)
-	var basis := Basis(Vector3.UP, yaw)
-	return [["defibrillator", Transform3D(basis, layout.defib_cart + basis * Vector3(0.0, 1.1, 0.12))]]
+	var stations: Array = []
+	if layout.has("defib_cart"):
+		var yaw: float = layout.get("yaw", {}).get("defib_cart", 0.0)
+		var basis := Basis(Vector3.UP, yaw)
+		stations.append(["defibrillator", Transform3D(basis, layout.defib_cart + basis * Vector3(0.0, 1.1, 0.12))])
+	if layout.has("iv"):
+		var basis := Basis(Vector3.UP, layout.get("yaw", {}).get("iv", 0.0))
+		# A tool's tip is at -Z: pointing down, flat face toward the room's Z.
+		var hanging := basis * Basis(Vector3.RIGHT, Vector3.FORWARD, Vector3.UP)
+		stations.append(["iv_drip", Transform3D(hanging, layout.iv + basis * (IV_DRIP_POINT + Vector3(0.0, 0.24, 0.0)))])
+	return stations
 
 
 ## Flickering room lights, the one cheap trick every horror hospital needs. The surgical lamp stays on.
@@ -329,7 +336,10 @@ func _build_stations(s: Surgery) -> void:
 		_prop("delivery_tray")
 	if layout.has("defib_cart"):
 		_prop("defib_cart")
-	_iv_stand = _station("iv", "Use held drug on the IV line", Vector3(0.4, 2.0, 0.4), s.use_iv)
+	# A syringe goes straight into the hanging bag (the iv_drip tool, see station_tools()); a bag in hand swaps it.
+	_iv_stand = _prop("iv")
+	var swap := Interactable.create(self, "Swap IV bag", Vector3(0.4, 2.0, 0.4), (layout.iv as Vector3) + Vector3(0, 1.0, 0), s.use_iv)
+	swap.offered = func(surgeon: Surgeon) -> bool: return surgeon.held_tool(surgeon.active) != null and surgeon.held_tool(surgeon.active).def.iv_only
 	iv_line = IvLine.new()
 	iv_line.name = "IvLine"
 	add_child(iv_line)
@@ -358,9 +368,10 @@ func _station(key: String, prompt: String, size: Vector3, callback: Callable, he
 	return root
 
 
-## Runs the IV tubing from the stand's drip chamber to a point on the patient (local to `to`).
-func connect_iv(to: Node3D, point: Vector3) -> void:
-	iv_line.attach(_iv_stand, IV_DRIP_POINT, to, point)
+## Runs the IV tubing from the stand's drip chamber to a catheter taped on at `site` (local to `to`, see
+## PatientBody.iv_site()) on an arm of this radius.
+func connect_iv(to: Node3D, site: Transform3D, arm_radius: float) -> void:
+	iv_line.attach(_iv_stand, IV_DRIP_POINT, to, site, arm_radius)
 
 
 ## Places a layout prop, turned by its yaw, solid if it has a footprint in STATION_SOLIDS.

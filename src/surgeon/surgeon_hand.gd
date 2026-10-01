@@ -118,6 +118,9 @@ var _fore: Node3D
 var _pusher: AnimatableBody3D
 ## Fraction of the forearm hidden at the elbow end (local player only, keeps the view clear).
 var _forearm_start := 0.0
+## Stands in for the hand's materials while it's see-through (see set_see_through()).
+const GHOST_COLOR := Color(0.75, 0.82, 0.9)
+var _ghost: StandardMaterial3D
 
 
 func build(hand_index: int, scrubs: ShaderMaterial) -> void:
@@ -157,6 +160,19 @@ func hide_upper_arm() -> void:
 		cuff.visible = false
 
 
+## Fades the glove and sleeve (0 solid, 1 gone) so the hand doesn't hide what it works on. Set on the local view only.
+## A plain see-through material stands in for the hand's own while it's faded: the compatibility renderer ignores
+## GeometryInstance3D.transparency, and the ink outline would draw the hand's inside.
+func set_see_through(amount: float) -> void:
+	if _ghost == null:
+		_ghost = StandardMaterial3D.new()
+		_ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ghost.albedo_color = GHOST_COLOR
+	_ghost.albedo_color.a = 1.0 - amount
+	for node in find_children("*", "GeometryInstance3D", true, false):
+		(node as GeometryInstance3D).material_override = _ghost if amount > 0.0 else null
+
+
 ## Final world position: target plus lift and tremor.
 func effective_position() -> Vector3:
 	if puppet:
@@ -170,6 +186,14 @@ func grip_transform() -> Transform3D:
 	var yaw := (get_parent() as Node3D).global_rotation.y
 	var rot := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt) * Basis(Vector3.FORWARD, twist)
 	return Transform3D(rot, global_position)
+
+
+## The twist that turns the held tool's underside (-Y, the side a syringe's scale is printed on) toward `direction`.
+## Twist rolls the tool about its own length, so its tip stays where it is.
+func twist_facing(direction: Vector3) -> float:
+	var yaw := (get_parent() as Node3D).global_rotation.y
+	var local := (Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)).inverse() * direction
+	return atan2(-local.x, -local.y)
 
 
 ## A tool held up to look at: its tip across the view toward the other hand's side, and its top (+Y, where the back

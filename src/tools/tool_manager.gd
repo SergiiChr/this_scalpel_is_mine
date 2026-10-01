@@ -5,8 +5,13 @@ extends Node3D
 
 const SYNC_INTERVAL := 0.1
 const GRAB_RADIUS := 0.09
-## Everyone but the host sees fill levels in steps this fine: enough to read a syringe's graduation marks.
+## Everyone but the host sees iodine levels in steps this fine (syringes, vials and the kidney dish are exact).
 const FILL_STEPS := 50.0
+## How close a syringe's needle has to be to a vial's middle to be in it, or to a dish's or hung bag's (a share of
+## its length). A hung bag is out of a hand's reach from below: the needle goes in resting on top of it.
+const VIAL_REACH := 0.05
+const DISH_REACH := 0.4
+const DRIP_REACH := 0.75
 
 var tools: Dictionary = {}
 var _next_uid := 1
@@ -20,7 +25,9 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 		var at_station: String = entry[0]
 		while tray_ids.has(at_station):
 			tray_ids.remove_at(tray_ids.find(at_station))
-		_create(_next_uid, at_station, entry[1])
+		var made := _create(_next_uid, at_station, entry[1])
+		if made.def.fixed:
+			made.set_state(SurgicalTool.State.STANDING, 0, -1)
 	var spot := 0
 	var on_tray: Array[SurgicalTool] = []
 	for id in tray_ids:
@@ -86,7 +93,7 @@ func nearest_grabbable(at: Vector3) -> SurgicalTool:
 	var best: SurgicalTool = null
 	var best_dist := GRAB_RADIUS
 	for tool: SurgicalTool in tools.values():
-		if tool.state in [SurgicalTool.State.FREE, SurgicalTool.State.STANDING, SurgicalTool.State.INSIDE]:
+		if tool.state in [SurgicalTool.State.FREE, SurgicalTool.State.STANDING, SurgicalTool.State.INSIDE] and not tool.def.fixed:
 			var dist := minf(tool.global_position.distance_to(at), tool.tip_position().distance_to(at))
 			if dist < best_dist:
 				best_dist = dist
@@ -99,21 +106,51 @@ func nearest_of(id: String, at: Vector3, reach: float) -> SurgicalTool:
 	return _nearest(at, reach, func(tool: SurgicalTool) -> bool: return tool.def.id == id)
 
 
-## Like nearest_of(), for any tool with this action (any vial).
-func nearest_with_action(action: String, at: Vector3, reach: float) -> SurgicalTool:
-	return _nearest(at, reach, func(tool: SurgicalTool) -> bool: return tool.def.action == action)
-
-
 func _nearest(at: Vector3, reach: float, wanted: Callable) -> SurgicalTool:
 	var best: SurgicalTool = null
 	var best_dist := reach
 	for tool: SurgicalTool in tools.values():
 		if wanted.call(tool) and not tool.state in [SurgicalTool.State.BELT, SurgicalTool.State.CONSUMED]:
-			var dist := (tool.global_transform * Vector3(0, 0, -tool.def.length * 0.5)).distance_to(at)
+			var dist := middle(tool).distance_to(at)
 			if dist < best_dist:
 				best_dist = dist
 				best = tool
 	return best
+
+
+## The vial or dish a syringe's needle at `at` is in, or null: anything else that holds liquid, closest first.
+func nearest_container(at: Vector3) -> SurgicalTool:
+	var best: SurgicalTool = null
+	var best_dist := INF
+	for tool: SurgicalTool in tools.values():
+		if tool.def.volume <= 0.0 or tool.def.action == "syringe" or tool.state in [SurgicalTool.State.BELT, SurgicalTool.State.CONSUMED]:
+			continue
+		var dist := middle(tool).distance_to(at)
+		var reach := VIAL_REACH if tool.def.action == "vial" else tool.def.length * (DRIP_REACH if tool.def.action == "drip" else DISH_REACH)
+		if dist < reach and dist < best_dist:
+			best_dist = dist
+			best = tool
+	return best
+
+
+## True while a held syringe's needle is in this vial, dish or bag.
+func needle_in(container: SurgicalTool) -> bool:
+	for tool: SurgicalTool in tools.values():
+		if tool.state == SurgicalTool.State.HELD and tool.def.action == "syringe" and nearest_container(tool.tip_position()) == container:
+			return true
+	return false
+
+
+## The bag hanging on the IV stand, null where there's none.
+func drip_bag() -> SurgicalTool:
+	for tool: SurgicalTool in tools.values():
+		if tool.def.action == "drip":
+			return tool
+	return null
+
+
+static func middle(tool: SurgicalTool) -> Vector3:
+	return tool.global_transform * Vector3(0, 0, -tool.def.length * 0.5)
 
 
 ## What this tool holds at its tip (a cotton pad in forceps), or null.
@@ -143,6 +180,11 @@ func request_belt(hand: int, belt_slot: int) -> void:
 	_req_belt.rpc_id(1, hand, belt_slot)
 
 
+## One wheel notch on the syringe in this hand: notches > 0 pull the plunger out, < 0 push it in.
+func request_plunger(hand: int, notches: int) -> void:
+	_req_plunger.rpc_id(1, hand, notches)
+
+
 func request_sterilize(hand: int) -> void:
 	_req_sterilize.rpc_id(1, hand)
 
@@ -156,7 +198,7 @@ func _req_grab(uid: int, hand: int) -> void:
 	var peer := Net._sender()
 	var tool: SurgicalTool = tools.get(uid)
 	var surgeon: Surgeon = Surgery.current.surgeons.get(peer)
-	if tool == null or surgeon == null or tool_in_hand(peer, hand):
+	if tool == null or surgeon == null or tool.def.fixed or tool_in_hand(peer, hand):
 		return
 	var owned_belt := tool.state == SurgicalTool.State.BELT and tool.holder == peer
 	if not (tool.state in [SurgicalTool.State.FREE, SurgicalTool.State.STANDING, SurgicalTool.State.INSIDE] or owned_belt):
@@ -228,6 +270,13 @@ func _req_belt(hand: int, belt_slot: int) -> void:
 		_set_state.rpc(held.uid, SurgicalTool.State.BELT, peer, belt_slot, held.global_transform)
 	elif held == null and stored:
 		_set_state.rpc(stored.uid, SurgicalTool.State.HELD, peer, hand, stored.global_transform)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _req_plunger(hand: int, notches: int) -> void:
+	var tool := tool_in_hand(Net._sender(), hand)
+	if tool and tool.def.action == "syringe" and Surgery.current.running:
+		ToolActions.plunge(tool, notches * ToolActions.PLUNGER_STEP, Surgery.current.patient)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -310,7 +359,7 @@ func set_fill(tool: SurgicalTool, amount: float) -> void:
 		_show_fill.rpc(tool.uid, tool.fill)
 
 
-## Host: moves up to `amount` ml of liquid out of a syringe or vial, into another one or (to == null) out of it.
+## Host: moves up to `amount` ml of liquid out of a syringe, vial or dish, into another one or (to == null) out of it.
 ## Drugs go along in proportion, so a mix stays mixed. Returns what moved: drug id -> amount in its unit.
 func transfer(from: SurgicalTool, to: SurgicalTool, amount: float) -> Dictionary:
 	var moved: Dictionary = {}
@@ -321,17 +370,24 @@ func transfer(from: SurgicalTool, to: SurgicalTool, amount: float) -> Dictionary
 	for drug: String in from.contents:
 		moved[drug] = from.contents[drug] * share
 		from.contents[drug] -= moved[drug]
-		if to:
-			to.contents[drug] = to.contents.get(drug, 0.0) + moved[drug]
-	from.ml -= amount
-	if from.ml <= 0.0001:
-		from.ml = 0.0
-		from.contents.clear()
-	set_fill(from, from.ml / from.def.volume)
+	add_liquid(from, -amount)
 	if to:
-		to.ml += amount
-		set_fill(to, to.ml / to.def.volume)
+		add_liquid(to, amount, moved)
 	return moved
+
+
+## Host: adds ml of liquid holding `drugs` (drug id -> amount, "blood" in ml) and ml of air to a syringe, vial or dish.
+## Negative takes away (the contents are taken out by the caller). Everyone sees the exact result.
+func add_liquid(tool: SurgicalTool, ml: float, drugs: Dictionary = {}, air: float = 0.0) -> void:
+	for drug: String in drugs:
+		tool.contents[drug] = tool.contents.get(drug, 0.0) + drugs[drug]
+	tool.ml += ml
+	tool.air = maxf(tool.air + air, 0.0)
+	if tool.ml <= 0.0001:
+		tool.ml = 0.0
+		tool.contents.clear()
+	tool.fill = tool.ml / tool.def.volume
+	_show_liquid.rpc(tool.uid, tool.ml, tool.air, tool.contents.get("blood", 0.0) / tool.ml if tool.ml > 0.0 else 0.0)
 
 
 func consume(tool: SurgicalTool) -> void:
@@ -518,6 +574,17 @@ func _show_fill(uid: int, amount: float) -> void:
 		if not multiplayer.is_server():
 			tool.fill = amount
 		tool.show_fill(amount)
+
+
+@rpc("authority", "call_local", "reliable")
+func _show_liquid(uid: int, ml: float, air: float, red: float) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.ml = ml
+		tool.air = air
+		tool.red = red
+		tool.fill = ml / tool.def.volume
+		tool.show_liquid()
 
 
 @rpc("authority", "call_local", "reliable")

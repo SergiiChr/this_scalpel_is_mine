@@ -8,6 +8,10 @@ enum State { FREE, HELD, BELT, STANDING, INSIDE, CONSUMED, CARRIED }
 
 const TOOL_LAYER := 8
 const IODINE_COLOR := Color(0.55, 0.3, 0.12)
+## Liquid that is all blood. A mix tints toward it by its share of blood.
+const BLOOD_COLOR := Color(0.5, 0.03, 0.04)
+## A hung IV bag comes with this much fluid (ml), with room left in it for drugs pushed in.
+const DRIP_FLUID := 500.0
 ## Smallest size (meters) a tool counts as across for how hard it is to turn, see setup().
 const MIN_TURNING_SIZE := 0.04
 ## How thick a tourniquet's band is where it wraps a limb.
@@ -27,15 +31,21 @@ var charges := -1
 ## How bloody the working end is (0..1), for everyone. Host-side exposure builds up in blood_exposure.
 var blood := 0.0
 var blood_exposure := 0.0
-## How full of liquid it is (0..1): iodine in the dish, soaked into a cotton pad, a syringe or vial.
-## Exact on the host, in steps elsewhere.
+## How full of liquid it is (0..1): iodine in the dish, soaked into a cotton pad, a syringe, vial or kidney dish.
+## Exact on the host, in steps elsewhere (a syringe, vial or kidney dish is exact everywhere, see ml).
 var fill := 0.0
-## Host only: ml of liquid in a syringe or vial, and how much of each drug is in it (drug id -> amount in its unit).
-## A syringe drawn from two vials holds a mix.
+## ml of liquid in a syringe, vial or kidney dish, ml of air drawn into a syringe and the share of the liquid that is
+## blood (0..1). Exact on every peer: the host sends each change (ToolManager.add_liquid() and transfer()).
 var ml := 0.0
+var air := 0.0
+var red := 0.0
+## Host only: how much of each drug is in the liquid (drug id -> amount in its unit, "blood" in ml).
+## A syringe drawn from two vials holds a mix.
 var contents: Dictionary = {}
-## Host only: what a syringe pushed into the patient since the needle went in, given when it comes out.
+## Host only: what a syringe pushed into the patient since the needle went in, given when it comes out,
+## and how it goes in ("vein" or "direct", see Patient.administer()).
 var injecting: Dictionary = {}
+var injecting_route := "direct"
 
 # Host-side use state, see ToolActions.
 var grip_info: Dictionary = {}
@@ -89,11 +99,16 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	inertia = mass / 12.0 * Vector3(turning.y * turning.y + turning.z * turning.z, turning.x * turning.x + turning.z * turning.z, turning.x * turning.x + turning.y * turning.y)
 	angular_damp = 1.0
 	_animator.setup(_model)
+	# Vials come full of their drug, the IV drip with a bag of plain fluid.
 	if def.action == "vial":
 		ml = def.volume
 		contents[def.drug] = def.volume * def.concentration
-		fill = 1.0
-	if _model.find_child("Liquid", true, false) or _model.find_child("Level", true, false):
+	elif def.action == "drip":
+		ml = DRIP_FLUID
+	fill = ml / def.volume if def.volume > 0.0 else fill
+	if def.volume > 0.0:
+		show_liquid()
+	elif _model.find_child("Liquid", true, false):
 		show_fill(fill)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
@@ -131,7 +146,7 @@ func tip_position() -> Vector3:
 ## The name the HUD shows. Syringes carry no drug name, only whether there's anything in them.
 func label() -> String:
 	if def.action == "syringe":
-		return "%s (%s)" % [def.name, "full" if fill > 0.0 else "empty"]
+		return "%s (%s)" % [def.name, "full" if ml > 0.0 else "empty"]
 	return def.name
 
 
@@ -167,15 +182,8 @@ func set_blood(amount: float) -> void:
 			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
 
 
-## Liquid shows as the model's "Level" part stretching from its end (syringe, vial), its "Liquid" part (the dish),
-## or tints the whole tool (a soaked pad).
+## Iodine shows as the model's "Liquid" part (the iodine dish), or tints the whole tool (a soaked pad).
 func show_fill(amount: float) -> void:
-	var level := _model.find_child("Level", true, false) as Node3D
-	if level:
-		level.visible = amount > 0.0
-		level.scale = Vector3(1.0, 1.0, maxf(amount, 0.001))
-		_animator.fill = amount
-		return
 	var liquid := _model.find_child("Liquid", true, false) as Node3D
 	if liquid:
 		liquid.visible = amount > 0.0
@@ -185,6 +193,43 @@ func show_fill(amount: float) -> void:
 		if not mat.has_meta("albedo"):
 			mat.set_meta("albedo", mat.get_shader_parameter("albedo"))
 		mat.set_shader_parameter("albedo", (mat.get_meta("albedo") as Color).lerp(IODINE_COLOR, minf(amount * 2.0, 1.0)))
+
+
+## A syringe, vial or kidney dish shows exactly what's in it (ml, air, red), tinted toward blood by its share of blood.
+## In a syringe the air sits at the needle end (it rises there, so a push lets it out first), the liquid behind it
+## and the plunger right behind the liquid. A vial's "Level" stretches from its end, the dish's "Pool" rises.
+func show_liquid() -> void:
+	var amount := ml / def.volume
+	var level := _model.find_child("Level", true, false) as MeshInstance3D
+	if level:
+		level.visible = amount > 0.0
+		level.scale = Vector3(1.0, 1.0, maxf(amount, 0.001))
+		if not level.has_meta("rest"):
+			level.set_meta("rest", level.position)
+		level.position = level.get_meta("rest") + Vector3(0, 0, level.get_aabb().size.z * air / def.volume)
+		_animator.fill = (ml + air) / def.volume
+	var pool := _model.find_child("Pool", true, false) as MeshInstance3D
+	if pool:
+		# The dish widens upward: the top of the pool keeps to its wall at every level.
+		var wide := lerpf(0.88, 1.0, amount)
+		pool.visible = amount > 0.0
+		pool.scale = Vector3(wide, maxf(amount, 0.001), wide)
+	for part in [level, pool]:
+		if part:
+			_tint_liquid(part)
+
+
+## The liquid part gets its own material the first time it holds blood, then follows the share of blood in it.
+func _tint_liquid(part: MeshInstance3D) -> void:
+	var mat := part.get_surface_override_material(0) as ShaderMaterial
+	if mat == null or red <= 0.0 and not mat.has_meta("albedo"):
+		return
+	if not mat.has_meta("albedo"):
+		mat = mat.duplicate() as ShaderMaterial
+		mat.set_meta("albedo", mat.get_shader_parameter("albedo"))
+		part.set_surface_override_material(0, mat)
+	# Blood is opaque: a little of it already colors the whole liquid, so the tint rises fast at first.
+	mat.set_shader_parameter("albedo", (mat.get_meta("albedo") as Color).lerp(BLOOD_COLOR, 1.0 - pow(1.0 - red, 3.0)))
 
 
 ## The tool your hand would pick up glows faintly (local player only).

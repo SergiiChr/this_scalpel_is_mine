@@ -1,14 +1,18 @@
 class_name ToolAnimator
 extends RefCounted
 ## Moves a tool model's named parts from the holding hand's state, which every peer has.
-## Jaws close while squeezed or holding tissue, a syringe plunger sits behind its liquid, triggers squeeze, saw blades oscillate,
+## Jaws close while squeezed or holding tissue, a syringe plunger sits behind its liquid and air, triggers squeeze, saw blades oscillate,
 ## flames and glows light up in use. Part names come from tools/assetgen/instruments.py.
 
 const PART_NAMES: PackedStringArray = ["JawA", "JawB", "Plunger", "Trigger", "Blade", "Flame", "Glow", "Light"]
 const JAW_OPEN := 0.12
 
-## How full a syringe is (0..1). Its plunger sits right behind the liquid.
-var fill := 0.0
+## How far a syringe's plunger is pulled out (0..1 of its volume): its liquid and any air drawn in.
+## The plunger moves the moment it changes, with the liquid, not a frame later.
+var fill := 0.0:
+	set(value):
+		fill = value
+		_pose("Plunger", Basis.IDENTITY, Vector3(0, 0, _plunger_travel * fill))
 var _parts: Dictionary = {}
 var _rest: Dictionary = {}
 var _squeeze := 0.0

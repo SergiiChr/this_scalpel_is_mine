@@ -5,8 +5,11 @@ extends CharacterBody3D
 ##
 ## Controls: the mouse looks around, holding a hand's key (Q/E) moves that hand instead and makes it the active one.
 ## Use tool (LMB, held) rests the active hand's tool on its spot and works it, the wheel sets its effort level
-## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). Grab (RMB) picks up and puts down. Zoom (Shift) steps through
-## three zoom levels. WASD moves the body.
+## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). A syringe has its own wheel: down pulls the plunger out, up pushes it
+## in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) steps through
+## three zoom levels; the last one with a syringe or IV catheter in hand frames the needle and what it's in, the
+## hands faded.
+## WASD moves the body.
 ## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
 ## Hands have no height control: the tool tip rests just above whatever is under it (skin, tray, organs, a target
@@ -35,6 +38,13 @@ const CROUCH_SPEED := 0.35
 const ZOOM_FOV: Array[float] = [70.0, 45.0, 28.0]
 ## How far in front of the eyes a tool is held up to look at it (Inspect).
 const INSPECT_DISTANCE := 0.26
+## Zoomed all the way in with a syringe, the camera looks at it from the side and this far above (radians), with
+## this much room around the syringe and its target (meters), and the hands this see-through (see _frame_needle()).
+const NEEDLE_VIEW_ELEVATION := 0.6
+const NEEDLE_VIEW_MARGIN := 0.025
+const NEEDLE_SEE_THROUGH := 0.65
+## Tools the last zoom step frames like this: a syringe and the IV catheter.
+const NEEDLE_ACTIONS: PackedStringArray = ["syringe", "iv_line"]
 const SYNC_INTERVAL := 1.0 / 30.0
 const BUMP_DISTANCE := 0.07
 const SWITCH_DELAY := 0.25
@@ -69,6 +79,12 @@ var crouch := 0.0
 var zoom := 0
 ## Uid of the tool each hand held last frame: a new tool starts at effort level 0.
 var _held_uid: Array[int] = [0, 0]
+## How far the camera has moved over to the needle view (0..1), and the last needle view, to move back from.
+var _needle_framing := 0.0
+var _needle_view := Transform3D.IDENTITY
+## The hand whose syringe the needle view rolls to show its scale (-1: none), and its own twist to roll back to.
+var _rolled_hand := -1
+var _own_twist := 0.0
 
 var _head: Node3D
 var _body: Node3D
@@ -268,8 +284,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if index != active:
 			_switch_hand()
 	elif event.is_action_pressed("level_up") or event.is_action_pressed("level_down"):
-		if uses_level(active):
-			hand.level = clampi(hand.level + (1 if event.is_action_pressed("level_up") else -1), 0, 3)
+		var up := event.is_action_pressed("level_up")
+		var tool := held_tool(active)
+		if tool and tool.def.action == "syringe":
+			Surgery.current.tools.request_plunger(active, -1 if up else 1)
+		elif uses_level(active):
+			hand.level = clampi(hand.level + (1 if up else -1), 0, 3)
 	elif event.is_action_pressed("zoom"):
 		zoom = (zoom + 1) % ZOOM_FOV.size()
 	elif event.is_action_pressed("use_tool"):
@@ -318,6 +338,7 @@ func _physics_process(delta: float) -> void:
 	_head.rotation.x = pitch
 	if is_local:
 		_camera.fov = lerpf(_camera.fov, ZOOM_FOV[zoom], minf(delta * 12.0, 1.0))
+		_frame_needle(delta)
 	# The camera pitches fully, the visible head only half as much so it doesn't look broken-necked.
 	_face.rotation.x = -pitch * 0.5
 	_animate_body(delta)
@@ -333,6 +354,58 @@ func _physics_process(delta: float) -> void:
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)
+
+
+## Zoomed all the way in with a syringe or IV catheter, the camera moves over beside it so the needle and what it's in
+## (a vial, the dish, the arm's vein) are both in view, and the hands fade so they don't block it.
+## The hand rolls a syringe so its printed scale faces the camera, and rolls it back after.
+func _frame_needle(delta: float) -> void:
+	var tool := held_tool(active)
+	var framing := zoom == ZOOM_FOV.size() - 1 and tool != null and tool.def.action in NEEDLE_ACTIONS and not hands[active].inspecting
+	var before := _needle_framing
+	_needle_framing = move_toward(_needle_framing, 1.0 if framing else 0.0, delta * 4.0)
+	if _needle_framing != before:
+		for hand in hands:
+			hand.set_see_through(_needle_framing * NEEDLE_SEE_THROUGH)
+	if framing:
+		_needle_view = needle_view(tool)
+	if framing and tool.def.action == "syringe":
+		if _rolled_hand != active:
+			_rolled_hand = active
+			_own_twist = hands[active].twist
+		var facing := hands[active].twist_facing(_needle_view.origin - ToolManager.middle(tool))
+		hands[active].twist = lerp_angle(hands[active].twist, facing, minf(delta * 8.0, 1.0))
+	elif _rolled_hand >= 0:
+		var hand := hands[_rolled_hand]
+		hand.twist = lerp_angle(hand.twist, _own_twist, minf(delta * 8.0, 1.0)) if _needle_framing > 0.0 else _own_twist
+		if _needle_framing <= 0.0:
+			_rolled_hand = -1
+	if _needle_framing <= 0.0:
+		_camera.transform = Transform3D.IDENTITY
+		return
+	_camera.global_transform = _head.global_transform.interpolate_with(_needle_view, smoothstep(0.0, 1.0, _needle_framing))
+
+
+## Where the camera looks at a syringe or catheter from: side on and a little above, from the side the eyes are on, far
+## enough back that the whole tool and the vial, dish or bag its needle is in fit the view.
+func needle_view(tool: SurgicalTool) -> Transform3D:
+	var points: Array[Vector3] = [tool.global_position, tool.tip_position()]
+	var target := ToolActions.needle_target(tool, Surgery.current.patient)
+	if target.kind == "container":
+		points.append(ToolManager.middle(target.container))
+	var center := Vector3.ZERO
+	for p in points:
+		center += p / points.size()
+	var radius := 0.0
+	for p in points:
+		radius = maxf(radius, p.distance_to(center))
+	var along := (points[1] - points[0]) * Vector3(1, 0, 1)
+	var side := along.cross(Vector3.UP).normalized() if along.length() > 0.001 else _head.global_basis.z
+	if side.dot(_head.global_position - center) < 0.0:
+		side = -side
+	var direction := side * cos(NEEDLE_VIEW_ELEVATION) + Vector3.UP * sin(NEEDLE_VIEW_ELEVATION)
+	var distance := (radius + NEEDLE_VIEW_MARGIN) / tan(deg_to_rad(ZOOM_FOV[zoom]) * 0.5)
+	return Transform3D(Basis.IDENTITY, center + direction * distance).looking_at(center, Vector3.UP)
 
 
 func _local_update(delta: float) -> void:
@@ -475,12 +548,14 @@ func _surface_below(p: Vector3) -> Dictionary:
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}
 	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
-	# The body's collider is its rest shape: skin lifted by a grip lies above it.
+	# The body's collider is its rest shape: skin lifted by a grip lies above it. The site's own collider is a flat
+	# plane over the site, above skin that curves away under it (a belly): there the skin as drawn now is what's touched.
 	if not site_hit.is_empty():
 		var body := Surgery.current.patient.body
 		var local := body.site.to_local(p)
-		var skin := body.site.to_global(Vector3(local.x, body.skin_height(body.world_to_uv(p)), local.z))
-		if skin.y > hit.position.y:
+		var uv := body.world_to_uv(p)
+		var skin := body.site.to_global(Vector3(local.x, body.skin_height(uv), local.z))
+		if skin.y > hit.position.y or (hit.collider as Node).has_meta("site") and body.on_body(uv):
 			return {"y": skin.y, "open": false, "soft": true}
 	return {"y": hit.position.y, "open": false, "soft": soft}
 
@@ -583,6 +658,8 @@ func _update_focus() -> void:
 	query.collide_with_bodies = false
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	focused = hit.collider as Interactable if not hit.is_empty() else null
+	if focused and not focused.offered_to(self):
+		focused = null
 
 
 func _status_context() -> Dictionary:

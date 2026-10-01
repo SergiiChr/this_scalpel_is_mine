@@ -237,7 +237,16 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   The defibrillator always waits on its own cart. Station cabinets are solid.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
-  (`src/world/iv_line.gd`). Walking into it at full speed rips it out; crouch-walking steps over it.
+  (`src/world/iv_line.gd`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
+  sticks and the tubing runs to it, but nothing goes through. The last zoom step frames the catheter like a syringe.
+  Where it went in, the catheter is taped down on the forearm (`IvDressing`, riding the forearm bone): its stub going
+  into the skin toward the elbow, the hub with a colored cap and wings, a clear film over it, two strips of woven tape
+  across the arm and the tubing taped along the arm before it hangs off to the stand.
+  Walking into the line at full speed rips it out; crouch-walking steps over it.
+- **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
+  A syringe resting on top of it is in it: push a drug in and it runs down the line once the needle is out, if the
+  line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
+  the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
 ### Controls rework
 
@@ -249,8 +258,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
-  suction, gauze pressure, syringe plunger), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
-  A syringe draws in a vial and pushes anywhere else (see Vials and syringes).
+  suction, gauze pressure), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
+  A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -269,18 +278,31 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - **Drugs come in labelled vials** (`vial_*` in tools.cfg): the name is the label, with the strength per ml.
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
-  what's in which. The barrel is glass with a tick every tenth; the liquid and plunger show how much is in it.
-- **Filling** (`ToolActions`, action `syringe`): lowered with its needle in a vial the plunger draws, anywhere else
-  it pushes, at a speed set by the wheel. A syringe holds ml plus an amount of each drug, so drawing from a second
-  vial mixes (`ToolManager.transfer()`). Pushing into the patient collects the dose; it's given when the needle
-  comes out. At the IV stand the whole syringe goes into the line.
+  what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
+  the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
+- **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
+  it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
+  (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
+  - a vial, the kidney dish (holds 100 ml) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
+    no more.
+  - a vein drawn on each forearm (`PatientBody.vein_at()`, not on an arm the site covers): pulls blood, which tints
+    the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
+  - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
+    pulls nothing and the plunger stays.
+  - nothing: pulls air, pushes the liquid out in a squirt.
+  A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
+  Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
+  needle comes out.
+- **Needle view**: the last zoom step with a syringe or IV catheter in hand moves the camera beside it, side on and a
+  little above, so the needle and what it's in (a vial, the dish, the bag, the arm) are in view. The hands fade to see
+  through and roll a syringe about its length so the printed scale faces the camera; zooming out rolls it back.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
 - **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
-  its tick marks toward them. Liquid and plunger follow the ml exactly (clients see it in 2% steps).
+  its tick marks toward them. Liquid, air and plunger follow the ml exactly on every peer.
 
 ### Tourniquet
 
