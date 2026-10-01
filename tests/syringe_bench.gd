@@ -1,14 +1,15 @@
 extends Node
 ## Stages the syringe cases for tests/syringe_test.gd (checks) and tests/screenshot.gd --syringe (pictures):
 ## the local surgeon holds a syringe with its needle in the case's target and works the plunger with wheel notches.
-## Over a vial or the dish the needle just rests there; on the patient Use tool presses it in and stays held.
-## The wheel works the plunger either way.
+## Over a vial, the dish or the IV drip the needle just rests there; on the patient Use tool presses it in and stays
+## held. The wheel works the plunger either way. stage_catheter() puts an IV catheter on the forearm vein, or beside it.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 const VIAL := "vial_cefazolin"
 const DRUG := "cefazolin"
 ## Every case: what the needle is in, the syringe, ml of the drug in it at the start, and the wheel notches to work
-## (> 0 pulls the plunger out). A vial starts with what the syringe didn't take from it, the dish with "dish" ml.
+## (> 0 pulls the plunger out). A vial starts with what the syringe didn't take from it, the dish with "dish" ml,
+## the IV drip on its stand full, with a working line in the arm.
 const CASES: Array[Dictionary] = [
 	{"name": "vial_pull", "target": "vial", "syringe": "syringe_10", "ml": 0.0, "notches": 6},
 	{"name": "vial_push", "target": "vial", "syringe": "syringe_10", "ml": 6.0, "notches": -6},
@@ -23,7 +24,11 @@ const CASES: Array[Dictionary] = [
 	{"name": "fat_pull", "target": "fat", "syringe": "syringe_10", "ml": 3.0, "notches": 6},
 	{"name": "muscle_pull", "target": "muscle", "syringe": "syringe_10", "ml": 3.0, "notches": 6},
 	{"name": "air_pull", "target": "air", "syringe": "syringe_10", "ml": 3.0, "notches": 6},
+	{"name": "drip_push", "target": "drip", "syringe": "syringe_10", "ml": 6.0, "notches": -6},
+	{"name": "drip_pull", "target": "drip", "syringe": "syringe_10", "ml": 0.0, "notches": 6},
 ]
+## IV catheter cases: on the vein, and 2.5 cm across the forearm from it (on the arm, off the vein).
+const CATHETER_CASES: Array[Dictionary] = [{"name": "catheter_vein", "miss": 0.0}, {"name": "catheter_miss", "miss": 0.025}]
 ## Site uv of a cut through the skin (fat shows) and one through the fat (muscle shows), and of whole skin.
 const FAT_UV := Vector2(0.3, 0.3)
 const MUSCLE_UV := Vector2(0.5, 0.62)
@@ -33,8 +38,9 @@ const STAND_OFF := 0.45
 
 var surgery: Surgery
 var syringe: SurgicalTool
-## The case's vial or kidney dish, null for the others.
+## The case's vial, kidney dish or the IV drip, null for the others.
 var container: SurgicalTool
+var catheter: SurgicalTool
 
 
 ## A solo appendectomy with nothing rolled, both cuts made and held open, ready for stage().
@@ -67,7 +73,7 @@ func stage(case: Dictionary) -> void:
 	var tools := surgery.tools
 	var me := surgery.local_surgeon
 	for old: SurgicalTool in [syringe, container]:
-		if old:
+		if old and not old.def.fixed:
 			tools.consume(old)
 	container = null
 	syringe = _spawn(case.syringe, me.global_position + Vector3.UP)
@@ -79,11 +85,19 @@ func stage(case: Dictionary) -> void:
 			container = _spawn("kidney_dish", _clear_spot())
 			_fill(container, case.get("dish", 0.0))
 			_fill(syringe, case.ml)
+		"drip":
+			container = tools.drip_bag()
+			_fill(syringe, case.ml)
 		_:
 			_fill(syringe, case.ml)
 	await frames(30)
 	var aim := _aim_point(case.target)
 	_stand_by(aim)
+	if case.target == "drip" and not surgery.patient.iv_working():
+		# Only once the surgeon is in place: stepping over to the stand would count as walking through the tubing.
+		await frames(5)
+		surgery.patient._iv_removed.rpc()
+		surgery.patient.set_iv(vein_point(), true)
 	tools._req_grab(syringe.uid, me.active)
 	await frames(2)
 	var hand := me.hands[me.active]
@@ -116,6 +130,53 @@ func withdraw() -> void:
 	await frames(20)
 
 
+## Puts an IV catheter in the active hand over the forearm vein, `miss` meters across the arm from it, with no line in
+## yet. press() then pushes it in.
+func stage_catheter(miss: float) -> void:
+	var tools := surgery.tools
+	var me := surgery.local_surgeon
+	for old: SurgicalTool in [syringe, container]:
+		if old and not old.def.fixed:
+			tools.consume(old)
+	syringe = null
+	container = null
+	surgery.patient._iv_removed.rpc()
+	# Use tool let go, or the new catheter would go in wherever the hand passes over the arm.
+	var release := InputEventAction.new()
+	release.action = "use_tool"
+	me._unhandled_input(release)
+	catheter = _spawn("iv_catheter", me.global_position + Vector3.UP)
+	await frames(30)
+	var vein: MeshInstance3D = surgery.patient.body._veins[0]
+	var line: PackedVector3Array = vein.get_meta("line")
+	var middle := line.size() / 2
+	var across := vein.global_basis * (line[middle + 1] - line[middle - 1])
+	var aim := vein_point() + across.cross(Vector3.UP).normalized() * miss
+	_stand_by(aim)
+	tools._req_grab(catheter.uid, me.active)
+	await frames(2)
+	var hand := me.hands[me.active]
+	for i in 40:
+		hand.local_target = me.to_local(aim - hand.tip_offset(catheter.def.length) + Vector3.UP * 0.04)
+		await get_tree().physics_frame
+
+
+## Use tool: the held needle goes in where it rests.
+func press() -> void:
+	var event := InputEventAction.new()
+	event.action = "use_tool"
+	event.pressed = true
+	surgery.local_surgeon._unhandled_input(event)
+	await frames(5)
+
+
+## The middle of the forearm vein the cases use (world space).
+func vein_point() -> Vector3:
+	var vein: MeshInstance3D = surgery.patient.body._veins[0]
+	var line: PackedVector3Array = vein.get_meta("line")
+	return vein.to_global(line[line.size() / 2])
+
+
 func needle_target() -> Dictionary:
 	return ToolActions.needle_target(syringe, surgery.patient)
 
@@ -144,12 +205,10 @@ func _clear_spot() -> Vector3:
 func _aim_point(target: String) -> Vector3:
 	var body := surgery.patient.body
 	match target:
-		"vial", "dish":
+		"vial", "dish", "drip":
 			return ToolManager.middle(container)
 		"vein":
-			var vein: MeshInstance3D = body._veins[0]
-			var line: PackedVector3Array = vein.get_meta("line")
-			return vein.to_global(line[line.size() / 2])
+			return vein_point()
 		"fat":
 			return body.uv_to_world(FAT_UV)
 		"muscle":
@@ -172,7 +231,7 @@ func _stand_by(aim: Vector3) -> void:
 	away = Vector3(0, 0, signf(away.z))
 	var spot := Vector3(aim.x, 0.0, patient.z) + away * (absf(aim.z - patient.z) + STAND_OFF) * Vector3(0, 0, 1)
 	if aim.distance_to(patient) > 1.2:
-		# The tray: from the side that faces the room's middle.
+		# The tray or the IV stand: from the side that faces the room's middle.
 		spot = aim * Vector3(1, 0, 1) + (Vector3.ZERO - aim).slide(Vector3.UP).normalized() * STAND_OFF
 	spot.y = me.global_position.y
 	me.global_position = spot

@@ -445,23 +445,20 @@ func _incident(kind: String) -> void:
 			patient.contaminate_site("")
 
 
+## A bag in hand takes the place of the one on the IV stand: it runs into the line (a full dose, if the line works).
+## Drugs pushed into the old bag go with it.
 @rpc("any_peer", "call_local", "reliable")
 func _req_iv(hand: int) -> void:
 	var peer := Net._sender()
 	var tool := tools.tool_in_hand(peer, hand)
-	if tool and tool.def.action == "syringe" and tool.ml > 0.0:
-		# The whole syringe goes into the line.
-		if patient.iv_ready():
-			var given := tools.transfer(tool, null, tool.ml)
-			for drug: String in given:
-				if drug == "blood":
-					patient.vitals.blood_ml += given[drug]
-				else:
-					patient.administer(drug, "iv", given[drug])
+	if tool == null or not tool.def.iv_only or tool.charges == 0:
+		tell(peer, "Hold a bag to hang it on the stand.")
 		return
-	if tool == null or tool.def.action != "inject" or tool.charges == 0:
-		tell(peer, "You need a filled syringe, bag or drug in hand.")
-		return
+	var drip := tools.drip_bag()
+	if drip:
+		drip.contents.clear()
+		var blood := Db.drug(tool.def.drug) != null and Db.drug(tool.def.drug).blood_type != ""
+		tools.add_liquid(drip, SurgicalTool.DRIP_FLUID - drip.ml, {"blood": SurgicalTool.DRIP_FLUID} if blood else {})
 	patient.administer(tool.def.drug, "iv")
 	if tool.charges > 0:
 		tool.charges -= 1

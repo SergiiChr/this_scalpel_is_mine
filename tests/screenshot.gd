@@ -4,7 +4,8 @@ extends Node
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
 ## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
-## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). --only=<case> renders one.
+## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
+## the vein and beside it: aimed, in, and the line from the stand (42_*). --only=<case> renders one.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -346,6 +347,37 @@ func _syringe(out: String, only: String) -> void:
 			await bench.frames(30)
 			await _shot(out, "41_syringe_held_up")
 			Input.action_release("inspect")
+	for case: Dictionary in bench.CATHETER_CASES:
+		if only and case.name != only:
+			continue
+		await bench.stage_catheter(case.miss)
+		me.zoom = Surgeon.ZOOM_FOV.size() - 1
+		await bench.frames(40)
+		await _shot(out, "42_%s_1_aimed" % case.name)
+		await bench.press()
+		# Once it's in, the catheter is used up and the view eases back: look again from where the needle view was.
+		var camera := Camera3D.new()
+		add_child(camera)
+		camera.fov = Surgeon.ZOOM_FOV[-1]
+		camera.global_transform = me._needle_view
+		camera.current = true
+		# Past the needle view easing out (it would set the hands solid again), then faded as in the needle view.
+		await bench.frames(30)
+		for hand in me.hands:
+			hand.set_see_through(Surgeon.NEEDLE_SEE_THROUGH)
+		await _shot(out, "42_%s_2_in" % case.name)
+		for hand in me.hands:
+			hand.set_see_through(0.0)
+		# The tubing from the stand's drip chamber down to the arm.
+		var stand := bench.surgery.tools.drip_bag().tip_position()
+		var arm := bench.vein_point()
+		var middle := stand.lerp(arm, 0.5)
+		camera.fov = 60.0
+		camera.global_transform = Transform3D(Basis.IDENTITY, middle + (arm - stand).cross(Vector3.UP).normalized() * 1.1 + Vector3.UP * 0.4).looking_at(middle)
+		await _shot(out, "42_%s_3_line" % case.name)
+		camera.queue_free()
+		me.camera().current = true
+		me.zoom = 0
 	get_tree().quit()
 
 

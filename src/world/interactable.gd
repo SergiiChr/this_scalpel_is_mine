@@ -6,6 +6,9 @@ const LAYER := 64
 
 var prompt := ""
 var action: Callable
+## Takes a Surgeon, true when this is on offer to them right now (the IV stand only for someone holding a bag).
+## Unset: always.
+var offered: Callable
 
 
 static func create(parent: Node3D, label: String, size: Vector3, pos: Vector3, callback: Callable) -> Interactable:
@@ -24,6 +27,10 @@ static func create(parent: Node3D, label: String, size: Vector3, pos: Vector3, c
 	parent.add_child(area)
 	area.position = pos
 	return area
+
+
+func offered_to(surgeon: Surgeon) -> bool:
+	return not offered.is_valid() or offered.call(surgeon)
 
 
 func interact(surgeon: Surgeon) -> void:

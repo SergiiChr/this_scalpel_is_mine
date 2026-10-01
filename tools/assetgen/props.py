@@ -61,8 +61,7 @@ def _iv_stand() -> Model:
     m.add("Pole", cylinder(0.012, (0.0, 0.05, 0.0), (0.0, 1.95, 0.0)), "chrome")
     hooks = [tube([(0.0, 1.9, 0.0), (s * 0.08, 1.93, 0.0), (s * 0.1, 1.88, 0.0)], [(0.004, 0.004)] * 3, ring=8) for s in (-1, 1)]
     m.add("Hooks", merge(*hooks), "chrome")
-    m.add("Bag", superellipsoid((0.09, 0.16, 0.03), 0.35, (0.08, 1.78, 0.0)), "clear_plastic")
-    m.add("Fluid", superellipsoid((0.08, 0.11, 0.025), 0.4, (0.08, 1.75, 0.0)), "tint")
+    # The bag itself is a tool hung on the hook (iv_drip in data/tools.cfg), so a syringe can go into it.
     m.add("Chamber", merge(cylinder(0.008, (0.08, 1.66, 0.0), (0.08, 1.6, 0.0), 12), ellipsoid((0.004, 0.005, 0.004), (0.08, 1.63, 0.0))), "clear_plastic")
     # The tubing itself is drawn by the game (src/world/iv_line.gd), from the chamber to wherever the line goes in.
     return m

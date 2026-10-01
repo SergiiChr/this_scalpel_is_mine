@@ -237,7 +237,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   The defibrillator always waits on its own cart. Station cabinets are solid.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
-  (`src/world/iv_line.gd`). Walking into it at full speed rips it out; crouch-walking steps over it.
+  (`src/world/iv_line.gd`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
+  sticks and the tubing runs to it, but nothing goes through. The last zoom step frames the catheter like a syringe.
+  Walking into the line at full speed rips it out; crouch-walking steps over it.
+- **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
+  A syringe resting on top of it is in it: push a drug in and it runs down the line once the needle is out, if the
+  line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
+  the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
 ### Controls rework
 
@@ -274,7 +280,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
-  - a vial or the kidney dish (holds 100 ml): pulls its liquid, pushes into it. A full vial takes no more.
+  - a vial, the kidney dish (holds 100 ml) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
+    no more.
   - a vein drawn on each forearm (`PatientBody.vein_at()`, not on an arm the site covers): pulls blood, which tints
     the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
   - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
@@ -282,10 +289,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   - nothing: pulls air, pushes the liquid out in a squirt.
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
   Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
-  needle comes out. At the IV stand the whole syringe goes into the line.
-- **Needle view**: the last zoom step with a syringe in hand moves the camera beside it, side on and a little above,
-  so the ticks and what the needle is in (a vial, the dish, the arm) are in view. The hands fade to see through and
-  roll the syringe about its length so the printed scale faces the camera; zooming out rolls it back.
+  needle comes out.
+- **Needle view**: the last zoom step with a syringe or IV catheter in hand moves the camera beside it, side on and a
+  little above, so the needle and what it's in (a vial, the dish, the bag, the arm) are in view. The hands fade to see
+  through and roll a syringe about its length so the printed scale faces the camera; zooming out rolls it back.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.

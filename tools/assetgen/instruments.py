@@ -259,8 +259,11 @@ def _vial(m: Model, length: float) -> None:
 
 
 def _bag(m: Model, length: float) -> None:
+    """Clear pouch with its fluid in it. The port hangs at the tip, so a hung bag's Level drains toward the port."""
     pouch = superellipsoid((0.09, 0.018, length * 0.85), 0.35, (0.0, 0.0, -length * 0.45))
-    m.add("Bag", pouch, "tint")
+    m.add("Bag", pouch, "glass")
+    fluid = superellipsoid((0.08, 0.014, length * 0.78), 0.4, (0.0, 0.0, -length * 0.45))
+    m.add("Level", fluid, "tint", (0.0, 0.0, -length * 0.84))
     m.add("Label", superellipsoid((0.05, 0.002, 0.04), 0.3, (0.0, 0.0185, -length * 0.4)), "paper")
     m.add("Port", merge(rod(0.004, -length * 0.87, -length), rod(0.006, 0.0, 0.02, 0.0, 0.0)), "plastic")
 

@@ -1,7 +1,7 @@
 extends Node
 ## Headless syringe test: the wheel works the plunger 1 ml a notch in every case of tests/syringe_bench.gd, and the
 ## syringe, its target and what the patient got all add up after every notch.
-## Run: godot --headless --path . res://tests/syringe_test.tscn [-- --case=vein_pull]
+## Run: godot --headless --path . res://tests/syringe_test.tscn [-- --case=vein_pull], or a prefix: --case=catheter
 
 const Bench := preload("res://tests/syringe_bench.gd")
 
@@ -18,8 +18,13 @@ func _ready() -> void:
 		if arg.begins_with("--case="):
 			only = arg.get_slice("=", 1)
 	for case: Dictionary in Bench.CASES:
-		if only.is_empty() or case.name == only:
+		if case.name.begins_with(only):
 			await _run(case)
+	for case: Dictionary in Bench.CATHETER_CASES:
+		if case.name.begins_with(only):
+			await _catheter_checks(case)
+	if "swap_bag".begins_with(only):
+		await _swap_checks()
 	print("syringe_test: done")
 	get_tree().quit()
 
@@ -67,7 +72,7 @@ func _run(case: Dictionary) -> void:
 	var syringe := bench.syringe
 	var patient := bench.surgery.patient
 	var target := bench.needle_target()
-	var kind: String = {"vial": "container", "dish": "container", "vein": "vein", "air": "air"}.get(case.target, "tissue")
+	var kind: String = {"vial": "container", "dish": "container", "drip": "container", "vein": "vein", "air": "air"}.get(case.target, "tissue")
 	if not _check(target.kind == kind and target.get("layer", case.target) == case.target, "%s: the needle is in the %s (%s)" % [case.name, case.target, target]):
 		return
 	var pull: bool = case.notches > 0
@@ -99,13 +104,73 @@ func _run(case: Dictionary) -> void:
 	_check(is_equal_approx(syringe.ml, maxf(expected, 0.0)), "%s: the syringe ends with %.0f ml (%.2f)" % [case.name, expected, syringe.ml])
 	if case.target == "vein" and pull:
 		_check(is_equal_approx(syringe.red, case.notches / expected), "%s: the liquid is %.0f%% blood (%.2f)" % [case.name, 100.0 * case.notches / expected, syringe.red])
+	if case.target == "drip" and not pull:
+		_check(patient.active_drugs.size() == drugs_before, "%s: nothing runs down the line while the needle is in the bag" % case.name)
 	await bench.withdraw()
-	if not pull and kind in ["vein", "tissue"]:
+	if not pull and (kind in ["vein", "tissue"] or case.target == "drip"):
 		var given := patient.active_drugs.slice(drugs_before)
-		var onset: float = Db.drug(Bench.DRUG).onset * (1.5 if kind == "vein" else 0.4)
-		_check(given.size() == 1 and is_equal_approx(given[0].onset, onset), "%s: the drug is given %s once the needle is out" % [case.name, "into the blood" if kind == "vein" else "as a direct injection"])
+		var into_blood: bool = kind == "vein" or case.target == "drip"
+		var onset: float = Db.drug(Bench.DRUG).onset * (1.5 if into_blood else 0.4)
+		var how := "through the IV line" if case.target == "drip" else "into the blood" if into_blood else "as a direct injection"
+		_check(given.size() == 1 and is_equal_approx(given[0].onset, onset), "%s: the drug is given %s once the needle is out" % [case.name, how])
 	elif kind != "air":
 		_check(patient.active_drugs.size() == drugs_before, "%s: nothing is given" % case.name)
+
+
+## Y11-Y12: the IV catheter in the needle view goes into the forearm. On the vein the line works; beside it the
+## catheter still sticks and the tubing runs to it, but a drug in the IV drip stays in the bag.
+func _catheter_checks(case: Dictionary) -> void:
+	print("--- ", case.name)
+	await bench.stage_catheter(case.miss)
+	var me := bench.surgery.local_surgeon
+	var patient := bench.surgery.patient
+	var hit: bool = case.miss == 0.0
+	me.zoom = Surgeon.ZOOM_FOV.size() - 1
+	await bench.frames(40)
+	var camera := me.camera()
+	var moved := camera.global_position.distance_to((camera.get_parent() as Node3D).global_position)
+	var framed := moved > 0.05 and camera.is_position_in_frustum(bench.catheter.tip_position())
+	_check(framed, "%s: the last zoom step frames the catheter's needle (camera moved %.2f m)" % [case.name, moved])
+	# Checked before it goes in: the needle hurts, an awake patient's arm flinches and the vein moves with it.
+	var off := (bench.catheter.tip_position() - bench.vein_point()) * Vector3(1, 0, 1)
+	_check(off.length() < 0.01 if hit else off.length() > 0.02, "%s: the needle is over %s (%.1f cm across)" % [case.name, "the vein" if hit else "the arm beside the vein", off.length() * 100.0])
+	await bench.press()
+	var stuck := patient.iv_set and bench.surgery.room.iv_line.is_attached()
+	_check(stuck and patient.iv_in_vein == hit, "%s: the catheter sticks with the tubing run to it, %s" % [case.name, "in the vein" if hit else "but outside the vein"])
+	var drip := bench.surgery.tools.drip_bag()
+	var drugs_before := patient.active_drugs.size()
+	bench.surgery.tools.add_liquid(drip, 5.0, {Bench.DRUG: 5.0 * Db.tool(Bench.VIAL).concentration})
+	await bench.frames(5)
+	var given := patient.active_drugs.size() - drugs_before
+	_check(given == (1 if hit else 0) and drip.contents.has(Bench.DRUG) != hit, "%s: a drug in the IV drip %s" % [case.name, "runs into the patient" if hit else "stays in the bag"])
+	me.zoom = 0
+	await bench.frames(20)
+
+
+## Y13: the IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the old
+## one and runs it into a working line.
+func _swap_checks() -> void:
+	print("--- swap_bag")
+	var surgery := bench.surgery
+	var me := surgery.local_surgeon
+	var patient := surgery.patient
+	var swap: Interactable = surgery.room.find_children("*", "Interactable", false, false).filter(func(i: Interactable) -> bool: return i.prompt == "Swap IV bag").front()
+	await bench.stage_catheter(0.0)
+	await bench.press()
+	_check(patient.iv_working(), "swap_bag: a working line is in")
+	var drip := surgery.tools.drip_bag()
+	surgery.tools.add_liquid(drip, -drip.ml)
+	_check(not swap.offered_to(me), "swap_bag: an empty hand isn't offered Swap IV bag")
+	var bag := bench._spawn("saline_bag", me.global_position + Vector3.UP)
+	await bench.frames(2)
+	surgery.tools._req_grab(bag.uid, me.active)
+	await bench.frames(2)
+	_check(swap.offered_to(me), "swap_bag: a hand holding a bag is offered Swap IV bag")
+	patient.flags.erase("drug_saline")
+	surgery._req_iv(me.active)
+	await bench.frames(2)
+	var hung := is_equal_approx(drip.ml, SurgicalTool.DRIP_FLUID) and bag.state == SurgicalTool.State.CONSUMED
+	_check(hung and patient.flags.has("drug_saline"), "swap_bag: the bag hangs on the stand full (%.0f ml) and runs into the line" % drip.ml)
 
 
 ## The liquid, air and plunger shown match what's in it exactly, against the full Level part (the graduation).

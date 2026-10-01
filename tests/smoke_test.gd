@@ -72,6 +72,7 @@ func _run(scenario: ScenarioDef) -> void:
 	for drug: String in Db.drugs:
 		surgery.patient.administer(drug, "direct")
 	surgery.patient.iv_set = true
+	surgery.patient.iv_in_vein = true
 	surgery.patient.administer("saline", "iv")
 	for i in 4:
 		surgery.patient.shock(1.0)
@@ -196,7 +197,7 @@ func _feedback_checks(surgery: Surgery) -> void:
 	# the shaky tip landed): take it out, so the line runs to the back of the hand like a pre-op one.
 	if patient.iv_set:
 		patient._iv_removed()
-	patient.set_iv(patient.body.root().to_global(Patient.PREOP_IV_POINT))
+	patient.set_iv(patient.body.root().to_global(Patient.PREOP_IV_POINT), true)
 	await _frames(5)
 	var low: PackedVector3Array = room.iv_line._points
 	var crossing := Vector3.INF

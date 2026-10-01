@@ -10,6 +10,8 @@ const TOOL_LAYER := 8
 const IODINE_COLOR := Color(0.55, 0.3, 0.12)
 ## Liquid that is all blood. A mix tints toward it by its share of blood.
 const BLOOD_COLOR := Color(0.5, 0.03, 0.04)
+## A hung IV bag comes with this much fluid (ml), with room left in it for drugs pushed in.
+const DRIP_FLUID := 500.0
 ## Smallest size (meters) a tool counts as across for how hard it is to turn, see setup().
 const MIN_TURNING_SIZE := 0.04
 ## How thick a tourniquet's band is where it wraps a limb.
@@ -97,10 +99,13 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	inertia = mass / 12.0 * Vector3(turning.y * turning.y + turning.z * turning.z, turning.x * turning.x + turning.z * turning.z, turning.x * turning.x + turning.y * turning.y)
 	angular_damp = 1.0
 	_animator.setup(_model)
+	# Vials come full of their drug, the IV drip with a bag of plain fluid.
 	if def.action == "vial":
 		ml = def.volume
 		contents[def.drug] = def.volume * def.concentration
-		fill = 1.0
+	elif def.action == "drip":
+		ml = DRIP_FLUID
+	fill = ml / def.volume if def.volume > 0.0 else fill
 	if def.volume > 0.0:
 		show_liquid()
 	elif _model.find_child("Liquid", true, false):

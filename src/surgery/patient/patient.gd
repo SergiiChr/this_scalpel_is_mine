@@ -46,6 +46,8 @@ var active_drugs: Array[Dictionary] = []
 ## Counters for scoring and the post-op report, see data/consequences.cfg.
 var flags: Dictionary = {}
 var iv_set := false
+## The catheter went into a vein (set with iv_set). Missed, the line still sticks but nothing runs through it.
+var iv_in_vein := false
 var tourniquet_on := false
 var tourniquet_time := 0.0
 var cavity_blood_ml := 0.0
@@ -110,6 +112,7 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 	vitals.glucose += mods.num("glucose_drift") * 300.0
 	vitals.from_dict(scenario.start_vitals)
 	iv_set = scenario.preop.get("iv", false)
+	iv_in_vein = iv_set
 	if iv_set:
 		_connect_iv(PREOP_IV_POINT)
 
@@ -397,11 +400,18 @@ func _add_drug(def: DrugDef, strength: float, onset_scale: float) -> void:
 	active_drugs.append({"def": def, "age": 0.0, "strength": strength * potency, "onset": maxf(def.onset * onset_scale, 0.1)})
 
 
-## Says so when there's no line to give anything through.
+## Says so when there's no line to give anything through, or it isn't in a vein.
 func iv_ready() -> bool:
 	if not iv_set:
 		Surgery.current.announce("Nothing happens. There's no IV line in.")
-	return iv_set
+	elif not iv_in_vein:
+		Surgery.current.announce("Nothing goes in. The IV line missed the vein.")
+	return iv_working()
+
+
+## A line is in and in a vein: drugs and fluids run through it.
+func iv_working() -> bool:
+	return iv_set and iv_in_vein
 
 
 ## route: "iv" (smooth, needs a line), "vein" (a syringe straight into a vein: like "iv", no line needed)
@@ -861,9 +871,11 @@ func remove_tourniquet() -> void:
 
 
 ## A catheter went into the arm at `at` (world space): tubing now runs from the stand to there.
-func set_iv(at: Vector3) -> void:
+## in_vein: it hit a vein, so the line works. Host only (what runs through the line is decided here).
+func set_iv(at: Vector3, in_vein: bool) -> void:
 	if not iv_set:
 		iv_set = true
+		iv_in_vein = in_vein
 		hurt(0.1)
 		_iv_placed.rpc(body.root().to_local(at))
 
@@ -873,6 +885,7 @@ func pull_iv(surgeon: Surgeon) -> void:
 	if not iv_set:
 		return
 	iv_set = false
+	iv_in_vein = false
 	hurt(0.35)
 	add_flag("iv_pulled")
 	Surgery.current.scoring.add("iv_pulled")
@@ -1322,6 +1335,7 @@ func _iv_placed(point: Vector3) -> void:
 @rpc("authority", "call_local", "reliable")
 func _iv_removed() -> void:
 	iv_set = false
+	iv_in_vein = false
 	Surgery.current.room.iv_line.detach()
 
 

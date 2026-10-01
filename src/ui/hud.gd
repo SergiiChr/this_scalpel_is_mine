@@ -414,7 +414,7 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
 	else:
 		lines.append("%s  Pick up%s" % [key.call("grab"), " " + me.hovered.label() if is_instance_valid(me.hovered) else ""])
-	var needle_view := tool and tool.def.action == "syringe" and me.zoom == Surgeon.ZOOM_FOV.size() - 1
+	var needle_view := tool and tool.def.action in Surgeon.NEEDLE_ACTIONS and me.zoom == Surgeon.ZOOM_FOV.size() - 1
 	lines.append("%s  Zoom %d/%d%s" % [key.call("zoom"), me.zoom + 1, Surgeon.ZOOM_FOV.size(), ", needle view" if needle_view else ""])
 	lines.append("%s (hold)  %s" % [key.call("lift"), "Pull up" if hand.attached else "Lift hand over"])
 	lines.append("%s (hold)  Hold breath" % key.call("steady"))

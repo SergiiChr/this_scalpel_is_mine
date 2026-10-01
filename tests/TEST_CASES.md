@@ -120,6 +120,9 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 | Y8 | Pushing into skin, fat and muscle (cuts held open down to fat and muscle) empties the syringe; once the needle is out the drug is given as a direct injection |
 | Y9 | Pulling from skin, fat and muscle draws nothing: the plunger stays put |
 | Y10 | Pulling with the needle in nothing draws air: the plunger moves, the liquid stays, the air shows at the needle end |
+| Y11 | IV drip: resting on the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
+| Y12 | IV catheter: the last zoom step frames its needle. On the forearm vein it sticks, the tubing runs to it and a drug in the IV drip runs into the patient; 2.5 cm beside the vein it still sticks with the tubing, but the drug stays in the bag |
+| Y13 | The IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the emptied one, uses up the held one and runs it into the line |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -149,5 +152,5 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from both sides and from the eyes (`tests/grip_gallery.tscn`) |
-| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`) |
+| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`); the IV catheter on the vein and beside it, aimed, in and the line from the stand (`42_catheter_*`) |
 | V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |

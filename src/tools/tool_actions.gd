@@ -57,6 +57,8 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 	var pressed := trigger and not tool.trigger_before
 	var released := not trigger and tool.trigger_before
 	var level_up := level > tool.level_before
+	# Lowered since the last frame too: the hand has come down onto whatever is under it by now.
+	var settled := lowered and tool.lowered_before
 	tool.trigger_before = trigger
 	tool.level_before = level
 	if lowered and not tool.lowered_before:
@@ -229,13 +231,15 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		"iv_line":
 			# Held against an arm, not only on the frame the button went down: the tip may land a moment later.
 			var arm: bool = str(probe.get("part", "")).begins_with("arm") or zone == "site" and patient.scenario.site == "forearm"
-			if lowered and arm and not patient.iv_set:
-				patient.set_iv(tip)
+			# It sticks wherever it goes into the arm, but only a needle in a vein lets anything through.
+			if settled and arm and not patient.iv_set:
+				patient.set_iv(tip, patient.body.vein_at(tip))
 				Surgery.current.effect("bead", tip, 0)
 				_use_charge(tool)
 
 
-## What a syringe's needle is in, the same on every peer: {"kind": "container", "container": the vial or kidney dish},
+## What a syringe's needle is in, the same on every peer: {"kind": "container", "container": the vial, kidney dish
+## or IV drip},
 ## {"kind": "vein"} (a drawn forearm vein), {"kind": "tissue", "layer": "skin", "fat", "muscle" or "cavity"} (the
 ## deepest layer a cut shows there), or {"kind": "air"}. The tip resting just above something counts as in it.
 static func needle_target(tool: SurgicalTool, patient: Patient) -> Dictionary:
@@ -284,9 +288,9 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 	var air := minf(-ml, tool.air)
 	var liquid := minf(-ml - air, tool.ml)
 	if container:
-		# A vial is sealed: once it's full the plunger won't push more liquid. Past a dish's rim it spills.
+		# A vial or bag is sealed: once it's full the plunger won't push more liquid. Past a dish's rim it spills.
 		var fits := minf(liquid, container.def.volume - container.ml)
-		if container.def.action != "vial":
+		if not container.def.action in ["vial", "drip"]:
 			tools.transfer(tool, null, liquid - fits)
 		liquid = fits
 	if air > 0.0:
@@ -362,10 +366,23 @@ static func _gather(tool: SurgicalTool, uv: Vector2, dt: float) -> float:
 
 ## Standing (self-retaining) clamps keep holding their grip after the hand lets go.
 static func update_standing(tool: SurgicalTool, patient: Patient, dt: float) -> void:
+	if tool.def.action == "drip":
+		drip(tool, patient)
 	if not tool.grip_info.is_empty():
 		tool.grip_info = patient.update_grip(tool.uid, tool.grip_info, tool.tip_position(), tool.def.power, dt, 0.0)
 		if tool.grip_info.type == "none":
 			tool.grip_info = {}
+
+
+## The IV drip runs what was pushed into it down the line once no needle is in it, if the line is in a vein.
+## Its own fluid just drips (it does nothing), and so does blood in it.
+static func drip(bag: SurgicalTool, patient: Patient) -> void:
+	var drugs := bag.contents.keys().filter(func(drug: String) -> bool: return drug != "blood")
+	if drugs.is_empty() or not patient.iv_working() or Surgery.current.tools.needle_in(bag):
+		return
+	for drug: String in drugs:
+		patient.administer(drug, "iv", bag.contents[drug])
+		bag.contents.erase(drug)
 
 
 ## A looping bed under a blade, swab, clamp or suction tip working the site, louder the faster it moves.

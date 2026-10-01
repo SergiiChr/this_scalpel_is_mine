@@ -11,7 +11,7 @@ static func check(step: Dictionary, state: Dictionary, surgery: Surgery, delta: 
 		"sanitize":
 			return patient.sanitized_fraction() >= step.get("amount", 0.5)
 		"iv":
-			return patient.iv_set
+			return patient.iv_working()
 		"anesthesia":
 			return v.anesthesia >= step.get("level", 0.7)
 		"local_block":
