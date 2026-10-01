@@ -98,6 +98,8 @@ var _needle_view := Transform3D.IDENTITY
 ## The hand whose syringe the needle view rolls to show its scale (-1: none), and its own twist to roll back to.
 var _rolled_hand := -1
 var _own_twist := 0.0
+## The hand the needle view leaves solid: the one the needle is going into (-1: none).
+var _solid_hand := -1
 
 var _head: Node3D
 var _body: Node3D
@@ -437,9 +439,13 @@ func _frame_needle(delta: float) -> void:
 	var framing := zoom == ZOOM_FOV.size() - 1 and tool != null and tool.def.action in NEEDLE_ACTIONS and not hands[active].inspecting
 	var before := _needle_framing
 	_needle_framing = move_toward(_needle_framing, 1.0 if framing else 0.0, delta * 4.0)
-	if _needle_framing != before:
+	# The other hand stays solid while the needle is in it.
+	var target := ToolActions.needle_target(tool, Surgery.current.patient) if framing else {}
+	var solid := 1 - active if target.get("peer", 0) == peer_id else -1
+	if _needle_framing != before or solid != _solid_hand:
+		_solid_hand = solid
 		for hand in hands:
-			hand.set_see_through(_needle_framing * NEEDLE_SEE_THROUGH)
+			hand.set_see_through(0.0 if hand.index == solid else _needle_framing * NEEDLE_SEE_THROUGH)
 	if framing:
 		_needle_view = needle_view(tool)
 	if framing and tool.def.action == "syringe":
