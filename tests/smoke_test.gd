@@ -369,7 +369,8 @@ func _iodine_checks(surgery: Surgery) -> void:
 		print("FAIL: wiping iodine takes %.2f ms in one frame (stutters)" % worst_ms)
 	tools._req_release(1, Vector3.ZERO)
 	await _frames(3)
-	if pad.state != SurgicalTool.State.FREE:
+	# Let go over an opened chest or belly, the pad falls in: that's fine, it isn't on the forceps.
+	if pad.state == SurgicalTool.State.CARRIED:
 		print("FAIL: the pad stayed on forceps that were let go")
 
 
@@ -842,7 +843,9 @@ func _bone_checks(surgery: Surgery) -> void:
 	if depth < top or depth > body.cavity_depth():
 		print("FAIL: the %s sits %.3f m under the skin, not under the muscle inside the cavity" % [bone.name, depth])
 	var scraped: float = patient.flags.get("bone_scraped", 0.0)
-	patient.cut_cavity(uv, depth - 0.008, 1.0, false, 0.5)
+	# Down to just over the bone's top, where a blade at full effort stops in an opening.
+	var thickness := ((bone.get_child(1) as CollisionShape3D).shape as CapsuleShape3D).radius
+	patient.cut_cavity(uv, depth - thickness - 0.002, 1.0, false, 0.5)
 	if patient.flags.get("bone_scraped", 0.0) <= scraped:
 		print("FAIL: cutting down on the %s didn't reach the bone" % bone.name)
 

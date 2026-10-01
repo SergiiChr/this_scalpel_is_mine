@@ -175,7 +175,7 @@ func _start(scenario_id: String, along_limb: bool, over_bone: bool) -> void:
 	var along := Vector3(0, 0, -side)
 	if along_limb:
 		along = ((body.uv_to_world(Vector2(0.6, 0.5)) - body.uv_to_world(Vector2(0.4, 0.5))) * Vector3(1, 0, 1)).normalized()
-	me.global_position = Vector3(site.x, me.global_position.y, site.z) - along * 0.3 + Vector3(0, 0, side * 0.3)
+	me.global_position = Vector3(site.x, me.global_position.y, site.z) - along * 0.2 + Vector3(0, 0, side * 0.3)
 	me.rotation.y = atan2(-along.x, -along.z)
 	for tool: SurgicalTool in _surgery.tools.tools.values():
 		if tool.def.id == "scalpel" and tool.state == SurgicalTool.State.FREE:
@@ -213,14 +213,25 @@ func _start(scenario_id: String, along_limb: bool, over_bone: bool) -> void:
 	# The tip lands where the hand's height and tilt put it: nudge the hand until it's over the planned start.
 	var start := _center_uv - edge_uv * 1.5
 	_place_hand(start)
-	for i in 6:
+	var last_reach := INF
+	for i in 12:
 		await _frames(20)
+		# The hand at the start or the end of the three moves out of reach from here: a step closer, like a player
+		# would, while that still helps (the table stops them). With room to spare: at high the hand drops into the
+		# opening, stretching the arm further.
+		var finish := _hand.target + (body.uv_to_world(start + edge_uv * 3.0) - body.uv_to_world(start)) * Vector3(1, 0, 1)
+		var shoulder := me.shoulder(1)
+		var reach := maxf(_hand.target.distance_to(shoulder), finish.distance_to(shoulder))
+		if reach > Surgeon.REACH - 0.04 and reach < last_reach - 0.005:
+			last_reach = reach
+			var keep := _hand.target
+			me.global_position += ((body.uv_to_world(_center_uv) - me.global_position) * Vector3(1, 0, 1)).normalized() * 0.05
+			# The body settles against the table over a frame or two: the hand stays where it was in the world.
+			await _frames(2)
+			_hand.local_target = me.to_local(keep)
+			continue
 		var miss := body.uv_to_world(start) - _scalpel.tip_position()
 		_hand.local_target += me.global_basis.inverse() * (miss * Vector3(1, 0, 1))
-		# Out of reach from here: a step closer, like a player would.
-		if _hand.target.distance_to(me.shoulder(1)) > Surgeon.REACH - 0.02:
-			me.global_position += ((body.uv_to_world(start) - me.global_position) * Vector3(1, 0, 1)).normalized() * 0.05
-			_hand.local_target = me.to_local(_hand.target)
 	await _frames(20)
 	print("    blade along the site's long side: %.2f, tip at %s for %s, patient awake: %s, local block %.2f" % [absf(edge.dot(along)), _tip_uv(), start, patient.vitals.is_awake(), patient.vitals.local_block])
 
