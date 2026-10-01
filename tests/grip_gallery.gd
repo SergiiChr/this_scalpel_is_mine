@@ -1,5 +1,5 @@
 extends Node3D
-## Renders every tool model held in a right hand, from the side and from the holder's eyes, for checking grips.
+## Renders every tool model held in a right hand, from both sides and from the holder's eyes, for checking grips.
 ## Needs a real renderer:
 ##   xvfb-run godot --path . --rendering-method gl_compatibility res://tests/grip_gallery.tscn -- --out=/tmp/grips [--left]
 ##   [--only=scalpel,needle] renders just those models.
@@ -50,7 +50,8 @@ func _ready() -> void:
 			await get_tree().process_frame
 		# Aim between the grip and the tip, so both the hand and the working end are in view.
 		var middle := hand.global_position + hand.tip_offset(def.length * 0.5)
-		for view: Array in [["side", middle + Vector3(0.45 * (-1.0 if left else 1.0), 0.12, 0.2), 38.0], ["eyes", EYE, 20.0]]:
+		var out_side := -1.0 if left else 1.0
+		for view: Array in [["side", middle + Vector3(0.45 * out_side, 0.12, 0.2), 38.0], ["thumb", middle + Vector3(-0.45 * out_side, 0.12, 0.2), 38.0], ["eyes", EYE, 20.0]]:
 			camera.global_position = view[1]
 			camera.fov = view[2]
 			camera.look_at(middle)
