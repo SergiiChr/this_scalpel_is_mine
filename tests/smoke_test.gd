@@ -219,6 +219,7 @@ func _feedback_checks(surgery: Surgery) -> void:
 	await _syringe_checks(surgery)
 	await _tourniquet_checks(surgery)
 	_nurse_checks(surgery)
+	await _smoking_checks(surgery)
 
 
 ## Every tool effect plays on the body, tools pick up blood and wash clean.
@@ -552,6 +553,32 @@ func _nurse_checks(surgery: Surgery) -> void:
 	nurse.request(1, "gauze", surgery)
 	if not nurse.order().is_empty():
 		print("FAIL: the nurse took an order during her cooldown")
+
+
+## The smoking spot is offered only to a hand holding cigarettes; a smoke uses one, stops stress and speeds you up.
+func _smoking_checks(surgery: Surgery) -> void:
+	var me := surgery.local_surgeon
+	var spot := surgery.room.find_child("SmokeACigarette", false, false) as Interactable
+	surgery.tools._req_release(me.active, Vector3.ZERO)
+	if spot == null or spot.offered_to(me):
+		print("FAIL: the smoking spot is missing or offered to an empty hand")
+		return
+	var before := surgery.tools.tools.size()
+	surgery.tools.spawn("cig_pack", me.global_position + Vector3(0.0, 1.0, 0.0))
+	var pack: SurgicalTool = surgery.tools.tools.values()[before]
+	surgery.tools._req_grab(pack.uid, me.active)
+	await _frames(2)
+	if not spot.offered_to(me):
+		print("FAIL: the smoking spot isn't offered to a hand holding cigarettes")
+	var speed := me.status.move_speed()
+	spot.interact(me)
+	await _frames(2)
+	var stress := me.status.stress
+	me.status.add_stress(0.3)
+	if pack.charges != pack.def.charges - 1 or me.status.stress > stress or me.status.move_speed() <= speed:
+		print("FAIL: smoking didn't use a cigarette, stop stress and speed you up (%d left)" % pack.charges)
+	me.status.smoke_left = 0.0
+	surgery.tools._req_release(me.active, Vector3.ZERO)
 
 
 ## The lowest point of a node's meshes, world space.

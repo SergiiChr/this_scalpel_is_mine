@@ -1,11 +1,14 @@
 class_name SurgeonStatus
 extends RefCounted
-## Personal gauges of the local surgeon: stress, sickness, breath, sweat and drink buffs.
+## Personal gauges of the local surgeon: stress, sickness, breath, sweat, drink and smoke buffs.
 ## Runs only on the surgeon's own peer. update() returns event names for Surgeon to act on.
 
 const BREATH_HOLD_TIME := 8.0
 const BREATH_REFILL_TIME := 12.0
 const PASS_OUT_TIME := 6.0
+## A smoke break: no stress gain for this long, hands and feet faster by SMOKE_SPEED.
+const SMOKE_TIME := 180.0
+const SMOKE_SPEED := 1.2
 
 var mods: Modifiers
 var stress := 0.0
@@ -17,6 +20,7 @@ var cap_on := false
 var passed_out := 0.0
 var coffee_left := 0.0
 var whiskey_left := 0.0
+var smoke_left := 0.0
 var since_coffee := 0.0
 var _drip_timer := 20.0
 ## Broken heating run modifier: stiff, slightly shaky fingers for everyone.
@@ -33,6 +37,8 @@ func is_out() -> bool:
 
 
 func add_stress(amount: float) -> void:
+	if smoke_left > 0.0:
+		return
 	stress = clampf(stress + amount * mods.mult("stress_mult"), 0.0, 1.0)
 
 
@@ -51,10 +57,22 @@ func tremor_amount() -> float:
 
 
 func hand_speed() -> float:
-	var speed := 1.3 if coffee_left > 0.0 else 1.0
+	var speed := (1.3 if coffee_left > 0.0 else 1.0) * _smoke_speed()
 	if mods.flag("caffeine") and coffee_left <= 0.0:
 		speed *= 1.0 - minf(since_coffee / 300.0, 0.4)
 	return speed
+
+
+func move_speed() -> float:
+	return mods.mult("move_speed_mult") * _smoke_speed()
+
+
+func _smoke_speed() -> float:
+	return SMOKE_SPEED if smoke_left > 0.0 else 1.0
+
+
+func smoke() -> void:
+	smoke_left = SMOKE_TIME
 
 
 func drink(tool_id: String) -> void:
@@ -78,6 +96,7 @@ func update(delta: float, context: Dictionary) -> PackedStringArray:
 	stress = maxf(stress - delta * 0.01, 0.0)
 	coffee_left = maxf(coffee_left - delta, 0.0)
 	whiskey_left = maxf(whiskey_left - delta, 0.0)
+	smoke_left = maxf(smoke_left - delta, 0.0)
 	since_coffee += delta
 	if holding_breath:
 		breath -= delta / BREATH_HOLD_TIME

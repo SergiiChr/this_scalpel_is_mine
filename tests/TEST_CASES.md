@@ -101,6 +101,7 @@ For each scenario, with no script errors:
 | S29 | Holding Inspect brings a syringe up in front of the eyes, across the view, tick marks toward them; the liquid and the plunger show exactly how many ml it holds |
 | S30 | A tourniquet pressed onto a thigh wraps around it as a snug band (not lying on top), leaves the hand, and taking it off loosens it |
 | S31 | Tools lie on the tray at the start without sinking into it; lowered onto it with full effort, neither the tool nor the glove goes into it; put down, it settles on top (every kind of tool in the first scenario, one in the others) |
+| S32 | The smoking spot offers "Smoke a cigarette" only to a hand holding the cig pack; a smoke uses one cigarette, stops stress gain and speeds up walking |
 
 ## Syringe (`tests/syringe_test.gd`)
 

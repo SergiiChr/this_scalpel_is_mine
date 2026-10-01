@@ -350,6 +350,14 @@ def _iodine_dish(m: Model, length: float) -> None:
     m.add("Liquid", moved(liquid, (0.0, -0.01, -length * 0.5)), "iodine", (0.0, -0.006, -length * 0.5))
 
 
+def _cig_pack(m: Model, length: float) -> None:
+    """Paper pack with a colored band at the top, three filters sticking out."""
+    m.add("Pack", superellipsoid((0.055, 0.022, length * 0.85), 0.15, (0.0, 0.0, -length * 0.425)), "paper")
+    m.add("Band", superellipsoid((0.056, 0.023, length * 0.3), 0.15, (0.0, 0.0, -length * 0.7)), "tint")
+    filters = [cylinder(0.004, (x, 0.0, -length * 0.85), (x, 0.0, -length), 10) for x in (-0.012, 0.0, 0.012)]
+    m.add("Filters", merge(*filters), "iodine")
+
+
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
         _scalpel(m, length, True)
@@ -431,6 +439,7 @@ def build() -> list[Model]:
         "iv_bag": _bag,
         "whiskey_flask": _flask,
         "coffee_thermos": _thermos,
+        "cig_pack": _cig_pack,
         "defibrillator": _paddle,
         "bone_saw": lambda m, length: _saw(m, length, False),
         "heavy_saw": lambda m, length: _saw(m, length, True),

@@ -214,7 +214,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Nurse orders with a cooldown, blood panels with narrow/fast vs full/slow choices.
 - Turning the patient as a shared quick time event, all surgeons on one side.
 - Personal gauges: stress (pass out), sickness (vomit), breath (steady hands), sweat (slippery gloves, drips).
-- Belt inventory, personal quirk items, drinking and wearing items.
+- Belt inventory, personal quirk items, drinking and wearing items, smoke breaks at the smoking spot.
 - Manual with Divine knowledge highlights, patient card with red herrings.
 - Scoring, stars, delayed consequences, codex unlocks, 23 scenarios.
 

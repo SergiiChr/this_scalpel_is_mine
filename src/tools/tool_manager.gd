@@ -398,12 +398,17 @@ func consume(tool: SurgicalTool) -> void:
 
 func drink(peer: int, hand: int) -> String:
 	var tool := tool_in_hand(peer, hand)
-	if tool == null or not tool.def.drinkable or tool.charges == 0:
-		return ""
+	return tool.def.id if tool and tool.def.drinkable and use_charge(tool) else ""
+
+
+## Takes one use, consuming the tool on its last one. False when it was already empty.
+func use_charge(tool: SurgicalTool) -> bool:
+	if tool.charges == 0:
+		return false
 	tool.charges -= 1
 	if tool.charges == 0:
 		consume(tool)
-	return tool.def.id
+	return true
 
 
 ## Host: a surgeon left, so everything in their hands and on their belt drops. Standing clamps keep holding.
