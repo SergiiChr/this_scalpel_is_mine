@@ -430,7 +430,7 @@ func _sedation(bench: Bench, out: String) -> void:
 	me.status.administer("diazepam", right)
 	await bench.frames(200)
 	for i in 12:
-		me.hands[1].local_target += Vector3(0.012, 0.0, 0.0)
+		me.hands[1].local_target += Vector3(0.02, 0.0, 0.0)
 		await bench.frames(1)
 	await _shot(out, "43_sedated_trail")
 	me.status.drugs.clear()

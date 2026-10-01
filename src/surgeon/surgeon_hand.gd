@@ -128,8 +128,8 @@ var _ghost: StandardMaterial3D
 ## The glove's afterimages: how many, how far apart in time (s), the most see-through, and the copies (newest first)
 ## with the glove frames and bone poses they show.
 const TRAIL_COPIES := 4
-const TRAIL_STEP := 0.04
-const TRAIL_ALPHA := 0.35
+const TRAIL_STEP := 0.06
+const TRAIL_ALPHA := 0.45
 const TRAIL_COLOR := Color(0.5, 0.65, 0.95)
 var _trail_root: Node3D
 var _trail_frames: Array = []
@@ -460,13 +460,14 @@ func _update_trail(delta: float) -> void:
 		for i in (skeleton.get_bone_count() if skeleton else 0):
 			poses.append(skeleton.get_bone_pose(i))
 		_trail_frames.push_front([_glove.global_transform, poses])
-		_trail_frames.resize(mini(_trail_frames.size(), TRAIL_COPIES))
+		_trail_frames.resize(mini(_trail_frames.size(), TRAIL_COPIES + 1))
+	# The newest frame is about where the glove is now: the copies show the ones before it.
 	for i in _trail_root.get_child_count():
 		var copy := _trail_root.get_child(i) as Node3D
-		copy.visible = i < _trail_frames.size()
+		copy.visible = i + 1 < _trail_frames.size()
 		if not copy.visible:
 			continue
-		var frame: Array = _trail_frames[i]
+		var frame: Array = _trail_frames[i + 1]
 		copy.global_transform = frame[0]
 		var copy_skeleton := copy.get_meta("skeleton") as Skeleton3D
 		if copy_skeleton:
