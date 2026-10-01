@@ -125,12 +125,13 @@ var _forearm_start := 0.0
 ## Stands in for the hand's materials while it's see-through (see set_see_through()).
 const GHOST_COLOR := Color(0.75, 0.82, 0.9)
 var _ghost: StandardMaterial3D
-## The glove's afterimages: how many, how far apart in time (s), the most see-through, and the copies (newest first)
-## with the glove frames and bone poses they show.
+## The glove's afterimages: how many, how far apart in time (s), the most see-through, their color, how far (m) from
+## the glove a copy has to be to show, and the glove frames and bone poses the copies show (newest first).
 const TRAIL_COPIES := 4
 const TRAIL_STEP := 0.06
 const TRAIL_ALPHA := 0.45
 const TRAIL_COLOR := Color(0.5, 0.65, 0.95)
+const TRAIL_GAP := 0.01
 var _trail_root: Node3D
 var _trail_frames: Array = []
 var _trail_acc := 0.0
@@ -461,13 +462,14 @@ func _update_trail(delta: float) -> void:
 			poses.append(skeleton.get_bone_pose(i))
 		_trail_frames.push_front([_glove.global_transform, poses])
 		_trail_frames.resize(mini(_trail_frames.size(), TRAIL_COPIES + 1))
-	# The newest frame is about where the glove is now: the copies show the ones before it.
+	# The newest frame is about where the glove is now: the copies show the ones before it. A copy right on the glove
+	# (a hand held still) would only speckle it.
 	for i in _trail_root.get_child_count():
 		var copy := _trail_root.get_child(i) as Node3D
-		copy.visible = i + 1 < _trail_frames.size()
+		var frame: Array = _trail_frames[i + 1] if i + 1 < _trail_frames.size() else []
+		copy.visible = not frame.is_empty() and (frame[0] as Transform3D).origin.distance_to(_glove.global_position) > TRAIL_GAP
 		if not copy.visible:
 			continue
-		var frame: Array = _trail_frames[i + 1]
 		copy.global_transform = frame[0]
 		var copy_skeleton := copy.get_meta("skeleton") as Skeleton3D
 		if copy_skeleton:
