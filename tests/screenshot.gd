@@ -5,10 +5,12 @@ extends Node
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
 ## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
 ## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
-## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*). --only=<case> renders one.
+## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*), then a sedated and a
+## knocked out surgeon (43_* to 46_*, --only=sedation). --only=<case> renders one.
 ## Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
+const Bench := preload("res://tests/syringe_bench.gd")
 
 
 func _ready() -> void:
@@ -340,7 +342,7 @@ func _materials(surgery: Surgery, out: String) -> void:
 
 
 func _syringe(out: String, only: String) -> void:
-	var bench := preload("res://tests/syringe_bench.gd").new()
+	var bench := Bench.new()
 	add_child(bench)
 	await bench.start()
 	var me := bench.surgery.local_surgeon
@@ -406,7 +408,55 @@ func _syringe(out: String, only: String) -> void:
 		camera.queue_free()
 		me.camera().current = true
 		me.zoom = 0
+	if not only or only == "sedation":
+		await _sedation(bench, out)
 	get_tree().quit()
+
+
+## A sedated surgeon at the table: afterimages behind a moving hand and a blurred view (43), too much and the view
+## darkens (44), twice the dose and they lie on the floor, looking at the table (45). Then the partner knocked out,
+## seen from the room (46).
+func _sedation(bench: Bench, out: String) -> void:
+	var surgery: Surgery = bench.surgery
+	var me := surgery.local_surgeon
+	var right := 0.2 * me.status.weight_kg
+	bench.place_partner(Bench.PARTNER_PARK, 0.0)
+	Input.action_release("crouch")
+	me.global_transform = surgery.room.spawn_transform(0)
+	me.pitch = -0.8
+	for i in 2:
+		me.hands[i].local_target = Vector3(-0.17 if i == 0 else 0.17, 1.18, -0.45)
+	me.status.drugs.clear()
+	me.status.administer("diazepam", right)
+	await bench.frames(200)
+	for i in 12:
+		me.hands[1].local_target += Vector3(0.012, 0.0, 0.0)
+		await bench.frames(1)
+	await _shot(out, "43_sedated_trail")
+	me.status.drugs.clear()
+	me.status.administer("diazepam", right * 1.8)
+	await bench.frames(200)
+	await _shot(out, "44_overdose")
+	me.status.administer("diazepam", right)
+	await bench.frames(240)
+	await _shot(out, "45_knocked_out")
+	me.status.administer("flumazenil", 0.01 * me.status.weight_kg)
+	await bench.frames(200)
+	var partner := bench.partner
+	bench.place_partner(surgery.patient.global_position * Vector3(1, 0, 1) + Vector3(0.0, me.global_position.y, 1.2), 0.0)
+	partner._fall_side = 1.0
+	await bench.frames(60)
+	for i in 2:
+		partner.hands[i].target = partner.to_global((Surgeon.LYING_HAND + Vector3(-0.25 * i, 0, 0)) * Vector3(1, 1, 1))
+	var camera := Camera3D.new()
+	add_child(camera)
+	camera.global_position = partner.to_global(Vector3(-0.8, 1.7, 1.2))
+	camera.look_at(partner.to_global(Vector3(-0.8, 0.2, 0.0)))
+	camera.current = true
+	await bench.frames(10)
+	await _shot(out, "46_partner_down")
+	camera.queue_free()
+	me.camera().current = true
 
 
 func _menus(out: String) -> void:

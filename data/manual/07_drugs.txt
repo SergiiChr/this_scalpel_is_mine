@@ -26,6 +26,7 @@ A syringe that has held one drug keeps what is left in it; a second drug drawn i
 [cell]Morphine[/cell][cell]Analgesia. Depresses respiration[/cell][cell]0.1 mg[/cell]
 [cell]Naloxone[/cell][cell]Opioid reversal[/cell][cell]0.01 mg[/cell]
 [cell]Diazepam[/cell][cell]Seizure termination, anxiolysis[/cell][cell]0.2 mg[/cell]
+[cell]Flumazenil[/cell][cell]Diazepam reversal[/cell][cell]0.01 mg[/cell]
 [cell]Diphenhydramine[/cell][cell]Mild allergic reactions[/cell][cell]1 mg[/cell]
 [cell]Cefazolin[/cell][cell]Antibiotic prophylaxis after any opening of the body[/cell][cell]25 mg[/cell]
 [cell]Clindamycin[/cell][cell]Antibiotic prophylaxis, penicillin allergy[/cell][cell]10 mg[/cell]

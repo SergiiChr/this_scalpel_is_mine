@@ -44,6 +44,11 @@ var _lens_blood := 0.0
 var _lens_age := 0.0
 ## Blood on the view clears in about this many seconds.
 const LENS_CLEAR_SECONDS := 8.0
+## A sedative blurs the view by this much (the screen's mip level) at the right dose. Past it the view darkens, up to
+## OVERDOSE_DAZE just short of a knockout, and lying knocked out it's KNOCKED_OUT_DAZE dark: still enough to see by.
+const SEDATED_BLUR := 1.0
+const OVERDOSE_DAZE := 0.6
+const KNOCKED_OUT_DAZE := 0.8
 var _root: Control
 
 
@@ -113,9 +118,10 @@ func _process(delta: float) -> void:
 	_subtitle_timer -= delta
 	if _subtitle_timer <= 0.0:
 		_subtitle.text = ""
-	_post.set_shader_parameter("blackout", 1.0 if me.status.is_out() else 0.0)
+	_post.set_shader_parameter("blackout", 1.0 if me.status.passed_out > 0.0 else 0.0)
+	_post.set_shader_parameter("daze", KNOCKED_OUT_DAZE if me.status.is_knocked_out() else me.status.overdose * OVERDOSE_DAZE)
 	_post.set_shader_parameter("wobble", me.status.sickness)
-	_post.set_shader_parameter("blur", me.status.sickness * 1.5)
+	_post.set_shader_parameter("blur", maxf(me.status.sickness * 1.5, me.status.calm * SEDATED_BLUR))
 	if _lens_blood > 0.0:
 		_lens_blood = maxf(_lens_blood - delta / LENS_CLEAR_SECONDS, 0.0)
 		_lens_age += delta

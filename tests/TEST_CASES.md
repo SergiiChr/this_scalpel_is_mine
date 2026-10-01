@@ -124,6 +124,12 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 | Y11 | IV drip: resting on the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
 | Y12 | IV catheter: the last zoom step frames its needle. On the forearm vein it sticks, the tubing runs to it and a drug in the IV drip runs into the patient; 2.5 cm beside the vein it still sticks with the tubing, but the drug stays in the bag |
 | Y13 | The IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the emptied one, uses up the held one and runs it into the line |
+| Y14 | Surgeons: pushing into the surgeon's own other hand, a partner's hand, a partner's body and the hand of a partner knocked out on the floor (crouched beside them) empties the syringe; once the needle is out that surgeon gets the dose (the host's `surgeon_dosed`), the patient nothing, and the surgeon's own dose works like a direct injection. Pulling from a hand draws nothing |
+| Y15 | Stress shakes the hands in steps: under 30% the tool stays still and only the glove twitches now and then, up to 60% a light shake, above it a plain one |
+| Y16 | Shaky hands never drain below 65% stress; Steady hands with Shaky hands, stressed and in the cold, don't shake at all; a surgeon weighs 80 kg, big hands 100 kg |
+| Y17 | Diazepam at the right dose for the surgeon's weight stops stress shaking but not the cold, and delays hand moves 100 ms; 1.8 doses darken the view and delay more |
+| Y18 | 2.5 doses knock the surgeon out for five minutes; flumazenil brings them round and ends the diazepam; adrenaline gets them up only while it lasts, and 3.5 doses put them down again after |
+| Y19 | Sedated in the room: afterimages trail the gloves and a mouse move reaches the hand only after the delay; knocked out, the surgeon lies on the floor with the patient in view and the hands on the floor; flumazenil gets them back on their feet |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -153,5 +159,6 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from both sides and from the eyes (`tests/grip_gallery.tscn`) |
-| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`); the IV catheter on the vein and beside it, aimed, in, the line from the stand and the taped-down dressing close up (`42_catheter_*`) |
+| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`), including into the surgeon's own hand and a partner; the IV catheter on the vein and beside it, aimed, in, the line from the stand and the taped-down dressing close up (`42_catheter_*`) |
+| V12 | `--syringe --only=sedation`: a sedated surgeon's blurred view with afterimages behind a moving hand (`43_sedated_trail`), the darkened view of too much (`44_overdose`), knocked out on the floor looking at the table (`45_knocked_out`) and a knocked out partner seen from the room (`46_partner_down`) |
 | V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |
