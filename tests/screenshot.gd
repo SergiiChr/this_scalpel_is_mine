@@ -10,11 +10,14 @@ const SURGERY := preload("res://scenes/surgery.tscn")
 func _ready() -> void:
 	var scenario_id := "appendectomy"
 	var out := "user://screenshots"
+	var only := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--scenario="):
 			scenario_id = arg.get_slice("=", 1)
 		elif arg.begins_with("--out="):
 			out = arg.get_slice("=", 1)
+		elif arg.begins_with("--only="):
+			only = arg.get_slice("=", 1)
 	DirAccess.make_dir_recursive_absolute(out)
 	if OS.get_cmdline_user_args().has("--menus"):
 		await _menus(out)
@@ -80,6 +83,9 @@ func _ready() -> void:
 	camera.global_position = incision + Vector3(0.0, 0.16, 0.1)
 	camera.look_at(incision)
 	await _shot(out, "03b_tissue_layers")
+	if only == "site":
+		get_tree().quit()
+		return
 	camera.global_position = Vector3(2.3, 2.5, 1.9)
 	camera.look_at(Vector3(0, 0.9, 0))
 	await _shot(out, "04_room")

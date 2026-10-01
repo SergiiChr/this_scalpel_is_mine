@@ -1,5 +1,5 @@
 // Layers under the skin, seen through an opened incision.
-// layer 0 = subcutaneous fat (yellow lobules), layer 1 = muscle and fascia (red striated, white sheen).
+// layer 0 = subcutaneous fat (rounded lobules), layer 1 = muscle and fascia.
 // Blood from the fluid map runs down into them.
 shader_type spatial;
 render_mode cull_disabled;
@@ -9,19 +9,33 @@ uniform sampler2D fluid_map : filter_linear, hint_default_black;
 
 varying vec3 local_pos;
 
-float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+float hash3(vec3 p) {
+	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
 
-// Distance to the nearest cell center: lumpy fat lobules.
-float cells(vec2 p) {
-	vec2 i = floor(p);
+float noise3(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), f.x);
+	float b = mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), f.x);
+	float c = mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), f.x);
+	float d = mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0)), f.x);
+	return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+}
+
+// Three-dimensional cells stay rounded on horizontal surfaces and vertical
+// incision walls; the previous XZ-only pattern stretched into columns.
+float cells3(vec3 p) {
+	vec3 i = floor(p);
 	float best = 8.0;
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec2 cell = i + vec2(float(x), float(y));
-			vec2 center = cell + vec2(hash(cell), hash(cell + 17.0));
-			best = min(best, distance(p, center));
+	for (int z = -1; z <= 1; z++) {
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				vec3 cell = i + vec3(float(x), float(y), float(z));
+				vec3 center = cell + vec3(hash3(cell), hash3(cell + 17.0), hash3(cell + 41.0));
+				best = min(best, distance(p, center));
+			}
 		}
 	}
 	return best;
@@ -35,24 +49,32 @@ void fragment() {
 	vec3 c;
 	float wet;
 	if (layer == 0) {
-		float lobe = cells(local_pos.xz * 260.0);
-		c = mix(vec3(0.93, 0.8, 0.35), vec3(0.72, 0.5, 0.2), smoothstep(0.35, 0.75, lobe));
-		wet = 0.7;
+		float lobe = cells3(local_pos * 105.0);
+		float membrane = smoothstep(0.47, 0.64, lobe);
+		float mottling = noise3(local_pos * 55.0);
+		c = mix(vec3(0.76, 0.47, 0.18), vec3(0.48, 0.22, 0.08), membrane * 0.42);
+		c *= mix(0.86, 1.08, mottling);
+		c = mix(c, vec3(0.82, 0.70, 0.52), smoothstep(0.58, 0.72, lobe) * 0.18);
+		wet = 0.62;
 	} else {
-		float fibers = sin(local_pos.x * 900.0 + sin(local_pos.z * 120.0) * 2.0) * 0.5 + 0.5;
-		c = mix(vec3(0.5, 0.06, 0.07), vec3(0.72, 0.16, 0.14), fibers);
-		c = mix(c, vec3(0.85, 0.82, 0.8), smoothstep(0.93, 1.0, hash(floor(local_pos.xz * 60.0))) * 0.4);
-		wet = 0.85;
+		float warp = noise3(local_pos * 42.0) * 3.0;
+		float fibers = sin(dot(local_pos, normalize(vec3(1.0, 0.16, 0.28))) * 430.0 + warp) * 0.5 + 0.5;
+		float bundles = noise3(local_pos * 70.0);
+		c = mix(vec3(0.40, 0.035, 0.055), vec3(0.62, 0.105, 0.09), fibers * 0.45 + bundles * 0.3);
+		float fascia = smoothstep(0.91, 0.98, noise3(local_pos * 31.0 + vec3(7.0)));
+		c = mix(c, vec3(0.72, 0.62, 0.57), fascia * 0.36);
+		wet = 0.78;
 	}
 	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV).r);
-	ALBEDO = mix(c, vec3(0.3, 0.0, 0.03), blood * 0.8);
-	ROUGHNESS = 1.0 - wet;
+	ALBEDO = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
+	ROUGHNESS = 1.0 - wet * 0.82;
+	EMISSION = ALBEDO * 0.025;
 }
 
 void light() {
-	float ndl = max(dot(NORMAL, LIGHT), 0.0);
-	float lit = ndl * ATTENUATION;
-	DIFFUSE_LIGHT += LIGHT_COLOR * lit / PI;
+	float ndl = max((dot(NORMAL, LIGHT) + 0.16) / 1.16, 0.0);
+	DIFFUSE_LIGHT += LIGHT_COLOR * ndl * ATTENUATION / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.96, 0.98, dot(NORMAL, halfway)) * ATTENUATION * (1.0 - ROUGHNESS) / PI;
+	float broad = pow(max(dot(NORMAL, halfway), 0.0), 18.0);
+	SPECULAR_LIGHT += LIGHT_COLOR * broad * ATTENUATION * (1.0 - ROUGHNESS) * 0.32 / PI;
 }

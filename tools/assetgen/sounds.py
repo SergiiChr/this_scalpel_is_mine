@@ -113,6 +113,34 @@ def cut_deep() -> Wave:
     return place(x, pop, 0.5, 1.5)
 
 
+def contact_cut() -> Wave:
+    """A quiet, unaccented blade-on-tissue bed; movement controls its level in game."""
+    seconds = 1.2
+    local = np.random.default_rng(4101)
+    rub = band(local.uniform(-1.0, 1.0, int(seconds * RATE)), 1100, 4800) * (0.7 + 0.3 * np.sin(2 * np.pi * 5.0 * t(seconds)))
+    wet = band(local.uniform(-1.0, 1.0, int(seconds * RATE)), 180, 700) * 0.3
+    return loopable(rub * 0.55 + wet, 0.2)
+
+
+def contact_swab() -> Wave:
+    """Soft fabric rubbing wet skin, without the attack of a one-shot wipe."""
+    seconds = 1.2
+    local = np.random.default_rng(4102)
+    weave = band(local.uniform(-1.0, 1.0, int(seconds * RATE)), 400, 2400) * (0.65 + 0.35 * np.sin(2 * np.pi * 3.0 * t(seconds)))
+    return loopable(weave + band(local.uniform(-1.0, 1.0, int(seconds * RATE)), 120, 500) * 0.18, 0.2)
+
+
+def contact_suction() -> Wave:
+    """Steady air draw with small irregular bubbles."""
+    seconds = 1.4
+    local = np.random.default_rng(4103)
+    x = band(local.uniform(-1.0, 1.0, int(seconds * RATE)), 250, 1450) * 0.55
+    for at in local.uniform(0.15, seconds - 0.15, 18):
+        bubble = tone(np.linspace(430, 850, int(0.025 * RATE)), 0.025) * env(int(0.025 * RATE), 0.002, 0.016)
+        place(x, bubble, float(at), 0.12)
+    return loopable(x, 0.15)
+
+
 def tear_skin() -> Wave:
     x = np.zeros(int(0.7 * RATE))
     for at in np.sort(rng.uniform(0.0, 0.6, 40)):
@@ -411,6 +439,9 @@ SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     "sink_water": ("room", sink_water),
     "cable_yank": ("room", cable_yank),
     "glass_break": ("tools", glass_break),
+    "contact_cut": ("tissue", contact_cut),
+    "contact_swab": ("tissue", contact_swab),
+    "contact_suction": ("tools", contact_suction),
 }
 
 
