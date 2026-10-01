@@ -147,11 +147,16 @@ func is_limb_site() -> bool:
 	return site_id in LIMB_SITES
 
 
-## How deep the cavity is under the skin in the middle of the site: at least deep enough for the site's bones.
+## How deep the cavity is under the skin in the middle of the site: at least deep enough for the site's bones to fit
+## under the muscle from their middle on, where the cavity can already be shallower (a thick fat layer, a bone off
+## to one side like the shoulder's).
 func cavity_depth() -> float:
 	var depth: float = _site_def().depth
 	for bone: Dictionary in _site_def().get("anatomy", {}).get("bones", []):
-		depth = maxf(depth, muscle_bottom() + 0.003 + float(bone.radius) * 2.0 + 0.004)
+		var middle := (Vector2(bone.from[0], bone.from[1]) + Vector2(bone.to[0], bone.to[1])) * 0.5
+		var bowl := _bowl(middle)
+		var needed := muscle_bottom() + 0.003 + float(bone.radius) * 2.0 + 0.004
+		depth = maxf(depth, (needed - (1.0 - bowl) * (SKIN_THICKNESS + 0.003)) / bowl)
 	return depth
 
 
@@ -617,9 +622,13 @@ const CAVITY_STEPS := 24
 ## and is as deep on a sloping shoulder as on a flat belly.
 func _cavity_floor(uv: Vector2) -> float:
 	var under_skin := surface_height(uv) - SKIN_THICKNESS - 0.003
+	return minf(lerpf(under_skin, surface_height(uv) - cavity_depth(), _bowl(uv)), under_skin)
+
+
+## How much of the cavity's depth it has at uv: all of it in the middle, rising to nothing at the site's edges.
+static func _bowl(uv: Vector2) -> float:
 	var edge := Vector2(absf(uv.x * 2.0 - 1.0), absf(uv.y * 2.0 - 1.0))
-	var bowl := (1.0 - pow(edge.x, 4.0)) * (1.0 - pow(edge.y, 4.0))
-	return minf(lerpf(under_skin, surface_height(uv) - cavity_depth(), bowl), under_skin)
+	return (1.0 - pow(edge.x, 4.0)) * (1.0 - pow(edge.y, 4.0))
 
 
 func _cavity_uv(i: int, j: int) -> Vector2:
