@@ -8,6 +8,9 @@ import trimesh
 from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, superellipsoid, torus, tube
 
 TABLE_HEIGHT = 0.85
+# Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
+# tray's middle. Same as "instruments" and "swabs" in Room.TRAY_ZONES (src/world/room.gd).
+SMALL_TRAYS = ((0.14, -0.36, 0.16, 0.26), (0.19, -0.07, 0.06, 0.06))
 
 
 def _wheels(radius: float, spread: float, y: float = 0.0) -> trimesh.Trimesh:
@@ -52,7 +55,24 @@ def _instrument_tray() -> Model:
     )
     m.add("Tray", merge(tray, rim), "steel")
     m.add("Drape", superellipsoid((0.66, 0.004, 0.76), 0.15, (0.0, 0.907, 0.0)), "gown")
+    m.add("SmallTrays", merge(*[_small_tray(*area) for area in SMALL_TRAYS]), "steel")
     return m
+
+
+def _small_tray(x: float, z: float, width: float, depth: float) -> trimesh.Trimesh:
+    """A shallow steel tray on the drape, its corner at (x, z). Floor top 4 mm and rim 16 mm above the surface."""
+    cx, cz = x + width / 2, z + depth / 2
+    floor = superellipsoid((width, 0.006, depth), 0.2, (cx, 0.916, cz))
+    walls = [
+        superellipsoid(size, 0.2, c)
+        for size, c in (
+            ((width, 0.018, 0.006), (cx, 0.922, z + 0.003)),
+            ((width, 0.018, 0.006), (cx, 0.922, z + depth - 0.003)),
+            ((0.006, 0.018, depth), (x + 0.003, 0.922, cz)),
+            ((0.006, 0.018, depth), (x + width - 0.003, 0.922, cz)),
+        )
+    ]
+    return merge(floor, *walls)
 
 
 def _iv_stand() -> Model:

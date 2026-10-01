@@ -29,12 +29,14 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 		if made.def.fixed:
 			made.set_state(SurgicalTool.State.STANDING, 0, -1)
 	var spot := 0
-	var on_tray: Array[SurgicalTool] = []
+	var groups: Dictionary = {}
 	for id in tray_ids:
-		on_tray.append(_create(_next_uid, id, Transform3D(Basis.IDENTITY, tray_spots[spot % tray_spots.size()])))
+		var tool := _create(_next_uid, id, Transform3D(Basis.IDENTITY, tray_spots[spot % tray_spots.size()]))
+		(groups.get_or_add(tool.def.tray, []) as Array).append(tool)
 		spot += 1
 	if Surgery.current and Surgery.current.room:
-		_lay_out(on_tray, Surgery.current.room)
+		for group: String in groups:
+			_lay_out(groups[group], Surgery.current.room.tray_zone(group))
 	var peers := personal.keys()
 	peers.sort()
 	for peer: int in peers:
@@ -49,30 +51,33 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 				spot += 1
 
 
-## Lays tools out side by side on the tray, in columns, each resting right on it: nothing overlaps, so nothing gets
-## shoved into the tray or its neighbour when the physics starts. Longest first; what doesn't fit goes on top.
-func _lay_out(on_tray: Array[SurgicalTool], room: Room) -> void:
+## Lays a group of tools out side by side in its spot on the tray (Room.tray_zone()), in columns, each resting right on
+## it: nothing overlaps, so nothing gets shoved into the tray or its neighbour when the physics starts.
+## Longest first; what doesn't fit lies on top of the ones already there.
+func _lay_out(group: Array, zone: AABB) -> void:
 	const GAP := 0.012
-	var area := room.tray_area()
-	var sorted := on_tray.duplicate()
+	var sorted := group.duplicate()
 	sorted.sort_custom(func(a: SurgicalTool, b: SurgicalTool) -> bool: return a.bounds.size.z > b.bounds.size.z)
-	var x := area.position.x
-	var z := area.position.y
+	var x := zone.position.x
+	var z := zone.position.z
 	var column := 0.0
 	var layer := 0.0
+	var layer_height := 0.0
 	for tool: SurgicalTool in sorted:
 		var size := tool.bounds.size
-		if z + size.z > area.end.y:
+		if z + size.z > zone.end.z:
 			x += column + GAP
-			z = area.position.y
+			z = zone.position.z
 			column = 0.0
-		if x + size.x > area.end.x:
-			x = area.position.x
-			layer += 0.03
-		var at := Vector3(x - tool.bounds.position.x, room.tray_top() + layer - tool.bounds.position.y + 0.001, z - tool.bounds.position.z)
+		if x + size.x > zone.end.x:
+			x = zone.position.x
+			layer += layer_height + 0.001
+			layer_height = 0.0
+		var at := Vector3(x - tool.bounds.position.x, zone.position.y + layer - tool.bounds.position.y + 0.001, z - tool.bounds.position.z)
 		tool.global_transform = Transform3D(Basis.IDENTITY, at)
 		z += size.z + GAP
 		column = maxf(column, size.x)
+		layer_height = maxf(layer_height, size.y)
 
 
 func tool_in_hand(peer: int, hand: int) -> SurgicalTool:

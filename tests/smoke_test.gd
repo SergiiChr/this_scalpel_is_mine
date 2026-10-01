@@ -378,7 +378,7 @@ func _syringe_checks(surgery: Surgery) -> void:
 	var patient := surgery.patient
 	if patient.weight_kg < 15.0 or patient.weight_kg > 150.0:
 		print("FAIL: odd patient weight %.0f kg" % patient.weight_kg)
-	var spot: Vector3 = surgery.room.tray_spots()[13]
+	var spot: Vector3 = surgery.room.tray_spots()[17]
 	var made: Array[SurgicalTool] = []
 	for id in ["vial_propofol", "vial_morphine", "syringe_50"]:
 		tools.spawn(id, spot)
@@ -492,7 +492,7 @@ func _tourniquet_checks(surgery: Surgery) -> void:
 	var tools := surgery.tools
 	var patient := surgery.patient
 	var me := surgery.local_surgeon
-	tools.spawn("tourniquet", surgery.room.tray_spots()[14])
+	tools.spawn("tourniquet", surgery.room.tray_spots()[7])
 	var tourniquet: SurgicalTool = tools.tools.values()[-1]
 	await _frames(3)
 	if not me.blocked_reason(tourniquet.def).is_empty():
