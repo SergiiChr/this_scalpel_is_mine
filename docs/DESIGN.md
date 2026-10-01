@@ -239,6 +239,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
   (`src/world/iv_line.gd`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
   sticks and the tubing runs to it, but nothing goes through. The last zoom step frames the catheter like a syringe.
+  Where it went in, the catheter is taped down on the forearm (`IvDressing`, riding the forearm bone): its stub going
+  into the skin toward the elbow, the hub with a colored cap and wings, a clear film over it, two strips of woven tape
+  across the arm and the tubing taped along the arm before it hangs off to the stand.
   Walking into the line at full speed rips it out; crouch-walking steps over it.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe resting on top of it is in it: push a drug in and it runs down the line once the needle is out, if the

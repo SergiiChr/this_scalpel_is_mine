@@ -5,7 +5,7 @@ extends Node
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
 ## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
 ## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
-## the vein and beside it: aimed, in, and the line from the stand (42_*). --only=<case> renders one.
+## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*). --only=<case> renders one.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -375,6 +375,16 @@ func _syringe(out: String, only: String) -> void:
 		camera.fov = 60.0
 		camera.global_transform = Transform3D(Basis.IDENTITY, middle + (arm - stand).cross(Vector3.UP).normalized() * 1.1 + Vector3.UP * 0.4).looking_at(middle)
 		await _shot(out, "42_%s_3_line" % case.name)
+		# Close up on the catheter taped to the arm: film, hub, tape and the tubing leaving it.
+		var dressing: Node3D = bench.surgery.room.iv_line._dressing
+		var over := dressing.global_transform * Vector3(-0.03, 0.13, 0.07)
+		camera.fov = 35.0
+		camera.global_transform = Transform3D(Basis.IDENTITY, over).looking_at(dressing.global_transform * Vector3(-0.03, 0.0, 0.0), dressing.global_basis.x)
+		for hand in me.hands:
+			hand.visible = false
+		await _shot(out, "42_%s_4_dressing" % case.name)
+		for hand in me.hands:
+			hand.visible = true
 		camera.queue_free()
 		me.camera().current = true
 		me.zoom = 0

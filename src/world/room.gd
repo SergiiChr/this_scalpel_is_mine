@@ -368,9 +368,10 @@ func _station(key: String, prompt: String, size: Vector3, callback: Callable, he
 	return root
 
 
-## Runs the IV tubing from the stand's drip chamber to a point on the patient (local to `to`).
-func connect_iv(to: Node3D, point: Vector3) -> void:
-	iv_line.attach(_iv_stand, IV_DRIP_POINT, to, point)
+## Runs the IV tubing from the stand's drip chamber to a catheter taped on at `site` (local to `to`, see
+## PatientBody.iv_site()) on an arm of this radius.
+func connect_iv(to: Node3D, site: Transform3D, arm_radius: float) -> void:
+	iv_line.attach(_iv_stand, IV_DRIP_POINT, to, site, arm_radius)
 
 
 ## Places a layout prop, turned by its yaw, solid if it has a footprint in STATION_SOLIDS.

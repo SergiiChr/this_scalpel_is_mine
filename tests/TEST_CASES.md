@@ -152,5 +152,5 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from both sides and from the eyes (`tests/grip_gallery.tscn`) |
-| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`); the IV catheter on the vein and beside it, aimed, in and the line from the stand (`42_catheter_*`) |
+| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`); the IV catheter on the vein and beside it, aimed, in, the line from the stand and the taped-down dressing close up (`42_catheter_*`) |
 | V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |

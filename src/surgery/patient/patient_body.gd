@@ -76,6 +76,9 @@ var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
 ## Each forearm vein's line, local to its mesh (which rides the forearm bone), for vein_at().
 var _veins: Array[MeshInstance3D] = []
+## A node riding each forearm bone, from the elbow (its origin) to the wrist (meta "wrist", local), so what's
+## stuck to a forearm (veins, an IV catheter's dressing) moves with the arm.
+var _forearms: Array[BoneAttachment3D] = []
 var _site_base_y := 0.0
 var _heights := PackedFloat32Array()
 ## Per baked grid point: 1 on the body, 0 where the site hangs off it or the body is too thin under it for the layers
@@ -361,6 +364,29 @@ func layer_at(uv: Vector2) -> String:
 	return "fat" if tissue.is_open(uv, TissueSim.Depth.SKIN) else "skin"
 
 
+## Where an IV catheter going in at p (world space, just under the skin) sits on the arm: {"node": the forearm it rides,
+## "frame": a Transform3D local to it, origin on the skin, X along the arm toward the elbow, Y out of the skin, Z
+## across, "radius": the arm's radius there}. The arm counts as round about the forearm bone, clamped to its ends
+## (the back of the hand counts as the wrist). Falls back to the body when there are no forearms.
+func iv_site(p: Vector3) -> Dictionary:
+	var best: Node3D = null
+	var center := Vector3.ZERO
+	for forearm in _forearms:
+		var on_bone := Geometry3D.get_closest_point_to_segment(p, forearm.global_position, forearm.to_global(forearm.get_meta("wrist")))
+		if best == null or on_bone.distance_to(p) < center.distance_to(p):
+			best = forearm
+			center = on_bone
+	if best == null:
+		var flat := Transform3D(_body_root.global_basis.orthonormalized(), p)
+		return {"node": _body_root, "frame": _body_root.global_transform.affine_inverse() * flat, "radius": 0.035}
+	var elbow := (best.global_position - best.to_global(best.get_meta("wrist"))).normalized()
+	var out := (p - center).slide(elbow)
+	var radius := out.length() + 0.002
+	var normal := out.normalized()
+	var world := Transform3D(Basis(elbow, normal, elbow.cross(normal)), center + normal * radius)
+	return {"node": best, "frame": best.global_transform.affine_inverse() * world, "radius": radius}
+
+
 ## True when p (world space) is in or just over a forearm vein.
 func vein_at(p: Vector3) -> bool:
 	for vein in _veins:
@@ -409,6 +435,13 @@ func _build_veins(model: Node3D) -> void:
 			continue
 		var bone_pose := skeleton.global_transform * skeleton.get_bone_global_pose(bone)
 		var wrist := skeleton.global_transform * skeleton.get_bone_global_pose(hand).origin
+		var forearm := BoneAttachment3D.new()
+		forearm.name = "Forearm" + side
+		forearm.bone_name = "Forearm" + side
+		skeleton.add_child(forearm)
+		forearm.transform = skeleton.get_bone_global_pose(bone)
+		forearm.set_meta("wrist", bone_pose.affine_inverse() * wrist)
+		_forearms.append(forearm)
 		var across := (wrist - bone_pose.origin).cross(up).normalized()
 		var line := PackedVector3Array()
 		for i in 12:
@@ -427,19 +460,13 @@ func _build_veins(model: Node3D) -> void:
 			line.append(on_skin - up * VEIN_RADIUS * 0.4)
 		if line.size() < 2:
 			continue
-		var attachment := BoneAttachment3D.new()
-		attachment.name = "Vein" + side
-		attachment.bone_name = "Forearm" + side
-		skeleton.add_child(attachment)
-		attachment.transform = skeleton.get_bone_global_pose(bone)
 		var vein := MeshInstance3D.new()
-		vein.name = "Mesh"
-		attachment.add_child(vein)
-		vein.transform = Transform3D.IDENTITY
+		vein.name = "Vein"
+		forearm.add_child(vein)
 		var into := bone_pose.affine_inverse()
 		for i in line.size():
 			line[i] = into * line[i]
-		vein.mesh = _tube(line, VEIN_RADIUS * 1.3, VEIN_RADIUS)
+		vein.mesh = Shapes.tube(line, VEIN_RADIUS * 1.3, VEIN_RADIUS)
 		vein.material_override = Materials.toon(VEIN_COLOR, 0.1, false, 0.4)
 		vein.set_meta("line", line)
 		_veins.append(vein)
@@ -794,7 +821,7 @@ func _add_bone(kind: String, points: Array[Vector2], radius: float, flat: float)
 	bone.set_meta("bone", kind.to_lower())
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Mesh"
-	mesh.mesh = _tube(path, radius, radius * flat)
+	mesh.mesh = Shapes.tube(path, radius, radius * flat)
 	mesh.material_override = Materials.toon(BONE_COLOR, 0.2)
 	bone.add_child(mesh)
 	for i in range(1, path.size()):
@@ -812,40 +839,6 @@ func _add_bone(kind: String, points: Array[Vector2], radius: float, flat: float)
 		bone.add_child(shape)
 	site.add_child(bone)
 	bones.append(bone)
-
-
-## A closed tube with an elliptic cross section (width across the path, height up) along a path in site space.
-static func _tube(path: PackedVector3Array, width: float, height: float) -> ArrayMesh:
-	const SIDES := 12
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings: Array[PackedVector3Array] = []
-	for i in path.size():
-		var along := (path[mini(i + 1, path.size() - 1)] - path[maxi(i - 1, 0)]).normalized()
-		var side := along.cross(Vector3.UP).normalized()
-		if side.length_squared() < 0.5:
-			side = Vector3.RIGHT
-		var up := side.cross(along).normalized()
-		var ring := PackedVector3Array()
-		for k in SIDES:
-			var angle := TAU * k / SIDES
-			ring.append(path[i] + side * cos(angle) * width + up * sin(angle) * height)
-		rings.append(ring)
-	for i in range(1, rings.size()):
-		for k in SIDES:
-			var n := (k + 1) % SIDES
-			# Clockwise seen from outside: Godot's front faces.
-			for v: Vector3 in [rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]]:
-				st.add_vertex(v)
-	for end: int in [0, rings.size() - 1]:
-		for k in SIDES:
-			var tri: Array[Vector3] = [path[end], rings[end][(k + 1) % SIDES], rings[end][k]]
-			if end != 0:
-				tri.reverse()
-			for v in tri:
-				st.add_vertex(v)
-	st.generate_normals()
-	return st.commit()
 
 
 ## The bone within `radius` of p (world space), "" when there's none: "rib", "sternum" or "bone".

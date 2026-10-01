@@ -895,9 +895,11 @@ func pull_iv(surgeon: Surgeon) -> void:
 	_iv_removed.rpc()
 
 
+## point is local to the body's root. The dressing rides the forearm it's on (PatientBody.iv_site()).
 func _connect_iv(point: Vector3) -> void:
 	if Surgery.current and Surgery.current.room.iv_line:
-		Surgery.current.room.connect_iv(body.root(), point)
+		var site := body.iv_site(body.root().to_global(point))
+		Surgery.current.room.connect_iv(site.node, site.frame, site.radius)
 
 
 func graft_at(uv: Vector2, def: ToolDef) -> bool:

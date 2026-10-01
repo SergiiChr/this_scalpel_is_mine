@@ -21,36 +21,35 @@ var _to_point := Vector3.ZERO
 var _mesh: MeshInstance3D
 var _points := PackedVector3Array()
 var _last_ends: Array[Vector3] = [Vector3.INF, Vector3.INF]
-## Transparent film dressing over the catheter where the line goes in, stuck to the patient.
-var _dressing: MeshInstance3D
+## The catheter, film and tape where the line goes into the arm (see IvDressing). The tubing hangs from its end.
+var _dressing: IvDressing
 
 
 func _ready() -> void:
 	_mesh = MeshInstance3D.new()
 	_mesh.mesh = ImmediateMesh.new()
-	_mesh.material_override = Materials.toon(Color(0.82, 0.88, 0.9), 0.1, false, 0.2)
+	_mesh.material_override = IvDressing.tubing_material()
 	_mesh.top_level = true
 	add_child(_mesh)
 	visible = false
 
 
-## from_point and to_point are local to their nodes, so the line follows whatever they're attached to.
-func attach(from: Node3D, from_point: Vector3, to: Node3D, to_point: Vector3) -> void:
+## from_point is local to `from`, site to `to` (where the catheter goes in, see PatientBody.iv_site()), so the line
+## follows whatever they're attached to. The dressing is taped on at the site, the tubing hangs from its end.
+func attach(from: Node3D, from_point: Vector3, to: Node3D, site: Transform3D, arm_radius: float) -> void:
 	_from = from
 	_from_point = from_point
-	_to = to
-	_to_point = to_point
 	_last_ends = [Vector3.INF, Vector3.INF]
 	visible = true
 	if _dressing:
 		_dressing.queue_free()
-	_dressing = MeshInstance3D.new()
-	var pad := BoxMesh.new()
-	pad.size = Vector3(0.035, 0.003, 0.028)
-	_dressing.mesh = pad
-	_dressing.material_override = Materials.toon(Color(0.93, 0.95, 0.96), 0.05, false, 0.2)
+	_dressing = IvDressing.new()
+	_dressing.name = "IvDressing"
 	to.add_child(_dressing)
-	_dressing.position = to_point
+	_dressing.transform = site
+	_dressing.build(arm_radius)
+	_to = _dressing
+	_to_point = IvDressing.EXIT
 	# Build immediately so collision/trip queries never observe points from a
 	# previous attachment while waiting for this node's next process callback.
 	var a := _from.to_global(_from_point)
