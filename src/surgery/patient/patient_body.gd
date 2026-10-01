@@ -39,6 +39,13 @@ const SITE_ORGANS: Dictionary = {
 }
 const LIMB_SITES: PackedStringArray = ["forearm", "shoulder", "thigh", "lower_leg"]
 const BONE_COLOR := Color(0.86, 0.81, 0.68)
+## A vein drawn along the inside of each forearm, where a syringe draws blood or gives a drug straight into the blood.
+## It runs over this part of the forearm (0 the elbow, 1 the wrist), raised this much out of the skin.
+const VEIN_SPAN := Vector2(0.15, 0.8)
+const VEIN_RADIUS := 0.0016
+const VEIN_COLOR := Color(0.28, 0.33, 0.55)
+## How close a needle tip has to come to a vein's line to be in it (the tip rests about 1 cm over the skin).
+const VEIN_REACH := 0.014
 ## How much the heart shrinks at full contraction, and the lungs swell full of air.
 const HEART_SQUEEZE := 0.12
 const LUNG_SWELL := 0.08
@@ -67,6 +74,8 @@ var _body_root: Node3D
 var drape: Drape
 var _body_materials: Array[ShaderMaterial] = []
 var _organ_rest: Array[Vector3] = []
+## Each forearm vein's line, local to its mesh (which rides the forearm bone), for vein_at().
+var _veins: Array[MeshInstance3D] = []
 var _site_base_y := 0.0
 var _heights := PackedFloat32Array()
 ## Per baked grid point: 1 on the body, 0 where the site hangs off it or the body is too thin under it for the layers
@@ -112,6 +121,7 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	_build_colliders()
 	_build_surface(model)
 	_build_site(tone)
+	_build_veins(model)
 	blood.name = "BloodFlow"
 	add_child(blood)
 	blood.setup(self)
@@ -341,6 +351,27 @@ func is_open(uv: Vector2) -> bool:
 	return tissue.is_open(uv)
 
 
+## The deepest layer showing at uv: "skin" where it's whole, "fat" or "muscle" where a cut opened down to it,
+## "cavity" where it's open through the muscle.
+func layer_at(uv: Vector2) -> String:
+	if tissue.is_open(uv):
+		return "cavity"
+	if tissue.is_open(uv, TissueSim.Depth.FAT):
+		return "muscle"
+	return "fat" if tissue.is_open(uv, TissueSim.Depth.SKIN) else "skin"
+
+
+## True when p (world space) is in or just over a forearm vein.
+func vein_at(p: Vector3) -> bool:
+	for vein in _veins:
+		var local := vein.to_local(p)
+		var line: PackedVector3Array = vein.get_meta("line")
+		for i in range(1, line.size()):
+			if Geometry3D.get_closest_point_to_segment(local, line[i - 1], line[i]).distance_to(local) < VEIN_REACH:
+				return true
+	return false
+
+
 # --- Construction ----------------------------------------------------------------------------------
 
 
@@ -359,6 +390,59 @@ func _build_colliders() -> void:
 		var body := Shapes.static_box(_body_root, parts[part][0], parts[part][1], PATIENT_LAYER)
 		body.name = part.to_pascal_case()
 		body.set_meta("part", part)
+
+
+## A vein on the upper side of each forearm, found on the body mesh at rest and carried by the forearm bone, so it
+## moves with the arm. A forearm under the surgical site gets none: the site's own skin lies there.
+func _build_veins(model: Node3D) -> void:
+	var skin := model.find_child("Body", true, false) as MeshInstance3D
+	var skeleton := model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	if skin == null or skeleton == null:
+		return
+	var faces := skin.mesh.generate_triangle_mesh()
+	var to_skin := skin.global_transform.affine_inverse()
+	var up := _body_root.global_basis.y.normalized()
+	for side: String in ["L", "R"]:
+		var bone := skeleton.find_bone("Forearm" + side)
+		var hand := skeleton.find_bone("Hand" + side)
+		if bone < 0 or hand < 0:
+			continue
+		var bone_pose := skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+		var wrist := skeleton.global_transform * skeleton.get_bone_global_pose(hand).origin
+		var across := (wrist - bone_pose.origin).cross(up).normalized()
+		var line := PackedVector3Array()
+		for i in 12:
+			var t := lerpf(VEIN_SPAN.x, VEIN_SPAN.y, i / 11.0)
+			# A gentle wander across the arm, like a real vein.
+			var over := bone_pose.origin.lerp(wrist, t) + across * sin(t * 9.0) * 0.004
+			var hit := faces.intersect_ray(to_skin * (over + up * 0.15), (to_skin.basis * -up).normalized())
+			if hit.is_empty():
+				continue
+			var on_skin: Vector3 = skin.global_transform * (hit.position as Vector3)
+			var uv := world_to_uv(on_skin)
+			if site_active() and Rect2(0, 0, 1, 1).has_point(uv):
+				line.clear()
+				break
+			# Mostly under the skin: only a low ridge of it shows.
+			line.append(on_skin - up * VEIN_RADIUS * 0.4)
+		if line.size() < 2:
+			continue
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "Vein" + side
+		attachment.bone_name = "Forearm" + side
+		skeleton.add_child(attachment)
+		attachment.transform = skeleton.get_bone_global_pose(bone)
+		var vein := MeshInstance3D.new()
+		vein.name = "Mesh"
+		attachment.add_child(vein)
+		vein.transform = Transform3D.IDENTITY
+		var into := bone_pose.affine_inverse()
+		for i in line.size():
+			line[i] = into * line[i]
+		vein.mesh = _tube(line, VEIN_RADIUS * 1.3, VEIN_RADIUS)
+		vein.material_override = Materials.toon(VEIN_COLOR, 0.1, false, 0.4)
+		vein.set_meta("line", line)
+		_veins.append(vein)
 
 
 func _build_surface(model: Node3D) -> void:

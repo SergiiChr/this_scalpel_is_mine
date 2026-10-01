@@ -6,6 +6,8 @@ const SOLID_LAYER := 1 << 19
 ## Where the hand holds a tool for the check: in front of the right or left shoulder, about where it works.
 const HAND_AT := Vector3(0.17, 1.05, -0.42)
 const SHOULDER := Vector3(0.19, 1.4, -0.08)
+## Liquid in a tool isn't solid: a finger may dip into a full dish.
+const LIQUID_PARTS: PackedStringArray = ["Level", "Liquid", "Pool"]
 
 
 ## A glove under holder, the way a surgeon's hand is built.
@@ -50,11 +52,13 @@ static func clipped(hand: SurgeonHand, part: String = "") -> int:
 	return count
 
 
-## A static trimesh of a model where it stands, for point queries.
+## A static trimesh of a model where it stands, for point queries, without the liquid in it.
 static func _solid(model: Node3D) -> void:
 	var faces := PackedVector3Array()
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
+		if mesh.name in LIQUID_PARTS:
+			continue
 		var xform := model.global_transform.affine_inverse() * mesh.global_transform
 		for v in mesh.mesh.get_faces():
 			faces.append(xform * v)

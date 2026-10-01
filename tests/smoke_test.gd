@@ -385,11 +385,12 @@ func _syringe_checks(surgery: Surgery) -> void:
 	var vial := made[0]
 	var syringe := made[2]
 	await _frames(3)
-	var hand := {"lowered": true, "trigger": false, "level": 3, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
+	# Three wheel notches with the needle in the vial draw 3 ml.
 	var vial_middle := vial.global_transform * Vector3(0, 0, -vial.def.length * 0.5)
 	syringe.global_transform = Transform3D(Basis.IDENTITY, vial_middle + Vector3(0, 0, syringe.def.length))
-	ToolActions.update(syringe, hand, patient, 1.0)
-	var drawn := syringe.def.volume * ToolActions.PLUNGER_RATE
+	for i in 3:
+		ToolActions.plunge(syringe, ToolActions.PLUNGER_STEP, patient)
+	var drawn := 3.0 * ToolActions.PLUNGER_STEP
 	if absf(syringe.ml - drawn) > 0.01 or absf(vial.ml - (vial.def.volume - drawn)) > 0.01 or syringe.label().ends_with("(empty)"):
 		print("FAIL: the syringe didn't draw from the vial: syringe=%.2f ml vial=%.2f ml" % [syringe.ml, vial.ml])
 	# The right dose, pushed into the patient, counts once the needle comes out.
@@ -398,8 +399,10 @@ func _syringe_checks(surgery: Surgery) -> void:
 	patient.flags.erase("drug_propofol")
 	var site := patient.body.uv_to_world(Vector2(0.5, 0.5))
 	syringe.global_transform = Transform3D(Basis.IDENTITY, site + Vector3(0, 0, syringe.def.length))
-	ToolActions.update(syringe, hand, patient, 4.0)
-	hand.lowered = false
+	while syringe.ml > 0.0:
+		ToolActions.plunge(syringe, -ToolActions.PLUNGER_STEP, patient)
+	syringe.global_position += Vector3.UP * 0.3
+	var hand := {"lowered": false, "trigger": false, "level": 0, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
 	ToolActions.update(syringe, hand, patient, 0.1)
 	if syringe.ml > 0.0 or not patient.flags.has("drug_propofol"):
 		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s" % [syringe.ml, patient.flags.keys()])
@@ -465,8 +468,8 @@ func _inspect_checks(surgery: Surgery, syringe: SurgicalTool, put_back: Vector3)
 	var shown_ml := liquid / travel * syringe.def.volume
 	if absf(shown_ml - syringe.ml) > syringe.def.volume * 0.02:
 		print("FAIL: the syringe reads %.2f ml against its ticks but holds %.2f ml" % [shown_ml, syringe.ml])
-	# The plunger's stopper starts at the needle end (its rest) and sits right behind the liquid.
-	if absf(plunger.position.z - liquid) > travel * 0.02:
+	# The plunger's stopper starts at the needle end (its rest) and sits right behind the liquid and any air.
+	if absf(plunger.position.z - liquid - travel * syringe.air / syringe.def.volume) > travel * 0.02:
 		print("FAIL: the plunger doesn't sit right behind the liquid (pulled back %.4f m, liquid %.4f m)" % [plunger.position.z, liquid])
 	Input.action_release("inspect")
 	await _frames(2)

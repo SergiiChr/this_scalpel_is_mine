@@ -249,8 +249,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
-  suction, gauze pressure, syringe plunger), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
-  A syringe draws in a vial and pushes anywhere else (see Vials and syringes).
+  suction, gauze pressure), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
+  A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -270,17 +270,27 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Drugs come in labelled vials** (`vial_*` in tools.cfg): the name is the label, with the strength per ml.
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a tick every tenth; the liquid and plunger show how much is in it.
-- **Filling** (`ToolActions`, action `syringe`): lowered with its needle in a vial the plunger draws, anywhere else
-  it pushes, at a speed set by the wheel. A syringe holds ml plus an amount of each drug, so drawing from a second
-  vial mixes (`ToolManager.transfer()`). Pushing into the patient collects the dose; it's given when the needle
-  comes out. At the IV stand the whole syringe goes into the line.
+- **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
+  it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
+  (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
+  - a vial or the kidney dish (holds 100 ml): pulls its liquid, pushes into it. A full vial takes no more.
+  - a vein drawn on each forearm (`PatientBody.vein_at()`, not on an arm the site covers): pulls blood, which tints
+    the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
+  - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
+    pulls nothing and the plunger stays.
+  - nothing: pulls air, pushes the liquid out in a squirt.
+  A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
+  Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
+  needle comes out. At the IV stand the whole syringe goes into the line.
+- **Needle view**: the last zoom step with a syringe in hand moves the camera beside it, side on and a little above,
+  so the ticks and what the needle is in (a vial, the dish, the arm) are in view. The hands fade to see through.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
 - **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
-  its tick marks toward them. Liquid and plunger follow the ml exactly (clients see it in 2% steps).
+  its tick marks toward them. Liquid, air and plunger follow the ml exactly on every peer.
 
 ### Tourniquet
 

@@ -454,7 +454,10 @@ func _req_iv(hand: int) -> void:
 		if patient.iv_ready():
 			var given := tools.transfer(tool, null, tool.ml)
 			for drug: String in given:
-				patient.administer(drug, "iv", given[drug])
+				if drug == "blood":
+					patient.vitals.blood_ml += given[drug]
+				else:
+					patient.administer(drug, "iv", given[drug])
 		return
 	if tool == null or tool.def.action != "inject" or tool.charges == 0:
 		tell(peer, "You need a filled syringe, bag or drug in hand.")

@@ -404,7 +404,8 @@ func iv_ready() -> bool:
 	return iv_set
 
 
-## route: "iv" (smooth, needs a line) or "direct" (fast spike).
+## route: "iv" (smooth, needs a line), "vein" (a syringe straight into a vein: like "iv", no line needed)
+## or "direct" (fast spike).
 ## amount: how much was given in the drug's unit (see DrugDef.dose). Negative means just the right dose (bags, masks).
 func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 	var def := Db.drug(drug_id)

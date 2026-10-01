@@ -3,6 +3,8 @@ extends Node
 ## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
+## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
+## through the wheel notches and done. --only=<case> renders one.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -21,6 +23,9 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	if OS.get_cmdline_user_args().has("--menus"):
 		await _menus(out)
+		return
+	if OS.get_cmdline_user_args().has("--syringe"):
+		await _syringe(out, only)
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
@@ -222,8 +227,7 @@ func _anatomy(surgery: Surgery, out: String) -> void:
 		await _shot(out, "23_tourniquet")
 	for tool: SurgicalTool in surgery.tools.tools.values():
 		if tool.def.action == "syringe" and tool.state == SurgicalTool.State.FREE:
-			tool.ml = tool.def.volume * 0.35
-			surgery.tools.set_fill(tool, 0.35)
+			surgery.tools.add_liquid(tool, tool.def.volume * 0.35)
 			surgery.tools._req_grab(tool.uid, 1)
 			me.active = 1
 			me.camera().current = true
@@ -313,6 +317,29 @@ func _materials(surgery: Surgery, out: String) -> void:
 		body.queue_free()
 		for tool in tools:
 			tool.queue_free()
+	get_tree().quit()
+
+
+func _syringe(out: String, only: String) -> void:
+	var bench := preload("res://tests/syringe_bench.gd").new()
+	add_child(bench)
+	await bench.start()
+	var me := bench.surgery.local_surgeon
+	for case: Dictionary in bench.CASES:
+		if only and case.name != only:
+			continue
+		await bench.stage(case)
+		me.zoom = Surgeon.ZOOM_FOV.size() - 1
+		await bench.frames(40)
+		await _shot(out, "40_%s_1_needle_in" % case.name)
+		var notches: int = case.notches
+		for i in absi(notches):
+			if i == absi(notches) / 2:
+				await _shot(out, "40_%s_2_halfway" % case.name)
+			await bench.notch(notches > 0)
+		await bench.frames(10)
+		await _shot(out, "40_%s_3_done" % case.name)
+		me.zoom = 0
 	get_tree().quit()
 
 

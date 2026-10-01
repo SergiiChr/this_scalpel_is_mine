@@ -3,6 +3,7 @@
 Moving parts are separate nodes the game animates (src/tools/tool_animator.gd):
 JawA/JawB open and close, Plunger slides, Trigger squeezes, Blade oscillates, Flame/Glow/Light show while in use.
 Level is liquid the game stretches along Z from its node origin by how full the tool is (syringe, vial).
+Pool is liquid in an open dish the game raises from the dish floor.
 """
 
 from __future__ import annotations
@@ -316,6 +317,10 @@ def _misc(m: Model, kind: str, length: float) -> None:
     elif kind == "kidney_dish":
         outer = lathe([(0.0, 0.0), (0.06, 0.0), (0.07, 0.025), (0.066, 0.026), (0.056, 0.004), (0.0, 0.004)], 32)
         m.add("Dish", moved(scaled(outer, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "steel")
+        # Liquid squirted in from a syringe, full to just under the rim. Its origin is on the dish floor, so the game
+        # raises the level by scaling it up from there (src/tools/surgical_tool.gd show_liquid()).
+        pool = lathe([(0.0, 0.004), (0.0555, 0.004), (0.0628, 0.02), (0.0, 0.02)], 32)
+        m.add("Pool", moved(scaled(pool, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "drug", (0.0, -0.006, -length * 0.5))
 
 
 def _misc_maker(kind: str, model: Model, length: float) -> None:

@@ -91,7 +91,7 @@ For each scenario, with no script errors:
 | S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift steps through three zoom levels; the controls shown change while a hand key is held |
 | S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
 | S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
-| S22 | The patient has a plausible weight; a syringe draws from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
+| S22 | The patient has a plausible weight; three wheel notches draw 3 ml from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
 | S23 | Wiping iodine with a soaked pad never takes more than 4 ms of one frame (no stutter; it used to take 7-20 ms every frame) |
 | S24 | Skin won't close over a cut through open muscle, a tight stitch tears there, and after the muscle is sewn from inside the skin closes |
 | S25 | Chest and belly: an H-shaped incision through the muscle, both flaps folded back without tearing, leaves no skin, fat or muscle over the top layer of organs (lungs and heart; liver, stomach and bowel) or the ribs; there are organs under the top layer |
@@ -101,6 +101,25 @@ For each scenario, with no script errors:
 | S29 | Holding Inspect brings a syringe up in front of the eyes, across the view, tick marks toward them; the liquid and the plunger show exactly how many ml it holds |
 | S30 | A tourniquet pressed onto a thigh wraps around it as a snug band (not lying on top), leaves the hand, and taking it off loosens it |
 | S31 | Tools lie on the tray at the start without sinking into it; lowered onto it with full effort, neither the tool nor the glove goes into it; put down, it settles on top (every kind of tool in the first scenario, one in the others) |
+
+## Syringe (`tests/syringe_test.gd`)
+
+Every case is staged by `tests/syringe_bench.gd`: the surgeon holds the syringe, its needle resting in the target,
+and works the plunger with real wheel notches, never holding Use tool. After every notch the syringe's liquid, air
+and plunger, and the vial's or dish's level, must show exactly what's in them.
+
+| ID | Case |
+|---|---|
+| Y1 | Wheel down pulls the plunger out 1 ml, wheel up pushes it in 1 ml, without Use tool held; the wheel never sets an effort level for a syringe |
+| Y2 | The controls shown name pulling and pushing the plunger on the wheel, and the needle view |
+| Y3 | The last zoom step with a syringe frames the syringe and the vial its needle is in, and fades the hands; zooming out puts the camera back and the hands solid |
+| Y4 | Bottle: pulling from a vial and pushing the same drug back move 1 ml between them a notch, both levels shown exactly |
+| Y5 | Tray: the same with the kidney dish, its pool rising and falling with the ml in it |
+| Y6 | Pushing into a forearm vein empties the syringe a ml a notch; once the needle is out the drug is given into the blood (IV onset, no line needed) |
+| Y7 | Pulling from a forearm vein draws blood a ml a notch: the patient loses it, the liquid gets redder with every notch and ends as red as its share of blood |
+| Y8 | Pushing into skin, fat and muscle (cuts held open down to fat and muscle) empties the syringe; once the needle is out the drug is given as a direct injection |
+| Y9 | Pulling from skin, fat and muscle draws nothing: the plunger stays put |
+| Y10 | Pulling with the needle in nothing draws air: the plunger moves, the liquid stays, the air shows at the needle end |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -130,4 +149,5 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from both sides and from the eyes (`tests/grip_gallery.tscn`) |
+| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`) |
 | V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |

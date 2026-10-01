@@ -41,6 +41,9 @@ check tissue "$LOGS/tissue_test.log" "tissue_test: done"
 run_scene models_test 120
 check models "$LOGS/models_test.log" "models_test: done"
 
+run_scene syringe_test 600
+check syringe "$LOGS/syringe_test.log" "syringe_test: done"
+
 run_scene smoke_test 1200
 check smoke "$LOGS/smoke_test.log" "smoke_test: done"
 
