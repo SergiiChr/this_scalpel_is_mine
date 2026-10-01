@@ -10,7 +10,7 @@ from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, superelli
 TABLE_HEIGHT = 0.85
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
 # tray's middle. Same as "instruments" and "swabs" in Room.TRAY_ZONES (src/world/room.gd).
-SMALL_TRAYS = ((0.14, -0.36, 0.16, 0.26), (0.19, -0.07, 0.06, 0.06))
+SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
 
 
 def _wheels(radius: float, spread: float, y: float = 0.0) -> trimesh.Trimesh:

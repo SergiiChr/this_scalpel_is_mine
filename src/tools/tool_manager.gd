@@ -36,7 +36,9 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 		spot += 1
 	if Surgery.current and Surgery.current.room:
 		for group: String in groups:
-			_lay_out(groups[group], Surgery.current.room.tray_zone(group))
+			# A tool's tip is at -Z: standing, it points up.
+			var basis := Basis(Vector3.RIGHT, PI / 2) if group in Room.UPRIGHT else Basis.IDENTITY
+			_lay_out(groups[group], Surgery.current.room.tray_zone(group), basis)
 	var peers := personal.keys()
 	peers.sort()
 	for peer: int in peers:
@@ -51,30 +53,31 @@ func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], pers
 				spot += 1
 
 
-## Lays a group of tools out side by side in its spot on the tray (Room.tray_zone()), in columns, each resting right on
-## it: nothing overlaps, so nothing gets shoved into the tray or its neighbour when the physics starts.
+## Lays a group of tools out side by side in its spot on the tray (Room.tray_zone()), in columns from its +x side, each
+## resting right on it: nothing overlaps, so nothing gets shoved into the tray or its neighbour when the physics starts.
 ## Longest first; what doesn't fit lies on top of the ones already there.
-func _lay_out(group: Array, zone: AABB) -> void:
+func _lay_out(group: Array, zone: AABB, basis: Basis) -> void:
 	const GAP := 0.012
 	var sorted := group.duplicate()
 	sorted.sort_custom(func(a: SurgicalTool, b: SurgicalTool) -> bool: return a.bounds.size.z > b.bounds.size.z)
-	var x := zone.position.x
+	var x := zone.end.x
 	var z := zone.position.z
 	var column := 0.0
 	var layer := 0.0
 	var layer_height := 0.0
 	for tool: SurgicalTool in sorted:
-		var size := tool.bounds.size
+		var box := Transform3D(basis) * tool.bounds
+		var size := box.size
 		if z + size.z > zone.end.z:
-			x += column + GAP
+			x -= column + GAP
 			z = zone.position.z
 			column = 0.0
-		if x + size.x > zone.end.x:
-			x = zone.position.x
+		if x - size.x < zone.position.x:
+			x = zone.end.x
 			layer += layer_height + 0.001
 			layer_height = 0.0
-		var at := Vector3(x - tool.bounds.position.x, zone.position.y + layer - tool.bounds.position.y + 0.001, z - tool.bounds.position.z)
-		tool.global_transform = Transform3D(Basis.IDENTITY, at)
+		var at := Vector3(x - size.x - box.position.x, zone.position.y + layer - box.position.y + 0.001, z - box.position.z)
+		tool.global_transform = Transform3D(basis, at)
 		z += size.z + GAP
 		column = maxf(column, size.x)
 		layer_height = maxf(layer_height, size.y)

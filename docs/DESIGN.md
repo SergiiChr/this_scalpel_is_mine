@@ -269,7 +269,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Same tray every time** (`data/starter_kit.cfg`): scalpel, forceps, kidney dish, cotton pads, iodine bottle with
   its dish, a 3, 10 and 50 ml syringe, IV catheter and saline bag. Everything else is ordered.
 - **Tray layout** (`tray` in tools.cfg, `Room.TRAY_ZONES`): scalpel and forceps lie in a small steel tray, the cotton
-  pads in a pile in another, the syringes side by side and the bottles and vials along one end. The rest fills
+  pads in a pile in another, the syringes side by side and the bottles and vials standing at one end. The rest fills
   the space left.
 - **Nurse**: one order at a time, a 15 s cooldown after each delivery. A board over the bell shows the item on its way
   with a progress bar, then the cooldown.

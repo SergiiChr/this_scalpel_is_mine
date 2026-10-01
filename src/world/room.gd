@@ -14,13 +14,17 @@ const TABLE_HEAD := 1.0
 const IV_DRIP_POINT := Vector3(0.08, 1.6, 0.0)
 ## Where each group of tools (tray in tools.cfg) lies on the instrument tray at the start: x and z from the tray's
 ## middle, its near side (+x) toward the table. Ungrouped tools fill "".
+## Each group fills its spot from the near side, so the usual kit lies mid-tray and extras spread toward the far rim.
+## Nothing lies at the near rim, where a tall patient's feet reach over the tray. The strip down the middle stays clear.
 const TRAY_ZONES: Dictionary = {
-	"instruments": Rect2(0.14, -0.36, 0.16, 0.26),
-	"swabs": Rect2(0.19, -0.07, 0.06, 0.06),
-	"syringes": Rect2(0.13, 0.03, 0.18, 0.17),
-	"bottles": Rect2(-0.32, 0.22, 0.64, 0.15),
-	"": Rect2(-0.32, -0.37, 0.42, 0.57),
+	"instruments": Rect2(0.09, -0.36, 0.16, 0.26),
+	"swabs": Rect2(0.14, -0.07, 0.06, 0.06),
+	"syringes": Rect2(0.12, 0.03, 0.13, 0.17),
+	"bottles": Rect2(-0.32, 0.24, 0.27, 0.08),
+	"": Rect2(-0.32, -0.3, 0.27, 0.5),
 }
+## Groups that stand on their bottom instead of lying down.
+const UPRIGHT: Array[String] = ["bottles"]
 ## Groups that lie in a small tray of their own, the size of their zone (built by tools/assetgen/props.py).
 ## The swab tray fits one pad, so the pads pile up in it.
 const SMALL_TRAYS: Array[String] = ["instruments", "swabs"]
