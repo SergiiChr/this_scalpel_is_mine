@@ -188,6 +188,14 @@ func grip_transform() -> Transform3D:
 	return Transform3D(rot, global_position)
 
 
+## The twist that turns the held tool's underside (-Y, the side a syringe's scale is printed on) toward `direction`.
+## Twist rolls the tool about its own length, so its tip stays where it is.
+func twist_facing(direction: Vector3) -> float:
+	var yaw := (get_parent() as Node3D).global_rotation.y
+	var local := (Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)).inverse() * direction
+	return atan2(-local.x, -local.y)
+
+
 ## A tool held up to look at: its tip across the view toward the other hand's side, and its top (+Y, where the back
 ## of the hand is in every grip) turned away from the eyes, so the hand is behind the tool and doesn't hide it.
 func inspect_basis() -> Basis:

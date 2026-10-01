@@ -284,7 +284,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
   needle comes out. At the IV stand the whole syringe goes into the line.
 - **Needle view**: the last zoom step with a syringe in hand moves the camera beside it, side on and a little above,
-  so the ticks and what the needle is in (a vial, the dish, the arm) are in view. The hands fade to see through.
+  so the ticks and what the needle is in (a vial, the dish, the arm) are in view. The hands fade to see through and
+  roll the syringe about its length so the printed scale faces the camera; zooming out rolls it back.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.

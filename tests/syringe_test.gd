@@ -25,7 +25,7 @@ func _ready() -> void:
 
 
 ## Y1-Y3: the wheel moves the plunger instead of setting a level, the hints say so, and the last zoom step frames the
-## needle with the hands faded.
+## needle with the hands faded and the printed scale turned to the camera.
 func _control_checks() -> void:
 	await bench.stage(Bench.CASES[0])
 	var me := bench.surgery.local_surgeon
@@ -37,9 +37,17 @@ func _control_checks() -> void:
 	_check(is_equal_approx(bench.syringe.ml, 1.0), "two notches down and one up leave 1 ml in the syringe (%.2f)" % bench.syringe.ml)
 	var hints := "\n".join(Hud.control_lines(me))
 	_check(hints.contains("Pull plunger 1 ml") and hints.contains("Push plunger 1 ml") and not hints.contains("Wheel  Plunger"), "the controls shown name the plunger on the wheel:\n" + hints)
+	var own_twist := hand.twist
+	var tip_before := bench.syringe.tip_position()
 	me.zoom = Surgeon.ZOOM_FOV.size() - 1
 	await bench.frames(40)
 	var camera := me.camera()
+	# A roll about its length can only face the camera across the barrel, not along it.
+	var along := bench.syringe.global_basis.z.normalized()
+	var to_camera := (camera.global_position - ToolManager.middle(bench.syringe)).slide(along).normalized()
+	var printed := -bench.syringe.global_basis.y.normalized()
+	_check(printed.dot(to_camera) > 0.98, "the needle view turns the syringe's printed scale toward the camera (%.2f)" % printed.dot(to_camera))
+	_check(bench.syringe.tip_position().distance_to(tip_before) < 0.003, "turning the scale leaves the needle where it was (%.4f m)" % bench.syringe.tip_position().distance_to(tip_before))
 	var head := camera.get_parent() as Node3D
 	_check(camera.global_position.distance_to(head.global_position) > 0.05, "the last zoom step moves the camera over to the needle")
 	for point: Vector3 in [bench.syringe.global_position, bench.syringe.tip_position(), ToolManager.middle(bench.container)]:
@@ -49,6 +57,7 @@ func _control_checks() -> void:
 	me.zoom = 0
 	await bench.frames(40)
 	_check(camera.transform.is_equal_approx(Transform3D.IDENTITY) and _fade(hand) == 0.0, "zooming out puts the camera back and the hands solid")
+	_check(is_equal_approx(hand.twist, own_twist), "zooming out rolls the syringe back the way the hand held it")
 
 
 ## Y4-Y10: one case, checked after every notch and once the needle is out.

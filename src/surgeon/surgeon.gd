@@ -79,6 +79,9 @@ var _held_uid: Array[int] = [0, 0]
 ## How far the camera has moved over to the needle view (0..1), and the last needle view, to move back from.
 var _needle_framing := 0.0
 var _needle_view := Transform3D.IDENTITY
+## The hand whose syringe the needle view rolls to show its scale (-1: none), and its own twist to roll back to.
+var _rolled_hand := -1
+var _own_twist := 0.0
 
 var _head: Node3D
 var _body: Node3D
@@ -352,6 +355,7 @@ func _physics_process(delta: float) -> void:
 
 ## Zoomed all the way in with a syringe, the camera moves over beside it so its ticks and what the needle is in
 ## (a vial, the dish, the arm) are both in view, and the hands fade so they don't block it.
+## The hand rolls the syringe so its printed scale faces the camera, and rolls it back after.
 func _frame_needle(delta: float) -> void:
 	var tool := held_tool(active)
 	var framing := zoom == ZOOM_FOV.size() - 1 and tool != null and tool.def.action == "syringe" and not hands[active].inspecting
@@ -362,6 +366,16 @@ func _frame_needle(delta: float) -> void:
 			hand.set_see_through(_needle_framing * NEEDLE_SEE_THROUGH)
 	if framing:
 		_needle_view = needle_view(tool)
+		if _rolled_hand != active:
+			_rolled_hand = active
+			_own_twist = hands[active].twist
+		var facing := hands[active].twist_facing(_needle_view.origin - ToolManager.middle(tool))
+		hands[active].twist = lerp_angle(hands[active].twist, facing, minf(delta * 8.0, 1.0))
+	elif _rolled_hand >= 0:
+		var hand := hands[_rolled_hand]
+		hand.twist = lerp_angle(hand.twist, _own_twist, minf(delta * 8.0, 1.0)) if _needle_framing > 0.0 else _own_twist
+		if _needle_framing <= 0.0:
+			_rolled_hand = -1
 	if _needle_framing <= 0.0:
 		_camera.transform = Transform3D.IDENTITY
 		return

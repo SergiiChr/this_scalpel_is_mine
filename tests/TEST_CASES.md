@@ -112,7 +112,7 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 |---|---|
 | Y1 | Wheel down pulls the plunger out 1 ml, wheel up pushes it in 1 ml, without Use tool held; the wheel never sets an effort level for a syringe |
 | Y2 | The controls shown name pulling and pushing the plunger on the wheel, and the needle view |
-| Y3 | The last zoom step with a syringe frames the syringe and the vial its needle is in, and fades the hands; zooming out puts the camera back and the hands solid |
+| Y3 | The last zoom step with a syringe frames the syringe and the vial its needle is in, fades the hands and rolls the syringe so its printed scale faces the camera, the needle staying put; zooming out puts the camera back, the hands solid and the syringe rolled back |
 | Y4 | Bottle: pulling from a vial and pushing the same drug back move 1 ml between them a notch, both levels shown exactly |
 | Y5 | Tray: the same with the kidney dish, its pool rising and falling with the ml in it |
 | Y6 | Pushing into a forearm vein empties the syringe a ml a notch; once the needle is out the drug is given into the blood (IV onset, no line needed) |
