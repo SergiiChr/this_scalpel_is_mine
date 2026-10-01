@@ -80,10 +80,10 @@ Rolling rules (code in `src/data/quirk_roller.gd`):
 - polarity: mixed
 - icon: [smoker.svg](../../assets/icons/quirks/surgeon/smoker.svg)
 - lore: Quit six times. Today is not a quitting day.
-- pros: Starts with a lighter (sloppy cauterizing). Stress builds 15% slower.
-- cons: Bad breath. Occasional coughing fits jerk your active hand.
-- specifics: Lighter burns are wide and hurt more.
-- effects: items=lighter, bad_breath=0.02, cough_chance=0.003, stress_mult=0.85
+- pros: Starts with a lighter (sloppy cauterizing) and a pack of cigarettes. A smoke stops all stress for 3 minutes and makes you 20% faster.
+- cons: Stress builds 40% faster. Bad breath. Occasional coughing fits jerk your active hand.
+- specifics: Smoke only at the smoking spot in the corner, pack in hand. Lighter burns are wide and hurt more.
+- effects: items=lighter|cig_pack, bad_breath=0.02, cough_chance=0.003, stress_mult=1.4
 
 ## sweaty
 - name: Sweaty

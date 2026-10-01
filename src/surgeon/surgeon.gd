@@ -413,7 +413,7 @@ func _local_update(delta: float) -> void:
 	var can_act := not input_locked and not status.is_out()
 	crouch = move_toward(crouch, 1.0 if can_act and Input.is_action_pressed("crouch") else 0.0, delta * 4.0)
 	var dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back") if can_act else Vector2.ZERO
-	var speed := lerpf(WALK_SPEED, CROUCH_SPEED, crouch) * mods.mult("move_speed_mult")
+	var speed := lerpf(WALK_SPEED, CROUCH_SPEED, crouch) * status.move_speed()
 	var move := global_basis * Vector3(dir.x, 0, dir.y) * speed
 	velocity = Vector3(move.x, velocity.y - 9.8 * delta if not is_on_floor() else 0.0, move.z)
 	move_and_slide()

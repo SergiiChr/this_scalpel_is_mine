@@ -245,6 +245,17 @@ def _sink() -> Model:
     return m
 
 
+def _smoking() -> Model:
+    """Standing ashtray: a steel bin with a sand-filled bowl on top, a few butts stubbed out in it."""
+    m = Model("props", "smoking")
+    bin_ = lathe([(0.0, 0.0), (0.13, 0.0), (0.13, 0.02), (0.1, 0.04), (0.1, 0.62), (0.14, 0.66), (0.14, 0.7), (0.0, 0.7)], 24)
+    m.add("Bin", bin_, "dark_steel")
+    m.add("Sand", cylinder(0.125, (0.0, 0.7, 0.0), (0.0, 0.705, 0.0), 24), "paper")
+    butts = [cylinder(0.004, (x, 0.705, z), (x + 0.02, 0.712, z + 0.01), 8) for x, z in ((-0.06, 0.02), (0.01, -0.05), (0.04, 0.04), (-0.02, -0.01))]
+    m.add("Butts", merge(*butts), "iodine")
+    return m
+
+
 def build() -> list[Model]:
     return [
         _operating_table(),
@@ -264,4 +275,5 @@ def build() -> list[Model]:
         _delivery_tray(),
         _defib_cart(),
         _sink(),
+        _smoking(),
     ]

@@ -419,6 +419,25 @@ func _drank(tool_id: String) -> void:
 	hud.toast({"whiskey_flask": "Warm. Steady.", "coffee_thermos": "Bitter. Awake.", "surgical_cap": "Cap on. No more drips."}.get(tool_id, ""))
 
 
+@rpc("any_peer", "call_local", "reliable")
+func _req_smoke(hand: int) -> void:
+	var peer := Net._sender()
+	var tool := tools.tool_in_hand(peer, hand)
+	if tool == null or tool.def.id != "cig_pack" or not tools.use_charge(tool):
+		return
+	var eyes := (surgeons[peer] as Surgeon).camera().global_transform
+	var mouth := eyes.origin - eyes.basis.z * 0.15 + Vector3.DOWN * 0.08
+	sound("lighter_flick", mouth)
+	effect("smoke", mouth)
+	_smoked.rpc_id(peer)
+
+
+@rpc("authority", "call_local", "reliable")
+func _smoked() -> void:
+	local_surgeon.status.smoke()
+	hud.toast("Ahh. Nothing can touch you now.")
+
+
 func report_incident(kind: String) -> void:
 	_incident.rpc_id(1, kind)
 
@@ -525,6 +544,10 @@ func wash_tool(surgeon: Surgeon) -> void:
 
 func use_iv(surgeon: Surgeon) -> void:
 	_req_iv.rpc_id(1, surgeon.active)
+
+
+func smoke(surgeon: Surgeon) -> void:
+	_req_smoke.rpc_id(1, surgeon.active)
 
 
 func comfort_patient(_surgeon: Surgeon) -> void:

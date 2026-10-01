@@ -41,6 +41,7 @@ const LAYOUTS: Dictionary = {
 		"monitor": Vector3(1.25, 1.55, -0.95),
 		"defib_cart": Vector3(0.3, 0.0, -1.95),
 		"xray": Vector3(-1.9, 0.0, -1.7),
+		"smoking": Vector3(2.35, 0.0, -1.5),
 		# Stations turned to face the room (radians), the rest face +Z.
 		"yaw": {"bell": PI, "gloves": PI, "delivery_tray": PI, "sink": PI, "sanitizer": PI},
 	},
@@ -55,6 +56,8 @@ const LAYOUTS: Dictionary = {
 		"iv": Vector3(0.85, 0.0, -0.75),
 		"monitor": Vector3(1.4, 1.4, -1.05),
 		"defib_cart": Vector3(1.8, 0.0, 0.0),
+		# By the back doors.
+		"smoking": Vector3(-1.88, 0.0, -0.2),
 		"yaw": {"defib_cart": -PI / 2},
 	},
 	"sidewalk": {
@@ -67,6 +70,8 @@ const LAYOUTS: Dictionary = {
 		"iv": Vector3(0.95, 0.0, 0.85),
 		"monitor": Vector3(1.4, 1.1, -1.0),
 		"defib_cart": Vector3(-0.6, 0.0, 1.8),
+		# Under the streetlight.
+		"smoking": Vector3(2.6, 0.0, 3.0),
 		"yaw": {"defib_cart": PI},
 	},
 }
@@ -334,6 +339,9 @@ func _build_stations(s: Surgery) -> void:
 		_station("sink", "Wash held tool", Vector3(0.6, 1.2, 0.5), s.wash_tool)
 	if layout.has("delivery_tray"):
 		_prop("delivery_tray")
+	if layout.has("smoking"):
+		var smoke := _station("smoking", "Smoke a cigarette", Vector3(0.4, 1.2, 0.4), s.smoke)
+		smoke.offered = func(surgeon: Surgeon) -> bool: return surgeon.held_tool(surgeon.active) != null and surgeon.held_tool(surgeon.active).def.id == "cig_pack"
 	if layout.has("defib_cart"):
 		_prop("defib_cart")
 	# A syringe goes straight into the hanging bag (the iv_drip tool, see station_tools()); a bag in hand swaps it.
@@ -362,10 +370,9 @@ func _build_stations(s: Surgery) -> void:
 	Interactable.create(self, "Talk to the patient", Vector3(0.25, 0.3, 0.3), Vector3(0.92, 1.05, 0.0), s.comfort_patient)
 
 
-func _station(key: String, prompt: String, size: Vector3, callback: Callable, height: float = 1.0) -> Node3D:
-	var root := _prop(key)
-	Interactable.create(self, prompt, size, (layout[key] as Vector3) + Vector3(0, height, 0), callback)
-	return root
+func _station(key: String, prompt: String, size: Vector3, callback: Callable, height: float = 1.0) -> Interactable:
+	_prop(key)
+	return Interactable.create(self, prompt, size, (layout[key] as Vector3) + Vector3(0, height, 0), callback)
 
 
 ## Runs the IV tubing from the stand's drip chamber to a catheter taped on at `site` (local to `to`, see
