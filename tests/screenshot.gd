@@ -6,6 +6,7 @@ extends Node
 ## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
 ## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
 ## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*). --only=<case> renders one.
+## Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -69,6 +70,23 @@ func _ready() -> void:
 	camera.global_transform = get_viewport().get_camera_3d().global_transform
 	camera.current = true
 	await _shot(out, "01_first_person")
+	# The monitor face on, with lab results, then alarming.
+	var monitor := surgery.room.monitor
+	surgery.room.monitor.show_lab(Lab.result("full", patient))
+	camera.global_position = monitor.to_global(Vector3(0.0, 0.0, 0.45))
+	camera.look_at(monitor.global_position)
+	await _frames(240)
+	await _shot(out, "10_monitor")
+	var saved := patient.vitals.to_dict()
+	for i in 60:
+		patient.vitals.spo2 = 84.0
+		patient.vitals.systolic = 72.0
+		await _frames(1)
+	await _shot(out, "10b_monitor_alarm")
+	patient.vitals.from_dict(saved)
+	if only == "monitor":
+		get_tree().quit()
+		return
 	camera.current = false
 	me.camera().current = true
 	me.pitch = -1.0

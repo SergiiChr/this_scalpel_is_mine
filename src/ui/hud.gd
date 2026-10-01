@@ -18,7 +18,6 @@ const LEVEL_STEPS: Dictionary = {
 const BLADE_LINE := 0.04
 
 var surgery: Surgery
-var _vitals: Label
 var _clock: Label
 var _objectives: VBoxContainer
 var _hands: Label
@@ -57,7 +56,6 @@ func setup(owner_surgery: Surgery) -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.theme = Ui.theme()
 	add_child(_root)
-	_vitals = _corner_label(Control.PRESET_TOP_LEFT, 18, Ui.PIP)
 	_clock = _corner_label(Control.PRESET_CENTER_TOP, 26, Ui.INK)
 	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_objectives = Ui.vbox(4)
@@ -97,12 +95,6 @@ func _process(delta: float) -> void:
 	if surgery == null or surgery.local_surgeon == null:
 		return
 	var me := surgery.local_surgeon
-	var v := surgery.patient.vitals
-	_vitals.text = "HR %d  %s\nSpO2 %d%%   BP %d\nTemp %.1f   Blood %d%%\nBleeding %.1f ml/s%s" % [
-		v.heart_rate, v.rhythm_name(), v.spo2, v.systolic, v.temperature, v.blood_ratio() * 100.0, v.bleed_rate,
-		"\nPatient is AWAKE" if v.is_awake() else "",
-	]
-	_vitals.add_theme_color_override("font_color", Ui.ALERT if v.is_arrested() or v.spo2 < 88.0 else Ui.PIP)
 	var left := surgery.time_left()
 	_clock.text = "%s   %s" % [surgery.scenario.title, "%d:%02d" % [int(left) / 60, int(left) % 60] if left >= 0.0 else "no time limit"]
 	_update_objectives()

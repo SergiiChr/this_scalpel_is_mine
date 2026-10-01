@@ -96,6 +96,9 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
 - Gloves pick up blood from the tool they hold, fingertips first, and the sink or a fresh pair cleans them.
   Bloody gloves slowly stain the scrubs, which stay stained for the rest of the surgery.
+- Patient vitals are only on the bedside monitor, never on the player's screen.
+  The monitor is laid out like a real one: sweeping ECG, pleth and breathing traces, numbers in their trace's color,
+  alarms in the top bar and lab results along the bottom.
 - The patient monitor beep is generated in code and its pitch follows SpO2, like a real pulse oximeter.
 
 ## Data formats
