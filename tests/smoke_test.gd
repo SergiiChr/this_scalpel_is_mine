@@ -399,6 +399,11 @@ func _syringe_checks(surgery: Surgery) -> void:
 	patient.flags.erase("drug_propofol")
 	var site := patient.body.uv_to_world(Vector2(0.5, 0.5))
 	syringe.global_transform = Transform3D(Basis.IDENTITY, site + Vector3(0, 0, syringe.def.length))
+	# Tools dropped on the site earlier (the kidney dish) would catch the needle: put them back on the tray.
+	var in_way := tools.nearest_container(site)
+	while in_way:
+		in_way.global_position = spot + Vector3.UP * 0.1
+		in_way = tools.nearest_container(site)
 	while syringe.ml > 0.0:
 		ToolActions.plunge(syringe, -ToolActions.PLUNGER_STEP, patient)
 	syringe.global_position += Vector3.UP * 0.3

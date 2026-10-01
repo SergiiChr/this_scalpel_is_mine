@@ -104,8 +104,6 @@ func notch(pull: bool) -> void:
 	wheel.pressed = true
 	surgery.local_surgeon._unhandled_input(wheel)
 	await frames(2)
-	# The plunger is posed on the next drawn frame.
-	await get_tree().process_frame
 
 
 ## Takes the needle out: the hand goes up and away over the floor.

@@ -8,7 +8,11 @@ const PART_NAMES: PackedStringArray = ["JawA", "JawB", "Plunger", "Trigger", "Bl
 const JAW_OPEN := 0.12
 
 ## How far a syringe's plunger is pulled out (0..1 of its volume): its liquid and any air drawn in.
-var fill := 0.0
+## The plunger moves the moment it changes, with the liquid, not a frame later.
+var fill := 0.0:
+	set(value):
+		fill = value
+		_pose("Plunger", Basis.IDENTITY, Vector3(0, 0, _plunger_travel * fill))
 var _parts: Dictionary = {}
 var _rest: Dictionary = {}
 var _squeeze := 0.0

@@ -4,7 +4,7 @@ extends Node
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
 ## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
-## through the wheel notches and done. --only=<case> renders one.
+## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). --only=<case> renders one.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
@@ -340,6 +340,12 @@ func _syringe(out: String, only: String) -> void:
 		await bench.frames(10)
 		await _shot(out, "40_%s_3_done" % case.name)
 		me.zoom = 0
+		if case.name == "vial_pull":
+			# Held up to read, the printed scale toward the eyes.
+			Input.action_press("inspect")
+			await bench.frames(30)
+			await _shot(out, "41_syringe_held_up")
+			Input.action_release("inspect")
 	get_tree().quit()
 
 

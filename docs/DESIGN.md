@@ -269,7 +269,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - **Drugs come in labelled vials** (`vial_*` in tools.cfg): the name is the label, with the strength per ml.
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
-  what's in which. The barrel is glass with a tick every tenth; the liquid and plunger show how much is in it.
+  what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
+  the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
