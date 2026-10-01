@@ -429,10 +429,12 @@ func _sedation(bench: Bench, out: String) -> void:
 	me.status.drugs.clear()
 	me.status.administer("diazepam", right)
 	await bench.frames(200)
-	for i in 12:
-		me.hands[1].local_target += Vector3(0.02, 0.0, 0.0)
-		await bench.frames(1)
+	# The hand keeps sweeping across while the shot is taken: rendering here is slow, a hand at rest leaves no trail.
+	var sweep := func() -> void: me.hands[1].local_target.x = 0.17 + 0.15 * sin(Time.get_ticks_msec() * 0.006)
+	get_tree().physics_frame.connect(sweep)
+	await bench.frames(30)
 	await _shot(out, "43_sedated_trail")
+	get_tree().physics_frame.disconnect(sweep)
 	me.status.drugs.clear()
 	me.status.administer("diazepam", right * 1.8)
 	await bench.frames(200)
