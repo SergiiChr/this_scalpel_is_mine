@@ -66,8 +66,10 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   so a blade gets a hairline and furniture a full line.
 - Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
   - The skin is a grid of particles joined by springs under tension, loosely anchored to the body. Cells are about
-    6 mm square on every site (`TissueSim.CELL`). Only an active window is simulated: around cuts, grips and skin
-    that moved, plus a margin of still skin. It only grows while the skin moves and is picked afresh once it sleeps.
+    6 mm square (`TissueSim.CELL`), wider on a big site so it has no more than `MAX_CELLS` (a belly's are about
+    9.5 mm): a whole belly folded open moves every particle at once, and that has to fit a frame. Only an active
+    window is simulated: around cuts, grips and skin that moved, plus a margin of still skin. It only grows while the
+    skin moves and is picked afresh once it sleeps.
     Cutting severs springs, so an incision gapes on its own; forceps and retractors pin particles and stretch it further.
   - Each severed spring remembers how deep the cut went (skin, fat or muscle), where the blade crossed it and which
     way the cut ran. The edges of a cut are drawn back square to it, more the deeper it goes: skin gapes a few
@@ -78,24 +80,29 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     keeps its part of the triangle and moves with it. Walls run down each lip through the layer's thickness (pale
     dermis, yellow fat, red muscle), so a cut has depth: a skin cut shows the fat (or the muscle where there's no fat),
     a deeper one the muscle, a full depth cut the bone or organs under it. The meshes rebuild on the frame after the
-    sim steps, so the two costs don't land on one frame.
-  - Fat is per site (`fat` in `patient_sites.json`): none on the forearm, where a cut deeper than the skin goes into the
-    muscle, thickest on the belly.
-  - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index. Springs to the
-    site's fixed border or to skin hanging off the body never snap; springs stretched at rest (the edge of a round limb)
+    sim steps, so the two costs don't land on one frame. Which triangles there are and how they split is planned only
+    when the cuts or the region change; while the skin just moves, only the vertices move.
+  - Fat is per site (`fat` in `patient_sites.json`, 12 mm when a site doesn't say): none on the forearm, where a cut
+    deeper than the skin goes into the muscle.
+  - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index. A spring snaps
+    only if the one going on from it the same way is at least halfway there too: skin tears where it's overstretched
+    over a length, not where one short spring of the grid takes a jump. Springs in the site's outermost strip (under
+    the drape's frame) or to skin hanging off the body never snap; springs stretched at rest (the edge of a round limb)
     break only well past that.
     Stitches are extra springs across the cut, their length is the tension. Thread is stiffer than skin (solved more
     often). A stitch closes a few millimeters of the cut. A cut counts as closed only where its edges meet: a loose
     stitch leaves a gap that stays open and bleeds.
   - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`), not the body's rest shape, so a
     lifted fold is where it's drawn. Over the site a hand rests on that skin, not on the gown's or the site's colliders.
-  - A grip holds the skin within 8 mm of its jaws and drags a patch around it along (never across a cut), so pulls
-    spread and the skin stretches visibly over several centimeters before it tears. Everything that moved is shown
-    simulated.
+  - A grip holds the skin within 10 mm of its jaws at its distance (it can still turn with a flap folded back) and
+    drags a patch around it along (never across a cut), so pulls spread and the skin stretches visibly over several
+    centimeters before it tears. Everything that moved is shown simulated. Grips held still let the sim sleep.
+  - A cut's edge lifted off the body (a flap folded back) isn't drawn back from the cut any more.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
     `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
   - The skin settles under its own tension when it's built, so it starts asleep. The sim sleeps when nothing moves.
-    Skin under the drape's edge isn't counted as exposed, and skin that starts under the drape stays under it.
+    Skin under the drape's edge isn't counted as exposed, and skin that starts under the drape stays under it, unless
+    it was cut free there (a flap cut under the drape's frame takes it along).
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.

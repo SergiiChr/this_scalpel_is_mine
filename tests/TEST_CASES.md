@@ -158,7 +158,7 @@ clock: its speed check and the frame rate only mean something headless. `run_tes
 | C4 | Thigh and belly: moved 2 cm at low the skin opens onto the fat; at medium the fat is cut and the muscle shows; pressed at high it digs deeper |
 | C5 | Thigh and belly: moved 2 cm at high the muscle is cut, the bone (thigh) or organs (belly) lie under it, nothing inside is nicked |
 | C6 | Every move stays a clean incision: no tears, the hand under jagged cut speed |
-| C7 | The incision opens like a zipper: widest along it, closed at both ends |
+| C7 | The incision opens like a zipper: widest along it, narrowing toward both ends |
 | C8 | Every case holds 60 fps on average and in its 1% low frames |
 
 ## Visual checks (not automated)

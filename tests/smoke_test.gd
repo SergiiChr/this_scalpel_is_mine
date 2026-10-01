@@ -669,8 +669,8 @@ static func open_wide(patient: Patient) -> int:
 	var break_mult := tissue.break_mult
 	tissue.break_mult = maxf(break_mult, 1.0)
 	var grips: Array = []
-	# Forceps about every 12 mm along each edge.
-	var spacing := maxi(1, roundi(0.0125 / (patient.body.site_size.x / tissue.res_x)))
+	# Forceps about every 25 mm along each edge.
+	var spacing := maxi(1, roundi(0.025 / (patient.body.site_size.x / tissue.res_x)))
 	for i in range(1, tissue.res_x, spacing):
 		for edge: int in [floori(middle * tissue.res_y), ceili(middle * tissue.res_y)]:
 			var k := tissue.index(i, edge)

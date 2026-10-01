@@ -320,13 +320,14 @@ func _profile() -> String:
 	return " ".join(Array(_gaps()).map(func(g: float) -> String: return "%.1f" % g)) + " mm"
 
 
-## Like opening a zipper: the cut gapes widest somewhere along it and closes toward both ends.
+## Like opening a zipper: the cut gapes widest somewhere along it and narrows toward both ends. The end at the blade
+## is measured at the springs nearest it, up to half a cell behind it on a coarse grid (a belly's), so it needn't be shut.
 func _zipper() -> bool:
 	var gaps := _gaps()
 	var widest := 0.0
 	for g in gaps:
 		widest = maxf(widest, g)
-	return widest > TissueSim.OPEN_GAP * 500.0 and gaps[0] < widest * 0.6 and gaps[-1] < widest * 0.6
+	return widest > TissueSim.OPEN_GAP * 500.0 and gaps[0] < widest * 0.7 and gaps[-1] < widest * 0.7
 
 
 ## There's a bone (or organs) right under the muscle along these points.
