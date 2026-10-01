@@ -5,6 +5,8 @@ extends Node3D
 ## Props are generated models (tools/assetgen/props.py) loaded through ModelSlot.
 
 const TABLE_HEIGHT := 0.85
+## Height of the instrument tray's surface above its base.
+const TRAY_SURFACE := 0.915
 ## Table top ends along x: the feet lie toward FOOT, the head toward HEAD.
 const TABLE_FOOT := -1.3
 const TABLE_HEAD := 1.0
@@ -112,6 +114,17 @@ func spawn_transform(index: int) -> Transform3D:
 	var pos: Vector3 = spots[index % spots.size()] + Vector3(0.35 * (index / spots.size()), 0, 0)
 	var facing := 0.0 if pos.z > 0.0 else PI
 	return Transform3D(Basis(Vector3.UP, facing), pos)
+
+
+## Height of the instrument tray's surface (world space).
+func tray_top() -> float:
+	return (layout.tray as Vector3).y + TRAY_SURFACE
+
+
+## Where tools can lie on the tray, seen from above: x and z (world space), a little in from the rim.
+func tray_area() -> Rect2:
+	var tray: Vector3 = layout.tray
+	return Rect2(tray.x - 0.32, tray.z - 0.37, 0.64, 0.74)
 
 
 func tray_spots() -> Array[Vector3]:

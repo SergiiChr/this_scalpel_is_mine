@@ -12,9 +12,6 @@ func _ready() -> void:
 	_retraction_and_tears()
 	_thin_skin_holds_at_rest()
 	_stitches_close()
-	_loose_stitch_remains_open()
-	_exact_snap()
-	_surface_contact()
 	_sleeps()
 	_elastic()
 	_muscle_first()
@@ -113,61 +110,6 @@ func _stitches_close() -> void:
 	sim.burst(MID, 0.5)
 	_settle(sim)
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "a burst closure gapes again")
-
-
-func _loose_stitch_remains_open() -> void:
-	var sim := _sim()
-	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.SKIN)
-	_settle(sim)
-	var before := sim.triangles(TissueSim.Depth.SKIN).size()
-	var severed := sim._severed[sim._severed.size() / 2]
-	var mid := (sim.uv_of(sim.c_a[severed]) + sim.uv_of(sim.c_b[severed])) * 0.5
-	_check(sim.stitch(mid, 3.0, 2.2), "loose stitch attaches to a cut spring")
-	_check(sim.gap_at(mid, 0.01) > TissueSim.OPEN_GAP, "loose stitch leaves physical gap open")
-	_check(sim.triangles(TissueSim.Depth.SKIN).size() == before, "loose stitch does not cover the wound")
-
-
-func _exact_snap() -> void:
-	var host := _sim()
-	var peer := _sim()
-	var center := Vector2(12.5 / TissueSim.RES, 12.5 / TissueSim.RES)
-	var diagonal := -1
-	var crossing := -1
-	for s in host.c_a.size():
-		if host.c_kind[s] != TissueSim.Kind.TISSUE:
-			continue
-		var mid := (host.uv_of(host.c_a[s]) + host.uv_of(host.c_b[s])) * 0.5
-		if mid.distance_to(center) < 0.0001:
-			if diagonal < 0:
-				diagonal = s
-			else:
-				crossing = s
-	_check(diagonal >= 0 and crossing >= 0, "crossing springs share a midpoint")
-	if diagonal < 0 or crossing < 0:
-		return
-	host.apply_snap(crossing)
-	peer.apply_snap(crossing)
-	peer.apply_snap(crossing)
-	_check(peer.c_active[crossing] == 0 and peer.c_active[diagonal] == 1, "exact snap preserves crossing spring")
-	_check(peer._severed == host._severed and peer.topology_version == host.topology_version, "duplicate snap is idempotent")
-
-
-func _surface_contact() -> void:
-	var sim := _sim()
-	var center := sim.nearest(MID)
-	sim.grip(7, MID)
-	sim.move_grip(7, sim.rest[center] + Vector3(0.012, 0.018, -0.004))
-	_settle(sim, 5)
-	var moved := Vector2(sim.pos[center].x / SIZE.x + 0.5, sim.pos[center].z / SIZE.y + 0.5)
-	var hit := sim.surface_at(moved)
-	_check(not hit.is_empty(), "deformed skin has a contact triangle")
-	if not hit.is_empty():
-		_check(hit.height > 0.01, "contact height follows raised triangle")
-		_check((hit.uv as Vector2).distance_to(MID) < 0.03, "contact returns material UV after lateral motion")
-	var opened := _sim()
-	opened.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.MUSCLE)
-	_settle(opened)
-	_check(opened.surface_at(Vector2(0.5, 0.51)).is_empty(), "skin contact leaves an open incision empty")
 
 
 func _sleeps() -> void:

@@ -385,7 +385,7 @@ func _blade_tips(holder: Node3D) -> void:
 		if blade and handle:
 			var blade_box := blade.mesh.get_aabb()
 			var handle_box := handle.mesh.get_aabb()
-			_check(blade_box.position.z < -0.13 and handle_box.end.z > 0.04, "%s blade points toward -Z working tip" % name)
+			_check(blade_box.position.z < handle_box.position.z and blade_box.end.z <= handle_box.position.z + 0.001 and handle_box.end.z > 0.04, "%s blade points toward -Z working tip" % name)
 		tool.queue_free()
 
 
