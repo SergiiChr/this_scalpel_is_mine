@@ -196,10 +196,10 @@ func _fill(tool: SurgicalTool, ml: float) -> void:
 		surgery.tools.add_liquid(tool, ml, {DRUG: ml * Db.tool(VIAL).concentration})
 
 
-## The far end of the instrument tray, clear of the tools laid out on it.
+## The clear strip down the middle of the instrument tray.
 func _clear_spot() -> Vector3:
-	var room := surgery.room
-	return Vector3(room.tray_area().get_center().x, room.tray_top() + 0.05, room.tray_area().end.y - 0.12)
+	var rest := surgery.room.tray_zone("")
+	return Vector3(rest.end.x + 0.07, rest.position.y + 0.05, rest.get_center().z)
 
 
 func _aim_point(target: String) -> Vector3:

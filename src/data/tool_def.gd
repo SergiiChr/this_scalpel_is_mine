@@ -32,6 +32,8 @@ var length: float
 var width: float
 var color: Color
 var grip: String
+## Group it's laid out with on the instrument tray at the start (Room.TRAY_ZONES), "" for the space left.
+var tray: String
 
 
 static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
@@ -65,4 +67,6 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.width = cfg.get_value(section, "width", 0.012)
 	def.color = cfg.get_value(section, "color", Color.GRAY)
 	def.grip = cfg.get_value(section, "grip", "pencil")
+	var tray_by_action: String = {"syringe": "syringes", "vial": "bottles", "pour": "bottles"}.get(def.action, "")
+	def.tray = cfg.get_value(section, "tray", tray_by_action)
 	return def

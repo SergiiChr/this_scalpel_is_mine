@@ -12,6 +12,26 @@ const TABLE_FOOT := -1.3
 const TABLE_HEAD := 1.0
 ## Bottom of the drip chamber on the IV stand model, where the tubing starts.
 const IV_DRIP_POINT := Vector3(0.08, 1.6, 0.0)
+## Where each group of tools (tray in tools.cfg) lies on the instrument tray at the start: x and z from the tray's
+## middle, its near side (+x) toward the table. Ungrouped tools fill "".
+## Each group fills its spot from the near side, so the usual kit lies mid-tray and extras spread toward the far rim.
+## Nothing lies at the near rim, where a tall patient's feet reach over the tray. The strip down the middle stays clear.
+const TRAY_ZONES: Dictionary = {
+	"instruments": Rect2(0.09, -0.36, 0.16, 0.26),
+	"swabs": Rect2(0.14, -0.07, 0.06, 0.06),
+	"syringes": Rect2(0.12, 0.03, 0.13, 0.17),
+	"bottles": Rect2(-0.32, 0.24, 0.27, 0.08),
+	"": Rect2(-0.32, -0.3, 0.27, 0.5),
+}
+## Groups that stand on their bottom instead of lying down.
+const UPRIGHT: Array[String] = ["bottles"]
+## Groups that lie in a small tray of their own, the size of their zone (built by tools/assetgen/props.py).
+## The swab tray fits one pad, so the pads pile up in it.
+const SMALL_TRAYS: Array[String] = ["instruments", "swabs"]
+## A small tray's floor and rim tops above the instrument tray's surface, and its wall thickness.
+const SMALL_TRAY_FLOOR := 0.004
+const SMALL_TRAY_RIM := 0.016
+const SMALL_TRAY_WALL := 0.006
 ## Solid footprint (width, height, depth) of props you can put things on and can't walk through.
 const STATION_SOLIDS: Dictionary = {
 	"bell": Vector3(0.6, 0.9, 0.45),
@@ -126,10 +146,16 @@ func tray_top() -> float:
 	return (layout.tray as Vector3).y + TRAY_SURFACE
 
 
-## Where tools can lie on the tray, seen from above: x and z (world space), a little in from the rim.
-func tray_area() -> Rect2:
+## Where a group of tools lies at the start (TRAY_ZONES): the area seen from above, in world space, at the height of
+## what it lies on. Inside a small tray it keeps a little off the walls.
+func tray_zone(group: String) -> AABB:
+	var area: Rect2 = TRAY_ZONES.get(group, TRAY_ZONES[""])
+	var bottom := tray_top()
+	if group in SMALL_TRAYS:
+		area = area.grow(-SMALL_TRAY_WALL - 0.004)
+		bottom += SMALL_TRAY_FLOOR
 	var tray: Vector3 = layout.tray
-	return Rect2(tray.x - 0.32, tray.z - 0.37, 0.64, 0.74)
+	return AABB(Vector3(tray.x + area.position.x, bottom, tray.z + area.position.y), Vector3(area.size.x, 0.0, area.size.y))
 
 
 func tray_spots() -> Array[Vector3]:
@@ -322,6 +348,14 @@ func _build_tray() -> void:
 	var tray := ModelSlot.instantiate("props", "instrument_tray", self)
 	tray.position = layout.tray
 	Shapes.static_box(self, Vector3(0.7, 0.05, 0.8), layout.tray + Vector3(0, TRAY_SURFACE - 0.025, 0))
+	for group in SMALL_TRAYS:
+		var area: Rect2 = TRAY_ZONES[group]
+		var middle: Vector3 = layout.tray + Vector3(area.get_center().x, TRAY_SURFACE, area.get_center().y)
+		Shapes.static_box(self, Vector3(area.size.x, SMALL_TRAY_FLOOR, area.size.y), middle + Vector3(0, SMALL_TRAY_FLOOR * 0.5, 0))
+		for side: float in [-1.0, 1.0]:
+			var rim := Vector3(0, SMALL_TRAY_RIM * 0.5, 0)
+			Shapes.static_box(self, Vector3(SMALL_TRAY_WALL, SMALL_TRAY_RIM, area.size.y), middle + rim + Vector3(side * (area.size.x - SMALL_TRAY_WALL) * 0.5, 0, 0))
+			Shapes.static_box(self, Vector3(area.size.x, SMALL_TRAY_RIM, SMALL_TRAY_WALL), middle + rim + Vector3(0, 0, side * (area.size.y - SMALL_TRAY_WALL) * 0.5))
 
 
 func _build_stations(s: Surgery) -> void:
