@@ -12,4 +12,5 @@ Buses: `SFX`, `Voice`, `Music` (volume sliders in Settings).
 
 The patient monitor beep, flatline and alarm are generated live in `src/world/patient_monitor.gd`
 (pitch follows SpO2 like a real pulse oximeter).
+Continuous blade, swab and suction beds are loop-safe; tool contact and movement set their live level.
 Optional recorded patient lines can go in `voice/<trigger>_<index>.ogg`, see `data/dialogue/patient_lines.cfg`.

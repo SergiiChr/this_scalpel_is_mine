@@ -76,6 +76,8 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		_bloody(tool, zone, uv, patient, dt)
 	var def := tool.def
 	var mods: Modifiers = hand.mods
+	if lowered and zone in ["site", "cavity"]:
+		_contact_sound(tool, hand.speed, level, effort, tip)
 	match def.action:
 		"cut":
 			if lowered and level > 0 and zone == "site":
@@ -299,6 +301,32 @@ static func update_standing(tool: SurgicalTool, patient: Patient, dt: float) -> 
 		tool.grip_info = patient.update_grip(tool.uid, tool.grip_info, tool.tip_position(), tool.def.power, dt, 0.0)
 		if tool.grip_info.type == "none":
 			tool.grip_info = {}
+
+
+## A looping bed under a blade, swab, clamp or suction tip working the site, louder the faster it moves.
+## It plays even when nothing gets cut: the one-shots (cut, sizzle, saw, slurp) mark the actual effect.
+static func _contact_sound(tool: SurgicalTool, speed: float, level: int, effort: float, tip: Vector3) -> void:
+	var id := ""
+	var strength := 0.0
+	match tool.def.action:
+		"cut":
+			if level > 0 and speed > 0.015:
+				id = "contact_cut"
+				strength = clampf(speed * 2.5, 0.2, 1.0)
+		"swab":
+			if level > 0 and speed > 0.01:
+				id = "contact_swab"
+				strength = clampf(speed * 2.0, 0.15, 0.75)
+		"clamp":
+			if not tool.grip_info.is_empty() and speed > 0.01:
+				id = "contact_swab"
+				strength = clampf(speed * 1.5, 0.15, 0.6)
+		"suction":
+			if level > 0:
+				id = "contact_suction"
+				strength = effort
+	if not id.is_empty():
+		Surgery.current.contact_sound(tool.uid, id, tip, strength)
 
 
 static func _on_contact(tool: SurgicalTool, zone: String, probe: Dictionary, patient: Patient) -> void:

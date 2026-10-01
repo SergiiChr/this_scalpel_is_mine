@@ -419,6 +419,10 @@ func _syringe_checks(surgery: Surgery) -> void:
 	# Dropped on the floor, it shatters.
 	syringe.global_position = surgery.room.spawn_transform(1).origin + Vector3(0, 0.6, 0)
 	syringe.linear_velocity = Vector3.ZERO
+	syringe.sleeping = false
+	# Let the physics server receive the teleported, awake body before marking
+	# it as a live drop; otherwise stale tray contacts can settle it immediately.
+	await _frames(1)
 	syringe.set_meta("falling", true)
 	await _frames(90)
 	if syringe.state != SurgicalTool.State.CONSUMED:

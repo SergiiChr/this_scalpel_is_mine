@@ -8,8 +8,9 @@ const FLESH := preload("res://assets/shaders/flesh.gdshader")
 const SKIN := preload("res://assets/shaders/skin.gdshader")
 const TISSUE_LAYER := preload("res://assets/shaders/tissue_layer.gdshader")
 
+## Patient skin. A slight red bias keeps light skin reading as perfused rather than cream under the surgical lamp.
 const SKIN_TONES: Array[Color] = [
-	Color(0.87, 0.7, 0.6), Color(0.78, 0.58, 0.45), Color(0.6, 0.42, 0.3), Color(0.42, 0.28, 0.2),
+	Color(0.82, 0.61, 0.53), Color(0.73, 0.5, 0.4), Color(0.56, 0.37, 0.26), Color(0.4, 0.24, 0.18),
 ]
 
 ## Hospital palette. Surgical green for walls and linens (it's easy on eyes that stare at red all day),

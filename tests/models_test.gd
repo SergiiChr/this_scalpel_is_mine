@@ -18,6 +18,11 @@ const BUDGETS: Dictionary = {
 }
 
 
+func _check(ok: bool, what: String) -> void:
+	if not ok:
+		print("FAIL: ", what)
+
+
 func _ready() -> void:
 	var holder := Node3D.new()
 	add_child(holder)
@@ -41,12 +46,18 @@ func _ready() -> void:
 			kinds[target.get("kind", "bullet")] = true
 	for kind: String in kinds:
 		_exists("targets", kind)
+	_hand_pose_limits(holder)
+	_blade_tips(holder)
+	_contact_audio()
+	_iv_line_clearance(holder)
 	_check_budgets(holder)
 	for hand_index in 2:
 		await _grip_clearance(holder, hand_index)
 		_hand_turn(holder, hand_index)
 	_arm_limits(holder)
 	await _cuff_fit(holder)
+	# Let the queue_free()d contact loops and test hands go before quitting.
+	await get_tree().process_frame
 	print("models_test: done")
 	get_tree().quit()
 
@@ -321,6 +332,74 @@ func _check_budgets(holder: Node3D) -> void:
 			if count > int(BUDGETS[category]):
 				print("FAIL: %s/%s has %d triangles, budget %d" % [category, file, count, BUDGETS[category]])
 			model.queue_free()
+
+
+func _hand_pose_limits(holder: Node3D) -> void:
+	var scrubs := Materials.toon_unique(Materials.SCRUBS[0], 0.08, false, 0.9)
+	for side in 2:
+		var hand := SurgeonHand.new()
+		holder.add_child(hand)
+		hand.build(side, scrubs)
+		var shoulder := Vector3(-0.2 if side == 0 else 0.2, 1.4, 0)
+		for target in [shoulder, shoulder + Vector3.DOWN * 0.68, shoulder + Vector3.UP * 0.25]:
+			hand.target = target
+			for grip in SurgeonHand.GRIPS:
+				hand.grip = grip
+				hand.holding = true
+				hand.update_pose(shoulder, 1.0 / 30.0)
+				for part: Node3D in [hand._upper, hand._fore, hand._glove]:
+					var basis := part.global_basis
+					_check(part.global_position.is_finite() and basis.x.is_finite() and basis.y.is_finite() and basis.z.is_finite() and absf(basis.determinant()) > 0.00001, "finite mirrored %s pose at limit" % grip)
+		hand.queue_free()
+
+
+func _blade_tips(holder: Node3D) -> void:
+	for name in ["scalpel", "switchblade"]:
+		var tool := ModelSlot.instantiate("tools", name, holder)
+		var blade := tool.find_child("Blade", true, false) as MeshInstance3D
+		var handle := tool.find_child("Handle", true, false) as MeshInstance3D
+		_check(blade != null and handle != null, "%s has separate blade and handle" % name)
+		if blade and handle:
+			var blade_box := blade.mesh.get_aabb()
+			var handle_box := handle.mesh.get_aabb()
+			_check(blade_box.position.z < handle_box.position.z and blade_box.end.z <= handle_box.position.z + 0.001 and handle_box.end.z > 0.04, "%s blade points toward -Z working tip" % name)
+		tool.queue_free()
+
+
+func _contact_audio() -> void:
+	Sfx.contact(9101, "contact_cut", Vector3.ZERO, 0.5)
+	_check(Sfx._contacts.has(9101), "contact audio starts a blade loop")
+	if not Sfx._contacts.has(9101):
+		return
+	var player: AudioStreamPlayer3D = Sfx._contacts[9101].player
+	Sfx.contact(9101, "contact_cut", Vector3.ONE, 1.0)
+	_check(Sfx._contacts[9101].player == player and player.position == Vector3.ONE, "contact audio reuses and moves its loop")
+	Sfx.contact(9102, "contact_cut", Vector3.ZERO, 0.5)
+	Sfx.contact(9103, "contact_suction", Vector3.ZERO, 0.5)
+	Sfx.contact(9104, "contact_swab", Vector3.ZERO, 0.5)
+	_check(Sfx._contacts.size() == Sfx.CONTACT_LIMIT and not Sfx._contacts.has(9104), "quiet swab does not evict a louder loop")
+	for key: int in Sfx._contacts:
+		Sfx._contacts[key].last = Time.get_ticks_msec() - Sfx.CONTACT_TIMEOUT_MSEC - 1
+	Sfx._process(1.0)
+	_check(Sfx._contacts.is_empty(), "stale contact loops fade away")
+
+
+func _iv_line_clearance(holder: Node3D) -> void:
+	var line := IvLine.new()
+	holder.add_child(line)
+	var stand := Node3D.new()
+	var patient := Node3D.new()
+	holder.add_child(stand)
+	holder.add_child(patient)
+	patient.position.x = 1.0
+	line.attach(stand, Vector3(0.0, 1.6, 0.0), patient, Vector3(0.0, 1.4, 0.0))
+	var lowest := INF
+	for point in line._points:
+		lowest = minf(lowest, point.y)
+	_check(line._points.size() == IvLine.SAMPLES and lowest < IvLine.TRIP_HEIGHT - 0.04, "IV attachment immediately builds tubing at walking trip height")
+	line.queue_free()
+	stand.queue_free()
+	patient.queue_free()
 
 
 static func _triangles(root: Node) -> int:

@@ -44,6 +44,7 @@ var _announced: Dictionary = {}
 var _status_acc := 0.0
 var _qte: Dictionary = {}
 var _sound_msec: Dictionary = {}
+var _contact_msec: Dictionary = {}
 var _effect_msec: Dictionary = {}
 var _effects := ToolEffects.new()
 
@@ -201,6 +202,17 @@ func sound(id: String, at: Vector3 = Vector3.INF) -> void:
 	_sound.rpc(id, at)
 
 
+## Continuous contact is sampled rather than retransmitting a one-shot each frame.
+func contact_sound(uid: int, id: String, at: Vector3, strength: float) -> void:
+	if not multiplayer.is_server():
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_contact_msec.get(uid, -120)) < 120:
+		return
+	_contact_msec[uid] = now
+	_contact_sound.rpc(uid, id, at, strength)
+
+
 ## Host: a tool effect on every peer (ToolEffects), at most one per kind every min_msec.
 func effect(kind: String, at: Vector3, min_msec: int = 120) -> void:
 	var now := Time.get_ticks_msec()
@@ -288,6 +300,11 @@ func _toast_debug(text: String) -> void:
 @rpc("authority", "call_local", "unreliable")
 func _sound(id: String, at: Vector3) -> void:
 	Sfx.play(id, at)
+
+
+@rpc("authority", "call_local", "unreliable")
+func _contact_sound(uid: int, id: String, at: Vector3, strength: float) -> void:
+	Sfx.contact(uid, id, at, strength)
 
 
 @rpc("authority", "call_local", "unreliable")
