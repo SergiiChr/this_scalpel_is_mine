@@ -56,6 +56,9 @@ const FLAP_MOVE := 0.04
 const DRAPE_FLOOR_CELL := 0.01
 ## Points per side the site's skin heights are measured at on the body model.
 const HEIGHTS := 33
+## Skin on the region's edge that moved less than this (meters) is drawn right on the body model next to it: a cut
+## drawing its edges back reaches a few millimeters, a flap folded back moves centimeters.
+const EDGE_HOLD := 0.005
 ## Points per side of an organ's footprint where the skin over it is measured.
 const ORGAN_SAMPLES := 5
 ## Rays onto the body model start this far out along the site's normal (meters).
@@ -1036,11 +1039,11 @@ func layer_point(layer: int, k: int) -> Vector3:
 
 ## How far the sim moved grid point k since it settled, less any way back toward the body model: tension holds the
 ## sheet off a curved body, and where a cut lets go of it the skin springs back, to where it's drawn already.
-## None on the region's edge where it moved less than the region takes in (TissueSim.REGION_MOVE): that still shows
-## a step against the body model next to it.
+## None on the region's edge, where the body model next to it would show a step, unless it moved further than
+## EDGE_HOLD (a flap folded back).
 func _moved(k: int) -> Vector3:
 	var moved := tissue.pos[k] - tissue.settled[k]
-	if k < _region_edge.size() and _region_edge[k] == 1 and moved.length() <= TissueSim.REGION_MOVE:
+	if k < _region_edge.size() and _region_edge[k] == 1 and moved.length() <= EDGE_HOLD:
 		return Vector3.ZERO
 	var fit := _on_model[k] - tissue.settled[k]
 	if fit.is_zero_approx():

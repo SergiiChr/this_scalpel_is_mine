@@ -983,7 +983,9 @@ func _stay_above_floor() -> void:
 		if _free[k] == 0.0:
 			continue
 		if exposed[k] == 1:
-			if not floor_open.has_point(Vector2(pos[k].x, pos[k].z)):
+			# Only skin folded out: skin still near where it rests may lie just past the opening's edge, where the
+			# drape's coarse grid can read below it on a steep flank and then step up as it moves, ratcheting it up.
+			if not floor_open.has_point(Vector2(pos[k].x, pos[k].z)) and pos[k].distance_squared_to(settled[k]) > LIFTED_OFF * LIFTED_OFF:
 				pos[k] = _above_floor(k, pos[k])
 		elif _cut_free[k] == 0 and settled.size() == pos.size():
 			# No higher than the drape lets it, or where it rested if the drape lies lower than that.
