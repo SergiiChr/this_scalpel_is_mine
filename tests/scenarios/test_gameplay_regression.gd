@@ -1,12 +1,14 @@
-extends Node
-## Headless smoke test: loads every scenario, uses every tool on the patient, fires every event and drug,
+extends GutTest
+## Slow regression: loads every scenario, uses every tool on the patient, fires every event and drug,
 ## turns the patient and builds the report. Any script error shows up in the output.
-## Run: godot --headless --path . res://tests/smoke_test.tscn
+
+const TAGS = ["slow", "scenario"]
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 
 
-func _ready() -> void:
+func test_all_gameplay_systems_in_every_scenario() -> void:
+	var exercised := 0
 	var only := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--scenario="):
@@ -15,8 +17,8 @@ func _ready() -> void:
 		if only and scenario.id != only:
 			continue
 		await _run(scenario)
-	print("smoke_test: done")
-	get_tree().quit()
+		exercised += 1
+	assert_eq(exercised, 1 if only else Db.scenarios.size(), "every selected scenario completed the broad gameplay sweep")
 
 
 func _run(scenario: ScenarioDef) -> void:

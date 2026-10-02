@@ -1,12 +1,13 @@
-extends Node
-## Soft tissue sim checks. Prints "FAIL: ..." for each broken expectation, run_tests.sh fails on those.
-## Run: godot --headless --path . res://tests/tissue_test.tscn
+extends GutTest
+## Programmatic soft-tissue geometry and physics checks.
+
+const TAGS = ["smoke", "tussue_modification"]
 
 const SIZE := Vector2(0.3, 0.25)
 const MID := Vector2(0.5, 0.5)
 
 
-func _ready() -> void:
+func test_tissue_geometry_and_physics_contracts() -> void:
 	_cut_gapes()
 	_depth_layers()
 	_retraction_and_tears()
@@ -22,8 +23,6 @@ func _ready() -> void:
 	_stays_on_body()
 	_folds_onto_drape()
 	_piece_comes_off()
-	print("tissue_test: done")
-	get_tree().quit()
 
 
 func _sim() -> TissueSim:
@@ -38,9 +37,9 @@ func _settle(sim: TissueSim, steps: int = 60) -> void:
 		sim._substep()
 
 
-func _check(ok: bool, what: String) -> void:
-	if not ok:
-		print("FAIL: ", what)
+func _check(ok: bool, what: String) -> bool:
+	assert_true(ok, what)
+	return ok
 
 
 func _cut_gapes() -> void:

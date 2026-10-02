@@ -1,7 +1,7 @@
 extends Node
-## Spotty connection test: run_tests.sh freezes the client process (SIGSTOP) for 10 seconds mid-surgery, then resumes it.
+## Spotty connection driver: the GUT network test freezes the client for 10 seconds, then resumes it.
 ## Both sides must still be in the same surgery afterwards, and the host must have paused the silent player's input.
-## Run: see run_tests.sh (needs the shell to freeze and resume the client).
+## Run through tests/network/test_multiplayer.gd.
 
 const PORT := 24598
 

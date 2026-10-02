@@ -1,7 +1,8 @@
-extends Node
+extends GutTest
 ## Model contract checks: every model the game loads exists, and the rigged ones have the bones and parts the
-## animation code drives. Prints "FAIL: ..." for each problem; run_tests.sh fails on those.
-## Run: godot --headless --path . res://tests/models_test.tscn
+## animation code drives.
+
+const TAGS = ["smoke"]
 
 const PATIENT_BONES: PackedStringArray = [
 	"Torso", "Chest", "Neck", "Head", "Jaw",
@@ -18,12 +19,12 @@ const BUDGETS: Dictionary = {
 }
 
 
-func _check(ok: bool, what: String) -> void:
-	if not ok:
-		print("FAIL: ", what)
+func _check(ok: bool, what: String) -> bool:
+	assert_true(ok, what)
+	return ok
 
 
-func _ready() -> void:
+func test_model_rig_geometry_and_budget_contracts() -> void:
 	var holder := Node3D.new()
 	add_child(holder)
 	_rig("patient", "body", PATIENT_BONES, PATIENT_PARTS, holder)
@@ -56,10 +57,8 @@ func _ready() -> void:
 		_hand_turn(holder, hand_index)
 	_arm_limits(holder)
 	await _cuff_fit(holder)
-	# Let the queue_free()d contact loops and test hands go before quitting.
+	# Let the queue_free()d contact loops and test hands go before returning.
 	await get_tree().process_frame
-	print("models_test: done")
-	get_tree().quit()
 
 
 ## Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in:
@@ -79,7 +78,7 @@ func _hand_turn(holder: Node3D, hand_index: int) -> void:
 			var back := hand._glove.global_basis.y.normalized()
 			var facing := back.dot(outward) if grip == "fist" else back.dot(Vector3.UP)
 			if facing < 0.3:
-				print("FAIL: the %s hand holding a %s at %s is twisted (back of the hand %s)" % ["left" if hand_index == 0 else "right", def.id, hand.target, back])
+				fail_test("the %s hand holding a %s at %s is twisted (back of the hand %s)" % ["left" if hand_index == 0 else "right", def.id, hand.target, back])
 	hand.get_parent().queue_free()
 
 
@@ -107,12 +106,12 @@ func _arm_limits(holder: Node3D) -> void:
 				hand.snap_pose(shoulder)
 				var parts: Array[Transform3D] = [hand._glove.global_transform, hand._fore.global_transform, hand._upper.global_transform]
 				if not parts.all(func(t: Transform3D) -> bool: return t.is_finite()):
-					print("FAIL: the %s hand %s, arm %s, isn't finite" % ["left" if hand.index == 0 else "right", "holding by " + grip if grip else "empty", limit])
+					fail_test("the %s hand %s, arm %s, isn't finite" % ["left" if hand.index == 0 else "right", "holding by " + grip if grip else "empty", limit])
 				gloves.append(hand._glove.global_transform)
 			# Mirrored across the body's middle, the left glove lands exactly on the right one.
 			var left := Transform3D(Basis.from_scale(Vector3(-1, 1, 1)), Vector3.ZERO) * gloves[0]
 			if left.origin.distance_to(gloves[1].origin) > 0.002 or not left.basis.is_equal_approx(gloves[1].basis):
-				print("FAIL: the hands %s, arm %s, don't mirror each other (left %s, right %s)" % ["holding by " + grip if grip else "empty", limit, gloves[0], gloves[1]])
+				fail_test("the hands %s, arm %s, don't mirror each other (left %s, right %s)" % ["holding by " + grip if grip else "empty", limit, gloves[0], gloves[1]])
 	for hand in hands:
 		hand.get_parent().queue_free()
 
@@ -195,7 +194,7 @@ func _check_cuff(hand: SurgeonHand, what: String) -> void:
 		if not covered:
 			poking += 1
 	if poking > 0:
-		print("FAIL: the sleeve pokes through the glove's cuff, %s (%d points)" % [what, poking])
+		fail_test("the sleeve pokes through the glove's cuff, %s (%d points)" % [what, poking])
 	# The cuff proper (well behind the wrist, still over the sleeve) keeps close to the sleeve all round.
 	var rings := _sleeve_rings(sleeve, end, back)
 	var standing := 0
@@ -205,7 +204,7 @@ func _check_cuff(hand: SurgeonHand, what: String) -> void:
 		if along > 0.004 and _radius(p, end, back) > _sleeve_radius(rings, along) + CUFF_STANDOFF:
 			standing += 1
 	if standing > 0:
-		print("FAIL: the glove's cuff sticks out from the sleeve, %s (%d points)" % [what, standing])
+		fail_test("the glove's cuff sticks out from the sleeve, %s (%d points)" % [what, standing])
 
 
 ## The sleeve's rings: millimeters along it from its end -> its radius there. Its vertices all lie on a few rings.
@@ -291,7 +290,7 @@ func _grip_clearance(holder: Node3D, hand_index: int) -> void:
 		await get_tree().physics_frame
 		var clipped := GripCheck.clipped(hand)
 		if clipped > 0:
-			print("FAIL: the %s goes through the %s glove holding it (%d points)" % [model_id, "left" if hand_index == 0 else "right", clipped])
+			fail_test("the %s goes through the %s glove holding it (%d points)" % [model_id, "left" if hand_index == 0 else "right", clipped])
 		tool.queue_free()
 		await get_tree().physics_frame
 	hand.get_parent().queue_free()
@@ -300,7 +299,7 @@ func _grip_clearance(holder: Node3D, hand_index: int) -> void:
 func _exists(category: String, model_name: String) -> bool:
 	var path := "%s/%s/%s.glb" % [ModelSlot.ROOT, category, model_name]
 	if not ResourceLoader.exists(path):
-		print("FAIL: missing model ", path)
+		fail_test("missing model %s" % path)
 		return false
 	return true
 
@@ -311,14 +310,14 @@ func _rig(category: String, model_name: String, bones: PackedStringArray, parts:
 	var model := ModelSlot.instantiate(category, model_name, holder)
 	var rig := BoneRig.find(model)
 	if rig == null:
-		print("FAIL: %s/%s has no skeleton" % [category, model_name])
+		fail_test("%s/%s has no skeleton" % [category, model_name])
 		return
 	for bone in bones:
 		if not rig.has(bone):
-			print("FAIL: %s/%s has no bone %s" % [category, model_name, bone])
+			fail_test("%s/%s has no bone %s" % [category, model_name, bone])
 	for part in parts:
 		if model.find_child(part, true, false) == null:
-			print("FAIL: %s/%s has no part %s" % [category, model_name, part])
+			fail_test("%s/%s has no part %s" % [category, model_name, part])
 
 
 func _check_budgets(holder: Node3D) -> void:
@@ -330,7 +329,7 @@ func _check_budgets(holder: Node3D) -> void:
 			var model := ModelSlot.instantiate(category, file.get_basename(), holder)
 			var count := _triangles(model)
 			if count > int(BUDGETS[category]):
-				print("FAIL: %s/%s has %d triangles, budget %d" % [category, file, count, BUDGETS[category]])
+				fail_test("%s/%s has %d triangles, budget %d" % [category, file, count, BUDGETS[category]])
 			model.queue_free()
 
 

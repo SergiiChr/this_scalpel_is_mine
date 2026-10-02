@@ -1,11 +1,10 @@
 extends Node
 ## Two-process network test. Start one with --role=host and one with --role=client.
 ## The driver lives under the tree root so it survives scene changes (lobby -> surgery).
-## Run: godot --headless --path . res://tests/net_test.tscn -- --role=host
-##      godot --headless --path . res://tests/net_test.tscn -- --role=client
+## Process driver for tests/network/test_multiplayer.gd.
 
 const PORT := 24599
-const Slicing := preload("res://tests/slicing_test.gd")
+const Slicing := preload("res://tests/support/slicing_suite.gd")
 
 
 func _ready() -> void:
@@ -91,6 +90,9 @@ func _drive(role: String, driver: Node) -> void:
 		await tree.create_timer(1.0).timeout
 		var got := host_me.held_tool(0)
 		print("[host] partner handed me: ", got.def.id if got else "nothing")
+	# Sample the persistent network state only after the cut mesh has had time to settle on both peers. Without this,
+	# a freshly imported project can catch the same transient raised seam on both host and client.
+	await tree.create_timer(2.0).timeout
 	var surgeon_wounds := surgery.patient.wounds.filter(func(w: Wound) -> bool: return w.made_by_surgeon).size()
 	var painted := 0
 	var image := surgery.patient.body.wound_map.images[0]

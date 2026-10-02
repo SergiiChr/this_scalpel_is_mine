@@ -3,14 +3,14 @@ extends Node
 ## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
-## --syringe renders every case of tests/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
+## --syringe renders every case of tests/support/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
 ## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
 ## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*), then a sedated and a
 ## knocked out surgeon (43_* to 46_*, --only=sedation). --only=<case> renders one.
 ## Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
-const Bench := preload("res://tests/syringe_bench.gd")
+const Bench := preload("res://tests/support/syringe_bench.gd")
 
 
 func _ready() -> void:
@@ -199,7 +199,7 @@ func _ready() -> void:
 ## --anatomy: the site opened wide (chest, belly) or cut to the bone (limbs), a top organ held aside,
 ## a tourniquet on the thigh and a syringe held up to read.
 func _anatomy(surgery: Surgery, out: String) -> void:
-	var smoke := preload("res://tests/smoke_test.gd")
+	var smoke := preload("res://tests/scenarios/test_gameplay_regression.gd")
 	var patient := surgery.patient
 	var body := patient.body
 	var camera := Camera3D.new()

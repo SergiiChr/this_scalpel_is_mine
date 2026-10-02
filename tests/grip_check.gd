@@ -1,5 +1,5 @@
 extends RefCounted
-## Holding a tool the way the game does and finding where it goes through the glove. Shared by tests/models_test.gd
+## Holding a tool the way the game does and finding where it goes through the glove. Shared by the model GUT suite.
 ## (checks every tool) and tests/fit_grips.gd (fits every grip so nothing does).
 
 const SOLID_LAYER := 1 << 19

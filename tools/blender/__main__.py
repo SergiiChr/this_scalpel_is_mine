@@ -66,7 +66,7 @@ def _still(name: str, build: Callable[[], None], budget: int, ship: str = "") ->
 
 
 # Triangles per model. Organs and targets are small on screen and several can be out at once;
-# tests/models_test.gd holds the shipped files to the same numbers.
+# tests/models/test_models.gd holds the shipped files to the same numbers.
 BUDGETS = {
     "bowel": 7000,
     "lobe": 5000,

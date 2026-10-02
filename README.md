@@ -69,7 +69,7 @@ Design lives in plain files; the game reads them at startup, so change the file,
 | Surgical sites on the body | [data/patient_sites.json](data/patient_sites.json) |
 | Patient dialogue, sounds | [data/dialogue/](data/dialogue), [data/audio.cfg](data/audio.cfg) |
 | In-game manual | [data/manual/](data/manual) |
-| Tested cases | [tests/TEST_CASES.md](tests/TEST_CASES.md) |
+| Tested cases | Executable GUT cases under [`tests/`](tests/) |
 | Model names, parts and bones the game expects | [assets/models/README.md](assets/models/README.md) |
 | Architecture, data formats, mechanics list | [docs/DESIGN.md](docs/DESIGN.md) |
 
@@ -140,6 +140,7 @@ tools/blender/   Organic and rigged models built with Blender (Python)
 ./build.sh shots   # screenshots of a scenario in a virtual display: ./build.sh shots [scenario] [out dir]
 ```
 
-Every tested case is listed in [tests/TEST_CASES.md](tests/TEST_CASES.md). `./build.sh` runs the tests before exporting, and CI runs them on every push and pull request.
+The GUT scripts under [`tests/`](tests/) are the test catalog and source of truth. `./build.sh test` runs the fast
+headless smoke tag; `./build.sh test --all` runs the full regression. CI gates the full suite and export on smoke.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for architecture, data formats and the mechanics list.

@@ -1,16 +1,17 @@
-extends Node
-## Headless syringe test: the wheel works the plunger 1 ml a notch in every case of tests/syringe_bench.gd, and the
+extends GutTest
+## Headless syringe test: the wheel works the plunger 1 ml a notch in every case of the shared syringe bench, and the
 ## syringe, its target and what the patient got all add up after every notch.
-## Run: godot --headless --path . res://tests/syringe_test.tscn [-- --case=vein_pull], or a prefix: --case=catheter
+## The table below is the executable source of truth for all syringe and IV cases.
 
-const Bench := preload("res://tests/syringe_bench.gd")
+const TAGS = ["smoke", "liquids", "tool_syringe_3", "tool_syringe_10", "tool_syringe_50", "tool_iv_catheter"]
+const Bench := preload("res://tests/support/syringe_bench.gd")
 
 var bench: Bench
 ## Doses the host gave surgeons: [peer, drug, amount].
 var doses: Array = []
 
 
-func _ready() -> void:
+func test_syringe_iv_and_plunger_cases() -> void:
 	bench = Bench.new()
 	add_child(bench)
 	await bench.start()
@@ -36,8 +37,6 @@ func _ready() -> void:
 		await _sedated_surgeon_checks()
 	if "needle_hand".begins_with(only):
 		await _hand_checks()
-	print("syringe_test: done")
-	get_tree().quit()
 
 
 ## Y1-Y3: the wheel moves the plunger instead of setting a level, the hints say so, and the last zoom step frames the
@@ -398,5 +397,5 @@ static func _fade(hand: SurgeonHand) -> float:
 
 
 func _check(ok: bool, what: String) -> bool:
-	print(("ok    " if ok else "FAIL: ") + what)
+	assert_true(ok, what)
 	return ok

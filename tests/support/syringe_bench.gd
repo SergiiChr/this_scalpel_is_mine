@@ -1,5 +1,5 @@
 extends Node
-## Stages the syringe cases for tests/syringe_test.gd (checks) and tests/screenshot.gd --syringe (pictures):
+## Stages the syringe cases for GUT checks and deliberate visual captures:
 ## the local surgeon holds a syringe with its needle in the case's target and works the plunger with wheel notches.
 ## Over a vial, the dish or the IV drip the needle just rests there; on the patient or a surgeon Use tool presses it
 ## in and stays held. The wheel works the plunger either way. stage_catheter() puts an IV catheter on the forearm
