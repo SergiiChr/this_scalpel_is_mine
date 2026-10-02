@@ -147,6 +147,7 @@ Two real game processes on localhost, one hosting and one joining.
 | N3 | The client hands the tool across the table to the host's hand |
 | N4 | Host and client end with the same painted wound map |
 | N5 | Host and client end with the same cut tissue: the same severed springs and the same topology hash (`TissueSim.topology_hash()`) |
+| N5b | Host and client measure the same site on the body model (`PatientBody.shape_hash()`), and on both the simulated skin meets the model where the cut opened it, under 0.3 mm off |
 | N6 | Spotty connection: the client process is frozen for 10 s mid-surgery (past ENet's default timeout). Nobody gets disconnected, both are still in the same surgery afterwards, and the host paused the silent player's tool while they were gone (`tests/net_stall_test.gd`) |
 
 ## Close up slicing (`tests/slicing_test.gd`)
@@ -175,6 +176,7 @@ clock: its speed check and the frame rate only mean something headless. `run_tes
 | C9 | Skin graft, every case (`--case=arm_graft\|thigh_graft\|belly_graft`): a 3 cm circle cut at low, the blade rolled to follow it; halfway round the skin inside is still joined, closed it's a free piece, cut through the skin only, no tears |
 | C10 | Skin graft: forceps in the other hand pinch the piece and lift it 4 mm, still in place; lifted higher it comes off whole and the forceps hold it as a one-use skin graft |
 | C11 | Skin graft: the wound shows the fat (thigh, belly) or the muscle (arm) under the skin, with no tears around it, at 60 fps |
+| C12 | Every case and skin graft: along the edge of the simulated skin, where the body model takes over, the skin lies on the model (under 0.3 mm off), so no step shows |
 
 ## Visual checks (not automated)
 

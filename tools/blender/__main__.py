@@ -32,7 +32,6 @@ def _patient() -> list[Path]:
     rig = patient.build()
     scene.export(OUT / "patient.glb")
     scene.export(ASSETS / "patient" / "body.glb")
-    patient.bake_site_heights()
     shots = scene.render_views(OUT, "patient", [("top", (0.0, 1.0, 0.02)), ("left_side", (0.0, 0.15, 1.0)), ("three_quarter", (-0.6, 0.8, 0.7))])
     face = ((0.655, 0.05, 0.0), 0.13)
     head_up = (1.0, 0.0, 0.0)

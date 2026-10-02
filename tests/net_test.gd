@@ -5,6 +5,7 @@ extends Node
 ##      godot --headless --path . res://tests/net_test.tscn -- --role=client
 
 const PORT := 24599
+const Slicing := preload("res://tests/slicing_test.gd")
 
 
 func _ready() -> void:
@@ -43,8 +44,16 @@ func _drive(role: String, driver: Node) -> void:
 	print("[%s] surgery running, surgeons=%d tools=%d" % [role, surgery.surgeons.size(), surgery.tools.tools.size()])
 	if role == "client":
 		var me := surgery.local_surgeon
-		var free: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE)
-		var cutters := free.filter(func(t: SurgicalTool) -> bool: return t.def.action == "cut")
+		var free: Array = []
+		var cutters: Array = []
+		# Like a player, wait a moment for a blade on the tray: it may still be filling in. Not long: the host only waits
+		# so long for the handoff before it ends the session.
+		for i in 20:
+			free = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE)
+			cutters = free.filter(func(t: SurgicalTool) -> bool: return t.def.action == "cut")
+			if not cutters.is_empty():
+				break
+			await tree.create_timer(0.1).timeout
 		surgery.tools.request_grab(cutters[0] if not cutters.is_empty() else free[0], 1)
 		await tree.create_timer(0.5).timeout
 		print("[client] holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
@@ -88,7 +97,12 @@ func _drive(role: String, driver: Node) -> void:
 	for y in range(0, image.get_height(), 4):
 		for x in range(0, image.get_width(), 4):
 			painted += 1 if image.get_pixel(x, y).r > 0.1 else 0
-	var tissue := surgery.patient.body.tissue
-	print("[%s] surgeon wounds (host state)=%d, painted texels=%d, severed springs=%d, topology=%d, vitals hr=%d" % [role, surgeon_wounds, painted, tissue.c_active.count(0), tissue.topology_hash(), surgery.patient.vitals.heart_rate])
+	var body := surgery.patient.body
+	var tissue := body.tissue
+	print("[%s] surgeon wounds (host state)=%d, painted texels=%d, severed springs=%d, topology=%d, site shape=%d, vitals hr=%d" % [role, surgeon_wounds, painted, tissue.c_active.count(0), tissue.topology_hash(), body.shape_hash(), surgery.patient.vitals.heart_rate])
+	# Each player's simulated skin meets the body model where the cut opened it, without a step.
+	var seam := Slicing.seam(body)
+	if seam >= Slicing.SEAM_MAX:
+		print("FAIL: [%s] the simulated skin doesn't meet the body model: %.2f mm off at its edge" % [role, seam * 1000.0])
 	await tree.create_timer(1.0).timeout
 	tree.quit()

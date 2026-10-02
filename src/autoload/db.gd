@@ -22,8 +22,6 @@ var run_modifiers := ConfigFile.new()
 var starter_kit: Array = []
 ## Surgical sites on the patient body, see data/patient_sites.json.
 var patient_sites: Dictionary = {}
-## Baked skin heights per site (tools/assetgen), empty when the file is missing.
-var site_heights: Dictionary = {}
 ## How each tool model's grip is fitted to the glove, per hand, see SurgeonHand.fit and tests/fit_grips.tscn.
 var grip_fits: Dictionary = {}
 
@@ -52,7 +50,6 @@ func _ready() -> void:
 	run_modifiers = _load_cfg("res://data/run_modifiers.cfg")
 	starter_kit = _load_cfg("res://data/starter_kit.cfg").get_value("starter_kit", "tools", [])
 	patient_sites = _load_json("res://data/patient_sites.json")
-	site_heights = _load_json("res://assets/models/patient/site_heights.json")
 	grip_fits = _load_json("res://data/grips.json")
 
 

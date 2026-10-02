@@ -434,13 +434,14 @@ func _syringe_checks(surgery: Surgery) -> void:
 	while in_way:
 		in_way.global_position = spot + Vector3.UP * 0.1
 		in_way = tools.nearest_container(site)
+	var aimed := "%s, %s" % [patient.body.probe(syringe.tip_position()), ToolActions.needle_target(syringe, patient)]
 	while syringe.ml > 0.0:
 		ToolActions.plunge(syringe, -ToolActions.PLUNGER_STEP, patient)
 	syringe.global_position += Vector3.UP * 0.3
 	var hand := {"lowered": false, "trigger": false, "level": 0, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
 	ToolActions.update(syringe, hand, patient, 0.1)
 	if syringe.ml > 0.0 or not patient.flags.has("drug_propofol"):
-		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s" % [syringe.ml, patient.flags.keys()])
+		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s, the needle was in %s" % [syringe.ml, patient.flags.keys(), aimed])
 	# A third of the dose doesn't do the job.
 	patient.flags.erase("drug_propofol")
 	tools.transfer(vial, syringe, right_ml * 0.3)
@@ -735,6 +736,18 @@ static func open_wide(patient: Patient) -> int:
 	var break_mult := tissue.break_mult
 	tissue.break_mult = maxf(break_mult, 1.0)
 	var grips: Array = []
+	# The flap turns up and over about the side of the site it's still attached to: one straight hinge along that
+	# side, where it lies on the body on average (the body's flank drops away more under some of it than the rest).
+	var hinges: Array[Vector3] = []
+	for row: int in [0, tissue.res_y]:
+		var sum := Vector3.ZERO
+		var count := 0
+		for i in tissue.res_x + 1:
+			var k := tissue.index(i, row)
+			if tissue.off[k] == 0:
+				sum += tissue.rest[k]
+				count += 1
+		hinges.append(sum / maxi(count, 1))
 	# Forceps about every 25 mm along each edge.
 	var spacing := maxi(1, roundi(0.025 / (patient.body.site_size.x / tissue.res_x)))
 	for i in range(1, tissue.res_x, spacing):
@@ -742,9 +755,9 @@ static func open_wide(patient: Patient) -> int:
 			var k := tissue.index(i, edge)
 			var key := 88000 + grips.size()
 			tissue.grip(key, tissue.uv_of(k))
-			# The flap turns up and over about the side of the site it's still attached to, its hinge there.
 			var side := -1.0 if edge < middle * tissue.res_y else 1.0
-			var hinge := tissue.rest[tissue.index(i, 0 if side < 0.0 else tissue.res_y)]
+			var line := hinges[0 if side < 0.0 else 1]
+			var hinge := Vector3(tissue.rest[k].x, line.y, line.z)
 			grips.append([key, hinge, tissue.rest[k] - hinge, side])
 	for step in 240:
 		var angle := PI * 0.85 * (step + 1) / 240.0
@@ -860,6 +873,7 @@ func _move_top_organ(surgery: Surgery) -> void:
 				var shape: CollisionShape3D = organ.get_child(organ.get_child_count() - 1)
 				print("FAIL: forceps in the open %s didn't take hold of the %s: %s (at %s, organ %s, box %s at %s, organ_at %d)" % [surgery.scenario.site, organ.get_meta("kind"), grip, at, organ.global_position, (shape.shape as BoxShape3D).size, shape.global_position, body.organ_at(at, 0.02)])
 				return
+			var home := organ.position
 			var aside := body.site.to_global(organ.position + Vector3(0.0, 0.03, 0.0) + Vector3(organ.position.x, 0, organ.position.z).normalized() * 0.12)
 			for i in 10:
 				grip = patient.update_grip(99001, grip, aside, 1.0, 1.0 / 60.0, 0.0)
@@ -868,6 +882,10 @@ func _move_top_organ(surgery: Surgery) -> void:
 			if now == top:
 				print("FAIL: moving the %s aside didn't uncover what's under it" % organ.get_meta("kind"))
 			patient.release_grip(99001, grip, false)
+			# Put back where it was, out of the way of what's checked next: by now the patient may be past drifting it
+			# back (Patient only settles organs while it's alive).
+			organ.position = home
+			organ.linear_velocity = Vector3.ZERO
 			await _frames(30)
 			return
 	print("FAIL: nothing in the open %s lies under the top layer of organs" % surgery.scenario.site)

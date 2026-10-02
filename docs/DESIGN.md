@@ -83,6 +83,11 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     a deeper one the muscle, a full depth cut the bone or organs under it. The meshes rebuild on the frame after the
     sim steps, so the two costs don't land on one frame. Which triangles there are and how they split is planned only
     when the cuts or the region change; while the skin just moves, only the vertices move.
+  - The layers are drawn on the body model, not where the sim settled (tension pulls the sheet a few millimeters off a
+    round limb, centimeters off the belly's flanks): each grid point is laid onto the model once, with the model's own
+    smooth normal there, and drawn as far from it as the sim moved it since. Pores and grime are laid out in the
+    model's space, like the body's. The skin is moved 1 mm toward the camera along the view ray, so it wins over the
+    model where they overlap without a visible step.
   - Fat is per site (`fat` in `patient_sites.json`, 12 mm when a site doesn't say): none on the forearm, where a cut
     deeper than the skin goes into the muscle.
   - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index. A spring snaps
@@ -417,12 +422,13 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
 - **Patient skin**: the body model draws the wound and fluid maps itself (`wound.gdshaderinc`, shared with the site
   skin shader), so cuts, burns, bruises, blood and iodine sit on the model. Only around cuts and skin a tool holds
   (TissueSim.region()) is the model cut away and replaced by the simulated skin, fat and muscle layers.
-  `site_heights.json` (baked by raycasting the body) makes those layers hug the body. The cavity under them is a
-  bowl that rises to just under the skin at the site's edges, so on a round limb it stays inside the body.
-  The bake also lists grid points off the body: where the site overhangs it, or the body under the skin is too thin
-  for skin, fat and muscle (the edge of a limb or the flank). Nothing of the site is drawn, carved or probed there,
-  so it never sticks out past the body's outline. Flank points deeper than 6 cm under the site plane are still held
-  at 6 cm, a known limit until the site becomes a proper surface patch.
+  The site's skin heights are measured on the body model when the patient is built (rays down the site's normal,
+  `PatientBody._measure_site()`), so those layers hug the body as it is, whatever the model becomes. Every peer
+  measures the same model the same way, so every player sees the same site. The cavity under them is a bowl that
+  rises to just under the skin at the site's edges, so on a round limb it stays inside the body.
+  The measuring also finds grid points off the body: where the site overhangs it (or a ray goes through a hole the
+  eyes fill), or the body under the skin is too thin for skin, fat and muscle (the edge of a limb or the flank).
+  Nothing of the site is drawn, carved or probed there, so it never sticks out past the body's outline.
 - **Blood** (`src/visual/blood_flow.gd`): bleeding wounds well up into a puddle that grows with the blood lost and
   release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
   on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.

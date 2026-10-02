@@ -10,7 +10,7 @@ Godot adds LODs on import.
 
 | Folder | Contents | Made by | Animated (bone or node names) |
 |---|---|---|---|
-| `patient/` | `body.glb` (one skinned mesh), `site_heights.json` (skin heights per surgical site) | `tools/blender` | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids |
+| `patient/` | `body.glb` (one skinned mesh) | `tools/blender` | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids |
 | `surgeon/` | `glove` (skinned) | `tools/blender` | Bones: Hand, Index/Middle/Ring/Pinky/Thumb 1-3 |
 | `surgeon/` | `body`, `head`, `upper_arm`, `forearm` | `tools/assetgen` | Torso, LegL/R |
 | `organs/` | bowel, lobe, sac (unit radius) | `tools/blender` | |
