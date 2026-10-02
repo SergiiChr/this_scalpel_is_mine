@@ -673,6 +673,18 @@ static func open_wide(patient: Patient) -> int:
 	var break_mult := tissue.break_mult
 	tissue.break_mult = maxf(break_mult, 1.0)
 	var grips: Array = []
+	# The flap turns up and over about the side of the site it's still attached to: one straight hinge along that
+	# side, where it lies on the body on average (the body's flank drops away more under some of it than the rest).
+	var hinges: Array[Vector3] = []
+	for row: int in [0, tissue.res_y]:
+		var sum := Vector3.ZERO
+		var count := 0
+		for i in tissue.res_x + 1:
+			var k := tissue.index(i, row)
+			if tissue.off[k] == 0:
+				sum += tissue.rest[k]
+				count += 1
+		hinges.append(sum / maxi(count, 1))
 	# Forceps about every 25 mm along each edge.
 	var spacing := maxi(1, roundi(0.025 / (patient.body.site_size.x / tissue.res_x)))
 	for i in range(1, tissue.res_x, spacing):
@@ -680,9 +692,9 @@ static func open_wide(patient: Patient) -> int:
 			var k := tissue.index(i, edge)
 			var key := 88000 + grips.size()
 			tissue.grip(key, tissue.uv_of(k))
-			# The flap turns up and over about the side of the site it's still attached to, its hinge there.
 			var side := -1.0 if edge < middle * tissue.res_y else 1.0
-			var hinge := tissue.rest[tissue.index(i, 0 if side < 0.0 else tissue.res_y)]
+			var line := hinges[0 if side < 0.0 else 1]
+			var hinge := Vector3(tissue.rest[k].x, line.y, line.z)
 			grips.append([key, hinge, tissue.rest[k] - hinge, side])
 	for step in 240:
 		var angle := PI * 0.85 * (step + 1) / 240.0
