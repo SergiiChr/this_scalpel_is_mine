@@ -43,7 +43,8 @@ var container: SurgicalTool
 var catheter: SurgicalTool
 
 
-## A solo appendectomy with nothing rolled, both cuts made and held open, ready for stage().
+## A solo appendectomy with nothing rolled, no random events, the patient asleep, both cuts made and held open, ready
+## for stage(). Awake (or woken by an event), a patient in pain thrashes and can knock the syringe out of the hand.
 func start() -> void:
 	Net.leave()
 	Net.scenario_id = "appendectomy"
@@ -55,6 +56,8 @@ func start() -> void:
 	add_child(surgery)
 	await frames(10)
 	var patient := surgery.patient
+	surgery.director._pool = PackedStringArray()
+	patient.administer("propofol", "direct", Db.drug("propofol").dose * patient.weight_kg)
 	var tissue := patient.body.tissue
 	for cut: Array in [[FAT_UV, 0.3], [MUSCLE_UV, 0.6]]:
 		var mid: Vector2 = cut[0]
@@ -77,6 +80,8 @@ func stage(case: Dictionary) -> void:
 			tools.consume(old)
 	container = null
 	syringe = _spawn(case.syringe, me.global_position + Vector3.UP)
+	# Straight into the hand: left to fall, it can reach the floor and shatter first.
+	tools._req_grab(syringe.uid, me.active)
 	match case.target:
 		"vial":
 			container = _spawn(VIAL, _clear_spot())
@@ -98,7 +103,6 @@ func stage(case: Dictionary) -> void:
 		await frames(5)
 		surgery.patient._iv_removed.rpc()
 		surgery.patient.set_iv(vein_point(), true)
-	tools._req_grab(syringe.uid, me.active)
 	await frames(2)
 	var hand := me.hands[me.active]
 	# The hand rests the needle on whatever is under the aim; a few rounds let the arm settle on it. Only then Use
@@ -225,6 +229,8 @@ func _aim_point(target: String) -> Vector3:
 ## Walks the surgeon to stand facing the aim from outside the table, close enough to reach it.
 func _stand_by(aim: Vector3) -> void:
 	var me := surgery.local_surgeon
+	# Stepping over counts as walking through the tubing, which would rip a line out and jolt the hand: take it out.
+	surgery.patient._iv_removed.rpc()
 	var patient := surgery.patient.global_position
 	var away := (aim - patient) * Vector3(1, 0, 1)
 	if absf(away.z) < 0.15:

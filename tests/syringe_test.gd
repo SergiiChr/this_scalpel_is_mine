@@ -199,15 +199,18 @@ func _hand_checks() -> void:
 	await bench.frames(40)
 	await bench.stage(Bench.CASES[6])
 	var start := hand.target
-	var pain := bench.surgery.patient.vitals.pain
 	me.steer_hand(Vector2(40, 0))
 	await bench.frames(2)
 	var free := 40.0 * Surgeon.HAND_SENSITIVITY * me.status.hand_speed()
-	_check(start.distance_to(hand.target) < free * 0.3, "needle_hand: a needle in the skin holds the hand back (%.4f m of %.4f)" % [start.distance_to(hand.target), free])
+	_check(start.distance_to(hand.target) < free * 0.3, "needle_hand: a needle in the skin holds the hand back (%.4f m of %.4f, needle in %s, lowered %s, torn %s)" % [start.distance_to(hand.target), free, bench.needle_target(), hand.lowered, me._needle_torn])
 	for i in 30:
+		if me._needle_torn:
+			break
 		me.steer_hand(Vector2(20, 0))
 		await bench.frames(1)
-	_check(me._needle_torn and bench.surgery.patient.vitals.pain > pain, "needle_hand: pulled on, the needle tears out and it hurts (pain %.2f -> %.2f)" % [pain, bench.surgery.patient.vitals.pain])
+	var body := bench.surgery.patient.body
+	var scratch := body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(bench.syringe.tip_position()))
+	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch (%.2f)" % scratch)
 	await bench.withdraw()
 	await bench.stage(Bench.CASES[13])
 	var bag := bench.surgery.tools.drip_bag()

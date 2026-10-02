@@ -486,14 +486,13 @@ func _local_update(delta: float) -> void:
 func _hold_needle() -> void:
 	var hand := hands[active]
 	var tool := held_tool(active)
-	if not hand.lowered:
+	if not hand.lowered or tool == null or tool.def.action != "syringe":
 		_needle_torn = false
-	var stuck: bool = tool != null and tool.def.action == "syringe" and hand.lowered and not _needle_torn \
-		and ToolActions.needle_target(tool, Surgery.current.patient).kind in ["vein", "tissue"]
-	if not stuck:
 		_needle_anchor = Vector3.INF
 	elif _needle_anchor == Vector3.INF:
-		_needle_anchor = hand.target
+		# Once in, it stays in until Use tool is let go: breathing lifting the skin doesn't free it.
+		if not _needle_torn and ToolActions.needle_target(tool, Surgery.current.patient).kind in ["vein", "tissue"]:
+			_needle_anchor = hand.target
 	elif ((hand.target - _needle_anchor) * Vector3(1, 0, 1)).length() > NEEDLE_TEAR:
 		Surgery.current.tools.request_needle_tear(active, tool.tip_position() + _needle_anchor - hand.target)
 		Surgery.current.hud.toast("The needle tears out of the skin.")
