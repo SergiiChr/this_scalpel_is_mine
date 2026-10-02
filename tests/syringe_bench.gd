@@ -101,14 +101,16 @@ func stage(case: Dictionary) -> void:
 	tools._req_grab(syringe.uid, me.active)
 	await frames(2)
 	var hand := me.hands[me.active]
+	# The hand rests the needle on whatever is under the aim; a few rounds let the arm settle on it. Only then Use
+	# tool presses it in: a needle in the patient sticks, and moved on from there it would tear out.
+	for i in 40:
+		hand.local_target = me.to_local(aim - hand.tip_offset(syringe.def.length) + Vector3.UP * 0.04)
+		await get_tree().physics_frame
 	var press := InputEventAction.new()
 	press.action = "use_tool"
 	press.pressed = not case.target in ["vial", "dish", "air"]
 	me._unhandled_input(press)
-	# The hand rests the needle on whatever is under the aim; a few rounds let the arm settle on it.
-	for i in 40:
-		hand.local_target = me.to_local(aim - hand.tip_offset(syringe.def.length) + Vector3.UP * 0.04)
-		await get_tree().physics_frame
+	await frames(10)
 
 
 ## One wheel notch, as the mouse sends it: down pulls the plunger out, up pushes it in.

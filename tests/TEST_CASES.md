@@ -86,11 +86,11 @@ For each scenario, with no script errors:
 | S14 | The defibrillator waits on its own cart in every room |
 | S15 | A nurse delivery lands on the delivery tray (operating room) |
 | S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
-| S17 | Walking through the IV tubing at full speed rips the line out |
+| S17 | Walking through the IV tubing at full speed rips the line out, and the catheter lands on the floor, soiled |
 | S18 | Every tool effect plays; a tool in blood gets bloody, so does the glove holding it, and the sink washes both; a splash lands blood on the view |
-| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift steps through three zoom levels; the controls shown change while a hand key is held |
+| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift toggles between two zoom levels; the controls shown change while a hand key is held |
 | S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
-| S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
+| S21 | The nurse takes one order at a time, the bell board shows it, the first five deliveries come without a cooldown and it starts after the sixth |
 | S22 | The patient has a plausible weight; three wheel notches draw 3 ml from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
 | S23 | Wiping iodine with a soaked pad never takes more than 4 ms of one frame (no stutter; it used to take 7-20 ms every frame) |
 | S24 | Skin won't close over a cut through open muscle, a tight stitch tears there, and after the muscle is sewn from inside the skin closes |
@@ -102,6 +102,7 @@ For each scenario, with no script errors:
 | S30 | A tourniquet pressed onto a thigh wraps around it as a snug band (not lying on top), leaves the hand, and taking it off loosens it |
 | S31 | Tools lie on the tray at the start without sinking into it; lowered onto it with full effort, neither the tool nor the glove goes into it; put down, it settles on top (every kind of tool in the first scenario, one in the others) |
 | S32 | The smoking spot offers "Smoke a cigarette" only to a hand holding the cig pack; a smoke uses one cigarette, stops stress gain and speeds up walking |
+| S33 | With no quirks, one right dose of propofol keeps a patient with no bleeding asleep with a beating heart for five minutes; the random arrest event leaves a stable patient alone; the wake up event waits for the first cut |
 
 ## Syringe (`tests/syringe_test.gd`)
 
@@ -121,9 +122,12 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 | Y8 | Pushing into skin, fat and muscle (cuts held open down to fat and muscle) empties the syringe; once the needle is out the drug is given as a direct injection |
 | Y9 | Pulling from skin, fat and muscle draws nothing: the plunger stays put |
 | Y10 | Pulling with the needle in nothing draws air: the plunger moves, the liquid stays, the air shows at the needle end |
-| Y11 | IV drip: resting on the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
+| Y11 | IV drip: with the needle in the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
 | Y12 | IV catheter: the last zoom step frames its needle. On the forearm vein it sticks, the tubing runs to it and a drug in the IV drip runs into the patient; 2.5 cm beside the vein it still sticks with the tubing, but the drug stays in the bag |
 | Y13 | The IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the emptied one, uses up the held one and runs it into the line |
+| Y14 | In the needle view, mouse right moves the hand right on screen and mouse up moves it away from the camera |
+| Y15 | A syringe pressed into the skin holds the hand back (it follows a fifth of the mouse); pulled on, the needle tears out and it hurts |
+| Y16 | A syringe brought under the IV bag at waist height rises into the bag's port, its needle in the bag |
 
 ## Co-op over the network (`tests/net_test.gd`)
 

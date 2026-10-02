@@ -8,7 +8,7 @@ const GRAB_RADIUS := 0.09
 ## Everyone but the host sees iodine levels in steps this fine (syringes, vials and the kidney dish are exact).
 const FILL_STEPS := 50.0
 ## How close a syringe's needle has to be to a vial's middle to be in it, or to a dish's or hung bag's (a share of
-## its length). A hung bag is out of a hand's reach from below: the needle goes in resting on top of it.
+## its length). A hand with a syringe under the hung bag rises to its port (see Surgeon._drip_port()).
 const VIAL_REACH := 0.05
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
@@ -193,6 +193,11 @@ func request_plunger(hand: int, notches: int) -> void:
 	_req_plunger.rpc_id(1, hand, notches)
 
 
+## The needle of the syringe in this hand was pulled out of the patient sideways, from `from` (world space).
+func request_needle_tear(hand: int, from: Vector3) -> void:
+	_req_needle_tear.rpc_id(1, hand, from)
+
+
 func request_sterilize(hand: int) -> void:
 	_req_sterilize.rpc_id(1, hand)
 
@@ -288,6 +293,13 @@ func _req_plunger(hand: int, notches: int) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
+func _req_needle_tear(hand: int, from: Vector3) -> void:
+	var tool := tool_in_hand(Net._sender(), hand)
+	if tool and tool.def.action == "syringe" and Surgery.current.running:
+		Surgery.current.patient.needle_tear(from, tool.tip_position())
+
+
+@rpc("any_peer", "call_local", "reliable")
 func _req_sterilize(hand: int) -> void:
 	var peer := Net._sender()
 	var tool := tool_in_hand(peer, hand)
@@ -324,6 +336,13 @@ func _req_wash(hand: int) -> void:
 func spawn(id: String, at: Vector3) -> void:
 	if multiplayer.is_server():
 		_spawn.rpc(_next_uid, id, at)
+
+
+## Host: a new tool falling from `at`, as if it was dropped there (the floor soils it).
+func drop_new(id: String, at: Vector3) -> void:
+	var uid := _next_uid
+	spawn(id, at)
+	tools[uid].set_meta("falling", true)
 
 
 func leave_standing(tool: SurgicalTool) -> void:

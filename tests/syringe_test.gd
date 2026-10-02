@@ -25,6 +25,8 @@ func _ready() -> void:
 			await _catheter_checks(case)
 	if "swap_bag".begins_with(only):
 		await _swap_checks()
+	if "needle_hand".begins_with(only):
+		await _hand_checks()
 	print("syringe_test: done")
 	get_tree().quit()
 
@@ -171,6 +173,51 @@ func _swap_checks() -> void:
 	await bench.frames(2)
 	var hung := is_equal_approx(drip.ml, SurgicalTool.DRIP_FLUID) and bag.state == SurgicalTool.State.CONSUMED
 	_check(hung and patient.flags.has("drug_saline"), "swap_bag: the bag hangs on the stand full (%.0f ml) and runs into the line" % drip.ml)
+
+
+## Y14-Y16: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin holds the
+## hand back and tears out when pulled on; a syringe brought under the IV bag at waist height rises into its port.
+func _hand_checks() -> void:
+	print("--- needle_hand")
+	var me := bench.surgery.local_surgeon
+	var hand := me.hands[me.active]
+	await bench.stage(Bench.CASES[0])
+	me.zoom = Surgeon.ZOOM_FOV.size() - 1
+	await bench.frames(40)
+	var right := (me.camera().global_basis.x * Vector3(1, 0, 1)).normalized()
+	var away := (me.camera().global_basis.y * Vector3(1, 0, 1)).normalized()
+	for motion: Vector2 in [Vector2(20, 0), Vector2(0, -20)]:
+		var before := hand.target
+		for i in 5:
+			me.steer_hand(motion)
+			await bench.frames(1)
+		var moved := hand.target - before
+		var along := moved.dot(right if motion.x > 0.0 else away)
+		_check(along > 0.9 * moved.length() and along > 0.01, "needle_hand: in the needle view the mouse %s moves the hand %s on screen (%.3f m of %.3f)" % ["right" if motion.x > 0.0 else "up", "right" if motion.x > 0.0 else "away", along, moved.length()])
+	me.zoom = 0
+	await bench.frames(40)
+	await bench.stage(Bench.CASES[6])
+	var start := hand.target
+	var pain := bench.surgery.patient.vitals.pain
+	me.steer_hand(Vector2(40, 0))
+	await bench.frames(2)
+	var free := 40.0 * Surgeon.HAND_SENSITIVITY * me.status.hand_speed()
+	_check(start.distance_to(hand.target) < free * 0.3, "needle_hand: a needle in the skin holds the hand back (%.4f m of %.4f)" % [start.distance_to(hand.target), free])
+	for i in 30:
+		me.steer_hand(Vector2(20, 0))
+		await bench.frames(1)
+	_check(me._needle_torn and bench.surgery.patient.vitals.pain > pain, "needle_hand: pulled on, the needle tears out and it hurts (pain %.2f -> %.2f)" % [pain, bench.surgery.patient.vitals.pain])
+	await bench.withdraw()
+	await bench.stage(Bench.CASES[13])
+	var bag := bench.surgery.tools.drip_bag()
+	hand.local_target = me.to_local(me.global_position + me.global_basis * Vector3(0.1, 1.0, -0.2))
+	await bench.frames(20)
+	var under := bag.tip_position() * Vector3(1, 0, 1) - hand.tip_offset(bench.syringe.def.length) * Vector3(1, 0, 1)
+	for i in 30:
+		hand.local_target = me.to_local(hand.target.lerp(under + Vector3.UP * hand.target.y, 0.1))
+		await bench.frames(1)
+	var target := bench.needle_target()
+	_check(target.get("container") == bag, "needle_hand: a syringe brought under the IV bag from waist height goes into it (hand at %.2f m, %s)" % [hand.global_position.y, target.kind])
 
 
 ## The liquid, air and plunger shown match what's in it exactly, against the full Level part (the graduation).

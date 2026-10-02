@@ -211,6 +211,10 @@ func _feedback_checks(surgery: Surgery) -> void:
 			await get_tree().physics_frame
 		if patient.iv_set:
 			print("FAIL: walking through the IV line didn't pull it out")
+		await _frames(90)
+		var dropped: Array = tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.def.id == "iv_catheter" and t.state == SurgicalTool.State.FREE and t.soiled)
+		if dropped.is_empty():
+			print("FAIL: the IV catheter ripped out of the arm didn't land on the floor")
 	else:
 		var line := room.iv_line
 		print("FAIL: the IV line doesn't hang low enough to trip on (attached %s, iv set %s, ends %s, %d points)" % [line.is_attached(), patient.iv_set, line._last_ends, low.size()])
@@ -219,6 +223,7 @@ func _feedback_checks(surgery: Surgery) -> void:
 	await _syringe_checks(surgery)
 	await _tourniquet_checks(surgery)
 	_nurse_checks(surgery)
+	_anesthesia_checks(surgery)
 	await _smoking_checks(surgery)
 
 
@@ -257,7 +262,7 @@ func _effect_checks(surgery: Surgery) -> void:
 
 
 ## Controls: RMB picks up and puts down, LMB lowers and works the tool, the wheel sets its level, Shift steps the
-## zoom through three levels, and the controls shown follow a held hand key.
+## zoom between two levels, and the controls shown follow a held hand key.
 func _control_checks(surgery: Surgery) -> void:
 	var me := surgery.local_surgeon
 	var blades: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and t.def.action == "cut" and me.blocked_reason(t.def).is_empty())
@@ -288,8 +293,8 @@ func _control_checks(surgery: Surgery) -> void:
 	for i in Surgeon.ZOOM_FOV.size():
 		me._unhandled_input(_action("zoom", true))
 		zooms.append(me.zoom)
-	if Surgeon.ZOOM_FOV.size() != 3 or zooms != [1, 2, 0]:
-		print("FAIL: Shift doesn't step through three zoom levels: ", zooms)
+	if zooms != [1, 0]:
+		print("FAIL: Shift doesn't step between two zoom levels: ", zooms)
 	Input.action_press("move_right_hand")
 	if Hud.control_lines(me) == looking:
 		print("FAIL: the controls shown didn't change while holding a hand key")
@@ -539,20 +544,54 @@ func _tourniquet_checks(surgery: Surgery) -> void:
 	await _frames(2)
 
 
-## One order at a time: the board shows it on its way, the cooldown starts after the delivery.
+## One order at a time: the board shows it on its way. The first five deliveries come without a cooldown, after the
+## sixth it starts.
 func _nurse_checks(surgery: Surgery) -> void:
 	var nurse := surgery.nurse
 	nurse.tick(1000.0, surgery)
 	nurse.cooldown_left = 0.0
+	nurse.delivered = 0
 	nurse.request(1, "gauze", surgery)
 	if nurse.order().is_empty() or not Room.nurse_board_text({"order": nurse.order()}).contains("Gauze"):
 		print("FAIL: the nurse board doesn't show the order on its way")
+	for i in Nurse.FREE_ORDERS:
+		nurse.request(1, "gauze", surgery)
+		nurse.tick(1000.0, surgery)
+		if nurse.cooldown_left > 0.0:
+			print("FAIL: the nurse cooldown started after free delivery %d" % (i + 1))
+	nurse.request(1, "gauze", surgery)
 	nurse.tick(1000.0, surgery)
 	if not nurse.order().is_empty() or nurse.cooldown_left <= 0.0:
-		print("FAIL: the nurse cooldown didn't start after the delivery")
+		print("FAIL: the nurse cooldown didn't start after the sixth delivery")
 	nurse.request(1, "gauze", surgery)
 	if not nurse.order().is_empty():
 		print("FAIL: the nurse took an order during her cooldown")
+
+
+## Without quirks, one right dose of propofol keeps a patient whose bleeding is under control asleep and their heart
+## going for five minutes (it used to wear off in under three). The random arrest event leaves a stable patient alone,
+## and the wake up event waits for the first cut.
+func _anesthesia_checks(surgery: Surgery) -> void:
+	var patient := surgery.patient
+	var saved := [patient.mods, patient.vitals.to_dict(), patient.active_drugs, patient.wounds]
+	patient.mods = Modifiers.new()
+	patient.active_drugs = []
+	patient.wounds = []
+	patient.vitals.from_dict({"rhythm": Vitals.Rhythm.SINUS, "blood_ml": patient.vitals.max_blood_ml, "systolic": 120.0, "heart_rate": 75.0, "temperature": 36.8, "glucose": 5.5, "swelling": 0.0})
+	patient.administer("propofol", "vein", Db.drug("propofol").dose * patient.weight_kg)
+	for i in 3000:
+		patient._simulate(0.1)
+	var v := patient.vitals
+	if v.anesthesia < 0.7 or v.is_awake() or v.is_arrested():
+		print("FAIL: one right dose of propofol didn't hold for five minutes (anesthesia %.2f, awake %s, arrested %s)" % [v.anesthesia, v.is_awake(), v.is_arrested()])
+	if surgery.director._ready_for("unstable", patient):
+		print("FAIL: the arrest event would strike a stable patient (systolic %d, heart rate %d)" % [v.systolic, v.heart_rate])
+	if surgery.director._ready_for("incised", patient):
+		print("FAIL: the wake up event doesn't wait for the first cut")
+	patient.mods = saved[0]
+	patient.vitals.from_dict(saved[1])
+	patient.active_drugs = saved[2]
+	patient.wounds = saved[3]
 
 
 ## The smoking spot is offered only to a hand holding cigarettes; a smoke uses one, stops stress and speeds you up.

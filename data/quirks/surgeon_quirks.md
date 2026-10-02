@@ -40,19 +40,14 @@ Rolling rules (code in `src/data/quirk_roller.gd`):
 - effects: bump_resist=0.8
 
 ## hand_size
-- name: Hand size
-- variants: big, small
+- name: Small hands
 - polarity: mixed
 - icon: [hand_size.svg](../../assets/icons/quirks/surgeon/hand_size.svg)
-- lore.big: Gloves size XXL, special order, always late.
-- lore.small: The nurses call you "the tweezers".
-- pros.big: Steadier under bumps and pulls harder with clamps and retractors.
-- pros.small: Much more precise, tremor reduced.
-- cons.big: Can't use fine tools (suture needle, marker, syringes).
-- cons.small: Can't use heavy tools (heavy saw, mallet, defibrillator paddles).
-- specifics: Fine and heavy tools are tagged in the tool list and in the manual.
-- effects.big: fine_tools_blocked=1, bump_resist=0.3, grip_strength_mult=1.5
-- effects.small: heavy_tools_blocked=1, tremor_mult=0.4
+- lore: The nurses call you "the tweezers".
+- pros: Much more precise, tremor reduced.
+- cons: Can't use heavy tools (heavy saw, mallet, defibrillator paddles).
+- specifics: Ask your partner to take over when a heavy tool is needed.
+- effects: heavy_tools_blocked=1, tremor_mult=0.4
 
 ## normal_dude
 - name: Normal dude

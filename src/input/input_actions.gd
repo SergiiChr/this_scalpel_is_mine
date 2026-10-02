@@ -15,7 +15,7 @@ const DEFAULTS: Array[Dictionary] = [
 	{"action": "grab", "label": "Pick up / put down", "mouse": MOUSE_BUTTON_RIGHT},
 	{"action": "level_up", "label": "More effort", "mouse": MOUSE_BUTTON_WHEEL_UP},
 	{"action": "level_down", "label": "Less effort", "mouse": MOUSE_BUTTON_WHEEL_DOWN},
-	{"action": "zoom", "label": "Zoom (3 steps)", "key": KEY_SHIFT},
+	{"action": "zoom", "label": "Zoom (2 steps)", "key": KEY_SHIFT},
 	{"action": "inspect", "label": "Look at held tool (hold)", "key": KEY_X},
 	{"action": "interact", "label": "Interact", "key": KEY_F},
 	{"action": "lift", "label": "Lift hand over (hold)", "key": KEY_ALT},
