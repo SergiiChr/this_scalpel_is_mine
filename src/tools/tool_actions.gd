@@ -17,6 +17,8 @@ const TRIGGER_NAMES: Dictionary = {
 ## Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.
 const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
 const DEFIB_CHARGE_TIME := 2.0
+## How long a cut the point of a blade makes pressed straight in (meters).
+const STAB_LENGTH := 0.006
 ## A blade only cuts along its edge: a move further off the edge line than this (cosine) just drags it.
 const ALONG_BLADE := 0.8
 ## Clamps that can pinch a cotton pad, and how close to the pad their tip has to be.
@@ -63,6 +65,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 	tool.level_before = level
 	if lowered and not tool.lowered_before:
 		tool.stroke += 1
+		tool.stabbed_level = 0
 	tool.lowered_before = lowered
 	# Powered and pressed tools work harder at higher levels.
 	var effort := level / 3.0
@@ -80,7 +83,22 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 		_contact_sound(tool, hand.speed, level, effort, tip)
 	match def.action:
 		"cut":
-			if lowered and level > 0 and zone == "site":
+			if lowered and level > 0 and zone == "site" and level > tool.stabbed_level:
+				# Pressed in at a new depth: the point goes in as wide as the blade, before it's moved at all.
+				tool.stabbed_level = level
+				var half := blade_direction(tool) * STAB_LENGTH * 0.5
+				var from := patient.body.world_to_uv(tip - half)
+				var to := patient.body.world_to_uv(tip + half)
+				patient.cut(tool.uid * 1000 + tool.stroke, from, to, DEPTH_BY_LEVEL[level], def.sharpness, not tool.sterile, 0.0)
+				Surgery.current.sound("cut_deep" if level >= 3 else "cut_skin", tip)
+			# Pressed in at full effort where the muscle is thin (no fat over it), the point reaches the bone under it.
+			if lowered and level == 3 and zone == "site" and probe.depth >= patient.body.muscle_bottom():
+				patient.scrape_bone(uv, tip, dt)
+			# Moved along its edge, the blade cuts what it passes through, also where it runs on past the end of an
+			# opening it's already in.
+			if lowered and level > 0 and zone in ["site", "cavity"]:
+				if zone == "cavity":
+					patient.cut_cavity(uv, probe.depth, def.sharpness, not tool.sterile, dt * effort)
 				if tool.last_uv.x >= 0.0 and tool.last_uv.distance_to(uv) > 0.003:
 					var moved := (tip - tool.last_tip) * Vector3(1, 0, 1)
 					if absf(moved.normalized().dot(blade_direction(tool))) >= ALONG_BLADE:
@@ -93,8 +111,6 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if tool.last_uv.x < 0.0 or tool.last_uv.distance_to(uv) > 0.003:
 					tool.last_uv = uv
 					tool.last_tip = tip
-			elif lowered and level > 0 and zone == "cavity":
-				patient.cut_cavity(uv, probe.depth, def.sharpness, not tool.sterile, dt * effort)
 			else:
 				tool.last_uv = Vector2(-1, -1)
 		"clamp":
@@ -102,7 +118,15 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			var tools := Surgery.current.tools
 			var pad := tools.carried_by(tool)
 			var loose_pad := tools.nearest_of("cotton_pad", tip, PAD_REACH) if pressed and lowered and def.id in PAD_HOLDERS else null
-			if pad:
+			if pad and pad.def.action == "graft":
+				# A graft taken from the skin goes down where it's pressed onto a cleaned burn; pressed in the air it's let go.
+				if pressed and lowered and zone == "site" and patient.graft_at(uv, pad.def):
+					_use_charge(pad)
+					if pad.charges == 0:
+						tools.consume(pad)
+				elif pressed and not touching:
+					tools.drop_carried(tool)
+			elif pad:
 				# Use lowers the pad to wipe or dip it; pressed in the air, away from the dish, it lets the pad go.
 				if pressed and not touching and tools.nearest_of("iodine_dish", tip, DISH_REACH) == null:
 					tools.drop_carried(tool)
@@ -165,7 +189,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					_use_charge(tool)
 		"syringe":
 			# The wheel works the plunger (plunge()). What went into the patient is given once the needle is out.
-			if not tool.injecting.is_empty() and not needle_target(tool, patient).kind in ["vein", "tissue"]:
+			if not tool.injecting.is_empty() and not needle_target(tool, patient).kind in ["vein", "tissue", "surgeon"]:
 				finish_injection(tool, patient)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
@@ -241,12 +265,24 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 ## What a syringe's needle is in, the same on every peer: {"kind": "container", "container": the vial, kidney dish
 ## or IV drip},
 ## {"kind": "vein"} (a drawn forearm vein), {"kind": "tissue", "layer": "skin", "fat", "muscle" or "cavity"} (the
-## deepest layer a cut shows there), or {"kind": "air"}. The tip resting just above something counts as in it.
+## deepest layer a cut shows there), {"kind": "surgeon", "peer", "part": "hand" or "body", "at"} (a glove, the other
+## one of the hand holding it too, or a partner's body), or {"kind": "air"}. The tip resting just above something
+## counts as in it. A glove comes before the patient under it, a partner's body after.
 static func needle_target(tool: SurgicalTool, patient: Patient) -> Dictionary:
 	var tip := tool.tip_position()
 	var container := Surgery.current.tools.nearest_container(tip)
 	if container:
 		return {"kind": "container", "container": container}
+	var holder: Surgeon = Surgery.current.surgeons.get(tool.holder) if tool.state == SurgicalTool.State.HELD else null
+	var holding := holder.hands[tool.slot] if holder else null
+	var in_body := {}
+	for surgeon: Surgeon in Surgery.current.surgeons.values():
+		var hit := surgeon.needle_part(tip, holding)
+		if not hit.is_empty():
+			hit.merge({"kind": "surgeon", "peer": surgeon.peer_id})
+			if hit.part == "hand":
+				return hit
+			in_body = hit
 	if patient.body.vein_at(tip):
 		return {"kind": "vein"}
 	var probe := patient.body.probe(tip)
@@ -257,14 +293,14 @@ static func needle_target(tool: SurgicalTool, patient: Patient) -> Dictionary:
 			return {"kind": "tissue", "layer": "cavity"}
 		"body":
 			return {"kind": "tissue", "layer": "skin"}
-	return {"kind": "air"}
+	return in_body if not in_body.is_empty() else {"kind": "air"}
 
 
 ## One move of a syringe's plunger, host only: ml > 0 pulls it out, ml < 0 pushes it in, whether or not the needle
 ## is lowered. Pulled, it draws what the needle is in: a vial's or dish's liquid, blood from a vein, or air.
 ## In skin, fat or muscle nothing comes and the plunger stays put. Pushed, the air at the needle goes first, then the
 ## liquid: into a vial (as much as fits) or the dish, a vein (blood goes back, drugs are given as IV), the tissue
-## (given as a direct injection) or squirted out.
+## (given as a direct injection), a surgeon (given to them, see Surgery.dose_surgeon()) or squirted out.
 static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 	var tools := Surgery.current.tools
 	var target := needle_target(tool, patient)
@@ -300,8 +336,9 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 	match target.kind:
 		"container":
 			tools.transfer(tool, container, liquid)
-		"vein", "tissue":
-			var route := "vein" if target.kind == "vein" else "direct"
+		"vein", "tissue", "surgeon":
+			# A surgeon's route names who gets it: "surgeon:<peer>".
+			var route: String = {"vein": "vein", "tissue": "direct"}.get(target.kind, "surgeon:%d" % target.get("peer", 0))
 			if route != tool.injecting_route:
 				finish_injection(tool, patient)
 				tool.injecting_route = route
@@ -316,12 +353,17 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 			tools.transfer(tool, null, liquid)
 
 
-## The needle came out (or the syringe left the hand): everything pushed in takes effect as one dose.
+## The needle came out (or the syringe left the hand): everything pushed in takes effect as one dose, in the patient
+## or the surgeon it went into.
 static func finish_injection(tool: SurgicalTool, patient: Patient) -> void:
 	if tool.injecting.is_empty():
 		return
+	var route := tool.injecting_route
 	for drug: String in tool.injecting:
-		patient.administer(drug, tool.injecting_route, tool.injecting[drug])
+		if route.begins_with("surgeon:"):
+			Surgery.current.dose_surgeon(route.get_slice(":", 1).to_int(), drug, tool.injecting[drug])
+		else:
+			patient.administer(drug, route, tool.injecting[drug])
 	tool.injecting.clear()
 	var tip := tool.tip_position()
 	Surgery.current.sound("syringe_inject", tip)
@@ -425,9 +467,11 @@ static func _on_contact(tool: SurgicalTool, zone: String, probe: Dictionary, pat
 
 
 ## Working in blood leaves it on the tool: blades, clamps and suction pick it up fast, gauze soaks it up.
+## A blade comes away bloody from skin it has cut, not from resting on whole skin.
 static func _bloody(tool: SurgicalTool, zone: String, uv: Vector2, patient: Patient, dt: float) -> void:
 	var wet := patient.body.blood_at(uv) if zone == "site" else 0.0
-	if zone == "cavity" or tool.def.action == "cut" and zone == "site":
+	var cut := tool.def.action == "cut" and zone == "site" and patient.body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, uv) > 0.1
+	if zone == "cavity" or cut:
 		wet = maxf(wet, 0.6)
 	if wet > 0.15:
 		var rate := 1.2 if tool.def.action == "swab" else 0.5

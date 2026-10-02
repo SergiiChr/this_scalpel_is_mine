@@ -70,6 +70,10 @@ var attached := false
 ## Held up in front of the eyes, turned across the view with its markings toward them (reading a syringe).
 var inspecting := false
 var tremor := Vector3.ZERO
+## A twitch of the glove alone (the tool and the hand's position stay put), set by the surgeon while stress is low.
+var shiver := Vector3.ZERO
+## Afterimages following the glove (0 none, 1 strongest), set on the local view while a sedative works.
+var trail := 0.0
 ## Set by the surgeon while the held tool rests on something hard (a tray, the table): the tremor can't push it in.
 var on_hard := false
 var speed := 0.0
@@ -128,6 +132,16 @@ var _forearm_start := 0.0
 ## Stands in for the hand's materials while it's see-through (see set_see_through()).
 const GHOST_COLOR := Color(0.75, 0.82, 0.9)
 var _ghost: StandardMaterial3D
+## The glove's afterimages: how many, how far apart in time (s), the most see-through, their color, how far (m) from
+## the glove a copy has to be to show, and the glove frames and bone poses the copies show (newest first).
+const TRAIL_COPIES := 4
+const TRAIL_STEP := 0.06
+const TRAIL_ALPHA := 0.45
+const TRAIL_COLOR := Color(0.5, 0.65, 0.95)
+const TRAIL_GAP := 0.01
+var _trail_root: Node3D
+var _trail_frames: Array = []
+var _trail_acc := 0.0
 
 
 func build(hand_index: int, scrubs: ShaderMaterial) -> void:
@@ -177,7 +191,8 @@ func set_see_through(amount: float) -> void:
 		_ghost.albedo_color = GHOST_COLOR
 	_ghost.albedo_color.a = 1.0 - amount
 	for node in find_children("*", "GeometryInstance3D", true, false):
-		(node as GeometryInstance3D).material_override = _ghost if amount > 0.0 else null
+		if not (_trail_root and _trail_root.is_ancestor_of(node)):
+			(node as GeometryInstance3D).material_override = _ghost if amount > 0.0 else null
 
 
 ## Final world position: target plus lift and tremor.
@@ -225,6 +240,7 @@ func update_pose(shoulder: Vector3, delta: float) -> void:
 	_solve_arm(shoulder)
 	_animate_fingers(delta)
 	glove_drop = _glove_lowest() - global_position.y
+	_update_trail(delta)
 	# The blood coat is drawn in the glove's own frame, so it has to follow the glove around.
 	if blood > 0.0:
 		for mat in _glove_materials:
@@ -393,7 +409,7 @@ func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Ve
 		var frame := tool_frame.basis * Basis.from_scale(mirror) * (style.basis as Basis)
 		frame = _turn_to_forearm(frame, tool_frame.basis * Vector3.FORWARD, contact, elbow, grip != "fist")
 		var wrist := contact - frame * (style.at as Vector3) + frame.y.normalized() * float(fit.get("lift", 0.0)) + frame.z.normalized() * float(fit.get("shift", 0.0))
-		wrist = aimed.origin + aim * (wrist - aimed.origin)
+		wrist = aimed.origin + aim * (wrist - aimed.origin) + shiver
 		_glove.global_transform = Transform3D(aim * frame, wrist)
 		return wrist
 	var along := (global_position - elbow).normalized()
@@ -402,7 +418,7 @@ func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Ve
 		up = owner_basis.z
 	var side := along.cross(up)
 	var frame := Basis(along, up, side if index == 1 else -side)
-	var wrist := global_position - frame * GRIP_POINT
+	var wrist := global_position - frame * GRIP_POINT + shiver
 	_glove.global_transform = Transform3D(frame, wrist)
 	return wrist
 
@@ -439,3 +455,59 @@ static func _place_segment(mesh: Node3D, a: Vector3, b: Vector3) -> void:
 	var x := y.cross(Vector3.FORWARD if absf(y.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
 	var z := x.cross(y)
 	mesh.global_transform = Transform3D(Basis(x, y * length, z), (a + b) * 0.5)
+
+
+## Copies of the glove trail behind it, each showing where the glove was a step earlier, fainter the older it is.
+func _update_trail(delta: float) -> void:
+	if trail <= 0.0:
+		if _trail_root:
+			_trail_root.queue_free()
+			_trail_root = null
+			_trail_frames.clear()
+		return
+	if _trail_root == null:
+		_build_trail()
+	var skeleton := _glove_rig.skeleton if _glove_rig else null
+	_trail_acc += delta
+	if _trail_acc >= TRAIL_STEP or _trail_frames.is_empty():
+		_trail_acc = 0.0
+		var poses: Array[Transform3D] = []
+		for i in (skeleton.get_bone_count() if skeleton else 0):
+			poses.append(skeleton.get_bone_pose(i))
+		_trail_frames.push_front([_glove.global_transform, poses])
+		_trail_frames.resize(mini(_trail_frames.size(), TRAIL_COPIES + 1))
+	# The newest frame is about where the glove is now: the copies show the ones before it. A copy right on the glove
+	# (a hand held still) would only speckle it.
+	for i in _trail_root.get_child_count():
+		var copy := _trail_root.get_child(i) as Node3D
+		var frame: Array = _trail_frames[i + 1] if i + 1 < _trail_frames.size() else []
+		copy.visible = not frame.is_empty() and (frame[0] as Transform3D).origin.distance_to(_glove.global_position) > TRAIL_GAP
+		if not copy.visible:
+			continue
+		copy.global_transform = frame[0]
+		var copy_skeleton := copy.get_meta("skeleton") as Skeleton3D
+		if copy_skeleton:
+			var poses: Array[Transform3D] = frame[1]
+			for bone in poses.size():
+				copy_skeleton.set_bone_pose(bone, poses[bone])
+		var material := copy.get_meta("material") as StandardMaterial3D
+		material.albedo_color.a = trail * TRAIL_ALPHA * (1.0 - float(i) / TRAIL_COPIES)
+
+
+func _build_trail() -> void:
+	_trail_root = Node3D.new()
+	_trail_root.name = "Trail"
+	add_child(_trail_root)
+	for i in TRAIL_COPIES:
+		var copy := _glove.duplicate() as Node3D
+		copy.top_level = true
+		_trail_root.add_child(copy)
+		var material := StandardMaterial3D.new()
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.albedo_color = TRAIL_COLOR
+		copy.set_meta("material", material)
+		for node in copy.find_children("*", "GeometryInstance3D", true, false):
+			(node as GeometryInstance3D).material_override = material
+		var skeletons := copy.find_children("*", "Skeleton3D", true, false)
+		copy.set_meta("skeleton", skeletons[0] if not skeletons.is_empty() else null)

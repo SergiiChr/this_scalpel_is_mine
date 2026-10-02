@@ -59,6 +59,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T20 | Untouched skin over a round body (25 cm radius) settles when it's built, then stays put: it isn't shown simulated and sleeps |
 | T21 | Where the site hangs off the body, its skin is never drawn and never shown simulated, even with a cut through it and a pull right next to it |
 | T22 | Skin folded out of the drape's opening lies on the drape instead of passing through it; skin that starts under the drape stays under it |
+| T23 | A circle cut through the skin frees a piece (not halfway round); taken off, the skin layer has a hole only there, the fat layer stays whole, it can't be taken twice and peers taking it off agree |
 
 ## Every scenario (`tests/smoke_test.gd`)
 
@@ -125,9 +126,15 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 | Y11 | IV drip: with the needle in the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
 | Y12 | IV catheter: the last zoom step frames its needle. On the forearm vein it sticks, the tubing runs to it and a drug in the IV drip runs into the patient; 2.5 cm beside the vein it still sticks with the tubing, but the drug stays in the bag |
 | Y13 | The IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the emptied one, uses up the held one and runs it into the line |
-| Y14 | In the needle view, mouse right moves the hand right on screen and mouse up moves it away from the camera |
-| Y15 | A syringe pressed into the skin keeps its tip exactly where it went in: the mouse tilts the syringe about it. Pulled on sideways, the needle tears out and leaves a scratch on the skin |
-| Y16 | A syringe brought under the IV bag at waist height rises into the bag's port, its needle in the bag |
+| Y14 | Surgeons: pushing into the surgeon's own other hand, a partner's hand, a partner's body and the hand of a partner knocked out on the floor (crouched beside them) empties the syringe; once the needle is out that surgeon gets the dose (the host's `surgeon_dosed`), the patient nothing, and the surgeon's own dose works like a direct injection. Pulling from a hand draws nothing |
+| Y15 | Stress shakes the hands in steps: under 30% the tool stays still and only the glove twitches now and then, up to 60% a light shake, above it a plain one |
+| Y16 | Shaky hands never drain below 65% stress; Steady hands with Shaky hands, stressed and in the cold, don't shake at all; a surgeon weighs 80 kg, small hands 60 kg |
+| Y17 | Diazepam at the right dose for the surgeon's weight stops stress shaking but not the cold, and delays hand moves 100 ms; 1.8 doses darken the view and delay more |
+| Y18 | 2.5 doses knock the surgeon out for five minutes; flumazenil brings them round and ends the diazepam; adrenaline gets them up only while it lasts, and 3.5 doses put them down again after |
+| Y19 | Sedated in the room: afterimages trail the gloves and a mouse move reaches the hand only after the delay; knocked out, the surgeon lies on the floor with the patient in view and the hands on the floor; flumazenil gets them back on their feet |
+| Y20 | In the needle view, mouse right moves the hand right on screen and mouse up moves it away from the camera |
+| Y21 | A syringe pressed into the skin keeps its tip exactly where it went in: the mouse tilts the syringe about it. Pulled on sideways, the needle tears out and leaves a scratch on the skin |
+| Y22 | A syringe brought under the IV bag at waist height rises into the bag's port, its needle in the bag |
 
 ## Co-op over the network (`tests/net_test.gd`)
 
@@ -141,6 +148,33 @@ Two real game processes on localhost, one hosting and one joining.
 | N4 | Host and client end with the same painted wound map |
 | N5 | Host and client end with the same cut tissue: the same severed springs and the same topology hash (`TissueSim.topology_hash()`) |
 | N6 | Spotty connection: the client process is frozen for 10 s mid-surgery (past ENet's default timeout). Nobody gets disconnected, both are still in the same surgery afterwards, and the host paused the silent player's tool while they were gone (`tests/net_stall_test.gd`) |
+
+## Close up slicing (`tests/slicing_test.gd`)
+
+The scalpel is driven through the surgeon's hand like a player does it: lowered, a depth level picked, moved 2 cm along
+the blade's edge (steered back onto its line if the tip drifts). An awake patient with local anesthesia; on a limb the
+cut runs along it, over the bone.
+Skin graft cases take screenshots halfway round the circle, with it closed, pinched in place and of the wound once the
+piece is lifted away. Run with screenshots of every stage, straight down and 45° off the side:
+`xvfb-run -a .tools/godot-4.7.2 --path . --rendering-method gl_compatibility res://tests/slicing_test.tscn -- --out=build/slicing`.
+Headless it runs the same checks without screenshots, and its frame times are the game code's alone. `--case=arm|thigh|belly` runs one case, `--case=arm_graft` and so on one skin graft case.
+The software renderer runs several physics steps per drawn frame, so the hand looks faster than it is against the wall
+clock: its speed check and the frame rate only mean something headless. `run_tests.sh` runs it headless with
+`--fps-report`: frame rates depend on the machine, so there they're printed, not checked.
+
+| ID | Case |
+|---|---|
+| C1 | Every case: intact skin; lowered at level 0 nothing happens and the blade stays clean; pressed at low it goes through the skin only |
+| C2 | Arm, no fat: moved 2 cm at low, the skin opens onto the muscle; pressed at medium it digs deeper; moved 2 cm, the muscle is cut over the bone |
+| C3 | Arm: pressed at high it hits the bone, which hurts through the local block |
+| C4 | Thigh and belly: moved 2 cm at low the skin opens onto the fat; at medium the fat is cut and the muscle shows; pressed at high it digs deeper |
+| C5 | Thigh and belly: moved 2 cm at high the muscle is cut, the bone (thigh) or organs (belly) lie under it, nothing inside is nicked |
+| C6 | Every move stays a clean incision: no tears, the hand under jagged cut speed |
+| C7 | The incision opens like a zipper: widest along it, narrowing toward both ends |
+| C8 | Every case holds 60 fps on average and in its 1% low frames |
+| C9 | Skin graft, every case (`--case=arm_graft\|thigh_graft\|belly_graft`): a 3 cm circle cut at low, the blade rolled to follow it; halfway round the skin inside is still joined, closed it's a free piece, cut through the skin only, no tears |
+| C10 | Skin graft: forceps in the other hand pinch the piece and lift it 4 mm, still in place; lifted higher it comes off whole and the forceps hold it as a one-use skin graft |
+| C11 | Skin graft: the wound shows the fat (thigh, belly) or the muscle (arm) under the skin, with no tears around it, at 60 fps |
 
 ## Visual checks (not automated)
 
@@ -157,5 +191,6 @@ Two real game processes on localhost, one hosting and one joining.
 | V7 | Zoomed-in first person view (`02b_zoomed`) |
 | V9 | Hands working over the thighs: gloves and forearms rest on the legs, nothing sinks in (`08b_hands_on_legs`) |
 | V8 | Every tool held in the right hand, or the left with `--left`, from both sides and from the eyes (`tests/grip_gallery.tscn`) |
-| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`); the IV catheter on the vein and beside it, aimed, in, the line from the stand and the taped-down dressing close up (`42_catheter_*`) |
+| V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`), including into the surgeon's own hand and a partner; the IV catheter on the vein and beside it, aimed, in, the line from the stand and the taped-down dressing close up (`42_catheter_*`) |
+| V12 | `--syringe --only=sedation`: a sedated surgeon's blurred view with afterimages behind a moving hand (`43_sedated_trail`), the darkened view of too much (`44_overdose`), knocked out on the floor looking at the table (`45_knocked_out`) and a knocked out partner seen from the room (`46_partner_down`) |
 | V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |

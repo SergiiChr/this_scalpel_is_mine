@@ -29,7 +29,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   This keeps all game logic in one place and makes cheating or desync between two co-op players a non-issue.
 - **Skin damage is painted by broadcast.** The host decides what to paint and sends paint ops (reliable),
   every peer paints its own copy of the wound map, so textures stay identical without sending images.
-- **Tissue topology is broadcast the same way.** Cuts, stitches, bursts and snapped springs are reliable RPCs,
+- **Tissue topology is broadcast the same way.** Cuts, stitches, bursts, snapped springs and skin taken off are reliable RPCs,
   every peer runs its own copy of the tissue sim. Only the host lets springs snap, then tells the others which one.
 - Vitals, targets, organs and tissue grips sync at 5 Hz. Free-falling tools sync at 10 Hz.
 - Solo play is the same code with an offline peer. There is no separate single player path.
@@ -65,21 +65,49 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
   so a blade gets a hairline and furniture a full line.
 - Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
-  - The skin is a grid of particles joined by springs under tension, loosely anchored to the body.
+  - The skin is a grid of particles joined by springs under tension, loosely anchored to the body. Cells are about
+    6 mm square (`TissueSim.CELL`), wider on a big site so it has no more than `MAX_CELLS` (a belly's are about
+    9.5 mm): a whole belly folded open moves every particle at once, and that has to fit a frame. Only an active
+    window is simulated: around cuts, grips and skin that moved, plus a margin of still skin. It only grows while the
+    skin moves and is picked afresh once it sleeps.
     Cutting severs springs, so an incision gapes on its own; forceps and retractors pin particles and stretch it further.
-  - Each severed spring remembers how deep the cut went: skin, fat or muscle.
-    Skin, fat and muscle are three meshes rebuilt from the sim; each one drops the triangles over a gap cut down to it.
-    So a shallow cut shows yellow fat, a deeper one red muscle, and only a full depth cut opens into the cavity.
-  - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index.
+  - Each severed spring remembers how deep the cut went (skin, fat or muscle), where the blade crossed it and which
+    way the cut ran. The edges of a cut are drawn back square to it, more the deeper it goes: skin gapes a few
+    millimeters, fat more, cut muscle retracts hard. The pull tapers off toward the cut's ends (where each stroke
+    starts and where the blade is), so a cut opens like a lens, closed at both ends, like a zipper behind the blade.
+  - Skin, fat and muscle are three meshes rebuilt from the sim, only where the simulated skin replaces the body (the
+    region). A layer cut through is split exactly where the blade crossed each spring, not along the grid: each side
+    keeps its part of the triangle and moves with it. Walls run down each lip through the layer's thickness (the
+    skin's cut face in its own tone, yellow fat, red muscle), so a cut has depth. The simulated skin doesn't paint the
+    wound map's cut groove: its lips are skin right up to the split: a skin cut shows the fat (or the muscle where there's no fat),
+    a deeper one the muscle, a full depth cut the bone or organs under it. The meshes rebuild on the frame after the
+    sim steps, so the two costs don't land on one frame. Which triangles there are and how they split is planned only
+    when the cuts or the region change; while the skin just moves, only the vertices move.
+  - Fat is per site (`fat` in `patient_sites.json`, 12 mm when a site doesn't say): none on the forearm, where a cut
+    deeper than the skin goes into the muscle.
+  - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index. A spring snaps
+    only if the one going on from it the same way is at least halfway there too: skin tears where it's overstretched
+    over a length, not where one short spring of the grid takes a jump. Springs in the site's outermost strip (under
+    the drape's frame) or to skin hanging off the body never snap; springs stretched at rest (the edge of a round limb)
+    break only well past that.
     Stitches are extra springs across the cut, their length is the tension. Thread is stiffer than skin (solved more
-    often). A cut counts as closed only where its edges meet: a loose stitch leaves a gap that stays open and bleeds.
-  - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`, triangles sorted into bins), not
-    the body's rest shape, so a lifted fold is where it's drawn.
-  - A grip drags a patch of skin around it along (never across a cut), so pulls spread and the skin stretches
-    visibly over several centimeters before it tears. Everything that moved is shown simulated.
+    often). A stitch closes a few millimeters of the cut. A cut counts as closed only where its edges meet: a loose
+    stitch leaves a gap that stays open and bleeds.
+  - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`), not the body's rest shape, so a
+    lifted fold is where it's drawn. Over the site a hand rests on that skin, not on the gown's or the site's colliders.
+  - A grip holds the skin within 10 mm of its jaws at its distance (it can still turn with a flap folded back) and
+    drags a patch around it along (never across a cut), so pulls spread and the skin stretches visibly over several
+    centimeters before it tears. Everything that moved is shown simulated. Grips held still let the sim sleep.
+  - A cut's edge lifted off the body (a flap folded back) isn't drawn back from the cut any more.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
     `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
+  - Skin cut out all round (a circle through the skin) is a piece (`TissueSim.piece_of()`): pinched with forceps and
+    lifted 1 cm, it comes off whole (`TissueSim.excise()`). The skin layer has a hole there, the fat (or the muscle,
+    where there's no fat) shows, and the forceps hold the piece as a skin graft with one use: pressed onto a cleaned
+    burn it goes on, pressed in the air it's let go.
   - The skin settles under its own tension when it's built, so it starts asleep. The sim sleeps when nothing moves.
+    Skin under the drape's edge isn't counted as exposed, and skin that starts under the drape stays under it, unless
+    it was cut free there (a flap cut under the drape's frame takes it along).
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
@@ -92,7 +120,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.ANCHOR_REACH`), so an
   H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
 - Screen grading (`post_grime.gdshader`): a restrained cool-green tint, vignette, a trace of grain and chromatic split.
-  Sickness wobbles and blurs the view, passing out blacks it out.
+  Sickness wobbles and blurs the view, passing out blacks it out, a sedative blurs it and too much darkens it.
   Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
 - Gloves pick up blood from the tool they hold, fingertips first, and the sink or a fresh pair cleans them.
   Bloody gloves slowly stain the scrubs, which stay stained for the rest of the surgery.
@@ -145,7 +173,9 @@ Surgeon effect keys:
 
 | Key | Meaning |
 |---|---|
-| tremor / tremor_mult | hand tremor amplitude (m) and multiplier |
+| stress_floor | stress never drains below this (shaky quirks), stacked up to 0.9 |
+| tremor_mult | multiplier on all hand shaking (0 = Steady hands, never shakes) |
+| weight_kg | added to the surgeon's 80 kg (doses given to them scale with it) |
 | bump_resist | 0..1 less likely to drop tools when jolted |
 | belt_slots | belt capacity change (default 4) |
 | items | personal tool ids spawned on the belt |
@@ -204,6 +234,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
+- A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
+  past the end of an opening it's already in. Over an opening it reaches down only at full depth: there it grates on a
+  bone (which hurts through a local block) but stops short of an organ; it nicks an organ only by touching it.
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
@@ -267,7 +300,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **One button per job** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
-  a cotton pad wipe or dip it, and let it go when used in the air away from the dish.
+  a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
+  from the skin put it on a cleaned burn, or let it go in the air.
+  The Rotate keys roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
   suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).
@@ -304,6 +339,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
     the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
   - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
     pulls nothing and the plunger stays.
+  - a surgeon's glove (the other hand of the one holding it, or a partner's) or a partner's body: the needle rests
+    on a glove like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
+    pulls nothing. A glove comes before the patient under it, a body after.
   - nothing: pulls air, pushes the liquid out in a squirt.
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
   Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
@@ -322,9 +360,27 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
+  Surgeons weigh 80 kg (small hands 60), shown in the lobby under their name; doses given to them use it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
 - **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
   its tick marks toward them. Liquid, air and plunger follow the ml exactly on every peer.
+
+### Stress, tremor and sedation (`SurgeonStatus`)
+
+- **Stress is the tremor**: under 30% the tool stays still and only the glove twitches now and then; up to 60% a
+  light shake reaches the tool; above it a plain one that grows with stress. Quirks only change how fast stress
+  builds (`stress_mult`) and how low it drains (`stress_floor`): Shaky hands 65%, Alcoholic 35% (none while a sip
+  works), a coffee +15% while it works. Cold (run modifier) shakes on its own. Holding breath steadies all of it,
+  Steady hands takes it all away.
+- **Diazepam for a surgeon** (flag `benzo`): injected into a hand (their own other hand or a partner's) or a
+  partner's body, dosed by the surgeon's weight. At the right dose it stops stress shaking (not the cold) for its
+  five minutes, blurs the view (mip level 1) and delays the mouse's hand moves by 100 ms (looking around isn't);
+  afterimages trail the gloves. Past 1.4 times the dose the view darkens toward the edges and the delay grows, up
+  to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
+  floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
+  (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) brings them round and ends the diazepam;
+  adrenaline (`stimulant`) gets them up only while it lasts, and if enough diazepam is still working they go down
+  again. On the patient, flumazenil reverses diazepam too.
 
 ### Tourniquet
 
@@ -381,13 +437,14 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
   - Patient (`patient_animator.gd`, bones posed through `bone_rig.gd` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,
     jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.
-  - Surgeon: walk cycle from movement speed, collapse when passed out, head tilt from camera pitch,
+  - Surgeon: walk cycle from movement speed, collapse when passed out, lying on the side when knocked out, head tilt
+    from camera pitch,
     two-bone IK arms, glove finger bones relax, wrap around a held tool and squeeze while using it.
     The glove's cuff has its own bone aimed down the forearm, so a bent wrist stretches the glove over the sleeve.
   - Tools (`tool_animator.gd`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
-- **Sounds**: 37 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
-  surgeon, patient groans/screams/breathing). The monitor beep is generated live.
+- **Sounds**: 44 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
+  surgeon coughs and moans, patient groans/screams/breathing). The monitor beep is generated live.
   Patient speech is subtitles; optional recorded lines can be dropped into `assets/audio/voice/`.
 
 ## Known limits of this iteration

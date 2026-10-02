@@ -246,6 +246,9 @@ func _effect_checks(surgery: Surgery) -> void:
 		await _frames(30)
 		if me.hands[1].blood <= 0.0:
 			print("FAIL: a bloody tool didn't bloody the glove holding it")
+		# With every quirk on, a sweaty glove or a cough can make it slip meanwhile: then it's picked up again.
+		if me.held_tool(1) != tool:
+			surgery.tools._req_grab(tool.uid, 1)
 		surgery.tools._req_wash(1)
 		if tool.blood > 0.0:
 			print("FAIL: washing didn't take the blood off")
@@ -388,7 +391,8 @@ func _iodine_checks(surgery: Surgery) -> void:
 		print("FAIL: wiping iodine takes %.2f ms in one frame (stutters)" % worst_ms)
 	tools._req_release(1, Vector3.ZERO)
 	await _frames(3)
-	if pad.state != SurgicalTool.State.FREE:
+	# Let go over an opened chest or belly, the pad falls in: that's fine, it isn't on the forceps.
+	if pad.state == SurgicalTool.State.CARRIED:
 		print("FAIL: the pad stayed on forceps that were let go")
 
 
@@ -726,14 +730,16 @@ static func open_wide(patient: Patient) -> int:
 	var break_mult := tissue.break_mult
 	tissue.break_mult = maxf(break_mult, 1.0)
 	var grips: Array = []
-	for i in range(1, TissueSim.RES, 2):
-		for edge: int in [floori(middle * TissueSim.RES), ceili(middle * TissueSim.RES)]:
+	# Forceps about every 25 mm along each edge.
+	var spacing := maxi(1, roundi(0.025 / (patient.body.site_size.x / tissue.res_x)))
+	for i in range(1, tissue.res_x, spacing):
+		for edge: int in [floori(middle * tissue.res_y), ceili(middle * tissue.res_y)]:
 			var k := tissue.index(i, edge)
 			var key := 88000 + grips.size()
 			tissue.grip(key, tissue.uv_of(k))
 			# The flap turns up and over about the side of the site it's still attached to, its hinge there.
-			var side := -1.0 if edge < middle * TissueSim.RES else 1.0
-			var hinge := tissue.rest[tissue.index(i, 0 if side < 0.0 else TissueSim.RES)]
+			var side := -1.0 if edge < middle * tissue.res_y else 1.0
+			var hinge := tissue.rest[tissue.index(i, 0 if side < 0.0 else tissue.res_y)]
 			grips.append([key, hinge, tissue.rest[k] - hinge, side])
 	for step in 240:
 		var angle := PI * 0.85 * (step + 1) / 240.0
@@ -751,10 +757,10 @@ static func open_wide(patient: Patient) -> int:
 static func soft_tissue_over(body: PatientBody, uv: Vector2) -> bool:
 	var tissue := body.tissue
 	var region := tissue.region()
-	var grid := uv * TissueSim.RES
+	var grid := uv * Vector2(tissue.res_x, tissue.res_y)
 	var corners := 0.0
 	for c: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
-		var at := (Vector2i(grid.floor()) + c).clamp(Vector2i.ZERO, Vector2i.ONE * TissueSim.RES)
+		var at := (Vector2i(grid.floor()) + c).clamp(Vector2i.ZERO, Vector2i(tissue.res_x, tissue.res_y))
 		corners += region[tissue.index(at.x, at.y)]
 	if corners < 2.0:
 		return true
@@ -897,7 +903,9 @@ func _bone_checks(surgery: Surgery) -> void:
 	if depth < top or depth > body.cavity_depth():
 		print("FAIL: the %s sits %.3f m under the skin, not under the muscle inside the cavity" % [bone.name, depth])
 	var scraped: float = patient.flags.get("bone_scraped", 0.0)
-	patient.cut_cavity(uv, depth - 0.008, 1.0, false, 0.5)
+	# Down to just over the bone's top, where a blade at full effort stops in an opening.
+	var thickness := ((bone.get_child(1) as CollisionShape3D).shape as CapsuleShape3D).radius
+	patient.cut_cavity(uv, depth - thickness - 0.002, 1.0, false, 0.5)
 	if patient.flags.get("bone_scraped", 0.0) <= scraped:
 		print("FAIL: cutting down on the %s didn't reach the bone" % bone.name)
 

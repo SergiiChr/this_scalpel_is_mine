@@ -40,7 +40,7 @@ uniform mat4 carve_inverse;
 // x, z: half size of the surgical site, y: cavity depth. Zero disables carving.
 uniform vec3 carve_box = vec3(0.0);
 // Points in carve_map: one texel per tissue grid point, so texel centers sit exactly on the grid.
-uniform float carve_grid = 1.0;
+uniform vec2 carve_grid = vec2(1.0);
 uniform sampler2D site_wounds : filter_linear, hint_default_black;
 uniform sampler2D site_fluids : filter_linear, hint_default_black;
 uniform float pallor = 0.0;

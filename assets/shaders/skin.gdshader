@@ -16,6 +16,7 @@ uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 
 varying vec3 world_pos;
+varying vec3 local_pos;
 
 #include "res://assets/shaders/wound.gdshaderinc"
 
@@ -32,17 +33,23 @@ float noise(vec2 p) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	local_pos = VERTEX;
 	vec4 w = textureLod(wound_map, UV, 0.0);
-	// Cuts sink a little, bruises and burns swell, blood stands on top.
-	VERTEX.y += -smoothstep(0.1, 0.8, w.r) * 0.0015 + w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;
+	// Bruises and burns swell, blood stands on top. Cuts don't sink: here the mesh itself is split along them.
+	VERTEX.y += w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;
 	VERTEX.y += blood_thickness(textureLod(fluid_map, UV, 0.0).r);
 }
 
 void fragment() {
 	vec4 w = texture(wound_map, UV);
+	// No painted groove: the sim splits the mesh exactly along a cut, so its lips are skin up to the edge. The groove
+	// (and its pink rim) would lie right on them, a dark ring round every opening.
+	w.r = 0.0;
 	vec4 f = texture(fluid_map, UV);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
+	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
+	NORMAL = blood_normal(NORMAL, VERTEX, (noise(local_pos.xz * 900.0 + local_pos.y * 300.0) + noise(local_pos.xy * 700.0) - 1.0) * 0.00004);
 	float n = noise(world_pos.xz * 14.0) * 0.6 + noise(world_pos.xy * 6.3 + 7.0) * 0.4;
 	vec3 c = mix(skin_color.rgb, skin_color.rgb * vec3(0.25, 0.22, 0.15) * 1.6, grime * smoothstep(0.35, 0.9, n));
 	c = mix(c, vec3(0.78, 0.8, 0.8), pallor * 0.5);

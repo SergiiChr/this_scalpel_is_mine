@@ -21,6 +21,7 @@ func _ready() -> void:
 	_rests_on_curved_body()
 	_stays_on_body()
 	_folds_onto_drape()
+	_piece_comes_off()
 	print("tissue_test: done")
 	get_tree().quit()
 
@@ -57,7 +58,7 @@ func _depth_layers() -> void:
 	var sim := _sim()
 	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.FAT)
 	_settle(sim)
-	var full := (TissueSim.RES * TissueSim.RES * 2) * 3
+	var full := sim.triangle_count() * 3
 	_check(sim.triangles(TissueSim.Depth.SKIN).size() < full, "skin layer has a hole over a fat deep cut")
 	_check(sim.triangles(TissueSim.Depth.FAT).size() < full, "fat layer has a hole over a fat deep cut")
 	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == full, "muscle layer stays whole under a fat deep cut")
@@ -106,7 +107,7 @@ func _stitches_close() -> void:
 		u += 0.01
 	_settle(sim)
 	_check(sim.gap_at(MID) == 0.0, "stitching along the whole cut closes it")
-	_check(sim.triangles(TissueSim.Depth.SKIN).size() == TissueSim.RES * TissueSim.RES * 6, "a stitched cut shows no hole")
+	_check(sim.triangles(TissueSim.Depth.SKIN).size() == sim.triangle_count() * 3, "a stitched cut shows no hole")
 	sim.burst(MID, 0.5)
 	_settle(sim)
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "a burst closure gapes again")
@@ -136,7 +137,8 @@ func _elastic() -> void:
 		sim._substep()
 	_settle(sim)
 	_check(sim.snapped.is_empty(), "a slow 3 cm pull on intact skin doesn't tear it")
-	var behind := k - 3
+	# 4 cm behind the grip, against the pull.
+	var behind := k - roundi(0.04 / (SIZE.x / sim.res_x))
 	var moved := sim.pos[behind].distance_to(sim.rest[behind])
 	_check(moved > 0.008, "skin 4 cm behind a 3 cm pull follows it by more than 8 mm (%.1f mm)" % (moved * 1000.0))
 	var region := sim.region()
@@ -165,7 +167,7 @@ func _muscle_first() -> void:
 	_settle(sim, 120)
 	_check(not sim.muscle_open_near(MID, 0.03), "sewing along the muscle closes it")
 	_check(not sim.is_open(MID), "sewn muscle closes the cavity")
-	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == TissueSim.RES * TissueSim.RES * 6, "sewn muscle shows no hole in the muscle layer")
+	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == sim.triangle_count() * 3, "sewn muscle shows no hole in the muscle layer")
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "the skin over sewn muscle still gapes until it's stitched")
 
 
@@ -184,7 +186,7 @@ func _loose_stitch_gapes() -> void:
 		sims.append(sim)
 	_check(sims[0].gap_at(MID) == 0.0, "a tight stitch closes the gap")
 	_check(sims[1].gap_at(MID) > TissueSim.OPEN_GAP * 0.5, "a loose stitch leaves the gap open (%.1f mm)" % (sims[1].gap_at(MID) * 1000.0))
-	_check(sims[1].triangles(TissueSim.Depth.SKIN).size() < TissueSim.RES * TissueSim.RES * 6, "a loosely stitched cut still shows its opening")
+	_check(sims[1].triangles(TissueSim.Depth.SKIN).size() < sims[1].triangle_count() * 3, "a loosely stitched cut still shows its opening")
 
 
 ## A client mirrors the host's tears spring by spring, diagonals included, and ends with identical topology.
@@ -286,3 +288,33 @@ func _folds_onto_drape() -> void:
 			lifted += 1
 	_check(through == 0, "skin folded out over the drape stays on it (%d points under)" % through)
 	_check(lifted == 0, "skin under the drape isn't pushed up through it (%d points)" % lifted)
+
+
+## A circle cut through the skin all round frees a piece; until it closes there's none. Taken off, the skin layer has a
+## hole there and only there, the layers under it stay whole, and peers that take the same piece off agree.
+func _piece_comes_off() -> void:
+	var sims: Array[TissueSim] = [_sim(), _sim()]
+	var middle := sims[0].nearest(MID)
+	for sim in sims:
+		var points := 24
+		for n in points:
+			var a := MID + Vector2(cos(TAU * n / points) / SIZE.x, sin(TAU * n / points) / SIZE.y) * 0.015
+			var b := MID + Vector2(cos(TAU * (n + 1) / points) / SIZE.x, sin(TAU * (n + 1) / points) / SIZE.y) * 0.015
+			sim.cut(a, b, TissueSim.Depth.SKIN)
+			if n == points / 2 and sim == sims[0]:
+				_check(sim.piece_of(middle).is_empty(), "skin cut halfway round is still joined")
+		_settle(sim)
+	var piece := sims[0].piece_of(middle)
+	_check(not piece.is_empty(), "a circle cut through the skin frees a piece (%d grid points)" % piece.size())
+	_check(sims[0].piece_of(sims[0].nearest(Vector2(0.2, 0.2))).is_empty(), "skin outside the circle isn't a piece")
+	var full := sims[0].triangle_count() * 3
+	var skin_before := sims[0].triangles(TissueSim.Depth.SKIN).size()
+	for sim in sims:
+		sim.excise(middle)
+	_check(sims[0].excised.count(1) == piece.size(), "taking it off takes the whole piece")
+	_check(sims[0].triangles(TissueSim.Depth.SKIN).size() < skin_before, "the skin layer has a hole where it was")
+	_check(sims[0].triangles(TissueSim.Depth.FAT).size() == full, "the fat layer under it stays whole")
+	_check(sims[0].is_open(MID, TissueSim.Depth.SKIN) and not sims[0].is_open(MID, TissueSim.Depth.FAT), "the hole is open through the skin only")
+	_check(not sims[0].is_open(Vector2(0.2, 0.2), TissueSim.Depth.SKIN), "skin away from it isn't open")
+	_check(sims[0].excise(middle) == 0, "a piece already taken can't be taken again")
+	_check(sims[0].topology_hash() == sims[1].topology_hash(), "peers that take the same piece off agree")

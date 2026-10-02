@@ -6,12 +6,15 @@ extends Node
 const Bench := preload("res://tests/syringe_bench.gd")
 
 var bench: Bench
+## Doses the host gave surgeons: [peer, drug, amount].
+var doses: Array = []
 
 
 func _ready() -> void:
 	bench = Bench.new()
 	add_child(bench)
 	await bench.start()
+	bench.surgery.surgeon_dosed.connect(func(peer: int, drug: String, amount: float) -> void: doses.append([peer, drug, amount]))
 	await _control_checks()
 	var only := ""
 	for arg in OS.get_cmdline_user_args():
@@ -25,6 +28,12 @@ func _ready() -> void:
 			await _catheter_checks(case)
 	if "swap_bag".begins_with(only):
 		await _swap_checks()
+	if "stress".begins_with(only):
+		_stress_checks()
+	if "sedation".begins_with(only):
+		_sedation_checks()
+	if "sedated_surgeon".begins_with(only):
+		await _sedated_surgeon_checks()
 	if "needle_hand".begins_with(only):
 		await _hand_checks()
 	print("syringe_test: done")
@@ -75,11 +84,20 @@ func _run(case: Dictionary) -> void:
 	var patient := bench.surgery.patient
 	var target := bench.needle_target()
 	var kind: String = {"vial": "container", "dish": "container", "drip": "container", "vein": "vein", "air": "air"}.get(case.target, "tissue")
-	if not _check(target.kind == kind and target.get("layer", case.target) == case.target, "%s: the needle is in the %s (%s)" % [case.name, case.target, target]):
+	var into_surgeon: bool = case.target in Bench.SURGEON_TARGETS
+	var peer := 1 if case.target == "own_hand" else 2
+	if into_surgeon:
+		var part := "body" if case.target == "doctor_body" else "hand"
+		if not _check(target.kind == "surgeon" and target.peer == peer and target.part == part, "%s: the needle is in surgeon %d's %s (%s)" % [case.name, peer, part, target]):
+			return
+	elif not _check(target.kind == kind and target.get("layer", case.target) == case.target, "%s: the needle is in the %s (%s)" % [case.name, case.target, target]):
 		return
 	var pull: bool = case.notches > 0
-	var moves: bool = not (pull and kind == "tissue")
+	var moves: bool = not (pull and (kind == "tissue" or into_surgeon))
 	var drugs_before := patient.active_drugs.size()
+	var me := bench.surgery.local_surgeon
+	me.status.drugs.clear()
+	doses.clear()
 	for i in absi(case.notches):
 		var ml_before := syringe.ml
 		var air_before := syringe.air
@@ -109,7 +127,21 @@ func _run(case: Dictionary) -> void:
 	if case.target == "drip" and not pull:
 		_check(patient.active_drugs.size() == drugs_before, "%s: nothing runs down the line while the needle is in the bag" % case.name)
 	await bench.withdraw()
-	if not pull and (kind in ["vein", "tissue"] or case.target == "drip"):
+	if into_surgeon:
+		var drug: String = Db.tool(case.vial).drug
+		var amount: float = absi(case.notches) * Db.tool(case.vial).concentration
+		if pull:
+			_check(doses.is_empty() and me.status.drugs.is_empty(), "%s: pulling from a hand draws nothing and gives nothing" % case.name)
+		else:
+			var given: bool = doses.size() == 1 and doses[0][0] == peer and doses[0][1] == drug and is_equal_approx(doses[0][2], amount)
+			_check(given, "%s: once the needle is out surgeon %d gets %.1f %s (%s)" % [case.name, peer, amount, drug, doses])
+		if case.target == "own_hand" and not pull:
+			var entry: Dictionary = me.status.drugs[0] if me.status.drugs.size() == 1 else {}
+			var onset := Db.drug(drug).onset * DrugDef.DIRECT_ONSET
+			_check(not entry.is_empty() and is_equal_approx(entry.onset, onset), "%s: the surgeon's own dose takes effect like a direct injection (%s)" % [case.name, entry])
+		_check(patient.active_drugs.size() == drugs_before, "%s: the patient gets nothing" % case.name)
+		me.status.drugs.clear()
+	elif not pull and (kind in ["vein", "tissue"] or case.target == "drip"):
 		var given := patient.active_drugs.slice(drugs_before)
 		var into_blood: bool = kind == "vein" or case.target == "drip"
 		var onset: float = Db.drug(Bench.DRUG).onset * (1.5 if into_blood else 0.4)
@@ -175,7 +207,113 @@ func _swap_checks() -> void:
 	_check(hung and patient.flags.has("drug_saline"), "swap_bag: the bag hangs on the stand full (%.0f ml) and runs into the line" % drip.ml)
 
 
-## Y14-Y16: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its
+## Y15-Y16: stress shakes the hands in three steps, quirks only set how low stress drains, and Steady hands stops it
+## all. A status on its own, its update() driven directly.
+func _stress_checks() -> void:
+	print("--- stress")
+	var status := SurgeonStatus.new(Modifiers.new())
+	var shakes: Array[float] = []
+	for stress: float in [0.2, 0.45, 0.8]:
+		status.stress = stress
+		shakes.append(status.tremor_amount())
+	_check(shakes[0] == 0.0 and shakes[1] > 0.0 and shakes[2] > shakes[1] * 2.0, "stress: calm hands keep the tool still, a third stressed shake it lightly, two thirds plainly (%s)" % [shakes])
+	status.stress = 0.2
+	var twitches := 0
+	for i in 600:
+		status.update(1.0 / 60.0, {})
+		twitches += 1 if status.shiver() > 0.0 else 0
+	_check(twitches > 0 and twitches < 500, "stress: calm, the glove still twitches now and then (%d of 600 frames)" % twitches)
+	var shaky := _status({"stress_floor": 0.65})
+	shaky.update(0.1, {})
+	_check(is_equal_approx(shaky.stress, 0.65) and shaky.tremor_amount() > shakes[1], "stress: Shaky hands never drain below 65%% and shake plainly (%.2f)" % shaky.stress)
+	var steady := _status({"stress_floor": 0.65, "tremor_mult": 0.0})
+	steady.cold_tremor = 0.0015
+	steady.stress = 0.95
+	_check(steady.tremor_amount() == 0.0 and steady.shiver() == 0.0, "stress: Steady hands with Shaky hands, stressed and cold, don't shake at all")
+	_check(SurgeonStatus.weight_of(Modifiers.new()) == 80.0 and _status({"weight_kg": -20.0}).weight_kg == 60.0, "stress: a surgeon weighs 80 kg, small hands 60 kg")
+
+
+## Y17-Y18: diazepam given to a surgeon. The right dose for their weight stops stress shaking (not the cold) and
+## delays hand moves; past 1.4 times the dose the view darkens and the delay grows; twice the dose knocks them out for five
+## minutes. Flumazenil brings them round at once; adrenaline only while it lasts.
+func _sedation_checks() -> void:
+	print("--- sedation")
+	var right := 0.2 * 80.0
+	var status := _dosed(right)
+	status.stress = 0.8
+	status.cold_tremor = 0.0015
+	# Ten seconds in, the dose has faded a little from its peak.
+	_check(status.calm > 0.95 and absf(status.tremor_amount() - 0.0015) < 0.0003, "sedation: the right dose steadies stress shaking, the cold stays (%.4f)" % status.tremor_amount())
+	_check(absf(status.input_delay() - SurgeonStatus.SEDATED_DELAY) < 0.005 and status.overdose == 0.0 and not status.is_out(), "sedation: the right dose delays hand moves %.0f ms, nothing more" % (status.input_delay() * 1000.0))
+	var more := _dosed(right * 1.8)
+	_check(more.overdose > 0.4 and more.input_delay() > SurgeonStatus.SEDATED_DELAY + 0.05 and not more.is_out(), "sedation: 1.8 doses darken the view and lag more (%.2f, %.0f ms)" % [more.overdose, more.input_delay() * 1000.0])
+	var events := PackedStringArray()
+	var out := _dosed(right * 2.5, events)
+	_check(events.has("knocked_out") and out.is_out() and out.knocked_out > SurgeonStatus.KNOCKOUT_TIME - 10.0, "sedation: 2.5 doses knock the surgeon out for five minutes (%.0f s left)" % out.knocked_out)
+	_run_status(out, 60.0, events)
+	out.administer("flumazenil", 0.01 * 80.0)
+	events.clear()
+	_run_status(out, 2.0, events)
+	_check(events.has("came_round") and not out.is_out() and out.calm == 0.0, "sedation: flumazenil brings them round and ends the diazepam (%s)" % events)
+	var kept := _dosed(right * 3.5)
+	kept.administer("adrenaline", 0.01 * 80.0)
+	events.clear()
+	_run_status(kept, 3.0, events)
+	_check(events.has("came_round") and not kept.is_out() and kept.calm > 0.9, "sedation: adrenaline gets them up, still sedated")
+	_run_status(kept, Db.drug("adrenaline").duration, events)
+	_check(kept.is_out(), "sedation: once the adrenaline wears off, 3.5 doses put them down again")
+
+
+## Y19: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late; knocked out
+## they lie on the floor with the table in view, and flumazenil gets them up again.
+func _sedated_surgeon_checks() -> void:
+	print("--- sedated_surgeon")
+	var me := bench.surgery.local_surgeon
+	me.status.drugs.clear()
+	me.status.administer("diazepam", 0.2 * 80.0)
+	await bench.frames(200)
+	var hand := me.hands[me.active]
+	var trail := hand.find_child("Trail", false, false)
+	_check(me.status.calm > 0.9 and trail != null and trail.get_child_count() == SurgeonHand.TRAIL_COPIES, "sedated_surgeon: afterimages follow the gloves")
+	var before := hand.target
+	me._delayed.append([Time.get_ticks_msec() + 100, me.active, Vector2(40.0, 0.0)])
+	await bench.frames(2)
+	var early := hand.target.distance_to(before)
+	await get_tree().create_timer(0.2).timeout
+	await bench.frames(2)
+	_check(early < 0.001 and hand.target.distance_to(before) > 0.01, "sedated_surgeon: a mouse move reaches the hand only after the delay (%.3f m, then %.3f m)" % [early, hand.target.distance_to(before)])
+	me.status.administer("diazepam", 0.2 * 80.0 * 2.0)
+	await bench.frames(240)
+	var camera := me.camera()
+	var patient := bench.surgery.patient
+	_check(me.status.is_knocked_out() and me.is_down() and camera.global_position.y - me.global_position.y < 0.4, "sedated_surgeon: knocked out, the surgeon lies on the floor (eyes %.2f m up)" % (camera.global_position.y - me.global_position.y))
+	_check(camera.is_position_in_frustum(patient.global_position), "sedated_surgeon: lying there, the patient on the table is in view")
+	_check(me.hands.all(func(h: SurgeonHand) -> bool: return h.global_position.y - me.global_position.y < 0.15), "sedated_surgeon: the hands lie on the floor")
+	me.status.administer("flumazenil", 0.01 * 80.0)
+	await bench.frames(200)
+	_check(not me.status.is_out() and not me.is_down() and camera.global_position.y - me.global_position.y > 1.4, "sedated_surgeon: flumazenil gets them back on their feet")
+
+
+func _status(effects: Dictionary) -> SurgeonStatus:
+	var mods := Modifiers.new()
+	mods.add(effects)
+	return SurgeonStatus.new(mods)
+
+
+## A status given `mg` of diazepam, run 10 seconds on (past its onset), the events it gave collected.
+func _dosed(mg: float, events: PackedStringArray = PackedStringArray()) -> SurgeonStatus:
+	var status := SurgeonStatus.new(Modifiers.new())
+	status.administer("diazepam", mg)
+	_run_status(status, 10.0, events)
+	return status
+
+
+func _run_status(status: SurgeonStatus, seconds: float, events: PackedStringArray) -> void:
+	for i in int(seconds * 10.0):
+		events.append_array(status.update(0.1, {}))
+
+
+## Y20-Y22: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its
 ## tip in place, the mouse tilting the syringe about it, and tears out when pulled on sideways; a syringe brought under the IV bag at waist height rises into its port.
 func _hand_checks() -> void:
 	print("--- needle_hand")

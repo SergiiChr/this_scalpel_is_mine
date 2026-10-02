@@ -74,7 +74,12 @@ func _drive(role: String, driver: Node) -> void:
 	else:
 		var host_me := surgery.local_surgeon
 		host_me.hands[0].local_target = host_me.to_local(Vector3(0.0, 1.3, 0.06))
-		await tree.create_timer(6.0).timeout
+		# Until the client has cut and handed its tool across: on a slow machine that takes a while.
+		for i in 75:
+			if host_me.held_tool(0):
+				break
+			await tree.create_timer(0.2).timeout
+		await tree.create_timer(1.0).timeout
 		var got := host_me.held_tool(0)
 		print("[host] partner handed me: ", got.def.id if got else "nothing")
 	var surgeon_wounds := surgery.patient.wounds.filter(func(w: Wound) -> bool: return w.made_by_surgeon).size()

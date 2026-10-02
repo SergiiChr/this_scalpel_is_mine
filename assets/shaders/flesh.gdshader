@@ -12,7 +12,7 @@ uniform sampler2D region_map : filter_linear, hint_default_white;
 uniform mat4 region_inverse;
 // x, z: half size of the surgical site. Zero shows everything (organs).
 uniform vec3 region_box = vec3(0.0);
-uniform float region_grid = 1.0;
+uniform vec2 region_grid = vec2(1.0);
 
 varying vec3 local_pos;
 varying vec3 world_pos;

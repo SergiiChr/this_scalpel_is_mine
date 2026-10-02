@@ -8,6 +8,9 @@ extends Node3D
 
 static var current: Surgery
 
+## Host: a dose went into a surgeon (their own peer gets it through _dosed()).
+signal surgeon_dosed(peer: int, drug: String, amount: float)
+
 const STATUS_INTERVAL := 0.5
 const QTE_KEYS: PackedStringArray = ["move_forward", "move_back", "move_left", "move_right"]
 const QTE_TIMEOUT := 10.0
@@ -243,6 +246,13 @@ func add_sickness(peer: int, amount: float) -> void:
 	_sick.rpc_id(peer, amount)
 
 
+## Host: a syringe pushed `amount` of a drug into a surgeon, given once the needle came out.
+func dose_surgeon(peer: int, drug: String, amount: float) -> void:
+	surgeon_dosed.emit(peer, drug, amount)
+	if peer == multiplayer.get_unique_id() or peer in multiplayer.get_peers():
+		_dosed.rpc_id(peer, drug, amount)
+
+
 func set_attached(peer: int, hand: int, value: bool) -> void:
 	var surgeon: Surgeon = surgeons.get(peer)
 	if surgeon and hand >= 0:
@@ -336,6 +346,13 @@ func _stress(amount: float) -> void:
 func _sick(amount: float) -> void:
 	if local_surgeon:
 		local_surgeon.status.add_sickness(amount)
+
+
+@rpc("authority", "call_local", "reliable")
+func _dosed(drug: String, amount: float) -> void:
+	if local_surgeon:
+		local_surgeon.status.administer(drug, amount)
+		hud.toast("A sharp sting. Something cold goes in.")
 
 
 @rpc("authority", "call_local", "reliable")
@@ -458,7 +475,7 @@ func _incident(kind: String) -> void:
 			for other: int in surgeons:
 				if other != surgeon.peer_id:
 					add_sickness(other, 0.3)
-		"passed_out":
+		"passed_out", "knocked_out":
 			scoring.add("passed_out")
 		"sweat_drip":
 			patient.contaminate_site("")

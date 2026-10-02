@@ -66,6 +66,8 @@ func _refresh() -> void:
 		var mine := peer == Net.local_id()
 		var card := Ui.vbox(8)
 		card.add_child(Ui.label("%s%s   %s" % [info.name, " (you)" if mine else "", "READY" if info.ready else "not ready"], 24, Ui.GOOD if info.ready else Ui.INK))
+		var weight := SurgeonStatus.weight_of(Modifiers.from_rolls(info.quirks, Db.surgeon_quirks))
+		card.add_child(Ui.label("Weight %d kg" % weight, 18, Ui.DIM))
 		for roll: Dictionary in info.quirks:
 			card.add_child(Ui.quirk_line(Db.quirk(QuirkDef.Kind.SURGEON, roll.id), roll.variant, mine))
 		_roster_box.add_child(Ui.panel(card))

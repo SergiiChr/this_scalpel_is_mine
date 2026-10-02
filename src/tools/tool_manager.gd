@@ -345,6 +345,18 @@ func drop_new(id: String, at: Vector3) -> void:
 	tools[uid].set_meta("falling", true)
 
 
+## Host: a skin graft cut from the patient, held at the tip of the tool that lifted it off. One piece covers one spot.
+func give_graft(by_uid: int) -> void:
+	var by: SurgicalTool = tools.get(by_uid)
+	if by == null:
+		return
+	var uid := _next_uid
+	_spawn.rpc(uid, "skin_graft", by.tip_position())
+	var graft: SurgicalTool = tools[uid]
+	graft.charges = 1
+	carry(graft, by)
+
+
 func leave_standing(tool: SurgicalTool) -> void:
 	Surgery.current.set_attached(tool.holder, tool.slot, false)
 	_set_state.rpc(tool.uid, SurgicalTool.State.STANDING, tool.holder, -1, tool.global_transform)

@@ -28,6 +28,9 @@ const LOOK_SENSITIVITY := 0.003
 const AIM_SENSITIVITY := 0.004
 ## Gap between a resting tool tip and the surface under it.
 const HOVER_GAP := 0.01
+## How far above what's inside an opening (meters) a lowered blade stays at each effort level: at full effort it goes
+## all the way down to it, close enough to grate on a bone (Patient.BLADE_REACH), short of cutting an organ.
+const BLADE_IN_OPENING: Array[float] = [HOVER_GAP, 0.008, 0.005, 0.002]
 ## Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
 const PULL_SPEED := 0.05
 ## Room between the hand (or forearm) and the surface under it: about half a hand's thickness.
@@ -72,6 +75,21 @@ const FUMBLE_SPEED := 0.35
 const STALL_SECONDS := 0.75
 ## Scrubs stain per second per fully bloody glove: hands get wiped on them without thinking.
 const STAIN_RATE := 0.004
+## Knocked out, the surgeon tips over sideways from the feet and lies on their side, facing the table: the body
+## model this far up off the floor (half the shoulders' width), the hands on the floor in front of the chest (local,
+## for a fall to the left), and the camera's pitch, enough to see the table from the floor. On the way down they
+## stagger back to this far (m) from the middle of the table, walls allowing, so the table isn't right overhead.
+const LYING_LIFT := 0.2
+const LYING_HAND := Vector3(-0.8, 0.05, -0.25)
+const LYING_PITCH := 0.3
+const LYING_DISTANCE := 1.4
+## How much floor (m) a falling surgeon looks for beside them, to pick the side they fall to.
+const FALL_ROOM := 2.0
+## Close enough to a glove's middle (m) for a needle to be in the hand; around the spine for it to be in the body.
+const GLOVE_REACH := 0.05
+const TORSO_RADIUS := 0.16
+## Where the spine runs in the body model (local, standing): hips to neck.
+const SPINE: Array[Vector3] = [Vector3(0.0, 0.95, 0.0), Vector3(0.0, 1.45, 0.0)]
 
 var peer_id := 1
 var display_name := "Doctor"
@@ -103,6 +121,8 @@ var _needle_anchor := Vector3.INF
 var _needle_pull := Vector3.ZERO
 var _needle_torn := false
 var _needle_pressed := 0.0
+## The hand the needle view leaves solid: the one the needle is going into (-1: none).
+var _solid_hand := -1
 
 var _head: Node3D
 var _body: Node3D
@@ -116,6 +136,12 @@ var _rest: Dictionary = {}
 var _walk_phase := 0.0
 var _ground_speed := 0.0
 var _collapse := 0.0
+## How far over onto the floor a knocked out surgeon has gone (0 standing, 1 lying).
+var _down := 0.0
+## The side a knocked out surgeon falls to (1 their left, -1 their right, 0 standing), synced.
+var _fall_side := 0.0
+## Mouse moves held back by a sedative: [msec when due, hand, step].
+var _delayed: Array = []
 var _last_position := Vector3.ZERO
 var _remote_out := false
 var _switch_timer := 0.0
@@ -191,7 +217,31 @@ func belt_transform(belt_slot: int) -> Transform3D:
 
 
 func shoulder(hand: int) -> Vector3:
-	return to_global(Vector3(SHOULDER.x * (-1.0 if hand == 0 else 1.0), SHOULDER.y - crouch * CROUCH_DROP, SHOULDER.z))
+	var side := -1.0 if hand == 0 else 1.0
+	var standing := to_global(Vector3(SHOULDER.x * side, SHOULDER.y - crouch * CROUCH_DROP, SHOULDER.z))
+	# Lying, the shoulders are where the fallen body has them.
+	return standing.lerp(_body.global_transform * Vector3(SHOULDER.x * side, SHOULDER.y, SHOULDER.z), _down)
+
+
+## Whether this surgeon is knocked out, the same on every peer.
+func is_down() -> bool:
+	return _fall_side != 0.0
+
+
+## Where a needle at `tip` would go into this surgeon: {"part": "hand", "at": the glove's middle} or {"part": "body",
+## "at": tip}, or {} if it's in neither. `holding` is the hand with the needle: one of this surgeon's own leaves only
+## the other hand to go into.
+func needle_part(tip: Vector3, holding: SurgeonHand) -> Dictionary:
+	for hand in hands:
+		if hand != holding and hand.global_position.distance_to(tip) < GLOVE_REACH:
+			return {"part": "hand", "at": hand.global_position}
+	if holding in hands:
+		return {}
+	var hips := _body.global_transform * SPINE[0]
+	var neck := _body.global_transform * SPINE[1]
+	if Geometry3D.get_closest_point_to_segment(tip, hips, neck).distance_to(tip) < TORSO_RADIUS:
+		return {"part": "body", "at": tip}
+	return {}
 
 
 func held_tool(hand: int) -> SurgicalTool:
@@ -262,14 +312,39 @@ func _animate_body(delta: float) -> void:
 	_last_position = global_position
 	_walk_phase += delta * speed * 7.0
 	var stride := clampf(speed / WALK_SPEED, 0.0, 1.0) * 0.45
-	var out := status.is_out() if is_local else _remote_out
+	var out := status.passed_out > 0.0 if is_local else _remote_out
 	_collapse = move_toward(_collapse, 1.0 if out else 0.0, delta * 2.5)
+	if is_local:
+		_fall_side = (_fall_side if _fall_side != 0.0 else _roomier_side()) if status.is_knocked_out() else 0.0
+	_down = move_toward(_down, 1.0 if is_down() else 0.0, delta * 1.5)
 	# Crouching folds the legs forward and drops the whole body, the torso leaning over the knees.
 	_pose("LegL", Vector3(sin(_walk_phase) * stride - crouch * 1.3, 0, 0))
 	_pose("LegR", Vector3(-sin(_walk_phase) * stride - crouch * 1.3, 0, 0))
 	_pose("Torso", Vector3(-_collapse * 1.3 - crouch * 0.35 + absf(sin(_walk_phase)) * stride * 0.05, 0, 0))
-	_body.position.y = -crouch * 0.42
-	_head.position.y = EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP
+	# Knocked out, the whole body tips over sideways from the feet onto the floor; the eyes go where its head lies.
+	var side := _fall_side if _fall_side != 0.0 else 1.0
+	_body.rotation.z = side * _down * PI / 2.0
+	_body.position.y = -crouch * 0.42 + _down * LYING_LIFT
+	var standing_eyes := Vector3(0.0, EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP, 0.0)
+	_head.position = standing_eyes.lerp(_body.transform * Vector3(0.0, EYE_HEIGHT, -0.06), _down)
+	# Lying there, the head turns to the patient on the table.
+	var look := 0.0
+	if _down > 0.0:
+		var to_patient := (Surgery.current.patient.global_position - to_global(_head.position)) * Vector3(1, 0, 1)
+		look = wrapf(atan2(-to_patient.x, -to_patient.z) - rotation.y, -PI, PI) * _down
+	_head.rotation.y = look
+
+
+## The side (1 left, -1 right) with more clear floor beside the surgeon, to fall to.
+func _roomier_side() -> float:
+	var space := get_world_3d().direct_space_state
+	var from := to_global(Vector3(0.0, 0.3, 0.0))
+	var room := {}
+	for side: float in [1.0, -1.0]:
+		var query := PhysicsRayQueryParameters3D.create(from, to_global(Vector3(-side * FALL_ROOM, 0.3, 0.0)), 1, [get_rid()])
+		var hit := space.intersect_ray(query)
+		room[side] = FALL_ROOM if hit.is_empty() else from.distance_to(hit.position)
+	return 1.0 if room[1.0] >= room[-1.0] else -1.0
 
 
 func _pose(joint: String, euler: Vector3) -> void:
@@ -294,7 +369,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			rotation.y -= motion.x * LOOK_SENSITIVITY
 			pitch = clampf(pitch - motion.y * LOOK_SENSITIVITY, LOOK_PITCH.x, LOOK_PITCH.y)
 		elif _switch_timer <= 0.0:
-			steer_hand(motion)
+			# Sedated, the move reaches the hand late (see _apply_delayed()).
+			var delay := status.input_delay()
+			if delay > 0.0:
+				_delayed.append([Time.get_ticks_msec() + int(delay * 1000.0), active, motion])
+			else:
+				steer_hand(motion)
 	elif event.is_action_pressed("move_left_hand") or event.is_action_pressed("move_right_hand"):
 		var index := 0 if event.is_action_pressed("move_left_hand") else 1
 		if index != active:
@@ -327,15 +407,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				Surgery.current.tools.request_belt(active, i)
 
 
-## Moves the active hand by a mouse motion (pixels, sensitivity applied). Zoomed in, the same motion moves it less:
-## finer control where you're looking closely. A needle stuck in the patient tilts about its tip instead.
-func steer_hand(motion: Vector2) -> void:
+## Moves a hand (the active one unless `index` says) by a mouse motion (pixels, sensitivity applied). Zoomed in, the
+## same motion moves it less: finer control where you're looking closely. A needle stuck in the patient tilts about
+## its tip instead.
+func steer_hand(motion: Vector2, index: int = -1) -> void:
+	index = active if index < 0 else index
 	var step := motion * HAND_SENSITIVITY * status.hand_speed() * ZOOM_FOV[zoom] / ZOOM_FOV[0]
 	var move := _screen_to_floor(step) if _needle_framing > 0.5 else Basis(Vector3.UP, rotation.y) * Vector3(step.x, 0, step.y)
-	if _needle_anchor != Vector3.INF:
+	if index == active and _needle_anchor != Vector3.INF:
 		_bend_needle(move)
 	else:
-		_move_hand(hands[active], move)
+		_move_hand(hands[index], move)
 
 
 ## A hand move (world, across the floor) with the needle stuck: along the syringe it tilts it about its tip, the hand
@@ -387,8 +469,9 @@ func _physics_process(delta: float) -> void:
 	if is_local:
 		_camera.fov = lerpf(_camera.fov, ZOOM_FOV[zoom], minf(delta * 12.0, 1.0))
 		_frame_needle(delta)
-	# The camera pitches fully, the visible head only half as much so it doesn't look broken-necked.
-	_face.rotation.x = -pitch * 0.5
+	# The camera pitches fully, the visible head only half as much so it doesn't look broken-necked. Lying on the
+	# side, the face lies sideways with the body; the camera doesn't roll.
+	_face.rotation = Vector3(-pitch * 0.5 * (1.0 - _down), 0.0, _fall_side * _down * PI / 2.0)
 	_animate_body(delta)
 	for i in 2:
 		var tool := held_tool(i)
@@ -412,9 +495,13 @@ func _frame_needle(delta: float) -> void:
 	var framing := zoom == ZOOM_FOV.size() - 1 and tool != null and tool.def.action in NEEDLE_ACTIONS and not hands[active].inspecting
 	var before := _needle_framing
 	_needle_framing = move_toward(_needle_framing, 1.0 if framing else 0.0, delta * 4.0)
-	if _needle_framing != before:
+	# The other hand stays solid while the needle is in it.
+	var target := ToolActions.needle_target(tool, Surgery.current.patient) if framing else {}
+	var solid := 1 - active if target.get("peer", 0) == peer_id else -1
+	if _needle_framing != before or solid != _solid_hand:
+		_solid_hand = solid
 		for hand in hands:
-			hand.set_see_through(_needle_framing * NEEDLE_SEE_THROUGH)
+			hand.set_see_through(0.0 if hand.index == solid else _needle_framing * NEEDLE_SEE_THROUGH)
 	if framing:
 		_needle_view = needle_view(tool)
 	if framing and tool.def.action == "syringe":
@@ -451,6 +538,8 @@ func needle_view(tool: SurgicalTool) -> Transform3D:
 	var target := ToolActions.needle_target(tool, Surgery.current.patient)
 	if target.kind == "container":
 		points.append(ToolManager.middle(target.container))
+	elif target.kind == "surgeon" and target.part == "hand":
+		points.append(target.at)
 	var center := Vector3.ZERO
 	for p in points:
 		center += p / points.size()
@@ -469,6 +558,11 @@ func needle_view(tool: SurgicalTool) -> Transform3D:
 func _local_update(delta: float) -> void:
 	_switch_timer = maxf(_switch_timer - delta, 0.0)
 	var can_act := not input_locked and not status.is_out()
+	_apply_delayed(can_act)
+	if status.is_knocked_out():
+		_lie_still(delta)
+		_handle_status_events(status.update(delta, _status_context()))
+		return
 	crouch = move_toward(crouch, 1.0 if can_act and Input.is_action_pressed("crouch") else 0.0, delta * 4.0)
 	var dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back") if can_act else Vector2.ZERO
 	var speed := lerpf(WALK_SPEED, CROUCH_SPEED, crouch) * status.move_speed()
@@ -511,6 +605,8 @@ func _local_update(delta: float) -> void:
 		var amount := status.tremor_amount() if i == active or mods.mult("switch_delay_mult") > 0.0 else 0.0
 		var t := Time.get_ticks_msec() * 0.001
 		h.tremor = Vector3(sin(t * 23.0 + i), sin(t * 31.0 + 2.0 * i), cos(t * 19.0 + i)) * amount + _jolt
+		h.shiver = Vector3(sin(t * 41.0 + 3.0 * i), sin(t * 37.0 + i), cos(t * 43.0 + 2.0 * i)) * status.shiver()
+		h.trail = status.calm
 	_jolt = _jolt.lerp(Vector3.ZERO, minf(delta * 8.0, 1.0))
 	_check_bumps()
 	_update_focus()
@@ -540,6 +636,36 @@ func _hold_needle(delta: float) -> void:
 		Surgery.current.hud.toast("The needle tears out of the skin.")
 		_needle_torn = true
 		_needle_anchor = Vector3.INF
+
+
+## Mouse moves a sedative held back, once they're due. Out cold or locked, they're dropped.
+func _apply_delayed(can_act: bool) -> void:
+	var now := Time.get_ticks_msec()
+	while not _delayed.is_empty() and (not can_act or int(_delayed[0][0]) <= now):
+		var move: Array = _delayed.pop_front()
+		if can_act:
+			steer_hand(move[2], int(move[1]))
+
+
+## Knocked out: lying on the floor facing the table, hands limp in front, nothing the player can do.
+func _lie_still(delta: float) -> void:
+	crouch = move_toward(crouch, 0.0, delta * 4.0)
+	pitch = lerpf(pitch, LYING_PITCH, minf(delta * 3.0, 1.0))
+	var table := (Surgery.current.patient.global_position - global_position) * Vector3(1, 0, 1)
+	velocity = -table.normalized() * WALK_SPEED if _down < 1.0 and table.length() < LYING_DISTANCE else Vector3.ZERO
+	move_and_slide()
+	rotation.y = lerp_angle(rotation.y, atan2(-table.x, -table.z), minf(delta * 3.0, 1.0))
+	for i in 2:
+		var h := hands[i]
+		h.lowered = false
+		h.trigger = false
+		h.lifted = false
+		h.inspecting = false
+		h.tremor = Vector3.ZERO
+		h.shiver = Vector3.ZERO
+		h.trail = 0.0
+		h.target = to_global((LYING_HAND + Vector3(-0.25 * i, 0, 0)) * Vector3(_fall_side, 1, 1))
+		h.local_target = to_local(h.target)
 
 
 ## Moves the hand by `step` (world space), within reach.
@@ -574,10 +700,14 @@ func _constrain(hand: SurgeonHand) -> void:
 			return
 	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
+	if tool and tool.def.action in NEEDLE_ACTIONS and not hand.attached:
+		surface = _glove_below(hand, hand.target + offset, surface)
 	hand.on_hard = false
 	if surface.y != -INF:
 		if surface.open:
-			hand.target.y = surface.y + HOVER_GAP - offset.y
+			# A lowered blade goes into an opening as deep as its level: onto what's inside only at full effort.
+			var gap := BLADE_IN_OPENING[hand.level] if hand.lowered and tool and tool.def.action == "cut" else HOVER_GAP
+			hand.target.y = surface.y + gap - offset.y
 		elif hand.lowered and surface.soft:
 			# Skin gives: a lowered tip presses into it, deeper with effort.
 			hand.target.y = surface.y - 0.002 - hand.level * 0.004 - offset.y
@@ -652,17 +782,31 @@ func _surface_below(p: Vector3) -> Dictionary:
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}
-	var soft := ((hit.collider as CollisionObject3D).collision_layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
+	var layer := (hit.collider as CollisionObject3D).collision_layer
+	var soft := (layer & (4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER)) != 0
 	# The body's collider is its rest shape: skin lifted by a grip lies above it. The site's own collider is a flat
-	# plane over the site, above skin that curves away under it (a belly): there the skin as drawn now is what's touched.
+	# plane over the site, above skin that curves away under it (a belly), and the gown's collider isn't cut away over
+	# the site: there the skin as drawn now is what's touched.
 	if not site_hit.is_empty():
 		var body := Surgery.current.patient.body
-		var local := body.site.to_local(p)
 		var uv := body.world_to_uv(p)
+		var local := body.site.to_local(p)
 		var skin := body.site.to_global(Vector3(local.x, body.skin_height(uv), local.z))
-		if skin.y > hit.position.y or (hit.collider as Node).has_meta("site") and body.on_body(uv):
+		var over_site := (hit.collider as Node).has_meta("site") or (layer & PatientBody.SURFACE_LAYER) != 0
+		if skin.y > hit.position.y or over_site and body.on_body(uv):
 			return {"y": skin.y, "open": false, "soft": true}
 	return {"y": hit.position.y, "open": false, "soft": soft}
+
+
+## A needle over a glove (this surgeon's other hand or anyone's) rests on it like on skin, so it can go in.
+func _glove_below(hand: SurgeonHand, p: Vector3, surface: Dictionary) -> Dictionary:
+	for other: Surgeon in Surgery.current.surgeons.values():
+		for glove in other.hands:
+			var top := glove.global_position.y + 0.015
+			var across := (glove.global_position - p) * Vector3(1, 0, 1)
+			if glove != hand and across.length() < GLOVE_REACH and top > float(surface.y):
+				return {"y": top, "open": false, "soft": true}
+	return surface
 
 
 ## The tool the active hand would pick up: the free tool nearest the hand's tip, highlighted with its name shown.
@@ -686,10 +830,11 @@ func _switch_hand() -> void:
 
 
 ## A partner's empty hand close enough to take what this hand holds: [Surgeon, hand index], or [] if none.
+## A partner knocked out on the floor takes nothing.
 func pass_target(hand: int) -> Array:
 	var from := hands[hand].global_position
 	for other: Surgeon in Surgery.current.surgeons.values():
-		if other == self:
+		if other == self or other.is_down():
 			continue
 		for i in 2:
 			if other.held_tool(i) == null and other.hands[i].global_position.distance_to(from) < PASS_DISTANCE:
@@ -718,7 +863,9 @@ func _grab_or_release() -> void:
 ## Hands that aren't lifted knock into other surgeons' hands.
 func _check_bumps() -> void:
 	var mine := hands[active]
-	if mine.lifted:
+	var tool := held_tool(active)
+	# A needle held into a partner's hand or body is close on purpose.
+	if mine.lifted or tool and tool.def.action == "syringe" and ToolActions.needle_target(tool, Surgery.current.patient).kind == "surgeon":
 		return
 	for other: Surgeon in Surgery.current.surgeons.values():
 		if other == self:
@@ -802,6 +949,15 @@ func _handle_status_events(events: PackedStringArray) -> void:
 			"gasp":
 				hud.toast("You gasp for air.")
 				jolt(0.2)
+			"knocked_out":
+				drop_everything()
+				_delayed.clear()
+				hud.toast("Your legs give way. The floor is very comfortable.")
+				Surgery.current.report_incident("knocked_out")
+			"came_round":
+				hud.toast("You come round, groggy.")
+			"moan":
+				_moan.rpc()
 
 
 # --- Networking ------------------------------------------------------------------------------------
@@ -811,7 +967,7 @@ func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
 		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted, h.inspecting, h.turn])
-	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out(), crouch]
+	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.passed_out > 0.0, crouch, _fall_side]
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
@@ -822,6 +978,7 @@ func _sync_state(data: Array) -> void:
 	active = data[3]
 	_remote_out = data[6]
 	crouch = data[7]
+	_fall_side = data[8]
 	for i in 2:
 		var h := hands[i]
 		var d: Array = data[4][i]
@@ -839,6 +996,12 @@ func _sync_state(data: Array) -> void:
 		for i in 2:
 			if strain[i]:
 				Surgery.current.overstretched(peer_id, i)
+
+
+## Knocked out, a moan now and then, heard by everyone.
+@rpc("authority", "call_local", "unreliable")
+func _moan() -> void:
+	Sfx.play("surgeon_moan", _head.global_position)
 
 
 ## The sink or a fresh pair takes the blood off the gloves. The scrubs keep their stains.
