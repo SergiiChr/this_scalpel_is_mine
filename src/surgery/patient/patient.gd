@@ -319,6 +319,15 @@ func _roll_arrest(dt: float, fx: DrugEffects) -> void:
 		arrest()
 
 
+## Something already puts the heart at risk: blood loss, low pressure, racing pulse, fever, sugar out of range,
+## swelling, or a heart prone to it. A random cardiac arrest only strikes such a patient.
+func unstable() -> bool:
+	var v := vitals
+	var shaky := v.blood_ratio() < 0.8 or v.systolic < 85.0 or v.heart_rate > 130.0 or v.temperature > 39.0
+	shaky = shaky or v.glucose < 3.0 or v.glucose > 20.0 or v.swelling > 0.4
+	return shaky or mods.num("clot_risk") > 0.0 or mods.mult("arrest_mult") > 1.0
+
+
 func _arrested(dt: float) -> void:
 	_arrest_time += dt
 	if vitals.rhythm == Vitals.Rhythm.VFIB and _arrest_time > VFIB_TO_ASYSTOLE:
@@ -384,8 +393,11 @@ func _drug_effects(dt: float) -> DrugEffects:
 	var decay_mult := mods.mult("anesthesia_decay_mult")
 	for entry in active_drugs:
 		var def: DrugDef = entry.def
-		var speed := decay_mult if def.effect("anesthesia") > 0.0 else 1.0
-		entry.age += dt * speed
+		if _holds(def):
+			# Kept at its peak, like an anesthetist keeping it topped up: its side effects (low pressure) stay too.
+			entry.age = minf(entry.age + dt, entry.onset)
+		else:
+			entry.age += dt * (decay_mult if def.effect("anesthesia") > 0.0 else 1.0)
 		var age: float = entry.age
 		var onset: float = entry.onset
 		var curve := def.level_at(age, onset) * float(entry.strength)
@@ -400,8 +412,13 @@ func _drug_effects(dt: float) -> DrugEffects:
 			fx.adrenaline += curve
 		if def.has_flag("lethal") and age > onset + def.duration * 0.8:
 			fx.lethal = 1.0
-	active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return e.age < e.onset + (e.def as DrugDef).duration)
+	active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return e.age < e.onset + (e.def as DrugDef).duration or _holds(e.def))
 	return fx
+
+
+## General anesthesia lasts the whole surgery, unless the patient burns through it (anesthesia_decay_mult).
+func _holds(def: DrugDef) -> bool:
+	return def.effect("anesthesia") > 0.0 and mods.mult("anesthesia_decay_mult") <= 1.0
 
 
 func _has_active(flag: String) -> bool:
@@ -410,6 +427,12 @@ func _has_active(flag: String) -> bool:
 
 func _add_drug(def: DrugDef, strength: float, onset_scale: float) -> void:
 	var potency := Surgery.current.run_mods.mult("drug_strength_mult") if Surgery.current else 1.0
+	# Another dose of an anesthetic already in tops it up instead of stacking: held ones would never wear off.
+	for entry in active_drugs:
+		if entry.def == def and def.effect("anesthesia") > 0.0:
+			entry.strength = maxf(entry.strength, strength * potency)
+			entry.age = minf(entry.age, entry.onset)
+			return
 	active_drugs.append({"def": def, "age": 0.0, "strength": strength * potency, "onset": maxf(def.onset * onset_scale, 0.1)})
 
 
@@ -619,6 +642,18 @@ func hurt(amount: float, uv: Vector2 = Vector2(-1, -1), deep: bool = false) -> v
 	vitals.pain = clampf(vitals.pain + amount * (1.0 - numb) * mods.mult("pain_mult"), 0.0, 1.0)
 	if vitals.is_awake() and amount * (1.0 - numb) > 0.15:
 		_speak("pain")
+
+
+## A needle dragged out sideways from `from` to `to` (world space): a short scratch that bleeds a little and hurts.
+func needle_tear(from: Vector3, to: Vector3) -> void:
+	var probe := body.probe(to)
+	var uv: Vector2 = probe.uv
+	if probe.zone == "site":
+		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(from), uv, 0.003, 0.3, WoundMap.Mode.MAX)
+		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, uv, 0.01, 0.5, WoundMap.Mode.MAX)
+	hurt(0.15, uv if probe.zone == "site" else Vector2(-1, -1))
+	Surgery.current.effect("bead", to, 0)
+	Surgery.current.sound("cut_skin", to)
 
 
 ## Touch outside the treated area. Ticklish patients flinch.
@@ -914,6 +949,7 @@ func set_iv(at: Vector3, in_vein: bool) -> void:
 
 
 ## Someone walked into the tubing: the catheter rips out of the arm and the stand rattles.
+## The catheter ends up on the floor at their feet, where it can be picked up, washed and used again.
 func pull_iv(surgeon: Surgeon) -> void:
 	if not iv_set:
 		return
@@ -925,6 +961,8 @@ func pull_iv(surgeon: Surgeon) -> void:
 	Surgery.current.sound("cable_yank", surgeon.global_position)
 	Surgery.current.announce("%s catches the IV line. It rips out of the arm." % surgeon.display_name)
 	Surgery.current.jolt_peer(surgeon.peer_id, 0.8)
+	# At their feet: a step ahead could be under the table, which is solid down to the floor.
+	Surgery.current.tools.drop_new("iv_catheter", surgeon.global_position + Vector3.UP * 0.1)
 	_iv_removed.rpc()
 
 

@@ -6,6 +6,10 @@ extends Node3D
 const UPPER_ARM := 0.34
 const FOREARM := 0.34
 const TILT_RANGE := Vector2(-1.5, -0.2)
+## How far the wrist turns the tool left and right of straight ahead (radians).
+const TURN_RANGE := 0.9
+## The tilt a glove is fitted onto its tool at (see _place_glove()). Tilted or turned from there, both turn together.
+const REST_TILT := -1.1
 const LIFT_HEIGHT := 0.12
 const SPEED_WINDOW_MSEC := 250
 const FINGERS: PackedStringArray = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
@@ -50,7 +54,10 @@ var index := 0
 var target := Vector3.ZERO
 ## Target relative to the surgeon, used while not attached so the hand moves with the body.
 var local_target := Vector3.ZERO
-var tilt := -1.1
+## The held tool's angles, the hand turning with it: tilt pitches the tip down (TILT_RANGE), turn swings it left and
+## right of the body's facing (TURN_RANGE), twist rolls it about its own length.
+var tilt := REST_TILT
+var turn := 0.0
 var twist := 0.0
 ## Use tool held: the tool rests on its spot instead of hovering over it.
 var lowered := false
@@ -198,7 +205,7 @@ func effective_position() -> Vector3:
 func grip_transform() -> Transform3D:
 	if inspecting:
 		return Transform3D(inspect_basis(), global_position)
-	var yaw := (get_parent() as Node3D).global_rotation.y
+	var yaw := (get_parent() as Node3D).global_rotation.y + turn
 	var rot := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt) * Basis(Vector3.FORWARD, twist)
 	return Transform3D(rot, global_position)
 
@@ -206,7 +213,7 @@ func grip_transform() -> Transform3D:
 ## The twist that turns the held tool's underside (-Y, the side a syringe's scale is printed on) toward `direction`.
 ## Twist rolls the tool about its own length, so its tip stays where it is.
 func twist_facing(direction: Vector3) -> float:
-	var yaw := (get_parent() as Node3D).global_rotation.y
+	var yaw := (get_parent() as Node3D).global_rotation.y + turn
 	var local := (Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)).inverse() * direction
 	return atan2(-local.x, -local.y)
 
@@ -357,7 +364,8 @@ func _solve_arm(shoulder: Vector3) -> void:
 	if holding:
 		# The held tool sets which way the wrist points: the elbow goes toward the forearm's line from there, so the
 		# wrist doesn't bend over backwards when the hand comes close. Only as far as it stays under the shoulder.
-		_place_glove(elbow, owner_basis)
+		# The tool as it's held before the wrist aims it: aiming bends the wrist, the elbow stays.
+		_place_glove(elbow, owner_basis, false)
 		var line := _glove.global_position - _glove.global_basis.x.normalized() * FOREARM - shoulder
 		var toward := line - dir * line.dot(dir)
 		if toward.length() > 0.001:
@@ -386,17 +394,23 @@ func _aim_cuff(elbow: Vector3, wrist: Vector3) -> Vector3:
 
 
 ## Places the glove and returns the wrist (the glove's origin). The left glove is the right one mirrored.
-## Holding a tool, the glove sits on it by its grip. Empty, it points along the forearm, palm down.
-func _place_glove(elbow: Vector3, owner_basis: Basis) -> Vector3:
+## Holding a tool, the glove sits on it by its grip, fitted as if the tool weren't tilted or turned (REST_TILT, no
+## turn), then turned along with it (unless not `turned`): the wrist aims the tool, the tool doesn't move in the hand.
+## Empty, it points along the forearm, palm down.
+func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Vector3:
 	if holding:
 		var style: Dictionary = GRIPS.get(grip, GRIPS.pencil)
-		var tool_frame := grip_transform()
+		var aimed := grip_transform()
+		var yaw := (get_parent() as Node3D).global_rotation.y
+		var tool_frame := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, REST_TILT) * Basis(Vector3.FORWARD, twist), aimed.origin)
+		var aim := aimed.basis * tool_frame.basis.inverse() if turned else Basis.IDENTITY
 		var mirror := Vector3(-1, 1, 1) if index == 0 else Vector3.ONE
 		var contact := tool_frame * ((style.on as Vector3) * mirror)
 		var frame := tool_frame.basis * Basis.from_scale(mirror) * (style.basis as Basis)
 		frame = _turn_to_forearm(frame, tool_frame.basis * Vector3.FORWARD, contact, elbow, grip != "fist")
-		var wrist := contact - frame * (style.at as Vector3) + frame.y.normalized() * float(fit.get("lift", 0.0)) + frame.z.normalized() * float(fit.get("shift", 0.0)) + shiver
-		_glove.global_transform = Transform3D(frame, wrist)
+		var wrist := contact - frame * (style.at as Vector3) + frame.y.normalized() * float(fit.get("lift", 0.0)) + frame.z.normalized() * float(fit.get("shift", 0.0))
+		wrist = aimed.origin + aim * (wrist - aimed.origin) + shiver
+		_glove.global_transform = Transform3D(aim * frame, wrist)
 		return wrist
 	var along := (global_position - elbow).normalized()
 	var up := (Vector3.UP - along * Vector3.UP.dot(along)).normalized()

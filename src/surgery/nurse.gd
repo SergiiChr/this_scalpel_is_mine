@@ -1,11 +1,13 @@
 class_name Nurse
 extends Node
 ## Tool requests, host only. One order at a time shared by both surgeons: the delivery takes the tool's delay,
-## then the nurse needs a breather before the next one.
+## then the nurse needs a breather before the next one. The first few deliveries come without one.
 
 const COOLDOWN := 15.0
+const FREE_ORDERS := 5
 
 var cooldown_left := 0.0
+var delivered := 0
 ## The order on its way: {"id", "eta", "total"}, empty when there's none.
 var _order: Dictionary = {}
 
@@ -44,4 +46,6 @@ func tick(delta: float, surgery: Surgery) -> void:
 		surgery.sound("nurse_delivery")
 		surgery.announce("Nurse leaves the %s on the delivery tray." % Db.tool(_order.id).name)
 		_order = {}
-		cooldown_left = COOLDOWN * surgery.run_mods.mult("nurse_cooldown_mult")
+		delivered += 1
+		if delivered > FREE_ORDERS:
+			cooldown_left = COOLDOWN * surgery.run_mods.mult("nurse_cooldown_mult")

@@ -87,11 +87,11 @@ For each scenario, with no script errors:
 | S14 | The defibrillator waits on its own cart in every room |
 | S15 | A nurse delivery lands on the delivery tray (operating room) |
 | S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
-| S17 | Walking through the IV tubing at full speed rips the line out |
+| S17 | Walking through the IV tubing at full speed rips the line out, and the catheter lands on the floor, soiled |
 | S18 | Every tool effect plays; a tool in blood gets bloody, so does the glove holding it, and the sink washes both; a splash lands blood on the view |
-| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift steps through three zoom levels; the controls shown change while a hand key is held |
+| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift toggles between two zoom levels; aiming with the mouse (MMB held) turns the tool and the glove stays where it is on it; the controls shown change while a hand key is held |
 | S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
-| S21 | The nurse takes one order at a time, the bell board shows it, the cooldown starts after the delivery |
+| S21 | The nurse takes one order at a time, the bell board shows it, the first five deliveries come without a cooldown and it starts after the sixth |
 | S22 | The patient has a plausible weight; three wheel notches draw 3 ml from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |
 | S23 | Wiping iodine with a soaked pad never takes more than 4 ms of one frame (no stutter; it used to take 7-20 ms every frame) |
 | S24 | Skin won't close over a cut through open muscle, a tight stitch tears there, and after the muscle is sewn from inside the skin closes |
@@ -103,6 +103,7 @@ For each scenario, with no script errors:
 | S30 | A tourniquet pressed onto a thigh wraps around it as a snug band (not lying on top), leaves the hand, and taking it off loosens it |
 | S31 | Tools lie on the tray at the start without sinking into it; lowered onto it with full effort, neither the tool nor the glove goes into it; put down, it settles on top (every kind of tool in the first scenario, one in the others) |
 | S32 | The smoking spot offers "Smoke a cigarette" only to a hand holding the cig pack; a smoke uses one cigarette, stops stress gain and speeds up walking |
+| S33 | With no quirks, one right dose of propofol keeps a patient with no bleeding asleep at the same depth with a beating heart for five minutes; the random arrest event leaves a stable patient alone; the wake up event waits for the first cut |
 
 ## Syringe (`tests/syringe_test.gd`)
 
@@ -122,15 +123,18 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 | Y8 | Pushing into skin, fat and muscle (cuts held open down to fat and muscle) empties the syringe; once the needle is out the drug is given as a direct injection |
 | Y9 | Pulling from skin, fat and muscle draws nothing: the plunger stays put |
 | Y10 | Pulling with the needle in nothing draws air: the plunger moves, the liquid stays, the air shows at the needle end |
-| Y11 | IV drip: resting on the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
+| Y11 | IV drip: with the needle in the bag on the stand, pushing moves the drug into the bag a ml a notch and pulling draws its fluid back, both levels shown exactly; nothing runs down the line while the needle is in, once it's out the drug is given through the line (IV onset) |
 | Y12 | IV catheter: the last zoom step frames its needle. On the forearm vein it sticks, the tubing runs to it and a drug in the IV drip runs into the patient; 2.5 cm beside the vein it still sticks with the tubing, but the drug stays in the bag |
 | Y13 | The IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the emptied one, uses up the held one and runs it into the line |
 | Y14 | Surgeons: pushing into the surgeon's own other hand, a partner's hand, a partner's body and the hand of a partner knocked out on the floor (crouched beside them) empties the syringe; once the needle is out that surgeon gets the dose (the host's `surgeon_dosed`), the patient nothing, and the surgeon's own dose works like a direct injection. Pulling from a hand draws nothing |
 | Y15 | Stress shakes the hands in steps: under 30% the tool stays still and only the glove twitches now and then, up to 60% a light shake, above it a plain one |
-| Y16 | Shaky hands never drain below 65% stress; Steady hands with Shaky hands, stressed and in the cold, don't shake at all; a surgeon weighs 80 kg, big hands 100 kg |
+| Y16 | Shaky hands never drain below 65% stress; Steady hands with Shaky hands, stressed and in the cold, don't shake at all; a surgeon weighs 80 kg, small hands 60 kg |
 | Y17 | Diazepam at the right dose for the surgeon's weight stops stress shaking but not the cold, and delays hand moves 100 ms; 1.8 doses darken the view and delay more |
 | Y18 | 2.5 doses knock the surgeon out for five minutes; flumazenil brings them round and ends the diazepam; adrenaline gets them up only while it lasts, and 3.5 doses put them down again after |
 | Y19 | Sedated in the room: afterimages trail the gloves and a mouse move reaches the hand only after the delay; knocked out, the surgeon lies on the floor with the patient in view and the hands on the floor; flumazenil gets them back on their feet |
+| Y20 | In the needle view, mouse right moves the hand right on screen and mouse up moves it away from the camera |
+| Y21 | A syringe pressed into the skin keeps its tip exactly where it went in: the mouse tilts the syringe about it. Pulled on sideways, the needle tears out and leaves a scratch on the skin |
+| Y22 | A syringe brought under the IV bag at waist height rises into the bag's port, its needle in the bag |
 
 ## Co-op over the network (`tests/net_test.gd`)
 

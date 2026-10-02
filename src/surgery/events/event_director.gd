@@ -88,6 +88,20 @@ func _off_cooldown(id: String) -> bool:
 	return _cooldowns.get(id, 0.0) <= 0.0
 
 
+## Whether the patient is in a state the event needs (`requires` in data/events.cfg).
+func _ready_for(requirement: String, patient: Patient) -> bool:
+	match requirement:
+		"":
+			return true
+		"awake":
+			return patient.vitals.is_awake()
+		"incised":
+			return patient.wounds.any(func(w: Wound) -> bool: return w.made_by_surgeon)
+		"unstable":
+			return patient.unstable()
+	return patient.mods.num(requirement) != 0.0
+
+
 func _pick(elapsed: float, surgery: Surgery) -> String:
 	var total := 0.0
 	var options: Array = []
@@ -97,7 +111,7 @@ func _pick(elapsed: float, surgery: Surgery) -> String:
 			weight += surgery.run_mods.num("flicker_weight")
 		if weight <= 0.0 or not _off_cooldown(id) or elapsed < float(Db.events.get_value(id, "min_time", 0.0)):
 			continue
-		if Db.events.get_value(id, "requires", "") == "awake" and not surgery.patient.vitals.is_awake():
+		if not _ready_for(Db.events.get_value(id, "requires", ""), surgery.patient):
 			continue
 		total += weight
 		options.append([id, weight])
