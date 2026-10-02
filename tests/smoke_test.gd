@@ -290,7 +290,8 @@ func _control_checks(surgery: Surgery) -> void:
 	if hand.lowered or hand.trigger:
 		print("FAIL: letting go of LMB left the tool working")
 	# Aiming with the mouse (MMB) turns the tool and the hand together: the glove stays where it is on the tool.
-	hand.local_target = me.to_local(me.global_position + me.global_basis * Vector3(0.17, 1.15, -0.45))
+	# Out to the side over the floor, so nothing under the tip lifts the hand while it turns.
+	hand.local_target = Vector3(0.5, 1.1, 0.15)
 	await _frames(10)
 	var on_tool := blade.global_transform.affine_inverse() * hand._glove.global_transform
 	var before := blade.global_basis
