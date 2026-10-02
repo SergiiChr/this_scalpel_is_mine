@@ -199,7 +199,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 ### In this draft
 
-- Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels, tilt and twist.
+- Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels. Holding MMB the mouse turns the
+  held tool with the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`); C/V roll it about its length.
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
@@ -271,7 +272,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
-  meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
+  meets the skin, so rolling the tool (C/V) or turning it (MMB) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
 ### Starter kit and ordering

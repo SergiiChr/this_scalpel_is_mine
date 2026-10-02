@@ -88,7 +88,7 @@ For each scenario, with no script errors:
 | S16 | A tool from the floor can't be sanitized until it's washed at the sink; wash then sanitize makes it sterile |
 | S17 | Walking through the IV tubing at full speed rips the line out, and the catheter lands on the floor, soiled |
 | S18 | Every tool effect plays; a tool in blood gets bloody, so does the glove holding it, and the sink washes both; a splash lands blood on the view |
-| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift toggles between two zoom levels; the controls shown change while a hand key is held |
+| S19 | RMB picks up the tool under the hand and puts it down; LMB lowers and works it; the wheel sets its level; Shift toggles between two zoom levels; aiming with the mouse (MMB held) turns the tool and the glove stays where it is on it; the controls shown change while a hand key is held |
 | S20 | The rolled tray holds the whole starter kit; forceps pick up a cotton pad, it soaks up iodine in the dish, sanitizes the skin and drops when the forceps are let go |
 | S21 | The nurse takes one order at a time, the bell board shows it, the first five deliveries come without a cooldown and it starts after the sixth |
 | S22 | The patient has a plausible weight; three wheel notches draw 3 ml from a vial; the right dose per kg counts once the needle comes out, a third of it doesn't; two vials mix in one syringe; a syringe dropped on the floor breaks |

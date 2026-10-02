@@ -8,7 +8,8 @@ extends CharacterBody3D
 ## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). A syringe has its own wheel: down pulls the plunger out, up pushes it
 ## in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) toggles
 ## between two zoom levels; the closer one with a syringe or IV catheter in hand frames the needle and what it's in, the
-## hands faded.
+## hands faded. Holding Aim tool (MMB) the mouse turns the active hand's tool instead, the wrist with it: pitch and
+## swing left and right. C/V roll it about its length.
 ## WASD moves the body.
 ## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
@@ -23,6 +24,8 @@ const EYE_HEIGHT := 1.62
 const SHOULDER := Vector3(0.19, 1.4, -0.08)
 const HAND_SENSITIVITY := 0.0009
 const LOOK_SENSITIVITY := 0.003
+## Radians the held tool turns per pixel while the mouse aims it (Aim tool held).
+const AIM_SENSITIVITY := 0.004
 ## Gap between a resting tool tip and the surface under it.
 const HOVER_GAP := 0.01
 ## Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
@@ -50,6 +53,8 @@ const NEEDLE_ACTIONS: PackedStringArray = ["syringe", "iv_line"]
 ## motion, and stretched this far (meters) the needle tears out and leaves a small wound.
 const NEEDLE_DRAG := 0.2
 const NEEDLE_TEAR := 0.015
+## Seconds Use tool is held before the needle counts as in: the hand comes down onto the skin first.
+const NEEDLE_SETTLE := 0.1
 ## A syringe brought this close (meters, across the floor) under the IV bag on the stand goes up into its port.
 const DRIP_SNAP := 0.12
 const SYNC_INTERVAL := 1.0 / 30.0
@@ -97,6 +102,7 @@ var _own_twist := 0.0
 var _needle_anchor := Vector3.INF
 var _needle_pull := Vector3.ZERO
 var _needle_torn := false
+var _needle_pressed := 0.0
 
 var _head: Node3D
 var _body: Node3D
@@ -282,7 +288,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var hand := hands[active]
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := (event as InputEventMouseMotion).relative * Settings.mouse_sensitivity
-		if moving_hand() < 0:
+		if Input.is_action_pressed("aim_tool"):
+			aim_tool(motion)
+		elif moving_hand() < 0:
 			rotation.y -= motion.x * LOOK_SENSITIVITY
 			pitch = clampf(pitch - motion.y * LOOK_SENSITIVITY, LOOK_PITCH.x, LOOK_PITCH.y)
 		elif _switch_timer <= 0.0:
@@ -330,17 +338,25 @@ func steer_hand(motion: Vector2) -> void:
 		_move_hand(hands[active], move)
 
 
-## A hand move (world, across the floor) with the needle stuck: toward or away from the body it tilts the syringe about
-## its tip, the hand swinging round it. What the tilt can't take (sideways, or past its range) pulls on the skin.
+## A hand move (world, across the floor) with the needle stuck: along the syringe it tilts it about its tip, the hand
+## swinging round it. What the tilt can't take (sideways, or past its range) pulls on the skin.
 func _bend_needle(move: Vector3) -> void:
 	var hand := hands[active]
 	var length := held_tool(active).def.length
-	var back := global_basis.z
+	var back := Basis(Vector3.UP, rotation.y + hand.turn) * Vector3.BACK
 	var along := move.dot(back)
 	var tilt_before := hand.tilt
 	hand.tilt = clampf(hand.tilt + along / length, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
 	var unbent := along - (hand.tilt - tilt_before) * length
 	_needle_pull += (move - back * along + back * unbent) * NEEDLE_DRAG
+
+
+## Turns the active hand's tool by a mouse motion, the wrist going with it: up and down pitches it, left and right
+## swings it. It turns about the grip; a needle stuck in the patient turns about its tip instead (see _hold_needle()).
+func aim_tool(motion: Vector2) -> void:
+	var hand := hands[active]
+	hand.tilt = clampf(hand.tilt - motion.y * AIM_SENSITIVITY, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
+	hand.turn = clampf(hand.turn - motion.x * AIM_SENSITIVITY, -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
 
 
 ## The hand the mouse moves right now (its key held), or -1 while the mouse looks around.
@@ -461,15 +477,13 @@ func _local_update(delta: float) -> void:
 	move_and_slide()
 	var hand := hands[active]
 	if can_act:
-		var tilt_input := Input.get_axis("tilt_back", "tilt_forward")
 		var twist_input := Input.get_axis("twist_left", "twist_right")
-		hand.tilt = clampf(hand.tilt - tilt_input * delta * 1.5, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
 		hand.twist = wrapf(hand.twist + twist_input * delta * 2.0, -PI, PI)
 		hand.lifted = Input.is_action_pressed("lift") and not hand.attached
 		if hand.attached and Input.is_action_pressed("lift"):
 			hand.target.y += PULL_SPEED * delta
 		status.holding_breath = Input.is_action_pressed("steady") and status.breath > 0.0
-	_hold_needle()
+	_hold_needle(delta)
 	for i in 2:
 		var h := hands[i]
 		var tool := held_tool(i)
@@ -506,15 +520,18 @@ func _local_update(delta: float) -> void:
 
 ## A syringe pressed into the patient sticks where its tip went in. Pulled on too hard, or walked away from out of
 ## reach, it tears out.
-func _hold_needle() -> void:
+func _hold_needle(delta: float) -> void:
 	var hand := hands[active]
 	var tool := held_tool(active)
 	if not hand.lowered or tool == null or tool.def.action != "syringe":
 		_needle_torn = false
 		_needle_anchor = Vector3.INF
+		_needle_pressed = 0.0
 	elif _needle_anchor == Vector3.INF:
+		_needle_pressed += delta
 		# Once in, it stays in until Use tool is let go: breathing lifting the skin doesn't free it.
-		if not _needle_torn and ToolActions.needle_target(tool, Surgery.current.patient).kind in ["vein", "tissue"]:
+		var settled := _needle_pressed >= NEEDLE_SETTLE
+		if settled and not _needle_torn and ToolActions.needle_target(tool, Surgery.current.patient).kind in ["vein", "tissue"]:
 			_needle_anchor = tool.tip_position()
 			_needle_pull = Vector3.ZERO
 	elif _needle_pull.length() > NEEDLE_TEAR or (_needle_anchor - hand.tip_offset(tool.def.length)).distance_to(shoulder(active)) > REACH:
@@ -793,7 +810,7 @@ func _handle_status_events(events: PackedStringArray) -> void:
 func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
-		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted, h.inspecting])
+		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted, h.inspecting, h.turn])
 	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.is_out(), crouch]
 
 
@@ -816,6 +833,7 @@ func _sync_state(data: Array) -> void:
 		h.level = d[5]
 		h.lifted = d[6]
 		h.inspecting = d[7]
+		h.turn = d[8]
 	if multiplayer.is_server():
 		var strain: Array = data[5]
 		for i in 2:
