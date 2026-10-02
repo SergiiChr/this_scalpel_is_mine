@@ -53,6 +53,8 @@ const GRIP_DRAG := 1.0
 const GRIP_HOLD := 0.01
 ## Skin under the drape stays at least this far (meters) below the height folded-out skin lies at on top of it.
 const UNDER_DRAPE := 0.006
+## How far (meters) from its rest point skin still rests on the body (see _stay_on_body()).
+const BODY_REACH := 0.01
 ## Pulls up to this far (meters) drag the patch fully, twice as far not at all.
 const DRAG_REACH := 0.035
 ## Skin that moved further than this (meters) from where it settled is shown simulated.
@@ -129,6 +131,8 @@ var spring_diag := PackedInt32Array()
 var spring_anti := PackedInt32Array()
 ## Where the anchor pulls each particle: its rest position, moved back from a cut.
 var anchor_target := PackedVector3Array()
+## Which way is out of the body at each particle's rest point (unit), see _stay_on_body().
+var rest_normal := PackedVector3Array()
 ## What exposed skin folded out of the site can't go below (the drape): site-local (x, z) -> height, NAN where
 ## there's nothing. Unset: nothing to lie on. Only particles marked in `exposed` are held up by it.
 var floor_at: Callable
@@ -239,6 +243,13 @@ func build(site_size: Vector2, height_at: Callable, on_body: Callable = Callable
 	pos = rest.duplicate()
 	prev = rest.duplicate()
 	anchor_target = rest.duplicate()
+	rest_normal.resize(count)
+	for j in res_y + 1:
+		for i in res_x + 1:
+			var dx := rest[index(mini(i + 1, res_x), j)] - rest[index(maxi(i - 1, 0), j)]
+			var dz := rest[index(i, mini(j + 1, res_y))] - rest[index(i, maxi(j - 1, 0))]
+			var normal := dz.cross(dx).normalized()
+			rest_normal[index(i, j)] = normal if normal.y >= 0.0 else -normal
 	_off_list = PackedInt32Array()
 	for k in count:
 		if off[k] == 1:
@@ -822,6 +833,7 @@ func _substep() -> void:
 				hold = lerpf(hold, LOOSE_ANCHOR, clampf((pos[k].y - anchor_target[k].y) / LIFTED_OFF, 0.0, 1.0))
 			pos[k] += back * hold * _free[k] * clampf(1.0 - back.length() / ANCHOR_REACH, 0.0, 1.0)
 		# Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
+		_stay_on_body()
 		_stay_above_floor()
 	for k in _win_particles:
 		moved = maxf(moved, pos[k].distance_squared_to(prev[k]))
@@ -946,6 +958,21 @@ func _solve(s: int) -> void:
 ## Skin that started out exposed (inside the drape's opening) and is folded out over the drape lies on it. Skin under
 ## the drape stays under it: a flap pulled out over the drape can't lift it through the sheet. Unless it's been cut
 ## free there itself: a flap cut under the drape's edge takes it along.
+## Skin lying in place rests on the body, it doesn't sink into it: over a curved body the sheet's tension would pull it
+## a few millimeters inside the body's shape, and the site would show recessed next to the body model around it.
+## Only near its rest point (BODY_REACH): the body's tangent plane there says nothing about where a flap pulled
+## far away may go. Not the outermost strip either: it lies under the drape's frame, never drawn, and lifted onto the
+## body it would count as lying on top of the drape.
+func _stay_on_body() -> void:
+	for k in _win_particles:
+		if off[k] == 1 or _free[k] == 0.0 or _at_border(k):
+			continue
+		var moved := pos[k] - rest[k]
+		var below := moved.dot(rest_normal[k])
+		if below < 0.0 and moved.length_squared() < BODY_REACH * BODY_REACH:
+			pos[k] -= rest_normal[k] * below
+
+
 func _stay_above_floor() -> void:
 	if not floor_at.is_valid():
 		return
