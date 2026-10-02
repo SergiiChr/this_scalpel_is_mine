@@ -175,8 +175,8 @@ func _swap_checks() -> void:
 	_check(hung and patient.flags.has("drug_saline"), "swap_bag: the bag hangs on the stand full (%.0f ml) and runs into the line" % drip.ml)
 
 
-## Y14-Y16: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin holds the
-## hand back and tears out when pulled on; a syringe brought under the IV bag at waist height rises into its port.
+## Y14-Y16: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its
+## tip in place, the mouse tilting the syringe about it, and tears out when pulled on sideways; a syringe brought under the IV bag at waist height rises into its port.
 func _hand_checks() -> void:
 	print("--- needle_hand")
 	var me := bench.surgery.local_surgeon
@@ -198,12 +198,16 @@ func _hand_checks() -> void:
 	me.zoom = 0
 	await bench.frames(40)
 	await bench.stage(Bench.CASES[6])
-	var start := hand.target
-	me.steer_hand(Vector2(40, 0))
-	await bench.frames(2)
-	var free := 40.0 * Surgeon.HAND_SENSITIVITY * me.status.hand_speed()
-	_check(start.distance_to(hand.target) < free * 0.3, "needle_hand: a needle in the skin holds the hand back (%.4f m of %.4f, needle in %s, lowered %s, torn %s)" % [start.distance_to(hand.target), free, bench.needle_target(), hand.lowered, me._needle_torn])
-	for i in 30:
+	var tip := bench.syringe.tip_position()
+	var tilt := hand.tilt
+	var grip := hand.global_position
+	for i in 5:
+		me.steer_hand(Vector2(0, 10))
+		await bench.frames(1)
+	await bench.frames(5)
+	var drift := bench.syringe.tip_position().distance_to(tip)
+	_check(drift < 0.001 and not is_equal_approx(hand.tilt, tilt) and hand.global_position.distance_to(grip) > 0.005, "needle_hand: a needle in the skin keeps its tip in place (%.4f m) and the mouse tilts the syringe about it (tilt %.2f -> %.2f)" % [drift, tilt, hand.tilt])
+	for i in 60:
 		if me._needle_torn:
 			break
 		me.steer_hand(Vector2(20, 0))

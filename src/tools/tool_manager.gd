@@ -193,9 +193,9 @@ func request_plunger(hand: int, notches: int) -> void:
 	_req_plunger.rpc_id(1, hand, notches)
 
 
-## The needle of the syringe in this hand was pulled out of the patient sideways, from `from` (world space).
-func request_needle_tear(hand: int, from: Vector3) -> void:
-	_req_needle_tear.rpc_id(1, hand, from)
+## The needle of the syringe in this hand tore out of the patient, dragged from `from` to `to` (world space).
+func request_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
+	_req_needle_tear.rpc_id(1, hand, from, to)
 
 
 func request_sterilize(hand: int) -> void:
@@ -293,10 +293,10 @@ func _req_plunger(hand: int, notches: int) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _req_needle_tear(hand: int, from: Vector3) -> void:
+func _req_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
 	var tool := tool_in_hand(Net._sender(), hand)
 	if tool and tool.def.action == "syringe" and Surgery.current.running:
-		Surgery.current.patient.needle_tear(from, tool.tip_position())
+		Surgery.current.patient.needle_tear(from, to)
 
 
 @rpc("any_peer", "call_local", "reliable")

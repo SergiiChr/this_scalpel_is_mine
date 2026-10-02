@@ -126,7 +126,7 @@ and plunger, and the vial's or dish's level, must show exactly what's in them.
 | Y12 | IV catheter: the last zoom step frames its needle. On the forearm vein it sticks, the tubing runs to it and a drug in the IV drip runs into the patient; 2.5 cm beside the vein it still sticks with the tubing, but the drug stays in the bag |
 | Y13 | The IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place of the emptied one, uses up the held one and runs it into the line |
 | Y14 | In the needle view, mouse right moves the hand right on screen and mouse up moves it away from the camera |
-| Y15 | A syringe pressed into the skin holds the hand back (it follows a fifth of the mouse); pulled on, the needle tears out and leaves a scratch on the skin |
+| Y15 | A syringe pressed into the skin keeps its tip exactly where it went in: the mouse tilts the syringe about it. Pulled on sideways, the needle tears out and leaves a scratch on the skin |
 | Y16 | A syringe brought under the IV bag at waist height rises into the bag's port, its needle in the bag |
 
 ## Co-op over the network (`tests/net_test.gd`)

@@ -307,9 +307,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
   Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
   needle comes out.
-- **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, the hand follows only a
-  fifth of the mouse. Pulled 1.5 cm from where it went in, the needle tears out: a short scratch, a bead of blood and
-  pain (`Patient.needle_tear()`). It then moves freely until Use tool is let go.
+- **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
+  it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
+  hand swinging round it (`Surgeon._bend_needle()`). What the tilt can't follow (sideways, or past the tilt range)
+  stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
+  out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
+  let go.
 - **Needle view**: the last zoom step with a syringe or IV catheter in hand moves the camera beside it, side on and a
   little above, so the needle and what it's in (a vial, the dish, the bag, the arm) are in view. The hands fade to see
   through and roll a syringe about its length so the printed scale faces the camera; zooming out rolls it back.
