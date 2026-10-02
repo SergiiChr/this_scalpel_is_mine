@@ -153,8 +153,8 @@ func _run(case: Dictionary) -> void:
 		await _shots_of(case.id, "07_moved_high")
 	_hand.lowered = false
 	_hand.trigger = false
-	var seam := _seam()
-	_check(seam < SEAM_MAX, "the simulated skin meets the body model without a step (%.2f mm off at its edge)" % (seam * 1000.0))
+	var off := seam(_surgery.patient.body)
+	_check(off < SEAM_MAX, "the simulated skin meets the body model without a step (%.2f mm off at its edge)" % (off * 1000.0))
 	_report_frames(case.id)
 	_surgery.queue_free()
 	await _frames(3)
@@ -223,8 +223,8 @@ func _run_graft(case: Dictionary) -> void:
 	var under := "fat" if case.fat else "muscle"
 	_check(body.layer_at(_center_uv) == under, "the wound shows the %s under the skin (%s)" % [under, body.layer_at(_center_uv)])
 	_check(_tears() == 0 and patient.flags.has("graft_taken"), "no tears around the wound")
-	var seam := _seam()
-	_check(seam < SEAM_MAX, "the simulated skin meets the body model without a step (%.2f mm off at its edge)" % (seam * 1000.0))
+	var off := seam(_surgery.patient.body)
+	_check(off < SEAM_MAX, "the simulated skin meets the body model without a step (%.2f mm off at its edge)" % (off * 1000.0))
 	await _shots_of(id, "04_wound")
 	left.trigger = false
 	_report_frames(id)
@@ -514,9 +514,8 @@ func _zipper() -> bool:
 ## How far the simulated skin lies off the body model (meters) along the edge of the region, where it hands over to
 ## the model: its grid points next to one the model draws, straight down the site's normal onto the model. Breathing
 ## lifts the site and the trunk together, but not the body's colliders: that lift is added back.
-func _seam() -> float:
-	var body := _surgery.patient.body
-	var sim := _tissue()
+static func seam(body: PatientBody) -> float:
+	var sim := body.tissue
 	var region := sim.region()
 	var up := body.site.global_basis.y.normalized()
 	var lift := body.site.position.y - float(Db.patient_sites[body.site_id].pos[1])

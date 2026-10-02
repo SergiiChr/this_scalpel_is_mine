@@ -18,6 +18,14 @@ enum Orientation { FACE_UP, SIDE, FACE_DOWN }
 ## crossing the spring's other end, how far along it the blade crossed (share) and the lip neighbour it slides with
 ## (slide, -1 for none); its uv; the triangle indices; and per wall quad its two top vertices and a vertex of its own
 ## side's skin, to face it away from.
+## One part of the body model (skin or gown) in site space, for measuring the site against: its triangles, three
+## corners each as the mesh numbers them, with their smooth normals.
+class ModelPart:
+	var mesh := TriangleMesh.new()
+	var faces := PackedVector3Array()
+	var normals := PackedVector3Array()
+
+
 class LayerPlan:
 	var owner := PackedInt32Array()
 	var other := PackedInt32Array()
@@ -46,6 +54,12 @@ const LAYER_DEPTH: Array[int] = [TissueSim.Depth.SKIN, TissueSim.Depth.FAT, Tiss
 const FLAP_MOVE := 0.04
 ## Grid step of the drape's height under folded-out skin (meters, see _lay_skin_on_drape()).
 const DRAPE_FLOOR_CELL := 0.01
+## Points per side the site's skin heights are measured at on the body model.
+const HEIGHTS := 33
+## Rays onto the body model start this far out along the site's normal (meters).
+const RAY_START := 0.15
+## Body thinner than this under the skin (meters) can't hold the site's skin, fat and muscle: off the body.
+const MIN_THICKNESS := 0.035
 ## Organs that belong under each site, for organs placed without a model of their own (one over a hidden target,
 ## filler in a deep site without anatomy data), in the order they're used.
 const SITE_ORGANS: Dictionary = {
@@ -96,9 +110,9 @@ var _veins: Array[MeshInstance3D] = []
 ## stuck to a forearm (veins, an IV catheter's dressing) moves with the arm.
 var _forearms: Array[BoneAttachment3D] = []
 var _site_base_y := 0.0
+## The skin's height over the site plane, measured on the body model at HEIGHTS points per side (see _measure_site()).
 var _heights := PackedFloat32Array()
-## Per baked grid point: 1 on the body, 0 where the site hangs off it or the body is too thin under it for the layers
-## (tools/blender/patient.py bake_site_heights()).
+## Per measured point: 1 on the body, 0 where the site hangs off it or the body is too thin under it for the layers.
 var _on_body := PackedByteArray()
 var _layers: Array[MeshInstance3D] = []
 var _layer_version := -1
@@ -167,8 +181,7 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	animator.setup(self, model)
 	_build_colliders()
 	_build_surface(model)
-	_build_site(tone)
-	_fit_to_model(model)
+	_build_site(tone, model)
 	_build_veins(model)
 	blood.name = "BloodFlow"
 	add_child(blood)
@@ -305,31 +318,36 @@ func skin_height(uv: Vector2) -> float:
 	if k < _region.size() and _region[k] == 1:
 		var height := tissue.skin_height(uv)
 		if not is_nan(height):
-			return height
+			# Drawn off the sim's skin (see _on_model): by as much as its grid points around uv are.
+			var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * Vector2(tissue.res_x, tissue.res_y)
+			var at := Vector2i(mini(int(p.x), tissue.res_x - 1), mini(int(p.y), tissue.res_y - 1))
+			var f := p - Vector2(at)
+			var drawn := func(i: int, j: int) -> float:
+				var n := tissue.index(at.x + i, at.y + j)
+				return layer_point(0, n).y - tissue.pos[n].y
+			return height + lerpf(lerpf(drawn.call(0, 0), drawn.call(1, 0), f.x), lerpf(drawn.call(0, 1), drawn.call(1, 1), f.x), f.y)
 	return surface_height(uv)
 
 
-## Skin height relative to the flat site plane at uv, from the baked height grid (0 when flat).
+## Skin height relative to the flat site plane at uv, from the heights measured on the body model (0 when flat).
 func surface_height(uv: Vector2) -> float:
-	var grid := int(Db.site_heights.get("grid", 0))
-	if _heights.size() != grid * grid or grid < 2:
+	if _heights.size() != HEIGHTS * HEIGHTS:
 		return 0.0
-	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)
-	var x0 := mini(int(p.x), grid - 2)
-	var y0 := mini(int(p.y), grid - 2)
+	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * (HEIGHTS - 1)
+	var x0 := mini(int(p.x), HEIGHTS - 2)
+	var y0 := mini(int(p.y), HEIGHTS - 2)
 	var f := p - Vector2(x0, y0)
-	var top := lerpf(_heights[y0 * grid + x0], _heights[y0 * grid + x0 + 1], f.x)
-	var bottom := lerpf(_heights[(y0 + 1) * grid + x0], _heights[(y0 + 1) * grid + x0 + 1], f.x)
+	var top := lerpf(_heights[y0 * HEIGHTS + x0], _heights[y0 * HEIGHTS + x0 + 1], f.x)
+	var bottom := lerpf(_heights[(y0 + 1) * HEIGHTS + x0], _heights[(y0 + 1) * HEIGHTS + x0 + 1], f.x)
 	return lerpf(top, bottom, f.y)
 
 
 ## False where the site hangs off the body, or the body under it is too thin to hold the site's layers.
 func on_body(uv: Vector2) -> bool:
-	var grid := int(Db.site_heights.get("grid", 0))
-	if _on_body.size() != grid * grid or grid < 2:
+	if _on_body.size() != HEIGHTS * HEIGHTS:
 		return true
-	var cell := Vector2i((uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)).round())
-	return _on_body[cell.y * grid + cell.x] == 1
+	var cell := Vector2i((uv.clamp(Vector2.ZERO, Vector2.ONE) * (HEIGHTS - 1)).round())
+	return _on_body[cell.y * HEIGHTS + cell.x] == 1
 
 
 ## Blood on the skin at uv, 0..1, from the fluid map.
@@ -555,7 +573,7 @@ func _build_surface(model: Node3D) -> void:
 		surface.transform = _body_root.global_transform.affine_inverse() * mesh.global_transform
 
 
-func _build_site(tone: Color) -> void:
+func _build_site(tone: Color, model: Node3D) -> void:
 	var def := _site_def()
 	site_size = Vector2(def.size[0], def.size[1])
 	_on_back = def.get("back", false)
@@ -567,12 +585,10 @@ func _build_site(tone: Color) -> void:
 	_site_base_y = site.position.y
 	_body_root.add_child(site)
 
-	_heights = PackedFloat32Array(Db.site_heights.get(site_id, []))
-	_on_body.resize(_heights.size())
-	_on_body.fill(1)
-	for i: int in Db.site_heights.get("off", {}).get(site_id, []):
-		_on_body[i] = 0
+	var parts := _model_parts(model)
+	_measure_site(parts)
 	tissue.build(site_size, surface_height, on_body)
+	_fit_to_model(parts)
 	_region_image = Image.create(tissue.res_x + 1, tissue.res_y + 1, false, Image.FORMAT_L8)
 	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
@@ -593,40 +609,104 @@ func _build_site(tone: Color) -> void:
 	_update_carve.call_deferred()
 
 
-## Lays every tissue grid point onto the body model (see _on_model): straight down the site's normal onto the skin or
-## gown under where the sim settled it, like the baked heights (from 15 cm out), with the model's smooth normal there.
-## Points the ray misses keep where they settled.
-func _fit_to_model(model: Node3D) -> void:
-	var faces := PackedVector3Array()
-	var normals := PackedVector3Array()
+## The body model's skin and gown in site space, as it lies at rest.
+func _model_parts(model: Node3D) -> Array[ModelPart]:
+	var parts: Array[ModelPart] = []
 	for part_name in ["Body", "Gown"]:
 		var mesh := model.find_child(part_name, true, false) as MeshInstance3D
 		if mesh == null:
 			continue
+		var part := ModelPart.new()
 		var to_site := site.global_transform.affine_inverse() * mesh.global_transform
 		for s in mesh.mesh.get_surface_count():
 			var arrays := mesh.mesh.surface_get_arrays(s)
 			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 			var vertex_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 			for i: int in arrays[Mesh.ARRAY_INDEX]:
-				faces.append(to_site * verts[i])
-				normals.append((to_site.basis * vertex_normals[i]).normalized())
-	var surface := TriangleMesh.new()
-	surface.create_from_faces(faces)
+				part.faces.append(to_site * verts[i])
+				part.normals.append((to_site.basis * vertex_normals[i]).normalized())
+		part.mesh.create_from_faces(part.faces)
+		parts.append(part)
+	return parts
+
+
+## Where a ray straight down the site's normal at x, z (site space) first meets the body model: its position, the
+## model's smooth normal there and the part it hit. Empty where it misses, or goes through a hole in the model (an eye
+## socket the eye fills) and meets the inside of the body.
+static func _model_hit(parts: Array[ModelPart], x: float, z: float) -> Dictionary:
+	var best := {}
+	for part in parts:
+		var hit := part.mesh.intersect_ray(Vector3(x, RAY_START, z), Vector3.DOWN)
+		if hit.is_empty() or (not best.is_empty() and (hit.position as Vector3).y <= (best.position as Vector3).y):
+			continue
+		var at: Vector3 = hit.position
+		var f: int = hit.face_index * 3
+		var w := Geometry3D.get_triangle_barycentric_coords(at, part.faces[f], part.faces[f + 1], part.faces[f + 2])
+		var normal := (part.normals[f] * w.x + part.normals[f + 1] * w.y + part.normals[f + 2] * w.z).normalized()
+		if normal.y > 0.0:
+			best = {"position": at, "normal": normal, "part": part}
+	return best
+
+
+## Measures the skin's height over the site plane on the body model, so the site hugs the body as it is now, and
+## which points are off it: where the site hangs past the body, or the body under the skin is too thin to hold skin,
+## fat and muscle (the edge of a limb or the flank). Nothing of the site is drawn, carved or probed there.
+## Every peer measures the same model the same way, so every player sees the same site.
+func _measure_site(parts: Array[ModelPart]) -> void:
+	_heights.resize(HEIGHTS * HEIGHTS)
+	_on_body.resize(HEIGHTS * HEIGHTS)
+	var missed := PackedInt32Array()
+	for n in HEIGHTS * HEIGHTS:
+		var uv := Vector2(n % HEIGHTS, n / HEIGHTS) / (HEIGHTS - 1)
+		var hit := _model_hit(parts, (uv.x - 0.5) * site_size.x, (uv.y - 0.5) * site_size.y)
+		_on_body[n] = 0
+		_heights[n] = NAN
+		if hit.is_empty():
+			missed.append(n)
+			continue
+		var at: Vector3 = hit.position
+		_heights[n] = at.y
+		# The body's thickness under this point: where the same ray comes out of the part again.
+		var out := (hit.part as ModelPart).mesh.intersect_ray(at + Vector3.DOWN * 0.001, Vector3.DOWN)
+		if not out.is_empty() and at.y - (out.position as Vector3).y > MIN_THICKNESS:
+			_on_body[n] = 1
+	# Where nothing was met (past the body's outline, over a hole) the site goes on from the points around it, so
+	# heights between points stay smooth up to the edge of the body.
+	while not missed.is_empty() and missed.size() < HEIGHTS * HEIGHTS:
+		var left := PackedInt32Array()
+		var filled := {}
+		for n in missed:
+			var sum := 0.0
+			var found := 0
+			for step: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var at := Vector2i(n % HEIGHTS, n / HEIGHTS) + step
+				if at.x >= 0 and at.y >= 0 and at.x < HEIGHTS and at.y < HEIGHTS and not is_nan(_heights[at.y * HEIGHTS + at.x]):
+					sum += _heights[at.y * HEIGHTS + at.x]
+					found += 1
+			if found > 0:
+				filled[n] = sum / found
+			else:
+				left.append(n)
+		for n: int in filled:
+			_heights[n] = filled[n]
+		missed = left
+	for n in missed:
+		_heights[n] = 0.0
+
+
+## Lays every tissue grid point onto the body model (see _on_model): straight down the site's normal onto the skin or
+## gown under where the sim settled it, with the model's smooth normal there. Points the ray misses keep where they
+## settled.
+func _fit_to_model(parts: Array[ModelPart]) -> void:
 	var count := tissue.rest.size()
 	_on_model = tissue.settled.duplicate()
 	var model_normals := PackedVector3Array()
 	model_normals.resize(count)
 	for k in count:
-		var p := tissue.settled[k]
-		var hit := surface.intersect_ray(Vector3(p.x, 0.15, p.z), Vector3.DOWN)
-		if hit.is_empty():
-			continue
-		var at: Vector3 = hit.position
-		var f: int = hit.face_index * 3
-		var w := Geometry3D.get_triangle_barycentric_coords(at, faces[f], faces[f + 1], faces[f + 2])
-		_on_model[k] = at
-		model_normals[k] = (normals[f] * w.x + normals[f + 1] * w.y + normals[f + 2] * w.z).normalized()
+		var hit := _model_hit(parts, tissue.settled[k].x, tissue.settled[k].z)
+		if not hit.is_empty():
+			_on_model[k] = hit.position
+			model_normals[k] = hit.normal
 	_normal_fit.resize(count)
 	for k in count:
 		_normal_fit[k] = model_normals[k] - _grid_normal(_on_model, k) if model_normals[k] != Vector3.ZERO else Vector3.ZERO
@@ -1349,6 +1429,12 @@ func set_cavity_blood(level: float) -> void:
 		var uv := _cavity_uv(i, j)
 		return on_body(uv) and _cavity_floor(uv) < height and height < surface_height(uv) - SKIN_THICKNESS
 	cavity_blood.mesh = _cavity_grid(func(_uv: Vector2) -> float: return height, keep)
+
+
+## The site's shape as measured on the body model (heights, points off the body, where the skin rests on it): the same
+## on every peer that built the same patient, so every player sees the same site.
+func shape_hash() -> int:
+	return hash([_heights, _on_body, _on_model])
 
 
 ## Where the body model is cut away (the region), the simulated skin layers take over.

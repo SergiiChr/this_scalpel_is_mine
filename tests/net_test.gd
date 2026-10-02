@@ -5,6 +5,7 @@ extends Node
 ##      godot --headless --path . res://tests/net_test.tscn -- --role=client
 
 const PORT := 24599
+const Slicing := preload("res://tests/slicing_test.gd")
 
 
 func _ready() -> void:
@@ -88,7 +89,12 @@ func _drive(role: String, driver: Node) -> void:
 	for y in range(0, image.get_height(), 4):
 		for x in range(0, image.get_width(), 4):
 			painted += 1 if image.get_pixel(x, y).r > 0.1 else 0
-	var tissue := surgery.patient.body.tissue
-	print("[%s] surgeon wounds (host state)=%d, painted texels=%d, severed springs=%d, topology=%d, vitals hr=%d" % [role, surgeon_wounds, painted, tissue.c_active.count(0), tissue.topology_hash(), surgery.patient.vitals.heart_rate])
+	var body := surgery.patient.body
+	var tissue := body.tissue
+	print("[%s] surgeon wounds (host state)=%d, painted texels=%d, severed springs=%d, topology=%d, site shape=%d, vitals hr=%d" % [role, surgeon_wounds, painted, tissue.c_active.count(0), tissue.topology_hash(), body.shape_hash(), surgery.patient.vitals.heart_rate])
+	# Each player's simulated skin meets the body model where the cut opened it, without a step.
+	var seam := Slicing.seam(body)
+	if not tissue.any_severed() or seam >= Slicing.SEAM_MAX:
+		print("FAIL: [%s] the simulated skin doesn't meet the body model: cut %s, %.2f mm off at its edge" % [role, tissue.any_severed(), seam * 1000.0])
 	await tree.create_timer(1.0).timeout
 	tree.quit()
