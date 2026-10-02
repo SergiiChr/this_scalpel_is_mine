@@ -136,6 +136,8 @@ var _held_organs: Dictionary = {}
 ## Where the simulated skin replaces the body model, one texel per tissue grid point (see TissueSim.region()).
 var region_texture: ImageTexture
 var _region := PackedByteArray()
+## 1 for region points next to one outside it, where the body model takes over: they're drawn right on the model.
+var _region_edge := PackedByteArray()
 var _region_image: Image
 var _cavity_material: ShaderMaterial
 var _pool_height := -INF
@@ -303,14 +305,7 @@ func skin_height(uv: Vector2) -> float:
 	if k < _region.size() and _region[k] == 1:
 		var height := tissue.skin_height(uv)
 		if not is_nan(height):
-			# Drawn off the sim's skin (see _on_model): by as much as its grid points around uv are.
-			var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * Vector2(tissue.res_x, tissue.res_y)
-			var a := tissue.index(mini(int(p.x), tissue.res_x - 1), mini(int(p.y), tissue.res_y - 1))
-			var c := a + tissue.res_x + 1
-			var off := PackedFloat32Array()
-			for corner: int in [a, a + 1, c, c + 1]:
-				off.append(layer_point(0, corner).y - tissue.pos[corner].y)
-			return height + _bilinear(off, Vector2i(2, 2), p - Vector2(tissue.cell_of(a)))
+			return height
 	return surface_height(uv)
 
 
@@ -319,17 +314,12 @@ func surface_height(uv: Vector2) -> float:
 	var grid := int(Db.site_heights.get("grid", 0))
 	if _heights.size() != grid * grid or grid < 2:
 		return 0.0
-	return _bilinear(_heights, Vector2i(grid, grid), uv)
-
-
-## A value at uv, between the points of a grid of `size` values spanning the site, row by row.
-static func _bilinear(values: PackedFloat32Array, size: Vector2i, uv: Vector2) -> float:
-	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * Vector2(size - Vector2i.ONE)
-	var x0 := mini(int(p.x), size.x - 2)
-	var y0 := mini(int(p.y), size.y - 2)
+	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)
+	var x0 := mini(int(p.x), grid - 2)
+	var y0 := mini(int(p.y), grid - 2)
 	var f := p - Vector2(x0, y0)
-	var top := lerpf(values[y0 * size.x + x0], values[y0 * size.x + x0 + 1], f.x)
-	var bottom := lerpf(values[(y0 + 1) * size.x + x0], values[(y0 + 1) * size.x + x0 + 1], f.x)
+	var top := lerpf(_heights[y0 * grid + x0], _heights[y0 * grid + x0 + 1], f.x)
+	var bottom := lerpf(_heights[(y0 + 1) * grid + x0], _heights[(y0 + 1) * grid + x0 + 1], f.x)
 	return lerpf(top, bottom, f.y)
 
 
@@ -964,8 +954,12 @@ func layer_point(layer: int, k: int) -> Vector3:
 
 ## How far the sim moved grid point k since it settled, less any way back toward the body model: tension holds the
 ## sheet off a curved body, and where a cut lets go of it the skin springs back, to where it's drawn already.
+## None on the region's edge where it moved less than the region takes in (TissueSim.REGION_MOVE): that still shows
+## a step against the body model next to it.
 func _moved(k: int) -> Vector3:
 	var moved := tissue.pos[k] - tissue.settled[k]
+	if k < _region_edge.size() and _region_edge[k] == 1 and moved.length() <= TissueSim.REGION_MOVE:
+		return Vector3.ZERO
 	var fit := _on_model[k] - tissue.settled[k]
 	if fit.is_zero_approx():
 		return moved
@@ -979,6 +973,15 @@ func _update_region() -> bool:
 	if region == _region:
 		return false
 	_region = region
+	_region_edge.resize(region.size())
+	_region_edge.fill(0)
+	for k in region.size():
+		if region[k] == 1:
+			var at := tissue.cell_of(k)
+			for step: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var n := (at + step).clamp(Vector2i.ZERO, Vector2i(tissue.res_x, tissue.res_y))
+				if region[tissue.index(n.x, n.y)] == 0:
+					_region_edge[k] = 1
 	# One byte per particle, row by row: the image's own layout.
 	var texels := region.duplicate()
 	for k in texels.size():
