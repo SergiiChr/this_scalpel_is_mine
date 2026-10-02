@@ -2,18 +2,25 @@ tags: anesthesia_decay_mult, sedation_mult, mh_trigger, malignant_hyperthermia, 
 title: 8. Anesthesia management
 ## 8.1 Depth
 Adequate depth is indicated by absent spontaneous respiration on the monitor. A patient who begins to speak is lightening.
+One correct induction dose is maintained for the whole procedure. A repeat dose of the same agent only tops it up.
 
-## 8.2 Increased requirement
-• Anesthetic resistance: agents are cleared at twice the usual rate. Prepare a second dose and give it before the patient surfaces.
+## 8.2 Blood pressure under anesthesia
+Propofol and the inhaled agent lower systolic pressure for as long as the patient is under: expect about 100 mmHg instead of 120. A healthy patient tolerates this. Blood loss on top of it does not: below about 85 mmHg the heart is at risk of arrest.
+• Control bleeding early.
+• Run saline through the IV line to restore volume and pressure. Transfuse for larger losses.
+• In a patient who is already bleeding or in shock, induce with ketamine. It keeps the pressure up.
+
+## 8.3 Increased requirement
+• Anesthetic resistance: the agent is not maintained and wears off within a few minutes. Prepare a second dose and give it before the patient surfaces.
 • Chronic alcohol use: higher doses are required; sedatives are about 40% less effective.
 
-## 8.3 Malignant hyperthermia
+## 8.4 Malignant hyperthermia
 A pharmacogenetic reaction to volatile anesthetic agents. Core temperature rises about one degree every thirty seconds and is fatal above 42.5 °C.
 1. Discontinue the inhaled agent. Continue with propofol or ketamine.
 2. Give dantrolene. Onset about twenty seconds.
 > A family history of "anesthesia complications" on the chart indicates susceptibility.
 
-## 8.4 Sequence
+## 8.5 Sequence
 IV access, then induction, then skin preparation. Skin preparation may be done in the conscious patient; incision may not.
 
 [font_size=16][b]References[/b]

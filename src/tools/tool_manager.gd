@@ -8,10 +8,12 @@ const GRAB_RADIUS := 0.09
 ## Everyone but the host sees iodine levels in steps this fine (syringes, vials and the kidney dish are exact).
 const FILL_STEPS := 50.0
 ## How close a syringe's needle has to be to a vial's middle to be in it, or to a dish's or hung bag's (a share of
-## its length). A hung bag is out of a hand's reach from below: the needle goes in resting on top of it.
+## its length). A hand with a syringe under the hung bag rises to its port (see Surgeon._drip_port()).
 const VIAL_REACH := 0.05
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
+## A tool lying lower than this (meters) is on the floor: one that lands on it lands on the floor too.
+const FLOOR_PILE := 0.1
 
 var tools: Dictionary = {}
 var _next_uid := 1
@@ -193,6 +195,11 @@ func request_plunger(hand: int, notches: int) -> void:
 	_req_plunger.rpc_id(1, hand, notches)
 
 
+## The needle of the syringe in this hand tore out of the patient, dragged from `from` to `to` (world space).
+func request_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
+	_req_needle_tear.rpc_id(1, hand, from, to)
+
+
 func request_sterilize(hand: int) -> void:
 	_req_sterilize.rpc_id(1, hand)
 
@@ -288,6 +295,13 @@ func _req_plunger(hand: int, notches: int) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
+func _req_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
+	var tool := tool_in_hand(Net._sender(), hand)
+	if tool and tool.def.action == "syringe" and Surgery.current.running:
+		Surgery.current.patient.needle_tear(from, to)
+
+
+@rpc("any_peer", "call_local", "reliable")
 func _req_sterilize(hand: int) -> void:
 	var peer := Net._sender()
 	var tool := tool_in_hand(peer, hand)
@@ -324,6 +338,13 @@ func _req_wash(hand: int) -> void:
 func spawn(id: String, at: Vector3) -> void:
 	if multiplayer.is_server():
 		_spawn.rpc(_next_uid, id, at)
+
+
+## Host: a new tool falling from `at`, as if it was dropped there (the floor soils it).
+func drop_new(id: String, at: Vector3) -> void:
+	var uid := _next_uid
+	spawn(id, at)
+	tools[uid].set_meta("falling", true)
 
 
 ## Host: a skin graft cut from the patient, held at the tip of the tool that lifted it off. One piece covers one spot.
@@ -511,14 +532,15 @@ func _check_drop(tool: SurgicalTool) -> void:
 			patient.contaminate_site("")
 		return
 	for body in tool.get_colliding_bodies():
-		if body.has_meta("floor") and tool.def.fragile:
+		var on_floor := body.has_meta("floor") or body is SurgicalTool and (body as Node3D).global_position.y < FLOOR_PILE
+		if on_floor and tool.def.fragile:
 			tool.remove_meta("falling")
 			consume(tool)
 			Surgery.current.scoring.add("broken_syringe")
 			Surgery.current.sound("glass_break", tool.global_position)
 			Surgery.current.announce("The %s shatters on the floor." % tool.def.name)
 			return
-		if body.has_meta("floor"):
+		if on_floor:
 			tool.remove_meta("falling")
 			_set_sterile.rpc(tool.uid, false)
 			_set_soiled.rpc(tool.uid, true)

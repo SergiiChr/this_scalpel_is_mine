@@ -474,7 +474,7 @@ func _menus(out: String) -> void:
 	menu.call("_show_settings")
 	await _shot(out, "12_menu_settings")
 	menu.queue_free()
-	Net.roster = {1: {"name": "Doctor", "quirks": [{"id": "shaky_hands", "variant": ""}, {"id": "hand_size", "variant": "big"}, {"id": "divine_knowledge", "variant": ""}], "ready": true}}
+	Net.roster = {1: {"name": "Doctor", "quirks": [{"id": "shaky_hands", "variant": ""}, {"id": "hand_size", "variant": ""}, {"id": "divine_knowledge", "variant": ""}], "ready": true}}
 	Net.scenario_id = "appendectomy"
 	Net.run_modifiers = ["chart_error", "understaffed"]
 	var lobby: Control = load("res://scenes/ui/lobby.tscn").instantiate()

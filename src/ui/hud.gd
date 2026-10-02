@@ -407,7 +407,7 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 			lines.append("%s  Push plunger 1 ml" % key.call("level_up"))
 		elif me.uses_level(me.active):
 			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
-		lines.append("%s / %s  Tilt   %s / %s  Rotate" % [key.call("tilt_forward"), key.call("tilt_back"), key.call("twist_left"), key.call("twist_right")])
+		lines.append("%s (hold) + mouse  Turn tool   %s / %s  Rotate" % [key.call("aim_tool"), key.call("twist_left"), key.call("twist_right")])
 		lines.append("%s (hold)  Look at it" % key.call("inspect"))
 		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
 	else:

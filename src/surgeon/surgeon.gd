@@ -6,9 +6,10 @@ extends CharacterBody3D
 ## Controls: the mouse looks around, holding a hand's key (Q/E) moves that hand instead and makes it the active one.
 ## Use tool (LMB, held) rests the active hand's tool on its spot and works it, the wheel sets its effort level
 ## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). A syringe has its own wheel: down pulls the plunger out, up pushes it
-## in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) steps through
-## three zoom levels; the last one with a syringe or IV catheter in hand frames the needle and what it's in, the
-## hands faded.
+## in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) toggles
+## between two zoom levels; the closer one with a syringe or IV catheter in hand frames the needle and what it's in, the
+## hands faded. Holding Aim tool (MMB) the mouse turns the active hand's tool instead, the wrist with it: pitch and
+## swing left and right. C/V roll it about its length.
 ## WASD moves the body.
 ## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
@@ -23,6 +24,8 @@ const EYE_HEIGHT := 1.62
 const SHOULDER := Vector3(0.19, 1.4, -0.08)
 const HAND_SENSITIVITY := 0.0009
 const LOOK_SENSITIVITY := 0.003
+## Radians the held tool turns per pixel while the mouse aims it (Aim tool held).
+const AIM_SENSITIVITY := 0.004
 ## Gap between a resting tool tip and the surface under it.
 const HOVER_GAP := 0.01
 ## How far above what's inside an opening (meters) a lowered blade stays at each effort level: at full effort it goes
@@ -38,7 +41,7 @@ const CARRY_HEIGHT := 1.05
 const CROUCH_DROP := 0.75
 const CROUCH_SPEED := 0.35
 ## Zoom steps, cycled by the zoom key: camera field of view, widest first. Hand motion scales with it for precision.
-const ZOOM_FOV: Array[float] = [70.0, 45.0, 28.0]
+const ZOOM_FOV: Array[float] = [70.0, 35.0]
 ## How far in front of the eyes a tool is held up to look at it (Inspect).
 const INSPECT_DISTANCE := 0.26
 ## Zoomed all the way in with a syringe, the camera looks at it from the side and this far above (radians), with
@@ -48,6 +51,15 @@ const NEEDLE_VIEW_MARGIN := 0.025
 const NEEDLE_SEE_THROUGH := 0.65
 ## Tools the last zoom step frames like this: a syringe and the IV catheter.
 const NEEDLE_ACTIONS: PackedStringArray = ["syringe", "iv_line"]
+## A syringe's needle in the patient (Use tool held) keeps its tip where it went in: the mouse only tilts the syringe
+## about it. A pull it can't follow (sideways, or past how far the hand tilts) stretches the skin by this share of the
+## motion, and stretched this far (meters) the needle tears out and leaves a small wound.
+const NEEDLE_DRAG := 0.2
+const NEEDLE_TEAR := 0.015
+## Seconds Use tool is held before the needle counts as in: the hand comes down onto the skin first.
+const NEEDLE_SETTLE := 0.1
+## A syringe brought this close (meters, across the floor) under the IV bag on the stand goes up into its port.
+const DRIP_SNAP := 0.12
 const SYNC_INTERVAL := 1.0 / 30.0
 const BUMP_DISTANCE := 0.07
 const SWITCH_DELAY := 0.25
@@ -103,6 +115,12 @@ var _needle_view := Transform3D.IDENTITY
 ## The hand whose syringe the needle view rolls to show its scale (-1: none), and its own twist to roll back to.
 var _rolled_hand := -1
 var _own_twist := 0.0
+## Where the active hand's needle tip went into the patient (INF: it isn't in), how far the skin around it is pulled,
+## and whether it tore out since Use tool was pressed (it then moves freely until Use tool is let go).
+var _needle_anchor := Vector3.INF
+var _needle_pull := Vector3.ZERO
+var _needle_torn := false
+var _needle_pressed := 0.0
 ## The hand the needle view leaves solid: the one the needle is going into (-1: none).
 var _solid_hand := -1
 
@@ -243,8 +261,6 @@ func is_stalled() -> bool:
 
 ## Empty string if this surgeon can use the tool, otherwise why not.
 func blocked_reason(def: ToolDef) -> String:
-	if def.size == "fine" and mods.flag("fine_tools_blocked"):
-		return "Your fingers are too big for the %s." % def.name
 	if def.size == "heavy" and mods.flag("heavy_tools_blocked"):
 		return "Your hands are too small to handle the %s." % def.name
 	return ""
@@ -347,17 +363,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	var hand := hands[active]
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := (event as InputEventMouseMotion).relative * Settings.mouse_sensitivity
-		if moving_hand() < 0:
+		if Input.is_action_pressed("aim_tool"):
+			aim_tool(motion)
+		elif moving_hand() < 0:
 			rotation.y -= motion.x * LOOK_SENSITIVITY
 			pitch = clampf(pitch - motion.y * LOOK_SENSITIVITY, LOOK_PITCH.x, LOOK_PITCH.y)
 		elif _switch_timer <= 0.0:
-			# Zoomed in, the same mouse motion moves the hand less: finer control where you're looking closely.
-			var step := motion * HAND_SENSITIVITY * status.hand_speed() * ZOOM_FOV[zoom] / ZOOM_FOV[0]
+			# Sedated, the move reaches the hand late (see _apply_delayed()).
 			var delay := status.input_delay()
 			if delay > 0.0:
-				_delayed.append([Time.get_ticks_msec() + int(delay * 1000.0), active, step])
+				_delayed.append([Time.get_ticks_msec() + int(delay * 1000.0), active, motion])
 			else:
-				_move_hand(hand, Vector3(step.x, 0, step.y))
+				steer_hand(motion)
 	elif event.is_action_pressed("move_left_hand") or event.is_action_pressed("move_right_hand"):
 		var index := 0 if event.is_action_pressed("move_left_hand") else 1
 		if index != active:
@@ -388,6 +405,40 @@ func _unhandled_input(event: InputEvent) -> void:
 		for i in MAX_BELT:
 			if event.is_action_pressed("belt_%d" % (i + 1)):
 				Surgery.current.tools.request_belt(active, i)
+
+
+## Moves a hand (the active one unless `index` says) by a mouse motion (pixels, sensitivity applied). Zoomed in, the
+## same motion moves it less: finer control where you're looking closely. A needle stuck in the patient tilts about
+## its tip instead.
+func steer_hand(motion: Vector2, index: int = -1) -> void:
+	index = active if index < 0 else index
+	var step := motion * HAND_SENSITIVITY * status.hand_speed() * ZOOM_FOV[zoom] / ZOOM_FOV[0]
+	var move := _screen_to_floor(step) if _needle_framing > 0.5 else Basis(Vector3.UP, rotation.y) * Vector3(step.x, 0, step.y)
+	if index == active and _needle_anchor != Vector3.INF:
+		_bend_needle(move)
+	else:
+		_move_hand(hands[index], move)
+
+
+## A hand move (world, across the floor) with the needle stuck: along the syringe it tilts it about its tip, the hand
+## swinging round it. What the tilt can't take (sideways, or past its range) pulls on the skin.
+func _bend_needle(move: Vector3) -> void:
+	var hand := hands[active]
+	var length := held_tool(active).def.length
+	var back := Basis(Vector3.UP, rotation.y + hand.turn) * Vector3.BACK
+	var along := move.dot(back)
+	var tilt_before := hand.tilt
+	hand.tilt = clampf(hand.tilt + along / length, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
+	var unbent := along - (hand.tilt - tilt_before) * length
+	_needle_pull += (move - back * along + back * unbent) * NEEDLE_DRAG
+
+
+## Turns the active hand's tool by a mouse motion, the wrist going with it: up and down pitches it, left and right
+## swings it. It turns about the grip; a needle stuck in the patient turns about its tip instead (see _hold_needle()).
+func aim_tool(motion: Vector2) -> void:
+	var hand := hands[active]
+	hand.tilt = clampf(hand.tilt - motion.y * AIM_SENSITIVITY, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
+	hand.turn = clampf(hand.turn - motion.x * AIM_SENSITIVITY, -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
 
 
 ## The hand the mouse moves right now (its key held), or -1 while the mouse looks around.
@@ -470,6 +521,16 @@ func _frame_needle(delta: float) -> void:
 	_camera.global_transform = _head.global_transform.interpolate_with(_needle_view, smoothstep(0.0, 1.0, _needle_framing))
 
 
+## A mouse move as seen through the camera, laid flat on the floor: right moves right on screen, up moves away.
+## The needle view looks from the side, so moving the hand the body's way would look sideways there.
+func _screen_to_floor(step: Vector2) -> Vector3:
+	var right := _camera.global_basis.x * Vector3(1, 0, 1)
+	var away := _camera.global_basis.y * Vector3(1, 0, 1)
+	if away.length() < 0.1:
+		away = -_camera.global_basis.z * Vector3(1, 0, 1)
+	return right.normalized() * step.x - away.normalized() * step.y
+
+
 ## Where the camera looks at a syringe or catheter from: side on and a little above, from the side the eyes are on, far
 ## enough back that the whole tool and the vial, dish or bag its needle is in fit the view.
 func needle_view(tool: SurgicalTool) -> Transform3D:
@@ -510,18 +571,25 @@ func _local_update(delta: float) -> void:
 	move_and_slide()
 	var hand := hands[active]
 	if can_act:
-		var tilt_input := Input.get_axis("tilt_back", "tilt_forward")
 		var twist_input := Input.get_axis("twist_left", "twist_right")
-		hand.tilt = clampf(hand.tilt - tilt_input * delta * 1.5, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
 		hand.twist = wrapf(hand.twist + twist_input * delta * 2.0, -PI, PI)
 		hand.lifted = Input.is_action_pressed("lift") and not hand.attached
 		if hand.attached and Input.is_action_pressed("lift"):
 			hand.target.y += PULL_SPEED * delta
 		status.holding_breath = Input.is_action_pressed("steady") and status.breath > 0.0
+	_hold_needle(delta)
 	for i in 2:
 		var h := hands[i]
 		var tool := held_tool(i)
 		h.inspecting = can_act and i == active and tool != null and not h.attached and Input.is_action_pressed("inspect")
+		if i == active and _needle_anchor != Vector3.INF and not h.inspecting:
+			# The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
+			h.lifted = false
+			h.target = _needle_anchor - h.tip_offset(tool.def.length)
+			h.local_target = to_local(h.target)
+			h.tremor = Vector3.ZERO
+			_strain[i] = false
+			continue
 		if h.inspecting:
 			# Held up in front of the eyes, the grip off to the hand's side so the whole tool crosses the view.
 			h.lowered = false
@@ -546,14 +614,37 @@ func _local_update(delta: float) -> void:
 	_handle_status_events(status.update(delta, _status_context()))
 
 
+## A syringe pressed into the patient sticks where its tip went in. Pulled on too hard, or walked away from out of
+## reach, it tears out.
+func _hold_needle(delta: float) -> void:
+	var hand := hands[active]
+	var tool := held_tool(active)
+	if not hand.lowered or tool == null or tool.def.action != "syringe":
+		_needle_torn = false
+		_needle_anchor = Vector3.INF
+		_needle_pressed = 0.0
+	elif _needle_anchor == Vector3.INF:
+		_needle_pressed += delta
+		# Once in, it stays in until Use tool is let go: breathing lifting the skin doesn't free it.
+		var settled := _needle_pressed >= NEEDLE_SETTLE
+		if settled and not _needle_torn and ToolActions.needle_target(tool, Surgery.current.patient).kind in ["vein", "tissue"]:
+			_needle_anchor = tool.tip_position()
+			_needle_pull = Vector3.ZERO
+	elif _needle_pull.length() > NEEDLE_TEAR or (_needle_anchor - hand.tip_offset(tool.def.length)).distance_to(shoulder(active)) > REACH:
+		var pulled := _needle_pull.normalized() * NEEDLE_TEAR if _needle_pull.length() > 0.0 else Vector3.ZERO
+		Surgery.current.tools.request_needle_tear(active, _needle_anchor, _needle_anchor + pulled)
+		Surgery.current.hud.toast("The needle tears out of the skin.")
+		_needle_torn = true
+		_needle_anchor = Vector3.INF
+
+
 ## Mouse moves a sedative held back, once they're due. Out cold or locked, they're dropped.
 func _apply_delayed(can_act: bool) -> void:
 	var now := Time.get_ticks_msec()
 	while not _delayed.is_empty() and (not can_act or int(_delayed[0][0]) <= now):
 		var move: Array = _delayed.pop_front()
 		if can_act:
-			var step: Vector2 = move[2]
-			_move_hand(hands[int(move[1])], Vector3(step.x, 0, step.y))
+			steer_hand(move[2], int(move[1]))
 
 
 ## Knocked out: lying on the floor facing the table, hands limp in front, nothing the player can do.
@@ -577,9 +668,8 @@ func _lie_still(delta: float) -> void:
 		h.local_target = to_local(h.target)
 
 
-func _move_hand(hand: SurgeonHand, delta_local: Vector3, vertical: bool = false) -> void:
-	var yaw_basis := Basis(Vector3.UP, rotation.y)
-	var step := yaw_basis * delta_local if not vertical else delta_local
+## Moves the hand by `step` (world space), within reach.
+func _move_hand(hand: SurgeonHand, step: Vector3) -> void:
 	hand.target += step
 	var from := shoulder(hand.index)
 	hand.target = _in_reach(hand.target, from)
@@ -600,11 +690,18 @@ func _in_reach(p: Vector3, from: Vector3) -> Vector3:
 func _constrain(hand: SurgeonHand) -> void:
 	var tool := held_tool(hand.index)
 	var offset := hand.tip_offset(tool.def.length) if tool else Vector3(0, -0.03, 0)
+	var from := shoulder(hand.index)
+	if tool and tool.def.action == "syringe" and not hand.attached:
+		var port := _drip_port(hand.target + offset)
+		var up_there := Vector3(hand.target.x, port.y - offset.y, hand.target.z)
+		if port != Vector3.INF and up_there.distance_to(from) <= REACH:
+			hand.target = up_there
+			hand.local_target = to_local(hand.target)
+			return
 	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
 	if tool and tool.def.action in NEEDLE_ACTIONS and not hand.attached:
 		surface = _glove_below(hand, hand.target + offset, surface)
-	var from := shoulder(hand.index)
 	hand.on_hard = false
 	if surface.y != -INF:
 		if surface.open:
@@ -645,6 +742,16 @@ func _constrain(hand: SurgeonHand) -> void:
 	hand.target = _in_reach(hand.target, from)
 	if not hand.attached:
 		hand.local_target = to_local(hand.target)
+
+
+## Where a needle goes into the bag hanging on the IV stand: just inside its bottom end, where the line leaves it.
+## INF unless `tip` is under the bag (within DRIP_SNAP across the floor).
+func _drip_port(tip: Vector3) -> Vector3:
+	var bag := Surgery.current.tools.drip_bag()
+	if bag == null:
+		return Vector3.INF
+	var port := bag.tip_position() + Vector3.UP * 0.02
+	return port if Vector2(tip.x - port.x, tip.z - port.z).length() < DRIP_SNAP else Vector3.INF
 
 
 ## How far below the hand the lowest point of its tool is (negative: below), the way the hand holds it now.
@@ -718,6 +825,7 @@ func _update_hover() -> void:
 
 func _switch_hand() -> void:
 	active = 1 - active
+	_needle_anchor = Vector3.INF
 	_switch_timer = SWITCH_DELAY * mods.mult("switch_delay_mult")
 
 
@@ -858,7 +966,7 @@ func _handle_status_events(events: PackedStringArray) -> void:
 func _pack_state() -> Array:
 	var hand_data: Array = []
 	for h in hands:
-		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted, h.inspecting])
+		hand_data.append([h.effective_position(), h.tilt, h.twist, h.lowered, h.trigger, h.level, h.lifted, h.inspecting, h.turn])
 	return [global_position, rotation.y, pitch, active, hand_data, _strain, status.passed_out > 0.0, crouch, _fall_side]
 
 
@@ -882,6 +990,7 @@ func _sync_state(data: Array) -> void:
 		h.level = d[5]
 		h.lifted = d[6]
 		h.inspecting = d[7]
+		h.turn = d[8]
 	if multiplayer.is_server():
 		var strain: Array = data[5]
 		for i in 2:

@@ -180,7 +180,7 @@ Surgeon effect keys:
 | belt_slots | belt capacity change (default 4) |
 | items | personal tool ids spawned on the belt |
 | manual_highlight | manual pages matching the patient are marked with a pointing hand |
-| fine_tools_blocked / heavy_tools_blocked | tool size restrictions |
+| heavy_tools_blocked | small hands can't use heavy tools |
 | grip_strength_mult | clamp and retractor pull strength |
 | bad_breath | sickness per second given to a partner closer than 0.9 m |
 | cough_chance | coughs per second (jolts own hand) |
@@ -229,7 +229,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 ### In this draft
 
-- Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels, tilt and twist.
+- Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels. Holding MMB the mouse turns the
+  held tool with the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`); C/V roll it about its length.
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
@@ -240,7 +241,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
 - Cardiac arrest: V-fib, asystole, shocks, adrenaline windows, zapping a partner who's touching the patient.
-- Seizures, malignant hyperthermia, diabetes drift, anesthesia wearing off, panicking awake patients.
+  The random arrest event only strikes an unstable patient (`Patient.unstable()`: blood loss, low pressure, racing
+  pulse, fever, sugar out of range, swelling or a heart-prone quirk). Scripted arrests (heart attack) always happen.
+- General anesthesia holds for the whole surgery once given, side effects included (propofol and gas keep the pressure
+  about 15-20 mmHg down, the manual says how to manage it). A repeat dose only tops it up. It wears off only with the
+  anesthesia resistant quirk or the wake up event, which waits until the surgeons have cut.
+- Seizures, malignant hyperthermia, diabetes drift, panicking awake patients.
 - Organs you push or hold aside, targets you free by cutting, sawing, slow pulling or suction. Deep cuts reach bone.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
 - Sterility tracking into the post-op report (infection, amputation).
@@ -260,7 +266,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
-  floor and walks slowly. Zoom steps through three levels (hand motion scales with it for precision).
+  floor and walks slowly. Zoom toggles between two levels (hand motion scales with it for precision).
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -278,9 +284,11 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Where it went in, the catheter is taped down on the forearm (`IvDressing`, riding the forearm bone): its stub going
   into the skin toward the elbow, the hub with a colored cap and wings, a clear film over it, two strips of woven tape
   across the arm and the tubing taped along the arm before it hangs off to the stand.
-  Walking into the line at full speed rips it out; crouch-walking steps over it.
+  Walking into the line at full speed rips it out and the catheter drops on the floor at the walker's feet (soiled,
+  wash and sanitize it to use it again); crouch-walking steps over it.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
-  A syringe resting on top of it is in it: push a drug in and it runs down the line once the needle is out, if the
+  A hand with a syringe brought under the bag rises to the bag's port at its bottom end (`Surgeon._drip_port()`),
+  and the needle is in it: push a drug in and it runs down the line once the needle is out, if the
   line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
@@ -296,10 +304,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
-  suction, gauze pressure), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
+  suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
-  meets the skin, so rotating the tool (C/V) turns it. A blade only cuts moving along its edge; sideways it drags.
+  meets the skin, so rolling the tool (C/V) or turning it (MMB) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
 ### Starter kit and ordering
@@ -309,7 +317,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Tray layout** (`tray` in tools.cfg, `Room.TRAY_ZONES`): scalpel and forceps lie in a small steel tray, the cotton
   pads in a pile in another, the syringes side by side and the bottles and vials standing at one end. The rest fills
   the space left.
-- **Nurse**: one order at a time, a 15 s cooldown after each delivery. A board over the bell shows the item on its way
+- **Nurse**: one order at a time, a 15 s cooldown after each delivery from the sixth on (the first five come without).
+  Every drug is under one Drugs group. A board over the bell shows the item on its way
   with a progress bar, then the cooldown.
 - **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish, pinch a cotton pad with forceps
   (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up off the floor contaminates the site.
@@ -337,14 +346,21 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
   Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
   needle comes out.
+- **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
+  it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
+  hand swinging round it (`Surgeon._bend_needle()`). What the tilt can't follow (sideways, or past the tilt range)
+  stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
+  out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
+  let go.
 - **Needle view**: the last zoom step with a syringe or IV catheter in hand moves the camera beside it, side on and a
   little above, so the needle and what it's in (a vial, the dish, the bag, the arm) are in view. The hands fade to see
   through and roll a syringe about its length so the printed scale faces the camera; zooming out rolls it back.
+  The mouse moves the hand as seen from there: right on screen is right, up is away from the camera.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
-  Surgeons weigh 80 kg (big hands 100, small 60), shown in the lobby under their name; doses given to them use it.
+  Surgeons weigh 80 kg (small hands 60), shown in the lobby under their name; doses given to them use it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
 - **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
   its tick marks toward them. Liquid, air and plunger follow the ml exactly on every peer.

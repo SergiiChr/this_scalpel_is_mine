@@ -34,6 +34,8 @@ func _ready() -> void:
 		_sedation_checks()
 	if "sedated_surgeon".begins_with(only):
 		await _sedated_surgeon_checks()
+	if "needle_hand".begins_with(only):
+		await _hand_checks()
 	print("syringe_test: done")
 	get_tree().quit()
 
@@ -228,10 +230,10 @@ func _stress_checks() -> void:
 	steady.cold_tremor = 0.0015
 	steady.stress = 0.95
 	_check(steady.tremor_amount() == 0.0 and steady.shiver() == 0.0, "stress: Steady hands with Shaky hands, stressed and cold, don't shake at all")
-	_check(SurgeonStatus.weight_of(Modifiers.new()) == 80.0 and _status({"weight_kg": 20.0}).weight_kg == 100.0, "stress: a surgeon weighs 80 kg, big hands 100 kg")
+	_check(SurgeonStatus.weight_of(Modifiers.new()) == 80.0 and _status({"weight_kg": -20.0}).weight_kg == 60.0, "stress: a surgeon weighs 80 kg, small hands 60 kg")
 
 
-## Y17-Y19: diazepam given to a surgeon. The right dose for their weight stops stress shaking (not the cold) and
+## Y17-Y18: diazepam given to a surgeon. The right dose for their weight stops stress shaking (not the cold) and
 ## delays hand moves; past 1.4 times the dose the view darkens and the delay grows; twice the dose knocks them out for five
 ## minutes. Flumazenil brings them round at once; adrenaline only while it lasts.
 func _sedation_checks() -> void:
@@ -262,7 +264,7 @@ func _sedation_checks() -> void:
 	_check(kept.is_out(), "sedation: once the adrenaline wears off, 3.5 doses put them down again")
 
 
-## Y20: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late; knocked out
+## Y19: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late; knocked out
 ## they lie on the floor with the table in view, and flumazenil gets them up again.
 func _sedated_surgeon_checks() -> void:
 	print("--- sedated_surgeon")
@@ -274,7 +276,7 @@ func _sedated_surgeon_checks() -> void:
 	var trail := hand.find_child("Trail", false, false)
 	_check(me.status.calm > 0.9 and trail != null and trail.get_child_count() == SurgeonHand.TRAIL_COPIES, "sedated_surgeon: afterimages follow the gloves")
 	var before := hand.target
-	me._delayed.append([Time.get_ticks_msec() + 100, me.active, Vector2(0.02, 0.0)])
+	me._delayed.append([Time.get_ticks_msec() + 100, me.active, Vector2(40.0, 0.0)])
 	await bench.frames(2)
 	var early := hand.target.distance_to(before)
 	await get_tree().create_timer(0.2).timeout
@@ -309,6 +311,59 @@ func _dosed(mg: float, events: PackedStringArray = PackedStringArray()) -> Surge
 func _run_status(status: SurgeonStatus, seconds: float, events: PackedStringArray) -> void:
 	for i in int(seconds * 10.0):
 		events.append_array(status.update(0.1, {}))
+
+
+## Y20-Y22: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its
+## tip in place, the mouse tilting the syringe about it, and tears out when pulled on sideways; a syringe brought under the IV bag at waist height rises into its port.
+func _hand_checks() -> void:
+	print("--- needle_hand")
+	var me := bench.surgery.local_surgeon
+	var hand := me.hands[me.active]
+	await bench.stage(Bench.CASES[0])
+	me.zoom = Surgeon.ZOOM_FOV.size() - 1
+	await bench.frames(40)
+	var right := (me.camera().global_basis.x * Vector3(1, 0, 1)).normalized()
+	var away := (me.camera().global_basis.y * Vector3(1, 0, 1)).normalized()
+	for motion: Vector2 in [Vector2(20, 0), Vector2(0, -20)]:
+		var before := hand.target
+		for i in 5:
+			me.steer_hand(motion)
+			await bench.frames(1)
+		var moved := (hand.target - before) * Vector3(1, 0, 1)
+		var along := moved.dot(right if motion.x > 0.0 else away)
+		# The camera follows the syringe, so it turns a little as the hand moves.
+		_check(along > 0.8 * moved.length() and along > 0.01, "needle_hand: in the needle view the mouse %s moves the hand %s on screen (%.3f m of %.3f)" % ["right" if motion.x > 0.0 else "up", "right" if motion.x > 0.0 else "away", along, moved.length()])
+	me.zoom = 0
+	await bench.frames(40)
+	await bench.stage(Bench.CASES[6])
+	var tip := bench.syringe.tip_position()
+	var tilt := hand.tilt
+	var grip := hand.global_position
+	for i in 5:
+		me.steer_hand(Vector2(0, 10))
+		await bench.frames(1)
+	await bench.frames(5)
+	var drift := bench.syringe.tip_position().distance_to(tip)
+	_check(drift < 0.001 and not is_equal_approx(hand.tilt, tilt) and hand.global_position.distance_to(grip) > 0.005, "needle_hand: a needle in the skin keeps its tip in place (%.4f m) and the mouse tilts the syringe about it (tilt %.2f -> %.2f)" % [drift, tilt, hand.tilt])
+	for i in 60:
+		if me._needle_torn:
+			break
+		me.steer_hand(Vector2(20, 0))
+		await bench.frames(1)
+	var body := bench.surgery.patient.body
+	var scratch := body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(bench.syringe.tip_position()))
+	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch (%.2f)" % scratch)
+	await bench.withdraw()
+	await bench.stage(Bench.CASES[13])
+	var bag := bench.surgery.tools.drip_bag()
+	hand.local_target = me.to_local(me.global_position + me.global_basis * Vector3(0.1, 1.0, -0.2))
+	await bench.frames(20)
+	var under := bag.tip_position() * Vector3(1, 0, 1) - hand.tip_offset(bench.syringe.def.length) * Vector3(1, 0, 1)
+	for i in 30:
+		hand.local_target = me.to_local(hand.target.lerp(under + Vector3.UP * hand.target.y, 0.1))
+		await bench.frames(1)
+	var target := bench.needle_target()
+	_check(target.get("container") == bag, "needle_hand: a syringe brought under the IV bag from waist height goes into it (hand at %.2f m, %s)" % [hand.global_position.y, target.kind])
 
 
 ## The liquid, air and plunger shown match what's in it exactly, against the full Level part (the graduation).
