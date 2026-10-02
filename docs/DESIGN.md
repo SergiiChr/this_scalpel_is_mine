@@ -92,7 +92,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.ANCHOR_REACH`), so an
   H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
 - Screen grading (`post_grime.gdshader`): a restrained cool-green tint, vignette, a trace of grain and chromatic split.
-  Sickness wobbles and blurs the view, passing out blacks it out.
+  Sickness wobbles and blurs the view, passing out blacks it out, a sedative blurs it and too much darkens it.
   Blood thrown up right in front of your eyes lands on the view: a few drops that slide down and clear in a few seconds.
 - Gloves pick up blood from the tool they hold, fingertips first, and the sink or a fresh pair cleans them.
   Bloody gloves slowly stain the scrubs, which stay stained for the rest of the surgery.
@@ -145,7 +145,9 @@ Surgeon effect keys:
 
 | Key | Meaning |
 |---|---|
-| tremor / tremor_mult | hand tremor amplitude (m) and multiplier |
+| stress_floor | stress never drains below this (shaky quirks), stacked up to 0.9 |
+| tremor_mult | multiplier on all hand shaking (0 = Steady hands, never shakes) |
+| weight_kg | added to the surgeon's 80 kg (doses given to them scale with it) |
 | bump_resist | 0..1 less likely to drop tools when jolted |
 | belt_slots | belt capacity change (default 4) |
 | items | personal tool ids spawned on the belt |
@@ -295,6 +297,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
     the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
   - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
     pulls nothing and the plunger stays.
+  - a surgeon's glove (the other hand of the one holding it, or a partner's) or a partner's body: the needle rests
+    on a glove like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
+    pulls nothing. A glove comes before the patient under it, a body after.
   - nothing: pulls air, pushes the liquid out in a squirt.
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
   Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
@@ -306,9 +311,27 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
+  Surgeons weigh 80 kg (big hands 100, small 60), shown in the lobby under their name; doses given to them use it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).
 - **Reading it**: holding Inspect (X) brings the tool in the active hand up in front of the eyes, across the view with
   its tick marks toward them. Liquid, air and plunger follow the ml exactly on every peer.
+
+### Stress, tremor and sedation (`SurgeonStatus`)
+
+- **Stress is the tremor**: under 30% the tool stays still and only the glove twitches now and then; up to 60% a
+  light shake reaches the tool; above it a plain one that grows with stress. Quirks only change how fast stress
+  builds (`stress_mult`) and how low it drains (`stress_floor`): Shaky hands 65%, Alcoholic 35% (none while a sip
+  works), a coffee +15% while it works. Cold (run modifier) shakes on its own. Holding breath steadies all of it,
+  Steady hands takes it all away.
+- **Diazepam for a surgeon** (flag `benzo`): injected into a hand (their own other hand or a partner's) or a
+  partner's body, dosed by the surgeon's weight. At the right dose it stops stress shaking (not the cold) for its
+  five minutes, blurs the view (mip level 1) and delays the mouse's hand moves by 100 ms (looking around isn't);
+  afterimages trail the gloves. Past 1.4 times the dose the view darkens toward the edges and the delay grows, up
+  to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
+  floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
+  (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) brings them round and ends the diazepam;
+  adrenaline (`stimulant`) gets them up only while it lasts, and if enough diazepam is still working they go down
+  again. On the patient, flumazenil reverses diazepam too.
 
 ### Tourniquet
 
@@ -365,13 +388,14 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
   - Patient (`patient_animator.gd`, bones posed through `bone_rig.gd` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,
     jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.
-  - Surgeon: walk cycle from movement speed, collapse when passed out, head tilt from camera pitch,
+  - Surgeon: walk cycle from movement speed, collapse when passed out, lying on the side when knocked out, head tilt
+    from camera pitch,
     two-bone IK arms, glove finger bones relax, wrap around a held tool and squeeze while using it.
     The glove's cuff has its own bone aimed down the forearm, so a bent wrist stretches the glove over the sleeve.
   - Tools (`tool_animator.gd`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
-- **Sounds**: 37 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
-  surgeon, patient groans/screams/breathing). The monitor beep is generated live.
+- **Sounds**: 44 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
+  surgeon coughs and moans, patient groans/screams/breathing). The monitor beep is generated live.
   Patient speech is subtitles; optional recorded lines can be dropped into `assets/audio/voice/`.
 
 ## Known limits of this iteration

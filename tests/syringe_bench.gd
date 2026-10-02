@@ -1,15 +1,18 @@
 extends Node
 ## Stages the syringe cases for tests/syringe_test.gd (checks) and tests/screenshot.gd --syringe (pictures):
 ## the local surgeon holds a syringe with its needle in the case's target and works the plunger with wheel notches.
-## Over a vial, the dish or the IV drip the needle just rests there; on the patient Use tool presses it in and stays
-## held. The wheel works the plunger either way. stage_catheter() puts an IV catheter on the forearm vein, or beside it.
+## Over a vial, the dish or the IV drip the needle just rests there; on the patient or a surgeon Use tool presses it
+## in and stays held. The wheel works the plunger either way. stage_catheter() puts an IV catheter on the forearm
+## vein, or beside it. A partner (a puppet surgeon, peer 2) stands out of the way until a case needs them.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 const VIAL := "vial_cefazolin"
 const DRUG := "cefazolin"
 ## Every case: what the needle is in, the syringe, ml of the drug in it at the start, and the wheel notches to work
 ## (> 0 pulls the plunger out). A vial starts with what the syringe didn't take from it, the dish with "dish" ml,
-## the IV drip on its stand full, with a working line in the arm.
+## the IV drip on its stand full, with a working line in the arm. The syringe holds the drug of `vial` (VIAL unless
+## given). Surgeon targets: the surgeon's own other hand, the partner's hand, the partner's body, and the hand of the
+## partner knocked out on the floor (the surgeon crouches beside them).
 const CASES: Array[Dictionary] = [
 	{"name": "vial_pull", "target": "vial", "syringe": "syringe_10", "ml": 0.0, "notches": 6},
 	{"name": "vial_push", "target": "vial", "syringe": "syringe_10", "ml": 6.0, "notches": -6},
@@ -26,7 +29,15 @@ const CASES: Array[Dictionary] = [
 	{"name": "air_pull", "target": "air", "syringe": "syringe_10", "ml": 3.0, "notches": 6},
 	{"name": "drip_push", "target": "drip", "syringe": "syringe_10", "ml": 6.0, "notches": -6},
 	{"name": "drip_pull", "target": "drip", "syringe": "syringe_10", "ml": 0.0, "notches": 6},
+	{"name": "doctor_hand_push", "target": "doctor_hand", "syringe": "syringe_10", "ml": 3.0, "notches": -3, "vial": "vial_diazepam"},
+	{"name": "doctor_body_push", "target": "doctor_body", "syringe": "syringe_10", "ml": 3.0, "notches": -3, "vial": "vial_diazepam"},
+	{"name": "doctor_down_push", "target": "doctor_down", "syringe": "syringe_3", "ml": 2.0, "notches": -2, "vial": "vial_flumazenil"},
+	{"name": "own_hand_pull", "target": "own_hand", "syringe": "syringe_10", "ml": 3.0, "notches": 3, "vial": "vial_diazepam"},
+	{"name": "own_hand_push", "target": "own_hand", "syringe": "syringe_10", "ml": 3.0, "notches": -3, "vial": "vial_diazepam"},
 ]
+const SURGEON_TARGETS: PackedStringArray = ["own_hand", "doctor_hand", "doctor_body", "doctor_down"]
+## Where the partner waits while no case needs them: a corner, hands down.
+const PARTNER_PARK := Vector3(2.0, 0.0, -1.7)
 ## IV catheter cases: on the vein, and 2.5 cm across the forearm from it (on the arm, off the vein).
 const CATHETER_CASES: Array[Dictionary] = [{"name": "catheter_vein", "miss": 0.0}, {"name": "catheter_miss", "miss": 0.025}]
 ## Site uv of a cut through the skin (fat shows) and one through the fat (muscle shows), and of whole skin.
@@ -41,6 +52,7 @@ var syringe: SurgicalTool
 ## The case's vial, kidney dish or the IV drip, null for the others.
 var container: SurgicalTool
 var catheter: SurgicalTool
+var partner: Surgeon
 
 
 ## A solo appendectomy with nothing rolled, both cuts made and held open, ready for stage().
@@ -54,6 +66,9 @@ func start() -> void:
 	surgery = SURGERY.instantiate()
 	add_child(surgery)
 	await frames(10)
+	Net.roster[2] = {"name": "Partner", "quirks": [{"id": "normal_dude", "variant": ""}], "ready": true}
+	partner = surgery._spawn_surgeon(2, 1)
+	place_partner(PARTNER_PARK, 0.0)
 	var patient := surgery.patient
 	var tissue := patient.body.tissue
 	for cut: Array in [[FAT_UV, 0.3], [MUSCLE_UV, 0.6]]:
@@ -76,7 +91,10 @@ func stage(case: Dictionary) -> void:
 		if old and not old.def.fixed:
 			tools.consume(old)
 	container = null
+	place_partner(PARTNER_PARK, 0.0)
+	Input.action_release("crouch")
 	syringe = _spawn(case.syringe, me.global_position + Vector3.UP)
+	var vial: String = case.get("vial", VIAL)
 	match case.target:
 		"vial":
 			container = _spawn(VIAL, _clear_spot())
@@ -89,10 +107,13 @@ func stage(case: Dictionary) -> void:
 			container = tools.drip_bag()
 			_fill(syringe, case.ml)
 		_:
-			_fill(syringe, case.ml)
+			_fill(syringe, case.ml, vial)
 	await frames(30)
+	if case.target in SURGEON_TARGETS:
+		await _face_partner(case.target)
 	var aim := _aim_point(case.target)
-	_stand_by(aim)
+	if not case.target in SURGEON_TARGETS:
+		_stand_by(aim)
 	if case.target == "drip" and not surgery.patient.iv_working():
 		# Only once the surgeon is in place: stepping over to the stand would count as walking through the tubing.
 		await frames(5)
@@ -109,6 +130,48 @@ func stage(case: Dictionary) -> void:
 	for i in 40:
 		hand.local_target = me.to_local(aim - hand.tip_offset(syringe.def.length) + Vector3.UP * 0.04)
 		await get_tree().physics_frame
+
+
+## Puts the partner standing at `at` facing `yaw`, hands hanging at their sides. A puppet goes where it's told.
+func place_partner(at: Vector3, yaw: float) -> void:
+	partner._fall_side = 0.0
+	partner._down = 0.0
+	partner.global_position = at
+	partner._net_position = at
+	partner.rotation.y = yaw
+	partner._net_yaw = yaw
+	for i in 2:
+		partner.hands[i].target = partner.to_global(Vector3(0.3 if i == 1 else -0.3, 0.95, -0.05))
+
+
+## Surgeon targets: away from the table, the surgeon with their back to it. Their own other hand held out in front,
+## or the partner facing them, a hand held out between them; or the partner knocked out on the floor beside the
+## table, the surgeon crouched by their hand.
+func _face_partner(target: String) -> void:
+	var me := surgery.local_surgeon
+	var patient := surgery.patient.global_position * Vector3(1, 0, 1)
+	var floor_y := me.global_position.y
+	if target == "doctor_down":
+		place_partner(patient + Vector3(0.0, floor_y, 1.2), 0.0)
+		partner._fall_side = 1.0
+		await frames(60)
+		for i in 2:
+			partner.hands[i].target = partner.to_global((Surgeon.LYING_HAND + Vector3(-0.25 * i, 0, 0)) * Vector3(partner._fall_side, 1, 1))
+		var glove := partner.hands[0].target
+		me.global_position = Vector3(glove.x, floor_y, glove.z - 0.3)
+		me.rotation.y = PI
+		me.hands[1 - me.active].local_target = Vector3(-0.3, 1.0, -0.1)
+		Input.action_press("crouch")
+		await frames(30)
+		return
+	me.global_position = patient + Vector3(0.0, floor_y, 1.1)
+	me.rotation.y = PI
+	me.hands[1 - me.active].local_target = Vector3(-0.08, 1.05, -0.4) if target == "own_hand" else Vector3(-0.3, 1.0, -0.1)
+	if target != "own_hand":
+		place_partner(me.to_global(Vector3(0.0, 0.0, -0.75)), 0.0)
+	if target == "doctor_hand":
+		partner.hands[1].target = partner.to_global(Vector3(0.05, 1.05, -0.35))
+	await frames(10)
 
 
 ## One wheel notch, as the mouse sends it: down pulls the plunger out, up pushes it in.
@@ -191,9 +254,9 @@ func _spawn(id: String, at: Vector3) -> SurgicalTool:
 	return surgery.tools.tools.values()[-1]
 
 
-func _fill(tool: SurgicalTool, ml: float) -> void:
+func _fill(tool: SurgicalTool, ml: float, vial: String = VIAL) -> void:
 	if ml > 0.0:
-		surgery.tools.add_liquid(tool, ml, {DRUG: ml * Db.tool(VIAL).concentration})
+		surgery.tools.add_liquid(tool, ml, {Db.tool(vial).drug: ml * Db.tool(vial).concentration})
 
 
 ## The clear strip down the middle of the instrument tray.
@@ -215,6 +278,15 @@ func _aim_point(target: String) -> Vector3:
 			return body.uv_to_world(MUSCLE_UV)
 		"skin":
 			return body.uv_to_world(SKIN_UV)
+		"own_hand":
+			var me := surgery.local_surgeon
+			return me.hands[1 - me.active].global_position
+		"doctor_hand":
+			return partner.hands[1].global_position
+		"doctor_body":
+			return partner.to_global(Vector3(0.0, 1.0, -0.1))
+		"doctor_down":
+			return partner.hands[0].global_position
 	# Out over the floor beside the table, nothing under it within reach.
 	var me := surgery.local_surgeon
 	return me.to_global(Vector3(0.2, 1.0, -0.15))

@@ -15,9 +15,19 @@ Rolling rules (code in `src/data/quirk_roller.gd`):
 - icon: [shaky_hands.svg](../../assets/icons/quirks/surgeon/shaky_hands.svg)
 - lore: Twelve years of night shifts. The coffee doesn't help anymore.
 - pros: None.
-- cons: Your hands tremble all the time.
-- specifics: Hold breath to steady them. The breath meter drains while held and refills slowly.
-- effects: tremor=0.006
+- cons: Your hands tremble all the time: stress never drains below 65%.
+- specifics: Hold breath to steady them. The breath meter drains while held and refills slowly. A small dose of diazepam in your other hand stops the shaking for a while.
+- effects: stress_floor=0.65
+
+## steady_hands
+- name: Steady hands
+- polarity: positive
+- icon: [steady_hands.svg](../../assets/icons/quirks/surgeon/steady_hands.svg)
+- lore: Defused things in another life. Threads needles on a moving train.
+- pros: Your hands never shake: not from stress, cold, coffee or any other quirk.
+- cons: None.
+- specifics: Stress still builds and still makes you pass out when full.
+- effects: tremor_mult=0
 
 ## divine_knowledge
 - name: Divine knowledge
@@ -50,9 +60,9 @@ Rolling rules (code in `src/data/quirk_roller.gd`):
 - pros.small: Much more precise, tremor reduced.
 - cons.big: Can't use fine tools (suture needle, marker, syringes).
 - cons.small: Can't use heavy tools (heavy saw, mallet, defibrillator paddles).
-- specifics: Fine and heavy tools are tagged in the tool list and in the manual.
-- effects.big: fine_tools_blocked=1, bump_resist=0.3, grip_strength_mult=1.5
-- effects.small: heavy_tools_blocked=1, tremor_mult=0.4
+- specifics: Fine and heavy tools are tagged in the tool list and in the manual. Big weighs 100 kg, small 60 kg: drug doses for you scale with it.
+- effects.big: fine_tools_blocked=1, bump_resist=0.3, grip_strength_mult=1.5, weight_kg=20
+- effects.small: heavy_tools_blocked=1, tremor_mult=0.4, weight_kg=-20
 
 ## normal_dude
 - name: Normal dude
@@ -71,9 +81,9 @@ Rolling rules (code in `src/data/quirk_roller.gd`):
 - icon: [alcoholic.svg](../../assets/icons/quirks/surgeon/alcoholic.svg)
 - lore: The flask is "for disinfecting". Mostly the inside.
 - pros: Starts with a whiskey flask. A sip calms nerves and stops the tremor for a while.
-- cons: Slight tremor between sips. Bad breath makes your partner sick if you stand too close for too long.
+- cons: Slight tremor between sips: stress never drains below 35%. Bad breath makes your partner sick if you stand too close for too long.
 - specifics: Whiskey also sanitizes tools and wounds, badly.
-- effects: items=whiskey_flask, tremor=0.002, bad_breath=0.03, drink_steady=1
+- effects: items=whiskey_flask, stress_floor=0.35, bad_breath=0.03, drink_steady=1
 
 ## smoker
 - name: Smoker
@@ -196,7 +206,7 @@ Rolling rules (code in `src/data/quirk_roller.gd`):
 - lore: Blood type: espresso.
 - pros: Starts with a coffee thermos. A sip makes your hands 30% faster for a minute.
 - cons: Without coffee your hands slowly get sluggish.
-- specifics: Coffee also adds a tiny tremor. Worth it.
+- specifics: Coffee also keeps stress 15% higher while it works: a tiny tremor. Worth it.
 - effects: items=coffee_thermos, caffeine=1
 
 ## former_medic

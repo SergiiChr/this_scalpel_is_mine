@@ -1,4 +1,4 @@
-tags: tremor, stress_mult, sweat_rate, blood_sickness_rate, bad_breath
+tags: stress_floor, stress_mult, sweat_rate, blood_sickness_rate, bad_breath
 title: 17. Operating team
 ## 17.1 Stress
 Stress rises with errors, alarms and patient distress, and falls when the theatre is calm. At its limit the operator faints briefly and drops whatever is held.
@@ -7,7 +7,10 @@ Stress rises with errors, alarms and patient distress, and falls when the theatr
 Nausea rises with exposure to blood (in susceptible staff), halitosis at close range and a colleague's vomiting. At its limit the operator vomits: turn away from the field.
 
 ## 17.3 Tremor
+Stress shows in the hands. A calm operator only twitches now and then; past a third of the stress limit a light tremor reaches the instrument tip, and past two thirds it is plain to see. Cold shakes the hands too.
 Holding the breath steadies the hands for as long as the breath lasts.
+• [b]Diazepam for the operator:[/b] 0.2 mg per kg of the operator's own weight (80 kg unless noted on the team sheet), injected into the back of the other hand or into a colleague. The tremor of stress settles within seconds and stays away for about five minutes; the cold tremor does not. The cost: blurred vision and slower hands.
+• [b]Too much:[/b] past 1.4 times the dose the vision darkens and the hands lag further. Twice the dose puts the operator on the floor for five minutes. [b]Flumazenil[/b] (0.01 mg per kg) reverses it; [b]adrenaline[/b] gets them up while it lasts.
 
 ## 17.4 Perspiration
 Sweat makes gloves slippery: change them at the glove box. A surgical cap prevents sweat dripping into an open wound.

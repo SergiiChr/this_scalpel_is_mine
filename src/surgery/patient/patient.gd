@@ -374,8 +374,7 @@ func _drug_effects(dt: float) -> DrugEffects:
 		entry.age += dt * speed
 		var age: float = entry.age
 		var onset: float = entry.onset
-		var curve := age / onset if age < onset else 1.0 - (age - onset) / maxf(def.duration, 0.01)
-		curve = clampf(curve, 0.0, 1.0) * float(entry.strength)
+		var curve := def.level_at(age, onset) * float(entry.strength)
 		for key: String in def.effects:
 			if key in ["glucose", "volume_ml"]:
 				fx.add(key, def.effect(key) / maxf(def.duration, 1.0) * (1.0 if age >= onset else 0.0))
@@ -447,7 +446,7 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 			if rng.randf() < 0.5:
 				arrest()
 	var strength := DrugDef.dose_strength(share) * (1.3 if route == "direct" else 1.0)
-	var onset_scale := 0.4 if route == "direct" else 1.5
+	var onset_scale := DrugDef.DIRECT_ONSET if route == "direct" else 1.5
 	if share < DrugDef.DOSE_EFFECTIVE:
 		# Too little to do its job: a faint effect and nothing else.
 		_add_drug(def, strength, onset_scale)
@@ -458,6 +457,8 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 		vitals.swelling = maxf(vitals.swelling - 0.4, 0.0)
 	if def.has_flag("reverse_opioid"):
 		active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return not (e.def as DrugDef).has_flag("opioid"))
+	if def.has_flag("reverse_benzo"):
+		active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return not (e.def as DrugDef).has_flag("benzo"))
 	if def.has_flag("anticonvulsant"):
 		_seizure_left = 0.0
 		vitals.seizing = false

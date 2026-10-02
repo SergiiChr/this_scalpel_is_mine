@@ -1,6 +1,7 @@
 // Full screen grading: a restrained cool-green tint, vignette and a trace of film grain. The chromatic split stays
 // barely there until sickness wobbles the view; the grading must never wash out skin, gloves and steel.
-// Surgeon state drives the extra uniforms (sickness wobble, blackout when passing out, blur, blood on the view).
+// Surgeon state drives the extra uniforms (sickness wobble, blackout when passing out, blur, a sedative's darkening,
+// blood on the view).
 shader_type canvas_item;
 
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
@@ -13,6 +14,8 @@ uniform float aberration = 0.0003;
 uniform float wobble = 0.0;
 uniform float blur = 0.0;
 uniform float blackout : hint_range(0.0, 1.0) = 0.0;
+// Too much sedative, or knocked out by it: the view darkens this much at the edges, half as much in the middle.
+uniform float daze : hint_range(0.0, 1.0) = 0.0;
 // Blood splashed on the view: how much (more drops, more opaque), seconds since it landed, and its pattern.
 uniform float lens_blood : hint_range(0.0, 1.0) = 0.0;
 uniform float lens_age = 0.0;
@@ -71,6 +74,7 @@ void fragment() {
 	col += (hash(SCREEN_UV * 931.0 + fract(TIME)) - 0.5) * grain;
 	// Thin blood is see-through red, the middle of a drop close to opaque.
 	col = mix(col, col * vec3(0.45, 0.05, 0.05) + vec3(0.06, 0.0, 0.005), lens * min(lens_blood * 3.0, 0.9));
+	col *= 1.0 - daze * mix(0.5, 1.0, smoothstep(0.15, 0.75, d));
 	col = mix(col, vec3(0.0), blackout);
 	COLOR = vec4(col, 1.0);
 }

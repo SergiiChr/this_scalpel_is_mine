@@ -358,6 +358,14 @@ def patient_groan() -> Wave:
     return _voice(pitch, (600, 1000, 2400), 1.2, 0.3) * env(n, 0.15, 0.5, 1.5)
 
 
+def surgeon_moan() -> Wave:
+    """A knocked out surgeon: a low, slurred moan that sags at the end, lower than the patient's groan."""
+    n = int(1.6 * RATE)
+    pitch = 95 + 18 * np.sin(np.linspace(0.2, np.pi * 1.1, n)) - 20 * np.linspace(0, 1, n) ** 2
+    pitch = pitch + 3 * np.sin(2 * np.pi * 4.5 * t(1.6))
+    return lowpass(_voice(pitch, (520, 880, 2300), 1.6, 0.4), 2200) * env(n, 0.25, 0.9, 1.2)
+
+
 def patient_scream() -> Wave:
     n = int(1.1 * RATE)
     pitch = np.concatenate([np.linspace(260, 520, n // 3), 520 + 30 * np.sin(2 * np.pi * 7 * t(1.1)[: n - n // 3])])
@@ -442,6 +450,7 @@ SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     "contact_cut": ("tissue", contact_cut),
     "contact_swab": ("tissue", contact_swab),
     "contact_suction": ("tools", contact_suction),
+    "surgeon_moan": ("surgeon", surgeon_moan),
 }
 
 

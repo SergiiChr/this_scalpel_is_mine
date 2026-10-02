@@ -165,7 +165,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					_use_charge(tool)
 		"syringe":
 			# The wheel works the plunger (plunge()). What went into the patient is given once the needle is out.
-			if not tool.injecting.is_empty() and not needle_target(tool, patient).kind in ["vein", "tissue"]:
+			if not tool.injecting.is_empty() and not needle_target(tool, patient).kind in ["vein", "tissue", "surgeon"]:
 				finish_injection(tool, patient)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
@@ -241,12 +241,24 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 ## What a syringe's needle is in, the same on every peer: {"kind": "container", "container": the vial, kidney dish
 ## or IV drip},
 ## {"kind": "vein"} (a drawn forearm vein), {"kind": "tissue", "layer": "skin", "fat", "muscle" or "cavity"} (the
-## deepest layer a cut shows there), or {"kind": "air"}. The tip resting just above something counts as in it.
+## deepest layer a cut shows there), {"kind": "surgeon", "peer", "part": "hand" or "body", "at"} (a glove, the other
+## one of the hand holding it too, or a partner's body), or {"kind": "air"}. The tip resting just above something
+## counts as in it. A glove comes before the patient under it, a partner's body after.
 static func needle_target(tool: SurgicalTool, patient: Patient) -> Dictionary:
 	var tip := tool.tip_position()
 	var container := Surgery.current.tools.nearest_container(tip)
 	if container:
 		return {"kind": "container", "container": container}
+	var holder: Surgeon = Surgery.current.surgeons.get(tool.holder) if tool.state == SurgicalTool.State.HELD else null
+	var holding := holder.hands[tool.slot] if holder else null
+	var in_body := {}
+	for surgeon: Surgeon in Surgery.current.surgeons.values():
+		var hit := surgeon.needle_part(tip, holding)
+		if not hit.is_empty():
+			hit.merge({"kind": "surgeon", "peer": surgeon.peer_id})
+			if hit.part == "hand":
+				return hit
+			in_body = hit
 	if patient.body.vein_at(tip):
 		return {"kind": "vein"}
 	var probe := patient.body.probe(tip)
@@ -257,14 +269,14 @@ static func needle_target(tool: SurgicalTool, patient: Patient) -> Dictionary:
 			return {"kind": "tissue", "layer": "cavity"}
 		"body":
 			return {"kind": "tissue", "layer": "skin"}
-	return {"kind": "air"}
+	return in_body if not in_body.is_empty() else {"kind": "air"}
 
 
 ## One move of a syringe's plunger, host only: ml > 0 pulls it out, ml < 0 pushes it in, whether or not the needle
 ## is lowered. Pulled, it draws what the needle is in: a vial's or dish's liquid, blood from a vein, or air.
 ## In skin, fat or muscle nothing comes and the plunger stays put. Pushed, the air at the needle goes first, then the
 ## liquid: into a vial (as much as fits) or the dish, a vein (blood goes back, drugs are given as IV), the tissue
-## (given as a direct injection) or squirted out.
+## (given as a direct injection), a surgeon (given to them, see Surgery.dose_surgeon()) or squirted out.
 static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 	var tools := Surgery.current.tools
 	var target := needle_target(tool, patient)
@@ -300,8 +312,9 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 	match target.kind:
 		"container":
 			tools.transfer(tool, container, liquid)
-		"vein", "tissue":
-			var route := "vein" if target.kind == "vein" else "direct"
+		"vein", "tissue", "surgeon":
+			# A surgeon's route names who gets it: "surgeon:<peer>".
+			var route: String = {"vein": "vein", "tissue": "direct"}.get(target.kind, "surgeon:%d" % target.get("peer", 0))
 			if route != tool.injecting_route:
 				finish_injection(tool, patient)
 				tool.injecting_route = route
@@ -316,12 +329,17 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 			tools.transfer(tool, null, liquid)
 
 
-## The needle came out (or the syringe left the hand): everything pushed in takes effect as one dose.
+## The needle came out (or the syringe left the hand): everything pushed in takes effect as one dose, in the patient
+## or the surgeon it went into.
 static func finish_injection(tool: SurgicalTool, patient: Patient) -> void:
 	if tool.injecting.is_empty():
 		return
+	var route := tool.injecting_route
 	for drug: String in tool.injecting:
-		patient.administer(drug, tool.injecting_route, tool.injecting[drug])
+		if route.begins_with("surgeon:"):
+			Surgery.current.dose_surgeon(route.get_slice(":", 1).to_int(), drug, tool.injecting[drug])
+		else:
+			patient.administer(drug, route, tool.injecting[drug])
 	tool.injecting.clear()
 	var tip := tool.tip_position()
 	Surgery.current.sound("syringe_inject", tip)

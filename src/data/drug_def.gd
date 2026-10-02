@@ -12,6 +12,8 @@ const DOSE_HIGH := 1.4
 const DOSE_EFFECTIVE := 0.5
 ## From this share on the chart calls it an overdose.
 const DOSE_OVERDOSE := 2.5
+## A direct injection (into tissue, not a vein) works this much sooner.
+const DIRECT_ONSET := 0.4
 
 var id: String
 var name: String
@@ -50,6 +52,12 @@ func has_flag(flag: String) -> bool:
 
 func effect(key: String) -> float:
 	return effects.get(key, 0.0)
+
+
+## How far along its effect a dose given `age` seconds ago is (0..1): it ramps in over `onset`, then fades out over
+## the drug's duration.
+func level_at(age: float, onset: float) -> float:
+	return clampf(age / onset if age < onset else 1.0 - (age - onset) / maxf(duration, 0.01), 0.0, 1.0)
 
 
 ## How strongly a dose works, from its share of the right dose. Roughly right counts as right.
