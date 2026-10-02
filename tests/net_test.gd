@@ -46,8 +46,9 @@ func _drive(role: String, driver: Node) -> void:
 		var me := surgery.local_surgeon
 		var free: Array = []
 		var cutters: Array = []
-		# Like a player, wait until a blade lies free on the tray: the tray may still be filling in.
-		for i in 150:
+		# Like a player, wait a moment for a blade on the tray: it may still be filling in. Not long: the host only waits
+		# so long for the handoff before it ends the session.
+		for i in 20:
 			free = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE)
 			cutters = free.filter(func(t: SurgicalTool) -> bool: return t.def.action == "cut")
 			if not cutters.is_empty():
