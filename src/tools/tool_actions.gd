@@ -118,7 +118,15 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			var tools := Surgery.current.tools
 			var pad := tools.carried_by(tool)
 			var loose_pad := tools.nearest_of("cotton_pad", tip, PAD_REACH) if pressed and lowered and def.id in PAD_HOLDERS else null
-			if pad:
+			if pad and pad.def.action == "graft":
+				# A graft taken from the skin goes down where it's pressed onto a cleaned burn; pressed in the air it's let go.
+				if pressed and lowered and zone == "site" and patient.graft_at(uv, pad.def):
+					_use_charge(pad)
+					if pad.charges == 0:
+						tools.consume(pad)
+				elif pressed and not touching:
+					tools.drop_carried(tool)
+			elif pad:
 				# Use lowers the pad to wipe or dip it; pressed in the air, away from the dish, it lets the pad go.
 				if pressed and not touching and tools.nearest_of("iodine_dish", tip, DISH_REACH) == null:
 					tools.drop_carried(tool)

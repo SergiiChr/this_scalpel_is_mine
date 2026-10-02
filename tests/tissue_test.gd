@@ -21,6 +21,7 @@ func _ready() -> void:
 	_rests_on_curved_body()
 	_stays_on_body()
 	_folds_onto_drape()
+	_piece_comes_off()
 	print("tissue_test: done")
 	get_tree().quit()
 
@@ -287,3 +288,33 @@ func _folds_onto_drape() -> void:
 			lifted += 1
 	_check(through == 0, "skin folded out over the drape stays on it (%d points under)" % through)
 	_check(lifted == 0, "skin under the drape isn't pushed up through it (%d points)" % lifted)
+
+
+## A circle cut through the skin all round frees a piece; until it closes there's none. Taken off, the skin layer has a
+## hole there and only there, the layers under it stay whole, and peers that take the same piece off agree.
+func _piece_comes_off() -> void:
+	var sims: Array[TissueSim] = [_sim(), _sim()]
+	var middle := sims[0].nearest(MID)
+	for sim in sims:
+		var points := 24
+		for n in points:
+			var a := MID + Vector2(cos(TAU * n / points) / SIZE.x, sin(TAU * n / points) / SIZE.y) * 0.015
+			var b := MID + Vector2(cos(TAU * (n + 1) / points) / SIZE.x, sin(TAU * (n + 1) / points) / SIZE.y) * 0.015
+			sim.cut(a, b, TissueSim.Depth.SKIN)
+			if n == points / 2 and sim == sims[0]:
+				_check(sim.piece_of(middle).is_empty(), "skin cut halfway round is still joined")
+		_settle(sim)
+	var piece := sims[0].piece_of(middle)
+	_check(not piece.is_empty(), "a circle cut through the skin frees a piece (%d grid points)" % piece.size())
+	_check(sims[0].piece_of(sims[0].nearest(Vector2(0.2, 0.2))).is_empty(), "skin outside the circle isn't a piece")
+	var full := sims[0].triangle_count() * 3
+	var skin_before := sims[0].triangles(TissueSim.Depth.SKIN).size()
+	for sim in sims:
+		sim.excise(middle)
+	_check(sims[0].excised.count(1) == piece.size(), "taking it off takes the whole piece")
+	_check(sims[0].triangles(TissueSim.Depth.SKIN).size() < skin_before, "the skin layer has a hole where it was")
+	_check(sims[0].triangles(TissueSim.Depth.FAT).size() == full, "the fat layer under it stays whole")
+	_check(sims[0].is_open(MID, TissueSim.Depth.SKIN) and not sims[0].is_open(MID, TissueSim.Depth.FAT), "the hole is open through the skin only")
+	_check(not sims[0].is_open(Vector2(0.2, 0.2), TissueSim.Depth.SKIN), "skin away from it isn't open")
+	_check(sims[0].excise(middle) == 0, "a piece already taken can't be taken again")
+	_check(sims[0].topology_hash() == sims[1].topology_hash(), "peers that take the same piece off agree")

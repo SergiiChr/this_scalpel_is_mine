@@ -405,7 +405,10 @@ func layer_at(uv: Vector2) -> String:
 		return "cavity"
 	if tissue.is_open(uv, TissueSim.Depth.FAT):
 		return "muscle"
-	return "fat" if tissue.is_open(uv, TissueSim.Depth.SKIN) else "skin"
+	if tissue.is_open(uv, TissueSim.Depth.SKIN):
+		# No fat on this part of the body: the muscle lies right under the skin.
+		return "fat" if fat_thickness > 0.0005 else "muscle"
+	return "skin"
 
 
 ## Where an IV catheter going in at p (world space, just under the skin) sits on the arm: {"node": the forearm it rides,
@@ -688,6 +691,9 @@ func _plan_layer(layer: int, triangles: PackedInt32Array, cut_depths: PackedByte
 	var plan := LayerPlan.new()
 	var cut_at: int = LAYER_DEPTH[layer]
 	var walls := layer != 1 or fat_thickness > 0.0005
+	# Skin taken off leaves a hole in the skin layer only: no sheet there, and no wall on the piece's side of the cut.
+	var gone := tissue.excised if layer == 0 else PackedByteArray()
+	gone.resize(tissue.rest.size())
 	var crossed := PackedInt32Array()
 	var corners := PackedInt32Array([0, 0, 0])
 	var edges := PackedInt32Array([0, 0, 0])
@@ -713,11 +719,15 @@ func _plan_layer(layer: int, triangles: PackedInt32Array, cut_depths: PackedByte
 						if side[m] == from:
 							side[m] = side[n]
 		if not any_cut or (side[0] == side[1] and side[1] == side[2]):
+			if gone[corners[0]] + gone[corners[1]] + gone[corners[2]] > 0:
+				continue
 			for n in 3:
 				plan.index.append(_plan_own(plan, corners[n], touched))
 			continue
 		for group in 3:
 			if side[0] != group and side[1] != group and side[2] != group:
+				continue
+			if (side[0] == group and gone[corners[0]] == 1) or (side[1] == group and gone[corners[1]] == 1) or (side[2] == group and gone[corners[2]] == 1):
 				continue
 			# Around the triangle's edge in its own order, so every polygon faces the way the triangle does.
 			polygon.resize(0)

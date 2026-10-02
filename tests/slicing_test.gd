@@ -5,8 +5,9 @@ extends Node
 ## off the side, and logs frame times.
 ## Run with a renderer for screenshots:
 ## xvfb-run -a godot --path . --rendering-method gl_compatibility res://tests/slicing_test.tscn -- --out=build/slicing
-## Headless it runs the same checks without screenshots. --case=arm|thigh|belly runs one case. --fps-report prints the
-## frame rates without checking them (run_tests.sh: they depend on the machine).
+## Then a skin graft on each: a circle cut out through the skin and lifted off with forceps.
+## Headless it runs the same checks without screenshots. --case=arm|thigh|belly runs one case, arm_graft and so on one
+## skin graft. --fps-report prints the frame rates without checking them (run_tests.sh: they depend on the machine).
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 ## Each move goes this far along the blade's edge, over MOVE_TIME seconds (slow enough for a clean cut).
@@ -22,6 +23,14 @@ const CASES: Array[Dictionary] = [
 	{"id": "thigh", "scenario": "leg_extension", "fat": true, "inside": "bone", "along": true},
 	{"id": "belly", "scenario": "appendectomy", "fat": true, "inside": "organs", "along": false},
 ]
+## A circle of skin cut out as a graft: its radius (meters), how far past its start the blade goes round to close it
+## (radians) and how fast the hand goes round (m/s).
+const GRAFT_RADIUS := 0.015
+const GRAFT_OVERLAP := 0.4
+const GRAFT_SPEED := 0.02
+## How far (meters) the forceps lift the piece to show it pinched in place, and to take it off.
+const PINCH_LIFT := 0.004
+const TAKE_LIFT := 0.03
 ## How far from the cut (site uv) the gap is measured: severed springs lie up to half a grid cell off it.
 const GAP_RADIUS := 0.03
 ## The cameras: straight down from this far over the middle of the cut, and as far off at 45° from across the table.
@@ -67,6 +76,9 @@ func _ready() -> void:
 	for case in CASES:
 		if only.is_empty() or case.id == only:
 			await _run(case)
+	for case in CASES:
+		if only.is_empty() or case.id + "_graft" == only:
+			await _run_graft(case)
 	print("\n".join(_report))
 	print("slicing_test: done")
 	get_tree().quit()
@@ -144,10 +156,147 @@ func _run(case: Dictionary) -> void:
 	await _frames(3)
 
 
+## A circle of skin cut out through the skin only and taken off with forceps, as a graft: screenshots halfway round,
+## with the circle closed, pinched in place, and of the wound once the piece is lifted away.
+func _run_graft(case: Dictionary) -> void:
+	var id: String = case.id + "_graft"
+	print("--- ", id)
+	await _start(case.scenario, case.along, false, true)
+	var patient := _surgery.patient
+	var body := patient.body
+	var center := body.uv_to_world(_center_uv)
+	var middle := _tissue().nearest(_center_uv)
+	await _shots_of(id, "00_intact")
+
+	_hand.level = 0
+	_hand.lowered = true
+	_hand.trigger = true
+	await _hold(PRESS_TIME)
+	await _press(1)
+	var edge := ToolActions.blade_direction(_scalpel)
+	var across := body.site.global_basis.y.normalized().cross(edge).normalized()
+	await _cut_arc(center, edge, across, 0.0, PI)
+	_check(_tissue().any_severed() and _deepest() == TissueSim.Depth.SKIN, "halfway round the skin is cut, nothing under it")
+	_check(_tissue().piece_of(middle).is_empty(), "halfway round the skin inside is still joined")
+	await _shots_of(id, "01_half_cut")
+	# A little past where it started, so the circle surely closes.
+	await _cut_arc(center, edge, across, PI, TAU + GRAFT_OVERLAP)
+	var piece := _tissue().piece_of(middle).size()
+	_check(piece > 0 and _deepest() == TissueSim.Depth.SKIN, "the closed circle frees a piece of skin (%d grid points), cut through the skin only" % piece)
+	_check(_tears() == 0, "the circle is cut cleanly: %d tears, hand at most %.3f m/s" % [_tears(), _top_speed])
+	await _shots_of(id, "02_cut")
+
+	# The scalpel is lifted out of the way and the left hand takes forceps to the middle of the piece.
+	_hand.lowered = false
+	_hand.trigger = false
+	_hand.local_target += Vector3(0.12, 0.08, 0.1)
+	var me := _surgery.local_surgeon
+	var forceps: SurgicalTool = null
+	for tool: SurgicalTool in _surgery.tools.tools.values():
+		if tool.def.id == "forceps" and tool.state == SurgicalTool.State.FREE:
+			forceps = tool
+			break
+	_surgery.tools._req_grab(forceps.uid, 0)
+	me.active = 0
+	var left := me.hands[0]
+	await _reach_with(left, forceps, _center_uv)
+	left.level = 1
+	left.lowered = true
+	await _hold(0.3)
+	left.trigger = true
+	await _hold(0.3)
+	_check(forceps.grip_info.get("piece", false), "the forceps pinch the piece")
+	await _lift(left, PINCH_LIFT, 0.3)
+	_check(_tissue().piece_of(middle).size() == piece, "pinched and lifted %d mm, the piece is still in place" % roundi(PINCH_LIFT * 1000.0))
+	await _shots_of(id, "03_picked_up")
+	await _lift(left, TAKE_LIFT - PINCH_LIFT, 1.0)
+	var graft := _surgery.tools.carried_by(forceps)
+	_check(_tissue().excised.count(1) == piece, "lifted higher, the piece comes off whole")
+	_check(graft != null and graft.def.id == "skin_graft" and graft.charges == 1, "the forceps hold it as a skin graft")
+	# Taken well clear of the wound: up, to the side and back toward the surgeon, out of the cameras' view.
+	left.local_target += Vector3(-0.15, 0.12, 0.12)
+	await _hold(0.8)
+	var under := "fat" if case.fat else "muscle"
+	_check(body.layer_at(_center_uv) == under, "the wound shows the %s under the skin (%s)" % [under, body.layer_at(_center_uv)])
+	_check(_tears() == 0 and patient.flags.has("graft_taken"), "no tears around the wound")
+	await _shots_of(id, "04_wound")
+	left.trigger = false
+	_report_frames(id)
+	_surgery.queue_free()
+	await _frames(3)
+
+
+## Cuts the circle around center from `from` to `to` (radians round from where it starts), steering the blade along
+## the curve like a player: the hand rolls the scalpel about its length (Rotate) so the blade keeps facing the way it
+## moves, and drifts back onto the line when the point strays.
+func _cut_arc(center: Vector3, edge: Vector3, across: Vector3, from: float, to: float) -> void:
+	var me := _surgery.local_surgeon
+	var frames := int((to - from) * GRAFT_RADIUS / GRAFT_SPEED * Engine.physics_ticks_per_second)
+	_top_speed = 0.0
+	for i in frames:
+		var a := lerpf(from, to, float(i) / frames)
+		var b := lerpf(from, to, float(i + 1) / frames)
+		_steer_blade(edge * cos(b) + across * sin(b))
+		var step := _circle_point(center, edge, across, b) - _circle_point(center, edge, across, a)
+		var drift := (_circle_point(center, edge, across, a) - _scalpel.tip_position()) * Vector3(1, 0, 1)
+		_hand.local_target += me.global_basis.inverse() * (step * Vector3(1, 0, 1) + drift * 0.3)
+		await _measured_frame()
+		_top_speed = maxf(_top_speed, _hand.speed)
+	await _hold(0.3)
+
+
+## The point of the circle `angle` round from where it starts (the side toward -across).
+static func _circle_point(center: Vector3, edge: Vector3, across: Vector3, angle: float) -> Vector3:
+	return center + (edge * sin(angle) - across * cos(angle)) * GRAFT_RADIUS
+
+
+## Rolls the scalpel a little (as far as a hand turns it in a frame) so its blade lines up with `direction` either way.
+func _steer_blade(direction: Vector3) -> void:
+	var yaw := (_hand.get_parent() as Node3D).global_rotation.y
+	var best := _hand.twist
+	var best_dot := -1.0
+	for i in range(-30, 31):
+		var twist := _hand.twist + i * 0.005
+		var side := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, _hand.tilt) * Basis(Vector3.FORWARD, twist) * Vector3.RIGHT
+		var dot := absf(side.cross(Vector3.UP).normalized().dot(direction.normalized()))
+		if dot > best_dot:
+			best_dot = dot
+			best = twist
+	_hand.twist = best
+
+
+## Brings `hand`, holding `tool`, over uv: its tip there, a little above the skin.
+func _reach_with(hand: SurgeonHand, tool: SurgicalTool, uv: Vector2) -> void:
+	var me := _surgery.local_surgeon
+	var spot := _surgery.patient.body.uv_to_world(uv)
+	await _frames(10)
+	for i in 6:
+		hand.local_target += me.global_basis.inverse() * ((spot - tool.tip_position()) * Vector3(1, 0, 1))
+		await _frames(20)
+
+
+## Raises a hand by `height` over `seconds`, steadily. Holding onto something, it's pulled up (Lift); once it lets go,
+## it's raised off the skin instead of coming back down onto it.
+func _lift(hand: SurgeonHand, height: float, seconds: float) -> void:
+	var frames := int(seconds * Engine.physics_ticks_per_second)
+	for i in frames:
+		if hand.attached:
+			hand.target.y += height / frames
+		else:
+			hand.lowered = false
+			hand.local_target.y += height / frames
+		await _measured_frame()
+	await _hold(0.3)
+
+
+func _tears() -> int:
+	return _surgery.patient.wounds.filter(func(w: Wound) -> bool: return w.kind == Wound.Kind.TEAR).size()
+
+
 ## Builds the scenario with the site untouched, an awake patient numbed with lidocaine and the scalpel in the right hand
 ## over the site, its edge along the limb or across the table. over_bone: the cut runs right over the bone nearest the
 ## middle of the site (a forearm's middle lies between its two bones).
-func _start(scenario_id: String, along_limb: bool, over_bone: bool) -> void:
+func _start(scenario_id: String, along_limb: bool, over_bone: bool, graft: bool = false) -> void:
 	var scenario := Db.scenario(scenario_id)
 	scenario.wounds = []
 	scenario.burns = []
@@ -212,6 +361,21 @@ func _start(scenario_id: String, along_limb: bool, over_bone: bool) -> void:
 				_center_uv = Vector2(0.5, middle)
 	# The tip lands where the hand's height and tilt put it: nudge the hand until it's over the planned start.
 	var start := _center_uv - edge_uv * 1.5
+	var travel := edge_uv * 3.0
+	if graft:
+		# The circle's far side no further over the table than the middle of the site (a hand at full stretch can't
+		# steer), as long as the circle stays on the site (a forearm is narrow).
+		var across := body.site.global_basis.y.normalized().cross(edge).normalized()
+		var toward := signf(across.dot(me.global_position - center))
+		for shift: float in [1.0, 0.5, 0.0]:
+			var moved := center + across * toward * GRAFT_RADIUS * shift
+			if range(16).all(func(n: int) -> bool: return body.probe(_circle_point(moved, edge, across, TAU * n / 16)).zone == "site"):
+				center = moved
+				break
+		_center_uv = body.world_to_uv(center)
+		# Round the circle from its point on the -across side, where it runs along the blade.
+		start = body.world_to_uv(center - across * GRAFT_RADIUS)
+		travel = body.world_to_uv(center + across * GRAFT_RADIUS) - start
 	_place_hand(start)
 	var last_reach := INF
 	for i in 12:
@@ -219,7 +383,7 @@ func _start(scenario_id: String, along_limb: bool, over_bone: bool) -> void:
 		# The hand at the start or the end of the three moves out of reach from here: a step closer, like a player
 		# would, while that still helps (the table stops them). With room to spare: at high the hand drops into the
 		# opening, stretching the arm further.
-		var finish := _hand.target + (body.uv_to_world(start + edge_uv * 3.0) - body.uv_to_world(start)) * Vector3(1, 0, 1)
+		var finish := _hand.target + (body.uv_to_world(start + travel) - body.uv_to_world(start)) * Vector3(1, 0, 1)
 		var shoulder := me.shoulder(1)
 		var reach := maxf(_hand.target.distance_to(shoulder), finish.distance_to(shoulder))
 		if reach > Surgeon.REACH - 0.04 and reach < last_reach - 0.005:

@@ -29,7 +29,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   This keeps all game logic in one place and makes cheating or desync between two co-op players a non-issue.
 - **Skin damage is painted by broadcast.** The host decides what to paint and sends paint ops (reliable),
   every peer paints its own copy of the wound map, so textures stay identical without sending images.
-- **Tissue topology is broadcast the same way.** Cuts, stitches, bursts and snapped springs are reliable RPCs,
+- **Tissue topology is broadcast the same way.** Cuts, stitches, bursts, snapped springs and skin taken off are reliable RPCs,
   every peer runs its own copy of the tissue sim. Only the host lets springs snap, then tells the others which one.
 - Vitals, targets, organs and tissue grips sync at 5 Hz. Free-falling tools sync at 10 Hz.
 - Solo play is the same code with an offline peer. There is no separate single player path.
@@ -100,6 +100,10 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   - A cut's edge lifted off the body (a flap folded back) isn't drawn back from the cut any more.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
     `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
+  - Skin cut out all round (a circle through the skin) is a piece (`TissueSim.piece_of()`): pinched with forceps and
+    lifted 1 cm, it comes off whole (`TissueSim.excise()`). The skin layer has a hole there, the fat (or the muscle,
+    where there's no fat) shows, and the forceps hold the piece as a skin graft with one use: pressed onto a cleaned
+    burn it goes on, pressed in the air it's let go.
   - The skin settles under its own tension when it's built, so it starts asleep. The sim sleeps when nothing moves.
     Skin under the drape's edge isn't counted as exposed, and skin that starts under the drape stays under it, unless
     it was cut free there (a flap cut under the drape's frame takes it along).
@@ -285,7 +289,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **One button per job** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
-  a cotton pad wipe or dip it, and let it go when used in the air away from the dish.
+  a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
+  from the skin put it on a cleaned burn, or let it go in the air.
+  The Rotate keys roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
   suction, gauze pressure), 0 does nothing. Shift steps through three zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).

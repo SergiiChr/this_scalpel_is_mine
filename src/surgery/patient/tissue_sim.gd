@@ -86,6 +86,8 @@ enum Kind { TISSUE, STITCH }
 enum Depth { NONE, SKIN, FAT, MUSCLE }
 ## A gap counts as open once it's pulled this far apart (meters).
 const OPEN_GAP := 0.004
+## Most of the grid a piece of skin cut out all round may hold: past that the cut just runs round most of the site.
+const PIECE_MAX := 0.25
 ## Cells per side of the grid that sorts skin triangles by where they lie now, for skin_height() once the skin
 ## moved far (a flap folded back). It covers the site and a margin around it.
 const BINS := 16
@@ -142,6 +144,9 @@ var tearing := false
 var snapped: Array[Array] = []
 ## Scales how far past its rest length a spring stretches before it snaps (thin skin tears sooner).
 var break_mult := 1.0
+## 1 for skin taken off (cut out all round and lifted away, a graft), one byte per particle: the skin layer has a
+## hole there and what lies under it shows.
+var excised := PackedByteArray()
 ## Changes whenever springs are cut, stitched or snap (meshes rebuild their triangles).
 var topology_version := 0
 ## Counts simulation steps, so meshes only rebuild when something moved.
@@ -204,6 +209,7 @@ var _cut_free := PackedByteArray()
 var _cut_free_for := -1
 ## Particles off the body (see off).
 var _off_list := PackedInt32Array()
+var _excised_list := PackedInt32Array()
 var _hanging := PackedByteArray()
 var _hanging_for := []
 
@@ -219,6 +225,9 @@ func build(site_size: Vector2, height_at: Callable, on_body: Callable = Callable
 	anchor.resize(count)
 	fixed.resize(count)
 	off.resize(count)
+	excised.resize(count)
+	excised.fill(0)
+	_excised_list = PackedInt32Array()
 	for j in res_y + 1:
 		for i in res_x + 1:
 			var uv := Vector2(float(i) / res_x, float(j) / res_y)
@@ -329,6 +338,7 @@ func region(reach: int = 1) -> PackedByteArray:
 		seeds.append(c_b[s])
 	for key: int in _pins:
 		seeds.append(_pins[key][0])
+	seeds.append_array(_excised_list)
 	# Only skin in the window moves: everything outside it holds still where it settled.
 	for k in _win_particles:
 		if pos[k].distance_squared_to(settled[k]) > REGION_MOVE * REGION_MOVE:
@@ -452,6 +462,49 @@ func depth_of(s: int) -> int:
 	return Depth.FAT if c_muscle_closed[s] == 1 else c_depth[s]
 
 
+## The particles of the piece of skin around particle k that cuts have set free all round: those reached from k without
+## crossing a cut (a stitch across one joins), as long as that never reaches the site's border. Empty while the skin
+## there is still joined to the rest, or was already taken off.
+func piece_of(k: int) -> PackedInt32Array:
+	if excised[k] == 1:
+		return PackedInt32Array()
+	_index_springs()
+	var piece := PackedInt32Array([k])
+	var seen := {k: true}
+	var n := 0
+	while n < piece.size():
+		var at := piece[n]
+		n += 1
+		if _at_border(at) or piece.size() > rest.size() * PIECE_MAX:
+			return PackedInt32Array()
+		for s in _springs_of[at]:
+			if c_active[s] == 0 and not _stitched(c_a[s], c_b[s]):
+				continue
+			var other := c_b[s] if c_a[s] == at else c_a[s]
+			if not seen.has(other):
+				seen[other] = true
+				piece.append(other)
+	return piece
+
+
+## Takes off the piece of skin around particle k (see piece_of()): it's no longer drawn or touched, and grips on it let
+## go. Returns how many grid points it held, 0 when there's no piece there.
+func excise(k: int) -> int:
+	var piece := piece_of(k)
+	if piece.is_empty():
+		return 0
+	for p in piece:
+		excised[p] = 1
+	_excised_list.append_array(piece)
+	for key: int in _pins.keys():
+		if excised[_pins[key][0]] == 1:
+			_pins.erase(key)
+	topology_version += 1
+	_win_dirty = true
+	wake()
+	return piece.size()
+
+
 ## Pins the particle nearest uv to follow a tool. Returns false if there is no tissue there.
 func grip(key: int, uv: Vector2) -> bool:
 	_pins[key] = [nearest(uv), pos[nearest(uv)]]
@@ -543,7 +596,7 @@ func snap_spring(s: int) -> void:
 
 ## Changes with every cut, stitch, burst or snap, and is the same on peers whose tissue was cut the same way.
 func topology_hash() -> int:
-	return hash([c_active, c_depth, c_muscle_closed, c_kind.size()])
+	return hash([c_active, c_depth, c_muscle_closed, c_kind.size(), excised])
 
 
 ## Seizures, coughs and bumps shake the tissue (visual, every peer). Only skin that's being simulated shakes: the rest
@@ -556,6 +609,8 @@ func shake(amount: float) -> void:
 
 ## True when uv lies inside an opening: between the lips of a cut at least `depth` deep, pulled open.
 func is_open(uv: Vector2, depth: int = Depth.MUSCLE) -> bool:
+	if depth <= Depth.SKIN and excised[nearest(uv)] == 1:
+		return true
 	var cell := maxf(size.x / res_x, size.y / res_y)
 	for s in _severed:
 		if depth_of(s) < depth:
@@ -604,7 +659,7 @@ func skin_height(uv: Vector2) -> float:
 			var a := index(i, j)
 			var c := a + res_x + 1
 			for tri: PackedInt32Array in [PackedInt32Array([a, a + 1, c, spring_right[a], spring_diag[a], spring_down[a]]), PackedInt32Array([a + 1, c + 1, c, spring_down[a + 1], spring_right[c], spring_diag[a]])]:
-				if hanging[tri[0]] + hanging[tri[1]] + hanging[tri[2]] > 0 or _gaping(tri[3]) or _gaping(tri[4]) or _gaping(tri[5]):
+				if hanging[tri[0]] + hanging[tri[1]] + hanging[tri[2]] + excised[tri[0]] + excised[tri[1]] + excised[tri[2]] > 0 or _gaping(tri[3]) or _gaping(tri[4]) or _gaping(tri[5]):
 					continue
 				var pa := pos[tri[0]]
 				var pb := pos[tri[1]]
@@ -666,11 +721,16 @@ func triangles(depth: int) -> PackedInt32Array:
 		if depth_of(s) >= depth and _open_gap(s) > 0.0:
 			open[s] = 1
 	var hanging := hanging_off()
+	# Where skin was taken off, the skin layer has a hole; the layers under it are whole.
+	var gone := excised if depth <= Depth.SKIN else PackedByteArray()
+	gone.resize(rest.size())
 	var out := PackedInt32Array()
 	for j in res_y:
 		for i in res_x:
 			var a := index(i, j)
 			var c := a + res_x + 1
+			if gone[a] + gone[a + 1] + gone[c + 1] + gone[c] > 0:
+				continue
 			if open[spring_right[a]] + open[spring_diag[a]] + open[spring_down[a]] + hanging[a] + hanging[a + 1] + hanging[c] == 0:
 				out.append(a)
 				out.append(a + 1)
@@ -1011,11 +1071,7 @@ func _patch(k: int) -> Array:
 		_patch_version = topology_version
 	if _patches.has(k):
 		return _patches[k]
-	if _springs_of.is_empty():
-		_springs_of.resize(rest.size())
-		for s in c_a.size():
-			_springs_of[c_a[s]].append(s)
-			_springs_of[c_b[s]].append(s)
+	_index_springs()
 	var around := PackedInt32Array()
 	var weights := PackedFloat32Array()
 	var held := PackedInt32Array()
@@ -1040,6 +1096,15 @@ func _patch(k: int) -> Array:
 				held.append(other)
 	_patches[k] = [around, weights, held]
 	return _patches[k]
+
+
+## Fills in _springs_of, the springs at each particle, the first time it's needed. Stitches added later aren't in it.
+func _index_springs() -> void:
+	if _springs_of.is_empty():
+		_springs_of.resize(rest.size())
+		for s in c_a.size():
+			_springs_of[c_a[s]].append(s)
+			_springs_of[c_b[s]].append(s)
 
 
 ## A tear (no cut_dir) runs square to the spring it snapped.
