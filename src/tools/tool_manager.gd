@@ -12,6 +12,8 @@ const FILL_STEPS := 50.0
 const VIAL_REACH := 0.05
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
+## A tool lying lower than this (meters) is on the floor: one that lands on it lands on the floor too.
+const FLOOR_PILE := 0.1
 
 var tools: Dictionary = {}
 var _next_uid := 1
@@ -530,14 +532,15 @@ func _check_drop(tool: SurgicalTool) -> void:
 			patient.contaminate_site("")
 		return
 	for body in tool.get_colliding_bodies():
-		if body.has_meta("floor") and tool.def.fragile:
+		var on_floor := body.has_meta("floor") or body is SurgicalTool and (body as Node3D).global_position.y < FLOOR_PILE
+		if on_floor and tool.def.fragile:
 			tool.remove_meta("falling")
 			consume(tool)
 			Surgery.current.scoring.add("broken_syringe")
 			Surgery.current.sound("glass_break", tool.global_position)
 			Surgery.current.announce("The %s shatters on the floor." % tool.def.name)
 			return
-		if body.has_meta("floor"):
+		if on_floor:
 			tool.remove_meta("falling")
 			_set_sterile.rpc(tool.uid, false)
 			_set_soiled.rpc(tool.uid, true)
