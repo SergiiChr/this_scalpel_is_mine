@@ -707,15 +707,17 @@ func stretch(a: int, b: int) -> float:
 
 
 ## 1 for particles off the body, 0 elsewhere, except for skin folded out on top of the drape (see floor_at): that
-## can't stick out of the body, it lies on the sheet, and is shown like any other. Worked out once per step.
+## can't stick out of the body, it lies on the sheet, and is shown like any other. Skin still where it settled hasn't
+## been folded anywhere, even where the drape's coarse grid reads lower than it (a steep flank).
+## Worked out once per step.
 func hanging_off() -> PackedByteArray:
 	if _hanging_for == [steps_done, floor_at.is_valid()] and _hanging.size() == off.size():
 		return _hanging
 	_hanging_for = [steps_done, floor_at.is_valid()]
 	_hanging = off.duplicate()
-	if floor_at.is_valid():
+	if floor_at.is_valid() and settled.size() == pos.size():
 		for k in _off_list:
-			if _hanging[k] == 1:
+			if _hanging[k] == 1 and pos[k].distance_squared_to(settled[k]) > LIFTED_OFF * LIFTED_OFF:
 				var floor_y: float = floor_at.call(pos[k].x, pos[k].z)
 				if not is_nan(floor_y) and pos[k].y >= floor_y - 0.002:
 					_hanging[k] = 0

@@ -127,8 +127,6 @@ var _normal := PackedVector3Array()
 ## the simulated skin shows no step or seam where it takes over from the model.
 var _on_model := PackedVector3Array()
 var _normal_fit := PackedVector3Array()
-## How far the model lies above where the sim settled, per grid point: what the sim's skin height is drawn off by.
-var _fit_height := PackedFloat32Array()
 ## The body model's skin mesh, whose space the site skin lays out its pores and grime in.
 var _skin_model: Node3D
 var _organ_last: Array[Vector3] = []
@@ -305,7 +303,14 @@ func skin_height(uv: Vector2) -> float:
 	if k < _region.size() and _region[k] == 1:
 		var height := tissue.skin_height(uv)
 		if not is_nan(height):
-			return height + _bilinear(_fit_height, Vector2i(tissue.res_x + 1, tissue.res_y + 1), uv)
+			# Drawn off the sim's skin (see _on_model): by as much as its grid points around uv are.
+			var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * Vector2(tissue.res_x, tissue.res_y)
+			var a := tissue.index(mini(int(p.x), tissue.res_x - 1), mini(int(p.y), tissue.res_y - 1))
+			var c := a + tissue.res_x + 1
+			var off := PackedFloat32Array()
+			for corner: int in [a, a + 1, c, c + 1]:
+				off.append(layer_point(0, corner).y - tissue.pos[corner].y)
+			return height + _bilinear(off, Vector2i(2, 2), p - Vector2(tissue.cell_of(a)))
 	return surface_height(uv)
 
 
@@ -633,10 +638,8 @@ func _fit_to_model(model: Node3D) -> void:
 		_on_model[k] = at
 		model_normals[k] = (normals[f] * w.x + normals[f + 1] * w.y + normals[f + 2] * w.z).normalized()
 	_normal_fit.resize(count)
-	_fit_height.resize(count)
 	for k in count:
 		_normal_fit[k] = model_normals[k] - _grid_normal(_on_model, k) if model_normals[k] != Vector3.ZERO else Vector3.ZERO
-		_fit_height[k] = _on_model[k].y - tissue.settled[k].y
 
 
 ## The normal of the grid's surface at point k, from where its neighbours lie in `points`.
@@ -880,7 +883,7 @@ func _place_particles() -> void:
 	for k in _around:
 		_skin_of[k] = layer_point(0, k)
 	for k in _planned:
-		var moved := clampf((tissue.pos[k] - tissue.settled[k]).length() / FLAP_MOVE, 0.0, 1.0)
+		var moved := clampf(_moved(k).length() / FLAP_MOVE, 0.0, 1.0)
 		# The model's own normal where the skin rests, turning with the skin as it moves (a flap keeps its own).
 		var normal := (_grid_normal(_skin_of, k) + _normal_fit[k] * (1.0 - moved)).normalized()
 		_normal[k] = normal
@@ -952,11 +955,22 @@ static func _arrays(verts: PackedVector3Array, normals: PackedVector3Array, uvs:
 
 
 ## Where a layer's grid point k is now, before it's moved down to its depth: on the body model where the skin rests,
-## moved as far as the sim moved it since it settled. Deeper layers are tethered and follow the skin only partly
-## (a stepped wound edge), but a flap pulled far back takes all of its layers along.
+## moved as far as the sim moved it (_moved()). Deeper layers are tethered and follow the skin only partly (a stepped
+## wound edge), but a flap pulled far back takes all of its layers along.
 func layer_point(layer: int, k: int) -> Vector3:
-	var moved := tissue.pos[k] - tissue.settled[k]
+	var moved := _moved(k)
 	return _on_model[k] + moved * lerpf(LAYER_FOLLOW[layer], 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0))
+
+
+## How far the sim moved grid point k since it settled, less any way back toward the body model: tension holds the
+## sheet off a curved body, and where a cut lets go of it the skin springs back, to where it's drawn already.
+func _moved(k: int) -> Vector3:
+	var moved := tissue.pos[k] - tissue.settled[k]
+	var fit := _on_model[k] - tissue.settled[k]
+	if fit.is_zero_approx():
+		return moved
+	var back := fit.normalized()
+	return moved - back * clampf(moved.dot(back), 0.0, fit.length())
 
 
 ## True when the region changed.
