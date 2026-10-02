@@ -56,6 +56,8 @@ const FLAP_MOVE := 0.04
 const DRAPE_FLOOR_CELL := 0.01
 ## Points per side the site's skin heights are measured at on the body model.
 const HEIGHTS := 33
+## Points per side of an organ's footprint where the skin over it is measured.
+const ORGAN_SAMPLES := 5
 ## Rays onto the body model start this far out along the site's normal (meters).
 const RAY_START := 0.15
 ## Body thinner than this under the skin (meters) can't hold the site's skin, fat and muscle: off the body.
@@ -1176,12 +1178,17 @@ func add_organ(uv: Vector2, depth: float, radius: float, color: Color, spec: Dic
 		shape.shape = box
 		shape.position = bounds.get_center()
 		# spec.top: how far under the muscle the organ's top lies, so it stays under the muscle and ribs on any patient.
-		# Measured from the lowest skin over it: the body curves, the box's top is flat.
-		var lowest := INF
-		for corner: Vector3 in [bounds.position, bounds.position + Vector3(bounds.size.x, 0, 0), bounds.position + Vector3(0, 0, bounds.size.z), bounds.end]:
-			var at := Basis(Vector3.UP, organ.rotation.y) * corner
-			lowest = minf(lowest, surface_height(uv + Vector2(at.x / site_size.x, at.z / site_size.y)))
-		height = minf(lowest, surface_height(uv)) - muscle_bottom() - float(spec.get("top", 0.0)) - bounds.end.y
+		# Measured from the lowest skin over it: the body curves, the box's top is flat. Only over the site's skin on
+		# the body: past it the skin drops away down the flank, under the drape, where nobody looks into the body.
+		var lowest := surface_height(uv)
+		for i in ORGAN_SAMPLES:
+			for j in ORGAN_SAMPLES:
+				var corner := bounds.position + bounds.size * Vector3(i, 0, j) / (ORGAN_SAMPLES - 1)
+				var at := Basis(Vector3.UP, organ.rotation.y) * corner
+				var over := uv + Vector2(at.x / site_size.x, at.z / site_size.y)
+				if over.x >= 0.0 and over.y >= 0.0 and over.x <= 1.0 and over.y <= 1.0 and on_body(over):
+					lowest = minf(lowest, surface_height(over))
+		height = lowest - muscle_bottom() - float(spec.get("top", 0.0)) - bounds.end.y
 	else:
 		var sphere := SphereShape3D.new()
 		sphere.radius = radius

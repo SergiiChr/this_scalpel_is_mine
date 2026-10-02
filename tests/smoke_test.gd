@@ -810,6 +810,7 @@ func _move_top_organ(surgery: Surgery) -> void:
 				var shape: CollisionShape3D = organ.get_child(organ.get_child_count() - 1)
 				print("FAIL: forceps in the open %s didn't take hold of the %s: %s (at %s, organ %s, box %s at %s, organ_at %d)" % [surgery.scenario.site, organ.get_meta("kind"), grip, at, organ.global_position, (shape.shape as BoxShape3D).size, shape.global_position, body.organ_at(at, 0.02)])
 				return
+			var home := organ.position
 			var aside := body.site.to_global(organ.position + Vector3(0.0, 0.03, 0.0) + Vector3(organ.position.x, 0, organ.position.z).normalized() * 0.12)
 			for i in 10:
 				grip = patient.update_grip(99001, grip, aside, 1.0, 1.0 / 60.0, 0.0)
@@ -818,6 +819,10 @@ func _move_top_organ(surgery: Surgery) -> void:
 			if now == top:
 				print("FAIL: moving the %s aside didn't uncover what's under it" % organ.get_meta("kind"))
 			patient.release_grip(99001, grip, false)
+			# Put back where it was, out of the way of what's checked next: by now the patient may be past drifting it
+			# back (Patient only settles organs while it's alive).
+			organ.position = home
+			organ.linear_velocity = Vector3.ZERO
 			await _frames(30)
 			return
 	print("FAIL: nothing in the open %s lies under the top layer of organs" % surgery.scenario.site)
