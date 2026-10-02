@@ -171,13 +171,13 @@ static func body_skin(tone: Color) -> ShaderMaterial:
 
 ## Places the surgical site on the body: region marks where the simulated skin replaces the body (cut away there),
 ## the wound maps draw the damage on the body everywhere else. site is the surgical site's global transform.
-## region has one texel per tissue grid point (TissueSim.RES + 1 wide).
+## region has one texel per tissue grid point (res_x + 1 by res_y + 1).
 static func set_carve(mat: ShaderMaterial, site: Transform3D, half_size: Vector2, depth: float, region: Texture2D) -> void:
 	for pass_mat: ShaderMaterial in [mat, mat.next_pass as ShaderMaterial]:
 		pass_mat.set_shader_parameter("carve_inverse", Projection(site.affine_inverse()))
 		pass_mat.set_shader_parameter("carve_box", Vector3(half_size.x, depth, half_size.y))
 		pass_mat.set_shader_parameter("carve_map", region)
-		pass_mat.set_shader_parameter("carve_grid", float(region.get_width()))
+		pass_mat.set_shader_parameter("carve_grid", Vector2(region.get_size()))
 
 
 ## Cavity walls: only drawn inside the region (see flesh.gdshader).
@@ -185,7 +185,7 @@ static func set_reveal(mat: ShaderMaterial, site: Transform3D, half_size: Vector
 	mat.set_shader_parameter("region_inverse", Projection(site.affine_inverse()))
 	mat.set_shader_parameter("region_box", Vector3(half_size.x, 1.0, half_size.y))
 	mat.set_shader_parameter("region_map", region)
-	mat.set_shader_parameter("region_grid", float(region.get_width()))
+	mat.set_shader_parameter("region_grid", Vector2(region.get_size()))
 
 
 static func set_site_maps(mat: ShaderMaterial, wounds: Texture2D, fluids: Texture2D) -> void:
@@ -216,11 +216,13 @@ static func skin_site(tone: Color, wound_tex: Texture2D, fluid_tex: Texture2D) -
 	return mat
 
 
-## Fat (layer 0) or muscle (layer 1) under the surgical site skin.
-static func tissue_layer(layer: int, fluid_tex: Texture2D) -> ShaderMaterial:
+## Fat (layer 0) or muscle (layer 1) under the surgical site skin, or the cut face of the skin (layer 2, in its tone)
+## in the walls of a cut.
+static func tissue_layer(layer: int, fluid_tex: Texture2D, tone: Color = Color(0.84, 0.66, 0.56)) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = TISSUE_LAYER
 	mat.set_shader_parameter("layer", layer)
+	mat.set_shader_parameter("skin_color", tone)
 	mat.set_shader_parameter("fluid_map", fluid_tex)
 	return mat
 

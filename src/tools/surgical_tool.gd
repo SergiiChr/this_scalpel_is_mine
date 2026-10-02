@@ -53,6 +53,8 @@ var lowered_before := false
 var trigger_before := false
 var level_before := 0
 var stroke := 0
+## Deepest level this stroke's blade point has been pressed in at (see ToolActions, action "cut").
+var stabbed_level := 0
 var last_uv := Vector2(-1, -1)
 var last_tip := Vector3.INF
 var charge_time := 0.0

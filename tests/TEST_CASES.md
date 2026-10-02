@@ -59,6 +59,7 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T20 | Untouched skin over a round body (25 cm radius) settles when it's built, then stays put: it isn't shown simulated and sleeps |
 | T21 | Where the site hangs off the body, its skin is never drawn and never shown simulated, even with a cut through it and a pull right next to it |
 | T22 | Skin folded out of the drape's opening lies on the drape instead of passing through it; skin that starts under the drape stays under it |
+| T23 | A circle cut through the skin frees a piece (not halfway round); taken off, the skin layer has a hole only there, the fat layer stays whole, it can't be taken twice and peers taking it off agree |
 
 ## Every scenario (`tests/smoke_test.gd`)
 
@@ -143,6 +144,33 @@ Two real game processes on localhost, one hosting and one joining.
 | N4 | Host and client end with the same painted wound map |
 | N5 | Host and client end with the same cut tissue: the same severed springs and the same topology hash (`TissueSim.topology_hash()`) |
 | N6 | Spotty connection: the client process is frozen for 10 s mid-surgery (past ENet's default timeout). Nobody gets disconnected, both are still in the same surgery afterwards, and the host paused the silent player's tool while they were gone (`tests/net_stall_test.gd`) |
+
+## Close up slicing (`tests/slicing_test.gd`)
+
+The scalpel is driven through the surgeon's hand like a player does it: lowered, a depth level picked, moved 2 cm along
+the blade's edge (steered back onto its line if the tip drifts). An awake patient with local anesthesia; on a limb the
+cut runs along it, over the bone.
+Skin graft cases take screenshots halfway round the circle, with it closed, pinched in place and of the wound once the
+piece is lifted away. Run with screenshots of every stage, straight down and 45° off the side:
+`xvfb-run -a .tools/godot-4.7.2 --path . --rendering-method gl_compatibility res://tests/slicing_test.tscn -- --out=build/slicing`.
+Headless it runs the same checks without screenshots, and its frame times are the game code's alone. `--case=arm|thigh|belly` runs one case, `--case=arm_graft` and so on one skin graft case.
+The software renderer runs several physics steps per drawn frame, so the hand looks faster than it is against the wall
+clock: its speed check and the frame rate only mean something headless. `run_tests.sh` runs it headless with
+`--fps-report`: frame rates depend on the machine, so there they're printed, not checked.
+
+| ID | Case |
+|---|---|
+| C1 | Every case: intact skin; lowered at level 0 nothing happens and the blade stays clean; pressed at low it goes through the skin only |
+| C2 | Arm, no fat: moved 2 cm at low, the skin opens onto the muscle; pressed at medium it digs deeper; moved 2 cm, the muscle is cut over the bone |
+| C3 | Arm: pressed at high it hits the bone, which hurts through the local block |
+| C4 | Thigh and belly: moved 2 cm at low the skin opens onto the fat; at medium the fat is cut and the muscle shows; pressed at high it digs deeper |
+| C5 | Thigh and belly: moved 2 cm at high the muscle is cut, the bone (thigh) or organs (belly) lie under it, nothing inside is nicked |
+| C6 | Every move stays a clean incision: no tears, the hand under jagged cut speed |
+| C7 | The incision opens like a zipper: widest along it, narrowing toward both ends |
+| C8 | Every case holds 60 fps on average and in its 1% low frames |
+| C9 | Skin graft, every case (`--case=arm_graft\|thigh_graft\|belly_graft`): a 3 cm circle cut at low, the blade rolled to follow it; halfway round the skin inside is still joined, closed it's a free piece, cut through the skin only, no tears |
+| C10 | Skin graft: forceps in the other hand pinch the piece and lift it 4 mm, still in place; lifted higher it comes off whole and the forceps hold it as a one-use skin graft |
+| C11 | Skin graft: the wound shows the fat (thigh, belly) or the muscle (arm) under the skin, with no tears around it, at 60 fps |
 
 ## Visual checks (not automated)
 
