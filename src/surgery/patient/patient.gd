@@ -961,7 +961,8 @@ func pull_iv(surgeon: Surgeon) -> void:
 	Surgery.current.sound("cable_yank", surgeon.global_position)
 	Surgery.current.announce("%s catches the IV line. It rips out of the arm." % surgeon.display_name)
 	Surgery.current.jolt_peer(surgeon.peer_id, 0.8)
-	Surgery.current.tools.drop_new("iv_catheter", surgeon.to_global(Vector3(0.0, 0.4, -0.3)))
+	# At their feet: a step ahead could be under the table, which is solid down to the floor.
+	Surgery.current.tools.drop_new("iv_catheter", surgeon.global_position + Vector3.UP * 0.1)
 	_iv_removed.rpc()
 
 

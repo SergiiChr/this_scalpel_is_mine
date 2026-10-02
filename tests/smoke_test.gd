@@ -214,7 +214,8 @@ func _feedback_checks(surgery: Surgery) -> void:
 		await _frames(90)
 		var dropped: Array = tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.def.id == "iv_catheter" and t.state == SurgicalTool.State.FREE and t.soiled)
 		if dropped.is_empty():
-			print("FAIL: the IV catheter ripped out of the arm didn't land on the floor")
+			var where: Array = tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.def.id == "iv_catheter").map(func(t: SurgicalTool) -> String: return "%s %s soiled %s" % [t.state, t.global_position, t.soiled])
+			print("FAIL: the IV catheter ripped out of the arm didn't land on the floor: ", where)
 	else:
 		var line := room.iv_line
 		print("FAIL: the IV line doesn't hang low enough to trip on (attached %s, iv set %s, ends %s, %d points)" % [line.is_attached(), patient.iv_set, line._last_ends, low.size()])
@@ -293,8 +294,11 @@ func _control_checks(surgery: Surgery) -> void:
 	if hand.lowered or hand.trigger:
 		print("FAIL: letting go of LMB left the tool working")
 	# Aiming with the mouse (MMB) turns the tool and the hand together: the glove stays where it is on the tool.
-	# Out to the side over the floor, so nothing under the tip lifts the hand while it turns.
+	# Out to the side over the floor, so nothing under the tip lifts the hand while it turns, and calm: a shaking hand
+	# moves the elbow, and the glove follows that.
 	hand.local_target = Vector3(0.5, 1.1, 0.15)
+	var own_status := me.status
+	me.status = SurgeonStatus.new(Modifiers.new())
 	await _frames(10)
 	# Against the hand's grip frame, worked out with the glove: the tool's own transform follows a frame later.
 	var on_tool := hand.grip_transform().affine_inverse() * hand._glove.global_transform
@@ -306,6 +310,7 @@ func _control_checks(surgery: Surgery) -> void:
 	if before.z.angle_to(blade.global_basis.z) < 0.2 or slid > 3.0 or on_tool.origin.distance_to(after.origin) > 0.005:
 		print("FAIL: aiming the tool didn't turn it with the hand (turned %.2f rad, glove moved on it %.1f deg, %.1f cm)" % [before.z.angle_to(blade.global_basis.z), slid, on_tool.origin.distance_to(after.origin) * 100.0])
 	me.aim_tool(Vector2(-120, 60))
+	me.status = own_status
 	var zooms: Array[int] = []
 	for i in Surgeon.ZOOM_FOV.size():
 		me._unhandled_input(_action("zoom", true))
