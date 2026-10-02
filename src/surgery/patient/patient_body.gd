@@ -563,8 +563,8 @@ func _build_site(tone: Color) -> void:
 		var layer := MeshInstance3D.new()
 		layer.name = ["Skin", "Fat", "Muscle"][i]
 		layer.mesh = ArrayMesh.new()
-		# The walls of a cut through the skin show the dermis; fat and muscle walls are fat and muscle.
-		var flesh := Materials.tissue_layer(i - 1 if i > 0 else 2, wound_map.textures[1])
+		# The walls of a cut through the skin are its cut face, in its tone; fat and muscle walls are fat and muscle.
+		var flesh := Materials.tissue_layer(i - 1 if i > 0 else 2, wound_map.textures[1], tone)
 		layer.set_meta("sheet", skin_material if i == 0 else flesh)
 		layer.set_meta("walls", flesh)
 		site.add_child(layer)

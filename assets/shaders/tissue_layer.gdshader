@@ -1,12 +1,14 @@
 // Layers under the skin, seen through an opened incision.
 // layer 0 = subcutaneous fat (rounded lobules), layer 1 = muscle and fascia (red striated, white sheen),
-// layer 2 = the dermis showing in the walls of a cut through the skin (pale pink, flecked with tiny vessels).
+// layer 2 = the cut face of the skin in the walls of a cut through it (the patient's skin tone, flecked with tiny vessels).
 // Blood from the fluid map runs down into them.
 shader_type spatial;
 render_mode cull_disabled;
 
 uniform int layer = 0;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
+// Layer 2 only: the skin's own color (Materials.skin_site()), so the cut face matches the skin around it.
+uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 
 varying vec3 local_pos;
 
@@ -72,9 +74,13 @@ void fragment() {
 		height = (1.0 - lobe) * 0.0004;
 		wet = 0.62;
 	} else if (layer == 2) {
-		float speck = smoothstep(0.92, 1.0, hash3(floor(local_pos * 900.0)));
-		c = mix(vec3(0.93, 0.78, 0.72), vec3(0.75, 0.25, 0.25), speck * 0.6);
-		wet = 0.6;
+		// The skin's color, a touch pinker, with its pores' fine relief and the odd tiny vessel.
+		float grain = noise3(local_pos * 800.0);
+		float speck = smoothstep(0.94, 1.0, hash3(floor(local_pos * 900.0)));
+		c = skin_color.rgb * vec3(1.0, 0.93, 0.9) * mix(0.9, 1.02, grain);
+		c = mix(c, vec3(0.62, 0.22, 0.22), speck * 0.35);
+		height = (grain - 0.5) * 0.00008;
+		wet = 0.35;
 	} else {
 		float warp = noise3(local_pos * 42.0) * 3.0;
 		float fibers = sin(dot(local_pos, normalize(vec3(1.0, 0.16, 0.28))) * 430.0 + warp) * 0.5 + 0.5;
@@ -93,7 +99,9 @@ void fragment() {
 }
 
 void light() {
-	float ndl = max((dot(NORMAL, LIGHT) + 0.16) / 1.16, 0.0);
+	// The skin's cut face stands across the light from above: light through the skin keeps it from going dark.
+	float wrap = layer == 2 ? 0.8 : 0.16;
+	float ndl = max((dot(NORMAL, LIGHT) + wrap) / (1.0 + wrap), 0.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * ndl * ATTENUATION / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
 	float broad = pow(max(dot(NORMAL, halfway), 0.0), 18.0);

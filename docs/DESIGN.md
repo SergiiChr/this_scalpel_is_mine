@@ -77,8 +77,9 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     starts and where the blade is), so a cut opens like a lens, closed at both ends, like a zipper behind the blade.
   - Skin, fat and muscle are three meshes rebuilt from the sim, only where the simulated skin replaces the body (the
     region). A layer cut through is split exactly where the blade crossed each spring, not along the grid: each side
-    keeps its part of the triangle and moves with it. Walls run down each lip through the layer's thickness (pale
-    dermis, yellow fat, red muscle), so a cut has depth: a skin cut shows the fat (or the muscle where there's no fat),
+    keeps its part of the triangle and moves with it. Walls run down each lip through the layer's thickness (the
+    skin's cut face in its own tone, yellow fat, red muscle), so a cut has depth. The simulated skin doesn't paint the
+    wound map's cut groove: its lips are skin right up to the split: a skin cut shows the fat (or the muscle where there's no fat),
     a deeper one the muscle, a full depth cut the bone or organs under it. The meshes rebuild on the frame after the
     sim steps, so the two costs don't land on one frame. Which triangles there are and how they split is planned only
     when the cuts or the region change; while the skin just moves, only the vertices move.

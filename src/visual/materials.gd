@@ -216,11 +216,13 @@ static func skin_site(tone: Color, wound_tex: Texture2D, fluid_tex: Texture2D) -
 	return mat
 
 
-## Fat (layer 0) or muscle (layer 1) under the surgical site skin, or the dermis (layer 2) in the walls of a cut.
-static func tissue_layer(layer: int, fluid_tex: Texture2D) -> ShaderMaterial:
+## Fat (layer 0) or muscle (layer 1) under the surgical site skin, or the cut face of the skin (layer 2, in its tone)
+## in the walls of a cut.
+static func tissue_layer(layer: int, fluid_tex: Texture2D, tone: Color = Color(0.84, 0.66, 0.56)) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = TISSUE_LAYER
 	mat.set_shader_parameter("layer", layer)
+	mat.set_shader_parameter("skin_color", tone)
 	mat.set_shader_parameter("fluid_map", fluid_tex)
 	return mat
 
