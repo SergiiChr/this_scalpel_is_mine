@@ -293,11 +293,12 @@ func _control_checks(surgery: Surgery) -> void:
 	# Out to the side over the floor, so nothing under the tip lifts the hand while it turns.
 	hand.local_target = Vector3(0.5, 1.1, 0.15)
 	await _frames(10)
-	var on_tool := blade.global_transform.affine_inverse() * hand._glove.global_transform
+	# Against the hand's grip frame, worked out with the glove: the tool's own transform follows a frame later.
+	var on_tool := hand.grip_transform().affine_inverse() * hand._glove.global_transform
 	var before := blade.global_basis
 	me.aim_tool(Vector2(120, -60))
 	await _frames(5)
-	var after := blade.global_transform.affine_inverse() * hand._glove.global_transform
+	var after := hand.grip_transform().affine_inverse() * hand._glove.global_transform
 	var slid := rad_to_deg((on_tool.basis.orthonormalized().inverse() * after.basis.orthonormalized()).get_rotation_quaternion().get_angle())
 	if before.z.angle_to(blade.global_basis.z) < 0.2 or slid > 3.0 or on_tool.origin.distance_to(after.origin) > 0.005:
 		print("FAIL: aiming the tool didn't turn it with the hand (turned %.2f rad, glove moved on it %.1f deg, %.1f cm)" % [before.z.angle_to(blade.global_basis.z), slid, on_tool.origin.distance_to(after.origin) * 100.0])
