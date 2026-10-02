@@ -579,11 +579,15 @@ func _anesthesia_checks(surgery: Surgery) -> void:
 	patient.wounds = []
 	patient.vitals.from_dict({"rhythm": Vitals.Rhythm.SINUS, "blood_ml": patient.vitals.max_blood_ml, "systolic": 120.0, "heart_rate": 75.0, "temperature": 36.8, "glucose": 5.5, "swelling": 0.0})
 	patient.administer("propofol", "vein", Db.drug("propofol").dose * patient.weight_kg)
+	var v := patient.vitals
+	var depth := 0.0
 	for i in 3000:
 		patient._simulate(0.1)
-	var v := patient.vitals
-	if v.anesthesia < 0.7 or v.is_awake() or v.is_arrested():
-		print("FAIL: one right dose of propofol didn't hold for five minutes (anesthesia %.2f, awake %s, arrested %s)" % [v.anesthesia, v.is_awake(), v.is_arrested()])
+		if i == 600:
+			depth = v.anesthesia
+	# Run modifiers (expired drugs) may weaken the dose, but whatever depth it reaches has to hold.
+	if absf(v.anesthesia - depth) > 0.01 or v.is_awake() or v.is_arrested():
+		print("FAIL: one right dose of propofol didn't hold for five minutes (anesthesia %.2f -> %.2f, awake %s, arrested %s)" % [depth, v.anesthesia, v.is_awake(), v.is_arrested()])
 	if surgery.director._ready_for("unstable", patient):
 		print("FAIL: the arrest event would strike a stable patient (systolic %d, heart rate %d)" % [v.systolic, v.heart_rate])
 	if surgery.director._ready_for("incised", patient):

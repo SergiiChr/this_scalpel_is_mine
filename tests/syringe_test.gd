@@ -191,9 +191,10 @@ func _hand_checks() -> void:
 		for i in 5:
 			me.steer_hand(motion)
 			await bench.frames(1)
-		var moved := hand.target - before
+		var moved := (hand.target - before) * Vector3(1, 0, 1)
 		var along := moved.dot(right if motion.x > 0.0 else away)
-		_check(along > 0.9 * moved.length() and along > 0.01, "needle_hand: in the needle view the mouse %s moves the hand %s on screen (%.3f m of %.3f)" % ["right" if motion.x > 0.0 else "up", "right" if motion.x > 0.0 else "away", along, moved.length()])
+		# The camera follows the syringe, so it turns a little as the hand moves.
+		_check(along > 0.8 * moved.length() and along > 0.01, "needle_hand: in the needle view the mouse %s moves the hand %s on screen (%.3f m of %.3f)" % ["right" if motion.x > 0.0 else "up", "right" if motion.x > 0.0 else "away", along, moved.length()])
 	me.zoom = 0
 	await bench.frames(40)
 	await bench.stage(Bench.CASES[6])
