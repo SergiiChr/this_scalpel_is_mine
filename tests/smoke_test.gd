@@ -434,13 +434,14 @@ func _syringe_checks(surgery: Surgery) -> void:
 	while in_way:
 		in_way.global_position = spot + Vector3.UP * 0.1
 		in_way = tools.nearest_container(site)
+	var aimed := "%s, %s" % [patient.body.probe(syringe.tip_position()), ToolActions.needle_target(syringe, patient)]
 	while syringe.ml > 0.0:
 		ToolActions.plunge(syringe, -ToolActions.PLUNGER_STEP, patient)
 	syringe.global_position += Vector3.UP * 0.3
 	var hand := {"lowered": false, "trigger": false, "level": 0, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
 	ToolActions.update(syringe, hand, patient, 0.1)
 	if syringe.ml > 0.0 or not patient.flags.has("drug_propofol"):
-		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s" % [syringe.ml, patient.flags.keys()])
+		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s, the needle was in %s" % [syringe.ml, patient.flags.keys(), aimed])
 	# A third of the dose doesn't do the job.
 	patient.flags.erase("drug_propofol")
 	tools.transfer(vial, syringe, right_ml * 0.3)
