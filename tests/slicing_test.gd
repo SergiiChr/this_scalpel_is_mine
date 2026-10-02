@@ -33,6 +33,8 @@ const PINCH_LIFT := 0.004
 const TAKE_LIFT := 0.03
 ## How far from the cut (site uv) the gap is measured: severed springs lie up to half a grid cell off it.
 const GAP_RADIUS := 0.03
+## Most the simulated skin may lie off the body model where one takes over from the other (meters): more shows a step.
+const SEAM_MAX := 0.0003
 ## The cameras: straight down from this far over the middle of the cut, and as far off at 45° from across the table.
 ## Far enough that the scalpel's handle doesn't fill the view, with a narrow lens for a close-up of the cut.
 const CAMERA_DISTANCE := 0.22
@@ -151,6 +153,8 @@ func _run(case: Dictionary) -> void:
 		await _shots_of(case.id, "07_moved_high")
 	_hand.lowered = false
 	_hand.trigger = false
+	var seam := _seam()
+	_check(seam < SEAM_MAX, "the simulated skin meets the body model without a step (%.2f mm off at its edge)" % (seam * 1000.0))
 	_report_frames(case.id)
 	_surgery.queue_free()
 	await _frames(3)
@@ -219,6 +223,8 @@ func _run_graft(case: Dictionary) -> void:
 	var under := "fat" if case.fat else "muscle"
 	_check(body.layer_at(_center_uv) == under, "the wound shows the %s under the skin (%s)" % [under, body.layer_at(_center_uv)])
 	_check(_tears() == 0 and patient.flags.has("graft_taken"), "no tears around the wound")
+	var seam := _seam()
+	_check(seam < SEAM_MAX, "the simulated skin meets the body model without a step (%.2f mm off at its edge)" % (seam * 1000.0))
 	await _shots_of(id, "04_wound")
 	left.trigger = false
 	_report_frames(id)
@@ -503,6 +509,34 @@ func _zipper() -> bool:
 	for g in gaps:
 		widest = maxf(widest, g)
 	return widest > TissueSim.OPEN_GAP * 500.0 and gaps[0] < widest * 0.7 and gaps[-1] < widest * 0.7
+
+
+## How far the simulated skin lies off the body model (meters) along the edge of the region, where it hands over to
+## the model: its grid points next to one the model draws, straight down the site's normal onto the model. Breathing
+## lifts the site and the trunk together, but not the body's colliders: that lift is added back.
+func _seam() -> float:
+	var body := _surgery.patient.body
+	var sim := _tissue()
+	var region := sim.region()
+	var up := body.site.global_basis.y.normalized()
+	var lift := body.site.position.y - float(Db.patient_sites[body.site_id].pos[1])
+	var worst := 0.0
+	for k in region.size():
+		if region[k] == 0 or sim.off[k] == 1 or sim.excised[k] == 1:
+			continue
+		var at := sim.cell_of(k)
+		var edge := false
+		for step: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var n := (at + step).clamp(Vector2i.ZERO, Vector2i(sim.res_x, sim.res_y))
+			edge = edge or region[sim.index(n.x, n.y)] == 0
+		if not edge:
+			continue
+		var skin := body.site.to_global(body.layer_point(0, k))
+		var query := PhysicsRayQueryParameters3D.create(skin + up * 0.05, skin - up * 0.05, PatientBody.SURFACE_LAYER)
+		var hit := body.get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty():
+			worst = maxf(worst, absf(body.site.to_local(hit.position).y + lift - body.layer_point(0, k).y))
+	return worst
 
 
 ## There's a bone (or organs) right under the muscle along these points.

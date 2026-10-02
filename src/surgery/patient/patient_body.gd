@@ -121,6 +121,16 @@ var _skin_of := PackedVector3Array()
 var _point_of := PackedVector3Array()
 var _outward := PackedVector3Array()
 var _normal := PackedVector3Array()
+## Where each grid point's skin lies on the body model (site space), and how far the model's own smooth normal there is
+## from the normal the grid's shape gives it. The layers are drawn from these, not from where the sim settled (tension
+## pulls the sheet a few millimeters off a round limb): resting skin lies exactly on the model and shades like it, so
+## the simulated skin shows no step or seam where it takes over from the model.
+var _on_model := PackedVector3Array()
+var _normal_fit := PackedVector3Array()
+## How far the model lies above where the sim settled, per grid point: what the sim's skin height is drawn off by.
+var _fit_height := PackedFloat32Array()
+## The body model's skin mesh, whose space the site skin lays out its pores and grime in.
+var _skin_model: Node3D
 var _organ_last: Array[Vector3] = []
 var _jiggle: Array[Vector2] = []
 ## Organ index -> site-local point a tool is holding it at (host only).
@@ -152,11 +162,13 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	for mat in _body_materials:
 		Materials.set_site_maps(mat, wound_map.textures[0], wound_map.textures[1])
 	var model := ModelSlot.instantiate("patient", "body", _body_root, {"skin": skin, "gown": gown})
+	_skin_model = model.find_child("Body", true, false) as Node3D
 	add_child(animator)
 	animator.setup(self, model)
 	_build_colliders()
 	_build_surface(model)
 	_build_site(tone)
+	_fit_to_model(model)
 	_build_veins(model)
 	blood.name = "BloodFlow"
 	add_child(blood)
@@ -293,7 +305,7 @@ func skin_height(uv: Vector2) -> float:
 	if k < _region.size() and _region[k] == 1:
 		var height := tissue.skin_height(uv)
 		if not is_nan(height):
-			return height
+			return height + _bilinear(_fit_height, Vector2i(tissue.res_x + 1, tissue.res_y + 1), uv)
 	return surface_height(uv)
 
 
@@ -302,12 +314,17 @@ func surface_height(uv: Vector2) -> float:
 	var grid := int(Db.site_heights.get("grid", 0))
 	if _heights.size() != grid * grid or grid < 2:
 		return 0.0
-	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * (grid - 1)
-	var x0 := mini(int(p.x), grid - 2)
-	var y0 := mini(int(p.y), grid - 2)
+	return _bilinear(_heights, Vector2i(grid, grid), uv)
+
+
+## A value at uv, between the points of a grid of `size` values spanning the site, row by row.
+static func _bilinear(values: PackedFloat32Array, size: Vector2i, uv: Vector2) -> float:
+	var p := uv.clamp(Vector2.ZERO, Vector2.ONE) * Vector2(size - Vector2i.ONE)
+	var x0 := mini(int(p.x), size.x - 2)
+	var y0 := mini(int(p.y), size.y - 2)
 	var f := p - Vector2(x0, y0)
-	var top := lerpf(_heights[y0 * grid + x0], _heights[y0 * grid + x0 + 1], f.x)
-	var bottom := lerpf(_heights[(y0 + 1) * grid + x0], _heights[(y0 + 1) * grid + x0 + 1], f.x)
+	var top := lerpf(values[y0 * size.x + x0], values[y0 * size.x + x0 + 1], f.x)
+	var bottom := lerpf(values[(y0 + 1) * size.x + x0], values[(y0 + 1) * size.x + x0 + 1], f.x)
 	return lerpf(top, bottom, f.y)
 
 
@@ -581,6 +598,55 @@ func _build_site(tone: Color) -> void:
 	_update_carve.call_deferred()
 
 
+## Lays every tissue grid point onto the body model (see _on_model): straight down the site's normal onto the skin or
+## gown under where the sim settled it, like the baked heights (from 15 cm out), with the model's smooth normal there.
+## Points the ray misses keep where they settled.
+func _fit_to_model(model: Node3D) -> void:
+	var faces := PackedVector3Array()
+	var normals := PackedVector3Array()
+	for part_name in ["Body", "Gown"]:
+		var mesh := model.find_child(part_name, true, false) as MeshInstance3D
+		if mesh == null:
+			continue
+		var to_site := site.global_transform.affine_inverse() * mesh.global_transform
+		for s in mesh.mesh.get_surface_count():
+			var arrays := mesh.mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var vertex_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+			for i: int in arrays[Mesh.ARRAY_INDEX]:
+				faces.append(to_site * verts[i])
+				normals.append((to_site.basis * vertex_normals[i]).normalized())
+	var surface := TriangleMesh.new()
+	surface.create_from_faces(faces)
+	var count := tissue.rest.size()
+	_on_model = tissue.settled.duplicate()
+	var model_normals := PackedVector3Array()
+	model_normals.resize(count)
+	for k in count:
+		var p := tissue.settled[k]
+		var hit := surface.intersect_ray(Vector3(p.x, 0.15, p.z), Vector3.DOWN)
+		if hit.is_empty():
+			continue
+		var at: Vector3 = hit.position
+		var f: int = hit.face_index * 3
+		var w := Geometry3D.get_triangle_barycentric_coords(at, faces[f], faces[f + 1], faces[f + 2])
+		_on_model[k] = at
+		model_normals[k] = (normals[f] * w.x + normals[f + 1] * w.y + normals[f + 2] * w.z).normalized()
+	_normal_fit.resize(count)
+	_fit_height.resize(count)
+	for k in count:
+		_normal_fit[k] = model_normals[k] - _grid_normal(_on_model, k) if model_normals[k] != Vector3.ZERO else Vector3.ZERO
+		_fit_height[k] = _on_model[k].y - tissue.settled[k].y
+
+
+## The normal of the grid's surface at point k, from where its neighbours lie in `points`.
+func _grid_normal(points: PackedVector3Array, k: int) -> Vector3:
+	var at := tissue.cell_of(k)
+	var dx := points[tissue.index(mini(at.x + 1, tissue.res_x), at.y)] - points[tissue.index(maxi(at.x - 1, 0), at.y)]
+	var dz := points[tissue.index(at.x, mini(at.y + 1, tissue.res_y))] - points[tissue.index(at.x, maxi(at.y - 1, 0))]
+	return dz.cross(dx).normalized()
+
+
 ## Rebuilds the skin, fat and muscle meshes from the tissue sim, only where the simulated skin replaces the body
 ## (the region). Deeper layers sit lower and follow the skin less.
 ## A layer cut through is split exactly where the blade crossed each spring (TissueSim.c_cross), not along the grid:
@@ -812,26 +878,21 @@ func _plan_cross(plan: LayerPlan, s: int, k: int, crossed: PackedInt32Array) -> 
 ## drawing it under the skin, through the drape.
 func _place_particles() -> void:
 	for k in _around:
-		var moved := tissue.pos[k] - tissue.rest[k]
-		_skin_of[k] = tissue.rest[k] + moved * lerpf(LAYER_FOLLOW[0], 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0))
+		_skin_of[k] = layer_point(0, k)
 	for k in _planned:
-		var at := tissue.cell_of(k)
-		var dx := _skin_of[tissue.index(mini(at.x + 1, tissue.res_x), at.y)] - _skin_of[tissue.index(maxi(at.x - 1, 0), at.y)]
-		var dz := _skin_of[tissue.index(at.x, mini(at.y + 1, tissue.res_y))] - _skin_of[tissue.index(at.x, maxi(at.y - 1, 0))]
-		var normal := dz.cross(dx).normalized()
+		var moved := clampf((tissue.pos[k] - tissue.settled[k]).length() / FLAP_MOVE, 0.0, 1.0)
+		# The model's own normal where the skin rests, turning with the skin as it moves (a flap keeps its own).
+		var normal := (_grid_normal(_skin_of, k) + _normal_fit[k] * (1.0 - moved)).normalized()
 		_normal[k] = normal
-		var moved := clampf((tissue.pos[k] - tissue.rest[k]).length() / FLAP_MOVE, 0.0, 1.0)
 		_outward[k] = Vector3.UP.lerp(normal, moved).normalized()
 
 
 ## One layer's sheet and the walls of its cuts, where the skin is now: [sheet arrays, "sheet", wall arrays, "walls"].
 func _fill_layer(layer: int, plan: LayerPlan) -> Array:
-	var depth: float = [-0.0008, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer]
+	var depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer]
 	var thickness: float = [SKIN_THICKNESS, fat_thickness, MUSCLE_THICKNESS][layer]
-	var follow := LAYER_FOLLOW[layer]
 	for k in _planned:
-		var moved := tissue.pos[k] - tissue.rest[k]
-		_point_of[k] = tissue.rest[k] + moved * lerpf(follow, 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0)) - _outward[k] * depth
+		_point_of[k] = layer_point(layer, k) - _outward[k] * depth
 	var owner := plan.owner
 	var other := plan.other
 	var share := plan.share
@@ -844,10 +905,10 @@ func _fill_layer(layer: int, plan: LayerPlan) -> Array:
 		var k := owner[v]
 		var p := _point_of[k]
 		if other[v] >= 0:
-			var offset := tissue.rest[other[v]] - tissue.rest[k]
+			var offset := _on_model[other[v]] - _on_model[k]
 			if slide[v] >= 0:
 				var m := slide[v]
-				offset += (_point_of[m] - tissue.rest[m]) - (p - tissue.rest[k])
+				offset += (_point_of[m] - _on_model[m]) - (p - _on_model[k])
 			p += offset * share[v]
 		verts[v] = p
 		norms[v] = _normal[k]
@@ -890,11 +951,12 @@ static func _arrays(verts: PackedVector3Array, normals: PackedVector3Array, uvs:
 	return arrays
 
 
-## Where a layer's grid point k is now, before it's moved down to its depth. Deeper layers are tethered and follow
-## the skin only partly (a stepped wound edge), but a flap pulled far back takes all of its layers along.
+## Where a layer's grid point k is now, before it's moved down to its depth: on the body model where the skin rests,
+## moved as far as the sim moved it since it settled. Deeper layers are tethered and follow the skin only partly
+## (a stepped wound edge), but a flap pulled far back takes all of its layers along.
 func layer_point(layer: int, k: int) -> Vector3:
-	var moved := tissue.pos[k] - tissue.rest[k]
-	return tissue.rest[k] + moved * lerpf(LAYER_FOLLOW[layer], 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0))
+	var moved := tissue.pos[k] - tissue.settled[k]
+	return _on_model[k] + moved * lerpf(LAYER_FOLLOW[layer], 1.0, clampf(moved.length() / FLAP_MOVE, 0.0, 1.0))
 
 
 ## True when the region changed.
@@ -1276,6 +1338,7 @@ func set_cavity_blood(level: float) -> void:
 func _update_carve() -> void:
 	for mat in _body_materials:
 		Materials.set_carve(mat, site.global_transform, site_size * 0.5, cavity_depth() + 0.02, region_texture)
+	skin_material.set_shader_parameter("site_to_model", Projection(_skin_model.global_transform.affine_inverse() * site.global_transform))
 	Materials.set_reveal(_cavity_material, site.global_transform, site_size * 0.5, region_texture)
 
 

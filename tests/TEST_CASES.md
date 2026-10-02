@@ -171,6 +171,7 @@ clock: its speed check and the frame rate only mean something headless. `run_tes
 | C9 | Skin graft, every case (`--case=arm_graft\|thigh_graft\|belly_graft`): a 3 cm circle cut at low, the blade rolled to follow it; halfway round the skin inside is still joined, closed it's a free piece, cut through the skin only, no tears |
 | C10 | Skin graft: forceps in the other hand pinch the piece and lift it 4 mm, still in place; lifted higher it comes off whole and the forceps hold it as a one-use skin graft |
 | C11 | Skin graft: the wound shows the fat (thigh, belly) or the muscle (arm) under the skin, with no tears around it, at 60 fps |
+| C12 | Every case and skin graft: along the edge of the simulated skin, where the body model takes over, the skin lies on the model (under 0.3 mm off), so no step shows |
 
 ## Visual checks (not automated)
 

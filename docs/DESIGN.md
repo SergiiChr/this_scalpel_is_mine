@@ -83,6 +83,11 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     a deeper one the muscle, a full depth cut the bone or organs under it. The meshes rebuild on the frame after the
     sim steps, so the two costs don't land on one frame. Which triangles there are and how they split is planned only
     when the cuts or the region change; while the skin just moves, only the vertices move.
+  - The layers are drawn on the body model, not where the sim settled (tension pulls the sheet a few millimeters off a
+    round limb, centimeters off the belly's flanks): each grid point is laid onto the model once, with the model's own
+    smooth normal there, and drawn as far from it as the sim moved it since. Pores and grime are laid out in the
+    model's space, like the body's. The skin is moved 1 mm toward the camera along the view ray, so it wins over the
+    model where they overlap without a visible step.
   - Fat is per site (`fat` in `patient_sites.json`, 12 mm when a site doesn't say): none on the forearm, where a cut
     deeper than the skin goes into the muscle.
   - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index. A spring snaps

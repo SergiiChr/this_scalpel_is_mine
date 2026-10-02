@@ -14,6 +14,13 @@ uniform float pallor = 0.0;
 // Set from Materials.FAMILIES.skin, like the body's skin (toon.gdshader).
 uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+// Site space to the body model's own space: pores and grime are laid out where the body's are (toon.gdshader uses the
+// model's space), so they run on unbroken where this skin takes over from the body.
+uniform mat4 site_to_model;
+// This skin lies right on the body model. Where the two overlap (at the edge of the region) it's moved this far
+// (meters) toward the camera, along the view ray: it wins the depth test without being lifted off the body, so no
+// step shows at its edge from any angle. The shadow passes see it moved the same way, so it doesn't shadow itself.
+const float DEPTH_BIAS = 0.001;
 
 varying vec3 world_pos;
 varying vec3 local_pos;
@@ -33,11 +40,13 @@ float noise(vec2 p) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	local_pos = VERTEX;
+	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz;
 	vec4 w = textureLod(wound_map, UV, 0.0);
 	// Bruises and burns swell, blood stands on top. Cuts don't sink: here the mesh itself is split along them.
 	VERTEX.y += w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;
 	VERTEX.y += blood_thickness(textureLod(fluid_map, UV, 0.0).r);
+	vec3 camera = (inverse(MODEL_MATRIX) * vec4(MAIN_CAM_INV_VIEW_MATRIX[3].xyz, 1.0)).xyz;
+	VERTEX += normalize(camera - VERTEX) * DEPTH_BIAS;
 }
 
 void fragment() {
@@ -50,7 +59,7 @@ void fragment() {
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
 	NORMAL = blood_normal(NORMAL, VERTEX, (noise(local_pos.xz * 900.0 + local_pos.y * 300.0) + noise(local_pos.xy * 700.0) - 1.0) * 0.00004);
-	float n = noise(world_pos.xz * 14.0) * 0.6 + noise(world_pos.xy * 6.3 + 7.0) * 0.4;
+	float n = noise(local_pos.xz * 14.0) * 0.6 + noise(local_pos.xy * 6.3 + 7.0) * 0.4;
 	vec3 c = mix(skin_color.rgb, skin_color.rgb * vec3(0.25, 0.22, 0.15) * 1.6, grime * smoothstep(0.35, 0.9, n));
 	c = mix(c, vec3(0.78, 0.8, 0.8), pallor * 0.5);
 	float wet = apply_wounds(c, w, f);
