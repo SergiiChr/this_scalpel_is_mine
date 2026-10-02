@@ -241,6 +241,9 @@ func _effect_checks(surgery: Surgery) -> void:
 		await _frames(30)
 		if me.hands[1].blood <= 0.0:
 			print("FAIL: a bloody tool didn't bloody the glove holding it")
+		# With every quirk on, a sweaty glove or a cough can make it slip meanwhile: then it's picked up again.
+		if me.held_tool(1) != tool:
+			surgery.tools._req_grab(tool.uid, 1)
 		surgery.tools._req_wash(1)
 		if tool.blood > 0.0:
 			print("FAIL: washing didn't take the blood off")
