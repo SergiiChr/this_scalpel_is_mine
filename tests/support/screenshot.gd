@@ -7,6 +7,8 @@ extends Node
 ## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
 ## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*), then a sedated and a
 ## knocked out surgeon (43_* to 46_*, --only=sedation). --only=<case> renders one.
+## --stitching renders pre-cut forearm, thigh and abdomen patients before stitching, after the first and second
+## needle clicks, and after the requested 4/6/10-span running suture. It also covers deep abdominal fat and muscle.
 ## Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
@@ -30,6 +32,9 @@ func _ready() -> void:
 		return
 	if OS.get_cmdline_user_args().has("--syringe"):
 		await _syringe(out, only)
+		return
+	if OS.get_cmdline_user_args().has("--stitching"):
+		await _stitching(out, only)
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
@@ -193,6 +198,84 @@ func _ready() -> void:
 	await _shot(out, "05_manual")
 	surgery.hud.open_card()
 	await _shot(out, "06_card")
+	get_tree().quit()
+
+
+## --stitching: deterministic visual verification of the click-built running
+## thread on each requested body area, plus the deeper abdominal layers.
+func _stitching(out: String, only: String) -> void:
+	var cases: Array[Dictionary] = [
+		{"name": "hand_skin", "scenario": "hand_stitch", "layer": TissueSim.Depth.SKIN, "stitches": 4, "a": 0.30, "b": 0.72, "depth": 0.5, "existing": true},
+		{"name": "leg_skin", "scenario": "leg_extension", "layer": TissueSim.Depth.SKIN, "stitches": 6, "a": 0.24, "b": 0.76, "depth": 0.5},
+		{"name": "stomach_skin", "scenario": "appendectomy", "layer": TissueSim.Depth.SKIN, "stitches": 10, "a": 0.16, "b": 0.84, "depth": 0.5},
+		{"name": "stomach_fat", "scenario": "appendectomy", "layer": TissueSim.Depth.FAT, "stitches": 10, "a": 0.16, "b": 0.84, "depth": 0.6},
+		{"name": "stomach_muscle", "scenario": "appendectomy", "layer": TissueSim.Depth.MUSCLE, "stitches": 10, "a": 0.16, "b": 0.84, "depth": 1.0},
+	]
+	for case: Dictionary in cases:
+		if only and only != case.name:
+			continue
+		Net.leave()
+		Net.scenario_id = case.scenario
+		Net.session_seed = 42
+		Net.roster = {1: {"name": "Tester", "quirks": [{"id": "normal_dude", "variant": ""}], "ready": true}}
+		Net.patient_quirks = []
+		Net.run_modifiers = []
+		var surgery: Surgery = SURGERY.instantiate()
+		add_child(surgery)
+		await _frames(12)
+		var patient := surgery.patient
+		if not bool(case.get("existing", false)):
+			patient.cut(5000 + int(case.layer), Vector2(case.a, 0.5), Vector2(case.b, 0.5), case.depth, 1.0, false, 0.1)
+		await _frames(40)
+		var camera := Camera3D.new()
+		add_child(camera)
+		camera.fov = 30.0
+		if patient.body.drape:
+			patient.body.drape.visible = false
+		camera.global_position = patient.body.site.to_global(Vector3(0.0, 0.32, 0.0))
+		camera.look_at(patient.body.site.to_global(Vector3.ZERO), patient.body.site.global_basis.z)
+		camera.current = true
+		surgery.hud.visible = false
+		for hand in surgery.local_surgeon.hands:
+			hand.visible = false
+		await _shot(out, "50_%s_0_before" % case.name)
+		var thread_id := 8000 + int(case.layer)
+		var anchors := int(case.stitches) + 1
+		for i in anchors:
+			var u := lerpf(float(case.a), float(case.b), float(i) / float(anchors - 1))
+			var uv := Vector2(u, 0.44 if i % 2 == 0 else 0.56)
+			patient.place_suture_anchor(thread_id, uv, int(case.layer), 1.15)
+			await _frames(4)
+			if i == 0:
+				await _shot(out, "50_%s_1_first_click" % case.name)
+			elif i == 1:
+				await _shot(out, "50_%s_2_second_click" % case.name)
+		var final_tension: float = {TissueSim.Depth.SKIN: 1.08, TissueSim.Depth.FAT: 0.98, TissueSim.Depth.MUSCLE: 0.86}[int(case.layer)]
+		patient.set_suture_tension(thread_id, final_tension)
+		patient.finish_suture(thread_id)
+		await _frames(40)
+		if int(case.layer) == TissueSim.Depth.SKIN:
+			var split_edges := 0
+			for s: int in patient.body.tissue.severed():
+				if patient.body.tissue.cut_depth(s) >= TissueSim.Depth.SKIN:
+					split_edges += 1
+			var wall_entries := 0
+			for plan in patient.body._plans:
+				wall_entries += plan.wall.size()
+			var broad_cut := patient.body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, Vector2(0.5, 0.51))
+			var seam_blood := patient.body.wound_map.value(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, Vector2(0.5, 0.5))
+			if split_edges != 0 or wall_entries != 0 or broad_cut > 0.16 or seam_blood > 0.12:
+				print("FAIL: %s final has %d split edges, %d wall entries, broad cut %.3f, seam blood %.3f" % [case.name, split_edges, wall_entries, broad_cut, seam_blood])
+		await _shot(out, "50_%s_3_%d_stitches" % [case.name, case.stitches])
+		if int(case.layer) == TissueSim.Depth.SKIN:
+			# The overhead checkpoint proves the gap is closed; this shallow angle
+			# makes the tension-raised contact lip and puncture dimples readable.
+			camera.global_position = patient.body.site.to_global(Vector3(0.0, 0.20, 0.18))
+			camera.look_at(patient.body.site.to_global(Vector3.ZERO), patient.body.site.global_basis.z)
+			await _shot(out, "50_%s_4_tension_lip" % case.name)
+		camera.queue_free()
+		surgery.queue_free()
+		await _frames(8)
 	get_tree().quit()
 
 
