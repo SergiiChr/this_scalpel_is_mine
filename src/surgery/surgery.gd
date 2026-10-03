@@ -291,7 +291,7 @@ func overstretched(peer: int, hand: int) -> void:
 	if tool == null or tool.grip_info.is_empty():
 		return
 	if tool.def.action == "spread":
-		# A retractor holds the wound open by itself: walking away just leaves it set in it.
+		# A spreader holds the wound open by itself: walking away just leaves it set in it.
 		tools.leave_standing(tool)
 		tell(peer, "You let go of the %s. It stays in the wound." % tool.def.name.to_lower())
 		return

@@ -13,7 +13,7 @@ var fill := 0.0:
 	set(value):
 		fill = value
 		_pose("Plunger", Basis.IDENTITY, Vector3(0, 0, _plunger_travel * fill))
-## A retractor's jaws stand at this angle (radians), set by its wheel rather than squeezed, NAN for other jaws.
+## A spreader's jaws stand at this angle (radians), set by its wheel rather than squeezed, NAN for other jaws.
 var opening := NAN
 var _parts: Dictionary = {}
 var _rest: Dictionary = {}
@@ -33,7 +33,7 @@ func setup(model: Node3D) -> void:
 	_animate_parts(false, false)
 
 
-## Stands a retractor's jaws open so the tips of its rakes, at `tip_z` along the tool, are `spread` meters apart.
+## Stands a spreader's jaws open so its tips, at `tip_z` along the tool, are `spread` meters apart.
 ## Closed (ToolActions.SPREAD_RANGE.x) they rest as modelled; each jaw swings about its hinge, the model's part origin.
 func open_to(spread: float, tip_z: float) -> void:
 	var hinge: Transform3D = _rest.get("JawA", Transform3D())

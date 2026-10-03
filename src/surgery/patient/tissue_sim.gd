@@ -10,9 +10,9 @@ extends RefCounted
 ##   the deeper the cut: skin gapes, fat bulges apart, cut muscle retracts.
 ## - Each severed spring remembers where along it the blade crossed (c_cross), so the layers are drawn split exactly
 ##   along the blade's path, not along the grid (PatientBody._rebuild_layers()).
-## - Tools pin particles to their tip: forceps stretch the skin, a retractor's jaws hold a cut's edges apart.
-##   A grip drags a patch of skin around it along with falloff (a pinched fold, not a single point), so a pull spreads
-##   out and the skin stretches over a wide area instead of tearing right beside the tip.
+## - Tools pin particles to their tip: forceps and a retractor stretch the skin, a spreader's jaws hold a cut's
+##   edges apart. A grip drags a patch of skin around it along with falloff (a pinched fold, not a single point), so
+##   a pull spreads out and the skin stretches over a wide area instead of tearing right beside the tip.
 ## - Springs stretched past their limit snap (host only). The host turns that into a tear.
 ## - Sutures add new springs across a cut. Their rest length is the stitch tension. A cut only counts as closed
 ##   where its edges have actually come together: a loose stitch leaves a gap that stays open (and bleeds).
@@ -167,11 +167,9 @@ var topology_version := 0
 ## Counts simulation steps, so meshes only rebuild when something moved.
 var steps_done := 0
 
-## key -> [particle, target, half]. half limits what the grip drags along to one side of a line (see grip_beside()):
-## (x, y) a point on it and (z, w) the side, both in uv. Vector4.ZERO for no limit.
+## key -> [particle, target]
 var _pins: Dictionary = {}
-## [particle, half] -> [particles, weights, held particles] it drags along when gripped, for the topology it was
-## worked out for.
+## Particle -> [particles, weights, held particles] it drags along when gripped, for the topology it was worked out for.
 var _patches: Dictionary = {}
 var _patch_version := -1
 ## Spring indices touching each particle.
@@ -584,15 +582,14 @@ func excise(k: int) -> int:
 
 ## Pins the particle nearest uv to follow a tool. Returns false if there is no tissue there.
 func grip(key: int, uv: Vector2) -> bool:
-	_pins[key] = [nearest(uv), pos[nearest(uv)], Vector4.ZERO]
+	_pins[key] = [nearest(uv), pos[nearest(uv)]]
 	_win_dirty = true
 	wake()
 	return true
 
 
-## Pins the particle nearest uv that lies on `side` (a uv direction) of `middle` now, like grip(). A retractor's jaw
-## set right over a cut takes hold of its own edge this way, not the one across the gap, and drags only skin on its
-## side along: a patch reaching round the cut's ends would pull the other edge back against the other jaw.
+## Pins the particle nearest uv that lies on `side` (a uv direction) of `middle` now, like grip(). A spreader's jaw
+## set right over a cut takes hold of its own edge this way, not the one across the gap.
 ## Returns the pinned particle, -1 if there is no skin there.
 func grip_beside(key: int, uv: Vector2, middle: Vector2, side: Vector2) -> int:
 	var best := -1
@@ -607,7 +604,7 @@ func grip_beside(key: int, uv: Vector2, middle: Vector2, side: Vector2) -> int:
 			best = k
 			best_distance = now.distance_to(uv)
 	if best >= 0:
-		_pins[key] = [best, pos[best], Vector4(middle.x, middle.y, side.x, side.y)]
+		_pins[key] = [best, pos[best]]
 		_win_dirty = true
 		wake()
 	return best
@@ -628,15 +625,15 @@ func release(key: int) -> void:
 
 
 func grips() -> Array:
-	return _pins.keys().map(func(key: int) -> Array: return [key, _pins[key][0], _pins[key][1], _pins[key][2]])
+	return _pins.keys().map(func(key: int) -> Array: return [key, _pins[key][0], _pins[key][1]])
 
 
-## Clients mirror the host's grips: [[key, particle, target, half], ...].
+## Clients mirror the host's grips: [[key, particle, target], ...].
 func set_grips(list: Array) -> void:
 	var before := _pins.duplicate(true)
 	_pins.clear()
 	for entry: Array in list:
-		_pins[entry[0]] = [entry[1], entry[2], entry[3]]
+		_pins[entry[0]] = [entry[1], entry[2]]
 	if _pins.keys() != before.keys():
 		_win_dirty = true
 	if _pins != before:
@@ -1005,13 +1002,13 @@ func _substep() -> void:
 			var pin: Array = _pins[key]
 			pos[pin[0]] = pin[1]
 			var pull: Vector3 = pin[1] - anchor_target[pin[0]]
-			_hold(pin[0], pin[2])
+			_hold(pin[0])
 			# The patch is dragged along by translating it, which only looks right for a modest pull. A flap swung
 			# far back is left to the springs, or the translated patch would fight the way it turns.
 			var drag := GRIP_DRAG * clampf(2.0 - pull.length() / DRAG_REACH, 0.0, 1.0)
 			if drag <= 0.0:
 				continue
-			var patch := _patch(pin[0], pin[2])
+			var patch := _patch(pin[0])
 			var around: PackedInt32Array = patch[0]
 			var weights: PackedFloat32Array = patch[1]
 			for n in around.size():
@@ -1144,10 +1141,10 @@ static func _inside(rect: Rect2i, at: Vector2i) -> bool:
 
 ## The skin around a grip's jaws keeps its distance to the gripped particle, as stiff as thread: it turns with a flap
 ## folded back, but the pull is shared by the ring of springs around it instead of one spring at the jaws.
-func _hold(k: int, half: Vector4) -> void:
+func _hold(k: int) -> void:
 	var p := pos[k]
 	for pass_index in STITCH_PASSES:
-		for j in _patch(k, half)[2]:
+		for j in _patch(k)[2]:
 			if _free[j] == 0.0:
 				continue
 			var d := pos[j] - p
@@ -1308,18 +1305,15 @@ func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION,
 	return s
 
 
-## The skin a grip on particle k drags along: particles within GRIP_PATCH reached without crossing a cut,
-## weighted falling off in a straight line from the edge of the skin the grip holds (GRIP_HOLD) to 0 at the edge of
+## The skin a grip on particle k drags along: particles within GRIP_PATCH reached without crossing a cut and not across
+## one from it in a straight line, weighted falling off in a straight line from the edge of the skin the grip holds (GRIP_HOLD) to 0 at the edge of
 ## the patch.
-func _patch(k: int, half: Vector4 = Vector4.ZERO) -> Array:
+func _patch(k: int) -> Array:
 	if _patch_version != topology_version:
 		_patches.clear()
 		_patch_version = topology_version
-	var cached := [k, half]
-	if _patches.has(cached):
-		return _patches[cached]
-	var line := Vector2(half.x, half.y)
-	var side := Vector2(half.z, half.w)
+	if _patches.has(k):
+		return _patches[k]
 	_index_springs()
 	var around := PackedInt32Array()
 	var weights := PackedFloat32Array()
@@ -1334,17 +1328,29 @@ func _patch(k: int, half: Vector4 = Vector4.ZERO) -> Array:
 				continue
 			var other := c_b[s] if c_a[s] == at else c_a[s]
 			var dist := uv_of(other).distance_to(uv_of(k))
-			if seen.has(other) or dist >= GRIP_PATCH or side != Vector2.ZERO and (uv_of(other) - line).dot(side) <= 0.0:
+			if seen.has(other) or dist >= GRIP_PATCH:
 				continue
 			seen[other] = true
 			queue.append(other)
+			# Reached round a cut's end, skin across the cut from the grip is its other edge: dragged along, that edge
+			# would go the same way and the cut wouldn't open. Skin past it, in line of sight again, is still reached.
+			if _across_cut(uv_of(k), uv_of(other)):
+				continue
 			around.append(other)
 			var meters := rest[other].distance_to(rest[k])
 			weights.append(clampf(1.0 - (meters - GRIP_HOLD) / reach, 0.0, 1.0))
 			if meters < GRIP_HOLD and fixed[other] == 0:
 				held.append(other)
-	_patches[cached] = [around, weights, held]
-	return _patches[cached]
+	_patches[k] = [around, weights, held]
+	return _patches[k]
+
+
+## Whether the straight line from a to b (uv) crosses a cut.
+func _across_cut(a: Vector2, b: Vector2) -> bool:
+	for m in _cut_segments.size() / 2:
+		if _crossing(a, b, _cut_segments[m * 2], _cut_segments[m * 2 + 1]) >= 0.0:
+			return true
+	return false
 
 
 ## Fills in _springs_of, the springs at each particle, the first time it's needed. Stitches added later aren't in it.

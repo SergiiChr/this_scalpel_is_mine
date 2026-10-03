@@ -70,8 +70,8 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     9.5 mm): a whole belly folded open moves every particle at once, and that has to fit a frame. Only an active
     window is simulated: around cuts, grips and skin that moved, plus a margin of still skin. It only grows while the
     skin moves and is picked afresh once it sleeps.
-    Cutting severs springs, so an incision gapes on its own; forceps pin particles and stretch it further, a retractor's
-    two jaws each pin the edge on their side and move them apart (`TissueSim.grip_beside()`).
+    Cutting severs springs, so an incision gapes on its own; forceps and the retractor pin particles and stretch it
+    further, the Gelpi retractor's two jaws each pin the edge on their side and move them apart (`TissueSim.grip_beside()`).
   - Each severed spring remembers how deep the cut went (skin, fat or muscle), where the blade crossed it and which
     way the cut ran. The edges of a cut are drawn back square to it, more the deeper it goes: skin gapes a few
     millimeters, fat more, cut muscle retracts hard. The pull tapers off toward the cut's ends (where each stroke
@@ -109,8 +109,9 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`), not the body's rest shape, so a
     lifted fold is where it's drawn. Over the site a hand rests on that skin, not on the gown's or the site's colliders.
   - A grip holds the skin within 10 mm of its jaws at its distance (it can still turn with a flap folded back) and
-    drags a patch around it along (never across a cut, and for a retractor's jaw not round the cut's ends to the other
-    edge), so pulls spread and the skin stretches visibly over several centimeters before it tears. Everything that moved is shown simulated. Grips held still let the sim sleep.
+    drags a patch around it along (never across a cut, not even round its ends: that's the other edge, which would
+    go along and the cut wouldn't open), so pulls spread and the skin stretches visibly over several centimeters
+    before it tears. Everything that moved is shown simulated. Grips held still let the sim sleep.
   - A cut's edge lifted off the body (a flap folded back) isn't drawn back from the cut any more.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
     `Patient.close_muscle_at()`, a needle's thread started on the muscle), through a stab or bullet hole too small to
@@ -195,7 +196,7 @@ Surgeon effect keys:
 | items | personal tool ids spawned on the belt |
 | manual_highlight | manual pages matching the patient are marked with a pointing hand |
 | heavy_tools_blocked | small hands can't use heavy tools |
-| grip_strength_mult | clamp pull strength |
+| grip_strength_mult | clamp and retractor pull strength |
 | bad_breath | sickness per second given to a partner closer than 0.9 m |
 | cough_chance | coughs per second (jolts own hand) |
 | stress_mult | stress build-up multiplier |
@@ -323,9 +324,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture). And
-  the retractor: up opens it, down closes it (see Self-retaining retractor).
-- **Contextual aim**: a dot for point tools, a line along a blade's edge for blades, a < and a > at a retractor's tips. The edge is where the blade plane
-  meets the skin, so rolling the tool (C/V) or turning it (MMB) turns it. A blade only cuts moving along its edge; sideways it drags.
+  the Gelpi retractor: up opens it, down closes it (see Gelpi retractor).
+- **Contextual aim**: a dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
+  retractor's tips. The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
+  turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
 ### Starter kit and ordering
@@ -400,15 +402,16 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   adrenaline (`stimulant`) gets them up only while it lasts, and if enough diazepam is still working they go down
   again. On the patient, flumazenil reverses diazepam too.
 
-### Self-retaining retractor
+### Gelpi retractor
 
-- A Weitlaner style spreader (`action="spread"`): ring handles, a box joint and two arms ending in rakes. The aim shows
+- A self-retaining spreader (`action="spread"`), beside the plain retractor that pulls one edge like forceps: ring
+  handles with a ratchet, a box joint and two long arms, each ending in a point turned outward. The aim shows
   a < and a > where its tips are, square to its length (`ToolActions.spread_tips()`); C/V roll it to turn them across
   a cut. The wheel opens and closes it, in the hand or set, from 1.2 to 8 cm between the tips (`ToolActions.SPREAD_RANGE`);
   the arms swing about the joint to match (`ToolAnimator.open_to()`), the handles stay in the fingers.
 - Use tool on the skin sets it: each jaw takes hold of the skin on its own side of the middle, so set right over a cut
-  each holds one edge (`Patient.set_retractor()`). Opened or closed, each edge moves half the change
-  (`Patient.spread_retractor()`), and the cut opens like the skin lets it: opened too far it tears at the ends.
+  each holds one edge (`Patient.set_spreader()`). Opened or closed, each edge moves half the change
+  (`Patient.open_spreader()`), and the cut opens like the skin lets it: opened too far it tears at the ends.
   Use tool again takes it out.
 - Set, it stays where it went in: the hand holding it goes to it and doesn't shake (`Surgeon._hold_in_wound()`).
   Put down, or walked away from, it stays set in the wound (self-retaining). Picked up again, the wheel works on it.

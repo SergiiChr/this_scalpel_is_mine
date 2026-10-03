@@ -74,7 +74,7 @@ var suture_hold := 0.0
 var suture_at := Vector2(-1, -1)
 var suture_press_used := false
 
-## A retractor's opening (meters between its tips, the wheel) and whether it's set in a wound, on every peer (see
+## A spreader's opening (meters between its tips, the wheel) and whether it's set in a wound, on every peer (see
 ## ToolManager.sync_spread()). Set in a wound it stays where it went in, held or not.
 var spread := ToolActions.SPREAD_RANGE.x:
 	set(value):

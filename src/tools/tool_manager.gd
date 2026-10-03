@@ -206,12 +206,12 @@ func sync_suture(tool: SurgicalTool) -> void:
 		_set_suture_state.rpc(tool.uid, tool.suture_tension, tool.suture_layer)
 
 
-## Retractor wheel: direction > 0 opens it, direction < 0 closes it.
+## Spreader wheel: direction > 0 opens it, direction < 0 closes it.
 func request_spread(hand: int, direction: int) -> void:
 	_req_spread.rpc_id(1, hand, direction)
 
 
-## Host: shows every peer how far the retractor is open and whether it's set in a wound.
+## Host: shows every peer how far the spreader is open and whether it's set in a wound.
 func sync_spread(tool: SurgicalTool) -> void:
 	if multiplayer.is_server():
 		_set_spread.rpc(tool.uid, tool.spread, not tool.grip_info.is_empty())
@@ -535,7 +535,7 @@ func _physics_process(delta: float) -> void:
 		var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
 		if surgeon == null:
 			continue
-		# A retractor set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
+		# A spreader set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
 		if tool.state == SurgicalTool.State.HELD and not tool.in_wound:
 			tool.global_transform = surgeon.hands[tool.slot].grip_transform()
 		elif tool.state == SurgicalTool.State.BELT:

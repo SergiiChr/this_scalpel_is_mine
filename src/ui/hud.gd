@@ -16,7 +16,7 @@ const LEVEL_STEPS: Dictionary = {
 }
 ## Length of the blade edge line drawn on the skin (m).
 const BLADE_LINE := 0.04
-## Size (pixels) of the < and > marking a retractor's tips.
+## Size (pixels) of the < and > marking a spreader's tips.
 const JAW_MARK := 9.0
 const AIM_COLOR := Color(1.0, 1.0, 0.9)
 const AIM_WORKING := Color(1.0, 0.42, 0.35)
@@ -28,7 +28,7 @@ var _hands: Label
 var _belt: HBoxContainer
 var _prompt: Label
 var _net_warning: Label
-## Aim at the active tool tip: a dot, for blades a line along the edge where it will cut, for a retractor a < and a >
+## Aim at the active tool tip: a dot, for blades a line along the edge where it will cut, for a spreader a < and a >
 ## at its tips, moving apart as it opens. Beside it, the name of the tool the hand would pick up.
 var _dot: Panel
 var _blade: Line2D
@@ -497,7 +497,7 @@ func _update_dot(me: Surgeon) -> void:
 		var cutting := me.hands[me.active].lowered and me.hands[me.active].level > 0
 		_draw_aim(_blade, PackedVector2Array([camera.unproject_position(aim - edge), camera.unproject_position(aim + edge)]), cutting)
 	elif action == "spread":
-		_draw_jaws(camera, tool)
+		_draw_spreader(camera, tool)
 	_dot_label.text = me.hovered.label() if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
 	_levels.text = _level_text(me)
@@ -505,8 +505,8 @@ func _update_dot(me: Surgeon) -> void:
 	_levels.position = at + Vector2(14, 12)
 
 
-## A < at the retractor's tip toward -X and a > at the other, each pointing out from the middle: <> closed, < > open.
-func _draw_jaws(camera: Camera3D, tool: SurgicalTool) -> void:
+## A < at the spreader's tip toward -X and a > at the other, each pointing out from the middle: <> closed, < > open.
+func _draw_spreader(camera: Camera3D, tool: SurgicalTool) -> void:
 	var tips := ToolActions.spread_tips(tool)
 	var ends := [camera.unproject_position(tips[0]), camera.unproject_position(tips[1])]
 	var across: Vector2 = (ends[1] - ends[0]).normalized()

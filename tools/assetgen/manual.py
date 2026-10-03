@@ -475,18 +475,14 @@ def instruments() -> Sketch:
     sk.text(325, 105, "forceps", 22, anchor="middle")
     _hemostat(sk, 500, 62)
     sk.text(530, 115, "hemostat", 22, anchor="middle")
-    # Self-retaining retractor: ring handles at a box joint, two arms spread apart ending in rakes hooked outward.
-    for side in (-1, 1):
-        arm = [(130, 185 + side * 2), (95, 185 + side * 16), (62, 185 + side * 20), (62, 185 + side * 15), (95, 185 + side * 11), (130, 185 + side * 6)]
-        sk.shape(arm, 1.5)
-        for x in (64, 70, 76):
-            edge = 16 + (95 - x) / 33 * 4
-            sk.line([(x, 185 + side * edge), (x - 2, 185 + side * (edge + 7)), (x - 6, 185 + side * (edge + 9))], 1.3, passes=1)
-        sk.shape([(130, 185 + side * 2), (185, 185 + side * 8), (192, 185 + side * 12), (130, 185 + side * 6)], 1.4)
-        sk.ellipse(203, 185 + side * 16, 12, 9, 2.0, fill=PALE)
-        sk.ellipse(203, 185 + side * 16, 7, 4, 1.0)
-    sk.ellipse(130, 185, 6, 6, 1.6, fill=PALE)
-    sk.text(130, 236, "retractor", 22, anchor="middle")
+    # Retractor: hatched handle with a hooked blade.
+    handle = [(40, 165), (190, 163), (190, 177), (40, 179)]
+    sk.shape(handle, 1.7)
+    sk.hatch(handle, 60, 3.5)
+    blade = [(190, 163), (214, 163), (230, 206), (222, 214), (210, 212), (200, 177), (190, 177)]
+    sk.shape(blade, 1.7)
+    sk.hatch([(214, 163), (230, 206), (222, 214), (206, 177)], 20, 3.5)
+    sk.text(130, 225, "retractor", 22, anchor="middle")
     # Curved needle trailing its thread.
     arc = [(310 + 34 * math.cos(math.radians(d)), 185 - 34 * math.sin(math.radians(d))) for d in range(200, 10, -10)]
     sk.line(arc, 2.0)
@@ -515,7 +511,20 @@ def instruments() -> Sketch:
     sk.line([(110, top + 9), (360, top + 9)], 1.0, passes=1)
     teeth = [(110 + k * 6, bottom + (5 if k % 2 else 0)) for k in range(42)]
     sk.line(teeth, 1.0, passes=1, wobble=0.2)
-    sk.text(470, 305, "bone saw", 22, anchor="middle")
+    sk.text(425, 305, "bone saw", 22, anchor="middle")
+    # Gelpi retractor standing up: ring handles with the ratchet between them, arms bowing apart from the box joint,
+    # each ending in a point turned outward.
+    for side in (-1, 1):
+        sk.shape(
+            [(592 + side * 2, 300), (592 + side * 24, 276), (592 + side * 20, 256), (592 + side * 16, 256), (592 + side * 19, 276), (592 + side * 1, 296)], 1.4
+        )
+        sk.line([(592 + side * 18, 257), (592 + side * 25, 255), (592 + side * 27, 262)], 1.3, passes=1)
+        sk.shape([(592 + side * 2, 300), (592 + side * 9, 320), (592 + side * 12, 322), (592 + side * 6, 300)], 1.3)
+        sk.ellipse(592 + side * 13, 331, 8, 7, 1.8, fill=PALE)
+        sk.ellipse(592 + side * 13, 331, 4, 3, 0.9)
+    sk.line([(583, 318), (592, 313), (602, 315)], 1.2, passes=1)
+    sk.ellipse(592, 300, 4, 4, 1.4, fill=PALE)
+    sk.text(530, 300, "gelpi", 22, anchor="middle")
     return sk
 
 

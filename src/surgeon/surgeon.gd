@@ -388,7 +388,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			# As on a syringe, the wheel works the tool itself: down pulls the thread tight, up pays more out.
 			Surgery.current.tools.request_suture_tension(active, 1 if up else -1)
 		elif tool and tool.def.action == "spread":
-			# Up opens the retractor, down closes it, set in a wound or not.
+			# Up opens the spreader, down closes it, set in a wound or not.
 			Surgery.current.tools.request_spread(active, 1 if up else -1)
 		elif uses_level(active):
 			hand.level = clampi(hand.level + (1 if up else -1), 0, 3)
@@ -589,7 +589,7 @@ func _local_update(delta: float) -> void:
 		var tool := held_tool(i)
 		h.inspecting = can_act and i == active and tool != null and not h.attached and Input.is_action_pressed("inspect")
 		if tool and tool.def.action == "spread":
-			# Held upright, a retractor's jaws open flat across the skin whichever way it's rolled (C/V turn them).
+			# Held upright, a spreader's jaws open flat across the skin whichever way it's rolled (C/V turn them).
 			h.tilt = SurgeonHand.TILT_RANGE.x
 		if i == active and _needle_anchor != Vector3.INF and not h.inspecting:
 			# The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
@@ -650,7 +650,7 @@ func _hold_needle(delta: float) -> void:
 		_needle_anchor = Vector3.INF
 
 
-## A retractor set in a wound stays where it went in, steady, and the hand holding it goes to it, as far as the arm
+## A spreader set in a wound stays where it went in, steady, and the hand holding it goes to it, as far as the arm
 ## turns that way. Walked away from out of reach, the host leaves it standing in the wound (Surgery.overstretched()).
 func _hold_in_wound(hand: SurgeonHand, tool: SurgicalTool) -> void:
 	var angles := tool.global_basis.get_euler(EULER_ORDER_YXZ)
