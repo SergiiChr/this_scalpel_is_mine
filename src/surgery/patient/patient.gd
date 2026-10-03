@@ -786,8 +786,9 @@ func place_suture_anchor(thread_id: int, uv: Vector2, tension: float) -> bool:
 	var info := body.tissue.thread_info(thread_id)
 	if not info.is_empty() and bool(info.final):
 		return false
-	# Holes sit beside the incision, not on its line: enough reach for a practical bite on a thigh or a belly.
-	var wound := _nearest_wound(uv, 0.09, false)
+	# Holes sit beside the incision, not on its line: a bite reaches four grid cells (about 2.5 cm) from it. In grid
+	# cells, not uv: a narrow site like a forearm has few cells across, each wide in uv.
+	var wound := _nearest_wound(uv, 4.0 / mini(body.tissue.res_x, body.tissue.res_y), false)
 	if wound == null and info.is_empty():
 		return false
 	var layer: int = info.layer if not info.is_empty() else suture_layer_at(uv, wound)
