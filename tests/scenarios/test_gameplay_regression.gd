@@ -102,12 +102,13 @@ func _run(scenario: ScenarioDef, once: bool) -> void:
 func _new_mechanics(surgery: Surgery) -> void:
 	var patient := surgery.patient
 	_muscle_first_checks(patient)
-	var needle := Db.tool("needle")
-	for wound in patient.wounds:
+	var clips := Db.tool("paper_clips")
+	# Tight clips tear new wounds: only the ones there now.
+	for wound: Wound in patient.wounds.duplicate():
 		if not wound.is_internal() and wound.points.size() > 1:
 			for pressure in [1, 2, 3]:
 				for i in 30:
-					patient.close_at(wound.midpoint(), needle, 0.1, 1.0, pressure)
+					patient.close_at(wound.midpoint(), clips, 0.1, 1.0, pressure)
 	for organ in patient.body.organs:
 		organ.position += Vector3(0.05, 0.0, 0.0)
 	patient._handle_organs(6.0)
@@ -129,31 +130,32 @@ func _new_mechanics(surgery: Surgery) -> void:
 		surgery.hud.close_overlay()
 
 
-## A cut through the muscle: the skin won't close over it and a tight stitch tears, until the muscle is sewn.
+## A cut through the muscle: the skin won't close over it and tight clips tear, until the muscle is closed. (The
+## needle's running thread is tested with the needle, tests/tools/test_tool_needle.gd.)
 func _muscle_first_checks(patient: Patient) -> void:
-	var needle := Db.tool("needle")
+	var clips := Db.tool("paper_clips")
 	patient.cut(424242, Vector2(0.3, 0.2), Vector2(0.7, 0.2), 1.0, 1.0, false, 0.1)
 	var wound: Wound = patient._stroke_wounds[424242]
 	if not wound.through_muscle():
 		return
 	for bin in wound.bins.size():
 		for i in 20:
-			patient.close_at(wound.bin_position(bin), needle, 0.1, 1.0, 2)
+			patient.close_at(wound.bin_position(bin), clips, 0.1, 1.0, 2)
 	if wound.closure() > 0.0:
 		fail_test("the skin closed over open muscle (closure %.2f)" % wound.closure())
 	var tears: float = patient.flags.get("tears", 0.0)
 	for i in 20:
-		patient.close_at(wound.midpoint(), needle, 0.1, 1.0, 3)
+		patient.close_at(wound.midpoint(), clips, 0.1, 1.0, 3)
 	if patient.flags.get("tears", 0.0) <= tears:
-		fail_test("a tight stitch over open muscle didn't tear")
+		fail_test("tight clips over open muscle didn't tear")
 	for bin in wound.bins.size():
 		for i in 20:
-			patient.close_muscle_at(wound.bin_position(bin), needle, 0.1)
+			patient.close_muscle_at(wound.bin_position(bin), clips, 0.1)
 	if patient.body.tissue.muscle_open_near(wound.midpoint(), Patient.MUSCLE_REACH):
 		fail_test("sewing inside the wound didn't close the muscle")
 	for bin in wound.bins.size():
 		for i in 20:
-			patient.close_at(wound.bin_position(bin), needle, 0.1, 1.0, 2)
+			patient.close_at(wound.bin_position(bin), clips, 0.1, 1.0, 2)
 	if wound.closure() < 0.9:
 		fail_test("the skin didn't close over sewn muscle (closure %.2f)" % wound.closure())
 

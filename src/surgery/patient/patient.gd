@@ -20,9 +20,11 @@ const TOURNIQUET_SAFE := 300.0
 const CAVITY_FULL_ML := 350.0
 const CAVITY_SPILL_ML := 280.0
 ## Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.
-const TENSIONED_CLOSURES: PackedStringArray = ["needle", "paper_clips"]
+const TENSIONED_CLOSURES: PackedStringArray = ["paper_clips"]
 ## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
+## How much load a running thread's spans take before they snap, per layer it's sewn in (by TissueSim.Depth).
+const THREAD_STRENGTH: Array[float] = [0.0, 1.65, 1.85, 2.8]
 ## How far (uv) from a point of a wound its muscle counts as underneath it.
 const MUSCLE_REACH := 0.03
 ## Gap in meters that counts as a fully opened wound.
@@ -90,6 +92,10 @@ var _initial_suction: float = 1.0
 var _organ_strain: Dictionary = {}
 var _organ_damage: Dictionary = {}
 var _tear_notice_msec := -100000
+## Running sutures (host), thread id -> {"before": wound id -> {"skin" and "muscle": bin -> the wound's closure there
+## before the thread held it}}.
+var _sutures: Dictionary = {}
+var _next_suture := 0
 
 
 func _ready() -> void:
@@ -747,6 +753,245 @@ func _add_tear(from: Vector2, to: Vector2) -> void:
 	Surgery.current.scoring.add("skin_tear")
 	Surgery.current.sound("tear_skin", body.uv_to_world(from))
 	_reveal("thin_skin")
+
+
+## A new running thread for the needle: its id for place_suture_anchor() and the rest.
+func new_suture() -> int:
+	_next_suture += 1
+	return _next_suture
+
+
+## The tissue layer a thread started at uv goes through: the skin from a hole in it beside the wound, the deepest
+## layer still open from a hole inside the wound's opening or on its line (within half a grid cell), and the muscle
+## under a stab or bullet hole too small to reach into (the needle goes in through the hole and sews it first).
+func suture_layer_at(uv: Vector2, wound: Wound) -> int:
+	var line := wound.closest_point(uv)
+	var at := wound.bin_position(wound.bin_at(uv))
+	var hole := wound.kind in [Wound.Kind.PUNCTURE, Wound.Kind.GUNSHOT] and not body.is_open(at)
+	var inside := body.layer_at(uv) != "skin" or uv.distance_to(line) < _grid_cell(uv - line) * 0.5
+	if not inside and not hole:
+		return TissueSim.Depth.SKIN
+	if body.tissue.muscle_open_near(at, MUSCLE_REACH):
+		return TissueSim.Depth.MUSCLE
+	if not hole and body.tissue.fat_open_near(at, MUSCLE_REACH):
+		return TissueSim.Depth.FAT
+	return TissueSim.Depth.SKIN
+
+
+## One click with the needle makes one puncture in a continuous thread. The first click, beside a wound, only anchors
+## it in the layer under it (suture_layer_at()); later ones pass the same thread through the same layer at the new
+## hole, making spans that are all pulled from the free end. The thread closes every wound it crosses. Returns false
+## when no hole was made (no wound near the first, the same hole again, a thread already tied off or torn).
+func place_suture_anchor(thread_id: int, uv: Vector2, tension: float) -> bool:
+	var info := body.tissue.thread_info(thread_id)
+	if not info.is_empty() and bool(info.final):
+		return false
+	# Holes sit beside the incision, not on its line: a bite reaches four grid cells (about 2.5 cm) from it. In grid
+	# cells, not uv: a narrow site like a forearm has few cells across, each wide in uv.
+	var wound := _nearest_wound(uv, 4.0 / mini(body.tissue.res_x, body.tissue.res_y), false)
+	if wound == null and info.is_empty():
+		return false
+	var layer: int = info.layer if not info.is_empty() else suture_layer_at(uv, wound)
+	if wound:
+		uv = _hole_uv(uv, wound)
+	var before := body.tissue.thread_uvs(thread_id).size()
+	_suture_anchor.rpc(thread_id, uv, layer, tension, THREAD_STRENGTH[layer], body.tissue.thread_slack(thread_id, uv))
+	if body.tissue.thread_uvs(thread_id).size() == before:
+		return false
+	if not _sutures.has(thread_id):
+		_sutures[thread_id] = {"before": {}}
+	if layer == TissueSim.Depth.SKIN:
+		paint(WoundMap.Layer.WOUNDS, WoundMap.STITCH, uv, uv, 0.0035, 0.9, WoundMap.Mode.MAX)
+	hurt(0.035 if layer == TissueSim.Depth.SKIN else 0.06, uv)
+	_apply_thread_closure(thread_id)
+	return true
+
+
+## The wheel on the free end of a live thread: tension is the needle's (ToolActions.SUTURE_TENSION_RANGE).
+func set_suture_tension(thread_id: int, tension: float) -> void:
+	if body.tissue.thread_info(thread_id).is_empty() or suture_done(thread_id):
+		return
+	_suture_tension.rpc(thread_id, tension)
+	_apply_thread_closure(thread_id)
+
+
+## Ties the thread off and cuts it: the edges it holds are joined for good at the tension it has, sewn as neatly as
+## `quality` (the needle's ToolDef.quality) allows.
+func finish_suture(thread_id: int, quality: float) -> void:
+	if body.tissue.thread_info(thread_id).is_empty() or suture_done(thread_id):
+		return
+	_suture_finish.rpc(thread_id)
+	_apply_thread_closure(thread_id, quality)
+
+
+## True once the thread can take no more holes: tied off, or torn through the tissue.
+func suture_done(thread_id: int) -> bool:
+	var info := body.tissue.thread_info(thread_id)
+	return not info.is_empty() and bool(info.final)
+
+
+## Applies the closure the thread makes where it crosses wounds. Loose thread leaves a gap; pulling harder closes it,
+## then raises the pressed edges into a lip; past THREAD_TEAR it cuts through. Skin over open muscle won't meet, and
+## pulled shut over it the thread tears through. A tied-off thread (quality >= 0) joins the edges for good.
+## Its closure is laid over what other closures left (_sutures before), so loosening it never undoes a staple.
+func _apply_thread_closure(thread_id: int, quality: float = -1.0) -> void:
+	var info := body.tissue.thread_info(thread_id)
+	var suture: Dictionary = _sutures[thread_id]
+	var layer: int = info.layer
+	var tension: float = info.tension
+	var loose := TissueSim.THREAD_LOOSE[layer]
+	var closed := TissueSim.THREAD_CLOSED[layer]
+	var closure := clampf((loose - tension) / (loose - closed), 0.0, 1.0)
+	var points := body.tissue.thread_uvs(thread_id)
+	# [wound, where the thread crosses it] for every wound it crosses.
+	var crossed: Array[Array] = []
+	var all := PackedVector2Array()
+	var over_muscle := false
+	for wound in wounds:
+		if wound.is_internal() or wound.kind == Wound.Kind.BURN:
+			continue
+		var crossings := _thread_crossings(points, wound)
+		if crossings.is_empty():
+			continue
+		crossed.append([wound, crossings])
+		all.append_array(crossings)
+		over_muscle = over_muscle or layer == TissueSim.Depth.SKIN and wound.through_muscle() \
+				and Array(crossings).any(func(c: Vector2) -> bool: return body.tissue.muscle_open_near(c, MUSCLE_REACH))
+	if crossed.is_empty():
+		return
+	if tension < TissueSim.THREAD_TEAR[layer] or (over_muscle and closure >= 0.99):
+		_snap_suture(thread_id, all, (points[1] - points[0]).orthogonal(), over_muscle)
+		return
+	if over_muscle:
+		_tear_notice("The skin won't meet over the open muscle. Sew the muscle first.")
+		closure = minf(closure, 0.15)
+	# Pressed edges rise into a small lip rather than sliding through one another, higher the harder it's pulled.
+	var overpull := clampf((closed - tension) / (closed - TissueSim.THREAD_TEAR[layer]), 0.0, 1.0)
+	var lip_scale: float = [0.0, 1.0, 0.7, 0.55][layer]
+	_tissue_pucker.rpc(all, 0.018, (clampf((closure - 0.5) * 2.0, 0.0, 1.0) * 0.0008 + overpull * 0.0015) * lip_scale)
+	var tied := quality >= 0.0 and closure >= 0.99
+	for pair in crossed:
+		var wound: Wound = pair[0]
+		var crossings: PackedVector2Array = pair[1]
+		var bins := _supported_bins(wound, crossings)
+		var before: Dictionary = suture.before.get_or_add(wound.id, {"skin": {}, "muscle": {}})
+		if layer == TissueSim.Depth.SKIN:
+			wound.bins = _lay_closure(wound.bins, before.skin, bins, closure)
+		elif layer == TissueSim.Depth.MUSCLE:
+			wound.muscle = _lay_closure(wound.muscle, before.muscle, bins, closure)
+		if tied:
+			_tie_off(wound, crossings, bins, layer, quality)
+
+
+## A tied off thread joins the edges of `wound` it holds (`bins`, crossing it at `crossings`) for good: the skin with a
+## seam, or the muscle or fat under it.
+func _tie_off(wound: Wound, crossings: PackedVector2Array, bins: PackedInt32Array, layer: int, quality: float) -> void:
+	var path := PackedVector2Array()
+	for bin in bins:
+		path.append(wound.bin_position(bin))
+	if layer != TissueSim.Depth.SKIN:
+		_tissue_close_layer.rpc(path, MUSCLE_REACH, layer)
+		return
+	# The thread gathers the edges at its holes: every severed edge the bites hold is joined too, not only the exact
+	# crossings, which are a little shorter so the thread dimples the skin where it pulls.
+	for crossing in crossings:
+		_tissue_stitch.rpc(crossing, 0.98, THREAD_STRENGTH[layer])
+	_tissue_stitch_path.rpc(path, Wound.BIN_LENGTH_UV * 1.2, 1.0, THREAD_STRENGTH[layer])
+	# Meeting edges squeeze the wet cut line and the blood pooled in it out of the seam: without clearing them a
+	# physically closed seam still reads as a red opening from above.
+	for i in path.size():
+		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, path[maxi(i - 1, 0)], path[i], 0.012, 0.0, WoundMap.Mode.MIN)
+		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, path[maxi(i - 1, 0)], path[i], 0.026, 1.0, WoundMap.Mode.SUB)
+	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.5)
+	if wound.closure() >= 0.99 and wound.closure_quality > 0.9:
+		add_flag("neat_closure")
+		Surgery.current.scoring.add("good_suture", true)
+
+
+## The grid point (uv) a hole clicked at uv goes through: the nearest one on the clicked side of the wound, never one
+## on its line, so every bite goes across it.
+func _hole_uv(uv: Vector2, wound: Wound) -> Vector2:
+	var line := wound.closest_point(uv)
+	var away := (uv - line).normalized()
+	if away == Vector2.ZERO:
+		return uv
+	var cell := _grid_cell(away)
+	var hole := body.tissue.uv_of(body.tissue.nearest(uv))
+	for i in 3:
+		if (hole - line).dot(away) > cell * 0.3:
+			break
+		uv += away * cell * 0.5
+		hole = body.tissue.uv_of(body.tissue.nearest(uv))
+	return hole
+
+
+## The tissue grid's cell size (uv) along `direction`: cells are square in meters, not in uv.
+func _grid_cell(direction: Vector2) -> float:
+	direction = direction.normalized()
+	return absf(direction.x) / body.tissue.res_x + absf(direction.y) / body.tissue.res_y
+
+
+## Where a thread's spans (holes `points`) cross its wound. Each end of the wound counts a grid cell further: a bite
+## round the end of a short stab or bullet hole goes past it, and the holes snap to the grid.
+func _thread_crossings(points: PackedVector2Array, wound: Wound) -> PackedVector2Array:
+	var line := wound.points.duplicate()
+	if line.size() < 2:
+		line.append(line[0])
+	for end: Array in [[0, 1], [-1, -2]]:
+		var out := (line[end[0]] - line[end[1]]).normalized()
+		line[end[0]] += out * _grid_cell(out)
+	var crossings := PackedVector2Array()
+	for i in range(1, points.size()):
+		for n in range(1, line.size()):
+			var crossing: Variant = Geometry2D.segment_intersects_segment(points[i - 1], points[i], line[n - 1], line[n])
+			if crossing != null and (crossings.is_empty() or crossings[-1].distance_to(crossing) > 0.001):
+				crossings.append(crossing)
+	return crossings
+
+
+## The wound's bins the thread holds, in order: each bite holds the edge halfway to its neighbours (and as far past
+## the first and last), so they run on unbroken. Bins are much finer than practical stitch spacing: the bins at the
+## exact crossings alone would leave a dotted closure.
+static func _supported_bins(wound: Wound, crossings: PackedVector2Array) -> PackedInt32Array:
+	var at := PackedInt32Array()
+	for crossing in crossings:
+		at.append(wound.bin_at(crossing))
+	at.sort()
+	var reach := 1
+	for i in range(1, at.size()):
+		reach = maxi(reach, ceili((at[i] - at[i - 1]) * 0.5))
+	return PackedInt32Array(range(maxi(at[0] - reach, 0), mini(at[-1] + reach + 1, wound.bins.size())))
+
+
+## `values` (a wound's closure per bin) with `closure` on `bins`, over the value each had before this thread first held
+## it (remembered in `base`).
+static func _lay_closure(values: PackedFloat32Array, base: Dictionary, bins: PackedInt32Array, closure: float) -> PackedFloat32Array:
+	for bin in bins:
+		if not base.has(bin):
+			base[bin] = values[bin]
+		values[bin] = maxf(base[bin], closure)
+	return values
+
+
+## The thread cut through the tissue (where it first crosses a wound, of `crossings`): it lets go everywhere, and what it
+## held is as open as before it.
+func _snap_suture(thread_id: int, crossings: PackedVector2Array, across: Vector2, over_muscle: bool) -> void:
+	var suture: Dictionary = _sutures[thread_id]
+	for id: int in suture.before:
+		var wound := _wound(id)
+		for bin: int in suture.before[id].skin:
+			wound.bins[bin] = suture.before[id].skin[bin]
+		for bin: int in suture.before[id].muscle:
+			wound.muscle[bin] = suture.before[id].muscle[bin]
+	_tissue_pucker.rpc(crossings, 0.018, 0.0)
+	_suture_snap.rpc(thread_id)
+	var layer: int = body.tissue.thread_info(thread_id).layer
+	if layer == TissueSim.Depth.SKIN:
+		tear(crossings[0], across, 0.018)
+		Surgery.current.scoring.add("suture_tear_through")
+		_tear_notice("The stitch tore through: the muscle under it is still open." if over_muscle else "The thread was pulled too tight and tore through the skin.")
+	else:
+		Surgery.current.announce("The thread cut through the %s." % ("fat" if layer == TissueSim.Depth.FAT else "muscle"), true)
 
 
 func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pressure: int) -> bool:
@@ -1440,8 +1685,43 @@ func _tissue_stitch(uv: Vector2, tension: float, strength: float) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _tissue_stitch_path(points: PackedVector2Array, radius: float, tension: float, strength: float) -> void:
+	body.tissue.stitch_path(points, radius, tension, strength)
+
+
+@rpc("authority", "call_local", "reliable")
+func _suture_anchor(id: int, uv: Vector2, layer: int, tension: float, strength: float, slack: float) -> void:
+	body.tissue.thread_anchor(id, uv, layer, tension, strength, slack)
+
+
+@rpc("authority", "call_local", "reliable")
+func _suture_tension(id: int, tension: float) -> void:
+	body.tissue.thread_tension(id, tension)
+
+
+@rpc("authority", "call_local", "reliable")
+func _suture_finish(id: int) -> void:
+	body.tissue.finish_thread(id)
+
+
+@rpc("authority", "call_local", "reliable")
+func _suture_snap(id: int) -> void:
+	body.tissue.snap_thread(id)
+
+
+@rpc("authority", "call_local", "reliable")
 func _tissue_muscle(uv: Vector2, radius: float) -> void:
 	body.tissue.muscle_stitch(uv, radius)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_close_layer(points: PackedVector2Array, radius: float, depth: int) -> void:
+	body.tissue.close_layer(points, radius, depth)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_pucker(points: PackedVector2Array, radius: float, amount: float) -> void:
+	body.tissue.suture_pucker(points, radius, amount)
 
 
 @rpc("authority", "call_local", "reliable")

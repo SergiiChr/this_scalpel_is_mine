@@ -401,10 +401,15 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("Mouse  Move %s hand" % side)
 	if tool:
 		var action := tool.def.action
-		lines.append("%s (hold)  %s %s" % [key.call("use_tool"), ToolActions.TRIGGER_NAMES.get(action, "Press in" if action == "syringe" else "Use"), tool.label()])
+		if action == "sew":
+			lines.append("%s  Stitch (click), tie off (hold)" % key.call("use_tool"))
+		else:
+			lines.append("%s (hold)  %s %s" % [key.call("use_tool"), ToolActions.TRIGGER_NAMES.get(action, "Press in" if action == "syringe" else "Use"), tool.label()])
 		if action == "syringe":
 			lines.append("%s  Pull plunger 1 ml" % key.call("level_down"))
 			lines.append("%s  Push plunger 1 ml" % key.call("level_up"))
+		elif action == "sew":
+			lines.append("%s / %s  Loosen / tighten thread" % [key.call("level_up"), key.call("level_down")])
 		elif me.uses_level(me.active):
 			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
 		lines.append("%s (hold) + mouse  Turn tool   %s / %s  Rotate" % [key.call("aim_tool"), key.call("twist_left"), key.call("twist_right")])
@@ -514,6 +519,8 @@ func _update_hands(me: Surgeon) -> void:
 			text += " [holding]"
 		parts.append(("▶ " + text + " ◀") if i == me.active else text)
 	var active_tool := me.held_tool(me.active)
+	if active_tool and active_tool.def.action == "sew":
+		parts.append("thread: %s" % ToolActions.thread_state(active_tool))
 	var kind := level_kind(active_tool)
 	if not kind.is_empty():
 		var level := me.hands[me.active].level
