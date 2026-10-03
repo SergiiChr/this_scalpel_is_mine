@@ -25,7 +25,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   `visual_confirmation` scripts save their key frames (under `xvfb-run` with the compatibility renderer) and check the
   frame budget; without it they run headless and skip them. `--jobs N` runs N scripts at once (with key frames,
   `visual_confirmation` scripts still run alone, after the others, so their frame times aren't slowed by their
-  neighbours), `--list` shows what would run.
+  neighbours). `--ci-run` reports frame times without checking them (CI machines are slower). `--list` shows what
+  would run.
 - A test fails on a GUT failure, no cases run, or any `SCRIPT ERROR`, `Parse Error` or `ERROR:` in its log.
   Test logs and JUnit XML results go to `build/test-logs/` and `build/test-results/`.
 - `./build.sh shots [scenario] [out dir]`: renders views of a scenario through `xvfb-run` with the compatibility
@@ -96,6 +97,7 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 - Measure the elapsed time of the game work being changed; do not use displayed FPS as the acceptance metric because
   VSync, compositor refresh and test-host presentation can cap it independently of game performance.
 - Visual tests that exercise dynamic work must report the worst measured frame time and fail when it exceeds 16 ms.
+  The check runs locally only: CI passes `--ci-run`, which reports the frame times without failing on them.
   `tests/support/frame_budget.gd` measures the wall time between frames under `--fixed-fps` with rendering off between
   key frames, and names what the test was doing during the slowest one.
 

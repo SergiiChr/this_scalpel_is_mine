@@ -41,8 +41,6 @@ const CAMERA_FOV := 20.0
 
 var _out := "user://slicing"
 var _shots := true
-## Off for a case whose frame budget overrun is already reported as BROKEN: the frame times are still printed.
-var _check_budget := true
 var _camera: Camera3D
 var _surgery: Surgery
 var _hand: SurgeonHand
@@ -62,9 +60,8 @@ var _report: Array[String] = []
 var _budget := FrameBudget.new()
 
 
-func run_cases(output: String, include_depth: bool = true, include_grafts: bool = true, check_budget: bool = true) -> void:
+func run_cases(output: String, include_depth: bool = true, include_grafts: bool = true) -> void:
 	_shots = KeyFrames.wanted()
-	_check_budget = check_budget
 	_out = ProjectSettings.globalize_path(output)
 	_report.clear()
 	_frame_times.clear()
@@ -613,7 +610,7 @@ func _report_frames(case_id: String) -> void:
 	print("    " + line)
 	# Headless the frame times only get reported: they depend on the machine. With a renderer the check is part of the
 	# visual confirmation (CLAUDE.md, frame-time budget).
-	if _shots and _check_budget:
+	if _shots and FrameBudget.enforced():
 		_check(_budget.within(), "%s: %s" % [case_id, _budget.summary()])
 	else:
 		print("    %s: %s" % [case_id, _budget.summary()])

@@ -3,13 +3,15 @@
 # Every test script declares its tags on one line: const TAGS = ["smoke", ...]. A script can add Godot options the same
 # way: const GODOT_ARGS = ["--fixed-fps", "60"] runs every frame as one physics step of 1/60 s as fast as the machine
 # goes, for long surgeries (code timed by the wall clock, like a sedated surgeon's input delay, then runs too slow).
-# Usage: run_tests.sh [--all] [--tag TAG]... [--skip TAG]... [--case TEXT] [--with-key-frames] [--list] [--jobs N]
+# Usage: run_tests.sh [--all] [--tag TAG]... [--skip TAG]... [--case TEXT] [--with-key-frames] [--ci-run] [--list]
+#                     [--jobs N]
 #   Without --all or --tag it runs the smoke tag. Several --tag pick the scripts that have all of them, --skip leaves
 #   out the scripts that have the tag.
 #   --case TEXT runs only the test functions whose name contains TEXT.
 #   --with-key-frames: visual_confirmation scripts save their key frames and check the frame budget (WITH_KEY_FRAMES=1,
 #   see tests/support/key_frames.gd). They get a display (xvfb-run without one) and the compatibility renderer, and run
 #   alone after the others. Without it they run headless like the rest, skipping the screenshots.
+#   --ci-run: frame times are reported, not checked against the budget (CI_RUN=1, see tests/support/frame_budget.gd).
 # GODOT must point at the Godot binary (./build.sh test sets it up). Logs and JUnit XML go to build/.
 set -euo pipefail
 
@@ -40,6 +42,7 @@ while [[ $# -gt 0 ]]; do
 		--jobs) jobs="$2"; shift ;;
 		--jobs=*) jobs="${1#*=}" ;;
 		--with-key-frames) key_frames=1 ;;
+		--ci-run) export CI_RUN=1 ;;
 		--list) list=1 ;;
 		*) echo "Unknown test option: $1" >&2; exit 2 ;;
 	esac
