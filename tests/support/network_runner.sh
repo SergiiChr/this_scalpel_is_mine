@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Two real Godot processes over ENet on localhost, for tests/network/test_multiplayer.gd. It prints what's wrong and
+# exits non-zero on the first problem.
+# Usage: network_runner.sh GODOT ROOT sync|stall
+set -uo pipefail
 
 godot=$1
 root=$2
@@ -7,37 +10,65 @@ mode=$3
 logs="$root/build/test-logs"
 mkdir -p "$logs"
 
+fail() {
+	echo "FAIL: $*"
+	exit 1
+}
+
+# Godot keeps going after script errors. Engine leak reports printed while quitting are noise.
 clean_log() {
-	! grep -E "SCRIPT ERROR|Parse Error|^FAIL:" "$1" >/dev/null
+	local errors
+	errors=$(grep -E "SCRIPT ERROR|Parse Error|ERROR:|^FAIL:" "$1" | grep -vE "at exit|leaked")
+	[[ -z "$errors" ]] || fail "$(basename "$1"): $errors"
+}
+
+expect() {
+	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'"
+}
+
+run() {
+	# exec: started in the background, the job is the timeout wrapper itself, with Godot as its only child.
+	exec timeout 180 "$godot" --headless --path "$root" "res://tests/support/$1.tscn" -- "--role=$2" >"$logs/$3.log" 2>&1
 }
 
 if [[ "$mode" == sync ]]; then
-	timeout 180 "$godot" --headless --path "$root" res://tests/support/net_driver.tscn -- --role=host >"$logs/net_host.log" 2>&1 &
+	run net_driver host net_host &
 	host=$!
 	sleep 2
-	timeout 180 "$godot" --headless --path "$root" res://tests/support/net_driver.tscn -- --role=client >"$logs/net_client.log" 2>&1
+	(run net_driver client net_client)
 	wait "$host"
 	clean_log "$logs/net_host.log"
 	clean_log "$logs/net_client.log"
-	grep -q "\[host\] surgeon wounds" "$logs/net_host.log"
-	grep -q "\[client\] surgeon wounds" "$logs/net_client.log"
-	! grep -q "partner handed me: nothing" "$logs/net_host.log"
-	host_state=$(grep -o "painted texels=[0-9]*, severed springs=[0-9]*, topology=-*[0-9]*" "$logs/net_host.log")
-	client_state=$(grep -o "painted texels=[0-9]*, severed springs=[0-9]*, topology=-*[0-9]*" "$logs/net_client.log")
-	[[ -n "$host_state" && "$host_state" == "$client_state" ]]
-	exit
+	expect "$logs/net_host.log" "\[host\] surgeon wounds"
+	expect "$logs/net_client.log" "\[client\] surgeon wounds"
+	if grep -q "partner handed me: nothing" "$logs/net_host.log"; then
+		fail "tool handoff between players did not arrive"
+	fi
+	# Both peers end with the same painted wound map, exactly the same cut, stitched and torn springs and the same
+	# site. The site is measured on the body model by each peer: its shape must come out the same for both.
+	state() {
+		grep -o "painted texels=[0-9]*, severed springs=[0-9]*, topology=-*[0-9]*, site shape=-*[0-9]*" "$1"
+	}
+	host_state=$(state "$logs/net_host.log")
+	client_state=$(state "$logs/net_client.log")
+	if [[ -z "$host_state" || "$host_state" != "$client_state" ]]; then
+		fail "host and client disagree: '$host_state' vs '$client_state'"
+	fi
+	exit 0
 fi
 
-timeout 180 "$godot" --headless --path "$root" res://tests/support/net_stall_driver.tscn -- --role=host >"$logs/net_stall_host.log" 2>&1 &
+# Spotty connection: freeze the client for 10 s mid-surgery (longer than ENet's default timeout), then let it go on.
+run net_stall_driver host net_stall_host &
 host=$!
 sleep 2
-timeout 180 "$godot" --headless --path "$root" res://tests/support/net_stall_driver.tscn -- --role=client >"$logs/net_stall_client.log" 2>&1 &
+run net_stall_driver client net_stall_client &
 client=$!
-for _attempt in $(seq 1 600); do
+for _ in $(seq 1 600); do
 	grep -q "\[client\] running" "$logs/net_stall_client.log" && break
 	sleep 0.1
 done
-godot_pid=$(pgrep -P "$client")
+# Freeze Godot itself, not the timeout wrapper around it.
+godot_pid=$(pgrep -P "$client") || fail "the client never started"
 kill -STOP "$godot_pid"
 sleep 10
 kill -CONT "$godot_pid"
@@ -45,5 +76,5 @@ wait "$client"
 wait "$host"
 clean_log "$logs/net_stall_host.log"
 clean_log "$logs/net_stall_client.log"
-grep -q "input paused: true, partner still here: true" "$logs/net_stall_host.log"
-grep -q "still in surgery: true" "$logs/net_stall_client.log"
+expect "$logs/net_stall_host.log" "input paused: true, partner still here: true"
+expect "$logs/net_stall_client.log" "still in surgery: true"

@@ -447,6 +447,9 @@ static func _crossing(p: Vector2, q: Vector2, a: Vector2, b: Vector2) -> float:
 
 ## Stitches the muscle under every spring cut through it near uv. Returns how many springs it closed.
 func muscle_stitch(uv: Vector2, radius: float) -> int:
+	# At least a cell and a half of the grid around uv: a cut's springs lie up to a cell off its line, which on a narrow
+	# site (few cells across) is further than `radius` in uv.
+	radius = maxf(radius, 1.5 / mini(res_x, res_y))
 	var closed := 0
 	for s in _severed:
 		if c_depth[s] == Depth.MUSCLE and c_muscle_closed[s] == 0 and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:

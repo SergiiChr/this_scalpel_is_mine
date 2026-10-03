@@ -1,6 +1,8 @@
 extends GutTest
 ## Slow regression: loads every scenario, uses every tool on the patient, fires every event and drug,
 ## turns the patient and builds the report. Any script error shows up in the output.
+## Checks that depend on the room, the site or the patient run in every scenario; the rest (controls, effects, iodine,
+## syringe, nurse, anesthesia, smoking) only in the first one.
 
 const TAGS = ["slow", "scenario"]
 
@@ -13,15 +15,15 @@ func test_all_gameplay_systems_in_every_scenario() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--scenario="):
 			only = arg.get_slice("=", 1)
-	for scenario in Db.scenarios:
+	for scenario in Db.scenarios + Db.disabled_scenarios:
 		if only and scenario.id != only:
 			continue
-		await _run(scenario)
+		await _run(scenario, exercised == 0)
 		exercised += 1
-	assert_eq(exercised, 1 if only else Db.scenarios.size(), "every selected scenario completed the broad gameplay sweep")
+	assert_eq(exercised, 1 if only else Db.scenarios.size() + Db.disabled_scenarios.size(), "every selected scenario completed the broad gameplay sweep")
 
 
-func _run(scenario: ScenarioDef) -> void:
+func _run(scenario: ScenarioDef, once: bool) -> void:
 	print("--- ", scenario.id)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = scenario.order
@@ -34,10 +36,10 @@ func _run(scenario: ScenarioDef) -> void:
 	var surgery: Surgery = SURGERY.instantiate()
 	add_child(surgery)
 	await _frames(5)
-	assert(surgery.running, "surgery did not start")
+	assert_true(surgery.running, "surgery did not start")
 	_check_defib_cart(surgery)
 	# First, while the site is still whole and the tray untouched.
-	await _table_checks(surgery, scenario.order == 1)
+	await _table_checks(surgery, once)
 	await _anatomy_checks(surgery)
 	var me := surgery.local_surgeon
 	var site := surgery.patient.body.site.global_position
@@ -69,6 +71,8 @@ func _run(scenario: ScenarioDef) -> void:
 		await _frames(2)
 	await _new_mechanics(surgery)
 	await _feedback_checks(surgery)
+	if once:
+		await _once_checks(surgery)
 	for id: String in Db.events.get_sections():
 		surgery.director.fire(id, surgery)
 	for drug: String in Db.drugs:
@@ -118,7 +122,7 @@ func _new_mechanics(surgery: Surgery) -> void:
 		cart.global_position = patient.global_position + Vector3(0.0, -Room.TABLE_HEIGHT, 1.0)
 		cart._req_expose()
 		await _frames(int(XrayCart.EXPOSE_TIME * 60) + 10)
-		assert(not cart.print_data.is_empty(), "x-ray print missing")
+		assert_true(not cart.print_data.is_empty(), "x-ray print missing")
 		surgery.hud.open_xray(cart)
 		await _frames(3)
 		surgery.hud.close_overlay()
@@ -135,22 +139,22 @@ func _muscle_first_checks(patient: Patient) -> void:
 		for i in 20:
 			patient.close_at(wound.bin_position(bin), needle, 0.1, 1.0, 2)
 	if wound.closure() > 0.0:
-		print("FAIL: the skin closed over open muscle (closure %.2f)" % wound.closure())
+		fail_test("the skin closed over open muscle (closure %.2f)" % wound.closure())
 	var tears: float = patient.flags.get("tears", 0.0)
 	for i in 20:
 		patient.close_at(wound.midpoint(), needle, 0.1, 1.0, 3)
 	if patient.flags.get("tears", 0.0) <= tears:
-		print("FAIL: a tight stitch over open muscle didn't tear")
+		fail_test("a tight stitch over open muscle didn't tear")
 	for bin in wound.bins.size():
 		for i in 20:
 			patient.close_muscle_at(wound.bin_position(bin), needle, 0.1)
 	if patient.body.tissue.muscle_open_near(wound.midpoint(), Patient.MUSCLE_REACH):
-		print("FAIL: sewing inside the wound didn't close the muscle")
+		fail_test("sewing inside the wound didn't close the muscle")
 	for bin in wound.bins.size():
 		for i in 20:
 			patient.close_at(wound.bin_position(bin), needle, 0.1, 1.0, 2)
 	if wound.closure() < 0.9:
-		print("FAIL: the skin didn't close over sewn muscle (closure %.2f)" % wound.closure())
+		fail_test("the skin didn't close over sewn muscle (closure %.2f)" % wound.closure())
 
 
 ## Before anything gets moved: the defibrillator waits on its cart.
@@ -161,7 +165,7 @@ func _check_defib_cart(surgery: Surgery) -> void:
 	var on_cart := surgery.tools.tools.values().any(func(t: SurgicalTool) -> bool:
 		return t.def.id == "defibrillator" and Vector2(t.global_position.x - cart.x, t.global_position.z - cart.z).length() < 0.4)
 	if not on_cart:
-		print("FAIL: no defibrillator on the defib cart")
+		fail_test("no defibrillator on the defib cart")
 
 
 ## Deliveries, floor dirt and the IV line. Prints FAIL: lines instead of asserting, so one run shows them all.
@@ -176,7 +180,7 @@ func _feedback_checks(surgery: Surgery) -> void:
 		var delivered: SurgicalTool = tools.tools.values()[before] if tools.tools.size() > before else null
 		var tray: Vector3 = room.layout.delivery_tray
 		if delivered == null or delivered.global_position.y < 0.85 or Vector2(delivered.global_position.x - tray.x, delivered.global_position.z - tray.z).length() > 0.35:
-			print("FAIL: delivery didn't land on the delivery tray: ", delivered.global_position if delivered else "nothing spawned")
+			fail_test("delivery didn't land on the delivery tray: %s" % [delivered.global_position if delivered else "nothing spawned"])
 	# Floor dirt: the sanitizer refuses a soiled tool until it's been washed.
 	var me := surgery.local_surgeon
 	var free: Array = tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and me.blocked_reason(t.def).is_empty())
@@ -187,11 +191,11 @@ func _feedback_checks(surgery: Surgery) -> void:
 		tools._set_soiled(tool.uid, true)
 		tools._req_sterilize(1)
 		if tool.sterile:
-			print("FAIL: sanitizer made a soiled tool sterile")
+			fail_test("sanitizer made a soiled tool sterile")
 		tools._req_wash(1)
 		tools._req_sterilize(1)
 		if tool.soiled or not tool.sterile:
-			print("FAIL: washing then sanitizing didn't clean the tool")
+			fail_test("washing then sanitizing didn't clean the tool")
 		tools._req_release(1, Vector3.ZERO)
 	# Walking into the IV tubing at full speed rips the line out.
 	var patient := surgery.patient
@@ -212,19 +216,24 @@ func _feedback_checks(surgery: Surgery) -> void:
 			me.global_position = from + Vector3(i * 0.03, 0.0, 0.0)
 			await get_tree().physics_frame
 		if patient.iv_set:
-			print("FAIL: walking through the IV line didn't pull it out")
+			fail_test("walking through the IV line didn't pull it out")
 		await _frames(90)
 		var dropped: Array = tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.def.id == "iv_catheter" and t.state == SurgicalTool.State.FREE and t.soiled)
 		if dropped.is_empty():
 			var where: Array = tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.def.id == "iv_catheter").map(func(t: SurgicalTool) -> String: return "%s %s soiled %s" % [t.state, t.global_position, t.soiled])
-			print("FAIL: the IV catheter ripped out of the arm didn't land on the floor: ", where)
+			fail_test("the IV catheter ripped out of the arm didn't land on the floor: %s" % [where])
 	else:
 		var line := room.iv_line
-		print("FAIL: the IV line doesn't hang low enough to trip on (attached %s, iv set %s, ends %s, %d points)" % [line.is_attached(), patient.iv_set, line._last_ends, low.size()])
+		fail_test("the IV line doesn't hang low enough to trip on (attached %s, iv set %s, ends %s, %d points)" % [line.is_attached(), patient.iv_set, line._last_ends, low.size()])
+	await _tourniquet_checks(surgery)
+
+
+## The checks that come out the same whatever the scenario.
+func _once_checks(surgery: Surgery) -> void:
 	await _effect_checks(surgery)
+	await _control_checks(surgery)
 	await _iodine_checks(surgery)
 	await _syringe_checks(surgery)
-	await _tourniquet_checks(surgery)
 	_nurse_checks(surgery)
 	_anesthesia_checks(surgery)
 	await _smoking_checks(surgery)
@@ -237,7 +246,7 @@ func _effect_checks(surgery: Surgery) -> void:
 		surgery._effect(kind, at)
 	await _frames(20)
 	if surgery.get_node("Effects").get_child_count() == 0:
-		print("FAIL: tool effects left nothing on screen")
+		fail_test("tool effects left nothing on screen")
 	var me := surgery.local_surgeon
 	var free: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and me.blocked_reason(t.def).is_empty())
 	if not free.is_empty():
@@ -245,26 +254,25 @@ func _effect_checks(surgery: Surgery) -> void:
 		surgery.tools._req_grab(tool.uid, 1)
 		surgery.tools.add_blood(tool, 0.6)
 		if tool.blood < 0.5:
-			print("FAIL: working in blood didn't bloody the tool: ", tool.blood)
+			fail_test("working in blood didn't bloody the tool: %s" % [tool.blood])
 		await _frames(30)
 		if me.hands[1].blood <= 0.0:
-			print("FAIL: a bloody tool didn't bloody the glove holding it")
+			fail_test("a bloody tool didn't bloody the glove holding it")
 		# With every quirk on, a sweaty glove or a cough can make it slip meanwhile: then it's picked up again.
 		if me.held_tool(1) != tool:
 			surgery.tools._req_grab(tool.uid, 1)
 		surgery.tools._req_wash(1)
 		if tool.blood > 0.0:
-			print("FAIL: washing didn't take the blood off")
+			fail_test("washing didn't take the blood off")
 		surgery.tools._req_release(1, Vector3.ZERO)
 		surgery.tools._req_wash(1)
 		await _frames(2)
 		if me.hands[1].blood > 0.0:
-			print("FAIL: washing empty hands didn't clean the glove")
+			fail_test("washing empty hands didn't clean the glove")
 	surgery.patient.body.blood.splashed.emit(1.0)
 	await _frames(2)
 	if surgery.hud._lens_blood <= 0.0:
-		print("FAIL: blood splashed on the view didn't show")
-	await _control_checks(surgery)
+		fail_test("blood splashed on the view didn't show")
 
 
 ## Controls: RMB picks up and puts down, LMB lowers and works the tool, the wheel sets its level, Shift steps the
@@ -283,18 +291,18 @@ func _control_checks(surgery: Surgery) -> void:
 	me._unhandled_input(_action("grab", true))
 	await _frames(2)
 	if me.held_tool(me.active) != blade:
-		print("FAIL: RMB (grab) didn't pick up the tool under the hand")
+		fail_test("RMB (grab) didn't pick up the tool under the hand")
 		return
 	var looking := Hud.control_lines(me)
 	me._unhandled_input(_action("level_up", true))
 	if hand.level != 1:
-		print("FAIL: the wheel didn't raise a blade's depth: ", hand.level)
+		fail_test("the wheel didn't raise a blade's depth: %s" % [hand.level])
 	me._unhandled_input(_action("use_tool", true))
 	if not (hand.lowered and hand.trigger):
-		print("FAIL: LMB (use) didn't lower and work the tool")
+		fail_test("LMB (use) didn't lower and work the tool")
 	me._unhandled_input(_action("use_tool", false))
 	if hand.lowered or hand.trigger:
-		print("FAIL: letting go of LMB left the tool working")
+		fail_test("letting go of LMB left the tool working")
 	# Aiming with the mouse (MMB) turns the tool and the hand together: the glove stays where it is on the tool.
 	# Out to the side over the floor, so nothing under the tip lifts the hand while it turns, and calm: a shaking hand
 	# moves the elbow, and the glove follows that.
@@ -310,7 +318,7 @@ func _control_checks(surgery: Surgery) -> void:
 	var after := hand.grip_transform().affine_inverse() * hand._glove.global_transform
 	var slid := rad_to_deg((on_tool.basis.orthonormalized().inverse() * after.basis.orthonormalized()).get_rotation_quaternion().get_angle())
 	if before.z.angle_to(blade.global_basis.z) < 0.2 or slid > 3.0 or on_tool.origin.distance_to(after.origin) > 0.005:
-		print("FAIL: aiming the tool didn't turn it with the hand (turned %.2f rad, glove moved on it %.1f deg, %.1f cm)" % [before.z.angle_to(blade.global_basis.z), slid, on_tool.origin.distance_to(after.origin) * 100.0])
+		fail_test("aiming the tool didn't turn it with the hand (turned %.2f rad, glove moved on it %.1f deg, %.1f cm)" % [before.z.angle_to(blade.global_basis.z), slid, on_tool.origin.distance_to(after.origin) * 100.0])
 	me.aim_tool(Vector2(-120, 60))
 	me.status = own_status
 	var zooms: Array[int] = []
@@ -318,15 +326,15 @@ func _control_checks(surgery: Surgery) -> void:
 		me._unhandled_input(_action("zoom", true))
 		zooms.append(me.zoom)
 	if zooms != [1, 0]:
-		print("FAIL: Shift doesn't step between two zoom levels: ", zooms)
+		fail_test("Shift doesn't step between two zoom levels: %s" % [zooms])
 	Input.action_press("move_right_hand")
 	if Hud.control_lines(me) == looking:
-		print("FAIL: the controls shown didn't change while holding a hand key")
+		fail_test("the controls shown didn't change while holding a hand key")
 	Input.action_release("move_right_hand")
 	me._unhandled_input(_action("grab", true))
 	await _frames(2)
 	if me.held_tool(me.active) != null:
-		print("FAIL: RMB (grab) didn't put the tool down")
+		fail_test("RMB (grab) didn't put the tool down")
 
 
 static func _action(action: String, pressed: bool) -> InputEventAction:
@@ -346,7 +354,7 @@ func _iodine_checks(surgery: Surgery) -> void:
 	var tools := surgery.tools
 	var rolled := surgery.scenario.roll_tools(RandomNumberGenerator.new())
 	if surgery.scenario.missing_tool_chance == 0.0 and Db.starter_kit.any(func(id: String) -> bool: return not rolled.has(id)):
-		print("FAIL: the starter kit isn't all on the tray: ", rolled)
+		fail_test("the starter kit isn't all on the tray: %s" % [rolled])
 	var spot: Vector3 = surgery.room.tray_spots()[12]
 	var made: Array[SurgicalTool] = []
 	for id in ["forceps", "cotton_pad", "iodine_dish"]:
@@ -357,7 +365,7 @@ func _iodine_checks(surgery: Surgery) -> void:
 	var dish := made[2]
 	await _frames(10)
 	if forceps.def.id != "forceps" or pad.def.id != "cotton_pad" or dish.def.id != "iodine_dish":
-		print("FAIL: spawned the wrong tools for the iodine check")
+		fail_test("spawned the wrong tools for the iodine check")
 		return
 	var me := surgery.local_surgeon
 	if not me.blocked_reason(forceps.def).is_empty():
@@ -366,12 +374,12 @@ func _iodine_checks(surgery: Surgery) -> void:
 	tools.carry(pad, forceps)
 	await _frames(3)
 	if pad.state != SurgicalTool.State.CARRIED or pad.global_position.distance_to(forceps.tip_position()) > 0.05:
-		print("FAIL: forceps didn't pick up the cotton pad")
+		fail_test("forceps didn't pick up the cotton pad")
 	tools.set_fill(dish, 1.0)
 	var dish_middle := dish.global_transform * Vector3(0, 0, -dish.def.length * 0.5)
 	ToolActions._wipe(pad, "none", Vector2.ZERO, dish_middle, surgery.patient, 1.0, false)
 	if pad.fill < 0.9 or dish.fill > 0.9:
-		print("FAIL: the pad didn't soak up iodine from the dish: pad=%.2f dish=%.2f" % [pad.fill, dish.fill])
+		fail_test("the pad didn't soak up iodine from the dish: pad=%.2f dish=%.2f" % [pad.fill, dish.fill])
 	surgery.patient._sanitized.fill(0.0)
 	var uv := Vector2(0.5, 0.5)
 	var wiped := surgery.patient.body.uv_to_world(uv)
@@ -379,7 +387,7 @@ func _iodine_checks(surgery: Surgery) -> void:
 	dish.global_position = wiped
 	ToolActions._wipe(pad, "site", uv, wiped, surgery.patient, 0.5, false)
 	if surgery.patient.sanitized_fraction() <= 0.0 or pad.fill >= 0.99:
-		print("FAIL: the soaked pad didn't sanitize the skin")
+		fail_test("the soaked pad didn't sanitize the skin")
 	# A second of wiping, one physics frame at a time: no single frame may take a big bite out of the frame budget.
 	# Best of three runs, so a busy machine doesn't fail it.
 	var worst_ms := INF
@@ -395,12 +403,12 @@ func _iodine_checks(surgery: Surgery) -> void:
 		worst_ms = minf(worst_ms, run_worst)
 	print("    iodine wipe: worst frame %.2f ms" % worst_ms)
 	if worst_ms > 4.0:
-		print("FAIL: wiping iodine takes %.2f ms in one frame (stutters)" % worst_ms)
+		fail_test("wiping iodine takes %.2f ms in one frame (stutters)" % worst_ms)
 	tools._req_release(1, Vector3.ZERO)
 	await _frames(3)
 	# Let go over an opened chest or belly, the pad falls in: that's fine, it isn't on the forceps.
 	if pad.state == SurgicalTool.State.CARRIED:
-		print("FAIL: the pad stayed on forceps that were let go")
+		fail_test("the pad stayed on forceps that were let go")
 
 
 ## A syringe draws from a vial, a roughly right dose works and too little doesn't, drugs mix, the floor breaks it.
@@ -408,7 +416,7 @@ func _syringe_checks(surgery: Surgery) -> void:
 	var tools := surgery.tools
 	var patient := surgery.patient
 	if patient.weight_kg < 15.0 or patient.weight_kg > 150.0:
-		print("FAIL: odd patient weight %.0f kg" % patient.weight_kg)
+		fail_test("odd patient weight %.0f kg" % patient.weight_kg)
 	var spot: Vector3 = surgery.room.tray_spots()[17]
 	var made: Array[SurgicalTool] = []
 	for id in ["vial_propofol", "vial_morphine", "syringe_50"]:
@@ -424,7 +432,7 @@ func _syringe_checks(surgery: Surgery) -> void:
 		ToolActions.plunge(syringe, ToolActions.PLUNGER_STEP, patient)
 	var drawn := 3.0 * ToolActions.PLUNGER_STEP
 	if absf(syringe.ml - drawn) > 0.01 or absf(vial.ml - (vial.def.volume - drawn)) > 0.01 or syringe.label().ends_with("(empty)"):
-		print("FAIL: the syringe didn't draw from the vial: syringe=%.2f ml vial=%.2f ml" % [syringe.ml, vial.ml])
+		fail_test("the syringe didn't draw from the vial: syringe=%.2f ml vial=%.2f ml" % [syringe.ml, vial.ml])
 	# The right dose, pushed into the patient, counts once the needle comes out.
 	var right_ml := Db.drug("propofol").dose * patient.weight_kg / vial.def.concentration
 	tools.transfer(vial, syringe, right_ml - syringe.ml)
@@ -443,19 +451,19 @@ func _syringe_checks(surgery: Surgery) -> void:
 	var hand := {"lowered": false, "trigger": false, "level": 0, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
 	ToolActions.update(syringe, hand, patient, 0.1)
 	if syringe.ml > 0.0 or not patient.flags.has("drug_propofol"):
-		print("FAIL: the right dose of propofol didn't count: left=%.2f ml flags=%s, the needle was in %s" % [syringe.ml, patient.flags.keys(), aimed])
+		fail_test("the right dose of propofol didn't count: left=%.2f ml flags=%s, the needle was in %s" % [syringe.ml, patient.flags.keys(), aimed])
 	# A third of the dose doesn't do the job.
 	patient.flags.erase("drug_propofol")
 	tools.transfer(vial, syringe, right_ml * 0.3)
 	syringe.injecting = tools.transfer(syringe, null, syringe.ml)
 	ToolActions.finish_injection(syringe, patient)
 	if patient.flags.has("drug_propofol"):
-		print("FAIL: a third of the dose counted as a full one")
+		fail_test("a third of the dose counted as a full one")
 	# Two vials into one syringe make a mix.
 	tools.transfer(vial, syringe, 1.0)
 	tools.transfer(made[1], syringe, 1.0)
 	if not (syringe.contents.has("propofol") and syringe.contents.has("morphine")) or absf(syringe.ml - 2.0) > 0.01:
-		print("FAIL: drugs from two vials didn't mix: ", syringe.contents)
+		fail_test("drugs from two vials didn't mix: %s" % [syringe.contents])
 	await _inspect_checks(surgery, syringe, spot)
 	# Dropped on the floor, it shatters.
 	syringe.global_position = surgery.room.spawn_transform(1).origin + Vector3(0, 0.6, 0)
@@ -467,7 +475,7 @@ func _syringe_checks(surgery: Surgery) -> void:
 	syringe.set_meta("falling", true)
 	await _frames(90)
 	if syringe.state != SurgicalTool.State.CONSUMED:
-		print("FAIL: a syringe dropped on the floor didn't break")
+		fail_test("a syringe dropped on the floor didn't break")
 
 
 ## Holding Inspect brings a syringe up in front of the eyes, across the view with the hand behind it,
@@ -480,7 +488,7 @@ func _inspect_checks(surgery: Surgery, syringe: SurgicalTool, put_back: Vector3)
 	surgery.tools._req_grab(syringe.uid, hand)
 	await _frames(2)
 	if me.held_tool(hand) != syringe:
-		print("FAIL: couldn't pick up the syringe to look at it")
+		fail_test("couldn't pick up the syringe to look at it")
 		return
 	Input.action_press("inspect")
 	await _frames(10)
@@ -488,15 +496,15 @@ func _inspect_checks(surgery: Surgery, syringe: SurgicalTool, put_back: Vector3)
 	var barrel_ends: Array[Vector3] = [syringe.global_transform * Vector3.ZERO, syringe.tip_position()]
 	for end in barrel_ends:
 		if not camera.is_position_in_frustum(end) or camera.global_position.distance_to(end) > 0.45:
-			print("FAIL: the syringe held up to look at isn't in view close up: %s" % end)
+			fail_test("the syringe held up to look at isn't in view close up: %s" % end)
 	# The graduation runs all the way round the barrel; the hand has to be behind it, not in front of it.
 	var barrel := syringe.global_transform * Vector3(0, 0, -syringe.def.length * 0.35)
 	var glove := me.hands[hand]._glove.global_transform * Vector3(0.05, 0.0, 0.0)
 	if camera.global_position.distance_to(glove) < camera.global_position.distance_to(barrel) + 0.01:
-		print("FAIL: the hand holding the syringe up is in front of the barrel")
+		fail_test("the hand holding the syringe up is in front of the barrel")
 	var across := absf(syringe.global_basis.z.normalized().dot(camera.global_basis.x.normalized()))
 	if across < 0.9:
-		print("FAIL: the syringe isn't held across the view (%.2f)" % across)
+		fail_test("the syringe isn't held across the view (%.2f)" % across)
 	# The liquid runs from the needle end to the plunger, a tick every tenth of the volume.
 	var level := syringe.find_child("Level", true, false) as MeshInstance3D
 	var plunger := syringe.find_child("Plunger", true, false) as Node3D
@@ -505,10 +513,10 @@ func _inspect_checks(surgery: Surgery, syringe: SurgicalTool, put_back: Vector3)
 	var liquid := level.get_aabb().size.z * level.scale.z if level.visible else 0.0
 	var shown_ml := liquid / travel * syringe.def.volume
 	if absf(shown_ml - syringe.ml) > syringe.def.volume * 0.02:
-		print("FAIL: the syringe reads %.2f ml against its ticks but holds %.2f ml" % [shown_ml, syringe.ml])
+		fail_test("the syringe reads %.2f ml against its ticks but holds %.2f ml" % [shown_ml, syringe.ml])
 	# The plunger's stopper starts at the needle end (its rest) and sits right behind the liquid and any air.
 	if absf(plunger.position.z - liquid - travel * syringe.air / syringe.def.volume) > travel * 0.02:
-		print("FAIL: the plunger doesn't sit right behind the liquid (pulled back %.4f m, liquid %.4f m)" % [plunger.position.z, liquid])
+		fail_test("the plunger doesn't sit right behind the liquid (pulled back %.4f m, liquid %.4f m)" % [plunger.position.z, liquid])
 	Input.action_release("inspect")
 	await _frames(2)
 	# Put down on the tray, not into whatever is open under the hand.
@@ -535,7 +543,7 @@ func _tourniquet_checks(surgery: Surgery) -> void:
 	var down := PhysicsRayQueryParameters3D.create(above, above + Vector3.DOWN * 0.8, PatientBody.SURFACE_LAYER)
 	var skin := space.intersect_ray(down)
 	if skin.is_empty():
-		print("FAIL: no thigh to put the tourniquet on")
+		fail_test("no thigh to put the tourniquet on")
 		return
 	var top: Vector3 = skin.position
 	patient.tourniquet_on = false
@@ -544,28 +552,30 @@ func _tourniquet_checks(surgery: Surgery) -> void:
 	tourniquet.global_transform = Transform3D(Basis(Vector3.RIGHT, Vector3.FORWARD, Vector3.UP), top + Vector3.UP * tourniquet.def.length)
 	var hand := {"lowered": true, "trigger": true, "level": 0, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
 	var tip := tourniquet.tip_position()
-	ToolActions.update(tourniquet, hand, patient, 1.0 / 60.0)
+	# Held for two frames: a press counts once the tool has come down.
+	for frame in 2:
+		ToolActions.update(tourniquet, hand, patient, 1.0 / 60.0)
 	await _frames(2)
 	if not patient.tourniquet_on or tourniquet.band == null:
-		print("FAIL: the tourniquet didn't go on the thigh at %s (on=%s, part %s, ring %s)" % [tip, patient.tourniquet_on, patient.body.part_at(tip, 0.08), patient.body.limb_ring(tip)])
+		fail_test("the tourniquet didn't go on the thigh at %s (on=%s, part %s, ring %s)" % [tip, patient.tourniquet_on, patient.body.part_at(tip, 0.08), patient.body.limb_ring(tip)])
 		tools._req_release(1, Vector3.ZERO)
 		return
 	var torus := tourniquet.band.mesh as TorusMesh
 	var center := tourniquet.band.global_position
 	var axis := tourniquet.band.global_basis.y.normalized()
 	if absf(axis.dot(patient.body.root().global_basis.x.normalized())) < 0.95:
-		print("FAIL: the tourniquet band doesn't run around the leg (axis %s)" % axis)
+		fail_test("the tourniquet band doesn't run around the leg (axis %s)" % axis)
 	if center.y > top.y - 0.03:
-		print("FAIL: the tourniquet lies on top of the leg instead of around it (center %.3f, skin on top %.3f)" % [center.y, top.y])
+		fail_test("the tourniquet lies on top of the leg instead of around it (center %.3f, skin on top %.3f)" % [center.y, top.y])
 	# Snug: the band's inside passes just over the top of the thigh.
 	if absf(center.y + torus.inner_radius - top.y) > 0.015:
-		print("FAIL: the tourniquet band isn't snug on the thigh (inside at %.3f, skin at %.3f)" % [center.y + torus.inner_radius, top.y])
+		fail_test("the tourniquet band isn't snug on the thigh (inside at %.3f, skin at %.3f)" % [center.y + torus.inner_radius, top.y])
 	if tourniquet.state != SurgicalTool.State.STANDING or tools.tool_in_hand(1, 1) != null:
-		print("FAIL: the hand still holds the tourniquet once it's on")
+		fail_test("the hand still holds the tourniquet once it's on")
 	tools._req_grab(tourniquet.uid, 1)
 	await _frames(2)
 	if patient.tourniquet_on or tourniquet.band != null:
-		print("FAIL: taking the tourniquet off didn't loosen it")
+		fail_test("taking the tourniquet off didn't loosen it")
 	tools._req_release(1, Vector3.ZERO)
 	await _frames(2)
 
@@ -579,19 +589,19 @@ func _nurse_checks(surgery: Surgery) -> void:
 	nurse.delivered = 0
 	nurse.request(1, "gauze", surgery)
 	if nurse.order().is_empty() or not Room.nurse_board_text({"order": nurse.order()}).contains("Gauze"):
-		print("FAIL: the nurse board doesn't show the order on its way")
+		fail_test("the nurse board doesn't show the order on its way")
 	for i in Nurse.FREE_ORDERS:
 		nurse.request(1, "gauze", surgery)
 		nurse.tick(1000.0, surgery)
 		if nurse.cooldown_left > 0.0:
-			print("FAIL: the nurse cooldown started after free delivery %d" % (i + 1))
+			fail_test("the nurse cooldown started after free delivery %d" % (i + 1))
 	nurse.request(1, "gauze", surgery)
 	nurse.tick(1000.0, surgery)
 	if not nurse.order().is_empty() or nurse.cooldown_left <= 0.0:
-		print("FAIL: the nurse cooldown didn't start after the sixth delivery")
+		fail_test("the nurse cooldown didn't start after the sixth delivery")
 	nurse.request(1, "gauze", surgery)
 	if not nurse.order().is_empty():
-		print("FAIL: the nurse took an order during her cooldown")
+		fail_test("the nurse took an order during her cooldown")
 
 
 ## Without quirks, one right dose of propofol keeps a patient whose bleeding is under control asleep and their heart
@@ -613,11 +623,11 @@ func _anesthesia_checks(surgery: Surgery) -> void:
 			depth = v.anesthesia
 	# Run modifiers (expired drugs) may weaken the dose, but whatever depth it reaches has to hold.
 	if absf(v.anesthesia - depth) > 0.01 or v.is_awake() or v.is_arrested():
-		print("FAIL: one right dose of propofol didn't hold for five minutes (anesthesia %.2f -> %.2f, awake %s, arrested %s)" % [depth, v.anesthesia, v.is_awake(), v.is_arrested()])
+		fail_test("one right dose of propofol didn't hold for five minutes (anesthesia %.2f -> %.2f, awake %s, arrested %s)" % [depth, v.anesthesia, v.is_awake(), v.is_arrested()])
 	if surgery.director._ready_for("unstable", patient):
-		print("FAIL: the arrest event would strike a stable patient (systolic %d, heart rate %d)" % [v.systolic, v.heart_rate])
+		fail_test("the arrest event would strike a stable patient (systolic %d, heart rate %d)" % [v.systolic, v.heart_rate])
 	if surgery.director._ready_for("incised", patient):
-		print("FAIL: the wake up event doesn't wait for the first cut")
+		fail_test("the wake up event doesn't wait for the first cut")
 	patient.mods = saved[0]
 	patient.vitals.from_dict(saved[1])
 	patient.active_drugs = saved[2]
@@ -630,7 +640,7 @@ func _smoking_checks(surgery: Surgery) -> void:
 	var spot := surgery.room.find_child("SmokeACigarette", false, false) as Interactable
 	surgery.tools._req_release(me.active, Vector3.ZERO)
 	if spot == null or spot.offered_to(me):
-		print("FAIL: the smoking spot is missing or offered to an empty hand")
+		fail_test("the smoking spot is missing or offered to an empty hand")
 		return
 	var before := surgery.tools.tools.size()
 	surgery.tools.spawn("cig_pack", me.global_position + Vector3(0.0, 1.0, 0.0))
@@ -638,14 +648,14 @@ func _smoking_checks(surgery: Surgery) -> void:
 	surgery.tools._req_grab(pack.uid, me.active)
 	await _frames(2)
 	if not spot.offered_to(me):
-		print("FAIL: the smoking spot isn't offered to a hand holding cigarettes")
+		fail_test("the smoking spot isn't offered to a hand holding cigarettes")
 	var speed := me.status.move_speed()
 	spot.interact(me)
 	await _frames(2)
 	var stress := me.status.stress
 	me.status.add_stress(0.3)
 	if pack.charges != pack.def.charges - 1 or me.status.stress > stress or me.status.move_speed() <= speed:
-		print("FAIL: smoking didn't use a cigarette, stop stress and speed you up (%d left)" % pack.charges)
+		fail_test("smoking didn't use a cigarette, stop stress and speed you up (%d left)" % pack.charges)
 	me.status.smoke_left = 0.0
 	surgery.tools._req_release(me.active, Vector3.ZERO)
 
@@ -679,7 +689,7 @@ func _table_checks(surgery: Surgery, all: bool) -> void:
 		if tool.state == SurgicalTool.State.FREE:
 			var below := support_below(tool, tool.global_transform * tool.bounds.get_center())
 			if lowest_point(tool) < below - 0.003:
-				print("FAIL: the %s sinks %.1f mm into what it lies on (at %s, touching %s, sleeping %s, basis %s)" % [tool.def.id, (below - lowest_point(tool)) * 1000.0, tool.global_position, tool.get_colliding_bodies().map(func(b: Node) -> String: return str(b.name)), tool.sleeping, tool.global_basis])
+				fail_test("the %s sinks %.1f mm into what it lies on (at %s, touching %s, sleeping %s, basis %s)" % [tool.def.id, (below - lowest_point(tool)) * 1000.0, tool.global_position, tool.get_colliding_bodies().map(func(b: Node) -> String: return str(b.name)), tool.sleeping, tool.global_basis])
 	var me := surgery.local_surgeon
 	var hand := me.hands[1]
 	var tray: Vector3 = surgery.room.layout.tray + Vector3(0.0, 0.93, 0.1)
@@ -702,11 +712,11 @@ func _table_checks(surgery: Surgery, all: bool) -> void:
 		await _frames(20)
 		var top := support_below(tool, tool.tip_position())
 		if lowest_point(tool) < top - 0.003:
-			print("FAIL: the %s lowered onto the tray goes %.1f mm into it" % [tool.def.id, (top - lowest_point(tool)) * 1000.0])
+			fail_test("the %s lowered onto the tray goes %.1f mm into it" % [tool.def.id, (top - lowest_point(tool)) * 1000.0])
 		for point: Array in hand.bone_points():
 			var p: Vector3 = point[0]
 			if p.y - float(point[1]) < support_below(tool, p) - 0.003:
-				print("FAIL: the glove holding the %s goes into the tray" % tool.def.id)
+				fail_test("the glove holding the %s goes into the tray" % tool.def.id)
 				break
 		hand.lowered = false
 		hand.level = 0
@@ -718,7 +728,7 @@ func _table_checks(surgery: Surgery, all: bool) -> void:
 		if tool.state == SurgicalTool.State.FREE and on_tray:
 			var below := support_below(tool, tool.global_transform * tool.bounds.get_center())
 			if lowest_point(tool) < below - 0.003:
-				print("FAIL: the %s put down sinks %.1f mm into what it lies on (at %s, touching %s, sleeping %s, basis %s, bounds %s, shapes %s)" % [tool.def.id, (below - lowest_point(tool)) * 1000.0, tool.global_position, tool.get_colliding_bodies().map(func(b: Node) -> String: return str(b.name)), tool.sleeping, tool.global_basis, tool.bounds, tool.find_children("*", "CollisionShape3D", false, false).map(func(c: Node) -> String: return "%s %s" % [(c as CollisionShape3D).shape.get("size"), (c as CollisionShape3D).position])])
+				fail_test("the %s put down sinks %.1f mm into what it lies on (at %s, touching %s, sleeping %s, basis %s, bounds %s, shapes %s)" % [tool.def.id, (below - lowest_point(tool)) * 1000.0, tool.global_position, tool.get_colliding_bodies().map(func(b: Node) -> String: return str(b.name)), tool.sleeping, tool.global_basis, tool.bounds, tool.find_children("*", "CollisionShape3D", false, false).map(func(c: Node) -> String: return "%s %s" % [(c as CollisionShape3D).shape.get("size"), (c as CollisionShape3D).position])])
 		if not all:
 			break
 	me.global_transform = standing
@@ -826,10 +836,10 @@ func _anatomy_checks(surgery: Surgery) -> void:
 	var anatomy: Dictionary = Db.patient_sites.get(surgery.scenario.site, {}).get("anatomy", {})
 	if anatomy.has("organs"):
 		if body.organs.filter(func(o: RigidBody3D) -> bool: return o.has_meta("kind") and int(o.get_meta("layer")) == 1).is_empty():
-			print("FAIL: the %s has no organs under the top layer" % surgery.scenario.site)
+			fail_test("the %s has no organs under the top layer" % surgery.scenario.site)
 		var torn := open_wide(patient)
 		if torn > 0:
-			print("FAIL: folding the flaps of the %s back tore %d springs" % [surgery.scenario.site, torn])
+			fail_test("folding the flaps of the %s back tore %d springs" % [surgery.scenario.site, torn])
 		await _frames(2)
 		# --coverage draws what's still covered: one row per uv.x (feet first), # where soft tissue is in the way.
 		if OS.get_cmdline_user_args().has("--coverage"):
@@ -843,12 +853,12 @@ func _anatomy_checks(surgery: Surgery) -> void:
 				continue
 			var hidden := organ_footprint(body, organ).filter(func(uv: Vector2) -> bool: return soft_tissue_over(body, uv))
 			if not hidden.is_empty():
-				print("FAIL: the open %s still hides the %s under soft tissue at %s" % [surgery.scenario.site, organ.get_meta("kind", organ.name), hidden])
+				fail_test("the open %s still hides the %s under soft tissue at %s" % [surgery.scenario.site, organ.get_meta("kind", organ.name), hidden])
 		for bone in body.bones:
 			var middle := (bone.get_child(bone.get_child_count() / 2) as Node3D).position
 			var uv := Vector2(middle.x / body.site_size.x + 0.5, middle.z / body.site_size.y + 0.5)
 			if uv.x > 0.05 and uv.x < 0.95 and soft_tissue_over(body, uv):
-				print("FAIL: the open %s still hides %s under soft tissue at %s" % [surgery.scenario.site, bone.name, uv])
+				fail_test("the open %s still hides %s under soft tissue at %s" % [surgery.scenario.site, bone.name, uv])
 		await _move_top_organ(surgery)
 	if anatomy.has("organs") or anatomy.has("bones"):
 		await _bone_checks(surgery)
@@ -873,7 +883,7 @@ func _move_top_organ(surgery: Surgery) -> void:
 			if grip.get("type") != "organ" or grip.organ != top:
 				var at := body.uv_to_world(organ_uv, depth)
 				var shape: CollisionShape3D = organ.get_child(organ.get_child_count() - 1)
-				print("FAIL: forceps in the open %s didn't take hold of the %s: %s (at %s, organ %s, box %s at %s, organ_at %d)" % [surgery.scenario.site, organ.get_meta("kind"), grip, at, organ.global_position, (shape.shape as BoxShape3D).size, shape.global_position, body.organ_at(at, 0.02)])
+				fail_test("forceps in the open %s didn't take hold of the %s: %s (at %s, organ %s, box %s at %s, organ_at %d)" % [surgery.scenario.site, organ.get_meta("kind"), grip, at, organ.global_position, (shape.shape as BoxShape3D).size, shape.global_position, body.organ_at(at, 0.02)])
 				return
 			var home := organ.position
 			var aside := body.site.to_global(organ.position + Vector3(0.0, 0.03, 0.0) + Vector3(organ.position.x, 0, organ.position.z).normalized() * 0.12)
@@ -882,7 +892,7 @@ func _move_top_organ(surgery: Surgery) -> void:
 				await get_tree().physics_frame
 			var now := first_inside(body, uv)
 			if now == top:
-				print("FAIL: moving the %s aside didn't uncover what's under it" % organ.get_meta("kind"))
+				fail_test("moving the %s aside didn't uncover what's under it" % organ.get_meta("kind"))
 			patient.release_grip(99001, grip, false)
 			# Put back where it was, out of the way of what's checked next: by now the patient may be past drifting it
 			# back (Patient only settles organs while it's alive).
@@ -890,7 +900,7 @@ func _move_top_organ(surgery: Surgery) -> void:
 			organ.linear_velocity = Vector3.ZERO
 			await _frames(30)
 			return
-	print("FAIL: nothing in the open %s lies under the top layer of organs" % surgery.scenario.site)
+	fail_test("nothing in the open %s lies under the top layer of organs" % surgery.scenario.site)
 
 
 ## Chest and limbs: a deep cut opens down to the bone. It's right under the muscle, a tool rests on it,
@@ -900,7 +910,7 @@ func _bone_checks(surgery: Surgery) -> void:
 	var body := patient.body
 	if body.bones.is_empty():
 		if not patient.targets.any(func(t: CavityTarget) -> bool: return t.kind in ["bone", "sternum"]):
-			print("FAIL: no bones under the %s" % surgery.scenario.site)
+			fail_test("no bones under the %s" % surgery.scenario.site)
 		return
 	# The bone closest to the middle of the site.
 	var bone: StaticBody3D = null
@@ -922,17 +932,17 @@ func _bone_checks(surgery: Surgery) -> void:
 		q.position = body.site.to_global(middle)
 		q.collision_mask = PatientBody.CAVITY_LAYER
 		print("    point query: ", body.get_world_3d().direct_space_state.intersect_point(q).map(func(h: Dictionary) -> String: return str((h.collider as Node).name)), " shape ", (bone.get_child(1) as CollisionShape3D).global_transform, " site ", body.site.global_transform)
-		print("FAIL: the %s under a deep cut at %s isn't the first thing inside: %s at %s, bone at %s" % [bone.name, uv, what.name if what else "nothing", what.position if what else Vector3.ZERO, middle])
+		fail_test("the %s under a deep cut at %s isn't the first thing inside: %s at %s, bone at %s" % [bone.name, uv, what.name if what else "nothing", what.position if what else Vector3.ZERO, middle])
 	var top := PatientBody.SKIN_THICKNESS + body.fat_thickness + PatientBody.MUSCLE_THICKNESS
 	var depth := body.surface_height(uv) - middle.y
 	if depth < top or depth > body.cavity_depth():
-		print("FAIL: the %s sits %.3f m under the skin, not under the muscle inside the cavity" % [bone.name, depth])
+		fail_test("the %s sits %.3f m under the skin, not under the muscle inside the cavity" % [bone.name, depth])
 	var scraped: float = patient.flags.get("bone_scraped", 0.0)
 	# Down to just over the bone's top, where a blade at full effort stops in an opening.
 	var thickness := ((bone.get_child(1) as CollisionShape3D).shape as CapsuleShape3D).radius
 	patient.cut_cavity(uv, depth - thickness - 0.002, 1.0, false, 0.5)
 	if patient.flags.get("bone_scraped", 0.0) <= scraped:
-		print("FAIL: cutting down on the %s didn't reach the bone" % bone.name)
+		fail_test("cutting down on the %s didn't reach the bone" % bone.name)
 
 
 ## The heart beats with the pulse, the lungs swell with each breath, and a heart in asystole lies still.
@@ -948,11 +958,11 @@ func _organ_motion_checks(surgery: Surgery) -> void:
 			body.animator.animate(vitals, true, 1.0 / 30.0)
 			sizes.append(body.organ_motion(index))
 		if sizes.max() - sizes.min() < 0.04:
-			print("FAIL: the %s doesn't move with the %s (%.3f)" % [body.organs[index].get_meta("kind"), motion, sizes.max() - sizes.min()])
+			fail_test("the %s doesn't move with the %s (%.3f)" % [body.organs[index].get_meta("kind"), motion, sizes.max() - sizes.min()])
 		if motion == "beat":
 			var rhythm := vitals.rhythm
 			vitals.rhythm = Vitals.Rhythm.ASYSTOLE
 			body.animator.animate(vitals, true, 0.3)
 			if body.organ_motion(index) != 1.0:
-				print("FAIL: the heart still beats in asystole")
+				fail_test("the heart still beats in asystole")
 			vitals.rhythm = rhythm

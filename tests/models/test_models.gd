@@ -11,7 +11,7 @@ const PATIENT_BONES: PackedStringArray = [
 ]
 const PATIENT_PARTS: PackedStringArray = ["EyeL", "EyeR", "Lids"]
 const ORGANS: PackedStringArray = ["bowel", "lobe", "sac"]
-const GripCheck := preload("res://tests/grip_check.gd")
+const GripCheck := preload("res://tests/support/grip_check.gd")
 ## Most triangles any one model of a category may have. The generators aim under these
 ## (tools/blender/__main__.py BUDGETS, tools/blender/patient.py BUDGETS).
 const BUDGETS: Dictionary = {
@@ -42,7 +42,7 @@ func test_model_rig_geometry_and_budget_contracts() -> void:
 				_exists("organs", organ.model)
 	# Every target kind any scenario uses needs a model.
 	var kinds: Dictionary = {}
-	for scenario: ScenarioDef in Db.scenarios:
+	for scenario: ScenarioDef in Db.scenarios + Db.disabled_scenarios:
 		for target: Dictionary in scenario.targets:
 			kinds[target.get("kind", "bullet")] = true
 	for kind: String in kinds:

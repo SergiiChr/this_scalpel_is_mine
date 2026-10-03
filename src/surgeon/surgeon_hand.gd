@@ -11,7 +11,8 @@ const TURN_RANGE := 0.9
 ## The tilt a glove is fitted onto its tool at (see _place_glove()). Tilted or turned from there, both turn together.
 const REST_TILT := -1.1
 const LIFT_HEIGHT := 0.12
-const SPEED_WINDOW_MSEC := 250
+## Seconds of game time the hand's speed is measured over.
+const SPEED_WINDOW := 0.25
 const FINGERS: PackedStringArray = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
 ## Radians each finger joint bends at full curl, knuckle first.
 const JOINT_BEND: PackedFloat32Array = [0.9, 1.2, 0.8]
@@ -83,13 +84,15 @@ var puppet := false
 var blood := 0.0
 
 var _lift := 0.0
-## Recent [msec, position] samples. Speed over a short window ignores tremor and network jitter.
+## Recent [game time, position] samples. Speed over a short window ignores tremor and network jitter.
+## Game time, not the wall clock: physics frames run back to back after a stall would read as a burst of speed.
 var _history: Array = []
+var _clock := 0.0
 ## Set by the surgeon each frame; drives how far the fingers curl.
 var holding := false
 ## ToolDef.grip of the tool in this hand, set with `holding`. Empty hands follow the forearm, open.
 var grip := "pencil"
-## How this hand's grip is fitted to the tool it holds (data/grips.json, made by tests/fit_grips.tscn), so the tool
+## How this hand's grip is fitted to the tool it holds (data/grips.json, made by tests/support/fit_grips.tscn), so the tool
 ## doesn't pass through the glove: "lift" moves the glove off the tool toward the back of the hand and "shift" toward
 ## the pinky side, so the tool sits more in the web of the thumb (meters); "curl" replaces the grip's finger curl.
 ## Empty: the grip as it is.
@@ -234,7 +237,7 @@ func tip_offset(tool_length: float) -> Vector3:
 func update_pose(shoulder: Vector3, delta: float) -> void:
 	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * 0.8)
 	global_position = effective_position()
-	_track_speed()
+	_track_speed(delta)
 	global_basis = grip_transform().basis
 	_pusher.global_position = global_position
 	_solve_arm(shoulder)
@@ -307,13 +310,13 @@ func set_blood(amount: float) -> void:
 		mat.set_shader_parameter("coat_reach", GLOVE_LENGTH * (0.3 + amount))
 
 
-func _track_speed() -> void:
-	var now := Time.get_ticks_msec()
-	_history.append([now, global_position])
-	while _history.size() > 2 and now - int(_history[0][0]) > SPEED_WINDOW_MSEC:
+func _track_speed(delta: float) -> void:
+	_clock += delta
+	_history.append([_clock, global_position])
+	while _history.size() > 2 and _clock - float(_history[0][0]) > SPEED_WINDOW:
 		_history.pop_front()
 	var oldest: Array = _history[0]
-	var span := maxf((now - int(oldest[0])) * 0.001, 0.016)
+	var span := maxf(_clock - float(oldest[0]), 0.016)
 	speed = global_position.distance_to(oldest[1]) / span
 
 

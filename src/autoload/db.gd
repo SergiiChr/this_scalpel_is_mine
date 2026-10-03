@@ -11,6 +11,8 @@ var surgeon_quirks: Dictionary = {}
 var tools: Dictionary = {}
 var drugs: Dictionary = {}
 var scenarios: Array[ScenarioDef] = []
+## Scenarios with disabled=true: not offered to play, still found by scenario(id) for tests.
+var disabled_scenarios: Array[ScenarioDef] = []
 var manual: Array[ManualPage] = []
 var dialogue := ConfigFile.new()
 var events := ConfigFile.new()
@@ -22,7 +24,7 @@ var run_modifiers := ConfigFile.new()
 var starter_kit: Array = []
 ## Surgical sites on the patient body, see data/patient_sites.json.
 var patient_sites: Dictionary = {}
-## How each tool model's grip is fitted to the glove, per hand, see SurgeonHand.fit and tests/fit_grips.tscn.
+## How each tool model's grip is fitted to the glove, per hand, see SurgeonHand.fit and tests/support/fit_grips.tscn.
 var grip_fits: Dictionary = {}
 
 
@@ -38,7 +40,7 @@ func _ready() -> void:
 	for file in _list(SCENARIO_DIR, "cfg"):
 		var scenario := ScenarioDef.load_file(SCENARIO_DIR.path_join(file))
 		if scenario:
-			scenarios.append(scenario)
+			(disabled_scenarios if scenario.disabled else scenarios).append(scenario)
 	scenarios.sort_custom(func(a: ScenarioDef, b: ScenarioDef) -> bool: return a.order < b.order)
 	for file in _list(MANUAL_DIR, "txt"):
 		manual.append(ManualPage.load_file(MANUAL_DIR.path_join(file)))
@@ -54,7 +56,7 @@ func _ready() -> void:
 
 
 func scenario(id: String) -> ScenarioDef:
-	for s in scenarios:
+	for s in scenarios + disabled_scenarios:
 		if s.id == id:
 			return s
 	return null

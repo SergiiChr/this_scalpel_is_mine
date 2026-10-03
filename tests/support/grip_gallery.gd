@@ -1,7 +1,7 @@
 extends Node3D
 ## Renders every tool model held in a right hand, from both sides and from the holder's eyes, for checking grips.
 ## Needs a real renderer:
-##   xvfb-run godot --path . --rendering-method gl_compatibility res://tests/grip_gallery.tscn -- --out=/tmp/grips [--left]
+##   xvfb-run godot --path . --rendering-method gl_compatibility res://tests/support/grip_gallery.tscn -- --out=/tmp/grips [--left]
 ##   [--only=scalpel,needle] renders just those models.
 
 const EYE := Vector3(0.0, 1.62, 0.0)

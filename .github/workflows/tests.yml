@@ -26,7 +26,7 @@ jobs:
   game:
     name: GUT smoke, regression, visuals and export
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,10 +40,13 @@ jobs:
           key: godot-${{ hashFiles('build.sh') }}
       - name: Install virtual display
         run: sudo apt-get update && sudo apt-get install -y xvfb
-      - name: Fast headless smoke gate
+      - name: Smoke tests
         run: ./build.sh test
-      - name: Full GUT regression
-        run: ./build.sh test --all --jobs 2
+      - name: Everything else, with key frames
+        run: ./build.sh test --all --skip smoke --jobs 2 --with-key-frames
+      # The smoke cases that take key frames, again with them on.
+      - name: Smoke key frames
+        run: ./build.sh test --tag smoke --tag visual_confirmation --with-key-frames
       - run: SKIP_TESTS=1 ./build.sh build
       - if: always()
         uses: actions/upload-artifact@v4

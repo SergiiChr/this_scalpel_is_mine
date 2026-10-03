@@ -140,7 +140,7 @@ case "${1:-}" in
 		# RENDERER=forward_plus checks the default renderer instead (needs Vulkan: lavapipe works, mesa-vulkan-drivers).
 		# SHOTS_ARGS adds screenshot options, e.g. SHOTS_ARGS=--materials for the material board and grips.
 		# shellcheck disable=SC2086
-		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method "${RENDERER:-gl_compatibility}" res://tests/screenshot.tscn -- \
+		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method "${RENDERER:-gl_compatibility}" res://tests/support/screenshot.tscn -- \
 			--scenario="${2:-appendectomy}" --out="$out" ${SHOTS_ARGS:-}
 		echo "Screenshots in $out"
 		;;

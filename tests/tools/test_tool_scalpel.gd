@@ -1,45 +1,50 @@
 extends GutTest
-## Focused scalpel contract: request, pick up, make a measured light cut, and put it back on the table.
+## The scalpel as a player uses it: asked for and taken off the tray, a light 5 cm cut along the blade's edge, the
+## opening it leaves, and the scalpel put back on the tray.
 
-const TAGS = ["smoke", "tool_scalpel", "tussue_modification"]
-const SURGERY := preload("res://scenes/surgery.tscn")
+const TAGS = ["smoke", "tool_scalpel", "tissue_modification"]
+const GODOT_ARGS = ["--fixed-fps", "60"]
+const Driver := preload("res://tests/support/surgery_driver.gd")
+const SurgeryState := preload("res://tests/support/surgery_state.gd")
+const LENGTH := 0.05
 
 
 func test_scalpel_pickup_five_centimeter_cut_and_table_drop() -> void:
-	Net.leave()
-	Net.scenario_id = "appendectomy"
-	Net.session_seed = 5150
-	Net.roster = {1: {"name": "Scalpel tester", "quirks": [], "ready": true}}
-	Net.patient_quirks = []
-	Net.run_modifiers = []
-	var surgery: Surgery = SURGERY.instantiate()
-	add_child(surgery)
-	await _frames(5)
-	var tool: SurgicalTool = surgery.tools.tools.values().filter(
-		func(candidate: SurgicalTool) -> bool: return candidate.def.id == "scalpel"
-	).front()
-	surgery.tools._req_grab(tool.uid, 1)
-	assert_eq(surgery.tools.tool_in_hand(1, 1), tool, "player_requests_item(scalpel) puts it in hand")
+	var driver: Driver = Driver.new()
+	add_child(driver)
+	await driver.start("appendectomy")
+	var patient := driver.patient
+	var body := driver.body
+	# Asleep, so the cut doesn't make them flinch: the setting, not what's tested.
+	SurgeryState.patient_is_asleep(patient)
+	var scalpel := await driver.player_requests_item("scalpel")
+	assert_eq(driver.me.held_tool(driver.me.active), scalpel, "player_requests_item(scalpel) puts it in hand")
 
-	var patient := surgery.patient
-	var uv_length := 0.05 / patient.body.uv_to_meters(1.0)
-	var start := Vector2(0.25, 0.5)
-	var finish := start + Vector2(uv_length, 0.0)
-	patient.cut(tool.uid * 1000, start, finish, 0.25, tool.def.sharpness, not tool.sterile, 0.1)
-	var wound: Wound = patient._stroke_wounds[tool.uid * 1000]
-	assert_almost_eq(patient.body.uv_to_meters(wound.length_uv()), 0.05, 0.003, "a light scalpel stroke makes a 5 cm cut")
-	assert_true(wound.made_by_surgeon and wound.depth < Wound.MUSCLE_DEPTH, "the light cut is attributed to the surgeon and stays superficial")
+	var from := Vector2(0.4, 0.45)
+	var to := from + Vector2(body.meters_to_uv(LENGTH), 0.0)
+	await driver.player_cuts_skin(from, to, 1)
+	var cuts := patient.wounds.filter(func(w: Wound) -> bool: return w.made_by_surgeon and w.kind == Wound.Kind.CUT)
+	assert_eq(cuts.size(), 1, "one stroke makes one cut")
+	if cuts.is_empty():
+		return
+	var cut: Wound = cuts[0]
+	assert_almost_eq(body.uv_to_meters(cut.length_uv()), LENGTH, 0.005, "a light stroke along 5 cm cuts 5 cm")
+	assert_true(cut.depth < Wound.MUSCLE_DEPTH and not body.is_open(cut.midpoint()), "a light cut stays in the skin")
+	assert_almost_eq(_opening(body, from, to), LENGTH, 0.01, "the skin is open along the cut and closed past its ends")
 
-	var tray: Vector3 = surgery.room.layout.tray
-	tool.global_position = tray + Vector3(0.0, Room.TRAY_SURFACE + 0.12, 0.0)
-	surgery.tools._req_release(1, Vector3.ZERO)
-	await _frames(8)
-	assert_eq(tool.state, SurgicalTool.State.FREE, "the scalpel is dropped")
-	assert_lt(Vector2(tool.global_position.x - tray.x, tool.global_position.z - tray.z).length(), 0.45, "the scalpel is left on the instrument table")
-	surgery.queue_free()
-	await _frames(3)
+	await driver.player_puts_down()
+	assert_eq(scalpel.state, SurgicalTool.State.FREE, "the scalpel is put down")
+	assert_true(driver.lies_on_tray(scalpel), "the scalpel lies on the instrument tray (%s)" % ToolManager.middle(scalpel))
+	await driver.stop()
 
 
-func _frames(count: int) -> void:
-	for _frame in count:
-		await get_tree().physics_frame
+## Meters of skin open along the line from `from` to `to`, looked for a centimeter past both ends.
+func _opening(body: PatientBody, from: Vector2, to: Vector2) -> float:
+	var step := body.meters_to_uv(0.001)
+	var along := (to - from).normalized()
+	var past := body.meters_to_uv(0.01)
+	var open := 0
+	for i in int((from.distance_to(to) + past * 2.0) / step):
+		if body.tissue.is_open(from - along * past + along * step * i, TissueSim.Depth.SKIN):
+			open += 1
+	return body.uv_to_meters(open * step)

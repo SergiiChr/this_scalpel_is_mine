@@ -51,6 +51,7 @@ var injecting_route := "direct"
 var grip_info: Dictionary = {}
 var lowered_before := false
 var trigger_before := false
+var pressed_before := false
 var level_before := 0
 var stroke := 0
 ## Deepest level this stroke's blade point has been pressed in at (see ToolActions, action "cut").
@@ -291,5 +292,6 @@ func set_state(new_state: State, new_holder: int, new_slot: int) -> void:
 	if state != State.HELD:
 		lowered_before = false
 		trigger_before = false
+		pressed_before = false
 		level_before = 0
 		last_tip = Vector3.INF

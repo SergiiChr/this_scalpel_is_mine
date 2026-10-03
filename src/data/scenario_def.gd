@@ -12,6 +12,8 @@ var description: String
 ## What the patient chart says brought them in: symptoms and history only, no treatment plan.
 var complaint: String
 var hidden: bool
+## Left out of the menu and lobby while its positive flow test is broken (the cfg names the test).
+var disabled: bool
 var time_limit: float
 var anesthesia: String
 var site: String

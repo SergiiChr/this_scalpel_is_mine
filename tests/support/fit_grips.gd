@@ -3,9 +3,9 @@ extends Node3D
 ## moves off the tool (toward the back of the hand, and sideways) just until the palm clears it, then each finger opens
 ## or closes just until it clears too, and finally closes onto the tool so it rests on it (_touch()). Run it again after
 ## changing tool models, the glove or the grips:
-##   godot --headless --path . res://tests/fit_grips.tscn
+##   godot --headless --path . res://tests/support/fit_grips.tscn
 
-const GripCheck := preload("res://tests/grip_check.gd")
+const GripCheck := preload("res://tests/support/grip_check.gd")
 const OUT := "res://data/grips.json"
 const LIFT_STEP := 0.003
 const MAX_LIFT := 0.045
@@ -18,7 +18,7 @@ const MAX_CURL := 1.3
 
 
 func _ready() -> void:
-	var fits: Dictionary = {"_about": "Grip fits per tool model and hand, made by tests/fit_grips.tscn. lift, shift: meters the glove moves off the tool toward the back of the hand and toward the pinky side. curl: how far each finger closes (index, middle, ring, pinky, thumb)."}
+	var fits: Dictionary = {"_about": "Grip fits per tool model and hand, made by tests/support/fit_grips.tscn. lift, shift: meters the glove moves off the tool toward the back of the hand and toward the pinky side. curl: how far each finger closes (index, middle, ring, pinky, thumb)."}
 	for hand_index in 2:
 		var hand := GripCheck.make_hand(self, hand_index)
 		var side := "left" if hand_index == 0 else "right"

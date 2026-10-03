@@ -1,6 +1,6 @@
 extends Node
 ## Renders a few views of a scenario with staged damage, for checking the look without playing.
-## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
+## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/support/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
 ## --syringe renders every case of tests/support/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
@@ -59,8 +59,8 @@ func _ready() -> void:
 		tissue.grip(key, pull[0])
 		tissue.move_grip(key, tissue.pos[tissue.nearest(pull[0])] + (pull[1] as Vector3))
 	var def := Db.tool("cautery")
-	patient.cauterize_at("site", Vector2(0.75, 0.3), 0.0, Db.tool("lighter"), 0.5)
-	patient.cauterize_at("site", Vector2(0.8, 0.35), 0.0, def, 0.5)
+	patient.cauterize_at("site", Vector2(0.75, 0.3), Db.tool("lighter"), 0.5)
+	patient.cauterize_at("site", Vector2(0.8, 0.35), def, 0.5)
 	patient.bruise(Vector2(0.2, 0.25), 0.1, 0.8)
 	patient.mark(Vector2(0.2, 0.8), Vector2(0.8, 0.82))
 	patient.paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, Vector2(0.45, 0.62), Vector2(0.45, 0.62), 0.08, 1.0, WoundMap.Mode.MAX)
@@ -230,7 +230,7 @@ func _anatomy(surgery: Surgery, out: String) -> void:
 	if top >= 0:
 		body.hold_organ(top, body.organs[top].position + Vector3(0, 0.04, 0) + Vector3(body.organs[top].position.x, 0, body.organs[top].position.z).normalized() * 0.1)
 		for i in 20:
-			body.settle_organs()
+			body.settle_organs(1.0 / Engine.physics_ticks_per_second)
 			await get_tree().physics_frame
 		camera.current = true
 		await _shot(out, "22_top_organ_aside")

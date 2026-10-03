@@ -41,6 +41,8 @@ const PATIENT_LAYER := 2
 const CAVITY_LAYER := 32
 ## Hands push organs aside on their own layer, so rays looking for what's in the cavity don't hit the hands.
 const PUSHER_LAYER := 128
+## How fast a pushed organ drifts back to where it belongs (1/s): most of the way in about half a second.
+const ORGAN_RETURN_RATE := 5.0
 ## The patient's real skin (body and gown meshes at rest), for resting hands and tools on. The boxes on
 ## PATIENT_LAYER stay for what a tool touches, they're too rough to rest a hand on without sinking into a leg.
 const SURFACE_LAYER := 256
@@ -1356,14 +1358,16 @@ func release_organ(index: int) -> void:
 
 
 ## Host: organs drift back to where they belong once you stop pushing them. Held ones go where the tool takes them.
-func settle_organs() -> void:
+## They're drawn back directly, not by a force: they ride on the site, which breathing moves every frame, and moving
+## a body's parent puts it back where it was, so physics alone would never carry them home.
+func settle_organs(delta: float) -> void:
 	for i in organs.size():
 		var organ := organs[i]
 		if _held_organs.has(i):
 			organ.position = _held_organs[i]
 			organ.linear_velocity = Vector3.ZERO
 			continue
-		organ.apply_central_force((_organ_rest[i] - organ.position) * 40.0 * organ.mass)
+		organ.position = organ.position.lerp(_organ_rest[i], 1.0 - exp(-ORGAN_RETURN_RATE * delta))
 
 
 ## Soft organs: a damped spring squashes and stretches each organ when it's pushed, on every peer.

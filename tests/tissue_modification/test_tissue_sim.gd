@@ -1,7 +1,7 @@
 extends GutTest
 ## Programmatic soft-tissue geometry and physics checks.
 
-const TAGS = ["smoke", "tussue_modification"]
+const TAGS = ["smoke", "tissue_modification"]
 
 const SIZE := Vector2(0.3, 0.25)
 const MID := Vector2(0.5, 0.5)

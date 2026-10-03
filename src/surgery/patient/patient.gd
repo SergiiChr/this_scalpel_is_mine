@@ -172,7 +172,7 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server() or not alive or not Surgery.current or not Surgery.current.running:
 		return
-	body.settle_organs()
+	body.settle_organs(delta)
 	_handle_organs(delta)
 	var tripped: Surgeon = Surgery.current.room.iv_line.tripped_by(Surgery.current.surgeons.values())
 	if tripped:
@@ -771,6 +771,9 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 	# Skin pulled shut over open muscle carries the muscle's pull: the edges won't meet, and a tight stitch
 	# gets them there only to tear through.
 	if wound.through_muscle() and body.tissue.muscle_open_near(wound.bin_position(bin), MUSCLE_REACH):
+		# A stab or a bullet hole is too small to reach into: the needle goes in through it and sews the muscle first.
+		if wound.kind in [Wound.Kind.PUNCTURE, Wound.Kind.GUNSHOT] and not body.is_open(uv):
+			return close_muscle_at(uv, def, dt)
 		if not (def.id in TENSIONED_CLOSURES and pressure == 3):
 			_tear_notice("The skin won't meet over the open muscle. Sew the muscle first.")
 			return false
@@ -826,19 +829,38 @@ func close_muscle_at(uv: Vector2, def: ToolDef, dt: float) -> bool:
 	return false
 
 
-func close_internal_at(uv: Vector2, depth_m: float, def: ToolDef, dt: float) -> void:
+## Returns true while it's sewing an internal wound that isn't closed yet.
+func close_internal_at(uv: Vector2, def: ToolDef, dt: float) -> bool:
+	var sewing := false
 	for wound in wounds:
-		if wound.is_internal() and wound.points[0].distance_to(uv) < 0.05 and absf(wound.depth_m - depth_m) < 0.04:
+		if wound.is_internal() and _reaches(wound, uv) and wound.bins[0] < 1.0:
 			wound.bins[0] = minf(wound.bins[0] + def.power * 0.4 * dt, 1.0)
 			wound.closure_quality = lerpf(wound.closure_quality, def.quality, 0.1)
+			sewing = true
+	return sewing
 
 
-func cauterize_at(zone: String, uv: Vector2, depth_m: float, def: ToolDef, dt: float) -> void:
+## A tool tip at uv works inside the body: in an opening, or through a stab or bullet hole in the skin there.
+func _inside(zone: String, uv: Vector2) -> bool:
+	if zone == "cavity":
+		return true
+	var hole := _nearest_wound(uv, 0.02, false)
+	return zone == "site" and hole != null and hole.kind in [Wound.Kind.PUNCTURE, Wound.Kind.GUNSHOT]
+
+
+## A tool tip inside the opening at uv reaches an internal wound under it, whatever its depth: a tool can't hover in
+## the cavity, it comes down onto whatever lies there (the organ the wound is in, or the floor once a target is out).
+static func _reaches(wound: Wound, uv: Vector2) -> bool:
+	return wound.points[0].distance_to(uv) < 0.05
+
+
+func cauterize_at(zone: String, uv: Vector2, def: ToolDef, dt: float) -> void:
 	var radius := body.meters_to_uv(def.radius)
 	var sealed := false
 	for wound in wounds:
-		var near := wound.points[0].distance_to(uv) < 0.05 and absf(wound.depth_m - depth_m) < 0.04 if wound.is_internal() else wound.distance_to(uv) < radius + 0.01
-		if near and (zone == "cavity") == wound.is_internal():
+		# An opened skin wound's edges lie apart from where it was cut: up to the gap of a fully open one.
+		var near := _reaches(wound, uv) if wound.is_internal() else wound.distance_to(uv) < radius + 0.01 + body.meters_to_uv(FULL_GAP) * wound.opened
+		if near and (_inside(zone, uv) if wound.is_internal() else zone == "site"):
 			wound.cauterized = minf(wound.cauterized + def.power * 0.6 * dt, 0.95)
 			sealed = true
 	if zone == "site":
@@ -1011,17 +1033,25 @@ func _contaminate() -> void:
 
 ## Called when a clamp tool closes at tip. Returns grip info that update_grip() and release_grip() use.
 func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionary:
+	# The nearest target the jaws close on, not one another tool already holds (two broken ends lie close together).
+	var nearest: CavityTarget = null
 	for target in targets:
 		if target.extracted or target.is_suction_target() or target.remove_with in ["saw", "smash"] and target.anchor > 0.0:
 			continue
+		if target.gripped_by != 0 and target.gripped_by != tool_uid:
+			continue
 		if zone in ["cavity", "site"] and target.uv.distance_to(uv) < 0.05 and absf(target.depth - depth_m) < 0.05 and not _covered(target):
-			target.gripped_by = tool_uid
-			return {"type": "target", "target": target.index, "start_depth": depth_m}
-	if zone == "cavity":
+			if nearest == null or target.uv.distance_to(uv) < nearest.uv.distance_to(uv):
+				nearest = target
+	if nearest:
+		nearest.gripped_by = tool_uid
+		return {"type": "target", "target": nearest.index, "start_depth": depth_m}
+	if _inside(zone, uv):
 		for wound in wounds:
 			if wound.is_internal() and wound.points[0].distance_to(uv) < 0.05:
 				wound.clamped = 0.9
 				return {"type": "vessel", "wound": wound.id}
+	if zone == "cavity":
 		# An organ in the way can be taken hold of and moved aside, to get at what's under it.
 		var organ := body.organ_at(body.uv_to_world(uv, depth_m), 0.02)
 		if organ >= 0:
@@ -1078,8 +1108,12 @@ func update_grip(tool_uid: int, grip_info: Dictionary, tip: Vector3, power: floa
 func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) -> void:
 	body.tissue.release(tool_uid)
 	match grip_info.get("type", "none"):
-		"target", "carry":
+		"target":
 			targets[grip_info.target].gripped_by = 0
+		"carry":
+			# Taken out: let go of, it's put aside instead of hanging over the opening.
+			targets[grip_info.target].gripped_by = 0
+			targets[grip_info.target].set_aside()
 		"organ":
 			body.release_organ(grip_info.organ)
 		"vessel":
@@ -1112,8 +1146,10 @@ func _extract(target: CavityTarget) -> void:
 	if target.extracted:
 		return
 	target.extracted = true
-	if target.is_suction_target() or target.remove_with in ["saw", "smash"]:
-		target.visible = target.remove_with in ["saw", "smash"]
+	if target.is_suction_target():
+		target.set_aside()
+	else:
+		target.update_look()
 	if target.surge > 0.0:
 		var wound := _new_wound(Wound.Kind.INTERNAL, target.uv, clampf(0.4 + target.surge * 0.15, 0.0, 1.0))
 		wound.depth_m = target.depth

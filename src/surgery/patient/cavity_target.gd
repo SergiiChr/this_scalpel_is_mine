@@ -80,9 +80,18 @@ func apply_state(data: Array) -> void:
 	amount = data[2]
 	extracted = data[3]
 	visible = data[4]
-	_update_look()
+	update_look()
 
 
-func _update_look() -> void:
+## Out of the body and let go of: out of sight.
+func set_aside() -> void:
+	visible = false
+	update_look()
+
+
+## Size and touch collider for the current state.
+func update_look() -> void:
+	# Only something still in place is in the way: taken out, sawn through or drained, tools reach past it.
+	(get_node("Touch") as StaticBody3D).collision_layer = LAYER if visible and not extracted else 0
 	if is_suction_target():
 		scale = Vector3.ONE * clampf(amount / 6.0, 0.05, 1.5)

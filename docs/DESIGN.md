@@ -209,6 +209,8 @@ Rolling rules live in `src/data/quirk_roller.gd`: 1-3 surgeon quirks, with 3 at 
 
 `[scenario]` holds metadata and setup, `[patient]` the starting wounds, burns, internal wounds and cavity targets,
 `[objectives]` the steps. The file name gives the id (`03_appendectomy.cfg` -> `appendectomy`), the number the order.
+`disabled=true` keeps a scenario out of the menu and lobby while its positive flow test is broken; a comment beside it
+names the test.
 
 Objective step types (`src/surgery/objectives/objective_checks.gd`):
 `sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
@@ -276,10 +278,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
   (`SurgeonHand.MAX_ROLL`), so the back of the hand stays up. `data/grips.json` fits each tool model to the glove
-  (moves it off the tool, opens or closes fingers) so no tool goes through the hand; `tests/fit_grips.tscn` makes it.
+  (moves it off the tool, opens or closes fingers) so no tool goes through the hand; `tests/support/fit_grips.tscn` makes it.
 - **Tools on hard surfaces**: tools lie on the tray side by side at the start, a lowered tool only presses into skin,
   and every corner of a held tool and the glove clear tables, trays and tools lying there. Physics is Jolt.
-  `tests/grip_gallery.tscn` renders every tool held, for checking.
+  `tests/support/grip_gallery.tscn` renders every tool held, for checking.
 - **Stations**: the nurse menu is grouped (`category` in tools.cfg) and deliveries land on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
