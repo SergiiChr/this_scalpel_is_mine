@@ -1,4 +1,4 @@
-# Every push and pull request runs the full test suite (tests/TEST_CASES.md) and a real export build.
+# GUT scripts are the executable source of truth. Smoke gates full regression and export.
 name: Tests
 
 on:
@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -22,11 +24,13 @@ jobs:
       - run: mypy tools
 
   game:
-    name: Game tests and export
+    name: GUT smoke, regression, visuals and export
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       # Godot and its export templates are large, keep them between runs.
       - uses: actions/cache@v4
         with:
@@ -34,13 +38,25 @@ jobs:
             .tools
             ~/.local/share/godot/export_templates
           key: godot-${{ hashFiles('build.sh') }}
-      - run: ./build.sh test
+      - name: Install virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Smoke tests
+        run: ./build.sh test --ci-run
+      - name: Everything else, with key frames
+        run: ./build.sh test --all --skip smoke --jobs 2 --with-key-frames --ci-run
+      # The smoke cases that take key frames, again with them on.
+      - name: Smoke key frames
+        run: ./build.sh test --tag smoke --tag visual_confirmation --with-key-frames --ci-run
       - run: SKIP_TESTS=1 ./build.sh build
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
-          path: build/test-logs
+          name: test-results
+          path: |
+            build/test-logs
+            build/test-results
+            build/test-artifacts/screenshots
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: ThisScalpelIsMine-linux

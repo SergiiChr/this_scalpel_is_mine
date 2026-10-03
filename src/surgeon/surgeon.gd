@@ -705,8 +705,11 @@ func _constrain(hand: SurgeonHand) -> void:
 	hand.on_hard = false
 	if surface.y != -INF:
 		if surface.open:
-			# A lowered blade goes into an opening as deep as its level: onto what's inside only at full effort.
-			var gap := BLADE_IN_OPENING[hand.level] if hand.lowered and tool and tool.def.action == "cut" else HOVER_GAP
+			# A lowered blade goes into an opening as deep as its level: onto what's inside only at full effort. Any other
+			# tool lowered comes down onto what's inside (a saw onto the bone), like onto anything hard.
+			var gap := HOVER_GAP
+			if hand.lowered and tool:
+				gap = BLADE_IN_OPENING[hand.level] if tool.def.action == "cut" else 0.001
 			hand.target.y = surface.y + gap - offset.y
 		elif hand.lowered and surface.soft:
 			# Skin gives: a lowered tip presses into it, deeper with effort.

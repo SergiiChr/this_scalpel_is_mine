@@ -5,7 +5,7 @@
 #   ./build.sh dev       Set up everything for development: system packages, Godot, export templates,
 #                        the Python virtualenv (.venv) for the asset generators, then imports the project.
 #   ./build.sh setup     Download Godot and import the project, nothing else (no sudo). Enough for test and shots.
-#   ./build.sh test      Run the automated tests (tests/run_tests.sh, cases in tests/TEST_CASES.md).
+#   ./build.sh test      Run fast smoke-tagged GUT tests. Add --all or --tag TAG for other suites.
 #   ./build.sh shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
 #                        ./build.sh shots [scenario] [out dir], default appendectomy into build/shots.
 #                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -28,6 +28,18 @@ GODOT="${GODOT_BIN:-$TOOLS/godot-$GODOT_VERSION}"
 TEMPLATES="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$GODOT_VERSION.stable"
 BASE_URL="https://github.com/godotengine/godot/releases/download/$GODOT_VERSION-stable"
 OUTPUT="$ROOT/build/ThisScalpelIsMine.x86_64"
+
+# GUT is pinned as a submodule under third_party; Godot sees its addon through addons/gut.
+# Initialize it automatically for clones made without --recurse-submodules.
+ensure_gut() {
+	if [[ ! -f "$ROOT/addons/gut/gut_cmdln.gd" ]]; then
+		git -C "$ROOT" submodule update --init --recursive third_party/gut
+	fi
+	[[ -f "$ROOT/addons/gut/gut_cmdln.gd" ]] || {
+		echo "GUT is missing. Run: git submodule update --init --recursive" >&2
+		exit 1
+	}
+}
 
 # Downloads a release file. GitHub release downloads fail now and then, so retry before giving up.
 download() {
@@ -74,6 +86,7 @@ fetch_templates() {
 }
 
 import_project() {
+	ensure_gut
 	"$GODOT" --headless --path "$ROOT" --import >/dev/null 2>&1 || true
 }
 
@@ -114,7 +127,9 @@ case "${1:-}" in
 		;;
 	test)
 		fetch_godot
-		GODOT="$GODOT" exec "$ROOT/tests/run_tests.sh"
+		import_project
+		shift
+		GODOT="$GODOT" exec "$ROOT/tests/run_tests.sh" "$@"
 		;;
 	shots)
 		fetch_godot
@@ -125,13 +140,14 @@ case "${1:-}" in
 		# RENDERER=forward_plus checks the default renderer instead (needs Vulkan: lavapipe works, mesa-vulkan-drivers).
 		# SHOTS_ARGS adds screenshot options, e.g. SHOTS_ARGS=--materials for the material board and grips.
 		# shellcheck disable=SC2086
-		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method "${RENDERER:-gl_compatibility}" res://tests/screenshot.tscn -- \
+		xvfb-run -a "$GODOT" --path "$ROOT" --rendering-method "${RENDERER:-gl_compatibility}" res://tests/support/screenshot.tscn -- \
 			--scenario="${2:-appendectomy}" --out="$out" ${SHOTS_ARGS:-}
 		echo "Screenshots in $out"
 		;;
 	build)
 		fetch_godot
-		[[ "${SKIP_TESTS:-0}" == 1 ]] || GODOT="$GODOT" "$ROOT/tests/run_tests.sh"
+		import_project
+		[[ "${SKIP_TESTS:-0}" == 1 ]] || GODOT="$GODOT" "$ROOT/tests/run_tests.sh" --all
 		fetch_templates
 		import_project
 		mkdir -p "$ROOT/build"
@@ -140,6 +156,7 @@ case "${1:-}" in
 		;;
 	editor)
 		fetch_godot
+		ensure_gut
 		exec "$GODOT" --editor --path "$ROOT"
 		;;
 	assets)

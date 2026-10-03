@@ -41,6 +41,8 @@ var status: Dictionary = {}
 var run_mods := Modifiers.new()
 ## Chart mix-up modifier: false until the nurse brings the corrected patient card.
 var chart_corrected := false
+## The post-op report once the surgery is over, as every peer got it (see Report.build()).
+var report: Dictionary = {}
 
 var _loaded: Dictionary = {}
 var _announced: Dictionary = {}
@@ -393,7 +395,8 @@ func _start() -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _show_report(report: Dictionary) -> void:
+func _show_report(data: Dictionary) -> void:
+	report = data
 	running = false
 	finished = true
 	for roll: Dictionary in report.patient_quirks:

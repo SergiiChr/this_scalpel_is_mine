@@ -56,11 +56,14 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 	var lowered: bool = hand.lowered
 	var trigger: bool = hand.trigger
 	var level: int = hand.level
-	var pressed := trigger and not tool.trigger_before
+	# Use lowers the tool and presses its trigger at once: the press counts a frame later, once the tool has come down
+	# onto whatever is under it (hovering, a tool can be just out of touch of a rounded limb).
+	var pressed := trigger and tool.trigger_before and not tool.pressed_before
 	var released := not trigger and tool.trigger_before
 	var level_up := level > tool.level_before
 	# Lowered since the last frame too: the hand has come down onto whatever is under it by now.
 	var settled := lowered and tool.lowered_before
+	tool.pressed_before = trigger and tool.trigger_before
 	tool.trigger_before = trigger
 	tool.level_before = level
 	if lowered and not tool.lowered_before:
@@ -151,20 +154,25 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.set_attached(hand.peer, tool.slot, false)
 		"suture":
 			if lowered and level > 0 and zone == "site" and tool.charges != 0:
-				if patient.close_at(uv, def, dt, mods.mult("improvised_mult"), level):
+				# Where the skin and fat still gape and the muscle shows, the needle reaches it: sewing the muscle on both
+				# sides closes the opening before the muscle right here is done.
+				if patient.body.layer_at(uv) == "muscle" and patient.close_muscle_at(uv, def, dt):
+					tool.charges -= 1 if tool.charges > 0 else 0
+					Surgery.current.sound("suture_pull", tip)
+				elif patient.close_at(uv, def, dt, mods.mult("improvised_mult"), level):
 					tool.charges -= 1 if tool.charges > 0 else 0
 					Surgery.current.sound({"skin_stapler": "staple", "office_stapler": "office_staple", "surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
 			elif lowered and level > 0 and zone == "cavity" and tool.charges != 0:
-				# Inside a wound through the muscle, the muscle comes first; deeper down, internal injuries.
-				if patient.close_muscle_at(uv, def, dt):
+				# An internal injury under the needle comes first: sewing the muscle of the opening shut would close the
+				# way in to it. Then, inside a wound through the muscle, the muscle.
+				if not patient.close_internal_at(uv, def, dt) and patient.close_muscle_at(uv, def, dt):
 					tool.charges -= 1 if tool.charges > 0 else 0
 					Surgery.current.sound("suture_pull", tip)
-				patient.close_internal_at(uv, probe.depth, def, dt)
 		"cauterize":
 			if level_up and level == 1 and def.id == "lighter":
 				Surgery.current.sound("lighter_flick", tip)
 			if lowered and level > 0 and zone in ["site", "cavity"] and tool.charges != 0:
-				patient.cauterize_at(zone, uv, probe.depth, def, dt * effort)
+				patient.cauterize_at(zone, uv, def, dt * effort)
 				Surgery.current.effect("smoke", tip, 180)
 				if randf() < dt * 1.2:
 					Surgery.current.sound("cautery_sizzle", tip)

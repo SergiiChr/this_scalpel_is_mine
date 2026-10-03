@@ -1,93 +1,195 @@
 #!/usr/bin/env bash
-# Runs every automated game test listed in tests/TEST_CASES.md. Exits non-zero if any fails.
-# GODOT must point at the Godot binary (./build.sh test sets it up). Logs go to build/test-logs.
-set -uo pipefail
+# Runs the GUT test scripts under tests/ (helpers in tests/support aren't tests). Exits non-zero if any fails.
+# Every test script declares its tags on one line: const TAGS = ["smoke", ...]. A script can add Godot options the same
+# way: const GODOT_ARGS = ["--fixed-fps", "60"] runs every frame as one physics step of 1/60 s as fast as the machine
+# goes, for long surgeries (code timed by the wall clock, like a sedated surgeon's input delay, then runs too slow).
+# Usage: run_tests.sh [--all] [--tag TAG]... [--skip TAG]... [--case TEXT] [--with-key-frames] [--ci-run] [--list]
+#                     [--jobs N]
+#   Without --all or --tag it runs the smoke tag. Several --tag pick the scripts that have all of them, --skip leaves
+#   out the scripts that have the tag.
+#   --case TEXT runs only the test functions whose name contains TEXT.
+#   --with-key-frames: visual_confirmation scripts save their key frames and check the frame budget (WITH_KEY_FRAMES=1,
+#   see tests/support/key_frames.gd). They get a display (xvfb-run without one) and the compatibility renderer, and run
+#   alone after the others. Without it they run headless like the rest, skipping the screenshots.
+#   --ci-run: frame times are reported, not checked against the budget (CI_RUN=1, see tests/support/frame_budget.gd).
+# GODOT must point at the Godot binary (./build.sh test sets it up). Logs and JUnit XML go to build/.
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GODOT="${GODOT:?set GODOT to the Godot binary}"
 LOGS="$ROOT/build/test-logs"
-mkdir -p "$LOGS"
-failed=0
+RESULTS="$ROOT/build/test-results"
+mkdir -p "$LOGS" "$RESULTS"
+# Screenshots land under build/ too: Godot doesn't import anything there.
+touch "$ROOT/build/.gdignore"
 
-run_scene() {
-	timeout "${2:-900}" "$GODOT" --headless --path "$ROOT" "res://tests/$1.tscn" "${@:3}" >"$LOGS/$1.log" 2>&1
+all=0
+list=0
+case_filter=""
+jobs=1
+key_frames=0
+tags=()
+skips=()
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--all) all=1 ;;
+		--tag) tags+=("$2"); shift ;;
+		--tag=*) tags+=("${1#*=}") ;;
+		--skip) skips+=("$2"); shift ;;
+		--skip=*) skips+=("${1#*=}") ;;
+		--case) case_filter="$2"; shift ;;
+		--case=*) case_filter="${1#*=}" ;;
+		--jobs) jobs="$2"; shift ;;
+		--jobs=*) jobs="${1#*=}" ;;
+		--with-key-frames) key_frames=1 ;;
+		--ci-run) export CI_RUN=1 ;;
+		--list) list=1 ;;
+		*) echo "Unknown test option: $1" >&2; exit 2 ;;
+	esac
+	shift
+done
+if [[ $all -eq 0 && ${#tags[@]} -eq 0 ]]; then
+	tags=(smoke)
+fi
+
+selected=()
+while IFS= read -r file; do
+	line="$(grep -m1 -E '^const TAGS' "$file" || true)"
+	if [[ -z "$line" ]]; then
+		echo "Test has no TAGS: ${file#"$ROOT/"}" >&2
+		exit 2
+	fi
+	if [[ -n "$case_filter" ]] && ! grep -qE "^func test_[a-z0-9_]*${case_filter}" "$file"; then
+		continue
+	fi
+	matched=1
+	for tag in "${tags[@]}"; do
+		[[ "$line" == *"\"$tag\""* ]] || matched=0
+	done
+	for tag in "${skips[@]}"; do
+		[[ "$line" != *"\"$tag\""* ]] || matched=0
+	done
+	if [[ $matched -eq 1 ]]; then
+		selected+=("res://${file#"$ROOT/"}")
+	fi
+done < <(find "$ROOT/tests" -type f -name 'test_*.gd' -not -path '*/support/*' | sort)
+
+if [[ $list -eq 1 ]]; then
+	printf '%s\n' "${selected[@]}"
+	exit 0
+fi
+if [[ ${#selected[@]} -eq 0 ]]; then
+	echo "No tests match tags '${tags[*]}' and case '$case_filter'." >&2
+	exit 2
+fi
+
+log_name() {
+	local name="${1#res://tests/}"
+	name="${name%.gd}"
+	echo "${name//\//_}"
 }
 
-# Godot keeps going after script errors, so a test passes only if its log has no errors and reached its done marker.
-# Engine leak reports printed while quitting are noise, not failures.
-check() {
-	local name=$1 log=$2 marker=$3
-	local errors
-	errors=$(grep -E "SCRIPT ERROR|Parse Error|^FAIL:|ERROR:" "$log" | grep -vE "at exit|leaked" || true)
-	if [[ -n "$errors" ]]; then
-		echo "FAIL $name"
-		echo "$errors" | head -20
-		failed=1
-	elif ! grep -q "$marker" "$log"; then
-		echo "FAIL $name: did not finish"
-		tail -20 "$log"
-		failed=1
+# Godot keeps going after script errors, so the log decides too: a test passes only if GUT passed it, it ran at
+# least one case and its log has no errors. Engine leak reports printed while quitting are noise, not failures.
+ERRORS='SCRIPT ERROR|Parse Error|ERROR:|\[ERROR\]'
+NOISE='at exit|leaked'
+
+run_one() {
+	local script=$1
+	local name
+	name="$(log_name "$script")"
+	local log="$LOGS/$name.log"
+	local xml="$RESULTS/$name.xml"
+	rm -f "$xml" "$LOGS/$name.failed"
+	local source="$ROOT/${script#res://}"
+	local cmd=("$GODOT" --path "$ROOT")
+	local extra
+	extra="$(grep -m1 -E '^const GODOT_ARGS' "$source" || true)"
+	if [[ -n "$extra" ]]; then
+		mapfile -t extra_args < <(grep -oE '"[^"]*"' <<<"$extra" | tr -d '"')
+		cmd+=("${extra_args[@]}")
+	fi
+	if [[ $key_frames -eq 1 ]] && grep -m1 -E '^const TAGS' "$source" | grep -q '"visual_confirmation"'; then
+		cmd=(env WITH_KEY_FRAMES=1 "${cmd[@]}" --rendering-method gl_compatibility --audio-driver Dummy --resolution 1280x720)
+		if [[ -z "${DISPLAY:-}" ]]; then
+			if ! command -v xvfb-run >/dev/null; then
+				echo "Visual tests need xvfb-run or a DISPLAY." >"$log"
+				touch "$LOGS/$name.failed"
+				return
+			fi
+			cmd=(xvfb-run -a -s "-screen 0 1280x720x24" "${cmd[@]}")
+		fi
 	else
-		echo "ok   $name"
+		cmd+=(--headless)
+	fi
+	cmd+=(-s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1 -gjunit_xml_file="$xml")
+	if [[ -n "$case_filter" ]]; then
+		cmd+=(-gunit_test_name="$case_filter")
+	fi
+	local ok=1
+	timeout 2400 "${cmd[@]}" >"$log" 2>&1 || ok=0
+	if [[ ! -f "$xml" ]] || ! grep -q '<testcase' "$xml"; then
+		echo "No test cases ran." >>"$log"
+		ok=0
+	fi
+	if grep -E "$ERRORS" "$log" | grep -qvE "$NOISE"; then
+		ok=0
+	fi
+	if [[ $ok -eq 0 ]]; then
+		touch "$LOGS/$name.failed"
 	fi
 }
 
-"$GODOT" --headless --path "$ROOT" --import >"$LOGS/import.log" 2>&1
-check import "$LOGS/import.log" "Godot Engine"
+report() {
+	local script=$1
+	local name
+	name="$(log_name "$script")"
+	if [[ -f "$LOGS/$name.failed" ]]; then
+		echo "FAIL $script"
+		{
+			grep -E "$ERRORS|\[Failed\]" "$LOGS/$name.log" | grep -vE "$NOISE" | head -20 || true
+			tail -12 "$LOGS/$name.log"
+		} | sed 's/^/     /'
+	else
+		echo "ok   $script"
+	fi
+}
 
-run_scene tissue_test 120
-check tissue "$LOGS/tissue_test.log" "tissue_test: done"
-
-run_scene models_test 120
-check models "$LOGS/models_test.log" "models_test: done"
-
-run_scene syringe_test 600
-check syringe "$LOGS/syringe_test.log" "syringe_test: done"
-
-run_scene slicing_test 300 -- --fps-report
-check slicing "$LOGS/slicing_test.log" "slicing_test: done"
-
-run_scene smoke_test 1200
-check smoke "$LOGS/smoke_test.log" "smoke_test: done"
-
-# Two real processes over ENet on localhost.
-timeout 180 "$GODOT" --headless --path "$ROOT" res://tests/net_test.tscn -- --role=host >"$LOGS/net_host.log" 2>&1 &
-host=$!
-sleep 2
-timeout 180 "$GODOT" --headless --path "$ROOT" res://tests/net_test.tscn -- --role=client >"$LOGS/net_client.log" 2>&1
-wait "$host"
-check net_host "$LOGS/net_host.log" "\[host\] surgeon wounds"
-check net_client "$LOGS/net_client.log" "\[client\] surgeon wounds"
-if grep -q "partner handed me: nothing" "$LOGS/net_host.log"; then
-	echo "FAIL net: tool handoff between players did not arrive"
-	failed=1
-fi
-# Both peers must end with the same painted wound map, exactly the same cut, stitched and torn springs and the same site.
-# The site is measured on the body model by each peer: its shape must come out the same for both.
-state() { grep -o "painted texels=[0-9]*, severed springs=[0-9]*, topology=-*[0-9]*, site shape=-*[0-9]*" "$1"; }
-if [[ "$(state "$LOGS/net_host.log")" != "$(state "$LOGS/net_client.log")" ]]; then
-	echo "FAIL net: host and client disagree: '$(state "$LOGS/net_host.log")' vs '$(state "$LOGS/net_client.log")'"
-	failed=1
-fi
-
-# Spotty connection: freeze the client for 10 s mid-surgery (longer than ENet's default timeout), then let it go on.
-timeout 180 "$GODOT" --headless --path "$ROOT" res://tests/net_stall_test.tscn -- --role=host >"$LOGS/net_stall_host.log" 2>&1 &
-host=$!
-sleep 2
-timeout 180 "$GODOT" --headless --path "$ROOT" res://tests/net_stall_test.tscn -- --role=client >"$LOGS/net_stall_client.log" 2>&1 &
-client=$!
-for _ in $(seq 1 600); do
-	grep -q "\[client\] running" "$LOGS/net_stall_client.log" && break
-	sleep 0.1
+# With key frames, visual tests check the frame-time budget against the wall clock: they run alone, after the others,
+# so tests running beside them don't slow their frames down.
+together=()
+alone=()
+for script in "${selected[@]}"; do
+	if [[ $key_frames -eq 1 ]] && grep -m1 -E '^const TAGS' "$ROOT/${script#res://}" | grep -q '"visual_confirmation"'; then
+		alone+=("$script")
+	else
+		together+=("$script")
+	fi
 done
-# Freeze Godot itself, not the timeout wrapper around it.
-godot_pid=$(pgrep -P "$client")
-kill -STOP "$godot_pid"
-sleep 10
-kill -CONT "$godot_pid"
-wait "$client"
-wait "$host"
-check net_stall_host "$LOGS/net_stall_host.log" "input paused: true, partner still here: true"
-check net_stall_client "$LOGS/net_stall_client.log" "still in surgery: true"
+if [[ $jobs -le 1 ]]; then
+	alone=("${selected[@]}")
+elif [[ ${#together[@]} -gt 0 ]]; then
+	echo "Running ${#together[@]} test scripts, $jobs at a time."
+	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE
+	export -f run_one log_name
+	printf '%s\0' "${together[@]}" | xargs -0 -n1 -P "$jobs" bash -c 'run_one "$1"' _
+	for script in "${together[@]}"; do
+		report "$script"
+	done
+fi
+if [[ ${#alone[@]} -gt 0 ]]; then
+	echo "Running ${#alone[@]} test scripts one at a time."
+	for script in "${alone[@]}"; do
+		run_one "$script"
+		report "$script"
+	done
+fi
 
-exit $failed
+failed=0
+for script in "${selected[@]}"; do
+	if [[ -f "$LOGS/$(log_name "$script").failed" ]]; then
+		failed=$((failed + 1))
+	fi
+done
+echo "$((${#selected[@]} - failed)) passed, $failed failed."
+[[ $failed -eq 0 ]]
