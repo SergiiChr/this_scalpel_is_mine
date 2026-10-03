@@ -63,6 +63,16 @@ var paint_dt := 0.0
 var paint_uv := Vector2(-1, -1)
 var reported: Dictionary = {}
 
+# A needle carries one continuous running suture at a time. Clicks add holes to
+# it; the wheel changes the slack of every span already threaded through them.
+var suture_thread := 0
+var suture_serial := 0
+var suture_tension := 1.15
+var suture_hold := 0.0
+var suture_candidate := Vector2(-1, -1)
+var suture_layer := TissueSim.Depth.NONE
+var suture_long_fired := false
+
 ## The model's box in the tool's own space (the grip at the origin).
 var bounds := AABB()
 ## The band around a limb while this tool is wrapped around one (a tourniquet), see wrap_around().
