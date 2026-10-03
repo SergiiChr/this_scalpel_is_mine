@@ -64,15 +64,15 @@ var paint_dt := 0.0
 var paint_uv := Vector2(-1, -1)
 var reported: Dictionary = {}
 
-# A needle carries one continuous running suture at a time. Clicks add holes to
-# it; the wheel changes the slack of every span already threaded through them.
+## A needle's running suture: the live thread's id (0 for none), its tension (the wheel) and the layer it's in.
+## Each Use tool press makes one hole, at where the needle last rested on the patient (-1, -1 for nowhere): suture_hold
+## is how long it's been held, suture_press_used that it already did something (tied off, sewed an internal injury).
 var suture_thread := 0
-var suture_serial := 0
 var suture_tension := 1.15
-var suture_hold := 0.0
-var suture_candidate := Vector2(-1, -1)
 var suture_layer := TissueSim.Depth.NONE
-var suture_long_fired := false
+var suture_hold := 0.0
+var suture_at := Vector2(-1, -1)
+var suture_press_used := false
 
 ## The model's box in the tool's own space (the grip at the origin).
 var bounds := AABB()

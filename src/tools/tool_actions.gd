@@ -12,7 +12,7 @@ const LEVEL_NAMES: Dictionary = {
 ## Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
 const TRIGGER_NAMES: Dictionary = {
 	"clamp": "Pinch / let go", "smash": "Strike", "tourniquet": "Tighten", "graft": "Place graft",
-	"shock": "Charge (hold), let go to shock",
+	"shock": "Charge (hold), let go to shock", "sew": "Stitch",
 }
 ## Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.
 const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
@@ -31,11 +31,12 @@ const PADS_PER_DISH := 4.0
 const PAD_DRAIN := 0.12
 ## A syringe has its own wheel instead of an effort level: one notch moves the plunger this many ml (see plunge()).
 const PLUNGER_STEP := 1.0
-## A needle's wheel works the free end of its thread. Down tightens (a smaller
-## rest ratio), up loosens. A held click this long adds the last hole and cuts.
+## A needle's wheel works the free end of its thread: one notch changes its tension (a rest length ratio, see
+## TissueSim.THREAD_CLOSED) this much, down tightens and up loosens. Use tool held this long (seconds) adds the last
+## hole and ties the thread off.
 const SUTURE_TENSION_STEP := 0.08
 const SUTURE_TENSION_RANGE := Vector2(0.52, 1.56)
-const SUTURE_CUT_HOLD := 0.65
+const SUTURE_TIE_HOLD := 0.65
 ## Wipes paint big soft disks: at most this often, or once the tool moved PAINT_MOVE (uv) since the last one.
 const PAINT_INTERVAL := 1.0 / 15.0
 const PAINT_MOVE := 0.02
@@ -157,10 +158,10 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if tool.grip_info.type == "none":
 					tool.grip_info = {}
 					Surgery.current.set_attached(hand.peer, tool.slot, false)
+		"sew":
+			_sew(tool, patient, zone, uv, lowered, trigger, released, dt, tip)
 		"suture":
-			if def.id == "needle":
-				_update_running_suture(tool, patient, zone, uv, trigger, pressed, released, dt, tip)
-			elif lowered and level > 0 and zone == "site" and tool.charges != 0:
+			if lowered and level > 0 and zone == "site" and tool.charges != 0:
 				# Where the skin and fat still gape and the muscle shows, the needle reaches it: sewing the muscle on both
 				# sides closes the opening before the muscle right here is done.
 				if patient.body.layer_at(uv) == "muscle" and patient.close_muscle_at(uv, def, dt):
@@ -277,63 +278,70 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				_use_charge(tool)
 
 
-## Click/hold state for the surgical needle. Short releases place anchors;
-## crossing the hold threshold places the last anchor and cuts the thread.
-static func _update_running_suture(tool: SurgicalTool, patient: Patient, zone: String, uv: Vector2, trigger: bool, pressed: bool, released: bool, dt: float, tip: Vector3) -> void:
-	if pressed:
-		tool.suture_hold = 0.0
-		tool.suture_candidate = Vector2(-1, -1)
-		tool.suture_layer = TissueSim.Depth.NONE
-		tool.suture_long_fired = false
+## The needle: a click (Use tool let go before SUTURE_TIE_HOLD) where it rests on a wound passes its thread through a
+## new hole there, a longer hold adds the last hole (where there's room for one) and ties the thread off. Held over an
+## internal injury in the opening, it sews that instead.
+static func _sew(tool: SurgicalTool, patient: Patient, zone: String, uv: Vector2, lowered: bool, trigger: bool, released: bool, dt: float, tip: Vector3) -> void:
 	if trigger:
 		tool.suture_hold += dt
-		if zone in ["site", "cavity"]:
-			tool.suture_candidate = uv
-			tool.suture_layer = _visible_suture_layer(patient, uv)
-		if tool.suture_hold >= SUTURE_CUT_HOLD and not tool.suture_long_fired and tool.suture_thread != 0:
-			tool.suture_long_fired = true
-			if _place_running_anchor(tool, patient):
-				patient.finish_suture(tool.suture_thread)
-				Surgery.current.sound("suture_pull", tip)
-				tool.suture_thread = 0
-				tool.suture_layer = TissueSim.Depth.NONE
-				Surgery.current.tools.sync_suture(tool)
-	elif released and not tool.suture_long_fired:
-		if _place_running_anchor(tool, patient):
+		# Let go anywhere but on the patient, a click makes no hole.
+		tool.suture_at = uv if lowered and zone in ["site", "cavity"] else Vector2(-1, -1)
+		if lowered and zone == "cavity" and patient.close_internal_at(uv, tool.def, dt):
+			tool.suture_press_used = true
+		elif tool.suture_hold >= SUTURE_TIE_HOLD and not tool.suture_press_used and tool.suture_thread != 0:
+			# The last hole, if there's room for one here, then the knot either way.
+			tool.suture_press_used = true
+			_add_suture_hole(tool, patient)
+			patient.finish_suture(tool.suture_thread, tool.def.quality)
 			Surgery.current.sound("suture_pull", tip)
-			Surgery.current.tools.sync_suture(tool)
+	elif released:
+		if not tool.suture_press_used and _add_suture_hole(tool, patient):
+			Surgery.current.sound("suture_pull", tip)
+		tool.suture_hold = 0.0
+		tool.suture_press_used = false
+	_end_finished_suture(tool, patient)
 
 
-static func _place_running_anchor(tool: SurgicalTool, patient: Patient) -> bool:
-	if tool.suture_candidate.x < 0.0:
+## Passes the needle's thread through a new hole where it was last on the patient, starting a thread if it has none.
+static func _add_suture_hole(tool: SurgicalTool, patient: Patient) -> bool:
+	if tool.suture_at.x < 0.0:
 		return false
-	var layer := tool.suture_layer
 	if tool.suture_thread == 0:
-		tool.suture_serial += 1
-		tool.suture_thread = tool.uid * 10000 + tool.suture_serial
-	elif not patient.body.tissue.thread_info(tool.suture_thread).is_empty():
-		var current: int = patient.body.tissue.thread_info(tool.suture_thread).layer
-		if current != layer:
-			Surgery.current.announce("Finish this tissue layer before stitching another.", true)
-			return false
-	var placed := patient.place_suture_anchor(tool.suture_thread, tool.suture_candidate, layer, tool.suture_tension)
-	if not placed and patient.body.tissue.thread_info(tool.suture_thread).is_empty():
+		tool.suture_thread = patient.new_suture()
+	var placed := patient.place_suture_anchor(tool.suture_thread, tool.suture_at, tool.suture_tension)
+	var info := patient.body.tissue.thread_info(tool.suture_thread)
+	if info.is_empty():
 		tool.suture_thread = 0
+	elif tool.suture_layer != info.layer:
+		tool.suture_layer = info.layer
+		Surgery.current.tools.sync_suture(tool)
 	return placed
 
 
-static func _visible_suture_layer(patient: Patient, uv: Vector2) -> int:
-	match patient.body.layer_at(uv):
-		"fat": return TissueSim.Depth.FAT
-		"muscle", "cavity": return TissueSim.Depth.MUSCLE
-		_: return TissueSim.Depth.SKIN
+## A thread tied off or torn through is done with: the needle's next hole starts a new one.
+static func _end_finished_suture(tool: SurgicalTool, patient: Patient) -> void:
+	if tool.suture_thread != 0 and patient.suture_done(tool.suture_thread):
+		tool.suture_thread = 0
+		tool.suture_layer = TissueSim.Depth.NONE
+		Surgery.current.tools.sync_suture(tool)
 
 
-## Wheel direction is positive for up/loosen and negative for down/tighten.
+## Wheel direction is positive for up (loosen), negative for down (tighten).
 static func adjust_suture_tension(tool: SurgicalTool, direction: int, patient: Patient) -> void:
 	tool.suture_tension = clampf(tool.suture_tension + direction * SUTURE_TENSION_STEP, SUTURE_TENSION_RANGE.x, SUTURE_TENSION_RANGE.y)
 	if tool.suture_thread != 0:
 		patient.set_suture_tension(tool.suture_thread, tool.suture_tension)
+		_end_finished_suture(tool, patient)
+
+
+## How a needle's thread reads at its tension in the layer it's in (skin before a thread is started): "loose" (the
+## edges don't meet), "closed", or "too tight" (past halfway from closed to tearing through).
+static func thread_state(tool: SurgicalTool) -> String:
+	var layer := tool.suture_layer if tool.suture_layer != TissueSim.Depth.NONE else TissueSim.Depth.SKIN
+	var closed := TissueSim.THREAD_CLOSED[layer]
+	if tool.suture_tension > closed:
+		return "loose"
+	return "too tight" if tool.suture_tension < (closed + TissueSim.THREAD_TEAR[layer]) * 0.5 else "closed"
 
 
 ## What a syringe's needle is in, the same on every peer: {"kind": "container", "container": the vial, kidney dish

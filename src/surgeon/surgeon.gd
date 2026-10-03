@@ -384,9 +384,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var tool := held_tool(active)
 		if tool and tool.def.action == "syringe":
 			Surgery.current.tools.request_plunger(active, -1 if up else 1)
-		elif tool and tool.def.id == "needle":
-			# As on a syringe, the wheel works the tool itself: down pulls the
-			# thread tight, up pays more thread out.
+		elif tool and tool.def.action == "sew":
+			# As on a syringe, the wheel works the tool itself: down pulls the thread tight, up pays more out.
 			Surgery.current.tools.request_suture_tension(active, 1 if up else -1)
 		elif uses_level(active):
 			hand.level = clampi(hand.level + (1 if up else -1), 0, 3)
@@ -456,7 +455,7 @@ func moving_hand() -> int:
 ## lowering the tool, so a blade goes in at the depth picked.
 func uses_level(hand: int) -> bool:
 	var tool := held_tool(hand)
-	return tool != null and tool.def.id != "needle" and ToolActions.LEVEL_NAMES.has(tool.def.action)
+	return tool != null and ToolActions.LEVEL_NAMES.has(tool.def.action)
 
 
 func _physics_process(delta: float) -> void:

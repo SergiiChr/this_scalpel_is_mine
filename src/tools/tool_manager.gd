@@ -200,11 +200,10 @@ func request_suture_tension(hand: int, direction: int) -> void:
 	_req_suture_tension.rpc_id(1, hand, direction)
 
 
-## Host mirrors the live needle state so the owner sees the true tension in
-## the HUD even when that owner is a client.
+## Host: shows every peer the needle's thread tension and layer, for the holder's HUD.
 func sync_suture(tool: SurgicalTool) -> void:
 	if multiplayer.is_server():
-		_set_suture_state.rpc(tool.uid, tool.suture_thread, tool.suture_serial, tool.suture_tension)
+		_set_suture_state.rpc(tool.uid, tool.suture_tension, tool.suture_layer)
 
 
 ## The needle of the syringe in this hand tore out of the patient, dragged from `from` to `to` (world space).
@@ -309,18 +308,17 @@ func _req_plunger(hand: int, notches: int) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _req_suture_tension(hand: int, direction: int) -> void:
 	var tool := tool_in_hand(Net._sender(), hand)
-	if tool and tool.def.id == "needle" and Surgery.current.running:
+	if tool and tool.def.action == "sew" and Surgery.current.running:
 		ToolActions.adjust_suture_tension(tool, signi(direction), Surgery.current.patient)
-		_set_suture_state.rpc(tool.uid, tool.suture_thread, tool.suture_serial, tool.suture_tension)
+		sync_suture(tool)
 
 
 @rpc("authority", "call_local", "reliable")
-func _set_suture_state(uid: int, thread: int, serial: int, tension: float) -> void:
+func _set_suture_state(uid: int, tension: float, layer: int) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
-		tool.suture_thread = thread
-		tool.suture_serial = serial
 		tool.suture_tension = tension
+		tool.suture_layer = layer
 
 
 @rpc("any_peer", "call_local", "reliable")

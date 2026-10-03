@@ -401,16 +401,16 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		lines.append("Mouse  Move %s hand" % side)
 	if tool:
 		var action := tool.def.action
-		if tool.def.id == "needle":
-			lines.append("%s (click)  Add thread anchor" % key.call("use_tool"))
-			lines.append("%s (hold)  Final anchor and cut thread" % key.call("use_tool"))
-			lines.append("%s / %s  Loosen / tighten thread" % [key.call("level_up"), key.call("level_down")])
+		if action == "sew":
+			lines.append("%s  Stitch (click), tie off (hold)" % key.call("use_tool"))
 		else:
 			lines.append("%s (hold)  %s %s" % [key.call("use_tool"), ToolActions.TRIGGER_NAMES.get(action, "Press in" if action == "syringe" else "Use"), tool.label()])
 		if action == "syringe":
 			lines.append("%s  Pull plunger 1 ml" % key.call("level_down"))
 			lines.append("%s  Push plunger 1 ml" % key.call("level_up"))
-		elif tool.def.id != "needle" and me.uses_level(me.active):
+		elif action == "sew":
+			lines.append("%s / %s  Loosen / tighten thread" % [key.call("level_up"), key.call("level_down")])
+		elif me.uses_level(me.active):
 			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
 		lines.append("%s (hold) + mouse  Turn tool   %s / %s  Rotate" % [key.call("aim_tool"), key.call("twist_left"), key.call("twist_right")])
 		lines.append("%s (hold)  Look at it" % key.call("inspect"))
@@ -483,7 +483,7 @@ func _update_dot(me: Surgeon) -> void:
 
 ## Which LEVEL_STEPS names a tool's effort levels, "" when it takes none.
 static func level_kind(tool: SurgicalTool) -> String:
-	if tool == null or tool.def.id == "needle" or not ToolActions.LEVEL_NAMES.has(tool.def.action):
+	if tool == null or not ToolActions.LEVEL_NAMES.has(tool.def.action):
 		return ""
 	if tool.def.id in Patient.TENSIONED_CLOSURES:
 		return "tension"
@@ -519,8 +519,8 @@ func _update_hands(me: Surgeon) -> void:
 			text += " [holding]"
 		parts.append(("▶ " + text + " ◀") if i == me.active else text)
 	var active_tool := me.held_tool(me.active)
-	if active_tool and active_tool.def.id == "needle":
-		parts.append("thread: %s %.0f%%" % ["loose" if active_tool.suture_tension > 1.08 else "tight" if active_tool.suture_tension < 0.76 else "set", active_tool.suture_tension * 100.0])
+	if active_tool and active_tool.def.action == "sew":
+		parts.append("thread: %s" % ToolActions.thread_state(active_tool))
 	var kind := level_kind(active_tool)
 	if not kind.is_empty():
 		var level := me.hands[me.active].level

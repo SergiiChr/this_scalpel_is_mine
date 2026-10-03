@@ -44,10 +44,6 @@ void vertex() {
 	vec4 w = textureLod(wound_map, UV, 0.0);
 	// Bruises and burns swell, blood stands on top. Cuts don't sink: here the mesh itself is split along them.
 	VERTEX.y += w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;
-	// Low cut-map values are reserved for a closed seam. Its pressed edges form
-	// a shallow ridge; stronger open-cut values remain geometry-only below.
-	float closed_seam = smoothstep(0.08, 0.14, w.r) * (1.0 - smoothstep(0.24, 0.36, w.r));
-	VERTEX.y += closed_seam * 0.0008;
 	VERTEX.y += blood_thickness(textureLod(fluid_map, UV, 0.0).r);
 	vec3 camera = (inverse(MODEL_MATRIX) * vec4(MAIN_CAM_INV_VIEW_MATRIX[3].xyz, 1.0)).xyz;
 	VERTEX += normalize(camera - VERTEX) * DEPTH_BIAS;
@@ -55,9 +51,9 @@ void vertex() {
 
 void fragment() {
 	vec4 w = texture(wound_map, UV);
-	// Open cuts are geometry, so suppress their painted groove. A low-valued,
-	// narrow finalized seam remains as the pink line between pressed edges.
-	w.r *= 1.0 - smoothstep(0.24, 0.36, w.r);
+	// No painted groove: the sim splits the mesh exactly along a cut, so its lips are skin up to the edge. The groove
+	// (and its pink rim) would lie right on them, a dark ring round every opening.
+	w.r = 0.0;
 	vec4 f = texture(fluid_map, UV);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));

@@ -98,6 +98,13 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     Stitches are extra springs across the cut, their length is the tension. Thread is stiffer than skin (solved more
     often). A stitch closes a few millimeters of the cut. A cut counts as closed only where its edges meet: a loose
     stitch leaves a gap that stays open and bleeds.
+  - The needle sews a running suture (`TissueSim.thread_anchor()`, `Patient.place_suture_anchor()`): each click makes a
+    hole and a spring from the last one, the wheel sets every span's length at once (`TissueSim.THREAD_CLOSED` and
+    the rest, per layer), and a long hold ties it off. The thread closes the wound bins it crosses and halfway to the
+    next crossing, over whatever other closures left there, and raises the pressed edges into a lip
+    (`TissueSim.suture_pucker()`). Tied off, it joins every severed edge it holds (`TissueSim.stitch_path()`), closes
+    the muscle or the fat under it (`TissueSim.close_layer()`). Pulled past `THREAD_TEAR`, or shut over open
+    muscle, it tears through (`TissueSim.snap_thread()`).
   - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`), not the body's rest shape, so a
     lifted fold is where it's drawn. Over the site a hand rests on that skin, not on the gown's or the site's colliders.
   - A grip holds the skin within 10 mm of its jaws at its distance (it can still turn with a flap folded back) and
@@ -105,7 +112,8 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     centimeters before it tears. Everything that moved is shown simulated. Grips held still let the sim sleep.
   - A cut's edge lifted off the body (a flap folded back) isn't drawn back from the cut any more.
   - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
-    `Patient.close_muscle_at()`), and skin won't close over open muscle: it refuses, or a tight stitch tears through.
+    `Patient.close_muscle_at()`, a needle's thread started on the muscle), through a stab or bullet hole too small to
+    reach into, and skin won't close over open muscle: it refuses, or a tight stitch tears through.
   - Skin cut out all round (a circle through the skin) is a piece (`TissueSim.piece_of()`): pinched with forceps and
     lifted 1 cm, it comes off whole (`TissueSim.excise()`). The skin layer has a hole there, the fat (or the muscle,
     where there's no fat) shows, and the forceps hold the piece as a skin graft with one use: pressed onto a cleaned
@@ -312,7 +320,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   The Rotate keys roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
   suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
-  A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes).
+  A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
+  needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture).
 - **Contextual aim**: a dot for point tools, a line along a blade's edge for blades. The edge is where the blade plane
   meets the skin, so rolling the tool (C/V) or turning it (MMB) turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -398,7 +407,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
 - **Organ handling damage**: organs held out of place for more than a few seconds, or shoved hard, bruise (they darken) and ooze.
-- **Suture tension**: the effort level sets stitch tension for the needle and paper clips. Loose leaks, tight can tear through.
+- **Suture tension**: the needle's wheel sets its thread's tension, the effort level sets paper clips'. Loose leaks,
+  tight can tear through.
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,

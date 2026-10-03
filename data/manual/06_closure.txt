@@ -3,14 +3,14 @@ title: 6. Wound closure
 [center][img=640]res://assets/manual/diagrams/closures.svg[/img][/center]
 
 ## 6.1 Principle
-A wound is closed only when the closure spans its entire length. Draw the instrument along the wound line while applying it.
+A wound is closed only when the closure spans its entire length. Draw the instrument along the wound line while applying it, or stitch along all of it.
 
 A wound through the muscle is closed in layers. The cut muscle retracts and holds the wound open: sew it first, working inside the wound with the needle (or a stapler), along its whole length. Skin will not meet over open muscle, and a tight stitch pulled across it tears through. Adhesive strips cannot close muscle.
 
 ## 6.2 Methods
 [table=3]
 [cell][b]Method[/b][/cell][cell][b]Speed[/b][/cell][cell][b]Security[/b][/cell]
-[cell]Interrupted sutures[/cell][cell]Slow[/cell][cell]Highest[/cell]
+[cell]Running suture[/cell][cell]Slow[/cell][cell]Highest[/cell]
 [cell]Skin staples[/cell][cell]Fast[/cell][cell]Good[/cell]
 [cell]Adhesive strips[/cell][cell]Fast[/cell][cell]Superficial wounds only[/cell]
 [cell]Office stapler[/cell][cell]Fast[/cell][cell]Fails under strain[/cell]
@@ -18,14 +18,22 @@ A wound through the muscle is closed in layers. The cut muscle retracts and hold
 [cell]Duct tape[/cell][cell]Fast[/cell][cell]Holds; damages skin on removal[/cell]
 [/table]
 
-## 6.3 Suture tension
-For sutures (and paper clips), tension uses the same three levels as blade pressure: the mouse wheel sets them, and the instrument works once lowered onto the wound ([b]Use tool[/b]). At level 0 no stitches are placed.
+## 6.3 Running suture
+The needle sews one continuous thread. Each click ([b]Use tool[/b]) beside the wound passes it through a new hole: zig-zag from one side of the wound to the other, along its whole length. The thread goes through the layer under its first hole, so sew muscle (and fat) from inside the opening, the skin last. Hold [b]Use tool[/b] to make the last hole and tie the thread off: only then are the edges joined for good.
+The mouse wheel pulls the free end, every span at once: down tightens, up loosens. The hand status shows how the thread reads:
+• Loose: the wound edges do not meet and continue to ooze.
+• Closed: edges apposed, raised into a slight ridge. The intended setting.
+• Too tight: the ridge rises. Pulled tighter still, the thread tears through: muscle takes a much firmer pull than skin.
+Inside the cavity, hold the needle on an internal injury to repair it.
+
+## 6.4 Clip tension
+Paper clips take three tension levels, like blade pressure: the mouse wheel sets them, and they work once lowered onto the wound ([b]Use tool[/b]). At level 0 none are placed.
 • Loose: rapid, but the wound edges do not meet and continue to ooze.
 • Correct: edges apposed without blanching. The intended setting.
-• Tight: strongest seal, but sutures may cut through. Thin skin tears at twice the usual rate.
+• Tight: strongest seal, but clips may cut through. Thin skin tears at twice the usual rate.
 > Traction on a sutured wound can pull sutures through.
 
-## 6.4 Strain on the closure
+## 6.5 Strain on the closure
 Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
 
 [font_size=16][b]References[/b]

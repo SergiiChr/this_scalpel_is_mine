@@ -88,11 +88,16 @@ func bleed_rate(site_size: float, bleed_mult: float) -> float:
 
 
 func distance_to(uv: Vector2) -> float:
-	if points.size() == 1:
-		return points[0].distance_to(uv)
-	var best := INF
+	return uv.distance_to(closest_point(uv))
+
+
+## The point of the wound's line nearest to uv.
+func closest_point(uv: Vector2) -> Vector2:
+	var best := points[0]
 	for i in range(1, points.size()):
-		best = minf(best, uv.distance_to(Geometry2D.get_closest_point_to_segment(uv, points[i - 1], points[i])))
+		var on := Geometry2D.get_closest_point_to_segment(uv, points[i - 1], points[i])
+		if on.distance_squared_to(uv) < best.distance_squared_to(uv):
+			best = on
 	return best
 
 

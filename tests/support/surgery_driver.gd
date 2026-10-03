@@ -529,17 +529,23 @@ func vein_point() -> Vector3:
 	return vein.to_global(line[line.size() / 2])
 
 
-## Sews every open skin wound shut, segment by segment along it: the muscle first from inside where a wound goes
-## through it, then the skin, at medium tension, holding the needle on each segment until it's closed. Goes round
-## again for any segment that didn't close. With `tool_id` a stapler or tape instead of the needle.
+## Sews every open skin wound shut: the muscle first where a wound goes through it, then the skin. The needle sews a
+## running thread along each (player_sews()); a stapler or tape (`tool_id`) goes segment by segment along it at medium
+## tension, held on each until it's closed. Goes round again for anything that didn't close.
 func player_closes_wounds(tool_id: String = "needle") -> void:
 	note("closes the wounds with %s" % tool_id)
-	await player_requests_item(tool_id)
+	var tool := await player_requests_item(tool_id)
 	for round in 4:
 		if patient.skin_closure() >= 0.98:
 			break
 		for wound: Wound in patient.wounds.duplicate():
 			if wound.is_internal() or wound.kind == Wound.Kind.BURN:
+				continue
+			if tool.def.action == "sew":
+				if wound.through_muscle() and Array(wound.muscle).any(func(m: float) -> bool: return m < 1.0):
+					await player_sews(wound, TissueSim.Depth.MUSCLE)
+				if Array(wound.bins).any(func(b: float) -> bool: return b < 1.0):
+					await player_sews(wound, TissueSim.Depth.SKIN)
 				continue
 			for layer in ["muscle", "skin"]:
 				if layer == "muscle" and not wound.through_muscle():
@@ -560,6 +566,88 @@ func player_closes_wounds(tool_id: String = "needle") -> void:
 					await frames(3)
 	note("skin closure %.2f" % patient.skin_closure())
 	await player_puts_down()
+
+
+## Sews `wound` with a running thread through `layer` (TissueSim.Depth), the needle in the active hand: holes along
+## it (player_threads()), the wheel until the hand status reads closed (player_pulls_thread()), and the knot
+## (player_ties_off()).
+func player_sews(wound: Wound, layer: int) -> void:
+	if await player_threads(wound, layer):
+		await player_pulls_thread("closed")
+		await player_ties_off()
+	note("%s of wound %d closed %.2f" % [TissueSim.Depth.keys()[layer], wound.id, Array(wound.muscle if layer == TissueSim.Depth.MUSCLE else wound.bins).min()])
+
+
+## Clicks the needle's thread through `wound` in `layer`: the first hole as close beside the wound as that layer
+## shows (inside the opening for what's under the skin, Patient.suture_layer_at()), then one a grid cell and a half
+## further along on the other side each click, past the wound's end. Each click captures a key frame
+## (thread_hole_N). Returns false when the layer shows nowhere beside the wound.
+func player_threads(wound: Wound, layer: int) -> bool:
+	# Grid cells along and across the wound, in uv: they're square in meters, not in uv.
+	var along := (wound.points[-1] - wound.points[0]).normalized()
+	var step := (absf(along.x) / body.tissue.res_x + absf(along.y) / body.tissue.res_y) * 1.5
+	var cell := absf(along.y) / body.tissue.res_x + absf(along.x) / body.tissue.res_y
+	var holes := ceili(wound.length_uv() / step) + 2
+	var first := -1.0
+	for i in 16:
+		var off := cell * (0.25 + i * 0.25)
+		if patient.suture_layer_at(_beside_wound(wound, 0.0, off), wound) == layer:
+			# Skin holes well clear of the opening: the needle lands a little off where the hand aims.
+			first = off + (cell * 0.5 if layer == TissueSim.Depth.SKIN else 0.0)
+			break
+	if first < 0.0:
+		note("no %s shows beside wound %d to sew" % [TissueSim.Depth.keys()[layer], wound.id])
+		return false
+	note("threads %s along wound %d: %d holes" % [TissueSim.Depth.keys()[layer], wound.id, holes])
+	for i in holes:
+		# The rest a grid cell off at least, so each lands on its own side of the wound.
+		var at := site_point(_beside_wound(wound, i * step, (first if i == 0 else maxf(first, cell)) * (1 if i % 2 == 0 else -1)))
+		await _within_reach(at)
+		await player_reaches(at)
+		use()
+		await seconds(0.2)
+		use(false)
+		await frames(3)
+		if i < 2:
+			await capture("thread_hole_%d" % (i + 1))
+	return true
+
+
+## Turns the wheel on the needle's thread until the hand status reads `state` (ToolActions.thread_state()): down
+## tightens, up loosens. Stops early when the thread goes (torn through).
+func player_pulls_thread(state: String) -> void:
+	var needle := me.held_tool(me.active)
+	var thread := needle.suture_thread
+	var order := ["loose", "closed", "too tight"]
+	for i in 16:
+		var now := ToolActions.thread_state(needle)
+		if now == state or thread != 0 and needle.suture_thread == 0:
+			break
+		await notch(order.find(now) > order.find(state))
+	note("thread %s" % ToolActions.thread_state(needle))
+
+
+## Holds Use tool where the needle is until the thread is tied off, then captures a key frame (tied_off).
+func player_ties_off() -> void:
+	use()
+	await seconds(ToolActions.SUTURE_TIE_HOLD + 0.2)
+	use(false)
+	await frames(3)
+	await capture("tied_off")
+
+
+## The point `along` (uv) from the start of `wound` on its line, clamped to its ends, moved `off` (uv) to its left
+## (negative: right).
+static func _beside_wound(wound: Wound, along: float, off: float) -> Vector2:
+	var points := wound.points
+	var travelled := 0.0
+	for i in range(1, points.size()):
+		var seg := points[i - 1].distance_to(points[i])
+		if travelled + seg >= along or i == points.size() - 1:
+			var direction := (points[i] - points[i - 1]).normalized()
+			return points[i - 1].lerp(points[i], clampf((along - travelled) / maxf(seg, 0.0001), 0.0, 1.0)) + direction.orthogonal() * off
+		travelled += seg
+	return points[0]
 
 
 ## Walks over only when `point` is out of the active hand's comfortable reach.
@@ -933,7 +1021,6 @@ func player_closes_internal_wounds() -> void:
 		var spot := body.uv_to_world(wound.points[0], wound.depth_m)
 		await player_walks_to(spot)
 		await player_reaches(spot)
-		await set_level(2)
 		use()
 		await wait_until(func() -> bool: return wound.closure() >= 0.9, 20.0)
 		use(false)

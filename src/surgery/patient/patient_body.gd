@@ -163,7 +163,8 @@ var _region_image: Image
 var _cavity_material: ShaderMaterial
 var _pool_height := -INF
 var _suture_root: Node3D
-var _suture_meshes: Dictionary = {}
+## What each thread was last drawn from, id -> {"holes", "tension", "live" (1 per span still holding)}.
+var _suture_drawn: Dictionary = {}
 var _suture_material: Material
 var _suture_steps := -1
 var _suture_topology := -1
@@ -218,9 +219,9 @@ func _process(delta: float) -> void:
 	_jiggle_organs(delta)
 
 
-## Draws each running thread as one continuous tube. Spans rise above the
-## tissue, then dip into every puncture, rather than appearing as disconnected
-## bars painted between pairs of holes.
+## Draws each running thread as tubes from hole to hole: its spans rise over the tissue and dip into every puncture.
+## A span is rebuilt only when one of its holes moved, the thread's tension changed or the span let go (a burst, a
+## thread torn through), and then isn't drawn any more.
 func _update_sutures() -> void:
 	if _suture_root == null or (_suture_steps == tissue.steps_done and _suture_topology == tissue.topology_version):
 		return
@@ -228,65 +229,63 @@ func _update_sutures() -> void:
 	_suture_topology = tissue.topology_version
 	for id: int in tissue.thread_ids():
 		var info := tissue.thread_info(id)
-		var anchors: PackedInt32Array = info.anchors
-		if anchors.is_empty():
-			continue
-		var thread_root: Node3D = _suture_meshes.get(id)
+		var layer: int = info.layer
+		var layer_depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer - 1]
+		var holes := PackedVector3Array()
+		for k: int in info.anchors:
+			holes.append(layer_point(layer - 1, k) - Vector3.UP * layer_depth)
+		var live := PackedByteArray()
+		for s: int in info.springs:
+			live.append(tissue.c_active[s])
+		var drawn: Dictionary = _suture_drawn.get(id, {"holes": PackedVector3Array(), "tension": -1.0, "live": PackedByteArray()})
+		var before: PackedVector3Array = drawn.holes
+		var moved := PackedByteArray()
+		for i in holes.size():
+			# Under 0.2 mm the thread is drawn where it was: the sim settles for a while after every pull.
+			var stale := i >= before.size() or before[i].distance_squared_to(holes[i]) > 0.0002 * 0.0002
+			moved.append(1 if stale else 0)
+			if not stale:
+				holes[i] = before[i]
+		var retension: bool = drawn.tension != info.tension
+		_suture_drawn[id] = {"holes": holes, "tension": info.tension, "live": live}
+		var thread_root: Node3D = _suture_root.get_node_or_null("Suture%d" % id)
 		if thread_root == null:
 			thread_root = Node3D.new()
 			thread_root.name = "Suture%d" % id
 			_suture_root.add_child(thread_root)
-			_suture_meshes[id] = thread_root
-		var layer_index := clampi(int(info.layer) - 1, 0, 2)
-		var layer_depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer_index]
-		var holes := PackedVector3Array()
-		for k: int in anchors:
-			holes.append(layer_point(layer_index, k) - Vector3.UP * layer_depth)
 		if holes.size() == 1:
+			if moved[0] == 1:
+				_suture_span(thread_root, 0, PackedVector3Array([holes[0] - Vector3.UP * 0.0006, holes[0] + Vector3.UP * 0.0032]))
+			continue
+		# A running stitch goes over and under the tissue in turn. Each span is a tube of its own meeting the next at
+		# their puncture: the skin hides the thread under it without clipping the arc beside it.
+		var slack := clampf(inverse_lerp(TissueSim.THREAD_TEAR[layer], TissueSim.THREAD_LOOSE[layer], info.tension), 0.0, 1.0)
+		var was_live: PackedByteArray = drawn.live
+		for i in range(1, holes.size()):
+			var let_go := live[i - 1] == 0
+			if not retension and moved[i - 1] + moved[i] == 0 and i - 1 < was_live.size() and was_live[i - 1] == live[i - 1]:
+				continue
 			var path := PackedVector3Array()
-			path.append(holes[0] - Vector3.UP * 0.0006)
-			path.append(holes[0] + Vector3.UP * 0.0032)
-			_add_suture_curve(thread_root, path, 0)
-			_trim_suture_spans(thread_root, 1)
-		else:
-			# A running stitch alternates over and under the tissue. Each span is a
-			# separate smooth tube joined at the same puncture; this lets the skin
-			# occlude submerged thread without clipping the neighboring exposed arc.
-			var tension: float = float(info.tension)
-			var slack := clampf(inverse_lerp(0.68, 1.56, tension), 0.0, 1.0)
-			for i in range(1, holes.size()):
+			if not let_go:
 				var over := i % 2 == 1
-				var delta := holes[i] - holes[i - 1]
-				var sideways := Vector3(-delta.z, 0.0, delta.x).normalized()
-				var entry_depth := -0.0007
+				var sideways := (holes[i] - holes[i - 1]).cross(Vector3.UP).normalized()
 				var arc := lerpf(0.0022, 0.0042, slack) if over else -0.0030
-				var bow := lerpf(0.0010, 0.0030, slack) * (1.0 if i % 4 == 1 else -1.0)
-				var path := PackedVector3Array()
+				var bow := lerpf(0.0010, 0.0030, slack) * (1.0 if i % 4 == 1 else -1.0) if over else 0.0
 				for sample in 9:
-					var t := float(sample) / 8.0
-					var curve := sin(PI * t)
-					path.append(holes[i - 1].lerp(holes[i], t) + Vector3.UP * lerpf(entry_depth, arc, curve) + sideways * (bow * curve if over else 0.0))
-				_add_suture_curve(thread_root, path, i - 1)
-			_trim_suture_spans(thread_root, holes.size() - 1)
+					var curve := sin(PI * sample / 8.0)
+					path.append(holes[i - 1].lerp(holes[i], sample / 8.0) + Vector3.UP * lerpf(-0.0007, arc, curve) + sideways * bow * curve)
+			_suture_span(thread_root, i - 1, path)
 
 
-func _add_suture_curve(root_node: Node3D, path: PackedVector3Array, index: int) -> void:
-	var mesh: MeshInstance3D
-	if index < root_node.get_child_count():
-		mesh = root_node.get_child(index) as MeshInstance3D
-	else:
-		mesh = MeshInstance3D.new()
-		root_node.add_child(mesh)
-	mesh.name = "Span%d" % index
-	mesh.material_override = _suture_material
-	mesh.mesh = Shapes.tube(path, 0.00055, 0.00055)
-
-
-func _trim_suture_spans(root_node: Node3D, count: int) -> void:
-	for i in range(root_node.get_child_count() - 1, count - 1, -1):
-		var child := root_node.get_child(i)
-		root_node.remove_child(child)
-		child.queue_free()
+## Sets span `index` of a thread to a tube along `path`, or nothing for an empty path.
+func _suture_span(thread_root: Node3D, index: int, path: PackedVector3Array) -> void:
+	var span: MeshInstance3D = thread_root.get_node_or_null("Span%d" % index)
+	if span == null:
+		span = MeshInstance3D.new()
+		span.name = "Span%d" % index
+		span.material_override = _suture_material
+		thread_root.add_child(span)
+	span.mesh = Shapes.tube(path, 0.00055, 0.00055) if not path.is_empty() else null
 
 
 ## The node that carries the body model, colliders and site. It turns with the patient.
