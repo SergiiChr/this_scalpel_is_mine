@@ -103,6 +103,9 @@ var rest := PackedVector3Array()
 var pos := PackedVector3Array()
 var prev := PackedVector3Array()
 var anchor := PackedFloat32Array()
+## Outward lift at stitched cut edges. Compression stays in the surface plane;
+## this separate offset forms a lip without letting the two sides pass through.
+var suture_lip := PackedFloat32Array()
 var fixed := PackedByteArray()
 ## 1 for particles where the site hangs off the body (past a limb's or the flank's edge): not drawn and not part of
 ## the region while they hang there, so the site can't stick out of the body (see hanging_off()). They're still
@@ -122,6 +125,8 @@ var c_cross := PackedFloat32Array()
 var c_cut_dir := PackedVector2Array()
 ## 1 for springs cut through the muscle whose muscle has been stitched: they count as cut only into the fat.
 var c_muscle_closed := PackedByteArray()
+## 1 once the subcutaneous layer has been closed: the same cut then counts as skin-only.
+var c_fat_closed := PackedByteArray()
 ## Grid springs leaving each particle (-1 past the grid's edge): to the right, down, the (i+1, j)-(i, j+1) diagonal
 ## and the other diagonal. The drawn triangles of cell (i, j) use the first three of particle (i, j) and its
 ## neighbours, see triangles().
@@ -170,6 +175,9 @@ var _edge_to_stitch: Dictionary = {}
 var _severed := PackedInt32Array()
 ## Every stitch spring, active or not.
 var _stitches := PackedInt32Array()
+## Running sutures, id -> {anchors (particle ids), springs, slack, layer, tension, final}.
+## They preserve the route of the thread, so pulling its free end changes every span.
+var _threads: Dictionary = {}
 ## 1 for particles the solver may move this step, 0 for the fixed border, pinned particles and still skin outside the
 ## active window.
 var _free := PackedFloat32Array()
@@ -216,6 +224,7 @@ var _off_list := PackedInt32Array()
 var _excised_list := PackedInt32Array()
 var _hanging := PackedByteArray()
 var _hanging_for := []
+var _lipped := PackedInt32Array()
 
 
 ## height_at(uv) -> skin height above the site plane. on_body(uv) -> false where the site is off the body.
@@ -227,6 +236,8 @@ func build(site_size: Vector2, height_at: Callable, on_body: Callable = Callable
 	var count := (res_x + 1) * (res_y + 1)
 	rest.resize(count)
 	anchor.resize(count)
+	suture_lip.resize(count)
+	suture_lip.fill(0.0)
 	fixed.resize(count)
 	off.resize(count)
 	excised.resize(count)
@@ -335,6 +346,11 @@ func severed() -> PackedInt32Array:
 func cut_depth(s: int) -> int:
 	if s < 0 or c_active[s] == 1 or c_kind[s] != Kind.TISSUE:
 		return Depth.NONE
+	var stitch: int = _edge_to_stitch.get(_edge_key(c_a[s], c_b[s]), -1)
+	# A contact-length seam is drawn as one pressed surface. Loose stitches keep
+	# the split lips and walls until their target length is short enough to meet.
+	if stitch >= 0 and c_active[stitch] == 1 and c_rest[stitch] <= rest[c_a[s]].distance_to(rest[c_b[s]]) * 1.05:
+		return Depth.NONE
 	return depth_of(s)
 
 
@@ -349,6 +365,8 @@ func region(reach: int = 1) -> PackedByteArray:
 		seeds.append(c_b[s])
 	for key: int in _pins:
 		seeds.append(_pins[key][0])
+	for thread: Dictionary in _threads.values():
+		seeds.append_array(thread.anchors)
 	seeds.append_array(_excised_list)
 	# Only skin in the window moves: everything outside it holds still where it settled.
 	for k in _win_particles:
@@ -460,6 +478,24 @@ func muscle_stitch(uv: Vector2, radius: float) -> int:
 	return closed
 
 
+## Closes the subcutaneous layer without closing the skin over it. This models
+## deep absorbable bites through the connective tissue around fat, rather than
+## pretending adipose itself has the holding strength of skin or fascia.
+func fat_stitch(uv: Vector2, radius: float) -> int:
+	var closed := 0
+	for s in _severed:
+		var fat_is_exposed := c_depth[s] == Depth.FAT or (c_depth[s] == Depth.MUSCLE and c_muscle_closed[s] == 1)
+		if fat_is_exposed and c_fat_closed[s] == 0 and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
+			c_fat_closed[s] = 1
+			closed += 1
+	if closed > 0:
+		_update_retraction()
+		topology_version += 1
+		_win_dirty = true
+		wake()
+	return closed
+
+
 ## True while muscle cut near uv hasn't been stitched: skin closed over it would be under too much tension.
 func muscle_open_near(uv: Vector2, radius: float) -> bool:
 	for s in _severed:
@@ -468,8 +504,32 @@ func muscle_open_near(uv: Vector2, radius: float) -> bool:
 	return false
 
 
+func fat_open_near(uv: Vector2, radius: float) -> bool:
+	for s in _severed:
+		if depth_of(s) >= Depth.FAT and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
+			return true
+	return false
+
+
+## Raises both sides of a sewn edge along the surface normal. `amount` is set,
+## not accumulated, so loosening the live thread reduces the lip again.
+func suture_pucker(uv: Vector2, radius: float, amount: float) -> void:
+	for s in _severed:
+		var crossing := uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s])
+		if crossing.distance_to(uv) >= radius:
+			continue
+		for k: int in [c_a[s], c_b[s]]:
+			if suture_lip[k] == 0.0 and amount > 0.0 and not _lipped.has(k):
+				_lipped.append(k)
+			suture_lip[k] = amount
+	_retract_dirty = true
+	wake()
+
+
 ## How deep spring s counts as cut: stitched muscle leaves only skin and fat open.
 func depth_of(s: int) -> int:
+	if c_fat_closed[s] == 1 and (c_depth[s] == Depth.FAT or c_muscle_closed[s] == 1):
+		return Depth.SKIN
 	return Depth.FAT if c_muscle_closed[s] == 1 else c_depth[s]
 
 
@@ -578,6 +638,113 @@ func stitch(uv: Vector2, tension: float, strength: float) -> bool:
 	return true
 
 
+## Joins every severed edge along a finalized supported section. Point stitches
+## are deliberately local; a running thread needs this continuous contact seam
+## so diagonal grid edges cannot leave tiny wall slivers between its bites.
+func stitch_path(points: PackedVector2Array, radius: float, tension: float, strength: float) -> int:
+	var joined := 0
+	for s in _severed:
+		var crossing := uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s])
+		if not _stitched(c_a[s], c_b[s]) and _distance_to_line(crossing, points) < radius:
+			_spring(c_a[s], c_b[s], Kind.STITCH, tension, strength)
+			joined += 1
+	if joined > 0:
+		_update_retraction()
+		topology_version += 1
+		_win_dirty = true
+		wake()
+	return joined
+
+
+## Adds one puncture to a continuous running suture. The first puncture is only
+## an anchor; every later one adds a constraint from the previous hole. `slack`
+## remembers how much thread was paid out as each span was placed.
+func thread_anchor(id: int, uv: Vector2, layer: int, tension: float, strength: float) -> bool:
+	var k := nearest(uv)
+	var thread: Dictionary = _threads.get(id, {
+		"anchors": PackedInt32Array(), "springs": PackedInt32Array(),
+		"slack": PackedFloat32Array(), "layer": layer, "tension": tension, "final": false,
+	})
+	var anchors: PackedInt32Array = thread.anchors
+	if bool(thread.final) or (not anchors.is_empty() and anchors[-1] == k):
+		return false
+	if not anchors.is_empty():
+		var previous := anchors[-1]
+		var paid_out := pos[previous].distance_to(pos[k]) / maxf(rest[previous].distance_to(rest[k]), 0.0001)
+		var slack: PackedFloat32Array = thread.slack
+		# Hand spacing affects the final result, but cannot pay out so much extra
+		# that the wheel can never take it back. A careful rhythm stays near 1;
+		# erratic placement leaves up to twelve percent more thread to manage.
+		slack.append(clampf(paid_out, 0.95, 1.12))
+		thread.slack = slack
+		var springs: PackedInt32Array = thread.springs
+		springs.append(_spring(previous, k, Kind.STITCH, _thread_rest_scale(tension, layer) * slack[-1], strength))
+		thread.springs = springs
+	anchors.append(k)
+	thread.anchors = anchors
+	thread.layer = layer
+	thread.tension = tension
+	_threads[id] = thread
+	topology_version += 1
+	_win_dirty = true
+	wake()
+	return true
+
+
+## Tightens or loosens the whole running thread from its free end.
+func thread_tension(id: int, tension: float) -> bool:
+	if not _threads.has(id):
+		return false
+	var thread: Dictionary = _threads[id]
+	var springs: PackedInt32Array = thread.springs
+	var slack: PackedFloat32Array = thread.slack
+	var layer: int = thread.layer
+	for i in springs.size():
+		var s := springs[i]
+		c_rest[s] = rest[c_a[s]].distance_to(rest[c_b[s]]) * _thread_rest_scale(tension, layer) * slack[i]
+	thread.tension = tension
+	_threads[id] = thread
+	wake()
+	return true
+
+
+## Player-facing tension is intentionally not a literal spring-length ratio.
+## Near the safe closure point the thread restores the tissue's uncut shape;
+## further tightening gathers it rapidly, while loose thread still has slack.
+func _thread_rest_scale(tension: float, layer: int) -> float:
+	var loose: float = [0.0, 1.23, 1.12, 1.02][layer]
+	var closed: float = [0.0, 1.08, 0.98, 0.86][layer]
+	var tear: float = [0.0, 0.68, 0.60, 0.54][layer]
+	if tension >= closed:
+		return lerpf(0.90, 1.15, clampf((tension - closed) / maxf(loose - closed, 0.01), 0.0, 1.0))
+	return lerpf(0.25, 0.90, clampf((tension - tear) / maxf(closed - tear, 0.01), 0.0, 1.0))
+
+
+func finish_thread(id: int) -> void:
+	if _threads.has(id):
+		var thread: Dictionary = _threads[id]
+		thread.final = true
+		_threads[id] = thread
+
+
+func thread_ids() -> Array:
+	return _threads.keys()
+
+
+func thread_info(id: int) -> Dictionary:
+	return _threads.get(id, {})
+
+
+func thread_uvs(id: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if not _threads.has(id):
+		return out
+	var thread: Dictionary = _threads[id]
+	for k: int in thread.anchors:
+		out.append(uv_of(k))
+	return out
+
+
 ## Removes stitches near uv (a closure bursting open).
 func burst(uv: Vector2, radius: float) -> void:
 	for s in _stitches:
@@ -607,7 +774,7 @@ func snap_spring(s: int) -> void:
 
 ## Changes with every cut, stitch, burst or snap, and is the same on peers whose tissue was cut the same way.
 func topology_hash() -> int:
-	return hash([c_active, c_depth, c_muscle_closed, c_kind.size(), excised])
+	return hash([c_active, c_depth, c_muscle_closed, c_fat_closed, c_kind.size(), excised])
 
 
 ## Seizures, coughs and bumps shake the tissue (visual, every peer). Only skin that's being simulated shakes: the rest
@@ -1086,6 +1253,7 @@ func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION,
 	c_cross.append(0.5)
 	c_cut_dir.append(Vector2.ZERO)
 	c_muscle_closed.append(0)
+	c_fat_closed.append(0)
 	var s := c_a.size() - 1
 	if kind == Kind.STITCH:
 		_edge_to_stitch[_edge_key(a, b)] = s
@@ -1165,6 +1333,8 @@ func _update_retraction() -> void:
 		_pull_amount[k] = 0.0
 		if anchor[k] == MUSCLE_PULL or anchor[k] == GAPE_PULL:
 			anchor[k] = LOOSE_ANCHOR
+	for k in _lipped:
+		anchor_target[k] = rest[k]
 	if _pull.size() != rest.size():
 		_pull.resize(rest.size())
 		_pull_amount.resize(rest.size())
@@ -1222,6 +1392,14 @@ func _update_retraction() -> void:
 		var retract := _pull_amount[k]
 		anchor_target[k] = rest[k] + direction.normalized() * retract
 		anchor[k] = maxf(anchor[k], MUSCLE_PULL if retract >= RETRACT[Depth.SKIN] * 4.0 else GAPE_PULL)
+	var active_lips := PackedInt32Array()
+	for k in _lipped:
+		if suture_lip[k] <= 0.0:
+			continue
+		anchor_target[k] += rest_normal[k] * suture_lip[k]
+		anchor[k] = maxf(anchor[k], GAPE_PULL)
+		active_lips.append(k)
+	_lipped = active_lips
 
 
 ## The ends of the cuts: where each stroke started and the point of it farthest from there, unless another stroke runs

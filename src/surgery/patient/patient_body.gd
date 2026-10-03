@@ -160,6 +160,11 @@ var _region_edge := PackedByteArray()
 var _region_image: Image
 var _cavity_material: ShaderMaterial
 var _pool_height := -INF
+var _suture_root: Node3D
+var _suture_meshes: Dictionary = {}
+var _suture_material: Material
+var _suture_steps := -1
+var _suture_topology := -1
 ## Reused by part_at(), which runs every physics frame for every held tool.
 var _part_query := PhysicsShapeQueryParameters3D.new()
 var _part_sphere := SphereShape3D.new()
@@ -187,6 +192,10 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	_build_colliders()
 	_build_surface(model)
 	_build_site(tone, model)
+	_suture_root = Node3D.new()
+	_suture_root.name = "Sutures"
+	site.add_child(_suture_root)
+	_suture_material = Materials.toon(Color(0.08, 0.12, 0.18), 0.0, false, 0.45)
 	_build_veins(model)
 	blood.name = "BloodFlow"
 	add_child(blood)
@@ -203,7 +212,79 @@ func _process(delta: float) -> void:
 		_rebuild_layers()
 	_rebuilt_last = rebuild
 	tissue.step(delta, not rebuild)
+	_update_sutures()
 	_jiggle_organs(delta)
+
+
+## Draws each running thread as one continuous tube. Spans rise above the
+## tissue, then dip into every puncture, rather than appearing as disconnected
+## bars painted between pairs of holes.
+func _update_sutures() -> void:
+	if _suture_root == null or (_suture_steps == tissue.steps_done and _suture_topology == tissue.topology_version):
+		return
+	_suture_steps = tissue.steps_done
+	_suture_topology = tissue.topology_version
+	for id: int in tissue.thread_ids():
+		var info := tissue.thread_info(id)
+		var anchors: PackedInt32Array = info.anchors
+		if anchors.is_empty():
+			continue
+		var thread_root: Node3D = _suture_meshes.get(id)
+		if thread_root == null:
+			thread_root = Node3D.new()
+			thread_root.name = "Suture%d" % id
+			_suture_root.add_child(thread_root)
+			_suture_meshes[id] = thread_root
+		var layer_index := clampi(int(info.layer) - 1, 0, 2)
+		var layer_depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer_index]
+		var holes := PackedVector3Array()
+		for k: int in anchors:
+			holes.append(layer_point(layer_index, k) - Vector3.UP * layer_depth)
+		if holes.size() == 1:
+			var path := PackedVector3Array()
+			path.append(holes[0] - Vector3.UP * 0.0006)
+			path.append(holes[0] + Vector3.UP * 0.0032)
+			_add_suture_curve(thread_root, path, 0)
+			_trim_suture_spans(thread_root, 1)
+		else:
+			# A running stitch alternates over and under the tissue. Each span is a
+			# separate smooth tube joined at the same puncture; this lets the skin
+			# occlude submerged thread without clipping the neighboring exposed arc.
+			var tension: float = float(info.tension)
+			var slack := clampf(inverse_lerp(0.68, 1.56, tension), 0.0, 1.0)
+			for i in range(1, holes.size()):
+				var over := i % 2 == 1
+				var delta := holes[i] - holes[i - 1]
+				var sideways := Vector3(-delta.z, 0.0, delta.x).normalized()
+				var entry_depth := -0.0007
+				var arc := lerpf(0.0022, 0.0042, slack) if over else -0.0030
+				var bow := lerpf(0.0010, 0.0030, slack) * (1.0 if i % 4 == 1 else -1.0)
+				var path := PackedVector3Array()
+				for sample in 9:
+					var t := float(sample) / 8.0
+					var curve := sin(PI * t)
+					path.append(holes[i - 1].lerp(holes[i], t) + Vector3.UP * lerpf(entry_depth, arc, curve) + sideways * (bow * curve if over else 0.0))
+				_add_suture_curve(thread_root, path, i - 1)
+			_trim_suture_spans(thread_root, holes.size() - 1)
+
+
+func _add_suture_curve(root_node: Node3D, path: PackedVector3Array, index: int) -> void:
+	var mesh: MeshInstance3D
+	if index < root_node.get_child_count():
+		mesh = root_node.get_child(index) as MeshInstance3D
+	else:
+		mesh = MeshInstance3D.new()
+		root_node.add_child(mesh)
+	mesh.name = "Span%d" % index
+	mesh.material_override = _suture_material
+	mesh.mesh = Shapes.tube(path, 0.00055, 0.00055)
+
+
+func _trim_suture_spans(root_node: Node3D, count: int) -> void:
+	for i in range(root_node.get_child_count() - 1, count - 1, -1):
+		var child := root_node.get_child(i)
+		root_node.remove_child(child)
+		child.queue_free()
 
 
 ## The node that carries the body model, colliders and site. It turns with the patient.

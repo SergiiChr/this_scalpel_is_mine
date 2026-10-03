@@ -16,6 +16,7 @@ func _ready() -> void:
 	_elastic()
 	_muscle_first()
 	_loose_stitch_gapes()
+	_running_thread_tightens_together()
 	_exact_snaps()
 	_deformed_surface()
 	_rests_on_curved_body()
@@ -160,6 +161,7 @@ func _muscle_first() -> void:
 	_settle(sim, 120)
 	_check(sim.gap_at(MID) > fat.gap_at(MID) + 0.002, "cut muscle retracts: its gap is wider than a cut into the fat (%.1f vs %.1f mm)" % [sim.gap_at(MID) * 1000.0, fat.gap_at(MID) * 1000.0])
 	_check(sim.muscle_open_near(MID, 0.03), "a cut through the muscle leaves the muscle open")
+	_check(sim.fat_stitch(MID, 0.5) == 0, "subcutaneous closure cannot bypass open muscle")
 	var u := 0.2
 	while u <= 0.8:
 		sim.muscle_stitch(Vector2(u, 0.51), 0.03)
@@ -168,6 +170,13 @@ func _muscle_first() -> void:
 	_check(not sim.muscle_open_near(MID, 0.03), "sewing along the muscle closes it")
 	_check(not sim.is_open(MID), "sewn muscle closes the cavity")
 	_check(sim.triangles(TissueSim.Depth.MUSCLE).size() == sim.triangle_count() * 3, "sewn muscle shows no hole in the muscle layer")
+	_check(sim.fat_open_near(MID, 0.03), "the subcutaneous layer remains open after muscle closure")
+	u = 0.2
+	while u <= 0.8:
+		sim.fat_stitch(Vector2(u, 0.51), 0.03)
+		u += 0.015
+	_check(not sim.fat_open_near(MID, 0.03), "subcutaneous closure follows muscle closure")
+	_check(sim.triangles(TissueSim.Depth.FAT).size() == sim.triangle_count() * 3, "closed subcutaneous tissue shows no hole in the fat layer")
 	_check(sim.gap_at(MID) > TissueSim.OPEN_GAP, "the skin over sewn muscle still gapes until it's stitched")
 
 
@@ -187,6 +196,34 @@ func _loose_stitch_gapes() -> void:
 	_check(sims[0].gap_at(MID) == 0.0, "a tight stitch closes the gap")
 	_check(sims[1].gap_at(MID) > TissueSim.OPEN_GAP * 0.5, "a loose stitch leaves the gap open (%.1f mm)" % (sims[1].gap_at(MID) * 1000.0))
 	_check(sims[1].triangles(TissueSim.Depth.SKIN).size() < sims[1].triangle_count() * 3, "a loosely stitched cut still shows its opening")
+
+
+## A running suture is one routed thread: the first click makes only a hole,
+## the second adds its first span, and the wheel changes every span at once.
+func _running_thread_tightens_together() -> void:
+	var sim := _sim()
+	sim.cut(Vector2(0.2, 0.51), Vector2(0.8, 0.51), TissueSim.Depth.FAT)
+	_settle(sim)
+	var id := 77
+	var springs_before := sim.c_a.size()
+	_check(sim.thread_anchor(id, Vector2(0.35, 0.46), TissueSim.Depth.SKIN, 1.25, 1.8), "the first click creates a running-thread anchor")
+	_check(sim.c_a.size() == springs_before, "the first anchor has no disconnected stitch bar")
+	_check(sim.thread_anchor(id, Vector2(0.42, 0.56), TissueSim.Depth.SKIN, 1.25, 1.8), "the second click routes thread to the next hole")
+	_check(sim.thread_anchor(id, Vector2(0.50, 0.46), TissueSim.Depth.SKIN, 1.25, 1.8), "a third click continues the same thread")
+	_settle(sim)
+	var loose_gap := sim.gap_at(Vector2(0.42, 0.51))
+	var info := sim.thread_info(id)
+	_check((info.anchors as PackedInt32Array).size() == 3 and (info.springs as PackedInt32Array).size() == 2, "three holes are joined by one two-span thread")
+	var old_lengths := PackedFloat32Array()
+	for s: int in info.springs:
+		old_lengths.append(sim.c_rest[s])
+	sim.thread_tension(id, 0.85)
+	for i in old_lengths.size():
+		_check(sim.c_rest[info.springs[i]] < old_lengths[i], "tightening from the end shortens span %d" % i)
+	_settle(sim)
+	_check(sim.gap_at(Vector2(0.42, 0.51)) < loose_gap, "the tightened running thread draws the skin together")
+	sim.finish_thread(id)
+	_check(sim.thread_info(id).final, "cutting leaves a final anchor at the current tension")
 
 
 ## A client mirrors the host's tears spring by spring, diagonals included, and ends with identical topology.

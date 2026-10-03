@@ -60,6 +60,19 @@ A test fails on any script error, any `FAIL:` line, or if it doesn't reach its "
 | T21 | Where the site hangs off the body, its skin is never drawn and never shown simulated, even with a cut through it and a pull right next to it |
 | T22 | Skin folded out of the drape's opening lies on the drape instead of passing through it; skin that starts under the drape stays under it |
 | T23 | A circle cut through the skin frees a piece (not halfway round); taken off, the skin layer has a hole only there, the fat layer stays whole, it can't be taken twice and peers taking it off agree |
+| T24 | A running suture's first click makes one anchor, later clicks extend the same routed thread, tightening changes every span, and cutting finalizes it at that tension |
+
+## Running suture interaction (`tests/stitch_test.gd`)
+
+| ID | Case |
+|---|---|
+| ST1 | First click starts a live thread with one anchor and no disconnected stitch span |
+| ST2 | Second click connects the first hole to the second with the same thread |
+| ST3 | Wheel down tightens every existing span; wheel up loosens them |
+| ST4 | Long click adds the final anchor, cuts the thread, and preserves its tension |
+| ST5 | Loose thread leaves the wound incompletely closed; over-tight skin thread tears through |
+| ST6 | Muscle closes before the subcutaneous layer; deep connective-tissue closure cannot bypass open muscle |
+| ST7 | A finalized skin seam has no split wall edges, its two sides physically meet without interpenetrating, and increasing safe tension raises a larger wound-edge lip |
 
 ## Every scenario (`tests/smoke_test.gd`)
 
@@ -196,3 +209,4 @@ clock: its speed check and the frame rate only mean something headless. `run_tes
 | V11 | `--syringe`: every syringe case in the needle view, with the needle in, halfway through its notches and done (`40_<case>_1_needle_in`, `_2_halfway`, `_3_done`), including into the surgeon's own hand and a partner; the IV catheter on the vein and beside it, aimed, in, the line from the stand and the taped-down dressing close up (`42_catheter_*`) |
 | V12 | `--syringe --only=sedation`: a sedated surgeon's blurred view with afterimages behind a moving hand (`43_sedated_trail`), the darkened view of too much (`44_overdose`), knocked out on the floor looking at the table (`45_knocked_out`) and a knocked out partner seen from the room (`46_partner_down`) |
 | V10 | `--anatomy`: the chest or belly opened wide (from above and first person), a top organ held aside, a limb cut to the bone, a tourniquet on the thigh, a syringe held up to read |
+| V13 | `--stitching`: pre-cut forearm, thigh and abdomen at before/first-click/second-click/final checkpoints; 4 running stitches on the hand, 6 on the leg, 10 on the stomach, plus deep stomach fat and muscle closure; skin finals also include a shallow-angle check of the closed tension lip and puncture deformation |
