@@ -1315,6 +1315,45 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 	return {"type": "none"}
 
 
+## Called when a retractor is set into the skin with its jaws' tips at `tips` (world, see ToolActions.spread_tips()):
+## each jaw takes hold of the edge on its own side of the middle. Returns grip info for spread_retractor()
+## and release_grip(), {"type": "none"} when a tip isn't on the site.
+func set_retractor(tool_uid: int, tips: Array[Vector3], spread: float) -> Dictionary:
+	var uvs: Array[Vector2] = []
+	for tip in tips:
+		var probe := body.probe(tip)
+		if not probe.zone in ["site", "cavity"]:
+			return {"type": "none"}
+		uvs.append(probe.uv)
+	var middle := (uvs[0] + uvs[1]) * 0.5
+	var keys: Array[int] = []
+	var starts: Array[Vector3] = []
+	for side in 2:
+		var key := retractor_key(tool_uid, side)
+		var held := body.tissue.grip_beside(key, uvs[side], middle, uvs[side] - middle)
+		if held < 0:
+			for k in keys:
+				body.tissue.release(k)
+			return {"type": "none"}
+		keys.append(key)
+		starts.append(body.tissue.pos[held])
+	var axis := body.site.to_local(tips[1]) - body.site.to_local(tips[0])
+	return {"type": "spread", "keys": keys, "starts": starts, "axis": Vector3(axis.x, 0.0, axis.z).normalized(), "spread": spread}
+
+
+## Opens or closes a set retractor to `spread` (meters between its tips): each jaw moves its edge half the change
+## away from the middle (toward it when closing).
+func spread_retractor(grip_info: Dictionary, spread: float) -> void:
+	var move: Vector3 = grip_info.axis * (spread - float(grip_info.spread)) * 0.5
+	for side in 2:
+		body.tissue.move_grip(grip_info.keys[side], grip_info.starts[side] + move * (1.0 if side == 1 else -1.0))
+
+
+## The tissue grip key of a retractor's jaw (side 0 or 1). Negative, so it never meets a clamp's, which is its uid.
+static func retractor_key(tool_uid: int, side: int) -> int:
+	return -(tool_uid * 2 + side)
+
+
 func update_grip(tool_uid: int, grip_info: Dictionary, tip: Vector3, power: float, dt: float, speed: float) -> Dictionary:
 	match grip_info.type:
 		"target":
@@ -1361,6 +1400,9 @@ func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) ->
 			targets[grip_info.target].set_aside()
 		"organ":
 			body.release_organ(grip_info.organ)
+		"spread":
+			for key: int in grip_info.keys:
+				body.tissue.release(key)
 		"vessel":
 			if not self_retaining:
 				_wound(grip_info.wound).clamped = 0.0

@@ -387,6 +387,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif tool and tool.def.action == "sew":
 			# As on a syringe, the wheel works the tool itself: down pulls the thread tight, up pays more out.
 			Surgery.current.tools.request_suture_tension(active, 1 if up else -1)
+		elif tool and tool.def.action == "spread":
+			# Up opens the retractor, down closes it, set in a wound or not.
+			Surgery.current.tools.request_spread(active, 1 if up else -1)
 		elif uses_level(active):
 			hand.level = clampi(hand.level + (1 if up else -1), 0, 3)
 	elif event.is_action_pressed("zoom"):
@@ -585,6 +588,9 @@ func _local_update(delta: float) -> void:
 		var h := hands[i]
 		var tool := held_tool(i)
 		h.inspecting = can_act and i == active and tool != null and not h.attached and Input.is_action_pressed("inspect")
+		if tool and tool.def.action == "spread":
+			# Held upright, a retractor's jaws open flat across the skin whichever way it's rolled (C/V turn them).
+			h.tilt = SurgeonHand.TILT_RANGE.x
 		if i == active and _needle_anchor != Vector3.INF and not h.inspecting:
 			# The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
 			h.lifted = false
@@ -592,6 +598,9 @@ func _local_update(delta: float) -> void:
 			h.local_target = to_local(h.target)
 			h.tremor = Vector3.ZERO
 			_strain[i] = false
+			continue
+		if tool and tool.in_wound and not h.inspecting:
+			_hold_in_wound(h, tool)
 			continue
 		if h.inspecting:
 			# Held up in front of the eyes, the grip off to the hand's side so the whole tool crosses the view.
@@ -639,6 +648,20 @@ func _hold_needle(delta: float) -> void:
 		Surgery.current.hud.toast("The needle tears out of the skin.")
 		_needle_torn = true
 		_needle_anchor = Vector3.INF
+
+
+## A retractor set in a wound stays where it went in, steady, and the hand holding it goes to it, as far as the arm
+## turns that way. Walked away from out of reach, the host leaves it standing in the wound (Surgery.overstretched()).
+func _hold_in_wound(hand: SurgeonHand, tool: SurgicalTool) -> void:
+	var angles := tool.global_basis.get_euler(EULER_ORDER_YXZ)
+	hand.turn = clampf(wrapf(angles.y - global_rotation.y, -PI, PI), -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
+	hand.tilt = clampf(angles.x, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
+	hand.twist = -angles.z
+	hand.lifted = false
+	hand.target = tool.global_position
+	hand.tremor = Vector3.ZERO
+	_strain[hand.index] = hand.target.distance_to(shoulder(hand.index)) > REACH + 0.06
+	hand.target = _in_reach(hand.target, shoulder(hand.index))
 
 
 ## Mouse moves a sedative held back, once they're due. Out cold or locked, they're dropped.

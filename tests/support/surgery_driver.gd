@@ -782,6 +782,34 @@ func player_cuts_skin(from: Vector2, to: Vector2, level: int, tool_id: String = 
 	await player_works_along([start, finish] as Array[Vector3], level)
 
 
+## Sets the retractor into the cut from `from` to `to` (site uv) at its middle: the surgeon stands by it, rolls the
+## retractor so its tips are square to the cut (as C/V turn a blade's edge along it) and presses Use tool there.
+## It stays in hand, set or not.
+func player_sets_retractor(from: Vector2, to: Vector2) -> SurgicalTool:
+	var retractor := await player_requests_item("retractor")
+	var middle := site_point((from + to) * 0.5)
+	await player_walks_to(middle)
+	await player_turns_blade(site_point(to) - site_point(from))
+	await player_reaches(middle)
+	use()
+	await frames(10)
+	use(false)
+	await frames(3)
+	note("retractor %s" % ("set" if retractor.in_wound else "not set"))
+	return retractor
+
+
+## Turns the wheel on the active hand's retractor until its tips are `spread` meters apart, then lets the skin settle.
+func player_opens_retractor(spread: float) -> void:
+	var retractor := me.held_tool(me.active)
+	for i in 30:
+		if absf(retractor.spread - spread) < ToolActions.SPREAD_STEP * 0.5:
+			break
+		await notch(spread > retractor.spread)
+	await seconds(1.0)
+	note("retractor open %.1f cm" % (retractor.spread * 100.0))
+
+
 ## Takes out every target of `kind` the way its scenario says: lifted out with forceps (slowly while it's still
 ## attached), drained with suction, sawn or knocked loose.
 func player_extracts(kind: String) -> void:

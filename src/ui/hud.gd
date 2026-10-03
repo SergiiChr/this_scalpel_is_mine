@@ -16,6 +16,10 @@ const LEVEL_STEPS: Dictionary = {
 }
 ## Length of the blade edge line drawn on the skin (m).
 const BLADE_LINE := 0.04
+## Size (pixels) of the < and > marking a retractor's tips.
+const JAW_MARK := 9.0
+const AIM_COLOR := Color(1.0, 1.0, 0.9)
+const AIM_WORKING := Color(1.0, 0.42, 0.35)
 
 var surgery: Surgery
 var _clock: Label
@@ -24,10 +28,11 @@ var _hands: Label
 var _belt: HBoxContainer
 var _prompt: Label
 var _net_warning: Label
-## Aim at the active tool tip: a dot, or for blades a line along the edge where it will cut.
-## Beside it, the name of the tool the hand would pick up.
+## Aim at the active tool tip: a dot, for blades a line along the edge where it will cut, for a retractor a < and a >
+## at its tips, moving apart as it opens. Beside it, the name of the tool the hand would pick up.
 var _dot: Panel
 var _blade: Line2D
+var _jaws: Array[Line2D] = []
 ## Controls for what the player is doing right now, bottom right. Changes while a hand key or a tool is held.
 var _hint: Label
 var _dot_label: Label
@@ -308,6 +313,31 @@ func _corner_label(preset: Control.LayoutPreset, size: int, color: Color) -> Lab
 	return l
 
 
+## A dark line with a light one on top (its child), so it shows on pale skin and in blood alike.
+func _aim_line() -> Line2D:
+	var dark := Line2D.new()
+	dark.width = 5.0
+	dark.default_color = Color(0.0, 0.0, 0.0, 0.6)
+	var light := Line2D.new()
+	light.width = 2.5
+	light.default_color = AIM_COLOR
+	for line: Line2D in [dark, light]:
+		line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		line.end_cap_mode = Line2D.LINE_CAP_ROUND
+		line.joint_mode = Line2D.LINE_JOINT_ROUND
+	dark.add_child(light)
+	_root.add_child(dark)
+	return dark
+
+
+## Draws `line` and its light top through `points`, red while the tool is working.
+static func _draw_aim(line: Line2D, points: PackedVector2Array, working: bool) -> void:
+	line.points = points
+	var light := line.get_child(0) as Line2D
+	light.points = points
+	light.default_color = AIM_WORKING if working else AIM_COLOR
+
+
 func _build_dot() -> void:
 	_dot = Panel.new()
 	var style := StyleBoxFlat.new()
@@ -319,17 +349,8 @@ func _build_dot() -> void:
 	_dot.size = Vector2(8, 8)
 	_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_dot)
-	# A dark line with a light one on top, so it shows on pale skin and in blood alike.
-	_blade = Line2D.new()
-	_blade.width = 5.0
-	_blade.default_color = Color(0.0, 0.0, 0.0, 0.6)
-	var edge := Line2D.new()
-	edge.width = 2.5
-	for line: Line2D in [_blade, edge]:
-		line.begin_cap_mode = Line2D.LINE_CAP_ROUND
-		line.end_cap_mode = Line2D.LINE_CAP_ROUND
-	_blade.add_child(edge)
-	_root.add_child(_blade)
+	_blade = _aim_line()
+	_jaws = [_aim_line(), _aim_line()]
 	_dot_label = Ui.label("", 16, Ui.INK)
 	_dot_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_root.add_child(_dot_label)
@@ -410,6 +431,8 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 			lines.append("%s  Push plunger 1 ml" % key.call("level_up"))
 		elif action == "sew":
 			lines.append("%s / %s  Loosen / tighten thread" % [key.call("level_up"), key.call("level_down")])
+		elif action == "spread":
+			lines.append("%s / %s  Open / close" % [key.call("level_up"), key.call("level_down")])
 		elif me.uses_level(me.active):
 			lines.append("Wheel  %s" % ToolActions.LEVEL_NAMES[action])
 		lines.append("%s (hold) + mouse  Turn tool   %s / %s  Rotate" % [key.call("aim_tool"), key.call("twist_left"), key.call("twist_right")])
@@ -458,27 +481,44 @@ func _update_dot(me: Surgeon) -> void:
 	var aim := me.aim_point()
 	var tool := me.held_tool(me.active)
 	var shown := _overlay == null and not camera.is_position_behind(aim)
-	var blade := shown and tool != null and tool.def.action == "cut"
-	_dot.visible = shown and not blade
-	_blade.visible = blade
+	var action := tool.def.action if shown and tool else ""
+	_dot.visible = shown and not action in ["cut", "spread"]
+	_blade.visible = action == "cut"
+	for jaw in _jaws:
+		jaw.visible = action == "spread"
 	if not shown:
 		_dot_label.text = ""
 		_levels.visible = false
 		return
 	var at := camera.unproject_position(aim)
 	_dot.position = at - _dot.size * 0.5
-	if blade:
+	if action == "cut":
 		var edge := ToolActions.blade_direction(tool) * BLADE_LINE * 0.5
-		_blade.points = PackedVector2Array([camera.unproject_position(aim - edge), camera.unproject_position(aim + edge)])
 		var cutting := me.hands[me.active].lowered and me.hands[me.active].level > 0
-		var light := _blade.get_child(0) as Line2D
-		light.points = _blade.points
-		light.default_color = Color(1.0, 0.42, 0.35) if cutting else Color(1.0, 1.0, 0.9)
+		_draw_aim(_blade, PackedVector2Array([camera.unproject_position(aim - edge), camera.unproject_position(aim + edge)]), cutting)
+	elif action == "spread":
+		_draw_jaws(camera, tool)
 	_dot_label.text = me.hovered.label() if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
 	_levels.text = _level_text(me)
 	_levels.visible = not _levels.text.is_empty()
 	_levels.position = at + Vector2(14, 12)
+
+
+## A < at the retractor's tip toward -X and a > at the other, each pointing out from the middle: <> closed, < > open.
+func _draw_jaws(camera: Camera3D, tool: SurgicalTool) -> void:
+	var tips := ToolActions.spread_tips(tool)
+	var ends := [camera.unproject_position(tips[0]), camera.unproject_position(tips[1])]
+	var across: Vector2 = (ends[1] - ends[0]).normalized()
+	if across == Vector2.ZERO:
+		across = Vector2.RIGHT
+	# Close together each mark flattens to half the space between the tips, so <> never cross into an X.
+	var depth := clampf(ends[0].distance_to(ends[1]) * 0.5, JAW_MARK * 0.3, JAW_MARK)
+	for side in 2:
+		var out := across * (1.0 if side == 1 else -1.0)
+		var back: Vector2 = ends[side] - out * depth
+		var arm := Vector2(-out.y, out.x) * JAW_MARK * 0.7
+		_draw_aim(_jaws[side], PackedVector2Array([back + arm, ends[side], back - arm]), tool.in_wound)
 
 
 ## Which LEVEL_STEPS names a tool's effort levels, "" when it takes none.
@@ -521,6 +561,8 @@ func _update_hands(me: Surgeon) -> void:
 	var active_tool := me.held_tool(me.active)
 	if active_tool and active_tool.def.action == "sew":
 		parts.append("thread: %s" % ToolActions.thread_state(active_tool))
+	if active_tool and active_tool.def.action == "spread":
+		parts.append("open: %.1f cm" % (active_tool.spread * 100.0))
 	var kind := level_kind(active_tool)
 	if not kind.is_empty():
 		var level := me.hands[me.active].level

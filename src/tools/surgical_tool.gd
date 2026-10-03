@@ -74,6 +74,14 @@ var suture_hold := 0.0
 var suture_at := Vector2(-1, -1)
 var suture_press_used := false
 
+## A retractor's opening (meters between its tips, the wheel) and whether it's set in a wound, on every peer (see
+## ToolManager.sync_spread()). Set in a wound it stays where it went in, held or not.
+var spread := ToolActions.SPREAD_RANGE.x:
+	set(value):
+		spread = value
+		_animator.open_to(value, -def.length)
+var in_wound := false
+
 ## The model's box in the tool's own space (the grip at the origin).
 var bounds := AABB()
 ## The band around a limb while this tool is wrapped around one (a tourniquet), see wrap_around().
@@ -112,6 +120,8 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	inertia = mass / 12.0 * Vector3(turning.y * turning.y + turning.z * turning.z, turning.x * turning.x + turning.z * turning.z, turning.x * turning.x + turning.y * turning.y)
 	angular_damp = 1.0
 	_animator.setup(_model)
+	if def.action == "spread":
+		_animator.open_to(spread, -def.length)
 	# Vials come full of their drug, the IV drip with a bag of plain fluid.
 	if def.action == "vial":
 		ml = def.volume

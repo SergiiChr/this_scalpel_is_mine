@@ -206,6 +206,17 @@ func sync_suture(tool: SurgicalTool) -> void:
 		_set_suture_state.rpc(tool.uid, tool.suture_tension, tool.suture_layer)
 
 
+## Retractor wheel: direction > 0 opens it, direction < 0 closes it.
+func request_spread(hand: int, direction: int) -> void:
+	_req_spread.rpc_id(1, hand, direction)
+
+
+## Host: shows every peer how far the retractor is open and whether it's set in a wound.
+func sync_spread(tool: SurgicalTool) -> void:
+	if multiplayer.is_server():
+		_set_spread.rpc(tool.uid, tool.spread, not tool.grip_info.is_empty())
+
+
 ## The needle of the syringe in this hand tore out of the patient, dragged from `from` to `to` (world space).
 func request_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
 	_req_needle_tear.rpc_id(1, hand, from, to)
@@ -311,6 +322,22 @@ func _req_suture_tension(hand: int, direction: int) -> void:
 	if tool and tool.def.action == "sew" and Surgery.current.running:
 		ToolActions.adjust_suture_tension(tool, signi(direction), Surgery.current.patient)
 		sync_suture(tool)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _req_spread(hand: int, direction: int) -> void:
+	var tool := tool_in_hand(Net._sender(), hand)
+	if tool and tool.def.action == "spread" and Surgery.current.running:
+		ToolActions.adjust_spread(tool, signi(direction), Surgery.current.patient)
+		sync_spread(tool)
+
+
+@rpc("authority", "call_local", "reliable")
+func _set_spread(uid: int, spread: float, in_wound: bool) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.spread = spread
+		tool.in_wound = in_wound
 
 
 @rpc("authority", "call_local", "reliable")
@@ -508,7 +535,8 @@ func _physics_process(delta: float) -> void:
 		var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
 		if surgeon == null:
 			continue
-		if tool.state == SurgicalTool.State.HELD:
+		# A retractor set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
+		if tool.state == SurgicalTool.State.HELD and not tool.in_wound:
 			tool.global_transform = surgeon.hands[tool.slot].grip_transform()
 		elif tool.state == SurgicalTool.State.BELT:
 			tool.global_transform = surgeon.belt_transform(tool.slot)

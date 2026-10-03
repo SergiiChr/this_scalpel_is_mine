@@ -290,6 +290,11 @@ func overstretched(peer: int, hand: int) -> void:
 	var tool := tools.tool_in_hand(peer, hand)
 	if tool == null or tool.grip_info.is_empty():
 		return
+	if tool.def.action == "spread":
+		# A retractor holds the wound open by itself: walking away just leaves it set in it.
+		tools.leave_standing(tool)
+		tell(peer, "You let go of the %s. It stays in the wound." % tool.def.name.to_lower())
+		return
 	var anchor: Vector2 = tool.grip_info.get("anchor", patient.body.world_to_uv(tool.tip_position()))
 	patient.tear(anchor, Vector2(randf_range(-1, 1), randf_range(-1, 1)), 0.05)
 	patient.release_grip(tool.uid, tool.grip_info, false)
