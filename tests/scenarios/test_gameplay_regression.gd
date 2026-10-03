@@ -103,7 +103,8 @@ func _new_mechanics(surgery: Surgery) -> void:
 	var patient := surgery.patient
 	_muscle_first_checks(patient)
 	var clips := Db.tool("paper_clips")
-	for wound in patient.wounds:
+	# Tight clips tear new wounds: only the ones there now.
+	for wound: Wound in patient.wounds.duplicate():
 		if not wound.is_internal() and wound.points.size() > 1:
 			for pressure in [1, 2, 3]:
 				for i in 30:

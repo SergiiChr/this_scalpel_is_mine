@@ -593,7 +593,7 @@ func player_threads(wound: Wound, layer: int) -> bool:
 		var off := cell * (0.25 + i * 0.25)
 		if patient.suture_layer_at(_beside_wound(wound, 0.0, off), wound) == layer:
 			# Skin holes well clear of the opening: the needle lands a little off where the hand aims.
-			first = off + (cell * 0.5 if layer == TissueSim.Depth.SKIN else 0.0)
+			first = off + (cell if layer == TissueSim.Depth.SKIN else 0.0)
 			break
 	if first < 0.0:
 		note("no %s shows beside wound %d to sew" % [TissueSim.Depth.keys()[layer], wound.id])
