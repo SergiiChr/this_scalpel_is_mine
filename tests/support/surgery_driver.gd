@@ -580,8 +580,8 @@ func player_sews(wound: Wound, layer: int) -> void:
 
 ## Clicks the needle's thread through `wound` in `layer`: the first hole as close beside the wound as that layer
 ## shows (inside the opening for what's under the skin, Patient.suture_layer_at()), then one a grid cell and a half
-## further along on the other side each click, past the wound's end. Each click captures a key frame
-## (thread_hole_N). Returns false when the layer shows nowhere beside the wound.
+## further along on the other side each click, the last two at the wound's end. The first two clicks capture a key
+## frame (thread_hole_1, thread_hole_2). Returns false when the layer shows nowhere beside the wound.
 func player_threads(wound: Wound, layer: int) -> bool:
 	# Grid cells along and across the wound, in uv: they're square in meters, not in uv.
 	var along := (wound.points[-1] - wound.points[0]).normalized()
