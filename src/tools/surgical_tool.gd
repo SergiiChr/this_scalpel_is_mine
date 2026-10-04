@@ -43,15 +43,10 @@ var iodine := 0.0
 ## Host only: how much of each drug is in the liquid (drug id -> amount in its unit, "blood" in ml).
 ## A syringe drawn from two vials holds a mix.
 var contents: Dictionary = {}
-## Host only: what a syringe pushed into the patient since the needle went in, given when it comes out,
-## and how it goes in ("vein" or "direct", see Patient.administer()).
-var injecting: Dictionary = {}
-var injecting_route := "direct"
 ## Host only, the IV drip: ml pushed into the bag that haven't run down the line yet (they went in by the port at its
-## bottom, where the line leaves it, so they run before the bag's own fluid), with the drugs in contents. What ran
-## since the bolus started (drug id -> amount), given once it has all run in, and ml run since debug mode last told.
+## bottom, where the line leaves it, so they run before the bag's own fluid), with the drugs in contents, and ml run
+## since debug mode last told.
 var bolus := 0.0
-var dripped: Dictionary = {}
 var dripped_ml := 0.0
 ## Host only, for debug mode: ml a syringe pushed out since its needle went where it is now, the drugs in it and where
 ## that is ("the vein", "the IV bag"), told once the needle is somewhere else (ToolActions.report_pushed()).

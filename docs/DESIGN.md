@@ -392,8 +392,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
     pulls nothing. A glove comes before the patient under it, a body after.
   - nothing: pulls air, pushes the liquid out in a squirt.
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
-  Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
-  needle comes out.
+  Air sits at the needle end and goes out first. Pushing into the patient or a surgeon gives what's pushed as it goes
+  in, one notch at a time.
 - **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
   it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
   hand swinging round it (`Surgeon._bend_needle()`). What the tilt can't follow (sideways, or past the tilt range)
@@ -414,8 +414,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   right on screen is right, up is away from it. Use tool let go, the camera goes back and the scale turns back to the
   eyes.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
-  Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
-  only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
+  Doses add up (`DrugLevels`, for the patient and the surgeons alike): every injection goes into a depot that soaks
+  into the blood over the route's onset (a direct injection 0.4x the drug's onset, a vein or the IV line 1.5x), and the
+  level in the blood drops by one right dose every `duration` seconds, so ten 1 ml shots work like one 10 ml shot and
+  twice the dose lasts twice as long. Between 0.7x and 1.4x the right dose in the blood works as the right dose; below
+  or above it scales. Under half a dose it has only a faint effect and doesn't do its job (no objective, restart,
+  antibiotic...); reaching half a dose it does. Reaching 2.5x is an overdose. General anesthesia doesn't wear off
+  (topped up by the anesthetist) unless the patient burns through it.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
   Surgeons weigh 80 kg (small hands 60), shown in the lobby under their name; doses given to them use it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).

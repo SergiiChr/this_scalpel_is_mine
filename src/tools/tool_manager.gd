@@ -161,14 +161,6 @@ func nearest_container(at: Vector3) -> SurgicalTool:
 	return best
 
 
-## True while a held syringe's needle is in this vial, dish or bag.
-func needle_in(container: SurgicalTool) -> bool:
-	for tool: SurgicalTool in tools.values():
-		if tool.state == SurgicalTool.State.HELD and tool.def.action == "syringe" and nearest_container(tool.tip_position()) == container:
-			return true
-	return false
-
-
 ## The bag hanging on the IV stand, null where there's none.
 func drip_bag() -> SurgicalTool:
 	for tool: SurgicalTool in tools.values():
@@ -616,7 +608,6 @@ func _physics_process(delta: float) -> void:
 		return
 	for tool: SurgicalTool in tools.values():
 		if tool.state != SurgicalTool.State.HELD:
-			ToolActions.finish_injection(tool, surgery.patient)
 			ToolActions.report_pushed(tool)
 		match tool.state:
 			SurgicalTool.State.HELD:

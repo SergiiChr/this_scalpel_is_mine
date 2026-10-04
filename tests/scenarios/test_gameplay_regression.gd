@@ -414,6 +414,12 @@ func _iodine_checks(surgery: Surgery) -> void:
 		fail_test("the pad stayed on forceps that were let go")
 
 
+## `seconds` of drugs soaking into the patient's blood, in steps like the patient's own.
+static func _soak_in(patient: Patient, seconds: float) -> void:
+	for i in int(seconds * 10.0):
+		patient._drug_effects(0.1)
+
+
 ## A syringe draws from a vial, a roughly right dose works and too little doesn't, drugs mix, the floor breaks it.
 func _syringe_checks(surgery: Surgery) -> void:
 	var tools := surgery.tools
@@ -436,9 +442,11 @@ func _syringe_checks(surgery: Surgery) -> void:
 	var drawn := 3.0 * ToolActions.PLUNGER_STEP
 	if absf(syringe.ml - drawn) > 0.01 or absf(vial.ml - (vial.def.volume - drawn)) > 0.01 or syringe.label().ends_with("(empty)"):
 		fail_test("the syringe didn't draw from the vial: syringe=%.2f ml vial=%.2f ml" % [syringe.ml, vial.ml])
-	# The right dose, pushed into the patient, counts once the needle comes out.
+	# The right dose, pushed into the patient, counts once it has soaked in. Checked on a body with no drugs in yet.
 	var right_ml := Db.drug("propofol").dose * patient.weight_kg / vial.def.concentration
 	tools.transfer(vial, syringe, right_ml - syringe.ml)
+	var drugs_were := patient.drugs
+	patient.drugs = DrugLevels.new()
 	patient.flags.erase("drug_propofol")
 	var site := patient.body.uv_to_world(Vector2(0.5, 0.5))
 	syringe.global_transform = Transform3D(Basis.IDENTITY, site + Vector3(0, 0, syringe.def.length))
@@ -451,17 +459,18 @@ func _syringe_checks(surgery: Surgery) -> void:
 	while syringe.ml > 0.0:
 		ToolActions.plunge(syringe, -ToolActions.PLUNGER_STEP, patient)
 	syringe.global_position += Vector3.UP * 0.3
-	var hand := {"lowered": false, "trigger": false, "level": 0, "speed": 0.0, "peer": 1, "mods": Modifiers.new()}
-	ToolActions.update(syringe, hand, patient, 0.1)
+	_soak_in(patient, 10.0)
 	if syringe.ml > 0.0 or not patient.flags.has("drug_propofol"):
 		fail_test("the right dose of propofol didn't count: left=%.2f ml flags=%s, the needle was in %s" % [syringe.ml, patient.flags.keys(), aimed])
 	# A third of the dose doesn't do the job.
+	patient.drugs = DrugLevels.new()
 	patient.flags.erase("drug_propofol")
 	tools.transfer(vial, syringe, right_ml * 0.3)
-	syringe.injecting = tools.transfer(syringe, null, syringe.ml)
-	ToolActions.finish_injection(syringe, patient)
+	patient.administer("propofol", "direct", tools.transfer(syringe, null, syringe.ml).propofol)
+	_soak_in(patient, 10.0)
 	if patient.flags.has("drug_propofol"):
 		fail_test("a third of the dose counted as a full one")
+	patient.drugs = drugs_were
 	# Two vials into one syringe make a mix.
 	tools.transfer(vial, syringe, 1.0)
 	tools.transfer(made[1], syringe, 1.0)
@@ -611,9 +620,9 @@ func _nurse_checks(surgery: Surgery) -> void:
 ## going for five minutes (it used to wear off in under three).
 func _anesthesia_checks(surgery: Surgery) -> void:
 	var patient := surgery.patient
-	var saved := [patient.mods, patient.vitals.to_dict(), patient.active_drugs, patient.wounds]
+	var saved := [patient.mods, patient.vitals.to_dict(), patient.drugs, patient.wounds]
 	patient.mods = Modifiers.new()
-	patient.active_drugs = []
+	patient.drugs = DrugLevels.new()
 	patient.wounds = []
 	patient.vitals.from_dict({"rhythm": Vitals.Rhythm.SINUS, "blood_ml": patient.vitals.max_blood_ml, "systolic": 120.0, "heart_rate": 75.0, "temperature": 36.8, "glucose": 5.5, "swelling": 0.0})
 	patient.administer("propofol", "vein", Db.drug("propofol").dose * patient.weight_kg)
@@ -628,7 +637,7 @@ func _anesthesia_checks(surgery: Surgery) -> void:
 		fail_test("one right dose of propofol didn't hold for five minutes (anesthesia %.2f -> %.2f, awake %s, arrested %s)" % [depth, v.anesthesia, v.is_awake(), v.is_arrested()])
 	patient.mods = saved[0]
 	patient.vitals.from_dict(saved[1])
-	patient.active_drugs = saved[2]
+	patient.drugs = saved[2]
 	patient.wounds = saved[3]
 
 

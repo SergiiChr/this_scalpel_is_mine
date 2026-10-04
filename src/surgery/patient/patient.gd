@@ -80,8 +80,8 @@ var weight_kg := 75.0
 var blood_type := "O+"
 var wounds: Array[Wound] = []
 var targets: Array[CavityTarget] = []
-## {"def": DrugDef, "age": float, "strength": float, "onset": float}
-var active_drugs: Array[Dictionary] = []
+## What's in the patient's blood, every injection of a drug adding up.
+var drugs := DrugLevels.new()
 ## Counters for scoring and the post-op report, see data/consequences.cfg.
 var flags: Dictionary = {}
 var iv_set := false
@@ -198,7 +198,10 @@ func setup(scenario_def: ScenarioDef, patient_rolls: Array, seed_value: int) -> 
 		body.wound_map.disk(WoundMap.Layer.FLUIDS, WoundMap.GRIME, Vector2(0.5, 0.5), 0.6, 0.4, WoundMap.Mode.MAX)
 	var anesthesia: float = scenario.preop.get("anesthesia", 0.0)
 	if anesthesia > 0.0:
-		_add_drug(Db.drug("propofol"), 1.0, 0.1)
+		# Already under when the surgery starts: in the blood and working, nobody gave it here.
+		var propofol := Db.drug("propofol")
+		drugs.give(propofol, 0.0, 0.1)
+		drugs.entries[propofol.id].merge({"level": 1.0, "working": 0.0}, true)
 
 
 func _physics_process(delta: float) -> void:
@@ -441,51 +444,43 @@ func _check_death(fx: DrugEffects) -> void:
 
 
 func _drug_effects(dt: float) -> DrugEffects:
-	var fx := DrugEffects.new()
-	var decay_mult := mods.mult("anesthesia_decay_mult")
-	for entry in active_drugs:
-		var def: DrugDef = entry.def
-		if _holds(def):
-			# Kept at its peak, like an anesthetist keeping it topped up: its side effects (low pressure) stay too.
-			entry.age = minf(entry.age + dt, entry.onset)
+	for crossed: Array in drugs.update(dt, _wear):
+		if crossed[1] == "works":
+			_drug_works(crossed[0])
 		else:
-			entry.age += dt * (decay_mult if def.effect("anesthesia") > 0.0 else 1.0)
-		var age: float = entry.age
-		var onset: float = entry.onset
-		var curve := def.level_at(age, onset) * float(entry.strength)
+			add_flag("overdose")
+			Surgery.current.scoring.add("overdose")
+	var fx := DrugEffects.new()
+	var potency := Surgery.current.run_mods.mult("drug_strength_mult") if Surgery.current else 1.0
+	for entry: Dictionary in drugs.entries.values():
+		var def: DrugDef = entry.def
+		var strength := DrugDef.dose_strength(entry.level) * potency
 		for key: String in def.effects:
 			if key in ["glucose", "volume_ml"]:
-				fx.add(key, def.effect(key) / maxf(def.duration, 1.0) * (1.0 if age >= onset else 0.0))
+				# Totals, spread over the time it takes to wear off, as fast as it does: two doses give twice as much.
+				fx.add(key, def.effect(key) / maxf(def.duration, 1.0) * _wear(def) if entry.level > 0.0 else 0.0)
 			else:
-				fx.add(key, def.effect(key) * curve)
+				fx.add(key, def.effect(key) * strength)
 		if def.has_flag("antihistamine"):
-			fx.antihistamine += curve
+			fx.antihistamine += strength
 		if def.id == "adrenaline":
-			fx.adrenaline += curve
-		if def.has_flag("lethal") and age > onset + def.duration * 0.8:
+			fx.adrenaline += strength
+		if def.has_flag("lethal") and entry.working > def.duration * 0.8:
 			fx.lethal = 1.0
-	active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return e.age < e.onset + (e.def as DrugDef).duration or _holds(e.def))
 	return fx
 
 
-## General anesthesia lasts the whole surgery, unless the patient burns through it (anesthesia_decay_mult).
-func _holds(def: DrugDef) -> bool:
-	return def.effect("anesthesia") > 0.0 and mods.mult("anesthesia_decay_mult") <= 1.0
+## How fast a drug wears off (1: one right dose over its duration). General anesthesia lasts the whole surgery, kept
+## topped up like an anesthetist would, unless the patient burns through it (anesthesia_decay_mult).
+func _wear(def: DrugDef) -> float:
+	if def.effect("anesthesia") <= 0.0:
+		return 1.0
+	var decay_mult := mods.mult("anesthesia_decay_mult")
+	return decay_mult if decay_mult > 1.0 else 0.0
 
 
 func _has_active(flag: String) -> bool:
-	return active_drugs.any(func(e: Dictionary) -> bool: return (e.def as DrugDef).has_flag(flag))
-
-
-func _add_drug(def: DrugDef, strength: float, onset_scale: float) -> void:
-	var potency := Surgery.current.run_mods.mult("drug_strength_mult") if Surgery.current else 1.0
-	# Another dose of an anesthetic already in tops it up instead of stacking: held ones would never wear off.
-	for entry in active_drugs:
-		if entry.def == def and def.effect("anesthesia") > 0.0:
-			entry.strength = maxf(entry.strength, strength * potency)
-			entry.age = minf(entry.age, entry.onset)
-			return
-	active_drugs.append({"def": def, "age": 0.0, "strength": strength * potency, "onset": maxf(def.onset * onset_scale, 0.1)})
+	return drugs.working(flag)
 
 
 ## Says so when there's no line to give anything through, or it isn't in a vein.
@@ -503,8 +498,9 @@ func iv_working() -> bool:
 
 
 ## route: "iv" (smooth, needs a line), "vein" (a syringe straight into a vein: like "iv", no line needed)
-## or "direct" (fast spike).
+## or "direct" (into tissue: soaks in faster).
 ## amount: how much was given in the drug's unit (see DrugDef.dose). Negative means just the right dose (bags, masks).
+## Every injection adds to what's already in (DrugLevels): ten small ones work like one big one.
 func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 	var def := Db.drug(drug_id)
 	if def == null:
@@ -512,15 +508,6 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 	if route == "iv" and not iv_ready():
 		return
 	var share := amount / (def.dose * weight_kg) if amount >= 0.0 and def.dose > 0.0 else 1.0
-	if share >= DrugDef.DOSE_OVERDOSE:
-		add_flag("overdose")
-		Surgery.current.scoring.add("overdose")
-	if drug_id in mods.list("allergen"):
-		vitals.swelling = minf(vitals.swelling + 0.6, 1.0)
-		vitals.systolic -= 30.0
-		Surgery.current.scoring.add("allergic_reaction")
-		Surgery.current.announce("Hives spread across the skin. Allergic reaction!")
-		_reveal("allergy")
 	if def.blood_type:
 		transfused_ml += def.effect("volume_ml")
 		if not _blood_compatible(def.blood_type):
@@ -529,25 +516,36 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 			vitals.temperature += 1.0
 			Surgery.current.scoring.add("wrong_blood")
 			Surgery.current.announce("Fever and shaking. Transfusion reaction!")
-	for other in active_drugs:
-		if drug_id in (other.def as DrugDef).danger_with or (other.def as DrugDef).id in def.danger_with:
+	if drug_id == "whiskey":
+		add_flag("whiskey_given")
+		if mods.flag("whiskey_friendly"):
+			def = Db.drug("diazepam")
+			share *= 0.5
+	var fresh := drugs.give(def, share, def.onset * (DrugDef.DIRECT_ONSET if route == "direct" else 1.5))
+	if fresh and drug_id in mods.list("allergen"):
+		vitals.swelling = minf(vitals.swelling + 0.6, 1.0)
+		vitals.systolic -= 30.0
+		Surgery.current.scoring.add("allergic_reaction")
+		Surgery.current.announce("Hives spread across the skin. Allergic reaction!")
+		_reveal("allergy")
+
+
+## A drug just reached an effective level: it does its job.
+func _drug_works(def: DrugDef) -> void:
+	for entry: Dictionary in drugs.entries.values():
+		var other: DrugDef = entry.def
+		if other != def and entry.working >= 0.0 and (def.id in other.danger_with or other.id in def.danger_with):
 			Surgery.current.announce("Blood pressure spikes through the roof!")
 			if rng.randf() < DANGER_ARREST_CHANCE:
 				arrest()
-	var strength := DrugDef.dose_strength(share) * (1.3 if route == "direct" else 1.0)
-	var onset_scale := DrugDef.DIRECT_ONSET if route == "direct" else 1.5
-	if share < DrugDef.DOSE_EFFECTIVE:
-		# Too little to do its job: a faint effect and nothing else.
-		_add_drug(def, strength, onset_scale)
-		return
-	add_flag("drug_" + drug_id)
+	add_flag("drug_" + def.id)
 	if def.has_flag("restart"):
 		_restart_window = RESTART_WINDOW
 		vitals.swelling = maxf(vitals.swelling - 0.4, 0.0)
 	if def.has_flag("reverse_opioid"):
-		active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return not (e.def as DrugDef).has_flag("opioid"))
+		drugs.remove(func(d: DrugDef) -> bool: return d.has_flag("opioid"))
 	if def.has_flag("reverse_benzo"):
-		active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return not (e.def as DrugDef).has_flag("benzo"))
+		drugs.remove(func(d: DrugDef) -> bool: return d.has_flag("benzo"))
 	if def.has_flag("anticonvulsant"):
 		_seizure_left = 0.0
 		vitals.seizing = false
@@ -555,12 +553,6 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 		add_flag("antibiotic")
 	if def.has_flag("lethal"):
 		add_flag("euthanized")
-	if drug_id == "whiskey":
-		add_flag("whiskey_given")
-	if drug_id == "whiskey" and mods.flag("whiskey_friendly"):
-		_add_drug(Db.drug("diazepam"), 0.5, 1.0)
-		return
-	_add_drug(def, strength, onset_scale)
 
 
 ## Rolls the weight on its own generator (so the rest of the patient stays the same) and returns the body scale for it.
@@ -602,7 +594,7 @@ func start_seizure() -> void:
 
 
 func wake_up() -> void:
-	active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return (e.def as DrugDef).effect("anesthesia") <= 0.0)
+	drugs.remove(func(d: DrugDef) -> bool: return d.effect("anesthesia") > 0.0)
 	_speak("wake_up")
 
 

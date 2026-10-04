@@ -15,7 +15,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 4. The giving set connects automatically and the tubing runs from the stand to the site. The catheter is single use.
 
 ## 2.4 Administering an infusion
-1. Drugs: rest the syringe needle on the bag hanging on the infusion stand and push the plunger. The dose runs down the line once the needle is out, about 2 ml a second, and acts once it has all run in. Drawing back takes fluid from the bag.
+1. Drugs: rest the syringe needle on the bag hanging on the infusion stand and push the plunger. The dose starts down the line at once, about 2 ml a second, and acts as it runs in. Drawing back takes fluid from the bag.
 2. Fluid bags and blood packs: hold the new bag at the infusion stand and select [b]Swap IV bag[/b]. It replaces the hanging bag and runs in.
 3. Onset is slower and smoother than direct injection. Fluids and blood products are given by this route only.
 > Without a patent line, a drug pushed into the bag stays there and a swapped bag is wasted.

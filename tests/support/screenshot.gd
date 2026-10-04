@@ -442,7 +442,7 @@ func _sedation(bench: Bench, out: String) -> void:
 	me.pitch = -0.8
 	for i in 2:
 		me.hands[i].local_target = Vector3(-0.17 if i == 0 else 0.17, 1.18, -0.45)
-	me.status.drugs.clear()
+	me.status.drugs = DrugLevels.new()
 	me.status.administer("diazepam", right)
 	await bench.frames(200)
 	# The hand keeps sweeping across while the shot is taken: rendering here is slow, a hand at rest leaves no trail.
@@ -451,7 +451,7 @@ func _sedation(bench: Bench, out: String) -> void:
 	await bench.frames(30)
 	await _shot(out, "43_sedated_trail")
 	get_tree().physics_frame.disconnect(sweep)
-	me.status.drugs.clear()
+	me.status.drugs = DrugLevels.new()
 	me.status.administer("diazepam", right * 1.8)
 	await bench.frames(200)
 	await _shot(out, "44_overdose")
