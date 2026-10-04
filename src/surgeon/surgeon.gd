@@ -68,7 +68,8 @@ const NEEDLE_SETTLE := 0.1
 ## long (seconds).
 const DRIP_SNAP := 0.12
 const VIAL_SNAP := 0.03
-## Furthest a syringe turns (radians, either way of the body's facing) to line up with a vial lying down.
+## Furthest a syringe turns (radians, either way of the body's facing) to line up with a vial lying down. Past it, it
+## goes down into the cap from above.
 const VIAL_TURN := 1.9
 const UNSNAP_MARGIN := 0.015
 const SNAP_TIME := 0.25
@@ -947,17 +948,22 @@ func _snap_spot(hand: SurgeonHand, tool: SurgicalTool, own: Vector2, held: bool)
 	for vial: SurgicalTool in Surgery.current.tools.tools.values():
 		if vial.def.action != "vial" or vial.state != SurgicalTool.State.FREE:
 			continue
-		# In through the cap at the vial's tip, along the vial: down into one standing, level into one lying. From
-		# under it (the cap down) or from the far side (the cap turned away), a hand can't line the needle up.
+		# In through the cap at the vial's tip, along the vial: down into one standing, level into one lying. A cap
+		# facing down can't be reached. One turned away (toward a wall, say) can't be lined up from here: the needle
+		# goes down into the cap from above instead.
 		var cap := vial.tip_position()
 		var into := (vial.global_position - cap).normalized()
 		var across := Vector2(tip.x - cap.x, tip.z - cap.z).length()
+		if across >= nearest or into.y >= 0.3:
+			continue
+		nearest = across
 		var turn := own.y
 		if Vector2(into.x, into.z).length() > 0.1:
 			turn = wrapf(atan2(-into.x, -into.z) - rotation.y, -PI, PI)
-		if across < nearest and into.y < 0.3 and absf(turn) < VIAL_TURN:
-			nearest = across
+		if absf(turn) < VIAL_TURN:
 			spot = {"at": cap + into * 0.004, "tilt": asin(clampf(into.y, -1.0, 1.0)), "turn": turn}
+		else:
+			spot = {"at": Vector3(cap.x, (vial.global_transform * vial.bounds).end.y - 0.004, cap.z), "tilt": -PI / 2.0, "turn": own.y}
 	var bag := Surgery.current.tools.drip_bag()
 	if spot.is_empty() and bag:
 		var port := ToolManager.middle(bag)
