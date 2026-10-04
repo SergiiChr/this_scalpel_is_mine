@@ -49,6 +49,7 @@ func test_model_rig_geometry_and_budget_contracts() -> void:
 		_exists("targets", kind)
 	_hand_pose_limits(holder)
 	_blade_tips(holder)
+	_needle_holder(holder)
 	_contact_audio()
 	_iv_line_clearance(holder)
 	_check_budgets(holder)
@@ -290,7 +291,12 @@ func _grip_clearance(holder: Node3D, hand_index: int) -> void:
 		await get_tree().physics_frame
 		var clipped := GripCheck.clipped(hand)
 		if clipped > 0:
-			fail_test("the %s goes through the %s glove holding it (%d points)" % [model_id, "left" if hand_index == 0 else "right", clipped])
+			var parts: PackedStringArray = []
+			for part in ["Palm"] + Array(SurgeonHand.FINGERS):
+				var count := GripCheck.clipped(hand, part)
+				if count > 0:
+					parts.append("%s %d" % [part, count])
+			fail_test("the %s goes through the %s glove holding it (%d points: %s)" % [model_id, "left" if hand_index == 0 else "right", clipped, ", ".join(parts)])
 		tool.queue_free()
 		await get_tree().physics_frame
 	hand.get_parent().queue_free()
@@ -363,6 +369,32 @@ func _blade_tips(holder: Node3D) -> void:
 			var handle_box := handle.mesh.get_aabb()
 			_check(blade_box.position.z < handle_box.position.z and blade_box.end.z <= handle_box.position.z + 0.001 and handle_box.end.z > 0.04, "%s blade points toward -Z working tip" % name)
 		tool.queue_free()
+
+
+## The curved needle's sharp end is the tool aim point and its shaft physically crosses the closed holder jaws.
+## Thread is drawn only after it is anchored into tissue, never baked into the idle tool model.
+func _needle_holder(holder: Node3D) -> void:
+	var model := ModelSlot.instantiate("tools", "needle", holder)
+	var needle := model.find_child("SutureNeedle", true, false) as MeshInstance3D
+	var jaw_a := model.find_child("JawA", true, false) as MeshInstance3D
+	var jaw_b := model.find_child("JawB", true, false) as MeshInstance3D
+	_check(needle != null and jaw_a != null and jaw_b != null, "the needle holder has a curved needle and two jaws")
+	_check(model.find_child("Thread", true, false) == null, "the idle needle has no placeholder thread")
+	if needle and jaw_a and jaw_b:
+		var def: ToolDef = Db.tools.needle
+		var tip := model.global_transform * Vector3(0, 0, -def.length)
+		var clamp := model.global_transform * Vector3(0, 0, -def.length + 0.006)
+		_check(needle.global_position.distance_to(tip) < 0.0001, "the curved needle's sharp end is the gameplay tip")
+		_check(_mesh_distance(needle, clamp) < 0.0011, "the curved needle crosses the holder at its clamp point")
+		_check(_mesh_distance(jaw_a, clamp) < 0.0025 and _mesh_distance(jaw_b, clamp) < 0.0025, "both holder jaws meet the needle")
+	model.queue_free()
+
+
+func _mesh_distance(mesh: MeshInstance3D, point: Vector3) -> float:
+	var nearest := INF
+	for vertex in _posed_faces(mesh):
+		nearest = minf(nearest, (vertex as Vector3).distance_to(point))
+	return nearest
 
 
 func _contact_audio() -> void:

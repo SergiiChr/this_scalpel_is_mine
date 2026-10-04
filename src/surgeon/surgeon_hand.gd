@@ -36,6 +36,13 @@ const GRIPS: Dictionary = {
 		"at": Vector3(0.1, -0.024, 0.0), "on": Vector3(0.0, 0.0, 0.055),
 		"curl": [0.2, 0.7, 0.8, 0.85, 0.6],
 	},
+	# A needle holder crosses the player's view while its curved needle hangs toward the skin. The inward turn keeps
+	# the hand and rings behind the working end instead of stacking them over the aim point.
+	"needle": {
+		"basis": Basis(Vector3(0.0, 0.2, -0.98), Vector3(0.0, 0.98, 0.2), Vector3(1.0, 0.0, 0.0)),
+		"at": Vector3(0.1, -0.024, 0.0), "on": Vector3(0.0, 0.0, 0.055),
+		"curl": [0.2, 0.7, 0.8, 0.85, 0.6], "tilt": -0.28, "turn": 0.55,
+	},
 	# Wrapped around a handle that runs across the palm, thumb toward the tip, knuckles on top.
 	"fist": {
 		"basis": Basis(Vector3(0.0, -1.0, 0.0), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0)),
@@ -211,6 +218,16 @@ func grip_transform() -> Transform3D:
 	var yaw := (get_parent() as Node3D).global_rotation.y + turn
 	var rot := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt) * Basis(Vector3.FORWARD, twist)
 	return Transform3D(rot, global_position)
+
+
+## The neutral tool angles for this grip. Asymmetric turns point a tool from either hand in toward the work.
+func default_tilt() -> float:
+	return float(GRIPS.get(grip, GRIPS.pencil).get("tilt", REST_TILT))
+
+
+func default_turn() -> float:
+	var inward := 1.0 if index == 1 else -1.0
+	return float(GRIPS.get(grip, GRIPS.pencil).get("turn", 0.0)) * inward
 
 
 ## The twist that turns the held tool's underside (-Y, the side a syringe's scale is printed on) toward `direction`.
@@ -405,7 +422,8 @@ func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Ve
 		var style: Dictionary = GRIPS.get(grip, GRIPS.pencil)
 		var aimed := grip_transform()
 		var yaw := (get_parent() as Node3D).global_rotation.y
-		var tool_frame := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, REST_TILT) * Basis(Vector3.FORWARD, twist), aimed.origin)
+		var rest_tilt := float(style.get("tilt", REST_TILT))
+		var tool_frame := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, rest_tilt) * Basis(Vector3.FORWARD, twist), aimed.origin)
 		var aim := aimed.basis * tool_frame.basis.inverse() if turned else Basis.IDENTITY
 		var mirror := Vector3(-1, 1, 1) if index == 0 else Vector3.ONE
 		var contact := tool_frame * ((style.on as Vector3) * mirror)

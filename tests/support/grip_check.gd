@@ -27,6 +27,8 @@ static func hold(hand: SurgeonHand, def: ToolDef, fit: Dictionary, holder: Node3
 	hand.holding = true
 	hand.grip = def.grip
 	hand.fit = fit
+	hand.tilt = hand.default_tilt()
+	hand.turn = hand.default_turn()
 	hand.target = Vector3(HAND_AT.x * side, HAND_AT.y, HAND_AT.z)
 	hand.snap_pose(shoulder(hand))
 	var tool := Node3D.new()

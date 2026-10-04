@@ -34,7 +34,7 @@ const PLUNGER_STEP := 1.0
 ## A needle's wheel works the free end of its thread: one notch changes its tension (a rest length ratio, see
 ## TissueSim.THREAD_CLOSED) this much, down tightens and up loosens. Use tool held this long (seconds) adds the last
 ## hole and ties the thread off.
-const SUTURE_TENSION_STEP := 0.08
+const SUTURE_TENSION_STEP := 0.04
 const SUTURE_TENSION_RANGE := Vector2(0.52, 1.56)
 const SUTURE_TIE_HOLD := 0.65
 ## A spreader's (the Gelpi retractor's) wheel opens and closes it: one notch moves its tips this much further apart

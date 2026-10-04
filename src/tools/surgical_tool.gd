@@ -135,15 +135,18 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 		show_fill(fill)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
+	if def.id == "needle":
+		_animator.animate(false, true, 0.0)
 
 
 func _process(delta: float) -> void:
 	var active := false
-	var closed := state == State.STANDING
+	# A suture needle is supplied already locked in its holder; it must not float between open jaws while idle.
+	var closed := state == State.STANDING or def.id == "needle"
 	if state == State.HELD and Surgery.current and Surgery.current.surgeons.has(holder):
 		var hand: SurgeonHand = (Surgery.current.surgeons[holder] as Surgeon).hands[slot]
 		active = ToolActions.in_use(def.action, hand.lowered, hand.trigger, hand.level)
-		closed = hand.attached
+		closed = hand.attached or def.id == "needle"
 	_animator.animate(active, closed, delta)
 	if blood > 0.0:
 		for mat in _own_materials:

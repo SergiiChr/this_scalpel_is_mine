@@ -51,9 +51,10 @@ void vertex() {
 
 void fragment() {
 	vec4 w = texture(wound_map, UV);
-	// No painted groove: the sim splits the mesh exactly along a cut, so its lips are skin up to the edge. The groove
-	// (and its pink rim) would lie right on them, a dark ring round every opening.
-	w.r = 0.0;
+	// Open cuts are gaps in the simulated mesh, so painting their groove here would put a dark ring around the lips.
+	// A tied suture leaves a low alpha marker along the joined edges: reveal only its narrow pink incision line.
+	float closed_seam = smoothstep(0.05, 0.2, w.a) * (1.0 - step(0.5, w.a));
+	w.r *= closed_seam;
 	vec4 f = texture(fluid_map, UV);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));

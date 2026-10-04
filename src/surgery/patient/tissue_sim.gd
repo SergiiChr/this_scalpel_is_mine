@@ -32,7 +32,7 @@ const MIN_RES := 6
 ## Deeper tissue is more tethered: fat barely gives, and muscle needs a firmer pull but takes more load than skin.
 const THREAD_LOOSE: Array[float] = [0.0, 1.23, 1.12, 1.02]
 const THREAD_CLOSED: Array[float] = [0.0, 1.08, 0.98, 0.86]
-const THREAD_TEAR: Array[float] = [0.0, 0.68, 0.60, 0.54]
+const THREAD_TEAR: Array[float] = [0.0, 0.60, 0.56, 0.52]
 const TENSION := 0.93
 const ANCHOR := 0.02
 ## Skin pulled this far (meters) from its spot isn't held there any more, see _substep().
@@ -70,7 +70,7 @@ const ITERATIONS := 4
 ## Extra solver passes over the stitches each iteration. Thread is far stiffer than skin: solved as often as the
 ## skin, a stitch would give way to the stretched skin around it and the edges would never meet.
 const STITCH_PASSES := 3
-const TISSUE_BREAK := 2.3
+const TISSUE_BREAK := 3.0
 ## One stitch pulls together every cut spring this close to it (meters, at rest): a stitch closes a few millimeters
 ## of the cut, however fine the grid.
 const STITCH_REACH := 0.005

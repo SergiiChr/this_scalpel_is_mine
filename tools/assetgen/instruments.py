@@ -96,10 +96,17 @@ def _tweezers(m: Model, length: float, jaw_len: float, width: float, ringed: boo
 
 def _needle(m: Model, length: float) -> None:
     _tweezers(m, length, 0.018, 0.0, True, "steel")
-    arc = [(0.012 * np.cos(t), 0.012 * np.sin(t) - 0.004, -length) for t in np.linspace(-0.2, np.pi, 8)]
-    thread = tube([(0.012, -0.006, -length), (0.02, -0.02, -length + 0.02), (0.015, -0.03, -length + 0.05)], [(0.0006, 0.0006)] * 3, ring=6)
+    # The sharp point is the tool's exact gameplay tip. Six millimetres back, the curve crosses the holder's axis
+    # between both jaws; the old transverse arc floated around their ends instead of being gripped by them.
+    radius = 0.012
+    clamp_back = 0.006
+    center_y = -np.sqrt(radius * radius - (clamp_back * 0.5) ** 2)
+    center_z = -length + clamp_back * 0.5
+    tip_angle = np.arctan2(-clamp_back * 0.5, -center_y)
+    # Its plane is vertical when the holder is horizontal: the curve hangs below the jaws and its sharp tangent
+    # points down and forward into the aiming point, like a real loaded needle holder.
+    arc = [(0.0, center_y + radius * np.cos(t), center_z + radius * np.sin(t)) for t in np.linspace(tip_angle, 2.7, 14)]
     m.add("SutureNeedle", tube(arc, [(0.0007, 0.0007)] * len(arc), ring=6), "chrome", (0.0, 0.0, -length), "JawA")
-    m.add("Thread", thread, "fabric_dark", (0.0, 0.0, -length), "SutureNeedle")
 
 
 def _retractor(m: Model, length: float) -> None:

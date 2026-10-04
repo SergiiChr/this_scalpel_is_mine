@@ -17,6 +17,9 @@ const CUT := 0
 const BURN := 1
 const BRUISE := 2
 const STITCH := 3
+## A sub-threshold stitch value marks the narrow incision line left under a tied skin suture. Values >= 0.5 are
+## rendered as thread or staples; this value only lets the closed cut's pink edge show on the simulated skin.
+const CLOSED_SEAM := 0.25
 const BLOOD := 0
 const INK := 1
 const IODINE := 2

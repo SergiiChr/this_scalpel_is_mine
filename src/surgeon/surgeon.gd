@@ -195,7 +195,7 @@ func setup(peer: int, player_name: String, rolls: Array, spawn: Transform3D) -> 
 func aim_point() -> Vector3:
 	var hand := hands[active]
 	var tool := held_tool(active)
-	return hand.global_position + hand.tip_offset(tool.def.length if tool else 0.05)
+	return tool.tip_position() if tool else hand.global_position + hand.tip_offset(0.05)
 
 
 ## How fast the body moves across the floor (m/s), measured the same way on every peer.
@@ -486,8 +486,10 @@ func _physics_process(delta: float) -> void:
 		if uid != _held_uid[i]:
 			_held_uid[i] = uid
 			hands[i].level = 0
-		hands[i].grip = tool.def.grip if tool else "pencil"
-		hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
+			hands[i].grip = tool.def.grip if tool else "pencil"
+			hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
+			hands[i].tilt = hands[i].default_tilt()
+			hands[i].turn = hands[i].default_turn()
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)

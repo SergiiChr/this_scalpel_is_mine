@@ -99,6 +99,14 @@ func tool_on_belt(peer: int, belt_slot: int) -> SurgicalTool:
 	return null
 
 
+## The world-space needle tip holding the free end of a live running suture, or INF once it is tied or torn.
+func suture_tip(thread_id: int) -> Vector3:
+	for tool: SurgicalTool in tools.values():
+		if tool.suture_thread == thread_id:
+			return tool.tip_position()
+	return Vector3.INF
+
+
 func nearest_grabbable(at: Vector3) -> SurgicalTool:
 	var best: SurgicalTool = null
 	var best_dist := GRAB_RADIUS
@@ -203,7 +211,7 @@ func request_suture_tension(hand: int, direction: int) -> void:
 ## Host: shows every peer the needle's thread tension and layer, for the holder's HUD.
 func sync_suture(tool: SurgicalTool) -> void:
 	if multiplayer.is_server():
-		_set_suture_state.rpc(tool.uid, tool.suture_tension, tool.suture_layer)
+		_set_suture_state.rpc(tool.uid, tool.suture_thread, tool.suture_tension, tool.suture_layer)
 
 
 ## Spreader wheel: direction > 0 opens it, direction < 0 closes it.
@@ -341,9 +349,10 @@ func _set_spread(uid: int, spread: float, in_wound: bool) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _set_suture_state(uid: int, tension: float, layer: int) -> void:
+func _set_suture_state(uid: int, thread_id: int, tension: float, layer: int) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
+		tool.suture_thread = thread_id
 		tool.suture_tension = tension
 		tool.suture_layer = layer
 

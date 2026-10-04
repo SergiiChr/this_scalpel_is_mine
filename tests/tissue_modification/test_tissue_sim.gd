@@ -125,22 +125,22 @@ func _sleeps() -> void:
 	_check(not sim.is_sleeping(), "a jolt wakes the sim")
 
 
-## Skin is elastic: a slow 3 cm pull on intact skin drags the skin around it along without tearing,
+## Skin is elastic: a slow 5 cm pull on intact skin drags the skin around it along without tearing,
 ## and all of the moved skin is shown simulated (inside the region).
 func _elastic() -> void:
 	var sim := _sim()
 	_settle(sim)
 	var k := sim.nearest(MID)
 	sim.grip(1, MID)
-	for i in 30:
+	for i in 50:
 		sim.move_grip(1, sim.rest[k] + Vector3(0.001 * (i + 1), 0, 0))
 		sim._substep()
 	_settle(sim)
-	_check(sim.snapped.is_empty(), "a slow 3 cm pull on intact skin doesn't tear it")
+	_check(sim.snapped.is_empty(), "a slow 5 cm pull on intact skin doesn't tear it")
 	# 4 cm behind the grip, against the pull.
 	var behind := k - roundi(0.04 / (SIZE.x / sim.res_x))
 	var moved := sim.pos[behind].distance_to(sim.rest[behind])
-	_check(moved > 0.008, "skin 4 cm behind a 3 cm pull follows it by more than 8 mm (%.1f mm)" % (moved * 1000.0))
+	_check(moved > 0.008, "skin 4 cm behind a 5 cm pull follows it by more than 8 mm (%.1f mm)" % (moved * 1000.0))
 	var region := sim.region()
 	var hidden := 0
 	for p in sim.pos.size():

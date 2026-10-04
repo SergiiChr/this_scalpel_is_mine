@@ -587,7 +587,7 @@ func player_threads(wound: Wound, layer: int) -> bool:
 	var along := (wound.points[-1] - wound.points[0]).normalized()
 	var step := (absf(along.x) / body.tissue.res_x + absf(along.y) / body.tissue.res_y) * 1.5
 	var cell := absf(along.y) / body.tissue.res_x + absf(along.x) / body.tissue.res_y
-	var holes := ceili(wound.length_uv() / step) + 2
+	var holes := floori(wound.length_uv() / step) + 2
 	var first := -1.0
 	for i in 16:
 		var off := cell * (0.25 + i * 0.25)
@@ -601,13 +601,28 @@ func player_threads(wound: Wound, layer: int) -> bool:
 	note("threads %s along wound %d: %d holes" % [TissueSim.Depth.keys()[layer], wound.id, holes])
 	for i in holes:
 		# The rest a grid cell off at least, so each lands on its own side of the wound.
-		var at := site_point(_beside_wound(wound, i * step, (first if i == 0 else maxf(first, cell)) * (1 if i % 2 == 0 else -1)))
+		# The final pair is explicitly at the end, one on either side; rounding the interior count up used to target
+		# that same terminal side twice and depend on hand jitter to land in a different cell.
+		var along_at := wound.length_uv() if i >= holes - 2 else i * step
+		var at := site_point(_beside_wound(wound, along_at, (first if i == 0 else maxf(first, cell)) * (1 if i % 2 == 0 else -1)))
+		var before_anchors := 0
+		var held := me.held_tool(me.active)
+		if held and held.suture_thread != 0:
+			before_anchors = body.tissue.thread_info(held.suture_thread).anchors.size()
 		await _within_reach(at)
 		await player_reaches(at)
+		# A cross-body grip can put the hand at its reach limit even while the intended tip point looked close enough.
+		# Like a player noticing the miss, step around the table and aim again before committing the puncture.
+		if ((_tip(me.hands[me.active]) - at) * Vector3(1, 0, 1)).length() > 0.004:
+			await player_walks_to(at)
+			await player_reaches(at)
 		use()
 		await seconds(0.2)
 		use(false)
 		await frames(3)
+		held = me.held_tool(me.active)
+		var after_anchors: int = body.tissue.thread_info(held.suture_thread).anchors.size() if held and held.suture_thread != 0 else 0
+		print("SUTURE_DEBUG hole=", i, " target=", body.world_to_uv(at), " tip=", body.world_to_uv(_tip(me.hands[me.active])), " miss=", ((_tip(me.hands[me.active]) - at) * Vector3(1, 0, 1)).length(), " suture_at=", held.suture_at if held else Vector2.ZERO, " anchors=", before_anchors, "->", after_anchors)
 		if i < 2:
 			await capture("thread_hole_%d" % (i + 1))
 	return true
@@ -627,13 +642,13 @@ func player_pulls_thread(state: String) -> void:
 	note("thread %s" % ToolActions.thread_state(needle))
 
 
-## Holds Use tool where the needle is until the thread is tied off, then captures a key frame (tied_off).
-func player_ties_off() -> void:
+## Holds Use tool where the needle is until the thread is tied off, then captures `key_frame`.
+func player_ties_off(key_frame: String = "tied_off") -> void:
 	use()
 	await seconds(ToolActions.SUTURE_TIE_HOLD + 0.2)
 	use(false)
 	await frames(3)
-	await capture("tied_off")
+	await capture(key_frame)
 
 
 ## The point `along` (uv) from the start of `wound` on its line, clamped to its ends, moved `off` (uv) to its left
@@ -652,7 +667,10 @@ static func _beside_wound(wound: Wound, along: float, off: float) -> Vector2:
 
 ## Walks over only when `point` is out of the active hand's comfortable reach.
 func _within_reach(point: Vector3) -> void:
-	if point.distance_to(me.shoulder(me.active)) > Surgeon.REACH - 0.12:
+	var hand := me.hands[me.active]
+	var tool := me.held_tool(me.active)
+	var grip := point - hand.tip_offset(tool.def.length) if tool else point
+	if grip.distance_to(me.shoulder(me.active)) > Surgeon.REACH - 0.12:
 		await player_walks_to(point)
 
 
