@@ -40,11 +40,25 @@ static func label(parent: Node3D, text: String, pos: Vector3, size: int = 32) ->
 	return l
 
 
-## A closed tube with an elliptic cross section (width across the path, height up) along a path (local space; the cross section keeps +Y as up where it can).
-static func tube(path: PackedVector3Array, width: float, height: float) -> ArrayMesh:
-	const SIDES := 12
+## A closed tube with an elliptic cross section (width across the path, height up) along a path (local space; the cross
+## section keeps +Y as up where it can). Fine tubes can use fewer sides without spending full model geometry on them.
+static func tube(path: PackedVector3Array, width: float, height: float, sides: int = 12) -> ArrayMesh:
+	var paths: Array[PackedVector3Array] = [path]
+	return tubes(paths, width, height, sides)
+
+
+## Several disconnected tubes in one mesh. A routed suture has multiple visible spans, but rebuilding and submitting
+## one fine mesh is substantially cheaper than a SurfaceTool commit and MeshInstance3D for every span.
+static func tubes(paths: Array[PackedVector3Array], width: float, height: float, sides: int = 12) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for path in paths:
+		_append_tube(st, path, width, height, sides)
+	st.generate_normals()
+	return st.commit()
+
+
+static func _append_tube(st: SurfaceTool, path: PackedVector3Array, width: float, height: float, sides: int) -> void:
 	var rings: Array[PackedVector3Array] = []
 	for i in path.size():
 		var along := (path[mini(i + 1, path.size() - 1)] - path[maxi(i - 1, 0)]).normalized()
@@ -53,22 +67,20 @@ static func tube(path: PackedVector3Array, width: float, height: float) -> Array
 			side = Vector3.RIGHT
 		var up := side.cross(along).normalized()
 		var ring := PackedVector3Array()
-		for k in SIDES:
-			var angle := TAU * k / SIDES
+		for k in sides:
+			var angle := TAU * k / sides
 			ring.append(path[i] + side * cos(angle) * width + up * sin(angle) * height)
 		rings.append(ring)
 	for i in range(1, rings.size()):
-		for k in SIDES:
-			var n := (k + 1) % SIDES
+		for k in sides:
+			var n := (k + 1) % sides
 			# Clockwise seen from outside: Godot's front faces.
 			for v: Vector3 in [rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]]:
 				st.add_vertex(v)
 	for end: int in [0, rings.size() - 1]:
-		for k in SIDES:
-			var tri: Array[Vector3] = [path[end], rings[end][(k + 1) % SIDES], rings[end][k]]
+		for k in sides:
+			var tri: Array[Vector3] = [path[end], rings[end][(k + 1) % sides], rings[end][k]]
 			if end != 0:
 				tri.reverse()
 			for v in tri:
 				st.add_vertex(v)
-	st.generate_normals()
-	return st.commit()

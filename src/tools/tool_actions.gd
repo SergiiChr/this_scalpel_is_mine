@@ -34,7 +34,7 @@ const PLUNGER_STEP := 1.0
 ## A needle's wheel works the free end of its thread: one notch changes its tension (a rest length ratio, see
 ## TissueSim.THREAD_CLOSED) this much, down tightens and up loosens. Use tool held this long (seconds) adds the last
 ## hole and ties the thread off.
-const SUTURE_TENSION_STEP := 0.08
+const SUTURE_TENSION_STEP := 0.04
 const SUTURE_TENSION_RANGE := Vector2(0.52, 1.56)
 const SUTURE_TIE_HOLD := 0.65
 ## A spreader's (the Gelpi retractor's) wheel opens and closes it: one notch moves its tips this much further apart
@@ -176,6 +176,12 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					tool.grip_info = {}
 					Surgery.current.set_attached(hand.peer, tool.slot, false)
 		"sew":
+			if released and Surgery.current.surgeons.has(tool.holder):
+				# The release frame already uses the carry angle. Test the working tip, not that rotation's lateral jump.
+				var surgeon: Surgeon = Surgery.current.surgeons[tool.holder]
+				var contact := patient.body.probe(surgeon.hands[tool.slot].working_tip_position(tool.def.length))
+				zone = contact.zone
+				uv = contact.uv
 			_sew(tool, patient, zone, uv, lowered, trigger, released, dt, tip)
 		"spread":
 			# Pressed onto the skin, the jaws go in on both sides of the aim and stay there; pressed again they come out.
@@ -312,10 +318,20 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 ## new hole there, a longer hold adds the last hole (where there's room for one) and ties the thread off. Held over an
 ## internal injury in the opening, it sews that instead.
 static func _sew(tool: SurgicalTool, patient: Patient, zone: String, uv: Vector2, lowered: bool, trigger: bool, released: bool, dt: float, tip: Vector3) -> void:
+	# Releasing lifts the tool immediately, so allow air directly over the puncture (up to 3 mm of lateral drift).
+	# Leaving the site/body, or sliding away above it, cancels the cached contact rather than sewing the old point.
+	var over_puncture := tool.suture_at.x >= 0.0 and Rect2(Vector2.ZERO, Vector2.ONE).has_point(uv) \
+			and patient.body.on_body(uv) and ((uv - tool.suture_at) * patient.body.site_size).length() <= 0.003
+	if zone not in ["site", "cavity"] and not over_puncture:
+		tool.suture_at = Vector2(-1, -1)
 	if trigger:
+		# Start each press unattached, then keep the latest valid puncture point until release. A curved needle resting on
+		# deforming skin can cross the contact threshold for a frame; that must not discard a click that already landed.
+		if tool.suture_hold == 0.0:
+			tool.suture_at = Vector2(-1, -1)
 		tool.suture_hold += dt
-		# Let go anywhere but on the patient, a click makes no hole.
-		tool.suture_at = uv if lowered and zone in ["site", "cavity"] else Vector2(-1, -1)
+		if lowered and zone in ["site", "cavity"]:
+			tool.suture_at = uv
 		if lowered and zone == "cavity" and patient.close_internal_at(uv, tool.def, dt):
 			tool.suture_press_used = true
 		elif tool.suture_hold >= SUTURE_TIE_HOLD and not tool.suture_press_used and tool.suture_thread != 0:

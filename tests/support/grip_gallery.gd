@@ -38,9 +38,14 @@ func _ready() -> void:
 		var holder := Node3D.new()
 		add_child(holder)
 		ToolModel.build(def, holder)
+		var animator := ToolAnimator.new()
+		animator.setup(holder)
+		animator.animate(false, model_id == "needle", 0.0)
 		hand.holding = true
 		hand.grip = def.grip
 		hand.fit = Db.grip_fit(def, 0 if left else 1)
+		hand.tilt = hand.default_tilt()
+		hand.turn = hand.default_turn()
 		var at := Vector3(-HAND_AT.x if left else HAND_AT.x, HAND_AT.y, HAND_AT.z)
 		hand.target = at
 		var shoulder := Vector3(-0.19 if left else 0.19, 1.4, -0.08)

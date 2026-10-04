@@ -585,9 +585,13 @@ func player_sews(wound: Wound, layer: int) -> void:
 func player_threads(wound: Wound, layer: int) -> bool:
 	# Grid cells along and across the wound, in uv: they're square in meters, not in uv.
 	var along := (wound.points[-1] - wound.points[0]).normalized()
+	if along == Vector2.ZERO:
+		along = Vector2.RIGHT
 	var step := (absf(along.x) / body.tissue.res_x + absf(along.y) / body.tissue.res_y) * 1.5
 	var cell := absf(along.y) / body.tissue.res_x + absf(along.x) / body.tissue.res_y
-	var holes := ceili(wound.length_uv() / step) + 2
+	# A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
+	# Exact multiples still finish with a bite across that endpoint, as the placement loop describes below.
+	var holes := floori(wound.length_uv() / step) + 2
 	var first := -1.0
 	for i in 16:
 		var off := cell * (0.25 + i * 0.25)
@@ -600,10 +604,17 @@ func player_threads(wound: Wound, layer: int) -> bool:
 		return false
 	note("threads %s along wound %d: %d holes" % [TissueSim.Depth.keys()[layer], wound.id, holes])
 	for i in holes:
-		# The rest a grid cell off at least, so each lands on its own side of the wound.
-		var at := site_point(_beside_wound(wound, i * step, (first if i == 0 else maxf(first, cell)) * (1 if i % 2 == 0 else -1)))
-		await _within_reach(at)
+		# The rest a grid cell off at least, so each lands on its own side of the wound. Clamp only the final hole to the
+		# far end: a two-hole stitch must run from one end to the other, and longer routes keep their last crossing there.
+		var along_at := wound.length_uv() if i == holes - 1 else minf(i * step, wound.length_uv())
+		var at := site_point(_beside_wound(wound, along_at, (first if i == 0 else maxf(first, cell)) * (1 if i % 2 == 0 else -1)))
+		# Re-square to each puncture. The holder's horizontal carry and tip-pivot working pose use different reaches;
+		# approaching the point keeps both sides of the bite comfortably inside the arm's range.
+		await player_walks_to(at)
 		await player_reaches(at)
+		if ((_tip(me.hands[me.active]) - at) * Vector3(1, 0, 1)).length() > 0.004:
+			note("needle cannot reach intended puncture within 4 mm")
+			return false
 		use()
 		await seconds(0.2)
 		use(false)
@@ -627,19 +638,21 @@ func player_pulls_thread(state: String) -> void:
 	note("thread %s" % ToolActions.thread_state(needle))
 
 
-## Holds Use tool where the needle is until the thread is tied off, then captures a key frame (tied_off).
-func player_ties_off() -> void:
+## Holds Use tool where the needle is until the thread is tied off, then captures `key_frame`.
+func player_ties_off(key_frame: String = "tied_off") -> void:
 	use()
 	await seconds(ToolActions.SUTURE_TIE_HOLD + 0.2)
 	use(false)
 	await frames(3)
-	await capture("tied_off")
+	await capture(key_frame)
 
 
 ## The point `along` (uv) from the start of `wound` on its line, clamped to its ends, moved `off` (uv) to its left
 ## (negative: right).
 static func _beside_wound(wound: Wound, along: float, off: float) -> Vector2:
 	var points := wound.points
+	if points.size() < 2:
+		return points[0] + Vector2.RIGHT.orthogonal() * off
 	var travelled := 0.0
 	for i in range(1, points.size()):
 		var seg := points[i - 1].distance_to(points[i])
@@ -652,7 +665,10 @@ static func _beside_wound(wound: Wound, along: float, off: float) -> Vector2:
 
 ## Walks over only when `point` is out of the active hand's comfortable reach.
 func _within_reach(point: Vector3) -> void:
-	if point.distance_to(me.shoulder(me.active)) > Surgeon.REACH - 0.12:
+	var hand := me.hands[me.active]
+	var tool := me.held_tool(me.active)
+	var grip := point - hand.tip_offset(tool.def.length) if tool else point
+	if grip.distance_to(me.shoulder(me.active)) > Surgeon.REACH - 0.12:
 		await player_walks_to(point)
 
 

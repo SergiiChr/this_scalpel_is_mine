@@ -24,7 +24,7 @@ const TENSIONED_CLOSURES: PackedStringArray = ["paper_clips"]
 ## Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
 ## How much load a running thread's spans take before they snap, per layer it's sewn in (by TissueSim.Depth).
-const THREAD_STRENGTH: Array[float] = [0.0, 1.65, 1.85, 2.8]
+const THREAD_STRENGTH: Array[float] = [0.0, 2.0, 2.15, 3.0]
 ## How far (uv) from a point of a wound its muscle counts as underneath it.
 const MUSCLE_REACH := 0.03
 ## Gap in meters that counts as a fully opened wound.
@@ -897,11 +897,14 @@ func _tie_off(wound: Wound, crossings: PackedVector2Array, bins: PackedInt32Arra
 	for crossing in crossings:
 		_tissue_stitch.rpc(crossing, 0.98, THREAD_STRENGTH[layer])
 	_tissue_stitch_path.rpc(path, Wound.BIN_LENGTH_UV * 1.2, 1.0, THREAD_STRENGTH[layer])
-	# Meeting edges squeeze the wet cut line and the blood pooled in it out of the seam: without clearing them a
-	# physically closed seam still reads as a red opening from above.
+	# Meeting edges squeeze the broad wet groove and blood out, but a narrow pink incision line remains under the
+	# thread. A separate seam mask reveals that line without overloading closure quality in the stitch channel.
 	for i in path.size():
-		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, path[maxi(i - 1, 0)], path[i], 0.012, 0.0, WoundMap.Mode.MIN)
-		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, path[maxi(i - 1, 0)], path[i], 0.026, 1.0, WoundMap.Mode.SUB)
+		var previous := path[maxi(i - 1, 0)]
+		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, previous, path[i], 0.012, 0.0, WoundMap.Mode.MIN)
+		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, previous, path[i], 0.004, 0.09, WoundMap.Mode.MAX)
+		paint(WoundMap.Layer.SEAMS, WoundMap.CLOSED_SEAM, previous, path[i], 0.0045, 1.0, WoundMap.Mode.MAX)
+		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, previous, path[i], 0.026, 1.0, WoundMap.Mode.SUB)
 	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.5)
 	if wound.closure() >= 0.99 and wound.closure_quality > 0.9:
 		add_flag("neat_closure")
@@ -936,7 +939,13 @@ func _grid_cell(direction: Vector2) -> float:
 func _thread_crossings(points: PackedVector2Array, wound: Wound) -> PackedVector2Array:
 	var line := wound.points.duplicate()
 	if line.size() < 2:
-		line.append(line[0])
+		# A puncture or gunshot can be a single point. Give it a short virtual incision axis perpendicular to the first
+		# bite so a span across the hole supports its one closure bin instead of intersecting a zero-length segment.
+		var bite := points[1] - points[0] if points.size() >= 2 else Vector2.RIGHT
+		var along := bite.orthogonal().normalized() if bite.length_squared() > 0.000001 else Vector2.RIGHT
+		var half := _grid_cell(along)
+		line[0] -= along * half
+		line.append(wound.points[0] + along * half)
 	for end: Array in [[0, 1], [-1, -2]]:
 		var out := (line[end[0]] - line[end[1]]).normalized()
 		line[end[0]] += out * _grid_cell(out)
@@ -960,7 +969,11 @@ static func _supported_bins(wound: Wound, crossings: PackedVector2Array) -> Pack
 	var reach := 1
 	for i in range(1, at.size()):
 		reach = maxi(reach, ceili((at[i] - at[i - 1]) * 0.5))
-	return PackedInt32Array(range(maxi(at[0] - reach, 0), mini(at[-1] + reach + 1, wound.bins.size())))
+	# A bite within one stitch spacing of an end holds that end too. Holes snap to the tissue grid, so the first
+	# crossing can land a bin or two in even when the player clicks right beside the end of the incision.
+	var first := 0 if at[0] <= reach * 2 else at[0] - reach
+	var last := wound.bins.size() if wound.bins.size() - 1 - at[-1] <= reach * 2 else at[-1] + reach + 1
+	return PackedInt32Array(range(first, last))
 
 
 ## `values` (a wound's closure per bin) with `closure` on `bins`, over the value each had before this thread first held

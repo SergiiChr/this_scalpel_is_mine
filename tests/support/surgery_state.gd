@@ -22,6 +22,16 @@ static func skin_is_cut(patient: Patient, from: Vector2, to: Vector2, depth: flo
 	return patient._stroke_wounds[key]
 
 
+## Tied running threads on stationary skin, for renderer/cache load checks without moving the player's needle.
+static func skin_has_finished_threads(patient: Patient, count: int, first_id: int) -> void:
+	var tissue := patient.body.tissue
+	for id in range(first_id, first_id + count):
+		var uv := Vector2(0.3 + (id - first_id) % 4 * 0.1, 0.3 + floorf(float(id - first_id) / 4.0) * 0.1)
+		for hole: Vector2 in [uv, uv + Vector2(0.035, 0.035)]:
+			tissue.thread_anchor(id, hole, TissueSim.Depth.SKIN, TissueSim.THREAD_LOOSE[TissueSim.Depth.SKIN], 4.0, 1.0)
+		tissue.finish_thread(id)
+
+
 ## A tool `id` lying in a free place on the instrument tray (stocked there, as the nurse would have). Returns it.
 static func tool_is_on_tray(surgery: Surgery, id: String) -> SurgicalTool:
 	surgery.tools.spawn(id, free_tray_spot(surgery))

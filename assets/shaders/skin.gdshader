@@ -1,5 +1,5 @@
 // Surgical site skin where it's cut or pinched: the outer tissue layer, simulated by TissueSim, lit like the body.
-// Damage comes from the two WoundMap textures, drawn by wound.gdshaderinc exactly like on the body around it.
+// Damage and fluids use wound.gdshaderinc exactly like the surrounding body; a separate mask reveals closed seams.
 // Openings aren't painted: the sim pulls cut edges apart and gaping triangles are left out of the mesh,
 // so you look through the skin into the fat and muscle layers below.
 shader_type spatial;
@@ -7,6 +7,7 @@ shader_type spatial;
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 uniform sampler2D wound_map : filter_linear, hint_default_black;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
+uniform sampler2D seam_map : filter_linear, hint_default_black;
 uniform float rim_strength = 0.2;
 uniform float specular_strength = 0.12;
 uniform float grime = 0.12;
@@ -51,9 +52,9 @@ void vertex() {
 
 void fragment() {
 	vec4 w = texture(wound_map, UV);
-	// No painted groove: the sim splits the mesh exactly along a cut, so its lips are skin up to the edge. The groove
-	// (and its pink rim) would lie right on them, a dark ring round every opening.
-	w.r = 0.0;
+	// Open cuts are gaps in the simulated mesh, so painting their groove here would put a dark ring around the lips.
+	// Only tied sutures mark joined edges; a low-quality closure in w.a is not a seam marker.
+	w.r *= texture(seam_map, UV).r;
 	vec4 f = texture(fluid_map, UV);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));

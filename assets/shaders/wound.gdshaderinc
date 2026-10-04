@@ -1,5 +1,6 @@
 // Shared by the body (toon.gdshader) and the simulated site skin (skin.gdshader), so damage looks the same on both.
-//   wounds: R = cut groove, G = burn (red halo -> charred core), B = bruise, A = stitches / staples
+//   wounds: R = cut groove, G = burn (red halo -> charred core), B = bruise,
+//            A = stitches / staples (>= 0.5) or a closed-suture seam mask (< 0.5)
 //   fluids: R = blood, G = marker ink, B = iodine, A = grime / vomit
 
 // Paints the damage over skin color c. Returns how wet the spot is (blood or an open cut), for roughness.

@@ -30,6 +30,9 @@ uniform int detail = 0;
 uniform float detail_strength = 1.0;
 uniform vec4 grime_color : source_color = vec4(0.25, 0.22, 0.15, 1.0);
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+// Fine geometry laid directly on simulated skin uses the same camera offset as skin.gdshader, so it keeps physical
+// contact without being hidden by that shader's depth-bias displacement. Zero for every ordinary material.
+uniform float camera_bias = 0.0;
 // Contamination glow for the Germaphobe quirk, set per tool.
 uniform float contamination = 0.0;
 // Patient body only. carve_map marks where the simulated skin takes over (around cuts and pinched skin):
@@ -90,6 +93,10 @@ float relief(vec3 p) {
 }
 
 void vertex() {
+	if (camera_bias > 0.0) {
+		vec3 camera = (inverse(MODEL_MATRIX) * vec4(MAIN_CAM_INV_VIEW_MATRIX[3].xyz, 1.0)).xyz;
+		VERTEX += normalize(camera - VERTEX) * camera_bias;
+	}
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	local_pos = VERTEX;
 }

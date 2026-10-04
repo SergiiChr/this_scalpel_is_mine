@@ -195,7 +195,7 @@ func setup(peer: int, player_name: String, rolls: Array, spawn: Transform3D) -> 
 func aim_point() -> Vector3:
 	var hand := hands[active]
 	var tool := held_tool(active)
-	return hand.global_position + hand.tip_offset(tool.def.length if tool else 0.05)
+	return tool.tip_position() if tool else hand.global_position + hand.tip_offset(0.05)
 
 
 ## How fast the body moves across the floor (m/s), measured the same way on every peer.
@@ -396,10 +396,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		zoom = (zoom + 1) % ZOOM_FOV.size()
 	elif event.is_action_pressed("use_tool"):
 		# One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
-		hand.lowered = true
+		_set_lowered(hand, true)
 		hand.trigger = true
 	elif event.is_action_released("use_tool"):
-		hand.lowered = false
+		_set_lowered(hand, false)
 		hand.trigger = false
 	elif event.is_action_pressed("grab"):
 		_grab_or_release()
@@ -437,6 +437,20 @@ func _bend_needle(move: Vector3) -> void:
 	hand.tilt = clampf(hand.tilt + along / length, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
 	var unbent := along - (hand.tilt - tilt_before) * length
 	_needle_pull += (move - back * along + back * unbent) * NEEDLE_DRAG
+
+
+## Changes a tool's working pose about its tip, so pressing it never moves the aim point away from the skin. Most grips
+## have no working angle and need no correction; the horizontal needle grip pitches down while the hand stays clear.
+func _set_lowered(hand: SurgeonHand, value: bool) -> void:
+	if hand.lowered == value:
+		return
+	var tool := held_tool(hand.index)
+	var before := hand.tip_offset(tool.def.length) if tool else Vector3.ZERO
+	hand.lowered = value
+	if tool:
+		hand.target += before - hand.tip_offset(tool.def.length)
+		if not hand.attached:
+			hand.local_target = to_local(hand.target)
 
 
 ## Turns the active hand's tool by a mouse motion, the wrist going with it: up and down pitches it, left and right
@@ -486,8 +500,11 @@ func _physics_process(delta: float) -> void:
 		if uid != _held_uid[i]:
 			_held_uid[i] = uid
 			hands[i].level = 0
-		hands[i].grip = tool.def.grip if tool else "pencil"
-		hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
+			hands[i].grip = tool.def.grip if tool else "pencil"
+			hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
+			if tool and tool.def.grip == "needle":
+				hands[i].tilt = hands[i].default_tilt()
+				hands[i].turn = hands[i].default_turn()
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)
