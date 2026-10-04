@@ -509,6 +509,7 @@ func _req_iv(hand: int) -> void:
 	if drip:
 		drip.contents.clear()
 		drip.bolus = 0.0
+		drip.dripped_total = 0.0
 		var blood := Db.drug(tool.def.drug) != null and Db.drug(tool.def.drug).blood_type != ""
 		tools.add_liquid(drip, SurgicalTool.DRIP_FLUID - drip.ml, {"blood": SurgicalTool.DRIP_FLUID} if blood else {})
 	patient.administer(tool.def.drug, "iv")

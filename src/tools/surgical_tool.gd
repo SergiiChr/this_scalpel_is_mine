@@ -45,9 +45,10 @@ var iodine := 0.0
 var contents: Dictionary = {}
 ## Host only, the IV drip: ml pushed into the bag that haven't run down the line yet (they went in by the port at its
 ## bottom, where the line leaves it, so they run before the bag's own fluid), with the drugs in contents, and ml run
-## since debug mode last told.
+## since debug mode last told and since the bolus started running.
 var bolus := 0.0
 var dripped_ml := 0.0
+var dripped_total := 0.0
 ## Host only, for debug mode: ml a syringe pushed out since its needle went where it is now, the drugs in it and where
 ## that is ("the vein", "the IV bag"), told once the needle is somewhere else (ToolActions.report_pushed()).
 var pushed_ml := 0.0

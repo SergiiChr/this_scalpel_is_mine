@@ -619,15 +619,18 @@ static func drip(bag: SurgicalTool, patient: Patient, dt: float) -> void:
 		patient.administer(drug, "iv", amount)
 	bag.bolus -= ml
 	bag.dripped_ml += ml
+	bag.dripped_total += ml
 	Surgery.current.tools.add_liquid(bag, -ml)
 	var done := bag.bolus < 0.0001
 	if bag.dripped_ml >= 0.9999 or done:
 		var names := drugs.map(func(drug: String) -> String: return Db.drug(drug).name if Db.drug(drug) else drug)
 		var what := " of " + ", ".join(names) if not names.is_empty() else ""
-		Surgery.current.announce_debug("%s ml%s reached the patient over IV" % [String.num(bag.dripped_ml, 1), what])
+		var told := [String.num(bag.dripped_ml, 1), what, String.num(bag.dripped_total, 1)]
+		Surgery.current.announce_debug("%s ml%s reached the patient over IV (%s ml total)" % told)
 		bag.dripped_ml = 0.0
 	if done:
 		bag.bolus = 0.0
+		bag.dripped_total = 0.0
 		for drug: String in drugs:
 			bag.contents.erase(drug)
 

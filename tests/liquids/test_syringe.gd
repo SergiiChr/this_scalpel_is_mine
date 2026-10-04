@@ -192,9 +192,11 @@ func _run(case: Dictionary) -> void:
 	if case.target == "drip" and not pull:
 		_check(bench.container.bolus > 0.0, "%s: the drug runs down the line over time, not all at once" % case.name)
 		await bench.frames(ceili(pushed / ToolActions.DRIP_RATE * Engine.physics_ticks_per_second) + 10)
-		var tick := "[debug] 1.0 ml of %s reached the patient over IV" % Db.drug(Bench.DRUG).name
-		var ticks := toasts.filter(func(toast: String) -> bool: return toast == tick).size()
-		_check(ticks == roundi(pushed), "%s: debug mode tells each of the %.0f ml as it reaches the patient over IV (%s)" % [case.name, pushed, toasts])
+		var told := toasts.filter(func(toast: String) -> bool: return toast.contains("reached the patient over IV"))
+		var ticks: Array[String] = []
+		for ml in roundi(pushed):
+			ticks.append("[debug] 1.0 ml of %s reached the patient over IV (%s ml total)" % [Db.drug(Bench.DRUG).name, String.num(ml + 1.0, 1)])
+		_check(told == ticks, "%s: debug mode tells each of the %.0f ml as it reaches the patient over IV, with the total so far (%s)" % [case.name, pushed, told])
 	if not pull and kind != "air":
 		var named := "[debug] Injected %s ml of %s into %s" % [String.num(pushed, 1), Db.drug(Db.tool(case.get("vial", Bench.VIAL)).drug).name, PUSHED_INTO[case.target]]
 		_check(named in toasts, "%s: debug mode says what went where once the needle is out: %s (%s)" % [case.name, named, toasts])
