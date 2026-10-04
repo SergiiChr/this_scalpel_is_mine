@@ -7,8 +7,8 @@ extends CharacterBody3D
 ## Use tool (LMB, held) rests the active hand's tool on its spot and works it, the wheel sets its effort level
 ## (see ToolActions.LEVEL_NAMES and TRIGGER_NAMES). A syringe has its own wheel: down pulls the plunger out, up pushes it
 ## in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) toggles
-## between two zoom levels; the closer one with a syringe or IV catheter in hand fades the hands, and once a syringe's
-## needle is in with Use tool held it frames the needle and what it's in.
+## between two zoom levels; the closer one fades the hands, and once a syringe's needle is in with Use tool held it frames
+## the needle and what it's in. The hands start turned in, each tool pointing across in front of the eyes.
 ## Holding Aim tool (MMB) the mouse turns the active hand's tool about the wrist instead, only the wrist moving: pitch
 ## and swing left and right. C/V roll it about its length.
 ## WASD moves the body.
@@ -51,12 +51,12 @@ const ZOOM_FOV: Array[float] = [70.0, 35.0]
 ## How far in front of the eyes a tool is held up to look at it (Inspect).
 const INSPECT_DISTANCE := 0.26
 ## Zoomed all the way in with a syringe whose needle is in, the camera looks at it from the side and this far above
-## (radians), with this much room around the syringe and its target (meters). Zoomed in with a needle in hand at all,
-## the hands are this see-through (see _frame_needle()).
+## (radians), with this much room around the syringe and its target (meters) (see _frame_needle()).
 const NEEDLE_VIEW_ELEVATION := 0.6
 const NEEDLE_VIEW_MARGIN := 0.025
-const NEEDLE_SEE_THROUGH := 0.65
-## Tools the last zoom step fades the hands for: a syringe and the IV catheter.
+## Zoomed all the way in, whatever they hold, the hands are this see-through.
+const ZOOM_SEE_THROUGH := 0.65
+## Tools whose needle the last zoom step frames: a syringe and the IV catheter.
 const NEEDLE_ACTIONS: PackedStringArray = ["syringe", "iv_line"]
 ## A syringe's needle in the patient (Use tool held) keeps its tip where it went in: the mouse only tilts the syringe
 ## about it. A pull it can't follow (sideways, or past how far the hand tilts) stretches the skin by this share of the
@@ -146,7 +146,7 @@ var _stand_hold := -1.0
 var _zoom_before := -1
 ## Uid of the tool each hand held last frame: a new tool starts at effort level 0.
 var _held_uid: Array[int] = [0, 0]
-## How far the hands have faded for the last zoom step with a needle in hand (0..1), how far the camera has moved over
+## How far the hands have faded for the last zoom step (0..1), how far the camera has moved over
 ## to the needle view (0..1), and the last needle view, to move back from.
 var _needle_fade := 0.0
 var _needle_framing := 0.0
@@ -657,16 +657,17 @@ func _unface(hand: int) -> void:
 		_snaps.erase(hand)
 
 
-## Zoomed all the way in with a syringe or IV catheter, the hands fade so they don't hide where the needle goes. The
-## camera stays at the eyes, so the mouse moves the hand the way it always does while aiming.
+## Zoomed all the way in, the hands fade so they don't hide what they work on, whatever they hold. The camera stays at
+## the eyes, so the mouse moves the hand the way it always does while aiming.
 ## Once a syringe's needle is in something with Use tool held, the camera moves over beside it so the needle and what
 ## it's in (a vial, the dish, the bag, the arm's vein) are both in view, and the hand rolls the syringe so its printed
 ## scale faces the camera. Use tool let go, both go back.
 func _frame_needle(delta: float) -> void:
 	var tool := held_tool(active)
-	var zoomed := zoom == ZOOM_FOV.size() - 1 and tool != null and tool.def.action in NEEDLE_ACTIONS and not hands[active].inspecting
-	var target := ToolActions.needle_target(tool, Surgery.current.patient) if zoomed else {}
-	var framing: bool = zoomed and tool.def.action == "syringe" and hands[active].lowered and target.kind != "air"
+	var zoomed := zoom == ZOOM_FOV.size() - 1 and not hands[active].inspecting
+	var needle := zoomed and tool != null and tool.def.action in NEEDLE_ACTIONS
+	var target := ToolActions.needle_target(tool, Surgery.current.patient) if needle else {}
+	var framing: bool = needle and tool.def.action == "syringe" and hands[active].lowered and target.kind != "air"
 	var faded := _needle_fade
 	_needle_fade = move_toward(_needle_fade, 1.0 if zoomed else 0.0, delta * 4.0)
 	_needle_framing = move_toward(_needle_framing, 1.0 if framing else 0.0, delta * 4.0)
@@ -675,7 +676,7 @@ func _frame_needle(delta: float) -> void:
 	if _needle_fade != faded or solid != _solid_hand:
 		_solid_hand = solid
 		for hand in hands:
-			hand.set_see_through(0.0 if hand.index == solid else _needle_fade * NEEDLE_SEE_THROUGH)
+			hand.set_see_through(0.0 if hand.index == solid else _needle_fade * ZOOM_SEE_THROUGH)
 	_rolled_hand = active if framing else -1
 	if framing:
 		_needle_view = needle_view(tool)

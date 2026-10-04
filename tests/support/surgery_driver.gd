@@ -228,6 +228,15 @@ func player_reaches(point: Vector3) -> void:
 		await frames(6)
 
 
+## Turns the active hand's tool straight ahead with Aim tool: the hands start turned in, and straight the tip reaches
+## further and the tool lies along where it points, not across what's beside it.
+func player_aims_straight() -> void:
+	var hand := me.hands[me.active]
+	await player_aims(Vector2(hand.turn / (Surgeon.AIM_SENSITIVITY * Settings.mouse_sensitivity), 0.0), 1)
+	player_lets_go_of_aim()
+	await frames(10)
+
+
 ## Moves the active hand's tip from where it is to `point` across the floor at `speed` m/s, steering back onto the
 ## straight line if it drifts.
 func player_sweeps_to(point: Vector3, speed: float = SLOW) -> void:
@@ -543,6 +552,8 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 func _needle_into(point: Vector3, pressed: bool) -> void:
 	var hand := me.hands[me.active]
 	await player_walks_to(point)
+	# Pointed straight at it: turned in, a long syringe would lie across whatever is beside a vial.
+	await player_aims_straight()
 	for i in 40:
 		# Aimed the hand's own way: a vial or the bag it's over snaps the needle in.
 		hand.local_target = me.to_local(point - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
@@ -737,13 +748,19 @@ func player_sets_iv() -> void:
 		await get_tree().physics_frame
 		if patient.iv_set:
 			break
-		if i >= 30 and not hand.trigger and body.vein_at(catheter.tip_position()):
+		if i >= 30 and not hand.trigger and _over_vein(catheter.tip_position()):
 			use()
 	use(false)
 	await frames(10)
 	note("IV in: %s, in the vein: %s" % [patient.iv_set, patient.iv_in_vein])
 	if me.held_tool(me.active):
 		await player_puts_down()
+
+
+## The vein is right under `tip`, on the skin below it: what a player sees from above before pushing a needle in.
+func _over_vein(tip: Vector3) -> bool:
+	var skin: Dictionary = me._surface_below(tip)
+	return skin.y != -INF and body.vein_at(Vector3(tip.x, skin.y, tip.z))
 
 
 ## A painkilling sedative from the scenario's kit (ketamine, else morphine) into the forearm muscle, then a moment for
@@ -1111,6 +1128,8 @@ func player_closes_internal_wounds() -> void:
 			continue
 		var spot := body.uv_to_world(wound.points[0], wound.depth_m)
 		await player_walks_to(spot)
+		# Deep in the belly, across it: the needle pointed straight ahead reaches further.
+		await player_aims_straight()
 		await player_reaches(spot)
 		use()
 		await wait_until(func() -> bool: return wound.closure() >= 0.9, 20.0)

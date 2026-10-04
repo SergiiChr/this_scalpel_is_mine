@@ -6,8 +6,10 @@ extends Node3D
 const UPPER_ARM := 0.34
 const FOREARM := 0.34
 const TILT_RANGE := Vector2(-1.5, -0.2)
-## How far the wrist turns the tool left and right of straight ahead (radians).
+## How far the wrist turns the tool left and right of straight ahead (radians), and how far in toward the middle each
+## hand starts turned, so the tool points across in front of the eyes, beside the hand, not hidden under it.
 const TURN_RANGE := 0.9
+const REST_TURN := 0.4
 ## The tilt a glove is fitted onto its tool at (see _glove_frame()). Tilted or turned from there, both turn together.
 const REST_TILT := -1.1
 const LIFT_HEIGHT := 0.12
@@ -189,6 +191,7 @@ var _trail_acc := 0.0
 func build(hand_index: int, scrubs: ShaderMaterial) -> void:
 	index = hand_index
 	name = "LeftHand" if index == 0 else "RightHand"
+	turn = REST_TURN if index == 1 else -REST_TURN
 	var sleeve := {"tint": scrubs}
 	_glove = ModelSlot.instantiate("surgeon", "glove", self)
 	_glove_materials = ModelSlot.own_materials(_glove)

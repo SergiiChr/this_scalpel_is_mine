@@ -400,7 +400,7 @@ func _syringe(out: String, only: String) -> void:
 		camera.current = true
 		await bench.frames(30)
 		for hand in me.hands:
-			hand.set_see_through(Surgeon.NEEDLE_SEE_THROUGH)
+			hand.set_see_through(Surgeon.ZOOM_SEE_THROUGH)
 		await _shot(out, "42_%s_2_in" % case.name)
 		for hand in me.hands:
 			hand.set_see_through(0.0)

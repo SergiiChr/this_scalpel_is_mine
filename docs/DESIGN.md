@@ -296,7 +296,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
-  the hand crosses the screen as fast at both).
+  the hand crosses the screen as fast at both); the closer one makes the hands see-through. The hands start turned in
+  toward the middle, so each tool points across in front of the eyes, beside its hand.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -399,8 +400,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
   the eyes, so it doesn't need turning to be read. Let go, the hand holds things the way it did before. Moved
   about, it keeps turning the scale to the eyes, so C/V don't roll it (and the controls shown leave them out).
-- **Needle view**: the last zoom step with a syringe or IV catheter in hand fades the hands to see through, so the
-  needle and where it goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
+- **Needle view**: the last zoom step fades the hands to see through whatever they hold, so the needle and where it
+  goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
   Use tool with a syringe zooms all the way in on its own and back out when let go.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
   beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe

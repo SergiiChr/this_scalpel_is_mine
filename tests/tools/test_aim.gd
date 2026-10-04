@@ -1,8 +1,10 @@
 extends GutTest
 ## Aim tool (MMB held): the mouse turns the held tool about the wrist. Only the wrist moves, the tip follows the mouse,
-## and let go, the tool settles back onto what it rested on. Headless assertions in smoke; with key frames also the
+## and let go, the tool settles back onto what it rested on. The hands start turned in, the tool pointing across beside
+## the hand, and zoomed all the way in they're see-through. Headless assertions in smoke; with key frames also the
 ## site from above and obliquely and what the surgeon sees. Review them for the forearm and glove staying where they
-## were while the scalpel swings right and tips up, the glove bending at the wrist without breaking from the cuff.
+## were while the scalpel swings right and tips up, the glove bending at the wrist without breaking from the cuff, the
+## scalpel showing beside the hand at rest and the hands see-through zoomed in.
 
 const TAGS = ["smoke", "tool_scalpel", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
@@ -55,6 +57,15 @@ func test_aiming_turns_the_tool_about_the_wrist() -> void:
 	var settled := me.to_local(scalpel.tip_position())
 	assert_true(hand.raise == 0.0 and swung.y - settled.y > 0.02, "let go, the tip settles back down onto its spot (%.1f cm down)" % ((swung.y - settled.y) * 100.0))
 	await driver.capture("let_go")
+	var other := me.hands[1 - me.active]
+	_check_faded(hand, other, 0.0, "the hands are solid at the first zoom step")
+	driver.press("zoom")
+	await driver.seconds(0.5)
+	_check_faded(hand, other, Surgeon.ZOOM_SEE_THROUGH, "zoomed all the way in with a scalpel, both hands are see-through")
+	await driver.capture("zoomed_in")
+	driver.press("zoom")
+	await driver.seconds(0.5)
+	_check_faded(hand, other, 0.0, "zoomed back out, the hands are solid again")
 	if shots and FrameBudget.enforced():
 		assert_true(driver.budget.within(), driver.budget.summary())
 	else:
@@ -74,6 +85,18 @@ func _check_still(me: Surgeon, hand: SurgeonHand, wrist: Vector3, elbow: Vector3
 	var elbow_off := me.to_local(hand._elbow).distance_to(elbow)
 	assert_lt(wrist_off, 0.001, "%s, the wrist stays where it was (%.1f mm off)" % [what, wrist_off * 1000.0])
 	assert_lt(elbow_off, 0.001, "%s, the forearm stays where it was (elbow %.1f mm off)" % [what, elbow_off * 1000.0])
+
+
+func _check_faded(hand: SurgeonHand, other: SurgeonHand, amount: float, what: String) -> void:
+	var faded := [_fade(hand), _fade(other)]
+	assert_true(is_equal_approx(faded[0], amount) and is_equal_approx(faded[1], amount), "%s (%s)" % [what, faded])
+
+
+## How see-through a hand is drawn (0 solid).
+static func _fade(hand: SurgeonHand) -> float:
+	var glove := hand.find_children("*", "GeometryInstance3D", true, false)[0] as GeometryInstance3D
+	var ghost := glove.material_override as StandardMaterial3D
+	return 1.0 - ghost.albedo_color.a if ghost else 0.0
 
 
 ## The wrist where the hand holds it: the glove's own frame, without its stress tremor and shiver.
