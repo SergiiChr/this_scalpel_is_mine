@@ -1,7 +1,8 @@
 """Every grabbable tool. Grip at the origin, working tip at (0, 0, -length) with length from data/tools.cfg.
 
 Moving parts are separate nodes the game animates (src/tools/tool_animator.gd):
-JawA/JawB open and close, Plunger slides, Trigger squeezes, Blade oscillates, Flame/Glow/Light show while in use.
+JawA/JawB open and close (a Gelpi retractor's stand as far open as its wheel set), Plunger slides, Trigger squeezes,
+Blade oscillates, Flame/Glow/Light show while in use.
 Level is liquid the game stretches along Z from its node origin by how full the tool is (syringe, vial).
 Pool is liquid in an open dish the game raises from the dish floor.
 """
@@ -105,6 +106,49 @@ def _retractor(m: Model, length: float) -> None:
     m.add("Handle", superellipsoid((0.018, 0.006, length * 0.6), 0.3, (0.0, 0.0, -length * 0.2)), "steel")
     hook = flat([(-length * 0.5, 0.0), (-length, 0.0), (-length, -0.03), (-length + 0.006, -0.03), (-length + 0.006, -0.004), (-length * 0.5, -0.004)], 0.026)
     m.add("Hook", hook, "chrome")
+
+
+# A Gelpi retractor's tips stand this far apart closed (ToolActions.SPREAD_RANGE.x in the game), this far in front of
+# the joint its arms swing about.
+GELPI_CLOSED = 0.012
+GELPI_REACH = 0.11
+
+
+def _gelpi(m: Model, length: float) -> None:
+    """A Gelpi self-retaining retractor: ring handles with a ratchet between them, a box joint, and two long arms
+    bowing apart, each ending in a single sharp point turned outward to hook a wound's edge. The game swings each arm
+    about the joint (the part origin) so the points stand as far apart as the wheel set
+    (src/tools/tool_animator.gd open_to()). The handles stay put, so the fingers in the rings don't have to follow."""
+    joint = -length + GELPI_REACH
+    half = GELPI_CLOSED / 2
+    handles = []
+    for side in (-1.0, 1.0):
+        arm = tube(
+            [(side * 0.006, 0.0, 0.05), (side * 0.004, 0.0, 0.0), (side * 0.002, 0.0, joint * 0.6), (0.0, 0.0, joint)],
+            [(0.0025, 0.002), (0.0022, 0.002), (0.0022, 0.002), (0.0024, 0.0022)],
+            ring=10,
+        )
+        handles += [arm, torus(0.009, 0.0022, (side * 0.012, 0.0, 0.06), "y")]
+    # The ratchet: a toothed bar from one handle across to the other, which it catches.
+    handles.append(tube([(-0.0055, 0.0, 0.032), (-0.001, 0.0, 0.026), (0.006, 0.0, 0.024)], [(0.0012, 0.0009)] * 3, ring=8))
+    handles += [superellipsoid((0.0008, 0.0012, 0.0006), 0.5, (x, 0.0, 0.0255 - x * 0.2)) for x in (-0.002, 0.0, 0.002)]
+    m.add("Handle", merge(*handles), "steel")
+    m.add("Joint", cylinder(0.004, (0.0, -0.0035, joint), (0.0, 0.0035, joint), 14), "chrome")
+    for name, side in (("JawA", -1.0), ("JawB", 1.0)):
+        end = -length + 0.008
+        arm = tube(
+            [(0.0, 0.0, joint), (side * (half + 0.006), 0.0, (joint + end) * 0.5), (side * (half - 0.005), 0.0, end)],
+            [(0.0024, 0.0022), (0.0019, 0.0019), (0.0016, 0.0016)],
+            ring=10,
+        )
+        # The point: out from the arm's end, then down to a sharp tip where the jaw holds the skin.
+        point = tube(
+            [(side * (half - 0.005), 0.0, end), (side * (half - 0.0005), 0.0, end - 0.0015), (side * half, 0.0, -length)],
+            [(0.0016, 0.0016), (0.0012, 0.0012), (0.0003, 0.0003)],
+            ring=8,
+            smooth=3,
+        )
+        m.add(name, merge(arm, point), "steel", (0.0, 0.0, joint))
 
 
 def _pistol_stapler(m: Model, length: float, office: bool) -> None:
@@ -425,6 +469,7 @@ def build() -> list[Model]:
         "forceps": lambda m, length: _tweezers(m, length, 0.0, 0.006, False, "steel"),
         "hemostat": lambda m, length: _tweezers(m, length, 0.035, 0.0, True, "steel"),
         "retractor": _retractor,
+        "gelpi": _gelpi,
         "needle": _needle,
         "skin_stapler": lambda m, length: _pistol_stapler(m, length, False),
         "office_stapler": lambda m, length: _pistol_stapler(m, length, True),

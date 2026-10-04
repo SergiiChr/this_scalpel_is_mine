@@ -12,7 +12,7 @@ const LEVEL_NAMES: Dictionary = {
 ## Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
 const TRIGGER_NAMES: Dictionary = {
 	"clamp": "Pinch / let go", "smash": "Strike", "tourniquet": "Tighten", "graft": "Place graft",
-	"shock": "Charge (hold), let go to shock", "sew": "Stitch",
+	"shock": "Charge (hold), let go to shock", "sew": "Stitch", "spread": "Set in / take out",
 }
 ## Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.
 const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
@@ -37,6 +37,11 @@ const PLUNGER_STEP := 1.0
 const SUTURE_TENSION_STEP := 0.08
 const SUTURE_TENSION_RANGE := Vector2(0.52, 1.56)
 const SUTURE_TIE_HOLD := 0.65
+## A spreader's (the Gelpi retractor's) wheel opens and closes it: one notch moves its tips this much further apart
+## (meters), between closed and fully open (SPREAD_RANGE). Closed, its points still sit SPREAD_RANGE.x apart
+## (GELPI_CLOSED in tools/assetgen/instruments.py).
+const SPREAD_STEP := 0.005
+const SPREAD_RANGE := Vector2(0.012, 0.08)
 ## Wipes paint big soft disks: at most this often, or once the tool moved PAINT_MOVE (uv) since the last one.
 const PAINT_INTERVAL := 1.0 / 15.0
 const PAINT_MOVE := 0.02
@@ -48,6 +53,18 @@ static func blade_direction(tool: SurgicalTool) -> Vector3:
 	if edge.length() < 0.2:
 		edge = -tool.global_basis.z * Vector3(1, 0, 1)
 	return edge.normalized()
+
+
+## Which way a spreader opens across the floor: along the tool's own X axis, where its jaws swing apart. It's held
+## upright (Surgeon._local_update()), so that axis lies flat however the tool is rolled.
+static func spread_axis(tool: SurgicalTool) -> Vector3:
+	return (tool.global_basis.x * Vector3(1, 0, 1)).normalized()
+
+
+## Where a spreader's two tips are, opened `spread` meters apart about its tip: the one toward -X first.
+static func spread_tips(tool: SurgicalTool) -> Array[Vector3]:
+	var half := spread_axis(tool) * tool.spread * 0.5
+	return [tool.tip_position() - half, tool.tip_position() + half]
 
 
 ## The tool is doing its job right now (for animation and fingers), not only resting on something.
@@ -160,6 +177,19 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.set_attached(hand.peer, tool.slot, false)
 		"sew":
 			_sew(tool, patient, zone, uv, lowered, trigger, released, dt, tip)
+		"spread":
+			# Pressed onto the skin, the jaws go in on both sides of the aim and stay there; pressed again they come out.
+			if pressed and tool.grip_info.is_empty() and lowered:
+				var info := patient.set_spreader(tool.uid, spread_tips(tool), tool.spread)
+				if info.type != "none":
+					tool.grip_info = info
+					Surgery.current.set_attached(hand.peer, tool.slot, true)
+					Surgery.current.tools.sync_spread(tool)
+			elif pressed and not tool.grip_info.is_empty():
+				patient.release_grip(tool.uid, tool.grip_info, false)
+				tool.grip_info = {}
+				Surgery.current.set_attached(hand.peer, tool.slot, false)
+				Surgery.current.tools.sync_spread(tool)
 		"suture":
 			if lowered and level > 0 and zone == "site" and tool.charges != 0:
 				# Where the skin and fat still gape and the muscle shows, the needle reaches it: sewing the muscle on both
@@ -332,6 +362,13 @@ static func adjust_suture_tension(tool: SurgicalTool, direction: int, patient: P
 	if tool.suture_thread != 0:
 		patient.set_suture_tension(tool.suture_thread, tool.suture_tension)
 		_end_finished_suture(tool, patient)
+
+
+## Wheel direction is positive for up (open), negative for down (close). Set in a cut, the jaws take its edges along.
+static func adjust_spread(tool: SurgicalTool, direction: int, patient: Patient) -> void:
+	tool.spread = clampf(tool.spread + direction * SPREAD_STEP, SPREAD_RANGE.x, SPREAD_RANGE.y)
+	if not tool.grip_info.is_empty():
+		patient.open_spreader(tool.grip_info, tool.spread)
 
 
 ## How a needle's thread reads at its tension in the layer it's in (skin before a thread is started): "loose" (the

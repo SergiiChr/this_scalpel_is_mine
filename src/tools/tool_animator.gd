@@ -13,6 +13,8 @@ var fill := 0.0:
 	set(value):
 		fill = value
 		_pose("Plunger", Basis.IDENTITY, Vector3(0, 0, _plunger_travel * fill))
+## A spreader's jaws stand at this angle (radians), set by its wheel rather than squeezed, NAN for other jaws.
+var opening := NAN
 var _parts: Dictionary = {}
 var _rest: Dictionary = {}
 var _squeeze := 0.0
@@ -31,6 +33,16 @@ func setup(model: Node3D) -> void:
 	_animate_parts(false, false)
 
 
+## Stands a spreader's jaws open so its tips, at `tip_z` along the tool, are `spread` meters apart.
+## Closed (ToolActions.SPREAD_RANGE.x) they rest as modelled; each jaw swings about its hinge, the model's part origin.
+func open_to(spread: float, tip_z: float) -> void:
+	var hinge: Transform3D = _rest.get("JawA", Transform3D())
+	var reach := hinge.origin.z - tip_z
+	var rest_half := ToolActions.SPREAD_RANGE.x * 0.5
+	opening = asin(clampf(spread * 0.5 / Vector2(rest_half, reach).length(), -1.0, 1.0)) - atan2(rest_half, reach)
+	_animate_parts(false, false)
+
+
 ## active: the tool is being used right now. closed: jaws clamped on something.
 func animate(active: bool, closed: bool, delta: float) -> void:
 	if _parts.is_empty():
@@ -41,7 +53,7 @@ func animate(active: bool, closed: bool, delta: float) -> void:
 
 
 func _animate_parts(active: bool, closed: bool) -> void:
-	var jaw := 0.0 if closed or active else JAW_OPEN
+	var jaw := opening if not is_nan(opening) else 0.0 if closed or active else JAW_OPEN
 	_pose("JawA", Basis(Vector3.UP, jaw), Vector3.ZERO)
 	_pose("JawB", Basis(Vector3.UP, -jaw), Vector3.ZERO)
 	_pose("Plunger", Basis.IDENTITY, Vector3(0, 0, _plunger_travel * fill))

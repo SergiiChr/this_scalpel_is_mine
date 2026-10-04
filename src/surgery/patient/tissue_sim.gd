@@ -10,9 +10,9 @@ extends RefCounted
 ##   the deeper the cut: skin gapes, fat bulges apart, cut muscle retracts.
 ## - Each severed spring remembers where along it the blade crossed (c_cross), so the layers are drawn split exactly
 ##   along the blade's path, not along the grid (PatientBody._rebuild_layers()).
-## - Tools pin particles to their tip: forceps and retractors stretch the skin. A grip drags a patch of skin
-##   around it along with falloff (a pinched fold, not a single point), so a pull spreads out and the skin stretches
-##   over a wide area instead of tearing right beside the tip.
+## - Tools pin particles to their tip: forceps and a retractor stretch the skin, a spreader's jaws hold a cut's
+##   edges apart. A grip drags a patch of skin around it along with falloff (a pinched fold, not a single point), so
+##   a pull spreads out and the skin stretches over a wide area instead of tearing right beside the tip.
 ## - Springs stretched past their limit snap (host only). The host turns that into a tear.
 ## - Sutures add new springs across a cut. Their rest length is the stitch tension. A cut only counts as closed
 ##   where its edges have actually come together: a loose stitch leaves a gap that stays open (and bleeds).
@@ -586,6 +586,28 @@ func grip(key: int, uv: Vector2) -> bool:
 	_win_dirty = true
 	wake()
 	return true
+
+
+## Pins the particle nearest uv that lies on `side` (a uv direction) of `middle` now, like grip(). A spreader's jaw
+## set right over a cut takes hold of its own edge this way, not the one across the gap.
+## Returns the pinned particle, -1 if there is no skin there.
+func grip_beside(key: int, uv: Vector2, middle: Vector2, side: Vector2) -> int:
+	var best := -1
+	var best_distance := INF
+	var at := Vector2i(roundi(uv.x * res_x), roundi(uv.y * res_y))
+	for j in range(maxi(at.y - 2, 1), mini(at.y + 3, res_y)):
+		for i in range(maxi(at.x - 2, 1), mini(at.x + 3, res_x)):
+			var k := index(i, j)
+			var now := Vector2(pos[k].x / size.x + 0.5, pos[k].z / size.y + 0.5)
+			if excised[k] == 1 or off[k] == 1 or (now - middle).dot(side) <= 0.0 or now.distance_to(uv) >= best_distance:
+				continue
+			best = k
+			best_distance = now.distance_to(uv)
+	if best >= 0:
+		_pins[key] = [best, pos[best]]
+		_win_dirty = true
+		wake()
+	return best
 
 
 func move_grip(key: int, target: Vector3) -> void:
@@ -1283,8 +1305,8 @@ func _spring(a: int, b: int, kind: Kind = Kind.TISSUE, tension: float = TENSION,
 	return s
 
 
-## The skin a grip on particle k drags along: particles within GRIP_PATCH reached without crossing a cut,
-## weighted falling off in a straight line from the edge of the skin the grip holds (GRIP_HOLD) to 0 at the edge of
+## The skin a grip on particle k drags along: particles within GRIP_PATCH reached without crossing a cut and not across
+## one from it in a straight line, weighted falling off in a straight line from the edge of the skin the grip holds (GRIP_HOLD) to 0 at the edge of
 ## the patch.
 func _patch(k: int) -> Array:
 	if _patch_version != topology_version:
@@ -1310,6 +1332,10 @@ func _patch(k: int) -> Array:
 				continue
 			seen[other] = true
 			queue.append(other)
+			# Reached round a cut's end, skin across the cut from the grip is its other edge: dragged along, that edge
+			# would go the same way and the cut wouldn't open. Skin past it, in line of sight again, is still reached.
+			if _across_cut(uv_of(k), uv_of(other)):
+				continue
 			around.append(other)
 			var meters := rest[other].distance_to(rest[k])
 			weights.append(clampf(1.0 - (meters - GRIP_HOLD) / reach, 0.0, 1.0))
@@ -1317,6 +1343,14 @@ func _patch(k: int) -> Array:
 				held.append(other)
 	_patches[k] = [around, weights, held]
 	return _patches[k]
+
+
+## Whether the straight line from a to b (uv) crosses a cut.
+func _across_cut(a: Vector2, b: Vector2) -> bool:
+	for m in _cut_segments.size() / 2:
+		if _crossing(a, b, _cut_segments[m * 2], _cut_segments[m * 2 + 1]) >= 0.0:
+			return true
+	return false
 
 
 ## Fills in _springs_of, the springs at each particle, the first time it's needed. Stitches added later aren't in it.

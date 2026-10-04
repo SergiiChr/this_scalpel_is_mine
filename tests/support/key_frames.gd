@@ -41,13 +41,15 @@ func end() -> void:
 
 
 ## Saves both views as NN_<name>_top.png and NN_<name>_oblique.png. Returns false when one couldn't be saved.
-func capture(key_frame: String) -> bool:
+## The oblique view comes from the surgeon's side, or from `side` (world, across the floor) when given: along a cut,
+## say, to see what lies across it.
+func capture(key_frame: String, side: Vector3 = Vector3.ZERO) -> bool:
 	key_frame = "%02d_%s" % [_taken, key_frame]
 	_taken += 1
 	var body := _surgery.patient.body
 	var middle := body.site.global_position
 	var up := body.site.global_basis.y.normalized()
-	var toward := (_surgery.local_surgeon.global_position - middle).slide(up).normalized()
+	var toward := (side if side != Vector3.ZERO else _surgery.local_surgeon.global_position - middle).slide(up).normalized()
 	var hud_was := _surgery.hud.visible
 	_surgery.hud.visible = false
 	_hide_test_overlay(true)
@@ -70,6 +72,22 @@ func capture(key_frame: String) -> bool:
 	_camera.current = false
 	_surgery.local_surgeon.camera().current = true
 	_surgery.hud.visible = hud_was
+	_hide_test_overlay(false)
+	return ok
+
+
+## Saves what the surgeon sees, the HUD's aim included, as NN_<name>_view.png. Returns false when it couldn't be saved.
+func capture_view(key_frame: String) -> bool:
+	key_frame = "%02d_%s" % [_taken, key_frame]
+	_taken += 1
+	_hide_test_overlay(true)
+	RenderingServer.render_loop_enabled = true
+	for i in 3:
+		await get_tree().process_frame
+	var path := out_dir.path_join("%s_view.png" % key_frame)
+	var ok := get_viewport().get_texture().get_image().save_png(path) == OK
+	saved.append(path)
+	RenderingServer.render_loop_enabled = false
 	_hide_test_overlay(false)
 	return ok
 

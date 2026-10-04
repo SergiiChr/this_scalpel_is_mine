@@ -20,7 +20,7 @@ Draw the blade along the marked line in one steady stroke. Slow strokes leave cl
 
 ## 4.3 Exposure
 Skin is under tension and the edges part once divided. Beneath the skin lies yellow subcutaneous fat, then red muscle. The cavity is entered only when all three are divided.
-To widen the exposure, grasp an edge with forceps or a retractor and draw it laterally. Excessive traction tears the skin and creates a second wound.
+To widen the exposure, grasp one edge with forceps or a retractor and draw it laterally. To hold the wound open, set a Gelpi retractor across the middle of the incision, its tips square to it: the marks either side of the aiming point show where they enter. [b]Use tool[/b] sets it; the mouse wheel then opens it (forward) and closes it (back), and both edges follow. Released, it holds the wound open by itself; [b]Use tool[/b] again removes it. Excessive traction tears the skin and creates a second wound.
 
 ## 4.4 Inside the cavity
 Dividing tissue next to a target frees it; dividing anything else injures it. Displace organs by hand before reaching beneath them; they return when released. Prolonged or forceful handling bruises viscera and causes oozing. Hold them with a retractor rather than by hand.

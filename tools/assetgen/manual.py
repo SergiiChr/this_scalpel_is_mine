@@ -511,7 +511,20 @@ def instruments() -> Sketch:
     sk.line([(110, top + 9), (360, top + 9)], 1.0, passes=1)
     teeth = [(110 + k * 6, bottom + (5 if k % 2 else 0)) for k in range(42)]
     sk.line(teeth, 1.0, passes=1, wobble=0.2)
-    sk.text(470, 305, "bone saw", 22, anchor="middle")
+    sk.text(425, 305, "bone saw", 22, anchor="middle")
+    # Gelpi retractor standing up: ring handles with the ratchet between them, arms bowing apart from the box joint,
+    # each ending in a point turned outward.
+    for side in (-1, 1):
+        sk.shape(
+            [(592 + side * 2, 300), (592 + side * 24, 276), (592 + side * 20, 256), (592 + side * 16, 256), (592 + side * 19, 276), (592 + side * 1, 296)], 1.4
+        )
+        sk.line([(592 + side * 18, 257), (592 + side * 25, 255), (592 + side * 27, 262)], 1.3, passes=1)
+        sk.shape([(592 + side * 2, 300), (592 + side * 9, 320), (592 + side * 12, 322), (592 + side * 6, 300)], 1.3)
+        sk.ellipse(592 + side * 13, 331, 8, 7, 1.8, fill=PALE)
+        sk.ellipse(592 + side * 13, 331, 4, 3, 0.9)
+    sk.line([(583, 318), (592, 313), (602, 315)], 1.2, passes=1)
+    sk.ellipse(592, 300, 4, 4, 1.4, fill=PALE)
+    sk.text(530, 300, "gelpi", 22, anchor="middle")
     return sk
 
 
