@@ -1,4 +1,4 @@
-tags: anesthesia_decay_mult, sedation_mult, ticklish, panicker, chatterbox
+tags: ticklish, chatterbox
 title: 1. Preoperative preparation
 [center][img=640]res://assets/manual/diagrams/setup_order.svg[/img][/center]
 
@@ -18,10 +18,10 @@ The patient record does not specify the technique. Select it from the indication
 • [b]Awake craniotomy[/b]: induce for the approach, allow the patient to lighten for resection near eloquent cortex.
 
 ## 1.3 Records
-Verify blood group and allergies against the chart. Where a records discrepancy has been reported, treat both as unknown until the corrected chart arrives from the nurse.
+Verify blood group and allergies against the chart. Look up every recorded condition under Chronic conditions (17) before the first incision. Where a records discrepancy has been reported, treat both as unknown until the corrected chart arrives from the nurse.
 
 ## 1.4 The conscious patient
-Agitated patients move unpredictably. Reassure them verbally from the head of the table, or sedate with diazepam.
+Agitated patients move unpredictably, and panic raises blood pressure. Reassure them verbally from the head of the table, or sedate with diazepam.
 
 ## 1.5 Skin preparation
 1. Pour povidone-iodine from the bottle into the iodine dish ([b]Use tool[/b] over the dish, wheel to pour).

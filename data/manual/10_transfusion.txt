@@ -1,4 +1,3 @@
-tags: rare_blood, blood_ml_mult, blood_count, bleed_mult, clot_risk
 title: 10. Blood transfusion
 [center][img=560]res://assets/manual/diagrams/blood_types.svg[/img][/center]
 
@@ -12,11 +11,8 @@ Blood products are given only through an established intravenous line (section 2
 ## 10.3 Incompatibility
 An ABO-incompatible transfusion causes an acute hemolytic reaction: fever, swelling, hypotension and acute kidney injury. Stop the transfusion.
 
-## 10.4 Bombay phenotype
-Incompatible with all standard groups, including O-negative. Only Bombay-phenotype blood is compatible. Sourcing takes about two minutes: order it as soon as the phenotype appears on the chart.
-
-## 10.5 Low blood volume
-Patients with a low blood count start with a smaller reserve. Plan for less time.
+## 10.4 Special cases
+See Chronic conditions: Bombay phenotype, Anemia.
 
 [font_size=16][b]References[/b]
 Cohn CS, Delaney M, Johnson ST, Katz LM, eds. AABB Technical Manual. 20th ed. AABB; 2020.

@@ -1,4 +1,4 @@
-tags: arrest_mult, heart, pacemaker, adrenaline, amiodarone, atropine
+tags: adrenaline, amiodarone, atropine
 title: 9. Cardiac arrest
 [center][img=640]res://assets/manual/diagrams/rhythms.svg[/img][/center]
 
@@ -16,8 +16,7 @@ Flat line, continuous tone. Not shockable alone.
 
 ## 9.3 Cautions
 Never defibrillate an organized, perfusing rhythm: it may induce the arrest it was meant to treat.
-Implanted pacemakers malfunction near electrocautery and defibrillation. On the chest, close with staples. Paced patients arrest less often.
-Patients with poor cardiac reserve arrest sooner from blood loss, pain and adverse drug combinations.
+See Chronic conditions: Implanted pacemaker, Coronary artery disease.
 
 [font_size=16][b]References[/b]
 Panchal AR, et al. Part 3: Adult Basic and Advanced Life Support. 2020 American Heart Association Guidelines for Cardiopulmonary Resuscitation and Emergency Cardiovascular Care. Circulation. 2020;142(16 suppl 2).

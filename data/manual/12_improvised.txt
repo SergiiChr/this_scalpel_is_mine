@@ -1,6 +1,6 @@
 tags: improvised_mult, items
-title: 14. Improvised equipment
-## 14.1 Scope
+title: 12. Improvised equipment
+## 12.1 Scope
 For use only when standard equipment is unavailable. None of the substitutions below is endorsed by any professional body. Each carries a complication that must be accepted and documented.
 
 [table=3]
@@ -15,11 +15,11 @@ For use only when standard equipment is unavailable. None of the substitutions b
 [cell]Whiskey[/cell][cell]Antiseptic, sedative[/cell][cell]Painful on open wounds[/cell]
 [/table]
 
-## 14.2 Retained items
+## 12.2 Retained items
 An object dropped into the cavity must be retrieved: aspirate the blood, locate it, remove it with forceps and repair any injury it caused.
 > A retained foreign body is worse than the injury.
 
-## 14.3 Contaminated items
+## 12.3 Contaminated items
 An item that has touched the floor is non-sterile. Wash it at the sink, then sanitize it.
 
 [font_size=16][b]References[/b]

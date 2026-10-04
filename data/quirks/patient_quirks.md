@@ -11,6 +11,7 @@ Format rules:
   Keys ending in `_mult` multiply, other numbers add up, text values are names (use `|` for lists).
   See `docs/DESIGN.md` for every effect key the code understands.
 - `card` is what shows up on the patient card. `red_herring` quirks show a card line with no gameplay effect.
+- `sites` (optional) limits the quirk to scenarios on those surgical sites.
 
 ## diabetes
 - name: Diabetes
@@ -95,6 +96,18 @@ Format rules:
 - effects.morphine: allergen=morphine
 - effects.lidocaine: allergen=lidocaine
 - effects.propofol: allergen=propofol
+
+## aneurysm
+- name: Aneurysm
+- polarity: negative
+- icon: [aneurysm.svg](../../assets/icons/quirks/patient/aneurysm.svg)
+- lore: Their last scan came with a phone call and the words "don't lift anything heavy".
+- pros: None.
+- cons: A weak, ballooned artery runs under the site. High blood pressure can burst it and start a deep internal bleed.
+- specifics: Pressure rises with panic and stimulants (adrenaline, cocaine, ketamine). Keep it below 140 mmHg.
+- card: Known history of aneurysm.
+- sites: chest, abdomen, thigh, neck
+- effects: fragile_vessels=1
 
 ## heart
 - name: Heart

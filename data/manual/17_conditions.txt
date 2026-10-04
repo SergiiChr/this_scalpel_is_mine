@@ -1,0 +1,5 @@
+title: 17. Chronic conditions
+## 17.1 Use
+Read the patient chart first, then find each recorded condition in the list. Every entry quotes the line the chart uses for it, names the hazards and what sets them off, and says what to do.
+Prepare before the first incision.
+> The chart is not complete. A condition it does not record still acts. Watch the monitor and listen to the patient.

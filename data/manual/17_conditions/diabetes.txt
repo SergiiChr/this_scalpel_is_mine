@@ -1,0 +1,14 @@
+tags: diabetes
+title: Diabetes mellitus
+[i]The patient makes no insulin of their own. Blood glucose drifts during surgery.[/i]
+
+[b]On the chart:[/b] "Type 1 diabetic, insulin dependent."
+
+[b]Hazards[/b]
+• Glucose rises during surgery, faster under stress.
+• Above 15 mmol/l consciousness falls. Below 3 mmol/l the patient seizes.
+
+[b]Management[/b]
+• Check the level with the glucose panel (fifteen seconds).
+• Insulin lowers it slowly and for a long time. Glucose D50 raises it quickly.
+• A seizure from low glucose stops with diazepam, but returns until glucose is given.

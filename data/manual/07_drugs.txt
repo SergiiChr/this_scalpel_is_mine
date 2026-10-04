@@ -1,4 +1,4 @@
-tags: allergen, cefazolin, clindamycin, morphine, ketamine, lidocaine, propofol
+tags: cefazolin, clindamycin, morphine, ketamine, lidocaine, propofol
 title: 7. Drug formulary
 ## 7.1 Routes
 • [b]Direct injection[/b] (syringe into the patient): rapid onset, high peak effect.
@@ -16,7 +16,7 @@ A syringe that has held one drug keeps what is left in it; a second drug drawn i
 ## 7.3 Formulary
 [table=3]
 [cell][b]Drug[/b][/cell][cell][b]Indication[/b][/cell][cell][b]Dose per kg[/b][/cell]
-[cell]Adrenaline (epinephrine)[/cell][cell]Asystole, with defibrillation. Anaphylaxis[/cell][cell]0.01 mg[/cell]
+[cell]Adrenaline (epinephrine)[/cell][cell]Asystole, with defibrillation. Anaphylaxis. Raises blood pressure[/cell][cell]0.01 mg[/cell]
 [cell]Atropine[/cell][cell]Symptomatic bradycardia[/cell][cell]0.02 mg[/cell]
 [cell]Amiodarone[/cell][cell]Shock-refractory ventricular fibrillation[/cell][cell]5 mg[/cell]
 [cell]Propofol[/cell][cell]Induction of general anesthesia (IV)[/cell][cell]2 mg[/cell]

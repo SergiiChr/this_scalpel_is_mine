@@ -1,0 +1,13 @@
+tags: coagulation.weak
+title: Mild hemophilia
+[i]Blood clots poorly.[/i]
+
+[b]On the chart:[/b] "Mild hemophilia."
+
+[b]Hazards[/b]
+• Bleeds at nearly twice the normal rate. Every nick matters.
+
+[b]Management[/b]
+• Give tranexamic acid (TXA) early.
+• Never give heparin.
+• Cauterize or clamp rather than pack.

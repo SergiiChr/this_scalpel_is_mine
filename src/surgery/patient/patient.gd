@@ -16,6 +16,14 @@ const BLOOD_TYPES: PackedStringArray = ["O+", "O-", "A+", "A-", "B+", "AB+"]
 const VFIB_TO_ASYSTOLE := 40.0
 const ARREST_DEATH := 80.0
 const TOURNIQUET_SAFE := 300.0
+## Systolic pressure (mmHg) above which closures leak and fragile vessels may burst.
+const HIGH_PRESSURE := 140.0
+## Systolic rise (mmHg) of a fully panicking patient.
+const PANIC_PRESSURE := 30.0
+## Fragile vessel bursts per second for each mmHg above HIGH_PRESSURE.
+const BURST_CHANCE := 0.005
+## Seconds after a burst before the next one can happen.
+const BURST_COOLDOWN := 30.0
 ## Blood (ml) that fills the cavity to the top, and from how much it spills over open wounds onto the skin.
 const CAVITY_FULL_ML := 350.0
 const CAVITY_SPILL_ML := 280.0
@@ -85,6 +93,7 @@ var _tick_acc := 0.0
 var _sync_acc := 0.0
 var _voice_cooldown := 0.0
 var _breath_cooldown := 0.0
+var _burst_cooldown := 0.0
 var _stroke_wounds: Dictionary = {}
 ## When (seconds) a blade last grated on a bone, so touching it again after a pause hurts with a jolt again.
 var _bone_touched := -INF
@@ -206,10 +215,11 @@ func _simulate(dt: float) -> void:
 	var total := 0.0
 	var heal := mods.num("heal_rate")
 	var sources: Array = []
+	var leak := _closure_leak(fx)
 	for wound in wounds:
 		if not wound.is_internal():
 			wound.opened = clampf(body.tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN) / FULL_GAP, 0.0, 1.0)
-		var rate := wound.bleed_rate(site_m, bleed_mult)
+		var rate := wound.bleed_rate(site_m, bleed_mult, leak)
 		total += rate
 		# An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
 		var spills := not wound.is_internal() and cavity_blood_ml > CAVITY_SPILL_ML
@@ -261,7 +271,7 @@ func _simulate(dt: float) -> void:
 	match v.rhythm:
 		Vitals.Rhythm.SINUS:
 			v.heart_rate = lerpf(v.heart_rate, target_hr, dt * 0.6) + rng.randf_range(-0.6, 0.6)
-			v.systolic = lerpf(v.systolic, 120.0 * pow(ratio, 1.6) + fx.bp - v.swelling * 50.0, dt * 0.6)
+			v.systolic = lerpf(v.systolic, 120.0 * pow(ratio, 1.6) + fx.bp + v.panic * PANIC_PRESSURE - v.swelling * 50.0, dt * 0.6)
 			v.spo2 = clampf(lerpf(v.spo2, target_spo2, dt * 0.3), 50.0, 100.0)
 			_arrest_time = 0.0
 			_roll_arrest(dt, fx)
@@ -284,6 +294,7 @@ func _simulate(dt: float) -> void:
 	v.temperature += ((0.03 if _mh_active else 0.0) + (baseline - v.temperature) * 0.01 + fx.temp * 0.01) * dt
 
 	_restart_window = maxf(_restart_window - dt, 0.0)
+	_update_fragile_vessels(dt)
 	_update_seizure(dt)
 	_update_misc(dt)
 	_check_death(fx)
@@ -338,6 +349,32 @@ func _arrested(dt: float) -> void:
 	_arrest_time += dt
 	if vitals.rhythm == Vitals.Rhythm.VFIB and _arrest_time > VFIB_TO_ASYSTOLE:
 		vitals.rhythm = Vitals.Rhythm.ASYSTOLE
+
+
+## How much blood gets through closures and packing (see Wound.bleed_rate): heparin, or pressure above HIGH_PRESSURE.
+func _closure_leak(fx: DrugEffects) -> float:
+	var thinned := clampf(-fx.clot, 0.0, 1.0) * 0.5
+	var pressure := clampf((vitals.systolic - HIGH_PRESSURE) / 40.0, 0.0, 0.5)
+	return minf(thinned + pressure, 0.6)
+
+
+## Fragile vessels (an aneurysm) burst under pressure above HIGH_PRESSURE: a deep vessel under the site gives way.
+func _update_fragile_vessels(dt: float) -> void:
+	if not mods.flag("fragile_vessels"):
+		return
+	_burst_cooldown = maxf(_burst_cooldown - dt, 0.0)
+	var excess := vitals.systolic - HIGH_PRESSURE
+	if excess <= 0.0 or _burst_cooldown > 0.0 or rng.randf() >= excess * BURST_CHANCE * dt:
+		return
+	_burst_cooldown = BURST_COOLDOWN
+	var uv := Vector2(rng.randf_range(0.3, 0.7), rng.randf_range(0.3, 0.7))
+	var wound := _new_wound(Wound.Kind.INTERNAL, uv, 0.7)
+	wound.depth_m = minf(0.04, body.cavity_depth() * 0.6)
+	Surgery.current.sound("blood_spurt", body.uv_to_world(uv))
+	Surgery.current.announce("A vessel gives way!")
+	for roll: Dictionary in rolls:
+		if (Db.patient_quirks[roll.id] as QuirkDef).effects(roll.variant).has("fragile_vessels"):
+			_reveal(roll.id)
 
 
 func _update_seizure(dt: float) -> void:

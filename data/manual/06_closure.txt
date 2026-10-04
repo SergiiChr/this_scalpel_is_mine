@@ -1,4 +1,4 @@
-tags: office_stapler, duct_tape, thin_skin, tear_threshold_mult
+tags: office_stapler, duct_tape
 title: 6. Wound closure
 [center][img=640]res://assets/manual/diagrams/closures.svg[/img][/center]
 
@@ -30,11 +30,11 @@ Inside the cavity, hold the needle on an internal injury to repair it.
 Paper clips take three tension levels, like blade pressure: the mouse wheel sets them, and they work once lowered onto the wound ([b]Use tool[/b]). At level 0 none are placed.
 • Loose: rapid, but the wound edges do not meet and continue to ooze.
 • Correct: edges apposed without blanching. The intended setting.
-• Tight: strongest seal, but clips may cut through. Thin skin tears at twice the usual rate.
+• Tight: strongest seal, but clips may cut through.
 > Traction on a sutured wound can pull sutures through.
 
 ## 6.5 Strain on the closure
-Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
+Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Heparin and high pressure make any closure leak (5.5). Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
 
 [font_size=16][b]References[/b]
 Ethicon. Wound Closure Manual. Ethicon, Johnson & Johnson.

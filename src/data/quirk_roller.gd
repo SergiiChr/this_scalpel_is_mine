@@ -25,6 +25,7 @@ static func roll_patient(scenario: ScenarioDef, rng: RandomNumberGenerator) -> A
 	rolls.assign(scenario.fixed_patient_quirks.duplicate(true))
 	var pool: Array = scenario.patient_quirk_pool if not scenario.patient_quirk_pool.is_empty() else table.keys()
 	pool = pool.filter(func(id: String) -> bool: return not rolls.any(func(r: Dictionary) -> bool: return r.id == id))
+	pool = pool.filter(func(id: String) -> bool: return (table[id] as QuirkDef).fits_site(scenario.site))
 	var count := rng.randi_range(scenario.patient_quirks_min, scenario.patient_quirks_max) - rolls.size()
 	rolls.append_array(_pick(table, pool, count, rng))
 	return rolls
