@@ -94,22 +94,30 @@ func _control_checks() -> void:
 
 
 ## Y3b: the syringe is held with the thumb on the plunger: drawing 8 ml pulls the plunger out and the thumb goes back
-## with it, staying on its press.
+## with it, along the syringe as far as the plunger went, staying on its press.
 func _thumb_checks() -> void:
 	await bench.stage(Bench.CASES[0])
 	var me := bench.surgery.local_surgeon
 	var hand := me.hands[me.active]
+	var behind: Array[float] = []
 	var gaps: Array[float] = []
 	for pull in [0, 8]:
 		for i in pull:
 			await bench.notch(true)
 		await bench.frames(5)
+		# The thumb's pad: its last bone, posed, carried on to the tip.
 		var skeleton := hand._glove_rig.skeleton
-		var thumb := skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("Thumb3")).origin
-		var press := bench.syringe.global_transform * Vector3(0.0, 0.0, hand.press)
-		gaps.append(thumb.distance_to(press))
+		var last := skeleton.find_bone("Thumb3")
+		var posed := skeleton.get_bone_global_pose(last)
+		var to_tip: Vector3 = hand._thumb_rest().bones[2]
+		var pad := skeleton.global_transform * (posed.origin + posed.basis * skeleton.get_bone_global_rest(last).basis.inverse() * to_tip)
+		# Along the syringe (+Z is back, toward the plunger), as the syringe holds it.
+		behind.append((bench.syringe.global_transform.affine_inverse() * pad).z)
+		gaps.append(pad.distance_to(bench.syringe.global_transform * Vector3(0.0, 0.0, hand.press + SurgeonHand.PRESS_PAD)))
 	var travel := bench.syringe.def.length * Surgeon.SYRINGE_TRAVEL * 0.8
-	_check(gaps.all(func(gap: float) -> bool: return gap < 0.035), "the thumb stays on the plunger's press as it pulls out %.1f cm (%.1f and %.1f cm from it)" % [travel * 100.0, gaps[0] * 100.0, gaps[1] * 100.0])
+	var moved := behind[1] - behind[0]
+	_check(moved > 0.8 * travel and moved < 1.2 * travel, "drawing 8 ml, the thumb goes back with the plunger (%.1f cm of %.1f)" % [moved * 100.0, travel * 100.0])
+	_check(gaps.all(func(gap: float) -> bool: return gap < 0.01), "the thumb stays on the plunger's press (%.1f and %.1f cm from it)" % [gaps[0] * 100.0, gaps[1] * 100.0])
 
 
 ## Y4-Y10: one case, checked after every notch and once the needle is out.
@@ -407,6 +415,7 @@ func _hand_checks() -> void:
 	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch (%.2f)" % scratch)
 	await bench.withdraw()
 	await _aim_lands(me, hand)
+	await _sweep_onto_patient(me, hand)
 	await bench.stage(Bench.CASES[13])
 	# Use tool up: brought over from waist height.
 	await bench.release()
@@ -519,6 +528,28 @@ func _aim_lands(me: Surgeon, hand: SurgeonHand) -> void:
 		_check(across < 0.002 and absf(tip.y - aim.y) < 0.006, "needle_hand: held at tilt %.1f, the needle goes in where the aim shows (%.1f mm across, %.1f mm down)" % [tilt, across * 1000.0, (aim.y - tip.y) * 1000.0])
 		await bench.release()
 		await bench.frames(10)
+
+
+## Swept quickly from low beside the patient up onto the belly, Use tool up, the needle stays over the skin: it never
+## sinks under it, where a wheel notch would inject.
+func _sweep_onto_patient(me: Surgeon, hand: SurgeonHand) -> void:
+	await bench.stage(Bench.CASES[6])
+	await bench.release()
+	var belly := bench.surgery.patient.body.uv_to_world(Bench.SKIN_UV)
+	var beside := belly + ((me.global_position - belly) * Vector3(1, 0, 1)).normalized() * 0.3
+	hand.local_target = me.to_local(beside - me.own_tip_offset(me.active))
+	await bench.frames(30)
+	var low := bench.syringe.tip_position().y
+	var inside := 0
+	for i in 12:
+		var tip := beside.lerp(belly, float(i + 1) / 12.0)
+		hand.local_target = me.to_local(Vector3(tip.x, me.to_global(hand.local_target).y, tip.z) - me.own_tip_offset(me.active) * Vector3(1, 0, 1))
+		await bench.frames(1)
+		var tip_now := bench.syringe.tip_position()
+		inside += 1 if float(me._surface_below(tip_now).y) - tip_now.y > 0.003 else 0
+	await bench.frames(10)
+	var risen := bench.syringe.tip_position().y - low
+	_check(risen > 0.05 and inside == 0, "needle_hand: swept up onto the belly (%.0f cm higher), the needle never sinks under the skin (%d frames)" % [risen * 100.0, inside])
 
 
 ## The liquid, air and plunger shown match what's in it exactly, against the full Level part (the graduation).

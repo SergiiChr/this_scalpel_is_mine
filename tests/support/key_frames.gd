@@ -44,12 +44,23 @@ func end() -> void:
 ## The oblique view comes from the surgeon's side, or from `side` (world, across the floor) when given: along a cut,
 ## say, to see what lies across it.
 func capture(key_frame: String, side: Vector3 = Vector3.ZERO) -> bool:
-	key_frame = "%02d_%s" % [_taken, key_frame]
-	_taken += 1
 	var body := _surgery.patient.body
 	var middle := body.site.global_position
 	var up := body.site.global_basis.y.normalized()
 	var toward := (side if side != Vector3.ZERO else _surgery.local_surgeon.global_position - middle).slide(up).normalized()
+	return await _views(key_frame, middle, up, toward, DISTANCE, false)
+
+
+## The same two views of something off the site (a bottle on a tray), from `distance` away: from above, and 45° off
+## toward the surgeon. The hands are left out of both: one just let go of it would hide it.
+func capture_at(key_frame: String, at: Vector3, distance: float) -> bool:
+	var toward := (_surgery.local_surgeon.global_position - at).slide(Vector3.UP).normalized()
+	return await _views(key_frame, at, Vector3.UP, toward, distance, true)
+
+
+func _views(key_frame: String, middle: Vector3, up: Vector3, toward: Vector3, distance: float, no_hands: bool) -> bool:
+	key_frame = "%02d_%s" % [_taken, key_frame]
+	_taken += 1
 	var hud_was := _surgery.hud.visible
 	_surgery.hud.visible = false
 	_hide_test_overlay(true)
@@ -57,11 +68,11 @@ func capture(key_frame: String, side: Vector3 = Vector3.ZERO) -> bool:
 	RenderingServer.render_loop_enabled = true
 	var ok := true
 	for view: Array in [["top", up, toward], ["oblique", (up + toward).normalized(), up]]:
-		_camera.global_position = middle + (view[1] as Vector3) * DISTANCE
+		_camera.global_position = middle + (view[1] as Vector3) * distance
 		_camera.look_at(middle, view[2])
 		# From straight above the hands would hide the site; the oblique view shows them, with the tools on it.
 		for hand in _surgery.local_surgeon.hands:
-			hand.visible = view[0] != "top"
+			hand.visible = view[0] != "top" and not no_hands
 		# A few drawn frames: the first ones after the camera moves can still show the last view.
 		for i in 3:
 			await get_tree().process_frame
@@ -69,6 +80,8 @@ func capture(key_frame: String, side: Vector3 = Vector3.ZERO) -> bool:
 		ok = ok and get_viewport().get_texture().get_image().save_png(path) == OK
 		saved.append(path)
 	RenderingServer.render_loop_enabled = false
+	for hand in _surgery.local_surgeon.hands:
+		hand.visible = true
 	_camera.current = false
 	_surgery.local_surgeon.camera().current = true
 	_surgery.hud.visible = hud_was

@@ -10,6 +10,8 @@ const FILL_STEPS := 50.0
 ## How close a syringe's needle has to be to a vial's middle to be in it, or to a dish's or hung bag's (a share of
 ## its length). A syringe brought over a vial or the hung bag snaps its needle into it (see Surgeon._snap_spot()).
 const VIAL_REACH := 0.05
+## How far apart (meters) bottles delivered standing are set, so a new one doesn't stand on an earlier one.
+const STANDING_ROOM := 0.04
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
 ## A tool lying lower than this (meters) is on the floor: one that lands on it lands on the floor too.
@@ -421,20 +423,33 @@ func spawn(id: String, at: Vector3) -> void:
 
 
 ## Host: a new tool standing upright on whatever is under `above` (a bottle left on the delivery tray), not dropped.
+## Where something already lies there (an earlier bottle), it stands beside it instead of on top.
 func spawn_standing(id: String, above: Vector3) -> void:
 	var uid := _next_uid
 	spawn(id, above)
-	_set_state.rpc(uid, SurgicalTool.State.FREE, 0, -1, standing_on(tools[uid], above))
+	var tool: SurgicalTool = tools[uid]
+	var at := above
+	for step in 12:
+		at = above + Vector3(STANDING_ROOM * (step % 4 - 1.5), 0.0, STANDING_ROOM * (step / 4 - 1.0)) if step > 0 else above
+		if not _surface_under(tool, at).get("collider") is SurgicalTool:
+			break
+	_set_state.rpc(uid, SurgicalTool.State.FREE, 0, -1, standing_on(tool, at))
 
 
-## Where a tool stands upright, its tip up, on whatever is under `at` (a table, a tray, another tool, the floor):
-## resting right on it, so it doesn't drop and topple.
+## Where a tool stands upright, its tip up, on whatever is under `at` (a table, a tray, the patient's skin, another
+## tool, the floor): resting right on it, so it doesn't drop and topple.
 func standing_on(tool: SurgicalTool, at: Vector3) -> Transform3D:
 	var basis := Basis(Vector3.RIGHT, PI / 2)
-	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.2, at + Vector3.DOWN * 2.0, 1 | SurgicalTool.TOOL_LAYER, [tool.get_rid()])
-	var hit := get_viewport().world_3d.direct_space_state.intersect_ray(query)
+	var hit := _surface_under(tool, at)
 	var under: float = hit.position.y if not hit.is_empty() else at.y
 	return Transform3D(basis, Vector3(at.x, under - (Transform3D(basis) * tool.bounds).position.y + 0.001, at.z))
+
+
+## The first thing under `at` a tool could stand on, other than the tool itself: the ray hit, empty if nothing.
+func _surface_under(tool: SurgicalTool, at: Vector3) -> Dictionary:
+	var mask := 1 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.2, at + Vector3.DOWN * 2.0, mask, [tool.get_rid()])
+	return get_viewport().world_3d.direct_space_state.intersect_ray(query)
 
 
 ## Host: a new tool falling from `at`, as if it was dropped there (the floor soils it).
