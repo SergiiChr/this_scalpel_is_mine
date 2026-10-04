@@ -22,6 +22,12 @@ var _next_uid := 1
 var _sync_acc := 0.0
 
 
+func _ready() -> void:
+	# After the surgeons have moved their hands this frame: a held tool placed before would trail a frame behind its
+	# hand, plain to see while walking.
+	process_physics_priority = 1
+
+
 ## station_tools: [[id, Transform3D], ...] that sit on their own station (see Room.station_tools()).
 ## A tool the station provides is never also put on the tray.
 func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], personal: Dictionary, station_tools: Array = []) -> void:
@@ -540,7 +546,8 @@ func add_liquid(tool: SurgicalTool, ml: float, drugs: Dictionary = {}, air: floa
 		tool.ml = 0.0
 		tool.contents.clear()
 	tool.fill = tool.ml / tool.def.volume
-	_show_liquid.rpc(tool.uid, tool.ml, tool.air, tool.contents.get("blood", 0.0) / tool.ml if tool.ml > 0.0 else 0.0)
+	var share := func(drug: String) -> float: return tool.contents.get(drug, 0.0) / tool.ml if tool.ml > 0.0 else 0.0
+	_show_liquid.rpc(tool.uid, tool.ml, tool.air, share.call("blood"), share.call("iodine"))
 
 
 func consume(tool: SurgicalTool) -> void:
@@ -603,6 +610,7 @@ func _physics_process(delta: float) -> void:
 	for tool: SurgicalTool in tools.values():
 		if tool.state != SurgicalTool.State.HELD:
 			ToolActions.finish_injection(tool, surgery.patient)
+			ToolActions.report_pushed(tool)
 		match tool.state:
 			SurgicalTool.State.HELD:
 				var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
@@ -737,12 +745,13 @@ func _show_fill(uid: int, amount: float) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _show_liquid(uid: int, ml: float, air: float, red: float) -> void:
+func _show_liquid(uid: int, ml: float, air: float, red: float, iodine: float) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
 		tool.ml = ml
 		tool.air = air
 		tool.red = red
+		tool.iodine = iodine
 		tool.fill = ml / tool.def.volume
 		tool.show_liquid()
 

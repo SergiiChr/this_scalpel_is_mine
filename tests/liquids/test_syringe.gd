@@ -9,6 +9,14 @@ const Bench := preload("res://tests/support/syringe_bench.gd")
 var bench: Bench
 ## Doses the host gave surgeons: [peer, drug, amount].
 var doses: Array = []
+## Messages shown on screen since the case started (debug mode is on).
+var toasts: Array[String] = []
+## Where debug mode says each case's syringe pushed its liquid.
+const PUSHED_INTO: Dictionary = {
+	"vial": "the vial", "dish": "the kidney dish", "drip": "the IV bag", "vein": "the vein", "skin": "the skin",
+	"fat": "the fat", "muscle": "the muscle", "own_hand": "Tester's hand", "doctor_hand": "Partner's hand",
+	"doctor_body": "Partner's body", "doctor_down": "Partner's hand",
+}
 
 
 func test_syringe_iv_and_plunger_cases() -> void:
@@ -16,6 +24,9 @@ func test_syringe_iv_and_plunger_cases() -> void:
 	add_child(bench)
 	await bench.start()
 	bench.surgery.surgeon_dosed.connect(func(peer: int, drug: String, amount: float) -> void: doses.append([peer, drug, amount]))
+	var debug := Settings.debug
+	Settings.debug = true
+	bench.surgery.hud._toasts.child_entered_tree.connect(func(toast: Node) -> void: toasts.append((toast as Label).text))
 	await _control_checks()
 	await _thumb_checks()
 	var only := ""
@@ -38,6 +49,7 @@ func test_syringe_iv_and_plunger_cases() -> void:
 		await _sedated_surgeon_checks()
 	if "needle_hand".begins_with(only):
 		await _hand_checks()
+	Settings.debug = debug
 
 
 ## Y1-Y3: a syringe picked up sits with its printed scale toward the eyes, on the inner side of the hand. The wheel
@@ -142,6 +154,7 @@ func _run(case: Dictionary) -> void:
 	var me := bench.surgery.local_surgeon
 	me.status.drugs.clear()
 	doses.clear()
+	toasts.clear()
 	for i in absi(case.notches):
 		var ml_before := syringe.ml
 		var air_before := syringe.air
@@ -170,7 +183,12 @@ func _run(case: Dictionary) -> void:
 		_check(is_equal_approx(syringe.red, case.notches / expected), "%s: the liquid is %.0f%% blood (%.2f)" % [case.name, 100.0 * case.notches / expected, syringe.red])
 	if case.target == "drip" and not pull:
 		_check(patient.active_drugs.size() == drugs_before, "%s: nothing runs down the line while the needle is in the bag" % case.name)
+	var pushed: float = case.ml - syringe.ml
 	await bench.withdraw()
+	if not pull and kind != "air":
+		var named := "[debug] Injected %s ml of %s into %s" % [String.num(pushed, 1), Db.drug(Db.tool(case.get("vial", Bench.VIAL)).drug).name, PUSHED_INTO[case.target]]
+		_check(named in toasts, "%s: debug mode says what went where once the needle is out: %s (%s)" % [case.name, named, toasts])
+		_check(("[debug] Hit the vein" in toasts) == (kind == "vein"), "%s: debug mode says the needle hit the vein only for the vein (%s)" % [case.name, toasts])
 	if into_surgeon:
 		var drug: String = Db.tool(case.vial).drug
 		var amount: float = absi(case.notches) * Db.tool(case.vial).concentration
@@ -210,9 +228,11 @@ func _catheter_checks(case: Dictionary) -> void:
 	# Checked before it goes in: the needle hurts, an awake patient's arm flinches and the vein moves with it.
 	var off := (bench.catheter.tip_position() - bench.vein_point()) * Vector3(1, 0, 1)
 	_check(off.length() < 0.01 if hit else off.length() > 0.02, "%s: the needle is over %s (%.1f cm across)" % [case.name, "the vein" if hit else "the arm beside the vein", off.length() * 100.0])
+	toasts.clear()
 	await bench.press()
 	var stuck := patient.iv_set and bench.surgery.room.iv_line.is_attached()
 	_check(stuck and patient.iv_in_vein == hit, "%s: the catheter sticks with the tubing run to it, %s" % [case.name, "in the vein" if hit else "but outside the vein"])
+	_check(("[debug] Hit the vein" in toasts) == hit, "%s: debug mode says the catheter hit the vein only when it did (%s)" % [case.name, toasts])
 	var drip := bench.surgery.tools.drip_bag()
 	var drugs_before := patient.active_drugs.size()
 	bench.surgery.tools.add_liquid(drip, 5.0, {Bench.DRUG: 5.0 * Db.tool(Bench.VIAL).concentration})
@@ -395,6 +415,7 @@ func _hand_checks() -> void:
 	await bench.release()
 	me.zoom = 0
 	await bench.frames(40)
+	await _back_of_hand_checks()
 	await bench.stage(Bench.CASES[6])
 	var tip := bench.syringe.tip_position()
 	var tilt := hand.tilt
@@ -583,6 +604,28 @@ static func _fade(hand: SurgeonHand) -> float:
 	var glove := hand.find_children("*", "GeometryInstance3D", true, false)[0] as GeometryInstance3D
 	var ghost := glove.material_override as StandardMaterial3D
 	return 1.0 - ghost.albedo_color.a if ghost else 0.0
+
+
+## The needle aimed anywhere along the back of the surgeon's other hand, wrist to fingertips, rests on the glove and is
+## in that hand: it doesn't sink into the glove or drop through it to what's under it.
+func _back_of_hand_checks() -> void:
+	var own: Dictionary = Bench.CASES.filter(func(case: Dictionary) -> bool: return case.name == "own_hand_push")[0]
+	await bench.stage(own)
+	var me := bench.surgery.local_surgeon
+	var hand := me.hands[me.active]
+	var other := me.hands[1 - me.active]
+	var glove := other._glove
+	for along: float in [0.02, 0.06, 0.1, 0.14, 0.18]:
+		var aim := glove.global_position + glove.global_basis.x.normalized() * along
+		for i in 40:
+			hand.local_target = me.to_local(aim - hand.tip_offset(bench.syringe.def.length) + Vector3.UP * 0.04)
+			await get_tree().physics_frame
+		var tip := bench.syringe.tip_position()
+		var back := other.glove_middle(tip).y + SurgeonHand.PALM_HALF_THICKNESS
+		var target := bench.needle_target()
+		var in_hand: bool = target.kind == "surgeon" and target.part == "hand" and bench.syringe.state == SurgicalTool.State.HELD
+		_check(in_hand and absf(tip.y - back) < 0.004, "needle_hand: %.0f cm from the wrist the needle rests on the back of the other hand (%.1f mm off it) and is in it (%s)" % [along * 100.0, (tip.y - back) * 1000.0, target])
+	await bench.withdraw()
 
 
 func _check(ok: bool, what: String) -> bool:

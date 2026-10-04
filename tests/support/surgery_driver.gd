@@ -194,6 +194,17 @@ func player_walks_to(point: Vector3, off: float = STAND_OFF) -> void:
 	await frames(3)
 
 
+## Holds a walking key (move_forward, move_back, move_left, move_right) for `time` seconds, so the body walks the way
+## a player's does. `each_frame` is called once every frame of it, after the frame's physics.
+func player_holds_walk_key(action: String, time: float, each_frame: Callable) -> void:
+	Input.action_press(action)
+	for i in int(time * Engine.physics_ticks_per_second):
+		await get_tree().process_frame
+		each_frame.call()
+	Input.action_release(action)
+	note("walked (%s) for %.1f s" % [action, time])
+
+
 func _clear_of_tubing(spot: Vector3) -> bool:
 	var line: IvLine = surgery.room.iv_line
 	if line == null or not line.is_attached():
@@ -234,6 +245,20 @@ func player_sweeps_to(point: Vector3, speed: float = SLOW) -> void:
 func _tip(hand: SurgeonHand) -> Vector3:
 	var tool := me.held_tool(hand.index)
 	return tool.tip_position() if tool else hand.global_position + hand.tip_offset(0.05)
+
+
+## Holds Aim tool (MMB) and moves the mouse `motion` pixels a frame for `count` frames, as the mouse handler does
+## (Surgeon.aim_tool()). Aim tool stays held until player_lets_go_of_aim().
+func player_aims(motion: Vector2, count: int) -> void:
+	Input.action_press("aim_tool")
+	for i in count:
+		me.aim_tool(motion * Settings.mouse_sensitivity)
+		await get_tree().physics_frame
+	note("aimed %s px" % (motion * count))
+
+
+func player_lets_go_of_aim() -> void:
+	Input.action_release("aim_tool")
 
 
 ## Points the active hand's blade edge (ToolActions.blade_direction()) along `direction` (world, across the floor) by
@@ -390,6 +415,12 @@ func player_interacts(prompt: String) -> bool:
 # --- Steps -----------------------------------------------------------------------------------------------
 
 
+## Tips the bottle in the active hand over `dish` and pours at full effort for `time` seconds.
+func player_pours_into(dish: SurgicalTool, time: float) -> void:
+	await player_walks_to(dish.global_position)
+	await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 3, time)
+
+
 ## Fills the iodine dish from the bottle, takes a cotton pad in forceps, dips it and wipes the site row by row,
 ## dipping again whenever the pad runs dry, until `amount` of the site is sanitized.
 func player_sanitizes_site(amount: float) -> void:
@@ -401,8 +432,7 @@ func player_sanitizes_site(amount: float) -> void:
 	var dish := dishes[0]
 	if dish.fill < 0.5:
 		await player_requests_item("iodine_bottle")
-		await player_walks_to(dish.global_position)
-		await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 3, 3.0)
+		await player_pours_into(dish, 3.0)
 		note("dish filled: %.2f" % dish.fill)
 		await player_puts_down()
 	var forceps := await player_requests_item("forceps")
@@ -429,8 +459,7 @@ func player_sanitizes_site(amount: float) -> void:
 		if dish.fill <= 0.05:
 			await player_puts_down()
 			await player_requests_item("iodine_bottle")
-			await player_walks_to(dish.global_position)
-			await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 3, 3.0)
+			await player_pours_into(dish, 3.0)
 			await player_requests_item("forceps")
 		await player_walks_to(dish.global_position)
 		await player_works_at(ToolManager.middle(dish), 0, 1.0)

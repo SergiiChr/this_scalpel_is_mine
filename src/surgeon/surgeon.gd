@@ -9,8 +9,8 @@ extends CharacterBody3D
 ## in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) toggles
 ## between two zoom levels; the closer one with a syringe or IV catheter in hand fades the hands, and once a syringe's
 ## needle is in with Use tool held it frames the needle and what it's in.
-## Holding Aim tool (MMB) the mouse turns the active hand's tool instead, the wrist with it: pitch and swing left and
-## right. C/V roll it about its length.
+## Holding Aim tool (MMB) the mouse turns the active hand's tool about the wrist instead, only the wrist moving: pitch
+## and swing left and right. C/V roll it about its length.
 ## WASD moves the body.
 ## Hands turn and walk with the body, unless they hold onto something (attached): then they stay put.
 ## The inactive hand stays exactly where it was, still doing what it was doing.
@@ -117,7 +117,8 @@ const LYING_PITCH := 0.3
 const LYING_DISTANCE := 1.4
 ## How much floor (m) a falling surgeon looks for beside them, to pick the side they fall to.
 const FALL_ROOM := 2.0
-## Close enough to a glove's middle (m) for a needle to be in the hand; around the spine for it to be in the body.
+## Close enough to a glove's middle line (m, see SurgeonHand.glove_middle()) for a needle to be in the hand; around
+## the spine for it to be in the body.
 const GLOVE_REACH := 0.05
 const TORSO_RADIUS := 0.16
 ## Where the spine runs in the body model (local, standing): hips to neck.
@@ -167,6 +168,8 @@ var _solid_hand := -1
 var _snaps: Dictionary = {}
 ## Each hand's own tilt, turn and twist while it holds a syringe (see _face_syringe()), to give back after.
 var _unfaced: Dictionary = {}
+## Where the active hand's wrist is held (surgeon space) while Aim tool turns its tool about it, INF while it doesn't.
+var _aim_wrist := Vector3.INF
 
 var _head: Node3D
 var _body: Node3D
@@ -283,13 +286,14 @@ func is_down() -> bool:
 	return _fall_side != 0.0
 
 
-## Where a needle at `tip` would go into this surgeon: {"part": "hand", "at": the glove's middle} or {"part": "body",
-## "at": tip}, or {} if it's in neither. `holding` is the hand with the needle: one of this surgeon's own leaves only
-## the other hand to go into.
+## Where a needle at `tip` would go into this surgeon: {"part": "hand", "at": the glove's middle under it} or
+## {"part": "body", "at": tip}, or {} if it's in neither. `holding` is the hand with the needle: one of this surgeon's
+## own leaves only the other hand to go into.
 func needle_part(tip: Vector3, holding: SurgeonHand) -> Dictionary:
 	for hand in hands:
-		if hand != holding and hand.global_position.distance_to(tip) < GLOVE_REACH:
-			return {"part": "hand", "at": hand.global_position}
+		var middle := hand.glove_middle(tip)
+		if hand != holding and middle.distance_to(tip) < GLOVE_REACH:
+			return {"part": "hand", "at": middle}
 	if holding in hands:
 		return {}
 	var hips := _body.global_transform * SPINE[0]
@@ -533,11 +537,15 @@ func _set_lowered(hand: SurgeonHand, value: bool) -> void:
 			hand.local_target += global_basis.inverse() * shift
 
 
-## Turns the active hand's tool by a mouse motion, the wrist going with it: up and down pitches it, left and right
-## swings it. It turns about the grip; a needle stuck in the patient turns about its tip instead (see _hold_needle()).
-## Snapped into a vial or the bag, the snap holds the angles: the turn goes to the hand's own, for when it lets go.
+## Turns the active hand's tool by a mouse motion, bending the wrist: up and down pitches it, left and right swings it,
+## the tip following the mouse. It turns about the wrist (see _aims_from_wrist()); a needle stuck in the patient turns
+## about its tip instead (see _hold_needle()). Snapped into a vial or the bag, the snap holds the angles: the turn goes
+## to the hand's own, for when it lets go.
 func aim_tool(motion: Vector2) -> void:
 	var hand := hands[active]
+	# Where the wrist is before the first turn, to hold it there.
+	if _aim_wrist == Vector3.INF and _aims_from_wrist(hand, held_tool(active), true):
+		_aim_wrist = _wrist_now(hand)
 	var state: Dictionary = _snaps.get(active, {})
 	var own: Vector2 = state.get("own", Vector2(hand.tilt, hand.turn))
 	own.x = clampf(own.x - motion.y * AIM_SENSITIVITY, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
@@ -547,6 +555,22 @@ func aim_tool(motion: Vector2) -> void:
 		hand.turn = own.y
 	else:
 		state.own = own
+
+
+## Holding Aim tool, only the wrist moves: it stays where it was when Aim tool was pressed, and the hand and tool go
+## wherever the tool's angle puts them. The tip rises off what it rested on, and settles back down once Aim tool is let
+## go. A tool held still by what it's in (a needle, a spreader, a clamp's grip) turns about that instead.
+func _aims_from_wrist(hand: SurgeonHand, tool: SurgicalTool, can_act: bool) -> bool:
+	if not can_act or hand.index != active or tool == null or hand.attached or hand.inspecting or tool.in_wound:
+		return false
+	if _snaps.has(hand.index):
+		return false
+	return _needle_anchor == Vector3.INF and Input.is_action_pressed("aim_tool")
+
+
+## Where the hand's wrist is (surgeon space), without its tremor.
+func _wrist_now(hand: SurgeonHand) -> Vector3:
+	return to_local(hand.target + Vector3.UP * hand.raise + hand.wrist_offset())
 
 
 ## The hand the mouse moves right now (its key held), or -1 while the mouse looks around.
@@ -741,6 +765,12 @@ func _local_update(delta: float) -> void:
 		var h := hands[i]
 		var tool := held_tool(i)
 		h.inspecting = can_act and i == active and tool != null and not h.attached and Input.is_action_pressed("inspect")
+		var aiming := _aims_from_wrist(h, tool, can_act)
+		h.aiming = aiming
+		if i == active and not aiming:
+			_aim_wrist = Vector3.INF
+		if h.lowered or not aiming:
+			h.raise = 0.0 if h.lowered else move_toward(h.raise, 0.0, delta * SurgeonHand.SETTLE_SPEED)
 		if tool and tool.def.action == "spread":
 			# Held upright, a spreader's jaws open flat across the skin whichever way it's rolled (C/V turn them).
 			h.tilt = SurgeonHand.TILT_RANGE.x
@@ -765,6 +795,11 @@ func _local_update(delta: float) -> void:
 			continue
 		if not h.attached:
 			h.target = to_global(h.local_target)
+		if aiming:
+			if _aim_wrist == Vector3.INF:
+				_aim_wrist = _wrist_now(h)
+			h.target = to_global(_aim_wrist) - h.wrist_offset()
+		var held_at := h.target.y
 		_strain[i] = h.attached and h.target.distance_to(shoulder(i)) > REACH + 0.06
 		var was := h.target.y
 		var snap := _ease_snap(h, tool, delta)
@@ -782,6 +817,9 @@ func _local_update(delta: float) -> void:
 			var own_tip := to_global(h.local_target) + own_tip_offset(i)
 			var free_tip := Vector3(own_tip.x, h.target.y + h.tip_offset(tool.def.length).y, own_tip.z)
 			h.target = free_tip.lerp(snap.at, snap.weight) - h.tip_offset(tool.def.length)
+		if aiming and not h.lowered:
+			# The tip rises off what it rested on rather than the wrist coming down after it. Into it, the hand rises.
+			h.raise = maxf(held_at - h.target.y, 0.0)
 		var amount := status.tremor_amount() if i == active or mods.mult("switch_delay_mult") > 0.0 else 0.0
 		var t := Time.get_ticks_msec() * 0.001
 		h.tremor = Vector3(sin(t * 23.0 + i), sin(t * 31.0 + 2.0 * i), cos(t * 19.0 + i)) * amount + _jolt
@@ -1074,12 +1112,14 @@ func _surface_below(p: Vector3) -> Dictionary:
 	return {"y": hit.position.y, "open": false, "soft": soft}
 
 
-## A needle over a glove (this surgeon's other hand or anyone's) rests on it like on skin, so it can go in.
+## A needle over a glove (this surgeon's other hand or anyone's) rests on the back of it like on skin, from the wrist
+## to the fingertips, so it can go in.
 func _glove_below(hand: SurgeonHand, p: Vector3, surface: Dictionary) -> Dictionary:
 	for other: Surgeon in Surgery.current.surgeons.values():
 		for glove in other.hands:
-			var top := glove.global_position.y + 0.015
-			var across := (glove.global_position - p) * Vector3(1, 0, 1)
+			var middle := glove.glove_middle(p)
+			var top := middle.y + SurgeonHand.PALM_HALF_THICKNESS + 0.001
+			var across := (middle - p) * Vector3(1, 0, 1)
 			if glove != hand and across.length() < GLOVE_REACH and top > float(surface.y):
 				return {"y": top, "open": false, "soft": true}
 	return surface
@@ -1103,6 +1143,7 @@ func _switch_hand() -> void:
 	active = 1 - active
 	_stand_hold = -1.0
 	_needle_anchor = Vector3.INF
+	_aim_wrist = Vector3.INF
 	_switch_timer = SWITCH_DELAY * mods.mult("switch_delay_mult")
 
 

@@ -255,7 +255,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 ### In this draft
 
 - Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels. Holding MMB the mouse turns the
-  held tool with the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`); C/V roll it about its length.
+  held tool about the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`): the wrist and forearm stay
+  put, the tip follows the mouse and rises off what it rested on, and settles back down once MMB is let go. C/V roll
+  it about its length.
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
@@ -353,7 +355,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Nurse**: one order at a time, a 15 s cooldown after each delivery from the sixth on (the first five come without).
   Every drug is under one Drugs group. A board over the bell shows the item on its way
   with a progress bar, then the cooldown.
-- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish, pinch a cotton pad with forceps
+- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish (the bottle pours into the kidney
+  dish too, as liquid a syringe can draw), pinch a cotton pad with forceps
   (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up off the floor contaminates the site.
   A dish soaks about four pads; a soaked pad runs dry after about 8 s of wiping.
 
@@ -379,7 +382,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
     pulls nothing and the plunger stays.
   - a surgeon's glove (the other hand of the one holding it, or a partner's) or a partner's body: the needle rests
-    on a glove like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
+    on the back of a glove, wrist to fingertips, like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
     pulls nothing. A glove comes before the patient under it, a body after.
   - nothing: pulls air, pushes the liquid out in a squirt.
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
