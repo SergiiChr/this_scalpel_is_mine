@@ -323,6 +323,9 @@ func player_puts_down() -> void:
 		await frames(15)
 	press("grab")
 	await seconds(0.5)
+	if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() > 0.08:
+		# It slid off whatever it was set down against: anything else set down there would too.
+		SurgeryState.tray_spot_is_bad(surgery, spot)
 	note("puts %s down" % tool.def.id)
 
 

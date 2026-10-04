@@ -191,10 +191,8 @@ func notch(pull: bool) -> void:
 
 ## Takes the needle out: the hand goes up and away over the floor.
 func withdraw() -> void:
+	await release()
 	var me := surgery.local_surgeon
-	var release := InputEventAction.new()
-	release.action = "use_tool"
-	me._unhandled_input(release)
 	me.hands[me.active].local_target = Vector3(0.15, 1.1, -0.2)
 	await frames(20)
 
@@ -235,6 +233,14 @@ func press() -> void:
 	var event := InputEventAction.new()
 	event.action = "use_tool"
 	event.pressed = true
+	surgery.local_surgeon._unhandled_input(event)
+	await frames(5)
+
+
+## Use tool let go: the needle stays where it is.
+func release() -> void:
+	var event := InputEventAction.new()
+	event.action = "use_tool"
 	surgery.local_surgeon._unhandled_input(event)
 	await frames(5)
 
@@ -298,7 +304,7 @@ func _aim_point(target: String) -> Vector3:
 	return me.to_global(Vector3(0.2, 1.0, -0.15))
 
 
-## Walks the surgeon to stand facing the aim from outside the table, close enough to reach it.
+## Walks the surgeon to stand facing the aim from outside the table, close enough to reach it, and looking at it.
 func _stand_by(aim: Vector3) -> void:
 	var me := surgery.local_surgeon
 	# Stepping over counts as walking through the tubing, which would rip a line out and jolt the hand: take it out.
@@ -317,3 +323,5 @@ func _stand_by(aim: Vector3) -> void:
 	me.global_position = spot
 	var facing := (aim - spot) * Vector3(1, 0, 1)
 	me.rotation.y = atan2(-facing.x, -facing.z)
+	# Looking at it, as a player zooming in on it would.
+	me.pitch = clampf(atan2(aim.y - spot.y - Surgeon.EYE_HEIGHT, facing.length()), Surgeon.LOOK_PITCH.x, Surgeon.LOOK_PITCH.y)
