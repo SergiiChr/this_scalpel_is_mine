@@ -379,7 +379,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   let go.
 - **Held facing you**: picked up, a syringe sits in the hand with its printed scale turned toward the eyes, on the
   inner side of the hand (left of the right hand, right of the left), so it doesn't need turning to be read. Moved
-  about, it keeps turning the scale to the eyes.
+  about, it keeps turning the scale to the eyes, so C/V don't roll it (and the controls shown leave them out).
 - **Needle view**: the last zoom step with a syringe or IV catheter in hand fades the hands to see through, so the
   needle and where it goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves

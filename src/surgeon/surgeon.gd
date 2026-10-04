@@ -646,8 +646,10 @@ func _local_update(delta: float) -> void:
 	move_and_slide()
 	var hand := hands[active]
 	if can_act:
-		var twist_input := Input.get_axis("twist_left", "twist_right")
-		hand.twist = wrapf(hand.twist + twist_input * delta * 2.0, -PI, PI)
+		# A syringe keeps its scale to the eyes on its own (_face_syringe()): it doesn't roll.
+		if not _unfaced.has(active):
+			var twist_input := Input.get_axis("twist_left", "twist_right")
+			hand.twist = wrapf(hand.twist + twist_input * delta * 2.0, -PI, PI)
 		hand.lifted = Input.is_action_pressed("lift") and not hand.attached
 		if hand.attached and Input.is_action_pressed("lift"):
 			hand.target.y += PULL_SPEED * delta
