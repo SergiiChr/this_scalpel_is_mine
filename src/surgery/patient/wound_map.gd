@@ -1,10 +1,10 @@
 class_name WoundMap
 extends RefCounted
-## CPU painted textures behind the skin shader. Every peer has its own copy.
+## CPU painted damage, fluid and closed-seam textures behind the skin shader. Every peer has its own copy.
 ## The host decides what gets painted and broadcasts paint ops, so all copies stay identical.
-## Channel layout is documented in assets/shaders/skin.gdshader.
+## WOUNDS/FLUIDS feed wound.gdshaderinc; SEAMS.r is the simulated skin's explicit closed-incision mask.
 
-enum Layer { WOUNDS, FLUIDS }
+enum Layer { WOUNDS, FLUIDS, SEAMS }
 enum Mode { MAX, ADD, SUB, MIN }
 
 ## Texture sizes range from MIN_SIZE to MAX_SIZE, picked so a texel covers about TEXEL meters on every site:
@@ -17,9 +17,8 @@ const CUT := 0
 const BURN := 1
 const BRUISE := 2
 const STITCH := 3
-## A sub-threshold stitch value marks the narrow incision line left under a tied skin suture. Values >= 0.5 are
-## rendered as thread or staples; this value only lets the closed cut's pink edge show on the simulated skin.
-const CLOSED_SEAM := 0.25
+## Dedicated seam mask: closure quality in STITCH must not also mean a tied running suture.
+const CLOSED_SEAM := 0
 const BLOOD := 0
 const INK := 1
 const IODINE := 2
@@ -32,7 +31,7 @@ var textures: Array[ImageTexture] = []
 ## The pixels painted into, 4 bytes per texel. Copied into images and textures once per frame by flush().
 ## Raw bytes are several times faster to paint from GDScript than Image.get_pixel() / set_pixel().
 var _data: Array[PackedByteArray] = []
-var _dirty: Array[bool] = [false, false]
+var _dirty: Array[bool] = [false, false, false]
 ## Which cells of a coarse CELLS x CELLS grid have ever been painted into, per layer and channel (4 bytes per cell).
 ## Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.
 var _painted: Array[PackedByteArray] = []
@@ -41,7 +40,7 @@ const CELLS := 16
 
 func _init(texels: int = MAX_SIZE) -> void:
 	size = texels
-	for i in 2:
+	for i in Layer.size():
 		var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
 		images.append(image)
 		textures.append(ImageTexture.create_from_image(image))
@@ -140,7 +139,7 @@ func value(layer: Layer, channel: int, uv: Vector2) -> float:
 
 ## Uploads changed images to the GPU. Call once per frame.
 func flush() -> void:
-	for i in 2:
+	for i in Layer.size():
 		if _dirty[i]:
 			images[i].set_data(size, size, false, Image.FORMAT_RGBA8, _data[i])
 			textures[i].update(images[i])

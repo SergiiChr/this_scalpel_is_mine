@@ -81,7 +81,6 @@ func capture_view(key_frame: String) -> bool:
 	key_frame = "%02d_%s" % [_taken, key_frame]
 	_taken += 1
 	_hide_test_overlay(true)
-	_surgery.local_surgeon.camera().current = true
 	RenderingServer.render_loop_enabled = true
 	for i in 3:
 		await get_tree().process_frame
@@ -91,10 +90,6 @@ func capture_view(key_frame: String) -> bool:
 	RenderingServer.render_loop_enabled = false
 	_hide_test_overlay(false)
 	return ok
-
-
-func capture_player(key_frame: String) -> bool:
-	return await capture_view(key_frame)
 
 
 ## GUT draws its own panel over the game window; it isn't part of what's being looked at.

@@ -589,6 +589,8 @@ func player_threads(wound: Wound, layer: int) -> bool:
 		along = Vector2.RIGHT
 	var step := (absf(along.x) / body.tissue.res_x + absf(along.y) / body.tissue.res_y) * 1.5
 	var cell := absf(along.y) / body.tissue.res_x + absf(along.x) / body.tissue.res_y
+	# A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
+	# Exact multiples still finish with a bite across that endpoint, as the placement loop describes below.
 	var holes := floori(wound.length_uv() / step) + 2
 	var first := -1.0
 	for i in 16:
@@ -610,11 +612,9 @@ func player_threads(wound: Wound, layer: int) -> bool:
 		# approaching the point keeps both sides of the bite comfortably inside the arm's range.
 		await player_walks_to(at)
 		await player_reaches(at)
-		# A cross-body grip can put the hand at its reach limit even while the intended tip point looked close enough.
-		# Like a player noticing the miss, step around the table and aim again before committing the puncture.
 		if ((_tip(me.hands[me.active]) - at) * Vector3(1, 0, 1)).length() > 0.004:
-			await player_walks_to(at)
-			await player_reaches(at)
+			note("needle cannot reach intended puncture within 4 mm")
+			return false
 		use()
 		await seconds(0.2)
 		use(false)

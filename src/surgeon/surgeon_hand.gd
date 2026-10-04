@@ -218,6 +218,11 @@ func grip_transform() -> Transform3D:
 	return Transform3D(_tool_basis(lowered), global_position)
 
 
+## Contact position before the wrist returns to its carry angle on button release.
+func working_tip_position(tool_length: float) -> Vector3:
+	return global_position - _tool_basis(true).z * tool_length
+
+
 func _tool_basis(working: bool) -> Basis:
 	var yaw := (get_parent() as Node3D).global_rotation.y + turn
 	var pitch := tilt

@@ -502,8 +502,9 @@ func _physics_process(delta: float) -> void:
 			hands[i].level = 0
 			hands[i].grip = tool.def.grip if tool else "pencil"
 			hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
-			hands[i].tilt = hands[i].default_tilt()
-			hands[i].turn = hands[i].default_turn()
+			if tool and tool.def.grip == "needle":
+				hands[i].tilt = hands[i].default_tilt()
+				hands[i].turn = hands[i].default_turn()
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)

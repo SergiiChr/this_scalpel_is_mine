@@ -36,7 +36,7 @@ func test_running_suture_closes_a_forearm_cut() -> void:
 	assert_lt(driver.me.aim_point().distance_to(needle.tip_position()), 0.0001, "the horizontal pose keeps the aiming point on the sharp tip")
 	if shots:
 		driver.budget_paused = true
-		var saved := await shots.capture_player("needle_ready")
+		var saved := await shots.capture_view("needle_ready")
 		driver.budget_paused = false
 		driver.budget.resume()
 		assert_true(saved, "saved the loaded needle holder from the player's view")
@@ -48,6 +48,19 @@ func test_running_suture_closes_a_forearm_cut() -> void:
 	var live := drawn.get_node("Live") as MeshInstance3D
 	assert_true(live.mesh != null, "the newest hole has a live strand")
 	assert_true(live.get_aabb().grow(0.001).has_point(driver.body.site.to_local(needle.tip_position())), "the live strand ends at the needle tip")
+	# Sub-threshold moves must accumulate against the rendered endpoint, not disappear one frame at a time.
+	# These are thirty synthetic updates in one frame; don't count the assertion batch as a gameplay frame.
+	driver.budget_paused = true
+	var needle_pose := needle.global_transform
+	for frame in 30:
+		needle.global_position += Vector3.RIGHT * 0.0001
+		driver.body._update_sutures()
+		var live_path: PackedVector3Array = live.get_meta("path")
+		assert_lte(live_path[-1].distance_to(driver.body.site.to_local(needle.tip_position())), 0.00021, "slow movement keeps the strand within the redraw threshold")
+	needle.global_transform = needle_pose
+	driver.body._update_sutures()
+	driver.budget_paused = false
+	driver.budget.resume()
 	var routed := drawn.get_node("Routed") as MeshInstance3D
 	var loose_path: PackedVector3Array = (routed.get_meta("paths") as Array)[0]
 	var pressure := drawn.get_node("Pressure") as Node3D
@@ -76,6 +89,7 @@ func test_running_suture_closes_a_forearm_cut() -> void:
 	var seam := driver.body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, wound.midpoint())
 	assert_gt(seam, 0.06, "a tied wound keeps a visible incision line")
 	assert_lt(seam, 0.16, "the incision line is healed-looking rather than an open groove")
+	assert_gt(driver.body.wound_map.value(WoundMap.Layer.SEAMS, WoundMap.CLOSED_SEAM, wound.midpoint()), 0.9, "the sewn incision has an explicit seam mask independent of closure quality")
 	assert_true(patient.flags.has("neat_closure"), "a closed, tied off thread is a neat closure")
 	assert_true(live.mesh == null, "tying off releases the live end from the needle")
 	assert_true((drawn.get_node("StartKnot") as MeshInstance3D).mesh != null, "the tied thread keeps its starting knot")
@@ -166,16 +180,70 @@ func test_layered_closure_of_a_cut_into_the_belly() -> void:
 	var middle := wound.midpoint()
 	await driver.capture("cut")
 	await driver.player_requests_item("needle")
-	await driver.player_sews(wound, TissueSim.Depth.MUSCLE)
+	await _sew_deep_layer(wound, TissueSim.Depth.MUSCLE)
 	assert_false(tissue.muscle_open_near(middle, Patient.MUSCLE_REACH), "the muscle thread closes the muscle")
 	assert_false(driver.body.is_open(middle), "the sewn muscle closes the way into the belly")
-	await driver.player_sews(wound, TissueSim.Depth.FAT)
+	await _sew_deep_layer(wound, TissueSim.Depth.FAT)
 	assert_false(tissue.fat_open_near(middle, Patient.MUSCLE_REACH), "a thread through the fat closes it")
 	assert_eq(tissue.triangles(TissueSim.Depth.FAT).size(), whole_fat, "the fat layer shows no opening")
 	await driver.player_sews(wound, TissueSim.Depth.SKIN)
 	await driver.seconds(1.0)
 	assert_gt(wound.closure(), 0.99, "the skin closes over the sewn layers")
 	assert_lt(tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN), TissueSim.OPEN_GAP, "and its edges meet")
+	await _finish()
+
+
+func _sew_deep_layer(wound: Wound, layer: int) -> void:
+	assert_true(await driver.player_threads(wound, layer), "the horizontal needle reaches every deep puncture")
+	var needle := driver.me.held_tool(driver.me.active)
+	var root := driver.body.site.get_node("Sutures/Suture%d" % needle.suture_thread)
+	var routes: Array = root.get_node("Routed").get_meta("paths")
+	assert_false(routes.is_empty(), "the deep layer has exposed thread spans")
+	_assert_thread_stays_on_layer(routes, layer)
+	await driver.capture("%s_loose" % TissueSim.Depth.keys()[layer].to_lower())
+	await driver.player_pulls_thread("closed")
+	await driver.player_ties_off("%s_closed" % TissueSim.Depth.keys()[layer].to_lower())
+	_assert_thread_stays_on_layer(root.get_node("Routed").get_meta("paths"), layer)
+
+
+func _assert_thread_stays_on_layer(routes: Array, layer: int) -> void:
+	for path: PackedVector3Array in routes:
+		for i in range(1, path.size() - 1):
+			var uv := Vector2(path[i].x / driver.body.site_size.x + 0.5, path[i].z / driver.body.site_size.y + 0.5)
+			var surface := driver.body._suture_layer_height(uv, layer)
+			assert_gte(path[i].y, surface + PatientBody.SUTURE_RADIUS, "deep thread rests above its sewn layer")
+			assert_lt(path[i].y, surface + 0.002, "deep thread does not rise through the overlying tissue")
+
+
+func test_finished_suture_redraw_and_cancelled_press() -> void:
+	await _start("appendectomy", "finished_threads")
+	var needle := await driver.player_requests_item("needle")
+	driver.budget_paused = true
+	ToolActions._sew(needle, driver.patient, "site", Vector2(0.4, 0.4), true, true, false, 0.1, needle.tip_position())
+	ToolActions._sew(needle, driver.patient, "", Vector2.ZERO, true, false, true, 0.0, needle.tip_position())
+	assert_eq(needle.suture_thread, 0, "releasing off the patient cancels the pending puncture")
+	assert_true(driver.body.tissue.thread_ids().is_empty(), "a cancelled press makes no hole")
+	var tissue := driver.body.tissue
+	SurgeryState.skin_has_finished_threads(driver.patient, 12, 100)
+	driver.body._update_sutures()
+	var knots: Array[Mesh] = []
+	for id in range(100, 112):
+		knots.append((driver.body.site.get_node("Sutures/Suture%d/StartKnot" % id) as MeshInstance3D).mesh)
+	var worst := 0
+	for frame in 60:
+		# A sim step elsewhere must not invalidate the meshes of unchanged punctures.
+		tissue.steps_done += 1
+		var start := Time.get_ticks_usec()
+		driver.body._update_sutures()
+		worst = maxi(worst, Time.get_ticks_usec() - start)
+	for id in range(100, 112):
+		assert_eq((driver.body.site.get_node("Sutures/Suture%d/StartKnot" % id) as MeshInstance3D).mesh, knots[id - 100], "stationary tied knots are not rebuilt by unrelated tissue steps")
+	assert_lt(worst, 16000, "twelve finished threads fit the 16 ms update budget (worst %d us)" % worst)
+	gut.p("twelve finished sutures: worst renderer update %.2f ms" % (worst / 1000.0))
+	# Also exercise the normal solver/render loop with all twelve finished threads present.
+	driver.budget_paused = false
+	driver.budget.resume()
+	await driver.seconds(1.0)
 	await _finish()
 
 

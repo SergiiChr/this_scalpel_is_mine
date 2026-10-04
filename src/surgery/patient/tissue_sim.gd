@@ -70,6 +70,8 @@ const ITERATIONS := 4
 ## Extra solver passes over the stitches each iteration. Thread is far stiffer than skin: solved as often as the
 ## skin, a stitch would give way to the stretched skin around it and the edges would never meet.
 const STITCH_PASSES := 3
+## Global intact-tissue elasticity, independent of suture tear-through (THREAD_TEAR). A gentle 5 cm pull stretches
+## intact skin; the hard 8 cm pull still tears it. Scalpel cuts sever springs directly, without this threshold.
 const TISSUE_BREAK := 3.0
 ## One stitch pulls together every cut spring this close to it (meters, at rest): a stitch closes a few millimeters
 ## of the cut, however fine the grid.

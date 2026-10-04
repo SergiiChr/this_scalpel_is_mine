@@ -898,12 +898,12 @@ func _tie_off(wound: Wound, crossings: PackedVector2Array, bins: PackedInt32Arra
 		_tissue_stitch.rpc(crossing, 0.98, THREAD_STRENGTH[layer])
 	_tissue_stitch_path.rpc(path, Wound.BIN_LENGTH_UV * 1.2, 1.0, THREAD_STRENGTH[layer])
 	# Meeting edges squeeze the broad wet groove and blood out, but a narrow pink incision line remains under the
-	# thread. The low stitch-channel value reveals that line on simulated skin without rendering it as more thread.
+	# thread. A separate seam mask reveals that line without overloading closure quality in the stitch channel.
 	for i in path.size():
 		var previous := path[maxi(i - 1, 0)]
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, previous, path[i], 0.012, 0.0, WoundMap.Mode.MIN)
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, previous, path[i], 0.004, 0.09, WoundMap.Mode.MAX)
-		paint(WoundMap.Layer.WOUNDS, WoundMap.STITCH, previous, path[i], 0.0045, WoundMap.CLOSED_SEAM, WoundMap.Mode.MAX)
+		paint(WoundMap.Layer.SEAMS, WoundMap.CLOSED_SEAM, previous, path[i], 0.0045, 1.0, WoundMap.Mode.MAX)
 		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, previous, path[i], 0.026, 1.0, WoundMap.Mode.SUB)
 	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.5)
 	if wound.closure() >= 0.99 and wound.closure_quality > 0.9:

@@ -245,6 +245,8 @@ func _update_sutures() -> void:
 		_suture_steps = tissue.steps_done
 		_suture_topology = tissue.topology_version
 	for id: int in tissue.thread_ids():
+		if not tissue_changed and _suture_drawn.has(id) and bool(_suture_drawn[id].final):
+			continue
 		var info := tissue.thread_info(id)
 		var layer: int = info.layer
 		var layer_depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer - 1]
@@ -282,7 +284,7 @@ func _update_sutures() -> void:
 				if live[i - 1] == 0 or i % 2 == 0:
 					continue
 				var spring: int = info.springs[i - 1]
-				routes.append(_suture_cable_path(holes[i - 1], holes[i], tissue.c_rest[spring], layer == TissueSim.Depth.SKIN))
+				routes.append(_suture_cable_path(holes[i - 1], holes[i], tissue.c_rest[spring], layer))
 			_suture_routes(thread_root, routes)
 		var tip := Vector3.INF
 		if not bool(info.final) and Surgery.current and Surgery.current.tools:
@@ -292,10 +294,13 @@ func _update_sutures() -> void:
 		var old_tip: Vector3 = drawn.tip
 		var tip_changed := (tip == Vector3.INF) != (old_tip == Vector3.INF) \
 				or tip != Vector3.INF and tip.distance_squared_to(old_tip) > 0.0002 * 0.0002
-		if tip_changed or moved[-1] == 1:
-			_suture_named(thread_root, "Live", _live_suture_path(holes[-1], tip, slack))
+		if tip_changed or moved[-1] == 1 or retension:
+			_suture_named(thread_root, "Live", _live_suture_path(holes[-1], tip, slack, layer))
+		else:
+			# Compare subsequent movement against the endpoint actually in the mesh, not the previous frame.
+			tip = old_tip
 		var tied := bool(info.final) and live.has(1)
-		var terminals_changed := tissue_changed or moved.has(1) or bool(drawn.final) != bool(info.final)
+		var terminals_changed := moved.has(1) or was_live != live or bool(drawn.final) != bool(info.final)
 		if terminals_changed:
 			var routed := holes.size() > 1 and live.has(1)
 			_suture_named(thread_root, "StartKnot", _suture_terminal_knot(holes[0], holes[1] - holes[0], -1.0) if routed else PackedVector3Array())
@@ -306,8 +311,8 @@ func _update_sutures() -> void:
 
 
 ## A cable between fixed ends at equilibrium. Its arc length comes from the simulated thread spring; gravity gives a
-## free strand its sag, while an exposed stitch settles sideways onto the skin and is kept one radius above it.
-func _suture_cable_path(from: Vector3, to: Vector3, paid_length: float, on_skin: bool) -> PackedVector3Array:
+## free strand its sag, while an exposed stitch settles sideways onto its sewn layer, one radius above it.
+func _suture_cable_path(from: Vector3, to: Vector3, paid_length: float, layer: int, free_end: bool = false) -> PackedVector3Array:
 	var path := PackedVector3Array()
 	var delta := to - from
 	var chord := delta.length()
@@ -321,8 +326,8 @@ func _suture_cable_path(from: Vector3, to: Vector3, paid_length: float, on_skin:
 	var sag_direction := (local_gravity - along * local_gravity.dot(along)).normalized()
 	if sag_direction == Vector3.ZERO:
 		sag_direction = along.cross(Vector3.UP).normalized()
-	if on_skin:
-		# Gravity presses the cable into the body. Once supported, its spare length lies in the tangent plane instead of
+	if not free_end:
+		# Gravity presses the cable into its layer. Once supported, its spare length lies in the tangent plane instead of
 		# forming the arbitrary airborne arches the old renderer used.
 		sag_direction = Vector3(sag_direction.x, 0.0, sag_direction.z).normalized()
 		if sag_direction == Vector3.ZERO:
@@ -332,20 +337,37 @@ func _suture_cable_path(from: Vector3, to: Vector3, paid_length: float, on_skin:
 		var p := from.lerp(to, t) + sag_direction * sag * 4.0 * t * (1.0 - t)
 		if sample > 0 and sample < SUTURE_SAMPLES - 1:
 			var uv := Vector2(p.x / site_size.x + 0.5, p.z / site_size.y + 0.5)
-			if on_skin or Rect2(Vector2.ZERO, Vector2.ONE).has_point(uv):
-				p.y = maxf(p.y, skin_height(uv) + SUTURE_RADIUS * 1.15)
-		elif on_skin:
+			if Rect2(Vector2.ZERO, Vector2.ONE).has_point(uv):
+				var height := skin_height(uv) if layer == TissueSim.Depth.SKIN else _suture_layer_height(uv, layer)
+				p.y = maxf(p.y, height + SUTURE_RADIUS * 1.15)
+		elif not free_end:
 			p -= Vector3.UP * SUTURE_ENTRY_DEPTH
 		path.append(p)
 	return path
 
 
+## Deep cables rest on their own drawn layer, not on the skin covering it. Interpolate the same grid used by its mesh.
+func _suture_layer_height(uv: Vector2, layer: int) -> float:
+	var grid := uv.clamp(Vector2.ZERO, Vector2.ONE) * Vector2(tissue.res_x, tissue.res_y)
+	var cell := Vector2i(mini(int(grid.x), tissue.res_x - 1), mini(int(grid.y), tissue.res_y - 1))
+	var f := grid - Vector2(cell)
+	var a := layer_point(layer - 1, tissue.index(cell.x, cell.y)).y
+	var b := layer_point(layer - 1, tissue.index(cell.x + 1, cell.y)).y
+	var c := layer_point(layer - 1, tissue.index(cell.x, cell.y + 1)).y
+	var d := layer_point(layer - 1, tissue.index(cell.x + 1, cell.y + 1)).y
+	var depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer - 1]
+	# The layer mesh uses the b-c diagonal rather than a bilinear patch.
+	var height := a + (b - a) * f.x + (c - a) * f.y if f.x + f.y <= 1.0 \
+			else d + (c - d) * (1.0 - f.x) + (b - d) * (1.0 - f.y)
+	return height - depth
+
+
 ## The free strand pays out from its newest puncture, sags under gravity and ends exactly at the moving needle tip.
-func _live_suture_path(hole: Vector3, tip: Vector3, slack: float) -> PackedVector3Array:
+func _live_suture_path(hole: Vector3, tip: Vector3, slack: float, layer: int) -> PackedVector3Array:
 	if tip == Vector3.INF:
 		return PackedVector3Array()
 	var distance := hole.distance_to(tip)
-	var path := _suture_cable_path(hole, tip, distance * lerpf(1.02, 1.15, slack), false)
+	var path := _suture_cable_path(hole, tip, distance * lerpf(1.02, 1.15, slack), layer, true)
 	# Unlike both puncture ends of an exposed span, the needle end must meet the metal tip exactly.
 	if not path.is_empty():
 		path[0] -= Vector3.UP * SUTURE_ENTRY_DEPTH
@@ -816,6 +838,7 @@ func _build_site(tone: Color, model: Node3D) -> void:
 	_region_image = Image.create(tissue.res_x + 1, tissue.res_y + 1, false, Image.FORMAT_L8)
 	region_texture = ImageTexture.create_from_image(_region_image)
 	skin_material = Materials.skin_site(tone, wound_map.textures[0], wound_map.textures[1])
+	skin_material.set_shader_parameter("seam_map", wound_map.textures[WoundMap.Layer.SEAMS])
 	for i in 3:
 		var layer := MeshInstance3D.new()
 		layer.name = ["Skin", "Fat", "Muscle"][i]
