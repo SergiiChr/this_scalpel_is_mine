@@ -280,7 +280,10 @@ func _clear_spot() -> Vector3:
 func _aim_point(target: String) -> Vector3:
 	var body := surgery.patient.body
 	match target:
-		"vial", "dish", "drip":
+		"vial":
+			# A needle goes into a vial through its cap.
+			return container.tip_position()
+		"dish", "drip":
 			return ToolManager.middle(container)
 		"vein":
 			return vein_point()

@@ -470,7 +470,8 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 		syringe = await player_requests_item(size)
 	if syringe == null:
 		return
-	await _needle_into(ToolManager.middle(vial), false)
+	# In through the cap at the vial's tip.
+	await _needle_into(vial.tip_position(), false)
 	var into: String = ToolActions.needle_target(syringe, patient).kind
 	for i in ceili(ml):
 		await notch(false)

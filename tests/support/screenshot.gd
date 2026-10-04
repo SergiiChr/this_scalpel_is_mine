@@ -356,6 +356,7 @@ func _syringe(out: String, only: String) -> void:
 			# Aimed zoomed in, the hands see-through and the camera at the eyes. Then Use tool puts the needle in and the
 			# needle view frames it (the patient and surgeon cases are only shown with it in).
 			await bench.release()
+			me.zoom = Surgeon.ZOOM_FOV.size() - 1
 			await bench.frames(40)
 			await _shot(out, "40_%s_0_aimed" % case.name)
 			await bench.press()

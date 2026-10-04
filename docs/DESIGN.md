@@ -327,7 +327,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture). And
   the Gelpi retractor: up opens it, down closes it (see Gelpi retractor).
-- **Contextual aim**: a dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
+- **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
+  accurate at any angle (`Surgeon.aim_point()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
   retractor's tips. The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
   turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -352,9 +353,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
-- **Snapping to a vial**: a syringe whose tip passes over a vial snaps its needle into the vial's top, held upright,
-  before Use tool is pressed. It lets go a little further out than it snaps in, so passing over doesn't hold it for
-  long. Snapping in and out (onto the IV bag too) eases over 0.2 s, the needle gliding over rather than jumping.
+- **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
+  vial (down into one standing, level into one lying), before Use tool is pressed. A vial with its cap down, or lying
+  with the cap turned away, can't be lined up. It lets go a little further out than it snaps in, so passing over doesn't hold it for
+  long. Snapping in and out (onto the IV bag too) eases over 0.25 s, the needle gliding over rather than jumping.
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
@@ -377,11 +379,14 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
   out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
   let go.
-- **Held facing you**: picked up, a syringe sits in the hand with its printed scale turned toward the eyes, on the
-  inner side of the hand (left of the right hand, right of the left), so it doesn't need turning to be read. Moved
+- **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
+  its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand._reach_plunger()`). It points a
+  little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
+  the eyes, so it doesn't need turning to be read. Let go, the hand holds things the way it did before. Moved
   about, it keeps turning the scale to the eyes, so C/V don't roll it (and the controls shown leave them out).
 - **Needle view**: the last zoom step with a syringe or IV catheter in hand fades the hands to see through, so the
   needle and where it goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
+  Use tool with a syringe zooms all the way in on its own and back out when let go.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
   beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe
   about its length so the printed scale faces the camera. There the mouse moves the hand as seen from the camera:

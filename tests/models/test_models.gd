@@ -75,6 +75,16 @@ func _hand_turn(holder: Node3D, hand_index: int) -> void:
 		hand.fit = Db.grip_fit(def, hand_index)
 		for at: Vector3 in [Vector3(0.17, 1.05, -0.42), Vector3(0.4, 0.95, -0.3), Vector3(0.05, 0.9, -0.5), Vector3(0.25, 1.2, -0.3)]:
 			hand.target = Vector3(at.x * side, at.y, at.z)
+			if grip == "syringe":
+				# A syringe is held its own way (Surgeon._face_syringe()): pointing in, its scale to the eyes.
+				hand.tilt = Surgeon.SYRINGE_TILT
+				hand.turn = Surgeon.SYRINGE_TURN * side
+				hand.global_position = hand.target
+				hand.twist = hand.twist_facing(Vector3(0.0, Surgeon.EYE_HEIGHT, 0.0) - hand.target)
+			else:
+				hand.tilt = SurgeonHand.REST_TILT
+				hand.turn = 0.0
+				hand.twist = 0.0
 			hand.snap_pose(GripCheck.shoulder(hand))
 			var back := hand._glove.global_basis.y.normalized()
 			var facing := back.dot(outward) if grip == "fist" else back.dot(Vector3.UP)

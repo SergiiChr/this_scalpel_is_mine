@@ -17,6 +17,7 @@ func test_syringe_iv_and_plunger_cases() -> void:
 	await bench.start()
 	bench.surgery.surgeon_dosed.connect(func(peer: int, drug: String, amount: float) -> void: doses.append([peer, drug, amount]))
 	await _control_checks()
+	await _thumb_checks()
 	var only := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--case="):
@@ -90,6 +91,25 @@ func _control_checks() -> void:
 	me.zoom = 0
 	await bench.frames(40)
 	_check(_fade(hand) == 0.0, "zooming out makes the hands solid")
+
+
+## Y3b: the syringe is held with the thumb on the plunger: drawing 8 ml pulls the plunger out and the thumb goes back
+## with it, staying on its press.
+func _thumb_checks() -> void:
+	await bench.stage(Bench.CASES[0])
+	var me := bench.surgery.local_surgeon
+	var hand := me.hands[me.active]
+	var gaps: Array[float] = []
+	for pull in [0, 8]:
+		for i in pull:
+			await bench.notch(true)
+		await bench.frames(5)
+		var skeleton := hand._glove_rig.skeleton
+		var thumb := skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("Thumb3")).origin
+		var press := bench.syringe.global_transform * Vector3(0.0, 0.0, hand.press)
+		gaps.append(thumb.distance_to(press))
+	var travel := bench.syringe.def.length * Surgeon.SYRINGE_TRAVEL * 0.8
+	_check(gaps.all(func(gap: float) -> bool: return gap < 0.035), "the thumb stays on the plunger's press as it pulls out %.1f cm (%.1f and %.1f cm from it)" % [travel * 100.0, gaps[0] * 100.0, gaps[1] * 100.0])
 
 
 ## Y4-Y10: one case, checked after every notch and once the needle is out.
@@ -330,7 +350,7 @@ func _run_status(status: SurgeonStatus, seconds: float, events: PackedStringArra
 ## Y20-Y22: a syringe swept over a vial snaps smoothly into its top and lets go soon after; zoomed in, a mouse move
 ## takes the hand as far across the screen as it does zoomed out; in the needle view the mouse moves the hand as seen on
 ## screen; a needle pressed into the skin keeps its tip in place, the mouse tilting the syringe about it, and tears out
-## when pulled on sideways; a syringe brought to the IV bag from waist height snaps its needle into the middle of the
+## when pulled on sideways; the aim shows where the needle goes in at any angle; a syringe brought to the IV bag from waist height snaps its needle into the middle of the
 ## bag from the hand's side, and moved on, comes out of it.
 func _hand_checks() -> void:
 	print("--- needle_hand")
@@ -385,7 +405,10 @@ func _hand_checks() -> void:
 	var scratch := body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(bench.syringe.tip_position()))
 	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch (%.2f)" % scratch)
 	await bench.withdraw()
+	await _aim_lands(me, hand)
 	await bench.stage(Bench.CASES[13])
+	# Use tool up: brought over from waist height.
+	await bench.release()
 	var bag := bench.surgery.tools.drip_bag()
 	hand.local_target = me.to_local(me.global_position + me.global_basis * Vector3(0.1, 1.0, -0.2))
 	await bench.frames(20)
@@ -398,9 +421,10 @@ func _hand_checks() -> void:
 		await bench.frames(1)
 	await bench.frames(15)
 	var off := bench.syringe.tip_position().distance_to(ToolManager.middle(bag))
-	var level := absf(bench.syringe.global_basis.z.normalized().dot(Vector3.UP))
+	# Pointing a little up into it: how far the tip end (-Z) rises.
+	var rise := (-bench.syringe.global_basis.z.normalized()).dot(Vector3.UP)
 	var side := ((hand.global_position - ToolManager.middle(bag)) * Vector3(1, 0, 1)).dot(me.to_global(hand.local_target) - ToolManager.middle(bag))
-	_check(bench.needle_target().get("container") == bag and off < 0.005 and level < 0.25 and side > 0.0, "needle_hand: a syringe brought to the IV bag from waist height snaps its needle about level into the middle of the bag, from the hand's side (%.1f cm off, %.2f off level, hand at %.2f m)" % [off * 100.0, level, hand.global_position.y])
+	_check(bench.needle_target().get("container") == bag and off < 0.005 and absf(rise - sin(Surgeon.DRIP_TILT)) < 0.05 and side > 0.0, "needle_hand: a syringe brought to the IV bag from waist height snaps its needle a little upward into the middle of the bag, from the hand's side (%.1f cm off, rising %.2f, hand at %.2f m)" % [off * 100.0, rise, hand.global_position.y])
 	for i in 10:
 		me.steer_hand(Vector2(0, 30))
 		await bench.frames(1)
@@ -408,15 +432,15 @@ func _hand_checks() -> void:
 	_check(bench.needle_target().get("container") != bag and is_equal_approx(hand.tilt, own_tilt), "needle_hand: moved on from the bag, the needle comes out of it and the hand holds the syringe as before (%.2f m from its middle)" % bench.syringe.tip_position().distance_to(ToolManager.middle(bag)))
 
 
-## A syringe swept over a vial on the tray at a steady 0.15 m/s, Use tool up: its needle snaps into the top of the vial,
-## upright, without jumping (no frame moves the tip more than 1 cm), and lets go again soon after the hand passes it,
+## A syringe swept over a vial's cap on the tray at a steady 0.15 m/s, Use tool up: its needle snaps in through the cap
+## along the vial (it lies on its side here), without jumping (no frame moves the tip more than 1 cm), and lets go again soon after the hand passes it,
 ## the hand holding the syringe as before.
 func _sweep_over_vial(me: Surgeon, hand: SurgeonHand) -> void:
 	var length := bench.syringe.def.length
-	var middle := ToolManager.middle(bench.container)
-	var top := (bench.container.global_transform * bench.container.bounds).end.y
+	var cap := bench.container.tip_position()
+	var along := (bench.container.global_position - cap).normalized()
 	var across := me.global_basis.x
-	var start := middle - across * 0.12
+	var start := cap - across * 0.12
 	# Off the vial first, so the hand holds the syringe its own way again.
 	hand.local_target = me.to_local(me.to_global(hand.local_target) - across * 0.12)
 	await bench.frames(40)
@@ -429,21 +453,40 @@ func _sweep_over_vial(me: Surgeon, hand: SurgeonHand) -> void:
 	var snapped := 0
 	var frames := int(0.24 / 0.15 * 60.0)
 	for i in frames:
-		var tip := start.lerp(middle + across * 0.12, float(i + 1) / frames)
+		var tip := start.lerp(cap + across * 0.12, float(i + 1) / frames)
 		free = tip - hand.tip_offset_at(length, own.x, own.y)
 		hand.local_target = me.to_local(Vector3(free.x, me.to_global(hand.local_target).y, free.z))
 		await bench.frames(1)
 		var now := bench.syringe.tip_position()
 		jump = maxf(jump, now.distance_to(last))
 		last = now
-		var upright := absf(bench.syringe.global_basis.z.normalized().dot(Vector3.UP)) > 0.97
-		if upright and Vector2(now.x - middle.x, now.z - middle.z).length() < 0.003 and absf(now.y - top) < 0.01:
+		# The syringe's tip end (-Z) points along the vial, into it.
+		var lengthwise := (-bench.syringe.global_basis.z.normalized()).dot(along) > 0.97
+		if lengthwise and now.distance_to(cap) < 0.006:
 			snapped += 1
-	_check(snapped > 0, "needle_hand: swept over a vial, the needle snaps upright into its top")
+	_check(snapped > 0, "needle_hand: swept over a vial's cap, the needle snaps in through it along the vial")
 	_check(jump < 0.01, "needle_hand: snapping in and out, the needle moves smoothly (largest step %.1f mm a frame)" % (jump * 1000.0))
 	_check(snapped < 40, "needle_hand: swept past at 0.15 m/s, the needle holds on the vial only briefly (%d frames)" % snapped)
 	await bench.frames(20)
 	_check(bench.needle_target().get("container") != bench.container and is_equal_approx(hand.tilt, own.x), "needle_hand: past the vial, the needle is out of it and the hand holds the syringe as before")
+
+
+## Held over the skin at a shallow and a steep angle (turned with Aim tool), the aim shows where the needle goes in:
+## Use tool puts its tip right there.
+func _aim_lands(me: Surgeon, hand: SurgeonHand) -> void:
+	await bench.stage(Bench.CASES[6])
+	await bench.release()
+	for tilt: float in [-0.4, -1.3]:
+		me.aim_tool(Vector2(0.0, (hand.tilt - tilt) / Surgeon.AIM_SENSITIVITY))
+		await bench.frames(20)
+		var aim := me.aim_point()
+		await bench.press()
+		await bench.frames(20)
+		var tip := bench.syringe.tip_position()
+		var across := Vector2(tip.x - aim.x, tip.z - aim.z).length()
+		_check(across < 0.002 and absf(tip.y - aim.y) < 0.006, "needle_hand: held at tilt %.1f, the needle goes in where the aim shows (%.1f mm across, %.1f mm down)" % [tilt, across * 1000.0, (aim.y - tip.y) * 1000.0])
+		await bench.release()
+		await bench.frames(10)
 
 
 ## The liquid, air and plunger shown match what's in it exactly, against the full Level part (the graduation).
