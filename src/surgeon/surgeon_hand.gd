@@ -262,6 +262,12 @@ func tip_offset(tool_length: float) -> Vector3:
 	return grip_transform().basis * Vector3(0, 0, -tool_length)
 
 
+## Where the tip of a tool this long would be from the hand if it held the tool at these angles (twist doesn't move it).
+func tip_offset_at(tool_length: float, at_tilt: float, at_turn: float) -> Vector3:
+	var yaw := (get_parent() as Node3D).global_rotation.y + at_turn
+	return Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, at_tilt) * Vector3(0, 0, -tool_length)
+
+
 func update_pose(shoulder: Vector3, delta: float) -> void:
 	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * 0.8)
 	global_position = effective_position()

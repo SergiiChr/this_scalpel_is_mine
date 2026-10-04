@@ -499,10 +499,10 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 ## rests in a vial or bag.
 func _needle_into(point: Vector3, pressed: bool) -> void:
 	var hand := me.hands[me.active]
-	var tool := me.held_tool(me.active)
 	await player_walks_to(point)
 	for i in 40:
-		hand.local_target = me.to_local(point - hand.tip_offset(tool.def.length) + Vector3.UP * 0.04)
+		# Aimed the hand's own way: a vial or the bag it's over snaps the needle in.
+		hand.local_target = me.to_local(point - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
 		await get_tree().physics_frame
 	if pressed:
 		use()

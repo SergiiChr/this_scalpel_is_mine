@@ -305,8 +305,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Walking into the line at full speed rips it out and the catheter drops on the floor at the walker's feet (soiled,
   wash and sanitize it to use it again); crouch-walking steps over it.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
-  A hand with a syringe brought over the bag snaps the needle into the bag's middle, level and straight into its face
-  (`Surgeon._snap_to_drip()`); moved on, it comes out and the hand holds the syringe as before. While the needle is in: push a drug in and it runs down the line once the needle is out, if the
+  A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
+  and a little upward, the way the forearm rises to it (`Surgeon._snap_spot()`); moved on, it comes out and the hand
+  holds the syringe as before. While it's in: push a drug in and it runs down the line once the needle is out, if the
   line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
@@ -351,6 +352,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
+- **Snapping to a vial**: a syringe whose tip passes over a vial snaps its needle into the vial's top, held upright,
+  before Use tool is pressed. It lets go a little further out than it snaps in, so passing over doesn't hold it for
+  long. Snapping in and out (onto the IV bag too) eases over 0.2 s, the needle gliding over rather than jumping.
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
@@ -374,13 +378,15 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
   let go.
 - **Held facing you**: picked up, a syringe sits in the hand with its printed scale turned toward the eyes, on the
-  inner side of the hand (left of the right hand, right of the left), so it doesn't need turning to be read.
+  inner side of the hand (left of the right hand, right of the left), so it doesn't need turning to be read. Moved
+  about, it keeps turning the scale to the eyes.
 - **Needle view**: the last zoom step with a syringe or IV catheter in hand fades the hands to see through, so the
   needle and where it goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
   beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe
   about its length so the printed scale faces the camera. There the mouse moves the hand as seen from the camera:
-  right on screen is right, up is away from it. Use tool let go, the camera goes back and the syringe rolls back.
+  right on screen is right, up is away from it. Use tool let go, the camera goes back and the scale turns back to the
+  eyes.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.

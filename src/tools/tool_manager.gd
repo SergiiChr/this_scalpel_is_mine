@@ -8,7 +8,7 @@ const GRAB_RADIUS := 0.09
 ## Everyone but the host sees iodine levels in steps this fine (syringes, vials and the kidney dish are exact).
 const FILL_STEPS := 50.0
 ## How close a syringe's needle has to be to a vial's middle to be in it, or to a dish's or hung bag's (a share of
-## its length). A syringe brought to the hung bag snaps its needle into the bag's middle (see Surgeon._snap_to_drip()).
+## its length). A syringe brought over a vial or the hung bag snaps its needle into it (see Surgeon._snap_spot()).
 const VIAL_REACH := 0.05
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75

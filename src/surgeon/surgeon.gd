@@ -61,9 +61,18 @@ const NEEDLE_DRAG := 0.2
 const NEEDLE_TEAR := 0.015
 ## Seconds Use tool is held before the needle counts as in: the hand comes down onto the skin first.
 const NEEDLE_SETTLE := 0.1
-## A hand with a syringe brought this close (meters, across the floor) to the middle of the IV bag on the stand snaps
-## the needle into it (see _snap_to_drip()).
+## A syringe whose tip comes this close (meters, across the floor) to the middle of the IV bag on the stand, or of a
+## vial, snaps its needle into it; it lets go this much further out (see _snap_spot()). Snapping in or out takes this
+## long (seconds).
 const DRIP_SNAP := 0.12
+const VIAL_SNAP := 0.03
+const UNSNAP_MARGIN := 0.015
+const SNAP_TIME := 0.2
+## A syringe snapped into the IV bag points this far up (radians): the bag hangs high and the forearm rises to it, so
+## level or lower the wrist would bend back.
+const DRIP_TILT := 0.2
+## Fastest a syringe's hand rises or sinks to follow what's under it (m/s): it glides over a vial's edge, not hops.
+const SYRINGE_GLIDE := 0.45
 const SYNC_INTERVAL := 1.0 / 30.0
 const BUMP_DISTANCE := 0.07
 const SWITCH_DELAY := 0.25
@@ -129,8 +138,10 @@ var _needle_torn := false
 var _needle_pressed := 0.0
 ## The hand the needle view leaves solid: the one the needle is going into (-1: none).
 var _solid_hand := -1
-## Each hand's own tool angles (tilt, turn) while its needle is snapped into the IV bag, to give back after.
-var _unsnapped: Dictionary = {}
+## Hands whose syringe is snapped into a vial or the IV bag, or easing in or out: hand index -> {"own": the hand's own
+## tilt and turn, to give back after, "weight": how far snapped (0..1), "on": still over it, and where it snaps to,
+## as _snap_spot() gives it}.
+var _snaps: Dictionary = {}
 ## Each hand's own twist while it holds a syringe turned to face the eyes, to give back after.
 var _unfaced: Dictionary = {}
 
@@ -518,13 +529,18 @@ func _physics_process(delta: float) -> void:
 				hands[i].turn = hands[i].default_turn()
 			if is_local:
 				_face_syringe(i, tool)
+		if is_local and _unfaced.has(i) and _rolled_hand != i:
+			# Moved about, it keeps turning its scale to the eyes.
+			var facing := hands[i].twist_facing(_camera.global_position - hands[i].global_position)
+			hands[i].twist = lerp_angle(hands[i].twist, facing, minf(delta * 8.0, 1.0))
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
 	_stain_scrubs(delta)
 
 
 ## Picked up, a syringe sits in the hand with its printed scale toward the eyes, on the inner side of the hand, so it
-## doesn't need turning to be read. `tool`: what the hand now holds.
+## doesn't need turning to be read (and keeps it there while held, see _physics_process()). `tool`: what the hand now
+## holds.
 func _face_syringe(hand: int, tool: SurgicalTool) -> void:
 	_unface(hand)
 	if tool and tool.def.action == "syringe":
@@ -666,7 +682,16 @@ func _local_update(delta: float) -> void:
 		if not h.attached:
 			h.target = to_global(h.local_target)
 		_strain[i] = h.attached and h.target.distance_to(shoulder(i)) > REACH + 0.06
+		var was := h.target.y
+		var snap := _ease_snap(h, tool, delta)
 		_constrain(h)
+		if tool and tool.def.action == "syringe":
+			h.target.y = move_toward(was, h.target.y, SYRINGE_GLIDE * delta)
+			if not h.attached:
+				h.local_target = to_local(h.target)
+		if not snap.is_empty():
+			# The hand's own spot (local_target) stays where the mouse put it: moving on from there pulls it out again.
+			h.target = h.target.lerp(snap.at - h.tip_offset(tool.def.length), snap.weight)
 		var amount := status.tremor_amount() if i == active or mods.mult("switch_delay_mult") > 0.0 else 0.0
 		var t := Time.get_ticks_msec() * 0.001
 		h.tremor = Vector3(sin(t * 23.0 + i), sin(t * 31.0 + 2.0 * i), cos(t * 19.0 + i)) * amount + _jolt
@@ -772,8 +797,6 @@ func _constrain(hand: SurgeonHand) -> void:
 	var tool := held_tool(hand.index)
 	var offset := hand.tip_offset(tool.def.length) if tool else Vector3(0, -0.03, 0)
 	var from := shoulder(hand.index)
-	if not hand.attached and _snap_to_drip(hand, tool):
-		return
 	# A hand holding onto something keeps its height; Lift pulls it up (see _local_update()).
 	var surface := {"y": -INF} if hand.attached else _surface_below(hand.target + offset)
 	if tool and tool.def.action in NEEDLE_ACTIONS and not hand.attached:
@@ -823,32 +846,79 @@ func _constrain(hand: SurgeonHand) -> void:
 		hand.local_target = to_local(hand.target)
 
 
-## A syringe brought over the bag hanging on the IV stand (the hand within DRIP_SNAP of its middle, across the floor)
-## snaps its needle into the middle of the bag, level and straight into the face turned to this surgeon. The hand's own
-## spot stays where the mouse put it (at the bag's height), so moving on from there pulls the needle out again, and the
-## hand gets its own angles back (also once it lets go of the syringe). False when the hand isn't snapped.
-func _snap_to_drip(hand: SurgeonHand, tool: SurgicalTool) -> bool:
+## How far from the hand its tool's tip is at the hand's own angles, as if nothing snapped it anywhere (_ease_snap()):
+## where the mouse aims it.
+func own_tip_offset(hand: int) -> Vector3:
+	var tool := held_tool(hand)
+	var own: Vector2 = _snaps.get(hand, {}).get("own", Vector2(hands[hand].tilt, hands[hand].turn))
+	return hands[hand].tip_offset_at(tool.def.length if tool else 0.05, own.x, own.y)
+
+
+## Eases a hand's syringe into the vial or IV bag it's over (_snap_spot()), or back out: the hand turns the syringe from
+## its own angles toward the snapped ones as it goes. Returns {"at": where the needle tip goes, "weight": how far (0..1)
+## to move the hand there from its own spot}, or {} when it isn't snapped at all. Let go of, the hand gets its angles
+## back at once.
+func _ease_snap(hand: SurgeonHand, tool: SurgicalTool, delta: float) -> Dictionary:
+	var state: Dictionary = _snaps.get(hand.index, {})
+	var own: Vector2 = state.get("own", Vector2(hand.tilt, hand.turn))
+	var spot := _snap_spot(hand, tool, own, state.get("on", false)) if tool else {}
+	var weight := move_toward(float(state.get("weight", 0.0)), 1.0 if not spot.is_empty() else 0.0, delta / SNAP_TIME)
+	if tool == null or weight <= 0.0:
+		if not state.is_empty():
+			hand.tilt = own.x
+			hand.turn = own.y
+			_snaps.erase(hand.index)
+		return {}
+	if not spot.is_empty():
+		# From one vial straight to the next, the needle glides over rather than jumps.
+		var from: Vector3 = state.get("at", spot.at)
+		state.merge(spot, true)
+		state.at = from.lerp(spot.at, minf(delta / SNAP_TIME, 1.0))
+	state.own = own
+	state.weight = weight
+	state.on = not spot.is_empty()
+	_snaps[hand.index] = state
+	var eased := smoothstep(0.0, 1.0, weight)
+	hand.tilt = lerpf(own.x, state.tilt, eased)
+	hand.turn = lerp_angle(own.y, state.turn, eased)
+	return {"at": state.at, "weight": eased}
+
+
+## Where a syringe held at its own angles (`own`: tilt, turn) snaps to, before Use tool is pressed and after:
+## {"at": the needle tip, "tilt", "turn"}, or {} when it's over nothing to snap to (or that's out of reach).
+## Its tip over a vial (within VIAL_SNAP across the floor), the needle goes into the top of it, the syringe upright.
+## Over the IV bag (within DRIP_SNAP of its middle), it goes into the middle of the bag's face on the hand's side, a
+## little upward (DRIP_TILT).
+## Already snapped (`held`), it lets go only UNSNAP_MARGIN further out, so passing over doesn't hold it for long.
+func _snap_spot(hand: SurgeonHand, tool: SurgicalTool, own: Vector2, held: bool) -> Dictionary:
+	if tool.def.action != "syringe" or hand.attached:
+		return {}
+	var tip := hand.target + own_tip_offset(hand.index)
+	var margin := UNSNAP_MARGIN if held else 0.0
+	var spot := {}
+	var nearest := VIAL_SNAP + margin
+	for vial: SurgicalTool in Surgery.current.tools.tools.values():
+		if vial.def.action != "vial" or vial.state != SurgicalTool.State.FREE:
+			continue
+		var middle := ToolManager.middle(vial)
+		var across := Vector2(tip.x - middle.x, tip.z - middle.z).length()
+		if across < nearest:
+			nearest = across
+			# Just into the stopper on top, whichever way the vial stands (or lies).
+			var top := (vial.global_transform * vial.bounds).end.y - 0.004
+			spot = {"at": Vector3(middle.x, top, middle.z), "tilt": -PI / 2.0, "turn": own.y}
 	var bag := Surgery.current.tools.drip_bag()
-	var port := ToolManager.middle(bag) if bag else Vector3.INF
-	if tool and tool.def.action == "syringe" and bag and Vector2(hand.target.x - port.x, hand.target.z - port.z).length() < DRIP_SNAP:
-		if not _unsnapped.has(hand.index):
-			_unsnapped[hand.index] = Vector2(hand.tilt, hand.turn)
-		# The bag hangs along its length: its thinnest side across is the way through its faces.
-		var face := (bag.global_basis.x if bag.bounds.size.x < bag.bounds.size.y else bag.global_basis.y) * Vector3(1, 0, 1)
-		face *= signf(face.dot(global_position - port))
-		hand.tilt = SurgeonHand.TILT_RANGE.y
-		hand.turn = clampf(wrapf(atan2(face.x, face.z) - rotation.y, -PI, PI), -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
-		var into := port - hand.tip_offset(tool.def.length)
-		if into.distance_to(shoulder(hand.index)) <= REACH:
-			hand.local_target = to_local(Vector3(hand.target.x, into.y, hand.target.z))
-			hand.target = into
-			return true
-	if _unsnapped.has(hand.index):
-		var own: Vector2 = _unsnapped[hand.index]
-		hand.tilt = own.x
-		hand.turn = own.y
-		_unsnapped.erase(hand.index)
-	return false
+	if spot.is_empty() and bag:
+		var port := ToolManager.middle(bag)
+		if Vector2(tip.x - port.x, tip.z - port.z).length() < DRIP_SNAP + margin:
+			# The bag hangs along its length: its thinnest side across is the way through its faces.
+			var face := (bag.global_basis.x if bag.bounds.size.x < bag.bounds.size.y else bag.global_basis.y) * Vector3(1, 0, 1)
+			face *= signf(face.dot(hand.target - port))
+			var turn := clampf(wrapf(atan2(face.x, face.z) - rotation.y, -PI, PI), -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
+			spot = {"at": port, "tilt": DRIP_TILT, "turn": turn}
+	if spot.is_empty() or (spot.at - hand.tip_offset_at(tool.def.length, spot.tilt, spot.turn)).distance_to(shoulder(hand.index)) > REACH:
+		return {}
+	return spot
 
 
 ## How far below the hand the lowest point of its tool is (negative: below), the way the hand holds it now.

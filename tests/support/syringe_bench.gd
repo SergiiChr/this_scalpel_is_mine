@@ -129,7 +129,7 @@ func stage(case: Dictionary) -> void:
 	# The hand rests the needle on whatever is under the aim; a few rounds let the arm settle on it. Only then Use
 	# tool presses it in: a needle in the patient sticks, and moved on from there it would tear out.
 	for i in 40:
-		hand.local_target = me.to_local(aim - hand.tip_offset(syringe.def.length) + Vector3.UP * 0.04)
+		hand.local_target = me.to_local(aim - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
 		await get_tree().physics_frame
 	var press := InputEventAction.new()
 	press.action = "use_tool"
