@@ -303,8 +303,9 @@ func player_requests_item(id: String) -> SurgicalTool:
 	return me.held_tool(me.active)
 
 
-## Puts the active hand's tool back on the instrument tray (or, holding nothing, does nothing).
-func player_puts_down() -> void:
+## Puts the active hand's tool back on the instrument tray (or, holding nothing, does nothing). `standing`: a bottle is
+## stood upright there (Grab held), so a needle can go in through its cap.
+func player_puts_down(standing: bool = false) -> void:
 	var tool := me.held_tool(me.active)
 	if tool == null:
 		return
@@ -327,7 +328,12 @@ func player_puts_down() -> void:
 	if not ToolActions.TRIGGER_NAMES.has(tool.def.action):
 		use()
 		await frames(15)
-	tap("grab")
+	if standing and tool.def.tray == "bottles":
+		press("grab")
+		await seconds(Surgeon.STAND_HOLD + 0.2)
+		release("grab")
+	else:
+		tap("grab")
 	await seconds(0.5)
 	if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() > 0.08:
 		# It slid off whatever it was set down against: anything else set down there would too.
@@ -472,7 +478,7 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 		vial = await player_requests_item(vial_id)
 		if vial == null:
 			return
-		await player_puts_down()
+		await player_puts_down(true)
 		syringe = await player_requests_item(size)
 	if syringe == null:
 		return
