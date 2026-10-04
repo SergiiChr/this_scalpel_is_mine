@@ -59,9 +59,6 @@ func fire(id: String, surgery: Surgery) -> void:
 	var text: String = Db.events.get_value(id, "text", "")
 	var patient := surgery.patient
 	match id:
-		"bleed_spike":
-			patient.spontaneous_bleed(Vector2(_rng.randf_range(0.3, 0.7), _rng.randf_range(0.3, 0.7)))
-			surgery.announce(text)
 		"arrest":
 			patient.arrest()
 		"wake_up":

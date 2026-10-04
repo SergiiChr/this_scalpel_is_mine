@@ -555,13 +555,6 @@ func start_seizure() -> void:
 	_reveal("epilepsy")
 
 
-## A vessel under the site gives way on its own.
-func spontaneous_bleed(uv: Vector2) -> void:
-	var wound := _new_wound(Wound.Kind.INTERNAL, uv, 0.7)
-	wound.depth_m = minf(0.04, body.cavity_depth() * 0.6)
-	Surgery.current.sound("blood_spurt", body.uv_to_world(uv))
-
-
 func wake_up() -> void:
 	active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return (e.def as DrugDef).effect("anesthesia") <= 0.0)
 	_speak("wake_up")
