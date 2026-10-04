@@ -102,7 +102,9 @@ func stage(case: Dictionary) -> void:
 	var vial: String = case.get("vial", VIAL)
 	match case.target:
 		"vial":
-			container = _spawn(VIAL, _clear_spot())
+			# Delivered vials stand, cap up.
+			surgery.tools.spawn_standing(VIAL, _clear_spot())
+			container = surgery.tools.tools.values()[-1]
 			tools.transfer(container, syringe, case.ml)
 		"dish":
 			container = _spawn("kidney_dish", _clear_spot())

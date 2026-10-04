@@ -190,6 +190,10 @@ func request_release(hand: int, velocity: Vector3) -> void:
 	_req_release.rpc_id(1, hand, velocity)
 
 
+func request_stand(hand: int) -> void:
+	_req_stand.rpc_id(1, hand)
+
+
 func request_pass(hand: int) -> void:
 	_req_pass.rpc_id(1, hand)
 
@@ -275,6 +279,19 @@ func _req_release(hand: int, velocity: Vector3) -> void:
 		tool.grip_info = {}
 	_set_state.rpc(tool.uid, SurgicalTool.State.FREE, peer, -1, tool.global_transform)
 	tool.linear_velocity = velocity
+	tool.set_meta("falling", true)
+
+
+## A bottle in the hand set down standing upright on whatever is under it.
+@rpc("any_peer", "call_local", "reliable")
+func _req_stand(hand: int) -> void:
+	var peer := Net._sender()
+	var tool := tool_in_hand(peer, hand)
+	if tool == null or tool.def.tray != "bottles":
+		return
+	Surgery.current.set_attached(peer, hand, false)
+	_set_state.rpc(tool.uid, SurgicalTool.State.FREE, peer, -1, standing_on(tool, middle(tool)))
+	# Set down on the floor, it's soiled like anything else that lands there.
 	tool.set_meta("falling", true)
 
 
@@ -401,6 +418,23 @@ func _req_wash(hand: int) -> void:
 func spawn(id: String, at: Vector3) -> void:
 	if multiplayer.is_server():
 		_spawn.rpc(_next_uid, id, at)
+
+
+## Host: a new tool standing upright on whatever is under `above` (a bottle left on the delivery tray), not dropped.
+func spawn_standing(id: String, above: Vector3) -> void:
+	var uid := _next_uid
+	spawn(id, above)
+	_set_state.rpc(uid, SurgicalTool.State.FREE, 0, -1, standing_on(tools[uid], above))
+
+
+## Where a tool stands upright, its tip up, on whatever is under `at` (a table, a tray, another tool, the floor):
+## resting right on it, so it doesn't drop and topple.
+func standing_on(tool: SurgicalTool, at: Vector3) -> Transform3D:
+	var basis := Basis(Vector3.RIGHT, PI / 2)
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.2, at + Vector3.DOWN * 2.0, 1 | SurgicalTool.TOOL_LAYER, [tool.get_rid()])
+	var hit := get_viewport().world_3d.direct_space_state.intersect_ray(query)
+	var under: float = hit.position.y if not hit.is_empty() else at.y
+	return Transform3D(basis, Vector3(at.x, under - (Transform3D(basis) * tool.bounds).position.y + 0.001, at.z))
 
 
 ## Host: a new tool falling from `at`, as if it was dropped there (the floor soils it).

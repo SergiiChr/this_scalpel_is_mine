@@ -347,17 +347,18 @@ func _run_status(status: SurgeonStatus, seconds: float, events: PackedStringArra
 		events.append_array(status.update(0.1, {}))
 
 
-## Y20-Y22: a syringe swept over a vial snaps smoothly into its top and lets go soon after; zoomed in, a mouse move
-## takes the hand as far across the screen as it does zoomed out; in the needle view the mouse moves the hand as seen on
-## screen; a needle pressed into the skin keeps its tip in place, the mouse tilting the syringe about it, and tears out
-## when pulled on sideways; the aim shows where the needle goes in at any angle; a syringe brought to the IV bag from waist height snaps its needle into the middle of the
-## bag from the hand's side, and moved on, comes out of it.
+## Y20-Y22: a syringe swept over a vial snaps smoothly in through its cap, only when the cap faces the surgeon, and
+## lets go soon after; zoomed in, a mouse move takes the hand as far across the screen as it does zoomed out; in the
+## needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its tip in place, the
+## mouse tilting the syringe about it, and tears out when pulled on sideways; the aim shows where the needle goes in at
+## any angle; a syringe brought to the IV bag from waist height snaps its needle into the middle of the bag from the
+## hand's side, and moved on, comes out of it.
 func _hand_checks() -> void:
 	print("--- needle_hand")
 	var me := bench.surgery.local_surgeon
 	var hand := me.hands[me.active]
 	await bench.stage(Bench.CASES[0])
-	await _sweep_over_vial(me, hand)
+	await _vial_snap_checks(me, hand)
 	var across: Array[float] = []
 	for step in Surgeon.ZOOM_FOV.size():
 		me.zoom = step
@@ -432,10 +433,43 @@ func _hand_checks() -> void:
 	_check(bench.needle_target().get("container") != bag and is_equal_approx(hand.tilt, own_tilt), "needle_hand: moved on from the bag, the needle comes out of it and the hand holds the syringe as before (%.2f m from its middle)" % bench.syringe.tip_position().distance_to(ToolManager.middle(bag)))
 
 
-## A syringe swept over a vial's cap on the tray at a steady 0.15 m/s, Use tool up: its needle snaps in through the cap
-## along the vial (it lies on its side here), without jumping (no frame moves the tip more than 1 cm), and lets go again soon after the hand passes it,
-## the hand holding the syringe as before.
-func _sweep_over_vial(me: Surgeon, hand: SurgeonHand) -> void:
+## A syringe swept over a vial's cap on the tray at a steady 0.15 m/s, Use tool up. Standing (as delivered), its needle
+## snaps in through the cap along the vial, without jumping (no frame moves the tip more than 1 cm), and lets go again
+## soon after the hand passes it, the hand holding the syringe as before. Lying with its cap toward the surgeon it snaps
+## in level; with the cap turned away it doesn't snap at all.
+func _vial_snap_checks(me: Surgeon, hand: SurgeonHand) -> void:
+	var standing := await _sweep(me, hand)
+	_check(standing.snapped > 0, "needle_hand: swept over a standing vial's cap, the needle snaps in through it along the vial")
+	_check(standing.jump < 0.01, "needle_hand: snapping in and out, the needle moves smoothly (largest step %.1f mm a frame)" % (standing.jump * 1000.0))
+	_check(standing.snapped < 40, "needle_hand: swept past at 0.15 m/s, the needle holds on the vial only briefly (%d frames)" % standing.snapped)
+	_check(standing.out, "needle_hand: past the vial, the needle is out of it and the hand holds the syringe as before")
+	for toward: bool in [true, false]:
+		_vial_lies(me, toward)
+		await bench.frames(30)
+		var lying := await _sweep(me, hand)
+		if toward:
+			_check(lying.snapped > 0, "needle_hand: a vial lying with its cap toward the surgeon takes the needle in level through the cap")
+		else:
+			_check(lying.snapped == 0, "needle_hand: a vial lying with its cap turned away doesn't snap the needle (%d frames)" % lying.snapped)
+
+
+## Lays the case's vial on its side where it stands, its cap toward the surgeon or away.
+func _vial_lies(me: Surgeon, toward: bool) -> void:
+	var vial := bench.container
+	var at := ToolManager.middle(vial)
+	var to_me := ((me.global_position - at) * Vector3(1, 0, 1)).normalized() * (1.0 if toward else -1.0)
+	var bottom := (vial.global_transform * vial.bounds).position.y
+	# Looking at a point puts a tool's tip (-Z) toward it.
+	var lying := Transform3D(Basis.looking_at(to_me, Vector3.UP), Vector3(at.x, bottom + 0.0125, at.z))
+	vial.global_transform = lying.translated(-(lying.basis * Vector3(0.0, 0.0, -vial.def.length * 0.5)))
+	vial.linear_velocity = Vector3.ZERO
+	vial.angular_velocity = Vector3.ZERO
+
+
+## Sweeps the syringe's tip across the vial's cap at 0.15 m/s from 12 cm before it to 12 cm past it, the hand moved its
+## own way: {"snapped": frames the needle was in the cap along the vial, "jump": the largest step the tip took in a frame,
+## "out": past it, the needle is out and the hand holds the syringe its own way again}.
+func _sweep(me: Surgeon, hand: SurgeonHand) -> Dictionary:
 	var length := bench.syringe.def.length
 	var cap := bench.container.tip_position()
 	var along := (bench.container.global_position - cap).normalized()
@@ -464,11 +498,9 @@ func _sweep_over_vial(me: Surgeon, hand: SurgeonHand) -> void:
 		var lengthwise := (-bench.syringe.global_basis.z.normalized()).dot(along) > 0.97
 		if lengthwise and now.distance_to(cap) < 0.006:
 			snapped += 1
-	_check(snapped > 0, "needle_hand: swept over a vial's cap, the needle snaps in through it along the vial")
-	_check(jump < 0.01, "needle_hand: snapping in and out, the needle moves smoothly (largest step %.1f mm a frame)" % (jump * 1000.0))
-	_check(snapped < 40, "needle_hand: swept past at 0.15 m/s, the needle holds on the vial only briefly (%d frames)" % snapped)
 	await bench.frames(20)
-	_check(bench.needle_target().get("container") != bench.container and is_equal_approx(hand.tilt, own.x), "needle_hand: past the vial, the needle is out of it and the hand holds the syringe as before")
+	var out: bool = bench.needle_target().get("container") != bench.container and is_equal_approx(hand.tilt, own.x)
+	return {"snapped": snapped, "jump": jump, "out": out}
 
 
 ## Held over the skin at a shallow and a steep angle (turned with Aim tool), the aim shows where the needle goes in:

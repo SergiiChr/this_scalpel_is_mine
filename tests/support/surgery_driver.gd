@@ -128,6 +128,12 @@ func release(action: String) -> void:
 	press(action, false)
 
 
+## Presses and lets go of an action straight away, like a click: Grab puts a held bottle down rather than standing it.
+func tap(action: String) -> void:
+	press(action)
+	press(action, false)
+
+
 ## One wheel notch on the active hand: its effort level, or a syringe's plunger (up pushes it in).
 func notch(up: bool) -> void:
 	press("level_up" if up else "level_down")
@@ -284,12 +290,12 @@ func player_requests_item(id: String) -> SurgicalTool:
 	var tool := found[0]
 	await player_walks_to(tool.global_position)
 	await player_reaches(tool.global_position)
-	press("grab")
+	tap("grab")
 	await frames(5)
 	if me.held_tool(me.active) != tool:
 		# Something else lay nearer the fingertips: take exactly this one, like reaching past the other.
 		if me.held_tool(me.active):
-			press("grab")
+			tap("grab")
 			await frames(3)
 		surgery.tools.request_grab(tool, me.active)
 		await frames(3)
@@ -321,7 +327,7 @@ func player_puts_down() -> void:
 	if not ToolActions.TRIGGER_NAMES.has(tool.def.action):
 		use()
 		await frames(15)
-	press("grab")
+	tap("grab")
 	await seconds(0.5)
 	if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() > 0.08:
 		# It slid off whatever it was set down against: anything else set down there would too.
@@ -1138,7 +1144,7 @@ func player_clamps_bleeder(wound: Wound = null) -> void:
 			await frames(3)
 	if wound.clamped >= 0.8:
 		# Self-retaining: let go of the handle and it stays locked on.
-		press("grab")
+		tap("grab")
 		await frames(10)
 	else:
 		await player_puts_down()

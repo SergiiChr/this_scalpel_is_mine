@@ -439,7 +439,8 @@ static func control_lines(me: Surgeon) -> PackedStringArray:
 		var roll := "" if action == "syringe" else "   %s / %s  Rotate" % [key.call("twist_left"), key.call("twist_right")]
 		lines.append("%s (hold) + mouse  Turn tool%s" % [key.call("aim_tool"), roll])
 		lines.append("%s (hold)  Look at it" % key.call("inspect"))
-		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else "Put down"])
+		var put := "Put down (hold: stand up)" if tool.def.tray == "bottles" else "Put down"
+		lines.append("%s  %s" % [key.call("grab"), "Pass" if not me.pass_target(me.active).is_empty() and not hand.attached else put])
 	else:
 		lines.append("%s  Pick up%s" % [key.call("grab"), " " + me.hovered.label() if is_instance_valid(me.hovered) else ""])
 	var see_through := tool and tool.def.action in Surgeon.NEEDLE_ACTIONS and me.zoom == Surgeon.ZOOM_FOV.size() - 1

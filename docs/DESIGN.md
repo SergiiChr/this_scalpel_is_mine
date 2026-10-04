@@ -354,8 +354,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
 - **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
-  vial (down into one standing, level into one lying), before Use tool is pressed. A vial with its cap down can't be
-  reached; one lying with its cap turned away (toward the wall) gets the needle down into the cap from above. It lets go a little further out than it snaps in, so passing over doesn't hold it for
+  vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
+  snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.
+- **Standing a bottle up**: holding Grab a second with a bottle in hand stands it upright where it's held, on whatever is
+  under it (`ToolManager.standing_on()`). A click puts it down like any other tool. It lets go a little further out than it snaps in, so passing over doesn't hold it for
   long. Snapping in and out (onto the IV bag too) eases over 0.25 s, the needle gliding over rather than jumping.
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over

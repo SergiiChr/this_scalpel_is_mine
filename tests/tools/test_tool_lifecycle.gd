@@ -101,3 +101,48 @@ func test_a_tool_dropped_on_the_floor_is_soiled() -> void:
 	assert_eq(scalpel.state, SurgicalTool.State.FREE, "the scalpel is let go")
 	assert_true(scalpel.soiled and not scalpel.sterile, "a scalpel dropped on the floor is soiled and no longer sterile")
 	await driver.stop()
+
+
+## A vial ordered from the nurse comes standing on the delivery tray, cap up. Picked up, Grab held a second stands it
+## upright on the instrument tray where it's held; a quick click puts it down the way any tool goes down, lying.
+func test_bottles_come_standing_and_stand_when_grab_is_held() -> void:
+	var driver: Driver = Driver.new()
+	add_child(driver)
+	await driver.start("appendectomy")
+	var surgery := driver.surgery
+	var id := "vial_propofol"
+	var on_tray := driver.free_tools(id)
+	surgery.order_tool(id)
+	await driver.wait_until(func() -> bool: return driver.free_tools(id).size() > on_tray.size(), 60.0)
+	await driver.seconds(1.0)
+	var vial: SurgicalTool = driver.free_tools(id).filter(func(t: SurgicalTool) -> bool: return not t in on_tray).front()
+	assert_true(_stands(vial), "a vial comes from the nurse standing, cap up (tip %s)" % _tip_up(vial))
+	assert_lt(vial.linear_velocity.length(), 0.01, "it stands still on the delivery tray")
+	await driver.player_walks_to(vial.global_position)
+	await driver.player_reaches(vial.global_position)
+	driver.tap("grab")
+	await driver.frames(5)
+	assert_eq(driver.me.held_tool(driver.me.active), vial, "the vial is picked up")
+	var spot := SurgeryState.free_tray_spot(surgery)
+	await driver.player_walks_to(spot)
+	await driver.player_reaches(spot - (ToolManager.middle(vial) - vial.tip_position()))
+	driver.press("grab")
+	await driver.seconds(Surgeon.STAND_HOLD + 0.2)
+	driver.release("grab")
+	await driver.seconds(1.0)
+	assert_true(vial.state == SurgicalTool.State.FREE and _stands(vial) and driver.lies_on_tray(vial), "Grab held a second stands the vial upright on the tray (tip %s)" % _tip_up(vial))
+	await driver.player_reaches(vial.global_position)
+	driver.tap("grab")
+	await driver.frames(5)
+	await driver.player_puts_down()
+	assert_true(vial.state == SurgicalTool.State.FREE and not _stands(vial) and driver.lies_on_tray(vial), "a quick click puts it down lying, as before (tip %s)" % _tip_up(vial))
+	await driver.stop()
+
+
+## How far up a tool's tip end points (1: straight up).
+static func _tip_up(tool: SurgicalTool) -> float:
+	return (-tool.global_basis.z.normalized()).y
+
+
+static func _stands(tool: SurgicalTool) -> bool:
+	return _tip_up(tool) > 0.95
