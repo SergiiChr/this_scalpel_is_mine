@@ -14,6 +14,8 @@ const VIAL_REACH := 0.05
 const STANDING_ROOM := 0.04
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
+## How close to a dish's middle (a share of its length) a bottle has to be to pour into it, or a cotton pad to dip in it.
+const POUR_REACH := 0.7
 ## A tool lying lower than this (meters) is on the floor: one that lands on it lands on the floor too.
 const FLOOR_PILE := 0.1
 
@@ -177,6 +179,11 @@ func drip_bag() -> SurgicalTool:
 
 static func middle(tool: SurgicalTool) -> Vector3:
 	return tool.global_transform * Vector3(0, 0, -tool.def.length * 0.5)
+
+
+## The dish `at` is over (ToolDef.is_dish()), nearest first, or null: what a bottle pours into and a pad dips in.
+func nearest_dish(at: Vector3) -> SurgicalTool:
+	return _nearest(at, INF, func(tool: SurgicalTool) -> bool: return tool.def.is_dish() and middle(tool).distance_to(at) < tool.def.length * POUR_REACH)
 
 
 ## What this tool holds at its tip (a cotton pad in forceps), or null.

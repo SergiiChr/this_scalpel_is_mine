@@ -378,7 +378,7 @@ func _iodine_checks(surgery: Surgery) -> void:
 	await _frames(3)
 	if pad.state != SurgicalTool.State.CARRIED or pad.global_position.distance_to(forceps.tip_position()) > 0.05:
 		fail_test("forceps didn't pick up the cotton pad")
-	tools.set_fill(dish, 1.0)
+	tools.add_liquid(dish, dish.def.volume, {"iodine": dish.def.volume})
 	var dish_middle := dish.global_transform * Vector3(0, 0, -dish.def.length * 0.5)
 	ToolActions._wipe(pad, "none", Vector2.ZERO, dish_middle, surgery.patient, 1.0, false)
 	if pad.fill < 0.9 or dish.fill > 0.9:

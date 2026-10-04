@@ -424,19 +424,19 @@ func player_interacts(prompt: String) -> bool:
 # --- Steps -----------------------------------------------------------------------------------------------
 
 
-## Tips the bottle in the active hand over `dish` and pours at full effort for `time` seconds.
+## Holds the bottle in the active hand tipped over `dish` with Use tool for `time` seconds, pouring.
 func player_pours_into(dish: SurgicalTool, time: float) -> void:
 	await player_walks_to(dish.global_position)
-	await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 3, time)
+	await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 0, time)
 
 
-## Fills the iodine dish from the bottle, takes a cotton pad in forceps, dips it and wipes the site row by row,
-## dipping again whenever the pad runs dry, until `amount` of the site is sanitized.
-func player_sanitizes_site(amount: float) -> void:
+## Fills a dish (the iodine dish unless `dish_id` says) from the bottle, takes a cotton pad in forceps, dips it and
+## wipes the site row by row, dipping again whenever the pad runs dry, until `amount` of the site is sanitized.
+func player_sanitizes_site(amount: float, dish_id: String = "iodine_dish") -> void:
 	note("sanitizes the site")
-	var dishes := free_tools("iodine_dish")
+	var dishes := free_tools(dish_id)
 	if dishes.is_empty():
-		note("no iodine dish")
+		note("no %s" % dish_id)
 		return
 	var dish := dishes[0]
 	if dish.fill < 0.5:

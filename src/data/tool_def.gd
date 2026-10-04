@@ -36,6 +36,12 @@ var grip: String
 var tray: String
 
 
+## An open dish or pot: it holds liquid without doing anything of its own (the iodine dish, the kidney dish). A bottle
+## pours into it, a syringe squirts into it and draws from it, a cotton pad dips into iodine in it.
+func is_dish() -> bool:
+	return volume > 0.0 and action == "none"
+
+
 static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	var def := ToolDef.new()
 	def.id = section

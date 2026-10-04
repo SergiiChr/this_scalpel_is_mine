@@ -320,8 +320,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
   and a little upward, the way the forearm rises to it (`Surgeon._snap_spot()`); moved on, it comes out and the hand
-  holds the syringe as before. While it's in: push a drug in and it runs down the line once the needle is out, if the
-  line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
+  holds the syringe as before. While it's in: push a drug in and it starts down the line at once, ahead of the bag's
+  own fluid, at 2 ml a second (`ToolActions.DRIP_RATE`), if the line is in a vein (`ToolActions.drip()`). Each bit is
+  given as it reaches the patient; debug mode tells each ml and the total so far. Pull and the syringe draws by the
+  port: what was pushed in and hasn't run yet first, then the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
 ### Controls rework
@@ -356,10 +358,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Nurse**: one order at a time, a 15 s cooldown after each delivery from the sixth on (the first five come without).
   Every drug is under one Drugs group. A board over the bell shows the item on its way
   with a progress bar, then the cooldown.
-- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish (the bottle pours into the kidney
-  dish too, as liquid a syringe can draw), pinch a cotton pad with forceps
-  (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up off the floor contaminates the site.
-  A dish soaks about four pads; a soaked pad runs dry after about 8 s of wiping.
+- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
+  held), pinch a cotton pad with forceps (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up
+  off the floor contaminates the site. A pad soaks up 10 ml (`ToolActions.PAD_ML`), so the 40 ml iodine dish soaks
+  four; a soaked pad runs dry after about 8 s of wiping.
+- **Dishes** (`ToolDef.is_dish()`: a volume and no action of its own, the iodine dish and the kidney dish) all work
+  the same: bottles pour into them, syringes squirt into them and draw from them, pads dip into iodine in them
+  (`ToolManager.nearest_dish()`). They show their liquid by its ml, tinted toward iodine and blood by their share.
 
 ### Vials and syringes
 
@@ -376,7 +381,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
-  - a vial, the kidney dish (holds 100 ml) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
+  - a vial, a dish (the kidney dish holds 100 ml, the iodine dish 40) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
     no more.
   - a vein drawn on each forearm (`PatientBody.vein_at()`, not on an arm the site covers): pulls blood, which tints
     the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).

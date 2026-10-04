@@ -185,6 +185,12 @@ func _run(case: Dictionary) -> void:
 		_check(patient.active_drugs.size() == drugs_before, "%s: nothing runs down the line while the needle is in the bag" % case.name)
 	var pushed: float = case.ml - syringe.ml
 	await bench.withdraw()
+	if case.target == "drip" and not pull:
+		_check(patient.active_drugs.size() == drugs_before and bench.container.bolus > 0.0, "%s: the drug runs down the line over time, not all at once" % case.name)
+		await bench.frames(ceili(pushed / ToolActions.DRIP_RATE * Engine.physics_ticks_per_second) + 10)
+		var tick := "[debug] 1.0 ml of %s reached the patient over IV" % Db.drug(Bench.DRUG).name
+		var ticks := toasts.filter(func(toast: String) -> bool: return toast == tick).size()
+		_check(ticks == roundi(pushed), "%s: debug mode tells each of the %.0f ml as it reaches the patient over IV (%s)" % [case.name, pushed, toasts])
 	if not pull and kind != "air":
 		var named := "[debug] Injected %s ml of %s into %s" % [String.num(pushed, 1), Db.drug(Db.tool(case.get("vial", Bench.VIAL)).drug).name, PUSHED_INTO[case.target]]
 		_check(named in toasts, "%s: debug mode says what went where once the needle is out: %s (%s)" % [case.name, named, toasts])
@@ -236,7 +242,8 @@ func _catheter_checks(case: Dictionary) -> void:
 	var drip := bench.surgery.tools.drip_bag()
 	var drugs_before := patient.active_drugs.size()
 	bench.surgery.tools.add_liquid(drip, 5.0, {Bench.DRUG: 5.0 * Db.tool(Bench.VIAL).concentration})
-	await bench.frames(5)
+	drip.bolus = 5.0
+	await bench.frames(ceili(5.0 / ToolActions.DRIP_RATE * Engine.physics_ticks_per_second) + 10)
 	var given := patient.active_drugs.size() - drugs_before
 	_check(given == (1 if hit else 0) and drip.contents.has(Bench.DRUG) != hit, "%s: a drug in the IV drip %s" % [case.name, "runs into the patient" if hit else "stays in the bag"])
 	me.zoom = 0

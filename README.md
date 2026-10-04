@@ -110,7 +110,7 @@ given when the needle comes out. Work out the dose from the patient's weight and
 
 The game never tells you what to do next: the manual on the shelf is the reference. **Settings > Debug mode**
 shows what the game tracks behind the scenes (the scenario's steps, the score and every scored action, a needle that
-hit the vein and how many ml of what each syringe pushed where).
+hit the vein, how many ml of what each syringe pushed where and each ml of a drug that runs down the IV line).
 
 ## Project layout
 

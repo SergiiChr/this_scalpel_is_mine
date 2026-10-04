@@ -47,6 +47,12 @@ var contents: Dictionary = {}
 ## and how it goes in ("vein" or "direct", see Patient.administer()).
 var injecting: Dictionary = {}
 var injecting_route := "direct"
+## Host only, the IV drip: ml pushed into the bag that haven't run down the line yet (they went in by the port at its
+## bottom, where the line leaves it, so they run before the bag's own fluid), with the drugs in contents. What ran
+## since the bolus started (drug id -> amount), given once it has all run in, and ml run since debug mode last told.
+var bolus := 0.0
+var dripped: Dictionary = {}
+var dripped_ml := 0.0
 ## Host only, for debug mode: ml a syringe pushed out since its needle went where it is now, the drugs in it and where
 ## that is ("the vein", "the IV bag"), told once the needle is somewhere else (ToolActions.report_pushed()).
 var pushed_ml := 0.0
@@ -137,8 +143,6 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	fill = ml / def.volume if def.volume > 0.0 else fill
 	if def.volume > 0.0:
 		show_liquid()
-	elif _model.find_child("Liquid", true, false):
-		show_fill(fill)
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = not multiplayer.is_server()
 	if def.grip == "needle":
@@ -214,22 +218,18 @@ func set_blood(amount: float) -> void:
 			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
 
 
-## Iodine shows as the model's "Liquid" part (the iodine dish), or tints the whole tool (a soaked pad).
+## Iodine soaked into it tints the whole tool (a cotton pad).
 func show_fill(amount: float) -> void:
-	var liquid := _model.find_child("Liquid", true, false) as Node3D
-	if liquid:
-		liquid.visible = amount > 0.0
-		liquid.scale = Vector3.ONE * lerpf(0.6, 1.0, amount)
-		return
 	for mat in _materials():
 		if not mat.has_meta("albedo"):
 			mat.set_meta("albedo", mat.get_shader_parameter("albedo"))
 		mat.set_shader_parameter("albedo", (mat.get_meta("albedo") as Color).lerp(IODINE_COLOR, minf(amount * 2.0, 1.0)))
 
 
-## A syringe, vial or kidney dish shows exactly what's in it (ml, air, red), tinted toward blood by its share of blood.
+## A syringe, vial or dish shows exactly what's in it (ml, air, red), tinted toward blood by its share of blood.
 ## In a syringe the air sits at the needle end (it rises there, so a push lets it out first), the liquid behind it
-## and the plunger right behind the liquid. A vial's "Level" stretches from its end, the dish's "Pool" rises.
+## and the plunger right behind the liquid. A vial's "Level" stretches from its end, the kidney dish's "Pool" rises,
+## the iodine dish's "Liquid" spreads.
 func show_liquid() -> void:
 	var amount := ml / def.volume
 	var level := _model.find_child("Level", true, false) as MeshInstance3D
@@ -246,7 +246,11 @@ func show_liquid() -> void:
 		var wide := lerpf(0.88, 1.0, amount)
 		pool.visible = amount > 0.0
 		pool.scale = Vector3(wide, maxf(amount, 0.001), wide)
-	for part in [level, pool]:
+	var liquid := _model.find_child("Liquid", true, false) as MeshInstance3D
+	if liquid:
+		liquid.visible = amount > 0.0
+		liquid.scale = Vector3.ONE * lerpf(0.6, 1.0, amount)
+	for part in [level, pool, liquid]:
 		if part:
 			_tint_liquid(part)
 
