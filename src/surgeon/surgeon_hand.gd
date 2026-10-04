@@ -41,7 +41,7 @@ const GRIPS: Dictionary = {
 	"needle": {
 		"basis": Basis(Vector3(0.0, 0.2, -0.98), Vector3(0.0, 0.98, 0.2), Vector3(1.0, 0.0, 0.0)),
 		"at": Vector3(0.1, -0.024, 0.0), "on": Vector3(0.0, 0.0, 0.055),
-		"curl": [0.2, 0.7, 0.8, 0.85, 0.6], "tilt": -0.28, "turn": 0.55,
+		"curl": [0.2, 0.7, 0.8, 0.85, 0.6], "tilt": -0.28, "work_tilt": REST_TILT, "turn": 0.55,
 	},
 	# Wrapped around a handle that runs across the palm, thumb toward the tip, knuckles on top.
 	"fist": {
@@ -215,9 +215,15 @@ func effective_position() -> Vector3:
 func grip_transform() -> Transform3D:
 	if inspecting:
 		return Transform3D(inspect_basis(), global_position)
+	return Transform3D(_tool_basis(lowered), global_position)
+
+
+func _tool_basis(working: bool) -> Basis:
 	var yaw := (get_parent() as Node3D).global_rotation.y + turn
-	var rot := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt) * Basis(Vector3.FORWARD, twist)
-	return Transform3D(rot, global_position)
+	var pitch := tilt
+	if working:
+		pitch = minf(pitch, float(GRIPS.get(grip, GRIPS.pencil).get("work_tilt", pitch)))
+	return Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.FORWARD, twist)
 
 
 ## The neutral tool angles for this grip. Asymmetric turns point a tool from either hand in toward the work.

@@ -313,9 +313,13 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 ## internal injury in the opening, it sews that instead.
 static func _sew(tool: SurgicalTool, patient: Patient, zone: String, uv: Vector2, lowered: bool, trigger: bool, released: bool, dt: float, tip: Vector3) -> void:
 	if trigger:
+		# Start each press unattached, then keep the latest valid puncture point until release. A curved needle resting on
+		# deforming skin can cross the contact threshold for a frame; that must not discard a click that already landed.
+		if tool.suture_hold == 0.0:
+			tool.suture_at = Vector2(-1, -1)
 		tool.suture_hold += dt
-		# Let go anywhere but on the patient, a click makes no hole.
-		tool.suture_at = uv if lowered and zone in ["site", "cavity"] else Vector2(-1, -1)
+		if lowered and zone in ["site", "cavity"]:
+			tool.suture_at = uv
 		if lowered and zone == "cavity" and patient.close_internal_at(uv, tool.def, dt):
 			tool.suture_press_used = true
 		elif tool.suture_hold >= SUTURE_TIE_HOLD and not tool.suture_press_used and tool.suture_thread != 0:

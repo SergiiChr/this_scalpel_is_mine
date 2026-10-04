@@ -939,7 +939,13 @@ func _grid_cell(direction: Vector2) -> float:
 func _thread_crossings(points: PackedVector2Array, wound: Wound) -> PackedVector2Array:
 	var line := wound.points.duplicate()
 	if line.size() < 2:
-		line.append(line[0])
+		# A puncture or gunshot can be a single point. Give it a short virtual incision axis perpendicular to the first
+		# bite so a span across the hole supports its one closure bin instead of intersecting a zero-length segment.
+		var bite := points[1] - points[0] if points.size() >= 2 else Vector2.RIGHT
+		var along := bite.orthogonal().normalized() if bite.length_squared() > 0.000001 else Vector2.RIGHT
+		var half := _grid_cell(along)
+		line[0] -= along * half
+		line.append(wound.points[0] + along * half)
 	for end: Array in [[0, 1], [-1, -2]]:
 		var out := (line[end[0]] - line[end[1]]).normalized()
 		line[end[0]] += out * _grid_cell(out)
