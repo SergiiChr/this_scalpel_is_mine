@@ -29,6 +29,8 @@ const LOOK_SENSITIVITY := 0.003
 const AIM_SENSITIVITY := 0.004
 ## Gap between a resting tool tip and the surface under it.
 const HOVER_GAP := 0.01
+## The same for a needle (a syringe, the IV catheter): its tip sits on the aim.
+const NEEDLE_HOVER := 0.002
 ## A tool tip at most this far above a surface shows the aim on it, where Use tool brings it down (see aim_point()).
 const AIM_DROP := 0.1
 ## How far above what's inside an opening (meters) a lowered blade stays at each effort level: at full effort it goes
@@ -240,7 +242,8 @@ func aim_point() -> Vector3:
 	var hand := hands[active]
 	var tool := held_tool(active)
 	var tip := tool.tip_position() if tool else hand.global_position + hand.tip_offset(0.05)
-	if tool == null or hand.lowered:
+	# A grip with a working angle (a needle holder) pitches about its tip as it's lowered: the tip is where it works.
+	if tool == null or hand.lowered or SurgeonHand.GRIPS.get(tool.def.grip, {}).has("work_tilt"):
 		return tip
 	var under := _surface_below(tip)
 	if tool.def.action in NEEDLE_ACTIONS:
@@ -521,10 +524,13 @@ func _set_lowered(hand: SurgeonHand, value: bool) -> void:
 	var tool := held_tool(hand.index)
 	var before := hand.tip_offset(tool.def.length) if tool else Vector3.ZERO
 	hand.lowered = value
-	if tool:
-		hand.target += before - hand.tip_offset(tool.def.length)
+	var shift := before - hand.tip_offset(tool.def.length) if tool else Vector3.ZERO
+	# Only a grip that pitches as it's lowered moves the hand. The hand's own spot moves by as much, not to where the
+	# hand is held now (a syringe snapped into a vial would lose its snap).
+	if not shift.is_zero_approx():
+		hand.target += shift
 		if not hand.attached:
-			hand.local_target = to_local(hand.target)
+			hand.local_target += global_basis.inverse() * shift
 
 
 ## Turns the active hand's tool by a mouse motion, the wrist going with it: up and down pitches it, left and right
@@ -886,21 +892,27 @@ func _constrain(hand: SurgeonHand) -> void:
 	if tool and tool.def.action in NEEDLE_ACTIONS and not hand.attached:
 		surface = _glove_below(hand, hand.target + offset, surface)
 	hand.on_hard = false
+	# A needle hovers right over what's under it, so its tip is on the aim, not a centimeter above it.
+	var hover := NEEDLE_HOVER if tool and tool.def.action in NEEDLE_ACTIONS else HOVER_GAP
 	if surface.y != -INF:
 		if surface.open:
 			# A lowered blade goes into an opening as deep as its level: onto what's inside only at full effort. Any other
 			# tool lowered comes down onto what's inside (a saw onto the bone), like onto anything hard.
-			var gap := HOVER_GAP
+			var gap := hover
 			if hand.lowered and tool:
 				gap = BLADE_IN_OPENING[hand.level] if tool.def.action == "cut" else 0.001
 			hand.target.y = surface.y + gap - offset.y
 		elif hand.lowered and surface.soft:
 			# Skin gives: a lowered tip presses into it, deeper with effort.
 			hand.target.y = surface.y - 0.002 - hand.level * 0.004 - offset.y
+		elif surface.soft and hover == NEEDLE_HOVER:
+			# A needle over skin (or a glove) rests by its tip alone: its box reaches below the thin needle and would hold
+			# the tip well off the aim.
+			hand.target.y = surface.y + hover - offset.y
 		elif tool:
 			# Anything hard (a tray, the table, a tool lying there) doesn't: every corner of the tool clears
 			# whatever is under that corner, not only its tip.
-			var gap := 0.001 if hand.lowered else HOVER_GAP
+			var gap := 0.001 if hand.lowered else hover
 			hand.on_hard = true
 			var basis := hand.grip_transform().basis
 			var needed: float = surface.y + gap - _lowest_point(hand, tool)

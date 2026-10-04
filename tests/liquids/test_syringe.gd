@@ -521,6 +521,8 @@ func _aim_lands(me: Surgeon, hand: SurgeonHand) -> void:
 		me.aim_tool(Vector2(0.0, (hand.tilt - tilt) / Surgeon.AIM_SENSITIVITY))
 		await bench.frames(20)
 		var aim := me.aim_point()
+		var hovering := bench.syringe.tip_position().distance_to(aim)
+		_check(hovering < 0.004, "needle_hand: held at tilt %.1f over the skin, the needle's tip is on the aim (%.1f mm off)" % [tilt, hovering * 1000.0])
 		await bench.press()
 		await bench.frames(20)
 		var tip := bench.syringe.tip_position()

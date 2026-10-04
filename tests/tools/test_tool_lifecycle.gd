@@ -25,7 +25,7 @@ func test_every_handheld_tool_is_picked_up_lowered_onto_the_site_and_put_back() 
 			SurgeryState.tool_is_on_tray(surgery, id)
 			await driver.frames(10)
 		var hand := driver.me.hands[driver.me.active]
-		# Aim the empty hand down before selecting a tool, as a player can; needle pickup supplies its own carry pose.
+		# Aim the empty hand down before selecting a tool, as a player can.
 		driver.me.aim_tool(Vector2((hand.turn - 0.12) / Surgeon.AIM_SENSITIVITY,
 				(hand.tilt - (SurgeonHand.REST_TILT + 0.05)) / Surgeon.AIM_SENSITIVITY))
 		var tilt := hand.tilt
@@ -34,7 +34,8 @@ func test_every_handheld_tool_is_picked_up_lowered_onto_the_site_and_put_back() 
 		assert_true(tool != null and tool.def.id == id and tool.state == SurgicalTool.State.HELD, "%s is picked up\n%s" % [id, driver.recent(4)])
 		if tool == null or tool.def.id != id:
 			continue
-		if tool.def.grip != "needle":
+		# A needle holder and a syringe come up in their own carry pose (SurgeonHand.default_tilt(), Surgeon._face_syringe()).
+		if not tool.def.grip in ["needle", "syringe"]:
 			if tool.def.action != "spread":
 				assert_eq(hand.tilt, tilt, "%s pickup preserves the player's tilt" % id)
 			else:
