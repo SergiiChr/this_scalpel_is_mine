@@ -232,7 +232,7 @@ func update(delta: float, context: Dictionary) -> PackedStringArray:
 ## Sedatives add up into calm and overdose, and knock the surgeon out at KNOCKOUT_SHARE. Flumazenil (reverse_benzo)
 ## takes them all away; a stimulant only keeps a knocked out surgeon up while it lasts.
 func _update_drugs(delta: float, events: PackedStringArray) -> void:
-	for crossed: Array in drugs.update(delta, func(_def: DrugDef) -> float: return 1.0):
+	for crossed: Array in drugs.update(delta, func(_def: DrugDef, _level: float) -> float: return 1.0):
 		var def: DrugDef = crossed[0]
 		if crossed[1] != "works":
 			continue

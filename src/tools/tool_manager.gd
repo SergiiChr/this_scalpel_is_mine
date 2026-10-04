@@ -22,6 +22,9 @@ const FLOOR_PILE := 0.1
 var tools: Dictionary = {}
 var _next_uid := 1
 var _sync_acc := 0.0
+## Host: syringes, vials, dishes and bags whose liquid changed since it was last sent (uid -> true), and the time since.
+var _liquid_changed: Dictionary = {}
+var _liquid_acc := 0.0
 
 
 func _ready() -> void:
@@ -535,7 +538,8 @@ func transfer(from: SurgicalTool, to: SurgicalTool, amount: float) -> Dictionary
 
 
 ## Host: adds ml of liquid holding `drugs` (drug id -> amount, "blood" in ml) and ml of air to a syringe, vial or dish.
-## Negative takes away (the contents are taken out by the caller). Everyone sees the exact result.
+## Negative takes away (the contents are taken out by the caller). Everyone sees the exact result: the host at once,
+## the others within SYNC_INTERVAL (see _send_liquids()).
 func add_liquid(tool: SurgicalTool, ml: float, drugs: Dictionary = {}, air: float = 0.0) -> void:
 	for drug: String in drugs:
 		tool.contents[drug] = tool.contents.get(drug, 0.0) + drugs[drug]
@@ -546,7 +550,22 @@ func add_liquid(tool: SurgicalTool, ml: float, drugs: Dictionary = {}, air: floa
 		tool.contents.clear()
 	tool.fill = tool.ml / tool.def.volume
 	var share := func(drug: String) -> float: return tool.contents.get(drug, 0.0) / tool.ml if tool.ml > 0.0 else 0.0
-	_show_liquid.rpc(tool.uid, tool.ml, tool.air, share.call("blood"), share.call("iodine"))
+	_show_liquid(tool.uid, tool.ml, tool.air, share.call("blood"), share.call("iodine"))
+	_liquid_changed[tool.uid] = true
+
+
+## Host: what changed in liquids goes to everyone else at most every SYNC_INTERVAL, as it is then: a pour or a drip
+## changes it every frame. The first change after a quiet spell goes at once.
+func _send_liquids(delta: float) -> void:
+	_liquid_acc += delta
+	if _liquid_acc < SYNC_INTERVAL or _liquid_changed.is_empty():
+		return
+	_liquid_acc = 0.0
+	for uid: int in _liquid_changed:
+		var tool: SurgicalTool = tools.get(uid)
+		if tool:
+			_show_liquid.rpc(uid, tool.ml, tool.air, tool.red, tool.iodine)
+	_liquid_changed.clear()
 
 
 func consume(tool: SurgicalTool) -> void:
@@ -604,7 +623,10 @@ func _physics_process(delta: float) -> void:
 			tool.global_transform = surgeon.hands[tool.slot].grip_transform()
 		elif tool.state == SurgicalTool.State.BELT:
 			tool.global_transform = surgeon.belt_transform(tool.slot)
-	if not multiplayer.is_server() or not surgery.running:
+	if not multiplayer.is_server():
+		return
+	_send_liquids(delta)
+	if not surgery.running:
 		return
 	for tool: SurgicalTool in tools.values():
 		if tool.state != SurgicalTool.State.HELD:
@@ -742,7 +764,7 @@ func _show_fill(uid: int, amount: float) -> void:
 		tool.show_fill(amount)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("authority", "call_remote", "reliable")
 func _show_liquid(uid: int, ml: float, air: float, red: float, iodine: float) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:

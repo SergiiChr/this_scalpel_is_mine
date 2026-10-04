@@ -453,10 +453,12 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 			return
 		match target.kind:
 			"container":
-				# An emptied vial gives air. Drawn from the bag's port, what was pushed in there comes first.
+				# An emptied vial gives air.
 				var drawn := minf(amount, container.ml)
-				tools.transfer(container, tool, drawn)
-				container.bolus = maxf(container.bolus - drawn, 0.0)
+				if container.def.action == "drip":
+					_draw_from_bag(container, tool, drawn)
+				else:
+					tools.transfer(container, tool, drawn)
 				tools.add_liquid(tool, 0.0, {}, amount - drawn)
 			"vein":
 				patient.vitals.blood_ml -= amount
@@ -505,6 +507,21 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 			Surgery.current.sound("syringe_inject", tool.tip_position())
 		_:
 			tools.transfer(tool, null, liquid)
+
+
+## Draws `ml` from the IV bag into a syringe by the port at its bottom: what was pushed in there and hasn't run down the
+## line yet (SurgicalTool.bolus) comes first, its drugs with it, then the bag's own fluid (and its blood, if it's a
+## blood bag, all through it).
+static func _draw_from_bag(bag: SurgicalTool, syringe: SurgicalTool, ml: float) -> void:
+	var from_bolus := minf(ml, bag.bolus)
+	var moved: Dictionary = {}
+	for drug: String in bag.contents.keys():
+		var share := ml / bag.ml if drug == "blood" else (from_bolus / bag.bolus if bag.bolus > 0.0 else 0.0)
+		moved[drug] = bag.contents[drug] * share
+		bag.contents[drug] -= moved[drug]
+	bag.bolus -= from_bolus
+	Surgery.current.tools.add_liquid(bag, -ml)
+	Surgery.current.tools.add_liquid(syringe, ml, moved)
 
 
 ## Debug mode: where a syringe's needle pushes liquid, as "Injected 5 ml of Atropine into the vein" names it. Empty for

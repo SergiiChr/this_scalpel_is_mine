@@ -419,8 +419,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   level in the blood drops by one right dose every `duration` seconds, so ten 1 ml shots work like one 10 ml shot and
   twice the dose lasts twice as long. Between 0.7x and 1.4x the right dose in the blood works as the right dose; below
   or above it scales. Under half a dose it has only a faint effect and doesn't do its job (no objective, restart,
-  antibiotic...); reaching half a dose it does. Reaching 2.5x is an overdose. General anesthesia doesn't wear off
-  (topped up by the anesthetist) unless the patient burns through it.
+  antibiotic...); reaching half a dose it does. 2.5x taken in (in the blood or still soaking in) is an overdose; bags
+  of fluid or blood have no dose to overdo. General anesthesia holds at the right dose (topped up by the anesthetist):
+  more wears off as usual, and a patient who burns through it loses it all. A lethal drug that worked ends it some
+  time later, however fast it wears off.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
   Surgeons weigh 80 kg (small hands 60), shown in the lobby under their name; doses given to them use it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).

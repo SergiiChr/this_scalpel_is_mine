@@ -53,10 +53,20 @@ func test_aiming_turns_the_tool_about_the_wrist() -> void:
 	_check_still(me, hand, wrist, elbow, "swung right")
 	await driver.capture("aimed_right")
 	driver.player_lets_go_of_aim()
-	await driver.seconds(0.5)
+	var steps := await _tip_steps(driver, scalpel, 30)
+	assert_lt(steps.x, 0.002, "let go, the tip doesn't jump sideways (%.1f mm at most in a frame)" % (steps.x * 1000.0))
+	assert_lt(steps.y, SurgeonHand.SETTLE_SPEED / Engine.physics_ticks_per_second + 0.002, "it eases down, no faster than SETTLE_SPEED (%.1f mm at most in a frame)" % (steps.y * 1000.0))
 	var settled := me.to_local(scalpel.tip_position())
 	assert_true(hand.raise == 0.0 and swung.y - settled.y > 0.02, "let go, the tip settles back down onto its spot (%.1f cm down)" % ((swung.y - settled.y) * 100.0))
 	await driver.capture("let_go")
+	# Use tool pressed while aiming brings the raised tip down onto the skin just as gently.
+	await driver.player_aims(Vector2(0.0, -4.0), 20)
+	driver.use()
+	steps = await _tip_steps(driver, scalpel, 30)
+	driver.use(false)
+	driver.player_lets_go_of_aim()
+	assert_lt(steps.y, SurgeonHand.SETTLE_SPEED / Engine.physics_ticks_per_second + 0.002, "Use tool while aiming eases the tip down onto the skin (%.1f mm at most in a frame)" % (steps.y * 1000.0))
+	await driver.seconds(0.5)
 	var other := me.hands[1 - me.active]
 	_check_faded(hand, other, 0.0, "the hands are solid at the first zoom step")
 	driver.press("zoom")
@@ -77,6 +87,19 @@ func test_aiming_turns_the_tool_about_the_wrist() -> void:
 	await driver.stop()
 	driver.queue_free()
 	RenderingServer.render_loop_enabled = true
+
+
+## The largest step the tool tip takes in one frame over `count` frames: across the floor (x) and up or down (y),
+## in the surgeon's frame.
+static func _tip_steps(driver: Driver, tool: SurgicalTool, count: int) -> Vector2:
+	var largest := Vector2.ZERO
+	var last := driver.me.to_local(tool.tip_position())
+	for i in count:
+		await driver.frames(1)
+		var now := driver.me.to_local(tool.tip_position())
+		largest = largest.max(Vector2(Vector2(now.x - last.x, now.z - last.z).length(), absf(now.y - last.y)))
+		last = now
+	return largest
 
 
 ## Only the wrist bends: it and the forearm stay where they were before aiming.

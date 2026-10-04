@@ -771,13 +771,15 @@ func _local_update(delta: float) -> void:
 		if i == active and not aiming:
 			_aim_wrist = Vector3.INF
 		if h.lowered or not aiming:
-			h.raise = 0.0 if h.lowered else move_toward(h.raise, 0.0, delta * SurgeonHand.SETTLE_SPEED)
+			# Use tool brings it down onto its spot, no faster than letting go of Aim tool does.
+			h.raise = move_toward(h.raise, 0.0, delta * SurgeonHand.SETTLE_SPEED)
 		if tool and tool.def.action == "spread":
 			# Held upright, a spreader's jaws open flat across the skin whichever way it's rolled (C/V turn them).
 			h.tilt = SurgeonHand.TILT_RANGE.x
 		if i == active and _needle_anchor != Vector3.INF and not h.inspecting:
 			# The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
 			h.lifted = false
+			h.raise = 0.0
 			h.target = _needle_anchor - h.tip_offset(tool.def.length)
 			h.local_target = to_local(h.target)
 			h.tremor = Vector3.ZERO
@@ -889,8 +891,11 @@ func _lie_still(delta: float) -> void:
 	velocity = -table.normalized() * WALK_SPEED if _down < 1.0 and table.length() < LYING_DISTANCE else Vector3.ZERO
 	move_and_slide()
 	rotation.y = lerp_angle(rotation.y, atan2(-table.x, -table.z), minf(delta * 3.0, 1.0))
+	_aim_wrist = Vector3.INF
 	for i in 2:
 		var h := hands[i]
+		h.aiming = false
+		h.raise = 0.0
 		h.lowered = false
 		h.trigger = false
 		h.lifted = false

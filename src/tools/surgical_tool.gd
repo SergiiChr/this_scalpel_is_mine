@@ -35,7 +35,7 @@ var blood_exposure := 0.0
 ## Exact on the host, in steps elsewhere (a syringe, vial or kidney dish is exact everywhere, see ml).
 var fill := 0.0
 ## ml of liquid in a syringe, vial or kidney dish, ml of air drawn into a syringe and the share of the liquid that is
-## blood and iodine (0..1). Exact on every peer: the host sends each change (ToolManager.add_liquid() and transfer()).
+## blood and iodine (0..1). Exact on every peer: the host sends changes (ToolManager.add_liquid() and transfer()).
 var ml := 0.0
 var air := 0.0
 var red := 0.0

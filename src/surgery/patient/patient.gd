@@ -82,6 +82,8 @@ var wounds: Array[Wound] = []
 var targets: Array[CavityTarget] = []
 ## What's in the patient's blood, every injection of a drug adding up.
 var drugs := DrugLevels.new()
+## Seconds until a lethal drug that worked ends it (INF: none has).
+var _lethal_left := INF
 ## Counters for scoring and the post-op report, see data/consequences.cfg.
 var flags: Dictionary = {}
 var iv_set := false
@@ -444,9 +446,11 @@ func _check_death(fx: DrugEffects) -> void:
 
 
 func _drug_effects(dt: float) -> DrugEffects:
+	var working: Array[DrugDef] = []
 	for crossed: Array in drugs.update(dt, _wear):
 		if crossed[1] == "works":
-			_drug_works(crossed[0])
+			_drug_works(crossed[0], working)
+			working.append(crossed[0])
 		else:
 			add_flag("overdose")
 			Surgery.current.scoring.add("overdose")
@@ -458,25 +462,29 @@ func _drug_effects(dt: float) -> DrugEffects:
 		for key: String in def.effects:
 			if key in ["glucose", "volume_ml"]:
 				# Totals, spread over the time it takes to wear off, as fast as it does: two doses give twice as much.
-				fx.add(key, def.effect(key) / maxf(def.duration, 1.0) * _wear(def) if entry.level > 0.0 else 0.0)
+				fx.add(key, def.effect(key) / maxf(def.duration, 1.0) * _wear(def, entry.level) if entry.level > 0.0 else 0.0)
 			else:
 				fx.add(key, def.effect(key) * strength)
 		if def.has_flag("antihistamine"):
 			fx.antihistamine += strength
 		if def.id == "adrenaline":
 			fx.adrenaline += strength
-		if def.has_flag("lethal") and entry.working > def.duration * 0.8:
-			fx.lethal = 1.0
+	if _lethal_left != INF:
+		_lethal_left -= dt
+		fx.lethal = 1.0 if _lethal_left <= 0.0 else 0.0
 	return fx
 
 
-## How fast a drug wears off (1: one right dose over its duration). General anesthesia lasts the whole surgery, kept
-## topped up like an anesthetist would, unless the patient burns through it (anesthesia_decay_mult).
-func _wear(def: DrugDef) -> float:
+## How fast a drug at `level` wears off (1: one right dose over its duration). General anesthesia lasts the whole
+## surgery, kept topped up to the right dose like an anesthetist would: more than that wears off as usual, so another
+## dose deepens it only for a while. A patient who burns through it (anesthesia_decay_mult) loses it all.
+func _wear(def: DrugDef, level: float) -> float:
 	if def.effect("anesthesia") <= 0.0:
 		return 1.0
 	var decay_mult := mods.mult("anesthesia_decay_mult")
-	return decay_mult if decay_mult > 1.0 else 0.0
+	if decay_mult > 1.0:
+		return decay_mult
+	return 1.0 if level > 1.0 else 0.0
 
 
 func _has_active(flag: String) -> bool:
@@ -530,11 +538,12 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 		_reveal("allergy")
 
 
-## A drug just reached an effective level: it does its job.
-func _drug_works(def: DrugDef) -> void:
+## A drug just reached an effective level: it does its job. `along` started working in the same step, before it: a
+## dangerous pair of them reacts once, not once for each.
+func _drug_works(def: DrugDef, along: Array[DrugDef]) -> void:
 	for entry: Dictionary in drugs.entries.values():
 		var other: DrugDef = entry.def
-		if other != def and entry.working >= 0.0 and (def.id in other.danger_with or other.id in def.danger_with):
+		if other != def and not other in along and entry.working >= 0.0 and (def.id in other.danger_with or other.id in def.danger_with):
 			Surgery.current.announce("Blood pressure spikes through the roof!")
 			if rng.randf() < DANGER_ARREST_CHANCE:
 				arrest()
@@ -553,6 +562,8 @@ func _drug_works(def: DrugDef) -> void:
 		add_flag("antibiotic")
 	if def.has_flag("lethal"):
 		add_flag("euthanized")
+		# There's no coming back from it, however fast it wears off.
+		_lethal_left = minf(_lethal_left, def.duration * 0.8)
 
 
 ## Rolls the weight on its own generator (so the rest of the patient stays the same) and returns the body scale for it.
