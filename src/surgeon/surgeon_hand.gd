@@ -7,6 +7,9 @@ const UPPER_ARM := 0.34
 const FOREARM := 0.34
 const KNEE_SLEEVE_CLEARANCE := 0.14
 const TILT_RANGE := Vector2(-1.5, -0.2)
+## A spreader is held tipped this far toward the skin, so the hand stays clear of the body, and set lying flatter
+## along it (TILT_RANGE.y, see ToolActions).
+const SPREADER_TILT := -0.6
 ## How far the wrist turns the tool left and right of straight ahead (radians), and how far in toward the middle each
 ## hand starts turned, so the tool points across in front of the eyes, beside the hand, not hidden under it.
 const TURN_RANGE := 0.9
@@ -14,6 +17,9 @@ const REST_TURN := 0.4
 ## The tilt a glove is fitted onto its tool at (see _glove_frame()). Tilted or turned from there, both turn together.
 const REST_TILT := -1.1
 const LIFT_HEIGHT := 0.12
+## How high (meters) and for how long (seconds) the hand hops when its tool bounces off what it was pressed onto.
+const BOUNCE_HEIGHT := 0.02
+const BOUNCE_TIME := 0.35
 ## How fast (m/s) a lifted or raised hand comes back down.
 const SETTLE_SPEED := 0.8
 ## Seconds of game time the hand's speed is measured over.
@@ -87,6 +93,9 @@ var local_target := Vector3.ZERO
 var tilt := REST_TILT
 var turn := 0.0
 var twist := 0.0
+## Holding a spreader, which lies flat: twist swings it about the upright instead of rolling it, so its jaws turn
+## across a cut and stay flat.
+var spreads := false
 ## Use tool held: the tool rests on its spot instead of hovering over it.
 var lowered := false
 ## Use tool held, for tools with a single action (ToolActions.TRIGGER_NAMES): on press, while held, on release.
@@ -119,6 +128,8 @@ var elbow_support_weight := 0.0
 var knee_obstacles: Array[Vector3] = []
 
 var _lift := 0.0
+## How far through a bounce (bounce()) the hand is, 1 for none.
+var _bounce := 1.0
 ## Recent [game time, position] samples. Speed over a short window ignores tremor and network jitter.
 ## Game time, not the wall clock: physics frames run back to back after a stall would read as a burst of speed.
 var _history: Array = []
@@ -245,11 +256,17 @@ func set_see_through(amount: float) -> void:
 			(node as GeometryInstance3D).material_override = _ghost if amount > 0.0 else null
 
 
-## Final world position: target plus lift and tremor.
+## The tool bounced off what it was pressed onto: the hand hops up off it and comes back down.
+func bounce() -> void:
+	_bounce = 0.0
+
+
+## Final world position: target plus lift, bounce and tremor.
 func effective_position() -> Vector3:
 	if puppet:
 		return target
-	return target + Vector3(0, _lift + raise, 0) + (Vector3(tremor.x, maxf(tremor.y, 0.0), tremor.z) if on_hard else tremor)
+	var hop := BOUNCE_HEIGHT * sin(PI * _bounce)
+	return target + Vector3(0, _lift + raise + hop, 0) + (Vector3(tremor.x, maxf(tremor.y, 0.0), tremor.z) if on_hard else tremor)
 
 
 func grip_transform() -> Transform3D:
@@ -268,6 +285,8 @@ func _tool_basis(working: bool) -> Basis:
 	var pitch := tilt
 	if working:
 		pitch = minf(pitch, float(GRIPS.get(grip, GRIPS.pencil).get("work_tilt", pitch)))
+	if spreads:
+		return Basis(Vector3.UP, yaw + twist) * Basis(Vector3.RIGHT, pitch)
 	return Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch) * Basis(Vector3.FORWARD, twist)
 
 
@@ -315,6 +334,7 @@ func wrist_offset() -> Vector3:
 
 func update_pose(shoulder: Vector3, delta: float) -> void:
 	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * SETTLE_SPEED)
+	_bounce = minf(_bounce + delta / BOUNCE_TIME, 1.0)
 	global_position = effective_position()
 	_track_speed(delta)
 	global_basis = grip_transform().basis

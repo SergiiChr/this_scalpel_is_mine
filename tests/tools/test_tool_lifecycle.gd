@@ -39,7 +39,7 @@ func test_every_handheld_tool_is_picked_up_lowered_onto_the_site_and_put_back() 
 			if tool.def.action != "spread":
 				assert_eq(hand.tilt, tilt, "%s pickup preserves the player's tilt" % id)
 			else:
-				assert_eq(hand.tilt, SurgeonHand.TILT_RANGE.x, "the spreader keeps its established upright working pose")
+				assert_eq(hand.tilt, SurgeonHand.SPREADER_TILT, "the spreader is held tipped toward the skin, its points down")
 			assert_eq(hand.turn, turn, "%s pickup preserves the player's turn" % id)
 		await driver.player_walks_to(site)
 		await driver.player_reaches(site)

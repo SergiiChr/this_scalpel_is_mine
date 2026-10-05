@@ -110,28 +110,38 @@ def _needle(m: Model, length: float) -> None:
 
 
 def _retractor(m: Model, length: float) -> None:
+    """A hand-held skin retractor: a flat handle, a shaft and a wide hook at the tip, bent down and back toward the
+    handle, that catches a wound's edge. Its front is the tool's tip, so lying on the skin the hook hangs into the cut."""
     m.add("Handle", superellipsoid((0.018, 0.006, length * 0.6), 0.3, (0.0, 0.0, -length * 0.2)), "steel")
-    hook = flat([(-length * 0.5, 0.0), (-length, 0.0), (-length, -0.03), (-length + 0.006, -0.03), (-length + 0.006, -0.004), (-length * 0.5, -0.004)], 0.026)
-    m.add("Hook", hook, "chrome")
+    shaft = tube([(0.0, 0.0, -length * 0.45), (0.0, 0.0, -length + 0.012)], [(0.0018, 0.0035)] * 2, ring=10)
+    hook = tube(
+        [(0.0, 0.0, -length + 0.012), (0.0, -0.002, -length + 0.002), (0.0, -0.008, -length), (0.0, -0.013, -length + 0.003), (0.0, -0.014, -length + 0.008)],
+        [(0.004, 0.0016), (0.006, 0.0015), (0.006, 0.0014), (0.006, 0.0012), (0.006, 0.0004)],
+        ring=10,
+        up=(1.0, 0.0, 0.0),
+    )
+    m.add("Hook", merge(shaft, hook), "chrome")
 
 
 # A Gelpi retractor's tips stand this far apart closed (ToolActions.SPREAD_RANGE.x in the game), this far in front of
-# the joint its arms swing about.
+# the joint its arms swing about. Its points hang this far below the arms (SurgicalTool.GELPI_DROP in the game).
 GELPI_CLOSED = 0.012
 GELPI_REACH = 0.11
+GELPI_DROP = 0.015
 
 
 def _gelpi(m: Model, length: float) -> None:
-    """A Gelpi self-retaining retractor: ring handles with a ratchet between them, a box joint, and two long arms
-    bowing apart, each ending in a single sharp point turned outward to hook a wound's edge. The game swings each arm
-    about the joint (the part origin) so the points stand as far apart as the wheel set
+    """A Gelpi self-retaining retractor, made to lie along a cut: ring handles with a ratchet between them rising to a
+    box joint, and two long arms bowing apart, each ending in a sharp point bent down under it to hook a wound's edge.
+    The points' tips are on the tool's axis, so the game's tip is where they go in. The game swings each arm about the
+    joint (the part origin, an upright axis) so the points stand as far apart as the wheel set
     (src/tools/tool_animator.gd open_to()). The handles stay put, so the fingers in the rings don't have to follow."""
     joint = -length + GELPI_REACH
     half = GELPI_CLOSED / 2
     handles = []
     for side in (-1.0, 1.0):
         arm = tube(
-            [(side * 0.006, 0.0, 0.05), (side * 0.004, 0.0, 0.0), (side * 0.002, 0.0, joint * 0.6), (0.0, 0.0, joint)],
+            [(side * 0.006, 0.0, 0.05), (side * 0.004, 0.0, 0.0), (side * 0.002, GELPI_DROP * 0.6, joint * 0.6), (0.0, GELPI_DROP, joint)],
             [(0.0025, 0.002), (0.0022, 0.002), (0.0022, 0.002), (0.0024, 0.0022)],
             ring=10,
         )
@@ -140,22 +150,22 @@ def _gelpi(m: Model, length: float) -> None:
     handles.append(tube([(-0.0055, 0.0, 0.032), (-0.001, 0.0, 0.026), (0.006, 0.0, 0.024)], [(0.0012, 0.0009)] * 3, ring=8))
     handles += [superellipsoid((0.0008, 0.0012, 0.0006), 0.5, (x, 0.0, 0.0255 - x * 0.2)) for x in (-0.002, 0.0, 0.002)]
     m.add("Handle", merge(*handles), "steel")
-    m.add("Joint", cylinder(0.004, (0.0, -0.0035, joint), (0.0, 0.0035, joint), 14), "chrome")
+    m.add("Joint", cylinder(0.004, (0.0, GELPI_DROP - 0.0035, joint), (0.0, GELPI_DROP + 0.0035, joint), 14), "chrome")
     for name, side in (("JawA", -1.0), ("JawB", 1.0)):
-        end = -length + 0.008
+        end = -length + 0.002
         arm = tube(
-            [(0.0, 0.0, joint), (side * (half + 0.006), 0.0, (joint + end) * 0.5), (side * (half - 0.005), 0.0, end)],
+            [(0.0, GELPI_DROP, joint), (side * (half + 0.006), GELPI_DROP, (joint + end) * 0.5), (side * (half - 0.001), GELPI_DROP, end)],
             [(0.0024, 0.0022), (0.0019, 0.0019), (0.0016, 0.0016)],
             ring=10,
         )
-        # The point: out from the arm's end, then down to a sharp tip where the jaw holds the skin.
+        # The point: out from the arm's end and bent down to a sharp tip where the jaw holds the skin.
         point = tube(
-            [(side * (half - 0.005), 0.0, end), (side * (half - 0.0005), 0.0, end - 0.0015), (side * half, 0.0, -length)],
+            [(side * (half - 0.001), GELPI_DROP, end), (side * (half + 0.0005), GELPI_DROP - 0.002, -length), (side * half, 0.0, -length)],
             [(0.0016, 0.0016), (0.0012, 0.0012), (0.0003, 0.0003)],
             ring=8,
             smooth=3,
         )
-        m.add(name, merge(arm, point), "steel", (0.0, 0.0, joint))
+        m.add(name, merge(arm, point), "steel", (0.0, GELPI_DROP, joint))
 
 
 def _pistol_stapler(m: Model, length: float, office: bool) -> None:

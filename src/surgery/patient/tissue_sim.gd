@@ -867,6 +867,15 @@ func gap_along(points: PackedVector2Array, radius: float, depth: int) -> float:
 	return gap
 
 
+## The deepest a cut goes (Depth) where it crosses within `radius` (uv) of uv, Depth.NONE where there's no cut.
+func deepest_cut(uv: Vector2, radius: float) -> int:
+	var deepest := Depth.NONE
+	for s in _severed:
+		if uv.distance_to(uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s])) < radius:
+			deepest = maxi(deepest, cut_depth(s))
+	return deepest
+
+
 ## Height (site-local y) of the skin at uv as it's deformed now, NAN over an opening or where no skin lies.
 ## Tools and hands touch this, not the body's rest shape, so a lifted or pressed fold is where it's drawn.
 ## Skin that only moved a little is searched for around where it rests; a flap moved far is found through bins.

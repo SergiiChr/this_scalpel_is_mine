@@ -1,8 +1,10 @@
 extends GutTest
 ## The retractor as a player uses it: hooked onto one edge of a cut with Use tool, drawn aside by moving the hand so
-## that edge pulls away from the other, then let go of so the cut falls back. Headless assertions in smoke; with key
-## frames also the site from above and obliquely, hooked and pulled. Review them for the hook sitting on the edge it
-## pulls, that edge stretched aside over a few centimeters and the other one staying put.
+## that edge pulls away from the other, let go of with Grab so it lies down on the body and keeps pulling, taken back
+## and unhooked with Use tool so the cut falls back. Headless assertions in smoke; with key frames also the site from
+## above and obliquely, hooked, pulled and left lying. Review them for the hook sitting on the edge it pulls, that edge
+## stretched aside over a few centimeters and the other one staying put, and the retractor let go of lying on the skin
+## pointing away from the cut, not standing up or sinking into the body.
 
 const TAGS = ["smoke", "tool_retractor", "tissue_modification", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
@@ -59,6 +61,26 @@ func test_retractor_hooks_one_edge_and_pulls_the_cut_open() -> void:
 	assert_gt(hooked_moved, other_moved * 3.0, "the hooked edge moves aside (%.1f mm), the other one much less (%.1f mm)" % [hooked_moved * 1000.0, other_moved * 1000.0])
 	assert_eq(patient.wounds.size(), wounds, "a 2 cm pull doesn't tear")
 	await driver.capture("pulled")
+
+	var hooked := retractor.tip_position()
+	driver.press("grab")
+	await driver.seconds(2.0)
+	assert_eq(retractor.state, SurgicalTool.State.STANDING, "let go of with Grab, the retractor stays hooked")
+	assert_false(hand.attached, "and the hand is free")
+	assert_lt(retractor.tip_position().distance_to(hooked), 0.002, "the hook stays where it held the skin")
+	assert_gt(tissue.gap_at(middle, MIDDLE), opened - 0.002, "left alone, it keeps the cut pulled open")
+	var handle := retractor.global_position - retractor.tip_position()
+	assert_lt(absf(handle.normalized().y), 0.35, "it lies along the body (%.0f degrees off level), not standing up" % rad_to_deg(asin(absf(handle.normalized().y))))
+	assert_gt(handle.normalized().dot(aside.normalized()), 0.9, "pointing away from the cut, the way it pulled")
+	await driver.capture("let_go")
+
+	await driver.player_reaches(retractor.tip_position())
+	driver.press("grab")
+	await driver.frames(10)
+	assert_eq(driver.me.held_tool(driver.me.active), retractor, "taken back in hand")
+	assert_true(retractor.grip_info.get("type", "") == "skin" and hand.attached, "still hooked")
+	assert_lt(retractor.tip_position().distance_to(hooked), 0.01, "the hook stays on the skin it held as the hand takes it")
+	assert_eq(patient.wounds.size(), wounds, "taking it back doesn't tear")
 
 	driver.use()
 	await driver.frames(10)

@@ -1372,7 +1372,8 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 
 ## Called when a spreader (the Gelpi retractor) is set into the skin with its jaws' tips at `tips` (world, see
 ## ToolActions.spread_tips()): each jaw takes hold of the edge on its own side of the middle.
-## Returns grip info for open_spreader() and release_grip(), {"type": "none"} when a tip isn't on the site.
+## Returns grip info for open_spreader() and release_grip(), with "middle" (uv) and "depth" (meters under the skin the
+## cut between the tips goes), {"type": "none"} when a tip isn't on the site or there's no cut between them to go into.
 func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Dictionary:
 	var uvs: Array[Vector2] = []
 	for tip in tips:
@@ -1381,6 +1382,9 @@ func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Diction
 			return {"type": "none"}
 		uvs.append(probe.uv)
 	var middle := (uvs[0] + uvs[1]) * 0.5
+	var depth := body.opening_depth(middle, uvs[0].distance_to(uvs[1]) * 0.5 + body.meters_to_uv(0.003))
+	if depth <= 0.0:
+		return {"type": "none"}
 	var keys: Array[int] = []
 	var starts: Array[Vector3] = []
 	for side in 2:
@@ -1393,7 +1397,7 @@ func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Diction
 		keys.append(key)
 		starts.append(body.tissue.pos[held])
 	var axis := body.site.to_local(tips[1]) - body.site.to_local(tips[0])
-	return {"type": "spread", "keys": keys, "starts": starts, "axis": Vector3(axis.x, 0.0, axis.z).normalized(), "spread": spread}
+	return {"type": "spread", "keys": keys, "starts": starts, "axis": Vector3(axis.x, 0.0, axis.z).normalized(), "spread": spread, "middle": middle, "depth": depth}
 
 
 ## Opens or closes a set spreader to `spread` (meters between its tips): each jaw moves its edge half the change

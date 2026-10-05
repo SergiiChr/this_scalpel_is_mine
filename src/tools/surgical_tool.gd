@@ -16,6 +16,8 @@ const DRIP_FLUID := 500.0
 const MIN_TURNING_SIZE := 0.04
 ## How thick a tourniquet's band is where it wraps a limb.
 const BAND_THICKNESS := 0.012
+## Seconds a spreader takes to go down into a cut once set (dig_to()).
+const DIG_TIME := 0.2
 
 var uid: int
 var def: ToolDef
@@ -89,6 +91,10 @@ var spread := ToolActions.SPREAD_RANGE.x:
 		spread = value
 		_animator.open_to(value, -def.length)
 var in_wound := false
+## Where a spreader set just now eases down from and to, and how far it is along (1 there).
+var _dig_from := Transform3D()
+var _dig_to := Transform3D()
+var _dig := 1.0
 
 ## The model's box in the tool's own space (the grip at the origin).
 var bounds := AABB()
@@ -154,6 +160,9 @@ func _process(delta: float) -> void:
 		active = ToolActions.in_use(def.action, hand.lowered, hand.trigger, hand.level)
 		closed = hand.attached or def.grip == "needle"
 	_animator.animate(active, closed, delta)
+	if _dig < 1.0:
+		_dig = minf(_dig + delta / DIG_TIME, 1.0)
+		global_transform = _dig_from.interpolate_with(_dig_to, ease(_dig, 0.4))
 	if blood > 0.0:
 		for mat in _own_materials:
 			mat.set_shader_parameter("coat_inverse", Projection(global_transform.affine_inverse()))
@@ -169,6 +178,14 @@ func _model_bounds() -> AABB:
 		all = box if first else all.merge(box)
 		first = false
 	return all
+
+
+## Set in a cut, a spreader goes down into it to `pose`, its points as deep as the cut goes, so the arms show how deep
+## that is.
+func dig_to(pose: Transform3D) -> void:
+	_dig_from = global_transform
+	_dig_to = pose
+	_dig = 0.0
 
 
 func tip_position() -> Vector3:
@@ -317,7 +334,9 @@ func set_state(new_state: State, new_holder: int, new_slot: int) -> void:
 		unwrap()
 	var physical := state == State.FREE
 	visible = state != State.CONSUMED
-	collision_layer = TOOL_LAYER if state in [State.FREE, State.STANDING, State.INSIDE] else 0
+	# Left holding onto the patient (set, clamped, hooked), a tool doesn't keep hands or other tools off what's under it.
+	var on_patient := state == State.STANDING and not def.fixed
+	collision_layer = TOOL_LAYER if state in [State.FREE, State.STANDING, State.INSIDE] and not on_patient else 0
 	freeze = not (physical and multiplayer.is_server())
 	if state != State.HELD:
 		lowered_before = false

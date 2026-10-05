@@ -276,16 +276,16 @@ func player_lets_go_of_aim() -> void:
 ## twisting the wrist, as C/V do.
 func player_turns_blade(direction: Vector3) -> void:
 	var hand := me.hands[me.active]
-	var yaw := me.global_rotation.y + hand.turn
 	var best := hand.twist
 	var best_dot := -1.0
 	for i in range(-60, 61):
-		var twist := i * PI / 60.0
-		var side := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, hand.tilt) * Basis(Vector3.FORWARD, twist) * Vector3.RIGHT
+		# The hand's own way of turning its tool: a spreader swings about the upright where a blade rolls.
+		hand.twist = i * PI / 60.0
+		var side := hand.grip_transform().basis.x
 		var dot := absf(side.cross(Vector3.UP).normalized().dot(direction.normalized()))
 		if dot > best_dot:
 			best_dot = dot
-			best = twist
+			best = hand.twist
 	hand.twist = best
 	await frames(5)
 
@@ -404,10 +404,16 @@ func player_puts_down(standing: bool = false) -> void:
 	if me.uses_level(me.active):
 		await set_level(0)
 	var spot := SurgeryState.free_tray_spot(surgery)
-	await player_walks_to(spot)
-	# The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
-	await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
-	await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
+	for i in 4:
+		await player_walks_to(spot)
+		# The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
+		await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
+		await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
+		if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() < 0.04:
+			break
+		# Out of this tool's reach from the side of the tray: another spot.
+		SurgeryState.tray_spot_is_bad(surgery, spot)
+		spot = SurgeryState.free_tray_spot(surgery)
 	# Set down onto the tray before letting go, or a bottle would fall and roll.
 	if not ToolActions.TRIGGER_NAMES.has(tool.def.action):
 		use()
@@ -922,7 +928,8 @@ func player_sets_gelpi(from: Vector2, to: Vector2) -> SurgicalTool:
 	use()
 	await frames(10)
 	use(false)
-	await frames(3)
+	# Set, it goes down into the cut (SurgicalTool.DIG_TIME).
+	await seconds(SurgicalTool.DIG_TIME + 0.1)
 	note("gelpi %s" % ("set" if gelpi.in_wound else "not set"))
 	return gelpi
 

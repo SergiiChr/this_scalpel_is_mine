@@ -1,9 +1,12 @@
 extends GutTest
-## The Gelpi retractor (self-retaining) as a player uses it: set across the middle of a cut with Use tool, opened on
-## the wheel so the cut's edges move apart, let go of and left holding the wound open, taken back, closed and taken
-## out. Opened too far it tears the skin. Headless assertions in smoke; with key frames also the site from above and
-## obliquely and what the surgeon sees (the < > aim at the tips). Review them for the points sitting on the cut's
-## edges, the opening widening with the tips and not past them, no skin passing through the jaws and the < > on the tips.
+## The Gelpi retractor (self-retaining) as a player uses it: laid along a cut and set in its middle with Use tool, its
+## points going down into it as deep as it goes, opened on the wheel so the cut's edges move apart, let go of and left
+## holding the wound open, taken back, closed and taken out. Opened too far it tears the skin. Pressed onto whole skin
+## it bounces off. Set in a skin cut and let go of, the scalpel cuts the muscle between its jaws. Headless assertions
+## in smoke; with key frames also the site from above and obliquely and what the surgeon sees (the < > aim at the
+## tips). Review them for the retractor lying along the cut with its arms over the skin, the points down in the cut on
+## its edges, the opening widening with the tips and not past them, no skin passing through the jaws, the < > on the
+## tips and the muscle cut showing between the jaws.
 
 const TAGS = ["slow", "smoke", "tool_gelpi", "tissue_modification", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
@@ -44,6 +47,12 @@ func test_gelpi_set_in_a_cut_holds_it_open_until_taken_out() -> void:
 		return
 	var sides := _jaw_sides(gelpi, middle)
 	assert_true(sides[0] * sides[1] < 0.0, "each jaw holds the edge on its own side of the cut (%s)" % str(sides))
+	var length := -gelpi.global_basis.z
+	assert_lt(absf(length.y), 0.25, "it lies along the body (%.0f degrees off level)" % rad_to_deg(asin(absf(length.y))))
+	assert_gt(absf(length.normalized().dot(along_cut.normalized())), 0.95, "along the cut, its jaws across it")
+	var dug := -driver.body.height_above_site(gelpi.tip_position())
+	var deep := minf(driver.body.opening_depth(middle, 0.01), ToolActions.SPREAD_REACH)
+	assert_almost_eq(dug, deep, 0.0015, "its points go down into the cut as deep as it goes (%.1f mm, the cut %.1f mm)" % [dug * 1000.0, deep * 1000.0])
 	var marks := _aim_marks()
 	assert_true(marks.size() == 2, "the aim is a < and a > instead of the dot")
 	await driver.capture("set")
@@ -69,7 +78,7 @@ func test_gelpi_set_in_a_cut_holds_it_open_until_taken_out() -> void:
 	assert_gt(tissue.gap_at(middle, MIDDLE), opened - 0.002, "left alone, it still holds the cut open")
 	await driver.capture("let_go")
 
-	await driver.player_reaches(ToolManager.middle(gelpi))
+	await driver.player_reaches(gelpi.global_position)
 	driver.press("grab")
 	await driver.frames(10)
 	assert_eq(driver.me.held_tool(driver.me.active), gelpi, "taken back in hand")
@@ -104,6 +113,52 @@ func test_gelpi_opened_too_far_tears_the_skin() -> void:
 	assert_true(patient.flags.has("tears"), "opened %.0f cm across a 3 cm cut, the skin tears" % (gelpi.spread * 100.0))
 	assert_true(driver.surgery.scoring.entries.has("skin_tear"), "a tear costs points")
 	await driver.capture("torn")
+	await _finish()
+
+
+func test_gelpi_pressed_onto_whole_skin_bounces_off() -> void:
+	await _start("appendectomy", "bounce")
+	var spot := driver.site_point(Vector2(0.4, 0.45))
+	var gelpi := await driver.player_requests_item("gelpi")
+	await driver.player_walks_to(spot)
+	await driver.player_reaches(spot)
+	var hand := driver.me.hands[driver.me.active]
+	driver.use()
+	await driver.frames(3)
+	var pressed := hand.global_position.y
+	var highest := pressed
+	for i in 40:
+		await driver.frames(1)
+		highest = maxf(highest, hand.global_position.y)
+	assert_false(gelpi.in_wound or hand.attached, "with no cut to go into it doesn't set")
+	assert_gt(highest - pressed, SurgeonHand.BOUNCE_HEIGHT * 0.5, "it bounces off the skin (%.1f cm up)" % ((highest - pressed) * 100.0))
+	assert_lt(hand.global_position.y, pressed + 0.003, "and comes back down onto it")
+	driver.use(false)
+	await driver.capture("bounced")
+	await _finish()
+
+
+func test_gelpi_holds_a_skin_cut_open_for_the_muscle_under_it() -> void:
+	await _start("appendectomy", "muscle")
+	var from := Vector2(0.4, 0.45)
+	var to := from + Vector2(driver.body.meters_to_uv(LENGTH), 0.0)
+	var middle := (from + to) * 0.5
+	along_cut = driver.site_point(to) - driver.site_point(from)
+	await driver.player_cuts_skin(from, to, 1)
+	await driver.player_puts_down()
+	var gelpi := await driver.player_sets_gelpi(from, to)
+	assert_true(gelpi.in_wound, "set in a skin cut")
+	var dug := -driver.body.height_above_site(gelpi.tip_position())
+	assert_almost_eq(dug, PatientBody.SKIN_THICKNESS, 0.0015, "its points go only through the skin (%.1f mm)" % (dug * 1000.0))
+	await driver.player_opens_gelpi(OPEN)
+	driver.press("grab")
+	await driver.seconds(1.0)
+	assert_eq(gelpi.state, SurgicalTool.State.STANDING, "let go of, it stays set")
+	await driver.capture("skin_held_open")
+	var inside := driver.body.meters_to_uv(0.008)
+	await driver.player_cuts_skin(middle - Vector2(inside, 0.0), middle + Vector2(inside, 0.0), 3)
+	assert_eq(driver.body.tissue.deepest_cut(middle, driver.body.meters_to_uv(0.004)), TissueSim.Depth.MUSCLE, "the scalpel cuts the muscle between its jaws\n%s" % driver.recent())
+	await driver.capture("muscle_cut")
 	await _finish()
 
 

@@ -42,6 +42,9 @@ const SUTURE_TIE_HOLD := 0.65
 ## (GELPI_CLOSED in tools/assetgen/instruments.py).
 const SPREAD_STEP := 0.005
 const SPREAD_RANGE := Vector2(0.012, 0.08)
+## How deep (meters) a spreader's points reach into a cut: they hang GELPI_DROP (tools/assetgen/instruments.py) under
+## its arms, which stop on the skin.
+const SPREAD_REACH := 0.012
 ## Wipes paint big soft disks: at most this often, or once the tool moved PAINT_MOVE (uv) since the last one.
 const PAINT_INTERVAL := 1.0 / 15.0
 const PAINT_MOVE := 0.02
@@ -184,13 +187,19 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				uv = contact.uv
 			_sew(tool, patient, zone, uv, lowered, trigger, released, dt, tip)
 		"spread":
-			# Pressed onto the skin, the jaws go in on both sides of the aim and stay there; pressed again they come out.
+			# Pressed onto a cut, the jaws go in on both sides of the aim and stay there, the points down in the cut as deep
+			# as it goes; pressed again they come out. Pressed where there's no cut to go into, it bounces off.
 			if pressed and tool.grip_info.is_empty() and lowered:
 				var info := patient.set_spreader(tool.uid, spread_tips(tool), tool.spread)
 				if info.type != "none":
 					tool.grip_info = info
 					Surgery.current.set_attached(hand.peer, tool.slot, true)
-					Surgery.current.tools.sync_spread(tool)
+					# It goes down lying along the skin, the hand holding it as flat as a hand tilts a tool.
+					var dug := patient.body.uv_to_world(info.middle, minf(info.depth, SPREAD_REACH))
+					var lying := Basis(Vector3.UP, tool.global_basis.get_euler(EULER_ORDER_YXZ).y) * Basis(Vector3.RIGHT, SurgeonHand.TILT_RANGE.y)
+					Surgery.current.tools.sync_spread(tool, Transform3D(lying, dug + lying.z * tool.def.length))
+				elif touching:
+					Surgery.current.bounce_hand(hand.peer, tool.slot)
 			elif pressed and not tool.grip_info.is_empty():
 				patient.release_grip(tool.uid, tool.grip_info, false)
 				tool.grip_info = {}

@@ -679,6 +679,19 @@ func is_open(uv: Vector2) -> bool:
 	return tissue.is_open(uv)
 
 
+## How deep (meters under the skin) a cut within `radius` (uv) of uv goes: to the bottom of the deepest layer it cut
+## through, 0 where there's no cut.
+func opening_depth(uv: Vector2, radius: float) -> float:
+	match tissue.deepest_cut(uv, radius):
+		TissueSim.Depth.SKIN:
+			return SKIN_THICKNESS
+		TissueSim.Depth.FAT:
+			return SKIN_THICKNESS + fat_thickness
+		TissueSim.Depth.MUSCLE:
+			return muscle_bottom()
+	return 0.0
+
+
 ## The deepest layer showing at uv: "skin" where it's whole, "fat" or "muscle" where a cut opened down to it,
 ## "cavity" where it's open through the muscle.
 func layer_at(uv: Vector2) -> String:

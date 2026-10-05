@@ -707,6 +707,7 @@ func _physics_process(delta: float) -> void:
 			_held_uid[i] = uid
 			hands[i].level = 0
 			hands[i].grip = tool.def.grip if tool else "pencil"
+			hands[i].spreads = tool != null and tool.def.action == "spread"
 			hands[i].fit = Db.grip_fit(tool.def, i) if tool else {}
 			if tool and tool.def.grip == "needle":
 				hands[i].tilt = hands[i].default_tilt()
@@ -870,8 +871,8 @@ func _local_update(delta: float) -> void:
 			# Use tool brings it down onto its spot, no faster than letting go of Aim tool does.
 			h.raise = move_toward(h.raise, 0.0, delta * SurgeonHand.SETTLE_SPEED)
 		if tool and tool.def.action == "spread":
-			# Held upright, a spreader's jaws open flat across the skin whichever way it's rolled (C/V turn them).
-			h.tilt = SurgeonHand.TILT_RANGE.x
+			# Held tipped toward the skin, its points down, a spreader's jaws open flat across it (C/V turn them).
+			h.tilt = SurgeonHand.SPREADER_TILT
 		if i == active and _needle_anchor != Vector3.INF and not h.inspecting:
 			# The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
 			h.lifted = false
@@ -959,9 +960,11 @@ func _hold_needle(delta: float) -> void:
 ## turns that way. Walked away from out of reach, the host leaves it standing in the wound (Surgery.overstretched()).
 func _hold_in_wound(hand: SurgeonHand, tool: SurgicalTool) -> void:
 	var angles := tool.global_basis.get_euler(EULER_ORDER_YXZ)
-	hand.turn = clampf(wrapf(angles.y - global_rotation.y, -PI, PI), -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
+	# A spreader's twist swings it (SurgeonHand.spreads): what the arm doesn't turn, the twist does.
+	var yaw := wrapf(angles.y - global_rotation.y, -PI, PI)
+	hand.turn = clampf(yaw, -SurgeonHand.TURN_RANGE, SurgeonHand.TURN_RANGE)
 	hand.tilt = clampf(angles.x, SurgeonHand.TILT_RANGE.x, SurgeonHand.TILT_RANGE.y)
-	hand.twist = -angles.z
+	hand.twist = yaw - hand.turn
 	hand.lifted = false
 	hand.target = tool.global_position
 	hand.tremor = Vector3.ZERO
@@ -1433,11 +1436,25 @@ func clean_gloves() -> void:
 		hand.set_blood(0.0)
 
 
+## Host tells the owner the tool in a hand bounced off what it was pressed onto (SurgeonHand.bounce()).
+@rpc("any_peer", "call_local", "reliable")
+func bounce_hand(hand: int) -> void:
+	if Net._sender() == 1:
+		hands[hand].bounce()
+
+
 ## Host tells the owner a hand is now holding onto something (or let go). Attached hands don't follow the body.
 @rpc("any_peer", "call_local", "reliable")
 func set_hand_attached(hand: int, value: bool) -> void:
 	if Net._sender() != 1:
 		return
 	hands[hand].attached = value
+	var tool := held_tool(hand)
+	if value and tool:
+		# Taken back off the patient (a retractor lying hooked), the hand goes where the tool's tip holds on, so the skin
+		# isn't dragged off to wherever the hand reached for the tool.
+		hands[hand].target = tool.tip_position() - hands[hand].tip_offset(tool.def.length)
+		# At once: the tool is placed in the hand before the hand moves this frame.
+		hands[hand].global_position = hands[hand].effective_position()
 	if not value:
 		hands[hand].local_target = to_local(hands[hand].target)
