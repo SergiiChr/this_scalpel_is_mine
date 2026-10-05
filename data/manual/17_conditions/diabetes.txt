@@ -12,3 +12,4 @@ title: Diabetes mellitus
 • Check the level with the glucose panel (fifteen seconds).
 • Insulin lowers it slowly and for a long time. Glucose D50 raises it quickly.
 • A seizure from low glucose stops with diazepam, but returns until glucose is given.
+> See Combined conditions (14.9).

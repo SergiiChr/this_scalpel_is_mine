@@ -191,6 +191,11 @@ func _ready() -> void:
 	surgery.hud.close_overlay()
 	surgery.hud.open_manual()
 	await _shot(out, "05_manual")
+	for title: String in ["17. Chronic conditions", "Aneurysm"]:
+		for button: Button in surgery.hud.find_children("*", "Button", true, false):
+			if button.has_meta("page") and (button.get_meta("page") as ManualPage).title == title:
+				button.pressed.emit()
+	await _shot(out, "05b_manual_condition")
 	surgery.hud.open_card()
 	await _shot(out, "06_card")
 	get_tree().quit()

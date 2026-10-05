@@ -48,7 +48,7 @@ static func build(highlight_keys: PackedStringArray, on_close: Callable) -> Cont
 			var entry := Ui.button(("      " if parent else "") + label, func() -> void: _show(title, page, sub_page, parent, entries))
 			entry.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			entry.set_meta("page", sub_page)
-			entry.set_meta("parent", parent)
+			entry.set_meta("section", p)
 			entry.set_meta("glowing", glowing)
 			entry.visible = parent == null
 			entries.append(entry)
@@ -94,7 +94,7 @@ static func _show(title: Label, page: RichTextLabel, manual_page: ManualPage, pa
 	page.scroll_to_line(0)
 	var open_section := parent if parent else manual_page
 	for entry in entries:
-		entry.visible = entry.get_meta("parent", null) in [null, open_section]
+		entry.visible = entry.get_meta("section") in [entry.get_meta("page"), open_section]
 		var color := RED if entry.get_meta("page") == manual_page else (GLOW if entry.get_meta("glowing") else INK)
 		entry.add_theme_color_override("font_color", color)
 		entry.add_theme_color_override("font_focus_color", color)

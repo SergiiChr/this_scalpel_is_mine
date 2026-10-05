@@ -19,3 +19,4 @@ title: Drug allergy
 [/table]
 • Urticaria and swelling: diphenhydramine.
 • Falling pressure and oxygen saturation mean anaphylaxis: adrenaline immediately.
+> See Combined conditions (14.5, 14.6).

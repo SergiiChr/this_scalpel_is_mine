@@ -44,6 +44,10 @@ func _init(wound_id: int, wound_kind: Kind, a: Vector2, wound_depth: float) -> v
 	_resize_bins()
 
 
+## ml/s at the last simulation tick (host).
+var bleeding := 0.0
+
+
 func is_internal() -> bool:
 	return kind == Kind.INTERNAL
 

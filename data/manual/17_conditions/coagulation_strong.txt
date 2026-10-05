@@ -11,4 +11,4 @@ title: Thrombophilia
 [b]Management[/b]
 • Anticoagulate with heparin early, especially before a long procedure.
 • Never give tranexamic acid.
-> Heparin makes closures leak while it acts (5.5).
+> Heparin makes closures leak while it acts (5.5). See Combined conditions (14.8).

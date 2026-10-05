@@ -220,6 +220,7 @@ func _simulate(dt: float) -> void:
 		if not wound.is_internal():
 			wound.opened = clampf(body.tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN) / FULL_GAP, 0.0, 1.0)
 		var rate := wound.bleed_rate(site_m, bleed_mult, leak)
+		wound.bleeding = rate
 		total += rate
 		# An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
 		var spills := not wound.is_internal() and cavity_blood_ml > CAVITY_SPILL_ML

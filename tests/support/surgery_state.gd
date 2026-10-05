@@ -22,6 +22,16 @@ static func skin_is_cut(patient: Patient, from: Vector2, to: Vector2, depth: flo
 	return patient._stroke_wounds[key]
 
 
+## As if the whole length of `wound` had been sewn shut.
+static func wound_is_closed(wound: Wound) -> void:
+	wound.bins.fill(1.0)
+
+
+## As if `wound` had been cauterized as far as a cautery seals.
+static func wound_is_cauterized(wound: Wound) -> void:
+	wound.cauterized = 0.95
+
+
 ## Tied running threads on stationary skin, for renderer/cache load checks without moving the player's needle.
 static func skin_has_finished_threads(patient: Patient, count: int, first_id: int) -> void:
 	var tissue := patient.body.tissue
