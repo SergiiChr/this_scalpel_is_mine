@@ -110,17 +110,18 @@ def _needle(m: Model, length: float) -> None:
 
 
 def _retractor(m: Model, length: float) -> None:
-    """A hand-held skin retractor: a flat handle, a shaft and a wide hook at the tip, bent down and back toward the
-    handle, that catches a wound's edge. Its front is the tool's tip, so lying on the skin the hook hangs into the cut."""
-    m.add("Handle", superellipsoid((0.018, 0.006, length * 0.6), 0.3, (0.0, 0.0, -length * 0.2)), "steel")
-    shaft = tube([(0.0, 0.0, -length * 0.45), (0.0, 0.0, -length + 0.012)], [(0.0018, 0.0035)] * 2, ring=10)
+    """A skin hook on an elastic stay, like a ring retractor's: a thin wire running out of a blue stay and ending in a
+    small sharp hook bent down and back toward the stay, which catches a wound's edge. Its front is the tool's tip, so
+    lying on the skin the hook hangs into the cut."""
+    wire = 0.0007
+    m.add("Handle", tube([(0.0, 0.0, 0.0), (0.0, 0.0, -length * 0.55)], [(0.0022, 0.0022)] * 2, ring=12), "blue_plastic")
     hook = tube(
-        [(0.0, 0.0, -length + 0.012), (0.0, -0.002, -length + 0.002), (0.0, -0.008, -length), (0.0, -0.013, -length + 0.003), (0.0, -0.014, -length + 0.008)],
-        [(0.004, 0.0016), (0.006, 0.0015), (0.006, 0.0014), (0.006, 0.0012), (0.006, 0.0004)],
-        ring=10,
-        up=(1.0, 0.0, 0.0),
+        [(0.0, 0.0, -length * 0.55), (0.0, 0.0, -length + 0.004), (0.0, -0.001, -length), (0.0, -0.004, -length + 0.0005), (0.0, -0.005, -length + 0.003)],
+        [(wire, wire)] * 4 + [(0.0002, 0.0002)],
+        ring=8,
+        smooth=4,
     )
-    m.add("Hook", merge(shaft, hook), "chrome")
+    m.add("Hook", hook, "chrome")
 
 
 # A Gelpi retractor's tips stand this far apart closed (ToolActions.SPREAD_RANGE.x in the game), this far in front of
