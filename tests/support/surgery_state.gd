@@ -181,8 +181,13 @@ static func surgeon_has_physics_timing(surgery: Surgery) -> Surgeon:
 
 
 ## Replaces a tool's animator with the same behavior plus timing of its normal frame updates.
+## It takes over the old animator's state rather than calling setup(), which would read the posed parts as their rest
+## and lose a spreader's opening or a syringe's fill.
 static func tool_has_animation_timing(tool: SurgicalTool) -> ToolAnimator:
+	var previous := tool._animator
 	var animator := preload("res://tests/support/profiled_tool_animator.gd").new()
+	for property: Dictionary in previous.get_property_list():
+		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			animator.set(property.name, previous.get(property.name))
 	tool._animator = animator
-	animator.setup(tool._model, tool.def.action)
 	return animator

@@ -108,7 +108,7 @@ func test_scalpel_pickup_five_centimeter_cut_and_table_drop() -> void:
 	assert_gt(profile.ticks, 60, "the normal tool callback ran throughout the measured cut")
 	if shots:
 		if FrameBudget.enforced():
-			assert_lte(profile.worst_usec / 1000000.0, FrameBudget.BUDGET, timing)
+			assert_true(driver.budget.within(), driver.budget.summary())
 		shots.end()
 		shots.queue_free()
 	_scalpel = null
