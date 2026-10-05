@@ -54,12 +54,6 @@ func effect(key: String) -> float:
 	return effects.get(key, 0.0)
 
 
-## How far along its effect a dose given `age` seconds ago is (0..1): it ramps in over `onset`, then fades out over
-## the drug's duration.
-func level_at(age: float, onset: float) -> float:
-	return clampf(age / onset if age < onset else 1.0 - (age - onset) / maxf(duration, 0.01), 0.0, 1.0)
-
-
 ## How strongly a dose works, from its share of the right dose. Roughly right counts as right.
 static func dose_strength(share: float) -> float:
 	if share < DOSE_LOW:

@@ -54,8 +54,8 @@ var _drip_timer := 20.0
 var cold_tremor := 0.0
 var _cough_cooldown := 0.0
 var weight_kg := BASE_WEIGHT
-## Drugs given to this surgeon: {"def", "age", "onset", "share" (of the right dose for weight_kg), "applied"}.
-var drugs: Array[Dictionary] = []
+## Drugs given to this surgeon, every injection adding up (shares of the right dose for weight_kg).
+var drugs := DrugLevels.new()
 ## How calm a sedative makes the surgeon now (0..1, 1 from the right dose) and how far past the right dose it is (0 up
 ## to DOSE_HIGH, 1 at KNOCKOUT_SHARE).
 var calm := 0.0
@@ -157,7 +157,7 @@ func smoke() -> void:
 func administer(drug_id: String, amount: float) -> void:
 	var def := Db.drug(drug_id)
 	if def and def.dose > 0.0:
-		drugs.append({"def": def, "age": 0.0, "onset": def.onset * DrugDef.DIRECT_ONSET, "share": amount / (def.dose * weight_kg), "applied": false})
+		drugs.give(def, amount / (def.dose * weight_kg), def.onset * DrugDef.DIRECT_ONSET)
 
 
 func drink(tool_id: String) -> void:
@@ -232,34 +232,24 @@ func update(delta: float, context: Dictionary) -> PackedStringArray:
 ## Sedatives add up into calm and overdose, and knock the surgeon out at KNOCKOUT_SHARE. Flumazenil (reverse_benzo)
 ## takes them all away; a stimulant only keeps a knocked out surgeon up while it lasts.
 func _update_drugs(delta: float, events: PackedStringArray) -> void:
-	var sedative := 0.0
-	var reversed := false
-	calm = 0.0
-	for entry in drugs:
-		entry.age += delta
-		var def: DrugDef = entry.def
-		if def.has_flag("benzo"):
-			var level := def.level_at(entry.age, entry.onset)
-			calm += DrugDef.dose_strength(entry.share) * level
-			sedative += entry.share * level
-		elif not entry.applied and entry.age >= entry.onset:
-			entry.applied = true
-			if entry.share < DrugDef.DOSE_EFFECTIVE:
-				continue
-			if def.has_flag("reverse_benzo"):
-				reversed = true
-			elif def.has_flag("stimulant") and knocked_out > 0.0:
-				kept_up = def.duration
+	for crossed: Array in drugs.update(delta, func(_def: DrugDef, _level: float) -> float: return 1.0):
+		var def: DrugDef = crossed[0]
+		if crossed[1] != "works":
+			continue
+		if def.has_flag("reverse_benzo"):
+			drugs.remove(func(d: DrugDef) -> bool: return d.has_flag("benzo"))
+			if knocked_out > 0.0:
+				knocked_out = 0.0
+				kept_up = 0.0
 				events.append("came_round")
-	drugs = drugs.filter(func(e: Dictionary) -> bool: return e.age < e.onset + (e.def as DrugDef).duration and not (reversed and (e.def as DrugDef).has_flag("benzo")))
-	if reversed:
-		sedative = 0.0
-		calm = 0.0
-		if knocked_out > 0.0:
-			knocked_out = 0.0
-			kept_up = 0.0
+		elif def.has_flag("stimulant") and knocked_out > 0.0:
+			kept_up = def.duration
 			events.append("came_round")
-	calm = minf(calm, 1.0)
+	var sedative := 0.0
+	for entry: Dictionary in drugs.entries.values():
+		if (entry.def as DrugDef).has_flag("benzo"):
+			sedative += entry.level
+	calm = minf(DrugDef.dose_strength(sedative), 1.0)
 	overdose = clampf((sedative - DrugDef.DOSE_HIGH) / (KNOCKOUT_SHARE - DrugDef.DOSE_HIGH), 0.0, 1.0)
 	if sedative >= KNOCKOUT_SHARE and not _knocked:
 		_knocked = true

@@ -14,12 +14,17 @@ const VIAL_REACH := 0.05
 const STANDING_ROOM := 0.04
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
+## How close to a dish's middle (a share of its length) a bottle has to be to pour into it, or a cotton pad to dip in it.
+const POUR_REACH := 0.7
 ## A tool lying lower than this (meters) is on the floor: one that lands on it lands on the floor too.
 const FLOOR_PILE := 0.1
 
 var tools: Dictionary = {}
 var _next_uid := 1
 var _sync_acc := 0.0
+## Host: syringes, vials, dishes and bags whose liquid changed since it was last sent (uid -> true), and the time since.
+var _liquid_changed: Dictionary = {}
+var _liquid_acc := 0.0
 
 
 ## station_tools: [[id, Transform3D], ...] that sit on their own station (see Room.station_tools()).
@@ -153,14 +158,6 @@ func nearest_container(at: Vector3) -> SurgicalTool:
 	return best
 
 
-## True while a held syringe's needle is in this vial, dish or bag.
-func needle_in(container: SurgicalTool) -> bool:
-	for tool: SurgicalTool in tools.values():
-		if tool.state == SurgicalTool.State.HELD and tool.def.action == "syringe" and nearest_container(tool.tip_position()) == container:
-			return true
-	return false
-
-
 ## The bag hanging on the IV stand, null where there's none.
 func drip_bag() -> SurgicalTool:
 	for tool: SurgicalTool in tools.values():
@@ -171,6 +168,11 @@ func drip_bag() -> SurgicalTool:
 
 static func middle(tool: SurgicalTool) -> Vector3:
 	return tool.global_transform * Vector3(0, 0, -tool.def.length * 0.5)
+
+
+## The dish `at` is over (ToolDef.is_dish()), nearest first, or null: what a bottle pours into and a pad dips in.
+func nearest_dish(at: Vector3) -> SurgicalTool:
+	return _nearest(at, INF, func(tool: SurgicalTool) -> bool: return tool.def.is_dish() and middle(tool).distance_to(at) < tool.def.length * POUR_REACH)
 
 
 ## What this tool holds at its tip (a cotton pad in forceps), or null.
@@ -530,7 +532,8 @@ func transfer(from: SurgicalTool, to: SurgicalTool, amount: float) -> Dictionary
 
 
 ## Host: adds ml of liquid holding `drugs` (drug id -> amount, "blood" in ml) and ml of air to a syringe, vial or dish.
-## Negative takes away (the contents are taken out by the caller). Everyone sees the exact result.
+## Negative takes away (the contents are taken out by the caller). Everyone sees the exact result: the host at once,
+## the others within SYNC_INTERVAL (see _send_liquids()).
 func add_liquid(tool: SurgicalTool, ml: float, drugs: Dictionary = {}, air: float = 0.0) -> void:
 	for drug: String in drugs:
 		tool.contents[drug] = tool.contents.get(drug, 0.0) + drugs[drug]
@@ -540,7 +543,23 @@ func add_liquid(tool: SurgicalTool, ml: float, drugs: Dictionary = {}, air: floa
 		tool.ml = 0.0
 		tool.contents.clear()
 	tool.fill = tool.ml / tool.def.volume
-	_show_liquid.rpc(tool.uid, tool.ml, tool.air, tool.contents.get("blood", 0.0) / tool.ml if tool.ml > 0.0 else 0.0)
+	var share := func(drug: String) -> float: return tool.contents.get(drug, 0.0) / tool.ml if tool.ml > 0.0 else 0.0
+	_show_liquid(tool.uid, tool.ml, tool.air, share.call("blood"), share.call("iodine"))
+	_liquid_changed[tool.uid] = true
+
+
+## Host: what changed in liquids goes to everyone else at most every SYNC_INTERVAL, as it is then: a pour or a drip
+## changes it every frame. The first change after a quiet spell goes at once.
+func _send_liquids(delta: float) -> void:
+	_liquid_acc += delta
+	if _liquid_acc < SYNC_INTERVAL or _liquid_changed.is_empty():
+		return
+	_liquid_acc = 0.0
+	for uid: int in _liquid_changed:
+		var tool: SurgicalTool = tools.get(uid)
+		if tool:
+			_show_liquid.rpc(uid, tool.ml, tool.air, tool.red, tool.iodine)
+	_liquid_changed.clear()
 
 
 func consume(tool: SurgicalTool) -> void:
@@ -580,29 +599,51 @@ func retained_count() -> int:
 	return tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.INSIDE).size()
 
 
+## Called by a surgeon right after it walked and moved its hands: what it holds, has on its belt or carries at a tool's
+## tip goes there at once. Tools update before the surgeons (ToolActions works on last frame's hands), so placed only
+## then they'd trail a frame behind their hand, plain to see while walking.
+func follow(surgeon: Surgeon) -> void:
+	var moved: Dictionary = {}
+	for tool: SurgicalTool in tools.values():
+		if tool.holder == surgeon.peer_id and tool.state in [SurgicalTool.State.HELD, SurgicalTool.State.BELT]:
+			_place(tool)
+			moved[tool.uid] = true
+	for tool: SurgicalTool in tools.values():
+		if tool.state == SurgicalTool.State.CARRIED and moved.has(tool.holder):
+			_place(tool)
+
+
+## Puts a held, belted or carried tool where its holder has it now.
+func _place(tool: SurgicalTool) -> void:
+	if tool.state == SurgicalTool.State.CARRIED and tools.has(tool.holder):
+		# Centered on the carrier's tip.
+		var by: SurgicalTool = tools[tool.holder]
+		tool.global_transform = Transform3D(by.global_basis, by.tip_position() + by.global_basis.z * tool.def.length * 0.5)
+		return
+	var surgeon: Surgeon = Surgery.current.surgeons.get(tool.holder)
+	if surgeon == null:
+		return
+	# A spreader set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
+	if tool.state == SurgicalTool.State.HELD and not tool.in_wound:
+		tool.global_transform = surgeon.hands[tool.slot].grip_transform()
+	elif tool.state == SurgicalTool.State.BELT:
+		tool.global_transform = surgeon.belt_transform(tool.slot)
+
+
 func _physics_process(delta: float) -> void:
 	var surgery := Surgery.current
 	if surgery == null:
 		return
 	for tool: SurgicalTool in tools.values():
-		if tool.state == SurgicalTool.State.CARRIED and tools.has(tool.holder):
-			# Centered on the carrier's tip.
-			var by: SurgicalTool = tools[tool.holder]
-			tool.global_transform = Transform3D(by.global_basis, by.tip_position() + by.global_basis.z * tool.def.length * 0.5)
-			continue
-		var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
-		if surgeon == null:
-			continue
-		# A spreader set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
-		if tool.state == SurgicalTool.State.HELD and not tool.in_wound:
-			tool.global_transform = surgeon.hands[tool.slot].grip_transform()
-		elif tool.state == SurgicalTool.State.BELT:
-			tool.global_transform = surgeon.belt_transform(tool.slot)
-	if not multiplayer.is_server() or not surgery.running:
+		_place(tool)
+	if not multiplayer.is_server():
+		return
+	_send_liquids(delta)
+	if not surgery.running:
 		return
 	for tool: SurgicalTool in tools.values():
 		if tool.state != SurgicalTool.State.HELD:
-			ToolActions.finish_injection(tool, surgery.patient)
+			ToolActions.report_pushed(tool)
 		match tool.state:
 			SurgicalTool.State.HELD:
 				var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
@@ -736,13 +777,14 @@ func _show_fill(uid: int, amount: float) -> void:
 		tool.show_fill(amount)
 
 
-@rpc("authority", "call_local", "reliable")
-func _show_liquid(uid: int, ml: float, air: float, red: float) -> void:
+@rpc("authority", "call_remote", "reliable")
+func _show_liquid(uid: int, ml: float, air: float, red: float, iodine: float) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
 		tool.ml = ml
 		tool.air = air
 		tool.red = red
+		tool.iodine = iodine
 		tool.fill = ml / tool.def.volume
 		tool.show_liquid()
 

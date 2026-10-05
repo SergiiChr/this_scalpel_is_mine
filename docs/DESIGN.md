@@ -255,7 +255,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 ### In this draft
 
 - Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels. Holding MMB the mouse turns the
-  held tool with the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`); C/V roll it about its length.
+  held tool about the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`): the wrist and forearm stay
+  put, the tip follows the mouse and rises off what it rested on, and settles back down once MMB is let go. C/V roll
+  it about its length.
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
@@ -294,7 +296,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
-  the hand crosses the screen as fast at both).
+  the hand crosses the screen as fast at both); the closer one makes the hands see-through. The hands start turned in
+  toward the middle, so each tool points across in front of the eyes, beside its hand.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -317,8 +320,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
   and a little upward, the way the forearm rises to it (`Surgeon._snap_spot()`); moved on, it comes out and the hand
-  holds the syringe as before. While it's in: push a drug in and it runs down the line once the needle is out, if the
-  line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
+  holds the syringe as before. While it's in: push a drug in and it starts down the line at once, ahead of the bag's
+  own fluid, at 2 ml a second (`ToolActions.DRIP_RATE`), if the line is in a vein (`ToolActions.drip()`). Each bit is
+  given as it reaches the patient; debug mode tells each ml and the total so far. Pull and the syringe draws by the
+  port: what was pushed in and hasn't run yet first, then the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
 ### Controls rework
@@ -353,9 +358,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Nurse**: one order at a time, a 15 s cooldown after each delivery from the sixth on (the first five come without).
   Every drug is under one Drugs group. A board over the bell shows the item on its way
   with a progress bar, then the cooldown.
-- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into the dish, pinch a cotton pad with forceps
-  (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up off the floor contaminates the site.
-  A dish soaks about four pads; a soaked pad runs dry after about 8 s of wiping.
+- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
+  held), pinch a cotton pad with forceps (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up
+  off the floor contaminates the site. A pad soaks up 10 ml (`ToolActions.PAD_ML`), so the 40 ml iodine dish soaks
+  four; a soaked pad runs dry after about 8 s of wiping.
+- **Dishes** (`ToolDef.is_dish()`: a volume and no action of its own, the iodine dish and the kidney dish) all work
+  the same: bottles pour into them, syringes squirt into them and draw from them, pads dip into iodine in them
+  (`ToolManager.nearest_dish()`). They show their liquid by its ml, tinted toward iodine and blood by their share.
 
 ### Vials and syringes
 
@@ -372,19 +381,19 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
-  - a vial, the kidney dish (holds 100 ml) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
+  - a vial, a dish (the kidney dish holds 100 ml, the iodine dish 40) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
     no more.
   - a vein drawn on each forearm (`PatientBody.vein_at()`, not on an arm the site covers): pulls blood, which tints
     the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
   - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
     pulls nothing and the plunger stays.
   - a surgeon's glove (the other hand of the one holding it, or a partner's) or a partner's body: the needle rests
-    on a glove like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
+    on the back of a glove, wrist to fingertips, like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
     pulls nothing. A glove comes before the patient under it, a body after.
   - nothing: pulls air, pushes the liquid out in a squirt.
   A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
-  Air sits at the needle end and goes out first. Pushing into the patient collects the dose; it's given when the
-  needle comes out.
+  Air sits at the needle end and goes out first. Pushing into the patient or a surgeon gives what's pushed as it goes
+  in, one notch at a time.
 - **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
   it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
   hand swinging round it (`Surgeon._bend_needle()`). What the tilt can't follow (sideways, or past the tilt range)
@@ -396,8 +405,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
   the eyes, so it doesn't need turning to be read. Let go, the hand holds things the way it did before. Moved
   about, it keeps turning the scale to the eyes, so C/V don't roll it (and the controls shown leave them out).
-- **Needle view**: the last zoom step with a syringe or IV catheter in hand fades the hands to see through, so the
-  needle and where it goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
+- **Needle view**: the last zoom step fades the hands to see through whatever they hold, so the needle and where it
+  goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
   Use tool with a syringe zooms all the way in on its own and back out when let go.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
   beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe
@@ -405,8 +414,15 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   right on screen is right, up is away from it. Use tool let go, the camera goes back and the scale turns back to the
   eyes.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
-  Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
-  only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.
+  Doses add up (`DrugLevels`, for the patient and the surgeons alike): every injection goes into a depot that soaks
+  into the blood over the route's onset (a direct injection 0.4x the drug's onset, a vein or the IV line 1.5x), and the
+  level in the blood drops by one right dose every `duration` seconds, so ten 1 ml shots work like one 10 ml shot and
+  twice the dose lasts twice as long. Between 0.7x and 1.4x the right dose in the blood works as the right dose; below
+  or above it scales. Under half a dose it has only a faint effect and doesn't do its job (no objective, restart,
+  antibiotic...); reaching half a dose it does. 2.5x taken in (in the blood or still soaking in) is an overdose; bags
+  of fluid or blood have no dose to overdo. General anesthesia holds at the right dose (topped up by the anesthetist):
+  more wears off as usual, and a patient who burns through it loses it all. A lethal drug that worked ends it some
+  time later, however fast it wears off.
 - **Weight**: rolled per age group, heavier with a heavy build quirk. The body model scales with the cube root of it.
   Surgeons weigh 80 kg (small hands 60), shown in the lobby under their name; doses given to them use it.
 - **Breaking**: a syringe that hits the floor shatters (`fragile` in tools.cfg).

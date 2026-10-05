@@ -49,6 +49,9 @@ var _announced: Dictionary = {}
 var _status_acc := 0.0
 var _qte: Dictionary = {}
 var _sound_msec: Dictionary = {}
+## When the local surgeon last felt a syringe push into them (see _dosed()), and the quiet that makes the next one news.
+const STING_GAP_MSEC := 3000
+var _stung_msec := -STING_GAP_MSEC
 var _contact_msec: Dictionary = {}
 var _effect_msec: Dictionary = {}
 var _effects := ToolEffects.new()
@@ -248,7 +251,7 @@ func add_sickness(peer: int, amount: float) -> void:
 	_sick.rpc_id(peer, amount)
 
 
-## Host: a syringe pushed `amount` of a drug into a surgeon, given once the needle came out.
+## Host: a syringe pushed `amount` of a drug into a surgeon, given as it goes in.
 func dose_surgeon(peer: int, drug: String, amount: float) -> void:
 	surgeon_dosed.emit(peer, drug, amount)
 	if peer == multiplayer.get_unique_id() or peer in multiplayer.get_peers():
@@ -359,7 +362,11 @@ func _sick(amount: float) -> void:
 func _dosed(drug: String, amount: float) -> void:
 	if local_surgeon:
 		local_surgeon.status.administer(drug, amount)
-		hud.toast("A sharp sting. Something cold goes in.")
+		# Once for a few pushes in a row, not for every ml.
+		var now := Time.get_ticks_msec()
+		if now - _stung_msec > STING_GAP_MSEC:
+			hud.toast("A sharp sting. Something cold goes in.")
+		_stung_msec = now
 
 
 @rpc("authority", "call_local", "reliable")
@@ -501,6 +508,8 @@ func _req_iv(hand: int) -> void:
 	var drip := tools.drip_bag()
 	if drip:
 		drip.contents.clear()
+		drip.bolus = 0.0
+		drip.dripped_total = 0.0
 		var blood := Db.drug(tool.def.drug) != null and Db.drug(tool.def.drug).blood_type != ""
 		tools.add_liquid(drip, SurgicalTool.DRIP_FLUID - drip.ml, {"blood": SurgicalTool.DRIP_FLUID} if blood else {})
 	patient.administer(tool.def.drug, "iv")

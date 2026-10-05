@@ -339,6 +339,8 @@ func _start(scenario_id: String, along_limb: bool, over_bone: bool, graft: bool 
 	_surgery.tools._req_grab(_scalpel.uid, 1)
 	me.active = 1
 	_hand = me.hands[1]
+	# Hands start turned in: aimed straight ahead (as Aim tool does), the edge runs the way the surgeon faces.
+	_hand.turn = 0.0
 	_place_hand(Vector2(0.5, 0.5))
 	await _frames(30)
 	# The edge in site uv, three moves of MOVE centered on the site.

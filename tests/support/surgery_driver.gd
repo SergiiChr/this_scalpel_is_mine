@@ -194,6 +194,17 @@ func player_walks_to(point: Vector3, off: float = STAND_OFF) -> void:
 	await frames(3)
 
 
+## Holds a walking key (move_forward, move_back, move_left, move_right) for `time` seconds, so the body walks the way
+## a player's does. `each_frame` is called once every frame of it, after the frame's physics.
+func player_holds_walk_key(action: String, time: float, each_frame: Callable) -> void:
+	Input.action_press(action)
+	for i in int(time * Engine.physics_ticks_per_second):
+		await get_tree().process_frame
+		each_frame.call()
+	Input.action_release(action)
+	note("walked (%s) for %.1f s" % [action, time])
+
+
 func _clear_of_tubing(spot: Vector3) -> bool:
 	var line: IvLine = surgery.room.iv_line
 	if line == null or not line.is_attached():
@@ -217,6 +228,15 @@ func player_reaches(point: Vector3) -> void:
 		await frames(6)
 
 
+## Turns the active hand's tool straight ahead with Aim tool: the hands start turned in, and straight the tip reaches
+## further and the tool lies along where it points, not across what's beside it.
+func player_aims_straight() -> void:
+	var hand := me.hands[me.active]
+	await player_aims(Vector2(hand.turn / (Surgeon.AIM_SENSITIVITY * Settings.mouse_sensitivity), 0.0), 1)
+	player_lets_go_of_aim()
+	await frames(10)
+
+
 ## Moves the active hand's tip from where it is to `point` across the floor at `speed` m/s, steering back onto the
 ## straight line if it drifts.
 func player_sweeps_to(point: Vector3, speed: float = SLOW) -> void:
@@ -234,6 +254,20 @@ func player_sweeps_to(point: Vector3, speed: float = SLOW) -> void:
 func _tip(hand: SurgeonHand) -> Vector3:
 	var tool := me.held_tool(hand.index)
 	return tool.tip_position() if tool else hand.global_position + hand.tip_offset(0.05)
+
+
+## Holds Aim tool (MMB) and moves the mouse `motion` pixels a frame for `count` frames, as the mouse handler does
+## (Surgeon.aim_tool()). Aim tool stays held until player_lets_go_of_aim().
+func player_aims(motion: Vector2, count: int) -> void:
+	Input.action_press("aim_tool")
+	for i in count:
+		me.aim_tool(motion * Settings.mouse_sensitivity)
+		await get_tree().physics_frame
+	note("aimed %s px" % (motion * count))
+
+
+func player_lets_go_of_aim() -> void:
+	Input.action_release("aim_tool")
 
 
 ## Points the active hand's blade edge (ToolActions.blade_direction()) along `direction` (world, across the floor) by
@@ -390,19 +424,24 @@ func player_interacts(prompt: String) -> bool:
 # --- Steps -----------------------------------------------------------------------------------------------
 
 
-## Fills the iodine dish from the bottle, takes a cotton pad in forceps, dips it and wipes the site row by row,
-## dipping again whenever the pad runs dry, until `amount` of the site is sanitized.
-func player_sanitizes_site(amount: float) -> void:
+## Holds the bottle in the active hand tipped over `dish` with Use tool for `time` seconds, pouring.
+func player_pours_into(dish: SurgicalTool, time: float) -> void:
+	await player_walks_to(dish.global_position)
+	await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 0, time)
+
+
+## Fills a dish (the iodine dish unless `dish_id` says) from the bottle, takes a cotton pad in forceps, dips it and
+## wipes the site row by row, dipping again whenever the pad runs dry, until `amount` of the site is sanitized.
+func player_sanitizes_site(amount: float, dish_id: String = "iodine_dish") -> void:
 	note("sanitizes the site")
-	var dishes := free_tools("iodine_dish")
+	var dishes := free_tools(dish_id)
 	if dishes.is_empty():
-		note("no iodine dish")
+		note("no %s" % dish_id)
 		return
 	var dish := dishes[0]
 	if dish.fill < 0.5:
 		await player_requests_item("iodine_bottle")
-		await player_walks_to(dish.global_position)
-		await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 3, 3.0)
+		await player_pours_into(dish, 3.0)
 		note("dish filled: %.2f" % dish.fill)
 		await player_puts_down()
 	var forceps := await player_requests_item("forceps")
@@ -429,8 +468,7 @@ func player_sanitizes_site(amount: float) -> void:
 		if dish.fill <= 0.05:
 			await player_puts_down()
 			await player_requests_item("iodine_bottle")
-			await player_walks_to(dish.global_position)
-			await player_works_at(ToolManager.middle(dish) + Vector3.UP * 0.05, 3, 3.0)
+			await player_pours_into(dish, 3.0)
 			await player_requests_item("forceps")
 		await player_walks_to(dish.global_position)
 		await player_works_at(ToolManager.middle(dish), 0, 1.0)
@@ -514,6 +552,8 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 func _needle_into(point: Vector3, pressed: bool) -> void:
 	var hand := me.hands[me.active]
 	await player_walks_to(point)
+	# Pointed straight at it: turned in, a long syringe would lie across whatever is beside a vial.
+	await player_aims_straight()
 	for i in 40:
 		# Aimed the hand's own way: a vial or the bag it's over snaps the needle in.
 		hand.local_target = me.to_local(point - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
@@ -708,13 +748,19 @@ func player_sets_iv() -> void:
 		await get_tree().physics_frame
 		if patient.iv_set:
 			break
-		if i >= 30 and not hand.trigger and body.vein_at(catheter.tip_position()):
+		if i >= 30 and not hand.trigger and _over_vein(catheter.tip_position()):
 			use()
 	use(false)
 	await frames(10)
 	note("IV in: %s, in the vein: %s" % [patient.iv_set, patient.iv_in_vein])
 	if me.held_tool(me.active):
 		await player_puts_down()
+
+
+## The vein is right under `tip`, on the skin below it: what a player sees from above before pushing a needle in.
+func _over_vein(tip: Vector3) -> bool:
+	var skin: Dictionary = me._surface_below(tip)
+	return skin.y != -INF and body.vein_at(Vector3(tip.x, skin.y, tip.z))
 
 
 ## A painkilling sedative from the scenario's kit (ketamine, else morphine) into the forearm muscle, then a moment for
@@ -1082,6 +1128,8 @@ func player_closes_internal_wounds() -> void:
 			continue
 		var spot := body.uv_to_world(wound.points[0], wound.depth_m)
 		await player_walks_to(spot)
+		# Deep in the belly, across it: the needle pointed straight ahead reaches further.
+		await player_aims_straight()
 		await player_reaches(spot)
 		use()
 		await wait_until(func() -> bool: return wound.closure() >= 0.9, 20.0)

@@ -6,11 +6,15 @@ extends Node3D
 const UPPER_ARM := 0.34
 const FOREARM := 0.34
 const TILT_RANGE := Vector2(-1.5, -0.2)
-## How far the wrist turns the tool left and right of straight ahead (radians).
+## How far the wrist turns the tool left and right of straight ahead (radians), and how far in toward the middle each
+## hand starts turned, so the tool points across in front of the eyes, beside the hand, not hidden under it.
 const TURN_RANGE := 0.9
-## The tilt a glove is fitted onto its tool at (see _place_glove()). Tilted or turned from there, both turn together.
+const REST_TURN := 0.4
+## The tilt a glove is fitted onto its tool at (see _glove_frame()). Tilted or turned from there, both turn together.
 const REST_TILT := -1.1
 const LIFT_HEIGHT := 0.12
+## How fast (m/s) a lifted or raised hand comes back down.
+const SETTLE_SPEED := 0.8
 ## Seconds of game time the hand's speed is measured over.
 const SPEED_WINDOW := 0.25
 const FINGERS: PackedStringArray = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
@@ -89,6 +93,10 @@ var trigger := false
 ## Effort level 0..3 from the wheel (cut depth, stitch tension, heat, plunger...), see ToolActions.LEVEL_NAMES.
 var level := 0
 var lifted := false
+## Set by the surgeon while the wrist aims the tool (Surgeon._aims_from_wrist()): the elbow stays put, and how far
+## above its resting spot (meters) the hand is held.
+var aiming := false
+var raise := 0.0
 var attached := false
 ## Held up in front of the eyes, turned across the view with its markings toward them (reading a syringe).
 var inspecting := false
@@ -156,6 +164,12 @@ const ELBOW_BELOW_SHOULDER := 0.1
 const GRIP_POINT := Vector3(0.07, -0.028, 0.0)
 var _upper: Node3D
 var _fore: Node3D
+## Where the elbow was put last, and where it's held (owner's space) while aiming, eased back from (1 held, 0 free) after.
+var _elbow := Vector3.ZERO
+var _held_elbow := Vector3.ZERO
+var _elbow_hold := 0.0
+## Seconds the elbow takes to ease back after aiming.
+const ELBOW_EASE := 0.25
 var _pusher: AnimatableBody3D
 ## Fraction of the forearm hidden at the elbow end (local player only, keeps the view clear).
 var _forearm_start := 0.0
@@ -177,6 +191,7 @@ var _trail_acc := 0.0
 func build(hand_index: int, scrubs: ShaderMaterial) -> void:
 	index = hand_index
 	name = "LeftHand" if index == 0 else "RightHand"
+	turn = REST_TURN if index == 1 else -REST_TURN
 	var sleeve := {"tint": scrubs}
 	_glove = ModelSlot.instantiate("surgeon", "glove", self)
 	_glove_materials = ModelSlot.own_materials(_glove)
@@ -229,7 +244,7 @@ func set_see_through(amount: float) -> void:
 func effective_position() -> Vector3:
 	if puppet:
 		return target
-	return target + Vector3(0, _lift, 0) + (Vector3(tremor.x, maxf(tremor.y, 0.0), tremor.z) if on_hard else tremor)
+	return target + Vector3(0, _lift + raise, 0) + (Vector3(tremor.x, maxf(tremor.y, 0.0), tremor.z) if on_hard else tremor)
 
 
 func grip_transform() -> Transform3D:
@@ -288,12 +303,21 @@ func tip_offset_at(tool_length: float, at_tilt: float, at_turn: float) -> Vector
 	return Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, at_tilt) * Vector3(0, 0, -tool_length)
 
 
+## Where the wrist is from the hand's position (world space), the way the hand holds its tool now.
+func wrist_offset() -> Vector3:
+	return _glove_frame(_elbow, (get_parent() as Node3D).global_basis).origin - global_position
+
+
 func update_pose(shoulder: Vector3, delta: float) -> void:
-	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * 0.8)
+	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * SETTLE_SPEED)
 	global_position = effective_position()
 	_track_speed(delta)
 	global_basis = grip_transform().basis
 	_pusher.global_position = global_position
+	# Held from where it is when aiming starts, also while still easing back from the last time.
+	if aiming and _elbow_hold < 1.0:
+		_held_elbow = (get_parent() as Node3D).to_local(_elbow)
+	_elbow_hold = 1.0 if aiming else move_toward(_elbow_hold, 0.0, delta / ELBOW_EASE)
 	_solve_arm(shoulder)
 	_animate_fingers(delta)
 	glove_drop = _glove_lowest() - global_position.y
@@ -302,6 +326,13 @@ func update_pose(shoulder: Vector3, delta: float) -> void:
 	if blood > 0.0:
 		for mat in _glove_materials:
 			mat.set_shader_parameter("coat_inverse", Projection(COAT_FRAME * _glove.global_transform.affine_inverse()))
+
+
+## The point of the glove's middle line, wrist to fingertips, nearest `p` (world space). The back of the hand is
+## PALM_HALF_THICKNESS above it.
+func glove_middle(p: Vector3) -> Vector3:
+	var wrist := _glove.global_position
+	return Geometry3D.get_closest_point_to_segment(p, wrist, wrist + _glove.global_basis.x.normalized() * GLOVE_LENGTH)
 
 
 ## How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon keeps that
@@ -502,8 +533,8 @@ func _solve_arm(shoulder: Vector3) -> void:
 		# The held tool sets which way the wrist points: the elbow goes toward the forearm's line from there, so the
 		# wrist doesn't bend over backwards when the hand comes close. Only as far as it stays under the shoulder.
 		# The tool as it's held before the wrist aims it: aiming bends the wrist, the elbow stays.
-		_place_glove(elbow, owner_basis, false)
-		var line := _glove.global_position - _glove.global_basis.x.normalized() * FOREARM - shoulder
+		var held := _glove_frame(elbow, owner_basis, false)
+		var line := held.origin - held.basis.x.normalized() * FOREARM - shoulder
 		var toward := line - dir * line.dot(dir)
 		if toward.length() > 0.001:
 			for pull: float in [FOREARM_PULL, FOREARM_PULL * 0.75, FOREARM_PULL * 0.5, FOREARM_PULL * 0.25]:
@@ -511,6 +542,9 @@ func _solve_arm(shoulder: Vector3) -> void:
 				if bent.y < shoulder.y - ELBOW_BELOW_SHOULDER:
 					elbow = bent
 					break
+	if _elbow_hold > 0.0:
+		elbow = elbow.lerp((get_parent() as Node3D).to_global(_held_elbow), _elbow_hold)
+	_elbow = elbow
 	_place_segment(_upper, shoulder, elbow)
 	var wrist := _place_glove(elbow, owner_basis)
 	var cuff_end := wrist + _aim_cuff(elbow, wrist) * CUFF_DEPTH
@@ -530,11 +564,19 @@ func _aim_cuff(elbow: Vector3, wrist: Vector3) -> Vector3:
 	return back
 
 
-## Places the glove and returns the wrist (the glove's origin). The left glove is the right one mirrored.
+## Places the glove, shivering, and returns the wrist (the glove's origin).
+func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Vector3:
+	var frame := _glove_frame(elbow, owner_basis, turned)
+	frame.origin += shiver
+	_glove.global_transform = frame
+	return frame.origin
+
+
+## Where the glove goes, its origin at the wrist. The left glove is the right one mirrored.
 ## Holding a tool, the glove sits on it by its grip, fitted as if the tool weren't tilted or turned (REST_TILT, no
 ## turn), then turned along with it (unless not `turned`): the wrist aims the tool, the tool doesn't move in the hand.
 ## Empty, it points along the forearm, palm down.
-func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Vector3:
+func _glove_frame(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Transform3D:
 	if holding:
 		var style: Dictionary = GRIPS.get(grip, GRIPS.pencil)
 		var aimed := grip_transform()
@@ -547,18 +589,14 @@ func _place_glove(elbow: Vector3, owner_basis: Basis, turned: bool = true) -> Ve
 		var frame := tool_frame.basis * Basis.from_scale(mirror) * (style.basis as Basis)
 		frame = _turn_to_forearm(frame, tool_frame.basis * Vector3.FORWARD, contact, elbow, grip != "fist")
 		var wrist := contact - frame * (style.at as Vector3) + frame.y.normalized() * float(fit.get("lift", 0.0)) + frame.z.normalized() * float(fit.get("shift", 0.0))
-		wrist = aimed.origin + aim * (wrist - aimed.origin) + shiver
-		_glove.global_transform = Transform3D(aim * frame, wrist)
-		return wrist
+		return Transform3D(aim * frame, aimed.origin + aim * (wrist - aimed.origin))
 	var along := (global_position - elbow).normalized()
 	var up := (Vector3.UP - along * Vector3.UP.dot(along)).normalized()
 	if up.length_squared() < 0.5:
 		up = owner_basis.z
 	var side := along.cross(up)
 	var frame := Basis(along, up, side if index == 1 else -side)
-	var wrist := global_position - frame * GRIP_POINT + shiver
-	_glove.global_transform = Transform3D(frame, wrist)
-	return wrist
+	return Transform3D(frame, global_position - frame * GRIP_POINT)
 
 
 ## Turns a held glove about the tool so the wrist faces the elbow, without letting go:

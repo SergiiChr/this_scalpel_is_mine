@@ -7,7 +7,7 @@ extends RefCounted
 ## Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
 const LEVEL_NAMES: Dictionary = {
 	"cut": "Depth", "suture": "Tension", "cauterize": "Heat", "saw": "Speed", "suction": "Suction",
-	"swab": "Pressure", "inject": "Plunger", "pour": "Pour",
+	"swab": "Pressure", "inject": "Plunger",
 }
 ## Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
 const TRIGGER_NAMES: Dictionary = {
@@ -24,11 +24,11 @@ const ALONG_BLADE := 0.8
 ## Clamps that can pinch a cotton pad, and how close to the pad their tip has to be.
 const PAD_HOLDERS: PackedStringArray = ["forceps", "hemostat"]
 const PAD_REACH := 0.04
-## How close to the iodine dish a bottle or pad has to be to pour into it or dip in it.
-const DISH_REACH := 0.07
-## A full dish soaks this many pads. A soaked pad runs dry after 1 / PAD_DRAIN seconds of wiping.
-const PADS_PER_DISH := 4.0
+## ml of iodine a cotton pad soaks up from a dish. A soaked pad runs dry after 1 / PAD_DRAIN seconds of wiping.
+const PAD_ML := 10.0
 const PAD_DRAIN := 0.12
+## How fast drugs pushed into the IV bag run down the line into the patient (ml/s).
+const DRIP_RATE := 2.0
 ## A syringe has its own wheel instead of an effort level: one notch moves the plunger this many ml (see plunge()).
 const PLUNGER_STEP := 1.0
 ## A needle's wheel works the free end of its thread: one notch changes its tension (a rest length ratio, see
@@ -154,7 +154,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					tools.drop_carried(tool)
 			elif pad:
 				# Use lowers the pad to wipe or dip it; pressed in the air, away from the dish, it lets the pad go.
-				if pressed and not touching and tools.nearest_of("iodine_dish", tip, DISH_REACH) == null:
+				if pressed and not touching and tools.nearest_dish(tip) == null:
 					tools.drop_carried(tool)
 				elif lowered:
 					_wipe(pad, zone, uv, tip, patient, dt, false)
@@ -240,9 +240,9 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.effect("bead", tip, 0)
 					_use_charge(tool)
 		"syringe":
-			# The wheel works the plunger (plunge()). What went into the patient is given once the needle is out.
-			if not tool.injecting.is_empty() and not needle_target(tool, patient).kind in ["vein", "tissue", "surgeon"]:
-				finish_injection(tool, patient)
+			# The wheel works the plunger (plunge()). What it pushed where is told once the needle is somewhere else.
+			if tool.pushed_ml > 0.0 and _push_label(needle_target(tool, patient)) != tool.pushed_into:
+				report_pushed(tool)
 		"shock":
 			var on_chest: bool = zone == "site" and patient.scenario.site in ["chest", "abdomen"] or probe.get("part", "") == "torso"
 			if trigger and lowered and on_chest:
@@ -289,12 +289,16 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				if wiped > 0.0:
 					patient.swab_at(zone, uv, def, wiped)
 		"pour":
-			if lowered and level > 0:
-				var dish := Surgery.current.tools.nearest_of("iodine_dish", tip, DISH_REACH)
+			# Pours as long as Use tool holds it tipped over a dish, up to the dish's rim.
+			if lowered:
+				var tools := Surgery.current.tools
+				var dish := tools.nearest_dish(tip)
 				if dish:
-					Surgery.current.tools.set_fill(dish, dish.fill + def.power * effort * dt)
+					var ml := minf(def.power * dt, dish.def.volume - dish.ml)
+					if ml > 0.0:
+						tools.add_liquid(dish, ml, {def.drug: ml})
 				elif touching:
-					Surgery.current.announce("Pour the %s into the iodine dish." % def.name.to_lower(), true)
+					Surgery.current.announce("Pour the %s into a dish." % def.name.to_lower(), true)
 		"tourniquet":
 			# Pressed onto an arm or a leg, the band goes around the limb there and stays when the hand lets go.
 			var ring := patient.body.limb_ring(tip) if pressed and lowered else {}
@@ -309,7 +313,10 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			var arm: bool = str(probe.get("part", "")).begins_with("arm") or zone == "site" and patient.scenario.site == "forearm"
 			# It sticks wherever it goes into the arm, but only a needle in a vein lets anything through.
 			if settled and arm and not patient.iv_set:
-				patient.set_iv(tip, patient.body.vein_at(tip))
+				var in_vein := patient.body.vein_at(tip)
+				patient.set_iv(tip, in_vein)
+				if in_vein:
+					Surgery.current.announce_debug("Hit the vein")
 				Surgery.current.effect("bead", tip, 0)
 				_use_charge(tool)
 
@@ -448,7 +455,10 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 			"container":
 				# An emptied vial gives air.
 				var drawn := minf(amount, container.ml)
-				tools.transfer(container, tool, drawn)
+				if container.def.action == "drip":
+					_draw_from_bag(container, tool, drawn)
+				else:
+					tools.transfer(container, tool, drawn)
 				tools.add_liquid(tool, 0.0, {}, amount - drawn)
 			"vein":
 				patient.vitals.blood_ml -= amount
@@ -468,54 +478,96 @@ static func plunge(tool: SurgicalTool, ml: float, patient: Patient) -> void:
 		tools.add_liquid(tool, 0.0, {}, -air)
 	if liquid <= 0.0:
 		return
+	var into := _push_label(target)
+	if into != tool.pushed_into:
+		report_pushed(tool)
+		tool.pushed_into = into
+	if into:
+		tool.pushed_ml += liquid
+		for drug: String in tool.contents:
+			if not drug in tool.pushed_drugs:
+				tool.pushed_drugs.append(drug)
 	match target.kind:
 		"container":
 			tools.transfer(tool, container, liquid)
+			if container.def.action == "drip":
+				container.bolus += liquid
 		"vein", "tissue", "surgeon":
-			# A surgeon's route names who gets it: "surgeon:<peer>".
-			var route: String = {"vein": "vein", "tissue": "direct"}.get(target.kind, "surgeon:%d" % target.get("peer", 0))
-			if route != tool.injecting_route:
-				finish_injection(tool, patient)
-				tool.injecting_route = route
+			# Given as it goes in: every push adds to what's already in that body (DrugLevels).
 			var pushed := tools.transfer(tool, null, liquid)
 			for drug: String in pushed:
-				if drug != "blood":
-					tool.injecting[drug] = tool.injecting.get(drug, 0.0) + pushed[drug]
-				elif route == "vein":
+				if drug == "blood":
 					# Blood pushed back into a vein is the patient's again.
-					patient.vitals.blood_ml += pushed[drug]
+					if target.kind == "vein":
+						patient.vitals.blood_ml += pushed[drug]
+				elif target.kind == "surgeon":
+					Surgery.current.dose_surgeon(target.peer, drug, pushed[drug])
+				else:
+					patient.administer(drug, "vein" if target.kind == "vein" else "direct", pushed[drug])
+			Surgery.current.sound("syringe_inject", tool.tip_position())
 		_:
 			tools.transfer(tool, null, liquid)
 
 
-## The needle came out (or the syringe left the hand): everything pushed in takes effect as one dose, in the patient
-## or the surgeon it went into.
-static func finish_injection(tool: SurgicalTool, patient: Patient) -> void:
-	if tool.injecting.is_empty():
+## Draws `ml` from the IV bag into a syringe by the port at its bottom: what was pushed in there and hasn't run down the
+## line yet (SurgicalTool.bolus) comes first, its drugs with it, then the bag's own fluid (and its blood, if it's a
+## blood bag, all through it).
+static func _draw_from_bag(bag: SurgicalTool, syringe: SurgicalTool, ml: float) -> void:
+	var from_bolus := minf(ml, bag.bolus)
+	var moved: Dictionary = {}
+	for drug: String in bag.contents.keys():
+		var share := ml / bag.ml if drug == "blood" else (from_bolus / bag.bolus if bag.bolus > 0.0 else 0.0)
+		moved[drug] = bag.contents[drug] * share
+		bag.contents[drug] -= moved[drug]
+	bag.bolus -= from_bolus
+	Surgery.current.tools.add_liquid(bag, -ml)
+	Surgery.current.tools.add_liquid(syringe, ml, moved)
+
+
+## Debug mode: where a syringe's needle pushes liquid, as "Injected 5 ml of Atropine into the vein" names it. Empty for
+## the air.
+static func _push_label(target: Dictionary) -> String:
+	match target.kind:
+		"container":
+			var container: SurgicalTool = target.container
+			return {"drip": "the IV bag", "vial": "the vial"}.get(container.def.action, "the " + container.def.name.to_lower())
+		"vein":
+			return "the vein"
+		"tissue":
+			return "the " + target.layer
+		"surgeon":
+			var surgeon: Surgeon = Surgery.current.surgeons.get(target.peer)
+			return "%s's %s" % [surgeon.display_name if surgeon else "someone", target.part]
+	return ""
+
+
+## Debug mode: tells how much of what a syringe pushed where its needle was, once it's somewhere else.
+static func report_pushed(tool: SurgicalTool) -> void:
+	if tool.pushed_ml <= 0.0:
 		return
-	var route := tool.injecting_route
-	for drug: String in tool.injecting:
-		if route.begins_with("surgeon:"):
-			Surgery.current.dose_surgeon(route.get_slice(":", 1).to_int(), drug, tool.injecting[drug])
-		else:
-			patient.administer(drug, route, tool.injecting[drug])
-	tool.injecting.clear()
-	var tip := tool.tip_position()
-	Surgery.current.sound("syringe_inject", tip)
-	Surgery.current.effect("bead", tip, 0)
+	if tool.pushed_into == "the vein":
+		Surgery.current.announce_debug("Hit the vein")
+	var names := tool.pushed_drugs.map(func(drug: String) -> String: return Db.drug(drug).name if Db.drug(drug) else drug)
+	var what := " of " + ", ".join(names) if not names.is_empty() else ""
+	Surgery.current.announce_debug("Injected %s ml%s into %s" % [String.num(tool.pushed_ml, 1), what, tool.pushed_into])
+	tool.pushed_ml = 0.0
+	tool.pushed_drugs.clear()
+	tool.pushed_into = ""
 
 
-## A cotton pad soaks up iodine in the dish, then leaves it on the skin until it runs dry.
+## A cotton pad soaks up iodine in any dish, then leaves it on the skin until it runs dry.
 ## Iodine only stays sterile on the way in if a clean pad is held with forceps: a glove on it spoils the site.
 static func _wipe(pad: SurgicalTool, zone: String, uv: Vector2, tip: Vector3, patient: Patient, dt: float, gloved: bool) -> void:
 	var tools := Surgery.current.tools
 	# On the patient it always wipes, even with a dish left right beside the site.
 	if not zone in ["site", "cavity"]:
-		var dish := tools.nearest_of("iodine_dish", tip, DISH_REACH)
-		var soak := minf(minf(dt * 2.0, 1.0 - pad.fill), dish.fill * PADS_PER_DISH) if dish else 0.0
+		var dish := tools.nearest_dish(tip)
+		var iodine: float = dish.contents.get("iodine", 0.0) if dish else 0.0
+		var soak := minf(minf(dt * 2.0, 1.0 - pad.fill), iodine / PAD_ML)
 		if soak > 0.0:
 			tools.set_fill(pad, pad.fill + soak)
-			tools.set_fill(dish, dish.fill - soak / PADS_PER_DISH)
+			# What's mixed in with the iodine (blood) comes along in its share.
+			tools.transfer(dish, null, soak * PAD_ML * dish.ml / iodine)
 		return
 	var soaked := pad.fill > 0.0
 	var wiped := _gather(pad, uv, dt)
@@ -544,22 +596,43 @@ static func _gather(tool: SurgicalTool, uv: Vector2, dt: float) -> float:
 ## Standing (self-retaining) clamps keep holding their grip after the hand lets go.
 static func update_standing(tool: SurgicalTool, patient: Patient, dt: float) -> void:
 	if tool.def.action == "drip":
-		drip(tool, patient)
+		drip(tool, patient, dt)
 	if not tool.grip_info.is_empty():
 		tool.grip_info = patient.update_grip(tool.uid, tool.grip_info, tool.tip_position(), tool.def.power, dt, 0.0)
 		if tool.grip_info.type == "none":
 			tool.grip_info = {}
 
 
-## The IV drip runs what was pushed into it down the line once no needle is in it, if the line is in a vein.
-## Its own fluid just drips (it does nothing), and so does blood in it.
-static func drip(bag: SurgicalTool, patient: Patient) -> void:
-	var drugs := bag.contents.keys().filter(func(drug: String) -> bool: return drug != "blood")
-	if drugs.is_empty() or not patient.iv_working() or Surgery.current.tools.needle_in(bag):
+## The IV drip runs what was pushed into it (SurgicalTool.bolus) down the line at DRIP_RATE from the moment it's in, if
+## the line is in a vein, each bit given as it reaches the patient (it adds up there, see DrugLevels). Its own fluid
+## just drips (it does nothing), and so does blood in it. Debug mode tells each ml that reaches the patient.
+static func drip(bag: SurgicalTool, patient: Patient, dt: float) -> void:
+	if bag.bolus <= 0.0 or not patient.iv_working():
 		return
+	# In whole ml steps, so each one is told as it reaches the patient.
+	var ml := minf(minf(DRIP_RATE * dt, bag.bolus), 1.0 - bag.dripped_ml)
+	var share := ml / bag.bolus
+	var drugs := bag.contents.keys().filter(func(drug: String) -> bool: return drug != "blood")
 	for drug: String in drugs:
-		patient.administer(drug, "iv", bag.contents[drug])
-		bag.contents.erase(drug)
+		var amount: float = bag.contents[drug] * share
+		bag.contents[drug] -= amount
+		patient.administer(drug, "iv", amount)
+	bag.bolus -= ml
+	bag.dripped_ml += ml
+	bag.dripped_total += ml
+	Surgery.current.tools.add_liquid(bag, -ml)
+	var done := bag.bolus < 0.0001
+	if bag.dripped_ml >= 0.9999 or done:
+		var names := drugs.map(func(drug: String) -> String: return Db.drug(drug).name if Db.drug(drug) else drug)
+		var what := " of " + ", ".join(names) if not names.is_empty() else ""
+		var told := [String.num(bag.dripped_ml, 1), what, String.num(bag.dripped_total, 1)]
+		Surgery.current.announce_debug("%s ml%s reached the patient over IV (%s ml total)" % told)
+		bag.dripped_ml = 0.0
+	if done:
+		bag.bolus = 0.0
+		bag.dripped_total = 0.0
+		for drug: String in drugs:
+			bag.contents.erase(drug)
 
 
 ## A looping bed under a blade, swab, clamp or suction tip working the site, louder the faster it moves.

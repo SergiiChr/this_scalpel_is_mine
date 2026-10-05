@@ -59,6 +59,23 @@ func test_every_handheld_tool_is_picked_up_lowered_onto_the_site_and_put_back() 
 	await driver.stop()
 
 
+func test_a_held_tool_moves_with_the_hand_while_walking() -> void:
+	var driver: Driver = Driver.new()
+	add_child(driver)
+	await driver.start("appendectomy")
+	var scalpel := await driver.player_requests_item("scalpel")
+	# Between the table and the delivery tray, walking sideways along the table over clear floor.
+	await driver.player_walks_to(Vector3(0.0, 0.0, 1.6), 0.4)
+	var hand := driver.me.hands[driver.me.active]
+	var start := driver.me.global_position
+	var worst := [0.0]
+	await driver.player_holds_walk_key("move_right", 0.5, func() -> void:
+		worst[0] = maxf(worst[0], scalpel.global_position.distance_to(hand.grip_transform().origin)))
+	assert_gt(driver.me.global_position.distance_to(start), 0.5, "the surgeon walks")
+	assert_lt(worst[0], 0.001, "the scalpel stays in the hand every frame of the walk (%.1f mm off at worst)" % (worst[0] * 1000.0))
+	await driver.stop()
+
+
 func test_drinks_and_cigarettes_are_used_up_one_at_a_time() -> void:
 	var driver: Driver = Driver.new()
 	add_child(driver)
