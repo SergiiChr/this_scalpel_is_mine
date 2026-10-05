@@ -556,6 +556,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_zoom_before = zoom
 			zoom = ZOOM_FOV.size() - 1
 	elif event.is_action_released("use_tool"):
+		if _needle_anchor != Vector3.INF:
+			Surgery.current.tools.request_needle_withdrawal(active, _needle_anchor)
+			# Release the anchor before another mouse event can bend or pull the withdrawn needle.
+			_needle_anchor = Vector3.INF
 		_set_lowered(hand, false)
 		hand.trigger = false
 		_end_needle_zoom()

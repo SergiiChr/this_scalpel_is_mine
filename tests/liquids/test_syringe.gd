@@ -445,14 +445,20 @@ func _hand_checks() -> void:
 	var drift := bench.syringe.tip_position().distance_to(tip)
 	_check(drift < 0.001 and not is_equal_approx(hand.tilt, tilt) and hand.global_position.distance_to(grip) > 0.005, "needle_hand: a needle in the skin keeps its tip in place (%.4f m) and the mouse tilts the syringe about it (tilt %.2f -> %.2f)" % [drift, tilt, hand.tilt])
 	var went_in := me._needle_anchor
+	var body := bench.surgery.patient.body
+	var beads_before := body.find_children("BloodBead*", "MeshInstance3D", true, false)
 	for i in 60:
 		if me._needle_torn:
 			break
 		me.steer_hand(Vector2(20, 0))
 		await bench.frames(1)
-	var body := bench.surgery.patient.body
 	var scratch := body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(went_in))
 	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch where it was in (%.2f)" % scratch)
+	var torn_beads := body.find_children("BloodBead*", "MeshInstance3D", true, false).filter(func(node: Node) -> bool: return not beads_before.has(node))
+	_check(torn_beads.size() == 1, "needle_hand: tearing out leaves one bead")
+	if torn_beads.size() == 1:
+		var bead := torn_beads[0] as MeshInstance3D
+		_check(((bead.global_position - went_in) * Vector3(1, 0, 1)).length() < 0.0005, "needle_hand: even after tearing out, the bead stays at the injection point")
 	await bench.withdraw()
 	await _aim_lands(me, hand)
 	await _sweep_onto_patient(me, hand)

@@ -399,7 +399,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   hand swinging round it (`Surgeon._bend_needle()`). What the tilt can't follow (sideways, or past the tilt range)
   stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
   out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
-  let go.
+  let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the puncture, without
+  adding pain or a scratch (`ToolManager.request_needle_withdrawal()`). Moving the hand afterward cannot tear it out.
 - **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
   its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand._reach_plunger()`). It points a
   little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
