@@ -27,7 +27,7 @@ Agitated patients move unpredictably, and panic raises blood pressure. Reassure 
 1. Pour povidone-iodine from the bottle into the iodine dish ([b]Use tool[/b] over the dish, wheel to pour).
 2. Take a cotton pad with the forceps: lower the forceps onto the pad ([b]Use tool[/b]); they close on it. Used in the air away from the dish, they let the pad go.
 3. Lower the pad into the dish to soak it.
-4. Wipe the operative field with the soaked pad. Re-soak it when it runs dry; one dish soaks about four pads.
+4. Wipe the operative field with the soaked pad. Re-soak it when it runs dry; one dish soaks about {ToolActions.PADS_PER_DISH} pads.
 5. Open the forceps to drop the used pad.
 > Never handle the pad with the glove: a hand-held pad contaminates the field it is meant to clean. A pad that has touched the floor is not sterile.
 

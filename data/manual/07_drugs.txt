@@ -5,7 +5,7 @@ title: 7. Drug formulary
 • [b]Intravenous infusion[/b] (at the infusion stand): slower, smoother onset. The whole syringe goes into the line. Requires a patent line (section 2). Blood products and crystalloids are given by this route only.
 
 ## 7.2 Drawing up a dose
-Drugs come in labelled vials; the label gives the strength per ml. Syringes are not labelled and come in 3, 10 and 50 ml sizes, each marked in tenths of its volume.
+Drugs come in labelled vials; the label gives the strength per ml. Syringes are not labelled and come in {tool.syringe_3.volume}, {tool.syringe_10.volume} and {tool.syringe_50.volume} ml sizes, each marked in tenths of its volume.
 1. Weigh the patient (see the chart) and find the dose per kg below.
 2. Dose in mg = weight in kg × dose per kg. Volume in ml = dose ÷ strength of the vial.
 3. Lower the needle into the vial and draw with the plunger up to the right mark.
@@ -16,26 +16,26 @@ A syringe that has held one drug keeps what is left in it; a second drug drawn i
 ## 7.3 Formulary
 [table=3]
 [cell][b]Drug[/b][/cell][cell][b]Indication[/b][/cell][cell][b]Dose per kg[/b][/cell]
-[cell]Adrenaline (epinephrine)[/cell][cell]Asystole, with defibrillation. Anaphylaxis. Raises blood pressure[/cell][cell]0.01 mg[/cell]
-[cell]Atropine[/cell][cell]Symptomatic bradycardia[/cell][cell]0.02 mg[/cell]
-[cell]Amiodarone[/cell][cell]Shock-refractory ventricular fibrillation[/cell][cell]5 mg[/cell]
-[cell]Propofol[/cell][cell]Induction of general anesthesia (IV)[/cell][cell]2 mg[/cell]
+[cell]Adrenaline (epinephrine)[/cell][cell]Asystole, with defibrillation. Anaphylaxis. Raises blood pressure[/cell][cell]{drug.adrenaline.dose} {drug.adrenaline.unit}[/cell]
+[cell]Atropine[/cell][cell]Symptomatic bradycardia[/cell][cell]{drug.atropine.dose} {drug.atropine.unit}[/cell]
+[cell]Amiodarone[/cell][cell]Shock-refractory ventricular fibrillation[/cell][cell]{drug.amiodarone.dose} {drug.amiodarone.unit}[/cell]
+[cell]Propofol[/cell][cell]Induction of general anesthesia (IV)[/cell][cell]{drug.propofol.dose} {drug.propofol.unit}[/cell]
 [cell]Inhaled agent (mask)[/cell][cell]General anesthesia. Contraindicated with malignant hyperthermia risk[/cell][cell]one mask[/cell]
-[cell]Ketamine[/cell][cell]Anesthesia with preserved blood pressure[/cell][cell]2 mg[/cell]
-[cell]Lidocaine[/cell][cell]Local infiltration anesthesia[/cell][cell]3 mg[/cell]
-[cell]Morphine[/cell][cell]Analgesia. Depresses respiration[/cell][cell]0.1 mg[/cell]
-[cell]Naloxone[/cell][cell]Opioid reversal[/cell][cell]0.01 mg[/cell]
-[cell]Diazepam[/cell][cell]Seizure termination, anxiolysis[/cell][cell]0.2 mg[/cell]
-[cell]Flumazenil[/cell][cell]Diazepam reversal[/cell][cell]0.01 mg[/cell]
-[cell]Diphenhydramine[/cell][cell]Mild allergic reactions[/cell][cell]1 mg[/cell]
-[cell]Cefazolin[/cell][cell]Antibiotic prophylaxis after any opening of the body[/cell][cell]25 mg[/cell]
-[cell]Clindamycin[/cell][cell]Antibiotic prophylaxis, penicillin allergy[/cell][cell]10 mg[/cell]
-[cell]Insulin[/cell][cell]Lowers blood glucose[/cell][cell]0.1 units[/cell]
-[cell]Glucose D50[/cell][cell]Raises blood glucose[/cell][cell]0.25 g[/cell]
-[cell]Heparin[/cell][cell]Anticoagulant[/cell][cell]80 units[/cell]
-[cell]Tranexamic acid[/cell][cell]Antifibrinolytic[/cell][cell]15 mg[/cell]
-[cell]Dantrolene[/cell][cell]Malignant hyperthermia[/cell][cell]2.5 mg[/cell]
-[cell]Pentobarbital[/cell][cell]Euthanasia only[/cell][cell]100 mg[/cell]
+[cell]Ketamine[/cell][cell]Anesthesia with preserved blood pressure[/cell][cell]{drug.ketamine.dose} {drug.ketamine.unit}[/cell]
+[cell]Lidocaine[/cell][cell]Local infiltration anesthesia[/cell][cell]{drug.lidocaine.dose} {drug.lidocaine.unit}[/cell]
+[cell]Morphine[/cell][cell]Analgesia. Depresses respiration[/cell][cell]{drug.morphine.dose} {drug.morphine.unit}[/cell]
+[cell]Naloxone[/cell][cell]Opioid reversal[/cell][cell]{drug.naloxone.dose} {drug.naloxone.unit}[/cell]
+[cell]Diazepam[/cell][cell]Seizure termination, anxiolysis[/cell][cell]{drug.diazepam.dose} {drug.diazepam.unit}[/cell]
+[cell]Flumazenil[/cell][cell]Diazepam reversal[/cell][cell]{drug.flumazenil.dose} {drug.flumazenil.unit}[/cell]
+[cell]Diphenhydramine[/cell][cell]Mild allergic reactions[/cell][cell]{drug.antihistamine.dose} {drug.antihistamine.unit}[/cell]
+[cell]Cefazolin[/cell][cell]Antibiotic prophylaxis after any opening of the body[/cell][cell]{drug.cefazolin.dose} {drug.cefazolin.unit}[/cell]
+[cell]Clindamycin[/cell][cell]Antibiotic prophylaxis, penicillin allergy[/cell][cell]{drug.clindamycin.dose} {drug.clindamycin.unit}[/cell]
+[cell]Insulin[/cell][cell]Lowers blood glucose[/cell][cell]{drug.insulin.dose} {drug.insulin.unit}[/cell]
+[cell]Glucose D50[/cell][cell]Raises blood glucose[/cell][cell]{drug.glucose.dose} {drug.glucose.unit}[/cell]
+[cell]Heparin[/cell][cell]Anticoagulant[/cell][cell]{drug.heparin.dose} {drug.heparin.unit}[/cell]
+[cell]Tranexamic acid[/cell][cell]Antifibrinolytic[/cell][cell]{drug.txa.dose} {drug.txa.unit}[/cell]
+[cell]Dantrolene[/cell][cell]Malignant hyperthermia[/cell][cell]{drug.dantrolene.dose} {drug.dantrolene.unit}[/cell]
+[cell]Pentobarbital[/cell][cell]Euthanasia only[/cell][cell]{drug.pentobarbital.dose} {drug.pentobarbital.unit}[/cell]
 [/table]
 
 [font_size=16][b]References[/b]

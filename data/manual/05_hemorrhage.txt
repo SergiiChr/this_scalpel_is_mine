@@ -1,14 +1,14 @@
 tags: txa, heparin
 title: 5. Hemorrhage control
 ## 5.1 Assessment
-The monitor displays total blood loss rate in ml/s. A rate above 1 ml/s is a surgical emergency.
+The monitor displays total blood loss rate in ml/s. A rate above {Patient.HEAVY_BLEEDING} ml/s is a surgical emergency.
 
 ## 5.2 Methods, in order of preference
 1. [b]Direct pressure[/b] with gauze. Temporizing only.
 2. [b]Clamping[/b] the vessel with a hemostat. Leave it in place while you work.
 3. [b]Electrocautery[/b] for small bleeding points. Adjacent healthy tissue is coagulated as well.
 4. [b]Closure[/b] of the full length of the wound with sutures or staples.
-5. [b]Tourniquet[/b], limbs only. Press it onto the limb above the wound ([b]Use tool[/b]) and it is wrapped round and tightened. Near-complete control. Distal ischemia begins after five minutes of application in this facility's protocol. Take it off by picking it up.
+5. [b]Tourniquet[/b], limbs only. Press it onto the limb above the wound ([b]Use tool[/b]) and it is wrapped round and tightened. Near-complete control. Distal ischemia begins after {Patient.TOURNIQUET_SAFE / 60} minutes of application in this facility's protocol. Take it off by picking it up.
 
 ## 5.3 Pooled blood
 Blood on the skin obscures the wound; blood in the cavity obscures the target. Aspirate with suction or absorb with gauze before proceeding.
@@ -20,7 +20,7 @@ Blood on the skin obscures the wound; blood in the cavity obscures the target. A
 See Chronic conditions: Mild hemophilia, Thrombophilia, Aneurysm.
 
 ## 5.5 Leaking closures
-Sutures, staples, strips and packing hold only while the blood clots behind them. They leak while heparin acts, and while systolic pressure is above 140 mmHg. Cauterized points and clamps hold regardless.
+Sutures, staples, strips and packing hold only while the blood clots behind them. They leak while heparin acts, and while systolic pressure is above {Patient.HIGH_PRESSURE} mmHg. Cauterized points and clamps hold regardless.
 Pressure rises with panic and with stimulants: adrenaline, cocaine, ketamine.
 
 [font_size=16][b]References[/b]

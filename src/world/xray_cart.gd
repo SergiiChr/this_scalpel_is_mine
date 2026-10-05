@@ -6,6 +6,8 @@ extends Node3D
 
 const EXPOSE_TIME := 2.5
 const COOLDOWN := 30.0
+## Seconds a film takes to develop.
+const DEVELOP_TIME := 6.0
 const REACH := 1.5
 const PUSH_OFFSET := 0.85
 const SYNC_INTERVAL := 0.1
@@ -75,7 +77,7 @@ func _open_print() -> void:
 
 ## 0..1, how far the print has developed.
 func developed() -> float:
-	return clampf((Time.get_ticks_msec() - printed_at_msec) / 6000.0, 0.0, 1.0)
+	return clampf((Time.get_ticks_msec() - printed_at_msec) / (DEVELOP_TIME * 1000.0), 0.0, 1.0)
 
 
 func _develop() -> void:

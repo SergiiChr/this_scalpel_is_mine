@@ -6,7 +6,7 @@ title: Implanted pacemaker
 
 [b]Hazards[/b]
 • Electrocautery or defibrillation on the chest or abdomen makes it misfire.
-• Arrests half as often.
+• Arrests {(1 - quirk.pacemaker.arrest_mult) * 100}% less often.
 
 [b]Management[/b]
 • On the chest or abdomen, no electrocautery. Close with staples or sutures.

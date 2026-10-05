@@ -6,7 +6,7 @@ title: Osteoporosis
 
 [b]Hazards[/b]
 • Any heavy impact fractures it, including a dropped instrument.
-• The saw cuts at twice the usual speed.
+• The saw cuts {quirk.bones_fragile.saw_speed_mult} times as fast as usual.
 
 [b]Management[/b]
 • Keep heavy equipment, the defibrillator included, clear of the patient.

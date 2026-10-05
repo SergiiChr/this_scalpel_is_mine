@@ -5,7 +5,7 @@ title: Anxiety disorder
 [b]On the chart:[/b] “Anxiety disorder.”
 
 [b]Hazards[/b]
-• Panic builds twice as fast. A panicking patient flails and jolts the hands at the table.
+• Panic builds {quirk.panicker.panic_mult} times as fast. A panicking patient flails and jolts the hands at the table.
 • Panic raises blood pressure.
 
 [b]Management[/b]

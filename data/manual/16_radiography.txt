@@ -6,8 +6,8 @@ Localization of radiopaque foreign bodies (bullets, blades, retained instruments
 1. Take hold of the mobile unit's handle ([b]Interact[/b]). It follows until released.
 2. Position it beside the table.
 3. Expose. All staff stand clear during the exposure, which lasts a few seconds.
-4. The film is delivered onto the cart. It develops over about six seconds.
-> The unit requires about thirty seconds between exposures.
+4. The film is delivered onto the cart. It develops over about {XrayCart.DEVELOP_TIME} seconds.
+> The unit requires {XrayCart.COOLDOWN} seconds between exposures.
 
 ## 16.3 Interpretation
 [table=2]

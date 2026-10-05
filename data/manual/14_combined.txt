@@ -4,7 +4,7 @@ title: 14. Combined conditions
 Heparin [i]before[/i] clamping. Clamp before opening. Repair the vessel before releasing the clamp.
 
 ## 14.2 Sympathomimetics
-Cocaine and adrenaline together precipitate a cardiac event. After cocaine exposure, treat bradycardia with atropine and arrhythmia with amiodarone.
+Cocaine and adrenaline together precipitate a cardiac event: arrest in {Patient.DANGER_ARREST_CHANCE * 100}% of cases. After cocaine exposure, treat bradycardia with atropine and arrhythmia with amiodarone.
 
 ## 14.3 Heightened tactile sensitivity, conscious patient
 Keep all contact within the operative field. Contact elsewhere causes sudden movement.
@@ -22,7 +22,7 @@ Ketamine raises pressure. Induce with the inhaled agent. With malignant hyperthe
 Panic alone can rupture it. Sedate with diazepam before anything else.
 
 ## 14.8 Aneurysm with a coagulation disorder
-• Mild hemophilia: a rupture bleeds twice as fast. Give tranexamic acid early and have clamps ready.
+• Mild hemophilia: a rupture bleeds {(quirk.coagulation_weak.bleed_mult - 1) * 100}% faster. Give tranexamic acid early and have clamps ready.
 • Thrombophilia: heparin is still required, and every closure leaks while it acts. Clamp and cauterize bleeding points rather than packing them.
 
 ## 14.9 Diabetes with epilepsy

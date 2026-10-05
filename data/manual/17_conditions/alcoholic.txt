@@ -5,8 +5,8 @@ title: Alcohol use disorder
 [b]On the chart:[/b] “Alcohol use disorder.”
 
 [b]Hazards[/b]
-• Sedatives and anesthesia are about 40% less effective.
-• Bleeds a little more than normal.
+• Sedatives and anesthesia are {(1 - quirk.alcoholic.sedation_mult) * 100}% less effective.
+• Bleeds {(quirk.alcoholic.bleed_mult - 1) * 100}% more than normal.
 
 [b]Management[/b]
 • Use higher doses and check anesthesia depth.

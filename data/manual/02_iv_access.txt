@@ -24,7 +24,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 The tubing hangs low across the floor between stand and patient. Walking through it at speed pulls the catheter out of the vein: the line is lost, the patient is hurt and the line must be re-sited with a new catheter. Move slowly near the tubing, or crouch and step over it.
 
 ## 2.6 Fluid choice
-• Crystalloid (0.9% saline, 500 ml): restores circulating volume after moderate blood loss.
+• Crystalloid (saline, {drug.saline.effect("volume_ml")} ml): restores circulating volume after moderate blood loss.
 • Blood products: see section 10. Confirm the group before connecting.
 
 [font_size=16][b]References[/b]

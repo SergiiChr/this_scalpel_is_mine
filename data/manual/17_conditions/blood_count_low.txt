@@ -5,7 +5,7 @@ title: Anemia
 [b]On the chart:[/b] “Anemic.”
 
 [b]Hazards[/b]
-• Starts with about a fifth less blood. Less time before shock.
+• Starts with {(1 - quirk.blood_count_low.blood_ml_mult) * 100}% less blood. Less time before shock.
 
 [b]Management[/b]
 • Order blood before the first incision.

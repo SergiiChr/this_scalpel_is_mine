@@ -16,8 +16,25 @@ const BLOOD_TYPES: PackedStringArray = ["O+", "O-", "A+", "A-", "B+", "AB+"]
 const VFIB_TO_ASYSTOLE := 40.0
 const ARREST_DEATH := 80.0
 const TOURNIQUET_SAFE := 300.0
+## Systolic pressure (mmHg) of a patient with a full blood volume, no drugs and no panic.
+const NORMAL_PRESSURE := 120.0
 ## Systolic pressure (mmHg) above which closures leak and fragile vessels may burst.
 const HIGH_PRESSURE := 140.0
+## Systolic pressure (mmHg) below which the heart may arrest.
+const ARREST_PRESSURE := 60.0
+## Blood glucose (mmol/l) above which consciousness fades.
+const GLUCOSE_HIGH := 20.0
+## Blood glucose (mmol/l) below which any patient may seize.
+const GLUCOSE_LOW := 3.0
+## Core temperature rise (°C per second) during malignant hyperthermia, and the temperature that kills.
+const HYPERTHERMIA_RATE := 0.03
+const LETHAL_TEMPERATURE := 42.5
+## Chance that a dangerous drug combination (DrugDef.danger_with) stops the heart.
+const DANGER_ARREST_CHANCE := 0.5
+## Total bleeding (ml/s) that frightens an awake patient: a surgical emergency.
+const HEAVY_BLEEDING := 1.0
+## Seconds after adrenaline in which a shock can restart a flat line.
+const RESTART_WINDOW := 60.0
 ## Systolic rise (mmHg) of a fully panicking patient.
 const PANIC_PRESSURE := 30.0
 ## Fragile vessel bursts per second for each mmHg above HIGH_PRESSURE.
@@ -252,7 +269,7 @@ func _simulate(dt: float) -> void:
 	v.pain = clampf(v.pain - dt * 0.05 - fx.pain_relief * dt * 0.2, 0.0, 1.0)
 	v.swelling = maxf(v.swelling - dt * (0.004 + fx.antihistamine * 0.02 + fx.adrenaline * 0.05), 0.0)
 	var shock := clampf((0.6 - v.blood_ratio()) / 0.3, 0.0, 1.0)
-	var glucose_coma := clampf((v.glucose - 20.0) / 10.0, 0.0, 1.0) + clampf((2.5 - v.glucose) / 1.5, 0.0, 1.0)
+	var glucose_coma := clampf((v.glucose - GLUCOSE_HIGH) / 10.0, 0.0, 1.0) + clampf((2.5 - v.glucose) / 1.5, 0.0, 1.0)
 	v.consciousness = 0.0 if v.is_arrested() else clampf(1.0 - maxf(v.anesthesia, fx.sedation * 0.8) - shock - glucose_coma, 0.0, 1.0)
 
 	if _reassure > 0.0:
@@ -260,7 +277,7 @@ func _simulate(dt: float) -> void:
 	_reassure = maxf(_reassure - dt, 0.0)
 	if v.is_awake():
 		var calming := 0.06 + fx.sedation * 0.3 + (0.25 if _reassure > 0.0 else 0.0)
-		v.panic = clampf(v.panic + (v.pain * 0.12 + (0.03 if total > 1.0 else 0.0) - calming) * mods.mult("panic_mult") * dt * 2.0, 0.0, 1.0)
+		v.panic = clampf(v.panic + (v.pain * 0.12 + (0.03 if total > HEAVY_BLEEDING else 0.0) - calming) * mods.mult("panic_mult") * dt * 2.0, 0.0, 1.0)
 	else:
 		v.panic = maxf(v.panic - dt * 0.2, 0.0)
 
@@ -272,7 +289,7 @@ func _simulate(dt: float) -> void:
 	match v.rhythm:
 		Vitals.Rhythm.SINUS:
 			v.heart_rate = lerpf(v.heart_rate, target_hr, dt * 0.6) + rng.randf_range(-0.6, 0.6)
-			v.systolic = lerpf(v.systolic, 120.0 * pow(ratio, 1.6) + fx.bp + v.panic * PANIC_PRESSURE - v.swelling * 50.0, dt * 0.6)
+			v.systolic = lerpf(v.systolic, NORMAL_PRESSURE * pow(ratio, 1.6) + fx.bp + v.panic * PANIC_PRESSURE - v.swelling * 50.0, dt * 0.6)
 			v.spo2 = clampf(lerpf(v.spo2, target_spo2, dt * 0.3), 50.0, 100.0)
 			_arrest_time = 0.0
 			_roll_arrest(dt, fx)
@@ -292,7 +309,7 @@ func _simulate(dt: float) -> void:
 	if _has_active("mh_cure"):
 		_mh_active = false
 	var baseline := 35.4 if Surgery.current.run_mods.flag("cold") else 36.8
-	v.temperature += ((0.03 if _mh_active else 0.0) + (baseline - v.temperature) * 0.01 + fx.temp * 0.01) * dt
+	v.temperature += ((HYPERTHERMIA_RATE if _mh_active else 0.0) + (baseline - v.temperature) * 0.01 + fx.temp * 0.01) * dt
 
 	_restart_window = maxf(_restart_window - dt, 0.0)
 	_update_fragile_vessels(dt)
@@ -327,7 +344,7 @@ func _roll_arrest(dt: float, fx: DrugEffects) -> void:
 	var v := vitals
 	var risk := 0.0
 	risk += maxf(0.55 - v.blood_ratio(), 0.0) * 0.05
-	risk += 0.01 if v.systolic < 60.0 else 0.0
+	risk += 0.01 if v.systolic < ARREST_PRESSURE else 0.0
 	risk += 0.004 if v.heart_rate > 170.0 else 0.0
 	risk += 0.01 if v.temperature > 40.5 else 0.0
 	risk += 0.004 if v.glucose < 2.0 else 0.0
@@ -335,15 +352,6 @@ func _roll_arrest(dt: float, fx: DrugEffects) -> void:
 	risk += mods.num("clot_risk") * (0.0 if fx.clot < -0.2 else 1.0)
 	if rng.randf() < risk * mods.mult("arrest_mult") * dt:
 		arrest()
-
-
-## Something already puts the heart at risk: blood loss, low pressure, racing pulse, fever, sugar out of range,
-## swelling, or a heart prone to it. A random cardiac arrest only strikes such a patient.
-func unstable() -> bool:
-	var v := vitals
-	var shaky := v.blood_ratio() < 0.8 or v.systolic < 85.0 or v.heart_rate > 130.0 or v.temperature > 39.0
-	shaky = shaky or v.glucose < 3.0 or v.glucose > 20.0 or v.swelling > 0.4
-	return shaky or mods.num("clot_risk") > 0.0 or mods.mult("arrest_mult") > 1.0
 
 
 func _arrested(dt: float) -> void:
@@ -379,7 +387,7 @@ func _update_fragile_vessels(dt: float) -> void:
 
 
 func _update_seizure(dt: float) -> void:
-	var chance := mods.num("seizure_chance") + (0.02 if vitals.glucose < 3.0 else 0.0)
+	var chance := mods.num("seizure_chance") + (0.02 if vitals.glucose < GLUCOSE_LOW else 0.0)
 	if _seizure_left > 0.0:
 		_seizure_left -= dt
 		vitals.seizing = _seizure_left > 0.0 and not _has_active("anticonvulsant")
@@ -418,7 +426,7 @@ func _check_death(fx: DrugEffects) -> void:
 		reason = "Bled out."
 	elif _arrest_time > ARREST_DEATH:
 		reason = "Cardiac arrest."
-	elif v.temperature > 42.5:
+	elif v.temperature > LETHAL_TEMPERATURE:
 		reason = "Malignant hyperthermia."
 	elif fx.lethal > 0.95:
 		reason = "Passed away peacefully."
@@ -524,7 +532,7 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 	for other in active_drugs:
 		if drug_id in (other.def as DrugDef).danger_with or (other.def as DrugDef).id in def.danger_with:
 			Surgery.current.announce("Blood pressure spikes through the roof!")
-			if rng.randf() < 0.5:
+			if rng.randf() < DANGER_ARREST_CHANCE:
 				arrest()
 	var strength := DrugDef.dose_strength(share) * (1.3 if route == "direct" else 1.0)
 	var onset_scale := DrugDef.DIRECT_ONSET if route == "direct" else 1.5
@@ -534,7 +542,7 @@ func administer(drug_id: String, route: String, amount: float = -1.0) -> void:
 		return
 	add_flag("drug_" + drug_id)
 	if def.has_flag("restart"):
-		_restart_window = 60.0
+		_restart_window = RESTART_WINDOW
 		vitals.swelling = maxf(vitals.swelling - 0.4, 0.0)
 	if def.has_flag("reverse_opioid"):
 		active_drugs = active_drugs.filter(func(e: Dictionary) -> bool: return not (e.def as DrugDef).has_flag("opioid"))

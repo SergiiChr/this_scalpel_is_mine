@@ -5,7 +5,7 @@ title: Obesity
 [b]On the chart:[/b] “BMI 41.”
 
 [b]Hazards[/b]
-• Each blade pressure level reaches one layer shallower than expected.
+• Each blade pressure level reaches {quirk.obese.fat_depth} layer shallower than expected.
 • The wound is harder to hold open.
 
 [b]Management[/b]

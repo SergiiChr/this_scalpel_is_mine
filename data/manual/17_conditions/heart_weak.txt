@@ -5,7 +5,7 @@ title: Coronary artery disease
 [b]On the chart:[/b] “Coronary artery disease.”
 
 [b]Hazards[/b]
-• Arrests far more readily from blood loss, pain and adverse drug combinations.
+• Arrests {quirk.heart_weak.arrest_mult} times as readily from blood loss, pain and adverse drug combinations.
 
 [b]Management[/b]
 • Control bleeding early and keep pain covered.

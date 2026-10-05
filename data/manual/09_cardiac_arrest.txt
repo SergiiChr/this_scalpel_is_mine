@@ -5,14 +5,14 @@ title: 9. Cardiac arrest
 ## 9.1 Ventricular fibrillation
 Irregular waveform, alarm. Shockable.
 1. Stand clear. Anyone in contact with the patient during discharge receives the shock.
-2. Apply the paddles to the chest and hold [b]Use tool[/b] to charge (two seconds); release to discharge.
+2. Apply the paddles to the chest and hold [b]Use tool[/b] to charge ({ToolActions.DEFIB_CHARGE_TIME} seconds); release to discharge.
 3. If unsuccessful, give amiodarone and repeat the shock.
-> After forty seconds, ventricular fibrillation degenerates to asystole.
+> After {Patient.VFIB_TO_ASYSTOLE} seconds, ventricular fibrillation degenerates to asystole.
 
 ## 9.2 Asystole
 Flat line, continuous tone. Not shockable alone.
 1. Give adrenaline.
-2. Defibrillate within the following minute.
+2. Defibrillate within the following {Patient.RESTART_WINDOW} seconds.
 
 ## 9.3 Cautions
 Never defibrillate an organized, perfusing rhythm: it may induce the arrest it was meant to treat.

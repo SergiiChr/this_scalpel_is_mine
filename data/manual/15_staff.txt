@@ -9,8 +9,8 @@ Nausea rises with exposure to blood (in susceptible staff), halitosis at close r
 ## 15.3 Tremor
 Stress shows in the hands. A calm operator only twitches now and then; past a third of the stress limit a light tremor reaches the instrument tip, and past two thirds it is plain to see. Cold shakes the hands too.
 Holding the breath steadies the hands for as long as the breath lasts.
-• [b]Diazepam for the operator:[/b] 0.2 mg per kg of the operator's own weight (80 kg unless noted on the team sheet), injected into the back of the other hand or into a colleague. The tremor of stress settles within seconds and stays away for about five minutes; the cold tremor does not. The cost: blurred vision and slower hands.
-• [b]Too much:[/b] past 1.4 times the dose the vision darkens and the hands lag further. Twice the dose puts the operator on the floor for five minutes. [b]Flumazenil[/b] (0.01 mg per kg) reverses it; [b]adrenaline[/b] gets them up while it lasts.
+• [b]Diazepam for the operator:[/b] {drug.diazepam.dose} mg per kg of the operator's own weight ({SurgeonStatus.BASE_WEIGHT} kg unless noted on the team sheet), injected into the back of the other hand or into a colleague. The tremor of stress settles within seconds and stays away for about {drug.diazepam.duration / 60} minutes; the cold tremor does not. The cost: blurred vision and slower hands.
+• [b]Too much:[/b] past {DrugDef.DOSE_HIGH} times the dose the vision darkens and the hands lag further. {SurgeonStatus.KNOCKOUT_SHARE} times the dose puts the operator on the floor for {SurgeonStatus.KNOCKOUT_TIME / 60} minutes. [b]Flumazenil[/b] ({drug.flumazenil.dose} mg per kg) reverses it; [b]adrenaline[/b] gets them up while it lasts.
 
 ## 15.4 Perspiration
 Sweat makes gloves slippery: change them at the glove box. A surgical cap prevents sweat dripping into an open wound.

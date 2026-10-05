@@ -76,3 +76,26 @@ func _conditions_page() -> ManualPage:
 		if not page.children.is_empty():
 			return page
 	return ManualPage.new()
+
+
+func test_manual_numbers_come_from_the_game() -> void:
+	var filled := ManualPage.fill_numbers("{Patient.HIGH_PRESSURE} mmHg for {drug.diazepam.duration / 60} min, {quirk.heart_weak.arrest_mult}x", "test")
+	var expected := "%d mmHg for %d min, %sx" % [Patient.HIGH_PRESSURE, Db.drug("diazepam").duration / 60.0, String.num((Db.patient_quirks.heart as QuirkDef).effects("weak").arrest_mult, 2)]
+	assert_eq(filled, expected, "manual numbers are worked out from constants, drugs and quirk effects")
+	# A number with a unit written straight into a page would go stale when the game changes: it has to be "{...}".
+	var unit := "(mmHg|mmol/l|°C|mg|units|ml/s|ml|seconds?|minutes?|kg|points|times)\\b|%"
+	var raw := RegEx.create_from_string("(?i)(\\b\\d+(\\.\\d+)?|\\b(one|two|three|four|five|six|ten|fifteen|twenty|thirty|forty|fifty|sixty)) ?(" + unit + ")")
+	for page: ManualPage in _all_pages():
+		assert_false(page.body.contains("{"), "%s has no number left to work out" % page.title)
+		var text := RegEx.create_from_string(ManualPage.NUMBER).sub(page.source, "", true)
+		text = text.get_slice("[font_size=16][b]References", 0)
+		for found in raw.search_all(text):
+			fail_test("%s writes \"%s\" by hand: use a {...} game number" % [page.title, found.get_string()])
+
+
+func _all_pages() -> Array[ManualPage]:
+	var pages: Array[ManualPage] = []
+	for page: ManualPage in Db.manual:
+		pages.append(page)
+		pages.append_array(page.children)
+	return pages

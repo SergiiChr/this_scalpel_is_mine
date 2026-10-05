@@ -5,9 +5,9 @@ title: Malignant hyperthermia
 [b]On the chart:[/b] “Family history of anesthesia complications.”
 
 [b]Hazards[/b]
-• The inhaled agent raises core temperature about one degree every thirty seconds. Fatal above 42.5 °C.
+• The inhaled agent raises core temperature about {Patient.HYPERTHERMIA_RATE * 60} °C every minute. Fatal above {Patient.LETHAL_TEMPERATURE} °C.
 
 [b]Management[/b]
 • Induce with propofol, or ketamine if propofol is unavailable. Never the inhaled agent.
-• In a crisis: stop the inhaled agent and give dantrolene (onset about twenty seconds).
+• In a crisis: stop the inhaled agent and give dantrolene (onset {drug.dantrolene.onset} seconds).
 > See Combined conditions (14.5, 14.6).

@@ -105,4 +105,6 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 
 - After adding a script with a new `class_name`, run `./build.sh setup` (it re-imports) or the class isn't found.
 - `./build.sh assets` rewrites many `.glb` files with byte-only differences. Commit only the models you meant to change.
+- Manual pages write game numbers as `{expression}` (`{Patient.HIGH_PRESSURE}`, `{drug.diazepam.dose}`), never by
+  hand. Give a number the manual needs a named constant first.
 - Generator colors are display (sRGB) values, converted to linear when written to glTF. Pick them like any color picker.

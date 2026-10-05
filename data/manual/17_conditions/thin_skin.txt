@@ -5,8 +5,8 @@ title: Fragile skin
 [b]On the chart:[/b] “Elderly, fragile skin.”
 
 [b]Hazards[/b]
-• Tears at half the usual traction. Bruises twice as easily.
-• Tight clips cut through twice as often. Adhesive closures hold poorly.
+• Tears at {quirk.thin_skin.tear_threshold_mult * 100}% of the usual traction. Bruises {quirk.thin_skin.bruise_mult} times as easily.
+• Tight clips cut through more often. Adhesive closures hold poorly.
 
 [b]Management[/b]
 • Retract gently.

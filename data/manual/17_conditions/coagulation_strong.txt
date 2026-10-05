@@ -5,7 +5,7 @@ title: Thrombophilia
 [b]On the chart:[/b] “Thrombophilia, prior DVT.”
 
 [b]Hazards[/b]
-• Bleeds less than normal.
+• Bleeds {(1 - quirk.coagulation_strong.bleed_mult) * 100}% less than normal.
 • A clot can form at any time and cause cardiac arrest without warning.
 
 [b]Management[/b]
