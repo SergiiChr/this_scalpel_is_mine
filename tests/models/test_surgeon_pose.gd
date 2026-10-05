@@ -17,6 +17,8 @@ var _shot := 0
 func before_all() -> void:
 	if KeyFrames.wanted():
 		var folder := ProjectSettings.globalize_path("res://build/key-frames/surgeon_pose")
+		if not DirAccess.dir_exists_absolute(folder):
+			return
 		for file in DirAccess.get_files_at(folder):
 			if file.ends_with(".png"):
 				DirAccess.remove_absolute(folder.path_join(file))
