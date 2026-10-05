@@ -38,6 +38,9 @@ func play(scenario_id: String, key_frames: bool = false) -> void:
 			continue
 		await driver.player_completes(step)
 		var hold: float = step.get("seconds", 0.0) + (60.0 if step.type == "calm" else 0.0)
+		# A drug counts once enough has soaked in to work: through a line, most of it by 1.5 times its onset.
+		if step.type == "inject" and step.has("drug"):
+			hold += Db.drug(step.drug).onset * 1.5
 		await driver.wait_until(func() -> bool: return objectives.states[index].done or surgery.finished, hold + SETTLE)
 		if not objectives.states[index].done:
 			fail_test("%s: \"%s\" (%s) didn't complete. Last steps:\n%s" % [scenario_id, step.label, step.type, driver.recent()])
