@@ -475,6 +475,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the handle but not the skin (self-retaining): the retractor lies down along the body from the hook, pointing away
   from where it took hold, resting on the highest skin under it, and keeps the skin pulled (`ToolManager.lying_from_hold()`).
   Taken back, the hand goes to where the hook holds, so the skin isn't dragged; Use tool unhooks it.
+- It hooks only skin it's pressed onto, at a cut's edge (`ToolActions.SKIN_HOOKS`): never a target, vessel or organ
+  under it, and not down in the opening, where it would drag the skin far above down and tear it.
 - Anything left holding onto the patient (a retractor, a hemostat, a Gelpi retractor) has no collider: hands and
   tools reach past it (`SurgicalTool.set_state()`).
 
