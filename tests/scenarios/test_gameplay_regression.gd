@@ -84,7 +84,7 @@ func _run(scenario: ScenarioDef, once: bool) -> void:
 	for i in 4:
 		surgery.patient.shock(1.0)
 	surgery.lab.request("full", surgery)
-	surgery.nurse.request(1, "scalpel", surgery)
+	surgery.nurse.request(1, PackedStringArray(["scalpel"]), surgery)
 	surgery._req_turn()
 	surgery._qte_result(3, false)
 	await _frames(30)
@@ -599,19 +599,19 @@ func _nurse_checks(surgery: Surgery) -> void:
 	nurse.tick(1000.0, surgery)
 	nurse.cooldown_left = 0.0
 	nurse.delivered = 0
-	nurse.request(1, "gauze", surgery)
+	nurse.request(1, PackedStringArray(["gauze"]), surgery)
 	if nurse.order().is_empty() or not Room.nurse_board_text({"order": nurse.order()}).contains("Gauze"):
 		fail_test("the nurse board doesn't show the order on its way")
 	for i in Nurse.FREE_ORDERS:
-		nurse.request(1, "gauze", surgery)
+		nurse.request(1, PackedStringArray(["gauze"]), surgery)
 		nurse.tick(1000.0, surgery)
 		if nurse.cooldown_left > 0.0:
 			fail_test("the nurse cooldown started after free delivery %d" % (i + 1))
-	nurse.request(1, "gauze", surgery)
+	nurse.request(1, PackedStringArray(["gauze"]), surgery)
 	nurse.tick(1000.0, surgery)
 	if not nurse.order().is_empty() or nurse.cooldown_left <= 0.0:
 		fail_test("the nurse cooldown didn't start after the sixth delivery")
-	nurse.request(1, "gauze", surgery)
+	nurse.request(1, PackedStringArray(["gauze"]), surgery)
 	if not nurse.order().is_empty():
 		fail_test("the nurse took an order during her cooldown")
 

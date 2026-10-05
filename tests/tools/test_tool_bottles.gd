@@ -36,7 +36,7 @@ func test_bottles_come_standing_and_stand_when_grab_is_held() -> void:
 	driver.budget.clear()
 	var surgery := driver.surgery
 	var on_tray := driver.free_tools(VIAL)
-	surgery.order_tool(VIAL)
+	await driver.player_orders(PackedStringArray([VIAL]))
 	await driver.wait_until(func() -> bool: return driver.free_tools(VIAL).size() > on_tray.size(), 60.0)
 	await driver.seconds(1.0)
 	vial = driver.free_tools(VIAL).filter(func(t: SurgicalTool) -> bool: return not t in on_tray).front()

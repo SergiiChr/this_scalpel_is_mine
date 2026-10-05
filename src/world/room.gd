@@ -10,6 +10,8 @@ const TRAY_SURFACE := 0.915
 ## Table top ends along x: the feet lie toward FOOT, the head toward HEAD.
 const TABLE_FOOT := -1.3
 const TABLE_HEAD := 1.0
+## Between items the nurse brings together, across the delivery tray (meters): five fit inside its rim.
+const DELIVERY_GAP := 0.095
 ## Bottom of the drip chamber on the IV stand model, where the tubing starts.
 const IV_DRIP_POINT := Vector3(0.08, 1.6, 0.0)
 ## Where each group of tools (tray in tools.cfg) lies on the instrument tray at the start: x and z from the tray's
@@ -134,6 +136,11 @@ static func nurse_board_text(status: Dictionary) -> String:
 	return "Nurse is busy for %d s" % ceili(cooldown) if cooldown > 0.0 else "Nurse ready"
 
 
+## Whether the nurse takes an order now, by the host's last status.
+static func nurse_ready(status: Dictionary) -> bool:
+	return (status.get("order", []) as Array).is_empty() and status.get("nurse", 0.0) <= 0.0
+
+
 func spawn_transform(index: int) -> Transform3D:
 	var spots: Array = layout.spawns
 	var pos: Vector3 = spots[index % spots.size()] + Vector3(0.35 * (index / spots.size()), 0, 0)
@@ -168,9 +175,13 @@ func tray_spots() -> Array[Vector3]:
 
 
 ## On top of the delivery tray, or the instrument tray where there's no nurse (they bring nothing there anyway).
-func delivery_spot() -> Vector3:
+## Items delivered together (`slot` of `count`) lie side by side across it, so they don't land on each other.
+## Each lands somewhere in its own share of the tray, so separate deliveries don't all land on one spot either.
+func delivery_spot(slot: int = 0, count: int = 1) -> Vector3:
 	if layout.has("delivery_tray"):
-		return layout.delivery_tray + Vector3(randf_range(-0.12, 0.12), 1.0, randf_range(-0.08, 0.08))
+		var spread := maxf(0.12 - DELIVERY_GAP * (count - 1) / 2.0, 0.01)
+		var across := DELIVERY_GAP * (slot - (count - 1) / 2.0) + randf_range(-spread, spread)
+		return layout.delivery_tray + Vector3(across, 1.0, randf_range(-0.08, 0.08))
 	return layout.tray + Vector3(randf_range(-0.2, 0.2), 1.0, randf_range(-0.2, 0.2))
 
 
