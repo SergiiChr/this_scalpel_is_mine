@@ -473,9 +473,11 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - Use tool hooks the skin where it's pressed, and moving the hand pulls it that way, like forceps. Grab lets go of
   the handle but not the skin (self-retaining): the retractor lies down along the body from the hook, pointing away
-  from where it took hold, and keeps the skin pulled (`ToolManager.lying_from_hold()`). Its back half rests on the
-  highest point of the body under it at rest (not on the skin the hook bunches up, nor on the drape); where the body
-  rises the way it pulled, it swings up to 60° aside to lie flattest.
+  from where it took hold, and keeps the skin pulled where the hand left it (`ToolManager.lying_from_hold()`). It lies
+  on top of everything under it all along (the skin as drawn, the body, the drape), only its hook in the skin: its
+  tip comes up out of the dip the pull pressed, and where the body rises the way it pulled it swings up to 60° aside
+  to lie flattest. The skin keeps settling under it (it bunches up beside the hook), so a few times a second it
+  checks and lies down on top again where the skin rose into it (`ToolManager._keep_on_top()`).
   Taken back, the hand goes to where the hook holds, so the skin isn't dragged; Use tool unhooks it.
 - It hooks only skin it's pressed onto, at a cut's edge (`ToolActions.SKIN_HOOKS`): never a target, vessel or organ
   under it, and not down in the opening, where it would drag the skin far above down and tear it.

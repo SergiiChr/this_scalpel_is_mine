@@ -20,6 +20,8 @@ const PULL := 0.02
 const MIDDLE := 0.005
 ## Most a retractor let go of may tilt up off the body it lies on (degrees): the hook pulls the skin down around itself.
 const LYING_TILT := 16.0
+## How far (meters) a retractor lying on the skin is above it at least: the stay's half thickness (instruments.py).
+const ON_TOP := 0.0022
 ## How long (meters) the cut the four retractors hold open is.
 const OPENING := 0.08
 
@@ -71,7 +73,8 @@ func test_retractor_hooks_one_edge_and_pulls_the_cut_open() -> void:
 	await driver.seconds(2.0)
 	assert_eq(retractor.state, SurgicalTool.State.STANDING, "let go of with Grab, the retractor stays hooked")
 	assert_false(hand.attached, "and the hand is free")
-	assert_lt(retractor.tip_position().distance_to(hooked), 0.002, "the hook stays where it held the skin")
+	assert_lt((retractor.tip_position() - hooked).slide(Vector3.UP).length(), 0.002, "the hook stays where it held the skin")
+	_assert_on_top(retractor)
 	assert_gt(tissue.gap_at(middle, MIDDLE), opened - 0.002, "left alone, it keeps the cut pulled open")
 	var handle := retractor.global_position - retractor.tip_position()
 	assert_lt(absf(handle.normalized().y), 0.35, "it lies along the body (%.0f degrees off level), not standing up" % rad_to_deg(asin(absf(handle.normalized().y))))
@@ -123,6 +126,7 @@ func test_retractor_let_go_on_a_thigh_lies_along_the_limb() -> void:
 	var body_rise := body.uv_to_world(body.world_to_uv(retractor.global_position)).y - body.uv_to_world(body.world_to_uv(retractor.tip_position())).y
 	var off_body := rad_to_deg(atan2(handle.y, across) - atan2(body_rise, across))
 	assert_lt(off_body, LYING_TILT, "it folds down along the limb (%.0f degrees off it), not standing up" % off_body)
+	_assert_on_top(retractor)
 	await driver.capture("let_go")
 	await _finish()
 
@@ -161,6 +165,7 @@ func test_four_retractors_hold_the_abdomen_open_for_the_scalpel_and_forceps() ->
 		driver.press("grab")
 		await driver.seconds(1.0)
 		assert_eq(retractor.state, SurgicalTool.State.STANDING, "retractor %d stays hooked when let go of" % (hooks.size() + 1))
+		_assert_on_top(retractor)
 		hooks.append(retractor)
 	assert_true(hooks.all(func(r: SurgicalTool) -> bool: return r.state == SurgicalTool.State.STANDING and not r.grip_info.is_empty()), "all four hold the edges")
 	assert_true(body.is_open(appendix.uv), "the abdomen stands open between them")
@@ -238,6 +243,30 @@ func _start(scenario_id: String, case_name: String) -> void:
 		await driver.capture("untouched")
 	# Loading the room isn't gameplay: the frame budget counts from here.
 	driver.budget.clear()
+
+
+## A retractor let go of lies on top of the skin (or the drape past the site) all along, clear by at least ON_TOP: only
+## its hook, at the tip, goes into the skin it holds.
+func _assert_on_top(retractor: SurgicalTool) -> void:
+	var body := driver.body
+	var lowest := INF
+	var at := 0.0
+	for i in range(1, 11):
+		var t := i / 10.0
+		var p := retractor.tip_position().lerp(retractor.global_position, t)
+		var uv := body.world_to_uv(p)
+		var clear := INF
+		if Rect2(0, 0, 1, 1).has_point(uv) and body.on_body(uv):
+			clear = body.height_above_site(p)
+		else:
+			var mask := PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER
+			var hit := driver.get_viewport().world_3d.direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.2, p + Vector3.DOWN, mask, [retractor.get_rid()]))
+			if not hit.is_empty():
+				clear = p.y - (hit.position as Vector3).y
+		if clear < lowest:
+			lowest = clear
+			at = t
+	assert_gt(lowest, ON_TOP, "the retractor lies on top of the skin all along (%.1f mm clear at %d%% of its length)" % [lowest * 1000.0, roundi(at * 100.0)])
 
 
 func _finish() -> void:
