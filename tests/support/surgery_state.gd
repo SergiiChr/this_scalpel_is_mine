@@ -178,3 +178,11 @@ static func surgeon_has_physics_timing(surgery: Surgery) -> Surgeon:
 	surgery.local_surgeon = surgeon
 	previous.queue_free()
 	return surgeon
+
+
+## Replaces a tool's animator with the same behavior plus timing of its normal frame updates.
+static func tool_has_animation_timing(tool: SurgicalTool) -> ToolAnimator:
+	var animator := preload("res://tests/support/profiled_tool_animator.gd").new()
+	tool._animator = animator
+	animator.setup(tool._model, tool.def.action)
+	return animator

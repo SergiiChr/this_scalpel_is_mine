@@ -127,7 +127,7 @@ func setup(tool_uid: int, tool_def: ToolDef) -> void:
 	var turning := bounds.size.max(Vector3.ONE * MIN_TURNING_SIZE)
 	inertia = mass / 12.0 * Vector3(turning.y * turning.y + turning.z * turning.z, turning.x * turning.x + turning.z * turning.z, turning.x * turning.x + turning.y * turning.y)
 	angular_damp = 1.0
-	_animator.setup(_model)
+	_animator.setup(_model, def.action)
 	if def.action == "spread":
 		_animator.open_to(spread, -def.length)
 	# Vials come full of their drug, the IV drip with a bag of plain fluid.

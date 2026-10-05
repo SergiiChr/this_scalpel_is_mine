@@ -39,7 +39,7 @@ func _ready() -> void:
 		add_child(holder)
 		ToolModel.build(def, holder)
 		var animator := ToolAnimator.new()
-		animator.setup(holder)
+		animator.setup(holder, def.action)
 		animator.animate(false, model_id == "needle", 0.0)
 		hand.holding = true
 		hand.grip = def.grip
