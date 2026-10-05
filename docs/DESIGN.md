@@ -283,7 +283,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
-  floor and walks slowly. Zoom toggles between two levels (hand motion scales with it for precision).
+  floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
+  the hand crosses the screen as fast at both).
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -297,15 +298,16 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
   (`src/world/iv_line.gd`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
-  sticks and the tubing runs to it, but nothing goes through. The last zoom step frames the catheter like a syringe.
+  sticks and the tubing runs to it, but nothing goes through. The last zoom step fades the hands as for a syringe.
   Where it went in, the catheter is taped down on the forearm (`IvDressing`, riding the forearm bone): its stub going
   into the skin toward the elbow, the hub with a colored cap and wings, a clear film over it, two strips of woven tape
   across the arm and the tubing taped along the arm before it hangs off to the stand.
   Walking into the line at full speed rips it out and the catheter drops on the floor at the walker's feet (soiled,
   wash and sanitize it to use it again); crouch-walking steps over it.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
-  A hand with a syringe brought under the bag rises to the bag's port at its bottom end (`Surgeon._drip_port()`),
-  and the needle is in it: push a drug in and it runs down the line once the needle is out, if the
+  A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
+  and a little upward, the way the forearm rises to it (`Surgeon._snap_spot()`); moved on, it comes out and the hand
+  holds the syringe as before. While it's in: push a drug in and it runs down the line once the needle is out, if the
   line is in a vein (`ToolActions.drip()`); pull and the syringe draws the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
@@ -325,7 +327,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture). And
   the Gelpi retractor: up opens it, down closes it (see Gelpi retractor).
-- **Contextual aim**: a dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
+- **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
+  accurate at any angle (`Surgeon.aim_point()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
   retractor's tips. The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
   turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -350,6 +353,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
+- **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
+  vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
+  snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.
+- **Standing a bottle up**: holding Grab a second with a bottle in hand stands it upright where it's held, on whatever is
+  under it (`ToolManager.standing_on()`). A click puts it down like any other tool. It lets go a little further out than it snaps in, so passing over doesn't hold it for
+  long. Snapping in and out (onto the IV bag too) eases over 0.25 s, the needle gliding over rather than jumping.
 - **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
   (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
@@ -372,10 +381,19 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
   out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
   let go.
-- **Needle view**: the last zoom step with a syringe or IV catheter in hand moves the camera beside it, side on and a
-  little above, so the needle and what it's in (a vial, the dish, the bag, the arm) are in view. The hands fade to see
-  through and roll a syringe about its length so the printed scale faces the camera; zooming out rolls it back.
-  The mouse moves the hand as seen from there: right on screen is right, up is away from the camera.
+- **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
+  its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand._reach_plunger()`). It points a
+  little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
+  the eyes, so it doesn't need turning to be read. Let go, the hand holds things the way it did before. Moved
+  about, it keeps turning the scale to the eyes, so C/V don't roll it (and the controls shown leave them out).
+- **Needle view**: the last zoom step with a syringe or IV catheter in hand fades the hands to see through, so the
+  needle and where it goes show. The camera stays at the eyes, so aiming moves the hand the way it always does.
+  Use tool with a syringe zooms all the way in on its own and back out when let go.
+  Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
+  beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe
+  about its length so the printed scale faces the camera. There the mouse moves the hand as seen from the camera:
+  right on screen is right, up is away from it. Use tool let go, the camera goes back and the scale turns back to the
+  eyes.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Between 0.7x and 1.4x the right dose works as the right dose; below or above it scales. Under half a dose it has
   only a faint effect and doesn't do its job (no objective, restart, antibiotic...). 2.5x and more is an overdose.

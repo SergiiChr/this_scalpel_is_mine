@@ -17,6 +17,7 @@ func test_syringe_iv_and_plunger_cases() -> void:
 	await bench.start()
 	bench.surgery.surgeon_dosed.connect(func(peer: int, drug: String, amount: float) -> void: doses.append([peer, drug, amount]))
 	await _control_checks()
+	await _thumb_checks()
 	var only := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--case="):
@@ -39,12 +40,23 @@ func test_syringe_iv_and_plunger_cases() -> void:
 		await _hand_checks()
 
 
-## Y1-Y3: the wheel moves the plunger instead of setting a level, the hints say so, and the last zoom step frames the
-## needle with the hands faded and the printed scale turned to the camera.
+## Y1-Y3: a syringe picked up sits with its printed scale toward the eyes, on the inner side of the hand. The wheel
+## moves the plunger instead of setting a level, and the hints say so. The last zoom step fades the hands and leaves the
+## camera at the eyes; once the needle is in with Use tool held, it frames the needle with the printed scale turned to
+## the camera.
 func _control_checks() -> void:
-	await bench.stage(Bench.CASES[0])
+	# Held out over the floor: over a vial it would stand upright in it.
+	await bench.stage(Bench.CASES[12])
 	var me := bench.surgery.local_surgeon
 	var hand := me.hands[me.active]
+	var camera := me.camera()
+	var along := bench.syringe.global_basis.z.normalized()
+	var printed := -bench.syringe.global_basis.y.normalized()
+	# A roll about its length can only face the eyes across the barrel, not along it.
+	var to_eyes := (camera.global_position - ToolManager.middle(bench.syringe)).slide(along).normalized()
+	var inward := me.global_basis.x * (-1.0 if me.active == 1 else 1.0)
+	_check(printed.dot(to_eyes) > 0.9 and printed.dot(inward) > 0.0, "a syringe picked up shows its printed scale to the eyes, on the inner side of the hand (%.2f, %.2f)" % [printed.dot(to_eyes), printed.dot(inward)])
+	await bench.stage(Bench.CASES[0])
 	await bench.notch(true)
 	await bench.notch(true)
 	await bench.notch(false)
@@ -52,27 +64,60 @@ func _control_checks() -> void:
 	_check(is_equal_approx(bench.syringe.ml, 1.0), "two notches down and one up leave 1 ml in the syringe (%.2f)" % bench.syringe.ml)
 	var hints := "\n".join(Hud.control_lines(me))
 	_check(hints.contains("Pull plunger 1 ml") and hints.contains("Push plunger 1 ml") and not hints.contains("Wheel  Plunger"), "the controls shown name the plunger on the wheel:\n" + hints)
-	var own_twist := hand.twist
-	var tip_before := bench.syringe.tip_position()
+	_check(not hints.contains("Rotate"), "the controls shown leave out rolling a syringe, which turns to the eyes on its own:\n" + hints)
 	me.zoom = Surgeon.ZOOM_FOV.size() - 1
 	await bench.frames(40)
-	var camera := me.camera()
-	# A roll about its length can only face the camera across the barrel, not along it.
-	var along := bench.syringe.global_basis.z.normalized()
+	_check(camera.transform.is_equal_approx(Transform3D.IDENTITY) and _fade(hand) > 0.5, "the last zoom step fades the hands and leaves the camera at the eyes (%.2f)" % _fade(hand))
+	_check(hints != "\n".join(Hud.control_lines(me)), "the controls shown say when the hands are see-through")
+	var tip_before := bench.syringe.tip_position()
+	await bench.press()
+	await bench.frames(35)
+	along = bench.syringe.global_basis.z.normalized()
+	printed = -bench.syringe.global_basis.y.normalized()
 	var to_camera := (camera.global_position - ToolManager.middle(bench.syringe)).slide(along).normalized()
-	var printed := -bench.syringe.global_basis.y.normalized()
-	_check(printed.dot(to_camera) > 0.98, "the needle view turns the syringe's printed scale toward the camera (%.2f)" % printed.dot(to_camera))
-	_check(bench.syringe.tip_position().distance_to(tip_before) < 0.003, "turning the scale leaves the needle where it was (%.4f m)" % bench.syringe.tip_position().distance_to(tip_before))
+	_check(printed.dot(to_camera) > 0.98, "with the needle in, the needle view turns the syringe's printed scale toward the camera (%.2f)" % printed.dot(to_camera))
+	_check(bench.syringe.tip_position().distance_to(tip_before) < 0.01, "turning the scale leaves the needle in the vial (%.4f m)" % bench.syringe.tip_position().distance_to(tip_before))
 	var head := camera.get_parent() as Node3D
-	_check(camera.global_position.distance_to(head.global_position) > 0.05, "the last zoom step moves the camera over to the needle")
+	_check(camera.global_position.distance_to(head.global_position) > 0.05, "with the needle in, the camera moves over to it")
 	for point: Vector3 in [bench.syringe.global_position, bench.syringe.tip_position(), ToolManager.middle(bench.container)]:
 		_check(camera.is_position_in_frustum(point), "the needle view shows the syringe and the vial (%s)" % point)
-	_check(_fade(hand) > 0.5, "the hands fade in the needle view (%.2f)" % _fade(hand))
-	_check(hints != "\n".join(Hud.control_lines(me)), "the controls shown say when the needle view is on")
+	await bench.release()
+	await bench.frames(40)
+	_check(camera.transform.is_equal_approx(Transform3D.IDENTITY) and _fade(hand) > 0.5, "Use tool let go, the camera goes back to the eyes and the hands stay see-through")
+	along = bench.syringe.global_basis.z.normalized()
+	printed = -bench.syringe.global_basis.y.normalized()
+	to_eyes = (head.global_position - ToolManager.middle(bench.syringe)).slide(along).normalized()
+	_check(printed.dot(to_eyes) > 0.9, "Use tool let go, the syringe rolls its scale back toward the eyes (%.2f)" % printed.dot(to_eyes))
 	me.zoom = 0
 	await bench.frames(40)
-	_check(camera.transform.is_equal_approx(Transform3D.IDENTITY) and _fade(hand) == 0.0, "zooming out puts the camera back and the hands solid")
-	_check(is_equal_approx(hand.twist, own_twist), "zooming out rolls the syringe back the way the hand held it")
+	_check(_fade(hand) == 0.0, "zooming out makes the hands solid")
+
+
+## Y3b: the syringe is held with the thumb on the plunger: drawing 8 ml pulls the plunger out and the thumb goes back
+## with it, along the syringe as far as the plunger went, staying on its press.
+func _thumb_checks() -> void:
+	await bench.stage(Bench.CASES[0])
+	var me := bench.surgery.local_surgeon
+	var hand := me.hands[me.active]
+	var behind: Array[float] = []
+	var gaps: Array[float] = []
+	for pull in [0, 8]:
+		for i in pull:
+			await bench.notch(true)
+		await bench.frames(5)
+		# The thumb's pad: its last bone, posed, carried on to the tip.
+		var skeleton := hand._glove_rig.skeleton
+		var last := skeleton.find_bone("Thumb3")
+		var posed := skeleton.get_bone_global_pose(last)
+		var to_tip: Vector3 = hand._thumb_rest().bones[2]
+		var pad := skeleton.global_transform * (posed.origin + posed.basis * skeleton.get_bone_global_rest(last).basis.inverse() * to_tip)
+		# Along the syringe (+Z is back, toward the plunger), as the syringe holds it.
+		behind.append((bench.syringe.global_transform.affine_inverse() * pad).z)
+		gaps.append(pad.distance_to(bench.syringe.global_transform * Vector3(0.0, 0.0, hand.press + SurgeonHand.PRESS_PAD)))
+	var travel := bench.syringe.def.length * Surgeon.SYRINGE_TRAVEL * 0.8
+	var moved := behind[1] - behind[0]
+	_check(moved > 0.8 * travel and moved < 1.2 * travel, "drawing 8 ml, the thumb goes back with the plunger (%.1f cm of %.1f)" % [moved * 100.0, travel * 100.0])
+	_check(gaps.all(func(gap: float) -> bool: return gap < 0.01), "the thumb stays on the plunger's press (%.1f and %.1f cm from it)" % [gaps[0] * 100.0, gaps[1] * 100.0])
 
 
 ## Y4-Y10: one case, checked after every notch and once the needle is out.
@@ -150,7 +195,7 @@ func _run(case: Dictionary) -> void:
 		_check(patient.active_drugs.size() == drugs_before, "%s: nothing is given" % case.name)
 
 
-## Y11-Y12: the IV catheter in the needle view goes into the forearm. On the vein the line works; beside it the
+## Y11-Y12: the IV catheter zoomed in on goes into the forearm. On the vein the line works; beside it the
 ## catheter still sticks and the tubing runs to it, but a drug in the IV drip stays in the bag.
 func _catheter_checks(case: Dictionary) -> void:
 	print("--- ", case.name)
@@ -160,10 +205,8 @@ func _catheter_checks(case: Dictionary) -> void:
 	var hit: bool = case.miss == 0.0
 	me.zoom = Surgeon.ZOOM_FOV.size() - 1
 	await bench.frames(40)
-	var camera := me.camera()
-	var moved := camera.global_position.distance_to((camera.get_parent() as Node3D).global_position)
-	var framed := moved > 0.05 and camera.is_position_in_frustum(bench.catheter.tip_position())
-	_check(framed, "%s: the last zoom step frames the catheter's needle (camera moved %.2f m)" % [case.name, moved])
+	var hand := me.hands[me.active]
+	_check(me.camera().transform.is_equal_approx(Transform3D.IDENTITY) and _fade(hand) > 0.5, "%s: the last zoom step fades the hands over the catheter, the camera at the eyes (%.2f)" % [case.name, _fade(hand)])
 	# Checked before it goes in: the needle hurts, an awake patient's arm flinches and the vein moves with it.
 	var off := (bench.catheter.tip_position() - bench.vein_point()) * Vector3(1, 0, 1)
 	_check(off.length() < 0.01 if hit else off.length() > 0.02, "%s: the needle is over %s (%.1f cm across)" % [case.name, "the vein" if hit else "the arm beside the vein", off.length() * 100.0])
@@ -312,18 +355,35 @@ func _run_status(status: SurgeonStatus, seconds: float, events: PackedStringArra
 		events.append_array(status.update(0.1, {}))
 
 
-## Y20-Y22: in the needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its
-## tip in place, the mouse tilting the syringe about it, and tears out when pulled on sideways; a syringe brought under the IV bag at waist height rises into its port.
+## Y20-Y22: a syringe swept over a vial snaps smoothly in through its cap, only when the cap faces the surgeon, and
+## lets go soon after; zoomed in, a mouse move takes the hand as far across the screen as it does zoomed out; in the
+## needle view the mouse moves the hand as seen on screen; a needle pressed into the skin keeps its tip in place, the
+## mouse tilting the syringe about it, and tears out when pulled on sideways; the aim shows where the needle goes in at
+## any angle; a syringe brought to the IV bag from waist height snaps its needle into the middle of the bag from the
+## hand's side, and moved on, comes out of it.
 func _hand_checks() -> void:
 	print("--- needle_hand")
 	var me := bench.surgery.local_surgeon
 	var hand := me.hands[me.active]
 	await bench.stage(Bench.CASES[0])
-	me.zoom = Surgeon.ZOOM_FOV.size() - 1
+	await _vial_snap_checks(me, hand)
+	var across: Array[float] = []
+	for step in Surgeon.ZOOM_FOV.size():
+		me.zoom = step
+		await bench.frames(40)
+		var before := me.camera().unproject_position(hand.global_position)
+		me.steer_hand(Vector2(20, 0))
+		await bench.frames(2)
+		across.append(me.camera().unproject_position(hand.global_position).x - before.x)
+		me.steer_hand(Vector2(-20, 0))
+	_check(across[0] > 0.0 and absf(across[1] / across[0] - 1.0) < 0.15, "needle_hand: zoomed in, a mouse move takes the hand as far across the screen as zoomed out (%.1f px, %.1f px)" % across)
+	# Into the dish: a vial would hold the needle where it snapped.
+	await bench.stage(Bench.CASES[2])
+	await bench.press()
 	await bench.frames(40)
 	var right := (me.camera().global_basis.x * Vector3(1, 0, 1)).normalized()
 	var away := (me.camera().global_basis.y * Vector3(1, 0, 1)).normalized()
-	for motion: Vector2 in [Vector2(20, 0), Vector2(0, -20)]:
+	for motion: Vector2 in [Vector2(10, 0), Vector2(0, -10)]:
 		var before := hand.target
 		for i in 5:
 			me.steer_hand(motion)
@@ -331,7 +391,8 @@ func _hand_checks() -> void:
 		var moved := (hand.target - before) * Vector3(1, 0, 1)
 		var along := moved.dot(right if motion.x > 0.0 else away)
 		# The camera follows the syringe, so it turns a little as the hand moves.
-		_check(along > 0.8 * moved.length() and along > 0.01, "needle_hand: in the needle view the mouse %s moves the hand %s on screen (%.3f m of %.3f)" % ["right" if motion.x > 0.0 else "up", "right" if motion.x > 0.0 else "away", along, moved.length()])
+		_check(along > 0.8 * moved.length() and along > 0.005, "needle_hand: in the needle view the mouse %s moves the hand %s on screen (%.3f m of %.3f)" % ["right" if motion.x > 0.0 else "up", "right" if motion.x > 0.0 else "away", along, moved.length()])
+	await bench.release()
 	me.zoom = 0
 	await bench.frames(40)
 	await bench.stage(Bench.CASES[6])
@@ -353,16 +414,144 @@ func _hand_checks() -> void:
 	var scratch := body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(bench.syringe.tip_position()))
 	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch (%.2f)" % scratch)
 	await bench.withdraw()
+	await _aim_lands(me, hand)
+	await _sweep_onto_patient(me, hand)
 	await bench.stage(Bench.CASES[13])
+	# Use tool up: brought over from waist height.
+	await bench.release()
 	var bag := bench.surgery.tools.drip_bag()
 	hand.local_target = me.to_local(me.global_position + me.global_basis * Vector3(0.1, 1.0, -0.2))
 	await bench.frames(20)
-	var under := bag.tip_position() * Vector3(1, 0, 1) - hand.tip_offset(bench.syringe.def.length) * Vector3(1, 0, 1)
+	var own_tilt := hand.tilt
+	var under := ToolManager.middle(bag) * Vector3(1, 0, 1)
 	for i in 30:
-		hand.local_target = me.to_local(hand.target.lerp(under + Vector3.UP * hand.target.y, 0.1))
+		# The hand's own spot, not where the snap holds it.
+		var free := me.to_global(hand.local_target)
+		hand.local_target = me.to_local(free.lerp(under + Vector3.UP * free.y, 0.1))
 		await bench.frames(1)
-	var target := bench.needle_target()
-	_check(target.get("container") == bag, "needle_hand: a syringe brought under the IV bag from waist height goes into it (hand at %.2f m, %s)" % [hand.global_position.y, target.kind])
+	await bench.frames(15)
+	var off := bench.syringe.tip_position().distance_to(ToolManager.middle(bag))
+	# Pointing a little up into it: how far the tip end (-Z) rises.
+	var rise := (-bench.syringe.global_basis.z.normalized()).dot(Vector3.UP)
+	var side := ((hand.global_position - ToolManager.middle(bag)) * Vector3(1, 0, 1)).dot(me.to_global(hand.local_target) - ToolManager.middle(bag))
+	_check(bench.needle_target().get("container") == bag and off < 0.005 and absf(rise - sin(Surgeon.DRIP_TILT)) < 0.05 and side > 0.0, "needle_hand: a syringe brought to the IV bag from waist height snaps its needle a little upward into the middle of the bag, from the hand's side (%.1f cm off, rising %.2f, hand at %.2f m)" % [off * 100.0, rise, hand.global_position.y])
+	for i in 10:
+		me.steer_hand(Vector2(0, 30))
+		await bench.frames(1)
+	await bench.frames(20)
+	_check(bench.needle_target().get("container") != bag and is_equal_approx(hand.tilt, own_tilt), "needle_hand: moved on from the bag, the needle comes out of it and the hand holds the syringe as before (%.2f m from its middle)" % bench.syringe.tip_position().distance_to(ToolManager.middle(bag)))
+
+
+## A syringe swept over a vial's cap on the tray at a steady 0.15 m/s, Use tool up. Standing (as delivered), its needle
+## snaps in through the cap along the vial, without jumping (no frame moves the tip more than 1 cm), and lets go again
+## soon after the hand passes it, the hand holding the syringe as before. Lying with its cap toward the surgeon it snaps
+## in level; with the cap turned away it doesn't snap at all.
+func _vial_snap_checks(me: Surgeon, hand: SurgeonHand) -> void:
+	var standing := await _sweep(me, hand)
+	_check(standing.snapped > 0, "needle_hand: swept over a standing vial's cap, the needle snaps in through it along the vial")
+	_check(standing.jump < 0.01, "needle_hand: snapping in and out, the needle moves smoothly (largest step %.1f mm a frame)" % (standing.jump * 1000.0))
+	_check(standing.snapped < 40, "needle_hand: swept past at 0.15 m/s, the needle holds on the vial only briefly (%d frames)" % standing.snapped)
+	_check(standing.out, "needle_hand: past the vial, the needle is out of it and the hand holds the syringe as before")
+	for toward: bool in [true, false]:
+		_vial_lies(me, toward)
+		await bench.frames(30)
+		var lying := await _sweep(me, hand)
+		if toward:
+			_check(lying.snapped > 0, "needle_hand: a vial lying with its cap toward the surgeon takes the needle in level through the cap")
+		else:
+			_check(lying.snapped == 0, "needle_hand: a vial lying with its cap turned away doesn't snap the needle (%d frames)" % lying.snapped)
+
+
+## Lays the case's vial on its side where it stands, its cap toward the surgeon or away.
+func _vial_lies(me: Surgeon, toward: bool) -> void:
+	var vial := bench.container
+	var at := ToolManager.middle(vial)
+	var to_me := ((me.global_position - at) * Vector3(1, 0, 1)).normalized() * (1.0 if toward else -1.0)
+	var bottom := (vial.global_transform * vial.bounds).position.y
+	# Looking at a point puts a tool's tip (-Z) toward it.
+	var lying := Transform3D(Basis.looking_at(to_me, Vector3.UP), Vector3(at.x, bottom + 0.0125, at.z))
+	vial.global_transform = lying.translated(-(lying.basis * Vector3(0.0, 0.0, -vial.def.length * 0.5)))
+	vial.linear_velocity = Vector3.ZERO
+	vial.angular_velocity = Vector3.ZERO
+
+
+## Sweeps the syringe's tip across the vial's cap at 0.15 m/s from 12 cm before it to 12 cm past it, the hand moved its
+## own way: {"snapped": frames the needle was in the cap along the vial, "jump": the largest step the tip took in a frame,
+## "out": past it, the needle is out and the hand holds the syringe its own way again}.
+func _sweep(me: Surgeon, hand: SurgeonHand) -> Dictionary:
+	var length := bench.syringe.def.length
+	var cap := bench.container.tip_position()
+	var along := (bench.container.global_position - cap).normalized()
+	var across := me.global_basis.x
+	var start := cap - across * 0.12
+	# Off the vial first, so the hand holds the syringe its own way again.
+	hand.local_target = me.to_local(me.to_global(hand.local_target) - across * 0.12)
+	await bench.frames(40)
+	var own := Vector2(hand.tilt, hand.turn)
+	var free := start - hand.tip_offset_at(length, own.x, own.y)
+	hand.local_target = me.to_local(Vector3(free.x, me.to_global(hand.local_target).y, free.z))
+	await bench.frames(20)
+	var last := bench.syringe.tip_position()
+	var jump := 0.0
+	var snapped := 0
+	var frames := int(0.24 / 0.15 * 60.0)
+	for i in frames:
+		var tip := start.lerp(cap + across * 0.12, float(i + 1) / frames)
+		free = tip - hand.tip_offset_at(length, own.x, own.y)
+		hand.local_target = me.to_local(Vector3(free.x, me.to_global(hand.local_target).y, free.z))
+		await bench.frames(1)
+		var now := bench.syringe.tip_position()
+		jump = maxf(jump, now.distance_to(last))
+		last = now
+		# The syringe's tip end (-Z) points along the vial, into it.
+		var lengthwise := (-bench.syringe.global_basis.z.normalized()).dot(along) > 0.97
+		if lengthwise and now.distance_to(cap) < 0.006:
+			snapped += 1
+	await bench.frames(20)
+	var out: bool = bench.needle_target().get("container") != bench.container and is_equal_approx(hand.tilt, own.x)
+	return {"snapped": snapped, "jump": jump, "out": out}
+
+
+## Held over the skin at a shallow and a steep angle (turned with Aim tool), the aim shows where the needle goes in:
+## Use tool puts its tip right there.
+func _aim_lands(me: Surgeon, hand: SurgeonHand) -> void:
+	await bench.stage(Bench.CASES[6])
+	await bench.release()
+	for tilt: float in [-0.4, -1.3]:
+		me.aim_tool(Vector2(0.0, (hand.tilt - tilt) / Surgeon.AIM_SENSITIVITY))
+		await bench.frames(20)
+		var aim := me.aim_point()
+		var hovering := bench.syringe.tip_position().distance_to(aim)
+		_check(hovering < 0.004, "needle_hand: held at tilt %.1f over the skin, the needle's tip is on the aim (%.1f mm off)" % [tilt, hovering * 1000.0])
+		await bench.press()
+		await bench.frames(20)
+		var tip := bench.syringe.tip_position()
+		var across := Vector2(tip.x - aim.x, tip.z - aim.z).length()
+		_check(across < 0.002 and absf(tip.y - aim.y) < 0.006, "needle_hand: held at tilt %.1f, the needle goes in where the aim shows (%.1f mm across, %.1f mm down)" % [tilt, across * 1000.0, (aim.y - tip.y) * 1000.0])
+		await bench.release()
+		await bench.frames(10)
+
+
+## Swept quickly from low beside the patient up onto the belly, Use tool up, the needle stays over the skin: it never
+## sinks under it, where a wheel notch would inject.
+func _sweep_onto_patient(me: Surgeon, hand: SurgeonHand) -> void:
+	await bench.stage(Bench.CASES[6])
+	await bench.release()
+	var belly := bench.surgery.patient.body.uv_to_world(Bench.SKIN_UV)
+	var beside := belly + ((me.global_position - belly) * Vector3(1, 0, 1)).normalized() * 0.3
+	hand.local_target = me.to_local(beside - me.own_tip_offset(me.active))
+	await bench.frames(30)
+	var low := bench.syringe.tip_position().y
+	var inside := 0
+	for i in 12:
+		var tip := beside.lerp(belly, float(i + 1) / 12.0)
+		hand.local_target = me.to_local(Vector3(tip.x, me.to_global(hand.local_target).y, tip.z) - me.own_tip_offset(me.active) * Vector3(1, 0, 1))
+		await bench.frames(1)
+		var tip_now := bench.syringe.tip_position()
+		inside += 1 if float(me._surface_below(tip_now).y) - tip_now.y > 0.003 else 0
+	await bench.frames(10)
+	var risen := bench.syringe.tip_position().y - low
+	_check(risen > 0.05 and inside == 0, "needle_hand: swept up onto the belly (%.0f cm higher), the needle never sinks under the skin (%d frames)" % [risen * 100.0, inside])
 
 
 ## The liquid, air and plunger shown match what's in it exactly, against the full Level part (the graduation).

@@ -16,6 +16,13 @@ const SPEED_WINDOW := 0.25
 const FINGERS: PackedStringArray = ["Index", "Middle", "Ring", "Pinky", "Thumb"]
 ## Radians each finger joint bends at full curl, knuckle first.
 const JOINT_BEND: PackedFloat32Array = [0.9, 1.2, 0.8]
+## Most the thumb bends in all (radians) reaching for a syringe's plunger, how far its tip reaches past its last joint
+## (meters), and how far behind the thumb press its pad's middle is (meters).
+const MAX_THUMB_BEND := 3.2
+const THUMB_TIP := 0.02
+## Furthest the thumb's root slides toward a plunger out of its reach (meters).
+const THUMB_SLIDE := 0.012
+const PRESS_PAD := 0.008
 
 ## How a hand holds each kind of tool (ToolDef.grip), in the tool's frame (grip at the origin, tip toward -Z).
 ## basis: the glove's axes (fingers, back of the hand, pinky side) in tool space, for the right hand.
@@ -48,6 +55,14 @@ const GRIPS: Dictionary = {
 		"basis": Basis(Vector3(0.0, -1.0, 0.0), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0)),
 		"at": Vector3(0.06, -0.026, 0.0), "on": Vector3(0.0, 0.0, 0.0),
 		"curl": [1.0, 1.0, 1.0, 1.0, 0.8],
+	},
+	# A syringe, ready to inject: the index and middle fingers hooked over its finger grip, the thumb on the plunger
+	# (see _reach_plunger()). The barrel runs from the thumb across under the fingers, so the hand holds it from the
+	# outer side and behind, its printed scale up toward the eyes.
+	"syringe": {
+		"basis": Basis(Vector3(0.063, -0.596, -0.801), Vector3(-0.966, -0.237, 0.100), Vector3(-0.250, 0.768, -0.590)),
+		"at": Vector3(0.13, -0.02, -0.019), "on": Vector3(0.0, 0.0, -0.006),
+		"curl": [0.6, 0.6, 0.9, 0.95, 0.3],
 	},
 	# Pinched at the back edge between thumb and fingertips, palm down over it.
 	"flat": {
@@ -99,6 +114,11 @@ var _clock := 0.0
 var holding := false
 ## ToolDef.grip of the tool in this hand, set with `holding`. Empty hands follow the forearm, open.
 var grip := "pencil"
+## A held syringe's thumb press: how far behind the grip it is along the syringe (meters, it moves with the plunger),
+## set by the surgeon. NAN for any other tool.
+var press := NAN
+## The thumb at rest, read once (see _thumb_rest()).
+var _thumb: Dictionary = {}
 ## How this hand's grip is fitted to the tool it holds (data/grips.json, made by tests/support/fit_grips.tscn), so the tool
 ## doesn't pass through the glove: "lift" moves the glove off the tool toward the back of the hand and "shift" toward
 ## the pinky side, so the tool sits more in the web of the thumb (meters); "curl" replaces the grip's finger curl.
@@ -262,6 +282,12 @@ func tip_offset(tool_length: float) -> Vector3:
 	return grip_transform().basis * Vector3(0, 0, -tool_length)
 
 
+## Where the tip of a tool this long would be from the hand if it held the tool at these angles (twist doesn't move it).
+func tip_offset_at(tool_length: float, at_tilt: float, at_turn: float) -> Vector3:
+	var yaw := (get_parent() as Node3D).global_rotation.y + at_turn
+	return Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, at_tilt) * Vector3(0, 0, -tool_length)
+
+
 func update_pose(shoulder: Vector3, delta: float) -> void:
 	_lift = move_toward(_lift, LIFT_HEIGHT if lifted else 0.0, delta * 0.8)
 	global_position = effective_position()
@@ -357,10 +383,15 @@ func _animate_fingers(delta: float) -> void:
 
 ## Bends the finger bones for the current curl. Posing 15 bones only matters while it changes, a fraction of the time.
 func _pose_fingers() -> void:
-	var pose: Array = [_curl, grip, holding, fit]
-	if _glove_rig == null or pose == _posed:
+	if _glove_rig == null:
+		return
+	# Keyed on the plunger's own position, not where it is in the glove (which shifts with every shiver of the hand):
+	# otherwise every bone would be posed again every frame.
+	var pose: Array = [_curl, grip, holding, fit, snappedf(press, 0.001) if holding else NAN]
+	if pose == _posed:
 		return
 	_posed = pose
+	var plunger := _press_in_glove()
 	var style: Dictionary = GRIPS.get(grip, GRIPS.pencil)
 	var amounts: Array = fit.get("curl", style.curl) if holding else [1.0, 1.0, 1.0, 1.0, 1.0]
 	# The thumb swings across under the index from its root, as far as the fingers are closed.
@@ -376,6 +407,81 @@ func _pose_fingers() -> void:
 			if bone == "Thumb1":
 				turn = Basis(Vector3.DOWN, oppose) * turn
 			_glove_rig.rotate(bone, turn)
+	if plunger.is_finite():
+		_reach_plunger(plunger)
+	elif _glove_rig.has("Thumb1"):
+		_glove_rig.shift("Thumb1", Vector3.ZERO)
+
+
+## Where the held syringe's thumb press is in the glove's skeleton space, or a non-finite vector when there's none.
+func _press_in_glove() -> Vector3:
+	if not holding or is_nan(press):
+		return Vector3.INF
+	return _glove_rig.skeleton.global_transform.affine_inverse() * (grip_transform() * Vector3(0.0, 0.0, press + PRESS_PAD))
+
+
+## Bends and swings the thumb so its pad rests on the syringe's thumb press at `target` (glove space), following the
+## plunger in and out. The thumb's three bones bend together (as far as it takes to reach that far from its root),
+## then the whole thumb turns at its root to point there. Out of reach straight (a plunger pushed right in, by the
+## fingers), its root slides toward it a little, as a thumb's base swings across the palm.
+func _reach_plunger(target: Vector3) -> void:
+	var rest := _thumb_rest()
+	var rest_root: Vector3 = rest.root
+	var slide := minf(maxf(rest_root.distance_to(target) - _thumb_tip(0.0, Basis.IDENTITY).distance_to(rest_root), 0.0), THUMB_SLIDE)
+	var offset := (target - rest_root).normalized() * slide
+	_glove_rig.shift("Thumb1", offset)
+	var root := rest_root + offset
+	var want := root.distance_to(target)
+	var low := 0.0
+	var high := MAX_THUMB_BEND
+	for i in 12:
+		var bend := (low + high) * 0.5
+		if _thumb_tip(bend, Basis.IDENTITY).distance_to(rest_root) > want:
+			low = bend
+		else:
+			high = bend
+	var bend := (low + high) * 0.5
+	var from := (_thumb_tip(bend, Basis.IDENTITY) - rest_root).normalized()
+	var to := (target - root).normalized()
+	var aim := Basis(Quaternion(from, to)) if from.cross(to).length() > 0.0001 else Basis.IDENTITY
+	for joint in 3:
+		_glove_rig.rotate("Thumb%d" % (joint + 1), _thumb_turn(joint, bend, aim))
+
+
+## The turn of thumb joint `joint` (model space, from rest) bent `bend` radians in all, the whole thumb turned by `aim`.
+func _thumb_turn(joint: int, bend: float, aim: Basis) -> Basis:
+	var axis: Vector3 = _thumb_rest().axes[joint]
+	var turn := Basis(axis, bend * JOINT_BEND[joint] / (JOINT_BEND[0] + JOINT_BEND[1] + JOINT_BEND[2]))
+	return aim * turn if joint == 0 else turn
+
+
+## Where the thumb's tip ends up (glove space) bent and turned like that: each joint carries the ones past it.
+func _thumb_tip(bend: float, aim: Basis) -> Vector3:
+	var rest := _thumb_rest()
+	var at: Vector3 = rest.root
+	var turned := Basis.IDENTITY
+	for joint in 3:
+		turned = turned * _thumb_turn(joint, bend, aim)
+		at += turned * (rest.bones[joint] as Vector3)
+	return at
+
+
+## The thumb at rest, glove space, read once: where its root is, each bone (to the next joint, the last to its tip) and
+## the axis each joint bends about.
+func _thumb_rest() -> Dictionary:
+	if _thumb.is_empty():
+		var skeleton := _glove_rig.skeleton
+		var joints: Array[Vector3] = []
+		for joint in 3:
+			joints.append(skeleton.get_bone_global_rest(skeleton.find_bone("Thumb%d" % (joint + 1))).origin)
+		var bones: Array[Vector3] = []
+		var axes: Array[Vector3] = []
+		for joint in 3:
+			var direction := _glove_rig.direction("Thumb%d" % (joint + 1))
+			bones.append(joints[joint + 1] - joints[joint] if joint < 2 else direction * THUMB_TIP)
+			axes.append(direction.cross(Vector3.DOWN).normalized())
+		_thumb = {"root": joints[0], "bones": bones, "axes": axes}
+	return _thumb
 
 
 func _solve_arm(shoulder: Vector3) -> void:

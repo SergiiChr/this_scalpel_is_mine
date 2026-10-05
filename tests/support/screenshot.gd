@@ -3,10 +3,11 @@ extends Node
 ## Needs a real renderer: xvfb-run godot --path . --rendering-method gl_compatibility res://tests/support/screenshot.tscn -- --scenario=appendectomy --out=/tmp/shots
 ## --materials instead renders the material board (every material family and skin tone under the surgical lamp) and
 ## both hands in every grip with the arm stretched out and folded up, for checking the look against the same views.
-## --syringe renders every case of tests/support/syringe_bench.gd in the needle view (the last zoom step): the needle in, halfway
-## through the wheel notches and done, and the first one held up to read (41_syringe_held_up). Then the IV catheter on
-## the vein and beside it: aimed, in, the line from the stand and the dressing close up (42_*), then a sedated and a
-## knocked out surgeon (43_* to 46_*, --only=sedation). --only=<case> renders one.
+## --syringe renders every case of tests/support/syringe_bench.gd zoomed in: a vial, dish or bag case aimed first (the
+## hands see-through), then in the needle view the needle in, halfway through the wheel notches and done, and the first
+## one held up to read (41_syringe_held_up). Then the IV catheter on the vein and beside it: aimed, in, the line from
+## the stand and the dressing close up (42_*), then a sedated and a knocked out surgeon (43_* to 46_*, --only=sedation).
+## --only=<case> renders one.
 ## Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 
 const SURGERY := preload("res://scenes/surgery.tscn")
@@ -351,6 +352,14 @@ func _syringe(out: String, only: String) -> void:
 			continue
 		await bench.stage(case)
 		me.zoom = Surgeon.ZOOM_FOV.size() - 1
+		if case.target in ["vial", "dish", "drip"]:
+			# Aimed zoomed in, the hands see-through and the camera at the eyes. Then Use tool puts the needle in and the
+			# needle view frames it (the patient and surgeon cases are only shown with it in).
+			await bench.release()
+			me.zoom = Surgeon.ZOOM_FOV.size() - 1
+			await bench.frames(40)
+			await _shot(out, "40_%s_0_aimed" % case.name)
+			await bench.press()
 		await bench.frames(40)
 		await _shot(out, "40_%s_1_needle_in" % case.name)
 		var notches: int = case.notches
@@ -360,6 +369,7 @@ func _syringe(out: String, only: String) -> void:
 			await bench.notch(notches > 0)
 		await bench.frames(10)
 		await _shot(out, "40_%s_3_done" % case.name)
+		await bench.release()
 		me.zoom = 0
 		if case.name == "vial_pull":
 			# Held up to read, the printed scale toward the eyes.
@@ -374,14 +384,15 @@ func _syringe(out: String, only: String) -> void:
 		me.zoom = Surgeon.ZOOM_FOV.size() - 1
 		await bench.frames(40)
 		await _shot(out, "42_%s_1_aimed" % case.name)
+		var view := me.needle_view(bench.catheter)
 		await bench.press()
-		# Once it's in, the catheter is used up and the view eases back: look again from where the needle view was.
+		# Once it's in, the catheter is used up and the hands go solid: look at it from the side, as a syringe's needle
+		# view would, the hands faded.
 		var camera := Camera3D.new()
 		add_child(camera)
 		camera.fov = Surgeon.ZOOM_FOV[-1]
-		camera.global_transform = me._needle_view
+		camera.global_transform = view
 		camera.current = true
-		# Past the needle view easing out (it would set the hands solid again), then faded as in the needle view.
 		await bench.frames(30)
 		for hand in me.hands:
 			hand.set_see_through(Surgeon.NEEDLE_SEE_THROUGH)

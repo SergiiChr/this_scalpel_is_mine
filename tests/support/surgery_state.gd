@@ -43,7 +43,8 @@ static func random_events_are_off(surgery: Surgery) -> void:
 	surgery.director._pool = PackedStringArray()
 
 
-## A free place on the instrument tray, nothing else lying within 8 cm: the clear strip down its middle first.
+## A free place on the instrument tray, nothing else lying within 8 cm: the clear strip down its middle first. A spot
+## something slid away from (tray_spot_is_bad()) isn't offered again.
 static func free_tray_spot(surgery: Surgery) -> Vector3:
 	var rest := surgery.room.tray_zone("")
 	var strip := rest.end.x + 0.07
@@ -53,7 +54,16 @@ static func free_tray_spot(surgery: Surgery) -> Vector3:
 			var along := 0.0 if i == 8 else (i / 2 + 1) * 0.06 * (1 if i % 2 == 0 else -1)
 			spots.append(Vector3(x, rest.position.y + 0.05, rest.get_center().z + along))
 	for at in spots:
+		if at in surgery.get_meta("bad_tray_spots", []):
+			continue
 		var crowded := surgery.tools.tools.values().any(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and (ToolManager.middle(t) - at).slide(Vector3.UP).length() < 0.08)
 		if not crowded:
 			return at
 	return spots[0]
+
+
+## A tool set down at `spot` (from free_tray_spot()) landed against something there and slid away.
+static func tray_spot_is_bad(surgery: Surgery, spot: Vector3) -> void:
+	var bad: Array = surgery.get_meta("bad_tray_spots", [])
+	bad.append(spot)
+	surgery.set_meta("bad_tray_spots", bad)

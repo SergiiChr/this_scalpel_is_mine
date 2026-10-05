@@ -49,7 +49,13 @@ func _ready() -> void:
 		var at := Vector3(-HAND_AT.x if left else HAND_AT.x, HAND_AT.y, HAND_AT.z)
 		hand.target = at
 		var shoulder := Vector3(-0.19 if left else 0.19, 1.4, -0.08)
+		# A syringe half full, its scale turned to the eyes, the way the game holds it.
+		hand.press = Surgeon.SYRINGE_PRESS + def.length * Surgeon.SYRINGE_TRAVEL * 0.5 if def.action == "syringe" else NAN
+		hand.tilt = Surgeon.SYRINGE_TILT if def.action == "syringe" else SurgeonHand.REST_TILT
+		hand.turn = Surgeon.SYRINGE_TURN * (-1.0 if left else 1.0) if def.action == "syringe" else 0.0
 		for i in 30:
+			if def.action == "syringe":
+				hand.twist = hand.twist_facing(EYE - hand.global_position)
 			hand.update_pose(shoulder, 1.0 / 30.0)
 			holder.global_transform = hand.grip_transform()
 			await get_tree().process_frame
@@ -64,6 +70,7 @@ func _ready() -> void:
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png("%s/%s_%s.png" % [out, model_id, view[0]])
 		holder.queue_free()
+		hand.twist = 0.0
 	print("grip_gallery: done")
 	get_tree().quit()
 

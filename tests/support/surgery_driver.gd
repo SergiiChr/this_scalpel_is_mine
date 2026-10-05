@@ -128,6 +128,12 @@ func release(action: String) -> void:
 	press(action, false)
 
 
+## Presses and lets go of an action straight away, like a click: Grab puts a held bottle down rather than standing it.
+func tap(action: String) -> void:
+	press(action)
+	press(action, false)
+
+
 ## One wheel notch on the active hand: its effort level, or a syringe's plunger (up pushes it in).
 func notch(up: bool) -> void:
 	press("level_up" if up else "level_down")
@@ -284,12 +290,12 @@ func player_requests_item(id: String) -> SurgicalTool:
 	var tool := found[0]
 	await player_walks_to(tool.global_position)
 	await player_reaches(tool.global_position)
-	press("grab")
+	tap("grab")
 	await frames(5)
 	if me.held_tool(me.active) != tool:
 		# Something else lay nearer the fingertips: take exactly this one, like reaching past the other.
 		if me.held_tool(me.active):
-			press("grab")
+			tap("grab")
 			await frames(3)
 		surgery.tools.request_grab(tool, me.active)
 		await frames(3)
@@ -297,8 +303,9 @@ func player_requests_item(id: String) -> SurgicalTool:
 	return me.held_tool(me.active)
 
 
-## Puts the active hand's tool back on the instrument tray (or, holding nothing, does nothing).
-func player_puts_down() -> void:
+## Puts the active hand's tool back on the instrument tray (or, holding nothing, does nothing). `standing`: a bottle is
+## stood upright there (Grab held), so a needle can go in through its cap.
+func player_puts_down(standing: bool = false) -> void:
 	var tool := me.held_tool(me.active)
 	if tool == null:
 		return
@@ -321,8 +328,16 @@ func player_puts_down() -> void:
 	if not ToolActions.TRIGGER_NAMES.has(tool.def.action):
 		use()
 		await frames(15)
-	press("grab")
+	if standing and tool.def.tray == "bottles":
+		press("grab")
+		await seconds(Surgeon.STAND_HOLD + 0.2)
+		release("grab")
+	else:
+		tap("grab")
 	await seconds(0.5)
+	if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() > 0.08:
+		# It slid off whatever it was set down against: anything else set down there would too.
+		SurgeryState.tray_spot_is_bad(surgery, spot)
 	note("puts %s down" % tool.def.id)
 
 
@@ -463,11 +478,12 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 		vial = await player_requests_item(vial_id)
 		if vial == null:
 			return
-		await player_puts_down()
+		await player_puts_down(true)
 		syringe = await player_requests_item(size)
 	if syringe == null:
 		return
-	await _needle_into(ToolManager.middle(vial), false)
+	# In through the cap at the vial's tip.
+	await _needle_into(vial.tip_position(), false)
 	var into: String = ToolActions.needle_target(syringe, patient).kind
 	for i in ceili(ml):
 		await notch(false)
@@ -496,10 +512,10 @@ func player_gives_drug(vial_id: String, ml: float, route: String, at: Vector2 = 
 ## rests in a vial or bag.
 func _needle_into(point: Vector3, pressed: bool) -> void:
 	var hand := me.hands[me.active]
-	var tool := me.held_tool(me.active)
 	await player_walks_to(point)
 	for i in 40:
-		hand.local_target = me.to_local(point - hand.tip_offset(tool.def.length) + Vector3.UP * 0.04)
+		# Aimed the hand's own way: a vial or the bag it's over snaps the needle in.
+		hand.local_target = me.to_local(point - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
 		await get_tree().physics_frame
 	if pressed:
 		use()
@@ -1134,7 +1150,7 @@ func player_clamps_bleeder(wound: Wound = null) -> void:
 			await frames(3)
 	if wound.clamped >= 0.8:
 		# Self-retaining: let go of the handle and it stays locked on.
-		press("grab")
+		tap("grab")
 		await frames(10)
 	else:
 		await player_puts_down()

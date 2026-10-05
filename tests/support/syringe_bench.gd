@@ -102,7 +102,9 @@ func stage(case: Dictionary) -> void:
 	var vial: String = case.get("vial", VIAL)
 	match case.target:
 		"vial":
-			container = _spawn(VIAL, _clear_spot())
+			# Delivered vials stand, cap up.
+			surgery.tools.spawn_standing(VIAL, _clear_spot())
+			container = surgery.tools.tools.values()[-1]
 			tools.transfer(container, syringe, case.ml)
 		"dish":
 			container = _spawn("kidney_dish", _clear_spot())
@@ -129,7 +131,7 @@ func stage(case: Dictionary) -> void:
 	# The hand rests the needle on whatever is under the aim; a few rounds let the arm settle on it. Only then Use
 	# tool presses it in: a needle in the patient sticks, and moved on from there it would tear out.
 	for i in 40:
-		hand.local_target = me.to_local(aim - hand.tip_offset(syringe.def.length) + Vector3.UP * 0.04)
+		hand.local_target = me.to_local(aim - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
 		await get_tree().physics_frame
 	var press := InputEventAction.new()
 	press.action = "use_tool"
@@ -191,10 +193,8 @@ func notch(pull: bool) -> void:
 
 ## Takes the needle out: the hand goes up and away over the floor.
 func withdraw() -> void:
+	await release()
 	var me := surgery.local_surgeon
-	var release := InputEventAction.new()
-	release.action = "use_tool"
-	me._unhandled_input(release)
 	me.hands[me.active].local_target = Vector3(0.15, 1.1, -0.2)
 	await frames(20)
 
@@ -239,6 +239,14 @@ func press() -> void:
 	await frames(5)
 
 
+## Use tool let go: the needle stays where it is.
+func release() -> void:
+	var event := InputEventAction.new()
+	event.action = "use_tool"
+	surgery.local_surgeon._unhandled_input(event)
+	await frames(5)
+
+
 ## The middle of the forearm vein the cases use (world space).
 func vein_point() -> Vector3:
 	var vein: MeshInstance3D = surgery.patient.body._veins[0]
@@ -274,7 +282,10 @@ func _clear_spot() -> Vector3:
 func _aim_point(target: String) -> Vector3:
 	var body := surgery.patient.body
 	match target:
-		"vial", "dish", "drip":
+		"vial":
+			# A needle goes into a vial through its cap.
+			return container.tip_position()
+		"dish", "drip":
 			return ToolManager.middle(container)
 		"vein":
 			return vein_point()
@@ -298,7 +309,7 @@ func _aim_point(target: String) -> Vector3:
 	return me.to_global(Vector3(0.2, 1.0, -0.15))
 
 
-## Walks the surgeon to stand facing the aim from outside the table, close enough to reach it.
+## Walks the surgeon to stand facing the aim from outside the table, close enough to reach it, and looking at it.
 func _stand_by(aim: Vector3) -> void:
 	var me := surgery.local_surgeon
 	# Stepping over counts as walking through the tubing, which would rip a line out and jolt the hand: take it out.
@@ -317,3 +328,5 @@ func _stand_by(aim: Vector3) -> void:
 	me.global_position = spot
 	var facing := (aim - spot) * Vector3(1, 0, 1)
 	me.rotation.y = atan2(-facing.x, -facing.z)
+	# Looking at it, as a player zooming in on it would.
+	me.pitch = clampf(atan2(aim.y - spot.y - Surgeon.EYE_HEIGHT, facing.length()), Surgeon.LOOK_PITCH.x, Surgeon.LOOK_PITCH.y)

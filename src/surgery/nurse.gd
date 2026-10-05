@@ -42,7 +42,11 @@ func tick(delta: float, surgery: Surgery) -> void:
 		return
 	_order.eta -= delta
 	if _order.eta <= 0.0:
-		surgery.tools.spawn(_order.id, surgery.room.delivery_spot())
+		# Bottles come standing, cap up, ready to draw from.
+		if Db.tool(_order.id).tray == "bottles":
+			surgery.tools.spawn_standing(_order.id, surgery.room.delivery_spot())
+		else:
+			surgery.tools.spawn(_order.id, surgery.room.delivery_spot())
 		surgery.sound("nurse_delivery")
 		surgery.announce("Nurse leaves the %s on the delivery tray." % Db.tool(_order.id).name)
 		_order = {}
