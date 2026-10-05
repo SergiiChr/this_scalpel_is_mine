@@ -700,7 +700,7 @@ func needle_tear(from: Vector3, to: Vector3) -> void:
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(from), uv, 0.003, 0.3, WoundMap.Mode.MAX)
 		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, uv, 0.01, 0.5, WoundMap.Mode.MAX)
 	hurt(0.15, uv if probe.zone == "site" else Vector2(-1, -1))
-	Surgery.current.effect("bead", to, 0)
+	Surgery.current.effect("bead", from, 0)
 	Surgery.current.sound("cut_skin", to)
 
 

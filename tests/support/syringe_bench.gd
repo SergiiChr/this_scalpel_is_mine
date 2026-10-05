@@ -56,8 +56,9 @@ var partner: Surgeon
 
 
 ## A solo appendectomy with nothing rolled, no random events, the patient asleep, both cuts made and held open, ready
-## for stage(). Awake (or woken by an event), a patient in pain thrashes and can knock the syringe out of the hand.
-func start() -> void:
+## for stage(); open_layers=false leaves the skin intact, with_partner=false stages a solo surgery. Awake (or woken
+## by an event), a patient in pain thrashes and can knock the syringe out of the hand.
+func start(open_layers: bool = true, with_partner: bool = true) -> void:
 	Net.leave()
 	Net.scenario_id = "appendectomy"
 	Net.session_seed = 42
@@ -67,14 +68,15 @@ func start() -> void:
 	surgery = SURGERY.instantiate()
 	add_child(surgery)
 	await frames(10)
-	Net.roster[2] = {"name": "Partner", "quirks": [{"id": "normal_dude", "variant": ""}], "ready": true}
-	partner = surgery._spawn_surgeon(2, 1)
-	place_partner(PARTNER_PARK, 0.0)
+	if with_partner:
+		Net.roster[2] = {"name": "Partner", "quirks": [{"id": "normal_dude", "variant": ""}], "ready": true}
+		partner = surgery._spawn_surgeon(2, 1)
+		place_partner(PARTNER_PARK, 0.0)
 	var patient := surgery.patient
 	surgery.director._pool = PackedStringArray()
 	patient.administer("propofol", "direct", Db.drug("propofol").dose * patient.weight_kg)
 	var tissue := patient.body.tissue
-	for cut: Array in [[FAT_UV, 0.3], [MUSCLE_UV, 0.6]]:
+	for cut: Array in ([[FAT_UV, 0.3], [MUSCLE_UV, 0.6]] if open_layers else []):
 		var mid: Vector2 = cut[0]
 		patient.cut(10 + tissue.grips().size(), mid - Vector2(0.1, 0.0), mid + Vector2(0.1, 0.0), cut[1], 1.0, false, 0.1)
 		# Held open with two pins, like forceps on either edge.
@@ -86,8 +88,8 @@ func start() -> void:
 	await frames(60)
 
 
-## Puts a fresh syringe holding the case's start in the active hand, its needle in the case's target.
-func stage(case: Dictionary) -> void:
+## Puts a fresh syringe holding the case's start in the active hand; insert=false leaves it ready over the target.
+func stage(case: Dictionary, insert: bool = true) -> void:
 	var tools := surgery.tools
 	var me := surgery.local_surgeon
 	for old: SurgicalTool in [syringe, container]:
@@ -135,13 +137,15 @@ func stage(case: Dictionary) -> void:
 		await get_tree().physics_frame
 	var press := InputEventAction.new()
 	press.action = "use_tool"
-	press.pressed = not case.target in ["vial", "dish", "air"]
+	press.pressed = insert and not case.target in ["vial", "dish", "air"]
 	me._unhandled_input(press)
 	await frames(10)
 
 
 ## Puts the partner standing at `at` facing `yaw`, hands hanging at their sides. A puppet goes where it's told.
 func place_partner(at: Vector3, yaw: float) -> void:
+	if partner == null:
+		return
 	partner._fall_side = 0.0
 	partner._down = 0.0
 	partner.global_position = at
@@ -239,12 +243,12 @@ func press() -> void:
 	await frames(5)
 
 
-## Use tool let go: the needle stays where it is.
-func release() -> void:
+## Use tool let go: the needle comes out without moving the hand away.
+func release(wait_frames: int = 5) -> void:
 	var event := InputEventAction.new()
 	event.action = "use_tool"
 	surgery.local_surgeon._unhandled_input(event)
-	await frames(5)
+	await frames(wait_frames)
 
 
 ## The middle of the forearm vein the cases use (world space).

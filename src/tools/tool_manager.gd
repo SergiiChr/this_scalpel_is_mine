@@ -238,6 +238,11 @@ func request_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
 	_req_needle_tear.rpc_id(1, hand, from, to)
 
 
+## Normal withdrawal leaves a visual bead at the puncture without the damage of tearing the needle out.
+func request_needle_withdrawal(hand: int, at: Vector3) -> void:
+	_req_needle_withdrawal.rpc_id(1, hand, at)
+
+
 func request_sterilize(hand: int) -> void:
 	_req_sterilize.rpc_id(1, hand)
 
@@ -383,6 +388,14 @@ func _req_needle_tear(hand: int, from: Vector3, to: Vector3) -> void:
 	var tool := tool_in_hand(Net._sender(), hand)
 	if tool and tool.def.action == "syringe" and Surgery.current.running:
 		Surgery.current.patient.needle_tear(from, to)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _req_needle_withdrawal(hand: int, at: Vector3) -> void:
+	var tool := tool_in_hand(Net._sender(), hand)
+	if tool and tool.def.action == "syringe" and Surgery.current.running:
+		Surgery.current.effect("bead", at, 0)
+		ToolActions.report_pushed(tool)
 
 
 @rpc("any_peer", "call_local", "reliable")

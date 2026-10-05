@@ -145,6 +145,7 @@ func _flash(at: Vector3) -> void:
 ## A small dome of blood on the skin, stuck to the body so it follows turns and breathing.
 func _bead(at: Vector3) -> void:
 	var bead := MeshInstance3D.new()
+	bead.name = "BloodBead"
 	var dome := SphereMesh.new()
 	dome.radius = 1.0
 	dome.height = 2.0
@@ -154,9 +155,31 @@ func _bead(at: Vector3) -> void:
 	bead.mesh = dome
 	bead.material_override = Materials.blood_pool()
 	bead.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var root := patient.body.root()
-	root.add_child(bead)
+	var body := patient.body
+	var root := body.root()
+	var normal := root.global_basis.y.normalized()
+	var probe := body.probe(at)
+	if probe.zone == "site":
+		# The needle tip is under the skin. Its puncture is directly above it on the drawn skin, riding the site.
+		root = body.site
+		var local := root.to_local(at)
+		local.y = body.skin_height(probe.uv)
+		at = root.to_global(local)
+		normal = root.global_basis.y.normalized()
+	elif probe.zone != "cavity":
+		var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.03, at + Vector3.DOWN * 0.03, PatientBody.SURFACE_LAYER)
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty():
+			at = hit.position
+			normal = hit.normal
+		if str(probe.get("part", "")).begins_with("arm"):
+			root = body.iv_site(at).node
+	root.add_child(bead, true)
 	bead.global_position = at
+	var across := root.global_basis.x.slide(normal).normalized()
+	if across.is_zero_approx():
+		across = root.global_basis.z.slide(normal).normalized()
+	bead.global_basis = Basis(across, normal, across.cross(normal))
 	bead.scale = Vector3(0.002, 0.0015, 0.002)
 	var grow := create_tween()
 	grow.tween_property(bead, "scale", Vector3(0.0035, 0.0025, 0.0035), 2.0)
