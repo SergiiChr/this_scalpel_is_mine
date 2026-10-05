@@ -24,6 +24,8 @@ const ALONG_BLADE := 0.8
 ## Clamps that can pinch a cotton pad, and how close to the pad their tip has to be.
 const PAD_HOLDERS: PackedStringArray = ["forceps", "hemostat"]
 const PAD_REACH := 0.04
+## Clamps that only hook skin, the edge of a cut: never what lies under it in the opening.
+const SKIN_HOOKS: PackedStringArray = ["retractor"]
 ## ml of iodine a cotton pad soaks up from a dish. A soaked pad runs dry after 1 / PAD_DRAIN seconds of wiping.
 const PAD_ML := 10.0
 const PAD_DRAIN := 0.12
@@ -166,7 +168,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			# Pinching takes hold only on something the jaws were lowered onto; letting go works anywhere.
 			elif pressed and (lowered or not tool.grip_info.is_empty()):
 				if tool.grip_info.is_empty():
-					tool.grip_info = patient.grip(tool.uid, zone, uv, probe.depth)
+					tool.grip_info = patient.grip(tool.uid, zone, uv, probe.depth, def.id in SKIN_HOOKS)
 					if tool.grip_info.type == "none":
 						tool.grip_info = {}
 				else:

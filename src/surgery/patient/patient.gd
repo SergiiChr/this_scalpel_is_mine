@@ -1332,11 +1332,15 @@ func _contaminate() -> void:
 
 
 ## Called when a clamp tool closes at tip. Returns grip info that update_grip() and release_grip() use.
-func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionary:
+## skin_only: a hook (the retractor) takes hold of the skin it's pressed onto, at a cut's edge, and nothing under it.
+## Down in the opening it doesn't: what it would catch there is skin far above it, which it would drag down and tear.
+func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float, skin_only: bool = false) -> Dictionary:
+	if skin_only and zone != "site":
+		return {"type": "none"}
 	# The nearest target the jaws close on, not one another tool already holds (two broken ends lie close together).
 	var nearest: CavityTarget = null
 	for target in targets:
-		if target.extracted or target.is_suction_target() or target.remove_with in ["saw", "smash"] and target.anchor > 0.0:
+		if skin_only or target.extracted or target.is_suction_target() or target.remove_with in ["saw", "smash"] and target.anchor > 0.0:
 			continue
 		if target.gripped_by != 0 and target.gripped_by != tool_uid:
 			continue
@@ -1346,19 +1350,19 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 	if nearest:
 		nearest.gripped_by = tool_uid
 		return {"type": "target", "target": nearest.index, "start_depth": depth_m}
-	if _inside(zone, uv):
+	if _inside(zone, uv) and not skin_only:
 		for wound in wounds:
 			if wound.is_internal() and wound.points[0].distance_to(uv) < 0.05:
 				wound.clamped = 0.9
 				return {"type": "vessel", "wound": wound.id}
-	if zone == "cavity":
+	if zone == "cavity" and not skin_only:
 		# An organ in the way can be taken hold of and moved aside, to get at what's under it.
 		var organ := body.organ_at(body.uv_to_world(uv, depth_m), 0.02)
 		if organ >= 0:
 			body.hold_organ(organ, body.organs[organ].position)
 			return {"type": "organ", "organ": organ, "offset": body.organs[organ].position - body.site.to_local(body.uv_to_world(uv, depth_m))}
 	var wound := _nearest_wound(uv, 0.03, false)
-	if wound and zone == "cavity" and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
+	if wound and zone == "cavity" and not skin_only and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
 		wound.clamped = 0.85
 	# Skin can be pinched anywhere on the site, but from inside the cavity only near a wound edge.
 	if zone == "site" or zone == "cavity" and wound:

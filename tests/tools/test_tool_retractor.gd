@@ -18,6 +18,8 @@ const HOOK_OFF := 0.006
 const PULL := 0.02
 ## How far (meters) from the cut's middle its gap is measured.
 const MIDDLE := 0.005
+## How long (meters) the cut the four retractors hold open is.
+const OPENING := 0.08
 
 var driver: Driver
 var shots: KeyFrames
@@ -91,6 +93,84 @@ func test_retractor_hooks_one_edge_and_pulls_the_cut_open() -> void:
 	await driver.player_puts_down()
 	assert_true(driver.lies_on_tray(retractor), "the retractor is put back on the tray")
 	await _finish()
+
+
+func test_four_retractors_hold_the_abdomen_open_for_the_scalpel_and_forceps() -> void:
+	await _start("appendectomy", "four")
+	var patient := driver.patient
+	var body := driver.body
+	var appendix: CavityTarget = patient.targets[0]
+	# A cut through every layer over the appendix, along the site's long side.
+	var half := Vector2(body.meters_to_uv(OPENING * 0.5), 0.0)
+	var from := appendix.uv - half
+	var to := appendix.uv + half
+	await driver.player_cuts_skin(from, to, 3)
+	await driver.player_puts_down()
+	await driver.seconds(1.0)
+	var wounds := patient.wounds.size()
+	await driver.capture("incised")
+
+	# Two retractors on each edge, a third of the way in from each end, each hooked and drawn away from the cut.
+	var hooks: Array[SurgicalTool] = []
+	for spot: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		var at := _edge_beside(appendix.uv + Vector2(half.x * spot.x / 3.0, 0.0), spot.y)
+		SurgeryState.tool_is_on_tray(driver.surgery, "retractor")
+		var retractor := await driver.player_requests_item("retractor")
+		var hook_at := driver.site_point(at)
+		await driver.player_walks_to(hook_at)
+		await driver.player_reaches(hook_at)
+		driver.use()
+		await driver.frames(10)
+		driver.use(false)
+		await driver.frames(3)
+		assert_eq(retractor.grip_info.get("type", ""), "skin", "retractor %d hooks the edge\n%s" % [hooks.size() + 1, driver.recent()])
+		var aside := driver.site_point(at + Vector2(0.0, body.meters_to_uv(PULL) * spot.y)) - hook_at
+		await driver.player_sweeps_to(retractor.tip_position() + aside)
+		driver.press("grab")
+		await driver.seconds(1.0)
+		assert_eq(retractor.state, SurgicalTool.State.STANDING, "retractor %d stays hooked when let go of" % (hooks.size() + 1))
+		hooks.append(retractor)
+	assert_true(hooks.all(func(r: SurgicalTool) -> bool: return r.state == SurgicalTool.State.STANDING and not r.grip_info.is_empty()), "all four hold the edges")
+	assert_true(body.is_open(appendix.uv), "the abdomen stands open between them")
+	var gap := body.tissue.gap_at(appendix.uv, MIDDLE, TissueSim.Depth.MUSCLE)
+	assert_gt(gap, PULL, "%.1f cm wide through the muscle" % (gap * 100.0))
+	assert_eq(patient.wounds.size(), wounds, "held open without tearing")
+	await driver.capture("retracted")
+
+	# The scalpel goes down into the opening between them and cuts the appendix's base free.
+	await driver.player_requests_item("scalpel")
+	var base := body.uv_to_world(appendix.uv, appendix.depth)
+	await driver.player_walks_to(base)
+	await driver.player_reaches(base)
+	await driver.set_level(3)
+	driver.use()
+	var reached := false
+	for i in 30:
+		await driver.frames(1)
+		reached = reached or driver.body.probe(driver.me.held_tool(driver.me.active).tip_position()).zone == "cavity"
+	assert_true(reached, "the scalpel reaches into the opening, not onto a retractor")
+	await driver.capture("scalpel_inside")
+	await driver.wait_until(func() -> bool: return appendix.anchor <= 0.0, 20.0)
+	driver.use(false)
+	assert_eq(appendix.anchor, 0.0, "the scalpel cuts the appendix free inside the opening")
+	await driver.player_puts_down()
+
+	# Forceps take hold of it in the opening and lift it out past the retractors.
+	await driver.player_extracts("appendix")
+	assert_true(appendix.extracted, "the forceps lift the appendix out between the retractors\n%s" % driver.recent())
+	assert_true(hooks.all(func(r: SurgicalTool) -> bool: return r.state == SurgicalTool.State.STANDING and not r.grip_info.is_empty()), "the retractors still hold the edges")
+	await _finish()
+
+
+## The skin just outside the opening's edge from `uv` (on the cut) toward `side` (-1 or 1 in v): where the skin is
+## whole, HOOK_OFF further out.
+func _edge_beside(uv: Vector2, side: float) -> Vector2:
+	var step := Vector2(0.0, driver.body.meters_to_uv(0.001) * side)
+	for i in 60:
+		if driver.body.layer_at(uv) == "skin":
+			break
+		uv += step
+	return uv + step * HOOK_OFF * 1000.0
 
 
 ## Where the cut's two edges are at its middle (site z, meters): the mean of the lips on the -v side and the +v side.
