@@ -27,12 +27,6 @@ var _liquid_changed: Dictionary = {}
 var _liquid_acc := 0.0
 
 
-func _ready() -> void:
-	# After the surgeons have moved their hands this frame: a held tool placed before would trail a frame behind its
-	# hand, plain to see while walking.
-	process_physics_priority = 1
-
-
 ## station_tools: [[id, Transform3D], ...] that sit on their own station (see Room.station_tools()).
 ## A tool the station provides is never also put on the tray.
 func spawn_initial(tray_ids: PackedStringArray, tray_spots: Array[Vector3], personal: Dictionary, station_tools: Array = []) -> void:
@@ -605,24 +599,43 @@ func retained_count() -> int:
 	return tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.INSIDE).size()
 
 
+## Called by a surgeon right after it walked and moved its hands: what it holds, has on its belt or carries at a tool's
+## tip goes there at once. Tools update before the surgeons (ToolActions works on last frame's hands), so placed only
+## then they'd trail a frame behind their hand, plain to see while walking.
+func follow(surgeon: Surgeon) -> void:
+	var moved: Dictionary = {}
+	for tool: SurgicalTool in tools.values():
+		if tool.holder == surgeon.peer_id and tool.state in [SurgicalTool.State.HELD, SurgicalTool.State.BELT]:
+			_place(tool)
+			moved[tool.uid] = true
+	for tool: SurgicalTool in tools.values():
+		if tool.state == SurgicalTool.State.CARRIED and moved.has(tool.holder):
+			_place(tool)
+
+
+## Puts a held, belted or carried tool where its holder has it now.
+func _place(tool: SurgicalTool) -> void:
+	if tool.state == SurgicalTool.State.CARRIED and tools.has(tool.holder):
+		# Centered on the carrier's tip.
+		var by: SurgicalTool = tools[tool.holder]
+		tool.global_transform = Transform3D(by.global_basis, by.tip_position() + by.global_basis.z * tool.def.length * 0.5)
+		return
+	var surgeon: Surgeon = Surgery.current.surgeons.get(tool.holder)
+	if surgeon == null:
+		return
+	# A spreader set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
+	if tool.state == SurgicalTool.State.HELD and not tool.in_wound:
+		tool.global_transform = surgeon.hands[tool.slot].grip_transform()
+	elif tool.state == SurgicalTool.State.BELT:
+		tool.global_transform = surgeon.belt_transform(tool.slot)
+
+
 func _physics_process(delta: float) -> void:
 	var surgery := Surgery.current
 	if surgery == null:
 		return
 	for tool: SurgicalTool in tools.values():
-		if tool.state == SurgicalTool.State.CARRIED and tools.has(tool.holder):
-			# Centered on the carrier's tip.
-			var by: SurgicalTool = tools[tool.holder]
-			tool.global_transform = Transform3D(by.global_basis, by.tip_position() + by.global_basis.z * tool.def.length * 0.5)
-			continue
-		var surgeon: Surgeon = surgery.surgeons.get(tool.holder)
-		if surgeon == null:
-			continue
-		# A spreader set in a wound stays where it went in: the hand holds it there (Surgeon._hold_in_wound()).
-		if tool.state == SurgicalTool.State.HELD and not tool.in_wound:
-			tool.global_transform = surgeon.hands[tool.slot].grip_transform()
-		elif tool.state == SurgicalTool.State.BELT:
-			tool.global_transform = surgeon.belt_transform(tool.slot)
+		_place(tool)
 	if not multiplayer.is_server():
 		return
 	_send_liquids(delta)

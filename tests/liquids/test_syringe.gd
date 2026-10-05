@@ -639,6 +639,8 @@ func _back_of_hand_checks() -> void:
 		for i in 40:
 			hand.local_target = me.to_local(aim - hand.tip_offset(bench.syringe.def.length) + Vector3.UP * 0.04)
 			await get_tree().physics_frame
+		# Held still there, it glides down onto the glove (Surgeon.SYRINGE_GLIDE).
+		await bench.frames(20)
 		var tip := bench.syringe.tip_position()
 		var back := other.glove_middle(tip).y + SurgeonHand.PALM_HALF_THICKNESS
 		var target := bench.needle_target()

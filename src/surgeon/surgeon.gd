@@ -627,6 +627,7 @@ func _physics_process(delta: float) -> void:
 		hands[i].press = SYRINGE_PRESS + tool.def.length * SYRINGE_TRAVEL * (tool.ml + tool.air) / tool.def.volume if tool and tool.def.action == "syringe" else NAN
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		hands[i].update_pose(shoulder(i), delta)
+	Surgery.current.tools.follow(self)
 	_stain_scrubs(delta)
 
 
