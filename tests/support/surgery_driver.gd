@@ -303,6 +303,53 @@ func free_tools(id: String) -> Array[SurgicalTool]:
 	return found
 
 
+## player_orders: rings the nurse, puts `ids` in the cart (repeats are more of the same) and places the order.
+func player_orders(ids: PackedStringArray) -> void:
+	await player_fills_cart(ids)
+	await player_places_order()
+
+
+## Opens the nurse's shop and, for each of `ids`, picks its category and presses its [+].
+## Presses past a full cart do nothing, as for a player.
+func player_fills_cart(ids: PackedStringArray) -> void:
+	surgery.open_nurse(me)
+	await frames(1)
+	for id in ids:
+		player_picks_category(Db.tool(id).category)
+		var plus := shop_button("add", id)
+		if not plus.disabled:
+			plus.pressed.emit()
+	note("cart: %s" % ", ".join(ids))
+
+
+## Clicks a category in the open nurse's shop: its button stays down and its items show.
+func player_picks_category(category: String) -> void:
+	shop_button("category", category).button_pressed = true
+
+
+## Presses [-] next to `id` in the shown category of the open nurse's shop.
+func player_removes_from_cart(id: String) -> void:
+	shop_button("remove", id).pressed.emit()
+	note("takes one %s out of the cart" % id)
+
+
+## Presses Place order once the nurse is free to take it (the button waits for her).
+func player_places_order() -> void:
+	var place := shop_button("place", true)
+	await wait_until(func() -> bool: return not place.disabled, 60.0)
+	place.pressed.emit()
+	await frames(2)
+	note("places the order")
+
+
+## The nurse's shop button whose `meta` is `value`, among those on screen: what a player could click.
+func shop_button(meta: String, value: Variant) -> Button:
+	for button: Button in surgery.hud.find_children("*", "Button", true, false):
+		if button.has_meta(meta) and button.get_meta(meta) == value and button.is_visible_in_tree():
+			return button
+	return null
+
+
 ## player_requests_item: the tool in the active hand. Off the tray when it's there, otherwise ordered from the nurse
 ## and taken off the delivery tray. Null when there's none and nobody to fetch one.
 func player_requests_item(id: String) -> SurgicalTool:
@@ -317,7 +364,7 @@ func player_requests_item(id: String) -> SurgicalTool:
 	if found.is_empty() and surgery.scenario.nurse:
 		note("orders %s from the nurse" % id)
 		await wait_until(func() -> bool: return surgery.nurse._order.is_empty() and surgery.nurse.cooldown_left <= 0.0, 60.0)
-		surgery.order_tool(id)
+		await player_orders(PackedStringArray([id]))
 		await wait_until(func() -> bool: return not free_tools(id).is_empty(), 90.0)
 		await seconds(1.0)
 		found = free_tools(id)

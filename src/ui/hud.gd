@@ -55,6 +55,7 @@ const SEDATED_BLUR := 1.0
 const OVERDOSE_DAZE := 0.6
 const KNOCKED_OUT_DAZE := 0.8
 var _root: Control
+var _shop: NurseShop
 
 
 func setup(owner_surgery: Surgery) -> void:
@@ -94,6 +95,7 @@ func setup(owner_surgery: Surgery) -> void:
 	_build_bottom_bar()
 	_build_gauges()
 	_build_controls_hint()
+	_build_shop()
 
 
 func begin() -> void:
@@ -108,6 +110,8 @@ func _process(delta: float) -> void:
 	var left := surgery.time_left()
 	_clock.text = "%s   %s" % [surgery.scenario.title, "%d:%02d" % [int(left) / 60, int(left) % 60] if left >= 0.0 else "no time limit"]
 	_update_objectives()
+	if _shop.view.visible:
+		_update_shop()
 	_update_net_warning()
 	_update_dot(me)
 	_update_hands(me)
@@ -203,13 +207,8 @@ func open_card() -> void:
 
 
 func open_nurse() -> void:
-	var groups: Dictionary = {}
-	for def: ToolDef in Db.tools.values():
-		if def.orderable:
-			if not groups.has(def.category):
-				groups[def.category] = []
-			(groups[def.category] as Array).append(["%s  (%d s)" % [def.name, def.delay], def.id])
-	_open(ChoiceMenu.build_grouped("Ring for the nurse", Room.nurse_board_text(surgery.status), groups, _on_nurse_pick, close_overlay))
+	_update_shop()
+	_open(_shop.view)
 
 
 func open_lab() -> void:
@@ -221,8 +220,12 @@ func open_lab() -> void:
 	_open(ChoiceMenu.build("Blood work", subtitle_text, choices, _on_lab_pick, close_overlay))
 
 
-func _on_nurse_pick(tool_id: String) -> void:
-	surgery.order_tool(tool_id)
+func _update_shop() -> void:
+	_shop.update(Room.nurse_board_text(surgery.status), Room.nurse_ready(surgery.status))
+
+
+func _on_nurse_order(tool_ids: PackedStringArray) -> void:
+	surgery.order_tools(tool_ids)
 	close_overlay()
 
 
@@ -257,7 +260,7 @@ func show_report(report: Dictionary) -> void:
 
 func close_overlay() -> void:
 	if _overlay:
-		_overlay.queue_free()
+		_dismiss(_overlay)
 		_overlay = null
 	if surgery.local_surgeon:
 		surgery.local_surgeon.input_locked = false
@@ -266,14 +269,24 @@ func close_overlay() -> void:
 
 func _open(overlay: Control) -> void:
 	if _overlay:
-		_overlay.queue_free()
+		_dismiss(_overlay)
 	_overlay = overlay
-	add_child(overlay)
+	if overlay.get_parent() == null:
+		add_child(overlay)
+	overlay.show()
 	if surgery.local_surgeon:
 		surgery.local_surgeon.input_locked = true
 		surgery.local_surgeon.hands[surgery.local_surgeon.active].lowered = false
 		surgery.local_surgeon.hands[surgery.local_surgeon.active].trigger = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+## The nurse's shop stays built between visits; other overlays are made fresh each time.
+func _dismiss(overlay: Control) -> void:
+	if overlay == _shop.view:
+		overlay.hide()
+	else:
+		overlay.queue_free()
 
 
 func _pause_menu() -> Control:
@@ -292,6 +305,16 @@ func _capture_mouse() -> void:
 
 
 # --- Building --------------------------------------------------------------------------------------
+
+
+func _build_shop() -> void:
+	var groups: Dictionary = {}
+	for def: ToolDef in Db.tools.values():
+		if def.orderable:
+			(groups.get_or_add(def.category, []) as Array).append(def)
+	_shop = NurseShop.new(groups, _on_nurse_order, close_overlay)
+	_shop.view.hide()
+	add_child(_shop.view)
 
 
 func _build_post_fx() -> void:

@@ -525,8 +525,8 @@ func _req_comfort() -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _req_order(tool_id: String) -> void:
-	nurse.request(Net._sender(), tool_id, self)
+func _req_order(tool_ids: PackedStringArray) -> void:
+	nurse.request(Net._sender(), tool_ids, self)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -553,8 +553,8 @@ func open_lab(_surgeon: Surgeon) -> void:
 	hud.open_lab()
 
 
-func order_tool(tool_id: String) -> void:
-	_req_order.rpc_id(1, tool_id)
+func order_tools(tool_ids: PackedStringArray) -> void:
+	_req_order.rpc_id(1, tool_ids)
 
 
 func order_lab(kind: String) -> void:

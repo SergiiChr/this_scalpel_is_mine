@@ -130,7 +130,7 @@ func _ready() -> void:
 	await _shot(out, "07_tray")
 	# The board over the bell with an order on its way.
 	if surgery.room.layout.has("bell"):
-		surgery.nurse.request(1, "gauze", surgery)
+		surgery.nurse.request(1, PackedStringArray(["gauze", "gauze", "scalpel"]), surgery)
 		await _frames(40)
 		var bell: Vector3 = surgery.room.layout.bell
 		camera.global_position = bell + Vector3(0.3, 1.5, -1.3)

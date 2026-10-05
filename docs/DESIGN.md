@@ -279,7 +279,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Organs you push or hold aside, targets you free by cutting, sawing, slow pulling or suction. Deep cuts reach bone.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
 - Sterility tracking into the post-op report (infection, amputation).
-- Nurse orders with a cooldown, blood panels with narrow/fast vs full/slow choices.
+- Nurse orders in batches of up to five with a cooldown, blood panels with narrow/fast vs full/slow choices.
 - Turning the patient as a shared quick time event, all surgeons on one side.
 - Personal gauges: stress (pass out), sickness (vomit), breath (steady hands), sweat (slippery gloves, drips).
 - Belt inventory, personal quirk items, drinking and wearing items, smoke breaks at the smoking spot.
@@ -306,7 +306,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Tools on hard surfaces**: tools lie on the tray side by side at the start, a lowered tool only presses into skin,
   and every corner of a held tool and the glove clear tables, trays and tools lying there. Physics is Jolt.
   `tests/support/grip_gallery.tscn` renders every tool held, for checking.
-- **Stations**: the nurse menu is grouped (`category` in tools.cfg) and deliveries land on a delivery tray.
+- **Stations**: the nurse menu is a shop: categories (`category` in tools.cfg), each a list of items with [-] count
+  [+], and a cart. Deliveries land side by side on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
@@ -355,8 +356,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Tray layout** (`tray` in tools.cfg, `Room.TRAY_ZONES`): scalpel and forceps lie in a small steel tray, the cotton
   pads in a pile in another, the syringes side by side and the bottles and vials standing at one end. The rest fills
   the space left.
-- **Nurse**: one order at a time, a 15 s cooldown after each delivery from the sixth on (the first five come without).
-  Every drug is under one Drugs group. A board over the bell shows the item on its way
+- **Nurse**: one order at a time, a cart of up to five items (the same one twice too) fetched together, so it takes
+  as long as its slowest item. A 15 s cooldown after each delivery from the sixth on (the first five come without).
+  Every drug is under one Drugs group. A board over the bell shows the batch on its way
   with a progress bar, then the cooldown.
 - **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
   held), pinch a cotton pad with forceps (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up
