@@ -2,7 +2,7 @@ tags: bones.strong
 title: High bone density
 [i]Abnormally dense bone.[/i]
 
-[b]On the chart:[/b] "Unusually high bone density on previous X-ray."
+[b]On the chart:[/b] “Unusually high bone density on previous X-ray.”
 
 [b]Hazards[/b]
 • The standard bone saw does not cut it.

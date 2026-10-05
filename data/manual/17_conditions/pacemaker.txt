@@ -2,12 +2,12 @@ tags: pacemaker
 title: Implanted pacemaker
 [i]A battery-driven device that keeps the heart to time. Older models are easily confused by stray current.[/i]
 
-[b]On the chart:[/b] "Implanted pacemaker."
+[b]On the chart:[/b] “Implanted pacemaker.”
 
 [b]Hazards[/b]
-• Electrocautery or defibrillation near the chest makes it misfire.
+• Electrocautery or defibrillation on the chest or abdomen makes it misfire.
 • Arrests half as often.
 
 [b]Management[/b]
-• On the chest, no electrocautery. Close with staples or sutures.
+• On the chest or abdomen, no electrocautery. Close with staples or sutures.
 • No defibrillation unless the heart has arrested.

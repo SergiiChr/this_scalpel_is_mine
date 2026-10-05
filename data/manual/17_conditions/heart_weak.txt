@@ -2,7 +2,7 @@ tags: heart.weak
 title: Coronary artery disease
 [i]Narrowed coronary arteries. Little cardiac reserve.[/i]
 
-[b]On the chart:[/b] "Coronary artery disease."
+[b]On the chart:[/b] “Coronary artery disease.”
 
 [b]Hazards[/b]
 • Arrests far more readily from blood loss, pain and adverse drug combinations.

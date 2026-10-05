@@ -2,7 +2,7 @@ tags: regeneration
 title: Abnormal tissue regeneration
 [i]Tissue repairs itself far faster than normal. Not described in the literature.[/i]
 
-[b]On the chart:[/b] "Unusual tissue response noted in previous admission. Refused further tests."
+[b]On the chart:[/b] “Unusual tissue response noted in previous admission. Refused further tests.”
 
 [b]Hazards[/b]
 • Every wound closes on its own, incisions included.

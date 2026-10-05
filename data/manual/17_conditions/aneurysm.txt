@@ -2,7 +2,7 @@ tags: aneurysm
 title: Aneurysm
 [i]A ballooned, thin-walled segment of a great vessel. Found under the chest, abdomen, thigh and neck.[/i]
 
-[b]On the chart:[/b] "Known history of aneurysm."
+[b]On the chart:[/b] “Known history of aneurysm.”
 
 [b]Hazards[/b]
 • Systolic pressure above 140 mmHg can rupture it: sudden deep bleeding inside the operative field.

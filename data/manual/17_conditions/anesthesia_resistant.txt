@@ -2,7 +2,7 @@ tags: anesthesia_resistant
 title: Intraoperative awareness
 [i]The patient metabolizes anesthetic agents unusually fast.[/i]
 
-[b]On the chart:[/b] "Previous intraoperative awareness."
+[b]On the chart:[/b] “Previous intraoperative awareness.”
 
 [b]Hazards[/b]
 • Anesthesia is not maintained and wears off within a few minutes. The patient wakes talking, then screaming.

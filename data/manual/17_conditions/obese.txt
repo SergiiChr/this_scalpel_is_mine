@@ -2,7 +2,7 @@ tags: obese
 title: Obesity
 [i]A thick subcutaneous fat layer.[/i]
 
-[b]On the chart:[/b] "BMI 41."
+[b]On the chart:[/b] “BMI 41.”
 
 [b]Hazards[/b]
 • Each blade pressure level reaches one layer shallower than expected.

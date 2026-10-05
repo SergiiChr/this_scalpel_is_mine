@@ -2,7 +2,7 @@ tags: bones.fragile
 title: Osteoporosis
 [i]Thin, brittle bone.[/i]
 
-[b]On the chart:[/b] "Osteoporosis."
+[b]On the chart:[/b] “Osteoporosis.”
 
 [b]Hazards[/b]
 • Any heavy impact fractures it, including a dropped instrument.

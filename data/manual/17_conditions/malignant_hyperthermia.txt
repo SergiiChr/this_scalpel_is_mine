@@ -2,7 +2,7 @@ tags: malignant_hyperthermia
 title: Malignant hyperthermia
 [i]An inherited reaction to volatile anesthetic agents.[/i]
 
-[b]On the chart:[/b] "Family history of anesthesia complications."
+[b]On the chart:[/b] “Family history of anesthesia complications.”
 
 [b]Hazards[/b]
 • The inhaled agent raises core temperature about one degree every thirty seconds. Fatal above 42.5 °C.

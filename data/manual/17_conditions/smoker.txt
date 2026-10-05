@@ -2,7 +2,7 @@ tags: smoker
 title: Heavy smoking
 [i]Long-term tobacco use. Damaged airways.[/i]
 
-[b]On the chart:[/b] "Smoker, 40 pack-years."
+[b]On the chart:[/b] “Smoker, 40 pack-years.”
 
 [b]Hazards[/b]
 • Oxygen saturation runs about four points lower.

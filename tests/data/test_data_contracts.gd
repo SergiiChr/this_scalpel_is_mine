@@ -45,7 +45,7 @@ func test_every_chronic_condition_has_a_manual_entry_quoting_its_chart_line() ->
 					entry = page
 			assert_not_null(entry, "%s has a chronic conditions entry tagged %s" % [card, key])
 			if entry:
-				assert_string_contains(entry.body, "\"%s\"" % card, "the %s entry quotes the chart line" % entry.title)
+				assert_string_contains(entry.body, "“%s”" % card, "the %s entry quotes the chart line" % entry.title)
 
 
 func test_manual_pointers_name_existing_condition_entries() -> void:

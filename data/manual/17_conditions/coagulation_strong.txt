@@ -2,7 +2,7 @@ tags: coagulation.strong
 title: Thrombophilia
 [i]Blood clots too readily.[/i]
 
-[b]On the chart:[/b] "Thrombophilia, prior DVT."
+[b]On the chart:[/b] “Thrombophilia, prior DVT.”
 
 [b]Hazards[/b]
 • Bleeds less than normal.

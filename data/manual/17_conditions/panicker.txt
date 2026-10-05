@@ -2,7 +2,7 @@ tags: panicker
 title: Anxiety disorder
 [i]Severe anxiety in medical settings.[/i]
 
-[b]On the chart:[/b] "Anxiety disorder."
+[b]On the chart:[/b] “Anxiety disorder.”
 
 [b]Hazards[/b]
 • Panic builds twice as fast. A panicking patient flails and jolts the hands at the table.

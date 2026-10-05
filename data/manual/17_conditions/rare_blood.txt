@@ -2,7 +2,7 @@ tags: rare_blood
 title: Bombay phenotype
 [i]A very rare blood group.[/i]
 
-[b]On the chart:[/b] "Bombay phenotype."
+[b]On the chart:[/b] “Bombay phenotype.”
 
 [b]Hazards[/b]
 • Incompatible with every standard group, O-negative included.

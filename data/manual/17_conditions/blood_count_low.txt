@@ -2,7 +2,7 @@ tags: blood_count.low
 title: Anemia
 [i]Low red cell count.[/i]
 
-[b]On the chart:[/b] "Anemic."
+[b]On the chart:[/b] “Anemic.”
 
 [b]Hazards[/b]
 • Starts with about a fifth less blood. Less time before shock.

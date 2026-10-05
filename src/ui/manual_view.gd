@@ -53,13 +53,14 @@ static func build(highlight_keys: PackedStringArray, on_close: Callable) -> Cont
 			entry.visible = parent == null
 			entries.append(entry)
 			toc.add_child(entry)
-	toc.add_child(Control.new())
 	var close := Ui.button("Close  [Esc]", on_close)
 	close.add_theme_font_override("font", load(CAPS_FONT))
 	close.add_theme_color_override("font_color", RED)
-	toc.add_child(_title_box(close))
-
-	var toc_sheet := _sheet(Ui.scroll(toc))
+	# Outside the scrolling list, so an open section's long list never pushes it out of view.
+	var toc_column := Ui.vbox(12)
+	toc_column.add_child(Ui.scroll(toc))
+	toc_column.add_child(_title_box(close))
+	var toc_sheet := _sheet(toc_column)
 	toc_sheet.custom_minimum_size.x = 440
 	book.add_child(toc_sheet)
 	var page_sheet := _sheet(content)
