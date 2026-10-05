@@ -5,6 +5,7 @@ extends Node3D
 
 const UPPER_ARM := 0.34
 const FOREARM := 0.34
+const KNEE_SLEEVE_CLEARANCE := 0.14
 const TILT_RANGE := Vector2(-1.5, -0.2)
 ## How far the wrist turns the tool left and right of straight ahead (radians), and how far in toward the middle each
 ## hand starts turned, so the tool points across in front of the eyes, beside the hand, not hidden under it.
@@ -116,7 +117,6 @@ var blood := 0.0
 var elbow_support := Vector3.INF
 var elbow_support_weight := 0.0
 var knee_obstacles: Array[Vector3] = []
-const KNEE_SLEEVE_CLEARANCE := 0.14
 
 var _lift := 0.0
 ## Recent [game time, position] samples. Speed over a short window ignores tremor and network jitter.

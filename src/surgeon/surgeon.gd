@@ -45,7 +45,8 @@ const CARRY_HEIGHT := 1.05
 ## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
 const CROUCH_DROP := 0.75
 const CROUCH_SPEED := 0.35
-## Body model's leg joints (meters). Feet stay flat while the knees bend forward and out.
+## Body model's leg joints (meters), matching tools/assetgen/surgeon.py:_body().
+## Keep these and HEAD_PIVOT in sync with that generator; tests/models/test_surgeon_pose.gd checks the loaded rig.
 const HIP_HEIGHT := 0.95
 const THIGH_LENGTH := 0.46
 const SHIN_LENGTH := 0.41
@@ -285,18 +286,33 @@ func belt_transform(belt_slot: int) -> Transform3D:
 	return Transform3D(global_basis * Basis(Vector3.RIGHT, -PI / 2), to_global(offset))
 
 
+## Stable gameplay reach origin: crouch lowers it, while the visual walk/squat animation never moves it.
 func shoulder(hand: int) -> Vector3:
+	var side := -1.0 if hand == 0 else 1.0
+	var standing := to_global(Vector3(SHOULDER.x * side, SHOULDER.y - crouch * CROUCH_DROP, SHOULDER.z))
+	return standing.lerp(_body.global_transform * Vector3(SHOULDER.x * side, SHOULDER.y, SHOULDER.z), _down)
+
+
+## Sleeve attachment on the animated torso, independent of the gameplay reach origin.
+func visual_shoulder(hand: int) -> Vector3:
 	var side := -1.0 if hand == 0 else 1.0
 	return (_joints["Torso"] as Node3D).global_transform * Vector3(SHOULDER.x * side, SHOULDER.y - HIP_HEIGHT, SHOULDER.z)
 
 
-## Both peers derive the same elbow support from the posed knee, without changing the hand's working target.
+## Sets this sleeve's knee support and obstacles for a deep squat, clearing them when standing.
 func support_elbow(hand: SurgeonHand) -> void:
+	hand.elbow_support_weight = smoothstep(0.55, 1.0, crouch) * (1.0 - _down)
+	if hand.elbow_support_weight <= 0.0:
+		hand.elbow_support = Vector3.INF
+		hand.knee_obstacles.clear()
+		return
 	var knee := _joints["ShinL" if hand.index == 0 else "ShinR"] as Node3D
 	# The IK pole sits above the contact surface: projecting it onto the elbow's bend circle lowers it again.
 	hand.elbow_support = knee.global_position + global_basis.y * 0.22
-	hand.elbow_support_weight = smoothstep(0.55, 1.0, crouch) * (1.0 - _down)
-	hand.knee_obstacles.assign([(_joints.ShinL as Node3D).global_position, (_joints.ShinR as Node3D).global_position])
+	if hand.knee_obstacles.is_empty():
+		hand.knee_obstacles.resize(2)
+	hand.knee_obstacles[0] = (_joints.ShinL as Node3D).global_position
+	hand.knee_obstacles[1] = (_joints.ShinR as Node3D).global_position
 
 
 ## Whether this surgeon is knocked out, the same on every peer.
@@ -413,8 +429,9 @@ func _animate_body(delta: float) -> void:
 	_pose_leg("R", 1.0, -sin(_walk_phase) * stride)
 	var torso := _joints["Torso"] as Node3D
 	var eye_local := Vector3(0, EYE_HEIGHT - HIP_HEIGHT, 0)
-	var standing_eyes := _body.transform * torso.transform * eye_local
-	standing_eyes.y = EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP - _walk_drop
+	# Walking motion and the squat's forward lean belong only to the visible model. Keep precise hand work's
+	# first-person view steady; crouching changes its height, as before, without shifting it across the floor.
+	var standing_eyes := Vector3(0, EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP, 0)
 	_head.position = standing_eyes.lerp(_body.transform * Vector3(0.0, EYE_HEIGHT, -0.06), _down)
 	# Lying there, the head turns to the patient on the table.
 	var look := 0.0
@@ -425,7 +442,19 @@ func _animate_body(delta: float) -> void:
 	# Camera and visible head have independent transforms: looking never swings the neck out through the back.
 	# Counter the hip lean at the neck so the face still follows the player's look, rather than staring at their feet.
 	var tilt := Basis(Vector3.RIGHT, (pitch * 0.5 + crouch * SQUAT_LEAN) * (1.0 - _down))
-	_face.global_transform = torso.global_transform * Transform3D(tilt, eye_local + HEAD_PIVOT - tilt * HEAD_PIVOT)
+	var anchor := torso.global_transform * (eye_local + HEAD_PIVOT)
+	var face_basis := torso.global_basis * tilt
+	if _down > 0.0:
+		# The visible head no longer inherits the camera's yaw. Turn it toward the patient about its fixed neck
+		# anchor, using its own position so the face and camera both look at the patient from where they lie.
+		var toward := Surgery.current.patient.global_position - anchor
+		var forward := -face_basis.z
+		var face_yaw := wrapf(atan2(-toward.x, -toward.z) - atan2(-forward.x, -forward.z), -PI, PI)
+		face_basis = Basis(Vector3.UP, face_yaw * _down) * face_basis
+		# Preserve the fallen view's upward look too; rolling the body must not turn camera pitch into a sideways nod.
+		var head_right := (-face_basis.z).slide(Vector3.UP).cross(Vector3.UP).normalized()
+		face_basis = Basis(head_right, pitch * _down) * face_basis
+	_face.global_transform = Transform3D(face_basis, anchor - face_basis * HEAD_PIVOT)
 
 
 ## Two-bone legs in body space. At rest the soles are on the floor; walking lifts only the swinging foot.
@@ -688,7 +717,7 @@ func _physics_process(delta: float) -> void:
 		hands[i].press = SYRINGE_PRESS + tool.def.length * SYRINGE_TRAVEL * (tool.ml + tool.air) / tool.def.volume if tool and tool.def.action == "syringe" else NAN
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		support_elbow(hands[i])
-		hands[i].update_pose(shoulder(i), delta)
+		hands[i].update_pose(visual_shoulder(i), delta)
 	Surgery.current.tools.follow(self)
 	_stain_scrubs(delta)
 
