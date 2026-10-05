@@ -17,6 +17,7 @@ const KEY_FRAMES := "res://build/test-artifacts/screenshots/scenarios"
 
 func play(scenario_id: String, key_frames: bool = false) -> void:
 	RenderingServer.render_loop_enabled = false
+	gut.p("%s: loading operation" % scenario_id)
 	var driver: Driver = Driver.new()
 	add_child(driver)
 	await driver.start(scenario_id)

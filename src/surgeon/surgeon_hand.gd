@@ -5,6 +5,7 @@ extends Node3D
 
 const UPPER_ARM := 0.34
 const FOREARM := 0.34
+const KNEE_SLEEVE_CLEARANCE := 0.14
 const TILT_RANGE := Vector2(-1.5, -0.2)
 ## How far the wrist turns the tool left and right of straight ahead (radians), and how far in toward the middle each
 ## hand starts turned, so the tool points across in front of the eyes, beside the hand, not hidden under it.
@@ -112,6 +113,10 @@ var speed := 0.0
 var puppet := false
 ## How bloody the glove is (0..1). Every peer soaks it from the held tool's synced blood, so it matches everywhere.
 var blood := 0.0
+## Deep squat: aim the elbow toward the knee's upper surface instead of bending through the thigh.
+var elbow_support := Vector3.INF
+var elbow_support_weight := 0.0
+var knee_obstacles: Array[Vector3] = []
 
 var _lift := 0.0
 ## Recent [game time, position] samples. Speed over a short window ignores tremor and network jitter.
@@ -542,6 +547,25 @@ func _solve_arm(shoulder: Vector3) -> void:
 				if bent.y < shoulder.y - ELBOW_BELOW_SHOULDER:
 					elbow = bent
 					break
+	if elbow_support != Vector3.INF and elbow_support_weight > 0.0:
+		var support_pole := (elbow_support - shoulder - dir * along).slide(dir)
+		if support_pole.length_squared() > 0.000001:
+			var current_pole := (elbow - shoulder - dir * along).normalized()
+			var supported := current_pole.slerp(support_pole.normalized(), elbow_support_weight).normalized()
+			elbow = shoulder + dir * along + supported * height
+			# Low working hands can leave the preferred bend through a knee. Search the same IK circle for clearance;
+			# the hand and both segment lengths stay fixed, so reaching for something never moves the tool's contact.
+			if _knee_clearance(shoulder, elbow) < KNEE_SLEEVE_CLEARANCE:
+				var best := elbow
+				var best_cost := INF
+				for step in 32:
+					var candidate := shoulder + dir * along + supported.rotated(dir, step * TAU / 32.0) * height
+					var gap := _knee_clearance(shoulder, candidate)
+					var cost := candidate.distance_squared_to(elbow) + maxf(0.0, KNEE_SLEEVE_CLEARANCE - gap) * 100.0
+					if cost < best_cost:
+						best_cost = cost
+						best = candidate
+				elbow = best
 	if _elbow_hold > 0.0:
 		elbow = elbow.lerp((get_parent() as Node3D).to_global(_held_elbow), _elbow_hold)
 	_elbow = elbow
@@ -549,6 +573,14 @@ func _solve_arm(shoulder: Vector3) -> void:
 	var wrist := _place_glove(elbow, owner_basis)
 	var cuff_end := wrist + _aim_cuff(elbow, wrist) * CUFF_DEPTH
 	_place_segment(_fore, elbow.lerp(cuff_end, _forearm_start), cuff_end)
+
+
+func _knee_clearance(shoulder: Vector3, elbow: Vector3) -> float:
+	var clearance := INF
+	for knee in knee_obstacles:
+		clearance = minf(clearance, knee.distance_to(Geometry3D.get_closest_point_to_segment(knee, shoulder, elbow)))
+		clearance = minf(clearance, knee.distance_to(Geometry3D.get_closest_point_to_segment(knee, elbow, global_position)))
+	return clearance
 
 
 ## Aims the glove's cuff bone down the forearm and returns that direction (world space). However the wrist bends,

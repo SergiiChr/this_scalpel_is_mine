@@ -5,6 +5,14 @@ extends Node
 
 const PORT := 24599
 const Slicing := preload("res://tests/support/slicing_suite.gd")
+const SurgeryState := preload("res://tests/support/surgery_state.gd")
+const SQUAT_TIMEOUT := 15.0
+var _squat_seen := false
+
+
+@rpc("authority", "call_remote", "reliable")
+func _acknowledge_squat() -> void:
+	_squat_seen = true
 
 
 func _ready() -> void:
@@ -23,6 +31,8 @@ func _ready() -> void:
 
 func _drive(role: String, driver: Node) -> void:
 	var tree := driver.get_tree()
+	# This checks synchronization, not missing starter tools or random surgeon handicaps.
+	SurgeryState.scenario_has_all_starter_tools("appendectomy")
 	if role == "host":
 		Net.host("appendectomy", PORT)
 		while Net.roster.size() < 2:
@@ -30,6 +40,7 @@ func _drive(role: String, driver: Node) -> void:
 		Net.set_ready(true)
 		while not Net.all_ready():
 			await tree.create_timer(0.2).timeout
+		SurgeryState.network_session_has_ordinary_surgeons()
 		Net.start_session()
 	else:
 		await tree.create_timer(0.5).timeout
@@ -43,17 +54,38 @@ func _drive(role: String, driver: Node) -> void:
 	print("[%s] surgery running, surgeons=%d tools=%d" % [role, surgery.surgeons.size(), surgery.tools.tools.size()])
 	if role == "client":
 		var me := surgery.local_surgeon
+		# Deliberately finish the client's startup after the host's former 1.2-second window. The acknowledged pose
+		# must still be checked: this exercises the loading-delay race deterministically on every network run.
+		await tree.create_timer(2.0).timeout
+		# A real input crouch must reach the host as a grounded, articulated squat before continuing surgery.
+		Input.action_press("crouch")
+		# Keep the pose until the host has actually checked it. Client/host scene loading and sync can take longer
+		# than the old fixed one-second hold; a reliable acknowledgement prevents missing a brief crouch window.
+		var deadline := Time.get_ticks_msec() + int(SQUAT_TIMEOUT * 1000)
+		while not _squat_seen and Time.get_ticks_msec() < deadline:
+			await tree.create_timer(0.05).timeout
+		Input.action_release("crouch")
+		if not _squat_seen:
+			print("FAIL: [client] host never acknowledged the grounded squat")
+			tree.quit(1)
+			return
+		await tree.create_timer(0.4).timeout
 		var free: Array = []
 		var cutters: Array = []
 		# Like a player, wait a moment for a blade on the tray: it may still be filling in. Not long: the host only waits
-		# so long for the handoff before it ends the session.
+		# so long for the handoff before it ends the session. With all starter tools present, use the scalpel specifically
+		# so this replication/cut/handoff test cannot silently switch to the switchblade's different cutting behavior.
 		for i in 20:
 			free = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE)
-			cutters = free.filter(func(t: SurgicalTool) -> bool: return t.def.action == "cut")
+			cutters = free.filter(func(t: SurgicalTool) -> bool: return t.def.id == "scalpel")
 			if not cutters.is_empty():
 				break
 			await tree.create_timer(0.1).timeout
-		surgery.tools.request_grab(cutters[0] if not cutters.is_empty() else free[0], 1)
+		if cutters.is_empty():
+			print("FAIL: [client] starter scalpel never arrived")
+			tree.quit(1)
+			return
+		surgery.tools.request_grab(cutters[0], 1)
 		await tree.create_timer(0.5).timeout
 		print("[client] holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 		var site := surgery.patient.body.site.global_position
@@ -81,6 +113,19 @@ func _drive(role: String, driver: Node) -> void:
 		print("[client] after handoff, holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 	else:
 		var host_me := surgery.local_surgeon
+		var partner: Surgeon = surgery.surgeons.values().filter(func(s: Surgeon) -> bool: return not s.is_local)[0]
+		var deadline := Time.get_ticks_msec() + int(SQUAT_TIMEOUT * 1000)
+		while partner.crouch <= 0.99 and Time.get_ticks_msec() < deadline:
+			await tree.create_timer(0.02).timeout
+		await tree.physics_frame
+		var hip := (partner._joints.LegL as Node3D).global_position
+		var knee := (partner._joints.ShinL as Node3D).global_position
+		var shoe := partner._joints.ShoeL as Node3D
+		if partner.crouch < 0.99 or hip.y >= knee.y or absf(shoe.global_position.y - Surgeon.ANKLE_HEIGHT) > 0.002 or shoe.global_basis.y.dot(Vector3.UP) < 0.999:
+			print("FAIL: [host] client squat lost its bent knees or grounded heels")
+		else:
+			print("[host] client squat has bent knees and grounded heels")
+		_acknowledge_squat.rpc_id(partner.peer_id)
 		host_me.hands[0].local_target = host_me.to_local(Vector3(0.0, 1.3, 0.06))
 		# Until the client has cut and handed its tool across: on a slow machine that takes a while.
 		for i in 75:

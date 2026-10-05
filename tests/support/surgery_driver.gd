@@ -99,6 +99,8 @@ func _process(_delta: float) -> void:
 
 func note(text: String) -> void:
 	trail.append("%6.1f s  %s" % [surgery.elapsed if surgery else 0.0, text])
+	if OS.get_environment("SURGERY_TRACE") == "1":
+		print("[%s] %s" % [Net.scenario_id, trail[-1]])
 
 
 ## The last steps, for a failure message.
