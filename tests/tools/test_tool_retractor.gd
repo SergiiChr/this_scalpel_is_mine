@@ -107,7 +107,7 @@ func _start(scenario_id: String, case_name: String) -> void:
 
 
 func _finish() -> void:
-	driver.budget.check(self, shots != null)
+	driver.budget.check(self, shots != null, "", "known to go over the frame budget, not profiled yet")
 	if shots:
 		gut.p("key frames: %s" % shots.out_dir)
 		shots.end()

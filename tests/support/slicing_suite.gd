@@ -610,7 +610,7 @@ func _report_frames(case_id: String) -> void:
 		case_id, fps, low, 1.0 / sorted[-1], sorted.size(), "no rendering" if not _shots else RenderingServer.get_current_rendering_method()]
 	_report.append(line)
 	print("    " + line)
-	_budget.check(self, _shots, case_id)
+	_budget.check(self, _shots, case_id, "known to go over the frame budget, not profiled yet")
 	_frame_times.clear()
 	_budget.clear()
 

@@ -103,6 +103,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   key frames, and names what the test was doing during the slowest one.
   Check it with `budget.check(self, with_key_frames)` (the driver's `budget` or your own), never with a timer around
   one function: the budget is for the whole frame.
+  A case known to go over that can't be fixed in the current change passes the reason as `broken`: it's then pending
+  `BROKEN:` instead of failing, and its other checks still run.
 
 ## Gotchas
 

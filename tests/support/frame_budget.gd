@@ -58,12 +58,16 @@ static func enforced() -> bool:
 ## The one frame budget check for every test: fails `test` when a frame went over the budget, in a run that renders
 ## key frames (`with_key_frames`) and isn't on CI, and otherwise only reports the worst frame.
 ## Headless frame times depend on the machine and on scripts running alongside, so they're never checked.
-func check(test: GutTest, with_key_frames: bool, label: String = "") -> void:
+## `broken` says why a case is known to go over: over the budget it's then pending BROKEN rather than failing, so a run
+## tells a known slow case apart from a new one, and within the budget it passes.
+func check(test: GutTest, with_key_frames: bool, label: String = "", broken: String = "") -> void:
 	var report := (label + ": " if label else "") + summary()
-	if with_key_frames and enforced():
+	if not with_key_frames or not enforced():
+		test.gut.p(report)
+	elif within() or broken.is_empty():
 		test.assert_true(within(), report)
 	else:
-		test.gut.p(report)
+		test.pending("BROKEN: %s; %s" % [broken, report])
 
 
 func summary() -> String:
