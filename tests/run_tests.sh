@@ -13,6 +13,7 @@
 #   alone after the others. Without it they run headless like the rest, skipping the screenshots.
 #   --ci-run: frame times are reported, not checked against the budget (CI_RUN=1, see tests/support/frame_budget.gd).
 # GODOT must point at the Godot binary (./build.sh test sets it up). Logs and JUnit XML go to build/.
+# ISOLATE_CASES = true gives each top-level case its own game process and JUnit report.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -122,22 +123,58 @@ run_one() {
 	else
 		cmd+=(--headless)
 	fi
-	cmd+=(-s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1 -gjunit_xml_file="$xml")
-	if [[ -n "$case_filter" ]]; then
-		cmd+=(-gunit_test_name="$case_filter")
+	cmd+=(-s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1)
+	if grep -qE '^const ISOLATE_CASES = true$' "$source"; then
+		: >"$log"
+		local case_name case_log case_xml count=0
+		while IFS= read -r case_name; do
+			[[ -z "$case_filter" || "$case_name" == *"$case_filter"* ]] || continue
+			count=$((count + 1))
+			case_log="$LOGS/${name}__${case_name}.log"
+			case_xml="$RESULTS/${name}__${case_name}.xml"
+			local case_cmd=(env GUT_EXACT_CASE="$case_name" SURGERY_TRACE=1 "${cmd[@]}"
+				-gpre_run_script=res://tests/support/exact_case.gd -gjunit_xml_file="$case_xml")
+			if ! run_case "$case_log" "$case_xml" "${case_cmd[@]}"; then
+				touch "$LOGS/$name.failed"
+				echo "[ERROR] Isolated case $case_name failed; see $case_log" >>"$log"
+			fi
+			cat "$case_log" >>"$log"
+		done < <(sed -nE 's/^func (test_[a-z0-9_]+)\(.*$/\1/p' "$source")
+		if [[ $count -eq 0 ]]; then
+			echo "[ERROR] No isolated cases matched." >>"$log"
+			touch "$LOGS/$name.failed"
+		fi
+	else
+		if [[ -n "$case_filter" ]]; then
+			cmd+=(-gunit_test_name="$case_filter")
+		fi
+		if ! run_case "$log" "$xml" "${cmd[@]}" -gjunit_xml_file="$xml"; then
+			touch "$LOGS/$name.failed"
+		fi
 	fi
-	local ok=1
-	timeout 2400 "${cmd[@]}" >"$log" 2>&1 || ok=0
+}
+
+# Preserve the process failure as well as GUT's result. A timeout can happen after earlier cases passed,
+# before GUT writes its final XML; calling that "No test cases ran" hides the actual cause.
+run_case() {
+	local log=$1 xml=$2
+	shift 2
+	rm -f "$xml"
+	local status=0
+	timeout --kill-after=10s 2400 "$@" >"$log" 2>&1 || status=$?
+	if [[ $status -eq 124 || $status -eq 137 ]]; then
+		echo "[ERROR] Test process timed out or was killed (exit $status); limit 2400 seconds." >>"$log"
+	elif [[ $status -ne 0 ]]; then
+		echo "[ERROR] Test process exited with status $status." >>"$log"
+	fi
 	if [[ ! -f "$xml" ]] || ! grep -q '<testcase' "$xml"; then
-		echo "No test cases ran." >>"$log"
-		ok=0
+		echo "[ERROR] No completed JUnit report was written." >>"$log"
+		status=1
 	fi
 	if grep -E "$ERRORS" "$log" | grep -qvE "$NOISE"; then
-		ok=0
+		status=1
 	fi
-	if [[ $ok -eq 0 ]]; then
-		touch "$LOGS/$name.failed"
-	fi
+	[[ $status -eq 0 ]]
 }
 
 report() {
@@ -171,7 +208,7 @@ if [[ $jobs -le 1 ]]; then
 elif [[ ${#together[@]} -gt 0 ]]; then
 	echo "Running ${#together[@]} test scripts, $jobs at a time."
 	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE
-	export -f run_one log_name
+	export -f run_one run_case log_name
 	printf '%s\0' "${together[@]}" | xargs -0 -n1 -P "$jobs" bash -c 'run_one "$1"' _
 	for script in "${together[@]}"; do
 		report "$script"

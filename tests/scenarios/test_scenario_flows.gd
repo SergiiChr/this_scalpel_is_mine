@@ -6,6 +6,9 @@ extends "res://tests/support/scenario_flow.gd"
 
 const TAGS = ["scenario", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
+## CI intermittently stalls when a second operation shares the first one's engine/rendering state.
+## Keep each complete flow in its own process; the runner still discovers every case in this script.
+const ISOLATE_CASES = true
 
 
 func test_every_scenario_has_a_flow() -> void:
