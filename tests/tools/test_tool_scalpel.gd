@@ -8,8 +8,6 @@ const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
 const LENGTH := 0.05
 const KeyFrames := preload("res://tests/support/key_frames.gd")
-const FrameBudget := preload("res://tests/support/frame_budget.gd")
-const ProfiledAnimator := preload("res://tests/support/profiled_tool_animator.gd")
 const KEY_FRAMES := "res://build/test-artifacts/screenshots/scalpel"
 
 var _driver: Driver
@@ -45,7 +43,6 @@ func test_scalpel_pickup_five_centimeter_cut_and_table_drop() -> void:
 	var scalpel := await driver.player_requests_item("scalpel")
 	assert_eq(driver.me.held_tool(driver.me.active), scalpel, "player_requests_item(scalpel) puts it in hand")
 	_scalpel = scalpel
-	var profile := SurgeryState.tool_has_animation_timing(scalpel) as ProfiledAnimator
 	_blade = scalpel.find_child("Blade", true, false) as Node3D
 	_handle = scalpel.find_child("Handle", true, false) as Node3D
 	_blade_rest = _handle.global_transform.affine_inverse() * _blade.global_transform
@@ -63,17 +60,13 @@ func test_scalpel_pickup_five_centimeter_cut_and_table_drop() -> void:
 		add_child(shots)
 		shots.begin(driver.surgery, KEY_FRAMES)
 		driver.on_key_frame = func(key_frame: String) -> void:
-			var measuring := profile.measuring
-			profile.measuring = false
 			assert_true(await shots.capture_at(key_frame, middle, 0.18), "saved scalpel key frame %s" % key_frame)
-			profile.measuring = measuring
 	await driver.player_walks_to(middle)
 	await driver.player_turns_blade(finish - start)
 	await driver.player_reaches(start)
 	await driver.set_level(1)
 	await driver.capture("untouched")
 	driver.budget.clear()
-	profile.measuring = true
 	driver.note("presses the scalpel into skin")
 	driver.use()
 	await driver.seconds(0.3)
@@ -85,7 +78,6 @@ func test_scalpel_pickup_five_centimeter_cut_and_table_drop() -> void:
 	driver.note("releases the scalpel from skin")
 	driver.use(false)
 	await driver.frames(3)
-	profile.measuring = false
 	assert_gt(_active_frames, 60, "blade stability is measured throughout an actual cutting stroke")
 	assert_lt(_blade_drift, 0.000001, "the blade stays fixed to its handle while cutting (%.3f mm drift)" % (_blade_drift * 1000.0))
 	await driver.capture("released")
@@ -102,13 +94,8 @@ func test_scalpel_pickup_five_centimeter_cut_and_table_drop() -> void:
 	await driver.player_puts_down()
 	assert_eq(scalpel.state, SurgicalTool.State.FREE, "the scalpel is put down")
 	assert_true(driver.lies_on_tray(scalpel), "the scalpel lies on the instrument tray (%s)" % ToolManager.middle(scalpel))
-	gut.p(driver.budget.summary())
-	var timing := "worst scalpel animation update %.3f ms over %d frames (budget 16 ms)" % [profile.worst_usec / 1000.0, profile.ticks]
-	gut.p(timing)
-	assert_gt(profile.ticks, 60, "the normal tool callback ran throughout the measured cut")
+	driver.budget.check(self, shots != null)
 	if shots:
-		if FrameBudget.enforced():
-			assert_true(driver.budget.within(), driver.budget.summary())
 		shots.end()
 		shots.queue_free()
 	_scalpel = null

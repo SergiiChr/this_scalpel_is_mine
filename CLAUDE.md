@@ -101,6 +101,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   The check runs locally only: CI passes `--ci-run`, which reports the frame times without failing on them.
   `tests/support/frame_budget.gd` measures the wall time between frames under `--fixed-fps` with rendering off between
   key frames, and names what the test was doing during the slowest one.
+  Check it with `budget.check(self, with_key_frames)` (the driver's `budget` or your own), never with a timer around
+  one function: the budget is for the whole frame.
 
 ## Gotchas
 

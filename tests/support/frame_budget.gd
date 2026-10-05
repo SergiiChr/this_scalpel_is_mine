@@ -55,6 +55,17 @@ static func enforced() -> bool:
 	return OS.get_environment(CI_RUN) != "1"
 
 
+## The one frame budget check for every test: fails `test` when a frame went over the budget, in a run that renders
+## key frames (`with_key_frames`) and isn't on CI, and otherwise only reports the worst frame.
+## Headless frame times depend on the machine and on scripts running alongside, so they're never checked.
+func check(test: GutTest, with_key_frames: bool, label: String = "") -> void:
+	var report := (label + ": " if label else "") + summary()
+	if with_key_frames and enforced():
+		test.assert_true(within(), report)
+	else:
+		test.gut.p(report)
+
+
 func summary() -> String:
 	var out := "worst frame %.1f ms of game work over %d frames (budget %.0f ms)" % [worst() * 1000.0, _frames, BUDGET * 1000.0]
 	return out + (", during: " + _worst_during if _worst_during else "")

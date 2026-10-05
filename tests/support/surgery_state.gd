@@ -165,29 +165,3 @@ static func surgeon_copy_has_owner_state(owner: Surgeon, puppet: Surgeon) -> voi
 	puppet.global_transform = owner.global_transform
 	puppet._sync_state(owner._pack_state())
 
-
-## The ordinary local surgeon with a timed engine physics callback; no animation/gameplay steps are called by hand.
-static func surgeon_has_physics_timing(surgery: Surgery) -> Surgeon:
-	var previous := surgery.local_surgeon
-	var spawn := previous.global_transform
-	var surgeon := preload("res://tests/support/profiled_surgeon.gd").new()
-	surgery.surgeons_root.remove_child(previous)
-	surgery.surgeons_root.add_child(surgeon)
-	surgeon.setup(previous.peer_id, previous.display_name, previous.quirk_rolls, spawn)
-	surgery.surgeons[previous.peer_id] = surgeon
-	surgery.local_surgeon = surgeon
-	previous.queue_free()
-	return surgeon
-
-
-## Replaces a tool's animator with the same behavior plus timing of its normal frame updates.
-## It takes over the old animator's state rather than calling setup(), which would read the posed parts as their rest
-## and lose a spreader's opening or a syringe's fill.
-static func tool_has_animation_timing(tool: SurgicalTool) -> ToolAnimator:
-	var previous := tool._animator
-	var animator := preload("res://tests/support/profiled_tool_animator.gd").new()
-	for property: Dictionary in previous.get_property_list():
-		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
-			animator.set(property.name, previous.get(property.name))
-	tool._animator = animator
-	return animator

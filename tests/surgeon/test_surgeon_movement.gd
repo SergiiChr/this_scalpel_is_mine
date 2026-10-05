@@ -7,12 +7,9 @@ const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
 const KeyFrames := preload("res://tests/support/key_frames.gd")
-const Profiled := preload("res://tests/support/profiled_surgeon.gd")
-const FrameBudget := preload("res://tests/support/frame_budget.gd")
 
 var _driver: Driver
 var _frames: KeyFrames
-var _profile: Profiled
 
 
 func before_all() -> void:
@@ -30,8 +27,6 @@ func before_each() -> void:
 	_driver = Driver.new()
 	add_child(_driver)
 	await _driver.start("appendectomy")
-	_profile = SurgeryState.surgeon_has_physics_timing(_driver.surgery) as Profiled
-	_driver.me = _profile
 	_frames = KeyFrames.new()
 	add_child(_frames)
 	_frames.begin(_driver.surgery, "res://build/key-frames/surgeon_movement")
@@ -57,7 +52,7 @@ func test_walking_and_crouching_keep_camera_and_gameplay_reach_steady() -> void:
 	SurgeryState.surgeon_hand_is_attached(me, 0, target)
 	await _driver.capture("standing")
 	var max_drop := 0.0
-	_profile.begin_measurement()
+	_driver.budget.clear()
 	Input.action_press("move_right")
 	_driver.note("walking sideways with a hand near the reach boundary")
 	for frame in 24:
@@ -84,7 +79,7 @@ func test_walking_and_crouching_keep_camera_and_gameplay_reach_steady() -> void:
 		_check_stable_origins(me, me.crouch)
 	assert_almost_eq(me.crouch, 0.0, 0.001, "releasing crouch restores standing height")
 	await _driver.capture("recovered")
-	_check_physics_budget()
+	_driver.budget.check(self, KeyFrames.wanted())
 
 
 func _check_stable_origins(me: Surgeon, crouch: float) -> void:
@@ -104,7 +99,7 @@ func test_downed_visible_head_turns_to_patient_on_both_fall_sides() -> void:
 	var camera := Camera3D.new()
 	_driver.surgery.add_child(camera)
 	camera.fov = 55
-	_profile.begin_measurement()
+	_driver.budget.clear()
 	for side: float in [-1.0, 1.0]:
 		SurgeryState.surgeon_is_knocked_out(me, side)
 		_driver.note("falling onto the floor and looking at the patient")
@@ -124,31 +119,17 @@ func test_downed_visible_head_turns_to_patient_on_both_fall_sides() -> void:
 		assert_lt(pivot.distance_to(anchor), 0.0001, "patient-facing yaw preserves the neck anchor")
 		if KeyFrames.wanted():
 			_driver.budget_paused = true
-			_profile.measuring = false
 			camera.global_position = pivot + Vector3(side * 0.8, 0.6, -0.7)
 			camera.look_at(pivot)
 			camera.make_current()
 			assert_true(await _frames.capture_view("fallen_left" if side > 0 else "fallen_right"), "saved other player's view of the fallen head")
 			me.camera().make_current()
 			_driver.budget_paused = false
-			_profile.measuring = true
 			_driver.budget.resume()
-	_check_physics_budget()
-
-
-func _check_physics_budget() -> void:
-	var summary := "worst surgeon physics update %.1f ms over %d engine ticks (budget 16 ms)" % [_profile.worst_usec / 1000.0, _profile.ticks]
-	gut.p(summary)
-	assert_gt(_profile.ticks, 50, "the engine ran the measured gameplay frames")
-	# The runner runs visual confirmation alone; parallel smoke suites would distort CPU timing.
-	if KeyFrames.wanted() and FrameBudget.enforced():
-		assert_lte(_profile.worst_usec / 1000000.0, FrameBudget.BUDGET, summary)
+	_driver.budget.check(self, KeyFrames.wanted())
 
 
 func _capture(name: String) -> void:
 	if not KeyFrames.wanted():
 		return
-	var measuring := _profile.measuring
-	_profile.measuring = false
 	assert_true(await _frames.capture_view(name), "saved " + name)
-	_profile.measuring = measuring

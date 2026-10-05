@@ -96,9 +96,7 @@ func test_release_withdraws_without_trauma_and_leaves_blood_at_the_puncture() ->
 			assert_eq(bead.position, stuck, label + ": the bead stays attached to the puncture")
 			if capture:
 				assert_true(await shots.capture_at(label + "_moved_away", bead.global_position, 0.12), "saved persistent bead at the injection site")
-	print("Syringe withdrawal: " + budget.summary())
-	if shots and FrameBudget.enforced():
-		assert_true(budget.within(), budget.summary())
+	budget.check(self, shots != null, "Syringe withdrawal")
 	if shots:
 		shots.end()
 		shots.queue_free()
