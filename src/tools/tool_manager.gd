@@ -12,8 +12,12 @@ const FILL_STEPS := 50.0
 const VIAL_REACH := 0.05
 ## How far apart (meters) bottles delivered standing are set, so a new one doesn't stand on an earlier one.
 const STANDING_ROOM := 0.04
-## How high (meters) over the skin the handle of a tool lying on the body rests at its grip, about half its thickness.
-const LYING_CLEARANCE := 0.004
+## How high (meters) over the skin the handle of a tool lying on the body rests, about half its thickness.
+const LYING_CLEARANCE := 0.0025
+## How far (radians) to either side of the way it pulled a tool let go of on the skin may swing to lie flatter, in how
+## many steps each way.
+const LYING_SWING := PI / 3.0
+const LYING_STEPS := 4
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
 ## How close to a dish's middle (a share of its length) a bottle has to be to pour into it, or a cotton pad to dip in it.
@@ -464,20 +468,19 @@ func standing_on(tool: SurgicalTool, at: Vector3) -> Transform3D:
 	return Transform3D(basis, Vector3(at.x, under - (Transform3D(basis) * tool.bounds).position.y + 0.001, at.z))
 
 
-## The height of the skin under `at`: over the site as it's drawn there, elsewhere whatever is under it.
+## The height of the body under `at` at rest: the skin a tool pulls bunches up ahead of it, and the drape gives under
+## it, so a rigid tool resting on either would stand up instead of lying along the body.
 func _skin_under(tool: SurgicalTool, at: Vector3) -> float:
 	var body := Surgery.current.patient.body
 	var uv := body.world_to_uv(at)
 	if Rect2(0, 0, 1, 1).has_point(uv) and body.on_body(uv):
-		var local := body.site.to_local(at)
-		return body.site.to_global(Vector3(local.x, body.skin_height(uv), local.z)).y
-	var hit := _surface_under(tool, at)
+		return body.uv_to_world(uv).y
+	var hit := _surface_under(tool, at, 1 | PatientBody.SURFACE_LAYER)
 	return hit.position.y if not hit.is_empty() else at.y
 
 
-## The first thing under `at` a tool could stand on, other than the tool itself: the ray hit, empty if nothing.
-func _surface_under(tool: SurgicalTool, at: Vector3) -> Dictionary:
-	var mask := 1 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER
+## The first thing under `at` a tool could stand on (of `mask`), other than the tool itself: the ray hit, empty if nothing.
+func _surface_under(tool: SurgicalTool, at: Vector3, mask: int = 1 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.2, at + Vector3.DOWN * 2.0, mask, [tool.get_rid()])
 	return get_viewport().world_3d.direct_space_state.intersect_ray(query)
 
@@ -511,20 +514,38 @@ func leave_standing(tool: SurgicalTool) -> void:
 
 ## Where a tool holding the skin lies once let go of: its tip stays where it holds, so the skin stays pulled, and the
 ## rest of it lies along the body pointing away from where it took hold (the way it pulled), on the skin rather than
-## sticking up. Not pulled anywhere yet, it points the way it was held.
+## sticking up. Where the body rises that way it swings aside, up to LYING_SWING, to wherever it lies flattest. Not
+## pulled anywhere yet, it points the way it was held.
 func lying_from_hold(tool: SurgicalTool) -> Transform3D:
 	var tip := tool.tip_position()
 	var away := (tip - Surgery.current.patient.body.uv_to_world(tool.grip_info.anchor)) * Vector3(1, 0, 1)
 	if away.length() < 0.005:
 		away = tool.global_basis.z * Vector3(1, 0, 1)
 	away = away.normalized() * tool.def.length
-	# Resting on the highest skin along it, so it doesn't sink into a rounded belly.
-	var rise := -INF
-	for t: float in [0.25, 0.5, 0.75, 1.0]:
-		rise = maxf(rise, (_skin_under(tool, tip + away * t) + LYING_CLEARANCE - tip.y) / t)
-	var back := (away + Vector3.UP * rise).normalized()
+	var best := Vector3.ZERO
+	var best_score := INF
+	for step in range(-LYING_STEPS, LYING_STEPS + 1):
+		var swing := LYING_SWING * step / LYING_STEPS
+		var along := away.rotated(Vector3.UP, swing)
+		var rise := _rise_along(tool, tip, along)
+		# Flattest first; between about as flat, the one closest to the way it pulled.
+		var score := maxf(rise, 0.0) + absf(swing) * 0.05
+		if score < best_score:
+			best_score = score
+			best = along + Vector3.UP * rise
+	var back := best.normalized()
 	var side := Vector3.UP.cross(back).normalized()
 	return Transform3D(Basis(side, back.cross(side), back), tip + back * tool.def.length)
+
+
+## How far up (per its length) a tool lying from `tip` toward `along` (across the floor, its length) has to tilt to
+## clear the highest point of the body under it, so it doesn't sink into a rounded belly. Negative where it slopes down.
+## Only its back half has to clear it: the front dips into the skin its tip pulls down (a retractor's hook and wire).
+func _rise_along(tool: SurgicalTool, tip: Vector3, along: Vector3) -> float:
+	var rise := -INF
+	for t: float in [0.5, 0.75, 1.0]:
+		rise = maxf(rise, (_skin_under(tool, tip + along * t) + LYING_CLEARANCE - tip.y) / t)
+	return rise
 
 
 ## Host: the tool leaves the hand and wraps around a limb (a tourniquet), see PatientBody.limb_ring().

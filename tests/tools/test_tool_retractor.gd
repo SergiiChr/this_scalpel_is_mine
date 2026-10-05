@@ -18,6 +18,8 @@ const HOOK_OFF := 0.006
 const PULL := 0.02
 ## How far (meters) from the cut's middle its gap is measured.
 const MIDDLE := 0.005
+## Most a retractor let go of may tilt up off the body it lies on (degrees): the hook pulls the skin down around itself.
+const LYING_TILT := 16.0
 ## How long (meters) the cut the four retractors hold open is.
 const OPENING := 0.08
 
@@ -92,6 +94,36 @@ func test_retractor_hooks_one_edge_and_pulls_the_cut_open() -> void:
 	assert_lt(tissue.gap_at(middle, MIDDLE), own_gape + 0.002, "let go of, the cut falls back to its own gape")
 	await driver.player_puts_down()
 	assert_true(driver.lies_on_tray(retractor), "the retractor is put back on the tray")
+	await _finish()
+
+
+func test_retractor_let_go_on_a_thigh_lies_along_the_limb() -> void:
+	await _start("bullet_muscle", "thigh")
+	var body := driver.body
+	await driver.player_cuts_skin(Vector2(0.4, 0.5), Vector2(0.6, 0.5), 2)
+	await driver.player_puts_down()
+	# Hooked near the end of the cut and drawn along the thigh, where the limb rises and the hook pulls the skin down.
+	var at := Vector2(0.5 + body.meters_to_uv(0.014), 0.5)
+	var retractor := await driver.player_requests_item("retractor")
+	var hook_at := driver.site_point(at)
+	await driver.player_walks_to(hook_at)
+	await driver.player_reaches(hook_at)
+	driver.use()
+	await driver.frames(10)
+	driver.use(false)
+	await driver.frames(3)
+	assert_eq(retractor.grip_info.get("type", ""), "skin", "Use tool hooks the skin\n%s" % driver.recent())
+	await driver.player_sweeps_to(retractor.tip_position() + driver.site_point(at + Vector2(body.meters_to_uv(PULL), 0.0)) - hook_at)
+	await driver.capture("pulled")
+	driver.press("grab")
+	await driver.seconds(1.0)
+	assert_eq(retractor.state, SurgicalTool.State.STANDING, "let go of, it stays hooked")
+	var handle := retractor.global_position - retractor.tip_position()
+	var across := (handle * Vector3(1, 0, 1)).length()
+	var body_rise := body.uv_to_world(body.world_to_uv(retractor.global_position)).y - body.uv_to_world(body.world_to_uv(retractor.tip_position())).y
+	var off_body := rad_to_deg(atan2(handle.y, across) - atan2(body_rise, across))
+	assert_lt(off_body, LYING_TILT, "it folds down along the limb (%.0f degrees off it), not standing up" % off_body)
+	await driver.capture("let_go")
 	await _finish()
 
 
