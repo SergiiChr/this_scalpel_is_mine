@@ -73,8 +73,6 @@ var charge_time := 0.0
 var paint_dt := 0.0
 var paint_uv := Vector2(-1, -1)
 var reported: Dictionary = {}
-## Host: seconds since a tool lying on the skin last checked it still lies on top of it (ToolManager._keep_on_top()).
-var on_top_check := 0.0
 
 ## A needle's running suture: the live thread's id (0 for none), its tension (the wheel) and the layer it's in.
 ## Each Use tool press makes one hole, at where the needle last rested on the patient (-1, -1 for nowhere): suture_hold
