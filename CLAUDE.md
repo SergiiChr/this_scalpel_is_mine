@@ -42,6 +42,7 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 - Review the GUT cases and add or update any genuinely unique coverage exposed by the change.
 - Run the `smoke` tag for quick validation.
 - Only after smoke passes, run the full regression.
+- The full regression must be green before raising a PR. Fix failures and rerun the checks; do not hand off a failing regression as ready.
 - Review every deliberate key-frame screenshot and validate visual cohesiveness, continuity, lack of glitching,
   clipping and visual artifacts.
 

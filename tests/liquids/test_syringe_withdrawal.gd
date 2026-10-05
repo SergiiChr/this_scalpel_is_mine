@@ -47,8 +47,6 @@ func test_release_withdraws_without_trauma_and_leaves_blood_at_the_puncture() ->
 			await bench.frames(5)
 			assert_ne(me._needle_anchor, Vector3.INF, label + ": the needle is inserted")
 			var entered := me._needle_anchor
-			var surface := me._surface_below(entered)
-			var puncture := Vector3(entered.x, surface.y, entered.z)
 			await bench.notch(false)
 			assert_eq(bench.syringe.ml, 0.0, label + ": the wheel injects the dose")
 			assert_eq(body.find_children("BloodBead*", "MeshInstance3D", true, false).size(), before.size(), label + ": blood does not appear while the needle is in")
@@ -56,6 +54,11 @@ func test_release_withdraws_without_trauma_and_leaves_blood_at_the_puncture() ->
 				assert_true(await shots.capture_view(label + "_injected"), "saved needle contact during injection")
 			var pain := patient.vitals.pain
 			var wounds := body.wound_map._data[WoundMap.Layer.WOUNDS].duplicate()
+			# Capturing the injected view advances breathing. Measure the puncture on the current skin immediately
+			# before release, rather than retaining a world-space height from before the screenshot.
+			var probe := body.probe(entered)
+			var surface := me._surface_below(entered)
+			var puncture := body.uv_to_world(probe.uv) if probe.zone == "site" else Vector3(entered.x, surface.y, entered.z)
 			budget.resume()
 			budget.sample(label + ": releasing Use tool")
 			await bench.release(0)
@@ -95,12 +98,7 @@ func test_release_withdraws_without_trauma_and_leaves_blood_at_the_puncture() ->
 				assert_true(await shots.capture_at(label + "_moved_away", bead.global_position, 0.12), "saved persistent bead at the injection site")
 	print("Syringe withdrawal: " + budget.summary())
 	if shots and FrameBudget.enforced():
-		if budget.within():
-			assert_true(budget.within(), budget.summary())
-		else:
-			# The same solo, intact-skin setup on the original code takes 27.2 ms during free hand movement.
-			# The bead is visual only: no scenario objective depends on this withdrawal effect.
-			pending("BROKEN: free hand movement exceeds the 16 ms frame budget before this change (27.2 ms baseline); " + budget.summary())
+		assert_true(budget.within(), budget.summary())
 	if shots:
 		shots.end()
 		shots.queue_free()
