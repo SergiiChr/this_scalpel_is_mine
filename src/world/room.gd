@@ -253,12 +253,14 @@ func _build_environment() -> void:
 	# Overhead room light: a ceiling panel over the table that lights the whole room from above.
 	if indoors:
 		var panel := MeshInstance3D.new()
+		panel.name = "CeilingPanel"
 		var box := BoxMesh.new()
 		box.size = Vector3(1.4, 0.04, 0.5)
 		panel.mesh = box
 		panel.material_override = Materials.glow(Materials.FLUORESCENT)
 		panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		panel.position = Vector3(0, size.y - 0.03, 0)
+		# Ceiling underside is size.y - 0.05. Keep the entire fixture below it: coincident faces blink.
+		panel.position = Vector3(0, size.y - 0.085, 0)
 		add_child(panel)
 	var overhead := SpotLight3D.new()
 	overhead.name = "Overhead"
@@ -307,7 +309,8 @@ func _build_shell() -> void:
 		Shapes.static_box(self, Vector3(size.x, size.y, 0.1), Vector3(0, size.y * 0.5, side * size.z * 0.5))
 		Shapes.slab(self, Vector3(0.1, size.y, size.z), wall, Vector3(side * size.x * 0.5, size.y * 0.5, 0), 0.3)
 		Shapes.static_box(self, Vector3(0.1, size.y, size.z), Vector3(side * size.x * 0.5, size.y * 0.5, 0))
-	Shapes.slab(self, Vector3(size.x, 0.1, size.z), wall.darkened(0.5), Vector3(0, size.y, 0), 0.45)
+	var ceiling := Shapes.slab(self, Vector3(size.x, 0.1, size.z), wall.darkened(0.5), Vector3(0, size.y, 0), 0.45)
+	ceiling.name = "Ceiling"
 
 
 func _build_street(size: Vector3) -> void:

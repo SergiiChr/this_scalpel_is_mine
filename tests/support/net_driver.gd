@@ -23,6 +23,8 @@ func _ready() -> void:
 
 func _drive(role: String, driver: Node) -> void:
 	var tree := driver.get_tree()
+	# This checks synchronization, not missing starter tools or random surgeon handicaps.
+	Db.scenario("appendectomy").missing_tool_chance = 0.0
 	if role == "host":
 		Net.host("appendectomy", PORT)
 		while Net.roster.size() < 2:
@@ -30,6 +32,10 @@ func _drive(role: String, driver: Node) -> void:
 		Net.set_ready(true)
 		while not Net.all_ready():
 			await tree.create_timer(0.2).timeout
+		for player: Dictionary in Net.roster.values():
+			player.quirks = [{"id": "normal_dude", "variant": ""}]
+		Net.run_modifiers = []
+		Net._rng.seed = 1
 		Net.start_session()
 	else:
 		await tree.create_timer(0.5).timeout
@@ -43,17 +49,26 @@ func _drive(role: String, driver: Node) -> void:
 	print("[%s] surgery running, surgeons=%d tools=%d" % [role, surgery.surgeons.size(), surgery.tools.tools.size()])
 	if role == "client":
 		var me := surgery.local_surgeon
+		# A real input crouch must reach the host as a grounded, articulated squat before continuing surgery.
+		Input.action_press("crouch")
+		await tree.create_timer(1.0).timeout
+		Input.action_release("crouch")
+		await tree.create_timer(0.4).timeout
 		var free: Array = []
 		var cutters: Array = []
 		# Like a player, wait a moment for a blade on the tray: it may still be filling in. Not long: the host only waits
 		# so long for the handoff before it ends the session.
 		for i in 20:
 			free = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE)
-			cutters = free.filter(func(t: SurgicalTool) -> bool: return t.def.action == "cut")
+			cutters = free.filter(func(t: SurgicalTool) -> bool: return t.def.id == "scalpel")
 			if not cutters.is_empty():
 				break
 			await tree.create_timer(0.1).timeout
-		surgery.tools.request_grab(cutters[0] if not cutters.is_empty() else free[0], 1)
+		if cutters.is_empty():
+			print("FAIL: [client] starter scalpel never arrived")
+			tree.quit(1)
+			return
+		surgery.tools.request_grab(cutters[0], 1)
 		await tree.create_timer(0.5).timeout
 		print("[client] holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 		var site := surgery.patient.body.site.global_position
@@ -81,6 +96,19 @@ func _drive(role: String, driver: Node) -> void:
 		print("[client] after handoff, holding: ", me.held_tool(1).def.id if me.held_tool(1) else "nothing")
 	else:
 		var host_me := surgery.local_surgeon
+		var partner: Surgeon = surgery.surgeons.values().filter(func(s: Surgeon) -> bool: return not s.is_local)[0]
+		for i in 60:
+			if partner.crouch > 0.99:
+				break
+			await tree.create_timer(0.02).timeout
+		await tree.physics_frame
+		var hip := (partner._joints.LegL as Node3D).global_position
+		var knee := (partner._joints.ShinL as Node3D).global_position
+		var shoe := partner._joints.ShoeL as Node3D
+		if partner.crouch < 0.99 or hip.y >= knee.y or absf(shoe.global_position.y - Surgeon.ANKLE_HEIGHT) > 0.002 or shoe.global_basis.y.dot(Vector3.UP) < 0.999:
+			print("FAIL: [host] client squat lost its bent knees or grounded heels")
+		else:
+			print("[host] client squat has bent knees and grounded heels")
 		host_me.hands[0].local_target = host_me.to_local(Vector3(0.0, 1.3, 0.06))
 		# Until the client has cut and handed its tool across: on a slow machine that takes a while.
 		for i in 75:

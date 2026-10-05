@@ -45,6 +45,16 @@ const CARRY_HEIGHT := 1.05
 ## Crouching lowers eyes and shoulders this much and slows walking to a careful step.
 const CROUCH_DROP := 0.75
 const CROUCH_SPEED := 0.35
+## Body model's leg joints (meters). Feet stay flat while the knees bend forward and out.
+const HIP_HEIGHT := 0.95
+const THIGH_LENGTH := 0.46
+const SHIN_LENGTH := 0.41
+const ANKLE_HEIGHT := 0.08
+const HIP_WIDTH := 0.115
+const SQUAT_SETBACK := 0.16
+const SQUAT_LEAN := 0.48
+## Visible head tilts about the top of the fixed neck, below eye level.
+const HEAD_PIVOT := Vector3(0.0, -0.08, 0.02)
 ## Zoom steps, cycled by the zoom key: camera field of view, widest first. Hand motion scales with the magnification,
 ## so the hand crosses the screen as fast at every step.
 const ZOOM_FOV: Array[float] = [70.0, 35.0]
@@ -181,6 +191,7 @@ var _camera: Camera3D
 var _joints: Dictionary = {}
 var _rest: Dictionary = {}
 var _walk_phase := 0.0
+var _walk_drop := 0.0
 var _ground_speed := 0.0
 var _collapse := 0.0
 ## How far over onto the floor a knocked out surgeon has gone (0 standing, 1 lying).
@@ -276,9 +287,16 @@ func belt_transform(belt_slot: int) -> Transform3D:
 
 func shoulder(hand: int) -> Vector3:
 	var side := -1.0 if hand == 0 else 1.0
-	var standing := to_global(Vector3(SHOULDER.x * side, SHOULDER.y - crouch * CROUCH_DROP, SHOULDER.z))
-	# Lying, the shoulders are where the fallen body has them.
-	return standing.lerp(_body.global_transform * Vector3(SHOULDER.x * side, SHOULDER.y, SHOULDER.z), _down)
+	return (_joints["Torso"] as Node3D).global_transform * Vector3(SHOULDER.x * side, SHOULDER.y - HIP_HEIGHT, SHOULDER.z)
+
+
+## Both peers derive the same elbow support from the posed knee, without changing the hand's working target.
+func support_elbow(hand: SurgeonHand) -> void:
+	var knee := _joints["ShinL" if hand.index == 0 else "ShinR"] as Node3D
+	# The IK pole sits above the contact surface: projecting it onto the elbow's bend circle lowers it again.
+	hand.elbow_support = knee.global_position + global_basis.y * 0.22
+	hand.elbow_support_weight = smoothstep(0.55, 1.0, crouch) * (1.0 - _down)
+	hand.knee_obstacles.assign([(_joints.ShinL as Node3D).global_position, (_joints.ShinR as Node3D).global_position])
 
 
 ## Whether this surgeon is knocked out, the same on every peer.
@@ -340,18 +358,21 @@ func _scrubs_color() -> Color:
 func _build_visuals() -> void:
 	_scrubs = Materials.family_unique("cloth", _scrubs_color(), 0.9)
 	_scrubs.next_pass = Materials.outline_for(0.003)
-	_body = ModelSlot.instantiate("surgeon", "body", self, {"tint": _scrubs})
+	var skin := Materials.family_unique("skin", Color(0.8, 0.64, 0.54), 0.6)
+	_body = ModelSlot.instantiate("surgeon", "body", self, {"tint": _scrubs, "skin": skin, "rubber": Materials.family_unique("rubber", Color(0.1, 0.11, 0.12), 0.9)})
 	_head = Node3D.new()
 	_head.name = "Head"
 	_head.position.y = EYE_HEIGHT
 	add_child(_head)
-	_face = ModelSlot.instantiate("surgeon", "head", _head, {"tint": Materials.toon(_scrubs_color().darkened(0.2), 0.35), "skin": Materials.family_unique("skin", Color(0.8, 0.64, 0.54), 0.6)})
+	var cap := Materials.family_unique("cloth", _scrubs_color().darkened(0.12), 0.9)
+	cap.next_pass = Materials.outline_for(0.001)
+	_face = ModelSlot.instantiate("surgeon", "head", _head, {"tint": cap, "skin": skin, "mask": Materials.family_unique("cloth", Color(0.55, 0.72, 0.78), 0.9)})
 	_camera = Camera3D.new()
 	_camera.name = "Camera"
 	_camera.fov = 70.0
 	_camera.near = 0.03
 	_head.add_child(_camera)
-	for joint: String in ["Torso", "LegL", "LegR"]:
+	for joint: String in ["Torso", "LegL", "LegR", "ShinL", "ShinR", "ShoeL", "ShoeR"]:
 		var node := _body.find_child(joint, true, false) as Node3D
 		if node:
 			_joints[joint] = node
@@ -376,15 +397,24 @@ func _animate_body(delta: float) -> void:
 	if is_local:
 		_fall_side = (_fall_side if _fall_side != 0.0 else _roomier_side()) if status.is_knocked_out() else 0.0
 	_down = move_toward(_down, 1.0 if is_down() else 0.0, delta * 1.5)
-	# Crouching folds the legs forward and drops the whole body, the torso leaning over the knees.
-	_pose("LegL", Vector3(sin(_walk_phase) * stride - crouch * 1.3, 0, 0))
-	_pose("LegR", Vector3(-sin(_walk_phase) * stride - crouch * 1.3, 0, 0))
-	_pose("Torso", Vector3(-_collapse * 1.3 - crouch * 0.35 + absf(sin(_walk_phase)) * stride * 0.05, 0, 0))
+	# Lower the pelvis between spread knees, then solve both fixed-length legs to grounded feet.
+	_pose("Torso", Vector3(-_collapse * 1.3 - crouch * SQUAT_LEAN + absf(sin(_walk_phase)) * stride * 0.05, 0, 0))
 	# Knocked out, the whole body tips over sideways from the feet onto the floor; the eyes go where its head lies.
 	var side := _fall_side if _fall_side != 0.0 else 1.0
 	_body.rotation.z = side * _down * PI / 2.0
-	_body.position.y = -crouch * 0.42 + _down * LYING_LIFT
-	var standing_eyes := Vector3(0.0, EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP, 0.0)
+	# With straight legs, a stride needs a little pelvis drop to leave the planted foot on the floor.
+	var reach := THIGH_LENGTH + SHIN_LENGTH - 0.0001
+	var travel := absf(sin(_walk_phase) * stride * (1.0 - crouch * 0.75))
+	var span := sin(travel) * reach + crouch * (SQUAT_SETBACK + 0.04)
+	var vertical := sqrt(maxf(0.0, reach * reach - span * span - pow(crouch * 0.075, 2)))
+	_walk_drop = maxf(0.0, HIP_HEIGHT - ANKLE_HEIGHT - crouch * CROUCH_DROP - vertical)
+	_body.position = Vector3(0, -crouch * CROUCH_DROP - _walk_drop + _down * LYING_LIFT, crouch * SQUAT_SETBACK)
+	_pose_leg("L", -1.0, sin(_walk_phase) * stride)
+	_pose_leg("R", 1.0, -sin(_walk_phase) * stride)
+	var torso := _joints["Torso"] as Node3D
+	var eye_local := Vector3(0, EYE_HEIGHT - HIP_HEIGHT, 0)
+	var standing_eyes := _body.transform * torso.transform * eye_local
+	standing_eyes.y = EYE_HEIGHT - _collapse * 1.1 - crouch * CROUCH_DROP - _walk_drop
 	_head.position = standing_eyes.lerp(_body.transform * Vector3(0.0, EYE_HEIGHT, -0.06), _down)
 	# Lying there, the head turns to the patient on the table.
 	var look := 0.0
@@ -392,6 +422,40 @@ func _animate_body(delta: float) -> void:
 		var to_patient := (Surgery.current.patient.global_position - to_global(_head.position)) * Vector3(1, 0, 1)
 		look = wrapf(atan2(-to_patient.x, -to_patient.z) - rotation.y, -PI, PI) * _down
 	_head.rotation.y = look
+	# Camera and visible head have independent transforms: looking never swings the neck out through the back.
+	# Counter the hip lean at the neck so the face still follows the player's look, rather than staring at their feet.
+	var tilt := Basis(Vector3.RIGHT, (pitch * 0.5 + crouch * SQUAT_LEAN) * (1.0 - _down))
+	_face.global_transform = torso.global_transform * Transform3D(tilt, eye_local + HEAD_PIVOT - tilt * HEAD_PIVOT)
+
+
+## Two-bone legs in body space. At rest the soles are on the floor; walking lifts only the swinging foot.
+func _pose_leg(suffix: String, side: float, swing: float) -> void:
+	var hip := Vector3(side * HIP_WIDTH, HIP_HEIGHT, 0)
+	var ankle := Vector3(side * (HIP_WIDTH + crouch * 0.075), ANKLE_HEIGHT + crouch * CROUCH_DROP + _walk_drop, -crouch * (SQUAT_SETBACK + 0.04))
+	# Fade the stride in a squat so feet don't slide far out from under the pelvis.
+	var step := swing * (1.0 - crouch * 0.75)
+	ankle.z -= sin(step) * (THIGH_LENGTH + SHIN_LENGTH)
+	ankle.y += maxf(0.0, sin(step)) * 0.06
+	var along := (ankle - hip).normalized()
+	var distance := minf(hip.distance_to(ankle), THIGH_LENGTH + SHIN_LENGTH - 0.0001)
+	# Circle intersection, with a forward/outward knee pole projected perpendicular to the hip-to-ankle line.
+	var bend := Vector3(side * crouch * 0.55, 0, -1).slide(along).normalized()
+	var advance := (THIGH_LENGTH * THIGH_LENGTH - SHIN_LENGTH * SHIN_LENGTH + distance * distance) / (2.0 * distance)
+	var knee := hip + along * advance + bend * sqrt(maxf(0.0, THIGH_LENGTH * THIGH_LENGTH - advance * advance))
+	ankle = hip + along * distance
+	var thigh := _joints["Leg" + suffix] as Node3D
+	var shin := _joints["Shin" + suffix] as Node3D
+	var shoe := _joints["Shoe" + suffix] as Node3D
+	thigh.transform = Transform3D(_leg_basis(knee - hip), hip)
+	shin.transform = thigh.transform.affine_inverse() * Transform3D(_leg_basis(ankle - knee), knee)
+	# Ankle counter-rotation keeps the sole horizontal, with toes turned out in the squat.
+	shoe.transform = (thigh.transform * shin.transform).affine_inverse() * Transform3D(Basis(Vector3.UP, -side * crouch * 0.25), ankle)
+
+
+static func _leg_basis(down: Vector3) -> Basis:
+	var y := -down.normalized()
+	var x := y.cross(Vector3.BACK).normalized()
+	return Basis(x, y, x.cross(y))
 
 
 ## The side (1 left, -1 right) with more clear floor beside the surgeon, to fall to.
@@ -601,9 +665,6 @@ func _physics_process(delta: float) -> void:
 	if is_local:
 		_camera.fov = lerpf(_camera.fov, ZOOM_FOV[zoom], minf(delta * 12.0, 1.0))
 		_frame_needle(delta)
-	# The camera pitches fully, the visible head only half as much so it doesn't look broken-necked. Lying on the
-	# side, the face lies sideways with the body; the camera doesn't roll.
-	_face.rotation = Vector3(-pitch * 0.5 * (1.0 - _down), 0.0, _fall_side * _down * PI / 2.0)
 	_animate_body(delta)
 	for i in 2:
 		var tool := held_tool(i)
@@ -626,6 +687,7 @@ func _physics_process(delta: float) -> void:
 		# The thumb rides the plunger's press: behind the finger grip by the press's own offset plus the pull.
 		hands[i].press = SYRINGE_PRESS + tool.def.length * SYRINGE_TRAVEL * (tool.ml + tool.air) / tool.def.volume if tool and tool.def.action == "syringe" else NAN
 		hands[i].soak(tool.blood if tool else 0.0, delta)
+		support_elbow(hands[i])
 		hands[i].update_pose(shoulder(i), delta)
 	Surgery.current.tools.follow(self)
 	_stain_scrubs(delta)
