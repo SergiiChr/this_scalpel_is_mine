@@ -1,23 +1,22 @@
-tags: bone_hardness, bone_fragile, bones, saw_speed_mult
-title: 13. Bone
-## 13.1 Osteotomy
+title: 11. Bone
+## 11.1 Osteotomy
 Hold the saw on the bone and keep it there until the cut is complete. A saw applied to skin lacerates it.
 
-## 13.2 Bone quality
-• Dense bone stops the standard saw. Order the heavy saw (about 45 seconds), or use the mallet. The mallet is effective on any bone but bruises the surrounding soft tissue.
-• Fragile bone cuts at twice the speed and fractures under any heavy impact. Keep heavy equipment, including the defibrillator, clear of the patient.
+## 11.2 Bone quality
+The mallet is effective on any bone but bruises the surrounding soft tissue.
+See Chronic conditions: High bone density, Osteoporosis.
 
-## 13.3 Fracture reduction
+## 11.3 Fracture reduction
 Requires two operators.
 1. Each grasps one fragment with forceps.
 2. Draw both back into alignment together.
 3. Hold until reduction is confirmed.
 [center][img=560]res://assets/manual/diagrams/alignment.svg[/img][/center]
 
-## 13.4 Rib fractures
+## 11.4 Rib fractures
 Reduce as above, one operator per fragment. Free splinters are removed with slow, steady traction. They bleed on release: have suction ready.
 
-## 13.5 Reduction rhinoplasty
+## 11.5 Reduction rhinoplasty
 The dorsal hump is bone superiorly and cartilage toward the tip, immediately beneath the skin.
 Mark along the nasal dorsum, expose it, then reduce the hump with short, light strokes of the mallet. Remove the loose fragment with forceps. Close with fine sutures.
 

@@ -1,0 +1,14 @@
+tags: coagulation.strong
+title: Thrombophilia
+[i]Blood clots too readily.[/i]
+
+[b]On the chart:[/b] “Thrombophilia, prior DVT.”
+
+[b]Hazards[/b]
+• Bleeds {(1 - quirk.coagulation_strong.bleed_mult) * 100}% less than normal.
+• A clot can form at any time and cause cardiac arrest without warning.
+
+[b]Management[/b]
+• Anticoagulate with heparin early, especially before a long procedure.
+• Never give tranexamic acid.
+> Heparin makes closures leak while it acts (5.5). See Combined conditions (14.8).

@@ -4,6 +4,7 @@ extends RefCounted
 ## Divine knowledge points a hand at the pages that match the patient's hidden conditions.
 ## Styled as a Victorian surgical guide: parchment sheets in ruled frames, red and black ink, hand written notes.
 ## Page markup on top of BBCode: a line starting with "## " is a section heading, one starting with "> " a note.
+## Sub-pages (chronic conditions) are listed under their page only while it or one of them is open.
 
 const INK := Color("231c16")
 const RED := Color("b3241c")
@@ -40,27 +41,33 @@ static func build(highlight_keys: PackedStringArray, on_close: Callable) -> Cont
 	toc.add_child(Control.new())
 	var entries: Array[Button] = []
 	for p in Db.manual:
-		var glowing := not highlight_keys.is_empty() and p.matches(highlight_keys)
-		var entry := Ui.button(("☞ " if glowing else "") + p.title, func() -> void: _show(title, page, p, entries))
-		entry.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		entry.set_meta("page", p)
-		entry.set_meta("glowing", glowing)
-		entries.append(entry)
-		toc.add_child(entry)
-	toc.add_child(Control.new())
+		for sub_page: ManualPage in [p] + p.children:
+			var parent: ManualPage = null if sub_page == p else p
+			var glowing := not highlight_keys.is_empty() and sub_page.matches(highlight_keys)
+			var label := ("☞ " if glowing else "") + sub_page.title
+			var entry := Ui.button(("      " if parent else "") + label, func() -> void: _show(title, page, sub_page, parent, entries))
+			entry.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			entry.set_meta("page", sub_page)
+			entry.set_meta("section", p)
+			entry.set_meta("glowing", glowing)
+			entry.visible = parent == null
+			entries.append(entry)
+			toc.add_child(entry)
 	var close := Ui.button("Close  [Esc]", on_close)
 	close.add_theme_font_override("font", load(CAPS_FONT))
 	close.add_theme_color_override("font_color", RED)
-	toc.add_child(_title_box(close))
-
-	var toc_sheet := _sheet(Ui.scroll(toc))
+	# Outside the scrolling list, so an open section's long list never pushes it out of view.
+	var toc_column := Ui.vbox(12)
+	toc_column.add_child(Ui.scroll(toc))
+	toc_column.add_child(_title_box(close))
+	var toc_sheet := _sheet(toc_column)
 	toc_sheet.custom_minimum_size.x = 440
 	book.add_child(toc_sheet)
 	var page_sheet := _sheet(content)
 	page_sheet.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	book.add_child(page_sheet)
 	if not Db.manual.is_empty():
-		_show(title, page, Db.manual[0], entries)
+		_show(title, page, Db.manual[0], null, entries)
 	return Ui.fullscreen(book, Color(0.02, 0.02, 0.02, 0.97))
 
 
@@ -81,12 +88,14 @@ static func to_bbcode(body: String) -> String:
 	return "\n".join(lines)
 
 
-static func _show(title: Label, page: RichTextLabel, manual_page: ManualPage, entries: Array[Button]) -> void:
+static func _show(title: Label, page: RichTextLabel, manual_page: ManualPage, parent: ManualPage, entries: Array[Button]) -> void:
 	# The heading shows the name only: "4. Incision and exposure" becomes "Incision and exposure".
 	title.text = manual_page.title.get_slice(". ", 1) if ". " in manual_page.title else manual_page.title
 	page.text = to_bbcode(manual_page.body)
 	page.scroll_to_line(0)
+	var open_section := parent if parent else manual_page
 	for entry in entries:
+		entry.visible = entry.get_meta("section") in [entry.get_meta("page"), open_section]
 		var color := RED if entry.get_meta("page") == manual_page else (GLOW if entry.get_meta("glowing") else INK)
 		entry.add_theme_color_override("font_color", color)
 		entry.add_theme_color_override("font_focus_color", color)

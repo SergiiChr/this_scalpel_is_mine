@@ -44,6 +44,10 @@ func _init(wound_id: int, wound_kind: Kind, a: Vector2, wound_depth: float) -> v
 	_resize_bins()
 
 
+## ml/s at the last simulation tick (host).
+var bleeding := 0.0
+
+
 func is_internal() -> bool:
 	return kind == Kind.INTERNAL
 
@@ -77,14 +81,17 @@ func through_muscle() -> bool:
 	return not is_internal() and kind != Kind.BURN and depth >= MUSCLE_DEPTH
 
 
-func bleed_rate(site_size: float, bleed_mult: float) -> float:
+## leak (0..1) is how much blood still gets through closures and packing: thinned blood or high pressure.
+## Cautery and clamps seal regardless.
+func bleed_rate(site_size: float, bleed_mult: float, leak: float = 0.0) -> float:
 	if kind == Kind.BURN:
 		return 0.0
 	var base := maxf(length_uv() * site_size, 0.01) * depth * BLEED_PER_METER
 	if kind in [Kind.GUNSHOT, Kind.PUNCTURE, Kind.INTERNAL]:
 		base = maxf(base, depth * 2.0)
 	var open_factor := 1.0 + opened * 0.5
-	return base * bleed_mult * open_factor * (1.0 - closure()) * (1.0 - cauterized) * (1.0 - clamped) * (1.0 - held)
+	var sealed := (1.0 - closure() * (1.0 - leak)) * (1.0 - held * (1.0 - leak))
+	return base * bleed_mult * open_factor * sealed * (1.0 - cauterized) * (1.0 - clamped)
 
 
 func distance_to(uv: Vector2) -> float:

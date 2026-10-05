@@ -1,0 +1,16 @@
+tags: aneurysm
+title: Aneurysm
+[i]A ballooned, thin-walled segment of a great vessel. Found under the chest, abdomen, thigh and neck.[/i]
+
+[b]On the chart:[/b] “Known history of aneurysm.”
+
+[b]Hazards[/b]
+• Systolic pressure above {Patient.HIGH_PRESSURE} mmHg can rupture it: sudden deep bleeding inside the operative field.
+• Pressure rises with panic, adrenaline, cocaine and ketamine.
+
+[b]Management[/b]
+• Keep systolic pressure below {Patient.HIGH_PRESSURE} mmHg. Induce with propofol or the inhaled agent, not ketamine.
+• Keep the conscious patient calm: reassure from the head of the table, or give diazepam.
+• Give adrenaline only for arrest or anaphylaxis.
+• A rupture is an internal injury: aspirate, clamp, then repair inside the cavity.
+> High pressure also makes every closure leak (5.5). See Combined conditions (14.6 to 14.8).

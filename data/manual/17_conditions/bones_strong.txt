@@ -1,0 +1,13 @@
+tags: bones.strong
+title: High bone density
+[i]Abnormally dense bone.[/i]
+
+[b]On the chart:[/b] “Unusually high bone density on previous X-ray.”
+
+[b]Hazards[/b]
+• The standard bone saw does not cut it.
+• Bones do not fracture by accident.
+
+[b]Management[/b]
+• Order the heavy saw from the nurse ({tool.heavy_saw.delay} seconds).
+• Or use the mallet: it works on any bone but bruises the soft tissue around it.

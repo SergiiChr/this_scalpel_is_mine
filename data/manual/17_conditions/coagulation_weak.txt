@@ -1,0 +1,14 @@
+tags: coagulation.weak
+title: Mild hemophilia
+[i]Blood clots poorly.[/i]
+
+[b]On the chart:[/b] “Mild hemophilia.”
+
+[b]Hazards[/b]
+• Bleeds {(quirk.coagulation_weak.bleed_mult - 1) * 100}% faster than normal. Every nick matters.
+
+[b]Management[/b]
+• Give tranexamic acid (TXA) early.
+• Never give heparin.
+• Cauterize or clamp rather than pack.
+> See Combined conditions (14.8).

@@ -1,4 +1,3 @@
-tags: fat_depth, tear_threshold_mult, thin_skin, obese, heal_rate, regeneration, mirrored
 title: 4. Incision and exposure
 [center][img=640]res://assets/manual/diagrams/incision_depth.svg[/img][/center]
 
@@ -12,7 +11,6 @@ Depth of the incision is set by blade pressure, not by the number of passes. The
 [/table]
 [b]Setting it:[/b] lower the blade onto the skin ([b]Use tool[/b], default LMB). At level 0 it only rests there; the mouse wheel sets the depth, before or while it is down: forward increases, back decreases.
 Start at level 1 and deepen in layers. A full-depth stroke from the outset gives no control over what lies beneath.
-> In obese patients the subcutaneous layer is thicker: one level shallower than expected is reached at each setting.
 
 ## 4.2 Technique
 The aiming line shows the cutting edge on the skin. A blade divides tissue only when drawn along its edge; rotate the instrument to align the edge with the marked line. Drawn sideways it merely drags.
@@ -26,8 +24,7 @@ To widen the exposure, grasp one edge with forceps or a retractor and draw it la
 Dividing tissue next to a target frees it; dividing anything else injures it. Displace organs by hand before reaching beneath them; they return when released. Prolonged or forceful handling bruises viscera and causes oozing. Hold them with a retractor rather than by hand.
 
 ## 4.5 Special cases
-Regenerating tissue closes incisions spontaneously. Work in short stages and keep retractors in place.
-Situs inversus (chart: "dextrocardia"): all viscera are mirrored. Confirm the anatomy before marking.
+See Chronic conditions: Obesity, Situs inversus, Abnormal tissue regeneration, Fragile skin.
 
 [font_size=16][b]References[/b]
 Townsend CM, Beauchamp RD, Evers BM, Mattox KL. Sabiston Textbook of Surgery. 21st ed. Elsevier; 2021.[/font_size]

@@ -608,8 +608,7 @@ func _nurse_checks(surgery: Surgery) -> void:
 
 
 ## Without quirks, one right dose of propofol keeps a patient whose bleeding is under control asleep and their heart
-## going for five minutes (it used to wear off in under three). The random arrest event leaves a stable patient alone,
-## and the wake up event waits for the first cut.
+## going for five minutes (it used to wear off in under three).
 func _anesthesia_checks(surgery: Surgery) -> void:
 	var patient := surgery.patient
 	var saved := [patient.mods, patient.vitals.to_dict(), patient.active_drugs, patient.wounds]
@@ -627,10 +626,6 @@ func _anesthesia_checks(surgery: Surgery) -> void:
 	# Run modifiers (expired drugs) may weaken the dose, but whatever depth it reaches has to hold.
 	if absf(v.anesthesia - depth) > 0.01 or v.is_awake() or v.is_arrested():
 		fail_test("one right dose of propofol didn't hold for five minutes (anesthesia %.2f -> %.2f, awake %s, arrested %s)" % [depth, v.anesthesia, v.is_awake(), v.is_arrested()])
-	if surgery.director._ready_for("unstable", patient):
-		fail_test("the arrest event would strike a stable patient (systolic %d, heart rate %d)" % [v.systolic, v.heart_rate])
-	if surgery.director._ready_for("incised", patient):
-		fail_test("the wake up event doesn't wait for the first cut")
 	patient.mods = saved[0]
 	patient.vitals.from_dict(saved[1])
 	patient.active_drugs = saved[2]

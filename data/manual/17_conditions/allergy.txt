@@ -1,0 +1,22 @@
+tags: allergy, allergen
+title: Drug allergy
+[i]A documented reaction to one of the standard agents.[/i]
+
+[b]On the chart:[/b] “Known drug allergy (see chart).”
+
+[b]Hazards[/b]
+• The allergen causes urticaria and swelling, a fall in blood pressure and possibly anaphylaxis.
+
+[b]Management[/b]
+• Order the allergy screen from the laboratory to identify the agent.
+• Use the alternative:
+[table=3]
+[cell][b]Allergy[/b][/cell][cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
+[cell]Cefazolin[/cell][cell]Clindamycin[/cell][cell]Longer delivery time[/cell]
+[cell]Morphine[/cell][cell]Ketamine[/cell][cell]Raises heart rate and pressure[/cell]
+[cell]Lidocaine[/cell][cell]General anesthesia, or topical cocaine[/cell][cell]Cocaine with adrenaline causes a cardiac event[/cell]
+[cell]Propofol[/cell][cell]Ketamine or inhaled agent[/cell][cell]No inhaled agent with hyperthermia risk[/cell]
+[/table]
+• Urticaria and swelling: diphenhydramine.
+• Falling pressure and oxygen saturation mean anaphylaxis: adrenaline immediately.
+> See Combined conditions (14.5, 14.6).

@@ -1,0 +1,14 @@
+tags: alcoholic
+title: Alcohol use disorder
+[i]Chronic heavy alcohol use.[/i]
+
+[b]On the chart:[/b] “Alcohol use disorder.”
+
+[b]Hazards[/b]
+• Sedatives and anesthesia are {(1 - quirk.alcoholic.sedation_mult) * 100}% less effective.
+• Bleeds {(quirk.alcoholic.bleed_mult - 1) * 100}% more than normal.
+
+[b]Management[/b]
+• Use higher doses and check anesthesia depth.
+• Whiskey calms this patient without the usual side effects.
+> See Combined conditions (14.4).

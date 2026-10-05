@@ -34,16 +34,17 @@ var on_key_frame: Callable
 
 
 ## Starts `scenario_id` solo, like the menu's single player: one surgeon who rolled nothing special, a patient
-## without quirks and every tool the scenario lists on the tray, so the run only depends on the scenario.
+## with only `patient_quirks` (rolls, {"id", "variant"}) and every tool the scenario lists on the tray, so the run only
+## depends on the scenario.
 ## random_events: false leaves the escalation events out (scripted ones in the scenario still happen).
-func start(scenario_id: String, random_events: bool = false, seed_value: int = 1) -> void:
+func start(scenario_id: String, random_events: bool = false, seed_value: int = 1, patient_quirks: Array = []) -> void:
 	# The game's own unseeded rolls (where the nurse leaves things, jitter) come out the same every run too.
 	seed(seed_value)
 	Net.leave()
 	Net.scenario_id = scenario_id
 	Net.session_seed = seed_value
 	Net.roster = {1: {"name": "Driver", "quirks": [{"id": "normal_dude", "variant": ""}], "ready": true}}
-	Net.patient_quirks = []
+	Net.patient_quirks = patient_quirks
 	Net.run_modifiers = []
 	# The tray as the scenario lists it: a missing tool is a twist for another test.
 	var scenario := Db.scenario(scenario_id)

@@ -193,6 +193,8 @@ func open_manual() -> void:
 		keys.append_array(surgery.patient.mods.list("allergen"))
 		for roll: Dictionary in surgery.patient.rolls:
 			keys.append(roll.id)
+			if roll.variant:
+				keys.append("%s.%s" % [roll.id, roll.variant])
 	_open(ManualView.build(keys, close_overlay))
 
 

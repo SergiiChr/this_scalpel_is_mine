@@ -46,6 +46,12 @@ func is_red_herring() -> bool:
 	return text("red_herring") == "true"
 
 
+## Quirks with a `sites` list only roll where the surgery happens on one of them.
+func fits_site(site: String) -> bool:
+	var sites := text("sites")
+	return sites.is_empty() or site in Array(sites.split(",")).map(func(s: String) -> String: return s.strip_edges())
+
+
 func effects(variant: String = "") -> Dictionary:
 	return Modifiers.parse_effects(text("effects", variant))
 

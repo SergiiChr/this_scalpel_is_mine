@@ -1,0 +1,13 @@
+tags: panicker
+title: Anxiety disorder
+[i]Severe anxiety in medical settings.[/i]
+
+[b]On the chart:[/b] “Anxiety disorder.”
+
+[b]Hazards[/b]
+• Panic builds {quirk.panicker.panic_mult} times as fast. A panicking patient flails and jolts the hands at the table.
+• Panic raises blood pressure.
+
+[b]Management[/b]
+• Reassure from the head of the table, or sedate with diazepam.
+> See Combined conditions (14.7).

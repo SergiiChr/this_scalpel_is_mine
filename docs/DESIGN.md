@@ -151,6 +151,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 Markdown, one `## id` heading per quirk, `- key: value` lines.
 Any key can be overridden per variant with `key.variant`. Icons are relative links, clickable from an editor.
 `effects` is what code reads: `key=value, key=value`. `_mult` keys multiply, other numbers add, text values are lists split by `|`.
+`sites` limits a patient quirk to scenarios on those surgical sites (an aneurysm only where a great vessel runs).
 
 Patient effect keys:
 
@@ -161,6 +162,7 @@ Patient effect keys:
 | heal_rate | wound closure per second (every wound) |
 | bleed_mult | bleeding multiplier |
 | clot_risk | cardiac arrest chance per second unless heparin is active |
+| fragile_vessels | systolic pressure above 140 mmHg can burst a deep vessel under the site |
 | bone_hardness | 2 = regular saw useless |
 | bone_fragile | heavy dropped tools break bones |
 | saw_speed_mult | saw progress multiplier |
@@ -240,6 +242,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - `scoring.cfg`: points and stress per action, star thresholds.
 - `consequences.cfg`: post-op report rules (infection, burst staples, lawsuits).
 - `dialogue/patient_lines.cfg`: patient speech by trigger and age.
+- `manual/NN_id.txt`: in-game manual pages. A folder named like a page (`manual/17_conditions/`) holds its sub-pages:
+  one entry per chronic condition (patient quirk with a chart line), tagged with the quirk id or `id.variant` for
+  Divine knowledge. General pages point to these entries instead of repeating them.
+  Game numbers in pages are `{expression}`s worked out at load from class constants, `drug`, `tool` and `quirk`
+  (see `ManualPage`), so doses, thresholds and chances follow the game. A data test rejects numbers with units
+  written by hand.
 - `audio.cfg`: sound id to file.
 
 ## Mechanics
@@ -258,11 +266,13 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
 - Cardiac arrest: V-fib, asystole, shocks, adrenaline windows, zapping a partner who's touching the patient.
-  The random arrest event only strikes an unstable patient (`Patient.unstable()`: blood loss, low pressure, racing
-  pulse, fever, sugar out of range, swelling or a heart-prone quirk). Scripted arrests (heart attack) always happen.
+  Arrests follow from the patient's state (blood loss, low pressure, racing pulse, fever, sugar out of range, swelling,
+  clots, heart quirks); there is no random arrest event. Scripted arrests (heart attack) always happen.
 - General anesthesia holds for the whole surgery once given, side effects included (propofol and gas keep the pressure
   about 15-20 mmHg down, the manual says how to manage it). A repeat dose only tops it up. It wears off only with the
-  anesthesia resistant quirk or the wake up event, which waits until the surgeons have cut.
+  anesthesia resistant quirk or a scripted wake up (awake craniotomy).
+- Random events only disturb the surgeons (a pothole, a cough, a bump, flickering lights with the power trouble
+  modifier). Nothing random happens to the patient that the chart, the monitor and the manual don't explain.
 - Seizures, malignant hyperthermia, diabetes drift, panicking awake patients.
 - Organs you push or hold aside, targets you free by cutting, sawing, slow pulling or suction. Deep cuts reach bone.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
@@ -449,6 +459,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,
   until the nurse brings the corrected copy partway through.
+- **Blood pressure**: panic and stimulants (adrenaline, cocaine, ketamine) raise systolic pressure. Above 140 mmHg,
+  and while heparin acts, sutures, staples, tape and gauze leak; cautery and clamps hold. Patients with fragile vessels
+  (an aneurysm) can burst a deep vessel under the site above the same pressure.
 - **X-ray cart**: push it to the table, take an exposure, and a full-size film develops over six seconds.
   Viewed on a lightbox, it shows metal (bullets, knives, retained tools), bone, masses and trapped air.
 
