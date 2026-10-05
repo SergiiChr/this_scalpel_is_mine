@@ -157,9 +157,15 @@ def superellipsoid(size: Sequence[float], roundness: float = 0.25, center: Seque
         return np.asarray(np.sign(w) * np.abs(w) ** m, dtype=np.float64)
 
     verts = []
-    for a in u:
-        for b in v:
-            verts.append([f(np.cos(a), roundness) * f(np.cos(b), roundness), f(np.sin(a), roundness), f(np.cos(a), roundness) * f(np.sin(b), roundness)])
+    for latitude in u:
+        for longitude in v:
+            verts.append(
+                [
+                    f(np.cos(latitude), roundness) * f(np.cos(longitude), roundness),
+                    f(np.sin(latitude), roundness),
+                    f(np.cos(latitude), roundness) * f(np.sin(longitude), roundness),
+                ]
+            )
     verts_arr = np.array(verts, float) * (np.asarray(size, float) / 2.0) + np.asarray(center, float)
     ring = len(v)
     faces = []
