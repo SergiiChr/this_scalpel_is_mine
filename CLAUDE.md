@@ -79,7 +79,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   frames in a run with them, only when its assertions fully validate the behavior without the screenshots.
 - If a non-trivial failure cannot be fixed in the current change, mark its GUT case pending with a `BROKEN:` reason.
   Disable any main-menu scenario that relies on it (`disabled=true` in its cfg) and place a code comment beside the
-  disablement naming the broken GUT test. Never silently delete or weaken the case.
+  disablement naming the broken GUT test. Never silently delete or weaken the case. A case that marks itself pending
+  with `Broken.reproduce()` (`tests/support/broken.gd`) still plays and fails in a run with `RUN_BROKEN=1`.
 
 ## Visual verification policy
 

@@ -100,11 +100,11 @@ func test_bullet_near_heart() -> void:
 
 
 func test_leg_extension() -> void:
-	pending("BROKEN: cautery, a hemostat, tranexamic acid and gauze leave three tears bleeding 0.4 ml/s each, the patient arrests.")
+	pending("BROKEN: the needle threads both 13.5 cm cuts, but their skin stays open (\"needle cannot reach intended puncture within 4 mm\"), \"Close the leg\" never completes.")
 
 
 func test_brain_tumor() -> void:
-	pending("BROKEN: cautery, tranexamic acid and gauze leave tears bleeding, \"Control the bleeding\" never completes.")
+	pending("BROKEN: a 0.5 cm tear opens while the hemostats go on, after the driver's only cautery pass, and its gauze pass presses beside it (held 0), \"Control the bleeding\" never completes. Pressed on directly, gauze and cautery stop such a tear.")
 
 
 func test_euthanasia() -> void:

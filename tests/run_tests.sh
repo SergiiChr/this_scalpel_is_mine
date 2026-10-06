@@ -154,15 +154,37 @@ run_one() {
 	fi
 }
 
+# Seconds a test process gets to quit once GUT has written its whole JUnit report. Under a display (key frames) Godot
+# now and then never finishes quitting: its main thread waits to join an engine thread (likely the dummy audio
+# driver's mixer) that spins at full CPU from the start. Waiting for the timeout cost 40 minutes per case and failed
+# cases that had passed.
+EXIT_GRACE=30
+
 # Preserve the process failure as well as GUT's result. A timeout can happen after earlier cases passed,
 # before GUT writes its final XML; calling that "No test cases ran" hides the actual cause.
 run_case() {
 	local log=$1 xml=$2
 	shift 2
 	rm -f "$xml"
-	local status=0
-	timeout --kill-after=10s 2400 "$@" >"$log" 2>&1 || status=$?
-	if [[ $status -eq 124 || $status -eq 137 ]]; then
+	local status=0 quit_by=0 stuck=0
+	timeout --kill-after=10s 2400 "$@" >"$log" 2>&1 &
+	local pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		if [[ $quit_by -eq 0 ]] && grep -qs '</testsuites>' "$xml"; then
+			quit_by=$((SECONDS + EXIT_GRACE))
+		elif [[ $quit_by -gt 0 && $SECONDS -ge $quit_by ]]; then
+			# timeout passes the signal on to the whole process group (Xvfb included) and kills it 10 s later.
+			stuck=1
+			kill -TERM "$pid"
+			break
+		fi
+		sleep 0.5
+	done
+	wait "$pid" 2>/dev/null || status=$?
+	if [[ $stuck -eq 1 ]]; then
+		echo "[NOTE] Test process didn't quit within $EXIT_GRACE s of writing its report and was stopped; the report decides." >>"$log"
+		grep -q '<testsuites [^>]*failures="0"' "$xml" && status=0 || status=1
+	elif [[ $status -eq 124 || $status -eq 137 ]]; then
 		echo "[ERROR] Test process timed out or was killed (exit $status); limit 2400 seconds." >>"$log"
 	elif [[ $status -ne 0 ]]; then
 		echo "[ERROR] Test process exited with status $status." >>"$log"
@@ -207,7 +229,7 @@ if [[ $jobs -le 1 ]]; then
 	alone=("${selected[@]}")
 elif [[ ${#together[@]} -gt 0 ]]; then
 	echo "Running ${#together[@]} test scripts, $jobs at a time."
-	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE
+	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE EXIT_GRACE
 	export -f run_one run_case log_name
 	printf '%s\0' "${together[@]}" | xargs -0 -n1 -P "$jobs" bash -c 'run_one "$1"' _
 	for script in "${together[@]}"; do

@@ -22,6 +22,12 @@ static func skin_is_cut(patient: Patient, from: Vector2, to: Vector2, depth: flo
 	return patient._stroke_wounds[key]
 
 
+## Overstretched skin torn from `from` along `direction` (site uv) for `length_uv`, down to the fat. Returns the tear.
+static func skin_is_torn(patient: Patient, from: Vector2, direction: Vector2, length_uv: float) -> Wound:
+	patient.tear(from, direction, length_uv)
+	return patient.wounds[-1]
+
+
 ## As if the whole length of `wound` had been sewn shut.
 static func wound_is_closed(wound: Wound) -> void:
 	wound.bins.fill(1.0)
@@ -142,6 +148,11 @@ static func surgeon_is_knocked_out(surgeon: Surgeon, side: float) -> void:
 ## No stress-induced hand jitter during a camera/reach measurement.
 static func surgeon_is_steady(surgeon: Surgeon) -> void:
 	surgeon.status.stress = 0.0
+
+
+## Stressed enough that the held tool plainly shakes (SurgeonStatus.tremor_amount()).
+static func surgeon_is_stressed(surgeon: Surgeon) -> void:
+	surgeon.status.stress = 0.9
 
 
 ## A hand attached just inside its reach boundary; the visual walking cycle must not pull it around.
