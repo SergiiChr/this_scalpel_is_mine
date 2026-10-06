@@ -123,7 +123,12 @@ run_one() {
 	else
 		cmd+=(--headless)
 	fi
-	cmd+=(-s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1)
+	local limit=$TEST_TIMEOUT
+	if grep -m1 -E '^const TAGS' "$source" | grep -q '"slow"'; then
+		limit=$SLOW_TEST_TIMEOUT
+	fi
+	cmd=(env GUT_TEST_TIMEOUT="$limit" "${cmd[@]}" -s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1
+		-gpre_run_script=res://tests/support/run_hook.gd)
 	if grep -qE '^const ISOLATE_CASES = true$' "$source"; then
 		: >"$log"
 		local case_name case_log case_xml count=0
@@ -132,8 +137,7 @@ run_one() {
 			count=$((count + 1))
 			case_log="$LOGS/${name}__${case_name}.log"
 			case_xml="$RESULTS/${name}__${case_name}.xml"
-			local case_cmd=(env GUT_EXACT_CASE="$case_name" SURGERY_TRACE=1 "${cmd[@]}"
-				-gpre_run_script=res://tests/support/exact_case.gd -gjunit_xml_file="$case_xml")
+			local case_cmd=(env GUT_EXACT_CASE="$case_name" SURGERY_TRACE=1 "${cmd[@]}" -gjunit_xml_file="$case_xml")
 			if ! run_case "$case_log" "$case_xml" "${case_cmd[@]}"; then
 				touch "$LOGS/$name.failed"
 				echo "[ERROR] Isolated case $case_name failed; see $case_log" >>"$log"
@@ -159,6 +163,10 @@ run_one() {
 # driver's mixer) that spins at full CPU from the start. Waiting for the timeout cost 40 minutes per case and failed
 # cases that had passed.
 EXIT_GRACE=30
+# Seconds one test may run (GUT_TEST_TIMEOUT, tests/support/run_hook.gd) before its process is stopped, and the same
+# for scripts tagged slow. 0 turns the limit off.
+TEST_TIMEOUT=0
+SLOW_TEST_TIMEOUT=0
 
 # Preserve the process failure as well as GUT's result. A timeout can happen after earlier cases passed,
 # before GUT writes its final XML; calling that "No test cases ran" hides the actual cause.
@@ -229,7 +237,7 @@ if [[ $jobs -le 1 ]]; then
 	alone=("${selected[@]}")
 elif [[ ${#together[@]} -gt 0 ]]; then
 	echo "Running ${#together[@]} test scripts, $jobs at a time."
-	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE EXIT_GRACE
+	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE EXIT_GRACE TEST_TIMEOUT SLOW_TEST_TIMEOUT
 	export -f run_one run_case log_name
 	printf '%s\0' "${together[@]}" | xargs -0 -n1 -P "$jobs" bash -c 'run_one "$1"' _
 	for script in "${together[@]}"; do
