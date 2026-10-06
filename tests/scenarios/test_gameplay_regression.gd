@@ -8,6 +8,7 @@ const TAGS = ["slow", "scenario"]
 
 const SURGERY := preload("res://scenes/surgery.tscn")
 const FrameBudget := preload("res://tests/support/frame_budget.gd")
+const PlayerInput := preload("res://tests/support/player_input.gd")
 
 
 ## One case per scenario, disabled ones too (tests/support/parametrize.gd): test_sweep_hand_stitch and so on.
@@ -278,28 +279,36 @@ func _effect_checks(surgery: Surgery) -> void:
 ## zoom between two levels, and the controls shown follow a held hand key.
 func _control_checks(surgery: Surgery) -> void:
 	var me := surgery.local_surgeon
-	var blades: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and t.def.action == "cut" and me.blocked_reason(t.def).is_empty())
+	# On the tray or the table: standing, a hand doesn't reach one dropped on the floor.
+	var blades: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and t.def.action == "cut" and me.blocked_reason(t.def).is_empty() and t.global_position.y > 0.5)
 	if blades.is_empty():
 		return
 	var blade: SurgicalTool = blades[0]
 	var hand := me.hands[me.active]
 	me.hovered = null
 	hand.local_target = me.to_local(blade.global_position - hand.tip_offset(0.05))
-	hand.target = me.to_global(hand.local_target)
-	hand.global_position = hand.target
-	me._unhandled_input(_action("grab", true))
+	# Settled over it, as the hand rests there by the time a player presses RMB.
+	await _frames(5)
+	PlayerInput.tap("grab")
+	await PlayerInput.delivered()
 	await _frames(2)
 	if me.held_tool(me.active) != blade:
 		fail_test("RMB (grab) didn't pick up the tool under the hand")
 		return
 	var looking := Hud.control_lines(me)
-	me._unhandled_input(_action("level_up", true))
+	PlayerInput.tap("level_up")
+	await PlayerInput.delivered()
+	await _frames(1)
 	if hand.level != 1:
 		fail_test("the wheel didn't raise a blade's depth: %s" % [hand.level])
-	me._unhandled_input(_action("use_tool", true))
+	PlayerInput.action("use_tool")
+	await PlayerInput.delivered()
+	await _frames(1)
 	if not (hand.lowered and hand.trigger):
 		fail_test("LMB (use) didn't lower and work the tool")
-	me._unhandled_input(_action("use_tool", false))
+	PlayerInput.action("use_tool", false)
+	await PlayerInput.delivered()
+	await _frames(1)
 	if hand.lowered or hand.trigger:
 		fail_test("letting go of LMB left the tool working")
 	# Aiming with the mouse (MMB) turns the tool and the hand together: the glove stays where it is on the tool.
@@ -312,35 +321,38 @@ func _control_checks(surgery: Surgery) -> void:
 	# Against the hand's grip frame, worked out with the glove: the tool's own transform follows a frame later.
 	var on_tool := hand.grip_transform().affine_inverse() * hand._glove.global_transform
 	var before := blade.global_basis
-	me.aim_tool(Vector2(120, -60))
+	PlayerInput.action("aim_tool")
+	PlayerInput.mouse(Vector2(120, -60) / Settings.mouse_sensitivity)
+	await PlayerInput.delivered()
 	await _frames(5)
 	var after := hand.grip_transform().affine_inverse() * hand._glove.global_transform
 	var slid := rad_to_deg((on_tool.basis.orthonormalized().inverse() * after.basis.orthonormalized()).get_rotation_quaternion().get_angle())
 	if before.z.angle_to(blade.global_basis.z) < 0.2 or slid > 3.0 or on_tool.origin.distance_to(after.origin) > 0.005:
 		fail_test("aiming the tool didn't turn it with the hand (turned %.2f rad, glove moved on it %.1f deg, %.1f cm)" % [before.z.angle_to(blade.global_basis.z), slid, on_tool.origin.distance_to(after.origin) * 100.0])
-	me.aim_tool(Vector2(-120, 60))
+	PlayerInput.mouse(Vector2(-120, 60) / Settings.mouse_sensitivity)
+	PlayerInput.action("aim_tool", false)
+	await PlayerInput.delivered()
+	await _frames(2)
 	me.status = own_status
 	var zooms: Array[int] = []
 	for i in Surgeon.ZOOM_FOV.size():
-		me._unhandled_input(_action("zoom", true))
+		PlayerInput.tap("zoom")
+		await PlayerInput.delivered()
+		await _frames(1)
 		zooms.append(me.zoom)
 	if zooms != [1, 0]:
 		fail_test("Shift doesn't step between two zoom levels: %s" % [zooms])
-	Input.action_press("move_right_hand")
+	PlayerInput.action("move_right_hand")
+	await PlayerInput.delivered()
+	await _frames(1)
 	if Hud.control_lines(me) == looking:
 		fail_test("the controls shown didn't change while holding a hand key")
-	Input.action_release("move_right_hand")
-	me._unhandled_input(_action("grab", true))
+	PlayerInput.action("move_right_hand", false)
+	PlayerInput.tap("grab")
+	await PlayerInput.delivered()
 	await _frames(2)
 	if me.held_tool(me.active) != null:
 		fail_test("RMB (grab) didn't put the tool down")
-
-
-static func _action(action: String, pressed: bool) -> InputEventAction:
-	var event := InputEventAction.new()
-	event.action = action
-	event.pressed = pressed
-	return event
 
 
 func _frames(count: int) -> void:
@@ -498,7 +510,8 @@ func _inspect_checks(surgery: Surgery, syringe: SurgicalTool, put_back: Vector3)
 	if me.held_tool(hand) != syringe:
 		fail_test("couldn't pick up the syringe to look at it")
 		return
-	Input.action_press("inspect")
+	PlayerInput.action("inspect")
+	await PlayerInput.delivered()
 	await _frames(10)
 	var camera := me.camera()
 	var barrel_ends: Array[Vector3] = [syringe.global_transform * Vector3.ZERO, syringe.tip_position()]
@@ -525,7 +538,8 @@ func _inspect_checks(surgery: Surgery, syringe: SurgicalTool, put_back: Vector3)
 	# The plunger's stopper starts at the needle end (its rest) and sits right behind the liquid and any air.
 	if absf(plunger.position.z - liquid - travel * syringe.air / syringe.def.volume) > travel * 0.02:
 		fail_test("the plunger doesn't sit right behind the liquid (pulled back %.4f m, liquid %.4f m)" % [plunger.position.z, liquid])
-	Input.action_release("inspect")
+	PlayerInput.action("inspect", false)
+	await PlayerInput.delivered()
 	await _frames(2)
 	# Put down on the tray, not into whatever is open under the hand.
 	surgery.tools._req_release(hand, Vector3.ZERO)

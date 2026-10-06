@@ -410,10 +410,11 @@ func _hand_checks() -> void:
 		me.zoom = step
 		await bench.frames(40)
 		var before := me.camera().unproject_position(hand.global_position)
-		me.steer_hand(Vector2(20, 0))
+		await bench.steer(Vector2(20, 0))
 		await bench.frames(2)
 		across.append(me.camera().unproject_position(hand.global_position).x - before.x)
-		me.steer_hand(Vector2(-20, 0))
+		await bench.steer(Vector2(-20, 0))
+		await bench.frames(2)
 	_check(across[0] > 0.0 and absf(across[1] / across[0] - 1.0) < 0.15, "needle_hand: zoomed in, a mouse move takes the hand as far across the screen as zoomed out (%.1f px, %.1f px)" % across)
 	# Into the dish: a vial would hold the needle where it snapped.
 	await bench.stage(Bench.CASES[2])
@@ -424,7 +425,7 @@ func _hand_checks() -> void:
 	for motion: Vector2 in [Vector2(10, 0), Vector2(0, -10)]:
 		var before := hand.target
 		for i in 5:
-			me.steer_hand(motion)
+			await bench.steer(motion)
 			await bench.frames(1)
 		var moved := (hand.target - before) * Vector3(1, 0, 1)
 		var along := moved.dot(right if motion.x > 0.0 else away)
@@ -435,11 +436,16 @@ func _hand_checks() -> void:
 	await bench.frames(40)
 	await _back_of_hand_checks()
 	await bench.stage(Bench.CASES[6])
+	# Moved once the camera has come round to the needle view: turning, it would turn the mouse's way with it.
+	for i in 60:
+		if me._needle_framing >= 0.99:
+			break
+		await bench.frames(1)
 	var tip := bench.syringe.tip_position()
 	var tilt := hand.tilt
 	var grip := hand.global_position
 	for i in 5:
-		me.steer_hand(Vector2(0, 10))
+		await bench.steer(Vector2(0, 10))
 		await bench.frames(1)
 	await bench.frames(5)
 	var drift := bench.syringe.tip_position().distance_to(tip)
@@ -450,7 +456,7 @@ func _hand_checks() -> void:
 	for i in 60:
 		if me._needle_torn:
 			break
-		me.steer_hand(Vector2(20, 0))
+		await bench.steer(Vector2(20, 0))
 		await bench.frames(1)
 	var scratch := body.wound_map.value(WoundMap.Layer.WOUNDS, WoundMap.CUT, body.world_to_uv(went_in))
 	_check(me._needle_torn and scratch > 0.0, "needle_hand: pulled on, the needle tears out and leaves a scratch where it was in (%.2f)" % scratch)
@@ -482,7 +488,7 @@ func _hand_checks() -> void:
 	var side := ((hand.global_position - ToolManager.middle(bag)) * Vector3(1, 0, 1)).dot(me.to_global(hand.local_target) - ToolManager.middle(bag))
 	_check(bench.needle_target().get("container") == bag and off < 0.005 and absf(rise - sin(Surgeon.DRIP_TILT)) < 0.05 and side > 0.0, "needle_hand: a syringe brought to the IV bag from waist height snaps its needle a little upward into the middle of the bag, from the hand's side (%.1f cm off, rising %.2f, hand at %.2f m)" % [off * 100.0, rise, hand.global_position.y])
 	for i in 10:
-		me.steer_hand(Vector2(0, 30))
+		await bench.steer(Vector2(0, 30))
 		await bench.frames(1)
 	await bench.frames(20)
 	_check(bench.needle_target().get("container") != bag and is_equal_approx(hand.tilt, own_tilt), "needle_hand: moved on from the bag, the needle comes out of it and the hand holds the syringe as before (%.2f m from its middle)" % bench.syringe.tip_position().distance_to(ToolManager.middle(bag)))
@@ -564,7 +570,7 @@ func _aim_lands(me: Surgeon, hand: SurgeonHand) -> void:
 	await bench.stage(Bench.CASES[6])
 	await bench.release()
 	for tilt: float in [-0.4, -1.3]:
-		me.aim_tool(Vector2(0.0, (hand.tilt - tilt) / Surgeon.AIM_SENSITIVITY))
+		await bench.aim(Vector2(0.0, (hand.tilt - tilt) / Surgeon.AIM_SENSITIVITY))
 		await bench.frames(20)
 		var aim := me.aim_point()
 		var hovering := bench.syringe.tip_position().distance_to(aim)

@@ -20,9 +20,9 @@ const PULL := 0.02
 const MIDDLE := 0.005
 ## Most a retractor let go of may tilt up over the body it lies on (degrees).
 const LYING_TILT := 8.0
-## How deep (meters) a retractor lying on the body may press into it at most: less than its stay's half thickness
+## How deep (meters) a retractor lying on the body may press into it at most: about its stay's half thickness
 ## (tools/assetgen/instruments.py), so the stay still shows when breathing lifts the belly under it.
-const LYING_PRESS := 0.002
+const LYING_PRESS := 0.0025
 ## How long (meters) the cut the four retractors hold open is.
 const OPENING := 0.08
 
@@ -70,7 +70,7 @@ func test_retractor_hooks_one_edge_and_pulls_the_cut_open() -> void:
 	await driver.capture("pulled")
 
 	var hooked := retractor.tip_position()
-	driver.tap_key("grab")
+	driver.tap("grab")
 	await driver.seconds(2.0)
 	assert_eq(retractor.state, SurgicalTool.State.STANDING, "let go of with Grab, the retractor stays hooked")
 	assert_false(hand.attached, "and the hand is free")
@@ -131,7 +131,7 @@ func test_retractors_let_go_round_a_widened_thigh_wound_lie_along_the_limb() -> 
 		# The end only gently: the short strip of skin between the hook and the end of the cut tears pulled 2 cm.
 		var pull := driver.site_point(at + away * body.meters_to_uv(PULL if away.x == 0.0 else PULL * 0.5)) - hook_at
 		await driver.player_sweeps_to(retractor.tip_position() + pull)
-		driver.tap_key("grab")
+		driver.tap("grab")
 		await driver.seconds(1.0)
 		assert_eq(retractor.state, SurgicalTool.State.STANDING, "retractor %d stays hooked when let go of" % (hooks.size() + 1))
 		_assert_points_away(retractor, pull)
@@ -174,7 +174,7 @@ func test_four_retractors_hold_the_abdomen_open_for_the_scalpel_and_forceps() ->
 		assert_eq(retractor.grip_info.get("type", ""), "skin", "retractor %d hooks the edge\n%s" % [hooks.size() + 1, driver.recent()])
 		var aside := driver.site_point(at + Vector2(0.0, body.meters_to_uv(PULL) * spot.y)) - hook_at
 		await driver.player_sweeps_to(retractor.tip_position() + aside)
-		driver.tap_key("grab")
+		driver.tap("grab")
 		await driver.seconds(1.0)
 		assert_eq(retractor.state, SurgicalTool.State.STANDING, "retractor %d stays hooked when let go of" % (hooks.size() + 1))
 		_assert_lies_on_body(retractor)

@@ -27,6 +27,8 @@ const HAND_SENSITIVITY := 0.0009
 const LOOK_SENSITIVITY := 0.003
 ## Radians the held tool turns per pixel while the mouse aims it (Aim tool held).
 const AIM_SENSITIVITY := 0.004
+## How fast C/V roll the held tool (radians a second).
+const TWIST_SPEED := 2.0
 ## Gap between a resting tool tip and the surface under it.
 const HOVER_GAP := 0.01
 ## The same for a needle (a syringe, the IV catheter): its tip sits on the aim.
@@ -513,7 +515,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_local or input_locked or status.is_out():
 		return
 	var hand := hands[active]
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	# Headless there's no mouse to capture (HUD._capture_mouse()): the only motion is what a test sends.
+	if event is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or DisplayServer.get_name() == "headless"):
 		var motion := (event as InputEventMouseMotion).relative * Settings.mouse_sensitivity
 		if Input.is_action_pressed("aim_tool"):
 			aim_tool(motion)
@@ -841,7 +844,7 @@ func _local_update(delta: float) -> void:
 		# A syringe keeps its scale to the eyes on its own (_face_syringe()): it doesn't roll.
 		if not _unfaced.has(active):
 			var twist_input := Input.get_axis("twist_left", "twist_right")
-			hand.twist = wrapf(hand.twist + twist_input * delta * 2.0, -PI, PI)
+			hand.twist = wrapf(hand.twist + twist_input * delta * TWIST_SPEED, -PI, PI)
 		hand.lifted = Input.is_action_pressed("lift") and not hand.attached
 		if hand.attached and Input.is_action_pressed("lift"):
 			hand.target.y += PULL_SPEED * delta

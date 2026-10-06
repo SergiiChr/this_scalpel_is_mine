@@ -26,8 +26,10 @@ func test_every_handheld_tool_is_picked_up_lowered_onto_the_site_and_put_back() 
 			await driver.frames(10)
 		var hand := driver.me.hands[driver.me.active]
 		# Aim the empty hand down before selecting a tool, as a player can.
-		driver.me.aim_tool(Vector2((hand.turn - 0.12) / Surgeon.AIM_SENSITIVITY,
-				(hand.tilt - (SurgeonHand.REST_TILT + 0.05)) / Surgeon.AIM_SENSITIVITY))
+		var aim := Vector2(hand.turn - 0.12, hand.tilt - (SurgeonHand.REST_TILT + 0.05)) / (Surgeon.AIM_SENSITIVITY * Settings.mouse_sensitivity)
+		await driver.player_aims(aim, 1)
+		driver.player_lets_go_of_aim()
+		await driver.frames(10)
 		var tilt := hand.tilt
 		var turn := hand.turn
 		var tool := await driver.player_requests_item(id)
