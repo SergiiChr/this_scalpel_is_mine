@@ -280,6 +280,7 @@ func _effect_checks(surgery: Surgery) -> void:
 func _control_checks(surgery: Surgery) -> void:
 	var me := surgery.local_surgeon
 	# On the tray or the table: standing, a hand doesn't reach one dropped on the floor.
+	# NOTE: by here a scalpel lies on the floor. Nothing this test checks says how it got there; not looked into yet.
 	var blades: Array = surgery.tools.tools.values().filter(func(t: SurgicalTool) -> bool: return t.state == SurgicalTool.State.FREE and t.def.action == "cut" and me.blocked_reason(t.def).is_empty() and t.global_position.y > 0.5)
 	if blades.is_empty():
 		return

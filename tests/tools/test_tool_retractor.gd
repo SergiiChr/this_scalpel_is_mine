@@ -22,6 +22,8 @@ const MIDDLE := 0.005
 const LYING_TILT := 8.0
 ## How deep (meters) a retractor lying on the body may press into it at most: about its stay's half thickness
 ## (tools/assetgen/instruments.py), so the stay still shows when breathing lifts the belly under it.
+## NOTE: loosened from 2 mm, the stay's half thickness (2.2 mm). Breathing lifts the belly into a retractor lying still
+## by up to about 2.4 mm. Back to 2 mm once a lying retractor follows breathing or clears the belly at its highest.
 const LYING_PRESS := 0.0025
 ## How long (meters) the cut the four retractors hold open is.
 const OPENING := 0.08
