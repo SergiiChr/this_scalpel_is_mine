@@ -164,9 +164,11 @@ run_one() {
 # cases that had passed.
 EXIT_GRACE=30
 # Seconds one test may run (GUT_TEST_TIMEOUT, tests/support/run_hook.gd) before its process is stopped, and the same
-# for scripts tagged slow. 0 turns the limit off.
-TEST_TIMEOUT=0
-SLOW_TEST_TIMEOUT=0
+# for scripts tagged slow. Set from the test times (JUnit) of a full CI-style run, with three times the time as
+# headroom: the 58 tests that ran took 25 s on average, so 3 x 25 s rounded up; a script with a test over a third of
+# that is tagged slow, and gets 3 x the longest (test_gameplay_regression, 514 s) rounded up to the minute.
+TEST_TIMEOUT=90
+SLOW_TEST_TIMEOUT=1560
 
 # Preserve the process failure as well as GUT's result. A timeout can happen after earlier cases passed,
 # before GUT writes its final XML; calling that "No test cases ran" hides the actual cause.

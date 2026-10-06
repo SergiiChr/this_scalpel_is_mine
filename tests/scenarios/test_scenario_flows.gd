@@ -4,7 +4,7 @@ extends "res://tests/support/scenario_flow.gd"
 ## In a run with key frames the major scenarios also save the untouched site, then the site right after every
 ## objective. Review them for continuity, clipping, mesh intersections, material consistency and tool contact.
 
-const TAGS = ["scenario", "visual_confirmation"]
+const TAGS = ["slow", "scenario", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 ## CI intermittently stalls when a second operation shares the first one's engine/rendering state.
 ## Keep each complete flow in its own process; the runner still discovers every case in this script.

@@ -5,7 +5,7 @@ extends GutTest
 ## holes, edges meeting in a slight ridge without passing through each other, and a narrow incision line still visible
 ## beneath the tied thread rather than an open red gap or seamless skin.
 
-const TAGS = ["smoke", "tool_needle", "tissue_modification", "visual_confirmation"]
+const TAGS = ["slow", "smoke", "tool_needle", "tissue_modification", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")

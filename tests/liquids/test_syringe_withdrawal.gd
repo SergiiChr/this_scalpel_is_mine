@@ -2,7 +2,7 @@ extends GutTest
 ## A normal injection ends on Use tool release, before moving away: one bead at the puncture, no tear or extra pain.
 ## Check all syringe sizes on skin and a vein; key frames show the ready needle, injection, release and moved-away bead.
 
-const TAGS = ["smoke", "liquids", "tool_syringe_3", "tool_syringe_10", "tool_syringe_50", "visual_confirmation"]
+const TAGS = ["slow", "smoke", "liquids", "tool_syringe_3", "tool_syringe_10", "tool_syringe_50", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const Bench := preload("res://tests/support/syringe_bench.gd")
 const KeyFrames := preload("res://tests/support/key_frames.gd")

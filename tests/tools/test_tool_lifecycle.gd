@@ -3,7 +3,7 @@ extends GutTest
 ## onto the site with Use tool, then put back on the tray. What each tool then does is tested with its feature
 ## (tissue, liquids, the scenario flows).
 
-const TAGS = ["smoke", "tool_all"]
+const TAGS = ["slow", "smoke", "tool_all"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")

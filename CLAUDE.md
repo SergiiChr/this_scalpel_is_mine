@@ -64,7 +64,9 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   walks to the patient, makes a light 5 cm cut, and the resulting opening measures 5 cm.
 - Tag conservatively. A tag must describe either the test type or a feature selection worth rerunning, such as all
   scalpel tests. Tags in use: `smoke`, `slow`, `scenario`, `network`, `tissue_modification`, `liquids`, `tool_<id>`,
-  `tool_all` and `visual_confirmation`. `slow` means one test takes longer than five minutes.
+  `tool_all` and `visual_confirmation`. `slow` means one test takes longer than a third of the per-test timeout
+  (`TEST_TIMEOUT` in `tests/run_tests.sh`, 90 s); its script then gets `SLOW_TEST_TIMEOUT`. A test that runs longer
+  than its timeout is stopped and fails, named in its log.
 - Keep simulated player actions and direct state changes apart. `player_*` steps in `tests/support/surgery_driver.gd`
   (`player_requests_item("scalpel")`, `player_cuts_skin(from, to, level)`) walk, hold tools and press the controls a
   player has, so the game itself does the work. Functions in `tests/support/surgery_state.gd` are named for the state
