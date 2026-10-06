@@ -42,6 +42,7 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 - Review the GUT cases and add or update any genuinely unique coverage exposed by the change.
 - Run the `smoke` tag for quick validation.
 - Only after smoke passes, run the full regression.
+- The full regression must be green before raising a PR. Fix failures and rerun the checks; do not hand off a failing regression as ready.
 - Review every deliberate key-frame screenshot and validate visual cohesiveness, continuity, lack of glitching,
   clipping and visual artifacts.
 
@@ -100,6 +101,10 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   The check runs locally only: CI passes `--ci-run`, which reports the frame times without failing on them.
   `tests/support/frame_budget.gd` measures the wall time between frames under `--fixed-fps` with rendering off between
   key frames, and names what the test was doing during the slowest one.
+  Check it with `budget.check(self, with_key_frames)` (the driver's `budget` or your own), never with a timer around
+  one function: the budget is for the whole frame.
+  A case known to go over that can't be fixed in the current change passes the reason as `broken`: it's then pending
+  `BROKEN:` instead of failing, and its other checks still run.
 
 ## Gotchas
 

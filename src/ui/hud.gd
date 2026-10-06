@@ -500,8 +500,13 @@ func _update_objectives() -> void:
 	for i in data.size():
 		var entry: Array = data[i]
 		var l := _objectives.get_child(i) as Label
-		l.text = "%s %s%s" % ["☑" if entry[1] else "▶" if entry[3] else "☐", entry[0], "  (bonus)" if entry[2] else ""]
-		l.add_theme_color_override("font_color", Ui.DIM if entry[1] else Ui.PIP if entry[3] else Ui.INK)
+		var text := "%s %s%s" % ["☑" if entry[1] else "▶" if entry[3] else "☐", entry[0], "  (bonus)" if entry[2] else ""]
+		if l.text != text:
+			l.text = text
+		var color := Ui.DIM if entry[1] else Ui.PIP if entry[3] else Ui.INK
+		# Reapplying the same override invalidates the label's layout and font shaping every frame.
+		if l.get_theme_color("font_color") != color:
+			l.add_theme_color_override("font_color", color)
 
 
 func _update_dot(me: Surgeon) -> void:
@@ -528,7 +533,9 @@ func _update_dot(me: Surgeon) -> void:
 		_draw_spreader(camera, tool)
 	_dot_label.text = me.hovered.label() if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
-	_levels.text = _level_text(me)
+	var levels := _level_text(me)
+	if _levels.text != levels:
+		_levels.text = levels
 	_levels.visible = not _levels.text.is_empty()
 	_levels.position = at + Vector2(14, 12)
 

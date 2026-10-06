@@ -10,7 +10,6 @@ const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
 const KeyFrames := preload("res://tests/support/key_frames.gd")
-const FrameBudget := preload("res://tests/support/frame_budget.gd")
 const KEY_FRAMES := "res://build/test-artifacts/screenshots/bottles"
 const VIAL := "vial_propofol"
 ## How far from a bottle the key frames look at it (meters).
@@ -68,10 +67,7 @@ func test_bottles_come_standing_and_stand_when_grab_is_held() -> void:
 	assert_true(vial.state == SurgicalTool.State.FREE and not _stands(vial) and driver.lies_on_tray(vial), "a quick click puts it down lying, as before (tip %.2f up)" % _tip_up(vial))
 	await driver.capture("put_down")
 
-	if shots and FrameBudget.enforced():
-		assert_true(driver.budget.within(), driver.budget.summary())
-	else:
-		gut.p(driver.budget.summary())
+	driver.budget.check(self, shots != null)
 	if shots:
 		gut.p("key frames: %s" % shots.out_dir)
 		shots.end()

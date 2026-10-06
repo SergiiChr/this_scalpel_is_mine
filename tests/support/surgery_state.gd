@@ -165,16 +165,3 @@ static func surgeon_copy_has_owner_state(owner: Surgeon, puppet: Surgeon) -> voi
 	puppet.global_transform = owner.global_transform
 	puppet._sync_state(owner._pack_state())
 
-
-## The ordinary local surgeon with a timed engine physics callback; no animation/gameplay steps are called by hand.
-static func surgeon_has_physics_timing(surgery: Surgery) -> Surgeon:
-	var previous := surgery.local_surgeon
-	var spawn := previous.global_transform
-	var surgeon := preload("res://tests/support/profiled_surgeon.gd").new()
-	surgery.surgeons_root.remove_child(previous)
-	surgery.surgeons_root.add_child(surgeon)
-	surgeon.setup(previous.peer_id, previous.display_name, previous.quirk_rolls, spawn)
-	surgery.surgeons[previous.peer_id] = surgeon
-	surgery.local_surgeon = surgeon
-	previous.queue_free()
-	return surgeon

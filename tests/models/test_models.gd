@@ -49,6 +49,7 @@ func test_model_rig_geometry_and_budget_contracts() -> void:
 		_exists("targets", kind)
 	_hand_pose_limits(holder)
 	_blade_tips(holder)
+	_blade_animation(holder)
 	_needle_holder(holder)
 	_contact_audio()
 	_iv_line_clearance(holder)
@@ -366,6 +367,34 @@ func _hand_pose_limits(holder: Node3D) -> void:
 					var basis := part.global_basis
 					_check(part.global_position.is_finite() and basis.x.is_finite() and basis.y.is_finite() and basis.z.is_finite() and absf(basis.determinant()) > 0.00001, "finite mirrored %s pose at limit" % grip)
 		hand.queue_free()
+
+
+## Cutting blades stay rigid; saw blades oscillate in use and return to rest on release.
+func _blade_animation(holder: Node3D) -> void:
+	for id in ["scalpel", "switchblade", "bone_saw", "heavy_saw"]:
+		var tool := SurgicalTool.new()
+		holder.add_child(tool)
+		tool.setup(9000, Db.tool(id))
+		tool.freeze = true
+		tool.set_process(false)
+		var blade := tool.find_child("Blade", true, false) as Node3D
+		assert_not_null(blade, "%s has a blade" % id)
+		if blade:
+			var rest := blade.transform
+			var moved := 0.0
+			var orientation_stable := true
+			for frame in 120:
+				tool._animator.animate(true, false, 1.0 / 60.0)
+				moved = maxf(moved, blade.position.distance_to(rest.origin))
+				orientation_stable = orientation_stable and blade.basis.is_equal_approx(rest.basis)
+			assert_true(orientation_stable, "%s blade keeps its orientation throughout use" % id)
+			if tool.def.action == "saw":
+				assert_gt(moved, 0.003, "%s blade still oscillates in use" % id)
+			else:
+				assert_lt(moved, 0.000001, "%s blade stays fixed to the handle throughout use" % id)
+			tool._animator.animate(false, false, 1.0 / 60.0)
+			assert_true(blade.transform.is_equal_approx(rest), "%s blade rests on release" % id)
+		tool.queue_free()
 
 
 func _blade_tips(holder: Node3D) -> void:

@@ -11,7 +11,6 @@ const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
 const KeyFrames := preload("res://tests/support/key_frames.gd")
-const FrameBudget := preload("res://tests/support/frame_budget.gd")
 const KEY_FRAMES := "res://build/test-artifacts/screenshots/aim"
 
 
@@ -76,10 +75,7 @@ func test_aiming_turns_the_tool_about_the_wrist() -> void:
 	driver.press("zoom")
 	await driver.seconds(0.5)
 	_check_faded(hand, other, 0.0, "zoomed back out, the hands are solid again")
-	if shots and FrameBudget.enforced():
-		assert_true(driver.budget.within(), driver.budget.summary())
-	else:
-		gut.p(driver.budget.summary())
+	driver.budget.check(self, shots != null)
 	if shots:
 		gut.p("key frames: %s" % shots.out_dir)
 		shots.end()

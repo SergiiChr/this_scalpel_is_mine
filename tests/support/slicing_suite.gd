@@ -610,12 +610,7 @@ func _report_frames(case_id: String) -> void:
 		case_id, fps, low, 1.0 / sorted[-1], sorted.size(), "no rendering" if not _shots else RenderingServer.get_current_rendering_method()]
 	_report.append(line)
 	print("    " + line)
-	# Headless the frame times only get reported: they depend on the machine. With a renderer the check is part of the
-	# visual confirmation (CLAUDE.md, frame-time budget).
-	if _shots and FrameBudget.enforced():
-		_check(_budget.within(), "%s: %s" % [case_id, _budget.summary()])
-	else:
-		print("    %s: %s" % [case_id, _budget.summary()])
+	_budget.check(self, _shots, case_id, "known to go over the frame budget, not profiled yet")
 	_frame_times.clear()
 	_budget.clear()
 

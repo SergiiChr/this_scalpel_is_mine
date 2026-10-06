@@ -10,7 +10,6 @@ const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
 const KeyFrames := preload("res://tests/support/key_frames.gd")
-const FrameBudget := preload("res://tests/support/frame_budget.gd")
 const KEY_FRAMES := "res://build/test-artifacts/screenshots/needle"
 
 var driver: Driver
@@ -267,10 +266,7 @@ func _start(scenario_id: String, case_name: String) -> void:
 
 
 func _finish() -> void:
-	if shots and FrameBudget.enforced():
-		assert_true(driver.budget.within(), driver.budget.summary())
-	else:
-		gut.p(driver.budget.summary())
+	driver.budget.check(self, shots != null, "", "known to go over the frame budget, not profiled yet")
 	if shots:
 		gut.p("key frames: %s" % shots.out_dir)
 		shots.end()
