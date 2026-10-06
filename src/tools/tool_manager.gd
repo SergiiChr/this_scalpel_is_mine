@@ -811,8 +811,11 @@ func _spawn(uid: int, id: String, at: Vector3) -> void:
 func _set_state(uid: int, state: int, holder: int, slot: int, xform: Transform3D) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
-		tool.global_transform = xform
+		# The state first, and the transform into the physics engine too: changing how a body is frozen makes the engine
+		# write its own last transform back (a retractor let go of would stand back up in its held pose).
 		tool.set_state(state as SurgicalTool.State, holder, slot)
+		tool.global_transform = xform
+		PhysicsServer3D.body_set_state(tool.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, xform)
 		if state == SurgicalTool.State.HELD:
 			Sfx.play("tool_pickup", xform.origin)
 

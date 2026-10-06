@@ -337,6 +337,9 @@ func set_state(new_state: State, new_holder: int, new_slot: int) -> void:
 	# Left holding onto the patient (set, clamped, hooked), a tool doesn't keep hands or other tools off what's under it.
 	var on_patient := state == State.STANDING and not def.fixed
 	collision_layer = TOOL_LAYER if state in [State.FREE, State.STANDING, State.INSIDE] and not on_patient else 0
+	# Only a tool moved by a hand is kinematic: frozen as one, a tool let go of would have the physics engine report its
+	# last moving transform back over the one it was put down at (a retractor lying down would stand back up).
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC if state in [State.HELD, State.BELT, State.CARRIED] else RigidBody3D.FREEZE_MODE_STATIC
 	freeze = not (physical and multiplayer.is_server())
 	if state != State.HELD:
 		lowered_before = false

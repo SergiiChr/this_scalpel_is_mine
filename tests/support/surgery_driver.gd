@@ -127,6 +127,21 @@ func press(action: String, pressed: bool = true) -> void:
 	me._unhandled_input(event)
 
 
+## Presses (and with pressed false, lets go of) an input action through the engine's input, as a key or mouse button
+## does: it reaches the game when the engine dispatches input, between physics frames, not straight away.
+func press_key(action: String, pressed: bool = true) -> void:
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = pressed
+	Input.parse_input_event(event)
+
+
+## A click of an input action through the engine's input (see press_key()).
+func tap_key(action: String) -> void:
+	press_key(action)
+	press_key(action, false)
+
+
 func release(action: String) -> void:
 	press(action, false)
 
