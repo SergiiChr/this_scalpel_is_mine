@@ -15,13 +15,6 @@ const STANDING_ROOM := 0.04
 ## How high (meters) over the body at rest a tool lying on it rests at its tip, about half its thickness. Elsewhere it
 ## rests right on the body: breathing lifts a belly into it a little, never enough to stand it up.
 const LYING_CLEARANCE := 0.0025
-## How far (radians) to either side of the way it pulled a tool let go of on the skin may swing to lie flatter, in how
-## many steps each way.
-const LYING_SWING := PI / 3.0
-const LYING_STEPS := 4
-## What swinging aside costs against tilting (radians of tilt per radian of swing): it swings only to lie clearly
-## flatter.
-const LYING_SWING_COST := 0.1
 ## Where along a lying tool (a share of its length from the tip) it's checked against the body.
 const LYING_SAMPLES: Array[float] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 const DISH_REACH := 0.4
@@ -526,30 +519,23 @@ func leave_standing(tool: SurgicalTool) -> void:
 
 
 ## Where a tool holding the skin lies once let go of: its tip on the body over where it holds (the skin stays held
-## where the hand left it, see leave_standing()), and the rest of it lying along the body pointing away from where it
-## took hold (the way it pulled), pressing into it a little rather than standing up. It swings aside, up to
-## LYING_SWING, to wherever it lies flattest: along a limb rather than across it. Not pulled anywhere yet, it points the
-## way it was held.
+## where the hand left it, see leave_standing()), and the rest of it lying along the body with its handle pointing
+## straight away from where it took hold: the way it pulled, or away from the cut if it wasn't pulled.
 func lying_from_hold(tool: SurgicalTool) -> Transform3D:
+	var patient := Surgery.current.patient
 	var tip := tool.tip_position()
 	tip.y = _body_under(tool, tip) + LYING_CLEARANCE
-	var away := (tip - Surgery.current.patient.body.uv_to_world(tool.grip_info.anchor)) * Vector3(1, 0, 1)
-	if away.length() < 0.005:
+	var anchor: Vector2 = tool.grip_info.anchor
+	var away := (tip - patient.body.uv_to_world(anchor)) * Vector3(1, 0, 1)
+	var cut := patient.wound_with_id(tool.grip_info.get("wound", 0))
+	if away.length() < 0.005 and cut:
+		away = (patient.body.uv_to_world(anchor) - patient.body.uv_to_world(cut.closest_point(anchor))) * Vector3(1, 0, 1)
+	if away.length() < 0.001:
 		away = tool.global_basis.z * Vector3(1, 0, 1)
 	away = away.normalized()
-	var best := Vector3.ZERO
-	var best_score := INF
-	for step in range(-LYING_STEPS, LYING_STEPS + 1):
-		var swing := LYING_SWING * step / LYING_STEPS
-		var along := away.rotated(Vector3.UP, swing)
-		var slope := _slope_along(tool, tip, along)
-		# Flattest first, up or down; between about as flat, the one closest to the way it pulled.
-		var score := absf(atan(slope)) + absf(swing) * LYING_SWING_COST
-		if score < best_score:
-			best_score = score
-			best = (along + Vector3.UP * slope).normalized()
-	var side := Vector3.UP.cross(best).normalized()
-	return Transform3D(Basis(side, best.cross(side), best), tip + best * tool.def.length)
+	var back := (away + Vector3.UP * _slope_along(tool, tip, away)).normalized()
+	var side := Vector3.UP.cross(back).normalized()
+	return Transform3D(Basis(side, back.cross(side), back), tip + back * tool.def.length)
 
 
 ## How steeply (rise over run) a tool lying from `tip` toward `along` (a direction across the floor) has to slope to

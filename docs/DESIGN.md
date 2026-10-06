@@ -475,11 +475,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the handle but not the skin (self-retaining): the retractor lies down along the body from the hook, pointing away
   from where it took hold, and keeps the skin pulled where the hand left it (`ToolManager.lying_from_hold()`). It rests
   on the body at rest, not on the skin its hook dips and bunches up, nor on the drape (it slides under its edge), so
-  it lies flat rather than standing up; breathing lifts a belly into it a little. It swings up to 60° aside where that
-  lies clearly flatter: along a limb rather than across it.
+  it lies flat rather than standing up; breathing lifts a belly into it a little. Its handle points straight away from
+  where it hooked: the way it pulled, or away from the cut.
   Taken back, the hand goes to where the hook holds, so the skin isn't dragged; Use tool unhooks it.
-- It hooks only skin it's pressed onto, at a cut's edge (`ToolActions.SKIN_HOOKS`): never a target, vessel or organ
-  under it, and not down in the opening, where it would drag the skin far above down and tear it.
+- It hooks only skin (`ToolActions.SKIN_HOOKS`), never a target, vessel or organ under it: the skin it's pressed onto,
+  or pressed into an opening, the edge of the cut on that side (`TissueSim.grip_beside()`). It pulls the skin aside or
+  up, never down into the opening after its tip.
 - Anything left holding onto the patient (a retractor, a hemostat, a Gelpi retractor) has no collider: hands and
   tools reach past it (`SurgicalTool.set_state()`).
 

@@ -18,7 +18,7 @@ const HOOK_OFF := 0.006
 const PULL := 0.02
 ## How far (meters) from the cut's middle its gap is measured.
 const MIDDLE := 0.005
-## Most a retractor let go of may tilt up off the body it lies on (degrees).
+## Most a retractor let go of may tilt up over the body it lies on (degrees).
 const LYING_TILT := 8.0
 ## How deep (meters) a retractor lying on the body may press into it at most: less than its stay's half thickness
 ## (tools/assetgen/instruments.py), so the stay still shows when breathing lifts the belly under it.
@@ -79,8 +79,7 @@ func test_retractor_hooks_one_edge_and_pulls_the_cut_open() -> void:
 	assert_gt(tissue.gap_at(middle, MIDDLE), opened - 0.002, "left alone, it keeps the cut pulled open")
 	var handle := retractor.global_position - retractor.tip_position()
 	assert_lt(absf(handle.normalized().y), 0.35, "it lies along the body (%.0f degrees off level), not standing up" % rad_to_deg(asin(absf(handle.normalized().y))))
-	var flat_aside := (aside * Vector3(1, 0, 1)).normalized()
-	assert_gt((handle * Vector3(1, 0, 1)).normalized().dot(flat_aside), cos(ToolManager.LYING_SWING) - 0.01, "pointing away from the cut, the way it pulled (or swung aside to lie flatter)")
+	_assert_points_away(retractor, aside)
 	await driver.capture("let_go")
 
 	await driver.player_reaches(retractor.tip_position())
@@ -113,9 +112,12 @@ func test_retractors_let_go_round_a_widened_thigh_wound_lie_along_the_limb() -> 
 	await driver.player_cuts_skin(middle - half, middle + half, 3)
 	await driver.player_puts_down()
 	await driver.seconds(1.0)
+	var wounds := driver.patient.wounds.size()
 	var hooks: Array[SurgicalTool] = []
 	for away: Vector2 in [Vector2(0, -1), Vector2(0, 1), Vector2(1, 0)]:
-		var at := _edge_beside(middle + half * away.x * 0.8, away)
+		# On each side at the edge of the opening, pressed into it as a player does: the hook catches the edge on that
+		# side. At the end on the skin past it: drawn along the cut from inside it, it would tear it longer.
+		var at := middle + away * body.meters_to_uv(0.003) if away.x == 0.0 else _edge_beside(middle + half * 0.8, away)
 		SurgeryState.tool_is_on_tray(driver.surgery, "retractor")
 		var retractor := await driver.player_requests_item("retractor")
 		var hook_at := driver.site_point(at)
@@ -126,10 +128,14 @@ func test_retractors_let_go_round_a_widened_thigh_wound_lie_along_the_limb() -> 
 		driver.use(false)
 		await driver.frames(3)
 		assert_eq(retractor.grip_info.get("type", ""), "skin", "retractor %d hooks the edge\n%s" % [hooks.size() + 1, driver.recent()])
-		await driver.player_sweeps_to(retractor.tip_position() + driver.site_point(at + away * body.meters_to_uv(PULL)) - hook_at)
+		# The end only gently: the short strip of skin between the hook and the end of the cut tears pulled 2 cm.
+		var pull := driver.site_point(at + away * body.meters_to_uv(PULL if away.x == 0.0 else PULL * 0.5)) - hook_at
+		await driver.player_sweeps_to(retractor.tip_position() + pull)
 		driver.press("grab")
 		await driver.seconds(1.0)
 		assert_eq(retractor.state, SurgicalTool.State.STANDING, "retractor %d stays hooked when let go of" % (hooks.size() + 1))
+		_assert_points_away(retractor, pull)
+		assert_eq(driver.patient.wounds.size(), wounds, "retractor %d hooked and pulled without tearing" % (hooks.size() + 1))
 		hooks.append(retractor)
 	for retractor in hooks:
 		_assert_lies_on_body(retractor)
@@ -172,6 +178,7 @@ func test_four_retractors_hold_the_abdomen_open_for_the_scalpel_and_forceps() ->
 		await driver.seconds(1.0)
 		assert_eq(retractor.state, SurgicalTool.State.STANDING, "retractor %d stays hooked when let go of" % (hooks.size() + 1))
 		_assert_lies_on_body(retractor)
+		_assert_points_away(retractor, aside)
 		hooks.append(retractor)
 	assert_true(hooks.all(func(r: SurgicalTool) -> bool: return r.state == SurgicalTool.State.STANDING and not r.grip_info.is_empty()), "all four hold the edges")
 	assert_true(body.is_open(appendix.uv), "the abdomen stands open between them")
@@ -252,19 +259,29 @@ func _start(scenario_id: String, case_name: String) -> void:
 	driver.budget.clear()
 
 
-## A retractor let go of lies along the body: tilted no more than LYING_TILT off it, and pressed into it nowhere deeper
-## than LYING_PRESS (it may press into the skin a little rather than stand up off it).
+## A retractor let go of lies on the body: its handle tilts up no more than LYING_TILT over the way the body rises from
+## its hook to its handle (over level where the handle hangs past the edge of a limb), and it presses into the body
+## nowhere deeper than LYING_PRESS.
 func _assert_lies_on_body(retractor: SurgicalTool) -> void:
 	var tip := retractor.tip_position()
 	var grip := retractor.global_position
 	var across := ((grip - tip) * Vector3(1, 0, 1)).length()
-	var off_body := rad_to_deg(atan2(grip.y - tip.y, across) - atan2(_body_height(grip) - _body_height(tip), across))
-	assert_lt(off_body, LYING_TILT, "the retractor lies along the body (%.0f degrees off it), not standing up" % off_body)
+	var tilt := rad_to_deg(atan2(grip.y - tip.y, across))
+	var under := _body_height(grip)
+	var body_rise := rad_to_deg(atan2(under - _body_height(tip), across)) if under != -INF else 0.0
+	assert_lt(tilt - maxf(body_rise, 0.0), LYING_TILT, "the retractor lies down (tilted %.0f degrees, the body rising %.0f), not standing up" % [tilt, body_rise])
 	var deepest := 0.0
 	for i in range(1, 11):
 		var p := tip.lerp(grip, i / 10.0)
 		deepest = maxf(deepest, _body_height(p) - p.y)
 	assert_lt(deepest, LYING_PRESS, "pressed into the body at most %.1f mm" % (deepest * 1000.0))
+
+
+## A retractor let go of points its handle straight away from where it hooked: the way it was pulled.
+func _assert_points_away(retractor: SurgicalTool, pull: Vector3) -> void:
+	var handle := (retractor.global_position - retractor.tip_position()) * Vector3(1, 0, 1)
+	var facing := handle.normalized().dot((pull * Vector3(1, 0, 1)).normalized())
+	assert_gt(facing, 0.97, "its handle points away from the hook, the way it pulled (%.0f degrees off)" % rad_to_deg(acos(clampf(facing, -1.0, 1.0))))
 
 
 ## The height of the body at rest under p (world y): the site's measured surface, elsewhere the body's own collider.
