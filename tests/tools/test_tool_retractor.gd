@@ -20,11 +20,9 @@ const PULL := 0.02
 const MIDDLE := 0.005
 ## Most a retractor let go of may tilt up over the body it lies on (degrees).
 const LYING_TILT := 8.0
-## How deep (meters) a retractor lying on the body may press into it at most: about its stay's half thickness
-## (tools/assetgen/instruments.py), so the stay still shows when breathing lifts the belly under it.
-## NOTE: loosened from 2 mm, the stay's half thickness (2.2 mm). Breathing lifts the belly into a retractor lying still
-## by up to about 2.4 mm. Back to 2 mm once a lying retractor follows breathing or clears the belly at its highest.
-const LYING_PRESS := 0.0025
+## How deep (meters) a retractor lying on the body may press into it at most: less than its stay's half thickness
+## (tools/assetgen/instruments.py), so the stay still shows. It rises and falls with a breathing belly.
+const LYING_PRESS := 0.002
 ## How long (meters) the cut the four retractors hold open is.
 const OPENING := 0.08
 
@@ -187,6 +185,13 @@ func test_four_retractors_hold_the_abdomen_open_for_the_scalpel_and_forceps() ->
 	var gap := body.tissue.gap_at(appendix.uv, MIDDLE, TissueSim.Depth.MUSCLE)
 	assert_gt(gap, PULL, "%.1f cm wide through the muscle" % (gap * 100.0))
 	assert_eq(patient.wounds.size(), wounds, "held open without tearing")
+	# Over a few breaths: the belly rises and falls, and the retractors on it with it.
+	var deepest := 0.0
+	for i in 16:
+		await driver.seconds(0.25)
+		for retractor in hooks:
+			deepest = maxf(deepest, _pressed_in(retractor))
+	assert_lt(deepest, LYING_PRESS, "breathing, the belly lifts the retractors with it: pressed in at most %.1f mm" % (deepest * 1000.0))
 	await driver.capture("retracted")
 
 	# The scalpel goes down into the opening between them and cuts the appendix's base free.
@@ -272,11 +277,17 @@ func _assert_lies_on_body(retractor: SurgicalTool) -> void:
 	var under := _body_height(grip)
 	var body_rise := rad_to_deg(atan2(under - _body_height(tip), across)) if under != -INF else 0.0
 	assert_lt(tilt - maxf(body_rise, 0.0), LYING_TILT, "the retractor lies down (tilted %.0f degrees, the body rising %.0f), not standing up" % [tilt, body_rise])
+	var deepest := _pressed_in(retractor)
+	assert_lt(deepest, LYING_PRESS, "pressed into the body at most %.1f mm" % (deepest * 1000.0))
+
+
+## How deep (meters) a retractor lying on the body presses into it at its deepest along it now.
+func _pressed_in(retractor: SurgicalTool) -> float:
 	var deepest := 0.0
 	for i in range(1, 11):
-		var p := tip.lerp(grip, i / 10.0)
+		var p := retractor.tip_position().lerp(retractor.global_position, i / 10.0)
 		deepest = maxf(deepest, _body_height(p) - p.y)
-	assert_lt(deepest, LYING_PRESS, "pressed into the body at most %.1f mm" % (deepest * 1000.0))
+	return deepest
 
 
 ## A retractor let go of points its handle straight away from where it hooked: the way it was pulled.

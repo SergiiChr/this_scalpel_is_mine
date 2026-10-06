@@ -475,7 +475,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the handle but not the skin (self-retaining): the retractor lies down along the body from the hook, pointing away
   from where it took hold, and keeps the skin pulled where the hand left it (`ToolManager.lying_from_hold()`). It rests
   on the body at rest, not on the skin its hook dips and bunches up, nor on the drape (it slides under its edge), so
-  it lies flat rather than standing up; breathing lifts a belly into it a little. Its handle points straight away from
+  it lies flat rather than standing up. It rides the site, rising and falling with a breathing belly, and so does the
+  skin it holds (`SurgicalTool.ride()`). Its handle points straight away from
   where it hooked: the way it pulled, or away from the cut.
   Taken back, the hand goes to where the hook holds, so the skin isn't dragged; Use tool unhooks it.
 - It hooks only skin (`ToolActions.SKIN_HOOKS`), never a target, vessel or organ under it: the skin it's pressed onto,

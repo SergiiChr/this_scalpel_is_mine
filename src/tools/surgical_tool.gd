@@ -91,6 +91,10 @@ var spread := ToolActions.SPREAD_RANGE.x:
 		spread = value
 		_animator.open_to(value, -def.length)
 var in_wound := false
+## Lying on the patient (a retractor let go of), it rides the site, `riding_pose` in the site's space: breathing lifts
+## and lowers it with the belly. Null for anything else.
+var riding: Node3D = null
+var riding_pose := Transform3D()
 ## Where a spreader set just now eases down from and to, and how far it is along (1 there).
 var _dig_from := Transform3D()
 var _dig_to := Transform3D()
@@ -160,6 +164,8 @@ func _process(delta: float) -> void:
 		active = ToolActions.in_use(def.action, hand.lowered, hand.trigger, hand.level)
 		closed = hand.attached or def.grip == "needle"
 	_animator.animate(active, closed, delta)
+	if riding and state == State.STANDING:
+		global_transform = riding.global_transform * riding_pose
 	if _dig < 1.0:
 		_dig = minf(_dig + delta / DIG_TIME, 1.0)
 		global_transform = _dig_from.interpolate_with(_dig_to, ease(_dig, 0.4))
@@ -186,6 +192,12 @@ func dig_to(pose: Transform3D) -> void:
 	_dig_from = global_transform
 	_dig_to = pose
 	_dig = 0.0
+
+
+## Lies on `node` (the patient's site) from now on, where it is now, moving with it.
+func ride(node: Node3D) -> void:
+	riding = node
+	riding_pose = node.global_transform.affine_inverse() * global_transform
 
 
 func tip_position() -> Vector3:
@@ -332,6 +344,7 @@ func set_state(new_state: State, new_holder: int, new_slot: int) -> void:
 	slot = new_slot
 	if state != State.STANDING:
 		unwrap()
+		riding = null
 	var physical := state == State.FREE
 	visible = state != State.CONSUMED
 	# Left holding onto the patient (set, clamped, hooked), a tool doesn't keep hands or other tools off what's under it.

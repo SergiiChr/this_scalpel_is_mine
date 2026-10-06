@@ -605,12 +605,13 @@ static func _gather(tool: SurgicalTool, uv: Vector2, dt: float) -> float:
 
 
 ## Standing (self-retaining) clamps keep holding their grip after the hand lets go: where their tip is, or for one
-## lying on the skin where the hand left the skin it holds ("hold", see ToolManager.leave_standing()).
+## lying on the skin where the hand left the skin it holds ("hold", in the site's space, see
+## ToolManager.leave_standing()).
 static func update_standing(tool: SurgicalTool, patient: Patient, dt: float) -> void:
 	if tool.def.action == "drip":
 		drip(tool, patient, dt)
 	if not tool.grip_info.is_empty():
-		var hold: Vector3 = tool.grip_info.get("hold", tool.tip_position())
+		var hold: Vector3 = patient.body.site.to_global(tool.grip_info.hold) if tool.grip_info.has("hold") else tool.tip_position()
 		tool.grip_info = patient.update_grip(tool.uid, tool.grip_info, hold, tool.def.power, dt, 0.0)
 		if tool.grip_info.type == "none":
 			tool.grip_info = {}

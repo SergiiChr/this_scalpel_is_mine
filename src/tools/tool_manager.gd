@@ -511,11 +511,23 @@ func give_graft(by_uid: int) -> void:
 func leave_standing(tool: SurgicalTool) -> void:
 	Surgery.current.set_attached(tool.holder, tool.slot, false)
 	var pose := tool.global_transform
-	if tool.grip_info.get("type", "") == "skin":
-		# The skin stays held where the hand left it, the tool lying on top of it.
-		tool.grip_info.hold = tool.tip_position()
+	var lying: bool = tool.grip_info.get("type", "") == "skin"
+	if lying:
+		# The skin stays held where the hand left it (in the site's space, so breathing doesn't pull it), the tool lying
+		# on top of it.
+		tool.grip_info.hold = Surgery.current.patient.body.site.to_local(tool.tip_position())
 		pose = lying_from_hold(tool)
 	_set_state.rpc(tool.uid, SurgicalTool.State.STANDING, tool.holder, -1, pose)
+	if lying:
+		_ride_site.rpc(tool.uid)
+
+
+## A tool lying on the patient rises and falls with the site as the patient breathes (SurgicalTool.ride()).
+@rpc("authority", "call_local", "reliable")
+func _ride_site(uid: int) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.ride(Surgery.current.patient.body.site)
 
 
 ## Where a tool holding the skin lies once let go of: its tip on the body over where it holds (the skin stays held
