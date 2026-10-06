@@ -1,11 +1,25 @@
 extends GutHookScript
 ## Pre-run hook for every test process run_tests.sh starts.
+## Parametrized tests (tests/support/parametrize.gd) get their cases first.
+## GUT_LIST_CASES=1 prints every case as "case: <name>" and runs none: run_tests.sh asks it for cases the source
+## doesn't spell out.
 ## GUT_EXACT_CASE selects one exact case for process-isolated suites: GUT's CLI name filter is a substring match, so
 ## test_hand_stitch would otherwise also run test_hand_stitch_child in the same process.
 ## GUT_TEST_TIMEOUT (seconds) ends the run when one test takes longer, naming it. GUT itself only limits single waits.
 
 
+const Parametrize := preload("res://tests/support/parametrize.gd")
+
+
 func run() -> void:
+	Parametrize.expand(gut)
+	if OS.get_environment("GUT_LIST_CASES") == "1":
+		for script in gut.get_test_collector().scripts:
+			for test in script.tests:
+				print("case: ", test.name)
+		set_exit_code(0)
+		abort()
+		return
 	var wanted := OS.get_environment("GUT_EXACT_CASE")
 	if not wanted.is_empty():
 		var found := 0

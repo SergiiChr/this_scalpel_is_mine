@@ -53,6 +53,17 @@ if [[ $all -eq 0 && ${#tags[@]} -eq 0 ]]; then
 	tags=(smoke)
 fi
 
+# The test cases of a script (its path): the test_ functions it spells out, or for a parametrized one
+# (tests/support/parametrize.gd) the cases Godot generates for it.
+case_names() {
+	if grep -qE '^static func parametrize\(' "$1"; then
+		GUT_LIST_CASES=1 "$GODOT" --path "$ROOT" --headless -s addons/gut/gut_cmdln.gd -gtest="res://${1#"$ROOT/"}" -gexit \
+			-gpre_run_script=res://tests/support/run_hook.gd 2>/dev/null | sed -nE 's/^case: (test_[a-z0-9_]+)$/\1/p'
+	else
+		sed -nE 's/^func (test_[a-z0-9_]+)\(.*$/\1/p' "$1"
+	fi
+}
+
 selected=()
 while IFS= read -r file; do
 	line="$(grep -m1 -E '^const TAGS' "$file" || true)"
@@ -60,7 +71,7 @@ while IFS= read -r file; do
 		echo "Test has no TAGS: ${file#"$ROOT/"}" >&2
 		exit 2
 	fi
-	if [[ -n "$case_filter" ]] && ! grep -qE "^func test_[a-z0-9_]*${case_filter}" "$file"; then
+	if [[ -n "$case_filter" ]] && ! case_names "$file" | grep -qE "$case_filter"; then
 		continue
 	fi
 	matched=1
@@ -143,7 +154,7 @@ run_one() {
 				echo "[ERROR] Isolated case $case_name failed; see $case_log" >>"$log"
 			fi
 			cat "$case_log" >>"$log"
-		done < <(sed -nE 's/^func (test_[a-z0-9_]+)\(.*$/\1/p' "$source")
+		done < <(case_names "$source")
 		if [[ $count -eq 0 ]]; then
 			echo "[ERROR] No isolated cases matched." >>"$log"
 			touch "$LOGS/$name.failed"
@@ -164,11 +175,11 @@ run_one() {
 # cases that had passed.
 EXIT_GRACE=30
 # Seconds one test may run (GUT_TEST_TIMEOUT, tests/support/run_hook.gd) before its process is stopped, and the same
-# for scripts tagged slow. Set from the test times (JUnit) of a full CI-style run, with three times the time as
-# headroom: the 58 tests that ran took 25 s on average, so 3 x 25 s rounded up; a script with a test over a third of
-# that is tagged slow, and gets 3 x the longest (test_gameplay_regression, 514 s) rounded up to the minute.
-TEST_TIMEOUT=90
-SLOW_TEST_TIMEOUT=1560
+# for scripts tagged slow. Set from the test times (JUnit) of a full CI-style run, where the tests took 25 s on average:
+# 60 s, over twice that. A script with a test over half of it is tagged slow, and gets three times its longest test
+# (test_syringe_iv_and_plunger_cases, 119 s) rounded up to the minute.
+TEST_TIMEOUT=60
+SLOW_TEST_TIMEOUT=360
 
 # Preserve the process failure as well as GUT's result. A timeout can happen after earlier cases passed,
 # before GUT writes its final XML; calling that "No test cases ran" hides the actual cause.
@@ -240,7 +251,7 @@ if [[ $jobs -le 1 ]]; then
 elif [[ ${#together[@]} -gt 0 ]]; then
 	echo "Running ${#together[@]} test scripts, $jobs at a time."
 	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE EXIT_GRACE TEST_TIMEOUT SLOW_TEST_TIMEOUT
-	export -f run_one run_case log_name
+	export -f run_one run_case log_name case_names
 	printf '%s\0' "${together[@]}" | xargs -0 -n1 -P "$jobs" bash -c 'run_one "$1"' _
 	for script in "${together[@]}"; do
 		report "$script"

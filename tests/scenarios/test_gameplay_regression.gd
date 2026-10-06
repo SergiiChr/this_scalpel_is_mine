@@ -1,8 +1,8 @@
 extends GutTest
-## Slow regression: loads every scenario, uses every tool on the patient, fires every event and drug,
-## turns the patient and builds the report. Any script error shows up in the output.
+## Every scenario, one case each: loads it, uses every tool on the patient, fires every event and drug, turns the
+## patient and builds the report. Any script error shows up in the output.
 ## Checks that depend on the room, the site or the patient run in every scenario; the rest (controls, effects, iodine,
-## syringe, nurse, anesthesia, smoking) only in the first one.
+## syringe, nurse, anesthesia, smoking) only in the first one, test_sweep_hand_stitch.
 
 const TAGS = ["slow", "scenario"]
 
@@ -10,18 +10,14 @@ const SURGERY := preload("res://scenes/surgery.tscn")
 const FrameBudget := preload("res://tests/support/frame_budget.gd")
 
 
-func test_all_gameplay_systems_in_every_scenario() -> void:
-	var exercised := 0
-	var only := ""
-	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--scenario="):
-			only = arg.get_slice("=", 1)
-	for scenario in Db.scenarios + Db.disabled_scenarios:
-		if only and scenario.id != only:
-			continue
-		await _run(scenario, exercised == 0)
-		exercised += 1
-	assert_eq(exercised, 1 if only else Db.scenarios.size() + Db.disabled_scenarios.size(), "every selected scenario completed the broad gameplay sweep")
+## One case per scenario, disabled ones too (tests/support/parametrize.gd): test_sweep_hand_stitch and so on.
+static func parametrize() -> Dictionary:
+	return {"sweep": (Db.scenarios + Db.disabled_scenarios).map(func(s: ScenarioDef) -> String: return s.id)}
+
+
+## The first scenario also runs the checks that don't depend on the scenario.
+func sweep(id: String) -> void:
+	await _run(Db.scenario(id), id == Db.scenarios[0].id)
 
 
 func _run(scenario: ScenarioDef, once: bool) -> void:
