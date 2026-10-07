@@ -175,9 +175,9 @@ run_one() {
 # cases that had passed.
 EXIT_GRACE=30
 # Seconds one test may run (GUT_TEST_TIMEOUT, tests/support/run_hook.gd) before its process is stopped, and the same
-# for scripts tagged slow. Set from the test times (JUnit) of a full CI-style run, where the tests took 25 s on average:
-# 60 s, over twice that. A script with a test over half of it is tagged slow, and gets three times its longest test
-# (test_syringe_iv_and_plunger_cases, 119 s) rounded up to the minute.
+# for scripts tagged slow. Set from the test times (JUnit) of a full CI-style run, pending tests that still play
+# counted too: they took 25 s on average, so 60 s is over twice that. A script with a test over half of it is tagged
+# slow, and gets three times its longest test (test_syringe_iv_and_plunger_cases, 119 s) rounded up to the minute.
 TEST_TIMEOUT=60
 SLOW_TEST_TIMEOUT=360
 
