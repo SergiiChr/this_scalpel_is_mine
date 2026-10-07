@@ -504,7 +504,7 @@ public partial class SurgeryDriver
             for (var key = 0; key < 8; key++)
             {
                 await Frames.Physics(20);
-                if (Surgery.Hud.FindChildren("*", nameof(QteView), true, false).OfType<QteView>().LastOrDefault() is not { } qte)
+                if (Surgery.Hud.FindChildren("*", "", true, false).OfType<QteView>().LastOrDefault() is not { } qte)
                 {
                     break;
                 }

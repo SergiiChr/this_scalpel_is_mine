@@ -166,6 +166,8 @@ public partial class SurgeonHand : Node3D
     /// <summary>What the fingers were last posed for.</summary>
     private PoseKey? _posed;
     private Node3D _glove = null!;
+    /// <summary>The glove model, its origin at the wrist.</summary>
+    internal Node3D Glove => _glove;
     private BoneRig? _gloveRig;
     private List<ShaderMaterial> _gloveMaterials = [];
     private Node3D _upper = null!;
@@ -174,6 +176,8 @@ public partial class SurgeonHand : Node3D
     private Node3D _fore = null!;
     /// <summary>Where the elbow was put last.</summary>
     private Vector3 _elbow;
+    /// <summary>Where the elbow was put last (world).</summary>
+    internal Vector3 Elbow => _elbow;
     /// <summary>Where the elbow is held (owner's space) while aiming.</summary>
     private Vector3 _heldElbow;
     /// <summary>1 held, 0 free, eased back after aiming.</summary>

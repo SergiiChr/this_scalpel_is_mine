@@ -43,7 +43,10 @@ public partial class SurgeryDriver : Node
         // A test that failed half way leaves its surgery running: it would play on beside this one.
         foreach (var stale in Frames.Root.GetChildren().OfType<SurgeryDriver>())
         {
-            stale.Free();
+            // Out of the tree at once, so it stops playing; freed at the end of the frame, as freeing it in the middle
+            // of one trips up the engine's C# bindings.
+            Frames.Root.RemoveChild(stale);
+            stale.QueueFree();
         }
         var driver = new SurgeryDriver();
         Frames.Root.AddChild(driver);
@@ -354,7 +357,7 @@ public partial class SurgeryDriver : Node
     /// </summary>
     public async Task<bool> PlayerInteracts(string prompt)
     {
-        var station = Surgery.Room.FindChildren("*", nameof(Interactable), true, false)
+        var station = Surgery.Room.FindChildren("*", "", true, false)
             .OfType<Interactable>()
             .FirstOrDefault(node => node.Prompt == prompt && node.OfferedTo(Me));
         if (station is null)

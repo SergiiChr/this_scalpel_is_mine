@@ -9,7 +9,7 @@ public partial class Surgeon
     private const float NeedleViewElevation = 0.6f;
     private const float NeedleViewMargin = 0.025f;
     /// <summary>Zoomed all the way in, whatever they hold, the hands are this see-through.</summary>
-    private const float ZoomSeeThrough = 0.65f;
+    internal const float ZoomSeeThrough = 0.65f;
     /// <summary>A syringe's needle in the patient (Use tool held) keeps its tip where it went in: the mouse only tilts
     /// the syringe about it. A pull it can't follow (sideways, or past how far the hand tilts) stretches the skin by this
     /// share of the motion.</summary>
