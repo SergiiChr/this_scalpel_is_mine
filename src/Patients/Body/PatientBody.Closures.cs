@@ -22,7 +22,7 @@ public sealed record DrawnSuture(
 /// <summary>Closures drawn on the site: running threads and staples, riding the tissue they hold.</summary>
 public partial class PatientBody
 {
-    private const float SutureRadius = 0.00028f;
+    public const float SutureRadius = 0.00028f;
     private const float SutureEntryDepth = 0.00045f;
     private const int SutureSamples = 9;
     private const float SuturePressureSize = 0.008f;
@@ -145,7 +145,7 @@ public partial class PatientBody
     /// <summary>Draws each running thread as tubes from hole to hole, plus the live free end from its newest hole to
     /// the needle. Routed spans are rebuilt only when their holes move, tension changes or they let go. The free end
     /// follows its needle.</summary>
-    private void UpdateSutures()
+    internal void UpdateSutures()
     {
         var tissueChanged = _sutureSteps != Tissue.StepsDone || _sutureTopology != Tissue.TopologyVersion;
         if (tissueChanged)
@@ -297,7 +297,7 @@ public partial class PatientBody
 
     /// <summary>Deep cables rest on their own drawn layer, not on the skin covering it. Interpolates the same grid used
     /// by its mesh.</summary>
-    private float SutureLayerHeight(Vector2 uv, TissueDepth layer)
+    internal float SutureLayerHeight(Vector2 uv, TissueDepth layer)
     {
         var index = (int)layer - 1;
         var grid = uv.Clamp(Vector2.Zero, Vector2.One) * new Vector2(Tissue.ResX, Tissue.ResY);

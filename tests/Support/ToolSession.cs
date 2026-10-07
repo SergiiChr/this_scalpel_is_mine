@@ -55,6 +55,16 @@ public sealed class ToolSession
         return session;
     }
 
+    /// <summary>In a run with key frames, saves what the surgeon sees now as <paramref name="keyFrame"/>.</summary>
+    public async Task CaptureView(string keyFrame)
+    {
+        if (Shots is { } shots)
+        {
+            await Driver.Unbudgeted(async () => AssertBool(await shots.CaptureView(keyFrame))
+                .OverrideFailureMessage($"saved the surgeon's view {keyFrame}").IsTrue());
+        }
+    }
+
     /// <summary>Checks the frame budget (<paramref name="budgetBroken"/>: why it's known to go over) and ends the
     /// surgery.</summary>
     public async Task Finish(string budgetBroken = "")

@@ -112,12 +112,18 @@ public partial class SurgeryDriver : Node
 
     public async Task Capture(string keyFrame)
     {
-        if (OnKeyFrame is null)
+        if (OnKeyFrame is not null)
         {
-            return;
+            await Unbudgeted(() => OnKeyFrame(keyFrame));
         }
+    }
+
+    /// <summary>Does <paramref name="work"/> (drawing a screenshot, say) outside the frame budget: it isn't
+    /// gameplay.</summary>
+    public async Task Unbudgeted(Func<Task> work)
+    {
         _budgetPaused = true;
-        await OnKeyFrame(keyFrame);
+        await work();
         _budgetPaused = false;
         Budget.Resume();
     }

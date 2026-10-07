@@ -9,6 +9,10 @@ public static class ModelSlot
 {
     private const string Root = "res://assets/models";
     private static readonly string[] Extensions = ["glb", "gltf", "tscn"];
+    /// <summary>Every model loaded so far, kept for the whole game. Unloaded with a surgery and loaded again for the
+    /// next, a model's materials can come back out of Godot's resource cache while their old C# wrappers wait to be
+    /// finalized, which fails ("Handle is not initialized").</summary>
+    private static readonly Dictionary<string, PackedScene> Loaded = [];
 
     /// <summary>Adds the model under <paramref name="parent"/>. <paramref name="overrides"/>: material name -> material,
     /// for names that need per-instance treatment ("skin", "tint").</summary>
@@ -18,9 +22,10 @@ public static class ModelSlot
         foreach (var extension in Extensions)
         {
             var path = $"{Root}/{category}/{modelName}.{extension}";
-            if (ResourceLoader.Exists(path))
+            if (Loaded.TryGetValue(path, out var scene) || ResourceLoader.Exists(path))
             {
-                var node = GD.Load<PackedScene>(path).Instantiate<Node3D>();
+                scene ??= Loaded[path] = GD.Load<PackedScene>(path);
+                var node = scene.Instantiate<Node3D>();
                 parent.AddChild(node);
                 Toonify(node, overrides);
                 return node;

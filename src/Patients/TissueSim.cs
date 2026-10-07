@@ -229,7 +229,7 @@ public sealed class TissueSim
     /// <summary>Changes whenever springs are cut, stitched or snap (meshes rebuild their triangles).</summary>
     public int TopologyVersion { get; private set; }
     /// <summary>Counts simulation steps, so meshes only rebuild when something moved.</summary>
-    public int StepsDone { get; private set; }
+    public int StepsDone { get; internal set; }
 
     private sealed class Pin(int particle, Vector3 target)
     {
