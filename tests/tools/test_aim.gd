@@ -103,6 +103,8 @@ static func _tip_steps(driver: Driver, tool: SurgicalTool, count: int) -> Vector
 ## The aim shows where a tool comes down: a syringe on the forearm vein, a blade, a stapler and a Gelpi retractor on the
 ## belly, each at the lowest, a middle and the highest tilt, land within a millimeter of the aim across the skin.
 func test_every_tool_lands_where_its_aim_shows() -> void:
+	# Nothing to see: the aim is checked against where each tool comes down.
+	RenderingServer.render_loop_enabled = false
 	var driver: Driver = Driver.new()
 	add_child(driver)
 	await driver.start("appendectomy")
@@ -134,6 +136,7 @@ func test_every_tool_lands_where_its_aim_shows() -> void:
 		await driver.player_puts_down()
 	await driver.stop()
 	driver.queue_free()
+	RenderingServer.render_loop_enabled = true
 
 
 func _check_still(me: Surgeon, hand: SurgeonHand, wrist: Vector3, elbow: Vector3, what: String) -> void:

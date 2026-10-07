@@ -712,7 +712,7 @@ func player_closes_wounds(tool_id: String = "needle") -> void:
 
 ## Staples `wound` shut with the stapler in the active hand: centered on the cut every `spacing` meters along it (the
 ## first and last a little in from its ends), legs square across it (as C/V turn a blade along it), clicked at each spot
-## (where the cut is already closed nothing goes in). Where the muscle under it is still open the staples go into
+## where the cut doesn't already look closed. Where the muscle under it is still open the staples go into
 ## the muscle, so it goes along again for the skin, up to `rounds` times while it isn't closed. Captures the first
 ## staple as key frame `first_staple`. Returns how many staples went in.
 func player_staples(wound: Wound, spacing: float = TissueSim.STITCH_REACH, rounds: int = 4) -> int:
@@ -725,6 +725,9 @@ func player_staples(wound: Wound, spacing: float = TissueSim.STITCH_REACH, round
 		for i in floori(wound.length_uv() / step) + 1:
 			# A few millimeters in from the ends: aimed right at its end the stapler can land just past the cut.
 			var along := clampf(i * step, step * 0.6, wound.length_uv() - step * 0.6)
+			# Where the cut already looks closed there's nothing to staple.
+			if body.tissue.closed_at(_beside_wound(wound, along, 0.0)):
+				continue
 			var at := site_point(_beside_wound(wound, along, 0.0))
 			var cut := site_point(_beside_wound(wound, along + step * 0.5, 0.0)) - site_point(_beside_wound(wound, along - step * 0.5, 0.0))
 			await _within_reach(at)
