@@ -1,0 +1,32 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Scalpel</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Lint: the compiler's own analyzers at the recommended level, the code style in .editorconfig and Roslynator,
+         all as errors, so `dotnet build` is the lint check. -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsTestProject Condition="'$(Configuration)' != 'ExportRelease'">true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Roslynator.Analyzers" Version="4.14.1" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- The tests and the test framework stay out of exported games. -->
+  <ItemGroup Condition="'$(Configuration)' == 'ExportRelease'">
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' != 'ExportRelease'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="gdUnit4.api" Version="5.0.0" />
+    <PackageReference Include="gdUnit4.test.adapter" Version="3.0.0" />
+    <PackageReference Include="gdUnit4.analyzers" Version="1.0.0" PrivateAssets="all" />
+    <PackageReference Include="JunitXml.TestLogger" Version="8.0.0" />
+  </ItemGroup>
+</Project>
