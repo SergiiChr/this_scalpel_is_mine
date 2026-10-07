@@ -4,7 +4,7 @@ extends "res://tests/support/slicing_suite.gd"
 ## cohesive openings, aligned edges, organically separated layers, and the absence of blockiness, clipping or raised
 ## plateaus.
 
-const TAGS = ["smoke", "tissue_modification", "tool_scalpel", "visual_confirmation"]
+const TAGS = ["slow", "smoke", "tissue_modification", "tool_scalpel", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const OUT := "res://build/test-artifacts/screenshots/slicing"
 

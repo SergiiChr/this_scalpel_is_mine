@@ -6,7 +6,7 @@ extends GutTest
 ## were while the scalpel swings right and tips up, the glove bending at the wrist without breaking from the cuff, the
 ## scalpel showing beside the hand at rest and the hands see-through zoomed in.
 
-const TAGS = ["smoke", "tool_scalpel", "visual_confirmation"]
+const TAGS = ["slow", "smoke", "tool_scalpel", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")

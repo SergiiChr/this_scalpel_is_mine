@@ -50,6 +50,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
 
 - Tests are separated into folders by feature (`tests/<feature>/test_*.gd`) and use GUT as the runner and assertion
   framework. Tags are not folders. Shared helpers that aren't tests live in `tests/support/`.
+- A list of cases that differ only in a value (every scenario) is one parametrized method, each value its own
+  case: see `tests/support/parametrize.gd`.
 - Each test script declares `const TAGS = [...]` on one line. A script that needs Godot options declares them the
   same way, e.g. `const GODOT_ARGS = ["--fixed-fps", "60"]` to run long surgeries faster than real time.
 - Run independent test scripts in parallel where possible.
@@ -65,7 +67,9 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   walks to the patient, makes a light 5 cm cut, and the resulting opening measures 5 cm.
 - Tag conservatively. A tag must describe either the test type or a feature selection worth rerunning, such as all
   scalpel tests. Tags in use: `smoke`, `slow`, `scenario`, `network`, `tissue_modification`, `liquids`, `tool_<id>`,
-  `tool_all` and `visual_confirmation`. `slow` means one test takes longer than five minutes.
+  `tool_all` and `visual_confirmation`. `slow` means one test takes longer than half the per-test timeout
+  (`TEST_TIMEOUT` in `tests/run_tests.sh`, 60 s); its script then gets `SLOW_TEST_TIMEOUT`. A test that runs longer
+  than its timeout is stopped and fails, named in its log.
 - Keep simulated player actions and direct state changes apart. `player_*` steps in `tests/support/surgery_driver.gd`
   (`player_requests_item("scalpel")`, `player_cuts_skin(from, to, level)`) walk, hold tools and press the controls a
   player has, so the game itself does the work. Functions in `tests/support/surgery_state.gd` are named for the state
@@ -80,7 +84,8 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   frames in a run with them, only when its assertions fully validate the behavior without the screenshots.
 - If a non-trivial failure cannot be fixed in the current change, mark its GUT case pending with a `BROKEN:` reason.
   Disable any main-menu scenario that relies on it (`disabled=true` in its cfg) and place a code comment beside the
-  disablement naming the broken GUT test. Never silently delete or weaken the case.
+  disablement naming the broken GUT test. Never silently delete or weaken the case. A case that marks itself pending
+  with `Broken.reproduce()` (`tests/support/broken.gd`) still plays and fails in a run with `RUN_BROKEN=1`.
 
 ## Visual verification policy
 

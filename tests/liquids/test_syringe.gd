@@ -3,7 +3,7 @@ extends GutTest
 ## syringe, its target and what the patient got all add up after every notch.
 ## The table below is the executable source of truth for all syringe and IV cases.
 
-const TAGS = ["smoke", "liquids", "tool_syringe_3", "tool_syringe_10", "tool_syringe_50", "tool_iv_catheter"]
+const TAGS = ["slow", "smoke", "liquids", "tool_syringe_3", "tool_syringe_10", "tool_syringe_50", "tool_iv_catheter"]
 const Bench := preload("res://tests/support/syringe_bench.gd")
 
 var bench: Bench

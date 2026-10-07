@@ -5,7 +5,7 @@ extends GutTest
 ## obliquely and what the surgeon sees (the < > aim at the tips). Review them for the points sitting on the cut's
 ## edges, the opening widening with the tips and not past them, no skin passing through the jaws and the < > on the tips.
 
-const TAGS = ["smoke", "tool_gelpi", "tissue_modification", "visual_confirmation"]
+const TAGS = ["slow", "smoke", "tool_gelpi", "tissue_modification", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")

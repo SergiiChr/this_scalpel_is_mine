@@ -53,6 +53,17 @@ if [[ $all -eq 0 && ${#tags[@]} -eq 0 ]]; then
 	tags=(smoke)
 fi
 
+# The test cases of a script (its path): the test_ functions it spells out, or for a parametrized one
+# (tests/support/parametrize.gd) the cases Godot generates for it.
+case_names() {
+	if grep -qE '^static func parametrize\(' "$1"; then
+		GUT_LIST_CASES=1 "$GODOT" --path "$ROOT" --headless -s addons/gut/gut_cmdln.gd -gtest="res://${1#"$ROOT/"}" -gexit \
+			-gpre_run_script=res://tests/support/run_hook.gd 2>/dev/null | sed -nE 's/^case: (test_[a-z0-9_]+)$/\1/p'
+	else
+		sed -nE 's/^func (test_[a-z0-9_]+)\(.*$/\1/p' "$1"
+	fi
+}
+
 selected=()
 while IFS= read -r file; do
 	line="$(grep -m1 -E '^const TAGS' "$file" || true)"
@@ -60,7 +71,7 @@ while IFS= read -r file; do
 		echo "Test has no TAGS: ${file#"$ROOT/"}" >&2
 		exit 2
 	fi
-	if [[ -n "$case_filter" ]] && ! grep -qE "^func test_[a-z0-9_]*${case_filter}" "$file"; then
+	if [[ -n "$case_filter" ]] && ! case_names "$file" | grep -qE "$case_filter"; then
 		continue
 	fi
 	matched=1
@@ -123,7 +134,12 @@ run_one() {
 	else
 		cmd+=(--headless)
 	fi
-	cmd+=(-s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1)
+	local limit=$TEST_TIMEOUT
+	if grep -m1 -E '^const TAGS' "$source" | grep -q '"slow"'; then
+		limit=$SLOW_TEST_TIMEOUT
+	fi
+	cmd=(env GUT_TEST_TIMEOUT="$limit" "${cmd[@]}" -s addons/gut/gut_cmdln.gd -gtest="$script" -gexit -gdisable_colors -glog=1
+		-gpre_run_script=res://tests/support/run_hook.gd)
 	if grep -qE '^const ISOLATE_CASES = true$' "$source"; then
 		: >"$log"
 		local case_name case_log case_xml count=0
@@ -132,14 +148,13 @@ run_one() {
 			count=$((count + 1))
 			case_log="$LOGS/${name}__${case_name}.log"
 			case_xml="$RESULTS/${name}__${case_name}.xml"
-			local case_cmd=(env GUT_EXACT_CASE="$case_name" SURGERY_TRACE=1 "${cmd[@]}"
-				-gpre_run_script=res://tests/support/exact_case.gd -gjunit_xml_file="$case_xml")
+			local case_cmd=(env GUT_EXACT_CASE="$case_name" SURGERY_TRACE=1 "${cmd[@]}" -gjunit_xml_file="$case_xml")
 			if ! run_case "$case_log" "$case_xml" "${case_cmd[@]}"; then
 				touch "$LOGS/$name.failed"
 				echo "[ERROR] Isolated case $case_name failed; see $case_log" >>"$log"
 			fi
 			cat "$case_log" >>"$log"
-		done < <(sed -nE 's/^func (test_[a-z0-9_]+)\(.*$/\1/p' "$source")
+		done < <(case_names "$source")
 		if [[ $count -eq 0 ]]; then
 			echo "[ERROR] No isolated cases matched." >>"$log"
 			touch "$LOGS/$name.failed"
@@ -154,15 +169,43 @@ run_one() {
 	fi
 }
 
+# Seconds a test process gets to quit once GUT has written its whole JUnit report. Under a display (key frames) Godot
+# now and then never finishes quitting: its main thread waits to join an engine thread (likely the dummy audio
+# driver's mixer) that spins at full CPU from the start. Waiting for the timeout cost 40 minutes per case and failed
+# cases that had passed.
+EXIT_GRACE=30
+# Seconds one test may run (GUT_TEST_TIMEOUT, tests/support/run_hook.gd) before its process is stopped, and the same
+# for scripts tagged slow. Set from the test times (JUnit) of a full CI-style run, pending tests that still play
+# counted too: they took 25 s on average, so 60 s is over twice that. A script with a test over half of it is tagged
+# slow, and gets three times its longest test (test_syringe_iv_and_plunger_cases, 119 s) rounded up to the minute.
+TEST_TIMEOUT=60
+SLOW_TEST_TIMEOUT=360
+
 # Preserve the process failure as well as GUT's result. A timeout can happen after earlier cases passed,
 # before GUT writes its final XML; calling that "No test cases ran" hides the actual cause.
 run_case() {
 	local log=$1 xml=$2
 	shift 2
 	rm -f "$xml"
-	local status=0
-	timeout --kill-after=10s 2400 "$@" >"$log" 2>&1 || status=$?
-	if [[ $status -eq 124 || $status -eq 137 ]]; then
+	local status=0 quit_by=0 stuck=0
+	timeout --kill-after=10s 2400 "$@" >"$log" 2>&1 &
+	local pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		if [[ $quit_by -eq 0 ]] && grep -qs '</testsuites>' "$xml"; then
+			quit_by=$((SECONDS + EXIT_GRACE))
+		elif [[ $quit_by -gt 0 && $SECONDS -ge $quit_by ]]; then
+			# timeout passes the signal on to the whole process group (Xvfb included) and kills it 10 s later.
+			stuck=1
+			kill -TERM "$pid"
+			break
+		fi
+		sleep 0.5
+	done
+	wait "$pid" 2>/dev/null || status=$?
+	if [[ $stuck -eq 1 ]]; then
+		echo "[NOTE] Test process didn't quit within $EXIT_GRACE s of writing its report and was stopped; the report decides." >>"$log"
+		grep -q '<testsuites [^>]*failures="0"' "$xml" && status=0 || status=1
+	elif [[ $status -eq 124 || $status -eq 137 ]]; then
 		echo "[ERROR] Test process timed out or was killed (exit $status); limit 2400 seconds." >>"$log"
 	elif [[ $status -ne 0 ]]; then
 		echo "[ERROR] Test process exited with status $status." >>"$log"
@@ -207,8 +250,8 @@ if [[ $jobs -le 1 ]]; then
 	alone=("${selected[@]}")
 elif [[ ${#together[@]} -gt 0 ]]; then
 	echo "Running ${#together[@]} test scripts, $jobs at a time."
-	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE
-	export -f run_one run_case log_name
+	export ROOT GODOT LOGS RESULTS case_filter key_frames ERRORS NOISE EXIT_GRACE TEST_TIMEOUT SLOW_TEST_TIMEOUT
+	export -f run_one run_case log_name case_names
 	printf '%s\0' "${together[@]}" | xargs -0 -n1 -P "$jobs" bash -c 'run_one "$1"' _
 	for script in "${together[@]}"; do
 		report "$script"

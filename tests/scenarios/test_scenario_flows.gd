@@ -4,7 +4,7 @@ extends "res://tests/support/scenario_flow.gd"
 ## In a run with key frames the major scenarios also save the untouched site, then the site right after every
 ## objective. Review them for continuity, clipping, mesh intersections, material consistency and tool contact.
 
-const TAGS = ["scenario", "visual_confirmation"]
+const TAGS = ["slow", "scenario", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 ## CI intermittently stalls when a second operation shares the first one's engine/rendering state.
 ## Keep each complete flow in its own process; the runner still discovers every case in this script.
@@ -100,11 +100,11 @@ func test_bullet_near_heart() -> void:
 
 
 func test_leg_extension() -> void:
-	pending("BROKEN: cautery, a hemostat, tranexamic acid and gauze leave three tears bleeding 0.4 ml/s each, the patient arrests.")
+	pending("BROKEN: the needle threads both 13.5 cm cuts, but their skin stays open (\"needle cannot reach intended puncture within 4 mm\"), \"Close the leg\" never completes.")
 
 
 func test_brain_tumor() -> void:
-	pending("BROKEN: cautery, tranexamic acid and gauze leave tears bleeding, \"Control the bleeding\" never completes.")
+	pending("BROKEN: a 0.5 cm tear opens while the hemostats go on, after the driver's only cautery pass, and its gauze pass presses beside it (held 0), \"Control the bleeding\" never completes. Pressed on directly, gauze and cautery stop such a tear.")
 
 
 func test_euthanasia() -> void:
