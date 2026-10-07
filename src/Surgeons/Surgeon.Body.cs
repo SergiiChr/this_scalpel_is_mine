@@ -20,7 +20,7 @@ public partial class Surgeon
     /// body model this far up off the floor (half the shoulders' width).</summary>
     private const float LyingLift = 0.2f;
     /// <summary>The hands on the floor in front of the chest (local, for a fall to the left).</summary>
-    private static readonly Vector3 LyingHand = new(-0.8f, 0.05f, -0.25f);
+    internal static readonly Vector3 LyingHand = new(-0.8f, 0.05f, -0.25f);
     /// <summary>The camera's pitch lying down, enough to see the table from the floor.</summary>
     private const float LyingPitch = 0.3f;
     /// <summary>On the way down they stagger back to this far (m) from the middle of the table, walls allowing, so the
@@ -55,6 +55,19 @@ public partial class Surgeon
         get => _fallSide;
         set => _fallSide = value;
     }
+
+    /// <summary>How far over onto the floor a knocked out surgeon has gone (0 standing, 1 lying).</summary>
+    internal float Down
+    {
+        get => _down;
+        set => _down = value;
+    }
+
+    /// <summary>How far the walk drops the pelvis now.</summary>
+    internal float WalkDrop => _walkDrop;
+
+    /// <summary>A joint of the body model (Torso, LegL, ShinR...).</summary>
+    internal Node3D Joint(string name) => _joints[name];
 
     /// <summary>Where the body was last frame, which the walk cycle measures speed from.</summary>
     internal Vector3 LastPosition

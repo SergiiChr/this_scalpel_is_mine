@@ -162,7 +162,7 @@ public partial class Patient
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void IvRemoved()
+    internal void IvRemoved()
     {
         IvSet = false;
         IvInVein = false;

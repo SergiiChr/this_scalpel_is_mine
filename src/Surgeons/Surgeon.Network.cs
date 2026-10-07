@@ -9,6 +9,16 @@ public partial class Surgeon
     private float _netYaw;
     private bool _remoteOut;
 
+    /// <summary>Puts a remote copy standing at <paramref name="at"/> facing <paramref name="yaw"/>, as if its owner had
+    /// streamed it there.</summary>
+    internal void PlaceAt(Vector3 at, float yaw)
+    {
+        GlobalPosition = at;
+        _netPosition = at;
+        Rotation = Rotation with { Y = yaw };
+        _netYaw = yaw;
+    }
+
     /// <summary>The state remote copies follow: body, view, active hand, each hand and who's out or down.</summary>
     internal GodotArray PackState()
     {

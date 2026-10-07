@@ -46,6 +46,12 @@ public partial class Surgeon
     private int _rolledHand = -1;
     /// <summary>Where the active hand's needle tip went into the patient (null: it isn't in).</summary>
     private Vector3? _needleAnchor;
+
+    /// <summary>Where the active hand's needle went in, null while it isn't in.</summary>
+    internal Vector3? NeedleAnchor => _needleAnchor;
+
+    /// <summary>The needle tore out since Use tool was pressed.</summary>
+    internal bool NeedleTorn => _needleTorn;
     /// <summary>How far the skin around a needle that's in is pulled.</summary>
     private Vector3 _needlePull;
     /// <summary>Whether the needle tore out since Use tool was pressed (it then moves freely until Use tool is let go).

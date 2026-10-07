@@ -129,7 +129,7 @@ public partial class Surgery : Node3D
         return (wanted is null ? null : Db.Scenario(wanted)) ?? Db.Scenarios[0];
     }
 
-    private Surgeon SpawnSurgeon(int peer, int index)
+    internal Surgeon SpawnSurgeon(int peer, int index)
     {
         var surgeon = new Surgeon();
         SurgeonsRoot.AddChild(surgeon);

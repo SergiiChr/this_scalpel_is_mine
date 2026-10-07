@@ -169,6 +169,8 @@ public partial class SurgeonHand : Node3D
     private BoneRig? _gloveRig;
     private List<ShaderMaterial> _gloveMaterials = [];
     private Node3D _upper = null!;
+    /// <summary>The upper arm's sleeve model.</summary>
+    internal Node3D UpperSleeve => _upper;
     private Node3D _fore = null!;
     /// <summary>Where the elbow was put last.</summary>
     private Vector3 _elbow;

@@ -39,6 +39,9 @@ public sealed class WoundMap
     /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures once per frame by
     /// <see cref="Flush"/>.</summary>
     private readonly byte[][] _data = new byte[LayerCount][];
+
+    /// <summary>A copy of a layer's pixels as they are now, to compare with later.</summary>
+    internal byte[] Snapshot(Layer layer) => (byte[])_data[(int)layer].Clone();
     private readonly bool[] _dirty = new bool[LayerCount];
     /// <summary>Which cells of a coarse Cells x Cells grid have ever been painted into, per layer and channel.
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>

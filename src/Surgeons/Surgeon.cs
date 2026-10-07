@@ -76,7 +76,7 @@ public partial class Surgeon : CharacterBody3D
     private const float BumpDistance = 0.07f;
     private const float SwitchDelay = 0.25f;
     public const int MaxBelt = 4;
-    private static readonly Vector2 LookPitch = new(-1.3f, 0.6f);
+    internal static readonly Vector2 LookPitch = new(-1.3f, 0.6f);
     private const float InteractRange = 1.8f;
     /// <summary>How close a partner's empty hand must be to hand a tool over instead of dropping it.</summary>
     public const float PassDistance = 0.18f;
@@ -125,6 +125,9 @@ public partial class Surgeon : CharacterBody3D
     private readonly bool[] _strain = [false, false];
 
     private static Surgery Session => Surgery.Current!;
+
+    /// <summary>Whether a hand holds onto something past its reach (the host lets it go).</summary>
+    internal bool Strained(int hand) => _strain[hand];
 
     public void Setup(int peer, string playerName, IReadOnlyList<QuirkRoll> rolls, Transform3D spawn)
     {
