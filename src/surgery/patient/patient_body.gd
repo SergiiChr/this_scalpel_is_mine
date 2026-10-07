@@ -177,6 +177,17 @@ const SUTURE_SAMPLES := 9
 const SUTURE_PRESSURE_SIZE := 0.008
 const SUTURE_PRESSURE_TEXTURE := preload("res://assets/sprites/suture_pressure.svg")
 const SUTURE_PRESSURE_SHADER := preload("res://assets/shaders/suture_pressure.gdshader")
+## Staples put in (add_staple()), on every peer: [layer (TissueSim.Depth), [[grid point, offset] per leg]]. Drawn as
+## one steel wire mesh under _staple_root, redrawn when the tissue moved (_staples_drawn_for: [steps, topology, count]).
+var _staples: Array[Array] = []
+var _staple_root: Node3D
+var _staple_material: Material
+var _staples_drawn_for := []
+const STAPLE_RADIUS := 0.0005
+const STAPLE_LEG := 0.002
+const STAPLE_SAMPLES := 6
+## The skin is drawn this much toward the camera (skin.gdshader): what lies on it is lifted as much.
+const SKIN_BIAS := 0.001
 ## Reused by part_at(), which runs every physics frame for every held tool.
 var _part_query := PhysicsShapeQueryParameters3D.new()
 var _part_sphere := SphereShape3D.new()
@@ -209,6 +220,11 @@ func build(site_name: String, tone: Color, age_scale: float) -> void:
 	site.add_child(_suture_root)
 	_suture_material = Materials.toon_unique(Color(0.08, 0.12, 0.18), 0.0, false, 0.45)
 	(_suture_material as ShaderMaterial).set_shader_parameter("camera_bias", 0.001)
+	_staple_root = Node3D.new()
+	_staple_root.name = "Staples"
+	site.add_child(_staple_root)
+	_staple_material = Materials.family_unique("metal", Color(0.8, 0.82, 0.86), 0.25)
+	(_staple_material as ShaderMaterial).set_shader_parameter("camera_bias", 0.001)
 	_suture_pressure_material = ShaderMaterial.new()
 	_suture_pressure_material.shader = SUTURE_PRESSURE_SHADER
 	_suture_pressure_material.set_shader_parameter("pressure_texture", SUTURE_PRESSURE_TEXTURE)
@@ -232,7 +248,56 @@ func _process(delta: float) -> void:
 	_rebuilt_last = rebuild
 	tissue.step(delta, not rebuild)
 	_update_sutures()
+	_update_staples()
 	_jiggle_organs(delta)
+
+
+## A staple put in with its legs at a and b (uv, where they touched the tissue) through `layer` (TissueSim.Depth). Each
+## leg rides the grid point nearest it as the tissue lies now, so the staple moves with the edges it holds.
+func add_staple(a: Vector2, b: Vector2, layer: int) -> void:
+	var legs := []
+	for uv: Vector2 in [a, b]:
+		var p := (uv - Vector2(0.5, 0.5)) * tissue.size
+		var best := 0
+		for k in tissue.pos.size():
+			if Vector2(tissue.pos[k].x, tissue.pos[k].z).distance_squared_to(p) < Vector2(tissue.pos[best].x, tissue.pos[best].z).distance_squared_to(p):
+				best = k
+		legs.append([best, Vector3(p.x - tissue.pos[best].x, 0.0, p.y - tissue.pos[best].z)])
+	_staples.append([layer, legs])
+
+
+## Draws every staple as a wire bridge between its legs, the legs going into the layer it holds: one mesh for all.
+func _update_staples() -> void:
+	var drawn_for := [tissue.steps_done, tissue.topology_version, _staples.size()]
+	if _staple_root == null or _staples.is_empty() or drawn_for == _staples_drawn_for:
+		return
+	_staples_drawn_for = drawn_for
+	var paths: Array[PackedVector3Array] = []
+	for staple in _staples:
+		var layer: int = staple[0]
+		var depth: float = [0.0, SKIN_THICKNESS, SKIN_THICKNESS + fat_thickness][layer - 1]
+		var legs: Array = staple[1]
+		var tops: Array[Vector3] = []
+		for leg: Array in legs:
+			tops.append(layer_point(layer - 1, leg[0]) + leg[1] + Vector3.UP * (STAPLE_RADIUS - depth))
+		var path := PackedVector3Array([tops[0] - Vector3.UP * STAPLE_LEG])
+		for i in STAPLE_SAMPLES + 1:
+			var p := tops[0].lerp(tops[1], float(i) / STAPLE_SAMPLES)
+			if layer == TissueSim.Depth.SKIN:
+				# A straight crown would sink into a rounded limb between its legs: it rides on the skin, as drawn.
+				p.y = maxf(p.y, skin_height(Vector2(p.x / site_size.x + 0.5, p.z / site_size.y + 0.5)) + STAPLE_RADIUS + SKIN_BIAS)
+			path.append(p)
+		path.append(tops[1] - Vector3.UP * STAPLE_LEG)
+		paths.append(path)
+	var wire: MeshInstance3D = _staple_root.get_node_or_null("Wire")
+	if wire == null:
+		wire = MeshInstance3D.new()
+		wire.name = "Wire"
+		wire.material_override = _staple_material
+		_staple_root.add_child(wire)
+	wire.set_meta("paths", paths)
+	wire.set_meta("layers", _staples.map(func(staple: Array) -> int: return staple[0]))
+	wire.mesh = Shapes.tubes(paths, STAPLE_RADIUS, STAPLE_RADIUS, 6)
 
 
 ## Draws each running thread as tubes from hole to hole, plus the live free end from its newest hole to the needle.

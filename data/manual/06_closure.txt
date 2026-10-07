@@ -26,14 +26,18 @@ The mouse wheel pulls the free end, every span at once: down tightens, up loosen
 • Too tight: the ridge rises. Pulled tighter still, the thread tears through: muscle takes a much firmer pull than skin.
 Inside the cavity, hold the needle on an internal injury to repair it.
 
-## 6.4 Clip tension
+## 6.4 Staples
+A stapler puts in one staple per click ([b]Use tool[/b]). The aim shows two rings where its legs go in: turn the stapler so they sit across the wound, one on each edge, and click. Each staple joins the edges for a few millimetres; place them along the whole wound. Over open muscle the staple goes into the muscle first.
+An office stapler now and then tears out through the skin, or catches a vessel and the closed wound keeps bleeding. Cauterize where it bleeds.
+
+## 6.5 Clip tension
 Paper clips take three tension levels, like blade pressure: the mouse wheel sets them, and they work once lowered onto the wound ([b]Use tool[/b]). At level 0 none are placed.
 • Loose: rapid, but the wound edges do not meet and continue to ooze.
 • Correct: edges apposed without blanching. The intended setting.
 • Tight: strongest seal, but clips may cut through.
 > Traction on a sutured wound can pull sutures through.
 
-## 6.5 Strain on the closure
+## 6.6 Strain on the closure
 Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Heparin and high pressure make any closure leak (5.5). Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
 
 [font_size=16][b]References[/b]

@@ -50,6 +50,11 @@ const TENSIONED_CLOSURES: PackedStringArray = ["paper_clips"]
 const STITCH_TENSION: Array[float] = [0.95, 1.25, 0.95, 0.8]
 ## How much load a running thread's spans take before they snap, per layer it's sewn in (by TissueSim.Depth).
 const THREAD_STRENGTH: Array[float] = [0.0, 2.0, 2.15, 3.0]
+## How much of the skin's wounds (by length, skin_closure()) has to be closed for them to count as closed, in every
+## scenario: a few millimeters left open per ten centimeters of cut.
+const CLOSED_ENOUGH := 0.9
+## Bleeding (ml/s) from a vessel a staple goes through.
+const STAPLE_NICK := 0.6
 ## How far (uv) from a point of a wound its muscle counts as underneath it.
 const MUSCLE_REACH := 0.03
 ## Gap in meters that counts as a fully opened wound.
@@ -124,6 +129,8 @@ var _tear_notice_msec := -100000
 ## before the thread held it}}.
 var _sutures: Dictionary = {}
 var _next_suture := 0
+## [steps, topology] of the tissue the wounds' closure was last settled from (_settle_closures()).
+var _settled_for := []
 
 
 func _ready() -> void:
@@ -234,6 +241,7 @@ func _simulate(dt: float) -> void:
 	var bleed_mult := mods.mult("bleed_mult") * clampf(1.0 - fx.clot, 0.2, 2.0)
 	if tourniquet_on and body.is_limb_site():
 		bleed_mult *= 0.1
+	_settle_closures()
 	var total := 0.0
 	var heal := mods.num("heal_rate")
 	var sources: Array = []
@@ -321,6 +329,31 @@ func _simulate(dt: float) -> void:
 	_update_seizure(dt)
 	_update_misc(dt)
 	_check_death(fx)
+
+
+## A skin wound is as closed as its tissue looks. A bin whose edges meet and are held there (TissueSim.closed_at())
+## is closed, whatever closed it; one a closure counted as closed while its edges still gape is only as
+## closed as the gap allows. Thread tension, tape and staples claim closure, this has the last word. Only when the
+## tissue changed.
+func _settle_closures() -> void:
+	var tissue := body.tissue
+	var state := [tissue.steps_done, tissue.topology_version]
+	if state == _settled_for:
+		return
+	_settled_for = state
+	for wound in wounds:
+		if wound.is_internal() or wound.kind == Wound.Kind.BURN:
+			continue
+		var points := PackedVector2Array()
+		for i in wound.bins.size():
+			points.append(wound.bin_position(i))
+		var gaps := tissue.gaps_near(points, tissue.seam_reach())
+		var held := tissue.held_near(points)
+		for i in points.size():
+			if gaps[i] <= TissueSim.CLOSED_GAP and held[i] == 1:
+				wound.bins[i] = 1.0
+			elif wound.bins[i] >= 1.0:
+				wound.bins[i] = clampf(1.0 - gaps[i] / FULL_GAP, 0.0, 0.95)
 
 
 ## Organs held out of place too long, or shoved hard, bruise and start bleeding.
@@ -939,14 +972,23 @@ func _tie_off(wound: Wound, crossings: PackedVector2Array, bins: PackedInt32Arra
 	for crossing in crossings:
 		_tissue_stitch.rpc(crossing, 0.98, THREAD_STRENGTH[layer])
 	_tissue_stitch_path.rpc(path, Wound.BIN_LENGTH_UV * 1.2, 1.0, THREAD_STRENGTH[layer])
-	# Meeting edges squeeze the broad wet groove and blood out, but a narrow pink incision line remains under the
-	# thread. A separate seam mask reveals that line without overloading closure quality in the stitch channel.
+	_paint_seam(path)
+	_closed_with(wound, quality)
+
+
+## Meeting edges squeeze the broad wet groove and blood out, but a narrow pink incision line remains along `path`
+## (uv). A separate seam mask reveals that line without overloading closure quality in the stitch channel.
+func _paint_seam(path: PackedVector2Array) -> void:
 	for i in path.size():
 		var previous := path[maxi(i - 1, 0)]
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, previous, path[i], 0.012, 0.0, WoundMap.Mode.MIN)
 		paint(WoundMap.Layer.WOUNDS, WoundMap.CUT, previous, path[i], 0.004, 0.09, WoundMap.Mode.MAX)
 		paint(WoundMap.Layer.SEAMS, WoundMap.CLOSED_SEAM, previous, path[i], 0.0045, 1.0, WoundMap.Mode.MAX)
 		paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, previous, path[i], 0.026, 1.0, WoundMap.Mode.SUB)
+
+
+## Part of `wound` was just joined for good, as neatly as `quality`: a whole wound closed neatly scores.
+func _closed_with(wound: Wound, quality: float) -> void:
 	wound.closure_quality = lerpf(wound.closure_quality, quality, 0.5)
 	if wound.closure() >= 0.99 and wound.closure_quality > 0.9:
 		add_flag("neat_closure")
@@ -1049,6 +1091,55 @@ func _snap_suture(thread_id: int, crossings: PackedVector2Array, across: Vector2
 		Surgery.current.announce("The thread cut through the %s." % ("fat" if layer == TissueSim.Depth.FAT else "muscle"), true)
 
 
+## A staple from a stapler (`def`) with its legs at a and b (uv, TissueSim.staple_spot()). It joins the skin edges for
+## good around where it crosses the cut, or, where the muscle under it is still open, the muscle: the cut muscle
+## holds the skin apart, so it's stapled first. An improvised one can tear out of the skin or catch a vessel
+## (ToolDef.tear_chance, bleed_chance). Returns whether a staple went in.
+func staple(a: Vector2, b: Vector2, def: ToolDef, improvised_mult: float) -> bool:
+	var tissue := body.tissue
+	var at := tissue.staple_spot(a, b)
+	var wound := _nearest_wound(at, 0.03, false) if at.x >= 0.0 else null
+	if wound == null:
+		return false
+	# The wound's bins under the staple. Whether they're closed is up to the tissue (_settle_closures()).
+	var bins := range(wound.bins.size()).filter(func(i: int) -> bool: return ((wound.bin_position(i) - at) * body.site_size).length() < TissueSim.STITCH_REACH)
+	if wound.through_muscle() and tissue.muscle_open_near(at, MUSCLE_REACH):
+		_tissue_close_layer.rpc(PackedVector2Array([at]), MUSCLE_REACH, TissueSim.Depth.MUSCLE)
+		for i: int in bins:
+			if not tissue.muscle_open_near(wound.bin_position(i), MUSCLE_REACH):
+				wound.muscle[i] = 1.0
+		_tissue_staple.rpc(a, b, TissueSim.Depth.MUSCLE)
+		hurt(0.06, at)
+		return true
+	var leg := a if rng.randi() % 2 == 0 else b
+	if rng.randf() < def.tear_chance:
+		tear(leg, leg - at, body.meters_to_uv(0.012))
+		Surgery.current.announce("The staple tore out through the skin.", true)
+		return true
+	var quality := def.quality
+	if def.improvised:
+		quality = lerpf(quality, 1.0, 1.0 - improvised_mult)
+	_tissue_stitch.rpc(at, STITCH_TENSION[0], 1.2 + quality)
+	_paint_seam(PackedVector2Array(bins.map(func(i: int) -> Vector2: return wound.bin_position(i))))
+	_closed_with(wound, quality)
+	_tissue_staple.rpc(a, b, TissueSim.Depth.SKIN)
+	if def.id == "office_stapler":
+		add_flag("office_staples")
+	if rng.randf() < def.bleed_chance:
+		_staple_bleed(wound, leg)
+	hurt(0.06, at)
+	return true
+
+
+## A staple's leg at uv went through a vessel beside `wound`: it bleeds through the closure until it's cauterized,
+## clamped or pressed (Wound.nicked). More of them along the same wound bleed no faster: they're sealed together.
+func _staple_bleed(wound: Wound, uv: Vector2) -> void:
+	wound.nicked = STAPLE_NICK
+	paint(WoundMap.Layer.FLUIDS, WoundMap.BLOOD, uv, uv, 0.02, 0.9, WoundMap.Mode.MAX)
+	Surgery.current.sound("blood_spurt", body.uv_to_world(uv))
+	Surgery.current.announce("The staple went through a vessel. It's bleeding.", true)
+
+
 func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pressure: int) -> bool:
 	var wound := _nearest_wound(uv, 0.02, false)
 	if wound == null:
@@ -1101,9 +1192,7 @@ func close_at(uv: Vector2, def: ToolDef, dt: float, improvised_mult: float, pres
 		paint(WoundMap.Layer.WOUNDS, WoundMap.STITCH, p - Vector2(0.006, 0.0), p + Vector2(0.006, 0.0), 0.002, 1.0, WoundMap.Mode.MAX)
 		var tension := STITCH_TENSION[pressure] if def.id in TENSIONED_CLOSURES else STITCH_TENSION[0]
 		_tissue_stitch.rpc(p, tension, 1.2 + quality)
-		if def.id == "office_stapler":
-			add_flag("office_staples")
-		elif def.id == "duct_tape":
+		if def.id == "duct_tape":
 			add_flag("duct_tape")
 		if wound.closure() >= 0.99 and wound.closure_quality > 0.9:
 			add_flag("neat_closure")
@@ -1162,6 +1251,8 @@ func cauterize_at(zone: String, uv: Vector2, def: ToolDef, dt: float) -> void:
 		var near := _reaches(wound, uv) if wound.is_internal() else wound.distance_to(uv) < radius + 0.01 + body.meters_to_uv(FULL_GAP) * wound.opened
 		if near and (_inside(zone, uv) if wound.is_internal() else zone == "site"):
 			wound.cauterized = minf(wound.cauterized + def.power * 0.6 * dt, 0.95)
+			# A vessel a staple went through is sealed for good.
+			wound.nicked = maxf(wound.nicked - def.power * STAPLE_NICK * dt, 0.0)
 			sealed = true
 	if zone == "site":
 		paint(WoundMap.Layer.WOUNDS, WoundMap.BURN, uv, uv, radius * 1.5, def.power * dt * 3.0, WoundMap.Mode.ADD)
@@ -1381,7 +1472,7 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float, skin_only: b
 
 
 ## Called when a spreader (the Gelpi retractor) is set into the skin with its jaws' tips at `tips` (world, see
-## ToolActions.spread_tips()): each jaw takes hold of the edge on its own side of the middle.
+## ToolActions.side_points()): each jaw takes hold of the edge on its own side of the middle.
 ## Returns grip info for open_spreader() and release_grip(), with "middle" (uv) and "depth" (meters under the skin the
 ## cut between the tips goes), {"type": "none"} when a tip isn't on the site or there's no cut between them to go into.
 func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Dictionary:
@@ -1547,11 +1638,18 @@ func surgeon_cut_length_m(min_depth: float) -> float:
 	return total
 
 
+## How much of the skin's wounds is closed, by length: a small hole left open counts for as little of it as it is.
 func skin_closure() -> float:
-	var skin := wounds.filter(func(w: Wound) -> bool: return not w.is_internal() and w.kind != Wound.Kind.BURN)
-	if skin.is_empty():
-		return 1.0
-	return skin.reduce(func(acc: float, w: Wound) -> float: return acc + w.closure(), 0.0) / skin.size()
+	var closed := 0.0
+	var total := 0.0
+	for wound in wounds:
+		if wound.is_internal() or wound.kind == Wound.Kind.BURN:
+			continue
+		# A hole is a bin long at least.
+		var length := maxf(wound.length_uv(), Wound.BIN_LENGTH_UV)
+		closed += wound.closure() * length
+		total += length
+	return closed / total if total > 0.0 else 1.0
 
 
 func internal_closed() -> bool:
@@ -1797,6 +1895,11 @@ func _tissue_excise(k: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _tissue_stitch(uv: Vector2, tension: float, strength: float) -> void:
 	body.tissue.stitch(uv, tension, strength)
+
+
+@rpc("authority", "call_local", "reliable")
+func _tissue_staple(a: Vector2, b: Vector2, layer: int) -> void:
+	body.add_staple(a, b, layer)
 
 
 @rpc("authority", "call_local", "reliable")

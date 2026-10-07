@@ -97,8 +97,10 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
     the drape's frame) or to skin hanging off the body never snap; springs stretched at rest (the edge of a round limb)
     break only well past that.
     Stitches are extra springs across the cut, their length is the tension. Thread is stiffer than skin (solved more
-    often). A stitch closes a few millimeters of the cut. A cut counts as closed only where its edges meet: a loose
-    stitch leaves a gap that stays open and bleeds.
+    often). A stitch closes a few millimeters of the cut. A cut counts as closed exactly where it looks closed
+    (`Patient._settle_closures()`): where its edges meet within `TissueSim.CLOSED_GAP` and a stitch, staple or thread
+    span holds them within `TissueSim.HOLD_REACH`, whatever closed it. A gap left between closures, or by a loose
+    stitch, stays open and bleeds, even where a closure counted it closed.
   - The needle sews a running suture (`TissueSim.thread_anchor()`, `Patient.place_suture_anchor()`): each click makes a
     hole and a spring from the last one, the wheel sets every span's length at once (`TissueSim.THREAD_CLOSED` and
     the rest, per layer), and a long hold ties it off. The thread closes the wound bins it crosses and halfway to the
@@ -345,7 +347,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the Gelpi retractor: up opens it, down closes it (see Gelpi retractor).
 - **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
   accurate at any angle (`Surgeon.aim_point()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
-  retractor's tips. The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
+  retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
+  (`Surgeon.on_surface()`), not in the air at the hovering tool. Aimed across a cut, a Gelpi's < and > hang down
+  from the lip on each side into the wound (`Hud.JAW_DEPTH`), where its tips go in. A stapler's legs go in exactly
+  where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
   turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
@@ -454,7 +459,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - A self-retaining spreader (`action="spread"`), beside the plain retractor that pulls one edge like forceps: ring
   handles with a ratchet rising to a box joint and two long arms, each ending in a point bent down under it. It's held
   tipped toward the skin, its points down (`SurgeonHand.SPREADER_TILT`), and lies along a cut with its jaws across
-  it. The aim shows a < and a > where its tips are, square to its length (`ToolActions.spread_tips()`); C/V swing it
+  it. The aim shows a < and a > where its tips are, square to its length (`ToolActions.side_points()`); C/V swing it
   about the upright to turn them across a cut (`SurgeonHand.spreads`). The wheel opens and closes it, in the hand or
   set, from 1.2 to 8 cm between the tips (`ToolActions.SPREAD_RANGE`); the arms swing about the joint to match
   (`ToolAnimator.open_to()`), the handles stay in the fingers.
@@ -484,6 +489,26 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   up, never down into the opening after its tip.
 - Anything left holding onto the patient (a retractor, a hemostat, a Gelpi retractor) has no collider: hands and
   tools reach past it (`SurgicalTool.set_state()`).
+
+### Staplers
+
+- The skin and office staplers (`action="staple"`) put in one staple per Use tool press, no wheel. The aim shows two
+  rings where the legs go in, a fixed `staple_span` apart across the tool (`ToolActions.staple_legs()`); C/V turn
+  them across a cut. The skin stapler's legs reach out up to `staple_give` for the edge of an opening, the office
+  stapler's don't. The rings lie where the legs land (`Surgeon.on_surface()`, tools in the way left out): on the skin,
+  or down in the opening when a leg can't reach an edge, and then the press does nothing. A press staples only with
+  both legs on skin either side of a cut not closed there (`TissueSim.staple_spot()`); otherwise the one who pressed
+  is told why (`ToolActions.staple_miss()`).
+- A staple joins the skin edges within `TissueSim.STITCH_REACH` of where it crosses the cut (`Patient.staple()`); the
+  cut counts closed where its edges then meet, like any closure. Where the muscle under it is still open it
+  goes into the muscle instead, so a cut through the muscle is stapled twice along.
+- Staples are drawn as steel wire bridging the cut, each leg riding the tissue grid point it went in at
+  (`PatientBody.add_staple()`).
+- The office stapler has a `tear_chance` (the staple tears out, a new tear) and a `bleed_chance` (it goes through a
+  vessel: the stapled cut bleeds through it, `Wound.nicked`, until cautery seals it or a clamp or pressure holds it) per
+  staple. A nick is no new wound to close.
+- How closed the skin is (`Patient.skin_closure()`) is weighed by each wound's length: a small hole left open counts
+  for as little of it as it is. The "close" objective is met at `Patient.CLOSED_ENOUGH` (0.9) in every scenario.
 
 ### Tourniquet
 

@@ -4,9 +4,10 @@ extends GutTest
 ## the hand, and zoomed all the way in they're see-through. Headless assertions in smoke; with key frames also the
 ## site from above and obliquely and what the surgeon sees. Review them for the forearm and glove staying where they
 ## were while the scalpel swings right and tips up, the glove bending at the wrist without breaking from the cuff, the
-## scalpel showing beside the hand at rest and the hands see-through zoomed in.
+## scalpel showing beside the hand at rest and the hands see-through zoomed in. Every kind of tool, held at any tilt,
+## comes down where its aim shows.
 
-const TAGS = ["slow", "smoke", "tool_scalpel", "visual_confirmation"]
+const TAGS = ["slow", "smoke", "tool_scalpel", "tool_all", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
 const Driver := preload("res://tests/support/surgery_driver.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
@@ -99,6 +100,42 @@ static func _tip_steps(driver: Driver, tool: SurgicalTool, count: int) -> Vector
 
 
 ## Only the wrist bends: it and the forearm stay where they were before aiming.
+## The aim shows where a tool comes down: a syringe on the forearm vein, a blade, a stapler and a Gelpi retractor on the
+## belly, each at the lowest, a middle and the highest tilt, land within a millimeter of the aim across the skin.
+func test_every_tool_lands_where_its_aim_shows() -> void:
+	var driver: Driver = Driver.new()
+	add_child(driver)
+	await driver.start("appendectomy")
+	SurgeryState.patient_is_asleep(driver.patient)
+	var me := driver.me
+	for id in ["syringe_3", "scalpel", "skin_stapler", "gelpi"]:
+		if driver.free_tools(id).is_empty():
+			SurgeryState.tool_is_on_tray(driver.surgery, id)
+		var tool := await driver.player_requests_item(id)
+		var target: Vector3 = driver.vein_point() if id == "syringe_3" else driver.site_point(Vector2(0.5, 0.5))
+		for tilt: float in [SurgeonHand.TILT_RANGE.x, -0.7, SurgeonHand.TILT_RANGE.y]:
+			await driver.player_walks_to(target)
+			me.hands[me.active].tilt = tilt
+			await driver.player_reaches(target)
+			await driver.frames(5)
+			var aim := me.aim_point()
+			driver.use()
+			await driver.frames(30)
+			var miss := (tool.tip_position() - aim).slide(Vector3.UP).length()
+			assert_lt(miss, 0.001, "%s at tilt %.1f comes down %.1f mm from its aim" % [id, tilt, miss * 1000.0])
+			driver.use(false)
+			await driver.frames(10)
+			if tool.in_wound:
+				# Set by the press: pressed again it comes out.
+				driver.use()
+				await driver.frames(5)
+				driver.use(false)
+				await driver.frames(5)
+		await driver.player_puts_down()
+	await driver.stop()
+	driver.queue_free()
+
+
 func _check_still(me: Surgeon, hand: SurgeonHand, wrist: Vector3, elbow: Vector3, what: String) -> void:
 	var wrist_off := me.to_local(_wrist(hand)).distance_to(wrist)
 	var elbow_off := me.to_local(hand._elbow).distance_to(elbow)

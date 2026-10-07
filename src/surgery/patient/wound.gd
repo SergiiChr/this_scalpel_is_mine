@@ -33,6 +33,9 @@ var bins := PackedFloat32Array()
 var muscle := PackedFloat32Array()
 ## Weighted closure quality, lower bursts easier.
 var closure_quality := 1.0
+## ml/s from vessels a staple went through (Patient._staple_bleed()): it bleeds through the closure until cauterized
+## (which seals it for good, Patient.cauterize_at()), clamped or pressed.
+var nicked := 0.0
 var _length := 0.0
 
 
@@ -91,7 +94,7 @@ func bleed_rate(site_size: float, bleed_mult: float, leak: float = 0.0) -> float
 		base = maxf(base, depth * 2.0)
 	var open_factor := 1.0 + opened * 0.5
 	var sealed := (1.0 - closure() * (1.0 - leak)) * (1.0 - held * (1.0 - leak))
-	return base * bleed_mult * open_factor * sealed * (1.0 - cauterized) * (1.0 - clamped)
+	return (base * open_factor * sealed + nicked * (1.0 - held)) * bleed_mult * (1.0 - cauterized) * (1.0 - clamped)
 
 
 func distance_to(uv: Vector2) -> float:

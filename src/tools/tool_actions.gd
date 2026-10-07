@@ -12,7 +12,7 @@ const LEVEL_NAMES: Dictionary = {
 ## Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
 const TRIGGER_NAMES: Dictionary = {
 	"clamp": "Pinch / let go", "smash": "Strike", "tourniquet": "Tighten", "graft": "Place graft",
-	"shock": "Charge (hold), let go to shock", "sew": "Stitch", "spread": "Set in / take out",
+	"shock": "Charge (hold), let go to shock", "sew": "Stitch", "spread": "Set in / take out", "staple": "Staple",
 }
 ## Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.
 const DEPTH_BY_LEVEL: Array[float] = [0.0, 0.3, 0.6, 1.0]
@@ -44,6 +44,8 @@ const SUTURE_TIE_HOLD := 0.65
 ## (GELPI_CLOSED in tools/assetgen/instruments.py).
 const SPREAD_STEP := 0.005
 const SPREAD_RANGE := Vector2(0.012, 0.08)
+## Steps (meters) a stapler's leg over an opening reaches out in for its edge (staple_legs()).
+const STAPLE_REACH_STEP := 0.0005
 ## How deep (meters) a spreader's points reach into a cut: they hang GELPI_DROP (tools/assetgen/instruments.py) under
 ## its arms, which stop on the skin.
 const SPREAD_REACH := 0.012
@@ -60,16 +62,43 @@ static func blade_direction(tool: SurgicalTool) -> Vector3:
 	return edge.normalized()
 
 
-## Which way a spreader opens across the floor: along the tool's own X axis, where its jaws swing apart. It's held
-## upright (Surgeon._local_update()), so that axis lies flat however the tool is rolled.
-static func spread_axis(tool: SurgicalTool) -> Vector3:
-	return (tool.global_basis.x * Vector3(1, 0, 1)).normalized()
+## Which way a spreader opens, or a stapler's legs lie, across the floor: along the tool's own X axis, where a
+## spreader's jaws swing apart and a stapler's head is wide. Square to a blade's edge (blade_direction()), so turning
+## the tool turns it the same way.
+static func side_axis(tool: SurgicalTool) -> Vector3:
+	return Vector3.UP.cross(blade_direction(tool))
 
 
-## Where a spreader's two tips are, opened `spread` meters apart about its tip: the one toward -X first.
-static func spread_tips(tool: SurgicalTool) -> Array[Vector3]:
-	var half := spread_axis(tool) * tool.spread * 0.5
+## Two points `apart` meters apart about the tool's tip along side_axis(): a spreader's tips, a stapler's legs. The one
+## toward -X first.
+static func side_points(tool: SurgicalTool, apart: float) -> Array[Vector3]:
+	var half := side_axis(tool) * apart * 0.5
 	return [tool.tip_position() - half, tool.tip_position() + half]
+
+
+## Where a stapler's legs go in (world): ToolDef.staple_span apart across it about its tip (side_points()), each one
+## that would land in an opening moved out up to ToolDef.staple_give to its edge. One that can't reach an edge stays
+## in the opening, and the staple won't take.
+static func staple_legs(tool: SurgicalTool, body: PatientBody) -> Array[Vector3]:
+	var legs := side_points(tool, tool.def.staple_span)
+	for side in 2:
+		var out := side_axis(tool) * (STAPLE_REACH_STEP if side == 1 else -STAPLE_REACH_STEP)
+		var leg := legs[side]
+		for i in int(tool.def.staple_give / STAPLE_REACH_STEP) + 1:
+			if not body.tissue.is_open(body.world_to_uv(leg), TissueSim.Depth.SKIN):
+				legs[side] = leg
+				break
+			leg += out
+	return legs
+
+
+## Why a staple with its legs at a and b (uv) didn't go in, for the one who pressed.
+static func staple_miss(tissue: TissueSim, a: Vector2, b: Vector2) -> String:
+	if tissue.is_open(a, TissueSim.Depth.SKIN) or tissue.is_open(b, TissueSim.Depth.SKIN):
+		return "The edges are too far apart: a leg lands in the opening."
+	if tissue.cut_between(a, b).x < 0.0:
+		return "Put the two rings across the cut, one on each edge."
+	return "It's already closed there."
 
 
 ## The tool is doing its job right now (for animation and fingers), not only resting on something.
@@ -97,6 +126,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 	if lowered and not tool.lowered_before:
 		tool.stroke += 1
 		tool.stabbed_level = 0
+		tool.staple_aim = staple_legs(tool, patient.body)
 	tool.lowered_before = lowered
 	# Powered and pressed tools work harder at higher levels.
 	var effort := level / 3.0
@@ -192,7 +222,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			# Pressed onto a cut, the jaws go in on both sides of the aim and stay there, the points down in the cut as deep
 			# as it goes; pressed again they come out. Pressed where there's no cut to go into, it bounces off.
 			if pressed and tool.grip_info.is_empty() and lowered:
-				var info := patient.set_spreader(tool.uid, spread_tips(tool), tool.spread)
+				var info := patient.set_spreader(tool.uid, side_points(tool, tool.spread), tool.spread)
 				if info.type != "none":
 					tool.grip_info = info
 					Surgery.current.set_attached(hand.peer, tool.slot, true)
@@ -207,6 +237,18 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				tool.grip_info = {}
 				Surgery.current.set_attached(hand.peer, tool.slot, false)
 				Surgery.current.tools.sync_spread(tool)
+		"staple":
+			# Pressed down, one staple goes in where its legs (the aim's two points) are. Its middle is over the cut, in the
+			# opening when the cut gapes.
+			if pressed and lowered and zone in ["site", "cavity"] and tool.charges != 0:
+				var legs := tool.staple_aim if not tool.staple_aim.is_empty() else staple_legs(tool, patient.body)
+				var a := patient.body.world_to_uv(legs[0])
+				var b := patient.body.world_to_uv(legs[1])
+				if patient.staple(a, b, def, mods.mult("improvised_mult")):
+					_use_charge(tool)
+					Surgery.current.sound("office_staple" if def.improvised else "staple", tip)
+				else:
+					Surgery.current.tell(hand.peer, staple_miss(patient.body.tissue, a, b))
 		"suture":
 			if lowered and level > 0 and zone == "site" and tool.charges != 0:
 				# Where the skin and fat still gape and the muscle shows, the needle reaches it: sewing the muscle on both
@@ -216,7 +258,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 					Surgery.current.sound("suture_pull", tip)
 				elif patient.close_at(uv, def, dt, mods.mult("improvised_mult"), level):
 					tool.charges -= 1 if tool.charges > 0 else 0
-					Surgery.current.sound({"skin_stapler": "staple", "office_stapler": "office_staple", "surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
+					Surgery.current.sound({"surgical_tape": "tape_rip", "duct_tape": "tape_rip"}.get(def.id, "suture_pull"), tip)
 			elif lowered and level > 0 and zone == "cavity" and tool.charges != 0:
 				# An internal injury under the needle comes first: sewing the muscle of the opening shut would close the
 				# way in to it. Then, inside a wound through the muscle, the muscle.

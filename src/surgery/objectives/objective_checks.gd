@@ -24,7 +24,7 @@ static func check(step: Dictionary, state: Dictionary, surgery: Surgery, delta: 
 			var kind: String = step.target
 			return patient.targets.filter(func(t: CavityTarget) -> bool: return t.kind == kind).all(func(t: CavityTarget) -> bool: return t.extracted)
 		"close":
-			return patient.skin_closure() >= step.get("amount", 0.85)
+			return patient.skin_closure() >= Patient.CLOSED_ENOUGH
 		"close_internal":
 			return patient.internal_closed()
 		"stop_bleeding":

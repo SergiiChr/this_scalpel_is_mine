@@ -39,6 +39,7 @@ func test_gelpi_set_in_a_cut_holds_it_open_until_taken_out() -> void:
 	var own_gape := tissue.gap_at(middle, MIDDLE)
 	var wounds := patient.wounds.size()
 
+	await _aim_into_the_cut(from, to)
 	var gelpi := await driver.player_sets_gelpi(from, to)
 	var hand := driver.me.hands[driver.me.active]
 	assert_true(gelpi.in_wound and hand.attached, "Use tool on the cut sets the retractor in it\n%s" % driver.recent())
@@ -160,6 +161,32 @@ func test_gelpi_holds_a_skin_cut_open_for_the_muscle_under_it() -> void:
 	assert_eq(driver.body.tissue.deepest_cut(middle, driver.body.meters_to_uv(0.004)), TissueSim.Depth.MUSCLE, "the scalpel cuts the muscle between its jaws\n%s" % driver.recent())
 	await driver.capture("muscle_cut")
 	await _finish()
+
+
+## Held over the middle of the cut from `from` to `to` (site uv, along u), square across it, the < and > hang into the
+## wound: each down from the lip on its own side, under the skin, where its tip will go in.
+func _aim_into_the_cut(from: Vector2, to: Vector2) -> void:
+	var body := driver.body
+	var middle := driver.site_point((from + to) * 0.5)
+	await driver.player_requests_item("gelpi")
+	await driver.player_walks_to(middle)
+	await driver.player_turns_blade(driver.site_point(to) - driver.site_point(from))
+	await driver.player_reaches(middle)
+	await driver.frames(3)
+	var marks := driver.surgery.hud.jaw_marks
+	var across := 0.0
+	for side in 2:
+		var local := body.site.to_local(marks[side])
+		var uv := body.world_to_uv(marks[side])
+		var under := body.skin_height(Vector2(uv.x, from.y + (uv.y - from.y) * 3.0))
+		assert_lt(local.y, under - Hud.JAW_DEPTH * 0.5, "mark %d hangs into the wound, under the skin beside it" % side)
+		across += signf(uv.y - from.y) * (1.0 if side == 1 else -1.0)
+	assert_eq(absf(across), 2.0, "one on each side of the cut")
+	if shots:
+		driver.budget_paused = true
+		assert_true(await shots.capture_view("aimed"), "saved the surgeon's view aimed")
+		driver.budget_paused = false
+		driver.budget.resume()
 
 
 ## Which side of the cut's middle each jaw holds the skin on, across the cut (it runs along u): opposite signs for two

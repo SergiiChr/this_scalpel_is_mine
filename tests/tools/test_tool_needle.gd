@@ -67,8 +67,10 @@ func test_running_suture_closes_a_forearm_cut() -> void:
 	assert_true((drawn.get_node("StartKnot") as MeshInstance3D).mesh != null, "the beginning of the running thread has a compact anchor knot")
 	_assert_thread_clears_skin(loose_path, "loose exposed thread")
 	assert_lt(wound.closure(), 0.99, "the thread as it comes leaves the cut open")
+	var loose_gap := tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN)
 	await driver.player_pulls_thread("closed")
-	assert_gt(wound.closure(), 0.99, "pulled until it reads closed, the thread closes the cut along its whole length")
+	# Live, the thread only pulls its holes: the edges between them meet once it's tied off (below).
+	assert_lt(tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN), loose_gap, "pulled until it reads closed, the thread draws the edges together")
 	var tight_path: PackedVector3Array = (routed.get_meta("paths") as Array)[0]
 	assert_lt(_path_length(tight_path), _path_length(loose_path), "tightening takes visible slack out of the thread")
 	assert_gt(float(pressure.get_meta("amount")), 0.0, "closing pressure appears around every puncture")
@@ -81,6 +83,7 @@ func test_running_suture_closes_a_forearm_cut() -> void:
 	await driver.seconds(1.0)
 	assert_true(patient.suture_done(thread) and needle.suture_thread == 0, "a long hold ties the thread off")
 	assert_lt(tissue.gap_along(wound.points, 0.03, TissueSim.Depth.SKIN), TissueSim.OPEN_GAP, "the tied off thread holds the edges together")
+	assert_gt(wound.closure(), 0.99, "so the cut is closed along its whole length")
 	var split := Array(tissue.severed()).filter(func(s: int) -> bool: return tissue.cut_depth(s) >= TissueSim.Depth.SKIN)
 	assert_eq(split.size(), 0, "no split edge is left along the seam")
 	assert_gt(Array(tissue.suture_lip).max(), 0.0005, "the pressed edges rise into a lip instead of passing through each other")

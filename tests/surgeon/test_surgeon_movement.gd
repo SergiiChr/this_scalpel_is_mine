@@ -1,6 +1,6 @@
 extends GutTest
-## Real local input and normal surgery physics frames: walking animation must not bob the camera or reach origin.
-## Crouching changes only their height, while the visual rig leans forward. A fallen surgeon's face tracks the patient.
+## Real local input and normal surgery physics frames: walking animation must not bob the camera, the reach origin or
+## the arms and hands the player sees. Crouching changes only their height, while the visual rig leans forward. A fallen surgeon's face tracks the patient.
 
 const TAGS = ["smoke", "visual_confirmation"]
 const GODOT_ARGS = ["--fixed-fps", "60"]
@@ -82,6 +82,32 @@ func test_walking_and_crouching_keep_camera_and_gameplay_reach_steady() -> void:
 	_driver.budget.check(self, KeyFrames.wanted())
 
 
+## Walking along the table with a free hand over it, past the patient's arm (Hand Stitch): over the flat table top the
+## hand hovers at one height. How low its glove reaches keeps it off the table, and that mustn't bob with the stride.
+func test_walking_keeps_a_free_hand_level_over_the_table() -> void:
+	await _driver.stop()
+	await _driver.start("hand_stitch")
+	var me := _driver.me
+	await _driver.player_walks_to(_driver.site_point(Vector2(0.5, 0.5)))
+	await _driver.frames(30)
+	var heights: Array[float] = []
+	var max_drop := 0.0
+	Input.action_press("move_left")
+	for frame in 60:
+		await _driver.frames(1)
+		var hand := me.hands[me.active]
+		var under: Dictionary = me._surface_below(hand.target)
+		if not under.soft and float(under.y) > 0.5:
+			heights.append(hand.global_position.y - float(under.y))
+		max_drop = maxf(max_drop, me._walk_drop)
+	Input.action_release("move_left")
+	assert_gt(max_drop, 0.01, "the legs strode (pelvis dropped %.0f mm)" % (max_drop * 1000.0))
+	assert_gt(heights.size(), 16, "the hand went over the table top")
+	# Its first few frames there it's still coming down off the patient's arm.
+	var level := heights.slice(6)
+	assert_lt(level.max() - level.min(), 0.001, "and hovered at one height over it (%.1f mm up and down)" % ((level.max() - level.min()) * 1000.0))
+
+
 func _check_stable_origins(me: Surgeon, crouch: float) -> void:
 	assert_lt(me.to_local(me.camera().global_position).distance_to(Vector3(0, Surgeon.EYE_HEIGHT - crouch * Surgeon.CROUCH_DROP, 0)), 0.0001, "camera only lowers with crouch; no animation bob or sway")
 	for index in 2:
@@ -90,7 +116,7 @@ func _check_stable_origins(me: Surgeon, crouch: float) -> void:
 		assert_lt(me.to_local(me.shoulder(index)).distance_to(expected), 0.0001, "reach origin is independent of torso/leg animation")
 		var sleeve := me.hands[index]._upper
 		var start := sleeve.global_transform * Vector3(0, -0.5, 0)
-		assert_lt(start.distance_to(me.visual_shoulder(index)), 0.0001, "sleeve still follows its visual shoulder")
+		assert_lt(start.distance_to(me.steady_shoulder(index)), 0.0001, "the player's own sleeve hangs from the torso without the walk's bob")
 
 
 func test_downed_visible_head_turns_to_patient_on_both_fall_sides() -> void:

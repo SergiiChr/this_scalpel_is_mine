@@ -18,6 +18,10 @@ const LEVEL_STEPS: Dictionary = {
 const BLADE_LINE := 0.04
 ## Size (pixels) of the < and > marking a spreader's tips.
 const JAW_MARK := 9.0
+## How deep (meters) under the skin's lip the < and > show a spreader's tips going in, aimed across a cut.
+const JAW_DEPTH := 0.01
+## Radius (meters) of the rings on the skin marking where a stapler's legs go in.
+const LEG_RING := 0.003
 const AIM_COLOR := Color(1.0, 1.0, 0.9)
 const AIM_WORKING := Color(1.0, 0.42, 0.35)
 
@@ -33,6 +37,11 @@ var _net_warning: Label
 var _dot: Panel
 var _blade: Line2D
 var _jaws: Array[Line2D] = []
+## Where the spreader's < and > point (world), as last drawn.
+var jaw_marks: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
+var _legs: Array[Line2D] = []
+## Where the stapler's rings lie (world), one per leg, as last drawn.
+var leg_rings: Array[PackedVector3Array] = [PackedVector3Array(), PackedVector3Array()]
 ## Controls for what the player is doing right now, bottom right. Changes while a hand key or a tool is held.
 var _hint: Label
 var _dot_label: Label
@@ -376,6 +385,7 @@ func _build_dot() -> void:
 	_root.add_child(_dot)
 	_blade = _aim_line()
 	_jaws = [_aim_line(), _aim_line()]
+	_legs = [_aim_line(), _aim_line()]
 	_dot_label = Ui.label("", 16, Ui.INK)
 	_dot_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_root.add_child(_dot_label)
@@ -517,10 +527,12 @@ func _update_dot(me: Surgeon) -> void:
 	var tool := me.held_tool(me.active)
 	var shown := _overlay == null and not camera.is_position_behind(aim)
 	var action := tool.def.action if shown and tool else ""
-	_dot.visible = shown and not action in ["cut", "spread"]
+	_dot.visible = shown and not action in ["cut", "spread", "staple"]
 	_blade.visible = action == "cut"
 	for jaw in _jaws:
 		jaw.visible = action == "spread"
+	for leg in _legs:
+		leg.visible = action == "staple"
 	if not shown:
 		_dot_label.text = ""
 		_levels.visible = false
@@ -528,11 +540,17 @@ func _update_dot(me: Surgeon) -> void:
 	var at := camera.unproject_position(aim)
 	_dot.position = at - _dot.size * 0.5
 	if action == "cut":
+		# Laid on the skin from end to end, so it shows where the edge comes down.
 		var edge := ToolActions.blade_direction(tool) * BLADE_LINE * 0.5
 		var cutting := me.hands[me.active].lowered and me.hands[me.active].level > 0
-		_draw_aim(_blade, PackedVector2Array([camera.unproject_position(aim - edge), camera.unproject_position(aim + edge)]), cutting)
+		var line := PackedVector2Array()
+		for p: Vector3 in [me.on_surface(aim - edge), aim, me.on_surface(aim + edge)]:
+			line.append(camera.unproject_position(p))
+		_draw_aim(_blade, line, cutting)
 	elif action == "spread":
-		_draw_spreader(camera, tool)
+		_draw_spreader(me, camera, tool)
+	elif action == "staple":
+		_draw_stapler(me, camera, tool)
 	_dot_label.text = me.hovered.label() if is_instance_valid(me.hovered) else ""
 	_dot_label.position = at + Vector2(10, -10)
 	var levels := _level_text(me)
@@ -543,9 +561,24 @@ func _update_dot(me: Surgeon) -> void:
 
 
 ## A < at the spreader's tip toward -X and a > at the other, each pointing out from the middle: <> closed, < > open.
-func _draw_spreader(camera: Camera3D, tool: SurgicalTool) -> void:
-	var tips := ToolActions.spread_tips(tool)
-	var ends := [camera.unproject_position(tips[0]), camera.unproject_position(tips[1])]
+## Aimed across a cut, each hangs from the cut's lip on its side down its wall, where the tip goes in; set, they're at
+## the tips; elsewhere on what's under them.
+func _draw_spreader(me: Surgeon, camera: Camera3D, tool: SurgicalTool) -> void:
+	var body := surgery.patient.body
+	var tips := ToolActions.side_points(tool, tool.spread)
+	var cut := body.tissue.cut_between(body.world_to_uv(tips[0]), body.world_to_uv(tips[1])) if not tool.in_wound else Vector2(-1, -1)
+	var lips: Array[Vector3] = []
+	for side in 2:
+		if tool.in_wound:
+			jaw_marks[side] = tips[side]
+		elif cut.x >= 0.0:
+			var half_gap := body.tissue.gaps_near(PackedVector2Array([cut]), body.tissue.seam_reach())[0] * 0.5
+			var out := ((tips[side] - body.uv_to_world(cut)) * Vector3(1, 0, 1)).normalized()
+			lips.append(me.on_surface(body.uv_to_world(cut) + out * (half_gap + 0.001)))
+			jaw_marks[side] = lips[side] - Vector3.UP * JAW_DEPTH
+		else:
+			jaw_marks[side] = me.on_surface(tips[side])
+	var ends := [camera.unproject_position(jaw_marks[0]), camera.unproject_position(jaw_marks[1])]
 	var across: Vector2 = (ends[1] - ends[0]).normalized()
 	if across == Vector2.ZERO:
 		across = Vector2.RIGHT
@@ -555,7 +588,40 @@ func _draw_spreader(camera: Camera3D, tool: SurgicalTool) -> void:
 		var out := across * (1.0 if side == 1 else -1.0)
 		var back: Vector2 = ends[side] - out * depth
 		var arm := Vector2(-out.y, out.x) * JAW_MARK * 0.7
-		_draw_aim(_jaws[side], PackedVector2Array([back + arm, ends[side], back - arm]), tool.in_wound)
+		var mark := PackedVector2Array([back + arm, ends[side], back - arm])
+		if not lips.is_empty():
+			# A stem from the lip down to the mark: the tip goes in there.
+			mark = PackedVector2Array([camera.unproject_position(lips[side]), ends[side], back + arm, ends[side], back - arm])
+		_draw_aim(_jaws[side], mark, tool.in_wound)
+
+
+## A ring lying on the skin where each of the stapler's legs goes in: on a cut's edge it reaches for, or down in the
+## opening when it can't reach one.
+func _draw_stapler(me: Surgeon, camera: Camera3D, tool: SurgicalTool) -> void:
+	var legs := ToolActions.staple_legs(tool, surgery.patient.body)
+	var across := ToolActions.side_axis(tool) * LEG_RING
+	var along := ToolActions.blade_direction(tool) * LEG_RING
+	for side in 2:
+		# The ring lies in the plane of the skin under its middle, found a ring's radius out each way.
+		var middle := me.on_surface(legs[side])
+		var u := _tilted(me.on_surface(legs[side] + across) - middle)
+		var v := _tilted(me.on_surface(legs[side] + along) - middle)
+		var ring := PackedVector3Array()
+		var drawn := PackedVector2Array()
+		for i in 13:
+			var angle := TAU * i / 12.0
+			ring.append(middle + u * cos(angle) + v * sin(angle))
+			drawn.append(camera.unproject_position(ring[-1]))
+		leg_rings[side] = ring
+		_draw_aim(_legs[side], drawn, false)
+
+
+## A ring's radius `out` along the surface, tilted no steeper than 45 degrees: past the edge of an arm the surface a
+## radius out drops away to whatever is below, and the ring would stand on end.
+static func _tilted(out: Vector3) -> Vector3:
+	var flat := Vector2(out.x, out.z).length()
+	out.y = clampf(out.y, -flat, flat)
+	return out
 
 
 ## Which LEVEL_STEPS names a tool's effort levels, "" when it takes none.
