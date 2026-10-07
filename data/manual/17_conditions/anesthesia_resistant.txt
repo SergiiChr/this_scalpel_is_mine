@@ -5,7 +5,7 @@ title: Intraoperative awareness
 [b]On the chart:[/b] “Previous intraoperative awareness.”
 
 [b]Hazards[/b]
-• Anesthesia is not maintained and wears off within about {round(drug.propofol.duration / quirk.anesthesia_resistant.anesthesia_decay_mult / 60)} minutes. The patient wakes talking, then screaming.
+• Anesthesia is not maintained and wears off within about {round(drug.propofol.Duration / quirk.anesthesia_resistant.anesthesia_decay_mult / 60)} minutes. The patient wakes talking, then screaming.
 
 [b]Management[/b]
 • Prepare a second dose before induction.

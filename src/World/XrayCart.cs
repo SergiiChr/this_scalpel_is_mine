@@ -25,9 +25,9 @@ public sealed record XrayPrint(IReadOnlyList<XrayShape> Shapes, string Site, ulo
 public partial class XrayCart : Node3D
 {
     private const float ExposeTime = 2.5f;
-    private const float Cooldown = 30f;
+    public const float Cooldown = 30f;
     /// <summary>Seconds a film takes to develop.</summary>
-    private const float DevelopTime = 6f;
+    public const float DevelopTime = 6f;
     private const float Reach = 1.5f;
     private const float PushOffset = 0.85f;
     private const float SyncInterval = 0.1f;

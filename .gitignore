@@ -5,3 +5,5 @@ __pycache__/
 .venv/
 .ruff_cache/
 .mypy_cache/
+gdunit4_testadapter_v5/
+TestResults/

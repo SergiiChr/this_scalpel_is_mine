@@ -145,10 +145,7 @@ public partial class Room : Node3D
 
     public void Build(string environmentId, Surgery surgery)
     {
-        EnvironmentId = Layouts.ContainsKey(environmentId) ? environmentId : "or";
-        Layout = Layouts[EnvironmentId];
-        BuildEnvironment();
-        BuildShell();
+        BuildShell(environmentId);
         BuildTable();
         BuildTray();
         BuildStations(surgery);
@@ -368,7 +365,16 @@ public partial class Room : Node3D
 
     private float LampHeight => EnvironmentId == "or" ? 2.35f : 1.95f;
 
-    private void BuildShell()
+    /// <summary>The room's lights, floor, walls and ceiling alone, without its furniture.</summary>
+    internal void BuildShell(string environmentId)
+    {
+        EnvironmentId = Layouts.ContainsKey(environmentId) ? environmentId : "or";
+        Layout = Layouts[EnvironmentId];
+        BuildEnvironment();
+        BuildWalls();
+    }
+
+    private void BuildWalls()
     {
         var size = Layout.Size;
         var floorColor = Indoors ? new Color(0.28f, 0.3f, 0.29f) : new Color(0.2f, 0.2f, 0.21f);

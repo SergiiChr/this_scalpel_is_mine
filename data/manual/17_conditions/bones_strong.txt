@@ -9,5 +9,5 @@ title: High bone density
 • Bones do not fracture by accident.
 
 [b]Management[/b]
-• Order the heavy saw from the nurse ({tool.heavy_saw.delay} seconds).
+• Order the heavy saw from the nurse ({tool.heavy_saw.Delay} seconds).
 • Or use the mallet: it works on any bone but bruises the soft tissue around it.

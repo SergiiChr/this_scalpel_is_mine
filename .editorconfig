@@ -129,3 +129,7 @@ dotnet_diagnostic.CA1822.severity = suggestion
 # Test names read as sentences: Scalpel_cut_opens_five_centimeters.
 dotnet_naming_rule.members_pascal.severity = none
 dotnet_diagnostic.CA1707.severity = none
+
+[gdunit4_testadapter_v5/**.cs]
+# The GdUnit4 test adapter writes its runner scene here for a test run.
+generated_code = true

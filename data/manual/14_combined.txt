@@ -4,7 +4,7 @@ title: 14. Combined conditions
 Heparin [i]before[/i] clamping. Clamp before opening. Repair the vessel before releasing the clamp.
 
 ## 14.2 Sympathomimetics
-Cocaine and adrenaline together precipitate a cardiac event: arrest in {Patient.DANGER_ARREST_CHANCE * 100}% of cases. After cocaine exposure, treat bradycardia with atropine and arrhythmia with amiodarone.
+Cocaine and adrenaline together precipitate a cardiac event: arrest in {Patient.DangerArrestChance * 100}% of cases. After cocaine exposure, treat bradycardia with atropine and arrhythmia with amiodarone.
 
 ## 14.3 Heightened tactile sensitivity, conscious patient
 Keep all contact within the operative field. Contact elsewhere causes sudden movement.

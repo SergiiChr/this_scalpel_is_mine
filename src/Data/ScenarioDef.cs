@@ -56,7 +56,7 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
 }
 
 /// <summary>One data/scenarios/NN_id.cfg file: metadata, the patient's starting state and the objective steps.</summary>
-public sealed class ScenarioDef
+public sealed record ScenarioDef
 {
     public required string Id { get; init; }
     public int Order { get; init; }

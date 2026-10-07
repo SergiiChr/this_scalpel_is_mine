@@ -60,7 +60,13 @@ public partial class Net : Node
     private SceneTreeTimer? _connectTimer;
 
     public Dictionary<int, LobbyPlayer> Roster { get; private set; } = [];
-    public string ScenarioId { get; private set; } = "";
+    /// <summary>The scenario of the lobby or session. Set through its id, except for a local session.</summary>
+    public ScenarioDef? Scenario { get; private set; }
+    public string ScenarioId
+    {
+        get => Scenario?.Id ?? "";
+        private set => Scenario = Db.Scenario(value);
+    }
     public uint SessionSeed { get; private set; }
     public List<QuirkRoll> PatientQuirks { get; private set; } = [];
     /// <summary>Run modifier ids (data/run_modifiers.cfg), rolled in the lobby so players see them before starting.
@@ -103,7 +109,6 @@ public partial class Net : Node
 
     public bool IsOnline => Multiplayer.MultiplayerPeer is not OfflineMultiplayerPeer;
 
-    public ScenarioDef? Scenario => Db.Scenario(ScenarioId);
 
     public IReadOnlyList<QuirkRoll> LocalQuirks => Roster.TryGetValue(LocalId, out var player) ? player.Quirks : [];
 
@@ -245,21 +250,29 @@ public partial class Net : Node
     }
 
     /// <summary>
-    /// A solo session without the lobby, for a surgery scene launched on its own (the editor, tests): the given
-    /// scenario, a random seed, the local player with rolled quirks and the patient's quirks, no run modifiers.
+    /// A solo session without the lobby, for a surgery scene launched on its own (the editor): the given scenario, a
+    /// random seed, the local player with rolled quirks and the patient's quirks, no run modifiers.
     /// </summary>
     public void PrepareLocalSession(ScenarioDef scenario)
     {
         var rng = new RandomNumberGenerator();
         rng.Randomize();
-        ScenarioId = scenario.Id;
-        SessionSeed = rng.Randi();
-        Roster = new Dictionary<int, LobbyPlayer>
-        {
-            [HostId] = new(Progress.PlayerName, QuirkRoller.RollSurgeon(rng), Ready: true),
-        };
-        PatientQuirks = QuirkRoller.RollPatient(scenario, rng);
-        RunModifiers = [];
+        var player = new LobbyPlayer(Progress.PlayerName, QuirkRoller.RollSurgeon(rng), Ready: true);
+        StartLocalSession(scenario, rng.Randi(), player, QuirkRoller.RollPatient(scenario, rng));
+    }
+
+    /// <summary>A solo session set up exactly as given, without the lobby (tests, see also
+    /// <see cref="PrepareLocalSession"/>). The scenario may be a changed copy of one in Db.</summary>
+    public void StartLocalSession(
+        ScenarioDef scenario, uint seed, LobbyPlayer player, IReadOnlyList<QuirkRoll> patientQuirks,
+        IReadOnlyList<string>? runModifiers = null)
+    {
+        Leave();
+        Scenario = scenario;
+        SessionSeed = seed;
+        Roster = new Dictionary<int, LobbyPlayer> { [HostId] = player };
+        PatientQuirks = [.. patientQuirks];
+        RunModifiers = [.. runModifiers ?? []];
     }
 
     /// <summary>Host only, after everyone readied up.</summary>

@@ -8,4 +8,4 @@ title: Bombay phenotype
 • Incompatible with every standard group, O-negative included.
 
 [b]Management[/b]
-• Only Bombay-phenotype blood is compatible. Sourcing takes {tool.blood_rare.delay / 60} minutes: order it as soon as you read the chart.
+• Only Bombay-phenotype blood is compatible. Sourcing takes {tool.blood_rare.Delay / 60} minutes: order it as soon as you read the chart.
