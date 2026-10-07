@@ -56,6 +56,10 @@ static func hand_key(surgeon: Surgeon) -> String:
 	return "move_left_hand" if surgeon.active == 0 else "move_right_hand"
 
 
-## Waits until what was sent has reached the game: the next frame's start, where the engine dispatches input.
+## Waits until the game has acted on what was sent: the engine dispatches input at the start of a frame, before its
+## physics, so the next physics step comes after it wherever in a frame this is called, and the frame's processing
+## after that step.
 static func delivered() -> void:
-	await (Engine.get_main_loop() as SceneTree).process_frame
+	var tree := Engine.get_main_loop() as SceneTree
+	await tree.physics_frame
+	await tree.process_frame
