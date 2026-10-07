@@ -29,7 +29,8 @@ static func skin_is_torn(patient: Patient, from: Vector2, direction: Vector2, le
 
 
 ## As if the whole length of `wound` had been sewn shut.
-static func wound_is_closed(wound: Wound) -> void:
+static func wound_is_closed(patient: Patient, wound: Wound) -> void:
+	patient.body.tissue.stitch_path(wound.points, Wound.BIN_LENGTH_UV * 1.2, 1.0, Patient.THREAD_STRENGTH[TissueSim.Depth.SKIN])
 	wound.bins.fill(1.0)
 
 
@@ -51,6 +52,12 @@ static func skin_has_finished_threads(patient: Patient, count: int, first_id: in
 ## A tool `id` lying in a free place on the instrument tray (stocked there, as the nurse would have). Returns it.
 static func tool_is_on_tray(surgery: Surgery, id: String) -> SurgicalTool:
 	surgery.tools.spawn(id, free_tray_spot(surgery))
+	return surgery.tools.tools.values()[-1]
+
+
+## A tool `id` dropped at `at` (world), lying wherever it falls (left there on the patient, say). Returns it.
+static func tool_lies_at(surgery: Surgery, id: String, at: Vector3) -> SurgicalTool:
+	surgery.tools.spawn(id, at)
 	return surgery.tools.tools.values()[-1]
 
 

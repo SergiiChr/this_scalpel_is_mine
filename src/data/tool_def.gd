@@ -8,6 +8,12 @@ var action: String
 var description: String
 var sharpness: float
 var quality: float
+## Chance per staple that it tears out through the skin, or goes through a vessel and makes it bleed.
+var tear_chance: float
+var bleed_chance: float
+## A stapler's staple width (meters between its legs), and how much further out each leg can reach for an edge.
+var staple_span: float
+var staple_give: float
 var radius: float
 var power: float
 var sterile: bool
@@ -49,6 +55,10 @@ static func from_config(cfg: ConfigFile, section: String) -> ToolDef:
 	def.description = cfg.get_value(section, "description", "")
 	def.sharpness = cfg.get_value(section, "sharpness", 1.0)
 	def.quality = cfg.get_value(section, "quality", 1.0)
+	def.tear_chance = cfg.get_value(section, "tear_chance", 0.0)
+	def.bleed_chance = cfg.get_value(section, "bleed_chance", 0.0)
+	def.staple_span = cfg.get_value(section, "staple_span", 0.0)
+	def.staple_give = cfg.get_value(section, "staple_give", 0.0)
 	def.radius = cfg.get_value(section, "radius", 0.01)
 	def.power = cfg.get_value(section, "power", 1.0)
 	def.sterile = cfg.get_value(section, "sterile", false)

@@ -96,6 +96,11 @@ enum Kind { TISSUE, STITCH }
 enum Depth { NONE, SKIN, FAT, MUSCLE }
 ## A gap counts as open once it's pulled this far apart (meters).
 const OPEN_GAP := 0.004
+## A cut whose edges are this close (meters) is closed (gaps_near()): no gap shows between them.
+const CLOSED_GAP := 0.001
+## A stitch, staple or thread span this close (meters) holds a cut shut (held_near()): the edges between closures a
+## little apart meet on their own, a cut's end lying shut with nothing near it isn't closed.
+const HOLD_REACH := 0.015
 ## Most of the grid a piece of skin cut out all round may hold: past that the cut just runs round most of the site.
 const PIECE_MAX := 0.25
 ## Cells per side of the grid that sorts skin triangles by where they lie now, for skin_height() once the skin
@@ -515,6 +520,92 @@ func fat_open_near(uv: Vector2, radius: float) -> bool:
 		if depth_of(s) == Depth.FAT and ((uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5).distance_to(uv) < radius:
 			return true
 	return false
+
+
+## True while a cut through the skin crosses within `radius` (meters) of uv and isn't stitched there.
+func skin_open_near(uv: Vector2, radius: float) -> bool:
+	for s in _severed:
+		if not _stitched(c_a[s], c_b[s]) and ((uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s]) - uv) * size).length() < radius:
+			return true
+	return false
+
+
+## How close (meters) to a point on a cut an unstitched crossing of it has to be for the cut to count as open there:
+## half a grid cell, so wherever along a cut, one of the springs crossing it is that close.
+func open_reach() -> float:
+	return maxf(size.x / res_x, size.y / res_y) * 0.5
+
+
+## Widest the edges of a cut are pulled apart past their rest (meters, as the layers are drawn) within `radius`
+## (meters) of each of `points` (uv). 0 where they meet, or nothing is cut.
+func gaps_near(points: PackedVector2Array, radius: float) -> PackedFloat32Array:
+	var gaps := PackedFloat32Array()
+	gaps.resize(points.size())
+	for s in _severed:
+		var gap := pos[c_a[s]].distance_to(pos[c_b[s]]) - rest[c_a[s]].distance_to(rest[c_b[s]])
+		if gap <= 0.0:
+			continue
+		var crossing := uv_of(c_a[s]).lerp(uv_of(c_b[s]), c_cross[s])
+		for i in points.size():
+			if ((crossing - points[i]) * size).length() < radius:
+				gaps[i] = maxf(gaps[i], gap)
+	return gaps
+
+
+## 1 for each of `points` (uv) with a stitch, staple or thread span within HOLD_REACH holding the skin there, 0 for none.
+func held_near(points: PackedVector2Array) -> PackedByteArray:
+	var held := PackedByteArray()
+	held.resize(points.size())
+	for s in _stitches:
+		if c_active[s] == 0:
+			continue
+		var middle := (uv_of(c_a[s]) + uv_of(c_b[s])) * 0.5
+		for i in points.size():
+			if ((middle - points[i]) * size).length() < HOLD_REACH:
+				held[i] = 1
+	return held
+
+
+## How far (meters) from a point on a cut its edges are looked at to tell whether it's closed there: three quarters of
+## a grid cell, so every point has a spring crossing the cut that close.
+func seam_reach() -> float:
+	return open_reach() * 1.5
+
+
+## True where a cut through the skin is closed for good at uv: its edges meet (gaps_near() within CLOSED_GAP) and
+## something holds them (held_near()). Patient._settle_closures() counts a wound's closure the same way.
+func closed_at(uv: Vector2) -> bool:
+	var at := PackedVector2Array([uv])
+	return gaps_near(at, seam_reach())[0] <= CLOSED_GAP and held_near(at)[0] == 1
+
+
+## Where a staple with its legs at a and b (uv, where they touch the skin as it lies now) goes across a cut: the
+## crossing nearest its middle, with an unstitched edge there (skin_open_near()) and the cut not closed for good
+## (closed_at()). (-1, -1) when a leg is in an opening rather than on an edge, or no open cut lies between them.
+func staple_spot(a: Vector2, b: Vector2) -> Vector2:
+	if is_open(a, Depth.SKIN) or is_open(b, Depth.SKIN):
+		return Vector2(-1, -1)
+	var middle := (a + b) * 0.5
+	var best := Vector2(-1, -1)
+	for m in _cut_segments.size() / 2:
+		var t := _crossing(a, b, _cut_segments[m * 2], _cut_segments[m * 2 + 1])
+		if t < 0.0:
+			continue
+		var at := a.lerp(b, t)
+		if (best.x < 0.0 or at.distance_to(middle) < best.distance_to(middle)) and skin_open_near(at, open_reach()) and not closed_at(at):
+			best = at
+	return best
+
+
+## Where the line from a to b (uv) crosses a cut, nearest its middle: (-1, -1) when it crosses none.
+func cut_between(a: Vector2, b: Vector2) -> Vector2:
+	var middle := (a + b) * 0.5
+	var best := Vector2(-1, -1)
+	for m in _cut_segments.size() / 2:
+		var t := _crossing(a, b, _cut_segments[m * 2], _cut_segments[m * 2 + 1])
+		if t >= 0.0 and (best.x < 0.0 or a.lerp(b, t).distance_to(middle) < best.distance_to(middle)):
+			best = a.lerp(b, t)
+	return best
 
 
 ## Raises both sides of the sewn edges within `radius` of any of `points` (a thread's crossings) along the surface

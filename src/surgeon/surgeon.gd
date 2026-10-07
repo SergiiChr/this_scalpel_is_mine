@@ -265,9 +265,24 @@ func aim_point() -> Vector3:
 	var under := _surface_below(tip)
 	if tool.def.action in NEEDLE_ACTIONS:
 		under = _glove_below(hand, tip, under)
-	if float(under.y) < tip.y and tip.y - float(under.y) < AIM_DROP:
-		tip.y = under.y
-	return tip
+	return _dropped(tip, under)
+
+
+## p moved straight down onto what's under it, tools lying there left out: where that point of a tool lands on the
+## patient when it's lowered, for the aim marks to lie on. However far down that is: a mark past the edge of an arm
+## lies on what's below it, not in the air.
+func on_surface(p: Vector3) -> Vector3:
+	var under := _surface_below(p, false)
+	if float(under.y) < p.y:
+		p.y = under.y
+	return p
+
+
+## p moved down to `under` (_surface_below()) when that's at most AIM_DROP below it.
+static func _dropped(p: Vector3, under: Dictionary) -> Vector3:
+	if float(under.y) < p.y and p.y - float(under.y) < AIM_DROP:
+		p.y = under.y
+	return p
 
 
 ## How fast the body moves across the floor (m/s), measured the same way on every peer.
@@ -299,6 +314,18 @@ func shoulder(hand: int) -> Vector3:
 func visual_shoulder(hand: int) -> Vector3:
 	var side := -1.0 if hand == 0 else 1.0
 	return (_joints["Torso"] as Node3D).global_transform * Vector3(SHOULDER.x * side, SHOULDER.y - HIP_HEIGHT, SHOULDER.z)
+
+
+## visual_shoulder() as the body stands, without the walk's hip drop and lean. The local surgeon's own body isn't drawn
+## and its view stays steady while walking: the arms it sees stay steady too, and so does how low each glove reaches
+## (which keeps the hand off a table).
+func steady_shoulder(hand: int) -> Vector3:
+	var side := -1.0 if hand == 0 else 1.0
+	var torso := _joints["Torso"] as Node3D
+	var rest: Transform3D = _rest["Torso"]
+	var still := Transform3D(rest.basis * Basis.from_euler(Vector3(-_collapse * 1.3 - crouch * SQUAT_LEAN, 0, 0)), rest.origin)
+	var lifted := (torso.get_parent() as Node3D).global_transform * still
+	return lifted * Vector3(SHOULDER.x * side, SHOULDER.y - HIP_HEIGHT, SHOULDER.z) + global_basis.y * _walk_drop
 
 
 ## Sets this sleeve's knee support and obstacles for a deep squat, clearing them when standing.
@@ -725,7 +752,7 @@ func _physics_process(delta: float) -> void:
 		hands[i].press = SYRINGE_PRESS + tool.def.length * SYRINGE_TRAVEL * (tool.ml + tool.air) / tool.def.volume if tool and tool.def.action == "syringe" else NAN
 		hands[i].soak(tool.blood if tool else 0.0, delta)
 		support_elbow(hands[i])
-		hands[i].update_pose(visual_shoulder(i), delta)
+		hands[i].update_pose(steady_shoulder(i) if is_local else visual_shoulder(i), delta)
 	Surgery.current.tools.follow(self)
 	_stain_scrubs(delta)
 
@@ -1187,8 +1214,9 @@ static func _lowest_point(hand: SurgeonHand, tool: SurgicalTool) -> float:
 
 ## {"y": surface height under p (or -INF), "open": true when p is over an opened incision, "soft": skin}
 ## Over an opening it finds what's inside: organs and targets, or the cavity floor.
-## Rests on the patient's real skin (PatientBody.SURFACE_LAYER), the table, trays, tools lying there and the floor.
-func _surface_below(p: Vector3) -> Dictionary:
+## Rests on the patient's real skin (PatientBody.SURFACE_LAYER), the table, trays, tools lying there (unless not
+## `tools`) and the floor.
+func _surface_below(p: Vector3, tools: bool = true) -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 0.35, p + Vector3.DOWN * 2.0, 4)
 	# An opening is looked for on the site plane first: the skin mesh around it would hide it from above.
@@ -1200,7 +1228,7 @@ func _surface_below(p: Vector3) -> Dictionary:
 			var inside := space.intersect_ray(query)
 			return {"y": inside.position.y if not inside.is_empty() else site_hit.position.y - 0.1, "open": true, "soft": true}
 	# Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the tray).
-	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER
+	query.collision_mask = 1 | 4 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | (SurgicalTool.TOOL_LAYER if tools else 0)
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return {"y": -INF, "open": false, "soft": false}

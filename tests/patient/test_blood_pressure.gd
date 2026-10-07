@@ -42,7 +42,7 @@ func test_closures_leak_under_high_pressure_and_heparin_but_cautery_holds() -> v
 	SurgeryState.patient_is_numb(patient)
 	var closed := SurgeryState.skin_is_cut(patient, Vector2(0.3, 0.35), Vector2(0.3, 0.65), 0.3)
 	var seared := SurgeryState.skin_is_cut(patient, Vector2(0.7, 0.35), Vector2(0.7, 0.65), 0.3)
-	SurgeryState.wound_is_closed(closed)
+	SurgeryState.wound_is_closed(patient, closed)
 	SurgeryState.wound_is_cauterized(seared)
 	await driver.seconds(3.0)
 	var seared_rate := seared.bleeding

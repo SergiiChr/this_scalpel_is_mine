@@ -449,6 +449,7 @@ func player_puts_down(standing: bool = false) -> void:
 		release("grab")
 	else:
 		tap("grab")
+	use(false)
 	await seconds(0.5)
 	if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() > 0.08:
 		# It slid off whatever it was set down against: anything else set down there would too.
@@ -667,8 +668,9 @@ func vein_point() -> Vector3:
 
 
 ## Sews every open skin wound shut: the muscle first where a wound goes through it, then the skin. The needle sews a
-## running thread along each (player_sews()); a stapler or tape (`tool_id`) goes segment by segment along it at medium
-## tension, held on each until it's closed. Goes round again for anything that didn't close.
+## running thread along each (player_sews()), a stapler staples along it (player_staples()); tape (`tool_id`) goes
+## segment by segment along it at medium tension, held on each until it's closed. Goes round again for anything that
+## didn't close.
 func player_closes_wounds(tool_id: String = "needle") -> void:
 	note("closes the wounds with %s" % tool_id)
 	var tool := await player_requests_item(tool_id)
@@ -683,6 +685,9 @@ func player_closes_wounds(tool_id: String = "needle") -> void:
 					await player_sews(wound, TissueSim.Depth.MUSCLE)
 				if Array(wound.bins).any(func(b: float) -> bool: return b < 1.0):
 					await player_sews(wound, TissueSim.Depth.SKIN)
+				continue
+			if tool.def.action == "staple":
+				await player_staples(wound)
 				continue
 			for layer in ["muscle", "skin"]:
 				if layer == "muscle" and not wound.through_muscle():
@@ -705,6 +710,42 @@ func player_closes_wounds(tool_id: String = "needle") -> void:
 	await player_puts_down()
 
 
+## Staples `wound` shut with the stapler in the active hand: centered on the cut every `spacing` meters along it (the
+## first and last a little in from its ends), legs square across it (as C/V turn a blade along it), clicked at each spot
+## where the cut doesn't already look closed. Where the muscle under it is still open the staples go into
+## the muscle, so it goes along again for the skin, up to `rounds` times while it isn't closed. Captures the first
+## staple as key frame `first_staple`. Returns how many staples went in.
+func player_staples(wound: Wound, spacing: float = TissueSim.STITCH_REACH, rounds: int = 4) -> int:
+	var stapler := me.held_tool(me.active)
+	var step := spacing / ((wound.points[-1] - wound.points[0]).normalized() * body.site_size).length()
+	var placed := 0
+	for round in rounds:
+		if wound.closure() >= 0.99:
+			break
+		for i in floori(wound.length_uv() / step) + 1:
+			# A few millimeters in from the ends: aimed right at its end the stapler can land just past the cut.
+			var along := clampf(i * step, step * 0.6, wound.length_uv() - step * 0.6)
+			# Where the cut already looks closed there's nothing to staple.
+			if body.tissue.closed_at(_beside_wound(wound, along, 0.0)):
+				continue
+			var at := site_point(_beside_wound(wound, along, 0.0))
+			var cut := site_point(_beside_wound(wound, along + step * 0.5, 0.0)) - site_point(_beside_wound(wound, along - step * 0.5, 0.0))
+			await _within_reach(at)
+			await player_turns_blade(cut)
+			await player_reaches(at)
+			var charges := stapler.charges
+			use()
+			await frames(4)
+			use(false)
+			await frames(3)
+			if stapler.charges < charges:
+				placed += 1
+				if placed == 1:
+					await capture("first_staple")
+	note("%d staples along wound %d, closed %.2f" % [placed, wound.id, wound.closure()])
+	return placed
+
+
 ## Sews `wound` with a running thread through `layer` (TissueSim.Depth), the needle in the active hand: holes along
 ## it (player_threads()), the wheel until the hand status reads closed (player_pulls_thread()), and the knot
 ## (player_ties_off()).
@@ -716,15 +757,15 @@ func player_sews(wound: Wound, layer: int) -> void:
 
 
 ## Clicks the needle's thread through `wound` in `layer`: the first hole as close beside the wound as that layer
-## shows (inside the opening for what's under the skin, Patient.suture_layer_at()), then one a grid cell and a half
+## shows (inside the opening for what's under the skin, Patient.suture_layer_at()), then one `step_cells` grid cells
 ## further along on the other side each click, the last two at the wound's end. The first two clicks capture a key
 ## frame (thread_hole_1, thread_hole_2). Returns false when the layer shows nowhere beside the wound.
-func player_threads(wound: Wound, layer: int) -> bool:
+func player_threads(wound: Wound, layer: int, step_cells: float = 1.5) -> bool:
 	# Grid cells along and across the wound, in uv: they're square in meters, not in uv.
 	var along := (wound.points[-1] - wound.points[0]).normalized()
 	if along == Vector2.ZERO:
 		along = Vector2.RIGHT
-	var step := (absf(along.x) / body.tissue.res_x + absf(along.y) / body.tissue.res_y) * 1.5
+	var step := (absf(along.x) / body.tissue.res_x + absf(along.y) / body.tissue.res_y) * step_cells
 	var cell := absf(along.y) / body.tissue.res_x + absf(along.x) / body.tissue.res_y
 	# A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
 	# Exact multiples still finish with a bite across that endpoint, as the placement loop describes below.
