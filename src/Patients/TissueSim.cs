@@ -11,24 +11,24 @@ public enum SpringKind : byte { Tissue, Stitch }
 /// every peer.</summary>
 public struct Spring
 {
-    public int A;
-    public int B;
-    public float Rest;
-    public bool Active;
-    public SpringKind Kind;
+    public int A { get; set; }
+    public int B { get; set; }
+    public float Rest { get; set; }
+    public bool Active { get; set; }
+    public SpringKind Kind { get; set; }
     /// <summary>Stretch (relative to rest) past which it snaps.</summary>
-    public float Break;
-    public TissueDepth Depth;
+    public float Break { get; set; }
+    public TissueDepth Depth { get; set; }
     /// <summary>Where along a severed spring (0 at A, 1 at B) the blade crossed it. A tear splits it in the middle.
     /// </summary>
-    public float Cross;
+    public float Cross { get; set; }
     /// <summary>Which way the cut ran where it crossed a severed spring (site x, z): its edges are drawn back square
     /// to it.</summary>
-    public Vector2 CutDir;
+    public Vector2 CutDir { get; set; }
     /// <summary>Cut through the muscle, and the muscle has been stitched: counts as cut only into the fat.</summary>
-    public bool MuscleClosed;
+    public bool MuscleClosed { get; set; }
     /// <summary>The subcutaneous layer has been closed: the same cut then counts as skin-only.</summary>
-    public bool FatClosed;
+    public bool FatClosed { get; set; }
 }
 
 /// <summary>A tool holding the skin: the particle it pins and where it pulls it (site-local).</summary>
@@ -234,7 +234,7 @@ public sealed class TissueSim
     private sealed class Pin(int particle, Vector3 target)
     {
         public int Particle { get; } = particle;
-        public Vector3 Target = target;
+        public Vector3 Target { get; set; } = target;
     }
 
     /// <summary>The skin a grip on a particle drags along: the particles, how strongly each, and the ones it holds.

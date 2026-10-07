@@ -4,7 +4,7 @@ namespace Scalpel.Patients;
 public partial class Patient
 {
     /// <summary>Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.</summary>
-    private static readonly string[] TensionedClosures = ["paper_clips"];
+    public static readonly IReadOnlyList<string> TensionedClosures = ["paper_clips"];
     /// <summary>Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
     /// </summary>
     public static readonly float[] StitchTension = [0.95f, 1.25f, 0.95f, 0.8f];

@@ -22,7 +22,7 @@ public partial class Patient : Node3D
     public const float SyncInterval = 0.2f;
     /// <summary>Cells per side of the coarse grids over the site (sanitized skin, burns, debrided and grafted).</summary>
     public const int Grid = 16;
-    private static readonly string[] BloodTypes = ["O+", "O-", "A+", "A-", "B+", "AB+"];
+    public static readonly IReadOnlyList<string> BloodTypes = ["O+", "O-", "A+", "A-", "B+", "AB+"];
     /// <summary>Seconds of V-fib before it decays to asystole.</summary>
     public const float VfibToAsystole = 40f;
     /// <summary>Total arrest time before death.</summary>
@@ -140,7 +140,7 @@ public partial class Patient : Node3D
             Body.AddDrape();
         }
         Body.SetPose((PatientPose)scenario.StartOrientation);
-        BloodType = Mods.Flag("rare_blood") ? "Bombay" : BloodTypes[Rng.RandiRange(0, BloodTypes.Length - 1)];
+        BloodType = Mods.Flag("rare_blood") ? "Bombay" : BloodTypes[Rng.RandiRange(0, BloodTypes.Count - 1)];
 
         var volume = Vitals.NormalBloodMl * Mods.Mult("blood_ml_mult") * (Age == "child" ? 0.5f : 1f);
         Vitals.MaxBloodMl = volume;

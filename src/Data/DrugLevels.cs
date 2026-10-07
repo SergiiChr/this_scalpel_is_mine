@@ -22,14 +22,14 @@ public sealed class DrugLevels
     {
         public DrugDef Def { get; } = def;
         /// <summary>Share of the right dose still soaking in.</summary>
-        public float Depot;
+        public float Depot { get; set; }
         /// <summary>Share of the right dose in the blood.</summary>
-        public float Level;
+        public float Level { get; set; }
         /// <summary>Seconds the last dose takes to soak in.</summary>
-        public float Onset = onset;
+        public float Onset { get; set; } = onset;
         /// <summary>Seconds since it reached DoseEffective, -1 while it hasn't.</summary>
-        public float Working = -1f;
-        public bool Overdosed;
+        public float Working { get; set; } = -1f;
+        public bool Overdosed { get; set; }
 
         public bool IsWorking => Working >= 0f;
     }

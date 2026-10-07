@@ -251,7 +251,7 @@ public static class Syringe
     }
 
     /// <summary>" of Atropine, Saline" for the given drug ids, empty for none.</summary>
-    private static string DrugList(IReadOnlyCollection<string> drugs) =>
+    private static string DrugList(List<string> drugs) =>
         drugs.Count > 0 ? " of " + string.Join(", ", drugs.Select(drug => Db.Drug(drug)?.Name ?? drug)) : "";
 
     /// <summary>

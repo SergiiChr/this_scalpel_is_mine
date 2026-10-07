@@ -206,11 +206,14 @@ public partial class PatientBody : Node3D
         }
     }
 
+    /// <summary>The body model's parts the drape lies over.</summary>
+    private static readonly string[] DrapedParts = ["Body", "Gown"];
+
     /// <summary>Lays the surgical drape over the patient, open over the site (operating room only; call after
     /// <see cref="Build"/>).</summary>
     public void AddDrape()
     {
-        var meshes = new[] { "Body", "Gown" }.Select(name => _bodyRoot.FindChild(name, true, false)).OfType<MeshInstance3D>();
+        var meshes = DrapedParts.Select(name => _bodyRoot.FindChild(name, true, false)).OfType<MeshInstance3D>();
         Drape = new Drape();
         _bodyRoot.AddChild(Drape);
         Drape.Build(_bodyRoot, meshes, Site, SiteSize, _onBack ? -1f : 1f);

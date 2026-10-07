@@ -18,7 +18,7 @@ public partial class PatientBody
 
     /// <summary>Organs that belong under each site, for organs placed without a model of their own (one over a hidden
     /// target, filler in a deep site without anatomy data), in the order they're used.</summary>
-    private static readonly IReadOnlyDictionary<string, string[]> SiteOrgans = new Dictionary<string, string[]>
+    private static readonly Dictionary<string, string[]> SiteOrgans = new Dictionary<string, string[]>
     {
         ["abdomen"] = ["bowel", "lobe", "sac"],
         ["chest"] = ["lung", "heart", "lung"],

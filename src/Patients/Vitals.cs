@@ -10,23 +10,23 @@ public sealed class Vitals
 {
     public const float NormalBloodMl = 5000f;
 
-    public float HeartRate = 75f;
-    public float Systolic = 120f;
-    public float Spo2 = 98f;
-    public float Temperature = 36.8f;
-    public float Glucose = 5.5f;
-    public float BloodMl = NormalBloodMl;
-    public float MaxBloodMl = NormalBloodMl;
-    public Rhythm Rhythm = Rhythm.Sinus;
-    public float Consciousness = 1f;
-    public float Anesthesia;
-    public float LocalBlock;
-    public float Pain;
-    public float Panic;
+    public float HeartRate { get; set; } = 75f;
+    public float Systolic { get; set; } = 120f;
+    public float Spo2 { get; set; } = 98f;
+    public float Temperature { get; set; } = 36.8f;
+    public float Glucose { get; set; } = 5.5f;
+    public float BloodMl { get; set; } = NormalBloodMl;
+    public float MaxBloodMl { get; set; } = NormalBloodMl;
+    public Rhythm Rhythm { get; set; } = Rhythm.Sinus;
+    public float Consciousness { get; set; } = 1f;
+    public float Anesthesia { get; set; }
+    public float LocalBlock { get; set; }
+    public float Pain { get; set; }
+    public float Panic { get; set; }
     /// <summary>Total ml/s across every wound, for the HUD and the Hemophobia quirk.</summary>
-    public float BleedRate;
-    public float Swelling;
-    public bool Seizing;
+    public float BleedRate { get; set; }
+    public float Swelling { get; set; }
+    public bool Seizing { get; set; }
 
     public bool IsAwake => Consciousness > 0.45f;
 

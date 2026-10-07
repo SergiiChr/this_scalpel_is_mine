@@ -61,7 +61,7 @@ public partial class Room : Node3D
     private const float SmallTrayRim = 0.016f;
     private const float SmallTrayWall = 0.006f;
     /// <summary>Solid footprint (width, height, depth) of props you can put things on and can't walk through.</summary>
-    private static readonly IReadOnlyDictionary<string, Vector3> StationSolids = new Dictionary<string, Vector3>
+    private static readonly Dictionary<string, Vector3> StationSolids = new Dictionary<string, Vector3>
     {
         ["bell"] = new(0.6f, 0.9f, 0.45f),
         ["gloves"] = new(0.6f, 0.9f, 0.45f),

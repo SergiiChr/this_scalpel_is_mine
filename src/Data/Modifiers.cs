@@ -64,6 +64,9 @@ public sealed class Modifiers
         }
     }
 
+    /// <summary>Every effect set, numbers and lists.</summary>
+    public IEnumerable<string> Keys => _numbers.Keys.Concat(_lists.Keys);
+
     public float Num(string key, float fallback = 0f) => _numbers.GetValueOrDefault(key, fallback);
 
     public float Mult(string key) => Num(key, 1f);

@@ -16,7 +16,7 @@ public partial class Surgery : Node3D
 
     public const float StatusInterval = 0.5f;
     public const float QteTimeout = 10f;
-    private static readonly string[] QteKeys =
+    public static readonly IReadOnlyList<string> QteKeys =
         [InputActions.MoveForward, InputActions.MoveBack, InputActions.MoveLeft, InputActions.MoveRight];
     /// <summary>Tools report their sound every physics frame while in use; one per this many msec per sound is plenty.
     /// </summary>
@@ -124,7 +124,7 @@ public partial class Surgery : Node3D
     {
         var wanted = OS.GetCmdlineUserArgs()
             .Where(arg => arg.StartsWith("--scenario=", StringComparison.Ordinal))
-            .Select(arg => arg.GetSlice("=", 1))
+            .Select(arg => arg["--scenario=".Length..])
             .FirstOrDefault();
         return (wanted is null ? null : Db.Scenario(wanted)) ?? Db.Scenarios[0];
     }
@@ -720,7 +720,7 @@ public partial class Surgery : Node3D
             Tell(peer, "Let go of everything first.");
             return;
         }
-        var sequence = Enumerable.Range(0, 4).Select(_ => QteKeys[Rng.RandiRange(0, QteKeys.Length - 1)]).ToArray();
+        var sequence = Enumerable.Range(0, 4).Select(_ => QteKeys[Rng.RandiRange(0, QteKeys.Count - 1)]).ToArray();
         _turn = new TurnAttempt(near, NextOrientation());
         foreach (var p in near)
         {

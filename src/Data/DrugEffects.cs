@@ -7,20 +7,20 @@ namespace Scalpel.Data;
 /// </summary>
 public sealed class DrugEffects
 {
-    public float Hr;
-    public float Bp;
-    public float Glucose;
-    public float VolumeMl;
-    public float Anesthesia;
-    public float LocalBlock;
-    public float Sedation;
-    public float PainRelief;
-    public float Clot;
-    public float Spo2;
-    public float Temp;
-    public float Antihistamine;
-    public float Adrenaline;
-    public float Lethal;
+    public float Hr { get; set; }
+    public float Bp { get; set; }
+    public float Glucose { get; set; }
+    public float VolumeMl { get; set; }
+    public float Anesthesia { get; set; }
+    public float LocalBlock { get; set; }
+    public float Sedation { get; set; }
+    public float PainRelief { get; set; }
+    public float Clot { get; set; }
+    public float Spo2 { get; set; }
+    public float Temp { get; set; }
+    public float Antihistamine { get; set; }
+    public float Adrenaline { get; set; }
+    public float Lethal { get; set; }
 
     /// <summary>Reads the effect keys of a drugs.cfg section.</summary>
     public static DrugEffects FromConfig(ConfigReader config) => new()

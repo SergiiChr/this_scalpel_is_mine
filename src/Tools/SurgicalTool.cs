@@ -23,24 +23,24 @@ public enum ToolState
 /// </summary>
 public sealed class ToolUse
 {
-    public bool LoweredBefore;
-    public bool TriggerBefore;
-    public bool PressedBefore;
-    public int LevelBefore;
+    public bool LoweredBefore { get; set; }
+    public bool TriggerBefore { get; set; }
+    public bool PressedBefore { get; set; }
+    public int LevelBefore { get; set; }
     /// <summary>Counts the strokes of a blade: a new one each time it's lowered or dragged sideways.</summary>
-    public int Stroke;
+    public int Stroke { get; set; }
     /// <summary>Deepest level this stroke's blade point has been pressed in at.</summary>
-    public int StabbedLevel;
+    public int StabbedLevel { get; set; }
     /// <summary>Where a stapler's legs were (world) when Use tool was pressed, as its aim showed them: lowering it moves
     /// it a little.</summary>
-    public Vector3[] StapleAim = [];
-    public Vector2 LastUv = new(-1, -1);
-    public Vector3 LastTip = Vector3.Inf;
-    public float ChargeTime;
+    public Vector3[] StapleAim { get; set; } = [];
+    public Vector2 LastUv { get; set; } = new(-1, -1);
+    public Vector3 LastTip { get; set; } = Vector3.Inf;
+    public float ChargeTime { get; set; }
     /// <summary>Wiping time not painted yet.</summary>
-    public float PaintDt;
+    public float PaintDt { get; set; }
     /// <summary>Where wiping was last painted.</summary>
-    public Vector2 PaintUv = new(-1, -1);
+    public Vector2 PaintUv { get; set; } = new(-1, -1);
     /// <summary>Things already scored for this tool ("dirty", "improvised").</summary>
     public HashSet<string> Reported { get; } = [];
 
@@ -62,12 +62,12 @@ public sealed class ToolUse
 /// </summary>
 public sealed class SutureState
 {
-    public int Thread;
-    public float Tension = 1.15f;
-    public TissueDepth Layer = TissueDepth.None;
-    public float Hold;
-    public Vector2 At = new(-1, -1);
-    public bool PressUsed;
+    public int Thread { get; set; }
+    public float Tension { get; set; } = 1.15f;
+    public TissueDepth Layer { get; set; } = TissueDepth.None;
+    public float Hold { get; set; }
+    public Vector2 At { get; set; } = new(-1, -1);
+    public bool PressUsed { get; set; }
 }
 
 /// <summary>

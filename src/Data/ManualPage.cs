@@ -111,7 +111,7 @@ public sealed partial class ManualPage
             return null;
         }
         var value = parsed.Execute(inputs, null, showError: false);
-        return parsed.HasExecuteFailed() ? null : value;
+        return parsed.HasExecuteFailed() ? null : (Variant?)value;
     }
 
     /// <summary>The page or one of its sub-pages is tagged with one of the keys.</summary>

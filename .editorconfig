@@ -96,6 +96,8 @@ dotnet_diagnostic.CA1311.severity = none
 dotnet_diagnostic.CA1304.severity = none
 # Gameplay randomness, not security.
 dotnet_diagnostic.CA5394.severity = none
+# Readers are named for the type they read (reader.Float("dose")).
+dotnet_diagnostic.CA1720.severity = none
 # Godot signals are delegates named ...EventHandler by convention.
 dotnet_diagnostic.CA1711.severity = none
 # Arrays are the fast, shared state of the simulations (tissue particles, painted textures).

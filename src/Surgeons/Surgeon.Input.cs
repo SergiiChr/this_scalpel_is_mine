@@ -64,11 +64,12 @@ public partial class Surgeon
 
     private readonly record struct DelayedMove(ulong DueMsec, int Hand, Vector2 Motion);
 
-    private static bool IsNeedle(SurgicalTool? tool) => tool is not null && NeedleActions.Contains(tool.Def.Action);
+    /// <summary>Whether the tool has a needle the last zoom step frames: a syringe or the IV catheter.</summary>
+    public static bool IsNeedle(SurgicalTool? tool) => tool is not null && NeedleActions.Contains(tool.Def.Action);
 
     private static bool IsSyringe(SurgicalTool? tool) => tool?.Def.Action == "syringe";
 
-    public override void _UnhandledInput(InputEvent inputEvent)
+    public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsLocal || InputLocked || Status.IsOut)
         {
@@ -76,30 +77,30 @@ public partial class Surgeon
         }
         var hand = Hands[Active];
         // Headless there's no mouse to capture (Hud.CaptureMouse()): the only motion is what a test sends.
-        if (inputEvent is InputEventMouseMotion mouse)
+        if (@event is InputEventMouseMotion mouse)
         {
             if (Input.MouseMode == Input.MouseModeEnum.Captured || DisplayServer.GetName() == "headless")
             {
                 OnMouseMotion(mouse.Relative * Settings.MouseSensitivity);
             }
         }
-        else if (inputEvent.IsActionPressed(InputActions.MoveLeftHand) || inputEvent.IsActionPressed(InputActions.MoveRightHand))
+        else if (@event.IsActionPressed(InputActions.MoveLeftHand) || @event.IsActionPressed(InputActions.MoveRightHand))
         {
-            var index = inputEvent.IsActionPressed(InputActions.MoveLeftHand) ? 0 : 1;
+            var index = @event.IsActionPressed(InputActions.MoveLeftHand) ? 0 : 1;
             if (index != Active)
             {
                 SwitchHand();
             }
         }
-        else if (inputEvent.IsActionPressed(InputActions.LevelUp) || inputEvent.IsActionPressed(InputActions.LevelDown))
+        else if (@event.IsActionPressed(InputActions.LevelUp) || @event.IsActionPressed(InputActions.LevelDown))
         {
-            OnWheel(inputEvent.IsActionPressed(InputActions.LevelUp));
+            OnWheel(@event.IsActionPressed(InputActions.LevelUp));
         }
-        else if (inputEvent.IsActionPressed(InputActions.Zoom))
+        else if (@event.IsActionPressed(InputActions.Zoom))
         {
             Zoom = (Zoom + 1) % ZoomFov.Length;
         }
-        else if (inputEvent.IsActionPressed(InputActions.UseTool))
+        else if (@event.IsActionPressed(InputActions.UseTool))
         {
             // One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
             SetLowered(hand, true);
@@ -112,7 +113,7 @@ public partial class Surgeon
                 Zoom = ZoomFov.Length - 1;
             }
         }
-        else if (inputEvent.IsActionReleased(InputActions.UseTool))
+        else if (@event.IsActionReleased(InputActions.UseTool))
         {
             if (_needleAnchor is { } anchor)
             {
@@ -124,7 +125,7 @@ public partial class Surgeon
             hand.Trigger = false;
             EndNeedleZoom();
         }
-        else if (inputEvent.IsActionPressed(InputActions.Grab))
+        else if (@event.IsActionPressed(InputActions.Grab))
         {
             if (HeldTool(Active) is { Def.Tray: "bottles" } && !hand.Attached)
             {
@@ -137,16 +138,16 @@ public partial class Surgeon
                 GrabOrRelease();
             }
         }
-        else if (inputEvent.IsActionReleased(InputActions.Grab) && _standHold is not null)
+        else if (@event.IsActionReleased(InputActions.Grab) && _standHold is not null)
         {
             _standHold = null;
             GrabOrRelease();
         }
-        else if (inputEvent.IsActionPressed(InputActions.Interact) && Focused is not null)
+        else if (@event.IsActionPressed(InputActions.Interact) && Focused is not null)
         {
             Focused.Interact(this);
         }
-        else if (inputEvent.IsActionPressed(InputActions.Drink))
+        else if (@event.IsActionPressed(InputActions.Drink))
         {
             Session.RequestDrink(Active);
         }
@@ -154,7 +155,7 @@ public partial class Surgeon
         {
             for (var i = 0; i < MaxBelt; i++)
             {
-                if (inputEvent.IsActionPressed(InputActions.BeltSlot(i + 1)))
+                if (@event.IsActionPressed(InputActions.BeltSlot(i + 1)))
                 {
                     Session.Tools.RequestBelt(Active, i);
                 }
