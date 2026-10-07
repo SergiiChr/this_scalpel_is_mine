@@ -12,6 +12,11 @@ const FILL_STEPS := 50.0
 const VIAL_REACH := 0.05
 ## How far apart (meters) bottles delivered standing are set, so a new one doesn't stand on an earlier one.
 const STANDING_ROOM := 0.04
+## How high (meters) over the body at rest a tool lying on it rests at its tip, about half its thickness. Elsewhere it
+## rests right on the body: breathing lifts a belly into it a little, never enough to stand it up.
+const LYING_CLEARANCE := 0.0025
+## Where along a lying tool (a share of its length from the tip) it's checked against the body.
+const LYING_SAMPLES: Array[float] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 const DISH_REACH := 0.4
 const DRIP_REACH := 0.75
 ## How close to a dish's middle (a share of its length) a bottle has to be to pour into it, or a cotton pad to dip in it.
@@ -227,10 +232,10 @@ func request_spread(hand: int, direction: int) -> void:
 	_req_spread.rpc_id(1, hand, direction)
 
 
-## Host: shows every peer how far the spreader is open and whether it's set in a wound.
-func sync_spread(tool: SurgicalTool) -> void:
+## Host: sends a spreader's opening and whether it's set to everyone. Set just now, it eases down to `pose`.
+func sync_spread(tool: SurgicalTool, pose := Transform3D()) -> void:
 	if multiplayer.is_server():
-		_set_spread.rpc(tool.uid, tool.spread, not tool.grip_info.is_empty())
+		_set_spread.rpc(tool.uid, tool.spread, not tool.grip_info.is_empty(), pose)
 
 
 ## The needle of the syringe in this hand tore out of the patient, dragged from `from` to `to` (world space).
@@ -267,6 +272,8 @@ func _req_grab(uid: int, hand: int) -> void:
 		return
 	var was_standing := tool.state == SurgicalTool.State.STANDING
 	_set_state.rpc(uid, SurgicalTool.State.HELD, peer, hand, tool.global_transform)
+	# In hand again, its tip holds the skin (see leave_standing()).
+	tool.grip_info.erase("hold")
 	if was_standing and not tool.grip_info.is_empty():
 		Surgery.current.set_attached(peer, hand, true)
 	if was_standing and tool.def.action == "tourniquet":
@@ -367,10 +374,12 @@ func _req_spread(hand: int, direction: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _set_spread(uid: int, spread: float, in_wound: bool) -> void:
+func _set_spread(uid: int, spread: float, in_wound: bool, pose: Transform3D) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
 		tool.spread = spread
+		if in_wound and not tool.in_wound:
+			tool.dig_to(pose)
 		tool.in_wound = in_wound
 
 
@@ -460,9 +469,20 @@ func standing_on(tool: SurgicalTool, at: Vector3) -> Transform3D:
 	return Transform3D(basis, Vector3(at.x, under - (Transform3D(basis) * tool.bounds).position.y + 0.001, at.z))
 
 
-## The first thing under `at` a tool could stand on, other than the tool itself: the ray hit, empty if nothing.
-func _surface_under(tool: SurgicalTool, at: Vector3) -> Dictionary:
-	var mask := 1 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER
+## The height of the body at rest under `at`: over the site its measured surface, elsewhere the body (or the table).
+## Not the skin as it's drawn, which a hook's pull dips and bunches up, nor the drape, which gives: a rigid tool resting
+## on either would stand up instead of lying along the body.
+func _body_under(tool: SurgicalTool, at: Vector3) -> float:
+	var body := Surgery.current.patient.body
+	var uv := body.world_to_uv(at)
+	if Rect2(0, 0, 1, 1).has_point(uv) and body.on_body(uv):
+		return body.uv_to_world(uv).y
+	var hit := _surface_under(tool, at, 1 | PatientBody.SURFACE_LAYER)
+	return hit.position.y if not hit.is_empty() else at.y
+
+
+## The first thing under `at` a tool could stand on (of `mask`), other than the tool itself: the ray hit, empty if nothing.
+func _surface_under(tool: SurgicalTool, at: Vector3, mask: int = 1 | PatientBody.SURFACE_LAYER | Drape.DRAPE_LAYER | SurgicalTool.TOOL_LAYER) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.2, at + Vector3.DOWN * 2.0, mask, [tool.get_rid()])
 	return get_viewport().world_3d.direct_space_state.intersect_ray(query)
 
@@ -486,9 +506,61 @@ func give_graft(by_uid: int) -> void:
 	carry(graft, by)
 
 
+## Host: the hand lets go of a self-retaining tool, which keeps its hold where it is. One holding the skin (a
+## retractor's hook) lies down on the body instead (lying_from_hold()).
 func leave_standing(tool: SurgicalTool) -> void:
 	Surgery.current.set_attached(tool.holder, tool.slot, false)
-	_set_state.rpc(tool.uid, SurgicalTool.State.STANDING, tool.holder, -1, tool.global_transform)
+	var pose := tool.global_transform
+	var lying: bool = tool.grip_info.get("type", "") == "skin"
+	if lying:
+		# The skin stays held where the hand left it (in the site's space, so breathing doesn't pull it), the tool lying
+		# on top of it.
+		tool.grip_info.hold = Surgery.current.patient.body.site.to_local(tool.tip_position())
+		pose = lying_from_hold(tool)
+	_set_state.rpc(tool.uid, SurgicalTool.State.STANDING, tool.holder, -1, pose)
+	if lying:
+		_ride_site.rpc(tool.uid)
+
+
+## A tool lying on the patient rises and falls with the site as the patient breathes (SurgicalTool.ride()).
+@rpc("authority", "call_local", "reliable")
+func _ride_site(uid: int) -> void:
+	var tool: SurgicalTool = tools.get(uid)
+	if tool:
+		tool.ride(Surgery.current.patient.body.site)
+
+
+## Where a tool holding the skin lies once let go of: its tip on the body over where it holds (the skin stays held
+## where the hand left it, see leave_standing()), and the rest of it lying along the body with its handle pointing
+## straight away from where it took hold: the way it pulled, or away from the cut if it wasn't pulled.
+func lying_from_hold(tool: SurgicalTool) -> Transform3D:
+	var patient := Surgery.current.patient
+	var tip := tool.tip_position()
+	tip.y = _body_under(tool, tip) + LYING_CLEARANCE
+	var anchor: Vector2 = tool.grip_info.anchor
+	var away := (tip - patient.body.uv_to_world(anchor)) * Vector3(1, 0, 1)
+	var cut := patient.wound_with_id(tool.grip_info.get("wound", 0))
+	if away.length() < 0.005 and cut:
+		away = (patient.body.uv_to_world(anchor) - patient.body.uv_to_world(cut.closest_point(anchor))) * Vector3(1, 0, 1)
+	if away.length() < 0.001:
+		away = tool.global_basis.z * Vector3(1, 0, 1)
+	away = away.normalized()
+	var back := (away + Vector3.UP * _slope_along(tool, tip, away)).normalized()
+	var side := Vector3.UP.cross(back).normalized()
+	return Transform3D(Basis(side, back.cross(side), back), tip + back * tool.def.length)
+
+
+## How steeply (rise over run) a tool lying from `tip` toward `along` (a direction across the floor) has to slope to
+## rest on the body without sinking into it. Negative where it slopes down. Tilted, it reaches less
+## far across the floor than its length, so the slope is found again where it then lies.
+func _slope_along(tool: SurgicalTool, tip: Vector3, along: Vector3) -> float:
+	var slope := 0.0
+	for i in 3:
+		var reach := tool.def.length / sqrt(1.0 + slope * slope)
+		slope = -INF
+		for t: float in LYING_SAMPLES:
+			slope = maxf(slope, (_body_under(tool, tip + along * reach * t) - tip.y) / (reach * t))
+	return slope
 
 
 ## Host: the tool leaves the hand and wraps around a limb (a tourniquet), see PatientBody.limb_ring().
@@ -751,8 +823,11 @@ func _spawn(uid: int, id: String, at: Vector3) -> void:
 func _set_state(uid: int, state: int, holder: int, slot: int, xform: Transform3D) -> void:
 	var tool: SurgicalTool = tools.get(uid)
 	if tool:
-		tool.global_transform = xform
+		# The state first, and the transform into the physics engine too: changing how a body is frozen makes the engine
+		# write its own last transform back (a retractor let go of would stand back up in its held pose).
 		tool.set_state(state as SurgicalTool.State, holder, slot)
+		tool.global_transform = xform
+		PhysicsServer3D.body_set_state(tool.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, xform)
 		if state == SurgicalTool.State.HELD:
 			Sfx.play("tool_pickup", xform.origin)
 

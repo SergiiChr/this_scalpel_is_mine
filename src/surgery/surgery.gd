@@ -264,6 +264,13 @@ func set_attached(peer: int, hand: int, value: bool) -> void:
 		surgeon.set_hand_attached.rpc_id(peer, hand, value)
 
 
+## The tool in this hand of this surgeon bounced off what it was pressed onto: the hand hops up and comes back down.
+func bounce_hand(peer: int, hand: int) -> void:
+	var surgeon: Surgeon = surgeons.get(peer)
+	if surgeon and hand >= 0:
+		surgeon.bounce_hand.rpc_id(peer, hand)
+
+
 func flicker_lights() -> void:
 	_flicker.rpc(randf_range(1.0, 3.0))
 
@@ -293,10 +300,10 @@ func overstretched(peer: int, hand: int) -> void:
 	var tool := tools.tool_in_hand(peer, hand)
 	if tool == null or tool.grip_info.is_empty():
 		return
-	if tool.def.action == "spread":
-		# A spreader holds the wound open by itself: walking away just leaves it set in it.
+	if tool.def.self_retaining:
+		# A self-retaining tool (a Gelpi retractor, a hooked retractor) holds by itself: walking away just leaves it.
 		tools.leave_standing(tool)
-		tell(peer, "You let go of the %s. It stays in the wound." % tool.def.name.to_lower())
+		tell(peer, "You let go of the %s. It keeps its hold." % tool.def.name.to_lower())
 		return
 	var anchor: Vector2 = tool.grip_info.get("anchor", patient.body.world_to_uv(tool.tip_position()))
 	patient.tear(anchor, Vector2(randf_range(-1, 1), randf_range(-1, 1)), 0.05)

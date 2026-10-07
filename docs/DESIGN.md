@@ -452,16 +452,38 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 ### Gelpi retractor
 
 - A self-retaining spreader (`action="spread"`), beside the plain retractor that pulls one edge like forceps: ring
-  handles with a ratchet, a box joint and two long arms, each ending in a point turned outward. The aim shows
-  a < and a > where its tips are, square to its length (`ToolActions.spread_tips()`); C/V roll it to turn them across
-  a cut. The wheel opens and closes it, in the hand or set, from 1.2 to 8 cm between the tips (`ToolActions.SPREAD_RANGE`);
-  the arms swing about the joint to match (`ToolAnimator.open_to()`), the handles stay in the fingers.
-- Use tool on the skin sets it: each jaw takes hold of the skin on its own side of the middle, so set right over a cut
-  each holds one edge (`Patient.set_spreader()`). Opened or closed, each edge moves half the change
-  (`Patient.open_spreader()`), and the cut opens like the skin lets it: opened too far it tears at the ends.
-  Use tool again takes it out.
+  handles with a ratchet rising to a box joint and two long arms, each ending in a point bent down under it. It's held
+  tipped toward the skin, its points down (`SurgeonHand.SPREADER_TILT`), and lies along a cut with its jaws across
+  it. The aim shows a < and a > where its tips are, square to its length (`ToolActions.spread_tips()`); C/V swing it
+  about the upright to turn them across a cut (`SurgeonHand.spreads`). The wheel opens and closes it, in the hand or
+  set, from 1.2 to 8 cm between the tips (`ToolActions.SPREAD_RANGE`); the arms swing about the joint to match
+  (`ToolAnimator.open_to()`), the handles stay in the fingers.
+- Use tool on a cut sets it: each jaw takes hold of the skin on its own side of the middle, so set right over a cut
+  each holds one edge (`Patient.set_spreader()`). It goes down lying flatter along the skin, its points into the cut
+  as deep as the cut goes (through the skin, the fat or the muscle, at most `ToolActions.SPREAD_REACH`), so how far
+  the arms sink shows how deep the cut is (`SurgicalTool.dig_to()`). Pressed on skin with no cut between its tips it
+  doesn't set: the hand bounces off and comes back down (`SurgeonHand.bounce()`). Opened or closed, each edge moves
+  half the change (`Patient.open_spreader()`), and the cut opens like the skin lets it: opened too far it tears at the
+  ends. Use tool again takes it out.
 - Set, it stays where it went in: the hand holding it goes to it and doesn't shake (`Surgeon._hold_in_wound()`).
   Put down, or walked away from, it stays set in the wound (self-retaining). Picked up again, the wheel works on it.
+  Left set, it doesn't keep hands or tools off the cut: a blade cuts the layers under the skin between its jaws.
+
+### Retractor
+
+- Use tool hooks the skin where it's pressed, and moving the hand pulls it that way, like forceps. Grab lets go of
+  the handle but not the skin (self-retaining): the retractor lies down along the body from the hook, pointing away
+  from where it took hold, and keeps the skin pulled where the hand left it (`ToolManager.lying_from_hold()`). It rests
+  on the body at rest, not on the skin its hook dips and bunches up, nor on the drape (it slides under its edge), so
+  it lies flat rather than standing up. It rides the site, rising and falling with a breathing belly, and so does the
+  skin it holds (`SurgicalTool.ride()`). Its handle points straight away from
+  where it hooked: the way it pulled, or away from the cut.
+  Taken back, the hand goes to where the hook holds, so the skin isn't dragged; Use tool unhooks it.
+- It hooks only skin (`ToolActions.SKIN_HOOKS`), never a target, vessel or organ under it: the skin it's pressed onto,
+  or pressed into an opening, the edge of the cut on that side (`TissueSim.grip_beside()`). It pulls the skin aside or
+  up, never down into the opening after its tip.
+- Anything left holding onto the patient (a retractor, a hemostat, a Gelpi retractor) has no collider: hands and
+  tools reach past it (`SurgicalTool.set_state()`).
 
 ### Tourniquet
 

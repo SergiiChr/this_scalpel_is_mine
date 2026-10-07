@@ -8,6 +8,7 @@ extends Node
 ## returns; tests assert on the game's state. Direct state changes for a test's setup live apart, in surgery_state.gd.
 ## Walking is a step to where the surgeon wants to stand: no route is walked, so nothing is bumped on the way.
 
+const PlayerInput := preload("res://tests/support/player_input.gd")
 const SURGERY := preload("res://scenes/surgery.tscn")
 const FrameBudget := preload("res://tests/support/frame_budget.gd")
 const SurgeryState := preload("res://tests/support/surgery_state.gd")
@@ -119,12 +120,9 @@ func capture(key_frame: String) -> void:
 # --- Controls ------------------------------------------------------------------------------------------
 
 
-## Presses (and with release, lets go of) an input action, as the keyboard or mouse sends it.
+## Presses (and with pressed false, lets go of) an input action, through the engine's input (see PlayerInput).
 func press(action: String, pressed: bool = true) -> void:
-	var event := InputEventAction.new()
-	event.action = action
-	event.pressed = pressed
-	me._unhandled_input(event)
+	PlayerInput.action(action, pressed)
 
 
 func release(action: String) -> void:
@@ -133,13 +131,12 @@ func release(action: String) -> void:
 
 ## Presses and lets go of an action straight away, like a click: Grab puts a held bottle down rather than standing it.
 func tap(action: String) -> void:
-	press(action)
-	press(action, false)
+	PlayerInput.tap(action)
 
 
 ## One wheel notch on the active hand: its effort level, or a syringe's plunger (up pushes it in).
 func notch(up: bool) -> void:
-	press("level_up" if up else "level_down")
+	tap("level_up" if up else "level_down")
 	await frames(2)
 
 
@@ -199,11 +196,11 @@ func player_walks_to(point: Vector3, off: float = STAND_OFF) -> void:
 ## Holds a walking key (move_forward, move_back, move_left, move_right) for `time` seconds, so the body walks the way
 ## a player's does. `each_frame` is called once every frame of it, after the frame's physics.
 func player_holds_walk_key(action: String, time: float, each_frame: Callable) -> void:
-	Input.action_press(action)
+	PlayerInput.action(action)
 	for i in int(time * Engine.physics_ticks_per_second):
 		await get_tree().process_frame
 		each_frame.call()
-	Input.action_release(action)
+	PlayerInput.action(action, false)
 	note("walked (%s) for %.1f s" % [action, time])
 
 
@@ -221,13 +218,14 @@ func _clear_of_tubing(spot: Vector3) -> bool:
 ## game decides the height: hovering, or resting on what's under it while Use tool is held.
 func player_reaches(point: Vector3) -> void:
 	var hand := me.hands[me.active]
+	_hold_hand_key(true)
 	for i in 8:
 		var miss := (point - _tip(hand)) * Vector3(1, 0, 1)
 		if i > 0 and miss.length() < 0.002:
 			break
-		# As the mouse moves it (Surgeon.steer_hand()): within reach, and also while it holds onto something.
-		me._move_hand(hand, miss)
+		_steer(miss)
 		await frames(6)
+	_hold_hand_key(false)
 
 
 ## Turns the active hand's tool straight ahead with Aim tool: the hands start turned in, and straight the tip reaches
@@ -246,11 +244,25 @@ func player_sweeps_to(point: Vector3, speed: float = SLOW) -> void:
 	var from := _tip(hand) * Vector3(1, 0, 1)
 	var to := point * Vector3(1, 0, 1)
 	var steps := maxi(int(from.distance_to(to) / speed * Engine.physics_ticks_per_second), 1)
+	_hold_hand_key(true)
 	for i in steps:
 		var planned := from.lerp(to, float(i + 1) / steps)
 		var drift := (planned - _tip(hand)) * Vector3(1, 0, 1)
-		me._move_hand(hand, (to - from) / steps + drift * 0.3)
+		_steer((to - from) / steps + drift * 0.3)
 		await get_tree().physics_frame
+	# The last move reaches the hand with the next input.
+	await get_tree().physics_frame
+	_hold_hand_key(false)
+
+
+## Holds (or lets go of) the active hand's key, so the mouse moves that hand.
+func _hold_hand_key(on: bool) -> void:
+	press(PlayerInput.hand_key(me), on)
+
+
+## Moves the mouse so the active hand moves `move` (world, across the floor).
+func _steer(move: Vector3) -> void:
+	PlayerInput.mouse(PlayerInput.hand_motion(me, move))
 
 
 func _tip(hand: SurgeonHand) -> Vector3:
@@ -261,32 +273,45 @@ func _tip(hand: SurgeonHand) -> Vector3:
 ## Holds Aim tool (MMB) and moves the mouse `motion` pixels a frame for `count` frames, as the mouse handler does
 ## (Surgeon.aim_tool()). Aim tool stays held until player_lets_go_of_aim().
 func player_aims(motion: Vector2, count: int) -> void:
-	Input.action_press("aim_tool")
+	press("aim_tool")
 	for i in count:
-		me.aim_tool(motion * Settings.mouse_sensitivity)
+		PlayerInput.mouse(motion)
 		await get_tree().physics_frame
+	# The last move reaches the hand with the next input.
+	await get_tree().physics_frame
 	note("aimed %s px" % (motion * count))
 
 
 func player_lets_go_of_aim() -> void:
-	Input.action_release("aim_tool")
+	release("aim_tool")
 
 
 ## Points the active hand's blade edge (ToolActions.blade_direction()) along `direction` (world, across the floor) by
 ## twisting the wrist, as C/V do.
 func player_turns_blade(direction: Vector3) -> void:
 	var hand := me.hands[me.active]
-	var yaw := me.global_rotation.y + hand.turn
-	var best := hand.twist
+	var now := hand.twist
+	var best := now
 	var best_dot := -1.0
 	for i in range(-60, 61):
-		var twist := i * PI / 60.0
-		var side := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, hand.tilt) * Basis(Vector3.FORWARD, twist) * Vector3.RIGHT
+		# The hand's own way of turning its tool: a spreader swings about the upright where a blade rolls.
+		hand.twist = i * PI / 60.0
+		var side := hand.grip_transform().basis.x
 		var dot := absf(side.cross(Vector3.UP).normalized().dot(direction.normalized()))
 		if dot > best_dot:
 			best_dot = dot
-			best = twist
-	hand.twist = best
+			best = hand.twist
+	hand.twist = now
+	# Held for as long as the turn takes (Surgeon._local_update() turns it TWIST_SPEED radians a second). A half turn
+	# lines the edge up as well, so it never turns more than a quarter.
+	var turn := wrapf(best - now, -PI / 2.0, PI / 2.0)
+	var key := "twist_right" if turn > 0.0 else "twist_left"
+	var held := roundi(absf(turn) / Surgeon.TWIST_SPEED * Engine.physics_ticks_per_second)
+	if held > 0:
+		press(key)
+		for i in held:
+			await get_tree().physics_frame
+		release(key)
 	await frames(5)
 
 
@@ -404,10 +429,16 @@ func player_puts_down(standing: bool = false) -> void:
 	if me.uses_level(me.active):
 		await set_level(0)
 	var spot := SurgeryState.free_tray_spot(surgery)
-	await player_walks_to(spot)
-	# The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
-	await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
-	await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
+	for i in 4:
+		await player_walks_to(spot)
+		# The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
+		await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
+		await player_reaches(spot - (ToolManager.middle(tool) - tool.tip_position()))
+		if (ToolManager.middle(tool) - spot).slide(Vector3.UP).length() < 0.04:
+			break
+		# Out of this tool's reach from the side of the tray: another spot.
+		SurgeryState.tray_spot_is_bad(surgery, spot)
+		spot = SurgeryState.free_tray_spot(surgery)
 	# Set down onto the tray before letting go, or a bottle would fall and roll.
 	if not ToolActions.TRIGGER_NAMES.has(tool.def.action):
 		use()
@@ -922,7 +953,8 @@ func player_sets_gelpi(from: Vector2, to: Vector2) -> SurgicalTool:
 	use()
 	await frames(10)
 	use(false)
-	await frames(3)
+	# Set, it goes down into the cut (SurgicalTool.DIG_TIME).
+	await seconds(SurgicalTool.DIG_TIME + 0.1)
 	note("gelpi %s" % ("set" if gelpi.in_wound else "not set"))
 	return gelpi
 
@@ -1003,14 +1035,14 @@ func _lift_out(target: CavityTarget) -> void:
 		await _let_go(aside)
 		return
 	# A steady pull, a couple of centimeters up, held until it lets go.
-	Input.action_press("lift")
+	PlayerInput.action("lift")
 	await wait_until(func() -> bool: return body.site.to_local(forceps.tip_position()).y > -target.depth + 0.025, 3.0)
-	Input.action_release("lift")
+	PlayerInput.action("lift", false)
 	await wait_until(func() -> bool: return target.anchor <= 0.0, 30.0)
-	Input.action_press("lift")
+	PlayerInput.action("lift")
 	await wait_until(func() -> bool: return target.extracted, 5.0)
 	await seconds(0.5)
-	Input.action_release("lift")
+	PlayerInput.action("lift", false)
 	await _let_go(aside)
 	await switch_to(RIGHT)
 	use(false)
@@ -1282,10 +1314,8 @@ func player_turns_patient(orientation: int) -> void:
 				qte = node
 			if qte == null:
 				break
-			var action: String = qte._sequence[qte._index]
-			var event: InputEventKey = InputMap.action_get_events(action).filter(func(e: InputEvent) -> bool: return e is InputEventKey)[0].duplicate()
-			event.pressed = true
-			qte._unhandled_input(event)
+			# The quick-time event listens to the keys themselves.
+			PlayerInput.key(qte._sequence[qte._index])
 		await seconds(1.0)
 	note("orientation %d" % body.orientation)
 

@@ -24,6 +24,8 @@ const ALONG_BLADE := 0.8
 ## Clamps that can pinch a cotton pad, and how close to the pad their tip has to be.
 const PAD_HOLDERS: PackedStringArray = ["forceps", "hemostat"]
 const PAD_REACH := 0.04
+## Clamps that only hook skin, the edge of a cut: never what lies under it in the opening.
+const SKIN_HOOKS: PackedStringArray = ["retractor"]
 ## ml of iodine a cotton pad soaks up from a dish. A soaked pad runs dry after 1 / PAD_DRAIN seconds of wiping.
 const PAD_ML := 10.0
 const PAD_DRAIN := 0.12
@@ -42,6 +44,9 @@ const SUTURE_TIE_HOLD := 0.65
 ## (GELPI_CLOSED in tools/assetgen/instruments.py).
 const SPREAD_STEP := 0.005
 const SPREAD_RANGE := Vector2(0.012, 0.08)
+## How deep (meters) a spreader's points reach into a cut: they hang GELPI_DROP (tools/assetgen/instruments.py) under
+## its arms, which stop on the skin.
+const SPREAD_REACH := 0.012
 ## Wipes paint big soft disks: at most this often, or once the tool moved PAINT_MOVE (uv) since the last one.
 const PAINT_INTERVAL := 1.0 / 15.0
 const PAINT_MOVE := 0.02
@@ -163,7 +168,7 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 			# Pinching takes hold only on something the jaws were lowered onto; letting go works anywhere.
 			elif pressed and (lowered or not tool.grip_info.is_empty()):
 				if tool.grip_info.is_empty():
-					tool.grip_info = patient.grip(tool.uid, zone, uv, probe.depth)
+					tool.grip_info = patient.grip(tool.uid, zone, uv, probe.depth, def.id in SKIN_HOOKS)
 					if tool.grip_info.type == "none":
 						tool.grip_info = {}
 				else:
@@ -184,13 +189,19 @@ static func update(tool: SurgicalTool, hand: Dictionary, patient: Patient, dt: f
 				uv = contact.uv
 			_sew(tool, patient, zone, uv, lowered, trigger, released, dt, tip)
 		"spread":
-			# Pressed onto the skin, the jaws go in on both sides of the aim and stay there; pressed again they come out.
+			# Pressed onto a cut, the jaws go in on both sides of the aim and stay there, the points down in the cut as deep
+			# as it goes; pressed again they come out. Pressed where there's no cut to go into, it bounces off.
 			if pressed and tool.grip_info.is_empty() and lowered:
 				var info := patient.set_spreader(tool.uid, spread_tips(tool), tool.spread)
 				if info.type != "none":
 					tool.grip_info = info
 					Surgery.current.set_attached(hand.peer, tool.slot, true)
-					Surgery.current.tools.sync_spread(tool)
+					# It goes down lying along the skin, the hand holding it as flat as a hand tilts a tool.
+					var dug := patient.body.uv_to_world(info.middle, minf(info.depth, SPREAD_REACH))
+					var lying := Basis(Vector3.UP, tool.global_basis.get_euler(EULER_ORDER_YXZ).y) * Basis(Vector3.RIGHT, SurgeonHand.TILT_RANGE.y)
+					Surgery.current.tools.sync_spread(tool, Transform3D(lying, dug + lying.z * tool.def.length))
+				elif touching:
+					Surgery.current.bounce_hand(hand.peer, tool.slot)
 			elif pressed and not tool.grip_info.is_empty():
 				patient.release_grip(tool.uid, tool.grip_info, false)
 				tool.grip_info = {}
@@ -593,12 +604,15 @@ static func _gather(tool: SurgicalTool, uv: Vector2, dt: float) -> float:
 	return gathered
 
 
-## Standing (self-retaining) clamps keep holding their grip after the hand lets go.
+## Standing (self-retaining) clamps keep holding their grip after the hand lets go: where their tip is, or for one
+## lying on the skin where the hand left the skin it holds ("hold", in the site's space, see
+## ToolManager.leave_standing()).
 static func update_standing(tool: SurgicalTool, patient: Patient, dt: float) -> void:
 	if tool.def.action == "drip":
 		drip(tool, patient, dt)
 	if not tool.grip_info.is_empty():
-		tool.grip_info = patient.update_grip(tool.uid, tool.grip_info, tool.tip_position(), tool.def.power, dt, 0.0)
+		var hold: Vector3 = patient.body.site.to_global(tool.grip_info.hold) if tool.grip_info.has("hold") else tool.tip_position()
+		tool.grip_info = patient.update_grip(tool.uid, tool.grip_info, hold, tool.def.power, dt, 0.0)
 		if tool.grip_info.type == "none":
 			tool.grip_info = {}
 

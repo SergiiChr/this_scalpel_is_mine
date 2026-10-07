@@ -87,7 +87,7 @@ func test_release_withdraws_without_trauma_and_leaves_blood_at_the_puncture() ->
 			measuring = true
 			for frame in 15:
 				during = label + ": moving the released needle away, frame %d" % frame
-				me.steer_hand(Vector2(20, 0))
+				await bench.steer(Vector2(20, 0))
 				await bench.frames(1)
 			measuring = false
 			assert_false(me._needle_torn, label + ": moving away after release cannot tear the skin")

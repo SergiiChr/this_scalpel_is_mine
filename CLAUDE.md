@@ -75,6 +75,11 @@ Asset generators additionally need `./build.sh dev` (Python 3.11 venv with Blend
   player has, so the game itself does the work. Functions in `tests/support/surgery_state.gd` are named for the state
   they write directly (`skin_is_cut(from, to)`, `patient_is_asleep()`) and only set up what a test isn't about.
   Add reusable steps there rather than poking game state from a test.
+- Simulated player input goes through the engine's input, as a player's does: `tests/support/player_input.gd` sends
+  actions, keys and mouse motion with `Input.parse_input_event()`. Never call an input handler (`_unhandled_input()`,
+  `steer_hand()`, `aim_tool()`) or set what it would set from a test: called directly, a press lands at another point
+  of the frame than a player's, and a test can pass where the game fails. Sent input reaches the game with the next
+  frame, so wait a frame before checking what it did.
 - Use hard programmatic checks for measurable defects including geometry, gaps, alignment and physics calculations.
 - Deliberately capture screenshots from the test immediately after named actions; never use elapsed time alone to
   decide when a screenshot is taken.

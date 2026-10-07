@@ -5,6 +5,7 @@ extends Node
 ## in and stays held. The wheel works the plunger either way. stage_catheter() puts an IV catheter on the forearm
 ## vein, or beside it. A partner (a puppet surgeon, peer 2) stands out of the way until a case needs them.
 
+const PlayerInput := preload("res://tests/support/player_input.gd")
 const SURGERY := preload("res://scenes/surgery.tscn")
 const VIAL := "vial_cefazolin"
 const DRUG := "cefazolin"
@@ -97,7 +98,7 @@ func stage(case: Dictionary, insert: bool = true) -> void:
 			tools.consume(old)
 	container = null
 	place_partner(PARTNER_PARK, 0.0)
-	Input.action_release("crouch")
+	PlayerInput.action("crouch", false)
 	syringe = _spawn(case.syringe, me.global_position + Vector3.UP)
 	# Straight into the hand: left to fall, it can reach the floor and shatter first.
 	tools._req_grab(syringe.uid, me.active)
@@ -135,10 +136,8 @@ func stage(case: Dictionary, insert: bool = true) -> void:
 	for i in 40:
 		hand.local_target = me.to_local(aim - me.own_tip_offset(me.active) + Vector3.UP * 0.04)
 		await get_tree().physics_frame
-	var press := InputEventAction.new()
-	press.action = "use_tool"
-	press.pressed = insert and not case.target in ["vial", "dish", "air"]
-	me._unhandled_input(press)
+	PlayerInput.action("use_tool", insert and not case.target in ["vial", "dish", "air"])
+	await PlayerInput.delivered()
 	await frames(10)
 
 
@@ -173,7 +172,7 @@ func _face_partner(target: String) -> void:
 		me.global_position = Vector3(glove.x, floor_y, glove.z - 0.3)
 		me.rotation.y = PI
 		me.hands[1 - me.active].local_target = Vector3(-0.3, 1.0, -0.1)
-		Input.action_press("crouch")
+		PlayerInput.action("crouch")
 		await frames(30)
 		return
 	me.global_position = patient + Vector3(0.0, floor_y, 1.1)
@@ -188,10 +187,8 @@ func _face_partner(target: String) -> void:
 
 ## One wheel notch, as the mouse sends it: down pulls the plunger out, up pushes it in.
 func notch(pull: bool) -> void:
-	var wheel := InputEventMouseButton.new()
-	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN if pull else MOUSE_BUTTON_WHEEL_UP
-	wheel.pressed = true
-	surgery.local_surgeon._unhandled_input(wheel)
+	PlayerInput.tap("level_down" if pull else "level_up")
+	await PlayerInput.delivered()
 	await frames(2)
 
 
@@ -215,9 +212,8 @@ func stage_catheter(miss: float) -> void:
 	container = null
 	surgery.patient._iv_removed.rpc()
 	# Use tool let go, or the new catheter would go in wherever the hand passes over the arm.
-	var release := InputEventAction.new()
-	release.action = "use_tool"
-	me._unhandled_input(release)
+	PlayerInput.action("use_tool", false)
+	await PlayerInput.delivered()
 	catheter = _spawn("iv_catheter", me.global_position + Vector3.UP)
 	await frames(30)
 	var vein: MeshInstance3D = surgery.patient.body._veins[0]
@@ -236,19 +232,33 @@ func stage_catheter(miss: float) -> void:
 
 ## Use tool: the held needle goes in where it rests.
 func press() -> void:
-	var event := InputEventAction.new()
-	event.action = "use_tool"
-	event.pressed = true
-	surgery.local_surgeon._unhandled_input(event)
+	PlayerInput.action("use_tool")
+	await PlayerInput.delivered()
 	await frames(5)
 
 
 ## Use tool let go: the needle comes out without moving the hand away.
 func release(wait_frames: int = 5) -> void:
-	var event := InputEventAction.new()
-	event.action = "use_tool"
-	surgery.local_surgeon._unhandled_input(event)
+	PlayerInput.action("use_tool", false)
+	await PlayerInput.delivered()
 	await frames(wait_frames)
+
+
+## Moves the mouse `motion` pixels with the active hand's key held, as a player moves that hand.
+func steer(motion: Vector2) -> void:
+	var me := surgery.local_surgeon
+	PlayerInput.action(PlayerInput.hand_key(me))
+	PlayerInput.mouse(motion / Settings.mouse_sensitivity)
+	PlayerInput.action(PlayerInput.hand_key(me), false)
+	await PlayerInput.delivered()
+
+
+## Turns the active hand's tool with Aim tool held and the mouse moved `motion` pixels, then lets go of Aim tool.
+func aim(motion: Vector2) -> void:
+	PlayerInput.action("aim_tool")
+	PlayerInput.mouse(motion / Settings.mouse_sensitivity)
+	PlayerInput.action("aim_tool", false)
+	await PlayerInput.delivered()
 
 
 ## The middle of the forearm vein the cases use (world space).

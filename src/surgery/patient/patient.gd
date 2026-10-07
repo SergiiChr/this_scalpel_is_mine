@@ -1033,7 +1033,7 @@ static func _lay_closure(values: PackedFloat32Array, base: Dictionary, bins: Pac
 func _snap_suture(thread_id: int, crossings: PackedVector2Array, across: Vector2, over_muscle: bool) -> void:
 	var suture: Dictionary = _sutures[thread_id]
 	for id: int in suture.before:
-		var wound := _wound(id)
+		var wound := wound_with_id(id)
 		for bin: int in suture.before[id].skin:
 			wound.bins[bin] = suture.before[id].skin[bin]
 		for bin: int in suture.before[id].muscle:
@@ -1332,11 +1332,21 @@ func _contaminate() -> void:
 
 
 ## Called when a clamp tool closes at tip. Returns grip info that update_grip() and release_grip() use.
-func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionary:
+## skin_only: a hook (the retractor) takes hold of skin and nothing under it: the skin it's pressed onto, or pressed
+## into an opening, the edge of the cut on that side. It pulls the skin aside, never down into the opening ("hook").
+func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float, skin_only: bool = false) -> Dictionary:
+	if skin_only and zone == "cavity":
+		var cut := _nearest_wound(uv, 0.03, false)
+		if cut == null:
+			return {"type": "none"}
+		var line := cut.closest_point(uv)
+		if body.tissue.grip_beside(tool_uid, uv, line, uv - line) < 0:
+			body.tissue.grip(tool_uid, uv)
+		return {"type": "skin", "wound": cut.id, "anchor": uv, "hook": true}
 	# The nearest target the jaws close on, not one another tool already holds (two broken ends lie close together).
 	var nearest: CavityTarget = null
 	for target in targets:
-		if target.extracted or target.is_suction_target() or target.remove_with in ["saw", "smash"] and target.anchor > 0.0:
+		if skin_only or target.extracted or target.is_suction_target() or target.remove_with in ["saw", "smash"] and target.anchor > 0.0:
 			continue
 		if target.gripped_by != 0 and target.gripped_by != tool_uid:
 			continue
@@ -1346,24 +1356,24 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 	if nearest:
 		nearest.gripped_by = tool_uid
 		return {"type": "target", "target": nearest.index, "start_depth": depth_m}
-	if _inside(zone, uv):
+	if _inside(zone, uv) and not skin_only:
 		for wound in wounds:
 			if wound.is_internal() and wound.points[0].distance_to(uv) < 0.05:
 				wound.clamped = 0.9
 				return {"type": "vessel", "wound": wound.id}
-	if zone == "cavity":
+	if zone == "cavity" and not skin_only:
 		# An organ in the way can be taken hold of and moved aside, to get at what's under it.
 		var organ := body.organ_at(body.uv_to_world(uv, depth_m), 0.02)
 		if organ >= 0:
 			body.hold_organ(organ, body.organs[organ].position)
 			return {"type": "organ", "organ": organ, "offset": body.organs[organ].position - body.site.to_local(body.uv_to_world(uv, depth_m))}
 	var wound := _nearest_wound(uv, 0.03, false)
-	if wound and zone == "cavity" and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
+	if wound and zone == "cavity" and not skin_only and wound.bleed_rate(1.0, 1.0) > 0.0 and wound.depth > 0.6:
 		wound.clamped = 0.85
 	# Skin can be pinched anywhere on the site, but from inside the cavity only near a wound edge.
 	if zone == "site" or zone == "cavity" and wound:
 		body.tissue.grip(tool_uid, uv)
-		var info := {"type": "skin", "wound": wound.id if wound else 0, "anchor": uv}
+		var info := {"type": "skin", "wound": wound.id if wound else 0, "anchor": uv, "hook": skin_only}
 		if zone == "site" and not body.tissue.piece_of(body.tissue.nearest(uv)).is_empty():
 			info.piece = true
 		return info
@@ -1372,7 +1382,8 @@ func grip(tool_uid: int, zone: String, uv: Vector2, depth_m: float) -> Dictionar
 
 ## Called when a spreader (the Gelpi retractor) is set into the skin with its jaws' tips at `tips` (world, see
 ## ToolActions.spread_tips()): each jaw takes hold of the edge on its own side of the middle.
-## Returns grip info for open_spreader() and release_grip(), {"type": "none"} when a tip isn't on the site.
+## Returns grip info for open_spreader() and release_grip(), with "middle" (uv) and "depth" (meters under the skin the
+## cut between the tips goes), {"type": "none"} when a tip isn't on the site or there's no cut between them to go into.
 func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Dictionary:
 	var uvs: Array[Vector2] = []
 	for tip in tips:
@@ -1381,6 +1392,9 @@ func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Diction
 			return {"type": "none"}
 		uvs.append(probe.uv)
 	var middle := (uvs[0] + uvs[1]) * 0.5
+	var depth := body.opening_depth(middle, uvs[0].distance_to(uvs[1]) * 0.5 + body.meters_to_uv(0.003))
+	if depth <= 0.0:
+		return {"type": "none"}
 	var keys: Array[int] = []
 	var starts: Array[Vector3] = []
 	for side in 2:
@@ -1393,7 +1407,7 @@ func set_spreader(tool_uid: int, tips: Array[Vector3], spread: float) -> Diction
 		keys.append(key)
 		starts.append(body.tissue.pos[held])
 	var axis := body.site.to_local(tips[1]) - body.site.to_local(tips[0])
-	return {"type": "spread", "keys": keys, "starts": starts, "axis": Vector3(axis.x, 0.0, axis.z).normalized(), "spread": spread}
+	return {"type": "spread", "keys": keys, "starts": starts, "axis": Vector3(axis.x, 0.0, axis.z).normalized(), "spread": spread, "middle": middle, "depth": depth}
 
 
 ## Opens or closes a set spreader to `spread` (meters between its tips): each jaw moves its edge half the change
@@ -1435,7 +1449,11 @@ func update_grip(tool_uid: int, grip_info: Dictionary, tip: Vector3, power: floa
 		"carry":
 			targets[grip_info.target].global_position = tip
 		"skin":
-			body.tissue.move_grip(tool_uid, body.site.to_local(tip))
+			var to := body.site.to_local(tip)
+			if grip_info.get("hook", false):
+				# A hook pulls the skin aside or up, not down after the tip into the opening.
+				to.y = maxf(to.y, body.surface_height(Vector2(to.x / body.site_size.x + 0.5, to.z / body.site_size.y + 0.5)))
+			body.tissue.move_grip(tool_uid, to)
 			if grip_info.get("piece", false) and body.site.to_local(tip).y - body.surface_height(grip_info.anchor) > PIECE_LIFT:
 				_take_piece(tool_uid, grip_info.anchor)
 				return {"type": "none"}
@@ -1460,9 +1478,9 @@ func release_grip(tool_uid: int, grip_info: Dictionary, self_retaining: bool) ->
 				body.tissue.release(key)
 		"vessel":
 			if not self_retaining:
-				_wound(grip_info.wound).clamped = 0.0
+				wound_with_id(grip_info.wound).clamped = 0.0
 		"skin":
-			var wound := _wound(grip_info.wound)
+			var wound := wound_with_id(grip_info.wound)
 			if wound and not self_retaining:
 				wound.clamped = 0.0
 
@@ -1570,7 +1588,7 @@ func _new_wound(kind: Wound.Kind, at: Vector2, depth: float) -> Wound:
 	return wound
 
 
-func _wound(id: int) -> Wound:
+func wound_with_id(id: int) -> Wound:
 	for wound in wounds:
 		if wound.id == id:
 			return wound
