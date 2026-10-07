@@ -139,7 +139,7 @@ public partial class Patient : Node3D
         {
             Body.AddDrape();
         }
-        Body.SetOrientation((Orientation)scenario.StartOrientation);
+        Body.SetPose((PatientPose)scenario.StartOrientation);
         BloodType = Mods.Flag("rare_blood") ? "Bombay" : BloodTypes[Rng.RandiRange(0, BloodTypes.Length - 1)];
 
         var volume = Vitals.NormalBloodMl * Mods.Mult("blood_ml_mult") * (Age == "child" ? 0.5f : 1f);
@@ -876,7 +876,7 @@ public partial class Patient : Node3D
         Reveal("bones");
     }
 
-    public void TurnOver(Orientation to, bool fell)
+    public void TurnOver(PatientPose to, bool fell)
     {
         Rpc(MethodName.SetOrientation, (int)to);
         if (fell)

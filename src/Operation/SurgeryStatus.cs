@@ -15,6 +15,24 @@ public sealed record SurgeryStatus(
 {
     public static readonly SurgeryStatus Empty = new([], 0, [], 0f, null, 0f, 0f);
 
+    /// <summary>What the board over the nurse's bell shows: the order on its way with its progress, or her cooldown.
+    /// </summary>
+    public string NurseBoard
+    {
+        get
+        {
+            if (Order is { } order)
+            {
+                var done = Mathf.RoundToInt(order.Progress * 10f);
+                return $"{order.Text}\n{new string('■', done)}{new string('□', 10 - done)}  {Mathf.CeilToInt(order.SecondsLeft)} s";
+            }
+            return NurseCooldown > 0f ? $"Nurse is busy for {Mathf.CeilToInt(NurseCooldown)} s" : "Nurse ready";
+        }
+    }
+
+    /// <summary>Whether the nurse takes an order now.</summary>
+    public bool NurseReady => Order is null && NurseCooldown <= 0f;
+
     public GodotDictionary ToVariant() => new()
     {
         ["objectives"] = new Godot.Collections.Array(Objectives.Select(view => (Variant)view.ToVariant())),

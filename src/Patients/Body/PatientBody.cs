@@ -1,7 +1,7 @@
 namespace Scalpel.Patients;
 
 /// <summary>How the patient lies on the table.</summary>
-public enum Orientation { FaceUp, Side, FaceDown }
+public enum PatientPose { FaceUp, Side, FaceDown }
 
 /// <summary>What a point near the patient is in.</summary>
 public enum SiteZone
@@ -107,7 +107,7 @@ public partial class PatientBody : Node3D
     public float Breath { get; set; }
     public PatientAnimator Animator { get; } = new() { Name = "Animator" };
     public BloodFlow Blood { get; } = new() { Name = "BloodFlow" };
-    public Orientation Orientation { get; private set; } = Orientation.FaceUp;
+    public PatientPose Pose { get; private set; } = PatientPose.FaceUp;
     /// <summary>The surgical drape (operating room only), null without one.</summary>
     public Drape? Drape { get; private set; }
 
@@ -192,12 +192,12 @@ public partial class PatientBody : Node3D
     };
 
     /// <summary>The site faces up the way the patient lies, so it can be worked on.</summary>
-    public bool SiteActive => Orientation == (_onBack ? Orientation.FaceDown : Orientation.FaceUp);
+    public bool SiteActive => Pose == (_onBack ? PatientPose.FaceDown : PatientPose.FaceUp);
 
-    public void SetOrientation(Orientation value)
+    public void SetPose(PatientPose value)
     {
-        Orientation = value;
-        _bodyRoot.Rotation = _bodyRoot.Rotation with { X = value switch { Orientation.Side => Mathf.Pi / 2, Orientation.FaceDown => Mathf.Pi, _ => 0f } };
+        Pose = value;
+        _bodyRoot.Rotation = _bodyRoot.Rotation with { X = value switch { PatientPose.Side => Mathf.Pi / 2, PatientPose.FaceDown => Mathf.Pi, _ => 0f } };
         UpdateCarve();
         // Turned away from the site, the drape would lie between the patient and the table.
         if (Drape is not null)

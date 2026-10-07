@@ -58,18 +58,12 @@ public static class Db
     public static GodotDictionary Site(string site) =>
         PatientSites.TryGetValue(site, out var entry) ? entry.AsGodotDictionary() : [];
 
-    /// <summary>How a hand's grip is fitted to this tool's model: {"lift": meters, "curl": [5 floats]} or empty.
-    /// </summary>
-    public static GodotDictionary GripFit(ToolDef def, int hand)
-    {
-        if (!GripFits.TryGetValue(def.ModelName, out var fits))
-        {
-            return [];
-        }
-        return fits.AsGodotDictionary().TryGetValue(hand == 0 ? "left" : "right", out var fit)
-            ? fit.AsGodotDictionary()
-            : [];
-    }
+    /// <summary>How a hand's grip is fitted to this tool's model.</summary>
+    public static Surgeons.GripFit GripFit(ToolDef def, int hand) =>
+        GripFits.TryGetValue(def.ModelName, out var fits)
+        && fits.AsGodotDictionary().TryGetValue(hand == 0 ? "left" : "right", out var fit)
+            ? Surgeons.GripFit.FromDictionary(fit.AsGodotDictionary())
+            : Surgeons.GripFit.None;
 
     /// <summary>Combined effects of the given run modifier ids.</summary>
     public static Modifiers RunModifierEffects(IEnumerable<string> ids)

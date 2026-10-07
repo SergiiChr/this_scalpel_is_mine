@@ -176,5 +176,5 @@ public partial class Patient
     private void Vocal(string sound) => Sfx.Play(sound, Body.GlobalPosition + new Vector3(0.7f, 0.2f, 0), "Voice");
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void SetOrientation(int value) => Body.SetOrientation((Orientation)value);
+    private void SetOrientation(int value) => Body.SetPose((PatientPose)value);
 }

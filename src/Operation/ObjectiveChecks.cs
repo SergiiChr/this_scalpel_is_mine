@@ -51,7 +51,7 @@ public static class ObjectiveChecks
                 return patient.TransfusedMl > 0f
                     && vitals.BloodMl >= parameters.Float("min_ml", 4000f) * vitals.MaxBloodMl / Vitals.NormalBloodMl;
             case "flip":
-                return (int)patient.Body.Orientation == parameters.Int("orientation", (int)Orientation.FaceDown);
+                return (int)patient.Body.Pose == parameters.Int("orientation", (int)PatientPose.FaceDown);
             case "align":
                 return Held(state, Aligned(surgery), parameters.Float("seconds", 6f), delta);
             case "debride":

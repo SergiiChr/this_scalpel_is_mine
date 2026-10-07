@@ -21,7 +21,7 @@ public partial class Sfx : Node
     private static readonly Dictionary<string, AudioStream?> Cache = [];
 
     /// <summary>A looping contact sound of one tool.</summary>
-    private sealed class Contact(string id, AudioStreamPlayer3D player)
+    private sealed class ContactSound(string id, AudioStreamPlayer3D player)
     {
         public string Id { get; } = id;
         public AudioStreamPlayer3D Player { get; } = player;
@@ -32,7 +32,7 @@ public partial class Sfx : Node
     }
 
     /// <summary>Tool uid -> its contact loop.</summary>
-    private readonly Dictionary<long, Contact> _contacts = [];
+    private readonly Dictionary<long, ContactSound> _contacts = [];
 
     /// <summary>Set by the local surgeon's Hard of hearing quirk.</summary>
     public static bool Deaf { get; set; }
@@ -90,7 +90,7 @@ public partial class Sfx : Node
             var player = new AudioStreamPlayer3D { Stream = Looped(stream), Bus = "SFX", VolumeDb = Silent, Position = at };
             _instance.AddChild(player);
             player.Play();
-            contact = new Contact(id, player);
+            contact = new ContactSound(id, player);
             contacts[uid] = contact;
         }
         contact.Player.Position = at;

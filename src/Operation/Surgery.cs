@@ -27,12 +27,12 @@ public partial class Surgery : Node3D
 
     /// <summary>Turning the patient: who takes part, what each scored, time left and where they're turning to.
     /// </summary>
-    private sealed class TurnAttempt(List<int> peers, Orientation target)
+    private sealed class TurnAttempt(List<int> peers, PatientPose target)
     {
         public List<int> Peers { get; } = peers;
         public Dictionary<int, (int Hits, bool Critical)> Results { get; } = [];
         public float Timer { get; set; } = QteTimeout;
-        public Orientation Target { get; } = target;
+        public PatientPose Target { get; } = target;
     }
 
     private readonly HashSet<int> _loaded = [];
@@ -728,14 +728,14 @@ public partial class Surgery : Node3D
         }
     }
 
-    private Orientation NextOrientation()
+    private PatientPose NextOrientation()
     {
-        if (Patient.Body.Orientation != Orientation.Side)
+        if (Patient.Body.Pose != PatientPose.Side)
         {
-            return Orientation.Side;
+            return PatientPose.Side;
         }
         var flip = Scenario.Steps.FirstOrDefault(step => step.Type == "flip");
-        return flip is null ? Orientation.FaceUp : (Orientation)flip.Parameters.Int("orientation", (int)Orientation.FaceDown);
+        return flip is null ? PatientPose.FaceUp : (PatientPose)flip.Parameters.Int("orientation", (int)PatientPose.FaceDown);
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -778,7 +778,7 @@ public partial class Surgery : Node3D
         {
             Scoring.Add("patient_fell");
             Announce("The patient slides off the table and hits the floor!");
-            Patient.TurnOver(Patient.Body.Orientation, fell: true);
+            Patient.TurnOver(Patient.Body.Pose, fell: true);
             Sound("body_fall", Patient.GlobalPosition);
         }
         else if (misses > 0)
