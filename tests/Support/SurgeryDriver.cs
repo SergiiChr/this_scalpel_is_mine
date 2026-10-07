@@ -40,6 +40,11 @@ public partial class SurgeryDriver : Node
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
     public static SurgeryDriver Create()
     {
+        // A test that failed half way leaves its surgery running: it would play on beside this one.
+        foreach (var stale in Frames.Root.GetChildren().OfType<SurgeryDriver>())
+        {
+            stale.Free();
+        }
         var driver = new SurgeryDriver();
         Frames.Root.AddChild(driver);
         return driver;

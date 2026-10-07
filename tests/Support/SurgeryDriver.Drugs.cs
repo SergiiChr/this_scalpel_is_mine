@@ -139,7 +139,8 @@ public partial class SurgeryDriver
         };
         await NeedleInto(target, route != Route.Drip);
         into = Syringe.NeedleTarget(syringe, Patient);
-        for (var i = 0; i < Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1; i++)
+        var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
+        for (var i = 0; i < notches; i++)
         {
             await Notch(true);
         }
@@ -157,7 +158,7 @@ public partial class SurgeryDriver
 
     /// <summary>Brings the active hand's needle to <paramref name="point"/>. <paramref name="pressed"/>: Use tool
     /// pushes it in there (skin, a vein); otherwise it just rests in a vial or bag.</summary>
-    private async Task NeedleInto(Vector3 point, bool pressed)
+    public async Task NeedleInto(Vector3 point, bool pressed)
     {
         var hand = Me.Hands[Me.Active];
         await PlayerWalksTo(point);
@@ -176,7 +177,7 @@ public partial class SurgeryDriver
         }
     }
 
-    private async Task NeedleOut()
+    public async Task NeedleOut()
     {
         Use(false);
         Me.Hands[Me.Active].LocalTarget += new Vector3(0f, 0.15f, 0.1f);

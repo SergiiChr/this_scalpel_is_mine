@@ -264,7 +264,7 @@ public partial class Patient : Node3D
 
     // --- Simulation ---------------------------------------------------------------------------------------
 
-    private void Simulate(float dt)
+    internal void Simulate(float dt)
     {
         var v = Vitals;
         var fx = DrugEffectsOver(dt);
@@ -573,7 +573,7 @@ public partial class Patient : Node3D
 
     // --- Drugs --------------------------------------------------------------------------------------------
 
-    private DrugEffects DrugEffectsOver(float dt)
+    internal DrugEffects DrugEffectsOver(float dt)
     {
         var working = new List<DrugDef>();
         foreach (var (def, crossing) in Drugs.Update(dt, Wear))

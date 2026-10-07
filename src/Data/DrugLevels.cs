@@ -104,6 +104,9 @@ public sealed class DrugLevels
     }
 
     /// <summary>The share of the right dose of this drug in the blood (0 when there's none).</summary>
+    /// <summary>No drug in the body any more.</summary>
+    public void Clear() => _entries.Clear();
+
     public float Level(string id) => _entries.TryGetValue(id, out var entry) ? entry.Level : 0f;
 
     /// <summary>Whether a drug with this flag is in at an effective level.</summary>

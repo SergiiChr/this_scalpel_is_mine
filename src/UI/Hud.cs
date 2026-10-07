@@ -192,12 +192,16 @@ public partial class Hud : CanvasLayer
         }
     }
 
+    /// <summary>A toast was shown, with its text.</summary>
+    public event Action<string>? Toasted;
+
     public void Toast(string text)
     {
         if (text.Length == 0)
         {
             return;
         }
+        Toasted?.Invoke(text);
         var label = Ui.Label(text, 20, Ui.Ink, true);
         label.HorizontalAlignment = HorizontalAlignment.Center;
         _toasts.AddChild(label);

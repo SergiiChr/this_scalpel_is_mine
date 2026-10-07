@@ -164,7 +164,7 @@ SLOW_TEST_TIMEOUT = 360
 # A test fails on any of these in its Godot output, as well as on its own assertions. Engine leak reports printed while
 # quitting are noise.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
-NOISE = re.compile(r"at exit|leaked")
+NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 # The view key frames are rendered at, under a virtual display when there's no real one.
 KEY_FRAME_ARGS = ["--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--resolution", "1280x720"]
 
@@ -386,6 +386,8 @@ def run_suite(suite: Suite, options: TestOptions) -> Outcome:
     cases = [case for case in suite.cases if options.run_broken or not case.broken]
     names = [name for case in cases for name in case.names() if options.case in name]
     log = BUILD / "test-logs" / f"{suite.name}.log"
+    if not names:
+        return Outcome(suite, log, [])
     if not suite.isolate_cases:
         test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
         return Outcome(suite, log, run_process(suite, options, suite.name, test_filter, len(names)))
