@@ -70,6 +70,11 @@ public static class SurgeryState
     /// <summary>A tool lying in a free place on the instrument tray (stocked there, as the nurse would have).</summary>
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
 
+    /// <summary>This one improvised tool tears out (<paramref name="tear"/>) or catches a vessel
+    /// (<paramref name="bleed"/>) with these chances, the same tool on the tray otherwise.</summary>
+    public static void ToolGoesWrong(SurgicalTool tool, float tear, float bleed) =>
+        tool.Def = tool.Def with { TearChance = tear, BleedChance = bleed };
+
     /// <summary>A tool dropped at <paramref name="at"/> (world), lying wherever it falls (left on the patient, say).
     /// </summary>
     public static SurgicalTool ToolLiesAt(Surgery surgery, string id, Vector3 at) =>

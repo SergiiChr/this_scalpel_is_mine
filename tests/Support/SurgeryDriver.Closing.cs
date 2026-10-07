@@ -84,8 +84,8 @@ public partial class SurgeryDriver
     /// Staples <paramref name="wound"/> shut with the stapler in the active hand: centered on the cut every
     /// <paramref name="spacing"/> meters along it (the first and last a little in from its ends), legs square across it
     /// (as C/V turn a blade along it), clicked at each spot where the cut doesn't already look closed. Where the muscle
-    /// under it is still open the staples go into the muscle, so it goes along again for the skin, up to
-    /// <paramref name="rounds"/> times while it isn't closed. Captures the first staple as key frame first_staple.
+    /// under it is still open the staples go into the muscle, so it goes along again for the skin (or for what sprang
+    /// open between staples), up to <paramref name="rounds"/> times while it isn't closed. Captures the first staple as key frame first_staple.
     /// Returns how many staples went in.
     /// </summary>
     public async Task<int> PlayerStaples(Wound wound, float spacing = TissueSim.StitchReach, int rounds = 4)
@@ -120,6 +120,9 @@ public partial class SurgeryDriver
                     await Capture("first_staple");
                 }
             }
+            // The edges settle under the staples before the surgeon looks again: between two staples they can
+            // spring a little apart.
+            await Frames.Seconds(1f);
         }
         Note($"{placed} staples along wound {wound.Id}, closed {wound.Closure:0.00}");
         return placed;

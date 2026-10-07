@@ -21,9 +21,9 @@ public partial class Hud
     private const float JawMark = 9f;
     /// <summary>How deep (meters) under the skin's lip the &lt; and &gt; show a spreader's tips going in, aimed across a
     /// cut.</summary>
-    private const float JawDepth = 0.01f;
+    public const float JawDepth = 0.01f;
     /// <summary>Radius (meters) of the rings on the skin marking where a stapler's legs go in.</summary>
-    private const float LegRing = 0.003f;
+    public const float LegRing = 0.003f;
     private static readonly Color AimColor = new(1f, 1f, 0.9f);
     private static readonly Color AimWorking = new(1f, 0.42f, 0.35f);
 
@@ -39,6 +39,12 @@ public partial class Hud
     public Vector3[] JawMarks { get; } = new Vector3[2];
     /// <summary>Where the stapler's rings lie (world), one per leg, as last drawn.</summary>
     public Vector3[][] LegRings { get; } = [[], []];
+    /// <summary>The aim shows as a dot (not a blade line, jaw marks or leg rings).</summary>
+    internal bool DotShown => _dot.Visible;
+    /// <summary>The aim shows a stapler's two leg rings.</summary>
+    internal bool LegRingsShown => _legs.All(ring => ring.Visible);
+    /// <summary>Where the shown &lt; and &gt; point (screen).</summary>
+    internal Vector2[] JawPoints => [.. _jaws.Where(jaw => jaw.Visible && jaw.Points.Length == 3).Select(jaw => jaw.Points[1])];
 
     /// <summary>A dark line with a light one on top (its child), so it shows on pale skin and in blood alike.</summary>
     private Line2D AimLine()

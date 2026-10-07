@@ -1,7 +1,7 @@
 namespace Scalpel.Data;
 
 /// <summary>One entry of data/tools.cfg. Field meaning is documented at the top of that file.</summary>
-public sealed class ToolDef
+public sealed record ToolDef
 {
     public required string Id { get; init; }
     public required string Name { get; init; }

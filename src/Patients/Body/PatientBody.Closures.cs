@@ -26,7 +26,7 @@ public partial class PatientBody
     private const float SutureEntryDepth = 0.00045f;
     private const int SutureSamples = 9;
     private const float SuturePressureSize = 0.008f;
-    private const float StapleRadius = 0.0005f;
+    public const float StapleRadius = 0.0005f;
     private const float StapleLeg = 0.002f;
     private const int StapleSamples = 6;
     /// <summary>The skin is drawn this much toward the camera (skin.gdshader): what lies on it is lifted as much.

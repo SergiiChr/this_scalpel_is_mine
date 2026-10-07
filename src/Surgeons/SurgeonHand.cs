@@ -27,7 +27,7 @@ public partial class SurgeonHand : Node3D
     public const float LiftHeight = 0.12f;
     /// <summary>How high (meters) and for how long (seconds) the hand hops when its tool bounces off what it was pressed
     /// onto.</summary>
-    private const float BounceHeight = 0.02f;
+    public const float BounceHeight = 0.02f;
     private const float BounceTime = 0.35f;
     /// <summary>How fast (m/s) a lifted or raised hand comes back down.</summary>
     public const float SettleSpeed = 0.8f;

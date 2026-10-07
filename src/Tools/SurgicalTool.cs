@@ -105,7 +105,7 @@ public partial class SurgicalTool : RigidBody3D
     private Vector3? _levelRest;
 
     public int Uid { get; private set; }
-    public ToolDef Def { get; private set; } = null!;
+    public ToolDef Def { get; internal set; } = null!;
     public ToolState State { get; private set; } = ToolState.Free;
     /// <summary>Peer id of whoever holds it (Held, Belt) or last held it; the carrying tool's uid while Carried.
     /// </summary>
