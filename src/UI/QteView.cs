@@ -80,5 +80,8 @@ public partial class QteView : Control
         }
     }
 
+    /// <summary>The action whose key is to be pressed now.</summary>
+    public string ShownKey => _sequence[_index];
+
     private void ShowKey() => _label.Text = InputActions.BindingText(_sequence[_index]);
 }

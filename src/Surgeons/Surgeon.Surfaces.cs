@@ -339,7 +339,7 @@ public partial class Surgeon
     /// floor. Rests on the patient's real skin (<see cref="PatientBody.SurfaceLayer"/>), the table, trays, tools lying
     /// there (unless not <paramref name="tools"/>) and the floor.
     /// </summary>
-    private Surface SurfaceBelow(Vector3 point, bool tools = true)
+    internal Surface SurfaceBelow(Vector3 point, bool tools = true)
     {
         var space = GetWorld3D().DirectSpaceState;
         var query = PhysicsRayQueryParameters3D.Create(point + (Vector3.Up * 0.35f), point + (Vector3.Down * 2f), 4);

@@ -63,17 +63,14 @@ public partial class IvLine : Node3D
     }
 
     /// <summary>Host: the first surgeon walking fast through the low part of the tubing, or null.</summary>
-    public Surgeon? TrippedBy(IEnumerable<Surgeon> surgeons)
-    {
-        if (!IsAttached)
-        {
-            return null;
-        }
-        return surgeons.FirstOrDefault(surgeon =>
-            surgeon.GroundSpeed >= TripSpeed
-            && _points.Any(p => p.Y < TripHeight
-                && new Vector2(p.X - surgeon.GlobalPosition.X, p.Z - surgeon.GlobalPosition.Z).Length() < TripDistance));
-    }
+    public Surgeon? TrippedBy(IEnumerable<Surgeon> surgeons) =>
+        surgeons.FirstOrDefault(surgeon => surgeon.GroundSpeed >= TripSpeed && HangsLowAt(surgeon.GlobalPosition));
+
+    /// <summary>The tubing hangs low enough to catch feet at <paramref name="feet"/>, give or take
+    /// <paramref name="margin"/> (meters).</summary>
+    public bool HangsLowAt(Vector3 feet, float margin = 0f) =>
+        IsAttached && _points.Any(p =>
+            p.Y < TripHeight && new Vector2(p.X - feet.X, p.Z - feet.Z).Length() < TripDistance + margin);
 
     public override void _Process(double delta)
     {

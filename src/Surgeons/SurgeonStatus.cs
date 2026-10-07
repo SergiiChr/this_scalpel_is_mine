@@ -81,7 +81,7 @@ public sealed class SurgeonStatus(Modifiers mods)
     /// <summary>How far past the right dose a sedative is (0 up to DoseHigh, 1 at KnockoutShare).</summary>
     public float Overdose { get; private set; }
     /// <summary>Seconds left knocked out by a sedative.</summary>
-    public float KnockedOut { get; private set; }
+    public float KnockedOut { get; internal set; }
     /// <summary>Seconds left of being kept up by a stimulant while knocked out.</summary>
     public float KeptUp { get; private set; }
 

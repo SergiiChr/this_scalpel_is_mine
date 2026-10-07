@@ -87,7 +87,7 @@ public partial class SurgicalTool : RigidBody3D
     /// <summary>How thick a tourniquet's band is where it wraps a limb.</summary>
     private const float BandThickness = 0.012f;
     /// <summary>Seconds a spreader takes to go down into a cut once set (<see cref="DigTo"/>).</summary>
-    private const float DigTime = 0.2f;
+    public const float DigTime = 0.2f;
 
     private readonly ToolAnimator _animator = new();
     /// <summary>This tool's own copies of its toon materials, made the first time it needs to look different from the

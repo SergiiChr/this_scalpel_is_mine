@@ -32,12 +32,12 @@ public partial class Surgeon : CharacterBody3D
     public const float MinReach = 0.18f;
     public const float EyeHeight = 1.62f;
     public static readonly Vector3 ShoulderOffset = new(0.19f, 1.4f, -0.08f);
-    private const float HandSensitivity = 0.0009f;
+    internal const float HandSensitivity = 0.0009f;
     private const float LookSensitivity = 0.003f;
     /// <summary>Radians the held tool turns per pixel while the mouse aims it (Aim tool held).</summary>
-    private const float AimSensitivity = 0.004f;
+    internal const float AimSensitivity = 0.004f;
     /// <summary>How fast C/V roll the held tool (radians a second).</summary>
-    private const float TwistSpeed = 2f;
+    internal const float TwistSpeed = 2f;
     /// <summary>Gap between a resting tool tip and the surface under it.</summary>
     public const float HoverGap = 0.01f;
     /// <summary>The same for a needle (a syringe, the IV catheter): its tip sits on the aim.</summary>
@@ -111,7 +111,7 @@ public partial class Surgeon : CharacterBody3D
     /// <summary>Tool the active hand would pick up right now (local surgeon only), shown highlighted.</summary>
     public SurgicalTool? Hovered { get; private set; }
     /// <summary>0 standing, 1 fully crouched. Synced so everyone sees you duck.</summary>
-    public float Crouch { get; private set; }
+    public float Crouch { get; internal set; }
     /// <summary>The zoom step (<see cref="ZoomFov"/>).</summary>
     public int Zoom { get; private set; }
     public Camera3D Camera { get; private set; } = null!;

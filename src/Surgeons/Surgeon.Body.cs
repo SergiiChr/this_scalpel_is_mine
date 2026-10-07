@@ -32,6 +32,9 @@ public partial class Surgeon
 
     private Node3D _head = null!;
     private Node3D _body = null!;
+    /// <summary>The visible body and head models (tests show or hide them).</summary>
+    internal Node3D BodyModel => _body;
+    internal Node3D FaceModel => _face;
     /// <summary>Shared by the body and both sleeves, so blood wiped off the gloves stains them all.</summary>
     private ShaderMaterial _scrubs = null!;
     private float _stains;
@@ -46,6 +49,19 @@ public partial class Surgeon
     private float _down;
     /// <summary>The side a knocked out surgeon falls to (1 their left, -1 their right, 0 standing), synced.</summary>
     private float _fallSide;
+
+    internal float FallSide
+    {
+        get => _fallSide;
+        set => _fallSide = value;
+    }
+
+    /// <summary>Where the body was last frame, which the walk cycle measures speed from.</summary>
+    internal Vector3 LastPosition
+    {
+        get => _lastPosition;
+        set => _lastPosition = value;
+    }
 
     /// <summary>Sleeve attachment on the animated torso, independent of the gameplay reach origin.</summary>
     public Vector3 VisualShoulder(int hand) => _joints["Torso"].GlobalTransform * TorsoShoulder(hand);
@@ -70,7 +86,7 @@ public partial class Surgeon
         new(ShoulderOffset.X * Side(hand), ShoulderOffset.Y - HipHeight, ShoulderOffset.Z);
 
     /// <summary>Sets this sleeve's knee support and obstacles for a deep squat, clearing them when standing.</summary>
-    private void SupportElbow(SurgeonHand hand)
+    internal void SupportElbow(SurgeonHand hand)
     {
         hand.ElbowSupportWeight = Mathf.SmoothStep(0.55f, 1f, Crouch) * (1f - _down);
         hand.KneeObstacles.Clear();
@@ -140,7 +156,7 @@ public partial class Surgeon
 
     /// <summary>Walk cycle from actual movement speed, collapse while passed out. Works the same for local and remote
     /// surgeons.</summary>
-    private void AnimateBody(float delta)
+    internal void AnimateBody(float delta)
     {
         var moved = new Vector2(GlobalPosition.X - _lastPosition.X, GlobalPosition.Z - _lastPosition.Z).Length();
         var speed = moved / Mathf.Max(delta, 0.0001f);

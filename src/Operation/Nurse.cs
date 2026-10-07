@@ -24,6 +24,9 @@ public partial class Nurse : Node
     /// <summary>The order on its way, null when there's none.</summary>
     private Order? _order;
 
+    /// <summary>The nurse takes an order now: none on its way and her cooldown over.</summary>
+    public bool Idle => _order is null && CooldownLeft <= 0f;
+
     public float CooldownLeft { get; private set; }
     public int Delivered { get; private set; }
 

@@ -68,6 +68,11 @@ public partial class Patient : Node3D
     private readonly bool[] _burnCells = new bool[Grid * Grid];
     private readonly bool[] _debrided = new bool[Grid * Grid];
     private readonly bool[] _grafted = new bool[Grid * Grid];
+
+    /// <summary>A cell of the burn grid (Grid x Grid over the site) is burnt and not grafted yet.</summary>
+    public bool NeedsGraft(int cell) => _burnCells[cell] && !_grafted[cell];
+
+    public bool IsBurnt(int cell) => _burnCells[cell];
     /// <summary>Seconds until a lethal drug that worked ends it (infinity: none has).</summary>
     private float _lethalLeft = float.PositiveInfinity;
     private float _arrestTime;

@@ -10,7 +10,7 @@ public partial class Surgeon
     private bool _remoteOut;
 
     /// <summary>The state remote copies follow: body, view, active hand, each hand and who's out or down.</summary>
-    private GodotArray PackState()
+    internal GodotArray PackState()
     {
         var hands = new GodotArray();
         foreach (var h in Hands)
@@ -28,7 +28,7 @@ public partial class Surgeon
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
-    private void SyncState(GodotArray data)
+    internal void SyncState(GodotArray data)
     {
         _netPosition = data[0].AsVector3();
         _netYaw = data[1].AsSingle();

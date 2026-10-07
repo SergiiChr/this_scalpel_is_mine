@@ -24,7 +24,7 @@ public partial class Surgeon
     private const float SyringeTilt = -0.6f;
     private const float SyringeTurn = 0.4f;
     /// <summary>Seconds Grab is held on a bottle to stand it upright where it is instead of putting it down.</summary>
-    private const float StandHold = 1f;
+    internal const float StandHold = 1f;
     /// <summary>Fastest a syringe's hand rises or sinks to follow what's under it (m/s): it glides over a vial's edge,
     /// not hops.</summary>
     private const float SyringeGlide = 0.45f;

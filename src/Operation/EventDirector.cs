@@ -17,6 +17,10 @@ public partial class EventDirector : Node
     private readonly HashSet<int> _fired = [];
     private readonly RandomNumberGenerator _rng = new();
     private IReadOnlyList<string> _pool = [];
+
+    /// <summary>Nothing happens on its own any more: the scenario's random events are off. Scripted ones stay.
+    /// </summary>
+    public void StopRandomEvents() => _pool = [];
     private IReadOnlyList<ScriptedEvent> _scripted = [];
     private float _nextRoll = 40f;
     private float _rambleTimer = 6f;
