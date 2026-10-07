@@ -184,6 +184,9 @@ class Case:
     def names(self) -> list[str]:
         return [f"{self.method}({value})" for value in self.values] or [self.method]
 
+    def descriptions(self) -> list[str]:
+        return self.description.replace('\\"', '"').split(" / ") if self.description else []
+
 
 @dataclass
 class Suite:
@@ -207,17 +210,36 @@ class Suite:
         return SLOW_TEST_TIMEOUT if "slow" in self.categories else TEST_TIMEOUT
 
 
-ATTRIBUTES = re.compile(r"((?:^[ \t]*\[[^\n]*\]\s*\n)+)", re.MULTILINE)
 CLASS = re.compile(r"^public (?:sealed )?(?:partial )?class (\w+)", re.MULTILINE)
-METHOD = re.compile(r"^\s*public (?:async Task|void) (\w+)\(", re.MULTILINE)
+METHOD = re.compile(r"^\s*public (?:async )?(?:Task|void) (\w+)\(", re.MULTILINE)
+
+
+def attribute_arguments(text: str, attribute: str) -> list[list[str]]:
+    """The arguments of every [attribute(...)] in text, each split at its top-level commas (strings kept whole)."""
+    found = []
+    for match in re.finditer(rf"\b{attribute}\(", text):
+        arguments, current, depth, quoted = [], "", 1, False
+        for char in text[match.end() :]:
+            if char == '"' and not current.endswith("\\"):
+                quoted = not quoted
+            elif not quoted and char == "(":
+                depth += 1
+            elif not quoted and char == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            if not quoted and depth == 1 and char == ",":
+                arguments.append(current.strip())
+                current = ""
+            else:
+                current += char
+        found.append([*arguments, current.strip()] if current.strip() else arguments)
+    return found
 
 
 def strings(text: str, attribute: str) -> list[str]:
     """The string arguments of every [attribute(...)] in text."""
-    found: list[str] = []
-    for arguments in re.findall(rf"\b{attribute}\(([^)]*)\)", text):
-        found += re.findall(r'"([^"]*)"', arguments)
-    return found
+    return [argument.strip('"') for arguments in attribute_arguments(text, attribute) for argument in arguments]
 
 
 def parse_suite(path: Path) -> Suite | None:
@@ -239,13 +261,14 @@ def parse_suite(path: Path) -> Suite | None:
         isolate_cases="IsolateCases" in header,
     )
     for match in METHOD.finditer(source):
-        attributes = ATTRIBUTES.search(source[: match.start()][-2000:] + "\n")
-        block = attributes.group(1) if attributes and source[: match.start()].rstrip().endswith("]") else ""
-        if "TestCase" not in block:
+        before = source[: match.start()]
+        block = before[max(before.rfind("}\n"), before.rfind(";\n"), before.rfind("{\n")) :]
+        rows = attribute_arguments(block, "TestCase")
+        if "[TestCase" not in block:
             continue
-        values = [args.strip() for args in re.findall(r"\[TestCase\(([^=)]+)\)", block)]
-        description = re.search(r'Description = "([^"]*)"', block)
-        suite.cases.append(Case(match.group(1), strings(block, "TestCategory"), description.group(1) if description else "", values))
+        values = [positional[0] for positional in ([a for a in row if "=" not in a.split('"')[0]] for row in rows) if positional]
+        descriptions = re.findall(r'Description = "((?:[^"\\]|\\.)*)"', block)
+        suite.cases.append(Case(match.group(1), strings(block, "TestCategory"), " / ".join(descriptions), values))
     return suite
 
 
@@ -436,9 +459,15 @@ def test(arguments: list[str]) -> int:
         outcome = run_suite(suite, options)
         print(report(outcome), flush=True)
         outcomes.append(outcome)
-    pending = [(suite, case) for suite in suites for case in suite.cases if case.broken and not options.run_broken]
-    for suite, case in pending:
-        print(f"pending {suite.full_name}.{case.method}: {case.description}")
+    pending = [
+        (f"{suite.full_name}.{name}", description)
+        for suite in suites
+        for case in suite.cases
+        if case.broken and not options.run_broken
+        for name, description in zip(case.names(), case.descriptions() or [""], strict=False)
+    ]
+    for name, description in pending:
+        print(f"pending {name}: {description}")
     failed = sum(1 for outcome in outcomes if outcome.failures)
     print(f"{len(outcomes) - failed} passed, {failed} failed, {len(pending)} pending.")
     return 1 if failed else 0

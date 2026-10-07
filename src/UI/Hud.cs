@@ -22,7 +22,7 @@ public partial class Hud : CanvasLayer
     public Surgery Surgery { get; private set; } = null!;
     private Control _root = null!;
     private Label _clock = null!;
-    private VBoxContainer _objectives = null!;
+    private ObjectivesPanel _objectives = null!;
     private Label _hands = null!;
     private HBoxContainer _belt = null!;
     private Label _prompt = null!;
@@ -57,7 +57,7 @@ public partial class Hud : CanvasLayer
         AddChild(_root);
         _clock = CornerLabel(Control.LayoutPreset.CenterTop, 26, Ui.Ink);
         _clock.HorizontalAlignment = HorizontalAlignment.Center;
-        _objectives = Ui.VBox(4);
+        _objectives = new ObjectivesPanel();
         _objectives.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
         _objectives.Position = new Vector2(-460f, 20f);
         _objectives.CustomMinimumSize = new Vector2(440f, 0f);
@@ -538,39 +538,12 @@ public partial class Hud : CanvasLayer
 
     // --- Updating ------------------------------------------------------------------------------------------------
 
-    /// <summary>Debug mode only: the steps the game checks and the latest scored actions. Normal play shows neither.
-    /// </summary>
     private void UpdateObjectives()
     {
         _objectives.Visible = Settings.Debug;
-        if (!Settings.Debug)
+        if (Settings.Debug)
         {
-            return;
-        }
-        var status = Surgery.Status;
-        var scoreLines = new List<string> { "", $"Score {status.Score}" };
-        scoreLines.AddRange(status.Log.Select(entry => $"{entry.Points:+0;-0;+0}  {entry.Text}"));
-        var rows = status.Objectives.Append(new ObjectiveView(string.Join("\n", scoreLines), false, false, false)).ToList();
-        while (_objectives.GetChildCount() < rows.Count)
-        {
-            _objectives.AddChild(Ui.Label("", 18, Ui.Ink, true));
-        }
-        for (var i = 0; i < rows.Count; i++)
-        {
-            var row = rows[i];
-            var label = _objectives.GetChild<Label>(i);
-            var mark = row.Done ? "☑" : row.Current ? "▶" : "☐";
-            var text = $"{mark} {row.Label}{(row.Optional ? "  (bonus)" : "")}";
-            if (label.Text != text)
-            {
-                label.Text = text;
-            }
-            var color = row.Done ? Ui.Dim : row.Current ? Ui.Pip : Ui.Ink;
-            // Reapplying the same override invalidates the label's layout and font shaping every frame.
-            if (label.GetThemeColor("font_color") != color)
-            {
-                label.AddThemeColorOverride("font_color", color);
-            }
+            _objectives.Refresh(Surgery.Status);
         }
     }
 

@@ -74,12 +74,10 @@ public partial class SurgeryDriver : Node
         Note($"started {scenarioId}");
     }
 
+    /// <summary>Ends the surgery and frees the driver with it.</summary>
     public async Task Stop()
     {
-        if (IsInstanceValid(Surgery))
-        {
-            Surgery.QueueFree();
-        }
+        QueueFree();
         await Frames.Process(2);
     }
 

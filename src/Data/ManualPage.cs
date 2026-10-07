@@ -30,7 +30,7 @@ public sealed partial class ManualPage
     public IReadOnlyList<ManualPage> Children { get; private init; } = [];
 
     [GeneratedRegex(@"\{([^{}]+)\}")]
-    private static partial Regex NumberPattern();
+    internal static partial Regex NumberPattern();
 
     [GeneratedRegex(@"\b[A-Z][A-Za-z]+\b")]
     private static partial Regex ClassNamePattern();
