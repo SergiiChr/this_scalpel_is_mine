@@ -326,7 +326,7 @@ public partial class PatientBody
             var (sheet, walls) = FillLayer(layer, plan);
             foreach (var (arrays, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) })
             {
-                if (arrays[(int)Mesh.ArrayType.Index].AsInt32Array().Length == 0)
+                if (arrays is null)
                 {
                     continue;
                 }
@@ -640,8 +640,9 @@ public partial class PatientBody
         }
     }
 
-    /// <summary>One layer's sheet and the walls of its cuts, where the skin is now, as mesh arrays.</summary>
-    private (Godot.Collections.Array Sheet, Godot.Collections.Array Walls) FillLayer(int layer, LayerPlan plan)
+    /// <summary>One layer's sheet and the walls of its cuts, where the skin is now, as mesh arrays (null for no
+    /// triangles).</summary>
+    private (Godot.Collections.Array? Sheet, Godot.Collections.Array? Walls) FillLayer(int layer, LayerPlan plan)
     {
         var depth = LayerTop(layer);
         var thickness = layer switch { 0 => SkinThickness, 1 => FatThickness, _ => MuscleThickness };
@@ -705,8 +706,15 @@ public partial class PatientBody
             MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices]));
     }
 
-    private static Godot.Collections.Array MeshArrays(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] indices)
+    /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
+    /// them.</summary>
+    private static Godot.Collections.Array? MeshArrays(Vector3[] vertices, Vector3[] normals, Vector2[] uvs,
+        int[] indices)
     {
+        if (indices.Length == 0)
+        {
+            return null;
+        }
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = vertices;

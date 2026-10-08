@@ -17,6 +17,10 @@ public sealed class FrameBudget
     /// <summary>Interactive gameplay must stay within this per frame so 60 fps remains possible.</summary>
     public const float Budget = 0.016f;
 
+    /// <summary>The longest runtime stall in one frame still taken as the known issue <see cref="RuntimeStalls"/>:
+    /// a longer one fails, so pauses that grow don't go unnoticed.</summary>
+    public const float StallLimit = 0.040f;
+
     /// <summary>Known issue: frames over the budget only for the runtime's own stalls.</summary>
     public const string RuntimeStalls = "the .NET runtime stalls a frame now and then: a garbage collection (up to "
         + "about 40 ms here, about once a minute) or compiling code that runs for the first time (a few ms; the "
@@ -33,6 +37,9 @@ public sealed class FrameBudget
 
     /// <summary>The slowest frame not counting the runtime's own stalls, in seconds.</summary>
     public float WorstOwn { get; private set; }
+
+    /// <summary>The longest the runtime stalled within one frame, in seconds.</summary>
+    public float WorstStall { get; private set; }
 
     public bool Within => Worst <= Budget;
 
@@ -60,7 +67,9 @@ public sealed class FrameBudget
                 Worst = time;
                 _worstDuring = during;
             }
-            WorstOwn = Mathf.Max(WorstOwn, time - (float)((runtime - _runtimeWas) / 1000.0));
+            var stall = (float)((runtime - _runtimeWas) / 1000.0);
+            WorstOwn = Mathf.Max(WorstOwn, time - stall);
+            WorstStall = Mathf.Max(WorstStall, stall);
         }
         _lastUsec = now;
         _runtimeWas = runtime;
@@ -71,6 +80,7 @@ public sealed class FrameBudget
         _frames = 0;
         Worst = 0f;
         WorstOwn = 0f;
+        WorstStall = 0f;
         _worstDuring = "";
         Resume();
     }
@@ -81,7 +91,7 @@ public sealed class FrameBudget
     /// and on suites running alongside, so they're never checked. <paramref name="broken"/> says why a case is known to
     /// go over: over the budget it then prints a BROKEN line instead of failing (failing in a run with RUN_BROKEN=1),
     /// so a run tells a known slow case apart from a new one. A frame over only for <see cref="RuntimeStalls"/> is
-    /// such a known case too.
+    /// such a known case too, as long as no stall took longer than <see cref="StallLimit"/>.
     /// </summary>
     public void Check(bool withKeyFrames, string label = "", string broken = "")
     {
@@ -91,7 +101,7 @@ public sealed class FrameBudget
             GD.Print(report);
             return;
         }
-        if (broken.Length == 0 && WorstOwn <= Budget)
+        if (broken.Length == 0 && WorstOwn <= Budget && WorstStall <= StallLimit)
         {
             broken = RuntimeStalls;
         }
@@ -106,7 +116,8 @@ public sealed class FrameBudget
     public string Summary() =>
         $"worst frame {Worst * 1000f:0.0} ms of game work over {_frames} frames (budget {Budget * 1000f:0} ms)"
         + (_worstDuring.Length > 0 ? ", during: " + _worstDuring : "")
-        + $"; {WorstOwn * 1000f:0.0} ms without the runtime's own stalls";
+        + $"; {WorstOwn * 1000f:0.0} ms without the runtime's own stalls, the longest of which took "
+        + $"{WorstStall * 1000f:0.0} ms (limit {StallLimit * 1000f:0} ms)";
 
     /// <summary>Time the runtime has spent so far on garbage collection pauses and on compiling on the main thread.
     /// </summary>

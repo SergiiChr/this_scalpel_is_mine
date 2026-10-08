@@ -53,6 +53,11 @@ public partial class LoadingScreen : Control
             return;
         }
         _done = true;
+        if (ManagedRuntime.WarmUp.Exception is { } error)
+        {
+            // Not fatal: what wasn't prepared compiles when it first runs.
+            GD.PushWarning($"Warming up the runtime failed: {error.InnerException ?? error}");
+        }
         Net.Instance.FinishedLoading();
     }
 

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -24,7 +25,23 @@ public partial class ManagedRuntime : Node
     /// <summary>How much of the warm-up is done, 0 to 1.</summary>
     internal static float Progress => Math.Min((float)Volatile.Read(ref _done) / Volatile.Read(ref _total), 1f);
 
-    public override void _Ready() => _warmUp = Task.Run(Prepare);
+    public override void _Ready()
+    {
+        // Gen2 collections run in the background instead of blocking a frame. Only the size of the young generation
+        // decides how long the remaining pauses are, and .NET reads that only from the environment
+        // (DOTNET_GCgen0size), never from the game's own runtime config.
+        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        _warmUp = Task.Run(Prepare);
+    }
+
+    /// <summary>Collects all garbage while nothing moves yet (a surgery about to start): play starts with an empty
+    /// young generation and no Godot wrappers waiting for their finalizers.</summary>
+    internal static void CollectNow()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
 
     private static void Prepare()
     {

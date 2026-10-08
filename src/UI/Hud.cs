@@ -120,18 +120,16 @@ public partial class Hud : CanvasLayer
         UpdateAim(me);
         UpdateHands(me);
         UpdateGauges(me);
-        var hint = me.Status.IsOut ? "" : string.Join("\n", ControlLines(me));
-        if (_hint.Text != hint)
-        {
-            _hint.Text = hint;
-        }
-        _prompt.Text = me.Focused is { } focused && Overlay is null
+        // Labels skip a text they already show, so setting one every frame is cheap; reading Text back would copy it.
+        _hint.Text = me.Status.IsOut ? "" : string.Join("\n", ControlLines(me));
+        var prompt = me.Focused is { } focused && Overlay is null
             ? $"[{InputActions.BindingText(InputActions.Interact)}] {focused.Prompt}"
             : "";
-        if (_prompt.Text.Length == 0 && me.HeldTool(me.Active) is not null && me.PassTarget(me.Active) is { } partner)
+        if (prompt.Length == 0 && me.HeldTool(me.Active) is not null && me.PassTarget(me.Active) is { } partner)
         {
-            _prompt.Text = $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.Surgeon.DisplayName}";
+            prompt = $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.Surgeon.DisplayName}";
         }
+        _prompt.Text = prompt;
         _subtitleTimer -= dt;
         if (_subtitleTimer <= 0f)
         {

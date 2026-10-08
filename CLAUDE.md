@@ -13,7 +13,8 @@ Nothing is installed in a fresh container. Run this before anything that needs G
 ```
 
 It downloads Godot .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none), builds
-the C# and imports the project. No sudo, a few minutes. Asset generators additionally need `./build.py dev` (Python 3.11
+the C# and imports the project. No sudo, a few minutes. Where Microsoft's download host is blocked, install the SDK
+from the system packages first (`apt-get install dotnet-sdk-10.0` on Ubuntu 24.04). Asset generators additionally need `./build.py dev` (Python 3.11
 venv with Blender as a module, about 400 MB).
 
 ## Checking a change
@@ -122,10 +123,14 @@ venv with Blender as a module, about 400 MB).
   A case known to go over that can't be fixed in the current change passes the reason as `broken`: it then prints a
   `BROKEN:` line instead of failing, and its other checks still run.
 - The reference machine is an i9-14900HX. .NET sizes its young generation by the CPU's L3 cache, so `build.py test` runs
-  with the reference machine's (`DOTNET_GCgen0size`).
+  with the reference machine's (`DOTNET_GCgen0size`). .NET reads that setting only from the environment, not from the
+  game's runtime config, so players get their own CPU's size.
+- The game keeps collections short for players too: gen2 collections run in the background
+  (`GCLatencyMode.SustainedLowLatency`), and a full collection runs as a surgery starts, before play.
 - Known issue: the .NET runtime's own stalls (a garbage collection now and then, compiling code on first use) can take
   a frame over. The check measures them: a frame over only because of them prints a `BROKEN:` line
-  (`FrameBudget.RuntimeStalls`); a frame whose own work is over still fails.
+  (`FrameBudget.RuntimeStalls`), unless one stall took longer than `FrameBudget.StallLimit`; a frame whose own work is
+  over still fails.
 
 ## Gotchas
 

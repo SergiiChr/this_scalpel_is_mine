@@ -118,7 +118,8 @@ public partial class PatientBody
             wire = new MeshInstance3D { Name = "Wire", MaterialOverride = _stapleMaterial };
             _stapleRoot.AddChild(wire);
         }
-        wire.Mesh = Shapes.Tubes(DrawnStaples.Select(staple => staple.Path), StapleRadius, StapleRadius, 6);
+        wire.Mesh = Shapes.Tubes(DrawnStaples.Select(staple => staple.Path), StapleRadius, StapleRadius, 6,
+            wire.Mesh as ArrayMesh);
     }
 
     private Vector3[] StaplePath(Staple staple)
@@ -398,6 +399,6 @@ public partial class PatientBody
             threadRoot.AddChild(tubes);
         }
         var drawn = paths.Where(path => path.Length > 1).ToList();
-        tubes.Mesh = drawn.Count > 0 ? Shapes.Tubes(drawn, SutureRadius, SutureRadius, 6) : null;
+        tubes.Mesh = drawn.Count > 0 ? Shapes.Tubes(drawn, SutureRadius, SutureRadius, 6, tubes.Mesh as ArrayMesh) : null;
     }
 }
