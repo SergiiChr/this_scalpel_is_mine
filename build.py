@@ -350,6 +350,9 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
         "--logger", f"junit;LogFilePath={report}", "--logger", "console;verbosity=normal",
     ]  # fmt: skip
     environment = {**os.environ, "GODOT_BIN": str(GODOT), "CI_RUN": "1" if options.ci_run else ""}
+    # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
+    # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
+    environment.setdefault("DOTNET_GCgen0size", hex(36 << 20))
     if options.key_frames and suite.visual:
         environment["WITH_KEY_FRAMES"] = "1"
         if not os.environ.get("DISPLAY"):

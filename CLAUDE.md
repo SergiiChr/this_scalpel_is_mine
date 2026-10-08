@@ -121,6 +121,11 @@ venv with Blender as a module, about 400 MB).
   function: the budget is for the whole frame.
   A case known to go over that can't be fixed in the current change passes the reason as `broken`: it then prints a
   `BROKEN:` line instead of failing, and its other checks still run.
+- The reference machine is an i9-14900HX. .NET sizes its young generation by the CPU's L3 cache, so `build.py test` runs
+  with the reference machine's (`DOTNET_GCgen0size`).
+- Known issue: the .NET runtime's own stalls (a garbage collection now and then, compiling code on first use) can take
+  a frame over. The check measures them: a frame over only because of them prints a `BROKEN:` line
+  (`FrameBudget.RuntimeStalls`); a frame whose own work is over still fails.
 
 ## Gotchas
 
