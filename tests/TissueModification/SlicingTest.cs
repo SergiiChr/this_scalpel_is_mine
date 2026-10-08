@@ -38,9 +38,6 @@ public class SlicingTest
     /// <summary>How far from the cut (site uv) the gap is measured: severed springs lie up to half a grid cell off it.
     /// </summary>
     private const float GapRadius = 0.03f;
-    /// <summary>Most the simulated skin may lie off the body model where one takes over from the other (meters): more
-    /// shows a step.</summary>
-    private const float SeamMax = 0.0003f;
     /// <summary>The cameras: straight down from this far over the middle of the cut, and as far off at 45° from across
     /// the table. Far enough that the scalpel's handle doesn't fill the view, with a narrow lens for a close-up of the
     /// cut.</summary>
@@ -103,45 +100,6 @@ public class SlicingTest
     public async Task CircularSkinGraftCutoutRemoval()
     {
         await RunCases(depth: false, grafts: true);
-    }
-
-    /// <summary>
-    /// How far the simulated skin lies off the body model (meters) along the edge of the region, where it hands over
-    /// to the model: its grid points next to one the model draws, straight down the site's normal onto the model.
-    /// Breathing lifts the site and the trunk together, but not the body's colliders: that lift is added back.
-    /// </summary>
-    internal static float Seam(PatientBody body)
-    {
-        var sim = body.Tissue;
-        var region = sim.Region();
-        var up = body.Site.GlobalBasis.Y.Normalized();
-        var lift = body.Site.Position.Y - body.SiteDef.Position.Y;
-        var space = body.GetWorld3D().DirectSpaceState;
-        var worst = 0f;
-        for (var k = 0; k < region.Length; k++)
-        {
-            if (region[k] == 0 || sim.Off[k] || sim.Excised[k])
-            {
-                continue;
-            }
-            var at = sim.CellOf(k);
-            var edge = ((Vector2I[])[Vector2I.Left, Vector2I.Right, Vector2I.Up, Vector2I.Down])
-                .Select(step => (at + step).Clamp(Vector2I.Zero, new Vector2I(sim.ResX, sim.ResY)))
-                .Any(n => region[sim.Index(n.X, n.Y)] == 0);
-            if (!edge)
-            {
-                continue;
-            }
-            var skin = body.Site.ToGlobal(body.LayerPoint(0, k));
-            var hit = space.IntersectRay(
-                PhysicsRayQueryParameters3D.Create(skin + (up * 0.05f), skin - (up * 0.05f), PatientBody.SurfaceLayer));
-            if (hit.Count > 0)
-            {
-                var onModel = body.Site.ToLocal(hit["position"].AsVector3()).Y + lift;
-                worst = Mathf.Max(worst, Mathf.Abs(onModel - body.LayerPoint(0, k).Y));
-            }
-        }
-        return worst;
     }
 
     private async Task RunCases(bool depth, bool grafts)
@@ -442,8 +400,8 @@ public class SlicingTest
 
     private void CheckSeam(PatientBody body)
     {
-        var off = Seam(body);
-        Check(off < SeamMax,
+        var off = SkinSeam.Measure(body);
+        Check(off < SkinSeam.Max,
             $"the simulated skin meets the body model without a step ({off * 1000f:0.00} mm off at its edge)");
     }
 

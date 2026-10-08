@@ -52,7 +52,7 @@ public partial class SyringeBench : Node
     public static readonly IReadOnlySet<string> SurgeonTargets =
         new HashSet<string> { "own_hand", "doctor_hand", "doctor_body", "doctor_down" };
     /// <summary>Where the partner waits while no case needs them: a corner, hands down.</summary>
-    private static readonly Vector3 PartnerPark = new(2f, 0f, -1.7f);
+    internal static readonly Vector3 PartnerPark = new(2f, 0f, -1.7f);
     /// <summary>IV catheter cases: on the vein, and 2.5 cm across the forearm from it (on the arm, off the vein).
     /// </summary>
     public static readonly IReadOnlyList<(string Name, float Miss)> CatheterCases = [("catheter_vein", 0f), ("catheter_miss", 0.025f)];

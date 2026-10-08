@@ -47,6 +47,11 @@ public static class Db
 
     public static ScenarioDef? Scenario(string id) => AllScenarios.Find(s => s.Id == id);
 
+    /// <summary>Tests: <see cref="Scenario"/> finds <paramref name="scenario"/> in place of the one with its id from
+    /// now on, for every session in this process.</summary>
+    internal static void ReplaceScenario(ScenarioDef scenario) =>
+        AllScenarios[AllScenarios.FindIndex(s => s.Id == scenario.Id)] = scenario;
+
     public static ToolDef? Tool(string id) => Tools.GetValueOrDefault(id);
 
     public static DrugDef? Drug(string id) => Drugs.GetValueOrDefault(id);

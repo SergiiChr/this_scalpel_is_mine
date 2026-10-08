@@ -12,7 +12,7 @@ public partial class IvLine : Node3D
     public const float Radius = 0.004f;
     private const float Sag = 0.55f;
     /// <summary>Only tubing hanging lower than this (meters above the floor) catches a walking surgeon's legs.</summary>
-    private const float TripHeight = 1.1f;
+    internal const float TripHeight = 1.1f;
     private const float TripDistance = 0.22f;
     /// <summary>Faster than a crouch-walk, slower than a normal walk (<see cref="Surgeon.WalkSpeed"/>).</summary>
     private const float TripSpeed = 0.9f;
@@ -22,9 +22,13 @@ public partial class IvLine : Node3D
     private Node3D? _to;
     private MeshInstance3D _mesh = null!;
     private readonly Vector3[] _points = new Vector3[Samples];
+    /// <summary>Where the tubing hangs (world), from the stand to the arm.</summary>
+    internal IReadOnlyList<Vector3> Points => _points;
     private (Vector3 From, Vector3 To)? _lastEnds;
     /// <summary>The catheter, film and tape where the line goes into the arm. The tubing hangs from its end.</summary>
     private IvDressing? _dressing;
+    /// <summary>The catheter, film and tape on the arm, null while the line isn't in.</summary>
+    internal IvDressing? Dressing => _dressing;
 
     public bool IsAttached => _to is not null && Visible;
 

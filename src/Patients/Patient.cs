@@ -65,6 +65,8 @@ public partial class Patient : Node3D
     public enum BurnGrid { Debrided, Grafted }
 
     private float[] _sanitized = new float[Grid * Grid];
+    /// <summary>How sanitized each cell of the site is (0..1).</summary>
+    internal float[] Sanitized => _sanitized;
     private readonly bool[] _burnCells = new bool[Grid * Grid];
     private readonly bool[] _debrided = new bool[Grid * Grid];
     private readonly bool[] _grafted = new bool[Grid * Grid];
@@ -92,7 +94,7 @@ public partial class Patient : Node3D
 
     public PatientBody Body { get; private set; } = null!;
     public Vitals Vitals { get; } = new();
-    public Modifiers Mods { get; private set; } = new();
+    public Modifiers Mods { get; internal set; } = new();
     public IReadOnlyList<QuirkRoll> Rolls { get; private set; } = [];
     public ScenarioDef Scenario { get; private set; } = null!;
     public string Age { get; private set; } = "adult";
@@ -102,14 +104,14 @@ public partial class Patient : Node3D
     public List<Wound> Wounds { get; } = [];
     public List<CavityTarget> Targets { get; } = [];
     /// <summary>What's in the patient's blood, every injection of a drug adding up.</summary>
-    public DrugLevels Drugs { get; } = new();
+    public DrugLevels Drugs { get; internal set; } = new();
     /// <summary>Counters for scoring and the post-op report, see data/consequences.cfg.</summary>
     public Dictionary<string, float> Flags { get; } = [];
     public bool IvSet { get; private set; }
     /// <summary>The catheter went into a vein (set with IvSet). Missed, the line still sticks but nothing runs through
     /// it.</summary>
     public bool IvInVein { get; private set; }
-    public bool TourniquetOn { get; private set; }
+    public bool TourniquetOn { get; internal set; }
     public float TourniquetTime { get; private set; }
     public float CavityBloodMl { get; set; }
     public float TransfusedMl { get; private set; }
@@ -402,7 +404,7 @@ public partial class Patient : Node3D
     }
 
     /// <summary>Organs held out of place too long, or shoved hard, bruise and start bleeding.</summary>
-    private void HandleOrgans(float delta)
+    internal void HandleOrgans(float delta)
     {
         for (var i = 0; i < Body.Organs.Count; i++)
         {

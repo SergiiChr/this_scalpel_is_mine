@@ -38,6 +38,13 @@ public partial class Surgeon
     /// <summary>Shared by the body and both sleeves, so blood wiped off the gloves stains them all.</summary>
     private ShaderMaterial _scrubs = null!;
     private float _stains;
+
+    /// <summary>Scrubs stained this much (0..1) at once, as after a bloody surgery.</summary>
+    internal void SetStains(float stains)
+    {
+        _stains = stains;
+        _scrubs.SetShaderParameter("stains", stains);
+    }
     private Node3D _face = null!;
     private readonly Dictionary<string, Node3D> _joints = [];
     private readonly Dictionary<string, Transform3D> _rest = [];

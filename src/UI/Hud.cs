@@ -37,6 +37,15 @@ public partial class Hud : CanvasLayer
     private ShaderMaterial _post = null!;
     /// <summary>Blood on the view (0..1).</summary>
     private float _lensBlood;
+    /// <summary>How much blood is splashed on the view now (0..1).</summary>
+    internal float LensBlood => _lensBlood;
+
+    /// <summary>Wipes the blood off the view at once.</summary>
+    internal void ClearLensBlood()
+    {
+        _lensBlood = 0f;
+        _post.SetShaderParameter("lens_blood", 0f);
+    }
     /// <summary>How long since the view was clean.</summary>
     private float _lensAge;
     public NurseShop Shop { get; private set; } = null!;

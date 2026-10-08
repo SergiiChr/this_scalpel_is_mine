@@ -98,7 +98,7 @@ public partial class Surgeon : CharacterBody3D
     public string DisplayName { get; private set; } = "Doctor";
     public IReadOnlyList<QuirkRoll> QuirkRolls { get; private set; } = [];
     public Modifiers Mods { get; private set; } = new();
-    public SurgeonStatus Status { get; private set; } = null!;
+    public SurgeonStatus Status { get; internal set; } = null!;
     public SurgeonHand[] Hands { get; } = new SurgeonHand[2];
     /// <summary>The hand the player works with now; the other stays where it was.</summary>
     public int Active { get; set; } = 1;
@@ -109,11 +109,11 @@ public partial class Surgeon : CharacterBody3D
     /// <summary>What interact would use right now (local surgeon only).</summary>
     public Interactable? Focused { get; private set; }
     /// <summary>Tool the active hand would pick up right now (local surgeon only), shown highlighted.</summary>
-    public SurgicalTool? Hovered { get; private set; }
+    public SurgicalTool? Hovered { get; internal set; }
     /// <summary>0 standing, 1 fully crouched. Synced so everyone sees you duck.</summary>
     public float Crouch { get; internal set; }
     /// <summary>The zoom step (<see cref="ZoomFov"/>).</summary>
-    public int Zoom { get; private set; }
+    public int Zoom { get; internal set; }
     public Camera3D Camera { get; private set; } = null!;
 
     /// <summary>Uid of the tool each hand held last frame: a new tool starts at effort level 0.</summary>

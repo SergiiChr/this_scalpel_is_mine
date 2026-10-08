@@ -323,9 +323,11 @@ public sealed class TissueSim
     public void Build(Vector2 siteSize, Func<Vector2, float> heightAt, Func<Vector2, bool>? onBody = null)
     {
         Size = siteSize;
-        var cell = Mathf.Max(Cell, Mathf.Sqrt(Size.X * Size.Y / MaxCells));
-        ResX = Math.Max(Mathf.CeilToInt(Size.X / cell), MinRes);
-        ResY = Math.Max(Mathf.CeilToInt(Size.Y / cell), MinRes);
+        // In double, as the sizes were laid out: a site a whole number of cells long lands right on a cell boundary,
+        // and float rounding would drop that last row.
+        var cell = Math.Max(Cell, Math.Sqrt((double)Size.X * Size.Y / MaxCells));
+        ResX = Math.Max((int)Math.Ceiling(Size.X / cell), MinRes);
+        ResY = Math.Max((int)Math.Ceiling(Size.Y / cell), MinRes);
         var count = (ResX + 1) * (ResY + 1);
         Rest = new Vector3[count];
         _anchor = new float[count];

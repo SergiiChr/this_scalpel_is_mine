@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Two real Godot processes over ENet on localhost, for tests/network/test_multiplayer.gd. It prints what's wrong and
+# Two real Godot processes over ENet on localhost, for tests/Network/NetworkTest.cs. It prints what's wrong and
 # exits non-zero on the first problem.
 # Usage: network_runner.sh GODOT ROOT sync|stall
+# The drivers are tests/Support/NetDriver.cs (sync) and NetStallDriver.cs (stall), each started from its scene.
 set -uo pipefail
 
 godot=$1
@@ -15,10 +16,10 @@ fail() {
 	exit 1
 }
 
-# Godot keeps going after script errors. Engine leak reports printed while quitting are noise.
+# Godot keeps going after script errors and unhandled C# exceptions. Engine leak reports printed while quitting are noise.
 clean_log() {
 	local errors
-	errors=$(grep -E "SCRIPT ERROR|Parse Error|ERROR:|^FAIL:" "$1" | grep -vE "at exit|leaked")
+	errors=$(grep -E "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception|^FAIL:" "$1" | grep -vE "at exit|leaked")
 	[[ -z "$errors" ]] || fail "$(basename "$1"): $errors"
 }
 
@@ -28,14 +29,14 @@ expect() {
 
 run() {
 	# exec: started in the background, the job is the timeout wrapper itself, with Godot as its only child.
-	exec timeout 180 "$godot" --headless --path "$root" "res://tests/support/$1.tscn" -- "--role=$2" >"$logs/$3.log" 2>&1
+	exec timeout 180 "$godot" --headless --path "$root" "res://tests/Support/$1.tscn" -- "--role=$2" >"$logs/$3.log" 2>&1
 }
 
 if [[ "$mode" == sync ]]; then
-	run net_driver host net_host &
+	run NetDriver host net_host &
 	host=$!
 	sleep 2
-	(run net_driver client net_client)
+	(run NetDriver client net_client)
 	wait "$host"
 	clean_log "$logs/net_host.log"
 	clean_log "$logs/net_client.log"
@@ -59,10 +60,10 @@ if [[ "$mode" == sync ]]; then
 fi
 
 # Spotty connection: freeze the client for 10 s mid-surgery (longer than ENet's default timeout), then let it go on.
-run net_stall_driver host net_stall_host &
+run NetStallDriver host net_stall_host &
 host=$!
 sleep 2
-run net_stall_driver client net_stall_client &
+run NetStallDriver client net_stall_client &
 client=$!
 for _ in $(seq 1 600); do
 	grep -q "\[client\] running" "$logs/net_stall_client.log" && break

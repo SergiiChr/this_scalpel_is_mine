@@ -54,6 +54,9 @@ public partial class Net : Node
     public static Net Instance { get; private set; } = null!;
 
     private readonly RandomNumberGenerator _rng = new();
+
+    /// <summary>Tests: the host's session rolls (seed, patient quirks) come out the same every run.</summary>
+    internal void SeedSessionRolls(ulong seed) => _rng.Seed = seed;
     /// <summary>Peer id -> Time.GetTicksMsec() of the last heartbeat from them.</summary>
     private readonly Dictionary<int, ulong> _lastHeard = [];
     private double _heartbeatAcc;

@@ -39,6 +39,9 @@ public partial class Patient
 
     /// <summary>Which wound each continuous blade stroke grows (stroke key -> wound).</summary>
     private readonly Dictionary<long, Wound> _strokeWounds = [];
+
+    /// <summary>The wound stroke <paramref name="strokeKey"/> made (<see cref="Cut"/>), null for none.</summary>
+    internal Wound? StrokeWound(long strokeKey) => _strokeWounds.GetValueOrDefault(strokeKey);
     /// <summary>When (seconds) a blade last grated on a bone, so touching it again after a pause hurts with a jolt
     /// again.</summary>
     private double _boneTouched = double.NegativeInfinity;

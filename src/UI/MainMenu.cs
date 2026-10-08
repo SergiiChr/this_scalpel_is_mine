@@ -24,7 +24,7 @@ public partial class MainMenu : Control
         nav.AddChild(Ui.Button("Scenarios", ShowScenarios));
         nav.AddChild(Ui.Button("Multiplayer", ShowMultiplayer));
         nav.AddChild(Ui.Button("Quirk codex", ShowCodex));
-        nav.AddChild(Ui.Button("Settings", () => SetContent(new SettingsPanel())));
+        nav.AddChild(Ui.Button("Settings", ShowSettings));
         nav.AddChild(Ui.Button("Quit", () => GetTree().Quit()));
         layout.AddChild(nav);
 
@@ -228,7 +228,9 @@ public partial class MainMenu : Control
 
     // --- Codex -------------------------------------------------------------------------------------------------
 
-    private void ShowCodex()
+    internal void ShowSettings() => SetContent(new SettingsPanel());
+
+    internal void ShowCodex()
     {
         var box = Ui.VBox(10);
         box.AddChild(Ui.Label("QUIRK CODEX", 28, Ui.Pip));

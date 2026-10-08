@@ -217,7 +217,7 @@ public partial class Surgery : Node3D
         Finish(false, reason);
     }
 
-    private void Finish(bool success, string reason)
+    internal void Finish(bool success, string reason)
     {
         if (Finished)
         {
@@ -744,7 +744,7 @@ public partial class Surgery : Node3D
             (hits, critical) => RpcId(Net.HostId, MethodName.TurnResult, hits, critical));
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void TurnResult(int hits, bool critical)
+    internal void TurnResult(int hits, bool critical)
     {
         if (_turn is null)
         {

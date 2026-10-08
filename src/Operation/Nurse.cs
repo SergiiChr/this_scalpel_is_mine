@@ -27,8 +27,8 @@ public partial class Nurse : Node
     /// <summary>The nurse takes an order now: none on its way and her cooldown over.</summary>
     public bool Idle => _order is null && CooldownLeft <= 0f;
 
-    public float CooldownLeft { get; private set; }
-    public int Delivered { get; private set; }
+    public float CooldownLeft { get; internal set; }
+    public int Delivered { get; internal set; }
 
     public void Request(int peer, IReadOnlyList<string> toolIds, Surgery surgery)
     {

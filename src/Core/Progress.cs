@@ -69,6 +69,9 @@ public static class Progress
 
     public static bool IsUnlocked(QuirkDef quirk) => UnlockedQuirks.Contains(quirk.UnlockKey);
 
+    /// <summary>Unlocks <paramref name="quirk"/> until the game quits, without saving it or announcing it.</summary>
+    internal static void UnlockForSession(QuirkDef quirk) => UnlockedQuirks.Add(quirk.UnlockKey);
+
     public static void Unlock(QuirkDef? quirk, string variant = "")
     {
         if (quirk is null || !UnlockedQuirks.Add(quirk.UnlockKey))

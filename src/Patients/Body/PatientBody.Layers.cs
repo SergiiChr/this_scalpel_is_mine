@@ -6,7 +6,7 @@ public partial class PatientBody
 {
     /// <summary>How much each layer follows the skin's movement (deeper layers are more tethered).</summary>
     private static readonly float[] LayerFollow = [1f, 0.8f, 0.55f];
-    private static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
+    internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Skin pulled this far (meters) takes its deeper layers fully along, see <see cref="LayerPoint"/>.
     /// </summary>
     private const float FlapMove = 0.04f;

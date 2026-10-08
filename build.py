@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import xml.etree.ElementTree as ElementTree
@@ -350,7 +351,10 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
             if not shutil.which("xvfb-run"):
                 return ["Visual tests need xvfb-run or a DISPLAY."]
             command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
-    with log.open("w") as out:
+    # GdUnit4 talks to its Godot process over a named pipe with a fixed name, which .NET puts in the temp folder:
+    # runs at the same time (--jobs, other checkouts) each need their own.
+    with log.open("w") as out, tempfile.TemporaryDirectory(prefix="gdunit-") as temp:
+        environment["TMPDIR"] = temp
         status = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=False).returncode
     return problems(log, report, status, suite.timeout)
 

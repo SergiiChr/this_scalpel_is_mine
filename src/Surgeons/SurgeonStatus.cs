@@ -69,7 +69,7 @@ public sealed class SurgeonStatus(Modifiers mods)
     public float PassedOut { get; private set; }
     public float CoffeeLeft { get; private set; }
     public float WhiskeyLeft { get; private set; }
-    public float SmokeLeft { get; private set; }
+    public float SmokeLeft { get; internal set; }
     public float SinceCoffee { get; private set; }
     /// <summary>Broken heating run modifier: stiff, slightly shaky fingers for everyone.</summary>
     public float ColdTremor { get; set; }

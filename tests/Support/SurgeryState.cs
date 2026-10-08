@@ -67,6 +67,24 @@ public static class SurgeryState
         }
     }
 
+    /// <summary>Every session of <paramref name="scenarioId"/> in this process gets the whole starter kit on the tray.
+    /// </summary>
+    public static void ScenarioHasAllStarterTools(string scenarioId) =>
+        Db.ReplaceScenario(Db.Scenario(scenarioId)! with { MissingToolChance = 0f });
+
+    /// <summary>Host: both network surgeons have ordinary reach and steadiness, no run modifiers, and the session rolls
+    /// come out the same every run.</summary>
+    public static void NetworkSessionHasOrdinarySurgeons(ulong seed = 1)
+    {
+        var net = Net.Instance;
+        foreach (var (peer, player) in net.Roster.ToList())
+        {
+            net.Roster[peer] = player with { Quirks = [new QuirkRoll("normal_dude", "")] };
+        }
+        net.RunModifiers.Clear();
+        net.SeedSessionRolls(seed);
+    }
+
     /// <summary>A tool lying in a free place on the instrument tray (stocked there, as the nurse would have).</summary>
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
 
@@ -189,5 +207,69 @@ public static class SurgeryState
     {
         puppet.GlobalTransform = owner.GlobalTransform;
         puppet.SyncState(owner.PackState());
+    }
+
+    /// <summary>
+    /// Opens the site as wide as it goes, like a clamshell: an H-shaped incision through the muscle, both flaps folded
+    /// back over the sides they're still attached to, slowly, by forceps all along both edges that keep holding them.
+    /// Returns how many springs tore on the way.
+    /// </summary>
+    public static int SiteIsOpenedWide(Patient patient)
+    {
+        const float middle = 0.51f;
+        (Vector2 From, Vector2 To)[] cuts =
+        [
+            (new(0.03f, middle), new(0.97f, middle)), (new(0.03f, 0.02f), new(0.03f, 0.98f)),
+            (new(0.97f, 0.02f), new(0.97f, 0.98f)),
+        ];
+        foreach (var (from, to) in cuts)
+        {
+            patient.Cut(777000 + Mathf.RoundToInt(from.Y * 100f), from, to, 1f, 1f, false, 0.1f);
+        }
+        var tissue = patient.Body.Tissue;
+        var snapped = tissue.Snapped.Count;
+        // Thin skin (a patient quirk) is meant to tear on a fold like this; this is about ordinary skin.
+        var breakMult = tissue.BreakMult;
+        tissue.BreakMult = Mathf.Max(breakMult, 1f);
+        // The flap turns up and over about the side of the site it's still attached to: one straight hinge along that
+        // side, where it lies on the body on average (the body's flank drops away more under some of it than the
+        // rest).
+        var hinges = new[] { 0, tissue.ResY }.Select(row =>
+        {
+            var on = Enumerable.Range(0, tissue.ResX + 1).Select(i => tissue.Index(i, row)).Where(k => !tissue.Off[k]).ToList();
+            return on.Aggregate(Vector3.Zero, (sum, k) => sum + tissue.Rest[k]) / Math.Max(on.Count, 1);
+        }).ToArray();
+        // Forceps about every 25 mm along each edge.
+        var spacing = Math.Max(1, Mathf.RoundToInt(0.025f / (patient.Body.SiteSize.X / tissue.ResX)));
+        var grips = new List<(int Key, Vector3 Hinge, Vector3 Arm, float Side)>();
+        for (var i = 1; i < tissue.ResX; i += spacing)
+        {
+            foreach (var edge in (int[])[Mathf.FloorToInt(middle * tissue.ResY), Mathf.CeilToInt(middle * tissue.ResY)])
+            {
+                var k = tissue.Index(i, edge);
+                var key = 88000 + grips.Count;
+                tissue.Grip(key, tissue.UvOf(k));
+                var side = edge < middle * tissue.ResY ? -1f : 1f;
+                var line = hinges[side < 0f ? 0 : 1];
+                var hinge = new Vector3(tissue.Rest[k].X, line.Y, line.Z);
+                grips.Add((key, hinge, tissue.Rest[k] - hinge, side));
+            }
+        }
+        const int steps = 240;
+        for (var step = 0; step < steps; step++)
+        {
+            var angle = Mathf.Pi * 0.85f * (step + 1) / steps;
+            foreach (var (key, hinge, arm, side) in grips)
+            {
+                tissue.MoveGrip(key, hinge + arm.Rotated(Vector3.Right, side * angle));
+            }
+            tissue.Substep();
+        }
+        for (var i = 0; i < 60; i++)
+        {
+            tissue.Substep();
+        }
+        tissue.BreakMult = breakMult;
+        return tissue.Snapped.Count - snapped;
     }
 }
