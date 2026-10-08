@@ -1,9 +1,9 @@
 # Models
 
-Generated from code; run `./build.sh assets` to rebuild them all.
-The game loads them through `src/visual/model_slot.gd` and re-skins materials with the game shader by material name,
+Generated from code; run `./build.py assets` to rebuild them all.
+The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name,
 so a replacement `.glb` only needs the same file name, node or bone names and material names.
-`tests/models/test_models.gd` checks the names the game depends on, and that each model stays within its triangle budget:
+`tests/Models/ModelsTest.cs` checks the names the game depends on, and that each model stays within its triangle budget:
 patient 52k, surgeon parts 16k (the glove about 8k), organs 7k, targets 5k, tools 6k, props 15k.
 The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__main__.py` and `tools/blender/patient.py`);
 Godot adds LODs on import.

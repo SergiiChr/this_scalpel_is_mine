@@ -1,3 +1,0 @@
-[submodule "third_party/gut"]
-	path = third_party/gut
-	url = https://github.com/bitwes/Gut.git

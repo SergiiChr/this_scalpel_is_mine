@@ -8,8 +8,8 @@ from __future__ import annotations
 from .geometry import Model, cylinder, ellipsoid, merge, superellipsoid, tube
 
 
-# Rig pivots/lengths match src/surgeon/surgeon.gd's HIP_HEIGHT, THIGH_LENGTH, SHIN_LENGTH, ANKLE_HEIGHT and HIP_WIDTH.
-# Neck top/collar samples and eye-relative HEAD_PIVOT are checked in tests/models/test_surgeon_pose.gd; update both
+# Rig pivots/lengths match src/Surgeons/Surgeon.Body.cs's HipHeight, ThighLength, ShinLength, AnkleHeight and HipWidth.
+# Neck top/collar samples and eye-relative HeadPivot are checked in tests/Models/SurgeonPoseTest.cs; update both
 # consumers when changing these dimensions. The rig contract test reads the generated rest transforms.
 def _body() -> Model:
     model = Model("surgeon", "body")

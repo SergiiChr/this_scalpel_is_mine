@@ -3,23 +3,28 @@
 ## Architecture
 
 ```
-Autoloads (src/autoload)
-  Db        loads every file in data/ once; game code never parses files itself
+Autoloads (src/Core)
   Settings  display, audio, mouse, key bindings (user://settings.cfg)
-  Progress  save file: codex unlocks, best stars, known hosts (user://save.cfg)
   Net       host/join/solo, lobby roster, session start
   Sfx       plays sounds by id from data/audio.cfg, skips missing files
+Static
+  Db        loads every file in data/ once; game code never parses files itself (src/Core/Db.cs)
+  Progress  save file: codex unlocks, best stars, known hosts (user://save.cfg)
 
-Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
-  Room        builds geometry, lights and stations per environment (or, ambulance, sidewalk)
-  Patient     host-authoritative simulation (vitals, wounds, drugs, targets, grips)
+Surgery scene (scenes/surgery.tscn, src/Operation/Surgery.cs)
+  Room        builds geometry, lights and stations per environment (or, ambulance, sidewalk) (src/World)
+  Patient     host-authoritative simulation: vitals, wounds, drugs, targets, grips (src/Patients)
     PatientBody   mannequin, surgical site tissue layers, cavity, organs, wound map (every peer)
       TissueSim   soft tissue sim of the site skin (every peer, tears decided by the host)
-  Tools       ToolManager: every grabbable item, grab/release/belt requests
-  Surgeons    one Surgeon per player: input, hands with two-bone IK, personal gauges
-  Systems     Objectives, EventDirector, Scoring, Nurse, Lab (host only)
-  Hud         screen UI and full screen overlays
+  Tools       ToolManager: every grabbable item, grab/release/belt requests; ToolActions and src/Tools/Actions:
+              what each kind of tool does
+  Surgeons    one Surgeon per player: input, hands with two-bone IK, personal gauges (src/Surgeons)
+  Systems     Objectives, EventDirector, Scoring, Nurse, Lab (host only) (src/Operation)
+  Hud         screen UI and full screen overlays (src/UI)
 ```
+
+The code documents itself: each class's summary says what it's for and how it fits in, so this file only keeps the
+overview, the data formats designers edit and the design decisions.
 
 ### Networking model
 
@@ -35,7 +40,7 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
 - Solo play is the same code with an offline peer. There is no separate single player path.
 - Every peer builds the same patient and tray from the session seed, so setup needs no RPCs.
 - **Spotty connections don't end the session.** ENet drops a peer only after 15-45 s without answers
-  (`Net.TIMEOUT_*`, ENet's own default is about 5 s). Reliable RPCs queue up and arrive once the link recovers,
+  (`Net.Timeout*`, ENet's own default is about 5 s). Reliable RPCs queue up and arrive once the link recovers,
   unreliable state just picks up with the next packet.
   A 4 Hz heartbeat tracks how long each peer has been silent: after 0.75 s the host pauses that surgeon's tools
   (not released, so a charged defibrillator doesn't fire and clamps keep their grip), after 1.5 s the HUD says
@@ -52,89 +57,32 @@ Surgery scene (scenes/surgery.tscn, src/surgery/surgery.gd)
   on the site, dim tubes fill the corners. Outside, the streetlight does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
 - Shading (`toon.gdshader`): smooth diffuse, soft specular, rim light, procedural grime.
-  Every model material belongs to a family (`Materials.FAMILIES`, by material name): skin (light wraps past the
+  Every model material belongs to a family (`Materials.Families`, by material name): skin (light wraps past the
   terminator with a red tint), glove rubber, cloth (no highlight, soft sheen), metal (tinted highlight, a fake
   ceiling/floor reflection), plastic and wet tissue. The model's color, roughness, metallic and texture maps are kept.
   Grime rides on the model; only walls and floors keep theirs fixed in the world. Room surfaces skip specular and rim.
 - Fine relief per family (`Materials.Detail`): skin pores, glove creases, cloth weave and folds, brushed steel.
   It only tilts the normal, so silhouettes and collisions are the model's own.
-- Surgical drape (`drape.gd`, operating room only): a sheet over the torso and legs laid from the body's rest mesh,
+- Surgical drape (`Drape.cs`, operating room only): a sheet over the torso and legs laid from the body's rest mesh,
   1.2 cm off the skin so breathing never pushes the body through it, rising with the trunk. Its opening frames the
   site and covers the site's edge. It hides while the patient is turned away from the site; hands rest on it.
 - Organs and cavity walls (`flesh.gdshader`) show branching vessels and mottling.
 - Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
   so a blade gets a hairline and furniture a full line.
-- Surgical site tissue (`tissue_sim.gd`, `patient_body.gd`): the skin is a separate soft layer over fat and muscle.
-  - The skin is a grid of particles joined by springs under tension, loosely anchored to the body. Cells are about
-    6 mm square (`TissueSim.CELL`), wider on a big site so it has no more than `MAX_CELLS` (a belly's are about
-    9.5 mm): a whole belly folded open moves every particle at once, and that has to fit a frame. Only an active
-    window is simulated: around cuts, grips and skin that moved, plus a margin of still skin. It only grows while the
-    skin moves and is picked afresh once it sleeps.
-    Cutting severs springs, so an incision gapes on its own; forceps and the retractor pin particles and stretch it
-    further, the Gelpi retractor's two jaws each pin the edge on their side and move them apart (`TissueSim.grip_beside()`).
-  - Each severed spring remembers how deep the cut went (skin, fat or muscle), where the blade crossed it and which
-    way the cut ran. The edges of a cut are drawn back square to it, more the deeper it goes: skin gapes a few
-    millimeters, fat more, cut muscle retracts hard. The pull tapers off toward the cut's ends (where each stroke
-    starts and where the blade is), so a cut opens like a lens, closed at both ends, like a zipper behind the blade.
-  - Skin, fat and muscle are three meshes rebuilt from the sim, only where the simulated skin replaces the body (the
-    region). A layer cut through is split exactly where the blade crossed each spring, not along the grid: each side
-    keeps its part of the triangle and moves with it. Walls run down each lip through the layer's thickness (the
-    skin's cut face in its own tone, yellow fat, red muscle), so a cut has depth. The simulated skin doesn't paint the
-    wound map's cut groove: its lips are skin right up to the split: a skin cut shows the fat (or the muscle where there's no fat),
-    a deeper one the muscle, a full depth cut the bone or organs under it. The meshes rebuild on the frame after the
-    sim steps, so the two costs don't land on one frame. Which triangles there are and how they split is planned only
-    when the cuts or the region change; while the skin just moves, only the vertices move.
-  - The layers are drawn on the body model, not where the sim settled (tension pulls the sheet a few millimeters off a
-    round limb, centimeters off the belly's flanks): each grid point is laid onto the model once, with the model's own
-    smooth normal there, and drawn as far from it as the sim moved it since. Pores and grime are laid out in the
-    model's space, like the body's. The skin is moved 1 mm toward the camera along the view ray, so it wins over the
-    model where they overlap without a visible step.
-  - Fat is per site (`fat` in `patient_sites.json`, 12 mm when a site doesn't say): none on the forearm, where a cut
-    deeper than the skin goes into the muscle.
-  - Overstretched springs snap into a tear (host only), and clients snap the same spring by its index. A spring snaps
-    only if the one going on from it the same way is at least halfway there too: skin tears where it's overstretched
-    over a length, not where one short spring of the grid takes a jump. Springs in the site's outermost strip (under
-    the drape's frame) or to skin hanging off the body never snap; springs stretched at rest (the edge of a round limb)
-    break only well past that.
-    Stitches are extra springs across the cut, their length is the tension. Thread is stiffer than skin (solved more
-    often). A stitch closes a few millimeters of the cut. A cut counts as closed exactly where it looks closed
-    (`Patient._settle_closures()`): where its edges meet within `TissueSim.CLOSED_GAP` and a stitch, staple or thread
-    span holds them within `TissueSim.HOLD_REACH`, whatever closed it. A gap left between closures, or by a loose
-    stitch, stays open and bleeds, even where a closure counted it closed.
-  - The needle sews a running suture (`TissueSim.thread_anchor()`, `Patient.place_suture_anchor()`): each click makes a
-    hole and a spring from the last one, the wheel sets every span's length at once (`TissueSim.THREAD_CLOSED` and
-    the rest, per layer), and a long hold ties it off. The thread closes the wound bins it crosses and halfway to the
-    next crossing, over whatever other closures left there, and raises the pressed edges into a lip
-    (`TissueSim.suture_pucker()`). Tied off, it joins every severed edge it holds (`TissueSim.stitch_path()`), closes
-    the muscle or the fat under it (`TissueSim.close_layer()`). Pulled past `THREAD_TEAR`, or shut over open
-    muscle, it tears through (`TissueSim.snap_thread()`).
-  - Tools and hands touch the skin as it's deformed now (`TissueSim.skin_height()`), not the body's rest shape, so a
-    lifted fold is where it's drawn. Over the site a hand rests on that skin, not on the gown's or the site's colliders.
-  - A grip holds the skin within 10 mm of its jaws at its distance (it can still turn with a flap folded back) and
-    drags a patch around it along (never across a cut, not even round its ends: that's the other edge, which would
-    go along and the cut wouldn't open), so pulls spread and the skin stretches visibly over several centimeters
-    before it tears. Everything that moved is shown simulated. Grips held still let the sim sleep.
-  - A cut's edge lifted off the body (a flap folded back) isn't drawn back from the cut any more.
-  - Cut muscle retracts and pulls the edges further apart. It's sewn from inside the wound (`TissueSim.muscle_stitch()`,
-    `Patient.close_muscle_at()`, a needle's thread started on the muscle), through a stab or bullet hole too small to
-    reach into, and skin won't close over open muscle: it refuses, or a tight stitch tears through.
-  - Skin cut out all round (a circle through the skin) is a piece (`TissueSim.piece_of()`): pinched with forceps and
-    lifted 1 cm, it comes off whole (`TissueSim.excise()`). The skin layer has a hole there, the fat (or the muscle,
-    where there's no fat) shows, and the forceps hold the piece as a skin graft with one use: pressed onto a cleaned
-    burn it goes on, pressed in the air it's let go.
-  - The skin settles under its own tension when it's built, so it starts asleep. The sim sleeps when nothing moves.
-    Skin under the drape's edge isn't counted as exposed, and skin that starts under the drape stays under it, unless
-    it was cut free there (a flap cut under the drape's frame takes it along).
+- Surgical site tissue: the skin is a separate soft layer over fat and muscle, a grid of particles joined by springs
+  under tension (`TissueSim`), drawn as three layers split exactly where the blade went (`PatientBody`). Cuts gape on
+  their own, deeper ones further; grips stretch the skin over centimeters before it tears; closures count only where
+  the edges actually meet. How it's simulated and drawn is documented on those classes.
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
-- **Anatomy** (`anatomy` in `data/patient_sites.json`, `PatientBody.build_anatomy()`): the chest holds the lungs and
+- **Anatomy** (`anatomy` in `data/patient_sites.json`, `PatientBody.BuildAnatomy()`): the chest holds the lungs and
   the heart over the aorta under a rib cage and breastbone, the belly the liver, stomach and bowel over the kidneys and
   the aorta, under the lower rib margin. Arms, legs and the shoulder have their bones. Bones lie right under the muscle,
   organs are placed by how far under the muscle their top lies, so they stay inside on any patient. The cavity floor
   follows the skin. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
   The heart beats with the pulse (still in asystole, a quiver in V-fib), the lungs swell with each breath.
-- A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.ANCHOR_REACH`), so an
+- A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.AnchorReach`), so an
   H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
 - Screen grading (`post_grime.gdshader`): a restrained cool-green tint, vignette, a trace of grain and chromatic split.
   Sickness wobbles and blurs the view, passing out blacks it out, a sedative blurs it and too much darkens it.
@@ -216,7 +164,7 @@ Surgeon effect keys:
 | qte_window_mult / defib_charge_mult | turning and defibrillator timing |
 | deaf | no sound, subtitles only |
 
-Rolling rules live in `src/data/quirk_roller.gd`: 1-3 surgeon quirks, with 3 at least one positive and one negative
+Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at least one positive and one negative
 (`mixed` counts as both), `exclusive` quirks alone.
 
 ### Scenarios (`data/scenarios/NN_id.cfg`)
@@ -226,7 +174,7 @@ Rolling rules live in `src/data/quirk_roller.gd`: 1-3 surgeon quirks, with 3 at 
 `disabled=true` keeps a scenario out of the menu and lobby while its positive flow test is broken; a comment beside it
 names the test.
 
-Objective step types (`src/surgery/objectives/objective_checks.gd`):
+Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
 inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Required steps complete in order, `"optional": true` steps any time for bonus points.
@@ -257,7 +205,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 ### In this draft
 
 - Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels. Holding MMB the mouse turns the
-  held tool about the wrist (tilt up and down, turn left and right, `Surgeon.aim_tool()`): the wrist and forearm stay
+  held tool about the wrist (tilt up and down, turn left and right, `Surgeon.AimTool()`): the wrist and forearm stay
   put, the tip follows the mouse and rises off what it rested on, and settles back down once MMB is let go. C/V roll
   it about its length.
 - Holding tissue anchors the hand; walking away tears it.
@@ -303,17 +251,17 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
-  (`SurgeonHand.MAX_ROLL`), so the back of the hand stays up. `data/grips.json` fits each tool model to the glove
-  (moves it off the tool, opens or closes fingers) so no tool goes through the hand; `tests/support/fit_grips.tscn` makes it.
+  (`SurgeonHand.MaxRoll`), so the back of the hand stays up. `data/grips.json` fits each tool model to the glove
+  (moves it off the tool, opens or closes fingers) so no tool goes through the hand; `tests/Support/FitGrips.tscn` makes it.
 - **Tools on hard surfaces**: tools lie on the tray side by side at the start, a lowered tool only presses into skin,
   and every corner of a held tool and the glove clear tables, trays and tools lying there. Physics is Jolt.
-  `tests/support/grip_gallery.tscn` renders every tool held, for checking.
+  `tests/Support/GripGallery.tscn` renders every tool held, for checking.
 - **Stations**: the nurse menu is a shop: categories (`category` in tools.cfg), each a list of items with [-] count
   [+], and a cart. Deliveries land side by side on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
-  (`src/world/iv_line.gd`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
+  (`src/World/IvLine.cs`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
   sticks and the tubing runs to it, but nothing goes through. The last zoom step fades the hands as for a syringe.
   Where it went in, the catheter is taped down on the forearm (`IvDressing`, riding the forearm bone): its stub going
   into the skin toward the elbow, the hub with a colored cap and wings, a clear film over it, two strips of woven tape
@@ -322,9 +270,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   wash and sanitize it to use it again); crouch-walking steps over it.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
-  and a little upward, the way the forearm rises to it (`Surgeon._snap_spot()`); moved on, it comes out and the hand
+  and a little upward, the way the forearm rises to it (`Surgeon.SnapSpot()`); moved on, it comes out and the hand
   holds the syringe as before. While it's in: push a drug in and it starts down the line at once, ahead of the bag's
-  own fluid, at 2 ml a second (`ToolActions.DRIP_RATE`), if the line is in a vein (`ToolActions.drip()`). Each bit is
+  own fluid, at 2 ml a second (`ToolActions.DripRate`), if the line is in a vein (`ToolActions.Drip()`). Each bit is
   given as it reaches the patient; debug mode tells each ml and the total so far. Pull and the syringe draws by the
   port: what was pushed in and hasn't run yet first, then the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
@@ -334,7 +282,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Look by default**: the mouse looks around like a regular first person game. Holding a hand's key (Q left, E right)
   moves that hand instead and makes it the active one. Hands turn and walk with the body unless they hold onto
   something (a gripped clamp or retractor), then they stay put.
-- **One button per job** (`ToolActions.LEVEL_NAMES`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
+- **One button per job** (`ToolActions.LevelNames`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
@@ -346,10 +294,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture). And
   the Gelpi retractor: up opens it, down closes it (see Gelpi retractor).
 - **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
-  accurate at any angle (`Surgeon.aim_point()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
+  accurate at any angle (`Surgeon.AimPoint()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
-  (`Surgeon.on_surface()`), not in the air at the hovering tool. Aimed across a cut, a Gelpi's < and > hang down
-  from the lip on each side into the wound (`Hud.JAW_DEPTH`), where its tips go in. A stapler's legs go in exactly
+  (`Surgeon.OnSurface()`), not in the air at the hovering tool. Aimed across a cut, a Gelpi's < and > hang down
+  from the lip on each side into the wound (`Hud.JawDepth`), where its tips go in. A stapler's legs go in exactly
   where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
   turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
@@ -358,7 +306,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - **Same tray every time** (`data/starter_kit.cfg`): scalpel, forceps, kidney dish, cotton pads, iodine bottle with
   its dish, a 3, 10 and 50 ml syringe, IV catheter and saline bag. Everything else is ordered.
-- **Tray layout** (`tray` in tools.cfg, `Room.TRAY_ZONES`): scalpel and forceps lie in a small steel tray, the cotton
+- **Tray layout** (`tray` in tools.cfg, `Room.TrayZones`): scalpel and forceps lie in a small steel tray, the cotton
   pads in a pile in another, the syringes side by side and the bottles and vials standing at one end. The rest fills
   the space left.
 - **Nurse**: one order at a time, a cart of up to five items (the same one twice too) fetched together, so it takes
@@ -367,11 +315,11 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   with a progress bar, then the cooldown.
 - **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
   held), pinch a cotton pad with forceps (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up
-  off the floor contaminates the site. A pad soaks up 10 ml (`ToolActions.PAD_ML`), so the 40 ml iodine dish soaks
+  off the floor contaminates the site. A pad soaks up 10 ml (`ToolActions.PadMl`), so the 40 ml iodine dish soaks
   four; a soaked pad runs dry after about 8 s of wiping.
-- **Dishes** (`ToolDef.is_dish()`: a volume and no action of its own, the iodine dish and the kidney dish) all work
+- **Dishes** (`ToolDef.IsDish()`: a volume and no action of its own, the iodine dish and the kidney dish) all work
   the same: bottles pour into them, syringes squirt into them and draw from them, pads dip into iodine in them
-  (`ToolManager.nearest_dish()`). They show their liquid by its ml, tinted toward iodine and blood by their share.
+  (`ToolManager.NearestDish()`). They show their liquid by its ml, tinted toward iodine and blood by their share.
 
 ### Vials and syringes
 
@@ -383,33 +331,33 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
   snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.
 - **Standing a bottle up**: holding Grab a second with a bottle in hand stands it upright where it's held, on whatever is
-  under it (`ToolManager.standing_on()`). A click puts it down like any other tool. It lets go a little further out than it snaps in, so passing over doesn't hold it for
+  under it (`ToolManager.StandingOn()`). A click puts it down like any other tool. It lets go a little further out than it snaps in, so passing over doesn't hold it for
   long. Snapping in and out (onto the IV bag too) eases over 0.25 s, the needle gliding over rather than jumping.
-- **Plunger on the wheel** (`ToolActions.plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
+- **Plunger on the wheel** (`ToolActions.Plunge()`): wheel down pulls the plunger out 1 ml a notch, wheel up pushes
   it in 1 ml, whether or not Use tool is held. The needle is in whatever its tip rests on or just over
-  (`ToolActions.needle_target()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
+  (`ToolActions.NeedleTarget()`): over a vial or the dish it rests there, on the patient Use tool presses it in.
   - a vial, a dish (the kidney dish holds 100 ml, the iodine dish 40) or the IV drip: pulls its liquid, pushes into it. A full vial or bag takes
     no more.
-  - a vein drawn on each forearm (`PatientBody.vein_at()`, not on an arm the site covers): pulls blood, which tints
+  - a vein drawn on each forearm (`PatientBody.VeinAt()`, not on an arm the site covers): pulls blood, which tints
     the liquid toward red by its share, pushes the drug in as an IV dose without a line (route `vein`).
-  - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.layer_at()`): pushes a direct injection,
+  - skin, fat or muscle (the deepest layer a cut opens there, `PatientBody.LayerAt()`): pushes a direct injection,
     pulls nothing and the plunger stays.
   - a surgeon's glove (the other hand of the one holding it, or a partner's) or a partner's body: the needle rests
-    on the back of a glove, wrist to fingertips, like on skin. Pushes a dose into that surgeon (`Surgery.dose_surgeon()`, route `surgeon:<peer>`),
+    on the back of a glove, wrist to fingertips, like on skin. Pushes a dose into that surgeon (`Surgery.DoseSurgeon()`, route `surgeon:<peer>`),
     pulls nothing. A glove comes before the patient under it, a body after.
   - nothing: pulls air, pushes the liquid out in a squirt.
-  A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.transfer()`).
+  A syringe holds ml plus an amount of each drug, so drawing from a second vial mixes (`ToolManager.Transfer()`).
   Air sits at the needle end and goes out first. Pushing into the patient or a surgeon gives what's pushed as it goes
   in, one notch at a time.
 - **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
   it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
-  hand swinging round it (`Surgeon._bend_needle()`). What the tilt can't follow (sideways, or past the tilt range)
+  hand swinging round it (`Surgeon.BendNeedle()`). What the tilt can't follow (sideways, or past the tilt range)
   stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
-  out: a short scratch, a bead of blood and pain (`Patient.needle_tear()`). It then moves freely until Use tool is
+  out: a short scratch, a bead of blood and pain (`Patient.NeedleTear()`). It then moves freely until Use tool is
   let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the puncture, without
-  adding pain or a scratch (`ToolManager.request_needle_withdrawal()`). Moving the hand afterward cannot tear it out.
+  adding pain or a scratch (`ToolManager.RequestNeedleWithdrawal()`). Moving the hand afterward cannot tear it out.
 - **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
-  its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand._reach_plunger()`). It points a
+  its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand.ReachPlunger()`). It points a
   little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
   the eyes, so it doesn't need turning to be read. Let go, the hand holds things the way it did before. Moved
   about, it keeps turning the scale to the eyes, so C/V don't roll it (and the controls shown leave them out).
@@ -458,19 +406,19 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - A self-retaining spreader (`action="spread"`), beside the plain retractor that pulls one edge like forceps: ring
   handles with a ratchet rising to a box joint and two long arms, each ending in a point bent down under it. It's held
-  tipped toward the skin, its points down (`SurgeonHand.SPREADER_TILT`), and lies along a cut with its jaws across
-  it. The aim shows a < and a > where its tips are, square to its length (`ToolActions.side_points()`); C/V swing it
+  tipped toward the skin, its points down (`SurgeonHand.SpreaderTilt`), and lies along a cut with its jaws across
+  it. The aim shows a < and a > where its tips are, square to its length (`ToolActions.SidePoints()`); C/V swing it
   about the upright to turn them across a cut (`SurgeonHand.spreads`). The wheel opens and closes it, in the hand or
-  set, from 1.2 to 8 cm between the tips (`ToolActions.SPREAD_RANGE`); the arms swing about the joint to match
-  (`ToolAnimator.open_to()`), the handles stay in the fingers.
+  set, from 1.2 to 8 cm between the tips (`ToolActions.SpreadRange`); the arms swing about the joint to match
+  (`ToolAnimator.OpenTo()`), the handles stay in the fingers.
 - Use tool on a cut sets it: each jaw takes hold of the skin on its own side of the middle, so set right over a cut
-  each holds one edge (`Patient.set_spreader()`). It goes down lying flatter along the skin, its points into the cut
-  as deep as the cut goes (through the skin, the fat or the muscle, at most `ToolActions.SPREAD_REACH`), so how far
-  the arms sink shows how deep the cut is (`SurgicalTool.dig_to()`). Pressed on skin with no cut between its tips it
-  doesn't set: the hand bounces off and comes back down (`SurgeonHand.bounce()`). Opened or closed, each edge moves
-  half the change (`Patient.open_spreader()`), and the cut opens like the skin lets it: opened too far it tears at the
+  each holds one edge (`Patient.SetSpreader()`). It goes down lying flatter along the skin, its points into the cut
+  as deep as the cut goes (through the skin, the fat or the muscle, at most `ToolActions.SpreadReach`), so how far
+  the arms sink shows how deep the cut is (`SurgicalTool.DigTo()`). Pressed on skin with no cut between its tips it
+  doesn't set: the hand bounces off and comes back down (`SurgeonHand.Bounce()`). Opened or closed, each edge moves
+  half the change (`Patient.OpenSpreader()`), and the cut opens like the skin lets it: opened too far it tears at the
   ends. Use tool again takes it out.
-- Set, it stays where it went in: the hand holding it goes to it and doesn't shake (`Surgeon._hold_in_wound()`).
+- Set, it stays where it went in: the hand holding it goes to it and doesn't shake (`Surgeon.HoldInWound()`).
   Put down, or walked away from, it stays set in the wound (self-retaining). Picked up again, the wheel works on it.
   Left set, it doesn't keep hands or tools off the cut: a blade cuts the layers under the skin between its jaws.
 
@@ -478,41 +426,41 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - Use tool hooks the skin where it's pressed, and moving the hand pulls it that way, like forceps. Grab lets go of
   the handle but not the skin (self-retaining): the retractor lies down along the body from the hook, pointing away
-  from where it took hold, and keeps the skin pulled where the hand left it (`ToolManager.lying_from_hold()`). It rests
+  from where it took hold, and keeps the skin pulled where the hand left it (`ToolManager.LyingFromHold()`). It rests
   on the body at rest, not on the skin its hook dips and bunches up, nor on the drape (it slides under its edge), so
   it lies flat rather than standing up. It rides the site, rising and falling with a breathing belly, and so does the
-  skin it holds (`SurgicalTool.ride()`). Its handle points straight away from
+  skin it holds (`SurgicalTool.Ride()`). Its handle points straight away from
   where it hooked: the way it pulled, or away from the cut.
   Taken back, the hand goes to where the hook holds, so the skin isn't dragged; Use tool unhooks it.
-- It hooks only skin (`ToolActions.SKIN_HOOKS`), never a target, vessel or organ under it: the skin it's pressed onto,
-  or pressed into an opening, the edge of the cut on that side (`TissueSim.grip_beside()`). It pulls the skin aside or
+- It hooks only skin (`ToolActions.SkinHooks`), never a target, vessel or organ under it: the skin it's pressed onto,
+  or pressed into an opening, the edge of the cut on that side (`TissueSim.GripBeside()`). It pulls the skin aside or
   up, never down into the opening after its tip.
 - Anything left holding onto the patient (a retractor, a hemostat, a Gelpi retractor) has no collider: hands and
-  tools reach past it (`SurgicalTool.set_state()`).
+  tools reach past it (`SurgicalTool.SetState()`).
 
 ### Staplers
 
 - The skin and office staplers (`action="staple"`) put in one staple per Use tool press, no wheel. The aim shows two
-  rings where the legs go in, a fixed `staple_span` apart across the tool (`ToolActions.staple_legs()`); C/V turn
+  rings where the legs go in, a fixed `staple_span` apart across the tool (`ToolActions.StapleLegs()`); C/V turn
   them across a cut. The skin stapler's legs reach out up to `staple_give` for the edge of an opening, the office
-  stapler's don't. The rings lie where the legs land (`Surgeon.on_surface()`, tools in the way left out): on the skin,
+  stapler's don't. The rings lie where the legs land (`Surgeon.OnSurface()`, tools in the way left out): on the skin,
   or down in the opening when a leg can't reach an edge, and then the press does nothing. A press staples only with
-  both legs on skin either side of a cut not closed there (`TissueSim.staple_spot()`); otherwise the one who pressed
-  is told why (`ToolActions.staple_miss()`).
-- A staple joins the skin edges within `TissueSim.STITCH_REACH` of where it crosses the cut (`Patient.staple()`); the
+  both legs on skin either side of a cut not closed there (`TissueSim.StapleSpot()`); otherwise the one who pressed
+  is told why (`ToolActions.StapleMiss()`).
+- A staple joins the skin edges within `TissueSim.StitchReach` of where it crosses the cut (`Patient.Staple()`); the
   cut counts closed where its edges then meet, like any closure. Where the muscle under it is still open it
   goes into the muscle instead, so a cut through the muscle is stapled twice along.
 - Staples are drawn as steel wire bridging the cut, each leg riding the tissue grid point it went in at
-  (`PatientBody.add_staple()`).
+  (`PatientBody.AddStaple()`).
 - The office stapler has a `tear_chance` (the staple tears out, a new tear) and a `bleed_chance` (it goes through a
   vessel: the stapled cut bleeds through it, `Wound.nicked`, until cautery seals it or a clamp or pressure holds it) per
   staple. A nick is no new wound to close.
-- How closed the skin is (`Patient.skin_closure()`) is weighed by each wound's length: a small hole left open counts
-  for as little of it as it is. The "close" objective is met at `Patient.CLOSED_ENOUGH` (0.9) in every scenario.
+- How closed the skin is (`Patient.SkinClosure()`) is weighed by each wound's length: a small hole left open counts
+  for as little of it as it is. The "close" objective is met at `Patient.ClosedEnough` (0.9) in every scenario.
 
 ### Tourniquet
 
-- Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.limb_ring()`
+- Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.LimbRing()`
   measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off.
 
 ### Approved mechanics (in this build)
@@ -537,7 +485,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 ## Assets and animation
 
-All models and sounds are generated from code (`./build.sh assets`), so they can be regenerated and tweaked.
+All models and sounds are generated from code (`./build.py assets`), so they can be regenerated and tweaked.
 
 - **Organic and rigged models** (`tools/blender`, Blender as a Python module): the patient, the surgeon's glove,
   organs and anatomical targets. Metaball and tube shells are fused with a voxel remesh, shaped with scripted
@@ -545,36 +493,36 @@ All models and sounds are generated from code (`./build.sh assets`), so they can
   The patient is one skinned mesh; eyes, lids, hair, brows, teeth and tongue ride their bones.
 - **Hard-surface models** (`tools/assetgen`, trimesh): props and instruments from lofted tubes, lathes, rounded boxes
   and extrusions, exported to `.glb` with named parts.
-- The game swaps materials for the cel shader by name (`src/visual/model_slot.gd`).
+- The game swaps materials for the cel shader by name (`src/Visuals/ModelSlot.cs`).
 - **Patient skin**: the body model draws the wound and fluid maps itself (`wound.gdshaderinc`, shared with the site
   skin shader), so cuts, burns, bruises, blood and iodine sit on the model. Only around cuts and skin a tool holds
-  (TissueSim.region()) is the model cut away and replaced by the simulated skin, fat and muscle layers.
+  (TissueSim.Region()) is the model cut away and replaced by the simulated skin, fat and muscle layers.
   The site's skin heights are measured on the body model when the patient is built (rays down the site's normal,
-  `PatientBody._measure_site()`), so those layers hug the body as it is, whatever the model becomes. Every peer
+  `PatientBody.MeasureSite()`), so those layers hug the body as it is, whatever the model becomes. Every peer
   measures the same model the same way, so every player sees the same site. The cavity under them is a bowl that
   rises to just under the skin at the site's edges, so on a round limb it stays inside the body.
   The measuring also finds grid points off the body: where the site overhangs it (or a ray goes through a hole the
   eyes fill), or the body under the skin is too thin for skin, fat and muscle (the edge of a limb or the flank).
   Nothing of the site is drawn, carved or probed there, so it never sticks out past the body's outline.
-- **Blood** (`src/visual/blood_flow.gd`): bleeding wounds well up into a puddle that grows with the blood lost and
+- **Blood** (`src/Visuals/BloodFlow.cs`): bleeding wounds well up into a puddle that grows with the blood lost and
   release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
   on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.
-- **Tool effects** (`src/visual/tool_effects.gd`, sent by the host through `Surgery.effect()`): cautery and lighter
+- **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
   the body jerking, a bead of blood where a needle or catheter goes in. Lasting marks (cuts, burns, stitches, ink,
   iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
   through (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
-  - Patient (`patient_animator.gd`, bones posed through `bone_rig.gd` in model-space axes): breathing at the
+  - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,
     jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.
   - Surgeon: walk cycle from movement speed, collapse when passed out, lying on the side when knocked out, head tilt
     from camera pitch,
     two-bone IK arms, glove finger bones relax, wrap around a held tool and squeeze while using it.
     The glove's cuff has its own bone aimed down the forearm, so a bent wrist stretches the glove over the sleeve.
-  - Tools (`tool_animator.gd`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
+  - Tools (`ToolAnimator.cs`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
 - **Sounds**: 44 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
   surgeon coughs and moans, patient groans/screams/breathing). The monitor beep is generated live.

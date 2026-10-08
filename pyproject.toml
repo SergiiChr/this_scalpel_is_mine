@@ -1,4 +1,4 @@
-# Tool settings only. Python dependencies live in requirements.txt and requirements-dev.txt (./build.sh dev installs them).
+# Tool settings only. Python dependencies live in requirements.txt and requirements-dev.txt (./build.py dev installs them).
 
 [tool.ruff]
 line-length = 160

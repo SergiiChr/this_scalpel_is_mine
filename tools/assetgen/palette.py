@@ -1,4 +1,4 @@
-"""Material names and base colors. The game re-skins these with its cel shader by name (src/visual/model_slot.gd).
+"""Material names and base colors. The game re-skins these with its cel shader by name (src/Visuals/ModelSlot.cs).
 
 Special names the game treats differently:
 - "skin": the patient's skin (cavity carving, skin tone) or the surgeon's face.

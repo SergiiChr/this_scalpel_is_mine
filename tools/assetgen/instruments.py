@@ -1,6 +1,6 @@
 """Every grabbable tool. Grip at the origin, working tip at (0, 0, -length) with length from data/tools.cfg.
 
-Moving parts are separate nodes the game animates (src/tools/tool_animator.gd):
+Moving parts are separate nodes the game animates (src/Tools/ToolAnimator.cs):
 JawA/JawB open and close (a Gelpi retractor's stand as far open as its wheel set), Plunger slides, Trigger squeezes,
 Blade oscillates, Flame/Glow/Light show while in use.
 Level is liquid the game stretches along Z from its node origin by how full the tool is (syringe, vial).
@@ -136,7 +136,7 @@ def _gelpi(m: Model, length: float) -> None:
     box joint, and two long arms bowing apart, each ending in a sharp point bent down under it to hook a wound's edge.
     The points' tips are on the tool's axis, so the game's tip is where they go in. The game swings each arm about the
     joint (the part origin, an upright axis) so the points stand as far apart as the wheel set
-    (src/tools/tool_animator.gd open_to()). The handles stay put, so the fingers in the rings don't have to follow."""
+    (src/Tools/ToolAnimator.cs OpenTo()). The handles stay put, so the fingers in the rings don't have to follow."""
     joint = -length + GELPI_REACH
     half = GELPI_CLOSED / 2
     handles = []
@@ -471,7 +471,7 @@ def _misc(m: Model, kind: str, length: float) -> None:
         outer = lathe([(0.0, 0.0), (0.06, 0.0), (0.07, 0.025), (0.066, 0.026), (0.056, 0.004), (0.0, 0.004)], 32)
         m.add("Dish", moved(scaled(outer, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "steel")
         # Liquid squirted in from a syringe, full to just under the rim. Its origin is on the dish floor, so the game
-        # raises the level by scaling it up from there (src/tools/surgical_tool.gd show_liquid()).
+        # raises the level by scaling it up from there (src/Tools/SurgicalTool.cs ShowLiquid()).
         pool = lathe([(0.0, 0.004), (0.0555, 0.004), (0.0628, 0.02), (0.0, 0.02)], 32)
         m.add("Pool", moved(scaled(pool, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "drug", (0.0, -0.006, -length * 0.5))
 

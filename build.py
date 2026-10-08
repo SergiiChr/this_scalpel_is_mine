@@ -22,6 +22,7 @@ own Godot .NET binary of the same version instead.
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import re
 import shutil
@@ -88,10 +89,14 @@ def require(*pairs: str) -> None:
         sys.exit(f"Please install these packages with your package manager, then run this again: {' '.join(missing)}")
 
 
+@functools.cache
 def dotnet() -> str:
-    """The dotnet command: the system's if it's there, else one installed into .tools without sudo."""
+    """The dotnet command: the system's if it has an SDK this new (the analyzers need it), else one installed into
+    .tools without sudo."""
     if shutil.which("dotnet"):
-        return "dotnet"
+        sdks = subprocess.run(["dotnet", "--list-sdks"], capture_output=True, text=True, check=False).stdout
+        if any(int(line.split(".")[0]) >= int(DOTNET_CHANNEL.split(".")[0]) for line in sdks.splitlines() if line[:1].isdigit()):
+            return "dotnet"
     local = DOTNET_LOCAL / "dotnet"
     if not local.exists():
         print(f"Installing the .NET {DOTNET_CHANNEL} SDK into .tools/dotnet...")

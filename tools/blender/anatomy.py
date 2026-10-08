@@ -1,6 +1,6 @@
 """Organs you push aside (unit radius, the game scales them) and anatomical targets (real size in meters).
 
-Material names match the game's (src/visual/model_slot.gd): organ, flesh, blood_bag, bone.
+Material names match the game's (src/Visuals/ModelSlot.cs): organ, flesh, blood_bag, bone.
 """
 
 from __future__ import annotations

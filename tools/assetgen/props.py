@@ -9,7 +9,7 @@ from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, superelli
 
 TABLE_HEIGHT = 0.85
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
-# tray's middle. Same as "instruments" and "swabs" in Room.TRAY_ZONES (src/world/room.gd).
+# tray's middle. Same as "instruments" and "swabs" in Room.TrayZones (src/World/Room.cs).
 SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
 
 
@@ -83,7 +83,7 @@ def _iv_stand() -> Model:
     m.add("Hooks", merge(*hooks), "chrome")
     # The bag itself is a tool hung on the hook (iv_drip in data/tools.cfg), so a syringe can go into it.
     m.add("Chamber", merge(cylinder(0.008, (0.08, 1.66, 0.0), (0.08, 1.6, 0.0), 12), ellipsoid((0.004, 0.005, 0.004), (0.08, 1.63, 0.0))), "clear_plastic")
-    # The tubing itself is drawn by the game (src/world/iv_line.gd), from the chamber to wherever the line goes in.
+    # The tubing itself is drawn by the game (src/World/IvLine.cs), from the chamber to wherever the line goes in.
     return m
 
 

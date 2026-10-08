@@ -43,7 +43,7 @@ def to_linear(c: float) -> float:
 
 
 def material(name: str, color: Sequence[float], roughness: float = 0.5, subsurface: float = 0.0, metallic: float = 0.0) -> bpy.types.Material:
-    """Principled material. The game reads the name (see model_slot.gd), base color, roughness and metallic.
+    """Principled material. The game reads the name (see src/Visuals/ModelSlot.cs), base color, roughness and metallic.
     color is a display (sRGB) color, like a color picker's; Blender and glTF store it linear."""
     color = [to_linear(c) for c in color[:3]]
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
