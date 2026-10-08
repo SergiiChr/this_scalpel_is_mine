@@ -49,7 +49,7 @@ public sealed record GripStyle(
 }
 
 /// <summary>
-/// How one hand's grip is fitted to one tool model (data/grips.json, made by tests/support/FitGrips.tscn), so the tool
+/// How one hand's grip is fitted to one tool model (data/grips.json, made by tests/Support/FitGrips.tscn), so the tool
 /// doesn't pass through the glove.
 /// </summary>
 /// <param name="Lift">Meters the glove moves off the tool toward the back of the hand.</param>
