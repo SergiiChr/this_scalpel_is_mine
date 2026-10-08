@@ -18,7 +18,10 @@ public partial class LoadingScreen : Control
         AddChild(center);
         _bar = new ProgressBar
         {
-            MaxValue = 1, Step = 0, ShowPercentage = false, CustomMinimumSize = new Vector2(480f, 10f),
+            MaxValue = 1,
+            Step = 0,
+            ShowPercentage = false,
+            CustomMinimumSize = new Vector2(480f, 10f),
         };
         center.AddChild(_bar);
         _files.AddRange(ModelSlot.ToolModelFiles());
