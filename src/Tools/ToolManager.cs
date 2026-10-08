@@ -146,11 +146,23 @@ public partial class ToolManager : Node3D
         }
     }
 
-    public SurgicalTool? ToolInHand(int peer, int hand) =>
-        _tools.Values.FirstOrDefault(t => t.State == ToolState.Held && t.Holder == peer && t.Slot == hand);
+    public SurgicalTool? ToolInHand(int peer, int hand) => ToolAt(ToolState.Held, peer, hand);
 
-    public SurgicalTool? ToolOnBelt(int peer, int beltSlot) =>
-        _tools.Values.FirstOrDefault(t => t.State == ToolState.Belt && t.Holder == peer && t.Slot == beltSlot);
+    public SurgicalTool? ToolOnBelt(int peer, int beltSlot) => ToolAt(ToolState.Belt, peer, beltSlot);
+
+    /// <summary>A loop rather than a query: asked many times a frame, a query's closure would be garbage each time.
+    /// </summary>
+    private SurgicalTool? ToolAt(ToolState state, int peer, int slot)
+    {
+        foreach (var tool in _tools.Values)
+        {
+            if (tool.State == state && tool.Holder == peer && tool.Slot == slot)
+            {
+                return tool;
+            }
+        }
+        return null;
+    }
 
     /// <summary>The world-space needle tip holding the free end of a live running suture, null once it is tied or
     /// torn.</summary>

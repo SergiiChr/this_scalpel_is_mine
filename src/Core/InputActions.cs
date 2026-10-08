@@ -97,11 +97,11 @@ public static class InputActions
     public static string LabelFor(string action) =>
         Defaults.FirstOrDefault(entry => entry.Action == action)?.Label ?? action;
 
-    private static readonly Dictionary<string, string> BindingTexts = [];
+    private static readonly Dictionary<StringName, string> BindingTexts = [];
 
     /// <summary>Human readable binding, e.g. "E" or "Mouse 1". Kept until the bindings change
     /// (<see cref="BindingsChanged"/>): the on-screen hint asks for it every frame.</summary>
-    public static string BindingText(string action)
+    public static string BindingText(StringName action)
     {
         if (!BindingTexts.TryGetValue(action, out var text))
         {
@@ -114,7 +114,7 @@ public static class InputActions
     /// <summary>The input map changed: binding texts are read afresh.</summary>
     public static void BindingsChanged() => BindingTexts.Clear();
 
-    private static string ReadBinding(string action)
+    private static string ReadBinding(StringName action)
     {
         var events = InputMap.HasAction(action) ? InputMap.ActionGetEvents(action) : [];
         if (events.Count == 0)
