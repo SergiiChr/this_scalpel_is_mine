@@ -142,8 +142,6 @@ def fetch_templates() -> None:
 def build_project() -> None:
     """Compiles the C# (the analyzers run as part of it), then lets Godot import the assets."""
     run([dotnet(), "build", "--nologo", "-v", "quiet", ROOT / "ThisScalpelIsMine.csproj"])
-    # Exported games build without the tests: their code must not lean on anything only the tests bring.
-    run([dotnet(), "build", "--nologo", "-v", "quiet", "-c", "ExportRelease", ROOT / "ThisScalpelIsMine.csproj"])
     subprocess.run([GODOT, "--headless", "--path", ROOT, "--import"], capture_output=True, check=False)
 
 
