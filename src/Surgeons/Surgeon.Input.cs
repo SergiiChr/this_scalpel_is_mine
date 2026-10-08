@@ -21,8 +21,8 @@ public partial class Surgeon
     private const float NeedleSettle = 0.1f;
     /// <summary>How a syringe picked up is held (radians): tilted this far down and turned this far in toward the body's
     /// middle.</summary>
-    private const float SyringeTilt = -0.6f;
-    private const float SyringeTurn = 0.4f;
+    internal const float SyringeTilt = -0.6f;
+    internal const float SyringeTurn = 0.4f;
     /// <summary>Seconds Grab is held on a bottle to stand it upright where it is instead of putting it down.</summary>
     internal const float StandHold = 1f;
     /// <summary>Fastest a syringe's hand rises or sinks to follow what's under it (m/s): it glides over a vial's edge,
@@ -39,6 +39,8 @@ public partial class Surgeon
     private float _needleFade;
     /// <summary>How far the camera has moved over to the needle view (0..1).</summary>
     private float _needleFraming;
+    /// <summary>How far the camera has moved over to the needle view (0..1).</summary>
+    internal float NeedleFraming => _needleFraming;
     /// <summary>The last needle view, to move back from.</summary>
     private Transform3D _needleView = Transform3D.Identity;
     /// <summary>The hand whose syringe the needle view rolls to show its scale to the camera (-1: none). Out of it, the

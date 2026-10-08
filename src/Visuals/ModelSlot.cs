@@ -7,7 +7,7 @@ namespace Scalpel.Visuals;
 /// </summary>
 public static class ModelSlot
 {
-    private const string Root = "res://assets/models";
+    internal const string Root = "res://assets/models";
     private static readonly string[] Extensions = ["glb", "gltf", "tscn"];
     /// <summary>Every model loaded so far, kept for the whole game. Unloaded with a surgery and loaded again for the
     /// next, a model's materials can come back out of Godot's resource cache while their old C# wrappers wait to be

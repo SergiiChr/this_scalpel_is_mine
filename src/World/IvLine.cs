@@ -8,7 +8,7 @@ namespace Scalpel.World;
 /// </summary>
 public partial class IvLine : Node3D
 {
-    private const int Samples = 18;
+    internal const int Samples = 18;
     public const float Radius = 0.004f;
     private const float Sag = 0.55f;
     /// <summary>Only tubing hanging lower than this (meters above the floor) catches a walking surgeon's legs.</summary>

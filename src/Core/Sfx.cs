@@ -7,7 +7,7 @@ namespace Scalpel.Core;
 public partial class Sfx : Node
 {
     /// <summary>Most contact loops playing at once; a new one replaces the quietest of lower priority.</summary>
-    private const int ContactLimit = 3;
+    internal const int ContactLimit = 3;
     /// <summary>A contact loop not refreshed for this long fades out.</summary>
     private const ulong ContactTimeoutMsec = 320;
     private const float Silent = -60f;
@@ -33,6 +33,9 @@ public partial class Sfx : Node
 
     /// <summary>Tool uid -> its contact loop.</summary>
     private readonly Dictionary<long, ContactSound> _contacts = [];
+
+    /// <summary>How many contact loops play now.</summary>
+    internal static int ContactCount => _instance?._contacts.Count ?? 0;
 
     /// <summary>Set by the local surgeon's Hard of hearing quirk.</summary>
     public static bool Deaf { get; set; }
@@ -96,6 +99,19 @@ public partial class Sfx : Node
         contact.Player.Position = at;
         contact.LastMsec = Time.GetTicksMsec();
         contact.Level = -29f + 17f * Mathf.Clamp(strength, 0f, 1f);
+    }
+
+    /// <summary>The contact loop playing for tool <paramref name="uid"/>, null when none is.</summary>
+    internal static AudioStreamPlayer3D? ContactPlayer(long uid) => _instance?._contacts.GetValueOrDefault(uid)?.Player;
+
+    /// <summary>Makes every contact loop stale, as if its tool stopped touching anything longer ago than a loop is kept
+    /// without a refresh.</summary>
+    internal static void ExpireContacts()
+    {
+        foreach (var contact in _instance?._contacts.Values ?? Enumerable.Empty<ContactSound>())
+        {
+            contact.LastMsec = Time.GetTicksMsec() - ContactTimeoutMsec - 1;
+        }
     }
 
     /// <summary>Plays a sound once, in 3D at <paramref name="at"/> or flat when it's null.</summary>

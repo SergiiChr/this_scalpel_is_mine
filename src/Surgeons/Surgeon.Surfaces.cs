@@ -29,7 +29,7 @@ public partial class Surgeon
     private const float SnapTime = 0.25f;
     /// <summary>A syringe snapped into the IV bag points this far up (radians): the bag hangs high and the forearm rises
     /// to it, so level or lower the wrist would bend back.</summary>
-    private const float DripTilt = 0.5f;
+    internal const float DripTilt = 0.5f;
 
     /// <summary>Hands whose syringe is snapped into a vial or the IV bag, or easing in or out.</summary>
     private readonly Dictionary<int, SnapState> _snaps = [];

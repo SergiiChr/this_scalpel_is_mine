@@ -43,7 +43,7 @@ public partial class SurgeonHand : Node3D
     /// <summary>Furthest the thumb's root slides toward a plunger out of its reach (meters).</summary>
     private const float ThumbSlide = 0.012f;
     /// <summary>How far behind the thumb press its pad's middle is (meters).</summary>
-    private const float PressPad = 0.008f;
+    internal const float PressPad = 0.008f;
     /// <summary>The toon shader's coat runs back from a tip at -Z, the glove's fingers point along +X.</summary>
     private static readonly Transform3D CoatFrame = new(new Basis(Vector3.Forward, Vector3.Up, Vector3.Right), Vector3.Zero);
     /// <summary>Wrist to fingertips along the glove's X.</summary>
@@ -78,7 +78,7 @@ public partial class SurgeonHand : Node3D
     private const float ElbowEase = 0.25f;
     /// <summary>Stands in for the hand's materials while it's see-through (see SetSeeThrough()).</summary>
     private static readonly Color GhostColor = new(0.75f, 0.82f, 0.9f);
-    private const int TrailCopies = 4;
+    internal const int TrailCopies = 4;
     /// <summary>How far apart in time (s) the afterimages are.</summary>
     private const float TrailStep = 0.06f;
     private const float TrailAlpha = 0.45f;
@@ -169,11 +169,15 @@ public partial class SurgeonHand : Node3D
     /// <summary>The glove model, its origin at the wrist.</summary>
     internal Node3D Glove => _glove;
     private BoneRig? _gloveRig;
+    /// <summary>The glove model's skeleton, null before <see cref="Build"/>.</summary>
+    internal Skeleton3D? GloveSkeleton => _gloveRig?.Skeleton;
     private List<ShaderMaterial> _gloveMaterials = [];
     private Node3D _upper = null!;
     /// <summary>The upper arm's sleeve model.</summary>
     internal Node3D UpperSleeve => _upper;
     private Node3D _fore = null!;
+    /// <summary>The forearm's sleeve model.</summary>
+    internal Node3D ForeSleeve => _fore;
     /// <summary>Where the elbow was put last.</summary>
     private Vector3 _elbow;
     /// <summary>Where the elbow was put last (world).</summary>
@@ -196,7 +200,7 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>The thumb at rest, glove space: where its root is, each bone (to the next joint, the last to its tip) and
     /// the axis each joint bends about.</summary>
-    private sealed record ThumbRest(Vector3 Root, Vector3[] Bones, Vector3[] Axes);
+    internal sealed record ThumbRest(Vector3 Root, Vector3[] Bones, Vector3[] Axes);
 
     private readonly record struct TrailFrame(Transform3D Glove, Transform3D[] Poses);
 
@@ -601,7 +605,7 @@ public partial class SurgeonHand : Node3D
         return at;
     }
 
-    private ThumbRest ThumbAtRest()
+    internal ThumbRest ThumbAtRest()
     {
         if (_thumb is not null)
         {

@@ -60,7 +60,7 @@ public partial class SyringeBench : Node
     /// </summary>
     private static readonly Vector2 FatUv = new(0.3f, 0.3f);
     private static readonly Vector2 MuscleUv = new(0.5f, 0.62f);
-    private static readonly Vector2 SkinUv = new(0.75f, 0.4f);
+    public static readonly Vector2 SkinUv = new(0.75f, 0.4f);
     /// <summary>How far from the target (meters, across the floor) the surgeon stands to work on it.</summary>
     private const float StandOff = 0.45f;
 
@@ -274,6 +274,17 @@ public partial class SyringeBench : Node
         await Frames.Physics(2);
     }
 
+    /// <summary>Presses the zoom key until the surgeon's view is at zoom step <paramref name="step"/>
+    /// (<see cref="Surgeon.ZoomFov"/>), as a player cycles it.</summary>
+    public async Task ZoomTo(int step)
+    {
+        for (var i = 0; i < Surgeon.ZoomFov.Length && Me.Zoom != step; i++)
+        {
+            PlayerInput.Tap(InputActions.Zoom);
+            await PlayerInput.Delivered();
+        }
+    }
+
     /// <summary>Takes the needle out: the hand goes up and away over the floor.</summary>
     public async Task Withdraw()
     {
@@ -359,7 +370,7 @@ public partial class SyringeBench : Node
 
     public NeedleTarget NeedleTarget() => Scalpel.Tools.Syringe.NeedleTarget(Syringe!, Surgery.Patient);
 
-    private SurgicalTool Spawn(string id, Vector3 at) => Surgery.Tools.ByUid(Surgery.Tools.Spawn(id, at))!;
+    public SurgicalTool Spawn(string id, Vector3 at) => Surgery.Tools.ByUid(Surgery.Tools.Spawn(id, at))!;
 
     private void Fill(SurgicalTool tool, float ml, string vial = Vial)
     {

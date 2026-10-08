@@ -28,7 +28,9 @@ public partial class Surgeon
     private const float LyingDistance = 1.4f;
     /// <summary>How much floor (m) a falling surgeon looks for beside them, to pick the side they fall to.</summary>
     private const float FallRoom = 2f;
-    private static readonly string[] JointNames = ["Torso", "LegL", "LegR", "ShinL", "ShinR", "ShoeL", "ShoeR"];
+    /// <summary>The body model's joints the animation drives (see <see cref="Joint"/>).</summary>
+    internal static readonly IReadOnlyList<string> JointNames =
+        ["Torso", "LegL", "LegR", "ShinL", "ShinR", "ShoeL", "ShoeR"];
 
     private Node3D _head = null!;
     private Node3D _body = null!;
@@ -220,7 +222,8 @@ public partial class Surgeon
         var eyeLocal = new Vector3(0f, EyeHeight - HipHeight, 0f);
         var standingEyes = new Vector3(0f, EyeHeight - (_collapse * 1.1f) - (Crouch * CrouchDrop), 0f);
         _head.Position = standingEyes.Lerp(_body.Transform * new Vector3(0f, EyeHeight, -0.06f), _down);
-        var patient = Session.Patient.GlobalPosition;
+        // Only lying down does the head look for the patient: a surgeon outside a surgery (a pose fixture) has none.
+        var patient = _down > 0f ? Session.Patient.GlobalPosition : Vector3.Zero;
         // Lying there, the head turns to the patient on the table.
         var look = 0f;
         if (_down > 0f)

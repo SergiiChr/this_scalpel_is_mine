@@ -214,8 +214,8 @@ public static class Syringe
         tools.AddLiquid(syringe, ml, moved);
     }
 
-    /// <summary>Debug mode: where a syringe's needle pushes liquid, as "Injected 5 ml of Atropine into the vein" names
-    /// it. Empty for the air.</summary>
+    /// <summary>Debug mode: where a syringe's needle pushes liquid, as "Injected 5.0 ml of Atropine into the vein"
+    /// names it. Empty for the air.</summary>
     public static string PushLabel(NeedleTarget target) => target switch
     {
         ContainerTarget { Container.Def: var def } => def.Action switch
@@ -244,7 +244,7 @@ public static class Syringe
         {
             surgery.AnnounceDebug("Hit the vein");
         }
-        surgery.AnnounceDebug($"Injected {tool.PushedMl:0.#} ml{DrugList(tool.PushedDrugs)} into {tool.PushedInto}");
+        surgery.AnnounceDebug($"Injected {tool.PushedMl:0.0} ml{DrugList(tool.PushedDrugs)} into {tool.PushedInto}");
         tool.PushedMl = 0f;
         tool.PushedDrugs.Clear();
         tool.PushedInto = "";
@@ -284,7 +284,8 @@ public static class Syringe
         var done = bag.Bolus < 0.0001f;
         if (bag.DrippedMl >= 0.9999f || done)
         {
-            surgery.AnnounceDebug($"{bag.DrippedMl:0.#} ml{DrugList(drugs)} reached the patient over IV ({bag.DrippedTotal:0.#} ml total)");
+            surgery.AnnounceDebug(
+                $"{bag.DrippedMl:0.0} ml{DrugList(drugs)} reached the patient over IV ({bag.DrippedTotal:0.0} ml total)");
             bag.DrippedMl = 0f;
         }
         if (done)
