@@ -22,6 +22,10 @@ public sealed partial class ManualPage
     /// <summary>Class name -> its constants, for the classes pages have used so far.</summary>
     private static readonly Dictionary<string, GodotDictionary?> ClassConstants = [];
 
+    /// <summary>Drugs, tools and quirk effects as expressions see them. Built once: each is thousands of engine
+    /// dictionaries, and every page has many numbers.</summary>
+    private static Godot.Collections.Array? _tables;
+
     public string Title { get; private init; } = "";
     public IReadOnlyList<string> Tags { get; private init; } = [];
     /// <summary>The page as written, with its "{expression}" numbers.</summary>
@@ -93,10 +97,7 @@ public sealed partial class ManualPage
     public static Variant? Evaluate(string expression)
     {
         var names = new List<string> { "drug", "tool", "quirk" };
-        var inputs = new Godot.Collections.Array
-        {
-            ById(Db.Drugs), ById(Db.Tools), QuirkEffects(),
-        };
+        var inputs = new Godot.Collections.Array(_tables ??= [ById(Db.Drugs), ById(Db.Tools), QuirkEffects()]);
         foreach (Match word in ClassNamePattern().Matches(expression))
         {
             if (!names.Contains(word.Value) && ConstantsOf(word.Value) is { } constants)

@@ -22,19 +22,19 @@ public partial class Surgeon
     /// <summary>The state remote copies follow: body, view, active hand, each hand and who's out or down.</summary>
     internal GodotArray PackState()
     {
-        var hands = new GodotArray();
+        // The inner arrays' wrappers are freed once added: the outer array holds them now. Left to the garbage
+        // collector, a stream of them at 30 a second makes its pauses long.
+        using var hands = new GodotArray();
         foreach (var h in Hands)
         {
-            hands.Add(new GodotArray
+            using var hand = new GodotArray
             {
                 h.EffectivePosition(), h.Tilt, h.Twist, h.Lowered, h.Trigger, h.Level, h.Lifted, h.Inspecting, h.Turn,
-            });
+            };
+            hands.Add(hand);
         }
-        return
-        [
-            GlobalPosition, Rotation.Y, Pitch, Active, hands, new GodotArray { _strain[0], _strain[1] },
-            Status.PassedOut > 0f, Crouch, _fallSide,
-        ];
+        using var strain = new GodotArray { _strain[0], _strain[1] };
+        return [GlobalPosition, Rotation.Y, Pitch, Active, hands, strain, Status.PassedOut > 0f, Crouch, _fallSide];
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]

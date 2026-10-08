@@ -185,7 +185,14 @@ public partial class Surgery : Node3D
             _statusAcc = 0f;
             var status = new SurgeryStatus(Objectives.Snapshot(), Scoring.Points, [.. Scoring.Recent], Nurse.CooldownLeft,
                 Nurse.Current, Lab.CooldownLeft, Elapsed);
-            Rpc(MethodName.SyncStatus, status.ToVariant());
+            if (Net.Instance.IsOnline)
+            {
+                Rpc(MethodName.SyncStatus, status.ToVariant());
+            }
+            else
+            {
+                ApplyStatus(status);
+            }
         }
     }
 
@@ -487,10 +494,12 @@ public partial class Surgery : Node3D
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
-    private void SyncStatus(GodotDictionary data)
+    private void SyncStatus(GodotDictionary data) => ApplyStatus(SurgeryStatus.FromVariant(data));
+
+    private void ApplyStatus(SurgeryStatus status)
     {
-        Status = SurgeryStatus.FromVariant(data);
-        Elapsed = Status.Elapsed;
+        Status = status;
+        Elapsed = status.Elapsed;
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]

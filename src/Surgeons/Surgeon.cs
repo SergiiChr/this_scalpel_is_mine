@@ -305,10 +305,11 @@ public partial class Surgeon : CharacterBody3D
         {
             LocalUpdate(dt);
             _syncAccumulated += dt;
-            if (_syncAccumulated >= SyncInterval)
+            if (_syncAccumulated >= SyncInterval && Net.Instance.IsOnline)
             {
                 _syncAccumulated = 0f;
-                Rpc(MethodName.SyncState, PackState());
+                using var state = PackState();
+                Rpc(MethodName.SyncState, state);
             }
         }
         else

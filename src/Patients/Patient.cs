@@ -240,7 +240,7 @@ public partial class Patient : Node3D
             Simulate(Tick);
         }
         _syncAcc += dt;
-        if (_syncAcc >= SyncInterval)
+        if (_syncAcc >= SyncInterval && Net.Instance.IsOnline)
         {
             _syncAcc = 0f;
             BroadcastState();
