@@ -21,6 +21,8 @@
   <!-- The tests and the test framework stay out of exported games, debug exports included. -->
   <ItemGroup Condition="$(Configuration.StartsWith('Export'))">
     <Compile Remove="tests/**" />
+    <!-- Written by the GdUnit4 test adapter when tests run; it needs the test framework. -->
+    <Compile Remove="gdunit4_testadapter_v5/**" />
   </ItemGroup>
   <ItemGroup Condition="!$(Configuration.StartsWith('Export'))">
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />

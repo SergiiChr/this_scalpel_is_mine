@@ -10,6 +10,8 @@ public partial class LoadingScreen : Control
     private readonly List<(string File, Action<Resource> Keep)> _loads = Ahead();
     private ProgressBar _bar = null!;
     private bool _done;
+    /// <summary>How many of <see cref="_loads"/> are done loading.</summary>
+    private int _loaded;
 
     /// <summary>What's loaded ahead besides the surgery scene: each file and where it's kept once loaded.</summary>
     internal static List<(string File, Action<Resource> Keep)> Ahead() =>
@@ -34,10 +36,7 @@ public partial class LoadingScreen : Control
         };
         center.AddChild(_bar);
         _loads.Add((Net.SurgeryScene, _ => { }));
-        foreach (var (file, _) in _loads)
-        {
-            ResourceLoader.LoadThreadedRequest(file);
-        }
+        ResourceLoader.LoadThreadedRequest(_loads[0].File);
         Net.Instance.AllLoaded += Enter;
     }
 
@@ -45,10 +44,16 @@ public partial class LoadingScreen : Control
 
     public override void _Process(double delta)
     {
-        var loaded = _loads.Count(load => ResourceLoader.LoadThreadedGetStatus(load.File)
-            != ResourceLoader.ThreadLoadStatus.InProgress);
-        _bar.Value = ((float)loaded / _loads.Count + ManagedRuntime.Progress) / 2f;
-        if (_done || loaded < _loads.Count || !ManagedRuntime.WarmUp.IsCompleted)
+        // One file at a time: models loaded side by side on worker threads can corrupt the headless renderer's meshes
+        // (wrong or uninitialized mesh RIDs, crashes).
+        if (_loaded < _loads.Count
+            && ResourceLoader.LoadThreadedGetStatus(_loads[_loaded].File) != ResourceLoader.ThreadLoadStatus.InProgress
+            && ++_loaded < _loads.Count)
+        {
+            ResourceLoader.LoadThreadedRequest(_loads[_loaded].File);
+        }
+        _bar.Value = ((float)_loaded / _loads.Count + ManagedRuntime.Progress) / 2f;
+        if (_done || _loaded < _loads.Count || !ManagedRuntime.WarmUp.IsCompleted)
         {
             return;
         }

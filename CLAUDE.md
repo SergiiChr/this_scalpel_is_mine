@@ -134,6 +134,10 @@ venv with Blender as a module, about 400 MB).
 
 ## Gotchas
 
+- Godot exports .NET projects through `ThisScalpelIsMine.sln`. Keep it next to the `.csproj`; without it the export
+  logs errors, still exits with 0, and the exported game crashes (`./build.py build` catches this).
+- Exported games compile without `tests/` and the GdUnit4 packages (`ExportRelease`, `ExportDebug`): game code must not
+  rely on anything only they bring, such as the test project's global usings. `./build.py lint` builds `ExportRelease`.
 - A C# class Godot attaches to a node must be `partial`, derive from a Godot class and live in a file named after it.
   After adding one, rebuild (`./build.py setup`, or any `./build.py test`) before Godot can find it.
 - GDScript habits that bite in C#: a `for` condition is evaluated every iteration (GDScript's `for i in n` evaluates
