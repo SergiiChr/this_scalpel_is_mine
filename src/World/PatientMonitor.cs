@@ -24,7 +24,9 @@ public partial class PatientMonitor : Node3D
         BuildScreen();
         var player = new AudioStreamPlayer3D
         {
-            Stream = new AudioStreamGenerator { MixRate = SampleRate, BufferLength = 0.2f }, Bus = "SFX", UnitSize = 4f,
+            Stream = new AudioStreamGenerator { MixRate = SampleRate, BufferLength = 0.2f },
+            Bus = "SFX",
+            UnitSize = 4f,
         };
         AddChild(player);
         if (DisplayServer.GetName() != "headless")
@@ -46,7 +48,8 @@ public partial class PatientMonitor : Node3D
             Mesh = new QuadMesh { Size = new Vector2(0.38f, 0.25f) },
             MaterialOverride = new StandardMaterial3D
             {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoTexture = viewport.GetTexture(),
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                AlbedoTexture = viewport.GetTexture(),
             },
             Position = new Vector3(0f, 0.01f, 0.0155f),
         });

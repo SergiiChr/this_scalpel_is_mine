@@ -216,10 +216,10 @@ public static class SurgeryState
     /// </summary>
     public static int SiteIsOpenedWide(Patient patient)
     {
-        const float middle = 0.51f;
+        const float Middle = 0.51f;
         (Vector2 From, Vector2 To)[] cuts =
         [
-            (new(0.03f, middle), new(0.97f, middle)), (new(0.03f, 0.02f), new(0.03f, 0.98f)),
+            (new(0.03f, Middle), new(0.97f, Middle)), (new(0.03f, 0.02f), new(0.03f, 0.98f)),
             (new(0.97f, 0.02f), new(0.97f, 0.98f)),
         ];
         foreach (var (from, to) in cuts)
@@ -244,21 +244,21 @@ public static class SurgeryState
         var grips = new List<(int Key, Vector3 Hinge, Vector3 Arm, float Side)>();
         for (var i = 1; i < tissue.ResX; i += spacing)
         {
-            foreach (var edge in (int[])[Mathf.FloorToInt(middle * tissue.ResY), Mathf.CeilToInt(middle * tissue.ResY)])
+            foreach (var edge in (int[])[Mathf.FloorToInt(Middle * tissue.ResY), Mathf.CeilToInt(Middle * tissue.ResY)])
             {
                 var k = tissue.Index(i, edge);
                 var key = 88000 + grips.Count;
                 tissue.Grip(key, tissue.UvOf(k));
-                var side = edge < middle * tissue.ResY ? -1f : 1f;
+                var side = edge < Middle * tissue.ResY ? -1f : 1f;
                 var line = hinges[side < 0f ? 0 : 1];
                 var hinge = new Vector3(tissue.Rest[k].X, line.Y, line.Z);
                 grips.Add((key, hinge, tissue.Rest[k] - hinge, side));
             }
         }
-        const int steps = 240;
-        for (var step = 0; step < steps; step++)
+        const int Steps = 240;
+        for (var step = 0; step < Steps; step++)
         {
-            var angle = Mathf.Pi * 0.85f * (step + 1) / steps;
+            var angle = Mathf.Pi * 0.85f * (step + 1) / Steps;
             foreach (var (key, hinge, arm, side) in grips)
             {
                 tissue.MoveGrip(key, hinge + arm.Rotated(Vector3.Right, side * angle));

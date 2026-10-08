@@ -83,7 +83,11 @@ public partial class SettingsPanel : VBoxContainer
         row.AddChild(label);
         var slider = new HSlider
         {
-            MinValue = min, MaxValue = max, Step = 0.01, Value = value, CustomMinimumSize = new Vector2(300f, 0f),
+            MinValue = min,
+            MaxValue = max,
+            Step = 0.01,
+            Value = value,
+            CustomMinimumSize = new Vector2(300f, 0f),
         };
         slider.ValueChanged += newValue => changed((float)newValue);
         row.AddChild(slider);

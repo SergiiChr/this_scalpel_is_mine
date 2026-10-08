@@ -12,9 +12,17 @@ public class SyringeTest
     /// <summary>Where debug mode says each case's syringe pushed its liquid.</summary>
     private static readonly Dictionary<string, string> PushedInto = new()
     {
-        ["vial"] = "the vial", ["dish"] = "the kidney dish", ["drip"] = "the IV bag", ["vein"] = "the vein",
-        ["skin"] = "the skin", ["fat"] = "the fat", ["muscle"] = "the muscle", ["own_hand"] = "Tester's hand",
-        ["doctor_hand"] = "Partner's hand", ["doctor_body"] = "Partner's body", ["doctor_down"] = "Partner's hand",
+        ["vial"] = "the vial",
+        ["dish"] = "the kidney dish",
+        ["drip"] = "the IV bag",
+        ["vein"] = "the vein",
+        ["skin"] = "the skin",
+        ["fat"] = "the fat",
+        ["muscle"] = "the muscle",
+        ["own_hand"] = "Tester's hand",
+        ["doctor_hand"] = "Partner's hand",
+        ["doctor_body"] = "Partner's body",
+        ["doctor_down"] = "Partner's hand",
     };
 
     private SyringeBench _bench = null!;
@@ -531,28 +539,28 @@ public class SyringeTest
     [TestCase]
     public void DiazepamSedatesASurgeon()
     {
-        const float right = 0.2f * 80f;
-        var status = Dosed(right);
+        const float Right = 0.2f * 80f;
+        var status = Dosed(Right);
         status.Stress = 0.8f;
         status.ColdTremor = 0.0015f;
         // Ten seconds in, the dose has faded a little from its peak.
         AssertBool(status.Calm > 0.95f && Mathf.Abs(status.TremorAmount() - 0.0015f) < 0.0003f)
             .OverrideFailureMessage(
-                $"sedation: the right dose steadies stress shaking, the cold stays ({status.TremorAmount():0.0000})")
+                $"sedation: the Right dose steadies stress shaking, the cold stays ({status.TremorAmount():0.0000})")
             .IsTrue();
         AssertBool(Mathf.Abs(status.InputDelay() - SurgeonStatus.SedatedDelay) < 0.005f && status.Overdose == 0f
                 && !status.IsOut)
             .OverrideFailureMessage(
-                $"sedation: the right dose delays hand moves {status.InputDelay() * 1000f:0} ms, nothing more")
+                $"sedation: the Right dose delays hand moves {status.InputDelay() * 1000f:0} ms, nothing more")
             .IsTrue();
-        var more = Dosed(right * 1.8f);
+        var more = Dosed(Right * 1.8f);
         AssertBool(more.Overdose > 0.4f && more.InputDelay() > SurgeonStatus.SedatedDelay + 0.05f && !more.IsOut)
             .OverrideFailureMessage(
                 $"sedation: 1.8 doses darken the view and lag more ({more.Overdose:0.00}, "
                     + $"{more.InputDelay() * 1000f:0} ms)")
             .IsTrue();
         var events = new List<StatusEvent>();
-        var knocked = Dosed(right * 2.5f, events);
+        var knocked = Dosed(Right * 2.5f, events);
         AssertBool(events.Contains(StatusEvent.KnockedOut) && knocked.IsOut
                 && knocked.KnockedOut > SurgeonStatus.KnockoutTime - 10f)
             .OverrideFailureMessage(
@@ -566,7 +574,7 @@ public class SyringeTest
             .OverrideFailureMessage(
                 $"sedation: flumazenil brings them round and ends the diazepam ({string.Join(", ", events)})")
             .IsTrue();
-        var kept = Dosed(right * 3.5f);
+        var kept = Dosed(Right * 3.5f);
         kept.Administer("adrenaline", 0.01f * 80f);
         events.Clear();
         RunStatus(kept, 3f, events);
@@ -823,6 +831,7 @@ public class SyringeTest
         vial.AngularVelocity = Vector3.Zero;
     }
 
+    /// <summary>What one sweep of the needle across a vial's cap did.</summary>
     /// <param name="Snapped">Frames the needle was in the cap along the vial.</param>
     /// <param name="Jump">The largest step the tip took in a frame.</param>
     /// <param name="Out">Past it, the needle is out and the hand holds the syringe its own way again.</param>

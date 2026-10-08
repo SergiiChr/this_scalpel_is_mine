@@ -293,11 +293,16 @@ public partial class PatientBody
         }
         var bone = new Bone
         {
-            Name = $"{kind}{Bones.Count}", Kind = kind.ToLowerInvariant(), CollisionLayer = CavityLayer, CollisionMask = 0,
+            Name = $"{kind}{Bones.Count}",
+            Kind = kind.ToLowerInvariant(),
+            CollisionLayer = CavityLayer,
+            CollisionMask = 0,
         };
         bone.AddChild(new MeshInstance3D
         {
-            Name = "Mesh", Mesh = Shapes.Tube(path, radius, radius * flat), MaterialOverride = Materials.ToonShaded(BoneColor, 0.2f),
+            Name = "Mesh",
+            Mesh = Shapes.Tube(path, radius, radius * flat),
+            MaterialOverride = Materials.ToonShaded(BoneColor, 0.2f),
         });
         for (var i = 1; i < path.Count; i++)
         {
@@ -309,7 +314,8 @@ public partial class PatientBody
             var side = along.Cross(Mathf.Abs(along.Y) < 0.9f ? Vector3.Up : Vector3.Right).Normalized();
             bone.AddChild(new CollisionShape3D
             {
-                Shape = capsule, Transform = new Transform3D(new Basis(side, along, side.Cross(along)), (a + b) * 0.5f),
+                Shape = capsule,
+                Transform = new Transform3D(new Basis(side, along, side.Cross(along)), (a + b) * 0.5f),
             });
         }
         Site.AddChild(bone);

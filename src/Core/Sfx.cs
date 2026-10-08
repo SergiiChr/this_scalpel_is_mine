@@ -14,7 +14,9 @@ public partial class Sfx : Node
 
     private static readonly Dictionary<string, int> ContactPriority = new()
     {
-        ["contact_cut"] = 3, ["contact_suction"] = 2, ["contact_swab"] = 1,
+        ["contact_cut"] = 3,
+        ["contact_suction"] = 2,
+        ["contact_swab"] = 1,
     };
 
     private static Sfx? _instance;

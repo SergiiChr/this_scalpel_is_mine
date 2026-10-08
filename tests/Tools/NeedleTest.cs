@@ -237,12 +237,16 @@ public class NeedleTest
         var sew = new SewAction();
         sew.Apply(new ToolStep(needle, hand, driver.Patient, 0.1f)
         {
-            Pressed = true, Tip = needle.TipPosition(), Probe = new SiteProbe(SiteZone.Site, new Vector2(0.4f, 0.4f), 0f),
+            Pressed = true,
+            Tip = needle.TipPosition(),
+            Probe = new SiteProbe(SiteZone.Site, new Vector2(0.4f, 0.4f), 0f),
         });
         // Let go with the needle up by the tray, off the patient.
         sew.Apply(new ToolStep(needle, hand with { Trigger = false }, driver.Patient, 0f)
         {
-            Released = true, Tip = needle.TipPosition(), Probe = new SiteProbe(SiteZone.Air, Vector2.Zero, 0f),
+            Released = true,
+            Tip = needle.TipPosition(),
+            Probe = new SiteProbe(SiteZone.Air, Vector2.Zero, 0f),
         });
         AssertInt(needle.Suture.Thread).OverrideFailureMessage("releasing off the patient cancels the pending puncture").IsEqual(0);
         AssertBool(tissue.ThreadIds.Any()).OverrideFailureMessage("a cancelled press makes no hole").IsFalse();

@@ -44,10 +44,22 @@ public sealed class Vitals
     /// <summary>Everything clients need, for the host's sync.</summary>
     public GodotDictionary ToVariant() => new()
     {
-        ["heart_rate"] = HeartRate, ["systolic"] = Systolic, ["spo2"] = Spo2, ["temperature"] = Temperature,
-        ["glucose"] = Glucose, ["blood_ml"] = BloodMl, ["max_blood_ml"] = MaxBloodMl, ["rhythm"] = (int)Rhythm,
-        ["consciousness"] = Consciousness, ["anesthesia"] = Anesthesia, ["local_block"] = LocalBlock, ["pain"] = Pain,
-        ["panic"] = Panic, ["bleed_rate"] = BleedRate, ["swelling"] = Swelling, ["seizing"] = Seizing,
+        ["heart_rate"] = HeartRate,
+        ["systolic"] = Systolic,
+        ["spo2"] = Spo2,
+        ["temperature"] = Temperature,
+        ["glucose"] = Glucose,
+        ["blood_ml"] = BloodMl,
+        ["max_blood_ml"] = MaxBloodMl,
+        ["rhythm"] = (int)Rhythm,
+        ["consciousness"] = Consciousness,
+        ["anesthesia"] = Anesthesia,
+        ["local_block"] = LocalBlock,
+        ["pain"] = Pain,
+        ["panic"] = Panic,
+        ["bleed_rate"] = BleedRate,
+        ["swelling"] = Swelling,
+        ["seizing"] = Seizing,
     };
 
     /// <summary>Takes the given numbers (a host sync, or a scenario's start_vitals), leaving the rest.</summary>

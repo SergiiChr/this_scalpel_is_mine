@@ -58,7 +58,8 @@ public partial class XrayCart : Node3D
         var body = new AnimatableBody3D();
         body.AddChild(new CollisionShape3D
         {
-            Shape = new BoxShape3D { Size = new Vector3(0.6f, 1.7f, 0.7f) }, Position = new Vector3(0f, 0.85f, 0f),
+            Shape = new BoxShape3D { Size = new Vector3(0.6f, 1.7f, 0.7f) },
+            Position = new Vector3(0f, 0.85f, 0f),
         });
         AddChild(body);
         Interactable.Create(this, "Push / let go of the X-ray cart", new Vector3(0.5f, 0.2f, 0.2f),

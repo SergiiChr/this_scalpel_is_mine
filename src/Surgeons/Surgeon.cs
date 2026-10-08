@@ -150,7 +150,8 @@ public partial class Surgeon : CharacterBody3D
         CollisionMask = 1 | 16;
         AddChild(new CollisionShape3D
         {
-            Shape = new CapsuleShape3D { Radius = 0.24f, Height = 1.75f }, Position = new Vector3(0f, 0.875f, 0f),
+            Shape = new CapsuleShape3D { Radius = 0.24f, Height = 1.75f },
+            Position = new Vector3(0f, 0.875f, 0f),
         });
         BuildVisuals();
         for (var i = 0; i < 2; i++)

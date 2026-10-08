@@ -7,7 +7,9 @@ public sealed record LobbyPlayer(string Name, IReadOnlyList<QuirkRoll> Quirks, b
 {
     public GodotDictionary ToVariant() => new()
     {
-        ["name"] = Name, ["quirks"] = QuirkRoll.ToVariant(Quirks), ["ready"] = Ready,
+        ["name"] = Name,
+        ["quirks"] = QuirkRoll.ToVariant(Quirks),
+        ["ready"] = Ready,
     };
 
     public static LobbyPlayer FromVariant(GodotDictionary data) =>

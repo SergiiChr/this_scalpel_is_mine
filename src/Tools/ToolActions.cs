@@ -86,15 +86,26 @@ public static class ToolActions
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> LevelNames = new Dictionary<string, string>
     {
-        ["cut"] = "Depth", ["suture"] = "Tension", ["cauterize"] = "Heat", ["saw"] = "Speed", ["suction"] = "Suction",
-        ["swab"] = "Pressure", ["inject"] = "Plunger",
+        ["cut"] = "Depth",
+        ["suture"] = "Tension",
+        ["cauterize"] = "Heat",
+        ["saw"] = "Speed",
+        ["suction"] = "Suction",
+        ["swab"] = "Pressure",
+        ["inject"] = "Plunger",
     };
     /// <summary>Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> TriggerNames = new Dictionary<string, string>
     {
-        ["clamp"] = "Pinch / let go", ["smash"] = "Strike", ["tourniquet"] = "Tighten", ["graft"] = "Place graft",
-        ["shock"] = "Charge (hold), let go to shock", ["sew"] = "Stitch", ["spread"] = "Set in / take out", ["staple"] = "Staple",
+        ["clamp"] = "Pinch / let go",
+        ["smash"] = "Strike",
+        ["tourniquet"] = "Tighten",
+        ["graft"] = "Place graft",
+        ["shock"] = "Charge (hold), let go to shock",
+        ["sew"] = "Stitch",
+        ["spread"] = "Set in / take out",
+        ["staple"] = "Staple",
     };
     /// <summary>Cut depth per level (0 just rests on the skin, 3 deep). 0.7+ goes through the skin.</summary>
     public static readonly float[] DepthByLevel = [0f, 0.3f, 0.6f, 1f];

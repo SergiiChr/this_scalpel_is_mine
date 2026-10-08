@@ -60,7 +60,8 @@ public partial class FitGrips : Node3D
                     // Rounded in double: written from float they'd show float noise (0.006 as 0.00600000005).
                     entry[side] = new GodotDictionary
                     {
-                        ["lift"] = Math.Round((double)fit.Lift, 3), ["shift"] = Math.Round((double)fit.Shift, 3),
+                        ["lift"] = Math.Round((double)fit.Lift, 3),
+                        ["shift"] = Math.Round((double)fit.Shift, 3),
                         ["curl"] = new Godot.Collections.Array(fit.Curl!.Select(curl => (Variant)Math.Round((double)curl, 2))),
                     };
                     fits[def.ModelName] = entry;

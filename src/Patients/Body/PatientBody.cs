@@ -532,7 +532,11 @@ public partial class PatientBody : Node3D
         {
             var body = new BodyPart
             {
-                Name = part.ToPascalCase(), Part = part, CollisionLayer = PatientLayer, CollisionMask = 0, Position = position,
+                Name = part.ToPascalCase(),
+                Part = part,
+                CollisionLayer = PatientLayer,
+                CollisionMask = 0,
+                Position = position,
             };
             body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
             _bodyRoot.AddChild(body);

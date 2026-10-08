@@ -94,7 +94,10 @@ public partial class Room : Node3D
             },
             new Dictionary<string, float>
             {
-                ["bell"] = Mathf.Pi, ["gloves"] = Mathf.Pi, ["delivery_tray"] = Mathf.Pi, ["sink"] = Mathf.Pi,
+                ["bell"] = Mathf.Pi,
+                ["gloves"] = Mathf.Pi,
+                ["delivery_tray"] = Mathf.Pi,
+                ["sink"] = Mathf.Pi,
                 ["sanitizer"] = Mathf.Pi,
             }),
         ["ambulance"] = new(

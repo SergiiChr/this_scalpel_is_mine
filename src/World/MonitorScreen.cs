@@ -85,12 +85,12 @@ public partial class MonitorScreen : Control
             $"{vitals.Temperature:0.0}",
             _respRate > 0 ? $"{_respRate}" : "--");
         _carry += delta;
-        const float step = 1f / SampleHz;
-        while (_carry >= step)
+        const float Step = 1f / SampleHz;
+        while (_carry >= Step)
         {
-            _carry -= step;
-            _time += step;
-            _sinceBeat += step;
+            _carry -= Step;
+            _time += Step;
+            _sinceBeat += Step;
             _waves[0][_head] = EcgSample();
             _waves[1][_head] = PlethSample();
             _breath = Mathf.PosMod(_breath + (_respRate / 60f / SampleHz), 1f);

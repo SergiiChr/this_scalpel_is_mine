@@ -227,31 +227,31 @@ public class TissueSimTest
         var sim = Sim();
         sim.Cut(CutFrom, CutTo, TissueDepth.Fat);
         Settle(sim);
-        const int id = 77;
+        const int Id = 77;
         var springsBefore = sim.SpringCount;
-        Check(sim.ThreadAnchor(id, new Vector2(0.35f, 0.46f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(sim.ThreadAnchor(Id, new Vector2(0.35f, 0.46f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
             "the first click creates a running-thread anchor");
         Check(sim.SpringCount == springsBefore, "the first anchor has no disconnected stitch bar");
-        Check(sim.ThreadAnchor(id, new Vector2(0.42f, 0.56f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(sim.ThreadAnchor(Id, new Vector2(0.42f, 0.56f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
             "the second click routes thread to the next hole");
-        Check(sim.ThreadAnchor(id, new Vector2(0.50f, 0.46f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(sim.ThreadAnchor(Id, new Vector2(0.50f, 0.46f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
             "a third click continues the same thread");
         Settle(sim);
         var looseGap = sim.GapAt(new Vector2(0.42f, 0.51f));
-        var info = sim.Thread(id)!;
+        var info = sim.Thread(Id)!;
         Check(info.Anchors.Count == 3 && info.Springs.Count == 2, "three holes are joined by one two-span thread");
         var oldLengths = info.Springs.Select(s => sim.SpringAt(s).Rest).ToList();
-        sim.ThreadTension(id, 0.85f);
+        sim.ThreadTension(Id, 0.85f);
         for (var i = 0; i < oldLengths.Count; i++)
         {
             Check(sim.SpringAt(info.Springs[i]).Rest < oldLengths[i], $"tightening from the end shortens span {i}");
         }
         Settle(sim);
         Check(sim.GapAt(new Vector2(0.42f, 0.51f)) < looseGap, "the tightened running thread draws the skin together");
-        sim.SnapThread(id);
+        sim.SnapThread(Id);
         Check(info.Springs.Count == 2 && info.Springs.All(s => !sim.SpringAt(s).Active),
             "a thread torn through lets go of every span");
-        Check(!sim.ThreadAnchor(id, new Vector2(0.58f, 0.56f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(!sim.ThreadAnchor(Id, new Vector2(0.58f, 0.56f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
             "a torn thread takes no more holes");
     }
 
@@ -365,12 +365,12 @@ public class TissueSimTest
         var middle = sims[0].Nearest(Mid);
         foreach (var sim in sims)
         {
-            const int points = 24;
-            for (var n = 0; n < points; n++)
+            const int Points = 24;
+            for (var n = 0; n < Points; n++)
             {
-                sim.Cut(CirclePoint(Mathf.Tau * n / points), CirclePoint(Mathf.Tau * (n + 1) / points),
+                sim.Cut(CirclePoint(Mathf.Tau * n / Points), CirclePoint(Mathf.Tau * (n + 1) / Points),
                     TissueDepth.Skin);
-                if (n == points / 2 && sim == sims[0])
+                if (n == Points / 2 && sim == sims[0])
                 {
                     Check(sim.PieceOf(middle).Count == 0, "skin cut halfway round is still joined");
                 }

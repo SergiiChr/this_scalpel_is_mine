@@ -48,7 +48,10 @@ public sealed class NurseShop
             lists.AddChild(list);
             var button = new Button
             {
-                Text = category, ToggleMode = true, ButtonGroup = picked, Alignment = HorizontalAlignment.Left,
+                Text = category,
+                ToggleMode = true,
+                ButtonGroup = picked,
+                Alignment = HorizontalAlignment.Left,
             };
             button.Toggled += on => list.Visible = on;
             categories.AddChild(button);

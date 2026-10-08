@@ -101,7 +101,8 @@ public partial class Screenshot
         {
             var ball = new MeshInstance3D
             {
-                Mesh = new SphereMesh { Radius = 0.025f, Height = 0.05f }, MaterialOverride = samples[i],
+                Mesh = new SphereMesh { Radius = 0.025f, Height = 0.05f },
+                MaterialOverride = samples[i],
             };
             board.AddChild(ball);
             ball.GlobalPosition = site + new Vector3(-0.21f + (i * 0.06f), 0f, -0.05f);

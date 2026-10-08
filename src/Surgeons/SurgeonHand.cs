@@ -251,7 +251,8 @@ public partial class SurgeonHand : Node3D
     {
         _ghost ??= new StandardMaterial3D
         {
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = GhostColor,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            AlbedoColor = GhostColor,
         };
         _ghost.AlbedoColor = _ghost.AlbedoColor with { A = 1f - amount };
         foreach (var node in FindChildren("*", nameof(GeometryInstance3D), true, false))

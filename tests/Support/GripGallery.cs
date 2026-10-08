@@ -88,8 +88,10 @@ public partial class GripGallery : Node3D
         {
             Environment = new Godot.Environment
             {
-                BackgroundMode = Godot.Environment.BGMode.Color, BackgroundColor = new Color(0.16f, 0.17f, 0.18f),
-                AmbientLightSource = Godot.Environment.AmbientSource.Color, AmbientLightColor = new Color(0.5f, 0.5f, 0.5f),
+                BackgroundMode = Godot.Environment.BGMode.Color,
+                BackgroundColor = new Color(0.16f, 0.17f, 0.18f),
+                AmbientLightSource = Godot.Environment.AmbientSource.Color,
+                AmbientLightColor = new Color(0.5f, 0.5f, 0.5f),
             },
         });
         AddChild(new DirectionalLight3D { Rotation = new Vector3(-0.9f, 0.5f, 0f) });

@@ -360,8 +360,8 @@ public partial class Surgeon
         }
         // Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the
         // tray).
-        const uint softLayers = 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer;
-        query.CollisionMask = 1 | softLayers | (tools ? SurgicalTool.ToolLayer : 0);
+        const uint SoftLayers = 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer;
+        query.CollisionMask = 1 | SoftLayers | (tools ? SurgicalTool.ToolLayer : 0);
         var hit = space.IntersectRay(query);
         if (hit.Count == 0)
         {
@@ -384,7 +384,7 @@ public partial class Surgeon
                 return new Surface(skin.Y, false, true);
             }
         }
-        return new Surface(position.Y, false, (layer & softLayers) != 0);
+        return new Surface(position.Y, false, (layer & SoftLayers) != 0);
     }
 
     /// <summary>A needle over a glove (this surgeon's other hand or anyone's) rests on the back of it like on skin, from

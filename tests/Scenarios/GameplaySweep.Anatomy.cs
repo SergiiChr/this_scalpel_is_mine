@@ -134,7 +134,7 @@ internal sealed partial class GameplaySweep
     /// <summary>Grips the top organ over a lower one with forceps, moves it aside, and the lower one shows.</summary>
     private async Task MoveTopOrgan()
     {
-        const int forceps = 99001;
+        const int Forceps = 99001;
         foreach (var lower in Body.Organs.Where(organ => organ.Layer == 1))
         {
             foreach (var uv in OrganFootprint(Body, lower))
@@ -147,7 +147,7 @@ internal sealed partial class GameplaySweep
                 var organ = Body.Organs[top];
                 var organUv = SiteUv(Body, organ.Position);
                 var depth = Body.SurfaceHeight(organUv) - organ.Position.Y;
-                var grip = Patient.Grip(forceps, SiteZone.Cavity, organUv, depth);
+                var grip = Patient.Grip(Forceps, SiteZone.Cavity, organUv, depth);
                 if (grip is not OrganHold hold || hold.Organ != top)
                 {
                     var at = Body.UvToWorld(organUv, depth);
@@ -161,14 +161,14 @@ internal sealed partial class GameplaySweep
                 ToolHold? held = hold;
                 for (var i = 0; i < 10 && held is not null; i++)
                 {
-                    held = Patient.UpdateGrip(forceps, held, aside, 1f, 1f / 60f, 0f);
+                    held = Patient.UpdateGrip(Forceps, held, aside, 1f, 1f / 60f, 0f);
                     await Frames.NextPhysics();
                 }
                 if (FirstInside(Body, uv) == top)
                 {
                     Fail($"moving the {organ.Kind} aside didn't uncover what's under it");
                 }
-                Patient.ReleaseGrip(forceps, held, false);
+                Patient.ReleaseGrip(Forceps, held, false);
                 // Put back where it was, out of the way of what's checked next: by now the patient may be past drifting
                 // it back (Patient only settles organs while it's alive).
                 organ.Position = home;

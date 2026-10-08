@@ -18,7 +18,11 @@ public class ModelsTest
     /// (tools/blender/__main__.py BUDGETS, tools/blender/patient.py BUDGETS).</summary>
     private static readonly Dictionary<string, int> Budgets = new()
     {
-        ["patient"] = 52000, ["surgeon"] = 16000, ["organs"] = 7000, ["targets"] = 5000, ["tools"] = 6000,
+        ["patient"] = 52000,
+        ["surgeon"] = 16000,
+        ["organs"] = 7000,
+        ["targets"] = 5000,
+        ["tools"] = 6000,
         ["props"] = 15000,
     };
     /// <summary>Hand positions from the shoulder for <see cref="CuffFit"/>, right hand (the left one mirrors x):

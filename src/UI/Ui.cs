@@ -106,7 +106,8 @@ public static class Ui
     {
         var scroll = new ScrollContainer
         {
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
         child.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         scroll.AddChild(child);

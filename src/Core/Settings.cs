@@ -22,7 +22,10 @@ public partial class Settings : Node
     public static float MouseSensitivity { get; set; } = 1f;
     public static Dictionary<string, float> Volumes { get; } = new()
     {
-        ["Master"] = 0.8f, ["SFX"] = 1f, ["Voice"] = 1f, ["Music"] = 0.6f,
+        ["Master"] = 0.8f,
+        ["SFX"] = 1f,
+        ["Voice"] = 1f,
+        ["Music"] = 0.6f,
     };
     /// <summary>Debug mode: shows what the game tracks behind the scenes (objectives, scored actions).
     /// Off in normal play, where finding out what to do is the game.</summary>

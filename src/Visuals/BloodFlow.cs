@@ -86,7 +86,10 @@ public partial class BloodFlow : Node3D
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
                 Mesh = new SphereMesh
                 {
-                    Radius = DropRadius, Height = DropRadius * 2.6f, RadialSegments = 6, Rings = 4,
+                    Radius = DropRadius,
+                    Height = DropRadius * 2.6f,
+                    RadialSegments = 6,
+                    Rings = 4,
                 },
                 InstanceCount = MaxDrops,
                 VisibleInstanceCount = 0,

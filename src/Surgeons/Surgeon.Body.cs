@@ -144,7 +144,8 @@ public partial class Surgeon
         var skin = Materials.FamilyUnique("skin", new Color(0.8f, 0.64f, 0.54f), 0.6f);
         _body = ModelSlot.Instantiate("surgeon", "body", this, new Dictionary<string, Material>
         {
-            ["tint"] = _scrubs, ["skin"] = skin,
+            ["tint"] = _scrubs,
+            ["skin"] = skin,
             ["rubber"] = Materials.FamilyUnique("rubber", new Color(0.1f, 0.11f, 0.12f), 0.9f),
         });
         _head = new Node3D { Name = "Head", Position = new Vector3(0f, EyeHeight, 0f) };
@@ -153,7 +154,8 @@ public partial class Surgeon
         cap.NextPass = Materials.OutlineFor(0.001f);
         _face = ModelSlot.Instantiate("surgeon", "head", _head, new Dictionary<string, Material>
         {
-            ["tint"] = cap, ["skin"] = skin,
+            ["tint"] = cap,
+            ["skin"] = skin,
             ["mask"] = Materials.FamilyUnique("cloth", new Color(0.55f, 0.72f, 0.78f), 0.9f),
         });
         Camera = new Camera3D { Name = "Camera", Fov = 70f, Near = 0.03f };
