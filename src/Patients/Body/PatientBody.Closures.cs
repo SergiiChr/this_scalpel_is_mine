@@ -381,7 +381,7 @@ public partial class PatientBody
             var basis = new Basis(Vector3.Up, yaw).Scaled(Vector3.One * Mathf.Lerp(0.68f, 1.15f, amount));
             marks.Multimesh.SetInstanceTransform(i, new Transform3D(basis, holes[i]));
         }
-        marks.SetInstanceShaderParameter("pressure", amount);
+        marks.SetInstanceShaderParameter(ShaderParam.Pressure, amount);
         // Kept submitted at zero alpha while loose so the pressure shader is compiled before tightening becomes visible.
         marks.Visible = skin;
         return amount;

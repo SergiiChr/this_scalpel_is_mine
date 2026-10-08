@@ -44,7 +44,7 @@ public partial class Hud : CanvasLayer
     internal void ClearLensBlood()
     {
         _lensBlood = 0f;
-        _post.SetShaderParameter("lens_blood", 0f);
+        _post.SetShaderParameter(ShaderParam.LensBlood, 0f);
     }
     /// <summary>How long since the view was clean.</summary>
     private float _lensAge;
@@ -142,16 +142,16 @@ public partial class Hud : CanvasLayer
 
     private void UpdatePostFx(SurgeonStatus status, float delta)
     {
-        _post.SetShaderParameter("blackout", status.PassedOut > 0f ? 1f : 0f);
-        _post.SetShaderParameter("daze", status.IsKnockedOut ? KnockedOutDaze : status.Overdose * OverdoseDaze);
-        _post.SetShaderParameter("wobble", status.Sickness);
-        _post.SetShaderParameter("blur", Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur));
+        _post.SetShaderParameter(ShaderParam.Blackout, status.PassedOut > 0f ? 1f : 0f);
+        _post.SetShaderParameter(ShaderParam.Daze, status.IsKnockedOut ? KnockedOutDaze : status.Overdose * OverdoseDaze);
+        _post.SetShaderParameter(ShaderParam.Wobble, status.Sickness);
+        _post.SetShaderParameter(ShaderParam.Blur, Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur));
         if (_lensBlood > 0f)
         {
             _lensBlood = Mathf.Max(_lensBlood - (delta / LensClearSeconds), 0f);
             _lensAge += delta;
-            _post.SetShaderParameter("lens_blood", _lensBlood);
-            _post.SetShaderParameter("lens_age", _lensAge);
+            _post.SetShaderParameter(ShaderParam.LensBlood, _lensBlood);
+            _post.SetShaderParameter(ShaderParam.LensAge, _lensAge);
         }
     }
 
@@ -161,7 +161,7 @@ public partial class Hud : CanvasLayer
         if (_lensBlood <= 0f)
         {
             _lensAge = 0f;
-            _post.SetShaderParameter("lens_seed", GD.Randf() * 100f);
+            _post.SetShaderParameter(ShaderParam.LensSeed, GD.Randf() * 100f);
         }
         _lensBlood = Mathf.Min(_lensBlood + amount, 1f);
     }
@@ -467,7 +467,7 @@ public partial class Hud : CanvasLayer
     /// </summary>
     public static List<string> ControlLines(Surgeon me)
     {
-        static string Key(string action) => InputActions.BindingText(action);
+        static string Key(StringName action) => InputActions.BindingText(action);
         var moving = Surgeon.MovingHand();
         var hand = me.Hands[me.Active];
         var tool = me.HeldTool(me.Active);
@@ -512,7 +512,7 @@ public partial class Hud : CanvasLayer
     /// <summary>The controls for the tool in the active hand.</summary>
     private static IEnumerable<string> ToolLines(Surgeon me, SurgicalTool tool, SurgeonHand hand)
     {
-        static string Key(string action) => InputActions.BindingText(action);
+        static string Key(StringName action) => InputActions.BindingText(action);
         var action = tool.Def.Action;
         var use = Key(InputActions.UseTool);
         yield return action == "sew"

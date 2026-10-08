@@ -15,6 +15,16 @@ public sealed class BoneRig(Skeleton3D skeleton)
             ? new BoneRig(skeleton)
             : null;
 
+    private (string Name, int FirstChild)[]? _bones;
+
+    /// <summary>Every bone by index: its name and its first child's index (-1 for none). Read from the skeleton once:
+    /// asking it allocates, and the glove is walked every frame.</summary>
+    public IReadOnlyList<(string Name, int FirstChild)> Bones => _bones ??=
+    [
+        .. Enumerable.Range(0, Skeleton.GetBoneCount())
+            .Select(i => (Skeleton.GetBoneName(i), Skeleton.GetBoneChildren(i) is { Length: > 0 } children ? children[0] : -1)),
+    ];
+
     public bool Has(string bone) => Skeleton.FindBone(bone) >= 0;
 
     /// <summary>Turns the bone by <paramref name="turn"/> (a rotation in model space) from its rest pose, children

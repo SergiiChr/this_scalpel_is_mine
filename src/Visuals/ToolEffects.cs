@@ -170,13 +170,10 @@ public partial class ToolEffects : Node3D
         }
         else if (probe.Zone != SiteZone.Cavity)
         {
-            var query = PhysicsRayQueryParameters3D.Create(at + Vector3.Up * 0.03f, at + Vector3.Down * 0.03f,
-                PatientBody.SurfaceLayer);
-            var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
-            if (hit.Count > 0)
+            if (Rays.Cast(this, at + Vector3.Up * 0.03f, at + Vector3.Down * 0.03f, PatientBody.SurfaceLayer) is { } hit)
             {
-                at = hit["position"].AsVector3();
-                normal = hit["normal"].AsVector3();
+                at = hit.Position;
+                normal = hit.Normal;
             }
             if (probe.Part.StartsWith("arm", StringComparison.Ordinal))
             {

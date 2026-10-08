@@ -414,7 +414,7 @@ public partial class PatientBody
         {
             if (mesh.GetSurfaceOverrideMaterial(0) is ShaderMaterial material)
             {
-                material.SetShaderParameter("damage", amount);
+                material.SetShaderParameter(ShaderParam.Damage, amount);
             }
         }
     }

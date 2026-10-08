@@ -591,17 +591,12 @@ public partial class ToolManager : Node3D
     }
 
     /// <summary>What a ray straight down met: where, and the collider.</summary>
-    private readonly record struct RayHit(Vector3 Position, GodotObject Collider);
 
     /// <summary>The first thing under <paramref name="at"/> a tool could stand on (of <paramref name="mask"/>), other
     /// than the tool itself; null if nothing.</summary>
     private RayHit? SurfaceUnder(SurgicalTool tool, Vector3 at,
         uint mask = 1 | PatientBody.SurfaceLayer | Drape.DrapeLayer | SurgicalTool.ToolLayer)
-    {
-        var query = PhysicsRayQueryParameters3D.Create(at + Vector3.Up * 0.2f, at + Vector3.Down * 2f, mask, [tool.GetRid()]);
-        var hit = GetViewport().World3D.DirectSpaceState.IntersectRay(query);
-        return hit.Count > 0 ? new RayHit(hit["position"].AsVector3(), hit["collider"].AsGodotObject()) : null;
-    }
+        => Rays.Cast(tool, at + Vector3.Up * 0.2f, at + Vector3.Down * 2f, mask, tool.GetRid());
 
     /// <summary>Host: a new tool falling from <paramref name="at"/>, as if it was dropped there (the floor soils it).
     /// </summary>
@@ -850,9 +845,13 @@ public partial class ToolManager : Node3D
     /// tool's tip goes there at once. Tools update before the surgeons (ToolActions works on last frame's hands), so
     /// placed only then they'd trail a frame behind their hand, plain to see while walking.
     /// </summary>
+    /// <summary>Reused by <see cref="Follow"/> every frame.</summary>
+    private readonly HashSet<int> _followed = [];
+
     public void Follow(Surgeon surgeon)
     {
-        var moved = new HashSet<int>();
+        var moved = _followed;
+        moved.Clear();
         foreach (var tool in _tools.Values.Where(t => t.Holder == surgeon.PeerId && t.State is ToolState.Held or ToolState.Belt))
         {
             Place(tool);

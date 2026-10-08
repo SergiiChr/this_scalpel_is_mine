@@ -243,10 +243,10 @@ public static class Materials
     {
         foreach (var pass in new[] { material, (ShaderMaterial)material.NextPass })
         {
-            pass.SetShaderParameter("carve_inverse", new Projection(site.AffineInverse()));
-            pass.SetShaderParameter("carve_box", new Vector3(halfSize.X, depth, halfSize.Y));
-            pass.SetShaderParameter("carve_map", region);
-            pass.SetShaderParameter("carve_grid", (Vector2)region.GetSize());
+            pass.SetShaderParameter(ShaderParam.CarveInverse, new Projection(site.AffineInverse()));
+            pass.SetShaderParameter(ShaderParam.CarveBox, new Vector3(halfSize.X, depth, halfSize.Y));
+            pass.SetShaderParameter(ShaderParam.CarveMap, region);
+            pass.SetShaderParameter(ShaderParam.CarveGrid, (Vector2)region.GetSize());
         }
     }
 

@@ -17,5 +17,7 @@ public partial class Organ : RigidBody3D
     /// <summary>Where it belongs (site space): pushed or held aside, it drifts back here.</summary>
     public Vector3 RestPosition { get; set; }
 
-    public Node3D? Model => GetNodeOrNull<Node3D>("Model");
+    /// <summary>The organ's model, once it has one (looked up once: it's read every frame).</summary>
+    public Node3D? Model => _model ??= GetNodeOrNull<Node3D>("Model");
+    private Node3D? _model;
 }

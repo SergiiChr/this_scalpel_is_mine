@@ -169,6 +169,11 @@ public partial class SurgeonHand : Node3D
     /// <summary>The glove model, its origin at the wrist.</summary>
     internal Node3D Glove => _glove;
     private BoneRig? _gloveRig;
+    /// <summary>Where along each finger bone, and how high through the palm, the glove's points are taken.</summary>
+    private static readonly float[] BoneSamples = [0f, 0.5f, 1f];
+    private static readonly float[] PalmLayers = [-PalmHalfThickness * 0.5f, 0f, PalmHalfThickness * 0.5f];
+    /// <summary>Reused for the glove's points every frame.</summary>
+    private readonly List<BonePoint> _gloveScratch = [];
     /// <summary>The glove model's skeleton, null before <see cref="Build"/>.</summary>
     internal Skeleton3D? GloveSkeleton => _gloveRig?.Skeleton;
     private List<ShaderMaterial> _gloveMaterials = [];
@@ -216,7 +221,7 @@ public partial class SurgeonHand : Node3D
         _gloveMaterials = ModelSlot.OwnMaterials(_glove);
         foreach (var material in _gloveMaterials)
         {
-            material.SetShaderParameter("coat_length", GloveLength);
+            material.SetShaderParameter(ShaderParam.CoatLength, GloveLength);
         }
         // The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
         // Empty, it follows the forearm (see PlaceGlove()). Holding a tool, it sits on the tool by its grip (GripStyle).
@@ -362,7 +367,7 @@ public partial class SurgeonHand : Node3D
             var coat = new Projection(CoatFrame * _glove.GlobalTransform.AffineInverse());
             foreach (var material in _gloveMaterials)
             {
-                material.SetShaderParameter("coat_inverse", coat);
+                material.SetShaderParameter(ShaderParam.CoatInverse, coat);
             }
         }
     }
@@ -386,8 +391,10 @@ public partial class SurgeonHand : Node3D
 
     private float GloveLowest()
     {
+        _gloveScratch.Clear();
+        AddBonePoints(_gloveScratch, "");
         var lowest = GlobalPosition.Y - 0.03f;
-        foreach (var point in BonePoints())
+        foreach (var point in _gloveScratch)
         {
             lowest = Mathf.Min(lowest, point.Position.Y - point.Radius);
         }
@@ -402,44 +409,50 @@ public partial class SurgeonHand : Node3D
     public List<BonePoint> BonePoints(string part = "")
     {
         var points = new List<BonePoint>();
+        AddBonePoints(points, part);
+        return points;
+    }
+
+    private void AddBonePoints(List<BonePoint> points, string part)
+    {
         if (_gloveRig is null)
         {
-            return points;
+            return;
         }
         var skeleton = _gloveRig.Skeleton;
         var toWorld = skeleton.GlobalTransform;
-        for (var i = 0; i < skeleton.GetBoneCount(); i++)
+        var bones = _gloveRig.Bones;
+        for (var i = 0; i < bones.Count; i++)
         {
-            var bone = skeleton.GetBoneName(i);
+            var (bone, child) = bones[i];
             if (bone is "Hand" or "Cuff" || (part.Length > 0 && !bone.StartsWith(part, StringComparison.Ordinal)))
             {
                 continue;
             }
             var at = toWorld * skeleton.GetBoneGlobalPose(i).Origin;
-            var children = skeleton.GetBoneChildren(i);
-            var to = children.Length > 0 ? toWorld * skeleton.GetBoneGlobalPose(children[0]).Origin : at;
-            foreach (var t in (float[])[0f, 0.5f, 1f])
+            var to = child >= 0 ? toWorld * skeleton.GetBoneGlobalPose(child).Origin : at;
+            foreach (var t in BoneSamples)
             {
                 points.Add(new(at.Lerp(to, t), FingerRadius));
             }
         }
         if (part.Length > 0 && part != "Palm")
         {
-            return points;
+            return;
         }
         // The palm is wide and flat: a grid through it, glove model space (fingers +X, back of the hand +Y).
+        var glove = _glove.GlobalTransform;
         for (var i = 0; i < 7; i++)
         {
             for (var j = 0; j < 5; j++)
             {
-                foreach (var y in (float[])[-PalmHalfThickness * 0.5f, 0f, PalmHalfThickness * 0.5f])
+                foreach (var y in PalmLayers)
                 {
                     var at = new Vector3(0.085f * i / 6f, y, -0.024f + (0.012f * j));
-                    points.Add(new(_glove.GlobalTransform * at, PalmHalfThickness * 0.5f));
+                    points.Add(new(glove * at, PalmHalfThickness * 0.5f));
                 }
             }
         }
-        return points;
     }
 
     /// <summary>Blood works its way from a bloody tool onto the fingers, then the palm. It never drips off on its own.
@@ -457,8 +470,8 @@ public partial class SurgeonHand : Node3D
         Blood = amount;
         foreach (var material in _gloveMaterials)
         {
-            material.SetShaderParameter("coat", amount);
-            material.SetShaderParameter("coat_reach", GloveLength * (0.3f + amount));
+            material.SetShaderParameter(ShaderParam.Coat, amount);
+            material.SetShaderParameter(ShaderParam.CoatReach, GloveLength * (0.3f + amount));
         }
     }
 

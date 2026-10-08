@@ -16,6 +16,7 @@ config/icon="res://assets/icons/app_icon.svg"
 Settings="*res://src/Core/Settings.cs"
 Net="*res://src/Core/Net.cs"
 Sfx="*res://src/Core/Sfx.cs"
+ManagedRuntime="*res://src/Core/ManagedRuntime.cs"
 
 [dotnet]
 

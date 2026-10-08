@@ -381,13 +381,20 @@ public partial class PatientBody : Node3D
         Overlapping(p, radius, PatientLayer, 4).OfType<BodyPart>().FirstOrDefault()?.Part ?? "";
 
     /// <summary>The colliders on <paramref name="mask"/> within <paramref name="radius"/> of p (world space).</summary>
-    private IEnumerable<GodotObject> Overlapping(Vector3 p, float radius, uint mask, int most)
+    private List<GodotObject> Overlapping(Vector3 p, float radius, uint mask, int most)
     {
         _partSphere.Radius = radius;
         _partQuery.Shape = _partSphere;
         _partQuery.Transform = new Transform3D(Basis.Identity, p);
         _partQuery.CollisionMask = mask;
-        return GetWorld3D().DirectSpaceState.IntersectShape(_partQuery, most).Select(hit => hit["collider"].AsGodotObject());
+        var hits = GetWorld3D().DirectSpaceState.IntersectShape(_partQuery, most);
+        // Read and freed at once: each result is a tracked wrapper the runtime would otherwise collect later.
+        var colliders = hits.Select(hit => hit["collider"].AsGodotObject()).ToList();
+        foreach (var hit in hits)
+        {
+            hit.Dispose();
+        }
+        return colliders;
     }
 
     /// <summary>
@@ -405,18 +412,13 @@ public partial class PatientBody : Node3D
         var box = (Node3D)_bodyRoot.FindChild(part.ToPascalCase(), false, false);
         var axis = _bodyRoot.GlobalBasis.X.Normalized();
         var inside = box.GlobalPosition + axis * axis.Dot(p - box.GlobalPosition);
-        var space = GetWorld3D().DirectSpaceState;
         var hits = new List<Vector3>();
         for (var i = 0; i < 16; i++)
         {
             var outward = new Basis(axis, Mathf.Tau * i / 16f) * _bodyRoot.GlobalBasis.Y.Normalized();
-            var query = PhysicsRayQueryParameters3D.Create(inside, inside + outward * 0.2f, SurfaceLayer);
-            query.HitBackFaces = true;
-            query.HitFromInside = true;
-            var hit = space.IntersectRay(query);
-            if (hit.Count > 0)
+            if (Rays.Cast(this, inside, inside + outward * 0.2f, SurfaceLayer, inside: true) is { } hit)
             {
-                hits.Add(hit["position"].AsVector3());
+                hits.Add(hit.Position);
             }
         }
         if (hits.Count < 8)
@@ -650,15 +652,15 @@ public partial class PatientBody : Node3D
         {
             Materials.SetCarve(material, Site.GlobalTransform, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
         }
-        SkinMaterial?.SetShaderParameter("site_to_model", new Projection(_skinModel.GlobalTransform.AffineInverse() * Site.GlobalTransform));
+        SkinMaterial?.SetShaderParameter(ShaderParam.SiteToModel, new Projection(_skinModel.GlobalTransform.AffineInverse() * Site.GlobalTransform));
         Materials.SetReveal(_cavityMaterial, Site.GlobalTransform, SiteSize * 0.5f, RegionTexture);
     }
 
     /// <summary>Blood loss drains the color from the skin, body and site alike.</summary>
     public void SetPallor(float value)
     {
-        SkinMaterial?.SetShaderParameter("pallor", value);
-        _bodyMaterials[0].SetShaderParameter("pallor", value);
+        SkinMaterial?.SetShaderParameter(ShaderParam.Pallor, value);
+        _bodyMaterials[0].SetShaderParameter(ShaderParam.Pallor, value);
     }
 
     /// <summary>

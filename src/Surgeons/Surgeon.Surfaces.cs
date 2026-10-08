@@ -341,34 +341,26 @@ public partial class Surgeon
     /// </summary>
     internal Surface SurfaceBelow(Vector3 point, bool tools = true)
     {
-        var space = GetWorld3D().DirectSpaceState;
-        var query = PhysicsRayQueryParameters3D.Create(point + (Vector3.Up * 0.35f), point + (Vector3.Down * 2f), 4);
+        var from = point + (Vector3.Up * 0.35f);
+        var to = point + (Vector3.Down * 2f);
         var body = Session.Patient.Body;
         // An opening is looked for on the site plane first: the skin mesh around it would hide it from above.
-        var siteHit = space.IntersectRay(query);
-        var overSite = siteHit.Count > 0;
-        if (overSite)
+        var siteHit = Rays.Cast(this, from, to, 4);
+        var overSite = siteHit is not null;
+        if (siteHit is { Position: var sitePosition } && body.IsOpen(body.WorldToUv(sitePosition)))
         {
-            var sitePosition = siteHit["position"].AsVector3();
-            if (body.IsOpen(body.WorldToUv(sitePosition)))
-            {
-                query.CollisionMask = PatientBody.CavityLayer | CavityTarget.TouchLayer;
-                var inside = space.IntersectRay(query);
-                var y = inside.Count > 0 ? inside["position"].AsVector3().Y : sitePosition.Y - 0.1f;
-                return new Surface(y, true, true);
-            }
+            var inside = Rays.Cast(this, from, to, PatientBody.CavityLayer | CavityTarget.TouchLayer);
+            return new Surface(inside?.Position.Y ?? sitePosition.Y - 0.1f, true, true);
         }
         // Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the
         // tray).
         const uint SoftLayers = 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer;
-        query.CollisionMask = 1 | SoftLayers | (tools ? SurgicalTool.ToolLayer : 0);
-        var hit = space.IntersectRay(query);
-        if (hit.Count == 0)
+        if (Rays.Cast(this, from, to, 1 | SoftLayers | (tools ? SurgicalTool.ToolLayer : 0)) is not { } hit)
         {
             return Surface.None;
         }
-        var collider = (CollisionObject3D)hit["collider"].AsGodotObject();
-        var position = hit["position"].AsVector3();
+        var collider = (CollisionObject3D)hit.Collider;
+        var position = hit.Position;
         var layer = collider.CollisionLayer;
         // The body's collider is its rest shape: skin lifted by a grip lies above it. The site's own collider is a flat
         // plane over the site, above skin that curves away under it (a belly), and the gown's collider isn't cut away

@@ -45,7 +45,7 @@ public partial class Surgeon
     internal void SetStains(float stains)
     {
         _stains = stains;
-        _scrubs.SetShaderParameter("stains", stains);
+        _scrubs.SetShaderParameter(ShaderParam.Stains, stains);
     }
     private Node3D _face = null!;
     private readonly Dictionary<string, Node3D> _joints = [];
@@ -130,7 +130,7 @@ public partial class Surgeon
         // Shader parameters only change in visible steps.
         if (!Mathf.IsEqualApprox(Mathf.Snapped(stains, 0.02f), Mathf.Snapped(_stains, 0.02f)))
         {
-            _scrubs.SetShaderParameter("stains", stains);
+            _scrubs.SetShaderParameter(ShaderParam.Stains, stains);
         }
         _stains = stains;
     }
@@ -295,15 +295,11 @@ public partial class Surgeon
     /// <summary>The side (1 left, -1 right) with more clear floor beside the surgeon, to fall to.</summary>
     private float RoomierSide()
     {
-        var space = GetWorld3D().DirectSpaceState;
         var from = ToGlobal(new Vector3(0f, 0.3f, 0f));
-        float Room(float side)
-        {
-            var query = PhysicsRayQueryParameters3D.Create(
-                from, ToGlobal(new Vector3(-side * FallRoom, 0.3f, 0f)), 1, [GetRid()]);
-            var hit = space.IntersectRay(query);
-            return hit.Count == 0 ? FallRoom : from.DistanceTo(hit["position"].AsVector3());
-        }
+        float Room(float side) =>
+            Rays.Cast(this, from, ToGlobal(new Vector3(-side * FallRoom, 0.3f, 0f)), 1, GetRid()) is { } hit
+                ? from.DistanceTo(hit.Position)
+                : FallRoom;
         return Room(1f) >= Room(-1f) ? 1f : -1f;
     }
 

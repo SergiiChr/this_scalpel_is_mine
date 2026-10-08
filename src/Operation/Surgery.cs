@@ -48,16 +48,27 @@ public partial class Surgery : Node3D
     /// <summary>The surgery running now, null outside one.</summary>
     public static Surgery? Current { get; private set; }
 
-    public Room Room => GetNode<Room>("Room");
-    public Patient Patient => GetNode<Patient>("Patient");
-    public ToolManager Tools => GetNode<ToolManager>("Tools");
-    public Node3D SurgeonsRoot => GetNode<Node3D>("Surgeons");
-    public Objectives Objectives => GetNode<Objectives>("Systems/Objectives");
-    public EventDirector Director => GetNode<EventDirector>("Systems/Director");
-    public Scoring Scoring => GetNode<Scoring>("Systems/Scoring");
-    public Nurse Nurse => GetNode<Nurse>("Systems/Nurse");
-    public Lab Lab => GetNode<Lab>("Systems/Lab");
-    public Hud Hud => GetNode<Hud>("Hud");
+    // Looked up once: these are read many times a frame, and every lookup by path makes a new NodePath.
+    public Room Room => _room ??= GetNode<Room>("Room");
+    public Patient Patient => _patient ??= GetNode<Patient>("Patient");
+    public ToolManager Tools => _tools ??= GetNode<ToolManager>("Tools");
+    public Node3D SurgeonsRoot => _surgeonsRoot ??= GetNode<Node3D>("Surgeons");
+    public Objectives Objectives => _objectives ??= GetNode<Objectives>("Systems/Objectives");
+    public EventDirector Director => _director ??= GetNode<EventDirector>("Systems/Director");
+    public Scoring Scoring => _scoring ??= GetNode<Scoring>("Systems/Scoring");
+    public Nurse Nurse => _nurse ??= GetNode<Nurse>("Systems/Nurse");
+    public Lab Lab => _lab ??= GetNode<Lab>("Systems/Lab");
+    public Hud Hud => _hud ??= GetNode<Hud>("Hud");
+    private Room? _room;
+    private Patient? _patient;
+    private ToolManager? _tools;
+    private Node3D? _surgeonsRoot;
+    private Objectives? _objectives;
+    private EventDirector? _director;
+    private Scoring? _scoring;
+    private Nurse? _nurse;
+    private Lab? _lab;
+    private Hud? _hud;
 
     public ScenarioDef Scenario { get; private set; } = null!;
     /// <summary>Peer id -> their surgeon.</summary>

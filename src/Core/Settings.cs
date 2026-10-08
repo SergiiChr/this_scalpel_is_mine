@@ -143,6 +143,7 @@ public partial class Settings : Node
                 InputMap.ActionAddEvent(entry.Action, inputEvent);
             }
         }
+        InputActions.BindingsChanged();
     }
 
     private static void CreateBuses()

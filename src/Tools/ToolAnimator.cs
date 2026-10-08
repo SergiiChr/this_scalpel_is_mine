@@ -7,6 +7,7 @@ namespace Scalpel.Tools;
 /// </summary>
 public sealed class ToolAnimator
 {
+    private static readonly string[] GlowParts = ["Flame", "Glow"];
     private static readonly string[] PartNames = ["JawA", "JawB", "Plunger", "Trigger", "Blade", "Flame", "Glow", "Light"];
     private const float JawOpen = 0.12f;
 
@@ -86,7 +87,7 @@ public sealed class ToolAnimator
         Pose("Trigger", new Basis(Vector3.Right, -0.35f * _squeeze), Vector3.Zero);
         Pose("Blade", Basis.Identity, new Vector3(active && _saw ? Mathf.Sin(_time * 70f) * 0.004f : 0f, 0, 0));
         var flicker = 1f + Mathf.Sin(_time * 31f) * 0.15f + Mathf.Sin(_time * 53f) * 0.1f;
-        foreach (var glow in new[] { "Flame", "Glow" })
+        foreach (var glow in GlowParts)
         {
             if (_parts.TryGetValue(glow, out var part))
             {

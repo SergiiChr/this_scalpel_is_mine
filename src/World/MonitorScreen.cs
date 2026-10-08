@@ -38,6 +38,7 @@ public partial class MonitorScreen : Control
     /// <summary>One ring of samples per wave (ecg, pleth, resp), written at _head.</summary>
     private readonly float[][] _waves;
     private int _head;
+    private readonly Dictionary<int, Vector2[]> _lines = [];
     private float _carry;
     private float _time;
     /// <summary>Breath cycle 0..1, kept apart from _time so a changing rate doesn't make the trace jump.</summary>
@@ -171,24 +172,33 @@ public partial class MonitorScreen : Control
     private void DrawWave(float[] wave, float middle, float halfHeight, Color color)
     {
         var step = (WaveWidth - WaveLeft - 10f) / wave.Length;
-        var before = new List<Vector2>();
-        var after = new List<Vector2>();
-        for (var i = 0; i < wave.Length; i++)
+        // The sweep leaves a gap of Gap samples from the head on (wrapping round to the start): the trace is drawn as
+        // the line before it and the line after it.
+        DrawTrace(wave, Math.Max(0, _head + Gap - wave.Length), _head, step, middle, halfHeight, color);
+        DrawTrace(wave, _head + Gap, wave.Length, step, middle, halfHeight, color);
+    }
+
+    /// <summary>Samples <paramref name="from"/> to <paramref name="to"/> of a wave as one line. The point arrays are
+    /// kept by length and reused: redrawn every frame, new ones would be garbage the runtime has to keep collecting.
+    /// </summary>
+    private void DrawTrace(float[] wave, int from, int to, float step, float middle, float halfHeight, Color color)
+    {
+        var count = to - from;
+        if (count < 2)
         {
-            if (Mathf.PosMod(i - _head, wave.Length) < Gap)
-            {
-                continue;
-            }
-            var point = new Vector2(WaveLeft + (i * step), middle - (Mathf.Clamp(wave[i], -1.2f, 1.2f) * halfHeight));
-            (i < _head ? before : after).Add(point);
+            return;
         }
-        foreach (var line in (List<Vector2>[])[before, after])
+        if (!_lines.TryGetValue(count, out var points))
         {
-            if (line.Count > 1)
-            {
-                DrawPolyline([.. line], color, 2f, true);
-            }
+            points = new Vector2[count];
+            _lines[count] = points;
         }
+        for (var i = 0; i < count; i++)
+        {
+            var sample = from + i;
+            points[i] = new Vector2(WaveLeft + (sample * step), middle - (Mathf.Clamp(wave[sample], -1.2f, 1.2f) * halfHeight));
+        }
+        DrawPolyline(points, color, 2f, true);
     }
 
     private void DrawNumber(string title, string unit, string value, Vector2 at, Color color, int fontSize, bool alarm)

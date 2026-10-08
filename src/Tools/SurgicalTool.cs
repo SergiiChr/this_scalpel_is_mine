@@ -264,7 +264,7 @@ public partial class SurgicalTool : RigidBody3D
         {
             foreach (var (material, _) in _ownMaterials)
             {
-                material.SetShaderParameter("coat_inverse", new Projection(GlobalTransform.AffineInverse()));
+                material.SetShaderParameter(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
             }
         }
     }
@@ -315,7 +315,7 @@ public partial class SurgicalTool : RigidBody3D
         {
             foreach (var (material, _) in OwnMaterials())
             {
-                material.SetShaderParameter("contamination", glow);
+                material.SetShaderParameter(ShaderParam.Contamination, glow);
             }
         }
     }
@@ -328,7 +328,7 @@ public partial class SurgicalTool : RigidBody3D
         {
             foreach (var (material, grime) in OwnMaterials())
             {
-                material.SetShaderParameter("grime", value ? 0.95f : grime);
+                material.SetShaderParameter(ShaderParam.Grime, value ? 0.95f : grime);
             }
         }
     }
@@ -345,10 +345,10 @@ public partial class SurgicalTool : RigidBody3D
         var soaks = Def.Action == "swab";
         foreach (var (material, _) in OwnMaterials())
         {
-            material.SetShaderParameter("coat", amount);
-            material.SetShaderParameter("coat_length", Def.Length);
-            material.SetShaderParameter("coat_reach", Def.Length * (soaks ? 1.2f : 0.12f + 0.3f * amount));
-            material.SetShaderParameter("coat_inverse", new Projection(GlobalTransform.AffineInverse()));
+            material.SetShaderParameter(ShaderParam.Coat, amount);
+            material.SetShaderParameter(ShaderParam.CoatLength, Def.Length);
+            material.SetShaderParameter(ShaderParam.CoatReach, Def.Length * (soaks ? 1.2f : 0.12f + 0.3f * amount));
+            material.SetShaderParameter(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
         }
     }
 
@@ -362,7 +362,7 @@ public partial class SurgicalTool : RigidBody3D
                 dry = material.GetShaderParameter("albedo").AsColor();
                 _dryColors[material] = dry;
             }
-            material.SetShaderParameter("albedo", dry.Lerp(IodineColor, Mathf.Min(amount * 2f, 1f)));
+            material.SetShaderParameter(ShaderParam.Albedo, dry.Lerp(IodineColor, Mathf.Min(amount * 2f, 1f)));
         }
     }
 
@@ -434,7 +434,7 @@ public partial class SurgicalTool : RigidBody3D
         }
         // Blood and iodine are opaque: a little already colors the whole liquid, so the tint rises fast at first.
         var color = clear.Lerp(IodineColor, 1f - Mathf.Pow(1f - Iodine, 3f));
-        material.SetShaderParameter("albedo", color.Lerp(BloodColor, 1f - Mathf.Pow(1f - Red, 3f)));
+        material.SetShaderParameter(ShaderParam.Albedo, color.Lerp(BloodColor, 1f - Mathf.Pow(1f - Red, 3f)));
     }
 
     /// <summary>The tool your hand would pick up glows faintly (local player only).</summary>
@@ -442,7 +442,7 @@ public partial class SurgicalTool : RigidBody3D
     {
         foreach (var (material, _) in OwnMaterials())
         {
-            material.SetShaderParameter("emission_color", on ? new Color(0.25f, 0.3f, 0.22f) : Colors.Black);
+            material.SetShaderParameter(ShaderParam.EmissionColor, on ? new Color(0.25f, 0.3f, 0.22f) : Colors.Black);
         }
     }
 

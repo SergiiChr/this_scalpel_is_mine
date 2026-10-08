@@ -822,12 +822,8 @@ public partial class Surgeon
     private void UpdateFocus()
     {
         var from = Camera.GlobalPosition;
-        var query = PhysicsRayQueryParameters3D.Create(
-            from, from - (Camera.GlobalBasis.Z * InteractRange), Interactable.Layer);
-        query.CollideWithAreas = true;
-        query.CollideWithBodies = false;
-        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
-        var focused = hit.Count > 0 ? hit["collider"].AsGodotObject() as Interactable : null;
+        var focused = Rays.Cast(this, from, from - (Camera.GlobalBasis.Z * InteractRange), Interactable.Layer, areas: true)
+            ?.Collider as Interactable;
         Focused = focused is not null && focused.OfferedTo(this) ? focused : null;
     }
 }

@@ -13,27 +13,32 @@ public sealed record InputActionDef(string Action, string Label, Key Key = Key.N
 /// </summary>
 public static class InputActions
 {
-    public const string MoveForward = "move_forward";
-    public const string MoveBack = "move_back";
-    public const string MoveLeft = "move_left";
-    public const string MoveRight = "move_right";
-    public const string MoveLeftHand = "move_left_hand";
-    public const string MoveRightHand = "move_right_hand";
-    public const string UseTool = "use_tool";
-    public const string Grab = "grab";
-    public const string LevelUp = "level_up";
-    public const string LevelDown = "level_down";
-    public const string Zoom = "zoom";
-    public const string Inspect = "inspect";
-    public const string Interact = "interact";
-    public const string Lift = "lift";
-    public const string Crouch = "crouch";
-    public const string Steady = "steady";
-    public const string AimTool = "aim_tool";
-    public const string TwistLeft = "twist_left";
-    public const string TwistRight = "twist_right";
-    public const string Drink = "drink";
-    public const string Pause = "pause";
+    // Before Defaults, which reads it: static fields are set in the order they're declared.
+    private static readonly StringName[] BeltSlots = ["belt_1", "belt_2", "belt_3", "belt_4"];
+
+    // StringNames, not strings: input is read every frame, and a string passed to the engine becomes a new StringName
+    // each time, garbage the runtime has to track and collect.
+    public static readonly StringName MoveForward = "move_forward";
+    public static readonly StringName MoveBack = "move_back";
+    public static readonly StringName MoveLeft = "move_left";
+    public static readonly StringName MoveRight = "move_right";
+    public static readonly StringName MoveLeftHand = "move_left_hand";
+    public static readonly StringName MoveRightHand = "move_right_hand";
+    public static readonly StringName UseTool = "use_tool";
+    public static readonly StringName Grab = "grab";
+    public static readonly StringName LevelUp = "level_up";
+    public static readonly StringName LevelDown = "level_down";
+    public static readonly StringName Zoom = "zoom";
+    public static readonly StringName Inspect = "inspect";
+    public static readonly StringName Interact = "interact";
+    public static readonly StringName Lift = "lift";
+    public static readonly StringName Crouch = "crouch";
+    public static readonly StringName Steady = "steady";
+    public static readonly StringName AimTool = "aim_tool";
+    public static readonly StringName TwistLeft = "twist_left";
+    public static readonly StringName TwistRight = "twist_right";
+    public static readonly StringName Drink = "drink";
+    public static readonly StringName Pause = "pause";
 
     /// <summary>Order here is the order in the settings menu and the on-screen hint.</summary>
     public static readonly IReadOnlyList<InputActionDef> Defaults =
@@ -66,7 +71,7 @@ public static class InputActions
     ];
 
     /// <summary>The action of belt slot 1-4.</summary>
-    public static string BeltSlot(int slot) => $"belt_{slot}";
+    public static StringName BeltSlot(int slot) => BeltSlots[slot - 1];
 
     /// <summary>"key:87" / "mouse:1" for an event. Strings keep the settings file readable.</summary>
     public static string Encode(InputEvent inputEvent) => inputEvent switch
@@ -92,8 +97,24 @@ public static class InputActions
     public static string LabelFor(string action) =>
         Defaults.FirstOrDefault(entry => entry.Action == action)?.Label ?? action;
 
-    /// <summary>Human readable binding, e.g. "E" or "Mouse 1".</summary>
+    private static readonly Dictionary<string, string> BindingTexts = [];
+
+    /// <summary>Human readable binding, e.g. "E" or "Mouse 1". Kept until the bindings change
+    /// (<see cref="BindingsChanged"/>): the on-screen hint asks for it every frame.</summary>
     public static string BindingText(string action)
+    {
+        if (!BindingTexts.TryGetValue(action, out var text))
+        {
+            text = ReadBinding(action);
+            BindingTexts[action] = text;
+        }
+        return text;
+    }
+
+    /// <summary>The input map changed: binding texts are read afresh.</summary>
+    public static void BindingsChanged() => BindingTexts.Clear();
+
+    private static string ReadBinding(string action)
     {
         var events = InputMap.HasAction(action) ? InputMap.ActionGetEvents(action) : [];
         if (events.Count == 0)
