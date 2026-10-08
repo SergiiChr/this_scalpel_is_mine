@@ -84,13 +84,13 @@ public partial class SurgeryDriver : Node
     }
 
     /// <summary>What a player's loading screen waits for (<see cref="LoadingScreen"/>): the runtime warmed up and the
-    /// tool models loaded, so a test's frames are timed as a player's are.</summary>
+    /// tool models and sounds loaded, so a test's frames are timed as a player's are.</summary>
     private static async Task Loaded()
     {
         await ManagedRuntime.WarmUp;
-        foreach (var file in ModelSlot.ToolModelFiles())
+        foreach (var (file, keep) in LoadingScreen.Ahead())
         {
-            ModelSlot.Keep(file, GD.Load<PackedScene>(file));
+            keep(GD.Load<Resource>(file));
         }
     }
 

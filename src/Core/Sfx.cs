@@ -164,6 +164,15 @@ public partial class Sfx : Node
         }
     }
 
+    /// <summary>Every sound effect not loaded yet, by id, for the loading screen to load ahead.</summary>
+    internal static IEnumerable<(string Id, string File)> Unloaded() =>
+        Db.Audio.GetSectionKeys("sfx").Where(id => !Cache.ContainsKey(id))
+            .Select(id => (id, new ConfigReader(Db.Audio, "sfx").String(id)))
+            .Where(sound => sound.Item2.Length > 0 && ResourceLoader.Exists(sound.Item2));
+
+    /// <summary>Keeps a sound loaded ahead (<see cref="Unloaded"/>).</summary>
+    internal static void Keep(string id, AudioStream stream) => Cache[id] = stream;
+
     private static AudioStreamWav Looped(AudioStreamWav stream)
     {
         var looped = (AudioStreamWav)stream.Duplicate();
