@@ -86,6 +86,11 @@ public partial class PatientBody : Node3D
     private Node3D _bodyRoot = null!;
     /// <summary>The body model's skin mesh, whose space the site skin lays out its pores and grime in.</summary>
     private Node3D _skinModel = null!;
+    /// <summary>The site's and the body model's transforms and the region when the carve was last placed in full.
+    /// </summary>
+    private Transform3D _carvedSite;
+    private Transform3D _carvedModel;
+    private ImageTexture? _carvedRegion;
     private bool _onBack;
     private float _siteBaseY;
 
@@ -645,15 +650,34 @@ public partial class PatientBody : Node3D
         }
     }
 
-    /// <summary>Where the body model is cut away (the region), the simulated skin layers take over.</summary>
+    /// <summary>Where the body model is cut away (the region), the simulated skin layers take over. Placed in full when
+    /// the site or the body has turned, otherwise only lifted from where it was placed: breathing moves the site every
+    /// frame.</summary>
     private void UpdateCarve()
     {
+        var site = Site.GlobalTransform;
+        var model = _skinModel.GlobalTransform;
+        if (site.Basis != _carvedSite.Basis || model != _carvedModel || RegionTexture != _carvedRegion)
+        {
+            _carvedSite = site;
+            _carvedRegion = RegionTexture;
+            _carvedModel = model;
+            foreach (var material in _bodyMaterials)
+            {
+                Materials.SetCarve(material, site, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
+            }
+            SkinMaterial?.SetShaderParameter(ShaderParam.SiteToModel, new Projection(model.AffineInverse() * site));
+            SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
+            Materials.SetReveal(_cavityMaterial, site, SiteSize * 0.5f, RegionTexture);
+            return;
+        }
+        var lift = site.Origin - _carvedSite.Origin;
         foreach (var material in _bodyMaterials)
         {
-            Materials.SetCarve(material, Site.GlobalTransform, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
+            Materials.LiftCarve(material, lift);
         }
-        SkinMaterial?.SetShaderParameter(ShaderParam.SiteToModel, new Projection(_skinModel.GlobalTransform.AffineInverse() * Site.GlobalTransform));
-        Materials.SetReveal(_cavityMaterial, Site.GlobalTransform, SiteSize * 0.5f, RegionTexture);
+        SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, model.Basis.Inverse() * lift);
+        _cavityMaterial.SetShaderParameter(ShaderParam.RegionLift, lift);
     }
 
     /// <summary>Blood loss drains the color from the skin, body and site alike.</summary>

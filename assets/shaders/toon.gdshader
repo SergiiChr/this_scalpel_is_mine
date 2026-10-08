@@ -40,6 +40,8 @@ uniform float contamination = 0.0;
 // itself shows the damage from the wound maps.
 uniform sampler2D carve_map : filter_linear, hint_default_black;
 uniform mat4 carve_inverse;
+// How far the site has moved (world space) since carve_inverse was set: breathing lifts it every frame, sent alone.
+uniform vec3 carve_lift;
 // x, z: half size of the surgical site, y: cavity depth. Zero disables carving.
 uniform vec3 carve_box = vec3(0.0);
 // Points in carve_map: one texel per tissue grid point, so texel centers sit exactly on the grid.
@@ -114,7 +116,7 @@ void fragment() {
 	float wet = 0.0;
 	float blood = 0.0;
 	if (carve_box.x > 0.0) {
-		vec3 lp = (carve_inverse * vec4(world_pos, 1.0)).xyz;
+		vec3 lp = (carve_inverse * vec4(world_pos - carve_lift, 1.0)).xyz;
 		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
 		bool in_site = all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) && lp.y > -carve_box.y;
 		if (in_site && texture(carve_map, (cuv * (carve_grid - 1.0) + 0.5) / carve_grid).r > 0.5) {

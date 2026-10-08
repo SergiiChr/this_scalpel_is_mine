@@ -247,7 +247,17 @@ public static class Materials
             pass.SetShaderParameter(ShaderParam.CarveBox, new Vector3(halfSize.X, depth, halfSize.Y));
             pass.SetShaderParameter(ShaderParam.CarveMap, region);
             pass.SetShaderParameter(ShaderParam.CarveGrid, (Vector2)region.GetSize());
+            pass.SetShaderParameter(ShaderParam.CarveLift, Vector3.Zero);
         }
+    }
+
+    /// <summary>Moves the carve placed by <see cref="SetCarve"/> by <paramref name="lift"/> (world space). Sent every
+    /// frame while the patient breathes: a vector costs nothing, where a matrix or texture passed to the engine leaves a
+    /// wrapper for the garbage collector.</summary>
+    public static void LiftCarve(ShaderMaterial material, Vector3 lift)
+    {
+        material.SetShaderParameter(ShaderParam.CarveLift, lift);
+        ((ShaderMaterial)material.NextPass).SetShaderParameter(ShaderParam.CarveLift, lift);
     }
 
     /// <summary>Cavity walls: only drawn inside the region (see flesh.gdshader).</summary>
@@ -257,6 +267,7 @@ public static class Materials
         material.SetShaderParameter("region_box", new Vector3(halfSize.X, 1f, halfSize.Y));
         material.SetShaderParameter("region_map", region);
         material.SetShaderParameter("region_grid", (Vector2)region.GetSize());
+        material.SetShaderParameter(ShaderParam.RegionLift, Vector3.Zero);
     }
 
     public static void SetSiteMaps(ShaderMaterial material, Texture2D wounds, Texture2D fluids)
