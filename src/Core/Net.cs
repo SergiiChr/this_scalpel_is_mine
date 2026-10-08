@@ -35,12 +35,15 @@ public partial class Net : Node
     [Signal] public delegate void ConnectionFailedEventHandler(string reason);
     [Signal] public delegate void SessionStartedEventHandler();
     [Signal] public delegate void DisconnectedEventHandler();
+    /// <summary>Everyone has loaded: into the operating room.</summary>
+    [Signal] public delegate void AllLoadedEventHandler();
 
     public const int DefaultPort = 24565;
     public const int MaxClients = 1;
     public const string LobbyScene = "res://scenes/ui/lobby.tscn";
     public const string SurgeryScene = "res://scenes/surgery.tscn";
     public const string MenuScene = "res://scenes/ui/main_menu.tscn";
+    public const string LoadingScene = "res://scenes/ui/loading.tscn";
     /// <summary>ENet drops a peer once a reliable packet stays unanswered this long (or TimeoutMinMsec after
     /// TimeoutLimit resends).</summary>
     public const int TimeoutLimit = 64;
@@ -61,6 +64,8 @@ public partial class Net : Node
     internal void SeedSessionRolls(ulong seed) => _rng.Seed = seed;
     /// <summary>Peer id -> Time.GetTicksMsec() of the last heartbeat from them.</summary>
     private readonly Dictionary<int, ulong> _lastHeard = [];
+    /// <summary>Host: the players whose loading screen is done, null when nobody is loading.</summary>
+    private HashSet<int>? _loaded;
     private double _heartbeatAcc;
     private SceneTreeTimer? _connectTimer;
 
@@ -364,9 +369,34 @@ public partial class Net : Node
         {
             Progress.Unlock(Db.Quirk(QuirkKind.Surgeon, roll.Id), roll.Variant);
         }
+        _loaded = [];
         EmitSignal(SignalName.SessionStarted);
-        GetTree().ChangeSceneToFile(SurgeryScene);
+        GetTree().ChangeSceneToFile(LoadingScene);
     }
+
+    /// <summary>This player's loading screen is done. The host lets everyone in once all are, so nobody's surgery
+    /// starts streaming to a peer still loading.</summary>
+    public void FinishedLoading() => RpcId(HostId, MethodName.PeerLoaded);
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void PeerLoaded()
+    {
+        _loaded?.Add(Multiplayer.GetRemoteSenderId());
+        EnterWhenAllLoaded();
+    }
+
+    /// <summary>Host: everyone still here has loaded (a player who drops out while loading isn't waited for).</summary>
+    private void EnterWhenAllLoaded()
+    {
+        if (_loaded is not null && Roster.Keys.All(_loaded.Contains))
+        {
+            _loaded = null;
+            Rpc(MethodName.EnterSurgery);
+        }
+    }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void EnterSurgery() => EmitSignal(SignalName.AllLoaded);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void GoToLobby()
@@ -399,6 +429,7 @@ public partial class Net : Node
         if (IsHost)
         {
             SyncLobbyEverywhere();
+            EnterWhenAllLoaded();
         }
     }
 

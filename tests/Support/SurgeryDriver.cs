@@ -68,6 +68,7 @@ public partial class SurgeryDriver : Node
         var scenario = Db.Scenario(scenarioId)! with { MissingToolChance = 0f };
         var player = new LobbyPlayer("Driver", [new QuirkRoll("normal_dude", "")], Ready: true);
         Net.Instance.StartLocalSession(scenario, seed, player, patientQuirks ?? []);
+        await Loaded();
         Surgery = GD.Load<PackedScene>(SurgeryScene).Instantiate<Surgery>();
         AddChild(Surgery);
         await Frames.Physics(10);
@@ -80,6 +81,17 @@ public partial class SurgeryDriver : Node
         }
         Me.Active = Right;
         Note($"started {scenarioId}");
+    }
+
+    /// <summary>What a player's loading screen waits for (<see cref="LoadingScreen"/>): the runtime warmed up and the
+    /// tool models loaded, so a test's frames are timed as a player's are.</summary>
+    private static async Task Loaded()
+    {
+        await ManagedRuntime.WarmUp;
+        foreach (var file in ModelSlot.ToolModelFiles())
+        {
+            ModelSlot.Keep(file, GD.Load<PackedScene>(file));
+        }
     }
 
     /// <summary>Ends the surgery and frees the driver with it.</summary>

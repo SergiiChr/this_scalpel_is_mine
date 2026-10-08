@@ -37,6 +37,16 @@ public static class ModelSlot
         return empty;
     }
 
+    /// <summary>The files of every tool model not loaded yet, for the loading screen to load ahead.</summary>
+    internal static IEnumerable<string> ToolModelFiles() =>
+        Db.Tools.Values.Select(def => def.ModelName).Distinct()
+            .Select(name => Extensions.Select(extension => $"{Root}/tools/{name}.{extension}")
+                .FirstOrDefault(path => ResourceLoader.Exists(path)))
+            .OfType<string>().Where(path => !Loaded.ContainsKey(path));
+
+    /// <summary>Keeps a model loaded ahead (<see cref="ToolModelFiles"/>).</summary>
+    internal static void Keep(string path, PackedScene scene) => Loaded[path] = scene;
+
     /// <summary>A tool's model: "tint" parts take the tool's color.</summary>
     public static Node3D InstantiateTool(ToolDef def, Node3D parent) =>
         Instantiate("tools", def.ModelName, parent,
