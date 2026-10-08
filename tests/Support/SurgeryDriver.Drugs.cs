@@ -121,14 +121,21 @@ public partial class SurgeryDriver
         {
             return;
         }
-        // In through the cap at the vial's tip.
+        // In through the cap at the vial's tip. A player waits to see the needle in before pulling the plunger back:
+        // pulled outside the vial, it draws air.
         await NeedleInto(vial.TipPosition(), false);
+        if (!await Frames.Until(() => Syringe.NeedleTarget(syringe, Patient) is ContainerTarget { Container: var into }
+            && into == vial, 2f))
+        {
+            Note("the needle didn't go into the vial");
+            return;
+        }
         var into = Syringe.NeedleTarget(syringe, Patient);
         for (var i = 0; i < Mathf.CeilToInt(ml); i++)
         {
             await Notch(false);
         }
-        Note($"drew {syringe.Ml:0.0} ml (needle in {into})");
+        Note($"drew {syringe.Ml:0.0} ml and {syringe.Air:0.0} ml of air (needle in {into})");
         await NeedleOut();
         var target = route switch
         {
@@ -138,6 +145,11 @@ public partial class SurgeryDriver
             _ => SitePoint(at ?? new Vector2(0.5f, 0.5f)),
         };
         await NeedleInto(target, route != Route.Drip);
+        if (!await NeedleIsIn(syringe))
+        {
+            Note($"the needle didn't go in ({route})");
+            return;
+        }
         into = Syringe.NeedleTarget(syringe, Patient);
         var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
         for (var i = 0; i < notches; i++)
@@ -149,6 +161,10 @@ public partial class SurgeryDriver
         await Frames.Physics(10);
         await PlayerPutsDown();
     }
+
+    /// <summary>Waits until <paramref name="syringe"/>'s needle is in something: the bag, a vein or tissue.</summary>
+    private Task<bool> NeedleIsIn(SurgicalTool syringe) =>
+        Frames.Until(() => Syringe.NeedleTarget(syringe, Patient) is not AirTarget, 2f);
 
     /// <summary>Where a drug goes in, see <see cref="PlayerGivesDrug"/>.</summary>
     public enum Route { Drip, Vein, Arm, Tissue }
