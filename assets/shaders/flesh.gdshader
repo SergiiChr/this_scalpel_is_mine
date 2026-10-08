@@ -10,6 +10,8 @@ uniform float wetness = 0.8;
 
 uniform sampler2D region_map : filter_linear, hint_default_white;
 uniform mat4 region_inverse;
+// How far the site has moved (world space) since region_inverse was set: breathing lifts it every frame, sent alone.
+uniform vec3 region_lift;
 // x, z: half size of the surgical site. Zero shows everything (organs).
 uniform vec3 region_box = vec3(0.0);
 uniform vec2 region_grid = vec2(1.0);
@@ -47,7 +49,7 @@ void vertex() {
 
 void fragment() {
 	if (region_box.x > 0.0) {
-		vec2 ruv = (region_inverse * vec4(world_pos, 1.0)).xz / (region_box.xz * 2.0) + 0.5;
+		vec2 ruv = (region_inverse * vec4(world_pos - region_lift, 1.0)).xz / (region_box.xz * 2.0) + 0.5;
 		if (texture(region_map, (ruv * (region_grid - 1.0) + 0.5) / region_grid).r < 0.5) {
 			discard;
 		}

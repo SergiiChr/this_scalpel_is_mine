@@ -1,0 +1,136 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csproj,props,runsettings,xml}]
+indent_style = space
+indent_size = 4
+
+[*.csproj]
+indent_size = 2
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[*.{gdshader,gdshaderinc,cfg,tscn,godot}]
+indent_style = tab
+
+[*.cs]
+max_line_length = 120
+
+# Layout
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_prefer_braces = when_multiline:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+
+# Language
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_prefer_simple_using_statement = true:suggestion
+dotnet_style_readonly_field = true:warning
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+
+# Naming: PascalCase types, members, local functions and constants, _camelCase private fields, camelCase locals and
+# parameters.
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, protected, private_protected
+dotnet_naming_symbols.constants.applicable_kinds = field, local
+dotnet_naming_symbols.constants.required_modifiers = const
+dotnet_naming_symbols.static_readonly.applicable_kinds = field
+dotnet_naming_symbols.static_readonly.required_modifiers = static, readonly
+dotnet_naming_symbols.members.applicable_kinds = class, struct, enum, interface, delegate, event, method, property, namespace, local_function
+dotnet_naming_symbols.locals.applicable_kinds = parameter, local
+
+dotnet_naming_style.pascal.capitalization = pascal_case
+dotnet_naming_style.camel.capitalization = camel_case
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+dotnet_naming_style.underscore_camel.required_prefix = _
+
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_rule.static_readonly_pascal.symbols = static_readonly
+dotnet_naming_rule.static_readonly_pascal.style = pascal
+dotnet_naming_rule.static_readonly_pascal.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.members_pascal.symbols = members
+dotnet_naming_rule.members_pascal.style = pascal
+dotnet_naming_rule.members_pascal.severity = warning
+dotnet_naming_rule.locals_camel.symbols = locals
+dotnet_naming_rule.locals_camel.style = camel
+dotnet_naming_rule.locals_camel.severity = warning
+
+# Analyzer tuning for a Godot game. Each line says why the rule doesn't fit.
+# Godot calls into scripts by name and builds every node with a parameterless constructor.
+dotnet_diagnostic.CA1812.severity = none
+# Godot API types (Variant, Node) aren't CLS compliant, and the game is no library.
+dotnet_diagnostic.CA1014.severity = none
+# Game text is English only; culture-specific formatting isn't wanted for numbers shown in game.
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA1307.severity = none
+dotnet_diagnostic.CA1309.severity = none
+dotnet_diagnostic.CA1310.severity = none
+dotnet_diagnostic.CA1311.severity = none
+dotnet_diagnostic.CA1304.severity = none
+# Gameplay randomness, not security.
+dotnet_diagnostic.CA5394.severity = none
+# Readers are named for the type they read (reader.Float("dose")).
+dotnet_diagnostic.CA1720.severity = none
+# Godot signals are delegates named ...EventHandler by convention.
+dotnet_diagnostic.CA1711.severity = none
+# Arrays are the fast, shared state of the simulations (tissue particles, painted textures).
+dotnet_diagnostic.CA1819.severity = none
+# Values the game hands to Godot are often mutable collections by design (synced state).
+dotnet_diagnostic.CA2227.severity = none
+dotnet_diagnostic.CA1002.severity = none
+# Nested types group small value types with the one class that uses them.
+dotnet_diagnostic.CA1034.severity = none
+# Godot node lifetime is managed by the scene tree, not IDisposable.
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA1001.severity = none
+# Godot's own generated partial classes trip these.
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1724.severity = none
+# Floats are compared exactly where the game sets exact values (0, 1, flags).
+dotnet_diagnostic.RCS1234.severity = none
+# Expression bodies and ternaries are a judgement call, not a rule.
+dotnet_diagnostic.RCS1085.severity = none
+dotnet_diagnostic.RCS1238.severity = none
+dotnet_diagnostic.IDE0046.severity = none
+dotnet_diagnostic.IDE0045.severity = none
+# Unused parameters exist where Godot or an interface defines the signature.
+dotnet_diagnostic.IDE0060.severity = suggestion
+dotnet_diagnostic.CA1822.severity = suggestion
+
+[tests/**.cs]
+# Test names read as sentences: Scalpel_cut_opens_five_centimeters.
+dotnet_naming_rule.members_pascal.severity = none
+dotnet_diagnostic.CA1707.severity = none
+
+[gdunit4_testadapter_v5/**.cs]
+# The GdUnit4 test adapter writes its runner scene here for a test run.
+generated_code = true

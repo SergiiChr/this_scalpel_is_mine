@@ -6,10 +6,10 @@ title: Diabetes mellitus
 
 [b]Hazards[/b]
 • Glucose rises during surgery, faster under stress.
-• Above {Patient.GLUCOSE_HIGH} mmol/l consciousness falls. Below {Patient.GLUCOSE_LOW} mmol/l the patient seizes.
+• Above {Patient.GlucoseHigh} mmol/l consciousness falls. Below {Patient.GlucoseLow} mmol/l the patient seizes.
 
 [b]Management[/b]
-• Check the level with the glucose panel ({Lab.PANELS.glucose.time} seconds).
+• Check the level with the glucose panel ({Lab.Panels.glucose.Seconds} seconds).
 • Insulin lowers it slowly and for a long time. Glucose D50 raises it quickly.
 • A seizure from low glucose stops with diazepam, but returns until glucose is given.
 > See Combined conditions (14.9).

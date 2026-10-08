@@ -18,6 +18,8 @@ uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 // Site space to the body model's own space: pores and grime are laid out where the body's are (toon.gdshader uses the
 // model's space), so they run on unbroken where this skin takes over from the body.
 uniform mat4 site_to_model;
+// How far breathing has lifted the site (model space) since site_to_model was set, sent alone every frame.
+uniform vec3 site_lift;
 // This skin lies right on the body model. Where the two overlap (at the edge of the region) it's moved this far
 // (meters) toward the camera, along the view ray: it wins the depth test without being lifted off the body, so no
 // step shows at its edge from any angle. The shadow passes see it moved the same way, so it doesn't shadow itself.
@@ -41,7 +43,7 @@ float noise(vec2 p) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz;
+	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
 	vec4 w = textureLod(wound_map, UV, 0.0);
 	// Bruises and burns swell, blood stands on top. Cuts don't sink: here the mesh itself is split along them.
 	VERTEX.y += w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;

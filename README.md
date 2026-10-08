@@ -3,46 +3,50 @@
 Co-op roguelike surgery thriller. Two surgeons, one patient, not enough hands.
 Inspired by Trauma Center, with Overcooked-style pressure and random surgeon and patient quirks every run.
 
-Built with Godot 4.7 (GDScript, Forward+ renderer).
+Built with Godot 4.7 .NET (C#, Forward+ renderer).
 
 ## Install
 
-Everything goes through one script, `build.sh`. It's written for Fedora and works on any x86_64 Linux.
+Everything goes through one script, `build.py` (Python 3, standard library only). It's written for Fedora and works on
+any x86_64 Linux.
 On Fedora it installs missing system packages itself with `dnf` (it asks for your password); elsewhere it tells you what to install.
 
 ### Just play
 
-Needs: `git`, `curl`, `unzip`, a GPU with Vulkan drivers (or run with `--rendering-method gl_compatibility`).
+Needs: `git`, Python 3, a GPU with Vulkan drivers (or run with `--rendering-method gl_compatibility`).
 
 ```bash
 git clone https://github.com/SergiiChr/this_scalpel_is_mine.git
 cd this_scalpel_is_mine
-./build.sh play
+./build.py play
 ```
 
-The first run downloads Godot 4.7.2 (about 60 MB) into `.tools/`, then starts the game.
-Already have Godot 4.7.2? `GODOT_BIN=/path/to/godot ./build.sh play`.
+The first run downloads Godot 4.7.2 .NET (about 70 MB) into `.tools/`, and the .NET 10 SDK too unless you have it, builds
+the C# and starts the game.
+Already have Godot 4.7.2 .NET? `GODOT_BIN=/path/to/godot ./build.py play`.
 
 ### Develop
 
-Needs everything above plus Python 3.11 (`python3.11` on Fedora) and Xvfb (`xorg-x11-server-Xvfb`, for the screenshot tool).
+Needs everything above plus Python 3.11 (`python3.11` on Fedora) and Xvfb (`xorg-x11-server-Xvfb`, for the screenshot tool
+and the visual tests). Any C# IDE works; the repository has Rider and VS Code test settings (`.runsettings`).
 
 ```bash
-./build.sh dev      # one-time setup, see below
-./build.sh setup    # only Godot and the project import, no sudo (enough to test and take screenshots)
-./build.sh editor   # open the Godot editor
-./build.sh test     # run every automated test (about 5 minutes)
-./build.sh build    # run the tests, then export build/ThisScalpelIsMine.x86_64
-./build.sh assets   # regenerate models and sounds
-./build.sh lint     # ruff and strict mypy on the Python tools
+./build.py dev      # one-time setup, see below
+./build.py setup    # only Godot, the .NET SDK, the build and the import, no sudo (enough to test and take screenshots)
+./build.py editor   # open the Godot editor
+./build.py test     # the smoke tests; --all for the full regression
+./build.py build    # run the tests, then export build/ThisScalpelIsMine.x86_64
+./build.py assets   # regenerate models and sounds
+./build.py lint     # C# analyzers and dotnet format, ruff and strict mypy on the Python tools
 ```
 
-`./build.sh dev` does, in order:
+`./build.py dev` does, in order:
 
-1. Installs missing system packages: `git`, `curl`, `unzip`, `python3.11`, `xorg-x11-server-Xvfb`.
-2. Downloads Godot 4.7.2 into `.tools/` and the Linux export templates into `~/.local/share/godot/` (about 1 GB, one time).
+1. Installs missing system packages: `git`, `python3.11`, `xorg-x11-server-Xvfb`.
+2. Downloads Godot 4.7.2 .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none) and the
+   Linux export templates into `~/.local/share/godot/` (about 1 GB, one time).
 3. Creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the asset generator's libraries, Blender 5.0 as a Python module (`bpy`, about 360 MB), ruff and mypy.
-4. Imports the project so the editor opens straight away.
+4. Builds the C# and imports the project so the editor opens straight away.
 
 It's safe to run again; it only fetches what's missing.
 
@@ -54,7 +58,7 @@ Every model and sound is generated from code; nothing is downloaded or made by h
 - `tools/blender`: organic and rigged models (patient, gloves, organs) built with Blender's Python module.
   It renders review sheets to `build/blender_review/`.
 
-The generated files are committed, so you only need `./build.sh assets` after changing a generator.
+The generated files are committed, so you only need `./build.py assets` after changing a generator.
 
 ## Sources of truth
 
@@ -69,7 +73,7 @@ Design lives in plain files; the game reads them at startup, so change the file,
 | Surgical sites on the body | [data/patient_sites.json](data/patient_sites.json) |
 | Patient dialogue, sounds | [data/dialogue/](data/dialogue), [data/audio.cfg](data/audio.cfg) |
 | In-game manual | [data/manual/](data/manual) |
-| Tested cases | Executable GUT cases under [`tests/`](tests/) |
+| Tested cases | Executable GdUnit4 suites under [`tests/`](tests/) |
 | Model names, parts and bones the game expects | [assets/models/README.md](assets/models/README.md) |
 | Architecture, data formats, mechanics list | [docs/DESIGN.md](docs/DESIGN.md) |
 
@@ -128,8 +132,9 @@ assets/          Art and sound, organized for review and replacement
   models/        Generated models (see README there)
   audio/         Generated sounds (see README there)
 scenes/          Scene files (menus, surgery)
-src/             Code, see docs/DESIGN.md for the architecture
-tests/           Headless smoke test, network test, screenshot tool
+src/             C# code by area (Core, Data, Operation, Patients, Surgeons, Tools, UI, Visuals, World)
+tests/           GdUnit4 suites by feature, and in tests/Support the test helpers and dev tools (screenshots,
+                 grip fitting)
 tools/assetgen/  Model, sound and manual art generator (Python)
 tools/blender/   Organic and rigged models built with Blender (Python)
 ```
@@ -137,11 +142,12 @@ tools/blender/   Organic and rigged models built with Blender (Python)
 ## Tests
 
 ```bash
-./build.sh test    # import, tissue, every scenario, two-process co-op; fails on any error
-./build.sh shots   # screenshots of a scenario in a virtual display: ./build.sh shots [scenario] [out dir]
+./build.py test    # the fast headless smoke suites; fails on any error
+./build.py shots   # screenshots of a scenario in a virtual display: ./build.py shots [scenario] [out dir]
 ```
 
-The GUT scripts under [`tests/`](tests/) are the test catalog and source of truth. `./build.sh test` runs the fast
-headless smoke tag; `./build.sh test --all` runs the full regression. CI gates the full suite and export on smoke.
+The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog and source of truth. `./build.py test`
+runs the smoke category; `./build.py test --all` runs the full regression, `--with-key-frames` saves screenshots of key
+moments. They also run from the IDE's test explorer. CI gates the full suite and export on smoke.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for architecture, data formats and the mechanics list.

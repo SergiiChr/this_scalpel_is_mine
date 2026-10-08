@@ -1,5 +1,5 @@
 ; Engine configuration file.
-; Input actions are registered from code (src/input/input_actions.gd) so defaults and rebinding live in one place.
+; Input actions are registered from code (src/Core/InputActions.cs) so defaults and rebinding live in one place.
 
 config_version=5
 
@@ -8,20 +8,19 @@ config_version=5
 config/name="This Scalpel Is Mine"
 config/description="Co-op roguelike surgery thriller."
 run/main_scene="res://scenes/ui/main_menu.tscn"
-config/features=PackedStringArray("4.7", "Forward Plus")
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://assets/icons/app_icon.svg"
 
 [autoload]
 
-Db="*res://src/autoload/db.gd"
-Settings="*res://src/autoload/settings.gd"
-Progress="*res://src/autoload/progress.gd"
-Net="*res://src/autoload/net.gd"
-Sfx="*res://src/autoload/sfx.gd"
+Settings="*res://src/Core/Settings.cs"
+Net="*res://src/Core/Net.cs"
+Sfx="*res://src/Core/Sfx.cs"
+ManagedRuntime="*res://src/Core/ManagedRuntime.cs"
 
-[debug]
+[dotnet]
 
-gdscript/warnings/untyped_declaration=1
+project/assembly_name="ThisScalpelIsMine"
 
 [display]
 

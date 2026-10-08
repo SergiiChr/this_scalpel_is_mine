@@ -15,7 +15,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 4. The giving set connects automatically and the tubing runs from the stand to the site. The catheter is single use.
 
 ## 2.4 Administering an infusion
-1. Drugs: rest the syringe needle on the bag hanging on the infusion stand and push the plunger. The dose starts down the line at once, about {ToolActions.DRIP_RATE} ml a second, and acts as it runs in. Drawing back takes fluid from the bag.
+1. Drugs: rest the syringe needle on the bag hanging on the infusion stand and push the plunger. The dose starts down the line at once, about {ToolActions.DripRate} ml a second, and acts as it runs in. Drawing back takes fluid from the bag.
 2. Fluid bags and blood packs: hold the new bag at the infusion stand and select [b]Swap IV bag[/b]. It replaces the hanging bag and runs in.
 3. Onset is slower and smoother than direct injection. Fluids and blood products are given by this route only.
 > Without a patent line, a drug pushed into the bag stays there and a swapped bag is wasted.
@@ -24,7 +24,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 The tubing hangs low across the floor between stand and patient. Walking through it at speed pulls the catheter out of the vein: the line is lost, the patient is hurt and the line must be re-sited with a new catheter. Move slowly near the tubing, or crouch and step over it.
 
 ## 2.6 Fluid choice
-• Crystalloid (saline, {drug.saline.effect("volume_ml")} ml): restores circulating volume after moderate blood loss.
+• Crystalloid (saline, {drug.saline.Peak.VolumeMl} ml): restores circulating volume after moderate blood loss.
 • Blood products: see section 10. Confirm the group before connecting.
 
 [font_size=16][b]References[/b]

@@ -5,7 +5,7 @@ Adequate depth is indicated by absent spontaneous respiration on the monitor. A 
 One correct induction dose is maintained for the whole procedure. A repeat dose of the same agent only tops it up.
 
 ## 8.2 Blood pressure under anesthesia
-Propofol and the inhaled agent lower systolic pressure for as long as the patient is under: expect about {Patient.NORMAL_PRESSURE + drug.propofol.effect("bp")} mmHg instead of {Patient.NORMAL_PRESSURE}. A healthy patient tolerates this. Blood loss on top of it does not: below {Patient.ARREST_PRESSURE} mmHg the heart is at risk of arrest.
+Propofol and the inhaled agent lower systolic pressure for as long as the patient is under: expect about {Patient.NormalPressure + drug.propofol.Peak.Bp} mmHg instead of {Patient.NormalPressure}. A healthy patient tolerates this. Blood loss on top of it does not: below {Patient.ArrestPressure} mmHg the heart is at risk of arrest.
 • Control bleeding early.
 • Run saline through the IV line to restore volume and pressure. Transfuse for larger losses.
 • In a patient who is already bleeding or in shock, induce with ketamine. It keeps the pressure up.

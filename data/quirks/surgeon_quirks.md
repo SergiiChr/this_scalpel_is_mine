@@ -3,7 +3,7 @@
 Source of truth for surgeon quirks. The game reads this file directly at startup.
 Same format as `patient_quirks.md`.
 
-Rolling rules (code in `src/data/quirk_roller.gd`):
+Rolling rules (code in `src/Data/QuirkRoller.cs`):
 - Every surgeon gets 1 to 3 quirks.
 - With 3 quirks at least one is positive and one is negative. `mixed` counts as both.
 - `exclusive: true` quirks are always rolled alone.

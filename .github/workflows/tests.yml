@@ -1,4 +1,4 @@
-# GUT scripts are the executable source of truth. Smoke gates full regression and export.
+# The GdUnit4 suites under tests/ are the executable source of truth. Smoke gates full regression and export.
 name: Tests
 
 on:
@@ -6,48 +6,55 @@ on:
   pull_request:
 
 jobs:
-  assetgen:
-    name: Asset generator lint and types
+  lint:
+    name: Lint and types (C# analyzers, ruff, mypy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          submodules: recursive
+          dotnet-version: "10.0.x"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
+      # Analyzers run as part of the build and fail it on any warning.
+      - run: dotnet build --nologo ThisScalpelIsMine.csproj
+      - run: dotnet format ThisScalpelIsMine.csproj --verify-no-changes
       # bpy is left out: it's a large download and the lint and type checks don't need it.
       - run: pip install -r requirements.txt ruff==0.16.9 mypy==2.3.1
-      - run: ruff check tools
-      - run: ruff format --check tools
-      - run: mypy tools
+      - run: ruff check tools build.py
+      - run: ruff format --check tools build.py
+      - run: mypy tools build.py
 
   game:
-    name: GUT smoke, regression, visuals and export
+    name: Smoke, regression, visuals and export
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          submodules: recursive
+          dotnet-version: "10.0.x"
       # Godot and its export templates are large, keep them between runs.
       - uses: actions/cache@v4
         with:
           path: |
             .tools
             ~/.local/share/godot/export_templates
-          key: godot-${{ hashFiles('build.sh') }}
+            ~/.nuget/packages
+          key: godot-${{ hashFiles('build.py', 'ThisScalpelIsMine.csproj') }}
       - name: Install virtual display
         run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: ./build.py setup
       - name: Smoke tests
-        run: ./build.sh test --ci-run
+        run: ./build.py test --ci-run
       - name: Everything else, with key frames
-        run: ./build.sh test --all --skip smoke --jobs 2 --with-key-frames --ci-run
+        run: ./build.py test --all --skip smoke --jobs 2 --with-key-frames --ci-run
       # The smoke cases that take key frames, again with them on.
       - name: Smoke key frames
-        run: ./build.sh test --tag smoke --tag visual_confirmation --with-key-frames --ci-run
-      - run: SKIP_TESTS=1 ./build.sh build
+        run: ./build.py test --tag smoke --tag visual_confirmation --with-key-frames --ci-run
+      - run: SKIP_TESTS=1 ./build.py build
       - if: always()
         uses: actions/upload-artifact@v4
         with:
