@@ -2092,10 +2092,9 @@ public sealed class TissueSim
             _anchorTarget[k] = Rest[k];
             _pull[k] = Vector3.Zero;
             _pullAmount[k] = 0f;
-            if (_anchor[k] == MusclePull || _anchor[k] == GapePull)
-            {
-                _anchor[k] = LooseAnchor;
-            }
+            // A point once drawn back from a cut keeps its strong anchor: a stitch across the cut then holds the edges
+            // against it. (The GDScript game meant to loosen it here, but its float comparison never matched, and the
+            // closures are tuned to the anchor staying.)
         }
         foreach (var k in _lipped)
         {

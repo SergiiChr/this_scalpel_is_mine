@@ -497,6 +497,9 @@ def lint() -> None:
 
 def main() -> int:
     command, arguments = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("", [])
+    # Logs, screenshots and the export land in build/: Godot mustn't import anything there.
+    BUILD.mkdir(exist_ok=True)
+    (BUILD / ".gdignore").touch()
     if command in ("play", "run"):
         setup()
         os.execv(GODOT, [str(GODOT), "--path", str(ROOT)])
