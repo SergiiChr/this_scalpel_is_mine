@@ -20,7 +20,7 @@ public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 
 /// (the fluid map). Where a rivulet runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
 /// Bleeding inside the opening wells up as a pulsing dome where it comes from, on the cavity pool's surface once that
-/// covers it. Bleeding under skin that isn't open spreads a bruise over it. Either way every bleed shows its source.
+/// covers it. Bleeding under skin that isn't cut open spreads a bruise over it. Either way every bleed shows its source.
 /// Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
 /// </summary>
 public partial class BloodFlow : Node3D
@@ -55,9 +55,11 @@ public partial class BloodFlow : Node3D
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
     private const float SplashReach = 0.75f;
     /// <summary>Radius (m) of the dome welling up from a bleed inside, and how much it grows per sqrt(ml/s).</summary>
-    private const float WellStart = 0.003f;
-    private const float WellGrowth = 0.004f;
-    private const float WellMax = 0.012f;
+    private const float WellStart = 0.002f;
+    private const float WellGrowth = 0.003f;
+    private const float WellMax = 0.008f;
+    /// <summary>A welling dome's height over its radius: a low bulge, not a ball.</summary>
+    private const float WellFlat = 0.5f;
     /// <summary>Welling domes pulse this many times a second.</summary>
     private const float WellPulse = 1.2f;
     /// <summary>Bruise radius (uv) over a bleed under closed skin, and how much it grows per sqrt(ml).</summary>
@@ -201,10 +203,10 @@ public partial class BloodFlow : Node3D
     {
         var multimesh = _wellMesh.Multimesh;
         _wells.Clear();
-        var pulse = 1f + 0.35f * Mathf.Sin(Time.GetTicksMsec() * 0.001f * Mathf.Tau * WellPulse);
+        var pulse = WellFlat * (1f + 0.3f * Mathf.Sin(Time.GetTicksMsec() * 0.001f * Mathf.Tau * WellPulse));
         foreach (var (uv, rate, depth) in Sources.Where(source => source.Inside))
         {
-            if (!body.Tissue.IsOpen(uv))
+            if (!body.Tissue.IsOpen(uv, TissueDepth.Skin))
             {
                 Bruise(body, uv, rate * delta);
                 continue;
