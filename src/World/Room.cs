@@ -485,8 +485,9 @@ public partial class Room : Node3D
         Card = new PatientCard { Name = "PatientCard" };
         AddChild(Card);
         Card.Setup(Prop("card"));
-        var read = Interactable.Create(this, "Read the patient card", new Vector3(0.2f, 0.4f, 0.3f),
-            Layout["card"] + new Vector3(0f, 0.75f, 0f), _ => surgery.OpenCard());
+        // Just the board: any taller and it would reach into "Talk to the patient" around the head.
+        var read = Interactable.Create(this, "Read the patient card", new Vector3(0.08f, 0.3f, 0.25f),
+            Layout["card"] + new Vector3(0.02f, 0.74f, 0f), _ => surgery.OpenCard());
         read.Offered = _ => Card.OnHook;
         if (surgery.Scenario.Nurse && Layout.Has("bell"))
         {

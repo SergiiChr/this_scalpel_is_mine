@@ -33,7 +33,7 @@ public partial class Surgeon : CharacterBody3D
     public const float EyeHeight = 1.62f;
     public static readonly Vector3 ShoulderOffset = new(0.19f, 1.4f, -0.08f);
     internal const float HandSensitivity = 0.0009f;
-    private const float LookSensitivity = 0.003f;
+    internal const float LookSensitivity = 0.003f;
     /// <summary>Radians the held tool turns per pixel while the mouse aims it (Aim tool held).</summary>
     internal const float AimSensitivity = 0.004f;
     /// <summary>How fast C/V roll the held tool (radians a second).</summary>

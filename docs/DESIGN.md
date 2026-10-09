@@ -255,7 +255,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Stations**: the nurse menu is a shop: categories (`category` in tools.cfg), each a list of items with [-] count
   [+], and a cart. Deliveries land side by side on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.
-- **Patient card**: a hospital record hanging off the middle of the table's head end, in view from both starting
+- **Patient card**: a hospital record hanging on the rail across the table's head end, in view from both starting
   spots. Every surgery opens with each player reading their own copy; put back, each copy travels in an arc to the
   hook and they merge into one. Taken, the card travels up to the reader's face before the page shows, leaves the hook
   for everyone and is seen in the reader's hands until put back (`src/World/PatientCard.cs`, synced with each

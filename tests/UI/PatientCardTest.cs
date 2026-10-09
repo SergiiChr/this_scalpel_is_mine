@@ -2,10 +2,10 @@ namespace Scalpel.Tests.UI;
 
 /// <summary>
 /// The patient card as a player meets it: the surgery opens with the card held up to the face and its page shown. Put
-/// back with Esc, it travels in view to its hook by the table and hangs there. Taken again, it leaves the hook and comes
-/// back up to the face before the page shows. With key frames also what the surgeon sees at each step and the card on
-/// its hook up close. Review them for a legible, form-like page, the card in view all the way to the hook and hanging
-/// straight on it.
+/// back with Esc, it travels in view to its hook on the table's head rail and hangs there. Looked at, it's what's in
+/// focus, not the patient's head beside it. Taken with Interact, it leaves the hook and comes back up to the face before
+/// the page shows. With key frames also what the surgeon sees at each step and the card on its hook up close. Review
+/// them for a legible, form-like page, the card in view all the way to the hook and hanging on the rail.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -64,9 +64,15 @@ public class PatientCardTest
         AssertObject(card.PaperOf(me.PeerId)).OverrideFailureMessage("only the card on the hook is left").IsNull();
         await driver.Capture("on_hook");
 
-        AssertBool(await driver.PlayerInteracts("Read the patient card"))
-            .OverrideFailureMessage("the card on its hook can be taken").IsTrue();
-        AssertBool(card.OnHook).OverrideFailureMessage("taken, the card leaves its hook").IsFalse();
+        // Like a player: walk up, look at it and press Interact. Next to the patient's head, the card is what's in focus.
+        await driver.PlayerWalksTo(card.HookPaper, 0.6f);
+        await driver.PlayerLooksAt(card.HookPaper);
+        AssertString(me.Focused?.Prompt).OverrideFailureMessage("looking at the card on its hook offers it")
+            .IsEqual("Read the patient card");
+        SurgeryDriver.Tap(InputActions.Interact);
+        await PlayerInput.Delivered();
+        AssertBool(await Frames.Until(() => !card.OnHook, 0.1f)).OverrideFailureMessage("taken, the card leaves its hook")
+            .IsTrue();
         AssertFloat(surgery.Hud.Overlay!.Modulate.A).OverrideFailureMessage("the page waits for the card to come up")
             .IsLess(0.5f);
         AssertBool(await Frames.Until(() => surgery.Hud.Overlay?.Modulate.A >= 1f, PatientCard.TravelSeconds + 0.5f))

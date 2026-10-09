@@ -484,6 +484,21 @@ public partial class SurgeryDriver : Node
         }
     }
 
+    /// <summary>Turns the view with the mouse until the middle of the screen is on <paramref name="point"/>.</summary>
+    public async Task PlayerLooksAt(Vector3 point)
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            var to = point - Me.Camera.GlobalPosition;
+            var yaw = Mathf.Atan2(-to.X, -to.Z);
+            var pitch = Mathf.Atan2(to.Y, new Vector2(to.X, to.Z).Length());
+            var turn = new Vector2(Mathf.Wrap(Me.Rotation.Y - yaw, -Mathf.Pi, Mathf.Pi), Me.Pitch - pitch);
+            PlayerInput.Mouse(turn / (Surgeon.LookSensitivity * Settings.MouseSensitivity));
+            await PlayerInput.Delivered();
+        }
+        Note($"looks at {point}");
+    }
+
     /// <summary>Interacts with the room station whose prompt is <paramref name="prompt"/>, standing in front of it.
     /// </summary>
     public async Task<bool> PlayerInteracts(string prompt)

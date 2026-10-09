@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 import trimesh
 
 from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, superellipsoid, torus, tube
 
 TABLE_HEIGHT = 0.85
+# The rail across the table's head end that the patient card hangs on: its hook (CardHook in src/World/Room.cs) goes
+# over the bar's top.
+HEAD_RAIL_X = 1.025
+HEAD_RAIL_TOP = 0.939
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
 # tray's middle. Same as "instruments" and "swabs" in Room.TrayZones (src/World/Room.cs).
 SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
@@ -31,7 +37,13 @@ def _operating_table() -> Model:
     m.add("Frame", superellipsoid((2.3, 0.05, 0.56), 0.15, (-0.15, TABLE_HEIGHT - 0.075, 0.0)), "steel")
     pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
     m.add("Pads", merge(*pads), "mattress")
-    rails = [cylinder(0.008, (-1.25, TABLE_HEIGHT - 0.07, s * 0.3), (0.95, TABLE_HEIGHT - 0.07, s * 0.3), 8) for s in (-1, 1)]
+    low = TABLE_HEIGHT - 0.07
+    rails = [cylinder(0.008, (-1.25, low, s * 0.3), (0.95, low, s * 0.3), 8) for s in (-1, 1)]
+    # The side rails carry on round the head end and up into a bar above the pads.
+    bends = [(0.95, low, -0.3), (HEAD_RAIL_X, low, -0.3), (HEAD_RAIL_X, HEAD_RAIL_TOP, -0.3)]
+    bends += [(x, y, -z) for x, y, z in reversed(bends)]
+    rails += [cylinder(0.008, a, b, 8) for a, b in pairwise(bends)]
+    rails += [ellipsoid((0.008, 0.008, 0.008), bend, 1) for bend in bends[1:-1]]
     m.add("Rails", merge(*rails), "chrome")
     m.add("Pedals", merge(*[superellipsoid((0.08, 0.02, 0.05), 0.4, (x, 0.09, 0.25)) for x in (-0.12, 0.12)]), "black_plastic")
     return m
