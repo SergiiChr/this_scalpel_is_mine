@@ -9,6 +9,7 @@
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
+                       Fails on any error in Godot's output, such as a shader that doesn't compile.
   ./build.py build     Run the tests, export a standalone executable to build/ThisScalpelIsMine.x86_64 and start it
                        once headless; errors in either fail the build.
                        SKIP_TESTS=1 exports without testing.
@@ -54,13 +55,37 @@ TEMPLATES = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) 
 BASE_URL = f"https://github.com/godotengine/godot/releases/download/{GODOT_VERSION}-stable"
 OUTPUT = BUILD / "ThisScalpelIsMine.x86_64"
 ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
+# A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
+ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
+NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
     """Runs a command, stopping the script with its exit code when it fails."""
     result = subprocess.run([str(part) for part in command], check=False, **kwargs)  # type: ignore[call-overload]
     if result.returncode != 0:
+        print(f"Failed (exit {result.returncode}): {' '.join(str(part) for part in command)}", file=sys.stderr)
         sys.exit(result.returncode)
+
+
+def godot_errors(output: str) -> list[str]:
+    """The error lines in Godot's output, each once. Engine leak reports printed while quitting are noise."""
+    return list(dict.fromkeys(line.strip() for line in output.splitlines() if ERRORS.search(line) and not NOISE.search(line)))
+
+
+def run_godot(name: str, command: Sequence[str | Path]) -> None:
+    """Runs a Godot step with its output in build/<name>.log, stopping the script when it fails.
+
+    Godot exits with 0 after script errors, shaders that don't compile, unhandled exceptions and failed exports, so the
+    step fails on any error line in its output too.
+    """
+    log = BUILD / f"{name}.log"
+    with log.open("w") as out:
+        status = subprocess.run([str(part) for part in command], stdout=out, stderr=subprocess.STDOUT, check=False).returncode
+    errors = godot_errors(log.read_text(errors="replace"))
+    if status != 0 or errors:
+        print("\n".join(errors[:20]), file=sys.stderr)
+        sys.exit(f"{name} failed (exit {status}, {len(errors)} errors), see {log.relative_to(ROOT)}")
 
 
 def download(url: str, target: Path) -> None:
@@ -142,7 +167,7 @@ def fetch_templates() -> None:
 def build_project() -> None:
     """Compiles the C# (the analyzers run as part of it), then lets Godot import the assets."""
     run([dotnet(), "build", "--nologo", "-v", "quiet", ROOT / "ThisScalpelIsMine.csproj"])
-    subprocess.run([GODOT, "--headless", "--path", ROOT, "--import"], capture_output=True, check=False)
+    run_godot("import", [GODOT, "--headless", "--path", ROOT, "--import"])
 
 
 def setup() -> None:
@@ -171,10 +196,6 @@ def need_venv() -> None:
 # than half of it, gets SLOW_TEST_TIMEOUT. A test that hangs is stopped when its suite's session runs out.
 TEST_TIMEOUT = 60
 SLOW_TEST_TIMEOUT = 360
-# A test fails on any of these in its Godot output, as well as on its own assertions. Engine leak reports printed while
-# quitting are noise.
-ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
-NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 # The view key frames are rendered at, under a virtual display when there's no real one.
 KEY_FRAME_ARGS = ["--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--resolution", "1280x720"]
 
@@ -388,9 +409,7 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> list[str]:
         if float(case.get("time", "0")) > timeout:
             found.append(f"[ERROR] {name} took {float(case.get('time', '0')):.0f} s, longer than {timeout} s.")
     # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
-    output = "\n".join([*(element.text or "" for element in tree.iter("system-out")), log.read_text(errors="replace")])
-    errors = [line.strip() for line in output.splitlines() if ERRORS.search(line) and not NOISE.search(line)]
-    found += dict.fromkeys(errors)
+    found += godot_errors("\n".join([*(element.text or "" for element in tree.iter("system-out")), log.read_text(errors="replace")]))
     if status != 0 and not found:
         found.append(f"[ERROR] Test process exited with status {status}.")
     return found
@@ -403,7 +422,8 @@ def run_suite(suite: Suite, options: TestOptions) -> Outcome:
         base += "&TestCategory!=broken"
     cases = [case for case in suite.cases if options.run_broken or not case.broken]
     names = [name for case in cases for name in case.names() if options.case in name]
-    log = BUILD / "test-logs" / f"{suite.name}.log"
+    # Isolated cases each write a log of their own, named after the suite.
+    log = BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
     if not names:
         return Outcome(suite, log, [])
     if not suite.isolate_cases:
@@ -429,7 +449,11 @@ def report(outcome: Outcome) -> str:
 
 
 def test(arguments: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="./build.py test", description="Runs GdUnit4 test suites under tests/.")
+    parser = argparse.ArgumentParser(
+        prog="./build.py test",
+        description="Runs GdUnit4 test suites under tests/. A suite fails on a failed case, a case over its time limit, "
+        "no cases run, or any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output. Exits non-zero on any failure.",
+    )
     parser.add_argument("--all", action="store_true", help="every suite; without it or --tag, the smoke tag")
     parser.add_argument("--tag", action="append", default=[], help="suites with all of these categories")
     parser.add_argument("--skip", action="append", default=[], help="leave out suites with this category")
@@ -506,26 +530,14 @@ def lint() -> None:
         run([VENV / "bin" / tool[0], *tool[1:], "tools", "build.py"], cwd=ROOT)
 
 
-def export() -> int:
-    """Exports the game, then starts it once. Godot reports a broken export (no solution file, a failed .NET publish)
-    only as errors in its output and still exits with 0, so both steps are judged by their output too."""
+def export() -> None:
+    """Exports the game, then starts it once. A broken export (no solution file next to the project, a failed .NET
+    publish) shows only as errors in Godot's output, and a game that can't load its code crashes on start."""
     fetch_templates()
     OUTPUT.unlink(missing_ok=True)
-    steps = {
-        "export": [GODOT, "--headless", "--path", ROOT, "--export-release", "Linux", OUTPUT],
-        "export-launch": [OUTPUT, "--headless", "--quit-after", "120"],
-    }
-    for name, command in steps.items():
-        log = BUILD / f"{name}.log"
-        result = subprocess.run([str(part) for part in command], capture_output=True, text=True, check=False)
-        log.write_text(result.stdout + result.stderr)
-        errors = [line for line in log.read_text().splitlines() if ERRORS.search(line) and not NOISE.search(line)]
-        if result.returncode != 0 or errors:
-            print("\n".join(errors[:20]))
-            print(f"{name} failed (exit {result.returncode}), see {log}")
-            return 1
+    run_godot("export", [GODOT, "--headless", "--path", ROOT, "--export-release", "Linux", OUTPUT])
+    run_godot("export-launch", [OUTPUT, "--headless", "--quit-after", "120"])
     print(f"Done: {OUTPUT}")
-    return 0
 
 
 def main() -> int:
@@ -558,14 +570,16 @@ def main() -> int:
         # the default renderer instead (needs Vulkan: lavapipe works, mesa-vulkan-drivers).
         renderer = os.environ.get("RENDERER", "gl_compatibility")
         extra = os.environ.get("SHOTS_ARGS", "").split()
-        run(["xvfb-run", "-a", GODOT, "--path", ROOT, "--rendering-method", renderer, "res://tests/Support/Screenshot.tscn",
-             "--", f"--scenario={scenario}", f"--out={out}", *extra])  # fmt: skip
+        # Shaders compile only when something is drawn: this is where their errors show up.
+        # No sound: a machine without an audio device would report it as an error.
+        run_godot("shots", ["xvfb-run", "-a", GODOT, "--path", ROOT, "--rendering-method", renderer, "--audio-driver", "Dummy",
+                            "res://tests/Support/Screenshot.tscn", "--", f"--scenario={scenario}", f"--out={out}", *extra])  # fmt: skip
         print(f"Screenshots in {out}")
     elif command == "build":
         setup()
         if os.environ.get("SKIP_TESTS") != "1" and test(["--all"]) != 0:
             return 1
-        return export()
+        export()
     elif command == "editor":
         fetch_godot()
         dotnet()

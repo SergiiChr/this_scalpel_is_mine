@@ -22,7 +22,7 @@ public partial class FitGrips : Node3D
     private const float MaxCurl = 1.3f;
     private static readonly int FingerCount = SurgeonHand.Fingers.Count;
 
-    public override void _Ready() => _ = Fit();
+    public override void _Ready() => this.Start(Fit);
 
     private async Task Fit()
     {

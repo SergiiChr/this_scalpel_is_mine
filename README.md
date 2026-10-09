@@ -96,13 +96,13 @@ or hold a tool). Everything can be rebound in **Settings**.
 | Use the active hand's tool: lower it onto its spot and work it (pinch / let go, strike, tighten, place graft, charge and shock) | Hold LMB |
 | Effort level 0-3: cut depth, stitch tension, heat, saw speed, suction, gauze pressure, syringe plunger | Mouse wheel |
 | Pick up / put down the highlighted tool (near a partner's empty hand: pass the tool) | RMB |
-| Zoom, three steps | Shift |
+| Zoom, two steps | Shift |
 | Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
 | Lift hand over hands and tall tools; pull slowly on what it holds | Hold Alt |
 | Hold the tool up to look at it (read a syringe) | Hold X |
 | Crouch (reach the floor, step over the IV line) | Hold Ctrl |
 | Hold breath (steady hands) | Hold Space |
-| Tilt / rotate tool | R, T / C, V |
+| Turn tool with the mouse / roll it | Hold MMB / C, V |
 | Drink / wear | H |
 | Belt slots | 1-4 |
 | Move | WASD |
