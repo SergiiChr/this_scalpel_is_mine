@@ -31,8 +31,8 @@ public partial class Room : Node3D
     public const float TableFoot = -1.3f;
     /// <summary>Table top end along x where the head lies.</summary>
     public const float TableHead = 1f;
-    /// <summary>The patient card hangs off the middle of the table's head end, facing out: in view from either side
-    /// of the table, where the surgeons start.</summary>
+    /// <summary>The patient card hangs facing out from the middle of the table's head rail (HEAD_RAIL_X in
+    /// tools/assetgen/props.py): in view from either side of the table, where the surgeons start.</summary>
     private const float CardHook = TableHead + 0.04f;
     /// <summary>Between items the nurse brings together, across the delivery tray (meters): five fit inside its rim.
     /// </summary>
