@@ -8,10 +8,10 @@ namespace Scalpel.Tests.Surgeons;
 [GodotArgs("--fixed-fps", "60")]
 public class SurgeonMovementTest
 {
-    /// <summary>A surgery with a steady surgeon, its key frames (when wanted) going to surgeon_movement.</summary>
     private SurgeryDriver? _driver;
     private KeyFrames? _frames;
 
+    /// <summary>A surgery with a steady surgeon, its key frames (when wanted) going to surgeon_movement.</summary>
     private async Task<SurgeryDriver> Begin(string scenario = "appendectomy")
     {
         RenderingServer.RenderLoopEnabled = false;

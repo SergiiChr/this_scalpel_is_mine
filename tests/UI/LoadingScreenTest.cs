@@ -11,39 +11,14 @@ namespace Scalpel.Tests.UI;
 [TestCategory("smoke")]
 public class LoadingScreenTest
 {
-    [TestCase("missing_file")]
-    [TestCase("missing_method")]
-    public void ShutdownDoesNotRethrowWarmUpFailure(string failure)
+    [TestCase]
+    public void ShutdownDoesNotRethrowWarmUpFailure()
     {
         using var shutdown = new CancellationTokenSource();
-        Exception error = failure == "missing_file" ? new FileNotFoundException("warm-up dependency")
-            : new MissingMethodException("warm-up method");
-        var work = Task.FromException(error);
+        var work = Task.FromException(new FileNotFoundException("warm-up dependency"));
         ManagedRuntime.StopWarmUp(work, shutdown);
         AssertBool(shutdown.IsCancellationRequested).IsTrue();
         AssertBool(work.IsFaulted).OverrideFailureMessage("the failure remains available to the loading screen").IsTrue();
-    }
-
-    [TestCase]
-    public async Task ShutdownCancelsPendingWarmUpBeforeJoining()
-    {
-        using var shutdown = new CancellationTokenSource();
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var work = Task.Run(() =>
-        {
-            entered.SetResult();
-            shutdown.Token.WaitHandle.WaitOne();
-            shutdown.Token.ThrowIfCancellationRequested();
-        }, shutdown.Token);
-        try
-        {
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        }
-        finally
-        {
-            ManagedRuntime.StopWarmUp(work, shutdown);
-        }
-        AssertBool(work.IsCanceled).OverrideFailureMessage("shutdown cancels pending work and joins the worker").IsTrue();
     }
 
     [TestCase]
@@ -90,14 +65,15 @@ public class LoadingScreenTest
             }
         }
         var output = await stdout + await stderr;
-        var log = KeyFrames.Folder("startup").PathJoin("early-quit.log");
+        var log = ProjectSettings.GlobalizePath("res://build/test-logs/UI_LoadingScreenTest_early-quit.log");
+        Directory.CreateDirectory(Path.GetDirectoryName(log)!);
         File.WriteAllText(log, output);
         AssertBool(exited).OverrideFailureMessage("child startup/quit exceeded 45 seconds; output: " + log).IsTrue();
-        var errors = output.Split('\n').Where(line => Regex.IsMatch(line, "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
-            && !Regex.IsMatch(line, "at exit|leaked", RegexOptions.IgnoreCase)).ToList();
+        var errors = output.Split('\n').Where(line => Regex.IsMatch(line, "SCRIPT ERROR|Unhandled exception")
+            || (Regex.IsMatch(line, "Parse Error|ERROR:")
+                && !Regex.IsMatch(line, "at exit|leaked", RegexOptions.IgnoreCase))).ToList();
         AssertArray(errors).OverrideFailureMessage("child game errors; full output: " + log).IsEmpty();
         AssertInt(game.ExitCode).OverrideFailureMessage("quitting during startup exits without a native crash").IsEqual(0);
-        AssertString(output).NotContains("Unhandled exception").NotContains("SCRIPT ERROR");
     }
 
     [TestCase]

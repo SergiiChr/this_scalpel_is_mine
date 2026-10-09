@@ -18,7 +18,8 @@ public class HudTest
             // A fresh HUD has not had a process frame: setup itself must build the rows.
             var hud = AutoFree(new Hud())!;
             surgery.AddChild(hud);
-            hud.SetProcess(false);
+            // Keep the setup-only HUD out of processing and input; it is freed with its surgery.
+            hud.ProcessMode = Node.ProcessModeEnum.Disabled;
             hud.Setup(surgery);
             var panel = hud.FindChildren("*", "", true, false).OfType<ObjectivesPanel>().Single();
             AssertInt(panel.GetChildCount()).OverrideFailureMessage("setup creates objective rows and score before any HUD frame")

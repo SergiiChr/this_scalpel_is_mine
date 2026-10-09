@@ -93,8 +93,7 @@ public partial class Hud : CanvasLayer
         BuildGauges();
         BuildControlsHint();
         BuildShop();
-        _objectives.Refresh(surgery.Status);
-        _objectives.Visible = Settings.Debug;
+        UpdateObjectives();
     }
 
     public void Begin()

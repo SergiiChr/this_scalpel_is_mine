@@ -74,9 +74,11 @@ public partial class ManagedRuntime : Node
         List<Action> work =
         [
             .. GameMethods(cancellation).Select(method => (Action)(() => Compile(method))),
-            .. Referenced(module, 0x0A000000, cancellation).Concat(Referenced(module, 0x2B000000, cancellation)).OfType<MethodBase>()
+            .. Referenced(module, 0x0A000000, cancellation)
+                .Concat(Referenced(module, 0x2B000000, cancellation)).OfType<MethodBase>()
                 .Select(method => (Action)(() => Compile(method))),
-            .. EngineTypes(module, cancellation).Select(type => (Action)(() => RuntimeHelpers.RunClassConstructor(type.TypeHandle))),
+            .. EngineTypes(module, cancellation)
+                .Select(type => (Action)(() => RuntimeHelpers.RunClassConstructor(type.TypeHandle))),
         ];
         Volatile.Write(ref _total, Math.Max(work.Count, 1));
         foreach (var step in work)
