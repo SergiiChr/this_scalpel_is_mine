@@ -2,7 +2,7 @@ namespace Scalpel.Tests.Patients;
 
 /// <summary>
 /// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, and a vessel
-/// inside the opening wells up where it is, on top of the blood pooled in the cavity once that covers it. With key
+/// inside an incision wells up where it is, on top of the blood pooled in the cavity once that covers it. With key
 /// frames review the puddle on the tiny cut and the dome standing over the vessel, above the pool.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -25,8 +25,9 @@ public class BleedSourcesTest
             .OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself").IsGreater(0.5f);
         await driver.Capture("tiny_cut");
 
-        SurgeryState.SiteIsOpenedWide(patient);
         var at = new Vector2(0.5f, 0.62f);
+        SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
+        await Frames.Seconds(1f);
         AssertBool(body.Tissue.IsOpen(at)).OverrideFailureMessage("the vessel lies in the opening").IsTrue();
         var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
         await Frames.Seconds(1f);
