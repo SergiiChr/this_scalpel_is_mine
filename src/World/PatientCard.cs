@@ -104,15 +104,19 @@ public partial class PatientCard : Node3D
         return model;
     }
 
-    /// <summary>A surgeon who left took their copy along: the card hangs back on the hook so it isn't lost for the rest.
-    /// </summary>
+    /// <summary>A surgeon who left with the card out takes it along: it hangs back on the hook so it isn't lost for the
+    /// rest. One they'd put back is already there.</summary>
     private void ForgetLeavers(Surgery surgery)
     {
         foreach (var peer in _copies.Keys.Where(peer => !surgery.Surgeons.ContainsKey(peer)).ToList())
         {
-            _copies[peer].Model.QueueFree();
+            var leaver = _copies[peer];
+            leaver.Model.QueueFree();
             _copies.Remove(peer);
-            OnHook = true;
+            if (leaver.Travel > 0f)
+            {
+                OnHook = true;
+            }
         }
     }
 }

@@ -97,10 +97,7 @@ public partial class SyringeBench : Node
         await SurgeryDriver.PlayerPutsCardBack(Surgery);
         if (withPartner)
         {
-            Net.Instance.Roster[2] = new LobbyPlayer("Partner", ordinary, Ready: true);
-            Partner = Surgery.SpawnSurgeon(2, 1);
-            // Joined after the start: no card of their own to read.
-            Partner.ReadingCard = false;
+            Partner = SurgeryState.PartnerIsAtTheTable(Surgery);
             PlacePartner(PartnerPark, 0f);
         }
         var patient = Surgery.Patient;

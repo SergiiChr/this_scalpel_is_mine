@@ -105,7 +105,7 @@ public partial class Room : Node3D
                 ["sanitizer"] = Mathf.Pi,
             }),
         ["ambulance"] = new(
-            new(4.2f, 2.1f, 2.3f), [new(0f, 0f, 0.62f), new(-0.5f, 0f, -0.62f)], new(-1.72f, 0f, 0.55f),
+            new(4.2f, 2.1f, 2.3f), [new(0f, 0f, 0.62f), new(0f, 0f, -0.62f)], new(-1.72f, 0f, 0.55f),
             new Dictionary<string, Vector3>
             {
                 ["manual"] = new(1.8f, 0f, -0.85f),

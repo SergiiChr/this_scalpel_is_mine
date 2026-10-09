@@ -23,6 +23,16 @@ public static class SurgeryState
         public void Dispose() => Settings.Debug = _was;
     }
 
+    /// <summary>A second, remote surgeon (peer 2) standing at the second spawn, as if they'd joined and put their card
+    /// back: nothing streams their state, so they stay as placed.</summary>
+    public static Surgeon PartnerIsAtTheTable(Surgery surgery)
+    {
+        Net.Instance.Roster[2] = new LobbyPlayer("Partner", [new QuirkRoll("normal_dude", "")], Ready: true);
+        var partner = surgery.SpawnSurgeon(2, 1);
+        partner.ReadingCard = false;
+        return partner;
+    }
+
     /// <summary>Tray spots something slid away from, per surgery: they aren't offered again.</summary>
     private static readonly ConditionalWeakTable<Surgery, List<Vector3>> BadTraySpots = [];
 

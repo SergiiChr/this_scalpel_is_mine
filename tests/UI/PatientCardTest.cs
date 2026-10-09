@@ -52,9 +52,6 @@ public class PatientCardTest
         SurgeryDriver.Tap(InputActions.Pause);
         await PlayerInput.Delivered();
         AssertBool(surgery.Hud.CardOpen || me.InputLocked).OverrideFailureMessage("Esc puts the card down").IsFalse();
-        // The start is the guide to where the card lives: the hook is in view, so the card is seen all the way there.
-        AssertBool(me.Camera.IsPositionInFrustum(card.HookPaper))
-            .OverrideFailureMessage("the hook is in view while the card travels to it").IsTrue();
         await Frames.Until(() => card.TravelOf(me.PeerId) <= 0.5f, PatientCard.TravelSeconds);
         AssertBool(card.PaperOf(me.PeerId) is { } midway && me.Camera.IsPositionInFrustum(midway))
             .OverrideFailureMessage("half way the card is in view").IsTrue();
@@ -90,6 +87,45 @@ public class PatientCardTest
         }
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;
+    }
+
+    /// <summary>The start is the guide to where the card lives: from wherever a surgeon starts, the hook is in view, so
+    /// the card is seen all the way there.</summary>
+    [TestCase("appendectomy")]
+    [TestCase("sidewalk_stab")]
+    [TestCase("ambulance_bullet")]
+    public async Task HookIsInViewFromEverySpawn(string scenario)
+    {
+        var driver = SurgeryDriver.Create();
+        await driver.Start(scenario, readingCard: true);
+        var partner = SurgeryState.PartnerIsAtTheTable(driver.Surgery);
+        await Frames.Physics(2);
+        var hook = driver.Surgery.Room.Card.HookPaper;
+        foreach (var surgeon in (Surgeon[])[driver.Me, partner])
+        {
+            AssertBool(surgeon.Camera.IsPositionInFrustum(hook))
+                .OverrideFailureMessage($"{scenario}: the hook is in view from spawn {surgeon.PeerId}").IsTrue();
+        }
+        await driver.Stop();
+    }
+
+    /// <summary>A partner who leaves without the card out takes nothing along: the card stays in the reader's hands and
+    /// doesn't turn up on the hook as well.</summary>
+    [TestCase]
+    public async Task PartnerLeavingDoesNotDuplicateTheCard()
+    {
+        var driver = SurgeryDriver.Create();
+        await driver.Start("appendectomy");
+        var surgery = driver.Surgery;
+        var card = surgery.Room.Card;
+        SurgeryState.PartnerIsAtTheTable(surgery);
+        AssertBool(await driver.PlayerInteracts("Read the patient card")).IsTrue();
+        AssertBool(await Frames.Until(() => !card.OnHook, 0.1f)).OverrideFailureMessage("the reader has the card").IsTrue();
+        surgery.Multiplayer.EmitSignal(MultiplayerApi.SignalName.PeerDisconnected, 2L);
+        await Frames.Process(3);
+        AssertBool(surgery.Surgeons.ContainsKey(2)).OverrideFailureMessage("the partner left").IsFalse();
+        AssertBool(card.OnHook).OverrideFailureMessage("no second card appears on the hook").IsFalse();
+        await driver.Stop();
     }
 
     /// <summary>The card's paper is right in front of the eyes, facing them.</summary>
