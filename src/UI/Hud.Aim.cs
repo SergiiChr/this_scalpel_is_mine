@@ -145,10 +145,7 @@ public partial class Hud
         _dotLabel.Text = IsInstanceValid(me.Hovered) ? me.Hovered!.Label() : "";
         _dotLabel.Position = at + new Vector2(10f, -10f);
         var levels = LevelText(me);
-        if (_levels.Text != levels)
-        {
-            _levels.Text = levels;
-        }
+        _levels.Text = levels;
         _levels.Visible = levels.Length > 0;
         _levels.Position = at + new Vector2(14f, 12f);
     }

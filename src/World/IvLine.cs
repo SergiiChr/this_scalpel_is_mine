@@ -105,6 +105,6 @@ public partial class IvLine : Node3D
             var t = (float)i / (Samples - 1);
             _points[i] = a.Lerp(control, t).Lerp(control.Lerp(b, t), t);
         }
-        _mesh.Mesh = Shapes.Tube(_points, Radius, Radius, 6);
+        _mesh.Mesh = Shapes.Tube(_points, Radius, Radius, 6, _mesh.Mesh as ArrayMesh);
     }
 }

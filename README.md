@@ -35,7 +35,7 @@ and the visual tests). Any C# IDE works; the repository has Rider and VS Code te
 ./build.py setup    # only Godot, the .NET SDK, the build and the import, no sudo (enough to test and take screenshots)
 ./build.py editor   # open the Godot editor
 ./build.py test     # the smoke tests; --all for the full regression
-./build.py build    # run the tests, then export build/ThisScalpelIsMine.x86_64
+./build.py build    # run the tests, export build/ThisScalpelIsMine.x86_64 and start it once
 ./build.py assets   # regenerate models and sounds
 ./build.py lint     # C# analyzers and dotnet format, ruff and strict mypy on the Python tools
 ```

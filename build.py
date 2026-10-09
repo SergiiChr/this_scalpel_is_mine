@@ -9,7 +9,8 @@
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
-  ./build.py build     Run the tests, then export a standalone executable to build/ThisScalpelIsMine.x86_64.
+  ./build.py build     Run the tests, export a standalone executable to build/ThisScalpelIsMine.x86_64 and start it
+                       once headless; errors in either fail the build.
                        SKIP_TESTS=1 exports without testing.
   ./build.py editor    Open the project in the Godot editor.
   ./build.py assets    Regenerate models and sounds (needs ./build.py dev first).
@@ -39,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 GODOT_VERSION = "4.7.2"
+# The SDK installed when the system has none, and the runtime the project targets (TargetFramework in the .csproj).
 DOTNET_CHANNEL = "10.0"
 PYTHON_VERSION = "3.11"
 ROOT = Path(__file__).resolve().parent
@@ -91,11 +93,13 @@ def require(*pairs: str) -> None:
 
 @functools.cache
 def dotnet() -> str:
-    """The dotnet command: the system's if it has an SDK this new (the analyzers need it), else one installed into
-    .tools without sudo."""
+    """The dotnet command: the system's if it has an SDK this new (the analyzers need it) and the runtime the project
+    targets (the test host runs on it), else one installed into .tools without sudo."""
     if shutil.which("dotnet"):
-        sdks = subprocess.run(["dotnet", "--list-sdks"], capture_output=True, text=True, check=False).stdout
-        if any(int(line.split(".")[0]) >= int(DOTNET_CHANNEL.split(".")[0]) for line in sdks.splitlines() if line[:1].isdigit()):
+        listed = [subprocess.run(["dotnet", option], capture_output=True, text=True, check=False).stdout for option in ("--list-sdks", "--list-runtimes")]
+        major = int(DOTNET_CHANNEL.split(".")[0])
+        sdk = any(int(line.split(".")[0]) >= major for line in listed[0].splitlines() if line[:1].isdigit())
+        if sdk and f"Microsoft.NETCore.App {major}." in listed[1]:
             return "dotnet"
     local = DOTNET_LOCAL / "dotnet"
     if not local.exists():
@@ -383,8 +387,10 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> list[str]:
             found.append(f"[Failed] {name}: {failure.get('message', '')}")
         if float(case.get("time", "0")) > timeout:
             found.append(f"[ERROR] {name} took {float(case.get('time', '0')):.0f} s, longer than {timeout} s.")
-    output = "\n".join(element.text or "" for element in tree.iter("system-out"))
-    found += [line.strip() for line in output.splitlines() if ERRORS.search(line) and not NOISE.search(line)]
+    # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
+    output = "\n".join([*(element.text or "" for element in tree.iter("system-out")), log.read_text(errors="replace")])
+    errors = [line.strip() for line in output.splitlines() if ERRORS.search(line) and not NOISE.search(line)]
+    found += dict.fromkeys(errors)
     if status != 0 and not found:
         found.append(f"[ERROR] Test process exited with status {status}.")
     return found
@@ -493,9 +499,33 @@ def test(arguments: list[str]) -> int:
 def lint() -> None:
     need_venv()
     run([dotnet(), "build", "--nologo", "-v", "quiet", ROOT / "ThisScalpelIsMine.csproj"])
+    # Exported games build without the tests: their code must not lean on anything only the tests bring.
+    run([dotnet(), "build", "--nologo", "-v", "quiet", "-c", "ExportRelease", ROOT / "ThisScalpelIsMine.csproj"])
     run([dotnet(), "format", ROOT / "ThisScalpelIsMine.csproj", "--verify-no-changes"])
     for tool in (["ruff", "check"], ["ruff", "format", "--check"], ["mypy"]):
         run([VENV / "bin" / tool[0], *tool[1:], "tools", "build.py"], cwd=ROOT)
+
+
+def export() -> int:
+    """Exports the game, then starts it once. Godot reports a broken export (no solution file, a failed .NET publish)
+    only as errors in its output and still exits with 0, so both steps are judged by their output too."""
+    fetch_templates()
+    OUTPUT.unlink(missing_ok=True)
+    steps = {
+        "export": [GODOT, "--headless", "--path", ROOT, "--export-release", "Linux", OUTPUT],
+        "export-launch": [OUTPUT, "--headless", "--quit-after", "120"],
+    }
+    for name, command in steps.items():
+        log = BUILD / f"{name}.log"
+        result = subprocess.run([str(part) for part in command], capture_output=True, text=True, check=False)
+        log.write_text(result.stdout + result.stderr)
+        errors = [line for line in log.read_text().splitlines() if ERRORS.search(line) and not NOISE.search(line)]
+        if result.returncode != 0 or errors:
+            print("\n".join(errors[:20]))
+            print(f"{name} failed (exit {result.returncode}), see {log}")
+            return 1
+    print(f"Done: {OUTPUT}")
+    return 0
 
 
 def main() -> int:
@@ -535,10 +565,7 @@ def main() -> int:
         setup()
         if os.environ.get("SKIP_TESTS") != "1" and test(["--all"]) != 0:
             return 1
-        fetch_templates()
-        BUILD.mkdir(exist_ok=True)
-        run([GODOT, "--headless", "--path", ROOT, "--export-release", "Linux", OUTPUT])
-        print(f"Done: {OUTPUT}")
+        return export()
     elif command == "editor":
         fetch_godot()
         dotnet()

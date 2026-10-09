@@ -20,6 +20,8 @@ jobs:
           cache: pip
       # Analyzers run as part of the build and fail it on any warning.
       - run: dotnet build --nologo ThisScalpelIsMine.csproj
+      # Exported games build without the tests: their code must not lean on anything only the tests bring.
+      - run: dotnet build --nologo -c ExportRelease ThisScalpelIsMine.csproj
       - run: dotnet format ThisScalpelIsMine.csproj --verify-no-changes
       # bpy is left out: it's a large download and the lint and type checks don't need it.
       - run: pip install -r requirements.txt ruff==0.16.9 mypy==2.3.1

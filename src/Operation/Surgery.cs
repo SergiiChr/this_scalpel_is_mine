@@ -505,6 +505,8 @@ public partial class Surgery : Node3D
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void Start()
     {
+        // Setting up the room left plenty of garbage: collected now, it doesn't stall the first minute of play.
+        ManagedRuntime.CollectNow();
         Running = true;
         Hud.Begin();
     }

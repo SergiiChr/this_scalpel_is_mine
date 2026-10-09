@@ -1,0 +1,7 @@
+<Project>
+  <!-- Exports restore without the test packages (see ThisScalpelIsMine.csproj). NuGet keeps one restore result per
+       folder, whatever the configuration: shared, an export build would leave the next test run without GdUnit4. -->
+  <PropertyGroup Condition="$(Configuration.StartsWith('Export'))">
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)export/</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>

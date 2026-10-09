@@ -44,26 +44,56 @@ public static class Shapes
     /// A closed tube with an elliptic cross section (width across the path, height up) along a path (local space; the
     /// cross section keeps +Y as up where it can). Fine tubes can use fewer sides.
     /// </summary>
-    public static ArrayMesh Tube(IReadOnlyList<Vector3> path, float width, float height, int sides = 12) =>
-        Tubes([path], width, height, sides);
+    public static ArrayMesh Tube(IReadOnlyList<Vector3> path, float width, float height, int sides = 12,
+        ArrayMesh? into = null) =>
+        Tubes([path], width, height, sides, into);
 
     /// <summary>
     /// Several disconnected tubes in one mesh. A routed suture has multiple visible spans, but rebuilding and
-    /// submitting one fine mesh is substantially cheaper than a SurfaceTool commit and MeshInstance3D for every span.
+    /// submitting one fine mesh is substantially cheaper than a mesh and MeshInstance3D for every span.
+    /// <paramref name="into"/>: a mesh to refill instead of making a new one, for tubes rebuilt while the game runs.
+    /// A replaced mesh keeps its GPU buffers until the garbage collector gets to its wrapper.
     /// </summary>
-    public static ArrayMesh Tubes(IEnumerable<IReadOnlyList<Vector3>> paths, float width, float height, int sides = 12)
+    public static ArrayMesh Tubes(IEnumerable<IReadOnlyList<Vector3>> paths, float width, float height, int sides = 12,
+        ArrayMesh? into = null)
     {
-        var surface = new SurfaceTool();
-        surface.Begin(Mesh.PrimitiveType.Triangles);
+        var vertices = new List<Vector3>();
         foreach (var path in paths)
         {
-            AppendTube(surface, path, width, height, sides);
+            AppendTube(vertices, path, width, height, sides);
         }
-        surface.GenerateNormals();
-        return surface.Commit();
+        var mesh = into ?? new ArrayMesh();
+        mesh.ClearSurfaces();
+        if (vertices.Count == 0)
+        {
+            return mesh;
+        }
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+        arrays[(int)Mesh.ArrayType.Normal] = SmoothNormals(vertices);
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return mesh;
     }
 
-    private static void AppendTube(SurfaceTool surface, IReadOnlyList<Vector3> path, float width, float height, int sides)
+    /// <summary>Per vertex, the sum of the face normals of every triangle with a corner at the same point, normalized:
+    /// what SurfaceTool.GenerateNormals() gives, without a call into the engine per vertex.</summary>
+    private static Vector3[] SmoothNormals(List<Vector3> vertices)
+    {
+        var sums = new Dictionary<Vector3, Vector3>();
+        for (var i = 0; i < vertices.Count; i += 3)
+        {
+            var normal = new Plane(vertices[i], vertices[i + 1], vertices[i + 2]).Normal;
+            for (var j = i; j < i + 3; j++)
+            {
+                sums[vertices[j]] = sums.GetValueOrDefault(vertices[j]) + normal;
+            }
+        }
+        return [.. vertices.Select(vertex => sums[vertex].Normalized())];
+    }
+
+    private static void AppendTube(List<Vector3> vertices, IReadOnlyList<Vector3> path, float width, float height,
+        int sides)
     {
         var rings = new Vector3[path.Count][];
         for (var i = 0; i < path.Count; i++)
@@ -88,31 +118,16 @@ public static class Shapes
             {
                 var n = (k + 1) % sides;
                 // Clockwise seen from outside: Godot's front faces.
-                AddVertices(surface, rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]);
+                vertices.AddRange([rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]]);
             }
         }
-        foreach (var end in new[] { 0, rings.Length - 1 })
+        foreach (var end in (int[])[0, rings.Length - 1])
         {
             for (var k = 0; k < sides; k++)
             {
                 var next = rings[end][(k + 1) % sides];
-                if (end == 0)
-                {
-                    AddVertices(surface, path[end], next, rings[end][k]);
-                }
-                else
-                {
-                    AddVertices(surface, rings[end][k], next, path[end]);
-                }
+                vertices.AddRange(end == 0 ? [path[end], next, rings[end][k]] : [rings[end][k], next, path[end]]);
             }
-        }
-    }
-
-    private static void AddVertices(SurfaceTool surface, params Vector3[] vertices)
-    {
-        foreach (var vertex in vertices)
-        {
-            surface.AddVertex(vertex);
         }
     }
 }
