@@ -39,7 +39,9 @@ public class BleedSourcesTest
         AssertString(Wells(driver, vessel)).OverrideFailureMessage("covered by the pool, it still wells up where it is")
             .IsEqual("at the vessel");
         var well = body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(at));
-        AssertFloat(body.Site.ToLocal(well).Y).OverrideFailureMessage("on the pool's surface").IsGreaterEqual(body.CavityPoolHeight);
+        // Placed on the frame before, while the pool keeps rising.
+        AssertFloat(body.Site.ToLocal(well).Y).OverrideFailureMessage($"on the pool's surface ({body.CavityPoolHeight:0.0000} m)")
+            .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
         await driver.Capture("vessel_under_pool");
         await session.Finish();
     }
