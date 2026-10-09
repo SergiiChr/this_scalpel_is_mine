@@ -92,7 +92,6 @@ overview, the data formats designers edit and the design decisions.
 - Patient vitals are only on the bedside monitor, never on the player's screen.
   The monitor is laid out like a real one: sweeping ECG, pleth and breathing traces, numbers in their trace's color,
   alarms in the top bar and lab results along the bottom.
-- The patient monitor beep is generated in code and its pitch follows SpO2, like a real pulse oximeter.
 
 ## Data formats
 
@@ -204,13 +203,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 ### In this draft
 
-- Two-hand control, one active at a time, idle hand frozen mid-action. Effort levels. Holding MMB the mouse turns the
-  held tool about the wrist (tilt up and down, turn left and right, `Surgeon.AimTool()`): the wrist and forearm stay
-  put, the tip follows the mouse and rises off what it rested on, and settles back down once MMB is let go. C/V roll
-  it about its length.
+- Two-hand control, one active at a time, idle hand frozen mid-action (controls: see Controls rework).
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
-- Cuts with depth and speed (clean vs jagged) through skin, fat and muscle. Soft tissue sim: cuts gape, retraction widens, overpull tears.
+- Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
 - A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
   past the end of an opening it's already in. Over an opening it reaches down only at full depth: there it grates on a
   bone (which hurts through a local block) but stops short of an organ; it nicks an organ only by touching it.
@@ -229,7 +225,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Organs you push or hold aside, targets you free by cutting, sawing, slow pulling or suction. Deep cuts reach bone.
 - Dropped tools: floor makes them dirty, dropping into the cavity cuts something, heavy tools break fragile bones.
 - Sterility tracking into the post-op report (infection, amputation).
-- Nurse orders in batches of up to five with a cooldown, blood panels with narrow/fast vs full/slow choices.
+- Nurse orders (see Starter kit and ordering), blood panels with narrow/fast vs full/slow choices.
 - Turning the patient as a shared quick time event, all surgeons on one side.
 - Personal gauges: stress (pass out), sickness (vomit), breath (steady hands), sweat (slippery gloves, drips).
 - Belt inventory, personal quirk items, drinking and wearing items, smoke breaks at the smoking spot.
@@ -287,7 +283,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
-  The Rotate keys roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
+  The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
+  Holding MMB the mouse turns the held tool about the wrist (tilt up and down, turn left and right,
+  `Surgeon.AimTool()`): the wrist and forearm stay put, the tip follows the mouse and rises off what it rested on, and
+  settles back down once MMB is let go.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
   suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
@@ -525,7 +524,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   - Tools (`ToolAnimator.cs`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
 - **Sounds**: 44 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
-  surgeon coughs and moans, patient groans/screams/breathing). The monitor beep is generated live.
+  surgeon coughs and moans, patient groans/screams/breathing). The monitor beep is generated live, its pitch following
+  SpO2 like a real pulse oximeter.
   Patient speech is subtitles; optional recorded lines can be dropped into `assets/audio/voice/`.
 
 ## Known limits of this iteration

@@ -24,7 +24,7 @@ public abstract partial class NetSession : Node
         }
         Role = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--role="))?.Split('=')[1] ?? "host";
         // Not from inside _Ready: the root is still adding this node, and hosting changes the scene under it.
-        Callable.From(() => { _ = Drive(); }).CallDeferred();
+        Callable.From(() => this.Start(Drive)).CallDeferred();
     }
 
     protected abstract Task Drive();

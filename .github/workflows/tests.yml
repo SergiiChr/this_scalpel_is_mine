@@ -1,8 +1,10 @@
 # The GdUnit4 suites under tests/ are the executable source of truth. Smoke gates full regression and export.
 name: Tests
 
+# Pushes to main only: a branch with a pull request is tested once, by the pull_request run.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -29,28 +31,33 @@ jobs:
       - run: ruff format --check tools build.py
       - run: mypy tools build.py
 
-  game:
-    name: Smoke, regression, visuals and export
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - run: ./build.py test --ci-run
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: |
+            build/test-logs
+            build/test-results
+          if-no-files-found: warn
+
+  regression:
+    name: Regression, visuals and export
+    needs: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-      # Godot and its export templates are large, keep them between runs.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            .tools
-            ~/.local/share/godot/export_templates
-            ~/.nuget/packages
-          key: godot-${{ hashFiles('build.py', 'ThisScalpelIsMine.csproj') }}
       - name: Install virtual display
         run: sudo apt-get update && sudo apt-get install -y xvfb
-      - run: ./build.py setup
-      - name: Smoke tests
-        run: ./build.py test --ci-run
+      - uses: ./.github/actions/setup-godot
       - name: Everything else, with key frames
         run: ./build.py test --all --skip smoke --jobs 2 --with-key-frames --ci-run
       # The smoke cases that take key frames, again with them on.
@@ -60,7 +67,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: regression-results
           path: |
             build/test-logs
             build/test-results

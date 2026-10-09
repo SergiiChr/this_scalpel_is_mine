@@ -10,7 +10,7 @@ public partial class GripGallery : Node3D
     private static readonly Vector3 Eye = new(0f, 1.62f, 0f);
     private static readonly Vector3 HandAt = new(0.17f, 1.05f, -0.42f);
 
-    public override void _Ready() => _ = Render();
+    public override void _Ready() => this.Start(Render);
 
     private async Task Render()
     {
