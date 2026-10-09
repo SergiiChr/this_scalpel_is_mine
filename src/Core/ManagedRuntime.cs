@@ -17,6 +17,7 @@ namespace Scalpel.Core;
 public partial class ManagedRuntime : Node
 {
     private static Task _warmUp = Task.CompletedTask;
+    private readonly CancellationTokenSource _shutdown = new();
     private static int _done;
     private static int _total = 1;
 
@@ -32,12 +33,31 @@ public partial class ManagedRuntime : Node
         // decides how long the remaining pauses are, and .NET reads that only from the environment
         // (DOTNET_GCgen0size), never from the game's own runtime config.
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-        _warmUp = Task.Run(Prepare);
+        _warmUp = Task.Run(() => Prepare(_shutdown.Token), _shutdown.Token);
     }
 
     // Engine type constructors use native bindings. Finish the worker before Godot tears those bindings down,
     // including a quit during loading or a short headless test.
-    public override void _ExitTree() => _warmUp.GetAwaiter().GetResult();
+    public override void _ExitTree()
+    {
+        StopWarmUp(_warmUp, _shutdown);
+        _shutdown.Dispose();
+    }
+
+    /// <summary>Stop scheduling preparation, then join the worker before native bindings are torn down. A failed
+    /// warm-up is reported by the loading screen; quitting must not throw it a second time.</summary>
+    internal static void StopWarmUp(Task warmUp, CancellationTokenSource shutdown)
+    {
+        shutdown.Cancel();
+        try
+        {
+            warmUp.Wait();
+        }
+        catch (AggregateException)
+        {
+            // Cancellation and preparation failures do not prevent a clean shutdown.
+        }
+    }
 
     /// <summary>Collects all garbage while nothing moves yet (a surgery about to start): play starts with an empty
     /// young generation and no Godot wrappers waiting for their finalizers.</summary>
@@ -48,19 +68,20 @@ public partial class ManagedRuntime : Node
         GC.Collect();
     }
 
-    private static void Prepare()
+    private static void Prepare(CancellationToken cancellation)
     {
         var module = typeof(ManagedRuntime).Module;
         List<Action> work =
         [
-            .. GameMethods().Select(method => (Action)(() => Compile(method))),
-            .. Referenced(module, 0x0A000000).Concat(Referenced(module, 0x2B000000)).OfType<MethodBase>()
+            .. GameMethods(cancellation).Select(method => (Action)(() => Compile(method))),
+            .. Referenced(module, 0x0A000000, cancellation).Concat(Referenced(module, 0x2B000000, cancellation)).OfType<MethodBase>()
                 .Select(method => (Action)(() => Compile(method))),
-            .. EngineTypes(module).Select(type => (Action)(() => RuntimeHelpers.RunClassConstructor(type.TypeHandle))),
+            .. EngineTypes(module, cancellation).Select(type => (Action)(() => RuntimeHelpers.RunClassConstructor(type.TypeHandle))),
         ];
         Volatile.Write(ref _total, Math.Max(work.Count, 1));
         foreach (var step in work)
         {
+            cancellation.ThrowIfCancellationRequested();
             try
             {
                 step();
@@ -74,21 +95,26 @@ public partial class ManagedRuntime : Node
         }
     }
 
-    private static IEnumerable<MethodBase> GameMethods()
+    private static IEnumerable<MethodBase> GameMethods(CancellationToken cancellation)
     {
         const BindingFlags Declared = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
             | BindingFlags.Public | BindingFlags.NonPublic;
         return typeof(ManagedRuntime).Assembly.GetTypes().Where(type => !type.ContainsGenericParameters)
-            .SelectMany(type => type.GetMethods(Declared).Cast<MethodBase>().Concat(type.GetConstructors(Declared)));
+            .SelectMany(type =>
+            {
+                cancellation.ThrowIfCancellationRequested();
+                return type.GetMethods(Declared).Cast<MethodBase>().Concat(type.GetConstructors(Declared));
+            });
     }
 
     /// <summary>Every member the game's code refers to in another assembly (<paramref name="table"/>: member
     /// references) or every generic method it calls as instantiated (method specs). Ones that only make sense inside a
     /// generic method of the game's are left out.</summary>
-    private static IEnumerable<MemberInfo> Referenced(Module module, int table)
+    private static IEnumerable<MemberInfo> Referenced(Module module, int table, CancellationToken cancellation)
     {
         for (var row = 1; ; row++)
         {
+            cancellation.ThrowIfCancellationRequested();
             MemberInfo? member;
             try
             {
@@ -110,12 +136,13 @@ public partial class ManagedRuntime : Node
     /// <summary>The engine classes the game refers to, with the name tables nested in them. A server the game calls
     /// statically (PhysicsServer3D) does its work through an instance class (PhysicsServer3DInstance), set up too.
     /// </summary>
-    private static List<Type> EngineTypes(Module module)
+    private static List<Type> EngineTypes(Module module, CancellationToken cancellation)
     {
         var engine = typeof(GodotObject).Assembly;
         var types = new List<Type>();
         for (var row = 1; ; row++)
         {
+            cancellation.ThrowIfCancellationRequested();
             try
             {
                 var type = module.ResolveType(0x01000000 | row);

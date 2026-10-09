@@ -9,11 +9,22 @@ public class HudTest
     [TestCase]
     public async Task SurgeryStartsWithObjectiveStatusBeforeTheFirstTick()
     {
+        using var debug = SurgeryState.DebugHudIsEnabled();
         var driver = SurgeryDriver.Create();
         try
         {
             await driver.Start("appendectomy");
             var surgery = driver.Surgery;
+            // A fresh HUD has not had a process frame: setup itself must build the rows.
+            var hud = AutoFree(new Hud())!;
+            surgery.AddChild(hud);
+            hud.SetProcess(false);
+            hud.Setup(surgery);
+            var panel = hud.FindChildren("*", "", true, false).OfType<ObjectivesPanel>().Single();
+            AssertInt(panel.GetChildCount()).OverrideFailureMessage("setup creates objective rows and score before any HUD frame")
+                .IsEqual(surgery.Scenario.Steps.Count + 1);
+            AssertString(panel.GetChild<Label>(0).Text).IsEqual("▶ " + surgery.Scenario.Steps[0].Label);
+            AssertBool(panel.Visible).IsTrue();
             AssertFloat(surgery.Elapsed).OverrideFailureMessage("still before the first periodic status update")
                 .IsLess(Surgery.StatusInterval);
             AssertArray(surgery.Status.Objectives.Select(view => view.Label).ToList())

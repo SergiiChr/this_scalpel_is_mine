@@ -204,8 +204,19 @@ public partial class Surgeon : CharacterBody3D
     public Vector3 Shoulder(int hand)
     {
         var local = ShoulderOffset with { X = ShoulderOffset.X * Side(hand) };
-        var standing = ToGlobal(local with { Y = local.Y - (Crouch * CrouchDrop) });
+        var standing = StandingShoulder(GlobalTransform, hand, Crouch);
         return standing.Lerp(_body.GlobalTransform * local, _down);
+    }
+
+    /// <summary>Gameplay shoulder at a standing pose, including crouch, before any fall animation.</summary>
+    internal static Vector3 StandingShoulder(Transform3D pose, int hand, float crouch)
+    {
+        var local = ShoulderOffset with
+        {
+            X = ShoulderOffset.X * Side(hand),
+            Y = ShoulderOffset.Y - (crouch * CrouchDrop),
+        };
+        return pose * local;
     }
 
     /// <summary>-1 for the left hand, 1 for the right.</summary>

@@ -16,18 +16,21 @@ public class NurseShopTest
     /// <summary>Two of the same, from three categories, and a sixth that doesn't fit.</summary>
     private static readonly string[] Wanted = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol", "needle"];
     private static readonly string[] Ordered = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol"];
-    private bool _debugWas;
+    private IDisposable? _debugHud;
 
     [BeforeTest]
     public void EnableDebugHud()
     {
         // Exercise the objective rows too, independently of this machine's saved preferences.
-        _debugWas = Settings.Debug;
-        Settings.Debug = true;
+        _debugHud = SurgeryState.DebugHudIsEnabled();
     }
 
     [AfterTest]
-    public void RestoreDebugHud() => Settings.Debug = _debugWas;
+    public void RestoreDebugHud()
+    {
+        _debugHud?.Dispose();
+        _debugHud = null;
+    }
 
     [TestCase]
     public async Task CartOfFiveWithARepeatIsDeliveredAsOneBatch()

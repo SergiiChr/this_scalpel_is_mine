@@ -30,7 +30,7 @@ public class SyringeTest
     private readonly List<(int Peer, string Drug, float Amount)> _doses = [];
     /// <summary>Messages shown on screen since the case started (debug mode is on).</summary>
     private readonly List<string> _toasts = [];
-    private bool _debugWas;
+    private IDisposable? _debugHud;
 
     private Surgery Surgery => _bench.Surgery;
     private Surgeon Me => _bench.Surgery.LocalSurgeon!;
@@ -43,14 +43,14 @@ public class SyringeTest
         _bench = SyringeBench.Create();
         await _bench.Start();
         Surgery.SurgeonDosed += (peer, drug, amount) => _doses.Add((peer, drug, amount));
-        _debugWas = Settings.Debug;
-        Settings.Debug = true;
+        _debugHud = SurgeryState.DebugHudIsEnabled();
         Surgery.Hud.Toasted += _toasts.Add;
     }
 
     private async Task End()
     {
-        Settings.Debug = _debugWas;
+        _debugHud?.Dispose();
+        _debugHud = null;
         await _bench.Stop();
     }
 

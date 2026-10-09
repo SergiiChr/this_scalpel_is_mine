@@ -198,32 +198,35 @@ public partial class SurgeryDriver : Node
         {
             return;
         }
+        var standingY = Me.GlobalPosition.Y;
         var table = Patient.GlobalPosition;
-        var spots = new List<Vector3>();
         var atTable = Mathf.Abs(point.X - table.X) < 1.1f && Mathf.Abs(point.Z - table.Z) < 0.5f;
-        if (atTable)
+        IEnumerable<Vector3> StandingSpots()
         {
-            var side = Mathf.Abs(point.Z - table.Z) > 0.05f
-                ? Mathf.Sign(point.Z - table.Z)
-                : Mathf.Sign(Me.GlobalPosition.Z - table.Z);
-            foreach (var s in (float[])[side, -side])
+            if (atTable)
             {
-                foreach (var along in (float[])[0f, 0.15f, -0.15f, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f])
+                var side = Mathf.Abs(point.Z - table.Z) > 0.05f
+                    ? Mathf.Sign(point.Z - table.Z)
+                    : Mathf.Sign(Me.GlobalPosition.Z - table.Z);
+                foreach (var s in (float[])[side, -side])
                 {
-                    spots.Add(new Vector3(point.X + along, 0f, table.Z + (s * Mathf.Max(Mathf.Abs(point.Z - table.Z) + off, 0.55f + (Me.SafeMargin * 2f)))));
+                    foreach (var along in (float[])[0f, 0.15f, -0.15f, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f])
+                    {
+                        yield return new Vector3(point.X + along, standingY, table.Z + (s * Mathf.Max(Mathf.Abs(point.Z - table.Z) + off, 0.55f + (Me.SafeMargin * 2f))));
+                    }
                 }
             }
-        }
-        else
-        {
-            var flat = point with { Y = 0f };
-            var outward = -flat.Normalized();
-            for (var step = 0; step <= 9; step++)
+            else
             {
-                for (var turn = 0; turn < 73; turn++)
+                var flat = point with { Y = standingY };
+                var outward = -(flat with { Y = 0f }).Normalized();
+                for (var step = 0; step <= 9; step++)
                 {
-                    var signed = ((turn + 1) / 2) * (turn % 2 == 0 ? 1 : -1);
-                    spots.Add(flat + (outward.Rotated(Vector3.Up, signed * Mathf.Pi / 36f) * (off + (step * 0.05f))));
+                    for (var turn = 0; turn < 72; turn++)
+                    {
+                        var signed = ((turn + 1) / 2) * (turn % 2 == 0 ? 1 : -1);
+                        yield return flat + (outward.Rotated(Vector3.Up, signed * Mathf.Pi / 36f) * (off + (step * 0.05f)));
+                    }
                 }
             }
         }
@@ -246,18 +249,18 @@ public partial class SurgeryDriver : Node
         bool Fits(Vector3 at) => !line.HangsLowAt(at, 0.12f) && CanStandAt(at, body, query);
         Vector3? chosen = null;
         var chosenYaw = 0f;
-        foreach (var candidate in spots)
+        foreach (var candidate in StandingSpots())
         {
             if (!Fits(candidate))
             {
                 continue;
             }
             var at = candidate;
-            if (!atTable && at.DistanceTo(point with { Y = 0f }) > off + 0.001f)
+            if (!atTable && at.DistanceTo(point with { Y = standingY }) > off + 0.001f)
             {
                 // Refine the first clear ring toward the target: a narrow aisle can leave only a few millimeters
                 // between clearing the tray and reaching a vial at its far side.
-                var inward = (point with { Y = 0f }) - at;
+                var inward = (point with { Y = standingY }) - at;
                 var blocked = at + (inward.Normalized() * 0.05f);
                 for (var i = 0; i < 6; i++)
                 {
@@ -276,11 +279,6 @@ public partial class SurgeryDriver : Node
             var yaw = Mathf.Atan2(-toward.X, -toward.Z);
             if (vial is not null)
             {
-                var shoulder = Surgeon.ShoulderOffset with
-                {
-                    X = Surgeon.ShoulderOffset.X * (Me.Active == Left ? -1f : 1f),
-                    Y = Surgeon.ShoulderOffset.Y - (Me.Crouch * Surgeon.CrouchDrop),
-                };
                 var into = (vial.GlobalPosition - point).Normalized();
                 var wrist = point - (into * syringe!.Def.Length);
                 // Turn a little so the working shoulder faces a vial at the back of a cramped tray, rather than
@@ -289,7 +287,7 @@ public partial class SurgeryDriver : Node
                 foreach (var turn in (float[])[0f, -0.25f, 0.25f, -0.5f, 0.5f, -0.75f, 0.75f])
                 {
                     var turned = yaw + turn;
-                    if (wrist.DistanceTo(at + (new Basis(Vector3.Up, turned) * shoulder)) <= Surgeon.Reach)
+                    if (wrist.DistanceTo(Surgeon.StandingShoulder(new Transform3D(new Basis(Vector3.Up, turned), at), Me.Active, Me.Crouch)) <= Surgeon.Reach)
                     {
                         yaw = turned;
                         reaches = true;

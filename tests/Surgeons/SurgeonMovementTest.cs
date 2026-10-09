@@ -9,12 +9,15 @@ namespace Scalpel.Tests.Surgeons;
 public class SurgeonMovementTest
 {
     /// <summary>A surgery with a steady surgeon, its key frames (when wanted) going to surgeon_movement.</summary>
-    private static async Task<SurgeryDriver> Begin(string scenario = "appendectomy")
+    private SurgeryDriver? _driver;
+    private KeyFrames? _frames;
+
+    private async Task<SurgeryDriver> Begin(string scenario = "appendectomy")
     {
         RenderingServer.RenderLoopEnabled = false;
-        var driver = SurgeryDriver.Create();
+        var driver = _driver = SurgeryDriver.Create();
         await driver.Start(scenario);
-        var frames = new KeyFrames();
+        var frames = _frames = new KeyFrames();
         driver.AddChild(frames);
         frames.Begin(driver.Surgery, "surgeon_movement");
         driver.OnKeyFrame = async name =>
@@ -31,17 +34,31 @@ public class SurgeonMovementTest
     [AfterTest]
     public async Task End()
     {
-        // A failed assertion must release movement too, or the next case starts with a walking/crouching surgeon.
-        foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.Crouch])
+        try
         {
-            PlayerInput.Action(action, false);
+            foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.Crouch])
+            {
+                PlayerInput.Action(action, false);
+            }
+            await PlayerInput.Delivered();
         }
-        await PlayerInput.Delivered();
-        foreach (var driver in Frames.Root.GetChildren().OfType<SurgeryDriver>().ToArray())
+        finally
         {
-            await driver.Stop();
+            try
+            {
+                _frames?.End();
+                if (_driver is { } driver)
+                {
+                    await driver.Stop();
+                }
+            }
+            finally
+            {
+                _frames = null;
+                _driver = null;
+                RenderingServer.RenderLoopEnabled = true;
+            }
         }
-        RenderingServer.RenderLoopEnabled = true;
     }
 
     [TestCase]
