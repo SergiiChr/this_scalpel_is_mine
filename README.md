@@ -86,26 +86,8 @@ Over the internet the host needs to forward UDP 24565 (or pick another port in t
 
 ## Controls
 
-Shown in the bottom right corner in game, for what you're doing right now (they change while you hold a hand key
-or hold a tool). Everything can be rebound in **Settings**.
-
-| Action | Default |
-|---|---|
-| Look around | Mouse |
-| Move left / right hand (that hand becomes the active one) | Hold Q / Hold E |
-| Use the active hand's tool: lower it onto its spot and work it (pinch / let go, strike, tighten, place graft, charge and shock) | Hold LMB |
-| Effort level 0-3: cut depth, stitch tension, heat, saw speed, suction, gauze pressure, syringe plunger | Mouse wheel |
-| Pick up / put down the highlighted tool (near a partner's empty hand: pass the tool) | RMB |
-| Zoom, two steps | Shift |
-| Interact (manual, card, nurse, IV, sink, sanitizer, lab, X-ray cart, turn patient) | F |
-| Lift hand over hands and tall tools; pull slowly on what it holds | Hold Alt |
-| Hold the tool up to look at it (read a syringe) | Hold X |
-| Crouch (reach the floor, step over the IV line) | Hold Ctrl |
-| Hold breath (steady hands) | Hold Space |
-| Turn tool with the mouse / roll it | Hold MMB / C, V |
-| Drink / wear | H |
-| Belt slots | 1-4 |
-| Move | WASD |
+Shown in the bottom right corner in game, for what you're doing right now. Everything can be rebound in **Settings**.
+Default bindings: [src/Core/InputActions.cs](src/Core/InputActions.cs).
 
 The aim shows where the tool works: a dot for point tools, a line along a blade's edge. A blade only cuts along that
 line (rotate the tool to turn it); moving it sideways just drags it. Drugs come in labelled vials and syringes are
