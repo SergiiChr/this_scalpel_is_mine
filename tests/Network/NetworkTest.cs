@@ -10,23 +10,21 @@ public class NetworkTest
 
     [TestCase]
     public void MultiplayerCutTopologyAndToolHandoffStayInSync() =>
-        AssertInt(Run("sync")).OverrideFailureMessage("host/client wounds, painted map, topology and handoff agree").IsEqual(0);
+        Run("sync", "host/client wounds, painted map, topology and handoff agree");
 
     [TestCase]
     public void TenSecondClientStallKeepsSessionAndPausesInput() =>
-        AssertInt(Run("stall")).OverrideFailureMessage("a stalled client stays connected and its held input is paused")
-            .IsEqual(0);
+        Run("stall", "a stalled client stays connected and its held input is paused");
 
-    private static int Run(string mode)
+    /// <summary>Runs the network runner in <paramref name="mode"/>; on failure the message carries its output, which
+    /// names the problem and the driver log to look at.</summary>
+    private static void Run(string mode, string claim)
     {
         var output = new Godot.Collections.Array();
         var code = OS.Execute("/bin/bash",
             [ProjectSettings.GlobalizePath(Runner), OS.GetExecutablePath(), ProjectSettings.GlobalizePath("res://"), mode],
             output, true);
-        if (code != 0)
-        {
-            GD.Print($"network {mode} driver failed:\n{string.Join("\n", output)}");
-        }
-        return code;
+        AssertInt(code).OverrideFailureMessage($"{claim}: network {mode} runner failed\n{string.Join("\n", output)}")
+            .IsEqual(0);
     }
 }

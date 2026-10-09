@@ -25,7 +25,7 @@ public partial class Screenshot : Node
     private string _out = "user://screenshots";
     private string _only = "";
 
-    public override void _Ready() => _ = Render();
+    public override void _Ready() => this.Start(Render);
 
     private static bool Has(string flag) => OS.GetCmdlineUserArgs().Contains(flag);
 

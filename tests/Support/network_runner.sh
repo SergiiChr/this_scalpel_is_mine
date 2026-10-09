@@ -11,8 +11,10 @@ mode=$3
 logs="$root/build/test-logs"
 mkdir -p "$logs"
 
+# Stops a driver still running too, so it doesn't hold the port until its timeout.
 fail() {
 	echo "FAIL: $*"
+	kill $(jobs -p) 2>/dev/null
 	exit 1
 }
 
@@ -21,6 +23,15 @@ clean_log() {
 	local errors
 	errors=$(grep -E "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception|^FAIL:" "$1" | grep -vE "at exit|leaked")
 	[[ -z "$errors" ]] || fail "$(basename "$1"): $errors"
+}
+
+# Waits for a driver: errors or FAIL lines in its log fail the run, and so does any exit status but 0 (a crash, a
+# failed check, 124 for the timeout).
+finished() {
+	local status=0
+	wait "$1" || status=$?
+	clean_log "$logs/$2.log"
+	[[ $status -eq 0 ]] || fail "$2 exited with status $status$([[ $status -eq 124 ]] && echo ' (timed out)'), see $logs/$2.log"
 }
 
 expect() {
@@ -36,10 +47,10 @@ if [[ "$mode" == sync ]]; then
 	run NetDriver host net_host &
 	host=$!
 	sleep 2
-	(run NetDriver client net_client)
-	wait "$host"
-	clean_log "$logs/net_host.log"
-	clean_log "$logs/net_client.log"
+	run NetDriver client net_client &
+	client=$!
+	finished "$client" net_client
+	finished "$host" net_host
 	expect "$logs/net_host.log" "\[host\] surgeon wounds"
 	expect "$logs/net_client.log" "\[client\] surgeon wounds"
 	expect "$logs/net_host.log" "\[host\] client squat has bent knees and grounded heels"
@@ -69,14 +80,13 @@ for _ in $(seq 1 600); do
 	grep -q "\[client\] running" "$logs/net_stall_client.log" && break
 	sleep 0.1
 done
+grep -q "\[client\] running" "$logs/net_stall_client.log" || fail "the client never got into surgery within 60 s"
 # Freeze Godot itself, not the timeout wrapper around it.
 godot_pid=$(pgrep -P "$client") || fail "the client never started"
 kill -STOP "$godot_pid"
 sleep 10
 kill -CONT "$godot_pid"
-wait "$client"
-wait "$host"
-clean_log "$logs/net_stall_host.log"
-clean_log "$logs/net_stall_client.log"
+finished "$client" net_stall_client
+finished "$host" net_stall_host
 expect "$logs/net_stall_host.log" "input paused: true, partner still here: true"
 expect "$logs/net_stall_client.log" "still in surgery: true"
