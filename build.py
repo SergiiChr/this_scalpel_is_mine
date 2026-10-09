@@ -495,17 +495,24 @@ def test(arguments: list[str]) -> int:
     # others, so suites running beside them don't slow their frames down.
     alone = [suite for suite in suites if options.key_frames and suite.visual] if options.jobs > 1 else suites
     together = [suite for suite in suites if suite not in alone]
+    # The first test run in a checkout writes GdUnit4's runner script into the project and rebuilds it.
+    # Suites started side by side would each do that, and one could load the runner before its class is built.
+    first = together[:1] if not (ROOT / "gdunit4_testadapter_v5").exists() else []
     outcomes: list[Outcome] = []
-    if together:
-        print(f"Running {len(together)} test suites, {options.jobs} at a time.")
-        with ThreadPoolExecutor(options.jobs) as pool:
-            for outcome in pool.map(lambda suite: run_suite(suite, options), together):
-                print(report(outcome), flush=True)
-                outcomes.append(outcome)
-    for suite in alone:
-        outcome = run_suite(suite, options)
+
+    def record(outcome: Outcome) -> None:
         print(report(outcome), flush=True)
         outcomes.append(outcome)
+
+    for suite in first:
+        record(run_suite(suite, options))
+    if rest := together[len(first) :]:
+        print(f"Running {len(rest)} test suites, {options.jobs} at a time.")
+        with ThreadPoolExecutor(options.jobs) as pool:
+            for outcome in pool.map(lambda suite: run_suite(suite, options), rest):
+                record(outcome)
+    for suite in alone:
+        record(run_suite(suite, options))
     pending = [
         (f"{suite.full_name}.{name}", description)
         for suite in suites
