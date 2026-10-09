@@ -78,7 +78,7 @@ public partial class Surgery : Node3D
     public bool Finished { get; private set; }
     public float Elapsed { get; private set; }
     public RandomNumberGenerator Rng { get; } = new();
-    /// <summary>Last status from the host, for the HUD: objectives, score, cooldowns.</summary>
+    /// <summary>Initial local snapshot, then the host's latest status for the HUD: objectives, score, cooldowns.</summary>
     public SurgeryStatus Status { get; private set; } = SurgeryStatus.Empty;
     /// <summary>Effects of this run's modifiers (data/run_modifiers.cfg).</summary>
     public Modifiers RunMods { get; private set; } = new();
@@ -125,6 +125,8 @@ public partial class Surgery : Node3D
         Tools.SpawnInitial(Scenario.RollTools(Rng, RunMods.Num("missing_tool_chance")), Room.TraySpots(), personal, Room.StationTools());
         Objectives.Setup(Scenario);
         Director.Setup(Scenario, net.SessionSeed);
+        // The debug HUD builds its objective rows during setup, rather than on the first status tick during play.
+        Status = CaptureStatus();
         Hud.Setup(this);
         Multiplayer.PeerDisconnected += id => OnPeerLeft((int)id);
         RpcId(Net.HostId, MethodName.PeerReady);
@@ -183,8 +185,7 @@ public partial class Surgery : Node3D
         if (_statusAcc >= StatusInterval)
         {
             _statusAcc = 0f;
-            var status = new SurgeryStatus(Objectives.Snapshot(), Scoring.Points, [.. Scoring.Recent], Nurse.CooldownLeft,
-                Nurse.Current, Lab.CooldownLeft, Elapsed);
+            var status = CaptureStatus();
             if (Net.Instance.IsOnline)
             {
                 Rpc(MethodName.SyncStatus, status.ToVariant());
@@ -195,6 +196,9 @@ public partial class Surgery : Node3D
             }
         }
     }
+
+    private SurgeryStatus CaptureStatus() => new(Objectives.Snapshot(), Scoring.Points, [.. Scoring.Recent],
+        Nurse.CooldownLeft, Nurse.Current, Lab.CooldownLeft, Elapsed);
 
     /// <summary>A partner dropped out: their tools fall where they are and their surgeon leaves the room. Clients only
     /// ever see the host leave, and Net takes them back to the menu for that.</summary>

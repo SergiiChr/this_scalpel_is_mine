@@ -35,6 +35,10 @@ public partial class ManagedRuntime : Node
         _warmUp = Task.Run(Prepare);
     }
 
+    // Engine type constructors use native bindings. Finish the worker before Godot tears those bindings down,
+    // including a quit during loading or a short headless test.
+    public override void _ExitTree() => _warmUp.GetAwaiter().GetResult();
+
     /// <summary>Collects all garbage while nothing moves yet (a surgery about to start): play starts with an empty
     /// young generation and no Godot wrappers waiting for their finalizers.</summary>
     internal static void CollectNow()

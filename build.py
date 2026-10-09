@@ -91,18 +91,21 @@ def require(*pairs: str) -> None:
         sys.exit(f"Please install these packages with your package manager, then run this again: {' '.join(missing)}")
 
 
+def supported_dotnet(command: str | Path) -> bool:
+    """Both an SDK new enough for the analyzers and the runtime the project's test host targets."""
+    listed = [subprocess.run([str(command), option], capture_output=True, text=True, check=False).stdout for option in ("--list-sdks", "--list-runtimes")]
+    major = int(DOTNET_CHANNEL.split(".")[0])
+    sdk = any(int(line.split(".")[0]) >= major for line in listed[0].splitlines() if line[:1].isdigit())
+    return sdk and f"Microsoft.NETCore.App {major}." in listed[1]
+
+
 @functools.cache
 def dotnet() -> str:
-    """The dotnet command: the system's if it has an SDK this new (the analyzers need it) and the runtime the project
-    targets (the test host runs on it), else one installed into .tools without sudo."""
-    if shutil.which("dotnet"):
-        listed = [subprocess.run(["dotnet", option], capture_output=True, text=True, check=False).stdout for option in ("--list-sdks", "--list-runtimes")]
-        major = int(DOTNET_CHANNEL.split(".")[0])
-        sdk = any(int(line.split(".")[0]) >= major for line in listed[0].splitlines() if line[:1].isdigit())
-        if sdk and f"Microsoft.NETCore.App {major}." in listed[1]:
-            return "dotnet"
+    """The system command when supported, otherwise one installed into .tools without sudo."""
+    if shutil.which("dotnet") and supported_dotnet("dotnet"):
+        return "dotnet"
     local = DOTNET_LOCAL / "dotnet"
-    if not local.exists():
+    if not local.exists() or not supported_dotnet(local):
         print(f"Installing the .NET {DOTNET_CHANNEL} SDK into .tools/dotnet...")
         TOOLS.mkdir(exist_ok=True)
         script = TOOLS / "dotnet-install.sh"

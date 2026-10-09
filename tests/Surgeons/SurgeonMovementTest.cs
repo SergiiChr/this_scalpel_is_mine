@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Surgeons;
 public class SurgeonMovementTest
 {
     /// <summary>A surgery with a steady surgeon, its key frames (when wanted) going to surgeon_movement.</summary>
-    private static async Task<(SurgeryDriver Driver, KeyFrames Frames)> Begin(string scenario = "appendectomy")
+    private static async Task<SurgeryDriver> Begin(string scenario = "appendectomy")
     {
         RenderingServer.RenderLoopEnabled = false;
         var driver = SurgeryDriver.Create();
@@ -25,24 +25,29 @@ public class SurgeonMovementTest
             }
         };
         SurgeryState.SurgeonIsSteady(driver.Me);
-        return (driver, frames);
+        return driver;
     }
 
-    private static async Task End(SurgeryDriver driver, KeyFrames frames)
+    [AfterTest]
+    public async Task End()
     {
+        // A failed assertion must release movement too, or the next case starts with a walking/crouching surgeon.
         foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.Crouch])
         {
             PlayerInput.Action(action, false);
         }
-        frames.End();
-        await driver.Stop();
+        await PlayerInput.Delivered();
+        foreach (var driver in Frames.Root.GetChildren().OfType<SurgeryDriver>().ToArray())
+        {
+            await driver.Stop();
+        }
         RenderingServer.RenderLoopEnabled = true;
     }
 
     [TestCase]
     public async Task WalkingAndCrouchingKeepCameraAndGameplayReachSteady()
     {
-        var (driver, frames) = await Begin();
+        var driver = await Begin();
         var me = driver.Me;
         await Frames.Physics(10);
         var initial = me.GlobalPosition;
@@ -54,7 +59,8 @@ public class SurgeonMovementTest
         driver.Note("walking sideways with a hand near the reach boundary");
         for (var frame = 0; frame < 24; frame++)
         {
-            await Frames.Physics(1);
+            // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
+            await PlayerInput.Delivered();
             CheckStableOrigins(me, 0f);
             AssertBool(me.Strained(0)).OverrideFailureMessage("a target inside reach is not strained by a walking step").IsFalse();
             maxDrop = Mathf.Max(maxDrop, me.WalkDrop);
@@ -72,7 +78,8 @@ public class SurgeonMovementTest
         driver.Note("crouching through normal input");
         for (var frame = 0; frame < 18; frame++)
         {
-            await Frames.Physics(1);
+            // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
+            await PlayerInput.Delivered();
             CheckStableOrigins(me, me.Crouch);
         }
         AssertFloat(me.Crouch).OverrideFailureMessage("normal input reaches the deep squat").IsEqualApprox(1f, 0.001f);
@@ -81,13 +88,13 @@ public class SurgeonMovementTest
         driver.Note("standing back up through normal input");
         for (var frame = 0; frame < 18; frame++)
         {
-            await Frames.Physics(1);
+            // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
+            await PlayerInput.Delivered();
             CheckStableOrigins(me, me.Crouch);
         }
         AssertFloat(me.Crouch).OverrideFailureMessage("releasing crouch restores standing height").IsEqualApprox(0f, 0.001f);
         await driver.Capture("recovered");
         driver.Budget.Check(KeyFrames.Wanted());
-        await End(driver, frames);
     }
 
     /// <summary>Walking along the table with a free hand over it, past the patient's arm (hand stitch): over the flat
@@ -96,7 +103,7 @@ public class SurgeonMovementTest
     [TestCase]
     public async Task WalkingKeepsAFreeHandLevelOverTheTable()
     {
-        var (driver, frames) = await Begin("hand_stitch");
+        var driver = await Begin("hand_stitch");
         var me = driver.Me;
         await driver.PlayerWalksTo(driver.SitePoint(new Vector2(0.5f, 0.5f)));
         await Frames.Physics(30);
@@ -105,7 +112,8 @@ public class SurgeonMovementTest
         PlayerInput.Action(InputActions.MoveLeft);
         for (var frame = 0; frame < 60; frame++)
         {
-            await Frames.Physics(1);
+            // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
+            await PlayerInput.Delivered();
             var hand = me.Hands[me.Active];
             var under = me.SurfaceBelow(hand.Target);
             if (!under.Soft && under.Y > 0.5f)
@@ -122,7 +130,6 @@ public class SurgeonMovementTest
         var spread = level.DefaultIfEmpty(0f).Max() - level.DefaultIfEmpty(0f).Min();
         AssertFloat(spread).OverrideFailureMessage($"and hovered at one height over it ({spread * 1000f:0.0} mm up and down)")
             .IsLess(0.001f);
-        await End(driver, frames);
     }
 
     private static void CheckStableOrigins(Surgeon me, float crouch)
@@ -138,14 +145,14 @@ public class SurgeonMovementTest
                 .OverrideFailureMessage("reach origin is independent of torso and leg animation").IsLess(0.0001f);
             var start = me.Hands[index].UpperSleeve.GlobalTransform * new Vector3(0f, -0.5f, 0f);
             AssertFloat(start.DistanceTo(me.SteadyShoulder(index)))
-                .OverrideFailureMessage("the player's own sleeve hangs from the torso without the walk's bob").IsLess(0.0001f);
+                .OverrideFailureMessage($"the player's own sleeve hangs from the torso without the walk's bob ({start.DistanceTo(me.SteadyShoulder(index)) * 1000f:0.000} mm, hand {index})").IsLess(0.0001f);
         }
     }
 
     [TestCase]
     public async Task DownedVisibleHeadTurnsToPatientOnBothFallSides()
     {
-        var (driver, frames) = await Begin();
+        var driver = await Begin();
         var me = driver.Me;
         var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
         var camera = new Camera3D { Fov = 55f };
@@ -185,6 +192,5 @@ public class SurgeonMovementTest
             }
         }
         driver.Budget.Check(KeyFrames.Wanted());
-        await End(driver, frames);
     }
 }

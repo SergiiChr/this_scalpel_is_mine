@@ -7,6 +7,30 @@ namespace Scalpel.Tests.UI;
 public class HudTest
 {
     [TestCase]
+    public async Task SurgeryStartsWithObjectiveStatusBeforeTheFirstTick()
+    {
+        var driver = SurgeryDriver.Create();
+        try
+        {
+            await driver.Start("appendectomy");
+            var surgery = driver.Surgery;
+            AssertFloat(surgery.Elapsed).OverrideFailureMessage("still before the first periodic status update")
+                .IsLess(Surgery.StatusInterval);
+            AssertArray(surgery.Status.Objectives.Select(view => view.Label).ToList())
+                .OverrideFailureMessage("setup supplies all scenario steps to the HUD immediately")
+                .IsEqual(surgery.Scenario.Steps.Select(step => step.Label).ToList());
+            AssertBool(surgery.Status.Objectives[0].Current)
+                .OverrideFailureMessage("the first required step is already highlighted").IsTrue();
+            AssertBool(surgery.Status.Objectives.Any(view => view.Done))
+                .OverrideFailureMessage("the initial snapshot doesn't complete any steps").IsFalse();
+        }
+        finally
+        {
+            await driver.Stop();
+        }
+    }
+
+    [TestCase]
     public async Task ObjectivesChangeWithoutInvalidatingUnchangedLabelThemes()
     {
         var panel = AutoFree(new ObjectivesPanel())!;

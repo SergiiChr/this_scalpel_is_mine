@@ -200,7 +200,8 @@ public partial class SurgeryDriver : Node
         }
         var table = Patient.GlobalPosition;
         var spots = new List<Vector3>();
-        if (Mathf.Abs(point.X - table.X) < 1.1f && Mathf.Abs(point.Z - table.Z) < 0.5f)
+        var atTable = Mathf.Abs(point.X - table.X) < 1.1f && Mathf.Abs(point.Z - table.Z) < 0.5f;
+        if (atTable)
         {
             var side = Mathf.Abs(point.Z - table.Z) > 0.05f
                 ? Mathf.Sign(point.Z - table.Z)
@@ -209,7 +210,7 @@ public partial class SurgeryDriver : Node
             {
                 foreach (var along in (float[])[0f, 0.15f, -0.15f, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f])
                 {
-                    spots.Add(new Vector3(point.X + along, 0f, table.Z + (s * Mathf.Max(Mathf.Abs(point.Z - table.Z) + off, 0.55f))));
+                    spots.Add(new Vector3(point.X + along, 0f, table.Z + (s * Mathf.Max(Mathf.Abs(point.Z - table.Z) + off, 0.55f + (Me.SafeMargin * 2f)))));
                 }
             }
         }
@@ -217,21 +218,118 @@ public partial class SurgeryDriver : Node
         {
             var flat = point with { Y = 0f };
             var outward = -flat.Normalized();
-            foreach (var away in (float[])[off, off + 0.15f])
+            for (var step = 0; step <= 9; step++)
             {
-                foreach (var turn in (int[])[0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6])
+                for (var turn = 0; turn < 73; turn++)
                 {
-                    spots.Add(flat + (outward.Rotated(Vector3.Up, turn * Mathf.Pi / 6f) * away));
+                    var signed = ((turn + 1) / 2) * (turn % 2 == 0 ? 1 : -1);
+                    spots.Add(flat + (outward.Rotated(Vector3.Up, signed * Mathf.Pi / 36f) * (off + (step * 0.05f))));
                 }
             }
         }
-        // The first of them, in that order of preference, clear of the tubing.
+        // Stand on the room's floor, clear of furniture and tubing. Between the tray and table, an overlapping
+        // capsule slides out during recovery and can pull a needle out of a vial halfway through drawing a dose.
         var line = Surgery.Room.IvLine;
-        var spot = spots.FirstOrDefault(at => !line.HangsLowAt(at, 0.12f), spots[0]) with { Y = Me.GlobalPosition.Y };
+        var body = Me.GetChildren().OfType<CollisionShape3D>().Single();
+        using var query = new PhysicsShapeQueryParameters3D
+        {
+            Shape = body.Shape,
+            CollisionMask = Me.CollisionMask,
+            Margin = Me.SafeMargin,
+            Exclude = [Me.GetRid()],
+        };
+        var syringe = Me.HeldTool(Me.Active);
+        var vial = syringe?.Def.Action == "syringe"
+            ? Surgery.Tools.Tools.Values.FirstOrDefault(tool => tool.Def.Action == "vial" && tool.State == ToolState.Free
+                && tool.TipPosition().DistanceTo(point) < 0.001f)
+            : null;
+        bool Fits(Vector3 at) => !line.HangsLowAt(at, 0.12f) && CanStandAt(at, body, query);
+        Vector3? chosen = null;
+        var chosenYaw = 0f;
+        foreach (var candidate in spots)
+        {
+            if (!Fits(candidate))
+            {
+                continue;
+            }
+            var at = candidate;
+            if (!atTable && at.DistanceTo(point with { Y = 0f }) > off + 0.001f)
+            {
+                // Refine the first clear ring toward the target: a narrow aisle can leave only a few millimeters
+                // between clearing the tray and reaching a vial at its far side.
+                var inward = (point with { Y = 0f }) - at;
+                var blocked = at + (inward.Normalized() * 0.05f);
+                for (var i = 0; i < 6; i++)
+                {
+                    var middle = at.Lerp(blocked, 0.5f);
+                    if (Fits(middle))
+                    {
+                        at = middle;
+                    }
+                    else
+                    {
+                        blocked = middle;
+                    }
+                }
+            }
+            var toward = point - at;
+            var yaw = Mathf.Atan2(-toward.X, -toward.Z);
+            if (vial is not null)
+            {
+                var shoulder = Surgeon.ShoulderOffset with
+                {
+                    X = Surgeon.ShoulderOffset.X * (Me.Active == Left ? -1f : 1f),
+                    Y = Surgeon.ShoulderOffset.Y - (Me.Crouch * Surgeon.CrouchDrop),
+                };
+                var into = (vial.GlobalPosition - point).Normalized();
+                var wrist = point - (into * syringe!.Def.Length);
+                // Turn a little so the working shoulder faces a vial at the back of a cramped tray, rather than
+                // wasting the arm's reach across the chest. The needle's own snap still decides its contact.
+                var reaches = false;
+                foreach (var turn in (float[])[0f, -0.25f, 0.25f, -0.5f, 0.5f, -0.75f, 0.75f])
+                {
+                    var turned = yaw + turn;
+                    if (wrist.DistanceTo(at + (new Basis(Vector3.Up, turned) * shoulder)) <= Surgeon.Reach)
+                    {
+                        yaw = turned;
+                        reaches = true;
+                        break;
+                    }
+                }
+                if (!reaches)
+                {
+                    continue;
+                }
+            }
+            chosenYaw = yaw;
+            chosen = at;
+            break;
+        }
+        var spot = chosen ?? throw new InvalidOperationException($"No clear standing position reaches {point} in {Surgery.Scenario.Id}.");
         Me.GlobalPosition = spot;
-        var facing = (point - spot) with { Y = 0f };
-        Me.Rotation = Me.Rotation with { Y = Mathf.Atan2(-facing.X, -facing.Z) };
+        Me.Velocity = Vector3.Zero;
+        Me.Rotation = Me.Rotation with { Y = chosenYaw };
         await Frames.Physics(3);
+    }
+
+    /// <summary>The surgeon's capsule fits here without overlapping furniture or another surgeon.</summary>
+    private bool CanStandAt(Vector3 at, CollisionShape3D body, PhysicsShapeQueryParameters3D query)
+    {
+        var size = Surgery.Room.Layout.Size;
+        var radius = ((CapsuleShape3D)body.Shape).Radius + Me.SafeMargin;
+        if (Mathf.Abs(at.X) > (size.X * 0.5f) - radius || Mathf.Abs(at.Z) > (size.Z * 0.5f) - radius)
+        {
+            return false;
+        }
+        query.Transform = new Transform3D(Me.GlobalBasis, at + (Me.GlobalBasis * body.Position) + (Vector3.Up * 0.01f));
+        var hits = Me.GetWorld3D().DirectSpaceState.IntersectShape(query, 1);
+        using var storage = (Godot.Collections.Array)hits;
+        var clear = hits.Count == 0;
+        foreach (var hit in hits)
+        {
+            hit.Dispose();
+        }
+        return clear;
     }
 
     /// <summary>Holds a walking key for <paramref name="time"/> seconds, so the body walks the way a player's does.
