@@ -1,8 +1,10 @@
 # The GdUnit4 suites under tests/ are the executable source of truth. Smoke gates full regression and export.
 name: Tests
 
+# Pushes to main only: a branch with a pull request is tested once, by the pull_request run.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
