@@ -1,0 +1,92 @@
+namespace Scalpel.Tests.Tools;
+
+/// <summary>
+/// Gauze as a player uses it: pressed on a cut it stops the bleeding, holds it for a while after it comes off, then the
+/// cut bleeds again. Pressed long enough on a cut too small to sew, it stops that one for good. With key frames review
+/// the gauze lying on the cut while pressed, the skin wiped dry while the pressure holds and the blood welling back.
+/// </summary>
+[TestSuite, RequireGodotRuntime]
+[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
+[GodotArgs("--fixed-fps", "60")]
+public class GauzeTest
+{
+    [TestCase]
+    public async Task GauzeStopsABleedForAWhileThenItComesBack()
+    {
+        var session = await ToolSession.Start("appendectomy", "gauze_holds");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var cut = SurgeryState.SkinIsCut(patient, new Vector2(0.4f, 0.5f), new Vector2(0.6f, 0.5f), 0.3f);
+        await Frames.Seconds(3f);
+        var before = cut.Bleeding;
+        AssertFloat(before).OverrideFailureMessage($"the cut bleeds: {driver.Bleeders()}").IsGreater(0.1f);
+        await driver.Capture("bleeding");
+
+        await driver.PlayerRequestsItem("gauze");
+        var on = driver.SitePoint(cut.Midpoint);
+        await driver.PlayerWalksTo(on);
+        await driver.PlayerReaches(on);
+        await driver.SetLevel(3);
+        SurgeryDriver.Use();
+        await Frames.Seconds(2f);
+        AssertFloat(cut.Bleeding).OverrideFailureMessage($"pressed with gauze, the cut stops bleeding: {driver.Bleeders()}")
+            .IsLess(0.01f);
+        await driver.Capture("pressed");
+        SurgeryDriver.Use(false);
+        await driver.PlayerPutsDown();
+
+        await Frames.Seconds(Wound.PressureHold - 3f);
+        AssertFloat(cut.Bleeding).OverrideFailureMessage($"the pressure holds a while after the gauze comes off: {driver.Bleeders()}")
+            .IsLess(0.01f);
+        AssertFloat(patient.LastingBleedRate)
+            .OverrideFailureMessage("held only by gauze, it doesn't count as stopped for good").IsGreater(before * 0.9f);
+        await driver.Capture("held");
+
+        var back = await Frames.Until(() => cut.Bleeding > before * 0.9f, Wound.PressureFade + 6f);
+        AssertBool(back).OverrideFailureMessage($"then the cut bleeds as before: {driver.Bleeders()}").IsTrue();
+        await Frames.Seconds(3f);
+        await driver.Capture("bleeding_again");
+        await session.Finish();
+    }
+
+    [TestCase]
+    public async Task GauzePressedTenSecondsStopsASmallCutForGood()
+    {
+        var session = await ToolSession.Start("appendectomy", "gauze_small_cut");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var small = SurgeryState.SkinIsCut(patient, new Vector2(0.35f, 0.5f), new Vector2(0.35f, 0.5f) + new Vector2(body.MetersToUv(0.006f), 0f), 0.3f);
+        var longer = SurgeryState.SkinIsCut(patient, new Vector2(0.6f, 0.5f), new Vector2(0.6f, 0.5f) + new Vector2(body.MetersToUv(0.02f), 0f), 0.3f);
+        AssertBool(small.IsSmall(body.UvToMeters(1f)) && !longer.IsSmall(body.UvToMeters(1f)))
+            .OverrideFailureMessage("a 0.6 cm cut is too small to sew, a 2 cm one isn't").IsTrue();
+        await Frames.Seconds(2f);
+        await driver.Capture("bleeding");
+        await driver.PlayerRequestsItem("gauze");
+
+        await Press(driver, small, Wound.SmallCutPress / 2f);
+        await Frames.Seconds(Wound.PressBreak * 2f);
+        await Press(driver, small, Wound.SmallCutPress / 2f + 1f);
+        AssertBool(small.Clotted).OverrideFailureMessage("pressing with a break in between starts the count over").IsFalse();
+
+        await Press(driver, small, Wound.SmallCutPress + 1f);
+        AssertBool(small.Clotted).OverrideFailureMessage("pressed on without a break, the small cut stops for good").IsTrue();
+        await Press(driver, longer, Wound.SmallCutPress + 1f);
+        AssertBool(longer.Clotted).OverrideFailureMessage("a cut long enough to sew isn't stopped for good").IsFalse();
+        await driver.PlayerPutsDown();
+
+        await Frames.Seconds(Wound.PressureHold + Wound.PressureFade + 2f);
+        AssertFloat(small.Bleeding).OverrideFailureMessage("once every pressure wears off, the small cut stays dry").IsEqual(0f);
+        AssertFloat(longer.Bleeding).OverrideFailureMessage("and the longer one bleeds again").IsGreater(0.01f);
+        await driver.Capture("small_cut_stopped");
+        await session.Finish();
+    }
+
+    /// <summary>Holds the gauze down on the middle of <paramref name="wound"/> for <paramref name="seconds"/>.</summary>
+    private static async Task Press(SurgeryDriver driver, Wound wound, float seconds)
+    {
+        var on = driver.SitePoint(wound.Midpoint);
+        await driver.PlayerWalksTo(on);
+        await driver.PlayerWorksAt(on, 3, seconds);
+    }
+}

@@ -33,6 +33,8 @@ public partial class PatientBody
     private float _poolHeight = float.NegativeInfinity;
 
     public MeshInstance3D CavityBlood { get; private set; } = null!;
+    /// <summary>Site-local height of the cavity pool's surface, -infinity with no pool.</summary>
+    public float CavityPoolHeight => CavityBlood.Visible ? _poolHeight : float.NegativeInfinity;
     public List<Organ> Organs { get; } = [];
     /// <summary>Bones under the site (ribs, breastbone, limb bones).</summary>
     public List<Bone> Bones { get; } = [];

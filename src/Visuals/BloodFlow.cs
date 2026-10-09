@@ -1,13 +1,17 @@
 namespace Scalpel.Visuals;
 
-/// <summary>A wound bleeding onto the skin: where (site uv) and how fast (ml/s).</summary>
-public readonly record struct BleedSource(Vector2 Uv, float Rate)
+/// <summary>A bleeding wound: where (site uv), how fast (ml/s) and how deep under the skin (meters). Depth 0 bleeds onto
+/// the skin; deeper bleeds into the cavity.</summary>
+public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 0f)
 {
+    public bool Inside => Depth > 0f;
+
     public static Godot.Collections.Array ToVariant(IEnumerable<BleedSource> sources) =>
-        [.. sources.Select(source => (Variant)new Godot.Collections.Array { source.Uv, source.Rate })];
+        [.. sources.Select(source => (Variant)new Godot.Collections.Array { source.Uv, source.Rate, source.Depth })];
 
     public static List<BleedSource> FromVariant(Godot.Collections.Array sources) =>
-        [.. sources.Select(entry => entry.AsGodotArray()).Select(pair => new BleedSource(pair[0].AsVector2(), pair[1].AsSingle()))];
+        [.. sources.Select(entry => entry.AsGodotArray())
+            .Select(entry => new BleedSource(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle()))];
 }
 
 /// <summary>
@@ -15,6 +19,8 @@ public readonly record struct BleedSource(Vector2 Uv, float Rate)
 /// with the blood lost, and release rivulets from its edge that run downhill over the skin, staining it as they go
 /// (the fluid map). Where a rivulet runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
+/// Bleeding inside the opening wells up as a pulsing dome where it comes from, on the cavity pool's surface once that
+/// covers it. Bleeding under skin that isn't open spreads a bruise over it. Either way every bleed shows its source.
 /// Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
 /// </summary>
 public partial class BloodFlow : Node3D
@@ -25,6 +31,7 @@ public partial class BloodFlow : Node3D
 
     private const int MaxRivulets = 48;
     private const int MaxDrops = 96;
+    private const int MaxWells = 16;
     /// <summary>Rivulets per ml of blood lost.</summary>
     private const float RivuletsPerMl = 0.35f;
     private const float RivuletSpeed = 0.05f;
@@ -47,6 +54,16 @@ public partial class BloodFlow : Node3D
     private const float PuddlePaintInterval = 0.2f;
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
     private const float SplashReach = 0.75f;
+    /// <summary>Radius (m) of the dome welling up from a bleed inside, and how much it grows per sqrt(ml/s).</summary>
+    private const float WellStart = 0.003f;
+    private const float WellGrowth = 0.004f;
+    private const float WellMax = 0.012f;
+    /// <summary>Welling domes pulse this many times a second.</summary>
+    private const float WellPulse = 1.2f;
+    /// <summary>Bruise radius (uv) over a bleed under closed skin, and how much it grows per sqrt(ml).</summary>
+    private const float BruiseStart = 0.02f;
+    private const float BruiseGrowth = 0.01f;
+    private const float BruiseMax = 0.1f;
 
     private sealed class Rivulet(Vector2 uv, float volume, float wander)
     {
@@ -68,13 +85,22 @@ public partial class BloodFlow : Node3D
     /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
     /// order.</summary>
     private readonly Dictionary<Vector2I, float> _pooled = [];
+    /// <summary>Blood (ml) collected under closed skin at each source, keyed like <see cref="_pooled"/>.</summary>
+    private readonly Dictionary<Vector2I, float> _bruised = [];
     private readonly RandomNumberGenerator _rng = new() { Seed = 7 };
     private float _puddleTimer;
+    /// <summary>This frame paints puddles and bruises.</summary>
+    private bool _paintPuddles;
     private MultiMeshInstance3D _dropMesh = null!;
+    private MultiMeshInstance3D _wellMesh = null!;
+    private readonly List<Vector3> _wells = [];
     private PatientBody? _body;
 
-    /// <summary>The wounds bleeding onto the skin.</summary>
+    /// <summary>The bleeding wounds.</summary>
     public List<BleedSource> Sources { get; set; } = [];
+
+    /// <summary>Where the welling domes stand now (world).</summary>
+    internal IReadOnlyList<Vector3> Wells => _wells;
 
     public void Setup(PatientBody patientBody)
     {
@@ -99,6 +125,20 @@ public partial class BloodFlow : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_dropMesh);
+        _wellMesh = new MultiMeshInstance3D
+        {
+            Multimesh = new MultiMesh
+            {
+                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+                Mesh = new SphereMesh { Radius = 1f, Height = 1f, RadialSegments = 16, Rings = 4, IsHemisphere = true },
+                InstanceCount = MaxWells,
+                VisibleInstanceCount = 0,
+            },
+            MaterialOverride = Materials.BloodPool(),
+            TopLevel = true,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(_wellMesh);
     }
 
     public override void _Process(double delta)
@@ -108,6 +148,7 @@ public partial class BloodFlow : Node3D
             return;
         }
         Spawn(_body, (float)delta);
+        Well(_body, (float)delta);
         Flow(_body, (float)delta);
         Fall((float)delta);
     }
@@ -115,15 +156,19 @@ public partial class BloodFlow : Node3D
     private void Spawn(PatientBody body, float delta)
     {
         _puddleTimer += delta;
-        var paintPuddles = _puddleTimer >= PuddlePaintInterval;
-        if (paintPuddles)
+        _paintPuddles = _puddleTimer >= PuddlePaintInterval;
+        if (_paintPuddles)
         {
             _puddleTimer = 0f;
         }
         for (var i = 0; i < Sources.Count; i++)
         {
-            var (uv, rate) = Sources[i];
-            var radius = Puddle(body, uv, rate * delta, paintPuddles);
+            var (uv, rate, _) = Sources[i];
+            if (Sources[i].Inside)
+            {
+                continue;
+            }
+            var radius = Puddle(body, uv, rate * delta, _paintPuddles);
             var acc = _spawnAcc.GetValueOrDefault(i) + rate * delta * RivuletsPerMl;
             while (acc >= 1f && _rivulets.Count < MaxRivulets)
             {
@@ -132,14 +177,64 @@ public partial class BloodFlow : Node3D
                 _rivulets.Add(new Rivulet(uv + edge, _rng.RandfRange(0.6f, 1.2f), _rng.RandfRange(-1f, 1f)));
             }
             _spawnAcc[i] = Mathf.Min(acc, 3f);
-            if (rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f)
+            Spurt(body, body.UvToWorld(uv), rate, delta);
+        }
+    }
+
+    /// <summary>A strong bleed throws droplets up from <paramref name="at"/> now and then.</summary>
+    private void Spurt(PatientBody body, Vector3 at, float rate, float delta)
+    {
+        if (rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f)
+        {
+            var spray = body.Site.GlobalBasis.Y * _rng.RandfRange(0.6f, 1.3f)
+                + new Vector3(_rng.RandfRange(-0.4f, 0.4f), 0f, _rng.RandfRange(-0.4f, 0.4f));
+            AddDrop(at, spray);
+            Splash(at, 0.04f);
+        }
+    }
+
+    /// <summary>
+    /// Bleeds inside: one pulsing dome at each source in the opening, risen to the cavity pool's surface when that
+    /// covers it, spurting when strong. A source under skin that isn't open spreads a bruise over itself instead.
+    /// </summary>
+    private void Well(PatientBody body, float delta)
+    {
+        var multimesh = _wellMesh.Multimesh;
+        _wells.Clear();
+        var pulse = 1f + 0.35f * Mathf.Sin(Time.GetTicksMsec() * 0.001f * Mathf.Tau * WellPulse);
+        foreach (var (uv, rate, depth) in Sources.Where(source => source.Inside))
+        {
+            if (!body.Tissue.IsOpen(uv))
             {
-                var up = body.Site.GlobalBasis.Y;
-                var spray = up * _rng.RandfRange(0.6f, 1.3f)
-                    + new Vector3(_rng.RandfRange(-0.4f, 0.4f), 0f, _rng.RandfRange(-0.4f, 0.4f));
-                AddDrop(body.UvToWorld(uv), spray);
-                Splash(body.UvToWorld(uv), 0.04f);
+                Bruise(body, uv, rate * delta);
+                continue;
             }
+            var local = body.Site.ToLocal(body.UvToWorld(uv, depth));
+            local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
+            var at = body.Site.ToGlobal(local);
+            if (_wells.Count < MaxWells)
+            {
+                var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
+                var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
+                multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
+                _wells.Add(at);
+            }
+            Spurt(body, at, rate, delta);
+        }
+        multimesh.VisibleInstanceCount = _wells.Count;
+    }
+
+    /// <summary>Spreads a bruise over a bleed under closed skin as blood collects there, keyed like puddles.</summary>
+    private void Bruise(PatientBody body, Vector2 uv, float ml)
+    {
+        var key = (Vector2I)(uv * 100f).Round();
+        var pooled = _bruised.GetValueOrDefault(key) + ml;
+        _bruised[key] = pooled;
+        if (_paintPuddles)
+        {
+            var radius = Mathf.Min(BruiseStart + Mathf.Sqrt(pooled) * BruiseGrowth, BruiseMax);
+            body.WoundMap.Disk(WoundMap.Layer.Wounds, WoundMap.Bruise, uv, radius, Mathf.Min(0.3f + pooled * 0.02f, 0.9f),
+                WoundMap.Mode.Max);
         }
     }
 

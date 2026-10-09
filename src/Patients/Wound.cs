@@ -17,6 +17,17 @@ public sealed class Wound
     public const float PointSpacingUv = 0.006f;
     /// <summary>Wound depth (0..1) from which it goes through the muscle, see Patient.TissueDepthOf().</summary>
     public const float MuscleDepth = 0.7f;
+    /// <summary>Seconds gauze pressure keeps holding a wound after the gauze comes off.</summary>
+    public const float PressureHold = 15f;
+    /// <summary>Seconds over which held pressure then wears off and the bleeding comes back.</summary>
+    public const float PressureFade = 10f;
+    /// <summary>Cuts shorter than this (meters) are too small to sew: gauze pressed on them stops them for good.
+    /// </summary>
+    public const float SmallCut = 0.01f;
+    /// <summary>Seconds of gauze pressure, without a break, that stop a small cut for good.</summary>
+    public const float SmallCutPress = 10f;
+    /// <summary>A break in gauze pressure longer than this (seconds) starts a small cut's count over.</summary>
+    public const float PressBreak = 1f;
 
     private readonly List<Vector2> _points;
     private float _length;
@@ -40,8 +51,17 @@ public sealed class Wound
     public float Opened { get; set; }
     public float Cauterized { get; set; }
     public float Clamped { get; set; }
-    /// <summary>Pressure from gauze or the patient's own hands. Patient grip decays over time.</summary>
+    /// <summary>Pressure from the patient's own hands, decays over time.</summary>
     public float Held { get; set; }
+    /// <summary>Pressure from gauze, 0..1. It holds for <see cref="PressureHold"/> after the gauze comes off, then
+    /// wears off.</summary>
+    public float Pressed { get; set; }
+    /// <summary>Seconds since gauze last pressed on it.</summary>
+    public float SincePressed { get; set; } = float.PositiveInfinity;
+    /// <summary>Seconds of gauze pressure without a break, toward stopping a small cut.</summary>
+    public float PressedFor { get; set; }
+    /// <summary>A small cut pressed long enough: it's stopped bleeding for good.</summary>
+    public bool Clotted { get; set; }
     public bool Dirty { get; set; }
     public bool MadeBySurgeon { get; set; }
     /// <summary>Closure progress per bin, 0..1.</summary>
@@ -88,22 +108,27 @@ public sealed class Wound
     /// <summary>Cut through the muscle: its muscle has to be sewn before the skin will close over it.</summary>
     public bool ThroughMuscle => IsSkinCut && Depth >= MuscleDepth;
 
+    /// <summary>A cut or tear too short to sew, see <see cref="SmallCut"/>.</summary>
+    public bool IsSmall(float siteSize) => Kind is WoundKind.Cut or WoundKind.Tear && LengthUv * siteSize < SmallCut;
+
     /// <summary>ml/s it bleeds. <paramref name="leak"/> (0..1) is how much blood still gets through closures and
-    /// packing: thinned blood or high pressure. Cautery and clamps seal regardless.</summary>
-    public float BleedRate(float siteSize, float bleedMult, float leak = 0f)
+    /// packing: thinned blood or high pressure. Cautery and clamps seal regardless. Without
+    /// <paramref name="withGauze"/> it's what bleeds once gauze pressure has worn off.</summary>
+    public float BleedRate(float siteSize, float bleedMult, float leak = 0f, bool withGauze = true)
     {
-        if (Kind == WoundKind.Burn)
+        if (Kind == WoundKind.Burn || Clotted)
         {
             return 0f;
         }
+        var held = withGauze ? Mathf.Max(Held, Pressed) : Held;
         var baseRate = Mathf.Max(LengthUv * siteSize, 0.01f) * Depth * BleedPerMeter;
         if (Kind is WoundKind.Gunshot or WoundKind.Puncture or WoundKind.Internal)
         {
             baseRate = Mathf.Max(baseRate, Depth * 2f);
         }
         var openFactor = 1f + Opened * 0.5f;
-        var sealedShare = (1f - Closure * (1f - leak)) * (1f - Held * (1f - leak));
-        return (baseRate * openFactor * sealedShare + Nicked * (1f - Held)) * bleedMult * (1f - Cauterized) * (1f - Clamped);
+        var sealedShare = (1f - Closure * (1f - leak)) * (1f - held * (1f - leak));
+        return (baseRate * openFactor * sealedShare + Nicked * (1f - held)) * bleedMult * (1f - Cauterized) * (1f - Clamped);
     }
 
     public float DistanceTo(Vector2 uv) => uv.DistanceTo(ClosestPoint(uv));
@@ -166,6 +191,11 @@ public sealed class Wound
     public List<Vector2> BinPositions() => [.. Enumerable.Range(0, Bins.Length).Select(BinPosition)];
 
     public Vector2 Midpoint => _points.Count > 1 ? BinPosition(Bins.Length / 2) : _points[0];
+
+    /// <summary>Where it bleeds from: the least closed stretch, nearest the middle among equals.</summary>
+    public Vector2 BleedPoint => _points.Count > 1
+        ? BinPosition(Enumerable.Range(0, Bins.Length).MinBy(i => (Mathf.Round(Bins[i] * 10f), Math.Abs(i - Bins.Length / 2))))
+        : _points[0];
 
     /// <summary>Bins only grow: moving the last point back a little never throws away closure progress.</summary>
     private void ResizeBins()

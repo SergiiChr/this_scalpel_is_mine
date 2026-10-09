@@ -114,6 +114,8 @@ public partial class Patient : Node3D
     public bool TourniquetOn { get; internal set; }
     public float TourniquetTime { get; private set; }
     public float CavityBloodMl { get; set; }
+    /// <summary>Host: ml/s it would bleed with no gauze pressing, what's left once the pressure wears off.</summary>
+    public float LastingBleedRate { get; private set; }
     public float TransfusedMl { get; private set; }
     public float MarkedUv { get; private set; }
     public bool Alive { get; private set; } = true;
@@ -278,6 +280,7 @@ public partial class Patient : Node3D
         }
         SettleClosures();
         var total = 0f;
+        var lasting = 0f;
         var heal = Mods.Num("heal_rate");
         var sources = new List<BleedSource>();
         var leak = ClosureLeak(fx);
@@ -287,28 +290,36 @@ public partial class Patient : Node3D
             {
                 wound.Opened = Mathf.Clamp(Body.Tissue.GapAlong(wound.Points, 0.03f, TissueDepth.Skin) / FullGap, 0f, 1f);
             }
+            EasePressure(wound, dt);
             var rate = wound.BleedRate(siteM, bleedMult, leak);
             wound.Bleeding = rate;
             total += rate;
+            lasting += wound.BleedRate(siteM, bleedMult, leak, false);
             // An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
+            // Every wound that bleeds at all shows where: welling up inside the opening, or on the skin.
             var intoCavity = wound.IsInternal || wound.Opened > 0.3f;
             var spills = !wound.IsInternal && CavityBloodMl > CavitySpillMl;
             if (intoCavity)
             {
                 CavityBloodMl += rate * dt * 0.6f;
             }
-            if (rate > 0.05f && (spills || !intoCavity))
+            if (rate > 0f)
             {
-                sources.Add(new BleedSource(wound.Midpoint, rate));
+                var at = wound.BleedPoint;
+                if (intoCavity)
+                {
+                    sources.Add(new BleedSource(at, rate, wound.IsInternal ? wound.DepthM : PatientBody.SkinThickness));
+                }
+                if (spills || !intoCavity)
+                {
+                    sources.Add(new BleedSource(at, rate));
+                }
                 if (Rng.Randf() < dt * 0.5f)
                 {
-                    Session.Sound("blood_drip", Body.UvToWorld(wound.Midpoint));
+                    Session.Sound("blood_drip", Body.UvToWorld(at));
                 }
             }
-            if (!wound.MadeBySurgeon || wound.Kind != WoundKind.Cut)
-            {
-                wound.Held = Mathf.Max(wound.Held - dt * 0.004f, 0f);
-            }
+            wound.Held = Mathf.Max(wound.Held - dt * 0.004f, 0f);
             if (heal > 0f)
             {
                 for (var i = 0; i < wound.Bins.Length; i++)
@@ -323,8 +334,8 @@ public partial class Patient : Node3D
             }
         }
         v.BleedRate = total;
-        // The worst few external bleeds run as fluid on every peer (BloodFlow); the rest is too little to see.
-        Body.Blood.Sources = [.. sources.OrderByDescending(source => source.Rate).Take(6)];
+        LastingBleedRate = lasting;
+        Body.Blood.Sources = sources;
         v.BloodMl = Mathf.Clamp(v.BloodMl - total * dt + fx.VolumeMl * dt, 0f, v.MaxBloodMl * 1.1f);
         CavityBloodMl = Mathf.Max(CavityBloodMl, 0f);
         Body.SetCavityBlood(CavityBloodMl / CavityFullMl);
@@ -455,6 +466,16 @@ public partial class Patient : Node3D
         if (Vitals.Rhythm == Rhythm.Vfib && _arrestTime > VfibToAsystole)
         {
             Vitals.Rhythm = Rhythm.Asystole;
+        }
+    }
+
+    /// <summary>Gauze pressure holds for a while after the gauze comes off, then wears off.</summary>
+    private static void EasePressure(Wound wound, float dt)
+    {
+        wound.SincePressed += dt;
+        if (wound.SincePressed > Wound.PressureHold)
+        {
+            wound.Pressed = Mathf.Max(wound.Pressed - dt / Wound.PressureFade, 0f);
         }
     }
 
@@ -971,7 +992,8 @@ public partial class Patient : Node3D
         {
             // A hole is a bin long at least.
             var length = Mathf.Max(wound.LengthUv, Wound.BinLengthUv);
-            closed += wound.Closure * length;
+            // A small cut stopped with gauze doesn't need sewing.
+            closed += (wound.Clotted ? 1f : wound.Closure) * length;
             total += length;
         }
         return total > 0f ? closed / total : 1f;
@@ -989,7 +1011,7 @@ public partial class Patient : Node3D
 
     // --- Internals ----------------------------------------------------------------------------------------
 
-    private Wound NewWound(WoundKind kind, Vector2 at, float depth)
+    internal Wound NewWound(WoundKind kind, Vector2 at, float depth)
     {
         var wound = new Wound(_nextWoundId++, kind, at, depth);
         Wounds.Add(wound);

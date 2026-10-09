@@ -212,6 +212,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   bone (which hurts through a local block) but stops short of an organ; it nicks an organ only by touching it.
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
+  Gauze pressed on a wound stops it for a while after it comes off (`Wound.PressureHold`), then the bleeding comes
+  back; it stops a cut too small to sew (`Wound.SmallCut`) for good when held on it long enough without a break.
+  The `stop_bleeding` objective counts only what stays stopped without gauze pressure.
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
 - Cardiac arrest: V-fib, asystole, shocks, adrenaline windows, zapping a partner who's touching the patient.
   Arrests follow from the patient's state (blood loss, low pressure, racing pulse, fever, sugar out of range, swelling,
@@ -506,6 +509,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
 - **Blood** (`src/Visuals/BloodFlow.cs`): bleeding wounds well up into a puddle that grows with the blood lost and
   release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
   on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
+  Every wound that bleeds at all shows where: a bleed inside the opening wells up as a pulsing dome at its source,
+  on the cavity pool's surface once that covers it, and one under closed skin spreads a bruise over itself.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter

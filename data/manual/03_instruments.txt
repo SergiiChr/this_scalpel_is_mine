@@ -18,7 +18,7 @@ Every procedure starts with the same tray: scalpel, forceps, kidney dish for rem
 [cell]Skin stapler[/cell][cell]Wound closure[/cell][cell]Fast, slightly weaker[/cell]
 [cell]Electrocautery[/cell][cell]Hemostasis[/cell][cell]Coagulates all tissue it contacts[/cell]
 [cell]Suction[/cell][cell]Clearing blood and fluid[/cell][cell]Required for visibility in the cavity[/cell]
-[cell]Gauze[/cell][cell]Absorption, direct pressure[/cell][cell]Pressure slows bleeding[/cell]
+[cell]Gauze[/cell][cell]Absorption, direct pressure[/cell][cell]Pressure stops bleeding for a while[/cell]
 [cell]Cotton pad[/cell][cell]Skin preparation[/cell][cell]Hold with forceps, soak in iodine in a dish (1.5)[/cell]
 [cell]Iodine bottle[/cell][cell]Skin preparation[/cell][cell]Pour into a dish, never onto the patient[/cell]
 [cell]Skin marker[/cell][cell]Planning the incision[/cell][cell]Fine instrument[/cell]

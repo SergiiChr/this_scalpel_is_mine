@@ -59,6 +59,15 @@ public static class SurgeryState
         Array.Fill(wound.Bins, 1f);
     }
 
+    /// <summary>A vessel <paramref name="depthM"/> under the skin at <paramref name="uv"/> has given way and bleeds.
+    /// </summary>
+    public static Wound VesselBleeds(Patient patient, Vector2 uv, float depthM)
+    {
+        var vessel = patient.NewWound(WoundKind.Internal, uv, 0.7f);
+        vessel.DepthM = depthM;
+        return vessel;
+    }
+
     /// <summary>As if <paramref name="wound"/> had been cauterized as far as a cautery seals.</summary>
     public static void WoundIsCauterized(Wound wound) => wound.Cauterized = 0.95f;
 
