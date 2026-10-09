@@ -93,6 +93,7 @@ public partial class Hud : CanvasLayer
         BuildGauges();
         BuildControlsHint();
         BuildShop();
+        UpdateObjectives();
     }
 
     public void Begin()

@@ -11,6 +11,18 @@ namespace Scalpel.Tests.Support;
 /// </summary>
 public static class SurgeryState
 {
+    /// <summary>Enable debug displays for a test and restore the previous preference when its scope ends.</summary>
+    public static IDisposable DebugHudIsEnabled() => new DebugHudScope();
+
+    private sealed class DebugHudScope : IDisposable
+    {
+        private readonly bool _was = Settings.Debug;
+
+        public DebugHudScope() => Settings.Debug = true;
+
+        public void Dispose() => Settings.Debug = _was;
+    }
+
     /// <summary>Tray spots something slid away from, per surgery: they aren't offered again.</summary>
     private static readonly ConditionalWeakTable<Surgery, List<Vector3>> BadTraySpots = [];
 
