@@ -43,7 +43,7 @@ Format rules:
 - pros: Every wound slowly closes on its own, including the ones you made by mistake.
 - cons: Your incisions close too. Take too long inside and you have to cut your way back in.
 - specifics: Closure speed is slow on purpose. Retracted wounds close slower while held open.
-- card: Unusual tissue response noted in previous admission. Refused further tests.
+- card: Unusually fast wound healing noted on a previous admission. Declined further tests.
 - effects: heal_rate=0.004
 
 ## coagulation
@@ -91,7 +91,7 @@ Format rules:
 - pros: None.
 - cons: Giving the allergen causes swelling, a blood pressure crash and possibly anaphylaxis.
 - specifics: Antihistamine handles mild reactions. Anaphylaxis needs adrenaline. The manual lists safe substitutes.
-- card: Known drug allergy (see chart).
+- card: Drug allergy reported, agent not documented.
 - effects.cefazolin: allergen=cefazolin
 - effects.morphine: allergen=morphine
 - effects.lidocaine: allergen=lidocaine
@@ -258,7 +258,7 @@ Format rules:
 - pros: None.
 - cons: Tears at half the usual pull and bruises twice as easily.
 - specifics: Use retractors gently. Tape closures hold poorly.
-- card: Elderly, fragile skin.
+- card: Fragile skin, tears easily.
 - effects: tear_threshold_mult=0.5, bruise_mult=2
 
 ## ticklish
@@ -277,8 +277,8 @@ Format rules:
 - icon: [tattooed.svg](../../assets/icons/quirks/patient/tattooed.svg)
 - lore: Every tattoo is a story. Some are also a map.
 - pros: None.
-- cons: None. Scares people reading the card.
+- cons: None.
 - specifics: Red herring. Looks important, does nothing.
-- card: Extensive tattoos, gang affiliation suspected.
+- card: Extensive tattoos.
 - red_herring: true
 - effects: none=0

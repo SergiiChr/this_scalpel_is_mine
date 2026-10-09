@@ -255,6 +255,11 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Stations**: the nurse menu is a shop: categories (`category` in tools.cfg), each a list of items with [-] count
   [+], and a cart. Deliveries land side by side on a delivery tray.
   The defibrillator always waits on its own cart. Station cabinets are solid.
+- **Patient card**: a hospital record hanging on the rail across the table's head end, in view from both starting
+  spots. Every surgery opens with each player reading their own copy; put back, each copy travels in an arc to the
+  hook and they merge into one. Taken, the card travels up to the reader's face before the page shows, leaves the hook
+  for everyone and is seen in the reader's hands until put back (`src/World/PatientCard.cs`, synced with each
+  surgeon's state). Purely visual: no collision.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
   (`src/World/IvLine.cs`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still

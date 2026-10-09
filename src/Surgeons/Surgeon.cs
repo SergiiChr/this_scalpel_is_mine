@@ -33,7 +33,7 @@ public partial class Surgeon : CharacterBody3D
     public const float EyeHeight = 1.62f;
     public static readonly Vector3 ShoulderOffset = new(0.19f, 1.4f, -0.08f);
     internal const float HandSensitivity = 0.0009f;
-    private const float LookSensitivity = 0.003f;
+    internal const float LookSensitivity = 0.003f;
     /// <summary>Radians the held tool turns per pixel while the mouse aims it (Aim tool held).</summary>
     internal const float AimSensitivity = 0.004f;
     /// <summary>How fast C/V roll the held tool (radians a second).</summary>
@@ -105,6 +105,9 @@ public partial class Surgeon : CharacterBody3D
     /// <summary>Where the eyes look up and down (radians).</summary>
     public float Pitch { get; set; } = -0.55f;
     public bool InputLocked { get; set; }
+    /// <summary>Holding the patient card up to read. Every surgery opens with each surgeon reading their own copy.
+    /// </summary>
+    public bool ReadingCard { get; set; } = true;
     public bool IsLocal { get; private set; }
     /// <summary>What interact would use right now (local surgeon only).</summary>
     public Interactable? Focused { get; private set; }

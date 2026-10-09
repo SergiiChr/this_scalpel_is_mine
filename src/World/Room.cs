@@ -31,6 +31,9 @@ public partial class Room : Node3D
     public const float TableFoot = -1.3f;
     /// <summary>Table top end along x where the head lies.</summary>
     public const float TableHead = 1f;
+    /// <summary>The patient card hangs facing out from the middle of the table's head rail (HEAD_RAIL_X in
+    /// tools/assetgen/props.py): in view from either side of the table, where the surgeons start.</summary>
+    private const float CardHook = TableHead + 0.04f;
     /// <summary>Between items the nurse brings together, across the delivery tray (meters): five fit inside its rim.
     /// </summary>
     private const float DeliveryGap = 0.095f;
@@ -80,7 +83,7 @@ public partial class Room : Node3D
             new Dictionary<string, Vector3>
             {
                 ["manual"] = new(1.9f, 0f, -2f),
-                ["card"] = new(1.05f, 0f, 0.5f),
+                ["card"] = new(CardHook, 0f, 0f),
                 ["bell"] = new(-2.25f, 0f, 1.92f),
                 ["gloves"] = new(-1.55f, 0f, 1.92f),
                 ["delivery_tray"] = new(-0.85f, 0f, 1.95f),
@@ -94,6 +97,7 @@ public partial class Room : Node3D
             },
             new Dictionary<string, float>
             {
+                ["card"] = Mathf.Pi / 2f,
                 ["bell"] = Mathf.Pi,
                 ["gloves"] = Mathf.Pi,
                 ["delivery_tray"] = Mathf.Pi,
@@ -101,11 +105,11 @@ public partial class Room : Node3D
                 ["sanitizer"] = Mathf.Pi,
             }),
         ["ambulance"] = new(
-            new(4.2f, 2.1f, 2.3f), [new(0f, 0f, 0.62f), new(-0.5f, 0f, -0.62f)], new(-1.72f, 0f, 0.55f),
+            new(4.2f, 2.1f, 2.3f), [new(0f, 0f, 0.62f), new(0f, 0f, -0.62f)], new(-1.72f, 0f, 0.55f),
             new Dictionary<string, Vector3>
             {
                 ["manual"] = new(1.8f, 0f, -0.85f),
-                ["card"] = new(1f, 0f, 0.5f),
+                ["card"] = new(CardHook, 0f, 0f),
                 ["gloves"] = new(1.8f, 0f, 0.85f),
                 ["sanitizer"] = new(-1.8f, 0f, -0.8f),
                 ["iv"] = new(0.85f, 0f, -0.75f),
@@ -114,13 +118,13 @@ public partial class Room : Node3D
                 // By the back doors.
                 ["smoking"] = new(-1.88f, 0f, -0.2f),
             },
-            new Dictionary<string, float> { ["defib_cart"] = -Mathf.Pi / 2f }),
+            new Dictionary<string, float> { ["card"] = Mathf.Pi / 2f, ["defib_cart"] = -Mathf.Pi / 2f }),
         ["sidewalk"] = new(
             new(14f, 0f, 10f), [new(0f, 0f, 0.62f), new(0f, 0f, -0.62f)], new(-1.7f, 0f, 0.3f),
             new Dictionary<string, Vector3>
             {
                 ["manual"] = new(1.6f, 0f, 1.6f),
-                ["card"] = new(1.05f, 0f, 0.5f),
+                ["card"] = new(CardHook, 0f, 0f),
                 ["gloves"] = new(-1.6f, 0f, -1.5f),
                 ["iv"] = new(0.95f, 0f, 0.85f),
                 ["monitor"] = new(1.4f, 1.1f, -1f),
@@ -128,12 +132,13 @@ public partial class Room : Node3D
                 // Under the streetlight.
                 ["smoking"] = new(2.6f, 0f, 3f),
             },
-            new Dictionary<string, float> { ["defib_cart"] = Mathf.Pi }),
+            new Dictionary<string, float> { ["card"] = Mathf.Pi / 2f, ["defib_cart"] = Mathf.Pi }),
     };
 
     public string EnvironmentId { get; private set; } = "or";
     public RoomLayout Layout { get; private set; } = Layouts["or"];
     public PatientMonitor Monitor { get; private set; } = null!;
+    public PatientCard Card { get; private set; } = null!;
     public XrayCart? Xray { get; private set; }
     /// <summary>Tubing from the IV stand to the patient, shown once a line is in.</summary>
     public IvLine IvLine { get; private set; } = null!;
@@ -477,7 +482,13 @@ public partial class Room : Node3D
     private void BuildStations(Surgery surgery)
     {
         Station("manual", "Read the manual", new Vector3(0.6f, 1.8f, 0.4f), _ => surgery.OpenManual());
-        Station("card", "Read the patient card", new Vector3(0.3f, 0.4f, 0.2f), _ => surgery.OpenCard(), 0.75f);
+        Card = new PatientCard { Name = "PatientCard" };
+        AddChild(Card);
+        Card.Setup(Prop("card"));
+        // Just the board: any taller and it would reach into "Talk to the patient" around the head.
+        var read = Interactable.Create(this, "Read the patient card", new Vector3(0.08f, 0.3f, 0.25f),
+            Layout["card"] + new Vector3(0.02f, 0.74f, 0f), _ => surgery.OpenCard());
+        read.Offered = _ => Card.OnHook;
         if (surgery.Scenario.Nurse && Layout.Has("bell"))
         {
             Station("bell", "Ring for the nurse", new Vector3(0.5f, 1.2f, 0.5f), _ => surgery.OpenNurse());

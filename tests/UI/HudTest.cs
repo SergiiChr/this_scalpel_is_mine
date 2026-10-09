@@ -13,7 +13,8 @@ public class HudTest
         var driver = SurgeryDriver.Create();
         try
         {
-            await driver.Start("appendectomy");
+            // Still reading the card: putting it back would take past the first status update.
+            await driver.Start("appendectomy", readingCard: true);
             var surgery = driver.Surgery;
             // A fresh HUD has not had a process frame: setup itself must build the rows.
             var hud = AutoFree(new Hud())!;

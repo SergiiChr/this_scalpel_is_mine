@@ -94,10 +94,10 @@ public partial class SyringeBench : Node
         Surgery = GD.Load<PackedScene>("res://scenes/surgery.tscn").Instantiate<Surgery>();
         AddChild(Surgery);
         await Frames.Physics(10);
+        await SurgeryDriver.PlayerPutsCardBack(Surgery);
         if (withPartner)
         {
-            Net.Instance.Roster[2] = new LobbyPlayer("Partner", ordinary, Ready: true);
-            Partner = Surgery.SpawnSurgeon(2, 1);
+            Partner = SurgeryState.PartnerIsAtTheTable(Surgery);
             PlacePartner(PartnerPark, 0f);
         }
         var patient = Surgery.Patient;
