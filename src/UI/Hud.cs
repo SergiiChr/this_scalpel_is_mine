@@ -55,6 +55,9 @@ public partial class Hud : CanvasLayer
     public ManualView? Manual { get; private set; }
     /// <summary>Overlays Esc can't close (the report).</summary>
     private bool _overlayLocked;
+    /// <summary>The patient card's page, while it's open or until the next one.</summary>
+    private Control? _card;
+    internal bool CardOpen => Overlay is not null && Overlay == _card;
 
     public void Setup(Surgery surgery)
     {
@@ -96,10 +99,11 @@ public partial class Hud : CanvasLayer
         UpdateObjectives();
     }
 
+    /// <summary>The surgery opens on the patient card, already in hand: put back, it shows where it hangs.</summary>
     public void Begin()
     {
-        CaptureMouse();
         Toast(Surgery.Scenario.Title);
+        OpenCard(inHand: true);
     }
 
     public override void _Process(double delta)
@@ -252,7 +256,18 @@ public partial class Hud : CanvasLayer
         Open(Manual.View);
     }
 
-    public void OpenCard() => Open(PatientCardView.Build(Surgery.Patient, Net.Instance.SessionSeed, CloseOverlay));
+    /// <summary>Takes the card up to read. Unless it's already <paramref name="inHand"/>, the page shows once the card
+    /// has travelled up to the face.</summary>
+    public void OpenCard(bool inHand = false)
+    {
+        _card = PatientCardView.Build(Surgery.Patient, Net.Instance.SessionSeed, CloseOverlay);
+        Open(_card);
+        if (!inHand)
+        {
+            _card.Modulate = new Color(1f, 1f, 1f, 0f);
+            _card.CreateTween().TweenProperty(_card, "modulate:a", 1.0, 0.15).SetDelay(PatientCard.TravelSeconds);
+        }
+    }
 
     public void OpenNurse()
     {
@@ -317,6 +332,7 @@ public partial class Hud : CanvasLayer
         if (Surgery.LocalSurgeon is { } me)
         {
             me.InputLocked = false;
+            me.ReadingCard = false;
         }
         CaptureMouse();
     }
@@ -336,6 +352,7 @@ public partial class Hud : CanvasLayer
         if (Surgery.LocalSurgeon is { } me)
         {
             me.InputLocked = true;
+            me.ReadingCard = overlay == _card;
             me.Hands[me.Active].Lowered = false;
             me.Hands[me.Active].Trigger = false;
         }

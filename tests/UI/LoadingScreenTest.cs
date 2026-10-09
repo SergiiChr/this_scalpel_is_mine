@@ -6,7 +6,7 @@ using System.Threading;
 namespace Scalpel.Tests.UI;
 
 /// <summary>"Start surgery" in a solo lobby shows the loading screen, and once everything is loaded the surgery
-/// starts by itself.</summary>
+/// starts by itself, on the patient card.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 public class LoadingScreenTest
@@ -91,6 +91,8 @@ public class LoadingScreenTest
             .OverrideFailureMessage("Start surgery shows the loading screen").IsTrue();
         AssertBool(await Frames.Until(() => Surgery.Current is { Running: true }, 45f))
             .OverrideFailureMessage("once loaded, the surgery starts by itself").IsTrue();
+        AssertBool(Surgery.Current?.Hud.CardOpen == true)
+            .OverrideFailureMessage("the surgery opens on the patient card").IsTrue();
         Net.Instance.BackToMenu();
     }
 }

@@ -57,10 +57,11 @@ public partial class SurgeryDriver : Node
     /// Starts <paramref name="scenarioId"/> solo, like the menu's single player: one surgeon who rolled nothing special,
     /// a patient with only <paramref name="patientQuirks"/> and every tool the scenario lists on the tray, so the run
     /// only depends on the scenario. <paramref name="randomEvents"/> false leaves the escalation events out (scripted
-    /// ones in the scenario still happen).
+    /// ones in the scenario still happen). The surgery opens on the patient card: the player puts it back first, unless
+    /// <paramref name="readingCard"/>.
     /// </summary>
     public async Task Start(string scenarioId, bool randomEvents = false, uint seed = 1,
-        IReadOnlyList<QuirkRoll>? patientQuirks = null)
+        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false)
     {
         // The game's own unseeded rolls (where the nurse leaves things, jitter) come out the same every run too.
         GD.Seed(seed);
@@ -81,6 +82,22 @@ public partial class SurgeryDriver : Node
         }
         Me.Active = Right;
         Note($"started {scenarioId}");
+        if (!readingCard)
+        {
+            await PlayerPutsCardBack(Surgery);
+            Note("puts the card back");
+        }
+    }
+
+    /// <summary>Puts the patient card down with Esc, and waits until it hangs on its hook.</summary>
+    public static async Task PlayerPutsCardBack(Surgery surgery)
+    {
+        Tap(InputActions.Pause);
+        await PlayerInput.Delivered();
+        // Another player's copy can get there first: this one is back once it's no longer on its way.
+        var card = surgery.Room.Card;
+        await Frames.Until(() => card.OnHook && card.PaperOf(surgery.LocalSurgeon!.PeerId) is null,
+            PatientCard.TravelSeconds + 1f);
     }
 
     /// <summary>What a player's loading screen waits for (<see cref="LoadingScreen"/>): the runtime warmed up and the

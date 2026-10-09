@@ -53,6 +53,7 @@ public partial class Screenshot : Node
             var surgery = GD.Load<PackedScene>(SurgeryScene).Instantiate<Surgery>();
             AddChild(surgery);
             await Frames(10);
+            await SurgeryDriver.PlayerPutsCardBack(surgery);
             if (Has("--anatomy"))
             {
                 await Anatomy(surgery);
@@ -277,6 +278,8 @@ public partial class Screenshot : Node
         }
         await Shot("05b_manual_condition");
         surgery.Hud.OpenCard();
+        // The page shows once the card has come up to the face.
+        await Frames((int)(PatientCard.TravelSeconds * 60) + 20);
         await Shot("06_card");
     }
 }

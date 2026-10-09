@@ -20,6 +20,7 @@ public partial class NetDriver : NetSession
         SurgeryState.ScenarioHasAllStarterTools("appendectomy");
         var surgery = await Join("appendectomy", Port, () => SurgeryState.NetworkSessionHasOrdinarySurgeons());
         GD.Print($"[{Role}] surgery running, surgeons={surgery.Surgeons.Count} tools={surgery.Tools.Tools.Count}");
+        await PassCardAround(surgery);
         if (IsHost)
         {
             await CheckSquatAndTakeTool(surgery);
@@ -33,6 +34,54 @@ public partial class NetDriver : NetSession
         await Wait(1.0);
         GetTree().Quit();
     }
+
+    /// <summary>
+    /// Both start reading their own copy of the patient card, each seeing the other's at their face and none on the
+    /// hook. Both put theirs back and they hang there as one. Then the client takes it: the host sees it in the
+    /// client's hands, not on the hook, and can't take it, until the client puts it back.
+    /// </summary>
+    private async Task PassCardAround(Surgery surgery)
+    {
+        var card = surgery.Room.Card;
+        var me = surgery.LocalSurgeon!;
+        var partner = Partner(surgery);
+        var hook = surgery.Room.FindChildren("*", "", true, false).OfType<Interactable>()
+            .First(spot => spot.Prompt == "Read the patient card");
+        await Wait(0.5);
+        Check(!card.OnHook && card.PaperOf(partner.PeerId)?.DistanceTo(partner.Camera.GlobalPosition) < 0.5f,
+            "at the start the partner reads their own copy and none hangs on the hook");
+        await SurgeryDriver.PlayerPutsCardBack(surgery);
+        for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) > 0f; i++)
+        {
+            await Wait(0.2);
+        }
+        Check(card.OnHook && card.PaperOf(me.PeerId) is null && card.PaperOf(partner.PeerId) is null,
+            "both copies put back hang on the hook as one");
+        if (IsHost)
+        {
+            for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) < 1f; i++)
+            {
+                await Wait(0.2);
+            }
+            Check(!card.OnHook && !hook.OfferedTo(me)
+                && card.PaperOf(partner.PeerId)?.DistanceTo(partner.Camera.GlobalPosition) < 0.5f,
+                "the client's card is in their hands, not on the hook");
+            for (var i = 0; i < 50 && !card.OnHook; i++)
+            {
+                await Wait(0.2);
+            }
+            Check(card.OnHook && hook.OfferedTo(me), "the client's card is back on the hook");
+        }
+        else
+        {
+            await Wait(1.0);
+            hook.Interact(me);
+            await Wait(2.0);
+            await SurgeryDriver.PlayerPutsCardBack(surgery);
+        }
+    }
+
+    private void Check(bool passed, string claim) => GD.Print(passed ? $"[{Role}] {claim}" : $"FAIL: [{Role}] {claim}");
 
     /// <summary>Client: a real crouch the host must see as a grounded squat, then a cut with the scalpel and the
     /// scalpel handed across the table. False when something didn't arrive.</summary>

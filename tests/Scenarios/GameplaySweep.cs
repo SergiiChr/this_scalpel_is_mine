@@ -58,6 +58,7 @@ internal sealed partial class GameplaySweep
             Fail("surgery did not start");
             return;
         }
+        await SurgeryDriver.PlayerPutsCardBack(_surgery);
         CheckDefibCart();
         // First, while the site is still whole and the tray untouched.
         await TableChecks(once);

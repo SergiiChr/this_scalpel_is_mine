@@ -425,6 +425,7 @@ public class SlicingTest
         _surgery = GD.Load<PackedScene>(SurgeryScene).Instantiate<Surgery>();
         Frames.Root.AddChild(_surgery);
         await Unmeasured(10);
+        await SurgeryDriver.PlayerPutsCardBack(_surgery);
         _surgery.Hud.Visible = false;
         var patient = _surgery.Patient;
         var body = patient.Body;

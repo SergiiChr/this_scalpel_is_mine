@@ -54,6 +54,8 @@ if [[ "$mode" == sync ]]; then
 	expect "$logs/net_host.log" "\[host\] surgeon wounds"
 	expect "$logs/net_client.log" "\[client\] surgeon wounds"
 	expect "$logs/net_host.log" "\[host\] client squat has bent knees and grounded heels"
+	expect "$logs/net_host.log" "\[host\] the client's card is back on the hook"
+	expect "$logs/net_client.log" "\[client\] both copies put back hang on the hook as one"
 	if grep -q "partner handed me: nothing" "$logs/net_host.log"; then
 		fail "tool handoff between players did not arrive"
 	fi

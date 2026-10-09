@@ -105,6 +105,9 @@ public partial class Surgeon : CharacterBody3D
     /// <summary>Where the eyes look up and down (radians).</summary>
     public float Pitch { get; set; } = -0.55f;
     public bool InputLocked { get; set; }
+    /// <summary>Holding the patient card up to read. Every surgery opens with each surgeon reading their own copy.
+    /// </summary>
+    public bool ReadingCard { get; set; } = true;
     public bool IsLocal { get; private set; }
     /// <summary>What interact would use right now (local surgeon only).</summary>
     public Interactable? Focused { get; private set; }
