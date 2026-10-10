@@ -862,6 +862,12 @@ public partial class Patient
         else if (zone == SiteZone.Cavity)
         {
             CavityBloodMl = Mathf.Max(CavityBloodMl - def.Power * 15f * dt, 0f);
+            // Packed into the opening, it presses on the vessel it reaches, else on the edges of the cut it's in.
+            var vessel = Wounds.Where(w => w.IsInternal && Reaches(w, uv)).MinBy(w => w.Points[0].DistanceTo(uv));
+            if (def.Id == "gauze" && (vessel ?? NearestWound(uv, 0.02f, false)) is { } wound)
+            {
+                Press(wound, dt);
+            }
         }
     }
 

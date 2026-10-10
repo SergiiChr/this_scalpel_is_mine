@@ -2,10 +2,11 @@ namespace Scalpel.Tests.Tools;
 
 /// <summary>
 /// Gauze as a player uses it: pressed on a cut it stops the bleeding, holds it for a while after it comes off, then the
-/// cut bleeds again. Pressed long enough on a cut too small to sew, it stops that one for good. Debug mode says when
-/// a wound stops bleeding and whether for good. Gauze also wipes away the beads of blood a needle leaves. With key
-/// frames review the gauze lying on the cut while pressed, the skin wiped dry while the pressure holds, the blood
-/// welling back, and the bead on the arm gone after wiping.
+/// cut bleeds again. Packed into an incision, it holds the vessel it reaches the same way. Pressed long enough on a cut
+/// too small to sew, it stops that one for good. Debug mode says when a wound stops bleeding and whether for good.
+/// Gauze also wipes away the beads of blood a needle leaves. With key frames review the gauze lying on the cut while
+/// pressed, the skin wiped dry while the pressure holds, the blood welling back, the gauze in the incision over the
+/// vessel, and the bead on the arm gone after wiping.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
@@ -99,6 +100,39 @@ public class GauzeTest
     }
 
     [TestCase]
+    public async Task GauzePackedIntoAnIncisionStopsTheVesselInIt()
+    {
+        var session = await ToolSession.Start("appendectomy", "gauze_packed");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var at = new Vector2(0.5f, 0.62f);
+        SurgeryState.SkinIsCut(patient, at - new Vector2(0.1f, 0f), at + new Vector2(0.1f, 0f), 1f);
+        await Frames.Seconds(1f);
+        var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
+        await Frames.Seconds(1f);
+        AssertFloat(vessel.Bleeding).OverrideFailureMessage($"the vessel in the incision bleeds: {driver.Bleeders()}").IsGreater(0.1f);
+        await driver.Capture("vessel_bleeding");
+
+        await driver.PlayerRequestsItem("gauze");
+        var on = driver.SitePoint(at);
+        await driver.PlayerWalksTo(on);
+        await driver.PlayerReaches(on);
+        await driver.SetLevel(3);
+        SurgeryDriver.Use();
+        await Frames.Seconds(2f);
+        AssertString(body.Probe(driver.Me.HeldTool(driver.Me.Active)!.TipPosition()).Zone.ToString())
+            .OverrideFailureMessage("the gauze is in the opening").IsEqual(nameof(SiteZone.Cavity));
+        AssertFloat(vessel.Bleeding).OverrideFailureMessage($"packed with gauze, the vessel stops bleeding: {driver.Bleeders()}")
+            .IsLess(0.01f);
+        AssertFloat(vessel.LastingBleeding).OverrideFailureMessage("but only while the pressure holds").IsGreater(0.1f);
+        await driver.Capture("packed");
+        SurgeryDriver.Use(false);
+        await driver.PlayerPutsDown();
+        await session.Finish();
+    }
+
+    [TestCase]
     public async Task GauzeWipesAwayTheBloodBeadANeedleLeaves()
     {
         var session = await ToolSession.Start("appendectomy", "gauze_bead");
@@ -107,7 +141,7 @@ public class GauzeTest
         await driver.PlayerGivesDrug("vial_propofol", 1f, SurgeryDriver.Route.Vein);
         var beads = effects.Beads();
         AssertInt(beads.Count).OverrideFailureMessage($"the needle leaves a bead of blood on the arm\n{driver.Recent()}").IsEqual(1);
-        await driver.Capture("bead");
+        await CaptureAt(session, "bead", beads[0]);
 
         await driver.PlayerRequestsItem("gauze");
         foreach (var bead in beads)
@@ -118,8 +152,18 @@ public class GauzeTest
         await Frames.Physics(5);
         AssertInt(effects.Beads().Count).OverrideFailureMessage("gauze wipes it away like any blood").IsEqual(0);
         await driver.PlayerPutsDown();
-        await driver.Capture("wiped");
+        await CaptureAt(session, "wiped", beads[0]);
         await session.Finish();
+    }
+
+    /// <summary>In a run with key frames, saves views of <paramref name="at"/> on the arm, off the site.</summary>
+    private static async Task CaptureAt(ToolSession session, string keyFrame, Vector3 at)
+    {
+        if (session.Shots is { } shots)
+        {
+            await session.Driver.Unbudgeted(async () => AssertBool(await shots.CaptureAt(keyFrame, at, 0.15f))
+                .OverrideFailureMessage($"saved key frame {keyFrame}").IsTrue());
+        }
     }
 
     private void Listen(SurgeryDriver driver)

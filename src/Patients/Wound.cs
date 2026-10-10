@@ -60,7 +60,8 @@ public sealed class Wound
     public float SincePressed { get; set; } = float.PositiveInfinity;
     /// <summary>Seconds of gauze pressure without a break, toward stopping a small cut.</summary>
     public float PressedFor { get; set; }
-    /// <summary>A small cut pressed long enough: it's stopped bleeding for good.</summary>
+    /// <summary>A small cut pressed long enough: it's stopped bleeding for good, until it's torn or cut further.
+    /// </summary>
     public bool Clotted { get; set; }
     public bool Dirty { get; set; }
     public bool MadeBySurgeon { get; set; }
@@ -89,6 +90,8 @@ public sealed class Wound
 
     public void Extend(Vector2 point)
     {
+        // Torn or cut further, it's fresh damage: it bleeds again, however small it was.
+        Clotted = false;
         var last = _points.Count - 1;
         if (last >= 1 && _points[last - 1].DistanceTo(point) < PointSpacingUv)
         {
@@ -118,7 +121,7 @@ public sealed class Wound
     /// <paramref name="withGauze"/> it's what bleeds once gauze pressure has worn off.</summary>
     public float BleedRate(float siteSize, float bleedMult, float leak = 0f, bool withGauze = true)
     {
-        if (Kind == WoundKind.Burn || Clotted)
+        if (Kind == WoundKind.Burn)
         {
             return 0f;
         }
@@ -130,7 +133,9 @@ public sealed class Wound
         }
         var openFactor = 1f + Opened * 0.5f;
         var sealedShare = (1f - Closure * (1f - leak)) * (1f - held * (1f - leak));
-        return (baseRate * openFactor * sealedShare + Nicked * (1f - held)) * bleedMult * (1f - Cauterized) * (1f - Clamped);
+        // A clotted cut is dry, but a vessel a staple goes through later bleeds regardless.
+        var own = Clotted ? 0f : baseRate * openFactor * sealedShare;
+        return (own + Nicked * (1f - held)) * bleedMult * (1f - Cauterized) * (1f - Clamped);
     }
 
     public float DistanceTo(Vector2 uv) => uv.DistanceTo(ClosestPoint(uv));

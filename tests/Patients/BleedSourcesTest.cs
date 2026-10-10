@@ -2,8 +2,9 @@ namespace Scalpel.Tests.Patients;
 
 /// <summary>
 /// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, and a vessel
-/// inside an incision wells up where it is, on top of the blood pooled in the cavity once that covers it. With key
-/// frames review the puddle on the tiny cut and the dome standing over the vessel, above the pool.
+/// inside an incision wells up where it is, on top of the blood pooled in the cavity once that covers it, however many
+/// there are. With key frames review the puddle on the tiny cut and the dome standing over each vessel, above the
+/// pool.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("visual_confirmation")]
@@ -44,6 +45,17 @@ public class BleedSourcesTest
         AssertFloat(body.Site.ToLocal(well).Y).OverrideFailureMessage($"on the pool's surface ({body.CavityPoolHeight:0.0000} m)")
             .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
         await driver.Capture("vessel_under_pool");
+
+        // Many vessels at once, more than the domes first made room for: each still wells up.
+        for (var i = 0; i < 20; i++)
+        {
+            SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM);
+        }
+        await Frames.Seconds(0.5f);
+        var open = patient.Wounds.Count(wound => wound.IsInternal && wound.Bleeding > 0f && body.Tissue.IsOpen(wound.Points[0], TissueDepth.Skin));
+        AssertInt(body.Blood.Wells.Count).OverrideFailureMessage($"every one of {open} vessels in the opening wells up")
+            .IsGreaterEqual(open);
+        await driver.Capture("many_vessels");
         await session.Finish();
     }
 

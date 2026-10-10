@@ -31,7 +31,6 @@ public partial class BloodFlow : Node3D
 
     private const int MaxRivulets = 48;
     private const int MaxDrops = 96;
-    private const int MaxWells = 16;
     /// <summary>Rivulets per ml of blood lost.</summary>
     private const float RivuletsPerMl = 0.35f;
     private const float RivuletSpeed = 0.05f;
@@ -133,7 +132,7 @@ public partial class BloodFlow : Node3D
             {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
                 Mesh = new SphereMesh { Radius = 1f, Height = 1f, RadialSegments = 16, Rings = 4, IsHemisphere = true },
-                InstanceCount = MaxWells,
+                InstanceCount = 16,
                 VisibleInstanceCount = 0,
             },
             MaterialOverride = Materials.BloodPool(),
@@ -203,6 +202,12 @@ public partial class BloodFlow : Node3D
     {
         var multimesh = _wellMesh.Multimesh;
         _wells.Clear();
+        // Every source gets its dome: the buffer grows with them (resizing clears it, all are set again below).
+        var inside = Sources.Count(source => source.Inside);
+        if (inside > multimesh.InstanceCount)
+        {
+            multimesh.InstanceCount = inside * 2;
+        }
         var pulse = WellFlat * (1f + 0.3f * Mathf.Sin(Time.GetTicksMsec() * 0.001f * Mathf.Tau * WellPulse));
         foreach (var (uv, rate, depth) in Sources.Where(source => source.Inside))
         {
@@ -214,13 +219,10 @@ public partial class BloodFlow : Node3D
             var local = body.Site.ToLocal(body.UvToWorld(uv, depth));
             local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
             var at = body.Site.ToGlobal(local);
-            if (_wells.Count < MaxWells)
-            {
-                var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
-                var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
-                multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
-                _wells.Add(at);
-            }
+            var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
+            var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
+            multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
+            _wells.Add(at);
             Spurt(body, at, rate, delta);
         }
         multimesh.VisibleInstanceCount = _wells.Count;
