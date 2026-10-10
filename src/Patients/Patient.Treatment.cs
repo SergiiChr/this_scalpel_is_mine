@@ -856,12 +856,32 @@ public partial class Patient
             PaintOps(WoundMap.Layer.Fluids, uv, radius, ops);
             if (def.Id == "gauze" && NearestWound(uv, 0.02f, false) is { } wound)
             {
-                wound.Held = Mathf.Min(wound.Held + dt * 2f, 0.7f);
+                Press(wound, dt);
             }
         }
         else if (zone == SiteZone.Cavity)
         {
             CavityBloodMl = Mathf.Max(CavityBloodMl - def.Power * 15f * dt, 0f);
+            // Packed into the opening, it presses on the vessel it reaches, else on the edges of the cut it's in.
+            var vessel = Wounds.Where(w => w.IsInternal && Reaches(w, uv)).MinBy(w => w.Points[0].DistanceTo(uv));
+            if (def.Id == "gauze" && (vessel ?? NearestWound(uv, 0.02f, false)) is { } wound)
+            {
+                Press(wound, dt);
+            }
+        }
+    }
+
+    /// <summary>Gauze pressed on a wound for <paramref name="dt"/> seconds: it stops the bleeding while the pressure
+    /// holds, and stops a small cut for good once pressed long enough.</summary>
+    private void Press(Wound wound, float dt)
+    {
+        wound.PressedFor = wound.SincePressed > Wound.PressBreak ? dt : wound.PressedFor + dt;
+        wound.SincePressed = 0f;
+        wound.Pressed = Mathf.Min(wound.Pressed + dt * 2f, 1f);
+        if (!wound.Clotted && wound.PressedFor >= Wound.SmallCutPress && wound.IsSmall(Body.UvToMeters(1f)))
+        {
+            wound.Clotted = true;
+            Session.Announce("The small cut has stopped bleeding.");
         }
     }
 

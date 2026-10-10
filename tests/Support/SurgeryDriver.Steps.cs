@@ -308,7 +308,7 @@ public partial class SurgeryDriver
     public async Task PlayerStopsBleeding(float maxRate)
     {
         Note($"stops the bleeding: {Bleeders()}");
-        bool Settled() => Patient.Vitals.BleedRate <= maxRate;
+        bool Settled() => Patient.LastingBleedRate <= maxRate;
         if (Settled())
         {
             return;
@@ -344,16 +344,15 @@ public partial class SurgeryDriver
             await PlayerGivesDrug("vial_txa", DoseMl("vial_txa"), IvOrVein);
             await Frames.Seconds(15f);
         }
-        if (!await Frames.Until(Settled, 3f) && Available("gauze"))
+        // Gauze stops only small cuts for good: pressed on each one, without a break, for long enough.
+        var small = Bleeding().Where(wound => wound.IsSmall(Body.UvToMeters(1f))).ToList();
+        if (!await Frames.Until(Settled, 3f) && small.Count > 0 && Available("gauze"))
         {
             await PlayerRequestsItem("gauze");
-            foreach (var wound in Bleeding().Where(wound => !wound.IsInternal))
+            foreach (var wound in small)
             {
-                if (Beside(wound) is { Count: > 0 } along)
-                {
-                    await PlayerWalksTo(SitePoint(wound.Midpoint));
-                    await PlayerWorksAlong(along, 3, 0.01f);
-                }
+                await PlayerWalksTo(SitePoint(wound.Midpoint));
+                await PlayerWorksAt(SitePoint(wound.Midpoint), 3, Wound.SmallCutPress + 1f);
             }
             await PlayerPutsDown();
         }
@@ -364,12 +363,12 @@ public partial class SurgeryDriver
     /// <summary>The tool is there to take, or the nurse can bring it.</summary>
     private bool Available(string id) => Surgery.Scenario.Nurse || FreeTools(id).Count > 0;
 
-    /// <summary>Wounds still bleeding noticeably, the worst first.</summary>
+    /// <summary>Wounds still bleeding noticeably once gauze pressure wears off, the worst first.</summary>
     private List<Wound> Bleeding() =>
     [
         .. Patient.Wounds
-            .Where(wound => wound.BleedRate(Body.UvToMeters(1f), 1f) >= 0.05f)
-            .OrderByDescending(wound => wound.BleedRate(1f, 1f)),
+            .Where(wound => wound.BleedRate(Body.UvToMeters(1f), 1f, withGauze: false) >= 0.05f)
+            .OrderByDescending(wound => wound.BleedRate(1f, 1f, withGauze: false)),
     ];
 
     /// <summary>Every wound still bleeding: kind, ml/s, and what holds it back.</summary>
@@ -380,7 +379,7 @@ public partial class SurgeryDriver
         {
             var w = entry.Wound;
             return $"{w.Kind} {entry.Rate:0.00} ml/s ({Body.UvToMeters(w.LengthUv) * 100f:0.0} cm, open {w.Opened:0.00}, "
-                + $"sealed {w.Cauterized:0.00}, held {w.Held:0.00}, clamped {w.Clamped:0.00}, closed {w.Closure:0.00})";
+                + $"sealed {w.Cauterized:0.00}, held {w.Held:0.00}, pressed {w.Pressed:0.00}, clamped {w.Clamped:0.00}, closed {w.Closure:0.00})";
         }));
 
     /// <summary>Points along a skin wound on whole skin just beside it, where a tool touches the wound's edge.</summary>

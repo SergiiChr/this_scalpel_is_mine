@@ -10,9 +10,9 @@ public class BleedingControlTest
     /// <summary>A tear as long as the one the colon cancer flow leaves bleeding (meters).</summary>
     private const float Tear = 0.077f;
 
-    /// <summary>Skin torn by overstretching (Patient.Tear()) bleeds hard, and the tools stop it. The disabled scenarios
-    /// that end with a tear still bleeding get there through the driver, not the game: its one cautery pass comes
-    /// before the tear opens, and its gauze pass presses beside a short tear rather than on it.</summary>
+    /// <summary>Skin torn by overstretching (Patient.Tear()) bleeds hard, and the tools stop it for good. The disabled
+    /// scenarios that end with a tear still bleeding get there through the driver, not the game: its one cautery pass
+    /// comes before the tear opens.</summary>
     [TestCase]
     public async Task ASkinTearCanBeStopped()
     {
@@ -25,7 +25,7 @@ public class BleedingControlTest
         AssertFloat(patient.Vitals.BleedRate).OverrideFailureMessage($"the tear bleeds: {driver.Bleeders()}").IsGreater(0.3f);
         await driver.PlayerStopsBleeding(0.3f);
         await Frames.Seconds(10f);
-        AssertFloat(patient.Vitals.BleedRate).OverrideFailureMessage($"the bleeding is under control: {driver.Bleeders()}")
+        AssertFloat(patient.LastingBleedRate).OverrideFailureMessage($"the bleeding is under control: {driver.Bleeders()}")
             .IsLessEqual(0.3f);
         await driver.Stop();
     }

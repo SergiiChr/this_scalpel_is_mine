@@ -285,6 +285,7 @@ public static class ToolActions
     public static void Wipe(SurgicalTool pad, ToolStep step, float dt, bool gloved)
     {
         var tools = step.Tools;
+        WipeBeads(step, pad.Def);
         // On the patient it always wipes, even with a dish left right beside the site.
         if (!step.InSite)
         {
@@ -313,6 +314,15 @@ public static class ToolActions
                 step.Patient.ContaminateSite("");
                 step.Surgery.Scoring.Add("dirty_tool");
             }
+        }
+    }
+
+    /// <summary>A swab (<paramref name="swab"/>) lowered onto the body wipes the blood beads under it away.</summary>
+    public static void WipeBeads(ToolStep step, ToolDef swab)
+    {
+        if (step.Touching)
+        {
+            step.Surgery.WipeBeads(step.Tip, swab.Radius);
         }
     }
 

@@ -31,6 +31,9 @@ public partial class ToolEffects : Node3D
 
     private static readonly Lazy<GradientTexture2D> SoftDot = new(MakeSoftDot);
 
+    /// <summary>Blood beads still on the body: blood like any other, gauze or a pad wipes them away.</summary>
+    private readonly List<MeshInstance3D> _beads = [];
+
     public Patient Patient { get; set; } = null!;
 
     public void Play(ToolEffect kind, Vector3 at)
@@ -193,6 +196,38 @@ public partial class ToolEffects : Node3D
         grow.TweenProperty(bead, "scale", new Vector3(0.0035f, 0.0025f, 0.0035f), 2f);
         grow.TweenInterval(BeadLife);
         grow.TweenProperty(bead, "scale", new Vector3(0.002f, 0.0004f, 0.002f), 10f);
-        grow.TweenCallback(Callable.From(bead.QueueFree));
+        grow.TweenCallback(Callable.From(() => Remove(bead)));
+        _beads.Add(bead);
+    }
+
+    /// <summary>Where the blood beads still on the body are (world).</summary>
+    internal List<Vector3> Beads() => [.. BeadsLeft().Select(bead => bead.GlobalPosition)];
+
+    /// <summary>Whether a blood bead lies within <paramref name="reach"/> (meters) of <paramref name="at"/>.</summary>
+    public bool BeadNear(Vector3 at, float reach) => BeadsLeft().Any(bead => bead.GlobalPosition.DistanceTo(at) < reach);
+
+    /// <summary>Wipes away the blood beads within <paramref name="reach"/> of <paramref name="at"/>.</summary>
+    public void WipeBeads(Vector3 at, float reach)
+    {
+        foreach (var bead in BeadsLeft().Where(bead => bead.GlobalPosition.DistanceTo(at) < reach).ToList())
+        {
+            Remove(bead);
+        }
+    }
+
+    /// <summary>The beads not yet gone with what they were stuck to (an IV site taken away).</summary>
+    private List<MeshInstance3D> BeadsLeft()
+    {
+        _beads.RemoveAll(bead => !IsInstanceValid(bead));
+        return _beads;
+    }
+
+    private void Remove(MeshInstance3D bead)
+    {
+        _beads.Remove(bead);
+        if (IsInstanceValid(bead))
+        {
+            bead.QueueFree();
+        }
     }
 }

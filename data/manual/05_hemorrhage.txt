@@ -4,7 +4,7 @@ title: 5. Hemorrhage control
 The monitor displays total blood loss rate in ml/s. A rate above {Patient.HeavyBleeding} ml/s is a surgical emergency.
 
 ## 5.2 Methods, in order of preference
-1. [b]Direct pressure[/b] with gauze. Temporizing only.
+1. [b]Direct pressure[/b] with gauze, held on the wound ([b]Use tool[/b]). Bleeding stops while pressed and for {Wound.PressureHold} seconds after, then returns over {Wound.PressureFade} seconds. Temporizing only, except on cuts shorter than {Wound.SmallCut * 100} cm, which are not sutured: press gauze on one for {Wound.SmallCutPress} seconds without lifting it and the bleeding stops for good.
 2. [b]Clamping[/b] the vessel with a hemostat. Leave it in place while you work.
 3. [b]Electrocautery[/b] for small bleeding points. Adjacent healthy tissue is coagulated as well.
 4. [b]Closure[/b] of the full length of the wound with sutures or staples.

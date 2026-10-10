@@ -2,7 +2,7 @@ namespace Scalpel.Tests.Patients;
 
 /// <summary>Blood pressure as a player meets it: a stimulant pushes systolic pressure above 140 mmHg, closures leak
 /// while it stays there or while heparin acts, cautery holds regardless, and a patient with an aneurysm bursts a
-/// vessel.</summary>
+/// vessel, which bruises the skin over it.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
@@ -29,6 +29,9 @@ public class BloodPressureTest
         if (newWounds.Count > 0)
         {
             AssertBool(newWounds[0].IsInternal).OverrideFailureMessage("the burst vessel bleeds inside the site").IsTrue();
+            await Frames.Seconds(1f);
+            AssertFloat(patient.Body.WoundMap.Value(WoundMap.Layer.Wounds, WoundMap.Bruise, newWounds[0].Points[0]))
+                .OverrideFailureMessage("under closed skin, a bruise spreads over where it bleeds").IsGreater(0.2f);
         }
         await driver.Stop();
     }

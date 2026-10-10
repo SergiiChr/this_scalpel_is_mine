@@ -309,6 +309,18 @@ public partial class Surgery : Node3D
         }
     }
 
+    internal ToolEffects Effects => _effects;
+
+    /// <summary>Host: a swab within <paramref name="reach"/> of <paramref name="at"/> wipes the blood beads there away on
+    /// every peer.</summary>
+    public void WipeBeads(Vector3 at, float reach)
+    {
+        if (_effects.BeadNear(at, reach))
+        {
+            Rpc(MethodName.WipeBeadsOnPeer, at, reach);
+        }
+    }
+
     /// <summary>True (and remembers now) when <paramref name="key"/> last went through at least
     /// <paramref name="gapMsec"/> ago.</summary>
     private static bool Throttle<TKey>(Dictionary<TKey, ulong> last, TKey key, ulong gapMsec) where TKey : notnull
@@ -428,6 +440,9 @@ public partial class Surgery : Node3D
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
     private void PlayEffect(int kind, Vector3 at) => _effects.Play((ToolEffect)kind, at);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void WipeBeadsOnPeer(Vector3 at, float reach) => _effects.WipeBeads(at, reach);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SayLine(string text, string voiceId)

@@ -33,7 +33,8 @@ public static class ObjectiveChecks
             case "close_internal":
                 return patient.InternalClosed();
             case "stop_bleeding":
-                return Held(state, vitals.BleedRate <= parameters.Float("max_ml_s", 0.3f), 3f, delta);
+                // Gauze only holds it for a while: it counts once the bleeding stays stopped without it.
+                return Held(state, patient.LastingBleedRate <= parameters.Float("max_ml_s", 0.3f), 3f, delta);
             case "stabilize":
                 var stable = !vitals.IsArrested && vitals.Spo2 >= 94f && vitals.Systolic >= 90f;
                 return Held(state, stable, parameters.Float("seconds", 30f), delta);

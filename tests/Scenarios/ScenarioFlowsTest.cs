@@ -45,6 +45,7 @@ public class ScenarioFlowsTest
         "in some runs the frame the defibrillator is put down (56.9 s) takes 35-43 ms of the game's own work; timing "
         + "every _Process and _PhysicsProcess found nothing over 10 ms there, so it's in the engine or the finalizer "
         + "thread; not traced further", Timeout = Limits.Slow)]
+    [TestCase("brain_tumor", false, "", Timeout = Limits.Slow)]
     [TestCase("euthanasia", false, "", Timeout = Limits.Slow)]
     public async Task PlaysThrough(string scenario, bool keyFrames, string budgetBroken) => await
         ScenarioFlow.Play(scenario, keyFrames, budgetBroken);
@@ -60,7 +61,6 @@ public class ScenarioFlowsTest
     [TestCase("colon_cancer", Timeout = Limits.Slow, Description = "BROKEN: run beside another suite (--jobs 2), a 7.7 cm tear keeps bleeding 2.4 ml/s and \"Control the bleeding\" never completes; run alone it passes. Likely wall-clock driven, not yet debugged. Also, with key frames the worst frame takes 32 ms (budget 16 ms) while holding the bowel aside and sewing.")]
     [TestCase("bullet_near_heart", Timeout = Limits.Slow, Description = "BROKEN: forceps take hold as soon as they're pressed, while still coming down into the opening, so they get a vessel instead of the lung and the bullet; the patient bleeds out.")]
     [TestCase("leg_extension", Timeout = Limits.Slow, Description = "BROKEN: the needle threads both 13.5 cm cuts, but their skin stays open (\"needle cannot reach intended puncture within 4 mm\"), \"Close the leg\" never completes.")]
-    [TestCase("brain_tumor", Timeout = Limits.Slow, Description = "BROKEN: a 0.5 cm tear opens while the hemostats go on, after the driver's only cautery pass, and its gauze pass presses beside it (held 0), \"Control the bleeding\" never completes. Pressed on directly, gauze and cautery stop such a tear.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);
 }
