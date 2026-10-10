@@ -42,8 +42,9 @@ public class GloveStationTest
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "glove_station");
-            AssertBool(await shots.CaptureAt("untouched", bounds.GetCenter(), 0.6f))
-                .OverrideFailureMessage("saved the untouched glove box").IsTrue();
+            await shots.CaptureAt("untouched",
+                "the glove box on a closed cabinet top, gloves out of its slot, a loose pair in front, no black patch",
+                bounds.GetCenter(), 0.6f);
         }
         // Loading the room isn't gameplay: the frame budget counts from here.
         driver.Budget.Clear();
@@ -55,8 +56,8 @@ public class GloveStationTest
             .IsSame(station);
         if (shots is not null)
         {
-            await driver.Unbudgeted(async () => AssertBool(await shots.CaptureView("box_in_view"))
-                .OverrideFailureMessage("saved the box in view").IsTrue());
+            await driver.Unbudgeted(() => shots.CaptureView("box_in_view",
+                "the glove box in the middle of the view, the \"Change gloves\" prompt, bloody gloves on the hands"));
         }
         PlayerInput.Tap(InputActions.Interact);
         await PlayerInput.Delivered();
@@ -67,8 +68,8 @@ public class GloveStationTest
         AssertFloat(me.Status.Sweat).OverrideFailureMessage("fresh gloves are dry").IsLess(0.05f);
         if (shots is not null)
         {
-            await driver.Unbudgeted(async () => AssertBool(await shots.CaptureView("fresh_gloves"))
-                .OverrideFailureMessage("saved fresh gloves").IsTrue());
+            await driver.Unbudgeted(() => shots.CaptureView("fresh_gloves",
+                "clean blue gloves on the hands, the \"Fresh gloves.\" toast, no sweat bar"));
             shots.End();
         }
         driver.Budget.Check(shots is not null);
