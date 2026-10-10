@@ -44,6 +44,11 @@ public partial class Patient : Node3D
     public const float LethalTemperature = 42.5f;
     /// <summary>Chance that a dangerous drug combination (<see cref="DrugDef.DangerWith"/>) stops the heart.</summary>
     public const float DangerArrestChance = 0.5f;
+    /// <summary>How deep (meters) one sees down an opening per meter it gapes.</summary>
+    public const float SlitView = 1f;
+    /// <summary>An opening gaping less than this (meters) is shut: blood from under it seeps out onto the skin.
+    /// </summary>
+    public const float ShutSlit = 0.003f;
     /// <summary>Total bleeding (ml/s) that frightens an awake patient: a surgical emergency.</summary>
     public const float HeavyBleeding = 1f;
     /// <summary>Seconds after adrenaline in which a shock can restart a flat line.</summary>
@@ -309,11 +314,12 @@ public partial class Patient : Node3D
             if (rate > 0f)
             {
                 var at = wound.BleedPoint;
-                if (intoCavity)
+                var shown = wound.IsInternal ? ShownDepth(wound, at) : PatientBody.SkinThickness;
+                if (intoCavity && shown > 0f)
                 {
-                    sources.Add(new BleedSource(at, rate, wound.IsInternal ? wound.DepthM : PatientBody.SkinThickness));
+                    sources.Add(new BleedSource(at, rate, shown));
                 }
-                if (spills || !intoCavity)
+                if (spills || !intoCavity || shown <= 0f)
                 {
                     sources.Add(new BleedSource(at, rate));
                 }
@@ -484,6 +490,20 @@ public partial class Patient : Node3D
         {
             Session.AnnounceDebug($"Bleeding stopped: {what} [temporarily]");
         }
+    }
+
+    /// <summary>Where a vessel's blood shows (meters under the skin): at the vessel when the opening above gapes wide
+    /// enough to see down to it, else as deep down the slit as one can see, where its blood wells up. 0 where a cut
+    /// above is shut: it seeps out onto the skin. Under skin that isn't cut it stays where it is (it bruises).
+    /// </summary>
+    private float ShownDepth(Wound vessel, Vector2 at)
+    {
+        if (!Body.Tissue.IsOpen(at, TissueDepth.Skin))
+        {
+            return vessel.DepthM;
+        }
+        var gap = Body.Tissue.GapAt(at, 0.02f);
+        return gap < ShutSlit ? 0f : Mathf.Min(vessel.DepthM, Mathf.Max(gap * SlitView, PatientBody.SkinThickness));
     }
 
     /// <summary>Gauze pressure holds for a while after the gauze comes off, then wears off.</summary>

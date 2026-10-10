@@ -2,9 +2,9 @@ namespace Scalpel.Tests.Patients;
 
 /// <summary>
 /// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, and a vessel
-/// inside an incision wells up where it is, on top of the blood pooled in the cavity once that covers it, however many
-/// there are. With key frames review the puddle on the tiny cut and the dome standing over each vessel, above the
-/// pool.
+/// inside an incision wells up where it is, however many there are. Under a narrow incision its blood wells up the slit
+/// as far as one can see down it, and stays on top of the blood pooled in the cavity once that rises. With key frames
+/// review the puddle on the tiny cut and a dome standing in the incision over each vessel.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("visual_confirmation")]
@@ -33,6 +33,10 @@ public class BleedSourcesTest
         var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
         await Frames.Seconds(1f);
         AssertString(Wells(driver, vessel)).OverrideFailureMessage("the vessel wells up where it is").IsEqual("at the vessel");
+        var seen = Mathf.Max(body.Tissue.GapAt(at, 0.02f) * Patient.SlitView, PatientBody.SkinThickness);
+        var shown = -body.HeightAboveSite(body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(at)));
+        AssertFloat(shown).OverrideFailureMessage($"deep under a narrow incision, it wells up the slit to where it can be seen ({seen * 100f:0.0} cm)")
+            .IsLessEqual(seen + 0.002f);
         await driver.Capture("vessel");
 
         var risen = await Frames.Until(() => body.CavityPoolHeight > body.Site.ToLocal(driver.SitePoint(at, vessel.DepthM)).Y, 60f);
@@ -46,15 +50,15 @@ public class BleedSourcesTest
             .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
         await driver.Capture("vessel_under_pool");
 
-        // Many vessels at once, more than the domes first made room for: each still wells up.
-        for (var i = 0; i < 20; i++)
-        {
-            SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM);
-        }
-        await Frames.Seconds(0.5f);
-        var open = patient.Wounds.Count(wound => wound.IsInternal && wound.Bleeding > 0f && body.Tissue.IsOpen(wound.Points[0], TissueDepth.Skin));
-        AssertInt(body.Blood.Wells.Count).OverrideFailureMessage($"every one of {open} vessels in the opening wells up")
-            .IsGreaterEqual(open);
+        // Many vessels at once along the incision, more than the domes first made room for: each shows, welling up
+        // where the incision gapes, seeping onto the skin where it's shut.
+        var vessels = Enumerable.Range(0, 20)
+            .Select(i => SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM)).ToList();
+        await Frames.Seconds(1f);
+        var unseen = vessels.Where(v => Wells(driver, v) != "at the vessel"
+            && body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, v.Points[0]) < 0.5f).Select(v => v.Points[0]).ToList();
+        AssertBool(unseen.Count == 0).OverrideFailureMessage($"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})")
+            .IsTrue();
         await driver.Capture("many_vessels");
         await session.Finish();
     }

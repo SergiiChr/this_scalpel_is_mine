@@ -516,7 +516,9 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
   on the table and the floor; strong bleeds spurt. An open wound fills the cavity first, then spills over.
   Every wound that bleeds at all shows where: a bleed inside the opening wells up as a pulsing dome at its source,
-  on the cavity pool's surface once that covers it, and one under closed skin spreads a bruise over itself.
+  on the cavity pool's surface once that covers it. Under a narrow cut its blood wells up the slit as deep as one sees
+  down it (`Patient.SlitView`), and seeps onto the skin where the cut is shut. One under skin that isn't cut spreads a
+  bruise over itself.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter
