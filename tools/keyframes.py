@@ -1,7 +1,7 @@
-"""Key frame review report: compares a run's key frames against a baseline run and writes one sheet per changed or new
-key frame, with a Markdown index that says what to open.
+"""Key frame review report: compares a run's key frames against a baseline run and writes one sheet per missing,
+changed or new key frame, with a Markdown index that says what to open.
 
-  python -m tools.keyframes CURRENT BASELINE OUT [--all]
+  python -m tools.keyframes CURRENT BASELINE OUT [--all] [--regression-failed]
 
 CURRENT and BASELINE are screenshot folders (build/test-artifacts/screenshots of two runs); BASELINE may be missing.
 A sheet puts a key frame's views (top | oblique) side by side, sized to what a model sees anyway, so one key frame is
@@ -17,15 +17,16 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 # Views of one key frame, in the order a sheet shows them. Files without one of these suffixes are a view of their own.
 VIEWS = ("top", "oblique", "view")
-# A pixel counts as changed when its brightness differs by more than this (0-255): software rendering under xvfb is
-# deterministic, but leaves room for dithering and float noise.
+# A pixel counts as changed when one of its channels differs by more than this (0-255). Rendering is deterministic, but
+# the screen grime shader's film grain moves every pixel by up to 6 between runs.
 PIXEL_TOLERANCE = 8
-# A view counts as changed when more than this share of its pixels did.
-CHANGED_SHARE = 0.001
+# A view counts as changed when it has a block this many pixels across that all changed. Small, concentrated changes
+# (a clipping tool tip, a drop of blood) count however little of the view they cover; lone pixels don't.
+CHANGED_BLOCK = 3
 # The widest image a model reads without scaling it down: a sheet is sized to it so what's saved is what's seen.
 SHEET_WIDTH = 1568
 CAPTION_HEIGHT = 28
@@ -45,8 +46,8 @@ class KeyFrame:
 @dataclass
 class Change:
     view: str
-    share: float
-    box: tuple[int, int, int, int] | None
+    # What changed: "missing" or "added" for a whole view, "resized", or where its pixels changed.
+    what: str
 
 
 def key_frames(root: Path) -> dict[tuple[str, str], KeyFrame]:
@@ -76,14 +77,28 @@ def key_frames(root: Path) -> dict[tuple[str, str], KeyFrame]:
     return found
 
 
-def compare(current: Path, before: Path, view: str) -> Change | None:
-    """How a view changed, None when it didn't."""
-    with Image.open(current) as now, Image.open(before) as then:
-        if now.size != then.size:
-            return Change(view, 1.0, None)
-        mask = ImageChops.difference(now.convert("RGB"), then.convert("RGB")).convert("L").point(lambda v: 255 if v > PIXEL_TOLERANCE else 0)
-    share = mask.histogram()[255] / (mask.width * mask.height)
-    return Change(view, share, mask.getbbox()) if share > CHANGED_SHARE else None
+def compare(frame: KeyFrame, before: KeyFrame) -> list[Change]:
+    """How each view of a key frame changed against its baseline, views it lost or gained included."""
+    changes = []
+    for view in VIEWS:
+        now, then = frame.views.get(view), before.views.get(view)
+        if now is None or then is None:
+            if now or then:
+                changes.append(Change(view, "missing" if then else "added"))
+            continue
+        with Image.open(now) as current, Image.open(then) as baseline:
+            if current.size != baseline.size:
+                changes.append(Change(view, "resized"))
+                continue
+            channels = ImageChops.difference(current.convert("RGB"), baseline.convert("RGB")).split()
+        biggest = ImageChops.lighter(ImageChops.lighter(channels[0], channels[1]), channels[2])
+        mask = biggest.point(lambda v: 255 if v > PIXEL_TOLERANCE else 0)
+        # Keeps only pixels whose whole block around them changed.
+        blocks = mask.filter(ImageFilter.MinFilter(CHANGED_BLOCK))
+        if blocks.getbbox():
+            box = mask.getbbox() or (0, 0, 0, 0)
+            changes.append(Change(view, f"{mask.histogram()[255]} pixels within x {box[0]}-{box[2]}, y {box[1]}-{box[3]}"))
+    return changes
 
 
 def sheet(frame: KeyFrame, label: str, out: Path) -> None:
@@ -107,76 +122,60 @@ def sheet(frame: KeyFrame, label: str, out: Path) -> None:
     result.save(out)
 
 
-def describe(changes: list[Change]) -> str:
-    parts = []
-    for change in changes:
-        box = f", pixels {change.box[0]}-{change.box[2]} x {change.box[1]}-{change.box[3]}" if change.box else ", new size"
-        parts.append(f"{change.view} {change.share:.1%}{box}")
-    return "; ".join(parts)
-
-
-def report(current_root: Path, baseline_root: Path, out: Path, everything: bool) -> str:
+def report(current_root: Path, baseline_root: Path, out: Path, everything: bool, regression_failed: bool) -> str:
     """Writes the sheets and returns the Markdown index."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
-    has_baseline = bool(baseline)
+    states = ("missing", "changed", "new", "unchanged")
+    counts = dict.fromkeys(states, 0)
     sections: dict[str, list[str]] = {}
     unchanged: dict[str, int] = {}
-    counts = {"changed": 0, "new": 0, "removed": 0, "unchanged": 0}
-
     for key in sorted(current.keys() | baseline.keys(), key=lambda key: (key[0], (current.get(key) or baseline[key]).order)):
         frame, before = current.get(key), baseline.get(key)
         folder, name = key
         target = out / "sheets" / folder / f"{name.replace('#', '_')}.png"
-        lines = sections.setdefault(folder, [])
-        if frame is None:
-            counts["removed"] += 1
-            lines.append(f"- removed: {name}")
-            continue
-        if before is None:
-            counts["new"] += 1
-            sheet(frame, "new", target)
-            lines.append(f"- {'new' if has_baseline else 'frame'}: {name} -> `{target.as_posix()}`")
-            continue
-        changes = [
-            change
-            for view, path in frame.views.items()
-            if (change := compare(path, before.views[view], view) if view in before.views else Change(view, 1.0, None))
-        ]
-        if not changes and not everything:
-            counts["unchanged"] += 1
+        before_sheet = target.with_name(f"{target.stem}.before.png")
+        changes = compare(frame, before) if frame and before else []
+        state = "missing" if frame is None else "new" if before is None else "changed" if changes else "unchanged"
+        counts[state] += 1
+        if state == "unchanged" and not everything:
             unchanged[folder] = unchanged.get(folder, 0) + 1
             continue
-        counts["changed" if changes else "unchanged"] += 1
-        sheet(frame, "changed" if changes else "unchanged", target)
-        before_sheet = target.with_suffix(".before.png")
+        line = f"- {state}: {name}"
         if changes:
+            line += f" ({'; '.join(f'{change.view} {change.what}' for change in changes)})"
+        if frame:
+            sheet(frame, state, target)
+            line += f" -> `{target.as_posix()}`"
+        if before and state != "unchanged":
             sheet(before, "before", before_sheet)
-            lines.append(f"- changed: {name} ({describe(changes)}) -> `{target.as_posix()}`, before: `{before_sheet.as_posix()}`")
-        else:
-            lines.append(f"- unchanged: {name} -> `{target.as_posix()}`")
+            line += f", before: `{before_sheet.as_posix()}`"
+        sections.setdefault(folder, []).append(line)
 
-    summary = ", ".join(f"{count} {state}" for state, count in counts.items())
     text = [
         "# Key frame review",
         "",
+        "Regression: FAILED. Fix the failed cases first (the run's output names them): key frames they didn't take show as missing below."
+        if regression_failed
+        else "Regression: passed.",
         f"Current: `{current_root.as_posix()}`  ",
-        f"Baseline: `{baseline_root.as_posix()}`" if has_baseline else "Baseline: none, every key frame is listed.",
+        f"Baseline: `{baseline_root.as_posix()}`" if baseline else "Baseline: none, every key frame is new.",
         "",
-        f"{summary}.",
+        ", ".join(f"{counts[state]} {state}" for state in states) + ".",
         "",
-        "Open every sheet listed below: one sheet is one key frame, its views side by side in the order named in its "
-        "caption (top | oblique, or the surgeon's view). Open a `before` sheet only when a change needs explaining. "
-        "Read the key frames of a folder in order, they tell the story of the test.",
+        "- missing: the baseline has this key frame or view and this run doesn't. Always a finding: a test stopped short or no longer captures it.",
+        "- changed: a view differs from the baseline. Open the sheet, then `before` when the change isn't what the work "
+        "meant to do. Look first where the line says the change is (pixels of the full-size view).",
+        "- new: no baseline to compare against. Open the sheet.",
         "",
+        "A sheet is one key frame, its views side by side as its caption names them (top | oblique). Read a folder's key "
+        "frames in order: they tell the story of the test.",
         f"Look for: {CHECKLIST}.",
-        "Each line gives where a change is (share of pixels and their box in the full-size view) to look at first.",
     ]
     for folder in sorted(sections.keys() | unchanged.keys()):
         lines = sections.get(folder, [])
         if unchanged.get(folder):
             lines = [*lines, f"- {unchanged[folder]} unchanged"]
-        if lines:
-            text += ["", f"## {folder}", "", *lines]
+        text += ["", f"## {folder}", "", *lines]
     return "\n".join(text) + "\n"
 
 
@@ -186,6 +185,7 @@ def main() -> int:
     parser.add_argument("baseline", type=Path, help="screenshot folder to compare against, may be missing")
     parser.add_argument("out", type=Path, help="report folder, emptied first")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
+    parser.add_argument("--regression-failed", action="store_true", help="say so at the top of the report")
     parsed = parser.parse_args()
     if not key_frames(parsed.current):
         print(f"No key frames in {parsed.current}.", file=sys.stderr)
@@ -193,7 +193,7 @@ def main() -> int:
     shutil.rmtree(parsed.out, ignore_errors=True)
     parsed.out.mkdir(parents=True)
     index = parsed.out / "report.md"
-    index.write_text(report(parsed.current, parsed.baseline, parsed.out, parsed.all))
+    index.write_text(report(parsed.current, parsed.baseline, parsed.out, parsed.all, parsed.regression_failed))
     print(f"Key frame review: {index}")
     return 0
 

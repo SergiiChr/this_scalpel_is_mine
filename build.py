@@ -592,6 +592,19 @@ def baseline(ref: str) -> Path:
     return frames
 
 
+def pillow_python() -> Path:
+    """A Python with Pillow: the dev virtualenv's, or else a small one in .tools with only the pinned Pillow."""
+    if (VENV / "bin/python").exists():
+        return VENV / "bin/python"
+    venv = TOOLS / "review-venv"
+    if not (venv / "bin/python").exists():
+        run([sys.executable, "-m", "venv", venv])
+    pillow = next(line for line in (ROOT / "requirements.txt").read_text().splitlines() if line.startswith("pillow"))
+    # Quick when it's there already, and installs it when an earlier attempt didn't.
+    run([venv / "bin/pip", "install", "--quiet", pillow])
+    return venv / "bin/python"
+
+
 def review(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py review",
@@ -610,10 +623,9 @@ def review(arguments: list[str]) -> int:
         status = test(["--all", "--with-key-frames"])
         if status == 0 and not git("status", "--porcelain"):
             shutil.copytree(KEY_FRAMES, BASELINES / git("rev-parse", "HEAD"), dirs_exist_ok=True)
-    python = VENV / "bin/python" if (VENV / "bin/python").exists() else Path(sys.executable)
-    command: list[str | Path] = [python, "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW))]
-    report_status = subprocess.run([*command, *(["--all"] if parsed.all else [])], cwd=ROOT, check=False).returncode
-    return status or report_status
+    flags = [*(["--all"] if parsed.all else []), *(["--regression-failed"] if status else [])]
+    command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW)), *flags]
+    return status or subprocess.run(command, cwd=ROOT, check=False).returncode
 
 
 # --- Commands ---------------------------------------------------------------------------------------------------------
