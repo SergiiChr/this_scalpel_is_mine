@@ -30,6 +30,7 @@ jobs:
       - run: ruff check tools build.py
       - run: ruff format --check tools build.py
       - run: mypy tools build.py
+      - run: python -m unittest tools.test_build
 
   smoke:
     name: Smoke
@@ -49,22 +50,17 @@ jobs:
           if-no-files-found: warn
 
   regression:
-    name: Regression, visuals and export
+    name: Functional regression and export
     needs: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Install virtual display
-        run: sudo apt-get update && sudo apt-get install -y xvfb
       - uses: ./.github/actions/setup-godot
       # One suite at a time: every GdUnit4 process rebuilds the project before it runs, and a rebuild beside another
       # suite's start leaves that suite without its runner class.
-      - name: Everything else, with key frames
-        run: ./build.py test --all --skip smoke --with-key-frames --ci-run
-      # The smoke cases that take key frames, again with them on.
-      - name: Smoke key frames
-        run: ./build.py test --tag smoke --tag visual_confirmation --with-key-frames --ci-run
+      - name: Everything else, headless
+        run: ./build.py test --all --skip smoke --ci-run
       - run: SKIP_TESTS=1 ./build.py build
       - if: always()
         uses: actions/upload-artifact@v4
@@ -73,7 +69,6 @@ jobs:
           path: |
             build/test-logs
             build/test-results
-            build/test-artifacts/screenshots
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:

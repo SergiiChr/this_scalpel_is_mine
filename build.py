@@ -366,10 +366,17 @@ class Outcome:
     suite: Suite
     log: Path
     failures: list[str]
+    executed: int = 0
 
 
-def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> list[str]:
-    """Runs one dotnet test process. Returns what failed, empty when everything passed."""
+@dataclass
+class ProcessResult:
+    failures: list[str]
+    executed: int = 0
+
+
+def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
+    """Runs one dotnet test process and counts the cases actually executed."""
     log = BUILD / "test-logs" / f"{name}.log"
     report = BUILD / "test-results" / f"{name}.xml"
     report.unlink(missing_ok=True)
@@ -378,6 +385,7 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
         "--logger", f"junit;LogFilePath={report}", "--logger", "console;verbosity=normal",
     ]  # fmt: skip
     environment = {**os.environ, "GODOT_BIN": str(GODOT), "CI_RUN": "1" if options.ci_run else ""}
+    environment.pop("WITH_KEY_FRAMES", None)
     # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
     # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
     environment.setdefault("DOTNET_GCgen0size", hex(36 << 20))
@@ -385,7 +393,7 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
         environment["WITH_KEY_FRAMES"] = "1"
         if not os.environ.get("DISPLAY"):
             if not shutil.which("xvfb-run"):
-                return ["Visual tests need xvfb-run or a DISPLAY."]
+                return ProcessResult(["Visual tests need xvfb-run or a DISPLAY."])
             command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
     # GdUnit4 talks to its Godot process over a named pipe with a fixed name, which .NET puts in the temp folder:
     # runs at the same time (--jobs, other checkouts) each need their own.
@@ -395,27 +403,31 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
     return problems(log, report, status, suite.timeout)
 
 
-def problems(log: Path, report: Path, status: int, timeout: int) -> list[str]:
-    """What went wrong in a test process: failed and slow cases, errors in its output, or no report at all."""
+def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResult:
+    """What went wrong in a process with selected cases: failures, errors, or no executed cases/report."""
     found = []
     if not report.exists():
-        return [f"[ERROR] No test report was written (exit {status}); see {log}"]
+        return ProcessResult([f"[ERROR] No test report was written (exit {status}); see {log}"])
     tree = ElementTree.parse(report)
     cases = tree.findall(".//testcase")
-    if not cases:
-        found.append("[ERROR] No test cases ran.")
+    executed = sum(case.find("skipped") is None for case in cases)
+    if not executed:
+        found.append("[ERROR] Runnable test cases were selected, but no test cases ran.")
     for case in cases:
         name = f"{case.get('classname', '')} {case.get('name', '')}"
         failure = case.find("failure")
         if failure is not None:
             found.append(f"[Failed] {name}: {failure.get('message', '')}")
+        error = case.find("error")
+        if error is not None:
+            found.append(f"[ERROR] {name}: {error.get('message', '')}")
         if float(case.get("time", "0")) > timeout:
             found.append(f"[ERROR] {name} took {float(case.get('time', '0')):.0f} s, longer than {timeout} s.")
     # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
     found += godot_errors("\n".join([*(element.text or "" for element in tree.iter("system-out")), log.read_text(errors="replace")]))
     if status != 0 and not found:
         found.append(f"[ERROR] Test process exited with status {status}.")
-    return found
+    return ProcessResult(found, executed)
 
 
 def run_suite(suite: Suite, options: TestOptions) -> Outcome:
@@ -428,11 +440,20 @@ def run_suite(suite: Suite, options: TestOptions) -> Outcome:
     # Isolated cases each write a log of their own, named after the suite.
     log = BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
     if not names:
+        reason = "No runnable cases match the selection (broken cases are excluded unless RUN_BROKEN=1)."
+        log = BUILD / "test-logs" / f"{suite.name}.log"
+        log.write_text(reason + "\n")
+        xml = ElementTree.Element("testsuite", name=suite.full_name, tests="1", failures="0", errors="0", skipped="1")
+        skipped_case = ElementTree.SubElement(xml, "testcase", classname=suite.full_name, name="No runnable cases")
+        ElementTree.SubElement(skipped_case, "skipped", message=reason)
+        ElementTree.ElementTree(xml).write(BUILD / "test-results" / f"{suite.name}.xml", encoding="utf-8", xml_declaration=True)
         return Outcome(suite, log, [])
     if not suite.isolate_cases:
         test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
-        return Outcome(suite, log, run_process(suite, options, suite.name, test_filter, len(names)))
+        result = run_process(suite, options, suite.name, test_filter, len(names))
+        return Outcome(suite, log, result.failures, result.executed)
     failures = []
+    executed = 0
     for case in cases:
         for value in case.values or [""]:
             name = f"{case.method}({value})" if value else case.method
@@ -440,12 +461,16 @@ def run_suite(suite: Suite, options: TestOptions) -> Outcome:
                 continue
             test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if value else "")
             case_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
-            failures += run_process(suite, options, case_name, test_filter, 1)
-    return Outcome(suite, log, failures)
+            result = run_process(suite, options, case_name, test_filter, 1)
+            failures += result.failures
+            executed += result.executed
+    return Outcome(suite, log, failures, executed)
 
 
 def report(outcome: Outcome) -> str:
     if not outcome.failures:
+        if not outcome.executed:
+            return f"skip {outcome.suite.full_name} (no cases executed)"
         return f"ok   {outcome.suite.full_name}"
     lines = "\n".join(f"     {line}" for line in outcome.failures[:20])
     return f"FAIL {outcome.suite.full_name}\n{lines}\n     log: {outcome.log.relative_to(ROOT)}"
@@ -455,7 +480,9 @@ def test(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py test",
         description="Runs GdUnit4 test suites under tests/. A suite fails on a failed case, a case over its time limit, "
-        "no cases run, or any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output. Exits non-zero on any failure.",
+        "any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output, or no selected cases executed. "
+        "Suites with no runnable cases selected are skipped. "
+        "Exits non-zero on any failure or if the entire run executes no cases.",
     )
     parser.add_argument("--all", action="store_true", help="every suite; without it or --tag, the smoke tag")
     parser.add_argument("--tag", action="append", default=[], help="suites with all of these categories")
@@ -516,7 +543,11 @@ def test(arguments: list[str]) -> int:
     for name, description in pending:
         print(f"pending {name}: {description}")
     failed = sum(1 for outcome in outcomes if outcome.failures)
-    print(f"{len(outcomes) - failed} passed, {failed} failed, {len(pending)} pending.")
+    skipped = sum(1 for outcome in outcomes if not outcome.failures and not outcome.executed)
+    print(f"{len(outcomes) - failed - skipped} passed, {failed} failed, {skipped} skipped, {len(pending)} pending.")
+    if not any(outcome.executed for outcome in outcomes):
+        print("[ERROR] No test cases ran.", file=sys.stderr)
+        return 1
     return 1 if failed else 0
 
 

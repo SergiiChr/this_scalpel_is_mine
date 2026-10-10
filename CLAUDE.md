@@ -21,6 +21,13 @@ Asset generators additionally need `./build.py dev` (Python 3.11 venv with Blend
 
 Every command below exits non-zero and names what failed: a failed case, any `SCRIPT ERROR`, `ERROR:` or unhandled
 exception in Godot's output, or no cases run. A clean exit is a pass.
+Suites with no runnable cases selected are reported as skipped, including suites whose only cases are excluded as broken.
+If runnable cases are selected but their test process executes none, the suite fails. If the entire selection executes
+no cases, the command also fails.
+
+Regular GitHub Actions runs smoke and full functional regression headlessly, then exports the game. The separate
+`Visual capture` workflow is manually triggered with `workflow_dispatch`; it captures key frames from every
+`visual_confirmation` suite for review in its `visual-results` artifact. It does not automatically compare screenshots.
 
 - `./build.py test`: smoke suites, fast and headless. Run this first.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
