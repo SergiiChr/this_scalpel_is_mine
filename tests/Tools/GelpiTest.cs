@@ -65,7 +65,7 @@ public class GelpiTest
             .IsEqualApprox(deep, 0.0015f);
         var marks = driver.Surgery.Hud.JawPoints;
         AssertInt(marks.Length).OverrideFailureMessage("the aim is a < and a > instead of the dot").IsEqual(2);
-        await driver.Capture("set");
+        await driver.Capture("set", "the Gelpi set in the cut, its points down in it as deep as it goes, the aim a < and a >");
 
         var setAt = gelpi.GlobalTransform;
         await driver.PlayerOpensGelpi(Open);
@@ -86,7 +86,7 @@ public class GelpiTest
             AssertFloat(openedMarks[0].DistanceTo(openedMarks[1])).OverrideFailureMessage("the < and > move apart with the tips")
                 .IsGreater(marks[0].DistanceTo(marks[1]) + 10f);
         }
-        await driver.Capture("opened");
+        await driver.Capture("opened", "the Gelpi opened: the cut spread wider, the < and > apart with the tips");
 
         SurgeryDriver.Press(InputActions.Grab);
         await Frames.Seconds(2f);
@@ -94,7 +94,7 @@ public class GelpiTest
         AssertBool(hand.Attached).OverrideFailureMessage("and the hand is free").IsFalse();
         AssertFloat(tissue.GapAt(middle, Middle)).OverrideFailureMessage("left alone, it still holds the cut open")
             .IsGreater(opened - 0.002f);
-        await driver.Capture("let_go");
+        await driver.Capture("let_go", "let go: the Gelpi stands in the wound by itself and holds the cut open, the hand free");
 
         await driver.PlayerReaches(gelpi.GlobalPosition);
         SurgeryDriver.Press(InputActions.Grab);
@@ -113,7 +113,7 @@ public class GelpiTest
         AssertBool(tissue.Grips().All(grip => grip.Key >= 0)).OverrideFailureMessage("its jaws let go of the skin").IsTrue();
         AssertFloat(tissue.GapAt(middle, Middle)).OverrideFailureMessage("the cut falls back to its own gape")
             .IsLess(ownGape + 0.002f);
-        await driver.Capture("taken_out");
+        await driver.Capture("taken_out", "taken out: the jaws off the skin, the cut back to its own gape");
         await driver.PlayerPutsDown();
         AssertBool(driver.LiesOnTray(gelpi)).OverrideFailureMessage("the retractor is put back on the tray").IsTrue();
         await session.Finish(BudgetBroken);
@@ -135,7 +135,7 @@ public class GelpiTest
         AssertBool(driver.Patient.Flags.ContainsKey("tears"))
             .OverrideFailureMessage($"opened {gelpi.Spread * 100f:0} cm across a 3 cm cut, the skin tears").IsTrue();
         AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("skin_tear")).OverrideFailureMessage("a tear costs points").IsTrue();
-        await driver.Capture("torn");
+        await driver.Capture("torn", "opened wider than the 3 cm cut: the skin torn at its ends");
         await session.Finish(BudgetBroken);
     }
 
@@ -163,7 +163,7 @@ public class GelpiTest
             .IsGreater(SurgeonHand.BounceHeight * 0.5f);
         AssertFloat(hand.GlobalPosition.Y).OverrideFailureMessage("and comes back down onto it").IsLess(pressed + 0.003f);
         SurgeryDriver.Use(false);
-        await driver.Capture("bounced");
+        await driver.Capture("bounced", "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin");
         await session.Finish(BudgetBroken);
     }
 
@@ -187,12 +187,12 @@ public class GelpiTest
         SurgeryDriver.Press(InputActions.Grab);
         await Frames.Seconds(1f);
         AssertThat(gelpi.State).OverrideFailureMessage("let go of, it stays set").IsEqual(ToolState.Standing);
-        await driver.Capture("skin_held_open");
+        await driver.Capture("skin_held_open", "the Gelpi through the skin only, holding it open, standing by itself");
         var inside = body.MetersToUv(0.008f);
         await driver.PlayerCutsSkin(middle - new Vector2(inside, 0f), middle + new Vector2(inside, 0f), 3);
         AssertThat(body.Tissue.DeepestCut(middle, body.MetersToUv(0.004f)))
             .OverrideFailureMessage($"the scalpel cuts the muscle between its jaws\n{driver.Recent()}").IsEqual(TissueDepth.Muscle);
-        await driver.Capture("muscle_cut");
+        await driver.Capture("muscle_cut", "the scalpel has cut the muscle between the Gelpi's jaws");
         await session.Finish(BudgetBroken);
     }
 
@@ -227,7 +227,7 @@ public class GelpiTest
             across += Mathf.Sign(uv.Y - from.Y) * (side == 1 ? 1f : -1f);
         }
         AssertFloat(Mathf.Abs(across)).OverrideFailureMessage("one on each side of the cut").IsEqual(2f);
-        await driver.Capture("aimed");
+        await driver.Capture("aimed", "aimed over the cut: the < and > hang into the wound, one on each side of it");
     }
 
     /// <summary>Which side of the cut's middle each jaw holds the skin on, across the cut (it runs along u): opposite

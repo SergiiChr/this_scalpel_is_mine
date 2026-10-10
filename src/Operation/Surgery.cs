@@ -107,6 +107,8 @@ public partial class Surgery : Node3D
             net.PrepareLocalSession(ScenarioFromCommandLine());
         }
         Scenario = net.Scenario!;
+        // From the room's setup for what moves before play (the monitor, the waiting patient); again in Start().
+        GameClock.Restart();
         Rng.Seed = net.SessionSeed;
         RunMods = Db.RunModifierEffects(net.RunModifiers);
         Room.Build(Scenario.Environment, this);
@@ -259,7 +261,7 @@ public partial class Surgery : Node3D
         {
             return;
         }
-        var now = Time.GetTicksMsec() * 0.001;
+        var now = GameClock.Seconds;
         if (throttled && now - _announced.GetValueOrDefault(text, double.NegativeInfinity) < 5.0)
         {
             return;
@@ -325,7 +327,7 @@ public partial class Surgery : Node3D
     /// <paramref name="gapMsec"/> ago.</summary>
     private static bool Throttle<TKey>(Dictionary<TKey, ulong> last, TKey key, ulong gapMsec) where TKey : notnull
     {
-        var now = Time.GetTicksMsec();
+        var now = GameClock.Msec;
         if (last.TryGetValue(key, out var then) && now - then < gapMsec)
         {
             return false;
@@ -474,7 +476,7 @@ public partial class Surgery : Node3D
         }
         LocalSurgeon.Status.Administer(drug, amount);
         // Once for a few pushes in a row, not for every ml.
-        var now = Time.GetTicksMsec();
+        var now = GameClock.Msec;
         if (_stungMsec == 0 || now - _stungMsec > StingGapMsec)
         {
             Hud.Toast("A sharp sting. Something cold goes in.");
@@ -526,6 +528,8 @@ public partial class Surgery : Node3D
     {
         // Setting up the room left plenty of garbage: collected now, it doesn't stall the first minute of play.
         ManagedRuntime.CollectNow();
+        // Waiting for the other players isn't surgery time: the clock and what moves by it count from here.
+        GameClock.Restart();
         Running = true;
         Hud.Begin();
     }

@@ -48,8 +48,8 @@ public class AnesthesiaPathsTest
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, $"preop_anesthesia/{seed}");
-            AssertBool(await shots.CaptureAt("installed_iv", dressing.GlobalPosition, 0.24f)).IsTrue();
-            AssertBool(await shots.CaptureView("awake")).IsTrue();
+            await shots.CaptureAt("installed_iv", "the preinstalled IV in the arm under its dressing, the line attached", dressing.GlobalPosition, 0.24f);
+            await shots.CaptureView("awake", "the patient awake, the objective reading 0% / 70% anesthesia");
         }
         await driver.PlayerGivesDrug("vial_propofol", driver.DoseMl("vial_propofol"), SurgeryDriver.Route.Drip);
         await Frames.Until(() => patient.Vitals.Anesthesia >= 0.7f, 30f);
@@ -62,9 +62,9 @@ public class AnesthesiaPathsTest
             .OverrideFailureMessage("the HUD receives the completed anesthesia objective").IsTrue();
         if (shots is not null)
         {
-            AssertBool(await shots.CaptureView("anesthetized")).IsTrue();
+            await shots.CaptureView("anesthetized", "the patient under after the chart dose, \"Put the patient under\" checked off");
             await Frames.Seconds(2f);
-            AssertBool(await shots.CaptureAt("iv_after_anesthesia", dressing.GlobalPosition, 0.24f)).IsTrue();
+            await shots.CaptureAt("iv_after_anesthesia", "the IV still in place under its dressing after the drip", dressing.GlobalPosition, 0.24f);
             shots.End();
         }
         await driver.Stop();

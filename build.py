@@ -6,6 +6,9 @@
                        virtualenv (.venv) for the asset generators, then builds and imports the project.
   ./build.py setup     Download Godot and the .NET SDK if missing, build and import the project. No sudo.
   ./build.py test      Run the smoke tests. --all or --tag TAG for other suites, see ./build.py test --help.
+  ./build.py review    Run the full regression with key frames and write build/review/report.md: one sheet per key
+                       frame that is missing, changed or new against the commit this branch left origin/main at. That
+                       commit is rendered once in a git worktree and kept in build/key-frames. See --help.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -551,6 +554,91 @@ def test(arguments: list[str]) -> int:
     return 1 if failed else 0
 
 
+# --- Key frame review -------------------------------------------------------------------------------------------------
+
+KEY_FRAMES = BUILD / "test-artifacts" / "screenshots"
+# Key frames of past commits, by commit hash: a baseline is rendered once.
+BASELINES = BUILD / "key-frames"
+REVIEW = BUILD / "review"
+
+
+def git(*arguments: str) -> str:
+    return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def baseline(ref: str) -> Path:
+    """Key frames of the commit where HEAD left ref. Rendered in a git worktree that shares .tools, so the same Godot and
+    .NET serve both. Kept by commit only when its run passed: a failed run's key frames serve this review (those its
+    failed cases didn't take show as new) and the next review renders them again."""
+    commit = git("merge-base", "HEAD", ref)
+    frames = BASELINES / commit
+    if frames.is_dir():
+        return frames
+    worktree = BUILD / "baseline-worktree"
+    if worktree.exists():
+        run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
+    run(["git", "worktree", "add", "--detach", worktree, commit], cwd=ROOT)
+    try:
+        # Made first on a fresh checkout: the worktree's build.py would otherwise find a dangling link.
+        TOOLS.mkdir(exist_ok=True)
+        (worktree / ".tools").symlink_to(TOOLS)
+        print(f"Rendering baseline key frames of {commit[:10]}.", flush=True)
+        command: list[str | Path] = [sys.executable, worktree / "build.py", "test", "--tag", "visual_confirmation", "--with-key-frames", "--ci-run"]
+        if subprocess.run(command, cwd=worktree, check=False).returncode != 0:
+            print("The baseline run failed: key frames its failed cases didn't take show as new. It's rendered again next time.")
+            frames = frames.with_name(f"{commit}.partial")
+            shutil.rmtree(frames, ignore_errors=True)
+        taken = worktree / "build/test-artifacts/screenshots"
+        if taken.is_dir():
+            shutil.copytree(taken, frames)
+    finally:
+        run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
+    return frames
+
+
+def pillow_python() -> Path:
+    """A Python with Pillow: the dev virtualenv's, or else a small one in .tools with only the pinned Pillow, made once
+    per pinned version."""
+    if (VENV / "bin/python").exists():
+        return VENV / "bin/python"
+    pillow = next(line for line in (ROOT / "requirements.txt").read_text().splitlines() if line.startswith("pillow"))
+    venv = TOOLS / f"review-venv-{pillow.split('==')[-1]}"
+    if not (venv / "bin/python").exists():
+        # Made aside and moved into place once Pillow is in: a failed install leaves nothing that looks ready.
+        staging = venv.with_name(venv.name + ".tmp")
+        shutil.rmtree(staging, ignore_errors=True)
+        run([sys.executable, "-m", "venv", staging])
+        run([staging / "bin/pip", "install", "--quiet", pillow])
+        staging.rename(venv)
+    return venv / "bin/python"
+
+
+def review(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="./build.py review",
+        description="Runs the full regression with key frames, then writes build/review/report.md with a sheet for each "
+        "key frame that is missing, changed or new against the baseline. Exits non-zero when the regression fails, after writing the report.",
+    )
+    parser.add_argument("--base", default="origin/main", help="the baseline is the commit where HEAD left this ref")
+    parser.add_argument("--no-run", action="store_true", help="review the key frames of the last run")
+    parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
+    parsed = parser.parse_args(arguments)
+    status = 0
+    frames = baseline(parsed.base)
+    if not parsed.no_run:
+        # Key frames of an earlier run would pass for this one's.
+        shutil.rmtree(KEY_FRAMES, ignore_errors=True)
+        status = test(["--all", "--with-key-frames"])
+        if status == 0 and not git("status", "--porcelain"):
+            shutil.copytree(KEY_FRAMES, BASELINES / git("rev-parse", "HEAD"), dirs_exist_ok=True)
+    regression = "not-run" if parsed.no_run else "failed" if status else "passed"
+    flags = [*(["--all"] if parsed.all else []), "--regression", regression]
+    command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW)), *flags]
+    # The report comes first: it helps most when the regression failed.
+    report_status = subprocess.run(command, cwd=ROOT, check=False).returncode
+    return status or report_status
+
+
 # --- Commands ---------------------------------------------------------------------------------------------------------
 
 
@@ -595,6 +683,8 @@ def main() -> int:
         print("Ready. ./build.py test to run the tests, ./build.py shots to render screenshots.")
     elif command == "test":
         return test(arguments)
+    elif command == "review":
+        return review(arguments)
     elif command == "shots":
         setup()
         scenario = arguments[0] if arguments else "appendectomy"

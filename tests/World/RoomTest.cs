@@ -19,8 +19,9 @@ public class RoomTest
         var panel = room.GetNode<MeshInstance3D>("CeilingPanel");
         var underside = ceiling.Position.Y + ceiling.Mesh.GetAabb().Position.Y;
         var panelTop = panel.Position.Y + panel.Mesh.GetAabb().End.Y;
-        AssertFloat(underside - panelTop).OverrideFailureMessage($"{environment}: the whole panel clears the slab")
-            .IsGreater(0.01f);
+        // Also what the key frames should show.
+        var claim = $"{environment}: the whole ceiling panel clears the slab";
+        AssertFloat(underside - panelTop).OverrideFailureMessage(claim).IsGreater(0.01f);
         if (KeyFrames.Wanted())
         {
             var camera = new Camera3D { Fov = 55f };
@@ -34,7 +35,7 @@ public class RoomTest
                 camera.Position = from;
                 camera.LookAt(lookAt);
                 var path = folder.PathJoin($"{environment}_ceiling_{name}.png");
-                AssertBool(await KeyFrames.SaveViewport(path)).OverrideFailureMessage("saved " + path).IsTrue();
+                await KeyFrames.SaveViewport(path, claim);
             }
         }
         RenderingServer.RenderLoopEnabled = true;

@@ -27,10 +27,14 @@ public partial class PatientAnimator : Node
     private float _blinkIn = 3f;
     /// <summary>How much of the current blink is left.</summary>
     private float _blinkLeft;
+    /// <summary>Blinks, flinches and quivers, seeded per session: the same session moves the same way every time.
+    /// </summary>
+    private readonly RandomNumberGenerator _rng = new();
 
     public void Setup(PatientBody body, Node3D model)
     {
         _body = body;
+        _rng.Seed = Net.Instance.SessionSeed + 11;
         _rig = BoneRig.Find(model);
         _parts = ModelSlot.Parts(model, "EyeL", "EyeR", "Lids");
         if (body.IsLimbSite)
@@ -51,7 +55,7 @@ public partial class PatientAnimator : Node
         {
             return;
         }
-        var t = Time.GetTicksMsec() * 0.001f;
+        var t = (float)GameClock.Seconds;
         var breathing = alive && !vitals.IsArrested;
         var rate = vitals.Anesthesia < 0.7f ? (14f + vitals.Panic * 14f) / 60f : 12f / 60f;
         _breathPhase += breathing ? delta * rate * Mathf.Tau : 0f;
@@ -76,7 +80,7 @@ public partial class PatientAnimator : Node
         _blinkIn -= awake ? delta * (1f + vitals.Pain + vitals.Panic * 2f) : 0f;
         if (_blinkIn <= 0f)
         {
-            _blinkIn = (float)GD.RandRange(2.5, 6.0);
+            _blinkIn = _rng.RandfRange(2.5f, 6f);
             _blinkLeft = Blink;
         }
         _blinkLeft = Mathf.Max(_blinkLeft - delta, 0f);
@@ -98,7 +102,7 @@ public partial class PatientAnimator : Node
         // Looking left and right turns the head about its own long axis.
         var look = awake ? Mathf.Sin(t * 0.4f) * 0.35f : 0f;
         var head = new Vector3(look, 0, 0)
-            + new Vector3((float)GD.RandRange(-1.0, 1.0), 0, (float)GD.RandRange(-1.0, 1.0)) * _flinch * 0.15f;
+            + new Vector3(_rng.RandfRange(-1f, 1f), 0, _rng.RandfRange(-1f, 1f)) * _flinch * 0.15f;
         var shake = 0f;
         if (vitals.Seizing)
         {
@@ -135,7 +139,7 @@ public partial class PatientAnimator : Node
         }
         if (vitals.Rhythm == Rhythm.Vfib)
         {
-            return GD.Randf() * 0.15f;
+            return _rng.Randf() * 0.15f;
         }
         _beatPhase = Mathf.PosMod(_beatPhase + delta * vitals.HeartRate / 60f, 1f);
         return Mathf.Pow(Mathf.Max(Mathf.Sin(_beatPhase * Mathf.Tau), 0f), 3f);

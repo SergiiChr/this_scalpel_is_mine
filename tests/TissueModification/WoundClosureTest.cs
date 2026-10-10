@@ -42,7 +42,7 @@ public class WoundClosureTest
         AssertFloat(wound.Closure).OverrideFailureMessage("so the cut isn't closed").IsLess(0.99f);
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("and it still bleeds").IsGreater(Dry);
         AssertCountsAsSeen(driver, wound, "sparse staples");
-        await driver.Capture("gaps");
+        await driver.Capture("gaps", "staples 2.5 cm apart: the cut gapes and bleeds between them");
 
         // Filled in a centimeter apart, then wherever the rings still show a gap, like a player looking it over.
         await driver.PlayerStaples(wound, 0.01f, 2);
@@ -54,7 +54,7 @@ public class WoundClosureTest
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("and doesn't bleed").IsLess(Dry);
         AssertCountsAsSeen(driver, wound, "filled in");
         await driver.PlayerPutsDown();
-        await driver.Capture("closed");
+        await driver.Capture("closed", "filled in with staples: no gap along the cut, no bleeding");
         await session.Finish(BudgetBroken);
     }
 
@@ -76,9 +76,9 @@ public class WoundClosureTest
         AssertFloat(wound.Closure).OverrideFailureMessage("so the cut isn't closed").IsLess(0.99f);
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("and it still bleeds").IsGreater(Dry);
         AssertCountsAsSeen(driver, wound, "wide thread");
-        await driver.Capture("gaps");
+        await driver.Capture("gaps", "thread pulled closed through holes far apart: gaps and bleeding between them");
 
-        await driver.PlayerTiesOff("tied");
+        await driver.PlayerTiesOff("tied", "tied off: the thread gathers the edges between its holes too, the cut closed and dry");
         await Frames.Seconds(1f);
         AssertFloat(WidestGap(driver, wound))
             .OverrideFailureMessage("tied off, the thread gathers the edges between its holes too").IsLess(Shows);
@@ -117,7 +117,7 @@ public class WoundClosureTest
                 $"stapled and dry, the cut is closed enough for \"Close the cut\"\n{OpenBins(driver, wound)}")
             .IsGreaterEqual(Patient.ClosedEnough);
         AssertCountsAsSeen(driver, wound, "office staples");
-        await driver.Capture("closed");
+        await driver.Capture("closed", "office staples through vessels, cauterized: the cut closed and dry");
         await session.Finish(BudgetBroken);
     }
 

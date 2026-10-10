@@ -20,11 +20,11 @@ public class SurgeonMovementTest
         var frames = _frames = new KeyFrames();
         driver.AddChild(frames);
         frames.Begin(driver.Surgery, "surgeon_movement");
-        driver.OnKeyFrame = async name =>
+        driver.OnKeyFrame = async (name, description) =>
         {
             if (KeyFrames.Wanted())
             {
-                AssertBool(await frames.CaptureView(name)).OverrideFailureMessage("saved " + name).IsTrue();
+                await frames.CaptureView(name, description);
             }
         };
         SurgeryState.SurgeonIsSteady(driver.Me);
@@ -69,7 +69,7 @@ public class SurgeonMovementTest
         await Frames.Physics(10);
         var initial = me.GlobalPosition;
         SurgeryState.SurgeonHandIsAttached(me, 0, me.Shoulder(0) + (Vector3.Down * (Surgeon.Reach - 0.001f)));
-        await driver.Capture("standing");
+        await driver.Capture("standing", "standing still, one hand reaching down at the edge of its reach");
         var maxDrop = 0f;
         driver.Budget.Clear();
         PlayerInput.Action(InputActions.MoveRight);
@@ -83,7 +83,7 @@ public class SurgeonMovementTest
             maxDrop = Mathf.Max(maxDrop, me.WalkDrop);
             if (frame == 8)
             {
-                await driver.Capture("walking");
+                await driver.Capture("walking", "a walking step: the view steady, the reaching hand where it was");
             }
         }
         PlayerInput.Action(InputActions.MoveRight, false);
@@ -100,7 +100,7 @@ public class SurgeonMovementTest
             CheckStableOrigins(me, me.Crouch);
         }
         AssertFloat(me.Crouch).OverrideFailureMessage("normal input reaches the deep squat").IsEqualApprox(1f, 0.001f);
-        await driver.Capture("crouched");
+        await driver.Capture("crouched", "in the deep squat: the view lowered, the hands where they were");
         PlayerInput.Action(InputActions.Crouch, false);
         driver.Note("standing back up through normal input");
         for (var frame = 0; frame < 18; frame++)
@@ -110,7 +110,7 @@ public class SurgeonMovementTest
             CheckStableOrigins(me, me.Crouch);
         }
         AssertFloat(me.Crouch).OverrideFailureMessage("releasing crouch restores standing height").IsEqualApprox(0f, 0.001f);
-        await driver.Capture("recovered");
+        await driver.Capture("recovered", "back up to standing height");
         driver.Budget.Check(KeyFrames.Wanted());
     }
 
@@ -204,7 +204,8 @@ public class SurgeonMovementTest
                 camera.GlobalPosition = pivot + new Vector3(side * 0.8f, 0.6f, -0.7f);
                 camera.LookAt(pivot);
                 camera.MakeCurrent();
-                await driver.Capture(side > 0f ? "fallen_left" : "fallen_right");
+                await driver.Capture(side > 0f ? "fallen_left" : "fallen_right",
+                    "the fallen surgeon lying on the floor, face turned up toward the patient, the head on the neck");
                 me.Camera.MakeCurrent();
             }
         }

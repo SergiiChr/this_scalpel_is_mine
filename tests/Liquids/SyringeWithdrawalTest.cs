@@ -42,8 +42,7 @@ public class SyringeWithdrawalTest
                 var before = Beads(body);
                 if (capture)
                 {
-                    AssertBool(await shots!.CaptureAt(label + "_ready", syringe.TipPosition(), 0.12f))
-                        .OverrideFailureMessage("saved untouched injection site").IsTrue();
+                    await shots!.CaptureAt(label + "_ready", "the untouched injection site, the needle tip just above it", syringe.TipPosition(), 0.12f);
                 }
                 await SyringeBench.Press();
                 await Frames.Physics(5);
@@ -55,8 +54,7 @@ public class SyringeWithdrawalTest
                     .IsEqual(before.Count);
                 if (capture)
                 {
-                    AssertBool(await shots!.CaptureView(label + "_injected"))
-                        .OverrideFailureMessage("saved needle contact during injection").IsTrue();
+                    await shots!.CaptureView(label + "_injected", "the needle in the skin while injecting, no blood yet");
                 }
                 var pain = patient.Vitals.Pain;
                 var wounds = body.WoundMap.Snapshot(WoundMap.Layer.Wounds);
@@ -95,8 +93,7 @@ public class SyringeWithdrawalTest
                 AssertBool(me.NeedleTorn).OverrideFailureMessage(label + ": releasing does not trigger mishandling").IsFalse();
                 if (capture)
                 {
-                    AssertBool(await shots!.CaptureAt(label + "_released", bead.GlobalPosition, 0.12f))
-                        .OverrideFailureMessage("saved immediate withdrawal bead from above and obliquely").IsTrue();
+                    await shots!.CaptureAt(label + "_released", "just released: the needle out and clear, one blood bead on the skin at the puncture", bead.GlobalPosition, 0.12f);
                 }
                 var stuck = bead.Position;
                 budget.Resume();
@@ -114,8 +111,7 @@ public class SyringeWithdrawalTest
                 AssertThat(bead.Position).OverrideFailureMessage(label + ": the bead stays attached to the puncture").IsEqual(stuck);
                 if (capture)
                 {
-                    AssertBool(await shots!.CaptureAt(label + "_moved_away", bead.GlobalPosition, 0.12f))
-                        .OverrideFailureMessage("saved persistent bead at the injection site").IsTrue();
+                    await shots!.CaptureAt(label + "_moved_away", "the needle moved away: the bead stays at the puncture, no scratch", bead.GlobalPosition, 0.12f);
                 }
             }
         }

@@ -33,7 +33,7 @@ public partial class Scoring : Node
         {
             return;
         }
-        var now = Time.GetTicksMsec() * 0.001;
+        var now = GameClock.Seconds;
         if (throttled && now - _lastTime.GetValueOrDefault(id, double.NegativeInfinity) < ThrottleSeconds)
         {
             return;

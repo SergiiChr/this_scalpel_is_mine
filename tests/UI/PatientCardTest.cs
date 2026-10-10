@@ -27,14 +27,13 @@ public class PatientCardTest
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "patient_card");
-            driver.OnKeyFrame = async keyFrame =>
+            driver.OnKeyFrame = async (keyFrame, description) =>
             {
-                var saved = await shots.CaptureView(keyFrame);
+                await shots.CaptureView(keyFrame, description);
                 if (keyFrame == "on_hook")
                 {
-                    saved &= await shots.CaptureAt("on_hook_close", card.HookPaper, 0.6f);
+                    await shots.CaptureAt("on_hook_close", "close up, the card hangs on its hook on the bed rail, clear of the rail", card.HookPaper, 0.6f);
                 }
-                AssertBool(saved).OverrideFailureMessage($"saved key frame {keyFrame}").IsTrue();
             };
         }
         driver.Budget.Clear();
@@ -47,7 +46,7 @@ public class PatientCardTest
             .OfType<Label>().Select(label => label.Text));
         AssertString(page).OverrideFailureMessage("the page reads as a patient record").Contains("Patient Record");
         AssertString(page).OverrideFailureMessage("the page shows the complaint").Contains(surgery.Scenario.Complaint);
-        await driver.Capture("in_hand");
+        await driver.Capture("in_hand", "the card held up in front of the surgeon, its page readable as a patient record");
 
         SurgeryDriver.Tap(InputActions.Pause);
         await PlayerInput.Delivered();
@@ -55,11 +54,11 @@ public class PatientCardTest
         await Frames.Until(() => card.TravelOf(me.PeerId) <= 0.5f, PatientCard.TravelSeconds);
         AssertBool(card.PaperOf(me.PeerId) is { } midway && me.Camera.IsPositionInFrustum(midway))
             .OverrideFailureMessage("half way the card is in view").IsTrue();
-        await driver.Capture("on_its_way");
+        await driver.Capture("on_its_way", "the card half way from the hand to its hook, in view");
         AssertBool(await Frames.Until(() => card.OnHook, PatientCard.TravelSeconds + 0.5f))
             .OverrideFailureMessage("the card ends up on its hook").IsTrue();
         AssertObject(card.PaperOf(me.PeerId)).OverrideFailureMessage("only the card on the hook is left").IsNull();
-        await driver.Capture("on_hook");
+        await driver.Capture("on_hook", "the card on its hook, nothing left in the hand");
 
         // Like a player: walk up, look at it and press Interact. Next to the patient's head, the card is what's in focus.
         await driver.PlayerWalksTo(card.HookPaper, 0.6f);
@@ -75,7 +74,7 @@ public class PatientCardTest
         AssertBool(await Frames.Until(() => surgery.Hud.Overlay?.Modulate.A >= 1f, PatientCard.TravelSeconds + 0.5f))
             .OverrideFailureMessage("the page shows once the card is up").IsTrue();
         AssertHeldUp(card, me, "taken again");
-        await driver.Capture("taken");
+        await driver.Capture("taken", "taken again, the card held up with its page showing");
 
         await SurgeryDriver.PlayerPutsCardBack(surgery);
         AssertBool(card.OnHook).OverrideFailureMessage("put back again, it hangs on its hook").IsTrue();

@@ -50,7 +50,7 @@ public class RetractorTest
         var hookAt = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff)));
         var retractor = await Hook(driver, hookAt, "retractor");
         var hand = driver.Me.Hands[driver.Me.Active];
-        await driver.Capture("hooked");
+        await driver.Capture("hooked", "the retractor's hook in one edge of the cut, nothing pulled yet");
 
         var aside = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff + Pull))) - hookAt;
         await driver.PlayerSweepsTo(retractor.TipPosition() + aside);
@@ -66,7 +66,7 @@ public class RetractorTest
             .OverrideFailureMessage($"the hooked edge moves aside ({hookedMoved * 1000f:0.0} mm), the other one much less ({otherMoved * 1000f:0.0} mm)")
             .IsGreater(otherMoved * 3f);
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("a 2 cm pull doesn't tear").IsEqual(wounds);
-        await driver.Capture("pulled");
+        await driver.Capture("pulled", "pulled 2 cm aside: the hooked edge moved, the other much less, no tear");
 
         var hooked = retractor.TipPosition();
         SurgeryDriver.Tap(InputActions.Grab);
@@ -83,7 +83,7 @@ public class RetractorTest
             .OverrideFailureMessage($"it lies along the body ({Mathf.RadToDeg(Mathf.Asin(Mathf.Abs(handle.Y))):0} degrees off level), not standing up")
             .IsLess(0.35f);
         AssertPointsAway(retractor, aside);
-        await driver.Capture("let_go");
+        await driver.Capture("let_go", "let go: the retractor lies along the body pointing away, the cut stays open");
 
         await driver.PlayerReaches(retractor.TipPosition());
         SurgeryDriver.Press(InputActions.Grab);
@@ -142,7 +142,7 @@ public class RetractorTest
         {
             AssertLiesOnBody(driver, retractor);
         }
-        await driver.Capture("let_go");
+        await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
         await session.Finish(BudgetBroken);
     }
 
@@ -160,7 +160,7 @@ public class RetractorTest
         await driver.PlayerPutsDown();
         await Frames.Seconds(1f);
         var wounds = patient.Wounds.Count;
-        await driver.Capture("incised");
+        await driver.Capture("incised", "a cut through every layer over the appendix, along the site's long side");
 
         // Two retractors on each edge, a third of the way in from each end, each hooked and drawn away from the cut.
         var hooks = new List<SurgicalTool>();
@@ -191,7 +191,7 @@ public class RetractorTest
         AssertFloat(deepest)
             .OverrideFailureMessage($"breathing, the belly lifts the retractors with it: pressed in at most {deepest * 1000f:0.0} mm")
             .IsLess(LyingPress);
-        await driver.Capture("retracted");
+        await driver.Capture("retracted", "four retractors hold the abdomen open, lying on the belly, not pressed into it");
 
         // The scalpel goes down into the opening between them and cuts the appendix's base free.
         var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
@@ -206,8 +206,7 @@ public class RetractorTest
             await Frames.Physics(1);
             reached = reached || body.Probe(scalpel.TipPosition()).Zone == SiteZone.Cavity;
         }
-        AssertBool(reached).OverrideFailureMessage("the scalpel reaches into the opening, not onto a retractor").IsTrue();
-        await driver.Capture("scalpel_inside");
+        await driver.AssertAndCapture(reached, "the scalpel reaches into the opening, not onto a retractor", "scalpel_inside");
         await Frames.Until(() => appendix.Anchor <= 0f, 20f);
         SurgeryDriver.Use(false);
         AssertFloat(appendix.Anchor).OverrideFailureMessage("the scalpel cuts the appendix free inside the opening").IsEqual(0f);

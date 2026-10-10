@@ -124,6 +124,10 @@ public static class SurgeryState
         net.SeedSessionRolls(seed);
     }
 
+    /// <summary>Surgeries start at 08:00 on the operating room's clock, whatever the system clock says, so it reads the
+    /// same in every run's key frames.</summary>
+    public static void ClockStartsAtEight() => GameClock.FixedStartOfDay = 8 * 3600;
+
     /// <summary>A tool lying in a free place on the instrument tray (stocked there, as the nurse would have).</summary>
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
 

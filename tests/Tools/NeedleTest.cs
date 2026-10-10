@@ -43,7 +43,7 @@ public class NeedleTest
             .OverrideFailureMessage("the loaded needle holder rests nearly horizontal").IsLess(0.35f);
         AssertFloat(driver.Me.AimPoint().DistanceTo(needle.TipPosition()))
             .OverrideFailureMessage("the horizontal pose keeps the aiming point on the sharp tip").IsLess(0.0001f);
-        await session.CaptureView("needle_ready");
+        await session.CaptureView("needle_ready", "the loaded needle holder nearly horizontal over the wound, aim on its tip, no thread yet");
         AssertBool(await driver.PlayerThreads(wound, TissueDepth.Skin)).OverrideFailureMessage("holes go in beside the cut").IsTrue();
         var thread = needle.Suture.Thread;
         var info = tissue.Thread(thread)!;
@@ -141,11 +141,11 @@ public class NeedleTest
         var tight = SurgeryState.SkinIsCut(patient, new Vector2(0.3f, 0.5f), new Vector2(0.55f, 0.5f), 0.5f);
         var deep = SurgeryState.SkinIsCut(patient, new Vector2(0.3f, 0.7f), new Vector2(0.55f, 0.7f), 1f);
         await Frames.Seconds(1f);
-        await driver.Capture("cuts_before_sutures");
+        await driver.Capture("cuts_before_sutures", "three cuts across the site, the lowest deeper, no thread in any");
         var needle = (await driver.PlayerRequestsItem("needle"))!;
 
         await driver.PlayerThreads(loose, TissueDepth.Skin);
-        await driver.PlayerTiesOff("loose_tied");
+        await driver.PlayerTiesOff("loose_tied", "tied off loose: the thread lies across the top cut, its edges still apart");
         await Frames.Seconds(1f);
         AssertFloat(loose.Closure).OverrideFailureMessage("tied off loose, the thread leaves the cut open").IsLess(0.99f);
         AssertFloat(tissue.GapAlong(loose.Points, 0.03f, TissueDepth.Skin)).OverrideFailureMessage("and its edges apart")
@@ -169,7 +169,7 @@ public class NeedleTest
         AssertInt(drawn.PressureHoles).OverrideFailureMessage("every over-tight hole shows pressure").IsEqual(holes);
         AssertInt(driver.Body.ThreadNode(thread)!.GetNode<MultiMeshInstance3D>("Pressure").Multimesh.InstanceCount)
             .OverrideFailureMessage("every over-tight hole has a rendered pressure sprite").IsEqual(holes);
-        await driver.Capture("too_tight_intact");
+        await driver.Capture("too_tight_intact", "the middle cut sewn too tight, intact: strong pressure marks around every hole");
         var wounds = patient.Wounds.Count;
         for (var i = 0; i < 6 && !patient.SutureDone(thread); i++)
         {
@@ -207,7 +207,7 @@ public class NeedleTest
         var wound = SurgeryState.SkinIsCut(driver.Patient, new Vector2(0.3f, 0.5f), new Vector2(0.7f, 0.5f), 1f);
         await Frames.Seconds(1f);
         var middle = wound.Midpoint;
-        await driver.Capture("cut");
+        await driver.Capture("cut", "a deep cut across the site, open down to the fat");
         await driver.PlayerRequestsItem("needle");
         await SewDeepLayer(driver, wound, TissueDepth.Muscle);
         AssertBool(tissue.MuscleOpenNear(middle, Patient.MuscleReach)).OverrideFailureMessage("the muscle thread closes the muscle")
@@ -285,9 +285,9 @@ public class NeedleTest
         AssertBool(routes.Count > 0).OverrideFailureMessage("the deep layer has exposed thread spans").IsTrue();
         AssertThreadStaysOnLayer(driver.Body, routes, layer);
         var name = layer.ToString().ToLowerInvariant();
-        await driver.Capture($"{name}_loose");
+        await driver.Capture($"{name}_loose", $"thread run loose through the {name} layer, lying on that layer, not through the skin above");
         await driver.PlayerPullsThread("closed");
-        await driver.PlayerTiesOff($"{name}_closed");
+        await driver.PlayerTiesOff($"{name}_closed", $"the {name} layer pulled closed and tied, the thread on that layer");
         AssertThreadStaysOnLayer(driver.Body, driver.Body.DrawnThread(thread)!.Routes, layer);
     }
 

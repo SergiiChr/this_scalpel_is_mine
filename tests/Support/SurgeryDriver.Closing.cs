@@ -116,7 +116,7 @@ public partial class SurgeryDriver
                 await Frames.Physics(3);
                 if (stapler.Charges < charges && ++placed == 1)
                 {
-                    await Capture("first_staple");
+                    await Capture("first_staple", "the first staple sits square across the cut, both legs in, the stapler on it");
                 }
             }
         }
@@ -197,7 +197,7 @@ public partial class SurgeryDriver
             await Frames.Physics(3);
             if (i < 2)
             {
-                await Capture($"thread_hole_{i + 1}");
+                await Capture($"thread_hole_{i + 1}", $"the needle through hole {i + 1}, on its own side of the wound, thread trailing from it");
             }
         }
         return true;
@@ -222,15 +222,18 @@ public partial class SurgeryDriver
     }
 
     /// <summary>Holds Use tool where the needle is until the thread is tied off, then captures
-    /// <paramref name="keyFrame"/>.</summary>
-    public async Task PlayerTiesOff(string keyFrame = "tied_off")
+    /// <paramref name="keyFrame"/>, which should show <paramref name="description"/>.</summary>
+    public async Task PlayerTiesOff(string keyFrame = "tied_off", string description = TiedOff)
     {
         Use();
         await Frames.Seconds(ToolActions.SutureTieHold + 0.2f);
         Use(false);
         await Frames.Physics(3);
-        await Capture(keyFrame);
+        await Capture(keyFrame, description);
     }
+
+    /// <summary>What a tied off suture should look like.</summary>
+    private const string TiedOff = "the knot is tied: the thread runs across the wound between its holes and draws the edges together";
 
     /// <summary>The point <paramref name="along"/> (uv) from the start of <paramref name="wound"/> on its line, clamped
     /// to its ends, moved <paramref name="off"/> (uv) to its left (negative: right).</summary>

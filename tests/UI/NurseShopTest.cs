@@ -47,13 +47,9 @@ public class NurseShopTest
             driver.AddChild(shots);
             shots.Begin(surgery, "nurse_shop");
             // The shop as the player sees it; the delivery tray from above and obliquely.
-            driver.OnKeyFrame = async keyFrame =>
-            {
-                var saved = keyFrame == "cart_full"
-                    ? await shots.CaptureView(keyFrame)
-                    : await shots.CaptureAt(keyFrame, deliveryTray + new Vector3(0f, 0.92f, 0f), 0.6f);
-                AssertBool(saved).OverrideFailureMessage($"saved key frame {keyFrame}").IsTrue();
-            };
+            driver.OnKeyFrame = (keyFrame, description) => keyFrame == "cart_full"
+                ? shots.CaptureView(keyFrame, description)
+                : shots.CaptureAt(keyFrame, description, deliveryTray + new Vector3(0f, 0.92f, 0f), 0.6f);
         }
         driver.Budget.Clear();
         var before = surgery.Tools.Tools.Keys.ToHashSet();
@@ -67,7 +63,7 @@ public class NurseShopTest
         AssertString(shown).OverrideFailureMessage("the cart counts five").Contains("Cart  5 / 5");
         AssertString(shown).OverrideFailureMessage("the same item twice shows as one line with its count").Contains("Gauze  ×2");
         AssertString(shown).OverrideFailureMessage("the sixth item didn't fit").NotContains("Suture needle  ×");
-        await driver.Capture("cart_full");
+        await driver.Capture("cart_full", "the shop with a full cart: 5 / 5, gauze as one line ×2, no suture needle, [+] off");
         // [-] takes one back out, [+] puts it back, so a full cart can still change.
         driver.PlayerPicksCategory(Db.Tool("gauze")!.Category);
         driver.PlayerRemovesFromCart("gauze");
@@ -119,7 +115,7 @@ public class NurseShopTest
                     .OverrideFailureMessage($"the {a.Def.Id} doesn't lie on the {b.Def.Id}").IsFalse();
             }
         }
-        await driver.Capture("delivered");
+        await driver.Capture("delivered", "every ordered item on the delivery tray, side by side, none on top of another");
         await Stop(driver, shots);
     }
 

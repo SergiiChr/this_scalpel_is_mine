@@ -33,7 +33,7 @@ public class GauzeTest
         await Frames.Seconds(3f);
         var before = cut.Bleeding;
         AssertFloat(before).OverrideFailureMessage($"the cut bleeds: {driver.Bleeders()}").IsGreater(0.1f);
-        await driver.Capture("bleeding");
+        await driver.Capture("bleeding", "a shallow cut across the site, bleeding");
 
         await driver.PlayerRequestsItem("gauze");
         var on = driver.SitePoint(cut.Midpoint);
@@ -45,7 +45,7 @@ public class GauzeTest
         AssertFloat(cut.Bleeding).OverrideFailureMessage($"pressed with gauze, the cut stops bleeding: {driver.Bleeders()}")
             .IsLess(0.01f);
         AssertBool(Told("[temporarily]")).OverrideFailureMessage($"debug mode says it stopped for now ({Toasts()})").IsTrue();
-        await driver.Capture("pressed");
+        await driver.Capture("pressed", "gauze pressed on the cut, the cut no longer bleeding");
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
 
@@ -54,12 +54,12 @@ public class GauzeTest
             .IsLess(0.01f);
         AssertFloat(patient.LastingBleedRate)
             .OverrideFailureMessage("held only by gauze, it doesn't count as stopped for good").IsGreater(before * 0.9f);
-        await driver.Capture("held");
+        await driver.Capture("held", "the gauze off, the cut still dry while the pressure holds");
 
         var back = await Frames.Until(() => cut.Bleeding > before * 0.9f, Wound.PressureFade + 6f);
         AssertBool(back).OverrideFailureMessage($"then the cut bleeds as before: {driver.Bleeders()}").IsTrue();
         await Frames.Seconds(3f);
-        await driver.Capture("bleeding_again");
+        await driver.Capture("bleeding_again", "the pressure worn off, the cut bleeding as before");
         await session.Finish();
     }
 
@@ -76,7 +76,7 @@ public class GauzeTest
         AssertBool(small.IsSmall(body.UvToMeters(1f)) && !longer.IsSmall(body.UvToMeters(1f)))
             .OverrideFailureMessage("a 0.6 cm cut is too small to sew, a 2 cm one isn't").IsTrue();
         await Frames.Seconds(2f);
-        await driver.Capture("bleeding");
+        await driver.Capture("bleeding", "a 0.6 cm and a 2 cm cut side by side, both bleeding");
         await driver.PlayerRequestsItem("gauze");
 
         await Press(driver, small, Wound.SmallCutPress / 2f);
@@ -95,7 +95,7 @@ public class GauzeTest
         await Frames.Seconds(Wound.PressureHold + Wound.PressureFade + 2f);
         AssertFloat(small.Bleeding).OverrideFailureMessage("once every pressure wears off, the small cut stays dry").IsEqual(0f);
         AssertFloat(longer.Bleeding).OverrideFailureMessage("and the longer one bleeds again").IsGreater(0.01f);
-        await driver.Capture("small_cut_stopped");
+        await driver.Capture("small_cut_stopped", "after the pressure wore off: the small cut dry, the longer one bleeding again");
         await session.Finish();
     }
 
@@ -141,7 +141,7 @@ public class GauzeTest
         var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
         await Frames.Seconds(1f);
         AssertFloat(vessel.Bleeding).OverrideFailureMessage($"the vessel in the incision bleeds: {driver.Bleeders()}").IsGreater(0.1f);
-        await driver.Capture("vessel_bleeding");
+        await driver.Capture("vessel_bleeding", "a vessel bleeding in the incision");
 
         await driver.PlayerRequestsItem("gauze");
         var on = driver.SitePoint(at);
@@ -155,7 +155,7 @@ public class GauzeTest
         AssertFloat(vessel.Bleeding).OverrideFailureMessage($"packed with gauze, the vessel stops bleeding: {driver.Bleeders()}")
             .IsLess(0.01f);
         AssertFloat(vessel.LastingBleeding).OverrideFailureMessage("but only while the pressure holds").IsGreater(0.1f);
-        await driver.Capture("packed");
+        await driver.Capture("packed", "gauze packed into the opening, the vessel not bleeding");
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
         await session.Finish();
@@ -170,7 +170,7 @@ public class GauzeTest
         await driver.PlayerGivesDrug("vial_propofol", 1f, SurgeryDriver.Route.Vein);
         var beads = effects.Beads();
         AssertInt(beads.Count).OverrideFailureMessage($"the needle leaves a bead of blood on the arm\n{driver.Recent()}").IsEqual(1);
-        await CaptureAt(session, "bead", beads[0]);
+        await CaptureAt(session, "bead", "one bead of blood on the arm where the needle went in", beads[0]);
 
         await driver.PlayerRequestsItem("gauze");
         foreach (var bead in beads)
@@ -181,17 +181,17 @@ public class GauzeTest
         await Frames.Physics(5);
         AssertInt(effects.Beads().Count).OverrideFailureMessage("gauze wipes it away like any blood").IsEqual(0);
         await driver.PlayerPutsDown();
-        await CaptureAt(session, "wiped", beads[0]);
+        await CaptureAt(session, "wiped", "the bead wiped away with gauze, the arm clean", beads[0]);
         await session.Finish();
     }
 
-    /// <summary>In a run with key frames, saves views of <paramref name="at"/> on the arm, off the site.</summary>
-    private static async Task CaptureAt(ToolSession session, string keyFrame, Vector3 at)
+    /// <summary>In a run with key frames, saves views of <paramref name="at"/> on the arm, off the site, which should
+    /// show <paramref name="description"/>.</summary>
+    private static async Task CaptureAt(ToolSession session, string keyFrame, string description, Vector3 at)
     {
         if (session.Shots is { } shots)
         {
-            await session.Driver.Unbudgeted(async () => AssertBool(await shots.CaptureAt(keyFrame, at, 0.15f))
-                .OverrideFailureMessage($"saved key frame {keyFrame}").IsTrue());
+            await session.Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, at, 0.15f));
         }
     }
 

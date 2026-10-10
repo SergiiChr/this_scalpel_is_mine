@@ -56,6 +56,8 @@ public class SlicingTest
     ];
 
     private bool _shots;
+    /// <summary>What was checked since the last key frames: the next ones should show it, and say so.</summary>
+    private readonly List<string> _claims = [];
     private string _out = "";
     private Camera3D _camera = null!;
     private Surgery _surgery = null!;
@@ -412,6 +414,8 @@ public class SlicingTest
     /// </summary>
     private async Task Start(string scenarioId, bool alongLimb, bool overBone, bool graft = false)
     {
+        // An earlier case's checks don't describe this one.
+        _claims.Clear();
         var scenario = Db.Scenario(scenarioId)! with
         {
             Wounds = [],
@@ -682,6 +686,7 @@ public class SlicingTest
     private void Check(bool ok, string what)
     {
         GD.Print((ok ? "    ok   " : "FAIL: ") + what);
+        _claims.Add(what);
         LogState();
         AssertBool(ok).OverrideFailureMessage(what).IsTrue();
     }
@@ -757,9 +762,11 @@ public class SlicingTest
     }
 
     /// <summary>Both views of the middle of the cut: straight down, and 45° off the side from across the table, so the
-    /// surgeon's arm isn't in the way.</summary>
+    /// surgeon's arm isn't in the way. They're described by what was checked since the last ones.</summary>
     private async Task ShotsOf(string caseId, string file)
     {
+        var description = string.Join("; ", _claims);
+        _claims.Clear();
         if (!_shots)
         {
             return;
@@ -782,21 +789,20 @@ public class SlicingTest
         _camera.Current = true;
         _camera.GlobalPosition = middle + (up * CameraDistance);
         _camera.LookAt(middle, along);
-        await Shot(caseId, file + "_top");
+        await Shot(caseId, file + "_top", description);
         _camera.GlobalPosition = middle + ((up + across).Normalized() * CameraDistance);
         _camera.LookAt(middle, up);
-        await Shot(caseId, file + "_side");
+        await Shot(caseId, file + "_side", description);
         foreach (var hand in _surgery.LocalSurgeon.Hands)
         {
             hand.Visible = true;
         }
     }
 
-    private async Task Shot(string caseId, string file)
+    private async Task Shot(string caseId, string file, string description)
     {
         _measuring = false;
         var path = _out.PathJoin($"{caseId}_{file}.png");
-        AssertBool(await KeyFrames.SaveViewport(path)).OverrideFailureMessage($"saved deliberate key frame {path}")
-            .IsTrue();
+        await KeyFrames.SaveViewport(path, description);
     }
 }

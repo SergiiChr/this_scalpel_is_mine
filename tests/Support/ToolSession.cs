@@ -38,30 +38,28 @@ public sealed class ToolSession
         var session = new ToolSession(driver, shots);
         if (shots is not null)
         {
-            driver.OnKeyFrame = async keyFrame =>
+            driver.OnKeyFrame = async (keyFrame, description) =>
             {
-                AssertBool(await shots.Capture(keyFrame, session.Along))
-                    .OverrideFailureMessage($"{folder}: saved key frame {keyFrame}").IsTrue();
+                await shots.Capture(keyFrame, description, session.Along);
                 if (views)
                 {
-                    AssertBool(await shots.CaptureView(keyFrame))
-                        .OverrideFailureMessage($"{folder}: saved the surgeon's view {keyFrame}").IsTrue();
+                    await shots.CaptureView(keyFrame, description);
                 }
             };
-            await driver.Capture("untouched");
+            await driver.Capture("untouched", "the site before any tool touches it: intact skin, nothing in it");
         }
         // Loading the room isn't gameplay: the frame budget counts from here.
         driver.Budget.Clear();
         return session;
     }
 
-    /// <summary>In a run with key frames, saves what the surgeon sees now as <paramref name="keyFrame"/>.</summary>
-    public async Task CaptureView(string keyFrame)
+    /// <summary>In a run with key frames, saves what the surgeon sees now as <paramref name="keyFrame"/>, which should
+    /// show <paramref name="description"/>.</summary>
+    public async Task CaptureView(string keyFrame, string description)
     {
         if (Shots is { } shots)
         {
-            await Driver.Unbudgeted(async () => AssertBool(await shots.CaptureView(keyFrame))
-                .OverrideFailureMessage($"saved the surgeon's view {keyFrame}").IsTrue());
+            await Driver.Unbudgeted(() => shots.CaptureView(keyFrame, description));
         }
     }
 

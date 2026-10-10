@@ -59,7 +59,7 @@ public partial class SurgeryDriver
         }
         Note($"cut {Patient.SurgeonCutLengthM(0.7f) * 100f:0.0} cm deep enough");
         await PlayerPutsDown();
-        await Capture("incised");
+        await Capture("incised", $"a clean {length * 100f:0} cm incision through the skin, the scalpel put down");
     }
 
     /// <summary>One stroke of a blade (the scalpel unless <paramref name="toolId"/> says) from <paramref name="from"/>
@@ -146,7 +146,7 @@ public partial class SurgeryDriver
             Note($"{kind} out: {target.Extracted}");
             await PlayerPutsDown();
         }
-        await Capture("extracted_" + kind);
+        await Capture("extracted_" + kind, $"every {kind} is out of the opening and the tool put down");
     }
 
     /// <summary>Holds Use tool at effort <paramref name="level"/> until <paramref name="done"/>, a minute at most.
