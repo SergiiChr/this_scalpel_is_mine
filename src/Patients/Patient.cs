@@ -292,9 +292,12 @@ public partial class Patient : Node3D
             }
             EasePressure(wound, dt);
             var rate = wound.BleedRate(siteM, bleedMult, leak);
+            var lastingRate = wound.BleedRate(siteM, bleedMult, leak, false);
+            ReportStopped(wound, rate, lastingRate);
             wound.Bleeding = rate;
+            wound.LastingBleeding = lastingRate;
             total += rate;
-            lasting += wound.BleedRate(siteM, bleedMult, leak, false);
+            lasting += lastingRate;
             // An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
             // Every wound that bleeds at all shows where: welling up inside the opening, or on the skin.
             var intoCavity = wound.IsInternal || wound.Opened > 0.3f;
@@ -466,6 +469,20 @@ public partial class Patient : Node3D
         if (Vitals.Rhythm == Rhythm.Vfib && _arrestTime > VfibToAsystole)
         {
             Vitals.Rhythm = Rhythm.Asystole;
+        }
+    }
+
+    /// <summary>Debug toast when a wound stops bleeding: for good, or only while gauze pressure holds it.</summary>
+    private void ReportStopped(Wound wound, float rate, float lastingRate)
+    {
+        var what = wound.IsInternal ? "vessel" : $"{wound.Kind.ToString().ToLowerInvariant()} {Body.UvToMeters(wound.LengthUv) * 100f:0.0} cm";
+        if (lastingRate <= 0f && wound.LastingBleeding > 0f)
+        {
+            Session.AnnounceDebug($"Bleeding stopped: {what} [permanently]");
+        }
+        else if (rate <= 0f && wound.Bleeding > 0f)
+        {
+            Session.AnnounceDebug($"Bleeding stopped: {what} [temporarily]");
         }
     }
 

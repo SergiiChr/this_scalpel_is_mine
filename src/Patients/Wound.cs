@@ -76,6 +76,8 @@ public sealed class Wound
     public float Nicked { get; set; }
     /// <summary>ml/s at the last simulation tick (host).</summary>
     public float Bleeding { get; set; }
+    /// <summary>ml/s at the last simulation tick without gauze pressure (host).</summary>
+    public float LastingBleeding { get; set; }
 
     public bool IsInternal => Kind == WoundKind.Internal;
 

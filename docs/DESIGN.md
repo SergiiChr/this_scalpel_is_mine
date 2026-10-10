@@ -214,7 +214,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
   Gauze pressed on a wound stops it for a while after it comes off (`Wound.PressureHold`), then the bleeding comes
   back; it stops a cut too small to sew (`Wound.SmallCut`) for good when held on it long enough without a break.
-  The `stop_bleeding` objective counts only what stays stopped without gauze pressure.
+  The `stop_bleeding` objective counts only what stays stopped without gauze pressure. Debug mode toasts when a wound
+  stops bleeding, `[permanently]` or `[temporarily]` (held only by gauze).
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
 - Cardiac arrest: V-fib, asystole, shocks, adrenaline windows, zapping a partner who's touching the patient.
   Arrests follow from the patient's state (blood loss, low pressure, racing pulse, fever, sugar out of range, swelling,
@@ -515,8 +516,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   whose rim catches the light.
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
-  the body jerking, a bead of blood where a needle or catheter goes in. Lasting marks (cuts, burns, stitches, ink,
-  iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
+  the body jerking, a bead of blood where a needle or catheter goes in (gauze or a pad wipes it away like other
+  blood). Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
   through (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the

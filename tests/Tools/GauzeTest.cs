@@ -2,19 +2,31 @@ namespace Scalpel.Tests.Tools;
 
 /// <summary>
 /// Gauze as a player uses it: pressed on a cut it stops the bleeding, holds it for a while after it comes off, then the
-/// cut bleeds again. Pressed long enough on a cut too small to sew, it stops that one for good. With key frames review
-/// the gauze lying on the cut while pressed, the skin wiped dry while the pressure holds and the blood welling back.
+/// cut bleeds again. Pressed long enough on a cut too small to sew, it stops that one for good. Debug mode says when
+/// a wound stops bleeding and whether for good. Gauze also wipes away the beads of blood a needle leaves. With key
+/// frames review the gauze lying on the cut while pressed, the skin wiped dry while the pressure holds, the blood
+/// welling back, and the bead on the arm gone after wiping.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class GauzeTest
 {
+    private readonly List<string> _toasts = [];
+    private IDisposable? _debugHud;
+
+    [BeforeTest]
+    public void DebugHud() => _debugHud = SurgeryState.DebugHudIsEnabled();
+
+    [AfterTest]
+    public void NoDebugHud() => _debugHud?.Dispose();
+
     [TestCase]
     public async Task GauzeStopsABleedForAWhileThenItComesBack()
     {
         var session = await ToolSession.Start("appendectomy", "gauze_holds");
         var driver = session.Driver;
+        Listen(driver);
         var patient = driver.Patient;
         var cut = SurgeryState.SkinIsCut(patient, new Vector2(0.4f, 0.5f), new Vector2(0.6f, 0.5f), 0.3f);
         await Frames.Seconds(3f);
@@ -31,6 +43,7 @@ public class GauzeTest
         await Frames.Seconds(2f);
         AssertFloat(cut.Bleeding).OverrideFailureMessage($"pressed with gauze, the cut stops bleeding: {driver.Bleeders()}")
             .IsLess(0.01f);
+        AssertBool(Told("[temporarily]")).OverrideFailureMessage($"debug mode says it stopped for now ({Toasts()})").IsTrue();
         await driver.Capture("pressed");
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
@@ -54,6 +67,7 @@ public class GauzeTest
     {
         var session = await ToolSession.Start("appendectomy", "gauze_small_cut");
         var driver = session.Driver;
+        Listen(driver);
         var patient = driver.Patient;
         var body = driver.Body;
         var small = SurgeryState.SkinIsCut(patient, new Vector2(0.35f, 0.5f), new Vector2(0.35f, 0.5f) + new Vector2(body.MetersToUv(0.006f), 0f), 0.3f);
@@ -71,6 +85,8 @@ public class GauzeTest
 
         await Press(driver, small, Wound.SmallCutPress + 1f);
         AssertBool(small.Clotted).OverrideFailureMessage("pressed on without a break, the small cut stops for good").IsTrue();
+        await Frames.Seconds(0.5f);
+        AssertBool(Told("[permanently]")).OverrideFailureMessage($"debug mode says it stopped for good ({Toasts()})").IsTrue();
         await Press(driver, longer, Wound.SmallCutPress + 1f);
         AssertBool(longer.Clotted).OverrideFailureMessage("a cut long enough to sew isn't stopped for good").IsFalse();
         await driver.PlayerPutsDown();
@@ -81,6 +97,42 @@ public class GauzeTest
         await driver.Capture("small_cut_stopped");
         await session.Finish();
     }
+
+    [TestCase]
+    public async Task GauzeWipesAwayTheBloodBeadANeedleLeaves()
+    {
+        var session = await ToolSession.Start("appendectomy", "gauze_bead");
+        var driver = session.Driver;
+        var effects = driver.Surgery.Effects;
+        await driver.PlayerGivesDrug("vial_propofol", 1f, SurgeryDriver.Route.Vein);
+        var beads = effects.Beads();
+        AssertInt(beads.Count).OverrideFailureMessage($"the needle leaves a bead of blood on the arm\n{driver.Recent()}").IsEqual(1);
+        await driver.Capture("bead");
+
+        await driver.PlayerRequestsItem("gauze");
+        foreach (var bead in beads)
+        {
+            await driver.PlayerWalksTo(bead);
+            await driver.PlayerWorksAt(bead, 3, 1f);
+        }
+        await Frames.Physics(5);
+        AssertInt(effects.Beads().Count).OverrideFailureMessage("gauze wipes it away like any blood").IsEqual(0);
+        await driver.PlayerPutsDown();
+        await driver.Capture("wiped");
+        await session.Finish();
+    }
+
+    private void Listen(SurgeryDriver driver)
+    {
+        _toasts.Clear();
+        driver.Surgery.Hud.Toasted += _toasts.Add;
+    }
+
+    /// <summary>Debug mode said a wound stopped bleeding, ending with <paramref name="how"/>.</summary>
+    private bool Told(string how) => _toasts.Any(toast =>
+        toast.StartsWith("[debug] Bleeding stopped: cut", StringComparison.Ordinal) && toast.EndsWith(how, StringComparison.Ordinal));
+
+    private string Toasts() => string.Join(", ", _toasts);
 
     /// <summary>Holds the gauze down on the middle of <paramref name="wound"/> for <paramref name="seconds"/>.</summary>
     private static async Task Press(SurgeryDriver driver, Wound wound, float seconds)
