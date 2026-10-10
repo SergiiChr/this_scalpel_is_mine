@@ -1,7 +1,8 @@
 namespace Scalpel.Tests.World;
 
 /// <summary>The glove station as a player uses it: the dispenser box stands on the cabinet within the station's
-/// interact area, looking at it offers "Change gloves", and interact swaps bloody, sweaty gloves for fresh ones.</summary>
+/// interact area, looking at it offers "Change gloves", and interact swaps bloody, sweaty gloves for fresh ones.
+/// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
@@ -27,6 +28,14 @@ public class GloveStationTest
             .IsEqualApprox(CabinetTop, 0.003f);
         AssertBool(area.Encloses(bounds))
             .OverrideFailureMessage($"the glove box {bounds} is inside the station's interact area {area}").IsTrue();
+        // The top is closed under the box: a ray down through the middle meets it (it once had a hole there).
+        var cabinet = box.GetParent().GetNode<MeshInstance3D>("Cabinet");
+        var faces = cabinet.Mesh.GetFaces();
+        var above = new Vector3(0f, 2f, 0f);
+        var closed = Enumerable.Range(0, faces.Length / 3).Any(t =>
+            Geometry3D.RayIntersectsTriangle(above, Vector3.Down, faces[t * 3], faces[(t * 3) + 1], faces[(t * 3) + 2])
+                .VariantType != Variant.Type.Nil);
+        AssertBool(closed).OverrideFailureMessage("the cabinet's top is closed in the middle").IsTrue();
         KeyFrames? shots = null;
         if (KeyFrames.Wanted())
         {
