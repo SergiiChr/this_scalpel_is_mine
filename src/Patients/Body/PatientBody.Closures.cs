@@ -161,11 +161,11 @@ public partial class PatientBody
             {
                 continue;
             }
-            _sutureDrawn[id] = DrawThread(id, Tissue.Thread(id)!, before);
+            _sutureDrawn[id] = DrawThread(id, Tissue.Thread(id)!, before, tissueChanged);
         }
     }
 
-    private DrawnSuture DrawThread(int id, SutureThread info, DrawnSuture? drawn)
+    private DrawnSuture DrawThread(int id, SutureThread info, DrawnSuture? drawn, bool tissueChanged)
     {
         var layer = (int)info.Layer;
         var holes = info.Anchors.Select(k => LayerPoint(layer - 1, k) - Vector3.Up * LayerTop(layer - 1)).ToArray();
@@ -191,7 +191,9 @@ public partial class PatientBody
         // the same spring that pulls the skin, so loose thread bows on the surface and tightened thread straightens it.
         var slack = Mathf.Clamp(Mathf.InverseLerp(TissueSim.ThreadTear[layer], TissueSim.ThreadLoose[layer], info.Tension), 0f, 1f);
         var wasLive = drawn?.Live ?? [];
-        var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live);
+        // Deep tissue between the punctures can settle even when both holes remain nearly stationary.
+        var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live)
+            || (tissueChanged && info.Layer != TissueDepth.Skin);
         var routes = drawn?.Routes ?? [];
         if (routesChanged)
         {
@@ -284,7 +286,9 @@ public partial class PatientBody
                 if (new Rect2(Vector2.Zero, Vector2.One).HasPoint(uv))
                 {
                     var height = layer == TissueDepth.Skin ? SkinHeight(uv) : SutureLayerHeight(uv, layer);
-                    p.Y = Mathf.Max(p.Y, height + SutureRadius * 1.15f);
+                    p.Y = layer == TissueDepth.Skin || freeEnd
+                        ? Mathf.Max(p.Y, height + SutureRadius * 1.15f)
+                        : height + SutureRadius * 1.15f;
                 }
             }
             else if (!freeEnd)

@@ -301,11 +301,12 @@ public static class Materials
 
     /// <summary>Fat (layer 0) or muscle (layer 1) under the surgical site skin, or the cut face of the skin (layer 2,
     /// in its tone) in the walls of a cut.</summary>
-    public static ShaderMaterial TissueLayerMaterial(int layer, Texture2D fluidTexture, Color? tone = null)
+    public static ShaderMaterial TissueLayerMaterial(int layer, Texture2D fluidTexture, Color? tone = null, bool cutFace = false)
     {
         var material = new ShaderMaterial { Shader = TissueLayer };
         material.SetShaderParameter("layer", layer);
         material.SetShaderParameter("skin_color", tone ?? new Color(0.84f, 0.66f, 0.56f));
+        material.SetShaderParameter("cut_face", cutFace);
         material.SetShaderParameter("fluid_map", fluidTexture);
         return material;
     }

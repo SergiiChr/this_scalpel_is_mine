@@ -15,11 +15,13 @@ public class TissueSimTest
     public void TissueGeometryAndPhysicsContracts()
     {
         CutGapes();
+        RetractionOnASlope();
         DepthLayers();
         RetractionAndTears();
         ThinSkinHoldsAtRest();
         StitchesClose();
         Sleeps();
+        CatchUpAcrossFrames();
         Elastic();
         MuscleFirst();
         LooseStitchGapes();
@@ -50,6 +52,24 @@ public class TissueSimTest
 
     private static void Check(bool ok, string what) => AssertBool(ok).OverrideFailureMessage(what).IsTrue();
 
+    private static void CatchUpAcrossFrames()
+    {
+        var split = Sim();
+        var together = Sim();
+        foreach (var sim in new[] { split, together })
+        {
+            sim.Grip(1, Mid);
+            sim.MoveGrip(1, sim.Pos[sim.Nearest(Mid)] + Vector3.Up * 0.01f);
+        }
+        split.Advance(TissueSim.Step * 2f, maxSteps: 1);
+        Check(split.StepsDone == 1 && split.NeedsStep, "one solver step runs while the second stays pending");
+        split.Advance(0f, maxSteps: 1);
+        together.Advance(TissueSim.Step * 2f);
+        Check(split.StepsDone == 2 && !split.NeedsStep, "the pending solver step catches up on the next frame");
+        Check(split.Pos.Zip(together.Pos).All(pair => pair.First.DistanceTo(pair.Second) < 0.000001f),
+            "spreading catch-up across frames preserves the simulated tissue state");
+    }
+
     private static void CutGapes()
     {
         var sim = Sim();
@@ -72,6 +92,19 @@ public class TissueSimTest
         Check(sim.Triangles(TissueDepth.Fat).Length < full, "fat layer has a hole over a fat deep cut");
         Check(sim.Triangles(TissueDepth.Muscle).Length == full, "muscle layer stays whole under a fat deep cut");
         Check(!sim.IsOpen(Mid), "a fat deep cut doesn't open into the cavity");
+    }
+
+    /// <summary>A diagonal cut on sloping skin retracts in the tangent plane. Nearly parallel crossed diagonals
+    /// must not amplify a small slope into raised planks or spikes.</summary>
+    private static void RetractionOnASlope()
+    {
+        var sim = new TissueSim();
+        sim.Build(Size, uv => (uv.X - 0.5f) * Size.X * 0.4f + (uv.Y - 0.5f) * Size.Y * 0.1f);
+        sim.Cut(new Vector2(0.25f, 0.26f), new Vector2(0.75f, 0.74f), TissueDepth.Muscle);
+        Settle(sim, 120);
+        var normal = new Vector3(-0.4f, 1f, -0.1f).Normalized();
+        var raised = sim.Pos.Max(p => Mathf.Abs(p.Dot(normal)));
+        Check(raised < 0.001f, $"retracting diagonal lips stay within 1 mm of sloping skin ({raised * 1000f:0.00} mm)");
     }
 
     private static void RetractionAndTears()
@@ -352,7 +385,10 @@ public class TissueSimTest
         var through = Enumerable.Range(0, sim.Pos.Length).Count(k =>
             sim.Exposed[k] && sim.Pos[k].X > opening && sim.Pos[k].Y < 0.01f - 0.0001f && k != gripped);
         var lifted = Enumerable.Range(0, sim.Pos.Length).Count(k => !sim.Exposed[k] && sim.Pos[k].Y > 0.005f);
-        Check(through == 0, $"skin folded out over the drape stays on it ({through} points under)");
+        var under = string.Join("; ", Enumerable.Range(0, sim.Pos.Length).Where(k =>
+            sim.Exposed[k] && sim.Pos[k].X > opening && sim.Pos[k].Y < 0.01f - 0.0001f && k != gripped)
+            .Select(k => $"{sim.Pos[k]}, moved {sim.Pos[k].DistanceTo(sim.Settled[k]):0.0000}"));
+        Check(through == 0, $"skin folded out over the drape stays on it ({through} points under: {under})");
         Check(lifted == 0, $"skin under the drape isn't pushed up through it ({lifted} points)");
     }
 
