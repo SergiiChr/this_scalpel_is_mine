@@ -7,13 +7,10 @@
   ./build.py setup     Download Godot and the .NET SDK if missing, build and import the project. No sudo.
   ./build.py test      Run the smoke tests. --all or --tag TAG for other suites, see ./build.py test --help.
   ./build.py review    Run the full regression with key frames and write build/review/report.md: one sheet per key
-                       frame that changed against the commit this branch left origin/main at, which is rendered once
-                       in a git worktree and kept in build/key-frames. --base REF, --no-run, --all: see --help.
+                       frame that is missing, changed or new against the commit this branch left origin/main at. That
+                       commit is rendered once in a git worktree and kept in build/key-frames. See --help.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
-                       ./build.py review    Run the full regression with key frames and write build/review/report.md: one sheet per key
-                       frame that changed against the commit this branch left origin/main at, which is rendered once
-                       in a git worktree and kept in build/key-frames. --base REF, --no-run, --all: see --help.
-  ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
+                       ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
                        Fails on any error in Godot's output, such as a shader that doesn't compile.
   ./build.py build     Run the tests, export a standalone executable to build/ThisScalpelIsMine.x86_64 and start it
@@ -609,7 +606,7 @@ def review(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py review",
         description="Runs the full regression with key frames, then writes build/review/report.md with a sheet for each "
-        "key frame that changed against the baseline. Exits non-zero when the regression fails, after writing the report.",
+        "key frame that is missing, changed or new against the baseline. Exits non-zero when the regression fails, after writing the report.",
     )
     parser.add_argument("--base", default="origin/main", help="the baseline is the commit where HEAD left this ref")
     parser.add_argument("--no-run", action="store_true", help="review the key frames of the last run")
@@ -623,7 +620,8 @@ def review(arguments: list[str]) -> int:
         status = test(["--all", "--with-key-frames"])
         if status == 0 and not git("status", "--porcelain"):
             shutil.copytree(KEY_FRAMES, BASELINES / git("rev-parse", "HEAD"), dirs_exist_ok=True)
-    flags = [*(["--all"] if parsed.all else []), *(["--regression-failed"] if status else [])]
+    regression = "not-run" if parsed.no_run else "failed" if status else "passed"
+    flags = [*(["--all"] if parsed.all else []), "--regression", regression]
     command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW)), *flags]
     return status or subprocess.run(command, cwd=ROOT, check=False).returncode
 

@@ -1,7 +1,7 @@
 """Key frame review report: compares a run's key frames against a baseline run and writes one sheet per missing,
 changed or new key frame, with a Markdown index that says what to open.
 
-  python -m tools.keyframes CURRENT BASELINE OUT [--all] [--regression-failed]
+  python -m tools.keyframes CURRENT BASELINE OUT [--all] [--regression passed|failed|not-run]
 
 CURRENT and BASELINE are screenshot folders (build/test-artifacts/screenshots of two runs); BASELINE may be missing.
 A sheet puts a key frame's views (top | oblique) side by side, sized to what a model sees anyway, so one key frame is
@@ -122,7 +122,7 @@ def sheet(frame: KeyFrame, label: str, out: Path) -> None:
     result.save(out)
 
 
-def report(current_root: Path, baseline_root: Path, out: Path, everything: bool, regression_failed: bool) -> str:
+def report(current_root: Path, baseline_root: Path, out: Path, everything: bool, regression: str) -> str:
     """Writes the sheets and returns the Markdown index."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
     states = ("missing", "changed", "new", "unchanged")
@@ -154,9 +154,11 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
     text = [
         "# Key frame review",
         "",
-        "Regression: FAILED. Fix the failed cases first (the run's output names them): key frames they didn't take show as missing below."
-        if regression_failed
-        else "Regression: passed.",
+        {
+            "passed": "Regression: passed.",
+            "failed": "Regression: FAILED. Fix the failed cases first (the run's output names them): key frames they didn't take show as missing below.",
+            "not-run": "Regression: not run, these are the key frames of an earlier run.",
+        }[regression],
         f"Current: `{current_root.as_posix()}`  ",
         f"Baseline: `{baseline_root.as_posix()}`" if baseline else "Baseline: none, every key frame is new.",
         "",
@@ -185,7 +187,7 @@ def main() -> int:
     parser.add_argument("baseline", type=Path, help="screenshot folder to compare against, may be missing")
     parser.add_argument("out", type=Path, help="report folder, emptied first")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
-    parser.add_argument("--regression-failed", action="store_true", help="say so at the top of the report")
+    parser.add_argument("--regression", choices=("passed", "failed", "not-run"), default="not-run", help="how the run went, for the top of the report")
     parsed = parser.parse_args()
     if not key_frames(parsed.current):
         print(f"No key frames in {parsed.current}.", file=sys.stderr)
@@ -193,7 +195,7 @@ def main() -> int:
     shutil.rmtree(parsed.out, ignore_errors=True)
     parsed.out.mkdir(parents=True)
     index = parsed.out / "report.md"
-    index.write_text(report(parsed.current, parsed.baseline, parsed.out, parsed.all, parsed.regression_failed))
+    index.write_text(report(parsed.current, parsed.baseline, parsed.out, parsed.all, parsed.regression))
     print(f"Key frame review: {index}")
     return 0
 
