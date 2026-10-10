@@ -12,8 +12,9 @@ public sealed class ToolAnimator
     private static readonly string[] GlowParts = ["Flame", "Glow"];
     private static readonly string[] PartNames = ["JawA", "JawB", "Plunger", "Trigger", "Blade", "Flame", "Glow", "Light"];
     private const float JawOpen = 0.12f;
-    private const string EmptyBag = "EmptyBag";
-    private const string RestingFlat = "RestingFlat";
+    // StringNames made once: a string passed to Godot each frame would allocate one every time.
+    private static readonly StringName EmptyBag = "EmptyBag";
+    private static readonly StringName RestingFlat = "RestingFlat";
     /// <summary>How long a film bag takes to settle flat once it lies down, or fill out again once picked up (s).
     /// </summary>
     private const float FlattenTime = 0.3f;
@@ -58,6 +59,7 @@ public sealed class ToolAnimator
     /// <summary>How far the bag hangs tilted about its X and Y axes (radians), and how fast that changes.</summary>
     private Vector2 _tilt;
     private Vector2 _tiltSpeed;
+    private Vector2 _shownTilt;
 
     /// <summary>How far a syringe's plunger is pulled out (0..1 of its volume): its liquid and any air drawn in. The
     /// plunger moves the moment it changes, with the liquid, not a frame later.</summary>
@@ -128,9 +130,17 @@ public sealed class ToolAnimator
         {
             _upSide = upSide;
         }
-        _flat = Mathf.MoveToward(_flat, upSide != 0f ? 1f : 0f, delta / FlattenTime);
-        Blend(RestingFlat, _flat);
-        _model.Position = new Vector3(0f, -_upSide * _flatDrop * _flat, 0f);
+        var flat = Mathf.MoveToward(_flat, upSide != 0f ? 1f : 0f, delta / FlattenTime);
+        if (flat != _flat)
+        {
+            _flat = flat;
+            Blend(RestingFlat, _flat);
+        }
+        var lowered = new Vector3(0f, -_upSide * _flatDrop * _flat, 0f);
+        if (_model.Position != lowered)
+        {
+            _model.Position = lowered;
+        }
         Sway(upSide != 0f, delta);
     }
 
@@ -166,6 +176,12 @@ public sealed class ToolAnimator
             _swayAt = at;
             _swayVelocity = velocity;
         }
+        // Posing the bones redraws the skin: only when the tilt changed, not every frame a bag hangs still.
+        if (_tilt == _shownTilt)
+        {
+            return;
+        }
+        _shownTilt = _tilt;
         var share = Quaternion.FromEuler(new Vector3(_tilt.X, _tilt.Y, 0f) / _swayBones.Length);
         foreach (var bone in _swayBones)
         {
@@ -218,7 +234,7 @@ public sealed class ToolAnimator
         }
     }
 
-    private void Blend(string shape, float weight)
+    private void Blend(StringName shape, float weight)
     {
         foreach (var mesh in _film)
         {
