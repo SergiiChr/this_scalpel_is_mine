@@ -32,7 +32,7 @@ public class PatientCardTest
                 await shots.CaptureView(keyFrame, description);
                 if (keyFrame == "on_hook")
                 {
-                    await shots.CaptureAt("on_hook_close", "close up, the card hangs flat on its hook, not in the wall", card.HookPaper, 0.6f);
+                    await shots.CaptureAt("on_hook_close", "close up, the card hangs on its hook on the bed rail, clear of the rail", card.HookPaper, 0.6f);
                 }
             };
         }
