@@ -107,6 +107,7 @@ public partial class Surgery : Node3D
             net.PrepareLocalSession(ScenarioFromCommandLine());
         }
         Scenario = net.Scenario!;
+        GameClock.Restart();
         Rng.Seed = net.SessionSeed;
         RunMods = Db.RunModifierEffects(net.RunModifiers);
         Room.Build(Scenario.Environment, this);
