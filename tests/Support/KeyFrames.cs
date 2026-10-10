@@ -1,9 +1,10 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>
-/// Deliberate key frames for visual tests: Capture(name) right after a named action saves a view from straight above
-/// the site and an oblique close-up that shows depth and intersections. Rendering is on only while a key frame is saved:
-/// whoever runs the game keeps it off in between.
+/// Deliberate key frames for visual tests: Capture(name, description) right after a named action saves a view from
+/// straight above the site and an oblique close-up that shows depth and intersections. The description says what the
+/// key frame should show; it goes into the folder's keyframes.json, which the key frame review prints beside each
+/// sheet. Rendering is on only while a key frame is saved: whoever runs the game keeps it off in between.
 /// </summary>
 public partial class KeyFrames : Node
 {
@@ -14,6 +15,8 @@ public partial class KeyFrames : Node
     /// <summary>Views of the site: from this far, above and 45° off toward the surgeon's side of the table.</summary>
     private const float Distance = 0.45f;
     private const float Fov = 35f;
+    /// <summary>Each folder's file name to description index (see the class summary).</summary>
+    private const string Descriptions = "keyframes.json";
 
     public string OutDir { get; private set; } = "";
     public List<string> Saved { get; } = [];
@@ -33,9 +36,10 @@ public partial class KeyFrames : Node
         return folder;
     }
 
-    /// <summary>Saves what the viewport shows now, a few drawn frames on so a camera that just moved is in place.
-    /// Rendering is on only for those frames. Gameplay pauses so rendering preserves the named action's pose.</summary>
-    public static async Task<bool> SaveViewport(string path)
+    /// <summary>Saves what the viewport shows now, a few drawn frames on so a camera that just moved is in place, with
+    /// <paramref name="description"/> of what it should show. Rendering is on only for those frames. Gameplay pauses so
+    /// rendering preserves the named action's pose. Fails the case when it can't be saved.</summary>
+    public static async Task SaveViewport(string path, string description)
     {
         var surgery = Surgery.Current;
         var paused = Frames.Tree.Paused;
@@ -43,6 +47,7 @@ public partial class KeyFrames : Node
         // but HUD aim projection still needs to query the patient's surfaces.
         Frames.Tree.Paused = true;
         RenderingServer.RenderLoopEnabled = true;
+        var saved = false;
         try
         {
             // The camera or HUD visibility may have changed since the last process frame.
@@ -50,13 +55,28 @@ public partial class KeyFrames : Node
             surgery?.Hud.RefreshFrame(0f);
             await Frames.Process(3);
             await RenderingServer.Singleton.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            return Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
+            saved = Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
         }
         finally
         {
             RenderingServer.RenderLoopEnabled = false;
             Frames.Tree.Paused = paused;
         }
+        AssertBool(saved && Describe(path, description))
+            .OverrideFailureMessage($"saved key frame {path.GetFile()}: {description}").IsTrue();
+    }
+
+    /// <summary>Records <paramref name="description"/> for the file at <paramref name="path"/> in its folder's index.
+    /// </summary>
+    private static bool Describe(string path, string description)
+    {
+        var index = path.GetBaseDir().PathJoin(Descriptions);
+        var descriptions = FileAccess.FileExists(index)
+            ? Json.ParseString(FileAccess.GetFileAsString(index)).AsGodotDictionary<string, string>()
+            : new Godot.Collections.Dictionary<string, string>();
+        descriptions[path.GetFile()] = description;
+        using var file = FileAccess.Open(index, FileAccess.ModeFlags.Write);
+        return file is not null && file.StoreString(Json.Stringify(descriptions, "  ") + "\n");
     }
 
     /// <summary>Starts a set of key frames for <paramref name="surgery"/> into <paramref name="relative"/> (under
@@ -77,44 +97,44 @@ public partial class KeyFrames : Node
         }
     }
 
-    /// <summary>Saves both views as NN_name_top.png and NN_name_oblique.png. Returns false when one couldn't be saved.
-    /// The oblique view comes from the surgeon's side, or from <paramref name="side"/> (world, across the floor) when
-    /// given: along a cut, say, to see what lies across it.</summary>
-    public Task<bool> Capture(string keyFrame, Vector3? side = null)
+    /// <summary>Saves both views as NN_name_top.png and NN_name_oblique.png, with <paramref name="description"/> of
+    /// what they should show. The oblique view comes from the surgeon's side,
+    /// or from <paramref name="side"/> (world, across the floor) when given: along a cut, say, to see what lies across
+    /// it.</summary>
+    public Task Capture(string keyFrame, string description, Vector3? side = null)
     {
         var site = _surgery.Patient.Body.Site;
         var middle = site.GlobalPosition;
         var up = site.GlobalBasis.Y.Normalized();
         var toward = (side ?? (_surgery.LocalSurgeon!.GlobalPosition - middle)).Slide(up).Normalized();
-        return Views(keyFrame, middle, up, toward, Distance, false);
+        return Views(keyFrame, description, middle, up, toward, Distance, false);
     }
 
     /// <summary>The same two views of something off the site (a bottle on a tray), from <paramref name="distance"/>
     /// away. The hands are left out of both: one just let go of it would hide it.</summary>
-    public Task<bool> CaptureAt(string keyFrame, Vector3 at, float distance)
+    public Task CaptureAt(string keyFrame, string description, Vector3 at, float distance)
     {
         var toward = (_surgery.LocalSurgeon!.GlobalPosition - at).Slide(Vector3.Up).Normalized();
-        return Views(keyFrame, at, Vector3.Up, toward, distance, true);
+        return Views(keyFrame, description, at, Vector3.Up, toward, distance, true);
     }
 
     /// <summary>Saves what the surgeon sees, the HUD's aim included, as NN_name_view.png.</summary>
-    public Task<bool> CaptureView(string keyFrame)
+    public Task CaptureView(string keyFrame, string description)
     {
         var path = OutDir.PathJoin($"{NextName(keyFrame)}_view.png");
         Saved.Add(path);
-        return SaveViewport(path);
+        return SaveViewport(path, description);
     }
 
     private string NextName(string keyFrame) => $"{_taken++:00}_{keyFrame}";
 
-    private async Task<bool> Views(string keyFrame, Vector3 middle, Vector3 up, Vector3 toward, float distance, bool noHands)
+    private async Task Views(string keyFrame, string description, Vector3 middle, Vector3 up, Vector3 toward, float distance, bool noHands)
     {
         var name = NextName(keyFrame);
         var surgeon = _surgery.LocalSurgeon!;
         var hudWas = _surgery.Hud.Visible;
         _surgery.Hud.Visible = false;
         _camera.Current = true;
-        var ok = true;
         foreach (var (view, from, lookUp) in (ViewSpec[])[new("top", up, toward), new("oblique", (up + toward).Normalized(), up)])
         {
             _camera.GlobalPosition = middle + (from * distance);
@@ -125,7 +145,7 @@ public partial class KeyFrames : Node
                 hand.Visible = view != "top" && !noHands;
             }
             var path = OutDir.PathJoin($"{name}_{view}.png");
-            ok &= await SaveViewport(path);
+            await SaveViewport(path, description);
             Saved.Add(path);
         }
         foreach (var hand in surgeon.Hands)
@@ -135,7 +155,6 @@ public partial class KeyFrames : Node
         _camera.Current = false;
         surgeon.Camera.Current = true;
         _surgery.Hud.Visible = hudWas;
-        return ok;
     }
 
     private readonly record struct ViewSpec(string Name, Vector3 From, Vector3 Up);

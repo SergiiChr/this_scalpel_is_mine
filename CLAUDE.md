@@ -94,6 +94,10 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
 - Capture with `KeyFrames` right after a named action, never on elapsed time. A case with key frames is one case:
   it takes them only when `KeyFrames.Wanted()`, never in a copy made for screenshots. A feature an end-to-end case
   already captures needs no more screenshots.
+- Every key frame carries a description of what it should show (`Capture("on_hook", "the card on its hook, ...")`):
+  the review prints it beside the sheet. Write what a reviewer checks the picture against, not the action's name.
+  When an assertion right before it claims the same thing, use `SurgeryDriver.AssertAndCapture(holds, claim,
+  keyFrame)` so the text is written once.
 - Review the frames for continuity, clipping, mesh intersections, material consistency, tool contact, animation
   transitions and UI legibility. Screenshot comparisons may flag regressions but don't replace that review.
 

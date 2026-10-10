@@ -32,9 +32,9 @@ public partial class SurgeryDriver : Node
     public FrameBudget Budget { get; } = new();
     /// <summary>What the steps did, newest last: test failure messages show the tail.</summary>
     public List<string> Trail { get; } = [];
-    /// <summary>Called (and awaited) with a name right after a step's key interaction: a cut made, a target out. Unset:
-    /// no pictures.</summary>
-    public Func<string, Task>? OnKeyFrame { get; set; }
+    /// <summary>Called (and awaited) with a name and a description of what it should show right after a step's key
+    /// interaction: a cut made, a target out. Unset: no pictures.</summary>
+    public Func<string, string, Task>? OnKeyFrame { get; set; }
     private bool _budgetPaused;
 
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
@@ -139,12 +139,21 @@ public partial class SurgeryDriver : Node
     /// <summary>The last steps, for a failure message.</summary>
     public string Recent(int count = 12) => string.Join("\n", Trail.Skip(Math.Max(Trail.Count - count, 0)));
 
-    public async Task Capture(string keyFrame)
+    /// <summary>Key frame <paramref name="keyFrame"/>, which should show <paramref name="description"/>.</summary>
+    public async Task Capture(string keyFrame, string description)
     {
         if (OnKeyFrame is not null)
         {
-            await Unbudgeted(() => OnKeyFrame(keyFrame));
+            await Unbudgeted(() => OnKeyFrame(keyFrame, description));
         }
+    }
+
+    /// <summary>Asserts <paramref name="claim"/>, then captures key frame <paramref name="keyFrame"/>, which should show
+    /// it: one text for both.</summary>
+    public async Task AssertAndCapture(bool holds, string claim, string keyFrame)
+    {
+        AssertBool(holds).OverrideFailureMessage(claim).IsTrue();
+        await Capture(keyFrame, claim);
     }
 
     /// <summary>Does <paramref name="work"/> (drawing a screenshot, say) outside the frame budget: it isn't

@@ -24,7 +24,7 @@ public class BleedSourcesTest
             .IsBetween(0.001f, 0.05f);
         AssertFloat(body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, tiny.BleedPoint))
             .OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself").IsGreater(0.5f);
-        await driver.Capture("tiny_cut");
+        await driver.Capture("tiny_cut", "a tiny shallow cut bleeding a little, blood puddled on the skin at it");
 
         var at = new Vector2(0.5f, 0.62f);
         SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
@@ -37,7 +37,7 @@ public class BleedSourcesTest
         var shown = -body.HeightAboveSite(body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(at)));
         AssertFloat(shown).OverrideFailureMessage($"deep under a narrow incision, it wells up the slit to where it can be seen ({seen * 100f:0.0} cm)")
             .IsLessEqual(seen + 0.002f);
-        await driver.Capture("vessel");
+        await driver.Capture("vessel", "a deep vessel under a narrow incision, its blood welling up the slit where it can be seen");
 
         var risen = await Frames.Until(() => body.CavityPoolHeight > body.Site.ToLocal(driver.SitePoint(at, vessel.DepthM)).Y, 60f);
         AssertBool(risen).OverrideFailureMessage($"the cavity pool rises over the vessel ({patient.CavityBloodMl:0} ml)").IsTrue();
@@ -48,7 +48,7 @@ public class BleedSourcesTest
         // Placed on the frame before, while the pool keeps rising.
         AssertFloat(body.Site.ToLocal(well).Y).OverrideFailureMessage($"on the pool's surface ({body.CavityPoolHeight:0.0000} m)")
             .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
-        await driver.Capture("vessel_under_pool");
+        await driver.Capture("vessel_under_pool", "the vessel covered by the pool, still welling up on the pool's surface above it");
 
         // Many vessels at once along the incision, more than the domes first made room for: each shows, welling up
         // where the incision gapes, seeping onto the skin where it's shut.
@@ -57,9 +57,8 @@ public class BleedSourcesTest
         await Frames.Seconds(1f);
         var unseen = vessels.Where(v => Wells(driver, v) != "at the vessel"
             && body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, v.Points[0]) < 0.5f).Select(v => v.Points[0]).ToList();
-        AssertBool(unseen.Count == 0).OverrideFailureMessage($"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})")
-            .IsTrue();
-        await driver.Capture("many_vessels");
+        await driver.AssertAndCapture(unseen.Count == 0,
+            $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
         await session.Finish();
     }
 

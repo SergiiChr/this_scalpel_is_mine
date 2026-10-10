@@ -59,7 +59,7 @@ public class StaplerTest
         AssertRingsOnSkin(driver, stapler);
         driver.Surgery.Tools.Consume(forceps);
         await Frames.Physics(2);
-        await driver.Capture("ready");
+        await driver.Capture("ready", "the stapler over the cut, its rings on the skin");
         var gap = tissue.GapAt(wound.Midpoint, 0.02f);
         var aimed = RingMiddles(driver);
         SurgeryDriver.Use();
@@ -98,7 +98,7 @@ public class StaplerTest
         await driver.PlayerPutsDown();
         // Back at the patient, to see the result from where the surgeon works.
         await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
-        await driver.Capture("stapled");
+        await driver.Capture("stapled", "the cut stapled shut, staples square across it, seen from where the surgeon works");
         await session.Finish(BudgetBroken);
     }
 
@@ -130,7 +130,7 @@ public class StaplerTest
         var muscleStaple = body.DrawnStaples[0].Path;
         AssertFloat(muscleStaple[1].Y).OverrideFailureMessage("it's drawn down in the muscle, under the skin")
             .IsLess(body.SkinHeight(SiteUv(body, muscleStaple[1])) - PatientBody.SkinThickness);
-        await driver.Capture("muscle_staple");
+        await driver.Capture("muscle_staple", "the first staple drawn down in the open muscle, the skin over it still open");
         await driver.PlayerStaples(wound);
         await Frames.Seconds(1f);
         AssertBool(tissue.Severed.Any(s => tissue.DepthOf(s) == TissueDepth.Muscle))
@@ -145,7 +145,7 @@ public class StaplerTest
         await driver.PlayerPutsDown();
         // Back at the patient, to see the result from where the surgeon works.
         await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
-        await driver.Capture("stapled");
+        await driver.Capture("stapled", "staples in both the muscle and the skin, the skin ones square across the cut");
         await session.Finish(BudgetBroken);
     }
 
@@ -178,7 +178,7 @@ public class StaplerTest
             .IsTrue();
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("a tear is a new wound").IsEqual(wounds + 1);
         AssertFloat(wound.Closure).OverrideFailureMessage("and the staple holds nothing").IsLess(0.1f);
-        await driver.Capture("torn");
+        await driver.Capture("torn", "an office staple torn out: a new tear in the skin, the staple holding nothing");
 
         SurgeryState.ToolGoesWrong(stapler, 0f, 1f);
         at = driver.SitePoint(wound.Points[0].Lerp(wound.Points[^1], 0.7f));
@@ -194,7 +194,7 @@ public class StaplerTest
         AssertInt(body.DrawnStaples.Count).OverrideFailureMessage("the staple still goes in").IsEqual(1);
         AssertBool(patient.Flags.ContainsKey("office_staples")).OverrideFailureMessage("the report hears about the office staples")
             .IsTrue();
-        await driver.Capture("bleeding");
+        await driver.Capture("bleeding", "an office staple in, the cut bleeding through it");
         await driver.PlayerPutsDown();
         await driver.PlayerStopsBleeding(0.05f);
         AssertFloat(wound.BleedRate(siteM, 1f)).OverrideFailureMessage("cauterized, the nicked vessel stops bleeding")

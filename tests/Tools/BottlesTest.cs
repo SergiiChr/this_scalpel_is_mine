@@ -30,8 +30,7 @@ public class BottlesTest
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "bottles");
-            driver.OnKeyFrame = async keyFrame => AssertBool(await shots.CaptureAt(keyFrame, vial.Middle(), View))
-                .OverrideFailureMessage($"saved key frame {keyFrame}").IsTrue();
+            driver.OnKeyFrame = (keyFrame, description) => shots.CaptureAt(keyFrame, description, vial.Middle(), View);
         }
         driver.Budget.Clear();
         var onTray = driver.FreeTools(Vial);
@@ -41,16 +40,15 @@ public class BottlesTest
         vial = driver.FreeTools(Vial).First(tool => !onTray.Contains(tool));
         AssertBool(Stands(vial)).OverrideFailureMessage($"a vial comes from the nurse standing, cap up (tip {TipUp(vial):0.00} up)").IsTrue();
         AssertFloat(vial.LinearVelocity.Length()).OverrideFailureMessage("it stands still on the delivery tray").IsLess(0.01f);
-        await driver.Capture("delivered");
+        await driver.Capture("delivered", "the vial delivered standing still on the tray, cap up");
 
         await PickUp(driver, vial);
         var spot = SurgeryState.FreeTraySpot(driver.Surgery);
         await driver.PlayerWalksTo(spot);
         await driver.PlayerReaches(spot - (vial.Middle() - vial.TipPosition()));
         await HoldGrab();
-        AssertBool(vial.State == ToolState.Free && Stands(vial) && driver.LiesOnTray(vial))
-            .OverrideFailureMessage($"Grab held a second stands the vial upright on the tray (tip {TipUp(vial):0.00} up)").IsTrue();
-        await driver.Capture("stood_on_tray");
+        await driver.AssertAndCapture(vial.State == ToolState.Free && Stands(vial) && driver.LiesOnTray(vial),
+            $"Grab held a second stands the vial upright on the tray (tip {TipUp(vial):0.00} up)", "stood_on_tray");
 
         await PickUp(driver, vial);
         var belly = driver.SitePoint(new Vector2(0.5f, 0.5f));
@@ -60,16 +58,14 @@ public class BottlesTest
         // Its base's middle against the skin as it's drawn there. It settles on the patient's collider, which over the
         // site lies a little above the drawn skin; inside the body (on the table) it would be far below.
         var above = driver.Body.HeightAboveSite(vial.GlobalPosition);
-        AssertBool(Stands(vial) && above > -0.005f && above < 0.03f)
-            .OverrideFailureMessage($"stood on the patient's belly, the vial rests on the body, not inside it (base {above * 100f:0.0} cm over the skin)")
-            .IsTrue();
-        await driver.Capture("stood_on_patient");
+        await driver.AssertAndCapture(Stands(vial) && above > -0.005f && above < 0.03f,
+            $"stood on the patient's belly, the vial rests on the body, not inside it (base {above * 100f:0.0} cm over the skin)",
+            "stood_on_patient");
 
         await PickUp(driver, vial);
         await driver.PlayerPutsDown();
-        AssertBool(vial.State == ToolState.Free && !Stands(vial) && driver.LiesOnTray(vial))
-            .OverrideFailureMessage($"a quick click puts it down lying, as before (tip {TipUp(vial):0.00} up)").IsTrue();
-        await driver.Capture("put_down");
+        await driver.AssertAndCapture(vial.State == ToolState.Free && !Stands(vial) && driver.LiesOnTray(vial),
+            $"a quick click puts it down lying, as before (tip {TipUp(vial):0.00} up)", "put_down");
 
         driver.Budget.Check(shots is not null, broken: "the frame the ordered vial arrives takes 17-19 ms of the game's own work");
         shots?.End();

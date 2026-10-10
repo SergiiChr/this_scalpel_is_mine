@@ -52,21 +52,20 @@ public class ScalpelTest
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "scalpel");
-            driver.OnKeyFrame = async keyFrame => AssertBool(await shots.CaptureAt(keyFrame, middle, 0.18f))
-                .OverrideFailureMessage($"saved scalpel key frame {keyFrame}").IsTrue();
+            driver.OnKeyFrame = (keyFrame, description) => shots.CaptureAt(keyFrame, description, middle, 0.18f);
         }
         await driver.PlayerWalksTo(middle);
         await driver.PlayerTurnsBlade(finish - start);
         await driver.PlayerReaches(start);
         await driver.SetLevel(1);
-        await driver.Capture("untouched");
+        await driver.Capture("untouched", "the scalpel's blade turned along the line, its tip at the start, the skin whole");
         driver.Budget.Clear();
         driver.Note("presses the scalpel into skin");
         SurgeryDriver.Use();
         await Frames.Seconds(0.3f);
         driver.Note("draws the first half of the scalpel cut");
         await driver.PlayerSweepsTo(middle);
-        await driver.Capture("cutting");
+        await driver.Capture("cutting", "half way through a light stroke: the cut follows the blade, the blade fixed to its handle");
         driver.Note("draws the second half of the scalpel cut");
         await driver.PlayerSweepsTo(finish);
         driver.Note("releases the scalpel from skin");
@@ -77,7 +76,7 @@ public class ScalpelTest
         AssertFloat(bladeDrift)
             .OverrideFailureMessage($"the blade stays fixed to its handle while cutting ({bladeDrift * 1000f:0.000} mm drift)")
             .IsLess(0.000001f);
-        await driver.Capture("released");
+        await driver.Capture("released", "released at the end: one clean 5 cm cut, the blade on its handle");
         var cuts = patient.Wounds.Where(wound => wound.MadeBySurgeon && wound.Kind == WoundKind.Cut).ToList();
         AssertInt(cuts.Count).OverrideFailureMessage("one stroke makes one cut").IsEqual(1);
         var cut = cuts[0];

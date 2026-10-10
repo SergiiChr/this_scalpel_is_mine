@@ -11,6 +11,7 @@ one image to read.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -20,7 +21,9 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 # Views of one key frame, in the order a sheet shows them. Files without one of these suffixes are a view of their own.
-VIEWS = ("top", "oblique", "view")
+VIEWS = ("top", "oblique", "side", "reverse", "view")
+# Each folder's file name to description index, written by the tests' KeyFrames.
+DESCRIPTIONS = "keyframes.json"
 # A pixel counts as changed when one of its channels differs by more than this (0-255). Rendering is deterministic, but
 # the screen grime shader's film grain moves every pixel by up to 6 between runs.
 PIXEL_TOLERANCE = 8
@@ -41,6 +44,8 @@ class KeyFrame:
     order: int
     # View name to file, in VIEWS order.
     views: dict[str, Path] = field(default_factory=dict)
+    # What the test says it should show.
+    description: str = ""
 
 
 @dataclass
@@ -60,6 +65,8 @@ def key_frames(root: Path) -> dict[tuple[str, str], KeyFrame]:
         relative = folder.relative_to(root).as_posix()
         seen: dict[str, int] = {}
         by_stem: dict[str, KeyFrame] = {}
+        index = folder / DESCRIPTIONS
+        descriptions: dict[str, str] = json.loads(index.read_text()) if index.exists() else {}
         for path in sorted(folder.glob("*.png")):
             stem, view = path.stem, "view"
             for suffix in VIEWS:
@@ -71,6 +78,7 @@ def key_frames(root: Path) -> dict[tuple[str, str], KeyFrame]:
                 seen[name] = seen.get(name, 0) + 1
                 by_stem[stem] = KeyFrame(relative, name if seen[name] == 1 else f"{name}#{seen[name]}", len(by_stem))
             by_stem[stem].views[view] = path
+            by_stem[stem].description = by_stem[stem].description or descriptions.get(path.name, "")
         for frame in by_stem.values():
             frame.views = {view: frame.views[view] for view in VIEWS if view in frame.views}
             found[(frame.folder, frame.name)] = frame
@@ -128,6 +136,8 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
     states = ("missing", "changed", "new", "unchanged")
     counts = dict.fromkeys(states, 0)
     sections: dict[str, list[str]] = {}
+    # The description last printed in each folder: frames that share one get it once.
+    described: dict[str, str] = {}
     unchanged: dict[str, int] = {}
     for key in sorted(current.keys() | baseline.keys(), key=lambda key: (key[0], (current.get(key) or baseline[key]).order)):
         frame, before = current.get(key), baseline.get(key)
@@ -149,7 +159,12 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         if before and state != "unchanged":
             sheet(before, "before", before_sheet)
             line += f", before: `{before_sheet.as_posix()}`"
-        sections.setdefault(folder, []).append(line)
+        lines = sections.setdefault(folder, [])
+        description = next(known.description for known in (frame, before) if known)
+        if description and description != described.get(folder):
+            described[folder] = description
+            lines.append(f"Should show: {description}")
+        lines.append(line)
 
     text = [
         "# Key frame review",
@@ -170,7 +185,8 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         "- new: no baseline to compare against. Open the sheet.",
         "",
         "A sheet is one key frame, its views side by side as its caption names them (top | oblique). Read a folder's key "
-        "frames in order: they tell the story of the test.",
+        'frames in order: they tell the story of the test. A "Should show" line is what the test says the key frames '
+        "under it show, up to the next one: check the picture against it.",
         f"Look for: {CHECKLIST}.",
     ]
     for folder in sorted(sections.keys() | unchanged.keys()):

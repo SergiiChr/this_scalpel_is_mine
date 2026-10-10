@@ -30,9 +30,8 @@ public static class ScenarioFlow
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "scenarios".PathJoin(scenarioId));
-            driver.OnKeyFrame = async keyFrame => AssertBool(await shots.Capture(keyFrame))
-                .OverrideFailureMessage($"{scenarioId}: saved key frame {keyFrame}").IsTrue();
-            await driver.Capture("untouched");
+            driver.OnKeyFrame = (keyFrame, description) => shots.Capture(keyFrame, description);
+            await driver.Capture("untouched", "the site as the scenario starts, before any step");
         }
         // Loading the room isn't gameplay: the frame budget counts from here.
         driver.Budget.Clear();
@@ -55,7 +54,7 @@ public static class ScenarioFlow
             AssertBool(state.Done)
                 .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
                 .IsTrue();
-            await driver.Capture($"{step.Type}_done");
+            await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
         }
         await Frames.Until(() => surgery.Finished, 10f);
         var report = surgery.Report;

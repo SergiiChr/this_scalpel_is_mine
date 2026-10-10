@@ -70,7 +70,7 @@ public class SurgeonPoseTest
         Begin();
         ReceivePose(0f, 0f);
         CheckNeckInsideCollar();
-        await Capture("standing", new Vector3(1.4f, 1.25f, -1.85f), new Vector3(0f, 0.85f, 0f));
+        await Capture("standing", "the surgeon stands upright, neck inside the collar", new Vector3(1.4f, 1.25f, -1.85f), new Vector3(0f, 0.85f, 0f));
         for (var step = 0; step <= 60; step++)
         {
             ReceivePose(step / 60f, -0.55f);
@@ -82,11 +82,11 @@ public class SurgeonPoseTest
             await Frames.NextProcess();
             if (step == 30)
             {
-                await Capture("squat_transition", new Vector3(1.5f, 1.15f, -1.6f), new Vector3(0f, 0.7f, 0f));
+                await Capture("squat_transition", "half way down: heels on the floor, sleeves clear of the knees", new Vector3(1.5f, 1.15f, -1.6f), new Vector3(0f, 0.7f, 0f));
             }
         }
-        await Capture("squat_front", new Vector3(0.8f, 0.85f, -1.75f), new Vector3(0f, 0.48f, 0f));
-        await Capture("squat_side", new Vector3(2.2f, 0.75f, 0.1f), new Vector3(0f, 0.48f, 0f));
+        await Capture("squat_front", "deep squat from the front: knees open out, torso leans forward, heels down", new Vector3(0.8f, 0.85f, -1.75f), new Vector3(0f, 0.48f, 0f));
+        await Capture("squat_side", "deep squat from the side: hips below the knees, head forward of the hips, sleeves clear", new Vector3(2.2f, 0.75f, 0.1f), new Vector3(0f, 0.48f, 0f));
         var hip = _puppet.Joint("LegL").GlobalPosition;
         var knee = _puppet.Joint("ShinL").GlobalPosition;
         AssertFloat(hip.Y).OverrideFailureMessage("hips drop below knee height in a deep squat").IsLess(0.24f);
@@ -119,7 +119,7 @@ public class SurgeonPoseTest
             }
             await Frames.NextProcess();
         }
-        await Capture("recovered", new Vector3(1.4f, 1.25f, -1.85f), new Vector3(0f, 0.85f, 0f));
+        await Capture("recovered", "back up from the squat, standing as at the start", new Vector3(1.4f, 1.25f, -1.85f), new Vector3(0f, 0.85f, 0f));
         await End();
     }
 
@@ -153,9 +153,9 @@ public class SurgeonPoseTest
             }
         }
         ReceivePose(0f, Surgeon.LookPitch.X);
-        await Capture("looking_down_back", new Vector3(1.25f, 1.7f, 1.6f), new Vector3(0f, 1.46f, 0f));
+        await Capture("looking_down_back", "looking fully down, from behind: the head turns about the top of the neck, the neck stays in the collar", new Vector3(1.25f, 1.7f, 1.6f), new Vector3(0f, 1.46f, 0f));
         ReceivePose(0f, Surgeon.LookPitch.Y);
-        await Capture("looking_up_side", new Vector3(1.6f, 1.7f, -0.3f), new Vector3(0f, 1.48f, 0f));
+        await Capture("looking_up_side", "looking fully up, from the side: the neck stays in the collar, no gap at the throat", new Vector3(1.6f, 1.7f, -0.3f), new Vector3(0f, 1.48f, 0f));
         await End();
     }
 
@@ -170,7 +170,7 @@ public class SurgeonPoseTest
             await Frames.NextProcess();
             if (step == 8)
             {
-                await Capture("walking_stride", new Vector3(1.5f, 1.15f, -1.6f), new Vector3(0f, 0.8f, 0f));
+                await Capture("walking_stride", "mid stride: one foot planted, legs their full length, no knee bent backward", new Vector3(1.5f, 1.15f, -1.6f), new Vector3(0f, 0.8f, 0f));
             }
         }
         await End();
@@ -265,8 +265,8 @@ public class SurgeonPoseTest
     }
 
     /// <summary>In a run with key frames, saves the view from <paramref name="from"/> looking at <paramref name="at"/>
-    /// as NN_label.png.</summary>
-    private async Task Capture(string label, Vector3 from, Vector3 at)
+    /// as NN_label.png, which should show <paramref name="description"/>.</summary>
+    private async Task Capture(string label, string description, Vector3 from, Vector3 at)
     {
         if (!KeyFrames.Wanted())
         {
@@ -285,6 +285,6 @@ public class SurgeonPoseTest
         _camera.Position = from;
         _camera.LookAt(at);
         var path = folder.PathJoin($"{_shots++:00}_{label}.png");
-        AssertBool(await KeyFrames.SaveViewport(path)).OverrideFailureMessage("saved " + path).IsTrue();
+        await KeyFrames.SaveViewport(path, description);
     }
 }
