@@ -53,6 +53,8 @@ PALETTE: dict[str, Swatch] = {
     "fabric_white": Swatch((0.93, 0.93, 0.9), 0.95),
     "fabric_dark": Swatch((0.15, 0.15, 0.16), 0.95),
     "paper": Swatch((0.88, 0.85, 0.76), 0.95),
+    "carton": Swatch((0.93, 0.95, 0.95), 0.6),
+    "carton_print": Swatch((0.07, 0.66, 0.88), 0.6),
     "mattress": Swatch((0.15, 0.3, 0.3), 0.8),
     "screen": Swatch((0.02, 0.05, 0.04), 0.1),
     "flesh": Swatch((0.6, 0.2, 0.2), 0.3),

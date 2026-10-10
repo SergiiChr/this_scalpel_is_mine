@@ -156,14 +156,17 @@ def superellipsoid(size: Sequence[float], roundness: float = 0.25, center: Seque
     def f(w: NDArray[np.float64], m: float) -> NDArray[np.float64]:
         return np.asarray(np.sign(w) * np.abs(w) ** m, dtype=np.float64)
 
+    # cos(±pi/2) comes out as 6e-17, not 0: raised to a boxy roundness it leaves the poles open (0.04 leaves a hole 22%
+    # of the width), so the poles are pinned to a point.
+    across = np.where(np.abs(u) == np.pi / 2, 0.0, np.cos(u))
     verts = []
-    for latitude in u:
+    for latitude, width in zip(u, across, strict=True):
         for longitude in v:
             verts.append(
                 [
-                    f(np.cos(latitude), roundness) * f(np.cos(longitude), roundness),
+                    f(width, roundness) * f(np.cos(longitude), roundness),
                     f(np.sin(latitude), roundness),
-                    f(np.cos(latitude), roundness) * f(np.sin(longitude), roundness),
+                    f(width, roundness) * f(np.sin(longitude), roundness),
                 ]
             )
     verts_arr = np.array(verts, float) * (np.asarray(size, float) / 2.0) + np.asarray(center, float)
