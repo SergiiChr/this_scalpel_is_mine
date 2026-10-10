@@ -251,6 +251,8 @@ public partial class SurgicalTool : RigidBody3D
             closed = hand.Attached || Def.Grip == "needle";
         }
         _animator.Animate(active, closed, dt);
+        var lying = State is ToolState.Free or ToolState.Inside && !Def.Fixed;
+        _animator.Rest(lying ? (GlobalBasis.Y.Dot(Vector3.Up) >= 0f ? 1f : -1f) : 0f, dt);
         if (Riding is not null && State == ToolState.Standing)
         {
             GlobalTransform = Riding.GlobalTransform * RidingPose;
@@ -492,6 +494,7 @@ public partial class SurgicalTool : RigidBody3D
         State = state;
         Holder = holder;
         Slot = slot;
+        _animator.Settle();
         if (state != ToolState.Standing)
         {
             Unwrap();

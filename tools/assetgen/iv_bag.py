@@ -4,7 +4,10 @@ Converted from the low-poly bag of the IV bag asset pack (sources/iv_bag_lod1.gl
 at the origin, ports at the tip, print on +Y. Its parts are merged by material into the game's names, keeping the
 pack's seven-bone rig (Anchor > Neck > Upper > Middle > Lower, with LeftCorner and RightCorner under Lower) and the
 EmptyBag and RestingFlat blend shapes on Bag and Label.
-Level is the liquid, left unskinned with its origin at its bottom, so the game can stretch it by how full the bag is.
+Level is the liquid: unskinned, with its origin at its bottom, so the game can stretch it by how full the bag is, and
+carried by the Middle bone so it sways with the film. It and the seams get the film's blend shapes, so they thin with
+the film and stay on and inside it.
+The clear parts (flange, seams, ports) are "frosted_plastic", see-through like the film but less so.
 """
 
 from __future__ import annotations
@@ -29,15 +32,19 @@ PARTS = {
     "Bag_Film_Skinned": ("Bag", "glass"),
     "Liquid_70pct_Skinned": ("Level", "tint"),
     "Front_Print_Skinned": ("Label", "print"),
-    "Sealed_Hanger_Flange": ("Frame", "clear_plastic"),
-    "Bag_Seams_And_Creases_Skinned": ("Frame", "clear_plastic"),
-    "Bag_Clear_Ports_Skinned": ("Frame", "clear_plastic"),
+    "Sealed_Hanger_Flange": ("Frame", "frosted_plastic"),
+    "Bag_Seams_And_Creases_Skinned": ("Frame", "frosted_plastic"),
+    "Bag_Clear_Ports_Skinned": ("Frame", "frosted_plastic"),
     "Main_Drip_Port_Rim": ("Frame", "plastic"),
     "Injection_Orange_Cap": ("Frame", "orange_plastic"),
 }
 # Closed pack meshes whose faces may wind inward: the game's outline pass draws back faces, so they're turned out.
 CLOSED = {"Bag_Film_Skinned", "Liquid_70pct_Skinned", "Sealed_Hanger_Flange", "Bag_Clear_Ports_Skinned", "Main_Drip_Port_Rim", "Injection_Orange_Cap"}
-MATERIALS = ["glass", "tint", "print", "clear_plastic", "plastic", "orange_plastic"]
+MATERIALS = ["glass", "tint", "print", "frosted_plastic", "plastic", "orange_plastic"]
+# Pack meshes that lie on or in the film and fall flat with it.
+FOLLOWS_FILM = {"Liquid_70pct_Skinned", "Bag_Seams_And_Creases_Skinned"}
+# The bone that carries the liquid: the one at the middle of the film.
+LIQUID_BONE = "Middle"
 TYPES = {5126: np.float32, 5123: np.uint16, 5121: np.uint8, 5125: np.uint32}
 WIDTHS = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
@@ -151,6 +158,7 @@ def build() -> Path:
 
     surfaces: dict[str, dict[str, list[dict[str, NDArray[Any]]]]] = {}
     morph_names: dict[str, list[str]] = {}
+    followers: list[dict[str, NDArray[Any]]] = []
     for node in pack["nodes"]:
         if node["name"] not in PARTS:
             continue
@@ -174,8 +182,23 @@ def build() -> Path:
         for t, target in enumerate(primitive.get("targets", [])):
             piece[f"morph{t}"] = placed_offsets(source.array(target["POSITION"]))
         surfaces.setdefault(part, {}).setdefault(kind, []).append(piece)
+        if node["name"] in FOLLOWS_FILM:
+            followers.append(piece)
+
+    # The film's blend shapes scale it about the bag's long axis. What lies on or in the film (liquid, seams, creases)
+    # takes the same scale per axis, so it stays with the film; the rest of a part with blend shapes keeps its shape.
+    film = surfaces["Bag"]["glass"][0]
+    morphs = sorted(key for key in film if key.startswith("morph"))
+    ratios = {key: (film[key] * film["pos"]).sum(axis=0) / (film["pos"] ** 2).sum(axis=0) for key in morphs}
+    for part, by_material in surfaces.items():
+        for piece in (piece for pieces in by_material.values() for piece in pieces):
+            for key in (key for key in morphs if key not in piece):
+                follows = any(piece is follower for follower in followers)
+                piece[key] = np.asarray(piece["pos"] * ratios[key] * [1.0, 1.0, 0.0] * follows, np.float32)
+        morph_names[part] = morph_names["Bag"]
 
     meshes: list[dict[str, Any]] = []
+    carrier = [node["name"] for node in nodes].index(LIQUID_BONE)
     for part, by_material in surfaces.items():
         skinned = part != "Level"
         pivot = np.zeros(3, np.float32)
@@ -213,13 +236,17 @@ def build() -> Path:
         if part in morph_names:
             result_mesh |= {"weights": [0.0] * len(morph_names[part]), "extras": {"targetNames": morph_names[part]}}
         meshes.append(result_mesh)
-        nodes.append({"name": part, "mesh": len(meshes) - 1} | ({"skin": 0} if skinned else {"translation": pivot.tolist()}))
+        if skinned:
+            nodes.append({"name": part, "mesh": len(meshes) - 1, "skin": 0})
+        else:
+            nodes.append({"name": part, "mesh": len(meshes) - 1, "translation": (pivot - bones[carrier]).tolist()})
+            nodes[carrier].setdefault("children", []).append(len(nodes) - 1)
 
     texture = pack["images"][0]
     gltf: dict[str, Any] = {
         "asset": {"version": "2.0", "generator": "tools/assetgen/iv_bag.py"},
         "scene": 0,
-        "scenes": [{"nodes": [0, *range(len(joints), len(nodes))]}],
+        "scenes": [{"nodes": [0, *(i for i in range(len(joints), len(nodes)) if "skin" in nodes[i])]}],
         "nodes": nodes,
         "skins": [{"name": "IvBagRig", "joints": list(range(len(joints))), "skeleton": 0, "inverseBindMatrices": glb.accessor(binds.reshape(-1, 16))}],
         "meshes": meshes,

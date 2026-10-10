@@ -17,7 +17,7 @@ Godot adds LODs on import.
 | `targets/` | appendix, tumor, clot, bone (femur), fragment, rib, splinter, nasal_hump, skull_flap, sternum | `tools/blender` | |
 | `targets/` | bullet, knife, figurine, fluid, air | `tools/assetgen` | |
 | `tools/` | one per tool id or `model=` in tools.cfg | `tools/assetgen` | JawA/JawB, Plunger, Trigger, Blade, Flame, Glow, Light |
-| `tools/` | `iv_bag.glb` (film, print and ports skinned) and its extracted print texture | `tools/assetgen/iv_bag.py`, from the asset pack's `tools/assetgen/sources/iv_bag_lod1.glb` | Bones: Anchor, Neck, Upper, Middle, Lower, LeftCorner, RightCorner. Blend shapes: EmptyBag, RestingFlat. Level |
+| `tools/` | `iv_bag.glb` (film, print and ports skinned) and its extracted print texture | `tools/assetgen/iv_bag.py`, from the asset pack's `tools/assetgen/sources/iv_bag_lod1.glb` | Bones: Anchor, Neck, Upper, Middle, Lower, LeftCorner, RightCorner. Blend shapes on Bag, Label, Frame and Level: EmptyBag (driven by fill), RestingFlat (lying down). Level rides the Middle bone |
 | `props/` | table, tray, IV stand, shelf, clipboard, stations, lamp, monitor, X-ray cart and print, straps, streetlight | `tools/assetgen` | X-ray `Arm` |
 
 Model space is the game's: Y up, and for the patient +X toward the head and +Z the patient's left.
@@ -25,5 +25,5 @@ The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thum
 
 Special material names: `skin` and `gown` (cut away under the surgical site where the simulated skin layer takes over),
 `tint` (recolored per instance), `flame` (unshaded glow), `organ` (wet flesh shader), `print` (kept as imported, its
-texture's alpha cut out).
+texture's alpha cut out), `frosted_plastic` (see-through, less than `glass`).
 Tools: grip at the origin, tip at `(0, 0, -length)` with `length` from `data/tools.cfg`.
