@@ -45,6 +45,11 @@ public static class SurgeryState
     public static void PatientIsNumb(Patient patient) =>
         patient.Administer("lidocaine", DrugRoute.Direct, Db.Drug("lidocaine")!.Dose * patient.WeightKg);
 
+    /// <summary>As if a catheter had gone into the arm and missed the vein: the line is in, but nothing runs through it.
+    /// </summary>
+    public static void IvLineMissedTheVein(Patient patient) =>
+        patient.SetIv(patient.Body.Root.ToGlobal(Patient.PreopIvPoint), false);
+
     /// <summary>A surgeon's cut from <paramref name="from"/> to <paramref name="to"/> (site uv),
     /// <paramref name="depth"/> deep (0..1, see <see cref="Wound.MuscleDepth"/>), as one clean stroke.</summary>
     public static Wound SkinIsCut(Patient patient, Vector2 from, Vector2 to, float depth)
