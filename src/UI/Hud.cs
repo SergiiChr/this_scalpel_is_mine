@@ -572,7 +572,12 @@ public partial class Hud : CanvasLayer
         _objectives.Visible = Settings.Debug;
         if (Settings.Debug)
         {
-            _objectives.Refresh(Surgery.Status);
+            var status = Surgery.Status;
+            var steps = Surgery.Scenario.Steps;
+            var rows = status.Objectives.Select((row, i) => row.Current && steps[i].Type == "anesthesia"
+                ? row with { Label = $"{row.Label} ({Mathf.Floor(Surgery.Patient.Vitals.Anesthesia * 100f):0}% / {steps[i].Parameters.Float("level", 0.7f) * 100f:0}%)" }
+                : row).ToList();
+            _objectives.Refresh(status with { Objectives = rows });
         }
     }
 

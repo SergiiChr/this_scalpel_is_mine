@@ -34,14 +34,29 @@ public partial class KeyFrames : Node
     }
 
     /// <summary>Saves what the viewport shows now, a few drawn frames on so a camera that just moved is in place.
-    /// Rendering is on only for those frames.</summary>
+    /// Rendering is on only for those frames. Gameplay pauses so rendering preserves the named action's pose.</summary>
     public static async Task<bool> SaveViewport(string path)
     {
+        var surgery = Surgery.Current;
+        var mode = surgery?.ProcessMode;
+        if (surgery is not null)
+        {
+            surgery.ProcessMode = ProcessModeEnum.Disabled;
+        }
         RenderingServer.RenderLoopEnabled = true;
-        await Frames.Process(3);
-        var saved = Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
-        RenderingServer.RenderLoopEnabled = false;
-        return saved;
+        try
+        {
+            await Frames.Process(3);
+            return Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
+        }
+        finally
+        {
+            RenderingServer.RenderLoopEnabled = false;
+            if (surgery is not null && mode is { } previous)
+            {
+                surgery.ProcessMode = previous;
+            }
+        }
     }
 
     /// <summary>Starts a set of key frames for <paramref name="surgery"/> into <paramref name="relative"/> (under

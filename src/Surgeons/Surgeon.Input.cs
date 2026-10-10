@@ -402,7 +402,8 @@ public partial class Surgeon
         _needleFraming = Mathf.MoveToward(_needleFraming, framing ? 1f : 0f, delta * 4f);
         // The other hand stays solid while the needle is in it.
         var solid = target is SurgeonTarget { Peer: var peer } && peer == PeerId ? 1 - Active : -1;
-        if (!Mathf.IsEqualApprox(_needleFade, faded) || solid != _solidHand)
+        // Even a tiny last step must restore the original materials when the fade reaches zero.
+        if (_needleFade != faded || solid != _solidHand)
         {
             _solidHand = solid;
             foreach (var hand in Hands)

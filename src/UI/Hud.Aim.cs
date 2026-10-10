@@ -41,6 +41,8 @@ public partial class Hud
     public Vector3[][] LegRings { get; } = [[], []];
     /// <summary>The aim shows as a dot (not a blade line, jaw marks or leg rings).</summary>
     internal bool DotShown => _dot.Visible;
+    /// <summary>The blade edge is shown on the patient.</summary>
+    internal bool BladeShown => _blade.Visible;
     /// <summary>The aim shows a stapler's two leg rings.</summary>
     internal bool LegRingsShown => _legs.All(ring => ring.Visible);
     /// <summary>Where the shown &lt; and &gt; point (screen).</summary>
@@ -133,7 +135,14 @@ public partial class Hud
                 var edge = ToolActions.BladeDirection(tool!) * BladeLine * 0.5f;
                 var hand = me.Hands[me.Active];
                 Vector3[] line = [me.OnSurface(aim - edge), aim, me.OnSurface(aim + edge)];
-                DrawAim(_blade, [.. line.Select(camera.UnprojectPosition)], hand.Lowered && hand.Level > 0);
+                // Every point must land on the patient nearby: a blade crossing an arm's edge must not
+                // stretch its mark down onto the floor or the table.
+                _blade.Visible = line.All(point => me.SurfaceBelow(point, false).Soft
+                    && Mathf.Abs(point.Y - aim.Y) < Surgeon.AimDrop);
+                if (_blade.Visible)
+                {
+                    DrawAim(_blade, [.. line.Select(camera.UnprojectPosition)], hand.Lowered && hand.Level > 0);
+                }
                 break;
             case "spread":
                 DrawSpreader(me, camera, tool!);

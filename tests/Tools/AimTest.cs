@@ -69,6 +69,7 @@ public class AimTest
         AssertBool(hand.Raise == 0f && swung.Y - settled.Y > 0.02f)
             .OverrideFailureMessage($"let go, the tip settles back down onto its spot ({(swung.Y - settled.Y) * 100f:0.0} cm down)").IsTrue();
         await driver.Capture("let_go");
+        AssertBool(driver.Surgery.Hud.BladeShown).OverrideFailureMessage("the blade aim shows on the patient").IsTrue();
         // Use tool pressed while aiming brings the raised tip down onto the skin just as gently.
         await driver.PlayerAims(new Vector2(0f, -4f), 20);
         SurgeryDriver.Use();
@@ -88,6 +89,17 @@ public class AimTest
         SurgeryDriver.Press(InputActions.Zoom);
         await Frames.Seconds(0.5f);
         CheckFaded(hand, other, 0f, "zoomed back out, the hands are solid again");
+        await driver.Capture("zoomed_back_out");
+        foreach (var mesh in hand.Glove.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+        {
+            AssertObject(mesh.MaterialOverride).OverrideFailureMessage("zooming out restores the glove material, including its color and relief").IsNull();
+        }
+        var away = me.GlobalPosition + me.GlobalBasis.Z * 0.5f;
+        await driver.PlayerWalksTo(away);
+        await driver.PlayerReaches(away);
+        await Frames.Physics(10);
+        AssertBool(driver.Surgery.Hud.BladeShown).OverrideFailureMessage("the blade aim is hidden over the floor").IsFalse();
+        await driver.Capture("over_floor");
         driver.Budget.Check(shots is not null);
         shots?.End();
         await driver.Stop();

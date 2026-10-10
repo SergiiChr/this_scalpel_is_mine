@@ -166,7 +166,9 @@ public partial class Patient : Node3D
         IvInVein = IvSet;
         if (IvSet)
         {
-            ConnectIv(PreopIvPoint);
+            var vein = Body.Veins.Count > 0 ? Body.Veins[0] : null;
+            var point = vein is null ? PreopIvPoint : Body.Root.ToLocal(vein.ToGlobal(vein.Line[1]));
+            ConnectIv(point);
         }
 
         foreach (var spec in scenario.Wounds)
