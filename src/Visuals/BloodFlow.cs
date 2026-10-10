@@ -208,7 +208,7 @@ public partial class BloodFlow : Node3D
         {
             multimesh.InstanceCount = inside * 2;
         }
-        var pulse = WellFlat * (1f + 0.3f * Mathf.Sin(Time.GetTicksMsec() * 0.001f * Mathf.Tau * WellPulse));
+        var pulse = WellFlat * (1f + 0.3f * Mathf.Sin((float)GameClock.Seconds * Mathf.Tau * WellPulse));
         foreach (var (uv, rate, depth) in Sources.Where(source => source.Inside))
         {
             if (!body.Tissue.IsOpen(uv, TissueDepth.Skin))
