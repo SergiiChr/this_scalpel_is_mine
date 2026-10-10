@@ -549,6 +549,8 @@ public class ModelsTest
             AssertBool(bladeBox.Position.Z < handleBox.Position.Z && bladeBox.End.Z <= handleBox.Position.Z + 0.001f
                     && handleBox.End.Z > 0.04f)
                 .OverrideFailureMessage($"{name} blade points toward -Z working tip").IsTrue();
+            AssertFloat(Mathf.Abs(bladeBox.End.Z - handleBox.Position.Z))
+                .OverrideFailureMessage($"{name} blade joins the handle within 1 mm").IsLess(0.001f);
             tool.QueueFree();
         }
     }

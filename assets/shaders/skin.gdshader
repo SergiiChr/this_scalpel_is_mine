@@ -23,7 +23,7 @@ uniform vec3 site_lift;
 // This skin lies right on the body model. Where the two overlap (at the edge of the region) it's moved this far
 // (meters) toward the camera, along the view ray: it wins the depth test without being lifted off the body, so no
 // step shows at its edge from any angle. The shadow passes see it moved the same way, so it doesn't shadow itself.
-const float DEPTH_BIAS = 0.001;
+const float DEPTH_BIAS = 0.0002;
 
 varying vec3 world_pos;
 varying vec3 local_pos;
