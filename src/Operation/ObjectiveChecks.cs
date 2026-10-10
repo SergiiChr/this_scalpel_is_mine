@@ -6,7 +6,12 @@ namespace Scalpel.Operation;
 /// </summary>
 public static class ObjectiveChecks
 {
-    public static bool Check(ObjectiveStep step, StepState state, Surgery surgery, float delta)
+    /// <summary>The step's own check, or else its alternative's (which shares the step's state).</summary>
+    public static bool Check(ObjectiveStep step, StepState state, Surgery surgery, float delta) =>
+        Met(step, state, surgery, delta)
+        || (step.Alternative is { } alternative && Check(alternative, state, surgery, delta));
+
+    private static bool Met(ObjectiveStep step, StepState state, Surgery surgery, float delta)
     {
         var patient = surgery.Patient;
         var vitals = patient.Vitals;
