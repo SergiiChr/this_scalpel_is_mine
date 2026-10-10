@@ -131,6 +131,13 @@ public static class SurgeryState
     /// <summary>A tool lying in a free place on the instrument tray (stocked there, as the nurse would have).</summary>
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
 
+    /// <summary>The bag on the IV stand has run dry.</summary>
+    public static void IvBagIsEmpty(Surgery surgery)
+    {
+        var bag = surgery.Tools.DripBag()!;
+        surgery.Tools.AddLiquid(bag, -bag.Ml);
+    }
+
     /// <summary>This one improvised tool tears out (<paramref name="tear"/>) or catches a vessel
     /// (<paramref name="bleed"/>) with these chances, the same tool on the tray otherwise.</summary>
     public static void ToolGoesWrong(SurgicalTool tool, float tear, float bleed) =>

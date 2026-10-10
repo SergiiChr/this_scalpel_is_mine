@@ -71,6 +71,9 @@ public static class ModelSlot
                     "marks" => Materials.ToonShaded(new Color(0.05f, 0.05f, 0.06f), 0.1f, false),
                     "glass" => Materials.Glass(),
                     "flame" => Materials.Glow(new Color(1f, 0.62f, 0.2f)),
+                    // Printed artwork (the IV bag's label) stays as imported: its alpha cutout shows the film between
+                    // the letters, which the cel shader would fill in.
+                    "print" => null,
                     _ when source is BaseMaterial3D imported =>
                         Materials.Imported(imported, Materials.OutlineSize(meshInstance.Mesh.GetAabb())),
                     _ => null,

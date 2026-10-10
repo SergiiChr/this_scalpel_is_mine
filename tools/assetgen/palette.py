@@ -5,6 +5,7 @@ Special names the game treats differently:
 - "tint": recolored per instance (drug color, scrubs color).
 - "glass": see-through, so the liquid inside a syringe or vial shows.
 - "marks": fine print (syringe graduations), drawn without the ink outline that would blot it out.
+- "print": printed artwork in its texture's alpha (the IV bag's label), kept as imported so the film shows between letters.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ PALETTE: dict[str, Swatch] = {
     "blue_plastic": Swatch((0.2, 0.35, 0.6), 0.5),
     "green_plastic": Swatch((0.2, 0.5, 0.35), 0.5),
     "red_plastic": Swatch((0.7, 0.15, 0.12), 0.5),
+    "orange_plastic": Swatch((0.96, 0.34, 0.12), 0.5),
     "yellow_plastic": Swatch((0.85, 0.72, 0.12), 0.5),
     "wood": Swatch((0.38, 0.26, 0.16), 0.8),
     "brass": Swatch((0.72, 0.58, 0.25), 0.3, 1.0),
@@ -53,6 +55,7 @@ PALETTE: dict[str, Swatch] = {
     "fabric_white": Swatch((0.93, 0.93, 0.9), 0.95),
     "fabric_dark": Swatch((0.15, 0.15, 0.16), 0.95),
     "paper": Swatch((0.88, 0.85, 0.76), 0.95),
+    "print": Swatch((1.0, 1.0, 1.0), 0.6),
     "mattress": Swatch((0.15, 0.3, 0.3), 0.8),
     "screen": Swatch((0.02, 0.05, 0.04), 0.1),
     "flesh": Swatch((0.6, 0.2, 0.2), 0.3),
