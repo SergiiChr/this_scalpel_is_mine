@@ -154,17 +154,9 @@ public class IvBagTest
     /// <summary>The bone attachment that carries the liquid, swinging with the film's middle.</summary>
     private static Node3D Carrier(SurgicalTool bag) => (Node3D)bag.LiquidPart("Level")!.GetParent();
 
-    /// <summary>The lowest point of the film as its RestingFlat shape draws it (world height).</summary>
-    private static float LowestFilm(SurgicalTool bag)
-    {
-        var film = (MeshInstance3D)bag.FindChild("Bag", true, false)!;
-        var mesh = (ArrayMesh)film.Mesh;
-        var rest = mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
-        var shape = film.FindBlendShapeByName("RestingFlat");
-        var flat = mesh.SurfaceGetBlendShapeArrays(0)[shape][(int)Mesh.ArrayType.Vertex].AsVector3Array();
-        var weight = film.GetBlendShapeValue(shape);
-        return rest.Select((vertex, i) => (film.GlobalTransform * vertex.Lerp(flat[i], weight)).Y).Min();
-    }
+    /// <summary>The lowest point of the film as its blend shapes draw it (world height).</summary>
+    private static float LowestFilm(SurgicalTool bag) =>
+        DrawnMesh.Vertices((MeshInstance3D)bag.FindChild("Bag", true, false)!).Min(vertex => vertex.Y);
 
     /// <summary>The bottom of the bag's collision box, which lies on the tray (world height).</summary>
     private static float LowestOfBox(SurgicalTool bag) =>
