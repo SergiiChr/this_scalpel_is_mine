@@ -404,13 +404,15 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
 
 
 def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResult:
-    """What went wrong in a test process: failed and slow cases, errors in its output, or no report at all."""
+    """What went wrong in a process with selected cases: failures, errors, or no executed cases/report."""
     found = []
     if not report.exists():
         return ProcessResult([f"[ERROR] No test report was written (exit {status}); see {log}"])
     tree = ElementTree.parse(report)
     cases = tree.findall(".//testcase")
     executed = sum(case.find("skipped") is None for case in cases)
+    if not executed:
+        found.append("[ERROR] Runnable test cases were selected, but no test cases ran.")
     for case in cases:
         name = f"{case.get('classname', '')} {case.get('name', '')}"
         failure = case.find("failure")
@@ -478,7 +480,8 @@ def test(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py test",
         description="Runs GdUnit4 test suites under tests/. A suite fails on a failed case, a case over its time limit, "
-        "any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output. Suites with no executed cases are skipped. "
+        "any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output, or no selected cases executed. "
+        "Suites with no runnable cases selected are skipped. "
         "Exits non-zero on any failure or if the entire run executes no cases.",
     )
     parser.add_argument("--all", action="store_true", help="every suite; without it or --tag, the smoke tag")

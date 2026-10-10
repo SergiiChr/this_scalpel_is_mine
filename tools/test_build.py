@@ -20,6 +20,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.addCleanup(patch.stopall)
         patch.object(build, "BUILD", self.root).start()
+        patch.object(build, "ROOT", self.root).start()
         for folder in ("test-logs", "test-results"):
             (self.root / folder).mkdir()
         self.options = build.TestOptions([], [], "", 1, False, True, False)
@@ -43,9 +44,15 @@ class CoverageReportingTest(unittest.TestCase):
     def test_empty_suite_is_skipped(self) -> None:
         self.assertTrue(build.report(build.run_suite(self.suite, self.options)).startswith("skip "))
 
-    def test_runtime_skips_do_not_count_as_executed(self) -> None:
+    def test_all_runtime_skips_fail_when_runnable_cases_were_selected(self) -> None:
         result = self.result("<testsuite><testcase><skipped /></testcase></testsuite>")
-        self.assertEqual(result, build.ProcessResult([], 0))
+        self.assertEqual(result.executed, 0)
+        self.assertIn("Runnable test cases were selected", result.failures[0])
+
+    def test_empty_process_report_fails(self) -> None:
+        result = self.result("<testsuite />")
+        self.assertEqual(result.executed, 0)
+        self.assertIn("no test cases ran", result.failures[0])
 
     def test_mixed_report_counts_only_executed_cases(self) -> None:
         result = self.result("<testsuite><testcase /><testcase><skipped /></testcase></testsuite>")
@@ -61,13 +68,37 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(result.executed, 1)
         self.assertIn("gap missing", result.failures[0])
 
-    def test_isolated_suite_with_only_runtime_skips_is_skipped(self) -> None:
+    def test_empty_isolated_process_fails_even_if_another_case_passes(self) -> None:
         self.suite.isolate_cases = True
         self.suite.cases = [build.Case("Ignored", [], "", ['"a"', '"b"'])]
-        with patch.object(build, "run_process", return_value=build.ProcessResult([])) as process:
+        results = [self.result("<testsuite><testcase /></testsuite>"), self.result("<testsuite />")]
+        with patch.object(build, "run_process", side_effect=results) as process:
             outcome = build.run_suite(self.suite, self.options)
         self.assertEqual(process.call_count, 2)
-        self.assertTrue(build.report(outcome).startswith("skip "))
+        self.assertEqual(outcome.executed, 1)
+        self.assertTrue(build.report(outcome).startswith("FAIL "))
+
+    def test_passing_suite_does_not_hide_unexpectedly_empty_suite(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        empty = build.Suite(Path("EmptyTest.cs"), "Scalpel.Tests.Empty", [], [], False, [build.Case("Expected", [], "", [])])
+        results = [self.result("<testsuite><testcase /></testsuite>"), self.result("<testsuite />")]
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, empty]):
+            with patch.object(build, "run_process", side_effect=results):
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    status = build.test(["--all"])
+        self.assertEqual(status, 1)
+        self.assertIn("FAIL Scalpel.Tests.Empty", output.getvalue())
+        self.assertIn("1 passed, 1 failed, 0 skipped", output.getvalue())
+
+    def test_passing_suite_with_no_selected_cases_in_another_suite_succeeds(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        skipped = build.Suite(Path("SkippedTest.cs"), "Scalpel.Tests.Skipped", [], [], False, [build.Case("Broken", ["broken"], "", [])])
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, skipped]):
+            with patch.object(build, "run_process", return_value=self.result("<testsuite><testcase /></testsuite>")):
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    status = build.test(["--all"])
+        self.assertEqual(status, 0)
+        self.assertIn("1 passed, 0 failed, 1 skipped", output.getvalue())
 
     def test_entirely_skipped_run_cannot_pass(self) -> None:
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
