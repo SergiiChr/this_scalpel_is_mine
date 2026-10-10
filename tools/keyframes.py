@@ -205,8 +205,9 @@ def main() -> int:
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     parser.add_argument("--regression", choices=("passed", "failed", "not-run"), default="not-run", help="how the run went, for the top of the report")
     parsed = parser.parse_args()
-    if not key_frames(parsed.current):
-        print(f"No key frames in {parsed.current}.", file=sys.stderr)
+    # A run that failed before its first key frame still reports the baseline's as missing.
+    if not key_frames(parsed.current) and not key_frames(parsed.baseline):
+        print(f"No key frames in {parsed.current} or {parsed.baseline}.", file=sys.stderr)
         return 1
     shutil.rmtree(parsed.out, ignore_errors=True)
     parsed.out.mkdir(parents=True)

@@ -568,7 +568,8 @@ def git(*arguments: str) -> str:
 
 def baseline(ref: str) -> Path:
     """Key frames of the commit where HEAD left ref. Rendered in a git worktree that shares .tools, so the same Godot and
-    .NET serve both; a failing case there still leaves the key frames it took."""
+    .NET serve both. Kept by commit only when its run passed: a failed run's key frames serve this review (those its
+    failed cases didn't take show as new) and the next review renders them again."""
     commit = git("merge-base", "HEAD", ref)
     frames = BASELINES / commit
     if frames.is_dir():
@@ -582,23 +583,31 @@ def baseline(ref: str) -> Path:
         print(f"Rendering baseline key frames of {commit[:10]}.", flush=True)
         command: list[str | Path] = [sys.executable, worktree / "build.py", "test", "--tag", "visual_confirmation", "--with-key-frames", "--ci-run"]
         if subprocess.run(command, cwd=worktree, check=False).returncode != 0:
-            print("The baseline run failed: key frames its failed cases didn't take show as new.")
-        shutil.copytree(worktree / "build/test-artifacts/screenshots", frames)
+            print("The baseline run failed: key frames its failed cases didn't take show as new. It's rendered again next time.")
+            frames = frames.with_name(f"{commit}.partial")
+            shutil.rmtree(frames, ignore_errors=True)
+        taken = worktree / "build/test-artifacts/screenshots"
+        if taken.is_dir():
+            shutil.copytree(taken, frames)
     finally:
         run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
     return frames
 
 
 def pillow_python() -> Path:
-    """A Python with Pillow: the dev virtualenv's, or else a small one in .tools with only the pinned Pillow."""
+    """A Python with Pillow: the dev virtualenv's, or else a small one in .tools with only the pinned Pillow, made once
+    per pinned version."""
     if (VENV / "bin/python").exists():
         return VENV / "bin/python"
-    venv = TOOLS / "review-venv"
-    if not (venv / "bin/python").exists():
-        run([sys.executable, "-m", "venv", venv])
     pillow = next(line for line in (ROOT / "requirements.txt").read_text().splitlines() if line.startswith("pillow"))
-    # Quick when it's there already, and installs it when an earlier attempt didn't.
-    run([venv / "bin/pip", "install", "--quiet", pillow])
+    venv = TOOLS / f"review-venv-{pillow.split('==')[-1]}"
+    if not (venv / "bin/python").exists():
+        # Made aside and moved into place once Pillow is in: a failed install leaves nothing that looks ready.
+        staging = venv.with_name(venv.name + ".tmp")
+        shutil.rmtree(staging, ignore_errors=True)
+        run([sys.executable, "-m", "venv", staging])
+        run([staging / "bin/pip", "install", "--quiet", pillow])
+        staging.rename(venv)
     return venv / "bin/python"
 
 
@@ -623,7 +632,9 @@ def review(arguments: list[str]) -> int:
     regression = "not-run" if parsed.no_run else "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
     command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW)), *flags]
-    return status or subprocess.run(command, cwd=ROOT, check=False).returncode
+    # The report comes first: it helps most when the regression failed.
+    report_status = subprocess.run(command, cwd=ROOT, check=False).returncode
+    return status or report_status
 
 
 # --- Commands ---------------------------------------------------------------------------------------------------------
