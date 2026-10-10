@@ -54,13 +54,12 @@ public class IvBagTest
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "iv_bag");
-            driver.OnKeyFrame = async keyFrame => AssertBool(keyFrame switch
+            driver.OnKeyFrame = (keyFrame, description) => keyFrame switch
             {
-                "lying" => await shots.CaptureAt(keyFrame, bag.Middle(), HeldView),
-                "bag_in_hand" => await shots.CaptureFacing(keyFrame, bag.Middle(), TowardEyes(bag), HeldView, hands: true),
-                _ => await shots.CaptureFacing(keyFrame, drip.Middle(), drip.GlobalBasis.Y, View),
-            })
-                .OverrideFailureMessage($"saved key frame {keyFrame}").IsTrue();
+                "lying" => shots.CaptureAt(keyFrame, description, bag.Middle(), HeldView),
+                "bag_in_hand" => shots.CaptureFacing(keyFrame, description, bag.Middle(), TowardEyes(bag), HeldView, hands: true),
+                _ => shots.CaptureFacing(keyFrame, description, drip.Middle(), drip.GlobalBasis.Y, View),
+            };
         }
         driver.Budget.Clear();
 
@@ -71,7 +70,7 @@ public class IvBagTest
         AssertBool(Enumerable.Range(0, frame.GetSurfaceOverrideMaterialCount())
                 .Any(i => frame.GetSurfaceOverrideMaterial(i) is BaseMaterial3D { Transparency: BaseMaterial3D.TransparencyEnum.Alpha }))
             .OverrideFailureMessage("the flange, seams and clear ports are see-through").IsTrue();
-        await driver.Capture("hung");
+        await driver.Capture("hung", "the bag hanging under its hook, ports down, film full, liquid up to 500 of 600 ml, frosted flange, seams and ports");
 
         await driver.PlayerSetsIv();
         AssertBool(driver.Patient.IvWorking).OverrideFailureMessage("a working line is in").IsTrue();
@@ -79,21 +78,21 @@ public class IvBagTest
         AssertBool(drip.LiquidPart("Level")!.Visible).OverrideFailureMessage("an empty bag shows no liquid").IsFalse();
         AssertFloat(Weight(drip, "Bag", "EmptyBag")).OverrideFailureMessage("an empty bag's film falls flat")
             .IsEqualApprox(1f, 0.001f);
-        await driver.Capture("emptied");
+        await driver.Capture("emptied", "the run-dry bag: no liquid, the film and its seams fallen flat");
 
         AssertBool(Weight(bag, "Bag", "RestingFlat") > 0.999f && Weight(bag, "Label", "RestingFlat") > 0.999f)
             .OverrideFailureMessage("a bag lying on the tray is spread flat").IsTrue();
         var gap = LowestFilm(bag) - LowestOfBox(bag);
         AssertFloat(Mathf.Abs(gap)).OverrideFailureMessage($"spread flat, it still lies on the tray ({gap * 1000f:0.0} mm off)")
             .IsLess(0.001f);
-        await driver.Capture("lying");
+        await driver.Capture("lying", "a saline bag spread flat on the tray, lying on it, not floating or sunk in");
 
         AssertObject(await driver.PlayerRequestsItem("saline_bag")).OverrideFailureMessage("the lying bag is in hand")
             .IsEqual(bag);
         await Frames.Seconds(0.5f);
         AssertFloat(Weight(bag, "Bag", "RestingFlat")).OverrideFailureMessage("picked up, it fills out again")
             .IsEqual(0f);
-        await driver.Capture("bag_in_hand");
+        await driver.Capture("bag_in_hand", "the saline bag held by its hanger in the fist, filled out again, not through the glove");
 
         var middleRest = Carrier(drip).Position;
         var hand = driver.Me.Hands[driver.Me.Active];
@@ -119,7 +118,7 @@ public class IvBagTest
         AssertLiquidAtItsLevel(drip, "swapped");
         AssertFloat(Weight(drip, "Bag", "EmptyBag")).OverrideFailureMessage("the full bag's film fills out again")
             .IsEqualApprox(1f - (drip.Ml / drip.Def.Volume), 0.001f);
-        await driver.Capture("swapped");
+        await driver.Capture("swapped", "the new bag hanging full on the stand in place of the empty one");
 
         driver.Budget.Check(shots is not null);
         shots?.End();
