@@ -65,6 +65,7 @@ public partial class SurgeryDriver : Node
     {
         // The game's own unseeded rolls (where the nurse leaves things, jitter) come out the same every run too.
         GD.Seed(seed);
+        SurgeryState.ClockStartsAtEight();
         // The tray as the scenario lists it: a missing tool is a twist for another test.
         var scenario = Db.Scenario(scenarioId)! with { MissingToolChance = 0f };
         var player = new LobbyPlayer("Driver", [new QuirkRoll("normal_dude", "")], Ready: true);

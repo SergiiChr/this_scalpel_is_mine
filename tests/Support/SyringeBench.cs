@@ -90,6 +90,7 @@ public partial class SyringeBench : Node
     public async Task Start(bool openLayers = true, bool withPartner = true)
     {
         var ordinary = new List<QuirkRoll> { new("normal_dude", "") };
+        SurgeryState.ClockStartsAtEight();
         Net.Instance.StartLocalSession(Db.Scenario("appendectomy")!, 42, new LobbyPlayer("Tester", ordinary, Ready: true), []);
         Surgery = GD.Load<PackedScene>("res://scenes/surgery.tscn").Instantiate<Surgery>();
         AddChild(Surgery);

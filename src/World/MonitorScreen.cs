@@ -158,7 +158,7 @@ public partial class MonitorScreen : Control
     {
         DrawRect(new Rect2(0f, 0f, ScreenSize.X, Header), Bar);
         Text("OR 1    Adult", new Vector2(10f, 23f), 16, Temp);
-        Text(Time.GetTimeStringFromSystem()[..5], new Vector2(ScreenSize.X - 10f, 23f), 16, Temp, HorizontalAlignment.Right);
+        Text(GameClock.TimeOfDay(), new Vector2(ScreenSize.X - 10f, 23f), 16, Temp, HorizontalAlignment.Right);
         if (_alarms.Count == 0)
         {
             return;
