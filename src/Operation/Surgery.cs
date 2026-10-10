@@ -107,6 +107,7 @@ public partial class Surgery : Node3D
             net.PrepareLocalSession(ScenarioFromCommandLine());
         }
         Scenario = net.Scenario!;
+        // From the room's setup for what moves before play (the monitor, the waiting patient); again in Start().
         GameClock.Restart();
         Rng.Seed = net.SessionSeed;
         RunMods = Db.RunModifierEffects(net.RunModifiers);
@@ -527,6 +528,8 @@ public partial class Surgery : Node3D
     {
         // Setting up the room left plenty of garbage: collected now, it doesn't stall the first minute of play.
         ManagedRuntime.CollectNow();
+        // Waiting for the other players isn't surgery time: the clock and what moves by it count from here.
+        GameClock.Restart();
         Running = true;
         Hud.Begin();
     }

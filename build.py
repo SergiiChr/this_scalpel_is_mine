@@ -579,6 +579,8 @@ def baseline(ref: str) -> Path:
         run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
     run(["git", "worktree", "add", "--detach", worktree, commit], cwd=ROOT)
     try:
+        # Made first on a fresh checkout: the worktree's build.py would otherwise find a dangling link.
+        TOOLS.mkdir(exist_ok=True)
         (worktree / ".tools").symlink_to(TOOLS)
         print(f"Rendering baseline key frames of {commit[:10]}.", flush=True)
         command: list[str | Path] = [sys.executable, worktree / "build.py", "test", "--tag", "visual_confirmation", "--with-key-frames", "--ci-run"]
