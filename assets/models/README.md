@@ -17,7 +17,7 @@ Godot adds LODs on import.
 | `targets/` | appendix, tumor, clot, bone (femur), fragment, rib, splinter, nasal_hump, skull_flap, sternum | `tools/blender` | |
 | `targets/` | bullet, knife, figurine, fluid, air | `tools/assetgen` | |
 | `tools/` | one per tool id or `model=` in tools.cfg | `tools/assetgen` | JawA/JawB, Plunger, Trigger, Blade, Flame, Glow, Light |
-| `tools/` | `iv_bag.glb` (film, print and ports skinned) and its extracted print texture | `tools/assetgen/iv_bag.py` | Bones: Anchor, Neck, Upper, Middle, Lower, LeftCorner, RightCorner. Blend shapes: EmptyBag, RestingFlat. Level |
+| `tools/` | `iv_bag.glb` (film, print and ports skinned) and its extracted print texture | `tools/assetgen/iv_bag.py`, from the asset pack's `tools/assetgen/sources/iv_bag_lod1.glb` | Bones: Anchor, Neck, Upper, Middle, Lower, LeftCorner, RightCorner. Blend shapes: EmptyBag, RestingFlat. Level |
 | `props/` | table, tray, IV stand, shelf, clipboard, stations, lamp, monitor, X-ray cart and print, straps, streetlight | `tools/assetgen` | X-ray `Arm` |
 
 Model space is the game's: Y up, and for the patient +X toward the head and +Z the patient's left.
