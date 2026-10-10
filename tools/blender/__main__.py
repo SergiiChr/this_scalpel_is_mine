@@ -11,7 +11,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import anatomy, hand, patient, scene
+from . import anatomy, hand, patient, props, scene
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build" / "blender_review"
@@ -85,6 +85,7 @@ BUDGETS = {
     "lung": 5000,
     "kidney": 4000,
     "aorta": 4000,
+    "glove_box": 2000,
 }
 
 MODELS: dict[str, Callable[[], list[Path]]] = {
@@ -107,6 +108,8 @@ MODELS: dict[str, Callable[[], list[Path]]] = {
     "lung": _still("lung", anatomy.lung, BUDGETS["lung"], ship="organs"),
     "kidney": _still("kidney", anatomy.kidney, BUDGETS["kidney"], ship="organs"),
     "aorta": _still("aorta", anatomy.aorta, BUDGETS["aorta"], ship="organs"),
+    # Not in the game yet: review only.
+    "glove_box": _still("glove_box", props.glove_box, BUDGETS["glove_box"]),
 }
 
 

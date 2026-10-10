@@ -496,8 +496,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 All models and sounds are generated from code (`./build.py assets`), so they can be regenerated and tweaked.
 
 - **Organic and rigged models** (`tools/blender`, Blender as a Python module): the patient, the surgeon's glove,
-  organs and anatomical targets. Metaball and tube shells are fused with a voxel remesh, shaped with scripted
-  sculpt strokes, decimated and skinned to a bone rig (bone heat weights, jaw weights set by rule).
+  organs, anatomical targets and props with soft parts (the glove box, review only).
+  Metaball and tube shells are fused with a voxel remesh, shaped with scripted sculpt strokes, decimated and skinned to a bone rig (bone heat weights, jaw weights set by rule).
   The patient is one skinned mesh; eyes, lids, hair, brows, teeth and tongue ride their bones.
 - **Hard-surface models** (`tools/assetgen`, trimesh): props and instruments from lofted tubes, lathes, rounded boxes
   and extrusions, exported to `.glb` with named parts.
