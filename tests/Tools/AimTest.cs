@@ -40,6 +40,25 @@ public class AimTest
         await driver.PlayerReaches(site);
         await Frames.Physics(10);
         await driver.Capture("resting");
+        if (shots is not null)
+        {
+            var camera = me.Camera;
+            var offset = camera.HOffset;
+            var before = driver.Surgery.Hud.BladeCenter;
+            camera.HOffset = offset + 0.08f;
+            AssertFloat(camera.UnprojectPosition(me.AimPoint()).DistanceTo(before))
+                .OverrideFailureMessage("the changed capture camera requires a new aim projection").IsGreater(10f);
+            AssertObject(Surgery.Current).OverrideFailureMessage("the active surgery is available to capture").IsSame(driver.Surgery);
+            var shifted = camera.UnprojectPosition(me.AimPoint());
+            AssertBool(await shots.CaptureView("camera_shifted")).IsTrue();
+            AssertFloat(driver.Surgery.Hud.BladeCenter.DistanceTo(shifted))
+                .OverrideFailureMessage($"the frozen capture refreshes the aim for the changed camera: drawn {driver.Surgery.Hud.BladeCenter}, expected {shifted}, now {camera.UnprojectPosition(me.AimPoint())}").IsLess(1f);
+            camera.HOffset = offset;
+            var restored = camera.UnprojectPosition(me.AimPoint());
+            AssertBool(await shots.CaptureView("camera_restored")).IsTrue();
+            AssertFloat(driver.Surgery.Hud.BladeCenter.DistanceTo(restored))
+                .OverrideFailureMessage("the next capture refreshes the restored camera projection").IsLess(1f);
+        }
         driver.Budget.Clear();
         var hand = me.Hands[me.Active];
         var restTip = me.ToLocal(scalpel.TipPosition());
@@ -69,6 +88,7 @@ public class AimTest
         AssertBool(hand.Raise == 0f && swung.Y - settled.Y > 0.02f)
             .OverrideFailureMessage($"let go, the tip settles back down onto its spot ({(swung.Y - settled.Y) * 100f:0.0} cm down)").IsTrue();
         await driver.Capture("let_go");
+        AssertBool(driver.Surgery.Hud.BladeShown).OverrideFailureMessage("the blade aim shows on the patient").IsTrue();
         // Use tool pressed while aiming brings the raised tip down onto the skin just as gently.
         await driver.PlayerAims(new Vector2(0f, -4f), 20);
         SurgeryDriver.Use();
@@ -88,6 +108,17 @@ public class AimTest
         SurgeryDriver.Press(InputActions.Zoom);
         await Frames.Seconds(0.5f);
         CheckFaded(hand, other, 0f, "zoomed back out, the hands are solid again");
+        await driver.Capture("zoomed_back_out");
+        foreach (var mesh in hand.Glove.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
+        {
+            AssertObject(mesh.MaterialOverride).OverrideFailureMessage("zooming out restores the glove material, including its color and relief").IsNull();
+        }
+        var away = me.GlobalPosition + me.GlobalBasis.Z * 0.5f;
+        await driver.PlayerWalksTo(away);
+        await driver.PlayerReaches(away);
+        await Frames.Physics(10);
+        AssertBool(driver.Surgery.Hud.BladeShown).OverrideFailureMessage("the blade aim is hidden over the floor").IsFalse();
+        await driver.Capture("over_floor");
         driver.Budget.Check(shots is not null);
         shots?.End();
         await driver.Stop();

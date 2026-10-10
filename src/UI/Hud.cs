@@ -106,13 +106,16 @@ public partial class Hud : CanvasLayer
         OpenCard(inHand: true);
     }
 
-    public override void _Process(double delta)
+    public override void _Process(double delta) => RefreshFrame((float)delta);
+
+    /// <summary>Refreshes overlays for the current camera and game state. A zero delta refreshes a frozen capture
+    /// without advancing HUD timers or effects.</summary>
+    internal void RefreshFrame(float dt)
     {
         if (Surgery?.LocalSurgeon is not { } me)
         {
             return;
         }
-        var dt = (float)delta;
         var left = Surgery.TimeLeft();
         var clock = left >= 0f ? $"{(int)left / 60}:{(int)left % 60:00}" : "no time limit";
         _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
@@ -572,7 +575,12 @@ public partial class Hud : CanvasLayer
         _objectives.Visible = Settings.Debug;
         if (Settings.Debug)
         {
-            _objectives.Refresh(Surgery.Status);
+            var status = Surgery.Status;
+            var steps = Surgery.Scenario.Steps;
+            var rows = status.Objectives.Select((row, i) => row.Current && steps[i].Type == "anesthesia"
+                ? row with { Label = $"{row.Label} ({Mathf.Floor(Surgery.Patient.Vitals.Anesthesia * 100f):0}% / {steps[i].Parameters.Float("level", 0.7f) * 100f:0}%)" }
+                : row).ToList();
+            _objectives.Refresh(status with { Objectives = rows });
         }
     }
 

@@ -34,14 +34,29 @@ public partial class KeyFrames : Node
     }
 
     /// <summary>Saves what the viewport shows now, a few drawn frames on so a camera that just moved is in place.
-    /// Rendering is on only for those frames.</summary>
+    /// Rendering is on only for those frames. Gameplay pauses so rendering preserves the named action's pose.</summary>
     public static async Task<bool> SaveViewport(string path)
     {
+        var surgery = Surgery.Current;
+        var paused = Frames.Tree.Paused;
+        // Pause gameplay rather than disabling nodes: disabled collision objects leave the physics space,
+        // but HUD aim projection still needs to query the patient's surfaces.
+        Frames.Tree.Paused = true;
         RenderingServer.RenderLoopEnabled = true;
-        await Frames.Process(3);
-        var saved = Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
-        RenderingServer.RenderLoopEnabled = false;
-        return saved;
+        try
+        {
+            // The camera or HUD visibility may have changed since the last process frame.
+            // Refresh only the overlays: the action pose and HUD timers stay frozen.
+            surgery?.Hud.RefreshFrame(0f);
+            await Frames.Process(3);
+            await RenderingServer.Singleton.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            return Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
+        }
+        finally
+        {
+            RenderingServer.RenderLoopEnabled = false;
+            Frames.Tree.Paused = paused;
+        }
     }
 
     /// <summary>Starts a set of key frames for <paramref name="surgery"/> into <paramref name="relative"/> (under

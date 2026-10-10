@@ -44,7 +44,7 @@ public partial class Surgeon : CharacterBody3D
     public const float NeedleHover = 0.002f;
     /// <summary>A tool tip at most this far above a surface shows the aim on it, where Use tool brings it down (see
     /// <see cref="AimPoint"/>).</summary>
-    private const float AimDrop = 0.1f;
+    internal const float AimDrop = 0.1f;
     /// <summary>How far above what's inside an opening (meters) a lowered blade stays at each effort level: at full
     /// effort it goes all the way down to it, close enough to grate on a bone (Patient.BladeReach), short of cutting an
     /// organ.</summary>
