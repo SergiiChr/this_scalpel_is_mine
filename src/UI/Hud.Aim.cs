@@ -43,6 +43,8 @@ public partial class Hud
     internal bool DotShown => _dot.Visible;
     /// <summary>The blade edge is shown on the patient.</summary>
     internal bool BladeShown => _blade.Visible;
+    /// <summary>The projected center of the displayed blade line.</summary>
+    internal Vector2 BladeCenter => _blade.Points[1];
     /// <summary>The aim shows a stapler's two leg rings.</summary>
     internal bool LegRingsShown => _legs.All(ring => ring.Visible);
     /// <summary>Where the shown &lt; and &gt; point (screen).</summary>

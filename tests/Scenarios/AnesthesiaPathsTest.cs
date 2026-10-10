@@ -18,10 +18,24 @@ public class AnesthesiaPathsTest
         await driver.Start("bullet_muscle", seed: seed);
         var patient = driver.Patient;
         var dressing = driver.Surgery.Room.IvLine.Dressing!;
-        var vein = driver.Body.Veins[0];
-        var insertion = vein.ToGlobal(vein.Line[1]);
-        AssertFloat(dressing.GlobalPosition.DistanceTo(insertion))
-            .OverrideFailureMessage("the preinstalled catheter sits on the vein near the elbow").IsLess(0.004f);
+        var forearm = dressing.GetParent<Forearm>();
+        var elbow = forearm.GlobalPosition;
+        var wrist = forearm.ToGlobal(forearm.Wrist);
+        var axis = (wrist - elbow).Normalized();
+        var length = elbow.DistanceTo(wrist);
+        var fromElbow = dressing.GlobalPosition - elbow;
+        var along = fromElbow.Dot(axis) / length;
+        AssertFloat(along).OverrideFailureMessage("the catheter sits on the proximal forearm, clear of the elbow joint")
+            .IsBetween(0.1f, 0.3f);
+        var outward = fromElbow.Slide(axis).Normalized();
+        AssertFloat(outward.Dot(driver.Body.Root.GlobalBasis.Y.Normalized()))
+            .OverrideFailureMessage("the catheter lies on the upper side of the forearm").IsGreater(0.8f);
+        AssertBool(driver.Body.VeinAt(dressing.GlobalPosition))
+            .OverrideFailureMessage("the anatomical insertion also reaches a vein").IsTrue();
+        AssertFloat(dressing.GlobalBasis.X.Normalized().Dot(-axis))
+            .OverrideFailureMessage("the catheter points along the forearm toward the elbow").IsGreater(0.99f);
+        AssertFloat(dressing.GlobalBasis.Y.Normalized().Dot(outward))
+            .OverrideFailureMessage("the dressing faces outward from the arm").IsGreater(0.99f);
         AssertBool(patient.Vitals.IsAwake).OverrideFailureMessage("the patient starts awake").IsTrue();
         AssertBool(driver.Surgery.Objectives.States[0].Done).OverrideFailureMessage("anesthesia is initially incomplete").IsFalse();
         var panel = driver.Surgery.Hud.FindChildren("*", "", true, false).OfType<ObjectivesPanel>().Single();

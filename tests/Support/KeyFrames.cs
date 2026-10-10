@@ -38,24 +38,24 @@ public partial class KeyFrames : Node
     public static async Task<bool> SaveViewport(string path)
     {
         var surgery = Surgery.Current;
-        var mode = surgery?.ProcessMode;
-        if (surgery is not null)
-        {
-            surgery.ProcessMode = ProcessModeEnum.Disabled;
-        }
+        var paused = Frames.Tree.Paused;
+        // Pause gameplay rather than disabling nodes: disabled collision objects leave the physics space,
+        // but HUD aim projection still needs to query the patient's surfaces.
+        Frames.Tree.Paused = true;
         RenderingServer.RenderLoopEnabled = true;
         try
         {
+            // The camera or HUD visibility may have changed since the last process frame.
+            // Refresh only the overlays: the action pose and HUD timers stay frozen.
+            surgery?.Hud.RefreshFrame(0f);
             await Frames.Process(3);
+            await RenderingServer.Singleton.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             return Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
         }
         finally
         {
             RenderingServer.RenderLoopEnabled = false;
-            if (surgery is not null && mode is { } previous)
-            {
-                surgery.ProcessMode = previous;
-            }
+            Frames.Tree.Paused = paused;
         }
     }
 

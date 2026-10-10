@@ -40,6 +40,25 @@ public class AimTest
         await driver.PlayerReaches(site);
         await Frames.Physics(10);
         await driver.Capture("resting");
+        if (shots is not null)
+        {
+            var camera = me.Camera;
+            var offset = camera.HOffset;
+            var before = driver.Surgery.Hud.BladeCenter;
+            camera.HOffset = offset + 0.08f;
+            AssertFloat(camera.UnprojectPosition(me.AimPoint()).DistanceTo(before))
+                .OverrideFailureMessage("the changed capture camera requires a new aim projection").IsGreater(10f);
+            AssertObject(Surgery.Current).OverrideFailureMessage("the active surgery is available to capture").IsSame(driver.Surgery);
+            var shifted = camera.UnprojectPosition(me.AimPoint());
+            AssertBool(await shots.CaptureView("camera_shifted")).IsTrue();
+            AssertFloat(driver.Surgery.Hud.BladeCenter.DistanceTo(shifted))
+                .OverrideFailureMessage($"the frozen capture refreshes the aim for the changed camera: drawn {driver.Surgery.Hud.BladeCenter}, expected {shifted}, now {camera.UnprojectPosition(me.AimPoint())}").IsLess(1f);
+            camera.HOffset = offset;
+            var restored = camera.UnprojectPosition(me.AimPoint());
+            AssertBool(await shots.CaptureView("camera_restored")).IsTrue();
+            AssertFloat(driver.Surgery.Hud.BladeCenter.DistanceTo(restored))
+                .OverrideFailureMessage("the next capture refreshes the restored camera projection").IsLess(1f);
+        }
         driver.Budget.Clear();
         var hand = me.Hands[me.Active];
         var restTip = me.ToLocal(scalpel.TipPosition());

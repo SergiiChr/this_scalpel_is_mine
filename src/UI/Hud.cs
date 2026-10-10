@@ -106,13 +106,16 @@ public partial class Hud : CanvasLayer
         OpenCard(inHand: true);
     }
 
-    public override void _Process(double delta)
+    public override void _Process(double delta) => RefreshFrame((float)delta);
+
+    /// <summary>Refreshes overlays for the current camera and game state. A zero delta refreshes a frozen capture
+    /// without advancing HUD timers or effects.</summary>
+    internal void RefreshFrame(float dt)
     {
         if (Surgery?.LocalSurgeon is not { } me)
         {
             return;
         }
-        var dt = (float)delta;
         var left = Surgery.TimeLeft();
         var clock = left >= 0f ? $"{(int)left / 60}:{(int)left % 60:00}" : "no time limit";
         _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
