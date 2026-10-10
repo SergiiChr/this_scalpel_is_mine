@@ -32,6 +32,8 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
 - `./build.py test`: smoke suites, fast and headless. Run this first.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
   only after smoke passes.
+- `./build.py review`: the same full regression, then `build/review/report.md` with a sheet for each key frame that
+  changed against the commit this branch left `origin/main` at. Follow the `review-key-frames` skill.
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
@@ -45,9 +47,10 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
 ## Before raising a PR
 
 - Add or update test cases for any genuinely new coverage the change exposes.
-- `./build.py lint`, then `./build.py test`, then `./build.py test --all --with-key-frames` must all pass. Fix
-  failures and rerun; never hand off a failing run as ready.
-- Review the key frames the change affects (see Visual verification) and list the reviewed paths in the handoff.
+- `./build.py lint`, then `./build.py test`, then `./build.py review` must all pass. Fix failures and rerun; never
+  hand off a failing run as ready.
+- Review the key frames the change affects through `build/review/report.md` (see Visual verification) and list the
+  reviewed sheets in the handoff.
 
 ## Test structure and policy
 
