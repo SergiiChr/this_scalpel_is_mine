@@ -9,6 +9,7 @@ public partial class NetStallDriver : NetSession
     protected override async Task Drive()
     {
         var surgery = await Join("hand_stitch", Port);
+        await SurgeryDriver.PlayerPutsCardBack(surgery);
         if (IsHost)
         {
             await WatchPartner(surgery);

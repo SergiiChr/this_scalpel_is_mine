@@ -2,7 +2,7 @@ tags: allergy, allergen
 title: Drug allergy
 [i]A documented reaction to one of the standard agents.[/i]
 
-[b]On the chart:[/b] “Known drug allergy (see chart).”
+[b]On the chart:[/b] “Drug allergy reported, agent not documented.”
 
 [b]Hazards[/b]
 • The allergen causes urticaria and swelling, a fall in blood pressure and possibly anaphylaxis.
