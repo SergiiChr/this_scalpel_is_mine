@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import pairwise
+from pathlib import Path
 
 import numpy as np
 import trimesh
@@ -17,6 +18,14 @@ HEAD_RAIL_TOP = 0.939
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
 # tray's middle. Same as "instruments" and "swabs" in Room.TrayZones (src/World/Room.cs).
 SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
+# Hand-made models some props are built from. The .gdignore there keeps Godot from importing them as game assets.
+SOURCES = Path(__file__).resolve().parent / "sources"
+# glove_box.glb node -> part and palette material. Every other node is a glove.
+GLOVE_BOX_PARTS = {
+    "Box_Cardboard": ("Box", "carton"),
+    "Printed_Blue_Edge_Trim": ("Print", "carton_print"),
+    "Inset_Dark_Slot": ("Slot", "black_plastic"),
+}
 
 
 def _wheels(radius: float, spread: float, y: float = 0.0) -> trimesh.Trimesh:
@@ -147,11 +156,19 @@ def _bell() -> Model:
 
 
 def _gloves() -> Model:
+    """Cabinet with a dispenser box of gloves on top and a loose pair in front of it, from a hand-made source model."""
     m = Model("props", "gloves")
     _cabinet(m)
-    boxes = [superellipsoid((0.24, 0.1, 0.12), 0.2, (0.0, 0.96 + i * 0.105, 0.0)) for i in range(3)]
-    m.add("Boxes", merge(*boxes), "paper")
-    m.add("Tabs", merge(*[superellipsoid((0.04, 0.03, 0.02), 0.6, (0.0, 1.02 + i * 0.105, 0.06)) for i in range(3)]), "glove")
+    source = trimesh.load_scene(SOURCES / "glove_box.glb")
+    # The source is Z up with the loose pair toward -Y: stand it Y up with the pair toward the doors (+Z), centered on the cabinet's top.
+    place = trimesh.transformations.translation_matrix((0.0, 0.9, -0.12)) @ trimesh.transformations.rotation_matrix(-np.pi / 2, (1.0, 0.0, 0.0))
+    parts: dict[tuple[str, str], list[trimesh.Trimesh]] = {}
+    for node in source.graph.nodes_geometry:
+        transform, geometry = source.graph[node]
+        part = GLOVE_BOX_PARTS.get(node, ("Gloves", "glove"))
+        parts.setdefault(part, []).append(source.geometry[geometry].copy().apply_transform(place @ transform))
+    for (name, material), meshes in parts.items():
+        m.add(name, merge(*meshes), material)
     return m
 
 
