@@ -51,7 +51,7 @@ public partial class PatientAnimator : Node
         {
             return;
         }
-        var t = Time.GetTicksMsec() * 0.001f;
+        var t = (float)GameClock.Seconds;
         var breathing = alive && !vitals.IsArrested;
         var rate = vitals.Anesthesia < 0.7f ? (14f + vitals.Panic * 14f) / 60f : 12f / 60f;
         _breathPhase += breathing ? delta * rate * Mathf.Tau : 0f;

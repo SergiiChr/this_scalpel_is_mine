@@ -120,7 +120,7 @@ public partial class XrayCart : Node3D
     /// <summary>0..1, how far the print has developed.</summary>
     public float Developed() => Print is null
         ? 0f
-        : Mathf.Clamp((Time.GetTicksMsec() - Print.PrintedAtMsec) / (DevelopTime * 1000f), 0f, 1f);
+        : Mathf.Clamp((GameClock.Msec - Print.PrintedAtMsec) / (DevelopTime * 1000f), 0f, 1f);
 
     private void Develop()
     {
@@ -174,7 +174,7 @@ public partial class XrayCart : Node3D
     [Rpc(CallLocal = true)]
     private void PrintReady(GodotArray shapes, string site)
     {
-        Print = new XrayPrint([.. shapes.Select(XrayShape.FromVariant)], site, Time.GetTicksMsec());
+        Print = new XrayPrint([.. shapes.Select(XrayShape.FromVariant)], site, GameClock.Msec);
         _film.Visible = true;
         Sfx.Play("print_whir", GlobalPosition);
         _surgery.Hud.Toast("The print slides out of the X-ray. Give it a few seconds.");

@@ -130,7 +130,7 @@ public partial class MonitorScreen : Control
         {
             return;
         }
-        var flash = Mathf.PosMod(Time.GetTicksMsec() * 0.002f, 1f) > 0.5f;
+        var flash = Mathf.PosMod((float)GameClock.Msec * 0.002f, 1f) > 0.5f;
         var alarms = string.Concat(_alarms);
         DrawHeader(flash);
         for (var i = 0; i < 3; i++)

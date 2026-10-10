@@ -280,7 +280,7 @@ public partial class BloodFlow : Node3D
             {
                 along = new Vector2(rivulet.Wander, 1f) * 0.05f;
             }
-            var direction = along.Normalized().Rotated(Mathf.Sin(Time.GetTicksMsec() * 0.0015f + rivulet.Wander * 9f) * 0.2f);
+            var direction = along.Normalized().Rotated(Mathf.Sin((float)GameClock.Msec * 0.0015f + rivulet.Wander * 9f) * 0.2f);
             var step = direction * RivuletSpeed * delta / ((body.SiteSize.X + body.SiteSize.Y) * 0.5f);
             var next = uv + step;
             body.WoundMap.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, uv, next, StainRadius, 0.55f, WoundMap.Mode.Max);

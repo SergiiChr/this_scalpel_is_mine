@@ -188,7 +188,7 @@ public partial class Surgeon
             var delay = Status.InputDelay();
             if (delay > 0f)
             {
-                _delayed.Enqueue(new DelayedMove(Time.GetTicksMsec() + (ulong)(delay * 1000f), Active, motion));
+                _delayed.Enqueue(new DelayedMove(GameClock.Msec + (ulong)(delay * 1000f), Active, motion));
             }
             else
             {
@@ -629,7 +629,7 @@ public partial class Surgeon
             hand.Raise = Mathf.Max(heldAt - hand.Target.Y, 0f);
         }
         var amount = i == Active || Mods.Mult("switch_delay_mult") > 0f ? Status.TremorAmount() : 0f;
-        var t = Time.GetTicksMsec() * 0.001f;
+        var t = (float)GameClock.Seconds;
         hand.Tremor = (new Vector3(Mathf.Sin((t * 23f) + i), Mathf.Sin((t * 31f) + (2f * i)), Mathf.Cos((t * 19f) + i))
             * amount) + _jolt;
         hand.Shiver = new Vector3(
@@ -695,7 +695,7 @@ public partial class Surgeon
     /// <summary>Mouse moves a sedative held back, once they're due. Out cold or locked, they're dropped.</summary>
     private void ApplyDelayed(bool canAct)
     {
-        var now = Time.GetTicksMsec();
+        var now = GameClock.Msec;
         while (_delayed.TryPeek(out var move) && (!canAct || move.DueMsec <= now))
         {
             _delayed.Dequeue();

@@ -180,7 +180,7 @@ public partial class Patient
         {
             return false;
         }
-        var now = Time.GetTicksMsec() * 0.001;
+        var now = GameClock.Seconds;
         if (now - _boneTouched > 0.5)
         {
             Hurt(BoneJolt, tipUv, deep: true);
@@ -1065,7 +1065,7 @@ public partial class Patient
 
     private void TearNotice(string text)
     {
-        var now = Time.GetTicksMsec();
+        var now = GameClock.Msec;
         if (_tearNoticeMsec == 0 || now - _tearNoticeMsec > 3000)
         {
             _tearNoticeMsec = now;
