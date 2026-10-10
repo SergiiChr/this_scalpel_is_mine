@@ -69,6 +69,14 @@ public static class SurgeryState
         Array.Fill(wound.Bins, 1f);
     }
 
+    /// <summary><paramref name="wound"/> torn on along its line by <paramref name="lengthUv"/> (site uv).</summary>
+    public static void WoundIsTornFurther(Wound wound, float lengthUv)
+    {
+        var end = wound.Points[^1];
+        var along = (end - wound.Points[0]).Normalized();
+        wound.Extend(end + (along * lengthUv));
+    }
+
     /// <summary>A vessel <paramref name="depthM"/> under the skin at <paramref name="uv"/> has given way and bleeds.
     /// </summary>
     public static Wound VesselBleeds(Patient patient, Vector2 uv, float depthM)

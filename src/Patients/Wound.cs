@@ -90,8 +90,9 @@ public sealed class Wound
 
     public void Extend(Vector2 point)
     {
-        // Torn or cut further, it's fresh damage: it bleeds again, however small it was.
+        // Torn or cut further, it's fresh damage: it bleeds again, however small it was, and needs a full press again.
         Clotted = false;
+        PressedFor = 0f;
         var last = _points.Count - 1;
         if (last >= 1 && _points[last - 1].DistanceTo(point) < PointSpacingUv)
         {

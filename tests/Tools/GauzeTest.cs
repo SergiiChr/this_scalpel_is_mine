@@ -100,6 +100,35 @@ public class GauzeTest
     }
 
     [TestCase]
+    public async Task ASmallCutTornFurtherUnderTheGauzeNeedsAFullPressAgain()
+    {
+        var session = await ToolSession.Start("appendectomy", "gauze_torn_further");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var small = SurgeryState.SkinIsCut(patient, new Vector2(0.4f, 0.5f), new Vector2(0.4f, 0.5f) + new Vector2(body.MetersToUv(0.005f), 0f), 0.3f);
+        await Frames.Seconds(1f);
+        await driver.PlayerRequestsItem("gauze");
+        var on = driver.SitePoint(small.Midpoint);
+        await driver.PlayerWalksTo(on);
+        await driver.PlayerReaches(on);
+        await driver.SetLevel(3);
+        SurgeryDriver.Use();
+        await Frames.Seconds(Wound.SmallCutPress + 1f);
+        AssertBool(small.Clotted).OverrideFailureMessage("pressed long enough, the small cut stops for good").IsTrue();
+
+        SurgeryState.WoundIsTornFurther(small, body.MetersToUv(0.002f));
+        AssertBool(small.IsSmall(body.UvToMeters(1f))).OverrideFailureMessage("torn to 0.7 cm, it's still too small to sew").IsTrue();
+        await Frames.Seconds(Wound.SmallCutPress / 2f);
+        AssertBool(small.Clotted).OverrideFailureMessage("torn further under the gauze, it isn't stopped for good at once").IsFalse();
+        await Frames.Seconds(Wound.SmallCutPress / 2f + 1f);
+        AssertBool(small.Clotted).OverrideFailureMessage("after another full press it is").IsTrue();
+        SurgeryDriver.Use(false);
+        await driver.PlayerPutsDown();
+        await session.Finish();
+    }
+
+    [TestCase]
     public async Task GauzePackedIntoAnIncisionStopsTheVesselInIt()
     {
         var session = await ToolSession.Start("appendectomy", "gauze_packed");
