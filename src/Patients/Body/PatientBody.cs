@@ -61,7 +61,8 @@ public partial class PatientBody : Node3D
     /// PatientLayer stay for what a tool touches, they're too rough to rest a hand on without sinking into a leg.
     /// </summary>
     public const uint SurfaceLayer = 256;
-    public const float SkinThickness = 0.004f;
+    /// <summary>Dermis and epidermis at the incision: a narrow lip above the subcutaneous tissue.</summary>
+    public const float SkinThickness = 0.0015f;
     public const float MuscleThickness = 0.006f;
     /// <summary>Subcutaneous fat where a site doesn't say ("fat" in patient_sites.json).</summary>
     public const float DefaultFat = SiteDef.DefaultFat;
@@ -91,6 +92,7 @@ public partial class PatientBody : Node3D
     private Transform3D _carvedSite;
     private Transform3D _carvedModel;
     private ImageTexture? _carvedRegion;
+    private bool _deferredUpload;
     private bool _onBack;
     private float _siteBaseY;
 
@@ -151,16 +153,21 @@ public partial class PatientBody : Node3D
     public override void _Process(double delta)
     {
         WoundMap.Flush();
-        // The meshes catch up with the sim on the frame after it stepped, so a frame that steps the sim (30 times a
-        // second) isn't also the frame that rebuilds them: the two costs land on alternate frames.
+        // Mesh preparation and simulation run on alternate frames. A large fold prepares its layers in groups,
+        // then publishes the complete stack from one captured state.
         var stale = Tissue.TopologyVersion != _layerVersion || Tissue.StepsDone != _layerSteps;
-        var rebuild = stale && !_rebuiltLast;
+        // A planning frame can leave a solver step pending. Catch up before another upload, one step per frame,
+        // rather than running two costly steps together when a local fold expands its mesh region.
+        // Defer at most once: a renderer slower than the solver must still publish the moving mesh.
+        var catchup = stale && !_rebuiltLast && Tissue.NeedsStep && !_deferredUpload;
+        var rebuild = stale && !_rebuiltLast && !catchup;
+        _deferredUpload = catchup;
         if (rebuild)
         {
-            RebuildLayers();
+            rebuild = RebuildLayers();
         }
         _rebuiltLast = rebuild;
-        Tissue.Advance((float)delta, !rebuild);
+        Tissue.Advance((float)delta, !rebuild, maxSteps: 1);
         UpdateSutures();
         UpdateStaples();
         JiggleOrgans((float)delta);
@@ -240,23 +247,61 @@ public partial class PatientBody : Node3D
         drapeMesh.CreateFromFaces([.. drape.Mesh.GetFaces().Select(v => toSite * v)]);
         var columns = Mathf.CeilToInt(SiteSize.X * 3f / Cell) + 1;
         var rows = Mathf.CeilToInt(SiteSize.Y * 3f / Cell) + 1;
-        var heights = new float[columns * rows];
-        for (var j = 0; j < rows; j++)
+        var origin = new Vector2(-SiteSize.X * 1.5f, -SiteSize.Y * 1.5f);
+        var tiles = Enumerable.Range(0, columns * rows).Select(_ => new List<(float Ux, float Uz, float Uo, float Vx, float Vz, float Vo, float Yx, float Yz, float Yo)>()).ToArray();
+        var faces = drapeMesh.GetFaces();
+        IndexContact(_clothFaces, faces, Enumerable.Range(0, faces.Length).ToList());
+        for (var n = 0; n < faces.Length; n += 3)
         {
-            for (var i = 0; i < columns; i++)
+            var a = faces[n];
+            var b = faces[n + 1];
+            var c = faces[n + 2];
+            var ab = b - a;
+            var ac = c - a;
+            var determinant = ab.X * ac.Z - ab.Z * ac.X;
+            if (Mathf.Abs(determinant) < 1e-10f) { continue; }
+            var ux = ac.Z / determinant;
+            var uz = -ac.X / determinant;
+            var vx = -ab.Z / determinant;
+            var vz = ab.X / determinant;
+            var uo = -a.X * ux - a.Z * uz;
+            var vo = -a.X * vx - a.Z * vz;
+            var plane = (ux, uz, uo, vx, vz, vo, ux * ab.Y + vx * ac.Y, uz * ab.Y + vz * ac.Y,
+                a.Y + uo * ab.Y + vo * ac.Y + 0.004f);
+            var low = a.Min(b).Min(c);
+            var high = a.Max(b).Max(c);
+            var first = (Vector2I)((new Vector2(low.X, low.Z) - origin) / Cell).Floor();
+            var last = (Vector2I)((new Vector2(high.X, high.Z) - origin) / Cell).Floor();
+            for (var j = Math.Max(0, first.Y); j <= Math.Min(rows - 1, last.Y); j++)
             {
-                var hit = drapeMesh.IntersectRay(new Vector3(-SiteSize.X * 1.5f + i * Cell, 0.5f, -SiteSize.Y * 1.5f + j * Cell), Vector3.Down);
-                heights[j * columns + i] = hit.Count > 0 ? hit["position"].AsVector3().Y + 0.004f : float.NaN;
+                for (var i = Math.Max(0, first.X); i <= Math.Min(columns - 1, last.X); i++)
+                {
+                    tiles[j * columns + i].Add(plane);
+
+                }
             }
         }
-        var origin = new Vector2(-SiteSize.X * 1.5f, -SiteSize.Y * 1.5f);
+        var opening = SiteSize * (0.5f - Drape.Frame);
         Tissue.FloorAt = (x, z) =>
         {
-            var c = (Vector2I)((new Vector2(x, z) - origin) / Cell).Round();
-            return c.X < 0 || c.Y < 0 || c.X >= columns || c.Y >= rows ? float.NaN : heights[c.Y * columns + c.X];
+            if (Mathf.Abs(x) < opening.X && Mathf.Abs(z) < opening.Y) { return float.NaN; }
+            var i = (int)MathF.Floor((x - origin.X) / Cell);
+            var j = (int)MathF.Floor((z - origin.Y) / Cell);
+            if (i < 0 || j < 0 || i >= columns || j >= rows) { return float.NaN; }
+            var height = float.NegativeInfinity;
+            foreach (var face in tiles[j * columns + i])
+            {
+                var u = x * face.Ux + z * face.Uz + face.Uo;
+                var v = x * face.Vx + z * face.Vz + face.Vo;
+                if (u >= -0.00001f && v >= -0.00001f && u + v <= 1.00001f)
+                {
+                    height = Mathf.Max(height, x * face.Yx + z * face.Yz + face.Yo);
+                }
+            }
+            return float.IsFinite(height) ? height : float.NaN;
         };
-        // The opening: the site short of the drape's frame, a cell further in to be safe.
-        var frame = SiteSize * Drape.Frame + Vector2.One * Cell;
+        // The clipped opening is exact: points inside it need no cloth height query.
+        var frame = SiteSize * Drape.Frame;
         Tissue.FloorOpen = new Rect2(-SiteSize * 0.5f + frame, SiteSize - frame * 2f);
         var exposed = new bool[Tissue.Rest.Length];
         for (var k = 0; k < exposed.Length; k++)
