@@ -6,11 +6,13 @@ shader_type spatial;
 render_mode cull_disabled;
 
 uniform int layer = 0;
+uniform bool cut_face = false;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
 // Layer 2 only: the skin's own color (Materials.skin_site()), so the cut face matches the skin around it.
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 
 varying vec3 local_pos;
+varying float wall_depth;
 
 float hash3(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
@@ -46,6 +48,7 @@ float cells3(vec3 p) {
 
 void vertex() {
 	local_pos = VERTEX;
+	wall_depth = COLOR.r;
 }
 
 // The normal tilted by a height field over the surface (meters), from its screen-space slope.
@@ -65,22 +68,22 @@ void fragment() {
 	// Lobules and fibers are bumpy, so the lamp breaks into small glints instead of one mirror-like sheet.
 	float height = 0.0;
 	if (layer == 0) {
-		float lobe = cells3(local_pos * 105.0);
+		float lobe = cells3(local_pos * 230.0);
 		float membrane = smoothstep(0.47, 0.64, lobe);
 		float mottling = noise3(local_pos * 55.0);
-		c = mix(vec3(0.76, 0.47, 0.18), vec3(0.48, 0.22, 0.08), membrane * 0.42);
+		c = mix(vec3(0.68, 0.44, 0.20), vec3(0.42, 0.24, 0.12), membrane * 0.42);
 		c *= mix(0.86, 1.08, mottling);
 		c = mix(c, vec3(0.82, 0.70, 0.52), smoothstep(0.58, 0.72, lobe) * 0.18);
-		height = (1.0 - lobe) * 0.0004;
-		wet = 0.62;
+		height = (1.0 - lobe) * 0.0006;
+		wet = 0.46;
 	} else if (layer == 2) {
 		// The skin's color, a touch pinker, with its pores' fine relief and the odd tiny vessel.
 		float grain = noise3(local_pos * 800.0);
 		float speck = smoothstep(0.94, 1.0, hash3(floor(local_pos * 900.0)));
-		c = skin_color.rgb * vec3(1.0, 0.93, 0.9) * mix(0.9, 1.02, grain);
+		c = mix(skin_color.rgb * vec3(0.88, 0.70, 0.67), vec3(0.52, 0.23, 0.22), wall_depth * 0.3) * mix(0.9, 1.02, grain);
 		c = mix(c, vec3(0.62, 0.22, 0.22), speck * 0.35);
 		height = (grain - 0.5) * 0.00008;
-		wet = 0.35;
+		wet = 0.42;
 	} else {
 		float warp = noise3(local_pos * 42.0) * 3.0;
 		float fibers = sin(dot(local_pos, normalize(vec3(1.0, 0.16, 0.28))) * 430.0 + warp) * 0.5 + 0.5;
@@ -90,6 +93,12 @@ void fragment() {
 		c = mix(c, vec3(0.72, 0.62, 0.57), fascia * 0.36);
 		height = fibers * 0.0002;
 		wet = 0.78;
+	}
+	if (cut_face) {
+		// A thin connective membrane at the lip and darker recess below each layer break up the flat stripes.
+		float connective = (1.0 - smoothstep(0.0, 0.16, wall_depth)) * (0.45 + 0.3 * noise3(local_pos * 350.0));
+		c = mix(c, vec3(0.66, 0.48, 0.40), connective * 0.25);
+		c *= mix(1.0, 0.62, smoothstep(0.55, 1.0, wall_depth));
 	}
 	NORMAL = bumped(NORMAL, VERTEX, height);
 	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV).r);

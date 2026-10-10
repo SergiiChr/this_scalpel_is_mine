@@ -79,24 +79,18 @@ public class SlicingTest
     private sealed record SliceCase(string Id, string Scenario, bool Fat, string Inside, bool Along);
 
     /// <summary>
-    /// Visual review of the key frames shows the depth stages' openings as rectangular, discontinuous segments. The
-    /// headless checks pass: what's broken is only how the incision looks.
+    /// Progressive depth stays continuous through the three layers, with a thin skin lip and rounded cut ends.
     /// </summary>
-    [TestCase(Timeout = Limits.Slow,
-        Description = "BROKEN: visual review shows rectangular, discontinuous incision segments instead of one cohesive opening")]
-    [TestCategory("broken")]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task ProgressiveDepth()
     {
         await RunCases(depth: true, grafts: false);
     }
 
     /// <summary>
-    /// Visual review of the key frames shows the graft rims on the belly and the thigh as jagged or detached loops. The
-    /// headless checks pass: what's broken is only how the rim looks.
+    /// A closed circular cut releases the skin piece, leaving a continuous rounded rim and its underlying tissue.
     /// </summary>
-    [TestCase(Timeout = Limits.Slow,
-        Description = "BROKEN: belly and thigh graft rims form jagged or detached loops instead of a cohesive circular edge")]
-    [TestCategory("broken")]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task CircularSkinGraftCutoutRemoval()
     {
         await RunCases(depth: false, grafts: true);

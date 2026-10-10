@@ -44,31 +44,20 @@ public partial class Drape : MeshInstance3D
         var rows = Mathf.CeilToInt(HalfWidth * 2f / Cell) + 1;
         var heights = Lay(body, columns, rows, up);
         Vector3 PointAt(int i, int j) => new(FromX + i * Cell, heights[j * columns + i], -HalfWidth + j * Cell);
-        // Grid points inside the opening move out onto its edge, so the opening is a clean rectangle, not grid steps.
-        var points = new Vector3[columns * rows];
-        var inside = new bool[columns * rows];
-        for (var j = 0; j < rows; j++)
-        {
-            for (var i = 0; i < columns; i++)
-            {
-                var k = j * columns + i;
-                var p = PointAt(i, j);
-                inside[k] = InOpening(site, siteSize, p);
-                points[k] = inside[k] ? ToEdge(body, site, siteSize, p, up) : p;
-            }
-        }
+        // Clip each cloth triangle against the rectangular opening. Moving its corners to their nearest edge
+        // can reverse or overlap triangles at the opening's corners, producing triangular creases and shadows.
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         for (var j = 0; j < rows - 1; j++)
         {
             for (var i = 0; i < columns - 1; i++)
             {
-                int[] ids = [j * columns + i, j * columns + i + 1, (j + 1) * columns + i + 1, (j + 1) * columns + i];
-                if (ids.All(k => inside[k]))
-                {
-                    continue;
-                }
-                Quad(surface, [.. ids.Select(k => points[k])], up);
+                var a = PointAt(i, j);
+                var b = PointAt(i + 1, j);
+                var c = PointAt(i + 1, j + 1);
+                var d = PointAt(i, j + 1);
+                OutsideOpening(surface, site, siteSize, [a, b, c], up);
+                OutsideOpening(surface, site, siteSize, [a, c, d], up);
             }
         }
         // Hems: the sheet hangs a little over its long sides and its ends instead of stopping in the air.
@@ -91,12 +80,14 @@ public partial class Drape : MeshInstance3D
                 Quad(surface, [a, b, b + outward + hang, a + outward + hang], i == 0 ? -up : up);
             }
         }
+        surface.Index();
         surface.GenerateNormals();
         Mesh = surface.Commit();
         var material = Materials.FamilyUnique("cloth", DrapeColor, 0.95f);
-        material.NextPass = Materials.OutlineFor(0.002f);
         MaterialOverride = material;
-        CastShadow = ShadowCastingSetting.On;
+        // A thin cloth sheet blocks the light from either side. Its edge is shaded by the lights rather than an
+        // expanded inverted hull, which can draw black triangular wedges where the opening bends.
+        CastShadow = ShadowCastingSetting.DoubleSided;
         var solid = new StaticBody3D { CollisionLayer = DrapeLayer, CollisionMask = 0 };
         solid.AddChild(new CollisionShape3D { Shape = Mesh.CreateTrimeshShape() });
         AddChild(solid);
@@ -146,35 +137,50 @@ public partial class Drape : MeshInstance3D
         return heights;
     }
 
-    /// <summary>Inside the site, short of its edge by Frame: left open for the surgery.</summary>
-    private static bool InOpening(Node3D site, Vector2 siteSize, Vector3 p)
-    {
-        var uv = SiteUv(site, siteSize, p);
-        return uv.X > Frame && uv.X < 1f - Frame && uv.Y > Frame && uv.Y < 1f - Frame;
-    }
-
     private static Vector2 SiteUv(Node3D site, Vector2 siteSize, Vector3 p)
     {
         var local = site.Transform.AffineInverse() * p;
         return new Vector2(local.X / siteSize.X + 0.5f, local.Z / siteSize.Y + 0.5f);
     }
 
-    /// <summary>A point inside the opening moved to its nearest edge, back on the skin (plus Offset).</summary>
-    private static Vector3 ToEdge(TriangleMesh body, Node3D site, Vector2 siteSize, Vector3 p, float up)
+    /// <summary>Disjoint strips outside the opening, with intersection heights on the original cloth triangle.</summary>
+    private static void OutsideOpening(SurfaceTool surface, Node3D site, Vector2 size, List<Vector3> polygon, float up)
     {
-        var local = site.Transform.AffineInverse() * p;
-        var uv = SiteUv(site, siteSize, p);
-        float[] gaps = [uv.X - Frame, 1f - Frame - uv.X, uv.Y - Frame, 1f - Frame - uv.Y];
-        switch (Array.IndexOf(gaps, gaps.Min()))
+        foreach (var (axis, boundary, sign) in new[] { (0, Frame, 1f), (0, 1f - Frame, -1f), (1, Frame, 1f), (1, 1f - Frame, -1f) })
         {
-            case 0: uv.X = Frame; break;
-            case 1: uv.X = 1f - Frame; break;
-            case 2: uv.Y = Frame; break;
-            default: uv.Y = 1f - Frame; break;
+            float Distance(Vector3 p) => (SiteUv(site, size, p)[axis] - boundary) * sign;
+            var outside = Clip(polygon, Distance, false);
+            for (var n = 1; n + 1 < outside.Count; n++)
+            {
+                var a = outside[0];
+                var b = outside[n];
+                var c = outside[n + 1];
+                if ((b - a).Cross(c - a).LengthSquared() < 1e-16f) { continue; }
+                foreach (var p in up > 0f ? new[] { a, b, c } : new[] { a, c, b })
+                {
+                    surface.AddVertex(p);
+                }
+            }
+            polygon = Clip(polygon, Distance, true);
+            if (polygon.Count < 3) { break; }
         }
-        var edge = site.Transform * new Vector3((uv.X - 0.5f) * siteSize.X, local.Y, (uv.Y - 0.5f) * siteSize.Y);
-        var hit = body.IntersectRay(new Vector3(edge.X, up * 0.5f, edge.Z), Vector3.Down * up);
-        return new Vector3(edge.X, hit.Count > 0 ? hit["position"].AsVector3().Y + up * Offset : p.Y, edge.Z);
+    }
+
+    private static List<Vector3> Clip(List<Vector3> polygon, Func<Vector3, float> distance, bool inside)
+    {
+        var result = new List<Vector3>();
+        for (var n = 0; n < polygon.Count; n++)
+        {
+            var a = polygon[n];
+            var b = polygon[(n + 1) % polygon.Count];
+            var da = distance(a);
+            var db = distance(b);
+            var keepA = inside ? da >= 0f : da <= 0f;
+            var keepB = inside ? db >= 0f : db <= 0f;
+            if (keepA) { result.Add(a); }
+            if (keepA != keepB) { result.Add(a.Lerp(b, da / (da - db))); }
+        }
+        return result;
     }
 
     /// <summary>Two triangles, wound so the side facing <paramref name="up"/> is the front.</summary>
