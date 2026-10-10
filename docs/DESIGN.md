@@ -500,7 +500,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   sculpt strokes, decimated and skinned to a bone rig (bone heat weights, jaw weights set by rule).
   The patient is one skinned mesh; eyes, lids, hair, brows, teeth and tongue ride their bones.
 - **Hard-surface models** (`tools/assetgen`, trimesh): props and instruments from lofted tubes, lathes, rounded boxes
-  and extrusions, exported to `.glb` with named parts.
+  and extrusions, exported to `.glb` with named parts. Hand-made pieces some props are built from (the glove box)
+  live in `tools/assetgen/sources/` and take palette materials.
 - The game swaps materials for the cel shader by name (`src/Visuals/ModelSlot.cs`).
 - **Patient skin**: the body model draws the wound and fluid maps itself (`wound.gdshaderinc`, shared with the site
   skin shader), so cuts, burns, bruises, blood and iodine sit on the model. Only around cuts and skin a tool holds
