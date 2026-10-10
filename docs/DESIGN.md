@@ -289,7 +289,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   something (a gripped clamp or retractor), then they stay put.
 - **One button per job** (`ToolActions.LevelNames`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
-  the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
+  the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. A clamp's jaws
+  close once its tip has come to rest on what's under it (`ClampAction.RestTime`), so one pressed while still coming
+  down (out of an aim or a lift, or a remote player's late moves) takes what it lands on. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
