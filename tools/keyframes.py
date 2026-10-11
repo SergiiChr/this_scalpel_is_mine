@@ -25,8 +25,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 VIEWS = ("top", "oblique", "side", "reverse", "view")
 # Each folder's file name to description index, written by the tests' KeyFrames.
 DESCRIPTIONS = "keyframes.json"
-# A pixel counts as changed when one of its channels differs by more than this (0-255). Rendering is deterministic, but
-# the screen grime shader's film grain moves every pixel by up to 6 between runs.
+# A pixel counts as changed when one of its channels differs by more than this (0-255). Key frames are taken without
+# film grain and always by the software renderer, but its versions on two machines may still round a pixel differently.
 PIXEL_TOLERANCE = 8
 # A view counts as changed when it has a block this many pixels across that all changed. Small, concentrated changes
 # (a clipping tool tip, a drop of blood) count however little of the view they cover; lone pixels don't.

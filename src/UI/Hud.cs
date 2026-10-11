@@ -46,6 +46,9 @@ public partial class Hud : CanvasLayer
         _lensBlood = 0f;
         _post.SetShaderParameter(ShaderParam.LensBlood, 0f);
     }
+    /// <summary>Takes the film grain off the view for good. It differs in every frame, and key frames are compared.
+    /// </summary>
+    internal void RemoveFilmGrain() => _post.SetShaderParameter(ShaderParam.Grain, 0f);
     /// <summary>How long since the view was clean.</summary>
     private float _lensAge;
     public NurseShop Shop { get; private set; } = null!;

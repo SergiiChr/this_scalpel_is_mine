@@ -118,6 +118,16 @@ class CoverageReportingTest(unittest.TestCase):
         settings = (self.root / "test-settings" / "Example.runsettings").read_text()
         self.assertIn("--headless", settings)
 
+    def test_key_frames_use_the_virtual_display_even_with_a_real_one(self) -> None:
+        self.suite.categories = ["visual_confirmation"]
+        self.options.key_frames = True
+        with patch.dict(os.environ, {"DISPLAY": ":0"}), patch.object(build, "dotnet", return_value="dotnet"):
+            with patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as process:
+                with patch.object(build, "problems", return_value=build.ProcessResult([], 1)), patch("build.shutil.which", return_value="xvfb-run"):
+                    build.run_process(self.suite, self.options, "Example", "filter", 1)
+        self.assertEqual(process.call_args.args[0][0], "xvfb-run")
+        self.assertEqual(process.call_args.kwargs["env"]["LIBGL_ALWAYS_SOFTWARE"], "1")
+
     def key_frames(self, passed: bool) -> tuple[Path, Path]:
         taken, baseline = self.root / "screenshots", self.root / "tests" / "KeyFrames"
         patch.object(build, "KEY_FRAMES", taken).start()

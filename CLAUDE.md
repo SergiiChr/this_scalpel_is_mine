@@ -108,7 +108,9 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   `./build.py review` passed, and only after every sheet the report lists looks right. Never accept or commit key
   frames of a failed run, of a focused run, of a case marked broken, or ones that show a defect; never edit the
   folder by hand. A change with no missing, changed or new key frames leaves it untouched.
-- Key frames are rendered and compared in local runs only. CI never takes or compares them.
+- Key frames are rendered and compared in local runs only. CI never takes or compares them. They are always rendered
+  in a virtual display by the software renderer (`xvfb-run`), without film grain, so every machine saves the same
+  pixels for the same scene.
 
 ## Frame-time budget
 

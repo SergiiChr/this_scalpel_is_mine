@@ -202,7 +202,7 @@ def need_venv() -> None:
 # than half of it, gets SLOW_TEST_TIMEOUT. A test that hangs is stopped when its suite's session runs out.
 TEST_TIMEOUT = 60
 SLOW_TEST_TIMEOUT = 360
-# The view key frames are rendered at, under a virtual display when there's no real one.
+# The view key frames are rendered at, always under a virtual display.
 KEY_FRAME_ARGS = ["--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--resolution", "1280x720"]
 
 
@@ -394,10 +394,12 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
     environment.setdefault("DOTNET_GCgen0size", hex(36 << 20))
     if options.key_frames and suite.visual:
         environment["WITH_KEY_FRAMES"] = "1"
-        if not os.environ.get("DISPLAY"):
-            if not shutil.which("xvfb-run"):
-                return ProcessResult(["Visual tests need xvfb-run or a DISPLAY."])
-            command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
+        # Always a virtual display and the software renderer, on a machine with a screen and a GPU too.
+        # Key frames are compared against the committed baseline, and no two GPUs draw the same pixels.
+        if not shutil.which("xvfb-run"):
+            return ProcessResult(["Key frames need xvfb-run."])
+        environment["LIBGL_ALWAYS_SOFTWARE"] = "1"
+        command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
     # GdUnit4 talks to its Godot process over a named pipe with a fixed name, which .NET puts in the temp folder:
     # runs at the same time (--jobs, other checkouts) each need their own.
     with log.open("w") as out, tempfile.TemporaryDirectory(prefix="gdunit-") as temp:
@@ -495,7 +497,7 @@ def test(arguments: list[str]) -> int:
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
-        help="visual_confirmation suites save their key frames (under a display, the compatibility renderer) and check "
+        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer) and check "
         "the frame budget; they run alone, after the others, so their frame times aren't slowed by their neighbours",
     )
     parser.add_argument("--ci-run", action="store_true", help="report frame times without checking them against the budget")

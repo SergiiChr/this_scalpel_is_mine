@@ -21,6 +21,7 @@ public static class ShaderParam
     public static readonly StringName Damage = "damage";
     public static readonly StringName Daze = "daze";
     public static readonly StringName EmissionColor = "emission_color";
+    public static readonly StringName Grain = "grain";
     public static readonly StringName Grime = "grime";
     public static readonly StringName LensAge = "lens_age";
     public static readonly StringName LensBlood = "lens_blood";
