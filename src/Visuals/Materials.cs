@@ -3,8 +3,11 @@ namespace Scalpel.Visuals;
 /// <summary>Fine relief drawn on a surface (toon.gdshader detail).</summary>
 public enum Detail { None, Pores, Creases, Weave, Brushed }
 
-/// <summary>Pattern drawn on a room surface in world space (toon.gdshader pattern).</summary>
-public enum Pattern { None, Speckle, Panels, Tiles, Plaster }
+/// <summary>Pattern drawn on a room surface in world space (room.gdshaderinc pattern).</summary>
+public enum Pattern { None, Speckle, Panels, Wall }
+
+/// <summary>Decoration painted on a theatre wall (room.gdshaderinc).</summary>
+public enum WallFeature { None, Window, Door, ServicePanel }
 
 /// <summary>
 /// How a kind of surface responds to light, so skin, gloves, steel and cloth read apart under the same lamp.
@@ -33,9 +36,10 @@ public static class Materials
 
     // Hospital palette. Surgical green for walls and linens (it's easy on eyes that stare at red all day), ceil blue
     // for the second surgeon's scrubs, one cool fluorescent white for every room light but the surgical lamp.
-    // The operating room is a modern theatre instead: pale gray walls, blue drapes and a bluer LED white.
+    // The operating room is a modern theatre instead: pale tiles under blue paint, blue drapes and a bluer LED white.
     public static readonly Color SurgicalGreen = new(0.4f, 0.55f, 0.5f);
     public static readonly Color TheatreGray = new(0.7f, 0.73f, 0.74f);
+    public static readonly Color TheatreBlue = new(0.22f, 0.4f, 0.55f);
     public static readonly Color DrapeBlue = new(0.33f, 0.55f, 0.78f);
     public static readonly Color TheatreLight = new(0.93f, 0.97f, 1f);
     public static readonly Color PatientGown = new(0.52f, 0.64f, 0.6f);
@@ -130,15 +134,41 @@ public static class Materials
 
     /// <summary>Walls, floors and big furniture: no highlights, no outline, heavier grime fixed in the world.</summary>
     public static ShaderMaterial RoomSurface(Color color, float grime = 0.35f, Pattern pattern = Pattern.None) =>
-        Cached($"env|{color.ToHtml()}|{grime:0.00}|{pattern}", () =>
+        Cached($"env|{color.ToHtml()}|{grime:0.00}|{pattern}", () => RoomUnique(color, grime, pattern));
+
+    /// <summary>
+    /// A theatre wall: <paramref name="tiles"/> up to the rail, <paramref name="paint"/> above, and up to four
+    /// <paramref name="features"/> painted on, their areas along the wall and up in meters. <paramref name="axis"/> is
+    /// the world axis (x, z) that runs along the wall.
+    /// </summary>
+    public static ShaderMaterial TheatreWall(Color tiles, Color paint, Vector2 axis,
+        IReadOnlyList<(WallFeature Kind, Rect2 Area)> features)
+    {
+        var material = RoomUnique(tiles, 0.05f, Pattern.Wall);
+        material.SetShaderParameter("wall_axis", axis);
+        material.SetShaderParameter("wall_paint", paint);
+        var areas = new Vector4[4];
+        var kinds = new int[4];
+        for (var i = 0; i < features.Count; i++)
         {
-            var material = ToonUnique(color, grime, false, 0.85f);
-            material.SetShaderParameter("rim_strength", 0f);
-            material.SetShaderParameter("specular_strength", 0f);
-            material.SetShaderParameter("world_grime", true);
-            material.SetShaderParameter("pattern", (int)pattern);
-            return material;
-        });
+            var (kind, area) = features[i];
+            areas[i] = new Vector4(area.Position.X, area.Position.Y, area.End.X, area.End.Y);
+            kinds[i] = (int)kind;
+        }
+        material.SetShaderParameter("wall_features", areas);
+        material.SetShaderParameter("wall_feature_kinds", kinds);
+        return material;
+    }
+
+    private static ShaderMaterial RoomUnique(Color color, float grime, Pattern pattern)
+    {
+        var material = ToonUnique(color, grime, false, 0.85f);
+        material.SetShaderParameter("rim_strength", 0f);
+        material.SetShaderParameter("specular_strength", 0f);
+        material.SetShaderParameter("world_grime", true);
+        material.SetShaderParameter("pattern", (int)pattern);
+        return material;
+    }
 
     /// <summary>A family's shading in another color with a full outline, for furniture recolored per room.</summary>
     public static ShaderMaterial Furniture(string familyName, Color color, float roughness) =>

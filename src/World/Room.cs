@@ -154,18 +154,25 @@ public partial class Room : Node3D
     /// <summary>The operating room is a clean modern theatre; the other rooms keep the old green look.</summary>
     private bool Theatre => EnvironmentId == "or";
 
-    /// <summary>Theatre wall finish. Temporary switch while picking one: WALL=tiles or WALL=plaster.</summary>
-    private static Pattern WallPattern => OS.GetEnvironment("WALL") == "tiles" ? Pattern.Tiles : Pattern.Plaster;
+    /// <summary>Decoration painted on each theatre wall, by the wall's direction from the table: area along the wall
+    /// (x on the z walls, z on the x walls) and up, in meters. Windows sit above the stations against the wall, the
+    /// door where nothing stands in front of it.</summary>
+    private static readonly Dictionary<Vector3, (WallFeature Kind, Rect2 Area)[]> TheatreWalls = new()
+    {
+        [Vector3.Right] = [(WallFeature.Window, new(-1.3f, 1.15f, 1f, 1.1f)), (WallFeature.Window, new(0.3f, 1.15f, 1f, 1.1f))],
+        [Vector3.Left] = [(WallFeature.Door, new(-0.25f, 0f, 1.1f, 2.1f))],
+        [Vector3.Back] = [(WallFeature.Window, new(-0.25f, 1.15f, 1.2f, 1.1f))],
+        [Vector3.Forward] = [(WallFeature.ServicePanel, new(-1.35f, 1.25f, 1.1f, 0.22f))],
+    };
 
     private Color RoomLight => Theatre ? Materials.TheatreLight : Materials.Fluorescent;
 
-    /// <summary>Furniture recolored for the theatre: blue drapes, black pads and white laminate instead of wood.
+    /// <summary>Furniture recolored for the theatre: blue drapes and white laminate instead of wood.
     /// Material name -> material (see ModelSlot.Instantiate).</summary>
     private IReadOnlyDictionary<string, Material>? FurnitureLook => Theatre
         ? new Dictionary<string, Material>
         {
             ["gown"] = Materials.Furniture("cloth", Materials.DrapeBlue, 0.9f),
-            ["mattress"] = Materials.Furniture("cloth", new Color(0.1f, 0.1f, 0.11f), 0.8f),
             ["wood"] = Materials.Furniture("plastic", new Color(0.86f, 0.87f, 0.88f), 0.6f),
         }
         : null;
@@ -421,11 +428,10 @@ public partial class Room : Node3D
             return;
         }
         var wall = Theatre ? Materials.TheatreGray : new Color(0.75f, 0.78f, 0.8f);
-        var wallGrime = Theatre ? 0.05f : 0.3f;
         foreach (var side in (float[])[-1f, 1f])
         {
-            Wall(new Vector3(size.X, size.Y, 0.1f), new Vector3(0f, size.Y * 0.5f, side * size.Z * 0.5f), wall, wallGrime);
-            Wall(new Vector3(0.1f, size.Y, size.Z), new Vector3(side * size.X * 0.5f, size.Y * 0.5f, 0f), wall, wallGrime);
+            Wall(new Vector3(size.X, size.Y, 0.1f), new Vector3(0f, size.Y * 0.5f, side * size.Z * 0.5f), wall);
+            Wall(new Vector3(0.1f, size.Y, size.Z), new Vector3(side * size.X * 0.5f, size.Y * 0.5f, 0f), wall);
         }
         var ceiling = Theatre
             ? Shapes.Slab(this, size with { Y = 0.1f }, new Color(0.88f, 0.89f, 0.9f), new Vector3(0f, size.Y, 0f), 0.05f,
@@ -434,9 +440,18 @@ public partial class Room : Node3D
         ceiling.Name = "Ceiling";
     }
 
-    private void Wall(Vector3 size, Vector3 position, Color color, float grime)
+    private void Wall(Vector3 size, Vector3 position, Color color)
     {
-        Shapes.Slab(this, size, color, position, grime, Theatre ? WallPattern : Pattern.None);
+        if (Theatre)
+        {
+            var axis = size.X > size.Z ? new Vector2(1f, 0f) : new Vector2(0f, 1f);
+            var features = TheatreWalls[(position with { Y = 0f }).Normalized()];
+            Shapes.Slab(this, size, Materials.TheatreWall(color, Materials.TheatreBlue, axis, features), position);
+        }
+        else
+        {
+            Shapes.Slab(this, size, color, position, 0.3f);
+        }
         Shapes.StaticBox(this, size, position);
     }
 

@@ -53,9 +53,10 @@ overview, the data formats designers edit and the design decisions.
 - Palette (`Materials`): surgical green for walls, gowns and drapes, cool fluorescent white for every room light,
   a warmer white only for the surgical lamp. The two surgeons wear green and ceil blue scrubs.
   Colors outside that family are for things that should stand out: the red crash cart, blood, drug labels.
-  The operating room alone is a clean modern theatre: pale gray walls, a speckled gray floor, a ceiling of 60 cm
-  panels, blue drapes and black pads on the furniture, white laminate instead of wood, a bluer LED white for its lights.
-  Its walls, floor and ceiling carry almost no grime. Tools and people keep their colors.
+  The operating room alone is a clean modern theatre: white tiles up to a steel rail at 1 m and blue paint above,
+  a speckled gray floor, a ceiling of 60 cm panels, blue drapes on the furniture, white laminate instead of wood, a
+  bluer LED white for its lights. Windows with blinds, a door and an outlet panel are painted on the walls
+  (`room.gdshaderinc`), decoration only. Its walls, floor and ceiling carry almost no grime. Tools and people keep their colors.
 - Lighting: a ceiling panel light over the table lights the room from above, the surgical lamp's spot focuses
   on the site, dim tubes fill the corners. The theatre's lights are brighter and its ambient light neutral instead
   of green. Outside, the streetlight does the ceiling light's job.
