@@ -13,6 +13,10 @@ public class NetworkTest
         Run("sync", "host/client wounds, painted map, topology and handoff agree");
 
     [TestCase]
+    public void ClientForcepsPressedWhileLiftedTakeTheBulletOnTheHost() =>
+        Run("pinch", "the host sees a client's forceps, pressed while lifted, come down and take the bullet");
+
+    [TestCase]
     public void TenSecondClientStallKeepsSessionAndPausesInput() =>
         Run("stall", "a stalled client stays connected and its held input is paused");
 

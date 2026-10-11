@@ -185,8 +185,12 @@ public partial class Surgeon : CharacterBody3D
     {
         var h = Hands[hand];
         var awake = !Status.IsOut;
-        return new HandInput(h.Lowered && awake, h.Trigger && awake, h.Level, h.Speed, PeerId, Mods);
+        return new HandInput(h.Lowered && awake, h.Trigger && awake, h.Level, h.Speed, PeerId, Mods, HandStates);
     }
+
+    /// <summary>How many states the hands have had: one a physics frame for a local surgeon, one a received
+    /// <see cref="SyncState"/> for a remote one.</summary>
+    internal int HandStates { get; private set; }
 
     public bool IsStalled() => !IsLocal && Net.Instance.Silence(PeerId) > StallSeconds;
 
@@ -318,6 +322,7 @@ public partial class Surgeon : CharacterBody3D
         if (IsLocal)
         {
             LocalUpdate(dt);
+            HandStates++;
             _syncAccumulated += dt;
             if (_syncAccumulated >= SyncInterval && Net.Instance.IsOnline)
             {

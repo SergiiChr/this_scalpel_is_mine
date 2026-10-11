@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Two real Godot processes over ENet on localhost, for tests/Network/NetworkTest.cs. It prints what's wrong and
 # exits non-zero on the first problem.
-# Usage: network_runner.sh GODOT ROOT sync|stall
-# The drivers are tests/Support/NetDriver.cs (sync) and NetStallDriver.cs (stall), each started from its scene.
+# Usage: network_runner.sh GODOT ROOT sync|pinch|stall
+# The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch) and NetStallDriver.cs (stall), each
+# started from its scene.
 set -uo pipefail
 
 godot=$1
@@ -69,6 +70,19 @@ if [[ "$mode" == sync ]]; then
 	if [[ -z "$host_state" || "$host_state" != "$client_state" ]]; then
 		fail "host and client disagree: '$host_state' vs '$client_state'"
 	fi
+	exit 0
+fi
+
+if [[ "$mode" == pinch ]]; then
+	run NetPinchDriver host net_pinch_host &
+	host=$!
+	sleep 2
+	run NetPinchDriver client net_pinch_client &
+	client=$!
+	finished "$client" net_pinch_client
+	finished "$host" net_pinch_host
+	expect "$logs/net_pinch_client.log" "\[client\] forceps over the bullet"
+	expect "$logs/net_pinch_host.log" "\[host\] the client's forceps take the bullet"
 	exit 0
 fi
 

@@ -1,8 +1,11 @@
 namespace Scalpel.Tools;
 
 /// <summary>What the hand holding a tool does this frame: lowered onto its spot, Use tool held, the wheel's effort
-/// level, how fast the hand moves, whose hand and their quirks.</summary>
-public readonly record struct HandInput(bool Lowered, bool Trigger, int Level, float Speed, int Peer, Modifiers Mods);
+/// level, how fast the hand moves, whose hand and their quirks.
+/// States counts the hand's states so far (Surgeon.HandStates): a remote hand's only change when one arrives, so a
+/// frame where it stays put may only mean nothing new came.</summary>
+public readonly record struct HandInput(bool Lowered, bool Trigger, int Level, float Speed, int Peer, Modifiers Mods,
+    int States = 0);
 
 /// <summary>
 /// One frame of a held tool at work: what the hand does and what just changed (pressed, released, a higher level, come
