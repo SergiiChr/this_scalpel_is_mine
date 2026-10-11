@@ -42,6 +42,24 @@ class CoverageReportingTest(unittest.TestCase):
         xml = ElementTree.parse(self.root / "test-results" / "Example.xml")
         self.assertIsNotNone(xml.find("testcase/skipped"))
 
+    def test_errors_keep_their_stack_trace(self) -> None:
+        output = "\n".join(
+            [
+                "ERROR: System.InvalidOperationException: The underlying collection was modified.",
+                "   at System.Collections.Concurrent.BlockingCollection`1.TryTake()",
+                "   at: void Godot.GodotSynchronizationContext.ExecutePendingContinuations()",
+                "next line",
+            ]
+        )
+        self.assertEqual(
+            build.godot_errors(output),
+            [
+                "ERROR: System.InvalidOperationException: The underlying collection was modified.\n"
+                "       at System.Collections.Concurrent.BlockingCollection`1.TryTake()\n"
+                "       at: void Godot.GodotSynchronizationContext.ExecutePendingContinuations()"
+            ],
+        )
+
     def test_empty_suite_is_skipped(self) -> None:
         self.assertTrue(build.report(build.run_suite(self.suite, self.options)).startswith("skip "))
 

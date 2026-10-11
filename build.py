@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import itertools
 import os
 import re
 import shutil
@@ -65,6 +66,8 @@ ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
 NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
+# Stack trace lines kept under an error: enough to show where it came from.
+STACK_LINES = 12
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
@@ -76,8 +79,16 @@ def run(command: Sequence[str | Path], **kwargs: object) -> None:
 
 
 def godot_errors(output: str) -> list[str]:
-    """The error lines in Godot's output, each once. Engine leak reports printed while quitting are noise."""
-    return list(dict.fromkeys(line.strip() for line in output.splitlines() if ERRORS.search(line) and not NOISE.search(line)))
+    """The error lines in Godot's output, each once, with the first STACK_LINES lines of the stack trace that follows an
+    exception: without them a report can't say where an error came from. Engine leak reports printed while quitting are
+    noise."""
+    lines = output.splitlines()
+    found = []
+    for index, line in enumerate(lines):
+        if ERRORS.search(line) and not NOISE.search(line):
+            stack = itertools.takewhile(lambda frame: frame.lstrip().startswith("at"), lines[index + 1 :])
+            found.append("\n       ".join([line.strip(), *(frame.strip() for frame in itertools.islice(stack, STACK_LINES))]))
+    return list(dict.fromkeys(found))
 
 
 def run_godot(name: str, command: Sequence[str | Path]) -> None:
