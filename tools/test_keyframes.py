@@ -83,13 +83,26 @@ class KeyFramesTest(unittest.TestCase):
         self.take("01_close")
         self.take("02_gone")
         keyframes.update(self.run_frames, self.baseline)
-        unchanged = (self.baseline / "scalpel" / "00_cut_top.jpg").stat().st_mtime_ns
+        unchanged = (self.baseline / "scalpel" / "00_cut_top.jpg").read_bytes()
         self.take("01_close", line=3)
         for path in (self.run_frames / "scalpel").glob("02_gone_*.png"):
             path.unlink()
         self.assertEqual(keyframes.update(self.run_frames, self.baseline), 2)
-        self.assertEqual((self.baseline / "scalpel" / "00_cut_top.jpg").stat().st_mtime_ns, unchanged)
+        self.assertEqual((self.baseline / "scalpel" / "00_cut_top.jpg").read_bytes(), unchanged)
         self.assertFalse((self.baseline / "scalpel" / "02_gone_top.jpg").exists())
+        self.assertEqual(self.differ(), 0)
+
+    def test_frames_sharing_a_name_survive_a_shift_in_order(self) -> None:
+        self.take("00_cut")
+        self.take("01_cut", line=2)
+        keyframes.update(self.run_frames, self.baseline)
+        for path in (self.run_frames / "scalpel").glob("*.png"):
+            path.unlink()
+        # A key frame taken before them pushes both a place on; the first of them changed.
+        self.take("00_open")
+        self.take("01_cut", shift=3)
+        self.take("02_cut", line=2)
+        keyframes.update(self.run_frames, self.baseline)
         self.assertEqual(self.differ(), 0)
 
     def test_folder_of_a_test_without_key_frames_goes(self) -> None:

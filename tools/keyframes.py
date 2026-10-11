@@ -248,29 +248,34 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
 
 def update(current_root: Path, baseline_root: Path) -> int:
     """Writes the key frames that differ from the baseline into it and deletes the ones the run no longer takes.
-    Unchanged key frames keep their files, so they cost nothing in git. Returns how many key frames were written or
-    deleted."""
+    Unchanged key frames keep their bytes, so they cost nothing in git; they only take the run's file name when its
+    order prefix moved, which git sees as a rename. Returns how many key frames were written or deleted."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
+    # Every file's new bytes are read before any is written: under the run's names, a key frame may take a file another
+    # one still has.
+    files: dict[Path, bytes] = {}
     written = 0
-    for key in current.keys() | baseline.keys():
-        frame, before = current.get(key), baseline.get(key)
-        if state(frame, before)[0] == "unchanged":
-            continue
-        written += 1
-        if before:
-            for path in before.views.values():
-                path.unlink()
-        if frame:
-            for path in frame.views.values():
-                target = baseline_root / frame.folder / path.with_suffix(BASELINE_SUFFIX).name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(stored(path))
-    # Descriptions follow the run, whose wording may have changed with the same pictures. A key frame keeps its baseline
-    # file name, which may carry another order prefix than the run's.
-    kept = key_frames(baseline_root)
+    for key, frame in current.items():
+        before = baseline.get(key)
+        unchanged = state(frame, before)[0] == "unchanged"
+        written += not unchanged
+        for view, path in frame.views.items():
+            files[baseline_root / frame.folder / path.with_suffix(BASELINE_SUFFIX).name] = (
+                before.views[view].read_bytes() if before and unchanged else stored(path)
+            )
+    written += len(baseline.keys() - current.keys())
+    for frame in baseline.values():
+        for path in frame.views.values():
+            path.unlink()
+    for target, data in files.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    # Descriptions follow the run, whose wording may have changed with the same pictures.
     for folder in {key[0] for key in baseline.keys() | current.keys()}:
         index = baseline_root / folder / DESCRIPTIONS
-        descriptions = {path.name: current[key].description for key, frame in kept.items() if key[0] == folder for path in frame.views.values()}
+        descriptions = {
+            path.with_suffix(BASELINE_SUFFIX).name: frame.description for frame in current.values() if frame.folder == folder for path in frame.views.values()
+        }
         if descriptions:
             index.write_text(json.dumps(descriptions, indent=2, sort_keys=True) + "\n")
             continue
