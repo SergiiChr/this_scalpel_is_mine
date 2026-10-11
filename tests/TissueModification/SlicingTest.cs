@@ -172,6 +172,7 @@ public class SlicingTest
         Check(Open(first, TissueDepth.Skin) && !Open(first, TissueDepth.Fat),
             $"after the first 2 cm the skin is open, nothing under it is cut ({Layers(first)})");
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
+        CheckLayersUnderSkin();
         await ShotsOf(slice.Id, "03_moved_low");
 
         // Medium: deeper, then 2 cm more.
@@ -192,6 +193,7 @@ public class SlicingTest
             Check(Under(second, "bone"), "a bone lies under the cut muscle");
         }
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
+        CheckLayersUnderSkin();
         await ShotsOf(slice.Id, "05_moved_medium");
 
         // High.
@@ -217,6 +219,7 @@ public class SlicingTest
             Check(!patient.Wounds.Any(w => w.Kind == WoundKind.Internal),
                 "cutting through the muscle nicks nothing inside");
             Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
+            CheckLayersUnderSkin();
             await ShotsOf(slice.Id, "07_moved_high");
         }
         _hand.Lowered = false;
@@ -677,6 +680,12 @@ public class SlicingTest
 
     /// <summary>Logs the check and the state of the tip and the wounds after it (the log reads as the run's story),
     /// then asserts it.</summary>
+    private void CheckLayersUnderSkin()
+    {
+        var through = TissueLayers.ThroughSkin(_surgery.Patient.Body);
+        Check(through.Count == 0, $"the fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(3))})");
+    }
+
     private void Check(bool ok, string what)
     {
         GD.Print((ok ? "    ok   " : "FAIL: ") + what);

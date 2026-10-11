@@ -44,10 +44,10 @@ float noise(vec2 p) {
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
-	vec4 w = textureLod(wound_map, UV, 0.0);
-	// Bruises and burns swell, blood stands on top. Cuts don't sink: here the mesh itself is split along them.
-	VERTEX.y += w.b * 0.002 + smoothstep(0.1, 0.5, w.g) * 0.0015;
-	VERTEX.y += blood_thickness(textureLod(fluid_map, UV, 0.0).r);
+	// Not raised by bruises, burns or blood, like the body's skin (toon.gdshader): raised, this sheet would lift off
+	// the walls down its cuts and off the layers under it, which don't rise with it, and step up where it meets the
+	// body. Blood reads as standing on it from its lighting (blood_normal) alone. Cuts don't sink: the mesh itself is
+	// split along them.
 	vec3 camera = (inverse(MODEL_MATRIX) * vec4(MAIN_CAM_INV_VIEW_MATRIX[3].xyz, 1.0)).xyz;
 	VERTEX += normalize(camera - VERTEX) * DEPTH_BIAS;
 }

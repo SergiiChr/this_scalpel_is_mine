@@ -30,12 +30,24 @@ public class PulledSkinTest
     /// up, and a little back toward its hinge, so the flap lifts and humps up.</summary>
     private static readonly Vector3 FlapPull = new(0f, 0.6f, 0.15f);
     private const int GripKey = 900;
+    /// <summary>Whether the fat and muscle are held to stay under the skin (TissueLayers.AssertUnderSkin()).</summary>
+    private bool _underSkin;
 
     [TestCase("appendectomy")]
     [TestCase("leg_extension")]
-    public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario)
+    public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario) =>
+        await PulledLipAndFlap(scenario, underSkin: scenario == "appendectomy");
+
+    /// <summary>The thigh's skin bunches into a wave ahead of the grip, folded within a cell of the grid, and the fat
+    /// and muscle drawn under the wave pass through its folds.</summary>
+    [TestCategory("broken")]
+    [TestCase("leg_extension", Description = "BROKEN: under the wave of skin bunched ahead of the grip on the thigh, the fat and muscle pass through the skin's folds")]
+    public async Task DeepLayersStayUnderBunchedSkin(string scenario) => await PulledLipAndFlap(scenario, underSkin: true);
+
+    private async Task PulledLipAndFlap(string scenario, bool underSkin)
     {
         var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}");
+        _underSkin = underSkin;
         var driver = session.Driver;
         var body = driver.Body;
         var tissue = body.Tissue;
@@ -143,9 +155,13 @@ public class PulledSkinTest
         }
     }
 
-    private static Task AssertNothingClips(SurgeryDriver driver) => driver.Unbudgeted(() =>
+    private Task AssertNothingClips(SurgeryDriver driver) => driver.Unbudgeted(() =>
     {
         AssertTissueSheetsDoNotIntersect(driver.Body);
+        if (_underSkin)
+        {
+            TissueLayers.AssertUnderSkin(driver.Body);
+        }
         AssertSkinDoesNotCrossDrape(driver.Body);
         return Task.CompletedTask;
     });
@@ -171,7 +187,7 @@ public class PulledSkinTest
             for (var t = 0; t < skinIndices.Length; t += 3)
             {
                 var (a, b, c) = (skinVertices[skinIndices[t]], skinVertices[skinIndices[t + 1]], skinVertices[skinIndices[t + 2]]);
-                var w = Barycentric(flat, new Vector2(a.X, a.Z), new Vector2(b.X, b.Z), new Vector2(c.X, c.Z));
+                var w = TissueLayers.Barycentric(flat, new Vector2(a.X, a.Z), new Vector2(b.X, b.Z), new Vector2(c.X, c.Z));
                 if (w.X >= 0f && w.Y >= 0f && w.Z >= 0f && a.Y * w.X + b.Y * w.Y + c.Y * w.Z > at.Y)
                 {
                     return false;
@@ -214,8 +230,8 @@ public class PulledSkinTest
                 {
                     continue;
                 }
-                if (Crosses(p, q, x, y, z) || Crosses(q, r, x, y, z) || Crosses(r, p, x, y, z)
-                    || Crosses(x, y, p, q, r) || Crosses(y, z, p, q, r) || Crosses(z, x, p, q, r))
+                if (TissueLayers.Crosses(p, q, x, y, z) || TissueLayers.Crosses(q, r, x, y, z) || TissueLayers.Crosses(r, p, x, y, z)
+                    || TissueLayers.Crosses(x, y, p, q, r) || TissueLayers.Crosses(y, z, p, q, r) || TissueLayers.Crosses(z, x, p, q, r))
                 {
                     var at = (p + q + r) / 3f;
                     intersections.Add($"{layer} at {body.LocalToUv(at)} through {other} at {body.LocalToUv((x + y + z) / 3f)}");
@@ -262,8 +278,8 @@ public class PulledSkinTest
                 var otherHigh = x.Max(y).Max(z);
                 if (low.X > otherHigh.X || high.X < otherLow.X || low.Y > otherHigh.Y || high.Y < otherLow.Y
                     || low.Z > otherHigh.Z || high.Z < otherLow.Z) { continue; }
-                if (Crosses(a, b, x, y, z) || Crosses(b, c, x, y, z) || Crosses(c, a, x, y, z)
-                    || Crosses(x, y, a, b, c) || Crosses(y, z, a, b, c) || Crosses(z, x, a, b, c))
+                if (TissueLayers.Crosses(a, b, x, y, z) || TissueLayers.Crosses(b, c, x, y, z) || TissueLayers.Crosses(c, a, x, y, z)
+                    || TissueLayers.Crosses(x, y, a, b, c) || TissueLayers.Crosses(y, z, a, b, c) || TissueLayers.Crosses(z, x, a, b, c))
                 {
                     crossings++;
                 }
@@ -271,45 +287,5 @@ public class PulledSkinTest
         }
         AssertInt(crossings).OverrideFailureMessage($"exposed skin does not pass through the drape ({crossings} triangle crossings)")
             .IsEqual(0);
-    }
-
-    private static Vector3 Barycentric(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
-    {
-        var area = (b - a).Cross(c - a);
-        if (Mathf.Abs(area) < 1e-12f)
-        {
-            return new Vector3(-1f, -1f, -1f);
-        }
-        var wb = (p - a).Cross(c - a) / area;
-        var wc = (b - a).Cross(p - a) / area;
-        return new Vector3(1f - wb - wc, wb, wc);
-    }
-
-    /// <summary>Strict interior intersection: adjacent triangles touching at shared vertices/edges don't count.</summary>
-    private static bool Crosses(Vector3 from, Vector3 to, Vector3 a, Vector3 b, Vector3 c)
-    {
-        var direction = to - from;
-        var ab = b - a;
-        var ac = c - a;
-        var normal = ab.Cross(ac).Normalized();
-        var fromSide = (from - a).Dot(normal);
-        var toSide = (to - a).Dot(normal);
-        // Float roundoff on nearly coplanar, adjoining faces isn't penetration. Require the segment to pass
-        // through both sides by 20 micrometres (far below a visible crease or the skin's thickness).
-        const float ContactTolerance = 0.00002f;
-        if (fromSide * toSide >= 0f || Mathf.Abs(fromSide) < ContactTolerance || Mathf.Abs(toSide) < ContactTolerance)
-        {
-            return false;
-        }
-        var h = direction.Cross(ac);
-        var det = ab.Dot(h);
-        if (Mathf.Abs(det) < 1e-12f) { return false; }
-        var offset = from - a;
-        var u = offset.Dot(h) / det;
-        var q = offset.Cross(ab);
-        var v = direction.Dot(q) / det;
-        var t = ac.Dot(q) / det;
-        const float Margin = 0.0001f;
-        return u > Margin && v > Margin && u + v < 1f - Margin && t > Margin && t < 1f - Margin;
     }
 }

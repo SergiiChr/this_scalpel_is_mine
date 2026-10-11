@@ -369,7 +369,11 @@ public partial class PatientBody
                 if (_renderPoints[layer].Length != Tissue.Pos.Length) { _renderPoints[layer] = new Vector3[Tissue.Pos.Length]; }
                 foreach (var k in _around)
                 {
-                    _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !Tissue.Exposed[k] ? _skinOf[k] : LayerPoint(layer, k);
+                    // The layers under the skin move with it where the drape's cloth pushed it (PlaceParticles()):
+                    // placed from the sim alone they would come out beside or through the skin at the opening's rim.
+                    _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !Tissue.Exposed[k]
+                        ? _skinOf[k]
+                        : LayerPoint(layer, k) + (_skinOf[k] - LayerPoint(0, k));
                 }
             }
         }
@@ -835,16 +839,14 @@ public partial class PatientBody
             // The model's own normal where the skin rests, turning with the skin as it moves (a flap keeps its own).
             var normal = (GridNormal(_skinOf, k, respectCuts: true) + _normalFit[k] * (1f - moved)).Normalized();
             _normal[k] = normal;
-            // A wave keeps its deeper tissue below the skin. Rotating a thick layer's offset with every small
-            // crease lets it poke through the next row of skin. Only a deliberate turnover rotates the stack.
+            // The layers under skin that has moved lie along its normal: offset straight down from a wave's steep
+            // flank, the fat would come out through the skin of the next row down it. Skin lying where it rests
+            // keeps the plain vertical offset, so its small creases don't swing a thick layer about.
             var turned = Tissue.TurningFlap
                 ? Mathf.SmoothStep(TissueSim.TurnoverReach * 0.75f, TissueSim.TurnoverReach * 1.25f, distance)
                 : 0f;
-            var axis = Vector3.Up.Cross(normal);
-            axis = axis.IsZeroApprox() ? Vector3.Right : axis.Normalized();
-            _outward[k] = turned > 0f
-                ? Vector3.Up.Rotated(axis, Mathf.Acos(Mathf.Clamp(normal.Y, -1f, 1f)) * turned)
-                : Vector3.Up;
+            var lean = Mathf.Max(turned, moved);
+            _outward[k] = lean > 0f ? Vector3.Up.Slerp(normal, lean).Normalized() : Vector3.Up;
         }
     }
 
@@ -882,7 +884,7 @@ public partial class PatientBody
         var thickness = layer switch { 0 => SkinThickness, 1 => FatThickness, _ => MuscleThickness };
         foreach (var k in _around)
         {
-            _pointOf[k] = _renderPoints[layer][k] - _outward[k] * depth;
+            _pointOf[k] = _renderPoints[layer][k] - Outward(layer, k) * depth;
         }
         var vertexCount = plan.Owner.Count;
         var vertices = new Vector3[vertexCount];
@@ -916,6 +918,17 @@ public partial class PatientBody
             normals[v] = _normal[k];
         }
         ConstrainLipArea(plan, vertices);
+        if (layer == 0)
+        {
+            RememberSkinSheet(plan, vertices);
+        }
+        else
+        {
+            for (var v = 0; v < vertexCount; v++)
+            {
+                vertices[v] = AboveSkinUnder(vertices[v], plan.Owner[v]);
+            }
+        }
         var faceNormals = new Vector3[vertexCount];
         for (var t = 0; t < plan.Index.Count; t += 3)
         {
@@ -967,10 +980,10 @@ public partial class PatientBody
             var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
             var topA = vertices[a];
             var topB = vertices[b];
-            var outA = _outward[plan.Owner[a]];
-            var outB = _outward[plan.Owner[b]];
-            var bottomA = topA - outA * thickness;
-            var bottomB = topB - outB * thickness;
+            var outA = Outward(layer, plan.Owner[a]);
+            var outB = Outward(layer, plan.Owner[b]);
+            var bottomA = AboveSkinUnder(topA - outA * thickness, plan.Owner[a]);
+            var bottomB = AboveSkinUnder(topB - outB * thickness, plan.Owner[b]);
             var normal = (topB - topA).Cross(bottomA - topA).Normalized();
             // Facing into the cut, away from this side's own skin.
             if (normal.Dot(topA - vertices[plan.Wall[w + 2]]) < 0f)
@@ -978,7 +991,7 @@ public partial class PatientBody
                 normal = -normal;
             }
             var mid = LipMidpoint(plan, vertices, a, b);
-            var midBottom = mid - (outA + outB).Normalized() * thickness;
+            var midBottom = AboveSkinUnder(mid - (outA + outB).Normalized() * thickness, plan.Owner[a]);
             var midUv = plan.Uv[a].Lerp(plan.Uv[b], 0.5f);
             foreach (var (start, end, lowStart, lowEnd, uvStart, uvEnd) in new[]
                 { (topA, mid, bottomA, midBottom, plan.Uv[a], midUv), (mid, topB, midBottom, bottomB, midUv, plan.Uv[b]) })
@@ -1003,6 +1016,115 @@ public partial class PatientBody
             MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. plan.RefinedIndex]),
             MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors]));
     }
+
+    /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
+    /// AboveSkinUnder(). The layers under the skin are filled after it from the same captured positions.</summary>
+    private Vector3[] _skinSheet = [];
+    private List<int> _skinSheetIndex = [];
+    private List<int> _skinSheetOwner = [];
+    private readonly Dictionary<Vector2I, List<int>> _skinBuckets = [];
+    private const float SkinBucket = 0.01f;
+    /// <summary>Skin under a point lies at least this far (meters) below the point's own skin: the skin beside its
+    /// own grid point, down a slope, brings no skin under anything.</summary>
+    private const float UnderSkinDrop = 0.004f;
+    /// <summary>How far (meters) what hangs under lifted skin stays above the skin it has come to lie over.</summary>
+    private const float OverSkinBelow = 0.001f;
+
+    private static readonly Vector3[] Around = [Vector3.Zero, Vector3.Right, Vector3.Left, Vector3.Back, Vector3.Forward];
+
+    private void RememberSkinSheet(LayerPlan plan, Vector3[] vertices)
+    {
+        _skinSheet = vertices;
+        _skinSheetIndex = plan.Index;
+        _skinSheetOwner = plan.Owner;
+        foreach (var bucket in _skinBuckets.Values)
+        {
+            bucket.Clear();
+        }
+        for (var t = 0; t < plan.Index.Count; t += 3)
+        {
+            var (a, b, c) = (vertices[plan.Index[t]], vertices[plan.Index[t + 1]], vertices[plan.Index[t + 2]]);
+            var low = SkinCell(a.Min(b).Min(c));
+            var high = SkinCell(a.Max(b).Max(c));
+            for (var x = low.X; x <= high.X; x++)
+            {
+                for (var z = low.Y; z <= high.Y; z++)
+                {
+                    if (!_skinBuckets.TryGetValue(new Vector2I(x, z), out var bucket))
+                    {
+                        _skinBuckets[new Vector2I(x, z)] = bucket = [];
+                    }
+                    bucket.Add(t);
+                }
+            }
+        }
+    }
+
+    private static Vector2I SkinCell(Vector3 at) =>
+        new(Mathf.FloorToInt(at.X / SkinBucket), Mathf.FloorToInt(at.Z / SkinBucket));
+
+    /// <summary>
+    /// <paramref name="point"/> of a layer under the skin, owned by grid point <paramref name="k"/>, kept above any
+    /// skin lying under it: a lip lifted and drawn over the skin beside it carries its fat and muscle along, and
+    /// they flatten onto that skin instead of hanging through it. Skin under the point is any skin not drawn from
+    /// k itself lying UnderSkinDrop or more below k's own: under a lip it is the sheet the lip was pulled over,
+    /// under a mound of bunched skin that curls over, the mound's own far flank.
+    /// </summary>
+    private Vector3 AboveSkinUnder(Vector3 point, int k)
+    {
+        bool Own(int v) => _skinSheetOwner[v] == k;
+        var own = _renderPoints[0][k].Y - UnderSkinDrop;
+        var floor = float.NaN;
+        // Around the point as well as under it: the skin under a lifted row ends somewhere between its grid points,
+        // and the triangles drawn between them would cut through that skin's edge.
+        var reach = Mathf.Min(SiteSize.X / Tissue.ResX, SiteSize.Y / Tissue.ResY) * 0.5f;
+        foreach (var around in Around)
+        {
+            var sample = point + around * reach;
+            if (!_skinBuckets.TryGetValue(SkinCell(sample), out var bucket))
+            {
+                continue;
+            }
+            foreach (var t in bucket)
+            {
+                // Skin drawn from the point's own grid vertex is the skin it hangs from.
+                if (Own(_skinSheetIndex[t]) || Own(_skinSheetIndex[t + 1]) || Own(_skinSheetIndex[t + 2]))
+                {
+                    continue;
+                }
+                var (a, b, c) = (_skinSheet[_skinSheetIndex[t]], _skinSheet[_skinSheetIndex[t + 1]], _skinSheet[_skinSheetIndex[t + 2]]);
+                var area = (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
+                if (Mathf.Abs(area) < 1e-12f)
+                {
+                    continue;
+                }
+                var wb = ((sample.X - a.X) * (c.Z - a.Z) - (sample.Z - a.Z) * (c.X - a.X)) / area;
+                var wc = ((b.X - a.X) * (sample.Z - a.Z) - (b.Z - a.Z) * (sample.X - a.X)) / area;
+                var wa = 1f - wb - wc;
+                if (wa < -0.001f || wb < -0.001f || wc < -0.001f)
+                {
+                    continue;
+                }
+                var height = a.Y * wa + b.Y * wb + c.Y * wc;
+                if (height < own && (float.IsNaN(floor) || height > floor))
+                {
+                    floor = height;
+                }
+            }
+        }
+        if (!float.IsNaN(floor) && point.Y < floor + OverSkinBelow)
+        {
+            point.Y = floor + OverSkinBelow;
+        }
+        return point;
+    }
+
+    /// <summary>Which way down from the skin a layer's grid point k lies: along the skin's own normal where it has
+    /// moved (_outward, PlaceParticles()) for a layer that moves with the skin, straight down for a tethered layer
+    /// that stayed on its bed under the skin's wave, unless a flap is turning right over and takes everything.
+    /// </summary>
+    private Vector3 Outward(int layer, int k) =>
+        float.IsPositiveInfinity(LayerTether[layer]) || _renderTurnover ? _outward[k] : Vector3.Up;
 
     private readonly ContactSurface _clothFaces = new();
 
