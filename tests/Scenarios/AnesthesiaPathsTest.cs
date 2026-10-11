@@ -80,21 +80,28 @@ public class AnesthesiaPathsTest
     public async Task HandStitchLidocaineAllergyUnderGeneralAnesthesia(string scenario)
     {
         // No key frames here: under a display a software renderer would draw every frame of the whole surgery.
+        var rendering = RenderingServer.RenderLoopEnabled;
         RenderingServer.RenderLoopEnabled = false;
-        var driver = SurgeryDriver.Create();
-        await driver.Start(scenario, patientQuirks: [new QuirkRoll("allergy", "lidocaine")]);
-        var surgery = driver.Surgery;
-        await driver.PlayerSetsIv();
-        await driver.PlayerSanitizesSite(0.5f);
-        await driver.PlayerAnesthetizes();
-        await driver.PlayerClosesWounds();
-        await driver.PlayerStopsBleeding(0.2f);
-        await Frames.Until(() => surgery.Finished, 120f);
-        AssertBool(surgery.Report?.Success == true)
-            .OverrideFailureMessage($"{scenario} ends in success under general anesthesia: "
-                + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
-            .IsTrue();
-        await driver.Stop();
-        RenderingServer.RenderLoopEnabled = true;
+        try
+        {
+            var driver = SurgeryDriver.Create();
+            await driver.Start(scenario, patientQuirks: [new QuirkRoll("allergy", "lidocaine")]);
+            var surgery = driver.Surgery;
+            await driver.PlayerSetsIv();
+            await driver.PlayerSanitizesSite(0.5f);
+            await driver.PlayerAnesthetizes();
+            await driver.PlayerClosesWounds();
+            await driver.PlayerStopsBleeding(0.2f);
+            await Frames.Until(() => surgery.Finished, 120f);
+            AssertBool(surgery.Report?.Success == true)
+                .OverrideFailureMessage($"{scenario} ends in success under general anesthesia: "
+                    + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
+                .IsTrue();
+            await driver.Stop();
+        }
+        finally
+        {
+            RenderingServer.RenderLoopEnabled = rendering;
+        }
     }
 }
