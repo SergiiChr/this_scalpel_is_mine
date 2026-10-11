@@ -32,5 +32,5 @@ description: Run the full regression with key frames, review only the key frames
   task, and don't skip the review of the key frames your change touches.
 - After rebasing onto a main with other key frames, take main's `tests/KeyFrames`, then review and generate again.
 
-`screenshot_review --no-run` rebuilds the report from the last run's key frames. `--all` also makes sheets for unchanged key frames, for
-a review from scratch.
+`screenshot_review --no-run` rebuilds the report from the last run's key frames. `--all` also makes sheets for
+unchanged key frames, for a review from scratch.
