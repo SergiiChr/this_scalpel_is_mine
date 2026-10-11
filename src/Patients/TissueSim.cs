@@ -1570,7 +1570,7 @@ public sealed class TissueSim
         // its neighbour, so a single sweep would leave folds that fit the skin but not its underlying thickness.
         SeparateFoldNeighbors();
         FindCompressedCells();
-        for (var pass = 0; pass < 32 && _foldActive && !_turnedOver; pass++)
+        for (var pass = 0; pass < 8 && _foldActive && !_turnedOver; pass++)
         {
             if (!PreserveLocalArea(pass % 2 != 0, compressedOnly: true)) { break; }
         }

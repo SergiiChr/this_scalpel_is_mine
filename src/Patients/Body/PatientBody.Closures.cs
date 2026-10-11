@@ -148,11 +148,13 @@ public partial class PatientBody
     /// follows its needle.</summary>
     internal void UpdateSutures()
     {
-        var tissueChanged = _sutureSteps != Tissue.StepsDone || _sutureTopology != Tissue.TopologyVersion;
+        // Routes sit on the rendered sheet. Rebuild them when that sheet is published, rather than
+        // repeating surface queries on a solver frame while the displayed geometry is unchanged.
+        var tissueChanged = _sutureSteps != _layerSteps || _sutureTopology != _layerVersion;
         if (tissueChanged)
         {
-            _sutureSteps = Tissue.StepsDone;
-            _sutureTopology = Tissue.TopologyVersion;
+            _sutureSteps = _layerSteps;
+            _sutureTopology = _layerVersion;
         }
         foreach (var id in Tissue.ThreadIds)
         {
