@@ -25,9 +25,7 @@ Suites with no runnable cases selected are reported as skipped, including suites
 If runnable cases are selected but their test process executes none, the suite fails. If the entire selection executes
 no cases, the command also fails.
 
-Regular GitHub Actions runs smoke and full functional regression headlessly, then exports the game. The separate
-`Visual capture` workflow is manually triggered with `workflow_dispatch`; it captures key frames from every
-`visual_confirmation` suite for review in its `visual-results` artifact. It does not automatically compare screenshots.
+GitHub Actions runs smoke and full functional regression headlessly, then exports the game. It takes no key frames.
 
 - `./build.py test`: smoke suites, fast and headless. Run this first.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
@@ -111,10 +109,11 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   the full regression passed, and only after every sheet the report lists looks right. Never commit key frames of a
   failed run, of a focused run, of a case marked broken, or ones that show a defect; never edit the folder by hand.
   A change with no missing, changed or new key frames leaves it untouched.
-- Key frames are compared in local runs only; the `Visual capture` workflow takes them but compares nothing. They are
-  always rendered in a virtual display by the software renderer (`xvfb-run`), without film grain, so machines save
-  the same or nearly the same pixels for the same scene. The review errs toward listing a key frame: a faint change
-  over the whole view counts, so a sheet may show no visible difference.
+- Key frames are taken and compared in local runs only, never on CI.
+  They are always rendered in a virtual display by the software renderer (`xvfb-run`), without film grain, so machines
+  save the same or nearly the same pixels for the same scene.
+  The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show no
+  visible difference.
 
 ## Frame-time budget
 
