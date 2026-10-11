@@ -1269,7 +1269,13 @@ public partial class PatientBody
     {
         var moved = Moved(k);
         var freed = float.IsPositiveInfinity(LayerTether[layer]) ? 1f : Tissue.Freed(LayerDepth[layer], k);
-        if (Tissue.TurningFlap)
+        // A flap turned over takes everything with it, right to its hinge, and keeps it once the hands have let
+        // go of it.
+        if (Tissue.Turned(k))
+        {
+            freed = 1f;
+        }
+        else if (Tissue.TurningFlap)
         {
             freed = Mathf.Max(freed, Mathf.Clamp(moved.Length() / TissueSim.TurnoverReach, 0f, 1f));
         }

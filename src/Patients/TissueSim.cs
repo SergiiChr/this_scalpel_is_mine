@@ -216,6 +216,8 @@ public sealed partial class TissueSim
     internal bool NearFold(int k) => k < _fold.Near.Length && _fold.Near[k] > 0f;
     internal bool HoldingFold => _fold.Active && !_fold.TurnedOver;
     internal bool TurningFlap => _fold.TurnedOver;
+    /// <summary>Whether particle k went with a flap turned over (TurningFlap) and still lies folded back.</summary>
+    internal bool Turned(int k) => k < _turned.Length && _turned[k];
     /// <summary>Lift (meters, along the surface normal) of stitched cut edges, see <see cref="SuturePucker"/>. A thread
     /// pulls the edges together in the surface plane: lifted apart from that, they rise into a lip instead of passing
     /// through each other.</summary>
@@ -1728,6 +1730,7 @@ public sealed partial class TissueSim
             _free[pin.Particle] = 0f;
         }
         UpdateFoldState();
+        TrackTurned();
         if (_fold.Bending) { IndexSprings(); }
         for (var iteration = 0; iteration < Iterations; iteration++)
         {

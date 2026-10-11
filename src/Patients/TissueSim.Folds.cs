@@ -129,15 +129,41 @@ public sealed partial class TissueSim
         if (_fold.TurnedOver) { return; }
         foreach (var k in _winParticles)
         {
+            if (_turned[k]) { continue; }
             var at = CellOf(k);
-            if (at.X + 2 <= ResX && SpringWhole(SpringRight[k]) && SpringWhole(SpringRight[k + 1]))
+            if (at.X + 2 <= ResX && SpringWhole(SpringRight[k]) && SpringWhole(SpringRight[k + 1]) && !_turned[k + 2])
             {
                 RoundBend(k, k + 2);
             }
             var below = k + ResX + 1;
-            if (at.Y + 2 <= ResY && SpringWhole(SpringDown[k]) && SpringWhole(SpringDown[below]))
+            if (at.Y + 2 <= ResY && SpringWhole(SpringDown[k]) && SpringWhole(SpringDown[below]) && !_turned[below + ResX + 1])
             {
                 RoundBend(k, below + ResX + 1);
+            }
+        }
+    }
+
+    /// <summary>Which particles a flap took with it as it was turned over (TurnedOver): they lie folded back, and
+    /// stay exempt from the sheet's shape constraints (KeepBendsRound(), KeepUpright()) until they come back to
+    /// where they rest, or the constraints would unfold the flap once the hands let go.</summary>
+    private bool[] _turned = [];
+
+    private void TrackTurned()
+    {
+        if (_turned.Length != Pos.Length)
+        {
+            _turned = new bool[Pos.Length];
+        }
+        foreach (var k in _winParticles)
+        {
+            var moved = Pos[k].DistanceSquaredTo(Settled.Length == Pos.Length ? Settled[k] : Rest[k]);
+            if (_fold.TurnedOver && moved > LiftedOff * LiftedOff)
+            {
+                _turned[k] = true;
+            }
+            else if (moved < LiftedOff * LiftedOff)
+            {
+                _turned[k] = false;
             }
         }
     }
@@ -168,9 +194,10 @@ public sealed partial class TissueSim
         if (_fold.TurnedOver) { return; }
         foreach (var k in _winParticles)
         {
+            if (_turned[k]) { continue; }
             var at = CellOf(k);
-            if (at.X < ResX && SpringWhole(SpringRight[k])) { Upright(k, k + 1); }
-            if (at.Y < ResY && SpringWhole(SpringDown[k])) { Upright(k, k + ResX + 1); }
+            if (at.X < ResX && SpringWhole(SpringRight[k]) && !_turned[k + 1]) { Upright(k, k + 1); }
+            if (at.Y < ResY && SpringWhole(SpringDown[k]) && !_turned[k + ResX + 1]) { Upright(k, k + ResX + 1); }
         }
     }
 
