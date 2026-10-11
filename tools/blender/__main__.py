@@ -47,7 +47,7 @@ def _patient() -> list[Path]:
 
 
 def _surgeon_head() -> list[Path]:
-    rig = surgeon_head.build()
+    rig = surgeon_head.build(OUT)
     # Reviewed only, not shipped: the game still uses the assetgen head.
     scene.export(OUT / "surgeon_head.glb")
     views = [("front", (0.0, 0.1, -1.0)), ("three_quarter", (-0.8, 0.3, -0.8)), ("side", (1.0, 0.1, 0.0)), ("back", (0.3, 0.3, 1.0))]

@@ -12,6 +12,7 @@ Rigid parts on Head: Cap, Mask, Lens, Frame, Brows, EyeL, EyeR.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import bpy
 import numpy as np
@@ -38,7 +39,7 @@ BONES: list[tuple[str, Vec3, Vec3, str | None]] = [("Neck", NECK_BASE, PIVOT, No
 BUDGETS = {
     "Face": 2600,
     "Cap": 900,
-    "Mask": 1300,
+    "Mask": 1500,
     "Lens": 200,
     "Frame": 400,
     "Brows": 120,
@@ -62,10 +63,14 @@ def _upright(obj: bpy.types.Object) -> bpy.types.Object:
 
 
 def _neck_blobs() -> list[scene.Blob]:
-    """The neck in the patient's frame, under the jaw and a little behind the face, with the two long neck muscles."""
-    elements = [capsule((0.5, -0.02, 0.0), (0.605, -0.012, 0.0), 0.046, 3.0), ellipsoid((0.59, -0.02, 0.0), (0.03, 0.045, 0.05), 2.5)]
+    """The neck in the patient's frame: one soft column under the jaw and a little behind the face, the nape filled
+    so the back of the skull flows into it, and the two long neck muscles."""
+    elements = [
+        capsule((0.49, -0.025, 0.0), (0.615, -0.03, 0.0), 0.045, 2.0),
+        ellipsoid((0.615, -0.058, 0.0), (0.04, 0.032, 0.046), 1.5),
+    ]
     for side in (1.0, -1.0):
-        elements.append(capsule((0.585, 0.0, 0.04 * side), (0.5, 0.022, 0.018 * side), 0.012, 2.5))
+        elements.append(capsule((0.59, 0.0, 0.04 * side), (0.5, 0.02, 0.018 * side), 0.01, 2.5))
     return elements
 
 
@@ -113,6 +118,53 @@ def _solidify(obj: bpy.types.Object, thickness: float) -> bpy.types.Object:
     return scene.bake(obj)
 
 
+def _grain(shape: tuple[int, int], scale: float, amount: float, seed: int) -> NDArray[np.float64]:
+    """Fiber noise for cloth maps: smoothed random speckle, zero on average."""
+    from scipy.ndimage import gaussian_filter
+
+    noise = gaussian_filter(np.random.default_rng(seed).standard_normal(shape), scale, mode="wrap")
+    return np.asarray(noise / noise.std() * amount, dtype=np.float64)
+
+
+def _cap_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Cap texture, u around the head from the back, v from the band up to the crown: vertical gathers that fade out
+    over the crown, soft crinkles, and the stitched elastic band along the bottom."""
+    size = 512
+    v, u = np.meshgrid(np.linspace(0.0, 1.0, size), np.linspace(0.0, 1.0, size), indexing="ij")
+    gathers = np.sin(u * 2.0 * np.pi * 26.0 + 0.6 * _grain((size, size), 12.0, 1.0, 3)) * (1.0 - v) ** 2
+    crinkle = _grain((size, size), 18.0, 0.3, 4) * (0.3 + v)
+    # Flat over the crown, where every column of the map converges on one point.
+    height = (gathers + crinkle) * np.clip((1.0 - v) / 0.2, 0.0, 1.0)
+    band = v < 0.045
+    stitch = ((np.abs(v - 0.012) < 0.003) | (np.abs(v - 0.033) < 0.003)) & (np.sin(u * 2.0 * np.pi * 160.0) > 0.0)
+    height = np.where(band, 0.0, height) - stitch * 0.2
+    grain = _grain((size, size), 0.8, 0.025, 5)
+    color = scene.shade(CAP, height, 8.0, grain)
+    color[stitch] *= 0.88
+    return color, scene.normal_map(height, 5.0)
+
+
+def _mask_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Mask texture, u across the face, v from the top edge down: three pleats as folds, the bound edge with its
+    stitching all around, the nose wire channel along the top, and nonwoven fiber grain."""
+    size = 512
+    v, u = np.meshgrid(np.linspace(0.0, 1.0, size), np.linspace(0.0, 1.0, size), indexing="ij")
+    # A sawtooth over the pleated band: each pleat's lower face lies flat, its upper face folds under.
+    band = np.clip((v - 0.26) / 0.5, 0.0, 1.0)
+    pleats = np.where((v > 0.26) & (v < 0.76), (band * 3.0) % 1.0, 0.0)
+    height = pleats + _grain((size, size), 4.0, 0.02, 6)
+    edge = np.minimum(np.minimum(u, 1.0 - u), np.minimum(v, 1.0 - v))
+    hem = edge < 0.035
+    stitch = (np.abs(edge - 0.02) < 0.004) & (np.sin((u + v) * 2.0 * np.pi * 90.0) > 0.2)
+    wire = (v < 0.05) & (np.abs(u - 0.5) < 0.2)
+    height = np.where(hem, 0.1, height) + wire * 0.3 - stitch * 0.3
+    grain = _grain((size, size), 0.7, 0.03, 7)
+    color = scene.shade(MASK, height, 12.0, grain)
+    color[hem] *= 1.06
+    color[stitch] *= 0.85
+    return color, scene.normal_map(height, 10.0)
+
+
 def _cap(head: bpy.types.Object) -> bpy.types.Object:
     """Bouffant cap: the skull above a tilted band line, puffed out and gathered into pleats toward the band."""
     cap = bpy.data.objects.new("Cap", head.data.copy())
@@ -129,7 +181,7 @@ def _cap(head: bpy.types.Object) -> bpy.types.Object:
         amount = 0.002 + 0.016 * height**0.7
         # Gathers: vertical pleats around the band, fading out over the crown.
         angle = np.arctan2(out[:, 2], out[:, 0])
-        amount += 0.002 * np.sin(angle * 22.0) * (1.0 - height) ** 2
+        amount += 0.003 * np.sin(angle * 26.0) * (1.0 - height) ** 2
         return np.asarray(p + direction * amount[:, None], dtype=np.float64)
 
     cap = scene.deform(cap, puff)
@@ -137,6 +189,20 @@ def _cap(head: bpy.types.Object) -> bpy.types.Object:
     cap = _solidify(cap, 0.003)
     cap = scene.displace(cap, 0.0015, 0.015, detail=2, seed=23)
     return scene.join("Cap", scene.finish(cap, scene.material("tint", CAP, roughness=0.9)), band)
+
+
+def cap_uv(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """u around the head starting at the back, v from the band line up over the crown."""
+    u = (np.arctan2(p[:, 0], 0.02 - p[:, 2]) + np.pi) / (2.0 * np.pi)
+    v = np.clip((p[:, 1] + 0.2 * p[:, 2] - 0.03) / 0.11, 0.0, 1.0)
+    return np.column_stack([u, v])
+
+
+def mask_uv(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """u across the mask from the surgeon's left, v from its top edge down."""
+    u = np.clip((p[:, 0] + 0.066) / 0.132, 0.0, 1.0)
+    v = np.clip((-0.012 - p[:, 1]) / 0.116, 0.0, 1.0)
+    return np.column_stack([u, v])
 
 
 def _mask(head: bpy.types.Object) -> bpy.types.Object:
@@ -160,7 +226,7 @@ def _mask(head: bpy.types.Object) -> bpy.types.Object:
         z -= 0.003 * pleat * (1.0 - hug)
         return (float(x), float(y), float(z))
 
-    mask = _grid("Mask", 22, 13, point)
+    mask = _grid("Mask", 22, 16, point)
     mask = _solidify(mask, 0.0015)
     return scene.finish(mask, scene.material("mask", MASK, roughness=0.9))
 
@@ -170,15 +236,16 @@ def _ear_loops(head: bpy.types.Object) -> bpy.types.Object:
     tree = _surface(head)
     loops = []
     for side in (1.0, -1.0):
-        x = 0.064 * side
+        # The loops end just inside the mask's corners, between the cloth and the skin.
+        x = 0.06 * side
         path: list[Vec3] = [
-            (x, -0.018, _depth(tree, x, -0.018) - 0.002),
+            (x, -0.02, _depth(tree, x, -0.02) - 0.001),
             (0.08 * side, 0.012, -0.03),
             (0.084 * side, 0.018, 0.0),
             (0.086 * side, 0.0, 0.024),
             (0.083 * side, -0.03, 0.012),
             (0.078 * side, -0.05, -0.03),
-            (x, -0.112, _depth(tree, x, -0.112) - 0.002),
+            (x, -0.11, _depth(tree, x, -0.11) - 0.001),
         ]
         loops.append(scene.curve_tube(f"EarLoop{side}", path, 0.0015, resolution=6))
     straps = scene.join("Straps", *loops)
@@ -211,7 +278,8 @@ def _glasses() -> tuple[bpy.types.Object, bpy.types.Object]:
     return lens, scene.finish(frame, scene.material("frame", FRAME, roughness=0.4))
 
 
-def build() -> bpy.types.Object:
+def build(out_dir: Path) -> bpy.types.Object:
+    """Builds the head; the generated texture maps are written next to the review renders in out_dir."""
     head = _head_mesh()
     scene.finish(head, scene.material("skin", SKIN, roughness=0.55, subsurface=0.2))
     brows = face.eyebrows(head)
@@ -228,6 +296,10 @@ def build() -> bpy.types.Object:
     for part in (head, cap, mask, lens, frame, brows, eye_l, eye_r):
         scene.fit(part, BUDGETS[part.name])
     scene.clean()
+    scene.uv_from(cap, cap_uv)
+    scene.texture(bpy.data.materials["tint"], *_cap_maps(), out_dir)
+    scene.uv_from(mask, mask_uv)
+    scene.texture(bpy.data.materials["mask"], *_mask_maps(), out_dir)
 
     rig = scene.armature("SurgeonHeadRig", BONES)
     scene.bind(head, rig)

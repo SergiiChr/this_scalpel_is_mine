@@ -438,6 +438,64 @@ def assign(obj: bpy.types.Object, mat: bpy.types.Material, mask: Callable[[NDArr
     return obj
 
 
+def uv_from(obj: bpy.types.Object, fn: Callable[[NDArray[np.float64]], NDArray[np.float64]]) -> None:
+    """UVs from fn(points) in game space, (u, v) per vertex. A face that wraps around u (a cylinder's seam) is unwrapped
+    past 1 so the texture continues across it."""
+    mesh = obj.data
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    b = co.reshape(-1, 3)
+    uv = fn(np.column_stack([b[:, 0], b[:, 2], -b[:, 1]]))
+    vertex = np.empty(len(mesh.loops), dtype=np.int32)
+    mesh.loops.foreach_get("vertex_index", vertex)
+    loop_uv = uv[vertex]
+    for poly in mesh.polygons:
+        loops = slice(poly.loop_start, poly.loop_start + poly.loop_total)
+        u = loop_uv[loops, 0]
+        if u.max() - u.min() > 0.5:
+            loop_uv[loops, 0] = np.where(u < 0.5, u + 1.0, u)
+    layer = mesh.uv_layers[0] if mesh.uv_layers else mesh.uv_layers.new(name="UVMap")
+    layer.data.foreach_set("uv", loop_uv.ravel())
+
+
+def texture(mat: bpy.types.Material, color: NDArray[np.float64], normal: NDArray[np.float64], out_dir: Path) -> None:
+    """Gives a material a base color map and a normal map, from (height, width, 3) arrays: color as display sRGB,
+    normal as a tangent-space map. Written to out_dir as PNG so the glTF exporter can pack them."""
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    for suffix, pixels, socket in (("color", color, bsdf.inputs["Base Color"]), ("normal", normal, None)):
+        height, width = pixels.shape[:2]
+        image = bpy.data.images.new(f"{mat.name}_{suffix}", width, height)
+        image.pixels.foreach_set(np.concatenate([pixels, np.ones((height, width, 1))], axis=2).astype(np.float32).ravel())
+        image.filepath_raw = str(out_dir / f"{mat.name}_{suffix}.png")
+        image.file_format = "PNG"
+        image.save()
+        node = nodes.new("ShaderNodeTexImage")
+        node.image = image
+        if socket is not None:
+            links.new(node.outputs["Color"], socket)
+        else:
+            image.colorspace_settings.name = "Non-Color"
+            bump = nodes.new("ShaderNodeNormalMap")
+            links.new(node.outputs["Color"], bump.inputs["Color"])
+            links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+
+
+def normal_map(height: NDArray[np.float64], strength: float) -> NDArray[np.float64]:
+    """Tangent-space normal map from a height field (rows along v, columns along u), wrapping at the edges."""
+    du = (np.roll(height, -1, axis=1) - np.roll(height, 1, axis=1)) * strength
+    dv = (np.roll(height, -1, axis=0) - np.roll(height, 1, axis=0)) * strength
+    n = np.dstack([-du, -dv, np.ones_like(height)])
+    n /= np.linalg.norm(n, axis=2)[:, :, None]
+    return np.asarray(n * 0.5 + 0.5, dtype=np.float64)
+
+
+def shade(color: Sequence[float], height: NDArray[np.float64], strength: float, grain: NDArray[np.float64]) -> NDArray[np.float64]:
+    """A color map for cloth: the base color lit from above across the height field, with fiber grain."""
+    lit = 1.0 + np.clip((np.roll(height, 1, axis=0) - height) * strength, -0.35, 0.35) + grain
+    return np.asarray(np.clip(np.array(color)[None, None, :] * lit[:, :, None], 0.0, 1.0), dtype=np.float64)
+
+
 def set_origin(obj: bpy.types.Object, point: Vec3) -> bpy.types.Object:
     """Moves the object's origin (its pivot) to a game-space point without moving the geometry."""
     offset = to_blender(point)
