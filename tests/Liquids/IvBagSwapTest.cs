@@ -22,14 +22,24 @@ public class IvBagSwapTest
         AssertBool(driver.Patient.IvWorking).OverrideFailureMessage($"{line}: nothing runs through a line")
             .IsFalse();
         var bag = (await driver.PlayerRequestsItem("saline_bag"))!;
+        // Cefazolin pushed into the hung bag waits there for a working line.
         var hung = driver.Surgery.Tools.DripBag()!;
+        driver.Surgery.Tools.AddLiquid(hung, 5f, new Dictionary<string, float> { ["cefazolin"] = 0.5f });
+        hung.Bolus = 5f;
+        hung.DrippedTotal = 1f;
         var hungMl = hung.Ml;
+        var hungContents = new Dictionary<string, float>(hung.Contents);
         await driver.PlayerInteracts("Swap IV bag");
         await Frames.Physics(10);
         AssertThat(bag.State).OverrideFailureMessage($"{line}: the bag is still there to hang once a line works")
             .IsNotEqual(ToolState.Consumed);
         AssertInt(bag.Charges).OverrideFailureMessage($"{line}: the bag is still full").IsEqual(1);
-        AssertFloat(hung.Ml).OverrideFailureMessage($"{line}: the hung bag keeps what it had").IsEqual(hungMl);
+        AssertBool(Mathf.IsEqualApprox(hung.Ml, hungMl) && hung.Contents.Count == hungContents.Count
+                && hungContents.All(liquid => Mathf.IsEqualApprox(hung.Contents.GetValueOrDefault(liquid.Key), liquid.Value))
+                && Mathf.IsEqualApprox(hung.Bolus, 5f) && Mathf.IsEqualApprox(hung.DrippedTotal, 1f))
+            .OverrideFailureMessage($"{line}: the hung bag keeps its fluid and the cefazolin pushed into it, still waiting "
+                + "to drip")
+            .IsTrue();
         await driver.Stop();
     }
 }
