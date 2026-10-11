@@ -177,6 +177,8 @@ Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
 inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Required steps complete in order, `"optional": true` steps any time for bonus points.
+A step with `"or": {step}` also completes when that nested step's condition is met (hand stitch: a local block, or
+general anesthesia for a lidocaine allergy).
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
