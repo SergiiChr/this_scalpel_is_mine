@@ -38,8 +38,6 @@ public partial class Hud : CanvasLayer
     /// <summary>Game time the view's moving effects run on (<see cref="ShaderParam.GameTime"/>), not the shaders' own
     /// TIME: it advances only with gameplay frames, so a scene looks the same whenever it is drawn.</summary>
     private float _effectsTime;
-    /// <summary>Drop patterns of blood on the view, from the session seed so a session replays the same.</summary>
-    private readonly RandomNumberGenerator _lensDrops = new();
     /// <summary>Blood on the view (0..1).</summary>
     private float _lensBlood;
     /// <summary>How much blood is splashed on the view now (0..1).</summary>
@@ -177,7 +175,7 @@ public partial class Hud : CanvasLayer
         if (_lensBlood <= 0f)
         {
             _lensAge = 0f;
-            _post.SetShaderParameter(ShaderParam.LensSeed, _lensDrops.Randf() * 100f);
+            _post.SetShaderParameter(ShaderParam.LensSeed, GD.Randf() * 100f);
         }
         _lensBlood = Mathf.Min(_lensBlood + amount, 1f);
     }
@@ -427,7 +425,6 @@ public partial class Hud : CanvasLayer
         var layer = new CanvasLayer { Layer = 0 };
         AddChild(layer);
         _post = new ShaderMaterial { Shader = GD.Load<Shader>(PostFxShader) };
-        _lensDrops.Seed = Net.Instance.SessionSeed + 7;
         var rect = new ColorRect { MouseFilter = Control.MouseFilterEnum.Ignore, Material = _post };
         rect.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         layer.AddChild(rect);
