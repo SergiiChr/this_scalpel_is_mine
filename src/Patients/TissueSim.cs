@@ -2077,11 +2077,13 @@ public sealed partial class TissueSim
                 // drape's coarse grid can read below it on a steep flank and then step up as it moves, ratcheting it up.
                 if (!FloorOpen.HasPoint(new Vector2(Pos[k].X, Pos[k].Z)))
                 {
-                    // Lifted off the body (a flap folded out), it lies on the cloth. Skin that has only slid
-                    // along the body under the drape's edge, pushed there by a grip, stays on the body under
-                    // the cloth: counted as lifted by how far it moved, it would be ratcheted up onto the rim.
+                    // Lifted off the body, or taken further than skin rests on it (a flap folded out), it lies on
+                    // the cloth. Skin that has only slid a little way along the body under the drape's edge, pushed
+                    // there by a grip, stays on the body under the cloth: counted as lifted by how far it moved, it
+                    // would be ratcheted up onto the rim.
                     var body = SettledHeightAt(Pos[k].X, Pos[k].Z);
-                    if (Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff)
+                    if (Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff
+                        || Pos[k].DistanceSquaredTo(Settled[k]) > BodyReach * BodyReach)
                     {
                         Pos[k] = AboveFloor(k, Pos[k]);
                     }
