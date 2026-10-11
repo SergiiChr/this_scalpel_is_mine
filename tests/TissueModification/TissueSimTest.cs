@@ -5,6 +5,7 @@ namespace Scalpel.Tests.TissueModification;
 [TestCategory("smoke"), TestCategory("tissue_modification")]
 public class TissueSimTest
 {
+    private static readonly int[] ContactTriangle = [0, 1, 2];
     private static readonly Vector2 Size = new(0.3f, 0.25f);
     private static readonly Vector2 Mid = new(0.5f, 0.5f);
     /// <summary>The line most cases cut along: across the middle of the site.</summary>
@@ -22,6 +23,8 @@ public class TissueSimTest
         StitchesClose();
         Sleeps();
         CatchUpAcrossFrames();
+        FoldFootprintExpires();
+        ContactSurfaceGeometry();
         Elastic();
         MuscleFirst();
         LooseStitchGapes();
@@ -68,6 +71,49 @@ public class TissueSimTest
         Check(split.StepsDone == 2 && !split.NeedsStep, "the pending solver step catches up on the next frame");
         Check(split.Pos.Zip(together.Pos).All(pair => pair.First.DistanceTo(pair.Second) < 0.000001f),
             "spreading catch-up across frames preserves the simulated tissue state");
+    }
+
+    private static void FoldFootprintExpires()
+    {
+        var sim = Sim();
+        sim.Tearing = false;
+        sim.Grip(1, Mid);
+        var k = sim.Nearest(Mid);
+        sim.MoveGrip(1, sim.Settled[k] + new Vector3(0.045f, 0.018f, 0f));
+        Settle(sim, 90);
+        Check(sim.HasFoldFootprint, "a large grip activates its local fold footprint");
+        sim.MoveGrip(1, sim.Settled[k]);
+        Settle(sim, 600);
+        Check(sim.HasFoldFootprint, "the footprint remains while a grip is still pinned");
+        sim.Release(1);
+        for (var n = 0; n < 3000 && !sim.IsSleeping; n++) { sim.Substep(); }
+        Check(sim.IsSleeping, "released skin returns to rest and sleeps");
+        Check(!sim.HasFoldFootprint && !Enumerable.Range(0, sim.Pos.Length).Any(sim.NearFold),
+            "the settled unpinned fold expires its roots and near mask");
+        sim.Grip(2, Mid);
+        sim.MoveGrip(2, sim.Settled[k] + Vector3.Up * 0.002f);
+        sim.Substep();
+        Check(!sim.HasFoldFootprint, "a subsequent small pull does not inherit the earlier fold footprint");
+    }
+
+    private static void ContactSurfaceGeometry()
+    {
+        var surface = new ContactSurface();
+        Vector3[] roof = [new(0, 0, 0), new(1, 1, 0), new(0, 0, 1)];
+        surface.Index(roof, ContactTriangle);
+        Check(Mathf.Abs(surface.HeightAt(0.2f, 0.3f) - 0.2f) < 0.000001f,
+            "contact heights follow the indexed face slope");
+        Check(float.IsNaN(surface.HeightAt(0.9f, 0.9f)), "a face bounding box does not fill space outside its triangle");
+        foreach (var above in new[] { false, true })
+        {
+            var y = above ? -0.1f : 1.1f;
+            Vector3[] triangle = [new(0.1f, y, 0.1f), new(0.2f, y, 0.1f), new(0.1f, y, 0.2f)];
+            surface.PushTriangle(triangle, 0, 1, 2, 0.004f, above);
+            Check(triangle.All(p => above ? p.Y >= p.X + 0.00399f : p.Y <= p.X - 0.00399f),
+                "triangle contact preserves clearance above and below the sloping face");
+        }
+        surface.Index(roof, Array.Empty<int>());
+        Check(float.IsNaN(surface.HeightAt(0.2f, 0.3f)), "reindexing clears old surface buckets");
     }
 
     private static void CutGapes()
@@ -382,13 +428,11 @@ public class TissueSimTest
         sim.MoveGrip(1, sim.Rest[sim.Nearest(edge)] + new Vector3(0.06f, -0.01f, 0f));
         Settle(sim, 120);
         var gripped = sim.Nearest(edge);
-        var through = Enumerable.Range(0, sim.Pos.Length).Count(k =>
-            sim.Exposed[k] && sim.Pos[k].X > opening && sim.Pos[k].Y < 0.01f - 0.0001f && k != gripped);
+        var through = Enumerable.Range(0, sim.Pos.Length).Where(k =>
+            sim.Exposed[k] && sim.Pos[k].X > opening && sim.Pos[k].Y < 0.01f - 0.0001f && k != gripped).ToArray();
         var lifted = Enumerable.Range(0, sim.Pos.Length).Count(k => !sim.Exposed[k] && sim.Pos[k].Y > 0.005f);
-        var under = string.Join("; ", Enumerable.Range(0, sim.Pos.Length).Where(k =>
-            sim.Exposed[k] && sim.Pos[k].X > opening && sim.Pos[k].Y < 0.01f - 0.0001f && k != gripped)
-            .Select(k => $"{sim.Pos[k]}, moved {sim.Pos[k].DistanceTo(sim.Settled[k]):0.0000}"));
-        Check(through == 0, $"skin folded out over the drape stays on it ({through} points under: {under})");
+        var under = string.Join("; ", through.Select(k => $"{sim.Pos[k]}, moved {sim.Pos[k].DistanceTo(sim.Settled[k]):0.0000}"));
+        Check(through.Length == 0, $"skin folded out over the drape stays on it ({through.Length} points under: {under})");
         Check(lifted == 0, $"skin under the drape isn't pushed up through it ({lifted} points)");
     }
 

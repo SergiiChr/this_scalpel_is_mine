@@ -77,7 +77,7 @@ public sealed class SutureThread(TissueDepth layer, float tension)
 /// </item>
 /// </list>
 /// </summary>
-public sealed class TissueSim
+public sealed partial class TissueSim
 {
     /// <summary>Grid spacing (meters), or wider on a big site so it has no more than MaxCells cells: a whole belly
     /// folded open moves every particle at once, and that has to fit a frame. The site's size sets how many cells it
@@ -184,19 +184,17 @@ public sealed class TissueSim
     public Vector3[] Pos { get; private set; } = [];
     private Vector3[] _prev = [];
     private float[] _anchor = [];
+    private readonly Dictionary<Vector3I, List<int>> _foldNeighbors = [];
+    private readonly List<List<int>> _usedFoldBuckets = [];
     private Vector3[] _bend = [];
     private readonly List<int> _foldCells = [];
     private bool[] _foldCellMarks = [];
-    private bool _turnedOver;
-    private bool _foldActive;
-    private bool[] _nearFold = [];
-    private bool[] _foldContact = [];
-    internal bool FoldContact(int k) => k < _foldContact.Length && _foldContact[k];
-    private readonly HashSet<int> _foldRoots = [];
-    internal bool HasFoldFootprint => _foldRoots.Count > 0;
-    internal bool NearFold(int k) => k < _nearFold.Length && _nearFold[k];
-    internal bool HoldingFold => _foldActive && !_turnedOver;
-    internal bool TurningFlap => _turnedOver;
+    private readonly FoldState _fold = new();
+    internal bool FoldContact(int k) => k < _fold.Contact.Length && _fold.Contact[k];
+    internal bool HasFoldFootprint => _fold.Roots.Count > 0;
+    internal bool NearFold(int k) => k < _fold.Near.Length && _fold.Near[k];
+    internal bool HoldingFold => _fold.Active && !_fold.TurnedOver;
+    internal bool TurningFlap => _fold.TurnedOver;
     /// <summary>Lift (meters, along the surface normal) of stitched cut edges, see <see cref="SuturePucker"/>. A thread
     /// pulls the edges together in the surface plane: lifted apart from that, they rise into a lip instead of passing
     /// through each other.</summary>
@@ -347,11 +345,7 @@ public sealed class TissueSim
         var count = (ResX + 1) * (ResY + 1);
         Rest = new Vector3[count];
         _anchor = new float[count];
-        _turnedOver = false;
-        _foldActive = false;
-        _nearFold = new bool[count];
-        _foldContact = new bool[count];
-        _foldRoots.Clear();
+        _fold.Reset(count);
         SutureLip = new float[count];
         _fixed = new bool[count];
         Off = new bool[count];
@@ -1481,10 +1475,11 @@ public sealed class TissueSim
     /// <summary>Triangles in the whole grid, for comparing with <see cref="Triangles"/>.</summary>
     public int TriangleCount => ResX * ResY * 2;
 
-    /// <summary>Advances the sim by <paramref name="delta"/> seconds in steps of Step. With <paramref name="run"/>
-    /// false the time only adds up, for the next call.</summary>
+    /// <summary>True when accumulated frame time contains a complete solver step.</summary>
     internal bool NeedsStep => _accumulator >= Step;
 
+    /// <summary>Advances the sim by <paramref name="delta"/> seconds in steps of Step. With <paramref name="run"/>
+    /// false the time only adds up, for the next call.</summary>
     public void Advance(float delta, bool run = true, int maxSteps = MaxCatchUp)
     {
         _accumulator = Mathf.Min(_accumulator + delta, Step * MaxCatchUp);
@@ -1494,6 +1489,7 @@ public sealed class TissueSim
             if (IsSleeping)
             {
                 _accumulator = 0f;
+                _fold.Expire(this);
                 return;
             }
             Substep();
@@ -1523,6 +1519,7 @@ public sealed class TissueSim
             _free[pin.Particle] = 0f;
         }
         UpdateFoldState();
+        if (_fold.Bending) { IndexSprings(); }
         for (var iteration = 0; iteration < Iterations; iteration++)
         {
             foreach (var pin in _pins.Values)
@@ -1555,9 +1552,9 @@ public sealed class TissueSim
                 pos[k] += back * hold * _free[k] * Mathf.Clamp(1f - back.Length() / AnchorReach, 0f, 1f);
                 // The surrounding bed remains attached while a local grip folds the skin. A weak global anchor
                 // otherwise lets spring tension translate the entire patch, including its covered flanks.
-                if (_foldRoots.Count > 0 && !NearFold(k) && !_turnedOver)
+                if (_fold.Roots.Count > 0 && !NearFold(k) && !_fold.TurnedOver)
                 {
-                    pos[k] += (_anchorTarget[k] - pos[k]) * 0.35f * _free[k];
+                    pos[k] += (_anchorTarget[k] - pos[k]) * FoldAnchor * _free[k];
                 }
             }
             // Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
@@ -1570,7 +1567,7 @@ public sealed class TissueSim
         // its neighbour, so a single sweep would leave folds that fit the skin but not its underlying thickness.
         SeparateFoldNeighbors();
         FindCompressedCells();
-        for (var pass = 0; pass < 8 && _foldActive && !_turnedOver; pass++)
+        for (var pass = 0; pass < 8 && _fold.Active && !_fold.TurnedOver; pass++)
         {
             if (!PreserveLocalArea(pass % 2 != 0, compressedOnly: true)) { break; }
         }
@@ -1595,7 +1592,8 @@ public sealed class TissueSim
         _stillSteps = moved < SleepEpsilon * SleepEpsilon ? _stillSteps + 1 : 0;
         if (_stillSteps >= SleepSteps)
         {
-            if (_pins.Count == 0) { _foldActive = false; }
+            if (_pins.Count == 0) { _fold.Active = false; }
+            _fold.Expire(this);
             _winFresh = true;
         }
     }
@@ -1620,242 +1618,6 @@ public sealed class TissueSim
             var j = patch.Around[n];
             var weight = patch.Weights[n];
             Pos[j] += (_anchorTarget[j] + pull * weight - Pos[j]) * drag * weight * _free[j];
-        }
-    }
-
-    /// <summary>Resists cell-sized creases during a large pull. Average displacement only over intact edges, so a
-    /// fold forms a broad wave while its two cut lips remain free to move independently.</summary>
-    private void RelaxFolds()
-    {
-        if (!_pins.Values.Any(pin => pin.Target.DistanceSquaredTo(_anchorTarget[pin.Particle]) > DragReach * DragReach))
-        {
-            return;
-        }
-        if (_bend.Length != Pos.Length)
-        {
-            _bend = new Vector3[Pos.Length];
-        }
-        IndexSprings();
-        foreach (var k in _winParticles)
-        {
-            if (_free[k] == 0f || Pos[k].DistanceSquaredTo(Settled[k]) <= LiftedOff * LiftedOff)
-            {
-                _bend[k] = Vector3.Zero;
-                continue;
-            }
-            var sum = Vector3.Zero;
-            var count = 0;
-            foreach (var s in _springsOf[k])
-            {
-                ref readonly var spring = ref _springs[s];
-                if (spring.Kind != SpringKind.Tissue || !spring.Active)
-                {
-                    continue;
-                }
-                var other = spring.A == k ? spring.B : spring.A;
-                sum += Pos[other] - Rest[other];
-                count++;
-            }
-            // The nearly stationary perimeter belongs to the body/drape contact constraint; bending must not drag
-            // it across that boundary by a fraction of a cell.
-            _bend[k] = count > 1 ? (sum / count - (Pos[k] - Rest[k])) * 0.12f * _free[k] : Vector3.Zero;
-        }
-        foreach (var k in _winParticles)
-        {
-            Pos[k] += _bend[k];
-        }
-    }
-
-    /// <summary>Track the local footprint of a grip and let only its nearby covered boundary slide.</summary>
-    private void UpdateFoldState()
-    {
-        if (_pins.Count > 0)
-        {
-            foreach (var pin in _pins.Values)
-            {
-                if (pin.Target.DistanceSquaredTo(_anchorTarget[pin.Particle]) <= GripHold * GripHold
-                    || !_foldRoots.Add(pin.Particle)) { continue; }
-                // Retain the footprint after release: a settled flap on the cloth still needs contact clearance.
-                for (var k = 0; k < Rest.Length; k++)
-                {
-                    _nearFold[k] |= Rest[k].DistanceSquaredTo(Rest[pin.Particle]) <= DragReach * DragReach * 4f;
-                }
-            }
-            _foldActive |= _pins.Values.Any(pin => pin.Target.DistanceSquaredTo(_anchorTarget[pin.Particle]) > GripHold * GripHold);
-            _turnedOver = _pins.Values.Any(pin => pin.Target.DistanceSquaredTo(_anchorTarget[pin.Particle]) > TurnoverReach * TurnoverReach);
-        }
-        if (!_foldActive || _turnedOver)
-        {
-            return;
-        }
-        // Only the boundary near a grip can slide under the drape. Expanding every border coordinate with the
-        // grip translates the entire site and drags its far flanks through the cloth.
-        var half = Size * 0.5f;
-        for (var k = 0; k < Pos.Length; k++)
-        {
-            if (!_fixed[k]) { continue; }
-            var target = Rest[k];
-            foreach (var pin in _pins.Values)
-            {
-                var at = pin.Target;
-                var wx = 1f - Mathf.SmoothStep(DragReach, DragReach * 2f, Mathf.Abs(Rest[k].X - at.X));
-                var wz = 1f - Mathf.SmoothStep(DragReach, DragReach * 2f, Mathf.Abs(Rest[k].Z - at.Z));
-                if (Rest[k].Z >= half.Y - 0.00001f)
-                {
-                    target.Z = Mathf.Max(target.Z, Rest[k].Z + Mathf.Max(0f, at.Z + GripHold * 2f - half.Y) * wx);
-                }
-                if (Rest[k].Z <= -half.Y + 0.00001f)
-                {
-                    target.Z = Mathf.Min(target.Z, Rest[k].Z + Mathf.Min(0f, at.Z - GripHold * 2f + half.Y) * wx);
-                }
-                if (Rest[k].X >= half.X - 0.00001f)
-                {
-                    target.X = Mathf.Max(target.X, Rest[k].X + Mathf.Max(0f, at.X + GripHold * 2f - half.X) * wz);
-                }
-                if (Rest[k].X <= -half.X + 0.00001f)
-                {
-                    target.X = Mathf.Min(target.X, Rest[k].X + Mathf.Min(0f, at.X - GripHold * 2f + half.X) * wz);
-                }
-            }
-            Pos[k] = _pins.Count > 0 ? target : Pos[k].Lerp(target, 0.08f);
-        }
-    }
-
-    private void UpdateFoldContact()
-    {
-        Array.Clear(_foldContact);
-        if (_foldRoots.Count == 0) { return; }
-        foreach (var k in _winParticles)
-        {
-            if (!NearFold(k) || Pos[k].DistanceSquaredTo(Settled[k]) < 0.000001f) { continue; }
-            var at = CellOf(k);
-            // Contact covers whole faces. Include the stationary row joining a moving fold back to the body;
-            // otherwise a triangle crosses the cloth between its raised and anchored corners.
-            for (var j = Math.Max(0, at.Y - 1); j <= Math.Min(ResY, at.Y + 1); j++)
-            {
-                for (var i = Math.Max(0, at.X - 1); i <= Math.Min(ResX, at.X + 1); i++)
-                {
-                    _foldContact[Index(i, j)] = true;
-                }
-            }
-        }
-    }
-
-    private void FindCompressedCells()
-    {
-        _foldCells.Clear();
-        if (!_foldActive || _turnedOver) { return; }
-        if (_foldCellMarks.Length != ResX * ResY) { _foldCellMarks = new bool[ResX * ResY]; }
-        Array.Clear(_foldCellMarks);
-        var threshold = Size.X / ResX * (Size.Y / ResY) * 0.3f;
-        float Area(int a, int b, int c) => (Pos[c] - Pos[a]).Cross(Pos[b] - Pos[a]).Length();
-        foreach (var k in _winParticles)
-        {
-            if (!NearFold(k)) { continue; }
-            var at = CellOf(k);
-            if (at.X >= ResX || at.Y >= ResY) { continue; }
-            var c = k + ResX + 1;
-            if (Area(k, k + 1, c) >= threshold && Area(k + 1, c + 1, c) >= threshold
-                && Area(k, c + 1, c) >= threshold && Area(k, k + 1, c + 1) >= threshold) { continue; }
-            // Include neighbours: correcting a compressed cell also moves their shared corners.
-            for (var j = Math.Max(0, at.Y - 1); j <= Math.Min(ResY - 1, at.Y + 1); j++)
-            {
-                for (var i = Math.Max(0, at.X - 1); i <= Math.Min(ResX - 1, at.X + 1); i++)
-                {
-                    _foldCellMarks[j * ResX + i] = true;
-                }
-            }
-        }
-        for (var cell = 0; cell < _foldCellMarks.Length; cell++)
-        {
-            if (_foldCellMarks[cell]) { _foldCells.Add(Index(cell % ResX, cell / ResX)); }
-        }
-    }
-
-    private bool PreserveLocalArea(bool reverse = false, bool compressedOnly = false)
-    {
-        if (!_foldActive || _turnedOver) { return false; }
-        var changed = false;
-        var minimum = Size.X / ResX * (Size.Y / ResY) * 0.15f;
-        var count = compressedOnly ? _foldCells.Count : _winParticles.Length;
-        for (var n = 0; n < count; n++)
-        {
-            var index = reverse ? count - 1 - n : n;
-            var k = compressedOnly ? _foldCells[index] : _winParticles[index];
-            if (!NearFold(k)) { continue; }
-            var cell = CellOf(k);
-            if (cell.X >= ResX || cell.Y >= ResY) { continue; }
-            var c = k + ResX + 1;
-            changed |= KeepArea(k, k + 1, c, minimum);
-            changed |= KeepArea(k + 1, c + 1, c, minimum);
-            changed |= KeepArea(k, c + 1, c, minimum);
-            changed |= KeepArea(k, k + 1, c + 1, minimum);
-        }
-        return changed;
-    }
-
-    private bool KeepArea(int a, int b, int c, float minimum)
-    {
-        if (Excised[a] || Excised[b] || Excised[c]) { return false; }
-        ref var pa = ref Pos[a];
-        ref var pb = ref Pos[b];
-        ref var pc = ref Pos[c];
-        var face = (pc - pa).Cross(pb - pa);
-        var area = face.Length();
-        if (area >= minimum * 0.99f) { return false; }
-        // Work in the face's own plane: a vertical fold has the same area as a resting cell.
-        var normal = area > 1e-9f ? face / area : _restNormal[a];
-        var ga = (pc - pb).Cross(normal);
-        var gb = normal.Cross(pc - pa);
-        var gc = (pb - pa).Cross(normal);
-        var wa = _free[a];
-        var wb = _free[b];
-        var wc = _free[c];
-        var weight = ga.LengthSquared() * wa + gb.LengthSquared() * wb + gc.LengthSquared() * wc;
-        if (weight < 1e-12f) { return false; }
-        var correction = (minimum - area) / weight;
-        pa += ga * correction * wa;
-        pb += gb * correction * wb;
-        pc += gc * correction * wc;
-        return true;
-    }
-
-    /// <summary>Nearby folds repel in three dimensions. Intact immediate neighbours retain their spring
-    /// distances; distant rows can approach each other without passing through the thin skin.</summary>
-    private void SeparateFoldNeighbors()
-    {
-        if (!_foldActive) { return; }
-        const float Clearance = 0.003f;
-        var cells = new Dictionary<Vector3I, List<int>>();
-        foreach (var k in _winParticles)
-        {
-            if (!NearFold(k)) { continue; }
-            var key = (Vector3I)(Pos[k] / Clearance).Floor();
-            var at = CellOf(k);
-            for (var z = -1; z <= 1; z++)
-            {
-                for (var y = -1; y <= 1; y++)
-                {
-                    for (var x = -1; x <= 1; x++)
-                    {
-                        if (!cells.TryGetValue(key + new Vector3I(x, y, z), out var near)) { continue; }
-                        foreach (var other in near)
-                        {
-                            var grid = CellOf(other);
-                            if (Math.Abs(at.X - grid.X) <= 1 && Math.Abs(at.Y - grid.Y) <= 1) { continue; }
-                            var delta = Pos[k] - Pos[other];
-                            var length = delta.Length();
-                            var weight = _free[k] + _free[other];
-                            if (length >= Clearance || length < 1e-8f || weight == 0f) { continue; }
-                            var push = delta * ((Clearance - length) / (length * weight));
-                            Pos[k] += push * _free[k];
-                            Pos[other] -= push * _free[other];
-                        }
-                    }
-                }
-            }
-            if (!cells.TryGetValue(key, out var bucket)) { cells[key] = bucket = []; }
-            bucket.Add(k);
         }
     }
 

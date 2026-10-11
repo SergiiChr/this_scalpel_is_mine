@@ -318,6 +318,18 @@ public partial class PatientBody
         return dz.Cross(dx).Normalized();
     }
 
+    private static readonly int[][] StageLayers = [[0, 1], [2], []];
+    private static readonly int[] AllLayers = [0, 1, 2];
+    private int _renderStage;
+    private int _renderSteps;
+    private bool _renderFold;
+    private bool _renderFootprint;
+    private bool[] _renderNear = [];
+    private bool _renderTurnover;
+    private Vector3[] _renderMoved = [];
+    private readonly Vector3[][] _renderPoints = [[], [], []];
+    private readonly (Godot.Collections.Array? Sheet, Godot.Collections.Array? Walls)[] _renderArrays = new (Godot.Collections.Array?, Godot.Collections.Array?)[3];
+
     /// <summary>
     /// Rebuilds the skin, fat and muscle meshes from the tissue sim, only where the simulated skin replaces the body
     /// (the region). Deeper layers sit lower and follow the skin less.
@@ -328,14 +340,6 @@ public partial class PatientBody
     /// Which triangles there are and how they split only changes with the cuts and the region (PlanLayers()); while
     /// the skin just moves, only the vertices move.
     /// </summary>
-    private int _renderStage;
-    private int _renderSteps;
-    private bool _renderFold;
-    private bool _renderTurnover;
-    private Vector3[] _renderMoved = [];
-    private readonly Vector3[][] _renderPoints = [[], [], []];
-    private readonly (Godot.Collections.Array? Sheet, Godot.Collections.Array? Walls)[] _renderArrays = new (Godot.Collections.Array?, Godot.Collections.Array?)[3];
-
     private bool RebuildLayers()
     {
         if (_planFor != Tissue.TopologyVersion) { _renderStage = 0; }
@@ -346,12 +350,15 @@ public partial class PatientBody
             return true;
         }
         _layersPrepared = false;
-        var staged = Tissue.HasFoldFootprint;
+        var staged = _renderStage > 0 || Tissue.HasFoldFootprint;
         if (_renderStage == 0)
         {
             _renderSteps = Tissue.StepsDone;
             PlaceParticles();
             _renderFold = Tissue.HoldingFold;
+            _renderFootprint = Tissue.HasFoldFootprint;
+            if (_renderNear.Length != Tissue.Pos.Length) { _renderNear = new bool[Tissue.Pos.Length]; }
+            for (var k = 0; k < _renderNear.Length; k++) { _renderNear[k] = Tissue.NearFold(k); }
             _renderTurnover = Tissue.TurningFlap;
             if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
             foreach (var k in _around) { _renderMoved[k] = Moved(k); }
@@ -364,10 +371,7 @@ public partial class PatientBody
                 }
             }
         }
-        var first = staged && _renderStage > 0 ? 2 : 0;
-        var last = staged && _renderStage == 0 ? 2 : 3;
-        if (staged && _renderStage == 2) { first = last; }
-        for (var layer = first; layer < last; layer++)
+        foreach (var layer in staged ? StageLayers[_renderStage] : AllLayers)
         {
             _renderArrays[layer] = FillLayer(layer, _plans[layer]);
         }
@@ -850,7 +854,7 @@ public partial class PatientBody
             if (Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[a].X, _skinOf[a].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[b].X, _skinOf[b].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[c].X, _skinOf[c].Z))) { return; }
-            ResolveContact(_skinOf, a, b, c, _clothFaces, 0.004f, above: true);
+            _clothFaces.PushTriangle(_skinOf, a, b, c, 0.004f, above: true);
         }
     }
 
@@ -880,7 +884,7 @@ public partial class PatientBody
             normals[v] = _normal[k];
         }
         ConstrainLipArea(plan, vertices);
-        if (layer > 0 && Tissue.HasFoldFootprint) { KeepBelowSkin(plan, vertices, depth); }
+        if (layer > 0 && _renderFootprint) { KeepBelowSkin(plan, vertices, depth); }
         var faceNormals = new Vector3[vertexCount];
         for (var t = 0; t < plan.Index.Count; t += 3)
         {
@@ -964,52 +968,14 @@ public partial class PatientBody
                 }
             }
         }
-        if (layer == 0 && Tissue.HasFoldFootprint) { IndexContact(_skinContact, refinedVertices, plan.RefinedIndex); }
+        if (layer == 0 && _renderFootprint) { _skinContact.Index(refinedVertices, plan.RefinedIndex); }
         return (
             MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. plan.RefinedIndex]),
             MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors]));
     }
 
-    private readonly Dictionary<Vector2I, List<ContactFace>> _skinContact = [];
-    private readonly Dictionary<Vector2I, List<ContactFace>> _clothFaces = [];
-    private const float ContactCell = 0.01f;
-    private readonly record struct ContactFace(int Id, Vector3 A, Vector3 B, Vector3 C,
-        Vector3 Low, Vector3 High, float SlopeX, float SlopeZ, float OriginY, float Winding);
-
-    private static void IndexContact(Dictionary<Vector2I, List<ContactFace>> faces, Vector3[] vertices, List<int> indices)
-    {
-        foreach (var bucket in faces.Values) { bucket.Clear(); }
-        for (var t = 0; t < indices.Count; t += 3)
-        {
-            var a = vertices[indices[t]];
-            var b = vertices[indices[t + 1]];
-            var c = vertices[indices[t + 2]];
-            var low = a.Min(b).Min(c);
-            var high = a.Max(b).Max(c);
-            var ab = b - a;
-            var ac = c - a;
-            var det = ab.X * ac.Z - ab.Z * ac.X;
-            if (Mathf.Abs(det) < 1e-10f) { continue; }
-            var sx = (ab.Y * ac.Z - ac.Y * ab.Z) / det;
-            var sz = (ac.Y * ab.X - ab.Y * ac.X) / det;
-            var face = new ContactFace(t, a, b, c, low, high, sx, sz, a.Y - sx * a.X - sz * a.Z, MathF.Sign(det));
-            var first = (Vector2I)(new Vector2(low.X, low.Z) / ContactCell).Floor();
-            var last = (Vector2I)(new Vector2(high.X, high.Z) / ContactCell).Floor();
-            for (var j = first.Y; j <= last.Y; j++)
-            {
-                for (var i = first.X; i <= last.X; i++)
-                {
-                    var key = new Vector2I(i, j);
-                    if (!faces.TryGetValue(key, out var near)) { faces[key] = near = []; }
-                    near.Add(face);
-                }
-            }
-        }
-    }
-
-    private readonly Dictionary<int, ContactFace> _contactFaces = [];
-    private readonly Vector3[] _contactPolygon = new Vector3[8];
-    private readonly Vector3[] _contactClipped = new Vector3[8];
+    private readonly ContactSurface _skinContact = new();
+    private readonly ContactSurface _clothFaces = new();
 
     /// <summary>The tethered bed resolves contact against nearby skin faces instead of following the whole grip.</summary>
     private void KeepBelowSkin(LayerPlan plan, Vector3[] vertices, float depth)
@@ -1019,88 +985,9 @@ public partial class PatientBody
             var a = plan.Index[t];
             var b = plan.Index[t + 1];
             var c = plan.Index[t + 2];
-            if (!Tissue.NearFold(plan.Owner[a]) && !Tissue.NearFold(plan.Owner[b]) && !Tissue.NearFold(plan.Owner[c])) { continue; }
-            ResolveContact(vertices, a, b, c, _skinContact, depth + 0.0002f, above: false);
+            if (!_renderNear[plan.Owner[a]] && !_renderNear[plan.Owner[b]] && !_renderNear[plan.Owner[c]]) { continue; }
+            _skinContact.PushTriangle(vertices, a, b, c, depth + 0.0002f, above: false);
         }
-    }
-
-    private void ResolveContact(Vector3[] vertices, int a, int b, int c,
-        Dictionary<Vector2I, List<ContactFace>> surface, float gap, bool above)
-    {
-        var low = vertices[a].Min(vertices[b]).Min(vertices[c]);
-        var high = vertices[a].Max(vertices[b]).Max(vertices[c]);
-        var first = (Vector2I)(new Vector2(low.X, low.Z) / ContactCell).Floor();
-        var last = (Vector2I)(new Vector2(high.X, high.Z) / ContactCell).Floor();
-        _contactFaces.Clear();
-        for (var j = first.Y; j <= last.Y; j++)
-        {
-            for (var i = first.X; i <= last.X; i++)
-            {
-                if (surface.TryGetValue(new Vector2I(i, j), out var near))
-                {
-                    foreach (var face in near) { _contactFaces.TryAdd(face.Id, face); }
-                }
-            }
-        }
-        var ab = vertices[b] - vertices[a];
-        var ac = vertices[c] - vertices[a];
-        var determinant = ab.X * ac.Z - ab.Z * ac.X;
-        if (Mathf.Abs(determinant) < 1e-10f) { return; }
-        foreach (var face in _contactFaces.Values)
-        {
-            var (x, y, z) = (face.A, face.B, face.C);
-            var skinLow = face.Low;
-            var skinHigh = face.High;
-            if (low.X > skinHigh.X || high.X < skinLow.X || low.Z > skinHigh.Z || high.Z < skinLow.Z
-                || (above ? low.Y >= skinHigh.Y + gap : high.Y <= skinLow.Y - gap)) { continue; }
-            var slopeX = face.SlopeX;
-            var slopeZ = face.SlopeZ;
-            var originY = face.OriginY + (above ? gap : -gap);
-            var sideA = vertices[a].Y - slopeX * vertices[a].X - slopeZ * vertices[a].Z - originY;
-            var sideB = vertices[b].Y - slopeX * vertices[b].X - slopeZ * vertices[b].Z - originY;
-            var sideC = vertices[c].Y - slopeX * vertices[c].X - slopeZ * vertices[c].Z - originY;
-            if (above ? sideA >= 0f && sideB >= 0f && sideC >= 0f : sideA <= 0f && sideB <= 0f && sideC <= 0f) { continue; }
-            _contactPolygon[0] = vertices[a];
-            _contactPolygon[1] = vertices[b];
-            _contactPolygon[2] = vertices[c];
-            var count = 3;
-            Clip(x, y, face.Winding, ref count);
-            Clip(y, z, face.Winding, ref count);
-            Clip(z, x, face.Winding, ref count);
-            for (var n = 0; n < count; n++)
-            {
-                var p = _contactPolygon[n];
-                var roof = slopeX * p.X + slopeZ * p.Z + originY;
-                var offset = p - vertices[a];
-                var wb = (offset.X * ac.Z - offset.Z * ac.X) / determinant;
-                var wc = (offset.Z * ab.X - offset.X * ab.Z) / determinant;
-                var wa = 1f - wb - wc;
-                var height = vertices[a].Y * wa + vertices[b].Y * wb + vertices[c].Y * wc;
-                if (above ? roof <= height : roof >= height) { continue; }
-                var correction = (height - roof) / (wa * wa + wb * wb + wc * wc);
-                vertices[a].Y -= correction * wa;
-                vertices[b].Y -= correction * wb;
-                vertices[c].Y -= correction * wc;
-            }
-        }
-    }
-
-
-    private void Clip(Vector3 a, Vector3 b, float sign, ref int count)
-    {
-        var edge = b - a;
-        var result = 0;
-        for (var n = 0; n < count; n++)
-        {
-            var p = _contactPolygon[n];
-            var q = _contactPolygon[(n + 1) % count];
-            var dp = ((p.Z - a.Z) * edge.X - (p.X - a.X) * edge.Z) * sign;
-            var dq = ((q.Z - a.Z) * edge.X - (q.X - a.X) * edge.Z) * sign;
-            if (dp >= 0f) { _contactClipped[result++] = p; }
-            if ((dp >= 0f) != (dq >= 0f)) { _contactClipped[result++] = p.Lerp(q, dp / (dp - dq)); }
-        }
-        Array.Copy(_contactClipped, _contactPolygon, result);
-        count = result;
     }
 
     /// <summary>Virtual lips have no simulation particles of their own. Keep their faces oriented with the sheet
