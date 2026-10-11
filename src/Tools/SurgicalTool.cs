@@ -37,12 +37,15 @@ public sealed class ToolUse
     public Vector2 LastUv { get; set; } = new(-1, -1);
     public Vector3 LastTip { get; set; } = Vector3.Inf;
     public float ChargeTime { get; set; }
-    /// <summary>How long a clamp's pinch has waited to close (seconds), null when none is waiting: it closes once the tip
-    /// has come to rest on what it was lowered onto (see ClampAction).</summary>
+    /// <summary>How long a clamp's pinch has waited on the patient to close (seconds), null when none is waiting: it
+    /// closes once the tip has come to rest on what it was lowered onto (see ClampAction).</summary>
     public float? PinchWait { get; set; }
-    /// <summary>How high the tip came to rest (world y) and how long it has stayed there (seconds).</summary>
+    /// <summary>How high the tip came to rest (world y), how long it has stayed there (seconds), and whether a hand state
+    /// that came since (<see cref="HandInput.States"/>, the last one seen in RestState) has it there too.</summary>
     public float RestHeight { get; set; }
     public float RestFor { get; set; }
+    public bool RestConfirmed { get; set; }
+    public int RestState { get; set; }
     /// <summary>Wiping time not painted yet.</summary>
     public float PaintDt { get; set; }
     /// <summary>Where wiping was last painted.</summary>

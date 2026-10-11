@@ -44,6 +44,7 @@ public partial class Surgeon
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
     internal void SyncState(GodotArray data)
     {
+        HandStates++;
         _netPosition = data[0].AsVector3();
         _netYaw = data[1].AsSingle();
         Pitch = data[2].AsSingle();

@@ -70,9 +70,9 @@ public class ForcepsTest
     }
 
     [TestCase]
-    public async Task ForcepsLetGoOfBeforeTheyComeDownTakeNothing()
+    public async Task ForcepsInTheAirWaitUntilTheyComeDown()
     {
-        var (session, bullet) = await OpenOverBullet("forceps/let_go");
+        var (session, bullet) = await OpenOverBullet("forceps/in_the_air");
         var driver = session.Driver;
         var forceps = (await driver.PlayerRequestsItem("forceps"))!;
         var spot = driver.Body.UvToWorld(bullet.Uv, bullet.Depth);
@@ -85,6 +85,44 @@ public class ForcepsTest
         await Frames.Seconds(1f);
         AssertBool(forceps.Hold is null && bullet.GrippedBy == 0 && !driver.Me.Hands[driver.Me.Active].Attached)
             .OverrideFailureMessage($"let go of in the air, the forceps take nothing once they're down: {forceps.Hold}").IsTrue();
+
+        // Held in the air for longer than a pinch waits on the patient (ClampAction.MaxWait), then let down.
+        await PressLifted(driver);
+        await Frames.Seconds(ClampAction.MaxWait * 2f);
+        AssertObject(forceps.Hold).OverrideFailureMessage("held up in the air, the forceps take nothing yet").IsNull();
+        PlayerInput.Action(InputActions.Lift, false);
+        await Frames.Seconds(0.5f);
+        AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
+            .OverrideFailureMessage($"held in the air a while, then let down, the forceps still take the bullet: {forceps.Hold}")
+            .IsTrue();
+        await LetGo(driver, forceps);
+        await session.Finish(BudgetBroken);
+    }
+
+    [TestCase]
+    public async Task ForcepsWorkedFromLateRemoteStatesWaitForANewOne()
+    {
+        var (session, bullet) = await OpenOverBullet("forceps/late_states");
+        var driver = session.Driver;
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        var body = driver.Body;
+        // As the host works a remote hand's forceps: the same state for several frames while the next one is late, the
+        // tip 8 mm over the opening, then new ones down on the bullet. All in one frame, so the host's own update of
+        // this hand doesn't come in between.
+        var above = body.UvToWorld(bullet.Uv, -0.008f);
+        var on = body.UvToWorld(bullet.Uv, bullet.Depth);
+        var frames = new (Vector3 Tip, int State)[] { (above, 1), (above, 1), (above, 1), (above, 1), (above, 1), (on, 2), (on, 3), (on, 4) };
+        foreach (var (tip, state) in frames)
+        {
+            forceps.GlobalTransform = new Transform3D(new Basis(Vector3.Right, Vector3.Forward, Vector3.Up),
+                tip + (Vector3.Up * forceps.Def.Length));
+            ToolActions.Update(forceps, new HandInput(true, true, 0, 0f, driver.Me.PeerId, new Modifiers(), state), driver.Patient,
+                1f / 60f);
+        }
+        AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
+            .OverrideFailureMessage($"a state left standing over the opening doesn't close them; the new ones on the bullet do: {forceps.Hold}")
+            .IsTrue();
+        await LetGo(driver, forceps);
         await session.Finish(BudgetBroken);
     }
 

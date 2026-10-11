@@ -11,8 +11,11 @@ public sealed class ClampAction : ToolAction
     /// the tip is still coming down then.
     /// RestReach is more than a shaking hand moves the tip in a frame (SurgeonStatus.MaxTremor) and less than a tool
     /// settling at SurgeonHand.SettleSpeed comes down.
+    /// The rest counts only once a new hand state has the tip there too: between a remote hand's states it seems to
+    /// hold still wherever it is.
     /// Only height counts, so a hand moving across still closes.
-    /// A tip that never comes to rest closes after MaxWait on whatever is under it.</summary>
+    /// A tip that never comes to rest on the patient closes after MaxWait there on whatever is under it; in the air it
+    /// waits as long as Use tool is held.</summary>
     internal const float RestReach = 0.005f;
     internal const float RestTime = 0.03f;
     internal const float MaxWait = 0.5f;
@@ -91,23 +94,22 @@ public sealed class ClampAction : ToolAction
             use.PinchWait = null;
             return;
         }
-        if (use.PinchWait is not { } waited)
+        var fresh = step.Hand.States != use.RestState;
+        use.RestState = step.Hand.States;
+        if (use.PinchWait is null || (fresh && Mathf.Abs(step.Tip.Y - use.RestHeight) > RestReach))
         {
-            waited = 0f;
             use.RestHeight = step.Tip.Y;
             use.RestFor = 0f;
-        }
-        else if (Mathf.Abs(step.Tip.Y - use.RestHeight) <= RestReach)
-        {
-            use.RestFor += step.Dt;
+            use.RestConfirmed = false;
         }
         else
         {
-            use.RestHeight = step.Tip.Y;
-            use.RestFor = 0f;
+            use.RestFor += step.Dt;
+            use.RestConfirmed |= fresh;
         }
-        use.PinchWait = waited + step.Dt;
-        if (!(step.Touching && use.RestFor >= RestTime) && use.PinchWait < MaxWait)
+        use.PinchWait = (use.PinchWait ?? 0f) + (step.Touching ? step.Dt : 0f);
+        var rested = use.RestConfirmed && use.RestFor >= RestTime;
+        if (!step.Touching || (!rested && use.PinchWait < MaxWait))
         {
             return;
         }
