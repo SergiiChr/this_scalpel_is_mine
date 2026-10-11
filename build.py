@@ -66,6 +66,8 @@ ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
 NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
+# GdUnit4's line once the Godot process running the cases has quit; missing when it hung and was killed.
+RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
 
@@ -443,8 +445,13 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
             found.append(f"[ERROR] {name}: {error.get('message', '')}")
         if float(case.get("time", "0")) > timeout:
             found.append(f"[ERROR] {name} took {float(case.get('time', '0')):.0f} s, longer than {timeout} s.")
+    output = log.read_text(errors="replace")
     # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
-    found += godot_errors("\n".join([*(element.text or "" for element in tree.iter("system-out")), log.read_text(errors="replace")]))
+    found += godot_errors("\n".join([*(element.text or "" for element in tree.iter("system-out")), output]))
+    # Passing cases don't make a passing process: Godot must also quit on its own once they're done.
+    exits = RUNNER_EXIT.findall(output)
+    if executed and not found and exits[-1:] != ["0"]:
+        found.append(f"[ERROR] Godot didn't quit cleanly after its cases (runner exit {exits[-1] if exits else 'never reported'}).")
     if status != 0 and not found:
         found.append(f"[ERROR] Test process exited with status {status}.")
     return ProcessResult(found, executed)
