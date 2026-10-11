@@ -338,6 +338,8 @@ class TestOptions:
     key_frames: bool
     ci_run: bool
     run_broken: bool
+    # Only the cases marked broken (--broken).
+    only_broken: bool = False
 
 
 def selected(suites: list[Suite], options: TestOptions) -> list[Suite]:
@@ -346,6 +348,8 @@ def selected(suites: list[Suite], options: TestOptions) -> list[Suite]:
         if not all(tag in suite.categories for tag in options.tags) or any(tag in suite.categories for tag in options.skips):
             continue
         if options.case and not any(options.case in name for case in suite.cases for name in case.names()):
+            continue
+        if options.only_broken and not any(case.broken for case in suite.cases):
             continue
         picked.append(suite)
     return picked
@@ -453,9 +457,11 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
 def run_suite(suite: Suite, options: TestOptions) -> Outcome:
     """Runs a suite in its own Godot process, or each of its cases in one of its own when it isolates them."""
     base = f"FullyQualifiedName~{suite.full_name}."
-    if not options.run_broken:
+    if options.only_broken:
+        base += "&TestCategory=broken"
+    elif not options.run_broken:
         base += "&TestCategory!=broken"
-    cases = [case for case in suite.cases if options.run_broken or not case.broken]
+    cases = [case for case in suite.cases if (case.broken if options.only_broken else options.run_broken or not case.broken)]
     names = [name for case in cases for name in case.names() if options.case in name]
     # Isolated cases each write a log of their own, named after the suite.
     log = BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
@@ -496,6 +502,35 @@ def report(outcome: Outcome) -> str:
     return f"FAIL {outcome.suite.full_name}\n{lines}\n     log: {outcome.log.relative_to(ROOT)}"
 
 
+def broken_report(suites: list[Suite], outcomes: list[Outcome], case_filter: str) -> int:
+    """Prints each broken case's failures under the reason it's marked broken for. Returns 1 when one of them passed or
+    a failure belongs to none of them: a bug the broken marks would otherwise hide."""
+    failures = [line for outcome in outcomes for line in outcome.failures]
+    claimed: set[str] = set()
+    passing = 0
+    for suite in suites:
+        for case in suite.cases:
+            if not case.broken:
+                continue
+            for value, reason in zip(case.values or [""], case.descriptions() or [""], strict=False):
+                name = f"{case.method}({value})" if value else case.method
+                if case_filter not in name:
+                    continue
+                # A failure line names the case's class, method and parameter values.
+                own = [line for line in failures if suite.full_name in line and case.method in line and value in line]
+                claimed.update(own)
+                print(f"broken {suite.full_name}.{name}\n     marked: {reason}")
+                for line in own:
+                    print(f"     failed: {line.splitlines()[0]}")
+                if not own:
+                    passing += 1
+                    print("     [ERROR] it passes: take its broken mark off (and enable the scenarios that wait on it)")
+    unclaimed = [line for line in failures if line not in claimed]
+    for line in unclaimed:
+        print(f"[ERROR] not from a broken case: {line}")
+    return 1 if passing or unclaimed else 0
+
+
 def test(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py test",
@@ -516,6 +551,13 @@ def test(arguments: list[str]) -> int:
         "the frame budget; they run alone, after the others, so their frame times aren't slowed by their neighbours",
     )
     parser.add_argument("--ci-run", action="store_true", help="report frame times without checking them against the budget")
+    parser.add_argument(
+        "--broken",
+        action="store_true",
+        help="only the cases marked broken, each failure printed under the reason its case is marked broken for: check "
+        "that each still fails where and why its mark says, and nowhere else. Exits non-zero when a broken case passes "
+        "(take its mark off) or an error turns up that no broken case accounts for",
+    )
     parser.add_argument("--list", action="store_true", help="show what would run")
     parsed = parser.parse_args(arguments)
     options = TestOptions(
@@ -525,7 +567,8 @@ def test(arguments: list[str]) -> int:
         jobs=parsed.jobs,
         key_frames=parsed.with_key_frames,
         ci_run=parsed.ci_run,
-        run_broken=os.environ.get("RUN_BROKEN") == "1",
+        run_broken=os.environ.get("RUN_BROKEN") == "1" or parsed.broken,
+        only_broken=parsed.broken,
     )
     suites = selected(discover(), options)
     if parsed.list:
@@ -571,6 +614,8 @@ def test(arguments: list[str]) -> int:
     if not any(outcome.executed for outcome in outcomes):
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1
+    if options.only_broken:
+        return broken_report(suites, outcomes, options.case)
     if failed:
         return 1
     # Only a full regression that passed may become the baseline: not a focused run, nor one with broken cases.

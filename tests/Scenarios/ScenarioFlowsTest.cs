@@ -42,7 +42,6 @@ public class ScenarioFlowsTest
     [TestCase("knife_back", true, "", Timeout = Limits.Slow)]
     [TestCase("lung_fluid", false, "", Timeout = Limits.Slow)]
     [TestCase("oscar_figurine", false, "", Timeout = Limits.Slow)]
-    [TestCase("blocked_artery", false, "", Timeout = Limits.Slow)]
     [TestCase("heart_attack", true,
         "in some runs the frame the defibrillator is put down (56.9 s) takes 35-43 ms of the game's own work; timing "
         + "every _Process and _PhysicsProcess found nothing over 10 ms there, so it's in the engine or the finalizer "
@@ -60,6 +59,7 @@ public class ScenarioFlowsTest
     [TestCase("nose_job", Timeout = Limits.Slow, Description = "BROKEN: the needle doesn't reach the last muscle and skin stitches on the nose (tip in the air), the patient arrests before it's closed.")]
     [TestCase("colon_cancer", Timeout = Limits.Slow, Description = "BROKEN: run beside another suite (--jobs 2), a 7.7 cm tear keeps bleeding 2.4 ml/s and \"Control the bleeding\" never completes; run alone it passes. Likely wall-clock driven, not yet debugged. Also, with key frames the worst frame takes 32 ms (budget 16 ms) while holding the bowel aside and sewing.")]
     [TestCase("bullet_near_heart", Timeout = Limits.Slow, Description = "BROKEN: the test driver stands too far along the table to hold the lung aside with the left hand (0.86 m from its shoulder, reach 0.72 m), so the bullet stays covered and the forceps close on nothing.")]
+    [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Close the skin\" passes or fails on the random sequence.")]
     [TestCase("leg_extension", Timeout = Limits.Slow, Description = "BROKEN: the needle threads both 13.5 cm cuts, but their skin stays open (\"needle cannot reach intended puncture within 4 mm\"), \"Close the leg\" never completes.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);

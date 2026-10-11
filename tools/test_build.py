@@ -147,6 +147,25 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(process.call_args.args[0][0], "xvfb-run")
         self.assertEqual(process.call_args.kwargs["env"]["LIBGL_ALWAYS_SOFTWARE"], "1")
 
+    def broken_run(self, *failures: str) -> int:
+        """broken_report() over one suite with a broken case for "a" and "b", whose run failed with failures."""
+        self.suite.cases = [build.Case("Flows", ["broken"], "BROKEN: a fails / BROKEN: b fails", ['"a"', '"b"'])]
+        outcome = build.Outcome(self.suite, self.root / "log", list(failures), 2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            return build.broken_report([self.suite], [outcome], "")
+
+    def test_broken_cases_that_still_fail_pass_the_broken_run(self) -> None:
+        name = self.suite.full_name
+        self.assertEqual(self.broken_run(f'[Failed] {name}.Flows Flows:0 ("a"): x', f'[Failed] {name}.Flows Flows:1 ("b"): y'), 0)
+
+    def test_broken_case_that_passes_fails_the_broken_run(self) -> None:
+        self.assertEqual(self.broken_run(f'[Failed] {self.suite.full_name}.Flows Flows:0 ("a"): x'), 1)
+
+    def test_error_no_broken_case_accounts_for_fails_the_broken_run(self) -> None:
+        name = self.suite.full_name
+        failures = (f'[Failed] {name}.Flows Flows:0 ("a"): x', f'[Failed] {name}.Flows Flows:1 ("b"): y', "SCRIPT ERROR: elsewhere")
+        self.assertEqual(self.broken_run(*failures), 1)
+
     def key_frames(self, passed: bool) -> tuple[Path, Path]:
         taken, baseline = self.root / "screenshots", self.root / "tests" / "KeyFrames"
         patch.object(build, "KEY_FRAMES", taken).start()
