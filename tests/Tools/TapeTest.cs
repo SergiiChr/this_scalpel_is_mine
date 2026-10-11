@@ -7,15 +7,8 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class TapeTest
 {
-    /// <summary>
-    /// A roll has 15 charges (tools.cfg) and every wound bin it closes costs one, but the hand stitch cut has 29 bins
-    /// (Wound.BinLengthUv). The tape closes the first half and then silently does nothing: no toast says it's used up
-    /// and the HUD doesn't show charges. The needle, for comparison, closes the same cut in about 22 s. To fix: enough
-    /// charges for the cuts tape is meant for (or charges per centimeter), and say when a roll runs out.
-    /// </summary>
-    [TestCase(Timeout = Limits.Slow,
-        Description = "BROKEN: one roll of tape closes only 15 of the hand stitch cut's 29 bins, then does nothing without saying why.")]
-    [TestCategory("broken")]
+    /// <summary>One roll of tape closes the hand stitch cut, and the surgery ends in success.</summary>
+    [TestCase(Timeout = Limits.Slow)]
     public async Task TapeClosesTheHandStitchCut()
     {
         var driver = SurgeryDriver.Create();

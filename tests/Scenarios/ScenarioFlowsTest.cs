@@ -48,6 +48,7 @@ public class ScenarioFlowsTest
         + "thread; not traced further", Timeout = Limits.Slow)]
     [TestCase("brain_tumor", false, "", Timeout = Limits.Slow)]
     [TestCase("euthanasia", false, "", Timeout = Limits.Slow)]
+    [TestCase("gangrene_amputation", false, "", Timeout = Limits.Slow)]
     public async Task PlaysThrough(string scenario, bool keyFrames, string budgetBroken) => await
         ScenarioFlow.Play(scenario, keyFrames, budgetBroken);
 
@@ -61,7 +62,6 @@ public class ScenarioFlowsTest
     public async Task PlaysThroughToKnownIssue(string scenario, string failure) =>
         await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));
 
-    [TestCase("gangrene_amputation", Timeout = Limits.Slow, Description = "BROKEN: the bone saw held on the bone for 60 s doesn't get through it.")]
     [TestCase("colon_cancer", Timeout = Limits.Slow, Description = "BROKEN: run beside another suite (--jobs 2), a 7.7 cm tear keeps bleeding 2.4 ml/s and \"Control the bleeding\" never completes; run alone it passes. Likely wall-clock driven, not yet debugged. Also, with key frames the worst frame takes 32 ms (budget 16 ms) while holding the bowel aside and sewing.")]
     [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Close the skin\" passes or fails on the random sequence.")]
     [TestCategory("broken")]

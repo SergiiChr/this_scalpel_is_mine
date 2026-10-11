@@ -11,16 +11,9 @@ public class GameTimeTest
     private const int HitchMsec = 300;
     private const int Trials = 5;
 
-    /// <summary>
-    /// Hand tremor is driven by Time.GetTicksMsec() (Surgeon.PlaceHand()), so it follows the wall clock, not the game: a
-    /// hitch jumps the hand by a whole shake, and runs under --fixed-fps shake differently from real time. That's the
-    /// likely reason the colon cancer flow fails only beside another suite. The same wall clock decides other gameplay
-    /// too: score throttling (Scoring.Add()), toast throttling (Surgery.Announce()), the bone scrape jolt, the tear
-    /// notice, the diazepam hand delay, how long an X-ray takes to develop and sound and effect throttles. To fix: count
-    /// these in game time (Surgery.Elapsed, or a time summed from delta).
-    /// </summary>
-    [TestCase(Description = "BROKEN: hand tremor (and other gameplay timing) follows the wall clock, not game time.")]
-    [TestCategory("broken")]
+    /// <summary>Hand tremor follows game time (GameClock): a hitch between two frames moves the hand by no more than one
+    /// frame's shake.</summary>
+    [TestCase]
     public async Task TremorFollowsGameTime()
     {
         var driver = SurgeryDriver.Create();
