@@ -105,6 +105,13 @@ class KeyFramesTest(unittest.TestCase):
         keyframes.update(self.run_frames, self.baseline)
         self.assertEqual(self.differ(), 0)
 
+    def test_front_and_oblique_are_one_key_frame(self) -> None:
+        for view in ("front", "oblique"):
+            scene(self.run_frames / "card" / f"00_on_hook_{view}.png")
+        frames = keyframes.key_frames(self.run_frames)
+        self.assertEqual(list(frames), [("card", "on_hook")])
+        self.assertEqual(list(frames["card", "on_hook"].views), ["front", "oblique"])
+
     def test_folder_of_a_test_without_key_frames_goes(self) -> None:
         self.take("00_cut")
         keyframes.update(self.run_frames, self.baseline)

@@ -27,7 +27,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 
 # Views of one key frame, in the order a sheet shows them. Files without one of these suffixes are a view of their own.
-VIEWS = ("top", "oblique", "side", "reverse", "view")
+VIEWS = ("top", "front", "oblique", "side", "reverse", "view")
 # Each folder's file name to description index, written by the tests' KeyFrames.
 DESCRIPTIONS = "keyframes.json"
 # The baseline's file type and encoder settings: about a sixth of a PNG's size. A run's key frames are encoded the same

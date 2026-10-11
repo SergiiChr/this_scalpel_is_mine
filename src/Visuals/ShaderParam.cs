@@ -21,6 +21,8 @@ public static class ShaderParam
     public static readonly StringName Damage = "damage";
     public static readonly StringName Daze = "daze";
     public static readonly StringName EmissionColor = "emission_color";
+    /// <summary>Global (project settings): the view's clock, see Hud.</summary>
+    public static readonly StringName GameTime = "game_time";
     public static readonly StringName Grain = "grain";
     public static readonly StringName Grime = "grime";
     public static readonly StringName LensAge = "lens_age";

@@ -43,6 +43,13 @@ window/stretch/mode="canvas_items"
 3d/physics_engine="Jolt Physics"
 jolt_physics_3d/simulation/penetration_slop=0.002
 
+[shader_globals]
+
+game_time={
+"type": "float",
+"value": 0.0
+}
+
 [rendering]
 
 anti_aliasing/quality/msaa_3d=2

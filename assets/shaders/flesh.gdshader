@@ -4,6 +4,7 @@
 shader_type spatial;
 render_mode cull_disabled;
 
+global uniform float game_time;
 uniform vec4 albedo : source_color = vec4(0.55, 0.12, 0.12, 1.0);
 uniform float damage = 0.0;
 uniform float wetness = 0.8;
@@ -44,7 +45,7 @@ void vertex() {
 	local_pos = VERTEX;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	// Slow breathing/peristalsis wobble so organs never look like plastic.
-	VERTEX += NORMAL * sin(TIME * 1.3 + VERTEX.x * 40.0) * 0.0008;
+	VERTEX += NORMAL * sin(game_time * 1.3 + VERTEX.x * 40.0) * 0.0008;
 }
 
 void fragment() {
