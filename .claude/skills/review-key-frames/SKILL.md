@@ -6,8 +6,9 @@ description: Run the full regression with key frames, review only the key frames
 # Review key frames
 
 1. Run `./build.py screenshot_review` (smoke and lint pass first, see CLAUDE.md). It runs the same full regression as
-   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A non-zero exit means the
-   regression failed: fix that first, the report is still written for looking into it.
+   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. It exits non-zero when the
+   regression failed (fix that first, the report is still written for looking into it) and while any key frame
+   differs from the baseline.
 2. Read `build/review/report.md`. It lists, per test folder, only key frames that are missing, changed or new against
    the baseline committed in `tests/KeyFrames`, with where in the view a change is. A missing key frame or view is
    always a finding.
@@ -16,9 +17,9 @@ description: Run the full regression with key frames, review only the key frames
    `before` sheet only when a change needs explaining.
 4. A changed key frame the change didn't mean to touch is a regression: find out why before handing off.
 5. Once the regression passed and every listed sheet looks right, run
-   `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` with the change. `--use-latest-set`
-   takes the key frames just reviewed; after any later change, review again first. Skip this step when the report
-   lists nothing.
+   `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` with the change. It writes only the
+   listed key frames; the others keep their files. `--use-latest-set` takes the key frames just reviewed; after any
+   later change, review again first. Skip this step when the report lists nothing.
 6. In the handoff, list the sheets you reviewed and what you found.
 
 ## What goes into the baseline

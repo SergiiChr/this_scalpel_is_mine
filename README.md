@@ -127,8 +127,8 @@ tools/keyframes.py  Key frame review report (./build.py screenshot_review)
 ```bash
 ./build.py test    # the fast headless smoke suites; fails on any error
 ./build.py screenshot_review  # full regression with key frames, and a report of the ones that differ from the
-                              # committed baseline (tests/KeyFrames): build/review/report.md
-./build.py generate_baseline  # full regression with key frames, which become the baseline when it passes
+                              # committed baseline (tests/KeyFrames): build/review/report.md. Fails while any differs.
+./build.py generate_baseline  # full regression with key frames; writes the ones that differ into the baseline
 ./build.py shots   # screenshots of a scenario in a virtual display: ./build.py shots [scenario] [out dir]
 ```
 
