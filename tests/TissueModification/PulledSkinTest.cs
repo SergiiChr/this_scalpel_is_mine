@@ -30,24 +30,12 @@ public class PulledSkinTest
     /// up, and a little back toward its hinge, so the flap lifts and humps up.</summary>
     private static readonly Vector3 FlapPull = new(0f, 0.6f, 0.15f);
     private const int GripKey = 900;
-    /// <summary>Whether the fat and muscle are held to stay under the skin (TissueLayers.AssertUnderSkin()).</summary>
-    private bool _underSkin;
 
     [TestCase("appendectomy")]
     [TestCase("leg_extension")]
-    public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario) =>
-        await PulledLipAndFlap(scenario, underSkin: scenario == "appendectomy");
-
-    /// <summary>The thigh's skin bunches into a wave ahead of the grip, folded within a cell of the grid, and the fat
-    /// and muscle drawn under the wave pass through its folds.</summary>
-    [TestCategory("broken")]
-    [TestCase("leg_extension", Description = "BROKEN: under the wave of skin bunched ahead of the grip on the thigh, the fat and muscle pass through the skin's folds")]
-    public async Task DeepLayersStayUnderBunchedSkin(string scenario) => await PulledLipAndFlap(scenario, underSkin: true);
-
-    private async Task PulledLipAndFlap(string scenario, bool underSkin)
+    public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario)
     {
         var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}");
-        _underSkin = underSkin;
         var driver = session.Driver;
         var body = driver.Body;
         var tissue = body.Tissue;
@@ -155,13 +143,10 @@ public class PulledSkinTest
         }
     }
 
-    private Task AssertNothingClips(SurgeryDriver driver) => driver.Unbudgeted(() =>
+    private static Task AssertNothingClips(SurgeryDriver driver) => driver.Unbudgeted(() =>
     {
         AssertTissueSheetsDoNotIntersect(driver.Body);
-        if (_underSkin)
-        {
-            TissueLayers.AssertUnderSkin(driver.Body);
-        }
+        TissueLayers.AssertUnderSkin(driver.Body);
         AssertSkinDoesNotCrossDrape(driver.Body);
         return Task.CompletedTask;
     });

@@ -274,6 +274,10 @@ public sealed partial class TissueSim
         /// <see cref="StrainAt"/>), and the topology that patch was made for.</summary>
         public float[]? Unpulled { get; set; }
         public int UnpulledFor { get; set; } = -1;
+        /// <summary>How long every spring in the window was when the grip took hold, by spring index (0 for those
+        /// outside it), for the bunching over the footprint.</summary>
+        public float[] UnpulledAll { get; set; } = [];
+        public float[] UnpulledAlong { get; set; } = [];
         /// <summary>Where the patch's particles and the gripped one lay when the grip took hold (DragPatch()), and
         /// the topology that patch was made for.</summary>
         public Vector3[]? Base { get; set; }
@@ -1073,6 +1077,16 @@ public sealed partial class TissueSim
             pin.Unpulled = [.. patch.Springs.Select(s => Pos[_springs[s].A].DistanceTo(Pos[_springs[s].B]))];
             pin.UnpulledFor = TopologyVersion;
         }
+        if (pin.UnpulledAll.Length != _springs.Length)
+        {
+            pin.UnpulledAll = new float[_springs.Length];
+            pin.UnpulledAlong = new float[_springs.Length];
+            foreach (var s in _winSprings)
+            {
+                pin.UnpulledAll[s] = Pos[_springs[s].A].DistanceTo(Pos[_springs[s].B]);
+                pin.UnpulledAlong[s] = Along(s);
+            }
+        }
         var worst = 1f;
         for (var n = 0; n < patch.Springs.Length; n++)
         {
@@ -1088,6 +1102,25 @@ public sealed partial class TissueSim
             var length = Pos[spring.B].DistanceTo(Pos[spring.A]);
             worst = Mathf.Max(worst, length / Mathf.Max(pin.Unpulled[n], spring.Rest));
             worst = Mathf.Max(worst, GripStrain * Mathf.Min(pin.Unpulled[n], spring.Rest) / (GripBunch * Mathf.Max(length, 0.0001f)));
+        }
+        // Bunching counts over the grip's whole footprint: skin pushed along piles up where it meets skin that
+        // stays put, at the drape's rim, rows ahead of the jaws, and the hand stops when that pile can't take more.
+        // Nor may the patch fold the skin over itself: a spring whose reach along the body has shrunk to
+        // UprightShare of its rest reach (KeepUpright()) is at the limit, one row passing the next is over it.
+        foreach (var s in _winSprings)
+        {
+            ref readonly var spring = ref _springs[s];
+            var unpulled = pin.UnpulledAll[s];
+            if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f || !NearFold(spring.A) || !NearFold(spring.B))
+            {
+                continue;
+            }
+            var length = Pos[spring.B].DistanceTo(Pos[spring.A]);
+            worst = Mathf.Max(worst, GripStrain * Mathf.Min(unpulled, spring.Rest) / (GripBunch * Mathf.Max(length, 0.0001f)));
+            // Skin beside a cut lies crushed already, its lips drawn back into it: the reach it has left when the
+            // grip takes hold is what it has to give.
+            var least = UprightShare * Mathf.Min(pin.UnpulledAlong[s], 1f);
+            worst = Mathf.Max(worst, GripStrain * least / Mathf.Max(Along(s), 0.0001f));
         }
         return worst;
     }
@@ -1111,6 +1144,16 @@ public sealed partial class TissueSim
         var top = Mathf.Lerp(Settled[Index(i, j)].Y, Settled[Index(i + 1, j)].Y, u - i);
         var bottom = Mathf.Lerp(Settled[Index(i, j + 1)].Y, Settled[Index(i + 1, j + 1)].Y, u - i);
         return Mathf.Lerp(top, bottom, v - j);
+    }
+
+    /// <summary>Spring s's reach along the body (its rest direction in the site plane), as a share of its rest
+    /// reach: 1 as it lay at rest, 0 standing on end, negative folded back over.</summary>
+    private float Along(int s)
+    {
+        ref readonly var spring = ref _springs[s];
+        var restWay = new Vector2(Rest[spring.B].X - Rest[spring.A].X, Rest[spring.B].Z - Rest[spring.A].Z);
+        var d = Pos[spring.B] - Pos[spring.A];
+        return new Vector2(d.X, d.Z).Dot(restWay) / restWay.LengthSquared();
     }
 
     /// <summary>
@@ -1726,6 +1769,8 @@ public sealed partial class TissueSim
             // Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
             RelaxFolds();
             KeepBendsRound();
+            KeepUpright();
+            KeepBendsRound();
             PreserveLocalArea();
             StayOnBody();
             StayAboveFloor();
@@ -2032,7 +2077,11 @@ public sealed partial class TissueSim
                 // drape's coarse grid can read below it on a steep flank and then step up as it moves, ratcheting it up.
                 if (!FloorOpen.HasPoint(new Vector2(Pos[k].X, Pos[k].Z)))
                 {
-                    if (Pos[k].DistanceSquaredTo(Settled[k]) > LiftedOff * LiftedOff)
+                    // Lifted off the body (a flap folded out), it lies on the cloth. Skin that has only slid
+                    // along the body under the drape's edge, pushed there by a grip, stays on the body under
+                    // the cloth: counted as lifted by how far it moved, it would be ratcheted up onto the rim.
+                    var body = SettledHeightAt(Pos[k].X, Pos[k].Z);
+                    if (Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff)
                     {
                         Pos[k] = AboveFloor(k, Pos[k]);
                     }
@@ -2045,12 +2094,6 @@ public sealed partial class TissueSim
                         {
                             Pos[k] = Pos[k] with { X = Settled[k].X, Z = Settled[k].Z };
                         }
-                    }
-                    else
-                    {
-                        // A moving wave can carry even its nearly stationary skirt over the drape's rim. Keep
-                        // those exposed points on top while retaining the local fold.
-                        Pos[k] = AboveFloor(k, Pos[k]);
                     }
                 }
             }

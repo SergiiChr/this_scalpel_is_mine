@@ -10,9 +10,12 @@ public sealed partial class TissueSim
     /// <summary>Gentle intact-edge displacement averaging rounds cell-sized creases into a wave.</summary>
     private const float FoldBend = 0.12f;
     /// <summary>The least two grid points two cells apart along a row or column come to, as a share of their rest
-    /// distance (see KeepBendsRound()). 0.7 lets each of the two particles between turn 90 degrees, enough to fold
-    /// a flap right over.</summary>
-    private const float BendSpan = 0.7f;
+    /// distance (see KeepBendsRound()). 0.8 lets each of the two particles between turn about 70 degrees: a hump,
+    /// not a crease.</summary>
+    private const float BendSpan = 0.8f;
+    /// <summary>The least a spring's reach along the body, as a share of its rest reach (see KeepUpright()): the
+    /// skin can rise steeply but not overhang. 0.4 lets it tilt up to about 66 degrees.</summary>
+    internal const float UprightShare = 0.4f;
     /// <summary>Faces below this fraction of rest area need the final compression passes.</summary>
     private const float CompressedArea = 0.3f;
     /// <summary>Retain this fraction of rest area so a fold has room for the tissue underneath it.</summary>
@@ -117,15 +120,15 @@ public sealed partial class TissueSim
     }
 
     /// <summary>Skin doesn't crease cell by cell: a grid point and the one two along its row or column, joined by
-    /// whole springs, stay BendSpan of their rest distance apart. A spring turns any way for free, so pushed-along
-    /// skin would otherwise fold back on itself a cell at a time, a row ducking under the one before it with every
-    /// spring still at its length, instead of rising into a hump.</summary>
+    /// whole springs, stay BendSpan of their rest distance apart. A spring turns any way for free, so skin pushed
+    /// along by a grip, or crushed by a cut's lips drawing back into it, would otherwise fold back on itself a cell
+    /// at a time, a row ducking under the one before it with every spring still at its length, instead of rising
+    /// into one hump. Everywhere the sheet moves, until a flap is deliberately turned over.</summary>
     private void KeepBendsRound()
     {
-        if (!_fold.Bending) { return; }
+        if (_fold.TurnedOver) { return; }
         foreach (var k in _winParticles)
         {
-            if (!NearFold(k)) { continue; }
             var at = CellOf(k);
             if (at.X + 2 <= ResX && SpringWhole(SpringRight[k]) && SpringWhole(SpringRight[k + 1]))
             {
@@ -152,6 +155,38 @@ public sealed partial class TissueSim
             return;
         }
         var apart = d * ((minimum - length) / length / share);
+        Pos[a] -= apart * _free[a];
+        Pos[b] += apart * _free[b];
+    }
+
+    /// <summary>Skin pushed along, by a grip or by a cut's lips drawing back, rises into a mound; it doesn't curl
+    /// over itself. Each whole spring along a row or column keeps UprightShare of its rest reach along the body, so
+    /// the sheet stays a surface over the body with what lies under it fitting underneath, until a flap is
+    /// deliberately turned over.</summary>
+    private void KeepUpright()
+    {
+        if (_fold.TurnedOver) { return; }
+        foreach (var k in _winParticles)
+        {
+            var at = CellOf(k);
+            if (at.X < ResX && SpringWhole(SpringRight[k])) { Upright(k, k + 1); }
+            if (at.Y < ResY && SpringWhole(SpringDown[k])) { Upright(k, k + ResX + 1); }
+        }
+    }
+
+    private void Upright(int a, int b)
+    {
+        var restWay = new Vector2(Rest[b].X - Rest[a].X, Rest[b].Z - Rest[a].Z);
+        var reach = restWay.Length();
+        var way = restWay / reach;
+        var along = new Vector2(Pos[b].X - Pos[a].X, Pos[b].Z - Pos[a].Z).Dot(way);
+        var least = reach * UprightShare;
+        var share = _free[a] + _free[b];
+        if (along >= least || share <= 0f)
+        {
+            return;
+        }
+        var apart = new Vector3(way.X, 0f, way.Y) * ((least - along) / share);
         Pos[a] -= apart * _free[a];
         Pos[b] += apart * _free[b];
     }

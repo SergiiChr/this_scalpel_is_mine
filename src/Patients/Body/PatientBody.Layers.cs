@@ -1066,13 +1066,17 @@ public partial class PatientBody
     /// <summary>
     /// <paramref name="point"/> of a layer under the skin, owned by grid point <paramref name="k"/>, kept above any
     /// skin lying under it: a lip lifted and drawn over the skin beside it carries its fat and muscle along, and
-    /// they flatten onto that skin instead of hanging through it. Skin under the point is any skin not drawn from
-    /// k itself lying UnderSkinDrop or more below k's own: under a lip it is the sheet the lip was pulled over,
-    /// under a mound of bunched skin that curls over, the mound's own far flank.
+    /// they flatten onto that skin instead of hanging through it. Skin under the point is skin drawn from grid
+    /// points not next to k lying UnderSkinDrop or more below k's own: the sheet a lip was pulled over.
     /// </summary>
     private Vector3 AboveSkinUnder(Vector3 point, int k)
     {
-        bool Own(int v) => _skinSheetOwner[v] == k;
+        var at = Tissue.CellOf(k);
+        bool Own(int v)
+        {
+            var cell = Tissue.CellOf(_skinSheetOwner[v]);
+            return Math.Abs(cell.X - at.X) <= 1 && Math.Abs(cell.Y - at.Y) <= 1;
+        }
         var own = _renderPoints[0][k].Y - UnderSkinDrop;
         var floor = float.NaN;
         // Around the point as well as under it: the skin under a lifted row ends somewhere between its grid points,
@@ -1087,7 +1091,7 @@ public partial class PatientBody
             }
             foreach (var t in bucket)
             {
-                // Skin drawn from the point's own grid vertex is the skin it hangs from.
+                // Skin drawn from the point's own grid vertex or the ones next to it is the skin it hangs from.
                 if (Own(_skinSheetIndex[t]) || Own(_skinSheetIndex[t + 1]) || Own(_skinSheetIndex[t + 2]))
                 {
                     continue;
