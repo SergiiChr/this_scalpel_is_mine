@@ -45,7 +45,8 @@ public sealed class CutAction : ToolAction
             {
                 patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level], step.Def.Sharpness,
                     !tool.Sterile, step.Hand.Speed);
-                use.CutWall = true;
+                // Drawn on inside an opening it isn't cutting the wall: it still frees a target it was put down on.
+                use.CutWall = use.CutWall || step.Zone == SiteZone.Site;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             }

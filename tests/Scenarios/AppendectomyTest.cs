@@ -2,7 +2,7 @@ namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
 /// The appendectomy the textbook way, like a player: the line opened through every layer and drawn along once more, the
-/// appendix's base cut with the scalpel, the appendix lifted out, the bleeding sealed and the belly closed. Opening the
+/// appendix's base cut with the scalpel put down on it and drawn a little along its edge, the appendix lifted out, the bleeding sealed and the belly closed. Opening the
 /// belly cleanly oozes and leaves the appendix alone; only cutting its base opens its vessel. The game ends the surgery
 /// with a successful report and the patient loses little blood.
 /// </summary>
@@ -13,6 +13,8 @@ public class AppendectomyTest
 {
     /// <summary>An appendectomy done right loses less blood than this (ml).</summary>
     private const float LittleBlood = 200f;
+    /// <summary>How far (meters) the scalpel put down on the appendix's base is drawn along its edge.</summary>
+    private const float Drawn = 0.006f;
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task TheTextbookRouteEndsWellWithLittleBloodLost()
@@ -44,7 +46,10 @@ public class AppendectomyTest
         AssertFloat(patient.Vitals.BleedRate)
             .OverrideFailureMessage($"a clean incision through every layer only oozes: {driver.Bleeders()}").IsBetween(0.1f, 1.5f);
 
-        await driver.PlayerCutsFree(appendix);
+        await driver.PlayerCutsFree(appendix, Drawn);
+        AssertFloat(appendix.Anchor)
+            .OverrideFailureMessage($"put down on the base and drawn along it, the scalpel cuts the appendix free\n{driver.Recent()}")
+            .IsEqual(0f);
         AssertBool(patient.Wounds.Any(wound => wound.IsInternal && wound.Bleeding > 0.5f))
             .OverrideFailureMessage($"cutting the appendix's base opens its vessel: {driver.Bleeders()}").IsTrue();
         await Completes(driver, "extract");

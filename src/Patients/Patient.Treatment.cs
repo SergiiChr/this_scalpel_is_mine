@@ -120,7 +120,7 @@ public partial class Patient
         if (!_strokeWounds.TryGetValue(strokeKey, out var wound) || wound.Points[^1].DistanceTo(a) > 0.02f)
         {
             var reach = Body.MetersToUv(RecutReach);
-            var recut = Wounds.Find(w => w.Kind == WoundKind.Cut && w.DistanceTo(a) < reach && w.DistanceTo(b) < reach);
+            var recut = Wounds.Find(w => w.Kind == WoundKind.Cut && w.Runs(a, b, reach));
             if (recut is null)
             {
                 wound = NewWound(WoundKind.Cut, a, depth);
@@ -131,6 +131,7 @@ public partial class Patient
             else
             {
                 wound = recut;
+                wound.Recut(a, b, depth >= Wound.MuscleDepth);
                 _strokeWounds.Remove(strokeKey);
             }
         }
@@ -818,7 +819,7 @@ public partial class Patient
                 : wound.DistanceTo(uv) < radius + 0.01f + Body.MetersToUv(FullGap) * wound.Opened;
             if (near && (wound.IsInternal ? Inside(zone, uv) : zone == SiteZone.Site))
             {
-                wound.Cauterized = Mathf.Min(wound.Cauterized + def.Power * 0.6f * dt, 0.95f);
+                wound.Cauterize(def.Power * 0.6f * dt, 0.95f);
                 // A vessel a staple went through is sealed for good.
                 wound.Nicked = Mathf.Max(wound.Nicked - def.Power * StapleNick * dt, 0f);
                 sealedAny = true;

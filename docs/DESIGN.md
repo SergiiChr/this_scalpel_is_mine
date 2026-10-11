@@ -211,7 +211,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
 - A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
   past the end of an opening it's already in. Drawn along a cut already there, it deepens that cut rather than making
-  a second one. Over an opening it reaches down only at full depth: there it grates on a bone (which hurts through a
+  a second one, and opens it again where it goes: its stitches are cut, a clot or a cautery seal there no longer holds. Over an opening it reaches down only at full depth: there it grates on a bone (which hurts through a
   local block) but stops short of an organ; it nicks an organ only by touching it. Drawn on from cutting the belly wall
   it passes over a target; put down on one, it cuts it free (an appendix's base then bleeds from its vessel).
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.

@@ -557,7 +557,8 @@ public sealed class TissueSim
     }
 
     /// <summary>
-    /// Severs every tissue spring the segment crosses down to the given depth and loosens the skin around it.
+    /// Severs every tissue spring the segment crosses down to the given depth, cuts the stitches it crosses and loosens
+    /// the skin around it.
     /// A point exactly on the cut's line counts as on its left, so a cut through a grid point severs each spring once.
     /// </summary>
     public void Cut(Vector2 a, Vector2 b, TissueDepth depth)
@@ -614,6 +615,13 @@ public sealed class TissueSim
                         Sever(s, depth, Mathf.Clamp(t, CrossMargin, 1f - CrossMargin), (b - a) * Size);
                     }
                 }
+            }
+        }
+        foreach (var s in _stitches)
+        {
+            if (_springs[s].Active && Crossing(UvOf(_springs[s].A), UvOf(_springs[s].B), a, b) >= 0f)
+            {
+                _springs[s].Active = false;
             }
         }
         var reach = new Vector2I(Mathf.CeilToInt(LooseRadius / Size.X * ResX), Mathf.CeilToInt(LooseRadius / Size.Y * ResY));

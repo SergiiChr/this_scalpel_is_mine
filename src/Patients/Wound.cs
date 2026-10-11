@@ -33,6 +33,8 @@ public sealed class Wound
     public const float PressBreak = 1f;
 
     private readonly List<Vector2> _points;
+    /// <summary>Bins cut open again since it was last sealed by cautery (<see cref="Recut"/>).</summary>
+    private readonly HashSet<int> _reopened = [];
     private float _length;
 
     public Wound(int id, WoundKind kind, Vector2 start, float depth)
@@ -110,6 +112,47 @@ public sealed class Wound
             _points.Add(point);
         }
         ResizeBins();
+    }
+
+    /// <summary>
+    /// Cut again from <paramref name="a"/> to <paramref name="b"/> along its own line: fresh damage there. It bleeds
+    /// again however it was stopped, its skin (and its muscle, <paramref name="throughMuscle"/>) is open again along
+    /// that stretch, and cautery no longer seals the share of it cut open again.
+    /// </summary>
+    public void Recut(Vector2 a, Vector2 b, bool throughMuscle)
+    {
+        Clotted = false;
+        PressedFor = 0f;
+        var (from, to) = (BinAt(a), BinAt(b));
+        for (var bin = Math.Min(from, to); bin <= Math.Max(from, to); bin++)
+        {
+            Bins[bin] = 0f;
+            if (throughMuscle)
+            {
+                Muscle[bin] = 0f;
+            }
+            _reopened.Add(bin);
+        }
+        Cauterized = Mathf.Min(Cauterized, 1f - ((float)_reopened.Count / Bins.Length));
+    }
+
+    /// <summary>Seals it further with cautery, up to <paramref name="most"/>. Sealed that far, all of it is sealed
+    /// again.</summary>
+    public void Cauterize(float amount, float most)
+    {
+        Cauterized = Mathf.Min(Cauterized + amount, most);
+        if (Cauterized >= most)
+        {
+            _reopened.Clear();
+        }
+    }
+
+    /// <summary>The whole stroke from <paramref name="a"/> to <paramref name="b"/> runs within
+    /// <paramref name="reach"/> of its line, not only its ends (two arms of a U lie close).</summary>
+    public bool Runs(Vector2 a, Vector2 b, float reach)
+    {
+        var steps = Math.Max(Mathf.CeilToInt(a.DistanceTo(b) / PointSpacingUv), 1);
+        return Enumerable.Range(0, steps + 1).All(i => DistanceTo(a.Lerp(b, (float)i / steps)) < reach);
     }
 
     public float LengthUv => _length;
