@@ -25,7 +25,9 @@ from .scene import Vec3, capsule, ellipsoid
 
 # Material colors (display sRGB). The game recolors tint (cap), skin and mask (src/Surgeons/Surgeon.Body.cs).
 SKIN = (0.8, 0.6, 0.5)
-CAP = (0.42, 0.52, 0.66)
+# The cap's royal blue and its weave come from the product photo in sources/.
+CAP = (0.23, 0.405, 0.71)
+CAP_PHOTO = Path(__file__).with_name("sources") / "cap_photo.jpg"
 # The mask's blue and white ear loops are sampled from the product photo in sources/, as is its fiber grain.
 MASK = (0.44, 0.785, 0.967)
 LOOPS = (0.97, 0.97, 0.97)
@@ -121,42 +123,48 @@ def _solidify(obj: bpy.types.Object, thickness: float) -> bpy.types.Object:
     return scene.bake(obj)
 
 
-def _grain(shape: tuple[int, int], scale: float, amount: float, seed: int) -> NDArray[np.float64]:
-    """Fiber noise for cloth maps: smoothed random speckle, zero on average."""
+# The cap map's u runs around the whole head while v covers only its height: anything isotropic on the map is
+# stretched this much across the cloth, so its noise and weave are squeezed along u by the same factor.
+CAP_STRETCH = 5.0
+
+
+def _grain(shape: tuple[int, int], scale: float, amount: float, seed: int, stretch: float = 1.0) -> NDArray[np.float64]:
+    """Fiber noise for cloth maps: smoothed random speckle, zero on average, `stretch` times finer along u."""
     from scipy.ndimage import gaussian_filter
 
-    noise = gaussian_filter(np.random.default_rng(seed).standard_normal(shape), scale, mode="wrap")
+    noise = gaussian_filter(np.random.default_rng(seed).standard_normal(shape), (scale, scale / stretch), mode="wrap")
     return np.asarray(noise / noise.std() * amount, dtype=np.float64)
 
 
 def _cap_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Cap texture, u around the head from the back, v from the band up to the crown: vertical gathers that fade out
-    over the crown, soft crinkles, and the stitched elastic band along the bottom."""
+    """Cap texture, u around the head from the back, v from the band up to the crown: smooth woven cloth with a wide
+    band topstitched along both edges, panel seams up the crown, and the photo's weave."""
     size = 512
     v, u = np.meshgrid(np.linspace(0.0, 1.0, size), np.linspace(0.0, 1.0, size), indexing="ij")
-    gathers = np.sin(u * 2.0 * np.pi * 26.0 + 0.6 * _grain((size, size), 12.0, 1.0, 3)) * (1.0 - v) ** 2
-    crinkle = _grain((size, size), 18.0, 0.3, 4) * (0.3 + v)
-    # Flat over the crown, where every column of the map converges on one point.
-    height = (gathers + crinkle) * np.clip((1.0 - v) / 0.2, 0.0, 1.0)
-    band = v < 0.045
-    stitch = ((np.abs(v - 0.012) < 0.003) | (np.abs(v - 0.033) < 0.003)) & (np.sin(u * 2.0 * np.pi * 160.0) > 0.0)
-    height = np.where(band, 0.0, height) - stitch * 0.2
-    grain = _grain((size, size), 0.8, 0.025, 5)
-    color = scene.shade(CAP, height, 8.0, grain)
-    color[stitch] *= 0.88
-    return color, scene.normal_map(height, 5.0)
+    # Soft folds above the band, flat over the crown where every column of the map converges on one point.
+    folds = _grain((size, size), 24.0, 0.25, 4, CAP_STRETCH)
+    height = folds * np.clip((1.0 - v) / 0.2, 0.0, 1.0) * np.clip((v - 0.2) / 0.1, 0.0, 1.0)
+    seams = (np.abs(v - 0.22) < 0.004) | (np.abs(v - 0.03) < 0.004)
+    for center in (0.0, 0.5, 1.0):
+        seams |= (np.abs(u - center) < 0.004) & (v > 0.25)
+    stitch = seams & (np.sin((u + v) * 2.0 * np.pi * 120.0) > 0.0)
+    height = height - seams * 0.15 - stitch * 0.25
+    color = scene.shade(CAP, height, 8.0, _photo_grain(size, CAP_PHOTO, slice(300, 360), slice(450, 750), 3.0, CAP_STRETCH) - 1.0)
+    color[stitch] *= 0.8
+    return color, scene.normal_map(height, 6.0)
 
 
-def _photo_grain(size: int) -> NDArray[np.float64]:
-    """The nonwoven speckle of the real mask: a flat patch of the photo, mirrored into a seamless tile and repeated,
-    as a brightness factor around 1."""
+def _photo_grain(size: int, photo_path: Path, rows: slice, columns: slice, detail: float, stretch: float = 1.0) -> NDArray[np.float64]:
+    """The weave of the real cloth: a flat patch of a photo, mirrored into a seamless tile and repeated,
+    as a brightness factor around 1, `stretch` times finer along u."""
     from PIL import Image
-    from scipy.ndimage import gaussian_filter
+    from scipy.ndimage import gaussian_filter, zoom
 
-    photo = np.asarray(Image.open(PHOTO).convert("L"), dtype=np.float64) / 255.0
-    patch = photo[240:300, 160:330]
-    # Only the speckle: the photo's own lighting gradient would tile as blotches.
-    patch = patch / gaussian_filter(patch, 12.0, mode="reflect") * patch.mean()
+    photo = np.asarray(Image.open(photo_path).convert("L"), dtype=np.float64) / 255.0
+    patch = photo[rows, columns]
+    # Only the weave finer than `detail` pixels: the photo's own lighting gradient would tile as blotches.
+    patch = patch / gaussian_filter(patch, detail, mode="reflect") * patch.mean()
+    patch = zoom(patch, (1.0, 1.0 / stretch))
     tile = np.block([[patch, patch[:, ::-1]], [patch[::-1], patch[::-1, ::-1]]])
     reps = (size // tile.shape[0] + 1, size // tile.shape[1] + 1)
     return np.asarray(np.tile(tile, reps)[:size, :size] / patch.mean(), dtype=np.float64)
@@ -177,7 +185,7 @@ def _mask_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     stitch = ((np.abs(edge - 0.014) < 0.003) | (np.abs(edge - 0.028) < 0.003)) & dashes
     wire = (v < 0.05) & (np.abs(u - 0.5) < 0.2)
     height = np.where(hem, 0.1, height) + wire * 0.3 - stitch * 0.3
-    color = scene.shade(MASK, height, 12.0, _photo_grain(size) - 1.0)
+    color = scene.shade(MASK, height, 12.0, _photo_grain(size, PHOTO, slice(240, 300), slice(160, 330), 12.0) - 1.0)
     # The bound edge is a paler, denser weave; its stitches a darker blue.
     color[hem] = color[hem] * 0.4 + np.array([0.75, 0.865, 0.93]) * 0.6
     color[stitch] = np.array([0.25, 0.5, 0.75])
@@ -200,7 +208,7 @@ def _cap(head: bpy.types.Object) -> bpy.types.Object:
         amount = 0.002 + 0.016 * height**0.7
         # Gathers: vertical pleats around the band, fading out over the crown.
         angle = np.arctan2(out[:, 2], out[:, 0])
-        amount += 0.003 * np.sin(angle * 26.0) * (1.0 - height) ** 2
+        amount += 0.0012 * np.sin(angle * 26.0) * (1.0 - height) ** 2
         return np.asarray(p + direction * amount[:, None], dtype=np.float64)
 
     cap = scene.deform(cap, puff)
