@@ -154,10 +154,11 @@ public class SurgeonMovementTest
     /// Standing at an open belly with the hand in the opening, zooming in bends the surgeon over it: the eyes come over
     /// the opening and look down into it from above, gradually, without turning sideways, so a mouse move to the right
     /// still moves the hand right on screen. Their partner sees them bent over the table. Walking away zooms back out
-    /// and straightens them up, just as gradually.
+    /// and straightens them up, just as gradually. Looking up while leaning in, the look is the player's; the hand moved
+    /// off the opening onto the skin, they straighten up but stay zoomed in.
     /// </summary>
     [TestCase]
-    public async Task ZoomingInOverAnOpeningLeansInUntilWalkingAway()
+    public async Task ZoomingInOverAnOpeningLeansInWhileTheHandIsInIt()
     {
         var driver = await Begin();
         var me = driver.Me;
@@ -239,6 +240,24 @@ public class SurgeonMovementTest
         AssertFloat(me.Lean).OverrideFailureMessage($"and straightens back up ({me.Lean:0.000} rad)").IsLess(0.01f);
         AssertFloat(me.Pitch).OverrideFailureMessage("looking where they did before leaning in").IsEqualApprox(standingPitch, 0.02f);
         await driver.Capture("walked_away", "walked back from the table: zoomed out, standing straight, looking at the table as before, the hands solid");
+
+        await driver.PlayerWalksTo(opening);
+        await driver.PlayerReaches(opening);
+        SurgeryDriver.Tap(InputActions.Zoom);
+        driver.Note("leaning in again, then looking up");
+        await FollowView(me, puppet, 60);
+        PlayerInput.Mouse(new Vector2(0f, -40f));
+        await PlayerInput.Delivered();
+        var lookedAt = me.Pitch;
+        await FollowView(me, puppet, 20);
+        AssertFloat(me.Pitch).OverrideFailureMessage("looking up while leaning in, the look stays where the player put it")
+            .IsEqualApprox(lookedAt, 0.001f);
+        await driver.PlayerReaches(opening + (me.GlobalBasis.Z * 0.05f));
+        driver.Note("moving the hand off the opening onto the skin");
+        await FollowView(me, puppet, 60);
+        AssertObject(me.LeanSpot).OverrideFailureMessage("the hand on the skin beside the opening, the lean lets go").IsNull();
+        AssertFloat(me.Lean).OverrideFailureMessage($"and the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
+        AssertInt(me.Zoom).OverrideFailureMessage("still zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
         driver.Budget.Check(KeyFrames.Wanted());
     }
 

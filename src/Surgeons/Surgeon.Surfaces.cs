@@ -62,7 +62,7 @@ public partial class Surgeon
     {
         var hand = Hands[Active];
         var tool = HeldTool(Active);
-        var tip = tool?.TipPosition() ?? hand.GlobalPosition + hand.TipOffset(0.05f);
+        var tip = WorkTip();
         // A grip with a working angle (a needle holder) pitches about its tip as it's lowered: the tip is where it
         // works.
         if (tool is null || hand.Lowered || GripStyle.For(tool.Def.Grip).WorkTilt is not null)
@@ -76,6 +76,10 @@ public partial class Surgeon
         }
         return Dropped(tip, under);
     }
+
+    /// <summary>The active hand's tool tip, or just past the fingers when it's empty.</summary>
+    private Vector3 WorkTip() =>
+        HeldTool(Active)?.TipPosition() ?? Hands[Active].GlobalPosition + Hands[Active].TipOffset(0.05f);
 
     /// <summary><paramref name="point"/> moved straight down onto what's under it, tools lying there left out: where that
     /// point of a tool lands on the patient when it's lowered, for the aim marks to lie on. However far down that is: a

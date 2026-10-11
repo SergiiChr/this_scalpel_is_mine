@@ -181,6 +181,10 @@ public partial class Surgeon
         {
             Rotation = Rotation with { Y = Rotation.Y - (motion.X * LookSensitivity) };
             Pitch = Mathf.Clamp(Pitch - (motion.Y * LookSensitivity), LookPitch.X, LookPitch.Y);
+            if (motion.Y != 0f)
+            {
+                TakeLook();
+            }
         }
         else if (_switchTimer <= 0f)
         {

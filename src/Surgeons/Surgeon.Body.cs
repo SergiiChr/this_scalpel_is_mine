@@ -325,6 +325,7 @@ public partial class Surgeon
         Lean = Mathf.MoveToward(Lean, 0f, delta * 4f);
         LeanSpot = null;
         _uprightPitch = null;
+        _lookTaken = false;
         Pitch = Mathf.Lerp(Pitch, LyingPitch, Mathf.Min(delta * 3f, 1f));
         var table = (Session.Patient.GlobalPosition - GlobalPosition) * new Vector3(1f, 0f, 1f);
         Velocity = _down < 1f && table.Length() < LyingDistance ? -table.Normalized() * WalkSpeed : Vector3.Zero;
