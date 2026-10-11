@@ -172,11 +172,10 @@ public partial class Patient
                 return hold;
             case SkinHold skin:
                 var to = Body.Site.ToLocal(tip);
-                if (skin.Hook)
-                {
-                    // A hook pulls the skin aside or up, not down after the tip into the opening.
-                    to.Y = Mathf.Max(to.Y, Body.SurfaceHeight(Body.LocalToUv(to)));
-                }
+                // Skin is pulled aside or up, never down after the tip into the opening: jaws closed on a lip from
+                // inside the cut hold it at the surface, where the skin around would tear if the lip went down with
+                // the tip.
+                to.Y = Mathf.Max(to.Y, Body.SurfaceHeight(Body.LocalToUv(to)));
                 var allowed = Body.Tissue.Restrain(toolUid, to);
                 heldAt = tip + Body.Site.GlobalBasis * (allowed - to);
                 Body.Tissue.MoveGrip(toolUid, allowed);
