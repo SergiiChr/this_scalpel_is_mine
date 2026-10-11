@@ -30,7 +30,7 @@ jobs:
       - run: ruff check tools build.py
       - run: ruff format --check tools build.py
       - run: mypy tools build.py
-      - run: python -m unittest tools.test_build
+      - run: python -m unittest tools.test_build tools.test_keyframes
 
   smoke:
     name: Smoke

@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -40,6 +41,24 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertTrue(build.report(outcome).startswith("skip "))
         xml = ElementTree.parse(self.root / "test-results" / "Example.xml")
         self.assertIsNotNone(xml.find("testcase/skipped"))
+
+    def test_errors_keep_their_stack_trace(self) -> None:
+        output = "\n".join(
+            [
+                "ERROR: System.InvalidOperationException: The underlying collection was modified.",
+                "   at System.Collections.Concurrent.BlockingCollection`1.TryTake()",
+                "   at: void Godot.GodotSynchronizationContext.ExecutePendingContinuations()",
+                "next line",
+            ]
+        )
+        self.assertEqual(
+            build.godot_errors(output),
+            [
+                "ERROR: System.InvalidOperationException: The underlying collection was modified.\n"
+                "       at System.Collections.Concurrent.BlockingCollection`1.TryTake()\n"
+                "       at: void Godot.GodotSynchronizationContext.ExecutePendingContinuations()"
+            ],
+        )
 
     def test_empty_suite_is_skipped(self) -> None:
         self.assertTrue(build.report(build.run_suite(self.suite, self.options)).startswith("skip "))
@@ -117,6 +136,98 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertNotIn("WITH_KEY_FRAMES", process.call_args.kwargs["env"])
         settings = (self.root / "test-settings" / "Example.runsettings").read_text()
         self.assertIn("--headless", settings)
+
+    def test_key_frames_use_the_virtual_display_even_with_a_real_one(self) -> None:
+        self.suite.categories = ["visual_confirmation"]
+        self.options.key_frames = True
+        with patch.dict(os.environ, {"DISPLAY": ":0"}), patch.object(build, "dotnet", return_value="dotnet"):
+            with patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as process:
+                with patch.object(build, "problems", return_value=build.ProcessResult([], 1)), patch("build.shutil.which", return_value="xvfb-run"):
+                    build.run_process(self.suite, self.options, "Example", "filter", 1)
+        self.assertEqual(process.call_args.args[0][0], "xvfb-run")
+        self.assertEqual(process.call_args.kwargs["env"]["LIBGL_ALWAYS_SOFTWARE"], "1")
+
+    def key_frames(self, passed: bool) -> tuple[Path, Path]:
+        taken, baseline = self.root / "screenshots", self.root / "tests" / "KeyFrames"
+        patch.object(build, "KEY_FRAMES", taken).start()
+        patch.object(build, "BASELINE", baseline).start()
+        patch.object(build, "REVIEW", self.root / "review").start()
+        (taken / "scalpel").mkdir(parents=True)
+        (taken / "scalpel" / "00_cut_top.png").write_text("new")
+        (baseline / "gone").mkdir(parents=True)
+        (baseline / "gone" / "00_old_top.jpg").write_text("old")
+        if passed:
+            (taken / build.PASSED).touch()
+        return taken, baseline
+
+    def test_baseline_is_left_alone_without_a_passed_run(self) -> None:
+        self.key_frames(passed=False)
+        with patch.object(build, "keyframes_tool") as tool, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(build.generate_baseline(["--use-latest-set"]), 1)
+        tool.assert_not_called()
+
+    def test_baseline_is_updated_from_a_passed_run(self) -> None:
+        self.key_frames(passed=True)
+        with patch.object(build, "keyframes_tool", return_value=0) as tool:
+            self.assertEqual(build.generate_baseline(["--use-latest-set"]), 0)
+        self.assertEqual(tool.call_args.args[0], "update")
+
+    def test_baseline_run_that_fails_leaves_the_baseline_alone(self) -> None:
+        taken, _ = self.key_frames(passed=True)
+
+        def fails(_: list[str]) -> int:
+            shutil.rmtree(taken)
+            return 1
+
+        with patch.object(build, "test", side_effect=fails), patch.object(build, "keyframes_tool") as tool, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(build.generate_baseline([]), 1)
+        tool.assert_not_called()
+
+    def test_review_fails_without_a_baseline(self) -> None:
+        _, baseline = self.key_frames(passed=True)
+        shutil.rmtree(baseline)
+        with patch.object(build, "keyframes_tool", return_value=0), contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(build.screenshot_review(["--use-latest-set"]), 1)
+        self.assertIn("generate_baseline", errors.getvalue())
+
+    def test_review_fails_when_key_frames_differ(self) -> None:
+        self.key_frames(passed=True)
+        with patch.object(build, "keyframes_tool", return_value=1):
+            self.assertEqual(build.screenshot_review(["--use-latest-set"]), 1)
+
+    def test_review_passes_when_nothing_differs(self) -> None:
+        self.key_frames(passed=True)
+        with patch.object(build, "keyframes_tool", return_value=0) as tool:
+            self.assertEqual(build.screenshot_review(["--use-latest-set"]), 0)
+        self.assertEqual(tool.call_args.args[0], "report")
+
+    def key_frame_test(self, *arguments: str) -> Path:
+        """Runs test() whose one visual suite takes a key frame and passes; returns the screenshots folder."""
+        taken, _ = self.key_frames(passed=True)
+        self.suite.categories = ["visual_confirmation"]
+
+        def takes_a_key_frame(suite: build.Suite, options: build.TestOptions) -> build.Outcome:
+            (taken / "scalpel").mkdir(parents=True, exist_ok=True)
+            (taken / "scalpel" / "00_cut_top.png").write_text("new")
+            return build.Outcome(suite, self.root / "log", [], 1)
+
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
+            with patch.object(build, "run_suite", side_effect=takes_a_key_frame), contextlib.redirect_stdout(io.StringIO()):
+                build.test(["--with-key-frames", *arguments])
+        return taken
+
+    def test_full_regression_that_passed_is_marked(self) -> None:
+        taken = self.key_frame_test("--all")
+        self.assertTrue((taken / build.PASSED).exists())
+
+    def test_focused_key_frame_run_clears_the_last_and_is_not_marked(self) -> None:
+        taken = self.key_frame_test("--all", "--tag", "visual_confirmation")
+        self.assertFalse((taken / build.PASSED).exists())
+
+    def test_key_frame_run_with_broken_cases_is_not_marked(self) -> None:
+        with patch.dict(os.environ, {"RUN_BROKEN": "1"}):
+            taken = self.key_frame_test("--all")
+        self.assertFalse((taken / build.PASSED).exists())
 
 
 if __name__ == "__main__":

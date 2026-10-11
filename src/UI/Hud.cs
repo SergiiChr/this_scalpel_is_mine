@@ -35,6 +35,9 @@ public partial class Hud : CanvasLayer
     private float _subtitleTimer;
     private readonly Dictionary<string, (HBoxContainer Row, ProgressBar Bar)> _gauges = [];
     private ShaderMaterial _post = null!;
+    /// <summary>Game time the view's moving effects run on (<see cref="ShaderParam.GameTime"/>), not the shaders' own
+    /// TIME: it advances only with gameplay frames, so a scene looks the same whenever it is drawn.</summary>
+    private float _effectsTime;
     /// <summary>Blood on the view (0..1).</summary>
     private float _lensBlood;
     /// <summary>How much blood is splashed on the view now (0..1).</summary>
@@ -46,6 +49,9 @@ public partial class Hud : CanvasLayer
         _lensBlood = 0f;
         _post.SetShaderParameter(ShaderParam.LensBlood, 0f);
     }
+    /// <summary>Takes the film grain off the view for good. It differs in every frame, and key frames are compared.
+    /// </summary>
+    internal void RemoveFilmGrain() => _post.SetShaderParameter(ShaderParam.Grain, 0f);
     /// <summary>How long since the view was clean.</summary>
     private float _lensAge;
     public NurseShop Shop { get; private set; } = null!;
@@ -112,6 +118,8 @@ public partial class Hud : CanvasLayer
     /// without advancing HUD timers or effects.</summary>
     internal void RefreshFrame(float dt)
     {
+        _effectsTime += dt;
+        RenderingServer.GlobalShaderParameterSet(ShaderParam.GameTime, _effectsTime);
         if (Surgery?.LocalSurgeon is not { } me)
         {
             return;

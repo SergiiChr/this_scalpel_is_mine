@@ -307,6 +307,8 @@ internal sealed partial class GameplaySweep
             Patient.IvRemoved();
         }
         Patient.SetIv(Body.Root.ToGlobal(Patient.PreopIvPoint), true);
+        // Earlier checks drop tools where the catheter falls: landing on a pile of them, it never touches the floor.
+        SurgeryState.FloorIsClear(_surgery);
         await Frames.Physics(5);
         var line = _surgery.Room.IvLine;
         var low = line.Points.Where(p => p.Y < IvLine.TripHeight).ToList();

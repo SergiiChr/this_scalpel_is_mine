@@ -6,9 +6,13 @@
                        virtualenv (.venv) for the asset generators, then builds and imports the project.
   ./build.py setup     Download Godot and the .NET SDK if missing, build and import the project. No sudo.
   ./build.py test      Run the smoke tests. --all or --tag TAG for other suites, see ./build.py test --help.
-  ./build.py review    Run the full regression with key frames and write build/review/report.md: one sheet per key
-                       frame that is missing, changed or new against the commit this branch left origin/main at. That
-                       commit is rendered once in a git worktree and kept in build/key-frames. See --help.
+  ./build.py screenshot_review
+                       Run the full regression with key frames and write build/review/report.md: one sheet per key
+                       frame that is missing, changed or new against the committed baseline in tests/KeyFrames. Fails
+                       when any differs.
+  ./build.py generate_baseline
+                       Run the full regression with key frames and write the ones that differ into the baseline, all of
+                       them the first time. --use-latest-set takes the key frames of the last run instead. See --help.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -28,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import itertools
 import os
 import re
 import shutil
@@ -61,6 +66,8 @@ ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
 NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
+# Stack trace lines kept under an error: enough to show where it came from.
+STACK_LINES = 12
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
@@ -72,8 +79,16 @@ def run(command: Sequence[str | Path], **kwargs: object) -> None:
 
 
 def godot_errors(output: str) -> list[str]:
-    """The error lines in Godot's output, each once. Engine leak reports printed while quitting are noise."""
-    return list(dict.fromkeys(line.strip() for line in output.splitlines() if ERRORS.search(line) and not NOISE.search(line)))
+    """The error lines in Godot's output, each once, with the first STACK_LINES lines of the stack trace that follows an
+    exception: without them a report can't say where an error came from. Engine leak reports printed while quitting are
+    noise."""
+    lines = output.splitlines()
+    found = []
+    for index, line in enumerate(lines):
+        if ERRORS.search(line) and not NOISE.search(line):
+            stack = itertools.takewhile(lambda frame: frame.lstrip().startswith("at"), lines[index + 1 :])
+            found.append("\n       ".join([line.strip(), *(frame.strip() for frame in itertools.islice(stack, STACK_LINES))]))
+    return list(dict.fromkeys(found))
 
 
 def run_godot(name: str, command: Sequence[str | Path]) -> None:
@@ -202,7 +217,7 @@ def need_venv() -> None:
 # than half of it, gets SLOW_TEST_TIMEOUT. A test that hangs is stopped when its suite's session runs out.
 TEST_TIMEOUT = 60
 SLOW_TEST_TIMEOUT = 360
-# The view key frames are rendered at, under a virtual display when there's no real one.
+# The view key frames are rendered at, always under a virtual display.
 KEY_FRAME_ARGS = ["--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--resolution", "1280x720"]
 
 
@@ -394,10 +409,12 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
     environment.setdefault("DOTNET_GCgen0size", hex(36 << 20))
     if options.key_frames and suite.visual:
         environment["WITH_KEY_FRAMES"] = "1"
-        if not os.environ.get("DISPLAY"):
-            if not shutil.which("xvfb-run"):
-                return ProcessResult(["Visual tests need xvfb-run or a DISPLAY."])
-            command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
+        # Always a virtual display and the software renderer, on a machine with a screen and a GPU too.
+        # Key frames are compared against the committed baseline, and no two GPUs draw the same pixels.
+        if not shutil.which("xvfb-run"):
+            return ProcessResult(["Key frames need xvfb-run."])
+        environment["LIBGL_ALWAYS_SOFTWARE"] = "1"
+        command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
     # GdUnit4 talks to its Godot process over a named pipe with a fixed name, which .NET puts in the temp folder:
     # runs at the same time (--jobs, other checkouts) each need their own.
     with log.open("w") as out, tempfile.TemporaryDirectory(prefix="gdunit-") as temp:
@@ -495,7 +512,7 @@ def test(arguments: list[str]) -> int:
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
-        help="visual_confirmation suites save their key frames (under a display, the compatibility renderer) and check "
+        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer) and check "
         "the frame budget; they run alone, after the others, so their frame times aren't slowed by their neighbours",
     )
     parser.add_argument("--ci-run", action="store_true", help="report frame times without checking them against the budget")
@@ -518,6 +535,9 @@ def test(arguments: list[str]) -> int:
     if not suites:
         print(f"No tests match tags {options.tags} and case '{options.case}'.", file=sys.stderr)
         return 2
+    if options.key_frames:
+        # Key frames of an earlier run would pass for this one's.
+        shutil.rmtree(KEY_FRAMES, ignore_errors=True)
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
@@ -551,49 +571,61 @@ def test(arguments: list[str]) -> int:
     if not any(outcome.executed for outcome in outcomes):
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1
-    return 1 if failed else 0
+    if failed:
+        return 1
+    # Only a full regression that passed may become the baseline: not a focused run, nor one with broken cases.
+    full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
+    if options.key_frames and full and has_key_frames(KEY_FRAMES):
+        (KEY_FRAMES / PASSED).touch()
+    return 0
 
 
 # --- Key frame review -------------------------------------------------------------------------------------------------
 
 KEY_FRAMES = BUILD / "test-artifacts" / "screenshots"
-# Key frames of past commits, by commit hash: a baseline is rendered once.
-BASELINES = BUILD / "key-frames"
+# Key frames of the last full regression that passed and was reviewed, committed: what a review compares against.
+BASELINE = ROOT / "tests" / "KeyFrames"
+# Left among a run's key frames when its full regression passed: only those may become the baseline.
+PASSED = "passed"
 REVIEW = BUILD / "review"
 
 
-def git(*arguments: str) -> str:
-    return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+def has_key_frames(folder: Path) -> bool:
+    """Whether a run (PNG) or the baseline (JPEG) has any."""
+    return any(path.suffix in (".png", ".jpg") for path in folder.rglob("*"))
 
 
-def baseline(ref: str) -> Path:
-    """Key frames of the commit where HEAD left ref. Rendered in a git worktree that shares .tools, so the same Godot and
-    .NET serve both. Kept by commit only when its run passed: a failed run's key frames serve this review (those its
-    failed cases didn't take show as new) and the next review renders them again."""
-    commit = git("merge-base", "HEAD", ref)
-    frames = BASELINES / commit
-    if frames.is_dir():
-        return frames
-    worktree = BUILD / "baseline-worktree"
-    if worktree.exists():
-        run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
-    run(["git", "worktree", "add", "--detach", worktree, commit], cwd=ROOT)
-    try:
-        # Made first on a fresh checkout: the worktree's build.py would otherwise find a dangling link.
-        TOOLS.mkdir(exist_ok=True)
-        (worktree / ".tools").symlink_to(TOOLS)
-        print(f"Rendering baseline key frames of {commit[:10]}.", flush=True)
-        command: list[str | Path] = [sys.executable, worktree / "build.py", "test", "--tag", "visual_confirmation", "--with-key-frames", "--ci-run"]
-        if subprocess.run(command, cwd=worktree, check=False).returncode != 0:
-            print("The baseline run failed: key frames its failed cases didn't take show as new. It's rendered again next time.")
-            frames = frames.with_name(f"{commit}.partial")
-            shutil.rmtree(frames, ignore_errors=True)
-        taken = worktree / "build/test-artifacts/screenshots"
-        if taken.is_dir():
-            shutil.copytree(taken, frames)
-    finally:
-        run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
-    return frames
+def key_frame_run() -> int:
+    """Runs the full regression with key frames. A run that passed marks them (see PASSED)."""
+    status = test(["--all", "--with-key-frames"])
+    # The suites that take no key frames can pass on their own.
+    if status == 0 and not (KEY_FRAMES / PASSED).exists():
+        print("[ERROR] The regression passed, but its key frames can't be reviewed: none taken, or RUN_BROKEN ran broken cases.", file=sys.stderr)
+        return 1
+    return status
+
+
+def keyframes_tool(*arguments: str | Path) -> int:
+    command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *arguments]
+    return subprocess.run(command, cwd=ROOT, check=False).returncode
+
+
+def generate_baseline(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="./build.py generate_baseline",
+        description="Runs the full regression with key frames and writes the ones that are missing, changed or new into "
+        "the committed baseline (tests/KeyFrames), all of them when there is none yet. Key frames that didn't change "
+        "keep their files. Leaves the baseline alone when the regression fails.",
+    )
+    parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression that passed")
+    parsed = parser.parse_args(arguments)
+    if not parsed.use_latest_set:
+        key_frame_run()
+    # Key frames of a failed or partial run never become what later reviews compare against.
+    if not (KEY_FRAMES / PASSED).exists():
+        print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression that passed.", file=sys.stderr)
+        return 1
+    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT))
 
 
 def pillow_python() -> Path:
@@ -613,29 +645,27 @@ def pillow_python() -> Path:
     return venv / "bin/python"
 
 
-def review(arguments: list[str]) -> int:
+def screenshot_review(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        prog="./build.py review",
+        prog="./build.py screenshot_review",
         description="Runs the full regression with key frames, then writes build/review/report.md with a sheet for each "
-        "key frame that is missing, changed or new against the baseline. Exits non-zero when the regression fails, after writing the report.",
+        "key frame that is missing, changed or new against the committed baseline (tests/KeyFrames). "
+        "Exits non-zero when the regression fails, there is no baseline or any key frame differs from it, after writing "
+        "the report.",
     )
-    parser.add_argument("--base", default="origin/main", help="the baseline is the commit where HEAD left this ref")
-    parser.add_argument("--no-run", action="store_true", help="review the key frames of the last run")
+    parser.add_argument("--use-latest-set", action="store_true", help="review the key frames of the last run")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     parsed = parser.parse_args(arguments)
-    status = 0
-    frames = baseline(parsed.base)
-    if not parsed.no_run:
-        # Key frames of an earlier run would pass for this one's.
-        shutil.rmtree(KEY_FRAMES, ignore_errors=True)
-        status = test(["--all", "--with-key-frames"])
-        if status == 0 and not git("status", "--porcelain"):
-            shutil.copytree(KEY_FRAMES, BASELINES / git("rev-parse", "HEAD"), dirs_exist_ok=True)
-    regression = "not-run" if parsed.no_run else "failed" if status else "passed"
+    status, regression = 0, "not-run"
+    if not parsed.use_latest_set:
+        status = key_frame_run()
+        regression = "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
-    command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW)), *flags]
     # The report comes first: it helps most when the regression failed.
-    report_status = subprocess.run(command, cwd=ROOT, check=False).returncode
+    report_status = keyframes_tool("report", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags)
+    if not has_key_frames(BASELINE):
+        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, nothing was compared: run ./build.py generate_baseline on main first.", file=sys.stderr)
+        return 1
     return status or report_status
 
 
@@ -683,8 +713,10 @@ def main() -> int:
         print("Ready. ./build.py test to run the tests, ./build.py shots to render screenshots.")
     elif command == "test":
         return test(arguments)
-    elif command == "review":
-        return review(arguments)
+    elif command == "screenshot_review":
+        return screenshot_review(arguments)
+    elif command == "generate_baseline":
+        return generate_baseline(arguments)
     elif command == "shots":
         setup()
         scenario = arguments[0] if arguments else "appendectomy"

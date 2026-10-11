@@ -3,6 +3,7 @@
 // (skin, rubber, cloth, metal, plastic, tissue), Materials.toon() makes the plain ones.
 shader_type spatial;
 
+global uniform float game_time;
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, hint_default_white;
 // Maps carried over from the imported model. The channel vectors pick which channel of the texture holds the value.
@@ -165,7 +166,7 @@ void fragment() {
 	// and in light(), which reads the uniform.
 	ALBEDO = base * (1.0 - metal * 0.4);
 	ROUGHNESS = mix(rough, 0.08, wet);
-	float pulse = 0.5 + 0.5 * sin(TIME * 4.0);
+	float pulse = 0.5 + 0.5 * sin(game_time * 4.0);
 	EMISSION = emission_color.rgb + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
 }
 

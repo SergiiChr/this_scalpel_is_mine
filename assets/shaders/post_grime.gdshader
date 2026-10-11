@@ -12,6 +12,8 @@ uniform float vignette : hint_range(0.0, 1.0) = 0.4;
 uniform float grain : hint_range(0.0, 0.3) = 0.02;
 uniform float aberration = 0.0003;
 uniform float wobble = 0.0;
+// The view's clock (see Hud): TIME counts drawn frames, which differ between runs of the same scene.
+global uniform float game_time;
 uniform float blur = 0.0;
 uniform float blackout : hint_range(0.0, 1.0) = 0.0;
 // Too much sedative, or knocked out by it: the view darkens this much at the edges, half as much in the middle.
@@ -59,8 +61,8 @@ void fragment() {
 		// Seen through a drop the view shifts a little, like through a lens.
 		uv += (hash(floor(p * 4.0) + lens_seed) - 0.5) * 0.02 * lens;
 	}
-	uv.x += sin(uv.y * 10.0 + TIME * 1.7) * 0.006 * wobble;
-	uv.y += cos(uv.x * 8.0 + TIME * 1.3) * 0.004 * wobble;
+	uv.x += sin(uv.y * 10.0 + game_time * 1.7) * 0.006 * wobble;
+	uv.y += cos(uv.x * 8.0 + game_time * 1.3) * 0.004 * wobble;
 	float split = aberration * (1.0 + wobble * 4.0);
 	vec3 col = vec3(
 		textureLod(screen_texture, uv + vec2(split, 0.0), blur).r,

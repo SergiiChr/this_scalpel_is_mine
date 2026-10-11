@@ -25,15 +25,17 @@ Suites with no runnable cases selected are reported as skipped, including suites
 If runnable cases are selected but their test process executes none, the suite fails. If the entire selection executes
 no cases, the command also fails.
 
-Regular GitHub Actions runs smoke and full functional regression headlessly, then exports the game. The separate
-`Visual capture` workflow is manually triggered with `workflow_dispatch`; it captures key frames from every
-`visual_confirmation` suite for review in its `visual-results` artifact. It does not automatically compare screenshots.
+GitHub Actions runs smoke and full functional regression headlessly, then exports the game. It takes no key frames.
 
 - `./build.py test`: smoke suites, fast and headless. Run this first.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
   only after smoke passes.
-- `./build.py review`: the same full regression, then `build/review/report.md` with a sheet for each key frame that
-  is missing, changed or new against the commit this branch left `origin/main` at. Follow the `review-key-frames` skill.
+- `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
+  frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
+  key frame differs from the baseline, and when there is none. Follow the `review-key-frames` skill.
+- `./build.py generate_baseline`: the same full regression, then writes the key frames that differ into the baseline
+  when it passed (every key frame the first time); unchanged ones keep their files. `--use-latest-set` takes the key
+  frames of the last run instead of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
@@ -47,10 +49,12 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
 ## Before raising a PR
 
 - Add or update test cases for any genuinely new coverage the change exposes.
-- `./build.py lint`, then `./build.py test`, then `./build.py review` must all pass. Fix failures and rerun; never
-  hand off a failing run as ready.
+- `./build.py lint`, then `./build.py test`, then `./build.py screenshot_review` must all pass. Fix failures and
+  rerun; never hand off a failing run as ready.
 - Review the key frames the change affects through `build/review/report.md` (see Visual verification) and list the
   reviewed sheets in the handoff.
+- When the review lists key frames that are missing, changed or new and every sheet looks right, run
+  `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` with the change. The review then passes.
 
 ## Test structure and policy
 
@@ -68,7 +72,7 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   assertions fully validate the behavior without them.
 - A test does what its name and messages claim. A case that says a scenario is completed plays it like a player and
   passes only on the game's own success report, never on state the test set, a shortened run or a loosened threshold.
-  If the claim can't be reached, the case fails or is marked broken (below).
+  If the claim can't be reached, the case fails, or is a known issue or broken (below).
 - Prefer comprehensive end-to-end checks: the surgeon picks a scalpel up from the table, walks to the patient, makes a
   light 5 cm cut, and the opening measures 5 cm.
 - Don't check the same thing twice. A mechanic an end-to-end case already proves needs no dedicated check; a sweep
@@ -82,10 +86,18 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   handler (`_UnhandledInput()`, `SteerHand()`, `AimTool()`) or set what it would set. Sent input arrives with the next
   frame: wait a frame before checking it.
 - Game members a test needs are `internal` (the tests build into the game's assembly), never public for a test.
-- Broken: if a non-trivial failure can't be fixed in the current change, move its case to its own method with
-  `[TestCategory("broken")]` and `[TestCase(..., Description = "BROKEN: reason")]` (GdUnit's own ignore doesn't
-  work with the adapter). `build.py` lists it as pending; `RUN_BROKEN=1` runs it. Disable any scenario that relies on
-  it (`disabled=true` in its cfg, with a comment naming the case). Never delete or weaken the case.
+- Known issue: if a non-trivial failure can't be fixed in the current change and fails the same way every run, wrap
+  the case in `KnownIssue.Expect(failure, ...)` (`tests/Support/KnownIssue.cs`) with
+  `[TestCase(..., Description = "KNOWN ISSUE: reason")]`. It runs with the rest of the regression and passes only when
+  it fails with a message containing `failure`: pick the part that says where it breaks (the objective that doesn't
+  complete), so everything before it is still checked. Another failure fails it as usual, and once it passes it fails
+  until it's made an ordinary case again.
+- Broken: a failure that can't be pinned that way (it passes or fails from run to run, or shows only in a key frame
+  review) moves its case to its own method with `[TestCategory("broken")]` and
+  `[TestCase(..., Description = "BROKEN: reason")]` (GdUnit's own ignore doesn't work with the adapter). It's skipped:
+  `build.py` lists it as pending, and `RUN_BROKEN=1` runs it.
+- Disable any scenario that relies on a known issue or a broken case (`disabled=true` in its cfg, with a comment
+  naming the case). Never delete or weaken the case.
 
 ## Visual verification
 
@@ -100,6 +112,16 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   keyFrame)` so the text is written once.
 - Review the frames for continuity, clipping, mesh intersections, material consistency, tool contact, animation
   transitions and UI legibility. Screenshot comparisons may flag regressions but don't replace that review.
+- `tests/KeyFrames` is the committed baseline the review compares against: JPEGs of the key frames of the last full
+  regression that passed and was reviewed. It is updated only by `./build.py generate_baseline`, which leaves it alone unless
+  the full regression passed, and only after every sheet the report lists looks right. Never commit key frames of a
+  failed run, of a focused run, of a case marked broken, or ones that show a defect; never edit the folder by hand.
+  A change with no missing, changed or new key frames leaves it untouched.
+- Key frames are taken and compared in local runs only, never on CI.
+  They are always rendered in a virtual display by the software renderer (`xvfb-run`), without film grain, so machines
+  save the same or nearly the same pixels for the same scene.
+  The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show no
+  visible difference.
 
 ## Frame-time budget
 
