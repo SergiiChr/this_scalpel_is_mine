@@ -484,6 +484,9 @@ public partial class Hud : CanvasLayer
         _hint = Ui.Label("", 14, Ui.Hint);
         _hint.AutowrapMode = TextServer.AutowrapMode.Off;
         _hint.HorizontalAlignment = HorizontalAlignment.Right;
+        // Pale theatre walls behind it.
+        _hint.AddThemeConstantOverride("outline_size", 4);
+        _hint.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, 0.8f));
         _hint.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight, Control.LayoutPresetMode.Minsize, 16);
         _hint.GrowHorizontal = Control.GrowDirection.Begin;
         _hint.GrowVertical = Control.GrowDirection.Begin;

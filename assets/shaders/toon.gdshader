@@ -25,6 +25,9 @@ uniform float grime_scale = 14.0;
 // Grime fixed in the world, for walls and floors that never move. Anything else carries its own, so it doesn't
 // slide across a moving model.
 uniform bool world_grime = false;
+// Room surface pattern in world space (Materials.Pattern): 1 speckled sheet vinyl, 2 ceiling panels in a metal grid,
+// 3 wall tiles, 4 painted plaster. Walls are axis aligned, so x + z runs along either wall.
+uniform int pattern = 0;
 // Fine surface relief in the model's own space (Materials.Detail): 1 skin pores, 2 rubber creases, 3 cloth weave
 // and soft folds, 4 brushed steel. Only tilts the normal, so the silhouette stays the model's.
 uniform int detail = 0;
@@ -109,6 +112,30 @@ void fragment() {
 	vec3 grime_pos = world_grime ? world_pos : local_pos;
 	float n = noise(grime_pos.xz * grime_scale) * 0.6 + noise(grime_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
+	if (pattern == 1) {
+		// Flecks a few millimeters across, some lighter and some darker than the sheet.
+		float light_fleck = step(0.88, noise(world_pos.xz * 160.0));
+		float dark_fleck = step(0.88, noise(world_pos.xz * 140.0 + 31.0));
+		base *= 1.0 + light_fleck * 0.15 - dark_fleck * 0.18 + (noise(world_pos.xz * 1.5) - 0.5) * 0.06;
+	} else if (pattern == 2) {
+		// 60 cm panels. Distance to the nearest grid line in meters, smoothed over a pixel so far seams don't shimmer.
+		vec2 to_line = abs(fract(world_pos.xz / 0.6 + 0.5) - 0.5) * 0.6;
+		float d = min(to_line.x, to_line.y);
+		base *= 1.0 - 0.35 * (1.0 - smoothstep(0.008, 0.008 + fwidth(d), d));
+	} else if (pattern == 3) {
+		// 20 cm glazed tiles with 3 mm grout, each tile a touch lighter or darker than the next.
+		vec2 wall = vec2(world_pos.x + world_pos.z, world_pos.y) / 0.2;
+		vec2 to_line = abs(fract(wall + 0.5) - 0.5) * 0.2;
+		float d = min(to_line.x, to_line.y);
+		base *= 1.0 + (hash(floor(wall)) - 0.5) * 0.05;
+		base *= 1.0 - 0.25 * (1.0 - smoothstep(0.0015, 0.0015 + fwidth(d), d));
+	} else if (pattern == 4) {
+		// Roller-painted plaster: blotches a hand wide over millimeter grain.
+		vec2 wall = vec2(world_pos.x + world_pos.z, world_pos.y);
+		float blotch = noise(wall * 6.0) * 0.6 + noise(wall * 17.0 + 5.0) * 0.4;
+		float grain = noise(wall * 400.0) * 0.6 + noise(wall * 900.0 + 11.0) * 0.4;
+		base *= 1.0 + (blotch - 0.5) * 0.06 + (grain - 0.5) * 0.08;
+	}
 	if (stains > 0.0) {
 		float s = noise(local_pos.xy * 16.0 + local_pos.z * 7.0) * 0.65 + noise(local_pos.zy * 40.0) * 0.35;
 		float edge = 1.0 - stains * 0.55;

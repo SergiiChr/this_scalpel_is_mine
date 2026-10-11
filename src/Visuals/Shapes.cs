@@ -6,12 +6,13 @@ namespace Scalpel.Visuals;
 /// </summary>
 public static class Shapes
 {
-    public static MeshInstance3D Slab(Node3D parent, Vector3 size, Color color, Vector3 position, float grime = 0.35f)
+    public static MeshInstance3D Slab(Node3D parent, Vector3 size, Color color, Vector3 position, float grime = 0.35f,
+        Pattern pattern = Pattern.None)
     {
         var instance = new MeshInstance3D
         {
             Mesh = new BoxMesh { Size = size },
-            MaterialOverride = Materials.RoomSurface(color, grime),
+            MaterialOverride = Materials.RoomSurface(color, grime, pattern),
             Position = position,
         };
         parent.AddChild(instance);
