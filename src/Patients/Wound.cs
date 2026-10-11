@@ -11,6 +11,9 @@ public sealed class Wound
 {
     /// <summary>ml/s per meter of fully deep, fully open wound.</summary>
     public const float BleedPerMeter = 35f;
+    /// <summary>A clean incision parts the tissue with few vessels torn open, and the small ones it cuts close up on
+    /// their own: it bleeds this share of what a jagged cut or a tear as long and deep bleeds.</summary>
+    public const float CleanIncisionShare = 0.15f;
     public const float BinLengthUv = 0.015f;
     /// <summary>A stroke reports a point every frame; closer than this the last point just moves, so long cuts stay
     /// cheap to query.</summary>
@@ -65,6 +68,8 @@ public sealed class Wound
     public bool Clotted { get; set; }
     public bool Dirty { get; set; }
     public bool MadeBySurgeon { get; set; }
+    /// <summary>Some of it was cut too fast or with a dull blade (Patient.Cut()).</summary>
+    public bool Jagged { get; set; }
     /// <summary>Closure progress per bin, 0..1.</summary>
     public float[] Bins { get; set; } = [];
     /// <summary>Muscle closure per bin, 0..1, for wounds through the muscle (sewn from inside the opening, before the
@@ -114,6 +119,9 @@ public sealed class Wound
     /// <summary>Cut through the muscle: its muscle has to be sewn before the skin will close over it.</summary>
     public bool ThroughMuscle => IsSkinCut && Depth >= MuscleDepth;
 
+    /// <summary>A surgeon's cut made cleanly all along, see <see cref="CleanIncisionShare"/>.</summary>
+    public bool IsCleanIncision => Kind == WoundKind.Cut && MadeBySurgeon && !Jagged;
+
     /// <summary>A cut or tear too short to sew, see <see cref="SmallCut"/>.</summary>
     public bool IsSmall(float siteSize) => Kind is WoundKind.Cut or WoundKind.Tear && LengthUv * siteSize < SmallCut;
 
@@ -127,7 +135,8 @@ public sealed class Wound
             return 0f;
         }
         var held = withGauze ? Mathf.Max(Held, Pressed) : Held;
-        var baseRate = Mathf.Max(LengthUv * siteSize, 0.01f) * Depth * BleedPerMeter;
+        var baseRate = Mathf.Max(LengthUv * siteSize, 0.01f) * Depth * BleedPerMeter
+            * (IsCleanIncision ? CleanIncisionShare : 1f);
         if (Kind is WoundKind.Gunshot or WoundKind.Puncture or WoundKind.Internal)
         {
             baseRate = Mathf.Max(baseRate, Depth * 2f);

@@ -169,7 +169,7 @@ public partial class SurgeryDriver
         {
             if (target.Anchor > 0f)
             {
-                await CutFree(target);
+                await PlayerCutsFree(target);
             }
             // Forceps in both hands first: fetching the second while the first holds the organ aside would drag it.
             await SwitchTo(Right);
@@ -207,7 +207,7 @@ public partial class SurgeryDriver
 
     /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through.
     /// </summary>
-    private async Task CutFree(CavityTarget target)
+    public async Task PlayerCutsFree(CavityTarget target)
     {
         Note($"cuts {target.Kind} free");
         await PlayerRequestsItem("scalpel");

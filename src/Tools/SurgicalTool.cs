@@ -31,6 +31,9 @@ public sealed class ToolUse
     public int Stroke { get; set; }
     /// <summary>Deepest level this stroke's blade point has been pressed in at.</summary>
     public int StabbedLevel { get; set; }
+    /// <summary>This stroke's blade has cut through the body wall: drawn on into an opening, it passes over a target
+    /// instead of cutting it free.</summary>
+    public bool CutWall { get; set; }
     /// <summary>Where a stapler's legs were (world) when Use tool was pressed, as its aim showed them: lowering it moves
     /// it a little.</summary>
     public Vector3[] StapleAim { get; set; } = [];

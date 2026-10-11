@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 /// <summary>A small cut stopped for good with gauze stays dry only until it's damaged again: torn further, or a staple
-/// goes through a vessel beside it.</summary>
+/// goes through a vessel beside it. A surgeon's clean incision bleeds far less than a jagged cut or a tear.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 public class WoundTest
@@ -25,6 +25,26 @@ public class WoundTest
         tear.Nicked = Patient.StapleNick;
         AssertFloat(tear.BleedRate(SiteSize, 1f)).OverrideFailureMessage("a vessel a staple went through bleeds regardless")
             .IsEqualApprox(Patient.StapleNick, 0.001f);
+    }
+
+    [TestCase]
+    public void ACleanIncisionBleedsFarLessThanAJaggedCutOrATear()
+    {
+        var clean = Line(WoundKind.Cut, surgeon: true, jagged: false).BleedRate(SiteSize, 1f);
+        var jagged = Line(WoundKind.Cut, surgeon: true, jagged: true).BleedRate(SiteSize, 1f);
+        var tear = Line(WoundKind.Tear, surgeon: false, jagged: false).BleedRate(SiteSize, 1f);
+        AssertFloat(jagged).OverrideFailureMessage($"a jagged cut bleeds like a tear as long and deep ({jagged:0.00} and {tear:0.00} ml/s)")
+            .IsEqualApprox(tear, 0.001f);
+        AssertFloat(clean).OverrideFailureMessage($"a clean incision bleeds its share of that ({clean:0.00} ml/s)")
+            .IsEqualApprox(tear * Wound.CleanIncisionShare, 0.001f);
+    }
+
+    /// <summary>A 10 cm wound through the muscle.</summary>
+    private static Wound Line(WoundKind kind, bool surgeon, bool jagged)
+    {
+        var wound = new Wound(1, kind, new Vector2(0.3f, 0.5f), 1f) { MadeBySurgeon = surgeon, Jagged = jagged };
+        wound.Extend(new Vector2(0.3f + (0.1f / SiteSize), 0.5f));
+        return wound;
     }
 
     /// <summary>A 0.5 cm tear stopped for good with gauze.</summary>

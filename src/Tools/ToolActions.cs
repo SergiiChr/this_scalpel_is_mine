@@ -250,6 +250,7 @@ public static class ToolActions
         {
             use.Stroke++;
             use.StabbedLevel = 0;
+            use.CutWall = false;
             use.StapleAim = StapleLegs(tool, patient.Body);
         }
         use.LoweredBefore = hand.Lowered;

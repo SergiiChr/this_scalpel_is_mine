@@ -18,6 +18,7 @@ public sealed class CutAction : ToolAction
             var from = patient.Body.WorldToUv(step.Tip - half);
             var to = patient.Body.WorldToUv(step.Tip + half);
             patient.Cut(StrokeKey(tool), from, to, ToolActions.DepthByLevel[level], step.Def.Sharpness, !tool.Sterile, 0f);
+            use.CutWall = true;
             step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
         }
         // Pressed in at full effort where the muscle is thin (no fat over it), the point reaches the bone under it.
@@ -34,7 +35,7 @@ public sealed class CutAction : ToolAction
         }
         if (step.Zone == SiteZone.Cavity)
         {
-            patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort);
+            patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort, !use.CutWall);
         }
         var moved = use.LastUv.X >= 0f && use.LastUv.DistanceTo(step.Uv) > 0.003f;
         if (moved)
@@ -44,6 +45,7 @@ public sealed class CutAction : ToolAction
             {
                 patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level], step.Def.Sharpness,
                     !tool.Sterile, step.Hand.Speed);
+                use.CutWall = true;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             }

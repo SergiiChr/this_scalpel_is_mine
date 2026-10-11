@@ -33,6 +33,8 @@ public partial class Patient
     public const float BladeReach = 0.005f;
     /// <summary>How close (meters) to the blade's tip an organ has to be for it to be cut.</summary>
     public const float OrganReach = 0.001f;
+    /// <summary>A blade drawn within this far (meters) of a cut already there runs along that cut.</summary>
+    public const float RecutReach = 0.004f;
     /// <summary>How high (meters) forceps lift a piece of skin cut out all round before it comes off whole, as a graft.
     /// </summary>
     public const float PieceLift = 0.01f;
@@ -105,8 +107,9 @@ public partial class Patient
         Session.Sound("cut_skin", to);
     }
 
-    /// <summary>One continuous scalpel stroke per tool grows one wound. Where there's no fat under the skin (a
-    /// forearm), a cut deeper than the skin goes into the muscle.</summary>
+    /// <summary>One continuous scalpel stroke per tool grows one wound. Drawn along a cut already there, it deepens that
+    /// one instead, and grows its own wound only past it. Where there's no fat under the skin (a forearm), a cut deeper
+    /// than the skin goes into the muscle.</summary>
     public void Cut(long strokeKey, Vector2 a, Vector2 b, float depth, float sharpness, bool dirty, float speed)
     {
         depth = Mathf.Clamp(depth - Mods.Num("fat_depth") * 0.25f, 0.1f, 1f);
@@ -116,14 +119,29 @@ public partial class Patient
         }
         if (!_strokeWounds.TryGetValue(strokeKey, out var wound) || wound.Points[^1].DistanceTo(a) > 0.02f)
         {
-            wound = NewWound(WoundKind.Cut, a, depth);
-            wound.MadeBySurgeon = true;
-            _strokeWounds[strokeKey] = wound;
+            var reach = Body.MetersToUv(RecutReach);
+            var recut = Wounds.Find(w => w.Kind == WoundKind.Cut && w.DistanceTo(a) < reach && w.DistanceTo(b) < reach);
+            if (recut is null)
+            {
+                wound = NewWound(WoundKind.Cut, a, depth);
+                wound.MadeBySurgeon = true;
+                _strokeWounds[strokeKey] = wound;
+                wound.Extend(b);
+            }
+            else
+            {
+                wound = recut;
+                _strokeWounds.Remove(strokeKey);
+            }
         }
-        wound.Extend(b);
+        else
+        {
+            wound.Extend(b);
+        }
         wound.Depth = Mathf.Max(wound.Depth, depth);
         wound.Dirty = wound.Dirty || dirty;
         var jagged = speed > 0.25f || sharpness < 0.8f;
+        wound.Jagged = wound.Jagged || jagged;
         var jitter = 0.004f * (1f - sharpness) + (speed > 0.25f ? 0.003f : 0f);
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, a, b, 0.004f + depth * 0.003f, Mathf.Min(depth * 0.75f, 0.7f), WoundMap.Mode.Max, jitter);
         Rpc(MethodName.TissueCut, a, b, (int)TissueDepthOf(depth));
@@ -136,8 +154,9 @@ public partial class Patient
     }
 
     /// <summary>Cutting inside the body frees attached targets, or nicks whatever the blade touches. The blade grates on
-    /// a bone it touches, which hurts through a local block.</summary>
-    public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt)
+    /// a bone it touches, which hurts through a local block. A blade drawn on from cutting the body wall passes over a
+    /// target (not <paramref name="freesTargets"/>): only one put down on it cuts it free.</summary>
+    public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt, bool freesTargets = true)
     {
         if (dirty)
         {
@@ -150,7 +169,7 @@ public partial class Patient
         }
         foreach (var target in Targets)
         {
-            if (!target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f)
+            if (freesTargets && !target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f)
             {
                 target.Anchor = Mathf.Max(target.Anchor - power * dt * 0.5f, 0f);
                 if (!target.Opened)
