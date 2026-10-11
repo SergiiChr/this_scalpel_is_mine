@@ -178,8 +178,8 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         f"Current: `{current_root.as_posix()}`  ",
         f"Baseline: `{baseline_root.as_posix()}`"
         if baseline
-        else f"Baseline: NONE in `{baseline_root.as_posix()}`. Every key frame shows as new and nothing can be compared: "
-        "a finding to report, not a reason to skip the review.",
+        else f"Baseline: NONE in `{baseline_root.as_posix()}`. Every key frame shows as new and nothing was compared: "
+        "the review fails. Run `./build.py generate_baseline` on main first.",
         "",
         ", ".join(f"{counts[state]} {state}" for state in states) + ".",
         "",

@@ -28,9 +28,9 @@ description: Run the full regression with key frames, review only the key frames
 - Nothing from a failed case. A case that can't be fixed in this change is marked broken (CLAUDE.md): it then takes no
   key frames and `generate_baseline` drops its old ones.
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
-- If the report says there is no baseline, or nearly every key frame shows as changed, the comparison itself is off
-  (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is the
-  task, and don't skip the review of the key frames your change touches.
+- If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is
+  off (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is
+  the task, and don't skip the review of the key frames your change touches.
 - After rebasing onto a main with other key frames, take main's `tests/KeyFrames`, then review and generate again.
 
 `screenshot_review --use-latest-set` rebuilds the report from the last run's key frames. `--all` also makes sheets

@@ -572,11 +572,19 @@ PASSED = "passed"
 REVIEW = BUILD / "review"
 
 
+def has_key_frames(folder: Path) -> bool:
+    return any(folder.rglob("*.png"))
+
+
 def key_frame_run() -> int:
     """Runs the full regression with key frames from scratch and marks them when it passed."""
     # Key frames of an earlier run would pass for this one's.
     shutil.rmtree(KEY_FRAMES, ignore_errors=True)
     status = test(["--all", "--with-key-frames"])
+    # The suites that take no key frames can pass on their own.
+    if status == 0 and not has_key_frames(KEY_FRAMES):
+        print("[ERROR] The regression passed without taking a key frame.", file=sys.stderr)
+        return 1
     if status == 0:
         (KEY_FRAMES / PASSED).touch()
     return status
@@ -627,7 +635,7 @@ def screenshot_review(arguments: list[str]) -> int:
         prog="./build.py screenshot_review",
         description="Runs the full regression with key frames, then writes build/review/report.md with a sheet for each "
         "key frame that is missing, changed or new against the committed baseline (tests/KeyFrames). "
-        "Exits non-zero when the regression fails, after writing the report.",
+        "Exits non-zero when the regression fails or there is no baseline, after writing the report.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="review the key frames of the last run")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
@@ -638,6 +646,9 @@ def screenshot_review(arguments: list[str]) -> int:
     command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags]
     # The report comes first: it helps most when the regression failed.
     report_status = subprocess.run(command, cwd=ROOT, check=False).returncode
+    if not has_key_frames(BASELINE):
+        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, nothing was compared: run ./build.py generate_baseline on main first.", file=sys.stderr)
+        return 1
     return status or report_status
 
 

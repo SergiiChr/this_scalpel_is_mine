@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -132,6 +133,7 @@ class CoverageReportingTest(unittest.TestCase):
         taken, baseline = self.root / "screenshots", self.root / "tests" / "KeyFrames"
         patch.object(build, "KEY_FRAMES", taken).start()
         patch.object(build, "BASELINE", baseline).start()
+        patch.object(build, "REVIEW", self.root / "review").start()
         (taken / "scalpel").mkdir(parents=True)
         (taken / "scalpel" / "00_cut_top.png").write_text("new")
         (baseline / "gone").mkdir(parents=True)
@@ -158,6 +160,30 @@ class CoverageReportingTest(unittest.TestCase):
         with patch.object(build, "test", return_value=1), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(build.generate_baseline([]), 1)
         self.assertEqual([path.name for path in baseline.iterdir()], ["gone"])
+
+    def test_baseline_run_without_key_frames_leaves_the_baseline_alone(self) -> None:
+        taken, baseline = self.key_frames(passed=False)
+
+        def no_key_frames(_: list[str]) -> int:
+            taken.mkdir()
+            return 0
+
+        with patch.object(build, "test", side_effect=no_key_frames), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(build.generate_baseline([]), 1)
+        self.assertEqual([path.name for path in baseline.iterdir()], ["gone"])
+
+    def test_review_fails_without_a_baseline(self) -> None:
+        _, baseline = self.key_frames(passed=True)
+        shutil.rmtree(baseline)
+        with patch.object(build, "pillow_python", return_value=Path("python")), contextlib.redirect_stderr(io.StringIO()) as errors:
+            with patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)):
+                self.assertEqual(build.screenshot_review(["--use-latest-set"]), 1)
+        self.assertIn("generate_baseline", errors.getvalue())
+
+    def test_review_passes_with_a_baseline(self) -> None:
+        self.key_frames(passed=True)
+        with patch.object(build, "pillow_python", return_value=Path("python")), patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)):
+            self.assertEqual(build.screenshot_review(["--use-latest-set"]), 0)
 
     def test_key_frame_run_after_a_passed_one_cannot_become_the_baseline(self) -> None:
         taken, _ = self.key_frames(passed=True)

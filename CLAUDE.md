@@ -33,8 +33,8 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
   only after smoke passes.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
-  frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. Follow the
-  `review-key-frames` skill.
+  frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails when there is
+  no baseline to compare against. Follow the `review-key-frames` skill.
 - `./build.py generate_baseline`: the same full regression, whose key frames become the baseline when it passes: the
   whole baseline is replaced, or the first one made. `--use-latest-set` takes the key frames of the last run instead
   of running again (see Visual verification).
