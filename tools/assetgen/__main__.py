@@ -3,7 +3,7 @@ The patient, gloves, organs and anatomical targets come from tools/blender inste
 
 from __future__ import annotations
 
-from . import anatomy, instruments, manual, props, sounds, surgeon
+from . import anatomy, instruments, iv_bag, manual, props, sounds, surgeon
 from .export import MODELS_DIR, write
 
 
@@ -11,7 +11,7 @@ def main() -> None:
     for module in (surgeon, anatomy, instruments, props):
         for model in module.build():
             print("wrote", write(model).relative_to(MODELS_DIR.parent.parent))
-    for path in (*sounds.build(), *manual.build()):
+    for path in (iv_bag.build(), *sounds.build(), *manual.build()):
         print("wrote", path.relative_to(MODELS_DIR.parent.parent))
 
 

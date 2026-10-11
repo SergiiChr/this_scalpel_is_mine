@@ -107,7 +107,7 @@ public partial class KeyFrames : Node
         var middle = site.GlobalPosition;
         var up = site.GlobalBasis.Y.Normalized();
         var toward = (side ?? (_surgery.LocalSurgeon!.GlobalPosition - middle)).Slide(up).Normalized();
-        return Views(keyFrame, description, middle, up, toward, Distance, false);
+        return Views(keyFrame, description, middle, TopAndOblique(up, toward), Distance, false);
     }
 
     /// <summary>The same two views of something off the site (a bottle on a tray), from <paramref name="distance"/>
@@ -115,7 +115,17 @@ public partial class KeyFrames : Node
     public Task CaptureAt(string keyFrame, string description, Vector3 at, float distance)
     {
         var toward = (_surgery.LocalSurgeon!.GlobalPosition - at).Slide(Vector3.Up).Normalized();
-        return Views(keyFrame, description, at, Vector3.Up, toward, distance, true);
+        return Views(keyFrame, description, at, TopAndOblique(Vector3.Up, toward), distance, true);
+    }
+
+    /// <summary>Two level views of something flat and upright (the IV bag), hung where one from above would look down a
+    /// stand's pole or held in a hand: straight at its <paramref name="face"/> and 45° round to its side, from
+    /// <paramref name="distance"/> away. The hands show only when <paramref name="hands"/>.</summary>
+    public Task CaptureFacing(string keyFrame, string description, Vector3 at, Vector3 face, float distance, bool hands = false)
+    {
+        var front = face.Slide(Vector3.Up).Normalized();
+        var side = front.Rotated(Vector3.Up, Mathf.Pi / 4f);
+        return Views(keyFrame, description, at, [new("front", front, Vector3.Up), new("oblique", side, Vector3.Up)], distance, !hands);
     }
 
     /// <summary>Saves what the surgeon sees, the HUD's aim included, as NN_name_view.png.</summary>
@@ -128,14 +138,17 @@ public partial class KeyFrames : Node
 
     private string NextName(string keyFrame) => $"{_taken++:00}_{keyFrame}";
 
-    private async Task Views(string keyFrame, string description, Vector3 middle, Vector3 up, Vector3 toward, float distance, bool noHands)
+    private static ViewSpec[] TopAndOblique(Vector3 up, Vector3 toward) =>
+        [new("top", up, toward), new("oblique", (up + toward).Normalized(), up)];
+
+    private async Task Views(string keyFrame, string description, Vector3 middle, ViewSpec[] views, float distance, bool noHands)
     {
         var name = NextName(keyFrame);
         var surgeon = _surgery.LocalSurgeon!;
         var hudWas = _surgery.Hud.Visible;
         _surgery.Hud.Visible = false;
         _camera.Current = true;
-        foreach (var (view, from, lookUp) in (ViewSpec[])[new("top", up, toward), new("oblique", (up + toward).Normalized(), up)])
+        foreach (var (view, from, lookUp) in views)
         {
             _camera.GlobalPosition = middle + (from * distance);
             _camera.LookAt(middle, lookUp);

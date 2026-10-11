@@ -6,7 +6,7 @@ internal sealed partial class GameplaySweep
     /// <summary>How far (meters) a tool or glove may go into what it lies on: collision margins.</summary>
     private const float SinkMargin = 0.003f;
 
-    /// <summary>The lowest point of a node's visible meshes, world space.</summary>
+    /// <summary>The lowest point of a node's visible meshes as they're drawn, world space.</summary>
     private static float LowestPoint(Node3D node)
     {
         var lowest = float.MaxValue;
@@ -14,8 +14,7 @@ internal sealed partial class GameplaySweep
         {
             if (mesh.IsVisibleInTree())
             {
-                var transform = mesh.GlobalTransform;
-                lowest = mesh.Mesh.GetFaces().Aggregate(lowest, (low, v) => Mathf.Min(low, (transform * v).Y));
+                lowest = DrawnMesh.Vertices(mesh).Aggregate(lowest, (low, v) => Mathf.Min(low, v.Y));
             }
         }
         return lowest;

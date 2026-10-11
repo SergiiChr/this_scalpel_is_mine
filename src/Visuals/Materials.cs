@@ -111,6 +111,16 @@ public static class Materials
         MetallicSpecular = 0.8f,
     });
 
+    /// <summary>Frosted clear plastic (an IV bag's sealed edges, hanger and ports): see-through, but less than
+    /// <see cref="Glass"/>, so the parts read against the film. No outline, like glass.</summary>
+    public static StandardMaterial3D Frosted() => Cached("frosted", () => new StandardMaterial3D
+    {
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        AlbedoColor = new Color(0.88f, 0.93f, 0.95f, 0.6f),
+        Roughness = 0.35f,
+        MetallicSpecular = 0.6f,
+    });
+
     /// <summary>Walls, floors and big furniture: no highlights, no outline, heavier grime fixed in the world.</summary>
     public static ShaderMaterial RoomSurface(Color color, float grime = 0.35f) => Cached($"env|{color.ToHtml()}|{grime:0.00}", () =>
     {
