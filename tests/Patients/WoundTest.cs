@@ -33,13 +33,25 @@ public class WoundTest
     [TestCase]
     public void ACleanIncisionBleedsFarLessThanAJaggedCutOrATear()
     {
-        var clean = Line(WoundKind.Cut, surgeon: true, jagged: false).BleedRate(SiteSize, 1f);
-        var jagged = Line(WoundKind.Cut, surgeon: true, jagged: true).BleedRate(SiteSize, 1f);
-        var tear = Line(WoundKind.Tear, surgeon: false, jagged: false).BleedRate(SiteSize, 1f);
+        var clean = Line(WoundKind.Cut, surgeon: true, jagged: 0f).BleedRate(SiteSize, 1f);
+        var jagged = Line(WoundKind.Cut, surgeon: true, jagged: 1f).BleedRate(SiteSize, 1f);
+        var tear = Line(WoundKind.Tear, surgeon: false, jagged: 0f).BleedRate(SiteSize, 1f);
         AssertFloat(jagged).OverrideFailureMessage($"a jagged cut bleeds like a tear as long and deep ({jagged:0.00} and {tear:0.00} ml/s)")
             .IsEqualApprox(tear, 0.001f);
         AssertFloat(clean).OverrideFailureMessage($"a clean incision bleeds its share of that ({clean:0.00} ml/s)")
             .IsEqualApprox(tear * Wound.CleanIncisionShare, 0.001f);
+    }
+
+    [TestCase]
+    public void AJaggedStretchOfAnIncisionBleedsLikeATearOnlyThere()
+    {
+        var clean = Line(WoundKind.Cut, surgeon: true, jagged: 0f).BleedRate(SiteSize, 1f);
+        var tear = Line(WoundKind.Tear, surgeon: false, jagged: 0f).BleedRate(SiteSize, 1f);
+        var tenth = Line(WoundKind.Cut, surgeon: true, jagged: 0.1f).BleedRate(SiteSize, 1f);
+        AssertFloat(tenth)
+            .OverrideFailureMessage($"a tenth of it cut jagged bleeds a tear's rate there and an incision's elsewhere ({tenth:0.00} ml/s, "
+                + $"clean {clean:0.00}, torn {tear:0.00})")
+            .IsBetween(clean + ((tear - clean) * 0.05f), clean + ((tear - clean) * 0.2f));
     }
 
     [TestCase]
@@ -88,6 +100,55 @@ public class WoundTest
         await driver.Stop();
     }
 
+    [TestCase]
+    public async Task AStrokeComingIntoAnIncisionEndsWhereItComesIn()
+    {
+        var driver = SurgeryDriver.Create();
+        await driver.Start("appendectomy");
+        var patient = driver.Patient;
+        var cm = driver.Body.MetersToUv(0.01f);
+        var from = new Vector2(0.5f, 0.5f) - new Vector2(5f * cm, 0f);
+        SurgeryState.SkinIsCut(patient, from, from + new Vector2(10f * cm, 0f), 1f);
+        var onLine = from + new Vector2(3f * cm, 0f);
+        var entry = SurgeryState.SkinIsCutAlong(patient, [onLine + new Vector2(0f, cm), onLine, onLine + new Vector2(4f * cm, 0f)], 1f);
+        AssertInt(patient.Wounds.Count).OverrideFailureMessage("the stroke runs into the incision rather than over it").IsEqual(2);
+        AssertFloat(driver.Body.UvToMeters(entry.LengthUv))
+            .OverrideFailureMessage($"its own cut ends where it comes into the incision ({driver.Body.UvToMeters(entry.LengthUv) * 100f:0.0} cm)")
+            .IsEqualApprox(0.01f, 0.003f);
+        await driver.Stop();
+    }
+
+    [TestCase]
+    public async Task CauteryElsewhereLeavesAStretchCutAgainBleeding()
+    {
+        var driver = SurgeryDriver.Create();
+        await driver.Start("appendectomy");
+        var patient = driver.Patient;
+        SurgeryState.PatientIsAsleep(patient);
+        var cm = driver.Body.MetersToUv(0.01f);
+        var from = new Vector2(0.5f, 0.5f) - new Vector2(5f * cm, 0f);
+        var incision = SurgeryState.SkinIsCut(patient, from, from + new Vector2(10f * cm, 0f), 1f);
+        SurgeryState.SkinIsCut(patient, from + new Vector2(6f * cm, 0f), from + new Vector2(8f * cm, 0f), 1f);
+        await Frames.Seconds(1f);
+        var unsealed = incision.Bleeding;
+
+        // On whole skin beside its far end, away from the stretch cut again.
+        var end = incision.BinPosition(0);
+        var beside = Enumerable.Range(2, 12).Select(step => end + new Vector2(0f, step * 0.005f)).First(uv => !driver.Body.IsOpen(uv));
+        await driver.PlayerRequestsItem("cautery");
+        await driver.PlayerWalksTo(driver.SitePoint(beside));
+        await driver.PlayerWorksAt(driver.SitePoint(beside), 2, 3f);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        AssertFloat(incision.Cauterized).OverrideFailureMessage("the cautery seals the incision").IsGreater(0.9f);
+        var share = 2f / 10f;
+        AssertFloat(incision.Bleeding)
+            .OverrideFailureMessage($"but not the stretch cut again, far from where it went: it bleeds as before there ({unsealed:0.00} ml/s "
+                + $"before, {incision.Bleeding:0.00} now)")
+            .IsGreater(unsealed * share * 0.9f);
+        await driver.Stop();
+    }
+
     [TestCase(0.006f)]
     [TestCase(0.01f)]
     public async Task AStrokeAcrossAUShapedCutIsANewCut(float apart)
@@ -108,11 +169,18 @@ public class WoundTest
         await driver.Stop();
     }
 
-    /// <summary>A 10 cm wound through the muscle.</summary>
-    private static Wound Line(WoundKind kind, bool surgeon, bool jagged)
+    /// <summary>A 10 cm wound through the muscle, jagged along <paramref name="jagged"/> of its length (0..1) from its
+    /// start.</summary>
+    private static Wound Line(WoundKind kind, bool surgeon, float jagged)
     {
-        var wound = new Wound(1, kind, new Vector2(0.3f, 0.5f), 1f) { MadeBySurgeon = surgeon, Jagged = jagged };
-        wound.Extend(new Vector2(0.3f + (0.1f / SiteSize), 0.5f));
+        var start = new Vector2(0.3f, 0.5f);
+        var along = new Vector2(0.1f / SiteSize, 0f);
+        var wound = new Wound(1, kind, start, 1f) { MadeBySurgeon = surgeon };
+        wound.Extend(start + along);
+        if (jagged > 0f)
+        {
+            wound.MarkJagged(start, start + (along * jagged));
+        }
         return wound;
     }
 

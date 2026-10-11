@@ -117,32 +117,36 @@ public partial class Patient
         {
             depth = Mathf.Max(depth, Wound.MuscleDepth);
         }
-        if (!_strokeWounds.TryGetValue(strokeKey, out var wound) || wound.Points[^1].DistanceTo(a) > 0.02f)
+        // Every stretch of a stroke that runs along another cut deepens and reopens that one: one starting on whole skin
+        // ends where it comes into a cut, and grows a wound of its own again only past it.
+        var reach = Body.MetersToUv(RecutReach);
+        var own = _strokeWounds.GetValueOrDefault(strokeKey);
+        Wound wound;
+        if (Wounds.Find(w => w != own && w.Kind == WoundKind.Cut && w.Runs(a, b, reach)) is { } recut)
         {
-            var reach = Body.MetersToUv(RecutReach);
-            var recut = Wounds.Find(w => w.Kind == WoundKind.Cut && w.Runs(a, b, reach));
-            if (recut is null)
-            {
-                wound = NewWound(WoundKind.Cut, a, depth);
-                wound.MadeBySurgeon = true;
-                _strokeWounds[strokeKey] = wound;
-                wound.Extend(b);
-            }
-            else
-            {
-                wound = recut;
-                wound.Recut(a, b, depth >= Wound.MuscleDepth);
-                _strokeWounds.Remove(strokeKey);
-            }
+            wound = recut;
+            wound.Recut(a, b, depth >= Wound.MuscleDepth);
+            _strokeWounds.Remove(strokeKey);
+        }
+        else if (own is null || own.Points[^1].DistanceTo(a) > 0.02f)
+        {
+            wound = NewWound(WoundKind.Cut, a, depth);
+            wound.MadeBySurgeon = true;
+            _strokeWounds[strokeKey] = wound;
+            wound.Extend(b);
         }
         else
         {
+            wound = own;
             wound.Extend(b);
         }
         wound.Depth = Mathf.Max(wound.Depth, depth);
         wound.Dirty = wound.Dirty || dirty;
         var jagged = speed > 0.25f || sharpness < 0.8f;
-        wound.Jagged = wound.Jagged || jagged;
+        if (jagged)
+        {
+            wound.MarkJagged(a, b);
+        }
         var jitter = 0.004f * (1f - sharpness) + (speed > 0.25f ? 0.003f : 0f);
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, a, b, 0.004f + depth * 0.003f, Mathf.Min(depth * 0.75f, 0.7f), WoundMap.Mode.Max, jitter);
         Rpc(MethodName.TissueCut, a, b, (int)TissueDepthOf(depth));
@@ -816,12 +820,11 @@ public partial class Patient
         foreach (var wound in Wounds)
         {
             // An opened skin wound's edges lie apart from where it was cut: up to the gap of a fully open one.
-            var near = wound.IsInternal
-                ? Reaches(wound, uv)
-                : wound.DistanceTo(uv) < radius + 0.01f + Body.MetersToUv(FullGap) * wound.Opened;
+            var reach = radius + 0.01f + Body.MetersToUv(FullGap) * wound.Opened;
+            var near = wound.IsInternal ? Reaches(wound, uv) : wound.DistanceTo(uv) < reach;
             if (near && (wound.IsInternal ? Inside(zone, uv) : zone == SiteZone.Site))
             {
-                wound.Cauterize(def.Power * 0.6f * dt, 0.95f);
+                wound.Cauterize(def.Power * 0.6f * dt, 0.95f, uv, reach);
                 // A vessel a staple went through is sealed for good.
                 wound.Nicked = Mathf.Max(wound.Nicked - def.Power * StapleNick * dt, 0f);
                 sealedAny = true;

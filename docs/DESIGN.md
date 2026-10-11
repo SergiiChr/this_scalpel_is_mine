@@ -219,7 +219,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
   A surgeon's clean incision only oozes (`Wound.CleanIncisionShare` of what a jagged cut or a tear bleeds), so opening
-  a belly properly is no emergency; a cut made too fast or with a dull blade bleeds in full.
+  a belly properly is no emergency; a stretch cut too fast or with a dull blade bleeds in full.
   Gauze pressed on a wound stops it for a while after it comes off (`Wound.PressureHold`), then the bleeding comes
   back; it stops a cut too small to sew (`Wound.SmallCut`) for good when held on it long enough without a break.
   The `stop_bleeding` objective counts only what stays stopped without gauze pressure. Debug mode toasts when a wound
