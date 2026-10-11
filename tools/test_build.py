@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 import build
 
+QUIT = "GdUnit4 Godot Runtime Test Runner ends with exit code: 0"
+
 
 class CoverageReportingTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -27,7 +29,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.options = build.TestOptions([], [], "", 1, False, True, False)
         self.suite = build.Suite(Path("ExampleTest.cs"), "Scalpel.Tests.Example", [], [], False)
 
-    def result(self, xml: str, output: str = "", status: int = 0) -> build.ProcessResult:
+    def result(self, xml: str, output: str = QUIT, status: int = 0) -> build.ProcessResult:
         log, report = self.root / "run.log", self.root / "run.xml"
         log.write_text(output)
         report.write_text(xml)
@@ -86,6 +88,14 @@ class CoverageReportingTest(unittest.TestCase):
         result = self.result('<testsuite><testcase name="Cut"><failure message="gap missing" /></testcase></testsuite>')
         self.assertEqual(result.executed, 1)
         self.assertIn("gap missing", result.failures[0])
+
+    def test_passing_cases_fail_when_godot_never_quits(self) -> None:
+        result = self.result("<testsuite><testcase /></testsuite>", "Rebuild Godot Project ends with exit code: 0", 1)
+        self.assertEqual(result.failures, ["[ERROR] Godot didn't quit cleanly after its cases (runner exit never reported)."])
+
+    def test_passing_cases_fail_when_godot_quits_with_an_error(self) -> None:
+        result = self.result("<testsuite><testcase /></testsuite>", QUIT.replace(": 0", ": 134"))
+        self.assertIn("runner exit 134", result.failures[0])
 
     def test_empty_isolated_process_fails_even_if_another_case_passes(self) -> None:
         self.suite.isolate_cases = True
