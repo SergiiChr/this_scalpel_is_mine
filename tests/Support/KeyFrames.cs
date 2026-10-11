@@ -39,7 +39,8 @@ public partial class KeyFrames : Node
     /// <summary>Saves what the viewport shows now, a few drawn frames on so a camera that just moved is in place, with
     /// <paramref name="description"/> of what it should show. Rendering is on only for those frames. Gameplay pauses so
     /// rendering preserves the named action's pose.
-    /// The view loses its film grain, so the same scene saves the same pixels. Fails the case when it can't be saved.
+    /// The view loses its film grain and its moving effects stand at one moment, so the same scene saves the same pixels.
+    /// Fails the case when it can't be saved.
     /// </summary>
     public static async Task SaveViewport(string path, string description)
     {
@@ -56,6 +57,9 @@ public partial class KeyFrames : Node
             // Refresh only the overlays: the action pose and HUD timers stay frozen.
             surgery?.Hud.RefreshFrame(0f);
             surgery?.Hud.RemoveFilmGrain();
+            // Moving effects (sickness wobble, flesh, contamination pulse) at one fixed moment: their clock follows
+            // frame time, which only --fixed-fps makes the same on every machine. Gameplay sets it again on resuming.
+            RenderingServer.GlobalShaderParameterSet(ShaderParam.GameTime, 0f);
             await Frames.Process(3);
             await RenderingServer.Singleton.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             saved = Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
