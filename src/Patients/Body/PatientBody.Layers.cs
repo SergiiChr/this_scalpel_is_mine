@@ -4,8 +4,12 @@ namespace Scalpel.Patients;
 /// tissue sim.</summary>
 public partial class PatientBody
 {
-    /// <summary>How much each layer follows the skin's movement (deeper layers are more tethered).</summary>
-    private static readonly float[] LayerFollow = [1f, 0.65f, 0.2f];
+    /// <summary>How far (meters) each layer slides along with the skin before what's under it holds it back: the fat
+    /// hangs on the skin and goes wherever it goes, the muscle sits on bone and fascia and gives a little. A layer
+    /// slides along fully up to its tether and then stays, instead of following a share of every movement: scaled
+    /// down movement folds a layer over itself where the skin above it bunches up. See <see cref="LayerPoint"/>.
+    /// </summary>
+    private static readonly float[] LayerTether = [float.PositiveInfinity, float.PositiveInfinity, 0.008f];
     internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Movement over which the rendered skin adopts the deformed sheet's normals.</summary>
     private const float FlapMove = 0.015f;
@@ -35,8 +39,8 @@ public partial class PatientBody
 
     /// <summary>
     /// How one layer's mesh is put together (see PlanLayers()): per vertex the particle it belongs to (owner), and for
-    /// a crossing the spring's other end and how far along it the blade crossed (share); its uv; the triangle
-    /// indices; and per wall quad its two top vertices and a vertex of
+    /// a crossing the spring's other end, how far along it the blade crossed (share) and the lip neighbour it slides
+    /// with (slide, -1 for none); its uv; the triangle indices; and per wall quad its two top vertices and a vertex of
     /// its own side's skin, to face it away from.
     /// </summary>
     private sealed class LayerPlan
@@ -44,6 +48,7 @@ public partial class PatientBody
         public List<int> Owner { get; } = [];
         public List<int> Other { get; } = [];
         public List<float> Share { get; } = [];
+        public List<int> Slide { get; } = [];
         public List<Vector2> Uv { get; } = [];
         public List<int> Index { get; } = [];
         public List<int> Wall { get; } = [];
@@ -324,7 +329,6 @@ public partial class PatientBody
     private int _renderSteps;
     private bool _renderFold;
     private bool _renderFootprint;
-    private bool[] _renderNear = [];
     private bool _renderTurnover;
     private Vector3[] _renderMoved = [];
     private readonly Vector3[][] _renderPoints = [[], [], []];
@@ -357,8 +361,6 @@ public partial class PatientBody
             PlaceParticles();
             _renderFold = Tissue.HoldingFold;
             _renderFootprint = Tissue.HasFoldFootprint;
-            if (_renderNear.Length != Tissue.Pos.Length) { _renderNear = new bool[Tissue.Pos.Length]; }
-            for (var k = 0; k < _renderNear.Length; k++) { _renderNear[k] = Tissue.NearFold(k); }
             _renderTurnover = Tissue.TurningFlap;
             if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
             foreach (var k in _around) { _renderMoved[k] = Moved(k); }
@@ -487,7 +489,7 @@ public partial class PatientBody
         _planned = [];
         foreach (var plan in _plans)
         {
-            foreach (var k in plan.Owner.Concat(plan.Other))
+            foreach (var k in plan.Owner.Concat(plan.Other).Concat(plan.Slide))
             {
                 if (k >= 0 && !_mark[k])
                 {
@@ -567,24 +569,20 @@ public partial class PatientBody
             }
             if (anyCut && side[0] == side[1] && side[1] == side[2])
             {
-                // At a cut's end only one edge is severed. Keeping the whole triangle would bridge the opening and
-                // pass through the neighbouring lip when pulled. Taper the two sides to the remaining corner.
+                // At a cut's end only one edge is severed: the cut runs into this triangle and stops. It's drawn whole,
+                // but with the lips the triangle across the cut edge has, so the lips don't step past its edge as
+                // they part: the skin between them tapers to the far corner, the way a cut ends in a point.
                 var edge = Array.FindIndex(cut, value => value);
+                if (gone[corners[0]] || gone[corners[1]] || gone[corners[2]])
+                {
+                    continue;
+                }
                 var a = PlanOwn(plan, corners[edge], touched);
                 var b = PlanOwn(plan, corners[(edge + 1) % 3], touched);
                 var tip = PlanOwn(plan, corners[(edge + 2) % 3], touched);
                 var lipA = PlanCross(plan, edges[edge], corners[edge], crossed, touched);
                 var lipB = PlanCross(plan, edges[edge], corners[(edge + 1) % 3], crossed, touched);
-                if (!(gone[corners[edge]] || gone[corners[(edge + 2) % 3]]))
-                {
-                    plan.Index.AddRange([a, lipA, tip]);
-                    if (walls) { plan.Wall.AddRange([lipA, tip, a]); }
-                }
-                if (!(gone[corners[(edge + 1) % 3]] || gone[corners[(edge + 2) % 3]]))
-                {
-                    plan.Index.AddRange([lipB, b, tip]);
-                    if (walls) { plan.Wall.AddRange([tip, lipB, b]); }
-                }
+                plan.Index.AddRange([a, lipA, tip, lipA, lipB, tip, lipB, b, tip]);
                 continue;
             }
             if (!anyCut)
@@ -769,6 +767,7 @@ public partial class PatientBody
             plan.Owner.Add(k);
             plan.Other.Add(-1);
             plan.Share.Add(0f);
+            plan.Slide.Add(-1);
             plan.Uv.Add(_uvOf[k]);
         }
         return _vmap[k];
@@ -776,8 +775,10 @@ public partial class PatientBody
 
     /// <summary>
     /// The vertex where the blade crossed spring s, on the side of its end k, added the first time it's used. It lies
-    /// on the traced blade path and deforms with the intact skin on its own side (see DeformedLipOffset()). A
-    /// crossing at its owner coincides with that particle, so it shares its vertex rather than leaving a sliver.
+    /// as far from k as it did at rest, so each lip moves with its own side. A diagonal spring's far end lies a cell
+    /// along the cut from k: there the lip moves like k's neighbour that way (if they're still joined), so the lip
+    /// doesn't step from cell to cell. A crossing at its owner coincides with that particle, so it shares its vertex
+    /// rather than leaving a sliver.
     /// </summary>
     private int PlanCross(LayerPlan plan, int s, int k, List<int> crossed, List<int> touched)
     {
@@ -793,9 +794,24 @@ public partial class PatientBody
             _xmap[key] = plan.Owner.Count;
             crossed.Add(key);
             var other = atStart ? spring.B : spring.A;
+            var slide = -1;
+            var cell = Tissue.CellOf(k);
+            var step = Tissue.CellOf(other) - cell;
+            step = Mathf.Abs(spring.CutDir.X) >= Mathf.Abs(spring.CutDir.Y) ? new Vector2I(step.X, 0) : new Vector2I(0, step.Y);
+            if (step != Vector2I.Zero)
+            {
+                var m = Tissue.Index(cell.X + step.X, cell.Y + step.Y);
+                var low = Math.Min(k, m);
+                var joined = step.X != 0 ? Tissue.SpringRight[low] : Tissue.SpringDown[low];
+                if (joined >= 0 && Tissue.SpringAt(joined).Active)
+                {
+                    slide = m;
+                }
+            }
             plan.Owner.Add(k);
             plan.Other.Add(other);
             plan.Share.Add(atStart ? spring.Cross : 1f - spring.Cross);
+            plan.Slide.Add(slide);
             plan.Uv.Add(_uvOf[spring.A].Lerp(_uvOf[spring.B], spring.Cross));
         }
         return _xmap[key];
@@ -878,13 +894,28 @@ public partial class PatientBody
             if (plan.Other[v] >= 0)
             {
                 var offset = _onModel[plan.Other[v]] - _onModel[k];
-                p += DeformedLipOffset(layer, k, offset * plan.Share[v]);
+                if (_renderTurnover)
+                {
+                    // Pulled into a fold or turned over, the lip turns and squashes with its own side: at its rest
+                    // offset it would reach across the cut into the other side. Lying still it keeps its rest offset,
+                    // which draws a straight lip through the grid's cells where the sheet's small deformations would
+                    // step it.
+                    p += DeformedLipOffset(layer, k, offset * plan.Share[v]);
+                }
+                else
+                {
+                    if (plan.Slide[v] >= 0)
+                    {
+                        var m = plan.Slide[v];
+                        offset += (_pointOf[m] - _onModel[m]) - (p - _onModel[k]);
+                    }
+                    p += offset * plan.Share[v];
+                }
             }
             vertices[v] = p;
             normals[v] = _normal[k];
         }
         ConstrainLipArea(plan, vertices);
-        if (layer > 0 && _renderFootprint) { KeepBelowSkin(plan, vertices, depth); }
         var faceNormals = new Vector3[vertexCount];
         for (var t = 0; t < plan.Index.Count; t += 3)
         {
@@ -968,27 +999,12 @@ public partial class PatientBody
                 }
             }
         }
-        if (layer == 0 && _renderFootprint) { _skinContact.Index(refinedVertices, plan.RefinedIndex); }
         return (
             MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. plan.RefinedIndex]),
             MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors]));
     }
 
-    private readonly ContactSurface _skinContact = new();
     private readonly ContactSurface _clothFaces = new();
-
-    /// <summary>The tethered bed resolves contact against nearby skin faces instead of following the whole grip.</summary>
-    private void KeepBelowSkin(LayerPlan plan, Vector3[] vertices, float depth)
-    {
-        for (var t = 0; t < plan.Index.Count; t += 3)
-        {
-            var a = plan.Index[t];
-            var b = plan.Index[t + 1];
-            var c = plan.Index[t + 2];
-            if (!_renderNear[plan.Owner[a]] && !_renderNear[plan.Owner[b]] && !_renderNear[plan.Owner[c]]) { continue; }
-            _skinContact.PushTriangle(vertices, a, b, c, depth + 0.0002f, above: false);
-        }
-    }
 
     /// <summary>Virtual lips have no simulation particles of their own. Keep their faces oriented with the sheet
     /// during a wave, so the cut boundary cannot fold back through the thicker tissue underneath it.</summary>
@@ -1117,26 +1133,41 @@ public partial class PatientBody
 
     /// <summary>
     /// Where a layer's grid point k is now, before it's moved down to its depth: on the body model where the skin
-    /// rests, moved as far as the sim moved it (Moved()). Deeper layers are tethered and follow the skin only partly (a
-    /// stepped wound edge), but a flap pulled far back takes all of its layers along.
+    /// rests, moved as far as the sim moved it (Moved()). The skin and its fat move as one. The muscle slides along
+    /// only as far as its tether lets it (LayerTether) and stays down on its bed while the skin lifts off it, so a
+    /// pull on whole skin slides the skin over it. Beside a cut through it the muscle is cut free and goes with the
+    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle, and a flap
+    /// takes its layers along. A flap turned right over takes everything.
     /// </summary>
     public Vector3 LayerPoint(int layer, int k)
     {
         var moved = Moved(k);
-        // Tissue at a deeply incised lip follows that local flap; the surrounding bed remains tethered. Do not
-        // switch the entire site to full following just because one grip forms a fold.
-        var follow = Tissue.TurningFlap ? Mathf.Lerp(LayerFollow[layer], 1f, Mathf.Clamp(moved.Length() / TissueSim.TurnoverReach, 0f, 1f)) : LayerFollow[layer];
-        var point = _onModel[k] + moved * follow;
-        // A sliding perimeter follows the cloth at its current position, not the body's height at its old one.
-        // Apply this to the rendered stack together so hidden tissue cannot emerge through the drape on a flank.
+        var freed = float.IsPositiveInfinity(LayerTether[layer]) ? 1f : Tissue.Freed(LayerDepth[layer], k);
+        if (Tissue.TurningFlap)
+        {
+            freed = Mathf.Max(freed, Mathf.Clamp(moved.Length() / TissueSim.TurnoverReach, 0f, 1f));
+        }
+        var lift = new Vector3(0f, moved.Y, 0f);
+        var slide = moved - lift;
+        var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
+        var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
+        var point = _onModel[k] + slide * follow + lift * Mathf.Max(freed, follow);
+        // Skin folded out over the drape lies on the cloth where it is now, not at the body's height under its old
+        // spot, and the layers that come with it lie on it too; skin under the drape stays under it. A tethered
+        // layer that stayed behind under exposed skin is left where it is: it's under the skin, whatever lies over.
         if (Tissue.FloorAt is not null && (moved.LengthSquared() > 0.000001f || Tissue.FoldContact(k)))
         {
             var floorY = Tissue.FloorAt(point.X, point.Z);
-            var above = Tissue.Exposed[k] && (layer == 0 || follow >= 0.999f);
             if (!float.IsNaN(floorY))
             {
-                point.Y = above ? Mathf.Max(point.Y, floorY)
-                    : Mathf.Min(point.Y, floorY - TissueSim.UnderDrape);
+                if (!Tissue.Exposed[k])
+                {
+                    point.Y = Mathf.Min(point.Y, floorY - TissueSim.UnderDrape);
+                }
+                else if (layer == 0 || follow >= 0.999f)
+                {
+                    point.Y = Mathf.Max(point.Y, floorY);
+                }
             }
         }
         return point;

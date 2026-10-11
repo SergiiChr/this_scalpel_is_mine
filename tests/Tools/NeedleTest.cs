@@ -288,6 +288,9 @@ public class NeedleTest
         await driver.Capture($"{name}_loose", $"thread run loose through the {name} layer, lying on that layer, not through the skin above");
         await driver.PlayerPullsThread("closed");
         await driver.PlayerTiesOff($"{name}_closed", $"the {name} layer pulled closed and tied, the thread on that layer");
+        // The thread is drawn on the sheet as it was when its holes last moved; compared with the sheet once it
+        // has come to rest under the knot.
+        await Frames.Until(() => driver.Body.Tissue.IsSleeping, 5f);
         AssertThreadStaysOnLayer(driver.Body, driver.Body.DrawnThread(thread)!.Routes, layer);
     }
 
@@ -297,10 +300,12 @@ public class NeedleTest
         {
             for (var i = 1; i < path.Length - 1; i++)
             {
-                var surface = body.SutureLayerHeight(SiteUv(body, path[i]), layer);
-                AssertFloat(path[i].Y).OverrideFailureMessage("deep thread rests above its sewn layer")
+                var uv = SiteUv(body, path[i]);
+                var surface = body.SutureLayerHeight(uv, layer);
+                var over = $"{(path[i].Y - surface) * 1000f:0.00} mm over it at {uv}";
+                AssertFloat(path[i].Y).OverrideFailureMessage($"deep thread rests above its sewn layer ({over})")
                     .IsGreaterEqual(surface + PatientBody.SutureRadius);
-                AssertFloat(path[i].Y).OverrideFailureMessage("deep thread does not rise through the overlying tissue")
+                AssertFloat(path[i].Y).OverrideFailureMessage($"deep thread does not rise through the overlying tissue ({over})")
                     .IsLess(surface + 0.002f);
             }
         }

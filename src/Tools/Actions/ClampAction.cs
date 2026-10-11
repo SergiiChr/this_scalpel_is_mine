@@ -19,6 +19,8 @@ public sealed class ClampAction : ToolAction
     internal const float RestReach = 0.005f;
     internal const float RestTime = 0.03f;
     internal const float MaxWait = 0.5f;
+    /// <summary>Skin stopping the tip this far (meters) short of where the hand took it holds the hand back.</summary>
+    private const float HeldBack = 0.0005f;
 
     public override void Apply(ToolStep step)
     {
@@ -75,10 +77,14 @@ public sealed class ClampAction : ToolAction
         else if (tool.Hold is { } hold)
         {
             var power = step.Def.Power * step.Hand.Mods.Mult("grip_strength_mult");
-            tool.Hold = patient.UpdateGrip(tool.Uid, hold, step.Tip, power, step.Dt, step.Hand.Speed);
+            tool.Hold = patient.UpdateGrip(tool.Uid, hold, step.Tip, power, step.Dt, step.Hand.Speed, out var heldAt);
             if (tool.Hold is null)
             {
                 step.Surgery.SetAttached(step.Hand.Peer, tool.Slot, false);
+            }
+            else if (heldAt.DistanceSquaredTo(step.Tip) > HeldBack * HeldBack)
+            {
+                step.Surgery.HoldHandBack(step.Hand.Peer, tool.Slot, heldAt - step.Tip);
             }
         }
     }

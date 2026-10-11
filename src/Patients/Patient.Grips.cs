@@ -127,9 +127,12 @@ public partial class Patient
     public static int SpreaderKey(int toolUid, int side) => -(toolUid * 2 + side);
 
     /// <summary>Moves what a tool holds with its tip. Returns what it holds now: a target pulled free is carried, a piece
-    /// of skin lifted away comes off (null).</summary>
-    public ToolHold? UpdateGrip(int toolUid, ToolHold hold, Vector3 tip, float power, float dt, float speed)
+    /// of skin lifted away comes off (null). <paramref name="heldAt"/>: where the tip ends up (world), at
+    /// <paramref name="tip"/> unless skin held stops giving and holds it short of there (<see cref="TissueSim.Restrain"/>).
+    /// </summary>
+    public ToolHold? UpdateGrip(int toolUid, ToolHold hold, Vector3 tip, float power, float dt, float speed, out Vector3 heldAt)
     {
+        heldAt = tip;
         switch (hold)
         {
             case TargetHold grip:
@@ -174,7 +177,9 @@ public partial class Patient
                     // A hook pulls the skin aside or up, not down after the tip into the opening.
                     to.Y = Mathf.Max(to.Y, Body.SurfaceHeight(Body.LocalToUv(to)));
                 }
-                Body.Tissue.MoveGrip(toolUid, to);
+                var allowed = Body.Tissue.Restrain(toolUid, to);
+                heldAt = tip + Body.Site.GlobalBasis * (allowed - to);
+                Body.Tissue.MoveGrip(toolUid, allowed);
                 if (skin.Piece && Body.Site.ToLocal(tip).Y - Body.SurfaceHeight(skin.Anchor) > PieceLift)
                 {
                     TakePiece(toolUid, skin.Anchor);

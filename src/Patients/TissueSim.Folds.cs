@@ -2,15 +2,24 @@ namespace Scalpel.Patients;
 
 public sealed partial class TissueSim
 {
-    /// <summary>Extra tethering outside a grip footprint prevents translating the distant bed.</summary>
+    /// <summary>Extra tethering outside a grip's footprint, so a pull doesn't slide the whole site along. It fades in
+    /// from FoldNear to FoldFar (meters, at rest) from the grip: a hard edge would crease the skin along it.</summary>
     private const float FoldAnchor = 0.35f;
+    private const float FoldNear = DragReach * 1.5f;
+    private const float FoldFar = DragReach * 2.5f;
     /// <summary>Gentle intact-edge displacement averaging rounds cell-sized creases into a wave.</summary>
     private const float FoldBend = 0.12f;
+    /// <summary>The least two grid points two cells apart along a row or column come to, as a share of their rest
+    /// distance (see KeepBendsRound()). 0.7 lets each of the two particles between turn 90 degrees, enough to fold
+    /// a flap right over.</summary>
+    private const float BendSpan = 0.7f;
     /// <summary>Faces below this fraction of rest area need the final compression passes.</summary>
     private const float CompressedArea = 0.3f;
     /// <summary>Retain this fraction of rest area so a fold has room for the tissue underneath it.</summary>
     private const float MinimumFoldArea = 0.15f;
-    /// <summary>Nonadjacent fold rows keep 3 mm clearance without changing intact spring distances.</summary>
+    /// <summary>How far (meters) skin folded over other skin is kept above it: a little over the skin's own thickness,
+    /// so the sheet under the fold stays out of the fold's skin. Not the fat's thickness too: lifting a fold that
+    /// high over what it covers turns its edge up into a wall that the skin beside it folds over.</summary>
     private const float FoldClearance = 0.003f;
 
     /// <summary>One fold lifecycle; scratch geometry stays in the solver, and contact survives footprint expiry.</summary>
@@ -20,14 +29,15 @@ public sealed partial class TissueSim
         internal bool TurnedOver;
         internal bool Bending;
         internal readonly HashSet<int> Roots = [];
-        internal bool[] Near = [];
+        /// <summary>How much each particle belongs to a grip's footprint: 1 at the grip, 0 past FoldFar.</summary>
+        internal float[] Near = [];
         internal bool[] Contact = [];
 
         internal void Reset(int count)
         {
             Active = TurnedOver = Bending = false;
             Roots.Clear();
-            Near = new bool[count];
+            Near = new float[count];
             Contact = new bool[count];
         }
 
@@ -39,14 +49,14 @@ public sealed partial class TissueSim
             foreach (var pin in sim._pins.Values)
             {
                 var pull = pin.Target.DistanceSquaredTo(sim._anchorTarget[pin.Particle]);
-                Bending |= pull > DragReach * DragReach;
                 TurnedOver |= pull > TurnoverReach * TurnoverReach;
                 if (pull <= GripHold * GripHold) { continue; }
-                Active = true;
+                Active = Bending = true;
                 if (!Roots.Add(pin.Particle)) { continue; }
                 for (var k = 0; k < sim.Rest.Length; k++)
                 {
-                    Near[k] |= sim.Rest[k].DistanceSquaredTo(sim.Rest[pin.Particle]) <= DragReach * DragReach * 4f;
+                    var near = 1f - Mathf.SmoothStep(FoldNear, FoldFar, sim.Rest[k].DistanceTo(sim.Rest[pin.Particle]));
+                    Near[k] = Mathf.Max(Near[k], near);
                 }
             }
         }
@@ -56,7 +66,7 @@ public sealed partial class TissueSim
             if (!sim.IsSleeping || sim._pins.Count > 0 || Roots.Count == 0 || sim.Settled.Length != sim.Pos.Length) { return; }
             for (var k = 0; k < Near.Length; k++)
             {
-                if (Near[k] && sim.Pos[k].DistanceSquaredTo(sim.Settled[k]) > LiftedOff * LiftedOff) { return; }
+                if (Near[k] > 0f && sim.Pos[k].DistanceSquaredTo(sim.Settled[k]) > LiftedOff * LiftedOff) { return; }
             }
             Active = TurnedOver = Bending = false;
             Roots.Clear();
@@ -76,7 +86,9 @@ public sealed partial class TissueSim
         }
         foreach (var k in _winParticles)
         {
-            if (_free[k] == 0f || Pos[k].DistanceSquaredTo(Settled[k]) <= LiftedOff * LiftedOff)
+            // Within the grip's footprint whether lifted or not: skin pushed along the body ahead of a grip would
+            // otherwise crease cell by cell instead of bunching into one wave.
+            if (_free[k] == 0f || (_fold.Near[k] <= 0f && Pos[k].DistanceSquaredTo(Settled[k]) <= LiftedOff * LiftedOff))
             {
                 _bend[k] = Vector3.Zero;
                 continue;
@@ -102,6 +114,46 @@ public sealed partial class TissueSim
         {
             Pos[k] += _bend[k];
         }
+    }
+
+    /// <summary>Skin doesn't crease cell by cell: a grid point and the one two along its row or column, joined by
+    /// whole springs, stay BendSpan of their rest distance apart. A spring turns any way for free, so pushed-along
+    /// skin would otherwise fold back on itself a cell at a time, a row ducking under the one before it with every
+    /// spring still at its length, instead of rising into a hump.</summary>
+    private void KeepBendsRound()
+    {
+        if (!_fold.Bending) { return; }
+        foreach (var k in _winParticles)
+        {
+            if (!NearFold(k)) { continue; }
+            var at = CellOf(k);
+            if (at.X + 2 <= ResX && SpringWhole(SpringRight[k]) && SpringWhole(SpringRight[k + 1]))
+            {
+                RoundBend(k, k + 2);
+            }
+            var below = k + ResX + 1;
+            if (at.Y + 2 <= ResY && SpringWhole(SpringDown[k]) && SpringWhole(SpringDown[below]))
+            {
+                RoundBend(k, below + ResX + 1);
+            }
+        }
+    }
+
+    private bool SpringWhole(int s) => s >= 0 && _springs[s].Active;
+
+    private void RoundBend(int a, int b)
+    {
+        var minimum = Rest[a].DistanceTo(Rest[b]) * BendSpan;
+        var d = Pos[b] - Pos[a];
+        var length = d.Length();
+        var share = _free[a] + _free[b];
+        if (length >= minimum || length < 0.000001f || share <= 0f)
+        {
+            return;
+        }
+        var apart = d * ((minimum - length) / length / share);
+        Pos[a] -= apart * _free[a];
+        Pos[b] += apart * _free[b];
     }
 
     /// <summary>Track the local footprint of a grip and let only its nearby covered boundary slide.</summary>
@@ -247,8 +299,11 @@ public sealed partial class TissueSim
         return true;
     }
 
-    /// <summary>Nearby folds repel in three dimensions. Intact immediate neighbours retain their spring
-    /// distances; distant rows can approach each other without passing through the thin skin.</summary>
+    /// <summary>Skin folded over other skin lies on it, not in it: where two rows that weren't neighbours at rest
+    /// have passed one another (their order across the site is the reverse of what it was) and lie over one another,
+    /// the upper one stays FoldClearance above the lower. Only up: the lower row stays on the body, and the sheet
+    /// keeps its shape across. Rows merely pushed close together (a cut's lips drawn back into the skin beside them)
+    /// are left alone.</summary>
     private void SeparateFoldNeighbors()
     {
         if (!_fold.Active) { return; }
@@ -256,30 +311,30 @@ public sealed partial class TissueSim
         foreach (var bucket in _usedFoldBuckets) { bucket.Clear(); }
         _usedFoldBuckets.Clear();
         var cells = _foldNeighbors;
+        var across = Mathf.Min(Size.X / ResX, Size.Y / ResY) * 0.7f;
         foreach (var k in _winParticles)
         {
             if (!NearFold(k)) { continue; }
-            var key = (Vector3I)(Pos[k] / FoldClearance).Floor();
+            var key = new Vector3I(Mathf.FloorToInt(Pos[k].X / across), 0, Mathf.FloorToInt(Pos[k].Z / across));
             var at = CellOf(k);
             for (var z = -1; z <= 1; z++)
             {
-                for (var y = -1; y <= 1; y++)
+                for (var x = -1; x <= 1; x++)
                 {
-                    for (var x = -1; x <= 1; x++)
+                    if (!cells.TryGetValue(key + new Vector3I(x, 0, z), out var near)) { continue; }
+                    foreach (var other in near)
                     {
-                        if (!cells.TryGetValue(key + new Vector3I(x, y, z), out var near)) { continue; }
-                        foreach (var other in near)
-                        {
-                            var grid = CellOf(other);
-                            if (Math.Abs(at.X - grid.X) <= 1 && Math.Abs(at.Y - grid.Y) <= 1) { continue; }
-                            var delta = Pos[k] - Pos[other];
-                            var length = delta.Length();
-                            var weight = _free[k] + _free[other];
-                            if (length >= FoldClearance || length < 1e-8f || weight == 0f) { continue; }
-                            var push = delta * ((FoldClearance - length) / (length * weight));
-                            Pos[k] += push * _free[k];
-                            Pos[other] -= push * _free[other];
-                        }
+                        var grid = CellOf(other);
+                        if ((Math.Abs(at.X - grid.X) <= 1 && Math.Abs(at.Y - grid.Y) <= 1)
+                            || Rest[k].DistanceSquaredTo(Rest[other]) <= FoldClearance * FoldClearance) { continue; }
+                        var delta = Pos[k] - Pos[other];
+                        var flat = new Vector2(delta.X, delta.Z);
+                        var restDelta = Rest[k] - Rest[other];
+                        if (flat.LengthSquared() >= across * across || flat.Dot(new Vector2(restDelta.X, restDelta.Z)) > 0f) { continue; }
+                        var (upper, lower) = delta.Y >= 0f ? (k, other) : (other, k);
+                        var gap = Mathf.Abs(delta.Y);
+                        if (gap >= FoldClearance || _free[upper] == 0f) { continue; }
+                        Pos[upper].Y += (FoldClearance - gap) * _free[upper];
                     }
                 }
             }
