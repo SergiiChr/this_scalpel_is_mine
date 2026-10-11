@@ -6,10 +6,10 @@ namespace Scalpel.Operation;
 /// </summary>
 public static class ObjectiveChecks
 {
-    /// <summary>The step's own check, or else its alternative's (which shares the step's state).</summary>
+    /// <summary>The step's own check, or else its alternative's.</summary>
     public static bool Check(ObjectiveStep step, StepState state, Surgery surgery, float delta) =>
         Met(step, state, surgery, delta)
-        || (step.Alternative is { } alternative && Check(alternative, state, surgery, delta));
+        || (step.Alternative is { } alternative && Check(alternative, state.Alternative, surgery, delta));
 
     private static bool Met(ObjectiveStep step, StepState state, Surgery surgery, float delta)
     {
