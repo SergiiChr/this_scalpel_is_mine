@@ -124,14 +124,14 @@ public partial class Patient
             depth = Mathf.Max(depth, Wound.MuscleDepth);
         }
         // Every stretch of a stroke that runs along another cut deepens and reopens that one: one starting on whole skin
-        // ends where it comes into a cut, and grows a wound of its own again only past it.
+        // stops growing where it comes into a cut, and grows its own wound again where it comes out (a new one, past a
+        // longer stretch along the other).
         var own = _strokeWounds.GetValueOrDefault(strokeKey);
         Wound wound;
         if (Wounds.Find(w => w != own && w.Kind == WoundKind.Cut && w.Runs(a, b, reach)) is { } recut)
         {
             wound = recut;
             wound.Recut(a, b, depth >= Wound.MuscleDepth);
-            _strokeWounds.Remove(strokeKey);
         }
         else if (own is null || own.Points[^1].DistanceTo(a) > 0.02f)
         {
@@ -154,7 +154,7 @@ public partial class Patient
         }
         var jitter = 0.004f * (1f - sharpness) + (speed > 0.25f ? 0.003f : 0f);
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, a, b, 0.004f + depth * 0.003f, Mathf.Min(depth * 0.75f, 0.7f), WoundMap.Mode.Max, jitter);
-        Rpc(MethodName.TissueCut, a, b, (int)TissueDepthOf(depth));
+        Rpc(MethodName.TissueCut, a, b, (int)TissueDepthOf(depth), true);
         Hurt(0.12f * depth, a);
         if (dirty)
         {
@@ -236,7 +236,7 @@ public partial class Patient
     public void Tear(Vector2 from, Vector2 direction, float lengthUv)
     {
         var to = from + direction.Normalized() * lengthUv;
-        Rpc(MethodName.TissueCut, from, to, (int)TissueDepth.Fat);
+        Rpc(MethodName.TissueCut, from, to, (int)TissueDepth.Fat, false);
         AddTear(from, to);
     }
 

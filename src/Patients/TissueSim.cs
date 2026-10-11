@@ -557,11 +557,11 @@ public sealed class TissueSim
     }
 
     /// <summary>
-    /// Severs every tissue spring the segment crosses down to the given depth, cuts the stitches it crosses and loosens
-    /// the skin around it.
+    /// Severs every tissue spring the segment crosses down to the given depth and loosens the skin around it. A blade
+    /// (<paramref name="stitches"/>) also cuts the stitches it crosses; a tear runs between them.
     /// A point exactly on the cut's line counts as on its left, so a cut through a grid point severs each spring once.
     /// </summary>
-    public void Cut(Vector2 a, Vector2 b, TissueDepth depth)
+    public void Cut(Vector2 a, Vector2 b, TissueDepth depth, bool stitches = false)
     {
         if (a.IsEqualApprox(b))
         {
@@ -619,7 +619,7 @@ public sealed class TissueSim
         }
         foreach (var s in _stitches)
         {
-            if (_springs[s].Active && Crossing(UvOf(_springs[s].A), UvOf(_springs[s].B), a, b) >= 0f)
+            if (stitches && _springs[s].Active && Crossing(UvOf(_springs[s].A), UvOf(_springs[s].B), a, b) >= 0f)
             {
                 _springs[s].Active = false;
             }

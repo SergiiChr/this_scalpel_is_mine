@@ -17,15 +17,20 @@ public partial class SurgeryDriver
         var tool = (await PlayerRequestsItem(toolId))!;
         for (var round = 0; round < 4 && Patient.SkinClosure() < 0.98f; round++)
         {
+            // Every muscle before any skin: a skin stitch near another cut can reach across it, and over its open muscle
+            // it tears through.
+            if (tool.Def.Action == "sew")
+            {
+                foreach (var wound in Patient.Wounds.Where(wound => wound.ThroughMuscle && wound.Muscle.Any(m => m < 1f)).ToList())
+                {
+                    await PlayerSews(wound, TissueDepth.Muscle);
+                }
+            }
             foreach (var wound in Patient.Wounds.Where(wound => wound.IsSkinCut).ToList())
             {
                 switch (tool.Def.Action)
                 {
                     case "sew":
-                        if (wound.ThroughMuscle && wound.Muscle.Any(m => m < 1f))
-                        {
-                            await PlayerSews(wound, TissueDepth.Muscle);
-                        }
                         if (wound.Bins.Any(b => b < 1f))
                         {
                             await PlayerSews(wound, TissueDepth.Skin);
