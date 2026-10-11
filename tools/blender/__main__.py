@@ -11,7 +11,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import anatomy, hand, patient, scene
+from . import anatomy, hand, patient, scene, surgeon_head
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build" / "blender_review"
@@ -44,6 +44,17 @@ def _patient() -> list[Path]:
     patient.test_pose(rig)
     shots += scene.render_views(OUT, "patient_mouth_open", [("three_quarter", (0.1, 1.0, 0.45))], focus=face, up=head_up)
     return shots + scene.render_views(OUT, "patient_posed", [("three_quarter", (-0.3, 0.8, 0.8))])
+
+
+def _surgeon_head() -> list[Path]:
+    rig = surgeon_head.build()
+    # Reviewed only, not shipped: the game still uses the assetgen head.
+    scene.export(OUT / "surgeon_head.glb")
+    views = [("front", (0.0, 0.1, -1.0)), ("three_quarter", (-0.8, 0.3, -0.8)), ("side", (1.0, 0.1, 0.0)), ("back", (0.3, 0.3, 1.0))]
+    shots = scene.render_views(OUT, "surgeon_head", views)
+    shots += scene.render_views(OUT, "surgeon_face", [("eyes", (-0.3, 0.1, -1.0))], focus=((0.0, -0.02, -0.09), 0.08))
+    surgeon_head.look_pose(rig)
+    return shots + scene.render_views(OUT, "surgeon_head_looking", [("three_quarter", (-0.8, 0.0, -0.8))])
 
 
 TURNAROUND = [("top", (0.1, 1.0, 0.15)), ("front", (0.0, 0.25, 1.0)), ("side", (1.0, 0.25, 0.0)), ("three_quarter", (0.8, 0.7, 0.8))]
@@ -90,6 +101,7 @@ BUDGETS = {
 MODELS: dict[str, Callable[[], list[Path]]] = {
     "patient": _patient,
     "glove": _hand,
+    "surgeon_head": _surgeon_head,
     "bowel": _still("bowel", anatomy.bowel, BUDGETS["bowel"], ship="organs"),
     "lobe": _still("lobe", anatomy.lobe, BUDGETS["lobe"], ship="organs"),
     "sac": _still("sac", anatomy.sac, BUDGETS["sac"], ship="organs"),

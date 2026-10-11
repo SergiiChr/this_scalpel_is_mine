@@ -42,9 +42,12 @@ def to_linear(c: float) -> float:
     return c / 12.92 if c <= 0.04045 else float(((c + 0.055) / 1.055) ** 2.4)
 
 
-def material(name: str, color: Sequence[float], roughness: float = 0.5, subsurface: float = 0.0, metallic: float = 0.0) -> bpy.types.Material:
+def material(
+    name: str, color: Sequence[float], roughness: float = 0.5, subsurface: float = 0.0, metallic: float = 0.0, transmission: float = 0.0
+) -> bpy.types.Material:
     """Principled material. The game reads the name (see src/Visuals/ModelSlot.cs), base color, roughness and metallic.
-    color is a display (sRGB) color, like a color picker's; Blender and glTF store it linear."""
+    color is a display (sRGB) color, like a color picker's; Blender and glTF store it linear.
+    transmission makes the review renders see through glass; the game shades "glass" by name."""
     color = [to_linear(c) for c in color[:3]]
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     if mat.node_tree is None:
@@ -53,6 +56,7 @@ def material(name: str, color: Sequence[float], roughness: float = 0.5, subsurfa
     bsdf.inputs["Base Color"].default_value = (*color[:3], 1.0)
     bsdf.inputs["Roughness"].default_value = roughness
     bsdf.inputs["Metallic"].default_value = metallic
+    bsdf.inputs["Transmission Weight"].default_value = transmission
     if subsurface > 0.0:
         bsdf.inputs["Subsurface Weight"].default_value = subsurface
         bsdf.inputs["Subsurface Radius"].default_value = (0.012, 0.004, 0.002)
@@ -151,6 +155,22 @@ def cut_below(obj: bpy.types.Object, axis: int, limit: float, above: bool = Fals
     bm.from_mesh(obj.data)
     game = [lambda v: v.co.x, lambda v: v.co.z, lambda v: -v.co.y][axis]
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if (game(v) > limit) == above and game(v) != limit], context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    return obj
+
+
+def remove(obj: bpy.types.Object, covered: Callable[[NDArray[np.float64]], NDArray[np.bool_]]) -> bpy.types.Object:
+    """Deletes the faces whose centers pass covered() (game space): skin that clothing hides never reaches the game."""
+    count = len(obj.data.polygons)
+    centers = np.empty(count * 3)
+    obj.data.polygons.foreach_get("center", centers)
+    b = centers.reshape(-1, 3)
+    gone = covered(np.column_stack([b[:, 0], b[:, 2], -b[:, 1]]))
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in np.flatnonzero(gone)], context="FACES")
     bm.to_mesh(obj.data)
     bm.free()
     return obj
@@ -480,9 +500,8 @@ def reweight(mesh: bpy.types.Object, bone: str, weight: Callable[[NDArray[np.flo
         index = vertex.index
         old = {mesh.vertex_groups[g.group].name: g.weight for g in vertex.groups}
         moved = old.pop(bone, 0.0)
-        if moved == 0.0 and w[index] == 0.0:
-            continue
         old[giver] = old.get(giver, 0.0) + moved
+        # Heat weights can add up to a hair over 1, which glTF rejects: every vertex is normalized here.
         total = sum(old.values()) or 1.0
         for name, value in old.items():
             mesh.vertex_groups[name].add([index], value / total * (1.0 - float(w[index])), "REPLACE")
