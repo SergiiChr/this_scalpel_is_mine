@@ -261,8 +261,8 @@ public partial class SurgeryDriver
     }
 
     /// <summary>A point on top of organ <paramref name="index"/> to take hold of it, toward <paramref name="away"/>
-    /// (site uv) and clear of internal wounds (forceps there would clamp the bleeder instead). Null if there's none.
-    /// </summary>
+    /// (site uv), in the opening and clear of internal wounds (forceps there would clamp the bleeder instead). Null if
+    /// there's none.</summary>
     private Vector3? OrganGripPoint(int index, Vector2 away)
     {
         var organ = Body.Organs[index];
@@ -270,7 +270,7 @@ public partial class SurgeryDriver
         {
             var local = organ.Position + (new Vector3(away.X, 0f, away.Y) * step * 0.008f);
             var uv = Body.LocalToUv(local);
-            if (Patient.Wounds.Any(wound => wound.IsInternal && wound.Points[0].DistanceTo(uv) < 0.055f))
+            if (!Body.IsOpen(uv) || Patient.Wounds.Any(wound => wound.IsInternal && wound.Points[0].DistanceTo(uv) < 0.055f))
             {
                 continue;
             }

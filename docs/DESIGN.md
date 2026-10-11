@@ -177,6 +177,8 @@ Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
 inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Required steps complete in order, `"optional": true` steps any time for bonus points.
+A step with `"or": {step}` also completes when that nested step's condition is met (hand stitch: a local block, or
+general anesthesia for a lidocaine allergy).
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
@@ -289,7 +291,9 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   something (a gripped clamp or retractor), then they stay put.
 - **One button per job** (`ToolActions.LevelNames`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
-  the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. Forceps holding
+  the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. A clamp's jaws
+  close once its tip has come to rest on what's under it (`ClampAction.RestTime`), so one pressed while still coming
+  down (out of an aim or a lift, or a remote player's late moves) takes what it lands on. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
@@ -500,7 +504,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   sculpt strokes, decimated and skinned to a bone rig (bone heat weights, jaw weights set by rule).
   The patient is one skinned mesh; eyes, lids, hair, brows, teeth and tongue ride their bones.
 - **Hard-surface models** (`tools/assetgen`, trimesh): props and instruments from lofted tubes, lathes, rounded boxes
-  and extrusions, exported to `.glb` with named parts.
+  and extrusions, exported to `.glb` with named parts. Hand-made pieces some models are built from (the glove box,
+  the IV bag) live in `tools/assetgen/sources/` and take palette materials.
 - The game swaps materials for the cel shader by name (`src/Visuals/ModelSlot.cs`).
 - **Patient skin**: the body model draws the wound and fluid maps itself (`wound.gdshaderinc`, shared with the site
   skin shader), so cuts, burns, bruises, blood and iodine sit on the model. Only around cuts and skin a tool holds

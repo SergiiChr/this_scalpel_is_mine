@@ -17,6 +17,10 @@ public sealed class StepState
 {
     public bool Done { get; set; }
     public float Timer { get; set; }
+
+    /// <summary>The step's "or" alternative keeps its own timer, so two timed conditions don't reset each other.
+    /// </summary>
+    public StepState Alternative => field ??= new StepState();
 }
 
 /// <summary>

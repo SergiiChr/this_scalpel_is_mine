@@ -51,8 +51,16 @@ public sealed record TargetSpec(
 /// </summary>
 public sealed record ObjectiveStep(string Type, string Label, bool Optional, GodotDictionary Parameters)
 {
+    /// <summary>Another condition that completes the step too, written as a nested step under "or".</summary>
+    public ObjectiveStep? Alternative { get; init; }
+
     public static ObjectiveStep FromVariant(GodotDictionary data) =>
-        new(data.String("type"), data.String("label"), data.Bool("optional"), data);
+        new(data.String("type"), data.String("label"), data.Bool("optional"), data)
+        {
+            Alternative = data.TryGetValue("or", out var alternative)
+                ? FromVariant(alternative.AsGodotDictionary())
+                : null,
+        };
 }
 
 /// <summary>One data/scenarios/NN_id.cfg file: metadata, the patient's starting state and the objective steps.</summary>

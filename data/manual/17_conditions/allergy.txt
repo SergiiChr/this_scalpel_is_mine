@@ -14,7 +14,7 @@ title: Drug allergy
 [cell][b]Allergy[/b][/cell][cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
 [cell]Cefazolin[/cell][cell]Clindamycin[/cell][cell]Longer delivery time[/cell]
 [cell]Morphine[/cell][cell]Ketamine[/cell][cell]Raises heart rate and pressure[/cell]
-[cell]Lidocaine[/cell][cell]General anesthesia, or topical cocaine[/cell][cell]Cocaine with adrenaline causes a cardiac event[/cell]
+[cell]Lidocaine[/cell][cell]General anesthesia[/cell][cell]Needs an IV line[/cell]
 [cell]Propofol[/cell][cell]Ketamine or inhaled agent[/cell][cell]No inhaled agent with hyperthermia risk[/cell]
 [/table]
 • Urticaria and swelling: diphenhydramine.

@@ -658,8 +658,9 @@ public partial class Surgery : Node3D
         }
     }
 
-    /// <summary>A bag in hand takes the place of the one on the IV stand: it runs into the line (a full dose, if the
-    /// line works). Drugs pushed into the old bag go with it.</summary>
+    /// <summary>A bag in hand takes the place of the one on the IV stand and runs into the line as a full dose.
+    /// Drugs pushed into the old bag go with it.
+    /// Without a working line nothing changes: the bag stays in hand and the hung one keeps what it had.</summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void RequestIvBag(int hand)
     {
@@ -668,6 +669,10 @@ public partial class Surgery : Node3D
         if (tool is null || !tool.Def.IvOnly || tool.Charges == 0)
         {
             Tell(peer, "Hold a bag to hang it on the stand.");
+            return;
+        }
+        if (!Patient.IvReady())
+        {
             return;
         }
         if (Tools.DripBag() is { } drip)

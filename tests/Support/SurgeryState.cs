@@ -36,6 +36,17 @@ public static class SurgeryState
     /// <summary>Tray spots something slid away from, per surgery: they aren't offered again.</summary>
     private static readonly ConditionalWeakTable<Surgery, List<Vector3>> BadTraySpots = [];
 
+    /// <summary>As if <paramref name="surgeon"/> had worked a while in blood and sweated: both gloves bloody, sweat high.
+    /// </summary>
+    public static void GlovesAreSoiled(Surgeon surgeon)
+    {
+        foreach (var hand in surgeon.Hands)
+        {
+            hand.SetBlood(0.8f);
+        }
+        surgeon.Status.Sweat = 0.8f;
+    }
+
     /// <summary>As if a right dose of propofol had gone in: asleep within seconds, for the rest of the surgery.
     /// </summary>
     public static void PatientIsAsleep(Patient patient) =>
@@ -44,6 +55,11 @@ public static class SurgeryState
     /// <summary>As if lidocaine had gone into the site: numb within seconds.</summary>
     public static void PatientIsNumb(Patient patient) =>
         patient.Administer("lidocaine", DrugRoute.Direct, Db.Drug("lidocaine")!.Dose * patient.WeightKg);
+
+    /// <summary>As if a catheter had gone into the arm and missed the vein: the line is in, but nothing runs through it.
+    /// </summary>
+    public static void IvLineMissedTheVein(Patient patient) =>
+        patient.SetIv(patient.Body.Root.ToGlobal(Patient.PreopIvPoint), false);
 
     /// <summary>A surgeon's cut from <paramref name="from"/> to <paramref name="to"/> (site uv),
     /// <paramref name="depth"/> deep (0..1, see <see cref="Wound.MuscleDepth"/>), as one clean stroke.</summary>
