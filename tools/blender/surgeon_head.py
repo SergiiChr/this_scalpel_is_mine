@@ -19,6 +19,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from numpy.typing import NDArray
+from scipy.ndimage import gaussian_filter1d
 
 from . import face, scene
 from .scene import Vec3, capsule, ellipsoid
@@ -239,21 +240,27 @@ def _mask(head: bpy.types.Object) -> bpy.types.Object:
     # The center line, top to bottom: over the nose bridge, the nose tip and the lips, then tucked under the chin.
     profile_y = [bottom, -0.118, -0.105, -0.09, -0.07, -0.055, -0.04, -0.025, top]
     profile_z = [-0.078, -0.098, -0.108, -0.115, -0.125, -0.133, -0.134, -0.125, -0.118]
+    columns, rows = 22, 16
+    xs = (np.linspace(0.0, 1.0, columns + 1) - 0.5) * 2.0 * half
+    ys = top + (bottom - top) * np.linspace(0.0, 1.0, rows + 1)
+    # The skin depth under every grid point, smoothed down each column: beside the jaw the samples jump from row to
+    # row, and cloth stretched over them runs in a straight line, not a zigzag.
+    skin = gaussian_filter1d(np.array([[_depth(tree, x, y) for x in xs] for y in ys]), 1.2, axis=0, mode="nearest") - 0.003
 
     def point(u: float, v: float) -> Vec3:
         x = (u - 0.5) * 2.0 * half
         y = top + (bottom - top) * v
         # The tent falls off to the sides like a cylinder until it lands on the cheeks, where it hugs the skin.
         tent = float(np.interp(y, profile_y, profile_z)) + 9.0 * x * x
-        skin = _depth(tree, x, y) - 0.003
+        on_skin = float(skin[round(v * rows), round(u * columns)])
         hug = float(np.clip((abs(x) - 0.04) / 0.02, 0.0, 1.0))
-        z = min(tent, skin) * (1.0 - hug) + skin * hug
+        z = min(tent, on_skin) * (1.0 - hug) + on_skin * hug
         # Three horizontal pleats, each a fold standing a little off the surface.
         pleat = float(np.interp(y, [-0.095, -0.088, -0.081, -0.074, -0.067, -0.06, -0.053, -0.046], [0, 1, 0, 1, 0, 1, 0, 0]))
         z -= 0.003 * pleat * (1.0 - hug)
         return (float(x), float(y), float(z))
 
-    mask = _grid("Mask", 22, 16, point)
+    mask = _grid("Mask", columns, rows, point)
     mask = _solidify(mask, 0.0015)
     return scene.finish(mask, scene.material("mask", MASK, roughness=0.9))
 
