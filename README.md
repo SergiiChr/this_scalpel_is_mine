@@ -119,15 +119,16 @@ tests/           GdUnit4 suites by feature, and in tests/Support the test helper
                  grip fitting)
 tools/assetgen/  Model, sound and manual art generator (Python)
 tools/blender/   Organic and rigged models built with Blender (Python)
-tools/keyframes.py  Key frame review report (./build.py review)
+tools/keyframes.py  Key frame review report (./build.py screenshot_review)
 ```
 
 ## Tests
 
 ```bash
 ./build.py test    # the fast headless smoke suites; fails on any error
-./build.py review  # full regression with key frames, and a report of the ones that changed: build/review/report.md
-./build.py review --accept  # after a passed review: its key frames become the committed baseline (tests/KeyFrames)
+./build.py screenshot_review  # full regression with key frames, and a report of the ones that differ from the
+                              # committed baseline (tests/KeyFrames): build/review/report.md
+./build.py generate_baseline  # full regression with key frames, which become the baseline when it passes
 ./build.py shots   # screenshots of a scenario in a virtual display: ./build.py shots [scenario] [out dir]
 ```
 

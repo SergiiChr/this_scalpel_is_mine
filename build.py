@@ -6,9 +6,12 @@
                        virtualenv (.venv) for the asset generators, then builds and imports the project.
   ./build.py setup     Download Godot and the .NET SDK if missing, build and import the project. No sudo.
   ./build.py test      Run the smoke tests. --all or --tag TAG for other suites, see ./build.py test --help.
-  ./build.py review    Run the full regression with key frames and write build/review/report.md: one sheet per key
+  ./build.py screenshot_review
+                       Run the full regression with key frames and write build/review/report.md: one sheet per key
                        frame that is missing, changed or new against the committed baseline in tests/KeyFrames.
-                       --accept makes the reviewed key frames of a passed run the new baseline. See --help.
+  ./build.py generate_baseline
+                       Run the full regression with key frames and make them the baseline, replacing it whole or
+                       making the first one. --no-run takes the key frames of the last run instead. See --help.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -569,18 +572,36 @@ PASSED = "passed"
 REVIEW = BUILD / "review"
 
 
-def accept() -> int:
-    """Makes the last run's key frames the baseline, replacing it whole so key frames no test takes any more go.
-    Refuses without the mark of a passed full regression: key frames of a failed or partial run never become what
-    later reviews compare against."""
+def key_frame_run() -> int:
+    """Runs the full regression with key frames from scratch and marks them when it passed."""
+    # Key frames of an earlier run would pass for this one's.
+    shutil.rmtree(KEY_FRAMES, ignore_errors=True)
+    status = test(["--all", "--with-key-frames"])
+    if status == 0:
+        (KEY_FRAMES / PASSED).touch()
+    return status
+
+
+def generate_baseline(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="./build.py generate_baseline",
+        description="Runs the full regression with key frames and makes them the committed baseline (tests/KeyFrames), "
+        "replacing it whole or making the first one. Leaves the baseline alone when the regression fails.",
+    )
+    parser.add_argument("--no-run", action="store_true", help="take the key frames of the last run; only when it was a full regression that passed")
+    parsed = parser.parse_args(arguments)
+    if not parsed.no_run:
+        key_frame_run()
+    # Key frames of a failed or partial run never become what later reviews compare against.
     if not (KEY_FRAMES / PASSED).exists():
-        print("[ERROR] The last key frame run isn't a full regression that passed: run ./build.py review until it passes.", file=sys.stderr)
+        print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression that passed.", file=sys.stderr)
         return 1
+    # Replaced whole, so key frames no test takes any more go.
     shutil.rmtree(BASELINE, ignore_errors=True)
     shutil.copytree(KEY_FRAMES, BASELINE, ignore=shutil.ignore_patterns(PASSED))
     # Godot mustn't import them.
     (BASELINE / ".gdignore").touch()
-    print(f"Baseline key frames updated: commit {BASELINE.relative_to(ROOT)} with the change.")
+    print(f"Baseline key frames written: commit {BASELINE.relative_to(ROOT)}.")
     return 0
 
 
@@ -601,26 +622,17 @@ def pillow_python() -> Path:
     return venv / "bin/python"
 
 
-def review(arguments: list[str]) -> int:
+def screenshot_review(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        prog="./build.py review",
+        prog="./build.py screenshot_review",
         description="Runs the full regression with key frames, then writes build/review/report.md with a sheet for each "
         "key frame that is missing, changed or new against the committed baseline (tests/KeyFrames). "
         "Exits non-zero when the regression fails, after writing the report.",
     )
     parser.add_argument("--no-run", action="store_true", help="review the key frames of the last run")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
-    parser.add_argument("--accept", action="store_true", help="make the last run's key frames the baseline, without running; only after a passed run")
     parsed = parser.parse_args(arguments)
-    if parsed.accept:
-        return accept()
-    status = 0
-    if not parsed.no_run:
-        # Key frames of an earlier run would pass for this one's.
-        shutil.rmtree(KEY_FRAMES, ignore_errors=True)
-        status = test(["--all", "--with-key-frames"])
-        if status == 0:
-            (KEY_FRAMES / PASSED).touch()
+    status = 0 if parsed.no_run else key_frame_run()
     regression = "not-run" if parsed.no_run else "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
     command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags]
@@ -673,8 +685,10 @@ def main() -> int:
         print("Ready. ./build.py test to run the tests, ./build.py shots to render screenshots.")
     elif command == "test":
         return test(arguments)
-    elif command == "review":
-        return review(arguments)
+    elif command == "screenshot_review":
+        return screenshot_review(arguments)
+    elif command == "generate_baseline":
+        return generate_baseline(arguments)
     elif command == "shots":
         setup()
         scenario = arguments[0] if arguments else "appendectomy"
