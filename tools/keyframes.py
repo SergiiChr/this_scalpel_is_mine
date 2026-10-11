@@ -30,7 +30,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 VIEWS = ("top", "oblique", "side", "reverse", "view")
 # Each folder's file name to description index, written by the tests' KeyFrames.
 DESCRIPTIONS = "keyframes.json"
-# The baseline's file type and encoder settings: about a tenth of a PNG's size. A run's key frames are encoded the same
+# The baseline's file type and encoder settings: about a sixth of a PNG's size. A run's key frames are encoded the same
 # way before they're compared, so an unchanged scene gives the same bytes and both sides lose the same detail.
 # Full chroma (subsampling 0) keeps thin colored edges (a blood line, a tool tip) as sharp as the luma.
 BASELINE_SUFFIX = ".jpg"
