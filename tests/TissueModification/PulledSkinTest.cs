@@ -31,7 +31,7 @@ public class PulledSkinTest
             AssertFloat(driver.Body.LayerPoint(0, index).Y - point.Y)
                 .OverrideFailureMessage("an ordinary incision does not lift unrelated skin at the drape rim").IsLess(0.002f);
         }
-        await driver.Capture("incised");
+        await driver.Capture("incised", "a smooth full-depth opening with thin skin lips, no spikes, and the distant skin rim resting beneath the drape");
         var uv = new Vector2(0.5f, 0.55f);
         var k = tissue.Nearest(uv);
         var from = tissue.Pos[k];
@@ -69,7 +69,7 @@ public class PulledSkinTest
         // Compare against the layer's position before the grip; the muscle bed must stay mostly anchored.
         AssertFloat(driver.Body.LayerPoint(2, farBed).DistanceTo(muscleBefore))
             .OverrideFailureMessage("the distant muscle bed stays anchored during the local pull").IsLess(0.001f);
-        await driver.Capture("pulled");
+        await driver.Capture("pulled", "the gripped skin forms a local wave after a 45 mm sideways pull and 18 mm lift; the surrounding bed stays anchored, with no tissue or cloth intersections");
         await driver.Unbudgeted(() =>
         {
             AssertTissueSheetsDoNotIntersect(driver.Body);
@@ -77,7 +77,7 @@ public class PulledSkinTest
             return Task.CompletedTask;
         });
         await Frames.Seconds(1f);
-        await driver.Capture("held");
+        await driver.Capture("held", "the held fold remains continuous, with thin skin over tethered tissue, smooth cut rims, and clear contact with the drape");
         await driver.Unbudgeted(() =>
         {
             AssertTissueSheetsDoNotIntersect(driver.Body);
@@ -93,7 +93,7 @@ public class PulledSkinTest
             AssertSkinDoesNotCrossDrape(driver.Body);
             return Task.CompletedTask;
         });
-        await driver.Capture("released");
+        await driver.Capture("released", "the released fold settles naturally against the body and cloth, without spikes, sheet intersections, or lifted distant skin");
         await session.Finish();
     }
 

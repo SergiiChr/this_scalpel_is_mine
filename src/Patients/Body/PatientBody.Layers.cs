@@ -1041,48 +1041,48 @@ public partial class PatientBody
                     foreach (var face in near) { _contactFaces.TryAdd(face.Id, face); }
                 }
             }
-    }
-    var ab = vertices[b] - vertices[a];
-    var ac = vertices[c] - vertices[a];
-    var determinant = ab.X * ac.Z - ab.Z * ac.X;
-    if (Mathf.Abs(determinant) < 1e-10f) { return; }
-    foreach (var face in _contactFaces.Values)
-    {
-        var (x, y, z) = (face.A, face.B, face.C);
-        var skinLow = face.Low;
-        var skinHigh = face.High;
-        if (low.X > skinHigh.X || high.X < skinLow.X || low.Z > skinHigh.Z || high.Z < skinLow.Z
-            || (above ? low.Y >= skinHigh.Y + gap : high.Y <= skinLow.Y - gap)) { continue; }
-        var slopeX = face.SlopeX;
-        var slopeZ = face.SlopeZ;
-        var originY = face.OriginY + (above ? gap : -gap);
-        var sideA = vertices[a].Y - slopeX * vertices[a].X - slopeZ * vertices[a].Z - originY;
-        var sideB = vertices[b].Y - slopeX * vertices[b].X - slopeZ * vertices[b].Z - originY;
-        var sideC = vertices[c].Y - slopeX * vertices[c].X - slopeZ * vertices[c].Z - originY;
-        if (above ? sideA >= 0f && sideB >= 0f && sideC >= 0f : sideA <= 0f && sideB <= 0f && sideC <= 0f) { continue; }
-        _contactPolygon[0] = vertices[a];
-        _contactPolygon[1] = vertices[b];
-        _contactPolygon[2] = vertices[c];
-        var count = 3;
-        Clip(x, y, face.Winding, ref count);
-        Clip(y, z, face.Winding, ref count);
-        Clip(z, x, face.Winding, ref count);
-        for (var n = 0; n < count; n++)
-        {
-            var p = _contactPolygon[n];
-            var roof = slopeX * p.X + slopeZ * p.Z + originY;
-            var offset = p - vertices[a];
-            var wb = (offset.X * ac.Z - offset.Z * ac.X) / determinant;
-            var wc = (offset.Z * ab.X - offset.X * ab.Z) / determinant;
-            var wa = 1f - wb - wc;
-            var height = vertices[a].Y * wa + vertices[b].Y * wb + vertices[c].Y * wc;
-            if (above ? roof <= height : roof >= height) { continue; }
-            var correction = (height - roof) / (wa * wa + wb * wb + wc * wc);
-            vertices[a].Y -= correction * wa;
-            vertices[b].Y -= correction * wb;
-            vertices[c].Y -= correction * wc;
         }
-    }
+        var ab = vertices[b] - vertices[a];
+        var ac = vertices[c] - vertices[a];
+        var determinant = ab.X * ac.Z - ab.Z * ac.X;
+        if (Mathf.Abs(determinant) < 1e-10f) { return; }
+        foreach (var face in _contactFaces.Values)
+        {
+            var (x, y, z) = (face.A, face.B, face.C);
+            var skinLow = face.Low;
+            var skinHigh = face.High;
+            if (low.X > skinHigh.X || high.X < skinLow.X || low.Z > skinHigh.Z || high.Z < skinLow.Z
+                || (above ? low.Y >= skinHigh.Y + gap : high.Y <= skinLow.Y - gap)) { continue; }
+            var slopeX = face.SlopeX;
+            var slopeZ = face.SlopeZ;
+            var originY = face.OriginY + (above ? gap : -gap);
+            var sideA = vertices[a].Y - slopeX * vertices[a].X - slopeZ * vertices[a].Z - originY;
+            var sideB = vertices[b].Y - slopeX * vertices[b].X - slopeZ * vertices[b].Z - originY;
+            var sideC = vertices[c].Y - slopeX * vertices[c].X - slopeZ * vertices[c].Z - originY;
+            if (above ? sideA >= 0f && sideB >= 0f && sideC >= 0f : sideA <= 0f && sideB <= 0f && sideC <= 0f) { continue; }
+            _contactPolygon[0] = vertices[a];
+            _contactPolygon[1] = vertices[b];
+            _contactPolygon[2] = vertices[c];
+            var count = 3;
+            Clip(x, y, face.Winding, ref count);
+            Clip(y, z, face.Winding, ref count);
+            Clip(z, x, face.Winding, ref count);
+            for (var n = 0; n < count; n++)
+            {
+                var p = _contactPolygon[n];
+                var roof = slopeX * p.X + slopeZ * p.Z + originY;
+                var offset = p - vertices[a];
+                var wb = (offset.X * ac.Z - offset.Z * ac.X) / determinant;
+                var wc = (offset.Z * ab.X - offset.X * ab.Z) / determinant;
+                var wa = 1f - wb - wc;
+                var height = vertices[a].Y * wa + vertices[b].Y * wb + vertices[c].Y * wc;
+                if (above ? roof <= height : roof >= height) { continue; }
+                var correction = (height - roof) / (wa * wa + wb * wb + wc * wc);
+                vertices[a].Y -= correction * wa;
+                vertices[b].Y -= correction * wb;
+                vertices[c].Y -= correction * wc;
+            }
+        }
     }
 
 
