@@ -36,6 +36,17 @@ public static class SurgeryState
     /// <summary>Tray spots something slid away from, per surgery: they aren't offered again.</summary>
     private static readonly ConditionalWeakTable<Surgery, List<Vector3>> BadTraySpots = [];
 
+    /// <summary>As if <paramref name="surgeon"/> had worked a while in blood and sweated: both gloves bloody, sweat high.
+    /// </summary>
+    public static void GlovesAreSoiled(Surgeon surgeon)
+    {
+        foreach (var hand in surgeon.Hands)
+        {
+            hand.SetBlood(0.8f);
+        }
+        surgeon.Status.Sweat = 0.8f;
+    }
+
     /// <summary>As if a right dose of propofol had gone in: asleep within seconds, for the rest of the surgery.
     /// </summary>
     public static void PatientIsAsleep(Patient patient) =>
