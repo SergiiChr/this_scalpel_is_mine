@@ -377,7 +377,7 @@ public partial class Room : Node3D
             SpotRange = 12f,
             SpotAngle = 70f,
             SpotAttenuation = 0.3f,
-            LightEnergy = Theatre ? 0.65f : Indoors ? 0.55f : 1f,
+            LightEnergy = Indoors ? 0.55f : 1f,
             LightColor = Indoors ? RoomLight : new Color(1f, 0.75f, 0.45f),
             ShadowEnabled = true,
             ShadowBlur = 2.5f,
@@ -397,7 +397,7 @@ public partial class Room : Node3D
                 Position = position,
                 OmniRange = 9f,
                 LightColor = Indoors ? RoomLight : new Color(1f, 0.7f, 0.35f),
-                LightEnergy = Theatre ? 0.25f : 0.35f,
+                LightEnergy = Theatre ? 0.2f : 0.35f,
             };
             AddChild(tube);
             _flickerLights.Add(tube);

@@ -70,7 +70,7 @@ public partial class Hud : CanvasLayer
         Surgery = surgery;
         BuildPostFx();
         surgery.Patient.Body.Blood.Splashed += OnBloodSplashed;
-        _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Theme = Ui.Theme };
+        _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Theme = HudTheme() };
         _root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(_root);
         _clock = CornerLabel(Control.LayoutPreset.CenterTop, 26, Ui.Ink);
@@ -484,13 +484,22 @@ public partial class Hud : CanvasLayer
         _hint = Ui.Label("", 14, Ui.Hint);
         _hint.AutowrapMode = TextServer.AutowrapMode.Off;
         _hint.HorizontalAlignment = HorizontalAlignment.Right;
-        // Pale theatre walls behind it.
-        _hint.AddThemeConstantOverride("outline_size", 4);
-        _hint.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, 0.8f));
+        // As faint as the text, or the outline would swallow it.
+        _hint.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, Ui.Hint.A));
         _hint.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight, Control.LayoutPresetMode.Minsize, 16);
         _hint.GrowHorizontal = Control.GrowDirection.Begin;
         _hint.GrowVertical = Control.GrowDirection.Begin;
         _root.AddChild(_hint);
+    }
+
+    /// <summary>The game's theme with a dark outline round every label, so HUD text reads over pale walls and skin as
+    /// well as dark drapes.</summary>
+    private static Theme HudTheme()
+    {
+        var theme = (Theme)Ui.Theme.Duplicate();
+        theme.SetConstant("outline_size", "Label", 4);
+        theme.SetColor("font_outline_color", "Label", new Color(0f, 0f, 0f, 0.7f));
+        return theme;
     }
 
     /// <summary>The controls that do something right now. Holding a hand key swaps looking for moving that hand.
