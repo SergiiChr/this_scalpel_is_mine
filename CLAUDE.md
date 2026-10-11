@@ -72,7 +72,7 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   assertions fully validate the behavior without them.
 - A test does what its name and messages claim. A case that says a scenario is completed plays it like a player and
   passes only on the game's own success report, never on state the test set, a shortened run or a loosened threshold.
-  If the claim can't be reached, the case fails or is marked broken (below).
+  If the claim can't be reached, the case fails, or is a known issue or broken (below).
 - Prefer comprehensive end-to-end checks: the surgeon picks a scalpel up from the table, walks to the patient, makes a
   light 5 cm cut, and the opening measures 5 cm.
 - Don't check the same thing twice. A mechanic an end-to-end case already proves needs no dedicated check; a sweep
@@ -86,10 +86,18 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   handler (`_UnhandledInput()`, `SteerHand()`, `AimTool()`) or set what it would set. Sent input arrives with the next
   frame: wait a frame before checking it.
 - Game members a test needs are `internal` (the tests build into the game's assembly), never public for a test.
-- Broken: if a non-trivial failure can't be fixed in the current change, move its case to its own method with
-  `[TestCategory("broken")]` and `[TestCase(..., Description = "BROKEN: reason")]` (GdUnit's own ignore doesn't
-  work with the adapter). `build.py` lists it as pending; `RUN_BROKEN=1` runs it. Disable any scenario that relies on
-  it (`disabled=true` in its cfg, with a comment naming the case). Never delete or weaken the case.
+- Known issue: if a non-trivial failure can't be fixed in the current change and fails the same way every run, wrap
+  the case in `KnownIssue.Expect(failure, ...)` (`tests/Support/KnownIssue.cs`) with
+  `[TestCase(..., Description = "KNOWN ISSUE: reason")]`. It runs with the rest of the regression and passes only when
+  it fails with a message containing `failure`: pick the part that says where it breaks (the objective that doesn't
+  complete), so everything before it is still checked. Another failure fails it as usual, and once it passes it fails
+  until it's made an ordinary case again.
+- Broken: a failure that can't be pinned that way (it passes or fails from run to run, or shows only in a key frame
+  review) moves its case to its own method with `[TestCategory("broken")]` and
+  `[TestCase(..., Description = "BROKEN: reason")]` (GdUnit's own ignore doesn't work with the adapter). It's skipped:
+  `build.py` lists it as pending, and `RUN_BROKEN=1` runs it.
+- Disable any scenario that relies on a known issue or a broken case (`disabled=true` in its cfg, with a comment
+  naming the case). Never delete or weaken the case.
 
 ## Visual verification
 

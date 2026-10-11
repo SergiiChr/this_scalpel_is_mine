@@ -51,16 +51,19 @@ public class ScenarioFlowsTest
     public async Task PlaysThrough(string scenario, bool keyFrames, string budgetBroken) => await
         ScenarioFlow.Play(scenario, keyFrames, budgetBroken);
 
-    [TestCase("slit_throat", Timeout = Limits.Slow, Description = "BROKEN: blood bags swapped onto the IV don't bring the blood back (2.9 of 5 l, 0 ml transfused after four bags), \"Replace lost blood\" never completes.")]
-    [TestCase("bullet_stomach", Timeout = Limits.Slow, Description = "BROKEN: the test driver finds no spot on the bowel in the opening clear of the bleeder to hold it aside, so the bullet stays covered and the forceps clamp the bleeder beside it instead.")]
-    [TestCase("broken_ribs", Timeout = Limits.Slow, Description = "BROKEN: oxygen stays at 90 and blood pressure at 76 after the bag swap, \"Oxygen back above 94\" never completes.")]
+    [TestCase("slit_throat", "\"Close the throat\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: pulled shut, the running stitches tear the skin (Patient.OnSnap) and the needle can't reach the new tears (\"needle cannot reach intended puncture within 4 mm\"): skin closure ends at 0.64, \"Close the throat\" never completes.")]
+    [TestCase("bullet_stomach", "\"Find and remove the bullet\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver finds no spot on the bowel in the opening clear of the bleeder to hold it aside, so the bullet stays covered and the forceps clamp the bleeder beside it instead.")]
+    [TestCase("broken_ribs", "\"Close the chest\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: pulled shut, the running stitches tear the skin (Patient.OnSnap) and the needle can't reach the new tears (\"needle cannot reach intended puncture within 4 mm\"): skin closure stays at 0, \"Close the chest\" never completes.")]
+    [TestCase("burn_graft", "\"Graft skin over the burns\" (graft) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: ten graft sheets cover only 61% of the burns, 70% needed.")]
+    [TestCase("nose_job", "\"Close up\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the needle doesn't reach the last muscle and skin stitches on the nose (tip in the air), the patient arrests before it's closed.")]
+    [TestCase("bullet_near_heart", "\"Remove the bullet\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver stands too far along the table to hold the lung aside with the left hand (0.86 m from its shoulder, reach 0.72 m), so the bullet stays covered and the forceps close on nothing.")]
+    [TestCase("leg_extension", "\"Close the leg\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the needle threads both 13.5 cm cuts, but their skin stays open (\"needle cannot reach intended puncture within 4 mm\"), \"Close the leg\" never completes.")]
+    public async Task PlaysThroughToKnownIssue(string scenario, string failure) =>
+        await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));
+
     [TestCase("gangrene_amputation", Timeout = Limits.Slow, Description = "BROKEN: the bone saw held on the bone for 60 s doesn't get through it.")]
-    [TestCase("burn_graft", Timeout = Limits.Slow, Description = "BROKEN: ten graft sheets cover only 61% of the burns, 70% needed.")]
-    [TestCase("nose_job", Timeout = Limits.Slow, Description = "BROKEN: the needle doesn't reach the last muscle and skin stitches on the nose (tip in the air), the patient arrests before it's closed.")]
     [TestCase("colon_cancer", Timeout = Limits.Slow, Description = "BROKEN: run beside another suite (--jobs 2), a 7.7 cm tear keeps bleeding 2.4 ml/s and \"Control the bleeding\" never completes; run alone it passes. Likely wall-clock driven, not yet debugged. Also, with key frames the worst frame takes 32 ms (budget 16 ms) while holding the bowel aside and sewing.")]
-    [TestCase("bullet_near_heart", Timeout = Limits.Slow, Description = "BROKEN: the test driver stands too far along the table to hold the lung aside with the left hand (0.86 m from its shoulder, reach 0.72 m), so the bullet stays covered and the forceps close on nothing.")]
     [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Close the skin\" passes or fails on the random sequence.")]
-    [TestCase("leg_extension", Timeout = Limits.Slow, Description = "BROKEN: the needle threads both 13.5 cm cuts, but their skin stays open (\"needle cannot reach intended puncture within 4 mm\"), \"Close the leg\" never completes.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);
 }

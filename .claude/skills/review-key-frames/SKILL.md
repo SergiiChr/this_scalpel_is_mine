@@ -26,8 +26,8 @@ description: Run the full regression with key frames, review only the key frames
 
 - Only key frames of a full regression that passed. `./build.py generate_baseline` refuses anything else; don't work
   around it by copying files into `tests/KeyFrames`.
-- Nothing from a failed case. A case that can't be fixed in this change is marked broken (CLAUDE.md): it then takes no
-  key frames and `generate_baseline` drops its old ones.
+- Nothing from a failed case. A case that can't be fixed in this change is a known issue or broken (CLAUDE.md): it then
+  takes no key frames and `generate_baseline` drops its old ones.
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
 - If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is
   off (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is
