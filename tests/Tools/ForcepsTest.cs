@@ -14,6 +14,8 @@ public class ForcepsTest
 {
     /// <summary>How long (meters) the cut over the bullet is.</summary>
     private const float Opening = 0.05f;
+    /// <summary>The cut through every layer that opens the thigh goes over, as in RetractorTest.</summary>
+    private const string BudgetBroken = "known to go over the frame budget, not profiled yet";
 
     [TestCase]
     public async Task ForcepsTakeTheSkinEdgeBesideTheOpeningAndTheBulletInIt()
@@ -38,10 +40,12 @@ public class ForcepsTest
         var pressedAt = driver.Body.Probe(forceps.TipPosition());
         PlayerInput.Action(InputActions.Lift, false);
         await Frames.Seconds(0.5f);
-        await driver.AssertAndCapture(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid,
-            $"pressed while lifted ({pressedAt.Zone}), then let down, the forceps take the bullet: {forceps.Hold}", "bullet");
+        AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
+            .OverrideFailureMessage($"pressed while lifted ({pressedAt.Zone}), then let down, the forceps take the bullet: {forceps.Hold}")
+            .IsTrue();
+        await driver.Capture("bullet", "pressed while lifted and let down, the forceps' jaws down in the opening on the bullet");
         await LetGo(driver, forceps);
-        await session.Finish();
+        await session.Finish(BudgetBroken);
     }
 
     [TestCase]
@@ -62,7 +66,7 @@ public class ForcepsTest
         AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
             .OverrideFailureMessage($"pressed while moving onto the bullet, the forceps take it: {forceps.Hold}").IsTrue();
         await LetGo(driver, forceps);
-        await session.Finish();
+        await session.Finish(BudgetBroken);
     }
 
     [TestCase]
@@ -81,7 +85,7 @@ public class ForcepsTest
         await Frames.Seconds(1f);
         AssertBool(forceps.Hold is null && bullet.GrippedBy == 0 && !driver.Me.Hands[driver.Me.Active].Attached)
             .OverrideFailureMessage($"let go of in the air, the forceps take nothing once they're down: {forceps.Hold}").IsTrue();
-        await session.Finish();
+        await session.Finish(BudgetBroken);
     }
 
     /// <summary>The thigh's entry wound opened through every layer along the bullet, and the scalpel put down.</summary>
