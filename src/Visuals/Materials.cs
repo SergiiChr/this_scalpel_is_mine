@@ -6,8 +6,8 @@ public enum Detail { None, Pores, Creases, Weave, Brushed }
 /// <summary>Pattern drawn on a room surface in world space (room.gdshaderinc pattern).</summary>
 public enum Pattern { None, Speckle, Panels, Wall }
 
-/// <summary>Decoration painted on a theatre wall (room.gdshaderinc).</summary>
-public enum WallFeature { None, Window, Door, ServicePanel }
+/// <summary>Decoration drawn on a theatre wall or ceiling (room.gdshaderinc).</summary>
+public enum Decor { None, Window, Door, ServicePanel, CeilingLight }
 
 /// <summary>
 /// How a kind of surface responds to light, so skin, gloves, steel and cloth read apart under the same lamp.
@@ -138,25 +138,35 @@ public static class Materials
 
     /// <summary>
     /// A theatre wall: <paramref name="tiles"/> up to the rail, <paramref name="paint"/> above, and up to four
-    /// <paramref name="features"/> painted on, their areas along the wall and up in meters. <paramref name="axis"/> is
-    /// the world axis (x, z) that runs along the wall.
+    /// <paramref name="decor"/> drawn on, their areas along the wall and up in meters. <paramref name="axis"/> is the
+    /// world axis (x, z) that runs along the wall.
     /// </summary>
     public static ShaderMaterial TheatreWall(Color tiles, Color paint, Vector2 axis,
-        IReadOnlyList<(WallFeature Kind, Rect2 Area)> features)
+        IReadOnlyList<(Decor Kind, Rect2 Area)> decor)
     {
-        var material = RoomUnique(tiles, 0.05f, Pattern.Wall);
+        var material = Decorated(tiles, Pattern.Wall, decor);
         material.SetShaderParameter("wall_axis", axis);
         material.SetShaderParameter("wall_paint", paint);
+        return material;
+    }
+
+    /// <summary>A theatre ceiling: 60 cm panels and up to four lights, their areas in world x and z.</summary>
+    public static ShaderMaterial TheatreCeiling(Color color, IReadOnlyList<Rect2> lights) =>
+        Decorated(color, Pattern.Panels, [.. lights.Select(area => (Decor.CeilingLight, area))]);
+
+    private static ShaderMaterial Decorated(Color color, Pattern pattern, IReadOnlyList<(Decor Kind, Rect2 Area)> decor)
+    {
+        var material = RoomUnique(color, 0.05f, pattern);
         var areas = new Vector4[4];
         var kinds = new int[4];
-        for (var i = 0; i < features.Count; i++)
+        for (var i = 0; i < decor.Count; i++)
         {
-            var (kind, area) = features[i];
+            var (kind, area) = decor[i];
             areas[i] = new Vector4(area.Position.X, area.Position.Y, area.End.X, area.End.Y);
             kinds[i] = (int)kind;
         }
-        material.SetShaderParameter("wall_features", areas);
-        material.SetShaderParameter("wall_feature_kinds", kinds);
+        material.SetShaderParameter("decor_areas", areas);
+        material.SetShaderParameter("decor_kinds", kinds);
         return material;
     }
 

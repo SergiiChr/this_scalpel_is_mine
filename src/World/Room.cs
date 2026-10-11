@@ -157,13 +157,19 @@ public partial class Room : Node3D
     /// <summary>Decoration painted on each theatre wall, by the wall's direction from the table: area along the wall
     /// (x on the z walls, z on the x walls) and up, in meters. Windows sit above the stations against the wall, the
     /// door where nothing stands in front of it.</summary>
-    private static readonly Dictionary<Vector3, (WallFeature Kind, Rect2 Area)[]> TheatreWalls = new()
+    private static readonly Dictionary<Vector3, (Decor Kind, Rect2 Area)[]> TheatreWalls = new()
     {
-        [Vector3.Right] = [(WallFeature.Window, new(-1.3f, 1.15f, 1f, 1.1f)), (WallFeature.Window, new(0.3f, 1.15f, 1f, 1.1f))],
-        [Vector3.Left] = [(WallFeature.Door, new(-0.25f, 0f, 1.1f, 2.1f))],
-        [Vector3.Back] = [(WallFeature.Window, new(-0.25f, 1.15f, 1.2f, 1.1f))],
-        [Vector3.Forward] = [(WallFeature.ServicePanel, new(-1.35f, 1.25f, 1.1f, 0.22f))],
+        [Vector3.Right] = [(Decor.Window, new(-1.3f, 1.15f, 1f, 1.1f)), (Decor.Window, new(0.3f, 1.15f, 1f, 1.1f))],
+        [Vector3.Left] = [(Decor.Door, new(-0.25f, 0f, 1.1f, 2.1f))],
+        [Vector3.Back] = [(Decor.Window, new(-0.25f, 1.15f, 1.2f, 1.1f))],
+        [Vector3.Forward] = [(Decor.ServicePanel, new(-1.35f, 1.25f, 1.1f, 0.2f))],
     };
+    /// <summary>The theatre's ceiling lights (x, z), two panels of the 60 cm ceiling grid each, around the panel over
+    /// the table. Each has a light under it.</summary>
+    private static readonly Rect2[] TheatreLights =
+    [
+        new(-1.8f, -1.8f, 1.2f, 0.6f), new(0.6f, -1.8f, 1.2f, 0.6f), new(-1.8f, 1.2f, 1.2f, 0.6f), new(0.6f, 1.2f, 1.2f, 0.6f),
+    ];
 
     private Color RoomLight => Theatre ? Materials.TheatreLight : Materials.Fluorescent;
 
@@ -379,7 +385,7 @@ public partial class Room : Node3D
         _flickerLights.Add(overhead);
         Vector3[] tubes = EnvironmentId switch
         {
-            "or" => [new(-size.X * 0.28f, size.Y - 0.2f, size.Z * 0.28f), new(size.X * 0.28f, size.Y - 0.2f, -size.Z * 0.28f)],
+            "or" => [.. TheatreLights.Select(light => new Vector3(light.GetCenter().X, size.Y - 0.2f, light.GetCenter().Y))],
             "sidewalk" => [new(3f, 4.5f, 2f)],
             _ => [new(0f, size.Y - 0.2f, 0f)],
         };
@@ -390,7 +396,7 @@ public partial class Room : Node3D
                 Position = position,
                 OmniRange = 9f,
                 LightColor = Indoors ? RoomLight : new Color(1f, 0.7f, 0.35f),
-                LightEnergy = Theatre ? 0.45f : 0.35f,
+                LightEnergy = Theatre ? 0.25f : 0.35f,
             };
             AddChild(tube);
             _flickerLights.Add(tube);
@@ -434,8 +440,8 @@ public partial class Room : Node3D
             Wall(new Vector3(0.1f, size.Y, size.Z), new Vector3(side * size.X * 0.5f, size.Y * 0.5f, 0f), wall);
         }
         var ceiling = Theatre
-            ? Shapes.Slab(this, size with { Y = 0.1f }, new Color(0.88f, 0.89f, 0.9f), new Vector3(0f, size.Y, 0f), 0.05f,
-                Pattern.Panels)
+            ? Shapes.Slab(this, size with { Y = 0.1f }, Materials.TheatreCeiling(new Color(0.88f, 0.89f, 0.9f), TheatreLights),
+                new Vector3(0f, size.Y, 0f))
             : Shapes.Slab(this, size with { Y = 0.1f }, wall.Darkened(0.5f), new Vector3(0f, size.Y, 0f), 0.45f);
         ceiling.Name = "Ceiling";
     }
