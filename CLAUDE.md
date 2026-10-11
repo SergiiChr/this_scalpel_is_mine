@@ -33,7 +33,9 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
   only after smoke passes.
 - `./build.py review`: the same full regression, then `build/review/report.md` with a sheet for each key frame that
-  is missing, changed or new against the commit this branch left `origin/main` at. Follow the `review-key-frames` skill.
+  is missing, changed or new against the baseline committed in `tests/KeyFrames`. Follow the `review-key-frames` skill.
+- `./build.py review --accept`: makes the key frames of the last passed review run the new baseline (see Visual
+  verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
@@ -51,6 +53,7 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   hand off a failing run as ready.
 - Review the key frames the change affects through `build/review/report.md` (see Visual verification) and list the
   reviewed sheets in the handoff.
+- When the review changed, added or removed key frames, accept them and commit `tests/KeyFrames` with the change.
 
 ## Test structure and policy
 
@@ -100,6 +103,12 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   keyFrame)` so the text is written once.
 - Review the frames for continuity, clipping, mesh intersections, material consistency, tool contact, animation
   transitions and UI legibility. Screenshot comparisons may flag regressions but don't replace that review.
+- `tests/KeyFrames` is the committed baseline the review compares against: the key frames of the last full regression
+  that passed and was reviewed. It is updated only by `./build.py review --accept`, which refuses unless the last
+  `./build.py review` passed, and only after every sheet the report lists looks right. Never accept or commit key
+  frames of a failed run, of a focused run, of a case marked broken, or ones that show a defect; never edit the
+  folder by hand. A change with no missing, changed or new key frames leaves it untouched.
+- Key frames are rendered and compared in local runs only. CI never takes or compares them.
 
 ## Frame-time budget
 

@@ -118,6 +118,38 @@ class CoverageReportingTest(unittest.TestCase):
         settings = (self.root / "test-settings" / "Example.runsettings").read_text()
         self.assertIn("--headless", settings)
 
+    def key_frames(self, passed: bool) -> tuple[Path, Path]:
+        taken, baseline = self.root / "screenshots", self.root / "tests" / "KeyFrames"
+        patch.object(build, "KEY_FRAMES", taken).start()
+        patch.object(build, "BASELINE", baseline).start()
+        (taken / "scalpel").mkdir(parents=True)
+        (taken / "scalpel" / "00_cut_top.png").write_text("new")
+        (baseline / "gone").mkdir(parents=True)
+        (baseline / "gone" / "00_old_top.png").write_text("old")
+        if passed:
+            (taken / build.PASSED).touch()
+        return taken, baseline
+
+    def test_accept_refuses_key_frames_of_a_run_that_did_not_pass(self) -> None:
+        _, baseline = self.key_frames(passed=False)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(build.review(["--accept"]), 1)
+        self.assertEqual([path.name for path in baseline.iterdir()], ["gone"])
+
+    def test_accept_replaces_the_baseline_with_a_passed_run(self) -> None:
+        _, baseline = self.key_frames(passed=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(build.review(["--accept"]), 0)
+        self.assertEqual(sorted(path.name for path in baseline.iterdir()), [".gdignore", "scalpel"])
+        self.assertEqual((baseline / "scalpel" / "00_cut_top.png").read_text(), "new")
+
+    def test_key_frame_run_after_a_passed_review_cannot_be_accepted(self) -> None:
+        taken, _ = self.key_frames(passed=True)
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                build.test(["--all", "--with-key-frames"])
+        self.assertFalse((taken / build.PASSED).exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,8 +7,8 @@
   ./build.py setup     Download Godot and the .NET SDK if missing, build and import the project. No sudo.
   ./build.py test      Run the smoke tests. --all or --tag TAG for other suites, see ./build.py test --help.
   ./build.py review    Run the full regression with key frames and write build/review/report.md: one sheet per key
-                       frame that is missing, changed or new against the commit this branch left origin/main at. That
-                       commit is rendered once in a git worktree and kept in build/key-frames. See --help.
+                       frame that is missing, changed or new against the committed baseline in tests/KeyFrames.
+                       --accept makes the reviewed key frames of a passed run the new baseline. See --help.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -518,6 +518,9 @@ def test(arguments: list[str]) -> int:
     if not suites:
         print(f"No tests match tags {options.tags} and case '{options.case}'.", file=sys.stderr)
         return 2
+    if options.key_frames:
+        # This run's key frames mix into the last one's: together they're no longer those of a passed full regression.
+        (KEY_FRAMES / PASSED).unlink(missing_ok=True)
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
@@ -557,43 +560,26 @@ def test(arguments: list[str]) -> int:
 # --- Key frame review -------------------------------------------------------------------------------------------------
 
 KEY_FRAMES = BUILD / "test-artifacts" / "screenshots"
-# Key frames of past commits, by commit hash: a baseline is rendered once.
-BASELINES = BUILD / "key-frames"
+# Key frames of the last full regression that passed and was reviewed, committed: what a review compares against.
+BASELINE = ROOT / "tests" / "KeyFrames"
+# Left among a run's key frames when its full regression passed: only those may become the baseline.
+PASSED = "passed"
 REVIEW = BUILD / "review"
 
 
-def git(*arguments: str) -> str:
-    return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
-
-
-def baseline(ref: str) -> Path:
-    """Key frames of the commit where HEAD left ref. Rendered in a git worktree that shares .tools, so the same Godot and
-    .NET serve both. Kept by commit only when its run passed: a failed run's key frames serve this review (those its
-    failed cases didn't take show as new) and the next review renders them again."""
-    commit = git("merge-base", "HEAD", ref)
-    frames = BASELINES / commit
-    if frames.is_dir():
-        return frames
-    worktree = BUILD / "baseline-worktree"
-    if worktree.exists():
-        run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
-    run(["git", "worktree", "add", "--detach", worktree, commit], cwd=ROOT)
-    try:
-        # Made first on a fresh checkout: the worktree's build.py would otherwise find a dangling link.
-        TOOLS.mkdir(exist_ok=True)
-        (worktree / ".tools").symlink_to(TOOLS)
-        print(f"Rendering baseline key frames of {commit[:10]}.", flush=True)
-        command: list[str | Path] = [sys.executable, worktree / "build.py", "test", "--tag", "visual_confirmation", "--with-key-frames", "--ci-run"]
-        if subprocess.run(command, cwd=worktree, check=False).returncode != 0:
-            print("The baseline run failed: key frames its failed cases didn't take show as new. It's rendered again next time.")
-            frames = frames.with_name(f"{commit}.partial")
-            shutil.rmtree(frames, ignore_errors=True)
-        taken = worktree / "build/test-artifacts/screenshots"
-        if taken.is_dir():
-            shutil.copytree(taken, frames)
-    finally:
-        run(["git", "worktree", "remove", "--force", worktree], cwd=ROOT)
-    return frames
+def accept() -> int:
+    """Makes the last run's key frames the baseline, replacing it whole so key frames no test takes any more go.
+    Refuses without the mark of a passed full regression: key frames of a failed or partial run never become what
+    later reviews compare against."""
+    if not (KEY_FRAMES / PASSED).exists():
+        print("[ERROR] The last key frame run isn't a full regression that passed: run ./build.py review until it passes.", file=sys.stderr)
+        return 1
+    shutil.rmtree(BASELINE, ignore_errors=True)
+    shutil.copytree(KEY_FRAMES, BASELINE, ignore=shutil.ignore_patterns(PASSED))
+    # Godot mustn't import them.
+    (BASELINE / ".gdignore").touch()
+    print(f"Baseline key frames updated: commit {BASELINE.relative_to(ROOT)} with the change.")
+    return 0
 
 
 def pillow_python() -> Path:
@@ -617,23 +603,25 @@ def review(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py review",
         description="Runs the full regression with key frames, then writes build/review/report.md with a sheet for each "
-        "key frame that is missing, changed or new against the baseline. Exits non-zero when the regression fails, after writing the report.",
+        "key frame that is missing, changed or new against the committed baseline (tests/KeyFrames). "
+        "Exits non-zero when the regression fails, after writing the report.",
     )
-    parser.add_argument("--base", default="origin/main", help="the baseline is the commit where HEAD left this ref")
     parser.add_argument("--no-run", action="store_true", help="review the key frames of the last run")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
+    parser.add_argument("--accept", action="store_true", help="make the last run's key frames the baseline, without running; only after a passed run")
     parsed = parser.parse_args(arguments)
+    if parsed.accept:
+        return accept()
     status = 0
-    frames = baseline(parsed.base)
     if not parsed.no_run:
         # Key frames of an earlier run would pass for this one's.
         shutil.rmtree(KEY_FRAMES, ignore_errors=True)
         status = test(["--all", "--with-key-frames"])
-        if status == 0 and not git("status", "--porcelain"):
-            shutil.copytree(KEY_FRAMES, BASELINES / git("rev-parse", "HEAD"), dirs_exist_ok=True)
+        if status == 0:
+            (KEY_FRAMES / PASSED).touch()
     regression = "not-run" if parsed.no_run else "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
-    command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, frames, REVIEW)), *flags]
+    command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags]
     # The report comes first: it helps most when the regression failed.
     report_status = subprocess.run(command, cwd=ROOT, check=False).returncode
     return status or report_status

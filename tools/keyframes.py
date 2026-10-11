@@ -3,7 +3,8 @@ changed or new key frame, with a Markdown index that says what to open.
 
   python -m tools.keyframes CURRENT BASELINE OUT [--all] [--regression passed|failed|not-run]
 
-CURRENT and BASELINE are screenshot folders (build/test-artifacts/screenshots of two runs); BASELINE may be missing.
+CURRENT and BASELINE are screenshot folders (build/test-artifacts/screenshots of a run, and the committed
+tests/KeyFrames); BASELINE may be missing.
 A sheet puts a key frame's views (top | oblique) side by side, sized to what a model sees anyway, so one key frame is
 one image to read.
 """
@@ -175,7 +176,10 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
             "not-run": "Regression: not run, these are the key frames of an earlier run.",
         }[regression],
         f"Current: `{current_root.as_posix()}`  ",
-        f"Baseline: `{baseline_root.as_posix()}`" if baseline else "Baseline: none, every key frame is new.",
+        f"Baseline: `{baseline_root.as_posix()}`"
+        if baseline
+        else f"Baseline: NONE in `{baseline_root.as_posix()}`. Every key frame shows as new and nothing can be compared: "
+        "a finding to report, not a reason to skip the review.",
         "",
         ", ".join(f"{counts[state]} {state}" for state in states) + ".",
         "",
