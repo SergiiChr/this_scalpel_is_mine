@@ -1,0 +1,12 @@
+{
+  "00_untouched_oblique.jpg": "the site as the scenario starts, before any step",
+  "00_untouched_top.jpg": "the site as the scenario starts, before any step",
+  "01_iv_done_oblique.jpg": "\"Set up an IV line\" just completed, and the site shows it done",
+  "01_iv_done_top.jpg": "\"Set up an IV line\" just completed, and the site shows it done",
+  "02_inject_done_oblique.jpg": "\"Give a blood thinner\" just completed, and the site shows it done",
+  "02_inject_done_top.jpg": "\"Give a blood thinner\" just completed, and the site shows it done",
+  "03_defib_done_oblique.jpg": "\"Restore the heart rhythm\" just completed, and the site shows it done",
+  "03_defib_done_top.jpg": "\"Restore the heart rhythm\" just completed, and the site shows it done",
+  "04_stabilize_done_oblique.jpg": "\"Keep a stable rhythm\" just completed, and the site shows it done",
+  "04_stabilize_done_top.jpg": "\"Keep a stable rhythm\" just completed, and the site shows it done"
+}
