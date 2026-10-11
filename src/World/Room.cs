@@ -164,8 +164,8 @@ public partial class Room : Node3D
         [Vector3.Back] = [(Decor.Window, new(-0.25f, 1.15f, 1.2f, 1.1f))],
         [Vector3.Forward] = [(Decor.ServicePanel, new(-1.35f, 1.25f, 1.1f, 0.2f))],
     };
-    /// <summary>The theatre's ceiling lights (x, z), two panels of the 60 cm ceiling grid each, around the panel over
-    /// the table. Each has a light under it.</summary>
+    /// <summary>The theatre's ceiling lights (x, z), two panels of the 60 cm ceiling grid each, round the surgical
+    /// lamp. Each has a light under it.</summary>
     private static readonly Rect2[] TheatreLights =
     [
         new(-1.8f, -1.8f, 1.2f, 0.6f), new(0.6f, -1.8f, 1.2f, 0.6f), new(-1.8f, 1.2f, 1.2f, 0.6f), new(0.6f, 1.2f, 1.2f, 0.6f),
@@ -354,8 +354,9 @@ public partial class Room : Node3D
             // highlight (blood, wet tissue) into a big white patch.
             ShadowBlur = 2f,
         });
-        // Overhead room light: a ceiling panel over the table that lights the whole room from above.
-        if (Indoors)
+        // Overhead room light: a ceiling panel over the table that lights the whole room from above. The theatre has no
+        // panel there: its ceiling lights are drawn flush in the ceiling (TheatreLights), the light stays.
+        if (Indoors && !Theatre)
         {
             AddChild(new MeshInstance3D
             {

@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.World;
 
 /// <summary>Ceiling fixture geometry and two oblique views in each indoor environment, including the shorter
-/// ambulance.</summary>
+/// ambulance. The theatre has no hanging fixture: its lights are drawn flush in the ceiling.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
@@ -9,19 +9,28 @@ public class RoomTest
 {
     [TestCase("or")]
     [TestCase("ambulance")]
-    public async Task CeilingPanelClearsTheSlab(string environment)
+    public async Task CeilingLightsFitTheCeiling(string environment)
     {
         RenderingServer.RenderLoopEnabled = false;
         var room = AutoFree(new Room())!;
         Frames.Root.AddChild(room);
         room.BuildShell(environment);
         var ceiling = room.GetNode<MeshInstance3D>("Ceiling");
-        var panel = room.GetNode<MeshInstance3D>("CeilingPanel");
-        var underside = ceiling.Position.Y + ceiling.Mesh.GetAabb().Position.Y;
-        var panelTop = panel.Position.Y + panel.Mesh.GetAabb().End.Y;
-        // Also what the key frames should show.
-        var claim = $"{environment}: the whole ceiling panel clears the slab";
-        AssertFloat(underside - panelTop).OverrideFailureMessage(claim).IsGreater(0.01f);
+        var panel = room.GetNodeOrNull<MeshInstance3D>("CeilingPanel");
+        string claim;
+        if (environment == "or")
+        {
+            // Also what the key frames should show.
+            claim = "or: no hanging panel, four lights flush in the 60 cm ceiling grid";
+            AssertObject(panel).OverrideFailureMessage(claim).IsNull();
+        }
+        else
+        {
+            var underside = ceiling.Position.Y + ceiling.Mesh.GetAabb().Position.Y;
+            var panelTop = panel!.Position.Y + panel.Mesh.GetAabb().End.Y;
+            claim = $"{environment}: the whole ceiling panel clears the slab";
+            AssertFloat(underside - panelTop).OverrideFailureMessage(claim).IsGreater(0.01f);
+        }
         if (KeyFrames.Wanted())
         {
             var camera = new Camera3D { Fov = 55f };
