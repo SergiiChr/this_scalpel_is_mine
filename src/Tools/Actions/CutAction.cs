@@ -33,24 +33,30 @@ public sealed class CutAction : ToolAction
             use.LastUv = new Vector2(-1, -1);
             return;
         }
+        if (use.PutDownAt.X < 0f)
+        {
+            use.PutDownAt = step.Uv;
+        }
         if (step.Zone == SiteZone.Cavity)
         {
-            patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort, !use.CutWall);
+            patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort,
+                use.CutWall ? null : use.PutDownAt);
         }
         var moved = use.LastUv.X >= 0f && use.LastUv.DistanceTo(step.Uv) > 0.003f;
         if (moved)
         {
             var along = (step.Tip - use.LastTip) * new Vector3(1, 0, 1);
-            if (Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade)
+            var aligned = Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade;
+            // Drawn along inside an opening there's no wall left to cut: it cuts on once it comes out onto whole tissue.
+            if (aligned && step.Zone == SiteZone.Site)
             {
                 patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level], step.Def.Sharpness,
                     !tool.Sterile, step.Hand.Speed);
-                // Drawn on inside an opening it isn't cutting the wall: it still frees a target it was put down on.
-                use.CutWall = use.CutWall || step.Zone == SiteZone.Site;
+                use.CutWall = true;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             }
-            else
+            else if (!aligned)
             {
                 // Dragged sideways: the next stroke starts here.
                 use.Stroke++;

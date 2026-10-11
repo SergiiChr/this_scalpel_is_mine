@@ -251,6 +251,7 @@ public static class ToolActions
             use.Stroke++;
             use.StabbedLevel = 0;
             use.CutWall = false;
+            use.PutDownAt = new Vector2(-1, -1);
             use.StapleAim = StapleLegs(tool, patient.Body);
         }
         use.LoweredBefore = hand.Lowered;

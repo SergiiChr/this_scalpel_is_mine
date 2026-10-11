@@ -34,6 +34,8 @@ public sealed class ToolUse
     /// <summary>This stroke's blade has cut through the body wall: drawn on into an opening, it passes over a target
     /// instead of cutting it free.</summary>
     public bool CutWall { get; set; }
+    /// <summary>Where (site uv) this stroke's blade was put down: it cuts free only a target there.</summary>
+    public Vector2 PutDownAt { get; set; } = new(-1, -1);
     /// <summary>Where a stapler's legs were (world) when Use tool was pressed, as its aim showed them: lowering it moves
     /// it a little.</summary>
     public Vector3[] StapleAim { get; set; } = [];

@@ -210,10 +210,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
 - A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
-  past the end of an opening it's already in. Drawn along a cut already there, it deepens that cut rather than making
-  a second one, and opens it again where it goes: its stitches are cut, a clot or a cautery seal there no longer holds. Over an opening it reaches down only at full depth: there it grates on a bone (which hurts through a
-  local block) but stops short of an organ; it nicks an organ only by touching it. Drawn on from cutting the belly wall
-  it passes over a target; put down on one, it cuts it free (an appendix's base then bleeds from its vessel).
+  past the end of an opening it's already in; inside the opening there's no wall left to cut. Drawn along a cut already
+  there, it deepens that cut rather than making a second one, and opens it again where it goes: its stitches are cut,
+  a clot or a cautery seal on that stretch no longer holds. Over an opening it reaches down only at full depth: there
+  it grates on a bone (which hurts through a local block) but stops short of an organ; it nicks an organ only by
+  touching it. Drawn on from cutting the belly wall or slid over from elsewhere in the opening, it passes over a
+  target; put down on one, it cuts it free (an appendix's base then bleeds from its vessel).
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.
 - Bleeding per wound, blood pooling on skin and in the cavity, suction, gauze pressure, clamps, cautery, tourniquet.
   A surgeon's clean incision only oozes (`Wound.CleanIncisionShare` of what a jagged cut or a tear bleeds), so opening

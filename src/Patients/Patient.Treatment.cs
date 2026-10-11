@@ -155,9 +155,10 @@ public partial class Patient
     }
 
     /// <summary>Cutting inside the body frees attached targets, or nicks whatever the blade touches. The blade grates on
-    /// a bone it touches, which hurts through a local block. A blade drawn on from cutting the body wall passes over a
-    /// target (not <paramref name="freesTargets"/>): only one put down on it cuts it free.</summary>
-    public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt, bool freesTargets = true)
+    /// a bone it touches, which hurts through a local block. A blade cuts free only a target it was put down on, at
+    /// <paramref name="putDownAt"/> (site uv) when it's held there: drawn on from cutting the body wall (null) or from
+    /// somewhere else in the opening, it passes over one.</summary>
+    public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt, Vector2? putDownAt)
     {
         if (dirty)
         {
@@ -170,7 +171,8 @@ public partial class Patient
         }
         foreach (var target in Targets)
         {
-            if (freesTargets && !target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f)
+            if (putDownAt is { } at && !target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f
+                && target.Uv.DistanceTo(at) < 0.06f)
             {
                 target.Anchor = Mathf.Max(target.Anchor - power * dt * 0.5f, 0f);
                 if (!target.Opened)

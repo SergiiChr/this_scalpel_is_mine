@@ -117,7 +117,7 @@ public sealed class Wound
     /// <summary>
     /// Cut again from <paramref name="a"/> to <paramref name="b"/> along its own line: fresh damage there. It bleeds
     /// again however it was stopped, its skin (and its muscle, <paramref name="throughMuscle"/>) is open again along
-    /// that stretch, and cautery no longer seals the share of it cut open again.
+    /// that stretch, and the cautery's seal no longer holds there (<see cref="BleedRate"/>).
     /// </summary>
     public void Recut(Vector2 a, Vector2 b, bool throughMuscle)
     {
@@ -133,7 +133,6 @@ public sealed class Wound
             }
             _reopened.Add(bin);
         }
-        Cauterized = Mathf.Min(Cauterized, 1f - ((float)_reopened.Count / Bins.Length));
     }
 
     /// <summary>Seals it further with cautery, up to <paramref name="most"/>. Sealed that far, all of it is sealed
@@ -147,12 +146,25 @@ public sealed class Wound
         }
     }
 
-    /// <summary>The whole stroke from <paramref name="a"/> to <paramref name="b"/> runs within
-    /// <paramref name="reach"/> of its line, not only its ends (two arms of a U lie close).</summary>
+    /// <summary>The stroke from <paramref name="a"/> to <paramref name="b"/> follows its line: every point of it
+    /// within <paramref name="reach"/> of the line, and next to the stretch the point before was by. A stroke between
+    /// the two arms of a U stays close to the line but jumps from one arm to the other.</summary>
     public bool Runs(Vector2 a, Vector2 b, float reach)
     {
         var steps = Math.Max(Mathf.CeilToInt(a.DistanceTo(b) / PointSpacingUv), 1);
-        return Enumerable.Range(0, steps + 1).All(i => DistanceTo(a.Lerp(b, (float)i / steps)) < reach);
+        var step = a.DistanceTo(b) / steps;
+        var along = AlongAt(a);
+        for (var i = 0; i <= steps; i++)
+        {
+            var point = a.Lerp(b, (float)i / steps);
+            var next = AlongAt(point);
+            if (DistanceTo(point) >= reach || Mathf.Abs(next - along) > step + reach)
+            {
+                return false;
+            }
+            along = next;
+        }
+        return true;
     }
 
     public float LengthUv => _length;
@@ -178,6 +190,14 @@ public sealed class Wound
             return 0f;
         }
         var held = withGauze ? Mathf.Max(Held, Pressed) : Held;
+        // Each stretch lets through what its closure and the cautery's seal don't hold back. Cut open again, a stretch
+        // isn't sealed (Recut()).
+        var through = 0f;
+        for (var i = 0; i < Bins.Length; i++)
+        {
+            through += (1f - (Bins[i] * (1f - leak))) * (_reopened.Contains(i) ? 1f : 1f - Cauterized);
+        }
+        through /= Bins.Length;
         var baseRate = Mathf.Max(LengthUv * siteSize, 0.01f) * Depth * BleedPerMeter
             * (IsCleanIncision ? CleanIncisionShare : 1f);
         if (Kind is WoundKind.Gunshot or WoundKind.Puncture or WoundKind.Internal)
@@ -185,10 +205,9 @@ public sealed class Wound
             baseRate = Mathf.Max(baseRate, Depth * 2f);
         }
         var openFactor = 1f + Opened * 0.5f;
-        var sealedShare = (1f - Closure * (1f - leak)) * (1f - held * (1f - leak));
         // A clotted cut is dry, but a vessel a staple goes through later bleeds regardless.
-        var own = Clotted ? 0f : baseRate * openFactor * sealedShare;
-        return (own + Nicked * (1f - held)) * bleedMult * (1f - Cauterized) * (1f - Clamped);
+        var own = Clotted ? 0f : baseRate * openFactor * through * (1f - (held * (1f - leak)));
+        return (own + (Nicked * (1f - held) * (1f - Cauterized))) * bleedMult * (1f - Clamped);
     }
 
     public float DistanceTo(Vector2 uv) => uv.DistanceTo(ClosestPoint(uv));
@@ -209,10 +228,13 @@ public sealed class Wound
     }
 
     /// <summary>Index of the closure bin nearest to uv.</summary>
-    public int BinAt(Vector2 uv)
+    public int BinAt(Vector2 uv) => Math.Clamp((int)(AlongAt(uv) / BinLengthUv), 0, Bins.Length - 1);
+
+    /// <summary>How far along its line (uv) the point nearest to uv lies.</summary>
+    public float AlongAt(Vector2 uv)
     {
         var travelled = 0f;
-        var bestBin = 0;
+        var best = 0f;
         var bestDistance = float.PositiveInfinity;
         for (var i = 1; i < _points.Count; i++)
         {
@@ -223,11 +245,11 @@ public sealed class Wound
             if (distance < bestDistance)
             {
                 bestDistance = distance;
-                bestBin = (int)((travelled + a.DistanceTo(closest)) / BinLengthUv);
+                best = travelled + a.DistanceTo(closest);
             }
             travelled += a.DistanceTo(b);
         }
-        return Math.Clamp(bestBin, 0, Bins.Length - 1);
+        return best;
     }
 
     /// <summary>uv position of a bin's center along the polyline.</summary>

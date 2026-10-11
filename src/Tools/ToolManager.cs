@@ -981,7 +981,7 @@ public partial class ToolManager : Node3D
             Session.Sound("tool_drop_flesh", tool.GlobalPosition);
             if (tool.Def.Action is "cut" or "saw")
             {
-                patient.CutCavity(probe.Uv, probe.Depth, 1f, !tool.Sterile, 2f);
+                patient.CutCavity(probe.Uv, probe.Depth, 1f, !tool.Sterile, 2f, probe.Uv);
             }
             if (!tool.Sterile)
             {

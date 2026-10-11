@@ -217,7 +217,7 @@ internal sealed partial class GameplaySweep
         var scraped = Patient.Flags.GetValueOrDefault("bone_scraped");
         // Down to just over the bone's top, where a blade at full effort stops in an opening.
         var thickness = ((CapsuleShape3D)bone.GetChild<CollisionShape3D>(1).Shape).Radius;
-        Patient.CutCavity(uv, depth - thickness - 0.002f, 1f, false, 0.5f);
+        Patient.CutCavity(uv, depth - thickness - 0.002f, 1f, false, 0.5f, uv);
         if (Patient.Flags.GetValueOrDefault("bone_scraped") <= scraped)
         {
             Fail($"cutting down on the {bone.Name} didn't reach the bone");

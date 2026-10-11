@@ -71,6 +71,7 @@ public class WoundTest
         var incision = SurgeryState.SkinIsCut(patient, from, from + new Vector2(10f * cm, 0f), 1f);
         SurgeryState.WoundIsClosed(patient, incision);
         SurgeryState.WoundIsCauterized(incision);
+        var fresh = SurgeryState.SkinIsCut(patient, new Vector2(0.5f, 0.3f), new Vector2(0.5f, 0.3f) + new Vector2(2f * cm, 0f), 1f);
         await Frames.Seconds(1f);
         AssertFloat(incision.Closure).OverrideFailureMessage("sewn shut along its length").IsEqual(1f);
 
@@ -81,28 +82,29 @@ public class WoundTest
         AssertFloat(incision.Bins[middle]).OverrideFailureMessage("its stitches are cut where the blade went: open there")
             .IsLess(1f);
         AssertFloat(incision.Bins[0]).OverrideFailureMessage("and still sewn shut beyond").IsEqual(1f);
-        AssertFloat(incision.Cauterized)
-            .OverrideFailureMessage($"the cautery no longer seals the stretch cut again (sealed {incision.Cauterized:0.00})")
-            .IsBetween(0.5f, 0.9f);
-        AssertFloat(incision.Bleeding).OverrideFailureMessage($"it bleeds there: {driver.Bleeders()}").IsGreater(0f);
+        AssertFloat(incision.Bleeding)
+            .OverrideFailureMessage($"neither sewn nor sealed there, it bleeds there like a fresh cut that long: {driver.Bleeders()}")
+            .IsGreater(fresh.Bleeding * 0.5f);
         await driver.Stop();
     }
 
-    [TestCase]
-    public async Task AStrokeAcrossAUShapedCutIsANewCut()
+    [TestCase(0.006f)]
+    [TestCase(0.01f)]
+    public async Task AStrokeAcrossAUShapedCutIsANewCut(float apart)
     {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
         var cm = driver.Body.MetersToUv(0.01f);
         var corner = new Vector2(0.4f, 0.5f);
-        var across = new Vector2(0f, cm);
+        var across = new Vector2(0f, driver.Body.MetersToUv(apart));
         SurgeryState.SkinIsCutAlong(patient,
             [corner, corner + new Vector2(5f * cm, 0f), corner + new Vector2(5f * cm, 0f) + across, corner + across], 0.3f);
         var bridge = SurgeryState.SkinIsCut(patient, corner + new Vector2(2f * cm, 0f), corner + new Vector2(2f * cm, 0f) + across, 0.3f);
         AssertInt(patient.Wounds.Count)
-            .OverrideFailureMessage("a stroke from one arm of a U to the other through whole skin is a cut of its own").IsEqual(2);
-        AssertFloat(driver.Body.UvToMeters(bridge.LengthUv)).OverrideFailureMessage("as long as the stroke").IsEqualApprox(0.01f, 0.002f);
+            .OverrideFailureMessage($"a stroke between the arms of a U {apart * 1000f:0} mm apart, through whole skin, is a cut of its own")
+            .IsEqual(2);
+        AssertFloat(driver.Body.UvToMeters(bridge.LengthUv)).OverrideFailureMessage("as long as the stroke").IsEqualApprox(apart, 0.002f);
         await driver.Stop();
     }
 
