@@ -156,8 +156,8 @@ public partial class PatientBody : Node3D
         // Mesh preparation and simulation run on alternate frames. A large fold prepares its layers in groups,
         // then publishes the complete stack from one captured state.
         var stale = Tissue.TopologyVersion != _layerVersion || Tissue.StepsDone != _layerSteps;
-        // A planning frame can leave a solver step pending. Catch up before another upload, one step per frame,
-        // rather than running two costly steps together when a local fold expands its mesh region.
+        // A planning frame can leave solver time pending. Preserve catch-up on the next solver frame, including
+        // at 30 fps during folds; only mesh preparation is staged, never the simulation clock.
         // Defer at most once: a renderer slower than the solver must still publish the moving mesh.
         var catchup = stale && !_rebuiltLast && Tissue.NeedsStep && !_deferredUpload;
         var rebuild = stale && !_rebuiltLast && !catchup;
@@ -167,7 +167,7 @@ public partial class PatientBody : Node3D
             rebuild = RebuildLayers();
         }
         _rebuiltLast = rebuild;
-        Tissue.Advance((float)delta, !rebuild, maxSteps: 1);
+        Tissue.Advance((float)delta, !rebuild);
         UpdateSutures();
         UpdateStaples();
         JiggleOrgans((float)delta);
@@ -241,64 +241,14 @@ public partial class PatientBody : Node3D
     /// </summary>
     private void LaySkinOnDrape(Drape drape)
     {
-        const float Cell = 0.01f;
-        var drapeMesh = new TriangleMesh();
         var toSite = Site.Transform.AffineInverse() * drape.Transform;
-        drapeMesh.CreateFromFaces([.. drape.Mesh.GetFaces().Select(v => toSite * v)]);
-        var columns = Mathf.CeilToInt(SiteSize.X * 3f / Cell) + 1;
-        var rows = Mathf.CeilToInt(SiteSize.Y * 3f / Cell) + 1;
-        var origin = new Vector2(-SiteSize.X * 1.5f, -SiteSize.Y * 1.5f);
-        var tiles = Enumerable.Range(0, columns * rows).Select(_ => new List<(float Ux, float Uz, float Uo, float Vx, float Vz, float Vo, float Yx, float Yz, float Yo)>()).ToArray();
-        var faces = drapeMesh.GetFaces();
-        IndexContact(_clothFaces, faces, Enumerable.Range(0, faces.Length).ToList());
-        for (var n = 0; n < faces.Length; n += 3)
-        {
-            var a = faces[n];
-            var b = faces[n + 1];
-            var c = faces[n + 2];
-            var ab = b - a;
-            var ac = c - a;
-            var determinant = ab.X * ac.Z - ab.Z * ac.X;
-            if (Mathf.Abs(determinant) < 1e-10f) { continue; }
-            var ux = ac.Z / determinant;
-            var uz = -ac.X / determinant;
-            var vx = -ab.Z / determinant;
-            var vz = ab.X / determinant;
-            var uo = -a.X * ux - a.Z * uz;
-            var vo = -a.X * vx - a.Z * vz;
-            var plane = (ux, uz, uo, vx, vz, vo, ux * ab.Y + vx * ac.Y, uz * ab.Y + vz * ac.Y,
-                a.Y + uo * ab.Y + vo * ac.Y + 0.004f);
-            var low = a.Min(b).Min(c);
-            var high = a.Max(b).Max(c);
-            var first = (Vector2I)((new Vector2(low.X, low.Z) - origin) / Cell).Floor();
-            var last = (Vector2I)((new Vector2(high.X, high.Z) - origin) / Cell).Floor();
-            for (var j = Math.Max(0, first.Y); j <= Math.Min(rows - 1, last.Y); j++)
-            {
-                for (var i = Math.Max(0, first.X); i <= Math.Min(columns - 1, last.X); i++)
-                {
-                    tiles[j * columns + i].Add(plane);
-
-                }
-            }
-        }
+        var faces = drape.Mesh.GetFaces().Select(v => toSite * v).ToArray();
+        _clothFaces.Index(faces, Enumerable.Range(0, faces.Length).ToArray());
         var opening = SiteSize * (0.5f - Drape.Frame);
         Tissue.FloorAt = (x, z) =>
         {
             if (Mathf.Abs(x) < opening.X && Mathf.Abs(z) < opening.Y) { return float.NaN; }
-            var i = (int)MathF.Floor((x - origin.X) / Cell);
-            var j = (int)MathF.Floor((z - origin.Y) / Cell);
-            if (i < 0 || j < 0 || i >= columns || j >= rows) { return float.NaN; }
-            var height = float.NegativeInfinity;
-            foreach (var face in tiles[j * columns + i])
-            {
-                var u = x * face.Ux + z * face.Uz + face.Uo;
-                var v = x * face.Vx + z * face.Vz + face.Vo;
-                if (u >= -0.00001f && v >= -0.00001f && u + v <= 1.00001f)
-                {
-                    height = Mathf.Max(height, x * face.Yx + z * face.Yz + face.Yo);
-                }
-            }
-            return float.IsFinite(height) ? height : float.NaN;
+            return _clothFaces.HeightAt(x, z) + 0.004f;
         };
         // The clipped opening is exact: points inside it need no cloth height query.
         var frame = SiteSize * Drape.Frame;

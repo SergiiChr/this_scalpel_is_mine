@@ -4,7 +4,7 @@ namespace Scalpel.Tests.TissueModification;
 /// drawn on a belly and a curved thigh, held, then released. Inspect the top and oblique frames for a broad fold,
 /// continuous layer walls and no intersections; intersections within and between the three tissue sheets are also checked numerically.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest
 {
