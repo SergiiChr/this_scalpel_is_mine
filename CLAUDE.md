@@ -36,10 +36,6 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - `./build.py generate_baseline`: the same full regression, then writes the key frames that differ into the baseline
   when it passed (every key frame the first time); unchanged ones keep their files. `--use-latest-set` takes the key
   frames of the last run instead of running again (see Visual verification).
-- `./build.py test --all --broken`: only the cases marked broken (below), each failure printed under the reason its
-  case is marked for. It fails when a broken case passes (take its mark off) or an error turns up that no broken case
-  accounts for. Read each failure against its reason: a case that now fails earlier or for another reason hides a new
-  bug.
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
@@ -53,9 +49,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 ## Before raising a PR
 
 - Add or update test cases for any genuinely new coverage the change exposes.
-- `./build.py lint`, then `./build.py test`, then `./build.py screenshot_review`, then `./build.py test --all
-  --broken` must all pass, and every broken case must fail only where and why its mark says. Fix failures and rerun;
-  never hand off a failing run as ready.
+- `./build.py lint`, then `./build.py test`, then `./build.py screenshot_review` must all pass. Fix failures and
+  rerun; never hand off a failing run as ready.
 - Review the key frames the change affects through `build/review/report.md` (see Visual verification) and list the
   reviewed sheets in the handoff.
 - When the review lists key frames that are missing, changed or new and every sheet looks right, run
@@ -93,10 +88,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - Game members a test needs are `internal` (the tests build into the game's assembly), never public for a test.
 - Broken: if a non-trivial failure can't be fixed in the current change, move its case to its own method with
   `[TestCategory("broken")]` and `[TestCase(..., Description = "BROKEN: reason")]` (GdUnit's own ignore doesn't
-  work with the adapter). The reason names where it breaks and what goes wrong there, so a run can be checked against
-  it. `build.py` lists it as pending; `./build.py test --all --broken` runs only the broken cases and `RUN_BROKEN=1`
-  runs them with the rest. Disable any scenario that relies on it (`disabled=true` in its cfg, with a comment naming the
-  case). Never delete or weaken the case.
+  work with the adapter). `build.py` lists it as pending; `RUN_BROKEN=1` runs it. Disable any scenario that relies on
+  it (`disabled=true` in its cfg, with a comment naming the case). Never delete or weaken the case.
 
 ## Visual verification
 
