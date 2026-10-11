@@ -36,8 +36,8 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. Follow the
   `review-key-frames` skill.
 - `./build.py generate_baseline`: the same full regression, whose key frames become the baseline when it passes: the
-  whole baseline is replaced, or the first one made. `--no-run` takes the key frames of the last run instead of running
-  again (see Visual verification).
+  whole baseline is replaced, or the first one made. `--use-latest-set` takes the key frames of the last run instead
+  of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
@@ -55,7 +55,7 @@ Regular GitHub Actions runs smoke and full functional regression headlessly, the
   rerun; never hand off a failing run as ready.
 - Review the key frames the change affects through `build/review/report.md` (see Visual verification) and list the
   reviewed sheets in the handoff.
-- When the review changed, added or removed key frames, run `./build.py generate_baseline --no-run` and commit
+- When the review changed, added or removed key frames, run `./build.py generate_baseline --use-latest-set` and commit
   `tests/KeyFrames` with the change.
 
 ## Test structure and policy

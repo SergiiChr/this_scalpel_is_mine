@@ -11,7 +11,7 @@
                        frame that is missing, changed or new against the committed baseline in tests/KeyFrames.
   ./build.py generate_baseline
                        Run the full regression with key frames and make them the baseline, replacing it whole or
-                       making the first one. --no-run takes the key frames of the last run instead. See --help.
+                       making the first one. --use-latest-set takes the key frames of the last run instead. See --help.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -588,9 +588,9 @@ def generate_baseline(arguments: list[str]) -> int:
         description="Runs the full regression with key frames and makes them the committed baseline (tests/KeyFrames), "
         "replacing it whole or making the first one. Leaves the baseline alone when the regression fails.",
     )
-    parser.add_argument("--no-run", action="store_true", help="take the key frames of the last run; only when it was a full regression that passed")
+    parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression that passed")
     parsed = parser.parse_args(arguments)
-    if not parsed.no_run:
+    if not parsed.use_latest_set:
         key_frame_run()
     # Key frames of a failed or partial run never become what later reviews compare against.
     if not (KEY_FRAMES / PASSED).exists():
@@ -629,11 +629,11 @@ def screenshot_review(arguments: list[str]) -> int:
         "key frame that is missing, changed or new against the committed baseline (tests/KeyFrames). "
         "Exits non-zero when the regression fails, after writing the report.",
     )
-    parser.add_argument("--no-run", action="store_true", help="review the key frames of the last run")
+    parser.add_argument("--use-latest-set", action="store_true", help="review the key frames of the last run")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     parsed = parser.parse_args(arguments)
-    status = 0 if parsed.no_run else key_frame_run()
-    regression = "not-run" if parsed.no_run else "failed" if status else "passed"
+    status = 0 if parsed.use_latest_set else key_frame_run()
+    regression = "not-run" if parsed.use_latest_set else "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
     command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags]
     # The report comes first: it helps most when the regression failed.

@@ -143,13 +143,13 @@ class CoverageReportingTest(unittest.TestCase):
     def test_baseline_is_left_alone_without_a_passed_run(self) -> None:
         _, baseline = self.key_frames(passed=False)
         with contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(build.generate_baseline(["--no-run"]), 1)
+            self.assertEqual(build.generate_baseline(["--use-latest-set"]), 1)
         self.assertEqual([path.name for path in baseline.iterdir()], ["gone"])
 
     def test_baseline_is_replaced_with_a_passed_run(self) -> None:
         _, baseline = self.key_frames(passed=True)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(build.generate_baseline(["--no-run"]), 0)
+            self.assertEqual(build.generate_baseline(["--use-latest-set"]), 0)
         self.assertEqual(sorted(path.name for path in baseline.iterdir()), [".gdignore", "scalpel"])
         self.assertEqual((baseline / "scalpel" / "00_cut_top.png").read_text(), "new")
 
