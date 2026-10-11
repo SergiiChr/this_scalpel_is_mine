@@ -26,7 +26,10 @@ from .scene import Vec3, capsule, ellipsoid
 # Material colors (display sRGB). The game recolors tint (cap), skin and mask (src/Surgeons/Surgeon.Body.cs).
 SKIN = (0.8, 0.6, 0.5)
 CAP = (0.42, 0.52, 0.66)
-MASK = (0.55, 0.72, 0.78)
+# The mask's blue and white ear loops are sampled from the product photo in sources/, as is its fiber grain.
+MASK = (0.44, 0.785, 0.967)
+LOOPS = (0.97, 0.97, 0.97)
+PHOTO = Path(__file__).with_name("sources") / "mask_photo.png"
 FRAME = (0.95, 0.72, 0.12)
 
 # Where the neck meets the collar and where the head turns (Surgeon.HeadPivot), both below eye level.
@@ -144,9 +147,24 @@ def _cap_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     return color, scene.normal_map(height, 5.0)
 
 
+def _photo_grain(size: int) -> NDArray[np.float64]:
+    """The nonwoven speckle of the real mask: a flat patch of the photo, mirrored into a seamless tile and repeated,
+    as a brightness factor around 1."""
+    from PIL import Image
+    from scipy.ndimage import gaussian_filter
+
+    photo = np.asarray(Image.open(PHOTO).convert("L"), dtype=np.float64) / 255.0
+    patch = photo[240:300, 160:330]
+    # Only the speckle: the photo's own lighting gradient would tile as blotches.
+    patch = patch / gaussian_filter(patch, 12.0, mode="reflect") * patch.mean()
+    tile = np.block([[patch, patch[:, ::-1]], [patch[::-1], patch[::-1, ::-1]]])
+    reps = (size // tile.shape[0] + 1, size // tile.shape[1] + 1)
+    return np.asarray(np.tile(tile, reps)[:size, :size] / patch.mean(), dtype=np.float64)
+
+
 def _mask_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Mask texture, u across the face, v from the top edge down: three pleats as folds, the bound edge with its
-    stitching all around, the nose wire channel along the top, and nonwoven fiber grain."""
+    """Mask texture, u across the face, v from the top edge down: three pleats as folds, the bound edge with two
+    dashed stitch rows all around, the nose wire channel along the top, and the photo's nonwoven grain."""
     size = 512
     v, u = np.meshgrid(np.linspace(0.0, 1.0, size), np.linspace(0.0, 1.0, size), indexing="ij")
     # A sawtooth over the pleated band: each pleat's lower face lies flat, its upper face folds under.
@@ -154,14 +172,15 @@ def _mask_maps() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     pleats = np.where((v > 0.26) & (v < 0.76), (band * 3.0) % 1.0, 0.0)
     height = pleats + _grain((size, size), 4.0, 0.02, 6)
     edge = np.minimum(np.minimum(u, 1.0 - u), np.minimum(v, 1.0 - v))
-    hem = edge < 0.035
-    stitch = (np.abs(edge - 0.02) < 0.004) & (np.sin((u + v) * 2.0 * np.pi * 90.0) > 0.2)
+    hem = edge < 0.04
+    dashes = np.sin((u + v) * 2.0 * np.pi * 110.0) > 0.0
+    stitch = ((np.abs(edge - 0.014) < 0.003) | (np.abs(edge - 0.028) < 0.003)) & dashes
     wire = (v < 0.05) & (np.abs(u - 0.5) < 0.2)
     height = np.where(hem, 0.1, height) + wire * 0.3 - stitch * 0.3
-    grain = _grain((size, size), 0.7, 0.03, 7)
-    color = scene.shade(MASK, height, 12.0, grain)
-    color[hem] *= 1.06
-    color[stitch] *= 0.85
+    color = scene.shade(MASK, height, 12.0, _photo_grain(size) - 1.0)
+    # The bound edge is a paler, denser weave; its stitches a darker blue.
+    color[hem] = color[hem] * 0.4 + np.array([0.75, 0.865, 0.93]) * 0.6
+    color[stitch] = np.array([0.25, 0.5, 0.75])
     return color, scene.normal_map(height, 10.0)
 
 
@@ -249,7 +268,7 @@ def _ear_loops(head: bpy.types.Object) -> bpy.types.Object:
         ]
         loops.append(scene.curve_tube(f"EarLoop{side}", path, 0.0015, resolution=6))
     straps = scene.join("Straps", *loops)
-    return scene.finish(straps, scene.material("mask", MASK, roughness=0.9))
+    return scene.finish(straps, scene.material("elastic", LOOPS, roughness=0.7))
 
 
 def _glasses() -> tuple[bpy.types.Object, bpy.types.Object]:
