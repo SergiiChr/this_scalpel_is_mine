@@ -2,7 +2,8 @@ namespace Scalpel.Tests.Surgeons;
 
 /// <summary>Real local input and normal surgery physics frames: the walk animation must not bob the camera, the reach
 /// origin or the arms and hands the player sees. Crouching changes only their height, while the visible rig leans
-/// forward. A fallen surgeon's face tracks the patient.</summary>
+/// forward. Zoomed in over an open belly the surgeon leans in to look down into it. A fallen surgeon's face tracks the
+/// patient.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
@@ -36,7 +37,7 @@ public class SurgeonMovementTest
     {
         try
         {
-            foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.Crouch])
+            foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.MoveBack, InputActions.Crouch])
             {
                 PlayerInput.Action(action, false);
             }
@@ -147,6 +148,119 @@ public class SurgeonMovementTest
         var spread = level.DefaultIfEmpty(0f).Max() - level.DefaultIfEmpty(0f).Min();
         AssertFloat(spread).OverrideFailureMessage($"and hovered at one height over it ({spread * 1000f:0.0} mm up and down)")
             .IsLess(0.001f);
+    }
+
+    /// <summary>
+    /// Standing at an open belly with the hand in the opening, zooming in bends the surgeon over it: the eyes come over
+    /// the opening and look down into it from above, gradually, without turning sideways, so a mouse move to the right
+    /// still moves the hand right on screen. Their partner sees them bent over the table. Walking away zooms back out
+    /// and straightens them up, just as gradually.
+    /// </summary>
+    [TestCase]
+    public async Task ZoomingInOverAnOpeningLeansInUntilWalkingAway()
+    {
+        var driver = await Begin();
+        var me = driver.Me;
+        var patient = driver.Patient;
+        var at = new Vector2(0.5f, 0.62f);
+        SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
+        await Frames.Seconds(1f);
+        AssertBool(driver.Body.IsOpen(at)).OverrideFailureMessage("the belly stands open").IsTrue();
+        var opening = driver.SitePoint(at);
+        await driver.PlayerWalksTo(opening);
+        await driver.PlayerReaches(opening);
+        await Frames.Physics(10);
+        var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
+        // It stands where the surgeon does: shown only from beside, it would fill the surgeon's own view.
+        puppet.Visible = false;
+        var standingEyes = me.ToLocal(me.Camera.GlobalPosition);
+        var standingPitch = me.Pitch;
+        await driver.Capture("at_the_opening", "standing at the open belly, the hand over the opening, the view level");
+        driver.Budget.Clear();
+
+        SurgeryDriver.Tap(InputActions.Zoom);
+        driver.Note("zooming in over the opening");
+        await FollowView(me, puppet, 60);
+        var spot = me.LeanSpot;
+        AssertObject(spot).OverrideFailureMessage("the view leans in on the opening").IsNotNull();
+        AssertFloat(me.Lean).OverrideFailureMessage($"the torso bends forward ({me.Lean:0.00} rad)").IsGreater(0.2f);
+        var eyes = me.Camera.GlobalPosition;
+        var ahead = standingEyes.Z - me.ToLocal(eyes).Z;
+        AssertFloat(ahead).OverrideFailureMessage($"the eyes come forward over the table ({ahead * 100f:0} cm)").IsGreater(0.1f);
+        AssertFloat(eyes.Y - spot!.Value.Y).OverrideFailureMessage($"and stay clear above the opening ({(eyes.Y - spot.Value.Y) * 100f:0} cm)")
+            .IsGreater(Surgeon.LeanClearance - 0.01f);
+        var forward = -me.Camera.GlobalBasis.Z;
+        AssertFloat(forward.Dot((spot.Value - eyes).Normalized())).OverrideFailureMessage("looking down into the opening")
+            .IsGreater(0.99f);
+        AssertFloat(me.Camera.GlobalBasis.X.Dot(me.GlobalBasis.X)).OverrideFailureMessage("without turning sideways")
+            .IsGreater(0.9999f);
+        var hand = me.Hands[me.Active];
+        var tip = hand.GlobalPosition + hand.TipOffset(0.05f);
+        AssertBool(me.Camera.IsPositionInFrustum(tip) && me.Camera.IsPositionInFrustum(hand.GlobalPosition) && hand.Visible)
+            .OverrideFailureMessage("the hand in the opening stays in view").IsTrue();
+        await driver.Capture("leaning_in", "zoomed in and leaning in: looking down into the open belly from above, the "
+            + "see-through hand in the opening, nothing clipped by drapes or organs");
+
+        var onScreen = me.Camera.UnprojectPosition(tip);
+        await driver.PlayerReaches(opening + (me.GlobalBasis.X * 0.03f));
+        await Frames.Physics(10);
+        var moved = me.Camera.UnprojectPosition(hand.GlobalPosition + hand.TipOffset(0.05f)) - onScreen;
+        AssertFloat(moved.X).OverrideFailureMessage($"moving the hand right moves it right on screen ({moved})").IsGreater(20f);
+        AssertFloat(Mathf.Abs(moved.Y)).OverrideFailureMessage($"and not up or down ({moved})").IsLess(Mathf.Abs(moved.X) * 0.2f);
+        AssertObject(me.LeanSpot).OverrideFailureMessage("still leaning in over the opening").IsNotNull();
+
+        await FollowView(me, puppet, 1);
+        AssertFloat(puppet.Lean).OverrideFailureMessage("the partner gets how far they lean").IsEqualApprox(me.Lean, 0.001f);
+        var neck = puppet.FaceModel.GlobalTransform * Surgeon.HeadPivot;
+        var bent = puppet.ToLocal(neck).Z;
+        AssertFloat(bent).OverrideFailureMessage($"and sees their head bent forward over the table ({bent * 100f:0} cm ahead)")
+            .IsLess(-0.15f);
+        if (KeyFrames.Wanted())
+        {
+            var camera = new Camera3D { Fov = 55f };
+            driver.Surgery.AddChild(camera);
+            camera.GlobalPosition = neck + (puppet.GlobalBasis * new Vector3(1.1f, 0.2f, 0.3f));
+            camera.LookAt(neck + (Vector3.Down * 0.4f));
+            camera.MakeCurrent();
+            puppet.Visible = true;
+            await driver.Capture("leaning_seen", "seen from beside: the surgeon bent forward from the hips over the open "
+                + "belly, head down over it, feet where they stood, nothing passing through the table");
+            puppet.Visible = false;
+            me.Camera.MakeCurrent();
+            camera.QueueFree();
+        }
+
+        PlayerInput.Action(InputActions.MoveBack);
+        driver.Note("walking away from the table");
+        await FollowView(me, puppet, 30);
+        PlayerInput.Action(InputActions.MoveBack, false);
+        AssertInt(me.Zoom).OverrideFailureMessage("walking away zooms back out").IsEqual(0);
+        await FollowView(me, puppet, 30);
+        AssertFloat(me.Lean).OverrideFailureMessage($"and straightens back up ({me.Lean:0.000} rad)").IsLess(0.01f);
+        AssertFloat(me.Pitch).OverrideFailureMessage("looking where they did before leaning in").IsEqualApprox(standingPitch, 0.02f);
+        await driver.Capture("walked_away", "walked back from the table: zoomed out, standing straight, looking at the table as before, the hands solid");
+        driver.Budget.Check(KeyFrames.Wanted());
+    }
+
+    /// <summary>Plays <paramref name="frames"/> physics frames, the partner's copy getting each one, and checks the view
+    /// moves gradually: no snap of the eyes within the body or of where they look.</summary>
+    private static async Task FollowView(Surgeon me, Surgeon puppet, int frames)
+    {
+        var eyes = me.ToLocal(me.Camera.GlobalPosition);
+        var look = me.GlobalBasis.Inverse() * -me.Camera.GlobalBasis.Z;
+        for (var frame = 0; frame < frames; frame++)
+        {
+            SurgeryState.SurgeonCopyHasOwnerState(me, puppet);
+            await Frames.Physics(1);
+            var nextEyes = me.ToLocal(me.Camera.GlobalPosition);
+            var nextLook = me.GlobalBasis.Inverse() * -me.Camera.GlobalBasis.Z;
+            AssertFloat(nextEyes.DistanceTo(eyes)).OverrideFailureMessage($"the eyes move gradually ({nextEyes.DistanceTo(eyes) * 1000f:0} mm in a frame)")
+                .IsLess(0.04f);
+            AssertFloat(nextLook.AngleTo(look)).OverrideFailureMessage($"and so does the look ({nextLook.AngleTo(look):0.000} rad in a frame)")
+                .IsLess(0.08f);
+            eyes = nextEyes;
+            look = nextLook;
+        }
     }
 
     private static void CheckStableOrigins(Surgeon me, float crouch)

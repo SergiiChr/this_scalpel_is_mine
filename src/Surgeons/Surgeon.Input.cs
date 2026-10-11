@@ -491,6 +491,7 @@ public partial class Surgeon
         var move = GlobalBasis * new Vector3(direction.X, 0f, direction.Y) * speed;
         Velocity = new Vector3(move.X, IsOnFloor() ? 0f : Velocity.Y - (9.8f * delta), move.Z);
         MoveAndSlide();
+        UpdateLean(canAct, delta);
         var hand = Hands[Active];
         if (canAct)
         {
