@@ -79,6 +79,8 @@ public class AnesthesiaPathsTest
     [TestCase("hand_stitch_child", Timeout = Limits.Slow)]
     public async Task HandStitchLidocaineAllergyUnderGeneralAnesthesia(string scenario)
     {
+        // No key frames here: under a display a software renderer would draw every frame of the whole surgery.
+        RenderingServer.RenderLoopEnabled = false;
         var driver = SurgeryDriver.Create();
         await driver.Start(scenario, patientQuirks: [new QuirkRoll("allergy", "lidocaine")]);
         var surgery = driver.Surgery;
@@ -93,5 +95,6 @@ public class AnesthesiaPathsTest
                 + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
             .IsTrue();
         await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
     }
 }
