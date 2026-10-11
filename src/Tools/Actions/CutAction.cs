@@ -47,12 +47,12 @@ public sealed class CutAction : ToolAction
         {
             var along = (step.Tip - use.LastTip) * new Vector3(1, 0, 1);
             var aligned = Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade;
-            // Drawn along inside an opening there's no wall left to cut: it cuts on once it comes out onto whole tissue.
-            if (aligned && step.Zone == SiteZone.Site)
+            if (aligned && patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level],
+                    step.Def.Sharpness, !tool.Sterile, step.Hand.Speed))
             {
-                patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level], step.Def.Sharpness,
-                    !tool.Sterile, step.Hand.Speed);
-                use.CutWall = true;
+                // A blade that has sunk into the cut it's making still cuts the wall ahead of it, but only cutting on
+                // whole tissue makes it pass over a target.
+                use.CutWall = use.CutWall || step.Zone == SiteZone.Site;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             }

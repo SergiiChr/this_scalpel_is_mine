@@ -108,10 +108,16 @@ public partial class Patient
     }
 
     /// <summary>One continuous scalpel stroke per tool grows one wound. Drawn along a cut already there, it deepens that
-    /// one instead, and grows its own wound only past it. Where there's no fat under the skin (a forearm), a cut deeper
-    /// than the skin goes into the muscle.</summary>
-    public void Cut(long strokeKey, Vector2 a, Vector2 b, float depth, float sharpness, bool dirty, float speed)
+    /// one instead, and grows its own wound only past it. Drawn inside an opening away from any cut's line, there's no
+    /// wall left to cut: it cuts nothing (false). Where there's no fat under the skin (a forearm), a cut deeper than the
+    /// skin goes into the muscle.</summary>
+    public bool Cut(long strokeKey, Vector2 a, Vector2 b, float depth, float sharpness, bool dirty, float speed)
     {
+        var reach = Body.MetersToUv(RecutReach);
+        if (Body.IsOpen(a) && Body.IsOpen(b) && !Wounds.Any(w => w.Kind == WoundKind.Cut && w.DistanceTo(a) < reach))
+        {
+            return false;
+        }
         depth = Mathf.Clamp(depth - Mods.Num("fat_depth") * 0.25f, 0.1f, 1f);
         if (Body.FatThickness < 0.0005f && depth >= SkinDepth)
         {
@@ -119,7 +125,6 @@ public partial class Patient
         }
         // Every stretch of a stroke that runs along another cut deepens and reopens that one: one starting on whole skin
         // ends where it comes into a cut, and grows a wound of its own again only past it.
-        var reach = Body.MetersToUv(RecutReach);
         var own = _strokeWounds.GetValueOrDefault(strokeKey);
         Wound wound;
         if (Wounds.Find(w => w != own && w.Kind == WoundKind.Cut && w.Runs(a, b, reach)) is { } recut)
@@ -156,6 +161,7 @@ public partial class Patient
             Contaminate();
         }
         Session.Scoring.Add(jagged ? "jagged_cut" : "clean_cut", true);
+        return true;
     }
 
     /// <summary>Cutting inside the body frees attached targets, or nicks whatever the blade touches. The blade grates on
