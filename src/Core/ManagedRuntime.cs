@@ -20,7 +20,6 @@ public partial class ManagedRuntime : Node
     private readonly CancellationTokenSource _shutdown = new();
     private static int _done;
     private static int _total = 1;
-    private static bool _trace;
 
     /// <summary>Done when everything is prepared.</summary>
     internal static Task WarmUp => _warmUp;
@@ -34,8 +33,6 @@ public partial class ManagedRuntime : Node
         // decides how long the remaining pauses are, and .NET reads that only from the environment
         // (DOTNET_GCgen0size), never from the game's own runtime config.
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-        _trace = OS.IsDebugBuild();
-        Trace("started");
         _warmUp = Task.Run(() => Prepare(_shutdown.Token), _shutdown.Token);
     }
 
@@ -97,18 +94,6 @@ public partial class ManagedRuntime : Node
                 // Can't be prepared on its own (an unusual signature): it's prepared when it first runs instead.
             }
             Interlocked.Increment(ref _done);
-        }
-        Trace("finished");
-    }
-
-    /// <summary>Marks the warm-up in a debug build's output: build.py keeps the logs of a startup error in Godot's C#
-    /// glue (STARTUP_RACE), and this shows whether the worker was running when it hit.
-    /// The build type is read on the main thread: the worker calls nothing in the engine for it beyond printing.</summary>
-    private static void Trace(string what)
-    {
-        if (_trace)
-        {
-            GD.Print($"Runtime warm-up {what}.");
         }
     }
 

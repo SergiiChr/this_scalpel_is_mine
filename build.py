@@ -70,8 +70,8 @@ NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
-# An unexplained error in Godot's own C# glue that now and then hits a test process as GdUnit4 starts, under parallel
-# load, with no game code on its stack; the cases still pass. A process failing on nothing else runs once more.
+# An unexplained error in Godot's own C# glue that now and then hits a test process as GdUnit4 starts, with no game
+# code on its stack; the cases still pass. A process failing on nothing else runs once more.
 # Each hit is appended to STARTUP_RACE_LOG with its process log kept beside it, for whoever pins the cause down.
 STARTUP_RACE = "The underlying collection was modified from outside of the BlockingCollection"
 STARTUP_RACE_LOG = BUILD / "startup-race" / "hits.log"
