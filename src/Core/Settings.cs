@@ -30,6 +30,9 @@ public partial class Settings : Node
     /// <summary>Debug mode: shows what the game tracks behind the scenes (objectives, scored actions).
     /// Off in normal play, where finding out what to do is the game.</summary>
     public static bool Debug { get; set; }
+    /// <summary>Leaves the settings file alone: the game runs on the defaults above and never writes them back.
+    /// Tests set it so the machine's own settings (debug mode, volumes, bindings) can't change what they see.</summary>
+    internal static bool IgnoreFile { get; set; }
 
     /// <summary>Action -> encoded binding (<see cref="InputActions.Encode"/>), only for actions the player changed.
     /// </summary>
@@ -60,7 +63,7 @@ public partial class Settings : Node
     public static void Load()
     {
         var file = new ConfigFile();
-        if (file.Load(Path) != Error.Ok)
+        if (IgnoreFile || file.Load(Path) != Error.Ok)
         {
             return;
         }
@@ -81,6 +84,10 @@ public partial class Settings : Node
 
     public static void Save()
     {
+        if (IgnoreFile)
+        {
+            return;
+        }
         var file = new ConfigFile();
         file.SetValue("display", "resolution", Resolution);
         file.SetValue("display", "fullscreen", Fullscreen);
