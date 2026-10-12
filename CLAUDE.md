@@ -29,8 +29,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 
 - `./build.py test`: smoke suites, fast and headless. Run this first.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
-  only after smoke passes. A suite that fails in it runs once more on its own, its key frames taken again; the first attempt's
-  logs go to `build/retries/`.
+  only after smoke passes. A case that fails in it runs once more on its own, its key frames taken again (the whole
+  suite when a failure belongs to no case); the first attempt's logs go to `build/retries/`.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow the `review-key-frames` skill.

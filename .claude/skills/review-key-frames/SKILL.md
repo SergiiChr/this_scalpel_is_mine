@@ -6,7 +6,7 @@ description: Run the full regression with key frames, review only the key frames
 # Review key frames
 
 1. Run `./build.py screenshot_review` (smoke and lint pass first, see CLAUDE.md). It runs the same full regression as
-   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A suite that fails runs once more
+   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A case that fails runs once more
    on its own, and its successful run's key frames are the ones reviewed. It exits non-zero when the regression still
    failed (the report is still written) and while any key frame differs from the baseline.
 2. Read `build/review/report.md`. It lists, per test folder, only key frames that are missing, changed or new against

@@ -217,7 +217,7 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         "",
         {
             "passed": "Regression: passed.",
-            "failed": "Regression: FAILED, even after running the failed suites again (the run's output names them). "
+            "failed": "Regression: FAILED, even after running the failed cases again (the run's output names them). "
             "Review their sheets: the baseline takes them only if the case isn't visibly broken. "
             "Key frames they didn't take show as missing below and stay in the baseline.",
             "not-run": "Regression: not run, these are the key frames of an earlier run.",

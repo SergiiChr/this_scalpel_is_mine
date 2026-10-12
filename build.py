@@ -573,10 +573,8 @@ def run_cases(suite: Suite, options: TestOptions, cases: Sequence[tuple[str, str
     before = key_frame_files()
     outcome = Outcome(suite, BUILD / "test-logs" / f"{suite.name}__retry_*.log", [], attributed=True)
     for _, name in cases:
-        method, _, index_and_values = name.partition(":")
-        test_filter = f"FullyQualifiedName={suite.full_name}.{method}"
-        if index_and_values:
-            test_filter += f"&Name~{escape(index_and_values.split(' ', 1)[-1])}"
+        # A case's name is its method's, with ":index (values)" after it for each row of one.
+        test_filter = f"FullyQualifiedName~{suite.full_name}.{name.partition(':')[0]}&Name={escape(name)}"
         process = f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}"
         add(outcome, run_process(suite, options, process, test_filter, 1))
     outcome.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
