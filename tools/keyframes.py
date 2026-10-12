@@ -2,7 +2,7 @@
 changed or new key frame, with a Markdown index that says what to open, or writes the run into the baseline.
 
   python -m tools.keyframes report CURRENT BASELINE OUT [--all] [--regression passed|failed|not-run]
-  python -m tools.keyframes update CURRENT BASELINE [--keep-missing]
+  python -m tools.keyframes update CURRENT BASELINE [--keep FOLDER ...]
 
 CURRENT is a run's screenshot folder (build/test-artifacts/screenshots, PNG) and BASELINE the committed tests/KeyFrames
 (JPEG, see stored()); BASELINE may be missing.
@@ -248,13 +248,28 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
     return "\n".join(text) + "\n", counts["missing"] + counts["changed"] + counts["new"]
 
 
-def update(current_root: Path, baseline_root: Path, keep_missing: bool = False) -> int:
-    """Writes the key frames that differ from the baseline into it and deletes the ones the run no longer takes, unless
-    keep_missing (a run with failed cases, which may have stopped before taking them).
+def prefix(frame: KeyFrame) -> str:
+    """The file name its views share: NN_name."""
+    view, path = next(iter(frame.views.items()))
+    return path.stem.removesuffix(f"_{view}")
+
+
+def update(current_root: Path, baseline_root: Path, keep: frozenset[str] = frozenset()) -> int:
+    """Writes the key frames that differ from the baseline into it and deletes the ones the run no longer takes, except
+    in the folders to keep (of failed suites, which may have stopped before taking them): there the baseline's key frames
+    and views the run didn't take stay as they are.
     Unchanged key frames keep their bytes, so they cost nothing in git; they only take the run's file name when its
     order prefix moved, which git sees as a rename. Returns how many key frames were written or deleted."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
-    kept = {key: frame for key, frame in baseline.items() if key not in current} if keep_missing else {}
+    # The baseline's views the run didn't take in the folders to keep, by where they go: beside the run's views of the
+    # same key frame when it took some, whose order prefix may have moved.
+    kept: dict[Path, KeyFrame] = {}
+    for key, frame in baseline.items():
+        taken = current[key].views if key in current else {}
+        for view, path in frame.views.items():
+            if frame.folder in keep and view not in taken:
+                target = path if not taken else path.with_name(f"{prefix(current[key])}_{view}{BASELINE_SUFFIX}")
+                kept[target] = KeyFrame(frame.folder, frame.name, frame.order, {view: path}, frame.description)
     # Every file's new bytes are read before any is written: under the run's names, a key frame may take a file another
     # one still has.
     files: dict[Path, bytes] = {}
@@ -267,10 +282,9 @@ def update(current_root: Path, baseline_root: Path, keep_missing: bool = False) 
             files[baseline_root / frame.folder / path.with_suffix(BASELINE_SUFFIX).name] = (
                 before.views[view].read_bytes() if before and unchanged else stored(path)
             )
-    for frame in kept.values():
-        for path in frame.views.values():
-            files.setdefault(path, path.read_bytes())
-    written += len(baseline.keys() - current.keys() - kept.keys())
+    for target, frame in kept.items():
+        files.setdefault(target, next(iter(frame.views.values())).read_bytes())
+    written += len(baseline.keys() - current.keys() - {(frame.folder, frame.name) for frame in kept.values()})
     for frame in baseline.values():
         for path in frame.views.values():
             path.unlink()
@@ -280,8 +294,10 @@ def update(current_root: Path, baseline_root: Path, keep_missing: bool = False) 
     # Descriptions follow the run, whose wording may have changed with the same pictures.
     for folder in {key[0] for key in baseline.keys() | current.keys()}:
         index = baseline_root / folder / DESCRIPTIONS
-        written_frames = [frame for frame in [*current.values(), *kept.values()] if frame.folder == folder]
-        descriptions = {path.with_suffix(BASELINE_SUFFIX).name: frame.description for frame in written_frames for path in frame.views.values()}
+        descriptions = {
+            path.with_suffix(BASELINE_SUFFIX).name: frame.description for frame in current.values() if frame.folder == folder for path in frame.views.values()
+        }
+        descriptions |= {target.name: frame.description for target, frame in kept.items() if frame.folder == folder}
         if descriptions:
             index.write_text(json.dumps(descriptions, indent=2, sort_keys=True) + "\n")
             continue
@@ -302,13 +318,13 @@ def main() -> int:
     for command in (review, updating):
         command.add_argument("current", type=Path, help="screenshot folder of the run")
         command.add_argument("baseline", type=Path, help="baseline folder, may be missing")
-    updating.add_argument("--keep-missing", action="store_true", help="keep the baseline's key frames the run didn't take")
+    updating.add_argument("--keep", action="append", default=[], help="a folder whose key frames and views the run didn't take stay")
     review.add_argument("out", type=Path, help="report folder, emptied first")
     review.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     review.add_argument("--regression", choices=("passed", "failed", "not-run"), default="not-run", help="how the run went, for the top of the report")
     parsed = parser.parse_args()
     if parsed.command == "update":
-        print(f"Baseline: {update(parsed.current, parsed.baseline, parsed.keep_missing)} key frames written or deleted in {parsed.baseline}.")
+        print(f"Baseline: {update(parsed.current, parsed.baseline, frozenset(parsed.keep))} key frames written or deleted in {parsed.baseline}.")
         return 0
     # A run that failed before its first key frame still reports the baseline's as missing.
     if not key_frames(parsed.current) and not key_frames(parsed.baseline):

@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import functools
 import itertools
+import json
 import os
 import re
 import shutil
@@ -72,9 +73,11 @@ RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+
 STACK_LINES = 12
 # An unexplained error in Godot's own C# glue that now and then hits a test process as GdUnit4 starts, with no game
 # code on its stack; the cases still pass. A process failing on nothing else runs once more.
-# Each hit is appended to STARTUP_RACE_LOG with its process log kept beside it, for whoever pins the cause down.
+# Each hit is appended to STARTUP_RACE_LOG, for whoever pins the cause down.
 STARTUP_RACE = "The underlying collection was modified from outside of the BlockingCollection"
-STARTUP_RACE_LOG = BUILD / "startup-race" / "hits.log"
+# Logs and JUnit reports of every test process or suite before it ran again, which would overwrite them.
+RETRIES = BUILD / "retries"
+STARTUP_RACE_LOG = RETRIES / "startup-race.log"
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
@@ -392,6 +395,8 @@ class Outcome:
     log: Path
     failures: list[str]
     executed: int = 0
+    # The key frames (PNGs) it saved.
+    key_frames: set[Path] = field(default_factory=set)
 
 
 @dataclass
@@ -405,16 +410,25 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
     result = run_process_once(suite, options, name, test_filter, cases)
     if not result.failures or not all(STARTUP_RACE in failure for failure in result.failures):
         return result
-    kept = STARTUP_RACE_LOG.parent / f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.log"
-    kept.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(BUILD / "test-logs" / f"{name}.log", kept)
+    kept = keep_attempt(name)
     with STARTUP_RACE_LOG.open("a") as out:
         out.write(
             f"{time.strftime('%Y-%m-%d %H:%M:%S')} {name} (jobs {options.jobs}, key frames {options.key_frames}, "
-            f"{result.executed} cases ran), log {kept}:\n  " + "\n  ".join(result.failures) + "\n"
+            f"{result.executed} cases ran), kept in {kept}:\n  " + "\n  ".join(result.failures) + "\n"
         )
     print(f"[WARN] {name} hit the startup race in Godot's C# glue (see {STARTUP_RACE_LOG}); running it again.")
     return run_process_once(suite, options, name, test_filter, cases)
+
+
+def keep_attempt(name: str) -> Path:
+    """Copies the logs and JUnit reports of the processes called name (a glob for a suite's isolated cases) into a
+    folder of their own under RETRIES, before they run again."""
+    stem = RETRIES / f"{time.strftime('%Y%m%d-%H%M%S')}-{name.replace('*', 'all')}"
+    kept = next(folder for attempt in itertools.count(1) if not (folder := stem.with_name(f"{stem.name}-{attempt}")).exists())
+    kept.mkdir(parents=True)
+    for source in [*(BUILD / "test-logs").glob(f"{name}.log"), *(BUILD / "test-results").glob(f"{name}.xml")]:
+        shutil.copyfile(source, kept / source.name)
+    return kept
 
 
 def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
@@ -481,6 +495,22 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
 
 
 def run_suite(suite: Suite, options: TestOptions) -> Outcome:
+    """Runs a suite, noting the key frames it saved: the files new or rewritten while it ran. Suites that take key
+    frames run one at a time, so no other suite's can be among them."""
+    if not (options.key_frames and suite.visual):
+        return run_suite_once(suite, options)
+    before = key_frame_files()
+    outcome = run_suite_once(suite, options)
+    outcome.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
+    return outcome
+
+
+def key_frame_files() -> dict[Path, int]:
+    """The run's key frames, each with when it was written."""
+    return {path: path.stat().st_mtime_ns for path in KEY_FRAMES.rglob("*.png")}
+
+
+def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
     """Runs a suite in its own Godot process, or each of its cases in one of its own when it isolates them."""
     base = f"FullyQualifiedName~{suite.full_name}."
     if not options.run_broken:
@@ -589,11 +619,14 @@ def test(arguments: list[str]) -> int:
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
     if options.key_frames and full:
-        # A suite failing in a regression for the baseline runs once more on its own, its key frames taken again over
-        # the failed attempt's: a flaky case shouldn't cost a whole new regression.
+        # A suite failing in a regression for the baseline runs once more on its own, its key frames taken again in
+        # place of the failed attempt's: a flaky case shouldn't cost a whole new regression.
         for index, outcome in enumerate(outcomes):
             if outcome.failures:
-                print(f"Running {outcome.suite.full_name} again on its own.", flush=True)
+                kept = keep_attempt(outcome.log.stem)
+                print(f"Running {outcome.suite.full_name} again on its own (first attempt kept in {kept}).", flush=True)
+                for path in outcome.key_frames:
+                    path.unlink(missing_ok=True)
                 outcomes[index] = run_suite(outcome.suite, options)
                 print(report(outcomes[index]), flush=True)
     pending = [
@@ -612,8 +645,20 @@ def test(arguments: list[str]) -> int:
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1
     if options.key_frames and full and has_key_frames(KEY_FRAMES):
-        marker = KEY_FRAMES / (FAILED if failed else PASSED)
-        marker.write_text("".join(f"{outcome.suite.full_name}\n" for outcome in outcomes if outcome.failures))
+        # Each failed suite with the folders it saved key frames in: the only ones whose untaken key frames the
+        # baseline keeps. One that saved none can't say where its key frames are, so its run can't become the baseline.
+        unplaced = [outcome.suite.full_name for outcome in outcomes if outcome.failures and outcome.suite.visual and not outcome.key_frames]
+        if unplaced:
+            print(f"[ERROR] The key frames can't become the baseline: {', '.join(unplaced)} failed before saving any.", file=sys.stderr)
+        elif failed:
+            folders = {
+                outcome.suite.full_name: sorted({path.parent.relative_to(KEY_FRAMES).as_posix() for path in outcome.key_frames})
+                for outcome in outcomes
+                if outcome.failures
+            }
+            (KEY_FRAMES / FAILED).write_text(json.dumps(folders, indent=2) + "\n")
+        else:
+            (KEY_FRAMES / PASSED).touch()
     return 1 if failed else 0
 
 
@@ -623,7 +668,8 @@ KEY_FRAMES = BUILD / "test-artifacts" / "screenshots"
 # Key frames of the last full regression that passed and was reviewed, committed: what a review compares against.
 BASELINE = ROOT / "tests" / "KeyFrames"
 # Left among a run's key frames by a full regression: only those may become the baseline.
-# FAILED lists the suites that failed even when run again; their key frames need a look before they go in.
+# FAILED maps each suite that failed even when run again to the folders of its key frames (JSON); they need a look
+# before they go in.
 PASSED = "passed"
 FAILED = "failed"
 REVIEW = BUILD / "review"
@@ -654,8 +700,8 @@ def generate_baseline(arguments: list[str]) -> int:
         prog="./build.py generate_baseline",
         description="Runs the full regression with key frames and writes the ones that are missing, changed or new into "
         "the committed baseline (tests/KeyFrames), all of them when there is none yet. Key frames that didn't change "
-        "keep their files. A regression with failed suites is written too, except that key frames their failed "
-        "cases didn't take are kept: review those suites' sheets first.",
+        "keep their files. A regression with failed suites is written too, except that in their folders the baseline "
+        "keeps the key frames and views they didn't take: review those suites' sheets first.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression")
     parsed = parser.parse_args(arguments)
@@ -667,9 +713,10 @@ def generate_baseline(arguments: list[str]) -> int:
     if not (KEY_FRAMES / FAILED).exists():
         print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression.", file=sys.stderr)
         return 1
-    failed = (KEY_FRAMES / FAILED).read_text().split()
+    failed: dict[str, list[str]] = json.loads((KEY_FRAMES / FAILED).read_text())
     print(f"[WARN] Writing the key frames of a regression in which these suites failed: {', '.join(failed)}.")
-    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), "--keep-missing")
+    keep = [argument for folders in failed.values() for folder in folders for argument in ("--keep", folder)]
+    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), *keep)
 
 
 def pillow_python() -> Path:

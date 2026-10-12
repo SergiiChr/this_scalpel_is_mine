@@ -28,7 +28,7 @@ description: Run the full regression with key frames, review only the key frames
   copying files into `tests/KeyFrames`.
 - A failed regression may still update the baseline. Review the failures manually: open the sheets of every suite
   that still failed and update the baseline only if the case is not visibly broken. `generate_baseline` names those
-  suites and keeps the baseline's key frames they didn't take. A case that can't be fixed in this change is a known
+  suites and, in their folders, keeps the baseline's key frames and views they didn't take. A case that can't be fixed in this change is a known
   issue or broken (CLAUDE.md): it then takes no key frames and a passing regression drops its old ones.
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
 - If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is

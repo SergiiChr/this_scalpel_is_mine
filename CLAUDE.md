@@ -29,14 +29,15 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 
 - `./build.py test`: smoke suites, fast and headless. Run this first.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
-  only after smoke passes. A suite that fails in it runs once more on its own, and its key frames are taken again.
+  only after smoke passes. A suite that fails in it runs once more on its own, its key frames taken again; the first attempt's
+  logs go to `build/retries/`.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow the `review-key-frames` skill.
 - `./build.py generate_baseline`: the same full regression, then writes the key frames that differ into the baseline
   (every key frame the first time); unchanged ones keep their files. After a regression with failed suites it keeps
-  the baseline's key frames the run didn't take. `--use-latest-set` takes the key frames of the last run instead of
-  running again (see Visual verification).
+  the baseline's key frames and views those suites didn't take, in their folders. `--use-latest-set` takes the key
+  frames of the last run instead of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
