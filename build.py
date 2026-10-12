@@ -404,7 +404,8 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
         dotnet(), "test", str(ASSEMBLY), "--settings", str(runsettings(suite, options, cases)), "--filter", test_filter,
         "--logger", f"junit;LogFilePath={report}", "--logger", "console;verbosity=normal",
     ]  # fmt: skip
-    environment = {**os.environ, "GODOT_BIN": str(GODOT), "CI_RUN": "1" if options.ci_run else ""}
+    # TEST_RUN tells the test assembly it runs tests, not the game (tests/Support/TestRun.cs).
+    environment = {**os.environ, "GODOT_BIN": str(GODOT), "CI_RUN": "1" if options.ci_run else "", "TEST_RUN": "1"}
     environment.pop("WITH_KEY_FRAMES", None)
     # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
     # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
