@@ -71,6 +71,8 @@ public partial class KeyFrames : Node
         }
         AssertBool(saved && Describe(path, description))
             .OverrideFailureMessage($"saved key frame {path.GetFile()}: {description}").IsTrue();
+        // build.py reads it from the case's output: a failed case run again first loses the key frames it saved.
+        GD.Print($"Key frame saved: {path}");
     }
 
     /// <summary>Records <paramref name="description"/> for the file at <paramref name="path"/> in its folder's index.
