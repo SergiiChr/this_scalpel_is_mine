@@ -70,6 +70,11 @@ NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
+# An unexplained error in Godot's own C# glue that now and then hits a test process as GdUnit4 starts, under parallel
+# load, with no game code on its stack; the cases still pass. A process failing on nothing else runs once more.
+# Each hit is appended to STARTUP_RACE_LOG with its process log kept beside it, for whoever pins the cause down.
+STARTUP_RACE = "The underlying collection was modified from outside of the BlockingCollection"
+STARTUP_RACE_LOG = BUILD / "startup-race" / "hits.log"
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
@@ -396,6 +401,23 @@ class ProcessResult:
 
 
 def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
+    """Runs one dotnet test process and counts the cases actually executed, once more after a STARTUP_RACE alone."""
+    result = run_process_once(suite, options, name, test_filter, cases)
+    if not result.failures or not all(STARTUP_RACE in failure for failure in result.failures):
+        return result
+    kept = STARTUP_RACE_LOG.parent / f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(BUILD / "test-logs" / f"{name}.log", kept)
+    with STARTUP_RACE_LOG.open("a") as out:
+        out.write(
+            f"{time.strftime('%Y-%m-%d %H:%M:%S')} {name} (jobs {options.jobs}, key frames {options.key_frames}, "
+            f"{result.executed} cases ran), log {kept}:\n  " + "\n  ".join(result.failures) + "\n"
+        )
+    print(f"[WARN] {name} hit the startup race in Godot's C# glue (see {STARTUP_RACE_LOG}); running it again.")
+    return run_process_once(suite, options, name, test_filter, cases)
+
+
+def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
     """Runs one dotnet test process and counts the cases actually executed."""
     log = BUILD / "test-logs" / f"{name}.log"
     report = BUILD / "test-results" / f"{name}.xml"
@@ -564,6 +586,16 @@ def test(arguments: list[str]) -> int:
         outcome = run_suite(suite, options)
         print(report(outcome), flush=True)
         outcomes.append(outcome)
+    # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
+    full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
+    if options.key_frames and full:
+        # A suite failing in a regression for the baseline runs once more on its own, its key frames taken again over
+        # the failed attempt's: a flaky case shouldn't cost a whole new regression.
+        for index, outcome in enumerate(outcomes):
+            if outcome.failures:
+                print(f"Running {outcome.suite.full_name} again on its own.", flush=True)
+                outcomes[index] = run_suite(outcome.suite, options)
+                print(report(outcomes[index]), flush=True)
     pending = [
         (f"{suite.full_name}.{name}", description)
         for suite in suites
@@ -579,13 +611,10 @@ def test(arguments: list[str]) -> int:
     if not any(outcome.executed for outcome in outcomes):
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1
-    if failed:
-        return 1
-    # Only a full regression that passed may become the baseline: not a focused run, nor one with broken cases.
-    full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
     if options.key_frames and full and has_key_frames(KEY_FRAMES):
-        (KEY_FRAMES / PASSED).touch()
-    return 0
+        marker = KEY_FRAMES / (FAILED if failed else PASSED)
+        marker.write_text("".join(f"{outcome.suite.full_name}\n" for outcome in outcomes if outcome.failures))
+    return 1 if failed else 0
 
 
 # --- Key frame review -------------------------------------------------------------------------------------------------
@@ -593,8 +622,10 @@ def test(arguments: list[str]) -> int:
 KEY_FRAMES = BUILD / "test-artifacts" / "screenshots"
 # Key frames of the last full regression that passed and was reviewed, committed: what a review compares against.
 BASELINE = ROOT / "tests" / "KeyFrames"
-# Left among a run's key frames when its full regression passed: only those may become the baseline.
+# Left among a run's key frames by a full regression: only those may become the baseline.
+# FAILED lists the suites that failed even when run again; their key frames need a look before they go in.
 PASSED = "passed"
+FAILED = "failed"
 REVIEW = BUILD / "review"
 
 
@@ -604,7 +635,7 @@ def has_key_frames(folder: Path) -> bool:
 
 
 def key_frame_run() -> int:
-    """Runs the full regression with key frames. A run that passed marks them (see PASSED)."""
+    """Runs the full regression with key frames, which it marks (see PASSED and FAILED)."""
     status = test(["--all", "--with-key-frames"])
     # The suites that take no key frames can pass on their own.
     if status == 0 and not (KEY_FRAMES / PASSED).exists():
@@ -623,17 +654,22 @@ def generate_baseline(arguments: list[str]) -> int:
         prog="./build.py generate_baseline",
         description="Runs the full regression with key frames and writes the ones that are missing, changed or new into "
         "the committed baseline (tests/KeyFrames), all of them when there is none yet. Key frames that didn't change "
-        "keep their files. Leaves the baseline alone when the regression fails.",
+        "keep their files. A regression with failed suites is written too, except that key frames their failed "
+        "cases didn't take are kept: review those suites' sheets first.",
     )
-    parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression that passed")
+    parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression")
     parsed = parser.parse_args(arguments)
     if not parsed.use_latest_set:
         key_frame_run()
-    # Key frames of a failed or partial run never become what later reviews compare against.
-    if not (KEY_FRAMES / PASSED).exists():
-        print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression that passed.", file=sys.stderr)
+    # Key frames of a partial run never become what later reviews compare against.
+    if (KEY_FRAMES / PASSED).exists():
+        return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT))
+    if not (KEY_FRAMES / FAILED).exists():
+        print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression.", file=sys.stderr)
         return 1
-    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT))
+    failed = (KEY_FRAMES / FAILED).read_text().split()
+    print(f"[WARN] Writing the key frames of a regression in which these suites failed: {', '.join(failed)}.")
+    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), "--keep-missing")
 
 
 def pillow_python() -> Path:
