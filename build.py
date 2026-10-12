@@ -69,6 +69,8 @@ ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
 NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 # GdUnit4's line once the Godot process running the cases has quit; missing when it hung and was killed.
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
+# KeyFrames.SaveViewport's line for each key frame it saved, in its case's output.
+KEY_FRAME_SAVED = re.compile(r"^\s*Key frame saved: (.+?)\s*$", re.MULTILINE)
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
 # An unexplained error in Godot's own C# glue that now and then hits a test process as GdUnit4 starts, with no game
@@ -397,12 +399,18 @@ class Outcome:
     executed: int = 0
     # The key frames (PNGs) it saved.
     key_frames: set[Path] = field(default_factory=set)
+    failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
+    attributed: bool = False
 
 
 @dataclass
 class ProcessResult:
     failures: list[str]
     executed: int = 0
+    # The cases that failed (JUnit class and name), each with the key frames it saved.
+    failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
+    # Every failure belongs to one of them: running them again is running all that failed.
+    attributed: bool = False
 
 
 def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
@@ -472,8 +480,10 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
     executed = sum(case.find("skipped") is None for case in cases)
     if not executed:
         found.append("[ERROR] Runnable test cases were selected, but no test cases ran.")
+    failed_cases: dict[tuple[str, str], set[Path]] = {}
     for case in cases:
         name = f"{case.get('classname', '')} {case.get('name', '')}"
+        before = len(found)
         failure = case.find("failure")
         if failure is not None:
             found.append(f"[Failed] {name}: {failure.get('message', '')}")
@@ -482,6 +492,10 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
             found.append(f"[ERROR] {name}: {error.get('message', '')}")
         if float(case.get("time", "0")) > timeout:
             found.append(f"[ERROR] {name} took {float(case.get('time', '0')):.0f} s, longer than {timeout} s.")
+        if len(found) > before or len(cases) == 1:
+            output = "".join(element.text or "" for element in case.iter("system-out"))
+            failed_cases[(case.get("classname", ""), case.get("name", ""))] = {Path(path) for path in KEY_FRAME_SAVED.findall(output)}
+    in_cases = len(found)
     output = log.read_text(errors="replace")
     # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
     found += godot_errors("\n".join([*(element.text or "" for element in tree.iter("system-out")), output]))
@@ -491,7 +505,9 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
         found.append(f"[ERROR] Godot didn't quit cleanly after its cases (runner exit {exits[-1] if exits else 'never reported'}).")
     if status != 0 and not found:
         found.append(f"[ERROR] Test process exited with status {status}.")
-    return ProcessResult(found, executed)
+    # A process with one case fails only for it, whatever it fails on.
+    attributed = bool(found) and (len(cases) == 1 or len(found) == in_cases)
+    return ProcessResult(found, executed, failed_cases if found else {}, attributed)
 
 
 def run_suite(suite: Suite, options: TestOptions) -> Outcome:
@@ -531,9 +547,8 @@ def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
     if not suite.isolate_cases:
         test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
         result = run_process(suite, options, suite.name, test_filter, len(names))
-        return Outcome(suite, log, result.failures, result.executed)
-    failures = []
-    executed = 0
+        return Outcome(suite, log, result.failures, result.executed, failed_cases=result.failed_cases, attributed=result.attributed)
+    outcome = Outcome(suite, log, [], attributed=True)
     for case in cases:
         for value in case.values or [""]:
             name = f"{case.method}({value})" if value else case.method
@@ -541,10 +556,31 @@ def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
                 continue
             test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if value else "")
             case_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
-            result = run_process(suite, options, case_name, test_filter, 1)
-            failures += result.failures
-            executed += result.executed
-    return Outcome(suite, log, failures, executed)
+            add(outcome, run_process(suite, options, case_name, test_filter, 1))
+    return outcome
+
+
+def add(outcome: Outcome, result: ProcessResult) -> None:
+    """Counts one of its processes into a suite's outcome."""
+    outcome.failures += result.failures
+    outcome.executed += result.executed
+    outcome.failed_cases |= result.failed_cases
+    outcome.attributed &= result.attributed or not result.failures
+
+
+def run_cases(suite: Suite, options: TestOptions, cases: Sequence[tuple[str, str]]) -> Outcome:
+    """Runs the given cases (JUnit class and name) of a suite again, each in a process of its own."""
+    before = key_frame_files()
+    outcome = Outcome(suite, BUILD / "test-logs" / f"{suite.name}__retry_*.log", [], attributed=True)
+    for _, name in cases:
+        method, _, index_and_values = name.partition(":")
+        test_filter = f"FullyQualifiedName={suite.full_name}.{method}"
+        if index_and_values:
+            test_filter += f"&Name~{escape(index_and_values.split(' ', 1)[-1])}"
+        process = f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}"
+        add(outcome, run_process(suite, options, process, test_filter, 1))
+    outcome.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
+    return outcome
 
 
 def report(outcome: Outcome) -> str:
@@ -619,16 +655,23 @@ def test(arguments: list[str]) -> int:
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
     if options.key_frames and full:
-        # A suite failing in a regression for the baseline runs once more on its own, its key frames taken again in
+        # A case failing in a regression for the baseline runs once more on its own, its key frames taken again in
         # place of the failed attempt's: a flaky case shouldn't cost a whole new regression.
+        # A failure no case owns (an engine error between cases) runs the whole suite again.
         for index, outcome in enumerate(outcomes):
-            if outcome.failures:
-                kept = keep_attempt(outcome.log.stem)
-                print(f"Running {outcome.suite.full_name} again on its own (first attempt kept in {kept}).", flush=True)
-                for path in outcome.key_frames:
-                    path.unlink(missing_ok=True)
-                outcomes[index] = run_suite(outcome.suite, options)
-                print(report(outcomes[index]), flush=True)
+            if not outcome.failures:
+                continue
+            kept = keep_attempt(outcome.log.stem)
+            again = list(outcome.failed_cases) if outcome.attributed else []
+            what = f"cases {', '.join(name for _, name in again)}" if again else "suite"
+            print(f"Running the failed {what} of {outcome.suite.full_name} again (first attempt kept in {kept}).", flush=True)
+            for path in {path for frames in outcome.failed_cases.values() for path in frames} if again else outcome.key_frames:
+                path.unlink(missing_ok=True)
+            retry = run_cases(outcome.suite, options, again) if again else run_suite(outcome.suite, options)
+            # Its folders are those of both attempts: the retry may save fewer key frames.
+            retry.key_frames |= outcome.key_frames
+            outcomes[index] = retry
+            print(report(retry), flush=True)
     pending = [
         (f"{suite.full_name}.{name}", description)
         for suite in suites
