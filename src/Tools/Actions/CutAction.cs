@@ -18,6 +18,7 @@ public sealed class CutAction : ToolAction
             var from = patient.Body.WorldToUv(step.Tip - half);
             var to = patient.Body.WorldToUv(step.Tip + half);
             patient.Cut(StrokeKey(tool), from, to, ToolActions.DepthByLevel[level], step.Def.Sharpness, !tool.Sterile, 0f);
+            use.CutWall = true;
             step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
         }
         // Pressed in at full effort where the muscle is thin (no fat over it), the point reaches the bone under it.
@@ -32,22 +33,30 @@ public sealed class CutAction : ToolAction
             use.LastUv = new Vector2(-1, -1);
             return;
         }
+        if (use.PutDownAt.X < 0f)
+        {
+            use.PutDownAt = step.Uv;
+        }
         if (step.Zone == SiteZone.Cavity)
         {
-            patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort);
+            patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort,
+                use.CutWall ? null : use.PutDownAt);
         }
         var moved = use.LastUv.X >= 0f && use.LastUv.DistanceTo(step.Uv) > 0.003f;
         if (moved)
         {
             var along = (step.Tip - use.LastTip) * new Vector3(1, 0, 1);
-            if (Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade)
+            var aligned = Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade;
+            if (aligned && patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level],
+                    step.Def.Sharpness, !tool.Sterile, step.Hand.Speed))
             {
-                patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level], step.Def.Sharpness,
-                    !tool.Sterile, step.Hand.Speed);
+                // A blade that has sunk into the cut it's making still cuts the wall ahead of it, but only cutting on
+                // whole tissue makes it pass over a target.
+                use.CutWall = use.CutWall || step.Zone == SiteZone.Site;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             }
-            else
+            else if (!aligned)
             {
                 // Dragged sideways: the next stroke starts here.
                 use.Stroke++;

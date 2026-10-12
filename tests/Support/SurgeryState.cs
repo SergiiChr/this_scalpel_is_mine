@@ -74,11 +74,23 @@ public static class SurgeryState
 
     /// <summary>A surgeon's cut from <paramref name="from"/> to <paramref name="to"/> (site uv),
     /// <paramref name="depth"/> deep (0..1, see <see cref="Wound.MuscleDepth"/>), as one clean stroke.</summary>
-    public static Wound SkinIsCut(Patient patient, Vector2 from, Vector2 to, float depth)
+    public static Wound SkinIsCut(Patient patient, Vector2 from, Vector2 to, float depth) =>
+        SkinIsCutAlong(patient, [from, to], depth);
+
+    /// <summary>A clean cut in one stroke through <paramref name="points"/> (site uv). Returns the stroke's wound, or the
+    /// cut already there it ran along.</summary>
+    public static Wound SkinIsCutAlong(Patient patient, IReadOnlyList<Vector2> points, float depth)
     {
-        patient.Cut(800_000 + patient.Wounds.Count, from, to, depth, 1f, false, 0f);
-        return patient.Wounds[^1];
+        var stroke = 800_000L + patient.Wounds.Count;
+        for (var i = 1; i < points.Count; i++)
+        {
+            patient.Cut(stroke, points[i - 1], points[i], depth, 1f, false, 0f);
+        }
+        return patient.StrokeWound(stroke) ?? patient.Wounds.MinBy(wound => wound.DistanceTo(points[0]))!;
     }
+
+    /// <summary>As if gauze had been pressed on <paramref name="wound"/> long enough to stop it for good.</summary>
+    public static void WoundIsClotted(Wound wound) => wound.Clotted = true;
 
     /// <summary>Overstretched skin torn from <paramref name="from"/> along <paramref name="direction"/> (site uv) for
     /// <paramref name="lengthUv"/>, down to the fat. Returns the tear.</summary>

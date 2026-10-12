@@ -109,7 +109,7 @@ public partial class Patient
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void TissueCut(Vector2 a, Vector2 b, int depth) => Body.Tissue.Cut(a, b, (TissueDepth)depth);
+    private void TissueCut(Vector2 a, Vector2 b, int depth, bool stitches) => Body.Tissue.Cut(a, b, (TissueDepth)depth, stitches);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void TissueExcise(int k) => Body.Tissue.Excise(k);

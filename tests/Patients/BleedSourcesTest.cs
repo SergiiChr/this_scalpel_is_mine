@@ -39,7 +39,7 @@ public class BleedSourcesTest
             .IsLessEqual(seen + 0.002f);
         await driver.Capture("vessel", "a deep vessel under a narrow incision, its blood welling up the slit where it can be seen");
 
-        var risen = await Frames.Until(() => body.CavityPoolHeight > body.Site.ToLocal(driver.SitePoint(at, vessel.DepthM)).Y, 60f);
+        var risen = await Frames.Until(() => body.CavityPoolHeight > body.Site.ToLocal(driver.SitePoint(at, vessel.DepthM)).Y, 180f);
         AssertBool(risen).OverrideFailureMessage($"the cavity pool rises over the vessel ({patient.CavityBloodMl:0} ml)").IsTrue();
         await Frames.Seconds(0.5f);
         AssertString(Wells(driver, vessel)).OverrideFailureMessage("covered by the pool, it still wells up where it is")

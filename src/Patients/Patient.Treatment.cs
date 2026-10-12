@@ -33,6 +33,8 @@ public partial class Patient
     public const float BladeReach = 0.005f;
     /// <summary>How close (meters) to the blade's tip an organ has to be for it to be cut.</summary>
     public const float OrganReach = 0.001f;
+    /// <summary>A blade drawn within this far (meters) of a cut already there runs along that cut.</summary>
+    public const float RecutReach = 0.004f;
     /// <summary>How high (meters) forceps lift a piece of skin cut out all round before it comes off whole, as a graft.
     /// </summary>
     public const float PieceLift = 0.01f;
@@ -105,39 +107,68 @@ public partial class Patient
         Session.Sound("cut_skin", to);
     }
 
-    /// <summary>One continuous scalpel stroke per tool grows one wound. Where there's no fat under the skin (a
-    /// forearm), a cut deeper than the skin goes into the muscle.</summary>
-    public void Cut(long strokeKey, Vector2 a, Vector2 b, float depth, float sharpness, bool dirty, float speed)
+    /// <summary>One continuous scalpel stroke per tool grows one wound. Drawn along a cut already there, it deepens that
+    /// one instead, and grows its own wound only past it. Drawn inside an opening away from any cut's line, there's no
+    /// wall left to cut: it cuts nothing (false). Where there's no fat under the skin (a forearm), a cut deeper than the
+    /// skin goes into the muscle.</summary>
+    public bool Cut(long strokeKey, Vector2 a, Vector2 b, float depth, float sharpness, bool dirty, float speed)
     {
+        var reach = Body.MetersToUv(RecutReach);
+        if (Body.IsOpen(a) && Body.IsOpen(b) && !Wounds.Any(w => w.Kind == WoundKind.Cut && w.DistanceTo(a) < reach))
+        {
+            return false;
+        }
         depth = Mathf.Clamp(depth - Mods.Num("fat_depth") * 0.25f, 0.1f, 1f);
         if (Body.FatThickness < 0.0005f && depth >= SkinDepth)
         {
             depth = Mathf.Max(depth, Wound.MuscleDepth);
         }
-        if (!_strokeWounds.TryGetValue(strokeKey, out var wound) || wound.Points[^1].DistanceTo(a) > 0.02f)
+        // Every stretch of a stroke that runs along another cut deepens and reopens that one: one starting on whole skin
+        // stops growing where it comes into a cut, and grows its own wound again where it comes out (a new one, past a
+        // longer stretch along the other).
+        var own = _strokeWounds.GetValueOrDefault(strokeKey);
+        Wound wound;
+        if (Wounds.Find(w => w != own && w.Kind == WoundKind.Cut && w.Runs(a, b, reach)) is { } recut)
+        {
+            wound = recut;
+            wound.Recut(a, b, depth >= Wound.MuscleDepth);
+        }
+        else if (own is null || own.Points[^1].DistanceTo(a) > 0.02f)
         {
             wound = NewWound(WoundKind.Cut, a, depth);
             wound.MadeBySurgeon = true;
             _strokeWounds[strokeKey] = wound;
+            wound.Extend(b);
         }
-        wound.Extend(b);
+        else
+        {
+            wound = own;
+            wound.Extend(b);
+        }
         wound.Depth = Mathf.Max(wound.Depth, depth);
         wound.Dirty = wound.Dirty || dirty;
         var jagged = speed > 0.25f || sharpness < 0.8f;
+        if (jagged)
+        {
+            wound.MarkJagged(a, b);
+        }
         var jitter = 0.004f * (1f - sharpness) + (speed > 0.25f ? 0.003f : 0f);
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, a, b, 0.004f + depth * 0.003f, Mathf.Min(depth * 0.75f, 0.7f), WoundMap.Mode.Max, jitter);
-        Rpc(MethodName.TissueCut, a, b, (int)TissueDepthOf(depth));
+        Rpc(MethodName.TissueCut, a, b, (int)TissueDepthOf(depth), true);
         Hurt(0.12f * depth, a);
         if (dirty)
         {
             Contaminate();
         }
         Session.Scoring.Add(jagged ? "jagged_cut" : "clean_cut", true);
+        return true;
     }
 
     /// <summary>Cutting inside the body frees attached targets, or nicks whatever the blade touches. The blade grates on
-    /// a bone it touches, which hurts through a local block.</summary>
-    public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt)
+    /// a bone it touches, which hurts through a local block. A blade cuts free only a target it was put down on, at
+    /// <paramref name="putDownAt"/> (site uv) when it's held there: drawn on from cutting the body wall (null) or from
+    /// somewhere else in the opening, it passes over one.</summary>
+    public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt, Vector2? putDownAt)
     {
         if (dirty)
         {
@@ -150,7 +181,8 @@ public partial class Patient
         }
         foreach (var target in Targets)
         {
-            if (!target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f)
+            if (putDownAt is { } at && !target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f
+                && target.Uv.DistanceTo(at) < 0.06f)
             {
                 target.Anchor = Mathf.Max(target.Anchor - power * dt * 0.5f, 0f);
                 if (!target.Opened)
@@ -204,7 +236,7 @@ public partial class Patient
     public void Tear(Vector2 from, Vector2 direction, float lengthUv)
     {
         var to = from + direction.Normalized() * lengthUv;
-        Rpc(MethodName.TissueCut, from, to, (int)TissueDepth.Fat);
+        Rpc(MethodName.TissueCut, from, to, (int)TissueDepth.Fat, false);
         AddTear(from, to);
     }
 
@@ -794,12 +826,11 @@ public partial class Patient
         foreach (var wound in Wounds)
         {
             // An opened skin wound's edges lie apart from where it was cut: up to the gap of a fully open one.
-            var near = wound.IsInternal
-                ? Reaches(wound, uv)
-                : wound.DistanceTo(uv) < radius + 0.01f + Body.MetersToUv(FullGap) * wound.Opened;
+            var reach = radius + 0.01f + Body.MetersToUv(FullGap) * wound.Opened;
+            var near = wound.IsInternal ? Reaches(wound, uv) : wound.DistanceTo(uv) < reach;
             if (near && (wound.IsInternal ? Inside(zone, uv) : zone == SiteZone.Site))
             {
-                wound.Cauterized = Mathf.Min(wound.Cauterized + def.Power * 0.6f * dt, 0.95f);
+                wound.Cauterize(def.Power * 0.6f * dt, 0.95f, uv, reach);
                 // A vessel a staple went through is sealed for good.
                 wound.Nicked = Mathf.Max(wound.Nicked - def.Power * StapleNick * dt, 0f);
                 sealedAny = true;

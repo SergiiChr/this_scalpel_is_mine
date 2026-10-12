@@ -169,7 +169,7 @@ public partial class SurgeryDriver
         {
             if (target.Anchor > 0f)
             {
-                await CutFree(target);
+                await PlayerCutsFree(target);
             }
             // Forceps in both hands first: fetching the second while the first holds the organ aside would drag it.
             await SwitchTo(Right);
@@ -205,17 +205,22 @@ public partial class SurgeryDriver
         await Frames.Physics(10);
     }
 
-    /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through.
-    /// </summary>
-    private async Task CutFree(CavityTarget target)
+    /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through. Put
+    /// down on it, the blade is first drawn <paramref name="drawn"/> meters along its edge.</summary>
+    public async Task PlayerCutsFree(CavityTarget target, float drawn = 0f)
     {
         Note($"cuts {target.Kind} free");
-        await PlayerRequestsItem("scalpel");
+        var scalpel = (await PlayerRequestsItem("scalpel"))!;
         var spot = Body.UvToWorld(target.Uv, target.Depth);
         await PlayerWalksTo(spot);
         await PlayerReaches(spot);
         await SetLevel(3);
         Use();
+        if (drawn > 0f)
+        {
+            await Frames.Seconds(0.3f);
+            await PlayerSweepsTo(Tip(Me.Hands[Me.Active]) + (ToolActions.BladeDirection(scalpel) * drawn));
+        }
         await Frames.Until(() => target.Anchor <= 0f, 20f);
         Use(false);
         Note($"{target.Kind} attached {target.Anchor:0.00}");
