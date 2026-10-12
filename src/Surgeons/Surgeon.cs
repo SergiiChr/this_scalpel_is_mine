@@ -12,8 +12,9 @@ public sealed record NeedleHit(string Part, Vector3 At);
 /// <see cref="ToolActions.LevelNames"/> and TriggerNames). A syringe has its own wheel: down pulls the plunger out, up
 /// pushes it in, 1 ml a notch, with or without Use tool held. Grab (RMB) picks up and puts down. Zoom (Shift) toggles
 /// between two zoom levels; the closer one fades the hands, and once a syringe's needle is in with Use tool held it
-/// frames the needle and what it's in. The hands start turned in, each tool pointing across in front of the eyes.
-/// Holding Aim tool (MMB) the mouse turns the active hand's tool about the wrist instead, only the wrist moving: pitch
+/// frames the needle and what it's in. Over a deep opening the closer one leans in to look down into it (see
+/// <see cref="Lean"/>); walking away zooms back out. The hands start turned in, each tool pointing across in front of
+/// the eyes. Holding Aim tool (MMB) the mouse turns the active hand's tool about the wrist instead, only the wrist moving: pitch
 /// and swing left and right. C/V roll it about its length. WASD moves the body.
 /// </para>
 /// <para>

@@ -19,8 +19,8 @@ public partial class Surgeon
         _netYaw = yaw;
     }
 
-    /// <summary>The state remote copies follow: body, view, active hand, each hand, who's out or down and who's reading
-    /// the card.</summary>
+    /// <summary>The state remote copies follow: body, view, active hand, each hand, who's out or down, who's reading
+    /// the card and how far they lean in over an opening.</summary>
     internal GodotArray PackState()
     {
         // The inner arrays' wrappers are freed once added: the outer array holds them now. Left to the garbage
@@ -38,6 +38,7 @@ public partial class Surgeon
         return
         [
             GlobalPosition, Rotation.Y, Pitch, Active, hands, strain, Status.PassedOut > 0f, Crouch, _fallSide, ReadingCard,
+            Lean,
         ];
     }
 
@@ -53,6 +54,7 @@ public partial class Surgeon
         Crouch = data[7].AsSingle();
         _fallSide = data[8].AsSingle();
         ReadingCard = data[9].AsBool();
+        Lean = data[10].AsSingle();
         var hands = data[4].AsGodotArray();
         for (var i = 0; i < 2; i++)
         {

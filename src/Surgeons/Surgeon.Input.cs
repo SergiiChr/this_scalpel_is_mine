@@ -181,6 +181,10 @@ public partial class Surgeon
         {
             Rotation = Rotation with { Y = Rotation.Y - (motion.X * LookSensitivity) };
             Pitch = Mathf.Clamp(Pitch - (motion.Y * LookSensitivity), LookPitch.X, LookPitch.Y);
+            if (motion.Y != 0f)
+            {
+                TakeLook();
+            }
         }
         else if (_switchTimer <= 0f)
         {
@@ -491,6 +495,7 @@ public partial class Surgeon
         var move = GlobalBasis * new Vector3(direction.X, 0f, direction.Y) * speed;
         Velocity = new Vector3(move.X, IsOnFloor() ? 0f : Velocity.Y - (9.8f * delta), move.Z);
         MoveAndSlide();
+        UpdateLean(canAct, delta);
         var hand = Hands[Active];
         if (canAct)
         {

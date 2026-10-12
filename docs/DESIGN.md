@@ -248,7 +248,11 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
-  the hand crosses the screen as fast at both); the closer one makes the hands see-through. The hands start turned in
+  the hand crosses the screen as fast at both); the closer one makes the hands see-through. Zoomed in with the aim over
+  an open cavity, the surgeon leans in: the torso bends forward from the hips (everyone sees it) and the eyes come over
+  the opening and look down into it, never turning sideways, so the mouse still moves the hand left and right on
+  screen. Reach and collisions don't change. Aiming out of the opening, zooming out or crouching straightens back up;
+  walking away also zooms back out. The hands start turned in
   toward the middle, so each tool points across in front of the eyes, beside its hand.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and

@@ -97,11 +97,14 @@ public partial class Surgeon
     {
         var torso = _joints["Torso"];
         var rest = _rest["Torso"];
-        var lean = new Vector3((-_collapse * 1.3f) - (Crouch * SquatLean), 0f, 0f);
-        var still = new Transform3D(rest.Basis * Basis.FromEuler(lean), rest.Origin);
+        var still = new Transform3D(rest.Basis * Basis.FromEuler(new Vector3(TorsoBend(), 0f, 0f)), rest.Origin);
         var lifted = torso.GetParent<Node3D>().GlobalTransform * still;
         return (lifted * TorsoShoulder(hand)) + (GlobalBasis.Y * _walkDrop);
     }
+
+    /// <summary>How far forward the torso bends at the hips (radians, negative): slumped passed out, squatting or
+    /// leaning in over an opening.</summary>
+    private float TorsoBend() => (-_collapse * 1.3f) - (Crouch * SquatLean) - Lean;
 
     /// <summary>Where a shoulder is in the torso joint's space.</summary>
     private static Vector3 TorsoShoulder(int hand) =>
@@ -197,7 +200,7 @@ public partial class Surgeon
         _down = Mathf.MoveToward(_down, IsDown ? 1f : 0f, delta * 1.5f);
         var sway = Mathf.Abs(Mathf.Sin(_walkPhase)) * stride * 0.05f;
         // Lower the pelvis between spread knees, then solve both fixed-length legs to grounded feet.
-        Pose("Torso", new Vector3((-_collapse * 1.3f) - (Crouch * SquatLean) + sway, 0f, 0f));
+        Pose("Torso", new Vector3(TorsoBend() + sway, 0f, 0f));
         // Knocked out, the whole body tips over sideways from the feet onto the floor; the eyes go where its head lies.
         var side = _fallSide != 0f ? _fallSide : 1f;
         _body.Rotation = _body.Rotation with { Z = side * _down * Mathf.Pi / 2f };
@@ -223,6 +226,8 @@ public partial class Surgeon
         var torso = _joints["Torso"];
         var eyeLocal = new Vector3(0f, EyeHeight - HipHeight, 0f);
         var standingEyes = new Vector3(0f, EyeHeight - (_collapse * 1.1f) - (Crouch * CrouchDrop), 0f);
+        // Leaning in over an opening, the eyes swing forward and down about the hips with the torso.
+        standingEyes += LeanShift(Lean);
         _head.Position = standingEyes.Lerp(_body.Transform * new Vector3(0f, EyeHeight, -0.06f), _down);
         // Only lying down does the head look for the patient: a surgeon outside a surgery (a pose fixture) has none.
         var patient = _down > 0f ? Session.Patient.GlobalPosition : Vector3.Zero;
@@ -236,7 +241,7 @@ public partial class Surgeon
         _head.Rotation = _head.Rotation with { Y = look };
         // Counter the hip lean at the neck so the face still follows the player's look, rather than staring at their
         // feet.
-        var tilt = new Basis(Vector3.Right, ((Pitch * 0.5f) + (Crouch * SquatLean)) * (1f - _down));
+        var tilt = new Basis(Vector3.Right, ((Pitch * 0.5f) + (Crouch * SquatLean) + Lean) * (1f - _down));
         var anchor = torso.GlobalTransform * (eyeLocal + HeadPivot);
         var faceBasis = torso.GlobalBasis * tilt;
         if (_down > 0f)
@@ -317,6 +322,10 @@ public partial class Surgeon
     private void LieStill(float delta)
     {
         Crouch = Mathf.MoveToward(Crouch, 0f, delta * 4f);
+        Lean = Mathf.MoveToward(Lean, 0f, delta * 4f);
+        LeanSpot = null;
+        _uprightPitch = null;
+        _lookTaken = false;
         Pitch = Mathf.Lerp(Pitch, LyingPitch, Mathf.Min(delta * 3f, 1f));
         var table = (Session.Patient.GlobalPosition - GlobalPosition) * new Vector3(1f, 0f, 1f);
         Velocity = _down < 1f && table.Length() < LyingDistance ? -table.Normalized() * WalkSpeed : Vector3.Zero;
