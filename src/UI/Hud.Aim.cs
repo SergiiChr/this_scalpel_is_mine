@@ -275,7 +275,7 @@ public partial class Hud
             var text = $"{level}  {steps[level]}";
             lines.Add(level == hand.Level
                 ? $"[color={(working ? "#ff6a5a" : "#fff4c8")}][b]▶ {text}[/b][/color]"
-                : $"[color=#ffffff80]   {text}[/color]");
+                : $"[color=#ffffffc0]   {text}[/color]");
         }
         return string.Join("\n", lines);
     }

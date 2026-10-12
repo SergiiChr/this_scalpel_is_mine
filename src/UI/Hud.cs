@@ -225,8 +225,10 @@ public partial class Hud : CanvasLayer
             return;
         }
         Toasted?.Invoke(text);
-        var label = Ui.Label(text, 20, Ui.Ink, true);
-        label.HorizontalAlignment = HorizontalAlignment.Center;
+        var label = Ui.Label(text, 20, Ui.Ink);
+        label.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+        // A message fades out, and its outline with it: the backing keeps it readable over the window blinds.
+        label.AddThemeStyleboxOverride("normal", Backing());
         _toasts.AddChild(label);
         if (_toasts.GetChildCount() > 4)
         {
@@ -484,12 +486,22 @@ public partial class Hud : CanvasLayer
         _hint = Ui.Label("", 14, Ui.Hint);
         _hint.AutowrapMode = TextServer.AutowrapMode.Off;
         _hint.HorizontalAlignment = HorizontalAlignment.Right;
-        // As faint as the text, or the outline would swallow it.
-        _hint.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, Ui.Hint.A));
+        // Faint text reads on a backing whatever the room behind it; an outline would swallow it.
+        _hint.AddThemeConstantOverride("outline_size", 0);
+        _hint.AddThemeStyleboxOverride("normal", Backing());
         _hint.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomRight, Control.LayoutPresetMode.Minsize, 16);
         _hint.GrowHorizontal = Control.GrowDirection.Begin;
         _hint.GrowVertical = Control.GrowDirection.Begin;
         _root.AddChild(_hint);
+    }
+
+    /// <summary>A soft dark box behind HUD text that has to read over anything.</summary>
+    private static StyleBoxFlat Backing()
+    {
+        var box = new StyleBoxFlat { BgColor = new Color(0f, 0f, 0f, 0.55f) };
+        box.SetCornerRadiusAll(4);
+        box.SetContentMarginAll(6f);
+        return box;
     }
 
     /// <summary>The game's theme with a dark outline round every label, so HUD text reads over pale walls and skin as
