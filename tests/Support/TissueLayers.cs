@@ -5,9 +5,10 @@ namespace Scalpel.Tests.Support;
 public static class TissueLayers
 {
     /// <summary>
-    /// Fat and muscle triangles (sheet and walls) passing through a triangle of the exposed skin, as "Fat wall at
-    /// (u, v) through skin at (u, v)". Skin under the drape is left out: the cloth hides it, and it's drawn sunk
-    /// under the cloth, where a lifted lip's deep layers hang into it.
+    /// Triangles of the skin's cut walls and of the fat and muscle (sheet and walls) passing through a triangle of the
+    /// exposed skin, as "Fat wall at (u, v) through skin at (u, v)": a lip pushed over its own opening, or a wall
+    /// standing up through the skin beside it. Skin under the drape is left out: the cloth hides it, and it's drawn
+    /// sunk under the cloth, where a lifted lip's deep layers hang into it.
     /// </summary>
     public static List<string> ThroughSkin(PatientBody body)
     {
@@ -38,10 +39,11 @@ public static class TissueLayers
             skinTriangles.Add((a, b, c, a.Min(b).Min(c), a.Max(b).Max(c)));
         }
         var through = new List<string>();
-        for (var layer = 1; layer < body.Layers.Count; layer++)
+        for (var layer = 0; layer < body.Layers.Count; layer++)
         {
             var mesh = body.Layers[layer].Mesh;
-            for (var surface = 0; surface < mesh.GetSurfaceCount(); surface++)
+            // The skin's own sheet is what's checked against; its walls are not.
+            for (var surface = layer == 0 ? 1 : 0; surface < mesh.GetSurfaceCount(); surface++)
             {
                 var surfaceArrays = mesh.SurfaceGetArrays(surface);
                 var points = surfaceArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
@@ -71,13 +73,14 @@ public static class TissueLayers
         return through;
     }
 
-    /// <summary>Asserts that no fat or muscle triangle passes through the exposed skin (ThroughSkin()): what lies
-    /// under the skin stays under it, whatever the skin does.</summary>
+    /// <summary>Asserts that no cut wall, fat or muscle triangle passes through the exposed skin (ThroughSkin()): what
+    /// lies under the skin stays under it, and the lips stay on their own side of the opening, whatever the skin
+    /// does.</summary>
     public static void AssertUnderSkin(PatientBody body)
     {
         var through = ThroughSkin(body);
         AssertInt(through.Count)
-            .OverrideFailureMessage($"fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(6))})")
+            .OverrideFailureMessage($"the cut's walls, fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(6))})")
             .IsEqual(0);
     }
 

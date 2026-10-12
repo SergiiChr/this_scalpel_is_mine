@@ -514,6 +514,70 @@ public sealed partial class TissueSim
     /// <summary>Where along severed spring s the blade crossed it, in uv.</summary>
     public Vector2 CrossingUv(int s) => UvOf(_springs[s].A).Lerp(UvOf(_springs[s].B), _springs[s].Cross);
 
+    /// <summary>
+    /// Where the blade's path stops inside triangle abc (uv) after crossing into it at <paramref name="entry"/>: the end
+    /// of its stroke, or where it leaves the triangle without cutting the edge there (it had risen out of the layer).
+    /// Null where no stroke runs through <paramref name="entry"/> (a tear).
+    /// </summary>
+    internal Vector2? CutEndIn(Vector2 a, Vector2 b, Vector2 c, Vector2 entry)
+    {
+        var near = 0.002f / Math.Max(ResX, ResY);
+        Vector2? end = null;
+        var at = entry;
+        // A stroke is short straight segments, a few to a cell: follow them on from one to the next.
+        for (var hop = 0; hop < 16; hop++)
+        {
+            Vector2? next = null;
+            foreach (var (from, to) in _cutSegments)
+            {
+                if (Geometry2D.GetClosestPointToSegment(at, from, to).DistanceTo(at) > near
+                    || ClipToTriangle(from, to, a, b, c) is not var (start, finish))
+                {
+                    continue;
+                }
+                // The way on is whichever end of the piece lies further from where the path has got to, and only
+                // onward: the piece it came along is near here too.
+                var far = start.DistanceSquaredTo(at) > finish.DistanceSquaredTo(at) ? start : finish;
+                if (far.DistanceSquaredTo(entry) > at.DistanceSquaredTo(entry) + near * near
+                    && (next is null || far.DistanceSquaredTo(entry) > next.Value.DistanceSquaredTo(entry)))
+                {
+                    next = far;
+                }
+            }
+            if (next is null)
+            {
+                break;
+            }
+            end = next;
+            at = next.Value;
+        }
+        return end;
+    }
+
+    /// <summary>The part of segment pq (uv) inside triangle abc, null where it misses it.</summary>
+    private static (Vector2 Start, Vector2 Finish)? ClipToTriangle(Vector2 p, Vector2 q, Vector2 a, Vector2 b, Vector2 c)
+    {
+        var (low, high) = (0f, 1f);
+        var winding = Mathf.Sign((b - a).Cross(c - a));
+        foreach (var (from, to) in new[] { (a, b), (b, c), (c, a) })
+        {
+            // Inside is the triangle's own side of each edge.
+            var edge = to - from;
+            var startSide = edge.Cross(p - from) * winding;
+            var endSide = edge.Cross(q - from) * winding;
+            if (startSide < 0f && endSide < 0f)
+            {
+                return null;
+            }
+            if (startSide < 0f || endSide < 0f)
+            {
+                var t = startSide / (startSide - endSide);
+                (low, high) = startSide < 0f ? (Mathf.Max(low, t), high) : (low, Mathf.Min(high, t));
+            }
+        }
+        return low <= high ? (p.Lerp(q, low), p.Lerp(q, high)) : null;
+    }
+
     private Vector2 MiddleUv(int s) => (UvOf(_springs[s].A) + UvOf(_springs[s].B)) * 0.5f;
 
     public bool AnySevered => _severed.Count > 0;
@@ -1838,10 +1902,19 @@ public sealed partial class TissueSim
             return;
         }
         var shift = pin.Target - pin.BaseAt;
+        var push = new Vector2(shift.X, shift.Z);
+        var pushed = push.Length();
+        var way = pushed > 0.0001f ? push / pushed : Vector2.Zero;
+        // Skin the grip pushes into goes along far enough that it bunches no more than GripBunch: the patch's
+        // weights alone fall off faster than a long push allows, and the rows ahead would fold flat over each other.
+        // It comes to rest by the patch's edge, where the skin beyond takes over: a push too long to fit within the
+        // patch bunches the skin ahead evenly instead.
+        var falloff = pushed > 0.0001f ? Mathf.Max((1f - 1f / GripBunch) / pushed, 1f / (GripPatch * Mathf.Min(Size.X, Size.Y))) : 0f;
         for (var n = 0; n < patch.Around.Length; n++)
         {
             var j = patch.Around[n];
-            var weight = patch.Weights[n];
+            var ahead = new Vector2(Rest[j].X - Rest[k].X, Rest[j].Z - Rest[k].Z).Dot(way);
+            var weight = ahead > 0f ? Mathf.Max(patch.Weights[n], 1f - ahead * falloff) : patch.Weights[n];
             Pos[j] += (pin.Base[n] + shift * weight - Pos[j]) * drag * weight * _free[j];
         }
     }

@@ -86,6 +86,7 @@ public class GelpiTest
             AssertFloat(openedMarks[0].DistanceTo(openedMarks[1])).OverrideFailureMessage("the < and > move apart with the tips")
                 .IsGreater(marks[0].DistanceTo(marks[1]) + 10f);
         }
+        await AssertLipsApart(driver);
         await driver.Capture("opened", "the Gelpi opened: the cut spread wider, the < and > apart with the tips");
 
         SurgeryDriver.Press(InputActions.Grab);
@@ -248,4 +249,12 @@ public class GelpiTest
         }
         return sides;
     }
+
+    /// <summary>Spread open, each lip stays on its own side of the opening and nothing under the skin comes up
+    /// through it (TissueLayers.AssertUnderSkin()).</summary>
+    private static Task AssertLipsApart(SurgeryDriver driver) => driver.Unbudgeted(() =>
+    {
+        TissueLayers.AssertUnderSkin(driver.Body);
+        return Task.CompletedTask;
+    });
 }

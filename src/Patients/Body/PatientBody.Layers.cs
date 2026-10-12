@@ -55,11 +55,23 @@ public partial class PatientBody
         /// <summary>Neighbours along a lip, kept separate from the other side of the opening.</summary>
         public Dictionary<int, List<int>> Lip { get; } = [];
         public List<(int A, int B)> Midpoints { get; } = [];
+        /// <summary>The refined vertex of each lip edge's midpoint, by its two ends (lower first).</summary>
+        public Dictionary<(int, int), int> MidpointOf { get; } = [];
         public List<int> RefinedIndex { get; } = [];
         public List<(int A, int B, int C)> Centers { get; } = [];
         public Dictionary<int, int> OppositeLip { get; } = [];
         public Dictionary<(int, int), int> LipInside { get; } = [];
         public List<(int Start, float Minimum)> CutFaces { get; } = [];
+        /// <summary>Where a cut ends inside a triangle: the vertex of that point, by the triangle's three corners and
+        /// its weights between them, so it moves with the skin around it.</summary>
+        public Dictionary<int, (int A, int B, int C, Vector3 Weights)> Apex { get; } = [];
+        /// <summary>Per cut's end, the triangle it ends in drawn two ways (see PlanLayers()): closed, the lips meeting
+        /// where the cut crosses the triangle's edge (in Index from Closed on, three triangles), and pointed, the
+        /// lips meeting at its apex.</summary>
+        public List<(int Apex, int Closed, int[] Pointed)> Ends { get; } = [];
+        /// <summary>Per triangle of Index, where its pieces start in RefinedIndex and how many indices they take.
+        /// </summary>
+        public List<(int Start, int Count)> RefinedOf { get; } = [];
     }
 
     private readonly List<MeshInstance3D> _layers = [];
@@ -573,9 +585,10 @@ public partial class PatientBody
             }
             if (anyCut && side[0] == side[1] && side[1] == side[2])
             {
-                // At a cut's end only one edge is severed: the cut runs into this triangle and stops. It's drawn whole,
-                // but with the lips the triangle across the cut edge has, so the lips don't step past its edge as
-                // they part: the skin between them tapers to the far corner, the way a cut ends in a point.
+                // At a cut's end only one edge is severed: the cut runs into this triangle and stops. Its lips run on
+                // from that edge and meet where the blade's path stops, so the opening narrows to a point there: a cut
+                // ends in a V, not square across the last spring it cut. The opening there is too narrow to show a
+                // wall; one drawn down from lips pulled about would stand up through the skin beside them.
                 var edge = Array.FindIndex(cut, value => value);
                 if (gone[corners[0]] || gone[corners[1]] || gone[corners[2]])
                 {
@@ -586,6 +599,8 @@ public partial class PatientBody
                 var tip = PlanOwn(plan, corners[(edge + 2) % 3], touched);
                 var lipA = PlanCross(plan, edges[edge], corners[edge], crossed, touched);
                 var lipB = PlanCross(plan, edges[edge], corners[(edge + 1) % 3], crossed, touched);
+                var apex = PlanApex(plan, a, b, tip, lipA, Tissue.SpringAt(edges[edge]).CutDir);
+                plan.Ends.Add((apex, plan.Index.Count, [a, lipA, apex, apex, lipB, b, a, apex, tip, apex, b, tip]));
                 plan.Index.AddRange([a, lipA, tip, lipA, lipB, tip, lipB, b, tip]);
                 continue;
             }
@@ -705,7 +720,7 @@ public partial class PatientBody
         }
         // Refine only faces bordering a cut. Interior skin keeps its original triangles, avoiding extra mesh
         // uploads while sewing a long incision. Curved lip midpoints are shared by the sheet and its wall.
-        var midpointOf = new Dictionary<(int, int), int>();
+        var midpointOf = plan.MidpointOf;
         int Midpoint(int a, int b)
         {
             var key = (Math.Min(a, b), Math.Max(a, b));
@@ -727,6 +742,7 @@ public partial class PatientBody
             var a = plan.Index[t];
             var b = plan.Index[t + 1];
             var c = plan.Index[t + 2];
+            var refinedFrom = plan.RefinedIndex.Count;
             if (!midpointOf.ContainsKey((Math.Min(a, b), Math.Max(a, b)))
                 && !midpointOf.ContainsKey((Math.Min(b, c), Math.Max(b, c)))
                 && !midpointOf.ContainsKey((Math.Min(c, a), Math.Max(c, a))))
@@ -734,6 +750,7 @@ public partial class PatientBody
                 plan.RefinedIndex.Add(a);
                 plan.RefinedIndex.Add(b);
                 plan.RefinedIndex.Add(c);
+                plan.RefinedOf.Add((refinedFrom, 3));
                 continue;
             }
             boundary.Clear();
@@ -751,6 +768,7 @@ public partial class PatientBody
             {
                 plan.RefinedIndex.AddRange([center, boundary[n], boundary[(n + 1) % boundary.Count]]);
             }
+            plan.RefinedOf.Add((refinedFrom, plan.RefinedIndex.Count - refinedFrom));
         }
         return plan;
     }
@@ -759,6 +777,76 @@ public partial class PatientBody
     {
         var key = (Math.Min(a, b), Math.Max(a, b));
         if (plan.LipInside.ContainsKey(key)) { plan.LipInside[key] = inside; }
+    }
+
+    /// <summary>
+    /// The vertex where a cut that crossed edge ab of triangle (a, b, c) at <paramref name="entry"/> (uv) stops inside
+    /// it (TissueSim.CutEndIn()), on along the blade's path from the edge. At least a quarter of the way across the
+    /// triangle, so a blade that stopped right past the edge (or started right at it) still ends its cut in a point,
+    /// not square across the edge. A tear, with no blade path, runs half way across along
+    /// <paramref name="cutDir"/>.
+    /// </summary>
+    private int PlanApex(LayerPlan plan, int a, int b, int c, int lipA, Vector2 cutDir)
+    {
+        var (ua, ub, uc) = (plan.Uv[a], plan.Uv[b], plan.Uv[c]);
+        var entry = plan.Uv[lipA];
+        var traced = Tissue.CutEndIn(ua, ub, uc, entry);
+        // In uv, toward c's side of the edge.
+        var along = traced is { } end && end.DistanceSquaredTo(entry) > 1e-10f
+            ? (end - entry).Normalized()
+            : new Vector2(cutDir.X / SiteSize.X, cutDir.Y / SiteSize.Y).Normalized();
+        var edge = ub - ua;
+        if (Mathf.Sign(edge.Cross(along)) != Mathf.Sign(edge.Cross(uc - ua)))
+        {
+            along = -along;
+        }
+        var across = AcrossTriangle(entry, along, ua, ub, uc);
+        var reach = traced is { } stop ? Mathf.Max(stop.DistanceTo(entry), across * MinApexShare) : across * 0.5f;
+        var at = entry + along * Mathf.Min(reach, across * 0.9f);
+        var weights = Barycentric(at, ua, ub, uc);
+        var v = plan.Owner.Count;
+        plan.Owner.Add(plan.Owner[c]);
+        plan.Other.Add(-1);
+        plan.Share.Add(0f);
+        plan.Slide.Add(-1);
+        plan.Uv.Add(at);
+        plan.Apex[v] = (a, b, c, weights);
+        return v;
+    }
+
+    /// <summary>Least share of the way across its triangle a cut's end lies, see PlanApex().</summary>
+    private const float MinApexShare = 0.25f;
+
+    /// <summary>How far (uv) from <paramref name="from"/> on edge ab the triangle (a, b, c) reaches along
+    /// <paramref name="along"/>.</summary>
+    private static float AcrossTriangle(Vector2 from, Vector2 along, Vector2 a, Vector2 b, Vector2 c)
+    {
+        var nearest = float.PositiveInfinity;
+        foreach (var (p, q) in new[] { (b, c), (c, a) })
+        {
+            var side = q - p;
+            var det = along.Cross(side);
+            if (Mathf.Abs(det) < 1e-12f)
+            {
+                continue;
+            }
+            var t = (p - from).Cross(side) / det;
+            var u = (p - from).Cross(along) / det;
+            if (t > 0f && u >= -0.001f && u <= 1.001f)
+            {
+                nearest = Mathf.Min(nearest, t);
+            }
+        }
+        return float.IsPositiveInfinity(nearest) ? 0f : nearest;
+    }
+
+    /// <summary>Weights of p between a, b and c (uv).</summary>
+    private static Vector3 Barycentric(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+    {
+        var area = (b - a).Cross(c - a);
+        var wb = (p - a).Cross(c - a) / area;
+        var wc = (b - a).Cross(p - a) / area;
+        return new Vector3(1f - wb - wc, wb, wc);
     }
 
     /// <summary>The vertex of particle k in the plan, added the first time it's used.</summary>
@@ -917,16 +1005,16 @@ public partial class PatientBody
             vertices[v] = p;
             normals[v] = _normal[k];
         }
-        ConstrainLipArea(plan, vertices);
-        if (layer == 0)
+        foreach (var (v, (a, b, c, w)) in plan.Apex)
         {
-            RememberSkinSheet(plan, vertices);
+            vertices[v] = vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z;
         }
-        else
+        ConstrainLipArea(plan, vertices);
+        if (layer != 0)
         {
             for (var v = 0; v < vertexCount; v++)
             {
-                vertices[v] = AboveSkinUnder(vertices[v], plan.Owner[v]);
+                vertices[v] = UnderSkin(vertices[v], plan.Owner[v]);
             }
         }
         var faceNormals = new Vector3[vertexCount];
@@ -946,7 +1034,7 @@ public partial class PatientBody
             var moved = Mathf.Clamp(_renderMoved[plan.Owner[v]].Length() / FlapMove, 0f, 1f);
             if (!faceNormals[v].IsZeroApprox())
             {
-                normals[v] = normals[v].Lerp(faceNormals[v].Normalized(), plan.Other[v] >= 0 ? 1f : moved).Normalized();
+                normals[v] = normals[v].Lerp(faceNormals[v].Normalized(), plan.Other[v] >= 0 || plan.Apex.ContainsKey(v) ? 1f : moved).Normalized();
             }
         }
         var refinedVertices = new Vector3[vertexCount + plan.Midpoints.Count + plan.Centers.Count];
@@ -970,6 +1058,65 @@ public partial class PatientBody
             refinedNormals[v] = (normals[a] + normals[b] + normals[c]).Normalized();
             refinedUvs[v] = (plan.Uv[a] + plan.Uv[b] + plan.Uv[c]) / 3f;
         }
+        // The midpoints and centers belong to the grid point of their first corner.
+        var refinedOwner = new int[refinedVertices.Length];
+        plan.Owner.CopyTo(refinedOwner);
+        for (var n = 0; n < plan.Midpoints.Count; n++)
+        {
+            refinedOwner[vertexCount + n] = plan.Owner[plan.Midpoints[n].A];
+        }
+        for (var n = 0; n < plan.Centers.Count; n++)
+        {
+            refinedOwner[vertexCount + plan.Midpoints.Count + n] = plan.Owner[plan.Centers[n].A];
+        }
+        // Each cut's end pointed where the skin around it rests, closed where it was pulled, spread or folded about
+        // (or anywhere while a grip folds the skin): drawn that far from its rest shape, the end's triangle has no
+        // room left for the point.
+        var pointedFrom = new HashSet<int>();
+        foreach (var (apex, closed, _) in _renderFold || _renderFootprint || _renderTurnover ? [] : plan.Ends)
+        {
+            var (a, b, c, _) = plan.Apex[apex];
+            var moved = Mathf.Max(_renderMoved[plan.Owner[a]].LengthSquared(),
+                Mathf.Max(_renderMoved[plan.Owner[b]].LengthSquared(), _renderMoved[plan.Owner[c]].LengthSquared()));
+            if (moved <= TissueSim.LiftedOff * TissueSim.LiftedOff)
+            {
+                pointedFrom.Add(closed);
+            }
+        }
+        var index = plan.RefinedIndex;
+        if (pointedFrom.Count > 0)
+        {
+            index = new List<int>(plan.RefinedIndex.Count + pointedFrom.Count * 3);
+            for (var t = 0; t < plan.RefinedOf.Count; t++)
+            {
+                // The closed end's three triangles start at an index pointedFrom holds.
+                var end = pointedFrom.Contains(t * 3) || pointedFrom.Contains(t * 3 - 3) || pointedFrom.Contains(t * 3 - 6);
+                if (!end)
+                {
+                    var (start, count) = plan.RefinedOf[t];
+                    index.AddRange(plan.RefinedIndex.GetRange(start, count));
+                }
+            }
+            foreach (var (_, closed, pointed) in plan.Ends)
+            {
+                if (pointedFrom.Contains(closed))
+                {
+                    index.AddRange(pointed);
+                }
+            }
+        }
+        if (layer == 0)
+        {
+            // As drawn, curved lips included: what lies under the skin is kept under these triangles.
+            RememberSkinSheet(refinedVertices, index);
+        }
+        else
+        {
+            for (var v = vertexCount; v < refinedVertices.Length; v++)
+            {
+                refinedVertices[v] = UnderSkin(refinedVertices[v], refinedOwner[v]);
+            }
+        }
         var wallVertices = new List<Vector3>();
         var wallNormals = new List<Vector3>();
         var wallUvs = new List<Vector2>();
@@ -982,16 +1129,18 @@ public partial class PatientBody
             var topB = vertices[b];
             var outA = Outward(layer, plan.Owner[a]);
             var outB = Outward(layer, plan.Owner[b]);
-            var bottomA = AboveSkinUnder(topA - outA * thickness, plan.Owner[a]);
-            var bottomB = AboveSkinUnder(topB - outB * thickness, plan.Owner[b]);
+            var bottomA = UnderSkin(topA - outA * thickness, plan.Owner[a]);
+            var bottomB = UnderSkin(topB - outB * thickness, plan.Owner[b]);
             var normal = (topB - topA).Cross(bottomA - topA).Normalized();
             // Facing into the cut, away from this side's own skin.
             if (normal.Dot(topA - vertices[plan.Wall[w + 2]]) < 0f)
             {
                 normal = -normal;
             }
-            var mid = LipMidpoint(plan, vertices, a, b);
-            var midBottom = AboveSkinUnder(mid - (outA + outB).Normalized() * thickness, plan.Owner[a]);
+            var mid = plan.MidpointOf.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var refined)
+                ? refinedVertices[refined]
+                : LipMidpoint(plan, vertices, a, b);
+            var midBottom = UnderSkin(mid - (outA + outB).Normalized() * thickness, plan.Owner[a]);
             var midUv = plan.Uv[a].Lerp(plan.Uv[b], 0.5f);
             foreach (var (start, end, lowStart, lowEnd, uvStart, uvEnd) in new[]
                 { (topA, mid, bottomA, midBottom, plan.Uv[a], midUv), (mid, topB, midBottom, bottomB, midUv, plan.Uv[b]) })
@@ -1013,37 +1162,30 @@ public partial class PatientBody
             }
         }
         return (
-            MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. plan.RefinedIndex]),
+            MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. index]),
             MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors]));
     }
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
-    /// AboveSkinUnder(). The layers under the skin are filled after it from the same captured positions.</summary>
+    /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>
     private Vector3[] _skinSheet = [];
     private List<int> _skinSheetIndex = [];
-    private List<int> _skinSheetOwner = [];
     private readonly Dictionary<Vector2I, List<int>> _skinBuckets = [];
     private const float SkinBucket = 0.01f;
-    /// <summary>Skin under a point lies at least this far (meters) below the point's own skin: the skin beside its
-    /// own grid point, down a slope, brings no skin under anything.</summary>
-    private const float UnderSkinDrop = 0.004f;
-    /// <summary>How far (meters) what hangs under lifted skin stays above the skin it has come to lie over.</summary>
-    private const float OverSkinBelow = 0.001f;
+    /// <summary>How far (meters) what lies under the skin stays below the skin drawn over it.</summary>
+    private const float UnderSkinAbove = 0.0003f;
 
-    private static readonly Vector3[] Around = [Vector3.Zero, Vector3.Right, Vector3.Left, Vector3.Back, Vector3.Forward];
-
-    private void RememberSkinSheet(LayerPlan plan, Vector3[] vertices)
+    private void RememberSkinSheet(Vector3[] vertices, List<int> index)
     {
         _skinSheet = vertices;
-        _skinSheetIndex = plan.Index;
-        _skinSheetOwner = plan.Owner;
+        _skinSheetIndex = index;
         foreach (var bucket in _skinBuckets.Values)
         {
             bucket.Clear();
         }
-        for (var t = 0; t < plan.Index.Count; t += 3)
+        for (var t = 0; t < index.Count; t += 3)
         {
-            var (a, b, c) = (vertices[plan.Index[t]], vertices[plan.Index[t + 1]], vertices[plan.Index[t + 2]]);
+            var (a, b, c) = (vertices[index[t]], vertices[index[t + 1]], vertices[index[t + 2]]);
             var low = SkinCell(a.Min(b).Min(c));
             var high = SkinCell(a.Max(b).Max(c));
             for (var x = low.X; x <= high.X; x++)
@@ -1064,61 +1206,42 @@ public partial class PatientBody
         new(Mathf.FloorToInt(at.X / SkinBucket), Mathf.FloorToInt(at.Z / SkinBucket));
 
     /// <summary>
-    /// <paramref name="point"/> of a layer under the skin, owned by grid point <paramref name="k"/>, kept above any
-    /// skin lying under it: a lip lifted and drawn over the skin beside it carries its fat and muscle along, and
-    /// they flatten onto that skin instead of hanging through it. Skin under the point is skin drawn from grid
-    /// points not next to k lying UnderSkinDrop or more below k's own: the sheet a lip was pulled over.
+    /// <paramref name="point"/> of a layer under the skin, owned by grid point <paramref name="k"/>, kept below the
+    /// skin drawn over it: skin crumpled up (pushed along by a spreader's jaw, say) or a lip lifted over the skin beside
+    /// it would otherwise have the layers drawn at a fixed depth under them come up through that skin. A flap turned
+    /// over is left alone: its fat is drawn on top of it.
     /// </summary>
-    private Vector3 AboveSkinUnder(Vector3 point, int k)
+    private Vector3 UnderSkin(Vector3 point, int k)
     {
-        var at = Tissue.CellOf(k);
-        bool Own(int v)
+        if (_renderTurnover || Tissue.Turned(k) || !_skinBuckets.TryGetValue(SkinCell(point), out var bucket))
         {
-            var cell = Tissue.CellOf(_skinSheetOwner[v]);
-            return Math.Abs(cell.X - at.X) <= 1 && Math.Abs(cell.Y - at.Y) <= 1;
+            return point;
         }
-        var own = _renderPoints[0][k].Y - UnderSkinDrop;
-        var floor = float.NaN;
-        // Around the point as well as under it: the skin under a lifted row ends somewhere between its grid points,
-        // and the triangles drawn between them would cut through that skin's edge.
-        var reach = Mathf.Min(SiteSize.X / Tissue.ResX, SiteSize.Y / Tissue.ResY) * 0.5f;
-        foreach (var around in Around)
+        var ceiling = float.NaN;
+        foreach (var t in bucket)
         {
-            var sample = point + around * reach;
-            if (!_skinBuckets.TryGetValue(SkinCell(sample), out var bucket))
+            var (a, b, c) = (_skinSheet[_skinSheetIndex[t]], _skinSheet[_skinSheetIndex[t + 1]], _skinSheet[_skinSheetIndex[t + 2]]);
+            var area = (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
+            if (Mathf.Abs(area) < 1e-12f)
             {
                 continue;
             }
-            foreach (var t in bucket)
+            var wb = ((point.X - a.X) * (c.Z - a.Z) - (point.Z - a.Z) * (c.X - a.X)) / area;
+            var wc = ((b.X - a.X) * (point.Z - a.Z) - (b.Z - a.Z) * (point.X - a.X)) / area;
+            var wa = 1f - wb - wc;
+            if (wa < -0.001f || wb < -0.001f || wc < -0.001f)
             {
-                // Skin drawn from the point's own grid vertex or the ones next to it is the skin it hangs from.
-                if (Own(_skinSheetIndex[t]) || Own(_skinSheetIndex[t + 1]) || Own(_skinSheetIndex[t + 2]))
-                {
-                    continue;
-                }
-                var (a, b, c) = (_skinSheet[_skinSheetIndex[t]], _skinSheet[_skinSheetIndex[t + 1]], _skinSheet[_skinSheetIndex[t + 2]]);
-                var area = (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
-                if (Mathf.Abs(area) < 1e-12f)
-                {
-                    continue;
-                }
-                var wb = ((sample.X - a.X) * (c.Z - a.Z) - (sample.Z - a.Z) * (c.X - a.X)) / area;
-                var wc = ((b.X - a.X) * (sample.Z - a.Z) - (b.Z - a.Z) * (sample.X - a.X)) / area;
-                var wa = 1f - wb - wc;
-                if (wa < -0.001f || wb < -0.001f || wc < -0.001f)
-                {
-                    continue;
-                }
-                var height = a.Y * wa + b.Y * wb + c.Y * wc;
-                if (height < own && (float.IsNaN(floor) || height > floor))
-                {
-                    floor = height;
-                }
+                continue;
+            }
+            var height = a.Y * wa + b.Y * wb + c.Y * wc;
+            if (float.IsNaN(ceiling) || height > ceiling)
+            {
+                ceiling = height;
             }
         }
-        if (!float.IsNaN(floor) && point.Y < floor + OverSkinBelow)
+        if (!float.IsNaN(ceiling) && point.Y > ceiling - UnderSkinAbove)
         {
-            point.Y = floor + OverSkinBelow;
+            point.Y = ceiling - UnderSkinAbove;
         }
         return point;
     }
