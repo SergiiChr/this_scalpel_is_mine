@@ -1,13 +1,12 @@
 namespace Scalpel.Tests.World;
 
-/// <summary>Ceiling fixture geometry and two oblique views in each indoor environment, including the shorter
-/// ambulance.</summary>
+/// <summary>Ceiling fixture geometry and two oblique views in the ambulance, the one room with a hanging ceiling panel.
+/// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class RoomTest
 {
-    [TestCase("or")]
     [TestCase("ambulance")]
     public async Task CeilingPanelClearsTheSlab(string environment)
     {

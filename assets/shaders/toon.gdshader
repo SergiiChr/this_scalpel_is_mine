@@ -75,6 +75,8 @@ float noise(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
 
+#include "res://assets/shaders/room.gdshaderinc"
+
 // Height of the fine relief at a point of the model (meters), see `detail`.
 float relief(vec3 p) {
 	if (detail == 1) {
@@ -109,6 +111,10 @@ void fragment() {
 	vec3 grime_pos = world_grime ? world_pos : local_pos;
 	float n = noise(grime_pos.xz * grime_scale) * 0.6 + noise(grime_pos.xy * grime_scale * 0.45 + 7.0) * 0.4;
 	base = mix(base, base * grime_color.rgb * 1.6, grime * smoothstep(0.35, 0.9, n));
+	vec3 glow = vec3(0.0);
+	if (world_grime) {
+		base = room_pattern(base, world_pos, glow);
+	}
 	if (stains > 0.0) {
 		float s = noise(local_pos.xy * 16.0 + local_pos.z * 7.0) * 0.65 + noise(local_pos.zy * 40.0) * 0.35;
 		float edge = 1.0 - stains * 0.55;
@@ -167,7 +173,7 @@ void fragment() {
 	ALBEDO = base * (1.0 - metal * 0.4);
 	ROUGHNESS = mix(rough, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(game_time * 4.0);
-	EMISSION = emission_color.rgb + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
+	EMISSION = emission_color.rgb + glow + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
 }
 
 void light() {

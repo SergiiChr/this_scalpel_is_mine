@@ -151,6 +151,38 @@ public partial class Room : Node3D
 
     private bool Indoors => EnvironmentId != "sidewalk";
 
+    /// <summary>The operating room is a clean modern theatre; the other rooms keep the old green look.</summary>
+    private bool Theatre => EnvironmentId == "or";
+
+    /// <summary>Decoration painted on each theatre wall, by the wall's direction from the table: area along the wall
+    /// (x on the z walls, z on the x walls) and up, in meters. Windows sit above the stations against the wall, the
+    /// door where nothing stands in front of it.</summary>
+    private static readonly Dictionary<Vector3, (Decor Kind, Rect2 Area)[]> TheatreWalls = new()
+    {
+        [Vector3.Right] = [(Decor.Window, new(-1.3f, 1.15f, 1f, 1.1f)), (Decor.Window, new(0.3f, 1.15f, 1f, 1.1f))],
+        [Vector3.Left] = [(Decor.Door, new(-0.25f, 0f, 1.1f, 2.1f))],
+        [Vector3.Back] = [(Decor.Window, new(-0.25f, 1.15f, 1.2f, 1.1f))],
+        [Vector3.Forward] = [(Decor.ServicePanel, new(-1.35f, 1.25f, 1.1f, 0.2f))],
+    };
+    /// <summary>The theatre's ceiling lights (x, z), two panels of the 60 cm ceiling grid each, round the surgical
+    /// lamp. Each has a light under it.</summary>
+    private static readonly Rect2[] TheatreLights =
+    [
+        new(-1.8f, -1.8f, 1.2f, 0.6f), new(0.6f, -1.8f, 1.2f, 0.6f), new(-1.8f, 1.2f, 1.2f, 0.6f), new(0.6f, 1.2f, 1.2f, 0.6f),
+    ];
+
+    private Color RoomLight => Theatre ? Materials.TheatreLight : Materials.Fluorescent;
+
+    /// <summary>Furniture recolored for the theatre: blue drapes and white laminate instead of wood.
+    /// Material name -> material (see ModelSlot.Instantiate).</summary>
+    private IReadOnlyDictionary<string, Material>? FurnitureLook => Theatre
+        ? new Dictionary<string, Material>
+        {
+            ["gown"] = Materials.Furniture("cloth", Materials.DrapeBlue, 0.9f),
+            ["wood"] = Materials.Furniture("plastic", new Color(0.86f, 0.87f, 0.88f), 0.6f),
+        }
+        : null;
+
     public void Build(string environmentId, Surgery surgery)
     {
         BuildShell(environmentId);
@@ -285,8 +317,8 @@ public partial class Room : Node3D
                 BackgroundMode = Environment.BGMode.Color,
                 BackgroundColor = Indoors ? new Color(0.02f, 0.025f, 0.03f) : new Color(0.03f, 0.035f, 0.06f),
                 AmbientLightSource = Environment.AmbientSource.Color,
-                AmbientLightColor = Materials.SurgicalGreen.Darkened(0.2f),
-                AmbientLightEnergy = 0.5f,
+                AmbientLightColor = Theatre ? new Color(0.78f, 0.82f, 0.86f) : Materials.SurgicalGreen.Darkened(0.2f),
+                AmbientLightEnergy = Theatre ? 0.4f : 0.5f,
                 TonemapMode = Environment.ToneMapper.Filmic,
                 // Highlights roll off instead of clipping: pale skin and white linen keep their shape under the lamp.
                 TonemapWhite = 2.5f,
@@ -297,11 +329,11 @@ public partial class Room : Node3D
                 // white.
                 GlowHdrThreshold = 1.6f,
                 FogEnabled = true,
-                FogLightColor = new Color(0.25f, 0.32f, 0.3f),
-                FogDensity = 0.02f,
+                FogLightColor = Theatre ? new Color(0.4f, 0.42f, 0.45f) : new Color(0.25f, 0.32f, 0.3f),
+                FogDensity = Theatre ? 0.01f : 0.02f,
                 SsaoEnabled = true,
                 AdjustmentEnabled = true,
-                AdjustmentSaturation = 0.85f,
+                AdjustmentSaturation = Theatre ? 0.95f : 0.85f,
             },
         });
         var size = Layout.Size;
@@ -322,14 +354,15 @@ public partial class Room : Node3D
             // highlight (blood, wet tissue) into a big white patch.
             ShadowBlur = 2f,
         });
-        // Overhead room light: a ceiling panel over the table that lights the whole room from above.
-        if (Indoors)
+        // Overhead room light: a ceiling panel over the table that lights the whole room from above. The theatre has no
+        // panel there: its ceiling lights are drawn flush in the ceiling (TheatreLights), the light stays.
+        if (Indoors && !Theatre)
         {
             AddChild(new MeshInstance3D
             {
                 Name = "CeilingPanel",
                 Mesh = new BoxMesh { Size = new Vector3(1.4f, 0.04f, 0.5f) },
-                MaterialOverride = Materials.Glow(Materials.Fluorescent),
+                MaterialOverride = Materials.Glow(RoomLight),
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 // Ceiling underside is size.Y - 0.05. Keep the entire fixture below it: coincident faces blink.
                 Position = new Vector3(0f, size.Y - 0.085f, 0f),
@@ -345,7 +378,7 @@ public partial class Room : Node3D
             SpotAngle = 70f,
             SpotAttenuation = 0.3f,
             LightEnergy = Indoors ? 0.55f : 1f,
-            LightColor = Indoors ? Materials.Fluorescent : new Color(1f, 0.75f, 0.45f),
+            LightColor = Indoors ? RoomLight : new Color(1f, 0.75f, 0.45f),
             ShadowEnabled = true,
             ShadowBlur = 2.5f,
         };
@@ -353,7 +386,7 @@ public partial class Room : Node3D
         _flickerLights.Add(overhead);
         Vector3[] tubes = EnvironmentId switch
         {
-            "or" => [new(-size.X * 0.28f, size.Y - 0.2f, size.Z * 0.28f), new(size.X * 0.28f, size.Y - 0.2f, -size.Z * 0.28f)],
+            "or" => [.. TheatreLights.Select(light => new Vector3(light.GetCenter().X, size.Y - 0.2f, light.GetCenter().Y))],
             "sidewalk" => [new(3f, 4.5f, 2f)],
             _ => [new(0f, size.Y - 0.2f, 0f)],
         };
@@ -363,8 +396,8 @@ public partial class Room : Node3D
             {
                 Position = position,
                 OmniRange = 9f,
-                LightColor = Indoors ? Materials.Fluorescent : new Color(1f, 0.7f, 0.35f),
-                LightEnergy = 0.35f,
+                LightColor = Indoors ? RoomLight : new Color(1f, 0.7f, 0.35f),
+                LightEnergy = Theatre ? 0.2f : 0.35f,
             };
             AddChild(tube);
             _flickerLights.Add(tube);
@@ -385,27 +418,47 @@ public partial class Room : Node3D
     private void BuildWalls()
     {
         var size = Layout.Size;
-        var floorColor = Indoors ? new Color(0.28f, 0.3f, 0.29f) : new Color(0.2f, 0.2f, 0.21f);
-        Shapes.Slab(this, size with { Y = 0.1f }, floorColor, new Vector3(0f, -0.05f, 0f), 0.4f);
-        Shapes.StaticBox(this, size with { Y = 0.1f }, new Vector3(0f, -0.05f, 0f)).AddToGroup(ToolManager.FloorGroup);
+        var floor = new Vector3(0f, -0.05f, 0f);
+        if (Theatre)
+        {
+            Shapes.Slab(this, size with { Y = 0.1f }, new Color(0.55f, 0.56f, 0.54f), floor, 0.05f, Pattern.Speckle);
+        }
+        else
+        {
+            Shapes.Slab(this, size with { Y = 0.1f }, Indoors ? new Color(0.28f, 0.3f, 0.29f) : new Color(0.2f, 0.2f, 0.21f),
+                floor, 0.4f);
+        }
+        Shapes.StaticBox(this, size with { Y = 0.1f }, floor).AddToGroup(ToolManager.FloorGroup);
         if (!Indoors)
         {
             BuildStreet(size);
             return;
         }
-        var wall = EnvironmentId == "or" ? Materials.SurgicalGreen : new Color(0.75f, 0.78f, 0.8f);
+        var wall = Theatre ? Materials.TheatreGray : new Color(0.75f, 0.78f, 0.8f);
         foreach (var side in (float[])[-1f, 1f])
         {
             Wall(new Vector3(size.X, size.Y, 0.1f), new Vector3(0f, size.Y * 0.5f, side * size.Z * 0.5f), wall);
             Wall(new Vector3(0.1f, size.Y, size.Z), new Vector3(side * size.X * 0.5f, size.Y * 0.5f, 0f), wall);
         }
-        var ceiling = Shapes.Slab(this, size with { Y = 0.1f }, wall.Darkened(0.5f), new Vector3(0f, size.Y, 0f), 0.45f);
+        var ceiling = Theatre
+            ? Shapes.Slab(this, size with { Y = 0.1f }, Materials.TheatreCeiling(new Color(0.88f, 0.89f, 0.9f), TheatreLights),
+                new Vector3(0f, size.Y, 0f))
+            : Shapes.Slab(this, size with { Y = 0.1f }, wall.Darkened(0.5f), new Vector3(0f, size.Y, 0f), 0.45f);
         ceiling.Name = "Ceiling";
     }
 
     private void Wall(Vector3 size, Vector3 position, Color color)
     {
-        Shapes.Slab(this, size, color, position, 0.3f);
+        if (Theatre)
+        {
+            var axis = size.X > size.Z ? new Vector2(1f, 0f) : new Vector2(0f, 1f);
+            var features = TheatreWalls[(position with { Y = 0f }).Normalized()];
+            Shapes.Slab(this, size, Materials.TheatreWall(color, Materials.TheatreBlue, axis, features), position);
+        }
+        else
+        {
+            Shapes.Slab(this, size, color, position, 0.3f);
+        }
         Shapes.StaticBox(this, size, position);
     }
 
@@ -440,14 +493,14 @@ public partial class Room : Node3D
 
     private void BuildTable()
     {
-        ModelSlot.Instantiate("props", "operating_table", this);
+        ModelSlot.Instantiate("props", "operating_table", this, FurnitureLook);
         Shapes.StaticBox(this, new Vector3(TableHead - TableFoot, TableHeight, 0.62f),
             new Vector3((TableHead + TableFoot) * 0.5f, TableHeight * 0.5f, 0f));
         if (EnvironmentId != "or")
         {
             ModelSlot.Instantiate("props", "straps", this);
         }
-        var lamp = ModelSlot.Instantiate("props", "surgical_lamp", this);
+        var lamp = ModelSlot.Instantiate("props", "surgical_lamp", this, FurnitureLook);
         lamp.Position = new Vector3(0f, LampHeight, 0f);
         // The lamp head hangs right under the ceiling light; its shadow would black out the middle of the table.
         foreach (var mesh in lamp.FindChildren("*", nameof(MeshInstance3D), true, false))
@@ -459,7 +512,7 @@ public partial class Room : Node3D
 
     private void BuildTray()
     {
-        var tray = ModelSlot.Instantiate("props", "instrument_tray", this);
+        var tray = ModelSlot.Instantiate("props", "instrument_tray", this, FurnitureLook);
         tray.Position = Layout.Tray;
         Shapes.StaticBox(this, new Vector3(0.7f, 0.05f, 0.8f), Layout.Tray + new Vector3(0f, TraySurface - 0.025f, 0f));
         foreach (var group in SmallTrays)
@@ -568,7 +621,8 @@ public partial class Room : Node3D
     {
         var position = Layout[key];
         var yaw = Layout.YawOf(key);
-        var root = ModelSlot.Instantiate("props", key, this);
+        // The patient card is paperwork, not furniture.
+        var root = ModelSlot.Instantiate("props", key, this, key == "card" ? null : FurnitureLook);
         root.Position = position;
         root.Rotation = new Vector3(0f, yaw, 0f);
         if (StationSolids.TryGetValue(key, out var solid))

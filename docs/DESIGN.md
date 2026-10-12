@@ -53,8 +53,14 @@ overview, the data formats designers edit and the design decisions.
 - Palette (`Materials`): surgical green for walls, gowns and drapes, cool fluorescent white for every room light,
   a warmer white only for the surgical lamp. The two surgeons wear green and ceil blue scrubs.
   Colors outside that family are for things that should stand out: the red crash cart, blood, drug labels.
+  The operating room alone is a clean modern theatre: white tiles up to a steel rail at 1 m and blue paint above,
+  a speckled gray floor, a ceiling of 60 cm panels, blue drapes on the furniture, white laminate instead of wood.
+  Windows with blinds, a door and an outlet panel are painted on the walls (`room.gdshaderinc`), decoration only.
+  Its walls, floor and ceiling carry almost no grime. Tools and people keep their colors.
 - Lighting: a ceiling panel light over the table lights the room from above, the surgical lamp's spot focuses
-  on the site, dim tubes fill the corners. Outside, the streetlight does the ceiling light's job.
+  on the site, dim tubes fill the corners. The theatre has four flush LED panels in the ceiling instead, each with a
+  light under it, in a bluer white, brighter, and neutral ambient light instead of green. Outside, the streetlight
+  does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
 - Shading (`toon.gdshader`): smooth diffuse, soft specular, rim light, procedural grime.
   Every model material belongs to a family (`Materials.Families`, by material name): skin (light wraps past the
