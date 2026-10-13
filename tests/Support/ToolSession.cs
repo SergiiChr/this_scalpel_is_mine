@@ -24,7 +24,7 @@ public sealed class ToolSession
     /// <paramref name="folder"/>.</summary>
     public static async Task<ToolSession> Start(string scenarioId, string folder, bool views = false)
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start(scenarioId);
         SurgeryState.PatientIsAsleep(driver.Patient);
@@ -67,7 +67,7 @@ public sealed class ToolSession
     /// surgery.</summary>
     public async Task Finish(string budgetBroken = "")
     {
-        Driver.Budget.Check(Shots is not null, "", budgetBroken);
+        Driver.Budget.Check(broken: budgetBroken);
         if (Shots is not null)
         {
             GD.Print($"key frames: {Shots.OutDir}");

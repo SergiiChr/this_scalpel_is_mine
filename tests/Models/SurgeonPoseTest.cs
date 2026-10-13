@@ -18,7 +18,7 @@ public class SurgeonPoseTest
     /// Rendering stays off except while a key frame is saved.</summary>
     private void Begin()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         _room = new Room();
         Frames.Root.AddChild(_room);
         SurgeryState.RoomHasShell(_room, "or");

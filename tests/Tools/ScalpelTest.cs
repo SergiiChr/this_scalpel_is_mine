@@ -12,7 +12,7 @@ public class ScalpelTest
     [TestCase]
     public async Task ScalpelPickupFiveCentimeterCutAndTableDrop()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
@@ -92,7 +92,7 @@ public class ScalpelTest
         AssertThat(scalpel.State).OverrideFailureMessage("the scalpel is put down").IsEqual(ToolState.Free);
         AssertBool(driver.LiesOnTray(scalpel)).OverrideFailureMessage($"the scalpel lies on the instrument tray ({scalpel.Middle()})")
             .IsTrue();
-        driver.Budget.Check(shots is not null);
+        driver.Budget.Check();
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

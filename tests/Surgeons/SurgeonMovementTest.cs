@@ -15,7 +15,7 @@ public class SurgeonMovementTest
     /// <summary>A surgery with a steady surgeon, its key frames (when wanted) going to surgeon_movement.</summary>
     private async Task<SurgeryDriver> Begin(string scenario = "appendectomy")
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = _driver = SurgeryDriver.Create();
         await driver.Start(scenario);
         var frames = _frames = new KeyFrames();
@@ -112,7 +112,7 @@ public class SurgeonMovementTest
         }
         AssertFloat(me.Crouch).OverrideFailureMessage("releasing crouch restores standing height").IsEqualApprox(0f, 0.001f);
         await driver.Capture("recovered", "back up to standing height");
-        driver.Budget.Check(KeyFrames.Wanted());
+        driver.Budget.Check();
     }
 
     /// <summary>Walking along the table with a free hand over it, past the patient's arm (hand stitch): over the flat
@@ -258,7 +258,7 @@ public class SurgeonMovementTest
         AssertObject(me.LeanSpot).OverrideFailureMessage("the hand on the skin beside the opening, the lean lets go").IsNull();
         AssertFloat(me.Lean).OverrideFailureMessage($"and the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
         AssertInt(me.Zoom).OverrideFailureMessage("still zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
-        driver.Budget.Check(KeyFrames.Wanted());
+        driver.Budget.Check();
     }
 
     /// <summary>Plays <paramref name="frames"/> physics frames, the partner's copy getting each one, and checks the view
@@ -342,6 +342,6 @@ public class SurgeonMovementTest
                 me.Camera.MakeCurrent();
             }
         }
-        driver.Budget.Check(KeyFrames.Wanted());
+        driver.Budget.Check();
     }
 }

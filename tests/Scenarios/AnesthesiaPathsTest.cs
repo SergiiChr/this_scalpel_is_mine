@@ -81,7 +81,7 @@ public class AnesthesiaPathsTest
     {
         // No key frames here: under a display a software renderer would draw every frame of the whole surgery.
         var rendering = RenderingServer.RenderLoopEnabled;
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         try
         {
             var driver = SurgeryDriver.Create();

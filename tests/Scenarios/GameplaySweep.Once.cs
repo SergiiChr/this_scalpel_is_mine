@@ -207,7 +207,7 @@ internal sealed partial class GameplaySweep
         {
             Fail("the soaked pad didn't sanitize the skin");
         }
-        // A second of wiping, one physics frame at a time: no single frame may take a big bite out of the frame
+        // A second of wiping, one physics frame at a time: no single frame may take a big bite out of the CPU
         // budget. Best of three runs, so a busy machine doesn't fail it.
         var worstMs = double.MaxValue;
         for (var run = 0; run < 3; run++)
@@ -225,7 +225,8 @@ internal sealed partial class GameplaySweep
             worstMs = Math.Min(worstMs, runWorst);
         }
         GD.Print($"    iodine wipe: worst frame {worstMs:0.00} ms");
-        if (worstMs > 4.0 && FrameBudget.Enforced)
+        // Half the CPU budget at most: the wipe is one of several things a frame does.
+        if (FrameBudget.Mode == BudgetMode.Cpu && worstMs > FrameBudget.Limit / 2 * 1000)
         {
             Fail($"wiping iodine takes {worstMs:0.00} ms in one frame (stutters)");
         }

@@ -15,7 +15,7 @@ public class PatientCardTest
     [TestCase]
     public async Task OpensInHandTravelsToItsHookAndBackWhenTaken()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy", readingCard: true);
         var surgery = driver.Surgery;
@@ -78,7 +78,7 @@ public class PatientCardTest
 
         await SurgeryDriver.PlayerPutsCardBack(surgery);
         AssertBool(card.OnHook).OverrideFailureMessage("put back again, it hangs on its hook").IsTrue();
-        driver.Budget.Check(shots is not null);
+        driver.Budget.Check();
         if (shots is not null)
         {
             GD.Print($"key frames: {shots.OutDir}");

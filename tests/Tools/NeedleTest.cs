@@ -265,8 +265,11 @@ public class NeedleTest
         }
         AssertBool(ids.Select(id => body.ThreadNode(id)!.GetNode<MeshInstance3D>("StartKnot").Mesh).SequenceEqual(knots))
             .OverrideFailureMessage("stationary tied knots are not rebuilt by unrelated tissue steps").IsTrue();
-        AssertInt((int)worst).OverrideFailureMessage($"twelve finished threads fit the 16 ms update budget (worst {worst} us)")
-            .IsLess(16000);
+        if (FrameBudget.Mode == BudgetMode.Cpu)
+        {
+            AssertFloat(worst / 1_000_000f).OverrideFailureMessage($"twelve finished threads fit the CPU budget (worst {worst} us)")
+                .IsLess(FrameBudget.Limit);
+        }
         GD.Print($"twelve finished sutures: worst renderer update {worst / 1000.0:0.00} ms");
         // The frame budget counts from here, the normal solver and render loop with all twelve finished threads present.
         driver.Budget.Clear();

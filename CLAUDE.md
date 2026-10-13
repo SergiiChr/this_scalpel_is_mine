@@ -40,6 +40,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   frames of the last run instead of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
+- `./build.py full_performance_run`: the full regression on this machine's display and GPU, rendering on, checking
+  whole frames against 16 ms. Only on a machine with a GPU, never in a cloud container; it takes no key frames. Run it
+  after changes that may cost drawing time (shaders, lighting, models, many new nodes).
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
   minutes). Headless tests don't compile shaders, so run it after any shader, lighting or model change and look at
   the PNGs. Other views: `SHOTS_ARGS=--materials|--anatomy|--syringe|--menus` (see `tests/Support/Screenshot.cs`).
@@ -132,10 +135,15 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 ## Frame-time budget
 
 - Gameplay stays within a 16 ms worst frame so 60 fps remains possible. Displayed FPS isn't the metric.
-- Visual tests that exercise dynamic work check it with `Budget.Check(withKeyFrames)` (`tests/Support/FrameBudget.cs`),
+- Two checks, one call: tests that exercise dynamic work check it with `Budget.Check()` (`tests/Support/FrameBudget.cs`),
   never with a timer around one function. A case known to go over that can't be fixed in the current change passes
   its reason as `broken`.
-- Frame times are judged as on the reference machine (an i9-14900HX). CI passes `--ci-run`, which only reports them.
+  - CPU budget, every local run: rendering off (`FrameBudget.RenderingOff()`), the game's own work per frame within
+    8 ms on the reference machine (an i9-14900HX), scaled by how much slower this machine runs a fixed benchmark.
+    It holds on any machine, with or without a GPU.
+  - Render budget, `./build.py full_performance_run` only: rendering on, whole frames within 16 ms on the real GPU.
+- Frame times are checked only in suites that run alone (`--jobs 1`, the default, or with key frames). CI passes
+  `--ci-run`, which doesn't check them.
 
 ## Gotchas
 

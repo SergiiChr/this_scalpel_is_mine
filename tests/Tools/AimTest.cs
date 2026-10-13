@@ -17,7 +17,7 @@ public class AimTest
     [TestCase(Timeout = Limits.Slow)]
     public async Task AimingTurnsTheToolAboutTheWrist()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);
@@ -117,7 +117,7 @@ public class AimTest
         await driver.PlayerReaches(away);
         await Frames.Physics(10);
         await driver.AssertAndCapture(!driver.Surgery.Hud.BladeShown, "the blade aim is hidden over the floor", "over_floor");
-        driver.Budget.Check(shots is not null);
+        driver.Budget.Check();
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;
@@ -146,7 +146,7 @@ public class AimTest
     public async Task EveryToolLandsWhereItsAimShows()
     {
         // Nothing to see: the aim is checked against where each tool comes down.
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);

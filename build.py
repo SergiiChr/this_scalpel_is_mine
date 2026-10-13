@@ -13,6 +13,9 @@
   ./build.py generate_baseline
                        Run the full regression with key frames and write the ones that differ into the baseline, all of
                        them the first time. --use-latest-set takes the key frames of the last run instead. See --help.
+  ./build.py full_performance_run
+                       Run the full regression on this machine's display and GPU, rendering on, and check whole frames
+                       against the 16 ms budget. Only on a machine with a GPU. Takes ./build.py test options.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -349,6 +352,7 @@ class TestOptions:
     jobs: int
     key_frames: bool
     ci_run: bool
+    render_budget: bool
     run_broken: bool
 
 
@@ -363,6 +367,28 @@ def selected(suites: list[Suite], options: TestOptions) -> list[Suite]:
     return picked
 
 
+def runs_alone(suite: Suite, options: TestOptions) -> bool:
+    """Whether the suite runs with no other beside it: one at a time, or one that takes key frames (whose files are
+    told apart by when they're written)."""
+    return options.jobs == 1 or (options.key_frames and suite.visual)
+
+
+def frame_budget(suite: Suite, options: TestOptions) -> str:
+    """How the suite checks frame times (FRAME_BUDGET, see tests/Support/FrameBudget.cs). Not on CI, nor with suites
+    running alongside: they slow each other's frames down."""
+    if options.ci_run or not runs_alone(suite, options):
+        return "off"
+    return "render" if options.render_budget else "cpu"
+
+
+def godot_view(suite: Suite, options: TestOptions) -> list[str]:
+    """Where the suite draws: the key frame view, this machine's display without VSync (frames would wait for the
+    screen) and without sound (a missing audio device would be an error), or nowhere."""
+    if options.key_frames and suite.visual:
+        return KEY_FRAME_ARGS
+    return ["--disable-vsync", "--audio-driver", "Dummy"] if options.render_budget else ["--headless"]
+
+
 def escape(text: str) -> str:
     """Text inside a test filter: its operators taken literally."""
     return re.sub(r"([\\()&|=!~])", r"\\\1", text)
@@ -370,7 +396,7 @@ def escape(text: str) -> str:
 
 def runsettings(suite: Suite, options: TestOptions, cases: int) -> Path:
     """The test run settings for one suite's process: its Godot options and how long the whole run may take."""
-    args = [*suite.godot_args, *(KEY_FRAME_ARGS if options.key_frames and suite.visual else ["--headless"])]
+    args = [*suite.godot_args, *godot_view(suite, options)]
     session = max(cases, 1) * suite.timeout * 1000 + 120_000
     path = BUILD / "test-settings" / f"{suite.name}.runsettings"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -449,7 +475,7 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
         "--logger", f"junit;LogFilePath={report}", "--logger", "console;verbosity=normal",
     ]  # fmt: skip
     # TEST_RUN tells the test assembly it runs tests, not the game (tests/Support/TestRun.cs).
-    environment = {**os.environ, "GODOT_BIN": str(GODOT), "CI_RUN": "1" if options.ci_run else "", "TEST_RUN": "1"}
+    environment = {**os.environ, "GODOT_BIN": str(GODOT), "FRAME_BUDGET": frame_budget(suite, options), "TEST_RUN": "1"}
     environment.pop("WITH_KEY_FRAMES", None)
     # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
     # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
@@ -606,19 +632,29 @@ def test(arguments: list[str]) -> int:
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
-        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer) and check "
-        "the frame budget; they run alone, after the others, so their frame times aren't slowed by their neighbours",
+        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer); they run alone, after the others",
     )
-    parser.add_argument("--ci-run", action="store_true", help="report frame times without checking them against the budget")
+    parser.add_argument("--ci-run", action="store_true", help="don't check frame times")
+    parser.add_argument(
+        "--render-budget",
+        action="store_true",
+        help="run on this machine's display and GPU, rendering on, one suite at a time, and check whole frames against "
+        "the 16 ms budget instead of the game's own work against the CPU budget",
+    )
     parser.add_argument("--list", action="store_true", help="show what would run")
     parsed = parser.parse_args(arguments)
+    if parsed.render_budget and (parsed.with_key_frames or parsed.ci_run):
+        parser.error("--render-budget times frames on a real GPU: not with --with-key-frames or --ci-run")
+    if parsed.render_budget and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        parser.error("--render-budget needs a display")
     options = TestOptions(
         tags=parsed.tag or ([] if parsed.all else ["smoke"]),
         skips=parsed.skip,
         case=parsed.case,
-        jobs=parsed.jobs,
+        jobs=1 if parsed.render_budget else parsed.jobs,
         key_frames=parsed.with_key_frames,
         ci_run=parsed.ci_run,
+        render_budget=parsed.render_budget,
         run_broken=os.environ.get("RUN_BROKEN") == "1",
     )
     suites = selected(discover(), options)
@@ -635,9 +671,7 @@ def test(arguments: list[str]) -> int:
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
-    # With key frames, visual suites check the frame-time budget against the wall clock: they run alone, after the
-    # others, so suites running beside them don't slow their frames down.
-    alone = [suite for suite in suites if options.key_frames and suite.visual] if options.jobs > 1 else suites
+    alone = [suite for suite in suites if runs_alone(suite, options)]
     together = [suite for suite in suites if suite not in alone]
     outcomes: list[Outcome] = []
     if together:
@@ -849,6 +883,8 @@ def main() -> int:
         return screenshot_review(arguments)
     elif command == "generate_baseline":
         return generate_baseline(arguments)
+    elif command == "full_performance_run":
+        return test(["--all", "--render-budget", *arguments])
     elif command == "shots":
         setup()
         scenario = arguments[0] if arguments else "appendectomy"
