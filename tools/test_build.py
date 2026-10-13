@@ -26,7 +26,7 @@ class CoverageReportingTest(unittest.TestCase):
         patch.object(build, "ROOT", self.root).start()
         for folder in ("test-logs", "test-results"):
             (self.root / folder).mkdir()
-        self.options = build.TestOptions([], [], "", 1, False, True, False)
+        self.options = build.TestOptions([], [], "", 1, False, True, False, False)
         self.suite = build.Suite(Path("ExampleTest.cs"), "Scalpel.Tests.Example", [], [], False)
 
     def result(self, xml: str, output: str = QUIT, status: int = 0) -> build.ProcessResult:

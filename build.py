@@ -383,10 +383,10 @@ def frame_budget(suite: Suite, options: TestOptions) -> str:
 
 def godot_view(suite: Suite, options: TestOptions) -> list[str]:
     """Where the suite draws: the key frame view, this machine's display without VSync (frames would wait for the
-    screen), or nowhere."""
+    screen) and without sound (a missing audio device would be an error), or nowhere."""
     if options.key_frames and suite.visual:
         return KEY_FRAME_ARGS
-    return ["--disable-vsync"] if options.render_budget else ["--headless"]
+    return ["--disable-vsync", "--audio-driver", "Dummy"] if options.render_budget else ["--headless"]
 
 
 def escape(text: str) -> str:

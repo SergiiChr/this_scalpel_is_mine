@@ -47,7 +47,7 @@ public sealed class FrameBudget
         + "loading screen compiles most ahead)";
 
     /// <summary>How long <see cref="Benchmark"/> takes on the reference machine, an i9-14900HX, in seconds.</summary>
-    private const double ReferenceBenchmark = 0.0040;
+    private const double ReferenceBenchmark = 0.0053;
 
     public static BudgetMode Mode { get; } = OS.GetEnvironment("FRAME_BUDGET") switch
     {
@@ -58,9 +58,10 @@ public sealed class FrameBudget
 
     /// <summary>How many times slower than the reference machine this one runs the game's own work: what CPU limits are
     /// scaled by. Measured once per process, the first time it's needed.</summary>
-    public static double Slowness => SlownessMeasured.Value;
+    public static double Slowness => BenchmarkHere.Value / ReferenceBenchmark;
 
-    private static readonly Lazy<double> SlownessMeasured = new(() => Benchmarked() / ReferenceBenchmark);
+    /// <summary>How long <see cref="Benchmark"/> takes here, in seconds.</summary>
+    private static readonly Lazy<double> BenchmarkHere = new(Benchmarked);
 
     private int _frames;
     private ulong _lastUsec;
@@ -85,8 +86,8 @@ public sealed class FrameBudget
     public bool Within => Worst <= Limit;
 
     /// <summary>Turns rendering off so a frame costs only the game's own work, and tests run faster. A
+    /// <see cref="BudgetMode.Render"/> run keeps it on: its frames are timed as drawn.</summary>
     public static void RenderingOff() => RenderingServer.RenderLoopEnabled = Mode == BudgetMode.Render;
-
 
     public void Resume()
     {
@@ -159,7 +160,8 @@ public sealed class FrameBudget
 
     public string Summary() =>
         $"worst frame {Worst * 1000f:0.0} ms over {_frames} frames ({Mode} budget {Limit * 1000f:0.0} ms"
-        + (Mode == BudgetMode.Cpu ? $", {CpuBudget * 1000f:0} ms on the reference machine, this one {Slowness:0.00}x slower" : "")
+        + (Mode == BudgetMode.Cpu ? $", {CpuBudget * 1000f:0} ms on the reference machine; benchmark {BenchmarkHere.Value * 1000:0.00} ms here, "
+            + $"{ReferenceBenchmark * 1000:0.00} ms there" : "")
         + ")" + (_worstDuring.Length > 0 ? ", during: " + _worstDuring : "")
         + $"; {WorstOwn * 1000f:0.0} ms without the runtime's own stalls, the longest of which took "
         + $"{WorstStall * 1000f:0.0} ms (limit {StallLimitHere * 1000f:0} ms)";
@@ -187,7 +189,7 @@ public sealed class FrameBudget
             points[i] = new Vector3(i, i * 0.5f, i * 0.25f) * 0.001f;
         }
         var sum = 0f;
-        for (var step = 0; step < 60; step++)
+        for (var step = 0; step < 15; step++)
         {
             for (var i = 0; i < points.Length; i++)
             {
