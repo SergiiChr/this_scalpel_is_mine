@@ -14,7 +14,7 @@ public class GloveStationTest
     [TestCase]
     public async Task LookingAtTheBoxAndInteractingGivesFreshGloves()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         KeyFrames? shots = null;
         try
@@ -82,7 +82,7 @@ public class GloveStationTest
                 await driver.Unbudgeted(() => shots.CaptureView("fresh_gloves",
                     "clean blue gloves on the hands, the \"Fresh gloves.\" toast, no sweat bar"));
             }
-            driver.Budget.Check(shots is not null);
+            driver.Budget.Check();
         }
         finally
         {

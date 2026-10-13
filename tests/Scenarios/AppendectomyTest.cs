@@ -22,7 +22,7 @@ public class AppendectomyTest
     [TestCase(Timeout = Limits.Slow)]
     public async Task TheTextbookRouteEndsWellWithLittleBloodLost()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var surgery = driver.Surgery;

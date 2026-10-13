@@ -36,7 +36,7 @@ public class IvBagTest
     [TestCase]
     public async Task HangsOnTheStandAndIsSwappedForANewBag()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);
@@ -120,7 +120,7 @@ public class IvBagTest
             .IsEqualApprox(1f - (drip.Ml / drip.Def.Volume), 0.001f);
         await driver.Capture("swapped", "the new bag hanging full on the stand in place of the empty one");
 
-        driver.Budget.Check(shots is not null);
+        driver.Budget.Check();
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

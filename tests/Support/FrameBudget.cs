@@ -2,29 +2,65 @@ using System.Runtime;
 
 namespace Scalpel.Tests.Support;
 
+/// <summary>How a run checks frame times: build.py sets it in FRAME_BUDGET, and a run without it (an IDE's) checks
+/// <see cref="Cpu"/>.</summary>
+public enum BudgetMode
+{
+    /// <summary>Frame times aren't checked: on CI, or with suites running alongside each other.</summary>
+    Off,
+    /// <summary>The game's own work per frame, rendering off, scaled to this machine's speed: a check that holds on
+    /// any machine.</summary>
+    Cpu,
+    /// <summary>Whole frames as drawn, on a real display and GPU (./build.py full_performance_run).</summary>
+    Render,
+}
+
 /// <summary>
-/// The game's own work per frame: the wall time from one frame to the next, sampled once per frame while the dynamic
-/// part runs. Run with --fixed-fps (frames don't wait for the clock) and with rendering off or headless (no waiting for
-/// the screen), so what's measured is the game, not VSync or the test machine's GPU. Godot's Performance monitors can't
-/// stand in: they hold the worst frame of the last whole second. After a pause in sampling (loading, a screenshot),
-/// <see cref="Resume"/> starts again without counting the gap.
+/// Frame times: the wall time from one frame to the next, sampled once per frame while the dynamic part runs. Run with
+/// --fixed-fps, so frames don't wait for the clock.
+/// <para>In a <see cref="BudgetMode.Cpu"/> run rendering is off (<see cref="RenderingOff"/>), so a frame is the game's
+/// own work, held to <see cref="CpuBudget"/> scaled by how much slower this machine is than the reference one
+/// (<see cref="Slowness"/>). In a <see cref="BudgetMode.Render"/> run rendering stays on, so a frame is the whole
+/// frame, held to <see cref="RenderBudget"/>.</para>
+/// <para>Godot's Performance monitors can't stand in: they hold the worst frame of the last whole second. After a pause
+/// in sampling (loading, a screenshot), <see cref="Resume"/> starts again without counting the gap.</para>
 /// <para>Also measured: how much of each frame the .NET runtime took for itself, collecting garbage and compiling code
 /// on first use. A frame over the budget only because of that is the known issue <see cref="RuntimeStalls"/>, not a
 /// failure.</para>
 /// </summary>
 public sealed class FrameBudget
 {
-    /// <summary>Interactive gameplay must stay within this per frame so 60 fps remains possible.</summary>
-    public const float Budget = 0.016f;
+    /// <summary>A whole frame, drawn, must stay within this so 60 fps remains possible.</summary>
+    public const float RenderBudget = 0.016f;
 
-    /// <summary>The longest runtime stall in one frame still taken as the known issue <see cref="RuntimeStalls"/>:
-    /// a longer one fails, so pauses that grow don't go unnoticed.</summary>
+    /// <summary>The game's own work per frame on the reference machine: half of <see cref="RenderBudget"/>, the other
+    /// half left for drawing.</summary>
+    public const float CpuBudget = 0.008f;
+
+    /// <summary>The longest runtime stall in one frame on the reference machine still taken as the known issue
+    /// <see cref="RuntimeStalls"/>: a longer one fails, so pauses that grow don't go unnoticed.</summary>
     public const float StallLimit = 0.040f;
 
     /// <summary>Known issue: frames over the budget only for the runtime's own stalls.</summary>
     public const string RuntimeStalls = "the .NET runtime stalls a frame now and then: a garbage collection (up to "
         + "about 40 ms here, about once a minute) or compiling code that runs for the first time (a few ms; the "
         + "loading screen compiles most ahead)";
+
+    /// <summary>How long <see cref="Benchmark"/> takes on the reference machine, an i9-14900HX, in seconds.</summary>
+    private const double ReferenceBenchmark = 0.0040;
+
+    public static BudgetMode Mode { get; } = OS.GetEnvironment("FRAME_BUDGET") switch
+    {
+        "off" => BudgetMode.Off,
+        "render" => BudgetMode.Render,
+        _ => BudgetMode.Cpu,
+    };
+
+    /// <summary>How many times slower than the reference machine this one runs the game's own work: what CPU limits are
+    /// scaled by. Measured once per process, the first time it's needed.</summary>
+    public static double Slowness => SlownessMeasured.Value;
+
+    private static readonly Lazy<double> SlownessMeasured = new(() => Benchmarked() / ReferenceBenchmark);
 
     private int _frames;
     private ulong _lastUsec;
@@ -41,11 +77,16 @@ public sealed class FrameBudget
     /// <summary>The longest the runtime stalled within one frame, in seconds.</summary>
     public float WorstStall { get; private set; }
 
-    public bool Within => Worst <= Budget;
+    /// <summary>This run's limit for one frame, in seconds.</summary>
+    public static float Limit => Mode == BudgetMode.Render ? RenderBudget : (float)(CpuBudget * Slowness);
 
-    /// <summary>Whether this run fails on frames over the budget: everywhere but on CI (build.py test --ci-run), whose
-    /// shared machines are slower than the ones the budget is for.</summary>
-    public static bool Enforced => OS.GetEnvironment("CI_RUN") != "1";
+    private static float StallLimitHere => Mode == BudgetMode.Render ? StallLimit : (float)(StallLimit * Slowness);
+
+    public bool Within => Worst <= Limit;
+
+    /// <summary>Turns rendering off so a frame costs only the game's own work, and tests run faster. A
+    public static void RenderingOff() => RenderingServer.RenderLoopEnabled = Mode == BudgetMode.Render;
+
 
     public void Resume()
     {
@@ -86,22 +127,25 @@ public sealed class FrameBudget
     }
 
     /// <summary>
-    /// The one frame budget check for every test: fails when a frame went over the budget, in a run that renders key
-    /// frames and isn't on CI, and otherwise only reports the worst frame. Headless frame times depend on the machine
-    /// and on suites running alongside, so they're never checked. <paramref name="broken"/> says why a case is known to
-    /// go over: over the budget it then prints a BROKEN line instead of failing (failing in a run with RUN_BROKEN=1),
-    /// so a run tells a known slow case apart from a new one. A frame over only for <see cref="RuntimeStalls"/> is
-    /// such a known case too, as long as no stall took longer than <see cref="StallLimit"/>.
+    /// The one frame budget check for every test: fails when a frame went over <see cref="Limit"/>, and does nothing in
+    /// a run that doesn't check frame times (<see cref="BudgetMode.Off"/>). <paramref name="broken"/> says why a case
+    /// is known to go over: over the budget it then prints a BROKEN line instead of failing (failing in a run with
+    /// RUN_BROKEN=1), so a run tells a known slow case apart from a new one. A frame over only for
+    /// <see cref="RuntimeStalls"/> is such a known case too, as long as no stall took longer than the stall limit.
     /// </summary>
-    public void Check(bool withKeyFrames, string label = "", string broken = "")
+    public void Check(string label = "", string broken = "")
     {
+        if (Mode == BudgetMode.Off)
+        {
+            return;
+        }
         var report = (label.Length > 0 ? label + ": " : "") + Summary();
-        if (!withKeyFrames || !Enforced || Within)
+        if (Within)
         {
             GD.Print(report);
             return;
         }
-        if (broken.Length == 0 && WorstOwn <= Budget && WorstStall <= StallLimit)
+        if (broken.Length == 0 && WorstOwn <= Limit && WorstStall <= StallLimitHere)
         {
             broken = RuntimeStalls;
         }
@@ -114,10 +158,46 @@ public sealed class FrameBudget
     }
 
     public string Summary() =>
-        $"worst frame {Worst * 1000f:0.0} ms of game work over {_frames} frames (budget {Budget * 1000f:0} ms)"
-        + (_worstDuring.Length > 0 ? ", during: " + _worstDuring : "")
+        $"worst frame {Worst * 1000f:0.0} ms over {_frames} frames ({Mode} budget {Limit * 1000f:0.0} ms"
+        + (Mode == BudgetMode.Cpu ? $", {CpuBudget * 1000f:0} ms on the reference machine, this one {Slowness:0.00}x slower" : "")
+        + ")" + (_worstDuring.Length > 0 ? ", during: " + _worstDuring : "")
         + $"; {WorstOwn * 1000f:0.0} ms without the runtime's own stalls, the longest of which took "
-        + $"{WorstStall * 1000f:0.0} ms (limit {StallLimit * 1000f:0} ms)";
+        + $"{WorstStall * 1000f:0.0} ms (limit {StallLimitHere * 1000f:0} ms)";
+
+    /// <summary>The fastest of a few runs of <see cref="Benchmark"/>, in seconds, the first one compiling it.</summary>
+    private static double Benchmarked()
+    {
+        var fastest = double.MaxValue;
+        for (var run = 0; run < 6; run++)
+        {
+            var started = Time.GetTicksUsec();
+            Benchmark();
+            fastest = Math.Min(fastest, run == 0 ? double.MaxValue : (Time.GetTicksUsec() - started) / 1_000_000.0);
+        }
+        return fastest;
+    }
+
+    /// <summary>A fixed piece of work like the game's own, on one thread: vector math over arrays, as the tissue and
+    /// physics code does. Only its time matters, never its result.</summary>
+    private static float Benchmark()
+    {
+        var points = new Vector3[4096];
+        for (var i = 0; i < points.Length; i++)
+        {
+            points[i] = new Vector3(i, i * 0.5f, i * 0.25f) * 0.001f;
+        }
+        var sum = 0f;
+        for (var step = 0; step < 60; step++)
+        {
+            for (var i = 0; i < points.Length; i++)
+            {
+                var moved = points[i].Rotated(Vector3.Up, 0.01f) + (points[(i + 1) % points.Length] * 0.001f);
+                points[i] = moved.Normalized() * Mathf.Sin(moved.Length());
+                sum += points[i].Dot(Vector3.Right);
+            }
+        }
+        return sum;
+    }
 
     /// <summary>Time the runtime has spent so far on garbage collection pauses and on compiling on the main thread.
     /// </summary>

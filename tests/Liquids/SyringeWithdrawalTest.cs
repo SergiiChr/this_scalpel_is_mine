@@ -24,7 +24,7 @@ public class SyringeWithdrawalTest
         var me = surgery.LocalSurgeon!;
         var budget = new FrameBudget();
         KeyFrames? shots = null;
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         if (KeyFrames.Wanted())
         {
             shots = new KeyFrames();
@@ -115,7 +115,7 @@ public class SyringeWithdrawalTest
                 }
             }
         }
-        budget.Check(shots is not null, "Syringe withdrawal");
+        budget.Check("Syringe withdrawal");
         shots?.End();
         await bench.Stop();
         RenderingServer.RenderLoopEnabled = true;

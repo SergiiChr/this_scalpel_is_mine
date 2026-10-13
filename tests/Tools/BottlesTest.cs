@@ -19,7 +19,7 @@ public class BottlesTest
     [TestCase]
     public async Task BottlesComeStandingAndStandWhenGrabIsHeld()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);
@@ -67,7 +67,7 @@ public class BottlesTest
         await driver.AssertAndCapture(vial.State == ToolState.Free && !Stands(vial) && driver.LiesOnTray(vial),
             $"a quick click puts it down lying, as before (tip {TipUp(vial):0.00} up)", "put_down");
 
-        driver.Budget.Check(shots is not null, broken: "the frame the ordered vial arrives takes 17-19 ms of the game's own work");
+        driver.Budget.Check(broken: "the frame the ordered vial arrives takes 17-19 ms of the game's own work");
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

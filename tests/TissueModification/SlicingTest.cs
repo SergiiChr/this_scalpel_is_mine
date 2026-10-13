@@ -759,7 +759,7 @@ public class SlicingTest
             + $"({sorted.Count} frames, {drawn})";
         _report.Add(line);
         GD.Print("    " + line);
-        _budget.Check(_shots, caseId, BudgetBroken);
+        _budget.Check(caseId, BudgetBroken);
         _frameTimes.Clear();
         _budget.Clear();
     }

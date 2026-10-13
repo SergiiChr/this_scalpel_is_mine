@@ -10,7 +10,7 @@ public class RoomTest
     [TestCase("ambulance")]
     public async Task CeilingPanelClearsTheSlab(string environment)
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var room = AutoFree(new Room())!;
         Frames.Root.AddChild(room);
         room.BuildShell(environment);

@@ -35,7 +35,7 @@ public class NurseShopTest
     [TestCase]
     public async Task CartOfFiveWithARepeatIsDeliveredAsOneBatch()
     {
-        RenderingServer.RenderLoopEnabled = false;
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var surgery = driver.Surgery;
@@ -121,7 +121,7 @@ public class NurseShopTest
 
     private static async Task Stop(SurgeryDriver driver, KeyFrames? shots)
     {
-        driver.Budget.Check(shots is not null);
+        driver.Budget.Check();
         if (shots is not null)
         {
             GD.Print($"key frames: {shots.OutDir}");
