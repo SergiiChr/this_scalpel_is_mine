@@ -1,17 +1,19 @@
 namespace Scalpel.Visuals;
 
 /// <summary>A bleeding wound: where (site uv), how fast (ml/s) and how deep under the skin (meters). Depth 0 bleeds onto
-/// the skin; deeper bleeds into the cavity.</summary>
-public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 0f)
+/// the skin; deeper bleeds into the cavity. <paramref name="Point"/>: it bleeds onto the skin from a single hole (a
+/// puncture, a bullet hole), which shows a spot there. A cut along a line shows none on the skin: split by the cut, it
+/// would lie across both lips.</summary>
+public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 0f, bool Point = false)
 {
     public bool Inside => Depth > 0f;
 
     public static Godot.Collections.Array ToVariant(IEnumerable<BleedSource> sources) =>
-        [.. sources.Select(source => (Variant)new Godot.Collections.Array { source.Uv, source.Rate, source.Depth })];
+        [.. sources.Select(source => (Variant)new Godot.Collections.Array { source.Uv, source.Rate, source.Depth, source.Point })];
 
     public static List<BleedSource> FromVariant(Godot.Collections.Array sources) =>
         [.. sources.Select(entry => entry.AsGodotArray())
-            .Select(entry => new BleedSource(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle()))];
+            .Select(entry => new BleedSource(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle(), entry[3].AsBool()))];
 }
 
 /// <summary>
@@ -59,6 +61,8 @@ public partial class BloodFlow : Node3D
     /// </summary>
     private const float SpotMin = 0.0012f;
     private const float SpotGrowth = 0.0015f;
+    /// <summary>Least radius (m) of the film of blood on a cut's lip where it bleeds from inside.</summary>
+    private const float TrailMin = 0.002f;
     /// <summary>Radius (m) of the dome welling up from a bleed under the cavity pool, and how much it grows per
     /// sqrt(ml/s).</summary>
     private const float WellStart = 0.002f;
@@ -184,7 +188,7 @@ public partial class BloodFlow : Node3D
         }
         for (var i = 0; i < Sources.Count; i++)
         {
-            var (uv, rate, _) = Sources[i];
+            var (uv, rate, _, _) = Sources[i];
             if (Sources[i].Inside)
             {
                 continue;
@@ -229,7 +233,7 @@ public partial class BloodFlow : Node3D
             multimesh.InstanceCount = inside * 2;
         }
         var pulse = WellFlat * (1f + 0.3f * Mathf.Sin((float)GameClock.Seconds * Mathf.Tau * WellPulse));
-        foreach (var (uv, rate, depth) in Sources.Where(source => source.Inside))
+        foreach (var (uv, rate, depth, _) in Sources.Where(source => source.Inside))
         {
             if (!body.Tissue.IsOpen(uv, TissueDepth.Skin))
             {
@@ -254,8 +258,9 @@ public partial class BloodFlow : Node3D
     }
 
     /// <summary>
-    /// Paints every source's spot afresh, so one that stopped bleeding is gone: one bleeding onto the skin on the skin,
-    /// one inside the opening in the middle of the wall of the layer it bleeds from. A wound that spills over onto
+    /// Paints every source's spot afresh, so one that stopped bleeding is gone: one bleeding onto the skin from a hole on
+    /// the skin, one inside the opening in the middle of the wall of the layer it bleeds from, with a film of blood on the
+    /// lip above it. A wound that spills over onto
     /// the skin as well as bleeding inside keeps its one spot inside. A spot that would overlap a faster bleed's in
     /// another layer isn't painted: blending the two would smear their depths into a streak down the wall.
     /// </summary>
@@ -268,11 +273,15 @@ public partial class BloodFlow : Node3D
         }
         _spots.Clear();
         var inside = Sources.Where(source => source.Inside).Select(source => source.Uv).ToHashSet();
-        foreach (var (uv, rate, depth) in Sources.OrderByDescending(source => source.Rate))
+        foreach (var (uv, rate, depth, point) in Sources.OrderByDescending(source => source.Rate))
         {
+            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || inside.Contains(uv))
+            {
+                continue;
+            }
             // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
             // it never runs off it.
-            var (top, thickness) = LayerAt(body, depth);
+            var (top, thickness) = LayerAt(body, uv, depth);
             var radius = Mathf.Min(SpotMin + Mathf.Sqrt(rate) * SpotGrowth, WoundMap.MaxSpotRadius);
             if (depth > 0f)
             {
@@ -280,8 +289,7 @@ public partial class BloodFlow : Node3D
             }
             var size = body.MetersToUv(radius);
             var center = depth > 0f ? top + thickness * 0.5f : 0f;
-            if ((depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : inside.Contains(uv))
-                || _spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size))
+            if (_spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size))
             {
                 continue;
             }
@@ -291,6 +299,9 @@ public partial class BloodFlow : Node3D
             }
             else
             {
+                // A film of blood on the lip there, which the walls draw too: it runs down them to the spot.
+                map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv, Mathf.Max(size, body.MetersToUv(TrailMin)), 0.35f,
+                    WoundMap.Mode.Max);
                 map.DiskOps(WoundMap.Layer.Bleeds, uv, size,
                 [
                     new(WoundMap.Spot, 1f, WoundMap.Mode.Max),
@@ -302,12 +313,29 @@ public partial class BloodFlow : Node3D
         }
     }
 
-    /// <summary>The top (meters under the skin) and thickness of the layer <paramref name="depth"/> lies in: the
-    /// muscle for anything under it.</summary>
-    private static (float Top, float Thickness) LayerAt(PatientBody body, float depth) =>
-        depth <= PatientBody.SkinThickness ? (0f, PatientBody.SkinThickness)
-        : depth <= PatientBody.SkinThickness + body.FatThickness ? (PatientBody.SkinThickness, body.FatThickness)
-        : (PatientBody.SkinThickness + body.FatThickness, PatientBody.MuscleThickness);
+    /// <summary>
+    /// The top (meters under the skin) and thickness of the layer whose wall a bleed at <paramref name="uv"/>,
+    /// <paramref name="depth"/> deep, shows on: the one it lies in, the muscle for anything under it, but no deeper than
+    /// the cut there goes. A cut bleeding from its own edges (as deep as the skin) shows on the deepest layer it's cut
+    /// through.
+    /// </summary>
+    private static (float Top, float Thickness) LayerAt(PatientBody body, Vector2 uv, float depth)
+    {
+        var cut = body.Tissue.DeepestCut(uv, body.Tissue.OpenReach * 2f) switch
+        {
+            TissueDepth.Muscle => 2,
+            TissueDepth.Fat => 1,
+            _ => 0,
+        };
+        // As deep as the skin is a cut's own edge: any layer the cut reaches.
+        var lies = depth <= PatientBody.SkinThickness ? 2 : depth <= PatientBody.SkinThickness + body.FatThickness ? 1 : 2;
+        return Math.Min(lies, cut) switch
+        {
+            0 => (0f, PatientBody.SkinThickness),
+            1 => (PatientBody.SkinThickness, body.FatThickness),
+            _ => (PatientBody.SkinThickness + body.FatThickness, PatientBody.MuscleThickness),
+        };
+    }
 
     /// <summary>Spreads a bruise over a bleed under closed skin as blood collects there, keyed like puddles.</summary>
     private void Bruise(PatientBody body, Vector2 uv, float ml)

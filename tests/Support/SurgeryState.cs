@@ -125,6 +125,11 @@ public static class SurgeryState
         return vessel;
     }
 
+    /// <summary>The skin at <paramref name="uv"/> is punctured (a stab of <paramref name="severity"/>, 0..1) and bleeds
+    /// from the hole.</summary>
+    public static Wound SkinIsPunctured(Patient patient, Vector2 uv, float severity) =>
+        patient.NewWound(WoundKind.Puncture, uv, severity);
+
     /// <summary>A tool grips the tissue at <paramref name="uv"/> and holds it pulled <paramref name="by"/> (site-local
     /// meters) from where it lies. Returns the gripped grid point.</summary>
     public static int TissueIsPulled(Patient patient, Vector2 uv, Vector3 by)

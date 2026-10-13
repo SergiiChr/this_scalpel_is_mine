@@ -1,13 +1,15 @@
 namespace Scalpel.Tests.Patients;
 
 /// <summary>
-/// Every bleed shows where it comes from as a spot: a cut bleeding however little puddles on the skin with a spot at
-/// itself, a vessel under skin that isn't cut bruises it instead, and a vessel inside an incision shows its spot in the
-/// middle of its layer's wall, never on the skin over it, however many there are. The spot grows with how fast it
-/// bleeds, the slightest bleed still shows, it's gone once the bleeding stops, and pulling the skin takes it along
-/// instead of leaving it hanging in the air. Under the blood pooled in the cavity it wells up on the pool's surface.
-/// With key frames review the spot in the tiny cut's puddle, the vein-like spots within the incision's layer walls, the
-/// spot riding the pulled edge and a dome on the pool over each vessel.
+/// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, with no spot that
+/// the cut would split across its lips, a puncture shows a spot on the skin in its puddle, a vessel under skin that
+/// isn't cut bruises it instead, and an opened incision and every vessel in it show a spot in the middle of the wall of
+/// the deepest layer they bleed from, never on the skin over it, with blood on the lip above to track it by, however
+/// many there are. The spot grows with how fast it bleeds, the slightest bleed still shows, it's gone once the bleeding
+/// stops, and pulling the skin takes it along instead of leaving it hanging in the air. Under the blood pooled in the
+/// cavity it wells up on the pool's surface. With key frames review the puddles and the puncture's spot, the vein-like
+/// spots within the incision's layer walls under the blood on its lip, the spot riding the pulled edge and a dome on the
+/// pool over each vessel.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("visual_confirmation")]
@@ -27,8 +29,12 @@ public class BleedSourcesTest
             .IsBetween(0.001f, 0.05f);
         AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself")
             .IsGreater(0.5f);
-        AssertString(Spot(body, tiny.BleedPoint)).OverrideFailureMessage("with a spot on the skin where it bleeds").IsEqual("on the skin");
-        await driver.Capture("tiny_cut", "a tiny shallow cut bleeding a little: blood puddled on the skin with a slightly darker spot where it bleeds");
+        AssertString(Spot(body, tiny.BleedPoint)).OverrideFailureMessage("with no spot the cut would split across its lips").IsEqual("none");
+        var puncture = SurgeryState.SkinIsPunctured(patient, new Vector2(0.3f, 0.4f), 0.05f);
+        await Frames.Seconds(1f);
+        AssertString(Spot(body, puncture.Points[0])).OverrideFailureMessage("a puncture shows a spot on the skin where it bleeds")
+            .IsEqual("on the skin");
+        await driver.Capture("tiny_cut", "a tiny shallow cut bleeding a little, blood puddled on the skin at it with no spot; below it a puncture, its puddle with a vein-like spot (blood-red middle, dark bluish rim) where it bleeds");
 
         var closed = SurgeryState.VesselBleeds(patient, new Vector2(0.7f, 0.3f), 0.01f);
         await Frames.Seconds(1f);
@@ -38,9 +44,14 @@ public class BleedSourcesTest
         SurgeryState.WoundIsClamped(closed);
 
         var at = new Vector2(0.5f, 0.62f);
-        SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
+        var incision = SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
         await Frames.Seconds(1f);
-        // Off the cut's own bleed point, which shows its spot on the skin's wall.
+        AssertString(Spot(body, incision.BleedPoint)).OverrideFailureMessage("the opened incision shows a spot on its walls").IsEqual("inside");
+        var shown = SpotCenter(body, incision.BleedPoint);
+        AssertFloat(shown).OverrideFailureMessage($"on the deepest layer it's cut through, not the skin's thin edge ({shown * 1000f:0.0} mm deep)")
+            .IsGreater(PatientBody.SkinThickness + body.FatThickness);
+        AssertFloat(Blood(body, incision.BleedPoint)).OverrideFailureMessage("under blood on the lip above it, to track it by").IsGreater(0.2f);
+        // Off the cut's own bleed point and its spot.
         var middle = at + new Vector2(0.03f, 0f);
         AssertBool(body.Tissue.IsOpen(middle)).OverrideFailureMessage("the vessel lies in the opening").IsTrue();
         var vessel = SurgeryState.VesselBleeds(patient, middle, body.CavityDepth() * 0.5f);
@@ -86,12 +97,13 @@ public class BleedSourcesTest
             .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
         await driver.Capture("vessel_under_pool", "the vessels covered by the pool, each welling up on the pool's surface above it");
 
-        // Many vessels at once along the incision: each shows its spot, inside where the incision gapes, on the skin where
-        // it's shut, or lies right by a faster one's in another layer.
+        // Many vessels at once along the incision: each shows its spot inside where the incision gapes, or lies right by a
+        // faster one's in another layer, and puddles on the skin where it's shut.
         var vessels = Enumerable.Range(0, 20)
             .Select(i => SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM)).ToList();
         await Frames.Seconds(1f);
-        var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f).Select(v => v.Points[0]).ToList();
+        var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f && Blood(body, v.Points[0]) < 0.5f)
+            .Select(v => v.Points[0]).ToList();
         await driver.AssertAndCapture(unseen.Count == 0,
             $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
         await session.Finish();
@@ -106,6 +118,11 @@ public class BleedSourcesTest
             await session.Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, session.Driver.SitePoint(uv), 0.1f));
         }
     }
+
+    /// <summary>How deep (meters) under the skin the center of the bleed spot inside a cut at uv is.</summary>
+    private static float SpotCenter(PatientBody body, Vector2 uv) =>
+        body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SpotDepth, uv)
+        / Mathf.Max(body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.Spot, uv), 0.001f) * WoundMap.MaxSpotDepth;
 
     private static float Blood(PatientBody body, Vector2 uv) => body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);
 

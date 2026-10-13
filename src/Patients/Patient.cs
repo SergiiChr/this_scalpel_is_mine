@@ -323,7 +323,7 @@ public partial class Patient : Node3D
                 }
                 if (spills || !intoCavity || shown <= 0f)
                 {
-                    sources.Add(new BleedSource(at, rate));
+                    sources.Add(new BleedSource(at, rate, Point: wound.IsHole));
                 }
                 if (Rng.Randf() < dt * 0.5f)
                 {
