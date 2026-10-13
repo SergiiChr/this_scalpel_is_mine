@@ -318,9 +318,21 @@ public partial class BloodFlow : Node3D
             // Just above the floor when it starts, so it never sinks into the layer it rests on, and full still a little
             // under the skin, which curves away from a flat pool around the cut.
             var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
-            var radius = Mathf.Lerp(CutPoolStart, CutPoolReach, Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f)));
+            // No wider than the cut gapes: the skin beside it curves away, sharply on a limb, and would show it.
+            var radius = Mathf.Min(Mathf.Lerp(CutPoolStart, CutPoolReach, Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f))),
+                Mathf.Max(body.Tissue.GapAt(uv, 0.02f) * 0.5f, CutPoolLift * 2f));
             var at = body.UvToWorld(uv, depth);
-            var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, CutPoolLift, radius));
+            // Level with the skin over it, which a limb tilts away from the site's own plane.
+            var e = body.MetersToUv(0.003f);
+            var across = body.UvToWorld(uv + new Vector2(e, 0f)) - body.UvToWorld(uv - new Vector2(e, 0f));
+            var along = body.UvToWorld(uv + new Vector2(0f, e)) - body.UvToWorld(uv - new Vector2(0f, e));
+            var up = along.Cross(across).Normalized();
+            if (up.Dot(body.Site.GlobalBasis.Y) < 0f)
+            {
+                up = -up;
+            }
+            var x = across.Slide(up).Normalized();
+            var basis = new Basis(x, up, x.Cross(up)).Scaled(new Vector3(radius, CutPoolLift, radius));
             multimesh.SetInstanceTransform(_cutPools.Count, new Transform3D(basis, at));
             _cutPools.Add(at);
         }
