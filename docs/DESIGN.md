@@ -547,8 +547,7 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   Every wound that bleeds at all shows where, as a spot like a cut vessel (blood-red middle, dark bluish rim) that
   grows with how fast it bleeds and is never too small to see. A hole (puncture, bullet) shows it on the skin; a cut
   along a line shows none there, as the cut would split it across its lips. Inside the opening it sits in the middle of
-  the wall of the deepest layer it bleeds from, no bigger than that wall is high and never on the skin over it, under a
-  film of blood on the lip above that leads down to it. Spots live in the wound map's Bleeds layer, repainted from the
+  the wall of the deepest layer it bleeds from, no bigger than that wall is high and never on the skin over it. Spots live in the wound map's Bleeds layer, repainted from the
   current sources, so they ride the tissue wherever it's pulled and go when the bleeding stops. Once the cavity pool
   covers what one sees down the cut (`Patient.SlitView`) a bleed wells up as a pulsing dome on the pool's surface. One
   under skin that isn't cut spreads a bruise over itself instead.

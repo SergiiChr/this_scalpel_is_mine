@@ -83,8 +83,6 @@ public partial class BloodFlow : Node3D
     /// CutPoolFull (m).</summary>
     private const float CutPoolBrim = 0.3f;
     private const float CutPoolFull = 0.0006f;
-    /// <summary>Least radius (m) of the film of blood on a cut's lip where it bleeds from inside.</summary>
-    private const float TrailMin = 0.002f;
     /// <summary>Radius (m) of the dome welling up from a bleed under the cavity pool, and how much it grows per
     /// sqrt(ml/s).</summary>
     private const float WellStart = 0.002f;
@@ -331,8 +329,7 @@ public partial class BloodFlow : Node3D
 
     /// <summary>
     /// Paints every source's spot afresh, so one that stopped bleeding is gone: one bleeding onto the skin from a hole on
-    /// the skin, one inside the opening in the middle of the wall of the layer it bleeds from, with a film of blood on the
-    /// lip above it. A wound that spills over onto
+    /// the skin, one inside the opening in the middle of the wall of the layer it bleeds from. A wound that spills over onto
     /// the skin as well as bleeding inside keeps its one spot inside. A spot that would overlap a faster bleed's in
     /// another layer isn't painted: blending the two would smear their depths into a streak down the wall.
     /// </summary>
@@ -371,9 +368,6 @@ public partial class BloodFlow : Node3D
             }
             else
             {
-                // A film of blood on the lip there, which the walls draw too: it runs down them to the spot.
-                map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv, Mathf.Max(size, body.MetersToUv(TrailMin)), 0.35f,
-                    WoundMap.Mode.Max);
                 map.DiskOps(WoundMap.Layer.Bleeds, uv, size,
                 [
                     new(WoundMap.Spot, 1f, WoundMap.Mode.Max),

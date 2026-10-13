@@ -4,12 +4,11 @@ namespace Scalpel.Tests.Patients;
 /// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, with no spot that
 /// the cut would split across its lips, a puncture shows a spot on the skin in its puddle, a vessel under skin that
 /// isn't cut bruises it instead, and an opened incision and every vessel in it show a spot in the middle of the wall of
-/// the deepest layer they bleed from, never on the skin over it, with blood on the lip above to track it by, however
-/// many there are. The spot grows with how fast it bleeds, the slightest bleed still shows, it's gone once the bleeding
-/// stops, and pulling the skin takes it along instead of leaving it hanging in the air. Under the blood pooled in the
-/// cavity it wells up on the pool's surface. With key frames review the puddles and the puncture's spot, the vein-like
-/// spots within the incision's layer walls under the blood on its lip, the spot riding the pulled edge and a dome on the
-/// pool over each vessel.
+/// the deepest layer they bleed from, never on the skin over it, however many there are. The spot grows with how fast
+/// it bleeds, the slightest bleed still shows, it's gone once the bleeding stops, and pulling the skin takes it along
+/// instead of leaving it hanging in the air. Under the blood pooled in the cavity it wells up on the pool's surface.
+/// With key frames review the puddles and the puncture's spot, the vein-like spots within the incision's layer walls,
+/// the spot riding the pulled edge and a dome on the pool over each vessel.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation")]
@@ -50,7 +49,6 @@ public class BleedSourcesTest
         var shown = SpotCenter(body, incision.BleedPoint);
         AssertFloat(shown).OverrideFailureMessage($"on the deepest layer it's cut through, not the skin's thin edge ({shown * 1000f:0.0} mm deep)")
             .IsGreater(PatientBody.SkinThickness + body.FatThickness);
-        AssertFloat(Blood(body, incision.BleedPoint)).OverrideFailureMessage("under blood on the lip above it, to track it by").IsGreater(0.2f);
         // Off the cut's own bleed point and its spot.
         var middle = at + new Vector2(0.03f, 0f);
         AssertBool(body.Tissue.IsOpen(middle)).OverrideFailureMessage("the vessel lies in the opening").IsTrue();
