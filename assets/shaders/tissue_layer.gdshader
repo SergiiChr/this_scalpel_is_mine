@@ -1,13 +1,17 @@
 // Layers under the skin, seen through an opened incision.
 // layer 0 = subcutaneous fat (rounded lobules), layer 1 = muscle and fascia (red striated, white sheen),
 // layer 2 = the cut face of the skin in the walls of a cut through it (the patient's skin tone, flecked with tiny vessels).
-// Blood from the fluid map runs down into them.
+// Blood from the fluid map runs down into them. A wound bleeding inside the cut shows a spot on the walls at its depth
+// (UV2.x: meters under the skin).
 shader_type spatial;
 render_mode cull_disabled;
+
+#include "res://assets/shaders/wound.gdshaderinc"
 
 uniform int layer = 0;
 uniform bool cut_face = false;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
+uniform sampler2D bleed_map : filter_linear, hint_default_black;
 // Layer 2 only: the skin's own color (Materials.skin_site()), so the cut face matches the skin around it.
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 
@@ -102,8 +106,10 @@ void fragment() {
 	}
 	NORMAL = bumped(NORMAL, VERTEX, height);
 	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV).r);
-	ALBEDO = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
-	ROUGHNESS = 1.0 - wet * 0.82;
+	c = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
+	float spot = cut_face ? paint_spot(c, bleed_spot(texture(bleed_map, UV), UV2.x)) : 0.0;
+	ALBEDO = c;
+	ROUGHNESS = 1.0 - max(wet, spot) * 0.82;
 	EMISSION = ALBEDO * 0.025;
 }
 

@@ -8,6 +8,7 @@ uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 uniform sampler2D wound_map : filter_linear, hint_default_black;
 uniform sampler2D fluid_map : filter_linear, hint_default_black;
 uniform sampler2D seam_map : filter_linear, hint_default_black;
+uniform sampler2D bleed_map : filter_linear, hint_default_black;
 uniform float rim_strength = 0.2;
 uniform float specular_strength = 0.12;
 uniform float grime = 0.12;
@@ -66,6 +67,7 @@ void fragment() {
 	vec3 c = mix(skin_color.rgb, skin_color.rgb * vec3(0.25, 0.22, 0.15) * 1.6, grime * smoothstep(0.35, 0.9, n));
 	c = mix(c, vec3(0.78, 0.8, 0.8), pallor * 0.5);
 	float wet = apply_wounds(c, w, f);
+	wet = max(wet, paint_spot(c, skin_spot(texture(bleed_map, UV))));
 	ALBEDO = c;
 	ROUGHNESS = mix(0.6, 0.08, wet);
 }

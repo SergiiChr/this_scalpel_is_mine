@@ -149,15 +149,16 @@ public partial class PatientBody
         RegionTexture = ImageTexture.CreateFromImage(_regionImage);
         var skin = Materials.SkinSite(tone, WoundMap.Texture(WoundMap.Layer.Wounds), WoundMap.Texture(WoundMap.Layer.Fluids));
         skin.SetShaderParameter("seam_map", WoundMap.Texture(WoundMap.Layer.Seams));
+        skin.SetShaderParameter("bleed_map", WoundMap.Texture(WoundMap.Layer.Bleeds));
         SkinMaterial = skin;
         string[] names = ["Skin", "Fat", "Muscle"];
         for (var i = 0; i < 3; i++)
         {
             var layer = new MeshInstance3D { Name = names[i], Mesh = new ArrayMesh() };
             // The walls of a cut through the skin are its cut face, in its tone; fat and muscle walls are fat and muscle.
-            var flesh = Materials.TissueLayerMaterial(i > 0 ? i - 1 : 2, WoundMap.Texture(WoundMap.Layer.Fluids), tone,
-                cutFace: true);
-            var sheet = i == 0 ? skin : Materials.TissueLayerMaterial(i - 1, WoundMap.Texture(WoundMap.Layer.Fluids), tone);
+            var (fluids, bleeds) = (WoundMap.Texture(WoundMap.Layer.Fluids), WoundMap.Texture(WoundMap.Layer.Bleeds));
+            var flesh = Materials.TissueLayerMaterial(i > 0 ? i - 1 : 2, fluids, bleeds, tone, cutFace: true);
+            var sheet = i == 0 ? skin : Materials.TissueLayerMaterial(i - 1, fluids, bleeds, tone);
             _layerMaterials.Add((sheet, flesh));
             Site.AddChild(layer);
             _layers.Add(layer);
@@ -1121,6 +1122,8 @@ public partial class PatientBody
         var wallNormals = new List<Vector3>();
         var wallUvs = new List<Vector2>();
         var wallColors = new List<Color>();
+        // How deep under the skin each wall corner is, for bleed spots.
+        var wallDepths = new List<Vector2>();
         var wallIndices = new List<int>();
         for (var w = 0; w < plan.Wall.Count; w += 3)
         {
@@ -1150,6 +1153,8 @@ public partial class PatientBody
                 wallNormals.AddRange([normal, normal, normal, normal]);
                 wallUvs.AddRange([uvStart, uvEnd, uvEnd, uvStart]);
                 wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White, Colors.White]);
+                var (top, bottom) = (new Vector2(depth, 0f), new Vector2(depth + thickness, 0f));
+                wallDepths.AddRange([top, top, bottom, bottom]);
                 // Godot's front faces wind clockwise seen from the side the normal points to.
                 if ((lowEnd - start).Cross(end - start).Dot(normal) > 0f)
                 {
@@ -1163,7 +1168,7 @@ public partial class PatientBody
         }
         return (
             MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. index]),
-            MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors]));
+            MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
     }
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
@@ -1361,7 +1366,7 @@ public partial class PatientBody
     /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
     /// them.</summary>
     private static Godot.Collections.Array? MeshArrays(Vector3[] vertices, Vector3[] normals, Vector2[] uvs,
-        int[] indices, Color[]? colors = null)
+        int[] indices, Color[]? colors = null, Vector2[]? uvs2 = null)
     {
         if (indices.Length == 0)
         {
@@ -1376,6 +1381,10 @@ public partial class PatientBody
         if (colors is not null)
         {
             arrays[(int)Mesh.ArrayType.Color] = colors;
+        }
+        if (uvs2 is not null)
+        {
+            arrays[(int)Mesh.ArrayType.TexUV2] = uvs2;
         }
         return arrays;
     }

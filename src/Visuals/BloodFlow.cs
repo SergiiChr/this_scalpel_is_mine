@@ -19,8 +19,10 @@ public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 
 /// with the blood lost, and release rivulets from its edge that run downhill over the skin, staining it as they go
 /// (the fluid map). Where a rivulet runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
-/// Bleeding inside the opening wells up as a pulsing dome where it comes from, on the cavity pool's surface once that
-/// covers it. Bleeding under skin that isn't cut open spreads a bruise over it. Either way every bleed shows its source.
+/// Every bleed shows its source as a spot a little darker than blood: on the skin where it bleeds onto it, on the cut's
+/// wall at its depth where it bleeds inside the opening (never on the skin over it), and as a pulsing dome on the cavity
+/// pool's surface once that covers it. Spots are painted by uv, so they ride the tissue wherever it's pulled.
+/// Bleeding under skin that isn't cut open spreads a bruise over it.
 /// Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
 /// </summary>
 public partial class BloodFlow : Node3D
@@ -53,7 +55,12 @@ public partial class BloodFlow : Node3D
     private const float PuddlePaintInterval = 0.2f;
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
     private const float SplashReach = 0.75f;
-    /// <summary>Radius (m) of the dome welling up from a bleed inside, and how much it grows per sqrt(ml/s).</summary>
+    /// <summary>Radius (m) of a bleed's spot, and how much it grows per sqrt(ml/s): the slightest bleed still shows.
+    /// </summary>
+    private const float SpotMin = 0.0012f;
+    private const float SpotGrowth = 0.0015f;
+    /// <summary>Radius (m) of the dome welling up from a bleed under the cavity pool, and how much it grows per
+    /// sqrt(ml/s).</summary>
     private const float WellStart = 0.002f;
     private const float WellGrowth = 0.003f;
     private const float WellMax = 0.008f;
@@ -79,6 +86,12 @@ public partial class BloodFlow : Node3D
         public Vector3 Velocity = velocity;
     }
 
+    private static readonly PaintOp[] WipeSpot =
+    [
+        new(WoundMap.SkinSpot, 1f, WoundMap.Mode.Sub), new(WoundMap.Spot, 1f, WoundMap.Mode.Sub),
+        new(WoundMap.SpotRadius, 1f, WoundMap.Mode.Sub), new(WoundMap.SpotDepth, 1f, WoundMap.Mode.Sub),
+    ];
+
     private readonly List<Rivulet> _rivulets = [];
     private readonly List<Drop> _drops = [];
     private readonly List<MeshInstance3D> _pools = [];
@@ -95,12 +108,15 @@ public partial class BloodFlow : Node3D
     private MultiMeshInstance3D _dropMesh = null!;
     private MultiMeshInstance3D _wellMesh = null!;
     private readonly List<Vector3> _wells = [];
+    /// <summary>The spots painted last (uv, radius in uv, depth of their center), wiped before the sources are painted
+    /// again.</summary>
+    private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
     private PatientBody? _body;
 
     /// <summary>The bleeding wounds.</summary>
     public List<BleedSource> Sources { get; set; } = [];
 
-    /// <summary>Where the welling domes stand now (world).</summary>
+    /// <summary>Where the domes welling up on the cavity pool stand now (world).</summary>
     internal IReadOnlyList<Vector3> Wells => _wells;
 
     public void Setup(PatientBody patientBody)
@@ -150,6 +166,10 @@ public partial class BloodFlow : Node3D
         }
         Spawn(_body, (float)delta);
         Well(_body, (float)delta);
+        if (_paintPuddles)
+        {
+            Spots(_body);
+        }
         Flow(_body, (float)delta);
         Fall((float)delta);
     }
@@ -195,8 +215,8 @@ public partial class BloodFlow : Node3D
     }
 
     /// <summary>
-    /// Bleeds inside: one pulsing dome at each source in the opening, risen to the cavity pool's surface when that
-    /// covers it, spurting when strong. A source under skin that isn't open spreads a bruise over itself instead.
+    /// Bleeds inside: a pulsing dome on the cavity pool's surface where that covers a source in the opening, spurting
+    /// when strong. A source under skin that isn't open spreads a bruise over itself instead.
     /// </summary>
     private void Well(PatientBody body, float delta)
     {
@@ -217,16 +237,77 @@ public partial class BloodFlow : Node3D
                 continue;
             }
             var local = body.Site.ToLocal(body.UvToWorld(uv, depth));
+            var pooled = local.Y < body.CavityPoolHeight;
             local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
             var at = body.Site.ToGlobal(local);
-            var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
-            var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
-            multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
-            _wells.Add(at);
+            // The pool doesn't move with the tissue, so a dome on it stays where it wells up.
+            if (pooled)
+            {
+                var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
+                var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
+                multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
+                _wells.Add(at);
+            }
             Spurt(body, at, rate, delta);
         }
         multimesh.VisibleInstanceCount = _wells.Count;
     }
+
+    /// <summary>
+    /// Paints every source's spot afresh, so one that stopped bleeding is gone: one bleeding onto the skin on the skin,
+    /// one inside the opening in the middle of the wall of the layer it bleeds from. A wound that spills over onto
+    /// the skin as well as bleeding inside keeps its one spot inside. A spot that would overlap a faster bleed's in
+    /// another layer isn't painted: blending the two would smear their depths into a streak down the wall.
+    /// </summary>
+    private void Spots(PatientBody body)
+    {
+        var map = body.WoundMap;
+        foreach (var (uv, radius, _) in _spots)
+        {
+            map.DiskOps(WoundMap.Layer.Bleeds, uv, radius, WipeSpot, soft: false);
+        }
+        _spots.Clear();
+        var inside = Sources.Where(source => source.Inside).Select(source => source.Uv).ToHashSet();
+        foreach (var (uv, rate, depth) in Sources.OrderByDescending(source => source.Rate))
+        {
+            // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
+            // it never runs off it.
+            var (top, thickness) = LayerAt(body, depth);
+            var radius = Mathf.Min(SpotMin + Mathf.Sqrt(rate) * SpotGrowth, WoundMap.MaxSpotRadius);
+            if (depth > 0f)
+            {
+                radius = Mathf.Min(radius, thickness * 0.5f);
+            }
+            var size = body.MetersToUv(radius);
+            var center = depth > 0f ? top + thickness * 0.5f : 0f;
+            if ((depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : inside.Contains(uv))
+                || _spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size))
+            {
+                continue;
+            }
+            if (depth <= 0f)
+            {
+                map.Disk(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv, size, 1f, WoundMap.Mode.Max);
+            }
+            else
+            {
+                map.DiskOps(WoundMap.Layer.Bleeds, uv, size,
+                [
+                    new(WoundMap.Spot, 1f, WoundMap.Mode.Max),
+                    new(WoundMap.SpotRadius, radius / WoundMap.MaxSpotRadius, WoundMap.Mode.Max),
+                    new(WoundMap.SpotDepth, center / WoundMap.MaxSpotDepth, WoundMap.Mode.Max),
+                ]);
+            }
+            _spots.Add((uv, size, center));
+        }
+    }
+
+    /// <summary>The top (meters under the skin) and thickness of the layer <paramref name="depth"/> lies in: the
+    /// muscle for anything under it.</summary>
+    private static (float Top, float Thickness) LayerAt(PatientBody body, float depth) =>
+        depth <= PatientBody.SkinThickness ? (0f, PatientBody.SkinThickness)
+        : depth <= PatientBody.SkinThickness + body.FatThickness ? (PatientBody.SkinThickness, body.FatThickness)
+        : (PatientBody.SkinThickness + body.FatThickness, PatientBody.MuscleThickness);
 
     /// <summary>Spreads a bruise over a bleed under closed skin as blood collects there, keyed like puddles.</summary>
     private void Bruise(PatientBody body, Vector2 uv, float ml)

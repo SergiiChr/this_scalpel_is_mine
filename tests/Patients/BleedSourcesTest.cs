@@ -1,10 +1,13 @@
 namespace Scalpel.Tests.Patients;
 
 /// <summary>
-/// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, and a vessel
-/// inside an incision wells up where it is, however many there are. Under a narrow incision its blood wells up the slit
-/// as far as one can see down it, and stays on top of the blood pooled in the cavity once that rises. With key frames
-/// review the puddle on the tiny cut and a dome standing in the incision over each vessel.
+/// Every bleed shows where it comes from as a spot: a cut bleeding however little puddles on the skin with a spot at
+/// itself, a vessel under skin that isn't cut bruises it instead, and a vessel inside an incision shows its spot in the
+/// middle of its layer's wall, never on the skin over it, however many there are. The spot grows with how fast it
+/// bleeds, the slightest bleed still shows, it's gone once the bleeding stops, and pulling the skin takes it along
+/// instead of leaving it hanging in the air. Under the blood pooled in the cavity it wells up on the pool's surface.
+/// With key frames review the spot in the tiny cut's puddle, the vein-like spots within the incision's layer walls, the
+/// spot riding the pulled edge and a dome on the pool over each vessel.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("visual_confirmation")]
@@ -22,44 +25,114 @@ public class BleedSourcesTest
         await Frames.Seconds(2f);
         AssertFloat(tiny.Bleeding).OverrideFailureMessage($"a tiny shallow cut bleeds a little: {driver.Bleeders()}")
             .IsBetween(0.001f, 0.05f);
-        AssertFloat(body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, tiny.BleedPoint))
-            .OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself").IsGreater(0.5f);
-        await driver.Capture("tiny_cut", "a tiny shallow cut bleeding a little, blood puddled on the skin at it");
+        AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself")
+            .IsGreater(0.5f);
+        AssertString(Spot(body, tiny.BleedPoint)).OverrideFailureMessage("with a spot on the skin where it bleeds").IsEqual("on the skin");
+        await driver.Capture("tiny_cut", "a tiny shallow cut bleeding a little: blood puddled on the skin with a slightly darker spot where it bleeds");
+
+        var closed = SurgeryState.VesselBleeds(patient, new Vector2(0.7f, 0.3f), 0.01f);
+        await Frames.Seconds(1f);
+        AssertFloat(body.WoundMap.Value(WoundMap.Layer.Wounds, WoundMap.Bruise, closed.Points[0]))
+            .OverrideFailureMessage("a vessel bleeding under skin that isn't cut spreads a bruise over itself").IsGreater(0.2f);
+        AssertString(Spot(body, closed.Points[0])).OverrideFailureMessage("with no spot on the skin over it").IsEqual("none");
+        SurgeryState.WoundIsClamped(closed);
 
         var at = new Vector2(0.5f, 0.62f);
         SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
         await Frames.Seconds(1f);
-        AssertBool(body.Tissue.IsOpen(at)).OverrideFailureMessage("the vessel lies in the opening").IsTrue();
-        var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
+        // Off the cut's own bleed point, which shows its spot on the skin's wall.
+        var middle = at + new Vector2(0.03f, 0f);
+        AssertBool(body.Tissue.IsOpen(middle)).OverrideFailureMessage("the vessel lies in the opening").IsTrue();
+        var vessel = SurgeryState.VesselBleeds(patient, middle, body.CavityDepth() * 0.5f);
+        var strong = SurgeryState.VesselBleeds(patient, at + new Vector2(0.07f, 0f), vessel.DepthM, 1f);
+        var weak = SurgeryState.VesselBleeds(patient, at - new Vector2(0.07f, 0f), vessel.DepthM, 0.01f);
         await Frames.Seconds(1f);
-        AssertString(Wells(driver, vessel)).OverrideFailureMessage("the vessel wells up where it is").IsEqual("at the vessel");
-        var seen = Mathf.Max(body.Tissue.GapAt(at, 0.02f) * Patient.SlitView, PatientBody.SkinThickness);
-        var shown = -body.HeightAboveSite(body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(at)));
-        AssertFloat(shown).OverrideFailureMessage($"deep under a narrow incision, it wells up the slit to where it can be seen ({seen * 100f:0.0} cm)")
-            .IsLessEqual(seen + 0.002f);
-        await driver.Capture("vessel", "a deep vessel under a narrow incision, its blood welling up the slit where it can be seen");
+        AssertString(Spot(body, middle)).OverrideFailureMessage("the vessel shows its spot on the cut's walls, not on the skin over it")
+            .IsEqual("inside");
+        AssertInt(body.Blood.Wells.Count).OverrideFailureMessage("nothing of it stands off the tissue").IsEqual(0);
+        AssertFloat(weak.Bleeding).OverrideFailureMessage("the weak vessel bleeds the least a vessel bleeds")
+            .IsLess(strong.Bleeding * 0.05f);
+        AssertString(Spot(body, weak.Points[0])).OverrideFailureMessage($"however little it bleeds ({weak.Bleeding:0.000} ml/s), its spot shows")
+            .IsEqual("inside");
+        var (strongSpot, weakSpot) = (SpotArea(body, strong.Points[0]), SpotArea(body, weak.Points[0]));
+        AssertFloat(strongSpot).OverrideFailureMessage($"the spot grows with the bleeding ({strongSpot:0.0} mm² against {weakSpot:0.0} mm²)")
+            .IsGreater(weakSpot * 2f);
+        await driver.Capture("vessels", "three vessels bleeding in the incision, each a round vein-like spot (blood-red middle, dark bluish rim) within its layer's wall, none on the skin around the cut: the right one fast with the biggest spot, the left one barely with the smallest");
+        await CloseUp(session, "vessels_close", "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut", at);
 
-        var risen = await Frames.Until(() => body.CavityPoolHeight > body.Site.ToLocal(driver.SitePoint(at, vessel.DepthM)).Y, 180f);
-        AssertBool(risen).OverrideFailureMessage($"the cavity pool rises over the vessel ({patient.CavityBloodMl:0} ml)").IsTrue();
+        SurgeryState.WoundIsClamped(weak);
         await Frames.Seconds(0.5f);
-        AssertString(Wells(driver, vessel)).OverrideFailureMessage("covered by the pool, it still wells up where it is")
-            .IsEqual("at the vessel");
-        var well = body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(at));
+        AssertString(Spot(body, weak.Points[0])).OverrideFailureMessage($"stopped bleeding ({weak.Bleeding:0.000} ml/s), its spot is gone")
+            .IsEqual("none");
+
+        // The edge holding the vessel pulled two centimeters across the cut: the spot goes with it.
+        var k = SurgeryState.TissueIsPulled(patient, middle, new Vector3(0f, 0f, 0.02f));
+        var before = body.LayerPoint(0, k);
+        await Frames.Seconds(1f);
+        var moved = body.LayerPoint(0, k).DistanceTo(before);
+        AssertFloat(moved).OverrideFailureMessage($"the edge is pulled ({moved * 1000f:0.0} mm)").IsGreater(0.012f);
+        AssertString(Spot(body, middle)).OverrideFailureMessage("the spot stays on the pulled tissue").IsEqual("inside");
+        AssertInt(body.Blood.Wells.Count).OverrideFailureMessage("nothing is left hanging where the edge was").IsEqual(0);
+        await driver.Capture("pulled", "the incision's edge at the middle vessel pulled two centimeters away: the vessel's spot is on the pulled edge's wall, nothing hangs in the air where it was");
+        await CloseUp(session, "pulled_close", "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was", middle);
+
+        var risen = await Frames.Until(() => Wells(driver, vessel) == "at the vessel", 180f);
+        AssertBool(risen).OverrideFailureMessage($"once the cavity pool covers it, it wells up where it is ({patient.CavityBloodMl:0} ml, {Wells(driver, vessel)})")
+            .IsTrue();
+        await Frames.Seconds(0.5f);
+        var well = body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(middle));
         // Placed on the frame before, while the pool keeps rising.
         AssertFloat(body.Site.ToLocal(well).Y).OverrideFailureMessage($"on the pool's surface ({body.CavityPoolHeight:0.0000} m)")
             .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
-        await driver.Capture("vessel_under_pool", "the vessel covered by the pool, still welling up on the pool's surface above it");
+        await driver.Capture("vessel_under_pool", "the vessels covered by the pool, each welling up on the pool's surface above it");
 
-        // Many vessels at once along the incision, more than the domes first made room for: each shows, welling up
-        // where the incision gapes, seeping onto the skin where it's shut.
+        // Many vessels at once along the incision: each shows its spot, inside where the incision gapes, on the skin where
+        // it's shut, or lies right by a faster one's in another layer.
         var vessels = Enumerable.Range(0, 20)
             .Select(i => SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM)).ToList();
         await Frames.Seconds(1f);
-        var unseen = vessels.Where(v => Wells(driver, v) != "at the vessel"
-            && body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, v.Points[0]) < 0.5f).Select(v => v.Points[0]).ToList();
+        var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f).Select(v => v.Points[0]).ToList();
         await driver.AssertAndCapture(unseen.Count == 0,
             $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
         await session.Finish();
+    }
+
+    /// <summary>Key frame <paramref name="keyFrame"/> close on the site at <paramref name="uv"/>, from above and
+    /// obliquely.</summary>
+    private static async Task CloseUp(ToolSession session, string keyFrame, string description, Vector2 uv)
+    {
+        if (session.Shots is { } shots)
+        {
+            await session.Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, session.Driver.SitePoint(uv), 0.1f));
+        }
+    }
+
+    private static float Blood(PatientBody body, Vector2 uv) => body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);
+
+    /// <summary>"on the skin", "inside" (on the walls of a cut, under the skin) or "none": the bleed spot at uv.</summary>
+    private static string Spot(PatientBody body, Vector2 uv) =>
+        body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.Spot, uv) > 0.5f ? "inside"
+        : body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv) > 0.5f ? "on the skin" : "none";
+
+    /// <summary>Area (mm²) around <paramref name="uv"/>, within <paramref name="within"/> meters, that a bleed spot of
+    /// either kind covers.</summary>
+    private static float SpotArea(PatientBody body, Vector2 uv, float within = 0.01f)
+    {
+        var texel = 1f / body.WoundMap.Size;
+        var reach = Mathf.CeilToInt(body.MetersToUv(within) / texel);
+        var covered = 0;
+        for (var j = -reach; j <= reach; j++)
+        {
+            for (var i = -reach; i <= reach; i++)
+            {
+                var at = uv + new Vector2(i, j) * texel;
+                var spot = Mathf.Max(body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.Spot, at),
+                    body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, at));
+                covered += spot > 0f ? 1 : 0;
+            }
+        }
+        var mm = body.UvToMeters(texel) * 1000f;
+        return covered * mm * mm;
     }
 
     /// <summary>"at the vessel" when a welling dome stands over it (within a few millimeters across the site), else
