@@ -35,7 +35,6 @@ public class BottlesTest
         driver.Budget.Clear();
         var onTray = driver.FreeTools(Vial);
         await driver.PlayerOrders([Vial]);
-        await Frames.Until(() => driver.FreeTools(Vial).Count > onTray.Count, 60f);
         await Frames.Seconds(1f);
         vial = driver.FreeTools(Vial).First(tool => !onTray.Contains(tool));
         AssertBool(Stands(vial)).OverrideFailureMessage($"a vial comes from the nurse standing, cap up (tip {TipUp(vial):0.00} up)").IsTrue();

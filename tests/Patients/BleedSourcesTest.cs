@@ -18,7 +18,7 @@ public class BleedSourcesTest
     [TestCase(Timeout = Limits.Slow)]
     public async Task EveryBleedShowsWhereItComesFrom()
     {
-        var session = await ToolSession.Start("appendectomy", "bleed_sources");
+        var session = await ToolSession.Start("appendectomy", "bleed_sources", captureUntouched: true);
         var driver = session.Driver;
         var patient = driver.Patient;
         var body = driver.Body;

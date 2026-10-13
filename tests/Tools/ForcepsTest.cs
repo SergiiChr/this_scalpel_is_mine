@@ -129,7 +129,7 @@ public class ForcepsTest
     /// <summary>The thigh's entry wound opened through every layer along the bullet, and the scalpel put down.</summary>
     private static async Task<(ToolSession Session, CavityTarget Bullet)> OpenOverBullet(string folder)
     {
-        var session = await ToolSession.Start("bullet_muscle", folder);
+        var session = await ToolSession.Start("bullet_muscle", folder, captureUntouched: folder == "forceps/edge_and_bullet");
         var driver = session.Driver;
         var bullet = driver.Patient.Targets.Single(target => target.Kind == "bullet");
         var half = new Vector2(driver.Body.MetersToUv(Opening * 0.5f), 0f);
@@ -137,7 +137,10 @@ public class ForcepsTest
         await driver.PlayerPutsDown();
         await Frames.Seconds(1f);
         AssertBool(driver.Body.IsOpen(bullet.Uv)).OverrideFailureMessage("the cut opens over the bullet").IsTrue();
-        await driver.Capture("opened", "the entry wound cut open along the bullet, through every layer");
+        if (folder == "forceps/edge_and_bullet")
+        {
+            await driver.Capture("opened", "the entry wound cut open along the bullet, through every layer");
+        }
         return (session, bullet);
     }
 
@@ -146,11 +149,15 @@ public class ForcepsTest
     private static Vector2 SkinBeside(SurgeryDriver driver, Vector2 uv)
     {
         var step = new Vector2(0f, driver.Body.MetersToUv(0.001f));
-        while (driver.Body.IsOpen(uv))
+        var probes = Mathf.CeilToInt(Mathf.Max(1f - uv.Y, 0f) / step.Y) + 1;
+        for (var probe = 0; probe < probes; probe++, uv += step)
         {
-            uv += step;
+            if (!driver.Body.IsOpen(uv))
+            {
+                return uv + (step * 2f);
+            }
         }
-        return uv + (step * 2f);
+        throw new InvalidOperationException("No intact skin beside the opening before the site's edge.");
     }
 
     /// <summary>Lift held until the tip is up, then Use tool pressed and held: the press counts with the tip in the

@@ -63,6 +63,20 @@ public static class SurgeryState
     public static void PatientIsAsleep(Patient patient) =>
         patient.Administer("propofol", DrugRoute.Direct, Db.Drug("propofol")!.Dose * patient.WeightKg);
 
+    /// <summary>No remaining dose or effectiveness flag for this drug, between independent plunger checks.
+    /// Other drugs (the shared patient's anesthesia) and its prepared tissue stay intact.</summary>
+    public static void PatientHasNoDrug(Patient patient, string id)
+    {
+        if (patient.Drugs.Find(id) is { } entry)
+        {
+            entry.Depot = 0f;
+            entry.Level = 0f;
+            entry.Working = -1f;
+            entry.Overdosed = false;
+        }
+        patient.Flags.Remove("drug_" + id);
+    }
+
     /// <summary>As if lidocaine had gone into the site: numb within seconds.</summary>
     public static void PatientIsNumb(Patient patient) =>
         patient.Administer("lidocaine", DrugRoute.Direct, Db.Drug("lidocaine")!.Dose * patient.WeightKg);
@@ -189,6 +203,24 @@ public static class SurgeryState
 
     /// <summary>A tool lying in a free place on the instrument tray (stocked there, as the nurse would have).</summary>
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
+
+    /// <summary>Advance only the nurse's outstanding delivery and cooldown, without aging the patient.</summary>
+    public static void NurseHasDelivered(Surgery surgery)
+    {
+        var nurse = surgery.Nurse;
+        if (nurse.Current is { } order)
+        {
+            nurse.Tick(order.SecondsLeft, surgery);
+        }
+        nurse.Tick(nurse.CooldownLeft, surgery);
+    }
+
+    /// <summary>The nurse and shop are ready for the next ordinary test's order.</summary>
+    public static void NurseIsReady(Surgery surgery)
+    {
+        NurseHasDelivered(surgery);
+        surgery.Hud.Shop.Update("", surgery.Nurse.Idle);
+    }
 
     /// <summary>The bag on the IV stand has run dry.</summary>
     public static void IvBagIsEmpty(Surgery surgery)

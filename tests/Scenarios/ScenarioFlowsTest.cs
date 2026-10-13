@@ -18,7 +18,8 @@ public class ScenarioFlowsTest
     [TestCase]
     public void EveryScenarioHasAFlow()
     {
-        var cases = typeof(ScenarioFlowsTest).GetMethods()
+        var cases = new[] { typeof(ScenarioFlowsTest), typeof(HandStitchScenarioTest) }
+            .SelectMany(suite => suite.GetMethods())
             .SelectMany(method => method.GetCustomAttributes<TestCaseAttribute>())
             .Where(row => row.Arguments.Length > 0)
             .Select(row => row.Arguments[0] as string)
@@ -30,7 +31,6 @@ public class ScenarioFlowsTest
         }
     }
 
-    [TestCase("hand_stitch", false, "", Timeout = Limits.Slow)]
     [TestCase("hand_stitch_child", false, "", Timeout = Limits.Slow)]
     [TestCase("appendectomy", false,
         "with key frames the worst frame takes 28 ms of game work (budget 16 ms) while sewing the muscle.", Timeout = Limits.Slow)]

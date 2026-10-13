@@ -20,7 +20,7 @@ public class StaplerTest
     [TestCase]
     public async Task SkinStaplerClosesAForearmCut()
     {
-        var session = await ToolSession.Start("hand_stitch", "stapler/forearm", views: true);
+        var session = await ToolSession.Start("hand_stitch", "stapler/forearm", views: true, captureUntouched: true);
         var driver = session.Driver;
         var patient = driver.Patient;
         var body = driver.Body;
@@ -81,7 +81,7 @@ public class StaplerTest
         AssertBool(body.StapleWire is not null && body.DrawnStaples.Count == 1).OverrideFailureMessage("the staple is drawn")
             .IsTrue();
 
-        var placed = 1 + await driver.PlayerStaples(wound);
+        var placed = 1 + await driver.PlayerStaples(wound, captureProgress: true);
         await Frames.Seconds(1f);
         AssertFloat(wound.Closure).OverrideFailureMessage($"stapled along its length the cut is closed\n{driver.Recent()}")
             .IsGreater(0.99f);

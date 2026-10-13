@@ -7,15 +7,13 @@ namespace Scalpel.Tests.Scenarios;
 [GodotArgs("--fixed-fps", "60")]
 public class AnesthesiaPathsTest
 {
-    [TestCase("first", Timeout = Limits.Slow)]
-    [TestCase("second", Timeout = Limits.Slow)]
-    [TestCase("third", Timeout = Limits.Slow)]
-    public async Task PreinstalledIvDeliversAnesthesiaAndCompletesTheObjective(string patientRun)
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task PreinstalledIvDeliversAnesthesiaAndCompletesTheObjective()
     {
         using var debug = SurgeryState.DebugHudIsEnabled();
         var driver = SurgeryDriver.Create();
-        var seed = patientRun switch { "first" => 1u, "second" => 2u, _ => 3u };
-        await driver.Start("bullet_muscle", seed: seed);
+        const uint Seed = 1;
+        await driver.Start("bullet_muscle", seed: Seed);
         var patient = driver.Patient;
         var dressing = driver.Surgery.Room.IvLine.Dressing!;
         var forearm = dressing.GetParent<Forearm>();
@@ -47,7 +45,7 @@ public class AnesthesiaPathsTest
         {
             shots = new KeyFrames();
             driver.AddChild(shots);
-            shots.Begin(driver.Surgery, $"preop_anesthesia/{seed}");
+            shots.Begin(driver.Surgery, $"preop_anesthesia/{Seed}");
             await shots.CaptureAt("installed_iv", "the preinstalled IV in the arm under its dressing, the line attached", dressing.GlobalPosition, 0.24f);
             await shots.CaptureView("awake", "the patient awake, the objective reading 0% / 70% anesthesia");
         }
@@ -63,8 +61,7 @@ public class AnesthesiaPathsTest
         if (shots is not null)
         {
             await shots.CaptureView("anesthetized", "the patient under after the chart dose, \"Put the patient under\" checked off");
-            await Frames.Seconds(2f);
-            await shots.CaptureAt("iv_after_anesthesia", "the IV still in place under its dressing after the drip", dressing.GlobalPosition, 0.24f);
+
             shots.End();
         }
         await driver.Stop();

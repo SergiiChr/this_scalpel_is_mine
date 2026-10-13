@@ -35,7 +35,7 @@ public class PulledSkinTest
     [TestCase("leg_extension")]
     public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario)
     {
-        var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}");
+        var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}", captureUntouched: scenario == "leg_extension");
         var driver = session.Driver;
         var body = driver.Body;
         var tissue = body.Tissue;

@@ -66,6 +66,17 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - Suites live in `tests/<Feature>/<Name>Test.cs` (namespace `Scalpel.Tests.<Feature>`), with
   `[TestSuite, RequireGodotRuntime]` on the class and `[TestCase]` on each case. Shared helpers live in
   `tests/Support/`.
+- Compatible cases share setup through `SharedScene<T>` (`tests/Support/SharedScene.cs`): use a named group, reset
+  its input and temporary tools before each case, and complete it only after all assertions pass. Run
+  `DiscardIncomplete()` after each case and `Stop()` after the suite. Empty groups get fresh scenes. Keep cases that
+  change tissue, IV delivery, sedation or animation baselines isolated unless their reset is explicitly verified.
+  Keep individual cases and their result timings; do not replace them with one opaque loop.
+- Ordinary driver cases advance only the nurse delivery/cooldown clock through `SurgeryState`; they do not wait for
+  ordering delays. `NurseShopTest` alone enables `WaitForNurse` and checks delivery timing, deadline expiration and
+  cooldown rejection. General case/session safety timeouts remain enabled. Fixtures that need anesthesia before
+  tissue changes assert that preparation explicitly rather than relying on time spent waiting for the nurse.
+- Core mechanic assertions belong in a fitting full scenario flow when that flow already performs the action.
+  Specialized failure paths and destructive stress checks stay separate. Shared flow checks live in `tests/Support/`.
 - Cases that differ only in a value (every scenario) are one method with a `[TestCase(value)]` row per value.
 - A suite declares its categories with `[TestCategory("...")]` and its Godot options with
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
@@ -82,6 +93,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   light 5 cm cut, and the opening measures 5 cm.
 - Don't check the same thing twice. A mechanic an end-to-end case already proves needs no dedicated check; a sweep
   over every scenario runs scenario-independent checks once.
+- Choose one representative per behavior class, plus values just inside, at and beyond a meaningful boundary.
+  Repeated input is justified by cumulative behavior or an animation transition; avoid replaying equivalent strokes
+  or repositioning when the target has not changed.
 - Use hard programmatic checks (geometry, gaps, alignment, masks, depth, physics) wherever a defect is measurable.
 - Player actions and direct state changes stay apart. `Player*` steps in `tests/Support/SurgeryDriver*.cs`
   (`PlayerRequestsItem("scalpel")`, `PlayerCutsSkin(from, to, level)`) walk, hold tools and press the player's
@@ -111,6 +125,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - Capture with `KeyFrames` right after a named action, never on elapsed time. A case with key frames is one case:
   it takes them only when `KeyFrames.Wanted()`, never in a copy made for screenshots. A feature an end-to-end case
   already captures needs no more screenshots.
+- Capture each distinct visual claim once. Shared helpers opt into stitch/staple progress shots; callers capture
+  their final result. Keep one untouched reference per distinct fixture, and use the player view for HUD, zoom and
+  transparency claims instead of adding site views that cannot show them. Internal objective flags use assertions.
 - Every key frame carries a description of what it should show (`Capture("on_hook", "the card on its hook, ...")`):
   the review prints it beside the sheet. Write what a reviewer checks the picture against, not the action's name.
   When an assertion right before it claims the same thing, use `SurgeryDriver.AssertAndCapture(holds, claim,

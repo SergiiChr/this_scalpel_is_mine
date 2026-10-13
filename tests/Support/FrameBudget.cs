@@ -47,7 +47,7 @@ public sealed class FrameBudget
         + "loading screen compiles most ahead)";
 
     /// <summary>How long <see cref="Benchmark"/> takes on the reference machine, an i9-14900HX, in seconds.</summary>
-    private const double ReferenceBenchmark = 0.0053;
+    private const double ReferenceBenchmark = 0.02849;
 
     public static BudgetMode Mode { get; } = OS.GetEnvironment("FRAME_BUDGET") switch
     {

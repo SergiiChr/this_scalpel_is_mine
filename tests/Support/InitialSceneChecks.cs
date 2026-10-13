@@ -1,7 +1,7 @@
-namespace Scalpel.Tests.Scenarios;
+namespace Scalpel.Tests.Support;
 
 /// <summary>Tools lie on the tray, never in it.</summary>
-internal sealed partial class GameplaySweep
+public static class InitialSceneChecks
 {
     /// <summary>How far (meters) a tool or glove may go into what it lies on: collision margins.</summary>
     private const float SinkMargin = 0.003f;
@@ -22,19 +22,34 @@ internal sealed partial class GameplaySweep
 
     /// <summary>Height of the room (table, tray, floor) under <paramref name="p"/>, ignoring tools and the patient.
     /// </summary>
-    private static float SupportBelow(Node3D node, Vector3 p) =>
-        RayDown(node, p + (Vector3.Up * 0.3f), 3.3f, 1) is { } hit ? hit.Y : float.MinValue;
+    private static float SupportBelow(Node3D node, Vector3 p)
+    {
+        var ray = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.3f, p - Vector3.Up * 3f, 1);
+        var hit = node.GetWorld3D().DirectSpaceState.IntersectRay(ray);
+        return hit.Count > 0 ? hit["position"].AsVector3().Y : float.MinValue;
+    }
 
     private static string Touching(SurgicalTool tool) =>
         string.Join(", ", tool.GetCollidingBodies().Select(body => body.Name.ToString()));
 
-    /// <summary>Tools lie on the tray, never in it: at the start, lowered onto it with full effort (the tip only
-    /// presses into skin), and once put down. The glove stays out of it too. <paramref name="all"/>: every kind of
-    /// tool, otherwise one.</summary>
-    private async Task TableChecks(bool all)
+    /// <summary>Tools lie on their supports and the defibrillator is on its cart, without moving or using any tool.</summary>
+    public static async Task Inspect(Surgery surgery)
     {
+        var tools = surgery.Tools;
+        var failures = new List<string>();
+        void Fail(string message) => failures.Add(message);
+        var layout = surgery.Room.Layout;
+        if (layout.Has("defib_cart"))
+        {
+            var cart = layout["defib_cart"];
+            if (!tools.Tools.Values.Any(tool => tool.Def.Id == "defibrillator"
+                && (tool.GlobalPosition - cart).Slide(Vector3.Up).Length() < 0.4f))
+            {
+                Fail("no defibrillator on the defib cart");
+            }
+        }
         await Frames.Physics(60);
-        foreach (var tool in Tools.Tools.Values.Where(tool => tool.State == ToolState.Free))
+        foreach (var tool in tools.Tools.Values.Where(tool => tool.State == ToolState.Free))
         {
             var below = SupportBelow(tool, tool.GlobalTransform * tool.Bounds.GetCenter());
             if (LowestPoint(tool) < below - SinkMargin)
@@ -42,24 +57,36 @@ internal sealed partial class GameplaySweep
                 Fail($"the {tool.Def.Id} sinks {(below - LowestPoint(tool)) * 1000f:0.0} mm into what it lies on (at {tool.GlobalPosition}, touching {Touching(tool)}, sleeping {tool.Sleeping}, basis {tool.GlobalBasis})");
             }
         }
-        var hand = Me.Hands[1];
-        var tray = _surgery.Room.Layout.Tray + new Vector3(0f, 0.93f, 0.1f);
+        AssertBool(failures.Count == 0).OverrideFailureMessage(string.Join("\n", failures)).IsTrue();
+    }
+
+    /// <summary>Presses and releases tools on the tray. It may empty containers, so it runs in the destructive
+    /// sweep rather than before a successful surgery. Every tool is checked once, one per other configuration.</summary>
+    public static async Task ExerciseTray(Surgery surgery, bool all)
+    {
+        var tools = surgery.Tools;
+        var me = surgery.LocalSurgeon!;
+        var failures = new List<string>();
+        void Fail(string message) => failures.Add(message);
+        var hand = me.Hands[1];
+        var tray = surgery.Room.Layout.Tray + new Vector3(0f, 0.93f, 0.1f);
         // Standing at the tray, facing it.
-        var standing = Me.GlobalTransform;
-        Me.GlobalPosition = new Vector3(tray.X + 0.45f, Me.GlobalPosition.Y, tray.Z);
-        Me.LookAt(new Vector3(tray.X, Me.GlobalPosition.Y, tray.Z));
+        var standing = me.GlobalTransform;
+        me.GlobalPosition = new Vector3(tray.X + 0.45f, me.GlobalPosition.Y, tray.Z);
+        me.LookAt(new Vector3(tray.X, me.GlobalPosition.Y, tray.Z));
         await Frames.Physics(2);
         var seen = new HashSet<string>();
-        foreach (var tool in FreeTools().ToList())
+        foreach (var tool in tools.Tools.Values.Where(tool => tool.State == ToolState.Free
+            && me.BlockedReason(tool.Def).Length == 0).ToList())
         {
             if (!seen.Add(tool.Def.Id))
             {
                 continue;
             }
-            Tools.RequestGrab(tool, 1);
+            tools.RequestGrab(tool, 1);
             await Frames.Physics(2);
             hand.Attached = false;
-            hand.LocalTarget = Me.ToLocal(tray + new Vector3(0f, 0.1f, 0f));
+            hand.LocalTarget = me.ToLocal(tray + new Vector3(0f, 0.1f, 0f));
             hand.Lowered = true;
             hand.Level = 3;
             await Frames.Physics(20);
@@ -74,7 +101,7 @@ internal sealed partial class GameplaySweep
             }
             hand.Lowered = false;
             hand.Level = 0;
-            Tools.RequestRelease(1, Vector3.Zero);
+            tools.RequestRelease(1, Vector3.Zero);
             // Time to settle: a tool can land on its edge and roll over first.
             await Frames.Physics(150);
             // Lying on the tray itself (one tilted across another tool touches both, and that's a different contact).
@@ -94,7 +121,8 @@ internal sealed partial class GameplaySweep
                 break;
             }
         }
-        Me.GlobalTransform = standing;
+        me.GlobalTransform = standing;
         await Frames.Physics(2);
+        AssertBool(failures.Count == 0).OverrideFailureMessage(string.Join("\n", failures)).IsTrue();
     }
 }

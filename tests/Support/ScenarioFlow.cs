@@ -23,6 +23,7 @@ public static class ScenarioFlow
         var driver = SurgeryDriver.Create();
         await driver.Start(scenarioId);
         var surgery = driver.Surgery;
+        await InitialSceneChecks.Inspect(surgery);
         var objectives = surgery.Objectives;
         KeyFrames? shots = null;
         if (keyFrames && KeyFrames.Wanted())
@@ -35,26 +36,45 @@ public static class ScenarioFlow
         }
         // Loading the room isn't gameplay: the frame budget counts from here.
         driver.Budget.Clear();
-        for (var index = 0; index < objectives.Steps.Count; index++)
+        if (scenarioId == "appendectomy")
         {
-            var step = objectives.Steps[index];
-            if (step.Optional)
+            await AppendectomyFlow.Play(driver);
+        }
+        else
+        {
+            for (var index = 0; index < objectives.Steps.Count; index++)
             {
-                continue;
+                var step = objectives.Steps[index];
+                if (step.Optional)
+                {
+                    continue;
+                }
+                if (scenarioId == "hand_stitch" && step.Type == "close")
+                {
+                    await SutureChecks.CloseForearm(driver);
+                }
+                else
+                {
+                    await driver.PlayerCompletes(step);
+                }
+                var hold = step.Parameters.Float("seconds") + (step.Type == "calm" ? 60f : 0f);
+                // A drug counts once enough has soaked in to work: through a line, most of it by 1.5 times its onset.
+                if (step.Type == "inject" && Db.Drug(step.Parameters.String("drug")) is { } drug)
+                {
+                    hold += drug.Onset * 1.5f;
+                }
+                var state = objectives.States[index];
+                await Frames.Until(() => state.Done || surgery.Finished, hold + Settle);
+                AssertBool(state.Done)
+                    .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
+                    .IsTrue();
+                // Cut/extraction/closure helpers already capture their visible action/result. Internal state
+                // objectives (anesthesia, injection, stability) have hard checks but no unique site photograph.
+                if (step.Type is "sanitize" or "flip")
+                {
+                    await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
+                }
             }
-            await driver.PlayerCompletes(step);
-            var hold = step.Parameters.Float("seconds") + (step.Type == "calm" ? 60f : 0f);
-            // A drug counts once enough has soaked in to work: through a line, most of it by 1.5 times its onset.
-            if (step.Type == "inject" && Db.Drug(step.Parameters.String("drug")) is { } drug)
-            {
-                hold += drug.Onset * 1.5f;
-            }
-            var state = objectives.States[index];
-            await Frames.Until(() => state.Done || surgery.Finished, hold + Settle);
-            AssertBool(state.Done)
-                .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
-                .IsTrue();
-            await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
         }
         await Frames.Until(() => surgery.Finished, 10f);
         var report = surgery.Report;

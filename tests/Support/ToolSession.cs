@@ -4,7 +4,7 @@ namespace Scalpel.Tests.Support;
 /// A tool test's surgery: started with the patient asleep (the tool doesn't make them flinch: the setting, not what's
 /// tested), rendering off between key frames and the frame budget counting from the first step. In a run with key
 /// frames each driver key frame saves the site from above and obliquely (along <see cref="Along"/> when set), and with
-/// <c>views</c> also what the surgeon sees, starting with the untouched site.
+/// <c>views</c> also what the surgeon sees. Untouched references are captured explicitly, once per distinct fixture.
 /// </summary>
 public sealed class ToolSession
 {
@@ -13,21 +13,32 @@ public sealed class ToolSession
     /// <summary>The oblique key frames look along this (world) when set: along a cut, what lies across it stands across
     /// it in view.</summary>
     public Vector3? Along { get; set; }
+    private readonly Func<string, string, Task>? _previousCapture;
 
     private ToolSession(SurgeryDriver driver, KeyFrames? shots)
     {
         Driver = driver;
         Shots = shots;
+        _previousCapture = driver.OnKeyFrame;
     }
 
     /// <summary>Starts <paramref name="scenarioId"/> for a case whose key frames go under
     /// <paramref name="folder"/>.</summary>
-    public static async Task<ToolSession> Start(string scenarioId, string folder, bool views = false)
+    public static async Task<ToolSession> Start(string scenarioId, string folder, bool views = false, bool captureUntouched = false)
     {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start(scenarioId);
         SurgeryState.PatientIsAsleep(driver.Patient);
+        var session = await Attach(driver, folder, views, captureUntouched: captureUntouched);
+        driver.Budget.Clear();
+        return session;
+    }
+
+    /// <summary>Adds this group's key frames to an existing operation, keeping its budget and patient.</summary>
+    public static async Task<ToolSession> Attach(SurgeryDriver driver, string folder, bool views = false,
+        string untouchedDescription = "the site before any tool touches it: intact skin, nothing in it", bool captureUntouched = true)
+    {
         KeyFrames? shots = null;
         if (KeyFrames.Wanted())
         {
@@ -46,11 +57,19 @@ public sealed class ToolSession
                     await shots.CaptureView(keyFrame, description);
                 }
             };
-            await driver.Capture("untouched", "the site before any tool touches it: intact skin, nothing in it");
+            if (captureUntouched)
+            {
+                await driver.Capture("untouched", untouchedDescription);
+            }
         }
-        // Loading the room isn't gameplay: the frame budget counts from here.
-        driver.Budget.Clear();
         return session;
+    }
+
+    /// <summary>Ends only this group's captures and restores the enclosing operation's capture callback.</summary>
+    public void EndCaptures()
+    {
+        Shots?.End();
+        Driver.OnKeyFrame = _previousCapture;
     }
 
     /// <summary>In a run with key frames, saves what the surgeon sees now as <paramref name="keyFrame"/>, which should
@@ -71,7 +90,7 @@ public sealed class ToolSession
         if (Shots is not null)
         {
             GD.Print($"key frames: {Shots.OutDir}");
-            Shots.End();
+            EndCaptures();
         }
         await Driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

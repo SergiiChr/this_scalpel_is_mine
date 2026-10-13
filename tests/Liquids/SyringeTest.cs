@@ -26,6 +26,23 @@ public class SyringeTest
     };
 
     private SyringeBench _bench = null!;
+    private bool _shared;
+    private readonly SharedScene<SyringeBench> _scenes = new(async () =>
+    {
+        var bench = SyringeBench.Create();
+        await bench.Start();
+        return bench;
+    }, bench => bench.Stop());
+
+    [AfterTest]
+    public async Task CleanUpCase()
+    {
+        StopListening();
+        await _scenes.DiscardIncomplete();
+    }
+
+    [After]
+    public async Task CleanUpSuite() => await _scenes.Stop();
     /// <summary>Doses the host gave surgeons.</summary>
     private readonly List<(int Peer, string Drug, float Amount)> _doses = [];
     /// <summary>Messages shown on screen since the case started (debug mode is on).</summary>
@@ -38,20 +55,43 @@ public class SyringeTest
 
     /// <summary>Starts the bench with debug mode on, collecting the doses surgeons get and the messages
     /// shown.</summary>
-    private async Task Begin()
+    private async Task Begin(string group = "")
     {
-        _bench = SyringeBench.Create();
-        await _bench.Start();
-        Surgery.SurgeonDosed += (peer, drug, amount) => _doses.Add((peer, drug, amount));
+        _bench = await _scenes.Begin(group);
+        _shared = group.Length > 0;
+        if (_shared)
+        {
+            await _bench.PrepareNextCase();
+        }
+        _doses.Clear();
+        _toasts.Clear();
+        Surgery.SurgeonDosed += OnDose;
         _debugHud = SurgeryState.DebugHudIsEnabled();
         Surgery.Hud.Toasted += _toasts.Add;
     }
 
     private async Task End()
     {
+        if (_shared)
+        {
+            await _bench.Withdraw();
+            await _bench.ZoomTo(0);
+        }
+        StopListening();
+        await _scenes.Complete();
+    }
+
+    private void OnDose(int peer, string drug, float amount) => _doses.Add((peer, drug, amount));
+
+    private void StopListening()
+    {
         _debugHud?.Dispose();
         _debugHud = null;
-        await _bench.Stop();
+        if (_bench is not null && GodotObject.IsInstanceValid(_bench))
+        {
+            Surgery.SurgeonDosed -= OnDose;
+            Surgery.Hud.Toasted -= _toasts.Add;
+        }
     }
 
     /// <summary> Y1-Y3: a syringe picked up sits with its printed scale toward the eyes, on the inner side of the hand.
@@ -209,8 +249,12 @@ public class SyringeTest
     [TestCase("own_hand_push", Timeout = Limits.Slow)]
     public async Task PlungerAddsUp(string name)
     {
-        await Begin();
         var @case = SyringeBench.Cases.Single(entry => entry.Name == name);
+        // One rejected stroke proves a blocked route; two accepted strokes prove cumulative transfer.
+        // Capacity saturation is covered once per syringe size below, rather than repeating ordinary strokes.
+        var blockedPull = @case.Notches > 0 && (@case.Target is "skin" or "fat" or "muscle" or "own_hand");
+        @case = @case with { Notches = Math.Sign(@case.Notches) * (blockedPull ? 1 : 2) };
+        await Begin(SyringeBench.SurgeonTargets.Contains(@case.Target) || @case.Target == "drip" ? "" : "plunger");
         await _bench.Stage(@case);
         var syringe = Syringe;
         var patient = Surgery.Patient;
@@ -397,6 +441,37 @@ public class SyringeTest
             AssertFloat(InBody(patient.Drugs, drug)).OverrideFailureMessage($"{name}: nothing is given")
                 .IsLessEqual(givenBefore + 0.0001f);
         }
+        await End();
+    }
+
+    /// <summary>Each syringe capacity: a partial final stroke reaches the boundary, then another stroke is rejected.
+    /// Uses player wheel input; route equivalence cases above cover ordinary one-ml transfers.</summary>
+    [TestCase("syringe_3", Timeout = Limits.Slow)]
+    [TestCase("syringe_10", Timeout = Limits.Slow)]
+    [TestCase("syringe_50", Timeout = Limits.Slow)]
+    public async Task PlungerStopsAtEmptyAndFull(string id)
+    {
+        await Begin("plunger");
+        var capacity = Db.Tool(id)!.Volume;
+        await _bench.Stage(new SyringeCase("capacity_pull", "dish", id, capacity - 0.5f, 2, Dish: 60f));
+        await SyringeBench.Notch(true);
+        AssertFloat(Syringe.Ml).OverrideFailureMessage("the last half ml fills the syringe exactly")
+            .IsEqualApprox(capacity, 0.00001f);
+        var outside = _bench.Container!.Ml;
+        await SyringeBench.Notch(true);
+        AssertFloat(Syringe.Ml + Syringe.Air).OverrideFailureMessage("pulling again cannot exceed capacity")
+            .IsEqualApprox(capacity, 0.00001f);
+        AssertFloat(_bench.Container.Ml).OverrideFailureMessage("a full syringe takes nothing more from its source")
+            .IsEqualApprox(outside, 0.00001f);
+        await _bench.Withdraw();
+        await _bench.Stage(new SyringeCase("capacity_push", "dish", id, 0.5f, -2));
+        await SyringeBench.Notch(false);
+        AssertFloat(Syringe.Ml).OverrideFailureMessage("the last half ml empties the syringe exactly").IsEqual(0f);
+        outside = _bench.Container!.Ml;
+        await SyringeBench.Notch(false);
+        AssertFloat(Syringe.Ml + Syringe.Air).OverrideFailureMessage("pushing again cannot pass below empty").IsEqual(0f);
+        AssertFloat(_bench.Container.Ml).OverrideFailureMessage("an empty syringe delivers nothing more")
+            .IsEqualApprox(outside, 0.00001f);
         await End();
     }
 
