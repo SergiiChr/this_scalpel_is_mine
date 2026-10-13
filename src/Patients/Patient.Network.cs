@@ -32,7 +32,7 @@ public partial class Patient
         }
         var targets = new Godot.Collections.Array(Targets.Select(target => (Variant)target.State()));
         Rpc(MethodName.Sync, Vitals.ToVariant(), targets, Body.OrganStates(), grips, CavityBloodMl,
-            BleedSource.ToVariant(Body.Blood.Sources));
+            BleedSource.ToVariant(Body.Blood.Sources), CutPool.ToVariant(Body.Blood.Pools));
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -61,9 +61,10 @@ public partial class Patient
 
     [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
     private void Sync(GodotDictionary vitals, Godot.Collections.Array targets, Vector3[] organs,
-        Godot.Collections.Array grips, float cavityMl, Godot.Collections.Array bleeds)
+        Godot.Collections.Array grips, float cavityMl, Godot.Collections.Array bleeds, Godot.Collections.Array pools)
     {
         Body.Blood.Sources = BleedSource.FromVariant(bleeds);
+        Body.Blood.Pools = CutPool.FromVariant(pools);
         Vitals.Apply(vitals);
         for (var i = 0; i < Math.Min(targets.Count, Targets.Count); i++)
         {

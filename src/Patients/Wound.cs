@@ -87,6 +87,9 @@ public sealed class Wound
     public float Bleeding { get; set; }
     /// <summary>ml/s at the last simulation tick without gauze pressure (host).</summary>
     public float LastingBleeding { get; set; }
+    /// <summary>Blood (ml) held in the cut itself, on the first layer it hasn't cut through, while it doesn't reach the
+    /// cavity (host).</summary>
+    public float PooledMl { get; set; }
 
     public bool IsInternal => Kind == WoundKind.Internal;
 

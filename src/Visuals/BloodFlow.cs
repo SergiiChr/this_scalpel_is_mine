@@ -16,6 +16,18 @@ public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 
             .Select(entry => new BleedSource(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle(), entry[3].AsBool()))];
 }
 
+/// <summary>Blood held in a cut that doesn't reach the cavity: where it bleeds (site uv), how deep under the skin the first
+/// layer it hasn't cut through lies (meters), which the blood rests on, and how full it is (0..1).</summary>
+public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill)
+{
+    public static Godot.Collections.Array ToVariant(IEnumerable<CutPool> pools) =>
+        [.. pools.Select(pool => (Variant)new Godot.Collections.Array { pool.Uv, pool.Floor, pool.Fill })];
+
+    public static List<CutPool> FromVariant(Godot.Collections.Array pools) =>
+        [.. pools.Select(entry => entry.AsGodotArray())
+            .Select(entry => new CutPool(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle()))];
+}
+
 /// <summary>
 /// Blood as a fluid, on every peer. Bleeding wounds (sources, synced by the host) well up into a puddle that grows
 /// with the blood lost, and release rivulets from its edge that run downhill over the skin, staining it as they go
@@ -61,6 +73,16 @@ public partial class BloodFlow : Node3D
     /// </summary>
     private const float SpotMin = 0.0012f;
     private const float SpotGrowth = 0.0015f;
+    /// <summary>Radius (m) of the pool held in a cut when it starts, and full. The skin hides it beyond the opening.
+    /// </summary>
+    private const float CutPoolStart = 0.003f;
+    private const float CutPoolReach = 0.008f;
+    /// <summary>How far (m) a pool in a cut keeps off its floor, and how high it stands.</summary>
+    private const float CutPoolLift = 0.0003f;
+    /// <summary>How deep under the skin a full pool in a cut lies: this share of its floor's depth, at least
+    /// CutPoolFull (m).</summary>
+    private const float CutPoolBrim = 0.3f;
+    private const float CutPoolFull = 0.0006f;
     /// <summary>Least radius (m) of the film of blood on a cut's lip where it bleeds from inside.</summary>
     private const float TrailMin = 0.002f;
     /// <summary>Radius (m) of the dome welling up from a bleed under the cavity pool, and how much it grows per
@@ -112,6 +134,8 @@ public partial class BloodFlow : Node3D
     private MultiMeshInstance3D _dropMesh = null!;
     private MultiMeshInstance3D _wellMesh = null!;
     private readonly List<Vector3> _wells = [];
+    private MultiMeshInstance3D _cutPoolMesh = null!;
+    private readonly List<Vector3> _cutPools = [];
     /// <summary>The spots painted last (uv, radius in uv, depth of their center), wiped before the sources are painted
     /// again.</summary>
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
@@ -119,6 +143,12 @@ public partial class BloodFlow : Node3D
 
     /// <summary>The bleeding wounds.</summary>
     public List<BleedSource> Sources { get; set; } = [];
+
+    /// <summary>Blood held in cuts that don't reach the cavity.</summary>
+    public List<CutPool> Pools { get; set; } = [];
+
+    /// <summary>Where the pools in cuts stand now (world).</summary>
+    internal IReadOnlyList<Vector3> CutPools => _cutPools;
 
     /// <summary>Where the domes welling up on the cavity pool stand now (world).</summary>
     internal IReadOnlyList<Vector3> Wells => _wells;
@@ -160,6 +190,20 @@ public partial class BloodFlow : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_wellMesh);
+        _cutPoolMesh = new MultiMeshInstance3D
+        {
+            Multimesh = new MultiMesh
+            {
+                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+                Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 20, Rings = 4, IsHemisphere = true },
+                InstanceCount = 16,
+                VisibleInstanceCount = 0,
+            },
+            MaterialOverride = Materials.BloodPool(),
+            TopLevel = true,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(_cutPoolMesh);
     }
 
     public override void _Process(double delta)
@@ -170,6 +214,7 @@ public partial class BloodFlow : Node3D
         }
         Spawn(_body, (float)delta);
         Well(_body, (float)delta);
+        PoolInCuts(_body);
         if (_paintPuddles)
         {
             Spots(_body);
@@ -255,6 +300,33 @@ public partial class BloodFlow : Node3D
             Spurt(body, at, rate, delta);
         }
         multimesh.VisibleInstanceCount = _wells.Count;
+    }
+
+    /// <summary>
+    /// Blood held in a cut that doesn't reach the cavity: a flat pool resting on the first layer the cut hasn't gone
+    /// through, rising toward the skin as it fills and spreading along the cut. The skin around hides all but what lies
+    /// in the opening. It doesn't move with the tissue, like the cavity's pool.
+    /// </summary>
+    private void PoolInCuts(PatientBody body)
+    {
+        var multimesh = _cutPoolMesh.Multimesh;
+        _cutPools.Clear();
+        if (Pools.Count > multimesh.InstanceCount)
+        {
+            multimesh.InstanceCount = Pools.Count * 2;
+        }
+        foreach (var (uv, floor, fill) in Pools)
+        {
+            // Just above the floor when it starts, so it never sinks into the layer it rests on, and full still a little
+            // under the skin, which curves away from a flat pool around the cut.
+            var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
+            var radius = Mathf.Lerp(CutPoolStart, CutPoolReach, Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f)));
+            var at = body.UvToWorld(uv, depth);
+            var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, CutPoolLift, radius));
+            multimesh.SetInstanceTransform(_cutPools.Count, new Transform3D(basis, at));
+            _cutPools.Add(at);
+        }
+        multimesh.VisibleInstanceCount = _cutPools.Count;
     }
 
     /// <summary>

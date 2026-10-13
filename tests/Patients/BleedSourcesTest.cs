@@ -109,6 +109,54 @@ public class BleedSourcesTest
         await session.Finish();
     }
 
+    /// <summary>
+    /// An opened cut that doesn't reach the cavity holds its blood itself, resting on the first layer it hasn't cut
+    /// through: on the fat under a cut through the skin, lower on the muscle once the fat is cut too. It rises as it
+    /// fills and spills onto the skin once full. With key frames review the pool in the opening on the fat, then lower
+    /// on the muscle, then brimming with blood running onto the skin.
+    /// </summary>
+    [TestCase]
+    public async Task ACutHoldsItsBloodOnTheFirstLayerItHasntCutThrough()
+    {
+        var session = await ToolSession.Start("appendectomy", "cut_pools");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var at = new Vector2(0.5f, 0.5f);
+        var (from, to) = (at - new Vector2(0.06f, 0f), at + new Vector2(0.06f, 0f));
+        var cut = SurgeryState.SkinIsCut(patient, from, to, 0.3f);
+        // One lip held back, so it gapes like an opened incision.
+        SurgeryState.TissueIsPulled(patient, at + new Vector2(0f, body.MetersToUv(0.002f)), new Vector3(0f, 0f, 0.008f));
+        var opened = await Frames.Until(() => cut.Opened > 0.3f && PoolAt(body, at) is not null, 10f);
+        AssertBool(opened).OverrideFailureMessage($"held open ({cut.Opened:0.00}), the skin cut holds a pool").IsTrue();
+        var onFat = PoolAt(body, at)!.Value;
+        AssertFloat(onFat.Floor).OverrideFailureMessage($"on the fat, just under the skin ({onFat.Floor * 1000f:0.0} mm)")
+            .IsEqualApprox(PatientBody.SkinThickness, 0.0001f);
+        AssertFloat(patient.CavityBloodMl).OverrideFailureMessage("none of it reaches the cavity").IsEqual(0f);
+        await Frames.Seconds(1f);
+        await CloseUp(session, "on_fat", "the skin cut held open: blood pooled in the opening on the yellow fat under it", at);
+
+        SurgeryState.SkinIsCut(patient, from, to, 0.5f);
+        var deeper = await Frames.Until(() => PoolAt(body, at) is { } pool && pool.Floor > onFat.Floor, 10f);
+        var onMuscle = PoolAt(body, at);
+        AssertBool(deeper && onMuscle is not null).OverrideFailureMessage($"cut through the fat, it pools lower ({onMuscle})").IsTrue();
+        AssertFloat(onMuscle!.Value.Floor).OverrideFailureMessage("on the muscle, under the fat")
+            .IsEqualApprox(PatientBody.SkinThickness + body.FatThickness, 0.0001f);
+        await Frames.Seconds(1f);
+        await CloseUp(session, "on_muscle", "cut through the fat too: the blood pooled lower in the opening, on the red muscle", at);
+
+        var full = await Frames.Until(() => PoolAt(body, at) is { Fill: >= 1f }, 120f);
+        AssertBool(full).OverrideFailureMessage($"it fills ({PoolAt(body, at)?.Fill:0.00})").IsTrue();
+        // Thicker than the film on the lip where it bleeds from: a puddle.
+        var spilled = await Frames.Until(() => Blood(body, at) > 0.8f, 10f);
+        await driver.AssertAndCapture(spilled, "full, the cut brims with blood that spills over its lips onto the skin", "spills");
+        await session.Finish();
+    }
+
+    /// <summary>The pool held in a cut at uv, if any.</summary>
+    private static CutPool? PoolAt(PatientBody body, Vector2 uv) =>
+        body.Blood.Pools.Where(pool => pool.Uv.DistanceTo(uv) < 0.02f).Select(pool => (CutPool?)pool).FirstOrDefault();
+
     /// <summary>Key frame <paramref name="keyFrame"/> close on the site at <paramref name="uv"/>, from above and
     /// obliquely.</summary>
     private static async Task CloseUp(ToolSession session, string keyFrame, string description, Vector2 uv)
