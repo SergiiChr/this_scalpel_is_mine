@@ -109,7 +109,8 @@ void fragment() {
 	c = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
 	float spot = cut_face ? paint_spot(c, bleed_spot(texture(bleed_map, UV), UV2.x)) : 0.0;
 	ALBEDO = c;
-	ROUGHNESS = 1.0 - max(wet, spot) * 0.82;
+	// Blood takes the broad sheen off: under the lamp straight above it, that sheen would turn it grey.
+	ROUGHNESS = mix(1.0 - max(wet, spot) * 0.82, 1.0, blood * 0.85);
 	EMISSION = ALBEDO * 0.025;
 }
 
