@@ -17,6 +17,8 @@ public class RetractorTest
     /// <summary>How far (meters) from the cut the hook goes in, and how far the hand then draws it aside.</summary>
     private const float HookOff = 0.006f;
     private const float Pull = 0.02f;
+    /// <summary>How far (meters) the hand sweeps a hooked edge away: more than the skin gives.</summary>
+    private const float FarPull = 0.08f;
     /// <summary>How far (meters) from the cut's middle its gap is measured.</summary>
     private const float Middle = 0.005f;
     /// <summary>Most a retractor let go of may tilt up over the body it lies on (degrees).</summary>
@@ -103,6 +105,47 @@ public class RetractorTest
             .IsLess(ownGape + 0.002f);
         await driver.PlayerPutsDown();
         AssertBool(driver.LiesOnTray(retractor)).OverrideFailureMessage("the retractor is put back on the tray").IsTrue();
+        await session.Finish(BudgetBroken);
+    }
+
+    /// <summary>Skin isn't dragged across the site like rubber: pulled past what it gives, it holds the hand where it
+    /// stops (<see cref="TissueSim.Restrain"/>), the way holding onto something stops a hand.</summary>
+    [TestCase]
+    public async Task PulledPastWhatTheSkinGivesTheHandIsHeldBack()
+    {
+        var session = await ToolSession.Start("appendectomy", "retractor/held_back");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var tissue = body.Tissue;
+        var from = new Vector2(0.4f, 0.45f);
+        var to = from + new Vector2(body.MetersToUv(Length), 0f);
+        var middle = (from + to) * 0.5f;
+        await driver.PlayerCutsSkin(from, to, 2);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        var hookAt = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff)));
+        var retractor = await Hook(driver, hookAt, "retractor");
+        var hand = driver.Me.Hands[driver.Me.Active];
+        var wounds = patient.Wounds.Count;
+        var away = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff + FarPull))) - hookAt;
+        await driver.PlayerSweepsTo(retractor.TipPosition() + away);
+        await Frames.Seconds(1f);
+        var pulled = (retractor.TipPosition() - hookAt).Slide(Vector3.Up).Length();
+        AssertFloat(pulled)
+            .OverrideFailureMessage($"swept {FarPull * 100f:0} cm away, the hook stops short, held by the skin ({pulled * 1000f:0} mm)")
+            .IsLess(FarPull * 0.7f);
+        AssertFloat((driver.Tip(hand) - retractor.TipPosition()).Length())
+            .OverrideFailureMessage("the hand stays with the hook, not where the mouse went").IsLess(0.01f);
+        AssertFloat(tissue.StrainAt(retractor.Uid))
+            .OverrideFailureMessage("the skin it holds is stretched no further than it gives").IsLess(TissueSim.GripStrain + 0.1f);
+        AssertInt(patient.Wounds.Count).OverrideFailureMessage("held back, nothing tears").IsEqual(wounds);
+        await driver.Capture("held_back", $"the hand swept {FarPull * 100f:0} cm away but held back by the skin: the hooked edge drawn as far as the skin gives, stretched smooth, no tear");
+        SurgeryDriver.Use();
+        await Frames.Physics(10);
+        SurgeryDriver.Use(false);
+        await Frames.Seconds(1f);
+        AssertBool(retractor.Hold is null && !hand.Attached).OverrideFailureMessage("Use tool lets go").IsTrue();
         await session.Finish(BudgetBroken);
     }
 

@@ -51,10 +51,10 @@ public class ScenarioFlowsTest
     [TestCase("gangrene_amputation", false, "", Timeout = Limits.Slow)]
     [TestCase("leg_extension", false, "", Timeout = Limits.Slow)]
     [TestCase("broken_ribs", false, "", Timeout = Limits.Slow)]
+    [TestCase("slit_throat", false, "", Timeout = Limits.Slow)]
     public async Task PlaysThrough(string scenario, bool keyFrames, string budgetBroken) => await
         ScenarioFlow.Play(scenario, keyFrames, budgetBroken);
 
-    [TestCase("slit_throat", "\"Close the throat\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: pulled shut, the running stitches tear the skin (Patient.OnSnap) and the needle can't reach the new tears (\"needle cannot reach intended puncture within 4 mm\"): skin closure ends at 0.64, \"Close the throat\" never completes.")]
     [TestCase("bullet_stomach", "\"Find and remove the bullet\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver finds no spot on the bowel in the opening clear of the bleeder to hold it aside, so the bullet stays covered and the forceps clamp the bleeder beside it instead.")]
     [TestCase("burn_graft", "\"Graft skin over the burns\" (graft) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: ten graft sheets cover only 61% of the burns, 70% needed.")]
     [TestCase("nose_job", "\"Close up\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the 5 cm incision on the nose comes out as nine or ten short cuts; the needle's skin threads over several of them hold nothing (closure 0), so skin closure stays near 0.5 and \"Close up\" never completes.")]

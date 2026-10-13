@@ -281,7 +281,7 @@ public static class ToolActions
         if (tool.Hold is { } hold)
         {
             var at = hold is SkinHold { Hold: { } held } ? patient.Body.Site.ToGlobal(held) : tool.TipPosition();
-            tool.Hold = patient.UpdateGrip(tool.Uid, hold, at, tool.Def.Power, dt, 0f);
+            tool.Hold = patient.UpdateGrip(tool.Uid, hold, at, tool.Def.Power, dt, 0f, out _);
         }
     }
 

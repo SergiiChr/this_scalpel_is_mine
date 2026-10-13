@@ -113,6 +113,18 @@ public partial class Surgeon
         }
     }
 
+    /// <summary>Host tells the owner the skin a hand holds onto stops giving: the hand comes back by
+    /// <paramref name="shift"/> (world), to where the skin lets the tool's tip go. The mouse moving on from there
+    /// strains against it again, so the hand stands pulling where the skin holds it.</summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
+    public void HoldHandBack(int hand, Vector3 shift)
+    {
+        if (Net.Instance.Sender() == Net.HostId && Hands[hand].Attached)
+        {
+            Hands[hand].Target += shift;
+        }
+    }
+
     /// <summary>Host tells the owner a hand is now holding onto something (or let go). Attached hands don't follow the
     /// body.</summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]

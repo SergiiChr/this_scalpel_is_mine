@@ -79,6 +79,11 @@ overview, the data formats designers edit and the design decisions.
   under tension (`TissueSim`), drawn as three layers split exactly where the blade went (`PatientBody`). Cuts gape on
   their own, deeper ones further; grips stretch the skin over centimeters before it tears; closures count only where
   the edges actually meet. How it's simulated and drawn is documented on those classes.
+- A hand holding skin is held by it: pulled past what the skin gives (`TissueSim.GripStrain`, the longest spring at
+  the held skin over its rest length) the grip stops where the skin does and the hand comes back to it
+  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. A flap cut
+  free swings as far as its hinge lets it. Skin still tears where a tool forces it (a spreader cranked open, a
+  surgeon walking away holding on, a thread pulled too tight).
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.

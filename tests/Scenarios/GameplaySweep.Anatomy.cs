@@ -161,7 +161,7 @@ internal sealed partial class GameplaySweep
                 ToolHold? held = hold;
                 for (var i = 0; i < 10 && held is not null; i++)
                 {
-                    held = Patient.UpdateGrip(Forceps, held, aside, 1f, 1f / 60f, 0f);
+                    held = Patient.UpdateGrip(Forceps, held, aside, 1f, 1f / 60f, 0f, out _);
                     await Frames.NextPhysics();
                 }
                 if (FirstInside(Body, uv) == top)

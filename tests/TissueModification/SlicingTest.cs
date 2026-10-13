@@ -81,24 +81,18 @@ public class SlicingTest
     private sealed record SliceCase(string Id, string Scenario, bool Fat, string Inside, bool Along);
 
     /// <summary>
-    /// Visual review of the key frames shows the depth stages' openings as rectangular, discontinuous segments. The
-    /// headless checks pass: what's broken is only how the incision looks.
+    /// Progressive depth stays continuous through the three layers, with a thin skin lip and rounded cut ends.
     /// </summary>
-    [TestCase(Timeout = Limits.Slow,
-        Description = "BROKEN: visual review shows rectangular, discontinuous incision segments instead of one cohesive opening")]
-    [TestCategory("broken")]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task ProgressiveDepth()
     {
         await RunCases(depth: true, grafts: false);
     }
 
     /// <summary>
-    /// Visual review of the key frames shows the graft rims on the belly and the thigh as jagged or detached loops. The
-    /// headless checks pass: what's broken is only how the rim looks.
+    /// A closed circular cut releases the skin piece, leaving a continuous rounded rim and its underlying tissue.
     /// </summary>
-    [TestCase(Timeout = Limits.Slow,
-        Description = "BROKEN: belly and thigh graft rims form jagged or detached loops instead of a cohesive circular edge")]
-    [TestCategory("broken")]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task CircularSkinGraftCutoutRemoval()
     {
         await RunCases(depth: false, grafts: true);
@@ -178,6 +172,7 @@ public class SlicingTest
         Check(Open(first, TissueDepth.Skin) && !Open(first, TissueDepth.Fat),
             $"after the first 2 cm the skin is open, nothing under it is cut ({Layers(first)})");
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
+        CheckLayersUnderSkin();
         await ShotsOf(slice.Id, "03_moved_low");
 
         // Medium: deeper, then 2 cm more.
@@ -198,6 +193,7 @@ public class SlicingTest
             Check(Under(second, "bone"), "a bone lies under the cut muscle");
         }
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
+        CheckLayersUnderSkin();
         await ShotsOf(slice.Id, "05_moved_medium");
 
         // High.
@@ -223,6 +219,7 @@ public class SlicingTest
             Check(!patient.Wounds.Any(w => w.Kind == WoundKind.Internal),
                 "cutting through the muscle nicks nothing inside");
             Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
+            CheckLayersUnderSkin();
             await ShotsOf(slice.Id, "07_moved_high");
         }
         _hand.Lowered = false;
@@ -683,6 +680,12 @@ public class SlicingTest
 
     /// <summary>Logs the check and the state of the tip and the wounds after it (the log reads as the run's story),
     /// then asserts it.</summary>
+    private void CheckLayersUnderSkin()
+    {
+        var through = TissueLayers.ThroughSkin(_surgery.Patient.Body);
+        Check(through.Count == 0, $"the fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(3))})");
+    }
+
     private void Check(bool ok, string what)
     {
         GD.Print((ok ? "    ok   " : "FAIL: ") + what);

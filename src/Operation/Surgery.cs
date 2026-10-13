@@ -371,6 +371,17 @@ public partial class Surgery : Node3D
         }
     }
 
+    /// <summary>The skin this hand of this surgeon holds onto stops giving: the hand comes back by
+    /// <paramref name="shift"/> (world) to where the skin lets the tool's tip go (<see cref="TissueSim.Restrain"/>).
+    /// </summary>
+    public void HoldHandBack(int peer, int hand, Vector3 shift)
+    {
+        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0)
+        {
+            surgeon.RpcId(peer, Surgeon.MethodName.HoldHandBack, hand, shift);
+        }
+    }
+
     /// <summary>The tool in this hand of this surgeon bounced off what it was pressed onto: the hand hops up and comes
     /// back down.</summary>
     public void BounceHand(int peer, int hand)
