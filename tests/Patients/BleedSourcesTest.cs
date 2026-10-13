@@ -12,11 +12,11 @@ namespace Scalpel.Tests.Patients;
 /// pool over each vessel.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("liquids"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class BleedSourcesTest
 {
-    [TestCase]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task EveryBleedShowsWhereItComesFrom()
     {
         var session = await ToolSession.Start("appendectomy", "bleed_sources");
@@ -115,7 +115,7 @@ public class BleedSourcesTest
     /// fills and spills onto the skin once full. With key frames review the pool in the opening on the fat, then lower
     /// on the muscle, then brimming with blood running onto the skin.
     /// </summary>
-    [TestCase]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task ACutHoldsItsBloodOnTheFirstLayerItHasntCutThrough()
     {
         var session = await ToolSession.Start("appendectomy", "cut_pools");
