@@ -2,12 +2,12 @@
 
 The scan (sources/scan_doctor.glb) is one fused, textured shell. The figurine stands with crossed legs, a sway in the
 waist and both hands gripping the ends of a cape that spans her back, so it is rebuilt in parts:
-- Torso with the hips and both holsters, a short capelet and the left shoe stay scanned. The head is cut off at the neck (the game's head goes on
+- Torso with the hips and both holsters, a short capelet and the right shoe stay scanned. The head is cut off at the neck (the game's head goes on
   top), the rest of the cape, the arms and the legs are cut away, and the holes closed with smooth caps.
 - Legs are measured on the scan as tubes: rays cast out of a centerline give each ring's outline, and a finer grid of
   rays its colors. Where the thighs press together the outline and colors are filled in from the clean rings around
   them. Laid out straight, a measured ring keeps its shape, so the legs come out straight without stretching.
-- The right shoe is the left one mirrored, red and blue swapped: on the scan its toe is buried in the left heel.
+- The left shoe is the right one mirrored, red and blue swapped: on the scan its toe is buried in the right heel.
 - Arms are tubes in the torso's skin tone with the scan's wristband colors, rooted inside the shoulders: the scanned arms
   are tangled in the cape. Hands are the glove
   generator's hand (hand.py) in skin color, as the scanned fists are fused around the cape.
@@ -52,6 +52,13 @@ TEXTURE = 4096
 ANGLES = 128
 COLOR_ANGLES = 512
 COLOR_STEP = 0.00025
+# Below this saturation a color on a leg is gear, not stocking or skin (the skin's paint is a little over 0.2), and so
+# is a dull dark brown or black below this brightness (straps and holster sides; the dark stocking blue is saturated).
+GEAR_SATURATION = 0.15
+GEAR_DARK = 0.4
+GEAR_BLACK = 0.15
+# Leg colors are lifted to this share of their color's well-lit brightness at least.
+UNSHADE = 0.85
 
 # Everything below is measured on the scan in its own units: the figurine is 0.807 tall, feet at 0, the face toward
 # -Z, her right toward +X. Joints are where the limb's centerline meets them, in the scan's pose.
@@ -65,9 +72,10 @@ HIP_TURN = (22.0, 0.33, 0.38)
 PELVIS = (0.008, 0.32, -0.038)
 # Rest hip joints sit this far either side of the pelvis center.
 HIP_X = 0.035
-# Leg centerlines from the hip to inside the shoe; the thighs cross, the left one in front.
+# Leg centerlines from the hip to inside the shoe. The legs cross: her right leg (blue stocking, red shoe, reference
+# photos) is the one in front, its foot under her left hip.
 LEGS = {
-    "L": [
+    "R": [
         (0.0, 0.33, -0.05),
         (0.012, 0.275, -0.062),
         (0.014, 0.25, -0.066),
@@ -76,7 +84,7 @@ LEGS = {
         (0.016, 0.1, -0.069),
         (0.018, 0.06, -0.069),
     ],
-    "R": [
+    "L": [
         (0.04, 0.33, -0.025),
         (0.033, 0.25, -0.02),
         (0.046, 0.19, -0.014),
@@ -135,11 +143,11 @@ CUTS: list[Box] = [
 ]
 # The bust stands out further from the spine than the back: kept whole.
 BUST: Box = ((-0.035, 0.41, -0.065), (0.11, 0.07, 0.07))
-# The soles are fused and the right toe tucks against the left heel: seen from above, the left shoe is what lies
-# nearer its own heel-to-toe line (x, z) than the right one's.
-SHOE_LINES = {"L": ((0.034, -0.056), (-0.012, -0.108)), "R": ((0.094, -0.022), (0.056, -0.06))}
-# Where they touch, a plane between the left heel and the right toe gives both a clean cut (point, normal toward the
-# right shoe).
+# The soles are fused and the left toe tucks against the right heel: seen from above, the right shoe is what lies
+# nearer its own heel-to-toe line (x, z) than the left one's.
+SHOE_LINES = {"R": ((0.034, -0.056), (-0.012, -0.108)), "L": ((0.094, -0.022), (0.056, -0.06))}
+# Where they touch, a plane between the right heel and the left toe gives both a clean cut (point, normal toward the
+# left shoe).
 SHOE_SPLIT = ((0.045, 0.0, -0.058), (0.98, 0.0, -0.18))
 # Hue of the figurine's blue (red is 0): the mirrored right shoe swaps the two.
 FIGURINE_BLUE_HUE = 0.57
@@ -483,6 +491,23 @@ def _fill_columns(values: NDArray[np.float64], good: NDArray[np.bool_], nearest:
     return out.reshape(values.shape)
 
 
+def _unshade(colors: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Lifts the scan's baked shadows off evenly painted parts (stockings, reference photos): each color darker than
+    UNSHADE of the well-lit brightness (80th percentile) of its own dominant channel's colors is brightened up to it,
+    hue kept."""
+    flat = colors.reshape(-1, 3)
+    value = flat.max(axis=1)
+    channel = flat.argmax(axis=1)
+    target = np.zeros(len(flat))
+    for c in range(3):
+        mine = channel == c
+        if mine.any():
+            target[mine] = np.percentile(value[mine], 80) * UNSHADE
+    lifted = flat * np.maximum(1.0, target / np.maximum(value, 1e-6))[:, None]
+    unshaded: NDArray[np.float64] = np.clip(lifted, 0.0, 1.0).reshape(colors.shape)
+    return unshaded
+
+
 def _clean_rays(distance: NDArray[np.float64], reference: NDArray[np.float64]) -> NDArray[np.bool_]:
     """Rays that ended near their ring's own radius, not inside a neighbor fused to the limb."""
     clean: NDArray[np.bool_] = np.isfinite(distance) & (distance < reference[:, None] * 1.4) & (distance > reference[:, None] * 0.6)
@@ -543,8 +568,14 @@ class Tube:
         fine = _resample(np.array(centerline), COLOR_STEP)
         distance, colors = scan.cast(fine, COLOR_ANGLES)
         along = np.interp(np.linspace(0.0, 1.0, len(fine)), np.linspace(0.0, 1.0, len(curve)), reference)
-        good = _clean_rays(distance, along)
-        colors = _fill(colors, good, good.mean(axis=1) > 0.4, nearest=True)
+        # Gray and black (holsters and their straps lying against the thigh) aren't the leg's own paint either.
+        value, low = colors.max(axis=2), colors.min(axis=2)
+        saturation = (value - low) / np.maximum(value, 1e-6)
+        brown = (value < GEAR_DARK) & (saturation < 0.6) & (colors[..., 0] >= colors[..., 2])
+        # Near black is shadow too deep to tell the paint's hue.
+        gear = (saturation < GEAR_SATURATION) | brown | (value < GEAR_BLACK)
+        good = _clean_rays(distance, along) & ~gear
+        colors = _unshade(_fill(colors, good, good.mean(axis=1) > 0.4, nearest=True))
         tube = Tube(radii, colors, float(np.sum(np.linalg.norm(np.diff(curve, axis=0), axis=1))))
         tube.end_tangent, tube.end_normal = tangent[-1], u[-1]
         tube.top = int(np.argmax(clean))
@@ -675,22 +706,22 @@ def _toe_turn(heel: tuple[float, float], toe: tuple[float, float]) -> float:
     return (180.0 - b + 180.0) % 360.0 - 180.0
 
 
-def _left_shoe(scan: Scan) -> bpy.types.Object:
-    """The left shoe, cut free where the soles are fused, turned to point forward under the left hip."""
+def _right_shoe(scan: Scan) -> bpy.types.Object:
+    """The right shoe, cut free where the soles are fused, turned to point forward under the right hip."""
     centers = scan.face_centers()
     flat = centers * np.array([1.0, 0.0, 1.0])
     reach = {k: _segment_distance(flat, (a[0], 0.0, a[1]), (b[0], 0.0, b[1])) for k, (a, b) in SHOE_LINES.items()}
     split = (SHOE_SPLIT[0], tuple(-np.array(SHOE_SPLIT[1])))
-    shoe = scan.piece("ShoeL", (centers[:, 1] < ANKLE + 0.01) & (reach["L"] < reach["R"]), [((0.0, ANKLE, 0.0), (0.0, -1.0, 0.0)), split])
-    _transform(shoe, _yaw(_toe_turn(*SHOE_LINES["L"])), tuple(_at_height(LEGS["L"], ANKLE)), (-HIP_X, ANKLE, 0.0))
+    shoe = scan.piece("ShoeR", (centers[:, 1] < ANKLE + 0.01) & (reach["R"] < reach["L"]), [((0.0, ANKLE, 0.0), (0.0, -1.0, 0.0)), split])
+    _transform(shoe, _yaw(_toe_turn(*SHOE_LINES["R"])), tuple(_at_height(LEGS["R"], ANKLE)), (HIP_X, ANKLE, 0.0))
     return shoe
 
 
-def _right_shoe(left: bpy.types.Object) -> bpy.types.Object:
-    """The right toe is buried in the left heel on the scan, so the right shoe is the left one mirrored, its red and
+def _left_shoe(right: bpy.types.Object) -> bpy.types.Object:
+    """The left toe is buried in the right heel on the scan, so the left shoe is the right one mirrored, its red and
     blue swapped as on the figurine's mismatched pair."""
-    shoe = _copy(left)
-    shoe.name = shoe.data.name = "ShoeR"
+    shoe = _copy(right)
+    shoe.name = shoe.data.name = "ShoeL"
     _transform(shoe, np.eye(3), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), mirror=True)
     for slot in shoe.material_slots:
         slot.material = _swap_red_blue(slot.material)
@@ -720,8 +751,8 @@ def _swap_red_blue(source: bpy.types.Material) -> bpy.types.Material:
 
 
 def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
-    left = _left_shoe(scan)
-    parts = [left, _right_shoe(left)]
+    right = _right_shoe(scan)
+    parts = [right, _left_shoe(right)]
     down = np.array([0.0, -1.0, 0.0])
     for side, sign in (("R", 1.0), ("L", -1.0)):
         centerline = LEGS[side]
