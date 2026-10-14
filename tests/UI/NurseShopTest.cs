@@ -14,9 +14,6 @@ namespace Scalpel.Tests.UI;
 [GodotArgs("--fixed-fps", "60")]
 public class NurseShopTest
 {
-    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "cart interaction exceeds the recorded CPU/render budget";
-
     /// <summary>Two of the same, from three categories, and a sixth that doesn't fit.</summary>
     private static readonly string[] Wanted = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol", "needle"];
     private static readonly string[] Ordered = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol"];
@@ -61,7 +58,8 @@ public class NurseShopTest
         var shop = surgery.Hud.Shop;
 
         await driver.PlayerFillsCart(Wanted);
-        AssertBool(shop.RowOf("needle").Add.Disabled)
+        var needleRow = shop.RowOf("needle");
+        AssertBool(needleRow.Add.Disabled)
             .OverrideFailureMessage($"[+] is off once the cart holds {Nurse.Batch}").IsTrue();
         var shown = string.Join("\n", surgery.Hud.FindChildren("*", nameof(Label), true, false)
             .OfType<Label>().Where(label => label.IsVisibleInTree()).Select(label => label.Text));
@@ -71,9 +69,12 @@ public class NurseShopTest
         await driver.Capture("cart_full", "the shop with a full cart: 5 / 5, gauze as one line ×2, no suture needle, [+] off");
         // [-] takes one back out, [+] puts it back, so a full cart can still change.
         driver.PlayerPicksCategory(Db.Tool("gauze")!.Category);
+        await Frames.Physics(1);
         driver.PlayerRemovesFromCart("gauze");
+        await Frames.Physics(1);
         AssertBool(shop.RowOf("gauze").Add.Disabled).OverrideFailureMessage("[-] makes room in a full cart").IsFalse();
         SurgeryDriver.Click(shop.RowOf("gauze").Add);
+        await Frames.Physics(1);
         AssertBool(shop.RowOf("gauze").Add.Disabled).OverrideFailureMessage("[+] fills it again").IsTrue();
         var orderedAt = surgery.Elapsed;
         await driver.PlayerPlacesOrder();
@@ -93,6 +94,12 @@ public class NurseShopTest
             .IsEqualApprox(slowest, 0.1f);
         // Back at the bell while she's out: the next cart waits for her, it isn't sent and lost.
         await driver.PlayerFillsCart(["gauze"]);
+        AssertBool(needleRow.Add.Disabled)
+            .OverrideFailureMessage("a hidden category enables [+] immediately when the cart empties").IsFalse();
+        AssertString(shop.RowOf("scalpel").Count.Text)
+            .OverrideFailureMessage("a previously filled hidden row reflects the emptied cart").IsEqual("0");
+        AssertBool(shop.RowOf("scalpel").Remove.Disabled)
+            .OverrideFailureMessage("a hidden row disables [-] when its item leaves the cart").IsTrue();
         await Frames.Seconds(Surgery.StatusInterval + 0.1f);
         AssertBool(shop.PlaceButton.Disabled).OverrideFailureMessage("Place order waits while the nurse is fetching").IsTrue();
         AssertBool(await Frames.Until(() => surgery.Nurse.Current is null, 0.05f))
@@ -179,7 +186,7 @@ public class NurseShopTest
 
     private static async Task Stop(SurgeryDriver driver, KeyFrames? shots)
     {
-        driver.Budget.Check(localOverride: BudgetOverride);
+        driver.Budget.Check();
         if (shots is not null)
         {
             GD.Print($"key frames: {shots.OutDir}");

@@ -35,6 +35,7 @@ public partial class Hud : CanvasLayer
     private float _subtitleTimer;
     private readonly Dictionary<string, (HBoxContainer Row, ProgressBar Bar)> _gauges = [];
     private ShaderMaterial _post = null!;
+    private (float Blackout, float Daze, float Wobble, float Blur)? _postState;
     /// <summary>Game time the view's moving effects run on (<see cref="ShaderParam.GameTime"/>), not the shaders' own
     /// TIME: it advances only with gameplay frames, so a scene looks the same whenever it is drawn.</summary>
     private float _effectsTime;
@@ -114,6 +115,10 @@ public partial class Hud : CanvasLayer
         BuildControlsHint();
         BuildShop();
         UpdateObjectives();
+        foreach (var label in _root.FindChildren("*", nameof(Label), true, false).OfType<Label>())
+        {
+            Ui.PrepareLabelText(label, "0123456789");
+        }
     }
 
     /// <summary>The surgery opens on the patient card, already in hand: put back, it shows where it hangs.</summary>
@@ -168,10 +173,28 @@ public partial class Hud : CanvasLayer
 
     private void UpdatePostFx(SurgeonStatus status, float delta)
     {
-        _post.SetShaderParameter(ShaderParam.Blackout, status.PassedOut > 0f ? 1f : 0f);
-        _post.SetShaderParameter(ShaderParam.Daze, status.IsKnockedOut ? KnockedOutDaze : status.Overdose * OverdoseDaze);
-        _post.SetShaderParameter(ShaderParam.Wobble, status.Sickness);
-        _post.SetShaderParameter(ShaderParam.Blur, Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur));
+        var state = (Blackout: status.PassedOut > 0f ? 1f : 0f,
+            Daze: status.IsKnockedOut ? KnockedOutDaze : status.Overdose * OverdoseDaze,
+            Wobble: status.Sickness,
+            Blur: Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur));
+        // Godot queues material uploads even for unchanged parameter values.
+        if (_postState?.Blackout != state.Blackout)
+        {
+            _post.SetShaderParameter(ShaderParam.Blackout, state.Blackout);
+        }
+        if (_postState?.Daze != state.Daze)
+        {
+            _post.SetShaderParameter(ShaderParam.Daze, state.Daze);
+        }
+        if (_postState?.Wobble != state.Wobble)
+        {
+            _post.SetShaderParameter(ShaderParam.Wobble, state.Wobble);
+        }
+        if (_postState?.Blur != state.Blur)
+        {
+            _post.SetShaderParameter(ShaderParam.Blur, state.Blur);
+        }
+        _postState = state;
         if (_lensBlood > 0f)
         {
             _lensBlood = Mathf.Max(_lensBlood - (delta / LensClearSeconds), 0f);
@@ -406,6 +429,11 @@ public partial class Hud : CanvasLayer
     {
         if (overlay == Shop.View || overlay == _card)
         {
+            if (overlay == _card)
+            {
+                _cardFade?.Kill();
+                _cardFade = null;
+            }
             overlay.Hide();
         }
         else
@@ -449,6 +477,7 @@ public partial class Hud : CanvasLayer
         }, CloseOverlay);
         Shop.View.Hide();
         AddChild(Shop.View);
+        Shop.Prepare();
     }
 
     private void BuildPostFx()

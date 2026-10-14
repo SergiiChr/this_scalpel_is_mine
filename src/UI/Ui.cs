@@ -58,6 +58,34 @@ public static class Ui
         return label;
     }
 
+    /// <summary>Shapes, rasterizes and uploads text glyphs during setup, including any fallback fonts.</summary>
+    internal static void PrepareLabelText(Label label, string text) =>
+        PrepareFontText(label.GetThemeFont("font"), label.GetThemeFontSize("font_size"),
+            label.GetThemeConstant("outline_size"), text);
+
+    /// <summary>Prepare filled glyphs and, when present, their outlines, including fallback font textures.</summary>
+    internal static void PrepareFontText(Font font, int size, int outline, string text)
+    {
+        using var line = new TextLine();
+        _ = line.AddString(text, font, size);
+        var server = TextServerManager.GetPrimaryInterface();
+        var glyphs = server.ShapedTextGetGlyphs(line.GetRid())
+            .Select(glyph => (Font: glyph["font_rid"].AsRid(), Index: glyph["index"].AsInt64()))
+            .Where(glyph => glyph.Font.IsValid && glyph.Index > 0).Distinct().ToArray();
+        foreach (var stroke in outline > 0 ? new[] { 0, outline } : new[] { 0 })
+        {
+            var pixels = new Vector2I(size, stroke);
+            foreach (var glyph in glyphs)
+            {
+                server.FontRenderGlyph(glyph.Font, pixels, glyph.Index);
+            }
+            foreach (var glyph in glyphs)
+            {
+                _ = server.FontGetGlyphTextureRid(glyph.Font, pixels, glyph.Index);
+            }
+        }
+    }
+
     public static Button Button(string text, Action pressed)
     {
         var button = new Button { Text = text };
