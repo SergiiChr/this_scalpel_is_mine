@@ -1,26 +1,21 @@
 namespace Scalpel.Patients;
 
 /// <summary>What tools take hold of: skin, targets, vessels, organs (forceps, clamps, retractors, spreaders).</summary>
-public partial class Patient
-{
+public partial class Patient {
     /// <summary>
     /// Called when a clamp tool closes at the tip. Returns what it took hold of, for <see cref="UpdateGrip"/> and
     /// <see cref="ReleaseGrip"/>; null when nothing. <paramref name="skinOnly"/>: a hook (the retractor) takes hold of
     /// skin and nothing under it: the skin it's pressed onto, or pressed into an opening, the edge of the cut on that
     /// side. It pulls the skin aside, never down into the opening.
     /// </summary>
-    public ToolHold? Grip(int toolUid, SiteZone zone, Vector2 uv, float depthM, bool skinOnly = false)
-    {
+    public ToolHold? Grip(int toolUid, SiteZone zone, Vector2 uv, float depthM, bool skinOnly = false) {
         var tissue = Body.Tissue;
-        if (skinOnly && zone == SiteZone.Cavity)
-        {
-            if (NearestWound(uv, 0.03f, false) is not { } cut)
-            {
+        if (skinOnly && zone == SiteZone.Cavity) {
+            if (NearestWound(uv, 0.03f, false) is not { } cut) {
                 return null;
             }
             var line = cut.ClosestPoint(uv);
-            if (tissue.GripBeside(toolUid, uv, line, uv - line) < 0)
-            {
+            if (tissue.GripBeside(toolUid, uv, line, uv - line) < 0) {
                 tissue.Grip(toolUid, uv);
             }
             return new SkinHold(cut.Id, uv, Hook: true);
@@ -33,36 +28,30 @@ public partial class Patient
             .Where(t => zone is SiteZone.Cavity or SiteZone.Site && t.Uv.DistanceTo(uv) < 0.05f
                 && Mathf.Abs(t.Depth - depthM) < 0.05f && !Covered(t))
             .MinBy(t => t.Uv.DistanceTo(uv));
-        if (nearest is not null)
-        {
+        if (nearest is not null) {
             nearest.GrippedBy = toolUid;
             return new TargetHold(nearest.Index, depthM);
         }
-        if (!skinOnly && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal && w.Points[0].DistanceTo(uv) < 0.05f) is { } vessel)
-        {
+        if (!skinOnly && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal && w.Points[0].DistanceTo(uv) < 0.05f) is { } vessel) {
             vessel.Clamped = 0.9f;
             return new VesselHold(vessel.Id);
         }
-        if (zone == SiteZone.Cavity && !skinOnly)
-        {
+        if (zone == SiteZone.Cavity && !skinOnly) {
             // An organ in the way can be taken hold of and moved aside, to get at what's under it.
             var at = Body.UvToWorld(uv, depthM);
             var organ = Body.OrganAt(at, 0.02f);
-            if (organ >= 0)
-            {
+            if (organ >= 0) {
                 var position = Body.Organs[organ].Position;
                 Body.HoldOrgan(organ, position);
                 return new OrganHold(organ, position - Body.Site.ToLocal(at));
             }
         }
         var wound = NearestWound(uv, 0.03f, false);
-        if (wound is not null && zone == SiteZone.Cavity && !skinOnly && wound.BleedRate(1f, 1f) > 0f && wound.Depth > 0.6f)
-        {
+        if (wound is not null && zone == SiteZone.Cavity && !skinOnly && wound.BleedRate(1f, 1f) > 0f && wound.Depth > 0.6f) {
             wound.Clamped = 0.85f;
         }
         // Skin can be pinched anywhere on the site, but from inside the cavity only near a wound edge.
-        if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null))
-        {
+        if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null)) {
             tissue.Grip(toolUid, uv);
             var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.Nearest(uv)).Count > 0;
             return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece);
@@ -75,34 +64,27 @@ public partial class Patient
     /// <paramref name="tips"/> (world): each jaw takes hold of the edge on its own side of the middle. Null when a tip
     /// isn't on the site or there's no cut between them to go into.
     /// </summary>
-    public SpreadHold? SetSpreader(int toolUid, IReadOnlyList<Vector3> tips, float spread)
-    {
+    public SpreadHold? SetSpreader(int toolUid, IReadOnlyList<Vector3> tips, float spread) {
         var uvs = new List<Vector2>();
-        foreach (var tip in tips)
-        {
+        foreach (var tip in tips) {
             var probe = Body.Probe(tip);
-            if (probe.Zone is not (SiteZone.Site or SiteZone.Cavity))
-            {
+            if (probe.Zone is not (SiteZone.Site or SiteZone.Cavity)) {
                 return null;
             }
             uvs.Add(probe.Uv);
         }
         var middle = (uvs[0] + uvs[1]) * 0.5f;
         var depth = Body.OpeningDepth(middle, uvs[0].DistanceTo(uvs[1]) * 0.5f + Body.MetersToUv(0.003f));
-        if (depth <= 0f)
-        {
+        if (depth <= 0f) {
             return null;
         }
         var keys = new int[2];
         var starts = new Vector3[2];
-        for (var side = 0; side < 2; side++)
-        {
+        for (var side = 0; side < 2; side++) {
             keys[side] = SpreaderKey(toolUid, side);
             var held = Body.Tissue.GripBeside(keys[side], uvs[side], middle, uvs[side] - middle);
-            if (held < 0)
-            {
-                for (var k = 0; k < side; k++)
-                {
+            if (held < 0) {
+                for (var k = 0; k < side; k++) {
                     Body.Tissue.Release(keys[k]);
                 }
                 return null;
@@ -115,8 +97,7 @@ public partial class Patient
 
     /// <summary>Opens or closes a set spreader to <paramref name="spread"/> (meters between its tips): each jaw moves
     /// its edge half the change away from the middle (toward it when closing).</summary>
-    public void OpenSpreader(SpreadHold hold, float spread)
-    {
+    public void OpenSpreader(SpreadHold hold, float spread) {
         var move = hold.Axis * (spread - hold.Spread) * 0.5f;
         Body.Tissue.MoveGrip(hold.Keys[0], hold.Starts[0] - move);
         Body.Tissue.MoveGrip(hold.Keys[1], hold.Starts[1] + move);
@@ -130,26 +111,20 @@ public partial class Patient
     /// of skin lifted away comes off (null). <paramref name="heldAt"/>: where the tip ends up (world), at
     /// <paramref name="tip"/> unless skin held stops giving and holds it short of there (<see cref="TissueSim.Restrain"/>).
     /// </summary>
-    public ToolHold? UpdateGrip(int toolUid, ToolHold hold, Vector3 tip, float power, float dt, float speed, out Vector3 heldAt)
-    {
+    public ToolHold? UpdateGrip(int toolUid, ToolHold hold, Vector3 tip, float power, float dt, float speed, out Vector3 heldAt) {
         heldAt = tip;
-        switch (hold)
-        {
+        switch (hold) {
             case TargetHold grip:
                 var target = Targets[grip.Target];
                 var local = Body.Site.ToLocal(tip);
                 var height = local.Y;
-                if (target.Anchor > 0f)
-                {
+                if (target.Anchor > 0f) {
                     var pulled = -target.Depth - height;
-                    if (pulled < -0.02f)
-                    {
-                        if (speed < 0.06f)
-                        {
+                    if (pulled < -0.02f) {
+                        if (speed < 0.06f) {
                             target.Anchor = Mathf.Max(target.Anchor - dt * 0.3f, 0f);
                         }
-                        if (speed > 0.25f || pulled < -0.05f)
-                        {
+                        if (speed > 0.25f || pulled < -0.05f) {
                             Session.Scoring.Add("forced_extraction");
                             Session.Announce("Ripped it out!");
                             Tear(target.Uv, RandomDirection(), 0.05f);
@@ -161,8 +136,7 @@ public partial class Patient
                 target.Position = local;
                 target.Uv = Body.LocalToUv(local);
                 target.Depth = -height;
-                if (!target.IsFragment && height > 0.03f)
-                {
+                if (!target.IsFragment && height > 0.03f) {
                     Extract(target);
                     return new CarryHold(target.Index);
                 }
@@ -179,8 +153,7 @@ public partial class Patient
                 var allowed = Body.Tissue.Restrain(toolUid, to);
                 heldAt = tip + Body.Site.GlobalBasis * (allowed - to);
                 Body.Tissue.MoveGrip(toolUid, allowed);
-                if (skin.Piece && Body.Site.ToLocal(tip).Y - Body.SurfaceHeight(skin.Anchor) > PieceLift)
-                {
+                if (skin.Piece && Body.Site.ToLocal(tip).Y - Body.SurfaceHeight(skin.Anchor) > PieceLift) {
                     TakePiece(toolUid, skin.Anchor);
                     return null;
                 }
@@ -194,11 +167,9 @@ public partial class Patient
     }
 
     /// <summary>Lets go of what a tool held. A self-retaining tool's clamp stays on a vessel or wound.</summary>
-    public void ReleaseGrip(int toolUid, ToolHold? hold, bool selfRetaining)
-    {
+    public void ReleaseGrip(int toolUid, ToolHold? hold, bool selfRetaining) {
         Body.Tissue.Release(toolUid);
-        switch (hold)
-        {
+        switch (hold) {
             case TargetHold target:
                 Targets[target.Target].GrippedBy = 0;
                 break;
@@ -211,20 +182,17 @@ public partial class Patient
                 Body.ReleaseOrgan(organ.Organ);
                 break;
             case SpreadHold spread:
-                foreach (var key in spread.Keys)
-                {
+                foreach (var key in spread.Keys) {
                     Body.Tissue.Release(key);
                 }
                 break;
             case VesselHold vessel when !selfRetaining:
-                if (WoundWithId(vessel.Wound) is { } clamped)
-                {
+                if (WoundWithId(vessel.Wound) is { } clamped) {
                     clamped.Clamped = 0f;
                 }
                 break;
             case SkinHold skin when !selfRetaining:
-                if (WoundWithId(skin.Wound) is { } wound)
-                {
+                if (WoundWithId(skin.Wound) is { } wound) {
                     wound.Clamped = 0f;
                 }
                 break;
@@ -233,8 +201,7 @@ public partial class Patient
 
     /// <summary>Host: the piece of skin cut out all round at uv comes off in the forceps that lifted it, as a skin graft
     /// for a burn.</summary>
-    private void TakePiece(int toolUid, Vector2 uv)
-    {
+    private void TakePiece(int toolUid, Vector2 uv) {
         Body.Tissue.Release(toolUid);
         Rpc(MethodName.TissueExcise, Body.Tissue.Nearest(uv));
         Session.Tools.GiveGraft(toolUid);
@@ -247,23 +214,17 @@ public partial class Patient
         Body.LocalToUv(organ.Position).DistanceTo(target.Uv) < 0.07f
         && organ.Position.Y > Body.SurfaceHeight(target.Uv) - target.Depth);
 
-    private void Extract(CavityTarget target)
-    {
-        if (target.Extracted)
-        {
+    private void Extract(CavityTarget target) {
+        if (target.Extracted) {
             return;
         }
         target.Extracted = true;
-        if (target.IsSuctionTarget)
-        {
+        if (target.IsSuctionTarget) {
             target.SetAside();
-        }
-        else
-        {
+        } else {
             target.UpdateLook();
         }
-        if (target.Surge > 0f)
-        {
+        if (target.Surge > 0f) {
             NewWound(WoundKind.Internal, target.Uv, Mathf.Clamp(0.4f + target.Surge * 0.15f, 0f, 1f)).DepthM = target.Depth;
             Session.Announce("Blood wells up where it came out!");
             Session.Sound("blood_spurt", Body.UvToWorld(target.Uv));

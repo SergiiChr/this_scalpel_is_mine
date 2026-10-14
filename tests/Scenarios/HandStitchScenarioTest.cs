@@ -5,8 +5,7 @@ namespace Scalpel.Tests.Scenarios;
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("scenario"), TestCategory("tool_needle"),
  TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("core_validation")]
 [GodotArgs("--fixed-fps", "60")]
-public class HandStitchScenarioTest
-{
+public class HandStitchScenarioTest {
     [TestCase("hand_stitch", Timeout = Limits.Slow)]
     public async Task PlaysThroughWithRunningSutureChecks(string scenario) => await ScenarioFlow.Play(scenario,
         // Temporary local budget override: preserves the running-suture allowance when moved out of NeedleTest.

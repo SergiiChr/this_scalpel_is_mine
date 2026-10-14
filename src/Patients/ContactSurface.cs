@@ -1,18 +1,15 @@
 namespace Scalpel.Patients;
 
 /// <summary>Reusable spatial index and exact triangle contact against a sloping surface.</summary>
-internal sealed class ContactSurface
-{
+internal sealed class ContactSurface {
     private readonly Dictionary<Vector2I, List<ContactFace>> _faces = [];
     private const float ContactCell = 0.01f;
     private readonly record struct ContactFace(int Id, Vector3 A, Vector3 B, Vector3 C,
         Vector3 Low, Vector3 High, float SlopeX, float SlopeZ, float OriginY, float Winding);
 
-    internal void Index(Vector3[] vertices, IReadOnlyList<int> indices)
-    {
+    internal void Index(Vector3[] vertices, IReadOnlyList<int> indices) {
         foreach (var bucket in _faces.Values) { bucket.Clear(); }
-        for (var t = 0; t < indices.Count; t += 3)
-        {
+        for (var t = 0; t < indices.Count; t += 3) {
             var a = vertices[indices[t]];
             var b = vertices[indices[t + 1]];
             var c = vertices[indices[t + 2]];
@@ -27,10 +24,8 @@ internal sealed class ContactSurface
             var face = new ContactFace(t, a, b, c, low, high, sx, sz, a.Y - sx * a.X - sz * a.Z, MathF.Sign(det));
             var first = (Vector2I)(new Vector2(low.X, low.Z) / ContactCell).Floor();
             var last = (Vector2I)(new Vector2(high.X, high.Z) / ContactCell).Floor();
-            for (var j = first.Y; j <= last.Y; j++)
-            {
-                for (var i = first.X; i <= last.X; i++)
-                {
+            for (var j = first.Y; j <= last.Y; j++) {
+                for (var i = first.X; i <= last.X; i++) {
                     var key = new Vector2I(i, j);
                     if (!_faces.TryGetValue(key, out var near)) { _faces[key] = near = []; }
                     near.Add(face);
@@ -44,13 +39,11 @@ internal sealed class ContactSurface
     private readonly Vector3[] _contactClipped = new Vector3[8];
 
     /// <summary>Highest face over this point, or NaN outside the indexed surface.</summary>
-    internal float HeightAt(float x, float z)
-    {
+    internal float HeightAt(float x, float z) {
         var key = (Vector2I)(new Vector2(x, z) / ContactCell).Floor();
         if (!_faces.TryGetValue(key, out var faces)) { return float.NaN; }
         var height = float.NegativeInfinity;
-        foreach (var face in faces)
-        {
+        foreach (var face in faces) {
             var ab = face.B - face.A;
             var ac = face.C - face.A;
             var dx = x - face.A.X;
@@ -58,27 +51,22 @@ internal sealed class ContactSurface
             var determinant = ab.X * ac.Z - ab.Z * ac.X;
             var u = (dx * ac.Z - dz * ac.X) / determinant;
             var v = (dz * ab.X - dx * ab.Z) / determinant;
-            if (u >= -0.00001f && v >= -0.00001f && u + v <= 1.00001f)
-            {
+            if (u >= -0.00001f && v >= -0.00001f && u + v <= 1.00001f) {
                 height = Mathf.Max(height, x * face.SlopeX + z * face.SlopeZ + face.OriginY);
             }
         }
         return float.IsFinite(height) ? height : float.NaN;
     }
 
-    internal void PushTriangle(Vector3[] vertices, int a, int b, int c, float gap, bool above)
-    {
+    internal void PushTriangle(Vector3[] vertices, int a, int b, int c, float gap, bool above) {
         var low = vertices[a].Min(vertices[b]).Min(vertices[c]);
         var high = vertices[a].Max(vertices[b]).Max(vertices[c]);
         var first = (Vector2I)(new Vector2(low.X, low.Z) / ContactCell).Floor();
         var last = (Vector2I)(new Vector2(high.X, high.Z) / ContactCell).Floor();
         _contactFaces.Clear();
-        for (var j = first.Y; j <= last.Y; j++)
-        {
-            for (var i = first.X; i <= last.X; i++)
-            {
-                if (_faces.TryGetValue(new Vector2I(i, j), out var near))
-                {
+        for (var j = first.Y; j <= last.Y; j++) {
+            for (var i = first.X; i <= last.X; i++) {
+                if (_faces.TryGetValue(new Vector2I(i, j), out var near)) {
                     foreach (var face in near) { _contactFaces.TryAdd(face.Id, face); }
                 }
             }
@@ -87,8 +75,7 @@ internal sealed class ContactSurface
         var ac = vertices[c] - vertices[a];
         var determinant = ab.X * ac.Z - ab.Z * ac.X;
         if (Mathf.Abs(determinant) < 1e-10f) { return; }
-        foreach (var face in _contactFaces.Values)
-        {
+        foreach (var face in _contactFaces.Values) {
             var (x, y, z) = (face.A, face.B, face.C);
             var skinLow = face.Low;
             var skinHigh = face.High;
@@ -108,8 +95,7 @@ internal sealed class ContactSurface
             Clip(x, y, face.Winding, ref count);
             Clip(y, z, face.Winding, ref count);
             Clip(z, x, face.Winding, ref count);
-            for (var n = 0; n < count; n++)
-            {
+            for (var n = 0; n < count; n++) {
                 var p = _contactPolygon[n];
                 var roof = slopeX * p.X + slopeZ * p.Z + originY;
                 var offset = p - vertices[a];
@@ -126,12 +112,10 @@ internal sealed class ContactSurface
         }
     }
 
-    private void Clip(Vector3 a, Vector3 b, float sign, ref int count)
-    {
+    private void Clip(Vector3 a, Vector3 b, float sign, ref int count) {
         var edge = b - a;
         var result = 0;
-        for (var n = 0; n < count; n++)
-        {
+        for (var n = 0; n < count; n++) {
             var p = _contactPolygon[n];
             var q = _contactPolygon[(n + 1) % count];
             var dp = ((p.Z - a.Z) * edge.X - (p.X - a.X) * edge.Z) * sign;

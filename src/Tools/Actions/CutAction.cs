@@ -2,16 +2,13 @@ namespace Scalpel.Tools;
 
 /// <summary>A blade: pressed in at a depth level it stabs as wide as itself, moved along its edge it cuts what it
 /// passes through, dragged sideways it only drags.</summary>
-public sealed class CutAction : ToolAction
-{
-    public override void Apply(ToolStep step)
-    {
+public sealed class CutAction : ToolAction {
+    public override void Apply(ToolStep step) {
         var tool = step.Tool;
         var use = tool.Use;
         var patient = step.Patient;
         var level = step.Level;
-        if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel)
-        {
+        if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel) {
             // Pressed in at a new depth: the point goes in as wide as the blade, before it's moved at all.
             use.StabbedLevel = level;
             var half = ToolActions.BladeDirection(tool) * ToolActions.StabLength * 0.5f;
@@ -22,48 +19,39 @@ public sealed class CutAction : ToolAction
             step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
         }
         // Pressed in at full effort where the muscle is thin (no fat over it), the point reaches the bone under it.
-        if (step.Lowered && level == 3 && step.Zone == SiteZone.Site && step.Probe.Depth >= patient.Body.MuscleBottom)
-        {
+        if (step.Lowered && level == 3 && step.Zone == SiteZone.Site && step.Probe.Depth >= patient.Body.MuscleBottom) {
             patient.ScrapeBone(step.Uv, step.Tip, step.Dt);
         }
         // Moved along its edge, the blade cuts what it passes through, also where it runs on past the end of an opening
         // it's already in.
-        if (!(step.Lowered && level > 0 && step.InSite))
-        {
+        if (!(step.Lowered && level > 0 && step.InSite)) {
             use.LastUv = new Vector2(-1, -1);
             return;
         }
-        if (use.PutDownAt.X < 0f)
-        {
+        if (use.PutDownAt.X < 0f) {
             use.PutDownAt = step.Uv;
         }
-        if (step.Zone == SiteZone.Cavity)
-        {
+        if (step.Zone == SiteZone.Cavity) {
             patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort,
                 use.CutWall ? null : use.PutDownAt);
         }
         var moved = use.LastUv.X >= 0f && use.LastUv.DistanceTo(step.Uv) > 0.003f;
-        if (moved)
-        {
+        if (moved) {
             var along = (step.Tip - use.LastTip) * new Vector3(1, 0, 1);
             var aligned = Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade;
             if (aligned && patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level],
-                    step.Def.Sharpness, !tool.Sterile, step.Hand.Speed))
-            {
+                    step.Def.Sharpness, !tool.Sterile, step.Hand.Speed)) {
                 // A blade that has sunk into the cut it's making still cuts the wall ahead of it, but only cutting on
                 // whole tissue makes it pass over a target.
                 use.CutWall = use.CutWall || step.Zone == SiteZone.Site;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
-            }
-            else if (!aligned)
-            {
+            } else if (!aligned) {
                 // Dragged sideways: the next stroke starts here.
                 use.Stroke++;
             }
         }
-        if (use.LastUv.X < 0f || moved)
-        {
+        if (use.LastUv.X < 0f || moved) {
             use.LastUv = step.Uv;
             use.LastTip = step.Tip;
         }

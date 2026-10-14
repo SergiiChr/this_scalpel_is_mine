@@ -4,15 +4,12 @@ namespace Scalpel.Tests.UI;
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
-public class HudTest
-{
+public class HudTest {
     [TestCase]
-    public async Task SurgeryStartsWithObjectiveStatusBeforeTheFirstTick()
-    {
+    public async Task SurgeryStartsWithObjectiveStatusBeforeTheFirstTick() {
         using var debug = SurgeryState.DebugHudIsEnabled();
         var driver = SurgeryDriver.Create();
-        try
-        {
+        try {
             // Still reading the card: putting it back would take past the first status update.
             await driver.Start("appendectomy", readingCard: true);
             var surgery = driver.Surgery;
@@ -34,16 +31,13 @@ public class HudTest
                 .IsEqual(surgery.Scenario.Steps.Select(step => step.Label).ToList());
             AssertBool(surgery.Status.Objectives.Any(view => view.Done))
                 .OverrideFailureMessage("the initial snapshot doesn't complete any steps").IsFalse();
-        }
-        finally
-        {
+        } finally {
             await driver.Stop();
         }
     }
 
     [TestCase]
-    public async Task ObjectivesChangeWithoutInvalidatingUnchangedLabelThemes()
-    {
+    public async Task ObjectivesChangeWithoutInvalidatingUnchangedLabelThemes() {
         var panel = AutoFree(new ObjectivesPanel())!;
         Frames.Root.AddChild(panel);
         var active = new SurgeryStatus([new ObjectiveView("Close the incision", false, false, false)], 0, [], 0f, null, 0f, 0f);
@@ -55,8 +49,7 @@ public class HudTest
             .IsEqual(Ui.Ink);
         var changes = 0;
         objective.ThemeChanged += () => changes++;
-        for (var frame = 0; frame < 5; frame++)
-        {
+        for (var frame = 0; frame < 5; frame++) {
             panel.Refresh(active);
             await Frames.NextProcess();
         }

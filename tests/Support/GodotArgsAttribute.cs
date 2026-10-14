@@ -5,7 +5,6 @@ namespace Scalpel.Tests.Support;
 /// every frame as one physics step of 1/60 s as fast as the machine goes, for long surgeries.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class)]
-public sealed class GodotArgsAttribute(params string[] args) : Attribute
-{
+public sealed class GodotArgsAttribute(params string[] args) : Attribute {
     public IReadOnlyList<string> Args { get; } = args;
 }

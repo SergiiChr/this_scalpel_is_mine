@@ -5,8 +5,7 @@ namespace Scalpel.UI;
 /// itself stroke by stroke, in the order a hand writes it, under a see-through pen and at an even speed; let go early,
 /// it unwrites back to nothing. Drawn whole it stays signed.
 /// </summary>
-public partial class SignatureView : Control
-{
+public partial class SignatureView : Control {
     /// <summary>How long Interact is held to sign.</summary>
     public const float SignSeconds = 2f;
     /// <summary>A part signature unwrites in at most this long.</summary>
@@ -98,60 +97,49 @@ public partial class SignatureView : Control
     public float Progress { get; private set; }
     public bool Complete => Progress >= 1f;
 
-    public SignatureView()
-    {
+    public SignatureView() {
         CustomMinimumSize = new Vector2(Width, Width * Strokes.Max(stroke => stroke.Max(point => point.Y)));
         _lengths = [.. _strokes.Select(stroke => stroke.Zip(stroke.Skip(1), (a, b) => a.DistanceTo(b)).Sum())];
         _total = _lengths.Sum();
     }
 
     /// <summary>Back to an empty line, for the next time the card is read.</summary>
-    public void Reset()
-    {
+    public void Reset() {
         Progress = 0f;
         QueueRedraw();
     }
 
     /// <summary>Writes on while <paramref name="held"/>, unwrites otherwise. Once complete it stays so.</summary>
-    public void Advance(float delta, bool held)
-    {
-        if (Complete)
-        {
+    public void Advance(float delta, bool held) {
+        if (Complete) {
             return;
         }
         var progress = Mathf.Clamp(Progress + (held ? delta / SignSeconds : -delta / RollbackSeconds), 0f, 1f);
-        if (progress != Progress)
-        {
+        if (progress != Progress) {
             Progress = progress;
             QueueRedraw();
         }
     }
 
-    public override void _Draw()
-    {
+    public override void _Draw() {
         DrawLine(new Vector2(0f, Width * LineAt), new Vector2(Width, Width * LineAt), Line, 1.5f);
         var left = Progress * _total;
-        for (var s = 0; s < _strokes.Length && left > 0f; s++)
-        {
+        for (var s = 0; s < _strokes.Length && left > 0f; s++) {
             var drawn = Partial(_strokes[s], left);
-            if (drawn.Length > 1)
-            {
+            if (drawn.Length > 1) {
                 DrawPolyline(drawn, BallpointBlue, 2f, true);
             }
             left -= _lengths[s];
-            if (left < 0f && !Complete)
-            {
+            if (left < 0f && !Complete) {
                 DrawPen(drawn[^1]);
             }
         }
     }
 
     /// <summary>The first <paramref name="length"/> of <paramref name="stroke"/>.</summary>
-    private static Vector2[] Partial(Vector2[] stroke, float length)
-    {
+    private static Vector2[] Partial(Vector2[] stroke, float length) {
         var drawn = new List<Vector2> { stroke[0] };
-        for (var i = 1; i < stroke.Length && length > 0f; i++)
-        {
+        for (var i = 1; i < stroke.Length && length > 0f; i++) {
             var step = stroke[i].DistanceTo(stroke[i - 1]);
             drawn.Add(stroke[i - 1].Lerp(stroke[i], Mathf.Min(length / step, 1f)));
             length -= step;
@@ -160,8 +148,7 @@ public partial class SignatureView : Control
     }
 
     /// <summary>A ballpoint pen with its tip at <paramref name="tip"/>: a cone to the barrel, then the barrel.</summary>
-    private void DrawPen(Vector2 tip)
-    {
+    private void DrawPen(Vector2 tip) {
         var across = new Vector2(-PenLean.Y, PenLean.X);
         var cone = tip + (PenLean * 16f);
         var end = tip + (PenLean * 120f);

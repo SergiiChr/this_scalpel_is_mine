@@ -1,8 +1,7 @@
 namespace Scalpel.UI;
 
 /// <summary>Turning the patient: press the shown movement keys in time. A wrong key is a critical fail.</summary>
-public partial class QteView : Control
-{
+public partial class QteView : Control {
     private IReadOnlyList<string> _sequence = [];
     private float _window;
     private int _index;
@@ -15,8 +14,7 @@ public partial class QteView : Control
 
     /// <summary>Shows each key of <paramref name="sequence"/> for <paramref name="window"/> seconds;
     /// <paramref name="done"/> gets how many were hit and whether a wrong key was pressed.</summary>
-    public void Start(IReadOnlyList<string> sequence, float window, Action<int, bool> done)
-    {
+    public void Start(IReadOnlyList<string> sequence, float window, Action<int, bool> done) {
         _sequence = sequence;
         _window = window;
         _done = done;
@@ -36,46 +34,35 @@ public partial class QteView : Control
         ShowKey();
     }
 
-    public override void _Process(double delta)
-    {
+    public override void _Process(double delta) {
         _timer -= (float)delta;
         _bar.Value = _timer / _window;
-        if (_timer <= 0f)
-        {
+        if (_timer <= 0f) {
             Advance(false);
         }
     }
 
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (@event is not InputEventKey { Pressed: true, Echo: false })
-        {
+    public override void _UnhandledInput(InputEvent @event) {
+        if (@event is not InputEventKey { Pressed: true, Echo: false }) {
             return;
         }
         GetViewport().SetInputAsHandled();
-        if (@event.IsAction(_sequence[_index]))
-        {
+        if (@event.IsAction(_sequence[_index])) {
             Advance(true);
-        }
-        else if (Surgery.QteKeys.Any(action => @event.IsAction(action)))
-        {
+        } else if (Surgery.QteKeys.Any(action => @event.IsAction(action))) {
             _critical = true;
             Advance(false);
         }
     }
 
-    private void Advance(bool hit)
-    {
+    private void Advance(bool hit) {
         _hits += hit ? 1 : 0;
         _index++;
         _timer = _window;
-        if (_index >= _sequence.Count)
-        {
+        if (_index >= _sequence.Count) {
             _done(_hits, _critical);
             QueueFree();
-        }
-        else
-        {
+        } else {
             ShowKey();
         }
     }

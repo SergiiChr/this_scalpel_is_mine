@@ -14,8 +14,7 @@ public enum DrugRoute { Iv, Vein, Direct }
 /// do to the body (cuts, closures, cautery...), Patient.Grips what tools take hold of, Patient.Network painting and
 /// the RPCs every peer runs.
 /// </summary>
-public partial class Patient : Node3D
-{
+public partial class Patient : Node3D {
     [Signal] public delegate void DiedEventHandler(string reason);
 
     public const float Tick = 0.1f;
@@ -144,15 +143,13 @@ public partial class Patient : Node3D
     /// <summary>The surgery this patient is in. Host-side code only runs during one.</summary>
     private static Surgery Session => Surgery.Current!;
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         Body = new PatientBody { Name = "Body" };
         AddChild(Body);
     }
 
     /// <summary>Runs on every peer with identical inputs, so everyone ends up with the same patient.</summary>
-    public void Setup(ScenarioDef scenario, IReadOnlyList<QuirkRoll> rolls, ulong seed)
-    {
+    public void Setup(ScenarioDef scenario, IReadOnlyList<QuirkRoll> rolls, ulong seed) {
         Scenario = scenario;
         Rolls = rolls;
         Rng.Seed = seed;
@@ -164,8 +161,7 @@ public partial class Patient : Node3D
         Body.Tissue.BreakMult = Mods.Mult("tear_threshold_mult");
         Body.Tissue.Tearing = Multiplayer.IsServer();
         Body.Build(scenario.Site, tone, RollWeight(seed));
-        if (scenario.Environment == "or")
-        {
+        if (scenario.Environment == "or") {
             Body.AddDrape();
         }
         Body.SetPose((PatientPose)scenario.StartOrientation);
@@ -179,63 +175,50 @@ public partial class Patient : Node3D
         Vitals.Apply(scenario.StartVitals);
         IvSet = scenario.PreopIv;
         IvInVein = IvSet;
-        if (IvSet)
-        {
+        if (IvSet) {
             var vein = Body.Veins.Count > 0 ? Body.Veins[0] : null;
             var point = vein is null ? PreopIvPoint : Body.Root.ToLocal(vein.ToGlobal(vein.Line[1]));
             ConnectIv(point);
         }
 
-        foreach (var spec in scenario.Wounds)
-        {
+        foreach (var spec in scenario.Wounds) {
             var wound = NewWound(spec.Kind, MirroredUv(spec.Points[0]), spec.Depth);
-            foreach (var point in spec.Points.Skip(1))
-            {
+            foreach (var point in spec.Points.Skip(1)) {
                 wound.Extend(MirroredUv(point));
             }
             wound.Held = spec.Held;
             PaintWoundLocal(wound);
         }
-        foreach (var burn in scenario.Burns)
-        {
+        foreach (var burn in scenario.Burns) {
             AddBurnLocal(MirroredUv(burn.Uv), burn.Radius);
         }
-        foreach (var spec in scenario.Internal)
-        {
+        foreach (var spec in scenario.Internal) {
             NewWound(WoundKind.Internal, MirroredUv(spec.Uv), 0.8f).DepthM = spec.Depth;
         }
-        for (var i = 0; i < scenario.Targets.Count; i++)
-        {
+        for (var i = 0; i < scenario.Targets.Count; i++) {
             var target = new CavityTarget();
             target.Setup(i, scenario.Targets[i], Mods.Flag("mirrored"));
             Body.Site.AddChild(target);
             target.Position = SiteLocal(target.Uv, target.Depth);
             Targets.Add(target);
-            if (target.Covered)
-            {
+            if (target.Covered) {
                 Body.AddOrgan(target.Uv + new Vector2(0.03f, -0.02f), target.Depth - 0.03f, 0.04f, new Color(0.6f, 0.35f, 0.3f));
             }
         }
         _initialSuction = Mathf.Max(Targets.Where(t => t.IsSuctionTarget).Sum(t => t.Amount), 1f);
-        if (site.HasAnatomy)
-        {
+        if (site.HasAnatomy) {
             Body.BuildAnatomy([.. Targets.Where(t => !t.Covered).Select(t => t.RestUv)], [.. Targets.Select(t => t.Kind)]);
-        }
-        else if (Body.CavityDepth() > 0.1f)
-        {
-            for (var i = 0; i < 3; i++)
-            {
+        } else if (Body.CavityDepth() > 0.1f) {
+            for (var i = 0; i < 3; i++) {
                 var uv = new Vector2(Rng.RandfRange(0.2f, 0.8f), Rng.RandfRange(0.2f, 0.8f));
                 var radius = Rng.RandfRange(0.03f, 0.045f);
                 Body.AddOrgan(uv, 0.06f, radius, new Color(0.55f, 0.2f, 0.2f).Lerp(new Color(0.7f, 0.5f, 0.4f), Rng.Randf()));
             }
         }
-        if (scenario.DirtyStart)
-        {
+        if (scenario.DirtyStart) {
             Body.WoundMap.Disk(WoundMap.Layer.Fluids, WoundMap.Grime, new Vector2(0.5f, 0.5f), 0.6f, 0.4f, WoundMap.Mode.Max);
         }
-        if (scenario.PreopAnesthesia > 0f && Db.Drug("propofol") is { } propofol)
-        {
+        if (scenario.PreopAnesthesia > 0f && Db.Drug("propofol") is { } propofol) {
             // Already under when the surgery starts: in the blood and working, nobody gave it here.
             Drugs.Give(propofol, 0f, 0.1f);
             var entry = Drugs.Find(propofol.Id)!;
@@ -244,44 +227,35 @@ public partial class Patient : Node3D
         }
     }
 
-    public override void _PhysicsProcess(double delta)
-    {
-        if (!Multiplayer.IsServer() || !Alive || Surgery.Current is not { Running: true } surgery)
-        {
+    public override void _PhysicsProcess(double delta) {
+        if (!Multiplayer.IsServer() || !Alive || Surgery.Current is not { Running: true } surgery) {
             return;
         }
         var dt = (float)delta;
         Body.SettleOrgans(dt);
         HandleOrgans(dt);
-        if (surgery.Room.IvLine?.TrippedBy(surgery.Surgeons.Values) is { } tripped)
-        {
+        if (surgery.Room.IvLine?.TrippedBy(surgery.Surgeons.Values) is { } tripped) {
             PullIv(tripped);
         }
         _tickAcc += dt;
-        while (_tickAcc >= Tick)
-        {
+        while (_tickAcc >= Tick) {
             _tickAcc -= Tick;
             Simulate(Tick);
         }
         _syncAcc += dt;
-        if (_syncAcc >= SyncInterval && Net.Instance.IsOnline)
-        {
+        if (_syncAcc >= SyncInterval && Net.Instance.IsOnline) {
             _syncAcc = 0f;
             BroadcastState();
         }
     }
 
-    public override void _Process(double delta)
-    {
+    public override void _Process(double delta) {
         Body.Animator.Animate(Vitals, Alive, (float)delta);
-        if (Body.SkinMaterial is not null)
-        {
+        if (Body.SkinMaterial is not null) {
             Body.SetPallor(Mathf.Clamp(1f - Vitals.BloodRatio * 1.4f + 0.4f, 0f, 1f));
         }
-        if (Multiplayer.IsServer())
-        {
-            foreach (var snapped in Body.Tissue.Snapped)
-            {
+        if (Multiplayer.IsServer()) {
+            foreach (var snapped in Body.Tissue.Snapped) {
                 OnSnap(snapped);
             }
             Body.Tissue.Snapped.Clear();
@@ -290,14 +264,12 @@ public partial class Patient : Node3D
 
     // --- Simulation ---------------------------------------------------------------------------------------
 
-    internal void Simulate(float dt)
-    {
+    internal void Simulate(float dt) {
         var v = Vitals;
         var fx = DrugEffectsOver(dt);
         var siteM = Body.UvToMeters(1f);
         var bleedMult = Mods.Mult("bleed_mult") * Mathf.Clamp(1f - fx.Clot, 0.2f, 2f);
-        if (TourniquetOn && Body.IsLimbSite)
-        {
+        if (TourniquetOn && Body.IsLimbSite) {
             bleedMult *= 0.1f;
         }
         SettleClosures();
@@ -307,10 +279,8 @@ public partial class Patient : Node3D
         var sources = new List<BleedSource>();
         var pools = new List<CutPool>();
         var leak = ClosureLeak(fx);
-        foreach (var wound in Wounds)
-        {
-            if (!wound.IsInternal)
-            {
+        foreach (var wound in Wounds) {
+            if (!wound.IsInternal) {
                 wound.Opened = Mathf.Clamp(Body.Tissue.GapAlong(wound.Points, 0.03f, TissueDepth.Skin) / FullGap, 0f, 1f);
             }
             EasePressure(wound, dt);
@@ -328,46 +298,34 @@ public partial class Patient : Node3D
             var intoCavity = wound.IsInternal || wound.Opened > 0.3f;
             var floor = intoCavity && !wound.IsInternal ? CutFloor(at) : float.PositiveInfinity;
             var holds = float.IsPositiveInfinity(floor) ? 0f : CutHolds(wound, at, floor);
-            if (!intoCavity && !wound.IsInternal)
-            {
+            if (!intoCavity && !wound.IsInternal) {
                 // Shut again, it squeezes out what it held.
                 wound.PooledMl = 0f;
-            }
-            else if (holds > 0f)
-            {
+            } else if (holds > 0f) {
                 wound.PooledMl = Mathf.Min(wound.PooledMl + rate * dt * 0.6f, holds);
                 pools.Add(new CutPool(at, floor, wound.PooledMl / holds));
-            }
-            else
-            {
+            } else {
                 CavityBloodMl += rate * dt * 0.6f;
             }
             var spills = !wound.IsInternal && (holds > 0f ? wound.PooledMl >= holds : CavityBloodMl > CavitySpillMl);
-            if (rate > 0f)
-            {
+            if (rate > 0f) {
                 var shown = wound.IsInternal ? ShownDepth(wound, at) : PatientBody.SkinThickness;
-                if (intoCavity && shown > 0f)
-                {
+                if (intoCavity && shown > 0f) {
                     sources.Add(new BleedSource(at, rate, shown));
                 }
-                if (spills || !intoCavity || shown <= 0f)
-                {
+                if (spills || !intoCavity || shown <= 0f) {
                     sources.Add(new BleedSource(at, rate, Point: wound.IsHole));
                 }
-                if (Rng.Randf() < dt * 0.5f)
-                {
+                if (Rng.Randf() < dt * 0.5f) {
                     Session.Sound("blood_drip", Body.UvToWorld(at));
                 }
             }
             wound.Held = Mathf.Max(wound.Held - dt * 0.004f, 0f);
-            if (heal > 0f)
-            {
-                for (var i = 0; i < wound.Bins.Length; i++)
-                {
+            if (heal > 0f) {
+                for (var i = 0; i < wound.Bins.Length; i++) {
                     var before = wound.Bins[i];
                     wound.Bins[i] = Mathf.Min(before + heal * dt, 1f);
-                    if (before < 1f && wound.Bins[i] >= 1f && !wound.IsInternal)
-                    {
+                    if (before < 1f && wound.Bins[i] >= 1f && !wound.IsInternal) {
                         Rpc(MethodName.TissueStitch, wound.BinPosition(i), StitchTension[0], TissueSim.TissueBreak);
                     }
                 }
@@ -390,19 +348,15 @@ public partial class Patient : Node3D
         var glucoseComa = Mathf.Clamp((v.Glucose - GlucoseHigh) / 10f, 0f, 1f) + Mathf.Clamp((2.5f - v.Glucose) / 1.5f, 0f, 1f);
         v.Consciousness = v.IsArrested ? 0f : Mathf.Clamp(1f - Mathf.Max(v.Anesthesia, fx.Sedation * 0.8f) - shock - glucoseComa, 0f, 1f);
 
-        if (_reassure > 0f)
-        {
+        if (_reassure > 0f) {
             AddFlag("comfort_time", dt);
         }
         _reassure = Mathf.Max(_reassure - dt, 0f);
-        if (v.IsAwake)
-        {
+        if (v.IsAwake) {
             var calming = 0.06f + fx.Sedation * 0.3f + (_reassure > 0f ? 0.25f : 0f);
             var fear = v.Pain * 0.12f + (total > HeavyBleeding ? 0.03f : 0f);
             v.Panic = Mathf.Clamp(v.Panic + (fear - calming) * Mods.Mult("panic_mult") * dt * 2f, 0f, 1f);
-        }
-        else
-        {
+        } else {
             v.Panic = Mathf.Max(v.Panic - dt * 0.2f, 0f);
         }
 
@@ -411,8 +365,7 @@ public partial class Patient : Node3D
         var targetHr = 72f + (1f - ratio) * 140f + v.Pain * 35f * awakeFactor + v.Panic * 40f + fx.Hr + (v.Temperature - 37f) * 10f;
         var suctionLeft = Targets.Where(t => t.IsSuctionTarget && !t.Extracted).Sum(t => t.Amount);
         var targetSpo2 = 98f + Mods.Num("spo2_offset") + fx.Spo2 - (1f - ratio) * 30f - v.Swelling * SwellingSpo2 - suctionLeft / _initialSuction * 16f;
-        switch (v.Rhythm)
-        {
+        switch (v.Rhythm) {
             case Rhythm.Sinus:
                 v.HeartRate = Mathf.Lerp(v.HeartRate, targetHr, dt * 0.6f) + Rng.RandfRange(-0.6f, 0.6f);
                 v.Systolic = Mathf.Lerp(v.Systolic,
@@ -432,17 +385,14 @@ public partial class Patient : Node3D
                 Arrested(dt);
                 break;
         }
-        if (v.Rhythm != Rhythm.Sinus)
-        {
+        if (v.Rhythm != Rhythm.Sinus) {
             v.Spo2 = Mathf.Max(v.Spo2 - dt * 1.5f, 40f);
         }
 
-        if (Mods.Flag("mh_trigger") && HasActive("mh_trigger") && !HasActive("mh_cure"))
-        {
+        if (Mods.Flag("mh_trigger") && HasActive("mh_trigger") && !HasActive("mh_cure")) {
             _mhActive = true;
         }
-        if (HasActive("mh_cure"))
-        {
+        if (HasActive("mh_cure")) {
             _mhActive = false;
         }
         var baseline = Session.RunMods.Flag("cold") ? 35.4f : 36.8f;
@@ -456,23 +406,18 @@ public partial class Patient : Node3D
     }
 
     /// <summary>Organs held out of place too long, or shoved hard, bruise and start bleeding.</summary>
-    internal void HandleOrgans(float delta)
-    {
-        for (var i = 0; i < Body.Organs.Count; i++)
-        {
+    internal void HandleOrgans(float delta) {
+        for (var i = 0; i < Body.Organs.Count; i++) {
             var organ = Body.Organs[i];
             var strain = _organStrain.GetValueOrDefault(i);
-            if (Body.OrganOffset(i) > 0.035f)
-            {
+            if (Body.OrganOffset(i) > 0.035f) {
                 strain += delta;
             }
-            if (organ.LinearVelocity.Length() > 0.5f)
-            {
+            if (organ.LinearVelocity.Length() > 0.5f) {
                 strain += delta * 4f;
             }
             strain = Mathf.Max(strain - delta * 0.3f, 0f);
-            if (strain > 5f)
-            {
+            if (strain > 5f) {
                 strain = 0f;
                 _organDamage[i] = Mathf.Min(_organDamage.GetValueOrDefault(i) + 0.35f, 1f);
                 Rpc(MethodName.SetOrganDamage, i, _organDamage[i]);
@@ -485,8 +430,7 @@ public partial class Patient : Node3D
         }
     }
 
-    private void RollArrest(float dt, DrugEffects fx)
-    {
+    private void RollArrest(float dt, DrugEffects fx) {
         var v = Vitals;
         var risk = Mathf.Max(0.55f - v.BloodRatio, 0f) * 0.05f;
         risk += v.Systolic < ArrestPressure ? 0.01f : 0f;
@@ -495,31 +439,24 @@ public partial class Patient : Node3D
         risk += v.Glucose < 2f ? 0.004f : 0f;
         risk += v.Swelling > AnaphylaxisSwelling ? 0.02f : 0f;
         risk += Mods.Num("clot_risk") * (fx.Clot < -0.2f ? 0f : 1f);
-        if (Rng.Randf() < risk * Mods.Mult("arrest_mult") * dt)
-        {
+        if (Rng.Randf() < risk * Mods.Mult("arrest_mult") * dt) {
             Arrest();
         }
     }
 
-    private void Arrested(float dt)
-    {
+    private void Arrested(float dt) {
         _arrestTime += dt;
-        if (Vitals.Rhythm == Rhythm.Vfib && _arrestTime > VfibToAsystole)
-        {
+        if (Vitals.Rhythm == Rhythm.Vfib && _arrestTime > VfibToAsystole) {
             Vitals.Rhythm = Rhythm.Asystole;
         }
     }
 
     /// <summary>Debug toast when a wound stops bleeding: for good, or only while gauze pressure holds it.</summary>
-    private void ReportStopped(Wound wound, float rate, float lastingRate)
-    {
+    private void ReportStopped(Wound wound, float rate, float lastingRate) {
         var what = wound.IsInternal ? "vessel" : $"{wound.Kind.ToString().ToLowerInvariant()} {Body.UvToMeters(wound.LengthUv) * 100f:0.0} cm";
-        if (lastingRate <= 0f && wound.LastingBleeding > 0f)
-        {
+        if (lastingRate <= 0f && wound.LastingBleeding > 0f) {
             Session.AnnounceDebug($"Bleeding stopped: {what} [permanently]");
-        }
-        else if (rate <= 0f && wound.Bleeding > 0f)
-        {
+        } else if (rate <= 0f && wound.Bleeding > 0f) {
             Session.AnnounceDebug($"Bleeding stopped: {what} [temporarily]");
         }
     }
@@ -528,10 +465,8 @@ public partial class Patient : Node3D
     /// enough to see down to it, else as deep down the slit as one can see, where its blood wells up. 0 where a cut
     /// above is shut: it seeps out onto the skin. Under skin that isn't cut it stays where it is (it bruises).
     /// </summary>
-    private float ShownDepth(Wound vessel, Vector2 at)
-    {
-        if (!Body.Tissue.IsOpen(at, TissueDepth.Skin))
-        {
+    private float ShownDepth(Wound vessel, Vector2 at) {
+        if (!Body.Tissue.IsOpen(at, TissueDepth.Skin)) {
             return vessel.DepthM;
         }
         var gap = Body.Tissue.GapAt(at, 0.02f);
@@ -540,8 +475,7 @@ public partial class Patient : Node3D
 
     /// <summary>How deep (meters) under the skin the first layer a cut at <paramref name="at"/> hasn't cut through lies:
     /// the blood it holds rests on it. Infinity once it's cut through the muscle, into the cavity.</summary>
-    private float CutFloor(Vector2 at) => Body.Tissue.DeepestCut(at, Body.Tissue.OpenReach * 2f) switch
-    {
+    private float CutFloor(Vector2 at) => Body.Tissue.DeepestCut(at, Body.Tissue.OpenReach * 2f) switch {
         TissueDepth.Muscle => float.PositiveInfinity,
         TissueDepth.Fat => PatientBody.SkinThickness + Body.FatThickness,
         _ => PatientBody.SkinThickness,
@@ -554,19 +488,16 @@ public partial class Patient : Node3D
         * 1e6f;
 
     /// <summary>Gauze pressure holds for a while after the gauze comes off, then wears off.</summary>
-    private static void EasePressure(Wound wound, float dt)
-    {
+    private static void EasePressure(Wound wound, float dt) {
         wound.SincePressed += dt;
-        if (wound.SincePressed > Wound.PressureHold)
-        {
+        if (wound.SincePressed > Wound.PressureHold) {
             wound.Pressed = Mathf.Max(wound.Pressed - dt / Wound.PressureFade, 0f);
         }
     }
 
     /// <summary>How much blood gets through closures and packing (see <see cref="Wound.BleedRate"/>): heparin, or
     /// pressure above HighPressure.</summary>
-    private float ClosureLeak(DrugEffects fx)
-    {
+    private float ClosureLeak(DrugEffects fx) {
         var thinned = Mathf.Clamp(-fx.Clot, 0f, 1f) * 0.5f;
         var pressure = Mathf.Clamp((Vitals.Systolic - HighPressure) / 40f, 0f, 0.5f);
         return Mathf.Min(thinned + pressure, 0.6f);
@@ -574,16 +505,13 @@ public partial class Patient : Node3D
 
     /// <summary>Fragile vessels (an aneurysm) burst under pressure above HighPressure: a deep vessel under the site
     /// gives way.</summary>
-    private void UpdateFragileVessels(float dt)
-    {
-        if (!Mods.Flag("fragile_vessels"))
-        {
+    private void UpdateFragileVessels(float dt) {
+        if (!Mods.Flag("fragile_vessels")) {
             return;
         }
         _burstCooldown = Mathf.Max(_burstCooldown - dt, 0f);
         var excess = Vitals.Systolic - HighPressure;
-        if (excess <= 0f || _burstCooldown > 0f || Rng.Randf() >= excess * BurstChance * dt)
-        {
+        if (excess <= 0f || _burstCooldown > 0f || Rng.Randf() >= excess * BurstChance * dt) {
             return;
         }
         _burstCooldown = BurstCooldown;
@@ -591,86 +519,64 @@ public partial class Patient : Node3D
         NewWound(WoundKind.Internal, uv, 0.7f).DepthM = Mathf.Min(0.04f, Body.CavityDepth() * 0.6f);
         Session.Sound("blood_spurt", Body.UvToWorld(uv));
         Session.Announce("A vessel gives way!");
-        foreach (var roll in Rolls.Where(roll => Db.PatientQuirks[roll.Id].Effects(roll.Variant).ContainsKey("fragile_vessels")))
-        {
+        foreach (var roll in Rolls.Where(roll => Db.PatientQuirks[roll.Id].Effects(roll.Variant).ContainsKey("fragile_vessels"))) {
             Reveal(roll.Id);
         }
     }
 
-    private void UpdateSeizure(float dt)
-    {
+    private void UpdateSeizure(float dt) {
         var chance = Mods.Num("seizure_chance") + (Vitals.Glucose < GlucoseLow ? 0.02f : 0f);
-        if (_seizureLeft > 0f)
-        {
+        if (_seizureLeft > 0f) {
             _seizureLeft -= dt;
             Vitals.Seizing = _seizureLeft > 0f && !HasActive("anticonvulsant");
-            if (Vitals.Seizing && Rng.Randf() < dt * 1.5f)
-            {
+            if (Vitals.Seizing && Rng.Randf() < dt * 1.5f) {
                 Session.JoltAll(0.6f, "The patient convulses!");
                 StrainClosures(0.3f);
             }
-        }
-        else if (!HasActive("anticonvulsant") && Rng.Randf() < chance * dt)
-        {
+        } else if (!HasActive("anticonvulsant") && Rng.Randf() < chance * dt) {
             StartSeizure();
         }
     }
 
-    private void UpdateMisc(float dt)
-    {
-        if (TourniquetOn)
-        {
+    private void UpdateMisc(float dt) {
+        if (TourniquetOn) {
             TourniquetTime += dt;
-            if (TourniquetTime > TourniquetSafe && !Flags.ContainsKey("tourniquet_overtime"))
-            {
+            if (TourniquetTime > TourniquetSafe && !Flags.ContainsKey("tourniquet_overtime")) {
                 AddFlag("tourniquet_overtime");
                 Session.Announce("The tourniquet has been on too long.");
             }
         }
-        foreach (var target in Targets.Where(t => t.IsSuctionTarget && !t.Extracted && t.Refill > 0f))
-        {
+        foreach (var target in Targets.Where(t => t.IsSuctionTarget && !t.Extracted && t.Refill > 0f)) {
             target.Amount += target.Refill * dt;
         }
-        if (Vitals.IsAwake && Mods.Num("cough_chance") > 0f && Rng.Randf() < Mods.Num("cough_chance") * dt)
-        {
+        if (Vitals.IsAwake && Mods.Num("cough_chance") > 0f && Rng.Randf() < Mods.Num("cough_chance") * dt) {
             Session.JoltAll(0.3f, "The patient coughs violently.");
             StrainClosures(0.15f);
         }
         _breathCooldown -= dt;
-        if (Vitals.IsAwake && Vitals.Panic > 0.6f && _breathCooldown <= 0f)
-        {
+        if (Vitals.IsAwake && Vitals.Panic > 0.6f && _breathCooldown <= 0f) {
             _breathCooldown = 2f;
             Rpc(MethodName.Vocal, "patient_breath");
         }
         _voiceCooldown -= dt;
-        if (Vitals.IsAwake && _voiceCooldown <= 0f)
-        {
+        if (Vitals.IsAwake && _voiceCooldown <= 0f) {
             AmbientVoice();
         }
     }
 
-    private void CheckDeath(DrugEffects fx)
-    {
+    private void CheckDeath(DrugEffects fx) {
         var v = Vitals;
         string? reason = null;
-        if (v.BloodMl < v.MaxBloodMl * 0.3f)
-        {
+        if (v.BloodMl < v.MaxBloodMl * 0.3f) {
             reason = "Bled out.";
-        }
-        else if (_arrestTime > ArrestDeath)
-        {
+        } else if (_arrestTime > ArrestDeath) {
             reason = "Cardiac arrest.";
-        }
-        else if (v.Temperature > LethalTemperature)
-        {
+        } else if (v.Temperature > LethalTemperature) {
             reason = "Malignant hyperthermia.";
-        }
-        else if (fx.Lethal > 0.95f)
-        {
+        } else if (fx.Lethal > 0.95f) {
             reason = "Passed away peacefully.";
         }
-        if (reason is not null)
-        {
+        if (reason is not null) {
             Alive = false;
             v.Rhythm = Rhythm.Asystole;
             v.HeartRate = 0f;
@@ -680,47 +586,37 @@ public partial class Patient : Node3D
 
     // --- Drugs --------------------------------------------------------------------------------------------
 
-    internal DrugEffects DrugEffectsOver(float dt)
-    {
+    internal DrugEffects DrugEffectsOver(float dt) {
         var working = new List<DrugDef>();
-        foreach (var (def, crossing) in Drugs.Update(dt, Wear))
-        {
-            if (crossing == DrugLevels.Crossing.Works)
-            {
+        foreach (var (def, crossing) in Drugs.Update(dt, Wear)) {
+            if (crossing == DrugLevels.Crossing.Works) {
                 DrugWorks(def, working);
                 working.Add(def);
-            }
-            else
-            {
+            } else {
                 AddFlag("overdose");
                 Session.Scoring.Add("overdose");
             }
         }
         var fx = new DrugEffects();
         var potency = Surgery.Current?.RunMods.Mult("drug_strength_mult") ?? 1f;
-        foreach (var entry in Drugs.Entries)
-        {
+        foreach (var entry in Drugs.Entries) {
             var def = entry.Def;
             var strength = DrugDef.DoseStrength(entry.Level) * potency;
             fx.AddStrengths(def.Peak, strength);
-            if (entry.Level > 0f)
-            {
+            if (entry.Level > 0f) {
                 // Totals, spread over the time it takes to wear off, as fast as it does: two doses give twice as much.
                 var share = Wear(def, entry.Level) / Mathf.Max(def.Duration, 1f);
                 fx.Glucose += def.Peak.Glucose * share;
                 fx.VolumeMl += def.Peak.VolumeMl * share;
             }
-            if (def.HasFlag("antihistamine"))
-            {
+            if (def.HasFlag("antihistamine")) {
                 fx.Antihistamine += strength;
             }
-            if (def.Id == "adrenaline")
-            {
+            if (def.Id == "adrenaline") {
                 fx.Adrenaline += strength;
             }
         }
-        if (!float.IsPositiveInfinity(_lethalLeft))
-        {
+        if (!float.IsPositiveInfinity(_lethalLeft)) {
             _lethalLeft -= dt;
             fx.Lethal = _lethalLeft <= 0f ? 1f : 0f;
         }
@@ -733,15 +629,12 @@ public partial class Patient : Node3D
     /// wears off as usual, so another dose deepens it only for a while. A patient who burns through it
     /// (anesthesia_decay_mult) loses it all.
     /// </summary>
-    private float Wear(DrugDef def, float level)
-    {
-        if (def.Peak.Anesthesia <= 0f)
-        {
+    private float Wear(DrugDef def, float level) {
+        if (def.Peak.Anesthesia <= 0f) {
             return 1f;
         }
         var decayMult = Mods.Mult("anesthesia_decay_mult");
-        if (decayMult > 1f)
-        {
+        if (decayMult > 1f) {
             return decayMult;
         }
         return level > 1f ? 1f : 0f;
@@ -750,14 +643,10 @@ public partial class Patient : Node3D
     private bool HasActive(string flag) => Drugs.Working(flag);
 
     /// <summary>Says so when there's no line to give anything through, or it isn't in a vein.</summary>
-    public bool IvReady()
-    {
-        if (!IvSet)
-        {
+    public bool IvReady() {
+        if (!IvSet) {
             Session.Announce("Nothing happens. There's no IV line in.");
-        }
-        else if (!IvInVein)
-        {
+        } else if (!IvInVein) {
             Session.Announce("Nothing goes in. The IV line missed the vein.");
         }
         return IvWorking;
@@ -771,18 +660,14 @@ public partial class Patient : Node3D
     /// negative means just the right dose (bags, masks). Every injection adds to what's already in
     /// (<see cref="DrugLevels"/>): ten small ones work like one big one.
     /// </summary>
-    public void Administer(string drugId, DrugRoute route, float amount = -1f)
-    {
-        if (Db.Drug(drugId) is not { } def || (route == DrugRoute.Iv && !IvReady()))
-        {
+    public void Administer(string drugId, DrugRoute route, float amount = -1f) {
+        if (Db.Drug(drugId) is not { } def || (route == DrugRoute.Iv && !IvReady())) {
             return;
         }
         var share = amount >= 0f && def.Dose > 0f ? amount / (def.Dose * WeightKg) : 1f;
-        if (def.IsBlood)
-        {
+        if (def.IsBlood) {
             TransfusedMl += def.Peak.VolumeMl;
-            if (!BloodCompatible(def.BloodType))
-            {
+            if (!BloodCompatible(def.BloodType)) {
                 AddFlag("wrong_blood");
                 Vitals.Swelling = Mathf.Min(Vitals.Swelling + 0.3f, 1f);
                 Vitals.Temperature += 1f;
@@ -790,23 +675,19 @@ public partial class Patient : Node3D
                 Session.Announce("Fever and shaking. Transfusion reaction!");
             }
         }
-        if (drugId == "whiskey")
-        {
+        if (drugId == "whiskey") {
             AddFlag("whiskey_given");
-            if (Mods.Flag("whiskey_friendly") && Db.Drug("diazepam") is { } diazepam)
-            {
+            if (Mods.Flag("whiskey_friendly") && Db.Drug("diazepam") is { } diazepam) {
                 def = diazepam;
                 share *= 0.5f;
             }
         }
         var fresh = Drugs.Give(def, share, def.Onset * (route == DrugRoute.Direct ? DrugDef.DirectOnset : 1.5f));
-        if (!fresh)
-        {
+        if (!fresh) {
             return;
         }
         var allergens = Mods.List("allergen");
-        if (allergens.Contains(drugId))
-        {
+        if (allergens.Contains(drugId)) {
             // Nothing on the body shows it: the monitor does.
             Vitals.Swelling = Mathf.Min(Vitals.Swelling + AllergySwelling, 1f);
             Vitals.Systolic -= AllergyPressureDrop;
@@ -817,54 +698,43 @@ public partial class Patient : Node3D
         // A stronger stand-in for a drug the patient could have had after all, whether the chart named the allergy or
         // not.
         var replaces = Db.Drugs.Values.Where(drug => drug.Alternatives.Contains(drugId)).Select(drug => drug.Id).ToList();
-        if (Rolls.Any(roll => roll.Id == "allergy") && replaces.Count > 0 && !replaces.Any(allergens.Contains))
-        {
+        if (Rolls.Any(roll => roll.Id == "allergy") && replaces.Count > 0 && !replaces.Any(allergens.Contains)) {
             Session.Scoring.Add("unneeded_alternative");
         }
     }
 
     /// <summary>A drug just reached an effective level: it does its job. <paramref name="along"/> started working in
     /// the same step, before it: a dangerous pair of them reacts once, not once for each.</summary>
-    private void DrugWorks(DrugDef def, List<DrugDef> along)
-    {
-        foreach (var entry in Drugs.Entries.ToList())
-        {
+    private void DrugWorks(DrugDef def, List<DrugDef> along) {
+        foreach (var entry in Drugs.Entries.ToList()) {
             var other = entry.Def;
             if (other != def && !along.Contains(other) && entry.IsWorking
-                && (other.DangerWith.Contains(def.Id) || def.DangerWith.Contains(other.Id)))
-            {
+                && (other.DangerWith.Contains(def.Id) || def.DangerWith.Contains(other.Id))) {
                 Session.Announce("Blood pressure spikes through the roof!");
-                if (Rng.Randf() < DangerArrestChance)
-                {
+                if (Rng.Randf() < DangerArrestChance) {
                     Arrest();
                 }
             }
         }
         AddFlag("drug_" + def.Id);
-        if (def.HasFlag("restart"))
-        {
+        if (def.HasFlag("restart")) {
             _restartWindow = RestartWindow;
             Vitals.Swelling = Mathf.Max(Vitals.Swelling - 0.4f, 0f);
         }
-        if (def.HasFlag("reverse_opioid"))
-        {
+        if (def.HasFlag("reverse_opioid")) {
             Drugs.Remove(drug => drug.HasFlag("opioid"));
         }
-        if (def.HasFlag("reverse_benzo"))
-        {
+        if (def.HasFlag("reverse_benzo")) {
             Drugs.Remove(drug => drug.HasFlag("benzo"));
         }
-        if (def.HasFlag("anticonvulsant"))
-        {
+        if (def.HasFlag("anticonvulsant")) {
             _seizureLeft = 0f;
             Vitals.Seizing = false;
         }
-        if (def.HasFlag("antibiotic"))
-        {
+        if (def.HasFlag("antibiotic")) {
             AddFlag("antibiotic");
         }
-        if (def.HasFlag("lethal"))
-        {
+        if (def.HasFlag("lethal")) {
             AddFlag("euthanized");
             // There's no coming back from it, however fast it wears off.
             _lethalLeft = Mathf.Min(_lethalLeft, def.Duration * 0.8f);
@@ -876,11 +746,9 @@ public partial class Patient : Node3D
     /// it. Size follows the cube root of weight: twice as heavy is about a quarter bigger. Heavy build quirks add
     /// weight.
     /// </summary>
-    private float RollWeight(ulong seed)
-    {
+    private float RollWeight(ulong seed) {
         var weightRng = new RandomNumberGenerator { Seed = seed + 3 };
-        var (low, high, typical, scale) = Age switch
-        {
+        var (low, high, typical, scale) = Age switch {
             "child" => (18f, 34f, 26f, 0.72f),
             "elderly" => (45f, 85f, 68f, 0.96f),
             _ => (55f, 105f, 75f, 1f),
@@ -889,10 +757,8 @@ public partial class Patient : Node3D
         return scale * Mathf.Pow(WeightKg / typical, 1f / 3f);
     }
 
-    private bool BloodCompatible(string pack)
-    {
-        if (BloodType == "Bombay")
-        {
+    private bool BloodCompatible(string pack) {
+        if (BloodType == "Bombay") {
             return pack == "Bombay";
         }
         return pack == "O-" || pack == BloodType || (pack is "A+" or "B+" && BloodType == "AB+");
@@ -900,10 +766,8 @@ public partial class Patient : Node3D
 
     // --- Events -------------------------------------------------------------------------------------------
 
-    public void Arrest()
-    {
-        if (Vitals.Rhythm != Rhythm.Sinus || !Alive)
-        {
+    public void Arrest() {
+        if (Vitals.Rhythm != Rhythm.Sinus || !Alive) {
             return;
         }
         Vitals.Rhythm = Rhythm.Vfib;
@@ -912,10 +776,8 @@ public partial class Patient : Node3D
         Reveal("heart");
     }
 
-    public void StartSeizure()
-    {
-        if (HasActive("anticonvulsant"))
-        {
+    public void StartSeizure() {
+        if (HasActive("anticonvulsant")) {
             return;
         }
         _seizureLeft = Rng.RandfRange(6f, 10f);
@@ -924,38 +786,31 @@ public partial class Patient : Node3D
         Reveal("epilepsy");
     }
 
-    public void WakeUp()
-    {
+    public void WakeUp() {
         Drugs.Remove(drug => drug.Peak.Anesthesia > 0f);
         Speak("wake_up");
     }
 
-    public void Shock(float power)
-    {
-        if (Mods.Flag("pacemaker") && Scenario.Site is "chest" or "abdomen")
-        {
+    public void Shock(float power) {
+        if (Mods.Flag("pacemaker") && Scenario.Site is "chest" or "abdomen") {
             Vitals.HeartRate += Rng.RandfRange(-30f, 40f);
             Reveal("pacemaker");
         }
         Hurt(0.8f);
-        switch (Vitals.Rhythm)
-        {
+        switch (Vitals.Rhythm) {
             case Rhythm.Vfib:
                 var chance = 0.45f * power + (HasActive("antiarrhythmic") ? 0.3f : 0f);
-                if (Rng.Randf() < chance)
-                {
+                if (Rng.Randf() < chance) {
                     Revive();
                 }
                 break;
             case Rhythm.Asystole:
-                if (_restartWindow > 0f && Rng.Randf() < 0.4f * power)
-                {
+                if (_restartWindow > 0f && Rng.Randf() < 0.4f * power) {
                     Revive();
                 }
                 break;
             case Rhythm.Sinus:
-                if (Rng.Randf() < 0.25f)
-                {
+                if (Rng.Randf() < 0.25f) {
                     Session.Announce("You shocked a beating heart.");
                     Arrest();
                 }
@@ -963,8 +818,7 @@ public partial class Patient : Node3D
         }
     }
 
-    private void Revive()
-    {
+    private void Revive() {
         Vitals.Rhythm = Rhythm.Sinus;
         Vitals.HeartRate = 110f;
         Vitals.Systolic = Mathf.Max(Vitals.Systolic, 70f);
@@ -973,24 +827,19 @@ public partial class Patient : Node3D
         Session.Announce("Sinus rhythm. They're back.");
     }
 
-    public void Reassure()
-    {
-        if (!Vitals.IsAwake)
-        {
+    public void Reassure() {
+        if (!Vitals.IsAwake) {
             return;
         }
-        if (_reassure <= 0f)
-        {
+        if (_reassure <= 0f) {
             Session.Scoring.Add("reassured", true);
             Speak("reassured");
         }
         _reassure = 8f;
     }
 
-    public void HeavyDrop(Vector3 at)
-    {
-        if (!Mods.Flag("bone_fragile") || Body.PartAt(at, 0.1f).Length == 0)
-        {
+    public void HeavyDrop(Vector3 at) {
+        if (!Mods.Flag("bone_fragile") || Body.PartAt(at, 0.1f).Length == 0) {
             return;
         }
         Bruise(Body.WorldToUv(at).Clamp(Vector2.Zero, Vector2.One), 0.08f, 0.8f);
@@ -1001,11 +850,9 @@ public partial class Patient : Node3D
         Reveal("bones");
     }
 
-    public void TurnOver(PatientPose to, bool fell)
-    {
+    public void TurnOver(PatientPose to, bool fell) {
         Rpc(MethodName.SetOrientation, (int)to);
-        if (fell)
-        {
+        if (fell) {
             AddFlag("fell");
             Hurt(1f);
             Vitals.BloodMl -= 150f;
@@ -1014,14 +861,10 @@ public partial class Patient : Node3D
     }
 
     /// <summary>Seizures, coughs and falls pull on closures. Weak ones (office staples, tape) can burst.</summary>
-    private void StrainClosures(float strength)
-    {
-        foreach (var wound in Wounds)
-        {
-            if (wound.Closure > 0f && Rng.Randf() < strength * (1f - wound.ClosureQuality))
-            {
-                for (var i = 0; i < wound.Bins.Length; i++)
-                {
+    private void StrainClosures(float strength) {
+        foreach (var wound in Wounds) {
+            if (wound.Closure > 0f && Rng.Randf() < strength * (1f - wound.ClosureQuality)) {
+                for (var i = 0; i < wound.Bins.Length; i++) {
                     wound.Bins[i] *= 0.4f;
                 }
                 Rpc(MethodName.TissueBurst, wound.Midpoint, wound.LengthUv * 0.5f + 0.03f);
@@ -1035,25 +878,20 @@ public partial class Patient : Node3D
 
     /// <summary>Pain at a spot on the site (uv) is dulled by a local block; deep pain (the blade on a bone) mostly gets
     /// through it.</summary>
-    public void Hurt(float amount, Vector2? uv = null, bool deep = false)
-    {
+    public void Hurt(float amount, Vector2? uv = null, bool deep = false) {
         var numb = Vitals.Anesthesia;
-        if (uv is not null)
-        {
+        if (uv is not null) {
             numb = Mathf.Max(numb, Vitals.LocalBlock * (deep ? DeepBlock : 1f));
         }
         Vitals.Pain = Mathf.Clamp(Vitals.Pain + amount * (1f - numb) * Mods.Mult("pain_mult"), 0f, 1f);
-        if (Vitals.IsAwake && amount * (1f - numb) > 0.15f)
-        {
+        if (Vitals.IsAwake && amount * (1f - numb) > 0.15f) {
             Speak("pain");
         }
     }
 
     /// <summary>Touch outside the treated area. Ticklish patients flinch.</summary>
-    public void Touch()
-    {
-        if (Mods.Flag("ticklish") && Vitals.IsAwake && Rng.Randf() < 0.05f)
-        {
+    public void Touch() {
+        if (Mods.Flag("ticklish") && Vitals.IsAwake && Rng.Randf() < 0.05f) {
             Session.JoltAll(0.25f, "");
             Speak("tickle", force: true);
             Reveal("ticklish");
@@ -1064,11 +902,9 @@ public partial class Patient : Node3D
 
     public float SanitizedFraction() => _sanitized.Average();
 
-    public float GridFraction(BurnGrid which)
-    {
+    public float GridFraction(BurnGrid which) {
         var burned = _burnCells.Count(cell => cell);
-        if (burned == 0)
-        {
+        if (burned == 0) {
             return 1f;
         }
         var grid = which == BurnGrid.Debrided ? _debrided : _grafted;
@@ -1081,12 +917,10 @@ public partial class Patient : Node3D
 
     /// <summary>How much of the skin's wounds is closed, by length: a small hole left open counts for as little of it
     /// as it is.</summary>
-    public float SkinClosure()
-    {
+    public float SkinClosure() {
         var closed = 0f;
         var total = 0f;
-        foreach (var wound in Wounds.Where(w => w.IsSkinCut))
-        {
+        foreach (var wound in Wounds.Where(w => w.IsSkinCut)) {
             // A hole is a bin long at least.
             var length = Mathf.Max(wound.LengthUv, Wound.BinLengthUv);
             // A small cut stopped with gauze doesn't need sewing.
@@ -1108,8 +942,7 @@ public partial class Patient : Node3D
 
     // --- Internals ----------------------------------------------------------------------------------------
 
-    internal Wound NewWound(WoundKind kind, Vector2 at, float depth)
-    {
+    internal Wound NewWound(WoundKind kind, Vector2 at, float depth) {
         var wound = new Wound(_nextWoundId++, kind, at, depth);
         Wounds.Add(wound);
         return wound;
@@ -1117,19 +950,15 @@ public partial class Patient : Node3D
 
     public Wound? WoundWithId(int id) => Wounds.Find(w => w.Id == id);
 
-    private Wound? NearestWound(Vector2 uv, float maxDistance, bool internalWound)
-    {
+    private Wound? NearestWound(Vector2 uv, float maxDistance, bool internalWound) {
         Wound? best = null;
         var bestDistance = maxDistance;
-        foreach (var wound in Wounds)
-        {
-            if (wound.IsInternal != internalWound || wound.Kind == WoundKind.Burn)
-            {
+        foreach (var wound in Wounds) {
+            if (wound.IsInternal != internalWound || wound.Kind == WoundKind.Burn) {
                 continue;
             }
             var distance = wound.DistanceTo(uv);
-            if (distance < bestDistance)
-            {
+            if (distance < bestDistance) {
                 bestDistance = distance;
                 best = wound;
             }
@@ -1143,88 +972,67 @@ public partial class Patient : Node3D
 
     private Vector3 SiteLocal(Vector2 uv, float depth) => Body.SitePoint(uv, Body.SurfaceHeight(uv) - depth);
 
-    private static int Cell(Vector2 uv)
-    {
+    private static int Cell(Vector2 uv) {
         var c = (Vector2I)(uv * Grid).Floor();
         return c.X >= 0 && c.Y >= 0 && c.X < Grid && c.Y < Grid ? c.Y * Grid + c.X : -1;
     }
 
     /// <summary>The grid cells within <paramref name="radius"/> (uv) of uv, as a square.</summary>
-    private static IEnumerable<Vector2I> CellsAround(Vector2 uv, float radius)
-    {
+    private static IEnumerable<Vector2I> CellsAround(Vector2 uv, float radius) {
         var r = Mathf.CeilToInt(radius * Grid);
         var center = (Vector2I)(uv * Grid).Floor();
-        for (var y = center.Y - r; y <= center.Y + r; y++)
-        {
-            for (var x = center.X - r; x <= center.X + r; x++)
-            {
-                if (x >= 0 && y >= 0 && x < Grid && y < Grid)
-                {
+        for (var y = center.Y - r; y <= center.Y + r; y++) {
+            for (var x = center.X - r; x <= center.X + r; x++) {
+                if (x >= 0 && y >= 0 && x < Grid && y < Grid) {
                     yield return new Vector2I(x, y);
                 }
             }
         }
     }
 
-    private static void MarkGrid(float[] grid, Vector2 uv, float radius, float strength)
-    {
-        foreach (var cell in CellsAround(uv, radius))
-        {
+    private static void MarkGrid(float[] grid, Vector2 uv, float radius, float strength) {
+        foreach (var cell in CellsAround(uv, radius)) {
             grid[cell.Y * Grid + cell.X] = Mathf.Max(grid[cell.Y * Grid + cell.X], strength);
         }
     }
 
-    private void AddBurnLocal(Vector2 uv, float radius)
-    {
+    private void AddBurnLocal(Vector2 uv, float radius) {
         Body.WoundMap.Disk(WoundMap.Layer.Wounds, WoundMap.Burn, uv, radius, 1.4f, WoundMap.Mode.Max);
-        foreach (var cell in CellsAround(uv, radius))
-        {
-            if (new Vector2(cell.X + 0.5f, cell.Y + 0.5f).DistanceTo(uv * Grid) <= radius * Grid)
-            {
+        foreach (var cell in CellsAround(uv, radius)) {
+            if (new Vector2(cell.X + 0.5f, cell.Y + 0.5f).DistanceTo(uv * Grid) <= radius * Grid) {
                 _burnCells[cell.Y * Grid + cell.X] = true;
             }
         }
         Array.Fill(NewWound(WoundKind.Burn, uv, 0.3f).Bins, 1f);
     }
 
-    private void AmbientVoice()
-    {
+    private void AmbientVoice() {
         var talk = Mods.Num("talk_rate", 1f);
         _voiceCooldown = Rng.RandfRange(12f, 25f) / talk;
-        if (Vitals.Panic > 0.6f)
-        {
+        if (Vitals.Panic > 0.6f) {
             Speak("panic");
-        }
-        else if (talk > 1f && Rng.Randf() < 0.3f)
-        {
+        } else if (talk > 1f && Rng.Randf() < 0.3f) {
             Speak(Rng.Randf() < 0.6f ? "hint" : "lie");
-        }
-        else
-        {
+        } else {
             Speak("calm");
         }
     }
 
-    private void Speak(string trigger, bool force = false)
-    {
-        if (!force && _voiceCooldown > 0f && trigger is "pain" or "calm")
-        {
+    private void Speak(string trigger, bool force = false) {
+        if (!force && _voiceCooldown > 0f && trigger is "pain" or "calm") {
             return;
         }
         _voiceCooldown = Mathf.Max(_voiceCooldown, 4f);
-        var sound = trigger switch
-        {
+        var sound = trigger switch {
             "pain" or "tickle" => "patient_groan",
             "panic" => "patient_scream",
             _ => "",
         };
-        if (sound.Length > 0)
-        {
+        if (sound.Length > 0) {
             Rpc(MethodName.Vocal, sound);
         }
         var lines = Db.Dialogue.GetValue(trigger, Age, Db.Dialogue.GetValue(trigger, "any", Array.Empty<string>())).AsStringArray();
-        if (lines.Length == 0)
-        {
+        if (lines.Length == 0) {
             return;
         }
         var index = Rng.RandiRange(0, lines.Length - 1);
@@ -1232,11 +1040,9 @@ public partial class Patient : Node3D
     }
 
     /// <summary>Next ramble line for the Last Request scenario. Plays in order.</summary>
-    public bool Ramble(int index)
-    {
+    public bool Ramble(int index) {
         var lines = Db.Dialogue.GetValue("ramble", "any", Array.Empty<string>()).AsStringArray();
-        if (index >= lines.Length || !Alive)
-        {
+        if (index >= lines.Length || !Alive) {
             return false;
         }
         Session.Say(lines[index], $"ramble_{index}");
@@ -1244,10 +1050,8 @@ public partial class Patient : Node3D
     }
 
     /// <summary>A hidden quirk showed itself. Players unlock it in the codex from the report either way.</summary>
-    private void Reveal(string quirkId)
-    {
-        if (Rolls.Any(roll => roll.Id == quirkId))
-        {
+    private void Reveal(string quirkId) {
+        if (Rolls.Any(roll => roll.Id == quirkId)) {
             AddFlag("revealed_" + quirkId);
         }
     }

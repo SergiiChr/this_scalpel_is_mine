@@ -5,8 +5,7 @@ namespace Scalpel.UI;
 /// and the sounds load and the runtime prepares the game's code (<see cref="ManagedRuntime"/>), so none of it stalls
 /// the surgery. Once everyone in the session is done, <see cref="Net"/> lets them all in.
 /// </summary>
-public partial class LoadingScreen : Control
-{
+public partial class LoadingScreen : Control {
     private readonly List<(string File, Action<Resource> Keep)> _loads = Ahead();
     private ProgressBar _bar = null!;
     private bool _done;
@@ -22,13 +21,11 @@ public partial class LoadingScreen : Control
             .Select(sound => (sound.File, (Action<Resource>)(stream => Sfx.Keep(sound.Id, (AudioStream)stream)))),
     ];
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         AddChild(new ColorRect { Color = Colors.Black, AnchorRight = 1f, AnchorBottom = 1f });
         var center = new CenterContainer { AnchorRight = 1f, AnchorBottom = 1f };
         AddChild(center);
-        _bar = new ProgressBar
-        {
+        _bar = new ProgressBar {
             MaxValue = 1,
             Step = 0,
             ShowPercentage = false,
@@ -42,45 +39,35 @@ public partial class LoadingScreen : Control
 
     public override void _ExitTree() => Net.Instance.AllLoaded -= Enter;
 
-    public override void _Process(double delta)
-    {
+    public override void _Process(double delta) {
         // One file at a time: models loaded side by side on worker threads can corrupt the headless renderer's meshes
         // (wrong or uninitialized mesh RIDs, crashes).
         if (_loaded < _loads.Count
             && ResourceLoader.LoadThreadedGetStatus(_loads[_loaded].File) != ResourceLoader.ThreadLoadStatus.InProgress
-            && ++_loaded < _loads.Count)
-        {
+            && ++_loaded < _loads.Count) {
             ResourceLoader.LoadThreadedRequest(_loads[_loaded].File);
         }
         _bar.Value = ((float)_loaded / _loads.Count + ManagedRuntime.Progress) / 2f;
-        if (_done || _loaded < _loads.Count || !ManagedRuntime.WarmUp.IsCompleted)
-        {
+        if (_done || _loaded < _loads.Count || !ManagedRuntime.WarmUp.IsCompleted) {
             return;
         }
         _done = true;
-        if (ManagedRuntime.WarmUp.Exception is { } error)
-        {
+        if (ManagedRuntime.WarmUp.Exception is { } error) {
             // Not fatal: what wasn't prepared compiles when it first runs.
             GD.PushWarning($"Warming up the runtime failed: {error.InnerException ?? error}");
         }
         Net.Instance.FinishedLoading();
     }
 
-    private void Enter()
-    {
-        foreach (var (file, keep) in _loads)
-        {
-            if (ResourceLoader.LoadThreadedGet(file) is { } loaded)
-            {
+    private void Enter() {
+        foreach (var (file, keep) in _loads) {
+            if (ResourceLoader.LoadThreadedGet(file) is { } loaded) {
                 keep(loaded);
             }
         }
-        if (ResourceLoader.LoadThreadedGet(Net.SurgeryScene) is PackedScene surgery)
-        {
+        if (ResourceLoader.LoadThreadedGet(Net.SurgeryScene) is PackedScene surgery) {
             GetTree().ChangeSceneToPacked(surgery);
-        }
-        else
-        {
+        } else {
             GetTree().ChangeSceneToFile(Net.SurgeryScene);
         }
     }

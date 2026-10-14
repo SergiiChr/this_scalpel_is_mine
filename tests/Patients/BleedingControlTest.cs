@@ -5,8 +5,7 @@ namespace Scalpel.Tests.Patients;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("tissue_modification")]
 [GodotArgs("--fixed-fps", "60")]
-public class BleedingControlTest
-{
+public class BleedingControlTest {
     /// <summary>A tear as long as the one the colon cancer flow leaves bleeding (meters).</summary>
     private const float Tear = 0.077f;
 
@@ -14,8 +13,7 @@ public class BleedingControlTest
     /// scenarios that end with a tear still bleeding get there through the driver, not the game: its one cautery pass
     /// comes before the tear opens.</summary>
     [TestCase]
-    public async Task ASkinTearCanBeStopped()
-    {
+    public async Task ASkinTearCanBeStopped() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;

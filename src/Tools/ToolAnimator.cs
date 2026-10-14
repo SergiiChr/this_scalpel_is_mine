@@ -7,8 +7,7 @@ namespace Scalpel.Tools;
 /// A film bag (the IV bag, tools/assetgen/iv_bag.py) falls flat as it empties and spreads out lying down, through its
 /// EmptyBag and RestingFlat blend shapes, and sways on its rig behind the hand as it's carried.
 /// </summary>
-public sealed class ToolAnimator
-{
+public sealed class ToolAnimator {
     private static readonly string[] GlowParts = ["Flame", "Glow"];
     private static readonly string[] PartNames = ["JawA", "JawB", "Plunger", "Trigger", "Blade", "Flame", "Glow", "Light"];
     private const float JawOpen = 0.12f;
@@ -63,11 +62,9 @@ public sealed class ToolAnimator
 
     /// <summary>How far a syringe's plunger is pulled out (0..1 of its volume): its liquid and any air drawn in. The
     /// plunger moves the moment it changes, with the liquid, not a frame later.</summary>
-    public float Fill
-    {
+    public float Fill {
         get => _fill;
-        set
-        {
+        set {
             _fill = value;
             Pose("Plunger", Basis.Identity, new Vector3(0, 0, _plungerTravel * _fill));
             Blend(EmptyBag, 1f - _fill);
@@ -78,28 +75,23 @@ public sealed class ToolAnimator
     /// jaws.</summary>
     public float Opening { get; private set; } = float.NaN;
 
-    public void Setup(Node3D model, string action)
-    {
+    public void Setup(Node3D model, string action) {
         _saw = action == "saw";
         _model = model;
         _film = [.. model.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()
             .Where(mesh => mesh.FindBlendShapeByName(EmptyBag) >= 0)];
-        if (_film.FirstOrDefault(mesh => mesh.Name == "Bag") is { } bag)
-        {
+        if (_film.FirstOrDefault(mesh => mesh.Name == "Bag") is { } bag) {
             _flatDrop = FlatDrop(bag);
         }
-        if (_film.Count > 0 && model.FindChild("Skeleton3D", true, false) is Skeleton3D skeleton)
-        {
+        if (_film.Count > 0 && model.FindChild("Skeleton3D", true, false) is Skeleton3D skeleton) {
             _swayBones = [.. SwayBones.Select(bone => skeleton.FindBone(bone)).Where(bone => bone >= 0)];
             _skeleton = _swayBones.Length > 0 ? skeleton : null;
         }
         _parts = ModelSlot.Parts(model, PartNames);
-        foreach (var (name, part) in _parts)
-        {
+        foreach (var (name, part) in _parts) {
             _rest[name] = part.Transform;
         }
-        if (model.FindChild("Level", true, false) is MeshInstance3D level)
-        {
+        if (model.FindChild("Level", true, false) is MeshInstance3D level) {
             _plungerTravel = level.GetAabb().Size.Z;
         }
         AnimateParts(false, false);
@@ -108,8 +100,7 @@ public sealed class ToolAnimator
     /// <summary>Stands a spreader's jaws open so its tips, at <paramref name="tipZ"/> along the tool, are
     /// <paramref name="spread"/> meters apart. Closed (ToolActions.SpreadRange.X) they rest as modelled; each jaw swings
     /// about its hinge, the model's part origin.</summary>
-    public void OpenTo(float spread, float tipZ)
-    {
+    public void OpenTo(float spread, float tipZ) {
         var hinge = _rest.GetValueOrDefault("JawA", Transform3D.Identity);
         var reach = hinge.Origin.Z - tipZ;
         var restHalf = ToolActions.SpreadRange.X * 0.5f;
@@ -120,53 +111,42 @@ public sealed class ToolAnimator
     /// <summary>A film bag lying on something (<paramref name="upSide"/>: 1 with its +Y face up, -1 with -Y up, 0 when
     /// it isn't lying) spreads flat over <see cref="FlattenTime"/>, and fills out again once it's picked up. Not lying,
     /// it sways.</summary>
-    public void Rest(float upSide, float delta)
-    {
-        if (_film.Count == 0)
-        {
+    public void Rest(float upSide, float delta) {
+        if (_film.Count == 0) {
             return;
         }
-        if (upSide != 0f)
-        {
+        if (upSide != 0f) {
             _upSide = upSide;
         }
         var flat = Mathf.MoveToward(_flat, upSide != 0f ? 1f : 0f, delta / FlattenTime);
-        if (flat != _flat)
-        {
+        if (flat != _flat) {
             _flat = flat;
             Blend(RestingFlat, _flat);
         }
         var lowered = new Vector3(0f, -_upSide * _flatDrop * _flat, 0f);
-        if (_model.Position != lowered)
-        {
+        if (_model.Position != lowered) {
             _model.Position = lowered;
         }
         Sway(upSide != 0f, delta);
     }
 
     /// <summary>Takes a film bag's sway out at once, for a tool put somewhere rather than moved there.</summary>
-    public void Settle()
-    {
+    public void Settle() {
         _swayAt = new Vector3(float.NaN, 0f, 0f);
         _swayVelocity = Vector3.Zero;
         _tilt = _tiltSpeed = Vector2.Zero;
     }
 
     /// <summary>A film bag swings behind its acceleration, bending its bones; lying down it lies still.</summary>
-    private void Sway(bool lying, float delta)
-    {
-        if (_skeleton is null || delta <= 0f)
-        {
+    private void Sway(bool lying, float delta) {
+        if (_skeleton is null || delta <= 0f) {
             return;
         }
         var at = _model.GlobalPosition;
-        if (lying || float.IsNaN(_swayAt.X) || at.DistanceTo(_swayAt) > SwayJump)
-        {
+        if (lying || float.IsNaN(_swayAt.X) || at.DistanceTo(_swayAt) > SwayJump) {
             Settle();
             _swayAt = at;
-        }
-        else
-        {
+        } else {
             var velocity = (at - _swayAt) / delta;
             // In the bag's own space, hanging down -Z: pushed along X its bottom swings back about Y, along Y about X.
             var push = _model.GlobalBasis.Inverse() * ((velocity - _swayVelocity) / delta);
@@ -177,24 +157,20 @@ public sealed class ToolAnimator
             _swayVelocity = velocity;
         }
         // Posing the bones redraws the skin: only when the tilt changed, not every frame a bag hangs still.
-        if (_tilt == _shownTilt)
-        {
+        if (_tilt == _shownTilt) {
             return;
         }
         _shownTilt = _tilt;
         var share = Quaternion.FromEuler(new Vector3(_tilt.X, _tilt.Y, 0f) / _swayBones.Length);
-        foreach (var bone in _swayBones)
-        {
+        foreach (var bone in _swayBones) {
             _skeleton.SetBonePoseRotation(bone, _skeleton.GetBoneRest(bone).Basis.GetRotationQuaternion() * share);
         }
     }
 
     /// <summary><paramref name="active"/>: the tool is being used right now. <paramref name="closed"/>: jaws clamped on
     /// something.</summary>
-    public void Animate(bool active, bool closed, float delta)
-    {
-        if (_parts.Count == 0)
-        {
+    public void Animate(bool active, bool closed, float delta) {
+        if (_parts.Count == 0) {
             return;
         }
         _time += delta;
@@ -202,8 +178,7 @@ public sealed class ToolAnimator
         AnimateParts(active, closed);
     }
 
-    private void AnimateParts(bool active, bool closed)
-    {
+    private void AnimateParts(bool active, bool closed) {
         var jaw = !float.IsNaN(Opening) ? Opening : closed || active ? 0f : JawOpen;
         Pose("JawA", new Basis(Vector3.Up, jaw), Vector3.Zero);
         Pose("JawB", new Basis(Vector3.Up, -jaw), Vector3.Zero);
@@ -211,41 +186,33 @@ public sealed class ToolAnimator
         Pose("Trigger", new Basis(Vector3.Right, -0.35f * _squeeze), Vector3.Zero);
         Pose("Blade", Basis.Identity, new Vector3(active && _saw ? Mathf.Sin(_time * 70f) * 0.004f : 0f, 0, 0));
         var flicker = 1f + Mathf.Sin(_time * 31f) * 0.15f + Mathf.Sin(_time * 53f) * 0.1f;
-        foreach (var glow in GlowParts)
-        {
-            if (_parts.TryGetValue(glow, out var part))
-            {
+        foreach (var glow in GlowParts) {
+            if (_parts.TryGetValue(glow, out var part)) {
                 part.Visible = active;
                 Pose(glow, Basis.FromScale(new Vector3(1f, 1f, flicker)), Vector3.Zero);
             }
         }
-        if (_parts.TryGetValue("Light", out var light))
-        {
+        if (_parts.TryGetValue("Light", out var light)) {
             light.Visible = active && Mathf.PosMod(_time * 4f, 1f) < 0.6f;
         }
     }
 
-    private void Pose(string partName, Basis rotation, Vector3 offset)
-    {
-        if (_parts.TryGetValue(partName, out var node))
-        {
+    private void Pose(string partName, Basis rotation, Vector3 offset) {
+        if (_parts.TryGetValue(partName, out var node)) {
             var rest = _rest[partName];
             node.Transform = new Transform3D(rest.Basis * rotation, rest.Origin + offset);
         }
     }
 
-    private void Blend(StringName shape, float weight)
-    {
-        foreach (var mesh in _film)
-        {
+    private void Blend(StringName shape, float weight) {
+        foreach (var mesh in _film) {
             mesh.SetBlendShapeValue(mesh.FindBlendShapeByName(shape), weight);
         }
     }
 
     /// <summary>How far the film's lower face rises when the bag lies flat: the blend shape holds where each vertex
     /// goes.</summary>
-    private static float FlatDrop(MeshInstance3D bag)
-    {
+    private static float FlatDrop(MeshInstance3D bag) {
         var mesh = (ArrayMesh)bag.Mesh;
         var rest = mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         var flat = mesh.SurfaceGetBlendShapeArrays(0)[bag.FindBlendShapeByName(RestingFlat)][(int)Mesh.ArrayType.Vertex]

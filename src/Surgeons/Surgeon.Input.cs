@@ -1,8 +1,7 @@
 namespace Scalpel.Surgeons;
 
 /// <summary>Local control: the player's input moves the body, the hands and the tools they hold.</summary>
-public partial class Surgeon
-{
+public partial class Surgeon {
     /// <summary>Zoomed all the way in with a syringe whose needle is in, the camera looks at it from the side and this
     /// far above (radians), with this much room around the syringe and its target (meters) (see FrameNeedle()).
     /// </summary>
@@ -77,54 +76,37 @@ public partial class Surgeon
 
     private static bool IsSyringe(SurgicalTool? tool) => tool?.Def.Action == "syringe";
 
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (!IsLocal || InputLocked || Status.IsOut)
-        {
+    public override void _UnhandledInput(InputEvent @event) {
+        if (!IsLocal || InputLocked || Status.IsOut) {
             return;
         }
         var hand = Hands[Active];
         // Headless there's no mouse to capture (Hud.CaptureMouse()): the only motion is what a test sends.
-        if (@event is InputEventMouseMotion mouse)
-        {
-            if (Input.MouseMode == Input.MouseModeEnum.Captured || DisplayServer.GetName() == "headless")
-            {
+        if (@event is InputEventMouseMotion mouse) {
+            if (Input.MouseMode == Input.MouseModeEnum.Captured || DisplayServer.GetName() == "headless") {
                 OnMouseMotion(mouse.Relative * Settings.MouseSensitivity);
             }
-        }
-        else if (@event.IsActionPressed(InputActions.MoveLeftHand) || @event.IsActionPressed(InputActions.MoveRightHand))
-        {
+        } else if (@event.IsActionPressed(InputActions.MoveLeftHand) || @event.IsActionPressed(InputActions.MoveRightHand)) {
             var index = @event.IsActionPressed(InputActions.MoveLeftHand) ? 0 : 1;
-            if (index != Active)
-            {
+            if (index != Active) {
                 SwitchHand();
             }
-        }
-        else if (@event.IsActionPressed(InputActions.LevelUp) || @event.IsActionPressed(InputActions.LevelDown))
-        {
+        } else if (@event.IsActionPressed(InputActions.LevelUp) || @event.IsActionPressed(InputActions.LevelDown)) {
             OnWheel(@event.IsActionPressed(InputActions.LevelUp));
-        }
-        else if (@event.IsActionPressed(InputActions.Zoom))
-        {
+        } else if (@event.IsActionPressed(InputActions.Zoom)) {
             Zoom = (Zoom + 1) % ZoomFov.Length;
-        }
-        else if (@event.IsActionPressed(InputActions.UseTool))
-        {
+        } else if (@event.IsActionPressed(InputActions.UseTool)) {
             // One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
             SetLowered(hand, true);
             hand.Trigger = true;
-            if (IsSyringe(HeldTool(Active)) && _zoomBefore is null)
-            {
+            if (IsSyringe(HeldTool(Active)) && _zoomBefore is null) {
                 // Putting a needle in zooms all the way in until Use tool is let go (the needle view, see
                 // FrameNeedle()).
                 _zoomBefore = Zoom;
                 Zoom = ZoomFov.Length - 1;
             }
-        }
-        else if (@event.IsActionReleased(InputActions.UseTool))
-        {
-            if (_needleAnchor is { } anchor)
-            {
+        } else if (@event.IsActionReleased(InputActions.UseTool)) {
+            if (_needleAnchor is { } anchor) {
                 Session.Tools.RequestNeedleWithdrawal(Active, anchor);
                 // Release the anchor before another mouse event can bend or pull the withdrawn needle.
                 _needleAnchor = null;
@@ -132,70 +114,45 @@ public partial class Surgeon
             SetLowered(hand, false);
             hand.Trigger = false;
             EndNeedleZoom();
-        }
-        else if (@event.IsActionPressed(InputActions.Grab))
-        {
-            if (HeldTool(Active) is { Def.Tray: "bottles" } && !hand.Attached)
-            {
+        } else if (@event.IsActionPressed(InputActions.Grab)) {
+            if (HeldTool(Active) is { Def.Tray: "bottles" } && !hand.Attached) {
                 // A bottle: let go quickly it's put down as anything is, held on it's stood upright (see
                 // LocalUpdate()).
                 _standHold = 0f;
-            }
-            else
-            {
+            } else {
                 GrabOrRelease();
             }
-        }
-        else if (@event.IsActionReleased(InputActions.Grab) && _standHold is not null)
-        {
+        } else if (@event.IsActionReleased(InputActions.Grab) && _standHold is not null) {
             _standHold = null;
             GrabOrRelease();
-        }
-        else if (@event.IsActionPressed(InputActions.Interact) && Focused is not null)
-        {
+        } else if (@event.IsActionPressed(InputActions.Interact) && Focused is not null) {
             Focused.Interact(this);
-        }
-        else if (@event.IsActionPressed(InputActions.Drink))
-        {
+        } else if (@event.IsActionPressed(InputActions.Drink)) {
             Session.RequestDrink(Active);
-        }
-        else
-        {
-            for (var i = 0; i < MaxBelt; i++)
-            {
-                if (@event.IsActionPressed(InputActions.BeltSlot(i + 1)))
-                {
+        } else {
+            for (var i = 0; i < MaxBelt; i++) {
+                if (@event.IsActionPressed(InputActions.BeltSlot(i + 1))) {
                     Session.Tools.RequestBelt(Active, i);
                 }
             }
         }
     }
 
-    private void OnMouseMotion(Vector2 motion)
-    {
-        if (Input.IsActionPressed(InputActions.AimTool))
-        {
+    private void OnMouseMotion(Vector2 motion) {
+        if (Input.IsActionPressed(InputActions.AimTool)) {
             AimTool(motion);
-        }
-        else if (MovingHand() < 0)
-        {
+        } else if (MovingHand() < 0) {
             Rotation = Rotation with { Y = Rotation.Y - (motion.X * LookSensitivity) };
             Pitch = Mathf.Clamp(Pitch - (motion.Y * LookSensitivity), LookPitch.X, LookPitch.Y);
-            if (motion.Y != 0f)
-            {
+            if (motion.Y != 0f) {
                 TakeLook();
             }
-        }
-        else if (_switchTimer <= 0f)
-        {
+        } else if (_switchTimer <= 0f) {
             // Sedated, the move reaches the hand late (see ApplyDelayed()).
             var delay = Status.InputDelay();
-            if (delay > 0f)
-            {
+            if (delay > 0f) {
                 _delayed.Enqueue(new DelayedMove(GameClock.Msec + (ulong)(delay * 1000f), Active, motion));
-            }
-            else
-            {
+            } else {
                 SteerHand(motion);
             }
         }
@@ -203,11 +160,9 @@ public partial class Surgeon
 
     /// <summary>The wheel: a syringe's plunger, a needle holder's thread tension, a spreader's jaws or the effort level.
     /// </summary>
-    private void OnWheel(bool up)
-    {
+    private void OnWheel(bool up) {
         var tools = Session.Tools;
-        switch (HeldTool(Active)?.Def.Action)
-        {
+        switch (HeldTool(Active)?.Def.Action) {
             case "syringe":
                 tools.RequestPlunger(Active, up ? -1 : 1);
                 break;
@@ -220,8 +175,7 @@ public partial class Surgeon
                 tools.RequestSpread(Active, up ? 1 : -1);
                 break;
             default:
-                if (UsesLevel(Active))
-                {
+                if (UsesLevel(Active)) {
                     Hands[Active].Level = Math.Clamp(Hands[Active].Level + (up ? 1 : -1), 0, 3);
                 }
                 break;
@@ -229,10 +183,8 @@ public partial class Surgeon
     }
 
     /// <summary>Back to the zoom step from before Use tool zoomed in on a syringe's needle, if it did.</summary>
-    private void EndNeedleZoom()
-    {
-        if (_zoomBefore is { } before)
-        {
+    private void EndNeedleZoom() {
+        if (_zoomBefore is { } before) {
             Zoom = before;
             _zoomBefore = null;
         }
@@ -244,28 +196,23 @@ public partial class Surgeon
     /// the same speed: finer control where you're looking closely. A needle stuck in the patient tilts about its tip
     /// instead.
     /// </summary>
-    private void SteerHand(Vector2 motion, int index = -1)
-    {
+    private void SteerHand(Vector2 motion, int index = -1) {
         index = index < 0 ? Active : index;
         var magnified = Mathf.Tan(Mathf.DegToRad(ZoomFov[Zoom]) * 0.5f) / Mathf.Tan(Mathf.DegToRad(ZoomFov[0]) * 0.5f);
         var step = motion * HandSensitivity * Status.HandSpeed() * magnified;
         var move = _needleFraming > 0.5f
             ? ScreenToFloor(step)
             : new Basis(Vector3.Up, Rotation.Y) * new Vector3(step.X, 0f, step.Y);
-        if (index == Active && _needleAnchor is not null)
-        {
+        if (index == Active && _needleAnchor is not null) {
             BendNeedle(move);
-        }
-        else
-        {
+        } else {
             MoveHand(Hands[index], move);
         }
     }
 
     /// <summary>A hand move (world, across the floor) with the needle stuck: along the syringe it tilts it about its tip,
     /// the hand swinging round it. What the tilt can't take (sideways, or past its range) pulls on the skin.</summary>
-    private void BendNeedle(Vector3 move)
-    {
+    private void BendNeedle(Vector3 move) {
         var hand = Hands[Active];
         var length = HeldTool(Active)!.Def.Length;
         var back = new Basis(Vector3.Up, Rotation.Y + hand.Turn) * Vector3.Back;
@@ -279,10 +226,8 @@ public partial class Surgeon
     /// <summary>Changes a tool's working pose about its tip, so pressing it never moves the aim point away from the skin.
     /// Most grips have no working angle and need no correction; the horizontal needle grip pitches down while the hand
     /// stays clear.</summary>
-    private void SetLowered(SurgeonHand hand, bool value)
-    {
-        if (hand.Lowered == value)
-        {
+    private void SetLowered(SurgeonHand hand, bool value) {
+        if (hand.Lowered == value) {
             return;
         }
         var length = HeldTool(hand.Index)?.Def.Length;
@@ -291,11 +236,9 @@ public partial class Surgeon
         var shift = length is { } after ? before - hand.TipOffset(after) : Vector3.Zero;
         // Only a grip that pitches as it's lowered moves the hand. The hand's own spot moves by as much, not to where
         // the hand is held now (a syringe snapped into a vial would lose its snap).
-        if (!shift.IsZeroApprox())
-        {
+        if (!shift.IsZeroApprox()) {
             hand.Target += shift;
-            if (!hand.Attached)
-            {
+            if (!hand.Attached) {
                 hand.LocalTarget += GlobalBasis.Inverse() * shift;
             }
         }
@@ -307,25 +250,20 @@ public partial class Surgeon
     /// turns about its tip instead (see HoldNeedle()). Snapped into a vial or the bag, the snap holds the angles: the
     /// turn goes to the hand's own, for when it lets go.
     /// </summary>
-    private void AimTool(Vector2 motion)
-    {
+    private void AimTool(Vector2 motion) {
         var hand = Hands[Active];
         // Where the wrist is before the first turn, to hold it there.
-        if (_aimWrist is null && AimsFromWrist(hand, HeldTool(Active), true))
-        {
+        if (_aimWrist is null && AimsFromWrist(hand, HeldTool(Active), true)) {
             _aimWrist = WristNow(hand);
         }
         var snap = _snaps.GetValueOrDefault(Active);
         var own = snap?.Own ?? new Vector2(hand.Tilt, hand.Turn);
         own.X = Mathf.Clamp(own.X - (motion.Y * AimSensitivity), SurgeonHand.TiltRange.X, SurgeonHand.TiltRange.Y);
         own.Y = Mathf.Clamp(own.Y - (motion.X * AimSensitivity), -SurgeonHand.TurnRange, SurgeonHand.TurnRange);
-        if (snap is null)
-        {
+        if (snap is null) {
             hand.Tilt = own.X;
             hand.Turn = own.Y;
-        }
-        else
-        {
+        } else {
             snap.Own = own;
         }
     }
@@ -358,11 +296,9 @@ public partial class Surgeon
     /// to its outer side, its printed scale toward the eyes so it doesn't need turning to be read (and kept there while
     /// held, see UpdateHand()). <paramref name="tool"/>: what the hand now holds.
     /// </summary>
-    private void FaceSyringe(int hand, SurgicalTool? tool)
-    {
+    private void FaceSyringe(int hand, SurgicalTool? tool) {
         Unface(hand);
-        if (!IsSyringe(tool))
-        {
+        if (!IsSyringe(tool)) {
             return;
         }
         var h = Hands[hand];
@@ -375,10 +311,8 @@ public partial class Surgeon
     }
 
     /// <summary>A hand that let go of a syringe holds things the way it did before it took it.</summary>
-    private void Unface(int hand)
-    {
-        if (!_unfaced.Remove(hand, out var own))
-        {
+    private void Unface(int hand) {
+        if (!_unfaced.Remove(hand, out var own)) {
             return;
         }
         Hands[hand].Tilt = own.X;
@@ -395,8 +329,7 @@ public partial class Surgeon
     /// the bag, the arm's vein) are both in view, and the hand rolls the syringe so its printed scale faces the camera.
     /// Use tool let go, both go back.
     /// </summary>
-    private void FrameNeedle(float delta)
-    {
+    private void FrameNeedle(float delta) {
         var tool = HeldTool(Active);
         var zoomed = Zoom == ZoomFov.Length - 1 && !Hands[Active].Inspecting;
         var target = zoomed && IsNeedle(tool) ? Syringe.NeedleTarget(tool!, Session.Patient) : null;
@@ -407,23 +340,19 @@ public partial class Surgeon
         // The other hand stays solid while the needle is in it.
         var solid = target is SurgeonTarget { Peer: var peer } && peer == PeerId ? 1 - Active : -1;
         // Even a tiny last step must restore the original materials when the fade reaches zero.
-        if (_needleFade != faded || solid != _solidHand)
-        {
+        if (_needleFade != faded || solid != _solidHand) {
             _solidHand = solid;
-            foreach (var hand in Hands)
-            {
+            foreach (var hand in Hands) {
                 hand.SetSeeThrough(hand.Index == solid ? 0f : _needleFade * ZoomSeeThrough);
             }
         }
         _rolledHand = framing ? Active : -1;
-        if (framing)
-        {
+        if (framing) {
             _needleView = NeedleView(tool!);
             var facing = Hands[Active].TwistFacing(_needleView.Origin - tool!.Middle());
             Hands[Active].Twist = Mathf.LerpAngle(Hands[Active].Twist, facing, Mathf.Min(delta * 8f, 1f));
         }
-        if (_needleFraming <= 0f)
-        {
+        if (_needleFraming <= 0f) {
             Camera.Transform = Transform3D.Identity;
             return;
         }
@@ -433,13 +362,11 @@ public partial class Surgeon
 
     /// <summary>A mouse move as seen through the camera, laid flat on the floor: right moves right on screen, up moves
     /// away. The needle view looks from the side, so moving the hand the body's way would look sideways there.</summary>
-    private Vector3 ScreenToFloor(Vector2 step)
-    {
+    private Vector3 ScreenToFloor(Vector2 step) {
         var flat = new Vector3(1f, 0f, 1f);
         var right = Camera.GlobalBasis.X * flat;
         var away = Camera.GlobalBasis.Y * flat;
-        if (away.Length() < 0.1f)
-        {
+        if (away.Length() < 0.1f) {
             away = -Camera.GlobalBasis.Z * flat;
         }
         return (right.Normalized() * step.X) - (away.Normalized() * step.Y);
@@ -448,11 +375,9 @@ public partial class Surgeon
     /// <summary>Where the camera looks at a syringe or catheter from: side on and a little above (square on to it,
     /// however it's tilted), from the side the eyes are on, far enough back that the whole tool and the vial, dish or bag
     /// its needle is in fit the view.</summary>
-    public Transform3D NeedleView(SurgicalTool tool)
-    {
+    public Transform3D NeedleView(SurgicalTool tool) {
         List<Vector3> points = [tool.GlobalPosition, tool.TipPosition()];
-        switch (Syringe.NeedleTarget(tool, Session.Patient))
-        {
+        switch (Syringe.NeedleTarget(tool, Session.Patient)) {
             case ContainerTarget container:
                 points.Add(container.Container.Middle());
                 break;
@@ -464,8 +389,7 @@ public partial class Surgeon
         var radius = points.Max(p => p.DistanceTo(center));
         var along = (points[1] - points[0]) * new Vector3(1f, 0f, 1f);
         var side = along.Length() > 0.001f ? along.Cross(Vector3.Up).Normalized() : _head.GlobalBasis.Z;
-        if (side.Dot(_head.GlobalPosition - center) < 0f)
-        {
+        if (side.Dot(_head.GlobalPosition - center) < 0f) {
             side = -side;
         }
         var direction = (side * Mathf.Cos(NeedleViewElevation)) + (Vector3.Up * Mathf.Sin(NeedleViewElevation));
@@ -476,13 +400,11 @@ public partial class Surgeon
         return new Transform3D(Basis.Identity, center + (direction * distance)).LookingAt(center, Vector3.Up);
     }
 
-    private void LocalUpdate(float delta)
-    {
+    private void LocalUpdate(float delta) {
         _switchTimer = Mathf.Max(_switchTimer - delta, 0f);
         var canAct = !InputLocked && !Status.IsOut;
         ApplyDelayed(canAct);
-        if (Status.IsKnockedOut)
-        {
+        if (Status.IsKnockedOut) {
             LieStill(delta);
             HandleStatusEvents(Status.Update(delta, CurrentStatusContext()));
             return;
@@ -497,43 +419,36 @@ public partial class Surgeon
         MoveAndSlide();
         UpdateLean(canAct, delta);
         var hand = Hands[Active];
-        if (canAct)
-        {
+        if (canAct) {
             // A syringe keeps its scale to the eyes on its own (FaceSyringe()): it doesn't roll.
-            if (!_unfaced.ContainsKey(Active))
-            {
+            if (!_unfaced.ContainsKey(Active)) {
                 var twist = Input.GetAxis(InputActions.TwistLeft, InputActions.TwistRight);
                 hand.Twist = Mathf.Wrap(hand.Twist + (twist * delta * TwistSpeed), -Mathf.Pi, Mathf.Pi);
             }
             var lift = Input.IsActionPressed(InputActions.Lift);
             hand.Lifted = lift && !hand.Attached;
-            if (hand.Attached && lift)
-            {
+            if (hand.Attached && lift) {
                 hand.Target += new Vector3(0f, PullSpeed * delta, 0f);
             }
             Status.HoldingBreath = Input.IsActionPressed(InputActions.Steady) && Status.Breath > 0f;
         }
         HoldNeedle(delta);
-        if (!canAct)
-        {
+        if (!canAct) {
             // Locked, in a menu or out cold, the release of Grab or Use tool may never come: a tap mustn't stand a
             // bottle, and the zoom goes back.
             _standHold = null;
             EndNeedleZoom();
         }
-        if (_standHold is { } held)
-        {
+        if (_standHold is { } held) {
             _standHold = held + delta;
-            if (_standHold >= StandHold)
-            {
+            if (_standHold >= StandHold) {
                 _standHold = null;
                 hand.Lowered = false;
                 hand.Trigger = false;
                 Session.Tools.RequestStand(Active);
             }
         }
-        for (var i = 0; i < 2; i++)
-        {
+        for (var i = 0; i < 2; i++) {
             PlaceHand(i, canAct, delta);
         }
         _jolt = _jolt.Lerp(Vector3.Zero, Mathf.Min(delta * 8f, 1f));
@@ -545,30 +460,25 @@ public partial class Surgeon
 
     /// <summary>Where a hand goes this frame: held by a needle, a wound or the eyes, aimed from the wrist, or resting
     /// on what's under it; then its tremor, shiver and afterimages.</summary>
-    private void PlaceHand(int i, bool canAct, float delta)
-    {
+    private void PlaceHand(int i, bool canAct, float delta) {
         var hand = Hands[i];
         var tool = HeldTool(i);
         hand.Inspecting = canAct && i == Active && tool is not null && !hand.Attached
             && Input.IsActionPressed(InputActions.Inspect);
         var aiming = AimsFromWrist(hand, tool, canAct);
         hand.Aiming = aiming;
-        if (i == Active && !aiming)
-        {
+        if (i == Active && !aiming) {
             _aimWrist = null;
         }
-        if (hand.Lowered || !aiming)
-        {
+        if (hand.Lowered || !aiming) {
             // Use tool brings it down onto its spot, no faster than letting go of Aim tool does.
             hand.Raise = Mathf.MoveToward(hand.Raise, 0f, delta * SurgeonHand.SettleSpeed);
         }
-        if (tool?.Def.Action == "spread")
-        {
+        if (tool?.Def.Action == "spread") {
             // Held tipped toward the skin, its points down, a spreader's jaws open flat across it (C/V turn them).
             hand.Tilt = SurgeonHand.SpreaderTilt;
         }
-        if (i == Active && _needleAnchor is { } anchor && !hand.Inspecting)
-        {
+        if (i == Active && _needleAnchor is { } anchor && !hand.Inspecting) {
             // The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
             hand.Lifted = false;
             hand.Raise = 0f;
@@ -578,13 +488,11 @@ public partial class Surgeon
             _strain[i] = false;
             return;
         }
-        if (tool is { InWound: true } && !hand.Inspecting)
-        {
+        if (tool is { InWound: true } && !hand.Inspecting) {
             HoldInWound(hand, tool);
             return;
         }
-        if (hand.Inspecting)
-        {
+        if (hand.Inspecting) {
             // Held up in front of the eyes, the grip off to the hand's side so the whole tool crosses the view.
             hand.Lowered = false;
             hand.Trigger = false;
@@ -593,12 +501,10 @@ public partial class Surgeon
             _strain[i] = false;
             return;
         }
-        if (!hand.Attached)
-        {
+        if (!hand.Attached) {
             hand.Target = ToGlobal(hand.LocalTarget);
         }
-        if (aiming)
-        {
+        if (aiming) {
             _aimWrist ??= WristNow(hand);
             hand.Target = ToGlobal(_aimWrist.Value) - hand.WristOffset();
         }
@@ -610,16 +516,13 @@ public partial class Surgeon
         // Over a tray, a vial or the table, a syringe glides up and down rather than hops. Onto the patient or a glove
         // it rises at once: rising slowly, the needle would sit under the skin, where the wheel injects.
         if (IsSyringe(tool)
-            && (hand.Target.Y < was || !SurfaceBelow(hand.Target + hand.TipOffset(tool!.Def.Length)).Soft))
-        {
+            && (hand.Target.Y < was || !SurfaceBelow(hand.Target + hand.TipOffset(tool!.Def.Length)).Soft)) {
             hand.Target = hand.Target with { Y = Mathf.MoveToward(was, hand.Target.Y, SyringeGlide * delta) };
-            if (!hand.Attached)
-            {
+            if (!hand.Attached) {
                 hand.LocalTarget = ToLocal(hand.Target);
             }
         }
-        if (snap is { } eased)
-        {
+        if (snap is { } eased) {
             // The tip goes straight from where the hand's own way of holding it would put it to the snapped spot, the
             // hand turning round it: turned first, the tip would swing wide. The hand's own spot (LocalTarget) stays
             // where the mouse put it, so moving on from there pulls it out again.
@@ -628,8 +531,7 @@ public partial class Surgeon
             var freeTip = ownTip with { Y = hand.Target.Y + tipOffset.Y };
             hand.Target = freeTip.Lerp(eased.At, eased.Weight) - tipOffset;
         }
-        if (aiming && !hand.Lowered)
-        {
+        if (aiming && !hand.Lowered) {
             // The tip rises off what it rested on rather than the wrist coming down after it. Into it, the hand rises.
             hand.Raise = Mathf.Max(heldAt - hand.Target.Y, 0f);
         }
@@ -644,32 +546,27 @@ public partial class Surgeon
 
     /// <summary>A syringe pressed into the patient sticks where its tip went in. Pulled on too hard, or walked away from
     /// out of reach, it tears out.</summary>
-    private void HoldNeedle(float delta)
-    {
+    private void HoldNeedle(float delta) {
         var hand = Hands[Active];
         var tool = HeldTool(Active);
-        if (!hand.Lowered || !IsSyringe(tool))
-        {
+        if (!hand.Lowered || !IsSyringe(tool)) {
             _needleTorn = false;
             _needleAnchor = null;
             _needlePressed = 0f;
             return;
         }
-        if (_needleAnchor is not { } anchor)
-        {
+        if (_needleAnchor is not { } anchor) {
             _needlePressed += delta;
             // Once in, it stays in until Use tool is let go: breathing lifting the skin doesn't free it.
             if (_needlePressed >= NeedleSettle && !_needleTorn
-                && Syringe.NeedleTarget(tool!, Session.Patient) is VeinTarget or TissueTarget)
-            {
+                && Syringe.NeedleTarget(tool!, Session.Patient) is VeinTarget or TissueTarget) {
                 _needleAnchor = tool!.TipPosition();
                 _needlePull = Vector3.Zero;
             }
             return;
         }
         var outOfReach = (anchor - hand.TipOffset(tool!.Def.Length)).DistanceTo(Shoulder(Active)) > Reach;
-        if (_needlePull.Length() > NeedleTear || outOfReach)
-        {
+        if (_needlePull.Length() > NeedleTear || outOfReach) {
             var pulled = _needlePull.Length() > 0f ? _needlePull.Normalized() * NeedleTear : Vector3.Zero;
             Session.Tools.RequestNeedleTear(Active, anchor, anchor + pulled);
             Session.Hud.Toast("The needle tears out of the skin.");
@@ -681,8 +578,7 @@ public partial class Surgeon
     /// <summary>A spreader set in a wound stays where it went in, steady, and the hand holding it goes to it, as far as
     /// the arm turns that way. Walked away from out of reach, the host leaves it standing in the wound
     /// (Surgery.Overstretched()).</summary>
-    private void HoldInWound(SurgeonHand hand, SurgicalTool tool)
-    {
+    private void HoldInWound(SurgeonHand hand, SurgicalTool tool) {
         var angles = tool.GlobalBasis.GetEuler(EulerOrder.Yxz);
         // A spreader's twist swings it (SurgeonHand.Spreads): what the arm doesn't turn, the twist does.
         var yaw = Mathf.Wrap(angles.Y - GlobalRotation.Y, -Mathf.Pi, Mathf.Pi);
@@ -698,14 +594,11 @@ public partial class Surgeon
     }
 
     /// <summary>Mouse moves a sedative held back, once they're due. Out cold or locked, they're dropped.</summary>
-    private void ApplyDelayed(bool canAct)
-    {
+    private void ApplyDelayed(bool canAct) {
         var now = GameClock.Msec;
-        while (_delayed.TryPeek(out var move) && (!canAct || move.DueMsec <= now))
-        {
+        while (_delayed.TryPeek(out var move) && (!canAct || move.DueMsec <= now)) {
             _delayed.Dequeue();
-            if (canAct)
-            {
+            if (canAct) {
                 SteerHand(move.Motion, move.Hand);
             }
         }
@@ -714,23 +607,19 @@ public partial class Surgeon
     /// <summary>Moves the hand by <paramref name="step"/> (world space), within reach. A free hand moves on from its own
     /// spot, not from where something holds it for now (a needle snapped into the IV bag, a tool held up to look at).
     /// </summary>
-    private void MoveHand(SurgeonHand hand, Vector3 step)
-    {
+    private void MoveHand(SurgeonHand hand, Vector3 step) {
         var from = hand.Attached ? hand.Target : ToGlobal(hand.LocalTarget);
         hand.Target = InReach(from + step, Shoulder(hand.Index));
-        if (!hand.Attached)
-        {
+        if (!hand.Attached) {
             hand.LocalTarget = ToLocal(hand.Target);
         }
     }
 
     /// <summary><paramref name="point"/> kept between <see cref="MinReach"/> and <see cref="Reach"/> from the shoulder at
     /// <paramref name="from"/>.</summary>
-    private Vector3 InReach(Vector3 point, Vector3 from)
-    {
+    private Vector3 InReach(Vector3 point, Vector3 from) {
         var outward = point - from;
-        if (outward.Length() < 0.001f)
-        {
+        if (outward.Length() < 0.001f) {
             outward = -GlobalBasis.Z * 0.001f;
         }
         return from + (outward.Normalized() * Mathf.Clamp(outward.Length(), MinReach, Reach));
@@ -738,26 +627,22 @@ public partial class Surgeon
 
     /// <summary>The tool the active hand would pick up: the free tool nearest the hand's tip, highlighted with its name
     /// shown.</summary>
-    private void UpdateHover()
-    {
+    private void UpdateHover() {
         var hand = Hands[Active];
         var near = HeldTool(Active) is null && !InputLocked
             ? Session.Tools.NearestGrabbable(hand.GlobalPosition + hand.TipOffset(0.05f))
             : null;
-        if (near == Hovered)
-        {
+        if (near == Hovered) {
             return;
         }
-        if (IsInstanceValid(Hovered))
-        {
+        if (IsInstanceValid(Hovered)) {
             Hovered!.SetHighlight(false);
         }
         near?.SetHighlight(true);
         Hovered = near;
     }
 
-    private void SwitchHand()
-    {
+    private void SwitchHand() {
         Active = 1 - Active;
         _standHold = null;
         _needleAnchor = null;
@@ -765,57 +650,44 @@ public partial class Surgeon
         _switchTimer = SwitchDelay * Mods.Mult("switch_delay_mult");
     }
 
-    private void GrabOrRelease()
-    {
+    private void GrabOrRelease() {
         var hand = Hands[Active];
         var tools = Session.Tools;
-        if (HeldTool(Active) is not null)
-        {
+        if (HeldTool(Active) is not null) {
             hand.Lowered = false;
             hand.Trigger = false;
-            if (PassTarget(Active) is not null && !hand.Attached)
-            {
+            if (PassTarget(Active) is not null && !hand.Attached) {
                 tools.RequestPass(Active);
-            }
-            else
-            {
+            } else {
                 tools.RequestRelease(Active, Vector3.Zero);
             }
             return;
         }
-        if (tools.NearestGrabbable(hand.GlobalPosition + hand.TipOffset(0.05f)) is not { } near)
-        {
+        if (tools.NearestGrabbable(hand.GlobalPosition + hand.TipOffset(0.05f)) is not { } near) {
             return;
         }
-        if (Mods.Flag("contamination_vision") && !near.Sterile)
-        {
+        if (Mods.Flag("contamination_vision") && !near.Sterile) {
             Status.AddStress(Mods.Num("dirty_stress"));
         }
         tools.RequestGrab(near, Active);
     }
 
     /// <summary>Hands that aren't lifted knock into other surgeons' hands.</summary>
-    private void CheckBumps()
-    {
+    private void CheckBumps() {
         var mine = Hands[Active];
         var tool = HeldTool(Active);
         // A needle held into a partner's hand or body is close on purpose.
-        if (mine.Lifted || (IsSyringe(tool) && Syringe.NeedleTarget(tool!, Session.Patient) is SurgeonTarget))
-        {
+        if (mine.Lifted || (IsSyringe(tool) && Syringe.NeedleTarget(tool!, Session.Patient) is SurgeonTarget)) {
             return;
         }
-        foreach (var other in Session.Surgeons.Values.Where(other => other != this))
-        {
-            foreach (var theirs in other.Hands.Where(hand => !hand.Lifted))
-            {
+        foreach (var other in Session.Surgeons.Values.Where(other => other != this)) {
+            foreach (var theirs in other.Hands.Where(hand => !hand.Lifted)) {
                 var gap = mine.GlobalPosition - theirs.GlobalPosition;
-                if (gap.Length() >= BumpDistance)
-                {
+                if (gap.Length() >= BumpDistance) {
                     continue;
                 }
                 mine.Target += gap.Normalized() * 0.05f;
-                if (!mine.Attached)
-                {
+                if (!mine.Attached) {
                     mine.LocalTarget = ToLocal(mine.Target);
                 }
                 Jolt(0.35f);
@@ -825,8 +697,7 @@ public partial class Surgeon
         }
     }
 
-    private void UpdateFocus()
-    {
+    private void UpdateFocus() {
         var from = Camera.GlobalPosition;
         var focused = Rays.Cast(this, from, from - (Camera.GlobalBasis.Z * InteractRange), Interactable.Layer, areas: true)
             ?.Collider as Interactable;

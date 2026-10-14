@@ -12,12 +12,10 @@ namespace Scalpel.Surgeons;
 /// <param name="Turn">How far in toward the middle the tool turns at rest (radians).</param>
 public sealed record GripStyle(
     Basis Frame, Vector3 At, Vector3 On, float[] Curl, float Oppose = 0f, float Tilt = SurgeonHand.RestTilt,
-    float? WorkTilt = null, float Turn = 0f)
-{
+    float? WorkTilt = null, float Turn = 0f) {
     private static readonly Basis Along = new(new(0f, 0.2f, -0.98f), new(0f, 0.98f, 0.2f), new(1f, 0f, 0f));
 
-    public static readonly IReadOnlyDictionary<string, GripStyle> All = new Dictionary<string, GripStyle>
-    {
+    public static readonly IReadOnlyDictionary<string, GripStyle> All = new Dictionary<string, GripStyle> {
         // Pinched between the thumb pad on top and the curled index tip under it, the thumb swung across to meet the
         // index. The back of the tool runs up between the thumb and index into the web, the other fingers curled under
         // it.
@@ -55,8 +53,7 @@ public sealed record GripStyle(
 /// <param name="Lift">Meters the glove moves off the tool toward the back of the hand.</param>
 /// <param name="Shift">Meters toward the pinky side, so the tool sits more in the web of the thumb.</param>
 /// <param name="Curl">Replaces the grip's finger curl when set.</param>
-public sealed record GripFit(float Lift = 0f, float Shift = 0f, float[]? Curl = null)
-{
+public sealed record GripFit(float Lift = 0f, float Shift = 0f, float[]? Curl = null) {
     /// <summary>The grip as it is.</summary>
     public static readonly GripFit None = new();
 
@@ -65,11 +62,9 @@ public sealed record GripFit(float Lift = 0f, float Shift = 0f, float[]? Curl = 
         : new(fit.Float("lift"), fit.Float("shift"),
             fit.TryGetValue("curl", out var curl) ? [.. curl.AsGodotArray().Select(value => value.AsSingle())] : null);
 
-    public Godot.Collections.Dictionary ToDictionary()
-    {
+    public Godot.Collections.Dictionary ToDictionary() {
         var fit = new Godot.Collections.Dictionary { ["lift"] = Lift, ["shift"] = Shift };
-        if (Curl is not null)
-        {
+        if (Curl is not null) {
             fit["curl"] = Curl;
         }
         return fit;

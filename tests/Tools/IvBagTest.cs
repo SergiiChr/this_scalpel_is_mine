@@ -13,8 +13,7 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_saline_bag"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class IvBagTest
-{
+public class IvBagTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "IV insertion and bag handling exceed the recorded CPU/render budget";
 
@@ -37,28 +36,24 @@ public class IvBagTest
     private static readonly string[] FilmParts = ["Bag", "Label", "Level", "Frame"];
 
     [TestCase]
-    public async Task HangsOnTheStandAndIsSwappedForANewBag()
-    {
+    public async Task HangsOnTheStandAndIsSwappedForANewBag() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);
         var surgery = driver.Surgery;
         var drip = surgery.Tools.DripBag()!;
-        if (driver.FreeTools("saline_bag").Count == 0)
-        {
+        if (driver.FreeTools("saline_bag").Count == 0) {
             SurgeryState.ToolIsOnTray(surgery, "saline_bag");
             await Frames.Seconds(1f);
         }
         var bag = driver.FreeTools("saline_bag")[0];
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "iv_bag");
-            driver.OnKeyFrame = (keyFrame, description) => keyFrame switch
-            {
+            driver.OnKeyFrame = (keyFrame, description) => keyFrame switch {
                 "lying" => shots.CaptureAt(keyFrame, description, bag.Middle(), HeldView),
                 "bag_in_hand" => shots.CaptureFacing(keyFrame, description, bag.Middle(), TowardEyes(bag), HeldView, hands: true),
                 _ => shots.CaptureFacing(keyFrame, description, drip.Middle(), drip.GlobalBasis.Y, View),
@@ -101,8 +96,7 @@ public class IvBagTest
         var hand = driver.Me.Hands[driver.Me.Active];
         var sweep = driver.PlayerSweepsTo(driver.Tip(hand) + (driver.Me.GlobalBasis.X * SweepLength), SweepSpeed);
         var swing = 0f;
-        while (!sweep.IsCompleted)
-        {
+        while (!sweep.IsCompleted) {
             swing = Mathf.Max(swing, (Carrier(bag).Position - middleRest).Length());
             await Frames.NextProcess();
         }
@@ -131,8 +125,7 @@ public class IvBagTest
 
     /// <summary>The liquid lies inside the film, at its bottom, as high as its share of what the bag holds. The film and
     /// the liquid are as flat as the bag is empty.</summary>
-    private static void AssertLiquidAtItsLevel(SurgicalTool bag, string when)
-    {
+    private static void AssertLiquidAtItsLevel(SurgicalTool bag, string when) {
         var empty = 1f - (bag.Ml / bag.Def.Volume);
         AssertBool(FilmParts.All(part => Mathf.IsEqualApprox(Weight(bag, part, "EmptyBag"), empty)))
             .OverrideFailureMessage($"{when}: the film, print, seams and liquid are {empty:0.00} of the way to empty").IsTrue();
@@ -147,8 +140,7 @@ public class IvBagTest
             .IsTrue();
     }
 
-    private static float Weight(SurgicalTool bag, string part, string shape)
-    {
+    private static float Weight(SurgicalTool bag, string part, string shape) {
         var mesh = (MeshInstance3D)bag.FindChild(part, true, false)!;
         return mesh.GetBlendShapeValue(mesh.FindBlendShapeByName(shape));
     }
@@ -165,8 +157,7 @@ public class IvBagTest
         Enumerable.Range(0, 8).Min(i => (bag.GlobalTransform * bag.Bounds.GetEndpoint(i)).Y);
 
     /// <summary>The face of a bag in hand that's turned toward the surgeon's eyes.</summary>
-    private static Vector3 TowardEyes(SurgicalTool bag)
-    {
+    private static Vector3 TowardEyes(SurgicalTool bag) {
         var face = bag.GlobalBasis.Y;
         return face * Mathf.Sign(face.Dot(Surgery.Current!.LocalSurgeon!.Camera.GlobalPosition - bag.Middle()));
     }

@@ -11,8 +11,7 @@ namespace Scalpel.Tests.TissueModification;
 [TestCategory("smoke"), TestCategory("tissue_modification"), TestCategory("tool_skin_stapler")]
 [TestCategory("tool_needle"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class WoundClosureTest
-{
+public class WoundClosureTest {
     /// <summary>Edges further apart than this (meters) show a gap; closer than <see cref="Meets"/> they meet. Between
     /// the two it's a judgement call the checks leave alone.</summary>
     private const float Shows = 0.002f;
@@ -26,8 +25,7 @@ public class WoundClosureTest
     private const float Dry = 0.02f;
 
     [TestCase]
-    public async Task StaplesCountClosedOnlyWhereTheEdgesMeet()
-    {
+    public async Task StaplesCountClosedOnlyWhereTheEdgesMeet() {
         var session = await Start("staples");
         var driver = session.Driver;
         var wound = driver.Patient.Wounds[0];
@@ -57,8 +55,7 @@ public class WoundClosureTest
     }
 
     [TestCase]
-    public async Task ThreadCountsClosedOnlyWhereTheEdgesMeet()
-    {
+    public async Task ThreadCountsClosedOnlyWhereTheEdgesMeet() {
         var session = await Start("thread");
         var driver = session.Driver;
         var wound = driver.Patient.Wounds[0];
@@ -90,8 +87,7 @@ public class WoundClosureTest
     /// cautery stops it. Stapled shut and dry, the cut counts closed, enough for Hand Stitch's "Close the cut".
     /// </summary>
     [TestCase]
-    public async Task OfficeStaplesThroughVesselsCountClosedOnceDry()
-    {
+    public async Task OfficeStaplesThroughVesselsCountClosedOnceDry() {
         var session = await Start("office");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -121,8 +117,7 @@ public class WoundClosureTest
 
     /// <summary>Starts Hand Stitch with the patient asleep, and in a run with key frames saves the case's under
     /// wound_closure/<paramref name="caseName"/>, starting untouched, the oblique views along the cut.</summary>
-    private static async Task<ToolSession> Start(string caseName)
-    {
+    private static async Task<ToolSession> Start(string caseName) {
         var session = await ToolSession.Start("hand_stitch", $"wound_closure/{caseName}");
         var driver = session.Driver;
         var wound = driver.Patient.Wounds[0];
@@ -132,20 +127,15 @@ public class WoundClosureTest
 
     /// <summary>Every bin of <paramref name="wound"/> showing a gap counts open, every one whose edges meet next to a
     /// closure counts closed.</summary>
-    private static void AssertCountsAsSeen(SurgeryDriver driver, Wound wound, string label)
-    {
+    private static void AssertCountsAsSeen(SurgeryDriver driver, Wound wound, string label) {
         var tissue = driver.Body.Tissue;
         var wrong = new List<string>();
-        for (var i = 0; i < wound.Bins.Length; i++)
-        {
+        for (var i = 0; i < wound.Bins.Length; i++) {
             var at = wound.BinPosition(i);
             var gap = GapAt(tissue, at, At);
-            if (gap > Shows && wound.Bins[i] >= 1f)
-            {
+            if (gap > Shows && wound.Bins[i] >= 1f) {
                 wrong.Add($"bin {i} counts closed with a {gap * 1000f:0.0} mm gap");
-            }
-            else if (GapAt(tissue, at, Around) < Meets && tissue.HeldNear([at])[0] && wound.Bins[i] < 1f)
-            {
+            } else if (GapAt(tissue, at, Around) < Meets && tissue.HeldNear([at])[0] && wound.Bins[i] < 1f) {
                 wrong.Add($"bin {i} counts {wound.Bins[i]:0.00} closed with its edges meeting");
             }
         }
@@ -157,14 +147,11 @@ public class WoundClosureTest
 
     /// <summary>The bins of <paramref name="wound"/> that count open, with their gap, whether a closure holds them and
     /// whether a staple has an edge left to take there.</summary>
-    private static string OpenBins(SurgeryDriver driver, Wound wound)
-    {
+    private static string OpenBins(SurgeryDriver driver, Wound wound) {
         var tissue = driver.Body.Tissue;
         var lines = new List<string>();
-        for (var i = 0; i < wound.Bins.Length; i++)
-        {
-            if (wound.Bins[i] < 1f)
-            {
+        for (var i = 0; i < wound.Bins.Length; i++) {
+            if (wound.Bins[i] < 1f) {
                 var at = wound.BinPosition(i);
                 lines.Add($"bin {i}: {wound.Bins[i]:0.00}, gap {GapAt(tissue, at, At) * 1000f:0.0} mm, "
                     + $"held {(tissue.HeldNear([at])[0] ? 1 : 0)}, "
@@ -176,13 +163,10 @@ public class WoundClosureTest
 
     /// <summary>How far apart the skin's edges are pulled across the cut within <paramref name="look"/> (meters) of
     /// <paramref name="uv"/>, measured on the springs the layers are drawn from.</summary>
-    private static float GapAt(TissueSim tissue, Vector2 uv, float look)
-    {
+    private static float GapAt(TissueSim tissue, Vector2 uv, float look) {
         var gap = 0f;
-        foreach (var s in tissue.Severed)
-        {
-            if (((tissue.CrossingUv(s) - uv) * tissue.Size).Length() < look)
-            {
+        foreach (var s in tissue.Severed) {
+            if (((tissue.CrossingUv(s) - uv) * tissue.Size).Length() < look) {
                 var spring = tissue.SpringAt(s);
                 var a = spring.A;
                 var b = spring.B;

@@ -5,18 +5,15 @@ namespace Scalpel.Tests.Liquids;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("liquids"), TestCategory("tool_saline_bag")]
 [GodotArgs("--fixed-fps", "60")]
-public class IvBagSwapTest
-{
+public class IvBagSwapTest {
     /// <summary>Without a working line the held bag stays full in hand and the hung one keeps what it had: on the
     /// sidewalk and in the ambulance there's no nurse to bring another.</summary>
     [TestCase("no line")]
     [TestCase("missed vein")]
-    public async Task BagIsKeptWithoutAWorkingLine(string line)
-    {
+    public async Task BagIsKeptWithoutAWorkingLine(string line) {
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch");
-        if (line == "missed vein")
-        {
+        if (line == "missed vein") {
             SurgeryState.IvLineMissedTheVein(driver.Patient);
         }
         AssertBool(driver.Patient.IvWorking).OverrideFailureMessage($"{line}: nothing runs through a line")

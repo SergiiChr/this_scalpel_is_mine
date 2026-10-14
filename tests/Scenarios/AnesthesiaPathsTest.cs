@@ -5,11 +5,9 @@ namespace Scalpel.Tests.Scenarios;
 [TestSuite, RequireGodotRuntime, IsolateCases]
 [TestCategory("scenario"), TestCategory("smoke"), TestCategory("slow"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class AnesthesiaPathsTest
-{
+public class AnesthesiaPathsTest {
     [TestCase(Timeout = Limits.Slow)]
-    public async Task PreinstalledIvDeliversAnesthesiaAndCompletesTheObjective()
-    {
+    public async Task PreinstalledIvDeliversAnesthesiaAndCompletesTheObjective() {
         using var debug = SurgeryState.DebugHudIsEnabled();
         var driver = SurgeryDriver.Create();
         const uint Seed = 1;
@@ -41,8 +39,7 @@ public class AnesthesiaPathsTest
             .OverrideFailureMessage("the debug objective shows actual and required anesthesia depth")
             .Contains("0% / 70%");
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, $"preop_anesthesia/{Seed}");
@@ -58,8 +55,7 @@ public class AnesthesiaPathsTest
             .OverrideFailureMessage("Put the patient under checks off after the dose works").IsTrue();
         AssertBool(driver.Surgery.Status.Objectives[0].Done)
             .OverrideFailureMessage("the HUD receives the completed anesthesia objective").IsTrue();
-        if (shots is not null)
-        {
+        if (shots is not null) {
             await shots.CaptureView("anesthetized", "the patient under after the chart dose, \"Put the patient under\" checked off");
 
             shots.End();
@@ -74,13 +70,11 @@ public class AnesthesiaPathsTest
     /// </summary>
     [TestCase("hand_stitch", Timeout = Limits.Slow)]
     [TestCase("hand_stitch_child", Timeout = Limits.Slow)]
-    public async Task HandStitchLidocaineAllergyUnderGeneralAnesthesia(string scenario)
-    {
+    public async Task HandStitchLidocaineAllergyUnderGeneralAnesthesia(string scenario) {
         // No key frames here: under a display a software renderer would draw every frame of the whole surgery.
         var rendering = RenderingServer.RenderLoopEnabled;
         FrameBudget.RenderingOff();
-        try
-        {
+        try {
             var driver = SurgeryDriver.Create();
             await driver.Start(scenario, patientQuirks: [new QuirkRoll("allergy", "lidocaine")]);
             var surgery = driver.Surgery;
@@ -98,9 +92,7 @@ public class AnesthesiaPathsTest
                     + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
                 .IsTrue();
             await driver.Stop();
-        }
-        finally
-        {
+        } finally {
             RenderingServer.RenderLoopEnabled = rendering;
         }
     }

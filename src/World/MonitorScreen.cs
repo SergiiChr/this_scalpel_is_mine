@@ -5,8 +5,7 @@ namespace Scalpel.World;
 /// patient monitor: sweeping waveforms on the left, numbers in their wave's color on the right, alarms in the top bar
 /// and lab results along the bottom.
 /// </summary>
-public partial class MonitorScreen : Control
-{
+public partial class MonitorScreen : Control {
     public static readonly Vector2 ScreenSize = new(760f, 500f);
     private static readonly Color Background = new(0.01f, 0.015f, 0.02f);
     private static readonly Color Bar = new(0.11f, 0.13f, 0.17f);
@@ -65,22 +64,19 @@ public partial class MonitorScreen : Control
     private sealed record Readout(
         string HeartRate, string Rhythm, string Spo2, string Nibp, string MeanPressure, string Temperature, string Resp);
 
-    public MonitorScreen()
-    {
+    public MonitorScreen() {
         Size = ScreenSize;
         _waves = [.. Enumerable.Range(0, 3).Select(_ => new float[(int)(SampleHz * SweepSeconds)])];
         // Readouts, alarms and lab results use English text, ASCII punctuation and the temperature degree sign.
         // Prepare the entire alphabet, not just today's values, before a new result can stall a gameplay frame.
         var text = string.Concat(Enumerable.Range(32, 95).Select(value => (char)value)) + "°";
-        foreach (var size in (int[])[UnitSize, SmallSize, LabelSize, StatusSize, PressureSize, BloodPressureSize, PulseSize])
-        {
+        foreach (var size in (int[])[UnitSize, SmallSize, LabelSize, StatusSize, PressureSize, BloodPressureSize, PulseSize]) {
             Ui.PrepareFontText(_font, size, 0, text);
         }
     }
 
     /// <summary>A new heartbeat: the next QRS starts now.</summary>
-    public void Beat(float heartRate)
-    {
+    public void Beat(float heartRate) {
         _sinceBeat = 0f;
         _period = 60f / Mathf.Max(heartRate, 1f);
     }
@@ -89,8 +85,7 @@ public partial class MonitorScreen : Control
 
     internal string LabText => _lab;
 
-    public void Tick(Vitals vitals, bool alive, List<string> alarms, float delta)
-    {
+    public void Tick(Vitals vitals, bool alive, List<string> alarms, float delta) {
         _rhythm = alive ? vitals.Rhythm : Rhythm.Asystole;
         _pulse = _rhythm == Rhythm.Sinus ? Mathf.Clamp(vitals.Systolic / 120f, 0f, 1.2f) : 0f;
         _respRate = vitals.Anesthesia > 0.7f || !alive ? 0 : (int)(14 + (vitals.Panic * 12));
@@ -105,8 +100,7 @@ public partial class MonitorScreen : Control
             _respRate > 0 ? $"{_respRate}" : "--");
         _carry += delta;
         const float Step = 1f / SampleHz;
-        while (_carry >= Step)
-        {
+        while (_carry >= Step) {
             _carry -= Step;
             _time += Step;
             _sinceBeat += Step;
@@ -120,11 +114,9 @@ public partial class MonitorScreen : Control
     }
 
     /// <summary>Lead II, -1..1: P, QRS and T around each beat, chaos in V-fib, a faint wobble in asystole.</summary>
-    private float EcgSample()
-    {
+    private float EcgSample() {
         var t = _sinceBeat;
-        return _rhythm switch
-        {
+        return _rhythm switch {
             Rhythm.Vfib => (Mathf.Sin(_time * Mathf.Tau * 4.7f) * 0.45f)
                 + (Mathf.Sin((_time * Mathf.Tau * 6.3f) + 1f) * 0.25f)
                 + (Mathf.Sin(_time * Mathf.Tau * 2.9f) * 0.2f),
@@ -141,18 +133,15 @@ public partial class MonitorScreen : Control
     private static float Bump(float t, float center, float width, float height) =>
         height * Mathf.Exp(-Mathf.Pow((t - center) / width, 2f));
 
-    public override void _Draw()
-    {
+    public override void _Draw() {
         DrawRect(new Rect2(Vector2.Zero, ScreenSize), Background);
-        if (_readout is not { } readout)
-        {
+        if (_readout is not { } readout) {
             return;
         }
         var flash = Mathf.PosMod((float)GameClock.Msec * 0.002f, 1f) > 0.5f;
         var alarms = string.Concat(_alarms);
         DrawHeader(flash);
-        for (var i = 0; i < 3; i++)
-        {
+        for (var i = 0; i < 3; i++) {
             var top = Header + (WaveRow * i);
             Text(WaveLabels[i], new Vector2(10f, top + 20f), LabelSize, WaveColors[i]);
             DrawWave(_waves[i], top + (WaveRow * 0.55f), WaveRow * 0.36f, WaveColors[i]);
@@ -172,13 +161,11 @@ public partial class MonitorScreen : Control
         DrawLab();
     }
 
-    private void DrawHeader(bool flash)
-    {
+    private void DrawHeader(bool flash) {
         DrawRect(new Rect2(0f, 0f, ScreenSize.X, Header), Bar);
         Text("OR 1    Adult", new Vector2(10f, 23f), LabelSize, Temp);
         Text(GameClock.TimeOfDay(), new Vector2(ScreenSize.X - 10f, 23f), LabelSize, Temp, HorizontalAlignment.Right);
-        if (_alarms.Count == 0)
-        {
+        if (_alarms.Count == 0) {
             return;
         }
         var box = new Rect2(170f, 3f, 420f, Header - 6f);
@@ -187,8 +174,7 @@ public partial class MonitorScreen : Control
     }
 
     /// <summary>Ring buffer as a sweep: drawn up to the write head, a gap, then the old trace after it.</summary>
-    private void DrawWave(float[] wave, float middle, float halfHeight, Color color)
-    {
+    private void DrawWave(float[] wave, float middle, float halfHeight, Color color) {
         var step = (WaveWidth - WaveLeft - 10f) / wave.Length;
         // The sweep leaves a gap of Gap samples from the head on (wrapping round to the start): the trace is drawn as
         // the line before it and the line after it.
@@ -199,31 +185,25 @@ public partial class MonitorScreen : Control
     /// <summary>Samples <paramref name="from"/> to <paramref name="to"/> of a wave as one line. The point arrays are
     /// kept by length and reused: redrawn every frame, new ones would be garbage the runtime has to keep collecting.
     /// </summary>
-    private void DrawTrace(float[] wave, int from, int to, float step, float middle, float halfHeight, Color color)
-    {
+    private void DrawTrace(float[] wave, int from, int to, float step, float middle, float halfHeight, Color color) {
         var count = to - from;
-        if (count < 2)
-        {
+        if (count < 2) {
             return;
         }
-        if (!_lines.TryGetValue(count, out var points))
-        {
+        if (!_lines.TryGetValue(count, out var points)) {
             points = new Vector2[count];
             _lines[count] = points;
         }
-        for (var i = 0; i < count; i++)
-        {
+        for (var i = 0; i < count; i++) {
             var sample = from + i;
             points[i] = new Vector2(WaveLeft + (sample * step), middle - (Mathf.Clamp(wave[sample], -1.2f, 1.2f) * halfHeight));
         }
         DrawPolyline(points, color, 2f, true);
     }
 
-    private void DrawNumber(string title, string unit, string value, Vector2 at, Color color, int fontSize, bool alarm)
-    {
+    private void DrawNumber(string title, string unit, string value, Vector2 at, Color color, int fontSize, bool alarm) {
         var width = ScreenSize.X - at.X - 8f;
-        if (alarm)
-        {
+        if (alarm) {
             DrawRect(new Rect2(at.X - 8f, at.Y + 2f, width + 14f, WaveRow - 4f), Alarm);
         }
         var ink = alarm ? Colors.White : color;
@@ -232,8 +212,7 @@ public partial class MonitorScreen : Control
         Text(value, at + new Vector2(width - 4f, 28f + (fontSize * 0.8f)), fontSize, ink, HorizontalAlignment.Right);
     }
 
-    private void DrawLab()
-    {
+    private void DrawLab() {
         Text("Lab", new Vector2(10f, LabTop + 14f), SmallSize, Lab.Darkened(0.3f));
         var any = _lab.Length > 0;
         DrawMultilineString(_font, new Vector2(56f, LabTop + 14f), any ? _lab : "No results yet.",
@@ -243,11 +222,9 @@ public partial class MonitorScreen : Control
     /// <summary>Text with its baseline at <paramref name="position"/>.Y; right aligned text ends at its X, centered text
     /// centers on it.</summary>
     private void Text(string text, Vector2 position, int fontSize, Color color,
-        HorizontalAlignment align = HorizontalAlignment.Left)
-    {
+        HorizontalAlignment align = HorizontalAlignment.Left) {
         var width = _font.GetStringSize(text, HorizontalAlignment.Left, -1, fontSize).X;
-        var x = align switch
-        {
+        var x = align switch {
             HorizontalAlignment.Right => position.X - width,
             HorizontalAlignment.Center => position.X - (width * 0.5f),
             _ => position.X,

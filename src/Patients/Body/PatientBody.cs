@@ -6,8 +6,7 @@ namespace Scalpel.Patients;
 public enum PatientPose { FaceUp, Side, FaceDown }
 
 /// <summary>What a point near the patient is in.</summary>
-public enum SiteZone
-{
+public enum SiteZone {
     /// <summary>Above the surgical site.</summary>
     Air,
     /// <summary>On or in the site's skin.</summary>
@@ -50,8 +49,7 @@ public readonly record struct IvPlacement(Node3D Node, Transform3D Frame, float 
 /// the site's tissue layers, PatientBody.Closures the threads and staples, PatientBody.Anatomy the cavity, organs and
 /// bones.
 /// </summary>
-public partial class PatientBody : Node3D
-{
+public partial class PatientBody : Node3D {
     public const float HalfHeight = 0.11f;
     public const uint SiteLayer = 4;
     public const uint PatientLayer = 2;
@@ -128,8 +126,7 @@ public partial class PatientBody : Node3D
     /// <summary>The node that carries the body model, colliders and site. It turns with the patient.</summary>
     public Node3D Root => _bodyRoot;
 
-    public void Build(string siteName, Color tone, float ageScale)
-    {
+    public void Build(string siteName, Color tone, float ageScale) {
         _pallor = float.NaN;
         SiteId = siteName;
         SiteDef = SiteDef.Of(siteName);
@@ -140,8 +137,7 @@ public partial class PatientBody : Node3D
         // The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
         var gown = Materials.BodySkin(Materials.PatientGown);
         _bodyMaterials.AddRange([skin, gown]);
-        foreach (var material in _bodyMaterials)
-        {
+        foreach (var material in _bodyMaterials) {
             Materials.SetSiteMaps(material, WoundMap.Texture(WoundMap.Layer.Wounds), WoundMap.Texture(WoundMap.Layer.Fluids),
                 WoundMap.Texture(WoundMap.Layer.Bleeds));
         }
@@ -159,25 +155,21 @@ public partial class PatientBody : Node3D
         Blood.Setup(this);
     }
 
-    public override void _EnterTree()
-    {
+    public override void _EnterTree() {
         RenderingServer.FramePreDraw += StepWhileDrawing;
         RenderingServer.FramePostDraw += FinishStep;
     }
 
-    public override void _ExitTree()
-    {
+    public override void _ExitTree() {
         RenderingServer.FramePreDraw -= StepWhileDrawing;
         RenderingServer.FramePostDraw -= FinishStep;
         FinishStep();
         _pendingStep = null;
     }
 
-    public override void _Process(double delta)
-    {
+    public override void _Process(double delta) {
         // A frame that was meant to be drawn but wasn't still owes its step.
-        if (_pendingStep is { } owed)
-        {
+        if (_pendingStep is { } owed) {
             _pendingStep = null;
             Tissue.Advance(owed.Delta, owed.Run);
         }
@@ -191,24 +183,19 @@ public partial class PatientBody : Node3D
         var catchup = stale && !_rebuiltLast && Tissue.NeedsStep && !_deferredUpload;
         var rebuild = stale && !_rebuiltLast && !catchup;
         _deferredUpload = catchup;
-        if (rebuild)
-        {
+        if (rebuild) {
             rebuild = RebuildLayers();
         }
         _rebuiltLast = rebuild;
         // The staples sit on the skin as last published: drawn from those positions the frame after, before the
         // solver moves on, so a frame that rebuilds the layers doesn't draw them too.
-        if (!rebuild)
-        {
+        if (!rebuild) {
             UpdateStaples();
         }
         // Drawn frames step the tissue during the draw, so everything this frame reads it as the mesh shows it.
-        if (DisplayServer.WindowCanDraw() && RenderingServer.RenderLoopEnabled)
-        {
+        if (DisplayServer.WindowCanDraw() && RenderingServer.RenderLoopEnabled) {
             _pendingStep = ((float)delta, !rebuild);
-        }
-        else
-        {
+        } else {
             Tissue.Advance((float)delta, !rebuild);
         }
         UpdateSutures();
@@ -218,17 +205,14 @@ public partial class PatientBody : Node3D
     /// <summary>Runs the frame's solver step on a worker after every node has processed, overlapping the draw and the
     /// wait for vsync. Nothing on the main thread touches the tissue until FinishStep() joins it after the draw, so
     /// it needs no locks.</summary>
-    private void StepWhileDrawing()
-    {
-        if (_pendingStep is { } step)
-        {
+    private void StepWhileDrawing() {
+        if (_pendingStep is { } step) {
             _pendingStep = null;
             _stepping = Task.Run(() => Tissue.Advance(step.Delta, step.Run));
         }
     }
 
-    private void FinishStep()
-    {
+    private void FinishStep() {
         // Rethrows what the step threw, on the main thread where Godot reports it.
         _stepping?.GetAwaiter().GetResult();
         _stepping = null;
@@ -241,11 +225,9 @@ public partial class PatientBody : Node3D
     /// fit under the muscle from their middle on, where the cavity can already be shallower (a thick fat layer, a bone
     /// off to one side like the shoulder's).
     /// </summary>
-    public float CavityDepth()
-    {
+    public float CavityDepth() {
         var depth = SiteDef.Depth;
-        foreach (var bone in SiteDef.Bones)
-        {
+        foreach (var bone in SiteDef.Bones) {
             var bowl = Bowl((bone.From + bone.To) * 0.5f);
             var needed = MuscleBottom + 0.003f + bone.Radius * 2f + 0.004f;
             depth = Mathf.Max(depth, (needed - (1f - bowl) * (SkinThickness + 0.003f)) / bowl);
@@ -257,8 +239,7 @@ public partial class PatientBody : Node3D
     public float MuscleBottom => SkinThickness + FatThickness + MuscleThickness;
 
     /// <summary>Meters under the skin each layer starts: skin, fat, muscle.</summary>
-    private float LayerTop(int layer) => layer switch
-    {
+    private float LayerTop(int layer) => layer switch {
         0 => 0f,
         1 => SkinThickness,
         _ => SkinThickness + FatThickness,
@@ -267,14 +248,12 @@ public partial class PatientBody : Node3D
     /// <summary>The site faces up the way the patient lies, so it can be worked on.</summary>
     public bool SiteActive => Pose == (_onBack ? PatientPose.FaceDown : PatientPose.FaceUp);
 
-    public void SetPose(PatientPose value)
-    {
+    public void SetPose(PatientPose value) {
         Pose = value;
         _bodyRoot.Rotation = _bodyRoot.Rotation with { X = value switch { PatientPose.Side => Mathf.Pi / 2, PatientPose.FaceDown => Mathf.Pi, _ => 0f } };
         UpdateCarve();
         // Turned away from the site, the drape would lie between the patient and the table.
-        if (Drape is not null)
-        {
+        if (Drape is not null) {
             Drape.Visible = SiteActive;
         }
     }
@@ -284,8 +263,7 @@ public partial class PatientBody : Node3D
 
     /// <summary>Lays the surgical drape over the patient, open over the site (operating room only; call after
     /// <see cref="Build"/>).</summary>
-    public void AddDrape()
-    {
+    public void AddDrape() {
         var meshes = DrapedParts.Select(name => _bodyRoot.FindChild(name, true, false)).OfType<MeshInstance3D>();
         Drape = new Drape();
         _bodyRoot.AddChild(Drape);
@@ -300,14 +278,12 @@ public partial class PatientBody : Node3D
     /// layers drawn under it stay under the drape: lifting the flap by their thickness too would tear it off its edge.
     /// Only skin that starts inside the opening is held up; the site's edge stays under the drape's frame.
     /// </summary>
-    private void LaySkinOnDrape(Drape drape)
-    {
+    private void LaySkinOnDrape(Drape drape) {
         var toSite = Site.Transform.AffineInverse() * drape.Transform;
         var faces = drape.Mesh.GetFaces().Select(v => toSite * v).ToArray();
         _clothFaces.Index(faces, Enumerable.Range(0, faces.Length).ToArray());
         var opening = SiteSize * (0.5f - Drape.Frame);
-        Tissue.FloorAt = (x, z) =>
-        {
+        Tissue.FloorAt = (x, z) => {
             if (Mathf.Abs(x) < opening.X && Mathf.Abs(z) < opening.Y) { return float.NaN; }
             return _clothFaces.HeightAt(x, z) + 0.004f;
         };
@@ -315,8 +291,7 @@ public partial class PatientBody : Node3D
         var frame = SiteSize * Drape.Frame;
         Tissue.FloorOpen = new Rect2(-SiteSize * 0.5f + frame, SiteSize - frame * 2f);
         var exposed = new bool[Tissue.Rest.Length];
-        for (var k = 0; k < exposed.Length; k++)
-        {
+        for (var k = 0; k < exposed.Length; k++) {
             var uv = Tissue.UvOf(k);
             // Inside the opening, and not under the drape's edge where it slopes down to the skin.
             var floorY = Tissue.FloorAt(Tissue.Settled[k].X, Tissue.Settled[k].Z);
@@ -328,8 +303,7 @@ public partial class PatientBody : Node3D
 
     // --- Space conversion ---------------------------------------------------------------------------------
 
-    public Vector2 WorldToUv(Vector3 p)
-    {
+    public Vector2 WorldToUv(Vector3 p) {
         var local = Site.ToLocal(p);
         return new Vector2(local.X / SiteSize.X + 0.5f, local.Z / SiteSize.Y + 0.5f);
     }
@@ -343,28 +317,23 @@ public partial class PatientBody : Node3D
     public Vector3 SitePoint(Vector2 uv, float height) => new((uv.X - 0.5f) * SiteSize.X, height, (uv.Y - 0.5f) * SiteSize.Y);
 
     /// <summary>Meters between the skin and p along the site normal. Negative = under the skin.</summary>
-    public float HeightAboveSite(Vector3 p)
-    {
+    public float HeightAboveSite(Vector3 p) {
         var local = Site.ToLocal(p);
         return local.Y - SkinHeight(LocalToUv(local));
     }
 
     /// <summary>Skin height at uv as it's drawn now: the simulated skin where it replaces the body (pulled, pressed or
     /// cut), the body's own rest surface everywhere else and over an opening.</summary>
-    public float SkinHeight(Vector2 uv)
-    {
+    public float SkinHeight(Vector2 uv) {
         var k = Tissue.Nearest(uv);
-        if (k < _region.Length && _region[k] == 1)
-        {
+        if (k < _region.Length && _region[k] == 1) {
             var height = Tissue.SkinHeight(uv);
-            if (!float.IsNaN(height))
-            {
+            if (!float.IsNaN(height)) {
                 // Drawn off the sim's skin (see _onModel): by as much as its grid points around uv are.
                 var p = uv.Clamp(Vector2.Zero, Vector2.One) * new Vector2(Tissue.ResX, Tissue.ResY);
                 var at = new Vector2I(Math.Min((int)p.X, Tissue.ResX - 1), Math.Min((int)p.Y, Tissue.ResY - 1));
                 var f = p - (Vector2)at;
-                float Drawn(int i, int j)
-                {
+                float Drawn(int i, int j) {
                     var n = Tissue.Index(at.X + i, at.Y + j);
                     return LayerPoint(0, n).Y - Tissue.Pos[n].Y;
                 }
@@ -376,10 +345,8 @@ public partial class PatientBody : Node3D
 
     /// <summary>Skin height relative to the flat site plane at uv, from the heights measured on the body model (0 when
     /// flat).</summary>
-    public float SurfaceHeight(Vector2 uv)
-    {
-        if (_heights.Length != Heights * Heights)
-        {
+    public float SurfaceHeight(Vector2 uv) {
+        if (_heights.Length != Heights * Heights) {
             return 0f;
         }
         var p = uv.Clamp(Vector2.Zero, Vector2.One) * (Heights - 1);
@@ -393,10 +360,8 @@ public partial class PatientBody : Node3D
 
     /// <summary>False where the site hangs off the body, or the body under it is too thin to hold the site's layers.
     /// </summary>
-    public bool OnBody(Vector2 uv)
-    {
-        if (_onBody.Length != Heights * Heights)
-        {
+    public bool OnBody(Vector2 uv) {
+        if (_onBody.Length != Heights * Heights) {
             return true;
         }
         var cell = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Heights - 1)).Round();
@@ -404,10 +369,8 @@ public partial class PatientBody : Node3D
     }
 
     /// <summary>Blood on the skin at uv, 0..1, from the fluid map.</summary>
-    public float BloodAt(Vector2 uv)
-    {
-        if (uv.X < 0f || uv.Y < 0f || uv.X > 1f || uv.Y > 1f)
-        {
+    public float BloodAt(Vector2 uv) {
+        if (uv.X < 0f || uv.Y < 0f || uv.X > 1f || uv.Y > 1f) {
             return 0f;
         }
         return WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);
@@ -418,15 +381,12 @@ public partial class PatientBody : Node3D
     public float MetersToUv(float meters) => meters / ((SiteSize.X + SiteSize.Y) * 0.5f);
 
     /// <summary>What a tool tip at p is touching.</summary>
-    public SiteProbe Probe(Vector3 p)
-    {
+    public SiteProbe Probe(Vector3 p) {
         var uv = WorldToUv(p);
         var height = HeightAboveSite(p);
         var onSite = SiteActive && uv.X >= 0f && uv.X <= 1f && uv.Y >= 0f && uv.Y <= 1f && OnBody(uv);
-        if (onSite && height > -CavityDepth())
-        {
-            if (height > 0.012f)
-            {
+        if (onSite && height > -CavityDepth()) {
+            if (height > 0.012f) {
                 return new SiteProbe(SiteZone.Air, uv, 0f);
             }
             return Tissue.IsOpen(uv)
@@ -442,8 +402,7 @@ public partial class PatientBody : Node3D
         Overlapping(p, radius, PatientLayer, 4).OfType<BodyPart>().FirstOrDefault()?.Part ?? "";
 
     /// <summary>The colliders on <paramref name="mask"/> within <paramref name="radius"/> of p (world space).</summary>
-    private List<GodotObject> Overlapping(Vector3 p, float radius, uint mask, int most)
-    {
+    private List<GodotObject> Overlapping(Vector3 p, float radius, uint mask, int most) {
         _partSphere.Radius = radius;
         _partQuery.Shape = _partSphere;
         _partQuery.Transform = new Transform3D(Basis.Identity, p);
@@ -451,8 +410,7 @@ public partial class PatientBody : Node3D
         var hits = GetWorld3D().DirectSpaceState.IntersectShape(_partQuery, most);
         // Read and freed at once: each result is a tracked wrapper the runtime would otherwise collect later.
         var colliders = hits.Select(hit => hit["collider"].AsGodotObject()).ToList();
-        foreach (var hit in hits)
-        {
+        foreach (var hit in hits) {
             hit.Dispose();
         }
         return colliders;
@@ -462,28 +420,23 @@ public partial class PatientBody : Node3D
     /// The ring of a limb's skin around p (world space), for something wrapped around it, null when p isn't on an arm
     /// or a leg. Arms and legs lie along the body; rays cast out from inside the limb find its skin.
     /// </summary>
-    public LimbRing? LimbRingAt(Vector3 p)
-    {
+    public LimbRing? LimbRingAt(Vector3 p) {
         // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides.
         var part = PartAt(p, 0.08f);
-        if (!(part.StartsWith("arm", StringComparison.Ordinal) || part.StartsWith("leg", StringComparison.Ordinal)))
-        {
+        if (!(part.StartsWith("arm", StringComparison.Ordinal) || part.StartsWith("leg", StringComparison.Ordinal))) {
             return null;
         }
         var box = (Node3D)_bodyRoot.FindChild(part.ToPascalCase(), false, false);
         var axis = _bodyRoot.GlobalBasis.X.Normalized();
         var inside = box.GlobalPosition + axis * axis.Dot(p - box.GlobalPosition);
         var hits = new List<Vector3>();
-        for (var i = 0; i < 16; i++)
-        {
+        for (var i = 0; i < 16; i++) {
             var outward = new Basis(axis, Mathf.Tau * i / 16f) * _bodyRoot.GlobalBasis.Y.Normalized();
-            if (Rays.Cast(this, inside, inside + outward * 0.2f, SurfaceLayer, inside: true) is { } hit)
-            {
+            if (Rays.Cast(this, inside, inside + outward * 0.2f, SurfaceLayer, inside: true) is { } hit) {
                 hits.Add(hit.Position);
             }
         }
-        if (hits.Count < 8)
-        {
+        if (hits.Count < 8) {
             return null;
         }
         var center = hits.Aggregate(Vector3.Zero, (sum, hit) => sum + hit) / hits.Count;
@@ -497,8 +450,7 @@ public partial class PatientBody : Node3D
 
     /// <summary>How deep (meters under the skin) a cut within <paramref name="radius"/> (uv) of uv goes: to the bottom
     /// of the deepest layer it cut through, 0 where there's no cut.</summary>
-    public float OpeningDepth(Vector2 uv, float radius) => Tissue.DeepestCut(uv, radius) switch
-    {
+    public float OpeningDepth(Vector2 uv, float radius) => Tissue.DeepestCut(uv, radius) switch {
         TissueDepth.Skin => SkinThickness,
         TissueDepth.Fat => SkinThickness + FatThickness,
         TissueDepth.Muscle => MuscleBottom,
@@ -507,18 +459,14 @@ public partial class PatientBody : Node3D
 
     /// <summary>The deepest layer showing at uv: "skin" where it's whole, "fat" or "muscle" where a cut opened down to
     /// it, "cavity" where it's open through the muscle.</summary>
-    public string LayerAt(Vector2 uv)
-    {
-        if (Tissue.IsOpen(uv))
-        {
+    public string LayerAt(Vector2 uv) {
+        if (Tissue.IsOpen(uv)) {
             return "cavity";
         }
-        if (Tissue.IsOpen(uv, TissueDepth.Fat))
-        {
+        if (Tissue.IsOpen(uv, TissueDepth.Fat)) {
             return "muscle";
         }
-        if (Tissue.IsOpen(uv, TissueDepth.Skin))
-        {
+        if (Tissue.IsOpen(uv, TissueDepth.Skin)) {
             // No fat on this part of the body: the muscle lies right under the skin.
             return FatThickness > 0.0005f ? "fat" : "muscle";
         }
@@ -530,21 +478,17 @@ public partial class PatientBody : Node3D
     /// about the forearm bone, clamped to its ends (the back of the hand counts as the wrist). Falls back to the body
     /// when there are no forearms.
     /// </summary>
-    public IvPlacement IvSite(Vector3 p)
-    {
+    public IvPlacement IvSite(Vector3 p) {
         Forearm? best = null;
         var center = Vector3.Zero;
-        foreach (var forearm in _forearms)
-        {
+        foreach (var forearm in _forearms) {
             var onBone = Geometry3D.GetClosestPointToSegment(p, forearm.GlobalPosition, forearm.ToGlobal(forearm.Wrist));
-            if (best is null || onBone.DistanceTo(p) < center.DistanceTo(p))
-            {
+            if (best is null || onBone.DistanceTo(p) < center.DistanceTo(p)) {
                 best = forearm;
                 center = onBone;
             }
         }
-        if (best is null)
-        {
+        if (best is null) {
             var flat = new Transform3D(_bodyRoot.GlobalBasis.Orthonormalized(), p);
             return new IvPlacement(_bodyRoot, _bodyRoot.GlobalTransform.AffineInverse() * flat, 0.035f);
         }
@@ -560,15 +504,11 @@ public partial class PatientBody : Node3D
     public IReadOnlyList<Vein> Veins => _veins;
 
     /// <summary>True when p (world space) is in or just over a forearm vein.</summary>
-    public bool VeinAt(Vector3 p)
-    {
-        foreach (var vein in _veins)
-        {
+    public bool VeinAt(Vector3 p) {
+        foreach (var vein in _veins) {
             var local = vein.ToLocal(p);
-            for (var i = 1; i < vein.Line.Length; i++)
-            {
-                if (Geometry3D.GetClosestPointToSegment(local, vein.Line[i - 1], vein.Line[i]).DistanceTo(local) < VeinReach)
-                {
+            for (var i = 1; i < vein.Line.Length; i++) {
+                if (Geometry3D.GetClosestPointToSegment(local, vein.Line[i - 1], vein.Line[i]).DistanceTo(local) < VeinReach) {
                     return true;
                 }
             }
@@ -578,10 +518,8 @@ public partial class PatientBody : Node3D
 
     // --- Construction -------------------------------------------------------------------------------------
 
-    private void BuildColliders()
-    {
-        var parts = new (string Part, Vector3 Size, Vector3 Position)[]
-        {
+    private void BuildColliders() {
+        var parts = new (string Part, Vector3 Size, Vector3 Position)[] {
             ("torso", new(0.62f, 0.22f, 0.38f), new(0.12f, 0, 0)),
             ("pelvis", new(0.22f, 0.2f, 0.36f), new(-0.3f, 0, 0)),
             ("neck", new(0.14f, 0.1f, 0.1f), new(0.5f, 0, 0)),
@@ -591,10 +529,8 @@ public partial class PatientBody : Node3D
             ("leg_right", new(0.95f, 0.14f, 0.14f), new(-0.8f, -0.02f, 0.1f)),
             ("leg_left", new(0.95f, 0.14f, 0.14f), new(-0.8f, -0.02f, -0.1f)),
         };
-        foreach (var (part, size, position) in parts)
-        {
-            var body = new BodyPart
-            {
+        foreach (var (part, size, position) in parts) {
+            var body = new BodyPart {
                 Name = part.ToPascalCase(),
                 Part = part,
                 CollisionLayer = PatientLayer,
@@ -609,22 +545,18 @@ public partial class PatientBody : Node3D
     /// <summary>A vein on the upper side of each forearm, found on the body mesh at rest and carried by the forearm
     /// bone, so it moves with the arm. A forearm under the surgical site gets none: the site's own skin lies there.
     /// </summary>
-    private void BuildVeins(Node3D model)
-    {
+    private void BuildVeins(Node3D model) {
         if (model.FindChild("Body", true, false) is not MeshInstance3D skin
-            || model.FindChildren("*", "Skeleton3D", true, false).FirstOrDefault() is not Skeleton3D skeleton)
-        {
+            || model.FindChildren("*", "Skeleton3D", true, false).FirstOrDefault() is not Skeleton3D skeleton) {
             return;
         }
         var faces = skin.Mesh.GenerateTriangleMesh();
         var toSkin = skin.GlobalTransform.AffineInverse();
         var up = _bodyRoot.GlobalBasis.Y.Normalized();
-        foreach (var side in new[] { "L", "R" })
-        {
+        foreach (var side in new[] { "L", "R" }) {
             var bone = skeleton.FindBone("Forearm" + side);
             var hand = skeleton.FindBone("Hand" + side);
-            if (bone < 0 || hand < 0)
-            {
+            if (bone < 0 || hand < 0) {
                 continue;
             }
             var bonePose = skeleton.GlobalTransform * skeleton.GetBoneGlobalPose(bone);
@@ -636,33 +568,28 @@ public partial class PatientBody : Node3D
             _forearms.Add(forearm);
             var across = (wrist - bonePose.Origin).Cross(up).Normalized();
             var line = new List<Vector3>();
-            for (var i = 0; i < 12; i++)
-            {
+            for (var i = 0; i < 12; i++) {
                 var t = Mathf.Lerp(VeinSpan.X, VeinSpan.Y, i / 11f);
                 // A gentle wander across the arm, like a real vein.
                 var over = bonePose.Origin.Lerp(wrist, t) + across * Mathf.Sin(t * 9f) * 0.004f;
                 var hit = faces.IntersectRay(toSkin * (over + up * 0.15f), (toSkin.Basis * -up).Normalized());
-                if (hit.Count == 0)
-                {
+                if (hit.Count == 0) {
                     continue;
                 }
                 var onSkin = skin.GlobalTransform * hit["position"].AsVector3();
-                if (SiteActive && new Rect2(0, 0, 1, 1).HasPoint(WorldToUv(onSkin)))
-                {
+                if (SiteActive && new Rect2(0, 0, 1, 1).HasPoint(WorldToUv(onSkin))) {
                     line.Clear();
                     break;
                 }
                 // Mostly under the skin: only a low ridge of it shows.
                 line.Add(onSkin - up * VeinRadius * 0.4f);
             }
-            if (line.Count < 2)
-            {
+            if (line.Count < 2) {
                 continue;
             }
             var into = bonePose.AffineInverse();
             var local = line.Select(point => into * point).ToArray();
-            var vein = new Vein
-            {
+            var vein = new Vein {
                 Name = "Vein",
                 Mesh = Shapes.Tube(local, VeinRadius * 1.3f, VeinRadius),
                 MaterialOverride = Materials.ToonShaded(VeinColor, 0.1f, false, 0.4f),
@@ -673,12 +600,9 @@ public partial class PatientBody : Node3D
         }
     }
 
-    private void BuildSurface(Node3D model)
-    {
-        foreach (var partName in new[] { "Body", "Gown" })
-        {
-            if (model.FindChild(partName, true, false) is not MeshInstance3D mesh)
-            {
+    private void BuildSurface(Node3D model) {
+        foreach (var partName in new[] { "Body", "Gown" }) {
+            if (model.FindChild(partName, true, false) is not MeshInstance3D mesh) {
                 continue;
             }
             var skin = mesh.Mesh.CreateTrimeshShape();
@@ -692,16 +616,13 @@ public partial class PatientBody : Node3D
     }
 
     /// <summary>Breathing lifts sites that sit on top of the torso together with the chest.</summary>
-    public void SetBreathOffset(float offset)
-    {
-        if (SiteId is "abdomen" or "chest" or "shoulder")
-        {
+    public void SetBreathOffset(float offset) {
+        if (SiteId is "abdomen" or "chest" or "shoulder") {
             Site.Position = Site.Position with { Y = _siteBaseY + offset };
             UpdateCarve();
         }
         // The drape lies on the trunk, so it rises with it.
-        if (Drape is not null)
-        {
+        if (Drape is not null) {
             Drape.Position = Drape.Position with { Y = offset };
         }
     }
@@ -709,17 +630,14 @@ public partial class PatientBody : Node3D
     /// <summary>Where the body model is cut away (the region), the simulated skin layers take over. Placed in full when
     /// the site or the body has turned, otherwise only lifted from where it was placed: breathing moves the site every
     /// frame.</summary>
-    private void UpdateCarve()
-    {
+    private void UpdateCarve() {
         var site = Site.GlobalTransform;
         var model = _skinModel.GlobalTransform;
-        if (site.Basis != _carvedSite.Basis || model != _carvedModel || RegionTexture != _carvedRegion)
-        {
+        if (site.Basis != _carvedSite.Basis || model != _carvedModel || RegionTexture != _carvedRegion) {
             _carvedSite = site;
             _carvedRegion = RegionTexture;
             _carvedModel = model;
-            foreach (var material in _bodyMaterials)
-            {
+            foreach (var material in _bodyMaterials) {
                 Materials.SetCarve(material, site, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
             }
             SkinMaterial?.SetShaderParameter(ShaderParam.SiteToModel, new Projection(model.AffineInverse() * site));
@@ -728,8 +646,7 @@ public partial class PatientBody : Node3D
             return;
         }
         var lift = site.Origin - _carvedSite.Origin;
-        foreach (var material in _bodyMaterials)
-        {
+        foreach (var material in _bodyMaterials) {
             Materials.LiftCarve(material, lift);
         }
         SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, model.Basis.Inverse() * lift);
@@ -737,10 +654,8 @@ public partial class PatientBody : Node3D
     }
 
     /// <summary>Blood loss drains the color from the skin, body and site alike.</summary>
-    public void SetPallor(float value)
-    {
-        if (value == _pallor)
-        {
+    public void SetPallor(float value) {
+        if (value == _pallor) {
             return;
         }
         _pallor = value;
@@ -753,20 +668,16 @@ public partial class PatientBody : Node3D
     /// same on every peer that built the same patient, so every player sees the same site. FNV-1a, so it doesn't change
     /// between processes.
     /// </summary>
-    public ulong ShapeHash()
-    {
+    public ulong ShapeHash() {
         var hash = 14695981039346656037UL;
         void Add(float value) => hash = (hash ^ BitConverter.SingleToUInt32Bits(value)) * 1099511628211UL;
-        foreach (var height in _heights)
-        {
+        foreach (var height in _heights) {
             Add(height);
         }
-        foreach (var on in _onBody)
-        {
+        foreach (var on in _onBody) {
             Add(on ? 1f : 0f);
         }
-        foreach (var point in _onModel)
-        {
+        foreach (var point in _onModel) {
             Add(point.X);
             Add(point.Y);
             Add(point.Z);

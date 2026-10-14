@@ -20,8 +20,7 @@ public sealed record DrawnSuture(
     int PressureHoles);
 
 /// <summary>Closures drawn on the site: running threads and staples, riding the tissue they hold.</summary>
-public partial class PatientBody
-{
+public partial class PatientBody {
     public const float SutureRadius = 0.00028f;
     private const float SutureEntryDepth = 0.00045f;
     private const int SutureSamples = 9;
@@ -62,8 +61,7 @@ public partial class PatientBody
     /// <summary>The mesh every staple is drawn in, null before the first staple.</summary>
     public MeshInstance3D? StapleWire => _stapleRoot.GetNodeOrNull<MeshInstance3D>("Wire");
 
-    private void BuildClosureDrawing()
-    {
+    private void BuildClosureDrawing() {
         _sutureRoot = new Node3D { Name = "Sutures" };
         Site.AddChild(_sutureRoot);
         var thread = Materials.ToonUnique(new Color(0.08f, 0.12f, 0.18f), 0f, false, 0.45f);
@@ -82,16 +80,12 @@ public partial class PatientBody
     /// <summary>A staple put in with its legs at a and b (uv, where they touched the tissue) through
     /// <paramref name="layer"/>. Each leg rides the grid point nearest it as the tissue lies now, so the staple moves
     /// with the edges it holds.</summary>
-    public void AddStaple(Vector2 a, Vector2 b, TissueDepth layer)
-    {
-        var legs = new[] { a, b }.Select(uv =>
-        {
+    public void AddStaple(Vector2 a, Vector2 b, TissueDepth layer) {
+        var legs = new[] { a, b }.Select(uv => {
             var p = (uv - new Vector2(0.5f, 0.5f)) * Tissue.Size;
             var best = 0;
-            for (var k = 0; k < Tissue.Pos.Length; k++)
-            {
-                if (Flat(Tissue.Pos[k]).DistanceSquaredTo(p) < Flat(Tissue.Pos[best]).DistanceSquaredTo(p))
-                {
+            for (var k = 0; k < Tissue.Pos.Length; k++) {
+                if (Flat(Tissue.Pos[k]).DistanceSquaredTo(p) < Flat(Tissue.Pos[best]).DistanceSquaredTo(p)) {
                     best = k;
                 }
             }
@@ -106,17 +100,14 @@ public partial class PatientBody
     /// for all. Like the sutures, drawn on the skin as published (RebuildLayers()), not on every solver step in
     /// between: redrawn then, the staples would cost a solver frame as much as the skin costs its own, to sit on
     /// skin that isn't drawn yet.</summary>
-    private void UpdateStaples()
-    {
+    private void UpdateStaples() {
         var drawnFor = (_layerSteps, _layerVersion, _staples.Count);
-        if (_staples.Count == 0 || drawnFor == _staplesDrawnFor)
-        {
+        if (_staples.Count == 0 || drawnFor == _staplesDrawnFor) {
             return;
         }
         _staplesDrawnFor = drawnFor;
         DrawnStaples = [.. _staples.Select(staple => new DrawnStaple(staple.Layer, StaplePath(staple)))];
-        if (StapleWire is not { } wire)
-        {
+        if (StapleWire is not { } wire) {
             wire = new MeshInstance3D { Name = "Wire", MaterialOverride = _stapleMaterial };
             _stapleRoot.AddChild(wire);
         }
@@ -124,18 +115,15 @@ public partial class PatientBody
             wire.Mesh as ArrayMesh);
     }
 
-    private Vector3[] StaplePath(Staple staple)
-    {
+    private Vector3[] StaplePath(Staple staple) {
         var layer = (int)staple.Layer - 1;
         var tops = staple.Legs
             .Select(leg => LayerPoint(layer, leg.Particle) + leg.Offset + Vector3.Up * (StapleRadius - LayerTop(layer)))
             .ToArray();
         var path = new List<Vector3> { tops[0] - Vector3.Up * StapleLeg };
-        for (var i = 0; i <= StapleSamples; i++)
-        {
+        for (var i = 0; i <= StapleSamples; i++) {
             var p = tops[0].Lerp(tops[1], (float)i / StapleSamples);
-            if (staple.Layer == TissueDepth.Skin)
-            {
+            if (staple.Layer == TissueDepth.Skin) {
                 // A straight crown would sink into a rounded limb between its legs: it rides on the skin, as drawn.
                 p.Y = Mathf.Max(p.Y, SkinHeight(LocalToUv(p)) + StapleRadius + SkinBias);
             }
@@ -148,46 +136,38 @@ public partial class PatientBody
     /// <summary>Draws each running thread as tubes from hole to hole, plus the live free end from its newest hole to
     /// the needle. Routed spans are rebuilt only when their holes move, tension changes or they let go. The free end
     /// follows its needle.</summary>
-    internal void UpdateSutures()
-    {
+    internal void UpdateSutures() {
         // Routes sit on the rendered sheet. Rebuild them when that sheet is published, rather than
         // repeating surface queries on a solver frame while the displayed geometry is unchanged.
         var tissueChanged = _sutureSteps != _layerSteps || _sutureTopology != _layerVersion;
-        if (tissueChanged)
-        {
+        if (tissueChanged) {
             _sutureSteps = _layerSteps;
             _sutureTopology = _layerVersion;
         }
-        foreach (var id in Tissue.ThreadIds)
-        {
+        foreach (var id in Tissue.ThreadIds) {
             var before = _sutureDrawn.GetValueOrDefault(id);
-            if (!tissueChanged && before is { Final: true })
-            {
+            if (!tissueChanged && before is { Final: true }) {
                 continue;
             }
             _sutureDrawn[id] = DrawThread(id, Tissue.Thread(id)!, before, tissueChanged);
         }
     }
 
-    private DrawnSuture DrawThread(int id, SutureThread info, DrawnSuture? drawn, bool tissueChanged)
-    {
+    private DrawnSuture DrawThread(int id, SutureThread info, DrawnSuture? drawn, bool tissueChanged) {
         var layer = (int)info.Layer;
         var holes = info.Anchors.Select(k => LayerPoint(layer - 1, k) - Vector3.Up * LayerTop(layer - 1)).ToArray();
         var live = info.Springs.Select(s => Tissue.SpringAt(s).Active).ToArray();
         var oldHoles = drawn?.Holes ?? [];
         var moved = new bool[holes.Length];
-        for (var i = 0; i < holes.Length; i++)
-        {
+        for (var i = 0; i < holes.Length; i++) {
             moved[i] = i >= oldHoles.Length || oldHoles[i].DistanceSquaredTo(holes[i]) > HoleStill * HoleStill;
-            if (!moved[i])
-            {
+            if (!moved[i]) {
                 holes[i] = oldHoles[i];
             }
         }
         var retension = drawn is null || drawn.Tension != info.Tension;
         var root = ThreadNode(id);
-        if (root is null)
-        {
+        if (root is null) {
             root = new Node3D { Name = $"Suture{id}" };
             _sutureRoot.AddChild(root);
         }
@@ -199,13 +179,10 @@ public partial class PatientBody
         var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live)
             || (tissueChanged && info.Layer != TissueDepth.Skin);
         var routes = drawn?.Routes ?? [];
-        if (routesChanged)
-        {
+        if (routesChanged) {
             var spans = new List<Vector3[]>();
-            for (var i = 1; i < holes.Length; i++)
-            {
-                if (live[i - 1] && i % 2 != 0)
-                {
+            for (var i = 1; i < holes.Length; i++) {
+                if (live[i - 1] && i % 2 != 0) {
                     spans.Add(SutureCablePath(holes[i - 1], holes[i], Tissue.SpringAt(info.Springs[i - 1]).Rest, info.Layer));
                 }
             }
@@ -213,36 +190,30 @@ public partial class PatientBody
             SetTubes(root, "Routed", spans);
         }
         Vector3? tip = null;
-        if (!info.Final && Surgery.Current?.Tools.SutureTip(id) is { } worldTip)
-        {
+        if (!info.Final && Surgery.Current?.Tools.SutureTip(id) is { } worldTip) {
             tip = Site.ToLocal(worldTip);
         }
         var oldTip = drawn?.Tip;
         var tipChanged = tip.HasValue != oldTip.HasValue
             || (tip is { } now && oldTip is { } then && now.DistanceSquaredTo(then) > HoleStill * HoleStill);
         var livePath = drawn?.LivePath ?? [];
-        if (tipChanged || moved[^1] || retension)
-        {
+        if (tipChanged || moved[^1] || retension) {
             livePath = LiveSuturePath(holes[^1], tip, slack, info.Layer);
             SetTubes(root, "Live", [livePath]);
-        }
-        else
-        {
+        } else {
             // Compare subsequent movement against the endpoint actually in the mesh, not the previous frame.
             tip = oldTip;
         }
         var holding = live.Contains(true);
         var tied = info.Final && holding;
         var finalChanged = (drawn?.Final ?? false) != info.Final;
-        if (moved.Contains(true) || !wasLive.SequenceEqual(live) || finalChanged)
-        {
+        if (moved.Contains(true) || !wasLive.SequenceEqual(live) || finalChanged) {
             var routed = holes.Length > 1 && holding;
             SetTubes(root, "StartKnot", [routed ? TerminalKnot(holes[0], holes[1] - holes[0], -1f) : []]);
             SetTubes(root, "EndKnot", [tied ? TerminalKnot(holes[^1], holes[^2] - holes[^1], 1f) : []]);
         }
         var pressure = drawn?.PressureAmount ?? 0f;
-        if (routesChanged || finalChanged)
-        {
+        if (routesChanged || finalChanged) {
             pressure = SuturePressure(root, holes, info.Layer, info.Tension, holding);
         }
         return new DrawnSuture(holes, info.Tension, live, tip, info.Final, routes, livePath, pressure, holes.Length);
@@ -251,12 +222,10 @@ public partial class PatientBody
     /// <summary>A cable between fixed ends at equilibrium. Its arc length comes from the simulated thread spring;
     /// gravity gives a free strand its sag, while an exposed stitch settles sideways onto its sewn layer, one radius
     /// above it.</summary>
-    private Vector3[] SutureCablePath(Vector3 from, Vector3 to, float paidLength, TissueDepth layer, bool freeEnd = false)
-    {
+    private Vector3[] SutureCablePath(Vector3 from, Vector3 to, float paidLength, TissueDepth layer, bool freeEnd = false) {
         var delta = to - from;
         var chord = delta.Length();
-        if (chord < 0.0001f)
-        {
+        if (chord < 0.0001f) {
             return [];
         }
         var along = delta / chord;
@@ -265,38 +234,30 @@ public partial class PatientBody
         var sag = Mathf.Min(Mathf.Sqrt(Mathf.Max((length - chord) * chord * 0.375f, 0f)), chord * 0.3f);
         var localGravity = (Site.GlobalBasis.Inverse() * Vector3.Down).Normalized();
         var sagDirection = (localGravity - along * localGravity.Dot(along)).Normalized();
-        if (sagDirection == Vector3.Zero)
-        {
+        if (sagDirection == Vector3.Zero) {
             sagDirection = along.Cross(Vector3.Up).Normalized();
         }
-        if (!freeEnd)
-        {
+        if (!freeEnd) {
             // Gravity presses the cable into its layer. Once supported, its spare length lies in the tangent plane
             // instead of forming airborne arches.
             sagDirection = new Vector3(sagDirection.X, 0f, sagDirection.Z).Normalized();
-            if (sagDirection == Vector3.Zero)
-            {
+            if (sagDirection == Vector3.Zero) {
                 sagDirection = along.Cross(Vector3.Up).Normalized();
             }
         }
         var path = new Vector3[SutureSamples];
-        for (var sample = 0; sample < SutureSamples; sample++)
-        {
+        for (var sample = 0; sample < SutureSamples; sample++) {
             var t = (float)sample / (SutureSamples - 1);
             var p = from.Lerp(to, t) + sagDirection * sag * 4f * t * (1f - t);
-            if (sample > 0 && sample < SutureSamples - 1)
-            {
+            if (sample > 0 && sample < SutureSamples - 1) {
                 var uv = LocalToUv(p);
-                if (new Rect2(Vector2.Zero, Vector2.One).HasPoint(uv))
-                {
+                if (new Rect2(Vector2.Zero, Vector2.One).HasPoint(uv)) {
                     var height = layer == TissueDepth.Skin ? SkinHeight(uv) : SutureLayerHeight(uv, layer);
                     p.Y = layer == TissueDepth.Skin || freeEnd
                         ? Mathf.Max(p.Y, height + SutureRadius * 1.15f)
                         : height + SutureRadius * 1.15f;
                 }
-            }
-            else if (!freeEnd)
-            {
+            } else if (!freeEnd) {
                 p -= Vector3.Up * SutureEntryDepth;
             }
             path[sample] = p;
@@ -306,8 +267,7 @@ public partial class PatientBody
 
     /// <summary>Deep cables rest on their own drawn layer, not on the skin covering it. Interpolates the same grid used
     /// by its mesh.</summary>
-    internal float SutureLayerHeight(Vector2 uv, TissueDepth layer)
-    {
+    internal float SutureLayerHeight(Vector2 uv, TissueDepth layer) {
         var index = (int)layer - 1;
         var grid = uv.Clamp(Vector2.Zero, Vector2.One) * new Vector2(Tissue.ResX, Tissue.ResY);
         var cell = new Vector2I(Math.Min((int)grid.X, Tissue.ResX - 1), Math.Min((int)grid.Y, Tissue.ResY - 1));
@@ -325,16 +285,13 @@ public partial class PatientBody
 
     /// <summary>The free strand pays out from its newest puncture, sags under gravity and ends exactly at the moving
     /// needle tip.</summary>
-    private Vector3[] LiveSuturePath(Vector3 hole, Vector3? tip, float slack, TissueDepth layer)
-    {
-        if (tip is not { } end)
-        {
+    private Vector3[] LiveSuturePath(Vector3 hole, Vector3? tip, float slack, TissueDepth layer) {
+        if (tip is not { } end) {
             return [];
         }
         var path = SutureCablePath(hole, end, hole.DistanceTo(end) * Mathf.Lerp(1.02f, 1.15f, slack), layer, freeEnd: true);
         // Unlike both puncture ends of an exposed span, the needle end must meet the metal tip exactly.
-        if (path.Length > 0)
-        {
+        if (path.Length > 0) {
             path[0] -= Vector3.Up * SutureEntryDepth;
             path[^1] = end;
         }
@@ -343,18 +300,15 @@ public partial class PatientBody
 
     /// <summary>A compact figure-eight loop at a terminal puncture reads as tied thread without becoming a large
     /// decorative bow.</summary>
-    private static Vector3[] TerminalKnot(Vector3 hole, Vector3 direction, float handedness)
-    {
+    private static Vector3[] TerminalKnot(Vector3 hole, Vector3 direction, float handedness) {
         var forward = new Vector3(direction.X, 0f, direction.Z).Normalized();
-        if (forward == Vector3.Zero)
-        {
+        if (forward == Vector3.Zero) {
             forward = Vector3.Right;
         }
         var side = Vector3.Up.Cross(forward).Normalized() * handedness;
         var center = hole + Vector3.Up * SutureRadius * 1.3f;
         var path = new Vector3[17];
-        for (var sample = 0; sample < 17; sample++)
-        {
+        for (var sample = 0; sample < 17; sample++) {
             var angle = Mathf.Tau * sample / 16f;
             path[sample] = center + forward * Mathf.Sin(angle) * 0.00105f + side * Mathf.Sin(angle * 2f) * 0.00062f
                 + Vector3.Up * (1f - Mathf.Cos(angle * 2f)) * 0.00012f;
@@ -365,13 +319,10 @@ public partial class PatientBody
     /// <summary>Skin-aligned compression creases around every puncture. Correct tension leaves a faint mark;
     /// tightening toward the tear threshold enlarges and darkens it. Loose, deep-layer and torn-through threads show
     /// none. Returns how strongly they show (0..1).</summary>
-    private float SuturePressure(Node3D threadRoot, Vector3[] holes, TissueDepth layer, float tension, bool holding)
-    {
+    private float SuturePressure(Node3D threadRoot, Vector3[] holes, TissueDepth layer, float tension, bool holding) {
         var marks = threadRoot.GetNodeOrNull<MultiMeshInstance3D>("Pressure");
-        if (marks is null)
-        {
-            marks = new MultiMeshInstance3D
-            {
+        if (marks is null) {
+            marks = new MultiMeshInstance3D {
                 Name = "Pressure",
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 Multimesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = _suturePressureMesh },
@@ -383,8 +334,7 @@ public partial class PatientBody
             ? Mathf.Clamp(Mathf.InverseLerp(TissueSim.ThreadClosed[(int)layer] + 0.04f, TissueSim.ThreadTear[(int)layer], tension), 0f, 1f)
             : 0f;
         marks.Multimesh.InstanceCount = holes.Length;
-        for (var i = 0; i < holes.Length; i++)
-        {
+        for (var i = 0; i < holes.Length; i++) {
             var neighbor = holes[Math.Min(i + 1, holes.Length - 1)] - holes[Math.Max(i - 1, 0)];
             var yaw = Mathf.Atan2(neighbor.X, neighbor.Z) + (i % 2 == 0 ? 0.35f : -0.2f);
             var basis = new Basis(Vector3.Up, yaw).Scaled(Vector3.One * Mathf.Lerp(0.68f, 1.15f, amount));
@@ -398,11 +348,9 @@ public partial class PatientBody
 
     /// <summary>All of a thread's paths under one name share a mesh: separate tubes, one mesh build, so tightening
     /// that moves every puncture together doesn't spike a frame.</summary>
-    private void SetTubes(Node3D threadRoot, string meshName, IReadOnlyList<Vector3[]> paths)
-    {
+    private void SetTubes(Node3D threadRoot, string meshName, IReadOnlyList<Vector3[]> paths) {
         var tubes = threadRoot.GetNodeOrNull<MeshInstance3D>(meshName);
-        if (tubes is null)
-        {
+        if (tubes is null) {
             tubes = new MeshInstance3D { Name = meshName, MaterialOverride = _sutureMaterial };
             threadRoot.AddChild(tubes);
         }

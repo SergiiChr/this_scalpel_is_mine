@@ -12,8 +12,7 @@ namespace Scalpel.Tests.Support;
 /// walked, so nothing is bumped on the way.
 /// </para>
 /// </summary>
-public partial class SurgeryDriver : Node
-{
+public partial class SurgeryDriver : Node {
     private const string SurgeryScene = "res://scenes/surgery.tscn";
     /// <summary>How far from what it works on (meters, across the floor) the surgeon stands.</summary>
     public const float StandOff = 0.45f;
@@ -38,11 +37,9 @@ public partial class SurgeryDriver : Node
     private bool _budgetPaused;
 
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
-    public static SurgeryDriver Create()
-    {
+    public static SurgeryDriver Create() {
         // A test that failed half way leaves its surgery running: it would play on beside this one.
-        foreach (var stale in Frames.Root.GetChildren().OfType<SurgeryDriver>())
-        {
+        foreach (var stale in Frames.Root.GetChildren().OfType<SurgeryDriver>()) {
             // Out of the tree at once, so it stops playing; freed at the end of the frame, as freeing it in the middle
             // of one trips up the engine's C# bindings.
             Frames.Root.RemoveChild(stale);
@@ -61,8 +58,7 @@ public partial class SurgeryDriver : Node
     /// <paramref name="readingCard"/>.
     /// </summary>
     public async Task Start(string scenarioId, bool randomEvents = false, uint seed = 1,
-        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false)
-    {
+        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false) {
         // The game's own unseeded rolls (where the nurse leaves things, jitter) come out the same every run too.
         GD.Seed(seed);
         SurgeryState.ClockStartsAtEight();
@@ -77,22 +73,19 @@ public partial class SurgeryDriver : Node
         Me = Surgery.LocalSurgeon!;
         Patient = Surgery.Patient;
         Body = Patient.Body;
-        if (!randomEvents)
-        {
+        if (!randomEvents) {
             Surgery.Director.StopRandomEvents();
         }
         Me.Active = Right;
         Note($"started {scenarioId}");
-        if (!readingCard)
-        {
+        if (!readingCard) {
             await PlayerPutsCardBack(Surgery);
             Note("puts the card back");
         }
     }
 
     /// <summary>Puts the patient card down with Esc, and waits until it hangs on its hook.</summary>
-    public static async Task PlayerPutsCardBack(Surgery surgery)
-    {
+    public static async Task PlayerPutsCardBack(Surgery surgery) {
         Tap(InputActions.Pause);
         await PlayerInput.Delivered();
         // Another player's copy can get there first: this one is back once it's no longer on its way.
@@ -102,10 +95,8 @@ public partial class SurgeryDriver : Node
     }
 
     /// <summary>Takes the patient card off its hook, unless it's already being read, and waits for its page.</summary>
-    public async Task PlayerTakesCard()
-    {
-        if (!Surgery.Hud.CardOpen)
-        {
+    public async Task PlayerTakesCard() {
+        if (!Surgery.Hud.CardOpen) {
             await PlayerInteracts("Read the patient card");
         }
         await Frames.Until(() => Surgery.Hud.CardOpen && Surgery.Hud.Overlay!.Modulate.A >= 1f, PatientCard.TravelSeconds + 1f);
@@ -113,8 +104,7 @@ public partial class SurgeryDriver : Node
     }
 
     /// <summary>Holds Interact over the card's page for <paramref name="seconds"/>, then lets go.</summary>
-    public async Task PlayerHoldsSignature(float seconds)
-    {
+    public async Task PlayerHoldsSignature(float seconds) {
         Note($"holds the signature {seconds:0.0} s");
         Press(InputActions.Interact);
         await PlayerInput.Delivered();
@@ -125,8 +115,7 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Signs the patient out like a player: takes the patient card and holds Interact until the signature is
     /// done and the surgery ends.</summary>
-    public async Task PlayerDischarges()
-    {
+    public async Task PlayerDischarges() {
         await PlayerTakesCard();
         Note("signs the discharge");
         Press(InputActions.Interact);
@@ -138,36 +127,29 @@ public partial class SurgeryDriver : Node
 
     /// <summary>What a player's loading screen waits for (<see cref="LoadingScreen"/>): the runtime warmed up and the
     /// tool models and sounds loaded, so a test's frames are timed as a player's are.</summary>
-    private static async Task Loaded()
-    {
+    private static async Task Loaded() {
         await ManagedRuntime.WarmUp;
-        foreach (var (file, keep) in LoadingScreen.Ahead())
-        {
+        foreach (var (file, keep) in LoadingScreen.Ahead()) {
             keep(GD.Load<Resource>(file));
         }
     }
 
     /// <summary>Ends the surgery and frees the driver with it.</summary>
-    public async Task Stop()
-    {
+    public async Task Stop() {
         QueueFree();
         await Frames.Process(2);
     }
 
-    public override void _Process(double delta)
-    {
-        if (IsInstanceValid(Surgery) && Surgery.Running && !_budgetPaused)
-        {
+    public override void _Process(double delta) {
+        if (IsInstanceValid(Surgery) && Surgery.Running && !_budgetPaused) {
             Budget.Sample(Trail.Count > 0 ? Trail[^1] : "", Surgery.Elapsed);
         }
     }
 
-    public void Note(string text)
-    {
+    public void Note(string text) {
         var elapsed = IsInstanceValid(Surgery) ? Surgery.Elapsed : 0f;
         Trail.Add($"{elapsed,6:0.0} s  {text}");
-        if (OS.GetEnvironment("SURGERY_TRACE") == "1")
-        {
+        if (OS.GetEnvironment("SURGERY_TRACE") == "1") {
             GD.Print($"[{Net.Instance.ScenarioId}] {Trail[^1]}");
         }
     }
@@ -176,26 +158,22 @@ public partial class SurgeryDriver : Node
     public string Recent(int count = 12) => string.Join("\n", Trail.Skip(Math.Max(Trail.Count - count, 0)));
 
     /// <summary>Key frame <paramref name="keyFrame"/>, which should show <paramref name="description"/>.</summary>
-    public async Task Capture(string keyFrame, string description)
-    {
-        if (OnKeyFrame is not null)
-        {
+    public async Task Capture(string keyFrame, string description) {
+        if (OnKeyFrame is not null) {
             await Unbudgeted(() => OnKeyFrame(keyFrame, description));
         }
     }
 
     /// <summary>Asserts <paramref name="claim"/>, then captures key frame <paramref name="keyFrame"/>, which should show
     /// it: one text for both.</summary>
-    public async Task AssertAndCapture(bool holds, string claim, string keyFrame)
-    {
+    public async Task AssertAndCapture(bool holds, string claim, string keyFrame) {
         AssertBool(holds).OverrideFailureMessage(claim).IsTrue();
         await Capture(keyFrame, claim);
     }
 
     /// <summary>Does <paramref name="work"/> (drawing a screenshot, say) outside the frame budget: it isn't
     /// gameplay.</summary>
-    public async Task Unbudgeted(Func<Task> work)
-    {
+    public async Task Unbudgeted(Func<Task> work) {
         _budgetPaused = true;
         await work();
         _budgetPaused = false;
@@ -215,27 +193,22 @@ public partial class SurgeryDriver : Node
 
     /// <summary>One wheel notch on the active hand: its effort level, or a syringe's plunger (up pushes it in).
     /// </summary>
-    public static async Task Notch(bool up)
-    {
+    public static async Task Notch(bool up) {
         Tap(up ? InputActions.LevelUp : InputActions.LevelDown);
         await Frames.Physics(2);
     }
 
-    public async Task SetLevel(int level)
-    {
+    public async Task SetLevel(int level) {
         var hand = Me.Hands[Me.Active];
-        for (var i = 0; i < 4 && hand.Level != level; i++)
-        {
+        for (var i = 0; i < 4 && hand.Level != level; i++) {
             await Notch(level > hand.Level);
         }
     }
 
     public static void Use(bool on = true) => Press(InputActions.UseTool, on);
 
-    public async Task SwitchTo(int hand)
-    {
-        if (Me.Active == hand)
-        {
+    public async Task SwitchTo(int hand) {
+        if (Me.Active == hand) {
             return;
         }
         var key = hand == Right ? InputActions.MoveRightHand : InputActions.MoveLeftHand;
@@ -253,39 +226,29 @@ public partial class SurgeryDriver : Node
     /// either hand. Off the table (the tray, the IV stand) it stands on the side facing the room's middle. Either way it
     /// keeps its feet off the IV tubing, like a player stepping around it (walking into it rips the line out).
     /// </summary>
-    public async Task PlayerWalksTo(Vector3 point, float off = StandOff)
-    {
+    public async Task PlayerWalksTo(Vector3 point, float off = StandOff) {
         // Holding onto something with the other hand, stay put while the point is in reach: walking off would drag it.
-        if (Me.Hands.Any(hand => hand.Attached) && point.DistanceTo(Me.Shoulder(Me.Active)) < Surgeon.Reach - 0.05f)
-        {
+        if (Me.Hands.Any(hand => hand.Attached) && point.DistanceTo(Me.Shoulder(Me.Active)) < Surgeon.Reach - 0.05f) {
             return;
         }
         var standingY = Me.GlobalPosition.Y;
         var table = Patient.GlobalPosition;
         var atTable = Mathf.Abs(point.X - table.X) < 1.1f && Mathf.Abs(point.Z - table.Z) < 0.5f;
-        IEnumerable<Vector3> StandingSpots()
-        {
-            if (atTable)
-            {
+        IEnumerable<Vector3> StandingSpots() {
+            if (atTable) {
                 var side = Mathf.Abs(point.Z - table.Z) > 0.05f
                     ? Mathf.Sign(point.Z - table.Z)
                     : Mathf.Sign(Me.GlobalPosition.Z - table.Z);
-                foreach (var s in (float[])[side, -side])
-                {
-                    foreach (var along in (float[])[0f, 0.15f, -0.15f, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f])
-                    {
+                foreach (var s in (float[])[side, -side]) {
+                    foreach (var along in (float[])[0f, 0.15f, -0.15f, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f]) {
                         yield return new Vector3(point.X + along, standingY, table.Z + (s * Mathf.Max(Mathf.Abs(point.Z - table.Z) + off, 0.55f + (Me.SafeMargin * 2f))));
                     }
                 }
-            }
-            else
-            {
+            } else {
                 var flat = point with { Y = standingY };
                 var outward = -(flat with { Y = 0f }).Normalized();
-                for (var step = 0; step <= 9; step++)
-                {
-                    for (var turn = 0; turn < 72; turn++)
-                    {
+                for (var step = 0; step <= 9; step++) {
+                    for (var turn = 0; turn < 72; turn++) {
                         var signed = ((turn + 1) / 2) * (turn % 2 == 0 ? 1 : -1);
                         yield return flat + (outward.Rotated(Vector3.Up, signed * Mathf.Pi / 36f) * (off + (step * 0.05f)));
                     }
@@ -296,8 +259,7 @@ public partial class SurgeryDriver : Node
         // capsule slides out during recovery and can pull a needle out of a vial halfway through drawing a dose.
         var line = Surgery.Room.IvLine;
         var body = Me.GetChildren().OfType<CollisionShape3D>().Single();
-        using var query = new PhysicsShapeQueryParameters3D
-        {
+        using var query = new PhysicsShapeQueryParameters3D {
             Shape = body.Shape,
             CollisionMask = Me.CollisionMask,
             Margin = Me.SafeMargin,
@@ -311,53 +273,42 @@ public partial class SurgeryDriver : Node
         bool Fits(Vector3 at) => !line.HangsLowAt(at, 0.12f) && CanStandAt(at, body, query);
         Vector3? chosen = null;
         var chosenYaw = 0f;
-        foreach (var candidate in StandingSpots())
-        {
-            if (!Fits(candidate))
-            {
+        foreach (var candidate in StandingSpots()) {
+            if (!Fits(candidate)) {
                 continue;
             }
             var at = candidate;
-            if (!atTable && at.DistanceTo(point with { Y = standingY }) > off + 0.001f)
-            {
+            if (!atTable && at.DistanceTo(point with { Y = standingY }) > off + 0.001f) {
                 // Refine the first clear ring toward the target: a narrow aisle can leave only a few millimeters
                 // between clearing the tray and reaching a vial at its far side.
                 var inward = (point with { Y = standingY }) - at;
                 var blocked = at + (inward.Normalized() * 0.05f);
-                for (var i = 0; i < 6; i++)
-                {
+                for (var i = 0; i < 6; i++) {
                     var middle = at.Lerp(blocked, 0.5f);
-                    if (Fits(middle))
-                    {
+                    if (Fits(middle)) {
                         at = middle;
-                    }
-                    else
-                    {
+                    } else {
                         blocked = middle;
                     }
                 }
             }
             var toward = point - at;
             var yaw = Mathf.Atan2(-toward.X, -toward.Z);
-            if (vial is not null)
-            {
+            if (vial is not null) {
                 var into = (vial.GlobalPosition - point).Normalized();
                 var wrist = point - (into * syringe!.Def.Length);
                 // Turn a little so the working shoulder faces a vial at the back of a cramped tray, rather than
                 // wasting the arm's reach across the chest. The needle's own snap still decides its contact.
                 var reaches = false;
-                foreach (var turn in (float[])[0f, -0.25f, 0.25f, -0.5f, 0.5f, -0.75f, 0.75f])
-                {
+                foreach (var turn in (float[])[0f, -0.25f, 0.25f, -0.5f, 0.5f, -0.75f, 0.75f]) {
                     var turned = yaw + turn;
-                    if (wrist.DistanceTo(Surgeon.StandingShoulder(new Transform3D(new Basis(Vector3.Up, turned), at), Me.Active, Me.Crouch)) <= Surgeon.Reach)
-                    {
+                    if (wrist.DistanceTo(Surgeon.StandingShoulder(new Transform3D(new Basis(Vector3.Up, turned), at), Me.Active, Me.Crouch)) <= Surgeon.Reach) {
                         yaw = turned;
                         reaches = true;
                         break;
                     }
                 }
-                if (!reaches)
-                {
+                if (!reaches) {
                     continue;
                 }
             }
@@ -373,20 +324,17 @@ public partial class SurgeryDriver : Node
     }
 
     /// <summary>The surgeon's capsule fits here without overlapping furniture or another surgeon.</summary>
-    private bool CanStandAt(Vector3 at, CollisionShape3D body, PhysicsShapeQueryParameters3D query)
-    {
+    private bool CanStandAt(Vector3 at, CollisionShape3D body, PhysicsShapeQueryParameters3D query) {
         var size = Surgery.Room.Layout.Size;
         var radius = ((CapsuleShape3D)body.Shape).Radius + Me.SafeMargin;
-        if (Mathf.Abs(at.X) > (size.X * 0.5f) - radius || Mathf.Abs(at.Z) > (size.Z * 0.5f) - radius)
-        {
+        if (Mathf.Abs(at.X) > (size.X * 0.5f) - radius || Mathf.Abs(at.Z) > (size.Z * 0.5f) - radius) {
             return false;
         }
         query.Transform = new Transform3D(Me.GlobalBasis, at + (Me.GlobalBasis * body.Position) + (Vector3.Up * 0.01f));
         var hits = Me.GetWorld3D().DirectSpaceState.IntersectShape(query, 1);
         using var storage = (Godot.Collections.Array)hits;
         var clear = hits.Count == 0;
-        foreach (var hit in hits)
-        {
+        foreach (var hit in hits) {
             hit.Dispose();
         }
         return clear;
@@ -394,11 +342,9 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Holds a walking key for <paramref name="time"/> seconds, so the body walks the way a player's does.
     /// <paramref name="eachFrame"/> is called once every frame of it, after the frame's physics.</summary>
-    public async Task PlayerHoldsWalkKey(string action, float time, Action eachFrame)
-    {
+    public async Task PlayerHoldsWalkKey(string action, float time, Action eachFrame) {
         PlayerInput.Action(action);
-        for (var i = 0; i < (int)(time * Engine.PhysicsTicksPerSecond); i++)
-        {
+        for (var i = 0; i < (int)(time * Engine.PhysicsTicksPerSecond); i++) {
             await Frames.NextProcess();
             eachFrame();
         }
@@ -409,15 +355,12 @@ public partial class SurgeryDriver : Node
     /// <summary>Steers the active hand so its tool's tip (or the empty hand's fingertips) is over
     /// <paramref name="point"/>, across the floor. The game decides the height: hovering, or resting on what's under it
     /// while Use tool is held.</summary>
-    public async Task PlayerReaches(Vector3 point)
-    {
+    public async Task PlayerReaches(Vector3 point) {
         var hand = Me.Hands[Me.Active];
         HoldHandKey(true);
-        for (var i = 0; i < 8; i++)
-        {
+        for (var i = 0; i < 8; i++) {
             var miss = (point - Tip(hand)) with { Y = 0f };
-            if (i > 0 && miss.Length() < 0.002f)
-            {
+            if (i > 0 && miss.Length() < 0.002f) {
                 break;
             }
             Steer(miss);
@@ -428,8 +371,7 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Turns the active hand's tool straight ahead with Aim tool: the hands start turned in, and straight the
     /// tip reaches further and the tool lies along where it points, not across what's beside it.</summary>
-    public async Task PlayerAimsStraight()
-    {
+    public async Task PlayerAimsStraight() {
         var hand = Me.Hands[Me.Active];
         await PlayerAims(new Vector2(hand.Turn / (Surgeon.AimSensitivity * Settings.MouseSensitivity), 0f), 1);
         PlayerLetsGoOfAim();
@@ -438,15 +380,13 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Moves the active hand's tip from where it is to <paramref name="point"/> across the floor at
     /// <paramref name="speed"/> m/s, steering back onto the straight line if it drifts.</summary>
-    public async Task PlayerSweepsTo(Vector3 point, float speed = Slow)
-    {
+    public async Task PlayerSweepsTo(Vector3 point, float speed = Slow) {
         var hand = Me.Hands[Me.Active];
         var from = Tip(hand) with { Y = 0f };
         var to = point with { Y = 0f };
         var steps = Math.Max((int)(from.DistanceTo(to) / speed * Engine.PhysicsTicksPerSecond), 1);
         HoldHandKey(true);
-        for (var i = 0; i < steps; i++)
-        {
+        for (var i = 0; i < steps; i++) {
             var planned = from.Lerp(to, (float)(i + 1) / steps);
             var drift = (planned - Tip(hand)) with { Y = 0f };
             Steer(((to - from) / steps) + (drift * 0.3f));
@@ -468,11 +408,9 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Holds Aim tool and moves the mouse <paramref name="motion"/> pixels a frame for
     /// <paramref name="count"/> frames. Aim tool stays held until <see cref="PlayerLetsGoOfAim"/>.</summary>
-    public async Task PlayerAims(Vector2 motion, int count)
-    {
+    public async Task PlayerAims(Vector2 motion, int count) {
         Press(InputActions.AimTool);
-        for (var i = 0; i < count; i++)
-        {
+        for (var i = 0; i < count; i++) {
             PlayerInput.Mouse(motion);
             await Frames.NextPhysics();
         }
@@ -485,20 +423,17 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Points the active hand's blade edge (ToolActions.BladeDirection()) along <paramref name="direction"/>
     /// (world, across the floor) by twisting the wrist, as C/V do.</summary>
-    public async Task PlayerTurnsBlade(Vector3 direction)
-    {
+    public async Task PlayerTurnsBlade(Vector3 direction) {
         var hand = Me.Hands[Me.Active];
         var now = hand.Twist;
         var best = now;
         var bestDot = -1f;
         // The hand's own way of turning its tool: a spreader swings about the upright where a blade rolls.
-        for (var i = -60; i <= 60; i++)
-        {
+        for (var i = -60; i <= 60; i++) {
             hand.Twist = i * Mathf.Pi / 60f;
             var side = hand.GripTransform().Basis.X;
             var dot = Mathf.Abs(side.Cross(Vector3.Up).Normalized().Dot(direction.Normalized()));
-            if (dot > bestDot)
-            {
+            if (dot > bestDot) {
                 bestDot = dot;
                 best = hand.Twist;
             }
@@ -509,8 +444,7 @@ public partial class SurgeryDriver : Node
         var turn = Mathf.Wrap(best - now, -Mathf.Pi / 2f, Mathf.Pi / 2f);
         var key = turn > 0f ? InputActions.TwistRight : InputActions.TwistLeft;
         var held = Mathf.RoundToInt(Mathf.Abs(turn) / Surgeon.TwistSpeed * Engine.PhysicsTicksPerSecond);
-        if (held > 0)
-        {
+        if (held > 0) {
             Press(key);
             await Frames.Physics(held);
             Release(key);
@@ -519,21 +453,17 @@ public partial class SurgeryDriver : Node
     }
 
     /// <summary>Walks over only when <paramref name="point"/> is out of the active hand's comfortable reach.</summary>
-    private async Task WithinReach(Vector3 point)
-    {
+    private async Task WithinReach(Vector3 point) {
         var hand = Me.Hands[Me.Active];
         var grip = Me.HeldTool(Me.Active) is { } tool ? point - hand.TipOffset(tool.Def.Length) : point;
-        if (grip.DistanceTo(Me.Shoulder(Me.Active)) > Surgeon.Reach - 0.12f)
-        {
+        if (grip.DistanceTo(Me.Shoulder(Me.Active)) > Surgeon.Reach - 0.12f) {
             await PlayerWalksTo(point);
         }
     }
 
     /// <summary>Turns the view with the mouse until the middle of the screen is on <paramref name="point"/>.</summary>
-    public async Task PlayerLooksAt(Vector3 point)
-    {
-        for (var i = 0; i < 3; i++)
-        {
+    public async Task PlayerLooksAt(Vector3 point) {
+        for (var i = 0; i < 3; i++) {
             var to = point - Me.Camera.GlobalPosition;
             var yaw = Mathf.Atan2(-to.X, -to.Z);
             var pitch = Mathf.Atan2(to.Y, new Vector2(to.X, to.Z).Length());
@@ -546,13 +476,11 @@ public partial class SurgeryDriver : Node
 
     /// <summary>Interacts with the room station whose prompt is <paramref name="prompt"/>, standing in front of it.
     /// </summary>
-    public async Task<bool> PlayerInteracts(string prompt)
-    {
+    public async Task<bool> PlayerInteracts(string prompt) {
         var station = Surgery.Room.FindChildren("*", "", true, false)
             .OfType<Interactable>()
             .FirstOrDefault(node => node.Prompt == prompt && node.OfferedTo(Me));
-        if (station is null)
-        {
+        if (station is null) {
             Note($"no station '{prompt}' on offer");
             return false;
         }

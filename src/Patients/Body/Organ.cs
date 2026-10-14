@@ -4,8 +4,7 @@ namespace Scalpel.Patients;
 /// An organ in the cavity: a soft body hands push aside and tools take hold of. Only the host simulates it, clients
 /// get its position from the patient's sync.
 /// </summary>
-public partial class Organ : RigidBody3D
-{
+public partial class Organ : RigidBody3D {
     /// <summary>The model it's drawn with ("bowel", "heart"...).</summary>
     public string Kind { get; set; } = "";
     /// <summary>0 lies on top, 1 under it.</summary>

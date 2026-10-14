@@ -12,15 +12,13 @@ namespace Scalpel.Tests.Tools;
 [TestCategory("smoke"), TestCategory("tool_skin_stapler"), TestCategory("tool_office_stapler")]
 [TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class StaplerTest
-{
+public class StaplerTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "known to go over the frame budget: each staple changes the tissue, and "
         + "rebuilding its layers takes about 6 ms (PatientBody.RebuildLayers()); not optimized yet";
 
     [TestCase]
-    public async Task SkinStaplerClosesAForearmCut()
-    {
+    public async Task SkinStaplerClosesAForearmCut() {
         var session = await ToolSession.Start("hand_stitch", "stapler/forearm", views: true, captureUntouched: true);
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -67,8 +65,7 @@ public class StaplerTest
         await Frames.Physics(4);
         SurgeryDriver.Use(false);
         AssertInt(stapler.Charges).OverrideFailureMessage("a click puts one staple in").IsEqual(charges - 1);
-        for (var side = 0; side < 2; side++)
-        {
+        for (var side = 0; side < 2; side++) {
             var miss = (stapler.Use.StapleAim[side] - aimed[side]).Slide(Vector3.Up).Length();
             AssertFloat(miss).OverrideFailureMessage($"leg {side} goes in where its ring showed it ({miss * 1000f:0.0} mm off)")
                 .IsLess(0.0005f);
@@ -104,8 +101,7 @@ public class StaplerTest
     }
 
     [TestCase]
-    public async Task SkinStaplerClosesABellyCutMuscleFirst()
-    {
+    public async Task SkinStaplerClosesABellyCutMuscleFirst() {
         var session = await ToolSession.Start("appendectomy", "stapler/belly_muscle", views: true);
         var driver = session.Driver;
         var body = driver.Body;
@@ -151,8 +147,7 @@ public class StaplerTest
     }
 
     [TestCase]
-    public async Task OfficeStaplerCanTearOrBleed()
-    {
+    public async Task OfficeStaplerCanTearOrBleed() {
         var session = await ToolSession.Start("appendectomy", "stapler/office", views: true);
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -203,8 +198,7 @@ public class StaplerTest
         await session.Finish(BudgetOverride);
     }
 
-    private static async Task Click()
-    {
+    private static async Task Click() {
         await Frames.Physics(2);
         SurgeryDriver.Use();
         await Frames.Physics(4);
@@ -214,16 +208,13 @@ public class StaplerTest
 
     /// <summary>The stapler hovers over the skin, and each ring of its aim lies on the skin under where its leg comes
     /// down.</summary>
-    private static void AssertRingsOnSkin(SurgeryDriver driver, SurgicalTool stapler)
-    {
+    private static void AssertRingsOnSkin(SurgeryDriver driver, SurgicalTool stapler) {
         var legs = ToolActions.StapleLegs(stapler, driver.Body);
         var above = legs[0].Y - SkinY(driver.Body, legs[0]);
         AssertFloat(above).OverrideFailureMessage($"the stapler hovers {above * 1000f:0.0} mm over the skin").IsGreater(0.003f);
         var middles = RingMiddles(driver);
-        for (var side = 0; side < 2; side++)
-        {
-            foreach (var p in driver.Surgery.Hud.LegRings[side])
-            {
+        for (var side = 0; side < 2; side++) {
+            foreach (var p in driver.Surgery.Hud.LegRings[side]) {
                 AssertFloat(Mathf.Abs(p.Y - SkinY(driver.Body, p))).OverrideFailureMessage($"ring {side} lies on the skin")
                     .IsLess(0.0005f);
             }
@@ -234,16 +225,13 @@ public class StaplerTest
 
     /// <summary>Holds the stapler square across the arm with one leg just past its side, where the surface drops away to
     /// the drape or the table, and checks the rings there.</summary>
-    private static async Task AimOverTheArmsEdge(SurgeryDriver driver, SurgicalTool stapler, Vector3 middle)
-    {
+    private static async Task AimOverTheArmsEdge(SurgeryDriver driver, SurgicalTool stapler, Vector3 middle) {
         var me = driver.Me;
         var top = me.SurfaceBelow(middle, false).Y;
         var outside = middle;
-        for (var i = 0; i < 40; i++)
-        {
+        for (var i = 0; i < 40; i++) {
             outside += new Vector3(0f, 0f, 0.003f);
-            if (me.SurfaceBelow(outside, false).Y < top - 0.02f)
-            {
+            if (me.SurfaceBelow(outside, false).Y < top - 0.02f) {
                 break;
             }
         }
@@ -256,13 +244,11 @@ public class StaplerTest
         // Wherever the legs are, each ring lies on what's under its middle, no steeper than 45 degrees, not floating in
         // the air or standing on end.
         var middles = RingMiddles(driver);
-        for (var side = 0; side < 2; side++)
-        {
+        for (var side = 0; side < 2; side++) {
             var off = middles[side].Y - me.SurfaceBelow(middles[side], false).Y;
             AssertFloat(Mathf.Abs(off)).OverrideFailureMessage($"ring {side} lies on what's under it ({off * 1000f:0.0} mm off)")
                 .IsLess(0.002f);
-            foreach (var p in driver.Surgery.Hud.LegRings[side])
-            {
+            foreach (var p in driver.Surgery.Hud.LegRings[side]) {
                 AssertFloat(Mathf.Abs(p.Y - middles[side].Y)).OverrideFailureMessage($"ring {side} doesn't stand on end")
                     .IsLessEqual(Hud.LegRing * 1.5f);
             }
@@ -274,8 +260,7 @@ public class StaplerTest
         [.. driver.Surgery.Hud.LegRings.Select(ring => ring.Aggregate(Vector3.Zero, (sum, p) => sum + p) / ring.Length)];
 
     /// <summary>The skin's height (world) as drawn under <paramref name="p"/>.</summary>
-    private static float SkinY(PatientBody body, Vector3 p)
-    {
+    private static float SkinY(PatientBody body, Vector3 p) {
         var local = body.Site.ToLocal(p);
         return body.Site.ToGlobal(new Vector3(local.X, body.SkinHeight(body.WorldToUv(p)), local.Z)).Y;
     }
@@ -286,14 +271,12 @@ public class StaplerTest
 
     /// <summary>Every staple bridges the cut: its legs on both sides of the wound's line, each within the staple's span
     /// of it, square across it, its crown riding on the skin.</summary>
-    private static void AssertStaplesAcross(SurgeryDriver driver, IReadOnlyList<DrawnStaple> staples, Wound wound)
-    {
+    private static void AssertStaplesAcross(SurgeryDriver driver, IReadOnlyList<DrawnStaple> staples, Wound wound) {
         var body = driver.Body;
         var def = Db.Tool("skin_stapler")!;
         var widest = def.StapleSpan + (def.StapleGive * 2f);
         var cut = (wound.Points[^1] - wound.Points[0]).Normalized();
-        foreach (var path in staples.Select(staple => staple.Path))
-        {
+        foreach (var path in staples.Select(staple => staple.Path)) {
             var a = SiteUv(body, path[1]);
             var b = SiteUv(body, path[^2]);
             var line = wound.ClosestPoint((a + b) * 0.5f);
@@ -303,8 +286,7 @@ public class StaplerTest
                 .IsLess(widest * 1.1f);
             AssertFloat(Mathf.Abs((b - a).Orthogonal().Normalized().Dot(cut))).OverrideFailureMessage("lying square across the cut")
                 .IsGreater(0.8f);
-            for (var i = 1; i < path.Length - 1; i++)
-            {
+            for (var i = 1; i < path.Length - 1; i++) {
                 AssertFloat(path[i].Y).OverrideFailureMessage("its crown rides on the skin, not in it")
                     .IsGreaterEqual(body.SkinHeight(SiteUv(body, path[i])) + PatientBody.StapleRadius);
             }

@@ -3,28 +3,23 @@ namespace Scalpel.Tests.Data;
 /// <summary>Shared setup retains only completed cases in the same group; isolation and failure discard it.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
-public class SharedSceneTest
-{
+public class SharedSceneTest {
     [TestCase("same")]
     [TestCase("different")]
     [TestCase("incomplete")]
     [TestCase("isolated")]
-    public async Task OnlyCompletedCompatibleCasesReuseTheirScene(string next)
-    {
+    public async Task OnlyCompletedCompatibleCasesReuseTheirScene(string next) {
         var made = 0;
         var stopped = new List<object>();
-        var scenes = new SharedScene<object>(() =>
-        {
+        var scenes = new SharedScene<object>(() => {
             made++;
             return Task.FromResult(new object());
-        }, scene =>
-        {
+        }, scene => {
             stopped.Add(scene);
             return Task.CompletedTask;
         });
         var first = await scenes.Begin("first");
-        if (next != "incomplete")
-        {
+        if (next != "incomplete") {
             await scenes.Complete();
         }
         await scenes.DiscardIncomplete();

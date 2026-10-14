@@ -14,8 +14,7 @@ namespace Scalpel.Tests.Tools;
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_gelpi"), TestCategory("tissue_modification")]
 [TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class GelpiTest
-{
+public class GelpiTest {
     private const float Length = 0.05f;
     /// <summary>How far (meters) from the cut's middle its gap is measured.</summary>
     private const float Middle = 0.005f;
@@ -24,8 +23,7 @@ public class GelpiTest
     private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task GelpiSetInACutHoldsItOpenUntilTakenOut()
-    {
+    public async Task GelpiSetInACutHoldsItOpenUntilTakenOut() {
         var session = await ToolSession.Start("appendectomy", "gelpi/open", views: true);
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -45,8 +43,7 @@ public class GelpiTest
         var hand = driver.Me.Hands[driver.Me.Active];
         AssertBool(gelpi.InWound && hand.Attached)
             .OverrideFailureMessage($"Use tool on the cut sets the retractor in it\n{driver.Recent()}").IsTrue();
-        if (!gelpi.InWound)
-        {
+        if (!gelpi.InWound) {
             await session.Finish(BudgetOverride);
             return;
         }
@@ -82,8 +79,7 @@ public class GelpiTest
         AssertBool(gelpi.GlobalTransform.IsEqualApprox(setAt)).OverrideFailureMessage("set, the retractor stays where it went in")
             .IsTrue();
         var openedMarks = driver.Surgery.Hud.JawPoints;
-        if (marks.Length == 2 && openedMarks.Length == 2)
-        {
+        if (marks.Length == 2 && openedMarks.Length == 2) {
             AssertFloat(openedMarks[0].DistanceTo(openedMarks[1])).OverrideFailureMessage("the < and > move apart with the tips")
                 .IsGreater(marks[0].DistanceTo(marks[1]) + 10f);
         }
@@ -122,8 +118,7 @@ public class GelpiTest
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task GelpiOpenedTooFarTearsTheSkin()
-    {
+    public async Task GelpiOpenedTooFarTearsTheSkin() {
         var session = await ToolSession.Start("appendectomy", "gelpi/too_far", views: true);
         var driver = session.Driver;
         var (from, to) = Cut(driver, 0.03f);
@@ -142,8 +137,7 @@ public class GelpiTest
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task GelpiPressedOntoWholeSkinBouncesOff()
-    {
+    public async Task GelpiPressedOntoWholeSkinBouncesOff() {
         var session = await ToolSession.Start("appendectomy", "gelpi/bounce", views: true);
         var driver = session.Driver;
         var spot = driver.SitePoint(new Vector2(0.4f, 0.45f));
@@ -155,8 +149,7 @@ public class GelpiTest
         await Frames.Physics(3);
         var pressed = hand.GlobalPosition.Y;
         var highest = pressed;
-        for (var i = 0; i < 40; i++)
-        {
+        for (var i = 0; i < 40; i++) {
             await Frames.Physics(1);
             highest = Mathf.Max(highest, hand.GlobalPosition.Y);
         }
@@ -170,8 +163,7 @@ public class GelpiTest
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task GelpiHoldsASkinCutOpenForTheMuscleUnderIt()
-    {
+    public async Task GelpiHoldsASkinCutOpenForTheMuscleUnderIt() {
         var session = await ToolSession.Start("appendectomy", "gelpi/muscle", views: true);
         var driver = session.Driver;
         var body = driver.Body;
@@ -199,8 +191,7 @@ public class GelpiTest
     }
 
     /// <summary>A cut <paramref name="length"/> meters long along u, in the same place on the belly every case.</summary>
-    private static (Vector2 From, Vector2 To) Cut(SurgeryDriver driver, float length)
-    {
+    private static (Vector2 From, Vector2 To) Cut(SurgeryDriver driver, float length) {
         var from = new Vector2(0.4f, 0.45f);
         return (from, from + new Vector2(driver.Body.MetersToUv(length), 0f));
     }
@@ -208,8 +199,7 @@ public class GelpiTest
     /// <summary>Held over the middle of the cut from <paramref name="from"/> to <paramref name="to"/> (site uv, along
     /// u), square across it, the &lt; and &gt; hang into the wound: each down from the lip on its own side, under the
     /// skin, where its tip will go in.</summary>
-    private static async Task AimIntoTheCut(SurgeryDriver driver, Vector2 from, Vector2 to)
-    {
+    private static async Task AimIntoTheCut(SurgeryDriver driver, Vector2 from, Vector2 to) {
         var body = driver.Body;
         var middle = driver.SitePoint((from + to) * 0.5f);
         await driver.PlayerRequestsItem("gelpi");
@@ -219,8 +209,7 @@ public class GelpiTest
         await Frames.Physics(3);
         var marks = driver.Surgery.Hud.JawMarks;
         var across = 0f;
-        for (var side = 0; side < 2; side++)
-        {
+        for (var side = 0; side < 2; side++) {
             var local = body.Site.ToLocal(marks[side]);
             var uv = body.WorldToUv(marks[side]);
             var under = body.SkinHeight(new Vector2(uv.X, from.Y + ((uv.Y - from.Y) * 3f)));
@@ -234,16 +223,12 @@ public class GelpiTest
 
     /// <summary>Which side of the cut's middle each jaw holds the skin on, across the cut (it runs along u): opposite
     /// signs for two edges.</summary>
-    private static float[] JawSides(SurgeryDriver driver, SurgicalTool gelpi, Vector2 middle)
-    {
+    private static float[] JawSides(SurgeryDriver driver, SurgicalTool gelpi, Vector2 middle) {
         var tissue = driver.Body.Tissue;
         var sides = new float[2];
-        foreach (var grip in tissue.Grips())
-        {
-            for (var side = 0; side < 2; side++)
-            {
-                if (grip.Key == Patient.SpreaderKey(gelpi.Uid, side))
-                {
+        foreach (var grip in tissue.Grips()) {
+            for (var side = 0; side < 2; side++) {
+                if (grip.Key == Patient.SpreaderKey(gelpi.Uid, side)) {
                     sides[side] = (tissue.Pos[grip.Particle].Z / tissue.Size.Y) + 0.5f - middle.Y;
                 }
             }
@@ -253,8 +238,7 @@ public class GelpiTest
 
     /// <summary>Spread open, each lip stays on its own side of the opening and nothing under the skin comes up
     /// through it (TissueLayers.AssertUnderSkin()).</summary>
-    private static Task AssertLipsApart(SurgeryDriver driver) => driver.Unbudgeted(() =>
-    {
+    private static Task AssertLipsApart(SurgeryDriver driver) => driver.Unbudgeted(() => {
         TissueLayers.AssertUnderSkin(driver.Body);
         return Task.CompletedTask;
     });

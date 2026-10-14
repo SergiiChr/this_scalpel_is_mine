@@ -5,16 +5,14 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_scalpel"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class ScalpelTest
-{
+public class ScalpelTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "cutting and returning the scalpel exceed the recorded CPU/render budget";
 
     private const float Length = 0.05f;
 
     [TestCase]
-    public async Task ScalpelPickupFiveCentimeterCutAndTableDrop()
-    {
+    public async Task ScalpelPickupFiveCentimeterCutAndTableDrop() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
@@ -31,11 +29,9 @@ public class ScalpelTest
         var activeFrames = 0;
         var bladeDrift = 0f;
         // Every frame the blade works, how far it moved on its handle.
-        void Measure()
-        {
+        void Measure() {
             var hand = driver.Me.Hands[scalpel.Slot];
-            if (scalpel.State != ToolState.Held || !ToolActions.InUse(scalpel.Def.Action, hand.Lowered, hand.Trigger, hand.Level))
-            {
+            if (scalpel.State != ToolState.Held || !ToolActions.InUse(scalpel.Def.Action, hand.Lowered, hand.Trigger, hand.Level)) {
                 return;
             }
             activeFrames++;
@@ -50,8 +46,7 @@ public class ScalpelTest
         var finish = driver.SitePoint(to);
         var middle = (start + finish) * 0.5f;
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "scalpel");
@@ -103,8 +98,7 @@ public class ScalpelTest
 
     /// <summary>Meters of skin open along the line from <paramref name="from"/> to <paramref name="to"/>, looked for a
     /// centimeter past both ends.</summary>
-    private static float Opening(PatientBody body, Vector2 from, Vector2 to)
-    {
+    private static float Opening(PatientBody body, Vector2 from, Vector2 to) {
         var step = body.MetersToUv(0.001f);
         var along = (to - from).Normalized();
         var past = body.MetersToUv(0.01f);

@@ -6,10 +6,8 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_all")]
 [GodotArgs("--fixed-fps", "60")]
-public class ToolLifecycleTest
-{
-    private readonly SharedScene<SurgeryDriver> _scenes = new(async () =>
-    {
+public class ToolLifecycleTest {
+    private readonly SharedScene<SurgeryDriver> _scenes = new(async () => {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         return driver;
@@ -21,29 +19,24 @@ public class ToolLifecycleTest
     [After]
     public async Task CleanUpSuite() => await _scenes.Stop();
 
-    private async Task<SurgeryDriver> Begin(string group = "")
-    {
+    private async Task<SurgeryDriver> Begin(string group = "") {
         var driver = await _scenes.Begin(group);
-        if (driver.Me.HeldTool(driver.Me.Active) is not null)
-        {
+        if (driver.Me.HeldTool(driver.Me.Active) is not null) {
             await driver.PlayerPutsDown();
         }
         return driver;
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack()
-    {
+    public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack() {
         var driver = await Begin();
         var surgery = driver.Surgery;
         SurgeryState.PatientIsAsleep(driver.Patient);
         var site = driver.SitePoint(new Vector2(0.5f, 0.5f));
-        foreach (var id in Db.Tools.Keys.Where(id => !Db.Tool(id)!.Fixed).Order(StringComparer.Ordinal))
-        {
+        foreach (var id in Db.Tools.Keys.Where(id => !Db.Tool(id)!.Fixed).Order(StringComparer.Ordinal)) {
             // A fully stocked tray: whatever isn't on it is laid in its clear strip, and taken away again after.
             var extra = driver.FreeTools(id).Count == 0;
-            if (extra)
-            {
+            if (extra) {
                 SurgeryState.ToolIsOnTray(surgery, id);
                 await Frames.Physics(10);
             }
@@ -59,19 +52,14 @@ public class ToolLifecycleTest
             var tool = await driver.PlayerRequestsItem(id);
             AssertBool(tool?.Def.Id == id && tool.State == ToolState.Held)
                 .OverrideFailureMessage($"{id} is picked up\n{driver.Recent(4)}").IsTrue();
-            if (tool is null || tool.Def.Id != id)
-            {
+            if (tool is null || tool.Def.Id != id) {
                 continue;
             }
             // A needle holder and a syringe come up in their own carry pose (SurgeonHand.DefaultTilt(), FaceSyringe()).
-            if (tool.Def.Grip is not ("needle" or "syringe"))
-            {
-                if (tool.Def.Action != "spread")
-                {
+            if (tool.Def.Grip is not ("needle" or "syringe")) {
+                if (tool.Def.Action != "spread") {
                     AssertFloat(hand.Tilt).OverrideFailureMessage($"{id} pickup preserves the player's tilt").IsEqual(tilt);
-                }
-                else
-                {
+                } else {
                     AssertFloat(hand.Tilt).OverrideFailureMessage("the spreader is held tipped toward the skin, its points down")
                         .IsEqual(SurgeonHand.SpreaderTilt);
                 }
@@ -81,21 +69,18 @@ public class ToolLifecycleTest
             await driver.PlayerReaches(site);
             SurgeryDriver.Use();
             var touched = false;
-            for (var i = 0; i < 30; i++)
-            {
+            for (var i = 0; i < 30; i++) {
                 await Frames.Physics(1);
                 touched |= driver.Body.Probe(tool.TipPosition()).Zone is SiteZone.Site or SiteZone.Cavity or SiteZone.Body;
             }
             SurgeryDriver.Use(false);
             AssertBool(touched).OverrideFailureMessage($"{id} comes down onto the site").IsTrue();
-            if (tool.State == ToolState.Held)
-            {
+            if (tool.State == ToolState.Held) {
                 await driver.PlayerPutsDown();
                 AssertBool(driver.LiesOnTray(tool))
                     .OverrideFailureMessage($"{id} is put back on the tray ({tool.Middle()})\n{driver.Recent(4)}").IsTrue();
             }
-            if (extra)
-            {
+            if (extra) {
                 surgery.Tools.Consume(tool);
                 await Frames.Physics(2);
             }
@@ -104,8 +89,7 @@ public class ToolLifecycleTest
     }
 
     [TestCase]
-    public async Task AHeldToolMovesWithTheHandWhileWalking()
-    {
+    public async Task AHeldToolMovesWithTheHandWhileWalking() {
         var driver = await Begin("walking_and_floor");
         var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
         // Between the table and the delivery tray, walking sideways along the table over clear floor.
@@ -123,8 +107,7 @@ public class ToolLifecycleTest
     }
 
     [TestCase]
-    public async Task AToolDroppedOnTheFloorIsSoiled()
-    {
+    public async Task AToolDroppedOnTheFloorIsSoiled() {
         var driver = await Begin("walking_and_floor");
         var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
         // Away from the table and the tray, over bare floor.
@@ -141,21 +124,16 @@ public class ToolLifecycleTest
     }
 
     [TestCase]
-    public async Task DrinksAndCigarettesAreUsedUpOneAtATime()
-    {
+    public async Task DrinksAndCigarettesAreUsedUpOneAtATime() {
         var driver = await Begin();
-        foreach (var def in Db.Tools.Values.Where(def => def.Drinkable || def.Id == "cig_pack"))
-        {
+        foreach (var def in Db.Tools.Values.Where(def => def.Drinkable || def.Id == "cig_pack")) {
             SurgeryState.ToolIsOnTray(driver.Surgery, def.Id);
             await Frames.Physics(10);
             var tool = (await driver.PlayerRequestsItem(def.Id))!;
             var before = tool.Charges;
-            if (def.Drinkable)
-            {
+            if (def.Drinkable) {
                 SurgeryDriver.Press(InputActions.Drink);
-            }
-            else
-            {
+            } else {
                 await driver.PlayerInteracts("Smoke a cigarette");
             }
             await Frames.Seconds(1f);
@@ -166,8 +144,7 @@ public class ToolLifecycleTest
     }
 
     [TestCase]
-    public void FixedToolsHaveAStationInteractionInsteadOfAHandLifecycle()
-    {
+    public void FixedToolsHaveAStationInteractionInsteadOfAHandLifecycle() {
         var fixedTools = Db.Tools.Values.Where(def => def.Fixed).ToList();
         AssertArray(fixedTools.Select(def => def.Id).ToList()).OverrideFailureMessage("only the IV drip is fixed")
             .IsEqual(new List<string> { "iv_drip" });

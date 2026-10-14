@@ -2,8 +2,7 @@ namespace Scalpel.Tests.Support;
 
 /// <summary>Holding a tool the way the game does and finding where it goes through the glove. The model suite checks
 /// every tool with it; fitting the grips (data/grips.json) uses the same check so that nothing does.</summary>
-public static class GripCheck
-{
+public static class GripCheck {
     private const uint SolidLayer = 1 << 19;
     /// <summary>Where the hand holds a tool for the check: in front of the right or left shoulder, about where it
     /// works. </summary>
@@ -14,8 +13,7 @@ public static class GripCheck
 
     /// <summary>A glove under <paramref name="holder"/>, the way a surgeon's hand is built (on a body node of its own).
     /// </summary>
-    public static SurgeonHand MakeHand(Node3D holder, int index)
-    {
+    public static SurgeonHand MakeHand(Node3D holder, int index) {
         var body = new Node3D();
         holder.AddChild(body);
         var hand = new SurgeonHand();
@@ -26,8 +24,7 @@ public static class GripCheck
 
     /// <summary>Poses the hand holding a tool of this kind with the given fit; returns the tool's model, placed in the
     /// hand, with a solid for point queries (wait a physics frame before querying it).</summary>
-    public static Node3D Hold(SurgeonHand hand, ToolDef def, GripFit fit, Node3D holder)
-    {
+    public static Node3D Hold(SurgeonHand hand, ToolDef def, GripFit fit, Node3D holder) {
         var side = hand.Index == 0 ? -1f : 1f;
         hand.Holding = true;
         hand.Grip = def.Grip;
@@ -50,21 +47,17 @@ public static class GripCheck
     /// <summary>How many points inside the glove (or its <paramref name="part"/>, see SurgeonHand.BonePoints()) are
     /// inside the tool or too close to its surface: a tool may rest against the fingers, not pass through
     /// them.</summary>
-    public static int Clipped(SurgeonHand hand, string part = "")
-    {
+    public static int Clipped(SurgeonHand hand, string part = "") {
         var space = hand.GetWorld3D().DirectSpaceState;
         return hand.BonePoints(part)
             .Count(point => Inside(space, point.Position) || Near(space, point.Position, point.Radius * 0.5f));
     }
 
     /// <summary>A static trimesh of a model where it stands, for point queries, without the liquid in it.</summary>
-    private static void AddSolid(Node3D model)
-    {
+    private static void AddSolid(Node3D model) {
         var faces = new List<Vector3>();
-        foreach (var mesh in model.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>())
-        {
-            if (LiquidParts.Contains(mesh.Name))
-            {
+        foreach (var mesh in model.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>()) {
+            if (LiquidParts.Contains(mesh.Name)) {
                 continue;
             }
             var xform = model.GlobalTransform.AffineInverse() * mesh.GlobalTransform;
@@ -78,18 +71,15 @@ public static class GripCheck
     }
 
     /// <summary>Inside a closed mesh: a ray out from the point crosses its surface an odd number of times.</summary>
-    private static bool Inside(PhysicsDirectSpaceState3D space, Vector3 point)
-    {
+    private static bool Inside(PhysicsDirectSpaceState3D space, Vector3 point) {
         var direction = new Vector3(1f, 0.013f, 0.007f).Normalized();
         var crossings = 0;
         var from = point;
-        for (var i = 0; i < 32; i++)
-        {
+        for (var i = 0; i < 32; i++) {
             var query = PhysicsRayQueryParameters3D.Create(from, point + direction, SolidLayer);
             query.HitBackFaces = true;
             var hit = space.IntersectRay(query);
-            if (hit.Count == 0)
-            {
+            if (hit.Count == 0) {
                 break;
             }
             crossings++;
@@ -98,10 +88,8 @@ public static class GripCheck
         return crossings % 2 == 1;
     }
 
-    private static bool Near(PhysicsDirectSpaceState3D space, Vector3 point, float radius)
-    {
-        var query = new PhysicsShapeQueryParameters3D
-        {
+    private static bool Near(PhysicsDirectSpaceState3D space, Vector3 point, float radius) {
+        var query = new PhysicsShapeQueryParameters3D {
             Shape = new SphereShape3D { Radius = radius },
             Transform = new Transform3D(Basis.Identity, point),
             CollisionMask = SolidLayer,

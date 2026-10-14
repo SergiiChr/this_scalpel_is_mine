@@ -1,8 +1,7 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>Closing wounds: running sutures, staples, tape and internal stitches.</summary>
-public partial class SurgeryDriver
-{
+public partial class SurgeryDriver {
     private static readonly string[] ThreadStates = ["loose", "closed", "too tight"];
 
     /// <summary>
@@ -11,28 +10,21 @@ public partial class SurgeryDriver
     /// tape (<paramref name="toolId"/>) goes segment by segment along it at medium tension, held on each until it's
     /// closed. Goes round again for anything that didn't close.
     /// </summary>
-    public async Task PlayerClosesWounds(string toolId = "needle")
-    {
+    public async Task PlayerClosesWounds(string toolId = "needle") {
         Note($"closes the wounds with {toolId}");
         var tool = (await PlayerRequestsItem(toolId))!;
-        for (var round = 0; round < 4 && Patient.SkinClosure() < 0.98f; round++)
-        {
+        for (var round = 0; round < 4 && Patient.SkinClosure() < 0.98f; round++) {
             // Every muscle before any skin: a skin stitch near another cut can reach across it, and over its open muscle
             // it tears through.
-            if (tool.Def.Action == "sew")
-            {
-                foreach (var wound in Patient.Wounds.Where(wound => wound.ThroughMuscle && wound.Muscle.Any(m => m < 1f)).ToList())
-                {
+            if (tool.Def.Action == "sew") {
+                foreach (var wound in Patient.Wounds.Where(wound => wound.ThroughMuscle && wound.Muscle.Any(m => m < 1f)).ToList()) {
                     await PlayerSews(wound, TissueDepth.Muscle);
                 }
             }
-            foreach (var wound in Patient.Wounds.Where(wound => wound.IsSkinCut).ToList())
-            {
-                switch (tool.Def.Action)
-                {
+            foreach (var wound in Patient.Wounds.Where(wound => wound.IsSkinCut).ToList()) {
+                switch (tool.Def.Action) {
                     case "sew":
-                        if (wound.Bins.Any(b => b < 1f))
-                        {
+                        if (wound.Bins.Any(b => b < 1f)) {
                             await PlayerSews(wound, TissueDepth.Skin);
                         }
                         break;
@@ -51,20 +43,15 @@ public partial class SurgeryDriver
 
     /// <summary>Tape or a closure strip pressed bin by bin along <paramref name="wound"/>: its muscle first where the cut
     /// goes through it, then its skin.</summary>
-    private async Task PlayerTapes(Wound wound)
-    {
-        foreach (var muscle in (bool[])[true, false])
-        {
-            if (muscle && !wound.ThroughMuscle)
-            {
+    private async Task PlayerTapes(Wound wound) {
+        foreach (var muscle in (bool[])[true, false]) {
+            if (muscle && !wound.ThroughMuscle) {
                 continue;
             }
-            for (var bin = 0; bin < wound.Bins.Length; bin++)
-            {
+            for (var bin = 0; bin < wound.Bins.Length; bin++) {
                 var index = bin;
                 bool Closed() => (muscle ? wound.Muscle : wound.Bins)[index] >= 1f;
-                if (Closed())
-                {
+                if (Closed()) {
                     continue;
                 }
                 var at = SitePoint(wound.BinPosition(bin));
@@ -73,8 +60,7 @@ public partial class SurgeryDriver
                 await SetLevel(2);
                 Use();
                 await Frames.Until(Closed, 3f);
-                if (!Closed())
-                {
+                if (!Closed()) {
                     var hand = Me.Hands[Me.Active];
                     var tip = Me.HeldTool(Me.Active) is { } held ? Body.Probe(held.TipPosition()).ToString() : "no tool";
                     Note($"{(muscle ? "muscle" : "skin")} {bin} won't close: lowered {hand.Lowered}, level {hand.Level}, tip {tip}");
@@ -92,20 +78,16 @@ public partial class SurgeryDriver
     /// under it is still open the staples go into the muscle, so it goes along again for the skin, up to <paramref name="rounds"/> times while it isn't closed. Opt-in progress captures show the first staple; callers otherwise capture their unique result.
     /// Returns how many staples went in.
     /// </summary>
-    public async Task<int> PlayerStaples(Wound wound, float spacing = TissueSim.StitchReach, int rounds = 4, bool captureProgress = false)
-    {
+    public async Task<int> PlayerStaples(Wound wound, float spacing = TissueSim.StitchReach, int rounds = 4, bool captureProgress = false) {
         var stapler = Me.HeldTool(Me.Active)!;
         var step = spacing / ((wound.Points[^1] - wound.Points[0]).Normalized() * Body.SiteSize).Length();
         var placed = 0;
-        for (var round = 0; round < rounds && wound.Closure < 0.99f; round++)
-        {
-            for (var i = 0; i <= Mathf.FloorToInt(wound.LengthUv / step); i++)
-            {
+        for (var round = 0; round < rounds && wound.Closure < 0.99f; round++) {
+            for (var i = 0; i <= Mathf.FloorToInt(wound.LengthUv / step); i++) {
                 // A few millimeters in from the ends: aimed right at its end the stapler can land just past the cut.
                 var along = Mathf.Clamp(i * step, step * 0.6f, wound.LengthUv - (step * 0.6f));
                 // Where the cut already looks closed there's nothing to staple.
-                if (Body.Tissue.ClosedAt(BesideWound(wound, along, 0f)))
-                {
+                if (Body.Tissue.ClosedAt(BesideWound(wound, along, 0f))) {
                     continue;
                 }
                 var at = SitePoint(BesideWound(wound, along, 0f));
@@ -119,8 +101,7 @@ public partial class SurgeryDriver
                 await Frames.Physics(4);
                 Use(false);
                 await Frames.Physics(3);
-                if (stapler.Charges < charges && ++placed == 1 && captureProgress)
-                {
+                if (stapler.Charges < charges && ++placed == 1 && captureProgress) {
                     await Capture("first_staple", "the first staple sits square across the cut, both legs in, the stapler on it");
                 }
             }
@@ -132,10 +113,8 @@ public partial class SurgeryDriver
     /// <summary>Sews <paramref name="wound"/> with a running thread through <paramref name="layer"/>, the needle in the
     /// active hand: holes along it (<see cref="PlayerThreads"/>), the wheel until the hand status reads closed
     /// (<see cref="PlayerPullsThread"/>), and the knot (<see cref="PlayerTiesOff"/>).</summary>
-    public async Task PlayerSews(Wound wound, TissueDepth layer)
-    {
-        if (await PlayerThreads(wound, layer))
-        {
+    public async Task PlayerSews(Wound wound, TissueDepth layer) {
+        if (await PlayerThreads(wound, layer)) {
             await PlayerPullsThread("closed");
             await PlayerTiesOff();
         }
@@ -150,12 +129,10 @@ public partial class SurgeryDriver
     /// wound's end. Opt-in progress captures show the first two clicks (thread_hole_1, thread_hole_2). Returns false when the
     /// layer shows nowhere beside the wound.
     /// </summary>
-    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false)
-    {
+    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false) {
         // Grid cells along and across the wound, in uv: they're square in meters, not in uv.
         var along = (wound.Points[^1] - wound.Points[0]).Normalized();
-        if (along == Vector2.Zero)
-        {
+        if (along == Vector2.Zero) {
             along = Vector2.Right;
         }
         var tissue = Body.Tissue;
@@ -164,24 +141,20 @@ public partial class SurgeryDriver
         // A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
         var holes = Mathf.FloorToInt(wound.LengthUv / step) + 2;
         var first = -1f;
-        for (var i = 0; i < 16; i++)
-        {
+        for (var i = 0; i < 16; i++) {
             var off = cell * (0.25f + (i * 0.25f));
-            if (Patient.SutureLayerAt(BesideWound(wound, 0f, off), wound) == layer)
-            {
+            if (Patient.SutureLayerAt(BesideWound(wound, 0f, off), wound) == layer) {
                 // Skin holes well clear of the opening: the needle lands a little off where the hand aims.
                 first = off + (layer == TissueDepth.Skin ? cell : 0f);
                 break;
             }
         }
-        if (first < 0f)
-        {
+        if (first < 0f) {
             Note($"no {layer} shows beside wound {wound.Id} to sew");
             return false;
         }
         Note($"threads {layer} along wound {wound.Id}: {holes} holes");
-        for (var i = 0; i < holes; i++)
-        {
+        for (var i = 0; i < holes; i++) {
             // The rest a grid cell off at least, so each lands on its own side of the wound. Only the final hole is
             // clamped to the far end: a two-hole stitch runs from one end to the other.
             var alongAt = i == holes - 1 ? wound.LengthUv : Mathf.Min(i * step, wound.LengthUv);
@@ -191,8 +164,7 @@ public partial class SurgeryDriver
             // standing by it keeps both sides of the bite inside the arm's range.
             await PlayerWalksTo(at);
             await PlayerReaches(at);
-            if ((Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.004f)
-            {
+            if ((Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.004f) {
                 Note("needle cannot reach intended puncture within 4 mm");
                 return false;
             }
@@ -200,8 +172,7 @@ public partial class SurgeryDriver
             await Frames.Seconds(0.2f);
             Use(false);
             await Frames.Physics(3);
-            if (captureProgress && i < 2)
-            {
+            if (captureProgress && i < 2) {
                 await Capture($"thread_hole_{i + 1}", $"the needle through hole {i + 1}, on its own side of the wound, thread trailing from it");
             }
         }
@@ -210,15 +181,12 @@ public partial class SurgeryDriver
 
     /// <summary>Turns the wheel on the needle's thread until the hand status reads <paramref name="state"/>
     /// (SewAction.ThreadState()): down tightens, up loosens. Stops early when the thread goes (torn through).</summary>
-    public async Task PlayerPullsThread(string state)
-    {
+    public async Task PlayerPullsThread(string state) {
         var needle = Me.HeldTool(Me.Active)!;
         var thread = needle.Suture.Thread;
-        for (var i = 0; i < 16; i++)
-        {
+        for (var i = 0; i < 16; i++) {
             var now = SewAction.ThreadState(needle);
-            if (now == state || (thread != 0 && needle.Suture.Thread == 0))
-            {
+            if (now == state || (thread != 0 && needle.Suture.Thread == 0)) {
                 break;
             }
             await Notch(Array.IndexOf(ThreadStates, now) > Array.IndexOf(ThreadStates, state));
@@ -228,8 +196,7 @@ public partial class SurgeryDriver
 
     /// <summary>Holds Use tool where the needle is until the thread is tied off, then captures
     /// <paramref name="keyFrame"/>, which should show <paramref name="description"/>.</summary>
-    public async Task PlayerTiesOff(string keyFrame = "tied_off", string description = TiedOff)
-    {
+    public async Task PlayerTiesOff(string keyFrame = "tied_off", string description = TiedOff) {
         Use();
         await Frames.Seconds(ToolActions.SutureTieHold + 0.2f);
         Use(false);
@@ -242,19 +209,15 @@ public partial class SurgeryDriver
 
     /// <summary>The point <paramref name="along"/> (uv) from the start of <paramref name="wound"/> on its line, clamped
     /// to its ends, moved <paramref name="off"/> (uv) to its left (negative: right).</summary>
-    public static Vector2 BesideWound(Wound wound, float along, float off)
-    {
+    public static Vector2 BesideWound(Wound wound, float along, float off) {
         var points = wound.Points;
-        if (points.Count < 2)
-        {
+        if (points.Count < 2) {
             return points[0] + (Vector2.Right.Orthogonal() * off);
         }
         var travelled = 0f;
-        for (var i = 1; i < points.Count; i++)
-        {
+        for (var i = 1; i < points.Count; i++) {
             var segment = points[i - 1].DistanceTo(points[i]);
-            if (travelled + segment >= along || i == points.Count - 1)
-            {
+            if (travelled + segment >= along || i == points.Count - 1) {
                 var direction = (points[i] - points[i - 1]).Normalized();
                 var t = Mathf.Clamp((along - travelled) / Mathf.Max(segment, 0.0001f), 0f, 1f);
                 return points[i - 1].Lerp(points[i], t) + (direction.Orthogonal() * off);
@@ -265,12 +228,10 @@ public partial class SurgeryDriver
     }
 
     /// <summary>Sews internal wounds shut from inside the opening.</summary>
-    public async Task PlayerClosesInternalWounds()
-    {
+    public async Task PlayerClosesInternalWounds() {
         Note("closes internal wounds");
         await PlayerRequestsItem("needle");
-        foreach (var wound in Patient.Wounds.Where(wound => wound.IsInternal).ToList())
-        {
+        foreach (var wound in Patient.Wounds.Where(wound => wound.IsInternal).ToList()) {
             var spot = Body.UvToWorld(wound.Points[0], wound.DepthM);
             await PlayerWalksTo(spot);
             // Deep in the belly, across it: the needle pointed straight ahead reaches further.

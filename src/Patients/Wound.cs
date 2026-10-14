@@ -7,8 +7,7 @@ public enum WoundKind { Cut, Tear, Burn, Puncture, Gunshot, Internal }
 /// One wound. Skin wounds are polylines in site uv space, internal wounds are a point under the skin.
 /// Closure is tracked per segment of length ("bins"), so a wound is only closed once you've sewn along all of it.
 /// </summary>
-public sealed class Wound
-{
+public sealed class Wound {
     /// <summary>ml/s per meter of fully deep, fully open wound.</summary>
     public const float BleedPerMeter = 35f;
     /// <summary>A clean incision parts the tissue with few vessels torn open, and the small ones it cuts close up on
@@ -40,8 +39,7 @@ public sealed class Wound
     private bool[] _jagged = [];
     private float _length;
 
-    public Wound(int id, WoundKind kind, Vector2 start, float depth)
-    {
+    public Wound(int id, WoundKind kind, Vector2 start, float depth) {
         Id = id;
         Kind = kind;
         _points = [start];
@@ -99,19 +97,15 @@ public sealed class Wound
     /// <summary>Skin closure counts for it: a skin wound that isn't a burn.</summary>
     public bool IsSkinCut => !IsInternal && Kind != WoundKind.Burn;
 
-    public void Extend(Vector2 point)
-    {
+    public void Extend(Vector2 point) {
         // Torn or cut further, it's fresh damage: it bleeds again, however small it was, and needs a full press again.
         Clotted = false;
         PressedFor = 0f;
         var last = _points.Count - 1;
-        if (last >= 1 && _points[last - 1].DistanceTo(point) < PointSpacingUv)
-        {
+        if (last >= 1 && _points[last - 1].DistanceTo(point) < PointSpacingUv) {
             _length += _points[last - 1].DistanceTo(point) - _points[last - 1].DistanceTo(_points[last]);
             _points[last] = point;
-        }
-        else
-        {
+        } else {
             _length += _points[last].DistanceTo(point);
             _points.Add(point);
         }
@@ -123,16 +117,13 @@ public sealed class Wound
     /// again however it was stopped, its skin (and its muscle, <paramref name="throughMuscle"/>) is open again along
     /// that stretch, and the cautery's seal no longer holds there (<see cref="BleedRate"/>).
     /// </summary>
-    public void Recut(Vector2 a, Vector2 b, bool throughMuscle)
-    {
+    public void Recut(Vector2 a, Vector2 b, bool throughMuscle) {
         Clotted = false;
         PressedFor = 0f;
         var (from, to) = (BinAt(a), BinAt(b));
-        for (var bin = Math.Min(from, to); bin <= Math.Max(from, to); bin++)
-        {
+        for (var bin = Math.Min(from, to); bin <= Math.Max(from, to); bin++) {
             Bins[bin] = 0f;
-            if (throughMuscle)
-            {
+            if (throughMuscle) {
                 Muscle[bin] = 0f;
             }
             _reopened[bin] = 0f;
@@ -141,11 +132,9 @@ public sealed class Wound
 
     /// <summary>The stretch from <paramref name="a"/> to <paramref name="b"/> was cut too fast or with a dull blade:
     /// there it bleeds as a tear does (<see cref="CleanIncisionShare"/>).</summary>
-    public void MarkJagged(Vector2 a, Vector2 b)
-    {
+    public void MarkJagged(Vector2 a, Vector2 b) {
         var (from, to) = (BinAt(a), BinAt(b));
-        for (var bin = Math.Min(from, to); bin <= Math.Max(from, to); bin++)
-        {
+        for (var bin = Math.Min(from, to); bin <= Math.Max(from, to); bin++) {
             _jagged[bin] = true;
         }
     }
@@ -156,14 +145,11 @@ public sealed class Wound
     /// <summary>Seals it further with cautery at <paramref name="uv"/>, up to <paramref name="most"/>. A stretch cut
     /// open again within <paramref name="reach"/> of it is sealed again from scratch, as far as the rest at most.
     /// </summary>
-    public void Cauterize(float amount, float most, Vector2 uv, float reach)
-    {
+    public void Cauterize(float amount, float most, Vector2 uv, float reach) {
         Cauterized = Mathf.Min(Cauterized + amount, most);
-        foreach (var bin in _reopened.Keys.Where(bin => BinPosition(bin).DistanceTo(uv) < reach).ToList())
-        {
+        foreach (var bin in _reopened.Keys.Where(bin => BinPosition(bin).DistanceTo(uv) < reach).ToList()) {
             _reopened[bin] = Mathf.Min(_reopened[bin] + amount, most);
-            if (_reopened[bin] >= Cauterized)
-            {
+            if (_reopened[bin] >= Cauterized) {
                 _reopened.Remove(bin);
             }
         }
@@ -173,21 +159,17 @@ public sealed class Wound
     /// than across, every point of it within <paramref name="reach"/> of the line and next to the stretch the point
     /// before was by. A stroke between the two arms of a U stays close to the line but jumps from one arm to the other.
     /// </summary>
-    public bool Runs(Vector2 a, Vector2 b, float reach)
-    {
-        if (Mathf.Abs(AlongAt(b) - AlongAt(a)) < a.DistanceTo(b) * 0.5f)
-        {
+    public bool Runs(Vector2 a, Vector2 b, float reach) {
+        if (Mathf.Abs(AlongAt(b) - AlongAt(a)) < a.DistanceTo(b) * 0.5f) {
             return false;
         }
         var steps = Math.Max(Mathf.CeilToInt(a.DistanceTo(b) / PointSpacingUv), 1);
         var step = a.DistanceTo(b) / steps;
         var along = AlongAt(a);
-        for (var i = 0; i <= steps; i++)
-        {
+        for (var i = 0; i <= steps; i++) {
             var point = a.Lerp(b, (float)i / steps);
             var next = AlongAt(point);
-            if (DistanceTo(point) >= reach || Mathf.Abs(next - along) > step + reach)
-            {
+            if (DistanceTo(point) >= reach || Mathf.Abs(next - along) > step + reach) {
                 return false;
             }
             along = next;
@@ -212,25 +194,21 @@ public sealed class Wound
     /// <summary>ml/s it bleeds. <paramref name="leak"/> (0..1) is how much blood still gets through closures and
     /// packing: thinned blood or high pressure. Cautery and clamps seal regardless. Without
     /// <paramref name="withGauze"/> it's what bleeds once gauze pressure has worn off.</summary>
-    public float BleedRate(float siteSize, float bleedMult, float leak = 0f, bool withGauze = true)
-    {
-        if (Kind == WoundKind.Burn)
-        {
+    public float BleedRate(float siteSize, float bleedMult, float leak = 0f, bool withGauze = true) {
+        if (Kind == WoundKind.Burn) {
             return 0f;
         }
         var held = withGauze ? Mathf.Max(Held, Pressed) : Held;
         // Each stretch bleeds as it was cut (cleanly or not), less what its closure and the cautery's seal hold back. Cut
         // open again, a stretch has only the seal cautery has given it since (Recut()).
         var through = 0f;
-        for (var i = 0; i < Bins.Length; i++)
-        {
+        for (var i = 0; i < Bins.Length; i++) {
             var seal = _reopened.TryGetValue(i, out var resealed) ? resealed : Cauterized;
             through += (CleanAt(i) ? CleanIncisionShare : 1f) * (1f - (Bins[i] * (1f - leak))) * (1f - seal);
         }
         through /= Bins.Length;
         var baseRate = Mathf.Max(LengthUv * siteSize, 0.01f) * Depth * BleedPerMeter;
-        if (Kind is WoundKind.Gunshot or WoundKind.Puncture or WoundKind.Internal)
-        {
+        if (Kind is WoundKind.Gunshot or WoundKind.Puncture or WoundKind.Internal) {
             baseRate = Mathf.Max(baseRate, Depth * 2f);
         }
         var openFactor = 1f + Opened * 0.5f;
@@ -242,14 +220,11 @@ public sealed class Wound
     public float DistanceTo(Vector2 uv) => uv.DistanceTo(ClosestPoint(uv));
 
     /// <summary>The point of the wound's line nearest to uv.</summary>
-    public Vector2 ClosestPoint(Vector2 uv)
-    {
+    public Vector2 ClosestPoint(Vector2 uv) {
         var best = _points[0];
-        for (var i = 1; i < _points.Count; i++)
-        {
+        for (var i = 1; i < _points.Count; i++) {
             var on = Geometry2D.GetClosestPointToSegment(uv, _points[i - 1], _points[i]);
-            if (on.DistanceSquaredTo(uv) < best.DistanceSquaredTo(uv))
-            {
+            if (on.DistanceSquaredTo(uv) < best.DistanceSquaredTo(uv)) {
                 best = on;
             }
         }
@@ -260,19 +235,16 @@ public sealed class Wound
     public int BinAt(Vector2 uv) => Math.Clamp((int)(AlongAt(uv) / BinLengthUv), 0, Bins.Length - 1);
 
     /// <summary>How far along its line (uv) the point nearest to uv lies.</summary>
-    public float AlongAt(Vector2 uv)
-    {
+    public float AlongAt(Vector2 uv) {
         var travelled = 0f;
         var best = 0f;
         var bestDistance = float.PositiveInfinity;
-        for (var i = 1; i < _points.Count; i++)
-        {
+        for (var i = 1; i < _points.Count; i++) {
             var a = _points[i - 1];
             var b = _points[i];
             var closest = Geometry2D.GetClosestPointToSegment(uv, a, b);
             var distance = uv.DistanceTo(closest);
-            if (distance < bestDistance)
-            {
+            if (distance < bestDistance) {
                 bestDistance = distance;
                 best = travelled + a.DistanceTo(closest);
             }
@@ -282,15 +254,12 @@ public sealed class Wound
     }
 
     /// <summary>uv position of a bin's center along the polyline.</summary>
-    public Vector2 BinPosition(int bin)
-    {
+    public Vector2 BinPosition(int bin) {
         var target = (bin + 0.5f) * BinLengthUv;
         var travelled = 0f;
-        for (var i = 1; i < _points.Count; i++)
-        {
+        for (var i = 1; i < _points.Count; i++) {
             var segment = _points[i - 1].DistanceTo(_points[i]);
-            if (travelled + segment >= target)
-            {
+            if (travelled + segment >= target) {
                 return _points[i - 1].Lerp(_points[i], (target - travelled) / Mathf.Max(segment, 0.0001f));
             }
             travelled += segment;
@@ -309,11 +278,9 @@ public sealed class Wound
         : _points[0];
 
     /// <summary>Bins only grow: moving the last point back a little never throws away closure progress.</summary>
-    private void ResizeBins()
-    {
+    private void ResizeBins() {
         var size = Math.Max(Math.Max(Bins.Length, Mathf.CeilToInt(_length / BinLengthUv)), 1);
-        if (size != Bins.Length)
-        {
+        if (size != Bins.Length) {
             var bins = Bins;
             var muscle = Muscle;
             Array.Resize(ref bins, size);

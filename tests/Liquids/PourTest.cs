@@ -6,11 +6,9 @@ namespace Scalpel.Tests.Liquids;
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_iodine_bottle"), TestCategory("tool_kidney_dish"),
  TestCategory("tool_cotton_pad")]
 [GodotArgs("--fixed-fps", "60")]
-public class PourTest
-{
+public class PourTest {
     [TestCase]
-    public async Task TheIodineBottlePoursWhileHeldIntoAnyDish()
-    {
+    public async Task TheIodineBottlePoursWhileHeldIntoAnyDish() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var kidney = SurgeryState.ToolIsOnTray(driver.Surgery, "kidney_dish");
@@ -18,8 +16,7 @@ public class PourTest
         var bottle = (await driver.PlayerRequestsItem("iodine_bottle"))!;
         AssertBool(driver.Me.UsesLevel(driver.Me.Active)).OverrideFailureMessage("the bottle has no pouring level on the wheel")
             .IsFalse();
-        foreach (var dish in (SurgicalTool[])[driver.FreeTools("iodine_dish")[0], kidney])
-        {
+        foreach (var dish in (SurgicalTool[])[driver.FreeTools("iodine_dish")[0], kidney]) {
             await driver.PlayerPoursInto(dish, 1f);
             var poured = bottle.Def.Power * 1f;
             AssertFloat(dish.Ml)
@@ -42,8 +39,7 @@ public class PourTest
     }
 
     [TestCase]
-    public async Task ACottonPadDippedInTheKidneyDishSanitizesTheSite()
-    {
+    public async Task ACottonPadDippedInTheKidneyDishSanitizesTheSite() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);

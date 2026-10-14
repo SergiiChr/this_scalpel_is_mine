@@ -5,8 +5,7 @@ namespace Scalpel.Visuals;
 /// tools/assetgen; replace a file to replace the art. Imported materials are swapped for the game's shaded ones by
 /// material name.
 /// </summary>
-public static class ModelSlot
-{
+public static class ModelSlot {
     internal const string Root = "res://assets/models";
     private static readonly string[] Extensions = ["glb", "gltf", "tscn"];
     /// <summary>Every model loaded so far, kept for the whole game. Unloaded with a surgery and loaded again for the
@@ -17,13 +16,10 @@ public static class ModelSlot
     /// <summary>Adds the model under <paramref name="parent"/>. <paramref name="overrides"/>: material name -> material,
     /// for names that need per-instance treatment ("skin", "tint").</summary>
     public static Node3D Instantiate(string category, string modelName, Node3D parent,
-        IReadOnlyDictionary<string, Material>? overrides = null)
-    {
-        foreach (var extension in Extensions)
-        {
+        IReadOnlyDictionary<string, Material>? overrides = null) {
+        foreach (var extension in Extensions) {
             var path = $"{Root}/{category}/{modelName}.{extension}";
-            if (Loaded.TryGetValue(path, out var scene) || ResourceLoader.Exists(path))
-            {
+            if (Loaded.TryGetValue(path, out var scene) || ResourceLoader.Exists(path)) {
                 scene ??= Loaded[path] = GD.Load<PackedScene>(path);
                 var node = scene.Instantiate<Node3D>();
                 parent.AddChild(node);
@@ -56,16 +52,12 @@ public static class ModelSlot
     /// Replaces imported glTF materials with the game's shading by material family (<see cref="Materials.Imported"/>),
     /// keeping each material's color, roughness, metallic and texture maps.
     /// </summary>
-    public static void Toonify(Node root, IReadOnlyDictionary<string, Material>? overrides = null)
-    {
-        foreach (var meshInstance in root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>())
-        {
-            for (var i = 0; i < meshInstance.Mesh.GetSurfaceCount(); i++)
-            {
+    public static void Toonify(Node root, IReadOnlyDictionary<string, Material>? overrides = null) {
+        foreach (var meshInstance in root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()) {
+            for (var i = 0; i < meshInstance.Mesh.GetSurfaceCount(); i++) {
                 var source = meshInstance.Mesh.SurfaceGetMaterial(i);
                 var key = source?.ResourceName ?? "";
-                Material? material = key switch
-                {
+                Material? material = key switch {
                     _ when overrides is not null && overrides.TryGetValue(key, out var own) => own,
                     // Fine print: an outline would blot it out.
                     "marks" => Materials.ToonShaded(new Color(0.05f, 0.05f, 0.06f), 0.1f, false),
@@ -79,8 +71,7 @@ public static class ModelSlot
                         Materials.Imported(imported, Materials.OutlineSize(meshInstance.Mesh.GetAabb())),
                     _ => null,
                 };
-                if (material is not null)
-                {
+                if (material is not null) {
                     meshInstance.SetSurfaceOverrideMaterial(i, material);
                 }
             }
@@ -89,15 +80,11 @@ public static class ModelSlot
 
     /// <summary>Swaps the model's shared toon materials for copies of its own, for per-object tweaks (blood, grime),
     /// and returns them.</summary>
-    public static List<ShaderMaterial> OwnMaterials(Node root)
-    {
+    public static List<ShaderMaterial> OwnMaterials(Node root) {
         var own = new List<ShaderMaterial>();
-        foreach (var mesh in root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>())
-        {
-            for (var i = 0; i < mesh.GetSurfaceOverrideMaterialCount(); i++)
-            {
-                if (mesh.GetSurfaceOverrideMaterial(i) is ShaderMaterial shared && shared.Shader == Materials.Toon)
-                {
+        foreach (var mesh in root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()) {
+            for (var i = 0; i < mesh.GetSurfaceOverrideMaterialCount(); i++) {
+                if (mesh.GetSurfaceOverrideMaterial(i) is ShaderMaterial shared && shared.Shader == Materials.Toon) {
                     var copy = (ShaderMaterial)shared.Duplicate();
                     mesh.SetSurfaceOverrideMaterial(i, copy);
                     own.Add(copy);
@@ -108,13 +95,10 @@ public static class ModelSlot
     }
 
     /// <summary>Named part lookup for procedural animation. Missing parts are simply absent from the result.</summary>
-    public static Dictionary<string, Node3D> Parts(Node root, params string[] names)
-    {
+    public static Dictionary<string, Node3D> Parts(Node root, params string[] names) {
         var found = new Dictionary<string, Node3D>();
-        foreach (var name in names)
-        {
-            if (root.FindChild(name, true, false) is Node3D node)
-            {
+        foreach (var name in names) {
+            if (root.FindChild(name, true, false) is Node3D node) {
                 found[name] = node;
             }
         }

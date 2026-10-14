@@ -21,43 +21,35 @@ public sealed record AirTarget : NeedleTarget;
 
 /// <summary>Syringes and the IV drip, host only: what the needle is in, the plunger drawing and pushing liquid, and the
 /// drip running what was pushed into the bag down the line.</summary>
-public static class Syringe
-{
+public static class Syringe {
     /// <summary>
     /// What a syringe's needle is in. A glove comes before the patient under it, a partner's body after.
     /// </summary>
-    public static NeedleTarget NeedleTarget(SurgicalTool tool, Patient patient)
-    {
+    public static NeedleTarget NeedleTarget(SurgicalTool tool, Patient patient) {
         var surgery = Surgery.Current!;
         var tip = tool.TipPosition();
-        if (surgery.Tools.NearestContainer(tip) is { } container)
-        {
+        if (surgery.Tools.NearestContainer(tip) is { } container) {
             return new ContainerTarget(container);
         }
         var holding = tool.State == ToolState.Held && surgery.Surgeons.TryGetValue(tool.Holder, out var holder)
             ? holder.Hands[tool.Slot]
             : null;
         NeedleTarget? inBody = null;
-        foreach (var surgeon in surgery.Surgeons.Values)
-        {
-            if (surgeon.NeedlePart(tip, holding) is not { } hit)
-            {
+        foreach (var surgeon in surgery.Surgeons.Values) {
+            if (surgeon.NeedlePart(tip, holding) is not { } hit) {
                 continue;
             }
             var target = new SurgeonTarget(surgeon.PeerId, hit.Part, hit.At);
-            if (hit.Part == "hand")
-            {
+            if (hit.Part == "hand") {
                 return target;
             }
             inBody = target;
         }
-        if (patient.Body.VeinAt(tip))
-        {
+        if (patient.Body.VeinAt(tip)) {
             return new VeinTarget();
         }
         var probe = patient.Body.Probe(tip);
-        return probe.Zone switch
-        {
+        return probe.Zone switch {
             SiteZone.Site => new TissueTarget(patient.Body.LayerAt(probe.Uv)),
             SiteZone.Cavity => new TissueTarget("cavity"),
             SiteZone.Body => new TissueTarget("skin"),
@@ -73,47 +65,38 @@ public static class Syringe
     /// as IV), the tissue (given as a direct injection), a surgeon (given to them, see Surgery.DoseSurgeon()) or
     /// squirted out.
     /// </summary>
-    public static void Plunge(SurgicalTool tool, float ml, Patient patient)
-    {
+    public static void Plunge(SurgicalTool tool, float ml, Patient patient) {
         var tools = Surgery.Current!.Tools;
         var target = NeedleTarget(tool, patient);
         var container = (target as ContainerTarget)?.Container;
-        if (ml > 0f)
-        {
+        if (ml > 0f) {
             Draw(tool, Mathf.Min(ml, tool.Def.Volume - tool.Ml - tool.Air), target, patient);
             return;
         }
         var air = Mathf.Min(-ml, tool.Air);
         var liquid = Mathf.Min(-ml - air, tool.Ml);
-        if (container is not null)
-        {
+        if (container is not null) {
             // A vial or bag is sealed: once it's full the plunger won't push more liquid. Past a dish's rim it spills.
             var fits = Mathf.Min(liquid, container.Def.Volume - container.Ml);
-            if (container.Def.Action is not ("vial" or "drip"))
-            {
+            if (container.Def.Action is not ("vial" or "drip")) {
                 tools.Transfer(tool, null, liquid - fits);
             }
             liquid = fits;
         }
-        if (air > 0f)
-        {
+        if (air > 0f) {
             tools.AddLiquid(tool, 0f, null, -air);
         }
-        if (liquid <= 0f)
-        {
+        if (liquid <= 0f) {
             return;
         }
         var into = PushLabel(target);
-        if (into != tool.PushedInto)
-        {
+        if (into != tool.PushedInto) {
             ReportPushed(tool);
             tool.PushedInto = into;
         }
-        if (into.Length > 0)
-        {
+        if (into.Length > 0) {
             tool.PushedMl += liquid;
-            foreach (var drug in tool.Contents.Keys.Where(drug => !tool.PushedDrugs.Contains(drug)).ToList())
-            {
+            foreach (var drug in tool.Contents.Keys.Where(drug => !tool.PushedDrugs.Contains(drug)).ToList()) {
                 tool.PushedDrugs.Add(drug);
             }
         }
@@ -121,24 +104,18 @@ public static class Syringe
     }
 
     /// <summary>Pulls the plunger <paramref name="amount"/> ml out: draws what the needle is in.</summary>
-    private static void Draw(SurgicalTool tool, float amount, NeedleTarget target, Patient patient)
-    {
-        if (amount <= 0f)
-        {
+    private static void Draw(SurgicalTool tool, float amount, NeedleTarget target, Patient patient) {
+        if (amount <= 0f) {
             return;
         }
         var tools = Surgery.Current!.Tools;
-        switch (target)
-        {
+        switch (target) {
             case ContainerTarget { Container: var container }:
                 // An emptied vial gives air.
                 var drawn = Mathf.Min(amount, container.Ml);
-                if (container.Def.Action == "drip")
-                {
+                if (container.Def.Action == "drip") {
                     DrawFromBag(container, tool, drawn);
-                }
-                else
-                {
+                } else {
                     tools.Transfer(container, tool, drawn);
                 }
                 tools.AddLiquid(tool, 0f, null, amount - drawn);
@@ -154,36 +131,26 @@ public static class Syringe
     }
 
     /// <summary>Pushes <paramref name="liquid"/> ml out into what the needle is in.</summary>
-    private static void Push(SurgicalTool tool, float liquid, NeedleTarget target, Patient patient)
-    {
+    private static void Push(SurgicalTool tool, float liquid, NeedleTarget target, Patient patient) {
         var surgery = Surgery.Current!;
-        switch (target)
-        {
+        switch (target) {
             case ContainerTarget { Container: var container }:
                 surgery.Tools.Transfer(tool, container, liquid);
-                if (container.Def.Action == "drip")
-                {
+                if (container.Def.Action == "drip") {
                     container.Bolus += liquid;
                 }
                 break;
             case VeinTarget or TissueTarget or SurgeonTarget:
                 // Given as it goes in: every push adds to what's already in that body (DrugLevels).
-                foreach (var (drug, amount) in surgery.Tools.Transfer(tool, null, liquid))
-                {
-                    if (drug == "blood")
-                    {
+                foreach (var (drug, amount) in surgery.Tools.Transfer(tool, null, liquid)) {
+                    if (drug == "blood") {
                         // Blood pushed back into a vein is the patient's again.
-                        if (target is VeinTarget)
-                        {
+                        if (target is VeinTarget) {
                             patient.Vitals.BloodMl += amount;
                         }
-                    }
-                    else if (target is SurgeonTarget surgeon)
-                    {
+                    } else if (target is SurgeonTarget surgeon) {
                         surgery.DoseSurgeon(surgeon.Peer, drug, amount);
-                    }
-                    else
-                    {
+                    } else {
                         patient.Administer(drug, target is VeinTarget ? DrugRoute.Vein : DrugRoute.Direct, amount);
                     }
                 }
@@ -198,12 +165,10 @@ public static class Syringe
     /// <summary>Draws <paramref name="ml"/> from the IV bag into a syringe by the port at its bottom: what was pushed in
     /// there and hasn't run down the line yet (<see cref="SurgicalTool.Bolus"/>) comes first, its drugs with it, then
     /// the bag's own fluid (and its blood, if it's a blood bag, all through it).</summary>
-    public static void DrawFromBag(SurgicalTool bag, SurgicalTool syringe, float ml)
-    {
+    public static void DrawFromBag(SurgicalTool bag, SurgicalTool syringe, float ml) {
         var fromBolus = Mathf.Min(ml, bag.Bolus);
         var moved = new Dictionary<string, float>();
-        foreach (var drug in bag.Contents.Keys.ToList())
-        {
+        foreach (var drug in bag.Contents.Keys.ToList()) {
             var share = drug == "blood" ? ml / bag.Ml : bag.Bolus > 0f ? fromBolus / bag.Bolus : 0f;
             moved[drug] = bag.Contents[drug] * share;
             bag.Contents[drug] -= moved[drug];
@@ -216,10 +181,8 @@ public static class Syringe
 
     /// <summary>Debug mode: where a syringe's needle pushes liquid, as "Injected 5.0 ml of Atropine into the vein"
     /// names it. Empty for the air.</summary>
-    public static string PushLabel(NeedleTarget target) => target switch
-    {
-        ContainerTarget { Container.Def: var def } => def.Action switch
-        {
+    public static string PushLabel(NeedleTarget target) => target switch {
+        ContainerTarget { Container.Def: var def } => def.Action switch {
             "drip" => "the IV bag",
             "vial" => "the vial",
             _ => "the " + def.Name.ToLowerInvariant(),
@@ -233,15 +196,12 @@ public static class Syringe
 
     /// <summary>Debug mode: tells how much of what a syringe pushed where its needle was, once it's somewhere else.
     /// </summary>
-    public static void ReportPushed(SurgicalTool tool)
-    {
-        if (tool.PushedMl <= 0f)
-        {
+    public static void ReportPushed(SurgicalTool tool) {
+        if (tool.PushedMl <= 0f) {
             return;
         }
         var surgery = Surgery.Current!;
-        if (tool.PushedInto == "the vein")
-        {
+        if (tool.PushedInto == "the vein") {
             surgery.AnnounceDebug("Hit the vein");
         }
         surgery.AnnounceDebug($"Injected {tool.PushedMl:0.0} ml{DrugList(tool.PushedDrugs)} into {tool.PushedInto}");
@@ -260,18 +220,15 @@ public static class Syringe
     /// DrugLevels). Its own fluid just drips (it does nothing), and so does blood in it. Debug mode tells each ml that
     /// reaches the patient.
     /// </summary>
-    public static void Drip(SurgicalTool bag, Patient patient, float dt)
-    {
-        if (bag.Bolus <= 0f || !patient.IvWorking)
-        {
+    public static void Drip(SurgicalTool bag, Patient patient, float dt) {
+        if (bag.Bolus <= 0f || !patient.IvWorking) {
             return;
         }
         // In whole ml steps, so each one is told as it reaches the patient.
         var ml = Mathf.Min(Mathf.Min(ToolActions.DripRate * dt, bag.Bolus), 1f - bag.DrippedMl);
         var share = ml / bag.Bolus;
         var drugs = bag.Contents.Keys.Where(drug => drug != "blood").ToList();
-        foreach (var drug in drugs)
-        {
+        foreach (var drug in drugs) {
             var amount = bag.Contents[drug] * share;
             bag.Contents[drug] -= amount;
             patient.Administer(drug, DrugRoute.Iv, amount);
@@ -282,18 +239,15 @@ public static class Syringe
         var surgery = Surgery.Current!;
         surgery.Tools.AddLiquid(bag, -ml);
         var done = bag.Bolus < 0.0001f;
-        if (bag.DrippedMl >= 0.9999f || done)
-        {
+        if (bag.DrippedMl >= 0.9999f || done) {
             surgery.AnnounceDebug(
                 $"{bag.DrippedMl:0.0} ml{DrugList(drugs)} reached the patient over IV ({bag.DrippedTotal:0.0} ml total)");
             bag.DrippedMl = 0f;
         }
-        if (done)
-        {
+        if (done) {
             bag.Bolus = 0f;
             bag.DrippedTotal = 0f;
-            foreach (var drug in drugs)
-            {
+            foreach (var drug in drugs) {
                 bag.Contents.Remove(drug);
             }
         }

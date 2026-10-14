@@ -8,14 +8,12 @@ public readonly record struct NurseOrder(string Text, float SecondsLeft, float P
 /// more than once too), fetched together, so it takes as long as its slowest item. Then the nurse needs a breather
 /// before the next one. The first few deliveries come without one.
 /// </summary>
-public partial class Nurse : Node
-{
+public partial class Nurse : Node {
     public const float Cooldown = 15f;
     public const int FreeOrders = 5;
     public const int Batch = 5;
 
-    private sealed class Order(IReadOnlyList<string> ids, float total)
-    {
+    private sealed class Order(IReadOnlyList<string> ids, float total) {
         public IReadOnlyList<string> Ids { get; } = ids;
         public float Total { get; } = total;
         public float Eta { get; set; } = total;
@@ -30,19 +28,15 @@ public partial class Nurse : Node
     public float CooldownLeft { get; internal set; }
     public int Delivered { get; internal set; }
 
-    public void Request(int peer, IReadOnlyList<string> toolIds, Surgery surgery)
-    {
-        if (toolIds.Count == 0 || toolIds.Count > Batch || toolIds.Any(id => Db.Tool(id) is not { Orderable: true }))
-        {
+    public void Request(int peer, IReadOnlyList<string> toolIds, Surgery surgery) {
+        if (toolIds.Count == 0 || toolIds.Count > Batch || toolIds.Any(id => Db.Tool(id) is not { Orderable: true })) {
             return;
         }
-        if (_order is not null)
-        {
+        if (_order is not null) {
             surgery.Tell(peer, $"The nurse is still fetching the {BatchText(_order.Ids)} ({Mathf.CeilToInt(_order.Eta)} s).");
             return;
         }
-        if (CooldownLeft > 0f)
-        {
+        if (CooldownLeft > 0f) {
             surgery.Tell(peer, $"The nurse is still busy ({Mathf.CeilToInt(CooldownLeft)} s).");
             return;
         }
@@ -54,8 +48,7 @@ public partial class Nurse : Node
     }
 
     /// <summary>How long one item takes the nurse to fetch for this surgeon (null for nobody in particular).</summary>
-    public static float DeliveryTime(ToolDef def, Surgeon? surgeon, Surgery surgery)
-    {
+    public static float DeliveryTime(ToolDef def, Surgeon? surgeon, Surgery surgery) {
         var delay = def.Delay * (surgeon?.Mods.Mult("nurse_delay_mult") ?? 1f) * surgery.RunMods.Mult("nurse_delay_mult");
         return def.Drug.StartsWith("blood", StringComparison.Ordinal) ? delay * surgery.RunMods.Mult("blood_delay_mult") : delay;
     }
@@ -69,29 +62,22 @@ public partial class Nurse : Node
     public NurseOrder? Current =>
         _order is null ? null : new NurseOrder(BatchText(_order.Ids), _order.Eta, 1f - _order.Eta / _order.Total);
 
-    public void Tick(float delta, Surgery surgery)
-    {
+    public void Tick(float delta, Surgery surgery) {
         CooldownLeft = Mathf.Max(CooldownLeft - delta, 0f);
-        if (_order is null)
-        {
+        if (_order is null) {
             return;
         }
         _order.Eta -= delta;
-        if (_order.Eta > 0f)
-        {
+        if (_order.Eta > 0f) {
             return;
         }
         var ids = _order.Ids;
-        for (var i = 0; i < ids.Count; i++)
-        {
+        for (var i = 0; i < ids.Count; i++) {
             var spot = surgery.Room.DeliverySpot(i, ids.Count);
             // Bottles come standing, cap up, ready to draw from.
-            if (Db.Tool(ids[i])!.Tray == "bottles")
-            {
+            if (Db.Tool(ids[i])!.Tray == "bottles") {
                 surgery.Tools.SpawnStanding(ids[i], spot);
-            }
-            else
-            {
+            } else {
                 surgery.Tools.Spawn(ids[i], spot);
             }
         }
@@ -99,8 +85,7 @@ public partial class Nurse : Node
         surgery.Announce($"Nurse leaves the {BatchText(ids)} on the delivery tray.");
         _order = null;
         Delivered++;
-        if (Delivered > FreeOrders)
-        {
+        if (Delivered > FreeOrders) {
             CooldownLeft = Cooldown * surgery.RunMods.Mult("nurse_cooldown_mult");
         }
     }

@@ -4,8 +4,7 @@ namespace Scalpel.Tests.Support;
 
 /// <summary>How a run checks frame times: build.py sets it in FRAME_BUDGET, and a run without it (an IDE's) checks
 /// <see cref="Cpu"/>.</summary>
-public enum BudgetMode
-{
+public enum BudgetMode {
     /// <summary>Frame times aren't checked: on CI, or with suites running alongside each other.</summary>
     Off,
     /// <summary>The game's own work per frame, rendering off, scaled to this machine's speed: a check that holds on
@@ -28,8 +27,7 @@ public enum BudgetMode
 /// on first use. A frame over the budget only because of that is the known issue <see cref="RuntimeStalls"/>, not a
 /// failure.</para>
 /// </summary>
-public sealed class FrameBudget
-{
+public sealed class FrameBudget {
     /// <summary>A whole frame, drawn, must stay within this so 60 fps remains possible.</summary>
     public const float RenderBudget = 0.016f;
 
@@ -50,8 +48,7 @@ public sealed class FrameBudget
     /// The previous 5.3 ms was an estimate; this unchanged benchmark actually printed 28.49 ms on that machine.</summary>
     private const double ReferenceBenchmark = 0.02849;
 
-    public static BudgetMode Mode { get; } = OS.GetEnvironment("FRAME_BUDGET") switch
-    {
+    public static BudgetMode Mode { get; } = OS.GetEnvironment("FRAME_BUDGET") switch {
         "off" => BudgetMode.Off,
         "render" => BudgetMode.Render,
         _ => BudgetMode.Cpu,
@@ -90,23 +87,19 @@ public sealed class FrameBudget
     /// <see cref="BudgetMode.Render"/> run keeps it on: its frames are timed as drawn.</summary>
     public static void RenderingOff() => RenderingServer.RenderLoopEnabled = Mode == BudgetMode.Render;
 
-    public void Resume()
-    {
+    public void Resume() {
         _lastUsec = 0;
         _runtimeWas = RuntimeMs();
     }
 
     /// <summary>Records the time since the last sample, <paramref name="during"/> what.</summary>
-    public void Sample(string during = "", double gameTime = -1)
-    {
+    public void Sample(string during = "", double gameTime = -1) {
         var now = Time.GetTicksUsec();
         var runtime = RuntimeMs();
-        if (_lastUsec > 0)
-        {
+        if (_lastUsec > 0) {
             var time = (now - _lastUsec) / 1_000_000f;
             _frames++;
-            if (time > Worst)
-            {
+            if (time > Worst) {
                 Worst = time;
                 _worstDuring = during + (gameTime >= 0 ? $" (frame at {gameTime:0.000} s)" : "");
             }
@@ -118,8 +111,7 @@ public sealed class FrameBudget
         _runtimeWas = runtime;
     }
 
-    public void Clear()
-    {
+    public void Clear() {
         _frames = 0;
         Worst = 0f;
         WorstOwn = 0f;
@@ -134,24 +126,19 @@ public sealed class FrameBudget
     /// <paramref name="localOverride"/> allows this case's measured overrun while its functional assertions still run.
     /// Unlisted overruns fail. Runtime-only stalls retain their existing bounded allowance.
     /// </summary>
-    public void Check(string label = "", string localOverride = "")
-    {
-        if (Mode == BudgetMode.Off)
-        {
+    public void Check(string label = "", string localOverride = "") {
+        if (Mode == BudgetMode.Off) {
             return;
         }
         var report = (label.Length > 0 ? label + ": " : "") + Summary();
-        if (Within)
-        {
+        if (Within) {
             GD.Print(report);
             return;
         }
-        if (localOverride.Length == 0 && WorstOwn <= Limit && WorstStall <= StallLimitHere)
-        {
+        if (localOverride.Length == 0 && WorstOwn <= Limit && WorstStall <= StallLimitHere) {
             localOverride = RuntimeStalls;
         }
-        if (localOverride.Length > 0)
-        {
+        if (localOverride.Length > 0) {
             GD.Print($"PASS: local budget override: {localOverride}; {report}");
             return;
         }
@@ -167,11 +154,9 @@ public sealed class FrameBudget
         + $"{WorstStall * 1000f:0.0} ms (limit {StallLimitHere * 1000f:0} ms)";
 
     /// <summary>The fastest of a few runs of <see cref="Benchmark"/>, in seconds, the first one compiling it.</summary>
-    private static double Benchmarked()
-    {
+    private static double Benchmarked() {
         var fastest = double.MaxValue;
-        for (var run = 0; run < 6; run++)
-        {
+        for (var run = 0; run < 6; run++) {
             var started = Time.GetTicksUsec();
             Benchmark();
             fastest = Math.Min(fastest, run == 0 ? double.MaxValue : (Time.GetTicksUsec() - started) / 1_000_000.0);
@@ -181,18 +166,14 @@ public sealed class FrameBudget
 
     /// <summary>A fixed piece of work like the game's own, on one thread: vector math over arrays, as the tissue and
     /// physics code does. Only its time matters, never its result.</summary>
-    private static float Benchmark()
-    {
+    private static float Benchmark() {
         var points = new Vector3[4096];
-        for (var i = 0; i < points.Length; i++)
-        {
+        for (var i = 0; i < points.Length; i++) {
             points[i] = new Vector3(i, i * 0.5f, i * 0.25f) * 0.001f;
         }
         var sum = 0f;
-        for (var step = 0; step < 15; step++)
-        {
-            for (var i = 0; i < points.Length; i++)
-            {
+        for (var step = 0; step < 15; step++) {
+            for (var i = 0; i < points.Length; i++) {
                 var moved = points[i].Rotated(Vector3.Up, 0.01f) + (points[(i + 1) % points.Length] * 0.001f);
                 points[i] = moved.Normalized() * Mathf.Sin(moved.Length());
                 sum += points[i].Dot(Vector3.Right);

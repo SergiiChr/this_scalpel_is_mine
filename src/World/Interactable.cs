@@ -1,8 +1,7 @@
 namespace Scalpel.World;
 
 /// <summary>Something you walk up to and press interact on. Room builds these and hands them what to do.</summary>
-public partial class Interactable : Area3D
-{
+public partial class Interactable : Area3D {
     public const uint Layer = 64;
 
     public string Prompt { get; private set; } = "";
@@ -11,10 +10,8 @@ public partial class Interactable : Area3D
     /// Unset: always.</summary>
     public Func<Surgeon, bool>? Offered { get; set; }
 
-    public static Interactable Create(Node3D parent, string label, Vector3 size, Vector3 position, Action<Surgeon> action)
-    {
-        var area = new Interactable
-        {
+    public static Interactable Create(Node3D parent, string label, Vector3 size, Vector3 position, Action<Surgeon> action) {
+        var area = new Interactable {
             Name = label.ToPascalCase().ValidateNodeName(),
             Prompt = label,
             _action = action,

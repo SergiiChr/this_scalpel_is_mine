@@ -1,8 +1,7 @@
 namespace Scalpel.Visuals;
 
 /// <summary>A short-lived effect where a tool works on the body.</summary>
-public enum ToolEffect
-{
+public enum ToolEffect {
     /// <summary>Cautery and lighter: a thin plume of tissue smoke rising from the tip.</summary>
     Smoke,
     /// <summary>Saw on bone: a spray of pale bone dust with a little blood.</summary>
@@ -19,8 +18,7 @@ public enum ToolEffect
 /// Short-lived visual effects where a tool works on the body, on every peer (the host sends them, see
 /// <see cref="Surgery.Effect"/>). Lasting marks (cuts, burns, stitches, ink) are painted into the wound map instead.
 /// </summary>
-public partial class ToolEffects : Node3D
-{
+public partial class ToolEffects : Node3D {
     /// <summary>Blood beads stay this long (seconds), then dry away.</summary>
     private const float BeadLife = 90f;
 
@@ -36,10 +34,8 @@ public partial class ToolEffects : Node3D
 
     public Patient Patient { get; set; } = null!;
 
-    public void Play(ToolEffect kind, Vector3 at)
-    {
-        switch (kind)
-        {
+    public void Play(ToolEffect kind, Vector3 at) {
+        switch (kind) {
             case ToolEffect.Smoke:
                 Emit(at, new Burst(6, 1.8f, 0.3f, 25f, 0.05f, 0.05f, new Vector3(0.01f, 0.06f, 0f), GrowCurve(0.3f, 1f),
                     Ramp(new Color(0.5f, 0.5f, 0.48f, 0.4f), new Color(0.52f, 0.52f, 0.5f, 0.6f), new Color(0.6f, 0.6f, 0.6f, 0f)),
@@ -66,10 +62,8 @@ public partial class ToolEffects : Node3D
     }
 
     /// <summary>One-shot particles that free themselves when done.</summary>
-    private void Emit(Vector3 at, Burst burst)
-    {
-        var particles = new CpuParticles3D
-        {
+    private void Emit(Vector3 at, Burst burst) {
+        var particles = new CpuParticles3D {
             OneShot = true,
             Explosiveness = burst.Explosiveness,
             Amount = burst.Amount,
@@ -95,8 +89,7 @@ public partial class ToolEffects : Node3D
         particles.Finished += particles.QueueFree;
     }
 
-    private static StandardMaterial3D ParticleMaterial(bool glow) => new()
-    {
+    private static StandardMaterial3D ParticleMaterial(bool glow) => new() {
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
         // Particle scale (the size and growth curves) only survives billboarding with this on.
@@ -108,13 +101,11 @@ public partial class ToolEffects : Node3D
     };
 
     /// <summary>A round, soft-edged sprite, made once.</summary>
-    private static GradientTexture2D MakeSoftDot()
-    {
+    private static GradientTexture2D MakeSoftDot() {
         var gradient = new Gradient();
         gradient.SetColor(0, Colors.White);
         gradient.SetColor(1, new Color(1, 1, 1, 0));
-        return new GradientTexture2D
-        {
+        return new GradientTexture2D {
             Fill = GradientTexture2D.FillEnum.Radial,
             FillFrom = new Vector2(0.5f, 0.5f),
             FillTo = new Vector2(1f, 0.5f),
@@ -124,22 +115,19 @@ public partial class ToolEffects : Node3D
         };
     }
 
-    private static Gradient Ramp(params Color[] colors) => new()
-    {
+    private static Gradient Ramp(params Color[] colors) => new() {
         Offsets = [.. colors.Select((_, i) => (float)i / (colors.Length - 1))],
         Colors = colors,
     };
 
-    private static Curve GrowCurve(float from, float to)
-    {
+    private static Curve GrowCurve(float from, float to) {
         var curve = new Curve();
         curve.AddPoint(new Vector2(0, from));
         curve.AddPoint(new Vector2(1, to));
         return curve;
     }
 
-    private void Flash(Vector3 at)
-    {
+    private void Flash(Vector3 at) {
         var light = new OmniLight3D { LightColor = new Color(0.75f, 0.85f, 1f), LightEnergy = 4f, OmniRange = 1.2f };
         AddChild(light);
         light.GlobalPosition = at + new Vector3(0, 0.05f, 0);
@@ -149,10 +137,8 @@ public partial class ToolEffects : Node3D
     }
 
     /// <summary>A small dome of blood on the skin, stuck to the body so it follows turns and breathing.</summary>
-    private void Bead(Vector3 at)
-    {
-        var bead = new MeshInstance3D
-        {
+    private void Bead(Vector3 at) {
+        var bead = new MeshInstance3D {
             Name = "BloodBead",
             Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 12, Rings = 4, IsHemisphere = true },
             MaterialOverride = Materials.BloodPool(),
@@ -162,32 +148,26 @@ public partial class ToolEffects : Node3D
         Node3D root = body.Root;
         var normal = root.GlobalBasis.Y.Normalized();
         var probe = body.Probe(at);
-        if (probe.Zone == SiteZone.Site)
-        {
+        if (probe.Zone == SiteZone.Site) {
             // The needle tip is under the skin. Its puncture is directly above it on the drawn skin, riding the site.
             root = body.Site;
             var local = root.ToLocal(at);
             local.Y = body.SkinHeight(probe.Uv);
             at = root.ToGlobal(local);
             normal = root.GlobalBasis.Y.Normalized();
-        }
-        else if (probe.Zone != SiteZone.Cavity)
-        {
-            if (Rays.Cast(this, at + Vector3.Up * 0.03f, at + Vector3.Down * 0.03f, PatientBody.SurfaceLayer) is { } hit)
-            {
+        } else if (probe.Zone != SiteZone.Cavity) {
+            if (Rays.Cast(this, at + Vector3.Up * 0.03f, at + Vector3.Down * 0.03f, PatientBody.SurfaceLayer) is { } hit) {
                 at = hit.Position;
                 normal = hit.Normal;
             }
-            if (probe.Part.StartsWith("arm", StringComparison.Ordinal))
-            {
+            if (probe.Part.StartsWith("arm", StringComparison.Ordinal)) {
                 root = body.IvSite(at).Node;
             }
         }
         root.AddChild(bead, true);
         bead.GlobalPosition = at;
         var across = root.GlobalBasis.X.Slide(normal).Normalized();
-        if (across.IsZeroApprox())
-        {
+        if (across.IsZeroApprox()) {
             across = root.GlobalBasis.Z.Slide(normal).Normalized();
         }
         bead.GlobalBasis = new Basis(across, normal, across.Cross(normal));
@@ -207,26 +187,21 @@ public partial class ToolEffects : Node3D
     public bool BeadNear(Vector3 at, float reach) => BeadsLeft().Any(bead => bead.GlobalPosition.DistanceTo(at) < reach);
 
     /// <summary>Wipes away the blood beads within <paramref name="reach"/> of <paramref name="at"/>.</summary>
-    public void WipeBeads(Vector3 at, float reach)
-    {
-        foreach (var bead in BeadsLeft().Where(bead => bead.GlobalPosition.DistanceTo(at) < reach).ToList())
-        {
+    public void WipeBeads(Vector3 at, float reach) {
+        foreach (var bead in BeadsLeft().Where(bead => bead.GlobalPosition.DistanceTo(at) < reach).ToList()) {
             Remove(bead);
         }
     }
 
     /// <summary>The beads not yet gone with what they were stuck to (an IV site taken away).</summary>
-    private List<MeshInstance3D> BeadsLeft()
-    {
+    private List<MeshInstance3D> BeadsLeft() {
         _beads.RemoveAll(bead => !IsInstanceValid(bead));
         return _beads;
     }
 
-    private void Remove(MeshInstance3D bead)
-    {
+    private void Remove(MeshInstance3D bead) {
         _beads.Remove(bead);
-        if (IsInstanceValid(bead))
-        {
+        if (IsInstanceValid(bead)) {
             bead.QueueFree();
         }
     }

@@ -5,12 +5,10 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("tool_surgical_tape")]
 [GodotArgs("--fixed-fps", "60")]
-public class TapeTest
-{
+public class TapeTest {
     /// <summary>One roll of tape closes the hand stitch cut, and signed out, the surgery ends in success.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task TapeClosesTheHandStitchCut()
-    {
+    public async Task TapeClosesTheHandStitchCut() {
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch");
         var surgery = driver.Surgery;

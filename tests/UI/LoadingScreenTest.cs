@@ -9,11 +9,9 @@ namespace Scalpel.Tests.UI;
 /// starts by itself, on the patient card.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
-public class LoadingScreenTest
-{
+public class LoadingScreenTest {
     [TestCase]
-    public void ShutdownDoesNotRethrowWarmUpFailure()
-    {
+    public void ShutdownDoesNotRethrowWarmUpFailure() {
         using var shutdown = new CancellationTokenSource();
         var work = Task.FromException(new FileNotFoundException("warm-up dependency"));
         ManagedRuntime.StopWarmUp(work, shutdown);
@@ -22,44 +20,33 @@ public class LoadingScreenTest
     }
 
     [TestCase]
-    public async Task QuittingDuringStartupExitsCleanly()
-    {
+    public async Task QuittingDuringStartupExitsCleanly() {
         // A fresh process quits after its first frame, while runtime preparation can still be using native bindings.
-        using var game = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
+        using var game = new Process {
+            StartInfo = new ProcessStartInfo {
                 FileName = OS.GetExecutablePath(),
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             },
         };
-        foreach (var argument in (string[])["--headless", "--path", ProjectSettings.GlobalizePath("res://"), "--quit-after", "1"])
-        {
+        foreach (var argument in (string[])["--headless", "--path", ProjectSettings.GlobalizePath("res://"), "--quit-after", "1"]) {
             game.StartInfo.ArgumentList.Add(argument);
         }
         AssertBool(game.Start()).OverrideFailureMessage("starts a fresh game process").IsTrue();
         var stdout = game.StandardOutput.ReadToEndAsync();
         var stderr = game.StandardError.ReadToEndAsync();
         var exited = false;
-        try
-        {
+        try {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-            try
-            {
+            try {
                 await game.WaitForExitAsync(timeout.Token);
                 exited = true;
-            }
-            catch (OperationCanceledException)
-            {
+            } catch (OperationCanceledException) {
                 // Save the child's diagnostics below after stopping it.
             }
-        }
-        finally
-        {
-            if (!game.HasExited)
-            {
+        } finally {
+            if (!game.HasExited) {
                 game.Kill(entireProcessTree: true);
                 await game.WaitForExitAsync();
             }
@@ -77,8 +64,7 @@ public class LoadingScreenTest
     }
 
     [TestCase]
-    public async Task StartSurgeryLoadsThenEntersTheRoom()
-    {
+    public async Task StartSurgeryLoadsThenEntersTheRoom() {
         Net.Instance.PlaySolo("appendectomy");
         AssertBool(await Frames.Until(() => Frames.Tree.CurrentScene is Lobby, 10f))
             .OverrideFailureMessage("Play solo opens the lobby").IsTrue();

@@ -13,14 +13,12 @@ namespace Scalpel.Tests.Patients;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class BleedSourcesTest
-{
+public class BleedSourcesTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "bleed spots, pools and many-vessel simulation exceed the recorded CPU/render budget";
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task EveryBleedShowsWhereItComesFrom()
-    {
+    public async Task EveryBleedShowsWhereItComesFrom() {
         var session = await ToolSession.Start("appendectomy", "bleed_sources", captureUntouched: true);
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -66,8 +64,7 @@ public class BleedSourcesTest
             .IsLess(strong.Bleeding * 0.05f);
         AssertString(Spot(body, weak.Points[0])).OverrideFailureMessage($"however little it bleeds ({weak.Bleeding:0.000} ml/s), its spot shows")
             .IsEqual("inside");
-        await driver.Unbudgeted(() =>
-        {
+        await driver.Unbudgeted(() => {
             var (strongSpot, weakSpot) = (SpotArea(body, strong.Points[0]), SpotArea(body, weak.Points[0]));
             AssertFloat(strongSpot).OverrideFailureMessage($"the spot grows with the bleeding ({strongSpot:0.0} mm² against {weakSpot:0.0} mm²)")
                 .IsGreater(weakSpot * 2f);
@@ -106,8 +103,7 @@ public class BleedSourcesTest
             .Select(i => SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM)).ToList();
         await Frames.Seconds(1f);
         // Texture scans are assertions, not a frame of the game's blood simulation.
-        await driver.Unbudgeted(async () =>
-        {
+        await driver.Unbudgeted(async () => {
             var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f && Blood(body, v.Points[0]) < 0.5f)
                 .Select(v => v.Points[0]).ToList();
             await driver.AssertAndCapture(unseen.Count == 0,
@@ -123,8 +119,7 @@ public class BleedSourcesTest
     /// on the muscle, then brimming with blood running onto the skin.
     /// </summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task ACutHoldsItsBloodOnTheFirstLayerItHasntCutThrough()
-    {
+    public async Task ACutHoldsItsBloodOnTheFirstLayerItHasntCutThrough() {
         var session = await ToolSession.Start("appendectomy", "cut_pools");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -166,10 +161,8 @@ public class BleedSourcesTest
 
     /// <summary>Key frame <paramref name="keyFrame"/> close on the site at <paramref name="uv"/>, from above and
     /// obliquely.</summary>
-    private static async Task CloseUp(ToolSession session, string keyFrame, string description, Vector2 uv)
-    {
-        if (session.Shots is { } shots)
-        {
+    private static async Task CloseUp(ToolSession session, string keyFrame, string description, Vector2 uv) {
+        if (session.Shots is { } shots) {
             await session.Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, session.Driver.SitePoint(uv), 0.1f));
         }
     }
@@ -188,15 +181,12 @@ public class BleedSourcesTest
 
     /// <summary>Area (mm²) around <paramref name="uv"/>, within <paramref name="within"/> meters, that a bleed spot of
     /// either kind covers.</summary>
-    private static float SpotArea(PatientBody body, Vector2 uv, float within = 0.01f)
-    {
+    private static float SpotArea(PatientBody body, Vector2 uv, float within = 0.01f) {
         var texel = 1f / body.WoundMap.Size;
         var reach = Mathf.CeilToInt(body.MetersToUv(within) / texel);
         var covered = 0;
-        for (var j = -reach; j <= reach; j++)
-        {
-            for (var i = -reach; i <= reach; i++)
-            {
+        for (var j = -reach; j <= reach; j++) {
+            for (var i = -reach; i <= reach; i++) {
                 var at = uv + new Vector2(i, j) * texel;
                 var spot = Mathf.Max(body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.Spot, at),
                     body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, at));
@@ -209,8 +199,7 @@ public class BleedSourcesTest
 
     /// <summary>"at the vessel" when a welling dome stands over it (within a few millimeters across the site), else
     /// where the domes are.</summary>
-    private static string Wells(SurgeryDriver driver, Wound vessel)
-    {
+    private static string Wells(SurgeryDriver driver, Wound vessel) {
         var wells = driver.Body.Blood.Wells;
         var over = wells.Any(well => driver.Body.UvToMeters(driver.Body.WorldToUv(well).DistanceTo(vessel.Points[0])) < 0.003f);
         return over ? "at the vessel" : $"wells at {string.Join(", ", wells.Select(driver.Body.WorldToUv))}";

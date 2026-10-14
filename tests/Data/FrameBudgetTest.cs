@@ -5,13 +5,10 @@ namespace Scalpel.Tests.Data;
 /// <summary>A documented allowance passes only that budget call; ordinary overruns and global limits stay intact.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
-public class FrameBudgetTest
-{
+public class FrameBudgetTest {
     [TestCase]
-    public void LocalOverrideDoesNotDisableOrdinaryBudgetFailures()
-    {
-        if (FrameBudget.Mode == BudgetMode.Off)
-        {
+    public void LocalOverrideDoesNotDisableOrdinaryBudgetFailures() {
+        if (FrameBudget.Mode == BudgetMode.Off) {
             return;
         }
         var limit = FrameBudget.Limit;
@@ -26,12 +23,9 @@ public class FrameBudgetTest
         AssertFloat(FrameBudget.Limit).OverrideFailureMessage("the local override leaves the global limit unchanged")
             .IsEqual(limit);
         var ordinaryFailed = false;
-        try
-        {
+        try {
             budget.Check();
-        }
-        catch (TestFailedException)
-        {
+        } catch (TestFailedException) {
             ordinaryFailed = true;
         }
         AssertBool(ordinaryFailed).OverrideFailureMessage("the same overrun still fails without a local override")

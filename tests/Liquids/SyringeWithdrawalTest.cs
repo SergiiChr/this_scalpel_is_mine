@@ -7,8 +7,7 @@ namespace Scalpel.Tests.Liquids;
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_syringe_3"),
  TestCategory("tool_syringe_10"), TestCategory("tool_syringe_50"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class SyringeWithdrawalTest
-{
+public class SyringeWithdrawalTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "needle withdrawal exceeds the recorded CPU/render budget";
 
@@ -16,8 +15,7 @@ public class SyringeWithdrawalTest
         [.. body.FindChildren("BloodBead*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>()];
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task ReleaseWithdrawsWithoutTraumaAndLeavesBloodAtThePuncture()
-    {
+    public async Task ReleaseWithdrawsWithoutTraumaAndLeavesBloodAtThePuncture() {
         GD.Seed(42);
         var bench = SyringeBench.Create();
         await bench.Start(false, false);
@@ -28,23 +26,19 @@ public class SyringeWithdrawalTest
         var budget = new FrameBudget();
         KeyFrames? shots = null;
         FrameBudget.RenderingOff();
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             bench.AddChild(shots);
             shots.Begin(surgery, "syringe_withdrawal");
         }
-        foreach (var target in (string[])["skin", "vein"])
-        {
-            foreach (var size in (string[])["syringe_10", "syringe_3", "syringe_50"])
-            {
+        foreach (var target in (string[])["skin", "vein"]) {
+            foreach (var size in (string[])["syringe_10", "syringe_3", "syringe_50"]) {
                 var label = $"{target}_{size}";
                 var capture = shots is not null && size == "syringe_10";
                 await bench.Stage(new SyringeCase(label, target, size, 1f, 0), false);
                 var syringe = bench.Syringe!;
                 var before = Beads(body);
-                if (capture)
-                {
+                if (capture) {
                     await shots!.CaptureAt(label + "_ready", "the untouched injection site, the needle tip just above it", syringe.TipPosition(), 0.12f);
                 }
                 await SyringeBench.Press();
@@ -55,8 +49,7 @@ public class SyringeWithdrawalTest
                 AssertFloat(syringe.Ml).OverrideFailureMessage(label + ": the wheel injects the dose").IsEqual(0f);
                 AssertInt(Beads(body).Count).OverrideFailureMessage(label + ": blood does not appear while the needle is in")
                     .IsEqual(before.Count);
-                if (capture)
-                {
+                if (capture) {
                     await shots!.CaptureView(label + "_injected", "the needle in the skin while injecting, no blood yet");
                 }
                 var pain = patient.Vitals.Pain;
@@ -76,8 +69,7 @@ public class SyringeWithdrawalTest
                 var after = Beads(body);
                 AssertInt(after.Count).OverrideFailureMessage(label + ": release immediately creates one bead")
                     .IsEqual(before.Count + 1);
-                if (after.Except(before).ToList() is not [var bead])
-                {
+                if (after.Except(before).ToList() is not [var bead]) {
                     continue;
                 }
                 AssertFloat(bead.GlobalPosition.DistanceTo(puncture))
@@ -94,14 +86,12 @@ public class SyringeWithdrawalTest
                     .OverrideFailureMessage(label + ": the needle clears the skin in the first release frame, without moving away")
                     .IsGreater(puncture.Y);
                 AssertBool(me.NeedleTorn).OverrideFailureMessage(label + ": releasing does not trigger mishandling").IsFalse();
-                if (capture)
-                {
+                if (capture) {
                     await shots!.CaptureAt(label + "_released", "just released: the needle out and clear, one blood bead on the skin at the puncture", bead.GlobalPosition, 0.12f);
                 }
                 var stuck = bead.Position;
                 budget.Resume();
-                for (var frame = 0; frame < 15; frame++)
-                {
+                for (var frame = 0; frame < 15; frame++) {
                     await bench.Steer(new Vector2(20f, 0f));
                     await Frames.Physics(1);
                     budget.Sample($"{label}: moving the released needle away, frame {frame}");
@@ -112,8 +102,7 @@ public class SyringeWithdrawalTest
                 AssertBool(body.WoundMap.Snapshot(WoundMap.Layer.Wounds).SequenceEqual(wounds))
                     .OverrideFailureMessage(label + ": moving away adds no scratch").IsTrue();
                 AssertThat(bead.Position).OverrideFailureMessage(label + ": the bead stays attached to the puncture").IsEqual(stuck);
-                if (capture)
-                {
+                if (capture) {
                     await shots!.CaptureAt(label + "_moved_away", "the needle moved away: the bead stays at the puncture, no scratch", bead.GlobalPosition, 0.12f);
                 }
             }

@@ -7,8 +7,7 @@ public readonly record struct BonePoint(Vector3 Position, float Radius);
 /// One hand and its arm. The arm is solved with analytic two-bone IK from shoulder to hand every frame.
 /// Position is owned by the surgeon's peer and synced to everyone; the host uses it to drive tools.
 /// </summary>
-public partial class SurgeonHand : Node3D
-{
+public partial class SurgeonHand : Node3D {
     public const float UpperArm = 0.34f;
     public const float Forearm = 0.34f;
     private const float KneeSleeveClearance = 0.14f;
@@ -212,16 +211,14 @@ public partial class SurgeonHand : Node3D
 
     private sealed record TrailCopy(Node3D Root, Skeleton3D? Skeleton, StandardMaterial3D Material);
 
-    public void Build(int handIndex, ShaderMaterial scrubs)
-    {
+    public void Build(int handIndex, ShaderMaterial scrubs) {
         Index = handIndex;
         Name = Index == 0 ? "LeftHand" : "RightHand";
         Turn = Index == 1 ? RestTurn : -RestTurn;
         var sleeve = new Dictionary<string, Material> { ["tint"] = scrubs };
         _glove = ModelSlot.Instantiate("surgeon", "glove", this);
         _gloveMaterials = ModelSlot.OwnMaterials(_glove);
-        foreach (var material in _gloveMaterials)
-        {
+        foreach (var material in _gloveMaterials) {
             material.SetShaderParameter(ShaderParam.CoatLength, GloveLength);
         }
         // The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
@@ -238,12 +235,10 @@ public partial class SurgeonHand : Node3D
     }
 
     /// <summary>The local player sees forearms and gloves only; the upper arm would sit right under the camera.</summary>
-    public void HideUpperArm()
-    {
+    public void HideUpperArm() {
         _upper.Visible = false;
         _forearmStart = 0.2f;
-        if (_fore.FindChild("Cuff", true, false) is Node3D cuff)
-        {
+        if (_fore.FindChild("Cuff", true, false) is Node3D cuff) {
             cuff.Visible = false;
         }
     }
@@ -253,10 +248,8 @@ public partial class SurgeonHand : Node3D
     /// only. A plain see-through material stands in for the hand's own while it's faded: the compatibility renderer
     /// ignores GeometryInstance3D.Transparency, and the ink outline would draw the hand's inside.
     /// </summary>
-    public void SetSeeThrough(float amount)
-    {
-        _ghost ??= new StandardMaterial3D
-        {
+    public void SetSeeThrough(float amount) {
+        _ghost ??= new StandardMaterial3D {
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             AlbedoColor = GhostColor,
         };
@@ -264,15 +257,12 @@ public partial class SurgeonHand : Node3D
         // The shared material carries the fade; switching overrides only at its boundaries avoids
         // rebuilding material state and walking the scene tree on every animation step.
         var seeThrough = amount > 0f;
-        if (seeThrough == _seeThrough)
-        {
+        if (seeThrough == _seeThrough) {
             return;
         }
         _seeThrough = seeThrough;
-        foreach (var node in FindChildren("*", nameof(GeometryInstance3D), true, false))
-        {
-            if (_trailRoot is null || !_trailRoot.IsAncestorOf(node))
-            {
+        foreach (var node in FindChildren("*", nameof(GeometryInstance3D), true, false)) {
+            if (_trailRoot is null || !_trailRoot.IsAncestorOf(node)) {
                 ((GeometryInstance3D)node).MaterialOverride = amount > 0f ? _ghost : null;
             }
         }
@@ -282,10 +272,8 @@ public partial class SurgeonHand : Node3D
     public void Bounce() => _bounce = 0f;
 
     /// <summary>Final world position: target plus lift, bounce and tremor.</summary>
-    public Vector3 EffectivePosition()
-    {
-        if (Puppet)
-        {
+    public Vector3 EffectivePosition() {
+        if (Puppet) {
             return Target;
         }
         var hop = BounceHeight * Mathf.Sin(Mathf.Pi * _bounce);
@@ -299,12 +287,10 @@ public partial class SurgeonHand : Node3D
     /// <summary>Contact position before the wrist returns to its carry angle on button release.</summary>
     public Vector3 WorkingTipPosition(float toolLength) => GlobalPosition - (ToolBasis(true).Z * toolLength);
 
-    private Basis ToolBasis(bool working)
-    {
+    private Basis ToolBasis(bool working) {
         var yaw = Body.GlobalRotation.Y + Turn;
         var pitch = Tilt;
-        if (working && Style.WorkTilt is { } workTilt)
-        {
+        if (working && Style.WorkTilt is { } workTilt) {
             pitch = Mathf.Min(pitch, workTilt);
         }
         return Spreads
@@ -321,8 +307,7 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>The twist that turns the held tool's underside (-Y, the side a syringe's scale is printed on) toward
     /// <paramref name="direction"/>. Twist rolls the tool about its own length, so its tip stays where it is.</summary>
-    public float TwistFacing(Vector3 direction)
-    {
+    public float TwistFacing(Vector3 direction) {
         var yaw = Body.GlobalRotation.Y + Turn;
         var local = (new Basis(Vector3.Up, yaw) * new Basis(Vector3.Right, Tilt)).Inverse() * direction;
         return Mathf.Atan2(-local.X, -local.Y);
@@ -331,8 +316,7 @@ public partial class SurgeonHand : Node3D
     /// <summary>A tool held up to look at: its tip across the view toward the other hand's side, and its top (+Y, where
     /// the back of the hand is in every grip) turned away from the eyes, so the hand is behind the tool and doesn't hide
     /// it.</summary>
-    public Basis InspectBasis()
-    {
+    public Basis InspectBasis() {
         var eyes = GetParent<Surgeon>().Camera.GlobalBasis.Orthonormalized();
         var along = eyes.X * (Index == 1 ? 1f : -1f);
         var top = -eyes.Z;
@@ -343,8 +327,7 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>Where the tip of a tool this long would be from the hand if it held the tool at these angles (twist
     /// doesn't move it).</summary>
-    public Vector3 TipOffsetAt(float toolLength, float atTilt, float atTurn)
-    {
+    public Vector3 TipOffsetAt(float toolLength, float atTilt, float atTurn) {
         var yaw = Body.GlobalRotation.Y + atTurn;
         return new Basis(Vector3.Up, yaw) * new Basis(Vector3.Right, atTilt) * new Vector3(0f, 0f, -toolLength);
     }
@@ -352,8 +335,7 @@ public partial class SurgeonHand : Node3D
     /// <summary>Where the wrist is from the hand's position (world space), the way the hand holds its tool now.</summary>
     public Vector3 WristOffset() => GloveFrame(_elbow, Body.GlobalBasis).Origin - GlobalPosition;
 
-    public void UpdatePose(Vector3 shoulder, float delta)
-    {
+    public void UpdatePose(Vector3 shoulder, float delta) {
         _lift = Mathf.MoveToward(_lift, Lifted ? LiftHeight : 0f, delta * SettleSpeed);
         _bounce = Mathf.Min(_bounce + (delta / BounceTime), 1f);
         GlobalPosition = EffectivePosition();
@@ -361,8 +343,7 @@ public partial class SurgeonHand : Node3D
         GlobalBasis = GripTransform().Basis;
         _pusher.GlobalPosition = GlobalPosition;
         // Held from where it is when aiming starts, also while still easing back from the last time.
-        if (Aiming && _elbowHold < 1f)
-        {
+        if (Aiming && _elbowHold < 1f) {
             _heldElbow = Body.ToLocal(_elbow);
         }
         _elbowHold = Aiming ? 1f : Mathf.MoveToward(_elbowHold, 0f, delta / ElbowEase);
@@ -371,11 +352,9 @@ public partial class SurgeonHand : Node3D
         GloveDrop = GloveLowest() - GlobalPosition.Y;
         UpdateTrail(delta);
         // The blood coat is drawn in the glove's own frame, so it has to follow the glove around.
-        if (Blood > 0f)
-        {
+        if (Blood > 0f) {
             var coat = new Projection(CoatFrame * _glove.GlobalTransform.AffineInverse());
-            foreach (var material in _gloveMaterials)
-            {
+            foreach (var material in _gloveMaterials) {
                 material.SetShaderParameter(ShaderParam.CoatInverse, coat);
             }
         }
@@ -383,28 +362,24 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>The point of the glove's middle line, wrist to fingertips, nearest <paramref name="point"/> (world
     /// space). The back of the hand is <see cref="PalmHalfThickness"/> above it.</summary>
-    public Vector3 GloveMiddle(Vector3 point)
-    {
+    public Vector3 GloveMiddle(Vector3 point) {
         var wrist = _glove.GlobalPosition;
         return Geometry3D.GetClosestPointToSegment(point, wrist, wrist + (_glove.GlobalBasis.X.Normalized() * GloveLength));
     }
 
     /// <summary>Poses the hand at once, fingers already closed as far as they go (no easing in). For fitting and
     /// checking grips.</summary>
-    public void SnapPose(Vector3 shoulder)
-    {
+    public void SnapPose(Vector3 shoulder) {
         _curl = TargetCurl();
         UpdatePose(shoulder, 0f);
         PoseFingers();
     }
 
-    private float GloveLowest()
-    {
+    private float GloveLowest() {
         _gloveScratch.Clear();
         AddBonePoints(_gloveScratch, "");
         var lowest = GlobalPosition.Y - 0.03f;
-        foreach (var point in _gloveScratch)
-        {
+        foreach (var point in _gloveScratch) {
             lowest = Mathf.Min(lowest, point.Position.Y - point.Radius);
         }
         return lowest;
@@ -415,48 +390,38 @@ public partial class SurgeonHand : Node3D
     /// solid should be at them. <paramref name="part"/>: "Palm" or a finger (<see cref="Fingers"/>) for just that part,
     /// empty for all of it.
     /// </summary>
-    public List<BonePoint> BonePoints(string part = "")
-    {
+    public List<BonePoint> BonePoints(string part = "") {
         var points = new List<BonePoint>();
         AddBonePoints(points, part);
         return points;
     }
 
-    private void AddBonePoints(List<BonePoint> points, string part)
-    {
-        if (_gloveRig is null)
-        {
+    private void AddBonePoints(List<BonePoint> points, string part) {
+        if (_gloveRig is null) {
             return;
         }
         var skeleton = _gloveRig.Skeleton;
         var toWorld = skeleton.GlobalTransform;
         var bones = _gloveRig.Bones;
-        for (var i = 0; i < bones.Count; i++)
-        {
+        for (var i = 0; i < bones.Count; i++) {
             var (bone, child) = bones[i];
-            if (bone is "Hand" or "Cuff" || (part.Length > 0 && !bone.StartsWith(part, StringComparison.Ordinal)))
-            {
+            if (bone is "Hand" or "Cuff" || (part.Length > 0 && !bone.StartsWith(part, StringComparison.Ordinal))) {
                 continue;
             }
             var at = toWorld * skeleton.GetBoneGlobalPose(i).Origin;
             var to = child >= 0 ? toWorld * skeleton.GetBoneGlobalPose(child).Origin : at;
-            foreach (var t in BoneSamples)
-            {
+            foreach (var t in BoneSamples) {
                 points.Add(new(at.Lerp(to, t), FingerRadius));
             }
         }
-        if (part.Length > 0 && part != "Palm")
-        {
+        if (part.Length > 0 && part != "Palm") {
             return;
         }
         // The palm is wide and flat: a grid through it, glove model space (fingers +X, back of the hand +Y).
         var glove = _glove.GlobalTransform;
-        for (var i = 0; i < 7; i++)
-        {
-            for (var j = 0; j < 5; j++)
-            {
-                foreach (var y in PalmLayers)
-                {
+        for (var i = 0; i < 7; i++) {
+            for (var j = 0; j < 5; j++) {
+                foreach (var y in PalmLayers) {
                     var at = new Vector3(0.085f * i / 6f, y, -0.024f + (0.012f * j));
                     points.Add(new(glove * at, PalmHalfThickness * 0.5f));
                 }
@@ -466,30 +431,24 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>Blood works its way from a bloody tool onto the fingers, then the palm. It never drips off on its own.
     /// </summary>
-    public void Soak(float toolBlood, float delta)
-    {
-        if (toolBlood * 0.8f > Blood)
-        {
+    public void Soak(float toolBlood, float delta) {
+        if (toolBlood * 0.8f > Blood) {
             SetBlood(Mathf.Min(Blood + (SoakRate * delta), toolBlood * 0.8f));
         }
     }
 
-    public void SetBlood(float amount)
-    {
+    public void SetBlood(float amount) {
         Blood = amount;
-        foreach (var material in _gloveMaterials)
-        {
+        foreach (var material in _gloveMaterials) {
             material.SetShaderParameter(ShaderParam.Coat, amount);
             material.SetShaderParameter(ShaderParam.CoatReach, GloveLength * (0.3f + amount));
         }
     }
 
-    private void TrackSpeed(float delta)
-    {
+    private void TrackSpeed(float delta) {
         _clock += delta;
         _history.Enqueue((_clock, GlobalPosition));
-        while (_history.Count > 2 && _clock - _history.Peek().Time > SpeedWindow)
-        {
+        while (_history.Count > 2 && _clock - _history.Peek().Time > SpeedWindow) {
             _history.Dequeue();
         }
         var oldest = _history.Peek();
@@ -500,25 +459,21 @@ public partial class SurgeonHand : Node3D
     /// </summary>
     private float TargetCurl() => !Holding ? 0.15f : Lowered || Trigger ? 1.1f : 1f;
 
-    private void AnimateFingers(float delta)
-    {
+    private void AnimateFingers(float delta) {
         _curl = Mathf.MoveToward(_curl, TargetCurl(), delta * 4f);
         PoseFingers();
     }
 
     /// <summary>Bends the finger bones for the current curl. Posing 15 bones only matters while it changes, a fraction of
     /// the time.</summary>
-    private void PoseFingers()
-    {
-        if (_gloveRig is null)
-        {
+    private void PoseFingers() {
+        if (_gloveRig is null) {
             return;
         }
         // Keyed on the plunger's own position, not where it is in the glove (which shifts with every shiver of the
         // hand): otherwise every bone would be posed again every frame.
         var pose = new PoseKey(_curl, Grip, Holding, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN);
-        if (pose == _posed)
-        {
+        if (pose == _posed) {
             return;
         }
         _posed = pose;
@@ -527,38 +482,30 @@ public partial class SurgeonHand : Node3D
         var amounts = Holding ? Fit.Curl ?? style.Curl : [1f, 1f, 1f, 1f, 1f];
         // The thumb swings across under the index from its root, as far as the fingers are closed.
         var oppose = Holding ? style.Oppose * Mathf.Min(_curl, 1f) : 0f;
-        for (var f = 0; f < Fingers.Count; f++)
-        {
+        for (var f = 0; f < Fingers.Count; f++) {
             var finger = Fingers[f];
-            for (var joint = 0; joint < 3; joint++)
-            {
+            for (var joint = 0; joint < 3; joint++) {
                 var bone = $"{finger}{joint + 1}";
                 // Each joint bends its bone toward the palm (the glove's -Y); the thumb folds in less.
                 var bend = Mathf.Min(_curl * amounts[f], 1f) * JointBend[joint] * (finger == "Thumb" ? 0.55f : 1f);
                 var axis = _gloveRig.Direction(bone).Cross(Vector3.Down).Normalized();
                 var turn = new Basis(axis, bend);
-                if (bone == "Thumb1")
-                {
+                if (bone == "Thumb1") {
                     turn = new Basis(Vector3.Down, oppose) * turn;
                 }
                 _gloveRig.Rotate(bone, turn);
             }
         }
-        if (plunger is { } press)
-        {
+        if (plunger is { } press) {
             ReachPlunger(press);
-        }
-        else if (_gloveRig.Has("Thumb1"))
-        {
+        } else if (_gloveRig.Has("Thumb1")) {
             _gloveRig.Shift("Thumb1", Vector3.Zero);
         }
     }
 
     /// <summary>Where the held syringe's thumb press is in the glove's skeleton space, null when there's none.</summary>
-    private Vector3? PressInGlove()
-    {
-        if (!Holding || float.IsNaN(Press))
-        {
+    private Vector3? PressInGlove() {
+        if (!Holding || float.IsNaN(Press)) {
             return null;
         }
         return _gloveRig!.Skeleton.GlobalTransform.AffineInverse()
@@ -571,8 +518,7 @@ public partial class SurgeonHand : Node3D
     /// that far from its root), then the whole thumb turns at its root to point there. Out of reach straight (a plunger
     /// pushed right in, by the fingers), its root slides toward it a little, as a thumb's base swings across the palm.
     /// </summary>
-    private void ReachPlunger(Vector3 target)
-    {
+    private void ReachPlunger(Vector3 target) {
         var rest = ThumbAtRest();
         var straightReach = ThumbTipAt(0f, Basis.Identity).DistanceTo(rest.Root);
         var slide = Mathf.Min(Mathf.Max(rest.Root.DistanceTo(target) - straightReach, 0f), ThumbSlide);
@@ -583,15 +529,11 @@ public partial class SurgeonHand : Node3D
         // Bisects the bend: the more it bends, the closer the tip comes to the root.
         var low = 0f;
         var high = MaxThumbBend;
-        for (var i = 0; i < 12; i++)
-        {
+        for (var i = 0; i < 12; i++) {
             var mid = (low + high) * 0.5f;
-            if (ThumbTipAt(mid, Basis.Identity).DistanceTo(rest.Root) > want)
-            {
+            if (ThumbTipAt(mid, Basis.Identity).DistanceTo(rest.Root) > want) {
                 low = mid;
-            }
-            else
-            {
+            } else {
                 high = mid;
             }
         }
@@ -599,39 +541,33 @@ public partial class SurgeonHand : Node3D
         var from = (ThumbTipAt(bend, Basis.Identity) - rest.Root).Normalized();
         var to = (target - root).Normalized();
         var aim = from.Cross(to).Length() > 0.0001f ? new Basis(new Quaternion(from, to)) : Basis.Identity;
-        for (var joint = 0; joint < 3; joint++)
-        {
+        for (var joint = 0; joint < 3; joint++) {
             _gloveRig.Rotate($"Thumb{joint + 1}", ThumbTurn(joint, bend, aim));
         }
     }
 
     /// <summary>The turn of thumb joint <paramref name="joint"/> (model space, from rest) bent <paramref name="bend"/>
     /// radians in all, the whole thumb turned by <paramref name="aim"/>.</summary>
-    private Basis ThumbTurn(int joint, float bend, Basis aim)
-    {
+    private Basis ThumbTurn(int joint, float bend, Basis aim) {
         var turn = new Basis(ThumbAtRest().Axes[joint], bend * JointBend[joint] / JointBend.Sum());
         return joint == 0 ? aim * turn : turn;
     }
 
     /// <summary>Where the thumb's tip ends up (glove space) bent and turned like that: each joint carries the ones past
     /// it.</summary>
-    private Vector3 ThumbTipAt(float bend, Basis aim)
-    {
+    private Vector3 ThumbTipAt(float bend, Basis aim) {
         var rest = ThumbAtRest();
         var at = rest.Root;
         var turned = Basis.Identity;
-        for (var joint = 0; joint < 3; joint++)
-        {
+        for (var joint = 0; joint < 3; joint++) {
             turned *= ThumbTurn(joint, bend, aim);
             at += turned * rest.Bones[joint];
         }
         return at;
     }
 
-    internal ThumbRest ThumbAtRest()
-    {
-        if (_thumb is not null)
-        {
+    internal ThumbRest ThumbAtRest() {
+        if (_thumb is not null) {
             return _thumb;
         }
         var rig = _gloveRig!;
@@ -640,8 +576,7 @@ public partial class SurgeonHand : Node3D
             .ToArray();
         var bones = new Vector3[3];
         var axes = new Vector3[3];
-        for (var joint = 0; joint < 3; joint++)
-        {
+        for (var joint = 0; joint < 3; joint++) {
             var direction = rig.Direction($"Thumb{joint + 1}");
             bones[joint] = joint < 2 ? joints[joint + 1] - joints[joint] : direction * ThumbTip;
             axes[joint] = direction.Cross(Vector3.Down).Normalized();
@@ -649,8 +584,7 @@ public partial class SurgeonHand : Node3D
         return _thumb = new ThumbRest(joints[0], bones, axes);
     }
 
-    private void SolveArm(Vector3 shoulder)
-    {
+    private void SolveArm(Vector3 shoulder) {
         var toHand = GlobalPosition - shoulder;
         var distance = Mathf.Clamp(toHand.Length(), 0.05f, UpperArm + Forearm - 0.001f);
         var direction = toHand.Normalized();
@@ -661,39 +595,32 @@ public partial class SurgeonHand : Node3D
         var ownerBasis = Body.GlobalBasis;
         var pole = ((ownerBasis.X * side * 0.6f) + Vector3.Down).Normalized();
         // Reaching straight along the pole (down and out) leaves no bend direction: bend the elbow back instead.
-        if (Mathf.Abs(pole.Dot(direction)) > 0.98f)
-        {
+        if (Mathf.Abs(pole.Dot(direction)) > 0.98f) {
             pole = ownerBasis.Z;
         }
         pole = (pole - (direction * pole.Dot(direction))).Normalized();
         var elbow = bendCenter + (pole * height);
-        if (Holding)
-        {
+        if (Holding) {
             // The held tool sets which way the wrist points: the elbow goes toward the forearm's line from there, so the
             // wrist doesn't bend over backwards when the hand comes close. Only as far as it stays under the shoulder.
             // The tool as it's held before the wrist aims it: aiming bends the wrist, the elbow stays.
             var held = GloveFrame(elbow, ownerBasis, false);
             var line = held.Origin - (held.Basis.X.Normalized() * Forearm) - shoulder;
             var toward = line - (direction * line.Dot(direction));
-            if (toward.Length() > 0.001f)
-            {
-                foreach (var pull in (float[])[ForearmPull, ForearmPull * 0.75f, ForearmPull * 0.5f, ForearmPull * 0.25f])
-                {
+            if (toward.Length() > 0.001f) {
+                foreach (var pull in (float[])[ForearmPull, ForearmPull * 0.75f, ForearmPull * 0.5f, ForearmPull * 0.25f]) {
                     var bent = bendCenter + (((toward.Normalized() * pull) + (pole * (1f - pull))).Normalized() * height);
-                    if (bent.Y < shoulder.Y - ElbowBelowShoulder)
-                    {
+                    if (bent.Y < shoulder.Y - ElbowBelowShoulder) {
                         elbow = bent;
                         break;
                     }
                 }
             }
         }
-        if (ElbowSupport is { } support && ElbowSupportWeight > 0f)
-        {
+        if (ElbowSupport is { } support && ElbowSupportWeight > 0f) {
             elbow = SupportedElbow(shoulder, elbow, support, direction, along, height);
         }
-        if (_elbowHold > 0f)
-        {
+        if (_elbowHold > 0f) {
             elbow = elbow.Lerp(Body.ToGlobal(_heldElbow), _elbowHold);
         }
         _elbow = elbow;
@@ -707,30 +634,25 @@ public partial class SurgeonHand : Node3D
     /// bend through a knee: then it searches the same IK circle for clearance. The hand and both segment lengths stay
     /// fixed, so reaching for something never moves the tool's contact.</summary>
     private Vector3 SupportedElbow(
-        Vector3 shoulder, Vector3 elbow, Vector3 support, Vector3 direction, float along, float height)
-    {
+        Vector3 shoulder, Vector3 elbow, Vector3 support, Vector3 direction, float along, float height) {
         var bendCenter = shoulder + (direction * along);
         var supportPole = (support - bendCenter).Slide(direction);
-        if (supportPole.LengthSquared() <= 0.000001f)
-        {
+        if (supportPole.LengthSquared() <= 0.000001f) {
             return elbow;
         }
         var currentPole = (elbow - bendCenter).Normalized();
         var supported = currentPole.Slerp(supportPole.Normalized(), ElbowSupportWeight).Normalized();
         elbow = bendCenter + (supported * height);
-        if (KneeClearance(shoulder, elbow) >= KneeSleeveClearance)
-        {
+        if (KneeClearance(shoulder, elbow) >= KneeSleeveClearance) {
             return elbow;
         }
         var best = elbow;
         var bestCost = float.PositiveInfinity;
-        for (var step = 0; step < 32; step++)
-        {
+        for (var step = 0; step < 32; step++) {
             var candidate = bendCenter + (supported.Rotated(direction, step * Mathf.Tau / 32f) * height);
             var gap = KneeClearance(shoulder, candidate);
             var cost = candidate.DistanceSquaredTo(elbow) + (Mathf.Max(0f, KneeSleeveClearance - gap) * 100f);
-            if (cost < bestCost)
-            {
+            if (cost < bestCost) {
                 bestCost = cost;
                 best = candidate;
             }
@@ -738,11 +660,9 @@ public partial class SurgeonHand : Node3D
         return best;
     }
 
-    private float KneeClearance(Vector3 shoulder, Vector3 elbow)
-    {
+    private float KneeClearance(Vector3 shoulder, Vector3 elbow) {
         var clearance = float.PositiveInfinity;
-        foreach (var knee in KneeObstacles)
-        {
+        foreach (var knee in KneeObstacles) {
             clearance = Mathf.Min(clearance, knee.DistanceTo(Geometry3D.GetClosestPointToSegment(knee, shoulder, elbow)));
             clearance = Mathf.Min(clearance,
                 knee.DistanceTo(Geometry3D.GetClosestPointToSegment(knee, elbow, GlobalPosition)));
@@ -752,11 +672,9 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>Aims the glove's cuff bone down the forearm and returns that direction (world space). However the wrist
     /// bends, the cuff stays on the sleeve and the glove stretches from the hand over it.</summary>
-    private Vector3 AimCuff(Vector3 elbow, Vector3 wrist)
-    {
+    private Vector3 AimCuff(Vector3 elbow, Vector3 wrist) {
         var back = (elbow - wrist).Normalized();
-        if (_gloveRig is null || !_gloveRig.Has("Cuff"))
-        {
+        if (_gloveRig is null || !_gloveRig.Has("Cuff")) {
             return back;
         }
         // The cuff bone starts at the wrist, where its parent does, so BoneRig.Direction() can't tell where it points.
@@ -768,8 +686,7 @@ public partial class SurgeonHand : Node3D
     }
 
     /// <summary>Places the glove, shivering, and returns the wrist (the glove's origin).</summary>
-    private Vector3 PlaceGlove(Vector3 elbow, Basis ownerBasis)
-    {
+    private Vector3 PlaceGlove(Vector3 elbow, Basis ownerBasis) {
         var frame = GloveFrame(elbow, ownerBasis);
         frame.Origin += Shiver;
         _glove.GlobalTransform = frame;
@@ -782,14 +699,11 @@ public partial class SurgeonHand : Node3D
     /// tilt, no turn), then turned along with it (unless not <paramref name="turned"/>): the wrist aims the tool, the
     /// tool doesn't move in the hand. Empty, it points along the forearm, palm down.
     /// </summary>
-    private Transform3D GloveFrame(Vector3 elbow, Basis ownerBasis, bool turned = true)
-    {
-        if (!Holding)
-        {
+    private Transform3D GloveFrame(Vector3 elbow, Basis ownerBasis, bool turned = true) {
+        if (!Holding) {
             var forward = (GlobalPosition - elbow).Normalized();
             var up = (Vector3.Up - (forward * Vector3.Up.Dot(forward))).Normalized();
-            if (up.LengthSquared() < 0.5f)
-            {
+            if (up.LengthSquared() < 0.5f) {
                 up = ownerBasis.Z;
             }
             var side = forward.Cross(up);
@@ -815,8 +729,7 @@ public partial class SurgeonHand : Node3D
     /// tool's own axis (the hand wraps the same way, just from another side), then, for grips that allow it, it tips the
     /// tool up to <see cref="MaxToolTip"/> against the fingers, like changing a pen angle.
     /// </summary>
-    private static Basis TurnToForearm(Basis frame, Vector3 axis, Vector3 contact, Vector3 elbow, bool canTip)
-    {
+    private static Basis TurnToForearm(Basis frame, Vector3 axis, Vector3 contact, Vector3 elbow, bool canTip) {
         var toElbow = (elbow - contact).Normalized();
         var wristDirection = -frame.X.Normalized();
         // Only as far as a forearm turns: turned further, the hand ends up palm up and twisted outward.
@@ -824,8 +737,7 @@ public partial class SurgeonHand : Node3D
             SignedAngle(wristDirection - (axis * wristDirection.Dot(axis)), toElbow - (axis * toElbow.Dot(axis)), axis),
             -MaxRoll, MaxRoll);
         frame = new Basis(axis, roll) * frame;
-        if (!canTip)
-        {
+        if (!canTip) {
             return frame;
         }
         wristDirection = -frame.X.Normalized();
@@ -840,12 +752,10 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>Stretches a unit-long segment model (along +Y) from <paramref name="a"/> to <paramref name="b"/>.
     /// </summary>
-    private static void PlaceSegment(Node3D mesh, Vector3 a, Vector3 b)
-    {
+    private static void PlaceSegment(Node3D mesh, Vector3 a, Vector3 b) {
         var y = b - a;
         var length = y.Length();
-        if (length < 0.001f)
-        {
+        if (length < 0.001f) {
             return;
         }
         y /= length;
@@ -856,81 +766,66 @@ public partial class SurgeonHand : Node3D
 
     /// <summary>Copies of the glove trail behind it, each showing where the glove was a step earlier, fainter the older
     /// it is.</summary>
-    private void UpdateTrail(float delta)
-    {
-        if (Trail <= 0f)
-        {
+    private void UpdateTrail(float delta) {
+        if (Trail <= 0f) {
             _trailRoot?.QueueFree();
             _trailRoot = null;
             _trailCopies.Clear();
             _trailFrames.Clear();
             return;
         }
-        if (_trailRoot is null)
-        {
+        if (_trailRoot is null) {
             BuildTrail();
         }
         _trailAccumulated += delta;
-        if (_trailAccumulated >= TrailStep || _trailFrames.Count == 0)
-        {
+        if (_trailAccumulated >= TrailStep || _trailFrames.Count == 0) {
             _trailAccumulated = 0f;
             var skeleton = _gloveRig?.Skeleton;
             var poses = new Transform3D[skeleton?.GetBoneCount() ?? 0];
-            for (var i = 0; i < poses.Length; i++)
-            {
+            for (var i = 0; i < poses.Length; i++) {
                 poses[i] = skeleton!.GetBonePose(i);
             }
             _trailFrames.Insert(0, new TrailFrame(_glove.GlobalTransform, poses));
-            if (_trailFrames.Count > TrailCopies + 1)
-            {
+            if (_trailFrames.Count > TrailCopies + 1) {
                 _trailFrames.RemoveAt(_trailFrames.Count - 1);
             }
         }
         // The newest frame is about where the glove is now: the copies show the ones before it. A copy right on the
         // glove (a hand held still) would only speckle it.
-        for (var i = 0; i < _trailCopies.Count; i++)
-        {
+        for (var i = 0; i < _trailCopies.Count; i++) {
             var copy = _trailCopies[i];
             var shown = i + 1 < _trailFrames.Count
                 && _trailFrames[i + 1].Glove.Origin.DistanceTo(_glove.GlobalPosition) > TrailGap;
             copy.Root.Visible = shown;
-            if (!shown)
-            {
+            if (!shown) {
                 continue;
             }
             var frame = _trailFrames[i + 1];
             copy.Root.GlobalTransform = frame.Glove;
-            if (copy.Skeleton is { } copySkeleton)
-            {
-                for (var bone = 0; bone < frame.Poses.Length; bone++)
-                {
+            if (copy.Skeleton is { } copySkeleton) {
+                for (var bone = 0; bone < frame.Poses.Length; bone++) {
                     copySkeleton.SetBonePose(bone, frame.Poses[bone]);
                 }
             }
-            copy.Material.AlbedoColor = copy.Material.AlbedoColor with
-            {
+            copy.Material.AlbedoColor = copy.Material.AlbedoColor with {
                 A = Trail * TrailAlpha * (1f - ((float)i / TrailCopies)),
             };
         }
     }
 
-    private void BuildTrail()
-    {
+    private void BuildTrail() {
         _trailRoot = new Node3D { Name = "Trail" };
         AddChild(_trailRoot);
-        for (var i = 0; i < TrailCopies; i++)
-        {
+        for (var i = 0; i < TrailCopies; i++) {
             var copy = (Node3D)_glove.Duplicate();
             copy.TopLevel = true;
             _trailRoot.AddChild(copy);
-            var material = new StandardMaterial3D
-            {
+            var material = new StandardMaterial3D {
                 Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 AlbedoColor = TrailColor,
             };
-            foreach (var node in copy.FindChildren("*", nameof(GeometryInstance3D), true, false))
-            {
+            foreach (var node in copy.FindChildren("*", nameof(GeometryInstance3D), true, false)) {
                 ((GeometryInstance3D)node).MaterialOverride = material;
             }
             var skeleton = copy.FindChildren("*", nameof(Skeleton3D), true, false).FirstOrDefault() as Skeleton3D;

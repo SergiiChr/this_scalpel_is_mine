@@ -6,8 +6,7 @@ namespace Scalpel.Patients;
 public enum Rhythm { Sinus, Vfib, Asystole }
 
 /// <summary>Live patient numbers. Loosely realistic, tuned for play. Host simulates, clients receive a copy.</summary>
-public sealed class Vitals
-{
+public sealed class Vitals {
     public const float NormalBloodMl = 5000f;
 
     public float HeartRate { get; set; } = 75f;
@@ -34,16 +33,14 @@ public sealed class Vitals
 
     public bool IsArrested => Rhythm != Rhythm.Sinus;
 
-    public string RhythmName => Rhythm switch
-    {
+    public string RhythmName => Rhythm switch {
         Rhythm.Vfib => "V-FIB",
         Rhythm.Asystole => "ASYSTOLE",
         _ => "Sinus",
     };
 
     /// <summary>Everything clients need, for the host's sync.</summary>
-    public GodotDictionary ToVariant() => new()
-    {
+    public GodotDictionary ToVariant() => new() {
         ["heart_rate"] = HeartRate,
         ["systolic"] = Systolic,
         ["spo2"] = Spo2,
@@ -63,8 +60,7 @@ public sealed class Vitals
     };
 
     /// <summary>Takes the given numbers (a host sync, or a scenario's start_vitals), leaving the rest.</summary>
-    public void Apply(GodotDictionary data)
-    {
+    public void Apply(GodotDictionary data) {
         HeartRate = data.Float("heart_rate", HeartRate);
         Systolic = data.Float("systolic", Systolic);
         Spo2 = data.Float("spo2", Spo2);

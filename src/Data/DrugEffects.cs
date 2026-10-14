@@ -5,8 +5,7 @@ namespace Scalpel.Data;
 /// the sum of every working drug for one simulation tick. <see cref="Glucose"/> and <see cref="VolumeMl"/> are totals
 /// in a definition and per-second rates in a tick's sum; everything else is the current strength.
 /// </summary>
-public sealed class DrugEffects
-{
+public sealed class DrugEffects {
     public float Hr { get; set; }
     public float Bp { get; set; }
     public float Glucose { get; set; }
@@ -23,8 +22,7 @@ public sealed class DrugEffects
     public float Lethal { get; set; }
 
     /// <summary>Reads the effect keys of a drugs.cfg section.</summary>
-    public static DrugEffects FromConfig(ConfigReader config) => new()
-    {
+    public static DrugEffects FromConfig(ConfigReader config) => new() {
         Hr = config.Float("hr"),
         Bp = config.Float("bp"),
         Glucose = config.Float("glucose"),
@@ -40,8 +38,7 @@ public sealed class DrugEffects
 
     /// <summary>Adds the strengths of <paramref name="peak"/> (not its totals, glucose and volume) times
     /// <paramref name="strength"/>.</summary>
-    public void AddStrengths(DrugEffects peak, float strength)
-    {
+    public void AddStrengths(DrugEffects peak, float strength) {
         Hr += peak.Hr * strength;
         Bp += peak.Bp * strength;
         Anesthesia += peak.Anesthesia * strength;

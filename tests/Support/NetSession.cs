@@ -5,18 +5,15 @@ namespace Scalpel.Tests.Support;
 /// driver scene's node moves itself under the tree root, so it survives the scene changes from lobby to surgery, and
 /// plays its <see cref="Role"/> from there.
 /// </summary>
-public abstract partial class NetSession : Node
-{
+public abstract partial class NetSession : Node {
     /// <summary>"host" or "client", from the command line's --role=.</summary>
     protected string Role { get; private set; } = "host";
 
     protected bool IsHost => Role == "host";
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         // The scene's own node is freed with the scene: a copy named for its class drives from the root.
-        if (GetParent() != GetTree().Root || Name != GetType().Name)
-        {
+        if (GetParent() != GetTree().Root || Name != GetType().Name) {
             var driver = (NetSession)Activator.CreateInstance(GetType())!;
             driver.Name = GetType().Name;
             GetTree().Root.CallDeferred(Node.MethodName.AddChild, driver);
@@ -34,34 +31,26 @@ public abstract partial class NetSession : Node
 
     /// <summary>Hosts <paramref name="scenario"/> on <paramref name="port"/> or joins it, readies up and waits until
     /// the surgery runs. <paramref name="beforeStart"/>: the host's last setup before it starts the session.</summary>
-    protected async Task<Surgery> Join(string scenario, int port, Action? beforeStart = null)
-    {
+    protected async Task<Surgery> Join(string scenario, int port, Action? beforeStart = null) {
         var net = Net.Instance;
-        if (IsHost)
-        {
+        if (IsHost) {
             net.Host(scenario, port);
-        }
-        else
-        {
+        } else {
             await Wait(0.5);
             net.Join("127.0.0.1", port);
         }
-        while (net.Roster.Count < 2)
-        {
+        while (net.Roster.Count < 2) {
             await Wait(0.2);
         }
         net.SetReady(true);
-        if (IsHost)
-        {
-            while (!net.AllReady)
-            {
+        if (IsHost) {
+            while (!net.AllReady) {
                 await Wait(0.2);
             }
             beforeStart?.Invoke();
             net.StartSession();
         }
-        while (Surgery.Current is not { Running: true })
-        {
+        while (Surgery.Current is not { Running: true }) {
             await Wait(0.2);
         }
         return Surgery.Current;
@@ -72,7 +61,6 @@ public abstract partial class NetSession : Node
 }
 
 /// <summary>Async helpers for awaiting Godot signals as tasks.</summary>
-internal static class SignalAwaiterExtensions
-{
+internal static class SignalAwaiterExtensions {
     public static async Task AsTask(this SignalAwaiter awaiter) => await awaiter;
 }

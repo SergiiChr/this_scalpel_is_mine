@@ -9,22 +9,19 @@ namespace Scalpel.Tests.UI;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class DischargeTest
-{
+public class DischargeTest {
     // Temporary local budget override: taking the card off its hook peaks at 6-11 ms here (budget about 10 ms), the same
     // card path PatientCardTest overrides; signing itself stays far below it.
     private const string BudgetOverride = "taking the patient card off its hook sometimes exceeds the CPU budget";
 
     [TestCase]
-    public async Task SignatureWritesWhileHeldRollsBackAndSignsOutTooEarly()
-    {
+    public async Task SignatureWritesWhileHeldRollsBackAndSignsOutTooEarly() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch");
         var surgery = driver.Surgery;
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "discharge");

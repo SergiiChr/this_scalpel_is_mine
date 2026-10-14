@@ -8,8 +8,7 @@ namespace Scalpel.Tests.Support;
 /// Every run checks the frame budget (<see cref="FrameBudget.Check"/>). Rendering stays off in between,
 /// also under a display: the game runs at full speed, and a software renderer only draws the key frames.
 /// </summary>
-public static class ScenarioFlow
-{
+public static class ScenarioFlow {
     /// <summary>Game seconds an objective gets to register once its step is done, on top of how long it has to hold.
     /// </summary>
     private const float Settle = 20f;
@@ -18,20 +17,17 @@ public static class ScenarioFlow
     /// known to go over the budget (see <see cref="FrameBudget.Check"/>).</summary>
     public static async Task Play(string scenarioId, bool keyFrames = false, string budgetOverride = "",
         Func<SurgeryDriver, ObjectiveStep, Task>? playStep = null, Action<SurgeryDriver>? validate = null,
-        bool includeOptional = false)
-    {
+        bool includeOptional = false) {
         FrameBudget.RenderingOff();
         GD.Print($"{scenarioId}: loading operation");
         var driver = SurgeryDriver.Create();
         KeyFrames? shots = null;
-        try
-        {
+        try {
             await driver.Start(scenarioId);
             var surgery = driver.Surgery;
             await InitialSceneChecks.Inspect(surgery);
             var objectives = surgery.Objectives;
-            if (keyFrames && KeyFrames.Wanted())
-            {
+            if (keyFrames && KeyFrames.Wanted()) {
                 shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(surgery, "scenarios".PathJoin(scenarioId));
@@ -40,18 +36,15 @@ public static class ScenarioFlow
             }
             // Loading the room isn't gameplay: the frame budget counts from here.
             driver.Budget.Clear();
-            for (var index = 0; index < objectives.Steps.Count; index++)
-            {
+            for (var index = 0; index < objectives.Steps.Count; index++) {
                 var step = objectives.Steps[index];
-                if (step.Optional && !includeOptional)
-                {
+                if (step.Optional && !includeOptional) {
                     continue;
                 }
                 await (playStep is null ? driver.PlayerCompletes(step) : playStep(driver, step));
                 var hold = step.Parameters.Float("seconds") + (step.Type == "calm" ? 60f : 0f);
                 // A drug counts once enough has soaked in to work: through a line, most of it by 1.5 times its onset.
-                if (step.Type == "inject" && Db.Drug(step.Parameters.String("drug")) is { } drug)
-                {
+                if (step.Type == "inject" && Db.Drug(step.Parameters.String("drug")) is { } drug) {
                     hold += drug.Onset * 1.5f;
                 }
                 var state = objectives.States[index];
@@ -60,8 +53,7 @@ public static class ScenarioFlow
                     .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
                     .IsTrue();
                 // Action helpers capture cut/extraction/closure; internal flags have no unique site photograph.
-                if (step.Type is "sanitize" or "flip")
-                {
+                if (step.Type is "sanitize" or "flip") {
                     await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
                 }
             }
@@ -74,13 +66,10 @@ public static class ScenarioFlow
                 .IsTrue();
             validate?.Invoke(driver);
             driver.Budget.Check(scenarioId, budgetOverride);
-            if (shots is not null)
-            {
+            if (shots is not null) {
                 GD.Print($"{scenarioId} key frames: {shots.OutDir}");
             }
-        }
-        finally
-        {
+        } finally {
             shots?.End();
             await driver.Stop();
             RenderingServer.RenderLoopEnabled = true;

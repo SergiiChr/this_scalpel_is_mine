@@ -7,11 +7,9 @@ namespace Scalpel.Tests.Scenarios;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
-public class ObjectiveSettlingTest
-{
+public class ObjectiveSettlingTest {
     [TestCase]
-    public async Task DeathSettlesTheSteps()
-    {
+    public async Task DeathSettlesTheSteps() {
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch");
         var surgery = driver.Surgery;
@@ -27,8 +25,7 @@ public class ObjectiveSettlingTest
 
     [TestCase(true)]
     [TestCase(false)]
-    public async Task CutCountsOnlyWhileTheTourniquetIsOn(bool keptOn)
-    {
+    public async Task CutCountsOnlyWhileTheTourniquetIsOn(bool keptOn) {
         var driver = SurgeryDriver.Create();
         await driver.Start("gangrene_amputation");
         var surgery = driver.Surgery;
@@ -39,8 +36,7 @@ public class ObjectiveSettlingTest
         var anesthesia = objectives.States[objectives.Steps.FindIndex(step => step.Type == "anesthesia")];
         var tourniquet = objectives.States[objectives.Steps.FindIndex(step => step.Type == "tourniquet")];
         await Frames.Until(() => anesthesia.Holds && tourniquet.Holds, 30f);
-        if (!keptOn)
-        {
+        if (!keptOn) {
             patient.RemoveTourniquet();
         }
         var cut = objectives.States[objectives.Steps.FindIndex(step => step.Type == "incise")];

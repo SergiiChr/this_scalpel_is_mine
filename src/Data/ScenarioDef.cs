@@ -29,8 +29,7 @@ public sealed record TargetSpec(
     float Refill,
     float Surge,
     bool Covered,
-    float YawDegrees)
-{
+    float YawDegrees) {
     public static TargetSpec FromVariant(GodotDictionary data) => new(
         data.String("kind", "bullet"),
         data.String("remove_with", "clamp"),
@@ -49,8 +48,7 @@ public sealed record TargetSpec(
 /// One objective step. Type picks the check (<see cref="ObjectiveChecks"/>), Parameters holds the step's own numbers
 /// as written in the scenario ("level", "seconds", "target"...).
 /// </summary>
-public sealed record ObjectiveStep(string Type, string Label, bool Optional, GodotDictionary Parameters)
-{
+public sealed record ObjectiveStep(string Type, string Label, bool Optional, GodotDictionary Parameters) {
     /// <summary>Another condition that completes the step too, written as a nested step under "or".</summary>
     public ObjectiveStep? Alternative { get; init; }
 
@@ -62,8 +60,7 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
     public IReadOnlyList<string> After { get; init; } = [];
 
     public static ObjectiveStep FromVariant(GodotDictionary data) =>
-        new(data.String("type"), data.String("label"), data.Bool("optional"), data)
-        {
+        new(data.String("type"), data.String("label"), data.Bool("optional"), data) {
             Alternative = data.TryGetValue("or", out var alternative)
                 ? FromVariant(alternative.AsGodotDictionary())
                 : null,
@@ -73,8 +70,7 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
 }
 
 /// <summary>One data/scenarios/NN_id.cfg file: metadata, the patient's starting state and the objective steps.</summary>
-public sealed record ScenarioDef
-{
+public sealed record ScenarioDef {
     public required string Id { get; init; }
     public int Order { get; init; }
     public string Title { get; init; } = "";
@@ -119,19 +115,16 @@ public sealed record ScenarioDef
     public IReadOnlyList<ObjectiveStep> Steps { get; init; } = [];
 
     /// <summary>Reads a scenario file. The file name gives the id (03_appendectomy.cfg -> appendectomy).</summary>
-    public static ScenarioDef? LoadFile(string path)
-    {
+    public static ScenarioDef? LoadFile(string path) {
         var file = new ConfigFile();
-        if (file.Load(path) != Error.Ok)
-        {
+        if (file.Load(path) != Error.Ok) {
             GD.PushError($"Can't read scenario {path}");
             return null;
         }
         var meta = new ConfigReader(file, "scenario");
         var patient = new ConfigReader(file, "patient");
         var preop = meta.Dictionary("preop");
-        return new ScenarioDef
-        {
+        return new ScenarioDef {
             Id = path.GetFile().GetBaseName()[3..],
             Order = meta.Int("order"),
             Title = meta.String("title"),
@@ -187,23 +180,19 @@ public sealed record ScenarioDef
     /// Picks the tools that actually spawn on the tray for this run: the starter kit plus the scenario's own tools.
     /// With a nurse, the scenario adds only what she can't fetch; the rest has to be ordered.
     /// </summary>
-    public List<string> RollTools(RandomNumberGenerator rng, float extraMissingChance = 0f)
-    {
+    public List<string> RollTools(RandomNumberGenerator rng, float extraMissingChance = 0f) {
         var own = StartingTools.ToList();
         var extras = RandomTools.ToList();
-        for (var i = 0; i < Math.Min(RandomToolCount, RandomTools.Count); i++)
-        {
+        for (var i = 0; i < Math.Min(RandomToolCount, RandomTools.Count); i++) {
             var index = rng.RandiRange(0, extras.Count - 1);
             own.Add(extras[index]);
             extras.RemoveAt(index);
         }
-        if (Nurse)
-        {
+        if (Nurse) {
             own = [.. own.Where(id => Db.Tool(id) is not { Orderable: true })];
         }
         // The starter kit already covers one of each of its tools.
-        foreach (var id in Db.StarterKit)
-        {
+        foreach (var id in Db.StarterKit) {
             own.Remove(id);
         }
         return [.. Db.StarterKit.Concat(own).Where(_ => rng.Randf() >= MissingToolChance + extraMissingChance)];

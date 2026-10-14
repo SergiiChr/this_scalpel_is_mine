@@ -6,8 +6,7 @@ namespace Scalpel.Patients;
 /// body never pokes through it, even breathing. It covers the edge of the site, where the simulated skin meets the
 /// body, and the flanks the flat site can't follow. Hands rest on it (DrapeLayer), tools and rays for limbs don't.
 /// </summary>
-public partial class Drape : MeshInstance3D
-{
+public partial class Drape : MeshInstance3D {
     // Where the sheet lies, body space: from past the feet to just under the collarbones, and across the torso between
     // the arms (they lie at about |z| 0.22 and may lift, so the sheet stays clear of them).
     public const float FromX = -1.3f;
@@ -29,12 +28,10 @@ public partial class Drape : MeshInstance3D
     /// surgical site node, a child of <paramref name="root"/>. <paramref name="up"/>: +1 face up, -1 for a site on the
     /// back (the sheet goes on that side).
     /// </summary>
-    public void Build(Node3D root, IEnumerable<MeshInstance3D> meshes, Node3D site, Vector2 siteSize, float up)
-    {
+    public void Build(Node3D root, IEnumerable<MeshInstance3D> meshes, Node3D site, Vector2 siteSize, float up) {
         Name = "Drape";
         var faces = new List<Vector3>();
-        foreach (var mesh in meshes)
-        {
+        foreach (var mesh in meshes) {
             var toRoot = root.GlobalTransform.AffineInverse() * mesh.GlobalTransform;
             faces.AddRange(mesh.Mesh.GetFaces().Select(v => toRoot * v));
         }
@@ -48,10 +45,8 @@ public partial class Drape : MeshInstance3D
         // can reverse or overlap triangles at the opening's corners, producing triangular creases and shadows.
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
-        for (var j = 0; j < rows - 1; j++)
-        {
-            for (var i = 0; i < columns - 1; i++)
-            {
+        for (var j = 0; j < rows - 1; j++) {
+            for (var i = 0; i < columns - 1; i++) {
                 var a = PointAt(i, j);
                 var b = PointAt(i + 1, j);
                 var c = PointAt(i + 1, j + 1);
@@ -62,19 +57,15 @@ public partial class Drape : MeshInstance3D
         }
         // Hems: the sheet hangs a little over its long sides and its ends instead of stopping in the air.
         var hang = Vector3.Down * up * Hem;
-        for (var i = 0; i < columns - 1; i++)
-        {
-            foreach (var j in new[] { 0, rows - 1 })
-            {
+        for (var i = 0; i < columns - 1; i++) {
+            foreach (var j in new[] { 0, rows - 1 }) {
                 var (a, b) = (PointAt(i, j), PointAt(i + 1, j));
                 var outward = new Vector3(0, 0, j == 0 ? -1f : 1f) * 0.004f;
                 Quad(surface, [a, b, b + outward + hang, a + outward + hang], j == 0 ? up : -up);
             }
         }
-        for (var j = 0; j < rows - 1; j++)
-        {
-            foreach (var i in new[] { 0, columns - 1 })
-            {
+        for (var j = 0; j < rows - 1; j++) {
+            foreach (var i in new[] { 0, columns - 1 }) {
                 var (a, b) = (PointAt(i, j), PointAt(i, j + 1));
                 var outward = new Vector3(i == 0 ? -1f : 1f, 0, 0) * 0.004f;
                 Quad(surface, [a, b, b + outward + hang, a + outward + hang], i == 0 ? -up : up);
@@ -95,38 +86,28 @@ public partial class Drape : MeshInstance3D
 
     /// <summary>Height of the sheet at each grid point: the skin under it plus Offset. Over gaps (between the legs) it
     /// spans from side to side, sagging a little, never below the table.</summary>
-    private static float[] Lay(TriangleMesh body, int columns, int rows, float up)
-    {
+    private static float[] Lay(TriangleMesh body, int columns, int rows, float up) {
         var heights = new float[columns * rows];
         var hit = new bool[columns * rows];
-        for (var j = 0; j < rows; j++)
-        {
-            for (var i = 0; i < columns; i++)
-            {
+        for (var j = 0; j < rows; j++) {
+            for (var i = 0; i < columns; i++) {
                 var result = body.IntersectRay(new Vector3(FromX + i * Cell, up * 0.5f, -HalfWidth + j * Cell), Vector3.Down * up);
-                if (result.Count > 0)
-                {
+                if (result.Count > 0) {
                     heights[j * columns + i] = result["position"].AsVector3().Y + up * Offset;
                     hit[j * columns + i] = true;
                 }
             }
         }
-        for (var j = 0; j < rows; j++)
-        {
-            for (var i = 0; i < columns; i++)
-            {
-                if (hit[j * columns + i])
-                {
+        for (var j = 0; j < rows; j++) {
+            for (var i = 0; i < columns; i++) {
+                if (hit[j * columns + i]) {
                     continue;
                 }
                 // The nearest skin on either side across the sheet, lowered a little.
                 var near = up > 0f ? float.NegativeInfinity : float.PositiveInfinity;
-                for (var step = 0; step < rows && !float.IsFinite(near); step++)
-                {
-                    foreach (var jj in new[] { j - step, j + step })
-                    {
-                        if (jj >= 0 && jj < rows && hit[jj * columns + i])
-                        {
+                for (var step = 0; step < rows && !float.IsFinite(near); step++) {
+                    foreach (var jj in new[] { j - step, j + step }) {
+                        if (jj >= 0 && jj < rows && hit[jj * columns + i]) {
                             near = up > 0f ? Mathf.Max(near, heights[jj * columns + i]) : Mathf.Min(near, heights[jj * columns + i]);
                         }
                     }
@@ -137,27 +118,22 @@ public partial class Drape : MeshInstance3D
         return heights;
     }
 
-    private static Vector2 SiteUv(Node3D site, Vector2 siteSize, Vector3 p)
-    {
+    private static Vector2 SiteUv(Node3D site, Vector2 siteSize, Vector3 p) {
         var local = site.Transform.AffineInverse() * p;
         return new Vector2(local.X / siteSize.X + 0.5f, local.Z / siteSize.Y + 0.5f);
     }
 
     /// <summary>Disjoint strips outside the opening, with intersection heights on the original cloth triangle.</summary>
-    private static void OutsideOpening(SurfaceTool surface, Node3D site, Vector2 size, List<Vector3> polygon, float up)
-    {
-        foreach (var (axis, boundary, sign) in new[] { (0, Frame, 1f), (0, 1f - Frame, -1f), (1, Frame, 1f), (1, 1f - Frame, -1f) })
-        {
+    private static void OutsideOpening(SurfaceTool surface, Node3D site, Vector2 size, List<Vector3> polygon, float up) {
+        foreach (var (axis, boundary, sign) in new[] { (0, Frame, 1f), (0, 1f - Frame, -1f), (1, Frame, 1f), (1, 1f - Frame, -1f) }) {
             float Distance(Vector3 p) => (SiteUv(site, size, p)[axis] - boundary) * sign;
             var outside = Clip(polygon, Distance, false);
-            for (var n = 1; n + 1 < outside.Count; n++)
-            {
+            for (var n = 1; n + 1 < outside.Count; n++) {
                 var a = outside[0];
                 var b = outside[n];
                 var c = outside[n + 1];
                 if ((b - a).Cross(c - a).LengthSquared() < 1e-16f) { continue; }
-                foreach (var p in up > 0f ? new[] { a, b, c } : new[] { a, c, b })
-                {
+                foreach (var p in up > 0f ? new[] { a, b, c } : new[] { a, c, b }) {
                     surface.AddVertex(p);
                 }
             }
@@ -166,11 +142,9 @@ public partial class Drape : MeshInstance3D
         }
     }
 
-    private static List<Vector3> Clip(List<Vector3> polygon, Func<Vector3, float> distance, bool inside)
-    {
+    private static List<Vector3> Clip(List<Vector3> polygon, Func<Vector3, float> distance, bool inside) {
         var result = new List<Vector3>();
-        for (var n = 0; n < polygon.Count; n++)
-        {
+        for (var n = 0; n < polygon.Count; n++) {
             var a = polygon[n];
             var b = polygon[(n + 1) % polygon.Count];
             var da = distance(a);
@@ -184,11 +158,9 @@ public partial class Drape : MeshInstance3D
     }
 
     /// <summary>Two triangles, wound so the side facing <paramref name="up"/> is the front.</summary>
-    private static void Quad(SurfaceTool surface, Vector3[] corners, float up)
-    {
+    private static void Quad(SurfaceTool surface, Vector3[] corners, float up) {
         int[] order = up > 0f ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
-        foreach (var n in order)
-        {
+        foreach (var n in order) {
             surface.AddVertex(corners[n]);
         }
     }

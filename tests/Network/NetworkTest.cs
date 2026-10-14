@@ -4,8 +4,7 @@ namespace Scalpel.Tests.Network;
 /// and the verdict are here.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("network")]
-public class NetworkTest
-{
+public class NetworkTest {
     private const string Runner = "res://tests/Support/network_runner.sh";
 
     [TestCase]
@@ -22,8 +21,7 @@ public class NetworkTest
 
     /// <summary>Runs the network runner in <paramref name="mode"/>; on failure the message carries its output, which
     /// names the problem and the driver log to look at.</summary>
-    private static void Run(string mode, string claim)
-    {
+    private static void Run(string mode, string claim) {
         var output = new Godot.Collections.Array();
         var code = OS.Execute("/bin/bash",
             [ProjectSettings.GlobalizePath(Runner), OS.GetExecutablePath(), ProjectSettings.GlobalizePath("res://"), mode],

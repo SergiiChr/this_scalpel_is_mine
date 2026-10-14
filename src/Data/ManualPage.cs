@@ -17,8 +17,7 @@ namespace Scalpel.Data;
 /// ("{tool.heavy_saw.Delay}") and patient quirk effects ("{quirk.heart_weak.arrest_mult}", a variant joined by "_").
 /// Expressions are Godot <see cref="Expression"/>s over dictionaries built from those by reflection.
 /// </summary>
-public sealed partial class ManualPage
-{
+public sealed partial class ManualPage {
     /// <summary>Class name -> its constants, for the classes pages have used so far.</summary>
     private static readonly Dictionary<string, GodotDictionary?> ClassConstants = [];
 
@@ -41,21 +40,16 @@ public sealed partial class ManualPage
     [GeneratedRegex(@"\b[A-Z][A-Za-z]+\b")]
     private static partial Regex ClassNamePattern();
 
-    public static ManualPage LoadFile(string path)
-    {
+    public static ManualPage LoadFile(string path) {
         var lines = FileAccess.GetFileAsString(path).Split('\n');
         var title = "";
         var tags = new List<string>();
         var start = 0;
-        foreach (var line in lines.Take(2))
-        {
-            if (line.StartsWith("tags:", StringComparison.Ordinal))
-            {
+        foreach (var line in lines.Take(2)) {
+            if (line.StartsWith("tags:", StringComparison.Ordinal)) {
                 tags = [.. line[5..].Split(',', StringSplitOptions.RemoveEmptyEntries).Select(tag => tag.Trim())];
                 start++;
-            }
-            else if (line.StartsWith("title:", StringComparison.Ordinal))
-            {
+            } else if (line.StartsWith("title:", StringComparison.Ordinal)) {
                 title = line[6..].Trim();
                 start++;
             }
@@ -67,8 +61,7 @@ public sealed partial class ManualPage
                 .Select(file => LoadFile(dir.PathJoin(file))).OrderBy(child => child.Title, StringComparer.Ordinal)
                 .ToList()
             : [];
-        return new ManualPage
-        {
+        return new ManualPage {
             Title = title,
             Tags = tags,
             Source = source,
@@ -79,14 +72,11 @@ public sealed partial class ManualPage
 
     /// <summary>Replaces every "{expression}" with its value. One that can't be worked out is reported and left as
     /// written.</summary>
-    public static string FillNumbers(string text, string where)
-    {
+    public static string FillNumbers(string text, string where) {
         var filled = text;
-        foreach (Match found in NumberPattern().Matches(text))
-        {
+        foreach (Match found in NumberPattern().Matches(text)) {
             var value = Evaluate(found.Groups[1].Value);
-            if (value is null)
-            {
+            if (value is null) {
                 GD.PushError($"Manual: can't work out {{{found.Groups[1].Value}}} in {where}");
                 continue;
             }
@@ -96,21 +86,17 @@ public sealed partial class ManualPage
     }
 
     /// <summary>The value of one expression, or null when it can't be worked out.</summary>
-    public static Variant? Evaluate(string expression)
-    {
+    public static Variant? Evaluate(string expression) {
         var names = new List<string> { "drug", "tool", "quirk" };
         var inputs = new Godot.Collections.Array(_tables ??= [ById(Db.Drugs), ById(Db.Tools), QuirkEffects()]);
-        foreach (Match word in ClassNamePattern().Matches(expression))
-        {
-            if (!names.Contains(word.Value) && ConstantsOf(word.Value) is { } constants)
-            {
+        foreach (Match word in ClassNamePattern().Matches(expression)) {
+            if (!names.Contains(word.Value) && ConstantsOf(word.Value) is { } constants) {
                 names.Add(word.Value);
                 inputs.Add(constants);
             }
         }
         var parsed = new Expression();
-        if (parsed.Parse(expression, [.. names]) != Error.Ok)
-        {
+        if (parsed.Parse(expression, [.. names]) != Error.Ok) {
             return null;
         }
         var value = parsed.Execute(inputs, null, showError: false);
@@ -121,10 +107,8 @@ public sealed partial class ManualPage
     public bool Matches(IReadOnlyCollection<string> keys) =>
         Tags.Any(keys.Contains) || Children.Any(child => child.Matches(keys));
 
-    private static string Written(Variant value)
-    {
-        if (value.VariantType is not (Variant.Type.Float or Variant.Type.Int))
-        {
+    private static string Written(Variant value) {
+        if (value.VariantType is not (Variant.Type.Float or Variant.Type.Int)) {
             return value.AsString();
         }
         var number = value.AsDouble();
@@ -133,10 +117,8 @@ public sealed partial class ManualPage
             : number.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
-    private static GodotDictionary? ConstantsOf(string typeName)
-    {
-        if (!ClassConstants.TryGetValue(typeName, out var constants))
-        {
+    private static GodotDictionary? ConstantsOf(string typeName) {
+        if (!ClassConstants.TryGetValue(typeName, out var constants)) {
             var type = typeof(ManualPage).Assembly.GetTypes().FirstOrDefault(t => t.Name == typeName);
             constants = type is null ? null : StaticValues(type);
             ClassConstants[typeName] = constants;
@@ -144,24 +126,19 @@ public sealed partial class ManualPage
         return constants;
     }
 
-    private static GodotDictionary StaticValues(Type type)
-    {
+    private static GodotDictionary StaticValues(Type type) {
         var values = new GodotDictionary();
-        foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Static))
-        {
-            if (field.IsLiteral || field.IsInitOnly)
-            {
+        foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Static)) {
+            if (field.IsLiteral || field.IsInitOnly) {
                 values[field.Name] = ToVariant(field.GetValue(null));
             }
         }
         return values;
     }
 
-    private static GodotDictionary ById<T>(IReadOnlyDictionary<string, T> table)
-    {
+    private static GodotDictionary ById<T>(IReadOnlyDictionary<string, T> table) {
         var values = new GodotDictionary();
-        foreach (var (id, entry) in table)
-        {
+        foreach (var (id, entry) in table) {
             values[id] = ToVariant(entry);
         }
         return values;
@@ -169,8 +146,7 @@ public sealed partial class ManualPage
 
     /// <summary>Numbers and text as they are, collections and objects as dictionaries of their public members.
     /// </summary>
-    private static Variant ToVariant(object? value) => value switch
-    {
+    private static Variant ToVariant(object? value) => value switch {
         null => default,
         float number => number,
         double number => number,
@@ -183,44 +159,34 @@ public sealed partial class ManualPage
         _ => MembersOf(value),
     };
 
-    private static GodotDictionary DictionaryOf(IDictionary dictionary)
-    {
+    private static GodotDictionary DictionaryOf(IDictionary dictionary) {
         var values = new GodotDictionary();
-        foreach (DictionaryEntry entry in dictionary)
-        {
+        foreach (DictionaryEntry entry in dictionary) {
             values[entry.Key.ToString() ?? ""] = ToVariant(entry.Value);
         }
         return values;
     }
 
-    private static GodotDictionary MembersOf(object value)
-    {
+    private static GodotDictionary MembersOf(object value) {
         var values = new GodotDictionary();
-        foreach (var property in value.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (property.GetIndexParameters().Length == 0)
-            {
+        foreach (var property in value.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
+            if (property.GetIndexParameters().Length == 0) {
                 values[property.Name] = ToVariant(property.GetValue(value));
             }
         }
-        foreach (var field in value.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
-        {
+        foreach (var field in value.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance)) {
             values[field.Name] = ToVariant(field.GetValue(value));
         }
         return values;
     }
 
     /// <summary>Patient quirk effects by quirk id, or id_variant for each variant, numbers as numbers.</summary>
-    private static GodotDictionary QuirkEffects()
-    {
+    private static GodotDictionary QuirkEffects() {
         var values = new GodotDictionary();
-        foreach (var quirk in Db.PatientQuirks.Values)
-        {
-            foreach (var variant in quirk.Variants.Count > 0 ? quirk.Variants : [""])
-            {
+        foreach (var quirk in Db.PatientQuirks.Values) {
+            foreach (var variant in quirk.Variants.Count > 0 ? quirk.Variants : [""]) {
                 var effects = new GodotDictionary();
-                foreach (var (key, text) in quirk.Effects(variant))
-                {
+                foreach (var (key, text) in quirk.Effects(variant)) {
                     effects[key] = Modifiers.Number(text) is { } number ? number : text;
                 }
                 values[quirk.Id + (variant.Length > 0 ? "_" + variant : "")] = effects;

@@ -19,8 +19,7 @@ public sealed record SurfaceFamily(
     Detail Detail = Detail.None);
 
 /// <summary>Shared materials. Everything goes through here so the look can be tuned in one place.</summary>
-public static class Materials
-{
+public static class Materials {
     public static readonly Shader Toon = GD.Load<Shader>("res://assets/shaders/toon.gdshader");
     public static readonly Shader Outline = GD.Load<Shader>("res://assets/shaders/outline.gdshader");
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
@@ -46,8 +45,7 @@ public static class Materials
     public static readonly IReadOnlyList<Color> Scrubs = [new(0.22f, 0.4f, 0.36f), new(0.26f, 0.38f, 0.52f)];
     public static readonly Color Fluorescent = new(0.88f, 1f, 0.94f);
 
-    public static readonly IReadOnlyDictionary<string, SurfaceFamily> Families = new Dictionary<string, SurfaceFamily>
-    {
+    public static readonly IReadOnlyDictionary<string, SurfaceFamily> Families = new Dictionary<string, SurfaceFamily> {
         ["skin"] = new(0.15f, 0.12f, 0.05f, Wrap: 0.35f, Scatter: new Color(1f, 0.42f, 0.32f), Detail: Detail.Pores),
         ["rubber"] = new(0.18f, 0.08f, 0f, Detail: Detail.Creases),
         ["cloth"] = new(0f, 0.2f, 0.12f, Wrap: 0.25f, Scatter: Colors.White, Detail: Detail.Weave),
@@ -57,8 +55,7 @@ public static class Materials
     };
 
     /// <summary>Model material name -> family. Names not listed are plastic.</summary>
-    private static readonly IReadOnlyDictionary<string, string> FamilyOf = new Dictionary<string, string>
-    {
+    private static readonly IReadOnlyDictionary<string, string> FamilyOf = new Dictionary<string, string> {
         ["skin"] = "skin",
         ["lips"] = "skin",
         ["glove"] = "rubber",
@@ -96,10 +93,8 @@ public static class Materials
 
     private static readonly Dictionary<string, Material> Cache = [];
 
-    private static T Cached<T>(string key, Func<T> create) where T : Material
-    {
-        if (!Cache.TryGetValue(key, out var material))
-        {
+    private static T Cached<T>(string key, Func<T> create) where T : Material {
+        if (!Cache.TryGetValue(key, out var material)) {
             material = create();
             Cache[key] = material;
         }
@@ -114,8 +109,7 @@ public static class Materials
 
     /// <summary>See-through glass (syringe barrels, vials), so the liquid level inside shows. No outline: it would
     /// hide the liquid.</summary>
-    public static StandardMaterial3D Glass() => Cached("glass", () => new StandardMaterial3D
-    {
+    public static StandardMaterial3D Glass() => Cached("glass", () => new StandardMaterial3D {
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         AlbedoColor = new Color(0.85f, 0.93f, 0.97f, 0.22f),
         Roughness = 0.1f,
@@ -124,8 +118,7 @@ public static class Materials
 
     /// <summary>Frosted clear plastic (an IV bag's sealed edges, hanger and ports): see-through, but less than
     /// <see cref="Glass"/>, so the parts read against the film. No outline, like glass.</summary>
-    public static StandardMaterial3D Frosted() => Cached("frosted", () => new StandardMaterial3D
-    {
+    public static StandardMaterial3D Frosted() => Cached("frosted", () => new StandardMaterial3D {
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         AlbedoColor = new Color(0.88f, 0.93f, 0.95f, 0.6f),
         Roughness = 0.35f,
@@ -142,8 +135,7 @@ public static class Materials
     /// world axis (x, z) that runs along the wall.
     /// </summary>
     public static ShaderMaterial TheatreWall(Color tiles, Color paint, Vector2 axis,
-        IReadOnlyList<(Decor Kind, Rect2 Area)> decor)
-    {
+        IReadOnlyList<(Decor Kind, Rect2 Area)> decor) {
         var material = Decorated(tiles, Pattern.Wall, decor);
         material.SetShaderParameter("wall_axis", axis);
         material.SetShaderParameter("wall_paint", paint);
@@ -154,13 +146,11 @@ public static class Materials
     public static ShaderMaterial TheatreCeiling(Color color, IReadOnlyList<Rect2> lights) =>
         Decorated(color, Pattern.Panels, [.. lights.Select(area => (Decor.CeilingLight, area))]);
 
-    private static ShaderMaterial Decorated(Color color, Pattern pattern, IReadOnlyList<(Decor Kind, Rect2 Area)> decor)
-    {
+    private static ShaderMaterial Decorated(Color color, Pattern pattern, IReadOnlyList<(Decor Kind, Rect2 Area)> decor) {
         var material = RoomUnique(color, 0.05f, pattern);
         var areas = new Vector4[4];
         var kinds = new int[4];
-        for (var i = 0; i < decor.Count; i++)
-        {
+        for (var i = 0; i < decor.Count; i++) {
             var (kind, area) = decor[i];
             areas[i] = new Vector4(area.Position.X, area.Position.Y, area.End.X, area.End.Y);
             kinds[i] = (int)kind;
@@ -170,8 +160,7 @@ public static class Materials
         return material;
     }
 
-    private static ShaderMaterial RoomUnique(Color color, float grime, Pattern pattern)
-    {
+    private static ShaderMaterial RoomUnique(Color color, float grime, Pattern pattern) {
         var material = ToonUnique(color, grime, false, 0.85f);
         material.SetShaderParameter("rim_strength", 0f);
         material.SetShaderParameter("specular_strength", 0f);
@@ -182,21 +171,18 @@ public static class Materials
 
     /// <summary>A family's shading in another color with a full outline, for furniture recolored per room.</summary>
     public static ShaderMaterial Furniture(string familyName, Color color, float roughness) =>
-        Cached($"furniture|{familyName}|{color.ToHtml()}|{roughness:0.00}", () =>
-        {
+        Cached($"furniture|{familyName}|{color.ToHtml()}|{roughness:0.00}", () => {
             var material = FamilyUnique(familyName, color, roughness);
             material.NextPass = OutlineFor(0.003f);
             return material;
         });
 
-    public static ShaderMaterial ToonUnique(Color color, float grime = 0.25f, bool outline = true, float roughness = 0.7f)
-    {
+    public static ShaderMaterial ToonUnique(Color color, float grime = 0.25f, bool outline = true, float roughness = 0.7f) {
         var material = new ShaderMaterial { Shader = Toon };
         material.SetShaderParameter("albedo", color);
         material.SetShaderParameter("grime", grime);
         material.SetShaderParameter("roughness", roughness);
-        if (outline)
-        {
+        if (outline) {
             material.NextPass = OutlineFor(0.003f);
         }
         return material;
@@ -206,52 +192,43 @@ public static class Materials
     /// A model's own material in the game's shading, by its family: keeps its color, roughness, metallic and texture
     /// maps. <paramref name="outline"/>: most the outline may grow (meters), from the part's size, 0 for none.
     /// </summary>
-    public static ShaderMaterial Imported(BaseMaterial3D source, float outline)
-    {
+    public static ShaderMaterial Imported(BaseMaterial3D source, float outline) {
         var familyName = FamilyOf.GetValueOrDefault(source.ResourceName, "plastic");
         var textured = source.AlbedoTexture is not null || source.NormalTexture is not null
             || source.RoughnessTexture is not null || source.MetallicTexture is not null;
         var metallic = source.Metallic > 0.5f || source.MetallicTexture is not null ? Families[familyName].Metallic : 0f;
         var key = $"imported|{source.ResourceName}|{source.AlbedoColor.ToHtml()}|{source.Roughness:0.00}|{metallic:0.0}|{outline:0.0000}";
-        if (!textured && Cache.TryGetValue(key, out var cached))
-        {
+        if (!textured && Cache.TryGetValue(key, out var cached)) {
             return (ShaderMaterial)cached;
         }
         var material = FamilyUnique(familyName, source.AlbedoColor, source.Roughness);
         material.SetShaderParameter("metallic", metallic);
-        if (source.AlbedoTexture is not null)
-        {
+        if (source.AlbedoTexture is not null) {
             material.SetShaderParameter("albedo_texture", source.AlbedoTexture);
         }
-        if (source.NormalEnabled && source.NormalTexture is not null)
-        {
+        if (source.NormalEnabled && source.NormalTexture is not null) {
             material.SetShaderParameter("normal_texture", source.NormalTexture);
             material.SetShaderParameter("use_normal_texture", true);
         }
-        if (source.RoughnessTexture is not null)
-        {
+        if (source.RoughnessTexture is not null) {
             material.SetShaderParameter("roughness_texture", source.RoughnessTexture);
             material.SetShaderParameter("roughness_channel", Channel(source.RoughnessTextureChannel));
         }
-        if (source.MetallicTexture is not null)
-        {
+        if (source.MetallicTexture is not null) {
             material.SetShaderParameter("metallic_texture", source.MetallicTexture);
             material.SetShaderParameter("metallic_channel", Channel(source.MetallicTextureChannel));
         }
-        if (outline > 0f)
-        {
+        if (outline > 0f) {
             material.NextPass = OutlineFor(outline);
         }
-        if (!textured)
-        {
+        if (!textured) {
             Cache[key] = material;
         }
         return material;
     }
 
     /// <summary>A new material of a family with no outline, for per-object tweaks.</summary>
-    public static ShaderMaterial FamilyUnique(string familyName, Color color, float roughness)
-    {
+    public static ShaderMaterial FamilyUnique(string familyName, Color color, float roughness) {
         var family = Families[familyName];
         var material = ToonUnique(color, family.Grime, false, roughness);
         material.SetShaderParameter("specular_strength", family.Specular);
@@ -265,8 +242,7 @@ public static class Materials
 
     /// <summary>Most outline a part of this size gets: a hairline on a scalpel blade, a full line round a table.
     /// </summary>
-    public static float OutlineSize(Aabb bounds)
-    {
+    public static float OutlineSize(Aabb bounds) {
         float[] sizes = [bounds.Size.X, bounds.Size.Y, bounds.Size.Z];
         Array.Sort(sizes);
         return Mathf.Clamp(sizes[1] * OutlineShare, 0.0003f, 0.003f);
@@ -274,16 +250,14 @@ public static class Materials
 
     /// <summary>The shared outline pass that grows at most <paramref name="maxThickness"/> meters
     /// (outline.gdshader).</summary>
-    public static ShaderMaterial OutlineFor(float maxThickness) => Cached($"outline|{maxThickness:0.0000}", () =>
-    {
+    public static ShaderMaterial OutlineFor(float maxThickness) => Cached($"outline|{maxThickness:0.0000}", () => {
         var material = new ShaderMaterial { Shader = Outline };
         material.SetShaderParameter("max_thickness", maxThickness);
         return material;
     });
 
     /// <summary>Channel mask for a BaseMaterial3D texture channel (red, green, blue, alpha, grayscale).</summary>
-    private static Vector4 Channel(BaseMaterial3D.TextureChannel channel) => channel switch
-    {
+    private static Vector4 Channel(BaseMaterial3D.TextureChannel channel) => channel switch {
         BaseMaterial3D.TextureChannel.Red => new Vector4(1, 0, 0, 0),
         BaseMaterial3D.TextureChannel.Green => new Vector4(0, 1, 0, 0),
         BaseMaterial3D.TextureChannel.Blue => new Vector4(0, 0, 1, 0),
@@ -293,8 +267,7 @@ public static class Materials
 
     /// <summary>Patient body skin with its own outline, both able to carve out the cavity box (see
     /// <see cref="SetCarve"/>).</summary>
-    public static ShaderMaterial BodySkin(Color tone)
-    {
+    public static ShaderMaterial BodySkin(Color tone) {
         var material = FamilyUnique("skin", tone, 0.6f);
         var outline = new ShaderMaterial { Shader = Outline };
         outline.SetShaderParameter("max_thickness", 0.002f);
@@ -307,10 +280,8 @@ public static class Materials
     /// body (cut away there), the wound maps draw the damage on the body everywhere else. <paramref name="site"/> is the
     /// surgical site's global transform. The region has one texel per tissue grid point.
     /// </summary>
-    public static void SetCarve(ShaderMaterial material, Transform3D site, Vector2 halfSize, float depth, Texture2D region)
-    {
-        foreach (var pass in new[] { material, (ShaderMaterial)material.NextPass })
-        {
+    public static void SetCarve(ShaderMaterial material, Transform3D site, Vector2 halfSize, float depth, Texture2D region) {
+        foreach (var pass in new[] { material, (ShaderMaterial)material.NextPass }) {
             pass.SetShaderParameter(ShaderParam.CarveInverse, new Projection(site.AffineInverse()));
             pass.SetShaderParameter(ShaderParam.CarveBox, new Vector3(halfSize.X, depth, halfSize.Y));
             pass.SetShaderParameter(ShaderParam.CarveMap, region);
@@ -322,15 +293,13 @@ public static class Materials
     /// <summary>Moves the carve placed by <see cref="SetCarve"/> by <paramref name="lift"/> (world space). Sent every
     /// frame while the patient breathes: a vector costs nothing, where a matrix or texture passed to the engine leaves a
     /// wrapper for the garbage collector.</summary>
-    public static void LiftCarve(ShaderMaterial material, Vector3 lift)
-    {
+    public static void LiftCarve(ShaderMaterial material, Vector3 lift) {
         material.SetShaderParameter(ShaderParam.CarveLift, lift);
         ((ShaderMaterial)material.NextPass).SetShaderParameter(ShaderParam.CarveLift, lift);
     }
 
     /// <summary>Cavity walls: only drawn inside the region (see flesh.gdshader).</summary>
-    public static void SetReveal(ShaderMaterial material, Transform3D site, Vector2 halfSize, Texture2D region)
-    {
+    public static void SetReveal(ShaderMaterial material, Transform3D site, Vector2 halfSize, Texture2D region) {
         material.SetShaderParameter("region_inverse", new Projection(site.AffineInverse()));
         material.SetShaderParameter("region_box", new Vector3(halfSize.X, 1f, halfSize.Y));
         material.SetShaderParameter("region_map", region);
@@ -338,22 +307,19 @@ public static class Materials
         material.SetShaderParameter(ShaderParam.RegionLift, Vector3.Zero);
     }
 
-    public static void SetSiteMaps(ShaderMaterial material, Texture2D wounds, Texture2D fluids, Texture2D bleeds)
-    {
+    public static void SetSiteMaps(ShaderMaterial material, Texture2D wounds, Texture2D fluids, Texture2D bleeds) {
         material.SetShaderParameter("site_wounds", wounds);
         material.SetShaderParameter("site_fluids", fluids);
         material.SetShaderParameter("site_bleeds", bleeds);
     }
 
-    public static ShaderMaterial FleshMaterial(Color? color = null)
-    {
+    public static ShaderMaterial FleshMaterial(Color? color = null) {
         var material = new ShaderMaterial { Shader = Flesh };
         material.SetShaderParameter("albedo", color ?? new Color(0.55f, 0.12f, 0.12f));
         return material;
     }
 
-    public static ShaderMaterial SkinSite(Color tone, Texture2D woundTexture, Texture2D fluidTexture)
-    {
+    public static ShaderMaterial SkinSite(Color tone, Texture2D woundTexture, Texture2D fluidTexture) {
         var material = new ShaderMaterial { Shader = Skin };
         material.SetShaderParameter("skin_color", tone);
         // Lit like the body's skin around it (BodySkin()).
@@ -371,8 +337,7 @@ public static class Materials
     /// <summary>Fat (layer 0) or muscle (layer 1) under the surgical site skin, or the cut face of the skin (layer 2,
     /// in its tone) in the walls of a cut.</summary>
     public static ShaderMaterial TissueLayerMaterial(int layer, Texture2D fluidTexture, Texture2D bleedTexture, Color? tone = null,
-        bool cutFace = false)
-    {
+        bool cutFace = false) {
         var material = new ShaderMaterial { Shader = TissueLayer };
         material.SetShaderParameter("layer", layer);
         material.SetShaderParameter("skin_color", tone ?? new Color(0.84f, 0.66f, 0.56f));
@@ -382,14 +347,12 @@ public static class Materials
         return material;
     }
 
-    public static StandardMaterial3D Glow(Color color) => new()
-    {
+    public static StandardMaterial3D Glow(Color color) => new() {
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         AlbedoColor = color,
     };
 
-    public static StandardMaterial3D BloodPool() => new()
-    {
+    public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
         Roughness = 0.05f,
         MetallicSpecular = 0.9f,

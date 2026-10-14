@@ -9,16 +9,14 @@ public readonly record struct RayHit(Vector3 Position, Vector3 Normal, GodotObje
 /// frame, its pauses grow to hundreds of milliseconds. These go through one RayCast3D node per viewport instead, whose
 /// results are plain values. Main thread only.
 /// </summary>
-public static class Rays
-{
+public static class Rays {
     private static RayCast3D? _ray;
 
     /// <summary>The first collider on <paramref name="mask"/> from <paramref name="from"/> to <paramref name="to"/>
     /// (world space) in <paramref name="world"/>'s space, null for none. <paramref name="areas"/>: areas only, not
     /// bodies. <paramref name="inside"/>: also hits a shape from inside it.</summary>
     public static RayHit? Cast(Node3D world, Vector3 from, Vector3 to, uint mask, Rid exclude = default,
-        bool areas = false, bool inside = false)
-    {
+        bool areas = false, bool inside = false) {
         var ray = RayIn(world.GetViewport());
         ray.Position = from;
         ray.TargetPosition = to - from;
@@ -27,8 +25,7 @@ public static class Rays
         ray.CollideWithBodies = !areas;
         ray.HitFromInside = inside;
         ray.ClearExceptions();
-        if (exclude.IsValid)
-        {
+        if (exclude.IsValid) {
             ray.AddExceptionRid(exclude);
         }
         ray.ForceRaycastUpdate();
@@ -38,15 +35,12 @@ public static class Rays
     }
 
     /// <summary>The ray node in <paramref name="viewport"/>'s world, moved there from the last one asked for.</summary>
-    private static RayCast3D RayIn(Viewport viewport)
-    {
-        if (_ray is null || !GodotObject.IsInstanceValid(_ray))
-        {
+    private static RayCast3D RayIn(Viewport viewport) {
+        if (_ray is null || !GodotObject.IsInstanceValid(_ray)) {
             // Placed by hand before every cast, never by its own physics step.
             _ray = new RayCast3D { Enabled = false, TopLevel = true, HitBackFaces = true };
         }
-        if (_ray.GetParent() != viewport)
-        {
+        if (_ray.GetParent() != viewport) {
             _ray.GetParent()?.RemoveChild(_ray);
             viewport.AddChild(_ray, false, Node.InternalMode.Back);
         }

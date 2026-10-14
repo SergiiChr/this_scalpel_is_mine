@@ -6,8 +6,7 @@ namespace Scalpel.Core;
 /// Every file in res://data, loaded once on first use. Game code reads definitions from here and never parses files
 /// itself.
 /// </summary>
-public static class Db
-{
+public static class Db {
     private const string ScenarioDir = "res://data/scenarios";
     private const string ManualDir = "res://data/manual";
 
@@ -71,11 +70,9 @@ public static class Db
             : Surgeons.GripFit.None;
 
     /// <summary>Combined effects of the given run modifier ids.</summary>
-    public static Modifiers RunModifierEffects(IEnumerable<string> ids)
-    {
+    public static Modifiers RunModifierEffects(IEnumerable<string> ids) {
         var modifiers = new Modifiers();
-        foreach (var id in ids)
-        {
+        foreach (var id in ids) {
             modifiers.Add(Modifiers.ParseEffects(new ConfigReader(RunModifiers, id).String("effects")));
         }
         return modifiers;
@@ -87,21 +84,17 @@ public static class Db
             .OfType<ScenarioDef>()
             .OrderBy(s => s.Order)];
 
-    private static ConfigFile LoadConfig(string path)
-    {
+    private static ConfigFile LoadConfig(string path) {
         var file = new ConfigFile();
         var error = file.Load(path);
-        if (error != Error.Ok)
-        {
+        if (error != Error.Ok) {
             GD.PushError($"Can't read {path} ({error})");
         }
         return file;
     }
 
-    private static GodotDictionary LoadJson(string path)
-    {
-        if (!FileAccess.FileExists(path))
-        {
+    private static GodotDictionary LoadJson(string path) {
+        if (!FileAccess.FileExists(path)) {
             return [];
         }
         var parsed = Json.ParseString(FileAccess.GetFileAsString(path));

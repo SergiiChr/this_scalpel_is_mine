@@ -11,18 +11,14 @@ public sealed record SurgeryStatus(
     float NurseCooldown,
     NurseOrder? Order,
     float LabCooldown,
-    float Elapsed)
-{
+    float Elapsed) {
     public static readonly SurgeryStatus Empty = new([], 0, [], 0f, null, 0f, 0f);
 
     /// <summary>What the board over the nurse's bell shows: the order on its way with its progress, or her cooldown.
     /// </summary>
-    public string NurseBoard
-    {
-        get
-        {
-            if (Order is { } order)
-            {
+    public string NurseBoard {
+        get {
+            if (Order is { } order) {
                 var done = Mathf.RoundToInt(order.Progress * 10f);
                 return $"{order.Text}\n{new string('■', done)}{new string('□', 10 - done)}  {Mathf.CeilToInt(order.SecondsLeft)} s";
             }
@@ -33,8 +29,7 @@ public sealed record SurgeryStatus(
     /// <summary>Whether the nurse takes an order now.</summary>
     public bool NurseReady => Order is null && NurseCooldown <= 0f;
 
-    public GodotDictionary ToVariant() => new()
-    {
+    public GodotDictionary ToVariant() => new() {
         ["objectives"] = new Godot.Collections.Array(Objectives.Select(view => (Variant)view.ToVariant())),
         ["score"] = Score,
         ["log"] = new Godot.Collections.Array(Log.Select(entry => (Variant)new Godot.Collections.Array { entry.Text, entry.Points })),
@@ -44,8 +39,7 @@ public sealed record SurgeryStatus(
         ["elapsed"] = Elapsed,
     };
 
-    public static SurgeryStatus FromVariant(GodotDictionary data)
-    {
+    public static SurgeryStatus FromVariant(GodotDictionary data) {
         var order = data["order"].AsGodotArray();
         return new SurgeryStatus(
             [.. data["objectives"].AsGodotArray().Select(ObjectiveView.FromVariant)],

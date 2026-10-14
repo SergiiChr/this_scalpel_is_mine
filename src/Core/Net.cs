@@ -3,10 +3,8 @@ using GodotDictionary = Godot.Collections.Dictionary;
 namespace Scalpel.Core;
 
 /// <summary>A player in the lobby: name, rolled surgeon quirks and whether they're ready.</summary>
-public sealed record LobbyPlayer(string Name, IReadOnlyList<QuirkRoll> Quirks, bool Ready)
-{
-    public GodotDictionary ToVariant() => new()
-    {
+public sealed record LobbyPlayer(string Name, IReadOnlyList<QuirkRoll> Quirks, bool Ready) {
+    public GodotDictionary ToVariant() => new() {
         ["name"] = Name,
         ["quirks"] = QuirkRoll.ToVariant(Quirks),
         ["ready"] = Ready,
@@ -28,8 +26,7 @@ public sealed record LobbyPlayer(string Name, IReadOnlyList<QuirkRoll> Quirks, b
 /// about it, and the host stops applying a silent player's last input (see <see cref="Surgeon"/>).
 /// An autoload; the rest of the game reaches it through <see cref="Instance"/>.
 /// </summary>
-public partial class Net : Node
-{
+public partial class Net : Node {
     [Signal] public delegate void RosterChangedEventHandler();
     [Signal] public delegate void ScenarioChangedEventHandler();
     [Signal] public delegate void ConnectionFailedEventHandler(string reason);
@@ -72,8 +69,7 @@ public partial class Net : Node
     public Dictionary<int, LobbyPlayer> Roster { get; private set; } = [];
     /// <summary>The scenario of the lobby or session. Set through its id, except for a local session.</summary>
     public ScenarioDef? Scenario { get; private set; }
-    public string ScenarioId
-    {
+    public string ScenarioId {
         get => Scenario?.Id ?? "";
         private set => Scenario = Db.Scenario(value);
     }
@@ -90,8 +86,7 @@ public partial class Net : Node
 
     public override void _EnterTree() => Instance = this;
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         Multiplayer.PeerConnected += OnPeerConnected;
         Multiplayer.PeerDisconnected += OnPeerDisconnected;
         Multiplayer.ConnectedToServer += OnConnected;
@@ -99,15 +94,12 @@ public partial class Net : Node
         Multiplayer.ServerDisconnected += OnServerGone;
     }
 
-    public override void _Process(double delta)
-    {
-        if (!IsOnline)
-        {
+    public override void _Process(double delta) {
+        if (!IsOnline) {
             return;
         }
         _heartbeatAcc += delta;
-        if (_heartbeatAcc >= HeartbeatInterval)
-        {
+        if (_heartbeatAcc >= HeartbeatInterval) {
             _heartbeatAcc = 0;
             Rpc(MethodName.Heartbeat);
         }
@@ -125,23 +117,18 @@ public partial class Net : Node
     public bool AllReady => Roster.Count > 0 && Roster.Values.All(player => player.Ready);
 
     /// <summary>Seconds since anything was heard from the peer. 0 when playing solo or for yourself.</summary>
-    public float Silence(int peer)
-    {
-        if (!IsOnline || peer == LocalId || !_lastHeard.TryGetValue(peer, out var heard))
-        {
+    public float Silence(int peer) {
+        if (!IsOnline || peer == LocalId || !_lastHeard.TryGetValue(peer, out var heard)) {
             return 0f;
         }
         return (Time.GetTicksMsec() - heard) * 0.001f;
     }
 
     /// <summary>The longest any other player has been silent, or (0, 0) if everyone is fine.</summary>
-    public (int Peer, float Seconds) WorstSilence()
-    {
+    public (int Peer, float Seconds) WorstSilence() {
         var worst = (Peer: 0, Seconds: 0f);
-        foreach (var peer in _lastHeard.Keys)
-        {
-            if (Silence(peer) > worst.Seconds)
-            {
+        foreach (var peer in _lastHeard.Keys) {
+            if (Silence(peer) > worst.Seconds) {
                 worst = (peer, Silence(peer));
             }
         }
@@ -153,19 +140,16 @@ public partial class Net : Node
 
     private static void TolerateLag(ENetPacketPeer peer) => peer.SetTimeout(TimeoutLimit, TimeoutMinMsec, TimeoutMaxMsec);
 
-    public void PlaySolo(string scenario)
-    {
+    public void PlaySolo(string scenario) {
         Leave();
         StartHosting(scenario);
     }
 
-    public Error Host(string scenario, int port = DefaultPort)
-    {
+    public Error Host(string scenario, int port = DefaultPort) {
         Leave();
         var peer = new ENetMultiplayerPeer();
         var error = peer.CreateServer(port, MaxClients);
-        if (error != Error.Ok)
-        {
+        if (error != Error.Ok) {
             return error;
         }
         Multiplayer.MultiplayerPeer = peer;
@@ -173,17 +157,14 @@ public partial class Net : Node
         return Error.Ok;
     }
 
-    public Error Join(string ip, int port = DefaultPort)
-    {
+    public Error Join(string ip, int port = DefaultPort) {
         Leave();
         var peer = new ENetMultiplayerPeer();
         var error = peer.CreateClient(ip, port);
-        if (error != Error.Ok)
-        {
+        if (error != Error.Ok) {
             return error;
         }
-        if (peer.GetPeer(HostId) is { } hostPeer)
-        {
+        if (peer.GetPeer(HostId) is { } hostPeer) {
             TolerateLag(hostPeer);
         }
         Multiplayer.MultiplayerPeer = peer;
@@ -194,10 +175,8 @@ public partial class Net : Node
         return Error.Ok;
     }
 
-    public void Leave()
-    {
-        if (Multiplayer.MultiplayerPeer is { } peer and not OfflineMultiplayerPeer)
-        {
+    public void Leave() {
+        if (Multiplayer.MultiplayerPeer is { } peer and not OfflineMultiplayerPeer) {
             peer.Close();
         }
         Multiplayer.MultiplayerPeer = new OfflineMultiplayerPeer();
@@ -207,16 +186,14 @@ public partial class Net : Node
         _connectTimer = null;
     }
 
-    public void BackToMenu()
-    {
+    public void BackToMenu() {
         Leave();
         GetTree().ChangeSceneToFile(MenuScene);
     }
 
     // --- Host side ---------------------------------------------------------------------------------------
 
-    private void StartHosting(string scenario)
-    {
+    private void StartHosting(string scenario) {
         _rng.Randomize();
         ScenarioId = scenario;
         RunModifiers = RollRunModifiers();
@@ -227,33 +204,27 @@ public partial class Net : Node
     private LobbyPlayer NewPlayer(string name) => new(name, QuirkRoller.RollSurgeon(_rng), Ready: false);
 
     /// <summary>Host only. Picks a new scenario and rerolls everyone (it's a new run).</summary>
-    public void ChangeScenario(string id)
-    {
-        if (!IsHost)
-        {
+    public void ChangeScenario(string id) {
+        if (!IsHost) {
             return;
         }
         ScenarioId = id;
         RunModifiers = RollRunModifiers();
-        foreach (var peer in Roster.Keys.ToList())
-        {
+        foreach (var peer in Roster.Keys.ToList()) {
             Roster[peer] = Roster[peer] with { Quirks = QuirkRoller.RollSurgeon(_rng), Ready = false };
         }
         SyncLobbyEverywhere();
     }
 
     /// <summary>One or two per run, never the same twice.</summary>
-    private List<string> RollRunModifiers()
-    {
+    private List<string> RollRunModifiers() {
         var ids = Db.RunModifiers.GetSections().ToList();
         Shuffle(ids);
         return [.. ids.Take(_rng.RandiRange(1, 2))];
     }
 
-    private static void Shuffle<T>(List<T> list)
-    {
-        for (var i = list.Count - 1; i > 0; i--)
-        {
+    private static void Shuffle<T>(List<T> list) {
+        for (var i = list.Count - 1; i > 0; i--) {
             var j = (int)(GD.Randi() % (uint)(i + 1));
             (list[i], list[j]) = (list[j], list[i]);
         }
@@ -263,8 +234,7 @@ public partial class Net : Node
     /// A solo session without the lobby, for a surgery scene launched on its own (the editor): the given scenario, a
     /// random seed, the local player with rolled quirks and the patient's quirks, no run modifiers.
     /// </summary>
-    public void PrepareLocalSession(ScenarioDef scenario)
-    {
+    public void PrepareLocalSession(ScenarioDef scenario) {
         var rng = new RandomNumberGenerator();
         rng.Randomize();
         var player = new LobbyPlayer(Progress.PlayerName, QuirkRoller.RollSurgeon(rng), Ready: true);
@@ -275,8 +245,7 @@ public partial class Net : Node
     /// <see cref="PrepareLocalSession"/>). The scenario may be a changed copy of one in Db.</summary>
     public void StartLocalSession(
         ScenarioDef scenario, uint seed, LobbyPlayer player, IReadOnlyList<QuirkRoll> patientQuirks,
-        IReadOnlyList<string>? runModifiers = null)
-    {
+        IReadOnlyList<string>? runModifiers = null) {
         Leave();
         Scenario = scenario;
         SessionSeed = seed;
@@ -286,10 +255,8 @@ public partial class Net : Node
     }
 
     /// <summary>Host only, after everyone readied up.</summary>
-    public void StartSession()
-    {
-        if (!IsHost || !AllReady || Scenario is not { } scenario)
-        {
+    public void StartSession() {
+        if (!IsHost || !AllReady || Scenario is not { } scenario) {
             return;
         }
         SessionSeed = _rng.Randi();
@@ -299,10 +266,8 @@ public partial class Net : Node
     }
 
     /// <summary>Host only. Back to the lobby after a report, with fresh quirks.</summary>
-    public void ReturnToLobby()
-    {
-        if (IsHost)
-        {
+    public void ReturnToLobby() {
+        if (IsHost) {
             ChangeScenario(ScenarioId);
             Rpc(MethodName.GoToLobby);
         }
@@ -311,25 +276,20 @@ public partial class Net : Node
     public void SetReady(bool value) => RpcId(HostId, MethodName.RequestReady, value);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestReady(bool value)
-    {
+    private void RequestReady(bool value) {
         var sender = Sender();
-        if (IsHost && Roster.TryGetValue(sender, out var player))
-        {
+        if (IsHost && Roster.TryGetValue(sender, out var player)) {
             Roster[sender] = player with { Ready = value };
             SyncLobbyEverywhere();
         }
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Register(string playerName)
-    {
-        if (!IsHost)
-        {
+    private void Register(string playerName) {
+        if (!IsHost) {
             return;
         }
-        if (InSession)
-        {
+        if (InSession) {
             Multiplayer.MultiplayerPeer.DisconnectPeer(Sender());
             return;
         }
@@ -343,12 +303,10 @@ public partial class Net : Node
         Rpc(MethodName.SyncLobby, RosterToVariant(), ScenarioId, RunModifiersToVariant());
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void SyncLobby(GodotDictionary roster, string scenario, string[] modifiers)
-    {
+    private void SyncLobby(GodotDictionary roster, string scenario, string[] modifiers) {
         Roster = RosterFromVariant(roster);
         RunModifiers = [.. modifiers];
-        if (scenario != ScenarioId)
-        {
+        if (scenario != ScenarioId) {
             ScenarioId = scenario;
             EmitSignal(SignalName.ScenarioChanged);
         }
@@ -357,16 +315,14 @@ public partial class Net : Node
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void Begin(uint seed, Godot.Collections.Array patient, GodotDictionary roster, string scenario,
-        string[] modifiers)
-    {
+        string[] modifiers) {
         SessionSeed = seed;
         RunModifiers = [.. modifiers];
         PatientQuirks = QuirkRoll.FromVariant(patient);
         Roster = RosterFromVariant(roster);
         ScenarioId = scenario;
         InSession = true;
-        foreach (var roll in LocalQuirks)
-        {
+        foreach (var roll in LocalQuirks) {
             Progress.Unlock(Db.Quirk(QuirkKind.Surgeon, roll.Id), roll.Variant);
         }
         _loaded = [];
@@ -379,17 +335,14 @@ public partial class Net : Node
     public void FinishedLoading() => RpcId(HostId, MethodName.PeerLoaded);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void PeerLoaded()
-    {
+    private void PeerLoaded() {
         _loaded?.Add(Multiplayer.GetRemoteSenderId());
         EnterWhenAllLoaded();
     }
 
     /// <summary>Host: everyone still here has loaded (a player who drops out while loading isn't waited for).</summary>
-    private void EnterWhenAllLoaded()
-    {
-        if (_loaded is not null && Roster.Keys.All(_loaded.Contains))
-        {
+    private void EnterWhenAllLoaded() {
+        if (_loaded is not null && Roster.Keys.All(_loaded.Contains)) {
             _loaded = null;
             Rpc(MethodName.EnterSurgery);
         }
@@ -399,75 +352,62 @@ public partial class Net : Node
     private void EnterSurgery() => EmitSignal(SignalName.AllLoaded);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void GoToLobby()
-    {
+    private void GoToLobby() {
         InSession = false;
         GetTree().ChangeSceneToFile(LobbyScene);
     }
 
-    private void OnConnected()
-    {
+    private void OnConnected() {
         _connectTimer = null;
         _lastHeard[HostId] = Time.GetTicksMsec();
         RpcId(HostId, MethodName.Register, Progress.PlayerName);
         GetTree().ChangeSceneToFile(LobbyScene);
     }
 
-    private void OnPeerConnected(long id)
-    {
+    private void OnPeerConnected(long id) {
         _lastHeard[(int)id] = Time.GetTicksMsec();
-        if (IsHost && Multiplayer.MultiplayerPeer is ENetMultiplayerPeer enet)
-        {
+        if (IsHost && Multiplayer.MultiplayerPeer is ENetMultiplayerPeer enet) {
             TolerateLag(enet.GetPeer((int)id));
         }
     }
 
-    private void OnPeerDisconnected(long id)
-    {
+    private void OnPeerDisconnected(long id) {
         Roster.Remove((int)id);
         _lastHeard.Remove((int)id);
-        if (IsHost)
-        {
+        if (IsHost) {
             SyncLobbyEverywhere();
             EnterWhenAllLoaded();
         }
     }
 
-    private void OnServerGone()
-    {
+    private void OnServerGone() {
         LastError = "Lost the connection to the host.";
         EmitSignal(SignalName.Disconnected);
         BackToMenu();
     }
 
-    private void OnConnectTimeout(SceneTreeTimer timer)
-    {
+    private void OnConnectTimeout(SceneTreeTimer timer) {
         // Only the attempt this timer was started for; a later join has its own.
         if (timer == _connectTimer && Multiplayer.MultiplayerPeer is ENetMultiplayerPeer enet && LocalId != HostId
-            && enet.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connecting)
-        {
+            && enet.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connecting) {
             OnConnectFailed($"The host didn't answer within {ConnectTimeout:0} seconds.");
         }
     }
 
-    private void OnConnectFailed(string reason)
-    {
+    private void OnConnectFailed(string reason) {
         Leave();
         EmitSignal(SignalName.ConnectionFailed, reason);
     }
 
     /// <summary>Remote sender id, or our own id for local calls.</summary>
-    public int Sender()
-    {
+    public int Sender() {
         var id = Multiplayer.GetRemoteSenderId();
         return id != 0 ? id : LocalId;
     }
 
-    private GodotDictionary RosterToVariant()
-    {
+    private GodotDictionary RosterToVariant() {
         var roster = new GodotDictionary();
-        foreach (var (peer, player) in Roster)
-        {
+        foreach (var (peer, player) in Roster) {
             roster[peer] = player.ToVariant();
         }
         return roster;

@@ -1,8 +1,7 @@
 namespace Scalpel.Data;
 
 /// <summary>Typed reads of one section of a Godot <see cref="ConfigFile"/>, falling back to a default.</summary>
-public readonly struct ConfigReader(ConfigFile file, string section)
-{
+public readonly struct ConfigReader(ConfigFile file, string section) {
     public string Section => section;
 
     public bool Has(string key) => file.HasSectionKey(section, key);

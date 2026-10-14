@@ -4,11 +4,9 @@ namespace Scalpel.Tests.UI;
 /// under it once it's open, and Divine knowledge points at the patient's condition through both levels.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
-public class ManualTest
-{
+public class ManualTest {
     [TestCase]
-    public void ConditionsOpenUnderTheirSectionAndDivineKnowledgePointsThrough()
-    {
+    public void ConditionsOpenUnderTheirSectionAndDivineKnowledgePointsThrough() {
         var manual = new ManualView(["aneurysm"], () => { });
         AutoFree(manual.View);
         Frames.Root.AddChild(manual.View);
@@ -37,8 +35,7 @@ public class ManualTest
     /// <summary>Drug allergy lists its drugs under it once it's open, and each drug's page gives its alternatives and
     /// what its reaction looks like.</summary>
     [TestCase]
-    public void AllergyDrugsOpenUnderDrugAllergy()
-    {
+    public void AllergyDrugsOpenUnderDrugAllergy() {
         var manual = new ManualView([], () => { });
         AutoFree(manual.View);
         Frames.Root.AddChild(manual.View);

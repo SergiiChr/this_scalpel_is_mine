@@ -9,8 +9,7 @@ namespace Scalpel.Operation;
 /// Launch surgery.tscn directly (F6 in the editor) for a solo test run. Command line: `-- --scenario=appendectomy`
 /// picks the scenario.
 /// </summary>
-public partial class Surgery : Node3D
-{
+public partial class Surgery : Node3D {
     /// <summary>Host: a dose went into a surgeon (their own peer gets it through Dosed()).</summary>
     [Signal] public delegate void SurgeonDosedEventHandler(int peer, string drug, float amount);
 
@@ -27,8 +26,7 @@ public partial class Surgery : Node3D
 
     /// <summary>Turning the patient: who takes part, what each scored, time left and where they're turning to.
     /// </summary>
-    private sealed class TurnAttempt(List<int> peers, PatientPose target)
-    {
+    private sealed class TurnAttempt(List<int> peers, PatientPose target) {
         public List<int> Peers { get; } = peers;
         public Dictionary<int, (int Hits, bool Critical)> Results { get; } = [];
         public float Timer { get; set; } = QteTimeout;
@@ -91,19 +89,15 @@ public partial class Surgery : Node3D
 
     public override void _EnterTree() => Current = this;
 
-    public override void _ExitTree()
-    {
-        if (Current == this)
-        {
+    public override void _ExitTree() {
+        if (Current == this) {
             Current = null;
         }
     }
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         var net = Net.Instance;
-        if (net.Roster.Count == 0)
-        {
+        if (net.Roster.Count == 0) {
             net.PrepareLocalSession(ScenarioFromCommandLine());
         }
         Scenario = net.Scenario!;
@@ -119,8 +113,7 @@ public partial class Surgery : Node3D
         AddChild(_effects);
         var personal = new Dictionary<int, IReadOnlyList<string>>();
         var peers = net.Roster.Keys.Order().ToList();
-        for (var i = 0; i < peers.Count; i++)
-        {
+        for (var i = 0; i < peers.Count; i++) {
             var surgeon = SpawnSurgeon(peers[i], i);
             personal[peers[i]] = surgeon.Mods.List("items");
         }
@@ -135,8 +128,7 @@ public partial class Surgery : Node3D
     }
 
     /// <summary>The scenario named by `--scenario=id` after `--` on the command line, the first one otherwise.</summary>
-    private static ScenarioDef ScenarioFromCommandLine()
-    {
+    private static ScenarioDef ScenarioFromCommandLine() {
         var wanted = OS.GetCmdlineUserArgs()
             .Where(arg => arg.StartsWith("--scenario=", StringComparison.Ordinal))
             .Select(arg => arg["--scenario=".Length..])
@@ -144,30 +136,25 @@ public partial class Surgery : Node3D
         return (wanted is null ? null : Db.Scenario(wanted)) ?? Db.Scenarios[0];
     }
 
-    internal Surgeon SpawnSurgeon(int peer, int index)
-    {
+    internal Surgeon SpawnSurgeon(int peer, int index) {
         var surgeon = new Surgeon();
         SurgeonsRoot.AddChild(surgeon);
         var info = Net.Instance.Roster[peer];
         surgeon.Setup(peer, info.Name, info.Quirks, Room.SpawnTransform(index));
         Surgeons[peer] = surgeon;
-        if (surgeon.IsLocal)
-        {
+        if (surgeon.IsLocal) {
             LocalSurgeon = surgeon;
         }
         return surgeon;
     }
 
-    public override void _PhysicsProcess(double delta)
-    {
-        if (!Running || Finished)
-        {
+    public override void _PhysicsProcess(double delta) {
+        if (!Running || Finished) {
             return;
         }
         var dt = (float)delta;
         Elapsed += dt;
-        if (!IsHost)
-        {
+        if (!IsHost) {
             return;
         }
         Objectives.Tick(dt, this);
@@ -175,21 +162,16 @@ public partial class Surgery : Node3D
         Nurse.Tick(dt, this);
         Lab.Tick(dt, this);
         TickTurn(dt);
-        if (Scenario.TimeLimit > 0f && Elapsed >= Scenario.TimeLimit)
-        {
+        if (Scenario.TimeLimit > 0f && Elapsed >= Scenario.TimeLimit) {
             Discharge("Out of time.");
         }
         _statusAcc += dt;
-        if (_statusAcc >= StatusInterval)
-        {
+        if (_statusAcc >= StatusInterval) {
             _statusAcc = 0f;
             var status = CaptureStatus();
-            if (Net.Instance.IsOnline)
-            {
+            if (Net.Instance.IsOnline) {
                 Rpc(MethodName.SyncStatus, status.ToVariant());
-            }
-            else
-            {
+            } else {
                 ApplyStatus(status);
             }
         }
@@ -200,23 +182,18 @@ public partial class Surgery : Node3D
 
     /// <summary>A partner dropped out: their tools fall where they are and their surgeon leaves the room. Clients only
     /// ever see the host leave, and Net takes them back to the menu for that.</summary>
-    private void OnPeerLeft(int peer)
-    {
-        if (!Surgeons.TryGetValue(peer, out var surgeon))
-        {
+    private void OnPeerLeft(int peer) {
+        if (!Surgeons.TryGetValue(peer, out var surgeon)) {
             return;
         }
-        if (IsHost)
-        {
+        if (IsHost) {
             Tools.DropAll(peer);
-            if (_turn is not null)
-            {
+            if (_turn is not null) {
                 _turn.Peers.Remove(peer);
                 _turn.Results.Remove(peer);
             }
             Announce($"{surgeon.DisplayName} left the operation.");
-            if (!Running)
-            {
+            if (!Running) {
                 TryStart();
             }
         }
@@ -227,10 +204,8 @@ public partial class Surgery : Node3D
     /// <summary>Seconds left on the scenario's clock, -1 without a time limit.</summary>
     public float TimeLeft() => Scenario.TimeLimit > 0f ? Mathf.Max(Scenario.TimeLimit - Elapsed, 0f) : -1f;
 
-    private void OnPatientDied(string reason)
-    {
-        if (Patient.Flags.ContainsKey("euthanized"))
-        {
+    private void OnPatientDied(string reason) {
+        if (Patient.Flags.ContainsKey("euthanized")) {
             Announce(reason);
             return;
         }
@@ -243,20 +218,16 @@ public partial class Surgery : Node3D
 
     /// <summary>Host: every way a surgery ends (discharge, time, death) settles the objectives here, once. A success
     /// only when it <paramref name="canSucceed"/> and every required step counts.</summary>
-    private void End(bool canSucceed, string reason)
-    {
-        if (Finished)
-        {
+    private void End(bool canSucceed, string reason) {
+        if (Finished) {
             return;
         }
         var ready = Objectives.Settle(Scoring) && canSucceed;
         Finish(ready, ready ? "" : reason);
     }
 
-    internal void Finish(bool success, string reason)
-    {
-        if (Finished)
-        {
+    internal void Finish(bool success, string reason) {
+        if (Finished) {
             return;
         }
         Finished = true;
@@ -267,15 +238,12 @@ public partial class Surgery : Node3D
 
     /// <summary>Host: toast for everyone. <paramref name="throttled"/> drops repeats of the same text for a few seconds.
     /// </summary>
-    public void Announce(string text, bool throttled = false)
-    {
-        if (!IsHost || text.Length == 0)
-        {
+    public void Announce(string text, bool throttled = false) {
+        if (!IsHost || text.Length == 0) {
             return;
         }
         var now = GameClock.Seconds;
-        if (throttled && now - _announced.GetValueOrDefault(text, double.NegativeInfinity) < 5.0)
-        {
+        if (throttled && now - _announced.GetValueOrDefault(text, double.NegativeInfinity) < 5.0) {
             return;
         }
         _announced[text] = now;
@@ -284,10 +252,8 @@ public partial class Surgery : Node3D
 
     /// <summary>Host: toast only players in debug mode see (objective progress and other things the game keeps to
     /// itself).</summary>
-    public void AnnounceDebug(string text)
-    {
-        if (IsHost)
-        {
+    public void AnnounceDebug(string text) {
+        if (IsHost) {
             Rpc(MethodName.ToastDebug, text);
         }
     }
@@ -296,29 +262,23 @@ public partial class Surgery : Node3D
     public void Tell(int peer, string text) => RpcId(peer, MethodName.Toast, text);
 
     /// <summary>Host: play a sound on every peer, in 3D at <paramref name="at"/> or flat when it's null.</summary>
-    public void Sound(string id, Vector3? at = null)
-    {
-        if (!Throttle(_soundMsec, id, SoundRepeatMsec))
-        {
+    public void Sound(string id, Vector3? at = null) {
+        if (!Throttle(_soundMsec, id, SoundRepeatMsec)) {
             return;
         }
         Rpc(MethodName.PlaySound, id, at ?? Vector3.Inf);
     }
 
     /// <summary>Continuous contact is sampled rather than retransmitting a one-shot each frame.</summary>
-    public void ContactSound(int uid, string id, Vector3 at, float strength)
-    {
-        if (IsHost && Throttle(_contactMsec, uid, ContactRepeatMsec))
-        {
+    public void ContactSound(int uid, string id, Vector3 at, float strength) {
+        if (IsHost && Throttle(_contactMsec, uid, ContactRepeatMsec)) {
             Rpc(MethodName.PlayContactSound, uid, id, at, strength);
         }
     }
 
     /// <summary>Host: a tool effect on every peer, at most one per kind every <paramref name="minMsec"/>.</summary>
-    public void Effect(ToolEffect kind, Vector3 at, ulong minMsec = 120)
-    {
-        if (Throttle(_effectMsec, kind, minMsec))
-        {
+    public void Effect(ToolEffect kind, Vector3 at, ulong minMsec = 120) {
+        if (Throttle(_effectMsec, kind, minMsec)) {
             Rpc(MethodName.PlayEffect, (int)kind, at);
         }
     }
@@ -327,21 +287,17 @@ public partial class Surgery : Node3D
 
     /// <summary>Host: a swab within <paramref name="reach"/> of <paramref name="at"/> wipes the blood beads there away on
     /// every peer.</summary>
-    public void WipeBeads(Vector3 at, float reach)
-    {
-        if (_effects.BeadNear(at, reach))
-        {
+    public void WipeBeads(Vector3 at, float reach) {
+        if (_effects.BeadNear(at, reach)) {
             Rpc(MethodName.WipeBeadsOnPeer, at, reach);
         }
     }
 
     /// <summary>True (and remembers now) when <paramref name="key"/> last went through at least
     /// <paramref name="gapMsec"/> ago.</summary>
-    private static bool Throttle<TKey>(Dictionary<TKey, ulong> last, TKey key, ulong gapMsec) where TKey : notnull
-    {
+    private static bool Throttle<TKey>(Dictionary<TKey, ulong> last, TKey key, ulong gapMsec) where TKey : notnull {
         var now = GameClock.Msec;
-        if (last.TryGetValue(key, out var then) && now - then < gapMsec)
-        {
+        if (last.TryGetValue(key, out var then) && now - then < gapMsec) {
             return false;
         }
         last[key] = now;
@@ -352,8 +308,7 @@ public partial class Surgery : Node3D
     /// </summary>
     public void Say(string text, string voiceId) => Rpc(MethodName.SayLine, text, voiceId);
 
-    public void JoltAll(float strength, string text)
-    {
+    public void JoltAll(float strength, string text) {
         Rpc(MethodName.Jolt, strength);
         Announce(text, throttled: true);
     }
@@ -366,19 +321,15 @@ public partial class Surgery : Node3D
 
     /// <summary>Host: a syringe pushed <paramref name="amount"/> of a drug into a surgeon, given as it goes in.
     /// </summary>
-    public void DoseSurgeon(int peer, string drug, float amount)
-    {
+    public void DoseSurgeon(int peer, string drug, float amount) {
         EmitSignal(SignalName.SurgeonDosed, peer, drug, amount);
-        if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer))
-        {
+        if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer)) {
             RpcId(peer, MethodName.Dosed, drug, amount);
         }
     }
 
-    public void SetAttached(int peer, int hand, bool value)
-    {
-        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0)
-        {
+    public void SetAttached(int peer, int hand, bool value) {
+        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0) {
             surgeon.RpcId(peer, Surgeon.MethodName.SetHandAttached, hand, value);
         }
     }
@@ -386,20 +337,16 @@ public partial class Surgery : Node3D
     /// <summary>The skin this hand of this surgeon holds onto stops giving: the hand comes back by
     /// <paramref name="shift"/> (world) to where the skin lets the tool's tip go (<see cref="TissueSim.Restrain"/>).
     /// </summary>
-    public void HoldHandBack(int peer, int hand, Vector3 shift)
-    {
-        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0)
-        {
+    public void HoldHandBack(int peer, int hand, Vector3 shift) {
+        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0) {
             surgeon.RpcId(peer, Surgeon.MethodName.HoldHandBack, hand, shift);
         }
     }
 
     /// <summary>The tool in this hand of this surgeon bounced off what it was pressed onto: the hand hops up and comes
     /// back down.</summary>
-    public void BounceHand(int peer, int hand)
-    {
-        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0)
-        {
+    public void BounceHand(int peer, int hand) {
+        if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0) {
             surgeon.RpcId(peer, Surgeon.MethodName.BounceHand, hand);
         }
     }
@@ -412,26 +359,20 @@ public partial class Surgery : Node3D
     public void PublishLab(string text) => Rpc(MethodName.LabResult, text);
 
     /// <summary>Defibrillator discharge: anyone else touching the patient gets zapped.</summary>
-    public void ShockBystanders(int sourcePeer)
-    {
-        foreach (var (peer, surgeon) in Surgeons)
-        {
-            if (peer != sourcePeer && surgeon.Hands.Any(hand => hand.Lowered && Patient.Body.Probe(hand.GlobalPosition).Zone != SiteZone.None))
-            {
+    public void ShockBystanders(int sourcePeer) {
+        foreach (var (peer, surgeon) in Surgeons) {
+            if (peer != sourcePeer && surgeon.Hands.Any(hand => hand.Lowered && Patient.Body.Probe(hand.GlobalPosition).Zone != SiteZone.None)) {
                 RpcId(peer, MethodName.Zapped);
             }
         }
     }
 
     /// <summary>A surgeon walked away while holding onto tissue.</summary>
-    public void Overstretched(int peer, int hand)
-    {
-        if (Tools.ToolInHand(peer, hand) is not { Hold: { } hold } tool)
-        {
+    public void Overstretched(int peer, int hand) {
+        if (Tools.ToolInHand(peer, hand) is not { Hold: { } hold } tool) {
             return;
         }
-        if (tool.Def.SelfRetaining)
-        {
+        if (tool.Def.SelfRetaining) {
             // A self-retaining tool (a Gelpi retractor, a hooked retractor) holds by itself: walking away just leaves it.
             Tools.LeaveStanding(tool);
             Tell(peer, $"You let go of the {tool.Def.Name.ToLowerInvariant()}. It keeps its hold.");
@@ -449,10 +390,8 @@ public partial class Surgery : Node3D
     private void Toast(string text) => Hud.Toast(text);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void ToastDebug(string text)
-    {
-        if (Settings.Debug)
-        {
+    private void ToastDebug(string text) {
+        if (Settings.Debug) {
             Hud.Toast("[debug] " + text);
         }
     }
@@ -470,16 +409,14 @@ public partial class Surgery : Node3D
     private void WipeBeadsOnPeer(Vector3 at, float reach) => _effects.WipeBeads(at, reach);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void SayLine(string text, string voiceId)
-    {
+    private void SayLine(string text, string voiceId) {
         Hud.Subtitle(text);
         Patient.Body.Animator.Talk(Mathf.Clamp(text.Length / 14f, 1f, 6f));
         Sfx.PlayVoice(voiceId, Patient.GlobalPosition + new Vector3(0.7f, 0.2f, 0));
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Jolt(float strength)
-    {
+    private void Jolt(float strength) {
         Patient.Body.Tissue.Shake(strength * 0.003f);
         LocalSurgeon?.Jolt(strength);
     }
@@ -491,27 +428,22 @@ public partial class Surgery : Node3D
     private void Sick(float amount) => LocalSurgeon?.Status.AddSickness(amount);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Dosed(string drug, float amount)
-    {
-        if (LocalSurgeon is null)
-        {
+    private void Dosed(string drug, float amount) {
+        if (LocalSurgeon is null) {
             return;
         }
         LocalSurgeon.Status.Administer(drug, amount);
         // Once for a few pushes in a row, not for every ml.
         var now = GameClock.Msec;
-        if (_stungMsec == 0 || now - _stungMsec > StingGapMsec)
-        {
+        if (_stungMsec == 0 || now - _stungMsec > StingGapMsec) {
             Hud.Toast("A sharp sting. Something cold goes in.");
         }
         _stungMsec = now;
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Zapped()
-    {
-        if (LocalSurgeon is null)
-        {
+    private void Zapped() {
+        if (LocalSurgeon is null) {
             return;
         }
         Hud.Toast("ZAP! You were touching the patient during the shock.");
@@ -524,15 +456,13 @@ public partial class Surgery : Node3D
     private void Flicker(float duration) => Room.Flicker(duration);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void ChartCorrection()
-    {
+    private void ChartCorrection() {
         ChartCorrected = true;
         Hud.Toast("Nurse: \"Corrected chart. The old one belonged to someone else. Sorry.\"");
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void LabResult(string text)
-    {
+    private void LabResult(string text) {
         Room.Monitor.ShowLab(text);
         Hud.Toast("Lab results are on the monitor.");
     }
@@ -540,15 +470,13 @@ public partial class Surgery : Node3D
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
     private void SyncStatus(GodotDictionary data) => ApplyStatus(SurgeryStatus.FromVariant(data));
 
-    private void ApplyStatus(SurgeryStatus status)
-    {
+    private void ApplyStatus(SurgeryStatus status) {
         Status = status;
         Elapsed = status.Elapsed;
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Start()
-    {
+    private void Start() {
         // Setting up the room left plenty of garbage: collected now, it doesn't stall the first minute of play.
         ManagedRuntime.CollectNow();
         // Waiting for the other players isn't surgery time: the clock and what moves by it count from here.
@@ -558,18 +486,15 @@ public partial class Surgery : Node3D
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void ShowReport(GodotDictionary data)
-    {
+    private void ShowReport(GodotDictionary data) {
         var report = SurgeryReport.FromVariant(data);
         Report = report;
         Running = false;
         Finished = true;
-        foreach (var roll in report.PatientQuirks)
-        {
+        foreach (var roll in report.PatientQuirks) {
             Progress.Unlock(Db.Quirk(QuirkKind.Patient, roll.Id), roll.Variant);
         }
-        if (IsHost)
-        {
+        if (IsHost) {
             Progress.RecordResult(report.Scenario, report.Stars);
         }
         Hud.ShowReport(report);
@@ -578,16 +503,13 @@ public partial class Surgery : Node3D
     // --- Peer -> host requests ----------------------------------------------------------------------------
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void PeerReady()
-    {
+    private void PeerReady() {
         _loaded.Add(Net.Instance.Sender());
         TryStart();
     }
 
-    private void TryStart()
-    {
-        if (!Running && Net.Instance.Roster.Keys.All(_loaded.Contains))
-        {
+    private void TryStart() {
+        if (!Running && Net.Instance.Roster.Keys.All(_loaded.Contains)) {
             Rpc(MethodName.Start);
         }
     }
@@ -595,26 +517,21 @@ public partial class Surgery : Node3D
     public void RequestDrink(int hand) => RpcId(Net.HostId, MethodName.RequestDrinkOnHost, hand);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestDrinkOnHost(int hand)
-    {
+    private void RequestDrinkOnHost(int hand) {
         var peer = Net.Instance.Sender();
-        if (Tools.Drink(peer, hand) is { } id)
-        {
+        if (Tools.Drink(peer, hand) is { } id) {
             RpcId(peer, MethodName.Drank, id);
         }
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Drank(string toolId)
-    {
-        if (LocalSurgeon is null)
-        {
+    private void Drank(string toolId) {
+        if (LocalSurgeon is null) {
             return;
         }
         LocalSurgeon.Status.Drink(toolId);
         Sfx.Play("sip", LocalSurgeon.GlobalPosition);
-        Hud.Toast(toolId switch
-        {
+        Hud.Toast(toolId switch {
             "whiskey_flask" => "Warm. Steady.",
             "coffee_thermos" => "Bitter. Awake.",
             "surgical_cap" => "Cap on. No more drips.",
@@ -623,12 +540,10 @@ public partial class Surgery : Node3D
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestSmoke(int hand)
-    {
+    private void RequestSmoke(int hand) {
         var peer = Net.Instance.Sender();
         var tool = Tools.ToolInHand(peer, hand);
-        if (tool is null || tool.Def.Id != "cig_pack" || !Tools.UseCharge(tool))
-        {
+        if (tool is null || tool.Def.Id != "cig_pack" || !Tools.UseCharge(tool)) {
             return;
         }
         var eyes = Surgeons[peer].Camera.GlobalTransform;
@@ -639,8 +554,7 @@ public partial class Surgery : Node3D
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Smoked()
-    {
+    private void Smoked() {
         LocalSurgeon?.Status.Smoke();
         Hud.Toast("Ahh. Nothing can touch you now.");
     }
@@ -650,25 +564,20 @@ public partial class Surgery : Node3D
     public void ReportIncident(string kind) => RpcId(Net.HostId, MethodName.Incident, kind);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Incident(string kind)
-    {
-        if (!Surgeons.TryGetValue(Net.Instance.Sender(), out var surgeon))
-        {
+    private void Incident(string kind) {
+        if (!Surgeons.TryGetValue(Net.Instance.Sender(), out var surgeon)) {
             return;
         }
-        switch (kind)
-        {
+        switch (kind) {
             case "vomit":
                 Scoring.Add("vomit");
                 var at = surgeon.Hands[surgeon.Active].GlobalPosition;
-                if (Patient.Body.Probe(at + Vector3.Down * 0.1f).Zone is SiteZone.Site or SiteZone.Cavity)
-                {
+                if (Patient.Body.Probe(at + Vector3.Down * 0.1f).Zone is SiteZone.Site or SiteZone.Cavity) {
                     var uv = Patient.Body.WorldToUv(at);
                     Patient.Paint(WoundMap.Layer.Fluids, WoundMap.Grime, uv, uv, 0.15f, 0.9f, WoundMap.Mode.Max);
                     Patient.ContaminateSite("...right into the surgical field.");
                 }
-                foreach (var other in Surgeons.Keys.Where(other => other != surgeon.PeerId))
-                {
+                foreach (var other in Surgeons.Keys.Where(other => other != surgeon.PeerId)) {
                     AddSickness(other, 0.3f);
                 }
                 break;
@@ -685,21 +594,17 @@ public partial class Surgery : Node3D
     /// Drugs pushed into the old bag go with it.
     /// Without a working line nothing changes: the bag stays in hand and the hung one keeps what it had.</summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestIvBag(int hand)
-    {
+    private void RequestIvBag(int hand) {
         var peer = Net.Instance.Sender();
         var tool = Tools.ToolInHand(peer, hand);
-        if (tool is null || !tool.Def.IvOnly || tool.Charges == 0)
-        {
+        if (tool is null || !tool.Def.IvOnly || tool.Charges == 0) {
             Tell(peer, "Hold a bag to hang it on the stand.");
             return;
         }
-        if (!Patient.IvReady())
-        {
+        if (!Patient.IvReady()) {
             return;
         }
-        if (Tools.DripBag() is { } drip)
-        {
+        if (Tools.DripBag() is { } drip) {
             drip.Contents.Clear();
             drip.Bolus = 0f;
             drip.DrippedTotal = 0f;
@@ -708,11 +613,9 @@ public partial class Surgery : Node3D
                 blood ? new Dictionary<string, float> { ["blood"] = SurgicalTool.DripFluid } : []);
         }
         Patient.Administer(tool.Def.Drug, DrugRoute.Iv);
-        if (tool.Charges > 0)
-        {
+        if (tool.Charges > 0) {
             tool.Charges--;
-            if (tool.Charges == 0)
-            {
+            if (tool.Charges == 0) {
                 Tools.Consume(tool);
             }
         }
@@ -722,10 +625,8 @@ public partial class Surgery : Node3D
     private void RequestComfort() => Patient.Reassure();
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestDischarge()
-    {
-        if (Running)
-        {
+    private void RequestDischarge() {
+        if (Running) {
             Discharge("Discharged before the job was done.");
         }
     }
@@ -750,8 +651,7 @@ public partial class Surgery : Node3D
 
     public void OrderLab(string kind) => RpcId(Net.HostId, MethodName.RequestLab, kind);
 
-    public void ChangeGloves(Surgeon surgeon)
-    {
+    public void ChangeGloves(Surgeon surgeon) {
         surgeon.Status.Sweat = 0f;
         surgeon.Rpc(Surgeon.MethodName.CleanGloves);
         Hud.Toast("Fresh gloves.");
@@ -759,8 +659,7 @@ public partial class Surgery : Node3D
 
     public void SanitizeTool(Surgeon surgeon) => Tools.RequestSterilize(surgeon.Active);
 
-    public void WashTool(Surgeon surgeon)
-    {
+    public void WashTool(Surgeon surgeon) {
         Tools.RequestWash(surgeon.Active);
         Sfx.Play("sink_water", surgeon.GlobalPosition);
     }
@@ -781,42 +680,34 @@ public partial class Surgery : Node3D
     // again. Too many misses or a wrong key: they hit the floor.
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestTurn()
-    {
+    private void RequestTurn() {
         var peer = Net.Instance.Sender();
-        if (_turn is not null)
-        {
+        if (_turn is not null) {
             return;
         }
         var center = Patient.GlobalPosition;
         var near = Surgeons.Where(pair => pair.Value.GlobalPosition.DistanceTo(center) < 1.5f).Select(pair => pair.Key).ToList();
-        if (near.Count == 0)
-        {
+        if (near.Count == 0) {
             Tell(peer, "Get closer to the table to turn them.");
             return;
         }
-        if (near.Select(p => Mathf.Sign(Surgeons[p].GlobalPosition.Z)).Distinct().Count() > 1)
-        {
+        if (near.Select(p => Mathf.Sign(Surgeons[p].GlobalPosition.Z)).Distinct().Count() > 1) {
             Tell(peer, "Get on the same side of the table to turn them.");
             return;
         }
-        if (near.Any(p => Surgeons[p].Hands.Any(hand => hand.Attached)))
-        {
+        if (near.Any(p => Surgeons[p].Hands.Any(hand => hand.Attached))) {
             Tell(peer, "Let go of everything first.");
             return;
         }
         var sequence = Enumerable.Range(0, 4).Select(_ => QteKeys[Rng.RandiRange(0, QteKeys.Count - 1)]).ToArray();
         _turn = new TurnAttempt(near, NextOrientation());
-        foreach (var p in near)
-        {
+        foreach (var p in near) {
             RpcId(p, MethodName.TurnBegin, sequence, 1.1f);
         }
     }
 
-    private PatientPose NextOrientation()
-    {
-        if (Patient.Body.Pose != PatientPose.Side)
-        {
+    private PatientPose NextOrientation() {
+        if (Patient.Body.Pose != PatientPose.Side) {
             return PatientPose.Side;
         }
         var flip = Scenario.Steps.FirstOrDefault(step => step.Type == "flip");
@@ -829,49 +720,37 @@ public partial class Surgery : Node3D
             (hits, critical) => RpcId(Net.HostId, MethodName.TurnResult, hits, critical));
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    internal void TurnResult(int hits, bool critical)
-    {
-        if (_turn is null)
-        {
+    internal void TurnResult(int hits, bool critical) {
+        if (_turn is null) {
             return;
         }
         _turn.Results[Net.Instance.Sender()] = (hits, critical);
-        if (_turn.Results.Count >= _turn.Peers.Count)
-        {
+        if (_turn.Results.Count >= _turn.Peers.Count) {
             ResolveTurn(_turn);
         }
     }
 
-    private void TickTurn(float delta)
-    {
-        if (_turn is null)
-        {
+    private void TickTurn(float delta) {
+        if (_turn is null) {
             return;
         }
         _turn.Timer -= delta;
-        if (_turn.Timer <= 0f)
-        {
+        if (_turn.Timer <= 0f) {
             ResolveTurn(_turn);
         }
     }
 
-    private void ResolveTurn(TurnAttempt turn)
-    {
+    private void ResolveTurn(TurnAttempt turn) {
         var misses = 4 * turn.Peers.Count - turn.Results.Values.Sum(result => result.Hits);
         var critical = turn.Results.Values.Any(result => result.Critical);
-        if (critical || misses > turn.Peers.Count)
-        {
+        if (critical || misses > turn.Peers.Count) {
             Scoring.Add("patient_fell");
             Announce("The patient slides off the table and hits the floor!");
             Patient.TurnOver(Patient.Body.Pose, fell: true);
             Sound("body_fall", Patient.GlobalPosition);
-        }
-        else if (misses > 0)
-        {
+        } else if (misses > 0) {
             Announce("They slide back. Try again, together this time.");
-        }
-        else
-        {
+        } else {
             Scoring.Add("flip_success");
             Patient.TurnOver(turn.Target, fell: false);
             Announce("Patient turned.");
