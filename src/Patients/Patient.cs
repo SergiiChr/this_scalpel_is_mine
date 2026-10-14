@@ -791,7 +791,11 @@ public partial class Patient : Node3D
             Vitals.Systolic -= 30f;
             Session.Scoring.Add("allergic_reaction");
             Session.Announce("Hives spread across the skin. Allergic reaction!");
-            Reveal("allergy");
+            foreach (var roll in Rolls.Where(roll =>
+                Db.PatientQuirks[roll.Id].Effects(roll.Variant).GetValueOrDefault("allergen", "").Split('|').Contains(drugId)))
+            {
+                Reveal(roll.Id);
+            }
         }
     }
 

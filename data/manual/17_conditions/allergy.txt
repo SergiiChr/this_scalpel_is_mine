@@ -1,14 +1,14 @@
-tags: allergy, allergen
+tags: allergy, unknown_allergy, allergen
 title: Drug allergy
-[i]A documented reaction to one of the standard agents.[/i]
+[i]A reaction to one of the standard agents, named on the chart or not.[/i]
 
-[b]On the chart:[/b] “Drug allergy reported, agent not documented.”
+[b]On the chart:[/b] “Allergic to cefazolin.”, “Allergic to morphine.”, “Allergic to lidocaine.”, “Allergic to propofol.” or “Claims a drug allergy but forgot which one.”
 
 [b]Hazards[/b]
 • The allergen causes urticaria and swelling, a fall in blood pressure and possibly anaphylaxis.
 
 [b]Management[/b]
-• Order the allergy screen from the laboratory to identify the agent.
+• When the chart doesn't name the agent, order the allergy screen from the laboratory to identify it.
 • Use the alternative:
 [table=3]
 [cell][b]Allergy[/b][/cell][cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]

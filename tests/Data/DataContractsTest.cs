@@ -143,6 +143,24 @@ public partial class DataContractsTest
         AssertBool(rolledSomewhere).OverrideFailureMessage("an aneurysm rolls on a great-vessel site").IsTrue();
     }
 
+    [TestCase]
+    public void AllergiesNameTheirDrugOnTheChartOnlyWhenDocumented()
+    {
+        foreach (var id in (string[])["allergy", "unknown_allergy"])
+        {
+            var quirk = Db.PatientQuirks[id];
+            foreach (var variant in quirk.Variants)
+            {
+                var allergen = quirk.Effects(variant)["allergen"];
+                AssertBool(Db.Drug(allergen)?.HasFlag("allergen_candidate") == true)
+                    .OverrideFailureMessage($"{id} ({variant}) is allergic to a drug flagged allergen_candidate").IsTrue();
+                AssertBool(quirk.Text("card", variant).Contains(allergen, StringComparison.OrdinalIgnoreCase))
+                    .OverrideFailureMessage($"{id} ({variant}) names its allergen on the chart only when documented")
+                    .IsEqual(id == "allergy");
+            }
+        }
+    }
+
     /// <summary>A number with a unit written straight into a page.</summary>
     [GeneratedRegex(@"(?i)(\b\d+(\.\d+)?|\b(one|two|three|four|five|six|ten|fifteen|twenty|thirty|forty|fifty|sixty)) ?((mmHg|mmol/l|°C|mg|units|ml/s|ml|seconds?|minutes?|kg|points|times)\b|%)")]
     private static partial Regex HandWrittenNumber();

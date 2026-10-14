@@ -91,7 +91,25 @@ Format rules:
 - pros: None.
 - cons: Giving the allergen causes swelling, a blood pressure crash and possibly anaphylaxis.
 - specifics: Antihistamine handles mild reactions. Anaphylaxis needs adrenaline. The manual lists safe substitutes.
-- card: Drug allergy reported, agent not documented.
+- card.cefazolin: Allergic to cefazolin.
+- card.morphine: Allergic to morphine.
+- card.lidocaine: Allergic to lidocaine.
+- card.propofol: Allergic to propofol.
+- effects.cefazolin: allergen=cefazolin
+- effects.morphine: allergen=morphine
+- effects.lidocaine: allergen=lidocaine
+- effects.propofol: allergen=propofol
+
+## unknown_allergy
+- name: Unknown drug allergy
+- variants: cefazolin, morphine, lidocaine, propofol
+- polarity: negative
+- icon: [allergy.svg](../../assets/icons/quirks/patient/allergy.svg)
+- lore: Remembers the rash in great detail. The drug, not at all.
+- pros: None.
+- cons: Same as a drug allergy, but the chart doesn't say which drug.
+- specifics: The laboratory allergy screen names the agent. Until then, any standard agent may be the one.
+- card: Claims a drug allergy but forgot which one.
 - effects.cefazolin: allergen=cefazolin
 - effects.morphine: allergen=morphine
 - effects.lidocaine: allergen=lidocaine
