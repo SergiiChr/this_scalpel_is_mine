@@ -15,7 +15,8 @@ public class ForcepsTest
     /// <summary>How long (meters) the cut over the bullet is.</summary>
     private const float Opening = 0.05f;
     /// <summary>The cut through every layer that opens the thigh goes over, as in RetractorTest.</summary>
-    private const string BudgetBroken = "known to go over the frame budget, not profiled yet";
+    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
+    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     [TestCase]
     public async Task ForcepsTakeTheSkinEdgeBesideTheOpeningAndTheBulletInIt()
@@ -45,7 +46,7 @@ public class ForcepsTest
             .IsTrue();
         await driver.Capture("bullet", "pressed while lifted and let down, the forceps' jaws down in the opening on the bullet");
         await LetGo(driver, forceps);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -66,7 +67,7 @@ public class ForcepsTest
         AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
             .OverrideFailureMessage($"pressed while moving onto the bullet, the forceps take it: {forceps.Hold}").IsTrue();
         await LetGo(driver, forceps);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -96,7 +97,7 @@ public class ForcepsTest
             .OverrideFailureMessage($"held in the air a while, then let down, the forceps still take the bullet: {forceps.Hold}")
             .IsTrue();
         await LetGo(driver, forceps);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -123,7 +124,7 @@ public class ForcepsTest
             .OverrideFailureMessage($"a state left standing over the opening doesn't close them; the new ones on the bullet do: {forceps.Hold}")
             .IsTrue();
         await LetGo(driver, forceps);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>The thigh's entry wound opened through every layer along the bullet, and the scalpel put down.</summary>

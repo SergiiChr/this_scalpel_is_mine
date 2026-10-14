@@ -14,49 +14,40 @@ public static class ScenarioFlow
     /// </summary>
     private const float Settle = 20f;
 
-    /// <summary>Plays <paramref name="scenarioId"/> through. <paramref name="budgetBroken"/> says why its frames are
+    /// <summary>Plays <paramref name="scenarioId"/> through. <paramref name="budgetOverride"/> says why its frames are
     /// known to go over the budget (see <see cref="FrameBudget.Check"/>).</summary>
-    public static async Task Play(string scenarioId, bool keyFrames = false, string budgetBroken = "")
+    public static async Task Play(string scenarioId, bool keyFrames = false, string budgetOverride = "",
+        Func<SurgeryDriver, ObjectiveStep, Task>? playStep = null, Action<SurgeryDriver>? validate = null,
+        bool includeOptional = false)
     {
         FrameBudget.RenderingOff();
         GD.Print($"{scenarioId}: loading operation");
         var driver = SurgeryDriver.Create();
-        await driver.Start(scenarioId);
-        var surgery = driver.Surgery;
-        await InitialSceneChecks.Inspect(surgery);
-        var objectives = surgery.Objectives;
         KeyFrames? shots = null;
-        if (keyFrames && KeyFrames.Wanted())
+        try
         {
-            shots = new KeyFrames();
-            driver.AddChild(shots);
-            shots.Begin(surgery, "scenarios".PathJoin(scenarioId));
-            driver.OnKeyFrame = (keyFrame, description) => shots.Capture(keyFrame, description);
-            await driver.Capture("untouched", "the site as the scenario starts, before any step");
-        }
-        // Loading the room isn't gameplay: the frame budget counts from here.
-        driver.Budget.Clear();
-        if (scenarioId == "appendectomy")
-        {
-            await AppendectomyFlow.Play(driver);
-        }
-        else
-        {
+            await driver.Start(scenarioId);
+            var surgery = driver.Surgery;
+            await InitialSceneChecks.Inspect(surgery);
+            var objectives = surgery.Objectives;
+            if (keyFrames && KeyFrames.Wanted())
+            {
+                shots = new KeyFrames();
+                driver.AddChild(shots);
+                shots.Begin(surgery, "scenarios".PathJoin(scenarioId));
+                driver.OnKeyFrame = (keyFrame, description) => shots.Capture(keyFrame, description);
+                await driver.Capture("untouched", "the site as the scenario starts, before any step");
+            }
+            // Loading the room isn't gameplay: the frame budget counts from here.
+            driver.Budget.Clear();
             for (var index = 0; index < objectives.Steps.Count; index++)
             {
                 var step = objectives.Steps[index];
-                if (step.Optional)
+                if (step.Optional && !includeOptional)
                 {
                     continue;
                 }
-                if (scenarioId == "hand_stitch" && step.Type == "close")
-                {
-                    await SutureChecks.CloseForearm(driver);
-                }
-                else
-                {
-                    await driver.PlayerCompletes(step);
-                }
+                await (playStep is null ? driver.PlayerCompletes(step) : playStep(driver, step));
                 var hold = step.Parameters.Float("seconds") + (step.Type == "calm" ? 60f : 0f);
                 // A drug counts once enough has soaked in to work: through a line, most of it by 1.5 times its onset.
                 if (step.Type == "inject" && Db.Drug(step.Parameters.String("drug")) is { } drug)
@@ -68,26 +59,29 @@ public static class ScenarioFlow
                 AssertBool(state.Done)
                     .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
                     .IsTrue();
-                // Cut/extraction/closure helpers already capture their visible action/result. Internal state
-                // objectives (anesthesia, injection, stability) have hard checks but no unique site photograph.
+                // Action helpers capture cut/extraction/closure; internal flags have no unique site photograph.
                 if (step.Type is "sanitize" or "flip")
                 {
                     await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
                 }
             }
+            await Frames.Until(() => surgery.Finished, 10f);
+            var report = surgery.Report;
+            AssertBool(report?.Success == true)
+                .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars")
+                .IsTrue();
+            validate?.Invoke(driver);
+            driver.Budget.Check(scenarioId, budgetOverride);
+            if (shots is not null)
+            {
+                GD.Print($"{scenarioId} key frames: {shots.OutDir}");
+            }
         }
-        await Frames.Until(() => surgery.Finished, 10f);
-        var report = surgery.Report;
-        AssertBool(report?.Success == true)
-            .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars")
-            .IsTrue();
-        driver.Budget.Check(scenarioId, budgetBroken);
-        if (shots is not null)
+        finally
         {
-            GD.Print($"{scenarioId} key frames: {shots.OutDir}");
-            shots.End();
+            shots?.End();
+            await driver.Stop();
+            RenderingServer.RenderLoopEnabled = true;
         }
-        await driver.Stop();
-        RenderingServer.RenderLoopEnabled = true;
     }
 }

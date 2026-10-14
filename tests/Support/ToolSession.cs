@@ -82,11 +82,11 @@ public sealed class ToolSession
         }
     }
 
-    /// <summary>Checks the frame budget (<paramref name="budgetBroken"/>: why it's known to go over) and ends the
+    /// <summary>Checks the frame budget (<paramref name="budgetOverride"/>: why it's known to go over) and ends the
     /// surgery.</summary>
-    public async Task Finish(string budgetBroken = "")
+    public async Task Finish(string budgetOverride = "")
     {
-        Driver.Budget.Check(broken: budgetBroken);
+        Driver.Budget.Check(localOverride: budgetOverride);
         if (Shots is not null)
         {
             GD.Print($"key frames: {Shots.OutDir}");

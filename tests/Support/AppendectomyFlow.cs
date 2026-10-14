@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Support;
 /// belly cleanly oozes and leaves the appendix alone; only cutting its base opens its vessel. The game ends the surgery
 /// with a successful report and the patient loses little blood.
 /// </summary>
-public static class AppendectomyFlow
+public sealed class AppendectomyFlow : IDisposable
 {
     /// <summary>An appendectomy done right loses less blood than this (ml).</summary>
     private const float LittleBlood = 200f;
@@ -16,22 +16,36 @@ public static class AppendectomyFlow
     /// <summary>How far (site uv) along the incision from the appendix the scalpel is put down to slide onto it.</summary>
     private const float Aside = 0.1f;
 
-    public static async Task Play(SurgeryDriver driver)
+    private Patient? _patient;
+    private float _attached;
+    private float _lost;
+
+    /// <summary>Extends incision and extraction; the shared flow still handles every objective and its hold time.</summary>
+    public async Task PlayStep(SurgeryDriver driver, ObjectiveStep step)
     {
-        var surgery = driver.Surgery;
         var patient = driver.Patient;
         var appendix = patient.TargetByKind("appendix")!;
-        var attached = appendix.Anchor;
-        var lost = 0f;
-        void Bleed() => lost += patient.Vitals.BleedRate / Engine.PhysicsTicksPerSecond;
-        Frames.Tree.PhysicsFrame += Bleed;
-
-        try
+        if (_patient is null)
         {
-            await Completes(driver, "iv");
-            await Completes(driver, "anesthesia");
-            await Completes(driver, "sanitize");
-            await Completes(driver, "incise");
+            _patient = patient;
+            _attached = appendix.Anchor;
+            Frames.Tree.PhysicsFrame += RecordBlood;
+        }
+        var attached = _attached;
+        if (step.Type == "extract")
+        {
+            await driver.PlayerCutsFree(appendix, Drawn);
+            AssertInt(patient.Wounds.Count(wound => !wound.IsInternal))
+                .OverrideFailureMessage("drawn along inside the opening, the blade cuts nothing more of the belly wall").IsEqual(1);
+            AssertFloat(appendix.Anchor)
+                .OverrideFailureMessage($"put down on the base and drawn along it, the scalpel cuts the appendix free\n{driver.Recent()}")
+                .IsEqual(0f);
+            AssertBool(patient.Wounds.Any(wound => wound.IsInternal && wound.Bleeding > 0.5f))
+                .OverrideFailureMessage($"cutting the appendix's base opens its vessel: {driver.Bleeders()}").IsTrue();
+        }
+        await driver.PlayerCompletes(step);
+        if (step.Type == "incise")
+        {
             var incision = patient.Wounds.Single(wound => wound.MadeBySurgeon);
             await driver.PlayerCutsSkin(incision.Points[0], incision.Points[^1], 3);
             await driver.PlayerPutsDown();
@@ -54,37 +68,24 @@ public static class AppendectomyFlow
                 .OverrideFailureMessage($"slid onto the appendix from elsewhere in the opening, the blade passes over it\n{driver.Recent()}")
                 .IsTrue();
             await driver.PlayerPutsDown();
-
-            await driver.PlayerCutsFree(appendix, Drawn);
-            AssertInt(patient.Wounds.Count(wound => !wound.IsInternal))
-                .OverrideFailureMessage("drawn along inside the opening, the blade cuts nothing more of the belly wall").IsEqual(1);
-            AssertFloat(appendix.Anchor)
-                .OverrideFailureMessage($"put down on the base and drawn along it, the scalpel cuts the appendix free\n{driver.Recent()}")
-                .IsEqual(0f);
-            AssertBool(patient.Wounds.Any(wound => wound.IsInternal && wound.Bleeding > 0.5f))
-                .OverrideFailureMessage($"cutting the appendix's base opens its vessel: {driver.Bleeders()}").IsTrue();
-            await Completes(driver, "extract");
-            await Completes(driver, "stop_bleeding");
-            await Completes(driver, "close");
-            await Frames.Until(() => surgery.Finished, 10f);
         }
-        finally
-        {
-            Frames.Tree.PhysicsFrame -= Bleed;
-        }
-        AssertFloat(lost).OverrideFailureMessage($"the patient loses little blood ({lost:0} ml)").IsLess(LittleBlood);
-
     }
 
-    /// <summary>Does the scenario's <paramref name="type"/> objective and waits for the game to count it done.</summary>
-    private static async Task Completes(SurgeryDriver driver, string type)
+    private void RecordBlood() => _lost += _patient!.Vitals.BleedRate / Engine.PhysicsTicksPerSecond;
+
+    /// <summary>Checks the surgery's cumulative blood loss before the shared flow stops its scene.</summary>
+    public void Validate(SurgeryDriver _)
     {
-        var objectives = driver.Surgery.Objectives;
-        var index = objectives.Steps.FindIndex(step => step.Type == type);
-        await driver.PlayerCompletes(objectives.Steps[index]);
-        var state = objectives.States[index];
-        await Frames.Until(() => state.Done, 20f);
-        AssertBool(state.Done)
-            .OverrideFailureMessage($"\"{objectives.Steps[index].Label}\" completes. Last steps:\n{driver.Recent()}").IsTrue();
+        Dispose();
+        AssertFloat(_lost).OverrideFailureMessage($"the patient loses little blood ({_lost:0} ml)").IsLess(LittleBlood);
+    }
+
+    public void Dispose()
+    {
+        if (_patient is not null)
+        {
+            Frames.Tree.PhysicsFrame -= RecordBlood;
+            _patient = null;
+        }
     }
 }

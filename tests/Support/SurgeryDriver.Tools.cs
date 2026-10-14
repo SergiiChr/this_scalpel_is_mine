@@ -110,21 +110,35 @@ public partial class SurgeryDriver
             return null;
         }
         var tool = found[0];
+        // Skip the nurse's artificial delivery clock, but observe the spawned rigid body's actual landing.
+        var last = tool.GlobalPosition;
+        var stableFrames = 0;
+        await Frames.Physics(1);
+        AssertBool(await Frames.Until(() =>
+        {
+            var position = tool.GlobalPosition;
+            var stable = position.DistanceTo(last) < 0.001f && tool.LinearVelocity.Length() < 0.02f;
+            last = position;
+            stableFrames = stable ? stableFrames + 1 : 0;
+            return stableFrames >= 3;
+        }, 5f)).OverrideFailureMessage($"the spawned {id} lands before pickup\n{Recent()}").IsTrue();
         await PlayerWalksTo(tool.GlobalPosition);
         await PlayerReaches(tool.GlobalPosition);
-        Tap(InputActions.Grab);
-        await Frames.Physics(5);
-        if (Me.HeldTool(Me.Active) != tool)
+        bool Wanted(SurgicalTool? candidate) => candidate?.Def.Id == id && candidate.Charges != 0;
+        if (!Wanted(Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active]))))
         {
-            // Something else lay nearer the fingertips: take exactly this one, like reaching past the other.
-            if (Me.HeldTool(Me.Active) is not null)
-            {
-                Tap(InputActions.Grab);
-                await Frames.Physics(3);
-            }
-            Surgery.Tools.RequestGrab(tool, Me.Active);
-            await Frames.Physics(3);
+            // Reach the other end if a neighboring grip is closer; use the player's normal grab in either case.
+            await PlayerReaches(tool.TipPosition());
         }
+        // Pads and other supplies can arrive as a stack: any usable item of the requested kind is a valid pickup.
+        AssertBool(Wanted(Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active]))))
+            .OverrideFailureMessage($"the hand can pick up {id} through normal grabbing: hand {Tip(Me.Hands[Me.Active])}, "
+                + $"grip {tool.GlobalPosition}, tip {tool.TipPosition()}, nearest {Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active]))?.Def.Id ?? "none"}\n{Recent()}")
+            .IsTrue();
+        Tap(InputActions.Grab);
+        await PlayerInput.Delivered();
+        AssertBool(await Frames.Until(() => Wanted(Me.HeldTool(Me.Active)), 1f))
+            .OverrideFailureMessage($"the player's grab picks up {id}, without a forced grab\n{Recent()}").IsTrue();
         Note($"holds {id}");
         return Me.HeldTool(Me.Active);
     }

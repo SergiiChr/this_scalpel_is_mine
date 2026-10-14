@@ -13,7 +13,8 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class NeedleTest
 {
-    private const string BudgetBroken = "known to go over the frame budget, not profiled yet";
+    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
+    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     /// <summary>Too loose leaves a gap, too tight tears through, and skin pulled shut over open muscle tears through
     /// too.</summary>
@@ -86,7 +87,7 @@ public class NeedleTest
         await driver.PlayerPullsThread("closed");
         AssertBool(patient.SutureDone(thread)).OverrideFailureMessage("pulled shut over open muscle, the skin thread tears through")
             .IsTrue();
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>A cut through the belly wall sewn layer by layer from inside the opening: the muscle, the fat, then the
@@ -117,7 +118,7 @@ public class NeedleTest
         AssertFloat(wound.Closure).OverrideFailureMessage("the skin closes over the sewn layers").IsGreater(0.99f);
         AssertFloat(tissue.GapAlong(wound.Points, 0.03f, TissueDepth.Skin)).OverrideFailureMessage("and its edges meet")
             .IsLess(TissueSim.OpenGap);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase(Timeout = Limits.Slow)]
@@ -169,7 +170,7 @@ public class NeedleTest
         // The frame budget counts from here, the normal solver and render loop with all twelve finished threads present.
         driver.Budget.Clear();
         await Frames.Seconds(1f);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>Threads <paramref name="wound"/> through <paramref name="layer"/>, pulls it closed and ties it off, the

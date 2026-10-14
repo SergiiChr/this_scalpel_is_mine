@@ -39,6 +39,7 @@ import itertools
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -59,8 +60,6 @@ PYTHON_VERSION = "3.11"
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / ".tools"
 XVFB_LOCAL = TOOLS / "xvfb"
-if (XVFB_LOCAL / "usr/bin/xvfb-run").exists():
-    os.environ["PATH"] = f"{XVFB_LOCAL / 'usr/bin'}{os.pathsep}{os.environ['PATH']}"
 VENV = ROOT / ".venv"
 BUILD = ROOT / "build"
 GODOT_NAME = f"Godot_v{GODOT_VERSION}-stable_mono_linux_x86_64"
@@ -152,22 +151,70 @@ def require(*pairs: str) -> None:
         sys.exit(f"Please install these packages with your package manager, then run this again: {' '.join(missing)}")
 
 
+def activate_xvfb() -> None:
+    """Use the unpacked executables, libraries and keyboard definitions together."""
+    if not (XVFB_LOCAL / "usr/bin/xvfb-run").exists():
+        return
+    wrappers = XVFB_LOCAL / "bin"
+    wrappers.mkdir(exist_ok=True)
+    # Xorg reads -xkbdir, unlike libxkbcommon's XKB_CONFIG_ROOT. A wrapper also handles project paths with spaces.
+    # https://github.com/mirror/xserver/blob/master/xkb/xkbInit.c
+    keyboard = XVFB_LOCAL / "usr/share/X11/xkb"
+    arguments = [str(XVFB_LOCAL / "usr/bin/Xvfb"), *(["-xkbdir", str(keyboard)] if keyboard.is_dir() else [])]
+    wrapper = wrappers / "Xvfb"
+    wrapper.write_text(f'#!/bin/sh\nexec {shlex.join(arguments)} "$@"\n')
+    wrapper.chmod(0o755)
+    os.environ["PATH"] = f"{wrappers}{os.pathsep}{XVFB_LOCAL / 'usr/bin'}{os.pathsep}{os.environ['PATH']}"
+    libraries = [str(path) for path in (XVFB_LOCAL / "usr/lib64", XVFB_LOCAL / "usr/lib") if path.is_dir()]
+    os.environ["LD_LIBRARY_PATH"] = os.pathsep.join([*libraries, *filter(None, [os.environ.get("LD_LIBRARY_PATH")])])
+    if keyboard.is_dir():
+        os.environ["XKB_CONFIG_ROOT"] = str(keyboard)
+
+
+activate_xvfb()
+
+
+def verify_xvfb() -> None:
+    """Open an authenticated X11 connection; merely having DISPLAY set doesn't prove the server works."""
+    run(
+        [
+            "xvfb-run",
+            "-a",
+            sys.executable,
+            "-c",
+            "import ctypes; x = ctypes.CDLL('libX11.so.6'); x.XOpenDisplay.restype = ctypes.c_void_p; "
+            "x.XCloseDisplay.argtypes = [ctypes.c_void_p]; display = x.XOpenDisplay(None); "
+            "assert display, 'Xvfb did not accept an X11 connection'; "
+            "x.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]; "
+            "x.XKeysymToKeycode.restype = ctypes.c_ubyte; "
+            "assert x.XKeysymToKeycode(display, 0x61), 'Xvfb has no usable keyboard map'; x.XCloseDisplay(display)",
+        ]
+    )
+
+
 def setup_xvfb() -> None:
     """Provision the visual-test dependency locally on Fedora, without needing sudo."""
-    if shutil.which("xvfb-run") and shutil.which("Xvfb") and shutil.which("xauth"):
+    local_selected = shutil.which("xvfb-run") == str(XVFB_LOCAL / "usr/bin/xvfb-run")
+    if shutil.which("xvfb-run") and shutil.which("Xvfb") and shutil.which("xauth") and (not local_selected or (XVFB_LOCAL / "usr/share/X11/xkb").is_dir()):
+        verify_xvfb()
         return
     if not shutil.which("dnf"):
         sys.exit("Visual tests require Xvfb and xauth. Install xvfb and xauth with your package manager, then run ./build.py dev again.")
-    require("rpm2cpio:rpm", "cpio:cpio")
+    # Fedora's X server uses its compiled-in /usr/bin/xkbcomp, so that prerequisite must be installed there.
+    missing = [command for command in ("rpm2cpio", "cpio") if not shutil.which(command)]
+    if not Path("/usr/bin/xkbcomp").is_file():
+        missing.append("/usr/bin/xkbcomp")
+    if missing:
+        sys.exit(f"Local Xvfb setup needs these prerequisite tools installed first: {', '.join(missing)}. No sudo installation was attempted.")
     XVFB_LOCAL.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="xvfb-packages-") as temporary:
         packages = Path(temporary)
-        run(["dnf", "download", "--resolve", "--destdir", packages, "xorg-x11-server-Xvfb", "xorg-x11-xauth"])
+        run(["dnf", "download", "--resolve", "--destdir", packages, "xorg-x11-server-Xvfb", "xorg-x11-xauth", "xkeyboard-config"])
         for package in sorted(packages.glob("*.rpm")):
             payload = subprocess.run(["rpm2cpio", str(package)], capture_output=True, check=True).stdout
             run(["cpio", "-idmu", "--quiet"], input=payload, cwd=XVFB_LOCAL)
-    os.environ["PATH"] = f"{XVFB_LOCAL / 'usr/bin'}{os.pathsep}{os.environ['PATH']}"
-    run(["xvfb-run", "-a", "sh", "-c", 'test -n "$DISPLAY"'])
+    activate_xvfb()
+    verify_xvfb()
 
 
 def supported_dotnet(command: str | Path) -> bool:

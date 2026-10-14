@@ -17,7 +17,10 @@ the C# and imports the project. No sudo, a few minutes. Where Microsoft's downlo
 from the system packages first (`apt-get install dotnet-sdk-10.0` on Ubuntu 24.04).
 Asset generators additionally need `./build.py dev` (Python 3.11 venv with Blender as a module, about 400 MB).
 Dev setup also provisions Xvfb and xauth for visual tests: on Fedora it extracts the packages into `.tools/xvfb`
-without sudo. Every build command automatically uses that local installation. Elsewhere install `xvfb` and `xauth`
+without sudo (requires `dnf download`, `rpm2cpio`, `cpio` and `/usr/bin/xkbcomp` already installed). It installs keyboard data too, configures
+the local library path, passes `-xkbdir` for the keyboard data, and verifies an X11 connection and usable keyboard map.
+Every build command uses that installation.
+Missing extraction tools are reported without attempting sudo. Elsewhere install `xvfb` and `xauth`
 with the system package manager before dev setup.
 
 ## Checking a change
@@ -73,18 +76,23 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   its input and temporary tools before each case, and complete it only after all assertions pass. Run
   `DiscardIncomplete()` after each case and `Stop()` after the suite. Empty groups get fresh scenes. Keep cases that
   change tissue, IV delivery, sedation or animation baselines isolated unless their reset is explicitly verified.
+  Aim checks may share disjoint tissue regions: each asserts its region is intact before use, the patient is asleep,
+  and input/effort/tilt are reset between cases; the wrist reference stays separate from destructive grip checks.
   Keep individual cases and their result timings; do not replace them with one opaque loop.
 - Ordinary driver cases advance only the nurse delivery/cooldown clock through `SurgeryState`; they do not wait for
   ordering delays. `NurseShopTest` alone enables `WaitForNurse` and checks delivery timing, deadline expiration and
   cooldown rejection. General case/session safety timeouts remain enabled. Fixtures that need anesthesia before
   tissue changes assert that preparation explicitly rather than relying on time spent waiting for the nurse.
+  Pickup still waits for the spawned tool to land and uses normal player grab input, never a forced-grab fallback.
 - Core mechanic assertions belong in a fitting full scenario flow when that flow already performs the action.
   Specialized failure paths and destructive stress checks stay separate. Shared flow checks live in `tests/Support/`.
+  Extended scenario suites that validate core mechanics carry `core_validation`; suites pass their specific steps and
+  final assertions as hooks to the generic scenario loop, which retains objective deadlines and capture handling.
 - Cases that differ only in a value (every scenario) are one method with a `[TestCase(value)]` row per value.
 - A suite declares its categories with `[TestCategory("...")]` and its Godot options with
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
 - Categories describe the test type or a feature worth rerunning: `smoke`, `slow`, `scenario`, `network`,
-  `tissue_modification`, `liquids`, `tool_<id>`, `tool_all`, `visual_confirmation`, `broken`. `slow` means one case
+  `tissue_modification`, `liquids`, `tool_<id>`, `tool_all`, `core_validation`, `visual_confirmation`, `broken`. `slow` means one case
   takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take
   `[TestCase(Timeout = Limits.Slow)]`.
 - `smoke` cases are headless and programmatic, each under five minutes. They may take key frames only when their
@@ -157,7 +165,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - Gameplay stays within a 16 ms worst frame so 60 fps remains possible. Displayed FPS isn't the metric.
 - Two checks, one call: tests that exercise dynamic work check it with `Budget.Check()` (`tests/Support/FrameBudget.cs`),
   never with a timer around one function. A case known to go over that can't be fixed in the current change passes
-  its reason as `broken`.
+  an explicit commented `localOverride` reason at its budget check. The check still prints its measurements and passes
+  that approved overrun, without marking the case broken. Functional assertions and unlisted budget failures remain
+  enforced; global limits do not change.
   - CPU budget, every local run: rendering off (`FrameBudget.RenderingOff()`), the game's own work per frame within
     8 ms on the reference machine (an i9-14900HX), scaled by how much slower this machine runs a fixed benchmark.
     It holds on any machine, with or without a GPU.
