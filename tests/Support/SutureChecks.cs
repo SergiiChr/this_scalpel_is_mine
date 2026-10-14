@@ -41,18 +41,21 @@ public static class SutureChecks
         AssertObject(live.Mesh).OverrideFailureMessage("the newest hole has a live strand").IsNotNull();
         AssertBool(live.GetAabb().Grow(0.001f).HasPoint(body.Site.ToLocal(needle.TipPosition())))
             .OverrideFailureMessage("the live strand ends at the needle tip").IsTrue();
-        // Sub-threshold moves must add up against the drawn endpoint, not disappear one frame at a time. These are thirty
-        // made-up updates in one frame: the frame budget isn't sampled during them.
-        var pose = needle.GlobalTransform;
-        for (var frame = 0; frame < 30; frame++)
+        // Thirty artificial redraws in one frame verify accumulated sub-threshold movement, outside gameplay timing.
+        await driver.Unbudgeted(() =>
         {
-            needle.GlobalPosition += Vector3.Right * 0.0001f;
+            var pose = needle.GlobalTransform;
+            for (var frame = 0; frame < 30; frame++)
+            {
+                needle.GlobalPosition += Vector3.Right * 0.0001f;
+                body.UpdateSutures();
+                AssertFloat(body.DrawnThread(thread)!.LivePath[^1].DistanceTo(body.Site.ToLocal(needle.TipPosition())))
+                    .OverrideFailureMessage("slow movement keeps the strand within the redraw threshold").IsLessEqual(0.00021f);
+            }
+            needle.GlobalTransform = pose;
             body.UpdateSutures();
-            AssertFloat(body.DrawnThread(thread)!.LivePath[^1].DistanceTo(body.Site.ToLocal(needle.TipPosition())))
-                .OverrideFailureMessage("slow movement keeps the strand within the redraw threshold").IsLessEqual(0.00021f);
-        }
-        needle.GlobalTransform = pose;
-        body.UpdateSutures();
+            return Task.CompletedTask;
+        });
         var loose = body.DrawnThread(thread)!;
         var loosePath = loose.Routes[0];
         AssertFloat(loose.PressureAmount).OverrideFailureMessage("loose thread puts no visible compression around its holes")

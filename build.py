@@ -2,7 +2,7 @@
 """One script for players and developers (Fedora first, works on any x86_64 Linux with the listed packages).
 
   ./build.py play      Play the game from source. Downloads Godot (.NET build) on first use.
-  ./build.py dev       Set up everything for development: system packages, Godot, export templates, the Python
+  ./build.py dev       Set up everything for development: packages, project-local Xvfb, Godot, export templates, the Python
                        virtualenv (.venv) for the asset generators, then builds and imports the project.
   ./build.py setup     Download Godot and the .NET SDK if missing, build and import the project. No sudo.
   ./build.py test      Run the smoke tests. --all or --tag TAG for other suites, see ./build.py test --help.
@@ -58,6 +58,9 @@ DOTNET_CHANNEL = "10.0"
 PYTHON_VERSION = "3.11"
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / ".tools"
+XVFB_LOCAL = TOOLS / "xvfb"
+if (XVFB_LOCAL / "usr/bin/xvfb-run").exists():
+    os.environ["PATH"] = f"{XVFB_LOCAL / 'usr/bin'}{os.pathsep}{os.environ['PATH']}"
 VENV = ROOT / ".venv"
 BUILD = ROOT / "build"
 GODOT_NAME = f"Godot_v{GODOT_VERSION}-stable_mono_linux_x86_64"
@@ -147,6 +150,24 @@ def require(*pairs: str) -> None:
         run(["sudo", "dnf", "install", "-y", *missing])
     else:
         sys.exit(f"Please install these packages with your package manager, then run this again: {' '.join(missing)}")
+
+
+def setup_xvfb() -> None:
+    """Provision the visual-test dependency locally on Fedora, without needing sudo."""
+    if shutil.which("xvfb-run") and shutil.which("Xvfb") and shutil.which("xauth"):
+        return
+    if not shutil.which("dnf"):
+        sys.exit("Visual tests require Xvfb and xauth. Install xvfb and xauth with your package manager, then run ./build.py dev again.")
+    require("rpm2cpio:rpm", "cpio:cpio")
+    XVFB_LOCAL.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="xvfb-packages-") as temporary:
+        packages = Path(temporary)
+        run(["dnf", "download", "--resolve", "--destdir", packages, "xorg-x11-server-Xvfb", "xorg-x11-xauth"])
+        for package in sorted(packages.glob("*.rpm")):
+            payload = subprocess.run(["rpm2cpio", str(package)], capture_output=True, check=True).stdout
+            run(["cpio", "-idmu", "--quiet"], input=payload, cwd=XVFB_LOCAL)
+    os.environ["PATH"] = f"{XVFB_LOCAL / 'usr/bin'}{os.pathsep}{os.environ['PATH']}"
+    run(["xvfb-run", "-a", "sh", "-c", 'test -n "$DISPLAY"'])
 
 
 def supported_dotnet(command: str | Path) -> bool:
@@ -868,7 +889,8 @@ def main() -> int:
         os.execv(GODOT, [str(GODOT), "--path", str(ROOT)])
     elif command == "dev":
         # git for version control, Xvfb for the screenshot tool and visual tests.
-        require("git:git", "xvfb-run:xorg-x11-server-Xvfb")
+        require("git:git")
+        setup_xvfb()
         fetch_godot()
         fetch_templates()
         setup_python()

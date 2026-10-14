@@ -4,8 +4,8 @@ namespace Scalpel.Tests.Support;
 /// A scenario played through its positive flow, like a player: each required objective done in order with the
 /// scenario's tools and the controls a player has (<see cref="SurgeryDriver"/>), and the game itself ending the surgery
 /// with a successful report. A step that doesn't register fails the case with what the driver did last. A case that
-/// asks for key frames, in a run with key frames, also saves the site before anything is done and right after every
-/// objective. Every run checks the frame budget (<see cref="FrameBudget.Check"/>). Rendering stays off in between,
+/// asks for key frames, in a run with key frames, saves the untouched site and distinct visible actions and results.
+/// Every run checks the frame budget (<see cref="FrameBudget.Check"/>). Rendering stays off in between,
 /// also under a display: the game runs at full speed, and a software renderer only draws the key frames.
 /// </summary>
 public static class ScenarioFlow

@@ -1,11 +1,8 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_untouched_view.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "02_torn_oblique.jpg": "an office staple torn out: a new tear in the skin, the staple holding nothing",
-  "02_torn_top.jpg": "an office staple torn out: a new tear in the skin, the staple holding nothing",
-  "03_torn_view.jpg": "an office staple torn out: a new tear in the skin, the staple holding nothing",
-  "04_bleeding_oblique.jpg": "an office staple in, the cut bleeding through it",
-  "04_bleeding_top.jpg": "an office staple in, the cut bleeding through it",
-  "05_bleeding_view.jpg": "an office staple in, the cut bleeding through it"
+  "00_torn_oblique.jpg": "an office staple torn out: a new tear in the skin, the staple holding nothing",
+  "00_torn_top.jpg": "an office staple torn out: a new tear in the skin, the staple holding nothing",
+  "01_torn_view.jpg": "an office staple torn out: a new tear in the skin, the staple holding nothing",
+  "02_bleeding_oblique.jpg": "an office staple in, the cut bleeding through it",
+  "02_bleeding_top.jpg": "an office staple in, the cut bleeding through it",
+  "03_bleeding_view.jpg": "an office staple in, the cut bleeding through it"
 }

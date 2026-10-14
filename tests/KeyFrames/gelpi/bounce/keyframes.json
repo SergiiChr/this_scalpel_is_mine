@@ -1,8 +1,5 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_untouched_view.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "02_bounced_oblique.jpg": "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin",
-  "02_bounced_top.jpg": "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin",
-  "03_bounced_view.jpg": "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin"
+  "00_bounced_oblique.jpg": "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin",
+  "00_bounced_top.jpg": "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin",
+  "01_bounced_view.jpg": "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin"
 }

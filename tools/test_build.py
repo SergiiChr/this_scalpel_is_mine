@@ -16,6 +16,36 @@ import build
 QUIT = "GdUnit4 Godot Runtime Test Runner ends with exit code: 0"
 
 
+class DevDependenciesTest(unittest.TestCase):
+    def test_installed_xvfb_needs_no_package_download(self) -> None:
+        with patch("build.shutil.which", side_effect=lambda command: f"/usr/bin/{command}"), patch.object(build, "run") as run:
+            build.setup_xvfb()
+        run.assert_not_called()
+
+    def test_fedora_dependency_is_extracted_and_verified_without_sudo(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            local = Path(temporary) / "xvfb"
+
+            def run(command: list[str | Path], **kwargs: object) -> None:
+                if command[:2] == ["dnf", "download"]:
+                    packages = Path(command[command.index("--destdir") + 1])
+                    (packages / "xvfb.rpm").touch()
+
+            with (
+                patch.object(build, "XVFB_LOCAL", local),
+                patch.dict(os.environ),
+                patch("build.shutil.which", side_effect=lambda command: None if command in ("xvfb-run", "Xvfb") else command),
+                patch.object(build, "run", side_effect=run) as commands,
+                patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout=b"rpm payload")),
+            ):
+                build.setup_xvfb()
+                self.assertEqual(os.environ["PATH"].split(os.pathsep)[0], str(local / "usr/bin"))
+            self.assertEqual(commands.call_args_list[1].args[0], ["cpio", "-idmu", "--quiet"])
+            self.assertEqual(commands.call_args_list[1].kwargs["input"], b"rpm payload")
+            self.assertEqual(commands.call_args_list[-1].args[0][:2], ["xvfb-run", "-a"])
+            self.assertTrue(all("sudo" not in call.args[0] for call in commands.call_args_list))
+
+
 class CoverageReportingTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()

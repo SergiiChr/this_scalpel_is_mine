@@ -63,10 +63,13 @@ public class BleedSourcesTest
             .IsLess(strong.Bleeding * 0.05f);
         AssertString(Spot(body, weak.Points[0])).OverrideFailureMessage($"however little it bleeds ({weak.Bleeding:0.000} ml/s), its spot shows")
             .IsEqual("inside");
-        var (strongSpot, weakSpot) = (SpotArea(body, strong.Points[0]), SpotArea(body, weak.Points[0]));
-        AssertFloat(strongSpot).OverrideFailureMessage($"the spot grows with the bleeding ({strongSpot:0.0} mm² against {weakSpot:0.0} mm²)")
-            .IsGreater(weakSpot * 2f);
-        await driver.Capture("vessels", "three vessels bleeding in the incision, each a round vein-like spot (blood-red middle, dark bluish rim) within its layer's wall, none on the skin around the cut: the right one fast with the biggest spot, the left one barely with the smallest");
+        await driver.Unbudgeted(() =>
+        {
+            var (strongSpot, weakSpot) = (SpotArea(body, strong.Points[0]), SpotArea(body, weak.Points[0]));
+            AssertFloat(strongSpot).OverrideFailureMessage($"the spot grows with the bleeding ({strongSpot:0.0} mm² against {weakSpot:0.0} mm²)")
+                .IsGreater(weakSpot * 2f);
+            return Task.CompletedTask;
+        });
         await CloseUp(session, "vessels_close", "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut", at);
 
         SurgeryState.WoundIsClamped(weak);
@@ -82,7 +85,6 @@ public class BleedSourcesTest
         AssertFloat(moved).OverrideFailureMessage($"the edge is pulled ({moved * 1000f:0.0} mm)").IsGreater(0.012f);
         AssertString(Spot(body, middle)).OverrideFailureMessage("the spot stays on the pulled tissue").IsEqual("inside");
         AssertInt(body.Blood.Wells.Count).OverrideFailureMessage("nothing is left hanging where the edge was").IsEqual(0);
-        await driver.Capture("pulled", "the incision's edge at the middle vessel pulled two centimeters away: the vessel's spot is on the pulled edge's wall, nothing hangs in the air where it was");
         await CloseUp(session, "pulled_close", "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was", middle);
 
         var risen = await Frames.Until(() => Wells(driver, vessel) == "at the vessel", 180f);
@@ -100,10 +102,14 @@ public class BleedSourcesTest
         var vessels = Enumerable.Range(0, 20)
             .Select(i => SurgeryState.VesselBleeds(patient, at + new Vector2((i - 10) * 0.012f, 0f), vessel.DepthM)).ToList();
         await Frames.Seconds(1f);
-        var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f && Blood(body, v.Points[0]) < 0.5f)
-            .Select(v => v.Points[0]).ToList();
-        await driver.AssertAndCapture(unseen.Count == 0,
-            $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
+        // Texture scans are assertions, not a frame of the game's blood simulation.
+        await driver.Unbudgeted(async () =>
+        {
+            var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f && Blood(body, v.Points[0]) < 0.5f)
+                .Select(v => v.Points[0]).ToList();
+            await driver.AssertAndCapture(unseen.Count == 0,
+                $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
+        });
         await session.Finish();
     }
 

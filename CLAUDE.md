@@ -16,6 +16,9 @@ It downloads Godot .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet`
 the C# and imports the project. No sudo, a few minutes. Where Microsoft's download host is blocked, install the SDK
 from the system packages first (`apt-get install dotnet-sdk-10.0` on Ubuntu 24.04).
 Asset generators additionally need `./build.py dev` (Python 3.11 venv with Blender as a module, about 400 MB).
+Dev setup also provisions Xvfb and xauth for visual tests: on Fedora it extracts the packages into `.tools/xvfb`
+without sudo. Every build command automatically uses that local installation. Elsewhere install `xvfb` and `xauth`
+with the system package manager before dev setup.
 
 ## Checking a change
 

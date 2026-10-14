@@ -1,10 +1,8 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_hooked_oblique.jpg": "the retractor's hook in one edge of the cut, nothing pulled yet",
-  "01_hooked_top.jpg": "the retractor's hook in one edge of the cut, nothing pulled yet",
-  "02_pulled_oblique.jpg": "pulled 2 cm aside: the hooked edge moved, the other much less, no tear",
-  "02_pulled_top.jpg": "pulled 2 cm aside: the hooked edge moved, the other much less, no tear",
-  "03_let_go_oblique.jpg": "let go: the retractor lies along the body pointing away, the cut stays open",
-  "03_let_go_top.jpg": "let go: the retractor lies along the body pointing away, the cut stays open"
+  "00_hooked_oblique.jpg": "the retractor's hook in one edge of the cut, nothing pulled yet",
+  "00_hooked_top.jpg": "the retractor's hook in one edge of the cut, nothing pulled yet",
+  "01_pulled_oblique.jpg": "pulled 2 cm aside: the hooked edge moved, the other much less, no tear",
+  "01_pulled_top.jpg": "pulled 2 cm aside: the hooked edge moved, the other much less, no tear",
+  "02_let_go_oblique.jpg": "let go: the retractor lies along the body pointing away, the cut stays open",
+  "02_let_go_top.jpg": "let go: the retractor lies along the body pointing away, the cut stays open"
 }
