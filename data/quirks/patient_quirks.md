@@ -6,6 +6,7 @@ Format rules:
 - `## id` starts a quirk. The id is used in code and save files, so keep it stable.
 - `- key: value` lines fill it in. One line per key.
 - Quirks with `variants` (like weak/strong) can override any key per variant: `- cons.weak: ...`.
+- `label` (optional, per variant) is what the menus show in brackets after the name instead of the variant id.
 - `icon` is a relative markdown link, ctrl+click it in most editors to open the image.
 - `effects` is what the game actually reads: `key=value` pairs separated by commas.
   Keys ending in `_mult` multiply, other numbers add up, text values are names (use `|` for lists).
@@ -85,6 +86,14 @@ Format rules:
 ## allergy
 - name: Drug allergy
 - variants: cefazolin, morphine, lidocaine, propofol, unknown_cefazolin, unknown_morphine, unknown_lidocaine, unknown_propofol
+- name.unknown_cefazolin: Unknown drug allergy
+- name.unknown_morphine: Unknown drug allergy
+- name.unknown_lidocaine: Unknown drug allergy
+- name.unknown_propofol: Unknown drug allergy
+- label.unknown_cefazolin: Cefazolin
+- label.unknown_morphine: Morphine
+- label.unknown_lidocaine: Lidocaine
+- label.unknown_propofol: Propofol
 - polarity: negative
 - icon: [allergy.svg](../../assets/icons/quirks/patient/allergy.svg)
 - lore: Their allergy wristband fell off in the ambulance. Probably.

@@ -155,6 +155,9 @@ public partial class DataContractsTest
             AssertBool(allergy.Text("card", variant).Contains(allergen, StringComparison.OrdinalIgnoreCase))
                 .OverrideFailureMessage($"allergy ({variant}) names its drug on the chart only when documented")
                 .IsEqual(!variant.StartsWith("unknown_", StringComparison.Ordinal));
+            var drug = allergen.Capitalize();
+            AssertString(allergy.DisplayName(variant)).OverrideFailureMessage($"allergy ({variant}) reads as a name in menus")
+                .IsEqual(variant.StartsWith("unknown_", StringComparison.Ordinal) ? $"Unknown drug allergy ({drug})" : $"Drug allergy ({drug})");
         }
     }
 

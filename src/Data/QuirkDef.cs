@@ -76,10 +76,12 @@ public sealed class QuirkDef(string id, QuirkKind kind)
     public string Text(string field, string variant = "") =>
         _fields.GetValueOrDefault($"{field}.{variant}") ?? _fields.GetValueOrDefault(field) ?? "";
 
+    /// <summary>The name with its variant in brackets: the variant's "label" when it has one, else its id.</summary>
     public string DisplayName(string variant = "")
     {
         var name = Text("name", variant);
-        return variant.Length == 0 ? name : $"{name} ({variant.Capitalize()})";
+        var label = Text("label", variant);
+        return variant.Length == 0 ? name : $"{name} ({(label.Length > 0 ? label : variant.Capitalize())})";
     }
 
     public string Polarity(string variant = "") => Text("polarity", variant);
