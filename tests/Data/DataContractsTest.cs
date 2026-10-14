@@ -52,6 +52,16 @@ public partial class DataContractsTest
         }
     }
 
+    /// <summary>The nurse's shop lists every orderable drug vial under one Drugs group.</summary>
+    [TestCase]
+    public void EveryDrugVialIsUnderDrugs()
+    {
+        foreach (var tool in Db.Tools.Values.Where(tool => tool.Orderable && tool.Action == "vial"))
+        {
+            AssertString(tool.Category).OverrideFailureMessage($"{tool.Id} is under Drugs").IsEqual("Drugs");
+        }
+    }
+
     [TestCase]
     public void ScenarioIdsAreUnique()
     {
