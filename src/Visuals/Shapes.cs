@@ -62,9 +62,10 @@ public static class Shapes
         ArrayMesh? into = null)
     {
         var vertices = new List<Vector3>();
+        var normals = new List<Vector3>();
         foreach (var path in paths)
         {
-            AppendTube(vertices, path, width, height, sides);
+            AppendTube(vertices, normals, path, width, height, sides);
         }
         var mesh = into ?? new ArrayMesh();
         mesh.ClearSurfaces();
@@ -75,31 +76,20 @@ public static class Shapes
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
-        arrays[(int)Mesh.ArrayType.Normal] = SmoothNormals(vertices);
+        arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }
 
-    /// <summary>Per vertex, the sum of the face normals of every triangle with a corner at the same point, normalized:
-    /// what SurfaceTool.GenerateNormals() gives, without a call into the engine per vertex.</summary>
-    private static Vector3[] SmoothNormals(List<Vector3> vertices)
-    {
-        var sums = new Dictionary<Vector3, Vector3>();
-        for (var i = 0; i < vertices.Count; i += 3)
-        {
-            var normal = new Plane(vertices[i], vertices[i + 1], vertices[i + 2]).Normal;
-            for (var j = i; j < i + 3; j++)
-            {
-                sums[vertices[j]] = sums.GetValueOrDefault(vertices[j]) + normal;
-            }
-        }
-        return [.. vertices.Select(vertex => sums[vertex].Normalized())];
-    }
-
-    private static void AppendTube(List<Vector3> vertices, IReadOnlyList<Vector3> path, float width, float height,
-        int sides)
+    /// <summary>The tube's triangles with their normals: a ring vertex's points straight out of the ellipse at it
+    /// (its surface normal, which is what averaging the faces round it approximates), an end cap's along the path.
+    /// </summary>
+    private static void AppendTube(List<Vector3> vertices, List<Vector3> normals, IReadOnlyList<Vector3> path,
+        float width, float height, int sides)
     {
         var rings = new Vector3[path.Count][];
+        var ringNormals = new Vector3[path.Count][];
+        var alongs = new Vector3[path.Count];
         for (var i = 0; i < path.Count; i++)
         {
             var along = (path[Math.Min(i + 1, path.Count - 1)] - path[Math.Max(i - 1, 0)]).Normalized();
@@ -109,11 +99,15 @@ public static class Shapes
                 side = Vector3.Right;
             }
             var up = side.Cross(along).Normalized();
+            alongs[i] = along;
             rings[i] = new Vector3[sides];
+            ringNormals[i] = new Vector3[sides];
             for (var k = 0; k < sides; k++)
             {
                 var angle = Mathf.Tau * k / sides;
-                rings[i][k] = path[i] + side * Mathf.Cos(angle) * width + up * Mathf.Sin(angle) * height;
+                var (sin, cos) = (Mathf.Sin(angle), Mathf.Cos(angle));
+                rings[i][k] = path[i] + side * cos * width + up * sin * height;
+                ringNormals[i][k] = (side * (cos / width) + up * (sin / height)).Normalized();
             }
         }
         for (var i = 1; i < rings.Length; i++)
@@ -123,14 +117,17 @@ public static class Shapes
                 var n = (k + 1) % sides;
                 // Clockwise seen from outside: Godot's front faces.
                 vertices.AddRange([rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]]);
+                normals.AddRange([ringNormals[i - 1][k], ringNormals[i][n], ringNormals[i][k], ringNormals[i - 1][k], ringNormals[i - 1][n], ringNormals[i][n]]);
             }
         }
         foreach (var end in (int[])[0, rings.Length - 1])
         {
+            var normal = end == 0 ? -alongs[end] : alongs[end];
             for (var k = 0; k < sides; k++)
             {
                 var next = rings[end][(k + 1) % sides];
                 vertices.AddRange(end == 0 ? [path[end], next, rings[end][k]] : [rings[end][k], next, path[end]]);
+                normals.AddRange([normal, normal, normal]);
             }
         }
     }
