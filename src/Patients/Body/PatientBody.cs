@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 namespace Scalpel.Patients;
 
 /// <summary>How the patient lies on the table.</summary>
@@ -93,6 +95,10 @@ public partial class PatientBody : Node3D
     private Transform3D _carvedModel;
     private ImageTexture? _carvedRegion;
     private bool _deferredUpload;
+    /// <summary>The solver step this frame owes, run on a worker while the frame is drawn (see StepWhileDrawing()).
+    /// </summary>
+    private (float Delta, bool Run)? _pendingStep;
+    private Task? _stepping;
     private bool _onBack;
     private float _siteBaseY;
 
@@ -151,8 +157,28 @@ public partial class PatientBody : Node3D
         Blood.Setup(this);
     }
 
+    public override void _EnterTree()
+    {
+        RenderingServer.FramePreDraw += StepWhileDrawing;
+        RenderingServer.FramePostDraw += FinishStep;
+    }
+
+    public override void _ExitTree()
+    {
+        RenderingServer.FramePreDraw -= StepWhileDrawing;
+        RenderingServer.FramePostDraw -= FinishStep;
+        FinishStep();
+        _pendingStep = null;
+    }
+
     public override void _Process(double delta)
     {
+        // A frame that was meant to be drawn but wasn't still owes its step.
+        if (_pendingStep is { } owed)
+        {
+            _pendingStep = null;
+            Tissue.Advance(owed.Delta, owed.Run);
+        }
         WoundMap.Flush();
         // Mesh preparation and simulation run on alternate frames. A large fold prepares its layers in groups,
         // then publishes the complete stack from one captured state.
@@ -168,10 +194,37 @@ public partial class PatientBody : Node3D
             rebuild = RebuildLayers();
         }
         _rebuiltLast = rebuild;
-        Tissue.Advance((float)delta, !rebuild);
+        // Drawn frames step the tissue during the draw, so everything this frame reads it as the mesh shows it.
+        if (DisplayServer.WindowCanDraw() && RenderingServer.RenderLoopEnabled)
+        {
+            _pendingStep = ((float)delta, !rebuild);
+        }
+        else
+        {
+            Tissue.Advance((float)delta, !rebuild);
+        }
         UpdateSutures();
         UpdateStaples();
         JiggleOrgans((float)delta);
+    }
+
+    /// <summary>Runs the frame's solver step on a worker after every node has processed, overlapping the draw and the
+    /// wait for vsync. Nothing on the main thread touches the tissue until FinishStep() joins it after the draw, so
+    /// it needs no locks.</summary>
+    private void StepWhileDrawing()
+    {
+        if (_pendingStep is { } step)
+        {
+            _pendingStep = null;
+            _stepping = Task.Run(() => Tissue.Advance(step.Delta, step.Run));
+        }
+    }
+
+    private void FinishStep()
+    {
+        // Rethrows what the step threw, on the main thread where Godot reports it.
+        _stepping?.GetAwaiter().GetResult();
+        _stepping = null;
     }
 
     public bool IsLimbSite => LimbSites.Contains(SiteId);
