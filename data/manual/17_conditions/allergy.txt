@@ -1,4 +1,4 @@
-tags: allergy, unknown_allergy, allergen
+tags: allergy, allergen
 title: Drug allergy
 [i]A reaction to one of the standard agents, named on the chart or not.[/i]
 

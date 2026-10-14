@@ -146,18 +146,15 @@ public partial class DataContractsTest
     [TestCase]
     public void AllergiesNameTheirDrugOnTheChartOnlyWhenDocumented()
     {
-        foreach (var id in (string[])["allergy", "unknown_allergy"])
+        var allergy = Db.PatientQuirks["allergy"];
+        foreach (var variant in allergy.Variants)
         {
-            var quirk = Db.PatientQuirks[id];
-            foreach (var variant in quirk.Variants)
-            {
-                var allergen = quirk.Effects(variant)["allergen"];
-                AssertBool(Db.Drug(allergen)?.HasFlag("allergen_candidate") == true)
-                    .OverrideFailureMessage($"{id} ({variant}) is allergic to a drug flagged allergen_candidate").IsTrue();
-                AssertBool(quirk.Text("card", variant).Contains(allergen, StringComparison.OrdinalIgnoreCase))
-                    .OverrideFailureMessage($"{id} ({variant}) names its allergen on the chart only when documented")
-                    .IsEqual(id == "allergy");
-            }
+            var allergen = allergy.Effects(variant)["allergen"];
+            AssertBool(Db.Drug(allergen)?.HasFlag("allergen_candidate") == true)
+                .OverrideFailureMessage($"allergy ({variant}) is to a drug flagged allergen_candidate").IsTrue();
+            AssertBool(allergy.Text("card", variant).Contains(allergen, StringComparison.OrdinalIgnoreCase))
+                .OverrideFailureMessage($"allergy ({variant}) names its drug on the chart only when documented")
+                .IsEqual(!variant.StartsWith("unknown_", StringComparison.Ordinal));
         }
     }
 
