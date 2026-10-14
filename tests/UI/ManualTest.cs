@@ -33,4 +33,30 @@ public class ManualTest
         SurgeryDriver.Click(Entry("1. Preoperative preparation"));
         AssertBool(aneurysm.Visible).OverrideFailureMessage("opening another page closes the section").IsFalse();
     }
+
+    /// <summary>Drug allergy lists its drugs under it once it's open, and each drug's page gives its alternatives and
+    /// what its reaction looks like.</summary>
+    [TestCase]
+    public void AllergyDrugsOpenUnderDrugAllergy()
+    {
+        var manual = new ManualView([], () => { });
+        AutoFree(manual.View);
+        Frames.Root.AddChild(manual.View);
+        Button Entry(string title) => manual.Entries.First(entry => entry.Page.Title == title).Button;
+        var drugs = ((string[])["Lidocaine", "Morphine", "Propofol"]).Select(Entry).ToList();
+        SurgeryDriver.Click(Entry("17. Chronic conditions"));
+        AssertBool(drugs.Any(drug => drug.Visible)).OverrideFailureMessage("the drugs are hidden until Drug allergy is open")
+            .IsFalse();
+        SurgeryDriver.Click(Entry("Drug allergy"));
+        AssertBool(drugs.All(drug => drug.Visible)).OverrideFailureMessage("opening Drug allergy lists its drugs").IsTrue();
+        SurgeryDriver.Click(Entry("Lidocaine"));
+        var page = manual.View.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().First();
+        AssertString(page.Text).OverrideFailureMessage("a drug's page lists its alternatives").Contains("Alternatives");
+        AssertString(page.Text).OverrideFailureMessage("a drug's page says what its reaction looks like").Contains("Reaction");
+        AssertBool(drugs.All(drug => drug.Visible) && Entry("Aneurysm").Visible)
+            .OverrideFailureMessage("the other drugs and conditions stay listed while one drug is read").IsTrue();
+        SurgeryDriver.Click(Entry("Aneurysm"));
+        AssertBool(drugs.Any(drug => drug.Visible)).OverrideFailureMessage("opening another condition closes the drugs")
+            .IsFalse();
+    }
 }

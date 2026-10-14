@@ -1,0 +1,13 @@
+tags: morphine
+title: Morphine
+[i]Allergy to the opioid painkiller.[/i]
+
+[b]Alternatives[/b]
+[table=2]
+[cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
+[cell]Ketamine[/cell][cell]Raises heart rate and pressure. Puts an awake patient under.[/cell]
+[/table]
+
+[b]Reaction[/b]
+• Morphine lowers oxygen saturation by {-drug.morphine.Peak.Spo2}% on its own. With the allergy the saturation falls further, and the pressure falls with it.
+• Pressure and oxygen saturation fall as on Drug allergy.

@@ -149,16 +149,36 @@ public partial class DataContractsTest
         var allergy = Db.PatientQuirks["allergy"];
         foreach (var variant in allergy.Variants)
         {
-            var allergen = allergy.Effects(variant)["allergen"];
-            AssertBool(Db.Drug(allergen)?.HasFlag("allergen_candidate") == true)
-                .OverrideFailureMessage($"allergy ({variant}) is to a drug flagged allergen_candidate").IsTrue();
+            var unknown = variant.StartsWith("unknown_", StringComparison.Ordinal);
+            var name = unknown ? "Unknown drug allergy" : "Drug allergy";
+            if (allergy.Effects(variant).GetValueOrDefault("allergen") is not { } allergen)
+            {
+                AssertString(allergy.DisplayName(variant)).OverrideFailureMessage($"allergy ({variant}) reads as a name in menus")
+                    .IsEqual($"{name} (None after all)");
+                continue;
+            }
+            AssertBool(Db.Drug(allergen) is { } drug && drug.HasFlag("allergen_candidate") && drug.Alternatives.Count > 0)
+                .OverrideFailureMessage($"allergy ({variant}) is to a drug flagged allergen_candidate, with alternatives").IsTrue();
             AssertBool(allergy.Text("card", variant).Contains(allergen, StringComparison.OrdinalIgnoreCase))
                 .OverrideFailureMessage($"allergy ({variant}) names its drug on the chart only when documented")
-                .IsEqual(!variant.StartsWith("unknown_", StringComparison.Ordinal));
-            var drug = allergen.Capitalize();
+                .IsEqual(!unknown);
             AssertString(allergy.DisplayName(variant)).OverrideFailureMessage($"allergy ({variant}) reads as a name in menus")
-                .IsEqual(variant.StartsWith("unknown_", StringComparison.Ordinal) ? $"Unknown drug allergy ({drug})" : $"Drug allergy ({drug})");
+                .IsEqual($"{name} ({allergen.Capitalize()})");
         }
+    }
+
+    /// <summary>Of the allergies that roll, 70% are named on the chart, and a tenth of the unknown ones aren't
+    /// allergies at all.</summary>
+    [TestCase]
+    public void AllergiesRollNamedMostOfTheTime()
+    {
+        var allergy = Db.PatientQuirks["allergy"];
+        var total = allergy.Variants.Sum(allergy.Weight);
+        var unknown = allergy.Variants.Where(variant => variant.StartsWith("unknown_", StringComparison.Ordinal)).ToList();
+        AssertFloat(unknown.Sum(allergy.Weight) / total).OverrideFailureMessage("30% of allergies are unknown")
+            .IsEqualApprox(0.3f, 0.001f);
+        AssertFloat(allergy.Weight("unknown_none") / unknown.Sum(allergy.Weight))
+            .OverrideFailureMessage("a tenth of the unknown ones aren't allergies").IsEqualApprox(0.1f, 0.001f);
     }
 
     /// <summary>A number with a unit written straight into a page.</summary>
@@ -175,7 +195,7 @@ public partial class DataContractsTest
         AssertString(filled).OverrideFailureMessage("manual numbers are worked out from constants, drugs and quirk effects")
             .IsEqual(expected);
         // A number with a unit written straight into a page would go stale when the game changes: it has to be "{...}".
-        foreach (var page in Db.Manual.SelectMany(page => page.Children.Prepend(page)))
+        foreach (var page in Db.Manual.SelectMany(page => page.WithSubPages))
         {
             AssertString(page.Body).OverrideFailureMessage($"{page.Title} has no number left to work out").NotContains("{");
             var text = ManualPage.NumberPattern().Replace(page.Source, "").Split("[font_size=16][b]References")[0];

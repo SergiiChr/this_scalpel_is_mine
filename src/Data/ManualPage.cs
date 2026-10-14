@@ -32,6 +32,8 @@ public sealed partial class ManualPage
     public string Source { get; private init; } = "";
     public string Body { get; private init; } = "";
     public IReadOnlyList<ManualPage> Children { get; private init; } = [];
+    /// <summary>This page and every page under it, at any depth.</summary>
+    public IEnumerable<ManualPage> WithSubPages => Children.SelectMany(child => child.WithSubPages).Prepend(this);
 
     [GeneratedRegex(@"\{([^{}]+)\}")]
     internal static partial Regex NumberPattern();

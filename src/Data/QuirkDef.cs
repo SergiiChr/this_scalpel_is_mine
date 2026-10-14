@@ -86,6 +86,9 @@ public sealed class QuirkDef(string id, QuirkKind kind)
 
     public string Polarity(string variant = "") => Text("polarity", variant);
 
+    /// <summary>How often <paramref name="variant"/> rolls against the quirk's other variants.</summary>
+    public float Weight(string variant) => Modifiers.Number(Text("weight", variant)) ?? 1f;
+
     public bool IsExclusive => Text("exclusive") == "true";
 
     public bool IsRedHerring => Text("red_herring") == "true";

@@ -20,6 +20,8 @@ public sealed class DrugDef
     public float Duration { get; init; }
     public IReadOnlySet<string> Flags { get; init; } = new HashSet<string>();
     public IReadOnlySet<string> DangerWith { get; init; } = new HashSet<string>();
+    /// <summary>Drugs to use instead when the patient is allergic to this one.</summary>
+    public IReadOnlyList<string> Alternatives { get; init; } = [];
     public string BloodType { get; init; } = "";
     /// <summary>The right dose per kg of body weight in <see cref="Unit"/>, 0 when it isn't dosed (bags, masks,
     /// drinks).</summary>
@@ -37,6 +39,7 @@ public sealed class DrugDef
         Duration = config.Float("duration", 60f),
         Flags = config.Strings("flags").ToHashSet(),
         DangerWith = config.Strings("danger_with").ToHashSet(),
+        Alternatives = config.Strings("alternatives"),
         BloodType = config.String("blood_type"),
         Dose = config.Float("dose"),
         Unit = config.String("unit", "mg"),

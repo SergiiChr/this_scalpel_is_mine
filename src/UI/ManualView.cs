@@ -5,7 +5,7 @@ namespace Scalpel.UI;
 /// hand at the pages that match the patient's hidden conditions. Styled as a Victorian surgical guide: parchment sheets
 /// in ruled frames, red and black ink, hand written notes. Page markup on top of BBCode: a line starting with "## " is a
 /// section heading, one starting with "> " a note. Sub-pages (chronic conditions) are listed under their page only
-/// while it or one of them is open.
+/// while it or one of them is open, and so are theirs (the drugs under Drug allergy).
 /// </summary>
 public sealed class ManualView
 {
@@ -22,8 +22,8 @@ public sealed class ManualView
     private const int FrameMargin = 44;
 
     /// <summary>A line of the table of contents: the page it opens, the section it's listed under (its own page for a
-    /// section) and whether the divine hand points at it.</summary>
-    public sealed record Entry(Button Button, ManualPage Page, ManualPage Section, bool Glowing);
+    /// section), the page it's listed under (none for a section) and whether the divine hand points at it.</summary>
+    public sealed record Entry(Button Button, ManualPage Page, ManualPage Section, ManualPage? Parent, bool Glowing);
 
     /// <summary>The whole overlay.</summary>
     public Control View { get; }
@@ -51,18 +51,22 @@ public sealed class ManualView
         revision.HorizontalAlignment = HorizontalAlignment.Center;
         toc.AddChild(revision);
         toc.AddChild(new Control());
+        void List(ManualPage page, ManualPage section, ManualPage? parent, int depth)
+        {
+            var glowing = highlightKeys.Count > 0 && page.Matches(highlightKeys);
+            var button = Ui.Button(new string(' ', 6 * depth) + (glowing ? "☞ " : "") + page.Title, () => Show(page, section));
+            button.Alignment = HorizontalAlignment.Left;
+            button.Visible = page == section;
+            _entries.Add(new Entry(button, page, section, parent, glowing));
+            toc.AddChild(button);
+            foreach (var child in page.Children)
+            {
+                List(child, section, page, depth + 1);
+            }
+        }
         foreach (var section in Db.Manual)
         {
-            foreach (var page in section.Children.Prepend(section))
-            {
-                var glowing = highlightKeys.Count > 0 && page.Matches(highlightKeys);
-                var indent = page == section ? "" : "      ";
-                var button = Ui.Button(indent + (glowing ? "☞ " : "") + page.Title, () => Show(page, section));
-                button.Alignment = HorizontalAlignment.Left;
-                button.Visible = page == section;
-                _entries.Add(new Entry(button, page, section, glowing));
-                toc.AddChild(button);
-            }
+            List(section, section, null, 0);
         }
         var closeButton = Ui.Button("Close  [Esc]", close);
         closeButton.AddThemeFontOverride("font", GD.Load<Font>(CapsFont));
@@ -101,16 +105,18 @@ public sealed class ManualView
     }));
 
     /// <summary>Opens <paramref name="page"/>, listed under <paramref name="section"/>, and shows that section's
-    /// sub-pages.</summary>
+    /// sub-pages, and the sub-pages of the page or of the one it's listed under (a drug under Drug allergy).</summary>
     public void Show(ManualPage page, ManualPage section)
     {
+        var parent = _entries.First(entry => entry.Page == page).Parent;
         // The heading shows the name only: "4. Incision and exposure" becomes "Incision and exposure".
         _title.Text = page.Title.Split(". ")[^1];
         _page.Text = ToBbcode(page.Body);
         _page.ScrollToLine(0);
         foreach (var entry in _entries)
         {
-            entry.Button.Visible = entry.Section == entry.Page || entry.Section == section;
+            entry.Button.Visible = entry.Parent is null
+                || (entry.Section == section && (entry.Parent == section || entry.Parent == page || entry.Parent == parent));
             var color = entry.Page == page ? Red : entry.Glowing ? Glow : Ink;
             entry.Button.AddThemeColorOverride("font_color", color);
             entry.Button.AddThemeColorOverride("font_focus_color", color);

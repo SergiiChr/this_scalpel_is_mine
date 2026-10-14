@@ -59,6 +59,21 @@ public partial class Patient : Node3D
     public const float BurstChance = 0.005f;
     /// <summary>Seconds after a burst before the next one can happen.</summary>
     public const float BurstCooldown = 30f;
+    /// <summary>Swelling (0-1) an allergic reaction brings on at once.</summary>
+    public const float AllergySwelling = 0.6f;
+    /// <summary>Systolic fall (mmHg) at the moment of an allergic reaction, before the swelling adds its own.</summary>
+    public const float AllergyPressureDrop = 30f;
+    /// <summary>Systolic fall (mmHg) and saturation fall (%) of full swelling, while it lasts.</summary>
+    public const float SwellingPressure = 50f;
+    public const float SwellingSpo2 = 15f;
+    /// <summary>Swelling (per second) that goes down on its own, and more for a full diphenhydramine or adrenaline
+    /// dose.</summary>
+    public const float SwellingFade = 0.004f;
+    public const float AntihistamineFade = 0.02f;
+    public const float AdrenalineFade = 0.05f;
+    /// <summary>Swelling above this is anaphylaxis: the heart is at risk of arrest. One reaction stays below it, a
+    /// second on top doesn't.</summary>
+    public const float AnaphylaxisSwelling = 0.7f;
     /// <summary>Blood (ml) that fills the cavity to the top.</summary>
     public const float CavityFullMl = 350f;
     /// <summary>Blood (ml) in the cavity from which it spills over open wounds onto the skin.</summary>
@@ -370,7 +385,7 @@ public partial class Patient : Node3D
         v.LocalBlock = Mathf.Clamp(fx.LocalBlock, 0f, 1f);
         v.Glucose += (Mods.Num("glucose_drift") * (1f + v.Panic) + fx.Glucose) * dt;
         v.Pain = Mathf.Clamp(v.Pain - dt * 0.05f - fx.PainRelief * dt * 0.2f, 0f, 1f);
-        v.Swelling = Mathf.Max(v.Swelling - dt * (0.004f + fx.Antihistamine * 0.02f + fx.Adrenaline * 0.05f), 0f);
+        v.Swelling = Mathf.Max(v.Swelling - dt * (SwellingFade + fx.Antihistamine * AntihistamineFade + fx.Adrenaline * AdrenalineFade), 0f);
         var shock = Mathf.Clamp((0.6f - v.BloodRatio) / 0.3f, 0f, 1f);
         var glucoseComa = Mathf.Clamp((v.Glucose - GlucoseHigh) / 10f, 0f, 1f) + Mathf.Clamp((2.5f - v.Glucose) / 1.5f, 0f, 1f);
         v.Consciousness = v.IsArrested ? 0f : Mathf.Clamp(1f - Mathf.Max(v.Anesthesia, fx.Sedation * 0.8f) - shock - glucoseComa, 0f, 1f);
@@ -395,13 +410,13 @@ public partial class Patient : Node3D
         var awakeFactor = v.IsAwake ? 1f : 0.2f;
         var targetHr = 72f + (1f - ratio) * 140f + v.Pain * 35f * awakeFactor + v.Panic * 40f + fx.Hr + (v.Temperature - 37f) * 10f;
         var suctionLeft = Targets.Where(t => t.IsSuctionTarget && !t.Extracted).Sum(t => t.Amount);
-        var targetSpo2 = 98f + Mods.Num("spo2_offset") + fx.Spo2 - (1f - ratio) * 30f - v.Swelling * 15f - suctionLeft / _initialSuction * 16f;
+        var targetSpo2 = 98f + Mods.Num("spo2_offset") + fx.Spo2 - (1f - ratio) * 30f - v.Swelling * SwellingSpo2 - suctionLeft / _initialSuction * 16f;
         switch (v.Rhythm)
         {
             case Rhythm.Sinus:
                 v.HeartRate = Mathf.Lerp(v.HeartRate, targetHr, dt * 0.6f) + Rng.RandfRange(-0.6f, 0.6f);
                 v.Systolic = Mathf.Lerp(v.Systolic,
-                    NormalPressure * Mathf.Pow(ratio, 1.6f) + fx.Bp + v.Panic * PanicPressure - v.Swelling * 50f, dt * 0.6f);
+                    NormalPressure * Mathf.Pow(ratio, 1.6f) + fx.Bp + v.Panic * PanicPressure - v.Swelling * SwellingPressure, dt * 0.6f);
                 v.Spo2 = Mathf.Clamp(Mathf.Lerp(v.Spo2, targetSpo2, dt * 0.3f), 50f, 100f);
                 _arrestTime = 0f;
                 RollArrest(dt, fx);
@@ -478,7 +493,7 @@ public partial class Patient : Node3D
         risk += v.HeartRate > 170f ? 0.004f : 0f;
         risk += v.Temperature > 40.5f ? 0.01f : 0f;
         risk += v.Glucose < 2f ? 0.004f : 0f;
-        risk += v.Swelling > 0.7f ? 0.02f : 0f;
+        risk += v.Swelling > AnaphylaxisSwelling ? 0.02f : 0f;
         risk += Mods.Num("clot_risk") * (fx.Clot < -0.2f ? 0f : 1f);
         if (Rng.Randf() < risk * Mods.Mult("arrest_mult") * dt)
         {
@@ -785,13 +800,26 @@ public partial class Patient : Node3D
             }
         }
         var fresh = Drugs.Give(def, share, def.Onset * (route == DrugRoute.Direct ? DrugDef.DirectOnset : 1.5f));
-        if (fresh && Mods.List("allergen").Contains(drugId))
+        if (!fresh)
         {
-            Vitals.Swelling = Mathf.Min(Vitals.Swelling + 0.6f, 1f);
-            Vitals.Systolic -= 30f;
+            return;
+        }
+        var allergens = Mods.List("allergen");
+        if (allergens.Contains(drugId))
+        {
+            // Nothing on the body shows it: the monitor does.
+            Vitals.Swelling = Mathf.Min(Vitals.Swelling + AllergySwelling, 1f);
+            Vitals.Systolic -= AllergyPressureDrop;
             Session.Scoring.Add("allergic_reaction");
-            Session.Announce("Hives spread across the skin. Allergic reaction!");
+            Session.AnnounceDebug($"Allergic reaction: {def.Name}");
             Reveal("allergy");
+        }
+        // A stronger stand-in for a drug the patient could have had after all, whether the chart named the allergy or
+        // not.
+        var replaces = Db.Drugs.Values.Where(drug => drug.Alternatives.Contains(drugId)).Select(drug => drug.Id).ToList();
+        if (Rolls.Any(roll => roll.Id == "allergy") && replaces.Count > 0 && !replaces.Any(allergens.Contains))
+        {
+            Session.Scoring.Add("unneeded_alternative");
         }
     }
 
