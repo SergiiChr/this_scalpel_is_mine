@@ -187,6 +187,32 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertIn("1 passed, 0 failed, 1 skipped", output.getvalue())
 
+    def test_first_suite_runs_alone_until_the_adapter_installed_its_runner(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
+        batches: list[tuple[int, list[str]]] = []
+
+        class Pool:
+            def __init__(self, workers: int) -> None:
+                self.workers = workers
+
+            def __enter__(self) -> "Pool":
+                return self
+
+            def __exit__(self, *exception: object) -> None:
+                pass
+
+            def map(self, run: object, suites: list[build.Suite]) -> list[build.Outcome]:
+                batches.append((self.workers, [suite.full_name for suite in suites]))
+                return [build.Outcome(suite, Path(), [], 1) for suite in suites]
+
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
+            with patch.object(build, "ThreadPoolExecutor", Pool), patch.object(build, "RUNNER_CLASS", self.root / "missing"):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = build.test(["--all", "--jobs", "2"])
+        self.assertEqual(status, 0)
+        self.assertEqual(batches, [(1, ["Scalpel.Tests.Example"]), (2, ["Scalpel.Tests.Other"]), (1, [])])
+
     def test_entirely_skipped_run_cannot_pass(self) -> None:
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
             with contextlib.redirect_stdout(io.StringIO()) as output, contextlib.redirect_stderr(io.StringIO()):

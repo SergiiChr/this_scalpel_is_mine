@@ -173,7 +173,7 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
     It holds on any machine, with or without a GPU.
   - Render budget, `./build.py full_performance_run` only: rendering on, whole frames within 16 ms on the real GPU.
 - Frame times are checked only in suites that run alone (`--jobs 1`, the default, or with key frames). CI passes
-  `--ci-run`, which doesn't check them.
+  `--ci-run`, which doesn't check them, and runs suites four at a time.
 
 ## Gotchas
 

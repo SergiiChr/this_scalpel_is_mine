@@ -39,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
-      - run: ./build.py test --ci-run
+      # Four suites at a time: ubuntu-latest has four cores, and CI doesn't check frame times.
+      - run: ./build.py test --ci-run --jobs 4
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -57,10 +58,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
-      # One suite at a time: every GdUnit4 process rebuilds the project before it runs, and a rebuild beside another
-      # suite's start leaves that suite without its runner class.
       - name: Everything else, headless
-        run: ./build.py test --all --skip smoke --ci-run
+        run: ./build.py test --all --skip smoke --ci-run --jobs 4
       - run: SKIP_TESTS=1 ./build.py build
       - if: always()
         uses: actions/upload-artifact@v4
