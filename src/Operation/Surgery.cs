@@ -234,19 +234,22 @@ public partial class Surgery : Node3D
             Announce(reason);
             return;
         }
-        Finish(false, reason);
+        End(false, reason);
     }
 
-    /// <summary>Host: the patient leaves the table, signed out or out of time, and the outcome is settled now. Without
-    /// every required step standing it fails for <paramref name="reason"/>. Death ends the surgery on its own.
-    /// </summary>
-    internal void Discharge(string reason)
+    /// <summary>Host: the patient leaves the table, signed out or out of time. Without every required step standing it
+    /// fails for <paramref name="reason"/>.</summary>
+    internal void Discharge(string reason) => End(true, reason);
+
+    /// <summary>Host: every way a surgery ends (discharge, time, death) settles the objectives here, once. A success
+    /// only when it <paramref name="canSucceed"/> and every required step counts.</summary>
+    private void End(bool canSucceed, string reason)
     {
         if (Finished)
         {
             return;
         }
-        var ready = Objectives.Settle(Scoring);
+        var ready = Objectives.Settle(Scoring) && canSucceed;
         Finish(ready, ready ? "" : reason);
     }
 

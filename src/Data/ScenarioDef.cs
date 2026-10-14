@@ -57,7 +57,7 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
     /// <summary>What another step's <see cref="After"/> calls it: its "id", or else its type.</summary>
     public string Id { get; init; } = Type;
 
-    /// <summary>Steps (by <see cref="Id"/>) that must already be done when this one is first met, or it's spoiled.
+    /// <summary>Steps (by <see cref="Id"/>) that must hold when this one is first met, or it's spoiled.
     /// </summary>
     public IReadOnlyList<string> After { get; init; } = [];
 

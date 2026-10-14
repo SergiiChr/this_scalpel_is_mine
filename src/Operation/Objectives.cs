@@ -19,6 +19,8 @@ public sealed class StepState
     public bool Done { get; set; }
     /// <summary>Its condition has been met at least once.</summary>
     public bool Reached { get; set; }
+    /// <summary>Its condition holds right now (a tourniquet still on, a block not worn off).</summary>
+    public bool Holds { get; set; }
     /// <summary>First met before a step it comes after was done: it no longer counts.</summary>
     public bool Spoiled { get; set; }
     public float Timer { get; set; }
@@ -33,7 +35,8 @@ public sealed class StepState
 /// <summary>
 /// Scenario requirements, host only. Every step is checked every tick, whatever was done before it: a milestone (the
 /// bullet out) stays done once reached, a state step (no active bleeding) counts only while it holds.
-/// A step first met before the steps it comes after (<see cref="ObjectiveStep.After"/>) is spoiled for good.
+/// A step first met while a step it comes after (<see cref="ObjectiveStep.After"/>) isn't holding is spoiled for good:
+/// done earlier isn't enough when it has worn off or come off since.
 /// Nothing here ends the surgery: the outcome is settled when the patient is discharged (<see cref="Settle"/>).
 /// Each step type is a small check in <see cref="ObjectiveChecks"/>.
 /// </summary>
@@ -60,11 +63,13 @@ public partial class Objectives : Node
         {
             var step = Steps[i];
             var state = States[i];
-            if (state.Spoiled || (state.Done && !ObjectiveChecks.IsState(step.Type)))
+            if (state.Spoiled)
             {
                 continue;
             }
+            // Milestones are checked on after they're done too: a later step needs to know they still hold.
             var met = ObjectiveChecks.Check(step, state, surgery, delta);
+            state.Holds = met;
             if (met && !state.Reached)
             {
                 state.Reached = true;
@@ -75,20 +80,22 @@ public partial class Objectives : Node
                     continue;
                 }
             }
-            if (met != state.Done)
+            var done = met || (state.Reached && !ObjectiveChecks.IsState(step.Type));
+            if (done != state.Done)
             {
-                state.Done = met;
-                surgery.AnnounceDebug($"{(met ? "Done" : "Undone")}: {step.Label}");
+                state.Done = done;
+                surgery.AnnounceDebug($"{(done ? "Done" : "Undone")}: {step.Label}");
             }
         }
     }
 
-    /// <summary>The first step <paramref name="step"/> comes after that wasn't done, null when there's none.</summary>
+    /// <summary>The first step <paramref name="step"/> comes after that doesn't hold now, null when there's none.
+    /// Steps come after earlier ones only, and those were checked earlier this tick.</summary>
     private ObjectiveStep? Missing(ObjectiveStep step)
     {
         for (var i = 0; i < Steps.Count; i++)
         {
-            if (step.After.Contains(Steps[i].Id) && !(States[i].Reached && !States[i].Spoiled))
+            if (step.After.Contains(Steps[i].Id) && !(States[i].Holds && !States[i].Spoiled))
             {
                 return Steps[i];
             }

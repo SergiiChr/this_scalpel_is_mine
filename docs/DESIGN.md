@@ -189,8 +189,8 @@ Objective step types (`src/Operation/ObjectiveChecks.cs`):
 inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
 only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
-points. `"after": [ids]` names steps (by `"id"`, else type) that must be done when the step is first met; met before
-them it's spoiled and no longer counts. Used only where the order matters medically: numbing before cutting or
+points. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
+tourniquet still on, the block not worn off); otherwise it's spoiled and no longer counts. Used only where the order matters medically: numbing before cutting or
 stitching, cleaning before opening, a tourniquet before cutting a limb, heparin before clamping.
 Nothing ends the surgery when the steps are done: the players sign the patient out (see Discharge), or the time limit
 does it for them. Then every required step must count for a success; each one that doesn't is scored as missed.
