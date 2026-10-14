@@ -8,7 +8,7 @@ waist and both hands gripping the ends of a cape that spans her back, so it is r
   rays its colors. Where the thighs press together the outline and colors are filled in from the clean rings around
   them. Laid out straight, a measured ring keeps its shape, so the legs come out straight without stretching.
 - The right shoe is the left one mirrored, red and blue swapped: on the scan its toe is buried in the left heel.
-- Arms are tubes in the torso's skin tone and the scan's glove colors, rooted inside the shoulders: the scanned arms
+- Arms are tubes in the torso's skin tone with the scan's wristband colors, rooted inside the shoulders: the scanned arms
   are tangled in the cape. Hands are the glove
   generator's hand (hand.py) in skin color, as the scanned fists are fused around the cape.
 - The upper body is shifted upright over the hips and the figure turned to face -Z.
@@ -90,18 +90,18 @@ LEGS = {
 HIP_RADII = (0.03, 0.034)
 # Shoes stay scanned below this height; the stocking tubes reach a little into them.
 ANKLE = 0.075
-# The heights skin tone is taken from (chest and shoulders), and the surface points the long gloves' colors are
-# picked up from. The paint is this much darker under the arms than on top.
+# The heights skin tone is taken from (chest and shoulders), and the surface points the wristbands' colors are
+# picked up from (blue on her right, red on her left). The paint is this much darker under the arms than on top.
 SKIN_BAND = (0.37, 0.5)
 PAINT_SHADE = 0.25
 GLOVE_SPOTS = {"R": (0.078, 0.49, -0.035), "L": (-0.1, 0.42, 0.065)}
 # Rest shoulder joints (after straightening), arm lengths and radii (shoulder, elbow, wrist), from the clean
-# stretches of the scanned arms. The gloves start a little above the elbow.
+# stretches of the scanned arms. The forearms are bare: a raised band (length, radius) sits at each wrist.
 SHOULDERS = {"R": (0.037, 0.458, 0.0), "L": (-0.037, 0.458, 0.0)}
 UPPER_ARM = 0.075
 FOREARM = 0.058
 ARM_RADII = (0.0135, 0.0115, 0.009)
-GLOVE_TOP = 0.068
+CUFF = (0.016, 0.0115)
 # The arm starts this far inside the shoulder, wider there, so it fuses into the torso like a deltoid.
 SHOULDER_ROOT = 0.014
 # Glove generator hand scaled to the figurine's wrist, and how far it reaches back into the forearm.
@@ -239,14 +239,18 @@ class Scan:
         colors = self.colors(faces.ravel(), points.reshape(-1, 3)).reshape(len(curve), angles, 3)
         return distance, colors
 
-    def skin_tone(self) -> NDArray[np.float64]:
-        """Median color of the bare skin on the upper body, the tone the arms and hands are painted in."""
+    def skin_tone(self, lit: bool = True) -> NDArray[np.float64]:
+        """The bare skin on the upper body: its median, the tone the scanned torso shows, or with `lit` the median of
+        its brighter part, nearer the pale paint (reference photos) as the scan's lighting shades much of it."""
         centers = self.face_centers()
         faces = np.nonzero((centers[:, 1] > SKIN_BAND[0]) & (centers[:, 1] < SKIN_BAND[1]))[0]
         colors = self.colors(faces, np.array([self.bm.faces[i].calc_center_median()[:] for i in faces]))
         r, g, b = colors.T
         skin = (r > g) & (g > b) & (r - b > 0.12) & (r - b < 0.4) & (r > 0.45)
-        tone: NDArray[np.float64] = np.median(colors[skin], axis=0)
+        bare = colors[skin]
+        if lit:
+            bare = bare[bare.sum(axis=1) >= np.percentile(bare.sum(axis=1), 70)]
+        tone: NDArray[np.float64] = np.median(bare, axis=0)
         return tone
 
     def color_around(self, point: Vec3, radius: float = 0.012) -> NDArray[np.float64]:
@@ -739,17 +743,22 @@ def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
 
 
 def arms(scan: Scan) -> list[bpy.types.Object]:
-    """Round arms from a flared root inside the shoulder to the wrist, in the torso's skin tone and the glove colors,
-    shaded lighter on top and darker underneath like the figurine's paint."""
-    skin = scan.skin_tone()
+    """Round arms from a flared root inside the shoulder to a wristband, in the torso's skin tone, shaded lighter on top
+    and darker underneath like the figurine's paint."""
+    # From the scanned torso's own tone at the shoulder, so no seam shows there, to the paint's by the elbow.
+    torso, skin = scan.skin_tone(lit=False), scan.skin_tone()
     parts = []
     length = SHOULDER_ROOT + UPPER_ARM + FOREARM
-    root, elbow, top = SHOULDER_ROOT / length, (SHOULDER_ROOT + UPPER_ARM) / length, (SHOULDER_ROOT + GLOVE_TOP) / length
+    root, elbow, cuff = SHOULDER_ROOT / length, (SHOULDER_ROOT + UPPER_ARM) / length, 1.0 - CUFF[0] / length
+    # Just under the band's edge, so the band steps up from the arm.
+    edge = cuff - 0.003
+    wrist_side = ARM_RADII[1] + (ARM_RADII[2] - ARM_RADII[1]) * (edge - elbow) / (1.0 - elbow)
     for side, sign in (("R", 1.0), ("L", -1.0)):
-        glove = scan.color_around(GLOVE_SPOTS[side])
+        band = scan.color_around(GLOVE_SPOTS[side])
         tube = Tube.round(
-            [(0.0, ARM_RADII[0] * 1.35), (root, ARM_RADII[0] * 1.1), (root + 0.12, ARM_RADII[0]), (elbow, ARM_RADII[1]), (1.0, ARM_RADII[2])],
-            [(0.0, skin), (top - 0.01, skin), (top, glove), (1.0, glove)],
+            [(0.0, ARM_RADII[0] * 1.35), (root, ARM_RADII[0] * 1.1), (root + 0.12, ARM_RADII[0]), (elbow, ARM_RADII[1])]
+            + [(edge, wrist_side), (cuff, CUFF[1]), (1.0, CUFF[1])],
+            [(0.0, torso), (root, torso), (elbow, skin), (edge, skin), (cuff, band), (1.0, band)],
             length,
         )
         # Angle 0 points up (the normal passed to build): light there, PAINT_SHADE darker straight underneath.
