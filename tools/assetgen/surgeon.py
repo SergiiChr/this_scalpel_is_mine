@@ -1,11 +1,11 @@
-"""Surgeon body, head and arm segments (the gloved hand comes from tools/blender).
+"""Surgeon body and arm segments (the gloved hand comes from tools/blender, the head is a delivered model).
 
-Body: origin at the feet, facing -Z. Head: origin at eye level. Arm segments: unit length, stretched by the game.
+Body: origin at the feet, facing -Z. Arm segments: unit length, stretched by the game.
 """
 
 from __future__ import annotations
 
-from .geometry import Model, cylinder, ellipsoid, merge, superellipsoid, tube
+from .geometry import Model, ellipsoid, merge, superellipsoid, tube
 
 
 # Rig pivots/lengths match src/Surgeons/Surgeon.Body.cs's HipHeight, ThighLength, ShinLength, AnkleHeight and HipWidth.
@@ -55,40 +55,6 @@ def _body() -> Model:
     return model
 
 
-def _head() -> Model:
-    model = Model("surgeon", "head")
-    # One continuous facial shell: a narrower jaw into cheeks and brow, with no overlapping jaw seam.
-    skull = tube(
-        [(0, -0.11, 0.025), (0, -0.075, 0.025), (0, -0.025, 0.03), (0, 0.025, 0.03), (0, 0.075, 0.03), (0, 0.11, 0.035)],
-        [(0.04, 0.042), (0.073, 0.063), (0.095, 0.08), (0.097, 0.083), (0.074, 0.074), (0.025, 0.028)],
-        ring=40,
-        up=(0, 0, 1),
-    )
-    ears = merge(ellipsoid((0.012, 0.026, 0.017), (0.081, -0.01, 0.035)), ellipsoid((0.012, 0.026, 0.017), (-0.081, -0.01, 0.035)))
-    model.add("Face", merge(skull, ears), "skin")
-    eyes = merge(ellipsoid((0.013, 0.008, 0.004), (0.032, 0.0, -0.064), 2), ellipsoid((0.013, 0.008, 0.004), (-0.032, 0.0, -0.064), 2))
-    irises = merge(ellipsoid((0.005, 0.005, 0.002), (0.032, 0.0, -0.068), 2), ellipsoid((0.005, 0.005, 0.002), (-0.032, 0.0, -0.068), 2))
-    model.add("Eyes", eyes, "eye", (0, 0, 0), "Face")
-    model.add("Irises", irises, "iris", (0, 0, 0), "Face")
-    cap = ellipsoid((0.09, 0.07, 0.108), (0, 0.067, 0.03), 3)
-    band = tube([(0, 0.04, 0.03), (0, 0.05, 0.03)], [(0.098, 0.088)] * 2, ring=40, up=(0, 0, 1))
-    cap = merge(cap, band)
-    model.add("Cap", cap, "tint", (0, 0, 0), "Face")
-    mask = merge(
-        superellipsoid((0.15, 0.095, 0.035), 0.6, (0.0, -0.065, -0.071)),
-        cylinder(0.003, (0.07, -0.04, -0.05), (0.086, -0.01, 0.03)),
-        cylinder(0.003, (-0.07, -0.04, -0.05), (-0.086, -0.01, 0.03)),
-    )
-    model.add("Mask", mask, "mask", (0, 0, 0), "Face")
-    pleats = merge(*(tube([(-0.055, y, -0.084), (0, y, -0.091), (0.055, y, -0.084)], [(0.0012, 0.0012)] * 3, ring=8) for y in (-0.05, -0.07, -0.087)))
-    model.add("MaskPleats", pleats, "mask", (0, 0, 0), "Face")
-    brows = merge(
-        *(tube([(side * 0.016, 0.02, -0.068), (side * 0.033, 0.025, -0.069), (side * 0.048, 0.02, -0.062)], [(0.0025, 0.003)] * 3, ring=8) for side in (-1, 1))
-    )
-    model.add("Brows", brows, "hair", (0, 0, 0), "Face")
-    return model
-
-
 def _arm_segments() -> list[Model]:
     """Unit-length arm segments along +Y; the game stretches them between shoulder, elbow and wrist."""
     upper = Model("surgeon", "upper_arm")
@@ -120,4 +86,4 @@ def _arm_segments() -> list[Model]:
 
 
 def build() -> list[Model]:
-    return [_body(), _head(), *_arm_segments()]
+    return [_body(), *_arm_segments()]

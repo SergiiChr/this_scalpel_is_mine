@@ -153,14 +153,19 @@ public partial class Surgeon
         });
         _head = new Node3D { Name = "Head", Position = new Vector3(0f, EyeHeight, 0f) };
         AddChild(_head);
-        var cap = Materials.FamilyUnique("cloth", ScrubsColor.Darkened(0.12f), 0.9f);
-        cap.NextPass = Materials.OutlineFor(0.001f);
-        _face = ModelSlot.Instantiate("surgeon", "head", _head, new Dictionary<string, Material>
+        // Cap and mask keep the model's own textured cloth; only the skin is shared, so the head's neck matches the body.
+        _face = ModelSlot.Instantiate("surgeon", "head", _head, new Dictionary<string, Material> { ["skin"] = skin });
+        // The ink outline grows past the cloth's few millimeters and would show through as black patches.
+        foreach (var part in ModelSlot.Parts(_face, "Cap", "Mask").Values.OfType<MeshInstance3D>())
         {
-            ["tint"] = cap,
-            ["skin"] = skin,
-            ["mask"] = Materials.FamilyUnique("cloth", new Color(0.55f, 0.72f, 0.78f), 0.9f),
-        });
+            for (var i = 0; i < part.Mesh.GetSurfaceCount(); i++)
+            {
+                if (part.Mesh.SurfaceGetMaterial(i) is BaseMaterial3D source)
+                {
+                    part.SetSurfaceOverrideMaterial(i, Materials.Imported(source, 0f));
+                }
+            }
+        }
         Camera = new Camera3D { Name = "Camera", Fov = 70f, Near = 0.03f };
         _head.AddChild(Camera);
         foreach (var joint in JointNames)

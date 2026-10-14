@@ -12,7 +12,8 @@ Godot adds LODs on import.
 |---|---|---|---|
 | `patient/` | `body.glb` (one skinned mesh) | `tools/blender` | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids |
 | `surgeon/` | `glove` (skinned) | `tools/blender` | Bones: Hand, Index/Middle/Ring/Pinky/Thumb 1-3 |
-| `surgeon/` | `body`, `head`, `upper_arm`, `forearm` | `tools/assetgen` | Torso, LegL/R |
+| `surgeon/` | `head.glb` (face skinned, cap and mask textures embedded) | delivered model, no generator in the repo | Bones: Neck, Head. Parts: Cap, Mask |
+| `surgeon/` | `body`, `upper_arm`, `forearm` | `tools/assetgen` | Torso, LegL/R |
 | `organs/` | bowel, lobe, sac (unit radius) | `tools/blender` | |
 | `targets/` | appendix, tumor, clot, bone (femur), fragment, rib, splinter, nasal_hump, skull_flap, sternum | `tools/blender` | |
 | `targets/` | bullet, knife, figurine, fluid, air | `tools/assetgen` | |
