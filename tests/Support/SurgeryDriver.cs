@@ -158,7 +158,7 @@ public partial class SurgeryDriver : Node
     {
         if (IsInstanceValid(Surgery) && Surgery.Running && !_budgetPaused)
         {
-            Budget.Sample(Trail.Count > 0 ? Trail[^1] : "");
+            Budget.Sample(Trail.Count > 0 ? Trail[^1] : "", Surgery.Elapsed);
         }
     }
 

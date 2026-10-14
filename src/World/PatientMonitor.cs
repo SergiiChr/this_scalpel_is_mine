@@ -16,6 +16,7 @@ public partial class PatientMonitor : Node3D
     private float _toneFrequency = 880f;
     private float _phase;
     private float _alarmTimer;
+    private Vector2[] _samples = [];
 
     public void Build()
     {
@@ -130,6 +131,14 @@ public partial class PatientMonitor : Node3D
     private void FillBuffer(AudioStreamGeneratorPlayback playback)
     {
         var frames = playback.GetFramesAvailable();
+        if (frames == 0)
+        {
+            return;
+        }
+        if (_samples.Length < frames)
+        {
+            _samples = new Vector2[frames];
+        }
         for (var i = 0; i < frames; i++)
         {
             var sample = 0f;
@@ -139,7 +148,9 @@ public partial class PatientMonitor : Node3D
                 _phase = Mathf.PosMod(_phase + (_toneFrequency / SampleRate), 1f);
                 _toneLeft -= 1f / SampleRate;
             }
-            playback.PushFrame(new Vector2(sample, sample));
+            _samples[i] = new Vector2(sample, sample);
         }
+        // One native call per refill instead of one for every audio sample.
+        playback.PushBuffer(_samples.AsSpan(0, frames));
     }
 }

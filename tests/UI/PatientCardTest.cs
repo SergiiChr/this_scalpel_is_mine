@@ -12,9 +12,6 @@ namespace Scalpel.Tests.UI;
 [GodotArgs("--fixed-fps", "60")]
 public class PatientCardTest
 {
-    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "opening the patient card exceeds the recorded CPU budget";
-
     [TestCase]
     public async Task OpensInHandTravelsToItsHookAndBackWhenTaken()
     {
@@ -81,7 +78,7 @@ public class PatientCardTest
 
         await SurgeryDriver.PlayerPutsCardBack(surgery);
         AssertBool(card.OnHook).OverrideFailureMessage("put back again, it hangs on its hook").IsTrue();
-        driver.Budget.Check(localOverride: BudgetOverride);
+        driver.Budget.Check();
         if (shots is not null)
         {
             GD.Print($"key frames: {shots.OutDir}");
@@ -89,6 +86,50 @@ public class PatientCardTest
         }
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CorrectedChartReplacesPreviouslyReadRecord(bool stillOpen)
+    {
+        var driver = SurgeryDriver.Create();
+        try
+        {
+            await driver.Start("appendectomy", readingCard: true);
+            var surgery = driver.Surgery;
+            var original = surgery.Hud.Overlay!;
+            AssertArray(original.FindChildren("*", nameof(Label), true, false).OfType<Label>()
+                .Select(label => label.Text).ToList())
+                .OverrideFailureMessage("the original record has no correction stamp").NotContains("CORRECTED COPY");
+            if (!stillOpen)
+            {
+                await SurgeryDriver.PlayerPutsCardBack(surgery);
+            }
+            SurgeryState.PatientChartIsCorrected(surgery);
+            if (stillOpen)
+            {
+                // Re-entering the page while it is open must clear the old overlay before freeing it.
+                surgery.OpenCard();
+            }
+            else
+            {
+                AssertBool(await driver.PlayerInteracts("Read the patient card")).IsTrue();
+            }
+            AssertBool(await Frames.Until(() => surgery.Hud.Overlay?.Modulate.A >= 1f,
+                PatientCard.TravelSeconds + 0.5f)).IsTrue();
+            AssertBool(GodotObject.IsInstanceValid(original))
+                .OverrideFailureMessage("the replaced page is freed after the frame").IsFalse();
+            AssertBool(ReferenceEquals(original, surgery.Hud.Overlay))
+                .OverrideFailureMessage("the corrected chart replaces the cached page").IsFalse();
+            var page = surgery.Hud.Overlay!.FindChildren("*", nameof(Label), true, false)
+                .OfType<Label>().Select(label => label.Text);
+            AssertArray(page.ToList()).OverrideFailureMessage("reading again shows the nurse's corrected record")
+                .Contains("CORRECTED COPY");
+        }
+        finally
+        {
+            await driver.Stop();
+        }
     }
 
     /// <summary>The start is the guide to where the card lives: from wherever a surgeon starts, the hook is in view, so

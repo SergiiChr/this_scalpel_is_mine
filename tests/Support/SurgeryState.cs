@@ -11,6 +11,9 @@ namespace Scalpel.Tests.Support;
 /// </summary>
 public static class SurgeryState
 {
+    /// <summary>The nurse has supplied the corrected patient chart.</summary>
+    public static void PatientChartIsCorrected(Surgery surgery) => surgery.CorrectChart();
+
     /// <summary>Enable debug displays for a test and restore the previous preference when its scope ends.</summary>
     public static IDisposable DebugHudIsEnabled() => new DebugHudScope();
 
