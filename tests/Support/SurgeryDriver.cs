@@ -109,17 +109,18 @@ public partial class SurgeryDriver : Node
             await PlayerInteracts("Read the patient card");
         }
         await Frames.Until(() => Surgery.Hud.CardOpen && Surgery.Hud.Overlay!.Modulate.A >= 1f, PatientCard.TravelSeconds + 1f);
+        Note("reads the card");
     }
 
     /// <summary>Holds Interact over the card's page for <paramref name="seconds"/>, then lets go.</summary>
     public async Task PlayerHoldsSignature(float seconds)
     {
+        Note($"holds the signature {seconds:0.0} s");
         Press(InputActions.Interact);
         await PlayerInput.Delivered();
         await Frames.Seconds(seconds);
         Release(InputActions.Interact);
         await PlayerInput.Delivered();
-        Note($"held the signature {seconds:0.0} s");
     }
 
     /// <summary>Signs the patient out like a player: takes the patient card and holds Interact until the signature is

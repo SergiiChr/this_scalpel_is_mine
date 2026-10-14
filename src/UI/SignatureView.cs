@@ -37,6 +37,13 @@ public partial class SignatureView : Control
         }
     }
 
+    /// <summary>Back to an empty line, for the next time the card is read.</summary>
+    public void Reset()
+    {
+        Progress = 0f;
+        QueueRedraw();
+    }
+
     /// <summary>Writes on while <paramref name="held"/>, unwrites otherwise. Once complete it stays so.</summary>
     public void Advance(float delta, bool held)
     {

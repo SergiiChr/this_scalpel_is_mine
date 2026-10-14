@@ -64,6 +64,9 @@ public partial class Hud : CanvasLayer
     /// <summary>The patient card's page, while it's open or until the next one.</summary>
     private Control? _card;
     internal bool CardOpen => Overlay is not null && Overlay == _card;
+    /// <summary>The chart correction the card's page was built with.</summary>
+    private bool _cardCorrected;
+    private Tween? _cardFade;
     /// <summary>The discharge line on the card's page.</summary>
     internal SignatureView? Signature { get; private set; }
     /// <summary>Interact went down while the card's page showed, and is still held.</summary>
@@ -279,18 +282,31 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>Takes the card up to read. Unless it's already <paramref name="inHand"/>, the page shows once the card
-    /// has travelled up to the face.</summary>
+    /// has travelled up to the face. The page is built once (again only for the corrected chart): building it takes a
+    /// frame's worth of work.</summary>
     public void OpenCard(bool inHand = false)
     {
-        Signature = new SignatureView();
+        if (_card is null || _cardCorrected != Surgery.ChartCorrected)
+        {
+            if (Overlay == _card)
+            {
+                Overlay = null;
+            }
+            _card?.QueueFree();
+            Signature = new SignatureView();
+            _card = PatientCardView.Build(Surgery.Patient, Net.Instance.SessionSeed, Signature, CloseOverlay);
+            _cardCorrected = Surgery.ChartCorrected;
+        }
+        Signature!.Reset();
         _signing = false;
         _signedFor = 0f;
-        _card = PatientCardView.Build(Surgery.Patient, Net.Instance.SessionSeed, Signature, CloseOverlay);
         Open(_card);
+        _cardFade?.Kill();
+        _card.Modulate = new Color(1f, 1f, 1f, inHand ? 1f : 0f);
         if (!inHand)
         {
-            _card.Modulate = new Color(1f, 1f, 1f, 0f);
-            _card.CreateTween().TweenProperty(_card, "modulate:a", 1.0, 0.15).SetDelay(PatientCard.TravelSeconds);
+            _cardFade = _card.CreateTween();
+            _cardFade.TweenProperty(_card, "modulate:a", 1.0, 0.15).SetDelay(PatientCard.TravelSeconds);
         }
     }
 
@@ -384,10 +400,11 @@ public partial class Hud : CanvasLayer
         Input.MouseMode = Input.MouseModeEnum.Visible;
     }
 
-    /// <summary>The nurse's shop stays built between visits; other overlays are made fresh each time.</summary>
+    /// <summary>The nurse's shop and the card's page stay built between visits; other overlays are made fresh each time.
+    /// </summary>
     private void Dismiss(Control overlay)
     {
-        if (overlay == Shop.View)
+        if (overlay == Shop.View || overlay == _card)
         {
             overlay.Hide();
         }
