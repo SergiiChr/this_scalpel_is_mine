@@ -1,24 +1,20 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>The objective steps: incisions, taking things out, bleeding, the heart and the rest.</summary>
-public partial class SurgeryDriver
-{
+public partial class SurgeryDriver {
     /// <summary>Strokes <paramref name="length"/> meters long through <paramref name="center"/> along the site's long
     /// side, cut to fit on the site, then parallel ones beside it. Steps that need a total length take strokes until
     /// they have it.</summary>
-    private List<(Vector2 From, Vector2 To)> IncisionStrokes(Vector2 center, float length)
-    {
+    private List<(Vector2 From, Vector2 To)> IncisionStrokes(Vector2 center, float length) {
         var strokes = new List<(Vector2, Vector2)>();
         var along = Body.SiteSize.X >= Body.SiteSize.Y ? new Vector2(1f, 0f) : new Vector2(0f, 1f);
         var across = new Vector2(along.Y, along.X);
         var span = Mathf.Min(length / Body.UvToMeters(1f), 0.84f);
-        for (var row = 0; row < 7; row++)
-        {
+        for (var row = 0; row < 7; row++) {
             var shift = across * 0.1f * ((row + 1) / 2) * (row % 2 == 1 ? 1 : -1);
             var middle = (center + shift).Clamp(
                 new Vector2(0.08f, 0.08f) + (along * span * 0.5f), new Vector2(0.92f, 0.92f) - (along * span * 0.5f));
-            if (middle.X < 0.05f || middle.Y < 0.05f || middle.X > 0.95f || middle.Y > 0.95f)
-            {
+            if (middle.X < 0.05f || middle.Y < 0.05f || middle.X > 0.95f || middle.Y > 0.95f) {
                 continue;
             }
             strokes.Add((middle - (along * span * 0.5f), middle + (along * span * 0.5f)));
@@ -27,14 +23,11 @@ public partial class SurgeryDriver
     }
 
     /// <summary>Marks the incision line with the marker.</summary>
-    public async Task PlayerMarksLine(float length)
-    {
+    public async Task PlayerMarksLine(float length) {
         Note($"marks {length * 100f:0} cm");
         await PlayerRequestsItem("marker");
-        foreach (var (from, to) in IncisionStrokes(WorkUv(), length + 0.01f))
-        {
-            if (Body.UvToMeters(Patient.MarkedUv) >= length + 0.005f)
-            {
+        foreach (var (from, to) in IncisionStrokes(WorkUv(), length + 0.01f)) {
+            if (Body.UvToMeters(Patient.MarkedUv) >= length + 0.005f) {
                 break;
             }
             await PlayerWalksTo(SitePoint((from + to) * 0.5f));
@@ -46,13 +39,10 @@ public partial class SurgeryDriver
 
     /// <summary>Cuts <paramref name="length"/> meters at full depth with the scalpel, the blade's edge turned along the
     /// line, slowly enough for a clean cut, through where the work is.</summary>
-    public async Task PlayerIncises(float length)
-    {
+    public async Task PlayerIncises(float length) {
         Note($"incises {length * 100f:0} cm");
-        foreach (var (from, to) in IncisionStrokes(WorkUv(), length + 0.01f))
-        {
-            if (Patient.SurgeonCutLengthM(0.7f) >= length + 0.005f)
-            {
+        foreach (var (from, to) in IncisionStrokes(WorkUv(), length + 0.01f)) {
+            if (Patient.SurgeonCutLengthM(0.7f) >= length + 0.005f) {
                 break;
             }
             await PlayerCutsSkin(from, to, 3);
@@ -66,8 +56,7 @@ public partial class SurgeryDriver
     /// to <paramref name="to"/> (site uv) at depth <paramref name="level"/> (1 through the skin, 3 through the muscle):
     /// the surgeon stands by the line, turns the edge along it, presses in and draws it slowly enough for a clean cut.
     /// The blade stays in hand.</summary>
-    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel")
-    {
+    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel") {
         await PlayerRequestsItem(toolId);
         var start = SitePoint(from);
         var finish = SitePoint(to);
@@ -79,8 +68,7 @@ public partial class SurgeryDriver
     /// <summary>Sets the Gelpi retractor into the cut from <paramref name="from"/> to <paramref name="to"/> (site uv) at
     /// its middle: the surgeon stands by it, rolls it so its tips are square to the cut and presses Use tool there. It
     /// stays in hand, set or not.</summary>
-    public async Task<SurgicalTool> PlayerSetsGelpi(Vector2 from, Vector2 to)
-    {
+    public async Task<SurgicalTool> PlayerSetsGelpi(Vector2 from, Vector2 to) {
         var gelpi = (await PlayerRequestsItem("gelpi"))!;
         var middle = SitePoint((from + to) * 0.5f);
         await PlayerWalksTo(middle);
@@ -97,11 +85,9 @@ public partial class SurgeryDriver
 
     /// <summary>Turns the wheel on the active hand's Gelpi retractor until its tips are <paramref name="spread"/>
     /// meters apart, then lets the skin settle.</summary>
-    public async Task PlayerOpensGelpi(float spread)
-    {
+    public async Task PlayerOpensGelpi(float spread) {
         var gelpi = Me.HeldTool(Me.Active)!;
-        for (var i = 0; i < 30 && Mathf.Abs(gelpi.Spread - spread) >= ToolActions.SpreadStep * 0.5f; i++)
-        {
+        for (var i = 0; i < 30 && Mathf.Abs(gelpi.Spread - spread) >= ToolActions.SpreadStep * 0.5f; i++) {
             await Notch(spread > gelpi.Spread);
         }
         await Frames.Seconds(1f);
@@ -110,14 +96,11 @@ public partial class SurgeryDriver
 
     /// <summary>Takes out every target of <paramref name="kind"/> the way its scenario says: lifted out with forceps
     /// (slowly while it's still attached), drained with suction, sawn or knocked loose.</summary>
-    public async Task PlayerExtracts(string kind)
-    {
-        foreach (var target in Patient.Targets.Where(target => target.Kind == kind && !target.Extracted).ToList())
-        {
+    public async Task PlayerExtracts(string kind) {
+        foreach (var target in Patient.Targets.Where(target => target.Kind == kind && !target.Extracted).ToList()) {
             Note($"extracts {kind} ({target.RemoveWith})");
             var at = SitePoint(target.Uv);
-            switch (target.RemoveWith)
-            {
+            switch (target.RemoveWith) {
                 case "suction":
                     await PlayerRequestsItem("suction");
                     await PlayerWalksTo(at);
@@ -133,8 +116,7 @@ public partial class SurgeryDriver
                 case "smash":
                     await PlayerRequestsItem("mallet");
                     await PlayerWalksTo(at);
-                    for (var hit = 0; hit < 20 && !target.Extracted; hit++)
-                    {
+                    for (var hit = 0; hit < 20 && !target.Extracted; hit++) {
                         await PlayerWorksAt(at, 0, 0.3f);
                         await Frames.Physics(10);
                     }
@@ -151,8 +133,7 @@ public partial class SurgeryDriver
 
     /// <summary>Holds Use tool at effort <paramref name="level"/> until <paramref name="done"/>, a minute at most.
     /// </summary>
-    private async Task HoldUseUntil(Func<bool> done, int level)
-    {
+    private async Task HoldUseUntil(Func<bool> done, int level) {
         await SetLevel(level);
         Use();
         await Frames.Until(done, 60f);
@@ -162,13 +143,10 @@ public partial class SurgeryDriver
     /// <summary>Forceps onto the target and out over the floor beside the table. Still attached, it comes loose with a
     /// slow pull. Under an organ, its attachment is cut through first, the organ is held aside with forceps in the
     /// other hand while the target comes out, and let go again quickly (held aside too long it bruises).</summary>
-    private async Task LiftOut(CavityTarget target)
-    {
+    private async Task LiftOut(CavityTarget target) {
         var aside = new List<SurgicalTool>();
-        if (Patient.Covered(target))
-        {
-            if (target.Anchor > 0f)
-            {
+        if (Patient.Covered(target)) {
+            if (target.Anchor > 0f) {
                 await PlayerCutsFree(target);
             }
             // Forceps in both hands first: fetching the second while the first holds the organ aside would drag it.
@@ -183,8 +161,7 @@ public partial class SurgeryDriver
         await PlayerReaches(spot);
         Use();
         await Frames.Physics(5);
-        if (forceps.Hold is not TargetHold)
-        {
+        if (forceps.Hold is not TargetHold) {
             Note($"forceps didn't take hold of {target.Kind}: {forceps.Hold}");
             Use(false);
             await LetGo(aside);
@@ -207,8 +184,7 @@ public partial class SurgeryDriver
 
     /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through. Put
     /// down on it, the blade is first drawn <paramref name="drawn"/> meters along its edge.</summary>
-    public async Task PlayerCutsFree(CavityTarget target, float drawn = 0f)
-    {
+    public async Task PlayerCutsFree(CavityTarget target, float drawn = 0f) {
         Note($"cuts {target.Kind} free");
         var scalpel = (await PlayerRequestsItem("scalpel"))!;
         var spot = Body.UvToWorld(target.Uv, target.Depth);
@@ -216,8 +192,7 @@ public partial class SurgeryDriver
         await PlayerReaches(spot);
         await SetLevel(3);
         Use();
-        if (drawn > 0f)
-        {
+        if (drawn > 0f) {
             await Frames.Seconds(0.3f);
             await PlayerSweepsTo(Tip(Me.Hands[Me.Active]) + (ToolActions.BladeDirection(scalpel) * drawn));
         }
@@ -229,21 +204,17 @@ public partial class SurgeryDriver
 
     /// <summary>Forceps in the left hand take hold of the organ over the target and draw it aside, away from the
     /// target. Returns the forceps holding it.</summary>
-    private async Task<List<SurgicalTool>> HoldAside(CavityTarget target)
-    {
+    private async Task<List<SurgicalTool>> HoldAside(CavityTarget target) {
         var holding = new List<SurgicalTool>();
         await SwitchTo(Left);
-        for (var i = 0; i < Body.Organs.Count && holding.Count == 0; i++)
-        {
+        for (var i = 0; i < Body.Organs.Count && holding.Count == 0; i++) {
             var organ = Body.Organs[i];
             var organUv = Body.LocalToUv(organ.Position);
-            if (organUv.DistanceTo(target.Uv) >= 0.07f)
-            {
+            if (organUv.DistanceTo(target.Uv) >= 0.07f) {
                 continue;
             }
             var away = organUv.DistanceTo(target.Uv) > 0.01f ? (organUv - target.Uv).Normalized() : new Vector2(1f, 0f);
-            if (OrganGripPoint(i, away) is not { } gripAt)
-            {
+            if (OrganGripPoint(i, away) is not { } gripAt) {
                 Note($"no place to take hold of the {organ.Kind} clear of bleeders");
                 continue;
             }
@@ -252,8 +223,7 @@ public partial class SurgeryDriver
             await PlayerReaches(gripAt);
             Use();
             await Frames.Physics(5);
-            if (forceps.Hold is not OrganHold)
-            {
+            if (forceps.Hold is not OrganHold) {
                 Note($"forceps didn't take hold of the {organ.Kind}: {forceps.Hold}");
                 Use(false);
                 continue;
@@ -268,20 +238,16 @@ public partial class SurgeryDriver
     /// <summary>A point on top of organ <paramref name="index"/> to take hold of it, toward <paramref name="away"/>
     /// (site uv), in the opening and clear of internal wounds (forceps there would clamp the bleeder instead). Null if
     /// there's none.</summary>
-    private Vector3? OrganGripPoint(int index, Vector2 away)
-    {
+    private Vector3? OrganGripPoint(int index, Vector2 away) {
         var organ = Body.Organs[index];
-        for (var step = 0; step < 6; step++)
-        {
+        for (var step = 0; step < 6; step++) {
             var local = organ.Position + (new Vector3(away.X, 0f, away.Y) * step * 0.008f);
             var uv = Body.LocalToUv(local);
-            if (!Body.IsOpen(uv) || Patient.Wounds.Any(wound => wound.IsInternal && wound.Points[0].DistanceTo(uv) < 0.055f))
-            {
+            if (!Body.IsOpen(uv) || Patient.Wounds.Any(wound => wound.IsInternal && wound.Points[0].DistanceTo(uv) < 0.055f)) {
                 continue;
             }
             var top = Body.Site.ToGlobal(local with { Y = organ.Position.Y });
-            if (Body.OrganAt(top, 0.02f) == index)
-            {
+            if (Body.OrganAt(top, 0.02f) == index) {
                 return top;
             }
         }
@@ -289,10 +255,8 @@ public partial class SurgeryDriver
     }
 
     /// <summary>The left hand lets go of what its forceps hold and puts them down.</summary>
-    private async Task LetGo(List<SurgicalTool> holding)
-    {
-        if (holding.Count == 0)
-        {
+    private async Task LetGo(List<SurgicalTool> holding) {
+        if (holding.Count == 0) {
             return;
         }
         await SwitchTo(Left);
@@ -310,52 +274,40 @@ public partial class SurgeryDriver
     /// reach into the cavity), a hemostat locked onto each bleeder that's left, tranexamic acid, then gauze pressed
     /// along the wounds.
     /// </summary>
-    public async Task PlayerStopsBleeding(float maxRate)
-    {
+    public async Task PlayerStopsBleeding(float maxRate) {
         Note($"stops the bleeding: {Bleeders()}");
         bool Settled() => Patient.LastingBleedRate <= maxRate;
-        if (Settled())
-        {
+        if (Settled()) {
             return;
         }
-        if (Available("cautery"))
-        {
+        if (Available("cautery")) {
             await PlayerRequestsItem("cautery");
-            foreach (var wound in Bleeding())
-            {
-                if (wound.IsInternal)
-                {
+            foreach (var wound in Bleeding()) {
+                if (wound.IsInternal) {
                     var spot = Body.UvToWorld(wound.Points[0], wound.DepthM);
                     await PlayerWalksTo(spot);
                     await PlayerWorksAt(spot, 3, 3f);
-                }
-                else
-                {
+                } else {
                     await PlayerWalksTo(SitePoint(wound.Midpoint));
                     await PlayerWorksAlong(Beside(wound), 2, 0.01f);
                 }
             }
             await PlayerPutsDown();
         }
-        if (!await Frames.Until(Settled, 3f))
-        {
-            foreach (var wound in Bleeding())
-            {
+        if (!await Frames.Until(Settled, 3f)) {
+            foreach (var wound in Bleeding()) {
                 await PlayerClampsBleeder(wound);
             }
         }
-        if (!await Frames.Until(Settled, 3f) && Available("vial_txa"))
-        {
+        if (!await Frames.Until(Settled, 3f) && Available("vial_txa")) {
             await PlayerGivesDrug("vial_txa", DoseMl("vial_txa"), IvOrVein);
             await Frames.Seconds(15f);
         }
         // Gauze stops only small cuts for good: pressed on each one, without a break, for long enough.
         var small = Bleeding().Where(wound => wound.IsSmall(Body.UvToMeters(1f))).ToList();
-        if (!await Frames.Until(Settled, 3f) && small.Count > 0 && Available("gauze"))
-        {
+        if (!await Frames.Until(Settled, 3f) && small.Count > 0 && Available("gauze")) {
             await PlayerRequestsItem("gauze");
-            foreach (var wound in small)
-            {
+            foreach (var wound in small) {
                 await PlayerWalksTo(SitePoint(wound.Midpoint));
                 await PlayerWorksAt(SitePoint(wound.Midpoint), 3, Wound.SmallCutPress + 1f);
             }
@@ -380,27 +332,23 @@ public partial class SurgeryDriver
     public string Bleeders() => string.Join(", ", Patient.Wounds
         .Select(wound => (Wound: wound, Rate: wound.BleedRate(Body.UvToMeters(1f), 1f)))
         .Where(entry => entry.Rate >= 0.05f)
-        .Select(entry =>
-        {
+        .Select(entry => {
             var w = entry.Wound;
             return $"{w.Kind} {entry.Rate:0.00} ml/s ({Body.UvToMeters(w.LengthUv) * 100f:0.0} cm, open {w.Opened:0.00}, "
                 + $"sealed {w.Cauterized:0.00}, held {w.Held:0.00}, pressed {w.Pressed:0.00}, clamped {w.Clamped:0.00}, closed {w.Closure:0.00})";
         }));
 
     /// <summary>Points along a skin wound on whole skin just beside it, where a tool touches the wound's edge.</summary>
-    private List<Vector3> Beside(Wound wound)
-    {
+    private List<Vector3> Beside(Wound wound) {
         var line = new List<Vector3>();
-        for (var i = 0; i < wound.Bins.Length; i++)
-        {
+        for (var i = 0; i < wound.Bins.Length; i++) {
             var at = wound.BinPosition(i);
             var ahead = wound.BinPosition(Math.Min(i + 1, wound.Bins.Length - 1)) - wound.BinPosition(Math.Max(i - 1, 0));
             var across = ahead.Length() > 0f ? new Vector2(-ahead.Y, ahead.X).Normalized() : new Vector2(0f, 1f);
             var beside = Enumerable.Range(2, 12)
                 .SelectMany(step => ((float[])[1f, -1f]).Select(side => at + (across * side * step * 0.005f)))
                 .FirstOrDefault(uv => !Body.IsOpen(uv) && uv.Clamp(Vector2.Zero, Vector2.One) == uv, -Vector2.One);
-            if (beside != -Vector2.One)
-            {
+            if (beside != -Vector2.One) {
                 line.Add(SitePoint(beside));
             }
         }
@@ -408,14 +356,11 @@ public partial class SurgeryDriver
     }
 
     /// <summary>A tourniquet pressed onto the limb above the site.</summary>
-    public async Task PlayerAppliesTourniquet()
-    {
+    public async Task PlayerAppliesTourniquet() {
         Note("applies a tourniquet");
         await PlayerRequestsItem("tourniquet");
-        foreach (var v in (float[])[-0.4f, -0.2f, 0f, 1.2f])
-        {
-            if (Patient.TourniquetOn)
-            {
+        foreach (var v in (float[])[-0.4f, -0.2f, 0f, 1.2f]) {
+            if (Patient.TourniquetOn) {
                 break;
             }
             var spot = SitePoint(new Vector2(0.5f, v));
@@ -429,11 +374,9 @@ public partial class SurgeryDriver
     /// <summary>A hemostat locked onto a bleeding wound (the worst one when none is given) and left on it: on an
     /// internal bleeder from inside the opening, on a skin wound at its opened edge. Gripped away from anything to
     /// take out, which a clamp would take hold of instead.</summary>
-    public async Task PlayerClampsBleeder(Wound? wound = null)
-    {
+    public async Task PlayerClampsBleeder(Wound? wound = null) {
         wound ??= Bleeding().FirstOrDefault();
-        if (wound is null)
-        {
+        if (wound is null) {
             return;
         }
         Note($"clamps a bleeding {wound.Kind.ToString().ToLowerInvariant()}");
@@ -441,55 +384,45 @@ public partial class SurgeryDriver
             ? Enumerable.Range(0, 8).Select(turn =>
                 Body.UvToWorld(wound.Points[0] + new Vector2(0.035f, 0f).Rotated(turn * Mathf.Pi / 4f), wound.DepthM))
             : wound.BinPositions().Select(uv => SitePoint(uv));
-        bool Clear(Vector3 spot)
-        {
+        bool Clear(Vector3 spot) {
             var uv = Body.WorldToUv(spot);
             return Patient.Targets.All(target => target.Extracted || target.Uv.DistanceTo(uv) >= 0.06f);
         }
-        if (await PlayerRequestsItem("hemostat") is not { } hemostat)
-        {
+        if (await PlayerRequestsItem("hemostat") is not { } hemostat) {
             return;
         }
-        foreach (var spot in spots.Where(Clear).ToList())
-        {
+        foreach (var spot in spots.Where(Clear).ToList()) {
             await PlayerWalksTo(spot);
             await PlayerReaches(spot);
             Use();
             await Frames.Physics(5);
             Use(false);
-            if (wound.Clamped >= 0.8f)
-            {
+            if (wound.Clamped >= 0.8f) {
                 break;
             }
-            if (hemostat.Hold is not null)
-            {
+            if (hemostat.Hold is not null) {
                 Use();
                 await Frames.Physics(3);
                 Use(false);
                 await Frames.Physics(3);
             }
         }
-        if (wound.Clamped >= 0.8f)
-        {
+        if (wound.Clamped >= 0.8f) {
             // Self-retaining: let go of the handle and it stays locked on.
             Tap(InputActions.Grab);
             await Frames.Physics(10);
-        }
-        else
-        {
+        } else {
             await PlayerPutsDown();
         }
         Note($"clamped: {wound.Clamped:0.00}");
     }
 
     /// <summary>Hangs blood bags on the IV stand until the patient has <paramref name="minMl"/> back.</summary>
-    public async Task PlayerTransfuses(float minMl)
-    {
+    public async Task PlayerTransfuses(float minMl) {
         Note("transfuses");
         var vitals = Patient.Vitals;
         var needed = minMl * vitals.MaxBloodMl / Vitals.NormalBloodMl;
-        for (var bag = 0; bag < 4 && !(Patient.TransfusedMl > 0f && vitals.BloodMl >= needed); bag++)
-        {
+        for (var bag = 0; bag < 4 && !(Patient.TransfusedMl > 0f && vitals.BloodMl >= needed); bag++) {
             await PlayerRequestsItem("blood_o_neg");
             await PlayerInteracts("Swap IV bag");
             await Frames.Until(() => vitals.BloodMl >= needed, 70f);
@@ -499,17 +432,13 @@ public partial class SurgeryDriver
 
     /// <summary>Turns the patient with the table's handle and the quick time keys, until they lie as
     /// <paramref name="pose"/> says.</summary>
-    public async Task PlayerTurnsPatient(PatientPose pose)
-    {
+    public async Task PlayerTurnsPatient(PatientPose pose) {
         Note("turns the patient");
-        for (var attempt = 0; attempt < 4 && Body.Pose != pose; attempt++)
-        {
+        for (var attempt = 0; attempt < 4 && Body.Pose != pose; attempt++) {
             await PlayerInteracts("Turn the patient");
-            for (var key = 0; key < 8; key++)
-            {
+            for (var key = 0; key < 8; key++) {
                 await Frames.Physics(20);
-                if (Surgery.Hud.FindChildren("*", "", true, false).OfType<QteView>().LastOrDefault() is not { } qte)
-                {
+                if (Surgery.Hud.FindChildren("*", "", true, false).OfType<QteView>().LastOrDefault() is not { } qte) {
                     break;
                 }
                 // The quick-time event listens to the keys themselves.
@@ -523,22 +452,18 @@ public partial class SurgeryDriver
     /// <summary>Holds every bone fragment back in its place with forceps, one in each hand, for
     /// <paramref name="time"/> seconds. Both forceps are in hand before either fragment is taken hold of: fetching one
     /// later would drag the other along.</summary>
-    public async Task PlayerAlignsFragments(float time)
-    {
+    public async Task PlayerAlignsFragments(float time) {
         Note("aligns the fragments");
         var fragments = Patient.Targets.Where(target => target.IsFragment).Take(2).ToList();
         int[] hands = [Right, Left];
-        for (var i = 0; i < fragments.Count; i++)
-        {
+        for (var i = 0; i < fragments.Count; i++) {
             await SwitchTo(hands[i]);
             await PlayerRequestsItem("forceps");
         }
-        for (var i = 0; i < fragments.Count; i++)
-        {
+        for (var i = 0; i < fragments.Count; i++) {
             var target = fragments[i];
             await SwitchTo(hands[i]);
-            if (Me.HeldTool(Me.Active) is not { } forceps)
-            {
+            if (Me.HeldTool(Me.Active) is not { } forceps) {
                 continue;
             }
             var spot = Body.UvToWorld(target.Uv, target.Depth);
@@ -546,8 +471,7 @@ public partial class SurgeryDriver
             await PlayerReaches(spot);
             Use();
             await Frames.Physics(5);
-            if (forceps.Hold is not TargetHold)
-            {
+            if (forceps.Hold is not TargetHold) {
                 Note($"forceps didn't take hold of a fragment: {forceps.Hold}");
                 continue;
             }
@@ -555,16 +479,14 @@ public partial class SurgeryDriver
             Note($"fragment {i} off by {target.Uv.DistanceTo(target.RestUv):0.000}");
         }
         await Frames.Seconds(time + 1f);
-        foreach (var hand in (int[])[Left, Right])
-        {
+        foreach (var hand in (int[])[Left, Right]) {
             await SwitchTo(hand);
             await PlayerPutsDown();
         }
     }
 
     /// <summary>Cuts the dead skin off the burns with the scalpel, row by row over each burn.</summary>
-    public async Task PlayerDebrides(float amount)
-    {
+    public async Task PlayerDebrides(float amount) {
         Note("debrides");
         await PlayerRequestsItem("scalpel");
         await OverBurns(() => Patient.GridFraction(Patient.BurnGrid.Debrided) >= amount, 1);
@@ -573,19 +495,14 @@ public partial class SurgeryDriver
     }
 
     /// <summary>Skin grafts pressed onto every cleaned burn cell.</summary>
-    public async Task PlayerGrafts(float amount)
-    {
+    public async Task PlayerGrafts(float amount) {
         Note("grafts");
-        for (var sheet = 0; sheet < 10 && Patient.GridFraction(Patient.BurnGrid.Grafted) < amount; sheet++)
-        {
-            if (await PlayerRequestsItem("skin_graft") is not { } pad)
-            {
+        for (var sheet = 0; sheet < 10 && Patient.GridFraction(Patient.BurnGrid.Grafted) < amount; sheet++) {
+            if (await PlayerRequestsItem("skin_graft") is not { } pad) {
                 break;
             }
-            for (var cell = 0; cell < Patient.Grid * Patient.Grid && pad.Charges != 0 && pad.State == ToolState.Held; cell++)
-            {
-                if (Patient.NeedsGraft(cell))
-                {
+            for (var cell = 0; cell < Patient.Grid * Patient.Grid && pad.Charges != 0 && pad.State == ToolState.Held; cell++) {
+                if (Patient.NeedsGraft(cell)) {
                     var uv = (new Vector2(cell % Patient.Grid, cell / Patient.Grid) + new Vector2(0.5f, 0.5f)) / Patient.Grid;
                     await PlayerWalksTo(SitePoint(uv));
                     await PlayerWorksAt(SitePoint(uv), 0, 0.2f);
@@ -596,46 +513,39 @@ public partial class SurgeryDriver
     }
 
     /// <summary>Works the held tool over every burn cell, row by row, until <paramref name="done"/>.</summary>
-    private async Task OverBurns(Func<bool> done, int level)
-    {
-        for (var y = 0; y < Patient.Grid; y++)
-        {
+    private async Task OverBurns(Func<bool> done, int level) {
+        for (var y = 0; y < Patient.Grid; y++) {
             var row = Enumerable.Range(0, Patient.Grid)
                 .Where(x => Patient.IsBurnt((y * Patient.Grid) + x))
                 .Select(x => SitePoint((new Vector2(x, y) + new Vector2(0.5f, 0.5f)) / Patient.Grid))
                 .ToList();
-            if (row.Count < 2)
-            {
+            if (row.Count < 2) {
                 continue;
             }
             await PlayerWalksTo(row[row.Count / 2]);
             await PlayerTurnsBlade(row[^1] - row[0]);
             await PlayerWorksAlong(row, level, 0.03f);
-            if (done())
-            {
+            if (done()) {
                 return;
             }
         }
     }
 
     /// <summary>The defibrillator's paddles on the chest, charged and let go, until the heart is back.</summary>
-    public async Task PlayerDefibrillates()
-    {
+    public async Task PlayerDefibrillates() {
         Note("defibrillates");
         var vitals = Patient.Vitals;
         await Frames.Until(() => vitals.IsArrested, 120f);
         await PlayerRequestsItem("defibrillator");
         var chest = SitePoint(new Vector2(0.5f, 0.5f));
-        for (var shock = 0; shock < 6 && !(Patient.Flags.ContainsKey("revived") && !vitals.IsArrested); shock++)
-        {
+        for (var shock = 0; shock < 6 && !(Patient.Flags.ContainsKey("revived") && !vitals.IsArrested); shock++) {
             await PlayerWalksTo(chest);
             await PlayerReaches(chest);
             Use();
             await Frames.Seconds(ToolActions.DefibChargeTime + 0.3f);
             Use(false);
             await Frames.Seconds(3f);
-            if (vitals.IsArrested && shock == 1)
-            {
+            if (vitals.IsArrested && shock == 1) {
                 await PlayerPutsDown();
                 await PlayerGivesDrug("vial_adrenaline", DoseMl("vial_adrenaline"), IvOrVein);
                 await PlayerRequestsItem("defibrillator");
@@ -647,21 +557,15 @@ public partial class SurgeryDriver
 
     /// <summary>Gets the patient stable (heart going, oxygen 94+, pressure 90+): blood, or fluid without it, down the IV
     /// line while they're short of blood (setting a line first), the defibrillator if the heart stops.</summary>
-    public async Task PlayerStabilizes()
-    {
+    public async Task PlayerStabilizes() {
         var vitals = Patient.Vitals;
         bool Stable() => !vitals.IsArrested && vitals.Spo2 >= 94f && vitals.Systolic >= 90f;
-        for (var round = 0; round < 6 && !Stable() && !Surgery.Finished; round++)
-        {
+        for (var round = 0; round < 6 && !Stable() && !Surgery.Finished; round++) {
             Note($"stabilizes: spo2 {vitals.Spo2:0}, systolic {vitals.Systolic:0}, blood {vitals.BloodRatio * 100f:0}%");
-            if (vitals.IsArrested)
-            {
+            if (vitals.IsArrested) {
                 await PlayerDefibrillates();
-            }
-            else if (vitals.BloodRatio < 0.95f)
-            {
-                if (!Patient.IvWorking)
-                {
+            } else if (vitals.BloodRatio < 0.95f) {
+                if (!Patient.IvWorking) {
                     await PlayerSetsIv();
                 }
                 var bag = Surgery.Scenario.StartingTools.Contains("blood_o_neg") || Surgery.Scenario.Nurse
@@ -675,15 +579,12 @@ public partial class SurgeryDriver
     }
 
     /// <summary>Completes one objective step of the scenario like a player would.</summary>
-    public async Task PlayerCompletes(ObjectiveStep step)
-    {
-        if (Surgery.Finished)
-        {
+    public async Task PlayerCompletes(ObjectiveStep step) {
+        if (Surgery.Finished) {
             return;
         }
         var p = step.Parameters;
-        var task = step.Type switch
-        {
+        var task = step.Type switch {
             "sanitize" => PlayerSanitizesSite(p.Float("amount", 0.5f)),
             "iv" => PlayerSetsIv(),
             "anesthesia" => PlayerAnesthetizes(),

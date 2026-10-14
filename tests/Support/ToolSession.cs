@@ -6,8 +6,7 @@ namespace Scalpel.Tests.Support;
 /// frames each driver key frame saves the site from above and obliquely (along <see cref="Along"/> when set), and with
 /// <c>views</c> also what the surgeon sees. Untouched references are captured explicitly, once per distinct fixture.
 /// </summary>
-public sealed class ToolSession
-{
+public sealed class ToolSession {
     public SurgeryDriver Driver { get; }
     public KeyFrames? Shots { get; }
     /// <summary>The oblique key frames look along this (world) when set: along a cut, what lies across it stands across
@@ -15,8 +14,7 @@ public sealed class ToolSession
     public Vector3? Along { get; set; }
     private readonly Func<string, string, Task>? _previousCapture;
 
-    private ToolSession(SurgeryDriver driver, KeyFrames? shots)
-    {
+    private ToolSession(SurgeryDriver driver, KeyFrames? shots) {
         Driver = driver;
         Shots = shots;
         _previousCapture = driver.OnKeyFrame;
@@ -24,8 +22,7 @@ public sealed class ToolSession
 
     /// <summary>Starts <paramref name="scenarioId"/> for a case whose key frames go under
     /// <paramref name="folder"/>.</summary>
-    public static async Task<ToolSession> Start(string scenarioId, string folder, bool views = false, bool captureUntouched = false)
-    {
+    public static async Task<ToolSession> Start(string scenarioId, string folder, bool views = false, bool captureUntouched = false) {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start(scenarioId);
@@ -37,28 +34,22 @@ public sealed class ToolSession
 
     /// <summary>Adds this group's key frames to an existing operation, keeping its budget and patient.</summary>
     public static async Task<ToolSession> Attach(SurgeryDriver driver, string folder, bool views = false,
-        string untouchedDescription = "the site before any tool touches it: intact skin, nothing in it", bool captureUntouched = true)
-    {
+        string untouchedDescription = "the site before any tool touches it: intact skin, nothing in it", bool captureUntouched = true) {
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, folder);
         }
         var session = new ToolSession(driver, shots);
-        if (shots is not null)
-        {
-            driver.OnKeyFrame = async (keyFrame, description) =>
-            {
+        if (shots is not null) {
+            driver.OnKeyFrame = async (keyFrame, description) => {
                 await shots.Capture(keyFrame, description, session.Along);
-                if (views)
-                {
+                if (views) {
                     await shots.CaptureView(keyFrame, description);
                 }
             };
-            if (captureUntouched)
-            {
+            if (captureUntouched) {
                 await driver.Capture("untouched", untouchedDescription);
             }
         }
@@ -66,29 +57,24 @@ public sealed class ToolSession
     }
 
     /// <summary>Ends only this group's captures and restores the enclosing operation's capture callback.</summary>
-    public void EndCaptures()
-    {
+    public void EndCaptures() {
         Shots?.End();
         Driver.OnKeyFrame = _previousCapture;
     }
 
     /// <summary>In a run with key frames, saves what the surgeon sees now as <paramref name="keyFrame"/>, which should
     /// show <paramref name="description"/>.</summary>
-    public async Task CaptureView(string keyFrame, string description)
-    {
-        if (Shots is { } shots)
-        {
+    public async Task CaptureView(string keyFrame, string description) {
+        if (Shots is { } shots) {
             await Driver.Unbudgeted(() => shots.CaptureView(keyFrame, description));
         }
     }
 
     /// <summary>Checks the frame budget (<paramref name="budgetOverride"/>: why it's known to go over) and ends the
     /// surgery.</summary>
-    public async Task Finish(string budgetOverride = "")
-    {
+    public async Task Finish(string budgetOverride = "") {
         Driver.Budget.Check(localOverride: budgetOverride);
-        if (Shots is not null)
-        {
+        if (Shots is not null) {
             GD.Print($"key frames: {Shots.OutDir}");
             EndCaptures();
         }

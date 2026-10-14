@@ -7,11 +7,9 @@ namespace Scalpel.Tests.Liquids;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_syringe_3"),
  TestCategory("tool_syringe_10"), TestCategory("tool_syringe_50"), TestCategory("tool_iv_catheter")]
-public class SyringeTest
-{
+public class SyringeTest {
     /// <summary>Where debug mode says each case's syringe pushed its liquid.</summary>
-    private static readonly Dictionary<string, string> PushedInto = new()
-    {
+    private static readonly Dictionary<string, string> PushedInto = new() {
         ["vial"] = "the vial",
         ["dish"] = "the kidney dish",
         ["drip"] = "the IV bag",
@@ -27,16 +25,14 @@ public class SyringeTest
 
     private SyringeBench _bench = null!;
     private bool _shared;
-    private readonly SharedScene<SyringeBench> _scenes = new(async () =>
-    {
+    private readonly SharedScene<SyringeBench> _scenes = new(async () => {
         var bench = SyringeBench.Create();
         await bench.Start();
         return bench;
     }, bench => bench.Stop());
 
     [AfterTest]
-    public async Task CleanUpCase()
-    {
+    public async Task CleanUpCase() {
         StopListening();
         await _scenes.DiscardIncomplete();
     }
@@ -55,12 +51,10 @@ public class SyringeTest
 
     /// <summary>Starts the bench with debug mode on, collecting the doses surgeons get and the messages
     /// shown.</summary>
-    private async Task Begin(string group = "")
-    {
+    private async Task Begin(string group = "") {
         _bench = await _scenes.Begin(group);
         _shared = group.Length > 0;
-        if (_shared)
-        {
+        if (_shared) {
             await _bench.PrepareNextCase();
         }
         _doses.Clear();
@@ -70,10 +64,8 @@ public class SyringeTest
         Surgery.Hud.Toasted += _toasts.Add;
     }
 
-    private async Task End()
-    {
-        if (_shared)
-        {
+    private async Task End() {
+        if (_shared) {
             await _bench.Withdraw();
             await _bench.ZoomTo(0);
         }
@@ -83,12 +75,10 @@ public class SyringeTest
 
     private void OnDose(int peer, string drug, float amount) => _doses.Add((peer, drug, amount));
 
-    private void StopListening()
-    {
+    private void StopListening() {
         _debugHud?.Dispose();
         _debugHud = null;
-        if (_bench is not null && GodotObject.IsInstanceValid(_bench))
-        {
+        if (_bench is not null && GodotObject.IsInstanceValid(_bench)) {
             Surgery.SurgeonDosed -= OnDose;
             Surgery.Hud.Toasted -= _toasts.Add;
         }
@@ -99,8 +89,7 @@ public class SyringeTest
     /// and leaves the camera at the eyes; once the needle is in with Use tool held, it frames the needle with the
     /// printed scale turned to the camera. </summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task HeldSyringeShowsItsScaleAndTheWheelWorksItsPlunger()
-    {
+    public async Task HeldSyringeShowsItsScaleAndTheWheelWorksItsPlunger() {
         await Begin();
         // Held out over the floor: over a vial it would stand upright in it.
         await _bench.Stage(SyringeBench.Cases[12]);
@@ -160,8 +149,7 @@ public class SyringeTest
         var head = camera.GetParent<Node3D>();
         AssertFloat(camera.GlobalPosition.DistanceTo(head.GlobalPosition))
             .OverrideFailureMessage("with the needle in, the camera moves over to it").IsGreater(0.05f);
-        foreach (var point in (Vector3[])[Syringe.GlobalPosition, Syringe.TipPosition(), _bench.Container!.Middle()])
-        {
+        foreach (var point in (Vector3[])[Syringe.GlobalPosition, Syringe.TipPosition(), _bench.Container!.Middle()]) {
             AssertBool(camera.IsPositionInFrustum(point))
                 .OverrideFailureMessage($"the needle view shows the syringe and the vial ({point})").IsTrue();
         }
@@ -186,18 +174,15 @@ public class SyringeTest
     /// <summary>Y3b: the syringe is held with the thumb on the plunger: drawing 8 ml pulls the plunger out and the
     /// thumb goes back with it, along the syringe as far as the plunger went, staying on its press.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task ThumbGoesBackWithThePlunger()
-    {
+    public async Task ThumbGoesBackWithThePlunger() {
         await Begin();
         await _bench.Stage(SyringeBench.Cases[0]);
         var me = Me;
         var hand = me.Hands[me.Active];
         var behind = new List<float>();
         var gaps = new List<float>();
-        foreach (var pull in (int[])[0, 8])
-        {
-            for (var i = 0; i < pull; i++)
-            {
+        foreach (var pull in (int[])[0, 8]) {
+            for (var i = 0; i < pull; i++) {
                 await SyringeBench.Notch(true);
             }
             await Frames.Physics(5);
@@ -247,8 +232,7 @@ public class SyringeTest
     [TestCase("doctor_down_push", Timeout = Limits.Slow)]
     [TestCase("own_hand_pull", Timeout = Limits.Slow)]
     [TestCase("own_hand_push", Timeout = Limits.Slow)]
-    public async Task PlungerAddsUp(string name)
-    {
+    public async Task PlungerAddsUp(string name) {
         var @case = SyringeBench.Cases.Single(entry => entry.Name == name);
         // One rejected stroke proves a blocked route; two accepted strokes prove cumulative transfer.
         // Capacity saturation is covered once per syringe size below, rather than repeating ordinary strokes.
@@ -259,22 +243,18 @@ public class SyringeTest
         var syringe = Syringe;
         var patient = Surgery.Patient;
         var target = _bench.NeedleTarget();
-        var kind = @case.Target switch
-        {
+        var kind = @case.Target switch {
             "vial" or "dish" or "drip" => "container",
             "vein" or "air" => @case.Target,
             _ => "tissue",
         };
         var intoSurgeon = SyringeBench.SurgeonTargets.Contains(@case.Target);
         var peer = @case.Target == "own_hand" ? 1 : 2;
-        if (intoSurgeon)
-        {
+        if (intoSurgeon) {
             var part = @case.Target == "doctor_body" ? "body" : "hand";
             AssertBool(target is SurgeonTarget into && into.Peer == peer && into.Part == part)
                 .OverrideFailureMessage($"{name}: the needle is in surgeon {peer}'s {part} ({target})").IsTrue();
-        }
-        else
-        {
+        } else {
             AssertBool(Kind(target) == kind && ((target as TissueTarget)?.Layer ?? @case.Target) == @case.Target)
                 .OverrideFailureMessage($"{name}: the needle is in the {@case.Target} ({target})").IsTrue();
         }
@@ -287,8 +267,7 @@ public class SyringeTest
         _doses.Clear();
         _toasts.Clear();
         var container = _bench.Container;
-        for (var i = 0; i < Math.Abs(@case.Notches); i++)
-        {
+        for (var i = 0; i < Math.Abs(@case.Notches); i++) {
             var mlBefore = syringe.Ml;
             var airBefore = syringe.Air;
             var redBefore = syringe.Red;
@@ -305,14 +284,11 @@ public class SyringeTest
                 .OverrideFailureMessage($"{name}: notch {i + 1} moves the plunger {expectedMove:+0;-0;+0} ml "
                     + $"({plunger:+0.00;-0.00})")
                 .IsTrue();
-            if (@case.Target == "air")
-            {
+            if (@case.Target == "air") {
                 AssertBool(Mathf.IsEqualApprox(syringe.Air - airBefore, 1f) && syringe.Ml == mlBefore)
                     .OverrideFailureMessage($"{name}: pulling in the air draws air, the liquid stays {mlBefore:0} ml")
                     .IsTrue();
-            }
-            else if (container is not null)
-            {
+            } else if (container is not null) {
                 // A drug pushed into the IV bag starts down the line at once: the bag keeps what hasn't run yet. It
                 // runs every physics step the notch took, however many the frames it waited for held.
                 var ran = @case.Target == "drip" && !pull
@@ -324,8 +300,7 @@ public class SyringeTest
                         + $"less what ran down the line ({change:+0.000;-0.000} over {steps} physics steps)")
                     .IsLessEqual(ran + 0.0001f);
             }
-            if (@case.Target == "vein" && pull)
-            {
+            if (@case.Target == "vein" && pull) {
                 AssertBool(syringe.Red > redBefore && Redness(syringe) > rednessBefore)
                     .OverrideFailureMessage(
                         $"{name}: drawing blood turns the liquid redder ({redBefore:0.00} -> {syringe.Red:0.00})")
@@ -337,8 +312,7 @@ public class SyringeTest
                     .IsLess(0.3f);
             }
             CheckShown(name, syringe);
-            if (container is not null)
-            {
+            if (container is not null) {
                 CheckShown(name, container);
             }
         }
@@ -346,15 +320,13 @@ public class SyringeTest
         AssertFloat(syringe.Ml)
             .OverrideFailureMessage($"{name}: the syringe ends with {expected:0} ml ({syringe.Ml:0.00})")
             .IsEqualApprox(Mathf.Max(expected, 0f), 0.00001f);
-        if (@case.Target == "vein" && pull)
-        {
+        if (@case.Target == "vein" && pull) {
             AssertFloat(syringe.Red)
                 .OverrideFailureMessage(
                     $"{name}: the liquid is {100f * @case.Notches / expected:0}% blood ({syringe.Red:0.00})")
                 .IsEqualApprox(@case.Notches / expected, 0.00001f);
         }
-        if (@case.Target == "drip" && !pull)
-        {
+        if (@case.Target == "drip" && !pull) {
             AssertFloat(InBody(patient.Drugs, drug))
                 .OverrideFailureMessage(
                     $"{name}: the drug starts down the line as it's pushed into the bag, the needle still in")
@@ -362,8 +334,7 @@ public class SyringeTest
         }
         var pushed = @case.Ml - syringe.Ml;
         await _bench.Withdraw();
-        if (@case.Target == "drip" && !pull)
-        {
+        if (@case.Target == "drip" && !pull) {
             AssertFloat(container!.Bolus)
                 .OverrideFailureMessage($"{name}: the drug runs down the line over time, not all at once")
                 .IsGreater(0f);
@@ -378,8 +349,7 @@ public class SyringeTest
                     + $"patient over IV, with the total so far ({string.Join(", ", told)})")
                 .IsTrue();
         }
-        if (!pull && kind != "air")
-        {
+        if (!pull && kind != "air") {
             var named = $"[debug] Injected {pushed:0.0} ml of {Db.Drug(drug)!.Name} into {PushedInto[@case.Target]}";
             AssertBool(_toasts.Contains(named))
                 .OverrideFailureMessage(
@@ -391,24 +361,19 @@ public class SyringeTest
                     $"{name}: debug mode says the needle hit the vein only for the vein ({string.Join(", ", _toasts)})")
                 .IsTrue();
         }
-        if (intoSurgeon)
-        {
+        if (intoSurgeon) {
             var amount = Math.Abs(@case.Notches) * Db.Tool(@case.Vial)!.Concentration;
-            if (pull)
-            {
+            if (pull) {
                 AssertBool(_doses.Count == 0 && me.Status.Drugs.Entries.Count == 0)
                     .OverrideFailureMessage($"{name}: pulling from a hand draws nothing and gives nothing").IsTrue();
-            }
-            else
-            {
+            } else {
                 var total = _doses.Where(dose => dose.Peer == peer && dose.Drug == drug).Sum(dose => dose.Amount);
                 AssertBool(Mathf.IsEqualApprox(total, amount) && _doses.Count == Math.Abs(@case.Notches))
                     .OverrideFailureMessage($"{name}: surgeon {peer} gets {amount:0.0} {drug}, some with every push "
                         + $"({string.Join(", ", _doses)})")
                     .IsTrue();
             }
-            if (@case.Target == "own_hand" && !pull)
-            {
+            if (@case.Target == "own_hand" && !pull) {
                 var entry = me.Status.Drugs.Find(drug);
                 var onset = Db.Drug(drug)!.Onset * DrugDef.DirectOnset;
                 AssertBool(entry is not null && Mathf.IsEqualApprox(entry.Onset, onset))
@@ -419,9 +384,7 @@ public class SyringeTest
             AssertFloat(InBody(patient.Drugs, drug)).OverrideFailureMessage($"{name}: the patient gets nothing")
                 .IsLessEqual(givenBefore + 0.0001f);
             me.Status.Drugs.Clear();
-        }
-        else if (!pull && (kind is "vein" or "tissue" || @case.Target == "drip"))
-        {
+        } else if (!pull && (kind is "vein" or "tissue" || @case.Target == "drip")) {
             var def = Db.Drug(drug)!;
             var share = pushed * Db.Tool(SyringeBench.Vial)!.Concentration / (def.Dose * patient.WeightKg);
             var given = InBody(patient.Drugs, drug) - givenBefore;
@@ -435,9 +398,7 @@ public class SyringeTest
                 .OverrideFailureMessage(
                     $"{name}: all {pushed:0} ml are given {how} ({given:0.000} of {share:0.000} doses)")
                 .IsTrue();
-        }
-        else if (kind != "air")
-        {
+        } else if (kind != "air") {
             AssertFloat(InBody(patient.Drugs, drug)).OverrideFailureMessage($"{name}: nothing is given")
                 .IsLessEqual(givenBefore + 0.0001f);
         }
@@ -449,8 +410,7 @@ public class SyringeTest
     [TestCase("syringe_3", Timeout = Limits.Slow)]
     [TestCase("syringe_10", Timeout = Limits.Slow)]
     [TestCase("syringe_50", Timeout = Limits.Slow)]
-    public async Task PlungerStopsAtEmptyAndFull(string id)
-    {
+    public async Task PlungerStopsAtEmptyAndFull(string id) {
         await Begin("plunger");
         var capacity = Db.Tool(id)!.Volume;
         await _bench.Stage(new SyringeCase("capacity_pull", "dish", id, capacity - 0.5f, 2, Dish: 60f));
@@ -480,8 +440,7 @@ public class SyringeTest
     /// drip stays in the bag.</summary>
     [TestCase("catheter_vein", Timeout = Limits.Slow)]
     [TestCase("catheter_miss", Timeout = Limits.Slow)]
-    public async Task CatheterGoesIntoTheForearm(string name)
-    {
+    public async Task CatheterGoesIntoTheForearm(string name) {
         await Begin();
         var miss = SyringeBench.CatheterCases.Single(entry => entry.Name == name).Miss;
         await _bench.StageCatheter(miss);
@@ -532,8 +491,7 @@ public class SyringeTest
     /// <summary>Y13: the IV stand offers "Swap IV bag" only to a hand holding a bag; swapping hangs a full bag in place
     /// of the old one and runs it into a working line.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task SwapIvBag()
-    {
+    public async Task SwapIvBag() {
         await Begin();
         var me = Me;
         var patient = Surgery.Patient;
@@ -568,12 +526,10 @@ public class SyringeTest
     /// <summary>Y15-Y16: stress shakes the hands in three steps, quirks only set how low stress drains, and Steady
     /// hands stops it all. A status on its own, its Update() driven directly.</summary>
     [TestCase]
-    public void StressShakesTheHands()
-    {
+    public void StressShakesTheHands() {
         var status = new SurgeonStatus(new Modifiers());
         var shakes = new List<float>();
-        foreach (var stress in (float[])[0.2f, 0.45f, 0.8f])
-        {
+        foreach (var stress in (float[])[0.2f, 0.45f, 0.8f]) {
             status.Stress = stress;
             shakes.Add(status.TremorAmount());
         }
@@ -583,8 +539,7 @@ public class SyringeTest
             .IsTrue();
         status.Stress = 0.2f;
         var twitches = 0;
-        for (var i = 0; i < 600; i++)
-        {
+        for (var i = 0; i < 600; i++) {
             status.Update(1f / 60f, default);
             twitches += status.Shiver() > 0f ? 1 : 0;
         }
@@ -612,8 +567,7 @@ public class SyringeTest
     /// cold) and delays hand moves; past 1.4 times the dose the view darkens and the delay grows; twice the dose knocks
     /// them out for five minutes. Flumazenil brings them round at once; adrenaline only while it lasts.</summary>
     [TestCase]
-    public void DiazepamSedatesASurgeon()
-    {
+    public void DiazepamSedatesASurgeon() {
         const float Right = 0.2f * 80f;
         var status = Dosed(Right);
         status.Stress = 0.8f;
@@ -664,8 +618,7 @@ public class SyringeTest
     /// <summary>Y19: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late;
     /// knocked out they lie on the floor with the table in view, and flumazenil gets them up again.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task SedatedSurgeonInTheRoom()
-    {
+    public async Task SedatedSurgeonInTheRoom() {
         await Begin();
         var me = Me;
         me.Status.Drugs.Clear();
@@ -713,16 +666,14 @@ public class SyringeTest
     /// IV bag from waist height snaps its needle into the middle of the bag from the hand's side, and moved on, comes
     /// out of it. </summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task NeedleHandling()
-    {
+    public async Task NeedleHandling() {
         await Begin();
         var me = Me;
         var hand = me.Hands[me.Active];
         await _bench.Stage(SyringeBench.Cases[0]);
         await VialSnapChecks(me, hand);
         var across = new List<float>();
-        for (var step = 0; step < Surgeon.ZoomFov.Length; step++)
-        {
+        for (var step = 0; step < Surgeon.ZoomFov.Length; step++) {
             await _bench.ZoomTo(step);
             await Frames.Physics(40);
             var screenBefore = me.Camera.UnprojectPosition(hand.GlobalPosition);
@@ -742,11 +693,9 @@ public class SyringeTest
         await Frames.Physics(40);
         var right = (me.Camera.GlobalBasis.X * new Vector3(1f, 0f, 1f)).Normalized();
         var away = (me.Camera.GlobalBasis.Y * new Vector3(1f, 0f, 1f)).Normalized();
-        foreach (var motion in (Vector2[])[new(10f, 0f), new(0f, -10f)])
-        {
+        foreach (var motion in (Vector2[])[new(10f, 0f), new(0f, -10f)]) {
             var before = hand.Target;
-            for (var i = 0; i < 5; i++)
-            {
+            for (var i = 0; i < 5; i++) {
                 await _bench.Steer(motion);
                 await Frames.Physics(1);
             }
@@ -770,8 +719,7 @@ public class SyringeTest
         var tip = Syringe.TipPosition();
         var tilt = hand.Tilt;
         var grip = hand.GlobalPosition;
-        for (var i = 0; i < 5; i++)
-        {
+        for (var i = 0; i < 5; i++) {
             await _bench.Steer(new Vector2(0f, 10f));
             await Frames.Physics(1);
         }
@@ -786,8 +734,7 @@ public class SyringeTest
         var wentIn = me.NeedleAnchor!.Value;
         var body = Surgery.Patient.Body;
         var beadsBefore = Beads(body);
-        for (var i = 0; i < 60 && !me.NeedleTorn; i++)
-        {
+        for (var i = 0; i < 60 && !me.NeedleTorn; i++) {
             await _bench.Steer(new Vector2(20f, 0f));
             await Frames.Physics(1);
         }
@@ -812,8 +759,7 @@ public class SyringeTest
         await Frames.Physics(20);
         var ownTilt = hand.Tilt;
         var under = bag.Middle() * new Vector3(1f, 0f, 1f);
-        for (var i = 0; i < 30; i++)
-        {
+        for (var i = 0; i < 30; i++) {
             // The hand's own spot, not where the snap holds it.
             var free = me.ToGlobal(hand.LocalTarget);
             hand.LocalTarget = me.ToLocal(free.Lerp(under + (Vector3.Up * free.Y), 0.1f));
@@ -831,8 +777,7 @@ public class SyringeTest
                 + $"little upward into the middle of the bag, from the hand's side ({off * 100f:0.0} cm off, rising "
                 + $"{rise:0.00}, hand at {hand.GlobalPosition.Y:0.00} m)")
             .IsTrue();
-        for (var i = 0; i < 10; i++)
-        {
+        for (var i = 0; i < 10; i++) {
             await _bench.Steer(new Vector2(0f, 30f));
             await Frames.Physics(1);
         }
@@ -849,8 +794,7 @@ public class SyringeTest
     /// delivered), its needle snaps in through the cap along the vial, without jumping (no frame moves the tip more
     /// than 1 cm), and lets go again soon after the hand passes it, the hand holding the syringe as before. Lying with
     /// its cap toward the surgeon it snaps in level; with the cap turned away it doesn't snap at all.</summary>
-    private async Task VialSnapChecks(Surgeon me, SurgeonHand hand)
-    {
+    private async Task VialSnapChecks(Surgeon me, SurgeonHand hand) {
         var standing = await Sweep(me, hand);
         AssertInt(standing.Snapped)
             .OverrideFailureMessage("needle_hand: swept over a standing vial's cap, the needle snaps in through it "
@@ -870,20 +814,16 @@ public class SyringeTest
             .OverrideFailureMessage("needle_hand: past the vial, the needle is out of it and the hand holds the "
                 + "syringe as before")
             .IsTrue();
-        foreach (var toward in (bool[])[true, false])
-        {
+        foreach (var toward in (bool[])[true, false]) {
             VialLies(me, toward);
             await Frames.Physics(30);
             var lying = await Sweep(me, hand);
-            if (toward)
-            {
+            if (toward) {
                 AssertInt(lying.Snapped).OverrideFailureMessage(
                         "needle_hand: a vial lying with its cap toward the surgeon takes the needle in level through "
                             + "the cap")
                     .IsGreater(0);
-            }
-            else
-            {
+            } else {
                 AssertInt(lying.Snapped).OverrideFailureMessage(
                         $"needle_hand: a vial lying with its cap turned away doesn't snap the needle "
                             + $"({lying.Snapped} frames)")
@@ -893,8 +833,7 @@ public class SyringeTest
     }
 
     /// <summary>Lays the case's vial on its side where it stands, its cap toward the surgeon or away.</summary>
-    private void VialLies(Surgeon me, bool toward)
-    {
+    private void VialLies(Surgeon me, bool toward) {
         var vial = _bench.Container!;
         var at = vial.Middle();
         var toMe = ((me.GlobalPosition - at) * new Vector3(1f, 0f, 1f)).Normalized() * (toward ? 1f : -1f);
@@ -914,8 +853,7 @@ public class SyringeTest
 
     /// <summary>Sweeps the syringe's tip across the vial's cap at 0.15 m/s from 12 cm before it to 12 cm past it, the
     /// hand moved its own way.</summary>
-    private async Task<SweepResult> Sweep(Surgeon me, SurgeonHand hand)
-    {
+    private async Task<SweepResult> Sweep(Surgeon me, SurgeonHand hand) {
         var vial = _bench.Container!;
         var length = Syringe.Def.Length;
         var cap = vial.TipPosition();
@@ -933,8 +871,7 @@ public class SyringeTest
         var jump = 0f;
         var snapped = 0;
         var frames = (int)(0.24f / 0.15f * 60f);
-        for (var i = 0; i < frames; i++)
-        {
+        for (var i = 0; i < frames; i++) {
             var tip = start.Lerp(cap + (across * 0.12f), (float)(i + 1) / frames);
             free = tip - hand.TipOffsetAt(length, own.X, own.Y);
             hand.LocalTarget = me.ToLocal(new Vector3(free.X, me.ToGlobal(hand.LocalTarget).Y, free.Z));
@@ -944,8 +881,7 @@ public class SyringeTest
             last = now;
             // The syringe's tip end (-Z) points along the vial, into it.
             var lengthwise = (-Syringe.GlobalBasis.Z.Normalized()).Dot(along) > 0.97f;
-            if (lengthwise && now.DistanceTo(cap) < 0.006f)
-            {
+            if (lengthwise && now.DistanceTo(cap) < 0.006f) {
                 snapped++;
             }
         }
@@ -956,12 +892,10 @@ public class SyringeTest
 
     /// <summary>Held over the skin at a shallow and a steep angle (turned with Aim tool), the aim shows where the
     /// needle goes in: Use tool puts its tip right there.</summary>
-    private async Task AimLands(Surgeon me, SurgeonHand hand)
-    {
+    private async Task AimLands(Surgeon me, SurgeonHand hand) {
         await _bench.Stage(SyringeBench.Cases[6]);
         await SyringeBench.Release();
-        foreach (var tilt in (float[])[-0.4f, -1.3f])
-        {
+        foreach (var tilt in (float[])[-0.4f, -1.3f]) {
             await SyringeBench.Aim(new Vector2(0f, (hand.Tilt - tilt) / Surgeon.AimSensitivity));
             await Frames.Physics(20);
             var aim = me.AimPoint();
@@ -986,8 +920,7 @@ public class SyringeTest
 
     /// <summary>Swept quickly from low beside the patient up onto the belly, Use tool up, the needle stays over the
     /// skin: it never sinks under it, where a wheel notch would inject.</summary>
-    private async Task SweepOntoPatient(Surgeon me, SurgeonHand hand)
-    {
+    private async Task SweepOntoPatient(Surgeon me, SurgeonHand hand) {
         await _bench.Stage(SyringeBench.Cases[6]);
         await SyringeBench.Release();
         var belly = Surgery.Patient.Body.UvToWorld(SyringeBench.SkinUv);
@@ -996,8 +929,7 @@ public class SyringeTest
         await Frames.Physics(30);
         var low = Syringe.TipPosition().Y;
         var inside = 0;
-        for (var i = 0; i < 12; i++)
-        {
+        for (var i = 0; i < 12; i++) {
             var tip = beside.Lerp(belly, (i + 1) / 12f);
             hand.LocalTarget = me.ToLocal(new Vector3(tip.X, me.ToGlobal(hand.LocalTarget).Y, tip.Z)
                 - (me.OwnTipOffset(me.Active) * new Vector3(1f, 0f, 1f)));
@@ -1015,18 +947,15 @@ public class SyringeTest
 
     /// <summary>The needle aimed anywhere along the back of the surgeon's other hand, wrist to fingertips, rests on the
     /// glove and is in that hand: it doesn't sink into the glove or drop through it to what's under it.</summary>
-    private async Task BackOfHandChecks()
-    {
+    private async Task BackOfHandChecks() {
         await _bench.Stage(SyringeBench.Cases.Single(entry => entry.Name == "own_hand_push"));
         var me = Me;
         var hand = me.Hands[me.Active];
         var other = me.Hands[1 - me.Active];
         var glove = other.Glove;
-        foreach (var along in (float[])[0.02f, 0.06f, 0.1f, 0.14f, 0.18f])
-        {
+        foreach (var along in (float[])[0.02f, 0.06f, 0.1f, 0.14f, 0.18f]) {
             var aim = glove.GlobalPosition + (glove.GlobalBasis.X.Normalized() * along);
-            for (var i = 0; i < 40; i++)
-            {
+            for (var i = 0; i < 40; i++) {
                 hand.LocalTarget = me.ToLocal(aim - hand.TipOffset(Syringe.Def.Length) + (Vector3.Up * 0.04f));
                 await Frames.NextPhysics();
             }
@@ -1046,8 +975,7 @@ public class SyringeTest
 
     /// <summary>The liquid, air and plunger shown match what's in it exactly, against the full Level part (the
     /// graduation).</summary>
-    private static void CheckShown(string name, SurgicalTool tool)
-    {
+    private static void CheckShown(string name, SurgicalTool tool) {
         var share = tool.Ml / tool.Def.Volume;
         var level = tool.FindChild("Level", true, false) as MeshInstance3D;
         var part = level ?? (MeshInstance3D)tool.FindChild("Pool", true, false);
@@ -1059,8 +987,7 @@ public class SyringeTest
         AssertBool(tool.Red < 0.5f || Redness(tool) > 0f)
             .OverrideFailureMessage($"{name}: the {tool.Def.Name}'s liquid, {tool.Red * 100f:0}% blood, looks red")
             .IsTrue();
-        if (tool.Def.Action != "syringe")
-        {
+        if (tool.Def.Action != "syringe") {
             return;
         }
         var travel = level!.GetAabb().Size.Z;
@@ -1074,16 +1001,14 @@ public class SyringeTest
     }
 
     /// <summary>How much redder than blue the liquid shown is.</summary>
-    private static float Redness(SurgicalTool tool)
-    {
+    private static float Redness(SurgicalTool tool) {
         var part = (MeshInstance3D)tool.FindChild("Level", true, false);
         var albedo = ((ShaderMaterial)part.GetSurfaceOverrideMaterial(0)).GetShaderParameter("albedo").AsColor();
         return albedo.R - albedo.B;
     }
 
     /// <summary>How see-through the hand is drawn (0 solid).</summary>
-    private static float Fade(SurgeonHand hand)
-    {
+    private static float Fade(SurgeonHand hand) {
         var glove = (GeometryInstance3D)hand.FindChildren("*", nameof(GeometryInstance3D), true, false)[0];
         return glove.MaterialOverride is StandardMaterial3D ghost ? 1f - ghost.AlbedoColor.A : 0f;
     }
@@ -1092,8 +1017,7 @@ public class SyringeTest
         [.. body.FindChildren("BloodBead*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>()];
 
     /// <summary>What kind of thing the needle is in, as the cases name it.</summary>
-    private static string Kind(NeedleTarget target) => target switch
-    {
+    private static string Kind(NeedleTarget target) => target switch {
         ContainerTarget => "container",
         VeinTarget => "vein",
         TissueTarget => "tissue",
@@ -1109,8 +1033,7 @@ public class SyringeTest
     private static float InBody(DrugLevels levels, string drug) =>
         levels.Find(drug) is { } entry ? entry.Depot + entry.Level : 0f;
 
-    private static SurgeonStatus StatusWith(Dictionary<string, string> effects)
-    {
+    private static SurgeonStatus StatusWith(Dictionary<string, string> effects) {
         var mods = new Modifiers();
         mods.Add(effects);
         return new SurgeonStatus(mods);
@@ -1118,18 +1041,15 @@ public class SyringeTest
 
     /// <summary>A status given <paramref name="mg"/> of diazepam, run 10 seconds on (past its onset), the events it
     /// gave collected.</summary>
-    private static SurgeonStatus Dosed(float mg, List<StatusEvent>? events = null)
-    {
+    private static SurgeonStatus Dosed(float mg, List<StatusEvent>? events = null) {
         var status = new SurgeonStatus(new Modifiers());
         status.Administer("diazepam", mg);
         RunStatus(status, 10f, events ?? []);
         return status;
     }
 
-    private static void RunStatus(SurgeonStatus status, float seconds, List<StatusEvent> events)
-    {
-        for (var i = 0; i < (int)(seconds * 10f); i++)
-        {
+    private static void RunStatus(SurgeonStatus status, float seconds, List<StatusEvent> events) {
+        for (var i = 0; i < (int)(seconds * 10f); i++) {
             events.AddRange(status.Update(0.1f, default));
         }
     }

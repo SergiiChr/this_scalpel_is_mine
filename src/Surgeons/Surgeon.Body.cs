@@ -1,8 +1,7 @@
 namespace Scalpel.Surgeons;
 
 /// <summary>The surgeon's visible body: scrubs, head, legs and the walk, crouch and fall animations.</summary>
-public partial class Surgeon
-{
+public partial class Surgeon {
     /// <summary>Body model's leg joints (meters), matching tools/assetgen/surgeon.py:_body(). Keep these and
     /// <see cref="HeadPivot"/> in sync with that generator; the surgeon pose tests check the loaded rig.</summary>
     public const float HipHeight = 0.95f;
@@ -42,8 +41,7 @@ public partial class Surgeon
     private float _stains;
 
     /// <summary>Scrubs stained this much (0..1) at once, as after a bloody surgery.</summary>
-    internal void SetStains(float stains)
-    {
+    internal void SetStains(float stains) {
         _stains = stains;
         _scrubs.SetShaderParameter(ShaderParam.Stains, stains);
     }
@@ -59,15 +57,13 @@ public partial class Surgeon
     /// <summary>The side a knocked out surgeon falls to (1 their left, -1 their right, 0 standing), synced.</summary>
     private float _fallSide;
 
-    internal float FallSide
-    {
+    internal float FallSide {
         get => _fallSide;
         set => _fallSide = value;
     }
 
     /// <summary>How far over onto the floor a knocked out surgeon has gone (0 standing, 1 lying).</summary>
-    internal float Down
-    {
+    internal float Down {
         get => _down;
         set => _down = value;
     }
@@ -79,8 +75,7 @@ public partial class Surgeon
     internal Node3D Joint(string name) => _joints[name];
 
     /// <summary>Where the body was last frame, which the walk cycle measures speed from.</summary>
-    internal Vector3 LastPosition
-    {
+    internal Vector3 LastPosition {
         get => _lastPosition;
         set => _lastPosition = value;
     }
@@ -93,8 +88,7 @@ public partial class Surgeon
     /// body isn't drawn and its view stays steady while walking: the arms it sees stay steady too, and so does how low
     /// each glove reaches (which keeps the hand off a table).
     /// </summary>
-    public Vector3 SteadyShoulder(int hand)
-    {
+    public Vector3 SteadyShoulder(int hand) {
         var torso = _joints["Torso"];
         var rest = _rest["Torso"];
         var still = new Transform3D(rest.Basis * Basis.FromEuler(new Vector3(TorsoBend(), 0f, 0f)), rest.Origin);
@@ -111,12 +105,10 @@ public partial class Surgeon
         new(ShoulderOffset.X * Side(hand), ShoulderOffset.Y - HipHeight, ShoulderOffset.Z);
 
     /// <summary>Sets this sleeve's knee support and obstacles for a deep squat, clearing them when standing.</summary>
-    internal void SupportElbow(SurgeonHand hand)
-    {
+    internal void SupportElbow(SurgeonHand hand) {
         hand.ElbowSupportWeight = Mathf.SmoothStep(0.55f, 1f, Crouch) * (1f - _down);
         hand.KneeObstacles.Clear();
-        if (hand.ElbowSupportWeight <= 0f)
-        {
+        if (hand.ElbowSupportWeight <= 0f) {
             hand.ElbowSupport = null;
             return;
         }
@@ -127,12 +119,10 @@ public partial class Surgeon
         hand.KneeObstacles.Add(_joints["ShinR"].GlobalPosition);
     }
 
-    private void StainScrubs(float delta)
-    {
+    private void StainScrubs(float delta) {
         var stains = Mathf.Min(_stains + ((Hands[0].Blood + Hands[1].Blood) * StainRate * delta), 1f);
         // Shader parameters only change in visible steps.
-        if (!Mathf.IsEqualApprox(Mathf.Snapped(stains, 0.02f), Mathf.Snapped(_stains, 0.02f)))
-        {
+        if (!Mathf.IsEqualApprox(Mathf.Snapped(stains, 0.02f), Mathf.Snapped(_stains, 0.02f))) {
             _scrubs.SetShaderParameter(ShaderParam.Stains, stains);
         }
         _stains = stains;
@@ -140,13 +130,11 @@ public partial class Surgeon
 
     private Color ScrubsColor => Materials.Scrubs[PeerId == Net.HostId ? 0 : 1];
 
-    private void BuildVisuals()
-    {
+    private void BuildVisuals() {
         _scrubs = Materials.FamilyUnique("cloth", ScrubsColor, 0.9f);
         _scrubs.NextPass = Materials.OutlineFor(0.003f);
         var skin = Materials.FamilyUnique("skin", new Color(0.8f, 0.64f, 0.54f), 0.6f);
-        _body = ModelSlot.Instantiate("surgeon", "body", this, new Dictionary<string, Material>
-        {
+        _body = ModelSlot.Instantiate("surgeon", "body", this, new Dictionary<string, Material> {
             ["tint"] = _scrubs,
             ["skin"] = skin,
             ["rubber"] = Materials.FamilyUnique("rubber", new Color(0.1f, 0.11f, 0.12f), 0.9f),
@@ -156,29 +144,23 @@ public partial class Surgeon
         // Cap and mask keep the model's own textured cloth; only the skin is shared, so the head's neck matches the body.
         _face = ModelSlot.Instantiate("surgeon", "head", _head, new Dictionary<string, Material> { ["skin"] = skin });
         // The ink outline grows past the cloth's few millimeters and would show through as black patches.
-        foreach (var part in ModelSlot.Parts(_face, "Cap", "Mask").Values.OfType<MeshInstance3D>())
-        {
-            for (var i = 0; i < part.Mesh.GetSurfaceCount(); i++)
-            {
-                if (part.Mesh.SurfaceGetMaterial(i) is BaseMaterial3D source)
-                {
+        foreach (var part in ModelSlot.Parts(_face, "Cap", "Mask").Values.OfType<MeshInstance3D>()) {
+            for (var i = 0; i < part.Mesh.GetSurfaceCount(); i++) {
+                if (part.Mesh.SurfaceGetMaterial(i) is BaseMaterial3D source) {
                     part.SetSurfaceOverrideMaterial(i, Materials.Imported(source, 0f));
                 }
             }
         }
         Camera = new Camera3D { Name = "Camera", Fov = 70f, Near = 0.03f };
         _head.AddChild(Camera);
-        foreach (var joint in JointNames)
-        {
-            if (_body.FindChild(joint, true, false) is Node3D node)
-            {
+        foreach (var joint in JointNames) {
+            if (_body.FindChild(joint, true, false) is Node3D node) {
                 _joints[joint] = node;
                 _rest[joint] = node.Transform;
             }
         }
         var mine = PeerId == Multiplayer.GetUniqueId();
-        if (mine)
-        {
+        if (mine) {
             _face.Visible = false;
             _body.Visible = false;
         }
@@ -188,8 +170,7 @@ public partial class Surgeon
 
     /// <summary>Walk cycle from actual movement speed, collapse while passed out. Works the same for local and remote
     /// surgeons.</summary>
-    internal void AnimateBody(float delta)
-    {
+    internal void AnimateBody(float delta) {
         var moved = new Vector2(GlobalPosition.X - _lastPosition.X, GlobalPosition.Z - _lastPosition.Z).Length();
         var speed = moved / Mathf.Max(delta, 0.0001f);
         GroundSpeed = speed;
@@ -198,8 +179,7 @@ public partial class Surgeon
         var stride = Mathf.Clamp(speed / WalkSpeed, 0f, 1f) * 0.45f;
         var passedOut = IsLocal ? Status.PassedOut > 0f : _remoteOut;
         _collapse = Mathf.MoveToward(_collapse, passedOut ? 1f : 0f, delta * 2.5f);
-        if (IsLocal)
-        {
+        if (IsLocal) {
             _fallSide = !Status.IsKnockedOut ? 0f : _fallSide != 0f ? _fallSide : RoomierSide();
         }
         _down = Mathf.MoveToward(_down, IsDown ? 1f : 0f, delta * 1.5f);
@@ -226,8 +206,7 @@ public partial class Surgeon
     /// view stays steady; crouching changes its height without shifting it across the floor. Camera and visible head
     /// have independent transforms: looking never swings the neck out through the back.
     /// </summary>
-    private void PoseHead()
-    {
+    private void PoseHead() {
         var torso = _joints["Torso"];
         var eyeLocal = new Vector3(0f, EyeHeight - HipHeight, 0f);
         var standingEyes = new Vector3(0f, EyeHeight - (_collapse * 1.1f) - (Crouch * CrouchDrop), 0f);
@@ -238,8 +217,7 @@ public partial class Surgeon
         var patient = _down > 0f ? Session.Patient.GlobalPosition : Vector3.Zero;
         // Lying there, the head turns to the patient on the table.
         var look = 0f;
-        if (_down > 0f)
-        {
+        if (_down > 0f) {
             var toPatient = (patient - ToGlobal(_head.Position)) * new Vector3(1f, 0f, 1f);
             look = Mathf.Wrap(Mathf.Atan2(-toPatient.X, -toPatient.Z) - Rotation.Y, -Mathf.Pi, Mathf.Pi) * _down;
         }
@@ -249,8 +227,7 @@ public partial class Surgeon
         var tilt = new Basis(Vector3.Right, ((Pitch * 0.5f) + (Crouch * SquatLean) + Lean) * (1f - _down));
         var anchor = torso.GlobalTransform * (eyeLocal + HeadPivot);
         var faceBasis = torso.GlobalBasis * tilt;
-        if (_down > 0f)
-        {
+        if (_down > 0f) {
             // The visible head no longer inherits the camera's yaw. Turn it toward the patient about its fixed neck
             // anchor, using its own position so the face and camera both look at the patient from where they lie.
             var toward = patient - anchor;
@@ -268,8 +245,7 @@ public partial class Surgeon
 
     /// <summary>Two-bone legs in body space. At rest the soles are on the floor; walking lifts only the swinging foot.
     /// </summary>
-    private void PoseLeg(string suffix, float side, float swing)
-    {
+    private void PoseLeg(string suffix, float side, float swing) {
         var hip = new Vector3(side * HipWidth, HipHeight, 0f);
         var ankle = new Vector3(
             side * (HipWidth + (Crouch * 0.075f)), AnkleHeight + (Crouch * CrouchDrop) + _walkDrop,
@@ -295,16 +271,14 @@ public partial class Surgeon
             * new Transform3D(new Basis(Vector3.Up, -side * Crouch * 0.25f), ankle);
     }
 
-    private static Basis LegBasis(Vector3 down)
-    {
+    private static Basis LegBasis(Vector3 down) {
         var y = -down.Normalized();
         var x = y.Cross(Vector3.Back).Normalized();
         return new Basis(x, y, x.Cross(y));
     }
 
     /// <summary>The side (1 left, -1 right) with more clear floor beside the surgeon, to fall to.</summary>
-    private float RoomierSide()
-    {
+    private float RoomierSide() {
         var from = ToGlobal(new Vector3(0f, 0.3f, 0f));
         float Room(float side) =>
             Rays.Cast(this, from, ToGlobal(new Vector3(-side * FallRoom, 0.3f, 0f)), 1, GetRid()) is { } hit
@@ -313,10 +287,8 @@ public partial class Surgeon
         return Room(1f) >= Room(-1f) ? 1f : -1f;
     }
 
-    private void Pose(string joint, Vector3 euler)
-    {
-        if (_joints.TryGetValue(joint, out var node))
-        {
+    private void Pose(string joint, Vector3 euler) {
+        if (_joints.TryGetValue(joint, out var node)) {
             var rest = _rest[joint];
             node.Transform = new Transform3D(rest.Basis * Basis.FromEuler(euler), rest.Origin);
         }
@@ -324,8 +296,7 @@ public partial class Surgeon
 
     /// <summary>Knocked out: lying on the floor facing the table, hands limp in front, nothing the player can do.
     /// </summary>
-    private void LieStill(float delta)
-    {
+    private void LieStill(float delta) {
         Crouch = Mathf.MoveToward(Crouch, 0f, delta * 4f);
         Lean = Mathf.MoveToward(Lean, 0f, delta * 4f);
         LeanSpot = null;
@@ -335,13 +306,11 @@ public partial class Surgeon
         var table = (Session.Patient.GlobalPosition - GlobalPosition) * new Vector3(1f, 0f, 1f);
         Velocity = _down < 1f && table.Length() < LyingDistance ? -table.Normalized() * WalkSpeed : Vector3.Zero;
         MoveAndSlide();
-        Rotation = Rotation with
-        {
+        Rotation = Rotation with {
             Y = Mathf.LerpAngle(Rotation.Y, Mathf.Atan2(-table.X, -table.Z), Mathf.Min(delta * 3f, 1f)),
         };
         _aimWrist = null;
-        for (var i = 0; i < 2; i++)
-        {
+        for (var i = 0; i < 2; i++) {
             var hand = Hands[i];
             hand.Aiming = false;
             hand.Raise = 0f;

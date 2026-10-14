@@ -6,19 +6,16 @@ namespace Scalpel.Tests.World;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class GloveStationTest
-{
+public class GloveStationTest {
     /// <summary>Top of the cabinet the box stands on (tools/assetgen/props.py).</summary>
     private const float CabinetTop = 0.9f;
 
     [TestCase]
-    public async Task LookingAtTheBoxAndInteractingGivesFreshGloves()
-    {
+    public async Task LookingAtTheBoxAndInteractingGivesFreshGloves() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         KeyFrames? shots = null;
-        try
-        {
+        try {
             await driver.Start("hand_stitch");
             var me = driver.Me;
             var room = driver.Surgery.Room;
@@ -46,8 +43,7 @@ public class GloveStationTest
                 .Max();
             AssertFloat(top).OverrideFailureMessage("the cabinet's top is closed in the middle")
                 .IsEqualApprox(CabinetTop, 0.003f);
-            if (KeyFrames.Wanted())
-            {
+            if (KeyFrames.Wanted()) {
                 shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(driver.Surgery, "glove_station");
@@ -64,8 +60,7 @@ public class GloveStationTest
             await Frames.Physics(2);
             AssertObject(me.Focused).OverrideFailureMessage("looking at the glove box offers \"Change gloves\"")
                 .IsSame(station);
-            if (shots is not null)
-            {
+            if (shots is not null) {
                 await driver.Unbudgeted(() => shots.CaptureView("box_in_view",
                     "the glove box in the middle of the view, the \"Change gloves\" prompt, "
                         + "bloody gloves on the hands"));
@@ -77,15 +72,12 @@ public class GloveStationTest
             AssertBool(me.Hands.All(hand => hand.Blood == 0f))
                 .OverrideFailureMessage($"fresh gloves are clean: {blood}").IsTrue();
             AssertFloat(me.Status.Sweat).OverrideFailureMessage("fresh gloves are dry").IsLess(0.05f);
-            if (shots is not null)
-            {
+            if (shots is not null) {
                 await driver.Unbudgeted(() => shots.CaptureView("fresh_gloves",
                     "clean blue gloves on the hands, the \"Fresh gloves.\" toast, no sweat bar"));
             }
             driver.Budget.Check();
-        }
-        finally
-        {
+        } finally {
             shots?.End();
             await driver.Stop();
             RenderingServer.RenderLoopEnabled = true;

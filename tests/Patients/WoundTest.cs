@@ -7,14 +7,12 @@ namespace Scalpel.Tests.Patients;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
-public class WoundTest
-{
+public class WoundTest {
     /// <summary>Meters per site uv, about an abdomen's.</summary>
     private const float SiteSize = 0.3f;
 
     [TestCase]
-    public void AClottedCutBleedsAgainOnceTornFurther()
-    {
+    public void AClottedCutBleedsAgainOnceTornFurther() {
         var tear = SmallClottedTear();
         tear.Extend(new Vector2(0.5f + (0.02f / SiteSize), 0.5f));
         AssertBool(tear.Clotted).OverrideFailureMessage("torn further, it's no longer stopped for good").IsFalse();
@@ -22,8 +20,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public void AVesselNickedBesideAClottedCutBleeds()
-    {
+    public void AVesselNickedBesideAClottedCutBleeds() {
         var tear = SmallClottedTear();
         tear.Nicked = Patient.StapleNick;
         AssertFloat(tear.BleedRate(SiteSize, 1f)).OverrideFailureMessage("a vessel a staple went through bleeds regardless")
@@ -31,8 +28,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public void ACleanIncisionBleedsFarLessThanAJaggedCutOrATear()
-    {
+    public void ACleanIncisionBleedsFarLessThanAJaggedCutOrATear() {
         var clean = Line(WoundKind.Cut, surgeon: true, jagged: 0f).BleedRate(SiteSize, 1f);
         var jagged = Line(WoundKind.Cut, surgeon: true, jagged: 1f).BleedRate(SiteSize, 1f);
         var tear = Line(WoundKind.Tear, surgeon: false, jagged: 0f).BleedRate(SiteSize, 1f);
@@ -43,8 +39,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public void AJaggedStretchOfAnIncisionBleedsLikeATearOnlyThere()
-    {
+    public void AJaggedStretchOfAnIncisionBleedsLikeATearOnlyThere() {
         var clean = Line(WoundKind.Cut, surgeon: true, jagged: 0f).BleedRate(SiteSize, 1f);
         var tear = Line(WoundKind.Tear, surgeon: false, jagged: 0f).BleedRate(SiteSize, 1f);
         var tenth = Line(WoundKind.Cut, surgeon: true, jagged: 0.1f).BleedRate(SiteSize, 1f);
@@ -55,8 +50,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public async Task ACutStoppedForGoodBleedsAgainWhenCutAgain()
-    {
+    public async Task ACutStoppedForGoodBleedsAgainWhenCutAgain() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
@@ -73,8 +67,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public async Task ASewnAndSealedIncisionOpensAndBleedsWhereItsCutAgain()
-    {
+    public async Task ASewnAndSealedIncisionOpensAndBleedsWhereItsCutAgain() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
@@ -101,8 +94,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public async Task AStrokeComingIntoAnIncisionEndsWhereItComesIn()
-    {
+    public async Task AStrokeComingIntoAnIncisionEndsWhereItComesIn() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
@@ -119,8 +111,7 @@ public class WoundTest
     }
 
     [TestCase]
-    public async Task CauteryElsewhereLeavesAStretchCutAgainBleeding()
-    {
+    public async Task CauteryElsewhereLeavesAStretchCutAgainBleeding() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
@@ -151,8 +142,7 @@ public class WoundTest
 
     [TestCase(0.006f)]
     [TestCase(0.01f)]
-    public async Task AStrokeAcrossAUShapedCutIsANewCut(float apart)
-    {
+    public async Task AStrokeAcrossAUShapedCutIsANewCut(float apart) {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
@@ -171,22 +161,19 @@ public class WoundTest
 
     /// <summary>A 10 cm wound through the muscle, jagged along <paramref name="jagged"/> of its length (0..1) from its
     /// start.</summary>
-    private static Wound Line(WoundKind kind, bool surgeon, float jagged)
-    {
+    private static Wound Line(WoundKind kind, bool surgeon, float jagged) {
         var start = new Vector2(0.3f, 0.5f);
         var along = new Vector2(0.1f / SiteSize, 0f);
         var wound = new Wound(1, kind, start, 1f) { MadeBySurgeon = surgeon };
         wound.Extend(start + along);
-        if (jagged > 0f)
-        {
+        if (jagged > 0f) {
             wound.MarkJagged(start, start + (along * jagged));
         }
         return wound;
     }
 
     /// <summary>A 0.5 cm tear stopped for good with gauze.</summary>
-    private static Wound SmallClottedTear()
-    {
+    private static Wound SmallClottedTear() {
         var tear = new Wound(1, WoundKind.Tear, new Vector2(0.5f, 0.5f), 0.5f);
         tear.Extend(new Vector2(0.5f + (0.005f / SiteSize), 0.5f));
         AssertBool(tear.IsSmall(SiteSize)).OverrideFailureMessage("a 0.5 cm tear is too small to sew").IsTrue();

@@ -11,16 +11,14 @@ namespace Scalpel.Tests.Tools;
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_needle"), TestCategory("tissue_modification")]
 [TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class NeedleTest
-{
+public class NeedleTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     /// <summary>Too loose leaves a gap, too tight tears through, and skin pulled shut over open muscle tears through
     /// too.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task ThreadTensionLimits()
-    {
+    public async Task ThreadTensionLimits() {
         var session = await ToolSession.Start("appendectomy", "needle/tension");
         var driver = session.Driver;
         AssertFloat(ToolActions.SutureTensionStep).OverrideFailureMessage("the thread wheel has fine tension steps")
@@ -66,8 +64,7 @@ public class NeedleTest
             .OverrideFailureMessage("every over-tight hole has a rendered pressure sprite").IsEqual(holes);
         await driver.Capture("too_tight_intact", "the middle cut sewn too tight, intact: strong pressure marks around every hole");
         var wounds = patient.Wounds.Count;
-        for (var i = 0; i < 6 && !patient.SutureDone(thread); i++)
-        {
+        for (var i = 0; i < 6 && !patient.SutureDone(thread); i++) {
             await SurgeryDriver.Notch(false);
         }
         AssertBool(patient.SutureDone(thread) && needle.Suture.Thread == 0)
@@ -93,8 +90,7 @@ public class NeedleTest
     /// <summary>A cut through the belly wall sewn layer by layer from inside the opening: the muscle, the fat, then the
     /// skin.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task LayeredClosureOfACutIntoTheBelly()
-    {
+    public async Task LayeredClosureOfACutIntoTheBelly() {
         var session = await ToolSession.Start("appendectomy", "needle/layers");
         var driver = session.Driver;
         var tissue = driver.Body.Tissue;
@@ -122,8 +118,7 @@ public class NeedleTest
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task FinishedSutureRedrawAndCancelledPress()
-    {
+    public async Task FinishedSutureRedrawAndCancelledPress() {
         var session = await ToolSession.Start("appendectomy", "needle/finished_threads");
         var driver = session.Driver;
         var body = driver.Body;
@@ -131,15 +126,13 @@ public class NeedleTest
         var needle = (await driver.PlayerRequestsItem("needle"))!;
         var hand = new HandInput(true, true, 0, 0f, driver.Me.PeerId, new Modifiers());
         var sew = new SewAction();
-        sew.Apply(new ToolStep(needle, hand, driver.Patient, 0.1f)
-        {
+        sew.Apply(new ToolStep(needle, hand, driver.Patient, 0.1f) {
             Pressed = true,
             Tip = needle.TipPosition(),
             Probe = new SiteProbe(SiteZone.Site, new Vector2(0.4f, 0.4f), 0f),
         });
         // Let go with the needle up by the tray, off the patient.
-        sew.Apply(new ToolStep(needle, hand with { Trigger = false }, driver.Patient, 0f)
-        {
+        sew.Apply(new ToolStep(needle, hand with { Trigger = false }, driver.Patient, 0f) {
             Released = true,
             Tip = needle.TipPosition(),
             Probe = new SiteProbe(SiteZone.Air, Vector2.Zero, 0f),
@@ -151,8 +144,7 @@ public class NeedleTest
         var ids = Enumerable.Range(100, 12).ToList();
         var knots = ids.Select(id => body.ThreadNode(id)!.GetNode<MeshInstance3D>("StartKnot").Mesh).ToList();
         var worst = 0UL;
-        for (var frame = 0; frame < 60; frame++)
-        {
+        for (var frame = 0; frame < 60; frame++) {
             // A sim step elsewhere must not invalidate the meshes of unchanged punctures.
             tissue.StepsDone++;
             var start = Time.GetTicksUsec();
@@ -161,8 +153,7 @@ public class NeedleTest
         }
         AssertBool(ids.Select(id => body.ThreadNode(id)!.GetNode<MeshInstance3D>("StartKnot").Mesh).SequenceEqual(knots))
             .OverrideFailureMessage("stationary tied knots are not rebuilt by unrelated tissue steps").IsTrue();
-        if (FrameBudget.Mode == BudgetMode.Cpu)
-        {
+        if (FrameBudget.Mode == BudgetMode.Cpu) {
             AssertFloat(worst / 1_000_000f).OverrideFailureMessage($"twelve finished threads fit the CPU budget (worst {worst} us)")
                 .IsLess(FrameBudget.Limit);
         }
@@ -175,8 +166,7 @@ public class NeedleTest
 
     /// <summary>Threads <paramref name="wound"/> through <paramref name="layer"/>, pulls it closed and ties it off, the
     /// thread resting on that layer throughout.</summary>
-    private static async Task SewDeepLayer(SurgeryDriver driver, Wound wound, TissueDepth layer)
-    {
+    private static async Task SewDeepLayer(SurgeryDriver driver, Wound wound, TissueDepth layer) {
         AssertBool(await driver.PlayerThreads(wound, layer)).OverrideFailureMessage("the horizontal needle reaches every deep puncture")
             .IsTrue();
         var thread = driver.Me.HeldTool(driver.Me.Active)!.Suture.Thread;
@@ -193,12 +183,9 @@ public class NeedleTest
         AssertThreadStaysOnLayer(driver.Body, driver.Body.DrawnThread(thread)!.Routes, layer);
     }
 
-    private static void AssertThreadStaysOnLayer(PatientBody body, IReadOnlyList<Vector3[]> routes, TissueDepth layer)
-    {
-        foreach (var path in routes)
-        {
-            for (var i = 1; i < path.Length - 1; i++)
-            {
+    private static void AssertThreadStaysOnLayer(PatientBody body, IReadOnlyList<Vector3[]> routes, TissueDepth layer) {
+        foreach (var path in routes) {
+            for (var i = 1; i < path.Length - 1; i++) {
                 var uv = SiteUv(body, path[i]);
                 var surface = body.SutureLayerHeight(uv, layer);
                 var over = $"{(path[i].Y - surface) * 1000f:0.00} mm over it at {uv}";

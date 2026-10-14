@@ -4,8 +4,7 @@ namespace Scalpel.Patients;
 /// Something under the skin that the scenario cares about: a bullet, an appendix, a bone to saw, fluid to drain.
 /// Host owns the state and syncs it through Patient. Field meaning matches data/scenarios [patient] targets.
 /// </summary>
-public partial class CavityTarget : Node3D
-{
+public partial class CavityTarget : Node3D {
     /// <summary>A small solid the resting tool tip lands on, so tools inside an open cavity come down onto the target.
     /// </summary>
     public const uint TouchLayer = 64;
@@ -33,8 +32,7 @@ public partial class CavityTarget : Node3D
     /// <summary>A cut inside the body reached it: it bleeds from where it's attached.</summary>
     public bool Opened { get; set; }
 
-    public void Setup(int index, TargetSpec spec, bool mirrored)
-    {
+    public void Setup(int index, TargetSpec spec, bool mirrored) {
         Index = index;
         Kind = spec.Kind;
         RemoveWith = spec.RemoveWith;
@@ -68,8 +66,7 @@ public partial class CavityTarget : Node3D
 
     public Godot.Collections.Array State() => [Position, Anchor, Amount, Extracted, Visible];
 
-    public void ApplyState(Godot.Collections.Array state)
-    {
+    public void ApplyState(Godot.Collections.Array state) {
         Position = state[0].AsVector3();
         Anchor = state[1].AsSingle();
         Amount = state[2].AsSingle();
@@ -79,19 +76,16 @@ public partial class CavityTarget : Node3D
     }
 
     /// <summary>Out of the body and let go of: out of sight.</summary>
-    public void SetAside()
-    {
+    public void SetAside() {
         Visible = false;
         UpdateLook();
     }
 
     /// <summary>Size and touch collider for the current state.</summary>
-    public void UpdateLook()
-    {
+    public void UpdateLook() {
         // Only something still in place is in the way: taken out, sawn through or drained, tools reach past it.
         _touch.CollisionLayer = Visible && !Extracted ? TouchLayer : 0;
-        if (IsSuctionTarget)
-        {
+        if (IsSuctionTarget) {
             Scale = Vector3.One * Mathf.Clamp(Amount / 6f, 0.05f, 1.5f);
         }
     }

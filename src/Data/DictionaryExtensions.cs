@@ -3,8 +3,7 @@ using GodotDictionary = Godot.Collections.Dictionary;
 namespace Scalpel.Data;
 
 /// <summary>Typed reads of the loosely typed dictionaries data files hold (scenario wounds, targets, steps).</summary>
-public static class DictionaryExtensions
-{
+public static class DictionaryExtensions {
     public static float Float(this GodotDictionary data, string key, float fallback = 0f) =>
         data.TryGetValue(key, out var value) ? value.AsSingle() : fallback;
 

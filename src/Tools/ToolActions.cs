@@ -11,8 +11,7 @@ public readonly record struct HandInput(bool Lowered, bool Trigger, int Level, f
 /// One frame of a held tool at work: what the hand does and what just changed (pressed, released, a higher level, come
 /// down onto something), how hard it works and what its tip touches.
 /// </summary>
-public sealed class ToolStep(SurgicalTool tool, HandInput hand, Patient patient, float dt)
-{
+public sealed class ToolStep(SurgicalTool tool, HandInput hand, Patient patient, float dt) {
     public SurgicalTool Tool { get; } = tool;
     public HandInput Hand { get; } = hand;
     public Patient Patient { get; } = patient;
@@ -45,10 +44,8 @@ public sealed class ToolStep(SurgicalTool tool, HandInput hand, Patient patient,
 
 /// <summary>What one kind of tool does (data/tools.cfg "action"). Tools share actions: a lighter and a cautery pen both
 /// cauterize, with different <see cref="ToolDef"/> numbers.</summary>
-public abstract class ToolAction
-{
-    private static readonly Dictionary<string, ToolAction> Actions = new()
-    {
+public abstract class ToolAction {
+    private static readonly Dictionary<string, ToolAction> Actions = new() {
         ["cut"] = new CutAction(),
         ["clamp"] = new ClampAction(),
         ["sew"] = new SewAction(),
@@ -82,13 +79,11 @@ public abstract class ToolAction
 /// <see cref="UpdateStanding"/> for tools left holding on. Each action is a <see cref="ToolAction"/>; what they share
 /// (aim geometry, contact, blood, wiping) is here.
 /// </summary>
-public static class ToolActions
-{
+public static class ToolActions {
     /// <summary>How each action is controlled. Use tool (LMB, held) lowers every tool onto its spot and presses its
     /// trigger. Actions listed here take an effort level from the wheel (0 does nothing, 3 the most), named by the value.
     /// </summary>
-    public static readonly IReadOnlyDictionary<string, string> LevelNames = new Dictionary<string, string>
-    {
+    public static readonly IReadOnlyDictionary<string, string> LevelNames = new Dictionary<string, string> {
         ["cut"] = "Depth",
         ["suture"] = "Tension",
         ["cauterize"] = "Heat",
@@ -99,8 +94,7 @@ public static class ToolActions
     };
     /// <summary>Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
     /// </summary>
-    public static readonly IReadOnlyDictionary<string, string> TriggerNames = new Dictionary<string, string>
-    {
+    public static readonly IReadOnlyDictionary<string, string> TriggerNames = new Dictionary<string, string> {
         ["clamp"] = "Pinch / let go",
         ["smash"] = "Strike",
         ["tourniquet"] = "Tighten",
@@ -156,11 +150,9 @@ public static class ToolActions
 
     /// <summary>Where a blade's edge runs on the skin: where the blade plane meets a flat surface, so rotating the tool
     /// turns it.</summary>
-    public static Vector3 BladeDirection(SurgicalTool tool)
-    {
+    public static Vector3 BladeDirection(SurgicalTool tool) {
         var edge = tool.GlobalBasis.X.Cross(Vector3.Up);
-        if (edge.Length() < 0.2f)
-        {
+        if (edge.Length() < 0.2f) {
             edge = -tool.GlobalBasis.Z * new Vector3(1, 0, 1);
         }
         return edge.Normalized();
@@ -173,8 +165,7 @@ public static class ToolActions
 
     /// <summary>Two points <paramref name="apart"/> meters apart about the tool's tip along <see cref="SideAxis"/>: a
     /// spreader's tips, a stapler's legs. The one toward -X first.</summary>
-    public static Vector3[] SidePoints(SurgicalTool tool, float apart)
-    {
+    public static Vector3[] SidePoints(SurgicalTool tool, float apart) {
         var half = SideAxis(tool) * apart * 0.5f;
         return [tool.TipPosition() - half, tool.TipPosition() + half];
     }
@@ -185,17 +176,13 @@ public static class ToolActions
     /// <see cref="ToolDef.StapleGive"/> to its edge. One that can't reach an edge stays in the opening, and the staple
     /// won't take.
     /// </summary>
-    public static Vector3[] StapleLegs(SurgicalTool tool, PatientBody body)
-    {
+    public static Vector3[] StapleLegs(SurgicalTool tool, PatientBody body) {
         var legs = SidePoints(tool, tool.Def.StapleSpan);
-        for (var side = 0; side < 2; side++)
-        {
+        for (var side = 0; side < 2; side++) {
             var outward = SideAxis(tool) * (side == 1 ? StapleReachStep : -StapleReachStep);
             var leg = legs[side];
-            for (var i = 0; i <= (int)(tool.Def.StapleGive / StapleReachStep); i++)
-            {
-                if (!body.Tissue.IsOpen(body.WorldToUv(leg), TissueDepth.Skin))
-                {
+            for (var i = 0; i <= (int)(tool.Def.StapleGive / StapleReachStep); i++) {
+                if (!body.Tissue.IsOpen(body.WorldToUv(leg), TissueDepth.Skin)) {
                     legs[side] = leg;
                     break;
                 }
@@ -206,10 +193,8 @@ public static class ToolActions
     }
 
     /// <summary>Why a staple with its legs at a and b (uv) didn't go in, for the one who pressed.</summary>
-    public static string StapleMiss(TissueSim tissue, Vector2 a, Vector2 b)
-    {
-        if (tissue.IsOpen(a, TissueDepth.Skin) || tissue.IsOpen(b, TissueDepth.Skin))
-        {
+    public static string StapleMiss(TissueSim tissue, Vector2 a, Vector2 b) {
+        if (tissue.IsOpen(a, TissueDepth.Skin) || tissue.IsOpen(b, TissueDepth.Skin)) {
             return "The edges are too far apart: a leg lands in the opening.";
         }
         return tissue.CutBetween(a, b).X < 0f ? "Put the two rings across the cut, one on each edge." : "It's already closed there.";
@@ -217,10 +202,8 @@ public static class ToolActions
 
     /// <summary>The tool is doing its job right now (for animation and fingers), not only resting on something.
     /// </summary>
-    public static bool InUse(string action, bool lowered, bool trigger, int level)
-    {
-        if (TriggerNames.ContainsKey(action))
-        {
+    public static bool InUse(string action, bool lowered, bool trigger, int level) {
+        if (TriggerNames.ContainsKey(action)) {
             return trigger;
         }
         return lowered && (level > 0 || !LevelNames.ContainsKey(action));
@@ -228,12 +211,10 @@ public static class ToolActions
 
     /// <summary>Works a held tool for one physics frame: works out what the hand just did, what the tip touches, and
     /// hands that to the tool's action.</summary>
-    public static void Update(SurgicalTool tool, HandInput hand, Patient patient, float dt)
-    {
+    public static void Update(SurgicalTool tool, HandInput hand, Patient patient, float dt) {
         var use = tool.Use;
         var tip = tool.TipPosition();
-        var step = new ToolStep(tool, hand, patient, dt)
-        {
+        var step = new ToolStep(tool, hand, patient, dt) {
             // Use lowers the tool and presses its trigger at once: the press counts a frame later, once the tool has come
             // down onto whatever is under it (hovering, a tool can be just out of touch of a rounded limb).
             Pressed = hand.Trigger && use.TriggerBefore && !use.PressedBefore,
@@ -246,8 +227,7 @@ public static class ToolActions
         use.PressedBefore = hand.Trigger && use.TriggerBefore;
         use.TriggerBefore = hand.Trigger;
         use.LevelBefore = hand.Level;
-        if (hand.Lowered && !use.LoweredBefore)
-        {
+        if (hand.Lowered && !use.LoweredBefore) {
             use.Stroke++;
             use.StabbedLevel = 0;
             use.CutWall = false;
@@ -255,13 +235,11 @@ public static class ToolActions
             use.StapleAim = StapleLegs(tool, patient.Body);
         }
         use.LoweredBefore = hand.Lowered;
-        if (hand.Lowered && step.Touching)
-        {
+        if (hand.Lowered && step.Touching) {
             OnContact(step);
             Bloody(step);
         }
-        if (hand.Lowered && step.InSite)
-        {
+        if (hand.Lowered && step.InSite) {
             ContactSound(tool, hand.Speed, hand.Level, step.Effort, tip);
         }
         ToolAction.For(tool.Def.Action)?.Apply(step);
@@ -272,14 +250,11 @@ public static class ToolActions
     /// lying on the skin where the hand left the skin it holds (<see cref="SkinHold.Hold"/>, in the site's space, see
     /// ToolManager.LeaveStanding()).
     /// </summary>
-    public static void UpdateStanding(SurgicalTool tool, Patient patient, float dt)
-    {
-        if (tool.Def.Action == "drip")
-        {
+    public static void UpdateStanding(SurgicalTool tool, Patient patient, float dt) {
+        if (tool.Def.Action == "drip") {
             Syringe.Drip(tool, patient, dt);
         }
-        if (tool.Hold is { } hold)
-        {
+        if (tool.Hold is { } hold) {
             var at = hold is SkinHold { Hold: { } held } ? patient.Body.Site.ToGlobal(held) : tool.TipPosition();
             tool.Hold = patient.UpdateGrip(tool.Uid, hold, at, tool.Def.Power, dt, 0f, out _);
         }
@@ -287,18 +262,15 @@ public static class ToolActions
 
     /// <summary>A cotton pad soaks up iodine in any dish, then leaves it on the skin until it runs dry. Iodine only
     /// stays sterile on the way in if a clean pad is held with forceps: a glove on it spoils the site.</summary>
-    public static void Wipe(SurgicalTool pad, ToolStep step, float dt, bool gloved)
-    {
+    public static void Wipe(SurgicalTool pad, ToolStep step, float dt, bool gloved) {
         var tools = step.Tools;
         WipeBeads(step, pad.Def);
         // On the patient it always wipes, even with a dish left right beside the site.
-        if (!step.InSite)
-        {
+        if (!step.InSite) {
             var dish = tools.NearestDish(step.Tip);
             var iodine = dish?.Contents.GetValueOrDefault("iodine") ?? 0f;
             var soak = Mathf.Min(Mathf.Min(dt * 2f, 1f - pad.Fill), iodine / PadMl);
-            if (soak > 0f && dish is not null)
-            {
+            if (soak > 0f && dish is not null) {
                 tools.SetFill(pad, pad.Fill + soak);
                 // What's mixed in with the iodine (blood) comes along in its share.
                 tools.Transfer(dish, null, soak * PadMl * dish.Ml / iodine);
@@ -307,15 +279,12 @@ public static class ToolActions
         }
         var soaked = pad.Fill > 0f;
         var wiped = Gather(pad, step.Uv, dt);
-        if (wiped > 0f)
-        {
+        if (wiped > 0f) {
             step.Patient.SwabAt(step.Zone, step.Uv, pad.Def, wiped, soaked ? "iodine" : "");
         }
-        if (soaked)
-        {
+        if (soaked) {
             tools.SetFill(pad, pad.Fill - PadDrain * dt);
-            if ((gloved || !pad.Sterile) && step.Zone == SiteZone.Site && pad.Use.Reported.Add("dirty"))
-            {
+            if ((gloved || !pad.Sterile) && step.Zone == SiteZone.Site && pad.Use.Reported.Add("dirty")) {
                 step.Patient.ContaminateSite("");
                 step.Surgery.Scoring.Add("dirty_tool");
             }
@@ -323,22 +292,18 @@ public static class ToolActions
     }
 
     /// <summary>A swab (<paramref name="swab"/>) lowered onto the body wipes the blood beads under it away.</summary>
-    public static void WipeBeads(ToolStep step, ToolDef swab)
-    {
-        if (step.Touching)
-        {
+    public static void WipeBeads(ToolStep step, ToolDef swab) {
+        if (step.Touching) {
             step.Surgery.WipeBeads(step.Tip, swab.Radius);
         }
     }
 
     /// <summary>Collects wiping time and returns it once it's worth painting (0 until then), so a pad held still or
     /// moved slowly paints a few times a second instead of every physics frame.</summary>
-    public static float Gather(SurgicalTool tool, Vector2 uv, float dt)
-    {
+    public static float Gather(SurgicalTool tool, Vector2 uv, float dt) {
         var use = tool.Use;
         use.PaintDt += dt;
-        if (use.PaintDt < PaintInterval && use.PaintUv.DistanceTo(uv) < PaintMove)
-        {
+        if (use.PaintDt < PaintInterval && use.PaintUv.DistanceTo(uv) < PaintMove) {
             return 0f;
         }
         var gathered = use.PaintDt;
@@ -348,79 +313,64 @@ public static class ToolActions
     }
 
     /// <summary>Takes one use of an injection or a catheter, consuming it on its last one.</summary>
-    public static void UseCharge(SurgicalTool tool)
-    {
-        if (tool.Charges <= 0)
-        {
+    public static void UseCharge(SurgicalTool tool) {
+        if (tool.Charges <= 0) {
             return;
         }
         tool.Charges--;
-        if (tool.Charges == 0 && tool.Def.Action is "inject" or "iv_line")
-        {
+        if (tool.Charges == 0 && tool.Def.Action is "inject" or "iv_line") {
             Surgery.Current!.Tools.Consume(tool);
         }
     }
 
     /// <summary>Takes one use of a tool with limited uses (tape, thread), never going below none.</summary>
-    public static void SpendCharge(SurgicalTool tool)
-    {
-        if (tool.Charges > 0)
-        {
+    public static void SpendCharge(SurgicalTool tool) {
+        if (tool.Charges > 0) {
             tool.Charges--;
         }
     }
 
     /// <summary>A looping bed under a blade, swab, clamp or suction tip working the site, louder the faster it moves.
     /// It plays even when nothing gets cut: the one-shots (cut, sizzle, saw, slurp) mark the actual effect.</summary>
-    private static void ContactSound(SurgicalTool tool, float speed, int level, float effort, Vector3 tip)
-    {
-        (string Id, float Strength)? sound = tool.Def.Action switch
-        {
+    private static void ContactSound(SurgicalTool tool, float speed, int level, float effort, Vector3 tip) {
+        (string Id, float Strength)? sound = tool.Def.Action switch {
             "cut" when level > 0 && speed > 0.015f => ("contact_cut", Mathf.Clamp(speed * 2.5f, 0.2f, 1f)),
             "swab" when level > 0 && speed > 0.01f => ("contact_swab", Mathf.Clamp(speed * 2f, 0.15f, 0.75f)),
             "clamp" when tool.Hold is not null && speed > 0.01f => ("contact_swab", Mathf.Clamp(speed * 1.5f, 0.15f, 0.6f)),
             "suction" when level > 0 => ("contact_suction", effort),
             _ => null,
         };
-        if (sound is { } contact)
-        {
+        if (sound is { } contact) {
             Surgery.Current!.ContactSound(tool.Uid, contact.Id, tip, contact.Strength);
         }
     }
 
-    private static void OnContact(ToolStep step)
-    {
+    private static void OnContact(ToolStep step) {
         var tool = step.Tool;
-        if (step.Zone == SiteZone.Body)
-        {
+        if (step.Zone == SiteZone.Body) {
             step.Patient.Touch();
             return;
         }
-        if (!tool.Sterile && tool.Def.Action != "swab" && tool.Use.Reported.Add("dirty"))
-        {
+        if (!tool.Sterile && tool.Def.Action != "swab" && tool.Use.Reported.Add("dirty")) {
             step.Patient.ContaminateSite("");
             step.Surgery.Scoring.Add("dirty_tool");
         }
-        if (tool.Def.Improvised && tool.Use.Reported.Add("improvised"))
-        {
+        if (tool.Def.Improvised && tool.Use.Reported.Add("improvised")) {
             step.Surgery.Scoring.Add("improvised_tool");
         }
     }
 
     /// <summary>Working in blood leaves it on the tool: blades, clamps and suction pick it up fast, gauze soaks it up.
     /// A blade comes away bloody from skin it has cut, not from resting on whole skin.</summary>
-    private static void Bloody(ToolStep step)
-    {
+    private static void Bloody(ToolStep step) {
         var body = step.Patient.Body;
         var onSite = step.Zone == SiteZone.Site;
         var wet = onSite ? body.BloodAt(step.Uv) : 0f;
         var cut = step.Def.Action == "cut" && onSite && body.WoundMap.Value(WoundMap.Layer.Wounds, WoundMap.Cut, step.Uv) > 0.1f;
-        if (step.Zone == SiteZone.Cavity || cut)
-        {
+        if (step.Zone == SiteZone.Cavity || cut) {
             wet = Mathf.Max(wet, 0.6f);
         }
-        if (wet > 0.15f)
-        {
+        if (wet > 0.15f) {
             var rate = step.Def.Action == "swab" ? 1.2f : 0.5f;
             step.Tools.AddBlood(step.Tool, wet * rate * step.Dt);
         }

@@ -4,8 +4,7 @@ namespace Scalpel.UI;
 /// The X-ray film, full size on a lightbox, drawn from the shapes the cart captured. It develops slowly, from black,
 /// over a few seconds. Metal glows white, bone is light gray, masses are soft gray, gas pockets are dark.
 /// </summary>
-public partial class XrayPhoto : Control
-{
+public partial class XrayPhoto : Control {
     private static readonly Vector2 PhotoSize = new(860f, 1000f);
     /// <summary>A portrait film sheet on the lightbox. Shape sizes below were tuned on a 540 px film and scale with it.
     /// </summary>
@@ -16,25 +15,21 @@ public partial class XrayPhoto : Control
     private readonly XrayCart _cart;
     private readonly XrayPrint _print;
 
-    public XrayPhoto(XrayCart cart, XrayPrint print)
-    {
+    public XrayPhoto(XrayCart cart, XrayPrint print) {
         _cart = cart;
         _print = print;
         CustomMinimumSize = PhotoSize;
     }
 
     /// <summary>Redraws only while the print develops; once it's done the picture never changes.</summary>
-    public override void _Process(double delta)
-    {
+    public override void _Process(double delta) {
         QueueRedraw();
-        if (_cart.Developed() >= 1f)
-        {
+        if (_cart.Developed() >= 1f) {
             SetProcess(false);
         }
     }
 
-    public override void _Draw()
-    {
+    public override void _Draw() {
         var develop = _cart.Developed();
         Color Fade(Color color) => Black.Lerp(color, develop);
         // Lightbox: a gray bezel around a cool white panel, the film clipped on top.
@@ -42,13 +37,11 @@ public partial class XrayPhoto : Control
         DrawRect(new Rect2(new Vector2(20f, 20f), PhotoSize - new Vector2(40f, 40f)), new Color(0.86f, 0.9f, 0.94f));
         DrawRect(Film, Black);
         DrawAnatomy(_print.Site, Fade);
-        foreach (var shape in _print.Shapes)
-        {
+        foreach (var shape in _print.Shapes) {
             DrawShape(shape, Fade);
         }
         var rng = new RandomNumberGenerator { Seed = _print.PrintedAtMsec };
-        for (var i = 0; i < 900; i++)
-        {
+        for (var i = 0; i < 900; i++) {
             var at = Film.Position + (new Vector2(rng.Randf(), rng.Randf()) * Film.Size);
             DrawRect(new Rect2(at, Vector2.One * 2f), new Color(1f, 1f, 1f, rng.Randf() * 0.07f * develop));
         }
@@ -58,8 +51,7 @@ public partial class XrayPhoto : Control
         var label = $"PORTABLE AP   {_print.Site.ToUpperInvariant().Replace('_', ' ')}";
         DrawString(font, Film.Position + new Vector2(24f, 44f), label, HorizontalAlignment.Right, Film.Size.X - 48f, 20, ink);
         // Film clips at the top of the lightbox.
-        foreach (var x in (float[])[Film.Position.X + 120f, Film.End.X - 120f])
-        {
+        foreach (var x in (float[])[Film.Position.X + 120f, Film.End.X - 120f]) {
             DrawRect(new Rect2(new Vector2(x - 20f, Film.Position.Y - 14f), new Vector2(40f, 22f)), new Color(0.55f, 0.57f, 0.6f));
         }
     }
@@ -67,25 +59,21 @@ public partial class XrayPhoto : Control
     private static Vector2 OnFilm(Vector2 uv) => Film.Position + (uv.Clamp(Vector2.Zero, Vector2.One) * Film.Size);
 
     /// <summary>Faint body structures so the metal has context.</summary>
-    private void DrawAnatomy(string site, Func<Color, Color> fade)
-    {
+    private void DrawAnatomy(string site, Func<Color, Color> fade) {
         var bone = fade(new Color(0.42f, 0.44f, 0.46f));
         var soft = fade(new Color(0.14f, 0.16f, 0.17f));
         DrawRect(Film.Grow(-30f), soft);
-        switch (site)
-        {
+        switch (site) {
             // Site u runs along the body (head to the right), v across it: the spine is horizontal, ribs cross it.
             case "chest" or "abdomen" or "back" or "shoulder":
                 DrawRect(new Rect2(OnFilm(new Vector2(0f, 0.46f)), new Vector2(1f, 0.08f) * Film.Size), bone);
-                if (site == "abdomen")
-                {
+                if (site == "abdomen") {
                     DrawArc(OnFilm(new Vector2(-0.15f, 0.5f)), Film.Size.Y * 0.45f, -Mathf.Pi * 0.4f, Mathf.Pi * 0.4f, 32,
                         bone, 16f * ShapeScale);
                     break;
                 }
                 var radius = Film.Size.Y * 0.5f;
-                for (var i = 0; i < 6; i++)
-                {
+                for (var i = 0; i < 6; i++) {
                     var apex = OnFilm(new Vector2(0.18f + (i * 0.14f), 0.5f));
                     DrawArc(apex - new Vector2(radius, 0f), radius, -Mathf.Pi * 0.3f, Mathf.Pi * 0.3f, 24, bone, 7f * ShapeScale);
                 }
@@ -100,12 +88,10 @@ public partial class XrayPhoto : Control
         }
     }
 
-    private void DrawShape(XrayShape shape, Func<Color, Color> fade)
-    {
+    private void DrawShape(XrayShape shape, Func<Color, Color> fade) {
         var at = OnFilm(shape.Uv);
         var metal = fade(new Color(0.97f, 0.97f, 0.95f));
-        switch (shape.Kind)
-        {
+        switch (shape.Kind) {
             case "bullet":
                 DrawCircle(at, 9f * ShapeScale, metal);
                 break;

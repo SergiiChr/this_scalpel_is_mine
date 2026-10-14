@@ -6,8 +6,7 @@ namespace Scalpel.UI;
 /// Built once per surgery and only shown and hidden after that, so ringing the bell doesn't build a page of controls
 /// mid-surgery. The cart stays between visits until it's ordered or emptied. Place order waits for the nurse to be free.
 /// </summary>
-public sealed class NurseShop
-{
+public sealed class NurseShop {
     /// <summary>The whole overlay, for the HUD to show and hide.</summary>
     public Control View { get; }
     public Button PlaceButton { get; }
@@ -32,24 +31,20 @@ public sealed class NurseShop
     /// cart's tool ids, in the order added.</summary>
     public NurseShop(
         IEnumerable<(string Category, IReadOnlyList<ToolDef> Tools)> groups, Action<IReadOnlyList<string>> order,
-        Action close)
-    {
+        Action close) {
         _order = order;
         var categories = Ui.VBox(4);
         categories.CustomMinimumSize = new Vector2(240f, 0f);
         var picked = new ButtonGroup();
         var lists = Ui.VBox(0);
-        foreach (var (category, tools) in groups)
-        {
+        foreach (var (category, tools) in groups) {
             var list = Ui.VBox(4);
             list.Hide();
-            foreach (var def in tools)
-            {
+            foreach (var def in tools) {
                 list.AddChild(Row(def));
             }
             lists.AddChild(list);
-            var button = new Button
-            {
+            var button = new Button {
                 Text = category,
                 ToggleMode = true,
                 ButtonGroup = picked,
@@ -59,8 +54,7 @@ public sealed class NurseShop
             categories.AddChild(button);
             _categories[category] = button;
         }
-        if (_categories.Count > 0)
-        {
+        if (_categories.Count > 0) {
             _categories.Values.First().ButtonPressed = true;
         }
         _cartTitle = Ui.Label("", 22, Ui.Pip);
@@ -70,8 +64,7 @@ public sealed class NurseShop
         PlaceButton = Ui.Button("Place order", Order);
         var cart = Ui.VBox(8);
         cart.CustomMinimumSize = new Vector2(300f, 0f);
-        foreach (var part in (Control[])[_cartTitle, _cartLines, _cartEta, PlaceButton, Ui.Button("Empty cart", Clear)])
-        {
+        foreach (var part in (Control[])[_cartTitle, _cartLines, _cartEta, PlaceButton, Ui.Button("Empty cart", Clear)]) {
             cart.AddChild(part);
         }
         var columns = Ui.HBox(16);
@@ -92,12 +85,10 @@ public sealed class NurseShop
     }
 
     /// <summary>Prepare every cart and nurse status glyph while the surgery is being built.</summary>
-    public void Prepare()
-    {
+    public void Prepare() {
         var names = string.Join(" ", _rows.Keys.Select(id => Db.Tool(id)!.Name));
         var changing = names + " 0123456789 × ■ □ Nurse ready Nurse is busy for s Ready in about Nothing yet. Cart /";
-        foreach (var label in View.FindChildren("*", nameof(Label), true, false).OfType<Label>())
-        {
+        foreach (var label in View.FindChildren("*", nameof(Label), true, false).OfType<Label>()) {
             Ui.PrepareLabelText(label, label.Text + changing);
         }
     }
@@ -107,24 +98,20 @@ public sealed class NurseShop
 
     /// <summary>While it's shown: <paramref name="board"/> is the nurse board's text, <paramref name="nurseReady"/>
     /// whether she takes an order now.</summary>
-    public void Update(string board, bool nurseReady)
-    {
+    public void Update(string board, bool nurseReady) {
         _subtitle.Text = board;
-        if (nurseReady != _nurseReady)
-        {
+        if (nurseReady != _nurseReady) {
             _nurseReady = nurseReady;
             Refresh();
         }
     }
 
-    public void Clear()
-    {
+    public void Clear() {
         _cart.Clear();
         Refresh();
     }
 
-    private HBoxContainer Row(ToolDef def)
-    {
+    private HBoxContainer Row(ToolDef def) {
         var row = Ui.HBox(8);
         var name = Ui.Label(def.Name, 20);
         name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -136,8 +123,7 @@ public sealed class NurseShop
         count.CustomMinimumSize = new Vector2(32f, 0f);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         var add = Ui.Button(" + ", () => Change(def.Id, true));
-        foreach (var part in (Control[])[remove, count, add])
-        {
+        foreach (var part in (Control[])[remove, count, add]) {
             row.AddChild(part);
         }
         _rows[def.Id] = new ItemRow(count, remove, add);
@@ -145,64 +131,49 @@ public sealed class NurseShop
         return row;
     }
 
-    private void Change(string id, bool add)
-    {
-        if (add && _cart.Count < Nurse.Batch)
-        {
+    private void Change(string id, bool add) {
+        if (add && _cart.Count < Nurse.Batch) {
             _cart.Add(id);
-        }
-        else if (!add && _cart.LastIndexOf(id) is var last and >= 0)
-        {
+        } else if (!add && _cart.LastIndexOf(id) is var last and >= 0) {
             _cart.RemoveAt(last);
         }
         Refresh();
     }
 
-    private void Order()
-    {
+    private void Order() {
         _order([.. _cart]);
         Clear();
     }
 
     /// <summary>Keep all rows current, including references to rows in hidden categories.</summary>
-    private void RefreshRows()
-    {
-        foreach (var (id, row) in _rows)
-        {
+    private void RefreshRows() {
+        foreach (var (id, row) in _rows) {
             RefreshRow(id, row);
         }
     }
 
-    private void RefreshRow(string id, ItemRow row)
-    {
+    private void RefreshRow(string id, ItemRow row) {
         var count = _cart.Count(item => item == id);
         var previous = _counts[id];
-        if (count != previous)
-        {
+        if (count != previous) {
             row.Count.Text = count.ToString();
-            if ((count == 0) != (previous == 0))
-            {
+            if ((count == 0) != (previous == 0)) {
                 row.Remove.Disabled = count == 0;
             }
             _counts[id] = count;
         }
         var full = _cart.Count >= Nurse.Batch;
-        if (full != _fullRows.Contains(id))
-        {
+        if (full != _fullRows.Contains(id)) {
             row.Add.Disabled = full;
-            if (full)
-            {
+            if (full) {
                 _fullRows.Add(id);
-            }
-            else
-            {
+            } else {
                 _fullRows.Remove(id);
             }
         }
     }
 
-    private void Refresh()
-    {
+    private void Refresh() {
         RefreshRows();
         var lines = _cart.Distinct().Select(id => $"{Db.Tool(id)!.Name}  ×{_cart.Count(item => item == id)}").ToList();
         var longest = _cart.Select(id => Db.Tool(id)!.Delay).DefaultIfEmpty(0f).Max();

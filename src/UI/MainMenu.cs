@@ -1,14 +1,12 @@
 namespace Scalpel.UI;
 
 /// <summary>Title screen. Left: sections. Right: the selected section's panel.</summary>
-public partial class MainMenu : Control
-{
+public partial class MainMenu : Control {
     private MarginContainer _content = null!;
     private ScenarioDef? _selected;
     private Label? _status;
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         Theme = Ui.Theme;
         Input.MouseMode = Input.MouseModeEnum.Visible;
         AddChild(Backdrop());
@@ -33,14 +31,11 @@ public partial class MainMenu : Control
         _selected = Db.Scenarios.Count > 0 ? Db.Scenarios[0] : null;
         Net.Instance.ConnectionFailed += ShowStatus;
         var net = Net.Instance;
-        if (net.LastError.Length > 0)
-        {
+        if (net.LastError.Length > 0) {
             ShowMultiplayer();
             ShowStatus(net.LastError);
             net.LastError = "";
-        }
-        else
-        {
+        } else {
             ShowScenarios();
         }
     }
@@ -48,17 +43,14 @@ public partial class MainMenu : Control
     public override void _ExitTree() => Net.Instance.ConnectionFailed -= ShowStatus;
 
     /// <summary>The dark background behind the menu screens.</summary>
-    public static ColorRect Backdrop()
-    {
+    public static ColorRect Backdrop() {
         var background = new ColorRect { Color = new Color(0.03f, 0.04f, 0.04f) };
         background.SetAnchorsPreset(LayoutPreset.FullRect);
         return background;
     }
 
-    private void SetContent(Control panel)
-    {
-        foreach (var child in _content.GetChildren())
-        {
+    private void SetContent(Control panel) {
+        foreach (var child in _content.GetChildren()) {
             child.QueueFree();
         }
         _status = null;
@@ -71,19 +63,16 @@ public partial class MainMenu : Control
     private static bool IsSecret(ScenarioDef scenario) =>
         scenario.Hidden && Progress.BestStars.GetValueOrDefault(scenario.Id) == 0;
 
-    private void ShowScenarios()
-    {
+    private void ShowScenarios() {
         var split = Ui.HBox(24);
         var list = Ui.VBox(4);
         var details = Ui.VBox(12);
         details.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        foreach (var scenario in Db.Scenarios)
-        {
+        foreach (var scenario in Db.Scenarios) {
             var best = Progress.BestStars.GetValueOrDefault(scenario.Id);
             var title = IsSecret(scenario) ? "???" : scenario.Title;
             var result = best > 0 ? "   best " + new string('★', best) : "";
-            var button = Ui.Button($"{scenario.Order:00}  {title}   {scenario.StarsText}  {scenario.Group}{result}", () =>
-            {
+            var button = Ui.Button($"{scenario.Order:00}  {title}   {scenario.StarsText}  {scenario.Group}{result}", () => {
                 _selected = scenario;
                 FillDetails(details);
             });
@@ -98,14 +87,11 @@ public partial class MainMenu : Control
         SetContent(split);
     }
 
-    private void FillDetails(VBoxContainer details)
-    {
-        foreach (var child in details.GetChildren())
-        {
+    private void FillDetails(VBoxContainer details) {
+        foreach (var child in details.GetChildren()) {
             child.QueueFree();
         }
-        if (_selected is not { } scenario)
-        {
+        if (_selected is not { } scenario) {
             return;
         }
         var secret = IsSecret(scenario);
@@ -119,8 +105,7 @@ public partial class MainMenu : Control
             .Where(other => other != scenario && Family(other) == family && !other.Hidden)
             .Select(other => other.Title)
             .ToList();
-        if (similar.Count > 0)
-        {
+        if (similar.Count > 0) {
             details.AddChild(Ui.Label("Similar: " + string.Join(", ", similar), 16, Ui.Dim, true));
         }
         var buttons = Ui.HBox(12);
@@ -134,15 +119,13 @@ public partial class MainMenu : Control
 
     // --- Multiplayer -------------------------------------------------------------------------------------------
 
-    private void ShowMultiplayer()
-    {
+    private void ShowMultiplayer() {
         var box = Ui.VBox(12);
         box.AddChild(Ui.Label("MULTIPLAYER", 28, Ui.Pip));
         var nameRow = Ui.HBox(8);
         nameRow.AddChild(Ui.Label("Your name", 18));
         var nameField = new LineEdit { Text = Progress.PlayerName, CustomMinimumSize = new Vector2(280f, 0f) };
-        nameField.TextChanged += text =>
-        {
+        nameField.TextChanged += text => {
             Progress.PlayerName = text;
             Progress.Save();
         };
@@ -154,10 +137,8 @@ public partial class MainMenu : Control
         var hostPort = PortField();
         hostRow.AddChild(Ui.Label("Port", 18));
         hostRow.AddChild(hostPort);
-        hostRow.AddChild(Ui.Button("Host", () =>
-        {
-            if (_selected is { } scenario)
-            {
+        hostRow.AddChild(Ui.Button("Host", () => {
+            if (_selected is { } scenario) {
                 Host(scenario.Id, (int)hostPort.Value);
             }
         }));
@@ -171,20 +152,17 @@ public partial class MainMenu : Control
         joinRow.AddChild(ip);
         joinRow.AddChild(joinPort);
         joinRow.AddChild(Ui.Button("Join", () => Join(ip.Text.StripEdges(), (int)joinPort.Value)));
-        joinRow.AddChild(Ui.Button("Save host", () =>
-        {
+        joinRow.AddChild(Ui.Button("Save host", () => {
             Progress.RememberHost(ip.Text.StripEdges(), ip.Text.StripEdges(), (int)joinPort.Value);
             ShowMultiplayer();
         }));
         box.AddChild(joinRow);
 
         box.AddChild(Ui.Label("Known hosts", 20, Ui.Pip));
-        foreach (var host in Progress.KnownHosts)
-        {
+        foreach (var host in Progress.KnownHosts) {
             var row = Ui.HBox(8);
             row.AddChild(Ui.Button($"{host.Ip}:{host.Port}", () => Join(host.Ip, host.Port)));
-            row.AddChild(Ui.Button("Forget", () =>
-            {
+            row.AddChild(Ui.Button("Forget", () => {
                 Progress.ForgetHost(host.Ip, host.Port);
                 ShowMultiplayer();
             }));
@@ -198,19 +176,15 @@ public partial class MainMenu : Control
 
     private static SpinBox PortField() => new() { MinValue = 1024, MaxValue = 65535, Value = Net.DefaultPort };
 
-    private void Host(string scenarioId, int port)
-    {
+    private void Host(string scenarioId, int port) {
         var error = Net.Instance.Host(scenarioId, port);
-        if (error != Error.Ok)
-        {
+        if (error != Error.Ok) {
             ShowStatus($"Could not host on port {port} ({error}).");
         }
     }
 
-    private void Join(string ip, int port)
-    {
-        if (ip.Length == 0)
-        {
+    private void Join(string ip, int port) {
+        if (ip.Length == 0) {
             return;
         }
         var error = Net.Instance.Join(ip, port);
@@ -218,10 +192,8 @@ public partial class MainMenu : Control
     }
 
     /// <summary>A connection message under the multiplayer panel, when it's open.</summary>
-    private void ShowStatus(string text)
-    {
-        if (_status is not null)
-        {
+    private void ShowStatus(string text) {
+        if (_status is not null) {
             _status.Text = text;
         }
     }
@@ -230,24 +202,19 @@ public partial class MainMenu : Control
 
     internal void ShowSettings() => SetContent(new SettingsPanel());
 
-    internal void ShowCodex()
-    {
+    internal void ShowCodex() {
         var box = Ui.VBox(10);
         box.AddChild(Ui.Label("QUIRK CODEX", 28, Ui.Pip));
         box.AddChild(Ui.Label("Quirks unlock the first time they happen to you.", 16, Ui.Dim));
         var tabs = new TabContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        foreach (var (name, table) in (Codex[])[new("Surgeon quirks", Db.SurgeonQuirks), new("Patient quirks", Db.PatientQuirks)])
-        {
+        foreach (var (name, table) in (Codex[])[new("Surgeon quirks", Db.SurgeonQuirks), new("Patient quirks", Db.PatientQuirks)]) {
             var list = Ui.VBox(14);
-            foreach (var quirk in table.Values)
-            {
-                if (!Progress.IsUnlocked(quirk))
-                {
+            foreach (var quirk in table.Values) {
+                if (!Progress.IsUnlocked(quirk)) {
                     list.AddChild(Ui.Label("???  (locked)", 18, Ui.Dim));
                     continue;
                 }
-                foreach (var variant in quirk.Variants.Count > 0 ? quirk.Variants : [""])
-                {
+                foreach (var variant in quirk.Variants.Count > 0 ? quirk.Variants : [""]) {
                     list.AddChild(Ui.QuirkLine(quirk, variant, true));
                 }
             }

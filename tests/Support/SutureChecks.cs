@@ -1,10 +1,8 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>Detailed running-suture checks performed during the hand-stitch scenario, before its closure objective completes.</summary>
-public static class SutureChecks
-{
-    public static async Task CloseForearm(SurgeryDriver driver)
-    {
+public static class SutureChecks {
+    public static async Task CloseForearm(SurgeryDriver driver) {
         var session = await ToolSession.Attach(driver, "needle/forearm_skin",
             untouchedDescription: "the cleaned forearm cut ready for stitching, no thread yet");
         var patient = driver.Patient;
@@ -42,11 +40,9 @@ public static class SutureChecks
         AssertBool(live.GetAabb().Grow(0.001f).HasPoint(body.Site.ToLocal(needle.TipPosition())))
             .OverrideFailureMessage("the live strand ends at the needle tip").IsTrue();
         // Thirty artificial redraws in one frame verify accumulated sub-threshold movement, outside gameplay timing.
-        await driver.Unbudgeted(() =>
-        {
+        await driver.Unbudgeted(() => {
             var pose = needle.GlobalTransform;
-            for (var frame = 0; frame < 30; frame++)
-            {
+            for (var frame = 0; frame < 30; frame++) {
                 needle.GlobalPosition += Vector3.Right * 0.0001f;
                 body.UpdateSutures();
                 AssertFloat(body.DrawnThread(thread)!.LivePath[^1].DistanceTo(body.Site.ToLocal(needle.TipPosition())))
@@ -109,17 +105,14 @@ public static class SutureChecks
         var routes = body.DrawnThread(thread)!.Routes;
         AssertInt(routes.Count).OverrideFailureMessage("the running thread alternates exposed and subcutaneous spans")
             .IsEqual((info.Springs.Count + 1) / 2);
-        for (var i = 0; i < routes.Count; i++)
-        {
+        for (var i = 0; i < routes.Count; i++) {
             AssertThreadClearsSkin(body, routes[i], $"exposed span {i}");
         }
         session.EndCaptures();
     }
 
-    private static void AssertThreadClearsSkin(PatientBody body, Vector3[] path, string label)
-    {
-        for (var i = 1; i < path.Length - 1; i++)
-        {
+    private static void AssertThreadClearsSkin(PatientBody body, Vector3[] path, string label) {
+        for (var i = 1; i < path.Length - 1; i++) {
             AssertFloat(path[i].Y).OverrideFailureMessage($"{label} stays above the skin at sample {i}")
                 .IsGreaterEqual(body.SkinHeight(SiteUv(body, path[i])) + PatientBody.SutureRadius);
         }

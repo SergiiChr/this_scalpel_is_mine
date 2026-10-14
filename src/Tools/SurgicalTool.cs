@@ -1,8 +1,7 @@
 namespace Scalpel.Tools;
 
 /// <summary>Where a tool is.</summary>
-public enum ToolState
-{
+public enum ToolState {
     /// <summary>Lying loose, physics running (host).</summary>
     Free,
     /// <summary>In a surgeon's hand.</summary>
@@ -21,8 +20,7 @@ public enum ToolState
 
 /// <summary>Host-side state of a tool while it's worked, from frame to frame (see <see cref="ToolActions"/>).
 /// </summary>
-public sealed class ToolUse
-{
+public sealed class ToolUse {
     public bool LoweredBefore { get; set; }
     public bool TriggerBefore { get; set; }
     public bool PressedBefore { get; set; }
@@ -59,8 +57,7 @@ public sealed class ToolUse
     public HashSet<string> Reported { get; } = [];
 
     /// <summary>Forgets what the hand did last, for a tool that just left it.</summary>
-    public void Reset()
-    {
+    public void Reset() {
         LoweredBefore = false;
         TriggerBefore = false;
         PressedBefore = false;
@@ -75,8 +72,7 @@ public sealed class ToolUse
 /// Use tool press makes one hole, at where the needle last rested on the patient ((-1, -1) for nowhere): Hold is how
 /// long it's been held, PressUsed that it already did something (tied off, sewed an internal injury).
 /// </summary>
-public sealed class SutureState
-{
+public sealed class SutureState {
     public int Thread { get; set; }
     public float Tension { get; set; } = 1.15f;
     public TissueDepth Layer { get; set; } = TissueDepth.None;
@@ -89,8 +85,7 @@ public sealed class SutureState
 /// A grabbable item. Physics runs on the host only, clients get transforms from <see cref="ToolManager"/>.
 /// The grip is at the origin and the tip at -Z * length.
 /// </summary>
-public partial class SurgicalTool : RigidBody3D
-{
+public partial class SurgicalTool : RigidBody3D {
     public const uint ToolLayer = 8;
     public static readonly Color IodineColor = new(0.55f, 0.3f, 0.12f);
     /// <summary>Liquid that is all blood. A mix tints toward it by its share of blood.</summary>
@@ -186,18 +181,15 @@ public partial class SurgicalTool : RigidBody3D
     public ToolAnimator Animator => _animator;
 
     /// <summary>A spreader's opening: meters between its tips (the wheel), on every peer.</summary>
-    public float Spread
-    {
+    public float Spread {
         get => _spread;
-        set
-        {
+        set {
             _spread = value;
             _animator.OpenTo(value, -Def.Length);
         }
     }
 
-    public void Setup(int uid, ToolDef def)
-    {
+    public void Setup(int uid, ToolDef def) {
         Uid = uid;
         Def = def;
         Name = $"Tool{uid}_{def.Id}";
@@ -212,8 +204,7 @@ public partial class SurgicalTool : RigidBody3D
         _model = ModelSlot.InstantiateTool(def, this);
         // The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.
         Bounds = ModelBounds();
-        AddChild(new CollisionShape3D
-        {
+        AddChild(new CollisionShape3D {
             Shape = new BoxShape3D { Size = Bounds.Size.Max(Vector3.One * 0.006f) },
             Position = Bounds.GetCenter(),
         });
@@ -226,41 +217,33 @@ public partial class SurgicalTool : RigidBody3D
             turning.X * turning.X + turning.Y * turning.Y);
         AngularDamp = 1f;
         _animator.Setup(_model, def.Action);
-        if (def.Action == "spread")
-        {
+        if (def.Action == "spread") {
             _animator.OpenTo(_spread, -def.Length);
         }
         // Vials come full of their drug, the IV drip with a bag of plain fluid.
-        if (def.Action == "vial")
-        {
+        if (def.Action == "vial") {
             Ml = def.Volume;
             Contents[def.Drug] = def.Volume * def.Concentration;
-        }
-        else if (def.Action == "drip")
-        {
+        } else if (def.Action == "drip") {
             Ml = DripFluid;
         }
-        if (def.Volume > 0f)
-        {
+        if (def.Volume > 0f) {
             Fill = Ml / def.Volume;
             ShowLiquid();
         }
         FreezeMode = FreezeModeEnum.Kinematic;
         Freeze = !Multiplayer.IsServer();
-        if (def.Grip == "needle")
-        {
+        if (def.Grip == "needle") {
             _animator.Animate(false, true, 0f);
         }
     }
 
-    public override void _Process(double delta)
-    {
+    public override void _Process(double delta) {
         var dt = (float)delta;
         var active = false;
         // A suture needle is supplied already locked in its holder; it must not float between open jaws while idle.
         var closed = State == ToolState.Standing || Def.Grip == "needle";
-        if (State == ToolState.Held && Surgery.Current?.Surgeons.GetValueOrDefault(Holder) is { } surgeon)
-        {
+        if (State == ToolState.Held && Surgery.Current?.Surgeons.GetValueOrDefault(Holder) is { } surgeon) {
             var hand = surgeon.Hands[Slot];
             active = ToolActions.InUse(Def.Action, hand.Lowered, hand.Trigger, hand.Level);
             closed = hand.Attached || Def.Grip == "needle";
@@ -268,19 +251,15 @@ public partial class SurgicalTool : RigidBody3D
         _animator.Animate(active, closed, dt);
         var lying = State is ToolState.Free or ToolState.Inside && !Def.Fixed;
         _animator.Rest(lying ? (GlobalBasis.Y.Dot(Vector3.Up) >= 0f ? 1f : -1f) : 0f, dt);
-        if (Riding is not null && State == ToolState.Standing)
-        {
+        if (Riding is not null && State == ToolState.Standing) {
             GlobalTransform = Riding.GlobalTransform * RidingPose;
         }
-        if (_dig < 1f)
-        {
+        if (_dig < 1f) {
             _dig = Mathf.Min(_dig + dt / DigTime, 1f);
             GlobalTransform = _digFrom.InterpolateWith(_digTo, Mathf.Ease(_dig, 0.4f));
         }
-        if (Blood > 0f)
-        {
-            foreach (var (material, _) in _ownMaterials)
-            {
+        if (Blood > 0f) {
+            foreach (var (material, _) in _ownMaterials) {
                 material.SetShaderParameter(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
             }
         }
@@ -288,11 +267,9 @@ public partial class SurgicalTool : RigidBody3D
 
     /// <summary>The model's bounding box in the tool's own space. Falls back to a thin box along the tool if there's no
     /// model.</summary>
-    private Aabb ModelBounds()
-    {
+    private Aabb ModelBounds() {
         Aabb? bounds = null;
-        foreach (var mesh in _model.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>())
-        {
+        foreach (var mesh in _model.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()) {
             var box = GlobalTransform.AffineInverse() * mesh.GlobalTransform * mesh.GetAabb();
             bounds = bounds is { } merged ? merged.Merge(box) : box;
         }
@@ -301,8 +278,7 @@ public partial class SurgicalTool : RigidBody3D
 
     /// <summary>Set in a cut, a spreader goes down into it to <paramref name="pose"/>, its points as deep as the cut
     /// goes, so the arms show how deep that is.</summary>
-    public void DigTo(Transform3D pose)
-    {
+    public void DigTo(Transform3D pose) {
         _digFrom = GlobalTransform;
         _digTo = pose;
         _dig = 0f;
@@ -310,8 +286,7 @@ public partial class SurgicalTool : RigidBody3D
 
     /// <summary>Lies on <paramref name="node"/> (the patient's site) from now on, where it is now, moving with it.
     /// </summary>
-    public void Ride(Node3D node)
-    {
+    public void Ride(Node3D node) {
         Riding = node;
         RidingPose = node.GlobalTransform.AffineInverse() * GlobalTransform;
     }
@@ -325,26 +300,20 @@ public partial class SurgicalTool : RigidBody3D
     public string Label() => Def.Action == "syringe" ? $"{Def.Name} ({(Ml > 0f ? "full" : "empty")})" : Def.Name;
 
     /// <summary>Germaphobe quirk: unsterile tools glow for this player only.</summary>
-    public void ShowContamination(bool visibleToMe)
-    {
+    public void ShowContamination(bool visibleToMe) {
         var glow = Sterile || !visibleToMe ? 0f : 1f;
-        if (glow > 0f || _ownMaterials.Count > 0)
-        {
-            foreach (var (material, _) in OwnMaterials())
-            {
+        if (glow > 0f || _ownMaterials.Count > 0) {
+            foreach (var (material, _) in OwnMaterials()) {
                 material.SetShaderParameter(ShaderParam.Contamination, glow);
             }
         }
     }
 
     /// <summary>Floor dirt shows as heavy grime on the tool for everyone.</summary>
-    public void SetSoiled(bool value)
-    {
+    public void SetSoiled(bool value) {
         Soiled = value;
-        if (value || _ownMaterials.Count > 0)
-        {
-            foreach (var (material, grime) in OwnMaterials())
-            {
+        if (value || _ownMaterials.Count > 0) {
+            foreach (var (material, grime) in OwnMaterials()) {
                 material.SetShaderParameter(ShaderParam.Grime, value ? 0.95f : grime);
             }
         }
@@ -352,16 +321,13 @@ public partial class SurgicalTool : RigidBody3D
 
     /// <summary>Blood on the working end. Gauze and swabs soak through along their whole length; instruments only near
     /// the tip.</summary>
-    public void SetBlood(float amount)
-    {
+    public void SetBlood(float amount) {
         Blood = amount;
-        if (amount <= 0f && _ownMaterials.Count == 0)
-        {
+        if (amount <= 0f && _ownMaterials.Count == 0) {
             return;
         }
         var soaks = Def.Action == "swab";
-        foreach (var (material, _) in OwnMaterials())
-        {
+        foreach (var (material, _) in OwnMaterials()) {
             material.SetShaderParameter(ShaderParam.Coat, amount);
             material.SetShaderParameter(ShaderParam.CoatLength, Def.Length);
             material.SetShaderParameter(ShaderParam.CoatReach, Def.Length * (soaks ? 1.2f : 0.12f + 0.3f * amount));
@@ -370,12 +336,9 @@ public partial class SurgicalTool : RigidBody3D
     }
 
     /// <summary>Iodine soaked into it tints the whole tool (a cotton pad).</summary>
-    public void ShowFill(float amount)
-    {
-        foreach (var (material, _) in OwnMaterials())
-        {
-            if (!_dryColors.TryGetValue(material, out var dry))
-            {
+    public void ShowFill(float amount) {
+        foreach (var (material, _) in OwnMaterials()) {
+            if (!_dryColors.TryGetValue(material, out var dry)) {
                 dry = material.GetShaderParameter("albedo").AsColor();
                 _dryColors[material] = dry;
             }
@@ -389,12 +352,10 @@ public partial class SurgicalTool : RigidBody3D
     /// and the plunger right behind the liquid. A vial's "Level" stretches from its end, the kidney dish's "Pool"
     /// rises, the iodine dish's "Liquid" spreads.
     /// </summary>
-    public void ShowLiquid()
-    {
+    public void ShowLiquid() {
         var amount = Ml / Def.Volume;
         var level = LiquidPart("Level");
-        if (level is not null)
-        {
+        if (level is not null) {
             level.Visible = amount > 0f;
             level.Scale = new Vector3(1f, 1f, Mathf.Max(amount, 0.001f));
             _levelRest ??= level.Position;
@@ -402,23 +363,19 @@ public partial class SurgicalTool : RigidBody3D
             _animator.Fill = (Ml + Air) / Def.Volume;
         }
         var pool = LiquidPart("Pool");
-        if (pool is not null)
-        {
+        if (pool is not null) {
             // The dish widens upward: the top of the pool keeps to its wall at every level.
             var wide = Mathf.Lerp(0.88f, 1f, amount);
             pool.Visible = amount > 0f;
             pool.Scale = new Vector3(wide, Mathf.Max(amount, 0.001f), wide);
         }
         var liquid = LiquidPart("Liquid");
-        if (liquid is not null)
-        {
+        if (liquid is not null) {
             liquid.Visible = amount > 0f;
             liquid.Scale = Vector3.One * Mathf.Lerp(0.6f, 1f, amount);
         }
-        foreach (var part in new[] { level, pool, liquid })
-        {
-            if (part is not null)
-            {
+        foreach (var part in new[] { level, pool, liquid }) {
+            if (part is not null) {
                 TintLiquid(part);
             }
         }
@@ -432,16 +389,12 @@ public partial class SurgicalTool : RigidBody3D
 
     /// <summary>The liquid part gets its own material the first time it holds blood or iodine, then follows their share
     /// in it.</summary>
-    private void TintLiquid(MeshInstance3D part)
-    {
-        if (part.GetSurfaceOverrideMaterial(0) is not ShaderMaterial material)
-        {
+    private void TintLiquid(MeshInstance3D part) {
+        if (part.GetSurfaceOverrideMaterial(0) is not ShaderMaterial material) {
             return;
         }
-        if (!_liquidColors.TryGetValue(part, out var clear))
-        {
-            if (Red <= 0f && Iodine <= 0f)
-            {
+        if (!_liquidColors.TryGetValue(part, out var clear)) {
+            if (Red <= 0f && Iodine <= 0f) {
                 return;
             }
             clear = material.GetShaderParameter("albedo").AsColor();
@@ -455,20 +408,16 @@ public partial class SurgicalTool : RigidBody3D
     }
 
     /// <summary>The tool your hand would pick up glows faintly (local player only).</summary>
-    public void SetHighlight(bool on)
-    {
-        foreach (var (material, _) in OwnMaterials())
-        {
+    public void SetHighlight(bool on) {
+        foreach (var (material, _) in OwnMaterials()) {
             material.SetShaderParameter(ShaderParam.EmissionColor, on ? new Color(0.25f, 0.3f, 0.22f) : Colors.Black);
         }
     }
 
     /// <summary>Toon materials are shared between tools, so the first per-tool change swaps in copies of its own.
     /// </summary>
-    private List<(ShaderMaterial Material, float Grime)> OwnMaterials()
-    {
-        if (_ownMaterials.Count == 0)
-        {
+    private List<(ShaderMaterial Material, float Grime)> OwnMaterials() {
+        if (_ownMaterials.Count == 0) {
             _ownMaterials = [.. ModelSlot.OwnMaterials(_model).Select(material => (material, material.GetShaderParameter("grime").AsSingle()))];
         }
         return _ownMaterials;
@@ -476,11 +425,9 @@ public partial class SurgicalTool : RigidBody3D
 
     /// <summary>Wrapped around a limb (a tourniquet): the tool's own model gives way to a band around it, snug on the
     /// skin. The tool itself sits on top of the band, where a hand reaches for it to take it off again.</summary>
-    public void WrapAround(Vector3 center, Vector3 axis, float radius)
-    {
+    public void WrapAround(Vector3 center, Vector3 axis, float radius) {
         Unwrap();
-        var band = new MeshInstance3D
-        {
+        var band = new MeshInstance3D {
             Name = "Band",
             Mesh = new TorusMesh { InnerRadius = radius, OuterRadius = radius + BandThickness, Rings = 32 },
             MaterialOverride = Materials.ToonShaded(Def.Color, 0.2f),
@@ -497,21 +444,18 @@ public partial class SurgicalTool : RigidBody3D
         _model.Visible = false;
     }
 
-    public void Unwrap()
-    {
+    public void Unwrap() {
         Band?.QueueFree();
         Band = null;
         _model.Visible = true;
     }
 
-    public void SetState(ToolState state, int holder, int slot)
-    {
+    public void SetState(ToolState state, int holder, int slot) {
         State = state;
         Holder = holder;
         Slot = slot;
         _animator.Settle();
-        if (state != ToolState.Standing)
-        {
+        if (state != ToolState.Standing) {
             Unwrap();
             Riding = null;
         }
@@ -524,8 +468,7 @@ public partial class SurgicalTool : RigidBody3D
         // its last moving transform back over the one it was put down at (a retractor lying down would stand back up).
         FreezeMode = state is ToolState.Held or ToolState.Belt or ToolState.Carried ? FreezeModeEnum.Kinematic : FreezeModeEnum.Static;
         Freeze = !(state == ToolState.Free && Multiplayer.IsServer());
-        if (state != ToolState.Held)
-        {
+        if (state != ToolState.Held) {
             Use.Reset();
         }
     }

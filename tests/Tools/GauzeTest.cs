@@ -11,8 +11,7 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class GauzeTest
-{
+public class GauzeTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "gauze preparation and bleeding simulation exceed the recorded CPU/render budget";
 
@@ -26,8 +25,7 @@ public class GauzeTest
     public void NoDebugHud() => _debugHud?.Dispose();
 
     [TestCase]
-    public async Task GauzeStopsABleedForAWhileThenItComesBack()
-    {
+    public async Task GauzeStopsABleedForAWhileThenItComesBack() {
         var session = await ToolSession.Start("appendectomy", "gauze_holds");
         var driver = session.Driver;
         Listen(driver);
@@ -67,8 +65,7 @@ public class GauzeTest
     }
 
     [TestCase]
-    public async Task GauzePressedTenSecondsStopsASmallCutForGood()
-    {
+    public async Task GauzePressedTenSecondsStopsASmallCutForGood() {
         var session = await ToolSession.Start("appendectomy", "gauze_small_cut");
         var driver = session.Driver;
         Listen(driver);
@@ -103,8 +100,7 @@ public class GauzeTest
     }
 
     [TestCase]
-    public async Task ASmallCutTornFurtherUnderTheGauzeNeedsAFullPressAgain()
-    {
+    public async Task ASmallCutTornFurtherUnderTheGauzeNeedsAFullPressAgain() {
         var session = await ToolSession.Start("appendectomy", "gauze_torn_further");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -132,8 +128,7 @@ public class GauzeTest
     }
 
     [TestCase]
-    public async Task GauzePackedIntoAnIncisionStopsTheVesselInIt()
-    {
+    public async Task GauzePackedIntoAnIncisionStopsTheVesselInIt() {
         var session = await ToolSession.Start("appendectomy", "gauze_packed");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -165,8 +160,7 @@ public class GauzeTest
     }
 
     [TestCase]
-    public async Task GauzeWipesAwayTheBloodBeadANeedleLeaves()
-    {
+    public async Task GauzeWipesAwayTheBloodBeadANeedleLeaves() {
         var session = await ToolSession.Start("appendectomy", "gauze_bead");
         var driver = session.Driver;
         var effects = driver.Surgery.Effects;
@@ -176,8 +170,7 @@ public class GauzeTest
         await CaptureAt(session, "bead", "one bead of blood on the arm where the needle went in", beads[0]);
 
         await driver.PlayerRequestsItem("gauze");
-        foreach (var bead in beads)
-        {
+        foreach (var bead in beads) {
             await driver.PlayerWalksTo(bead);
             await driver.PlayerWorksAt(bead, 3, 1f);
         }
@@ -190,16 +183,13 @@ public class GauzeTest
 
     /// <summary>In a run with key frames, saves views of <paramref name="at"/> on the arm, off the site, which should
     /// show <paramref name="description"/>.</summary>
-    private static async Task CaptureAt(ToolSession session, string keyFrame, string description, Vector3 at)
-    {
-        if (session.Shots is { } shots)
-        {
+    private static async Task CaptureAt(ToolSession session, string keyFrame, string description, Vector3 at) {
+        if (session.Shots is { } shots) {
             await session.Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, at, 0.15f));
         }
     }
 
-    private void Listen(SurgeryDriver driver)
-    {
+    private void Listen(SurgeryDriver driver) {
         _toasts.Clear();
         driver.Surgery.Hud.Toasted += _toasts.Add;
     }
@@ -211,8 +201,7 @@ public class GauzeTest
     private string Toasts() => string.Join(", ", _toasts);
 
     /// <summary>Holds the gauze down on the middle of <paramref name="wound"/> for <paramref name="seconds"/>.</summary>
-    private static async Task Press(SurgeryDriver driver, Wound wound, float seconds)
-    {
+    private static async Task Press(SurgeryDriver driver, Wound wound, float seconds) {
         var on = driver.SitePoint(wound.Midpoint);
         await driver.PlayerWalksTo(on);
         await driver.PlayerWorksAt(on, 3, seconds);

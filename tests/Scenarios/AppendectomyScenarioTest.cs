@@ -4,11 +4,9 @@ namespace Scalpel.Tests.Scenarios;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario"), TestCategory("core_validation")]
 [GodotArgs("--fixed-fps", "60")]
-public class AppendectomyScenarioTest
-{
+public class AppendectomyScenarioTest {
     [TestCase("appendectomy", Timeout = Limits.Slow)]
-    public async Task PlaysThroughWithIncisionAndExtractionChecks(string scenario)
-    {
+    public async Task PlaysThroughWithIncisionAndExtractionChecks(string scenario) {
         using var checks = new AppendectomyFlow();
         await ScenarioFlow.Play(scenario,
             // Temporary local budget override: retains the scenario's measured muscle-sewing allowance.

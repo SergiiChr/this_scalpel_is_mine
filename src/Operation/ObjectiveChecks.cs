@@ -4,8 +4,7 @@ namespace Scalpel.Operation;
 /// One check per objective step type. Add a new type by adding a case. Step parameters come from the scenario file,
 /// the step's state persists between ticks.
 /// </summary>
-public static class ObjectiveChecks
-{
+public static class ObjectiveChecks {
     /// <summary>Types that count only while their condition holds (the wound closed, the patient stable). The rest are
     /// milestones: done once reached, whatever happens after.</summary>
     private static readonly HashSet<string> StateTypes = ["close", "close_internal", "stop_bleeding", "stabilize"];
@@ -17,13 +16,11 @@ public static class ObjectiveChecks
         Met(step, state, surgery, delta)
         || (step.Alternative is { } alternative && Check(alternative, state.Alternative, surgery, delta));
 
-    private static bool Met(ObjectiveStep step, StepState state, Surgery surgery, float delta)
-    {
+    private static bool Met(ObjectiveStep step, StepState state, Surgery surgery, float delta) {
         var patient = surgery.Patient;
         var vitals = patient.Vitals;
         var parameters = step.Parameters;
-        switch (step.Type)
-        {
+        switch (step.Type) {
             case "sanitize":
                 return patient.SanitizedFraction() >= parameters.Float("amount", 0.5f);
             case "iv":
@@ -83,15 +80,12 @@ public static class ObjectiveChecks
     }
 
     /// <summary>Every broken bone end is back in line, held by as many surgeons as there are (up to two).</summary>
-    private static bool Aligned(Surgery surgery)
-    {
+    private static bool Aligned(Surgery surgery) {
         var holders = new HashSet<int>();
         var aligned = true;
-        foreach (var target in surgery.Patient.Targets.Where(t => t.IsFragment))
-        {
+        foreach (var target in surgery.Patient.Targets.Where(t => t.IsFragment)) {
             aligned = aligned && target.IsAligned(0.012f);
-            if (surgery.Tools.ByUid(target.GrippedBy) is { } tool)
-            {
+            if (surgery.Tools.ByUid(target.GrippedBy) is { } tool) {
                 holders.Add(tool.Holder);
             }
         }
@@ -99,8 +93,7 @@ public static class ObjectiveChecks
     }
 
     /// <summary>True once <paramref name="condition"/> has held continuously for <paramref name="seconds"/>.</summary>
-    private static bool Held(StepState state, bool condition, float seconds, float delta)
-    {
+    private static bool Held(StepState state, bool condition, float seconds, float delta) {
         state.Timer = condition ? state.Timer + delta : 0f;
         return state.Timer >= seconds;
     }

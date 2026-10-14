@@ -5,8 +5,7 @@ namespace Scalpel.Tests.Support;
 /// Each side then prints the state that must come out the same on both (the painted wound map, cut, stitched and torn
 /// springs, the site's shape) for the network runner to compare.
 /// </summary>
-public partial class NetDriver : NetSession
-{
+public partial class NetDriver : NetSession {
     private const int Port = 24599;
     private const float SquatTimeout = 15f;
     private bool _squatSeen;
@@ -14,19 +13,15 @@ public partial class NetDriver : NetSession
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void AcknowledgeSquat() => _squatSeen = true;
 
-    protected override async Task Drive()
-    {
+    protected override async Task Drive() {
         // This checks synchronization, not missing starter tools or random surgeon handicaps.
         SurgeryState.ScenarioHasAllStarterTools("appendectomy");
         var surgery = await Join("appendectomy", Port, () => SurgeryState.NetworkSessionHasOrdinarySurgeons());
         GD.Print($"[{Role}] surgery running, surgeons={surgery.Surgeons.Count} tools={surgery.Tools.Tools.Count}");
         await PassCardAround(surgery);
-        if (IsHost)
-        {
+        if (IsHost) {
             await CheckSquatAndTakeTool(surgery);
-        }
-        else if (!await SquatCutAndHandOver(surgery))
-        {
+        } else if (!await SquatCutAndHandOver(surgery)) {
             GetTree().Quit(1);
             return;
         }
@@ -40,8 +35,7 @@ public partial class NetDriver : NetSession
     /// hook. Both put theirs back and they hang there as one. Then the client takes it: the host sees it in the
     /// client's hands, not on the hook, and can't take it, until the client puts it back.
     /// </summary>
-    private async Task PassCardAround(Surgery surgery)
-    {
+    private async Task PassCardAround(Surgery surgery) {
         var card = surgery.Room.Card;
         var me = surgery.LocalSurgeon!;
         var partner = Partner(surgery);
@@ -51,29 +45,23 @@ public partial class NetDriver : NetSession
         Check(!card.OnHook && card.PaperOf(partner.PeerId)?.DistanceTo(partner.Camera.GlobalPosition) < 0.5f,
             "at the start the partner reads their own copy and none hangs on the hook");
         await SurgeryDriver.PlayerPutsCardBack(surgery);
-        for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) > 0f; i++)
-        {
+        for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) > 0f; i++) {
             await Wait(0.2);
         }
         Check(card.OnHook && card.PaperOf(me.PeerId) is null && card.PaperOf(partner.PeerId) is null,
             "both copies put back hang on the hook as one");
-        if (IsHost)
-        {
-            for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) < 1f; i++)
-            {
+        if (IsHost) {
+            for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) < 1f; i++) {
                 await Wait(0.2);
             }
             Check(!card.OnHook && !hook.OfferedTo(me)
                 && card.PaperOf(partner.PeerId)?.DistanceTo(partner.Camera.GlobalPosition) < 0.5f,
                 "the client's card is in their hands, not on the hook");
-            for (var i = 0; i < 50 && !card.OnHook; i++)
-            {
+            for (var i = 0; i < 50 && !card.OnHook; i++) {
                 await Wait(0.2);
             }
             Check(card.OnHook && hook.OfferedTo(me), "the client's card is back on the hook");
-        }
-        else
-        {
+        } else {
             await Wait(1.0);
             hook.Interact(me);
             await Wait(2.0);
@@ -85,8 +73,7 @@ public partial class NetDriver : NetSession
 
     /// <summary>Client: a real crouch the host must see as a grounded squat, then a cut with the scalpel and the
     /// scalpel handed across the table. False when something didn't arrive.</summary>
-    private async Task<bool> SquatCutAndHandOver(Surgery surgery)
-    {
+    private async Task<bool> SquatCutAndHandOver(Surgery surgery) {
         var me = surgery.LocalSurgeon!;
         // Deliberately finish the client's startup after the host's former 1.2-second window. The acknowledged pose
         // must still be checked: this exercises the loading-delay race deterministically on every network run.
@@ -95,13 +82,11 @@ public partial class NetDriver : NetSession
         // the host has actually checked it: loading and sync can take longer than any fixed hold.
         PlayerInput.Action(InputActions.Crouch);
         var deadline = Time.GetTicksMsec() + (ulong)(SquatTimeout * 1000f);
-        while (!_squatSeen && Time.GetTicksMsec() < deadline)
-        {
+        while (!_squatSeen && Time.GetTicksMsec() < deadline) {
             await Wait(0.05);
         }
         PlayerInput.Action(InputActions.Crouch, false);
-        if (!_squatSeen)
-        {
+        if (!_squatSeen) {
             GD.Print("FAIL: [client] host never acknowledged the grounded squat");
             return false;
         }
@@ -110,16 +95,13 @@ public partial class NetDriver : NetSession
         // waits so long for the handoff before it ends the session. The scalpel specifically, so this can't silently
         // switch to the switchblade's different cutting.
         SurgicalTool? scalpel = null;
-        for (var i = 0; i < 20 && scalpel is null; i++)
-        {
+        for (var i = 0; i < 20 && scalpel is null; i++) {
             scalpel = surgery.Tools.Tools.Values.FirstOrDefault(tool => tool.State == ToolState.Free && tool.Def.Id == "scalpel");
-            if (scalpel is null)
-            {
+            if (scalpel is null) {
                 await Wait(0.1);
             }
         }
-        if (scalpel is null)
-        {
+        if (scalpel is null) {
             GD.Print("FAIL: [client] starter scalpel never arrived");
             return false;
         }
@@ -134,8 +116,7 @@ public partial class NetDriver : NetSession
         hand.Lowered = true;
         // Rotated a quarter turn, the blade's edge runs sideways: along the cut.
         hand.Twist = Mathf.Pi / 2f;
-        for (var i = 0; i < 60; i++)
-        {
+        for (var i = 0; i < 60; i++) {
             hand.LocalTarget += new Vector3(0.002f, 0f, 0f);
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
         }
@@ -156,13 +137,11 @@ public partial class NetDriver : NetSession
 
     /// <summary>Host: the client's crouch arrives as bent knees and grounded heels; then the left hand waits over the
     /// table for the scalpel.</summary>
-    private async Task CheckSquatAndTakeTool(Surgery surgery)
-    {
+    private async Task CheckSquatAndTakeTool(Surgery surgery) {
         var me = surgery.LocalSurgeon!;
         var partner = Partner(surgery);
         var deadline = Time.GetTicksMsec() + (ulong)(SquatTimeout * 1000f);
-        while (partner.Crouch <= 0.99f && Time.GetTicksMsec() < deadline)
-        {
+        while (partner.Crouch <= 0.99f && Time.GetTicksMsec() < deadline) {
             await Wait(0.02);
         }
         await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
@@ -176,8 +155,7 @@ public partial class NetDriver : NetSession
         RpcId(partner.PeerId, MethodName.AcknowledgeSquat);
         me.Hands[0].LocalTarget = me.ToLocal(new Vector3(0f, 1.3f, 0.06f));
         // Until the client has cut and handed its tool across: on a slow machine that takes a while.
-        for (var i = 0; i < 75 && me.HeldTool(0) is null; i++)
-        {
+        for (var i = 0; i < 75 && me.HeldTool(0) is null; i++) {
             await Wait(0.2);
         }
         await Wait(1.0);
@@ -186,8 +164,7 @@ public partial class NetDriver : NetSession
 
     /// <summary>Prints what both peers must agree on, once the cut has settled on both, and checks the skin meets the
     /// body model.</summary>
-    private async Task ReportState(Surgery surgery)
-    {
+    private async Task ReportState(Surgery surgery) {
         // Without the wait, a freshly imported project can catch the same transient raised seam on both peers.
         await Wait(2.0);
         var body = surgery.Patient.Body;
@@ -195,10 +172,8 @@ public partial class NetDriver : NetSession
         var surgeonWounds = surgery.Patient.Wounds.Count(wound => wound.MadeBySurgeon);
         var map = body.WoundMap;
         var painted = 0;
-        for (var y = 0; y < map.Size; y += 4)
-        {
-            for (var x = 0; x < map.Size; x += 4)
-            {
+        for (var y = 0; y < map.Size; y += 4) {
+            for (var x = 0; x < map.Size; x += 4) {
                 var uv = new Vector2(x, y) / map.Size;
                 painted += map.Value(WoundMap.Layer.Wounds, WoundMap.Cut, uv) > 0.1f ? 1 : 0;
             }
@@ -207,8 +182,7 @@ public partial class NetDriver : NetSession
         GD.Print($"[{Role}] surgeon wounds (host state)={surgeonWounds}, painted texels={painted}, severed springs={severed}, topology={tissue.TopologyHash()}, site shape={body.ShapeHash()}, vitals hr={(int)surgery.Patient.Vitals.HeartRate}");
         // Each player's simulated skin meets the body model where the cut opened it, without a step.
         var seam = SkinSeam.Measure(body);
-        if (seam >= SkinSeam.Max)
-        {
+        if (seam >= SkinSeam.Max) {
             GD.Print($"FAIL: [{Role}] the simulated skin doesn't meet the body model: {seam * 1000f:0.00} mm off at its edge");
         }
     }

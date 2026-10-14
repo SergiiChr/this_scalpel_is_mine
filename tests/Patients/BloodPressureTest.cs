@@ -6,11 +6,9 @@ namespace Scalpel.Tests.Patients;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
-public class BloodPressureTest
-{
+public class BloodPressureTest {
     [TestCase]
-    public async Task AdrenalineBurstsAnAneurysmThatStaysCalmWithoutIt()
-    {
+    public async Task AdrenalineBurstsAnAneurysmThatStaysCalmWithoutIt() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy", patientQuirks: [new QuirkRoll("aneurysm", "")]);
         var patient = driver.Patient;
@@ -26,8 +24,7 @@ public class BloodPressureTest
             .IsTrue();
         var newWounds = patient.Wounds.Skip(before).ToList();
         AssertInt(newWounds.Count).OverrideFailureMessage("one vessel gives way").IsEqual(1);
-        if (newWounds.Count > 0)
-        {
+        if (newWounds.Count > 0) {
             AssertBool(newWounds[0].IsInternal).OverrideFailureMessage("the burst vessel bleeds inside the site").IsTrue();
             await Frames.Seconds(1f);
             AssertFloat(patient.Body.WoundMap.Value(WoundMap.Layer.Wounds, WoundMap.Bruise, newWounds[0].Points[0]))
@@ -37,8 +34,7 @@ public class BloodPressureTest
     }
 
     [TestCase]
-    public async Task ClosuresLeakUnderHighPressureAndHeparinButCauteryHolds()
-    {
+    public async Task ClosuresLeakUnderHighPressureAndHeparinButCauteryHolds() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;

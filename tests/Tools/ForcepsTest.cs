@@ -10,8 +10,7 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_forceps"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class ForcepsTest
-{
+public class ForcepsTest {
     /// <summary>How long (meters) the cut over the bullet is.</summary>
     private const float Opening = 0.05f;
     /// <summary>The cut through every layer that opens the thigh goes over, as in RetractorTest.</summary>
@@ -19,8 +18,7 @@ public class ForcepsTest
     private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     [TestCase]
-    public async Task ForcepsTakeTheSkinEdgeBesideTheOpeningAndTheBulletInIt()
-    {
+    public async Task ForcepsTakeTheSkinEdgeBesideTheOpeningAndTheBulletInIt() {
         var (session, bullet) = await OpenOverBullet("forceps/edge_and_bullet");
         var driver = session.Driver;
         var forceps = (await driver.PlayerRequestsItem("forceps"))!;
@@ -50,8 +48,7 @@ public class ForcepsTest
     }
 
     [TestCase]
-    public async Task ForcepsMovedOntoTheBulletTakeItWhereTheyComeDown()
-    {
+    public async Task ForcepsMovedOntoTheBulletTakeItWhereTheyComeDown() {
         var (session, bullet) = await OpenOverBullet("forceps/moving");
         var driver = session.Driver;
         var forceps = (await driver.PlayerRequestsItem("forceps"))!;
@@ -71,8 +68,7 @@ public class ForcepsTest
     }
 
     [TestCase]
-    public async Task ForcepsInTheAirWaitUntilTheyComeDown()
-    {
+    public async Task ForcepsInTheAirWaitUntilTheyComeDown() {
         var (session, bullet) = await OpenOverBullet("forceps/in_the_air");
         var driver = session.Driver;
         var forceps = (await driver.PlayerRequestsItem("forceps"))!;
@@ -101,8 +97,7 @@ public class ForcepsTest
     }
 
     [TestCase]
-    public async Task ForcepsWorkedFromLateRemoteStatesWaitForANewOne()
-    {
+    public async Task ForcepsWorkedFromLateRemoteStatesWaitForANewOne() {
         var (session, bullet) = await OpenOverBullet("forceps/late_states");
         var driver = session.Driver;
         var forceps = (await driver.PlayerRequestsItem("forceps"))!;
@@ -113,8 +108,7 @@ public class ForcepsTest
         var above = body.UvToWorld(bullet.Uv, -0.008f);
         var on = body.UvToWorld(bullet.Uv, bullet.Depth);
         var frames = new (Vector3 Tip, int State)[] { (above, 1), (above, 1), (above, 1), (above, 1), (above, 1), (on, 2), (on, 3), (on, 4) };
-        foreach (var (tip, state) in frames)
-        {
+        foreach (var (tip, state) in frames) {
             forceps.GlobalTransform = new Transform3D(new Basis(Vector3.Right, Vector3.Forward, Vector3.Up),
                 tip + (Vector3.Up * forceps.Def.Length));
             ToolActions.Update(forceps, new HandInput(true, true, 0, 0f, driver.Me.PeerId, new Modifiers(), state), driver.Patient,
@@ -128,8 +122,7 @@ public class ForcepsTest
     }
 
     /// <summary>The thigh's entry wound opened through every layer along the bullet, and the scalpel put down.</summary>
-    private static async Task<(ToolSession Session, CavityTarget Bullet)> OpenOverBullet(string folder)
-    {
+    private static async Task<(ToolSession Session, CavityTarget Bullet)> OpenOverBullet(string folder) {
         var session = await ToolSession.Start("bullet_muscle", folder, captureUntouched: folder == "forceps/edge_and_bullet");
         var driver = session.Driver;
         var bullet = driver.Patient.Targets.Single(target => target.Kind == "bullet");
@@ -138,8 +131,7 @@ public class ForcepsTest
         await driver.PlayerPutsDown();
         await Frames.Seconds(1f);
         AssertBool(driver.Body.IsOpen(bullet.Uv)).OverrideFailureMessage("the cut opens over the bullet").IsTrue();
-        if (folder == "forceps/edge_and_bullet")
-        {
+        if (folder == "forceps/edge_and_bullet") {
             await driver.Capture("opened", "the entry wound cut open along the bullet, through every layer");
         }
         return (session, bullet);
@@ -147,14 +139,11 @@ public class ForcepsTest
 
     /// <summary>The whole skin just past the opening's edge from <paramref name="uv"/> (in it), across the cut.
     /// </summary>
-    private static Vector2 SkinBeside(SurgeryDriver driver, Vector2 uv)
-    {
+    private static Vector2 SkinBeside(SurgeryDriver driver, Vector2 uv) {
         var step = new Vector2(0f, driver.Body.MetersToUv(0.001f));
         var probes = Mathf.CeilToInt(Mathf.Max(1f - uv.Y, 0f) / step.Y) + 1;
-        for (var probe = 0; probe < probes; probe++, uv += step)
-        {
-            if (!driver.Body.IsOpen(uv))
-            {
+        for (var probe = 0; probe < probes; probe++, uv += step) {
+            if (!driver.Body.IsOpen(uv)) {
                 return uv + (step * 2f);
             }
         }
@@ -163,8 +152,7 @@ public class ForcepsTest
 
     /// <summary>Lift held until the tip is up, then Use tool pressed and held: the press counts with the tip in the
     /// air. Lift stays held.</summary>
-    private static async Task PressLifted(SurgeryDriver driver)
-    {
+    private static async Task PressLifted(SurgeryDriver driver) {
         PlayerInput.Action(InputActions.Lift);
         await Frames.Seconds(0.5f);
         SurgeryDriver.Use();
@@ -172,8 +160,7 @@ public class ForcepsTest
     }
 
     /// <summary>Use tool pressed and let go of, a moment apart.</summary>
-    private static async Task Press(SurgeryDriver driver)
-    {
+    private static async Task Press(SurgeryDriver driver) {
         SurgeryDriver.Use();
         await Frames.Physics(10);
         SurgeryDriver.Use(false);
@@ -181,8 +168,7 @@ public class ForcepsTest
     }
 
     /// <summary>Use tool once more lets go of what the forceps hold.</summary>
-    private static async Task LetGo(SurgeryDriver driver, SurgicalTool forceps)
-    {
+    private static async Task LetGo(SurgeryDriver driver, SurgicalTool forceps) {
         SurgeryDriver.Use(false);
         await Frames.Physics(3);
         await Press(driver);

@@ -9,19 +9,16 @@ namespace Scalpel.Tests.Scenarios;
 [TestSuite, RequireGodotRuntime, IsolateCases]
 [TestCategory("slow"), TestCategory("scenario")]
 [GodotArgs("--fixed-fps", "60")]
-public class ProcedureOrderTest
-{
+public class ProcedureOrderTest {
     [TestCase("local_block,sanitize,close,stop_bleeding", true, Timeout = Limits.Slow)]
     [TestCase("local_block,close,sanitize,stop_bleeding", false, Timeout = Limits.Slow)]
-    public async Task HandStitchInAnotherOrder(string order, bool success)
-    {
+    public async Task HandStitchInAnotherOrder(string order, bool success) {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch");
         var surgery = driver.Surgery;
         var objectives = surgery.Objectives;
-        foreach (var type in order.Split(','))
-        {
+        foreach (var type in order.Split(',')) {
             await driver.PlayerCompletes(objectives.Steps.First(step => step.Type == type));
         }
         var required = objectives.Steps.Select((step, i) => (step, state: objectives.States[i])).Where(pair => !pair.step.Optional).ToList();

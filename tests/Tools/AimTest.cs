@@ -12,13 +12,11 @@ namespace Scalpel.Tests.Tools;
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_scalpel"), TestCategory("tool_all"),
  TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class AimTest
-{
+public class AimTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private const string BudgetOverride = "aiming and drawing the hands exceed the recorded render budget";
 
-    private readonly SharedScene<SurgeryDriver> _scenes = new(async () =>
-    {
+    private readonly SharedScene<SurgeryDriver> _scenes = new(async () => {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
@@ -30,21 +28,18 @@ public class AimTest
     public async Task CleanUpCase() => await _scenes.DiscardIncomplete();
 
     [After]
-    public async Task CleanUpSuite()
-    {
+    public async Task CleanUpSuite() {
         await _scenes.Stop();
         RenderingServer.RenderLoopEnabled = true;
     }
 
-    private async Task<SurgeryDriver> Begin()
-    {
+    private async Task<SurgeryDriver> Begin() {
         var driver = await _scenes.Begin("aim");
         driver.OnKeyFrame = null;
         SurgeryDriver.Use(false);
         SurgeryDriver.PlayerLetsGoOfAim();
         await PlayerInput.Delivered();
-        if (driver.Me.HeldTool(driver.Me.Active) is not null)
-        {
+        if (driver.Me.HeldTool(driver.Me.Active) is not null) {
             await driver.PlayerPutsDown();
         }
         driver.Me.Hands[driver.Me.Active].Tilt = SurgeonHand.RestTilt;
@@ -56,23 +51,18 @@ public class AimTest
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task AimingTurnsTheToolAboutTheWrist()
-    {
+    public async Task AimingTurnsTheToolAboutTheWrist() {
         var driver = await Begin();
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "aim");
-            driver.OnKeyFrame = async (keyFrame, description) =>
-            {
-                if (keyFrame is not ("zoomed_in" or "zoomed_back_out" or "over_floor"))
-                {
+            driver.OnKeyFrame = async (keyFrame, description) => {
+                if (keyFrame is not ("zoomed_in" or "zoomed_back_out" or "over_floor")) {
                     await shots.Capture(keyFrame, description);
                 }
-                if (keyFrame is "resting" or "zoomed_in" or "zoomed_back_out" or "over_floor")
-                {
+                if (keyFrame is "resting" or "zoomed_in" or "zoomed_back_out" or "over_floor") {
                     await shots.CaptureView(keyFrame, description);
                 }
             };
@@ -87,8 +77,7 @@ public class AimTest
         await driver.PlayerReaches(site);
         await Frames.Physics(10);
         await driver.Capture("resting", "the scalpel's tip resting on the skin in the middle of the site, the aim dot on it");
-        if (shots is not null)
-        {
+        if (shots is not null) {
             var camera = me.Camera;
             var offset = camera.HOffset;
             var before = driver.Surgery.Hud.BladeCenter;
@@ -155,8 +144,7 @@ public class AimTest
         await Frames.Seconds(0.5f);
         CheckFaded(hand, other, 0f, "zoomed back out, the hands are solid again");
         await driver.Capture("zoomed_back_out", "zoomed back out: both hands solid again, the gloves their own color");
-        foreach (var mesh in hand.Glove.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>())
-        {
+        foreach (var mesh in hand.Glove.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>()) {
             AssertObject(mesh.MaterialOverride).OverrideFailureMessage("zooming out restores the glove material, including its color and relief").IsNull();
         }
         var away = me.GlobalPosition + me.GlobalBasis.Z * 0.5f;
@@ -171,8 +159,7 @@ public class AimTest
     }
 
     /// <summary>The sweep's control checks run here on the player's scalpel, before the same case aims and zooms it.</summary>
-    private static async Task CheckControls(Surgeon me)
-    {
+    private static async Task CheckControls(Surgeon me) {
         var hand = me.Hands[me.Active];
         PlayerInput.Tap(InputActions.LevelUp);
         await PlayerInput.Delivered();
@@ -197,12 +184,10 @@ public class AimTest
 
     /// <summary>The largest step the tool tip takes in one frame over <paramref name="count"/> frames: across the floor
     /// (X) and up or down (Y), in the surgeon's frame.</summary>
-    private static async Task<Vector2> TipSteps(Surgeon me, SurgicalTool tool, int count)
-    {
+    private static async Task<Vector2> TipSteps(Surgeon me, SurgicalTool tool, int count) {
         var largest = Vector2.Zero;
         var last = me.ToLocal(tool.TipPosition());
-        for (var i = 0; i < count; i++)
-        {
+        for (var i = 0; i < count; i++) {
             await Frames.Physics(1);
             var now = me.ToLocal(tool.TipPosition());
             largest = largest.Max(new Vector2(new Vector2(now.X - last.X, now.Z - last.Z).Length(), Mathf.Abs(now.Y - last.Y)));
@@ -215,34 +200,28 @@ public class AimTest
     /// retractor on the belly, each at the lowest, a middle and the highest tilt, land within a millimeter of the aim
     /// across the skin.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task EveryToolLandsWhereItsAimShows()
-    {
+    public async Task EveryToolLandsWhereItsAimShows() {
         // Nothing to see: the aim is checked against where each tool comes down.
         var driver = await Begin();
         var me = driver.Me;
-        foreach (var id in (string[])["syringe_3", "scalpel", "skin_stapler", "gelpi"])
-        {
-            if (driver.FreeTools(id).Count == 0)
-            {
+        foreach (var id in (string[])["syringe_3", "scalpel", "skin_stapler", "gelpi"]) {
+            if (driver.FreeTools(id).Count == 0) {
                 SurgeryState.ToolIsOnTray(driver.Surgery, id);
             }
             var tool = (await driver.PlayerRequestsItem(id))!;
             // Each destructive grip check has its own site, clear of the wrist case's intact center and other tools.
-            var uv = id switch
-            {
+            var uv = id switch {
                 "scalpel" => new Vector2(0.3f, 0.3f),
                 "skin_stapler" => new Vector2(0.7f, 0.3f),
                 _ => new Vector2(0.5f, 0.75f),
             };
-            if (id != "syringe_3")
-            {
+            if (id != "syringe_3") {
                 AssertBool(driver.Body.Tissue.IsOpen(uv))
                     .OverrideFailureMessage($"{id} starts on its own intact region, clear of earlier aim checks").IsFalse();
             }
             var target = id == "syringe_3" ? driver.VeinPoint() : driver.SitePoint(uv);
             await driver.PlayerWalksTo(target);
-            foreach (var tilt in (float[])[SurgeonHand.TiltRange.X, -0.7f, SurgeonHand.TiltRange.Y])
-            {
+            foreach (var tilt in (float[])[SurgeonHand.TiltRange.X, -0.7f, SurgeonHand.TiltRange.Y]) {
                 me.Hands[me.Active].Tilt = tilt;
                 await driver.PlayerReaches(target);
                 await Frames.Physics(5);
@@ -254,8 +233,7 @@ public class AimTest
                     .IsLess(0.001f);
                 SurgeryDriver.Use(false);
                 await Frames.Physics(10);
-                if (tool.InWound)
-                {
+                if (tool.InWound) {
                     // Set by the press: pressed again it comes out.
                     SurgeryDriver.Use();
                     await Frames.Physics(5);
@@ -270,8 +248,7 @@ public class AimTest
     }
 
     /// <summary>Only the wrist bends: it and the forearm stay where they were before aiming.</summary>
-    private static void CheckStill(Surgeon me, SurgeonHand hand, Vector3 wrist, Vector3 elbow, string what)
-    {
+    private static void CheckStill(Surgeon me, SurgeonHand hand, Vector3 wrist, Vector3 elbow, string what) {
         var wristOff = me.ToLocal(Wrist(hand)).DistanceTo(wrist);
         var elbowOff = me.ToLocal(hand.Elbow).DistanceTo(elbow);
         AssertFloat(wristOff).OverrideFailureMessage($"{what}, the wrist stays where it was ({wristOff * 1000f:0.0} mm off)").IsLess(0.001f);
@@ -279,16 +256,14 @@ public class AimTest
             .IsLess(0.001f);
     }
 
-    private static void CheckFaded(SurgeonHand hand, SurgeonHand other, float amount, string what)
-    {
+    private static void CheckFaded(SurgeonHand hand, SurgeonHand other, float amount, string what) {
         var faded = (Fade(hand), Fade(other));
         AssertBool(Mathf.IsEqualApprox(faded.Item1, amount) && Mathf.IsEqualApprox(faded.Item2, amount))
             .OverrideFailureMessage($"{what} {faded}").IsTrue();
     }
 
     /// <summary>How see-through a hand is drawn (0 solid).</summary>
-    private static float Fade(SurgeonHand hand)
-    {
+    private static float Fade(SurgeonHand hand) {
         var glove = hand.FindChildren("*", nameof(GeometryInstance3D), true, false).OfType<GeometryInstance3D>().First();
         return glove.MaterialOverride is StandardMaterial3D ghost ? 1f - ghost.AlbedoColor.A : 0f;
     }

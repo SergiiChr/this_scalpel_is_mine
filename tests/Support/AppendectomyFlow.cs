@@ -7,8 +7,7 @@ namespace Scalpel.Tests.Support;
 /// belly cleanly oozes and leaves the appendix alone; only cutting its base opens its vessel. The game ends the surgery
 /// with a successful report and the patient loses little blood.
 /// </summary>
-public sealed class AppendectomyFlow : IDisposable
-{
+public sealed class AppendectomyFlow : IDisposable {
     /// <summary>An appendectomy done right loses less blood than this (ml).</summary>
     private const float LittleBlood = 200f;
     /// <summary>How far (meters) the scalpel put down on the appendix's base is drawn along its edge.</summary>
@@ -21,19 +20,16 @@ public sealed class AppendectomyFlow : IDisposable
     private float _lost;
 
     /// <summary>Extends incision and extraction; the shared flow still handles every objective and its hold time.</summary>
-    public async Task PlayStep(SurgeryDriver driver, ObjectiveStep step)
-    {
+    public async Task PlayStep(SurgeryDriver driver, ObjectiveStep step) {
         var patient = driver.Patient;
         var appendix = patient.TargetByKind("appendix")!;
-        if (_patient is null)
-        {
+        if (_patient is null) {
             _patient = patient;
             _attached = appendix.Anchor;
             Frames.Tree.PhysicsFrame += RecordBlood;
         }
         var attached = _attached;
-        if (step.Type == "extract")
-        {
+        if (step.Type == "extract") {
             await driver.PlayerCutsFree(appendix, Drawn);
             AssertInt(patient.Wounds.Count(wound => !wound.IsInternal))
                 .OverrideFailureMessage("drawn along inside the opening, the blade cuts nothing more of the belly wall").IsEqual(1);
@@ -44,8 +40,7 @@ public sealed class AppendectomyFlow : IDisposable
                 .OverrideFailureMessage($"cutting the appendix's base opens its vessel: {driver.Bleeders()}").IsTrue();
         }
         await driver.PlayerCompletes(step);
-        if (step.Type == "incise")
-        {
+        if (step.Type == "incise") {
             var incision = patient.Wounds.Single(wound => wound.MadeBySurgeon);
             await driver.PlayerCutsSkin(incision.Points[0], incision.Points[^1], 3);
             await driver.PlayerPutsDown();
@@ -74,16 +69,13 @@ public sealed class AppendectomyFlow : IDisposable
     private void RecordBlood() => _lost += _patient!.Vitals.BleedRate / Engine.PhysicsTicksPerSecond;
 
     /// <summary>Checks the surgery's cumulative blood loss before the shared flow stops its scene.</summary>
-    public void Validate(SurgeryDriver _)
-    {
+    public void Validate(SurgeryDriver _) {
         Dispose();
         AssertFloat(_lost).OverrideFailureMessage($"the patient loses little blood ({_lost:0} ml)").IsLess(LittleBlood);
     }
 
-    public void Dispose()
-    {
-        if (_patient is not null)
-        {
+    public void Dispose() {
+        if (_patient is not null) {
             Frames.Tree.PhysicsFrame -= RecordBlood;
             _patient = null;
         }

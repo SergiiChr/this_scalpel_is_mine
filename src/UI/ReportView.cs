@@ -1,10 +1,8 @@
 namespace Scalpel.UI;
 
 /// <summary>Post-op report: pass or fail, stars, what you did, what happened to the patient afterwards.</summary>
-public static class ReportView
-{
-    public static Control Build(SurgeryReport report, ScenarioDef scenario)
-    {
+public static class ReportView {
+    public static Control Build(SurgeryReport report, ScenarioDef scenario) {
         var box = Ui.VBox(10);
         box.AddChild(Ui.Label($"POST-OP REPORT: {scenario.Title.ToUpperInvariant()}", 30, Ui.Pip));
         var verdict = report.Success ? "PATIENT SURVIVED" : $"FAILED: {report.Reason}";
@@ -15,35 +13,28 @@ public static class ReportView
 
         var details = Ui.VBox(4);
         details.AddChild(Ui.Label("During the operation", 20, Ui.Pip));
-        foreach (var line in report.Events)
-        {
+        foreach (var line in report.Events) {
             details.AddChild(Line(line.Text + (line.Count > 1 ? $"  x{line.Count}" : ""), line.Points));
         }
-        if (report.Consequences.Count > 0)
-        {
+        if (report.Consequences.Count > 0) {
             details.AddChild(Ui.Label("Afterwards", 20, Ui.Pip));
-            foreach (var line in report.Consequences)
-            {
+            foreach (var line in report.Consequences) {
                 details.AddChild(Line(line.Text, line.Points));
             }
         }
         details.AddChild(Ui.Label("The patient had", 20, Ui.Pip));
-        if (report.PatientQuirks.Count == 0)
-        {
+        if (report.PatientQuirks.Count == 0) {
             details.AddChild(Ui.Label("Nothing unusual. Lucky.", 16, Ui.Dim));
         }
-        foreach (var roll in report.PatientQuirks)
-        {
-            if (Db.Quirk(QuirkKind.Patient, roll.Id) is { } quirk)
-            {
+        foreach (var roll in report.PatientQuirks) {
+            if (Db.Quirk(QuirkKind.Patient, roll.Id) is { } quirk) {
                 details.AddChild(Ui.QuirkLine(quirk, roll.Variant, false));
             }
         }
         box.AddChild(Ui.Scroll(details));
 
         var buttons = Ui.HBox(12);
-        if (Net.Instance.IsHost)
-        {
+        if (Net.Instance.IsHost) {
             buttons.AddChild(Ui.Button("New run (back to lobby)", Net.Instance.ReturnToLobby));
         }
         buttons.AddChild(Ui.Button("Main menu", Net.Instance.BackToMenu));

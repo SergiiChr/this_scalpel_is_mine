@@ -10,11 +10,9 @@ namespace Scalpel.Tests.UI;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class PatientCardTest
-{
+public class PatientCardTest {
     [TestCase]
-    public async Task OpensInHandTravelsToItsHookAndBackWhenTaken()
-    {
+    public async Task OpensInHandTravelsToItsHookAndBackWhenTaken() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy", readingCard: true);
@@ -22,16 +20,13 @@ public class PatientCardTest
         var card = surgery.Room.Card;
         var me = driver.Me;
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "patient_card");
-            driver.OnKeyFrame = async (keyFrame, description) =>
-            {
+            driver.OnKeyFrame = async (keyFrame, description) => {
                 await shots.CaptureView(keyFrame, description);
-                if (keyFrame == "on_hook")
-                {
+                if (keyFrame == "on_hook") {
                     await shots.CaptureAt("on_hook_close", "close up, the card hangs on its hook on the bed rail, clear of the rail", card.HookPaper, 0.6f);
                 }
             };
@@ -79,8 +74,7 @@ public class PatientCardTest
         await SurgeryDriver.PlayerPutsCardBack(surgery);
         AssertBool(card.OnHook).OverrideFailureMessage("put back again, it hangs on its hook").IsTrue();
         driver.Budget.Check();
-        if (shots is not null)
-        {
+        if (shots is not null) {
             GD.Print($"key frames: {shots.OutDir}");
             shots.End();
         }
@@ -90,29 +84,23 @@ public class PatientCardTest
 
     [TestCase(false)]
     [TestCase(true)]
-    public async Task CorrectedChartReplacesPreviouslyReadRecord(bool stillOpen)
-    {
+    public async Task CorrectedChartReplacesPreviouslyReadRecord(bool stillOpen) {
         var driver = SurgeryDriver.Create();
-        try
-        {
+        try {
             await driver.Start("appendectomy", readingCard: true);
             var surgery = driver.Surgery;
             var original = surgery.Hud.Overlay!;
             AssertArray(original.FindChildren("*", nameof(Label), true, false).OfType<Label>()
                 .Select(label => label.Text).ToList())
                 .OverrideFailureMessage("the original record has no correction stamp").NotContains("CORRECTED COPY");
-            if (!stillOpen)
-            {
+            if (!stillOpen) {
                 await SurgeryDriver.PlayerPutsCardBack(surgery);
             }
             SurgeryState.PatientChartIsCorrected(surgery);
-            if (stillOpen)
-            {
+            if (stillOpen) {
                 // Re-entering the page while it is open must clear the old overlay before freeing it.
                 surgery.OpenCard();
-            }
-            else
-            {
+            } else {
                 AssertBool(await driver.PlayerInteracts("Read the patient card")).IsTrue();
             }
             AssertBool(await Frames.Until(() => surgery.Hud.Overlay?.Modulate.A >= 1f,
@@ -125,9 +113,7 @@ public class PatientCardTest
                 .OfType<Label>().Select(label => label.Text);
             AssertArray(page.ToList()).OverrideFailureMessage("reading again shows the nurse's corrected record")
                 .Contains("CORRECTED COPY");
-        }
-        finally
-        {
+        } finally {
             await driver.Stop();
         }
     }
@@ -137,15 +123,13 @@ public class PatientCardTest
     [TestCase("appendectomy")]
     [TestCase("sidewalk_stab")]
     [TestCase("ambulance_bullet")]
-    public async Task HookIsInViewFromEverySpawn(string scenario)
-    {
+    public async Task HookIsInViewFromEverySpawn(string scenario) {
         var driver = SurgeryDriver.Create();
         await driver.Start(scenario, readingCard: true);
         var partner = SurgeryState.PartnerIsAtTheTable(driver.Surgery);
         await Frames.Physics(2);
         var hook = driver.Surgery.Room.Card.HookPaper;
-        foreach (var surgeon in (Surgeon[])[driver.Me, partner])
-        {
+        foreach (var surgeon in (Surgeon[])[driver.Me, partner]) {
             AssertBool(surgeon.Camera.IsPositionInFrustum(hook))
                 .OverrideFailureMessage($"{scenario}: the hook is in view from spawn {surgeon.PeerId}").IsTrue();
         }
@@ -155,8 +139,7 @@ public class PatientCardTest
     /// <summary>A partner who leaves without the card out takes nothing along: the card stays in the reader's hands and
     /// doesn't turn up on the hook as well.</summary>
     [TestCase]
-    public async Task PartnerLeavingDoesNotDuplicateTheCard()
-    {
+    public async Task PartnerLeavingDoesNotDuplicateTheCard() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var surgery = driver.Surgery;
@@ -172,13 +155,11 @@ public class PatientCardTest
     }
 
     /// <summary>The card's paper is right in front of the eyes, facing them.</summary>
-    private static void AssertHeldUp(PatientCard card, Surgeon me, string when)
-    {
+    private static void AssertHeldUp(PatientCard card, Surgeon me, string when) {
         var eyes = me.Camera.GlobalTransform;
         var paper = card.PaperOf(me.PeerId);
         AssertObject(paper).OverrideFailureMessage($"{when} the card is out of the hook").IsNotNull();
-        if (paper is { } at)
-        {
+        if (paper is { } at) {
             var ahead = (at - eyes.Origin).Dot(-eyes.Basis.Z);
             AssertFloat(ahead).OverrideFailureMessage($"{when} the card is held up in front of the eyes")
                 .IsBetween(0.2f, 0.4f);

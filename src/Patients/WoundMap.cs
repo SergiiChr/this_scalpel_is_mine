@@ -10,8 +10,7 @@ public readonly record struct PaintOp(int Channel, float Value, WoundMap.Mode Mo
 /// Wounds and Fluids feed wound.gdshaderinc; the red channel of Seams is the simulated skin's closed-incision mask.
 /// Bleeds holds where each wound bleeds from (BloodFlow), painted by every peer on its own.
 /// </summary>
-public sealed class WoundMap
-{
+public sealed class WoundMap {
     public enum Layer { Wounds, Fluids, Seams, Bleeds }
 
     public enum Mode { Max, Add, Sub, Min }
@@ -59,12 +58,10 @@ public sealed class WoundMap
     private readonly bool[][] _painted = new bool[LayerCount][];
     private readonly Image[] _images = new Image[LayerCount];
 
-    public WoundMap(int texels = MaxSize)
-    {
+    public WoundMap(int texels = MaxSize) {
         Size = texels;
         Textures = new ImageTexture[LayerCount];
-        for (var i = 0; i < LayerCount; i++)
-        {
+        for (var i = 0; i < LayerCount; i++) {
             _images[i] = Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8);
             Textures[i] = ImageTexture.CreateFromImage(_images[i]);
             _data[i] = _images[i].GetData();
@@ -86,16 +83,13 @@ public sealed class WoundMap
     /// <summary>Stamps hard-edged disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line.
     /// </summary>
     public void Stroke(Layer layer, int channel, Vector2 a, Vector2 b, float radius, float value, Mode mode,
-        float jitter = 0f, ulong seed = 0)
-    {
+        float jitter = 0f, ulong seed = 0) {
         var step = Mathf.Max(radius * 0.5f, 0.5f / Size);
         var steps = Math.Max(1, Mathf.CeilToInt(a.DistanceTo(b) / step));
         var rng = new RandomNumberGenerator { Seed = seed };
-        for (var i = 0; i <= steps; i++)
-        {
+        for (var i = 0; i <= steps; i++) {
             var p = a.Lerp(b, (float)i / steps);
-            if (jitter > 0f)
-            {
+            if (jitter > 0f) {
                 p += new Vector2(rng.RandfRange(-jitter, jitter), rng.RandfRange(-jitter, jitter));
             }
             Disk(layer, channel, p, radius, value, mode, soft: false);
@@ -109,8 +103,7 @@ public sealed class WoundMap
     /// Paints several channels of one disk. Each channel gets its own tight loop over the disk's rows, with the mode
     /// picked outside the loop: a wipe paints big disks every frame.
     /// </summary>
-    public void DiskOps(Layer layer, Vector2 center, float radius, IEnumerable<PaintOp> ops, bool soft = true)
-    {
+    public void DiskOps(Layer layer, Vector2 center, float radius, IEnumerable<PaintOp> ops, bool soft = true) {
         var data = _data[(int)layer];
         var painted = _painted[(int)layer];
         var c = center * Size;
@@ -118,32 +111,25 @@ public sealed class WoundMap
         var lastCell = new Vector2I(Cells - 1, Cells - 1);
         var cellFrom = ((Vector2I)((center - Vector2.One * radius) * Cells)).Clamp(Vector2I.Zero, lastCell);
         var cellTo = ((Vector2I)((center + Vector2.One * radius) * Cells)).Clamp(Vector2I.Zero, lastCell);
-        foreach (var (channel, value, mode) in ops)
-        {
+        foreach (var (channel, value, mode) in ops) {
             var k = value * 255f;
             var hard = Mathf.RoundToInt(k);
             var any = false;
-            for (var cy = cellFrom.Y; cy <= cellTo.Y; cy++)
-            {
-                for (var cx = cellFrom.X; cx <= cellTo.X; cx++)
-                {
+            for (var cy = cellFrom.Y; cy <= cellTo.Y; cy++) {
+                for (var cx = cellFrom.X; cx <= cellTo.X; cx++) {
                     var cell = (cy * Cells + cx) * 4 + channel;
                     any = any || painted[cell];
-                    if (mode is Mode.Max or Mode.Add && k > 0f)
-                    {
+                    if (mode is Mode.Max or Mode.Add && k > 0f) {
                         painted[cell] = true;
                     }
                 }
             }
-            if (mode is Mode.Sub or Mode.Min && !any)
-            {
+            if (mode is Mode.Sub or Mode.Min && !any) {
                 continue;
             }
-            for (var y = Math.Max(0, Mathf.FloorToInt(c.Y - r)); y < Math.Min(Size, Mathf.CeilToInt(c.Y + r) + 1); y++)
-            {
+            for (var y = Math.Max(0, Mathf.FloorToInt(c.Y - r)); y < Math.Min(Size, Mathf.CeilToInt(c.Y + r) + 1); y++) {
                 var dy = (y + 0.5f - c.Y) / r;
-                if (dy * dy > 1f)
-                {
+                if (dy * dy > 1f) {
                     continue;
                 }
                 var half = Mathf.Sqrt(1f - dy * dy) * r;
@@ -151,17 +137,14 @@ public sealed class WoundMap
                 var from = Math.Max(0, Mathf.CeilToInt(c.X - half - 0.5f));
                 var to = Math.Min(Size, Mathf.FloorToInt(c.X + half - 0.5f) + 1);
                 var edge = 1f - dy * dy;
-                for (var x = from; x < to; x++)
-                {
+                for (var x = from; x < to; x++) {
                     var i = row + x * 4;
                     var amount = hard;
-                    if (soft && mode != Mode.Min)
-                    {
+                    if (soft && mode != Mode.Min) {
                         var dx = (x + 0.5f - c.X) / r;
                         amount = Mathf.RoundToInt(k * (edge - dx * dx));
                     }
-                    data[i] = mode switch
-                    {
+                    data[i] = mode switch {
                         Mode.Max => (byte)Math.Clamp(Math.Max(data[i], amount), 0, 255),
                         Mode.Add => (byte)Math.Clamp(data[i] + amount, 0, 255),
                         Mode.Sub => (byte)Math.Clamp(data[i] - amount, 0, 255),
@@ -175,19 +158,15 @@ public sealed class WoundMap
 
     /// <summary>One channel of the painted map at uv, 0..1, as painted so far (no need to wait for
     /// <see cref="Flush"/>).</summary>
-    public float Value(Layer layer, int channel, Vector2 uv)
-    {
+    public float Value(Layer layer, int channel, Vector2 uv) {
         var at = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Size - 1)).Floor();
         return _data[(int)layer][(at.Y * Size + at.X) * 4 + channel] / 255f;
     }
 
     /// <summary>Uploads changed images to the GPU. Call once per frame.</summary>
-    public void Flush()
-    {
-        for (var i = 0; i < LayerCount; i++)
-        {
-            if (_dirty[i])
-            {
+    public void Flush() {
+        for (var i = 0; i < LayerCount; i++) {
+            if (_dirty[i]) {
                 _images[i].SetData(Size, Size, false, Image.Format.Rgba8, _data[i]);
                 Textures[i].Update(_images[i]);
                 _dirty[i] = false;

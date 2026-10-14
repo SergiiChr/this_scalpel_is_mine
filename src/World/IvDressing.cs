@@ -10,8 +10,7 @@ namespace Scalpel.World;
 /// <see cref="Build"/>'s radius.
 /// </para>
 /// </summary>
-public partial class IvDressing : Node3D
-{
+public partial class IvDressing : Node3D {
     /// <summary>Where the hub sits along the arm (toward the hand, behind where the catheter goes in): from, to.
     /// </summary>
     private static readonly Vector2 Hub = new(-0.028f, -0.012f);
@@ -32,8 +31,7 @@ public partial class IvDressing : Node3D
     /// <summary>The tubing's look, shared with the hanging part (<see cref="IvLine"/>).</summary>
     public static ShaderMaterial TubingMaterial() => Materials.ToonShaded(new Color(0.82f, 0.88f, 0.9f), 0.1f, false, 0.2f);
 
-    public void Build(float armRadius)
-    {
+    public void Build(float armRadius) {
         _radius = armRadius;
         var plastic = Materials.ToonShaded(PlasticColor, 0.05f, false, 0.2f);
         // The visible end of the catheter, going into the skin at a shallow angle.
@@ -49,8 +47,7 @@ public partial class IvDressing : Node3D
         Add(Shapes.Tube(taped, IvLine.Radius, IvLine.Radius), TubingMaterial());
         Add(Patch(Film, 0.0006f, 0.0002f), FilmMaterial());
         var tape = Materials.FamilyUnique("cloth", TapeColor, 0.95f);
-        foreach (var strip in Tapes)
-        {
+        foreach (var strip in Tapes) {
             Add(Patch(new Rect2(strip.X, -strip.Z, strip.Y - strip.X, strip.Z * 2f), 0.0007f, 0.0005f), tape);
         }
         // The printed band on the tape over the hub.
@@ -64,17 +61,14 @@ public partial class IvDressing : Node3D
 
     /// <summary>How high whatever lies on the skin reaches under a strip at (x, z): the hub with its wings, the tubing.
     /// </summary>
-    private static float Under(float x, float z)
-    {
+    private static float Under(float x, float z) {
         static float Bump(float z, float radius) =>
             radius * 2f * Mathf.Sqrt(Mathf.Max(1f - Mathf.Pow(z / (radius * 1.6f), 2f), 0f));
         var height = 0f;
-        if (x > Hub.X - 0.002f && x < Hub.Y + 0.002f)
-        {
+        if (x > Hub.X - 0.002f && x < Hub.Y + 0.002f) {
             height = Mathf.Max(height, Bump(z, HubRadius));
         }
-        if (x < Hub.X && x > Exit.X - 0.005f)
-        {
+        if (x < Hub.X && x > Exit.X - 0.005f) {
             height = Mathf.Max(height, Bump(z, IvLine.Radius));
         }
         return height;
@@ -82,8 +76,7 @@ public partial class IvDressing : Node3D
 
     /// <summary>A point <paramref name="lift"/> off the arm's skin at x along the arm and z across it (arc length), the
     /// arm a cylinder around X.</summary>
-    private Vector3 OnArm(float x, float z, float lift)
-    {
+    private Vector3 OnArm(float x, float z, float lift) {
         var angle = z / _radius;
         return new Vector3(x, ((_radius + lift) * Mathf.Cos(angle)) - _radius, (_radius + lift) * Mathf.Sin(angle));
     }
@@ -91,15 +84,12 @@ public partial class IvDressing : Node3D
     /// <summary>A thin sheet (film, tape, the catheter's wings) over <paramref name="area"/> (x along the arm, y across
     /// it), laid on the skin <paramref name="lift"/> up and, if it drapes, over what's under it,
     /// <paramref name="thickness"/> thick. Only its top is drawn: the rest faces the skin.</summary>
-    private ArrayMesh Patch(Rect2 area, float lift, float thickness, bool drapes = true)
-    {
+    private ArrayMesh Patch(Rect2 area, float lift, float thickness, bool drapes = true) {
         var columns = Math.Max(2, Mathf.CeilToInt(area.Size.X / 0.002f));
         var rows = Math.Max(2, Mathf.CeilToInt(area.Size.Y / 0.002f));
         var grid = new Vector3[columns + 1, rows + 1];
-        for (var i = 0; i <= columns; i++)
-        {
-            for (var j = 0; j <= rows; j++)
-            {
+        for (var i = 0; i <= columns; i++) {
+            for (var j = 0; j <= rows; j++) {
                 var x = area.Position.X + (area.Size.X * i / columns);
                 var z = area.Position.Y + (area.Size.Y * j / rows);
                 grid[i, j] = OnArm(x, z, lift + thickness + (drapes ? Under(x, z) : 0f));
@@ -107,14 +97,11 @@ public partial class IvDressing : Node3D
         }
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
-        for (var i = 0; i < columns; i++)
-        {
-            for (var j = 0; j < rows; j++)
-            {
+        for (var i = 0; i < columns; i++) {
+            for (var j = 0; j < rows; j++) {
                 // Facing out of the skin: Godot's front faces wind clockwise.
                 foreach (var vertex in (Vector3[])[
-                    grid[i, j], grid[i + 1, j], grid[i, j + 1], grid[i + 1, j], grid[i + 1, j + 1], grid[i, j + 1]])
-                {
+                    grid[i, j], grid[i + 1, j], grid[i, j + 1], grid[i + 1, j], grid[i + 1, j + 1], grid[i, j + 1]]) {
                     surface.AddVertex(vertex);
                 }
             }
@@ -123,8 +110,7 @@ public partial class IvDressing : Node3D
         return surface.Commit();
     }
 
-    private static StandardMaterial3D FilmMaterial() => new()
-    {
+    private static StandardMaterial3D FilmMaterial() => new() {
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         AlbedoColor = new Color(0.94f, 0.96f, 0.98f, 0.28f),
         Roughness = 0.15f,

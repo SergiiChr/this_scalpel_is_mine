@@ -4,8 +4,7 @@ namespace Scalpel.Visuals;
 /// the skin; deeper bleeds into the cavity. <paramref name="Point"/>: it bleeds onto the skin from a single hole (a
 /// puncture, a bullet hole), which shows a spot there. A cut along a line shows none on the skin: split by the cut, it
 /// would lie across both lips.</summary>
-public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 0f, bool Point = false)
-{
+public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 0f, bool Point = false) {
     public bool Inside => Depth > 0f;
 
     public static Godot.Collections.Array ToVariant(IEnumerable<BleedSource> sources) =>
@@ -18,8 +17,7 @@ public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 
 
 /// <summary>Blood held in a cut that doesn't reach the cavity: where it bleeds (site uv), how deep under the skin the first
 /// layer it hasn't cut through lies (meters), which the blood rests on, and how full it is (0..1).</summary>
-public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill)
-{
+public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill) {
     public static Godot.Collections.Array ToVariant(IEnumerable<CutPool> pools) =>
         [.. pools.Select(pool => (Variant)new Godot.Collections.Array { pool.Uv, pool.Floor, pool.Fill })];
 
@@ -39,8 +37,7 @@ public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill)
 /// Bleeding under skin that isn't cut open spreads a bruise over it.
 /// Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
 /// </summary>
-public partial class BloodFlow : Node3D
-{
+public partial class BloodFlow : Node3D {
     /// <summary>Blood thrown up right in front of the local surgeon's eyes hits their view (see Hud), amount 0..1.
     /// </summary>
     [Signal] public delegate void SplashedEventHandler(float amount);
@@ -97,15 +94,13 @@ public partial class BloodFlow : Node3D
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    private sealed class Rivulet(Vector2 uv, float volume, float wander)
-    {
+    private sealed class Rivulet(Vector2 uv, float volume, float wander) {
         public Vector2 Uv = uv;
         public float Volume = volume;
         public float Wander { get; } = wander;
     }
 
-    private sealed class Drop(Vector3 position, Vector3 velocity)
-    {
+    private sealed class Drop(Vector3 position, Vector3 velocity) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
     }
@@ -151,16 +146,12 @@ public partial class BloodFlow : Node3D
     /// <summary>Where the domes welling up on the cavity pool stand now (world).</summary>
     internal IReadOnlyList<Vector3> Wells => _wells;
 
-    public void Setup(PatientBody patientBody)
-    {
+    public void Setup(PatientBody patientBody) {
         _body = patientBody;
-        _dropMesh = new MultiMeshInstance3D
-        {
-            Multimesh = new MultiMesh
-            {
+        _dropMesh = new MultiMeshInstance3D {
+            Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = new SphereMesh
-                {
+                Mesh = new SphereMesh {
                     Radius = DropRadius,
                     Height = DropRadius * 2.6f,
                     RadialSegments = 6,
@@ -174,10 +165,8 @@ public partial class BloodFlow : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_dropMesh);
-        _wellMesh = new MultiMeshInstance3D
-        {
-            Multimesh = new MultiMesh
-            {
+        _wellMesh = new MultiMeshInstance3D {
+            Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
                 Mesh = new SphereMesh { Radius = 1f, Height = 1f, RadialSegments = 16, Rings = 4, IsHemisphere = true },
                 InstanceCount = 16,
@@ -188,10 +177,8 @@ public partial class BloodFlow : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_wellMesh);
-        _cutPoolMesh = new MultiMeshInstance3D
-        {
-            Multimesh = new MultiMesh
-            {
+        _cutPoolMesh = new MultiMeshInstance3D {
+            Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
                 Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 20, Rings = 4, IsHemisphere = true },
                 InstanceCount = 16,
@@ -204,42 +191,34 @@ public partial class BloodFlow : Node3D
         AddChild(_cutPoolMesh);
     }
 
-    public override void _Process(double delta)
-    {
-        if (_body is null || delta <= 0)
-        {
+    public override void _Process(double delta) {
+        if (_body is null || delta <= 0) {
             return;
         }
         Spawn(_body, (float)delta);
         Well(_body, (float)delta);
         PoolInCuts(_body);
-        if (_paintPuddles)
-        {
+        if (_paintPuddles) {
             Spots(_body);
         }
         Flow(_body, (float)delta);
         Fall((float)delta);
     }
 
-    private void Spawn(PatientBody body, float delta)
-    {
+    private void Spawn(PatientBody body, float delta) {
         _puddleTimer += delta;
         _paintPuddles = _puddleTimer >= PuddlePaintInterval;
-        if (_paintPuddles)
-        {
+        if (_paintPuddles) {
             _puddleTimer = 0f;
         }
-        for (var i = 0; i < Sources.Count; i++)
-        {
+        for (var i = 0; i < Sources.Count; i++) {
             var (uv, rate, _, _) = Sources[i];
-            if (Sources[i].Inside)
-            {
+            if (Sources[i].Inside) {
                 continue;
             }
             var radius = Puddle(body, uv, rate * delta, _paintPuddles);
             var acc = _spawnAcc.GetValueOrDefault(i) + rate * delta * RivuletsPerMl;
-            while (acc >= 1f && _rivulets.Count < MaxRivulets)
-            {
+            while (acc >= 1f && _rivulets.Count < MaxRivulets) {
                 acc -= 1f;
                 var edge = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0.6f, 0.95f);
                 _rivulets.Add(new Rivulet(uv + edge, _rng.RandfRange(0.6f, 1.2f), _rng.RandfRange(-1f, 1f)));
@@ -250,10 +229,8 @@ public partial class BloodFlow : Node3D
     }
 
     /// <summary>A strong bleed throws droplets up from <paramref name="at"/> now and then.</summary>
-    private void Spurt(PatientBody body, Vector3 at, float rate, float delta)
-    {
-        if (rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f)
-        {
+    private void Spurt(PatientBody body, Vector3 at, float rate, float delta) {
+        if (rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f) {
             var spray = body.Site.GlobalBasis.Y * _rng.RandfRange(0.6f, 1.3f)
                 + new Vector3(_rng.RandfRange(-0.4f, 0.4f), 0f, _rng.RandfRange(-0.4f, 0.4f));
             AddDrop(at, spray);
@@ -265,21 +242,17 @@ public partial class BloodFlow : Node3D
     /// Bleeds inside: a pulsing dome on the cavity pool's surface where that covers a source in the opening, spurting
     /// when strong. A source under skin that isn't open spreads a bruise over itself instead.
     /// </summary>
-    private void Well(PatientBody body, float delta)
-    {
+    private void Well(PatientBody body, float delta) {
         var multimesh = _wellMesh.Multimesh;
         _wells.Clear();
         // Every source gets its dome: the buffer grows with them (resizing clears it, all are set again below).
         var inside = Sources.Count(source => source.Inside);
-        if (inside > multimesh.InstanceCount)
-        {
+        if (inside > multimesh.InstanceCount) {
             multimesh.InstanceCount = inside * 2;
         }
         var pulse = WellFlat * (1f + 0.3f * Mathf.Sin((float)GameClock.Seconds * Mathf.Tau * WellPulse));
-        foreach (var (uv, rate, depth, _) in Sources.Where(source => source.Inside))
-        {
-            if (!body.Tissue.IsOpen(uv, TissueDepth.Skin))
-            {
+        foreach (var (uv, rate, depth, _) in Sources.Where(source => source.Inside)) {
+            if (!body.Tissue.IsOpen(uv, TissueDepth.Skin)) {
                 Bruise(body, uv, rate * delta);
                 continue;
             }
@@ -288,8 +261,7 @@ public partial class BloodFlow : Node3D
             local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
             var at = body.Site.ToGlobal(local);
             // The pool doesn't move with the tissue, so a dome on it stays where it wells up.
-            if (pooled)
-            {
+            if (pooled) {
                 var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
                 var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
                 multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
@@ -305,16 +277,13 @@ public partial class BloodFlow : Node3D
     /// through, rising toward the skin as it fills and spreading along the cut. The skin around hides all but what lies
     /// in the opening. It doesn't move with the tissue, like the cavity's pool.
     /// </summary>
-    private void PoolInCuts(PatientBody body)
-    {
+    private void PoolInCuts(PatientBody body) {
         var multimesh = _cutPoolMesh.Multimesh;
         _cutPools.Clear();
-        if (Pools.Count > multimesh.InstanceCount)
-        {
+        if (Pools.Count > multimesh.InstanceCount) {
             multimesh.InstanceCount = Pools.Count * 2;
         }
-        foreach (var (uv, floor, fill) in Pools)
-        {
+        foreach (var (uv, floor, fill) in Pools) {
             // Just above the floor when it starts, so it never sinks into the layer it rests on, and full still a little
             // under the skin, which curves away from a flat pool around the cut.
             var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
@@ -327,8 +296,7 @@ public partial class BloodFlow : Node3D
             var across = body.UvToWorld(uv + new Vector2(e, 0f)) - body.UvToWorld(uv - new Vector2(e, 0f));
             var along = body.UvToWorld(uv + new Vector2(0f, e)) - body.UvToWorld(uv - new Vector2(0f, e));
             var up = along.Cross(across).Normalized();
-            if (up.Dot(body.Site.GlobalBasis.Y) < 0f)
-            {
+            if (up.Dot(body.Site.GlobalBasis.Y) < 0f) {
                 up = -up;
             }
             var x = across.Slide(up).Normalized();
@@ -345,41 +313,32 @@ public partial class BloodFlow : Node3D
     /// the skin as well as bleeding inside keeps its one spot inside. A spot that would overlap a faster bleed's in
     /// another layer isn't painted: blending the two would smear their depths into a streak down the wall.
     /// </summary>
-    private void Spots(PatientBody body)
-    {
+    private void Spots(PatientBody body) {
         var map = body.WoundMap;
-        foreach (var (uv, radius, _) in _spots)
-        {
+        foreach (var (uv, radius, _) in _spots) {
             map.DiskOps(WoundMap.Layer.Bleeds, uv, radius, WipeSpot, soft: false);
         }
         _spots.Clear();
         var inside = Sources.Where(source => source.Inside).Select(source => source.Uv).ToHashSet();
-        foreach (var (uv, rate, depth, point) in Sources.OrderByDescending(source => source.Rate))
-        {
-            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || inside.Contains(uv))
-            {
+        foreach (var (uv, rate, depth, point) in Sources.OrderByDescending(source => source.Rate)) {
+            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || inside.Contains(uv)) {
                 continue;
             }
             // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
             // it never runs off it.
             var (top, thickness) = LayerAt(body, uv, depth);
             var radius = Mathf.Min(SpotMin + Mathf.Sqrt(rate) * SpotGrowth, WoundMap.MaxSpotRadius);
-            if (depth > 0f)
-            {
+            if (depth > 0f) {
                 radius = Mathf.Min(radius, thickness * 0.5f);
             }
             var size = body.MetersToUv(radius);
             var center = depth > 0f ? top + thickness * 0.5f : 0f;
-            if (_spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size))
-            {
+            if (_spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size)) {
                 continue;
             }
-            if (depth <= 0f)
-            {
+            if (depth <= 0f) {
                 map.Disk(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv, size, 1f, WoundMap.Mode.Max);
-            }
-            else
-            {
+            } else {
                 map.DiskOps(WoundMap.Layer.Bleeds, uv, size,
                 [
                     new(WoundMap.Spot, 1f, WoundMap.Mode.Max),
@@ -397,18 +356,15 @@ public partial class BloodFlow : Node3D
     /// the cut there goes. A cut bleeding from its own edges (as deep as the skin) shows on the deepest layer it's cut
     /// through.
     /// </summary>
-    private static (float Top, float Thickness) LayerAt(PatientBody body, Vector2 uv, float depth)
-    {
-        var cut = body.Tissue.DeepestCut(uv, body.Tissue.OpenReach * 2f) switch
-        {
+    private static (float Top, float Thickness) LayerAt(PatientBody body, Vector2 uv, float depth) {
+        var cut = body.Tissue.DeepestCut(uv, body.Tissue.OpenReach * 2f) switch {
             TissueDepth.Muscle => 2,
             TissueDepth.Fat => 1,
             _ => 0,
         };
         // As deep as the skin is a cut's own edge: any layer the cut reaches.
         var lies = depth <= PatientBody.SkinThickness ? 2 : depth <= PatientBody.SkinThickness + body.FatThickness ? 1 : 2;
-        return Math.Min(lies, cut) switch
-        {
+        return Math.Min(lies, cut) switch {
             0 => (0f, PatientBody.SkinThickness),
             1 => (PatientBody.SkinThickness, body.FatThickness),
             _ => (PatientBody.SkinThickness + body.FatThickness, PatientBody.MuscleThickness),
@@ -416,13 +372,11 @@ public partial class BloodFlow : Node3D
     }
 
     /// <summary>Spreads a bruise over a bleed under closed skin as blood collects there, keyed like puddles.</summary>
-    private void Bruise(PatientBody body, Vector2 uv, float ml)
-    {
+    private void Bruise(PatientBody body, Vector2 uv, float ml) {
         var key = (Vector2I)(uv * 100f).Round();
         var pooled = _bruised.GetValueOrDefault(key) + ml;
         _bruised[key] = pooled;
-        if (_paintPuddles)
-        {
+        if (_paintPuddles) {
             var radius = Mathf.Min(BruiseStart + Mathf.Sqrt(pooled) * BruiseGrowth, BruiseMax);
             body.WoundMap.Disk(WoundMap.Layer.Wounds, WoundMap.Bruise, uv, radius, Mathf.Min(0.3f + pooled * 0.02f, 0.9f),
                 WoundMap.Mode.Max);
@@ -434,19 +388,16 @@ public partial class BloodFlow : Node3D
     /// fluid map comes back clean at the wound) starts it over. Painted a few times a second as overlapping blobs, so
     /// its edge is ragged.
     /// </summary>
-    private float Puddle(PatientBody body, Vector2 uv, float ml, bool paint)
-    {
+    private float Puddle(PatientBody body, Vector2 uv, float ml, bool paint) {
         var key = (Vector2I)(uv * 100f).Round();
         var map = body.WoundMap;
-        if (_pooled.ContainsKey(key) && map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv) < 0.3f)
-        {
+        if (_pooled.ContainsKey(key) && map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv) < 0.3f) {
             _pooled[key] = 0f;
         }
         var pooled = _pooled.GetValueOrDefault(key) + ml;
         _pooled[key] = pooled;
         var radius = Mathf.Min(PuddleStart + Mathf.Sqrt(pooled) * PuddleGrowth, PuddleMax);
-        if (paint)
-        {
+        if (paint) {
             var blob = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0f, 0.35f);
             map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv + blob, radius * _rng.RandfRange(0.7f, 1f), 0.95f,
                 WoundMap.Mode.Max);
@@ -455,16 +406,13 @@ public partial class BloodFlow : Node3D
     }
 
     /// <summary>Rivulets slide downhill over the skin: gravity along the skin's own slope, wandering a little.</summary>
-    private void Flow(PatientBody body, float delta)
-    {
+    private void Flow(PatientBody body, float delta) {
         var down = body.Site.GlobalBasis.Inverse() * Vector3.Down;
-        foreach (var rivulet in _rivulets.ToList())
-        {
+        foreach (var rivulet in _rivulets.ToList()) {
             var uv = rivulet.Uv;
             var slope = Slope(body, uv);
             var along = new Vector2(down.X, down.Z) + slope * down.Y;
-            if (along.Length() < 0.05f)
-            {
+            if (along.Length() < 0.05f) {
                 along = new Vector2(rivulet.Wander, 1f) * 0.05f;
             }
             var direction = along.Normalized().Rotated(Mathf.Sin((float)GameClock.Msec * 0.0015f + rivulet.Wander * 9f) * 0.2f);
@@ -473,22 +421,18 @@ public partial class BloodFlow : Node3D
             body.WoundMap.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, uv, next, StainRadius, 0.55f, WoundMap.Mode.Max);
             rivulet.Uv = next;
             rivulet.Volume -= delta * 0.25f;
-            if (next.X < 0f || next.Y < 0f || next.X > 1f || next.Y > 1f)
-            {
+            if (next.X < 0f || next.Y < 0f || next.X > 1f || next.Y > 1f) {
                 // Ran off the site: it drips from here.
                 AddDrop(body.UvToWorld(next.Clamp(Vector2.Zero, Vector2.One)), Vector3.Zero);
                 _rivulets.Remove(rivulet);
-            }
-            else if (rivulet.Volume <= 0f)
-            {
+            } else if (rivulet.Volume <= 0f) {
                 _rivulets.Remove(rivulet);
             }
         }
     }
 
     /// <summary>Skin slope at uv (height change per uv unit), from the baked skin heights.</summary>
-    private static Vector2 Slope(PatientBody body, Vector2 uv)
-    {
+    private static Vector2 Slope(PatientBody body, Vector2 uv) {
         const float E = 0.02f;
         var dx = body.SurfaceHeight(uv + new Vector2(E, 0)) - body.SurfaceHeight(uv - new Vector2(E, 0));
         var dy = body.SurfaceHeight(uv + new Vector2(0, E)) - body.SurfaceHeight(uv - new Vector2(0, E));
@@ -497,15 +441,12 @@ public partial class BloodFlow : Node3D
 
     /// <summary>Throws <paramref name="count"/> droplets up and out from <paramref name="at"/> (an impact, a saw),
     /// <paramref name="speed"/> in m/s.</summary>
-    public void Spray(Vector3 at, int count, float speed)
-    {
-        if (_body is null)
-        {
+    public void Spray(Vector3 at, int count, float speed) {
+        if (_body is null) {
             return;
         }
         var up = _body.Site.GlobalBasis.Y;
-        for (var i = 0; i < count; i++)
-        {
+        for (var i = 0; i < count; i++) {
             var outward = new Vector3(_rng.RandfRange(-1f, 1f), 0f, _rng.RandfRange(-1f, 1f)) * 0.6f;
             AddDrop(at + up * 0.004f, (up + outward).Normalized() * speed * _rng.RandfRange(0.5f, 1f));
         }
@@ -513,52 +454,41 @@ public partial class BloodFlow : Node3D
     }
 
     /// <summary>Closer and more head-on hits more.</summary>
-    private void Splash(Vector3 at, float amount)
-    {
-        if (GetViewport().GetCamera3D() is not { } camera)
-        {
+    private void Splash(Vector3 at, float amount) {
+        if (GetViewport().GetCamera3D() is not { } camera) {
             return;
         }
         var to = at - camera.GlobalPosition;
         var facing = to.Normalized().Dot(-camera.GlobalBasis.Z);
-        if (to.Length() < SplashReach && facing > 0.7f)
-        {
+        if (to.Length() < SplashReach && facing > 0.7f) {
             EmitSignal(SignalName.Splashed, amount * (1f - to.Length() / SplashReach) * 2f);
         }
     }
 
-    private void AddDrop(Vector3 at, Vector3 velocity)
-    {
-        if (_drops.Count < MaxDrops)
-        {
+    private void AddDrop(Vector3 at, Vector3 velocity) {
+        if (_drops.Count < MaxDrops) {
             _drops.Add(new Drop(at, velocity));
         }
     }
 
     /// <summary>Droplets fall under gravity and land on the table top or the floor, where they pool.</summary>
-    private void Fall(float delta)
-    {
+    private void Fall(float delta) {
         const float TableTop = Room.TableHeight + 0.07f;
-        foreach (var drop in _drops.ToList())
-        {
+        foreach (var drop in _drops.ToList()) {
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
             var onTable = position.X > Room.TableFoot && position.X < Room.TableHead && Mathf.Abs(position.Z) < 0.31f;
             var ground = onTable && drop.Position.Y >= TableTop ? TableTop : FloorY;
-            if (position.Y <= ground)
-            {
+            if (position.Y <= ground) {
                 Pool(new Vector3(position.X, ground, position.Z));
                 _drops.Remove(drop);
-            }
-            else
-            {
+            } else {
                 drop.Position = position;
             }
         }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
-        for (var i = 0; i < _drops.Count; i++)
-        {
+        for (var i = 0; i < _drops.Count; i++) {
             multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, _drops[i].Position));
         }
     }
@@ -567,19 +497,15 @@ public partial class BloodFlow : Node3D
     /// Adds a drop's worth of blood to the nearest pool, or starts a new one. Pools grow with the square root of
     /// volume. Each is a very flat dome, so its rounded rim catches the light like standing liquid.
     /// </summary>
-    private void Pool(Vector3 at)
-    {
-        foreach (var pool in _pools)
-        {
-            if (pool.Position.DistanceTo(at) < PoolMerge + pool.Scale.X)
-            {
+    private void Pool(Vector3 at) {
+        foreach (var pool in _pools) {
+            if (pool.Position.DistanceTo(at) < PoolMerge + pool.Scale.X) {
                 var radius = Mathf.Min(Mathf.Sqrt(pool.Scale.X * pool.Scale.X + PoolAreaPerDrop), PoolMaxRadius);
                 pool.Scale = new Vector3(radius, PoolThickness, radius);
                 return;
             }
         }
-        var mesh = new MeshInstance3D
-        {
+        var mesh = new MeshInstance3D {
             Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 6, IsHemisphere = true },
             MaterialOverride = Materials.BloodPool(),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,

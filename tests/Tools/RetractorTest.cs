@@ -11,8 +11,7 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class RetractorTest
-{
+public class RetractorTest {
     private const float Length = 0.05f;
     /// <summary>How far (meters) from the cut the hook goes in, and how far the hand then draws it aside.</summary>
     private const float HookOff = 0.006f;
@@ -33,8 +32,7 @@ public class RetractorTest
     private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     [TestCase]
-    public async Task RetractorHooksOneEdgeAndPullsTheCutOpen()
-    {
+    public async Task RetractorHooksOneEdgeAndPullsTheCutOpen() {
         var session = await ToolSession.Start("appendectomy", "retractor/pull");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -112,8 +110,7 @@ public class RetractorTest
     /// <summary>Skin isn't dragged across the site like rubber: pulled past what it gives, it holds the hand where it
     /// stops (<see cref="TissueSim.Restrain"/>), the way holding onto something stops a hand.</summary>
     [TestCase]
-    public async Task PulledPastWhatTheSkinGivesTheHandIsHeldBack()
-    {
+    public async Task PulledPastWhatTheSkinGivesTheHandIsHeldBack() {
         var session = await ToolSession.Start("appendectomy", "retractor/held_back");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -151,8 +148,7 @@ public class RetractorTest
     }
 
     [TestCase]
-    public async Task RetractorsLetGoRoundAWidenedThighWoundLieAlongTheLimb()
-    {
+    public async Task RetractorsLetGoRoundAWidenedThighWoundLieAlongTheLimb() {
         var session = await ToolSession.Start("bullet_muscle", "retractor/thigh");
         var driver = session.Driver;
         var body = driver.Body;
@@ -165,8 +161,7 @@ public class RetractorTest
         await Frames.Seconds(1f);
         var wounds = driver.Patient.Wounds.Count;
         var hooks = new List<SurgicalTool>();
-        foreach (var away in (Vector2[])[new(0, -1), new(0, 1), new(1, 0)])
-        {
+        foreach (var away in (Vector2[])[new(0, -1), new(0, 1), new(1, 0)]) {
             var number = hooks.Count + 1;
             // On each side at the edge of the opening, pressed into it as a player does: the hook catches the edge on
             // that side. At the end on the skin past it: drawn along the cut from inside it, it would tear it longer.
@@ -182,8 +177,7 @@ public class RetractorTest
                 .IsEqual(wounds);
             hooks.Add(retractor);
         }
-        foreach (var retractor in hooks)
-        {
+        foreach (var retractor in hooks) {
             AssertLiesOnBody(driver, retractor);
         }
         await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
@@ -191,8 +185,7 @@ public class RetractorTest
     }
 
     [TestCase]
-    public async Task FourRetractorsHoldTheAbdomenOpenForTheScalpelAndForceps()
-    {
+    public async Task FourRetractorsHoldTheAbdomenOpenForTheScalpelAndForceps() {
         var session = await ToolSession.Start("appendectomy", "retractor/four");
         var driver = session.Driver;
         var patient = driver.Patient;
@@ -208,8 +201,7 @@ public class RetractorTest
 
         // Two retractors on each edge, a third of the way in from each end, each hooked and drawn away from the cut.
         var hooks = new List<SurgicalTool>();
-        foreach (var spot in (Vector2[])[new(-1, -1), new(1, -1), new(-1, 1), new(1, 1)])
-        {
+        foreach (var spot in (Vector2[])[new(-1, -1), new(1, -1), new(-1, 1), new(1, 1)]) {
             var number = hooks.Count + 1;
             var at = EdgeBeside(driver, appendix.Uv + new Vector2(half.X * spot.X / 3f, 0f), new Vector2(0f, spot.Y));
             SurgeryState.ToolIsOnTray(driver.Surgery, "retractor");
@@ -227,8 +219,7 @@ public class RetractorTest
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("held open without tearing").IsEqual(wounds);
         // Over a few breaths: the belly rises and falls, and the retractors on it with it.
         var deepest = 0f;
-        for (var i = 0; i < 16; i++)
-        {
+        for (var i = 0; i < 16; i++) {
             await Frames.Seconds(0.25f);
             deepest = Mathf.Max(deepest, hooks.Max(retractor => PressedIn(driver, retractor)));
         }
@@ -245,8 +236,7 @@ public class RetractorTest
         await driver.SetLevel(3);
         SurgeryDriver.Use();
         var reached = false;
-        for (var i = 0; i < 30; i++)
-        {
+        for (var i = 0; i < 30; i++) {
             await Frames.Physics(1);
             reached = reached || body.Probe(scalpel.TipPosition()).Zone == SiteZone.Cavity;
         }
@@ -268,8 +258,7 @@ public class RetractorTest
 
     /// <summary>A retractor (a fresh one when the tray has one) hooked at <paramref name="at"/> (world) with Use tool.
     /// </summary>
-    private static async Task<SurgicalTool> Hook(SurgeryDriver driver, Vector3 at, string name)
-    {
+    private static async Task<SurgicalTool> Hook(SurgeryDriver driver, Vector3 at, string name) {
         var retractor = (await driver.PlayerRequestsItem("retractor"))!;
         await driver.PlayerWalksTo(at);
         await driver.PlayerReaches(at);
@@ -284,8 +273,7 @@ public class RetractorTest
 
     /// <summary>Draws the hooked retractor <paramref name="pull"/> (world) aside and lets go of it with Grab: it stays
     /// hooked, its handle pointing the way it pulled.</summary>
-    private static async Task LetGoPulled(SurgeryDriver driver, SurgicalTool retractor, Vector3 pull, int number)
-    {
+    private static async Task LetGoPulled(SurgeryDriver driver, SurgicalTool retractor, Vector3 pull, int number) {
         await driver.PlayerSweepsTo(retractor.TipPosition() + pull);
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(1f);
@@ -296,11 +284,9 @@ public class RetractorTest
 
     /// <summary>The skin just outside the opening's edge from <paramref name="uv"/> (on the cut) toward
     /// <paramref name="away"/>: where the skin is whole, HookOff further out.</summary>
-    private static Vector2 EdgeBeside(SurgeryDriver driver, Vector2 uv, Vector2 away)
-    {
+    private static Vector2 EdgeBeside(SurgeryDriver driver, Vector2 uv, Vector2 away) {
         var step = away * driver.Body.MetersToUv(0.001f);
-        for (var i = 0; i < 60 && driver.Body.LayerAt(uv) != "skin"; i++)
-        {
+        for (var i = 0; i < 60 && driver.Body.LayerAt(uv) != "skin"; i++) {
             uv += step;
         }
         return uv + (step * HookOff * 1000f);
@@ -308,19 +294,15 @@ public class RetractorTest
 
     /// <summary>Where the cut's two edges are at its middle (site z, meters): the mean of the lips on the -v side and the
     /// +v side.</summary>
-    private static float[] Lips(SurgeryDriver driver, Vector2 middle)
-    {
+    private static float[] Lips(SurgeryDriver driver, Vector2 middle) {
         var tissue = driver.Body.Tissue;
         var sums = new float[2];
         var counts = new int[2];
-        foreach (var s in tissue.Severed)
-        {
-            if (Mathf.Abs(tissue.CrossingUv(s).X - middle.X) > driver.Body.MetersToUv(0.01f))
-            {
+        foreach (var s in tissue.Severed) {
+            if (Mathf.Abs(tissue.CrossingUv(s).X - middle.X) > driver.Body.MetersToUv(0.01f)) {
                 continue;
             }
-            foreach (var k in (int[])[tissue.SpringAt(s).A, tissue.SpringAt(s).B])
-            {
+            foreach (var k in (int[])[tissue.SpringAt(s).A, tissue.SpringAt(s).B]) {
                 var side = tissue.UvOf(k).Y > middle.Y ? 1 : 0;
                 sums[side] += tissue.Pos[k].Z;
                 counts[side]++;
@@ -332,8 +314,7 @@ public class RetractorTest
     /// <summary>A retractor let go of lies on the body: its handle tilts up no more than LyingTilt over the way the body
     /// rises from its hook to its handle (over level where the handle hangs past the edge of a limb), and it presses into
     /// the body nowhere deeper than LyingPress.</summary>
-    private static void AssertLiesOnBody(SurgeryDriver driver, SurgicalTool retractor)
-    {
+    private static void AssertLiesOnBody(SurgeryDriver driver, SurgicalTool retractor) {
         var tip = retractor.TipPosition();
         var grip = retractor.GlobalPosition;
         var across = (grip - tip).Slide(Vector3.Up).Length();
@@ -349,14 +330,11 @@ public class RetractorTest
     }
 
     /// <summary>How deep (meters) a retractor lying on the body presses into it at its deepest along it now.</summary>
-    private static float PressedIn(SurgeryDriver driver, SurgicalTool retractor)
-    {
+    private static float PressedIn(SurgeryDriver driver, SurgicalTool retractor) {
         var deepest = 0f;
-        for (var i = 1; i <= 10; i++)
-        {
+        for (var i = 1; i <= 10; i++) {
             var p = retractor.TipPosition().Lerp(retractor.GlobalPosition, i / 10f);
-            if (BodyHeight(driver, p) is { } height)
-            {
+            if (BodyHeight(driver, p) is { } height) {
                 deepest = Mathf.Max(deepest, height - p.Y);
             }
         }
@@ -365,8 +343,7 @@ public class RetractorTest
 
     /// <summary>A retractor let go of points its handle straight away from where it hooked: the way it was pulled.
     /// </summary>
-    private static void AssertPointsAway(SurgicalTool retractor, Vector3 pull)
-    {
+    private static void AssertPointsAway(SurgicalTool retractor, Vector3 pull) {
         var handle = (retractor.GlobalPosition - retractor.TipPosition()).Slide(Vector3.Up);
         var facing = handle.Normalized().Dot(pull.Slide(Vector3.Up).Normalized());
         AssertFloat(facing)
@@ -376,12 +353,10 @@ public class RetractorTest
 
     /// <summary>The height of the body at rest under <paramref name="p"/> (world y): the site's measured surface,
     /// elsewhere the body's own collider. Null off the body.</summary>
-    private static float? BodyHeight(SurgeryDriver driver, Vector3 p)
-    {
+    private static float? BodyHeight(SurgeryDriver driver, Vector3 p) {
         var body = driver.Body;
         var uv = body.WorldToUv(p);
-        if (new Rect2(0, 0, 1, 1).HasPoint(uv) && body.OnBody(uv))
-        {
+        if (new Rect2(0, 0, 1, 1).HasPoint(uv) && body.OnBody(uv)) {
             return body.UvToWorld(uv).Y;
         }
         var query = PhysicsRayQueryParameters3D.Create(p + (Vector3.Up * 0.2f), p + Vector3.Down, PatientBody.SurfaceLayer);

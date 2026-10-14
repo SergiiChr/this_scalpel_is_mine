@@ -7,24 +7,20 @@ namespace Scalpel.Tests.Surgeons;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class SurgeonMovementTest
-{
+public class SurgeonMovementTest {
     private SurgeryDriver? _driver;
     private KeyFrames? _frames;
 
     /// <summary>A surgery with a steady surgeon, its key frames (when wanted) going to surgeon_movement.</summary>
-    private async Task<SurgeryDriver> Begin(string scenario = "appendectomy")
-    {
+    private async Task<SurgeryDriver> Begin(string scenario = "appendectomy") {
         FrameBudget.RenderingOff();
         var driver = _driver = SurgeryDriver.Create();
         await driver.Start(scenario);
         var frames = _frames = new KeyFrames();
         driver.AddChild(frames);
         frames.Begin(driver.Surgery, "surgeon_movement");
-        driver.OnKeyFrame = async (name, description) =>
-        {
-            if (KeyFrames.Wanted())
-            {
+        driver.OnKeyFrame = async (name, description) => {
+            if (KeyFrames.Wanted()) {
                 await frames.CaptureView(name, description);
             }
         };
@@ -33,28 +29,19 @@ public class SurgeonMovementTest
     }
 
     [AfterTest]
-    public async Task End()
-    {
-        try
-        {
-            foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.MoveBack, InputActions.Crouch])
-            {
+    public async Task End() {
+        try {
+            foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.MoveBack, InputActions.Crouch]) {
                 PlayerInput.Action(action, false);
             }
             await PlayerInput.Delivered();
-        }
-        finally
-        {
-            try
-            {
+        } finally {
+            try {
                 _frames?.End();
-                if (_driver is { } driver)
-                {
+                if (_driver is { } driver) {
                     await driver.Stop();
                 }
-            }
-            finally
-            {
+            } finally {
                 _frames = null;
                 _driver = null;
                 RenderingServer.RenderLoopEnabled = true;
@@ -63,8 +50,7 @@ public class SurgeonMovementTest
     }
 
     [TestCase]
-    public async Task WalkingAndCrouchingKeepCameraAndGameplayReachSteady()
-    {
+    public async Task WalkingAndCrouchingKeepCameraAndGameplayReachSteady() {
         var driver = await Begin();
         var me = driver.Me;
         await Frames.Physics(10);
@@ -75,15 +61,13 @@ public class SurgeonMovementTest
         driver.Budget.Clear();
         PlayerInput.Action(InputActions.MoveRight);
         driver.Note("walking sideways with a hand near the reach boundary");
-        for (var frame = 0; frame < 24; frame++)
-        {
+        for (var frame = 0; frame < 24; frame++) {
             // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
             await PlayerInput.Delivered();
             CheckStableOrigins(me, 0f);
             AssertBool(me.Strained(0)).OverrideFailureMessage("a target inside reach is not strained by a walking step").IsFalse();
             maxDrop = Mathf.Max(maxDrop, me.WalkDrop);
-            if (frame == 8)
-            {
+            if (frame == 8) {
                 await driver.Capture("walking", "a walking step: the view steady, the reaching hand where it was");
             }
         }
@@ -94,8 +78,7 @@ public class SurgeonMovementTest
             .IsGreater(0.01f);
         PlayerInput.Action(InputActions.Crouch);
         driver.Note("crouching through normal input");
-        for (var frame = 0; frame < 18; frame++)
-        {
+        for (var frame = 0; frame < 18; frame++) {
             // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
             await PlayerInput.Delivered();
             CheckStableOrigins(me, me.Crouch);
@@ -104,8 +87,7 @@ public class SurgeonMovementTest
         await driver.Capture("crouched", "in the deep squat: the view lowered, the hands where they were");
         PlayerInput.Action(InputActions.Crouch, false);
         driver.Note("standing back up through normal input");
-        for (var frame = 0; frame < 18; frame++)
-        {
+        for (var frame = 0; frame < 18; frame++) {
             // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
             await PlayerInput.Delivered();
             CheckStableOrigins(me, me.Crouch);
@@ -119,8 +101,7 @@ public class SurgeonMovementTest
     /// table top the hand hovers at one height. How low its glove reaches keeps it off the table, and that mustn't bob
     /// with the stride.</summary>
     [TestCase]
-    public async Task WalkingKeepsAFreeHandLevelOverTheTable()
-    {
+    public async Task WalkingKeepsAFreeHandLevelOverTheTable() {
         var driver = await Begin("hand_stitch");
         var me = driver.Me;
         await driver.PlayerWalksTo(driver.SitePoint(new Vector2(0.5f, 0.5f)));
@@ -128,14 +109,12 @@ public class SurgeonMovementTest
         var heights = new List<float>();
         var maxDrop = 0f;
         PlayerInput.Action(InputActions.MoveLeft);
-        for (var frame = 0; frame < 60; frame++)
-        {
+        for (var frame = 0; frame < 60; frame++) {
             // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
             await PlayerInput.Delivered();
             var hand = me.Hands[me.Active];
             var under = me.SurfaceBelow(hand.Target);
-            if (!under.Soft && under.Y > 0.5f)
-            {
+            if (!under.Soft && under.Y > 0.5f) {
                 heights.Add(hand.GlobalPosition.Y - under.Y);
             }
             maxDrop = Mathf.Max(maxDrop, me.WalkDrop);
@@ -158,8 +137,7 @@ public class SurgeonMovementTest
     /// off the opening onto the skin, they straighten up but stay zoomed in.
     /// </summary>
     [TestCase]
-    public async Task ZoomingInOverAnOpeningLeansInWhileTheHandIsInIt()
-    {
+    public async Task ZoomingInOverAnOpeningLeansInWhileTheHandIsInIt() {
         var driver = await Begin();
         var me = driver.Me;
         var patient = driver.Patient;
@@ -216,8 +194,7 @@ public class SurgeonMovementTest
         var bent = puppet.ToLocal(neck).Z;
         AssertFloat(bent).OverrideFailureMessage($"and sees their head bent forward over the table ({bent * 100f:0} cm ahead)")
             .IsLess(-0.15f);
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             var camera = new Camera3D { Fov = 55f };
             driver.Surgery.AddChild(camera);
             camera.GlobalPosition = neck + (puppet.GlobalBasis * new Vector3(1.1f, 0.2f, 0.3f));
@@ -263,12 +240,10 @@ public class SurgeonMovementTest
 
     /// <summary>Plays <paramref name="frames"/> physics frames, the partner's copy getting each one, and checks the view
     /// moves gradually: no snap of the eyes within the body or of where they look.</summary>
-    private static async Task FollowView(Surgeon me, Surgeon puppet, int frames)
-    {
+    private static async Task FollowView(Surgeon me, Surgeon puppet, int frames) {
         var eyes = me.ToLocal(me.Camera.GlobalPosition);
         var look = me.GlobalBasis.Inverse() * -me.Camera.GlobalBasis.Z;
-        for (var frame = 0; frame < frames; frame++)
-        {
+        for (var frame = 0; frame < frames; frame++) {
             SurgeryState.SurgeonCopyHasOwnerState(me, puppet);
             await Frames.Physics(1);
             var nextEyes = me.ToLocal(me.Camera.GlobalPosition);
@@ -282,12 +257,10 @@ public class SurgeonMovementTest
         }
     }
 
-    private static void CheckStableOrigins(Surgeon me, float crouch)
-    {
+    private static void CheckStableOrigins(Surgeon me, float crouch) {
         AssertFloat(me.ToLocal(me.Camera.GlobalPosition).DistanceTo(new Vector3(0f, Surgeon.EyeHeight - (crouch * Surgeon.CrouchDrop), 0f)))
             .OverrideFailureMessage("camera only lowers with crouch; no animation bob or sway").IsLess(0.0001f);
-        for (var index = 0; index < 2; index++)
-        {
+        for (var index = 0; index < 2; index++) {
             var side = index == 0 ? -1f : 1f;
             var expected = new Vector3(side * Surgeon.ShoulderOffset.X, Surgeon.ShoulderOffset.Y - (crouch * Surgeon.CrouchDrop),
                 Surgeon.ShoulderOffset.Z);
@@ -300,20 +273,17 @@ public class SurgeonMovementTest
     }
 
     [TestCase]
-    public async Task DownedVisibleHeadTurnsToPatientOnBothFallSides()
-    {
+    public async Task DownedVisibleHeadTurnsToPatientOnBothFallSides() {
         var driver = await Begin();
         var me = driver.Me;
         var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
         var camera = new Camera3D { Fov = 55f };
         driver.Surgery.AddChild(camera);
         driver.Budget.Clear();
-        foreach (var side in (float[])[-1f, 1f])
-        {
+        foreach (var side in (float[])[-1f, 1f]) {
             SurgeryState.SurgeonIsKnockedOut(me, side);
             driver.Note("falling onto the floor and looking at the patient");
-            for (var frame = 0; frame < 50; frame++)
-            {
+            for (var frame = 0; frame < 50; frame++) {
                 SurgeryState.SurgeonCopyHasOwnerState(me, puppet);
                 await Frames.Physics(1);
             }
@@ -332,8 +302,7 @@ public class SurgeonMovementTest
             var anchor = puppet.Joint("Torso").GlobalTransform
                 * (new Vector3(0f, Surgeon.EyeHeight - Surgeon.HipHeight, 0f) + Surgeon.HeadPivot);
             AssertFloat(pivot.DistanceTo(anchor)).OverrideFailureMessage("patient-facing yaw preserves the neck anchor").IsLess(0.0001f);
-            if (KeyFrames.Wanted())
-            {
+            if (KeyFrames.Wanted()) {
                 camera.GlobalPosition = pivot + new Vector3(side * 0.8f, 0.6f, -0.7f);
                 camera.LookAt(pivot);
                 camera.MakeCurrent();

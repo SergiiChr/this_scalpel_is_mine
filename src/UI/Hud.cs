@@ -4,8 +4,7 @@ namespace Scalpel.UI;
 /// Everything drawn on screen during surgery, plus the full screen overlays (manual, card, menus, report).
 /// While an overlay is open the surgeon's input is locked and the mouse is free.
 /// </summary>
-public partial class Hud : CanvasLayer
-{
+public partial class Hud : CanvasLayer {
     private const string PostFxShader = "res://assets/shaders/post_grime.gdshader";
     private const float ToastTime = 5f;
     private const float SubtitleTime = 6f;
@@ -45,8 +44,7 @@ public partial class Hud : CanvasLayer
     internal float LensBlood => _lensBlood;
 
     /// <summary>Wipes the blood off the view at once.</summary>
-    internal void ClearLensBlood()
-    {
+    internal void ClearLensBlood() {
         _lensBlood = 0f;
         _post.SetShaderParameter(ShaderParam.LensBlood, 0f);
     }
@@ -77,8 +75,7 @@ public partial class Hud : CanvasLayer
     /// <summary>A whole signature stays on the card this long before the patient goes.</summary>
     internal const float SignedPause = 0.6f;
 
-    public void Setup(Surgery surgery)
-    {
+    public void Setup(Surgery surgery) {
         Surgery = surgery;
         BuildPostFx();
         surgery.Patient.Body.Blood.Splashed += OnBloodSplashed;
@@ -115,15 +112,13 @@ public partial class Hud : CanvasLayer
         BuildControlsHint();
         BuildShop();
         UpdateObjectives();
-        foreach (var label in _root.FindChildren("*", nameof(Label), true, false).OfType<Label>())
-        {
+        foreach (var label in _root.FindChildren("*", nameof(Label), true, false).OfType<Label>()) {
             Ui.PrepareLabelText(label, "0123456789");
         }
     }
 
     /// <summary>The surgery opens on the patient card, already in hand: put back, it shows where it hangs.</summary>
-    public void Begin()
-    {
+    public void Begin() {
         Toast(Surgery.Scenario.Title);
         OpenCard(inHand: true);
     }
@@ -132,12 +127,10 @@ public partial class Hud : CanvasLayer
 
     /// <summary>Refreshes overlays for the current camera and game state. A zero delta refreshes a frozen capture
     /// without advancing HUD timers or effects.</summary>
-    internal void RefreshFrame(float dt)
-    {
+    internal void RefreshFrame(float dt) {
         _effectsTime += dt;
         RenderingServer.GlobalShaderParameterSet(ShaderParam.GameTime, _effectsTime);
-        if (Surgery?.LocalSurgeon is not { } me)
-        {
+        if (Surgery?.LocalSurgeon is not { } me) {
             return;
         }
         var left = Surgery.TimeLeft();
@@ -145,8 +138,7 @@ public partial class Hud : CanvasLayer
         _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
         UpdateObjectives();
         UpdateSignature(dt);
-        if (Shop.View.Visible)
-        {
+        if (Shop.View.Visible) {
             UpdateShop();
         }
         UpdateNetWarning();
@@ -158,45 +150,37 @@ public partial class Hud : CanvasLayer
         var prompt = me.Focused is { } focused && Overlay is null
             ? $"[{InputActions.BindingText(InputActions.Interact)}] {focused.Prompt}"
             : "";
-        if (prompt.Length == 0 && me.HeldTool(me.Active) is not null && me.PassTarget(me.Active) is { } partner)
-        {
+        if (prompt.Length == 0 && me.HeldTool(me.Active) is not null && me.PassTarget(me.Active) is { } partner) {
             prompt = $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.Surgeon.DisplayName}";
         }
         _prompt.Text = prompt;
         _subtitleTimer -= dt;
-        if (_subtitleTimer <= 0f)
-        {
+        if (_subtitleTimer <= 0f) {
             _subtitle.Text = "";
         }
         UpdatePostFx(me.Status, dt);
     }
 
-    private void UpdatePostFx(SurgeonStatus status, float delta)
-    {
+    private void UpdatePostFx(SurgeonStatus status, float delta) {
         var state = (Blackout: status.PassedOut > 0f ? 1f : 0f,
             Daze: status.IsKnockedOut ? KnockedOutDaze : status.Overdose * OverdoseDaze,
             Wobble: status.Sickness,
             Blur: Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur));
         // Godot queues material uploads even for unchanged parameter values.
-        if (_postState?.Blackout != state.Blackout)
-        {
+        if (_postState?.Blackout != state.Blackout) {
             _post.SetShaderParameter(ShaderParam.Blackout, state.Blackout);
         }
-        if (_postState?.Daze != state.Daze)
-        {
+        if (_postState?.Daze != state.Daze) {
             _post.SetShaderParameter(ShaderParam.Daze, state.Daze);
         }
-        if (_postState?.Wobble != state.Wobble)
-        {
+        if (_postState?.Wobble != state.Wobble) {
             _post.SetShaderParameter(ShaderParam.Wobble, state.Wobble);
         }
-        if (_postState?.Blur != state.Blur)
-        {
+        if (_postState?.Blur != state.Blur) {
             _post.SetShaderParameter(ShaderParam.Blur, state.Blur);
         }
         _postState = state;
-        if (_lensBlood > 0f)
-        {
+        if (_lensBlood > 0f) {
             _lensBlood = Mathf.Max(_lensBlood - (delta / LensClearSeconds), 0f);
             _lensAge += delta;
             _post.SetShaderParameter(ShaderParam.LensBlood, _lensBlood);
@@ -205,10 +189,8 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>Blood on the view gets a new pattern of drops each time it starts from clean.</summary>
-    private void OnBloodSplashed(float amount)
-    {
-        if (_lensBlood <= 0f)
-        {
+    private void OnBloodSplashed(float amount) {
+        if (_lensBlood <= 0f) {
             _lensAge = 0f;
             _post.SetShaderParameter(ShaderParam.LensSeed, GD.Randf() * 100f);
         }
@@ -217,11 +199,9 @@ public partial class Hud : CanvasLayer
 
     /// <summary>A lag spike shows up after a moment; the game carries on and the connection only drops after the
     /// network timeout.</summary>
-    private void UpdateNetWarning()
-    {
+    private void UpdateNetWarning() {
         var (peer, seconds) = Net.Instance.WorstSilence();
-        if (seconds < 1.5f)
-        {
+        if (seconds < 1.5f) {
             _netWarning.Text = "";
             return;
         }
@@ -229,23 +209,17 @@ public partial class Hud : CanvasLayer
         _netWarning.Text = $"Connection to {who} is unstable ({(int)seconds} s). Waiting...";
     }
 
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (!@event.IsActionPressed(InputActions.Pause))
-        {
+    public override void _UnhandledInput(InputEvent @event) {
+        if (!@event.IsActionPressed(InputActions.Pause)) {
             return;
         }
         GetViewport().SetInputAsHandled();
-        if (_overlayLocked)
-        {
+        if (_overlayLocked) {
             return;
         }
-        if (Overlay is not null)
-        {
+        if (Overlay is not null) {
             CloseOverlay();
-        }
-        else
-        {
+        } else {
             Open(PauseMenu());
         }
     }
@@ -253,10 +227,8 @@ public partial class Hud : CanvasLayer
     /// <summary>A toast was shown, with its text.</summary>
     public event Action<string>? Toasted;
 
-    public void Toast(string text)
-    {
-        if (text.Length == 0)
-        {
+    public void Toast(string text) {
+        if (text.Length == 0) {
             return;
         }
         Toasted?.Invoke(text);
@@ -265,8 +237,7 @@ public partial class Hud : CanvasLayer
         // A message fades out, and its outline with it: the backing keeps it readable over the window blinds.
         label.AddThemeStyleboxOverride("normal", Backing());
         _toasts.AddChild(label);
-        if (_toasts.GetChildCount() > 4)
-        {
+        if (_toasts.GetChildCount() > 4) {
             _toasts.GetChild(0).QueueFree();
         }
         var tween = label.CreateTween();
@@ -275,27 +246,22 @@ public partial class Hud : CanvasLayer
         tween.TweenCallback(Callable.From(label.QueueFree));
     }
 
-    public void Subtitle(string text)
-    {
+    public void Subtitle(string text) {
         _subtitle.Text = $"\"{text}\"";
         _subtitleTimer = SubtitleTime;
     }
 
     // --- Overlays ------------------------------------------------------------------------------------------------
 
-    public void OpenManual()
-    {
+    public void OpenManual() {
         var keys = new List<string>();
-        if (Surgery.LocalSurgeon?.Mods.Flag("manual_highlight") == true)
-        {
+        if (Surgery.LocalSurgeon?.Mods.Flag("manual_highlight") == true) {
             var patient = Surgery.Patient;
             keys.AddRange(patient.Mods.Keys);
             keys.AddRange(patient.Mods.List("allergen"));
-            foreach (var roll in patient.Rolls)
-            {
+            foreach (var roll in patient.Rolls) {
                 keys.Add(roll.Id);
-                if (roll.Variant.Length > 0)
-                {
+                if (roll.Variant.Length > 0) {
                     keys.Add($"{roll.Id}.{roll.Variant}");
                 }
             }
@@ -307,12 +273,9 @@ public partial class Hud : CanvasLayer
     /// <summary>Takes the card up to read. Unless it's already <paramref name="inHand"/>, the page shows once the card
     /// has travelled up to the face. The page is built once (again only for the corrected chart): building it takes a
     /// frame's worth of work.</summary>
-    public void OpenCard(bool inHand = false)
-    {
-        if (_card is null || _cardCorrected != Surgery.ChartCorrected)
-        {
-            if (Overlay == _card)
-            {
+    public void OpenCard(bool inHand = false) {
+        if (_card is null || _cardCorrected != Surgery.ChartCorrected) {
+            if (Overlay == _card) {
                 Overlay = null;
             }
             _card?.QueueFree();
@@ -326,26 +289,22 @@ public partial class Hud : CanvasLayer
         Open(_card);
         _cardFade?.Kill();
         _card.Modulate = new Color(1f, 1f, 1f, inHand ? 1f : 0f);
-        if (!inHand)
-        {
+        if (!inHand) {
             _cardFade = _card.CreateTween();
             _cardFade.TweenProperty(_card, "modulate:a", 1.0, 0.15).SetDelay(PatientCard.TravelSeconds);
         }
     }
 
-    public void OpenNurse()
-    {
+    public void OpenNurse() {
         UpdateShop();
         Open(Shop.View);
     }
 
-    public void OpenLab()
-    {
+    public void OpenLab() {
         var choices = Lab.Panels.Select(entry => ($"{entry.Value.Label}  ({(int)entry.Value.Seconds} s)", entry.Key));
         var cooldown = Surgery.Status.LabCooldown;
         var subtitle = cooldown > 0f ? $"Lab is busy for {Mathf.CeilToInt(cooldown)} s." : "Narrow panels come back faster.";
-        Open(Ui.ChoiceMenu("Blood work", subtitle, choices, kind =>
-        {
+        Open(Ui.ChoiceMenu("Blood work", subtitle, choices, kind => {
             Surgery.OrderLab(kind);
             CloseOverlay();
         }, CloseOverlay));
@@ -353,10 +312,8 @@ public partial class Hud : CanvasLayer
 
     private void UpdateShop() => Shop.Update(Surgery.Status.NurseBoard, Surgery.Status.NurseReady);
 
-    public void OpenXray(XrayCart cart)
-    {
-        if (cart.Print is not { } print)
-        {
+    public void OpenXray(XrayCart cart) {
+        if (cart.Print is not { } print) {
             return;
         }
         var box = Ui.VBox(12);
@@ -371,50 +328,41 @@ public partial class Hud : CanvasLayer
 
     /// <summary>Starts the turning quick time event: <paramref name="done"/> gets the hits and whether a wrong key was
     /// pressed.</summary>
-    public void RunQte(IReadOnlyList<string> sequence, float window, Action<int, bool> done)
-    {
+    public void RunQte(IReadOnlyList<string> sequence, float window, Action<int, bool> done) {
         var qte = new QteView();
         _root.AddChild(qte);
         qte.Start(sequence, window, done);
     }
 
-    public void ShowReport(SurgeryReport report)
-    {
+    public void ShowReport(SurgeryReport report) {
         Open(ReportView.Build(report, Surgery.Scenario));
         _overlayLocked = true;
     }
 
-    public void CloseOverlay()
-    {
-        if (Overlay is not null)
-        {
+    public void CloseOverlay() {
+        if (Overlay is not null) {
             Dismiss(Overlay);
             Overlay = null;
             Manual = null;
             _overlayLocked = false;
         }
-        if (Surgery.LocalSurgeon is { } me)
-        {
+        if (Surgery.LocalSurgeon is { } me) {
             me.InputLocked = false;
             me.ReadingCard = false;
         }
         CaptureMouse();
     }
 
-    private void Open(Control overlay)
-    {
-        if (Overlay is not null && Overlay != overlay)
-        {
+    private void Open(Control overlay) {
+        if (Overlay is not null && Overlay != overlay) {
             Dismiss(Overlay);
         }
         Overlay = overlay;
-        if (overlay.GetParent() is null)
-        {
+        if (overlay.GetParent() is null) {
             AddChild(overlay);
         }
         overlay.Show();
-        if (Surgery.LocalSurgeon is { } me)
-        {
+        if (Surgery.LocalSurgeon is { } me) {
             me.InputLocked = true;
             me.ReadingCard = overlay == _card;
             me.Hands[me.Active].Lowered = false;
@@ -425,25 +373,19 @@ public partial class Hud : CanvasLayer
 
     /// <summary>The nurse's shop and the card's page stay built between visits; other overlays are made fresh each time.
     /// </summary>
-    private void Dismiss(Control overlay)
-    {
-        if (overlay == Shop.View || overlay == _card)
-        {
-            if (overlay == _card)
-            {
+    private void Dismiss(Control overlay) {
+        if (overlay == Shop.View || overlay == _card) {
+            if (overlay == _card) {
                 _cardFade?.Kill();
                 _cardFade = null;
             }
             overlay.Hide();
-        }
-        else
-        {
+        } else {
             overlay.QueueFree();
         }
     }
 
-    private Control PauseMenu()
-    {
+    private Control PauseMenu() {
         var box = Ui.VBox(12);
         box.AddChild(Ui.Label("PAUSED (the patient isn't)", 28, Ui.Pip));
         box.AddChild(Ui.Button("Back to the table", CloseOverlay));
@@ -454,24 +396,20 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>Headless there's no mouse to capture: the only motion is what a test sends.</summary>
-    private void CaptureMouse()
-    {
-        if (Surgery.Running && DisplayServer.GetName() != "headless")
-        {
+    private void CaptureMouse() {
+        if (Surgery.Running && DisplayServer.GetName() != "headless") {
             Input.MouseMode = Input.MouseModeEnum.Captured;
         }
     }
 
     // --- Building ------------------------------------------------------------------------------------------------
 
-    private void BuildShop()
-    {
+    private void BuildShop() {
         var groups = Db.Tools.Values
             .Where(def => def.Orderable)
             .GroupBy(def => def.Category)
             .Select(group => (group.Key, (IReadOnlyList<ToolDef>)[.. group]));
-        Shop = new NurseShop(groups, ids =>
-        {
+        Shop = new NurseShop(groups, ids => {
             Surgery.OrderTools(ids);
             CloseOverlay();
         }, CloseOverlay);
@@ -480,8 +418,7 @@ public partial class Hud : CanvasLayer
         Shop.Prepare();
     }
 
-    private void BuildPostFx()
-    {
+    private void BuildPostFx() {
         var layer = new CanvasLayer { Layer = 0 };
         AddChild(layer);
         _post = new ShaderMaterial { Shader = GD.Load<Shader>(PostFxShader) };
@@ -490,8 +427,7 @@ public partial class Hud : CanvasLayer
         layer.AddChild(rect);
     }
 
-    private Label CornerLabel(Control.LayoutPreset preset, int size, Color color)
-    {
+    private Label CornerLabel(Control.LayoutPreset preset, int size, Color color) {
         var label = Ui.Label("", size, color);
         label.AutowrapMode = TextServer.AutowrapMode.Off;
         label.SetAnchorsAndOffsetsPreset(preset, Control.LayoutPresetMode.Minsize, 20);
@@ -499,8 +435,7 @@ public partial class Hud : CanvasLayer
         return label;
     }
 
-    private void BuildBottomBar()
-    {
+    private void BuildBottomBar() {
         var bar = Ui.VBox(4);
         bar.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterBottom);
         bar.Position = new Vector2(-300f, -110f);
@@ -514,19 +449,16 @@ public partial class Hud : CanvasLayer
         _root.AddChild(bar);
     }
 
-    private void BuildGauges()
-    {
+    private void BuildGauges() {
         var box = Ui.VBox(4);
         box.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.BottomLeft);
         box.Position = new Vector2(20f, -180f);
-        foreach (var key in GaugeNames)
-        {
+        foreach (var key in GaugeNames) {
             var row = Ui.HBox(8);
             var name = Ui.Label(key.Capitalize(), 16, Ui.Dim);
             name.CustomMinimumSize = new Vector2(80f, 0f);
             row.AddChild(name);
-            var bar = Ui.Bar(key switch
-            {
+            var bar = Ui.Bar(key switch {
                 "stress" => Ui.Alert,
                 "sickness" => new Color(0.6f, 0.75f, 0.2f),
                 "breath" => new Color(0.5f, 0.75f, 1f),
@@ -539,8 +471,7 @@ public partial class Hud : CanvasLayer
         _root.AddChild(box);
     }
 
-    private void BuildControlsHint()
-    {
+    private void BuildControlsHint() {
         _hint = Ui.Label("", 14, Ui.Hint);
         _hint.AutowrapMode = TextServer.AutowrapMode.Off;
         _hint.HorizontalAlignment = HorizontalAlignment.Right;
@@ -554,8 +485,7 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>A soft dark box behind HUD text that has to read over anything.</summary>
-    private static StyleBoxFlat Backing()
-    {
+    private static StyleBoxFlat Backing() {
         var box = new StyleBoxFlat { BgColor = new Color(0f, 0f, 0f, 0.55f) };
         box.SetCornerRadiusAll(4);
         box.SetContentMarginAll(6f);
@@ -564,8 +494,7 @@ public partial class Hud : CanvasLayer
 
     /// <summary>The game's theme with a dark outline round every label, so HUD text reads over pale walls and skin as
     /// well as dark drapes.</summary>
-    private static Theme HudTheme()
-    {
+    private static Theme HudTheme() {
         var theme = (Theme)Ui.Theme.Duplicate();
         theme.SetConstant("outline_size", "Label", 4);
         theme.SetColor("font_outline_color", "Label", new Color(0f, 0f, 0f, 0.7f));
@@ -574,28 +503,21 @@ public partial class Hud : CanvasLayer
 
     /// <summary>The controls that do something right now. Holding a hand key swaps looking for moving that hand.
     /// </summary>
-    public static List<string> ControlLines(Surgeon me)
-    {
+    public static List<string> ControlLines(Surgeon me) {
         static string Key(StringName action) => InputActions.BindingText(action);
         var moving = Surgeon.MovingHand();
         var hand = me.Hands[me.Active];
         var tool = me.HeldTool(me.Active);
         var lines = new List<string>();
-        if (moving < 0)
-        {
+        if (moving < 0) {
             lines.Add("Mouse  Look around");
             lines.Add($"{Key(InputActions.MoveLeftHand)} / {Key(InputActions.MoveRightHand)} (hold)  Move left / right hand");
-        }
-        else
-        {
+        } else {
             lines.Add($"Mouse  Move {(me.Active == 0 ? "left" : "right")} hand");
         }
-        if (tool is not null)
-        {
+        if (tool is not null) {
             lines.AddRange(ToolLines(me, tool, hand));
-        }
-        else
-        {
+        } else {
             var hovered = IsInstanceValid(me.Hovered) ? " " + me.Hovered!.Label() : "";
             lines.Add($"{Key(InputActions.Grab)}  Pick up{hovered}");
         }
@@ -603,10 +525,8 @@ public partial class Hud : CanvasLayer
         lines.Add($"{Key(InputActions.Zoom)}  Zoom {me.Zoom + 1}/{Surgeon.ZoomFov.Length}{(seeThrough ? ", hands see-through" : "")}");
         lines.Add($"{Key(InputActions.Lift)} (hold)  {(hand.Attached ? "Pull up" : "Lift hand over")}");
         lines.Add($"{Key(InputActions.Steady)} (hold)  Hold breath");
-        if (moving < 0)
-        {
-            var move = string.Join("/", new[]
-            {
+        if (moving < 0) {
+            var move = string.Join("/", new[] {
                 InputActions.MoveForward, InputActions.MoveLeft, InputActions.MoveBack, InputActions.MoveRight,
             }.Select(Key));
             lines.Add($"{move}  Move");
@@ -619,8 +539,7 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>The controls for the tool in the active hand.</summary>
-    private static IEnumerable<string> ToolLines(Surgeon me, SurgicalTool tool, SurgeonHand hand)
-    {
+    private static IEnumerable<string> ToolLines(Surgeon me, SurgicalTool tool, SurgeonHand hand) {
         static string Key(StringName action) => InputActions.BindingText(action);
         var action = tool.Def.Action;
         var use = Key(InputActions.UseTool);
@@ -628,8 +547,7 @@ public partial class Hud : CanvasLayer
             ? $"{use}  Stitch (click), tie off (hold)"
             : $"{use} (hold)  {ToolActions.TriggerNames.GetValueOrDefault(action, action == "syringe" ? "Press in" : "Use")} {tool.Label()}";
         var (up, down) = (Key(InputActions.LevelUp), Key(InputActions.LevelDown));
-        switch (action)
-        {
+        switch (action) {
             case "syringe":
                 yield return $"{down}  Pull plunger 1 ml";
                 yield return $"{up}  Push plunger 1 ml";
@@ -641,8 +559,7 @@ public partial class Hud : CanvasLayer
                 yield return $"{up} / {down}  Open / close";
                 break;
             default:
-                if (me.UsesLevel(me.Active))
-                {
+                if (me.UsesLevel(me.Active)) {
                     yield return $"Wheel  {ToolActions.LevelNames[action]}";
                 }
                 break;
@@ -660,11 +577,9 @@ public partial class Hud : CanvasLayer
 
     // --- Updating ------------------------------------------------------------------------------------------------
 
-    private void UpdateObjectives()
-    {
+    private void UpdateObjectives() {
         _objectives.Visible = Settings.Debug;
-        if (Settings.Debug)
-        {
+        if (Settings.Debug) {
             var status = Surgery.Status;
             var steps = Surgery.Scenario.Steps;
             var rows = status.Objectives.Select((row, i) => !row.Done && steps[i].Type == "anesthesia"
@@ -676,18 +591,14 @@ public partial class Hud : CanvasLayer
 
     /// <summary>Holding Interact over the card's page signs the discharge; a press from before the page showed (taking
     /// the card off its hook) doesn't count. Signed in full, the patient goes after a moment.</summary>
-    private void UpdateSignature(float dt)
-    {
-        if (!CardOpen || Signature is null || dt <= 0f)
-        {
+    private void UpdateSignature(float dt) {
+        if (!CardOpen || Signature is null || dt <= 0f) {
             return;
         }
-        if (Signature.Complete)
-        {
+        if (Signature.Complete) {
             var before = _signedFor;
             _signedFor += dt;
-            if (before < SignedPause && _signedFor >= SignedPause)
-            {
+            if (before < SignedPause && _signedFor >= SignedPause) {
                 Surgery.SignDischarge();
             }
             return;
@@ -697,59 +608,47 @@ public partial class Hud : CanvasLayer
         Signature.Advance(dt, _signing);
     }
 
-    private void UpdateHands(Surgeon me)
-    {
+    private void UpdateHands(Surgeon me) {
         var parts = new List<string>();
-        for (var i = 0; i < 2; i++)
-        {
+        for (var i = 0; i < 2; i++) {
             var tool = me.HeldTool(i);
             var text = $"{(i == 0 ? "L" : "R")}: {tool?.Label() ?? "empty"}";
-            if (tool is { Sterile: false } && me.Mods.Flag("contamination_vision"))
-            {
+            if (tool is { Sterile: false } && me.Mods.Flag("contamination_vision")) {
                 text += " (dirty)";
             }
-            if (me.Hands[i].Attached)
-            {
+            if (me.Hands[i].Attached) {
                 text += " [holding]";
             }
             parts.Add(i == me.Active ? $"▶ {text} ◀" : text);
         }
         var active = me.HeldTool(me.Active);
-        if (active?.Def.Action == "sew")
-        {
+        if (active?.Def.Action == "sew") {
             parts.Add($"thread: {SewAction.ThreadState(active)}");
         }
-        if (active?.Def.Action == "spread")
-        {
+        if (active?.Def.Action == "spread") {
             parts.Add($"open: {active.Spread * 100f:0.0} cm");
         }
-        if (LevelSteps(active) is { } steps)
-        {
+        if (LevelSteps(active) is { } steps) {
             var level = me.Hands[me.Active].Level;
             parts.Add($"{ToolActions.LevelNames[active!.Def.Action].ToLowerInvariant()}: {level} {steps[level]}");
         }
         _hands.Text = string.Join("   ", parts);
         var capacity = me.BeltCapacity();
-        while (_belt.GetChildCount() < capacity)
-        {
+        while (_belt.GetChildCount() < capacity) {
             var slot = Ui.Label("", 16, Ui.Dim);
             slot.AutowrapMode = TextServer.AutowrapMode.Off;
             _belt.AddChild(slot);
         }
-        for (var i = 0; i < capacity; i++)
-        {
+        for (var i = 0; i < capacity; i++) {
             var tool = Surgery.Tools.ToolOnBelt(me.PeerId, i);
             _belt.GetChild<Label>(i).Text = $"[{i + 1}] {tool?.Label() ?? "—"}";
         }
     }
 
-    private void UpdateGauges(Surgeon me)
-    {
+    private void UpdateGauges(Surgeon me) {
         var status = me.Status;
-        foreach (var key in GaugeNames)
-        {
-            var value = key switch
-            {
+        foreach (var key in GaugeNames) {
+            var value = key switch {
                 "stress" => status.Stress,
                 "sickness" => status.Sickness,
                 "breath" => status.Breath,

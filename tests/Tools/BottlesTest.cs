@@ -10,23 +10,20 @@ namespace Scalpel.Tests.Tools;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_vial_propofol"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class BottlesTest
-{
+public class BottlesTest {
     private const string Vial = "vial_propofol";
     /// <summary>How far from a bottle the key frames look at it (meters).</summary>
     private const float View = 0.3f;
 
     [TestCase]
-    public async Task BottlesComeStandingAndStandWhenGrabIsHeld()
-    {
+    public async Task BottlesComeStandingAndStandWhenGrabIsHeld() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         SurgeryState.PatientIsAsleep(driver.Patient);
         SurgicalTool vial = null!;
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "bottles");
@@ -73,8 +70,7 @@ public class BottlesTest
         RenderingServer.RenderLoopEnabled = true;
     }
 
-    private static async Task PickUp(SurgeryDriver driver, SurgicalTool vial)
-    {
+    private static async Task PickUp(SurgeryDriver driver, SurgicalTool vial) {
         await driver.PlayerWalksTo(vial.GlobalPosition);
         await driver.PlayerReaches(vial.GlobalPosition);
         SurgeryDriver.Tap(InputActions.Grab);
@@ -84,8 +80,7 @@ public class BottlesTest
 
     /// <summary>Grab held a little over a second, then let go: the bottle in the hand stands upright where it is.
     /// </summary>
-    private static async Task HoldGrab()
-    {
+    private static async Task HoldGrab() {
         SurgeryDriver.Press(InputActions.Grab);
         await Frames.Seconds(Surgeon.StandHold + 0.2f);
         SurgeryDriver.Release(InputActions.Grab);

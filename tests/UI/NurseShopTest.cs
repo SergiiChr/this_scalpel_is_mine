@@ -12,30 +12,26 @@ namespace Scalpel.Tests.UI;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class NurseShopTest
-{
+public class NurseShopTest {
     /// <summary>Two of the same, from three categories, and a sixth that doesn't fit.</summary>
     private static readonly string[] Wanted = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol", "needle"];
     private static readonly string[] Ordered = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol"];
     private IDisposable? _debugHud;
 
     [BeforeTest]
-    public void EnableDebugHud()
-    {
+    public void EnableDebugHud() {
         // Exercise the objective rows too, independently of this machine's saved preferences.
         _debugHud = SurgeryState.DebugHudIsEnabled();
     }
 
     [AfterTest]
-    public void RestoreDebugHud()
-    {
+    public void RestoreDebugHud() {
         _debugHud?.Dispose();
         _debugHud = null;
     }
 
     [TestCase]
-    public async Task CartOfFiveWithARepeatIsDeliveredAsOneBatch()
-    {
+    public async Task CartOfFiveWithARepeatIsDeliveredAsOneBatch() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         driver.WaitForNurse = true;
@@ -43,8 +39,7 @@ public class NurseShopTest
         var surgery = driver.Surgery;
         var deliveryTray = surgery.Room.Layout["delivery_tray"];
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "nurse_shop");
@@ -82,8 +77,7 @@ public class NurseShopTest
 
         var order = surgery.Nurse.Current;
         AssertObject(order).OverrideFailureMessage("the nurse takes the cart as one order").IsNotNull();
-        if (order is not { } placed)
-        {
+        if (order is not { } placed) {
             await Stop(driver, shots);
             return;
         }
@@ -105,12 +99,9 @@ public class NurseShopTest
         AssertBool(await Frames.Until(() => surgery.Nurse.Current is null, 0.05f))
             .OverrideFailureMessage("a short delivery wait expires while the nurse is still fetching").IsFalse();
         var timedOut = false;
-        try
-        {
+        try {
             await driver.PlayerPlacesOrder(0.05f);
-        }
-        catch (TimeoutException)
-        {
+        } catch (TimeoutException) {
             timedOut = true;
         }
         AssertBool(timedOut).OverrideFailureMessage("ordering while busy fails at the explicit wait deadline").IsTrue();
@@ -127,18 +118,15 @@ public class NurseShopTest
         AssertArray(delivered.Select(tool => tool.Def.Id).Order().ToList())
             .OverrideFailureMessage("everything in the cart is delivered, both gauzes too")
             .IsEqual(Ordered.Order().ToList());
-        foreach (var tool in delivered)
-        {
+        foreach (var tool in delivered) {
             var off = new Vector2(tool.GlobalPosition.X - deliveryTray.X, tool.GlobalPosition.Z - deliveryTray.Z).Length();
             AssertBool(tool.GlobalPosition.Y > 0.85f && off < 0.35f)
                 .OverrideFailureMessage($"the {tool.Def.Id} lands on the delivery tray ({off:0.00} m off, {tool.GlobalPosition.Y:0.00} m up)")
                 .IsTrue();
         }
         // Side by side, not on each other: no two of them rest on top of one another.
-        foreach (var a in delivered)
-        {
-            foreach (var b in delivered.Where(b => b != a))
-            {
+        foreach (var a in delivered) {
+            foreach (var b in delivered.Where(b => b != a)) {
                 var apart = a.Middle() - b.Middle();
                 AssertBool(Mathf.Abs(apart.Y) > 0.015f && apart.Slide(Vector3.Up).Length() < 0.06f)
                     .OverrideFailureMessage($"the {a.Def.Id} doesn't lie on the {b.Def.Id}").IsFalse();
@@ -149,8 +137,7 @@ public class NurseShopTest
         await Stop(driver, shots);
     }
 
-    private static void CheckCooldown(Surgery surgery)
-    {
+    private static void CheckCooldown(Surgery surgery) {
         var nurse = surgery.Nurse;
         string[] gauze = ["gauze"];
         nurse.Tick(1000f, surgery);
@@ -158,37 +145,30 @@ public class NurseShopTest
         nurse.Delivered = 0;
         nurse.Request(1, gauze, surgery);
         var board = new SurgeryStatus([], 0, [], nurse.CooldownLeft, nurse.Current, 0f, 0f).NurseBoard;
-        if (nurse.Current is null || !board.Contains("Gauze"))
-        {
+        if (nurse.Current is null || !board.Contains("Gauze")) {
             AssertBool(false).OverrideFailureMessage("the nurse board doesn't show the order on its way").IsTrue();
         }
-        for (var i = 0; i < Nurse.FreeOrders; i++)
-        {
+        for (var i = 0; i < Nurse.FreeOrders; i++) {
             nurse.Request(1, gauze, surgery);
             nurse.Tick(1000f, surgery);
-            if (nurse.CooldownLeft > 0f)
-            {
+            if (nurse.CooldownLeft > 0f) {
                 AssertBool(false).OverrideFailureMessage($"the nurse cooldown started after free delivery {i + 1}").IsTrue();
             }
         }
         nurse.Request(1, gauze, surgery);
         nurse.Tick(1000f, surgery);
-        if (nurse.Current is not null || nurse.CooldownLeft <= 0f)
-        {
+        if (nurse.Current is not null || nurse.CooldownLeft <= 0f) {
             AssertBool(false).OverrideFailureMessage("the nurse cooldown didn't start after the sixth delivery").IsTrue();
         }
         nurse.Request(1, gauze, surgery);
-        if (nurse.Current is not null)
-        {
+        if (nurse.Current is not null) {
             AssertBool(false).OverrideFailureMessage("the nurse took an order during her cooldown").IsTrue();
         }
     }
 
-    private static async Task Stop(SurgeryDriver driver, KeyFrames? shots)
-    {
+    private static async Task Stop(SurgeryDriver driver, KeyFrames? shots) {
         driver.Budget.Check();
-        if (shots is not null)
-        {
+        if (shots is not null) {
             GD.Print($"key frames: {shots.OutDir}");
             shots.End();
         }

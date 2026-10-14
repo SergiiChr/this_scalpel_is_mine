@@ -6,8 +6,7 @@ namespace Scalpel.World;
 /// Anyone who walks into it at full speed yanks it out (host decides, see Patient.PullIv()).
 /// Crouch-walking is slow enough to step over it.
 /// </summary>
-public partial class IvLine : Node3D
-{
+public partial class IvLine : Node3D {
     internal const int Samples = 18;
     public const float Radius = 0.004f;
     private const float Sag = 0.55f;
@@ -32,8 +31,7 @@ public partial class IvLine : Node3D
 
     public bool IsAttached => _to is not null && Visible;
 
-    public override void _Ready()
-    {
+    public override void _Ready() {
         _mesh = new MeshInstance3D { MaterialOverride = IvDressing.TubingMaterial(), TopLevel = true };
         AddChild(_mesh);
         Visible = false;
@@ -42,8 +40,7 @@ public partial class IvLine : Node3D
     /// <summary><paramref name="fromPoint"/> is local to <paramref name="from"/>, <paramref name="site"/> to
     /// <paramref name="to"/> (where the catheter goes in, see PatientBody.IvSite()), so the line follows whatever they're
     /// attached to. The dressing is taped on at the site, the tubing hangs from its end.</summary>
-    public void Attach(Node3D from, Vector3 fromPoint, Node3D to, Transform3D site, float armRadius)
-    {
+    public void Attach(Node3D from, Vector3 fromPoint, Node3D to, Transform3D site, float armRadius) {
         _from = from;
         _fromPoint = fromPoint;
         Visible = true;
@@ -58,8 +55,7 @@ public partial class IvLine : Node3D
         Rebuild();
     }
 
-    public void Detach()
-    {
+    public void Detach() {
         _to = null;
         Visible = false;
         _dressing?.QueueFree();
@@ -76,22 +72,18 @@ public partial class IvLine : Node3D
         IsAttached && _points.Any(p =>
             p.Y < TripHeight && new Vector2(p.X - feet.X, p.Z - feet.Z).Length() < TripDistance + margin);
 
-    public override void _Process(double delta)
-    {
-        if (IsAttached)
-        {
+    public override void _Process(double delta) {
+        if (IsAttached) {
             Rebuild();
         }
     }
 
     /// <summary>A quadratic curve pulled down in the middle, like tubing hanging under its own weight. Only rebuilt when
     /// an end moved.</summary>
-    private void Rebuild()
-    {
+    private void Rebuild() {
         var a = _from!.ToGlobal(_fromPoint);
         var b = _to!.ToGlobal(IvDressing.Exit);
-        if (_lastEnds is var (lastA, lastB) && a.IsEqualApprox(lastA) && b.IsEqualApprox(lastB))
-        {
+        if (_lastEnds is var (lastA, lastB) && a.IsEqualApprox(lastA) && b.IsEqualApprox(lastB)) {
             return;
         }
         _lastEnds = (a, b);
@@ -100,8 +92,7 @@ public partial class IvLine : Node3D
         // Bezier's midpoint is halfway between its control point and the ends' midpoint.
         var lowest = Mathf.Min(midpoint.Y - (Sag * 0.5f), TripHeight - 0.08f);
         var control = midpoint with { Y = Mathf.Max((2f * lowest) - midpoint.Y, 0.05f) };
-        for (var i = 0; i < Samples; i++)
-        {
+        for (var i = 0; i < Samples; i++) {
             var t = (float)i / (Samples - 1);
             _points[i] = a.Lerp(control, t).Lerp(control.Lerp(b, t), t);
         }

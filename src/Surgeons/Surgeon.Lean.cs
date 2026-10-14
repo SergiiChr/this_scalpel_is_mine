@@ -6,8 +6,7 @@ namespace Scalpel.Surgeons;
 /// can't see over. The body only bends, it doesn't turn, so the mouse still moves the hand left and right on screen.
 /// Reach, collisions and how the hands are steered stay as they are standing.
 /// </summary>
-public partial class Surgeon
-{
+public partial class Surgeon {
     /// <summary>Farthest the torso bends forward over an opening (radians).</summary>
     internal const float MaxLean = 0.6f;
     /// <summary>Leaning in, the eyes stop this far (m, across the floor) short of right over the spot they look at: the
@@ -42,10 +41,8 @@ public partial class Surgeon
     private bool _lookTaken;
 
     /// <summary>The player looks up or down: leaning in or straightening up no longer turns the eyes.</summary>
-    private void TakeLook()
-    {
-        if (LeanSpot is not null || _uprightPitch is not null)
-        {
+    private void TakeLook() {
+        if (LeanSpot is not null || _uprightPitch is not null) {
             _lookTaken = true;
             _uprightPitch = null;
         }
@@ -61,41 +58,33 @@ public partial class Surgeon
     /// eyes looking where they did before.
     /// Walking away leaves the close zoom too.
     /// </summary>
-    private void UpdateLean(bool canAct, float delta)
-    {
+    private void UpdateLean(bool canAct, float delta) {
         var close = canAct && Zoom == ZoomFov.Length - 1 && Crouch <= 0f && _needleFraming <= 0f
             && !Hands[Active].Inspecting;
-        if (close)
-        {
+        if (close) {
             var tip = WorkTip();
             var under = SurfaceBelow(tip);
             _leanLost = under.Open ? 0f : _leanLost + delta;
-            if (under.Open)
-            {
+            if (under.Open) {
                 LeanSpot = tip with { Y = under.Y };
                 _uprightPitch ??= _lookTaken ? null : Pitch;
             }
         }
-        if (!close || _leanLost > LeanGrace)
-        {
+        if (!close || _leanLost > LeanGrace) {
             LeanSpot = null;
         }
-        if (LeanSpot is { } from && Flat(Velocity).Dot(Flat(GlobalPosition - from).Normalized()) > LeaveSpeed)
-        {
+        if (LeanSpot is { } from && Flat(Velocity).Dot(Flat(GlobalPosition - from).Normalized()) > LeaveSpeed) {
             Zoom = 0;
             _zoomBefore = null;
             LeanSpot = null;
         }
         var follow = Mathf.Min(delta * LeanRate, 1f);
-        if (LeanSpot is not { } at)
-        {
+        if (LeanSpot is not { } at) {
             Lean = Mathf.Lerp(Lean, 0f, follow);
-            if (_uprightPitch is { } upright)
-            {
+            if (_uprightPitch is { } upright) {
                 Pitch = Mathf.Lerp(Pitch, upright, follow);
             }
-            if (Lean < 0.01f)
-            {
+            if (Lean < 0.01f) {
                 // Straight again, the mouse has the look back.
                 _uprightPitch = null;
                 _lookTaken = false;
@@ -107,8 +96,7 @@ public partial class Surgeon
         // No further than keeps the eyes clear above it: over a high spot the bend stops short, or doesn't start.
         var clear = Mathf.Clamp((local.Y + LeanClearance - HipHeight) / EyeAboveHips, -1f, 1f);
         Lean = Mathf.Lerp(Lean, Mathf.Min(Mathf.Asin(ahead / EyeAboveHips), Mathf.Acos(clear)), follow);
-        if (!_lookTaken)
-        {
+        if (!_lookTaken) {
             var toSpot = local - (new Vector3(0f, EyeHeight, 0f) + LeanShift(Lean));
             var look = Mathf.Clamp(Mathf.Atan2(toSpot.Y, -toSpot.Z), LookPitch.X, LookPitch.Y);
             Pitch = Mathf.Lerp(Pitch, look, follow);

@@ -5,11 +5,9 @@ namespace Scalpel.Tests.World;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
-public class RoomTest
-{
+public class RoomTest {
     [TestCase("ambulance")]
-    public async Task CeilingPanelClearsTheSlab(string environment)
-    {
+    public async Task CeilingPanelClearsTheSlab(string environment) {
         FrameBudget.RenderingOff();
         var room = AutoFree(new Room())!;
         Frames.Root.AddChild(room);
@@ -21,16 +19,14 @@ public class RoomTest
         // Also what the key frames should show.
         var claim = $"{environment}: the whole ceiling panel clears the slab";
         AssertFloat(underside - panelTop).OverrideFailureMessage(claim).IsGreater(0.01f);
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             var camera = new Camera3D { Fov = 55f };
             room.AddChild(camera);
             camera.MakeCurrent();
             var height = room.Layout.Size.Y;
             var lookAt = new Vector3(0f, height - 0.05f, 0f);
             var folder = KeyFrames.Folder("room");
-            foreach (var (name, from) in (Shot[])[new("oblique", new(1.6f, height - 1.1f, 0.9f)), new("reverse", new(-1.6f, height - 1.1f, -0.9f))])
-            {
+            foreach (var (name, from) in (Shot[])[new("oblique", new(1.6f, height - 1.1f, 0.9f)), new("reverse", new(-1.6f, height - 1.1f, -0.9f))]) {
                 camera.Position = from;
                 camera.LookAt(lookAt);
                 var path = folder.PathJoin($"{environment}_ceiling_{name}.png");

@@ -6,8 +6,7 @@ namespace Scalpel.Patients;
 /// joint. The limb carrying the surgical site stays still so the site doesn't drift.
 /// Every motion is a rotation in model space (X toward the head, Y up, Z the patient's left) about the joint.
 /// </summary>
-public partial class PatientAnimator : Node
-{
+public partial class PatientAnimator : Node {
     public const float BreathDepth = 0.018f;
     public const float TorsoTop = 0.215f;
     /// <summary>How long the eyes stay shut in a blink (seconds).</summary>
@@ -31,14 +30,12 @@ public partial class PatientAnimator : Node
     /// </summary>
     private readonly RandomNumberGenerator _rng = new();
 
-    public void Setup(PatientBody body, Node3D model)
-    {
+    public void Setup(PatientBody body, Node3D model) {
         _body = body;
         _rng.Seed = Net.Instance.SessionSeed + 11;
         _rig = BoneRig.Find(model);
         _parts = ModelSlot.Parts(model, "EyeL", "EyeR", "Lids");
-        if (body.IsLimbSite)
-        {
+        if (body.IsLimbSite) {
             _lockedSide = "L";
         }
     }
@@ -49,10 +46,8 @@ public partial class PatientAnimator : Node
     /// <summary>A defibrillator shock: every muscle contracts at once for an instant.</summary>
     public void Jolt() => _jolt = 1f;
 
-    public void Animate(Vitals vitals, bool alive, float delta)
-    {
-        if (_rig is null)
-        {
+    public void Animate(Vitals vitals, bool alive, float delta) {
+        if (_rig is null) {
             return;
         }
         var t = (float)GameClock.Seconds;
@@ -64,13 +59,11 @@ public partial class PatientAnimator : Node
         _jolt = Mathf.MoveToward(_jolt, 0f, delta * 5f);
         var rise = new Vector3(0, TorsoTop * breath + _jolt * 0.025f, 0);
         _rig.Shift("Torso", rise);
-        foreach (var held in new[] { "ThighL", "ThighR", "Neck", "UpperArmL", "UpperArmR" })
-        {
+        foreach (var held in new[] { "ThighL", "ThighR", "Neck", "UpperArmL", "UpperArmR" }) {
             _rig.Hold(held, rise);
         }
         _body.SetBreathOffset(TorsoTop * breath);
-        if (breathing)
-        {
+        if (breathing) {
             _body.Breath = Mathf.Sin(_breathPhase) * 0.5f + 0.5f;
         }
         _body.Heartbeat = HeartbeatOf(vitals, alive, delta);
@@ -78,8 +71,7 @@ public partial class PatientAnimator : Node
         var awake = alive && vitals.IsAwake;
         // Awake patients blink every few seconds, more often in pain or panic.
         _blinkIn -= awake ? delta * (1f + vitals.Pain + vitals.Panic * 2f) : 0f;
-        if (_blinkIn <= 0f)
-        {
+        if (_blinkIn <= 0f) {
             _blinkIn = _rng.RandfRange(2.5f, 6f);
             _blinkLeft = Blink;
         }
@@ -93,8 +85,7 @@ public partial class PatientAnimator : Node
         // The jaw hinges about the ear-to-ear axis; a positive turn swings the chin toward the chest.
         _rig.Rotate("Jaw", new Basis(Vector3.Back, jawOpen));
 
-        if (vitals.Pain > _lastPain + 0.08f && awake)
-        {
+        if (vitals.Pain > _lastPain + 0.08f && awake) {
             _flinch = 1f;
         }
         _lastPain = vitals.Pain;
@@ -104,17 +95,13 @@ public partial class PatientAnimator : Node
         var head = new Vector3(look, 0, 0)
             + new Vector3(_rng.RandfRange(-1f, 1f), 0, _rng.RandfRange(-1f, 1f)) * _flinch * 0.15f;
         var shake = 0f;
-        if (vitals.Seizing)
-        {
+        if (vitals.Seizing) {
             shake = 0.25f;
-        }
-        else if (awake && vitals.Panic > 0.6f)
-        {
+        } else if (awake && vitals.Panic > 0.6f) {
             shake = (vitals.Panic - 0.6f) * 0.8f;
         }
         _rig.Rotate("Head", Basis.FromEuler(head + Jitter(shake * 0.6f, t, 1f)));
-        foreach (var side in new[] { "L", "R" })
-        {
+        foreach (var side in new[] { "L", "R" }) {
             var mirror = side == "L" ? 1f : -1f;
             var still = side == _lockedSide;
             var amount = still ? 0f : shake + _flinch * 0.2f + _jolt * 0.35f;
@@ -131,32 +118,25 @@ public partial class PatientAnimator : Node
 
     /// <summary>Heart contraction 0..1: a quick squeeze once per beat in sinus rhythm, a feeble quiver in V-fib, still
     /// in asystole.</summary>
-    private float HeartbeatOf(Vitals vitals, bool alive, float delta)
-    {
-        if (!alive || vitals.Rhythm == Rhythm.Asystole)
-        {
+    private float HeartbeatOf(Vitals vitals, bool alive, float delta) {
+        if (!alive || vitals.Rhythm == Rhythm.Asystole) {
             return 0f;
         }
-        if (vitals.Rhythm == Rhythm.Vfib)
-        {
+        if (vitals.Rhythm == Rhythm.Vfib) {
             return _rng.Randf() * 0.15f;
         }
         _beatPhase = Mathf.PosMod(_beatPhase + delta * vitals.HeartRate / 60f, 1f);
         return Mathf.Pow(Mathf.Max(Mathf.Sin(_beatPhase * Mathf.Tau), 0f), 3f);
     }
 
-    private void SetVisible(string part, bool value)
-    {
-        if (_parts.TryGetValue(part, out var node))
-        {
+    private void SetVisible(string part, bool value) {
+        if (_parts.TryGetValue(part, out var node)) {
             node.Visible = value;
         }
     }
 
-    private static Vector3 Jitter(float amount, float t, float seed)
-    {
-        if (amount <= 0f)
-        {
+    private static Vector3 Jitter(float amount, float t, float seed) {
+        if (amount <= 0f) {
             return Vector3.Zero;
         }
         return new Vector3(Mathf.Sin(t * 37f + seed), Mathf.Sin(t * 29f + seed * 2f), Mathf.Sin(t * 43f + seed * 3f)) * amount;

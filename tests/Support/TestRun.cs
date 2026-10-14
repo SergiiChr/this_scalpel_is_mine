@@ -4,8 +4,7 @@ using Scalpel.Core;
 namespace Scalpel.Tests.Support;
 
 /// <summary>What every test process does before the game starts.</summary>
-internal static class TestRun
-{
+internal static class TestRun {
     /// <summary>Set by build.py and .runsettings for test processes only.</summary>
     private const string Marker = "TEST_RUN";
 

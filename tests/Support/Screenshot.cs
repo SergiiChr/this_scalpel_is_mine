@@ -18,8 +18,7 @@ namespace Scalpel.Tests.Support;
 /// </list>
 /// Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 /// </summary>
-public partial class Screenshot : Node
-{
+public partial class Screenshot : Node {
     private const string SurgeryScene = "res://scenes/surgery.tscn";
 
     private string _out = "user://screenshots";
@@ -32,60 +31,45 @@ public partial class Screenshot : Node
     private static string Arg(string name, string fallback) =>
         OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith($"--{name}="))?.Split('=', 2)[1] ?? fallback;
 
-    private async Task Render()
-    {
+    private async Task Render() {
         var scenarioId = Arg("scenario", "appendectomy");
         _out = Arg("out", _out);
         _only = Arg("only", "");
         DirAccess.MakeDirRecursiveAbsolute(_out);
-        if (Has("--menus"))
-        {
+        if (Has("--menus")) {
             await Menus();
-        }
-        else if (Has("--syringe"))
-        {
+        } else if (Has("--syringe")) {
             await SyringeViews();
-        }
-        else
-        {
+        } else {
             var player = new LobbyPlayer("Tester", [new QuirkRoll("normal_dude", "")], Ready: true);
             Net.Instance.StartLocalSession(Db.Scenario(scenarioId)!, 42, player, []);
             var surgery = GD.Load<PackedScene>(SurgeryScene).Instantiate<Surgery>();
             AddChild(surgery);
             await Frames(10);
             await SurgeryDriver.PlayerPutsCardBack(surgery);
-            if (Has("--anatomy"))
-            {
+            if (Has("--anatomy")) {
                 await Anatomy(surgery);
-            }
-            else if (Has("--materials"))
-            {
+            } else if (Has("--materials")) {
                 await MaterialViews(surgery);
-            }
-            else
-            {
+            } else {
                 await ScenarioViews(surgery);
             }
         }
         GetTree().Quit();
     }
 
-    private async Task Shot(string file)
-    {
+    private async Task Shot(string file) {
         await Frames(6);
         GetViewport().GetTexture().GetImage().SavePng(_out.PathJoin(file + ".png"));
     }
 
-    private async Task Frames(int count)
-    {
-        for (var i = 0; i < count; i++)
-        {
+    private async Task Frames(int count) {
+        for (var i = 0; i < count; i++) {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
     }
 
-    private Camera3D NewCamera()
-    {
+    private Camera3D NewCamera() {
         var camera = new Camera3D();
         AddChild(camera);
         camera.Current = true;
@@ -95,16 +79,14 @@ public partial class Screenshot : Node
     /// <summary>The scenario with staged damage: cuts held open, burns, a bruise, a marker line, blood and iodine.
     /// Seen first person, on the monitor, close up, around the room, and the hands, the surgeon, the X-ray, the manual
     /// and the patient card.</summary>
-    private async Task ScenarioViews(Surgery surgery)
-    {
+    private async Task ScenarioViews(Surgery surgery) {
         var patient = surgery.Patient;
         patient.Cut(1, new Vector2(0.25f, 0.6f), new Vector2(0.5f, 0.55f), 1f, 1f, false, 0.1f);
         patient.Cut(1, new Vector2(0.5f, 0.55f), new Vector2(0.72f, 0.62f), 1f, 1f, false, 0.1f);
         patient.Cut(2, new Vector2(0.3f, 0.3f), new Vector2(0.55f, 0.25f), 0.5f, 0.5f, false, 0.5f);
         // Retract the long incision with two pins, like forceps holding the edges apart.
         var tissue = patient.Body.Tissue;
-        foreach (var (at, pull) in ((Vector2, Vector3)[])[(new(0.48f, 0.52f), new(0f, 0.004f, -0.025f)), (new(0.48f, 0.6f), new(0f, 0.004f, 0.025f))])
-        {
+        foreach (var (at, pull) in ((Vector2, Vector3)[])[(new(0.48f, 0.52f), new(0f, 0.004f, -0.025f)), (new(0.48f, 0.6f), new(0f, 0.004f, 0.025f))]) {
             var key = 900 + tissue.Grips().Count;
             tissue.Grip(key, at);
             tissue.MoveGrip(key, tissue.Pos[tissue.Nearest(at)] + pull);
@@ -128,16 +110,14 @@ public partial class Screenshot : Node
         await Frames(240);
         await Shot("10_monitor");
         var saved = patient.Vitals.ToVariant();
-        for (var i = 0; i < 60; i++)
-        {
+        for (var i = 0; i < 60; i++) {
             patient.Vitals.Spo2 = 84f;
             patient.Vitals.Systolic = 72f;
             await Frames(1);
         }
         await Shot("10b_monitor_alarm");
         patient.Vitals.Apply(saved);
-        if (_only == "monitor")
-        {
+        if (_only == "monitor") {
             return;
         }
         me.Camera.Current = true;
@@ -159,8 +139,7 @@ public partial class Screenshot : Node
         camera.GlobalPosition = incision + new Vector3(0f, 0.16f, 0.1f);
         camera.LookAt(incision);
         await Shot("03b_tissue_layers");
-        if (_only == "site")
-        {
+        if (_only == "site") {
             return;
         }
         await RoomViews(surgery, camera);
@@ -169,8 +148,7 @@ public partial class Screenshot : Node
     }
 
     /// <summary>The room, the foot of the table, the tray with iodine poured and the board over the bell.</summary>
-    private async Task RoomViews(Surgery surgery, Camera3D camera)
-    {
+    private async Task RoomViews(Surgery surgery, Camera3D camera) {
         camera.GlobalPosition = new Vector3(2.3f, 2.5f, 1.9f);
         camera.LookAt(new Vector3(0f, 0.9f, 0f));
         await Shot("04_room");
@@ -179,8 +157,7 @@ public partial class Screenshot : Node
         camera.LookAt(new Vector3(-1.4f, 0.9f, 0f));
         await Shot("04b_table_foot");
         // Iodine in the dish and one soaked pad.
-        foreach (var tool in surgery.Tools.Tools.Values.Where(tool => tool.Def.Id is "iodine_dish" or "cotton_pad"))
-        {
+        foreach (var tool in surgery.Tools.Tools.Values.Where(tool => tool.Def.Id is "iodine_dish" or "cotton_pad")) {
             surgery.Tools.SetFill(tool, 1f);
         }
         var tray = surgery.Room.Layout.Tray + new Vector3(0f, 0.95f, 0f);
@@ -188,8 +165,7 @@ public partial class Screenshot : Node
         camera.LookAt(tray);
         await Shot("07_tray");
         // The board over the bell with an order on its way.
-        if (surgery.Room.Layout.Has("bell"))
-        {
+        if (surgery.Room.Layout.Has("bell")) {
             surgery.Nurse.Request(1, ["gauze", "gauze", "scalpel"], surgery);
             await Frames(40);
             var bell = surgery.Room.Layout["bell"];
@@ -201,18 +177,15 @@ public partial class Screenshot : Node
 
     /// <summary>Both hands holding tools over the site, then bloody, then working over the thighs; the surgeon from
     /// the room.</summary>
-    private async Task HandViews(Surgery surgery, Camera3D camera)
-    {
+    private async Task HandViews(Surgery surgery, Camera3D camera) {
         var me = surgery.LocalSurgeon!;
         var patient = surgery.Patient;
         var site = patient.Body.Site.GlobalPosition;
         var free = surgery.Tools.Tools.Values.Where(tool => tool.State == ToolState.Free).ToList();
-        if (free.LastOrDefault(tool => tool.Def.Action == "cut") is { } scalpel)
-        {
+        if (free.LastOrDefault(tool => tool.Def.Action == "cut") is { } scalpel) {
             surgery.Tools.RequestGrab(scalpel, 1);
         }
-        if (free.LastOrDefault(tool => tool.Def.Action == "clamp") is { } forceps)
-        {
+        if (free.LastOrDefault(tool => tool.Def.Action == "clamp") is { } forceps) {
             surgery.Tools.RequestGrab(forceps, 0);
         }
         me.Hands[1].LocalTarget = me.ToLocal(site + new Vector3(0.05f, 0.1f, 0.05f));
@@ -222,8 +195,7 @@ public partial class Screenshot : Node
         me.Camera.Current = true;
         await Shot("08_hands");
         // Later in a bloody surgery: gloves soaked, scrubs stained, a spurt just hit the view.
-        foreach (var hand in me.Hands)
-        {
+        foreach (var hand in me.Hands) {
             hand.SetBlood(0.8f);
         }
         me.SetStains(0.6f);
@@ -245,22 +217,18 @@ public partial class Screenshot : Node
         camera.GlobalPosition = me.GlobalPosition + new Vector3(0.9f, 1.7f, 0.6f);
         camera.LookAt(me.GlobalPosition + new Vector3(0f, 1.1f, -0.4f));
         // Seen from outside, the parts hidden from the surgeon's own eyes show.
-        foreach (var part in me.FindChildren("*", "Node3D", false, false).Cast<Node3D>())
-        {
+        foreach (var part in me.FindChildren("*", "Node3D", false, false).Cast<Node3D>()) {
             part.Visible = true;
         }
-        foreach (var face in me.FindChildren("Face", "Node3D", true, false))
-        {
+        foreach (var face in me.FindChildren("Face", "Node3D", true, false)) {
             face.GetParent<Node3D>().Visible = true;
         }
         await Shot("09_surgeon");
     }
 
     /// <summary>The X-ray print, the manual (a condition page too) and the patient card.</summary>
-    private async Task PaperViews(Surgery surgery)
-    {
-        if (surgery.Room.Xray is { } cart)
-        {
+    private async Task PaperViews(Surgery surgery) {
+        if (surgery.Room.Xray is { } cart) {
             cart.GlobalPosition = surgery.Patient.GlobalPosition + new Vector3(-0.3f, -Room.TableHeight, 1.1f);
             cart.FindChildren("*", "", true, false).OfType<Interactable>().First(spot => spot.Prompt.StartsWith("Take an X-ray"))
                 .Interact(surgery.LocalSurgeon!);
@@ -272,8 +240,7 @@ public partial class Screenshot : Node
         }
         surgery.Hud.OpenManual();
         await Shot("05_manual");
-        foreach (var title in (string[])["17. Chronic conditions", "Aneurysm"])
-        {
+        foreach (var title in (string[])["17. Chronic conditions", "Aneurysm"]) {
             surgery.Hud.Manual!.Entries.First(entry => entry.Page.Title == title).Button.EmitSignal(BaseButton.SignalName.Pressed);
         }
         await Shot("05b_manual_condition");

@@ -1,8 +1,7 @@
 namespace Scalpel.Data;
 
 /// <summary>One entry of data/tools.cfg. Field meaning is documented at the top of that file.</summary>
-public sealed record ToolDef
-{
+public sealed record ToolDef {
     public required string Id { get; init; }
     public required string Name { get; init; }
     public string Action { get; init; } = "none";
@@ -55,17 +54,14 @@ public sealed record ToolDef
 
     public bool IsHeavy => Size == "heavy";
 
-    public static ToolDef FromConfig(ConfigReader config)
-    {
+    public static ToolDef FromConfig(ConfigReader config) {
         var action = config.String("action", "none");
-        var trayByAction = action switch
-        {
+        var trayByAction = action switch {
             "syringe" => "syringes",
             "vial" or "pour" => "bottles",
             _ => "",
         };
-        return new ToolDef
-        {
+        return new ToolDef {
             Id = config.Section,
             Name = config.String("name", config.Section.Capitalize()),
             Action = action,

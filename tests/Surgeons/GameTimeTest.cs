@@ -5,8 +5,7 @@ namespace Scalpel.Tests.Surgeons;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
-public class GameTimeTest
-{
+public class GameTimeTest {
     /// <summary>Real time that passes between two frames, as a hitch would make it.</summary>
     private const int HitchMsec = 300;
     private const int Trials = 5;
@@ -14,14 +13,12 @@ public class GameTimeTest
     /// <summary>Hand tremor follows game time (GameClock): a hitch between two frames moves the hand by no more than one
     /// frame's shake.</summary>
     [TestCase]
-    public async Task TremorFollowsGameTime()
-    {
+    public async Task TremorFollowsGameTime() {
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch");
         var surgeon = driver.Me;
         var hand = surgeon.Hands[surgeon.Active];
-        for (var trial = 0; trial < Trials; trial++)
-        {
+        for (var trial = 0; trial < Trials; trial++) {
             SurgeryState.SurgeonIsStressed(surgeon);
             await Frames.Physics(1);
             var before = hand.Tremor;

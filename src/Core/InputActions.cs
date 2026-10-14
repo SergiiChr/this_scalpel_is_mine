@@ -1,8 +1,7 @@
 namespace Scalpel.Core;
 
 /// <summary>One input action the game reads, with its default key or mouse button.</summary>
-public sealed record InputActionDef(string Action, string Label, Key Key = Key.None, MouseButton Mouse = MouseButton.None)
-{
+public sealed record InputActionDef(string Action, string Label, Key Key = Key.None, MouseButton Mouse = MouseButton.None) {
     /// <summary>The default binding in the settings file's encoding.</summary>
     public string DefaultCode => Key != Key.None ? $"key:{(long)Key}" : $"mouse:{(long)Mouse}";
 }
@@ -11,8 +10,7 @@ public sealed record InputActionDef(string Action, string Label, Key Key = Key.N
 /// Every input action the game reads, with its default binding. <see cref="Settings"/> registers these at startup and
 /// stores player overrides on top.
 /// </summary>
-public static class InputActions
-{
+public static class InputActions {
     // Before Defaults, which reads it: static fields are set in the order they're declared.
     private static readonly StringName[] BeltSlots = ["belt_1", "belt_2", "belt_3", "belt_4"];
 
@@ -74,19 +72,16 @@ public static class InputActions
     public static StringName BeltSlot(int slot) => BeltSlots[slot - 1];
 
     /// <summary>"key:87" / "mouse:1" for an event. Strings keep the settings file readable.</summary>
-    public static string Encode(InputEvent inputEvent) => inputEvent switch
-    {
+    public static string Encode(InputEvent inputEvent) => inputEvent switch {
         InputEventKey key => $"key:{(long)key.PhysicalKeycode}",
         InputEventMouseButton mouse => $"mouse:{(long)mouse.ButtonIndex}",
         _ => "",
     };
 
     /// <summary>The event an encoded binding stands for, null for a malformed one.</summary>
-    public static InputEvent? Decode(string code)
-    {
+    public static InputEvent? Decode(string code) {
         var parts = code.Split(':');
-        if (parts.Length != 2 || !long.TryParse(parts[1], out var value))
-        {
+        if (parts.Length != 2 || !long.TryParse(parts[1], out var value)) {
             return null;
         }
         return parts[0] == "key"
@@ -101,10 +96,8 @@ public static class InputActions
 
     /// <summary>Human readable binding, e.g. "E" or "Mouse 1". Kept until the bindings change
     /// (<see cref="BindingsChanged"/>): the on-screen hint asks for it every frame.</summary>
-    public static string BindingText(StringName action)
-    {
-        if (!BindingTexts.TryGetValue(action, out var text))
-        {
+    public static string BindingText(StringName action) {
+        if (!BindingTexts.TryGetValue(action, out var text)) {
             text = ReadBinding(action);
             BindingTexts[action] = text;
         }
@@ -113,29 +106,23 @@ public static class InputActions
 
     /// <summary>The input map changed: binding texts are read afresh, now rather than the first frame the HUD
     /// shows them (reading one costs a fraction of a millisecond in engine calls).</summary>
-    public static void BindingsChanged()
-    {
+    public static void BindingsChanged() {
         BindingTexts.Clear();
-        foreach (var entry in Defaults)
-        {
+        foreach (var entry in Defaults) {
             BindingText(entry.Action);
         }
     }
 
-    private static string ReadBinding(StringName action)
-    {
+    private static string ReadBinding(StringName action) {
         var events = InputMap.HasAction(action) ? InputMap.ActionGetEvents(action) : [];
-        if (events.Count == 0)
-        {
+        if (events.Count == 0) {
             return "-";
         }
-        if (events[0] is InputEventKey key)
-        {
+        if (events[0] is InputEventKey key) {
             return OS.GetKeycodeString(key.PhysicalKeycode);
         }
         var button = ((InputEventMouseButton)events[0]).ButtonIndex;
-        return button switch
-        {
+        return button switch {
             MouseButton.Left => "LMB",
             MouseButton.Right => "RMB",
             MouseButton.Middle => "MMB",

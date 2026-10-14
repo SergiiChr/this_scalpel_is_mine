@@ -5,18 +5,15 @@ namespace Scalpel.Tests.Data;
 /// <summary>The data files the game reads at startup hold together.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
-public partial class DataContractsTest
-{
+public partial class DataContractsTest {
     private static IEnumerable<ScenarioDef> AllScenarios => Db.Scenarios.Concat(Db.DisabledScenarios);
 
     private static ManualPage ConditionsPage => Db.Manual.First(page => page.Children.Count > 0);
 
     [TestCase]
-    public void EveryMainMenuScenarioHasObjectives()
-    {
+    public void EveryMainMenuScenarioHasObjectives() {
         AssertInt(Db.Scenarios.Count).OverrideFailureMessage("at least one scenario is registered").IsGreater(0);
-        foreach (var scenario in AllScenarios)
-        {
+        foreach (var scenario in AllScenarios) {
             AssertString(scenario.Id).OverrideFailureMessage("scenario id is present").IsNotEmpty();
             AssertInt(scenario.Steps.Count(step => !step.Optional))
                 .OverrideFailureMessage($"{scenario.Id} has a required objective").IsGreater(0);
@@ -26,15 +23,11 @@ public partial class DataContractsTest
     /// <summary>A step comes after steps listed before it, so the order a scenario lists is one that can be played.
     /// </summary>
     [TestCase]
-    public void StepsComeAfterEarlierSteps()
-    {
-        foreach (var scenario in AllScenarios)
-        {
-            for (var i = 0; i < scenario.Steps.Count; i++)
-            {
+    public void StepsComeAfterEarlierSteps() {
+        foreach (var scenario in AllScenarios) {
+            for (var i = 0; i < scenario.Steps.Count; i++) {
                 var earlier = scenario.Steps.Take(i).Select(step => step.Id).ToHashSet();
-                foreach (var id in scenario.Steps[i].After)
-                {
+                foreach (var id in scenario.Steps[i].After) {
                     AssertBool(earlier.Contains(id))
                         .OverrideFailureMessage($"{scenario.Id}: \"{scenario.Steps[i].Label}\" comes after an earlier step '{id}'")
                         .IsTrue();
@@ -44,29 +37,23 @@ public partial class DataContractsTest
     }
 
     [TestCase]
-    public void EveryToolIsFoundByItsOwnId()
-    {
-        foreach (var id in Db.Tools.Keys)
-        {
+    public void EveryToolIsFoundByItsOwnId() {
+        foreach (var id in Db.Tools.Keys) {
             AssertString(Db.Tool(id)!.Id).OverrideFailureMessage($"tool {id} knows its id").IsEqual(id);
         }
     }
 
     /// <summary>The nurse's shop lists every orderable drug vial under one Drugs group.</summary>
     [TestCase]
-    public void EveryDrugVialIsUnderDrugs()
-    {
-        foreach (var tool in Db.Tools.Values.Where(tool => tool.Orderable && tool.Action == "vial"))
-        {
+    public void EveryDrugVialIsUnderDrugs() {
+        foreach (var tool in Db.Tools.Values.Where(tool => tool.Orderable && tool.Action == "vial")) {
             AssertString(tool.Category).OverrideFailureMessage($"{tool.Id} is under Drugs").IsEqual("Drugs");
         }
     }
 
     [TestCase]
-    public void ScenarioIdsAreUnique()
-    {
-        foreach (var group in AllScenarios.GroupBy(scenario => scenario.Id))
-        {
+    public void ScenarioIdsAreUnique() {
+        foreach (var group in AllScenarios.GroupBy(scenario => scenario.Id)) {
             AssertInt(group.Count())
                 .OverrideFailureMessage($"scenario id {group.Key} is used once (file names differ in more than their number)")
                 .IsEqual(1);
@@ -74,37 +61,29 @@ public partial class DataContractsTest
     }
 
     [TestCase]
-    public void EveryToolAScenarioListsExists()
-    {
-        foreach (var scenario in AllScenarios)
-        {
-            foreach (var id in scenario.StartingTools.Concat(scenario.RandomTools))
-            {
+    public void EveryToolAScenarioListsExists() {
+        foreach (var scenario in AllScenarios) {
+            foreach (var id in scenario.StartingTools.Concat(scenario.RandomTools)) {
                 AssertObject(Db.Tool(id)).OverrideFailureMessage($"{scenario.Id} lists tool {id}").IsNotNull();
             }
         }
     }
 
     [TestCase]
-    public void EveryChronicConditionHasAManualEntryQuotingItsChartLine()
-    {
+    public void EveryChronicConditionHasAManualEntryQuotingItsChartLine() {
         var entries = ConditionsPage.Children;
         AssertInt(entries.Count).OverrideFailureMessage("the manual has a chronic conditions section").IsGreater(0);
-        foreach (var quirk in Db.PatientQuirks.Values)
-        {
-            foreach (var variant in quirk.Variants.Count > 0 ? quirk.Variants : [""])
-            {
+        foreach (var quirk in Db.PatientQuirks.Values) {
+            foreach (var variant in quirk.Variants.Count > 0 ? quirk.Variants : [""]) {
                 var card = quirk.Text("card", variant);
                 // A strong heart ("Marathon runner") is on the chart but isn't a condition to manage.
-                if (card.Length == 0 || quirk.IsRedHerring || quirk.Polarity(variant) == "positive")
-                {
+                if (card.Length == 0 || quirk.IsRedHerring || quirk.Polarity(variant) == "positive") {
                     continue;
                 }
                 var key = variant.Length > 0 ? $"{quirk.Id}.{variant}" : quirk.Id;
                 var entry = entries.LastOrDefault(page => page.Tags.Contains(key) || page.Tags.Contains(quirk.Id));
                 AssertObject(entry).OverrideFailureMessage($"{card} has a chronic conditions entry tagged {key}").IsNotNull();
-                if (entry is not null)
-                {
+                if (entry is not null) {
                     AssertString(entry.Body).OverrideFailureMessage($"the {entry.Title} entry quotes the chart line")
                         .Contains($"“{card}”");
                 }
@@ -116,15 +95,11 @@ public partial class DataContractsTest
     private static partial Regex Pointer();
 
     [TestCase]
-    public void ManualPointersNameExistingConditionEntries()
-    {
+    public void ManualPointersNameExistingConditionEntries() {
         var titles = ConditionsPage.Children.Select(page => page.Title).ToList();
-        foreach (var page in Db.Manual)
-        {
-            foreach (Match found in Pointer().Matches(page.Body))
-            {
-                foreach (var title in found.Groups[1].Value.Split(", "))
-                {
+        foreach (var page in Db.Manual) {
+            foreach (Match found in Pointer().Matches(page.Body)) {
+                foreach (var title in found.Groups[1].Value.Split(", ")) {
                     AssertArray(titles).OverrideFailureMessage($"{page.Title} points to an existing condition entry")
                         .Contains(title);
                 }
@@ -133,16 +108,12 @@ public partial class DataContractsTest
     }
 
     [TestCase]
-    public void SiteBoundQuirksRollOnlyOnTheirSites()
-    {
+    public void SiteBoundQuirksRollOnlyOnTheirSites() {
         var rng = new RandomNumberGenerator { Seed = 3 };
         var rolledSomewhere = false;
-        foreach (var scenario in AllScenarios)
-        {
-            for (var i = 0; i < 60; i++)
-            {
-                foreach (var roll in QuirkRoller.RollPatient(scenario, rng))
-                {
+        foreach (var scenario in AllScenarios) {
+            for (var i = 0; i < 60; i++) {
+                foreach (var roll in QuirkRoller.RollPatient(scenario, rng)) {
                     AssertBool(Db.PatientQuirks[roll.Id].FitsSite(scenario.Site))
                         .OverrideFailureMessage($"{roll.Id} rolls only on its sites, not on {scenario.Site} ({scenario.Id})")
                         .IsTrue();
@@ -154,15 +125,12 @@ public partial class DataContractsTest
     }
 
     [TestCase]
-    public void AllergiesNameTheirDrugOnTheChartOnlyWhenDocumented()
-    {
+    public void AllergiesNameTheirDrugOnTheChartOnlyWhenDocumented() {
         var allergy = Db.PatientQuirks["allergy"];
-        foreach (var variant in allergy.Variants)
-        {
+        foreach (var variant in allergy.Variants) {
             var unknown = variant.StartsWith("unknown_", StringComparison.Ordinal);
             var name = unknown ? "Unknown drug allergy" : "Drug allergy";
-            if (allergy.Effects(variant).GetValueOrDefault("allergen") is not { } allergen)
-            {
+            if (allergy.Effects(variant).GetValueOrDefault("allergen") is not { } allergen) {
                 AssertString(allergy.DisplayName(variant)).OverrideFailureMessage($"allergy ({variant}) reads as a name in menus")
                     .IsEqual($"{name} (None after all)");
                 continue;
@@ -180,8 +148,7 @@ public partial class DataContractsTest
     /// <summary>Of the allergies that roll, 70% are named on the chart, and a tenth of the unknown ones aren't
     /// allergies at all.</summary>
     [TestCase]
-    public void AllergiesRollNamedMostOfTheTime()
-    {
+    public void AllergiesRollNamedMostOfTheTime() {
         var allergy = Db.PatientQuirks["allergy"];
         var total = allergy.Variants.Sum(allergy.Weight);
         var unknown = allergy.Variants.Where(variant => variant.StartsWith("unknown_", StringComparison.Ordinal)).ToList();
@@ -196,8 +163,7 @@ public partial class DataContractsTest
     private static partial Regex HandWrittenNumber();
 
     [TestCase]
-    public void ManualNumbersComeFromTheGame()
-    {
+    public void ManualNumbersComeFromTheGame() {
         var filled = ManualPage.FillNumbers(
             "{Patient.HighPressure} mmHg for {drug.diazepam.Duration / 60} min, {quirk.heart_weak.arrest_mult}x", "test");
         var arrest = Modifiers.Number(Db.PatientQuirks["heart"].Effects("weak")["arrest_mult"])!.Value;
@@ -205,12 +171,10 @@ public partial class DataContractsTest
         AssertString(filled).OverrideFailureMessage("manual numbers are worked out from constants, drugs and quirk effects")
             .IsEqual(expected);
         // A number with a unit written straight into a page would go stale when the game changes: it has to be "{...}".
-        foreach (var page in Db.Manual.SelectMany(page => page.WithSubPages))
-        {
+        foreach (var page in Db.Manual.SelectMany(page => page.WithSubPages)) {
             AssertString(page.Body).OverrideFailureMessage($"{page.Title} has no number left to work out").NotContains("{");
             var text = ManualPage.NumberPattern().Replace(page.Source, "").Split("[font_size=16][b]References")[0];
-            foreach (Match found in HandWrittenNumber().Matches(text))
-            {
+            foreach (Match found in HandWrittenNumber().Matches(text)) {
                 AssertBool(false).OverrideFailureMessage($"{page.Title} writes \"{found.Value}\" by hand: use a {{...}} game number")
                     .IsTrue();
             }

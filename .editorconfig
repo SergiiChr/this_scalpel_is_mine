@@ -24,10 +24,10 @@ indent_style = tab
 max_line_length = 120
 
 # Layout
-csharp_new_line_before_open_brace = all
-csharp_new_line_before_else = true
-csharp_new_line_before_catch = true
-csharp_new_line_before_finally = true
+csharp_new_line_before_open_brace = none
+csharp_new_line_before_else = false
+csharp_new_line_before_catch = false
+csharp_new_line_before_finally = false
 csharp_indent_case_contents = true
 csharp_indent_switch_labels = true
 csharp_prefer_braces = when_multiline:warning

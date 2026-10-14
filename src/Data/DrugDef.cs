@@ -1,8 +1,7 @@
 namespace Scalpel.Data;
 
 /// <summary>One entry of data/drugs.cfg. Field meaning is documented at the top of that file.</summary>
-public sealed class DrugDef
-{
+public sealed class DrugDef {
     /// <summary>Leeway around the right dose (as a share of it): anything in between works like the right dose.</summary>
     public const float DoseLow = 0.7f;
     public const float DoseHigh = 1.4f;
@@ -31,8 +30,7 @@ public sealed class DrugDef
 
     public bool IsBlood => BloodType.Length > 0;
 
-    public static DrugDef FromConfig(ConfigReader config) => new()
-    {
+    public static DrugDef FromConfig(ConfigReader config) => new() {
         Id = config.Section,
         Name = config.String("name", config.Section.Capitalize()),
         Onset = config.Float("onset", 5f),
@@ -49,10 +47,8 @@ public sealed class DrugDef
     public bool HasFlag(string flag) => Flags.Contains(flag);
 
     /// <summary>How strongly a dose works, from its share of the right dose. Roughly right counts as right.</summary>
-    public static float DoseStrength(float share)
-    {
-        if (share < DoseLow)
-        {
+    public static float DoseStrength(float share) {
+        if (share < DoseLow) {
             return share / DoseLow;
         }
         return share > DoseHigh ? share / DoseHigh : 1f;

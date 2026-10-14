@@ -17,50 +17,40 @@ public sealed record SurgeryReport(
     IReadOnlyList<ReportLine> Events,
     IReadOnlyList<ReportLine> Consequences,
     IReadOnlyList<QuirkRoll> PatientQuirks,
-    float Time)
-{
+    float Time) {
     /// <summary>Builds the report on the host. Adds the last flags (a tool left inside, no antibiotic for an open
     /// wound) first.</summary>
-    public static SurgeryReport Build(Surgery surgery, bool success, string reason)
-    {
+    public static SurgeryReport Build(Surgery surgery, bool success, string reason) {
         var patient = surgery.Patient;
         var scenario = surgery.Scenario;
         var rng = new RandomNumberGenerator { Seed = Net.Instance.SessionSeed + 99 };
         var retained = surgery.Tools.RetainedCount();
-        if (retained > 0)
-        {
+        if (retained > 0) {
             patient.AddFlag("retained_tool", retained);
             surgery.Scoring.Add("retained_item");
         }
         var opened = patient.Wounds.Any(w => w.MadeBySurgeon && w.Depth >= 0.7f);
-        if (opened && !patient.Flags.ContainsKey("antibiotic"))
-        {
+        if (opened && !patient.Flags.ContainsKey("antibiotic")) {
             patient.AddFlag("no_antibiotic_open");
         }
         var total = new ConfigReader(Db.Scoring, "stars").Int("base", 50) + surgery.Scoring.Points;
         var consequences = new List<ReportLine>();
-        if (success)
-        {
-            foreach (var config in ConfigReader.Sections(Db.Consequences))
-            {
-                if (patient.Flags.GetValueOrDefault(config.String("flag")) < config.Float("min", 1f))
-                {
+        if (success) {
+            foreach (var config in ConfigReader.Sections(Db.Consequences)) {
+                if (patient.Flags.GetValueOrDefault(config.String("flag")) < config.Float("min", 1f)) {
                     continue;
                 }
-                if (rng.Randf() > config.Float("chance", 1f))
-                {
+                if (rng.Randf() > config.Float("chance", 1f)) {
                     continue;
                 }
                 var points = config.Int("points");
                 total += points;
                 consequences.Add(new ReportLine(config.String("text").Replace("{site}", scenario.Site.Replace('_', ' '), StringComparison.Ordinal), points));
-                if (config.Bool("stop"))
-                {
+                if (config.Bool("stop")) {
                     break;
                 }
             }
-            if (scenario.TimeLimit > 0f)
-            {
+            if (scenario.TimeLimit > 0f) {
                 var spare = scenario.TimeLimit - surgery.Elapsed;
                 var bonus = (int)(spare / 20f) * new ConfigReader(Db.Scoring, "time_bonus").Int("points", 1);
                 total += bonus;
@@ -76,8 +66,7 @@ public sealed record SurgeryReport(
             consequences, patient.Rolls, surgery.Elapsed);
     }
 
-    public GodotDictionary ToVariant() => new()
-    {
+    public GodotDictionary ToVariant() => new() {
         ["scenario"] = Scenario,
         ["success"] = Success,
         ["reason"] = Reason,

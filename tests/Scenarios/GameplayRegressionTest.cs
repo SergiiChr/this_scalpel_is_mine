@@ -11,16 +11,13 @@ namespace Scalpel.Tests.Scenarios;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario")]
 [GodotArgs("--fixed-fps", "60")]
-public class GameplayRegressionTest
-{
+public class GameplayRegressionTest {
     [TestCase]
-    public void EveryScenarioIsSwept()
-    {
+    public void EveryScenarioIsSwept() {
         var cases = typeof(GameplayRegressionTest).GetMethod(nameof(Sweeps))!.GetCustomAttributes<TestCaseAttribute>()
             .Select(row => row.Arguments[0] as string)
             .ToHashSet();
-        foreach (var scenario in Db.Scenarios.Concat(Db.DisabledScenarios))
-        {
+        foreach (var scenario in Db.Scenarios.Concat(Db.DisabledScenarios)) {
             AssertBool(cases.Contains(scenario.Id)).OverrideFailureMessage($"scenario {scenario.Id} has a sweep case").IsTrue();
         }
     }
@@ -48,8 +45,7 @@ public class GameplayRegressionTest
     [TestCase("bullet_near_heart", Timeout = Limits.Slow)]
     [TestCase("leg_extension", Timeout = Limits.Slow)]
     [TestCase("brain_tumor", Timeout = Limits.Slow)]
-    public async Task Sweeps(string scenario)
-    {
+    public async Task Sweeps(string scenario) {
         // The first scenario also runs the checks that don't depend on the scenario.
         var failures = await GameplaySweep.Run(Db.Scenario(scenario)!, scenario == Db.Scenarios[0].Id);
         AssertBool(failures.Count == 0).OverrideFailureMessage(string.Join("\n", failures)).IsTrue();

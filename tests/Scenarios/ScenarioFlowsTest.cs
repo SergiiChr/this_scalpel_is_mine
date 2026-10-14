@@ -14,21 +14,18 @@ namespace Scalpel.Tests.Scenarios;
 [GodotArgs("--fixed-fps", "60")]
 // CI intermittently stalls when a second operation shares the first one's engine and rendering state.
 [IsolateCases]
-public class ScenarioFlowsTest
-{
+public class ScenarioFlowsTest {
     // Temporary local budget override: these scenario rows exceeded CPU/render budgets in the recorded regressions.
     private const string BudgetOverride = "scenario surgery has recorded CPU/render overruns; profiling deferred";
     [TestCase]
-    public void EveryScenarioHasAFlow()
-    {
+    public void EveryScenarioHasAFlow() {
         var cases = new[] { typeof(ScenarioFlowsTest), typeof(HandStitchScenarioTest), typeof(AppendectomyScenarioTest) }
             .SelectMany(suite => suite.GetMethods())
             .SelectMany(method => method.GetCustomAttributes<TestCaseAttribute>())
             .Where(row => row.Arguments.Length > 0)
             .Select(row => row.Arguments[0] as string)
             .ToHashSet();
-        foreach (var scenario in Db.Scenarios.Concat(Db.DisabledScenarios))
-        {
+        foreach (var scenario in Db.Scenarios.Concat(Db.DisabledScenarios)) {
             AssertBool(cases.Contains(scenario.Id)).OverrideFailureMessage($"scenario {scenario.Id} has a positive flow case")
                 .IsTrue();
         }

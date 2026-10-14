@@ -24,8 +24,7 @@ public sealed record NeedleHit(string Part, Vector3 At);
 /// brings everything down within reach of the floor.
 /// </para>
 /// </summary>
-public partial class Surgeon : CharacterBody3D
-{
+public partial class Surgeon : CharacterBody3D {
     public const float WalkSpeed = 1.6f;
     public const float Reach = 0.72f;
     /// <summary>Closest a hand comes to its shoulder (meters): an elbow folds only so far, closer the forearm would
@@ -133,15 +132,13 @@ public partial class Surgeon : CharacterBody3D
     /// <summary>Whether a hand holds onto something past its reach (the host lets it go).</summary>
     internal bool Strained(int hand) => _strain[hand];
 
-    public void Setup(int peer, string playerName, IReadOnlyList<QuirkRoll> rolls, Transform3D spawn)
-    {
+    public void Setup(int peer, string playerName, IReadOnlyList<QuirkRoll> rolls, Transform3D spawn) {
         PeerId = peer;
         Name = $"Surgeon{peer}";
         DisplayName = playerName;
         QuirkRolls = rolls;
         Mods = Modifiers.FromRolls(rolls, Db.SurgeonQuirks);
-        Status = new SurgeonStatus(Mods)
-        {
+        Status = new SurgeonStatus(Mods) {
             ColdTremor = Surgery.Current?.RunMods.Flag("cold") == true ? 0.0015f : 0f,
         };
         IsLocal = peer == Multiplayer.GetUniqueId();
@@ -152,14 +149,12 @@ public partial class Surgeon : CharacterBody3D
         _netYaw = Rotation.Y;
         CollisionLayer = 16;
         CollisionMask = 1 | 16;
-        AddChild(new CollisionShape3D
-        {
+        AddChild(new CollisionShape3D {
             Shape = new CapsuleShape3D { Radius = 0.24f, Height = 1.75f },
             Position = new Vector3(0f, 0.875f, 0f),
         });
         BuildVisuals();
-        for (var i = 0; i < 2; i++)
-        {
+        for (var i = 0; i < 2; i++) {
             var hand = new SurgeonHand();
             AddChild(hand);
             hand.Build(i, _scrubs);
@@ -168,10 +163,8 @@ public partial class Surgeon : CharacterBody3D
             hand.Target = ToGlobal(hand.LocalTarget);
             Hands[i] = hand;
         }
-        if (IsLocal)
-        {
-            foreach (var hand in Hands)
-            {
+        if (IsLocal) {
+            foreach (var hand in Hands) {
                 hand.HideUpperArm();
             }
             Camera.MakeCurrent();
@@ -182,8 +175,7 @@ public partial class Surgeon : CharacterBody3D
     public SurgicalTool? HeldTool(int hand) => Session.Tools.ToolInHand(PeerId, hand);
 
     /// <summary>What the host needs to drive a tool held in this hand.</summary>
-    public HandInput HandInput(int hand)
-    {
+    public HandInput HandInput(int hand) {
         var h = Hands[hand];
         var awake = !Status.IsOut;
         return new HandInput(h.Lowered && awake, h.Trigger && awake, h.Level, h.Speed, PeerId, Mods, HandStates);
@@ -201,26 +193,22 @@ public partial class Surgeon : CharacterBody3D
 
     public int BeltCapacity() => Math.Clamp(MaxBelt + (int)Mods.Num("belt_slots"), 0, MaxBelt);
 
-    public Transform3D BeltTransform(int beltSlot)
-    {
+    public Transform3D BeltTransform(int beltSlot) {
         var offset = new Vector3(-0.2f + (beltSlot * 0.13f), 0.95f, -0.12f);
         return new Transform3D(GlobalBasis * new Basis(Vector3.Right, -Mathf.Pi / 2f), ToGlobal(offset));
     }
 
     /// <summary>Stable gameplay reach origin: crouch lowers it, while the visual walk and squat animation never move it.
     /// </summary>
-    public Vector3 Shoulder(int hand)
-    {
+    public Vector3 Shoulder(int hand) {
         var local = ShoulderOffset with { X = ShoulderOffset.X * Side(hand) };
         var standing = StandingShoulder(GlobalTransform, hand, Crouch);
         return standing.Lerp(_body.GlobalTransform * local, _down);
     }
 
     /// <summary>Gameplay shoulder at a standing pose, including crouch, before any fall animation.</summary>
-    internal static Vector3 StandingShoulder(Transform3D pose, int hand, float crouch)
-    {
-        var local = ShoulderOffset with
-        {
+    internal static Vector3 StandingShoulder(Transform3D pose, int hand, float crouch) {
+        var local = ShoulderOffset with {
             X = ShoulderOffset.X * Side(hand),
             Y = ShoulderOffset.Y - (crouch * CrouchDrop),
         };
@@ -241,18 +229,14 @@ public partial class Surgeon : CharacterBody3D
     /// <paramref name="holding"/> is the hand with the needle: one of this surgeon's own leaves only the other hand to
     /// go into.
     /// </summary>
-    public NeedleHit? NeedlePart(Vector3 tip, SurgeonHand? holding)
-    {
-        foreach (var hand in Hands)
-        {
+    public NeedleHit? NeedlePart(Vector3 tip, SurgeonHand? holding) {
+        foreach (var hand in Hands) {
             var middle = hand.GloveMiddle(tip);
-            if (hand != holding && middle.DistanceTo(tip) < GloveReach)
-            {
+            if (hand != holding && middle.DistanceTo(tip) < GloveReach) {
                 return new NeedleHit("hand", middle);
             }
         }
-        if (holding is not null && Hands.Contains(holding))
-        {
+        if (holding is not null && Hands.Contains(holding)) {
             return null;
         }
         var hips = _body.GlobalTransform * SpineBottom;
@@ -264,19 +248,14 @@ public partial class Surgeon : CharacterBody3D
 
     /// <summary>A partner's empty hand close enough to take what this hand holds, null if none. A partner knocked out on
     /// the floor takes nothing.</summary>
-    public (Surgeon Surgeon, int Hand)? PassTarget(int hand)
-    {
+    public (Surgeon Surgeon, int Hand)? PassTarget(int hand) {
         var from = Hands[hand].GlobalPosition;
-        foreach (var other in Session.Surgeons.Values)
-        {
-            if (other == this || other.IsDown)
-            {
+        foreach (var other in Session.Surgeons.Values) {
+            if (other == this || other.IsDown) {
                 continue;
             }
-            for (var i = 0; i < 2; i++)
-            {
-                if (other.HeldTool(i) is null && other.Hands[i].GlobalPosition.DistanceTo(from) < PassDistance)
-                {
+            for (var i = 0; i < 2; i++) {
+                if (other.HeldTool(i) is null && other.Hands[i].GlobalPosition.DistanceTo(from) < PassDistance) {
                     return (other, i);
                 }
             }
@@ -285,10 +264,8 @@ public partial class Surgeon : CharacterBody3D
     }
 
     /// <summary>Something shook this surgeon (seizure, pothole, a bump, a shove). May drop what's in hand.</summary>
-    public void Jolt(float strength)
-    {
-        if (!IsLocal)
-        {
+    public void Jolt(float strength) {
+        if (!IsLocal) {
             return;
         }
         _jolt += new Vector3(
@@ -296,57 +273,46 @@ public partial class Surgeon : CharacterBody3D
             * strength * 0.03f;
         Status.AddStress(strength * 0.05f);
         var dropChance = strength * 0.35f * (1f - Mathf.Clamp(Mods.Num("bump_resist"), 0f, 1f));
-        if (GD.Randf() < dropChance && HeldTool(Active) is not null && !Hands[Active].Attached)
-        {
+        if (GD.Randf() < dropChance && HeldTool(Active) is not null && !Hands[Active].Attached) {
             Hands[Active].Lowered = false;
             Session.Tools.RequestRelease(Active, _jolt * 10f);
             Session.Hud.Toast("It slips out of your hand!");
         }
     }
 
-    public void DropEverything()
-    {
-        for (var i = 0; i < 2; i++)
-        {
+    public void DropEverything() {
+        for (var i = 0; i < 2; i++) {
             Hands[i].Lowered = false;
             Hands[i].Trigger = false;
-            if (HeldTool(i) is not null)
-            {
+            if (HeldTool(i) is not null) {
                 Session.Tools.RequestRelease(i, Vector3.Zero);
             }
         }
     }
 
-    public override void _PhysicsProcess(double delta)
-    {
+    public override void _PhysicsProcess(double delta) {
         var dt = (float)delta;
-        if (IsLocal)
-        {
+        if (IsLocal) {
             LocalUpdate(dt);
             HandStates++;
             _syncAccumulated += dt;
-            if (_syncAccumulated >= SyncInterval && Net.Instance.IsOnline)
-            {
+            if (_syncAccumulated >= SyncInterval && Net.Instance.IsOnline) {
                 _syncAccumulated = 0f;
                 using var state = PackState();
                 Rpc(MethodName.SyncState, state);
             }
-        }
-        else
-        {
+        } else {
             var follow = Mathf.Min(dt * 15f, 1f);
             GlobalPosition = GlobalPosition.Lerp(_netPosition, follow);
             Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, _netYaw, follow) };
         }
         _head.Rotation = _head.Rotation with { X = Pitch };
-        if (IsLocal)
-        {
+        if (IsLocal) {
             Camera.Fov = Mathf.Lerp(Camera.Fov, ZoomFov[Zoom], Mathf.Min(dt * 12f, 1f));
             FrameNeedle(dt);
         }
         AnimateBody(dt);
-        for (var i = 0; i < 2; i++)
-        {
+        for (var i = 0; i < 2; i++) {
             UpdateHand(i, dt);
         }
         Session.Tools.Follow(this);
@@ -354,31 +320,26 @@ public partial class Surgeon : CharacterBody3D
     }
 
     /// <summary>Keeps a hand's grip, angles, thumb and blood in step with the tool it holds, then poses it.</summary>
-    private void UpdateHand(int i, float dt)
-    {
+    private void UpdateHand(int i, float dt) {
         var hand = Hands[i];
         var tool = HeldTool(i);
         hand.Holding = tool is not null;
         var uid = tool?.Uid ?? 0;
-        if (uid != _heldUid[i])
-        {
+        if (uid != _heldUid[i]) {
             _heldUid[i] = uid;
             hand.Level = 0;
             hand.Grip = tool?.Def.Grip ?? "pencil";
             hand.Spreads = tool?.Def.Action == "spread";
             hand.Fit = tool is null ? GripFit.None : Db.GripFit(tool.Def, i);
-            if (tool?.Def.Grip == "needle")
-            {
+            if (tool?.Def.Grip == "needle") {
                 hand.Tilt = hand.DefaultTilt();
                 hand.Turn = hand.DefaultTurn();
             }
-            if (IsLocal)
-            {
+            if (IsLocal) {
                 FaceSyringe(i, tool);
             }
         }
-        if (IsLocal && _unfaced.ContainsKey(i) && _rolledHand != i)
-        {
+        if (IsLocal && _unfaced.ContainsKey(i) && _rolledHand != i) {
             // Moved about, it keeps turning its scale to the eyes.
             var facing = hand.TwistFacing(Camera.GlobalPosition - hand.GlobalPosition);
             hand.Twist = Mathf.LerpAngle(hand.Twist, facing, Mathf.Min(dt * 8f, 1f));

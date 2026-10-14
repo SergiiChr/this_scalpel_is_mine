@@ -6,26 +6,21 @@ namespace Scalpel.Tests.Liquids;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids")]
 [GodotArgs("--fixed-fps", "60")]
-public class DrugLevelsTest
-{
+public class DrugLevelsTest {
     private const string Drug = "atropine";
 
     [TestCase]
-    public void TenSmallInjectionsAddUpToOneBigOne()
-    {
+    public void TenSmallInjectionsAddUpToOneBigOne() {
         var def = Db.Drug(Drug)!;
         var small = new DrugLevels();
         var big = new DrugLevels();
         static float Wear(DrugDef def, float level) => 1f;
         big.Give(def, 1f, def.Onset);
-        for (var second = 0; second < 30; second++)
-        {
-            if (second < 10)
-            {
+        for (var second = 0; second < 30; second++) {
+            if (second < 10) {
                 small.Give(def, 0.1f, def.Onset);
             }
-            for (var i = 0; i < 10; i++)
-            {
+            for (var i = 0; i < 10; i++) {
                 small.Update(0.1f, Wear);
                 big.Update(0.1f, Wear);
             }
@@ -38,18 +33,15 @@ public class DrugLevelsTest
     }
 
     [TestCase]
-    public async Task ADrugWorksFromAnEffectiveLevelAndOverdosesPastASafeOne()
-    {
+    public async Task ADrugWorksFromAnEffectiveLevelAndOverdosesPastASafeOne() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
         var def = Db.Drug(Drug)!;
         var tenth = def.Dose * patient.WeightKg * 0.1f;
         var soaked = def.Onset * DrugDef.DirectOnset * 2f;
-        async Task Give(int tenths)
-        {
-            for (var i = 0; i < tenths; i++)
-            {
+        async Task Give(int tenths) {
+            for (var i = 0; i < tenths; i++) {
                 patient.Administer(Drug, DrugRoute.Direct, tenth);
             }
             await Frames.Seconds(soaked);
@@ -72,16 +64,13 @@ public class DrugLevelsTest
     }
 
     [TestCase]
-    public void ASurgeonsSedativeAddsUpToo()
-    {
+    public void ASurgeonsSedativeAddsUpToo() {
         var status = new SurgeonStatus(new Modifiers());
         var right = Db.Drug("diazepam")!.Dose * status.WeightKg;
         var events = new List<StatusEvent>();
-        for (var i = 0; i < 25; i++)
-        {
+        for (var i = 0; i < 25; i++) {
             status.Administer("diazepam", right * 0.1f);
-            for (var j = 0; j < 5; j++)
-            {
+            for (var j = 0; j < 5; j++) {
                 events.AddRange(status.Update(0.1f, default));
             }
         }
@@ -91,16 +80,14 @@ public class DrugLevelsTest
     }
 
     [TestCase]
-    public async Task ThresholdsForAnestheticsBagsLethalDrugsAndDangerousPairs()
-    {
+    public async Task ThresholdsForAnestheticsBagsLethalDrugsAndDangerousPairs() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var patient = driver.Patient;
         var toasts = new List<string>();
         driver.Surgery.Hud.Toasted += toasts.Add;
         float Right(string id) => Db.Drug(id)!.Dose * patient.WeightKg;
-        void Fresh()
-        {
+        void Fresh() {
             patient.Drugs.Clear();
             patient.Flags.Remove("overdose");
         }
@@ -124,8 +111,7 @@ public class DrugLevelsTest
             .OverrideFailureMessage($"a single dose of {DrugDef.DoseOverdose:0.0} times the right one is an overdose").IsTrue();
         // Bags have no dose to overdo: three blood bags in a row are just a lot of blood.
         Fresh();
-        for (var i = 0; i < 3; i++)
-        {
+        for (var i = 0; i < 3; i++) {
             patient.Administer("blood_o_neg", DrugRoute.Vein);
         }
         Run(patient, 20f);
@@ -147,8 +133,7 @@ public class DrugLevelsTest
         var reasons = new List<string>();
         patient.Died += reasons.Add;
         patient.Administer("pentobarbital", DrugRoute.Vein, Right("pentobarbital"));
-        for (var i = 0; i < (int)(Db.Drug("pentobarbital")!.Duration * 10f) && patient.Alive; i++)
-        {
+        for (var i = 0; i < (int)(Db.Drug("pentobarbital")!.Duration * 10f) && patient.Alive; i++) {
             patient.Simulate(0.1f);
         }
         AssertArray(reasons).OverrideFailureMessage("the right dose of pentobarbital lets the patient pass away peacefully")
@@ -157,8 +142,7 @@ public class DrugLevelsTest
     }
 
     [TestCase]
-    public async Task DrawingFromTheIvBagTakesWhatWasPushedInFirst()
-    {
+    public async Task DrawingFromTheIvBagTakesWhatWasPushedInFirst() {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var tools = driver.Surgery.Tools;
@@ -178,10 +162,8 @@ public class DrugLevelsTest
 
     /// <summary><paramref name="seconds"/> of the patient's drugs soaking in and wearing off, in steps like the
     /// patient's own.</summary>
-    private static void Run(Patient patient, float seconds)
-    {
-        for (var i = 0; i < (int)(seconds * 10f); i++)
-        {
+    private static void Run(Patient patient, float seconds) {
+        for (var i = 0; i < (int)(seconds * 10f); i++) {
             patient.DrugEffectsOver(0.1f);
         }
     }

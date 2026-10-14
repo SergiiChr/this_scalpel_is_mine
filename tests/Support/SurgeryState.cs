@@ -9,16 +9,14 @@ namespace Scalpel.Tests.Support;
 /// work. Keep the two apart: a test about cutting cuts with PlayerIncises(), a test about stitching starts from
 /// SkinIsCut().
 /// </summary>
-public static class SurgeryState
-{
+public static class SurgeryState {
     /// <summary>The nurse has supplied the corrected patient chart.</summary>
     public static void PatientChartIsCorrected(Surgery surgery) => surgery.CorrectChart();
 
     /// <summary>Enable debug displays for a test and restore the previous preference when its scope ends.</summary>
     public static IDisposable DebugHudIsEnabled() => new DebugHudScope();
 
-    private sealed class DebugHudScope : IDisposable
-    {
+    private sealed class DebugHudScope : IDisposable {
         private readonly bool _was = Settings.Debug;
 
         public DebugHudScope() => Settings.Debug = true;
@@ -28,8 +26,7 @@ public static class SurgeryState
 
     /// <summary>A second, remote surgeon (peer 2) standing at the second spawn, as if they'd joined and put their card
     /// back: nothing streams their state, so they stay as placed.</summary>
-    public static Surgeon PartnerIsAtTheTable(Surgery surgery)
-    {
+    public static Surgeon PartnerIsAtTheTable(Surgery surgery) {
         Net.Instance.Roster[2] = new LobbyPlayer("Partner", [new QuirkRoll("normal_dude", "")], Ready: true);
         var partner = surgery.SpawnSurgeon(2, 1);
         partner.ReadingCard = false;
@@ -38,11 +35,9 @@ public static class SurgeryState
 
     /// <summary>Nothing lies on the floor: tools dropped there are gone, as if someone had cleared them away. They stop
     /// colliding at once.</summary>
-    public static void FloorIsClear(Surgery surgery)
-    {
+    public static void FloorIsClear(Surgery surgery) {
         foreach (var tool in surgery.Tools.Tools.Values
-            .Where(tool => tool.State == ToolState.Free && tool.GlobalPosition.Y < Room.TableHeight / 2f).ToList())
-        {
+            .Where(tool => tool.State == ToolState.Free && tool.GlobalPosition.Y < Room.TableHeight / 2f).ToList()) {
             surgery.Tools.Consume(tool);
         }
     }
@@ -52,10 +47,8 @@ public static class SurgeryState
 
     /// <summary>As if <paramref name="surgeon"/> had worked a while in blood and sweated: both gloves bloody, sweat high.
     /// </summary>
-    public static void GlovesAreSoiled(Surgeon surgeon)
-    {
-        foreach (var hand in surgeon.Hands)
-        {
+    public static void GlovesAreSoiled(Surgeon surgeon) {
+        foreach (var hand in surgeon.Hands) {
             hand.SetBlood(0.8f);
         }
         surgeon.Status.Sweat = 0.8f;
@@ -68,10 +61,8 @@ public static class SurgeryState
 
     /// <summary>No remaining dose or effectiveness flag for this drug, between independent plunger checks.
     /// Other drugs (the shared patient's anesthesia) and its prepared tissue stay intact.</summary>
-    public static void PatientHasNoDrug(Patient patient, string id)
-    {
-        if (patient.Drugs.Find(id) is { } entry)
-        {
+    public static void PatientHasNoDrug(Patient patient, string id) {
+        if (patient.Drugs.Find(id) is { } entry) {
             entry.Depot = 0f;
             entry.Level = 0f;
             entry.Working = -1f;
@@ -96,11 +87,9 @@ public static class SurgeryState
 
     /// <summary>A clean cut in one stroke through <paramref name="points"/> (site uv). Returns the stroke's wound, or the
     /// cut already there it ran along.</summary>
-    public static Wound SkinIsCutAlong(Patient patient, IReadOnlyList<Vector2> points, float depth)
-    {
+    public static Wound SkinIsCutAlong(Patient patient, IReadOnlyList<Vector2> points, float depth) {
         var stroke = 800_000L + patient.Wounds.Count;
-        for (var i = 1; i < points.Count; i++)
-        {
+        for (var i = 1; i < points.Count; i++) {
             patient.Cut(stroke, points[i - 1], points[i], depth, 1f, false, 0f);
         }
         return patient.StrokeWound(stroke) ?? patient.Wounds.MinBy(wound => wound.DistanceTo(points[0]))!;
@@ -111,23 +100,20 @@ public static class SurgeryState
 
     /// <summary>Overstretched skin torn from <paramref name="from"/> along <paramref name="direction"/> (site uv) for
     /// <paramref name="lengthUv"/>, down to the fat. Returns the tear.</summary>
-    public static Wound SkinIsTorn(Patient patient, Vector2 from, Vector2 direction, float lengthUv)
-    {
+    public static Wound SkinIsTorn(Patient patient, Vector2 from, Vector2 direction, float lengthUv) {
         patient.Tear(from, direction, lengthUv);
         return patient.Wounds[^1];
     }
 
     /// <summary>As if the whole length of <paramref name="wound"/> had been sewn shut.</summary>
-    public static void WoundIsClosed(Patient patient, Wound wound)
-    {
+    public static void WoundIsClosed(Patient patient, Wound wound) {
         patient.Body.Tissue.StitchPath(wound.Points, Wound.BinLengthUv * 1.2f, 1f,
             Patient.ThreadStrength[(int)TissueDepth.Skin]);
         Array.Fill(wound.Bins, 1f);
     }
 
     /// <summary><paramref name="wound"/> torn on along its line by <paramref name="lengthUv"/> (site uv).</summary>
-    public static void WoundIsTornFurther(Wound wound, float lengthUv)
-    {
+    public static void WoundIsTornFurther(Wound wound, float lengthUv) {
         var end = wound.Points[^1];
         var along = (end - wound.Points[0]).Normalized();
         wound.Extend(end + (along * lengthUv));
@@ -135,8 +121,7 @@ public static class SurgeryState
 
     /// <summary>A vessel <paramref name="depthM"/> under the skin at <paramref name="uv"/> has given way and bleeds.
     /// </summary>
-    public static Wound VesselBleeds(Patient patient, Vector2 uv, float depthM, float severity = 0.7f)
-    {
+    public static Wound VesselBleeds(Patient patient, Vector2 uv, float depthM, float severity = 0.7f) {
         var vessel = patient.NewWound(WoundKind.Internal, uv, severity);
         vessel.DepthM = depthM;
         return vessel;
@@ -149,8 +134,7 @@ public static class SurgeryState
 
     /// <summary>A tool grips the tissue at <paramref name="uv"/> and holds it pulled <paramref name="by"/> (site-local
     /// meters) from where it lies. Returns the gripped grid point.</summary>
-    public static int TissueIsPulled(Patient patient, Vector2 uv, Vector3 by)
-    {
+    public static int TissueIsPulled(Patient patient, Vector2 uv, Vector3 by) {
         const int Key = 99000;
         var tissue = patient.Body.Tissue;
         tissue.Grip(Key, uv);
@@ -167,15 +151,12 @@ public static class SurgeryState
 
     /// <summary>Tied running threads on stationary skin, for renderer and cache load checks without moving the
     /// player's needle.</summary>
-    public static void SkinHasFinishedThreads(Patient patient, int count, int firstId)
-    {
+    public static void SkinHasFinishedThreads(Patient patient, int count, int firstId) {
         var tissue = patient.Body.Tissue;
-        for (var id = firstId; id < firstId + count; id++)
-        {
+        for (var id = firstId; id < firstId + count; id++) {
             var n = id - firstId;
             var uv = new Vector2(0.3f + (n % 4 * 0.1f), 0.3f + (n / 4 * 0.1f));
-            foreach (var hole in (Vector2[])[uv, uv + new Vector2(0.035f, 0.035f)])
-            {
+            foreach (var hole in (Vector2[])[uv, uv + new Vector2(0.035f, 0.035f)]) {
                 tissue.ThreadAnchor(id, hole, TissueDepth.Skin, TissueSim.ThreadLoose[(int)TissueDepth.Skin], 4f, 1f);
             }
             tissue.FinishThread(id);
@@ -189,11 +170,9 @@ public static class SurgeryState
 
     /// <summary>Host: both network surgeons have ordinary reach and steadiness, no run modifiers, and the session rolls
     /// come out the same every run.</summary>
-    public static void NetworkSessionHasOrdinarySurgeons(ulong seed = 1)
-    {
+    public static void NetworkSessionHasOrdinarySurgeons(ulong seed = 1) {
         var net = Net.Instance;
-        foreach (var (peer, player) in net.Roster.ToList())
-        {
+        foreach (var (peer, player) in net.Roster.ToList()) {
             net.Roster[peer] = player with { Quirks = [new QuirkRoll("normal_dude", "")] };
         }
         net.RunModifiers.Clear();
@@ -208,26 +187,22 @@ public static class SurgeryState
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
 
     /// <summary>Advance only the nurse's outstanding delivery and cooldown, without aging the patient.</summary>
-    public static void NurseHasDelivered(Surgery surgery)
-    {
+    public static void NurseHasDelivered(Surgery surgery) {
         var nurse = surgery.Nurse;
-        if (nurse.Current is { } order)
-        {
+        if (nurse.Current is { } order) {
             nurse.Tick(order.SecondsLeft, surgery);
         }
         nurse.Tick(nurse.CooldownLeft, surgery);
     }
 
     /// <summary>The nurse and shop are ready for the next ordinary test's order.</summary>
-    public static void NurseIsReady(Surgery surgery)
-    {
+    public static void NurseIsReady(Surgery surgery) {
         NurseHasDelivered(surgery);
         surgery.Hud.Shop.Update("", surgery.Nurse.Idle);
     }
 
     /// <summary>The bag on the IV stand has run dry.</summary>
-    public static void IvBagIsEmpty(Surgery surgery)
-    {
+    public static void IvBagIsEmpty(Surgery surgery) {
         var bag = surgery.Tools.DripBag()!;
         surgery.Tools.AddLiquid(bag, -bag.Ml);
     }
@@ -246,15 +221,12 @@ public static class SurgeryState
     /// A free place on the instrument tray, nothing else lying within 8 cm: the clear strip down its middle first. A
     /// spot something slid away from (<see cref="TraySpotIsBad"/>) isn't offered again.
     /// </summary>
-    public static Vector3 FreeTraySpot(Surgery surgery)
-    {
+    public static Vector3 FreeTraySpot(Surgery surgery) {
         var rest = surgery.Room.TrayZone("");
         var strip = rest.End.X + 0.07f;
         var spots = new List<Vector3>();
-        foreach (var x in (float[])[strip, strip + 0.1f, rest.End.X - 0.05f, rest.Position.X + 0.05f])
-        {
-            for (var i = 0; i < 9; i++)
-            {
+        foreach (var x in (float[])[strip, strip + 0.1f, rest.End.X - 0.05f, rest.Position.X + 0.05f]) {
+            for (var i = 0; i < 9; i++) {
                 var along = i == 8 ? 0f : ((i / 2) + 1) * 0.06f * (i % 2 == 0 ? 1 : -1);
                 spots.Add(new Vector3(x, rest.Position.Y + 0.05f, rest.GetCenter().Z + along));
             }
@@ -274,16 +246,14 @@ public static class SurgeryState
 
     /// <summary>A stationary visual fixture. Real input and physics movement are covered by the movement tests.
     /// </summary>
-    public static Surgeon SurgeonIsPoseFixture(Node3D parent, int peer, bool visible = true)
-    {
+    public static Surgeon SurgeonIsPoseFixture(Node3D parent, int peer, bool visible = true) {
         var surgeon = new Surgeon();
         parent.AddChild(surgeon);
         surgeon.Setup(peer, "", [], Transform3D.Identity);
         surgeon.SetPhysicsProcess(false);
         surgeon.BodyModel.Visible = visible;
         surgeon.FaceModel.Visible = visible;
-        foreach (var hand in surgeon.Hands)
-        {
+        foreach (var hand in surgeon.Hands) {
             hand.Visible = visible;
         }
         return surgeon;
@@ -291,8 +261,7 @@ public static class SurgeryState
 
     /// <summary>A received pose packet plus one animation tick on each peer, for exact model geometry and replication
     /// checks.</summary>
-    public static void SurgeonPoseIsReceived(Surgeon owner, Surgeon puppet, float crouch, float pitch, float speed = 0f)
-    {
+    public static void SurgeonPoseIsReceived(Surgeon owner, Surgeon puppet, float crouch, float pitch, float speed = 0f) {
         owner.Crouch = crouch;
         owner.Pitch = pitch;
         owner.LastPosition = owner.GlobalPosition - new Vector3(speed / 60f, 0f, 0f);
@@ -304,10 +273,8 @@ public static class SurgeryState
     }
 
     /// <summary>Empty hands at a known floor-reaching height, to test sleeve clearance over the knees.</summary>
-    public static void SurgeonHandsAreAtHeight(Surgeon surgeon, float height)
-    {
-        foreach (var hand in surgeon.Hands)
-        {
+    public static void SurgeonHandsAreAtHeight(Surgeon surgeon, float height) {
+        foreach (var hand in surgeon.Hands) {
             hand.Target = surgeon.ToGlobal(new Vector3(hand.Index == 0 ? -0.17f : 0.17f, height, -0.38f));
             surgeon.SupportElbow(hand);
             hand.SnapPose(surgeon.VisualShoulder(hand.Index));
@@ -315,8 +282,7 @@ public static class SurgeryState
     }
 
     /// <summary>A surgeon lies on the chosen side long enough for the normal physics animation to settle.</summary>
-    public static void SurgeonIsKnockedOut(Surgeon surgeon, float side)
-    {
+    public static void SurgeonIsKnockedOut(Surgeon surgeon, float side) {
         surgeon.Status.KnockedOut = 60f;
         surgeon.FallSide = side;
     }
@@ -328,16 +294,14 @@ public static class SurgeryState
     public static void SurgeonIsStressed(Surgeon surgeon) => surgeon.Status.Stress = 0.9f;
 
     /// <summary>A hand attached just inside its reach boundary; the walk cycle must not pull it around.</summary>
-    public static void SurgeonHandIsAttached(Surgeon surgeon, int hand, Vector3 target)
-    {
+    public static void SurgeonHandIsAttached(Surgeon surgeon, int hand, Vector3 target) {
         surgeon.Hands[hand].Attached = true;
         surgeon.Hands[hand].Target = target;
     }
 
     /// <summary>A visible, non-colliding remote copy of an owner, for checking how other players see its poses.
     /// </summary>
-    public static Surgeon SurgeonHasRemoteCopy(Surgeon owner)
-    {
+    public static Surgeon SurgeonHasRemoteCopy(Surgeon owner) {
         var puppet = new Surgeon();
         owner.GetParent().AddChild(puppet);
         puppet.Setup(2, "", [], owner.GlobalTransform);
@@ -347,8 +311,7 @@ public static class SurgeryState
     }
 
     /// <summary>A normal owner packet delivered to the remote copy before its next physics tick.</summary>
-    public static void SurgeonCopyHasOwnerState(Surgeon owner, Surgeon puppet)
-    {
+    public static void SurgeonCopyHasOwnerState(Surgeon owner, Surgeon puppet) {
         puppet.GlobalTransform = owner.GlobalTransform;
         puppet.SyncState(owner.PackState());
     }
@@ -358,16 +321,14 @@ public static class SurgeryState
     /// back over the sides they're still attached to, slowly, by forceps all along both edges that keep holding them.
     /// Returns how many springs tore on the way.
     /// </summary>
-    public static int SiteIsOpenedWide(Patient patient)
-    {
+    public static int SiteIsOpenedWide(Patient patient) {
         const float Middle = 0.51f;
         (Vector2 From, Vector2 To)[] cuts =
         [
             (new(0.03f, Middle), new(0.97f, Middle)), (new(0.03f, 0.02f), new(0.03f, 0.98f)),
             (new(0.97f, 0.02f), new(0.97f, 0.98f)),
         ];
-        foreach (var (from, to) in cuts)
-        {
+        foreach (var (from, to) in cuts) {
             patient.Cut(777000 + Mathf.RoundToInt(from.Y * 100f), from, to, 1f, 1f, false, 0.1f);
         }
         var tissue = patient.Body.Tissue;
@@ -378,18 +339,15 @@ public static class SurgeryState
         // The flap turns up and over about the side of the site it's still attached to: one straight hinge along that
         // side, where it lies on the body on average (the body's flank drops away more under some of it than the
         // rest).
-        var hinges = new[] { 0, tissue.ResY }.Select(row =>
-        {
+        var hinges = new[] { 0, tissue.ResY }.Select(row => {
             var on = Enumerable.Range(0, tissue.ResX + 1).Select(i => tissue.Index(i, row)).Where(k => !tissue.Off[k]).ToList();
             return on.Aggregate(Vector3.Zero, (sum, k) => sum + tissue.Rest[k]) / Math.Max(on.Count, 1);
         }).ToArray();
         // Forceps about every 25 mm along each edge.
         var spacing = Math.Max(1, Mathf.RoundToInt(0.025f / (patient.Body.SiteSize.X / tissue.ResX)));
         var grips = new List<(int Key, Vector3 Hinge, Vector3 Arm, float Side)>();
-        for (var i = 1; i < tissue.ResX; i += spacing)
-        {
-            foreach (var edge in (int[])[Mathf.FloorToInt(Middle * tissue.ResY), Mathf.CeilToInt(Middle * tissue.ResY)])
-            {
+        for (var i = 1; i < tissue.ResX; i += spacing) {
+            foreach (var edge in (int[])[Mathf.FloorToInt(Middle * tissue.ResY), Mathf.CeilToInt(Middle * tissue.ResY)]) {
                 var k = tissue.Index(i, edge);
                 var key = 88000 + grips.Count;
                 tissue.Grip(key, tissue.UvOf(k));
@@ -400,17 +358,14 @@ public static class SurgeryState
             }
         }
         const int Steps = 240;
-        for (var step = 0; step < Steps; step++)
-        {
+        for (var step = 0; step < Steps; step++) {
             var angle = Mathf.Pi * 0.85f * (step + 1) / Steps;
-            foreach (var (key, hinge, arm, side) in grips)
-            {
+            foreach (var (key, hinge, arm, side) in grips) {
                 tissue.MoveGrip(key, hinge + arm.Rotated(Vector3.Right, side * angle));
             }
             tissue.Substep();
         }
-        for (var i = 0; i < 60; i++)
-        {
+        for (var i = 0; i < 60; i++) {
             tissue.Substep();
         }
         tissue.BreakMult = breakMult;

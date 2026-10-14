@@ -9,8 +9,7 @@ namespace Scalpel.Data;
 /// counts in full though some wears off meanwhile) it's an overdose; only for drugs that are dosed, not bags of fluid
 /// or blood.
 /// </summary>
-public sealed class DrugLevels
-{
+public sealed class DrugLevels {
     /// <summary>Below this share of DoseEffective a drug that worked counts as worn off, so another dose makes it work
     /// again.</summary>
     public const float WornOff = 0.5f;
@@ -18,8 +17,7 @@ public sealed class DrugLevels
     public const float DepotLeft = 0.0001f;
 
     /// <summary>One drug in the body.</summary>
-    public sealed class Entry(DrugDef def, float onset)
-    {
+    public sealed class Entry(DrugDef def, float onset) {
         public DrugDef Def { get; } = def;
         /// <summary>Share of the right dose still soaking in.</summary>
         public float Depot { get; set; }
@@ -45,11 +43,9 @@ public sealed class DrugLevels
 
     /// <summary>Adds <paramref name="share"/> of the right dose, soaking in over <paramref name="onset"/> seconds.
     /// True when the drug wasn't in the body yet.</summary>
-    public bool Give(DrugDef def, float share, float onset)
-    {
+    public bool Give(DrugDef def, float share, float onset) {
         var fresh = !_entries.TryGetValue(def.Id, out var entry);
-        if (entry is null)
-        {
+        if (entry is null) {
             entry = new Entry(def, onset);
             _entries[def.Id] = entry;
         }
@@ -62,11 +58,9 @@ public sealed class DrugLevels
     /// Moves every drug on by <paramref name="dt"/> seconds: soaking in, then wearing off as fast as
     /// <paramref name="wear"/> says (1 for a dose over its duration, 0 holds it). Returns what crossed a threshold.
     /// </summary>
-    public List<(DrugDef Def, Crossing Crossing)> Update(float dt, Func<DrugDef, float, float> wear)
-    {
+    public List<(DrugDef Def, Crossing Crossing)> Update(float dt, Func<DrugDef, float, float> wear) {
         var crossed = new List<(DrugDef, Crossing)>();
-        foreach (var entry in _entries.Values.ToList())
-        {
+        foreach (var entry in _entries.Values.ToList()) {
             var def = entry.Def;
             // All of it as it came in, before this step wears any off.
             var taken = entry.Level + entry.Depot;
@@ -77,26 +71,19 @@ public sealed class DrugLevels
             entry.Depot -= soaked;
             entry.Level = Mathf.Max(
                 entry.Level + soaked - dt / Mathf.Max(def.Duration, 0.01f) * wear(def, entry.Level), 0f);
-            if (!entry.IsWorking && entry.Level >= DrugDef.DoseEffective)
-            {
+            if (!entry.IsWorking && entry.Level >= DrugDef.DoseEffective) {
                 entry.Working = 0f;
                 crossed.Add((def, Crossing.Works));
-            }
-            else if (entry.IsWorking)
-            {
+            } else if (entry.IsWorking) {
                 entry.Working = entry.Level < DrugDef.DoseEffective * WornOff ? -1f : entry.Working + dt;
             }
-            if (!entry.Overdosed && def.Dose > 0f && taken >= DrugDef.DoseOverdose)
-            {
+            if (!entry.Overdosed && def.Dose > 0f && taken >= DrugDef.DoseOverdose) {
                 entry.Overdosed = true;
                 crossed.Add((def, Crossing.Overdose));
-            }
-            else if (entry.Overdosed && taken < DrugDef.DoseHigh)
-            {
+            } else if (entry.Overdosed && taken < DrugDef.DoseHigh) {
                 entry.Overdosed = false;
             }
-            if (entry.Level <= 0f && entry.Depot <= 0f)
-            {
+            if (entry.Level <= 0f && entry.Depot <= 0f) {
                 _entries.Remove(def.Id);
             }
         }
@@ -113,10 +100,8 @@ public sealed class DrugLevels
     public bool Working(string flag) => _entries.Values.Any(entry => entry.IsWorking && entry.Def.HasFlag(flag));
 
     /// <summary>Takes every drug <paramref name="gone"/> says out of the body.</summary>
-    public void Remove(Func<DrugDef, bool> gone)
-    {
-        foreach (var id in _entries.Where(pair => gone(pair.Value.Def)).Select(pair => pair.Key).ToList())
-        {
+    public void Remove(Func<DrugDef, bool> gone) {
+        foreach (var id in _entries.Where(pair => gone(pair.Value.Def)).Select(pair => pair.Key).ToList()) {
             _entries.Remove(id);
         }
     }

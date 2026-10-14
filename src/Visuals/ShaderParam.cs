@@ -3,8 +3,7 @@ namespace Scalpel.Visuals;
 /// <summary>Names of shader parameters set while the game runs, made once. A string passed to SetShaderParameter()
 /// becomes a new StringName on every call: a tracked wrapper the runtime has to collect, and frequent collections stall
 /// the game. Parameters only set when a material is made can stay strings.</summary>
-public static class ShaderParam
-{
+public static class ShaderParam {
     public static readonly StringName Albedo = "albedo";
     public static readonly StringName Blackout = "blackout";
     public static readonly StringName Blur = "blur";

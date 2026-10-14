@@ -9,20 +9,17 @@ namespace Scalpel.Tests.Patients;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
-public class AllergyTest
-{
+public class AllergyTest {
     [TestCase("lidocaine", "Allergic to lidocaine.")]
     [TestCase("unknown_lidocaine", "Claims a drug allergy but forgot which one.")]
-    public async Task ChartLabReactionAndAntihistamine(string variant, string chartLine)
-    {
+    public async Task ChartLabReactionAndAntihistamine(string variant, string chartLine) {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch", patientQuirks: [new QuirkRoll("allergy", variant)], readingCard: true);
         var surgery = driver.Surgery;
         var patient = surgery.Patient;
         KeyFrames? shots = null;
-        if (KeyFrames.Wanted())
-        {
+        if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, $"allergy/{variant}");
@@ -59,8 +56,7 @@ public class AllergyTest
     }
 
     [TestCase]
-    public async Task NoAllergyAfterAllLidocaineIsSafeAndGeneralAnesthesiaCostsPoints()
-    {
+    public async Task NoAllergyAfterAllLidocaineIsSafeAndGeneralAnesthesiaCostsPoints() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("hand_stitch", patientQuirks: [new QuirkRoll("allergy", "unknown_none")]);
