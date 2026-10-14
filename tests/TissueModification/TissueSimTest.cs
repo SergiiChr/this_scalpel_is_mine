@@ -102,6 +102,13 @@ public class TissueSimTest {
             Check(triangle.All(p => above ? p.Y >= p.X + 0.00399f : p.Y <= p.X - 0.00399f),
                 "triangle contact preserves clearance above and below the sloping face");
         }
+        Vector3[] shifted = [new(-0.01f, 0.02f, -0.01f), new(0f, 0.03f, -0.01f), new(-0.01f, 0.02f, 0f)];
+        surface.Index(shifted, ContactTriangle);
+        Check(Mathf.Abs(surface.HeightAt(-0.008f, -0.007f) - 0.022f) < 0.000001f,
+            "reindexing a smaller surface preserves slopes across negative grid coordinates");
+        Check(float.IsNaN(surface.HeightAt(0.2f, 0.3f)), "a moved surface leaves no contact at its old position");
+        surface.Index([Vector3.Zero, Vector3.Up, Vector3.Up * 2f], ContactTriangle);
+        Check(float.IsNaN(surface.HeightAt(0f, 0f)), "vertical faces leave no stale height in the contact grid");
         surface.Index(roof, Array.Empty<int>());
         Check(float.IsNaN(surface.HeightAt(0.2f, 0.3f)), "reindexing clears old surface buckets");
     }

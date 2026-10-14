@@ -30,6 +30,7 @@ varying vec3 world_pos;
 varying vec3 local_pos;
 
 #include "res://assets/shaders/wound.gdshaderinc"
+#include "res://assets/shaders/skin_light.gdshaderinc"
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -80,10 +81,9 @@ void light() {
 	float wrapped = max((facing + wrap) / (1.0 + wrap), 0.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * (lit + scatter_tint.rgb * (wrapped - ndl) * ATTENUATION) / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
+	// Dry skin gets the body's broad, dull highlight; blood and open cuts (low roughness) shine wet.
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
-	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
-	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
+	float spec = skin_specular(dot(NORMAL, halfway), wet) * ATTENUATION;
 	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
