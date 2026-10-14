@@ -276,8 +276,10 @@ public partial class Patient : Node3D {
         var total = 0f;
         var lasting = 0f;
         var heal = Mods.Num("heal_rate");
-        var sources = new List<BleedSource>();
-        var pools = new List<CutPool>();
+        var sources = Body.Blood.Sources;
+        var pools = Body.Blood.Pools;
+        sources.Clear();
+        pools.Clear();
         var leak = ClosureLeak(fx);
         foreach (var wound in Wounds) {
             if (!wound.IsInternal) {
@@ -333,8 +335,6 @@ public partial class Patient : Node3D {
         }
         v.BleedRate = total;
         LastingBleedRate = lasting;
-        Body.Blood.Sources = sources;
-        Body.Blood.Pools = pools;
         v.BloodMl = Mathf.Clamp(v.BloodMl - total * dt + fx.VolumeMl * dt, 0f, v.MaxBloodMl * 1.1f);
         CavityBloodMl = Mathf.Max(CavityBloodMl, 0f);
         Body.SetCavityBlood(CavityBloodMl / CavityFullMl);

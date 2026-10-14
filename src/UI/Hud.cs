@@ -17,6 +17,9 @@ public partial class Hud : CanvasLayer {
     /// <summary>Lying knocked out the view is this dark: still enough to see by.</summary>
     private const float KnockedOutDaze = 0.8f;
     private static readonly string[] GaugeNames = ["stress", "sickness", "breath", "sweat"];
+    /// <summary>How often the text labels are built (seconds). Their strings were most of the HUD's garbage every
+    /// frame, and a hint that follows the hand a tenth of a second later reads the same.</summary>
+    private const float TextInterval = 0.1f;
 
     public Surgery Surgery { get; private set; } = null!;
     private Control _root = null!;
@@ -32,6 +35,8 @@ public partial class Hud : CanvasLayer {
     private VBoxContainer _toasts = null!;
     private Label _subtitle = null!;
     private float _subtitleTimer;
+    /// <summary>Since the text labels were last built; starts due so the first frame shows them.</summary>
+    private float _textAcc = TextInterval;
     private readonly Dictionary<string, (HBoxContainer Row, ProgressBar Bar)> _gauges = [];
     private ShaderMaterial _post = null!;
     private (float Blackout, float Daze, float Wobble, float Blur)? _postState;
@@ -133,19 +138,36 @@ public partial class Hud : CanvasLayer {
         if (Surgery?.LocalSurgeon is not { } me) {
             return;
         }
+        _textAcc += dt;
+        // A frozen capture (zero delta) shows the state as it is now.
+        if (_textAcc >= TextInterval || dt <= 0f) {
+            _textAcc = 0f;
+            RefreshText(me);
+        }
+        UpdateSignature(dt);
+        UpdateNetWarning();
+        UpdateAim(me);
+        UpdateGauges(me);
+        _subtitleTimer -= dt;
+        if (_subtitleTimer <= 0f) {
+            _subtitle.Text = "";
+        }
+        UpdatePostFx(me.Status, dt);
+    }
+
+    /// <summary>The labels whose text is built from the game's state: every <see cref="TextInterval"/>, not every
+    /// frame, since each build allocates its strings.</summary>
+    private void RefreshText(Surgeon me) {
         var left = Surgery.TimeLeft();
         var clock = left >= 0f ? $"{(int)left / 60}:{(int)left % 60:00}" : "no time limit";
         _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
         UpdateObjectives();
-        UpdateSignature(dt);
         if (Shop.View.Visible) {
             UpdateShop();
         }
-        UpdateNetWarning();
-        UpdateAim(me);
         UpdateHands(me);
-        UpdateGauges(me);
-        // Labels skip a text they already show, so setting one every frame is cheap; reading Text back would copy it.
+        // Labels skip a text they already show, so setting one that hasn't changed is cheap; reading Text back would
+        // copy it.
         _hint.Text = me.Status.IsOut ? "" : string.Join("\n", ControlLines(me));
         var prompt = me.Focused is { } focused && Overlay is null && !me.HoldingFilms
             ? $"[{InputActions.BindingText(InputActions.Interact)}] {focused.Prompt}"
@@ -155,11 +177,6 @@ public partial class Hud : CanvasLayer {
             prompt = $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.Surgeon.DisplayName}";
         }
         _prompt.Text = prompt;
-        _subtitleTimer -= dt;
-        if (_subtitleTimer <= 0f) {
-            _subtitle.Text = "";
-        }
-        UpdatePostFx(me.Status, dt);
     }
 
     private void UpdatePostFx(SurgeonStatus status, float delta) {

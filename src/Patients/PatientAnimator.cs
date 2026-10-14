@@ -12,6 +12,16 @@ public partial class PatientAnimator : Node {
     /// <summary>How long the eyes stay shut in a blink (seconds).</summary>
     public const float Blink = 0.12f;
 
+    /// <summary>The bones that stay put while the torso rises with a breath.</summary>
+    private static readonly string[] HeldStill = ["ThighL", "ThighR", "Neck", "UpperArmL", "UpperArmR"];
+    private static readonly Limb[] Limbs = [Limb.Of("L"), Limb.Of("R")];
+
+    /// <summary>One side's limb bones, named once: the animator asks for them every frame.</summary>
+    private sealed record Limb(string Side, string UpperArm, string Forearm, string Hand, string Thigh, string Shin) {
+        public static Limb Of(string side) =>
+            new(side, "UpperArm" + side, "Forearm" + side, "Hand" + side, "Thigh" + side, "Shin" + side);
+    }
+
     private PatientBody _body = null!;
     private BoneRig? _rig;
     private Dictionary<string, Node3D> _parts = [];
@@ -59,7 +69,7 @@ public partial class PatientAnimator : Node {
         _jolt = Mathf.MoveToward(_jolt, 0f, delta * 5f);
         var rise = new Vector3(0, TorsoTop * breath + _jolt * 0.025f, 0);
         _rig.Shift("Torso", rise);
-        foreach (var held in new[] { "ThighL", "ThighR", "Neck", "UpperArmL", "UpperArmR" }) {
+        foreach (var held in HeldStill) {
             _rig.Hold(held, rise);
         }
         _body.SetBreathOffset(TorsoTop * breath);
@@ -101,18 +111,18 @@ public partial class PatientAnimator : Node {
             shake = (vitals.Panic - 0.6f) * 0.8f;
         }
         _rig.Rotate("Head", Basis.FromEuler(head + Jitter(shake * 0.6f, t, 1f)));
-        foreach (var side in new[] { "L", "R" }) {
-            var mirror = side == "L" ? 1f : -1f;
-            var still = side == _lockedSide;
+        foreach (var limb in Limbs) {
+            var mirror = limb.Side == "L" ? 1f : -1f;
+            var still = limb.Side == _lockedSide;
             var amount = still ? 0f : shake + _flinch * 0.2f + _jolt * 0.35f;
             // Panicking patients lift their arms off the table: the arms point toward the feet, so a negative turn
             // about Z raises them.
             var lift = still || !awake ? 0f : vitals.Panic * 0.15f;
-            _rig.Rotate("UpperArm" + side, Basis.FromEuler(new Vector3(0, 0, -lift) + Jitter(amount, t, 2f + mirror)));
-            _rig.Rotate("Forearm" + side, Basis.FromEuler(new Vector3(0, 0, -lift * 0.8f) + Jitter(amount, t, 3f + mirror)));
-            _rig.Rotate("Hand" + side, Basis.FromEuler(Jitter(amount * 1.5f, t, 4f + mirror)));
-            _rig.Rotate("Thigh" + side, Basis.FromEuler(Jitter(amount * 0.4f, t, 5f + mirror)));
-            _rig.Rotate("Shin" + side, Basis.FromEuler(Jitter(amount * 0.4f, t, 6f + mirror)));
+            _rig.Rotate(limb.UpperArm, Basis.FromEuler(new Vector3(0, 0, -lift) + Jitter(amount, t, 2f + mirror)));
+            _rig.Rotate(limb.Forearm, Basis.FromEuler(new Vector3(0, 0, -lift * 0.8f) + Jitter(amount, t, 3f + mirror)));
+            _rig.Rotate(limb.Hand, Basis.FromEuler(Jitter(amount * 1.5f, t, 4f + mirror)));
+            _rig.Rotate(limb.Thigh, Basis.FromEuler(Jitter(amount * 0.4f, t, 5f + mirror)));
+            _rig.Rotate(limb.Shin, Basis.FromEuler(Jitter(amount * 0.4f, t, 6f + mirror)));
         }
     }
 
