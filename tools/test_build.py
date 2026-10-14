@@ -16,6 +16,64 @@ import build
 QUIT = "GdUnit4 Godot Runtime Test Runner ends with exit code: 0"
 
 
+class DevDependenciesTest(unittest.TestCase):
+    def test_installed_xvfb_is_verified_without_package_download(self) -> None:
+        with patch("build.shutil.which", side_effect=lambda command: f"/usr/bin/{command}"), patch.object(build, "run") as run:
+            build.setup_xvfb()
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0][:2], ["xvfb-run", "-a"])
+        self.assertIn("XOpenDisplay", run.call_args.args[0][-1])
+
+    def test_fedora_dependency_is_extracted_and_verified_without_sudo(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            local = Path(temporary) / "xvfb"
+
+            def run(command: list[str | Path], **kwargs: object) -> None:
+                if command[:2] == ["dnf", "download"]:
+                    packages = Path(command[command.index("--destdir") + 1])
+                    (packages / "xvfb.rpm").touch()
+                elif command[0] == "cpio":
+                    for directory in ("usr/bin", "usr/lib64", "usr/share/X11/xkb"):
+                        (local / directory).mkdir(parents=True, exist_ok=True)
+                    (local / "usr/bin/xvfb-run").touch()
+
+            with (
+                patch.object(build, "XVFB_LOCAL", local),
+                patch.dict(os.environ),
+                patch("build.shutil.which", side_effect=lambda command: None if command in ("xvfb-run", "Xvfb") else command),
+                patch("build.Path.is_file", return_value=True),
+                patch.object(build, "run", side_effect=run) as commands,
+                patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout=b"rpm payload")),
+            ):
+                build.setup_xvfb()
+                self.assertEqual(os.environ["PATH"].split(os.pathsep)[0], str(local / "bin"))
+                self.assertIn(str(local / "usr/lib64"), os.environ["LD_LIBRARY_PATH"].split(os.pathsep))
+                self.assertEqual(os.environ["XKB_CONFIG_ROOT"], str(local / "usr/share/X11/xkb"))
+                self.assertIn("-xkbdir", (local / "bin/Xvfb").read_text())
+            self.assertIn("xkeyboard-config", commands.call_args_list[0].args[0])
+            self.assertEqual(commands.call_args_list[1].args[0], ["cpio", "-idmu", "--quiet"])
+            self.assertEqual(commands.call_args_list[1].kwargs["input"], b"rpm payload")
+            self.assertEqual(commands.call_args_list[-1].args[0][:2], ["xvfb-run", "-a"])
+            self.assertTrue(all("sudo" not in call.args[0] for call in commands.call_args_list))
+
+    def test_missing_extraction_tools_do_not_attempt_sudo(self) -> None:
+        with (
+            patch("build.shutil.which", side_effect=lambda command: command if command == "dnf" else None),
+            patch.object(build, "run") as run,
+            self.assertRaisesRegex(SystemExit, "rpm2cpio, cpio"),
+        ):
+            build.setup_xvfb()
+        run.assert_not_called()
+
+    def test_failed_x11_verification_rejects_setup(self) -> None:
+        with (
+            patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 1)),
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            build.verify_xvfb()
+
+
 class CoverageReportingTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()

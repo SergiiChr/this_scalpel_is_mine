@@ -1,11 +1,8 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_untouched_view.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "02_skin_held_open_oblique.jpg": "the Gelpi through the skin only, holding it open, standing by itself",
-  "02_skin_held_open_top.jpg": "the Gelpi through the skin only, holding it open, standing by itself",
-  "03_skin_held_open_view.jpg": "the Gelpi through the skin only, holding it open, standing by itself",
-  "04_muscle_cut_oblique.jpg": "the scalpel has cut the muscle between the Gelpi's jaws",
-  "04_muscle_cut_top.jpg": "the scalpel has cut the muscle between the Gelpi's jaws",
-  "05_muscle_cut_view.jpg": "the scalpel has cut the muscle between the Gelpi's jaws"
+  "00_skin_held_open_oblique.jpg": "the Gelpi through the skin only, holding it open, standing by itself",
+  "00_skin_held_open_top.jpg": "the Gelpi through the skin only, holding it open, standing by itself",
+  "01_skin_held_open_view.jpg": "the Gelpi through the skin only, holding it open, standing by itself",
+  "02_muscle_cut_oblique.jpg": "the scalpel has cut the muscle between the Gelpi's jaws",
+  "02_muscle_cut_top.jpg": "the scalpel has cut the muscle between the Gelpi's jaws",
+  "03_muscle_cut_view.jpg": "the scalpel has cut the muscle between the Gelpi's jaws"
 }

@@ -1,8 +1,5 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_untouched_view.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "02_torn_oblique.jpg": "opened wider than the 3 cm cut: the skin torn at its ends",
-  "02_torn_top.jpg": "opened wider than the 3 cm cut: the skin torn at its ends",
-  "03_torn_view.jpg": "opened wider than the 3 cm cut: the skin torn at its ends"
+  "00_torn_oblique.jpg": "opened wider than the 3 cm cut: the skin torn at its ends",
+  "00_torn_top.jpg": "opened wider than the 3 cm cut: the skin torn at its ends",
+  "01_torn_view.jpg": "opened wider than the 3 cm cut: the skin torn at its ends"
 }

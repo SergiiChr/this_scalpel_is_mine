@@ -1,12 +1,10 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_incised_oblique.jpg": "a cut through every layer over the appendix, along the site's long side",
-  "01_incised_top.jpg": "a cut through every layer over the appendix, along the site's long side",
-  "02_retracted_oblique.jpg": "four retractors hold the abdomen open, lying on the belly, not pressed into it",
-  "02_retracted_top.jpg": "four retractors hold the abdomen open, lying on the belly, not pressed into it",
-  "03_scalpel_inside_oblique.jpg": "the scalpel reaches into the opening, not onto a retractor",
-  "03_scalpel_inside_top.jpg": "the scalpel reaches into the opening, not onto a retractor",
-  "04_extracted_appendix_oblique.jpg": "every appendix is out of the opening and the tool put down",
-  "04_extracted_appendix_top.jpg": "every appendix is out of the opening and the tool put down"
+  "00_incised_oblique.jpg": "a cut through every layer over the appendix, along the site's long side",
+  "00_incised_top.jpg": "a cut through every layer over the appendix, along the site's long side",
+  "01_retracted_oblique.jpg": "four retractors hold the abdomen open, lying on the belly, not pressed into it",
+  "01_retracted_top.jpg": "four retractors hold the abdomen open, lying on the belly, not pressed into it",
+  "02_scalpel_inside_oblique.jpg": "the scalpel reaches into the opening, not onto a retractor",
+  "02_scalpel_inside_top.jpg": "the scalpel reaches into the opening, not onto a retractor",
+  "03_extracted_appendix_oblique.jpg": "every appendix is out of the opening and the tool put down",
+  "03_extracted_appendix_top.jpg": "every appendix is out of the opening and the tool put down"
 }

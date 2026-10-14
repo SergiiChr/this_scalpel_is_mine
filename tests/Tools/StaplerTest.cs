@@ -14,13 +14,14 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class StaplerTest
 {
-    private const string BudgetBroken = "known to go over the frame budget: each staple changes the tissue, and "
+    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
+    private const string BudgetOverride = "known to go over the frame budget: each staple changes the tissue, and "
         + "rebuilding its layers takes about 6 ms (PatientBody.RebuildLayers()); not optimized yet";
 
     [TestCase]
     public async Task SkinStaplerClosesAForearmCut()
     {
-        var session = await ToolSession.Start("hand_stitch", "stapler/forearm", views: true);
+        var session = await ToolSession.Start("hand_stitch", "stapler/forearm", views: true, captureUntouched: true);
         var driver = session.Driver;
         var patient = driver.Patient;
         var body = driver.Body;
@@ -81,7 +82,7 @@ public class StaplerTest
         AssertBool(body.StapleWire is not null && body.DrawnStaples.Count == 1).OverrideFailureMessage("the staple is drawn")
             .IsTrue();
 
-        var placed = 1 + await driver.PlayerStaples(wound);
+        var placed = 1 + await driver.PlayerStaples(wound, captureProgress: true);
         await Frames.Seconds(1f);
         AssertFloat(wound.Closure).OverrideFailureMessage($"stapled along its length the cut is closed\n{driver.Recent()}")
             .IsGreater(0.99f);
@@ -99,7 +100,7 @@ public class StaplerTest
         // Back at the patient, to see the result from where the surgeon works.
         await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
         await driver.Capture("stapled", "the cut stapled shut, staples square across it, seen from where the surgeon works");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -146,7 +147,7 @@ public class StaplerTest
         // Back at the patient, to see the result from where the surgeon works.
         await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
         await driver.Capture("stapled", "staples in both the muscle and the skin, the skin ones square across the cut");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -199,7 +200,7 @@ public class StaplerTest
         await driver.PlayerStopsBleeding(0.05f);
         AssertFloat(wound.BleedRate(siteM, 1f)).OverrideFailureMessage("cauterized, the nicked vessel stops bleeding")
             .IsLess(0.05f);
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     private static async Task Click()

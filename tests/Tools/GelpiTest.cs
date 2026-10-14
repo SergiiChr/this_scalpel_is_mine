@@ -20,7 +20,8 @@ public class GelpiTest
     /// <summary>How far (meters) from the cut's middle its gap is measured.</summary>
     private const float Middle = 0.005f;
     private const float Open = 0.032f;
-    private const string BudgetBroken = "known to go over the frame budget, not profiled yet";
+    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
+    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task GelpiSetInACutHoldsItOpenUntilTakenOut()
@@ -46,7 +47,7 @@ public class GelpiTest
             .OverrideFailureMessage($"Use tool on the cut sets the retractor in it\n{driver.Recent()}").IsTrue();
         if (!gelpi.InWound)
         {
-            await session.Finish(BudgetBroken);
+            await session.Finish(BudgetOverride);
             return;
         }
         var sides = JawSides(driver, gelpi, middle);
@@ -117,7 +118,7 @@ public class GelpiTest
         await driver.Capture("taken_out", "taken out: the jaws off the skin, the cut back to its own gape");
         await driver.PlayerPutsDown();
         AssertBool(driver.LiesOnTray(gelpi)).OverrideFailureMessage("the retractor is put back on the tray").IsTrue();
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase(Timeout = Limits.Slow)]
@@ -137,7 +138,7 @@ public class GelpiTest
             .OverrideFailureMessage($"opened {gelpi.Spread * 100f:0} cm across a 3 cm cut, the skin tears").IsTrue();
         AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("skin_tear")).OverrideFailureMessage("a tear costs points").IsTrue();
         await driver.Capture("torn", "opened wider than the 3 cm cut: the skin torn at its ends");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase(Timeout = Limits.Slow)]
@@ -165,7 +166,7 @@ public class GelpiTest
         AssertFloat(hand.GlobalPosition.Y).OverrideFailureMessage("and comes back down onto it").IsLess(pressed + 0.003f);
         SurgeryDriver.Use(false);
         await driver.Capture("bounced", "pressed on whole skin with no cut: the Gelpi isn't set, it rests on the skin");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase(Timeout = Limits.Slow)]
@@ -194,7 +195,7 @@ public class GelpiTest
         AssertThat(body.Tissue.DeepestCut(middle, body.MetersToUv(0.004f)))
             .OverrideFailureMessage($"the scalpel cuts the muscle between its jaws\n{driver.Recent()}").IsEqual(TissueDepth.Muscle);
         await driver.Capture("muscle_cut", "the scalpel has cut the muscle between the Gelpi's jaws");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>A cut <paramref name="length"/> meters long along u, in the same place on the belly every case.</summary>

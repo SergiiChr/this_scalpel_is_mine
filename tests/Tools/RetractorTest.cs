@@ -29,7 +29,8 @@ public class RetractorTest
     private const float LyingPress = 0.002f;
     /// <summary>How long (meters) the cut the four retractors hold open is.</summary>
     private const float Opening = 0.08f;
-    private const string BudgetBroken = "known to go over the frame budget, not profiled yet";
+    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
+    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
 
     [TestCase]
     public async Task RetractorHooksOneEdgeAndPullsTheCutOpen()
@@ -105,7 +106,7 @@ public class RetractorTest
             .IsLess(ownGape + 0.002f);
         await driver.PlayerPutsDown();
         AssertBool(driver.LiesOnTray(retractor)).OverrideFailureMessage("the retractor is put back on the tray").IsTrue();
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>Skin isn't dragged across the site like rubber: pulled past what it gives, it holds the hand where it
@@ -146,7 +147,7 @@ public class RetractorTest
         SurgeryDriver.Use(false);
         await Frames.Seconds(1f);
         AssertBool(retractor.Hold is null && !hand.Attached).OverrideFailureMessage("Use tool lets go").IsTrue();
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -186,7 +187,7 @@ public class RetractorTest
             AssertLiesOnBody(driver, retractor);
         }
         await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -260,7 +261,7 @@ public class RetractorTest
         AssertBool(appendix.Extracted)
             .OverrideFailureMessage($"the forceps lift the appendix out between the retractors\n{driver.Recent()}").IsTrue();
         AssertBool(hooks.All(Holding)).OverrideFailureMessage("the retractors still hold the edges").IsTrue();
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     private static bool Holding(SurgicalTool retractor) => retractor.State == ToolState.Standing && retractor.Hold is not null;

@@ -3,6 +3,9 @@ namespace Scalpel.Tests.Support;
 /// <summary>Getting tools: off the tray, from the nurse, and back down again.</summary>
 public partial class SurgeryDriver
 {
+    /// <summary>Only the nurse timing case waits for real delivery and cooldown progress.</summary>
+    public bool WaitForNurse { get; set; }
+
     /// <summary>The free tools with this id that aren't used up, nearest the surgeon first.</summary>
     public List<SurgicalTool> FreeTools(string id) =>
     [
@@ -54,14 +57,28 @@ public partial class SurgeryDriver
         Note($"takes one {id} out of the cart");
     }
 
-    /// <summary>Presses Place order once the nurse is free to take it (the button waits for her).</summary>
-    public async Task PlayerPlacesOrder()
+    /// <summary>Places the cart; ordinary cases skip nurse delay, the timing case fails at its wait deadline.</summary>
+    public async Task PlayerPlacesOrder(float waitLimit = 60f)
     {
         var place = Shop.PlaceButton;
-        await Frames.Until(() => !place.Disabled, 60f);
+        if (WaitForNurse)
+        {
+            if (!await Frames.Until(() => !place.Disabled, waitLimit))
+            {
+                throw new TimeoutException("The nurse did not become available to place the order.");
+            }
+        }
+        else
+        {
+            SurgeryState.NurseIsReady(Surgery);
+        }
         Click(place);
         await Frames.Physics(2);
         Note("places the order");
+        if (!WaitForNurse)
+        {
+            SurgeryState.NurseHasDelivered(Surgery);
+        }
     }
 
     /// <summary>The tool in the active hand. Off the tray when it's there, otherwise ordered from the nurse and taken
@@ -84,10 +101,7 @@ public partial class SurgeryDriver
         if (found.Count == 0 && Surgery.Scenario.Nurse)
         {
             Note($"orders {id} from the nurse");
-            await Frames.Until(() => Surgery.Nurse.Idle, 60f);
             await PlayerOrders([id]);
-            await Frames.Until(() => FreeTools(id).Count > 0, 90f);
-            await Frames.Seconds(1f);
             found = FreeTools(id);
         }
         if (found.Count == 0)
@@ -96,21 +110,35 @@ public partial class SurgeryDriver
             return null;
         }
         var tool = found[0];
+        // Skip the nurse's artificial delivery clock, but observe the spawned rigid body's actual landing.
+        var last = tool.GlobalPosition;
+        var stableFrames = 0;
+        await Frames.Physics(1);
+        AssertBool(await Frames.Until(() =>
+        {
+            var position = tool.GlobalPosition;
+            var stable = position.DistanceTo(last) < 0.001f && tool.LinearVelocity.Length() < 0.02f;
+            last = position;
+            stableFrames = stable ? stableFrames + 1 : 0;
+            return stableFrames >= 3;
+        }, 5f)).OverrideFailureMessage($"the spawned {id} lands before pickup\n{Recent()}").IsTrue();
         await PlayerWalksTo(tool.GlobalPosition);
         await PlayerReaches(tool.GlobalPosition);
-        Tap(InputActions.Grab);
-        await Frames.Physics(5);
-        if (Me.HeldTool(Me.Active) != tool)
+        bool Wanted(SurgicalTool? candidate) => candidate?.Def.Id == id && candidate.Charges != 0;
+        if (!Wanted(Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active]))))
         {
-            // Something else lay nearer the fingertips: take exactly this one, like reaching past the other.
-            if (Me.HeldTool(Me.Active) is not null)
-            {
-                Tap(InputActions.Grab);
-                await Frames.Physics(3);
-            }
-            Surgery.Tools.RequestGrab(tool, Me.Active);
-            await Frames.Physics(3);
+            // Reach the other end if a neighboring grip is closer; use the player's normal grab in either case.
+            await PlayerReaches(tool.TipPosition());
         }
+        // Pads and other supplies can arrive as a stack: any usable item of the requested kind is a valid pickup.
+        AssertBool(Wanted(Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active]))))
+            .OverrideFailureMessage($"the hand can pick up {id} through normal grabbing: hand {Tip(Me.Hands[Me.Active])}, "
+                + $"grip {tool.GlobalPosition}, tip {tool.TipPosition()}, nearest {Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active]))?.Def.Id ?? "none"}\n{Recent()}")
+            .IsTrue();
+        Tap(InputActions.Grab);
+        await PlayerInput.Delivered();
+        AssertBool(await Frames.Until(() => Wanted(Me.HeldTool(Me.Active)), 1f))
+            .OverrideFailureMessage($"the player's grab picks up {id}, without a forced grab\n{Recent()}").IsTrue();
         Note($"holds {id}");
         return Me.HeldTool(Me.Active);
     }
@@ -144,7 +172,11 @@ public partial class SurgeryDriver
             await PlayerWalksTo(spot);
             // The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
             await PlayerReaches(spot - (tool.Middle() - tool.TipPosition()));
-            await PlayerReaches(spot - (tool.Middle() - tool.TipPosition()));
+            // Recompute after rotating the tool only if its middle is still outside the placement tolerance.
+            if ((tool.Middle() - spot).Slide(Vector3.Up).Length() >= 0.04f)
+            {
+                await PlayerReaches(spot - (tool.Middle() - tool.TipPosition()));
+            }
             if ((tool.Middle() - spot).Slide(Vector3.Up).Length() < 0.04f)
             {
                 break;

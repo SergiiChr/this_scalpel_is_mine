@@ -1,12 +1,6 @@
 {
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_first_staple_oblique.jpg": "the first staple sits square across the cut, both legs in, the stapler on it",
-  "01_first_staple_top.jpg": "the first staple sits square across the cut, both legs in, the stapler on it",
-  "02_gaps_oblique.jpg": "staples 2.5 cm apart: the cut gapes and bleeds between them",
-  "02_gaps_top.jpg": "staples 2.5 cm apart: the cut gapes and bleeds between them",
-  "03_first_staple_oblique.jpg": "the first staple sits square across the cut, both legs in, the stapler on it",
-  "03_first_staple_top.jpg": "the first staple sits square across the cut, both legs in, the stapler on it",
-  "04_closed_oblique.jpg": "filled in with staples: no gap along the cut, no bleeding",
-  "04_closed_top.jpg": "filled in with staples: no gap along the cut, no bleeding"
+  "00_gaps_oblique.jpg": "staples 2.5 cm apart: the cut gapes and bleeds between them",
+  "00_gaps_top.jpg": "staples 2.5 cm apart: the cut gapes and bleeds between them",
+  "01_closed_oblique.jpg": "filled in with staples: no gap along the cut, no bleeding",
+  "01_closed_top.jpg": "filled in with staples: no gap along the cut, no bleeding"
 }

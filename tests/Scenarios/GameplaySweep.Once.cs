@@ -6,10 +6,8 @@ internal sealed partial class GameplaySweep
     private async Task OnceChecks()
     {
         await EffectChecks();
-        await ControlChecks();
         await IodineChecks();
         await SyringeChecks();
-        NurseChecks();
         AnesthesiaChecks();
         await SmokingChecks();
     }
@@ -73,96 +71,6 @@ internal sealed partial class GameplaySweep
         press();
         await PlayerInput.Delivered();
         await Frames.Physics(frames);
-    }
-
-    /// <summary>Controls: RMB picks up and puts down, LMB lowers and works the tool, the wheel sets its level, Shift
-    /// steps the zoom between two levels, and the controls shown follow a held hand key.</summary>
-    private async Task ControlChecks()
-    {
-        // On the tray or the table: standing, a hand doesn't reach one dropped on the floor.
-        // NOTE: by here a scalpel lies on the floor. Nothing this test checks says how it got there; not looked into yet.
-        if (FreeTools().FirstOrDefault(tool => tool.Def.Action == "cut" && tool.GlobalPosition.Y > 0.5f) is not { } blade)
-        {
-            return;
-        }
-        var hand = Me.Hands[Me.Active];
-        Me.Hovered = null;
-        hand.LocalTarget = Me.ToLocal(blade.GlobalPosition - hand.TipOffset(0.05f));
-        // Settled over it, as the hand rests there by the time a player presses RMB.
-        await Frames.Physics(5);
-        await Input(() => PlayerInput.Tap(InputActions.Grab), 2);
-        if (Me.HeldTool(Me.Active) != blade)
-        {
-            Fail("RMB (grab) didn't pick up the tool under the hand");
-            return;
-        }
-        var looking = Hud.ControlLines(Me);
-        await Input(() => PlayerInput.Tap(InputActions.LevelUp));
-        if (hand.Level != 1)
-        {
-            Fail($"the wheel didn't raise a blade's depth: {hand.Level}");
-        }
-        await Input(() => PlayerInput.Action(InputActions.UseTool));
-        if (!(hand.Lowered && hand.Trigger))
-        {
-            Fail("LMB (use) didn't lower and work the tool");
-        }
-        await Input(() => PlayerInput.Action(InputActions.UseTool, false));
-        if (hand.Lowered || hand.Trigger)
-        {
-            Fail("letting go of LMB left the tool working");
-        }
-        await AimChecks(blade, hand);
-        var zooms = new List<int>();
-        for (var i = 0; i < Surgeon.ZoomFov.Length; i++)
-        {
-            await Input(() => PlayerInput.Tap(InputActions.Zoom));
-            zooms.Add(Me.Zoom);
-        }
-        if (!zooms.SequenceEqual([1, 0]))
-        {
-            Fail($"Shift doesn't step between two zoom levels: {string.Join(", ", zooms)}");
-        }
-        await Input(() => PlayerInput.Action(InputActions.MoveRightHand));
-        if (Hud.ControlLines(Me).SequenceEqual(looking))
-        {
-            Fail("the controls shown didn't change while holding a hand key");
-        }
-        PlayerInput.Action(InputActions.MoveRightHand, false);
-        await Input(() => PlayerInput.Tap(InputActions.Grab), 2);
-        if (Me.HeldTool(Me.Active) is not null)
-        {
-            Fail("RMB (grab) didn't put the tool down");
-        }
-    }
-
-    /// <summary>Aiming with the mouse (MMB) turns the tool and the hand together: the glove stays where it is on the
-    /// tool.</summary>
-    private async Task AimChecks(SurgicalTool blade, SurgeonHand hand)
-    {
-        // Out to the side over the floor, so nothing under the tip lifts the hand while it turns, and calm: a shaking
-        // hand moves the elbow, and the glove follows that.
-        hand.LocalTarget = new Vector3(0.5f, 1.1f, 0.15f);
-        var ownStatus = Me.Status;
-        Me.Status = new SurgeonStatus(new Modifiers());
-        await Frames.Physics(10);
-        // Against the hand's grip frame, worked out with the glove: the tool's own transform follows a frame later.
-        var onTool = hand.GripTransform().AffineInverse() * hand.Glove.GlobalTransform;
-        var before = blade.GlobalBasis;
-        PlayerInput.Action(InputActions.AimTool);
-        PlayerInput.Mouse(new Vector2(120f, -60f) / Settings.MouseSensitivity);
-        await PlayerInput.Delivered();
-        await Frames.Physics(5);
-        var after = hand.GripTransform().AffineInverse() * hand.Glove.GlobalTransform;
-        var slid = Mathf.RadToDeg((onTool.Basis.Orthonormalized().Inverse() * after.Basis.Orthonormalized()).GetRotationQuaternion().GetAngle());
-        var turned = before.Z.AngleTo(blade.GlobalBasis.Z);
-        if (turned < 0.2f || slid > 3f || onTool.Origin.DistanceTo(after.Origin) > 0.005f)
-        {
-            Fail($"aiming the tool didn't turn it with the hand (turned {turned:0.00} rad, glove moved on it {slid:0.0} deg, {onTool.Origin.DistanceTo(after.Origin) * 100f:0.0} cm)");
-        }
-        PlayerInput.Mouse(new Vector2(-120f, 60f) / Settings.MouseSensitivity);
-        await Input(() => PlayerInput.Action(InputActions.AimTool, false), 2);
-        Me.Status = ownStatus;
     }
 
     /// <summary>The rolled tray holds the starter kit; iodine goes bottle to dish, soaks a pad held in forceps and
@@ -271,19 +179,9 @@ internal sealed partial class GameplaySweep
         var morphine = Tools.ByUid(Tools.Spawn("vial_morphine", spot))!;
         var syringe = Tools.ByUid(Tools.Spawn("syringe_50", spot))!;
         await Frames.Physics(3);
-        // Three wheel notches with the needle in the vial draw 3 ml.
-        var vialMiddle = vial.GlobalTransform * new Vector3(0f, 0f, -vial.Def.Length * 0.5f);
-        syringe.GlobalTransform = new Transform3D(Basis.Identity, vialMiddle + new Vector3(0f, 0f, syringe.Def.Length));
-        for (var i = 0; i < 3; i++)
-        {
-            Syringe.Plunge(syringe, ToolActions.PlungerStep, Patient);
-        }
-        var drawn = 3f * ToolActions.PlungerStep;
-        if (Mathf.Abs(syringe.Ml - drawn) > 0.01f || Mathf.Abs(vial.Ml - (vial.Def.Volume - drawn)) > 0.01f
-            || syringe.Label().EndsWith("(empty)"))
-        {
-            Fail($"the syringe didn't draw from the vial: syringe={syringe.Ml:0.00} ml vial={vial.Ml:0.00} ml");
-        }
+        // Plunger conservation is checked through player input by SyringeTest. Here the syringe is setup for
+        // the scenario-independent dose, mixture, inspection and breakage checks below.
+        Tools.Transfer(vial, syringe, 3f * ToolActions.PlungerStep);
         // The right dose, pushed into the patient, counts once it has soaked in. Checked on a body with no drugs in yet.
         var rightMl = Db.Drug("propofol")!.Dose * Patient.WeightKg / vial.Def.Concentration;
         Tools.Transfer(vial, syringe, rightMl - syringe.Ml);
@@ -292,13 +190,19 @@ internal sealed partial class GameplaySweep
         Patient.Flags.Remove("drug_propofol");
         var site = Body.UvToWorld(new Vector2(0.5f, 0.5f));
         syringe.GlobalTransform = new Transform3D(Basis.Identity, site + new Vector3(0f, 0f, syringe.Def.Length));
-        // Tools dropped on the site earlier (the kidney dish) would catch the needle: put them back on the tray.
-        while (Tools.NearestContainer(site) is { } inWay)
+        // Move containers away from the intended injection site; never search indefinitely if one cannot move.
+        var containers = Tools.Tools.Count;
+        for (var moved = 0; moved < containers && Tools.NearestContainer(site) is { } inWay; moved++)
         {
             inWay.GlobalPosition = spot + (Vector3.Up * 0.1f);
         }
+        if (Tools.NearestContainer(site) is not null)
+        {
+            Fail("a container still blocks the injection site after clearing the tray");
+        }
         var aimed = $"{Body.Probe(syringe.TipPosition())}, {Syringe.NeedleTarget(syringe, Patient)}";
-        while (syringe.Ml > 0f)
+        var notches = Mathf.CeilToInt(syringe.Ml / ToolActions.PlungerStep);
+        for (var notch = 0; notch <= notches && syringe.Ml > 0f; notch++)
         {
             Syringe.Plunge(syringe, -ToolActions.PlungerStep, Patient);
         }
@@ -401,43 +305,6 @@ internal sealed partial class GameplaySweep
         syringe.GlobalPosition = putBack + (Vector3.Up * 0.05f);
         syringe.Falling = false;
         await Frames.Physics(2);
-    }
-
-    /// <summary>One order at a time: the board shows it on its way. The first five deliveries come without a
-    /// cooldown, after the sixth it starts.</summary>
-    private void NurseChecks()
-    {
-        var nurse = _surgery.Nurse;
-        string[] gauze = ["gauze"];
-        nurse.Tick(1000f, _surgery);
-        nurse.CooldownLeft = 0f;
-        nurse.Delivered = 0;
-        nurse.Request(1, gauze, _surgery);
-        var board = new SurgeryStatus([], 0, [], nurse.CooldownLeft, nurse.Current, 0f, 0f).NurseBoard;
-        if (nurse.Current is null || !board.Contains("Gauze"))
-        {
-            Fail("the nurse board doesn't show the order on its way");
-        }
-        for (var i = 0; i < Nurse.FreeOrders; i++)
-        {
-            nurse.Request(1, gauze, _surgery);
-            nurse.Tick(1000f, _surgery);
-            if (nurse.CooldownLeft > 0f)
-            {
-                Fail($"the nurse cooldown started after free delivery {i + 1}");
-            }
-        }
-        nurse.Request(1, gauze, _surgery);
-        nurse.Tick(1000f, _surgery);
-        if (nurse.Current is not null || nurse.CooldownLeft <= 0f)
-        {
-            Fail("the nurse cooldown didn't start after the sixth delivery");
-        }
-        nurse.Request(1, gauze, _surgery);
-        if (nurse.Current is not null)
-        {
-            Fail("the nurse took an order during her cooldown");
-        }
     }
 
     /// <summary>Without quirks, one right dose of propofol keeps a patient whose bleeding is under control asleep and

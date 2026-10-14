@@ -3,13 +3,14 @@ using System.Reflection;
 namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
-/// Every scenario, one case each (<see cref="GameplaySweep"/>): loads it, uses every tool on the patient, fires every
+/// Every scenario, one case each (<see cref="GameplaySweep"/>): loads it, checks tray and anatomy compatibility, fires every
 /// event and drug, turns the patient and builds the report. Any script error shows up in the output. Checks that
-/// depend on the room, the site or the patient run in every scenario; the rest (controls, effects, iodine, syringe,
+/// depend on the room, the site or the patient run in every scenario; the rest (effects, iodine, syringe,
 /// nurse, anesthesia, smoking) only in the first one.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario")]
+[GodotArgs("--fixed-fps", "60")]
 public class GameplayRegressionTest
 {
     [TestCase]

@@ -89,10 +89,10 @@ public partial class SurgeryDriver
     /// Staples <paramref name="wound"/> shut with the stapler in the active hand: centered on the cut every
     /// <paramref name="spacing"/> meters along it (the first and last a little in from its ends), legs square across it
     /// (as C/V turn a blade along it), clicked at each spot where the cut doesn't already look closed. Where the muscle
-    /// under it is still open the staples go into the muscle, so it goes along again for the skin, up to <paramref name="rounds"/> times while it isn't closed. Captures the first staple as key frame first_staple.
+    /// under it is still open the staples go into the muscle, so it goes along again for the skin, up to <paramref name="rounds"/> times while it isn't closed. Opt-in progress captures show the first staple; callers otherwise capture their unique result.
     /// Returns how many staples went in.
     /// </summary>
-    public async Task<int> PlayerStaples(Wound wound, float spacing = TissueSim.StitchReach, int rounds = 4)
+    public async Task<int> PlayerStaples(Wound wound, float spacing = TissueSim.StitchReach, int rounds = 4, bool captureProgress = false)
     {
         var stapler = Me.HeldTool(Me.Active)!;
         var step = spacing / ((wound.Points[^1] - wound.Points[0]).Normalized() * Body.SiteSize).Length();
@@ -119,7 +119,7 @@ public partial class SurgeryDriver
                 await Frames.Physics(4);
                 Use(false);
                 await Frames.Physics(3);
-                if (stapler.Charges < charges && ++placed == 1)
+                if (stapler.Charges < charges && ++placed == 1 && captureProgress)
                 {
                     await Capture("first_staple", "the first staple sits square across the cut, both legs in, the stapler on it");
                 }
@@ -147,10 +147,10 @@ public partial class SurgeryDriver
     /// Clicks the needle's thread through <paramref name="wound"/> in <paramref name="layer"/>: the first hole as close
     /// beside the wound as that layer shows (inside the opening for what's under the skin, Patient.SutureLayerAt()),
     /// then one <paramref name="stepCells"/> grid cells further along on the other side each click, the last at the
-    /// wound's end. The first two clicks capture a key frame (thread_hole_1, thread_hole_2). Returns false when the
+    /// wound's end. Opt-in progress captures show the first two clicks (thread_hole_1, thread_hole_2). Returns false when the
     /// layer shows nowhere beside the wound.
     /// </summary>
-    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f)
+    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false)
     {
         // Grid cells along and across the wound, in uv: they're square in meters, not in uv.
         var along = (wound.Points[^1] - wound.Points[0]).Normalized();
@@ -200,7 +200,7 @@ public partial class SurgeryDriver
             await Frames.Seconds(0.2f);
             Use(false);
             await Frames.Physics(3);
-            if (i < 2)
+            if (captureProgress && i < 2)
             {
                 await Capture($"thread_hole_{i + 1}", $"the needle through hole {i + 1}, on its own side of the wound, thread trailing from it");
             }

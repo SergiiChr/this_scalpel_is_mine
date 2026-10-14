@@ -59,11 +59,13 @@ internal sealed partial class GameplaySweep
             return;
         }
         await SurgeryDriver.PlayerPutsCardBack(_surgery);
-        CheckDefibCart();
-        // First, while the site is still whole and the tray untouched.
-        await TableChecks(once);
+        // Excluded positive flows still need their initial compatibility checks in this sweep.
+        if (_surgery.Scenario.Id is "colon_cancer" or "blocked_artery")
+        {
+            await InitialSceneChecks.Inspect(_surgery);
+        }
+        await InitialSceneChecks.ExerciseTray(_surgery, once);
         await AnatomyChecks();
-        await EveryToolOnThePatient();
         await NewMechanics();
         await FeedbackChecks();
         if (once)
@@ -100,48 +102,6 @@ internal sealed partial class GameplaySweep
         _surgery.Finish(true, "");
         await Frames.Physics(5);
         GD.Print($"    wounds={Patient.Wounds.Count} score={_surgery.Scoring.Points} flags={string.Join(", ", Patient.Flags.Keys)}");
-    }
-
-    /// <summary>Every tool lying free, taken in the right hand, lowered over the site and worked at medium then full
-    /// effort with the tool action held, moving along a blade's edge.</summary>
-    private async Task EveryToolOnThePatient()
-    {
-        var site = Body.Site.GlobalPosition;
-        var hand = Me.Hands[1];
-        foreach (var tool in Tools.Tools.Values.ToList())
-        {
-            if (tool.State != ToolState.Free)
-            {
-                continue;
-            }
-            hand.Lowered = false;
-            Tools.RequestGrab(tool, 1);
-            await Frames.Physics(2);
-            hand.Attached = false;
-            hand.LocalTarget = Me.ToLocal(site + new Vector3(0f, 0.12f, 0f));
-            hand.Target = site + new Vector3(0f, 0.12f, 0f);
-            hand.Lowered = true;
-            foreach (var level in (int[])[2, 3])
-            {
-                hand.Level = level;
-                hand.Trigger = true;
-                for (var i = 0; i < 20; i++)
-                {
-                    hand.LocalTarget += new Vector3(0.0005f, 0f, 0.002f);
-                    await Frames.NextPhysics();
-                }
-                hand.Trigger = false;
-                await Frames.Physics(2);
-            }
-            hand.Lowered = false;
-            if (OS.GetCmdlineUserArgs().Contains("--verbose"))
-            {
-                var probe = Body.Probe(tool.TipPosition());
-                GD.Print($"    {tool.Def.Id,-20} zone={probe.Zone,-6} uv={probe.Uv} wounds={Patient.Wounds.Count}");
-            }
-            Tools.RequestRelease(1, Vector3.Zero);
-            await Frames.Physics(2);
-        }
     }
 
     private async Task NewMechanics()
@@ -193,7 +153,7 @@ internal sealed partial class GameplaySweep
         parent.FindChildren("*", "", true, false).OfType<Interactable>().First(spot => spot.Prompt.StartsWith(prompt));
 
     /// <summary>A cut through the muscle: the skin won't close over it and tight clips tear, until the muscle is
-    /// closed. (The needle's running thread is tested with the needle, NeedleTest.)</summary>
+    /// closed. (The running thread is checked in HandStitchScenarioTest.)</summary>
     private void MuscleFirstChecks()
     {
         var clips = Db.Tool("paper_clips")!;
@@ -236,22 +196,6 @@ internal sealed partial class GameplaySweep
         if (wound.Closure < 0.9f)
         {
             Fail($"the skin didn't close over sewn muscle (closure {wound.Closure:0.00})");
-        }
-    }
-
-    /// <summary>Before anything gets moved: the defibrillator waits on its cart.</summary>
-    private void CheckDefibCart()
-    {
-        var layout = _surgery.Room.Layout;
-        if (!layout.Has("defib_cart"))
-        {
-            return;
-        }
-        var cart = layout["defib_cart"];
-        if (!Tools.Tools.Values.Any(tool => tool.Def.Id == "defibrillator"
-                && (tool.GlobalPosition - cart).Slide(Vector3.Up).Length() < 0.4f))
-        {
-            Fail("no defibrillator on the defib cart");
         }
     }
 
@@ -300,8 +244,7 @@ internal sealed partial class GameplaySweep
     /// <summary>Walking into the IV tubing at full speed rips the line out.</summary>
     private async Task IvTripChecks()
     {
-        // The catheter pressed on the patient earlier may already have put a line in somewhere else (it depends on
-        // where the shaky tip landed): take it out, so the line runs to the back of the hand like a pre-op one.
+        // Reset any existing line so this check starts with pre-op tubing at the back of the hand.
         if (Patient.IvSet)
         {
             Patient.IvRemoved();

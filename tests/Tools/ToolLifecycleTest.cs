@@ -8,11 +8,33 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class ToolLifecycleTest
 {
-    [TestCase(Timeout = Limits.Slow)]
-    public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack()
+    private readonly SharedScene<SurgeryDriver> _scenes = new(async () =>
     {
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
+        return driver;
+    }, driver => driver.Stop());
+
+    [AfterTest]
+    public async Task CleanUpCase() => await _scenes.DiscardIncomplete();
+
+    [After]
+    public async Task CleanUpSuite() => await _scenes.Stop();
+
+    private async Task<SurgeryDriver> Begin(string group = "")
+    {
+        var driver = await _scenes.Begin(group);
+        if (driver.Me.HeldTool(driver.Me.Active) is not null)
+        {
+            await driver.PlayerPutsDown();
+        }
+        return driver;
+    }
+
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack()
+    {
+        var driver = await Begin();
         var surgery = driver.Surgery;
         SurgeryState.PatientIsAsleep(driver.Patient);
         var site = driver.SitePoint(new Vector2(0.5f, 0.5f));
@@ -78,14 +100,13 @@ public class ToolLifecycleTest
                 await Frames.Physics(2);
             }
         }
-        await driver.Stop();
+        await _scenes.Complete();
     }
 
     [TestCase]
     public async Task AHeldToolMovesWithTheHandWhileWalking()
     {
-        var driver = SurgeryDriver.Create();
-        await driver.Start("appendectomy");
+        var driver = await Begin("walking_and_floor");
         var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
         // Between the table and the delivery tray, walking sideways along the table over clear floor.
         await driver.PlayerWalksTo(new Vector3(0f, 0f, 1.6f), 0.4f);
@@ -98,14 +119,31 @@ public class ToolLifecycleTest
         AssertFloat(worst)
             .OverrideFailureMessage($"the scalpel stays in the hand every frame of the walk ({worst * 1000f:0.0} mm off at worst)")
             .IsLess(0.001f);
-        await driver.Stop();
+        await _scenes.Complete();
+    }
+
+    [TestCase]
+    public async Task AToolDroppedOnTheFloorIsSoiled()
+    {
+        var driver = await Begin("walking_and_floor");
+        var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
+        // Away from the table and the tray, over bare floor.
+        var floorSpot = new Vector3(0f, 0f, 1.6f);
+        await driver.PlayerWalksTo(floorSpot, 0.4f);
+        await driver.PlayerReaches(floorSpot);
+        SurgeryDriver.Press(InputActions.Grab);
+        await Frames.Seconds(2f);
+        SurgeryDriver.Release(InputActions.Grab);
+        AssertThat(scalpel.State).OverrideFailureMessage("the scalpel is let go").IsEqual(ToolState.Free);
+        AssertBool(scalpel.Soiled && !scalpel.Sterile)
+            .OverrideFailureMessage("a scalpel dropped on the floor is soiled and no longer sterile").IsTrue();
+        await _scenes.Complete();
     }
 
     [TestCase]
     public async Task DrinksAndCigarettesAreUsedUpOneAtATime()
     {
-        var driver = SurgeryDriver.Create();
-        await driver.Start("appendectomy");
+        var driver = await Begin();
         foreach (var def in Db.Tools.Values.Where(def => def.Drinkable || def.Id == "cig_pack"))
         {
             SurgeryState.ToolIsOnTray(driver.Surgery, def.Id);
@@ -124,7 +162,7 @@ public class ToolLifecycleTest
             AssertInt(tool.Charges).OverrideFailureMessage($"{def.Id} is used once").IsEqual(before - 1);
             await driver.PlayerPutsDown();
         }
-        await driver.Stop();
+        await _scenes.Complete();
     }
 
     [TestCase]
@@ -137,22 +175,4 @@ public class ToolLifecycleTest
             .OverrideFailureMessage("the fixed IV bag has the line interaction covered by the liquids suite").IsEqual("drip");
     }
 
-    [TestCase]
-    public async Task AToolDroppedOnTheFloorIsSoiled()
-    {
-        var driver = SurgeryDriver.Create();
-        await driver.Start("appendectomy");
-        var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
-        // Away from the table and the tray, over bare floor.
-        var floorSpot = new Vector3(0f, 0f, 1.6f);
-        await driver.PlayerWalksTo(floorSpot, 0.4f);
-        await driver.PlayerReaches(floorSpot);
-        SurgeryDriver.Press(InputActions.Grab);
-        await Frames.Seconds(2f);
-        SurgeryDriver.Release(InputActions.Grab);
-        AssertThat(scalpel.State).OverrideFailureMessage("the scalpel is let go").IsEqual(ToolState.Free);
-        AssertBool(scalpel.Soiled && !scalpel.Sterile)
-            .OverrideFailureMessage("a scalpel dropped on the floor is soiled and no longer sterile").IsTrue();
-        await driver.Stop();
-    }
 }

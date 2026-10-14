@@ -13,7 +13,8 @@ namespace Scalpel.Tests.TissueModification;
 [GodotArgs("--fixed-fps", "60")]
 public class WoundClosureTest
 {
-    private const string BudgetBroken = "known to go over the frame budget: each staple changes the tissue, and "
+    // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
+    private const string BudgetOverride = "known to go over the frame budget: each staple changes the tissue, and "
         + "rebuilding its layers takes about 6 ms (PatientBody.RebuildLayers()); not optimized yet";
     /// <summary>Edges further apart than this (meters) show a gap; closer than <see cref="Meets"/> they meet. Between
     /// the two it's a judgement call the checks leave alone.</summary>
@@ -55,7 +56,7 @@ public class WoundClosureTest
         AssertCountsAsSeen(driver, wound, "filled in");
         await driver.PlayerPutsDown();
         await driver.Capture("closed", "filled in with staples: no gap along the cut, no bleeding");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -85,7 +86,7 @@ public class WoundClosureTest
         AssertFloat(wound.Closure).OverrideFailureMessage("so it's closed").IsGreater(0.99f);
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("and doesn't bleed").IsLess(Dry);
         AssertCountsAsSeen(driver, wound, "tied thread");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>The office stapler as in a real run: every staple catches a vessel, the cut bleeds through the staples,
@@ -118,7 +119,7 @@ public class WoundClosureTest
             .IsGreaterEqual(Patient.ClosedEnough);
         AssertCountsAsSeen(driver, wound, "office staples");
         await driver.Capture("closed", "office staples through vessels, cauterized: the cut closed and dry");
-        await session.Finish(BudgetBroken);
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>Starts Hand Stitch with the patient asleep, and in a run with key frames saves the case's under

@@ -132,6 +132,24 @@ public partial class SyringeBench : Node
         Net.Instance.Leave();
     }
 
+    /// <summary>Releases the previous case's controls and staged tools. Shared cases use fresh containers and a
+    /// steady view. Ordinary plunger checks retain the opened tissue, clearing the previous test dose; IV delivery,
+    /// tearing and surgeon sedation use isolated scenes.</summary>
+    public async Task PrepareNextCase()
+    {
+        await Withdraw();
+        await ZoomTo(0);
+        ConsumeStaged();
+        SurgeryState.PatientHasNoDrug(Surgery.Patient, Drug);
+        foreach (var action in (string[])[InputActions.AimTool, InputActions.MoveLeftHand,
+            InputActions.MoveRightHand, InputActions.Crouch])
+        {
+            PlayerInput.Action(action, false);
+        }
+        await PlayerInput.Delivered();
+        PlacePartner(PartnerPark, 0f);
+    }
+
     /// <summary>Puts a fresh syringe holding the case's start in the active hand; <paramref name="insert"/> false leaves
     /// it ready over the target.</summary>
     public async Task Stage(SyringeCase @case, bool insert = true)
