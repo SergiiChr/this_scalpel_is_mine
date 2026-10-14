@@ -65,13 +65,21 @@ UNSHADE = 0.85
 
 # The sway: the chest sits this far toward her left of the hips, shifted back over them across the waist (y range).
 SWAY = (-0.043, 0.33, 0.4)
-# The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest; turned back
-# around the pelvis, the twist undone across the waist (y range).
+# The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest (measured on
+# the holsters, which sit at her sides); turned back around the pelvis, the twist undone across the bare waist between
+# belt and corset (y range).
 TURN = 20.0
-HIP_TURN = (22.0, 0.33, 0.38)
+HIP_TURN = (37.0, 0.345, 0.38)
 PELVIS = (0.008, 0.32, -0.038)
 # Rest hip joints sit this far either side of the pelvis center.
-HIP_X = 0.035
+HIP_X = 0.022
+# The legs stand a little apart: straight from the hip out to the ankle this far from the middle, so the shoes clear
+# each other.
+FOOT_X = 0.034
+# Each thigh's top fills its half of the hips' cut (measured there): an oval this wide across and front to back,
+# blended in over this stretch below the cut.
+HIP_RADII = (0.021, 0.038)
+HIP_BLEND = 0.05
 # Leg centerlines from the hip to inside the shoe. The legs cross: her right leg (blue stocking, red shoe, reference
 # photos) is the one in front, its foot under her left hip.
 LEGS = {
@@ -94,8 +102,6 @@ LEGS = {
         (0.092, 0.06, -0.025),
     ],
 }
-# Thigh top across and front to back, where the thighs are fused and the scan has no clean ring.
-HIP_RADII = (0.03, 0.034)
 # Shoes stay scanned below this height; the stocking tubes reach a little into them.
 ANKLE = 0.075
 # The heights skin tone is taken from (chest and shoulders), and the surface points the gauntlets' colors are
@@ -134,8 +140,16 @@ NECK_TOP = 0.5
 NECK = (0.49, 0.034)
 SPINE = ((0.0, 0.35, -0.044), (-0.035, 0.5, -0.03), 0.055)
 SHOULDER_LINE = ((-0.01, 0.458, -0.03), (-0.06, 0.458, 0.0), 0.027)
-# Legs and shoes go below this height.
-HIPS = 0.27
+# Legs and shoes go below this height: the crotch, where the thighs part, cut with a clean plane.
+HIPS = 0.305
+# The holsters are fused to the thighs on the scan: rebuilt as black boxes at her sides (rest pose: x of the middle,
+# bottom and top heights, thickness, width front to back) with a triangular flap on the outside, blue on her right and
+# red on her left (reference photos).
+HOLSTER = (0.048, 0.262, 0.335, 0.012, 0.034)
+HOLSTER_BLACK = (0.08, 0.08, 0.09)
+# The stockings' tops on the scan, with a folded cuff this long and this much wider; bare skin above.
+STOCKING_TOP = 0.276
+STOCKING_CUFF = (0.008, 1.06)
 # Boxes: center, size.
 Box = tuple[Vec3, Vec3]
 # Cut even within reach of the spine: the cape bunched up under the right fist and the pigtail hanging in front of
@@ -288,11 +302,11 @@ class Scan:
         bm.from_mesh(obj.data)
         bm.faces.ensure_lookup_table()
         bmesh.ops.delete(bm, geom=[f for f in bm.faces if not keep[f.index]], context="FACES")
+        for _ in range(erode):
+            bmesh.ops.delete(bm, geom=[f for f in bm.faces if any(e.is_boundary for e in f.edges)], context="FACES")
         for point, normal in planes or []:
             geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
             bmesh.ops.bisect_plane(bm, geom=geom, plane_co=scene.to_blender(point), plane_no=scene.to_blender(normal), clear_inner=True)
-        for _ in range(erode):
-            bmesh.ops.delete(bm, geom=[f for f in bm.faces if any(e.is_boundary for e in f.edges)], context="FACES")
         # Bits left floating by the cuts (a fingertip, a cape scrap, the other shoe's heel) go.
         _drop_crumbs(bm, 0.5 if planes else 0.02)
         _smooth_rims(bm)
@@ -408,7 +422,8 @@ def torso_faces(centers: NDArray[np.float64]) -> NDArray[np.bool_]:
     """Faces of the scan the torso piece keeps."""
     y = centers[:, 1]
     near = (_segment_distance(centers, SPINE[0], SPINE[1]) < SPINE[2]) | (_segment_distance(centers, SHOULDER_LINE[0], SHOULDER_LINE[1]) < SHOULDER_LINE[2])
-    keep = (y >= HIPS) & (y < NECK_TOP + 0.01) & ((y < UPPER) | near | _in_box(centers, BUST))
+    # A margin past both cuts, so trimming the ragged rim still leaves the planes something to cut cleanly.
+    keep = (y >= HIPS - 0.012) & (y < NECK_TOP + 0.01) & ((y < UPPER) | near | _in_box(centers, BUST))
     # Just under the chin only the neck itself: the hair's underside comes down close around it.
     keep &= (y < NECK[0]) | (_segment_distance(centers, SPINE[0], SPINE[1]) < NECK[1])
     for box in CUTS:
@@ -586,13 +601,6 @@ class Tube:
         tube.top = int(np.argmax(clean))
         return tube
 
-    def widen_top(self, radius: NDArray[np.float64]) -> None:
-        """Above the topmost clean ring the outline blends to `radius` (per angle) at the top."""
-        if self.top > 0:
-            blend = _smoothstep(0.0, 1.0, np.linspace(1.0, 0.0, self.top + 1))[:-1, None]
-            self.radii[: self.top] = self.radii[self.top] * (1.0 - blend) + radius[None, :] * blend
-        self.smooth()
-
     def smooth(self) -> None:
         """A light smoothing around and along takes out ray noise."""
         radii = self.radii
@@ -718,7 +726,7 @@ def _right_shoe(scan: Scan) -> bpy.types.Object:
     reach = {k: _segment_distance(flat, (a[0], 0.0, a[1]), (b[0], 0.0, b[1])) for k, (a, b) in SHOE_LINES.items()}
     split = (SHOE_SPLIT[0], tuple(-np.array(SHOE_SPLIT[1])))
     shoe = scan.piece("ShoeR", (centers[:, 1] < ANKLE + 0.01) & (reach["R"] < reach["L"]), [((0.0, ANKLE, 0.0), (0.0, -1.0, 0.0)), split])
-    _transform(shoe, _yaw(_toe_turn(*SHOE_LINES["R"])), tuple(_at_height(LEGS["R"], ANKLE)), (HIP_X, ANKLE, 0.0))
+    _transform(shoe, _yaw(_toe_turn(*SHOE_LINES["R"])), tuple(_at_height(LEGS["R"], ANKLE)), (FOOT_X, ANKLE, 0.0))
     return shoe
 
 
@@ -759,22 +767,34 @@ def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
     right = _right_shoe(scan)
     parts = [right, _left_shoe(right)]
     down = np.array([0.0, -1.0, 0.0])
+    skin = scan.skin_tone()
     for side, sign in (("R", 1.0), ("L", -1.0)):
         centerline = LEGS[side]
         hip = np.array([sign * HIP_X, centerline[0][1], 0.0])
-        end = np.array([sign * HIP_X, centerline[-1][1], 0.0])
+        end = np.array([sign * FOOT_X, centerline[-1][1], 0.0])
         tube = Tube.measure(scan, centerline)
         # Laid out straight down from the hip; the rings keep the turn they had at the ankle, plus the shoe's.
         normal = _yaw(_toe_turn(*SHOE_LINES[side])) @ _turn_onto(tube.end_tangent, down) @ tube.end_normal
-        # The thigh's top, where the scan has the thighs fused, is an oval filling the hips' outline.
+        # The thigh's top, where the scan has the thighs fused, swells over its last stretch into an oval filling its
+        # half of the hips' cut, so the two meet without a step.
         a = np.linspace(0.0, 2.0 * math.pi, ANGLES, endpoint=False)
         side_way = normal[None, :] * np.cos(a)[:, None] + np.cross(down, normal)[None, :] * np.sin(a)[:, None]
-        tube.widen_top(1.0 / np.hypot(side_way[:, 0] / HIP_RADII[0], side_way[:, 2] / HIP_RADII[1]))
-        # Inside the hips it narrows again, so no rim of it shows past the hips' outline.
+        reach = 1.0 / np.hypot(side_way[:, 0] / HIP_RADII[0], side_way[:, 2] / HIP_RADII[1])
         heights = np.linspace(hip[1], end[1], len(tube.radii))
-        tube.radii *= (1.0 - 0.5 * _smoothstep(HIPS - 0.01, hip[1], heights))[:, None]
-        tube.length = float(hip[1] - end[1])
-        parts.append(tube.build(f"Leg{side}", tuple(hip), tuple(down), tuple(normal)))
+        blend = _smoothstep(HIPS - HIP_BLEND, HIPS, heights)[:, None]
+        tube.radii = np.asarray(tube.radii * (1.0 - blend) + reach[None, :] * blend, dtype=np.float64)
+        tube.smooth()
+        # Bare skin above the stocking, in the paint's tone like the arms, and a folded cuff at the stocking's top.
+        tube.colors[np.linspace(hip[1], end[1], len(tube.colors)) > STOCKING_TOP] = skin
+        cuff = (heights <= STOCKING_TOP) & (heights > STOCKING_TOP - STOCKING_CUFF[0])
+        tube.radii[cuff] *= STOCKING_CUFF[1]
+        # The thigh ends just inside the hips' cut.
+        top = HIPS + 0.012
+        tube.radii = tube.radii[heights <= top]
+        tube.colors = tube.colors[np.linspace(hip[1], end[1], len(tube.colors)) <= top]
+        hip[1] = top
+        tube.length = float(np.linalg.norm(end - hip))
+        parts.append(tube.build(f"Leg{side}", tuple(hip), tuple((end - hip) / tube.length), tuple(normal)))
     return parts
 
 
@@ -853,8 +873,37 @@ def hands(scan: Scan) -> list[bpy.types.Object]:
     return parts
 
 
+def holsters(scan: Scan) -> list[bpy.types.Object]:
+    x, bottom, top, thick, wide = HOLSTER
+    parts = []
+    for side, sign in (("R", 1.0), ("L", -1.0)):
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0)
+        center = (sign * x, (bottom + top) / 2.0, 0.0)
+        bmesh.ops.transform(bm, matrix=Matrix.Translation(scene.to_blender(center)) @ Matrix.Diagonal((thick, wide, top - bottom, 1.0)), verts=bm.verts)
+        # The flap: a thin triangle on the outer face, its point down.
+        out = sign * (x + thick / 2.0)
+        corners = [(out, top - 0.004, -wide * 0.42), (out, top - 0.004, wide * 0.42), (out, top - (top - bottom) * 0.5, 0.0)]
+        points = [bm.verts.new(scene.to_blender((c[0] + sign * lift, c[1], c[2]))) for c in corners for lift in (-0.001, 0.002)]
+        flap = bmesh.ops.convex_hull(bm, input=points)["geom"]
+        for face in (g for g in flap if isinstance(g, bmesh.types.BMFace)):
+            face.material_index = 1
+        obj = scene.link(bpy.data.objects.new(f"Holster{side}", bpy.data.meshes.new(f"Holster{side}")))
+        bm.to_mesh(obj.data)
+        bm.free()
+        obj.data.materials.append(scene.material(f"Holster{side}Black", HOLSTER_BLACK))
+        obj.data.materials.append(scene.material(f"Holster{side}Flap", [float(c) for c in scan.color_around(GLOVE_SPOTS[side])]))
+        parts.append(obj)
+    return parts
+
+
 def torso(scan: Scan) -> bpy.types.Object:
-    piece = scan.piece("Torso", torso_faces(scan.face_centers()), [((0.0, NECK_TOP, 0.0), (0.0, -1.0, 0.0))], erode=3)
+    centers = scan.face_centers()
+    # The scanned holsters' tops, standing off the hips' sides, give way to the rebuilt ones.
+    rest = straighten(centers)
+    scanned_holsters = (np.abs(rest[:, 0]) > HOLSTER[0] - HOLSTER[3] / 3.0) & (rest[:, 1] < HOLSTER[2] + 0.01) & (np.abs(rest[:, 2]) < HOLSTER[4])
+    planes = [((0.0, NECK_TOP, 0.0), (0.0, -1.0, 0.0)), ((0.0, HIPS, 0.0), (0.0, 1.0, 0.0))]
+    piece = scan.piece("Torso", torso_faces(centers) & ~scanned_holsters, planes, erode=3)
     _straighten_object(piece)
     return piece
 
@@ -957,12 +1006,12 @@ def _bones() -> list[tuple[str, Vec3, Vec3, str | None]]:
             start, end = (tuple(wrist + np.array([sign * p[0], p[1], p[2]]) * HAND_SCALE) for p in (head, tail))
             bones.append((f"{name}{side}", start, end, f"{parent}{side}" if parent else f"Forearm{side}"))
         leg_top = np.array([sign * HIP_X, hip, 0.0])
-        knee = np.array([sign * HIP_X, KNEE, 0.0])
-        ankle = np.array([sign * HIP_X, ANKLE, 0.0])
+        ankle = np.array([sign * FOOT_X, ANKLE, 0.0])
+        knee = leg_top + (ankle - leg_top) * (hip - KNEE) / (hip - ANKLE)
         bones += [
             (f"Thigh{side}", tuple(leg_top), tuple(knee), "Torso"),
             (f"Shin{side}", tuple(knee), tuple(ankle), f"Thigh{side}"),
-            (f"Foot{side}", tuple(ankle), (sign * HIP_X + TOE[0], TOE[1], TOE[2]), f"Shin{side}"),
+            (f"Foot{side}", tuple(ankle), (sign * FOOT_X + TOE[0], TOE[1], TOE[2]), f"Shin{side}"),
         ]
     return bones
 
@@ -1051,7 +1100,7 @@ def _skin(body: bpy.types.Object, rig: bpy.types.Object, body_vertices: int, sca
 def build() -> bpy.types.Object:
     """Builds the rigged figure in the scene and returns its armature."""
     scan = Scan()
-    sources = [torso(scan), *legs_and_shoes(scan), *arms(scan)]
+    sources = [torso(scan), *holsters(scan), *legs_and_shoes(scan), *arms(scan)]
     hand_sources = hands(scan)
     scan.bm.free()
     bpy.data.objects.remove(scan.obj)
