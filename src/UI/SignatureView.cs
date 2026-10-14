@@ -11,10 +11,10 @@ public partial class SignatureView : Control
     public const float SignSeconds = 2f;
     /// <summary>A part signature unwrites in at most this long.</summary>
     private const float RollbackSeconds = 0.6f;
-    private const float Baseline = 64f;
-    private static readonly Vector2 Area = new(300f, 80f);
+    private const float Baseline = 76f;
+    private static readonly Vector2 Area = new(340f, 100f);
     private static readonly Color BallpointBlue = new(0.12f, 0.2f, 0.52f);
-    private static readonly Color Line = new(0.42f, 0.46f, 0.52f);
+    private static readonly Color Line = new(0.3f, 0.33f, 0.38f);
     private static readonly Color PenBody = new(0.16f, 0.17f, 0.2f, 0.4f);
     /// <summary>Which way the pen leans from its tip: up and to the right, as a right hand holds it.</summary>
     private static readonly Vector2 PenLean = new Vector2(0.45f, -1f).Normalized();
@@ -61,7 +61,7 @@ public partial class SignatureView : Control
 
     public override void _Draw()
     {
-        DrawLine(new Vector2(0f, Baseline), new Vector2(Area.X, Baseline), Line, 1f);
+        DrawLine(new Vector2(0f, Baseline), new Vector2(Area.X, Baseline), Line, 1.5f);
         if (Progress <= 0f)
         {
             return;
@@ -103,15 +103,16 @@ public partial class SignatureView : Control
         for (var i = 0; i < Loops; i++)
         {
             var t = i / (float)(Loops - 1);
-            var phase = t * 7f * Mathf.Tau;
+            // Loops come a little uneven, as a hand writes them.
+            var phase = ((t * 6f) + (0.25f * Mathf.Sin(t * 13f))) * Mathf.Tau;
             // Drawn back a little each loop, so the stroke crosses itself like handwriting.
-            var x = 12f + (t * 220f) - (9f * Mathf.Sin(phase));
-            var height = 12f + (26f * Mathf.Exp(-t * 6f)) + (5f * Mathf.Sin(t * 9f));
-            points[i] = new Vector2(x, Baseline - 6f - (height * 0.5f * (1f - Mathf.Cos(phase))));
+            var x = 10f + (t * 250f) - (11f * Mathf.Sin(phase));
+            var height = 20f + (40f * Mathf.Exp(-t * 7f)) + (10f * Mathf.Sin(t * 17f) * Mathf.Sin(t * 5f));
+            points[i] = new Vector2(x, Baseline - 8f - (height * 0.5f * (1f - Mathf.Cos(phase))));
         }
         var from = points[Loops - 1];
-        var bend = new Vector2(Area.X + 10f, Baseline + 14f);
-        var to = new Vector2(40f, Baseline + 6f);
+        var bend = new Vector2(Area.X + 10f, Baseline + 20f);
+        var to = new Vector2(30f, Baseline + 12f);
         for (var i = 0; i < Flourish; i++)
         {
             var t = (i + 1) / (float)Flourish;
