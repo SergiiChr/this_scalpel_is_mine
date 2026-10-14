@@ -6,6 +6,12 @@ namespace Scalpel.Operation;
 /// </summary>
 public static class ObjectiveChecks
 {
+    /// <summary>Types that count only while their condition holds (the wound closed, the patient stable). The rest are
+    /// milestones: done once reached, whatever happens after.</summary>
+    private static readonly HashSet<string> StateTypes = ["close", "close_internal", "stop_bleeding", "stabilize"];
+
+    public static bool IsState(string type) => StateTypes.Contains(type);
+
     /// <summary>The step's own check, or else its alternative's.</summary>
     public static bool Check(ObjectiveStep step, StepState state, Surgery surgery, float delta) =>
         Met(step, state, surgery, delta)

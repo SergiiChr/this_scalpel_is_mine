@@ -64,6 +64,14 @@ public partial class Hud : CanvasLayer
     /// <summary>The patient card's page, while it's open or until the next one.</summary>
     private Control? _card;
     internal bool CardOpen => Overlay is not null && Overlay == _card;
+    /// <summary>The discharge line on the card's page.</summary>
+    internal SignatureView? Signature { get; private set; }
+    /// <summary>Interact went down while the card's page showed, and is still held.</summary>
+    private bool _signing;
+    /// <summary>How long the card has shown a whole signature.</summary>
+    private float _signedFor;
+    /// <summary>A whole signature stays on the card this long before the patient goes.</summary>
+    internal const float SignedPause = 0.6f;
 
     public void Setup(Surgery surgery)
     {
@@ -128,6 +136,7 @@ public partial class Hud : CanvasLayer
         var clock = left >= 0f ? $"{(int)left / 60}:{(int)left % 60:00}" : "no time limit";
         _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
         UpdateObjectives();
+        UpdateSignature(dt);
         if (Shop.View.Visible)
         {
             UpdateShop();
@@ -273,7 +282,10 @@ public partial class Hud : CanvasLayer
     /// has travelled up to the face.</summary>
     public void OpenCard(bool inHand = false)
     {
-        _card = PatientCardView.Build(Surgery.Patient, Net.Instance.SessionSeed, CloseOverlay);
+        Signature = new SignatureView();
+        _signing = false;
+        _signedFor = 0f;
+        _card = PatientCardView.Build(Surgery.Patient, Net.Instance.SessionSeed, Signature, CloseOverlay);
         Open(_card);
         if (!inHand)
         {
@@ -609,11 +621,34 @@ public partial class Hud : CanvasLayer
         {
             var status = Surgery.Status;
             var steps = Surgery.Scenario.Steps;
-            var rows = status.Objectives.Select((row, i) => row.Current && steps[i].Type == "anesthesia"
+            var rows = status.Objectives.Select((row, i) => !row.Done && steps[i].Type == "anesthesia"
                 ? row with { Label = $"{row.Label} ({Mathf.Floor(Surgery.Patient.Vitals.Anesthesia * 100f):0}% / {steps[i].Parameters.Float("level", 0.7f) * 100f:0}%)" }
                 : row).ToList();
             _objectives.Refresh(status with { Objectives = rows });
         }
+    }
+
+    /// <summary>Holding Interact over the card's page signs the discharge; a press from before the page showed (taking
+    /// the card off its hook) doesn't count. Signed in full, the patient goes after a moment.</summary>
+    private void UpdateSignature(float dt)
+    {
+        if (!CardOpen || Signature is null || dt <= 0f)
+        {
+            return;
+        }
+        if (Signature.Complete)
+        {
+            var before = _signedFor;
+            _signedFor += dt;
+            if (before < SignedPause && _signedFor >= SignedPause)
+            {
+                Surgery.SignDischarge();
+            }
+            return;
+        }
+        _signing = Input.IsActionPressed(InputActions.Interact)
+            && (_signing || (Input.IsActionJustPressed(InputActions.Interact) && _card!.Modulate.A >= 1f));
+        Signature.Advance(dt, _signing);
     }
 
     private void UpdateHands(Surgeon me)

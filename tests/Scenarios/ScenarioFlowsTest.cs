@@ -4,9 +4,10 @@ namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
 /// Every main-menu scenario played through its positive flow, like a player (see <see cref="ScenarioFlow"/>): each
-/// required objective done in order, and the game itself ends the surgery with a successful report. In a run with key
-/// frames the major scenarios also save the untouched site, then the site right after every objective. Review them for
-/// continuity, clipping, mesh intersections, material consistency and tool contact.
+/// required objective done in the listed order, the surgery still running until the patient is signed out, then a
+/// successful report. In a run with key frames the major scenarios also save the untouched site, then the site right
+/// after every objective. Review them for continuity, clipping, mesh intersections, material consistency and tool
+/// contact.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario"), TestCategory("visual_confirmation")]

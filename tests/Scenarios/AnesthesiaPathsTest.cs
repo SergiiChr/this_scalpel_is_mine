@@ -69,8 +69,8 @@ public class AnesthesiaPathsTest
 
     /// <summary>
     /// A patient allergic to lidocaine, put under instead as the manual (17_conditions/allergy.txt) says: "Numb the
-    /// area, or put the patient under" counts general anesthesia, and the surgery ends on its own. The lidocaine path
-    /// is <see cref="ScenarioFlowsTest.PlaysThrough"/>.
+    /// area, or put the patient under" counts general anesthesia, and signed out, the surgery ends in success.
+    /// The lidocaine path is <see cref="ScenarioFlowsTest.PlaysThrough"/>.
     /// </summary>
     [TestCase("hand_stitch", Timeout = Limits.Slow)]
     [TestCase("hand_stitch_child", Timeout = Limits.Slow)]
@@ -89,7 +89,8 @@ public class AnesthesiaPathsTest
             await driver.PlayerAnesthetizes();
             await driver.PlayerClosesWounds();
             await driver.PlayerStopsBleeding(0.2f);
-            await Frames.Until(() => surgery.Finished, 120f);
+            await Frames.Until(() => surgery.Objectives.AllDone, 120f);
+            await driver.PlayerDischarges();
             AssertBool(surgery.Report?.Success == true)
                 .OverrideFailureMessage($"{scenario} ends in success under general anesthesia: "
                     + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")

@@ -1,9 +1,9 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>
-/// A scenario played through its positive flow, like a player: each required objective done in order with the
-/// scenario's tools and the controls a player has (<see cref="SurgeryDriver"/>), and the game itself ending the surgery
-/// with a successful report. A step that doesn't register fails the case with what the driver did last. A case that
+/// A scenario played through its positive flow, like a player: each required objective done in the order the scenario
+/// lists it with the scenario's tools and the controls a player has (<see cref="SurgeryDriver"/>), then the patient
+/// signed out on the card, and the game ending the surgery with a successful report. A step that doesn't register fails the case with what the driver did last. A case that
 /// asks for key frames, in a run with key frames, saves the untouched site and distinct visible actions and results.
 /// Every run checks the frame budget (<see cref="FrameBudget.Check"/>). Rendering stays off in between,
 /// also under a display: the game runs at full speed, and a software renderer only draws the key frames.
@@ -65,7 +65,9 @@ public static class ScenarioFlow
                     await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
                 }
             }
-            await Frames.Until(() => surgery.Finished, 10f);
+            AssertBool(surgery.Finished)
+                .OverrideFailureMessage($"{scenarioId}: the surgery waits for the discharge: {surgery.Report?.Reason}").IsFalse();
+            await driver.PlayerDischarges();
             var report = surgery.Report;
             AssertBool(report?.Success == true)
                 .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars")

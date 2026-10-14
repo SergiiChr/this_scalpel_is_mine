@@ -1,9 +1,9 @@
 namespace Scalpel.Operation;
 
-/// <summary>An objective step as the HUD shows it.</summary>
-public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Current)
+/// <summary>An objective step as the debug HUD shows it.</summary>
+public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled)
 {
-    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Current];
+    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled];
 
     public static ObjectiveView FromVariant(Variant data)
     {
@@ -12,19 +12,29 @@ public readonly record struct ObjectiveView(string Label, bool Done, bool Option
     }
 }
 
-/// <summary>Where one step stands: done, and how long its condition has held so far.</summary>
+/// <summary>Where one step stands: met, spoiled, and how long its condition has held so far.</summary>
 public sealed class StepState
 {
+    /// <summary>A milestone once it's reached, a state step while its condition holds.</summary>
     public bool Done { get; set; }
+    /// <summary>Its condition has been met at least once.</summary>
+    public bool Reached { get; set; }
+    /// <summary>First met before a step it comes after was done: it no longer counts.</summary>
+    public bool Spoiled { get; set; }
     public float Timer { get; set; }
 
     /// <summary>The step's "or" alternative keeps its own timer, so two timed conditions don't reset each other.
     /// </summary>
     public StepState Alternative => field ??= new StepState();
+
+    public bool Counts => Done && !Spoiled;
 }
 
 /// <summary>
-/// Scenario steps, host only. Required steps complete in order, optional ones any time for bonus points.
+/// Scenario requirements, host only. Every step is checked every tick, whatever was done before it: a milestone (the
+/// bullet out) stays done once reached, a state step (no active bleeding) counts only while it holds.
+/// A step first met before the steps it comes after (<see cref="ObjectiveStep.After"/>) is spoiled for good.
+/// Nothing here ends the surgery: the outcome is settled when the patient is discharged (<see cref="Settle"/>).
 /// Each step type is a small check in <see cref="ObjectiveChecks"/>.
 /// </summary>
 public partial class Objectives : Node
@@ -41,44 +51,70 @@ public partial class Objectives : Node
         }
     }
 
-    /// <summary>The first required step not done yet, -1 when they all are.</summary>
-    public int CurrentIndex()
-    {
-        for (var i = 0; i < Steps.Count; i++)
-        {
-            if (!States[i].Done && !Steps[i].Optional)
-            {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public bool AllDone => CurrentIndex() == -1;
+    /// <summary>Every required step counts: the patient is ready to go.</summary>
+    public bool AllDone => Steps.Select((step, i) => step.Optional || States[i].Counts).All(counts => counts);
 
     public void Tick(float delta, Surgery surgery)
     {
-        var current = CurrentIndex();
         for (var i = 0; i < Steps.Count; i++)
         {
-            var optional = Steps[i].Optional;
-            if (States[i].Done || (i != current && !optional))
+            var step = Steps[i];
+            var state = States[i];
+            if (state.Spoiled || (state.Done && !ObjectiveChecks.IsState(step.Type)))
             {
                 continue;
             }
-            if (ObjectiveChecks.Check(Steps[i], States[i], surgery, delta))
+            var met = ObjectiveChecks.Check(step, state, surgery, delta);
+            if (met && !state.Reached)
             {
-                States[i].Done = true;
-                surgery.Scoring.Add(optional ? "optional_done" : "objective_done");
-                surgery.AnnounceDebug($"Done: {Steps[i].Label}");
+                state.Reached = true;
+                if (Missing(step) is { } missing)
+                {
+                    state.Spoiled = true;
+                    surgery.AnnounceDebug($"Spoiled: {step.Label} (before \"{missing.Label}\")");
+                    continue;
+                }
+            }
+            if (met != state.Done)
+            {
+                state.Done = met;
+                surgery.AnnounceDebug($"{(met ? "Done" : "Undone")}: {step.Label}");
             }
         }
     }
 
-    /// <summary>Compact state for the HUD.</summary>
-    public List<ObjectiveView> Snapshot()
+    /// <summary>The first step <paramref name="step"/> comes after that wasn't done, null when there's none.</summary>
+    private ObjectiveStep? Missing(ObjectiveStep step)
     {
-        var current = CurrentIndex();
-        return [.. Steps.Select((step, i) => new ObjectiveView(step.Label, States[i].Done, step.Optional, i == current))];
+        for (var i = 0; i < Steps.Count; i++)
+        {
+            if (step.After.Contains(Steps[i].Id) && !(States[i].Reached && !States[i].Spoiled))
+            {
+                return Steps[i];
+            }
+        }
+        return null;
     }
+
+    /// <summary>The outcome as the patient leaves: scores every step that counts and every required one that doesn't.
+    /// True when all required ones count.</summary>
+    public bool Settle(Scoring scoring)
+    {
+        for (var i = 0; i < Steps.Count; i++)
+        {
+            if (States[i].Counts)
+            {
+                scoring.Add(Steps[i].Optional ? "optional_done" : "objective_done");
+            }
+            else if (!Steps[i].Optional)
+            {
+                scoring.Add("objective_missed");
+            }
+        }
+        return AllDone;
+    }
+
+    /// <summary>Compact state for the HUD.</summary>
+    public List<ObjectiveView> Snapshot() =>
+        [.. Steps.Select((step, i) => new ObjectiveView(step.Label, States[i].Done, step.Optional, States[i].Spoiled))];
 }

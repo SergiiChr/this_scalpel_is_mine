@@ -177,11 +177,7 @@ public partial class Surgery : Node3D
         TickTurn(dt);
         if (Scenario.TimeLimit > 0f && Elapsed >= Scenario.TimeLimit)
         {
-            Finish(false, "Out of time.");
-        }
-        else if (Objectives.AllDone && (Patient.Alive || Patient.Flags.ContainsKey("euthanized")))
-        {
-            Finish(true, "");
+            Discharge("Out of time.");
         }
         _statusAcc += dt;
         if (_statusAcc >= StatusInterval)
@@ -239,6 +235,19 @@ public partial class Surgery : Node3D
             return;
         }
         Finish(false, reason);
+    }
+
+    /// <summary>Host: the patient leaves the table, signed out or out of time, and the outcome is settled now. Without
+    /// every required step standing it fails for <paramref name="reason"/>. Death ends the surgery on its own.
+    /// </summary>
+    internal void Discharge(string reason)
+    {
+        if (Finished)
+        {
+            return;
+        }
+        var ready = Objectives.Settle(Scoring);
+        Finish(ready, ready ? "" : reason);
     }
 
     internal void Finish(bool success, string reason)
@@ -710,6 +719,15 @@ public partial class Surgery : Node3D
     private void RequestComfort() => Patient.Reassure();
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void RequestDischarge()
+    {
+        if (Running)
+        {
+            Discharge("Discharged before the job was done.");
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void RequestOrder(string[] toolIds) => Nurse.Request(Net.Instance.Sender(), toolIds, this);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -749,6 +767,9 @@ public partial class Surgery : Node3D
     public void Smoke(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestSmoke, surgeon.Active);
 
     public void ComfortPatient() => RpcId(Net.HostId, MethodName.RequestComfort);
+
+    /// <summary>The discharge on the patient card is signed: the host settles how the surgery went.</summary>
+    public void SignDischarge() => RpcId(Net.HostId, MethodName.RequestDischarge);
 
     public void TurnPatient() => RpcId(Net.HostId, MethodName.RequestTurn);
 

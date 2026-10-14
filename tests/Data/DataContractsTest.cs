@@ -23,6 +23,26 @@ public partial class DataContractsTest
         }
     }
 
+    /// <summary>A step comes after steps listed before it, so the order a scenario lists is one that can be played.
+    /// </summary>
+    [TestCase]
+    public void StepsComeAfterEarlierSteps()
+    {
+        foreach (var scenario in AllScenarios)
+        {
+            for (var i = 0; i < scenario.Steps.Count; i++)
+            {
+                var earlier = scenario.Steps.Take(i).Select(step => step.Id).ToHashSet();
+                foreach (var id in scenario.Steps[i].After)
+                {
+                    AssertBool(earlier.Contains(id))
+                        .OverrideFailureMessage($"{scenario.Id}: \"{scenario.Steps[i].Label}\" comes after an earlier step '{id}'")
+                        .IsTrue();
+                }
+            }
+        }
+    }
+
     [TestCase]
     public void EveryToolIsFoundByItsOwnId()
     {
