@@ -258,8 +258,7 @@ public class SurgeonMovementTest
         AssertObject(me.LeanSpot).OverrideFailureMessage("the hand on the skin beside the opening, the lean lets go").IsNull();
         AssertFloat(me.Lean).OverrideFailureMessage($"and the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
         AssertInt(me.Zoom).OverrideFailureMessage("still zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
-        // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-        driver.Budget.Check(localOverride: "zooming and leaning over open tissue exceed the recorded CPU/render budget");
+        driver.Budget.Check();
     }
 
     /// <summary>Plays <paramref name="frames"/> physics frames, the partner's copy getting each one, and checks the view

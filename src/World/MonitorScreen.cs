@@ -21,6 +21,15 @@ public partial class MonitorScreen : Control
     private static readonly string[] WaveLabels = ["II", "Pleth", "Resp"];
     private static readonly Color[] WaveColors = [Ecg, Pleth, Resp];
 
+    // Share sizes between drawing and atlas preparation so new readouts cannot miss a font size.
+    private const int UnitSize = 13;
+    private const int SmallSize = 15;
+    private const int LabelSize = 16;
+    private const int StatusSize = 17;
+    private const int PressureSize = 18;
+    private const int BloodPressureSize = 40;
+    private const int PulseSize = 66;
+
     private const float Header = 34f;
     /// <summary>Waves run from WaveLeft to just short of WaveWidth, past the row labels.</summary>
     private const float WaveLeft = 56f;
@@ -60,6 +69,13 @@ public partial class MonitorScreen : Control
     {
         Size = ScreenSize;
         _waves = [.. Enumerable.Range(0, 3).Select(_ => new float[(int)(SampleHz * SweepSeconds)])];
+        // Readouts, alarms and lab results use English text, ASCII punctuation and the temperature degree sign.
+        // Prepare the entire alphabet, not just today's values, before a new result can stall a gameplay frame.
+        var text = string.Concat(Enumerable.Range(32, 95).Select(value => (char)value)) + "°";
+        foreach (var size in (int[])[UnitSize, SmallSize, LabelSize, StatusSize, PressureSize, BloodPressureSize, PulseSize])
+        {
+            Ui.PrepareFontText(_font, size, 0, text);
+        }
     }
 
     /// <summary>A new heartbeat: the next QRS starts now.</summary>
@@ -138,36 +154,36 @@ public partial class MonitorScreen : Control
         for (var i = 0; i < 3; i++)
         {
             var top = Header + (WaveRow * i);
-            Text(WaveLabels[i], new Vector2(10f, top + 20f), 16, WaveColors[i]);
+            Text(WaveLabels[i], new Vector2(10f, top + 20f), LabelSize, WaveColors[i]);
             DrawWave(_waves[i], top + (WaveRow * 0.55f), WaveRow * 0.36f, WaveColors[i]);
             DrawLine(new Vector2(0f, top + WaveRow), new Vector2(ScreenSize.X, top + WaveRow), Line);
         }
         DrawLine(new Vector2(WaveWidth, Header), new Vector2(WaveWidth, LabTop - 8f), Line);
         var at = new Vector2(WaveWidth + 14f, Header);
-        DrawNumber("HR", "bpm", readout.HeartRate, at, Ecg, 66, _rhythm != Rhythm.Sinus && flash);
-        Text(readout.Rhythm, at + new Vector2(0f, 92f), 15, Ecg);
+        DrawNumber("HR", "bpm", readout.HeartRate, at, Ecg, PulseSize, _rhythm != Rhythm.Sinus && flash);
+        Text(readout.Rhythm, at + new Vector2(0f, 92f), SmallSize, Ecg);
         at.Y += WaveRow;
-        DrawNumber("SpO2", "%", readout.Spo2, at, Pleth, 66, alarms.Contains("SpO2") && flash);
+        DrawNumber("SpO2", "%", readout.Spo2, at, Pleth, PulseSize, alarms.Contains("SpO2") && flash);
         at.Y += WaveRow;
-        DrawNumber("NIBP", "mmHg", readout.Nibp, at, Nibp, 40, alarms.Contains("NIBP") && flash);
-        Text(readout.MeanPressure, at + new Vector2(0f, 66f), 18, Nibp);
-        Text($"T  {readout.Temperature} °C", at + new Vector2(0f, 96f), 17, Temp);
-        Text($"RR  {readout.Resp}", new Vector2(ScreenSize.X - 12f, at.Y + 96f), 17, Resp, HorizontalAlignment.Right);
+        DrawNumber("NIBP", "mmHg", readout.Nibp, at, Nibp, BloodPressureSize, alarms.Contains("NIBP") && flash);
+        Text(readout.MeanPressure, at + new Vector2(0f, 66f), PressureSize, Nibp);
+        Text($"T  {readout.Temperature} °C", at + new Vector2(0f, 96f), StatusSize, Temp);
+        Text($"RR  {readout.Resp}", new Vector2(ScreenSize.X - 12f, at.Y + 96f), StatusSize, Resp, HorizontalAlignment.Right);
         DrawLab();
     }
 
     private void DrawHeader(bool flash)
     {
         DrawRect(new Rect2(0f, 0f, ScreenSize.X, Header), Bar);
-        Text("OR 1    Adult", new Vector2(10f, 23f), 16, Temp);
-        Text(GameClock.TimeOfDay(), new Vector2(ScreenSize.X - 10f, 23f), 16, Temp, HorizontalAlignment.Right);
+        Text("OR 1    Adult", new Vector2(10f, 23f), LabelSize, Temp);
+        Text(GameClock.TimeOfDay(), new Vector2(ScreenSize.X - 10f, 23f), LabelSize, Temp, HorizontalAlignment.Right);
         if (_alarms.Count == 0)
         {
             return;
         }
         var box = new Rect2(170f, 3f, 420f, Header - 6f);
         DrawRect(box, flash ? Alarm : Alarm.Darkened(0.5f));
-        Text(string.Join("   ", _alarms), new Vector2(box.GetCenter().X, 23f), 17, Colors.White, HorizontalAlignment.Center);
+        Text(string.Join("   ", _alarms), new Vector2(box.GetCenter().X, 23f), StatusSize, Colors.White, HorizontalAlignment.Center);
     }
 
     /// <summary>Ring buffer as a sweep: drawn up to the write head, a gap, then the old trace after it.</summary>
@@ -211,17 +227,17 @@ public partial class MonitorScreen : Control
             DrawRect(new Rect2(at.X - 8f, at.Y + 2f, width + 14f, WaveRow - 4f), Alarm);
         }
         var ink = alarm ? Colors.White : color;
-        Text(title, at + new Vector2(0f, 20f), 16, ink);
-        Text(unit, at + new Vector2(width - 4f, 20f), 13, ink, HorizontalAlignment.Right);
+        Text(title, at + new Vector2(0f, 20f), LabelSize, ink);
+        Text(unit, at + new Vector2(width - 4f, 20f), UnitSize, ink, HorizontalAlignment.Right);
         Text(value, at + new Vector2(width - 4f, 28f + (fontSize * 0.8f)), fontSize, ink, HorizontalAlignment.Right);
     }
 
     private void DrawLab()
     {
-        Text("Lab", new Vector2(10f, LabTop + 14f), 15, Lab.Darkened(0.3f));
+        Text("Lab", new Vector2(10f, LabTop + 14f), SmallSize, Lab.Darkened(0.3f));
         var any = _lab.Length > 0;
         DrawMultilineString(_font, new Vector2(56f, LabTop + 14f), any ? _lab : "No results yet.",
-            HorizontalAlignment.Left, ScreenSize.X - 66f, 16, 6, any ? Lab : Lab.Darkened(0.5f));
+            HorizontalAlignment.Left, ScreenSize.X - 66f, LabelSize, 6, any ? Lab : Lab.Darkened(0.5f));
     }
 
     /// <summary>Text with its baseline at <paramref name="position"/>.Y; right aligned text ends at its X, centered text

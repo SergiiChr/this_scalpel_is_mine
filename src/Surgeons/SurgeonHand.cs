@@ -195,6 +195,7 @@ public partial class SurgeonHand : Node3D
     /// <summary>Fraction of the forearm hidden at the elbow end (local player only, keeps the view clear).</summary>
     private float _forearmStart;
     private StandardMaterial3D? _ghost;
+    private bool _seeThrough;
     private Node3D? _trailRoot;
     private readonly List<TrailCopy> _trailCopies = [];
     /// <summary>The glove frames and bone poses the afterimages show, newest first.</summary>
@@ -260,6 +261,14 @@ public partial class SurgeonHand : Node3D
             AlbedoColor = GhostColor,
         };
         _ghost.AlbedoColor = _ghost.AlbedoColor with { A = 1f - amount };
+        // The shared material carries the fade; switching overrides only at its boundaries avoids
+        // rebuilding material state and walking the scene tree on every animation step.
+        var seeThrough = amount > 0f;
+        if (seeThrough == _seeThrough)
+        {
+            return;
+        }
+        _seeThrough = seeThrough;
         foreach (var node in FindChildren("*", nameof(GeometryInstance3D), true, false))
         {
             if (_trailRoot is null || !_trailRoot.IsAncestorOf(node))

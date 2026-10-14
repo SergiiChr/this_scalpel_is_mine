@@ -547,6 +547,10 @@ public partial class Room : Node3D
             Station("bell", "Ring for the nurse", new Vector3(0.5f, 1.2f, 0.5f), _ => surgery.OpenNurse());
             _nurseBoard = Shapes.Label(this, "", Layout["bell"] + new Vector3(0f, 1.5f, 0f), 40);
             _nurseBoard.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+            _nurseBoard.Font = ThemeDB.GetDefaultTheme().DefaultFont ?? ThemeDB.FallbackFont;
+            var text = string.Join(", ", Db.Tools.Values.Where(tool => tool.Orderable).Select(tool => tool.Name))
+                + " Nurse ready Nurse is busy for 0123456789 s × ■ □";
+            Ui.PrepareFontText(_nurseBoard.Font, _nurseBoard.FontSize, _nurseBoard.OutlineSize, text);
         }
         if (Layout.Has("gloves"))
         {

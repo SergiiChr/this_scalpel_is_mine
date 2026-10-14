@@ -99,6 +99,7 @@ public partial class PatientBody : Node3D
     /// </summary>
     private (float Delta, bool Run)? _pendingStep;
     private Task? _stepping;
+    private float _pallor = float.NaN;
     private bool _onBack;
     private float _siteBaseY;
 
@@ -129,6 +130,7 @@ public partial class PatientBody : Node3D
 
     public void Build(string siteName, Color tone, float ageScale)
     {
+        _pallor = float.NaN;
         SiteId = siteName;
         SiteDef = SiteDef.Of(siteName);
         WoundMap = new WoundMap(WoundMap.SizeFor(SiteDef.Size));
@@ -737,6 +739,11 @@ public partial class PatientBody : Node3D
     /// <summary>Blood loss drains the color from the skin, body and site alike.</summary>
     public void SetPallor(float value)
     {
+        if (value == _pallor)
+        {
+            return;
+        }
+        _pallor = value;
         SkinMaterial?.SetShaderParameter(ShaderParam.Pallor, value);
         _bodyMaterials[0].SetShaderParameter(ShaderParam.Pallor, value);
     }

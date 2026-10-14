@@ -52,6 +52,8 @@ public partial class SurgeryDriver
             PlayerPicksCategory(Db.Tool(id)!.Category);
             Click(Shop.RowOf(id).Add);
         }
+        // Measure the complete burst of clicks and its deferred layout in the next frame.
+        await Frames.Physics(1);
         Note($"cart: {string.Join(", ", ids)}");
     }
 

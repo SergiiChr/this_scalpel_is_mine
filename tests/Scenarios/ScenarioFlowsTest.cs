@@ -53,12 +53,12 @@ public class ScenarioFlowsTest
     [TestCase("leg_extension", false, BudgetOverride, Timeout = Limits.Slow)]
     [TestCase("broken_ribs", false, BudgetOverride, Timeout = Limits.Slow)]
     [TestCase("slit_throat", false, BudgetOverride, Timeout = Limits.Slow)]
+    [TestCase("nose_job", false, BudgetOverride, Timeout = Limits.Slow)]
     public async Task PlaysThrough(string scenario, bool keyFrames, string budgetOverride) => await
         ScenarioFlow.Play(scenario, keyFrames, budgetOverride);
 
     [TestCase("bullet_stomach", "\"Find and remove the bullet\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver finds no spot on the bowel in the opening clear of the bleeder to hold it aside, so the bullet stays covered and the forceps clamp the bleeder beside it instead.")]
     [TestCase("burn_graft", "\"Graft skin over the burns\" (graft) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: ten graft sheets cover only 61% of the burns, 70% needed.")]
-    [TestCase("nose_job", "\"Close up\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the 5 cm incision on the nose comes out as nine or ten short cuts; the needle's skin threads over several of them hold nothing (closure 0), so skin closure stays near 0.5 and \"Close up\" never completes.")]
     [TestCase("bullet_near_heart", "\"Remove the bullet\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver stands too far along the table to hold the lung aside with the left hand (0.86 m from its shoulder, reach 0.72 m), so the bullet stays covered and the forceps close on nothing.")]
     public async Task PlaysThroughToKnownIssue(string scenario, string failure) =>
         await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));

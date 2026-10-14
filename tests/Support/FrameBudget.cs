@@ -97,7 +97,7 @@ public sealed class FrameBudget
     }
 
     /// <summary>Records the time since the last sample, <paramref name="during"/> what.</summary>
-    public void Sample(string during = "")
+    public void Sample(string during = "", double gameTime = -1)
     {
         var now = Time.GetTicksUsec();
         var runtime = RuntimeMs();
@@ -108,7 +108,7 @@ public sealed class FrameBudget
             if (time > Worst)
             {
                 Worst = time;
-                _worstDuring = during;
+                _worstDuring = during + (gameTime >= 0 ? $" (frame at {gameTime:0.000} s)" : "");
             }
             var stall = (float)((runtime - _runtimeWas) / 1000.0);
             WorstOwn = Mathf.Max(WorstOwn, time - stall);

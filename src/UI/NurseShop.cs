@@ -22,6 +22,8 @@ public sealed class NurseShop
     private readonly Label _cartLines;
     private readonly Label _cartEta;
     private bool _nurseReady = true;
+    private readonly HashSet<string> _fullRows = [];
+    private readonly Dictionary<string, int> _counts = [];
 
     /// <summary>One orderable tool's row: how many are in the cart, and the buttons that change it.</summary>
     public sealed record ItemRow(Label Count, Button Remove, Button Add);
@@ -89,6 +91,17 @@ public sealed class NurseShop
         Refresh();
     }
 
+    /// <summary>Prepare every cart and nurse status glyph while the surgery is being built.</summary>
+    public void Prepare()
+    {
+        var names = string.Join(" ", _rows.Keys.Select(id => Db.Tool(id)!.Name));
+        var changing = names + " 0123456789 × ■ □ Nurse ready Nurse is busy for s Ready in about Nothing yet. Cart /";
+        foreach (var label in View.FindChildren("*", nameof(Label), true, false).OfType<Label>())
+        {
+            Ui.PrepareLabelText(label, label.Text + changing);
+        }
+    }
+
     /// <summary>A tool's row in its category's list.</summary>
     public ItemRow RowOf(string toolId) => _rows[toolId];
 
@@ -118,7 +131,8 @@ public sealed class NurseShop
         row.AddChild(name);
         row.AddChild(Ui.Label($"{(int)def.Delay} s", 18, Ui.Dim));
         var remove = Ui.Button(" − ", () => Change(def.Id, false));
-        var count = Ui.Label("", 20);
+        remove.Disabled = true;
+        var count = Ui.Label("0", 20);
         count.CustomMinimumSize = new Vector2(32f, 0f);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         var add = Ui.Button(" + ", () => Change(def.Id, true));
@@ -127,6 +141,7 @@ public sealed class NurseShop
             row.AddChild(part);
         }
         _rows[def.Id] = new ItemRow(count, remove, add);
+        _counts[def.Id] = 0;
         return row;
     }
 
@@ -149,16 +164,46 @@ public sealed class NurseShop
         Clear();
     }
 
-    private void Refresh()
+    /// <summary>Keep all rows current, including references to rows in hidden categories.</summary>
+    private void RefreshRows()
     {
-        var full = _cart.Count >= Nurse.Batch;
         foreach (var (id, row) in _rows)
         {
-            var count = _cart.Count(item => item == id);
-            row.Count.Text = count.ToString();
-            row.Remove.Disabled = count == 0;
-            row.Add.Disabled = full;
+            RefreshRow(id, row);
         }
+    }
+
+    private void RefreshRow(string id, ItemRow row)
+    {
+        var count = _cart.Count(item => item == id);
+        var previous = _counts[id];
+        if (count != previous)
+        {
+            row.Count.Text = count.ToString();
+            if ((count == 0) != (previous == 0))
+            {
+                row.Remove.Disabled = count == 0;
+            }
+            _counts[id] = count;
+        }
+        var full = _cart.Count >= Nurse.Batch;
+        if (full != _fullRows.Contains(id))
+        {
+            row.Add.Disabled = full;
+            if (full)
+            {
+                _fullRows.Add(id);
+            }
+            else
+            {
+                _fullRows.Remove(id);
+            }
+        }
+    }
+
+    private void Refresh()
+    {
+        RefreshRows();
         var lines = _cart.Distinct().Select(id => $"{Db.Tool(id)!.Name}  ×{_cart.Count(item => item == id)}").ToList();
         var longest = _cart.Select(id => Db.Tool(id)!.Delay).DefaultIfEmpty(0f).Max();
         _cartLines.Text = lines.Count > 0 ? string.Join("\n", lines) : "Nothing yet.";
