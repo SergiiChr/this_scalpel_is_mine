@@ -65,7 +65,8 @@ def _finger(name: str, chain: list[Vec3], radius: float) -> bpy.types.Object:
     return smooth_digit(name, [start, *chain[:3], chain[3]], [radius * 1.05, radius, radius * 0.93, radius * 0.86, radius * 0.72])
 
 
-def build() -> bpy.types.Object:
+def shape() -> bpy.types.Object:
+    """The hand's surface without material or rig: palm and fingers fused, open at the glove cuff."""
     palm = scene.blobs(
         "Palm",
         [
@@ -88,22 +89,30 @@ def build() -> bpy.types.Object:
         parts.append(_finger(name, joints(knuckle, lengths, spread), radius))
     parts.append(smooth_digit("Thumb", list(THUMB), [THUMB_RADII[0], THUMB_RADII[1], THUMB_RADII[2], THUMB_RADII[2] * 0.82]))
     hand = scene.remesh(scene.join("Glove", *parts), voxel=0.0008, smooth=10)
+    return scene.cut_below(hand, 0, OPENING)
+
+
+def bones() -> list[tuple[str, Vec3, Vec3, str | None]]:
+    """Hand and finger bones (no cuff), wrist at the origin."""
+    chain: list[tuple[str, Vec3, Vec3, str | None]] = [("Hand", (0.0, 0.0, 0.0), (0.09, 0.0, 0.0), None)]
+    for name, knuckle, lengths, _radius, spread in FINGERS:
+        points = joints(knuckle, lengths, spread)
+        for i in range(3):
+            chain.append((f"{name}{i + 1}", points[i], points[i + 1], "Hand" if i == 0 else f"{name}{i}"))
+    for i in range(3):
+        chain.append((f"Thumb{i + 1}", THUMB[i], THUMB[i + 1], "Hand" if i == 0 else f"Thumb{i}"))
+    return chain
+
+
+def build() -> bpy.types.Object:
     # Up to four gloves are on screen in co-op, so the whole hand stays under 8k triangles.
-    hand = scene.fit(scene.cut_below(hand, 0, OPENING), 7000)
+    hand = scene.fit(shape(), 7000)
     scene.finish(hand, scene.material("glove", GLOVE, roughness=0.55, subsurface=0.05))
     rim = scene.fit(scene.rim("GloveRim", hand, 0.0022), 800)
     scene.finish(rim, scene.material("glove", GLOVE))
     scene.clean()
 
-    bones: list[tuple[str, Vec3, Vec3, str | None]] = [("Hand", (0.0, 0.0, 0.0), (0.09, 0.0, 0.0), None)]
-    for name, knuckle, lengths, _radius, spread in FINGERS:
-        chain = joints(knuckle, lengths, spread)
-        for i in range(3):
-            bones.append((f"{name}{i + 1}", chain[i], chain[i + 1], "Hand" if i == 0 else f"{name}{i}"))
-    for i in range(3):
-        bones.append((f"Thumb{i + 1}", THUMB[i], THUMB[i + 1], "Hand" if i == 0 else f"Thumb{i}"))
-    bones.append(("Cuff", (0.0, 0.0, 0.0), (OPENING, 0.0, 0.0), "Hand"))
-    rig = scene.armature("GloveRig", bones)
+    rig = scene.armature("GloveRig", [*bones(), ("Cuff", (0.0, 0.0, 0.0), (OPENING, 0.0, 0.0), "Hand")])
     scene.bind(hand, rig)
     scene.reweight(hand, "Cuff", cuff_weight, "Hand")
     scene.attach(rim, rig, "Cuff")

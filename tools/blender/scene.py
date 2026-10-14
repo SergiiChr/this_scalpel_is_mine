@@ -508,12 +508,15 @@ def pose(rig: bpy.types.Object, rotations: dict[str, Vec3]) -> None:
         pb.rotation_euler = (math.radians(x), math.radians(y), math.radians(z))
 
 
-def export(path: Path) -> None:
+def export(path: Path, image_format: str = "AUTO") -> None:
+    """Writes the scene to a .glb; image_format "JPEG" stores textures as JPEG (a baked color map is far smaller)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     # glTF mesh names come from the mesh data, which picks up ".001" suffixes along the way; name them after their objects.
     for obj in meshes():
         obj.data.name = obj.name
-    bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB", export_apply=True, export_yup=True, export_animations=False)
+    bpy.ops.export_scene.gltf(
+        filepath=str(path), export_format="GLB", export_apply=True, export_yup=True, export_animations=False, export_image_format=image_format
+    )
 
 
 def meshes() -> list[bpy.types.Object]:

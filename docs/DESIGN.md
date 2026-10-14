@@ -524,6 +524,9 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   organs and anatomical targets. Metaball and tube shells are fused with a voxel remesh, shaped with scripted
   sculpt strokes, decimated and skinned to a bone rig (bone heat weights, jaw weights set by rule).
   The patient is one skinned mesh; eyes, lids, hair, brows, teeth and tongue ride their bones.
+- **Scanned models** (`tools/blender/scan_doctor.py`): a photogrammetry scan rebuilt for rigging. Its fused, posed
+  limbs are measured as rings of radii and colors around a centerline and laid out straight in a T-pose; the kept
+  scan parts and the limbs are fused with a voxel remesh and baked into one texture.
 - **Hard-surface models** (`tools/assetgen`, trimesh): props and instruments from lofted tubes, lathes, rounded boxes
   and extrusions, exported to `.glb` with named parts. Hand-made pieces some models are built from (the glove box,
   the IV bag) live in `tools/assetgen/sources/` and take palette materials.

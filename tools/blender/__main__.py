@@ -11,11 +11,13 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import anatomy, hand, patient, scene
+from . import anatomy, hand, patient, scan_doctor, scene
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build" / "blender_review"
 ASSETS = ROOT / "assets" / "models"
+# Models made but not in the game yet: Godot skips the folder (.gdignore).
+CANDIDATES = ASSETS / "candidates"
 
 
 def _hand() -> list[Path]:
@@ -44,6 +46,18 @@ def _patient() -> list[Path]:
     patient.test_pose(rig)
     shots += scene.render_views(OUT, "patient_mouth_open", [("three_quarter", (0.1, 1.0, 0.45))], focus=face, up=head_up)
     return shots + scene.render_views(OUT, "patient_posed", [("three_quarter", (-0.3, 0.8, 0.8))])
+
+
+def _scan_doctor() -> list[Path]:
+    rig = scan_doctor.build()
+    scene.export(OUT / "scan_doctor.glb", "JPEG")
+    scene.export(CANDIDATES / "scan_doctor.glb", "JPEG")
+    shots = scene.render_views(
+        OUT, "scan_doctor", [("front", (0.0, 0.1, -1.0)), ("back", (0.0, 0.1, 1.0)), ("side", (1.0, 0.1, 0.0)), ("three_quarter", (-0.7, 0.4, -0.7))]
+    )
+    shots += scene.render_views(OUT, "scan_doctor_face", [("front", (0.0, 0.1, -1.0))], focus=((0.0, 1.38, -0.1), 0.32))
+    scan_doctor.test_pose(rig)
+    return shots + scene.render_views(OUT, "scan_doctor_posed", [("front", (0.0, 0.1, -1.0)), ("three_quarter", (0.7, 0.3, -0.7))])
 
 
 TURNAROUND = [("top", (0.1, 1.0, 0.15)), ("front", (0.0, 0.25, 1.0)), ("side", (1.0, 0.25, 0.0)), ("three_quarter", (0.8, 0.7, 0.8))]
@@ -90,6 +104,7 @@ BUDGETS = {
 MODELS: dict[str, Callable[[], list[Path]]] = {
     "patient": _patient,
     "glove": _hand,
+    "scan_doctor": _scan_doctor,
     "bowel": _still("bowel", anatomy.bowel, BUDGETS["bowel"], ship="organs"),
     "lobe": _still("lobe", anatomy.lobe, BUDGETS["lobe"], ship="organs"),
     "sac": _still("sac", anatomy.sac, BUDGETS["sac"], ship="organs"),
