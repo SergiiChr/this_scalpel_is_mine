@@ -8,7 +8,7 @@ waist and both hands gripping the ends of a cape that spans her back, so it is r
   rays its colors. Where the thighs press together the outline and colors are filled in from the clean rings around
   them. Laid out straight, a measured ring keeps its shape, so the legs come out straight without stretching.
 - The left shoe is the right one mirrored, red and blue swapped: on the scan its toe is buried in the right heel.
-- Arms are tubes in the torso's skin tone with the scan's wristband colors, rooted inside the shoulders: the scanned arms
+- Arms are tubes in the torso's skin tone in fingerless gauntlets of the scan's colors, rooted inside the shoulders: the scanned arms
   are tangled in the cape. Hands are the glove
   generator's hand (hand.py) in skin color, as the scanned fists are fused around the cape.
 - The upper body is shifted upright over the hips and the figure turned to face -Z.
@@ -98,23 +98,28 @@ LEGS = {
 HIP_RADII = (0.03, 0.034)
 # Shoes stay scanned below this height; the stocking tubes reach a little into them.
 ANKLE = 0.075
-# The heights skin tone is taken from (chest and shoulders), and the surface points the wristbands' colors are
-# picked up from (blue on her right, red on her left). The paint is this much darker under the arms than on top.
+# The heights skin tone is taken from (chest and shoulders), and the surface points the gauntlets' colors are
+# picked up from (blue on her right, red on her left; her nails are painted the other color). The paint is this
+# much darker under the arms than on top.
 SKIN_BAND = (0.37, 0.5)
 PAINT_SHADE = 0.25
 GLOVE_SPOTS = {"R": (0.078, 0.49, -0.035), "L": (-0.1, 0.42, 0.065)}
 # Rest shoulder joints (after straightening), arm lengths and radii (shoulder, elbow, wrist), from the clean
-# stretches of the scanned arms. The forearms are bare: a raised band (length, radius) sits at each wrist.
+# stretches of the scanned arms. A fingerless gauntlet covers each forearm from the wrist to below the elbow: its
+# length, how much wider than the arm its top flares, and how much wider it is elsewhere (reference photos).
 SHOULDERS = {"R": (0.037, 0.458, 0.0), "L": (-0.037, 0.458, 0.0)}
 UPPER_ARM = 0.075
 FOREARM = 0.058
 ARM_RADII = (0.0135, 0.0115, 0.009)
-CUFF = (0.016, 0.0115)
+GAUNTLET = (0.042, 1.35, 1.1)
 # The arm starts this far inside the shoulder, wider there, so it fuses into the torso like a deltoid.
 SHOULDER_ROOT = 0.014
 # Glove generator hand scaled to the figurine's wrist, and how far it reaches back into the forearm.
 HAND_SCALE = 0.21
 HAND_SOCKET = 0.02
+# Nails (glove generator's units): from this share along the last finger joint, within this reach of its axis.
+NAIL_FROM = 0.45
+NAIL_REACH = 0.012
 # Rest joints along the body's middle and the legs (heights), and where the foot bone points.
 SPINE_JOINTS = (0.31, 0.38, 0.47, 0.5, 0.56)
 KNEE = 0.185
@@ -774,22 +779,26 @@ def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
 
 
 def arms(scan: Scan) -> list[bpy.types.Object]:
-    """Round arms from a flared root inside the shoulder to a wristband, in the torso's skin tone, shaded lighter on top
-    and darker underneath like the figurine's paint."""
+    """Round arms from a flared root inside the shoulder to the wrist, in the torso's skin tone, the forearm in a
+    gauntlet flaring at its top, shaded lighter on top and darker underneath like the figurine's paint."""
     # From the scanned torso's own tone at the shoulder, so no seam shows there, to the paint's by the elbow.
     torso, skin = scan.skin_tone(lit=False), scan.skin_tone()
     parts = []
     length = SHOULDER_ROOT + UPPER_ARM + FOREARM
-    root, elbow, cuff = SHOULDER_ROOT / length, (SHOULDER_ROOT + UPPER_ARM) / length, 1.0 - CUFF[0] / length
-    # Just under the band's edge, so the band steps up from the arm.
-    edge = cuff - 0.003
-    wrist_side = ARM_RADII[1] + (ARM_RADII[2] - ARM_RADII[1]) * (edge - elbow) / (1.0 - elbow)
+    root, elbow, top = SHOULDER_ROOT / length, (SHOULDER_ROOT + UPPER_ARM) / length, 1.0 - GAUNTLET[0] / length
+
+    def arm_radius(at: float) -> float:
+        return ARM_RADII[1] + (ARM_RADII[2] - ARM_RADII[1]) * (at - elbow) / (1.0 - elbow)
+
+    # The skin goes just inside the gauntlet's flared lip; the lip narrows onto the arm a little further down.
+    under, lip = top - 0.004, top + 0.03
     for side, sign in (("R", 1.0), ("L", -1.0)):
-        band = scan.color_around(GLOVE_SPOTS[side])
+        glove = scan.color_around(GLOVE_SPOTS[side])
         tube = Tube.round(
             [(0.0, ARM_RADII[0] * 1.35), (root, ARM_RADII[0] * 1.1), (root + 0.12, ARM_RADII[0]), (elbow, ARM_RADII[1])]
-            + [(edge, wrist_side), (cuff, CUFF[1]), (1.0, CUFF[1])],
-            [(0.0, torso), (root, torso), (elbow, skin), (edge, skin), (cuff, band), (1.0, band)],
+            + [(under, arm_radius(under)), (top, arm_radius(top) * GAUNTLET[1]), (lip, arm_radius(lip) * GAUNTLET[2])]
+            + [(1.0, ARM_RADII[2] * GAUNTLET[2])],
+            [(0.0, torso), (root, torso), (elbow, skin), (under, skin), (top, glove), (1.0, glove)],
             length,
         )
         # Angle 0 points up (the normal passed to build): light there, PAINT_SHADE darker straight underneath.
@@ -800,8 +809,24 @@ def arms(scan: Scan) -> list[bpy.types.Object]:
     return parts
 
 
+def _nail_faces(obj: bpy.types.Object) -> list[int]:
+    """Faces of the glove-generator hand (its own space) on the back of each fingertip, where a nail is painted."""
+    centers = np.array([_game(face.center) for face in obj.data.polygons])
+    nails = np.zeros(len(centers), bool)
+    for name, head, tail, _parent in hand.bones():
+        if not name.endswith("3"):
+            continue
+        a, b = np.array(head), np.array(tail)
+        t = np.clip((centers - a) @ (b - a) / np.dot(b - a, b - a), 0.0, 1.0)
+        off = centers - (a + t[:, None] * (b - a))
+        # The outer half of the last joint, on the back of the hand (+Y; the palm faces -Y).
+        nails |= (t > NAIL_FROM) & (np.linalg.norm(off, axis=1) < NAIL_REACH) & (off[:, 1] > NAIL_REACH * 0.3)
+    return [int(i) for i in np.nonzero(nails)[0]]
+
+
 def hands(scan: Scan) -> list[bpy.types.Object]:
-    """The glove generator's hand, cut at the wrist, scaled to the figurine and laid at the end of each arm, palm down."""
+    """The glove generator's hand, cut at the wrist, scaled to the figurine and laid at the end of each arm, palm down,
+    its nails painted the other wrist's gauntlet color."""
     skin = [float(c) for c in scan.skin_tone()]
     template = scene.bisect(hand.shape(), (-HAND_SOCKET / HAND_SCALE, 0.0, 0.0), (1.0, 0.0, 0.0))
     bm = bmesh.new()
@@ -809,15 +834,20 @@ def hands(scan: Scan) -> list[bpy.types.Object]:
     bmesh.ops.holes_fill(bm, edges=bm.edges, sides=0)
     bm.to_mesh(template.data)
     bm.free()
+    nails = _nail_faces(template)
     parts = []
     for side, sign in (("R", 1.0), ("L", -1.0)):
         obj = template.copy()
         obj.data = template.data.copy()
         obj.name = f"Hand{side}"
         scene.link(obj)
+        obj.data.materials.append(scene.material(f"Hand{side}Skin", skin))
+        polish = [float(c) for c in scan.color_around(GLOVE_SPOTS["L" if side == "R" else "R"])]
+        obj.data.materials.append(scene.material(f"Hand{side}Nails", polish))
+        for index in nails:
+            obj.data.polygons[index].material_index = 1
         wrist = np.array(SHOULDERS[side]) + np.array([sign * (UPPER_ARM + FOREARM), 0.0, 0.0])
         _transform(obj, np.eye(3) * HAND_SCALE, (0.0, 0.0, 0.0), tuple(wrist), mirror=sign < 0)
-        obj.data.materials.append(scene.material(f"Hand{side}Skin", skin))
         parts.append(obj)
     bpy.data.objects.remove(template)
     return parts
