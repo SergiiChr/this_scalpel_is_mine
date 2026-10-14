@@ -1610,19 +1610,24 @@ public sealed partial class TissueSim
         var hanging = HangingOff();
         var ci = Math.Clamp(Mathf.FloorToInt(uv.X * ResX), 0, ResX - 1);
         var cj = Math.Clamp(Mathf.FloorToInt(uv.Y * ResY), 0, ResY - 1);
-        for (var j = Math.Max(cj - Reach, 0); j <= Math.Min(cj + Reach, ResY - 1); j++)
+        // The cell under p first, then the rings round it: skin this still is nearly always found in its own cell.
+        for (var ring = 0; ring <= Reach; ring++)
         {
-            for (var i = Math.Max(ci - Reach, 0); i <= Math.Min(ci + Reach, ResX - 1); i++)
+            for (var j = Math.Max(cj - ring, 0); j <= Math.Min(cj + ring, ResY - 1); j++)
             {
-                var a = Index(i, j);
-                var c = a + ResX + 1;
-                if (TriangleHeight(p, hanging, a, a + 1, c, SpringRight[a], SpringDiag[a], SpringDown[a]) is { } first)
+                var onRow = Math.Abs(j - cj) == ring;
+                for (var i = Math.Max(ci - ring, 0); i <= Math.Min(ci + ring, ResX - 1); i += onRow || i == ci + ring ? 1 : 2 * ring)
                 {
-                    return first;
-                }
-                if (TriangleHeight(p, hanging, a + 1, c + 1, c, SpringDown[a + 1], SpringRight[c], SpringDiag[a]) is { } second)
-                {
-                    return second;
+                    var a = Index(i, j);
+                    var c = a + ResX + 1;
+                    if (TriangleHeight(p, hanging, a, a + 1, c, SpringRight[a], SpringDiag[a], SpringDown[a]) is { } first)
+                    {
+                        return first;
+                    }
+                    if (TriangleHeight(p, hanging, a + 1, c + 1, c, SpringDown[a + 1], SpringRight[c], SpringDiag[a]) is { } second)
+                    {
+                        return second;
+                    }
                 }
             }
         }

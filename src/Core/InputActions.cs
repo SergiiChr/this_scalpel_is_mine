@@ -111,8 +111,16 @@ public static class InputActions
         return text;
     }
 
-    /// <summary>The input map changed: binding texts are read afresh.</summary>
-    public static void BindingsChanged() => BindingTexts.Clear();
+    /// <summary>The input map changed: binding texts are read afresh, now rather than the first frame the HUD
+    /// shows them (reading one costs a fraction of a millisecond in engine calls).</summary>
+    public static void BindingsChanged()
+    {
+        BindingTexts.Clear();
+        foreach (var entry in Defaults)
+        {
+            BindingText(entry.Action);
+        }
+    }
 
     private static string ReadBinding(StringName action)
     {

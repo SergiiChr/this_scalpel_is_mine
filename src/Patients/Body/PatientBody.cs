@@ -194,6 +194,12 @@ public partial class PatientBody : Node3D
             rebuild = RebuildLayers();
         }
         _rebuiltLast = rebuild;
+        // The staples sit on the skin as last published: drawn from those positions the frame after, before the
+        // solver moves on, so a frame that rebuilds the layers doesn't draw them too.
+        if (!rebuild)
+        {
+            UpdateStaples();
+        }
         // Drawn frames step the tissue during the draw, so everything this frame reads it as the mesh shows it.
         if (DisplayServer.WindowCanDraw() && RenderingServer.RenderLoopEnabled)
         {
@@ -204,7 +210,6 @@ public partial class PatientBody : Node3D
             Tissue.Advance((float)delta, !rebuild);
         }
         UpdateSutures();
-        UpdateStaples();
         JiggleOrgans((float)delta);
     }
 

@@ -103,10 +103,12 @@ public partial class PatientBody
     private static Vector2 Flat(Vector3 p) => new(p.X, p.Z);
 
     /// <summary>Draws every staple as a wire bridge between its legs, the legs going into the layer it holds: one mesh
-    /// for all.</summary>
+    /// for all. Like the sutures, drawn on the skin as published (RebuildLayers()), not on every solver step in
+    /// between: redrawn then, the staples would cost a solver frame as much as the skin costs its own, to sit on
+    /// skin that isn't drawn yet.</summary>
     private void UpdateStaples()
     {
-        var drawnFor = (Tissue.StepsDone, Tissue.TopologyVersion, _staples.Count);
+        var drawnFor = (_layerSteps, _layerVersion, _staples.Count);
         if (_staples.Count == 0 || drawnFor == _staplesDrawnFor)
         {
             return;

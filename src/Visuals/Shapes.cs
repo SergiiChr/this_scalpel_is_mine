@@ -62,9 +62,10 @@ public static class Shapes
         ArrayMesh? into = null)
     {
         var vertices = new List<Vector3>();
+        var normals = new List<Vector3>();
         foreach (var path in paths)
         {
-            AppendTube(vertices, path, width, height, sides);
+            AppendTube(vertices, normals, path, width, height, sides);
         }
         var mesh = into ?? new ArrayMesh();
         mesh.ClearSurfaces();
@@ -75,63 +76,68 @@ public static class Shapes
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
-        arrays[(int)Mesh.ArrayType.Normal] = SmoothNormals(vertices);
+        arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }
 
-    /// <summary>Per vertex, the sum of the face normals of every triangle with a corner at the same point, normalized:
-    /// what SurfaceTool.GenerateNormals() gives, without a call into the engine per vertex.</summary>
-    private static Vector3[] SmoothNormals(List<Vector3> vertices)
+    /// <summary>The tube's triangles, each vertex's normal the average of the faces meeting at its point, as
+    /// SurfaceTool.GenerateNormals() gives: summed by the ring vertex's index, which the point's position would
+    /// need a dictionary for.</summary>
+    private static void AppendTube(List<Vector3> vertices, List<Vector3> normals, IReadOnlyList<Vector3> path,
+        float width, float height, int sides)
     {
-        var sums = new Dictionary<Vector3, Vector3>();
-        for (var i = 0; i < vertices.Count; i += 3)
+        var count = path.Count;
+        // Points: the rings' vertices, then the two end caps' centers.
+        var points = new Vector3[count * sides + 2];
+        for (var i = 0; i < count; i++)
         {
-            var normal = new Plane(vertices[i], vertices[i + 1], vertices[i + 2]).Normal;
-            for (var j = i; j < i + 3; j++)
-            {
-                sums[vertices[j]] = sums.GetValueOrDefault(vertices[j]) + normal;
-            }
-        }
-        return [.. vertices.Select(vertex => sums[vertex].Normalized())];
-    }
-
-    private static void AppendTube(List<Vector3> vertices, IReadOnlyList<Vector3> path, float width, float height,
-        int sides)
-    {
-        var rings = new Vector3[path.Count][];
-        for (var i = 0; i < path.Count; i++)
-        {
-            var along = (path[Math.Min(i + 1, path.Count - 1)] - path[Math.Max(i - 1, 0)]).Normalized();
+            var along = (path[Math.Min(i + 1, count - 1)] - path[Math.Max(i - 1, 0)]).Normalized();
             var side = along.Cross(Vector3.Up).Normalized();
             if (side.LengthSquared() < 0.5f)
             {
                 side = Vector3.Right;
             }
             var up = side.Cross(along).Normalized();
-            rings[i] = new Vector3[sides];
             for (var k = 0; k < sides; k++)
             {
                 var angle = Mathf.Tau * k / sides;
-                rings[i][k] = path[i] + side * Mathf.Cos(angle) * width + up * Mathf.Sin(angle) * height;
+                points[i * sides + k] = path[i] + side * Mathf.Cos(angle) * width + up * Mathf.Sin(angle) * height;
             }
         }
-        for (var i = 1; i < rings.Length; i++)
+        var first = count * sides;
+        var last = first + 1;
+        points[first] = path[0];
+        points[last] = path[count - 1];
+        var triangles = new List<int>(count * sides * 6 + sides * 6);
+        for (var i = 1; i < count; i++)
         {
+            var previous = (i - 1) * sides;
+            var ring = i * sides;
             for (var k = 0; k < sides; k++)
             {
                 var n = (k + 1) % sides;
                 // Clockwise seen from outside: Godot's front faces.
-                vertices.AddRange([rings[i - 1][k], rings[i][n], rings[i][k], rings[i - 1][k], rings[i - 1][n], rings[i][n]]);
+                triangles.AddRange([previous + k, ring + n, ring + k, previous + k, previous + n, ring + n]);
             }
         }
-        foreach (var end in (int[])[0, rings.Length - 1])
+        for (var k = 0; k < sides; k++)
         {
-            for (var k = 0; k < sides; k++)
-            {
-                var next = rings[end][(k + 1) % sides];
-                vertices.AddRange(end == 0 ? [path[end], next, rings[end][k]] : [rings[end][k], next, path[end]]);
-            }
+            var n = (k + 1) % sides;
+            triangles.AddRange([first, n, k, (count - 1) * sides + k, (count - 1) * sides + n, last]);
+        }
+        var sums = new Vector3[points.Length];
+        for (var t = 0; t < triangles.Count; t += 3)
+        {
+            var normal = new Plane(points[triangles[t]], points[triangles[t + 1]], points[triangles[t + 2]]).Normal;
+            sums[triangles[t]] += normal;
+            sums[triangles[t + 1]] += normal;
+            sums[triangles[t + 2]] += normal;
+        }
+        foreach (var v in triangles)
+        {
+            vertices.Add(points[v]);
+            normals.Add(sums[v].Normalized());
         }
     }
 }
