@@ -134,7 +134,8 @@ public partial class PatientBody : Node3D
         _bodyMaterials.AddRange([skin, gown]);
         foreach (var material in _bodyMaterials)
         {
-            Materials.SetSiteMaps(material, WoundMap.Texture(WoundMap.Layer.Wounds), WoundMap.Texture(WoundMap.Layer.Fluids));
+            Materials.SetSiteMaps(material, WoundMap.Texture(WoundMap.Layer.Wounds), WoundMap.Texture(WoundMap.Layer.Fluids),
+                WoundMap.Texture(WoundMap.Layer.Bleeds));
         }
         var model = ModelSlot.Instantiate("patient", "body", _bodyRoot,
             new Dictionary<string, Material> { ["skin"] = skin, ["gown"] = gown });

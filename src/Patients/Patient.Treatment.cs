@@ -885,6 +885,7 @@ public partial class Patient
                 }
             }
             PaintOps(WoundMap.Layer.Fluids, uv, radius, ops);
+            DrainCuts(uv, def.Power * 15f * dt);
             if (def.Id == "gauze" && NearestWound(uv, 0.02f, false) is { } wound)
             {
                 Press(wound, dt);
@@ -893,12 +894,22 @@ public partial class Patient
         else if (zone == SiteZone.Cavity)
         {
             CavityBloodMl = Mathf.Max(CavityBloodMl - def.Power * 15f * dt, 0f);
+            DrainCuts(uv, def.Power * 15f * dt);
             // Packed into the opening, it presses on the vessel it reaches, else on the edges of the cut it's in.
             var vessel = Wounds.Where(w => w.IsInternal && Reaches(w, uv)).MinBy(w => w.Points[0].DistanceTo(uv));
             if (def.Id == "gauze" && (vessel ?? NearestWound(uv, 0.02f, false)) is { } wound)
             {
                 Press(wound, dt);
             }
+        }
+    }
+
+    /// <summary>Takes up to <paramref name="ml"/> of the blood held in each cut near <paramref name="uv"/>.</summary>
+    private void DrainCuts(Vector2 uv, float ml)
+    {
+        foreach (var wound in Wounds.Where(wound => wound.PooledMl > 0f && wound.DistanceTo(uv) < 0.03f))
+        {
+            wound.PooledMl = Mathf.Max(wound.PooledMl - ml, 0f);
         }
     }
 
@@ -927,6 +938,7 @@ public partial class Patient
         {
             CavityBloodMl = Mathf.Max(CavityBloodMl - def.Power * 40f * dt, 0f);
         }
+        DrainCuts(uv, def.Power * 40f * dt);
         foreach (var target in Targets.Where(t => t.IsSuctionTarget && !t.Extracted && t.Uv.DistanceTo(uv) < 0.08f).ToList())
         {
             target.Amount = Mathf.Max(target.Amount - def.Power * dt, 0f);

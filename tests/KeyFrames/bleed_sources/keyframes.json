@@ -1,12 +1,18 @@
 {
   "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
   "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "01_tiny_cut_oblique.jpg": "a tiny shallow cut bleeding a little, blood puddled on the skin at it",
-  "01_tiny_cut_top.jpg": "a tiny shallow cut bleeding a little, blood puddled on the skin at it",
-  "02_vessel_oblique.jpg": "a deep vessel under a narrow incision, its blood welling up the slit where it can be seen",
-  "02_vessel_top.jpg": "a deep vessel under a narrow incision, its blood welling up the slit where it can be seen",
-  "03_vessel_under_pool_oblique.jpg": "the vessel covered by the pool, still welling up on the pool's surface above it",
-  "03_vessel_under_pool_top.jpg": "the vessel covered by the pool, still welling up on the pool's surface above it",
-  "04_many_vessels_oblique.jpg": "every vessel shows where it bleeds (unseen at )",
-  "04_many_vessels_top.jpg": "every vessel shows where it bleeds (unseen at )"
+  "01_tiny_cut_oblique.jpg": "a tiny shallow cut bleeding a little, blood puddled on the skin at it with no spot; below it a puncture, its puddle with a vein-like spot (blood-red middle, dark bluish rim) where it bleeds",
+  "01_tiny_cut_top.jpg": "a tiny shallow cut bleeding a little, blood puddled on the skin at it with no spot; below it a puncture, its puddle with a vein-like spot (blood-red middle, dark bluish rim) where it bleeds",
+  "02_vessels_oblique.jpg": "three vessels bleeding in the incision, each a round vein-like spot (blood-red middle, dark bluish rim) within its layer's wall, none on the skin around the cut: the right one fast with the biggest spot, the left one barely with the smallest",
+  "02_vessels_top.jpg": "three vessels bleeding in the incision, each a round vein-like spot (blood-red middle, dark bluish rim) within its layer's wall, none on the skin around the cut: the right one fast with the biggest spot, the left one barely with the smallest",
+  "03_vessels_close_oblique.jpg": "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut",
+  "03_vessels_close_top.jpg": "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut",
+  "04_pulled_oblique.jpg": "the incision's edge at the middle vessel pulled two centimeters away: the vessel's spot is on the pulled edge's wall, nothing hangs in the air where it was",
+  "04_pulled_top.jpg": "the incision's edge at the middle vessel pulled two centimeters away: the vessel's spot is on the pulled edge's wall, nothing hangs in the air where it was",
+  "05_pulled_close_oblique.jpg": "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was",
+  "05_pulled_close_top.jpg": "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was",
+  "06_vessel_under_pool_oblique.jpg": "the vessels covered by the pool, each welling up on the pool's surface above it",
+  "06_vessel_under_pool_top.jpg": "the vessels covered by the pool, each welling up on the pool's surface above it",
+  "07_many_vessels_oblique.jpg": "every vessel shows where it bleeds (unseen at )",
+  "07_many_vessels_top.jpg": "every vessel shows where it bleeds (unseen at )"
 }

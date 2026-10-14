@@ -118,12 +118,32 @@ public static class SurgeryState
 
     /// <summary>A vessel <paramref name="depthM"/> under the skin at <paramref name="uv"/> has given way and bleeds.
     /// </summary>
-    public static Wound VesselBleeds(Patient patient, Vector2 uv, float depthM)
+    public static Wound VesselBleeds(Patient patient, Vector2 uv, float depthM, float severity = 0.7f)
     {
-        var vessel = patient.NewWound(WoundKind.Internal, uv, 0.7f);
+        var vessel = patient.NewWound(WoundKind.Internal, uv, severity);
         vessel.DepthM = depthM;
         return vessel;
     }
+
+    /// <summary>The skin at <paramref name="uv"/> is punctured (a stab of <paramref name="severity"/>, 0..1) and bleeds
+    /// from the hole.</summary>
+    public static Wound SkinIsPunctured(Patient patient, Vector2 uv, float severity) =>
+        patient.NewWound(WoundKind.Puncture, uv, severity);
+
+    /// <summary>A tool grips the tissue at <paramref name="uv"/> and holds it pulled <paramref name="by"/> (site-local
+    /// meters) from where it lies. Returns the gripped grid point.</summary>
+    public static int TissueIsPulled(Patient patient, Vector2 uv, Vector3 by)
+    {
+        const int Key = 99000;
+        var tissue = patient.Body.Tissue;
+        tissue.Grip(Key, uv);
+        var k = tissue.GrippedParticle(Key);
+        tissue.MoveGrip(Key, tissue.Pos[k] + by);
+        return k;
+    }
+
+    /// <summary>As if <paramref name="wound"/> had been clamped shut: it doesn't bleed at all.</summary>
+    public static void WoundIsClamped(Wound wound) => wound.Clamped = 1f;
 
     /// <summary>As if <paramref name="wound"/> had been cauterized as far as a cautery seals.</summary>
     public static void WoundIsCauterized(Wound wound) => wound.Cauterized = 0.95f;

@@ -2,6 +2,16 @@
 //   wounds: R = cut groove, G = burn (red halo -> charred core), B = bruise,
 //            A = stitches / staples (>= 0.5) or a closed-suture seam mask (< 0.5)
 //   fluids: R = blood, G = marker ink, B = iodine, A = grime / vomit
+//   bleeds: where wounds bleed from (WoundMap.Layer.Bleeds), each 1 at a spot's center falling off as 1 - (d / r)^2:
+//           R = a spot on the skin, G = a spot inside a cut, B = G times its radius over MAX_SPOT_RADIUS,
+//           A = G times its center's depth under the skin over MAX_SPOT_DEPTH
+
+// WoundMap.MaxSpotRadius and WoundMap.MaxSpotDepth.
+const float MAX_SPOT_RADIUS = 0.004;
+const float MAX_SPOT_DEPTH = 0.05;
+// A bleeding vessel's cut end: fresh blood (apply_wounds' film a tenth darker) inside a dark, bluish vessel wall.
+const vec3 SPOT_BLOOD = vec3(0.5, 0.03, 0.05) * 0.9;
+const vec3 SPOT_WALL = vec3(0.1, 0.06, 0.14);
 
 // Paints the damage over skin color c. Returns how wet the spot is (blood or an open cut), for roughness.
 float apply_wounds(inout vec3 c, vec4 w, vec4 f) {
@@ -47,4 +57,28 @@ vec3 blood_normal(vec3 normal, vec3 view_pos, float thickness) {
 	float det = dot(dpdx, r1);
 	vec3 grad = sign(det) * (dFdx(thickness) * r1 + dFdy(thickness) * r2);
 	return normalize(abs(det) * normal - grad);
+}
+
+// How far a point on a cut's wall `depth` meters under the skin is from a bleed spot's center, squared over its radius
+// squared: 0 at the center, 1 on its rim, more outside it.
+float bleed_spot(vec4 s, float depth) {
+	// Toward a spot's edge its radius and depth come back less exactly (8 bits times a falling spot): stop short of it.
+	if (s.g < 0.15) {
+		return 2.0;
+	}
+	float r = s.b / s.g * MAX_SPOT_RADIUS;
+	float down = depth - s.a / s.g * MAX_SPOT_DEPTH;
+	return 1.0 - s.g + down * down / max(r * r, 1e-9);
+}
+
+// The same for a bleed spot on the skin.
+float skin_spot(vec4 s) {
+	return s.r < 0.02 ? 2.0 : 1.0 - s.r;
+}
+
+// Paints a bleed spot `reach` (bleed_spot(), skin_spot()) away over color c. Returns how much of it covers the point.
+float paint_spot(inout vec3 c, float reach) {
+	float cover = 1.0 - smoothstep(0.75, 0.85, reach);
+	c = mix(c, mix(SPOT_BLOOD, SPOT_WALL, smoothstep(0.4, 0.55, reach)), cover);
+	return cover;
 }

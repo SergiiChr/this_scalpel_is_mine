@@ -49,6 +49,7 @@ uniform vec3 carve_box = vec3(0.0);
 uniform vec2 carve_grid = vec2(1.0);
 uniform sampler2D site_wounds : filter_linear, hint_default_black;
 uniform sampler2D site_fluids : filter_linear, hint_default_black;
+uniform sampler2D site_bleeds : filter_linear, hint_default_black;
 uniform float pallor = 0.0;
 // Tools only: blood on the working end. coat is how bloody (0..1), reaching coat_reach meters back from the tip.
 // coat_inverse is the world-to-tool transform (tip at -Z * coat_length), updated while the tool is bloody.
@@ -142,6 +143,8 @@ void fragment() {
 			f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 			blood = f.r;
 			wet = apply_wounds(base, texture(site_wounds, cuv), f);
+			// Only on skin facing out of the site, like its damage.
+			wet = max(wet, paint_spot(base, mix(2.0, skin_spot(texture(site_bleeds, cuv)), step(0.5, facing))));
 		}
 		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
 	}

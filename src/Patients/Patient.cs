@@ -290,6 +290,7 @@ public partial class Patient : Node3D
         var lasting = 0f;
         var heal = Mods.Num("heal_rate");
         var sources = new List<BleedSource>();
+        var pools = new List<CutPool>();
         var leak = ClosureLeak(fx);
         foreach (var wound in Wounds)
         {
@@ -305,17 +306,30 @@ public partial class Patient : Node3D
             wound.LastingBleeding = lastingRate;
             total += rate;
             lasting += lastingRate;
-            // An open wound fills the cavity first; once that is nearly full it spills over the edges onto the skin.
-            // Every wound that bleeds at all shows where: welling up inside the opening, or on the skin.
+            // An open wound fills what's under it first: the cavity once it's cut through the muscle, else the cut
+            // itself down to the first layer it hasn't cut through. Once that is (nearly) full it spills over the edges
+            // onto the skin. Every wound that bleeds at all shows where: inside the opening, or on the skin.
+            var at = wound.BleedPoint;
             var intoCavity = wound.IsInternal || wound.Opened > 0.3f;
-            var spills = !wound.IsInternal && CavityBloodMl > CavitySpillMl;
-            if (intoCavity)
+            var floor = intoCavity && !wound.IsInternal ? CutFloor(at) : float.PositiveInfinity;
+            var holds = float.IsPositiveInfinity(floor) ? 0f : CutHolds(wound, at, floor);
+            if (!intoCavity && !wound.IsInternal)
+            {
+                // Shut again, it squeezes out what it held.
+                wound.PooledMl = 0f;
+            }
+            else if (holds > 0f)
+            {
+                wound.PooledMl = Mathf.Min(wound.PooledMl + rate * dt * 0.6f, holds);
+                pools.Add(new CutPool(at, floor, wound.PooledMl / holds));
+            }
+            else
             {
                 CavityBloodMl += rate * dt * 0.6f;
             }
+            var spills = !wound.IsInternal && (holds > 0f ? wound.PooledMl >= holds : CavityBloodMl > CavitySpillMl);
             if (rate > 0f)
             {
-                var at = wound.BleedPoint;
                 var shown = wound.IsInternal ? ShownDepth(wound, at) : PatientBody.SkinThickness;
                 if (intoCavity && shown > 0f)
                 {
@@ -323,7 +337,7 @@ public partial class Patient : Node3D
                 }
                 if (spills || !intoCavity || shown <= 0f)
                 {
-                    sources.Add(new BleedSource(at, rate));
+                    sources.Add(new BleedSource(at, rate, Point: wound.IsHole));
                 }
                 if (Rng.Randf() < dt * 0.5f)
                 {
@@ -347,6 +361,7 @@ public partial class Patient : Node3D
         v.BleedRate = total;
         LastingBleedRate = lasting;
         Body.Blood.Sources = sources;
+        Body.Blood.Pools = pools;
         v.BloodMl = Mathf.Clamp(v.BloodMl - total * dt + fx.VolumeMl * dt, 0f, v.MaxBloodMl * 1.1f);
         CavityBloodMl = Mathf.Max(CavityBloodMl, 0f);
         Body.SetCavityBlood(CavityBloodMl / CavityFullMl);
@@ -507,6 +522,21 @@ public partial class Patient : Node3D
         var gap = Body.Tissue.GapAt(at, 0.02f);
         return gap < ShutSlit ? 0f : Mathf.Min(vessel.DepthM, Mathf.Max(gap * SlitView, PatientBody.SkinThickness));
     }
+
+    /// <summary>How deep (meters) under the skin the first layer a cut at <paramref name="at"/> hasn't cut through lies:
+    /// the blood it holds rests on it. Infinity once it's cut through the muscle, into the cavity.</summary>
+    private float CutFloor(Vector2 at) => Body.Tissue.DeepestCut(at, Body.Tissue.OpenReach * 2f) switch
+    {
+        TissueDepth.Muscle => float.PositiveInfinity,
+        TissueDepth.Fat => PatientBody.SkinThickness + Body.FatThickness,
+        _ => PatientBody.SkinThickness,
+    };
+
+    /// <summary>Blood (ml) a cut holds down to its <paramref name="floor"/> (meters): as long as it is, as wide as it
+    /// gapes at <paramref name="at"/> (a lens, so half of that across its length) and as deep as its floor.</summary>
+    private float CutHolds(Wound wound, Vector2 at, float floor) =>
+        Body.UvToMeters(Mathf.Max(wound.LengthUv, 0.01f)) * Mathf.Max(Body.Tissue.GapAt(at, 0.02f), ShutSlit) * 0.5f * floor
+        * 1e6f;
 
     /// <summary>Gauze pressure holds for a while after the gauze comes off, then wears off.</summary>
     private static void EasePressure(Wound wound, float dt)

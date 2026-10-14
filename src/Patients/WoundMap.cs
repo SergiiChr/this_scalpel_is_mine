@@ -8,10 +8,11 @@ public readonly record struct PaintOp(int Channel, float Value, WoundMap.Mode Mo
 /// CPU painted damage, fluid and closed-seam textures behind the skin shader. Every peer has its own copy.
 /// The host decides what gets painted and broadcasts paint ops, so all copies stay identical.
 /// Wounds and Fluids feed wound.gdshaderinc; the red channel of Seams is the simulated skin's closed-incision mask.
+/// Bleeds holds where each wound bleeds from (BloodFlow), painted by every peer on its own.
 /// </summary>
 public sealed class WoundMap
 {
-    public enum Layer { Wounds, Fluids, Seams }
+    public enum Layer { Wounds, Fluids, Seams, Bleeds }
 
     public enum Mode { Max, Add, Sub, Min }
 
@@ -32,9 +33,19 @@ public sealed class WoundMap
     public const int Ink = 1;
     public const int Iodine = 2;
     public const int Grime = 3;
+    // Channels of the Bleeds layer, each falling off from its spot's center as 1 - (d / r)^2: a spot where a wound bleeds
+    // onto the skin, one where it bleeds inside a cut, and the inside one times its radius over MaxSpotRadius and times
+    // its center's depth under the skin over MaxSpotDepth. Multiplied so, the texture's blending at a spot's edge keeps
+    // the radius and depth the shader divides back out (wound.gdshaderinc).
+    public const int SkinSpot = 0;
+    public const int Spot = 1;
+    public const int SpotRadius = 2;
+    public const int SpotDepth = 3;
+    public const float MaxSpotRadius = 0.004f;
+    public const float MaxSpotDepth = 0.05f;
     /// <summary>Cells per side of the coarse grid that remembers what's been painted into.</summary>
     private const int Cells = 16;
-    private const int LayerCount = 3;
+    private const int LayerCount = 4;
 
     /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures once per frame by
     /// <see cref="Flush"/>.</summary>
