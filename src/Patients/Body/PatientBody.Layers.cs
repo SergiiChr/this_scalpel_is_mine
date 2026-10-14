@@ -31,6 +31,7 @@ public partial class PatientBody {
     /// <summary>One part of the body model (skin or gown) in site space, for measuring the site against: its
     /// triangles, three corners each as the mesh numbers them, with their smooth normals.</summary>
     private sealed class ModelPart {
+        public bool Gown;
         public TriangleMesh Mesh { get; } = new();
         public List<Vector3> Faces { get; } = [];
         public List<Vector3> Normals { get; } = [];
@@ -118,6 +119,8 @@ public partial class PatientBody {
     /// model and shades like it, so the simulated skin shows no step or seam where it takes over from the model.
     /// </summary>
     private Vector3[] _onModel = [];
+    /// <summary>Rest points fitted to garment, rather than skin: quiet points must not become skin patches.</summary>
+    private bool[] _onGown = [];
     /// <summary>How far the model's own smooth normal at each grid point is from the normal the grid's shape gives it.
     /// </summary>
     private Vector3[] _normalFit = [];
@@ -181,7 +184,9 @@ public partial class PatientBody {
         var parts = new List<ModelPart>();
         foreach (var partName in new[] { "Body", "Gown" }) {
             if (model.FindChild(partName, true, false) is MeshInstance3D mesh) {
-                parts.Add(ModelPartOf(mesh));
+                var part = ModelPartOf(mesh);
+                part.Gown = partName == "Gown";
+                parts.Add(part);
             }
         }
         return parts;
@@ -192,7 +197,7 @@ public partial class PatientBody {
         var part = new ModelPart();
         var toSite = Site.GlobalTransform.AffineInverse() * mesh.GlobalTransform;
         for (var s = 0; s < mesh.Mesh.GetSurfaceCount(); s++) {
-            var arrays = mesh.Mesh.SurfaceGetArrays(s);
+            using var arrays = mesh.Mesh.SurfaceGetArrays(s);
             var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
             var normals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
             foreach (var i in arrays[(int)Mesh.ArrayType.Index].AsInt32Array()) {
@@ -210,7 +215,7 @@ public partial class PatientBody {
     private static ModelHit? ModelHitAt(List<ModelPart> parts, float x, float z) {
         ModelHit? best = null;
         foreach (var part in parts) {
-            var hit = part.Mesh.IntersectRay(new Vector3(x, RayStart, z), Vector3.Down);
+            using var hit = part.Mesh.IntersectRay(new Vector3(x, RayStart, z), Vector3.Down);
             if (hit.Count == 0 || (best is { } found && hit["position"].AsVector3().Y <= found.Position.Y)) {
                 continue;
             }
@@ -246,7 +251,7 @@ public partial class PatientBody {
             }
             _heights[n] = hit.Position.Y;
             // The body's thickness under this point: where the same ray comes out of the part again.
-            var exit = hit.Part.Mesh.IntersectRay(hit.Position + Vector3.Down * 0.001f, Vector3.Down);
+            using var exit = hit.Part.Mesh.IntersectRay(hit.Position + Vector3.Down * 0.001f, Vector3.Down);
             thickness[n] = exit.Count > 0 ? hit.Position.Y - exit["position"].AsVector3().Y : 0f;
         }
         // Where nothing was met (past the body's outline, over a hole) the site goes on from the points around it, so
@@ -287,10 +292,12 @@ public partial class PatientBody {
     private void FitToModel(List<ModelPart> parts) {
         var count = Tissue.Rest.Length;
         _onModel = (Vector3[])Tissue.Settled.Clone();
+        _onGown = new bool[count];
         var modelNormals = new Vector3[count];
         for (var k = 0; k < count; k++) {
             if (ModelHitAt(parts, Tissue.Settled[k].X, Tissue.Settled[k].Z) is { } hit) {
                 _onModel[k] = hit.Position;
+                _onGown[k] = hit.Part.Gown;
                 modelNormals[k] = hit.Normal;
             }
         }
@@ -1487,6 +1494,12 @@ public partial class PatientBody {
     /// <summary>Takes the tissue's current region. True when it changed.</summary>
     private bool UpdateRegion() {
         var region = Tissue.Region();
+        for (var k = 0; k < region.Length; k++) {
+            if (region[k] == 0 || !_onGown[k] || Tissue.Turned(k)) { continue; }
+            var lifted = Tissue.NearFold(k) && (Tissue.Pos[k] - Tissue.Settled[k]).Dot(GridNormal(_onModel, k)) > TissueSim.LiftedOff;
+            // Garment is not skin; only a lifted local flap may occupy its replacement region.
+            if (!lifted) { region[k] = 0; }
+        }
         if (region.AsSpan().SequenceEqual(_region)) {
             return false;
         }

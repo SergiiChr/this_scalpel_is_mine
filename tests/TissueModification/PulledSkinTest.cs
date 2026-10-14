@@ -206,6 +206,7 @@ public class PulledSkinTest {
         AssertTissueSheetsDoNotIntersect(driver.Body);
         TissueLayers.AssertUnderSkin(driver.Body);
         AssertSkinDoesNotCrossDrape(driver.Body);
+        AssertDistantGownIsNotReplacedBySkin(driver.Body);
         return Task.CompletedTask;
     });
 
@@ -272,6 +273,52 @@ public class PulledSkinTest {
         }
         AssertInt(intersections.Count).OverrideFailureMessage(
                 $"the skin doesn't pass through itself, nor fat or muscle in view through another sheet ({intersections.Count} crossings: {string.Join("; ", intersections.Take(6))})")
+            .IsEqual(0);
+    }
+
+    /// <summary>Quiet gown well inside its own surface cannot acquire islands of replacement skin.</summary>
+    private static void AssertDistantGownIsNotReplacedBySkin(PatientBody body) {
+        TriangleMesh Surface(string name) {
+            var instance = (MeshInstance3D)body.FindChild(name, true, false);
+            var toSite = body.Site.GlobalTransform.AffineInverse() * instance.GlobalTransform;
+            var mesh = new TriangleMesh();
+            mesh.CreateFromFaces([.. instance.Mesh.GetFaces().Select(point => toSite * point)]);
+            return mesh;
+        }
+        using var gown = Surface("Gown");
+        using var skin = Surface("Body");
+        using var replacement = new TriangleMesh();
+        replacement.CreateFromFaces(body.Layers[0].Mesh.GetFaces());
+        var tissue = body.Tissue;
+        var covered = new bool[tissue.Rest.Length];
+        var heights = new float[covered.Length];
+        for (var k = 0; k < covered.Length; k++) {
+            var point = tissue.Rest[k];
+            var origin = new Vector3(point.X, 0.5f, point.Z);
+            using var cloth = gown.IntersectRay(origin, Vector3.Down);
+            using var bodyHit = skin.IntersectRay(origin, Vector3.Down);
+            if (cloth.Count == 0) { continue; }
+            heights[k] = cloth["position"].AsVector3().Y;
+            covered[k] = bodyHit.Count == 0 || heights[k] > bodyHit["position"].AsVector3().Y + 0.00001f;
+        }
+        var islands = 0;
+        var samples = 0;
+        for (var j = 1; j < tissue.ResY; j++) {
+            for (var i = 1; i < tissue.ResX; i++) {
+                var k = tissue.Index(i, j);
+                if (!covered[k] || !covered[k - 1] || !covered[k + 1]
+                    || !covered[k - tissue.ResX - 1] || !covered[k + tissue.ResX + 1]) { continue; }
+                var point = new Vector2(tissue.Rest[k].X, tissue.Rest[k].Z);
+                if (point.Length() < 0.1f || !tissue.FloorOpen.HasPoint(point)) { continue; }
+                samples++;
+                using var hit = replacement.IntersectRay(new Vector3(point.X, 0.5f, point.Y), Vector3.Down);
+                if (hit.Count > 0 && hit["position"].AsVector3().Y >= heights[k] - 0.0005f) { islands++; }
+            }
+        }
+        if (body.SiteId == "abdomen") {
+            AssertInt(samples).OverrideFailureMessage("the belly gown rim is sampled outside the local fold").IsGreater(0);
+        }
+        AssertInt(islands).OverrideFailureMessage($"quiet gown away from the grip has no skin-coloured replacement islands ({islands} covered samples)")
             .IsEqual(0);
     }
 

@@ -64,6 +64,7 @@ varying vec3 world_pos;
 varying vec3 local_pos;
 
 #include "res://assets/shaders/wound.gdshaderinc"
+#include "res://assets/shaders/skin_light.gdshaderinc"
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -189,7 +190,9 @@ void light() {
 	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a bright glint.
 	float wet = clamp((roughness - ROUGHNESS) / max(roughness - 0.08, 0.01), 0.0, 1.0);
 	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
-	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
+	// Match the simulated skin at its boundary without changing other material families.
+	float spec = (detail == 1 ? skin_specular(dot(NORMAL, halfway), wet)
+		: smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway))) * ATTENUATION;
 	// Metal highlights take the metal's color; everything else reflects the light's own.
 	vec3 spec_color = mix(vec3(1.0), ALBEDO / (1.0 - metallic * 0.4), metallic);
 	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.5, wet) / PI;
