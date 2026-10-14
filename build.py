@@ -69,6 +69,10 @@ TEMPLATES = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) 
 BASE_URL = f"https://github.com/godotengine/godot/releases/download/{GODOT_VERSION}-stable"
 OUTPUT = BUILD / "ThisScalpelIsMine.x86_64"
 ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
+# The runner class the GdUnit4 adapter writes before its first run and builds into the assembly.
+RUNNER_CLASS = ROOT / "gdunit4_testadapter_v5/GdUnit4TestRunnerScene.cs"
+# Godot as test processes run it: without the adapter's editor pass (see the script), as setup() built and imported.
+TEST_GODOT = ROOT / "tools/godot_for_tests.sh"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
 NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
@@ -543,7 +547,8 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
         "--logger", f"junit;LogFilePath={report}", "--logger", "console;verbosity=normal",
     ]  # fmt: skip
     # TEST_RUN tells the test assembly it runs tests, not the game (tests/Support/TestRun.cs).
-    environment = {**os.environ, "GODOT_BIN": str(GODOT), "FRAME_BUDGET": frame_budget(suite, options), "TEST_RUN": "1"}
+    environment = {**os.environ, "GODOT_BIN": str(TEST_GODOT), "FRAME_BUDGET": frame_budget(suite, options), "TEST_RUN": "1"}
+    environment["REAL_GODOT"] = str(GODOT)
     environment.pop("WITH_KEY_FRAMES", None)
     # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
     # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
@@ -741,17 +746,17 @@ def test(arguments: list[str]) -> int:
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
     alone = [suite for suite in suites if runs_alone(suite, options)]
     together = [suite for suite in suites if suite not in alone]
-    outcomes: list[Outcome] = []
+    # The first test process ever writes the adapter's runner class and builds it into the assembly: it runs alone,
+    # as processes starting beside that build would load a half-written assembly.
+    first = [together.pop(0)] if together and not RUNNER_CLASS.exists() else []
     if together:
         print(f"Running {len(together)} test suites, {options.jobs} at a time.")
-        with ThreadPoolExecutor(options.jobs) as pool:
-            for outcome in pool.map(lambda suite: run_suite(suite, options), together):
+    outcomes: list[Outcome] = []
+    for batch, jobs in ((first, 1), (together, options.jobs), (alone, 1)):
+        with ThreadPoolExecutor(jobs) as pool:
+            for outcome in pool.map(lambda suite: run_suite(suite, options), batch):
                 print(report(outcome), flush=True)
                 outcomes.append(outcome)
-    for suite in alone:
-        outcome = run_suite(suite, options)
-        print(report(outcome), flush=True)
-        outcomes.append(outcome)
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
     if options.key_frames and full:
