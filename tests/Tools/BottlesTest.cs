@@ -64,7 +64,8 @@ public class BottlesTest {
             $"a quick click puts it down lying, as before (tip {TipUp(vial):0.00} up)", "put_down");
 
         // Temporary local budget override: delivery has a recorded overrun; pickup and placement assertions remain enforced.
-        driver.Budget.Check(localOverride: "the frame the ordered vial arrives takes 17-19 ms of the game's own work");
+        driver.Budget.Check(localOverride: "the frame the ordered vial arrives goes over the budget: its model is instantiated "
+            + "ahead, but setting the body up, standing it on the tray and the announcement still cost most of a frame");
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

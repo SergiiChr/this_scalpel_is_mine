@@ -79,6 +79,8 @@ public class LoadingScreenTest {
             .OverrideFailureMessage("once loaded, the surgery starts by itself").IsTrue();
         AssertBool(Surgery.Current?.Hud.CardOpen == true)
             .OverrideFailureMessage("the surgery opens on the patient card").IsTrue();
+        AssertArray(ModelSlot.ToolsToPrepare().Select(def => def.Id).ToArray())
+            .OverrideFailureMessage("a model of every tool stands ready for its first order").IsEmpty();
         Net.Instance.BackToMenu();
     }
 }

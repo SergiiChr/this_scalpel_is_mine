@@ -13,24 +13,32 @@ public static class ModelSlot {
     /// finalized, which fails ("Handle is not initialized").</summary>
     private static readonly Dictionary<string, PackedScene> Loaded = [];
 
+    /// <summary>A model for each tool instantiated ahead (<see cref="PrepareTool"/>), taken by the tool's next spawn.
+    /// </summary>
+    private static readonly Dictionary<string, Node3D> ReadyTools = [];
+
     /// <summary>Adds the model under <paramref name="parent"/>. <paramref name="overrides"/>: material name -> material,
     /// for names that need per-instance treatment ("skin", "tint").</summary>
     public static Node3D Instantiate(string category, string modelName, Node3D parent,
         IReadOnlyDictionary<string, Material>? overrides = null) {
+        var node = New(category, modelName, overrides);
+        parent.AddChild(node);
+        return node;
+    }
+
+    /// <summary>The model with the game's materials, not in the tree yet.</summary>
+    private static Node3D New(string category, string modelName, IReadOnlyDictionary<string, Material>? overrides) {
         foreach (var extension in Extensions) {
             var path = $"{Root}/{category}/{modelName}.{extension}";
             if (Loaded.TryGetValue(path, out var scene) || ResourceLoader.Exists(path)) {
                 scene ??= Loaded[path] = GD.Load<PackedScene>(path);
                 var node = scene.Instantiate<Node3D>();
-                parent.AddChild(node);
                 Toonify(node, overrides);
                 return node;
             }
         }
         GD.PushError($"Missing model {category}/{modelName}. Run: python -m tools.assetgen");
-        var empty = new Node3D();
-        parent.AddChild(empty);
-        return empty;
+        return new Node3D();
     }
 
     /// <summary>The files of every tool model not loaded yet, for the loading screen to load ahead.</summary>
@@ -43,10 +51,32 @@ public static class ModelSlot {
     /// <summary>Keeps a model loaded ahead (<see cref="ToolModelFiles"/>).</summary>
     internal static void Keep(string path, PackedScene scene) => Loaded[path] = scene;
 
+    /// <summary>The tools with no model ready (<see cref="PrepareTool"/>).</summary>
+    internal static IEnumerable<ToolDef> ToolsToPrepare() => Db.Tools.Values.Where(def => !ReadyTools.ContainsKey(def.Id));
+
+    /// <summary>Instantiates a tool's model ahead, while nothing moves yet (the loading screen, the room's setup): the
+    /// tool's next spawn takes it instead of instantiating in a frame of play. Instantiating has to happen on the main
+    /// thread, so it can't be left to a loading thread.</summary>
+    internal static void PrepareTool(ToolDef def) => ReadyTools.TryAdd(def.Id, NewTool(def));
+
+    /// <summary>Instantiates every tool's model ahead at once (<see cref="PrepareTool"/>).</summary>
+    internal static void PrepareTools() {
+        foreach (var def in ToolsToPrepare().ToList()) {
+            PrepareTool(def);
+        }
+    }
+
     /// <summary>A tool's model: "tint" parts take the tool's color.</summary>
-    public static Node3D InstantiateTool(ToolDef def, Node3D parent) =>
-        Instantiate("tools", def.ModelName, parent,
-            new Dictionary<string, Material> { ["tint"] = Materials.ToonShaded(def.Color, 0.15f) });
+    public static Node3D InstantiateTool(ToolDef def, Node3D parent) {
+        if (!ReadyTools.Remove(def.Id, out var node)) {
+            node = NewTool(def);
+        }
+        parent.AddChild(node);
+        return node;
+    }
+
+    private static Node3D NewTool(ToolDef def) =>
+        New("tools", def.ModelName, new Dictionary<string, Material> { ["tint"] = Materials.ToonShaded(def.Color, 0.15f) });
 
     /// <summary>
     /// Replaces imported glTF materials with the game's shading by material family (<see cref="Materials.Imported"/>),

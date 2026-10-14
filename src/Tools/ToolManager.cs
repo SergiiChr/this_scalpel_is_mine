@@ -94,6 +94,8 @@ public partial class ToolManager : Node3D {
                 }
             }
         }
+        // The starting tools took the models readied for them: ready again for what's ordered during play.
+        ModelSlot.PrepareTools();
     }
 
     /// <summary>
