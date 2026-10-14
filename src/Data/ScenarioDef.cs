@@ -54,12 +54,21 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
     /// <summary>Another condition that completes the step too, written as a nested step under "or".</summary>
     public ObjectiveStep? Alternative { get; init; }
 
+    /// <summary>What another step's <see cref="After"/> calls it: its "id", or else its type.</summary>
+    public string Id { get; init; } = Type;
+
+    /// <summary>Steps (by <see cref="Id"/>) that must hold when this one is first met, or it's spoiled.
+    /// </summary>
+    public IReadOnlyList<string> After { get; init; } = [];
+
     public static ObjectiveStep FromVariant(GodotDictionary data) =>
         new(data.String("type"), data.String("label"), data.Bool("optional"), data)
         {
             Alternative = data.TryGetValue("or", out var alternative)
                 ? FromVariant(alternative.AsGodotDictionary())
                 : null,
+            Id = data.String("id", data.String("type")),
+            After = data.TryGetValue("after", out var after) ? [.. after.AsGodotArray().Select(id => id.AsString())] : [],
         };
 }
 

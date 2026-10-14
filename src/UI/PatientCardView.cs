@@ -22,7 +22,8 @@ public static class PatientCardView
     /// <summary>A mixed-up chart names one of these as the patient's allergy.</summary>
     private static readonly string[] WrongAllergies = ["cefazolin", "morphine", "lidocaine"];
 
-    public static Control Build(Patient patient, uint seed, Action close)
+    /// <summary>The page, with <paramref name="signature"/> as its discharge line at the foot.</summary>
+    public static Control Build(Patient patient, uint seed, SignatureView signature, Action close)
     {
         var surgery = Surgery.Current!;
         var rng = new RandomNumberGenerator { Seed = seed + 5 };
@@ -91,6 +92,13 @@ public static class PatientCardView
             history.AddChild(Ui.Label("•  " + line, 22, Ink, true));
         }
         page.AddChild(Section("Medical history", history));
+        page.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        var discharge = Ui.VBox(2);
+        discharge.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
+        discharge.AddChild(Ui.Label("DISCHARGE", 14, Faint));
+        discharge.AddChild(signature);
+        discharge.AddChild(Ui.Label($"Hold [{InputActions.BindingText(InputActions.Interact)}] to sign", 14, Faint));
+        page.AddChild(discharge);
 
         var paper = new StyleBoxFlat { BgColor = Paper };
         paper.SetContentMarginAll(48);

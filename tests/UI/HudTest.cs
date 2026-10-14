@@ -25,15 +25,13 @@ public class HudTest
             var panel = hud.FindChildren("*", "", true, false).OfType<ObjectivesPanel>().Single();
             AssertInt(panel.GetChildCount()).OverrideFailureMessage("setup creates objective rows and score before any HUD frame")
                 .IsEqual(surgery.Scenario.Steps.Count + 1);
-            AssertString(panel.GetChild<Label>(0).Text).IsEqual("▶ " + surgery.Scenario.Steps[0].Label);
+            AssertString(panel.GetChild<Label>(0).Text).IsEqual("☐ " + surgery.Scenario.Steps[0].Label);
             AssertBool(panel.Visible).IsTrue();
             AssertFloat(surgery.Elapsed).OverrideFailureMessage("still before the first periodic status update")
                 .IsLess(Surgery.StatusInterval);
             AssertArray(surgery.Status.Objectives.Select(view => view.Label).ToList())
                 .OverrideFailureMessage("setup supplies all scenario steps to the HUD immediately")
                 .IsEqual(surgery.Scenario.Steps.Select(step => step.Label).ToList());
-            AssertBool(surgery.Status.Objectives[0].Current)
-                .OverrideFailureMessage("the first required step is already highlighted").IsTrue();
             AssertBool(surgery.Status.Objectives.Any(view => view.Done))
                 .OverrideFailureMessage("the initial snapshot doesn't complete any steps").IsFalse();
         }
@@ -48,13 +46,13 @@ public class HudTest
     {
         var panel = AutoFree(new ObjectivesPanel())!;
         Frames.Root.AddChild(panel);
-        var active = new SurgeryStatus([new ObjectiveView("Close the incision", false, false, true)], 0, [], 0f, null, 0f, 0f);
+        var active = new SurgeryStatus([new ObjectiveView("Close the incision", false, false, false)], 0, [], 0f, null, 0f, 0f);
         panel.Refresh(active);
         await Frames.NextProcess();
         var objective = panel.GetChild<Label>(0);
-        AssertString(objective.Text).OverrideFailureMessage("the active objective is shown").IsEqual("▶ Close the incision");
-        AssertThat(objective.GetThemeColor("font_color")).OverrideFailureMessage("the active objective is highlighted")
-            .IsEqual(Ui.Pip);
+        AssertString(objective.Text).OverrideFailureMessage("the open objective is shown").IsEqual("☐ Close the incision");
+        AssertThat(objective.GetThemeColor("font_color")).OverrideFailureMessage("the open objective is in plain ink")
+            .IsEqual(Ui.Ink);
         var changes = 0;
         objective.ThemeChanged += () => changes++;
         for (var frame = 0; frame < 5; frame++)
@@ -71,5 +69,10 @@ public class HudTest
         AssertString(panel.GetChild<Label>(1).Text).OverrideFailureMessage("the score updates alongside the objective")
             .Contains("Score 10");
         AssertInt(changes).OverrideFailureMessage("a changed objective refreshes its theme").IsGreater(0);
+        panel.Refresh(active with { Objectives = [new ObjectiveView("Close the incision", false, false, true)] });
+        await Frames.NextProcess();
+        AssertString(objective.Text).OverrideFailureMessage("a spoiled objective is crossed out").IsEqual("☒ Close the incision");
+        AssertThat(objective.GetThemeColor("font_color")).OverrideFailureMessage("a spoiled objective shows in red")
+            .IsEqual(Ui.Alert);
     }
 }

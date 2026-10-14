@@ -101,6 +101,41 @@ public partial class SurgeryDriver : Node
             PatientCard.TravelSeconds + 1f);
     }
 
+    /// <summary>Takes the patient card off its hook, unless it's already being read, and waits for its page.</summary>
+    public async Task PlayerTakesCard()
+    {
+        if (!Surgery.Hud.CardOpen)
+        {
+            await PlayerInteracts("Read the patient card");
+        }
+        await Frames.Until(() => Surgery.Hud.CardOpen && Surgery.Hud.Overlay!.Modulate.A >= 1f, PatientCard.TravelSeconds + 1f);
+        Note("reads the card");
+    }
+
+    /// <summary>Holds Interact over the card's page for <paramref name="seconds"/>, then lets go.</summary>
+    public async Task PlayerHoldsSignature(float seconds)
+    {
+        Note($"holds the signature {seconds:0.0} s");
+        Press(InputActions.Interact);
+        await PlayerInput.Delivered();
+        await Frames.Seconds(seconds);
+        Release(InputActions.Interact);
+        await PlayerInput.Delivered();
+    }
+
+    /// <summary>Signs the patient out like a player: takes the patient card and holds Interact until the signature is
+    /// done and the surgery ends.</summary>
+    public async Task PlayerDischarges()
+    {
+        await PlayerTakesCard();
+        Note("signs the discharge");
+        Press(InputActions.Interact);
+        await PlayerInput.Delivered();
+        await Frames.Until(() => Surgery.Finished, SignatureView.SignSeconds + Hud.SignedPause + 1f);
+        Release(InputActions.Interact);
+        await PlayerInput.Delivered();
+    }
+
     /// <summary>What a player's loading screen waits for (<see cref="LoadingScreen"/>): the runtime warmed up and the
     /// tool models and sounds loaded, so a test's frames are timed as a player's are.</summary>
     private static async Task Loaded()

@@ -20,13 +20,13 @@ public partial class ObjectivesPanel : VBoxContainer
         {
             var row = rows[i];
             var label = GetChild<Label>(i);
-            var mark = row.Done ? "☑" : row.Current ? "▶" : "☐";
+            var mark = row.Spoiled ? "☒" : row.Done ? "☑" : "☐";
             var text = $"{mark} {row.Label}{(row.Optional ? "  (bonus)" : "")}";
             if (label.Text != text)
             {
                 label.Text = text;
             }
-            var color = row.Done ? Ui.Dim : row.Current ? Ui.Pip : Ui.Ink;
+            var color = row.Spoiled ? Ui.Alert : row.Done ? Ui.Dim : Ui.Ink;
             // Reapplying the same override invalidates the label's layout and font shaping every frame.
             if (label.GetThemeColor("font_color") != color)
             {

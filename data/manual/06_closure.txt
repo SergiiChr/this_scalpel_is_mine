@@ -40,6 +40,9 @@ Paper clips take three tension levels, like blade pressure: the mouse wheel sets
 ## 6.6 Strain on the closure
 Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Heparin and high pressure make any closure leak (5.5). Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
 
+## 6.7 Discharge
+The operation ends when a surgeon signs the discharge at the foot of the patient record: hold [b]Interact[/b] over the record until the signature is complete. Sign only once the procedure is finished, the closure holds, nothing bleeds and the patient is stable. A patient discharged early leaves with the work undone.
+
 [font_size=16][b]References[/b]
 Ethicon. Wound Closure Manual. Ethicon, Johnson & Johnson.
 Townsend CM, et al. Sabiston Textbook of Surgery. 21st ed. Elsevier; 2021.[/font_size]
