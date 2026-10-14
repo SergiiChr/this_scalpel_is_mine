@@ -1,22 +1,8 @@
 {
   "00_cuts_before_sutures_oblique.jpg": "three cuts across the site, the lowest deeper, no thread in any",
   "00_cuts_before_sutures_top.jpg": "three cuts across the site, the lowest deeper, no thread in any",
-  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
-  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
   "01_loose_tied_oblique.jpg": "tied off loose: the thread lies across the top cut, its edges still apart",
   "01_loose_tied_top.jpg": "tied off loose: the thread lies across the top cut, its edges still apart",
-  "02_thread_hole_1_oblique.jpg": "the needle through hole 1, on its own side of the wound, thread trailing from it",
-  "02_thread_hole_1_top.jpg": "the needle through hole 1, on its own side of the wound, thread trailing from it",
-  "03_thread_hole_2_oblique.jpg": "the needle through hole 2, on its own side of the wound, thread trailing from it",
-  "03_thread_hole_2_top.jpg": "the needle through hole 2, on its own side of the wound, thread trailing from it",
-  "05_thread_hole_1_oblique.jpg": "the needle through hole 1, on its own side of the wound, thread trailing from it",
-  "05_thread_hole_1_top.jpg": "the needle through hole 1, on its own side of the wound, thread trailing from it",
-  "06_thread_hole_2_oblique.jpg": "the needle through hole 2, on its own side of the wound, thread trailing from it",
-  "06_thread_hole_2_top.jpg": "the needle through hole 2, on its own side of the wound, thread trailing from it",
-  "07_too_tight_intact_oblique.jpg": "the middle cut sewn too tight, intact: strong pressure marks around every hole",
-  "07_too_tight_intact_top.jpg": "the middle cut sewn too tight, intact: strong pressure marks around every hole",
-  "08_thread_hole_1_oblique.jpg": "the needle through hole 1, on its own side of the wound, thread trailing from it",
-  "08_thread_hole_1_top.jpg": "the needle through hole 1, on its own side of the wound, thread trailing from it",
-  "09_thread_hole_2_oblique.jpg": "the needle through hole 2, on its own side of the wound, thread trailing from it",
-  "09_thread_hole_2_top.jpg": "the needle through hole 2, on its own side of the wound, thread trailing from it"
+  "02_too_tight_intact_oblique.jpg": "the middle cut sewn too tight, intact: strong pressure marks around every hole",
+  "02_too_tight_intact_top.jpg": "the middle cut sewn too tight, intact: strong pressure marks around every hole"
 }
