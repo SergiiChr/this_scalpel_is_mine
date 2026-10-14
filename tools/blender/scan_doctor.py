@@ -2,13 +2,14 @@
 
 The scan (sources/scan_doctor.glb) is one fused, textured shell. The figurine stands with crossed legs, a sway in the
 waist and both hands gripping the ends of a cape that spans her back, so it is rebuilt in parts:
-- Torso, a short capelet and the left shoe stay scanned. The head is cut off at the neck (the game's head goes on
+- Torso with the hips and both holsters, a short capelet and the left shoe stay scanned. The head is cut off at the neck (the game's head goes on
   top), the rest of the cape, the arms and the legs are cut away, and the holes closed with smooth caps.
 - Legs are measured on the scan as tubes: rays cast out of a centerline give each ring's outline, and a finer grid of
   rays its colors. Where the thighs press together the outline and colors are filled in from the clean rings around
   them. Laid out straight, a measured ring keeps its shape, so the legs come out straight without stretching.
 - The right shoe is the left one mirrored, red and blue swapped: on the scan its toe is buried in the left heel.
-- Arms are tubes in the scan's skin and glove colors: the scanned arms are tangled in the cape. Hands are the glove
+- Arms are tubes in the torso's skin tone and the scan's glove colors, rooted inside the shoulders: the scanned arms
+  are tangled in the cape. Hands are the glove
   generator's hand (hand.py) in skin color, as the scanned fists are fused around the cape.
 - The upper body is shifted upright over the hips and the figure turned to face -Z.
 The parts are fused with a voxel remesh, settled back onto their surfaces, decimated, unwrapped and baked into one
@@ -86,11 +87,13 @@ LEGS = {
     ],
 }
 # Thigh top across and front to back, where the thighs are fused and the scan has no clean ring.
-HIP_RADII = (0.038, 0.042)
+HIP_RADII = (0.03, 0.034)
 # Shoes stay scanned below this height; the stocking tubes reach a little into them.
 ANKLE = 0.075
-# Surface points the arm colors are picked up from: skin on the upper arm, the long gloves on the forearms.
-SKIN_SPOT = (0.05, 0.452, -0.03)
+# The heights skin tone is taken from (chest and shoulders), and the surface points the long gloves' colors are
+# picked up from. The paint is this much darker under the arms than on top.
+SKIN_BAND = (0.37, 0.5)
+PAINT_SHADE = 0.25
 GLOVE_SPOTS = {"R": (0.078, 0.49, -0.035), "L": (-0.1, 0.42, 0.065)}
 # Rest shoulder joints (after straightening), arm lengths and radii (shoulder, elbow, wrist), from the clean
 # stretches of the scanned arms. The gloves start a little above the elbow.
@@ -99,9 +102,8 @@ UPPER_ARM = 0.075
 FOREARM = 0.058
 ARM_RADII = (0.0135, 0.0115, 0.009)
 GLOVE_TOP = 0.068
-# Rounded shoulder over the arm's root: offset out from the joint (x away from the body, y, z) and radii (x, z, y in
-# Blender's axes, as the sphere is scaled there).
-DELTOID = ((0.0, 0.002, 0.0), (0.017, 0.016, 0.016))
+# The arm starts this far inside the shoulder, wider there, so it fuses into the torso like a deltoid.
+SHOULDER_ROOT = 0.014
 # Glove generator hand scaled to the figurine's wrist, and how far it reaches back into the forearm.
 HAND_SCALE = 0.21
 HAND_SOCKET = 0.02
@@ -120,7 +122,7 @@ NECK = (0.49, 0.034)
 SPINE = ((0.0, 0.35, -0.044), (-0.035, 0.5, -0.03), 0.055)
 SHOULDER_LINE = ((-0.01, 0.458, -0.03), (-0.06, 0.458, 0.0), 0.027)
 # Legs and shoes go below this height.
-HIPS = 0.3
+HIPS = 0.27
 # Boxes: center, size.
 Box = tuple[Vec3, Vec3]
 # Cut even within reach of the spine: the cape bunched up under the right fist and the pigtail hanging in front of
@@ -236,6 +238,16 @@ class Scan:
                     distance[i, j], faces[i, j], points[i, j] = dist, index, hit[:]
         colors = self.colors(faces.ravel(), points.reshape(-1, 3)).reshape(len(curve), angles, 3)
         return distance, colors
+
+    def skin_tone(self) -> NDArray[np.float64]:
+        """Median color of the bare skin on the upper body, the tone the arms and hands are painted in."""
+        centers = self.face_centers()
+        faces = np.nonzero((centers[:, 1] > SKIN_BAND[0]) & (centers[:, 1] < SKIN_BAND[1]))[0]
+        colors = self.colors(faces, np.array([self.bm.faces[i].calc_center_median()[:] for i in faces]))
+        r, g, b = colors.T
+        skin = (r > g) & (g > b) & (r - b > 0.12) & (r - b < 0.4) & (r > 0.45)
+        tone: NDArray[np.float64] = np.median(colors[skin], axis=0)
+        return tone
 
     def color_around(self, point: Vec3, radius: float = 0.012) -> NDArray[np.float64]:
         """Median texture color of the surface within `radius`: steadier than one texel against painted shading."""
@@ -720,45 +732,37 @@ def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
         tube.widen_top(1.0 / np.hypot(side_way[:, 0] / HIP_RADII[0], side_way[:, 2] / HIP_RADII[1]))
         # Inside the hips it narrows again, so no rim of it shows past the hips' outline.
         heights = np.linspace(hip[1], end[1], len(tube.radii))
-        tube.radii *= (1.0 - 0.35 * _smoothstep(HIPS, hip[1], heights))[:, None]
+        tube.radii *= (1.0 - 0.5 * _smoothstep(HIPS - 0.01, hip[1], heights))[:, None]
         tube.length = float(hip[1] - end[1])
         parts.append(tube.build(f"Leg{side}", tuple(hip), tuple(down), tuple(normal)))
     return parts
 
 
 def arms(scan: Scan) -> list[bpy.types.Object]:
-    skin = scan.color_around(SKIN_SPOT)
+    """Round arms from a flared root inside the shoulder to the wrist, in the torso's skin tone and the glove colors,
+    shaded lighter on top and darker underneath like the figurine's paint."""
+    skin = scan.skin_tone()
     parts = []
-    length = UPPER_ARM + FOREARM
-    elbow = UPPER_ARM / length
+    length = SHOULDER_ROOT + UPPER_ARM + FOREARM
+    root, elbow, top = SHOULDER_ROOT / length, (SHOULDER_ROOT + UPPER_ARM) / length, (SHOULDER_ROOT + GLOVE_TOP) / length
     for side, sign in (("R", 1.0), ("L", -1.0)):
         glove = scan.color_around(GLOVE_SPOTS[side])
-        top = GLOVE_TOP / length
         tube = Tube.round(
-            [(0.0, ARM_RADII[0]), (elbow, ARM_RADII[1]), (1.0, ARM_RADII[2])],
+            [(0.0, ARM_RADII[0] * 1.35), (root, ARM_RADII[0] * 1.1), (root + 0.12, ARM_RADII[0]), (elbow, ARM_RADII[1]), (1.0, ARM_RADII[2])],
             [(0.0, skin), (top - 0.01, skin), (top, glove), (1.0, glove)],
             length,
         )
-        arm = tube.build(f"Arm{side}", SHOULDERS[side], (sign, 0.0, 0.0), (0.0, 1.0, 0.0))
-        # A rounded shoulder where the arm meets the torso, in the arm's skin color.
-        bm = bmesh.new()
-        bm.from_mesh(arm.data)
-        sphere = bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=12, radius=1.0)["verts"]
-        deltoid = np.array(SHOULDERS[side]) + np.array([sign * DELTOID[0][0], DELTOID[0][1], DELTOID[0][2]])
-        bmesh.ops.transform(bm, matrix=Matrix.Translation(scene.to_blender(deltoid)) @ Matrix.Diagonal((*DELTOID[1], 1.0)), verts=sphere)
-        uv = bm.loops.layers.uv.active
-        for face in {f for v in sphere for f in v.link_faces}:
-            for loop in face.loops:
-                loop[uv].uv = (0.5 / (ANGLES + 1), 0.5 / len(tube.colors))
-        bm.to_mesh(arm.data)
-        bm.free()
-        parts.append(arm)
+        # Angle 0 points up (the normal passed to build): light there, PAINT_SHADE darker straight underneath.
+        a = np.linspace(0.0, 2.0 * math.pi, tube.colors.shape[1], endpoint=False)
+        tube.colors *= (1.0 - PAINT_SHADE * (1.0 - np.cos(a)) / 2.0)[None, :, None]
+        start = np.array(SHOULDERS[side]) - np.array([sign * SHOULDER_ROOT, 0.0, 0.0])
+        parts.append(tube.build(f"Arm{side}", tuple(start), (sign, 0.0, 0.0), (0.0, 1.0, 0.0)))
     return parts
 
 
 def hands(scan: Scan) -> list[bpy.types.Object]:
     """The glove generator's hand, cut at the wrist, scaled to the figurine and laid at the end of each arm, palm down."""
-    skin = [float(c) for c in scan.color_around(SKIN_SPOT)]
+    skin = [float(c) for c in scan.skin_tone()]
     template = scene.bisect(hand.shape(), (-HAND_SOCKET / HAND_SCALE, 0.0, 0.0), (1.0, 0.0, 0.0))
     bm = bmesh.new()
     bm.from_mesh(template.data)
