@@ -11,12 +11,12 @@ public class ModelsTest {
         "UpperArmL", "ForearmL", "HandL", "UpperArmR", "ForearmR", "HandR",
         "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR",
     ];
-    private static readonly string[] PatientParts = ["EyeL", "EyeR", "Lids"];
+    private static readonly string[] PatientParts = ["EyeL", "EyeR", "Lids", "SkeletonHead", "SkeletonChest", "SkeletonTorso"];
     private static readonly string[] Organs = ["bowel", "lobe", "sac"];
     /// <summary>Most triangles any one model of a category may have. The generators aim under these
-    /// (tools/blender/__main__.py BUDGETS, tools/blender/patient.py BUDGETS).</summary>
+    /// (tools/blender/__main__.py BUDGETS, tools/blender/patient.py and skeleton.py BUDGETS).</summary>
     private static readonly Dictionary<string, int> Budgets = new() {
-        ["patient"] = 52000,
+        ["patient"] = 60000,
         ["surgeon"] = 16000,
         ["organs"] = 7000,
         ["targets"] = 5000,

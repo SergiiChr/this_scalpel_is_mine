@@ -25,6 +25,8 @@ public static class Materials {
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
     public static readonly Shader Skin = GD.Load<Shader>("res://assets/shaders/skin.gdshader");
     public static readonly Shader TissueLayer = GD.Load<Shader>("res://assets/shaders/tissue_layer.gdshader");
+    private static readonly Shader XrayShader = GD.Load<Shader>("res://assets/shaders/xray.gdshader");
+    private static readonly Shader XrayFilmShader = GD.Load<Shader>("res://assets/shaders/xray_film.gdshader");
 
     /// <summary>Patient skin. A slight red bias keeps light skin reading as perfused rather than cream under the
     /// surgical lamp.</summary>
@@ -106,6 +108,28 @@ public static class Materials {
     public static ShaderMaterial ToonShaded(Color color, float grime = 0.25f, bool outline = true, float roughness = 0.7f) =>
         Cached($"{color.ToHtml()}|{grime:0.00}|{outline}|{roughness:0.00}",
             () => ToonUnique(color, grime, outline, roughness));
+
+    /// <summary>What a part adds to an X-ray film (xray.gdshader): `density` through its body, `edge` where the beam
+    /// grazes its surface, fading to `rim` times the density at its edges. Cached, so don't modify the result.</summary>
+    public static ShaderMaterial Xray(float density, float edge, float rim = 1f) =>
+        Cached($"xray|{density:0.000}|{edge:0.000}|{rim:0.00}", () => {
+            var material = new ShaderMaterial { Shader = XrayShader };
+            material.SetShaderParameter("density", density);
+            material.SetShaderParameter("edge", edge);
+            material.SetShaderParameter("rim", rim);
+            return material;
+        });
+
+    /// <summary>A developed X-ray film (xray_film.gdshader) showing <paramref name="image"/>, which may be null
+    /// (nothing rendered headless): then it's plain black.</summary>
+    public static ShaderMaterial XrayFilm(Texture2D? image, float seed) {
+        var material = new ShaderMaterial { Shader = XrayFilmShader };
+        if (image is not null) {
+            material.SetShaderParameter("image", image);
+        }
+        material.SetShaderParameter("seed", seed);
+        return material;
+    }
 
     /// <summary>See-through glass (syringe barrels, vials), so the liquid level inside shows. No outline: it would
     /// hide the liquid.</summary>

@@ -1,67 +1,238 @@
-using GodotArray = Godot.Collections.Array;
+using System.Threading.Tasks;
 
 namespace Scalpel.World;
 
-/// <summary>Something an X-ray shows: what it is, where on the site (uv), how deep and turned how far (yaw).</summary>
-public readonly record struct XrayShape(string Kind, Vector2 Uv, float Depth, float Yaw) {
-    public GodotArray ToVariant() => [Kind, Uv, Depth, Yaw];
-
-    public static XrayShape FromVariant(Variant data) {
-        var shape = data.AsGodotArray();
-        return new XrayShape(shape[0].AsString(), shape[1].AsVector2(), shape[2].AsSingle(), shape[3].AsSingle());
-    }
-}
-
-/// <summary>A developed X-ray: what it shows, of which site, and when it came out of the cart.</summary>
-public sealed record XrayPrint(IReadOnlyList<XrayShape> Shapes, string Site, ulong PrintedAtMsec);
-
 /// <summary>
-/// Mobile X-ray unit. Push it next to the table, take an exposure, and an instant print slides out that develops over
-/// a few seconds. It shows metal (bullets, knives, retained tools), bone and masses. The host owns its position and the
-/// print; everyone can read the print.
+/// Mobile X-ray unit. Push it by the handle at its back (+Z) with its front, the arm and tube head, toward the table.
+/// The collimator lights the two fields on whatever is under them: straight down from the tube head (AP), and level and
+/// forward from the cart a little below the head's height (lateral). An exposure takes both (<see cref="XrayExposure"/>), two films that develop in
+/// the cassette holder over a few seconds. A film is black where the beam got through and clear where bone or metal
+/// stopped it: held up against a light it reads best. The host owns the cart's position, arm and exposures; every
+/// peer develops the films from its own copy of the scene.
 /// </summary>
 public partial class XrayCart : Node3D {
     public const float ExposeTime = 2.5f;
     public const float Cooldown = 30f;
     /// <summary>Seconds a film takes to develop.</summary>
     public const float DevelopTime = 6f;
-    private const float Reach = 1.5f;
-    private const float PushOffset = 0.85f;
+    private const float Reach = 1.6f;
+    internal const float PushOffset = 0.85f;
     private const float SyncInterval = 0.1f;
-    /// <summary>The developed film lies on the cart's base, in front of the column.</summary>
-    private static readonly Vector3 PrintSpot = new(0f, 0.34f, 0.1f);
+    /// <summary>How far the cart reaches from its origin: the front casters. Keeps it off the walls whichever way it
+    /// faces.</summary>
+    internal const float Extent = 0.85f;
+    /// <summary>The arm's angle above level, in radians (the model is built level): where it starts, its range and one
+    /// wheel step.</summary>
+    internal const float ArmRest = 0.6f;
+    internal const float ArmLow = -0.25f;
+    internal const float ArmHigh = 0.75f;
+    internal const float ArmStep = 0.05f;
+    /// <summary>How far the floor lock's pedal goes down, in radians.</summary>
+    private const float PedalDown = 0.35f;
+    /// <summary>The developed films stand in the cassette holder on top of the generator, the AP one in front.</summary>
+    private static readonly Vector3 FilmSpot = new(0f, 1.12f, 0.25f);
+    /// <summary>The collimator's lens, local to the tube head.</summary>
+    private static readonly Vector3 Lens = new(0f, -0.185f, 0f);
+    /// <summary>How far below the tube head (meters) the lateral beam runs, level and forward from the cart: with the
+    /// head lowered to just over the patient, it crosses the patient's body.</summary>
+    internal const float LateralDrop = 0.3f;
+    /// <summary>A film's size, meters: 35 x 43 cm, its long side along the patient.</summary>
+    private static readonly Vector2 FilmSize = new(0.35f, 0.43f);
+    /// <summary>Held up, the films are this far in front of the eyes, side by side.</summary>
+    private static readonly Vector3 HeldAp = new(-0.2f, 0f, -0.55f);
+    private static readonly Vector3 HeldLateral = new(0.24f, 0f, -0.55f);
+    /// <summary>Points sampled along each side of a field's outline, and how often (seconds) it's redrawn at most:
+    /// each redraw casts a ray per point.</summary>
+    private const int OutlineSteps = 8;
+    private const float OutlineInterval = 0.1f;
+    /// <summary>How far (meters) the outline is lifted off what its rays hit, toward the source: they hit the body as
+    /// it rests, and breathing and the gown's folds lift the drawn skin above that.</summary>
+    private const float OutlineLift = 0.012f;
+    /// <summary>Half the outline band's width, meters.</summary>
+    private const float OutlineWidth = 0.006f;
 
-    /// <summary>The last print, null until the first exposure.</summary>
-    public XrayPrint? Print { get; private set; }
-    /// <summary>The peer pushing the cart, 0 for nobody.</summary>
+    /// <summary>The last exposure's films, AP then lateral; empty until the first.</summary>
+    public IReadOnlyList<XrayFilm> Films { get; private set; } = [];
+    /// <summary>The peer pushing the cart, 0 for nobody: then it's locked against the floor.</summary>
     public int Pusher { get; private set; }
+    /// <summary>The arm's angle above level, in radians.</summary>
+    public float Arm { get; private set; } = ArmRest;
     /// <summary>Half the room's floor minus the cart's size: pushing it never shoves it into a wall. Zero means no
     /// walls.</summary>
     public Vector2 Bounds { get; set; }
     private float _cooldown;
     private float _exposing;
     private float _syncAccumulated;
-    private Node3D _film = null!;
+    private ulong _takenAtMsec;
+    private readonly MeshInstance3D[] _films = new MeshInstance3D[2];
+    private MeshInstance3D _outline = null!;
+    /// <summary>Where the films are drawn, AP then lateral: each keeps its last picture.</summary>
+    private SubViewport[] _viewports = [];
+    private AnimatableBody3D _body = null!;
+    private Transform3D _outlined;
+    private float _outlineWait;
+    /// <summary>Each field's outline triangles, redrawn one field at a time: how many are still to redraw since the
+    /// tube head last moved, and which one is next.</summary>
+    private readonly List<Vector3>[] _bands = [[], []];
+    private int _staleFields;
+    private int _nextField;
+    private Dictionary<string, Node3D> _parts = null!;
     private Surgery _surgery = null!;
 
     public void Build(Surgery surgery) {
         _surgery = surgery;
-        ModelSlot.Instantiate("props", "xray", this);
-        _film = ModelSlot.Instantiate("props", "xray_print", this,
-            new Dictionary<string, Material> { ["tint"] = Materials.Glow(new Color(0.05f, 0.06f, 0.07f)) });
-        _film.Position = PrintSpot;
-        _film.Visible = false;
-        var body = new AnimatableBody3D();
-        body.AddChild(new CollisionShape3D {
-            Shape = new BoxShape3D { Size = new Vector3(0.6f, 1.7f, 0.7f) },
-            Position = new Vector3(0f, 0.85f, 0f),
+        _parts = ModelSlot.Parts(ModelSlot.Instantiate("props", "xray", this), "Arm", "Head", "Pedal");
+        PoseArm(1f);
+        _parts["Pedal"].Rotation = new Vector3(PedalDown, 0f, 0f);
+        _viewports =
+        [
+            XrayExposure.Viewport(this, "ApPicture", FilmSize),
+            XrayExposure.Viewport(this, "LateralPicture", new Vector2(FilmSize.Y, FilmSize.X)),
+        ];
+        for (var i = 0; i < _films.Length; i++) {
+            _films[i] = new MeshInstance3D { Name = i == 0 ? "ApFilm" : "LateralFilm", Visible = false };
+            AddChild(_films[i]);
+        }
+        // The light the collimator throws on what's under its fields, drawn over the surfaces it lands on.
+        _outline = new MeshInstance3D {
+            Name = "Fields",
+            Mesh = new ImmediateMesh(),
+            TopLevel = true,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            MaterialOverride = new StandardMaterial3D {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                AlbedoColor = new Color(1f, 0.93f, 0.6f),
+                CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+            },
+        };
+        AddChild(_outline);
+        // Only the generator and column block: the base and the arm reach under and over the table.
+        _body = new AnimatableBody3D();
+        _body.AddChild(new CollisionShape3D {
+            Shape = new BoxShape3D { Size = new Vector3(0.62f, 1.2f, 0.5f) },
+            Position = new Vector3(0f, 0.6f, 0.15f),
         });
-        AddChild(body);
-        Interactable.Create(this, "Push / let go of the X-ray cart", new Vector3(0.5f, 0.2f, 0.2f),
-            new Vector3(0f, 0.93f, 0.38f), _ => RpcId(Net.HostId, MethodName.RequestPush));
-        Interactable.Create(this, "Take an X-ray", new Vector3(0.35f, 0.25f, 0.1f), new Vector3(0f, 0.6f, 0.38f),
-            _ => RpcId(Net.HostId, MethodName.RequestExpose));
-        Interactable.Create(this, "Look at the X-ray film", new Vector3(0.36f, 0.1f, 0.44f), PrintSpot, _ => OpenPrint());
+        AddChild(_body);
+        Interactable.Create(this, "Push / let go of the X-ray cart", new Vector3(0.65f, 0.12f, 0.14f),
+            new Vector3(0f, 0.9f, 0.42f), _ => RpcId(Net.HostId, MethodName.RequestPush));
+        var head = Interactable.Create(_parts["Head"], "Take an X-ray", new Vector3(0.3f, 0.3f, 0.3f),
+            new Vector3(0f, 0.03f, 0f), _ => RpcId(Net.HostId, MethodName.RequestExpose));
+        head.Wheel = Raise;
+        head.WheelPrompt = "Raise / lower the arm";
+        Interactable.Create(this, "Hold up the X-ray films", new Vector3(0.44f, 0.44f, 0.1f), FilmSpot,
+            surgeon => surgeon.HoldingFilms = true).Offered = surgeon => Films.Count > 0 && !surgeon.HoldingFilms;
+    }
+
+    /// <summary>Raises the arm one wheel step (-1 lowers it).</summary>
+    public void Raise(int steps) => RpcId(Net.HostId, MethodName.RequestRaise, steps);
+
+    /// <summary>Lets go of the cart and locks it against the floor, if this peer pushes it.</summary>
+    public void Lock() => RpcId(Net.HostId, MethodName.RequestLock);
+
+    public override void _Process(double delta) {
+        PoseArm(Mathf.Min((float)delta * 10f, 1f));
+        UpdateOutline((float)delta);
+        if (Films.Count > 0) {
+            PlaceFilms();
+        }
+    }
+
+    /// <summary>The two beams as the tube head stands now. The AP film's up points to the patient's head, so the
+    /// patient's right is on the film's left, as AP films are read.</summary>
+    public XrayBeam[] Beams() {
+        var head = _parts["Head"].GlobalTransform;
+        var toHead = (_surgery.Patient.GlobalBasis.X with { Y = 0f }).Normalized();
+        var ap = new Basis(toHead.Cross(Vector3.Up), toHead, Vector3.Up);
+        var forward = (-GlobalBasis.Z with { Y = 0f }).Normalized();
+        var lateral = new Basis(Vector3.Up.Cross(-forward), Vector3.Up, -forward);
+        var lateralSource = GlobalPosition with { Y = head.Origin.Y - LateralDrop };
+        return
+        [
+            new XrayBeam(XrayView.Ap, new Transform3D(ap, head * Lens), FilmSize),
+            new XrayBeam(XrayView.Lateral, new Transform3D(lateral, lateralSource), new Vector2(FilmSize.Y, FilmSize.X)),
+        ];
+    }
+
+    /// <summary>Draws both fields' outlines where they land, while the cart is at the table. Redrawn only when the
+    /// tube head has moved.</summary>
+    private void UpdateOutline(float delta) {
+        var near = DistanceToTable() <= Reach;
+        _outline.Visible = near;
+        _outlineWait -= delta;
+        var head = _parts["Head"].GlobalTransform;
+        if (!head.IsEqualApprox(_outlined)) {
+            _outlined = head;
+            _staleFields = _bands.Length;
+        }
+        if (!near || _outlineWait > 0f || _staleFields == 0) {
+            return;
+        }
+        // One field per redraw, so no frame casts both fields' rays.
+        _outlineWait = OutlineInterval;
+        _staleFields--;
+        _nextField = (_nextField + 1) % _bands.Length;
+        _bands[_nextField].Clear();
+        Outline(_bands[_nextField], Beams()[_nextField]);
+        var mesh = (ImmediateMesh)_outline.Mesh;
+        mesh.ClearSurfaces();
+        if (_bands.All(band => band.Count == 0)) {
+            return;
+        }
+        mesh.SurfaceBegin(Mesh.PrimitiveType.Triangles);
+        foreach (var corner in _bands.SelectMany(band => band)) {
+            mesh.SurfaceAddVertex(corner);
+        }
+        mesh.SurfaceEnd();
+    }
+
+    /// <summary>Triangles of a band along the edge of the field, on whatever its rays meet first, lifted toward the
+    /// source so it isn't hidden in the surface.</summary>
+    private void Outline(List<Vector3> bands, XrayBeam beam) {
+        var half = beam.Size * 0.5f;
+        Vector2[] corners = [new(-half.X, -half.Y), new(half.X, -half.Y), new(half.X, half.Y), new(-half.X, half.Y)];
+        var along = -beam.Source.Basis.Z;
+        Vector3? last = null;
+        for (var side = 0; side < 4; side++) {
+            for (var step = 0; step <= OutlineSteps; step++) {
+                var at = corners[side].Lerp(corners[(side + 1) % 4], step / (float)OutlineSteps);
+                var from = beam.Source * new Vector3(at.X, at.Y, 0f);
+                // The lateral beam starts inside the cart itself.
+                var hit = Rays.Cast(this, from, from + (along * XrayExposure.Depth), PatientBody.SurfaceLayer | 1u, _body.GetRid());
+                var point = hit is { } h ? h.Position - (along * OutlineLift) : (Vector3?)null;
+                if (point is { } b && last is { } a && a.DistanceTo(b) < 0.15f) {
+                    var across = along.Cross(b - a).Normalized() * OutlineWidth;
+                    bands.AddRange([a - across, b - across, b + across, a - across, b + across, a + across]);
+                }
+                last = point;
+            }
+        }
+    }
+
+    private float DistanceToTable() {
+        var patient = _surgery.Patient.GlobalPosition;
+        return new Vector2(GlobalPosition.X, GlobalPosition.Z).DistanceTo(new Vector2(patient.X, patient.Z));
+    }
+
+    /// <summary>The films in the cassette holder, or in front of the local surgeon's eyes while they hold them up.
+    /// </summary>
+    private void PlaceFilms() {
+        var developed = Developed();
+        var holder = _surgery.LocalSurgeon is { HoldingFilms: true } me ? me : null;
+        for (var i = 0; i < _films.Length; i++) {
+            ((ShaderMaterial)_films[i].MaterialOverride).SetShaderParameter("developed", developed);
+            _films[i].TopLevel = holder is not null;
+            _films[i].Transform = holder is null
+                ? new Transform3D(Basis.Identity, FilmSpot + new Vector3(0f, 0f, i * -0.02f))
+                : holder.Camera.GlobalTransform.TranslatedLocal(i == 0 ? HeldAp : HeldLateral);
+        }
+    }
+
+    /// <summary>Turns the arm toward <see cref="Arm"/> by `follow` of the way, and the head back by as much so it stays
+    /// level.</summary>
+    private void PoseArm(float follow) {
+        var angle = Mathf.Lerp(_parts["Arm"].Rotation.X, Arm, follow);
+        _parts["Arm"].Rotation = new Vector3(angle, 0f, 0f);
+        _parts["Head"].Rotation = new Vector3(-angle, 0f, 0f);
     }
 
     public override void _PhysicsProcess(double delta) {
@@ -73,7 +244,7 @@ public partial class XrayCart : Node3D {
         if (_exposing > 0f) {
             _exposing -= dt;
             if (_exposing <= 0f) {
-                Develop();
+                Expose();
             }
         }
         if (!_surgery.Surgeons.TryGetValue(Pusher, out var surgeon)) {
@@ -85,7 +256,8 @@ public partial class XrayCart : Node3D {
         }
         var follow = Mathf.Min(dt * 8f, 1f);
         GlobalPosition = GlobalPosition.Lerp(target with { Y = 0f }, follow);
-        Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y + Mathf.Pi, follow) };
+        // The front, where the arm reaches, faces where the pusher walks.
+        Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y, follow) };
         _syncAccumulated += dt;
         if (_syncAccumulated >= SyncInterval) {
             _syncAccumulated = 0f;
@@ -93,40 +265,40 @@ public partial class XrayCart : Node3D {
         }
     }
 
-    private void OpenPrint() {
-        if (Print is null) {
-            _surgery.Hud.Toast("No print yet. Take an X-ray first.");
-        } else {
-            _surgery.Hud.OpenXray(this);
-        }
-    }
-
-    /// <summary>0..1, how far the print has developed.</summary>
-    public float Developed() => Print is null
+    /// <summary>0..1, how far the films have developed.</summary>
+    public float Developed() => Films.Count == 0
         ? 0f
-        : Mathf.Clamp((GameClock.Msec - Print.PrintedAtMsec) / (DevelopTime * 1000f), 0f, 1f);
+        : Mathf.Clamp((GameClock.Msec - _takenAtMsec) / (DevelopTime * 1000f), 0f, 1f);
 
-    private void Develop() {
-        var patient = _surgery.Patient;
-        var body = patient.Body;
-        var shapes = new GodotArray();
-        foreach (var target in patient.Targets.Where(target => !target.Extracted || target.IsBone)) {
-            shapes.Add(new XrayShape(target.Kind, target.Uv, target.Depth, target.Rotation.Y).ToVariant());
-        }
-        foreach (var tool in _surgery.Tools.Tools.Values.Where(tool => tool.State == ToolState.Inside)) {
-            shapes.Add(new XrayShape("tool", body.WorldToUv(tool.GlobalPosition), 0.05f, tool.GlobalRotation.Y).ToVariant());
-        }
-        foreach (var organ in body.Organs) {
-            shapes.Add(new XrayShape("organ", body.LocalToUv(organ.Position), -organ.Position.Y, 0f).ToVariant());
-        }
+    private void Expose() {
         _surgery.Scoring.Add("xray_used", true);
-        Rpc(MethodName.PrintReady, shapes, patient.Scenario.Site);
+        Rpc(MethodName.FilmsReady);
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]
     private void RequestPush() {
         var peer = Net.Instance.Sender();
-        Pusher = Pusher == peer ? 0 : peer;
+        Rpc(MethodName.SyncState, Pusher == peer ? 0 : peer, Arm);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]
+    private void RequestLock() {
+        if (Pusher == Net.Instance.Sender()) {
+            Rpc(MethodName.SyncState, 0, Arm);
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]
+    private void RequestRaise(int steps) =>
+        Rpc(MethodName.SyncState, Pusher, Mathf.Clamp(Arm + (steps * ArmStep), ArmLow, ArmHigh));
+
+    /// <summary>Everyone learns who pushes the cart, so the pusher's wheel and click work it, and where the arm is.
+    /// </summary>
+    [Rpc(CallLocal = true)]
+    private void SyncState(int pusher, float arm) {
+        Pusher = pusher;
+        Arm = arm;
+        _parts["Pedal"].Rotation = new Vector3(pusher == 0 ? PedalDown : 0f, 0f, 0f);
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]
@@ -136,8 +308,7 @@ public partial class XrayCart : Node3D {
             _surgery.Tell(peer, $"The X-ray is warming up ({Mathf.CeilToInt(_cooldown + _exposing)} s).");
             return;
         }
-        var patient = _surgery.Patient.GlobalPosition;
-        if (new Vector2(GlobalPosition.X, GlobalPosition.Z).DistanceTo(new Vector2(patient.X, patient.Z)) > Reach) {
+        if (DistanceToTable() > Reach) {
             _surgery.Tell(peer, "Push the cart up to the table first.");
             return;
         }
@@ -147,12 +318,22 @@ public partial class XrayCart : Node3D {
         _surgery.Announce("X-ray! Everyone step back.");
     }
 
+    /// <summary>Everyone takes the films from their own copy of the scene, as it is now.</summary>
     [Rpc(CallLocal = true)]
-    private void PrintReady(GodotArray shapes, string site) {
-        Print = new XrayPrint([.. shapes.Select(XrayShape.FromVariant)], site, GameClock.Msec);
-        _film.Visible = true;
+    private void FilmsReady() => _ = Develop(Beams());
+
+    /// <summary>Draws the new films over the last ones' pictures and puts them in the holder.</summary>
+    private async Task Develop(XrayBeam[] beams) {
+        Films = await XrayExposure.Take(_viewports, _surgery, beams);
+        _takenAtMsec = GameClock.Msec;
+        for (var i = 0; i < _films.Length; i++) {
+            var size = Films[i].Beam.Size;
+            _films[i].Mesh = new QuadMesh { Size = size };
+            _films[i].MaterialOverride = Materials.XrayFilm(Films[i].Image, _takenAtMsec % 1000);
+            _films[i].Visible = true;
+        }
         Sfx.Play("print_whir", GlobalPosition);
-        _surgery.Hud.Toast("The print slides out of the X-ray. Give it a few seconds.");
+        _surgery.Hud.Toast("Two films slide into the holder. Give them a few seconds.");
     }
 
     [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]

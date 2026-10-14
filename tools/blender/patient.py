@@ -3,13 +3,14 @@
 Joint positions match the old part pivots (tools/assetgen/patient.py), so surgical sites and the animator line up.
 Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R.
 Rigid parts on the Head bone: Eyes, Irises, Lids (closed eyelids, shown while unconscious), Hair. Gown is skinned.
+The skeleton (tools/blender/skeleton.py) is one rigid part per bone, named Skeleton<Bone>.
 """
 
 from __future__ import annotations
 
 import bpy
 
-from . import face, scene
+from . import face, scene, skeleton
 from .hand import smooth_digit
 from .scene import Blob, Vec3, capsule, ellipsoid
 
@@ -193,6 +194,7 @@ def build() -> bpy.types.Object:
     upper_teeth, lower_teeth, tongue = face.teeth_and_tongue()
     for part in (gown, hair, brows, eye_l, eye_r, lids, upper_teeth, lower_teeth, tongue):
         scene.fit(part, BUDGETS[part.name])
+    bones = skeleton.build()
     scene.clean()
 
     rig = scene.armature("PatientRig", BONES)
@@ -203,6 +205,8 @@ def build() -> bpy.types.Object:
         scene.attach(part, rig, "Head")
     for part in (lower_teeth, tongue):
         scene.attach(part, rig, "Jaw")
+    for part, bone in bones:
+        scene.attach(part, rig, bone)
     show_lids(False)
     return rig
 
@@ -211,6 +215,14 @@ def show_lids(visible: bool) -> None:
     bpy.data.objects["Lids"].hide_render = not visible
     for name in ("EyeL", "EyeR"):
         bpy.data.objects[name].hide_render = visible
+
+
+def show_skeleton_only(only: bool) -> None:
+    """Hides everything but the skeleton from renders, to review it as an X-ray would show it."""
+    for obj in scene.meshes():
+        obj.hide_render = only and not obj.name.startswith("Skeleton")
+    if not only:
+        show_lids(False)
 
 
 def test_pose(rig: bpy.types.Object) -> None:

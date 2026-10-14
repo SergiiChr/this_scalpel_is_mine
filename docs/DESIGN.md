@@ -523,8 +523,14 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Blood pressure**: panic and stimulants (adrenaline, cocaine, ketamine) raise systolic pressure. Above 140 mmHg,
   and while heparin acts, sutures, staples, tape and gauze leak; cautery and clamps hold. Patients with fragile vessels
   (an aneurysm) can burst a deep vessel under the site above the same pressure.
-- **X-ray cart**: push it to the table, take an exposure, and a full-size film develops over six seconds.
-  Viewed on a lightbox, it shows metal (bullets, knives, retained tools), bone, masses and trapped air.
+- **X-ray cart**: push it to the table by its handle, the wheel raises and lowers the arm, and a click locks it against
+  the floor (the wheel still works the arm, looking at the tube head). The collimator lights two fields on the patient:
+  AP, straight down from the tube head, and lateral, level and forward from just below it. An exposure takes both
+  films, rendered from the scene itself (`XrayExposure`): twins of the body, organs, targets and tools drawn with
+  `xray.gdshader` beside the patient's skeleton, which only films see (`RenderLayers.Xray`). Bone and metal come out
+  white, soft tissue and organs as faint outlines, a bullet's wound track as a grey streak. The films develop in the
+  cassette holder over six seconds. They're black where the beam got through and clear where something stopped it, so
+  a player holds them up against a light to read them.
 
 ### Ideas not yet approved
 

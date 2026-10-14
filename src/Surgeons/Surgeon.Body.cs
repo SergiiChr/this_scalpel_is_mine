@@ -151,7 +151,7 @@ public partial class Surgeon {
                 }
             }
         }
-        Camera = new Camera3D { Name = "Camera", Fov = 70f, Near = 0.03f };
+        Camera = new Camera3D { Name = "Camera", Fov = 70f, Near = 0.03f, CullMask = RenderLayers.Normal };
         _head.AddChild(Camera);
         foreach (var joint in JointNames) {
             if (_body.FindChild(joint, true, false) is Node3D node) {

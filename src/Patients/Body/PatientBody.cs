@@ -87,6 +87,10 @@ public partial class PatientBody : Node3D {
     private Node3D _bodyRoot = null!;
     /// <summary>The body model's skin mesh, whose space the site skin lays out its pores and grime in.</summary>
     private Node3D _skinModel = null!;
+    /// <summary>The body model's skin, skinned to its rig.</summary>
+    internal MeshInstance3D SkinMesh => (MeshInstance3D)_skinModel;
+    /// <summary>The skeleton's parts, one per rig bone (Skeleton&lt;Bone&gt;), drawn only on X-ray films.</summary>
+    internal IReadOnlyList<MeshInstance3D> Skeleton { get; private set; } = [];
     /// <summary>The site's and the body model's transforms and the region when the carve was last placed in full.
     /// </summary>
     private Transform3D _carvedSite;
@@ -144,6 +148,7 @@ public partial class PatientBody : Node3D {
         var model = ModelSlot.Instantiate("patient", "body", _bodyRoot,
             new Dictionary<string, Material> { ["skin"] = skin, ["gown"] = gown });
         _skinModel = (Node3D)model.FindChild("Body", true, false);
+        BuildXrayLayer(model);
         AddChild(Animator);
         Animator.Setup(this, model);
         BuildColliders();
@@ -539,6 +544,15 @@ public partial class PatientBody : Node3D {
             };
             body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
             _bodyRoot.AddChild(body);
+        }
+    }
+
+    /// <summary>The patient's skeleton, which only X-ray films see (<see cref="XrayExposure"/>).</summary>
+    private void BuildXrayLayer(Node3D model) {
+        Skeleton = [.. model.FindChildren("Skeleton*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>()];
+        foreach (var bone in Skeleton) {
+            bone.Layers = RenderLayers.Xray;
+            bone.MaterialOverride = XrayExposure.BoneMaterial;
         }
     }
 

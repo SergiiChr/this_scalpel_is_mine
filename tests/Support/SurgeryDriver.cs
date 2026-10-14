@@ -317,6 +317,8 @@ public partial class SurgeryDriver : Node {
             break;
         }
         var spot = chosen ?? throw new InvalidOperationException($"No clear standing position reaches {point} in {Surgery.Scenario.Id}.");
+        // The search above is the test's work, not the game's: hundreds of shape queries in one frame.
+        Budget.Resume();
         Me.GlobalPosition = spot;
         Me.Velocity = Vector3.Zero;
         Me.Rotation = Me.Rotation with { Y = chosenYaw };

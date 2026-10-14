@@ -204,30 +204,52 @@ def _monitor() -> Model:
     return m
 
 
+# Mobile X-ray unit, front (-Z) toward the table. The arm swings up and down on its pivot atop the column; the game turns
+# Arm about X and turns Head back by the same angle so the tube head stays level. Same as XrayCart (src/World/XrayCart.cs).
+XRAY_PIVOT = (0.0, 1.15, -0.06)
+XRAY_ARM = 0.95
+
+
 def _xray() -> Model:
-    """Mobile X-ray unit. The emitter arm swings over the table; prints come out of the slot on the front."""
+    """Mobile X-ray unit after a typical portable: a T base with casters in front and big wheels under the generator, a
+    column in front of the generator, and an arm reaching forward to the tube head. The arm is modeled level."""
     m = Model("props", "xray")
-    m.add("Base", merge(superellipsoid((0.6, 0.25, 0.7), 0.2, (0.0, 0.2, 0.0)), _wheels(0.035, 0.0)), "plastic")
-    m.add("Column", superellipsoid((0.12, 1.5, 0.12), 0.25, (0.0, 1.05, -0.2)), "plastic")
-    m.add("Arm", superellipsoid((0.08, 0.08, 0.9), 0.3, (0.0, 1.6, 0.22)), "plastic", (0.0, 1.6, -0.2))
-    m.add(
-        "Emitter",
-        merge(superellipsoid((0.28, 0.2, 0.28), 0.3, (0.0, 1.48, 0.7)), cylinder(0.08, (0.0, 1.38, 0.7), (0.0, 1.33, 0.7), 20)),
-        "plastic",
-        (0.0, 1.6, 0.7),
-        "Arm",
+    beam = superellipsoid((0.09, 0.06, 0.95), 0.2, (0.0, 0.1, -0.33))
+    cross = superellipsoid((0.62, 0.06, 0.09), 0.2, (0.0, 0.1, -0.78))
+    axle = superellipsoid((0.56, 0.08, 0.12), 0.2, (0.0, 0.14, 0.22))
+    forks = [cylinder(0.012, (x, 0.07, -0.78), (x, 0.045, -0.78), 8) for x in (-0.28, 0.28)]
+    m.add("Base", merge(beam, cross, axle, *forks), "plastic")
+    casters = [cylinder(0.04, (x - 0.015, 0.04, -0.8), (x + 0.015, 0.04, -0.8), 14) for x in (-0.28, 0.28)]
+    wheels = [cylinder(0.13, (x - 0.025, 0.13, 0.22), (x + 0.025, 0.13, 0.22), 24) for x in (-0.31, 0.31)]
+    m.add("Wheels", merge(*casters, *wheels), "rubber")
+    hubs = [cylinder(0.06, (s * 0.31 - 0.03, 0.13, 0.22), (s * 0.31 + 0.03, 0.13, 0.22), 16) for s in (-1, 1)]
+    m.add("Hubs", merge(*hubs), "dark_steel")
+    m.add("Generator", superellipsoid((0.42, 0.62, 0.3), 0.15, (0.0, 0.52, 0.2)), "plastic")
+    m.add("Column", superellipsoid((0.1, 1.05, 0.09), 0.2, (0.0, 0.66, -0.01)), "plastic")
+    # The cassette holder on top of the generator, and the push handle looping round it at waist height.
+    m.add("Holder", superellipsoid((0.36, 0.24, 0.1), 0.15, (0.0, 0.95, 0.24)), "dark_steel")
+    loop = [(-0.18, 0.9, 0.05), (-0.3, 0.9, 0.12), (-0.3, 0.9, 0.42), (0.3, 0.9, 0.42), (0.3, 0.9, 0.12), (0.18, 0.9, 0.05)]
+    m.add("Handle", tube(loop, [(0.013, 0.013)] * len(loop), ring=8, smooth=3), "chrome")
+    # The floor lock: a pedal by the rear wheel, pressed down while the cart is locked.
+    m.add("Pedal", superellipsoid((0.08, 0.025, 0.06), 0.3, (0.2, 0.19, 0.32)), "red_plastic", (0.2, 0.19, 0.28))
+    px, py, pz = XRAY_PIVOT
+    m.add("Pivot", cylinder(0.05, (-0.07, py, pz), (0.07, py, pz), 16), "dark_steel")
+    arm = superellipsoid((0.07, 0.09, XRAY_ARM + 0.06), 0.25, (px, py, pz - XRAY_ARM / 2))
+    m.add("Arm", arm, "plastic", XRAY_PIVOT)
+    head = (px, py, pz - XRAY_ARM)
+    hx, hy, hz = head
+    m.add("Head", superellipsoid((0.32, 0.26, 0.26), 0.2, (hx, hy + 0.03, hz)), "plastic", head, "Arm")
+    m.add("Screen", superellipsoid((0.2, 0.14, 0.01), 0.1, (hx, hy + 0.04, hz + 0.13)), "screen", head, "Head")
+    m.add("Knob", cylinder(0.035, (hx + 0.16, hy + 0.06, hz), (hx + 0.2, hy + 0.06, hz), 16), "dark_steel", head, "Head")
+    grip = [(hx + 0.12, hy - 0.08, hz + 0.1), (hx + 0.22, hy - 0.06, hz + 0.16), (hx + 0.22, hy + 0.1, hz + 0.16), (hx + 0.16, hy + 0.12, hz + 0.1)]
+    m.add("Grip", tube(grip, [(0.011, 0.011)] * len(grip), ring=8, smooth=3), "chrome", head, "Head")
+    collimator = merge(
+        superellipsoid((0.18, 0.08, 0.18), 0.2, (hx, hy - 0.14, hz)),
+        cylinder(0.04, (hx - 0.1, hy - 0.14, hz + 0.04), (hx - 0.09, hy - 0.14, hz + 0.04), 12),
+        cylinder(0.04, (hx - 0.1, hy - 0.14, hz - 0.04), (hx - 0.09, hy - 0.14, hz - 0.04), 12),
     )
-    m.add("Panel", superellipsoid((0.3, 0.2, 0.02), 0.2, (0.0, 0.55, 0.36)), "screen")
-    m.add("Slot", superellipsoid((0.16, 0.012, 0.02), 0.3, (0.0, 0.38, 0.355)), "black_plastic")
-    m.add("Handle", tube([(-0.2, 0.9, 0.3), (-0.2, 0.95, 0.38), (0.2, 0.95, 0.38), (0.2, 0.9, 0.3)], [(0.012, 0.012)] * 4, ring=8), "chrome")
-    return m
-
-
-def _photo() -> Model:
-    """The developed X-ray: a full-size film sheet (35 x 43 cm) lying on the cart. Origin at its center, image up."""
-    m = Model("props", "xray_print")
-    m.add("Image", superellipsoid((0.35, 0.002, 0.43), 0.05, (0.0, 0.0, 0.0)), "tint")
-    m.add("Clip", superellipsoid((0.06, 0.006, 0.02), 0.2, (0.0, 0.002, -0.21)), "steel")
+    m.add("Collimator", collimator, "plastic", head, "Head")
+    m.add("Lens", cylinder(0.06, (hx, hy - 0.18, hz), (hx, hy - 0.185, hz), 20), "glass", head, "Head")
     return m
 
 
@@ -318,7 +340,6 @@ def build() -> list[Model]:
         _lamp(),
         _monitor(),
         _xray(),
-        _photo(),
         _stretcher_straps(),
         _streetlight(),
         _delivery_tray(),
