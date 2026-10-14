@@ -173,7 +173,7 @@ public partial class PatientBody : Node3D {
             _pendingStep = null;
             Tissue.Advance(owed.Delta, owed.Run);
         }
-        WoundMap.Flush();
+        WoundMap.Flush((float)delta);
         // Mesh preparation and simulation run on alternate frames. A large fold prepares its layers in groups,
         // then publishes the complete stack from one captured state.
         var stale = Tissue.TopologyVersion != _layerVersion || Tissue.StepsDone != _layerSteps;

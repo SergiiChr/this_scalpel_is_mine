@@ -46,13 +46,21 @@ public sealed class WoundMap {
     private const int Cells = 16;
     private const int LayerCount = 4;
 
-    /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures once per frame by
-    /// <see cref="Flush"/>.</summary>
+    /// <summary>Seconds between uploads of changed layers: the tissue sim's step. Godot has no sub-rectangle texture
+    /// update, so an upload copies a layer's whole image (1 MB at MaxSize); a wipe or bleed painting every frame at
+    /// 60 fps would otherwise upload each layer it touches twice per sim step.</summary>
+    public const float UploadInterval = TissueSim.Step;
+
+    /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures by <see cref="Flush"/>.
+    /// </summary>
     private readonly byte[][] _data = new byte[LayerCount][];
 
     /// <summary>A copy of a layer's pixels as they are now, to compare with later.</summary>
     internal byte[] Snapshot(Layer layer) => (byte[])_data[(int)layer].Clone();
     private readonly bool[] _dirty = new bool[LayerCount];
+    /// <summary>Seconds since the last upload, no more than UploadInterval: a layer painted after a quiet spell goes
+    /// up with its own frame.</summary>
+    private float _sinceUpload = UploadInterval;
     /// <summary>Which cells of a coarse Cells x Cells grid have ever been painted into, per layer and channel.
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
     private readonly bool[][] _painted = new bool[LayerCount][];
@@ -163,8 +171,18 @@ public sealed class WoundMap {
         return _data[(int)layer][(at.Y * Size + at.X) * 4 + channel] / 255f;
     }
 
-    /// <summary>Uploads changed images to the GPU. Call once per frame.</summary>
-    public void Flush() {
+    /// <summary>Uploads made so far.</summary>
+    internal int Uploads { get; private set; }
+
+    /// <summary>Uploads changed images to the GPU on the frame nearest to <see cref="UploadInterval"/> after the last
+    /// upload. Call once per frame with the frame's <paramref name="delta"/>.</summary>
+    public void Flush(float delta) {
+        _sinceUpload = Mathf.Min(_sinceUpload + delta, UploadInterval);
+        // The nearest frame, not the first past the interval: frames a hair short of two per step don't make it
+        // every third frame.
+        if (_sinceUpload + (delta * 0.5f) < UploadInterval || !_dirty.Contains(true)) {
+            return;
+        }
         for (var i = 0; i < LayerCount; i++) {
             if (_dirty[i]) {
                 _images[i].SetData(Size, Size, false, Image.Format.Rgba8, _data[i]);
@@ -172,5 +190,7 @@ public sealed class WoundMap {
                 _dirty[i] = false;
             }
         }
+        _sinceUpload = 0f;
+        Uploads++;
     }
 }

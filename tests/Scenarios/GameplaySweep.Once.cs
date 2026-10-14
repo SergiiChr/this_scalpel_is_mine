@@ -106,7 +106,7 @@ internal sealed partial class GameplaySweep {
                 var at = new Vector2(0.3f + (i * 0.006f), 0.5f);
                 var started = Time.GetTicksUsec();
                 Wipe(pad, SiteZone.Site, at, Body.UvToWorld(at), 1f / 60f);
-                Body.WoundMap.Flush();
+                Body.WoundMap.Flush(1f / 60f);
                 runWorst = Math.Max(runWorst, (Time.GetTicksUsec() - started) / 1000.0);
             }
             worstMs = Math.Min(worstMs, runWorst);
