@@ -187,7 +187,13 @@ comment beside it names the test.
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
 inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
-Required steps complete in order, `"optional": true` steps any time for bonus points.
+Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
+only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
+points. `"after": [ids]` names steps (by `"id"`, else type) that must be done when the step is first met; met before
+them it's spoiled and no longer counts. Used only where the order matters medically: numbing before cutting or
+stitching, cleaning before opening, a tourniquet before cutting a limb, heparin before clamping.
+Nothing ends the surgery when the steps are done: the players sign the patient out (see Discharge), or the time limit
+does it for them. Then every required step must count for a success; each one that doesn't is scored as missed.
 A step with `"or": {step}` also completes when that nested step's condition is met (hand stitch: a local block, or
 general anesthesia for a lidocaine allergy).
 
@@ -287,6 +293,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   hook and they merge into one. Taken, the card travels up to the reader's face before the page shows, leaves the hook
   for everyone and is seen in the reader's hands until put back (`src/World/PatientCard.cs`, synced with each
   surgeon's state). Purely visual: no collision.
+- **Discharge**: the surgery ends when a player signs the patient out at the foot of the card's page: holding
+  Interact for `SignatureView.SignSeconds` writes the signature under a see-through pen, letting go early unwrites it.
+  The host then settles the outcome, score and consequences (`Surgery.Discharge()`). Signed out too early, the patient
+  can still go, as a failure. Only death and the time limit end a surgery without it.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
   (`src/World/IvLine.cs`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
