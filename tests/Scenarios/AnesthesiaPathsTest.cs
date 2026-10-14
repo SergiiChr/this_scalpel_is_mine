@@ -89,6 +89,8 @@ public class AnesthesiaPathsTest
             await driver.PlayerAnesthetizes();
             await driver.PlayerClosesWounds();
             await driver.PlayerStopsBleeding(0.2f);
+            AssertBool(surgery.Scoring.Entries.ContainsKey("unneeded_alternative"))
+                .OverrideFailureMessage("general anesthesia for a lidocaine allergy costs no points").IsFalse();
             await Frames.Until(() => surgery.Objectives.AllDone, 120f);
             await driver.PlayerDischarges();
             AssertBool(surgery.Report?.Success == true)

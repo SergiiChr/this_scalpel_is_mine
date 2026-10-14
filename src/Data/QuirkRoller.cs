@@ -55,7 +55,9 @@ public static class QuirkRoller
             var id = ids[index];
             ids.RemoveAt(index);
             var variants = table[id].Variants;
-            var variant = variants.Count == 0 ? "" : variants[rng.RandiRange(0, variants.Count - 1)];
+            var variant = variants.Count == 0
+                ? ""
+                : variants[(int)rng.RandWeighted([.. variants.Select(table[id].Weight)])];
             rolls.Add(new QuirkRoll(id, variant));
         }
         return rolls;

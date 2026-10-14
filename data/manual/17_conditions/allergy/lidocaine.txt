@@ -1,0 +1,15 @@
+tags: lidocaine
+title: Lidocaine
+[i]Allergy to the local anesthetic.[/i]
+
+[b]Alternatives[/b]
+[table=2]
+[cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
+[cell]General anesthesia: propofol[/cell][cell]Needs an IV line. Lowers the pressure.[/cell]
+[cell]General anesthesia: ketamine[/cell][cell]Raises heart rate and pressure.[/cell]
+[cell]General anesthesia: inhaled agent[/cell][cell]Never with hyperthermia risk.[/cell]
+[/table]
+
+[b]Reaction[/b]
+• Comes as the numbing injection goes in, while the patient is awake. The site still goes numb.
+• Pressure and oxygen saturation fall as on Drug allergy.

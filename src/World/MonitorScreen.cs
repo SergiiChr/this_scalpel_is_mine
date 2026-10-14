@@ -71,6 +71,8 @@ public partial class MonitorScreen : Control
 
     public void ShowLab(string text) => _lab = text.TrimPrefix("LAB: ");
 
+    internal string LabText => _lab;
+
     public void Tick(Vitals vitals, bool alive, List<string> alarms, float delta)
     {
         _rhythm = alive ? vitals.Rhythm : Rhythm.Asystole;

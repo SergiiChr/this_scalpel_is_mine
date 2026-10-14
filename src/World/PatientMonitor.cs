@@ -57,6 +57,9 @@ public partial class PatientMonitor : Node3D
 
     public void ShowLab(string text) => _screen.ShowLab(text);
 
+    /// <summary>The lab results on the screen, empty until the first ones come back.</summary>
+    internal string LabText => _screen.LabText;
+
     /// <summary>Alarm messages for the top bar, worst first.</summary>
     public static List<string> Alarms(Vitals vitals, bool alive)
     {

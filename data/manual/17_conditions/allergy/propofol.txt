@@ -1,0 +1,14 @@
+tags: propofol
+title: Propofol
+[i]Allergy to the intravenous anesthetic.[/i]
+
+[b]Alternatives[/b]
+[table=2]
+[cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
+[cell]Ketamine[/cell][cell]Raises heart rate and pressure.[/cell]
+[cell]Inhaled agent[/cell][cell]Never with hyperthermia risk.[/cell]
+[/table]
+
+[b]Reaction[/b]
+• The patient is going under, so only the monitor tells. Propofol alone lowers systolic pressure by {-drug.propofol.Peak.Bp} mmHg. With the allergy it falls by {Patient.AllergyPressureDrop} mmHg more at once and keeps falling.
+• Pressure and oxygen saturation fall as on Drug allergy.

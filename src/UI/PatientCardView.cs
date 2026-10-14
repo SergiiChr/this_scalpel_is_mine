@@ -19,8 +19,6 @@ public static class PatientCardView
     private static readonly Color Faint = new(0.42f, 0.46f, 0.52f);
     /// <summary>The red of a hospital stamp.</summary>
     private static readonly Color Stamp = new(0.6f, 0.12f, 0.1f);
-    /// <summary>A mixed-up chart names one of these as the patient's allergy.</summary>
-    private static readonly string[] WrongAllergies = ["cefazolin", "morphine", "lidocaine"];
 
     /// <summary>The page, with <paramref name="signature"/> as its discharge line at the foot.</summary>
     public static Control Build(Patient patient, uint seed, SignatureView signature, Action close)
@@ -46,7 +44,8 @@ public static class PatientCardView
             {
                 lines.RemoveAt(errorRng.RandiRange(0, lines.Count - 1));
             }
-            lines.Add($"Known allergy: {Db.Drug(WrongAllergies[errorRng.RandiRange(0, 2)])!.Name}.");
+            var allergy = Db.PatientQuirks["allergy"];
+            lines.Add(allergy.Text("card", allergy.Variants[errorRng.RandiRange(0, allergy.Variants.Count - 1)]));
         }
         lines.AddRange(RedHerrings.OrderBy(_ => rng.Randi()).Take(rng.RandiRange(2, 3)));
         for (var i = lines.Count - 1; i > 0; i--)

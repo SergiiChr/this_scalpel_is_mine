@@ -1,22 +1,26 @@
 tags: allergy, allergen
 title: Drug allergy
-[i]A documented reaction to one of the standard agents.[/i]
+[i]A reaction to lidocaine, morphine or propofol, named on the chart or not.[/i]
 
-[b]On the chart:[/b] “Drug allergy reported, agent not documented.”
+[b]On the chart:[/b] “Allergic to lidocaine.”, “Allergic to morphine.”, “Allergic to propofol.” or “Claims a drug allergy but forgot which one.”
 
-[b]Hazards[/b]
-• The allergen causes urticaria and swelling, a fall in blood pressure and possibly anaphylaxis.
+[b]Diagnosis[/b]
+• A named allergy needs no test: avoid the drug and use an alternative from its page below.
+• An unnamed one: order the allergy screen at the monitor ([b]Order blood work[/b]). The result shows on the monitor after {Lab.Panels.allergy.Seconds} seconds. The full panel includes it but takes {Lab.Panels.full.Seconds}. The laboratory takes no new order for {Lab.Cooldown} seconds after each one.
+• The patient may be mistaken: the screen can come back with nothing found.
 
-[b]Management[/b]
-• Order the allergy screen from the laboratory to identify the agent.
-• Use the alternative:
-[table=3]
-[cell][b]Allergy[/b][/cell][cell][b]Alternative[/b][/cell][cell][b]Caution[/b][/cell]
-[cell]Cefazolin[/cell][cell]Clindamycin[/cell][cell]Longer delivery time[/cell]
-[cell]Morphine[/cell][cell]Ketamine[/cell][cell]Raises heart rate and pressure[/cell]
-[cell]Lidocaine[/cell][cell]General anesthesia[/cell][cell]Needs an IV line[/cell]
-[cell]Propofol[/cell][cell]Ketamine or inhaled agent[/cell][cell]No inhaled agent with hyperthermia risk[/cell]
-[/table]
-• Urticaria and swelling: diphenhydramine.
-• Falling pressure and oxygen saturation mean anaphylaxis: adrenaline immediately.
+[b]While the agent is unknown[/b]
+• Give none of lidocaine, morphine or propofol until the result is back.
+• Where the procedure can't wait, use an agent that is never an allergen: ketamine or the inhaled agent.
+• [b]Warning:[/b] the alternatives are stronger and carry hazards of their own. Use one only when the allergy calls for it. Given to a patient who could have had the usual drug, it counts against the surgeon.
+
+[b]Reaction[/b]
+• Nothing shows on the skin. Watch the monitor: systolic pressure falls by {Patient.AllergyPressureDrop} mmHg at once and by up to {Patient.AllergySwelling * Patient.SwellingPressure} mmHg more while the swelling lasts. Oxygen saturation falls by up to {Patient.AllergySwelling * Patient.SwellingSpo2}%.
+• Untreated, the swelling goes down over {Patient.AllergySwelling / Patient.SwellingFade} seconds.
+• More swelling on top of it (a second reaction, a transfusion reaction) is anaphylaxis: the heart is at risk of arrest.
+
+[b]Treatment[/b]
+• Stop giving the drug.
+• Diphenhydramine takes the swelling down in about {Patient.AllergySwelling / (Patient.SwellingFade + Patient.AntihistamineFade)} seconds.
+• Adrenaline works faster still and raises the pressure: give it for anaphylaxis or when the pressure alarm sounds.
 > See Combined conditions (14.5, 14.6).

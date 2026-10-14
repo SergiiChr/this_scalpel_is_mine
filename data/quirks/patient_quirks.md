@@ -6,6 +6,8 @@ Format rules:
 - `## id` starts a quirk. The id is used in code and save files, so keep it stable.
 - `- key: value` lines fill it in. One line per key.
 - Quirks with `variants` (like weak/strong) can override any key per variant: `- cons.weak: ...`.
+- `label` (optional, per variant) is what the menus show in brackets after the name instead of the variant id.
+- `weight` (optional, per variant) is how often a variant rolls against the others, 1 by default.
 - `icon` is a relative markdown link, ctrl+click it in most editors to open the image.
 - `effects` is what the game actually reads: `key=value` pairs separated by commas.
   Keys ending in `_mult` multiply, other numbers add up, text values are names (use `|` for lists).
@@ -84,18 +86,40 @@ Format rules:
 
 ## allergy
 - name: Drug allergy
-- variants: cefazolin, morphine, lidocaine, propofol
+- variants: lidocaine, morphine, propofol, unknown_lidocaine, unknown_morphine, unknown_propofol, unknown_none
+- weight: 7
+- weight.unknown_lidocaine: 2.7
+- weight.unknown_morphine: 2.7
+- weight.unknown_propofol: 2.7
+- weight.unknown_none: 0.9
+- name.unknown_lidocaine: Unknown drug allergy
+- name.unknown_morphine: Unknown drug allergy
+- name.unknown_propofol: Unknown drug allergy
+- name.unknown_none: Unknown drug allergy
+- label.unknown_lidocaine: Lidocaine
+- label.unknown_morphine: Morphine
+- label.unknown_propofol: Propofol
+- label.unknown_none: None after all
 - polarity: negative
 - icon: [allergy.svg](../../assets/icons/quirks/patient/allergy.svg)
 - lore: Their allergy wristband fell off in the ambulance. Probably.
 - pros: None.
-- cons: Giving the allergen causes swelling, a blood pressure crash and possibly anaphylaxis.
-- specifics: Antihistamine handles mild reactions. Anaphylaxis needs adrenaline. The manual lists safe substitutes.
-- card: Drug allergy reported, agent not documented.
-- effects.cefazolin: allergen=cefazolin
-- effects.morphine: allergen=morphine
+- cons: Giving the allergen drops blood pressure and oxygen. A second reaction on top can stop the heart.
+- specifics: Diphenhydramine takes the swelling down, adrenaline faster. When the chart doesn't name the drug, the lab allergy screen does. Stronger stand-ins cost points when the patient could take the usual drug.
+- cons.unknown_none: None, but nobody knows that until the lab says so.
+- card.lidocaine: Allergic to lidocaine.
+- card.morphine: Allergic to morphine.
+- card.propofol: Allergic to propofol.
+- card.unknown_lidocaine: Claims a drug allergy but forgot which one.
+- card.unknown_morphine: Claims a drug allergy but forgot which one.
+- card.unknown_propofol: Claims a drug allergy but forgot which one.
+- card.unknown_none: Claims a drug allergy but forgot which one.
 - effects.lidocaine: allergen=lidocaine
+- effects.morphine: allergen=morphine
 - effects.propofol: allergen=propofol
+- effects.unknown_lidocaine: allergen=lidocaine
+- effects.unknown_morphine: allergen=morphine
+- effects.unknown_propofol: allergen=propofol
 
 ## aneurysm
 - name: Aneurysm

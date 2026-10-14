@@ -112,6 +112,10 @@ Markdown, one `## id` heading per quirk, `- key: value` lines.
 Any key can be overridden per variant with `key.variant`. Icons are relative links, clickable from an editor.
 `effects` is what code reads: `key=value, key=value`. `_mult` keys multiply, other numbers add, text values are lists split by `|`.
 `sites` limits a patient quirk to scenarios on those surgical sites (an aneurysm only where a great vessel runs).
+`weight` sets how often a variant rolls against the others (1 by default), `label` what menus show for it in brackets.
+A drug allergy is named on the chart 70% of the time; the unknown rest hides the drug until the lab's allergy screen,
+and a tenth of those patients aren't allergic at all. An `alternatives` drug (drugs.cfg) given to an allergy patient who
+could take the drug it stands in for costs points.
 
 Patient effect keys:
 
@@ -212,7 +216,7 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - `dialogue/patient_lines.cfg`: patient speech by trigger and age.
 - `manual/NN_id.txt`: in-game manual pages. A folder named like a page (`manual/17_conditions/`) holds its sub-pages:
   one entry per chronic condition (patient quirk with a chart line), tagged with the quirk id or `id.variant` for
-  Divine knowledge. General pages point to these entries instead of repeating them.
+  Divine knowledge. An entry's own folder holds a third level (`17_conditions/allergy/`: one page per allergen). General pages point to these entries instead of repeating them.
   Game numbers in pages are `{expression}`s worked out at load from class constants, `drug`, `tool` and `quirk`
   (see `ManualPage`), so doses, thresholds and chances follow the game. A data test rejects numbers with units
   written by hand.

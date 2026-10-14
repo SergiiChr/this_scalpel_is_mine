@@ -24,6 +24,23 @@ public partial class SurgeryDriver
 
     private NurseShop Shop => Surgery.Hud.Shop;
 
+    /// <summary>Orders the <paramref name="panel"/> blood work at the monitor and waits until its results replace what
+    /// the screen showed before.</summary>
+    public async Task<string> PlayerOrdersLab(string panel)
+    {
+        var monitor = Surgery.Room.Monitor;
+        var before = monitor.LabText;
+        await PlayerInteracts("Order blood work");
+        var label = Lab.Panels[panel].Label;
+        var button = Surgery.Hud.Overlay!.FindChildren("*", nameof(Button), true, false).OfType<Button>()
+            .First(button => button.Text.StartsWith(label, StringComparison.Ordinal));
+        Click(button);
+        var arrived = await Frames.Until(() => monitor.LabText != before, Lab.Panels[panel].Seconds + 5f);
+        AssertBool(arrived).OverrideFailureMessage($"the {label} results show on the monitor:\n{Recent()}").IsTrue();
+        Note($"lab {panel}: {monitor.LabText}");
+        return monitor.LabText;
+    }
+
     /// <summary>Opens the nurse's shop and, for each of <paramref name="ids"/>, picks its category and presses its
     /// [+]. Presses past a full cart do nothing, as for a player.</summary>
     public async Task PlayerFillsCart(IReadOnlyList<string> ids)
