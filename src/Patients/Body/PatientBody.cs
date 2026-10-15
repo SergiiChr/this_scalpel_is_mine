@@ -182,13 +182,13 @@ public partial class PatientBody : Node3D {
         // A frame that was meant to be drawn but wasn't still owes its step.
         if (_pendingStep is { } owed) {
             _pendingStep = null;
-            Tissue.Advance(owed.Delta, owed.Run);
+            StepTissue(owed);
+            PublishLayers();
         }
-        // Mesh preparation and simulation run on alternate frames. A large fold prepares its layers in groups,
-        // then publishes the complete stack from one captured state.
+        // Mesh preparation and simulation run on alternate frames.
         var stale = Tissue.TopologyVersion != _layerVersion || Tissue.StepsDone != _layerSteps;
         // A planning frame can leave solver time pending. Preserve catch-up on the next solver frame, including
-        // at 30 fps during folds; only mesh preparation is staged, never the simulation clock.
+        // at 30 fps during folds; only mesh preparation is deferred, never the simulation clock.
         // Defer at most once: a renderer slower than the solver must still publish the moving mesh.
         var catchup = stale && !_rebuiltLast && Tissue.NeedsStep && !_deferredUpload;
         var rebuild = stale && !_rebuiltLast && !catchup;
@@ -207,20 +207,22 @@ public partial class PatientBody : Node3D {
             _pendingStep = ((float)delta, !rebuild);
         } else {
             UploadWoundMap();
-            Tissue.Advance((float)delta, !rebuild);
+            StepTissue(((float)delta, !rebuild));
+            PublishLayers();
         }
         UpdateSutures();
         JiggleOrgans((float)delta);
     }
 
-    /// <summary>Runs the frame's solver step on a worker after every node has processed, overlapping the draw and the
-    /// wait for vsync. Nothing on the main thread touches the tissue until FinishStep() joins it after the draw, so
-    /// it needs no locks.</summary>
+    /// <summary>Runs the frame's layer build and solver step on a worker after every node has processed, overlapping
+    /// the draw and the wait for vsync. Nothing on the main thread touches the tissue or the layers' capture until
+    /// FinishStep() joins it after the draw, so it needs no locks. The layers built show from the next frame on.
+    /// </summary>
     private void StepWhileDrawing() {
         UploadWoundMap();
         if (_pendingStep is { } step) {
             _pendingStep = null;
-            _stepping = Task.Run(() => Tissue.Advance(step.Delta, step.Run));
+            _stepping = Task.Run(() => StepTissue(step));
         }
     }
 
@@ -234,10 +236,16 @@ public partial class PatientBody : Node3D {
         }
     }
 
+    private void StepTissue((float Delta, bool Run) step) {
+        BuildLayers();
+        Tissue.Advance(step.Delta, step.Run);
+    }
+
     private void FinishStep() {
         // Rethrows what the step threw, on the main thread where Godot reports it.
         _stepping?.GetAwaiter().GetResult();
         _stepping = null;
+        PublishLayers();
     }
 
     /// <summary>An arm, a leg or the shoulder: its bones are the skeleton's (<see cref="SiteDef.Skeleton"/>).</summary>

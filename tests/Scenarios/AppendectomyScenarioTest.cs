@@ -10,7 +10,7 @@ public class AppendectomyScenarioTest {
         using var checks = new AppendectomyFlow();
         await ScenarioFlow.Play(scenario,
             // Temporary local budget override: retains the scenario's measured muscle-sewing allowance.
-            budgetOverride: "appendectomy muscle sewing has recorded CPU/render overruns; profiling deferred",
+            budgetOverride: new("appendectomy muscle sewing has recorded CPU/render overruns; profiling deferred", 20f),
             playStep: checks.PlayStep, validate: checks.Validate, includeOptional: true);
     }
 }

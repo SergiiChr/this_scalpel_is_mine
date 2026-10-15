@@ -15,7 +15,7 @@ namespace Scalpel.Tests.Patients;
 [GodotArgs("--fixed-fps", "60")]
 public class BleedSourcesTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "bleed spots, pools and many-vessel simulation exceed the recorded CPU/render budget";
+    private static readonly BudgetAllowance BudgetOverride = new("bleed spots, pools and many-vessel simulation exceed the recorded CPU/render budget", 13f);
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task EveryBleedShowsWhereItComesFrom() {
