@@ -144,9 +144,6 @@ public partial class NetDriver : NetSession {
         }
     }
 
-    private void Check(bool passed, string claim, Func<string>? seen = null) =>
-        GD.Print(passed ? $"[{Role}] {claim}" : $"FAIL: [{Role}] {claim}{(seen is null ? "" : $", seen: {seen()}")}");
-
     /// <summary>Client: a real crouch the host must see as a grounded squat, then a cut with the scalpel and the
     /// scalpel handed across the table.</summary>
     private async Task SquatCutAndHandOver(Surgery surgery) {

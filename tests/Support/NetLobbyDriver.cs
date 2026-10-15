@@ -85,7 +85,4 @@ public partial class NetLobbyDriver : NetSession {
     }
 
     private int Partner() => Net.Instance.Roster.Keys.First(peer => peer != Net.Instance.LocalId);
-
-    private void Check(bool passed, string claim, Func<string> seen) =>
-        GD.Print(passed ? $"[{Role}] {claim}" : $"FAIL: [{Role}] {claim}, seen: {seen()}");
 }

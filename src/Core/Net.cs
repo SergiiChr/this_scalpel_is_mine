@@ -247,6 +247,7 @@ public partial class Net : Node {
         ScenarioDef scenario, uint seed, LobbyPlayer player, IReadOnlyList<QuirkRoll> patientQuirks,
         IReadOnlyList<string>? runModifiers = null) {
         Leave();
+        InSession = true;
         Scenario = scenario;
         SessionSeed = seed;
         Roster = new Dictionary<int, LobbyPlayer> { [HostId] = player };
