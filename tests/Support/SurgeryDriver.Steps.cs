@@ -183,13 +183,19 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through. Put
-    /// down on it, the blade is first drawn <paramref name="drawn"/> meters along its edge.</summary>
+    /// down on it, the blade is first turned along the opening it lies in and drawn <paramref name="drawn"/> meters along
+    /// its edge.</summary>
     public async Task PlayerCutsFree(CavityTarget target, float drawn = 0f) {
         Note($"cuts {target.Kind} free");
         var scalpel = (await PlayerRequestsItem("scalpel"))!;
         var spot = Body.UvToWorld(target.Uv, target.Depth);
         await PlayerWalksTo(spot);
         await PlayerReaches(spot);
+        // A scalpel taken up comes unrolled: across the opening, drawn along it would cut into the belly wall.
+        if (drawn > 0f && Patient.Wounds.Where(wound => wound.MadeBySurgeon && wound.IsSkinCut)
+                .MinBy(wound => wound.Points.Min(point => point.DistanceTo(target.Uv))) is { } opening) {
+            await PlayerTurnsBlade(Body.UvToWorld(opening.Points[^1]) - Body.UvToWorld(opening.Points[0]));
+        }
         await SetLevel(3);
         Use();
         if (drawn > 0f) {
