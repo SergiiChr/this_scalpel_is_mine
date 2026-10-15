@@ -425,7 +425,10 @@ public partial class Patient {
         var cell = GridCell(away);
         bool OnSide(int k) => away == Vector2.Zero || (tissue.UvOf(k) - line).Dot(away) > cell * 0.3f;
         if (Body.RestSpot(layer, uv, OnSide) is { } spot) {
-            return spot;
+            // Clicked over the gap, the edge drawn back from it would put the hole at rest across the line: it goes in
+            // at that edge instead.
+            var shy = (cell * 0.3f) - (spot.Uv - line).Dot(away);
+            return shy > 0f ? spot with { Uv = spot.Uv + (away * shy) } : spot;
         }
         for (var i = 0; i < 3 && !OnSide(tissue.Nearest(uv)); i++) {
             uv += away * cell * 0.5f;
@@ -441,8 +444,8 @@ public partial class Patient {
     }
 
     /// <summary>Where a thread's spans (holes <paramref name="points"/>) cross its wound. Each end of the wound counts a
-    /// grid cell further: a bite round the end of a short stab or bullet hole goes past it, and the holes snap to the
-    /// grid.</summary>
+    /// grid cell further: a bite round the end of a short stab or bullet hole goes past it, and the holes pull by grid
+    /// points.</summary>
     private List<Vector2> ThreadCrossings(List<Vector2> points, Wound wound) {
         var line = wound.Points.ToList();
         if (line.Count < 2) {
@@ -483,7 +486,7 @@ public partial class Patient {
         for (var i = 1; i < at.Count; i++) {
             reach = Math.Max(reach, Mathf.CeilToInt((at[i] - at[i - 1]) * 0.5f));
         }
-        // A bite within one stitch spacing of an end holds that end too. Holes snap to the tissue grid, so the first
+        // A bite within one stitch spacing of an end holds that end too. Holes pull by tissue grid points, so the first
         // crossing can land a bin or two in even when the player clicks right beside the end of the incision.
         var first = at[0] <= reach * 2 ? 0 : at[0] - reach;
         var last = wound.Bins.Length - 1 - at[^1] <= reach * 2 ? wound.Bins.Length : at[^1] + reach + 1;

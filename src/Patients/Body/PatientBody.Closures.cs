@@ -161,10 +161,11 @@ public partial class PatientBody {
         var near = Tissue.CellOf(Tissue.Nearest(uv));
         (int, Vector2)? spot = null;
         var best = float.MaxValue;
-        for (var j = Math.Max(near.Y - 2, 0); j <= Math.Min(near.Y + 2, Tissue.ResY); j++) {
-            for (var i = Math.Max(near.X - 2, 0); i <= Math.Min(near.X + 2, Tissue.ResX); i++) {
+        // Like Tissue.Nearest(), off the site's fixed border.
+        for (var j = Math.Max(near.Y - 2, 1); j <= Math.Min(near.Y + 2, Tissue.ResY - 1); j++) {
+            for (var i = Math.Max(near.X - 2, 1); i <= Math.Min(near.X + 2, Tissue.ResX - 1); i++) {
                 var k = Tissue.Index(i, j);
-                if (Tissue.Off[k] || !fits(k)) {
+                if (Tissue.Off[k] || Tissue.Excised[k] || !fits(k)) {
                     continue;
                 }
                 var moved = LayerPoint((int)layer - 1, k) - Tissue.Rest[k];

@@ -177,11 +177,11 @@ public partial class SurgeryDriver {
             var aim = Me.AimPoint();
             Use();
             await Frames.Seconds(0.2f);
-            var skin = checkAim ? SkinDrawn() : [];
+            var drawn = checkAim ? LayerDrawn(layer) : [];
             Use(false);
             await Frames.Physics(3);
             if (checkAim) {
-                AssertHoleOnAim(aim, skin, i);
+                AssertHoleOnAim(aim, drawn, layer, i);
             }
             if (captureProgress && i < 2) {
                 await Capture($"thread_hole_{i + 1}", $"the needle through hole {i + 1}, on its own side of the wound, thread trailing from it");
@@ -190,18 +190,20 @@ public partial class SurgeryDriver {
         return true;
     }
 
-    /// <summary>Where each grid point of the skin is drawn (site-local).</summary>
-    private Vector3[] SkinDrawn() => [.. Enumerable.Range(0, Body.Tissue.Pos.Length).Select(k => Body.LayerPoint(0, k))];
+    /// <summary>Where each grid point of <paramref name="layer"/> is drawn (site-local).</summary>
+    private Vector3[] LayerDrawn(TissueDepth layer) =>
+        [.. Enumerable.Range(0, Body.Tissue.Pos.Length).Select(k => Body.LayerPoint((int)layer - 1, k))];
 
-    /// <summary>The aim dot (<paramref name="aim"/>, as the player clicked) lay on the skin, and the newest hole
-    /// <paramref name="index"/> went in under it. The skin the hole holds on to may have moved since, drawn in by the
-    /// thread (<paramref name="before"/>: the skin as the click let go): the hole moves with it.</summary>
-    private void AssertHoleOnAim(Vector3 aim, Vector3[] before, int index) {
-        AssertFloat(aim.DistanceTo(Me.OnSurface(aim))).OverrideFailureMessage("the aim dot lies on the skin under the needle")
+    /// <summary>The aim dot (<paramref name="aim"/>, as the player clicked) lay on what's under the needle, and the
+    /// newest hole <paramref name="index"/> went in under it. The tissue of <paramref name="layer"/> the hole holds on to
+    /// may have moved since, drawn in by the thread (<paramref name="before"/>: that layer as the click let go): the hole
+    /// moves with it.</summary>
+    private void AssertHoleOnAim(Vector3 aim, Vector3[] before, TissueDepth layer, int index) {
+        AssertFloat(aim.DistanceTo(Me.OnSurface(aim))).OverrideFailureMessage("the aim dot lies on what's under the needle")
             .IsLess(0.001f);
         var thread = Body.Tissue.Thread(Me.HeldTool(Me.Active)!.Suture.Thread)!;
         var k = thread.Anchors[^1];
-        var moved = Body.Site.GlobalBasis * (Body.LayerPoint(0, k) - before[k]);
+        var moved = Body.Site.GlobalBasis * (Body.LayerPoint((int)layer - 1, k) - before[k]);
         var hole = Body.Site.ToGlobal(Body.DrawnThread(Me.HeldTool(Me.Active)!.Suture.Thread)!.Holes[^1]);
         var missed = (hole - moved - aim).Slide(Vector3.Up).Length() * 1000f;
         AssertFloat(missed).OverrideFailureMessage($"hole {index + 1} goes in where the aim dot was, not {missed:0.0} mm off")
