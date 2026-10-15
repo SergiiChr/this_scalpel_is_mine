@@ -26,13 +26,19 @@ public partial class IvDressing : Node3D {
     private static readonly Color CapColor = new(0.85f, 0.82f, 0.2f);
     private static readonly Color PlasticColor = new(0.88f, 0.92f, 0.94f);
 
-    private float _radius = 0.035f;
+    private bool _connected = true;
+
+    /// <summary>The radius of the arm it's wrapped around (meters).</summary>
+    public float ArmRadius { get; private set; } = 0.035f;
 
     /// <summary>The tubing's look, shared with the hanging part (<see cref="IvLine"/>).</summary>
     public static ShaderMaterial TubingMaterial() => Materials.ToonShaded(new Color(0.82f, 0.88f, 0.9f), 0.1f, false, 0.2f);
 
-    public void Build(float armRadius) {
-        _radius = armRadius;
+    /// <summary><paramref name="connected"/>: the tubing is on the catheter, taped along the arm under the second strip.
+    /// Without it only the catheter and the strip over its hub are taped down.</summary>
+    public void Build(float armRadius, bool connected = true) {
+        ArmRadius = armRadius;
+        _connected = connected;
         var plastic = Materials.ToonShaded(PlasticColor, 0.05f, false, 0.2f);
         // The visible end of the catheter, going into the skin at a shallow angle.
         Add(Shapes.Tube([new(0.004f, -0.0012f, 0f), new(Hub.Y, HubRadius * 0.8f, 0f)], 0.0007f, 0.0007f), plastic);
@@ -41,13 +47,15 @@ public partial class IvDressing : Node3D {
             HubRadius * 1.15f, HubRadius * 1.15f), Materials.ToonShaded(CapColor, 0.05f, false, 0.3f));
         Add(Patch(new Rect2(Hub.Y - 0.008f, -0.009f, 0.007f, 0.018f), 0.0005f, 0.0006f, false), plastic);
         // Taped along the arm from the hub, then off toward the stand.
-        var taped = Enumerable.Range(0, 6)
-            .Select(i => new Vector3(Mathf.Lerp(Hub.X, Exit.X, i / 5f), IvLine.Radius, 0f))
-            .ToArray();
-        Add(Shapes.Tube(taped, IvLine.Radius, IvLine.Radius), TubingMaterial());
+        if (connected) {
+            var taped = Enumerable.Range(0, 6)
+                .Select(i => new Vector3(Mathf.Lerp(Hub.X, Exit.X, i / 5f), IvLine.Radius, 0f))
+                .ToArray();
+            Add(Shapes.Tube(taped, IvLine.Radius, IvLine.Radius), TubingMaterial());
+        }
         Add(Patch(Film, 0.0006f, 0.0002f), FilmMaterial());
         var tape = Materials.FamilyUnique("cloth", TapeColor, 0.95f);
-        foreach (var strip in Tapes) {
+        foreach (var strip in connected ? Tapes : Tapes[..1]) {
             Add(Patch(new Rect2(strip.X, -strip.Z, strip.Y - strip.X, strip.Z * 2f), 0.0007f, 0.0005f), tape);
         }
         // The printed band on the tape over the hub.
@@ -61,24 +69,24 @@ public partial class IvDressing : Node3D {
 
     /// <summary>How high whatever lies on the skin reaches under a strip at (x, z): the hub with its wings, the tubing.
     /// </summary>
-    private static float Under(float x, float z) {
+    private float Under(float x, float z) {
         static float Bump(float z, float radius) =>
             radius * 2f * Mathf.Sqrt(Mathf.Max(1f - Mathf.Pow(z / (radius * 1.6f), 2f), 0f));
         var height = 0f;
         if (x > Hub.X - 0.002f && x < Hub.Y + 0.002f) {
             height = Mathf.Max(height, Bump(z, HubRadius));
         }
-        if (x < Hub.X && x > Exit.X - 0.005f) {
+        if (_connected && x < Hub.X && x > Exit.X - 0.005f) {
             height = Mathf.Max(height, Bump(z, IvLine.Radius));
         }
         return height;
     }
 
-    /// <summary>A point <paramref name="lift"/> off the arm's skin at x along the arm and z across it (arc length), the
-    /// arm a cylinder around X.</summary>
-    private Vector3 OnArm(float x, float z, float lift) {
-        var angle = z / _radius;
-        return new Vector3(x, ((_radius + lift) * Mathf.Cos(angle)) - _radius, (_radius + lift) * Mathf.Sin(angle));
+    /// <summary>A point <paramref name="lift"/> off the skin of an arm of <paramref name="radius"/> at x along the arm
+    /// and z across it (arc length), the arm a cylinder around X.</summary>
+    internal static Vector3 OnArm(float radius, float x, float z, float lift) {
+        var angle = z / radius;
+        return new Vector3(x, ((radius + lift) * Mathf.Cos(angle)) - radius, (radius + lift) * Mathf.Sin(angle));
     }
 
     /// <summary>A thin sheet (film, tape, the catheter's wings) over <paramref name="area"/> (x along the arm, y across
@@ -92,7 +100,7 @@ public partial class IvDressing : Node3D {
             for (var j = 0; j <= rows; j++) {
                 var x = area.Position.X + (area.Size.X * i / columns);
                 var z = area.Position.Y + (area.Size.Y * j / rows);
-                grid[i, j] = OnArm(x, z, lift + thickness + (drapes ? Under(x, z) : 0f));
+                grid[i, j] = OnArm(ArmRadius, x, z, lift + thickness + (drapes ? Under(x, z) : 0f));
             }
         }
         var surface = new SurfaceTool();

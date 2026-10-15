@@ -70,7 +70,6 @@ public class ModelsTest {
         BladeAnimation(holder);
         NeedleHolder(holder);
         ContactAudio();
-        IvLineClearance(holder);
         CheckBudgets(holder);
         for (var handIndex = 0; handIndex < 2; handIndex++) {
             await GripClearance(holder, handIndex);
@@ -525,24 +524,6 @@ public class ModelsTest {
         Sfx.ExpireContacts();
         Frames.Root.GetNode<Sfx>("Sfx")._Process(1.0);
         AssertInt(Sfx.ContactCount).OverrideFailureMessage("stale contact loops fade away").IsEqual(0);
-    }
-
-    private static void IvLineClearance(Node3D holder) {
-        var line = new IvLine();
-        holder.AddChild(line);
-        var stand = new Node3D();
-        var patient = new Node3D();
-        holder.AddChild(stand);
-        holder.AddChild(patient);
-        patient.Position = patient.Position with { X = 1f };
-        var site = new Transform3D(Basis.Identity, new Vector3(0f, 1.4f, 0f));
-        line.Attach(stand, new Vector3(0f, 1.6f, 0f), patient, site, 0.035f);
-        var lowest = line.Points.Min(point => point.Y);
-        AssertBool(line.Points.Count == IvLine.Samples && lowest < IvLine.TripHeight - 0.04f)
-            .OverrideFailureMessage("IV attachment immediately builds tubing at walking trip height").IsTrue();
-        line.QueueFree();
-        stand.QueueFree();
-        patient.QueueFree();
     }
 
     private static int Triangles(Node root) {

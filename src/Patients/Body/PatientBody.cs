@@ -364,6 +364,14 @@ public partial class PatientBody : Node3D {
     /// <summary>The site-local point over uv at <paramref name="height"/> above the site plane.</summary>
     public Vector3 SitePoint(Vector2 uv, float height) => new((uv.X - 0.5f) * SiteSize.X, height, (uv.Y - 0.5f) * SiteSize.Y);
 
+    /// <summary>Where the skin at <paramref name="uv"/> is drawn now (world): moved as far as the drawn skin at its nearest
+    /// grid point where the sim replaces the body (pulled, pressed or cut), at rest everywhere else.</summary>
+    public Vector3 SkinPoint(Vector2 uv) {
+        var k = Tissue.Nearest(uv);
+        var moved = k < _region.Length && _region[k] == 1 ? LayerPoint(0, k) - _onModel[k] : Vector3.Zero;
+        return Site.ToGlobal(SitePoint(uv, SurfaceHeight(uv)) + moved);
+    }
+
     /// <summary>Meters between the skin and p along the site normal. Negative = under the skin.</summary>
     public float HeightAboveSite(Vector3 p) {
         var local = Site.ToLocal(p);

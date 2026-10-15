@@ -1,11 +1,11 @@
 # The GdUnit4 suites under tests/ are the executable source of truth. Smoke gates full regression and export.
 name: Tests
 
-# Pushes to main and develop only: a branch with a pull request is tested once, by the pull_request run.
-# Each develop commit gets its own result: release verification picks only commits that passed.
+# Pushes to main, develop and release/** only: a branch with a pull request is tested once, by the pull_request run.
+# Each develop commit gets its own result: release verification cuts only from commits that passed.
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'release/**']
   pull_request:
 
 jobs:

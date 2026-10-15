@@ -238,8 +238,7 @@ public partial class Screenshot : Node {
             await Frames(2);
             await Shot("14a_xray_cart");
             camera.QueueFree();
-            cart.FindChildren("*", "", true, false).OfType<Interactable>().First(spot => spot.Prompt.StartsWith("Take an X-ray"))
-                .Interact(surgery.LocalSurgeon!);
+            cart.TakeXray();
             await Frames((int)(XrayCart.ExposeTime * 60) + 30);
             await ToSignal(GetTree().CreateTimer(XrayCart.DevelopTime + 0.5), SceneTreeTimer.SignalName.Timeout);
             var me = surgery.LocalSurgeon!;

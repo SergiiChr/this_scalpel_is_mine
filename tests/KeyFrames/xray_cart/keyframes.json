@@ -1,9 +1,11 @@
 {
-  "00_untouched_oblique.jpg": "the X-ray cart: a T base with casters in front, big wheels under the generator, the column, the arm reaching up to a level tube head with a screen on its back, the red pedal down",
-  "00_untouched_top.jpg": "the X-ray cart: a T base with casters in front, big wheels under the generator, the column, the arm reaching up to a level tube head with a screen on its back, the red pedal down",
-  "01_lowered_oblique.jpg": "the cart pushed away from its corner, the arm lowered, the tube head still level, the pedal up",
-  "01_lowered_top.jpg": "the cart pushed away from its corner, the arm lowered, the tube head still level, the pedal up",
-  "02_head_in_view_view.jpg": "the tube head in the middle of the view, the prompt to take an X-ray with the wheel to raise or lower the arm",
-  "03_locked_front.jpg": "the cart from behind, its handle loop in front, the red pedal by the right wheel pressed down",
-  "03_locked_oblique.jpg": "the cart from behind, its handle loop in front, the red pedal by the right wheel pressed down"
+  "00_untouched_oblique.jpg": "the upright X-ray cart: a compact base with casters in front and wheels under the generator, a tall column left of the middle, a level arm curving from its top round to the middle, the tube head hanging under its end with a screen on its back, the red pedal down",
+  "00_untouched_top.jpg": "the upright X-ray cart: a compact base with casters in front and wheels under the generator, a tall column left of the middle, a level arm curving from its top round to the middle, the tube head hanging under its end with a screen on its back, the red pedal down",
+  "01_cart_in_view_view.jpg": "the whole cart lit up warmer than the room, the prompt to push it with the right mouse button",
+  "01_handle_in_view_view.jpg": "the cart's handle loop lit up warmer than the rest of the cart, the prompt to push it",
+  "02_lowered_oblique.jpg": "the cart pushed away from its corner, the arm slid down the column, the tube head still level, the pedal up",
+  "02_lowered_top.jpg": "the cart pushed away from its corner, the arm slid down the column, the tube head still level, the pedal up",
+  "03_head_in_view_view.jpg": "the tube head in the middle of the view, the cart lit up, the prompt to push or let go of it",
+  "04_locked_front.jpg": "the cart from behind, its handle loop in front, the red pedal right of middle pressed down",
+  "04_locked_oblique.jpg": "the cart from behind, its handle loop in front, the red pedal right of middle pressed down"
 }

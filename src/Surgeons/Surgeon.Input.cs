@@ -99,7 +99,7 @@ public partial class Surgeon {
         } else if (@event.IsActionPressed(InputActions.Zoom)) {
             Zoom = (Zoom + 1) % ZoomFov.Length;
         } else if (@event.IsActionPressed(InputActions.UseTool) && PushedCart() is { } cart) {
-            cart.Lock();
+            cart.TakeXray();
         } else if (@event.IsActionPressed(InputActions.UseTool)) {
             // One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
             SetLowered(hand, true);
@@ -119,6 +119,12 @@ public partial class Surgeon {
             SetLowered(hand, false);
             hand.Trigger = false;
             EndNeedleZoom();
+        } else if (@event.IsActionPressed(InputActions.Grab) && PushedCart() is { } pushed) {
+            pushed.Lock();
+        } else if (@event.IsActionPressed(InputActions.Grab) && HeldTool(Active) is null && !IsInstanceValid(Hovered)
+            && Focused?.Button == InputActions.Grab) {
+            // A tool by the hand comes first: the cart is only taken hold of with nothing else to pick up.
+            Focused.Interact(this);
         } else if (@event.IsActionPressed(InputActions.Grab)) {
             if (HeldTool(Active) is { Def.Tray: "bottles" } && !hand.Attached) {
                 // A bottle: let go quickly it's put down as anything is, held on it's stood upright (see
@@ -132,7 +138,7 @@ public partial class Surgeon {
             GrabOrRelease();
         } else if (@event.IsActionPressed(InputActions.Interact) && HoldingFilms) {
             HoldingFilms = false;
-        } else if (@event.IsActionPressed(InputActions.Interact) && Focused is not null) {
+        } else if (@event.IsActionPressed(InputActions.Interact) && Focused?.Button == InputActions.Interact) {
             Focused.Interact(this);
         } else if (@event.IsActionPressed(InputActions.Drink)) {
             Session.RequestDrink(Active);
@@ -202,8 +208,8 @@ public partial class Surgeon {
         }
     }
 
-    /// <summary>The X-ray cart this surgeon pushes: the wheel raises and lowers its arm, and Use tool locks it in place.
-    /// </summary>
+    /// <summary>The X-ray cart this surgeon pushes: the wheel raises and lowers its arm, Use tool takes an X-ray and
+    /// Grab lets go of it, locking it in place.</summary>
     internal XrayCart? PushedCart() => Session.Room.Xray is { } cart && cart.Pusher == PeerId ? cart : null;
 
     /// <summary>Back to the zoom step from before Use tool zoomed in on a syringe's needle, if it did.</summary>
@@ -746,8 +752,21 @@ public partial class Surgeon {
 
     private void UpdateFocus() {
         var from = Camera.GlobalPosition;
-        var focused = Rays.Cast(this, from, from - (Camera.GlobalBasis.Z * InteractRange), Interactable.Layer, areas: true)
-            ?.Collider as Interactable;
-        Focused = focused is not null && focused.OfferedTo(this) ? focused : null;
+        var to = from - (Camera.GlobalBasis.Z * InteractRange);
+        var focused = Rays.Cast(this, from, to, Interactable.Layer, areas: true)?.Collider as Interactable;
+        // Two can share a spot, each offered for a different held tool (the IV stand's bag and line).
+        if (focused is not null && !focused.OfferedTo(this)) {
+            focused = Rays.Cast(this, from, to, Interactable.Layer, focused.GetRid(), areas: true)?.Collider as Interactable;
+        }
+        // Films held up in front of the eyes hide everything else.
+        focused = focused is not null && focused.OfferedTo(this) && !HoldingFilms ? focused : null;
+        if (focused == Focused) {
+            return;
+        }
+        if (IsInstanceValid(Focused)) {
+            Focused!.Light(false);
+        }
+        focused?.Light(true);
+        Focused = focused;
     }
 }

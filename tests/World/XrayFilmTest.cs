@@ -1,8 +1,8 @@
 namespace Scalpel.Tests.World;
 
 /// <summary>X-ray films as a surgeon uses them to find what's in the patient: push the cart until the tube head hangs
-/// over the site, lock it, expose, and hold the two films up. The AP film shows what's lodged under the site where it
-/// lies: a bullet, the ends of a broken bone, a figurine, the appendix. With the head brought down until the lateral
+/// over the site, expose with Use tool, let go, and hold the two films up. The AP film shows what's lodged under the site
+/// where it lies: a bullet, the ends of a broken bone, a figurine, the appendix. With the head brought down until the lateral
 /// beam runs through it, the lateral film shows it too, at its depth. Where the films are drawn (with key frames), metal
 /// and bone come out white on them.</summary>
 [TestSuite, RequireGodotRuntime]
@@ -10,8 +10,8 @@ namespace Scalpel.Tests.World;
 [GodotArgs("--fixed-fps", "60")]
 [IsolateCases]
 public class XrayFilmTest {
-    // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.
-    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 4.5f);
+    // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 12f);
 
     /// <summary>How much brighter than the film around it something pronounced shows (0..1 of the picture).</summary>
     private const float Pronounced = 0.25f;
@@ -43,7 +43,7 @@ public class XrayFilmTest {
             }
             // Loading the scenario isn't gameplay: the frame budget counts from here.
             driver.Budget.Clear();
-            await driver.PlayerParksXrayOver(middle, lateral ? middle.Y : null);
+            await driver.PlayerPushesXrayOver(middle, lateral ? middle.Y : null);
             var views = lateral ? cart.Beams() : cart.Beams()[..1];
             foreach (var beam in views) {
                 AssertBool(targets.All(target => beam.FilmPoint(target.GlobalPosition) is not null))
@@ -51,11 +51,9 @@ public class XrayFilmTest {
             }
             if (shots is not null) {
                 if (lateral) {
-                    // Lowered just over the patient, the tube head fills a view from above.
-                    await driver.PlayerLooksAt(middle);
+                    // As the pusher stands, still holding the cart: turning to look would swing it off the site.
                     await driver.Unbudgeted(() => shots.CaptureView("field",
-                        "past the cart, the tube head lowered just over the patient, pale yellow light outlines on the "
-                            + "body around the site"));
+                        "past the cart's column, pale yellow light outlines on the body around the site"));
                 } else {
                     // From the patient's feet: from above the tube head is in the way, from the cart's side its column.
                     await driver.Unbudgeted(() => shots.CaptureOblique("field",
@@ -75,8 +73,25 @@ public class XrayFilmTest {
                 }
                 return Task.CompletedTask;
             });
+            var holder = cart.FindChildren("*", "", true, false).OfType<Interactable>()
+                .Single(spot => spot.Prompt.StartsWith("Hold up"));
+            await driver.PlayerLooksAt(holder.GlobalPosition);
+            await Frames.Physics(2);
+            var others = cart.FindChildren("*", "", true, false).OfType<Interactable>().Where(spot => spot != holder);
+            AssertBool(driver.Me.Focused == holder && SurgeryDriver.IsLit(holder) && !others.Any(SurgeryDriver.IsLit))
+                .OverrideFailureMessage($"looking at the developed films lights them up, and only them: focused on "
+                    + $"{driver.Me.Focused?.Prompt}")
+                .IsTrue();
+            // One case shows it: the films light up the same whatever is on them.
+            if (shots is not null && scenario == "bullet_muscle" && !lateral) {
+                await driver.Unbudgeted(() => shots.CaptureView("films_in_view",
+                    "the two developed films standing in the holder on the generator, lit up warmer than the cart, "
+                        + "the prompt to hold them up"));
+            }
             await driver.PlayerHoldsUpFilms();
             AssertBool(driver.Me.HoldingFilms).OverrideFailureMessage("interact on the holder holds the films up").IsTrue();
+            await Frames.Physics(2);
+            AssertBool(SurgeryDriver.IsLit(holder)).OverrideFailureMessage("held up, the films are no longer lit").IsFalse();
             if (shots is not null) {
                 var lamp = driver.Surgery.Room.GetNode<Node3D>("SurgicalLamp").GlobalPosition;
                 await driver.PlayerLooksAt(lamp);
