@@ -13,7 +13,7 @@ namespace Scalpel.Tests.UI;
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class NurseShopTest {
-    // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.
+    // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 11f);
 
     /// <summary>Two of the same, from three categories, and a sixth that doesn't fit.</summary>

@@ -15,7 +15,7 @@ namespace Scalpel.Tests.Tools;
 public class StaplerTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget: each staple changes the tissue, and "
-        + "rebuilding its layers takes about 6 ms (PatientBody.RebuildLayers()); not optimized yet", 25.5f);
+        + "rebuilding its layers (PatientBody.RebuildLayers()) goes over the CPU budget; not optimized yet", 25.5f);
 
     [TestCase]
     public async Task SkinStaplerClosesAForearmCut() {

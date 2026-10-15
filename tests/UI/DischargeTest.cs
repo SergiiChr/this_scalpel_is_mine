@@ -10,8 +10,9 @@ namespace Scalpel.Tests.UI;
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class DischargeTest {
-    // Temporary local budget override: taking the card off its hook peaks at 6-11 ms here (budget about 10 ms), the same
-    // card path PatientCardTest overrides; signing itself stays far below it.
+    // Temporary local budget override: taking the card off its hook peaks at 6-11 ms on a fast machine, the same card
+    // path PatientCardTest overrides; signing itself stays far below it. The factor covers a 43.7 ms frame while
+    // waiting for the discharge in the cloud release run.
     private static readonly BudgetAllowance BudgetOverride = new("taking the patient card off its hook sometimes exceeds the CPU budget", 20f);
 
     [TestCase]
