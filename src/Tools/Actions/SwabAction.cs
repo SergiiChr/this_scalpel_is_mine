@@ -1,7 +1,8 @@
 namespace Scalpel.Tools;
 
-/// <summary>Gauze and swabs wipe blood away (and press on a wound); a cotton pad held in the glove dips and wipes like
-/// one held in forceps, spoiling the site. Either wipes blood beads off wherever it touches, on the arm too.</summary>
+/// <summary>Gauze and swabs wipe blood away and soak it up until full (and press on a wound, full or not); a cotton pad
+/// held in the glove dips and wipes like one held in forceps, spoiling the site. Either wipes blood beads off wherever
+/// it touches, on the arm too.</summary>
 public sealed class SwabAction : ToolAction {
     public override void Apply(ToolStep step) {
         if (!(step.Lowered && step.Level > 0)) {
@@ -12,11 +13,11 @@ public sealed class SwabAction : ToolAction {
             ToolActions.Wipe(tool, step, step.Dt * step.Effort, gloved: true);
             return;
         }
-        ToolActions.WipeBeads(step, step.Def);
+        ToolActions.WipeBeads(step, tool);
         if (step.InSite) {
             var wiped = ToolActions.Gather(tool, step.Uv, step.Dt * step.Effort);
             if (wiped > 0f) {
-                step.Patient.SwabAt(step.Zone, step.Uv, step.Def, wiped);
+                ToolActions.Swab(step, tool, wiped);
             }
         }
     }

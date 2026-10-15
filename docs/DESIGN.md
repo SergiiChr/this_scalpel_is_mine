@@ -383,10 +383,15 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   as long as its slowest item. A 15 s cooldown after each delivery from the sixth on (the first five come without).
   Every drug is under one Drugs group. A board over the bell shows the batch on its way
   with a progress bar, then the cooldown.
-- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
+- **Skin prep** (`ToolActions.Wipe()`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
   held), pinch a cotton pad with forceps (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up
-  off the floor contaminates the site. A pad soaks up 10 ml (`ToolActions.PadMl`), so the 40 ml iodine dish soaks
-  four; a soaked pad runs dry after about 8 s of wiping.
+  off the floor contaminates the site. A pad soaks up 10 ml (its `volume`), so the 40 ml iodine dish soaks four; a
+  soaked pad runs dry after about 8 s of wiping.
+- **Swab capacity** (`ToolActions.Swab()`): gauze (20 ml) and cotton pads (10 ml) hold what they soak up in their
+  `volume`, iodine and blood alike: a pad half full of iodine has room for half as much blood. Wiping takes blood off
+  the skin, out of cuts and the cavity (`Patient.SwabRate`) only while there's room for it; a full swab no longer
+  wipes, but gauze still presses on a wound. The whole swab takes the color of what it holds, iodine brown and blood
+  red mixed by their shares, deeper the fuller it is. Blood soaked up bloodies the glove holding it.
 - **Dishes** (`ToolDef.IsDish()`: a volume and no action of its own, the iodine dish and the kidney dish) all work
   the same: bottles pour into them, syringes squirt into them and draw from them, pads dip into iodine in them
   (`ToolManager.NearestDish()`). They show their liquid by its ml, tinted toward iodine and blood by their share.
@@ -599,8 +604,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
   the body jerking, a bead of blood where a needle or catheter goes in (gauze or a pad wipes it away like other
-  blood). Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
-  through (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
+  blood). Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
+  (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,
