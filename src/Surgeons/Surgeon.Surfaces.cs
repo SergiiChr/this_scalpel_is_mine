@@ -25,6 +25,13 @@ public partial class Surgeon {
     private const float VialFacing = 0.5f;
     /// <summary>Furthest a syringe's tip may be above or below a vial's cap (meters) to snap into it.</summary>
     private const float VialAbove = 0.06f;
+    /// <summary>A syringe whose tip comes this close (meters, across the floor) to the fist holding a vial in the other
+    /// hand meets it: looser than a vial lying about, as the player aims at the bottle in the hand, not its cap.</summary>
+    private const float HeldVialSnap = 0.08f;
+    /// <summary>The same up and down.</summary>
+    private const float HeldVialAbove = 0.15f;
+    /// <summary>A vial held up to a syringe stands cap up (radians of tilt): a fist holds it cap down otherwise.</summary>
+    private const float VialUp = Mathf.Pi / 2f;
     /// <summary>Snapped, a syringe lets go only this much further out (see SnapSpot()).</summary>
     private const float UnsnapMargin = 0.015f;
     /// <summary>Snapping in or out takes this long (seconds).</summary>
@@ -37,7 +44,8 @@ public partial class Surgeon {
     /// thinnest skin between two cuts worth telling apart.</summary>
     private const float LipStep = 0.002f;
 
-    /// <summary>Hands whose syringe is snapped into a vial or the IV bag, or easing in or out.</summary>
+    /// <summary>Hands whose syringe is snapped into a vial or the IV bag, or whose vial is held up to the other hand's
+    /// syringe, or easing in or out.</summary>
     private readonly Dictionary<int, SnapState> _snaps = [];
 
     /// <summary>Where a syringe snaps to: its needle tip and the angles it's held at there.</summary>
@@ -286,23 +294,76 @@ public partial class Surgeon {
     /// and after, or null when it's over nothing to snap to (or that's out of reach).
     /// Its tip over a vial's cap (within <see cref="VialSnap"/> across the floor), the needle goes in through it along
     /// the vial, if the cap faces this surgeon: up, or lying, toward them.
+    /// Over the fist holding a vial in the other hand (<see cref="HeldVialMeeting"/>), both hands ease toward each
+    /// other: the vial turns cap up and the needle goes down into it. A vial hand gets its spot here too: its cap, the
+    /// tool's tip, at the meeting point.
     /// Over the IV bag (within <see cref="DripSnap"/> of its middle), it goes into the middle of the bag's face on the
     /// hand's side, a little upward (<see cref="DripTilt"/>).
     /// Already snapped (<paramref name="held"/>), it lets go only <see cref="UnsnapMargin"/> further out, so passing over
     /// doesn't hold it for long.
     /// </summary>
     private SnapSpot? FindSnapSpot(SurgeonHand hand, SurgicalTool tool, Vector2 own, bool held) {
-        if (!IsSyringe(tool) || hand.Attached) {
+        if (hand.Attached) {
+            return null;
+        }
+        if (tool.Def.Action == "vial") {
+            return HeldVialMeeting(1 - hand.Index) is { } cap ? new SnapSpot(cap, VialUp, own.Y) : default(SnapSpot?);
+        }
+        if (!IsSyringe(tool)) {
             return null;
         }
         var tip = hand.Target + OwnTipOffset(hand.Index);
         var margin = held ? UnsnapMargin : 0f;
-        var spot = VialSpot(tip, own, VialSnap + margin) ?? BagSpot(hand, tip, DripSnap + margin);
+        var spot = VialSpot(tip, own, VialSnap + margin)
+            ?? (HeldVialMeeting(hand.Index) is { } meeting
+                ? new SnapSpot(meeting + (Vector3.Down * 0.004f), -VialUp, own.Y)
+                : default(SnapSpot?))
+            ?? BagSpot(hand, tip, DripSnap + margin);
         if (spot is not { } found) {
             return null;
         }
         var handThere = found.At - hand.TipOffsetAt(tool.Def.Length, found.Tilt, found.Turn);
         return handThere.DistanceTo(Shoulder(hand.Index)) > Reach ? null : found;
+    }
+
+    /// <summary>Where the syringe in <paramref name="syringeHand"/> and a vial in this surgeon's other hand meet, the
+    /// vial standing cap up: halfway between the needle's tip and the vial's cap across the floor, at the higher of the
+    /// two, so neither is pushed down into what's under it. Null unless the needle is over the vial's fist
+    /// (<see cref="HeldVialSnap"/>), no vial lying about snaps it first and both hands reach the meeting point; both
+    /// hands ask, so both snap or neither does.
+    /// A needle pressed into something else (Use tool held) doesn't start a meeting, and one stuck in the patient ends it.
+    /// Once met, it lets go only <see cref="UnsnapMargin"/> further out across the floor, and a vial length further up
+    /// or down: standing up, the vial lets its fist down closer to what's under it.</summary>
+    private Vector3? HeldVialMeeting(int syringeHand) {
+        var needleHand = Hands[syringeHand];
+        var vialHand = Hands[1 - syringeHand];
+        if (HeldTool(syringeHand) is not { } syringe || !IsSyringe(syringe)
+            || HeldTool(vialHand.Index) is not { Def.Action: "vial" } vial
+            || vialHand.Attached || vialHand.Inspecting || needleHand.Attached || needleHand.Inspecting
+            || (syringeHand == Active && _needleAnchor is not null)) {
+            return null;
+        }
+        // A vial hand snaps only to meet a syringe: its state says whether they've met.
+        var met = _snaps.GetValueOrDefault(vialHand.Index)?.On == true;
+        if (needleHand.Lowered && !met) {
+            return null;
+        }
+        var own = _snaps.GetValueOrDefault(syringeHand)?.Own ?? new Vector2(needleHand.Tilt, needleHand.Turn);
+        var fist = ToGlobal(vialHand.LocalTarget);
+        var tip = ToGlobal(needleHand.LocalTarget) + OwnTipOffset(syringeHand);
+        if (new Vector2(tip.X - fist.X, tip.Z - fist.Z).Length() >= HeldVialSnap + (met ? UnsnapMargin : 0f)
+            || Mathf.Abs(tip.Y - fist.Y) > HeldVialAbove + (met ? vial.Def.Length : 0f)
+            || VialSpot(tip, own, VialSnap) is not null) {
+            return null;
+        }
+        var cap = fist + (Vector3.Up * vial.Def.Length);
+        var meeting = tip.Lerp(cap, 0.5f) with { Y = Mathf.Max(tip.Y, cap.Y) };
+        var vialThere = meeting + (Vector3.Down * vial.Def.Length);
+        var syringeThere = meeting - needleHand.TipOffsetAt(syringe.Def.Length, -VialUp, own.Y);
+        return vialThere.DistanceTo(Shoulder(vialHand.Index)) > Reach
+            || syringeThere.DistanceTo(Shoulder(syringeHand)) > Reach
+            ? null
+            : meeting;
     }
 
     /// <summary>The nearest free vial's cap within <paramref name="nearest"/> of the tip across the floor that faces this
