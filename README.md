@@ -135,5 +135,6 @@ tools/keyframes.py  Key frame review report (./build.py screenshot_review)
 The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog and source of truth. `./build.py test`
 runs the smoke category; `./build.py test --all` runs the full regression, `--with-key-frames` saves screenshots of key
 moments. They also run from the IDE's test explorer. CI gates the full suite and export on smoke.
+Features land on `develop`; a verified `develop` commit is released to `main` ([docs/RELEASE.md](docs/RELEASE.md)).
 
 See [docs/DESIGN.md](docs/DESIGN.md) for architecture, data formats and the mechanics list.

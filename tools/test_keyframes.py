@@ -1,6 +1,7 @@
 """Checks of the key frame comparison and baseline update on small generated images; no Godot runtime needed."""
 
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -76,6 +77,15 @@ class KeyFramesTest(unittest.TestCase):
         for path in (self.run_frames / "scalpel").glob("00_cut_*.png"):
             path.unlink()
         self.take("01_stitch")
+        self.assertEqual(self.differ(), 2)
+
+    def test_focused_run_compares_only_its_folders(self) -> None:
+        self.take("00_cut")
+        scene(self.run_frames / "suture" / "00_knot_top.png")
+        keyframes.update(self.run_frames, self.baseline)
+        shutil.rmtree(self.run_frames / "suture")
+        self.take("01_stitch")
+        self.assertEqual(keyframes.report(self.run_frames, self.baseline, self.root / "review", False, "focused")[1], 1)
         self.assertEqual(self.differ(), 2)
 
     def test_update_writes_only_what_differs(self) -> None:

@@ -893,10 +893,13 @@ def screenshot_review(arguments: list[str]) -> int:
         "the report.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="review the key frames of the last run")
+    parser.add_argument("--focused", action="store_true", help="review the last focused run with key frames, only in the folders it took")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     parsed = parser.parse_args(arguments)
     status, regression = 0, "not-run"
-    if not parsed.use_latest_set:
+    if parsed.focused:
+        regression = "focused"
+    elif not parsed.use_latest_set:
         status = key_frame_run()
         regression = "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]

@@ -180,6 +180,10 @@ def sheet(frame: KeyFrame, label: str, out: Path) -> None:
 def report(current_root: Path, baseline_root: Path, out: Path, everything: bool, regression: str) -> tuple[str, int]:
     """Writes the sheets and returns the Markdown index and how many key frames differ from the baseline."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
+    if regression == "focused":
+        # A focused run took only its own tests' key frames: the rest of the baseline isn't missing, just not run.
+        taken = {folder for folder, _ in current}
+        baseline = {key: frame for key, frame in baseline.items() if key[0] in taken}
     states = ("missing", "changed", "new", "unchanged")
     counts = dict.fromkeys(states, 0)
     sections: dict[str, list[str]] = {}
@@ -221,6 +225,7 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
             "Review their sheets: the baseline takes them only if the case isn't visibly broken. "
             "Key frames they didn't take show as missing below and stay in the baseline.",
             "not-run": "Regression: not run, these are the key frames of an earlier run.",
+            "focused": "Focused run: only the folders it took key frames in are compared.",
         }[regression],
         f"Current: `{current_root.as_posix()}`  ",
         f"Baseline: `{baseline_root.as_posix()}`"
@@ -321,7 +326,7 @@ def main() -> int:
     updating.add_argument("--keep", action="append", default=[], help="a folder whose key frames and views the run didn't take stay")
     review.add_argument("out", type=Path, help="report folder, emptied first")
     review.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
-    review.add_argument("--regression", choices=("passed", "failed", "not-run"), default="not-run", help="how the run went, for the top of the report")
+    review.add_argument("--regression", choices=("passed", "failed", "not-run", "focused"), default="not-run", help="how the run went, for the report")
     parsed = parser.parse_args()
     if parsed.command == "update":
         print(f"Baseline: {update(parsed.current, parsed.baseline, frozenset(parsed.keep))} key frames written or deleted in {parsed.baseline}.")

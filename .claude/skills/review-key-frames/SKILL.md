@@ -1,9 +1,13 @@
 ---
 name: review-key-frames
-description: Run the full regression with key frames, review only the key frames that changed against the committed baseline, and commit the reviewed ones as the new baseline. Use it for the full regression step before a PR and whenever a change needs its key frames reviewed (Visual verification in CLAUDE.md), instead of opening screenshots one by one.
+description: Review only the key frames that changed against the committed baseline, from a focused run for a feature or the full regression for a release, and on a release branch commit the reviewed ones as the new baseline. Use it whenever a change needs its key frames reviewed (Visual verification in CLAUDE.md, docs/RELEASE.md), instead of opening screenshots one by one.
 ---
 
 # Review key frames
+
+A feature branch reviews only its own suites: `./build.py test --tag ... --with-key-frames`, then
+`./build.py screenshot_review --focused`, then steps 2 to 4 and 6. It never commits the baseline (step 5).
+A release branch (docs/RELEASE.md) runs every step.
 
 1. Run `./build.py screenshot_review` (smoke and lint pass first, see CLAUDE.md). It runs the same full regression as
    `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A case that fails runs once more
@@ -16,8 +20,8 @@ description: Run the full regression with key frames, review only the key frames
    the "Should show" line above it (the test's own description) and what the report's "Look for" line names. Open a
    `before` sheet only when a change needs explaining.
 4. A changed key frame the change didn't mean to touch is a regression: find out why before handing off.
-5. Once every listed sheet looks right, run
-   `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` with the change. It writes only the
+5. On a release branch, once every listed sheet looks right, run
+   `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` on that branch. It writes only the
    listed key frames; the others keep their files. `--use-latest-set` takes the key frames just reviewed; after any
    later change, review again first. Skip this step when the report lists nothing.
 6. In the handoff, list the sheets you reviewed and what you found.
@@ -34,7 +38,7 @@ description: Run the full regression with key frames, review only the key frames
 - If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is
   off (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is
   the task, and don't skip the review of the key frames your change touches.
-- After rebasing onto a main with other key frames, take main's `tests/KeyFrames`, then review and generate again.
+- Only release branches commit it; feature branches leave `tests/KeyFrames` as `develop` has it.
 
 `screenshot_review --use-latest-set` rebuilds the report from the last run's key frames. `--all` also makes sheets
 for unchanged key frames, for a review from scratch.
