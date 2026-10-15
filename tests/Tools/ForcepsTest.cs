@@ -4,8 +4,8 @@ namespace Scalpel.Tests.Tools;
 /// Forceps close on what they come to rest on, not on whatever the tip passes on its way down: the thigh's entry wound
 /// is opened through every layer over the bullet, then the forceps are pressed in ways that leave the tip still coming
 /// down when the press counts. Key frames: the site from above and obliquely, the forceps on the skin beside the
-/// opening and holding the bullet. Review them for the jaws on the skin edge, not down in the opening, and then on the
-/// bullet down in it.
+/// opening and holding the bullet, then held up in the opening by the wheel and stopped at its lip. Review them for the
+/// jaws on the skin edge, not down in the opening, then on the bullet down in it, then clear of it and of the skin.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_forceps"), TestCategory("visual_confirmation")]
@@ -64,6 +64,113 @@ public class ForcepsTest {
         AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
             .OverrideFailureMessage($"pressed while moving onto the bullet, the forceps take it: {forceps.Hold}").IsTrue();
         await LetGo(driver, forceps);
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task ForcepsHeldUpInTheOpeningCloseWhereTheTipIs() {
+        var (session, bullet) = await OpenOverBullet("forceps/depth");
+        var driver = session.Driver;
+        var me = driver.Me;
+        var hand = me.Hands[me.Active];
+        var hud = driver.Surgery.Hud;
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        var spot = driver.Body.UvToWorld(bullet.Uv, bullet.Depth);
+        await driver.PlayerWalksTo(spot);
+        await driver.PlayerReaches(spot);
+        AssertString(string.Join("\n", Hud.ControlLines(me))).OverrideFailureMessage("the hint names what the wheel does")
+            .Contains("Raise / lower tip in an opening");
+        var resting = me.InOpening(me.Active);
+        AssertBool(resting is { } r && hand.HeldDepth is null && Mathf.Abs(r.Depth - r.Bottom) < 0.002f)
+            .OverrideFailureMessage($"untouched, the tip rests just above the bullet: {resting}").IsTrue();
+
+        // A notch up: still deeper than the lip's edge, too high over what's inside for the jaws to reach the bullet.
+        await SurgeryDriver.Notch(true);
+        await Frames.Physics(2);
+        var raised = me.InOpening(me.Active)!.Value;
+        var wanted = resting!.Value.Bottom - Surgeon.DepthStep;
+        await driver.AssertAndCapture(hand.HeldDepth is not null && Mathf.Abs(raised.Depth - wanted) < 0.001f,
+            $"a notch up, the forceps' tip is held higher in the opening over the bullet, below the lip: {raised.Depth} m deep, {wanted} wanted",
+            "held_up");
+        AssertBool(hud.DepthShown && hud.AimText.Contains("Tip depth") && hud.AimText.Contains("held by the wheel"))
+            .OverrideFailureMessage($"the aim shows the stem down to the tip and the depth beside it: {hud.AimText}").IsTrue();
+        // Zoomed in, so the stem shows.
+        PlayerInput.Tap(InputActions.Zoom);
+        await Frames.Seconds(0.5f);
+        await session.CaptureView("held_up_view",
+            "zoomed in over the opening, the aim's stem from its lip down to the forceps' tip, \"Tip depth\" and \"held by the wheel\" beside it");
+        PlayerInput.Tap(InputActions.Zoom);
+        await Frames.Seconds(0.5f);
+
+        // Pressed there, the jaws close where the tip is: on nothing, the tip staying put.
+        await Press(driver);
+        var pressed = me.InOpening(me.Active)!.Value;
+        AssertBool(forceps.Hold is null && bullet.GrippedBy == 0 && Mathf.Abs(pressed.Depth - raised.Depth) < 0.002f)
+            .OverrideFailureMessage($"pressed held up, the forceps close on nothing and stay up: {forceps.Hold}, {pressed.Depth} m deep")
+            .IsTrue();
+
+        // Held deep and moved along the cut past its end, the tip stops at the end's lip rather than going under the skin.
+        var skin = driver.SitePoint(bullet.Uv + new Vector2(driver.Body.MetersToUv((Opening * 0.5f) + 0.01f), 0f));
+        await driver.PlayerSweepsTo(skin);
+        var stopped = forceps.TipPosition();
+        await driver.AssertAndCapture(driver.Body.IsOpen(driver.Body.WorldToUv(stopped)) && hand.HeldDepth is not null,
+            "held deep and moved along the cut past its end, the forceps' tip stops at the end of the opening, still down in it",
+            "at_the_lip");
+
+        // Lowered all the way, it rests on what's inside again.
+        for (var i = 0; i < 10 && hand.HeldDepth is not null; i++) {
+            await SurgeryDriver.Notch(false);
+        }
+        AssertBool(hand.HeldDepth is null).OverrideFailureMessage("lowered all the way, the tip rests on what's inside again").IsTrue();
+
+        // Held up again and lifted, it goes over onto the skin; back over the bullet it rests on it and takes it.
+        await SurgeryDriver.Notch(true);
+        PlayerInput.Action(InputActions.Lift);
+        await Frames.Seconds(0.5f);
+        await driver.PlayerSweepsTo(skin);
+        PlayerInput.Action(InputActions.Lift, false);
+        await Frames.Seconds(0.5f);
+        AssertBool(!driver.Body.IsOpen(driver.Body.WorldToUv(forceps.TipPosition())) && hand.HeldDepth is null)
+            .OverrideFailureMessage("lifted, the tip goes over the lip onto the skin and rests on it").IsTrue();
+        await driver.PlayerReaches(spot);
+        SurgeryDriver.Use();
+        await Frames.Seconds(0.5f);
+        AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
+            .OverrideFailureMessage($"back over the bullet, the forceps rest on it and take it: {forceps.Hold}").IsTrue();
+        await LetGo(driver, forceps);
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task ForcepsHeldDeepDontJumpAcrossSkinToAnotherOpening() {
+        var (session, bullet) = await OpenOverBullet("forceps/two_openings");
+        var driver = session.Driver;
+        var body = driver.Body;
+        // Well across from the first, so the skin between doesn't let either close.
+        var beside = bullet.Uv + new Vector2(0f, body.MetersToUv(0.04f));
+        var bridge = (bullet.Uv + beside) * 0.5f;
+        var half = new Vector2(body.MetersToUv(0.015f), 0f);
+        await driver.PlayerCutsSkin(beside - half, beside + half, 3);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        AssertBool(body.IsOpen(bullet.Uv) && body.IsOpen(beside) && !body.IsOpen(bridge))
+            .OverrideFailureMessage($"a second cut opens across from the first, intact skin between them: {body.IsOpen(bullet.Uv)}, {body.IsOpen(beside)}, {body.IsOpen(bridge)} at {beside}").IsTrue();
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        var hand = driver.Me.Hands[driver.Me.Active];
+        var spot = body.UvToWorld(bullet.Uv, bullet.Depth);
+        await driver.PlayerWalksTo(spot);
+        await driver.PlayerReaches(spot);
+        await SurgeryDriver.Notch(true);
+        // One fast move of the mouse, its end over the other opening.
+        PlayerInput.Action(PlayerInput.HandKey(driver.Me));
+        PlayerInput.Mouse(PlayerInput.HandMotion(driver.Me, (driver.SitePoint(beside) - forceps.TipPosition()) with { Y = 0f }));
+        await Frames.Physics(2);
+        PlayerInput.Action(PlayerInput.HandKey(driver.Me), false);
+        await Frames.Physics(5);
+        var tip = body.WorldToUv(forceps.TipPosition());
+        AssertBool(hand.HeldDepth is not null && body.IsOpen(tip) && tip.DistanceTo(bullet.Uv) < tip.DistanceTo(beside))
+            .OverrideFailureMessage($"held deep, the tip stays in its own opening, not under the skin into the other: {tip}")
+            .IsTrue();
         await session.Finish(BudgetOverride);
     }
 

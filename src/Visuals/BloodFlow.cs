@@ -439,7 +439,7 @@ public partial class BloodFlow : Node3D {
         return Math.Min(lies, cut) switch {
             0 => (0f, PatientBody.SkinThickness),
             1 => (PatientBody.SkinThickness, body.FatThickness),
-            _ => (PatientBody.SkinThickness + body.FatThickness, PatientBody.MuscleThickness),
+            _ => (PatientBody.SkinThickness + body.FatThickness, body.MuscleThickness),
         };
     }
 

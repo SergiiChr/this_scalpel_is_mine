@@ -26,7 +26,8 @@ public sealed record RibSpec(float[] Rows, float Inner, float Drop, float Radius
 
 /// <summary>
 /// One surgical site of data/patient_sites.json, in patient body space (head at +X, face up +Y, meters): where the site
-/// lies, its size, how deep its cavity is, how much fat is under it, whether it faces down, and its anatomy.
+/// lies, its size, how deep its cavity is, how much fat is under it, whether it faces down, and its anatomy. A limb names
+/// the parts of the body model's skeleton under it (Thigh for SkeletonThighL and SkeletonThighR): those are its bones.
 /// </summary>
 public sealed record SiteDef(
     Vector3 Position,
@@ -37,11 +38,12 @@ public sealed record SiteDef(
     IReadOnlyList<OrganSpec> Organs,
     IReadOnlyList<BoneSpec> Bones,
     BoneSpec? Sternum,
-    RibSpec? Ribs) {
+    RibSpec? Ribs,
+    IReadOnlyList<string> Skeleton) {
     /// <summary>Subcutaneous fat where a site doesn't say.</summary>
     public const float DefaultFat = 0.012f;
 
-    public bool HasAnatomy => Organs.Count > 0 || Bones.Count > 0 || Sternum is not null || Ribs is not null;
+    public bool HasAnatomy => Organs.Count > 0 || Bones.Count > 0 || Sternum is not null || Ribs is not null || Skeleton.Count > 0;
 
     /// <summary>The site's definition, the abdomen's for an unknown site.</summary>
     public static SiteDef Of(string site) =>
@@ -65,7 +67,8 @@ public sealed record SiteDef(
             List(anatomy, "organs", OrganSpec.FromVariant),
             List(anatomy, "bones", BoneSpec.FromVariant),
             anatomy.TryGetValue("sternum", out var sternum) ? BoneSpec.FromVariant(sternum.AsGodotDictionary()) : null,
-            ribs);
+            ribs,
+            [.. anatomy.TryGetValue("skeleton", out var skeleton) ? skeleton.AsGodotArray().Select(part => part.AsString()) : []]);
     }
 
     private static List<T> List<T>(GodotDictionary data, string key, Func<GodotDictionary, T> read) =>

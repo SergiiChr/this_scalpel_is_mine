@@ -91,9 +91,12 @@ overview, the data formats designers edit and the design decisions.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
 - **Anatomy** (`anatomy` in `data/patient_sites.json`, `PatientBody.BuildAnatomy()`): the chest holds the lungs and
   the heart over the aorta under a rib cage and breastbone, the belly the liver, stomach and bowel over the kidneys and
-  the aorta, under the lower rib margin. Arms, legs and the shoulder have their bones. Bones lie right under the muscle,
-  organs are placed by how far under the muscle their top lies, so they stay inside on any patient. The cavity floor
-  follows the skin. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
+  the aorta, under the lower rib margin. Bones lie right under the muscle, organs are placed by how far under the
+  muscle their top lies, so they stay inside on any patient. The cavity floor follows the skin.
+  Arms, legs and the shoulder have the body model's own skeleton for bones, the one X-ray films show
+  (`PatientBody.MeasureLimbBones()`): a copy of the part under the site, found with rays down the site. A limb is
+  muscle down to its bones, not a hollow: the muscle reaches to just over them in the middle of the site, the floor lies
+  just under their middle along the limb, so they lie half sunk in it. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
   The heart beats with the pulse (still in asystole, a quiver in V-fib), the lungs swell with each breath.
 - A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.AnchorReach`), so an
   H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
@@ -205,6 +208,9 @@ general anesthesia for a lidocaine allergy).
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
+A target's `depth` is meters under the skin. In a limb it's kept inside the thin cavity between the muscle and the
+bones (`PatientBody.TargetDepth()`): its top under the muscle and its middle no deeper than the floor, so it fits a
+heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor, in the limb bone's place.
 
 ### Other data
 
@@ -342,7 +348,15 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and
   paper clips, pulled the same way (`ToolActions.HasTensionWheel()`). And the Gelpi retractor: up opens it, down
-  closes it (see Gelpi retractor). Tape and the other closures take no wheel: pressed on, they close.
+  closes it (see Gelpi retractor). Tape and the other closures take no wheel: pressed on, they close. And forceps and
+  hemostats over an opening (`Surgeon.HoldsDepth()`): up raises the tip a notch (`Surgeon.DepthStep`), down lowers
+  it, from the lip down to resting on what's inside, never into it. Held at a depth, the tip stays there as it moves
+  (riding up over organs) and when Use tool is pressed, so the jaws close where the tip is: on a target, vessel or
+  bleeding wound only with the tip down on what's inside (`Patient.JawReach`), on the cut's edge only up by the lip.
+  Deeper than `Patient.LipDepth` it can't move out under the skin, anywhere along a move: it slides along the lip,
+  and Lift takes it over. All the way down, or out of the opening, it rests on what's inside again. The aim shows a
+  stem from the lip down to the tip and the depth beside it. The retractor (a skin hook) and forceps holding a pad
+  or graft take no depth.
 - **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
   accurate at any angle (`Surgeon.AimPoint()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
