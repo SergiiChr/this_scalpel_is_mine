@@ -9,6 +9,6 @@ public class HandStitchScenarioTest {
     [TestCase("hand_stitch", Timeout = Limits.Slow)]
     public async Task PlaysThroughWithRunningSutureChecks(string scenario) => await ScenarioFlow.Play(scenario,
         // Temporary local budget override: preserves the running-suture allowance when moved out of NeedleTest.
-        budgetOverride: "running-suture simulation has recorded CPU/render overruns; profiling deferred",
+        budgetOverride: new("running-suture simulation has recorded CPU/render overruns; profiling deferred", 15f),
         playStep: (driver, step) => step.Type == "close" ? SutureChecks.CloseForearm(driver) : driver.PlayerCompletes(step));
 }

@@ -5,9 +5,11 @@
 - Gameplay stays within a 16 ms worst frame so 60 fps remains possible. Displayed FPS isn't the metric.
 - Two checks, one call: tests that exercise dynamic work check it with `Budget.Check()` (`tests/Support/FrameBudget.cs`),
   never with a timer around one function. A case known to go over that can't be fixed in the current change passes
-  an explicit commented `localOverride` reason at its budget check. The check still prints its measurements and passes
-  that approved overrun, without marking the case broken. Functional assertions and unlisted budget failures remain
-  enforced; global limits do not change.
+  an explicit commented `localOverride` at its budget check: a `BudgetAllowance` with the reason and how many times
+  this run's limit its worst frame may take. Frame times vary between runs and machines, so pick the factor from the
+  worst frame measured on the machine tests usually run on, plus 30%, rounded up to a half. The check still prints its measurements
+  and passes an overrun within that factor, without marking the case broken; one past it fails. Functional assertions
+  and unlisted budget failures remain enforced; global limits do not change.
   - CPU budget, every local run: rendering off (`FrameBudget.RenderingOff()`), the game's own work per frame within
     8 ms on the reference machine (an i9-14900HX), scaled by how much slower this machine runs a fixed benchmark.
     It holds on any machine, with or without a GPU.

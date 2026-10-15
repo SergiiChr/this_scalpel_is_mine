@@ -13,7 +13,7 @@ namespace Scalpel.Tests.TissueModification;
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "cutting and deforming tissue exceed the recorded CPU/render budget";
+    private static readonly BudgetAllowance BudgetOverride = new("cutting and deforming tissue exceed the recorded CPU/render budget", 7.5f);
 
     /// <summary>The incision, across the site's middle (uv).</summary>
     private static readonly Vector2 CutFrom = new(0.3f, 0.5f);

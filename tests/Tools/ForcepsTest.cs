@@ -15,7 +15,7 @@ public class ForcepsTest {
     private const float Opening = 0.05f;
     /// <summary>The cut through every layer that opens the thigh goes over, as in RetractorTest.</summary>
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 9.5f);
 
     [TestCase]
     public async Task ForcepsTakeTheSkinEdgeBesideTheOpeningAndTheBulletInIt() {

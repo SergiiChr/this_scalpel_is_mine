@@ -14,6 +14,11 @@ public enum BudgetMode {
     Render,
 }
 
+/// <summary>A case's approved overrun: why it goes over, and how many times this run's limit its worst frame may take.
+/// The factor scales with the limit, so it holds on machines of any speed, and an overrun that grows past it still
+/// fails.</summary>
+public readonly record struct BudgetAllowance(string Reason, float Factor);
+
 /// <summary>
 /// Frame times: the wall time from one frame to the next, sampled once per frame while the dynamic part runs. Run with
 /// --fixed-fps, so frames don't wait for the clock.
@@ -122,27 +127,25 @@ public sealed class FrameBudget {
 
     /// <summary>
     /// The one frame budget check for every test: fails when a frame went over <see cref="Limit"/>, and does nothing in
-    /// a run that doesn't check frame times (<see cref="BudgetMode.Off"/>). An explicitly documented
-    /// <paramref name="localOverride"/> allows this case's measured overrun while its functional assertions still run.
-    /// Unlisted overruns fail. Runtime-only stalls retain their existing bounded allowance.
+    /// a run that doesn't check frame times (<see cref="BudgetMode.Off"/>). A <paramref name="localOverride"/> raises
+    /// the limit for this case only, by its factor; functional assertions still run.
+    /// Runtime-only stalls retain their existing bounded allowance.
     /// </summary>
-    public void Check(string label = "", string localOverride = "") {
+    public void Check(string label = "", BudgetAllowance? localOverride = null) {
         if (Mode == BudgetMode.Off) {
             return;
         }
-        var report = (label.Length > 0 ? label + ": " : "") + Summary();
-        if (Within) {
+        var limit = Limit * (localOverride?.Factor ?? 1f);
+        var report = (label.Length > 0 ? label + ": " : "") + Summary()
+            + (localOverride is { } allowed ? $"; local budget override up to {allowed.Factor:0.0}x, "
+                + $"{limit * 1000f:0.0} ms: {allowed.Reason}" : "");
+        if (Worst <= limit) {
             GD.Print(report);
-            return;
+        } else if (WorstOwn <= limit && WorstStall <= StallLimitHere) {
+            GD.Print($"PASS: {RuntimeStalls}; {report}");
+        } else {
+            AssertBool(false).OverrideFailureMessage(report).IsTrue();
         }
-        if (localOverride.Length == 0 && WorstOwn <= Limit && WorstStall <= StallLimitHere) {
-            localOverride = RuntimeStalls;
-        }
-        if (localOverride.Length > 0) {
-            GD.Print($"PASS: local budget override: {localOverride}; {report}");
-            return;
-        }
-        AssertBool(Within).OverrideFailureMessage(report).IsTrue();
     }
 
     public string Summary() =>
