@@ -867,44 +867,52 @@ public partial class Patient {
 
     public void RemoveTourniquet() => TourniquetOn = false;
 
-    /// <summary>A catheter went into the arm at <paramref name="at"/> (world space): tubing now runs from the stand to
-    /// there. <paramref name="inVein"/>: it hit a vein, so the line works. Host only (what runs through the line is
-    /// decided here).</summary>
-    public void SetIv(Vector3 at, bool inVein) {
-        if (IvSet) {
+    /// <summary>A catheter went into the arm at <paramref name="at"/> (world space). <paramref name="inVein"/>: it hit a
+    /// vein. <paramref name="connected"/>: the IV tubing was on it, and now runs from the stand to there. The line works
+    /// only with both. Host only (what runs through the line is decided here).</summary>
+    public void SetIv(Vector3 at, bool inVein, bool connected = true) {
+        if (!CanSetIv(connected)) {
             return;
         }
         IvSet = true;
         IvInVein = inVein;
+        IvConnected = connected;
         Hurt(0.1f);
-        Rpc(MethodName.IvPlaced, Body.Root.ToLocal(at));
+        Rpc(MethodName.IvPlaced, Body.Root.ToLocal(at), connected);
     }
 
-    /// <summary>Someone walked into the tubing: the catheter rips out of the arm and the stand rattles. The catheter
-    /// ends up on the floor at their feet, where it can be picked up, washed and used again.</summary>
+    /// <summary>Whether a catheter goes in: into an arm without one, or, <paramref name="connected"/> to the tubing, in
+    /// place of one that isn't, which nothing runs through.</summary>
+    internal bool CanSetIv(bool connected) => !IvSet || (connected && !IvConnected);
+
+    /// <summary>Someone caught the IV tubing and walked off with it: the catheter rips out of the arm, tearing the skin,
+    /// and hangs on the end of the tubing.</summary>
     public void PullIv(Surgeon surgeon) {
         if (!IvSet) {
             return;
         }
         IvSet = false;
         IvInVein = false;
+        IvConnected = false;
         Hurt(0.35f);
         AddFlag("iv_pulled");
         Session.Scoring.Add("iv_pulled");
         Session.Sound("cable_yank", surgeon.GlobalPosition);
         Session.Announce($"{surgeon.DisplayName} catches the IV line. It rips out of the arm.");
         Session.JoltPeer(surgeon.PeerId, 0.8f);
-        // At their feet: a step ahead could be under the table, which is solid down to the floor.
-        Session.Tools.DropNew("iv_catheter", surgeon.GlobalPosition + Vector3.Up * 0.1f);
-        Rpc(MethodName.IvRemoved);
+        if (Session.Room.IvLine.Dressing is { } dressing) {
+            Session.Effect(ToolEffect.Bead, dressing.GlobalPosition, 0);
+            Session.Sound("tear_skin", dressing.GlobalPosition);
+        }
+        Rpc(MethodName.IvRemoved, true);
     }
 
-    /// <summary>Runs the tubing to <paramref name="point"/> (local to the body's root). The dressing rides the forearm
-    /// it's on (<see cref="PatientBody.IvSite"/>).</summary>
-    private void ConnectIv(Vector3 point) {
+    /// <summary>Tapes a catheter on at <paramref name="point"/> (local to the body's root), the tubing on it if
+    /// <paramref name="connected"/>. The dressing rides the forearm it's on (<see cref="PatientBody.IvSite"/>).</summary>
+    private void ConnectIv(Vector3 point, bool connected) {
         if (Surgery.Current?.Room.IvLine is not null) {
             var site = Body.IvSite(Body.Root.ToGlobal(point));
-            Surgery.Current.Room.ConnectIv(site.Node, site.Frame, site.Radius);
+            Surgery.Current.Room.ConnectIv(site.Node, site.Frame, site.Radius, connected);
         }
     }
 

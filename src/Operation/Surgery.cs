@@ -663,6 +663,23 @@ public partial class Surgery : Node3D {
         }
     }
 
+    /// <summary>The IV tubing's end goes onto the catheter in hand, whatever was on it before, unless it runs into the
+    /// arm.</summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void RequestIvLine(int hand) {
+        var peer = Net.Instance.Sender();
+        if (Tools.ToolInHand(peer, hand) is not { Def.Action: "iv_line", Charges: not 0 } catheter) {
+            Tell(peer, "Hold an IV catheter to connect the line to it.");
+            return;
+        }
+        if (Room.IvLine.IsAttached) {
+            Tell(peer, "The IV line is already in the arm.");
+            return;
+        }
+        Patient.Rpc(Patient.MethodName.IvLineOn, catheter.Uid);
+        Sound("tool_pickup", catheter.GlobalPosition);
+    }
+
     /// <summary>A bag in hand takes the place of the one on the IV stand and runs into the line as a full dose.
     /// Drugs pushed into the old bag go with it.
     /// Without a working line nothing changes: the bag stays in hand and the hung one keeps what it had.</summary>
@@ -738,6 +755,8 @@ public partial class Surgery : Node3D {
     }
 
     public void UseIv(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvBag, surgeon.Active);
+
+    public void ConnectIvLine(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvLine, surgeon.Active);
 
     public void Smoke(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestSmoke, surgeon.Active);
 

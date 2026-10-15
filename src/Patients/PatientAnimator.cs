@@ -62,7 +62,7 @@ public partial class PatientAnimator : Node {
         }
         var t = (float)GameClock.Seconds;
         var breathing = alive && !vitals.IsArrested;
-        var rate = vitals.Anesthesia < 0.7f ? (14f + vitals.Panic * 14f) / 60f : 12f / 60f;
+        var rate = vitals.IsUnder ? 12f / 60f : (14f + vitals.Panic * 14f) / 60f;
         _breathPhase += breathing ? delta * rate * Mathf.Tau : 0f;
         var breath = (Mathf.Sin(_breathPhase) * 0.5f + 0.5f) * BreathDepth * (1f + vitals.Panic);
         // The whole trunk rises with the surgical site; legs, neck and arms stay put so only the torso skin moves.
