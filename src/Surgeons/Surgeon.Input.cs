@@ -444,8 +444,9 @@ public partial class Surgeon {
         UpdateLean(canAct, delta);
         var hand = Hands[Active];
         if (canAct) {
-            // A syringe keeps its scale to the eyes on its own (FaceSyringe()): it doesn't roll.
-            if (!_unfaced.ContainsKey(Active)) {
+            // A syringe keeps its scale to the eyes on its own (FaceSyringe()): it doesn't roll. An empty hand has
+            // nothing to roll and untwists by itself (SurgeonHand.UpdatePose()).
+            if (!_unfaced.ContainsKey(Active) && HeldTool(Active) is not null) {
                 var twist = Input.GetAxis(InputActions.TwistLeft, InputActions.TwistRight);
                 hand.Twist = Mathf.Wrap(hand.Twist + (twist * delta * TwistSpeed), -Mathf.Pi, Mathf.Pi);
             }

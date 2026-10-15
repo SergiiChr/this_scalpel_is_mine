@@ -35,6 +35,8 @@ public partial class Surgeon : CharacterBody3D {
     public const float MinReach = 0.18f;
     public const float EyeHeight = 1.62f;
     public static readonly Vector3 ShoulderOffset = new(0.19f, 1.4f, -0.08f);
+    /// <summary>How far out to each side (meters) the hands start, toward the edges of the view.</summary>
+    private const float RestHandOut = 0.24f;
     internal const float HandSensitivity = 0.0009f;
     internal const float LookSensitivity = 0.003f;
     /// <summary>Radians the held tool turns per pixel while the mouse aims it (Aim tool held).</summary>
@@ -166,15 +168,12 @@ public partial class Surgeon : CharacterBody3D {
             var hand = new SurgeonHand();
             AddChild(hand);
             hand.Build(i, _scrubs);
-            hand.LocalTarget = new Vector3(i == 0 ? -0.17f : 0.17f, 1.18f, -0.45f);
+            hand.LocalTarget = new Vector3(i == 0 ? -RestHandOut : RestHandOut, 1.18f, -0.45f);
             hand.Puppet = !IsLocal;
             hand.Target = ToGlobal(hand.LocalTarget);
             Hands[i] = hand;
         }
         if (IsLocal) {
-            foreach (var hand in Hands) {
-                hand.HideUpperArm();
-            }
             Camera.MakeCurrent();
             Sfx.Deaf = Mods.Flag("deaf");
         }

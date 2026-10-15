@@ -287,8 +287,10 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   an open cavity, the surgeon leans in: the torso bends forward from the hips (everyone sees it) and the eyes come over
   the opening and look down into it, never turning sideways, so the mouse still moves the hand left and right on
   screen. Reach and collisions don't change. Aiming out of the opening, zooming out or crouching straightens back up;
-  walking away also zooms back out. The hands start turned in
-  toward the middle, so each tool points across in front of the eyes, beside its hand.
+  walking away also zooms back out. The hands start apart, turned in
+  toward the middle, so each tool points across in front of the eyes, beside its hand. The elbows bend out to the
+  sides (`SurgeonHand.ElbowPole`), so the player's own arms come into the view from its bottom corners, not up the
+  middle in front of the work.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -346,6 +348,7 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
+  A hand that lets go of a rolled tool rolls back to palm down; an empty hand has nothing to roll.
   Holding MMB the mouse turns the held tool about the wrist (tilt up and down, turn left and right,
   `Surgeon.AimTool()`): the wrist and forearm stay put, the tip follows the mouse and rises off what it rested on, and
   settles back down once MMB is let go.
