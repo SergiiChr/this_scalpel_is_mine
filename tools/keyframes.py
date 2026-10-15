@@ -2,7 +2,7 @@
 changed or new key frame, with a Markdown index that says what to open, or writes the run into the baseline.
 
   python -m tools.keyframes report CURRENT BASELINE OUT [--all] [--regression passed|failed|not-run]
-  python -m tools.keyframes update CURRENT BASELINE [--keep FOLDER ...]
+  python -m tools.keyframes update CURRENT BASELINE [--keep FOLDER ...] [--focused]
 
 CURRENT is a run's screenshot folder (build/test-artifacts/screenshots, PNG) and BASELINE the committed tests/KeyFrames
 (JPEG, see stored()); BASELINE may be missing.
@@ -178,8 +178,12 @@ def sheet(frame: KeyFrame, label: str, out: Path) -> None:
 
 
 def report(current_root: Path, baseline_root: Path, out: Path, everything: bool, regression: str) -> tuple[str, int]:
-    """Writes the sheets and returns the Markdown index and how many key frames differ from the baseline."""
+    """Writes the sheets and returns the Markdown index and how many key frames fail the review: those that differ from
+    the baseline, or after a focused run only the missing ones, as its changes aren't in the baseline until a release."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
+    has_baseline = bool(baseline)
+    if regression == "focused":
+        baseline = in_taken_folders(current, baseline)
     states = ("missing", "changed", "new", "unchanged")
     counts = dict.fromkeys(states, 0)
     sections: dict[str, list[str]] = {}
@@ -221,12 +225,13 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
             "Review their sheets: the baseline takes them only if the case isn't visibly broken. "
             "Key frames they didn't take show as missing below and stay in the baseline.",
             "not-run": "Regression: not run, these are the key frames of an earlier run.",
+            "focused": "Focused run: only the folders it took key frames in are compared, and only missing key frames fail it.",
         }[regression],
         f"Current: `{current_root.as_posix()}`  ",
         f"Baseline: `{baseline_root.as_posix()}`"
-        if baseline
+        if has_baseline
         else f"Baseline: NONE in `{baseline_root.as_posix()}`. Every key frame shows as new and nothing was compared: "
-        "the review fails. Run `./build.py generate_baseline` on main first.",
+        "the review fails. Run `./build.py generate_baseline` on a release branch first.",
         "",
         ", ".join(f"{counts[state]} {state}" for state in states) + ".",
         "",
@@ -245,7 +250,8 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         if unchanged.get(folder):
             lines = [*lines, f"- {unchanged[folder]} unchanged"]
         text += ["", f"## {folder}", "", *lines]
-    return "\n".join(text) + "\n", counts["missing"] + counts["changed"] + counts["new"]
+    failing = counts["missing"] + (0 if regression == "focused" else counts["changed"] + counts["new"])
+    return "\n".join(text) + "\n", failing
 
 
 def prefix(frame: KeyFrame) -> str:
@@ -254,13 +260,24 @@ def prefix(frame: KeyFrame) -> str:
     return path.stem.removesuffix(f"_{view}")
 
 
-def update(current_root: Path, baseline_root: Path, keep: frozenset[str] = frozenset()) -> int:
+def in_taken_folders(current: dict[tuple[str, str], KeyFrame], baseline: dict[tuple[str, str], KeyFrame]) -> dict[tuple[str, str], KeyFrame]:
+    """The baseline's key frames in the folders a focused run took key frames in: the rest isn't missing, just not run."""
+    taken = {folder for folder, _ in current}
+    return {key: frame for key, frame in baseline.items() if key[0] in taken}
+
+
+def update(current_root: Path, baseline_root: Path, keep: frozenset[str] = frozenset(), focused: bool = False) -> int:
     """Writes the key frames that differ from the baseline into it and deletes the ones the run no longer takes, except
     in the folders to keep (of failed suites, which may have stopped before taking them): there the baseline's key frames
     and views the run didn't take stay as they are.
     Unchanged key frames keep their bytes, so they cost nothing in git; they only take the run's file name when its
-    order prefix moved, which git sees as a rename. Returns how many key frames were written or deleted."""
+    order prefix moved, which git sees as a rename.
+    A focused run only adds and replaces: it may have run some of a folder's cases, so every folder it took is kept, and
+    the others aren't touched. Returns how many key frames were written or deleted."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
+    if focused:
+        baseline = in_taken_folders(current, baseline)
+        keep |= {folder for folder, _ in current}
     # The baseline's views the run didn't take in the folders to keep, by where they go: beside the run's views of the
     # same key frame when it took some, whose order prefix may have moved.
     kept: dict[Path, KeyFrame] = {}
@@ -319,12 +336,14 @@ def main() -> int:
         command.add_argument("current", type=Path, help="screenshot folder of the run")
         command.add_argument("baseline", type=Path, help="baseline folder, may be missing")
     updating.add_argument("--keep", action="append", default=[], help="a folder whose key frames and views the run didn't take stay")
+    updating.add_argument("--focused", action="store_true", help="add and replace only, in the folders the run took")
     review.add_argument("out", type=Path, help="report folder, emptied first")
     review.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
-    review.add_argument("--regression", choices=("passed", "failed", "not-run"), default="not-run", help="how the run went, for the top of the report")
+    review.add_argument("--regression", choices=("passed", "failed", "not-run", "focused"), default="not-run", help="how the run went, for the report")
     parsed = parser.parse_args()
     if parsed.command == "update":
-        print(f"Baseline: {update(parsed.current, parsed.baseline, frozenset(parsed.keep))} key frames written or deleted in {parsed.baseline}.")
+        written = update(parsed.current, parsed.baseline, frozenset(parsed.keep), parsed.focused)
+        print(f"Baseline: {written} key frames written or deleted in {parsed.baseline}.")
         return 0
     # A run that failed before its first key frame still reports the baseline's as missing.
     if not key_frames(parsed.current) and not key_frames(parsed.baseline):
@@ -337,7 +356,8 @@ def main() -> int:
     index.write_text(text)
     print(f"Key frame review: {index}")
     if differ:
-        print(f"[ERROR] {differ} key frames are missing, changed or new against the baseline: review them.", file=sys.stderr)
+        what = "missing" if parsed.regression == "focused" else "missing, changed or new"
+        print(f"[ERROR] {differ} key frames are {what} against the baseline: review them.", file=sys.stderr)
         return 1
     return 0
 
