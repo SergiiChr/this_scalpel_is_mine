@@ -14,6 +14,8 @@ public partial class Interactable : Area3D {
     public Action<int>? Wheel { get; set; }
     /// <summary>The prompt for <see cref="Wheel"/>.</summary>
     public string WheelPrompt { get; set; } = "";
+    /// <summary>The button that works this: interact, or grab for what's taken hold of like a tool.</summary>
+    public StringName Button { get; set; } = InputActions.Interact;
     /// <summary>Parts that light up, with their children, while the local surgeon looks at this.</summary>
     public IReadOnlyList<Node3D> Highlight { get; set; } = [];
 
@@ -30,6 +32,12 @@ public partial class Interactable : Area3D {
         parent.AddChild(area);
         area.Position = position;
         return area;
+    }
+
+    /// <summary>Another box where it can be focused too, placed in its parent like the first.</summary>
+    public Interactable AddBox(Vector3 size, Vector3 position) {
+        AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size }, Position = position - Position });
+        return this;
     }
 
     public bool OfferedTo(Surgeon surgeon) => Offered?.Invoke(surgeon) ?? true;

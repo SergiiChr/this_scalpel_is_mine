@@ -1,8 +1,8 @@
 namespace Scalpel.Tests.World;
 
 /// <summary>X-ray films as a surgeon uses them to find what's in the patient: push the cart until the tube head hangs
-/// over the site, lock it, expose, and hold the two films up. The AP film shows what's lodged under the site where it
-/// lies: a bullet, the ends of a broken bone, a figurine, the appendix. With the head brought down until the lateral
+/// over the site, expose with Use tool, let go, and hold the two films up. The AP film shows what's lodged under the site
+/// where it lies: a bullet, the ends of a broken bone, a figurine, the appendix. With the head brought down until the lateral
 /// beam runs through it, the lateral film shows it too, at its depth. Where the films are drawn (with key frames), metal
 /// and bone come out white on them.</summary>
 [TestSuite, RequireGodotRuntime]
@@ -43,7 +43,7 @@ public class XrayFilmTest {
             }
             // Loading the scenario isn't gameplay: the frame budget counts from here.
             driver.Budget.Clear();
-            await driver.PlayerParksXrayOver(middle, lateral ? middle.Y : null);
+            await driver.PlayerPushesXrayOver(middle, lateral ? middle.Y : null);
             var views = lateral ? cart.Beams() : cart.Beams()[..1];
             foreach (var beam in views) {
                 AssertBool(targets.All(target => beam.FilmPoint(target.GlobalPosition) is not null))
@@ -51,11 +51,9 @@ public class XrayFilmTest {
             }
             if (shots is not null) {
                 if (lateral) {
-                    // Lowered just over the patient, the tube head fills a view from above.
-                    await driver.PlayerLooksAt(middle);
+                    // As the pusher stands, still holding the cart: turning to look would swing it off the site.
                     await driver.Unbudgeted(() => shots.CaptureView("field",
-                        "past the cart, the tube head lowered just over the patient, pale yellow light outlines on the "
-                            + "body around the site"));
+                        "past the cart's column, pale yellow light outlines on the body around the site"));
                 } else {
                     // From the patient's feet: from above the tube head is in the way, from the cart's side its column.
                     await driver.Unbudgeted(() => shots.CaptureOblique("field",
