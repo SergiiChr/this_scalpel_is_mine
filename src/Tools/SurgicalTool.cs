@@ -69,9 +69,9 @@ public sealed class ToolUse {
 
 /// <summary>
 /// A needle's running suture: the live thread's id (0 for none), its tension (the wheel, a tensioned closure's too, see
-/// Patient.TensionedClosures) and the layer it's in. Each
-/// Use tool press makes one hole, at where the needle last rested on the patient ((-1, -1) for nowhere): Hold is how
-/// long it's been held, PressUsed that it already did something (tied off, sewed an internal injury).
+/// Patient.TensionedClosures) and the layer it's in. Each Use tool press makes one hole, at where the needle last rested
+/// on the patient ((-1, -1) for nowhere): Hold is how long it's been held, PressUsed that it already did something (tied
+/// off, sewed an internal injury).
 /// </summary>
 public sealed class SutureState {
     public int Thread { get; set; }

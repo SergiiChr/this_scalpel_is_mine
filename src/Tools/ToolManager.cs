@@ -380,8 +380,12 @@ public partial class ToolManager : Node3D {
     }
 
     /// <summary>The tool of this action in the sender's hand, while the surgery runs.</summary>
-    private SurgicalTool? HeldForAction(int hand, string action) =>
-        Session.Running && ToolInHand(Net.Instance.Sender(), hand) is { } tool && tool.Def.Action == action ? tool : null;
+    private SurgicalTool? HeldForAction(int hand, string action) => HeldFor(hand, def => def.Action == action);
+
+    /// <summary>The tool the sender holds in <paramref name="hand"/> while the surgery runs, if <paramref name="fits"/>.
+    /// </summary>
+    private SurgicalTool? HeldFor(int hand, Func<ToolDef, bool> fits) =>
+        Session.Running && ToolInHand(Net.Instance.Sender(), hand) is { } tool && fits(tool.Def) ? tool : null;
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void PlungerOnHost(int hand, int notches) {
@@ -392,7 +396,7 @@ public partial class ToolManager : Node3D {
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SutureTensionOnHost(int hand, int direction) {
-        if (Session.Running && ToolInHand(Net.Instance.Sender(), hand) is { } tool && ToolActions.HasTensionWheel(tool.Def)) {
+        if (HeldFor(hand, ToolActions.HasTensionWheel) is { } tool) {
             SewAction.AdjustTension(tool, Math.Sign(direction), Session.Patient);
             SyncSuture(tool);
         }
