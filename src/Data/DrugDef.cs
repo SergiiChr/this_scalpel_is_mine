@@ -30,6 +30,10 @@ public sealed class DrugDef {
 
     public bool IsBlood => BloodType.Length > 0;
 
+    /// <summary>Calms or puts to sleep. Injected into a surgeon, every one works like diazepam (see
+    /// <see cref="Surgeons.SurgeonStatus"/>).</summary>
+    public bool IsSedative => Peak.Sedation > 0f || Peak.Anesthesia > 0f;
+
     public static DrugDef FromConfig(ConfigReader config) => new() {
         Id = config.Section,
         Name = config.String("name", config.Section.Capitalize()),

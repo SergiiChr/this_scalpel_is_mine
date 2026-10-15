@@ -615,6 +615,51 @@ public class SyringeTest {
             .IsTrue();
     }
 
+    /// <summary>Every other sedative works on a surgeon like diazepam: the right dose steadies stress shaking and
+    /// delays hand moves, 2.5 doses knock them out. Only its own antidote brings them round.</summary>
+    [TestCase("morphine", "naloxone", true)]
+    [TestCase("antihistamine", "flumazenil", false)]
+    [TestCase("propofol", "flumazenil", false)]
+    [TestCase("ketamine", "naloxone", false)]
+    [TestCase("pentobarbital", "flumazenil", false)]
+    public void SedativeSedatesASurgeon(string drug, string antidote, bool wakes) {
+        var right = Db.Drug(drug)!.Dose * 80f;
+        var status = Dosed(right, drug: drug);
+        status.Stress = 0.8f;
+        AssertBool(status.Calm > 0.95f && status.TremorAmount() == 0f
+                && Mathf.Abs(status.InputDelay() - SurgeonStatus.SedatedDelay) < 0.005f && !status.IsOut)
+            .OverrideFailureMessage($"{drug}: the right dose steadies stress shaking and delays hand moves "
+                + $"{status.InputDelay() * 1000f:0} ms ({status.Calm:0.00} calm)")
+            .IsTrue();
+        var events = new List<StatusEvent>();
+        var knocked = Dosed(right * 2.5f, events, drug);
+        AssertBool(events.Contains(StatusEvent.KnockedOut) && knocked.IsOut)
+            .OverrideFailureMessage($"{drug}: 2.5 doses knock the surgeon out").IsTrue();
+        knocked.Administer(antidote, Db.Drug(antidote)!.Dose * 80f);
+        RunStatus(knocked, 3f, events);
+        AssertBool(knocked.IsOut != wakes)
+            .OverrideFailureMessage($"{drug}: {antidote} {(wakes ? "brings them round" : "leaves them out")}")
+            .IsTrue();
+    }
+
+    /// <summary>Sedatives add up: diazepam and propofol, 1.2 times the right dose of each, knock a surgeon out.
+    /// Flumazenil ends the diazepam only, and what's left is too little to keep them down.</summary>
+    [TestCase]
+    public void SedativesAddUpInASurgeon() {
+        var events = new List<StatusEvent>();
+        var status = new SurgeonStatus(new Modifiers());
+        status.Administer("diazepam", Db.Drug("diazepam")!.Dose * 80f * 1.2f);
+        status.Administer("propofol", Db.Drug("propofol")!.Dose * 80f * 1.2f);
+        RunStatus(status, 10f, events);
+        AssertBool(events.Contains(StatusEvent.KnockedOut) && status.IsOut)
+            .OverrideFailureMessage("sedatives: 1.2 doses of diazepam and of propofol knock the surgeon out")
+            .IsTrue();
+        status.Administer("flumazenil", Db.Drug("flumazenil")!.Dose * 80f);
+        RunStatus(status, 3f, events);
+        AssertBool(!status.IsOut && status.Calm > 0.95f && status.Drugs.Level("propofol") > 1f)
+            .OverrideFailureMessage("sedatives: flumazenil brings them round, still calmed by the propofol").IsTrue();
+    }
+
     /// <summary>Y19: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late;
     /// knocked out they lie on the floor with the table in view, and flumazenil gets them up again.</summary>
     [TestCase(Timeout = Limits.Slow)]
@@ -1039,12 +1084,12 @@ public class SyringeTest {
         return new SurgeonStatus(mods);
     }
 
-    /// <summary>A status given <paramref name="mg"/> of diazepam, run 10 seconds on (past its onset), the events it
-    /// gave collected.</summary>
-    private static SurgeonStatus Dosed(float mg, List<StatusEvent>? events = null) {
+    /// <summary>A status given <paramref name="mg"/> of <paramref name="drug"/>, run 10 seconds on (5 past a slower
+    /// onset), the events it gave collected.</summary>
+    private static SurgeonStatus Dosed(float mg, List<StatusEvent>? events = null, string drug = "diazepam") {
         var status = new SurgeonStatus(new Modifiers());
-        status.Administer("diazepam", mg);
-        RunStatus(status, 10f, events ?? []);
+        status.Administer(drug, mg);
+        RunStatus(status, Mathf.Max(Db.Drug(drug)!.Onset * DrugDef.DirectOnset + 5f, 10f), events ?? []);
         return status;
     }
 

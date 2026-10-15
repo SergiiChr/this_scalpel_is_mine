@@ -40,8 +40,8 @@ public sealed class SurgeonStatus(Modifiers mods) {
     /// <summary>A surgeon's weight without quirks (kg). Doses given to a surgeon are worked out from it, like a
     /// patient's.</summary>
     public const float BaseWeight = 80f;
-    /// <summary>A sedative (flag "benzo") at the right dose steadies the shaking of stress, blurs the view and delays
-    /// hand moves by SedatedDelay. From DoseHigh times the dose on the view darkens and the delay grows, by up to
+    /// <summary>A sedative (<see cref="DrugDef.IsSedative"/>) at the right dose steadies the shaking of stress, blurs
+    /// the view and delays hand moves by SedatedDelay. Every sedative's share of its own right dose adds up. From DoseHigh times the dose on the view darkens and the delay grows, by up to
     /// OverdoseDelay at KnockoutShare. There the surgeon is knocked out for KnockoutTime.</summary>
     public const float SedatedDelay = 0.1f;
     public const float OverdoseDelay = 0.2f;
@@ -246,16 +246,18 @@ public sealed class SurgeonStatus(Modifiers mods) {
         return events;
     }
 
-    /// <summary>Sedatives add up into calm and overdose, and knock the surgeon out at KnockoutShare. Flumazenil
-    /// (reverse_benzo) takes them all away; a stimulant only keeps a knocked out surgeon up while it lasts.</summary>
+    /// <summary>Sedatives add up into calm and overdose, and knock the surgeon out at KnockoutShare. An antidote
+    /// takes away its own kind (flumazenil benzo, naloxone opioid) and brings them round unless the other sedatives
+    /// still knock them out; a stimulant only keeps a knocked out surgeon up while it lasts.</summary>
     private void UpdateDrugs(float delta, List<StatusEvent> events) {
         foreach (var (def, crossing) in Drugs.Update(delta, (_, _) => 1f)) {
             if (crossing != DrugLevels.Crossing.Works) {
                 continue;
             }
-            if (def.HasFlag("reverse_benzo")) {
-                Drugs.Remove(drug => drug.HasFlag("benzo"));
-                if (KnockedOut > 0f) {
+            var reverses = def.HasFlag("reverse_benzo") ? "benzo" : def.HasFlag("reverse_opioid") ? "opioid" : null;
+            if (reverses is not null) {
+                Drugs.Remove(drug => drug.HasFlag(reverses));
+                if (KnockedOut > 0f && SedativeLevel() < KnockoutShare) {
                     KnockedOut = 0f;
                     KeptUp = 0f;
                     events.Add(StatusEvent.CameRound);
@@ -265,7 +267,7 @@ public sealed class SurgeonStatus(Modifiers mods) {
                 events.Add(StatusEvent.CameRound);
             }
         }
-        var sedative = Drugs.Entries.Where(entry => entry.Def.HasFlag("benzo")).Sum(entry => entry.Level);
+        var sedative = SedativeLevel();
         Calm = Mathf.Min(DrugDef.DoseStrength(sedative), 1f);
         Overdose = Mathf.Clamp((sedative - DrugDef.DoseHigh) / (KnockoutShare - DrugDef.DoseHigh), 0f, 1f);
         if (sedative >= KnockoutShare && !_knocked) {
@@ -295,4 +297,7 @@ public sealed class SurgeonStatus(Modifiers mods) {
             events.Add(StatusEvent.CameRound);
         }
     }
+
+    /// <summary>Every sedative in the blood, as shares of its own right dose.</summary>
+    private float SedativeLevel() => Drugs.Entries.Where(entry => entry.Def.IsSedative).Sum(entry => entry.Level);
 }
