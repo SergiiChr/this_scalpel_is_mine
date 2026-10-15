@@ -166,6 +166,9 @@ public sealed partial class TissueSim {
     /// </summary>
     public const int MaxCatchUp = 2;
     public const float SleepEpsilon = 0.00002f;
+    /// <summary>The widest flip between two spots that still counts as at rest (see <see cref="IsSleeping"/>).
+    /// </summary>
+    public const float SleepJitter = 0.0001f;
     public const int SleepSteps = 20;
     /// <summary>Most solver steps the skin gets to settle at build time (see Settle()).</summary>
     public const int SettleSteps = 300;
@@ -201,6 +204,9 @@ public sealed partial class TissueSim {
     public Vector3[] Rest { get; private set; } = [];
     public Vector3[] Pos { get; private set; } = [];
     private Vector3[] _prev = [];
+    /// <summary>Where each particle was a step before <see cref="_prev"/>: skin flipping between two spots every step
+    /// is as still as skin that doesn't move.</summary>
+    private Vector3[] _before = [];
     private float[] _anchor = [];
     private readonly Dictionary<Vector3I, List<int>> _foldNeighbors = [];
     private readonly List<List<int>> _usedFoldBuckets = [];
@@ -404,6 +410,7 @@ public sealed partial class TissueSim {
         }
         Pos = (Vector3[])Rest.Clone();
         _prev = (Vector3[])Rest.Clone();
+        _before = (Vector3[])Rest.Clone();
         _anchorTarget = (Vector3[])Rest.Clone();
         _restNormal = new Vector3[count];
         for (var j = 0; j <= ResY; j++) {
@@ -462,6 +469,7 @@ public sealed partial class TissueSim {
         _winLocked = false;
         Settled = (Vector3[])Pos.Clone();
         _prev = (Vector3[])Pos.Clone();
+        _before = (Vector3[])Pos.Clone();
         StepsDone = 0;
         for (var s = 0; s < _springCount; s++) {
             ref var spring = ref _springs[s];
@@ -652,7 +660,7 @@ public sealed partial class TissueSim {
     }
 
     /// <summary>Asleep once nothing has moved for SleepSteps steps, grips held still included: a moved grip wakes it.
-    /// </summary>
+    /// Skin flipping between two spots less than SleepJitter apart every step counts as not moving.</summary>
     public bool IsSleeping => _stillSteps >= SleepSteps;
 
     public void Wake() => _stillSteps = 0;
@@ -1565,6 +1573,7 @@ public sealed partial class TissueSim {
         foreach (var k in _winParticles) {
             var p = pos[k];
             pos[k] = p + (p - _prev[k]) * Damping;
+            _before[k] = _prev[k];
             _prev[k] = p;
             _free[k] = 1f;
         }
@@ -1622,9 +1631,11 @@ public sealed partial class TissueSim {
         StayAboveFloor();
         UpdateFoldContact();
         var moved = 0f;
+        var wandered = 0f;
         var farthest = 0f;
         foreach (var k in _winParticles) {
             moved = Mathf.Max(moved, pos[k].DistanceSquaredTo(_prev[k]));
+            wandered = Mathf.Max(wandered, pos[k].DistanceSquaredTo(_before[k]));
             farthest = Mathf.Max(farthest, pos[k].DistanceSquaredTo(Rest[k]));
         }
         _farthest = farthest;
@@ -1634,7 +1645,11 @@ public sealed partial class TissueSim {
         if (_retractDirty) {
             UpdateRetraction();
         }
-        _stillSteps = moved < SleepEpsilon * SleepEpsilon ? _stillSteps + 1 : 0;
+        // A grip held still can leave a few particles where the constraints push them back and forth by a few
+        // hundredths of a millimeter every step, forever: back where they were two steps ago, they're at rest too.
+        var still = moved < SleepEpsilon * SleepEpsilon
+            || (wandered < SleepEpsilon * SleepEpsilon && moved < SleepJitter * SleepJitter);
+        _stillSteps = still ? _stillSteps + 1 : 0;
         if (_stillSteps >= SleepSteps) {
             if (_pins.Count == 0) { _fold.Active = false; }
             _fold.Expire(this);
