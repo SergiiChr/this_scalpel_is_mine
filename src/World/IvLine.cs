@@ -57,9 +57,12 @@ public partial class IvLine : Node3D {
     private const float SleepTime = 0.5f;
     /// <summary>Frames simulated at once when the far end jumps somewhere new, so it starts out hanging.</summary>
     private const int SettleFrames = 180;
-    /// <summary>How far (meters) the held end moves in one step: a longer move in one frame (a teleport, a network
-    /// correction, a quick swing) is split up.</summary>
-    private const float Jump = 0.1f;
+    /// <summary>How far (meters) the held end may move in one frame before the tubing is laid out anew: further than
+    /// any hand or walk goes, so only a jump (a teleport, a network correction).</summary>
+    private const float Jump = 0.5f;
+    /// <summary>The height (meters) tubing laid out anew is pulled up toward halfway between its ends: enough to take
+    /// its middle above a standing surgeon (<see cref="BodyHeight"/>).</summary>
+    private const float Over = 2.4f;
     /// <summary>Where the bare end hangs on the stand, across from the drip chamber, local to the stand.</summary>
     internal static readonly Vector3 ClipPoint = new(-0.08f, 1.45f, 0f);
     private const uint SkinMask = PatientBody.SurfaceLayer | Drape.DrapeLayer;
@@ -249,12 +252,11 @@ public partial class IvLine : Node3D {
         }
         _asleep = false;
         if (end is { } held && _lastEnd is { } was && held.DistanceSquaredTo(was) > Jump * Jump) {
-            // Dragged that far in one frame, the tubing would go through whatever was in the way: the end is carried
-            // there in steps no longer than that, the tubing following it around things.
-            var steps = Mathf.CeilToInt(held.DistanceTo(was) / Jump);
-            for (var i = 1; i < steps; i++) {
-                Step(start, was.Lerp(held, (float)i / steps), (float)delta, true);
-            }
+            // Dragged that far in one frame, the tubing would go through whatever was in the way: it drops onto it
+            // from above instead, and nobody caught it.
+            LayOver(start, held);
+            _caughtBy = null;
+            _stretchedFor = 0f;
         }
         Step(start, end, (float)delta, true);
         PlaceEndCatheter();
@@ -478,6 +480,17 @@ public partial class IvLine : Node3D {
     private void Wake() {
         _asleep = false;
         _stillFor = 0f;
+    }
+
+    /// <summary>Lays the tubing out still in a curve from <paramref name="start"/> to <paramref name="end"/> pulled up
+    /// toward <see cref="Over"/> halfway: over the patient, the table and anyone standing there.</summary>
+    private void LayOver(Vector3 start, Vector3 end) {
+        var top = start.Lerp(end, 0.5f) with { Y = Over };
+        for (var i = 0; i < Samples; i++) {
+            var t = (float)i / (Samples - 1);
+            _points[i] = start.Lerp(top, t).Lerp(top.Lerp(end, t), t);
+            _previous[i] = _points[i];
+        }
     }
 
     /// <summary>Runs <see cref="SettleFrames"/> frames at once, so a far end that jumped starts out hanging. Rays only
