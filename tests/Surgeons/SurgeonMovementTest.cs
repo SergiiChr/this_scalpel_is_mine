@@ -173,7 +173,12 @@ public class SurgeonMovementTest {
         await FollowView(me, puppet, 60);
         var spot = me.LeanSpot;
         AssertObject(spot).OverrideFailureMessage("the view leans in over the patient, no tool in use").IsNotNull();
-        AssertFloat(me.Lean).OverrideFailureMessage($"the torso bends far forward ({me.Lean:0.00} rad)").IsGreater(0.7f);
+        AssertFloat(me.Lean).OverrideFailureMessage($"the torso bends far forward ({me.Lean:0.00} rad)").IsGreater(0.6f);
+        foreach (var arm in me.Hands) {
+            var gap = ArmAbove(me, arm);
+            AssertFloat(gap).OverrideFailureMessage($"arm {arm.Index} stays above the patient ({gap * 100f:0} cm at its lowest)")
+                .IsGreater(0f);
+        }
         var eyes = me.Camera.GlobalPosition;
         var ahead = standingEyes.Z - me.ToLocal(eyes).Z;
         AssertFloat(ahead).OverrideFailureMessage($"the eyes come forward over the table ({ahead * 100f:0} cm)").IsGreater(0.3f);
@@ -276,6 +281,23 @@ public class SurgeonMovementTest {
         AssertInt(me.Zoom).OverrideFailureMessage("still zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
         AssertFloat(me.Pitch).OverrideFailureMessage("the look still where the player put it").IsEqualApprox(lookedAt, 0.001f);
         driver.Budget.Check(localOverride: BudgetOverride);
+    }
+
+    /// <summary>How far (m) <paramref name="arm"/>'s sleeve, shoulder to elbow to wrist, is above what's under it at its
+    /// lowest: below zero it passes through the patient.</summary>
+    private static float ArmAbove(Surgeon me, SurgeonHand arm) {
+        Vector3[] joints = [me.VisualShoulder(arm.Index), arm.Elbow, arm.GlobalPosition];
+        var lowest = float.PositiveInfinity;
+        for (var bone = 0; bone < 2; bone++) {
+            for (var step = 0; step <= 10; step++) {
+                var point = joints[bone].Lerp(joints[bone + 1], step / 10f);
+                var under = me.SurfaceBelow(point, false);
+                if (under.Found) {
+                    lowest = Mathf.Min(lowest, point.Y - under.Y);
+                }
+            }
+        }
+        return lowest;
     }
 
     /// <summary>Plays <paramref name="frames"/> physics frames, the partner's copy getting each one, and checks the view

@@ -9,7 +9,7 @@ namespace Scalpel.Surgeons;
 /// </summary>
 public partial class Surgeon {
     /// <summary>Farthest the torso bends forward over the patient (radians).</summary>
-    internal const float MaxLean = 1f;
+    internal const float MaxLean = 0.7f;
     /// <summary>Leaning in, the eyes stop this far (m, across the floor) short of right over the spot they look at: the
     /// view goes down into the opening steeply, not straight down onto the back of the hand, and stays within how far
     /// down the eyes can look (<see cref="LookPitch"/>).</summary>
