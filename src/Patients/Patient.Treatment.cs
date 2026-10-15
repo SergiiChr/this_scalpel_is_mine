@@ -2,11 +2,16 @@ namespace Scalpel.Patients;
 
 /// <summary>Damage and treatment: what tools do to the body (host only, called by tool actions).</summary>
 public partial class Patient {
-    /// <summary>Closures whose stitch tension follows the pressure level: loose leaks, tight can tear through.</summary>
+    /// <summary>Closures pulled as tight as their wheel says, like the needle's thread (SewAction.ThreadState()): loose
+    /// leaks, too tight can tear through.</summary>
     public static readonly IReadOnlyList<string> TensionedClosures = ["paper_clips"];
-    /// <summary>Stitch rest length per pressure level (1 loose, 2 right, 3 tight), relative to the skin's own springs.
-    /// </summary>
-    public static readonly float[] StitchTension = [0.95f, 1.25f, 0.95f, 0.8f];
+    /// <summary>Stitch rest length as a tensioned closure reads (loose, closed, too tight), relative to the skin's own
+    /// springs. Any other closure stitches closed.</summary>
+    public static readonly IReadOnlyDictionary<string, float> StitchTension = new Dictionary<string, float> {
+        ["loose"] = 1.25f,
+        ["closed"] = 0.95f,
+        ["too tight"] = 0.8f,
+    };
     /// <summary>How much load a running thread's spans take before they snap, per layer it's sewn in.</summary>
     public static readonly float[] ThreadStrength = [0f, 2f, 2.15f, 3f];
     /// <summary>How much of the skin's wounds (by length, <see cref="SkinClosure"/>) has to be closed for them to count
@@ -558,7 +563,7 @@ public partial class Patient {
             return true;
         }
         var quality = def.Improvised ? Mathf.Lerp(def.Quality, 1f, 1f - improvisedMult) : def.Quality;
-        Rpc(MethodName.TissueStitch, at, StitchTension[0], 1.2f + quality);
+        Rpc(MethodName.TissueStitch, at, StitchTension["closed"], 1.2f + quality);
         PaintSeam(bins.Select(wound.BinPosition).ToList());
         ClosedWith(wound, quality);
         Rpc(MethodName.TissueStaple, a, b, (int)TissueDepth.Skin);
@@ -582,9 +587,10 @@ public partial class Patient {
         Session.Announce("The staple went through a vessel. It's bleeding.", true);
     }
 
-    /// <summary>Closes the skin at uv with a closure tool (tape, paper clips, a quick stitch). Returns true when a bin
-    /// closed.</summary>
-    public bool CloseAt(Vector2 uv, ToolDef def, float dt, float improvisedMult, int pressure) {
+    /// <summary>Closes the skin at uv with a closure tool (tape, paper clips, a quick stitch) pulled to
+    /// <paramref name="tension"/> (the wheel, see ToolActions.SutureTensionStep; only TensionedClosures mind it).
+    /// Returns true when a bin closed.</summary>
+    public bool CloseAt(Vector2 uv, ToolDef def, float dt, float improvisedMult, float tension) {
         var wound = NearestWound(uv, 0.02f, false);
         if (wound is null) {
             return false;
@@ -593,7 +599,9 @@ public partial class Patient {
         if (wound.Bins[bin] >= 1f) {
             return false;
         }
-        var tensioned = TensionedClosures.Contains(def.Id);
+        var pull = TensionedClosures.Contains(def.Id) ? SewAction.ThreadState(tension, TissueDepth.Skin) : "closed";
+        var loose = pull == "loose";
+        var tight = pull == "too tight";
         var quality = def.Quality;
         if (def.Action == "suture" && def.Id is "surgical_tape" or "duct_tape" && wound.Depth > 0.6f) {
             quality *= 0.5f;
@@ -602,13 +610,11 @@ public partial class Patient {
             quality = Mathf.Lerp(quality, 1f, 1f - improvisedMult);
         }
         var cap = 1f;
-        if (tensioned) {
-            if (pressure == 1) {
-                quality *= 0.6f;
-                cap = 0.9f;
-            } else if (pressure == 3) {
-                quality = Mathf.Min(quality * 1.05f, 1f);
-            }
+        if (loose) {
+            quality *= 0.6f;
+            cap = 0.9f;
+        } else if (tight) {
+            quality = Mathf.Min(quality * 1.05f, 1f);
         }
         // Skin pulled shut over open muscle carries the muscle's pull: the edges won't meet, and a tight stitch gets
         // them there only to tear through.
@@ -618,7 +624,7 @@ public partial class Patient {
             if (wound.IsHole && !Body.IsOpen(uv)) {
                 return CloseMuscleAt(uv, def, dt);
             }
-            if (!(tensioned && pressure == 3)) {
+            if (!tight) {
                 TearNotice("The skin won't meet over the open muscle. Sew the muscle first.");
                 return false;
             }
@@ -635,7 +641,7 @@ public partial class Patient {
         wound.Bins[bin] = Mathf.Min(before + def.Power * 1.5f * dt, cap);
         wound.ClosureQuality = Mathf.Lerp(wound.ClosureQuality, quality, 0.2f);
         var reachedCap = before < cap && wound.Bins[bin] >= cap;
-        if (tensioned && pressure == 3 && reachedCap && Rng.Randf() < 0.2f / Mods.Mult("tear_threshold_mult")) {
+        if (tight && reachedCap && Rng.Randf() < 0.2f / Mods.Mult("tear_threshold_mult")) {
             wound.Bins[bin] = 0.3f;
             Tear(wound.BinPosition(bin), RandomDirection(), 0.02f);
             Rpc(MethodName.TissueBurst, wound.BinPosition(bin), 0.03f);
@@ -649,8 +655,7 @@ public partial class Patient {
         var p = wound.BinPosition(bin);
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, p, p, 0.012f, 0.35f, WoundMap.Mode.Min);
         Paint(WoundMap.Layer.Wounds, WoundMap.Stitch, p - new Vector2(0.006f, 0f), p + new Vector2(0.006f, 0f), 0.002f, 1f, WoundMap.Mode.Max);
-        var tension = tensioned ? StitchTension[pressure] : StitchTension[0];
-        Rpc(MethodName.TissueStitch, p, tension, 1.2f + quality);
+        Rpc(MethodName.TissueStitch, p, StitchTension[pull], 1.2f + quality);
         if (def.Id == "duct_tape") {
             AddFlag("duct_tape");
         }

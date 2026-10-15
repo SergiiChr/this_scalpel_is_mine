@@ -93,6 +93,9 @@ public partial class Hud : CanvasLayer {
     /// <summary>The patient card's page, while it's open or until the next one.</summary>
     private Control? _card;
     internal bool CardOpen => Overlay is not null && Overlay == _card;
+    /// <summary>The hand status line as shown: what each hand holds, and the active tool's thread or pull reading.
+    /// </summary>
+    internal string HandsLine => _hands.Text;
     /// <summary>The chart correction the card's page was built with.</summary>
     private bool _cardCorrected;
     private Tween? _cardFade;
@@ -598,13 +601,13 @@ public partial class Hud : CanvasLayer {
             ? $"{use}  Stitch (click), tie off (hold)"
             : $"{use} (hold)  {ToolActions.TriggerNames.GetValueOrDefault(action, action == "syringe" ? "Press in" : "Use")} {tool.Label()}";
         var (up, down) = (Key(InputActions.LevelUp), Key(InputActions.LevelDown));
+        if (ToolActions.HasTensionWheel(tool.Def)) {
+            yield return $"{up} / {down}  Loosen / tighten {(action == "sew" ? "thread" : tool.Label().ToLowerInvariant())}";
+        }
         switch (action) {
             case "syringe":
                 yield return $"{down}  Pull plunger 1 ml";
                 yield return $"{up}  Push plunger 1 ml";
-                break;
-            case "sew":
-                yield return $"{up} / {down}  Loosen / tighten thread";
                 break;
             case "spread":
                 yield return $"{up} / {down}  Open / close";
@@ -666,7 +669,7 @@ public partial class Hud : CanvasLayer {
     private void UpdateHands(Surgeon me) {
         var active = me.HeldTool(me.Active);
         var shown = new HandsShown(HandState(me, 0), HandState(me, 1), me.Active,
-            active?.Def.Action == "sew" ? SewAction.ThreadState(active) : null,
+            active is not null && ToolActions.HasTensionWheel(active.Def) ? SewAction.ThreadState(active) : null,
             active?.Def.Action == "spread" ? Mathf.RoundToInt(active.Spread * 1000f) : 0, me.Hands[me.Active].Level);
         if (_handsShown.Changed(shown)) {
             _hands.Text = HandsText(me, shown);
@@ -708,7 +711,7 @@ public partial class Hud : CanvasLayer {
         }
         var active = me.HeldTool(me.Active);
         if (shown.Thread is { } thread) {
-            parts.Add($"thread: {thread}");
+            parts.Add($"{(active!.Def.Action == "sew" ? "thread" : "pull")}: {thread}");
         }
         if (active?.Def.Action == "spread") {
             parts.Add($"open: {active.Spread * 100f:0.0} cm");

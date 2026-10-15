@@ -7,6 +7,10 @@ namespace Scalpel.Tests.Scenarios;
 /// </summary>
 internal sealed partial class GameplaySweep {
     private const string SurgeryScene = "res://scenes/surgery.tscn";
+    /// <summary>Paper clip wheel tensions that read loose, closed and too tight (SewAction.ThreadState()).</summary>
+    private static readonly float LooseClips = TissueSim.ThreadLoose[(int)TissueDepth.Skin];
+    private static readonly float ClosedClips = TissueSim.ThreadClosed[(int)TissueDepth.Skin];
+    private static readonly float TightClips = TissueSim.ThreadTear[(int)TissueDepth.Skin] + ToolActions.SutureTensionStep;
 
     private readonly Surgery _surgery;
     private readonly List<string> _failures = [];
@@ -52,7 +56,7 @@ internal sealed partial class GameplaySweep {
         }
         await SurgeryDriver.PlayerPutsCardBack(_surgery);
         // Excluded positive flows still need their initial compatibility checks in this sweep.
-        if (_surgery.Scenario.Id is "colon_cancer" or "blocked_artery") {
+        if (_surgery.Scenario.Id is "blocked_artery") {
             await InitialSceneChecks.Inspect(_surgery);
         }
         await InitialSceneChecks.ExerciseTray(_surgery, once);
@@ -95,9 +99,9 @@ internal sealed partial class GameplaySweep {
         var clips = Db.Tool("paper_clips")!;
         // Tight clips tear new wounds: only the ones there now.
         foreach (var wound in Patient.Wounds.Where(wound => !wound.IsInternal && wound.Points.Count > 1).ToList()) {
-            for (var pressure = 1; pressure <= 3; pressure++) {
+            foreach (var tension in (float[])[LooseClips, ClosedClips, TightClips]) {
                 for (var i = 0; i < 30; i++) {
-                    Patient.CloseAt(wound.Midpoint, clips, 0.1f, 1f, pressure);
+                    Patient.CloseAt(wound.Midpoint, clips, 0.1f, 1f, tension);
                 }
             }
         }
@@ -147,13 +151,13 @@ internal sealed partial class GameplaySweep {
                 }
             }
         }
-        CloseEveryBin(uv => Patient.CloseAt(uv, clips, 0.1f, 1f, 2));
+        CloseEveryBin(uv => Patient.CloseAt(uv, clips, 0.1f, 1f, ClosedClips));
         if (wound.Closure > 0f) {
             Fail($"the skin closed over open muscle (closure {wound.Closure:0.00})");
         }
         var tears = Patient.Flags.GetValueOrDefault("tears");
         for (var i = 0; i < 20; i++) {
-            Patient.CloseAt(wound.Midpoint, clips, 0.1f, 1f, 3);
+            Patient.CloseAt(wound.Midpoint, clips, 0.1f, 1f, TightClips);
         }
         if (Patient.Flags.GetValueOrDefault("tears") <= tears) {
             Fail("tight clips over open muscle didn't tear");
@@ -162,7 +166,7 @@ internal sealed partial class GameplaySweep {
         if (Body.Tissue.MuscleOpenNear(wound.Midpoint, Patient.MuscleReach)) {
             Fail("sewing inside the wound didn't close the muscle");
         }
-        CloseEveryBin(uv => Patient.CloseAt(uv, clips, 0.1f, 1f, 2));
+        CloseEveryBin(uv => Patient.CloseAt(uv, clips, 0.1f, 1f, ClosedClips));
         if (wound.Closure < 0.9f) {
             Fail($"the skin didn't close over sewn muscle (closure {wound.Closure:0.00})");
         }
