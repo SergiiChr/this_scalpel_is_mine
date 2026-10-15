@@ -84,6 +84,11 @@ public partial class SurgeonHand : Node3D {
     /// <summary>Room between the elbow and the table, patient or drapes under it (meters): about a sleeve's thickness.
     /// </summary>
     private const float ElbowClearance = 0.07f;
+    /// <summary>How many places round its IK circle the elbow tries to clear what's under it.</summary>
+    private const int GroundSteps = 32;
+    /// <summary>How fast (radians a second) the elbow turns round its IK circle to clear what's under it and back.
+    /// </summary>
+    private const float ElbowTurnSpeed = 4f;
     /// <summary>How fast (radians a second) a hand that let go of its tool rolls back from the tool's twist to palm
     /// down.</summary>
     internal const float UntwistSpeed = 3f;
@@ -213,6 +218,8 @@ public partial class SurgeonHand : Node3D {
     private Vector3 _heldElbow;
     /// <summary>1 held, 0 free, eased back after aiming.</summary>
     private float _elbowHold;
+    /// <summary>How far round its IK circle (radians) the elbow is turned to stay above what's under it.</summary>
+    private float _groundTurn;
     private AnimatableBody3D _pusher = null!;
     private StandardMaterial3D? _ghost;
     private bool _seeThrough;
@@ -363,7 +370,7 @@ public partial class SurgeonHand : Node3D {
             _heldElbow = Body.ToLocal(_elbow);
         }
         _elbowHold = Aiming ? 1f : Mathf.MoveToward(_elbowHold, 0f, delta / ElbowEase);
-        SolveArm(shoulder);
+        SolveArm(shoulder, delta);
         AnimateFingers(delta);
         GloveDrop = GloveLowest() - GlobalPosition.Y;
         UpdateTrail(delta);
@@ -600,7 +607,7 @@ public partial class SurgeonHand : Node3D {
         return _thumb = new ThumbRest(joints[0], bones, axes);
     }
 
-    private void SolveArm(Vector3 shoulder) {
+    private void SolveArm(Vector3 shoulder, float delta) {
         var toHand = GlobalPosition - shoulder;
         var distance = Mathf.Clamp(toHand.Length(), 0.05f, UpperArm + Forearm - 0.001f);
         var direction = toHand.Normalized();
@@ -641,7 +648,7 @@ public partial class SurgeonHand : Node3D {
         if (_elbowHold > 0f) {
             elbow = elbow.Lerp(Body.ToGlobal(_heldElbow), _elbowHold);
         }
-        elbow = AboveGround(elbow, shoulder + (direction * along), direction);
+        elbow = AboveGround(elbow, shoulder + (direction * along), direction, delta);
         _elbow = elbow;
         PlaceSegment(_upper, shoulder, elbow);
         var wrist = PlaceGlove(elbow, ownerBasis);
@@ -679,24 +686,29 @@ public partial class SurgeonHand : Node3D {
         return best;
     }
 
-    /// <summary>The elbow, or where it goes round the same IK circle (about <paramref name="bendCenter"/>) nearest to it
-    /// to stay <see cref="ElbowClearance"/> above what's under it. Searched only while it's in something.</summary>
-    private Vector3 AboveGround(Vector3 elbow, Vector3 bendCenter, Vector3 direction) {
-        if (GroundAt is not { } groundAt || elbow.Y >= groundAt(elbow) + ElbowClearance) {
-            return elbow;
-        }
+    /// <summary>The elbow turned round the same IK circle (about <paramref name="bendCenter"/>) as little as keeps it
+    /// <see cref="ElbowClearance"/> above what's under it, easing there and back so the arm doesn't pop. Searched only
+    /// while it's in something. A squat's knee support places the elbow itself.</summary>
+    private Vector3 AboveGround(Vector3 elbow, Vector3 bendCenter, Vector3 direction, float delta) {
         var spoke = elbow - bendCenter;
-        var best = elbow;
-        var bestDistance = float.PositiveInfinity;
-        for (var step = 1; step < 16; step++) {
-            var candidate = bendCenter + spoke.Rotated(direction, step * Mathf.Tau / 16f);
-            var distance = candidate.DistanceSquaredTo(elbow);
-            if (distance < bestDistance && candidate.Y >= groundAt(candidate) + ElbowClearance) {
-                best = candidate;
-                bestDistance = distance;
+        var needed = 0f;
+        // Turned already, it comes back only once the elbow clears with room to spare, so it doesn't hover at the line.
+        var margin = _groundTurn != 0f ? ElbowClearance + 0.02f : ElbowClearance;
+        if (GroundAt is { } groundAt && ElbowSupportWeight <= 0f && elbow.Y < groundAt(elbow) + margin) {
+            needed = _groundTurn;
+            for (var step = 1; step <= GroundSteps / 2 && needed == _groundTurn; step++) {
+                foreach (var sign in (float[])[1f, -1f]) {
+                    var angle = sign * step * Mathf.Tau / GroundSteps;
+                    var candidate = bendCenter + spoke.Rotated(direction, angle);
+                    if (candidate.Y >= groundAt(candidate) + ElbowClearance) {
+                        needed = angle;
+                        break;
+                    }
+                }
             }
         }
-        return best;
+        _groundTurn = delta > 0f ? Mathf.MoveToward(_groundTurn, needed, delta * ElbowTurnSpeed) : needed;
+        return _groundTurn == 0f ? elbow : bendCenter + spoke.Rotated(direction, _groundTurn);
     }
 
     private float KneeClearance(Vector3 shoulder, Vector3 elbow) {

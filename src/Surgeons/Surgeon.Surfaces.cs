@@ -366,10 +366,11 @@ public partial class Surgeon {
         return lowest;
     }
 
-    /// <summary>How high the table, the patient or their drapes reach under <paramref name="point"/> (world), negative
-    /// infinity over nothing. One ray, cheap enough for the arms to keep their elbows out of them every frame.</summary>
+    /// <summary>How high the table, the patient, their drapes or anything else standing in the room reach under
+    /// <paramref name="point"/> (world), negative infinity over nothing. Up to 15 cm over it counts as under: what an
+    /// elbow sank into. One ray, cheap enough for the arms to keep their elbows out of them every frame.</summary>
     internal float GroundUnder(Vector3 point) =>
-        Rays.Cast(this, point + (Vector3.Up * 0.35f), point + (Vector3.Down * 2f),
+        Rays.Cast(this, point + (Vector3.Up * 0.15f), point + (Vector3.Down * 2f),
             1 | 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer)?.Position.Y ?? float.NegativeInfinity;
 
     /// <summary>

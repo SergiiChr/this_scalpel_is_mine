@@ -346,6 +346,10 @@ public partial class Surgeon : CharacterBody3D {
             hand.Grip = tool?.Def.Grip ?? "pencil";
             hand.Spreads = tool?.Def.Action == "spread";
             hand.Fit = tool is null ? GripFit.None : Db.GripFit(tool.Def, i);
+            if (tool is not null) {
+                // A new tool starts unrolled, even taken while the hand still untwists from the last one.
+                hand.Twist = 0f;
+            }
             if (tool?.Def.Grip == "needle") {
                 hand.Tilt = hand.DefaultTilt();
                 hand.Turn = hand.DefaultTurn();
