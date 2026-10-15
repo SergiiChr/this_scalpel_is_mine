@@ -1041,7 +1041,7 @@ public class SyringeTest {
         AssertObject(me.NeedleAnchor).OverrideFailureMessage("needle_hand: the needle is in the skin").IsNotNull();
         var wentIn = me.NeedleAnchor!.Value;
         var body = Surgery.Patient.Body;
-        var beadsBefore = Beads(body);
+        var beadsBefore = Surgery.Effects.Beads();
         for (var i = 0; i < 60 && !me.NeedleTorn; i++) {
             await _bench.Steer(new Vector2(20f, 0f));
             await Frames.Physics(1);
@@ -1051,7 +1051,7 @@ public class SyringeTest {
             .OverrideFailureMessage(
                 $"needle_hand: pulled on, the needle tears out and leaves a scratch where it was in ({scratch:0.00})")
             .IsTrue();
-        var tornBeads = Beads(body).Except(beadsBefore).ToList();
+        var tornBeads = Surgery.Effects.Beads().Except(beadsBefore).ToList();
         AssertInt(tornBeads.Count).OverrideFailureMessage("needle_hand: tearing out leaves one bead").IsEqual(1);
         AssertFloat(((tornBeads[0].GlobalPosition - wentIn) * new Vector3(1f, 0f, 1f)).Length())
             .OverrideFailureMessage("needle_hand: even after tearing out, the bead stays at the injection point")
@@ -1320,9 +1320,6 @@ public class SyringeTest {
         var glove = (GeometryInstance3D)hand.FindChildren("*", nameof(GeometryInstance3D), true, false)[0];
         return glove.MaterialOverride is StandardMaterial3D ghost ? 1f - ghost.AlbedoColor.A : 0f;
     }
-
-    private static List<MeshInstance3D> Beads(Node body) =>
-        [.. body.FindChildren("BloodBead*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>()];
 
     /// <summary>What kind of thing the needle is in, as the cases name it.</summary>
     private static string Kind(NeedleTarget target) => target switch {
