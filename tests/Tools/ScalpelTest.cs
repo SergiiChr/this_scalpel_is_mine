@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class ScalpelTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "cutting and returning the scalpel exceed the recorded CPU/render budget";
+    private static readonly BudgetAllowance BudgetOverride = new("cutting and returning the scalpel exceed the recorded CPU/render budget", 6f);
 
     private const float Length = 0.05f;
 

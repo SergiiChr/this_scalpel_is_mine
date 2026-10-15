@@ -20,7 +20,7 @@ public class GelpiTest {
     private const float Middle = 0.005f;
     private const float Open = 0.032f;
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 24.5f);
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task GelpiSetInACutHoldsItOpenUntilTakenOut() {

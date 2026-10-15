@@ -43,7 +43,7 @@ public class SlicingTest {
     private const float CameraDistance = 0.22f;
     private const float CameraFov = 20f;
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 10.5f);
 
     /// <summary>Fat: a layer of fat lies between skin and muscle. Inside: what a cut through the muscle shows. Along:
     /// the cut runs along the limb (the surgeon turns to face along it), not across the table toward the surgeon.

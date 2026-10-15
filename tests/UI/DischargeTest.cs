@@ -12,7 +12,7 @@ namespace Scalpel.Tests.UI;
 public class DischargeTest {
     // Temporary local budget override: taking the card off its hook peaks at 6-11 ms here (budget about 10 ms), the same
     // card path PatientCardTest overrides; signing itself stays far below it.
-    private const string BudgetOverride = "taking the patient card off its hook sometimes exceeds the CPU budget";
+    private static readonly BudgetAllowance BudgetOverride = new("taking the patient card off its hook sometimes exceeds the CPU budget", 3.5f);
 
     [TestCase]
     public async Task SignatureWritesWhileHeldRollsBackAndSignsOutTooEarly() {

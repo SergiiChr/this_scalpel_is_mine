@@ -13,7 +13,7 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class NeedleTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "known to go over the frame budget, not profiled yet";
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 14.5f);
 
     /// <summary>Too loose leaves a gap, too tight tears through, and skin pulled shut over open muscle tears through
     /// too.</summary>
