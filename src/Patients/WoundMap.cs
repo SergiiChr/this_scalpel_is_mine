@@ -46,12 +46,15 @@ public sealed class WoundMap {
     private const int Cells = 16;
     private const int LayerCount = 4;
 
-    /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures once per frame by
-    /// <see cref="Flush"/>.</summary>
+    /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures by <see cref="Flush"/>.
+    /// </summary>
     private readonly byte[][] _data = new byte[LayerCount][];
 
     /// <summary>A copy of a layer's pixels as they are now, to compare with later.</summary>
     internal byte[] Snapshot(Layer layer) => (byte[])_data[(int)layer].Clone();
+    /// <summary>A layer's pixels as last uploaded: what its texture holds, which a headless run can't read back.
+    /// </summary>
+    internal byte[] Uploaded(Layer layer) => _images[(int)layer].GetData();
     private readonly bool[] _dirty = new bool[LayerCount];
     /// <summary>Which cells of a coarse Cells x Cells grid have ever been painted into, per layer and channel.
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
@@ -163,14 +166,24 @@ public sealed class WoundMap {
         return _data[(int)layer][(at.Y * Size + at.X) * 4 + channel] / 255f;
     }
 
-    /// <summary>Uploads changed images to the GPU. Call once per frame.</summary>
+    /// <summary>Calls of <see cref="Flush"/> that had something to upload.</summary>
+    internal int Uploads { get; private set; }
+
+    /// <summary>Uploads changed images to the GPU. Godot has no sub-rectangle texture update, so each one copies a
+    /// layer's whole image (1 MB at MaxSize): the body calls it once per sim step, not every frame, while a wipe or
+    /// bleed paints (<see cref="PatientBody.UploadWoundMap"/>).</summary>
     public void Flush() {
+        var any = false;
         for (var i = 0; i < LayerCount; i++) {
             if (_dirty[i]) {
                 _images[i].SetData(Size, Size, false, Image.Format.Rgba8, _data[i]);
                 Textures[i].Update(_images[i]);
                 _dirty[i] = false;
+                any = true;
             }
+        }
+        if (any) {
+            Uploads++;
         }
     }
 }
