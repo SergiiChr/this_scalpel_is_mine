@@ -51,6 +51,8 @@ public partial class IvLine : Node3D {
     private const float YankTime = 0.1f;
     /// <summary>A surgeon who pushed the tubing this many physics frames ago still has it caught.</summary>
     private const ulong HookFrames = 15;
+    /// <summary>How fast (m/s) a surgeon moves over the floor to be walking off with tubing they caught.</summary>
+    private const float Walking = 0.2f;
     /// <summary>It sleeps once no point moved more than this (meters) in a frame for <see cref="SleepTime"/>.
     /// </summary>
     private const float Still = 0.0001f;
@@ -234,7 +236,9 @@ public partial class IvLine : Node3D {
     /// <summary>Host: the tubing on a catheter that's carried further from the stand than it reaches.</summary>
     public bool SlipsOff => End == IvLineEnd.Catheter && _stretchedFor >= YankTime;
 
-    private bool Caught() => _caughtBy is not null && Engine.GetPhysicsFrames() - _caughtFrame < HookFrames;
+    /// <summary>A surgeon walking pushed the tubing just now: one standing still with it over them hasn't hooked it.
+    /// </summary>
+    private bool Caught() => _caughtBy is { GroundSpeed: > Walking } && Engine.GetPhysicsFrames() - _caughtFrame < HookFrames;
 
     public override void _PhysicsProcess(double delta) {
         if (!IsInstanceValid(_stand)) {
