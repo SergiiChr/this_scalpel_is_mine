@@ -111,6 +111,9 @@ public partial class SurgeonHand : Node3D {
     /// <summary>Effort level 0..3 from the wheel (cut depth, stitch tension, heat, plunger...), see
     /// ToolActions.LevelNames.</summary>
     public int Level { get; set; }
+    /// <summary>How deep under an opening's lip (meters) the wheel holds this hand's forceps tip, null while it rests on
+    /// what's inside (see Surgeon.HoldsDepth()). Only the owner places its hands, so it isn't streamed.</summary>
+    public float? HeldDepth { get; set; }
     public bool Lifted { get; set; }
     /// <summary>Set by the surgeon while the wrist aims the tool: the elbow stays put.</summary>
     public bool Aiming { get; set; }

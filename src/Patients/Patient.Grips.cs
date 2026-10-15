@@ -2,6 +2,14 @@ namespace Scalpel.Patients;
 
 /// <summary>What tools take hold of: skin, targets, vessels, organs (forceps, clamps, retractors, spreaders).</summary>
 public partial class Patient {
+    /// <summary>In an opening, jaws close on a target only with the tip at most this far (meters) over what's under it:
+    /// lowered onto it they close just above it, a wheel notch higher (Surgeon.DepthStep) on nothing.</summary>
+    public const float JawReach = 0.004f;
+    /// <summary>How far under an opening's lip (meters) its edge is: jaws closing this shallow in the opening take the
+    /// edge, deeper there's none to take. A forceps tip held deeper can't move out under the skin
+    /// (Surgeon.InsideLip()).</summary>
+    public const float LipDepth = 0.005f;
+
     /// <summary>
     /// Called when a clamp tool closes at the tip. Returns what it took hold of, for <see cref="UpdateGrip"/> and
     /// <see cref="ReleaseGrip"/>; null when nothing. <paramref name="skinOnly"/>: a hook (the retractor) takes hold of
@@ -21,8 +29,9 @@ public partial class Patient {
             return new SkinHold(cut.Id, uv, Hook: true);
         }
         // The nearest target the jaws close on, not one another tool already holds (two broken ends lie close
-        // together).
-        var nearest = skinOnly ? null : Targets
+        // together). Forceps held up in the opening close on nothing under them: no target, vessel or bleeding wound.
+        var down = zone != SiteZone.Cavity || TipDown(Body.UvToWorld(uv, depthM));
+        var nearest = skinOnly || !down ? null : Targets
             .Where(t => !t.Extracted && !t.IsSuctionTarget && !(t.IsBone && t.Anchor > 0f))
             .Where(t => t.GrippedBy == 0 || t.GrippedBy == toolUid)
             .Where(t => zone is SiteZone.Cavity or SiteZone.Site && t.Uv.DistanceTo(uv) < 0.05f
@@ -32,7 +41,7 @@ public partial class Patient {
             nearest.GrippedBy = toolUid;
             return new TargetHold(nearest.Index, depthM);
         }
-        if (!skinOnly && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal && w.Points[0].DistanceTo(uv) < 0.05f) is { } vessel) {
+        if (!skinOnly && down && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal && w.Points[0].DistanceTo(uv) < 0.05f) is { } vessel) {
             vessel.Clamped = 0.9f;
             return new VesselHold(vessel.Id);
         }
@@ -47,17 +56,23 @@ public partial class Patient {
             }
         }
         var wound = NearestWound(uv, 0.03f, false);
-        if (wound is not null && zone == SiteZone.Cavity && !skinOnly && wound.BleedRate(1f, 1f) > 0f && wound.Depth > 0.6f) {
+        if (wound is not null && zone == SiteZone.Cavity && !skinOnly && down && wound.BleedRate(1f, 1f) > 0f && wound.Depth > 0.6f) {
             wound.Clamped = 0.85f;
         }
-        // Skin can be pinched anywhere on the site, but from inside the cavity only near a wound edge.
-        if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null)) {
+        // Skin can be pinched anywhere on the site, but from inside the cavity only at a wound's edge, up by the lip.
+        if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null && depthM < LipDepth)) {
             tissue.Grip(toolUid, uv);
             var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.Nearest(uv)).Count > 0;
             return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece);
         }
         return null;
     }
+
+    /// <summary>A tip in an opening is down on what's inside (within <see cref="JawReach"/>), or in it, not held up over
+    /// it.</summary>
+    private bool TipDown(Vector3 tip) =>
+        Rays.Cast(this, tip + (Vector3.Up * 0.05f), tip + (Vector3.Down * JawReach), PatientBody.CavityLayer | CavityTarget.TouchLayer)
+            is not null;
 
     /// <summary>
     /// Called when a spreader (the Gelpi retractor) is set into the skin with its jaws' tips at

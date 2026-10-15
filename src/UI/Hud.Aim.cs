@@ -2,8 +2,9 @@ namespace Scalpel.UI;
 
 /// <summary>
 /// The aim at the active tool tip: a dot, for blades a line along the edge where it will cut, for a spreader a &lt; and a
-/// &gt; at its tips, moving apart as it opens, for a stapler a ring where each leg goes in. Beside it, the name of the
-/// tool the hand would pick up and the tool's effort levels.
+/// &gt; at its tips, moving apart as it opens, for a stapler a ring where each leg goes in. Over an opening forceps also
+/// show a stem from the lip down to their tip. Beside it, the name of the tool the hand would pick up and the tool's
+/// effort levels or the forceps' depth.
 /// </summary>
 public partial class Hud {
     /// <summary>What each effort level (0..3) does, for tools that take one (see LevelSteps()).</summary>
@@ -28,6 +29,7 @@ public partial class Hud {
     private Line2D _blade = null!;
     private readonly Line2D[] _jaws = new Line2D[2];
     private readonly Line2D[] _legs = new Line2D[2];
+    private Line2D _depth = null!;
     private Label _dotLabel = null!;
     /// <summary>Effort levels of the active tool beside the aim, when the tool has any.</summary>
     private RichTextLabel _levels = null!;
@@ -42,6 +44,10 @@ public partial class Hud {
     internal bool BladeShown => _blade.Visible;
     /// <summary>The projected center of the displayed blade line.</summary>
     internal Vector2 BladeCenter => _blade.Points[1];
+    /// <summary>The stem from an opening's lip down to the forceps' tip is shown.</summary>
+    internal bool DepthShown => _depth.Visible;
+    /// <summary>The text beside the aim: effort levels or forceps' depth, empty when none shows.</summary>
+    internal string AimText => _levels.Visible ? _levels.Text : "";
     /// <summary>The aim shows a stapler's two leg rings.</summary>
     internal bool LegRingsShown => _legs.All(ring => ring.Visible);
     /// <summary>Where the shown &lt; and &gt; point (screen).</summary>
@@ -78,6 +84,7 @@ public partial class Hud {
         _dot.AddThemeStyleboxOverride("panel", style);
         _root.AddChild(_dot);
         _blade = AimLine();
+        _depth = AimLine();
         for (var side = 0; side < 2; side++) {
             _jaws[side] = AimLine();
             _legs[side] = AimLine();
@@ -107,6 +114,8 @@ public partial class Hud {
         var action = shown ? tool?.Def.Action ?? "" : "";
         _dot.Visible = shown && action is not ("cut" or "spread" or "staple");
         _blade.Visible = action == "cut";
+        var opening = shown && me.HoldsDepth(me.Active) ? me.InOpening(me.Active) : null;
+        _depth.Visible = opening is not null;
         for (var side = 0; side < 2; side++) {
             _jaws[side].Visible = action == "spread";
             _legs[side].Visible = action == "staple";
@@ -139,9 +148,13 @@ public partial class Hud {
                 DrawStapler(me, camera, tool!);
                 break;
         }
+        if (opening is { } tipIn) {
+            var tip = tipIn.Lip + (Vector3.Down * tipIn.Depth);
+            DrawAim(_depth, [camera.UnprojectPosition(tipIn.Lip), camera.UnprojectPosition(tip)], false);
+        }
         _dotLabel.Text = IsInstanceValid(me.Hovered) ? me.Hovered!.Label() : "";
         _dotLabel.Position = at + new Vector2(10f, -10f);
-        var levels = LevelText(me);
+        var levels = opening is { } depth ? DepthText(me, depth) : LevelText(me);
         _levels.Text = levels;
         _levels.Visible = levels.Length > 0;
         _levels.Position = at + new Vector2(14f, 12f);
@@ -226,6 +239,13 @@ public partial class Hud {
             return null;
         }
         return LevelStepNames.GetValueOrDefault(tool.Def.Action, LevelStepNames["effort"]);
+    }
+
+    /// <summary>How deep the forceps' tip is in the opening, and whether the wheel holds it there or it rests on what's
+    /// inside.</summary>
+    private static string DepthText(Surgeon me, TipInOpening opening) {
+        var where = me.Hands[me.Active].HeldDepth is not null ? "held by the wheel" : "resting on what's inside";
+        return $"Tip depth\n[color=#fff4c8][b]▶ {opening.Depth * 100f:0.0} cm[/b][/color]\n[color=#ffffffc0]   {where}[/color]";
     }
 
     /// <summary>The levels, the current one marked; red while the tool is working at it.</summary>
