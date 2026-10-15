@@ -128,8 +128,10 @@ public sealed class FrameBudget {
     /// <summary>
     /// The one frame budget check for every test: fails when a frame went over <see cref="Limit"/>, and does nothing in
     /// a run that doesn't check frame times (<see cref="BudgetMode.Off"/>). A <paramref name="localOverride"/> raises
-    /// the limit for this case only, by its factor; functional assertions still run.
-    /// Runtime-only stalls retain their existing bounded allowance.
+    /// the limit for this case only, by its factor, as a hard ceiling on the whole frame, runtime stalls included.
+    /// Functional assertions still run.
+    /// Without an override, frames over the limit only for the runtime's own stalls pass within their bounded
+    /// allowance.
     /// </summary>
     public void Check(string label = "", BudgetAllowance? localOverride = null) {
         if (Mode == BudgetMode.Off) {
@@ -141,7 +143,7 @@ public sealed class FrameBudget {
                 + $"{limit * 1000f:0.0} ms: {allowed.Reason}" : "");
         if (Worst <= limit) {
             GD.Print(report);
-        } else if (WorstOwn <= limit && WorstStall <= StallLimitHere) {
+        } else if (localOverride is null && WorstOwn <= limit && WorstStall <= StallLimitHere) {
             GD.Print($"PASS: {RuntimeStalls}; {report}");
         } else {
             AssertBool(false).OverrideFailureMessage(report).IsTrue();
