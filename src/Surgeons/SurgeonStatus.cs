@@ -41,8 +41,10 @@ public sealed class SurgeonStatus(Modifiers mods) {
     /// patient's.</summary>
     public const float BaseWeight = 80f;
     /// <summary>A sedative (<see cref="DrugDef.IsSedative"/>) at the right dose steadies the shaking of stress, blurs
-    /// the view and delays hand moves by SedatedDelay. Every sedative's share of its own right dose adds up. From DoseHigh times the dose on the view darkens and the delay grows, by up to
-    /// OverdoseDelay at KnockoutShare. There the surgeon is knocked out for KnockoutTime.</summary>
+    /// the view and delays hand moves by SedatedDelay.
+    /// Every sedative's share of its own right dose adds up.
+    /// From DoseHigh times the dose on the view darkens and the delay grows, by up to OverdoseDelay at KnockoutShare.
+    /// There the surgeon is knocked out for KnockoutTime.</summary>
     public const float SedatedDelay = 0.1f;
     public const float OverdoseDelay = 0.2f;
     public const float KnockoutShare = 2f;
@@ -258,6 +260,8 @@ public sealed class SurgeonStatus(Modifiers mods) {
             if (reverses is not null) {
                 Drugs.Remove(drug => drug.HasFlag(reverses));
                 if (KnockedOut > 0f && SedativeLevel() < KnockoutShare) {
+                    // Woken under the knockout level, a top up past it knocks them out again.
+                    _knocked = false;
                     KnockedOut = 0f;
                     KeptUp = 0f;
                     events.Add(StatusEvent.CameRound);

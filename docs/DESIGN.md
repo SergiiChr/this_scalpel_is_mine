@@ -444,10 +444,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Steady hands takes it all away.
 - **Sedatives for a surgeon** (diazepam, morphine, diphenhydramine, propofol, ketamine, pentobarbital: any drug with
   `sedation` or `anesthesia`): injected into a hand (their own other hand or a partner's) or a partner's body, dosed by
-  the surgeon's weight. Each works like diazepam, its share of its own right dose adding up with the others. At the
-  right dose it stops stress shaking (not the cold) while it works, blurs the view (mip level 1) and delays the mouse's
-  hand moves by 100 ms (looking around isn't); afterimages trail the gloves. Past 1.4 times the dose the view darkens toward the edges and the delay grows, up
-  to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
+  the surgeon's weight. Each works like diazepam, its share of its own right dose adding up with the others.
+  At the right dose it stops stress shaking (not the cold) while it works, blurs the view (mip level 1) and delays the
+  mouse's hand moves by 100 ms (looking around isn't); afterimages trail the gloves.
+  Past 1.4 times the dose the view darkens toward the edges and the delay grows, up to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
   floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
   (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) ends diazepam and naloxone (`reverse_opioid`)
   morphine, bringing them round unless the other sedatives still knock them out; propofol, ketamine, diphenhydramine

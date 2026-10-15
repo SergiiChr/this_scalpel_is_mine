@@ -615,12 +615,11 @@ public class SyringeTest {
             .IsTrue();
     }
 
-    /// <summary>Every other sedative works on a surgeon like diazepam: the right dose steadies stress shaking and
-    /// delays hand moves, 2.5 doses knock them out. Only its own antidote brings them round.</summary>
+    /// <summary>Other sedatives work on a surgeon like diazepam: the right dose steadies stress shaking and delays
+    /// hand moves, 2.5 doses knock them out. One row per kind: an opioid with its antidote, an anaesthetic and a slow,
+    /// short barbiturate with none (flumazenil, diazepam's, leaves them out).</summary>
     [TestCase("morphine", "naloxone", true)]
-    [TestCase("antihistamine", "flumazenil", false)]
     [TestCase("propofol", "flumazenil", false)]
-    [TestCase("ketamine", "naloxone", false)]
     [TestCase("pentobarbital", "flumazenil", false)]
     public void SedativeSedatesASurgeon(string drug, string antidote, bool wakes) {
         var right = Db.Drug(drug)!.Dose * 80f;
@@ -635,29 +634,54 @@ public class SyringeTest {
         var knocked = Dosed(right * 2.5f, events, drug);
         AssertBool(events.Contains(StatusEvent.KnockedOut) && knocked.IsOut)
             .OverrideFailureMessage($"{drug}: 2.5 doses knock the surgeon out").IsTrue();
+        events.Clear();
         knocked.Administer(antidote, Db.Drug(antidote)!.Dose * 80f);
         RunStatus(knocked, 3f, events);
-        AssertBool(knocked.IsOut != wakes)
-            .OverrideFailureMessage($"{drug}: {antidote} {(wakes ? "brings them round" : "leaves them out")}")
+        var ended = knocked.Drugs.Level(drug) == 0f && knocked.Calm == 0f;
+        AssertBool(wakes ? events.Contains(StatusEvent.CameRound) && !knocked.IsOut && ended : knocked.IsOut)
+            .OverrideFailureMessage(wakes
+                ? $"{drug}: {antidote} brings them round and ends the {drug} ({string.Join(", ", events)})"
+                : $"{drug}: {antidote} leaves them out")
             .IsTrue();
     }
 
-    /// <summary>Sedatives add up: diazepam and propofol, 1.2 times the right dose of each, knock a surgeon out.
-    /// Flumazenil ends the diazepam only, and what's left is too little to keep them down.</summary>
+    /// <summary>Sedatives add up: 1.6 doses of propofol and 0.6 of diazepam, each too little alone, knock a surgeon
+    /// out together. Flumazenil ends the diazepam and the propofol left can't keep them down; topped up past twice the
+    /// dose it knocks them out again, and then naloxone for a little morphine doesn't get them up.</summary>
     [TestCase]
     public void SedativesAddUpInASurgeon() {
         var events = new List<StatusEvent>();
         var status = new SurgeonStatus(new Modifiers());
-        status.Administer("diazepam", Db.Drug("diazepam")!.Dose * 80f * 1.2f);
-        status.Administer("propofol", Db.Drug("propofol")!.Dose * 80f * 1.2f);
+        var diazepam = Db.Drug("diazepam")!.Dose * 80f;
+        var propofol = Db.Drug("propofol")!.Dose * 80f;
+        var flumazenil = Db.Drug("flumazenil")!.Dose * 80f;
+        status.Administer("diazepam", diazepam * 0.6f);
+        status.Administer("propofol", propofol * 1.6f);
         RunStatus(status, 10f, events);
         AssertBool(events.Contains(StatusEvent.KnockedOut) && status.IsOut)
-            .OverrideFailureMessage("sedatives: 1.2 doses of diazepam and of propofol knock the surgeon out")
+            .OverrideFailureMessage("sedatives: 0.6 doses of diazepam and 1.6 of propofol knock the surgeon out")
             .IsTrue();
-        status.Administer("flumazenil", Db.Drug("flumazenil")!.Dose * 80f);
+        status.Administer("flumazenil", flumazenil);
         RunStatus(status, 3f, events);
-        AssertBool(!status.IsOut && status.Calm > 0.95f && status.Drugs.Level("propofol") > 1f)
-            .OverrideFailureMessage("sedatives: flumazenil brings them round, still calmed by the propofol").IsTrue();
+        AssertBool(!status.IsOut && status.Overdose > 0f && status.Drugs.Level("diazepam") == 0f)
+            .OverrideFailureMessage("sedatives: flumazenil brings them round, still past the dose on propofol "
+                + $"({status.Drugs.Level("propofol"):0.00} in)")
+            .IsTrue();
+        events.Clear();
+        status.Administer("propofol", propofol * 0.7f);
+        RunStatus(status, 10f, events);
+        AssertBool(events.Contains(StatusEvent.KnockedOut) && status.IsOut)
+            .OverrideFailureMessage("sedatives: propofol topped up past twice the dose knocks them out again "
+                + $"({status.Drugs.Level("propofol"):0.00} in)")
+            .IsTrue();
+        status.Administer("morphine", Db.Drug("morphine")!.Dose * 80f * 0.3f);
+        RunStatus(status, 10f, events);
+        status.Administer("naloxone", Db.Drug("naloxone")!.Dose * 80f);
+        RunStatus(status, 3f, events);
+        AssertBool(status.IsOut && status.Drugs.Level("morphine") == 0f)
+            .OverrideFailureMessage("sedatives: naloxone ends the morphine, the propofol keeps them out "
+                + $"({status.Drugs.Level("propofol"):0.00} in)")
+            .IsTrue();
     }
 
     /// <summary>Y19: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late;
