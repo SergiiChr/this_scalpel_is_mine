@@ -467,15 +467,37 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   builds (`stress_mult`) and how low it drains (`stress_floor`): Shaky hands 65%, Alcoholic 35% (none while a sip
   works), a coffee +15% while it works. Cold (run modifier) shakes on its own. Holding breath steadies all of it,
   Steady hands takes it all away.
-- **Diazepam for a surgeon** (flag `benzo`): injected into a hand (their own other hand or a partner's) or a
-  partner's body, dosed by the surgeon's weight. At the right dose it stops stress shaking (not the cold) for its
-  five minutes, blurs the view (mip level 1) and delays the mouse's hand moves by 100 ms (looking around isn't);
-  afterimages trail the gloves. Past 1.4 times the dose the view darkens toward the edges and the delay grows, up
-  to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
-  floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
-  (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) brings them round and ends the diazepam;
-  adrenaline (`stimulant`) gets them up only while it lasts, and if enough diazepam is still working they go down
-  again. On the patient, flumazenil reverses diazepam too.
+- **Sedatives for a surgeon** (diazepam, morphine, propofol, ketamine, pentobarbital: any drug with `sedation` or
+  `anesthesia` but an antihistamine): injected into a hand (their own other hand or a partner's) or a partner's body,
+  dosed by the surgeon's weight. Each works like diazepam (morphine but for the hands, below), its share of its own
+  right dose adding up with the others.
+  At the right dose it stops stress shaking (not the cold) while it works, blurs the view (mip level 1) and delays the
+  mouse's hand moves by 100 ms (looking around isn't); afterimages trail the gloves.
+  Past 1.4 times the dose the view darkens toward the edges and the delay grows, up to 300 ms.
+  Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
+  (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) ends diazepam and naloxone (`reverse_opioid`)
+  morphine, bringing them round unless the other sedatives still knock them out; propofol, ketamine and pentobarbital
+  have no antidote. Adrenaline (`stimulant`) gets them up only while it lasts, and if enough sedative
+  is still working they go down again. On the patient, flumazenil reverses diazepam too.
+- **Morphine nods a surgeon off** (`opioid`): its share of the sedatives doesn't delay the hands or trail the gloves.
+  From half the dose, every 10 to 30 seconds the eyelids close from the top and bottom over 0.3 s (the post shader's
+  `eyelids`, curved so the corners shut first), stay shut 1 to 2 s and open over 0.4 s.
+- **Stimulants for a surgeon** (`stimulant`: adrenaline injected, cocaine snorted from its baggie with the drink key):
+  hands 1.3 times as fast, stress building 1.5 times as fast, and a sub-bass heartbeat (`heartbeat`, heard only by
+  them) at 110 a minute while it works. Two drugs `danger_with` each other at work at once (adrenaline and cocaine)
+  race the heart: hands and feet 1.6 times as fast for three minutes, the heartbeat speeding up from 140 to 200.
+  Nothing stops it. Then the heart stops: the surgeon drops what they hold and goes down like a knocked out one, the
+  heartbeat still pounding at 200, and only they see a 30 s countdown in the middle of the view. A partner's
+  defibrillator lowered onto their chest (a hand comes down onto a surgeon lying on the floor, not through them) and
+  let go charged restarts it half the time (the host rolls each shock). Brought back, they get up, and the heartbeat
+  and the hands and feet slow down to normal over a minute (from 200 to 70 a minute, then quiet). Not brought back in
+  time, they die (down for good, the view black). Once every surgeon is dead, the operation fails.
+- **A surgeon collapsing** for any reason (passing out, knocked out, a stopped heart) lands with a thunk
+  (`surgeon_collapse`) where they fall, heard by everyone.
+- **Lidocaine into a glove** (`local_block`, any amount) numbs that hand for a minute: it drops what it holds, also a
+  tool handed to it later, and its grab doesn't close.
+- **Diphenhydramine** (`antihistamine`) isn't a sedative on a surgeon: it takes nausea away and keeps it away while it
+  works. **An antidote** (`reverse_benzo`, `reverse_opioid`) with nothing of its kind to reverse adds 0.4 stress.
 
 ### Gelpi retractor
 

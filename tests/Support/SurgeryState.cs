@@ -300,6 +300,25 @@ public static class SurgeryState {
         surgeon.FallSide = side;
     }
 
+    /// <summary>As if <paramref name="surgeon"/>'s racing heart had given out on their own peer: they lie on the floor,
+    /// hands beside them, and the host waits for a defibrillator.</summary>
+    public static void SurgeonsHeartHasStopped(Surgery surgery, Surgeon surgeon) {
+        surgeon.FallSide = 1f;
+        for (var i = 0; i < 2; i++) {
+            surgeon.Hands[i].Target = surgeon.ToGlobal(Surgeon.LyingHand + new Vector3(-0.25f * i, 0f, 0f));
+        }
+        surgery.HeartStopped(surgeon);
+    }
+
+    /// <summary>A drug in a surgeon's blood, <paramref name="doses"/> times the right dose for their weight, given into
+    /// the body.</summary>
+    public static void SurgeonIsGiven(Surgeon surgeon, string drugId, float doses) =>
+        surgeon.Status.Administer(drugId, Db.Drug(drugId)!.Dose * surgeon.Status.WeightKg * doses);
+
+    /// <summary>A tool put straight into a surgeon's hand, the way a partner hands it over.</summary>
+    public static void ToolIsPutInHand(Surgery surgery, SurgicalTool tool, int hand) =>
+        surgery.Tools.RequestGrab(tool, hand);
+
     /// <summary>No stress-induced hand jitter during a camera or reach measurement.</summary>
     public static void SurgeonIsSteady(Surgeon surgeon) => surgeon.Status.Stress = 0f;
 

@@ -40,6 +40,9 @@ public sealed class ToolUse {
     public Vector2 LastUv { get; set; } = new(-1, -1);
     public Vector3 LastTip { get; set; } = Vector3.Inf;
     public float ChargeTime { get; set; }
+    /// <summary>The surgeon whose stopped heart the defibrillator charges on, 0 for the patient: the shock goes there
+    /// even if the paddles lift off as they're let go.</summary>
+    public int ShockPeer { get; set; }
     /// <summary>How long a clamp's pinch has waited on the patient to close (seconds), null when none is waiting: it
     /// closes once the tip has come to rest on what it was lowered onto (see ClampAction).</summary>
     public float? PinchWait { get; set; }

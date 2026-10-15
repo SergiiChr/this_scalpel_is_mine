@@ -366,6 +366,24 @@ def surgeon_moan() -> Wave:
     return lowpass(_voice(pitch, (520, 880, 2300), 1.6, 0.4), 2200) * env(n, 0.25, 0.9, 1.2)
 
 
+def heartbeat() -> Wave:
+    """The surgeon's own heart on a stimulant: a sub-bass lub-dub, felt more than heard. Each thump drops in pitch."""
+    x = np.zeros(int(0.45 * RATE))
+    for at, freq, gain in ((0.0, 55.0, 1.0), (0.16, 45.0, 0.7)):
+        n = int(0.14 * RATE)
+        thump = tone(freq * (1.0 + 0.6 * np.exp(-t(0.14) * 40.0)), 0.14) * env(n, 0.006, 0.05)
+        place(x, thump, at, gain)
+    return lowpass(x, 150)
+
+
+def surgeon_collapse() -> Wave:
+    """A surgeon's body hitting the floor: a heavy, dull thunk, a falling low thump under a short padded thud."""
+    n = int(0.4 * RATE)
+    thump = tone(np.linspace(85, 40, n), 0.4) * env(n, 0.002, 0.1)
+    thud = lowpass(noise(0.4), 300) * env(n, 0.002, 0.06)
+    return normalize(thump * 1.2 + thud * 1.5, 0.9)
+
+
 def patient_scream() -> Wave:
     n = int(1.1 * RATE)
     pitch = np.concatenate([np.linspace(260, 520, n // 3), 520 + 30 * np.sin(2 * np.pi * 7 * t(1.1)[: n - n // 3])])
@@ -451,6 +469,8 @@ SOUNDS: dict[str, tuple[str, Callable[[], Wave]]] = {
     "contact_swab": ("tissue", contact_swab),
     "contact_suction": ("tools", contact_suction),
     "surgeon_moan": ("surgeon", surgeon_moan),
+    "heartbeat": ("surgeon", heartbeat),
+    "surgeon_collapse": ("surgeon", surgeon_collapse),
 }
 
 
