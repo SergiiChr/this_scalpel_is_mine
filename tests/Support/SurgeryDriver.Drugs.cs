@@ -46,7 +46,7 @@ public partial class SurgeryDriver {
             Note($"pad dipped: {carried.Fill:0.00}, dish {dish.Fill:0.00}");
             // Rows across the site, as long as the pad holds iodine.
             await PlayerWalksTo(SitePoint(new Vector2(0.5f, 0.5f)));
-            for (; carried.Fill > 0.05f && row < rows; row++) {
+            for (; carried.Contents.GetValueOrDefault("iodine") > carried.Def.Volume * 0.05f && row < rows; row++) {
                 var v = (row + 0.5f) / rows;
                 Vector3[] line = [SitePoint(new Vector2(0.02f, v)), SitePoint(new Vector2(0.98f, v))];
                 await PlayerWorksAlong(row % 2 == 1 ? [.. line.Reverse()] : line, 0, 0.06f);

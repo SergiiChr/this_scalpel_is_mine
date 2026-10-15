@@ -12,9 +12,12 @@ namespace Scalpel.Operation;
 public partial class Surgery : Node3D {
     /// <summary>Host: a dose went into a surgeon (their own peer gets it through Dosed()).</summary>
     [Signal] public delegate void SurgeonDosedEventHandler(int peer, string drug, float amount);
+    [Signal] public delegate void SurgeonShockedEventHandler(int peer, bool revived);
 
     public const float StatusInterval = 0.5f;
     public const float QteTimeout = 10f;
+    /// <summary>Why a solo surgery fails when its surgeon dies.</summary>
+    internal const string SurgeonDied = "The surgeon died of a heart attack.";
     public static readonly IReadOnlyList<string> QteKeys =
         [InputActions.MoveForward, InputActions.MoveBack, InputActions.MoveLeft, InputActions.MoveRight];
     /// <summary>Tools report their sound every physics frame while in use; one per this many msec per sound is plenty.
@@ -23,6 +26,10 @@ public partial class Surgery : Node3D {
     private const ulong ContactRepeatMsec = 120;
     /// <summary>The quiet after a syringe pushes into the local surgeon that makes the next one news.</summary>
     private const ulong StingGapMsec = 3000;
+    /// <summary>Host: peers whose surgeon died of a heart attack.</summary>
+    private readonly HashSet<int> _dead = [];
+    /// <summary>Host: surgeons whose heart has stopped, waiting for a defibrillator.</summary>
+    private readonly HashSet<int> _arrested = [];
 
     /// <summary>Turning the patient: who takes part, what each scored, time left and where they're turning to.
     /// </summary>
@@ -321,10 +328,10 @@ public partial class Surgery : Node3D {
 
     /// <summary>Host: a syringe pushed <paramref name="amount"/> of a drug into a surgeon, given as it goes in.
     /// </summary>
-    public void DoseSurgeon(int peer, string drug, float amount) {
+    public void DoseSurgeon(int peer, string drug, float amount, int hand = -1) {
         EmitSignal(SignalName.SurgeonDosed, peer, drug, amount);
         if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer)) {
-            RpcId(peer, MethodName.Dosed, drug, amount);
+            RpcId(peer, MethodName.Dosed, drug, amount, hand);
         }
     }
 
@@ -428,17 +435,60 @@ public partial class Surgery : Node3D {
     private void Sick(float amount) => LocalSurgeon?.Status.AddSickness(amount);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Dosed(string drug, float amount) {
+    private void Dosed(string drug, float amount, int hand) {
         if (LocalSurgeon is null) {
             return;
         }
-        LocalSurgeon.Status.Administer(drug, amount);
+        LocalSurgeon.Status.Administer(drug, amount, hand);
         // Once for a few pushes in a row, not for every ml.
         var now = GameClock.Msec;
         if (_stungMsec == 0 || now - _stungMsec > StingGapMsec) {
             Hud.Toast("A sharp sting. Something cold goes in.");
         }
         _stungMsec = now;
+    }
+
+    /// <summary>Host: a surgeon whose heart has stopped, not <paramref name="byPeer"/> themselves, with their chest at
+    /// <paramref name="tip"/>, null if none.</summary>
+    internal Surgeon? ArrestedAt(Vector3 tip, int byPeer) => Surgeons.Values.FirstOrDefault(surgeon =>
+        surgeon.PeerId != byPeer && _arrested.Contains(surgeon.PeerId) && surgeon.ChestAt(tip));
+
+    /// <summary>Host: <paramref name="surgeon"/>'s heart has stopped. A partner has until it's too late to restart it.
+    /// </summary>
+    internal void HeartStopped(Surgeon surgeon) {
+        _arrested.Add(surgeon.PeerId);
+        Announce($"{surgeon.DisplayName} clutches their chest and collapses. Their heart has stopped: get the "
+            + "defibrillator!");
+    }
+
+    /// <summary>Host: a defibrillator shock to the surgeon <paramref name="peer"/>. It restarts a stopped heart only by
+    /// chance, and does nothing once they've died.</summary>
+    public void Defibrillate(int peer) {
+        if (!_arrested.Contains(peer) || !Surgeons.TryGetValue(peer, out var surgeon)) {
+            return;
+        }
+        var revived = Rng.Randf() < SurgeonStatus.ReviveChance;
+        EmitSignal(SignalName.SurgeonShocked, peer, revived);
+        if (!revived) {
+            Announce($"{surgeon.DisplayName} jerks under the paddles. Still no pulse.");
+            return;
+        }
+        _arrested.Remove(peer);
+        if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer)) {
+            RpcId(peer, MethodName.HeartRestarted);
+        }
+    }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void HeartRestarted() {
+        if (LocalSurgeon is null) {
+            return;
+        }
+        // Too late if the heart gave out here first: the death is on its way to the host.
+        if (LocalSurgeon.Status.Revive()) {
+            Hud.Toast("A jolt through your chest. Your heart beats again.");
+            ReportIncident("revived");
+        }
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -497,6 +547,7 @@ public partial class Surgery : Node3D {
         if (IsHost) {
             Progress.RecordResult(report.Scenario, report.Stars);
         }
+        Progress.RecordGame(report);
         Hud.ShowReport(report);
     }
 
@@ -527,6 +578,12 @@ public partial class Surgery : Node3D {
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void Drank(string toolId) {
         if (LocalSurgeon is null) {
+            return;
+        }
+        if (Db.Tool(toolId) is { Drinkable: true, Action: "inject" } def && def.Drug.Length > 0) {
+            // A baggie of cocaine, snorted.
+            LocalSurgeon.Status.Take(def.Drug);
+            Hud.Toast("A sharp sniff. Wide awake.");
             return;
         }
         LocalSurgeon.Status.Drink(toolId);
@@ -560,7 +617,7 @@ public partial class Surgery : Node3D {
     }
 
     /// <summary>Something happened to the local surgeon the host scores or acts on: "vomit", "passed_out",
-    /// "knocked_out", "sweat_drip".</summary>
+    /// "knocked_out", "cardiac_arrest", "revived", "heart_attack", "sweat_drip".</summary>
     public void ReportIncident(string kind) => RpcId(Net.HostId, MethodName.Incident, kind);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -583,6 +640,22 @@ public partial class Surgery : Node3D {
                 break;
             case "passed_out" or "knocked_out":
                 Scoring.Add("passed_out");
+                break;
+            case "cardiac_arrest":
+                Scoring.Add("passed_out");
+                HeartStopped(surgeon);
+                break;
+            case "revived":
+                Announce($"{surgeon.DisplayName} gasps. Their heart is beating again.");
+                break;
+            case "heart_attack":
+                _arrested.Remove(surgeon.PeerId);
+                Announce($"{surgeon.DisplayName} is dead.");
+                _dead.Add(surgeon.PeerId);
+                // Nobody is left to finish the operation.
+                if (Surgeons.Keys.All(_dead.Contains)) {
+                    End(false, SurgeonDied);
+                }
                 break;
             case "sweat_drip":
                 Patient.ContaminateSite("");

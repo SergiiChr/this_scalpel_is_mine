@@ -131,6 +131,13 @@ public static class SurgeryState {
         return vessel;
     }
 
+    /// <summary><paramref name="ml"/> of blood has pooled in the opening.</summary>
+    public static void CavityHoldsBlood(Patient patient, float ml) => patient.CavityBloodMl = ml;
+
+    /// <summary>A film of blood covers the skin within <paramref name="radius"/> (uv) of <paramref name="uv"/>.</summary>
+    public static void SkinIsBloody(Patient patient, Vector2 uv, float radius) =>
+        patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, radius, 1f, WoundMap.Mode.Max);
+
     /// <summary>The skin at <paramref name="uv"/> is punctured (a stab of <paramref name="severity"/>, 0..1) and bleeds
     /// from the hole.</summary>
     public static Wound SkinIsPunctured(Patient patient, Vector2 uv, float severity) =>
@@ -186,6 +193,11 @@ public static class SurgeryState {
     /// <summary>Surgeries start at 08:00 on the operating room's clock, whatever the system clock says, so it reads the
     /// same in every run's key frames.</summary>
     public static void ClockStartsAtEight() => GameClock.FixedStartOfDay = 8 * 3600;
+
+    /// <summary><paramref name="tool"/> (a dish, or gauze or a pad soaked in it) holds <paramref name="ml"/> more of
+    /// <paramref name="liquid"/>.</summary>
+    public static void ToolHolds(Surgery surgery, SurgicalTool tool, string liquid, float ml) =>
+        surgery.Tools.AddLiquid(tool, ml, new Dictionary<string, float> { [liquid] = ml });
 
     /// <summary>A tool lying in a free place on the instrument tray (stocked there, as the nurse would have).</summary>
     public static SurgicalTool ToolIsOnTray(Surgery surgery, string id) => ToolLiesAt(surgery, id, FreeTraySpot(surgery));
@@ -299,6 +311,25 @@ public static class SurgeryState {
         surgeon.Velocity = Vector3.Zero;
         surgeon.Rotation = surgeon.Rotation with { Y = yaw };
     }
+
+    /// <summary>As if <paramref name="surgeon"/>'s racing heart had given out on their own peer: they lie on the floor,
+    /// hands beside them, and the host waits for a defibrillator.</summary>
+    public static void SurgeonsHeartHasStopped(Surgery surgery, Surgeon surgeon) {
+        surgeon.FallSide = 1f;
+        for (var i = 0; i < 2; i++) {
+            surgeon.Hands[i].Target = surgeon.ToGlobal(Surgeon.LyingHand + new Vector3(-0.25f * i, 0f, 0f));
+        }
+        surgery.HeartStopped(surgeon);
+    }
+
+    /// <summary>A drug in a surgeon's blood, <paramref name="doses"/> times the right dose for their weight, given into
+    /// the body.</summary>
+    public static void SurgeonIsGiven(Surgeon surgeon, string drugId, float doses) =>
+        surgeon.Status.Administer(drugId, Db.Drug(drugId)!.Dose * surgeon.Status.WeightKg * doses);
+
+    /// <summary>A tool put straight into a surgeon's hand, the way a partner hands it over.</summary>
+    public static void ToolIsPutInHand(Surgery surgery, SurgicalTool tool, int hand) =>
+        surgery.Tools.RequestGrab(tool, hand);
 
     /// <summary>No stress-induced hand jitter during a camera or reach measurement.</summary>
 

@@ -49,7 +49,7 @@ public class PourTest {
         AssertFloat(driver.Patient.SanitizedFraction())
             .OverrideFailureMessage($"pads dipped in iodine in the kidney dish sanitize the site ({driver.Patient.SanitizedFraction():0.00})\n{driver.Recent(8)}")
             .IsGreater(0.2f);
-        // The driver pours for 3 s; a soaked pad takes up to ToolActions.PadMl of it.
+        // The driver pours for 3 s; a soaked pad takes up to its volume of it.
         var poured = Db.Tool("iodine_bottle")!.Power * 3f;
         var left = kidney.Contents.GetValueOrDefault("iodine");
         AssertFloat(left).OverrideFailureMessage($"the pads took iodine out of the kidney dish ({left:0} of {poured:0} ml left)")

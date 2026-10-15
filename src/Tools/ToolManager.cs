@@ -10,9 +10,6 @@ public readonly record struct StationTool(string Id, Transform3D Transform);
 public partial class ToolManager : Node3D {
     public const float SyncInterval = 0.1f;
     public const float GrabRadius = 0.09f;
-    /// <summary>Everyone but the host sees iodine levels in steps this fine (syringes, vials and the kidney dish are
-    /// exact).</summary>
-    private const float FillSteps = 50f;
     /// <summary>How close a syringe's needle has to be to a vial's middle to be in it. A syringe brought over a vial or
     /// the hung bag snaps its needle into it (see Surgeon.SnapSpot()).</summary>
     public const float VialReach = 0.05f;
@@ -198,7 +195,7 @@ public partial class ToolManager : Node3D {
         SurgicalTool? best = null;
         var bestDistance = float.PositiveInfinity;
         foreach (var tool in _tools.Values) {
-            if (tool.Def.Volume <= 0f || tool.Def.Action == "syringe" || tool.State is ToolState.Belt or ToolState.Consumed) {
+            if (tool.Def.Volume <= 0f || tool.Def.Action is "syringe" or "swab" || tool.State is ToolState.Belt or ToolState.Consumed) {
                 continue;
             }
             var distance = tool.Middle().DistanceTo(at);
@@ -634,13 +631,13 @@ public partial class ToolManager : Node3D {
         tool.Falling = true;
     }
 
-    /// <summary>Host: exact amount here, everyone else sees it change in FillSteps (and the moment it runs dry).
-    /// </summary>
-    public void SetFill(SurgicalTool tool, float amount) {
-        var step = Mathf.CeilToInt(tool.Fill * FillSteps);
-        tool.Fill = Mathf.Clamp(amount, 0f, 1f);
-        if (Mathf.CeilToInt(tool.Fill * FillSteps) != step) {
-            Rpc(MethodName.ShowFill, tool.Uid, tool.Fill);
+    /// <summary>Host: takes up to <paramref name="ml"/> of <paramref name="liquid"/> alone out of what a tool holds (the
+    /// iodine a pad leaves on the skin, while the blood it soaked up stays in it).</summary>
+    public void TakeOut(SurgicalTool tool, string liquid, float ml) {
+        ml = Mathf.Min(ml, tool.Contents.GetValueOrDefault(liquid));
+        if (ml > 0f) {
+            tool.Contents[liquid] -= ml;
+            AddLiquid(tool, -ml);
         }
     }
 
@@ -969,17 +966,6 @@ public partial class ToolManager : Node3D {
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SetBlood(int uid, float amount) => ByUid(uid)?.SetBlood(amount);
-
-    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void ShowFill(int uid, float amount) {
-        if (ByUid(uid) is not { } tool) {
-            return;
-        }
-        if (!Multiplayer.IsServer()) {
-            tool.Fill = amount;
-        }
-        tool.ShowFill(amount);
-    }
 
     [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ShowLiquid(int uid, float ml, float air, float red, float iodine) {

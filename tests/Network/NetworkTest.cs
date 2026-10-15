@@ -16,6 +16,11 @@ public class NetworkTest {
         Run("pinch", "the host sees a client's forceps, pressed while lifted, come down and take the bullet");
 
     [TestCase]
+    public void ClientWaitsInTheLobbyForTheHostThenBothPlayAnotherScenario() =>
+        Run("lobby", "a client off the report first waits in an empty lobby; then both are back in the lobby, "
+            + "connected, and play the host's next pick");
+
+    [TestCase]
     public void TenSecondClientStallKeepsSessionAndPausesInput() =>
         Run("stall", "a stalled client stays connected and its held input is paused");
 

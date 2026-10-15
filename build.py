@@ -565,6 +565,8 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
     # runs at the same time (--jobs, other checkouts) each need their own.
     with log.open("w") as out, tempfile.TemporaryDirectory(prefix="gdunit-") as temp:
         environment["TMPDIR"] = temp
+        # Godot's user:// (saves, settings, played games) under it too: tests never touch the player's own.
+        environment["XDG_DATA_HOME"] = temp
         status = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=False).returncode
     return problems(log, report, status, suite.timeout)
 

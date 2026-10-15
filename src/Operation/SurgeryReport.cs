@@ -15,6 +15,7 @@ public sealed record SurgeryReport(
     int Score,
     int Stars,
     IReadOnlyList<ReportLine> Events,
+    IReadOnlyList<TimelineEntry> Timeline,
     IReadOnlyList<ReportLine> Consequences,
     IReadOnlyList<QuirkRoll> PatientQuirks,
     float Time) {
@@ -63,7 +64,7 @@ public sealed record SurgeryReport(
             .OrderByDescending(line => Math.Abs(line.Points))
             .ToList();
         return new SurgeryReport(scenario.Id, success, reason, total, Operation.Scoring.StarsFor(total, success), events,
-            consequences, patient.Rolls, surgery.Elapsed);
+            surgery.Scoring.Timeline.ToList(), consequences, patient.Rolls, surgery.Elapsed);
     }
 
     public GodotDictionary ToVariant() => new() {
@@ -73,6 +74,7 @@ public sealed record SurgeryReport(
         ["score"] = Score,
         ["stars"] = Stars,
         ["events"] = Lines(Events),
+        ["timeline"] = Entries(Timeline),
         ["consequences"] = Lines(Consequences),
         ["patient_quirks"] = QuirkRoll.ToVariant(PatientQuirks),
         ["time"] = Time,
@@ -85,6 +87,7 @@ public sealed record SurgeryReport(
         data.Int("score"),
         data.Int("stars"),
         Lines(data["events"].AsGodotArray()),
+        Entries(data["timeline"].AsGodotArray()),
         Lines(data["consequences"].AsGodotArray()),
         QuirkRoll.FromVariant(data["patient_quirks"].AsGodotArray()),
         data.Float("time"));
@@ -94,4 +97,11 @@ public sealed record SurgeryReport(
 
     private static List<ReportLine> Lines(Godot.Collections.Array lines) =>
         [.. lines.Select(line => line.AsGodotArray()).Select(line => new ReportLine(line[0].AsString(), line[1].AsInt32(), line[2].AsInt32()))];
+
+    private static Godot.Collections.Array Entries(IEnumerable<TimelineEntry> entries) =>
+        [.. entries.Select(entry => (Variant)new Godot.Collections.Array { entry.Time, entry.Text, entry.Points, entry.Good, entry.Count })];
+
+    private static List<TimelineEntry> Entries(Godot.Collections.Array entries) =>
+        [.. entries.Select(entry => entry.AsGodotArray())
+            .Select(entry => new TimelineEntry(entry[0].AsSingle(), entry[1].AsString(), entry[2].AsInt32(), entry[3].AsBool(), entry[4].AsInt32()))];
 }

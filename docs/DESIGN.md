@@ -11,7 +11,7 @@ Autoloads (src/Core)
   Sfx       plays sounds by id from data/audio.cfg, skips missing files
 Static
   Db        loads every file in data/ once; game code never parses files itself (src/Core/Db.cs)
-  Progress  save file: codex unlocks, best stars, known hosts (user://save.cfg)
+  Progress  save file: codex unlocks, best stars, known hosts (user://save.cfg), played games (user://history.cfg)
 
 Surgery scene (scenes/surgery.tscn, src/Operation/Surgery.cs)
   Room        builds geometry, lights and stations per environment (or, ambulance, sidewalk) (src/World)
@@ -309,6 +309,12 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   Interact for `SignatureView.SignSeconds` writes the signature under a see-through pen, letting go early unwrites it.
   The host then settles the outcome, score and consequences (`Surgery.Discharge()`). Signed out too early, the patient
   can still go, as a failure. Only death and the time limit end a surgery without it.
+- **Post-op report** (`ReportView`): the score lines, then a timeline of the surgery (`Scoring.Timeline`): each scored
+  action, each step first done or spoiled (naming the step it comes after that wasn't in place), then at the discharge
+  which steps counted and which were missed. It's where a player learns what the hidden objectives were. Repeats in a
+  row merge into one line; past `Scoring.TimelineSize` lines only the discharge's go on.
+  Every peer keeps its last 100 games locally (`Progress.History`); the main menu's History lists them (scenario,
+  outcome, stars, score) and opens the same report.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: loose, flexible tubing from the drip chamber on the stand (`src/World/IvLine.cs`), its bare end hung
   on the stand across from it. A rope of points: gravity pulls it down, each point keeps its distance to the next and
@@ -386,10 +392,15 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   as long as its slowest item. A 15 s cooldown after each delivery from the sixth on (the first five come without).
   Every drug is under one Drugs group. A board over the bell shows the batch on its way
   with a progress bar, then the cooldown.
-- **Skin prep** (`ToolActions._wipe`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
+- **Skin prep** (`ToolActions.Wipe()`): pour iodine from the bottle into a dish (20 ml a second while Use tool is
   held), pinch a cotton pad with forceps (or a hemostat), dip it, wipe the skin. A pad held in the glove or picked up
-  off the floor contaminates the site. A pad soaks up 10 ml (`ToolActions.PadMl`), so the 40 ml iodine dish soaks
-  four; a soaked pad runs dry after about 8 s of wiping.
+  off the floor contaminates the site. A pad soaks up 10 ml (its `volume`), so the 40 ml iodine dish soaks four; a
+  soaked pad runs dry after about 8 s of wiping.
+- **Swab capacity** (`ToolActions.Swab()`): gauze (20 ml) and cotton pads (10 ml) hold what they soak up in their
+  `volume`, iodine and blood alike: a pad half full of iodine has room for half as much blood. Wiping takes blood off
+  the skin, out of cuts and the cavity (`Patient.SwabRate`) only while there's room for it; a full swab no longer
+  wipes, but gauze still presses on a wound. The whole swab takes the color of what it holds, iodine brown and blood
+  red mixed by their shares, deeper the fuller it is. Blood soaked up bloodies the glove holding it.
 - **Dishes** (`ToolDef.IsDish()`: a volume and no action of its own, the iodine dish and the kidney dish) all work
   the same: bottles pour into them, syringes squirt into them and draw from them, pads dip into iodine in them
   (`ToolManager.NearestDish()`). They show their liquid by its ml, tinted toward iodine and blood by their share.
@@ -465,15 +476,37 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   builds (`stress_mult`) and how low it drains (`stress_floor`): Shaky hands 65%, Alcoholic 35% (none while a sip
   works), a coffee +15% while it works. Cold (run modifier) shakes on its own. Holding breath steadies all of it,
   Steady hands takes it all away.
-- **Diazepam for a surgeon** (flag `benzo`): injected into a hand (their own other hand or a partner's) or a
-  partner's body, dosed by the surgeon's weight. At the right dose it stops stress shaking (not the cold) for its
-  five minutes, blurs the view (mip level 1) and delays the mouse's hand moves by 100 ms (looking around isn't);
-  afterimages trail the gloves. Past 1.4 times the dose the view darkens toward the edges and the delay grows, up
-  to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
-  floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
-  (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) brings them round and ends the diazepam;
-  adrenaline (`stimulant`) gets them up only while it lasts, and if enough diazepam is still working they go down
-  again. On the patient, flumazenil reverses diazepam too.
+- **Sedatives for a surgeon** (diazepam, morphine, propofol, ketamine, pentobarbital: any drug with `sedation` or
+  `anesthesia` but an antihistamine): injected into a hand (their own other hand or a partner's) or a partner's body,
+  dosed by the surgeon's weight. Each works like diazepam (morphine but for the hands, below), its share of its own
+  right dose adding up with the others.
+  At the right dose it stops stress shaking (not the cold) while it works, blurs the view (mip level 1) and delays the
+  mouse's hand moves by 100 ms (looking around isn't); afterimages trail the gloves.
+  Past 1.4 times the dose the view darkens toward the edges and the delay grows, up to 300 ms.
+  Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
+  (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) ends diazepam and naloxone (`reverse_opioid`)
+  morphine, bringing them round unless the other sedatives still knock them out; propofol, ketamine and pentobarbital
+  have no antidote. Adrenaline (`stimulant`) gets them up only while it lasts, and if enough sedative
+  is still working they go down again. On the patient, flumazenil reverses diazepam too.
+- **Morphine nods a surgeon off** (`opioid`): its share of the sedatives doesn't delay the hands or trail the gloves.
+  From half the dose, every 10 to 30 seconds the eyelids close from the top and bottom over 0.3 s (the post shader's
+  `eyelids`, curved so the corners shut first), stay shut 1 to 2 s and open over 0.4 s.
+- **Stimulants for a surgeon** (`stimulant`: adrenaline injected, cocaine snorted from its baggie with the drink key):
+  hands 1.3 times as fast, stress building 1.5 times as fast, and a sub-bass heartbeat (`heartbeat`, heard only by
+  them) at 110 a minute while it works. Two drugs `danger_with` each other at work at once (adrenaline and cocaine)
+  race the heart: hands and feet 1.6 times as fast for three minutes, the heartbeat speeding up from 140 to 200.
+  Nothing stops it. Then the heart stops: the surgeon drops what they hold and goes down like a knocked out one, the
+  heartbeat still pounding at 200, and only they see a 30 s countdown in the middle of the view. A partner's
+  defibrillator lowered onto their chest (a hand comes down onto a surgeon lying on the floor, not through them) and
+  let go charged restarts it half the time (the host rolls each shock). Brought back, they get up, and the heartbeat
+  and the hands and feet slow down to normal over a minute (from 200 to 70 a minute, then quiet). Not brought back in
+  time, they die (down for good, the view black). Once every surgeon is dead, the operation fails.
+- **A surgeon collapsing** for any reason (passing out, knocked out, a stopped heart) lands with a thunk
+  (`surgeon_collapse`) where they fall, heard by everyone.
+- **Lidocaine into a glove** (`local_block`, any amount) numbs that hand for a minute: it drops what it holds, also a
+  tool handed to it later, and its grab doesn't close.
+- **Diphenhydramine** (`antihistamine`) isn't a sedative on a surgeon: it takes nausea away and keeps it away while it
+  works. **An antidote** (`reverse_benzo`, `reverse_opioid`) with nothing of its kind to reverse adds 0.4 stress.
 
 ### Gelpi retractor
 
@@ -602,8 +635,8 @@ All models and sounds are generated from code (`./build.py assets`), so they can
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
   the body jerking, a bead of blood where a needle or catheter goes in (gauze or a pad wipes it away like other
-  blood). Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip, gauze soaks
-  through (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
+  blood). Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
+  (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,

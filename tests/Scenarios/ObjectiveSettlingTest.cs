@@ -2,7 +2,8 @@ namespace Scalpel.Tests.Scenarios;
 
 /// <summary>How the steps are judged, set up directly: what's being checked is the judging, not the work. A patient who
 /// dies is scored for the steps left undone, as one who's discharged is. A step's prerequisite counts only while it
-/// still holds: the amputation cut made after the tourniquet came off again is spoiled, one made with it on is not.
+/// still holds: the amputation cut made after the tourniquet came off again is spoiled, one made with it on is not, and
+/// the report's timeline says so.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
@@ -47,6 +48,10 @@ public class ObjectiveSettlingTest {
         AssertBool(cut.Reached).OverrideFailureMessage("the cut is long and deep enough").IsTrue();
         AssertBool(tourniquet.Done).OverrideFailureMessage("applying the tourniquet stays done").IsTrue();
         AssertBool(cut.Spoiled).OverrideFailureMessage($"the cut is spoiled only with the tourniquet off (kept on: {keptOn})")
+            .IsEqual(!keptOn);
+        var label = objectives.Steps.First(step => step.Type == "incise").Label;
+        AssertBool(surgery.Scoring.Timeline.Any(entry => entry.Text.StartsWith($"Spoiled: {label}", StringComparison.Ordinal) && !entry.Good))
+            .OverrideFailureMessage($"the timeline tells the cut was spoiled only with the tourniquet off (kept on: {keptOn})")
             .IsEqual(!keptOn);
         await driver.Stop();
     }
