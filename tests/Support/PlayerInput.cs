@@ -36,6 +36,15 @@ public static class PlayerInput {
     public static void Mouse(Vector2 motion) =>
         Input.ParseInputEvent(new InputEventMouseMotion { Relative = Frames.Root.GetFinalTransform().BasisXform(motion) });
 
+    /// <summary>Clicks the left mouse button over the middle of <paramref name="control"/>, as on a menu button. Sent
+    /// where the window has it: the engine scales it back to the game's own layout.</summary>
+    public static void Click(Control control) {
+        var at = Frames.Root.GetFinalTransform() * control.GetGlobalRect().GetCenter();
+        foreach (var pressed in (bool[])[true, false]) {
+            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = pressed, Position = at, GlobalPosition = at });
+        }
+    }
+
     /// <summary>The mouse move (pixels) that moves <paramref name="surgeon"/>'s active hand by <paramref name="move"/>
     /// (world, across the floor): Surgeon.SteerHand() undone, outside the needle view.</summary>
     public static Vector2 HandMotion(Surgeon surgeon, Vector3 move) {

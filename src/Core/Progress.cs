@@ -5,17 +5,24 @@ namespace Scalpel.Core;
 /// <summary>A host saved for joining again from the multiplayer menu.</summary>
 public sealed record KnownHost(string Name, string Ip, int Port);
 
+/// <summary>A surgery played on this computer: when it ended (local time, as text) and its post-op report.</summary>
+public sealed record PlayedGame(string PlayedAt, SurgeryReport Report);
+
 /// <summary>
-/// Save file: unlocked quirks, best scenario results, known hosts. Stored in user://save.cfg and read on first use.
-/// The host's save is what counts for scenario progress. Quirk unlocks are always local.
+/// Save file: unlocked quirks, best scenario results, played games, known hosts. Stored in user://save.cfg and read on first use.
+/// The host's save is what counts for scenario progress. Quirk unlocks and played games are always local.
 /// </summary>
 public static class Progress {
-    private const string Path = "user://save.cfg";
+    internal const string Path = "user://save.cfg";
+    /// <summary>Played games kept: the oldest one goes when another is recorded past it.</summary>
+    internal const int HistorySize = 100;
 
     private static readonly HashSet<string> UnlockedQuirks = [];
     /// <summary>Scenario id -> best star count (0-3).</summary>
     private static readonly Dictionary<string, int> BestStarsById = [];
     private static readonly List<KnownHost> Hosts = [];
+    /// <summary>Newest first.</summary>
+    private static readonly List<PlayedGame> Games = [];
 
     static Progress() {
         var file = new ConfigFile();
@@ -26,6 +33,10 @@ public static class Progress {
         UnlockedQuirks.UnionWith(file.GetValue("codex", "unlocked", Array.Empty<string>()).AsStringArray());
         foreach (var (id, stars) in file.GetValue("scenarios", "best_stars", new GodotDictionary()).AsGodotDictionary()) {
             BestStarsById[id.AsString()] = stars.AsInt32();
+        }
+        foreach (var game in file.GetValue("history", "games", new Godot.Collections.Array()).AsGodotArray()) {
+            var entry = game.AsGodotDictionary();
+            Games.Add(new PlayedGame(entry.String("played_at"), SurgeryReport.FromVariant(entry["report"].AsGodotDictionary())));
         }
         foreach (var host in file.GetValue("network", "known_hosts", new Godot.Collections.Array()).AsGodotArray()) {
             var entry = host.AsGodotDictionary();
@@ -42,6 +53,9 @@ public static class Progress {
 
     public static IReadOnlyList<KnownHost> KnownHosts => Hosts;
 
+    /// <summary>Surgeries played on this computer, newest first.</summary>
+    public static IReadOnlyList<PlayedGame> History => Games;
+
     public static void Save() {
         var file = new ConfigFile();
         file.SetValue("player", "name", PlayerName);
@@ -51,6 +65,11 @@ public static class Progress {
             stars[id] = best;
         }
         file.SetValue("scenarios", "best_stars", stars);
+        var games = new Godot.Collections.Array();
+        foreach (var game in Games) {
+            games.Add(new GodotDictionary { ["played_at"] = game.PlayedAt, ["report"] = game.Report.ToVariant() });
+        }
+        file.SetValue("history", "games", games);
         var hosts = new Godot.Collections.Array();
         foreach (var host in Hosts) {
             hosts.Add(new GodotDictionary { ["name"] = host.Name, ["ip"] = host.Ip, ["port"] = host.Port });
@@ -76,6 +95,21 @@ public static class Progress {
         BestStarsById[scenarioId] = Math.Max(BestStarsById.GetValueOrDefault(scenarioId), stars);
         Save();
     }
+
+    /// <summary>When set, games are recorded as played at this time whatever the system clock says: tests set it so
+    /// the history reads the same in every run.</summary>
+    internal static string? FixedPlayedAt { get; set; }
+
+    public static void RecordGame(SurgeryReport report) {
+        Games.Insert(0, new PlayedGame(FixedPlayedAt ?? Time.GetDatetimeStringFromSystem(false, true), report));
+        if (Games.Count > HistorySize) {
+            Games.RemoveAt(HistorySize);
+        }
+        Save();
+    }
+
+    /// <summary>Forgets every played game, without saving.</summary>
+    internal static void ForgetHistory() => Games.Clear();
 
     public static void RememberHost(string name, string ip, int port) {
         Hosts.RemoveAll(host => host.Ip == ip && host.Port == port);

@@ -497,6 +497,7 @@ public partial class Surgery : Node3D {
         if (IsHost) {
             Progress.RecordResult(report.Scenario, report.Stars);
         }
+        Progress.RecordGame(report);
         Hud.ShowReport(report);
     }
 

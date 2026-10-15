@@ -68,6 +68,9 @@ public class DischargeTest {
         var missed = report.Events.SingleOrDefault(line => line.Text == "Discharged the patient with part of the job undone");
         AssertInt(missed.Count).OverrideFailureMessage("every required step left undone is scored")
             .IsEqual(surgery.Scenario.Steps.Count(step => !step.Optional));
+        var timeline = report.Timeline.Select(entry => entry.Text).ToList();
+        AssertBool(surgery.Scenario.Steps.Where(step => !step.Optional).All(step => timeline.Contains($"Missed: {step.Label}")))
+            .OverrideFailureMessage($"the timeline names each required step left undone:\n{string.Join('\n', timeline)}").IsTrue();
         driver.Budget.Check(localOverride: BudgetOverride);
         shots?.End();
         await driver.Stop();

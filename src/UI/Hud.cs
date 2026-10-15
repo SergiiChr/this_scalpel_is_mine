@@ -383,7 +383,7 @@ public partial class Hud : CanvasLayer {
     }
 
     public void ShowReport(SurgeryReport report) {
-        Open(ReportView.Build(report, Surgery.Scenario));
+        Open(ReportView.Build(report));
         _overlayLocked = true;
     }
 
