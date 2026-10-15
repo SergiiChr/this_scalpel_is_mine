@@ -30,7 +30,7 @@ public partial class Patient {
         }
         // The nearest target the jaws close on, not one another tool already holds (two broken ends lie close
         // together). Forceps held up in the opening close on nothing under them: no target, vessel or bleeding wound.
-        var down = zone != SiteZone.Cavity || TipDown(Body.UvToWorld(uv, depthM));
+        var down = zone != SiteZone.Cavity || Body.TouchesInside(Body.UvToWorld(uv, depthM), JawReach);
         var nearest = skinOnly || !down ? null : Targets
             .Where(t => !t.Extracted && !t.IsSuctionTarget && !(t.IsBone && t.Anchor > 0f))
             .Where(t => t.GrippedBy == 0 || t.GrippedBy == toolUid)
@@ -67,12 +67,6 @@ public partial class Patient {
         }
         return null;
     }
-
-    /// <summary>A tip in an opening is down on what's inside (within <see cref="JawReach"/>), or in it, not held up over
-    /// it.</summary>
-    private bool TipDown(Vector3 tip) =>
-        Rays.Cast(this, tip + (Vector3.Up * 0.05f), tip + (Vector3.Down * JawReach), PatientBody.CavityLayer | CavityTarget.TouchLayer)
-            is not null;
 
     /// <summary>
     /// Called when a spreader (the Gelpi retractor) is set into the skin with its jaws' tips at

@@ -33,6 +33,10 @@ public partial class Surgeon {
     /// to it, so level or lower the wrist would bend back.</summary>
     internal const float DripTilt = 0.5f;
 
+    /// <summary>How finely (meters) a forceps tip's move is checked for skin on its way (see InsideLip()): finer than the
+    /// thinnest skin between two cuts worth telling apart.</summary>
+    private const float LipStep = 0.002f;
+
     /// <summary>Hands whose syringe is snapped into a vial or the IV bag, or easing in or out.</summary>
     private readonly Dictionary<int, SnapState> _snaps = [];
 
@@ -189,7 +193,8 @@ public partial class Surgeon {
 
     /// <summary>A move of a forceps tip held at a depth (<paramref name="from"/> to <paramref name="to"/>, the hand's
     /// spot): deeper than <see cref="Patient.LipDepth"/> it stays in the opening, sliding along the lip rather than going
-    /// under the skin. Lifted, it goes over.</summary>
+    /// under the skin, also on its way (a fast move doesn't jump across skin into another opening). Lifted, it goes over.
+    /// </summary>
     private Vector3 InsideLip(SurgeonHand hand, Vector3 from, Vector3 to) {
         if (hand.HeldDepth is null || hand.Attached || hand.Lifted || HeldTool(hand.Index) is not { } tool) {
             return to;
@@ -200,11 +205,23 @@ public partial class Surgeon {
             return to;
         }
         foreach (var move in (Vector3[])[to, to with { X = from.X }, to with { Z = from.Z }]) {
-            if (SurfaceBelow(move + offset).Open) {
+            if (OpenAlong(from + offset, move + offset)) {
                 return move;
             }
         }
         return from;
+    }
+
+    /// <summary>Every point from <paramref name="from"/> to <paramref name="to"/> is over an opening, checked every
+    /// <see cref="LipStep"/>.</summary>
+    private bool OpenAlong(Vector3 from, Vector3 to) {
+        var steps = Mathf.CeilToInt(from.DistanceTo(to) / LipStep);
+        for (var i = 1; i <= steps; i++) {
+            if (!SurfaceBelow(from.Lerp(to, (float)i / steps)).Open) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The hand's height over something hard (a tray, the table, a tool lying there), which doesn't give: every

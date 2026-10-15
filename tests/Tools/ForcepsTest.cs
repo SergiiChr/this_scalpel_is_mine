@@ -142,6 +142,39 @@ public class ForcepsTest {
     }
 
     [TestCase]
+    public async Task ForcepsHeldDeepDontJumpAcrossSkinToAnotherOpening() {
+        var (session, bullet) = await OpenOverBullet("forceps/two_openings");
+        var driver = session.Driver;
+        var body = driver.Body;
+        // Well across from the first, so the skin between doesn't let either close.
+        var beside = bullet.Uv + new Vector2(0f, body.MetersToUv(0.04f));
+        var bridge = (bullet.Uv + beside) * 0.5f;
+        var half = new Vector2(body.MetersToUv(0.015f), 0f);
+        await driver.PlayerCutsSkin(beside - half, beside + half, 3);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        AssertBool(body.IsOpen(bullet.Uv) && body.IsOpen(beside) && !body.IsOpen(bridge))
+            .OverrideFailureMessage($"a second cut opens across from the first, intact skin between them: {body.IsOpen(bullet.Uv)}, {body.IsOpen(beside)}, {body.IsOpen(bridge)} at {beside}").IsTrue();
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        var hand = driver.Me.Hands[driver.Me.Active];
+        var spot = body.UvToWorld(bullet.Uv, bullet.Depth);
+        await driver.PlayerWalksTo(spot);
+        await driver.PlayerReaches(spot);
+        await SurgeryDriver.Notch(true);
+        // One fast move of the mouse, its end over the other opening.
+        PlayerInput.Action(PlayerInput.HandKey(driver.Me));
+        PlayerInput.Mouse(PlayerInput.HandMotion(driver.Me, (driver.SitePoint(beside) - forceps.TipPosition()) with { Y = 0f }));
+        await Frames.Physics(2);
+        PlayerInput.Action(PlayerInput.HandKey(driver.Me), false);
+        await Frames.Physics(5);
+        var tip = body.WorldToUv(forceps.TipPosition());
+        AssertBool(hand.HeldDepth is not null && body.IsOpen(tip) && tip.DistanceTo(bullet.Uv) < tip.DistanceTo(beside))
+            .OverrideFailureMessage($"held deep, the tip stays in its own opening, not under the skin into the other: {tip}")
+            .IsTrue();
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
     public async Task ForcepsInTheAirWaitUntilTheyComeDown() {
         var (session, bullet) = await OpenOverBullet("forceps/in_the_air");
         var driver = session.Driver;
