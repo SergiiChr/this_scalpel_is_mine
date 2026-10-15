@@ -131,6 +131,11 @@ public class TissueSimTest {
         Check(sim.CutEndIn(a, b, new Vector2(c.X, 0.2f), entry) is { } start
             && start.DistanceTo(entry - Vector2.Down * 0.01f) < 0.00001f,
             "the opposite end traces back to the actual start of the blade stroke");
+        // Recoil can take the held contact back out through the same entry edge. This point is farther from
+        // entry sideways, but it must not replace the furthest penetration and collapse the V onto that edge.
+        sim.Cut(stop, new Vector2(0.53f, 0.4f), TissueDepth.Skin);
+        Check(sim.CutEndIn(a, b, c, entry) is { } recoilEnd && recoilEnd.DistanceTo(stop) < 0.00001f,
+            "a returning blade contact preserves the slit end instead of following sideways along its entry");
     }
 
     private static void CutGapes() {

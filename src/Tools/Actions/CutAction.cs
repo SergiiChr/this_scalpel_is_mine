@@ -8,12 +8,20 @@ public sealed class CutAction : ToolAction {
         var use = tool.Use;
         var patient = step.Patient;
         var level = step.Level;
+        var body = patient.Body;
+        var direction = ToolActions.BladeDirection(tool);
+        var span = step.Lowered && level > 0 && step.InSite ? tool.Blade?.SkinSpan(body, tool.GlobalTransform, direction) : null;
+        var from = span is { } contact ? body.CutUv(contact.From) : step.Uv;
+        var to = span is { } contactEnd ? body.CutUv(contactEnd.To) : step.Uv;
+        var surfaceContact = span is { } footprint ? body.Site.ToGlobal((footprint.From + footprint.To) * 0.5f) : step.Tip;
         if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel) {
             // Pressed in at a new depth: the point goes in as wide as the blade, before it's moved at all.
             use.StabbedLevel = level;
-            var half = ToolActions.BladeDirection(tool) * ToolActions.StabLength * 0.5f;
-            var from = patient.Body.WorldToUv(step.Tip - half);
-            var to = patient.Body.WorldToUv(step.Tip + half);
+            if (span is null) {
+                var half = direction * ToolActions.StabLength * 0.5f;
+                from = body.WorldToUv(step.Tip - half);
+                to = body.WorldToUv(step.Tip + half);
+            }
             patient.Cut(StrokeKey(tool), from, to, ToolActions.DepthByLevel[level], step.Def.Sharpness, !tool.Sterile, 0f);
             use.CutWall = true;
             step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
@@ -35,11 +43,12 @@ public sealed class CutAction : ToolAction {
             patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort,
                 use.CutWall ? null : use.PutDownAt);
         }
-        var moved = use.LastUv.X >= 0f && use.LastUv.DistanceTo(step.Uv) > 0.003f;
+        var moved = use.LastUv.X >= 0f && body.WorldToUv(use.LastCutContact).DistanceTo(body.WorldToUv(surfaceContact)) > 0.003f;
         if (moved) {
-            var along = (step.Tip - use.LastTip) * new Vector3(1, 0, 1);
-            var aligned = Mathf.Abs(along.Normalized().Dot(ToolActions.BladeDirection(tool))) >= ToolActions.AlongBlade;
-            if (aligned && patient.Cut(StrokeKey(tool), use.LastUv, step.Uv, ToolActions.DepthByLevel[level],
+            var along = (surfaceContact - use.LastCutContact) * new Vector3(1, 0, 1);
+            var aligned = Mathf.Abs(along.Normalized().Dot(direction)) >= ToolActions.AlongBlade;
+            var end = along.Dot(direction) >= 0f ? to : from;
+            if (aligned && patient.Cut(StrokeKey(tool), use.LastUv, end, ToolActions.DepthByLevel[level],
                     step.Def.Sharpness, !tool.Sterile, step.Hand.Speed)) {
                 // A blade that has sunk into the cut it's making still cuts the wall ahead of it, but only cutting on
                 // whole tissue makes it pass over a target.
@@ -52,8 +61,9 @@ public sealed class CutAction : ToolAction {
             }
         }
         if (use.LastUv.X < 0f || moved) {
-            use.LastUv = step.Uv;
-            use.LastTip = step.Tip;
+            var motion = surfaceContact - use.LastCutContact;
+            use.LastUv = use.LastUv.X < 0f ? (from + to) * 0.5f : motion.Dot(direction) >= 0f ? to : from;
+            use.LastCutContact = surfaceContact;
         }
     }
 
