@@ -108,7 +108,7 @@ public class SurgeonDrugsTest {
             .OverrideFailureMessage("racing: three minutes on, the heart stops").IsTrue();
         var hud = driver.Surgery.Hud;
         AssertBool(me.HeldTool(me.Active) is null && !driver.Surgery.Finished
-                && hud.Countdown == $"Your heart has stopped\n{SurgeonStatus.ArrestTime:0} s")
+                && hud.Countdown == $"You're having a heart attack.\n{SurgeonStatus.ArrestTime:0} s")
             .OverrideFailureMessage($"arrest: the baggie dropped, the operation goes on, the surgeon sees the time left "
                 + $"({hud.Countdown.Replace('\n', ' ')})")
             .IsTrue();
@@ -124,7 +124,7 @@ public class SurgeonDrugsTest {
                 + $"counting down ({hud.Countdown.Replace('\n', ' ')}, {left} s left)")
             .IsTrue();
         await driver.Capture("heart_stopped",
-            "the surgeon's view from the floor, hazy: in the middle in red \"Your heart has stopped\" and the seconds "
+            "the surgeon's view from the floor, hazy: in the middle in red \"You're having a heart attack.\" and the seconds "
                 + "left under it");
         AssertBool(await Frames.Until(() => driver.Surgery.Finished, SurgeonStatus.ArrestTime))
             .OverrideFailureMessage("arrest: half a minute on with nobody to shock the heart, the operation ends")

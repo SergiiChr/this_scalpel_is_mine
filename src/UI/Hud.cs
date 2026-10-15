@@ -193,7 +193,7 @@ public partial class Hud : CanvasLayer {
         UpdateGauges(me);
         UpdateHint(me);
         UpdatePrompt(me);
-        var countdown = me.Status.IsArrested ? $"Your heart has stopped\n{Mathf.CeilToInt(me.Status.ArrestLeft)} s" : "";
+        var countdown = me.Status.IsArrested ? $"You're having a heart attack.\n{Mathf.CeilToInt(me.Status.ArrestLeft)} s" : "";
         if (_countdown.Text != countdown) {
             _countdown.Text = countdown;
         }
