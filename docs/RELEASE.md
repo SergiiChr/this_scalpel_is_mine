@@ -47,14 +47,17 @@ lists only what changed beyond them: side effects on suites the feature didn't r
 A scheduled run verifies `develop`:
 
 1. Take the newest `develop` commit whose CI passed and note its hash. Skip when it was already verified, a release
-   PR is open, or a fix or decision from an earlier run is still open.
+   PR is open, or a fix or decision from an earlier run is still open. An open issue nobody is working on (no linked
+   PR, no question asked) is adopted instead: the run works it as in step 4 and verifies nothing new.
 2. Run `./build.py screenshot_review` on that commit. A suite that still fails after its retry is an issue (step 4),
    even when CI passed.
 3. Review the listed sheets against the PRs merged into `develop` since the last release. The features committed
    their own key frames, so every listed one is unexpected: a side effect, a missing key frame or a flaky render.
-4. A clear-cut defect gets a fix PR to `develop` under the development flow above. A change whose intent isn't
-   obvious (user flow, behavior) goes to the owner for a decision. Either way the run stops; the next one verifies
-   again.
+4. Each problem gets an issue, and the run that opens it works it; it never opens an issue and stops. A clear-cut
+   defect gets its real cause fixed in a PR to `develop` under the development flow above, driven to green CI and
+   handed to the owner to merge. A change whose intent isn't obvious (user flow, behavior) goes to the owner for a
+   decision, with a recommendation, and the run acts on the answer. The next run verifies again once the issues
+   are closed.
 5. With no issues: branch `release/<short hash>` from that commit, run
    `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` when anything changed, and open a PR
    to `main`. Its description lists the verified hash, every PR merged since the last release (titles, linked), and
