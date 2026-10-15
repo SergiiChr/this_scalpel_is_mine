@@ -2,8 +2,8 @@ namespace Scalpel.Tests.Tools;
 
 /// <summary>
 /// Gauze and cotton pads hold what they soak up, iodine and blood together, up to their volume. Gauze packed into a
-/// pool of blood fills up, turns red and takes no more, but still presses on the vessel under it. A pad soaked in
-/// iodine wiping blood fills with both and takes the color of their mix. With key frames review the gauze soaked deep
+/// pool of blood fills up, turns red and takes no more, but still presses on the vessel under it. A pad dipped in
+/// iodine with blood mixed in takes both in their share, then wiping blood fills it and it takes the color of their mix. With key frames review the gauze soaked deep
 /// red in the opening and the pad in the forceps a red brown between iodine and blood.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -56,13 +56,15 @@ public class SwabCapacityTest {
     }
 
     [TestCase]
-    public async Task APadSoakedInIodineFillsWithBloodAndTakesTheirMixedColor() {
+    public async Task APadDippedInIodineFillsWithBloodAndTakesTheirMixedColor() {
         var session = await ToolSession.Start("appendectomy", "pad_iodine_blood");
         var driver = session.Driver;
         var patient = driver.Patient;
         var pad = SurgeryState.ToolIsOnTray(driver.Surgery, "cotton_pad");
         await Frames.Physics(10);
-        SurgeryState.ToolHolds(driver.Surgery, pad, "iodine", pad.Def.Volume * 0.75f);
+        var dish = driver.FreeTools("iodine_dish")[0];
+        SurgeryState.ToolHolds(driver.Surgery, dish, "iodine", 30f);
+        SurgeryState.ToolHolds(driver.Surgery, dish, "blood", 10f);
         var spot = new Vector2(0.5f, 0.5f);
         SurgeryState.SkinIsBloody(patient, spot, 0.3f);
 
@@ -70,6 +72,14 @@ public class SwabCapacityTest {
         await driver.PlayerWalksTo(pad.GlobalPosition);
         await driver.PlayerWorksAt(pad.GlobalPosition, 0, 0.2f);
         AssertBool(driver.Surgery.Tools.CarriedBy(forceps) == pad).OverrideFailureMessage("the forceps took the pad").IsTrue();
+        // A short dip into iodine with blood mixed in: the pad takes both in their share and still has room.
+        await driver.PlayerWalksTo(dish.GlobalPosition);
+        await driver.PlayerWorksAt(dish.Middle(), 0, 0.3f);
+        var dipped = pad.Contents.GetValueOrDefault("blood") / pad.Ml;
+        AssertBool(pad.Ml > 0.5f && pad.Room > 1f)
+            .OverrideFailureMessage($"a short dip soaks the pad part way ({pad.Ml:0.0} of {pad.Def.Volume} ml)").IsTrue();
+        AssertFloat(dipped).OverrideFailureMessage($"blood comes along in its share of the dish ({dipped:0.00})").IsEqualApprox(0.25f, 0.01f);
+        AssertFloat(pad.BloodExposure).OverrideFailureMessage("the blood it took counts toward bloodying the hand holding it").IsGreater(0f);
         await driver.PlayerWalksTo(driver.SitePoint(spot));
         // Rows across the blood until the pad is full. Wiping leaves its iodine on the skin, so blood keeps filling the
         // room that frees: it ends full only while it's still on fresh blood.

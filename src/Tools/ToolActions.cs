@@ -272,7 +272,8 @@ public static class ToolActions {
         if (!step.InSite) {
             if (tools.NearestDish(step.Tip) is { } dish) {
                 // An empty pad fills in half a second.
-                tools.Transfer(dish, pad, Mathf.Min(dt * 2f * pad.Def.Volume, pad.Room));
+                var moved = tools.Transfer(dish, pad, Mathf.Min(dt * 2f * pad.Def.Volume, pad.Room));
+                tools.AddBlood(pad, moved.GetValueOrDefault("blood") / pad.Def.Volume);
             }
             return;
         }

@@ -327,7 +327,7 @@ public partial class SurgicalTool : RigidBody3D {
     /// Gauze and cotton pads show it in what they soaked up instead (ShowSoaked()).</summary>
     public void SetBlood(float amount) {
         Blood = amount;
-        if (amount <= 0f && _ownMaterials.Count == 0 || Def.Action == "swab" && Def.Volume > 0f) {
+        if ((amount <= 0f && _ownMaterials.Count == 0) || (Def.Action == "swab" && Def.Volume > 0f)) {
             return;
         }
         var soaks = Def.Action == "swab";
@@ -340,18 +340,19 @@ public partial class SurgicalTool : RigidBody3D {
     }
 
     /// <summary>What a swab soaked up tints all of it, deeper the fuller it is: iodine brown, blood red, a mix of both
-    /// by their shares.</summary>
+    /// by their shares. Clear liquid (a drug squirted into a dish) leaves it its own color.</summary>
     private void ShowSoaked() {
         if (Ml <= 0f && _dryColors.Count == 0) {
             return;
         }
-        var soaked = Red + Iodine > 0f ? IodineColor.Lerp(BloodColor, Red / (Red + Iodine)) : IodineColor;
+        var colored = Red + Iodine;
+        var soaked = colored > 0f ? IodineColor.Lerp(BloodColor, Red / colored) : IodineColor;
         foreach (var (material, _) in OwnMaterials()) {
             if (!_dryColors.TryGetValue(material, out var dry)) {
                 dry = material.GetShaderParameter("albedo").AsColor();
                 _dryColors[material] = dry;
             }
-            material.SetShaderParameter(ShaderParam.Albedo, dry.Lerp(soaked, Mathf.Sqrt(Ml / Def.Volume)));
+            material.SetShaderParameter(ShaderParam.Albedo, dry.Lerp(soaked, Mathf.Sqrt(colored * Ml / Def.Volume)));
         }
     }
 

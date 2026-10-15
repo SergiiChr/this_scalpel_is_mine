@@ -744,7 +744,7 @@ public partial class Patient {
     }
 
     /// <summary>Wipes the site with a swab that can still soak up <paramref name="room"/> ml, and returns the ml of
-    /// blood it took. A full swab smears instead of wiping, but gauze still presses. <paramref name="soakedIn"/>: what
+    /// blood it took. A full swab no longer wipes, but gauze still presses. <paramref name="soakedIn"/>: what
     /// the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in iodine).</summary>
     public float SwabAt(SiteZone zone, Vector2 uv, ToolDef def, float dt, float room, string soakedIn = "") {
         var drug = soakedIn.Length > 0 ? soakedIn : def.Drug;
@@ -754,8 +754,9 @@ public partial class Patient {
         var take = Mathf.Min(rate, room);
         var taken = 0f;
         if (zone == SiteZone.Site) {
-            // The film of blood on the skin, as much as the wipe takes off.
-            taken = Body.BloodAt(uv) * take;
+            // What the cuts hold first, then the film of blood on the skin as much as the wipe takes off.
+            taken = DrainCuts(uv, take);
+            taken += Body.BloodAt(uv) * (take - taken);
             // One pass over the disk for every channel: a wipe runs every physics frame, so it has to be cheap.
             var ops = new List<PaintOp> { new(WoundMap.Blood, def.Power * dt * 2f * take / rate, WoundMap.Mode.Sub) };
             if (sanitize) {
@@ -767,29 +768,28 @@ public partial class Patient {
                 }
             }
             PaintOps(WoundMap.Layer.Fluids, uv, radius, ops);
-            taken += DrainCuts(uv, take);
             if (def.Id == "gauze" && NearestWound(uv, 0.02f, false) is { } wound) {
                 Press(wound, dt);
             }
         } else if (zone == SiteZone.Cavity) {
             taken = Mathf.Min(CavityBloodMl, take);
             CavityBloodMl -= taken;
-            taken += DrainCuts(uv, take);
+            taken += DrainCuts(uv, take - taken);
             // Packed into the opening, it presses on the vessel it reaches, else on the edges of the cut it's in.
             var vessel = Wounds.Where(w => w.IsInternal && Reaches(w, uv)).MinBy(w => w.Points[0].DistanceTo(uv));
             if (def.Id == "gauze" && (vessel ?? NearestWound(uv, 0.02f, false)) is { } wound) {
                 Press(wound, dt);
             }
         }
-        return Mathf.Min(taken, room);
+        return taken;
     }
 
-    /// <summary>Takes up to <paramref name="ml"/> of the blood held in each cut near <paramref name="uv"/>, and returns
-    /// how much it took.</summary>
+    /// <summary>Takes up to <paramref name="ml"/> in all of the blood held in the cuts near <paramref name="uv"/>, and
+    /// returns how much it took.</summary>
     private float DrainCuts(Vector2 uv, float ml) {
         var drained = 0f;
         foreach (var wound in Wounds.Where(wound => wound.PooledMl > 0f && wound.DistanceTo(uv) < 0.03f)) {
-            var took = Mathf.Min(wound.PooledMl, ml);
+            var took = Mathf.Min(wound.PooledMl, ml - drained);
             wound.PooledMl -= took;
             drained += took;
         }
