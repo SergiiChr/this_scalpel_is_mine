@@ -15,6 +15,7 @@ Nothing is installed in a fresh container. Run this before anything that needs G
 It downloads Godot .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none), builds
 the C# and imports the project. No sudo, a few minutes. Where Microsoft's download host is blocked, install the SDK
 from the system packages first (`apt-get install dotnet-sdk-10.0` on Ubuntu 24.04).
+In Claude Code cloud sessions the SessionStart hook (`.claude/hooks/session-start.sh`) does that and runs `./build.py dev`.
 Asset generators additionally need `./build.py dev` (Python 3.11 venv with Blender as a module, about 400 MB).
 Dev setup also provisions Xvfb and xauth for visual tests: on Fedora it extracts the packages into `.tools/xvfb`
 without sudo (requires `dnf download`, `rpm2cpio`, `cpio` and `/usr/bin/xkbcomp` already installed). It installs keyboard data too, configures
