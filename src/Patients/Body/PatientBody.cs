@@ -64,6 +64,8 @@ public partial class PatientBody : Node3D {
     /// <summary>Dermis and epidermis at the incision: a narrow lip above the subcutaneous tissue.</summary>
     public const float SkinThickness = 0.0015f;
     public const float MuscleThickness = 0.006f;
+    /// <summary>How far under the muscle a bone's top lies.</summary>
+    private const float BoneGap = 0.003f;
     /// <summary>Subcutaneous fat where a site doesn't say ("fat" in patient_sites.json).</summary>
     public const float DefaultFat = SiteDef.DefaultFat;
     private static readonly string[] LimbSites = ["forearm", "shoulder", "thigh", "lower_leg"];
@@ -241,17 +243,33 @@ public partial class PatientBody : Node3D {
     /// <summary>
     /// How deep the cavity is under the skin in the middle of the site: at least deep enough for the site's bones to
     /// fit under the muscle from their middle on, where the cavity can already be shallower (a thick fat layer, a bone
-    /// off to one side like the shoulder's).
+    /// off to one side like the shoulder's). A limb is muscle all round its bones, not a hollow: its floor lies just
+    /// under their middle, so they lie half sunk in it.
     /// </summary>
     public float CavityDepth() {
         var depth = SiteDef.Depth;
         foreach (var bone in SiteDef.Bones) {
             var bowl = Bowl((bone.From + bone.To) * 0.5f);
-            var needed = MuscleBottom + 0.003f + bone.Radius * 2f + 0.004f;
+            var needed = MuscleBottom + BoneGap + bone.Radius + FloorUnderBone(bone.Radius);
             depth = Mathf.Max(depth, (needed - (1f - bowl) * (SkinThickness + 0.003f)) / bowl);
         }
         return depth;
     }
+
+    /// <summary>How far the cavity floor lies under a bone's middle: under the whole bone in the trunk, just under its
+    /// middle in a limb.</summary>
+    private float FloorUnderBone(float radius) => IsLimbSite ? 0.002f : radius + 0.004f;
+
+    /// <summary>
+    /// How deep under the skin at uv a scenario target <paramref name="halfHeight"/> thick lies, given
+    /// <paramref name="depth"/>. In a limb, inside the thin cavity as near that depth as it fits: its top under the
+    /// muscle, its middle no deeper than the floor, so the depth fits every patient, the thicker fat of a heavy one
+    /// pushing the muscle and the floor down. Elsewhere the depth as it is: a trunk target can lie in the skin or the
+    /// bone over the cavity (a knife sticking out, a sternum to saw).
+    /// </summary>
+    public float TargetDepth(Vector2 uv, float depth, float halfHeight) => IsLimbSite
+        ? Mathf.Min(Mathf.Max(depth, MuscleBottom + halfHeight), SurfaceHeight(uv) - CavityFloor(uv))
+        : depth;
 
     /// <summary>How far under the skin the muscle layer ends: bones lie right under it, organs further down.</summary>
     public float MuscleBottom => SkinThickness + FatThickness + MuscleThickness;

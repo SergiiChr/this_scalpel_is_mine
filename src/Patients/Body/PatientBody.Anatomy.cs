@@ -154,7 +154,7 @@ public partial class PatientBody {
 
     /// <summary>The box around every mesh under <paramref name="node"/>, in the space of <paramref name="space"/> (an
     /// ancestor). Works before they're in the tree.</summary>
-    private static Aabb LocalBounds(Node3D node, Node3D space) {
+    internal static Aabb LocalBounds(Node3D node, Node3D space) {
         Aabb? bounds = null;
         foreach (var mesh in node.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()) {
             var transform = Transform3D.Identity;
@@ -231,7 +231,7 @@ public partial class PatientBody {
     /// <paramref name="flat"/> of its width for ribs and the breastbone, with capsules along it for tools to rest on.
     /// </summary>
     private void AddBone(string kind, List<Vector2> points, float radius, float flat) {
-        var top = MuscleBottom + 0.003f;
+        var top = MuscleBottom + BoneGap;
         // Short steps, so a straight bone still follows the curve of the skin over it.
         var dense = new List<Vector2> { points[0] };
         for (var i = 1; i < points.Count; i++) {
@@ -243,9 +243,10 @@ public partial class PatientBody {
         var path = new List<Vector3>();
         foreach (var uv in dense) {
             // Toward the site's edges the cavity rises to the skin; a bone that no longer fits under the muscle there
-            // ends.
+            // ends. In a limb it needs only its middle clear of the floor.
             var height = SurfaceHeight(uv) - top - radius * flat;
-            if (height - radius * flat >= CavityFloor(uv) + 0.001f) {
+            var bottom = IsLimbSite ? height : height - radius * flat;
+            if (bottom >= CavityFloor(uv) + 0.001f) {
                 path.Add(SitePoint(uv, height));
             }
         }

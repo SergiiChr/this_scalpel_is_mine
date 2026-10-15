@@ -91,7 +91,8 @@ overview, the data formats designers edit and the design decisions.
   the heart over the aorta under a rib cage and breastbone, the belly the liver, stomach and bowel over the kidneys and
   the aorta, under the lower rib margin. Arms, legs and the shoulder have their bones. Bones lie right under the muscle,
   organs are placed by how far under the muscle their top lies, so they stay inside on any patient. The cavity floor
-  follows the skin. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
+  follows the skin. A limb is muscle round its bones, not a hollow: its floor lies just under their middle, so they lie
+  half sunk in it. Organs in the way can be taken hold of with a clamp and moved aside; let go, they drift back.
   The heart beats with the pulse (still in asystole, a quiver in V-fib), the lungs swell with each breath.
 - A skin flap pulled far comes loose from what's under it (the anchors give way past `TissueSim.AnchorReach`), so an
   H-shaped incision through the muscle folds back like a clamshell and shows the whole cavity.
@@ -203,6 +204,8 @@ general anesthesia for a lidocaine allergy).
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
+A target's `depth` is meters under the skin. In a limb it's kept inside the thin cavity (`PatientBody.TargetDepth()`):
+its top under the muscle and its middle no deeper than the floor, so it fits a heavy patient's thicker fat too.
 
 ### Other data
 
