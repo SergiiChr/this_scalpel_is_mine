@@ -3,10 +3,10 @@ title: 16. Intraoperative radiography
 Localization of radiopaque foreign bodies (bullets, blades, retained instruments), assessment of bone, and a count check before closure.
 
 ## 16.2 Procedure
-1. Take hold of the mobile unit's handle ([b]Interact[/b]). It follows until released.
+1. Take hold of the mobile unit anywhere ([b]Grab[/b]), like an instrument. It follows until released, and released it locks against the floor.
 2. Position it beside the table. The collimator lights both fields on the patient: the frontal (AP) field straight below the tube head, the lateral field level and forward from just below it.
-3. Raise or lower the arm with the [b]wheel[/b]. [b]Use[/b] locks the unit against the floor and releases it; the arm still moves with the wheel on the tube head.
-4. Expose. All staff stand clear during the exposure, which lasts a few seconds. Each exposure takes both views.
+3. Raise or lower the arm with the [b]wheel[/b] while holding the unit.
+4. Expose ([b]Use tool[/b]) while holding the unit. All staff stand clear during the exposure, which lasts a few seconds. Each exposure takes both views.
 5. The two films are delivered into the cassette holder. They develop over about {XrayCart.DevelopTime} seconds.
 6. Hold the films up ([b]Interact[/b]) against a light to read them. [b]Interact[/b] again puts them back.
 > The unit requires {XrayCart.Cooldown} seconds between exposures.
