@@ -32,7 +32,7 @@ public class DischargeTest {
         await driver.PlayerTakesCard();
         var signature = surgery.Hud.Signature!;
         await driver.AssertAndCapture(signature.Progress == 0f,
-            "the card's page with an empty discharge line at its foot and the hint to hold Interact to sign", "unsigned");
+            "the card's page with an empty discharge line at its foot, the hint to hold Interact to sign, and \"Stop anesthesia\" under ANESTHESIA to its left", "unsigned");
 
         driver.Note("holds Interact half the signing time");
         SurgeryDriver.Press(InputActions.Interact);

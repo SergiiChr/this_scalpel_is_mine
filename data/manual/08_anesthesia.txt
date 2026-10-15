@@ -2,7 +2,7 @@ tags: propofol, sevoflurane
 title: 8. Anesthesia management
 ## 8.1 Depth
 Adequate depth is indicated by absent spontaneous respiration on the monitor. A patient who begins to speak is lightening.
-One correct induction dose is maintained for the whole procedure. A repeat dose of the same agent only tops it up.
+One correct induction dose is maintained for the whole procedure, until the anesthesia is stopped (8.5). A repeat dose of the same agent only tops it up.
 
 ## 8.2 Blood pressure under anesthesia
 Propofol and the inhaled agent lower systolic pressure for as long as the patient is under: expect about {Patient.NormalPressure + drug.propofol.Peak.Bp} mmHg instead of {Patient.NormalPressure}. A healthy patient tolerates this. Blood loss on top of it does not: below {Patient.ArrestPressure} mmHg the heart is at risk of arrest.
@@ -15,6 +15,9 @@ See Chronic conditions: Intraoperative awareness, Alcohol use disorder, Malignan
 
 ## 8.4 Sequence
 IV access, then induction, then skin preparation. Skin preparation may be done in the conscious patient; incision may not.
+
+## 8.5 Emergence
+The anesthetic is maintained until it is stopped. Once the procedure is complete, stop the anesthesia on the patient record and wait for the patient to wake, within about {Patient.WakeSeconds} seconds, before signing the discharge. Discharge only an awake patient.
 
 [font_size=16][b]References[/b]
 Gropper MA, ed. Miller's Anesthesia. 9th ed. Elsevier; 2020.

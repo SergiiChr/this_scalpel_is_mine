@@ -113,6 +113,16 @@ public partial class SurgeryDriver : Node {
         await PlayerInput.Delivered();
     }
 
+    /// <summary>Takes the patient card and clicks "Stop anesthesia" at the foot of its page.</summary>
+    public async Task PlayerStopsAnesthesia() {
+        await PlayerTakesCard();
+        var stop = Surgery.Hud.Overlay!.FindChildren("*", "Button", true, false).Cast<Button>()
+            .Single(button => button.Text == PatientCardView.StopAnesthesia);
+        Note("stops the anesthesia");
+        PlayerInput.Click(stop);
+        await PlayerInput.Delivered();
+    }
+
     /// <summary>Signs the patient out like a player: takes the patient card and holds Interact until the signature is
     /// done and the surgery ends.</summary>
     public async Task PlayerDischarges() {

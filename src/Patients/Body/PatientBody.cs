@@ -74,6 +74,9 @@ public partial class PatientBody : Node3D {
     public static readonly Vector2 VeinSpan = new(0.15f, 0.8f);
     /// <summary>How far a vein is raised out of the skin.</summary>
     public const float VeinRadius = 0.0016f;
+    /// <summary>Border of the site (uv) left out of <see cref="SkinBlood"/>: the drape's frame and a little more.
+    /// </summary>
+    public const float CleanMargin = 0.1f;
     public static readonly Color VeinColor = new(0.28f, 0.33f, 0.55f);
     /// <summary>How close a needle tip has to come to a vein's line to be in it (the tip rests about 1 cm over the
     /// skin).</summary>
@@ -423,6 +426,11 @@ public partial class PatientBody : Node3D {
         }
         return WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);
     }
+
+    /// <summary>Mean blood on the skin of the site (0..1), leaving out a border of <see cref="CleanMargin"/> (uv) that
+    /// the drape covers or a swab barely reaches, and wherever the site hangs off the body.</summary>
+    public float SkinBlood() =>
+        WoundMap.Mean(WoundMap.Layer.Fluids, WoundMap.Blood, CleanMargin, 1f - CleanMargin, Math.Max(WoundMap.Size / 128, 1), OnBody);
 
     public float UvToMeters(float uvLength) => uvLength * (SiteSize.X + SiteSize.Y) * 0.5f;
 

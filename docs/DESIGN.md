@@ -259,7 +259,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   clots, heart quirks); there is no random arrest event. Scripted arrests (heart attack) always happen.
 - General anesthesia holds for the whole surgery once given, side effects included (propofol and gas keep the pressure
   about 15-20 mmHg down, the manual says how to manage it). A repeat dose only tops it up. It wears off only with the
-  anesthesia resistant quirk or a scripted wake up (awake craniotomy).
+  anesthesia resistant quirk, a scripted wake up (awake craniotomy) or once a player stops it with "Stop anesthesia"
+  on the card's page: a right dose then wears off in `Patient.WakeSeconds`, and a new dose puts the patient under
+  again.
 - Random events only disturb the surgeons (a pothole, a cough, a bump, flickering lights with the power trouble
   modifier). Nothing random happens to the patient that the chart, the monitor and the manual don't explain.
 - Seizures, malignant hyperthermia, diabetes drift, panicking awake patients.
@@ -309,6 +311,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   Interact for `SignatureView.SignSeconds` writes the signature under a see-through pen, letting go early unwrites it.
   The host then settles the outcome, score and consequences (`Surgery.Discharge()`). Signed out too early, the patient
   can still go, as a failure. Only death and the time limit end a surgery without it.
+  Leaving the table (signed out or out of time) also scores aftercare: a patient who was put under and is awake again,
+  and skin with at most `Surgery.SkinBloodLeft` of the most blood it held left on it (`PatientBody.SkinBlood()`, the
+  site without its border of `PatientBody.CleanMargin`, sampled with every status).
 - **Post-op report** (`ReportView`): the score lines, then a timeline of the surgery (`Scoring.Timeline`): each scored
   action, each step first done or spoiled (naming the step it comes after that wasn't in place), then at the discharge
   which steps counted and which were missed. It's where a player learns what the hidden objectives were. Repeats in a
