@@ -691,6 +691,19 @@ def report(outcome: Outcome) -> str:
     return f"FAIL {outcome.suite.full_name}\n{lines}\n     log: {outcome.log.relative_to(ROOT)}"
 
 
+# Lines of a failed suite's log a CI run prints: the job's own output is often all there is to read of a crash or hang.
+CI_LOG_TAIL = 80
+
+
+def log_tail(outcome: Outcome) -> str:
+    """The end of each log of a failed suite, folded in a GitHub Actions group."""
+    parts = []
+    for log in sorted(outcome.log.parent.glob(outcome.log.name)):
+        tail = log.read_text(errors="replace").splitlines()[-CI_LOG_TAIL:]
+        parts.append(f"::group::{log.relative_to(ROOT)}, last {len(tail)} lines\n" + "\n".join(tail) + "\n::endgroup::")
+    return "\n".join(parts)
+
+
 def test(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py test",
@@ -758,6 +771,8 @@ def test(arguments: list[str]) -> int:
         with ThreadPoolExecutor(jobs) as pool:
             for outcome in pool.map(lambda suite: run_suite(suite, options), batch):
                 print(report(outcome), flush=True)
+                if options.ci_run and outcome.failures:
+                    print(log_tail(outcome), flush=True)
                 outcomes.append(outcome)
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
