@@ -20,6 +20,7 @@ public partial class MainMenu : Control {
         nav.AddChild(Ui.Label("a co-op surgery thriller", 18, Ui.Dim));
         nav.AddChild(new Control());
         nav.AddChild(Ui.Button("Scenarios", ShowScenarios));
+        nav.AddChild(Ui.Button("History", ShowHistory));
         nav.AddChild(Ui.Button("Multiplayer", ShowMultiplayer));
         nav.AddChild(Ui.Button("Quirk codex", ShowCodex));
         nav.AddChild(Ui.Button("Settings", ShowSettings));
@@ -116,6 +117,38 @@ public partial class MainMenu : Control {
 
     /// <summary>The first word of a scenario's group: scenarios that share it are alike.</summary>
     private static string Family(ScenarioDef scenario) => scenario.Group.Split(' ', 2)[0];
+
+    // --- History -----------------------------------------------------------------------------------------------
+
+    /// <summary>Surgeries played on this computer, newest first: each opens its post-op report.</summary>
+    internal void ShowHistory() {
+        var box = Ui.VBox(10);
+        box.AddChild(Ui.Label("HISTORY", 28, Ui.Pip));
+        var list = Ui.VBox(4);
+        if (Progress.History.Count == 0) {
+            list.AddChild(Ui.Label("No surgeries played yet.", 18, Ui.Dim));
+        }
+        foreach (var game in Progress.History) {
+            var report = game.Report;
+            var title = Db.Scenario(report.Scenario)?.Title ?? report.Scenario;
+            var outcome = report.Success ? "survived" : "failed";
+            var stars = new string('★', report.Stars) + new string('☆', 3 - report.Stars);
+            var button = Ui.Button($"{game.PlayedAt}   {title}   {outcome}   {stars}   score {report.Score}", () => ShowPlayedGame(game));
+            button.Alignment = HorizontalAlignment.Left;
+            list.AddChild(button);
+        }
+        box.AddChild(Ui.Scroll(list));
+        SetContent(box);
+    }
+
+    private void ShowPlayedGame(PlayedGame game) {
+        var box = ReportView.Content(game.Report);
+        box.AddChild(Ui.Label(game.PlayedAt, 16, Ui.Dim));
+        var buttons = Ui.HBox(12);
+        buttons.AddChild(Ui.Button("Back to history", ShowHistory));
+        box.AddChild(buttons);
+        SetContent(box);
+    }
 
     // --- Multiplayer -------------------------------------------------------------------------------------------
 

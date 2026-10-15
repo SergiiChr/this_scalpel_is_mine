@@ -22,6 +22,8 @@ public sealed record NeedleHit(string Part, Vector3 At);
 /// hand stays exactly where it was, still doing what it was doing. Hands have no height control: the tool tip rests
 /// just above whatever is under it (skin, tray, organs, a target in an open cavity), or higher while lifted. Crouching
 /// brings everything down within reach of the floor.
+/// Forceps and hemostats are the exception: over an opening the wheel raises and lowers the tip in it (see
+/// <see cref="HoldsDepth"/>).
 /// </para>
 /// </summary>
 public partial class Surgeon : CharacterBody3D {
@@ -49,6 +51,8 @@ public partial class Surgeon : CharacterBody3D {
     /// effort it goes all the way down to it, close enough to grate on a bone (Patient.BladeReach), short of cutting an
     /// organ.</summary>
     public static readonly float[] BladeInOpening = [HoverGap, 0.008f, 0.005f, 0.002f];
+    /// <summary>One notch of the wheel moves forceps' tip this far (meters) up or down in an opening.</summary>
+    public const float DepthStep = 0.005f;
     /// <summary>Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
     /// </summary>
     public const float PullSpeed = 0.05f;

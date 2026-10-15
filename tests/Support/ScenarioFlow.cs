@@ -64,6 +64,7 @@ public static class ScenarioFlow {
             AssertBool(report?.Success == true)
                 .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars")
                 .IsTrue();
+            CheckTimeline(report!, objectives.Steps);
             validate?.Invoke(driver);
             driver.Budget.Check(scenarioId, budgetOverride);
             if (shots is not null) {
@@ -74,5 +75,19 @@ public static class ScenarioFlow {
             await driver.Stop();
             RenderingServer.RenderLoopEnabled = true;
         }
+    }
+
+    /// <summary>The report's timeline tells when each required step was done and that it counted at the discharge, in
+    /// order, and the game is the newest one in this computer's history.</summary>
+    private static void CheckTimeline(SurgeryReport report, List<ObjectiveStep> steps) {
+        var texts = report.Timeline.Select(entry => entry.Text).ToList();
+        foreach (var step in steps.Where(step => !step.Optional)) {
+            AssertBool(texts.Contains($"Done: {step.Label}") && texts.Contains($"Counted: {step.Label}"))
+                .OverrideFailureMessage($"the timeline has \"{step.Label}\" done and counted:\n{string.Join('\n', texts)}").IsTrue();
+        }
+        AssertBool(report.Timeline.Zip(report.Timeline.Skip(1)).All(pair => pair.First.Time <= pair.Second.Time))
+            .OverrideFailureMessage("the timeline is in time order").IsTrue();
+        AssertObject(Progress.History.Count > 0 ? Progress.History[0].Report : null).OverrideFailureMessage("the game is the newest in the history")
+            .IsSame(report);
     }
 }
