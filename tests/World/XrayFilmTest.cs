@@ -75,6 +75,19 @@ public class XrayFilmTest {
                 }
                 return Task.CompletedTask;
             });
+            var holder = cart.FindChildren("*", "", true, false).OfType<Interactable>()
+                .Single(spot => spot.Prompt.StartsWith("Hold up"));
+            await driver.PlayerLooksAt(holder.GlobalPosition);
+            await Frames.Physics(2);
+            AssertBool(driver.Me.Focused == holder && SurgeryDriver.IsLit(holder))
+                .OverrideFailureMessage($"looking at the developed films lights them up: focused on {driver.Me.Focused?.Prompt}")
+                .IsTrue();
+            // One case shows it: the films light up the same whatever is on them.
+            if (shots is not null && scenario == "bullet_muscle" && !lateral) {
+                await driver.Unbudgeted(() => shots.CaptureView("films_in_view",
+                    "the two developed films standing in the holder on the generator, lit up warmer than the cart, "
+                        + "the prompt to hold them up"));
+            }
             await driver.PlayerHoldsUpFilms();
             AssertBool(driver.Me.HoldingFilms).OverrideFailureMessage("interact on the holder holds the films up").IsTrue();
             if (shots is not null) {

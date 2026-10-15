@@ -747,6 +747,14 @@ public partial class Surgeon {
         var from = Camera.GlobalPosition;
         var focused = Rays.Cast(this, from, from - (Camera.GlobalBasis.Z * InteractRange), Interactable.Layer, areas: true)
             ?.Collider as Interactable;
-        Focused = focused is not null && focused.OfferedTo(this) ? focused : null;
+        focused = focused is not null && focused.OfferedTo(this) ? focused : null;
+        if (focused == Focused) {
+            return;
+        }
+        if (IsInstanceValid(Focused)) {
+            Focused!.Light(false);
+        }
+        focused?.Light(true);
+        Focused = focused;
     }
 }

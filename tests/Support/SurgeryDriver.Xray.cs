@@ -7,6 +7,13 @@ public partial class SurgeryDriver {
     private Interactable CartSpot(string prompt) =>
         Cart.FindChildren("*", "", true, false).OfType<Interactable>().First(spot => spot.Prompt.StartsWith(prompt));
 
+    /// <summary>True when every part of <paramref name="spot"/>'s highlight is lit up.</summary>
+    public static bool IsLit(Interactable spot) =>
+        spot.Highlight.Count > 0 && spot.Highlight
+            .SelectMany(part => part.FindChildren("*", "GeometryInstance3D", true, false).Append(part))
+            .OfType<GeometryInstance3D>()
+            .All(mesh => mesh.MaterialOverlay == Materials.Highlight);
+
     /// <summary>Looks at the cart's spot whose prompt starts with <paramref name="prompt"/> and presses interact.
     /// </summary>
     private async Task PlayerInteractsWithCart(string prompt) {
@@ -20,7 +27,7 @@ public partial class SurgeryDriver {
 
     /// <summary>Takes the cart by its handle and pushes it until the tube head hangs over <paramref name="point"/>,
     /// then locks it against the floor. With <paramref name="lateral"/>, the wheel first brings the head down until the
-    /// lateral beam runs at that height (lower, the arm reaches further).</summary>
+    /// lateral beam runs at that height.</summary>
     public async Task PlayerParksXrayOver(Vector3 point, float? lateral = null) {
         var handle = CartSpot("Push").GlobalPosition;
         await PlayerWalksTo(handle, 0.6f);
