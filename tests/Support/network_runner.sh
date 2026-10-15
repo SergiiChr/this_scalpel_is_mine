@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Two real Godot processes over ENet on localhost, for tests/Network/NetworkTest.cs. It prints what's wrong and
 # exits non-zero on the first problem.
-# Usage: network_runner.sh GODOT ROOT sync|pinch|stall LIMIT
+# Usage: network_runner.sh GODOT ROOT sync|pinch|lobby|stall LIMIT
 # LIMIT: seconds the test case may take (tests/Support/Limits.cs). Each driver is stopped there, and gives up waiting on
 # the other side 10 s earlier, which leaves room for the client starting later and both quitting.
-# The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch) and NetStallDriver.cs (stall), each
-# started from its scene.
+# The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch), NetLobbyDriver.cs (lobby) and
+# NetStallDriver.cs (stall), each started from its scene.
 set -uo pipefail
 
 godot=$1
@@ -89,6 +89,21 @@ if [[ "$mode" == pinch ]]; then
 	finished "$host" net_pinch_host
 	expect "$logs/net_pinch_client.log" "\[client\] forceps over the bullet"
 	expect "$logs/net_pinch_host.log" "\[host\] the client's forceps take the bullet"
+	exit 0
+fi
+
+if [[ "$mode" == lobby ]]; then
+	run NetLobbyDriver host net_lobby_host &
+	host=$!
+	sleep 2
+	run NetLobbyDriver client net_lobby_client &
+	client=$!
+	finished "$client" net_lobby_client
+	finished "$host" net_lobby_host
+	for side in host client; do
+		expect "$logs/net_lobby_$side.log" "\[$side\] back in the lobby, still connected"
+		expect "$logs/net_lobby_$side.log" "\[$side\] the next surgery is appendectomy with both surgeons"
+	done
 	exit 0
 fi
 

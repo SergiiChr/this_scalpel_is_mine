@@ -265,9 +265,13 @@ public partial class Net : Node {
             RunModifiersToVariant());
     }
 
-    /// <summary>Host only. Back to the lobby after a report, with fresh quirks.</summary>
-    public void ReturnToLobby() {
-        if (IsHost) {
+    /// <summary>Everyone back to the lobby after a report, with fresh quirks, still connected. Any player can ask; the
+    /// first ask after a session wins.</summary>
+    public void ReturnToLobby() => RpcId(HostId, MethodName.RequestLobby);
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void RequestLobby() {
+        if (IsHost && InSession) {
             ChangeScenario(ScenarioId);
             Rpc(MethodName.GoToLobby);
         }

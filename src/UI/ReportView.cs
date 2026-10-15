@@ -7,9 +7,7 @@ public static class ReportView {
     public static Control Build(SurgeryReport report) {
         var box = Content(report);
         var buttons = Ui.HBox(12);
-        if (Net.Instance.IsHost) {
-            buttons.AddChild(Ui.Button("New run (back to lobby)", Net.Instance.ReturnToLobby));
-        }
+        buttons.AddChild(Ui.Button("Back to lobby", Net.Instance.ReturnToLobby));
         buttons.AddChild(Ui.Button("Main menu", Net.Instance.BackToMenu));
         box.AddChild(buttons);
         return Ui.CenteredPanel(box, new Vector2(1000f, 800f));
