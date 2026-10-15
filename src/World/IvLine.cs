@@ -57,6 +57,9 @@ public partial class IvLine : Node3D {
     private const float SleepTime = 0.5f;
     /// <summary>Frames simulated at once when the far end jumps somewhere new, so it starts out hanging.</summary>
     private const int SettleFrames = 180;
+    /// <summary>How far (meters) the held end moves in one step: a longer move in one frame (a teleport, a network
+    /// correction, a quick swing) is split up.</summary>
+    private const float Jump = 0.1f;
     /// <summary>Where the bare end hangs on the stand, across from the drip chamber, local to the stand.</summary>
     internal static readonly Vector3 ClipPoint = new(-0.08f, 1.45f, 0f);
     private const uint SkinMask = PatientBody.SurfaceLayer | Drape.DrapeLayer;
@@ -245,6 +248,14 @@ public partial class IvLine : Node3D {
             return;
         }
         _asleep = false;
+        if (end is { } held && _lastEnd is { } was && held.DistanceSquaredTo(was) > Jump * Jump) {
+            // Dragged that far in one frame, the tubing would go through whatever was in the way: the end is carried
+            // there in steps no longer than that, the tubing following it around things.
+            var steps = Mathf.CeilToInt(held.DistanceTo(was) / Jump);
+            for (var i = 1; i < steps; i++) {
+                Step(start, was.Lerp(held, (float)i / steps), (float)delta, true);
+            }
+        }
         Step(start, end, (float)delta, true);
         PlaceEndCatheter();
         BuildMesh();
