@@ -176,8 +176,9 @@ public partial class PatientBody {
         var slack = Mathf.Clamp(Mathf.InverseLerp(TissueSim.ThreadTear[layer], TissueSim.ThreadLoose[layer], info.Tension), 0f, 1f);
         var wasLive = drawn?.Live ?? [];
         // The tissue between the punctures can settle even when both holes remain nearly stationary: deep layers, or
-        // skin edges a taut thread draws together.
-        var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live) || tissueChanged;
+        // skin edges a taut thread still being sewn draws together.
+        var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live)
+            || (tissueChanged && (info.Layer != TissueDepth.Skin || !info.Final));
         var routes = drawn?.Routes ?? [];
         if (routesChanged) {
             var spans = new List<Vector3[]>();
