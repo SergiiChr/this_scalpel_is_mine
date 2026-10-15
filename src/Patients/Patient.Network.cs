@@ -138,17 +138,32 @@ public partial class Patient {
     private void TissueSnap(int spring) => Body.Tissue.SnapSpring(spring);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void IvPlaced(Vector3 point) {
+    private void IvPlaced(Vector3 point, bool connected) {
         IvSet = true;
-        ConnectIv(point);
+        IvConnected = connected;
+        ConnectIv(point, connected);
     }
 
+    /// <summary>The catheter is out of the arm; <paramref name="torn"/>: ripped out with the tubing on it.</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    internal void IvRemoved() {
+    internal void IvRemoved(bool torn) {
         IvSet = false;
         IvInVein = false;
-        Surgery.Current?.Room.IvLine?.Detach();
+        IvConnected = false;
+        Surgery.Current?.Room.IvLine.PullOut(torn);
     }
+
+    /// <summary>The IV tubing goes onto the catheter <paramref name="uid"/>.</summary>
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    internal void IvLineOn(int uid) {
+        if (Surgery.Current is { } surgery && surgery.Tools.ByUid(uid) is { } catheter) {
+            surgery.Room.IvLine.HoldOn(catheter);
+        }
+    }
+
+    /// <summary>The IV tubing was carried off further than it reaches and slipped off its catheter.</summary>
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void IvLineOff() => Surgery.Current?.Room.IvLine.SlipOff();
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SetOrganDamage(int index, float amount) => Body.SetOrganDamage(index, amount);

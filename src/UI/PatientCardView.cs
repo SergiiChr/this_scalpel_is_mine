@@ -19,9 +19,6 @@ public static class PatientCardView {
     /// <summary>The red of a hospital stamp.</summary>
     private static readonly Color Stamp = new(0.6f, 0.12f, 0.1f);
 
-    /// <summary>The button at the foot of the page that lets the patient come round before the discharge.</summary>
-    internal const string StopAnesthesia = "Stop anesthesia";
-
     /// <summary>The page, with <paramref name="signature"/> as its discharge line at the foot.</summary>
     public static Control Build(Patient patient, uint seed, SignatureView signature, Action close) {
         var surgery = Surgery.Current!;
@@ -86,21 +83,12 @@ public static class PatientCardView {
         }
         page.AddChild(Section("Medical history", history));
         page.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
-        var foot = Ui.HBox(40);
-        var anesthesia = Ui.VBox(2);
-        anesthesia.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        anesthesia.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
-        anesthesia.AddChild(Ui.Label("ANESTHESIA", 14, Faint));
-        var stop = Ui.Button(StopAnesthesia, surgery.StopAnesthesia);
-        stop.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
-        anesthesia.AddChild(stop);
-        foot.AddChild(anesthesia);
         var discharge = Ui.VBox(2);
+        discharge.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         discharge.AddChild(Ui.Label("DISCHARGE", 14, Faint));
         discharge.AddChild(signature);
         discharge.AddChild(Ui.Label($"Hold [{InputActions.BindingText(InputActions.Interact)}] to sign", 14, Faint));
-        foot.AddChild(discharge);
-        page.AddChild(foot);
+        page.AddChild(discharge);
 
         var paper = new StyleBoxFlat { BgColor = Paper };
         paper.SetContentMarginAll(48);

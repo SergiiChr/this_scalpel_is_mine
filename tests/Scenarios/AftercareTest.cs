@@ -1,13 +1,13 @@
 namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
-/// How the patient leaves the table, scored at the discharge. Put under, then the anesthesia stopped on the card's page,
+/// How the patient leaves the table, scored at the discharge. Put under, then given the anesthesia reversal,
 /// the patient comes round and signed out awake scores; signed out still asleep doesn't. Blood wiped off the skin with
 /// gauze scores even with a smear left on the border of the site, where a swab barely reaches; left on, it doesn't.
-/// With key frames also the toast as the anesthesia is stopped.
+/// With key frames also the toast as the reversal works.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_anesthesia_reversal"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class AftercareTest {
     private const string Awake = "Brought the patient round from anesthesia before the discharge";
@@ -15,7 +15,7 @@ public class AftercareTest {
 
     [TestCase(true)]
     [TestCase(false)]
-    public async Task PatientWokenBeforeTheDischargeScores(bool stopped) {
+    public async Task PatientWokenBeforeTheDischargeScores(bool reversed) {
         // Under a display a software renderer would draw every frame: only the key frame is drawn.
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
@@ -23,7 +23,7 @@ public class AftercareTest {
         var surgery = driver.Surgery;
         var patient = driver.Patient;
         KeyFrames? shots = null;
-        if (stopped && KeyFrames.Wanted()) {
+        if (reversed && KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(surgery, "aftercare");
@@ -31,30 +31,29 @@ public class AftercareTest {
         SurgeryState.PatientIsAsleep(patient);
         AssertBool(await Frames.Until(() => patient.WentUnder && !patient.Vitals.IsAwake, 20f))
             .OverrideFailureMessage($"the patient goes under (anesthesia {patient.Vitals.Anesthesia:0.00})").IsTrue();
-        if (stopped) {
+        if (reversed) {
             var toasts = new List<string>();
             surgery.Hud.Toasted += toasts.Add;
-            await driver.PlayerStopsAnesthesia();
+            await driver.PlayerGivesDrug("vial_anesthesia_reversal", driver.DoseMl("vial_anesthesia_reversal"), driver.IvOrVein);
+            AssertBool(await Frames.Until(() => patient.AnesthesiaStopped, 10f))
+                .OverrideFailureMessage($"the reversal stops the anesthesia: {driver.Recent()}").IsTrue();
             surgery.Hud.Toasted -= toasts.Add;
-            AssertBool(patient.AnesthesiaStopped).OverrideFailureMessage("the button stops the anesthesia").IsTrue();
-            AssertBool(toasts.Contains("Anesthesia stopped. The patient is coming round."))
+            AssertBool(toasts.Contains("The patient is coming round."))
                 .OverrideFailureMessage($"everyone is told: {string.Join(", ", toasts)}").IsTrue();
-            await SurgeryDriver.PlayerPutsCardBack(surgery);
             if (shots is not null) {
-                await shots.CaptureView("stopped",
-                    "back at the table, the toast \"Anesthesia stopped. The patient is coming round.\" readable on screen");
+                await shots.CaptureView("reversed", "at the table, the toast \"The patient is coming round.\" readable on screen");
             }
             var started = surgery.Elapsed;
             AssertBool(await Frames.Until(() => patient.Vitals.IsAwake, Patient.WakeSeconds + 1f))
-                .OverrideFailureMessage($"stopped, the patient wakes within {Patient.WakeSeconds} s (anesthesia {patient.Vitals.Anesthesia:0.00})")
+                .OverrideFailureMessage($"reversed, the patient wakes within {Patient.WakeSeconds} s (anesthesia {patient.Vitals.Anesthesia:0.00})")
                 .IsTrue();
             driver.Note($"the patient woke after {surgery.Elapsed - started:0.0} s");
         }
         await driver.PlayerDischarges();
         var report = surgery.Report!;
         AssertBool(report.Events.Any(line => line.Text == Awake))
-            .OverrideFailureMessage($"the report scores the patient woken only when the anesthesia was stopped (stopped: {stopped})")
-            .IsEqual(stopped);
+            .OverrideFailureMessage($"the report scores the patient woken only when the anesthesia was reversed (reversed: {reversed})")
+            .IsEqual(reversed);
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

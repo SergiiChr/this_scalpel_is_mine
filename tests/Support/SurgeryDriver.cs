@@ -52,20 +52,21 @@ public partial class SurgeryDriver : Node {
 
     /// <summary>
     /// Starts <paramref name="scenarioId"/> solo, like the menu's single player: one surgeon who rolled nothing special,
-    /// a patient with only <paramref name="patientQuirks"/> and every tool the scenario lists on the tray, so the run
+    /// a patient with only <paramref name="patientQuirks"/>, the run with only <paramref name="runModifiers"/> and every tool the scenario lists on the tray, so the run
     /// only depends on the scenario. <paramref name="randomEvents"/> false leaves the escalation events out (scripted
     /// ones in the scenario still happen). The surgery opens on the patient card: the player puts it back first, unless
     /// <paramref name="readingCard"/>.
     /// </summary>
     public async Task Start(string scenarioId, bool randomEvents = false, uint seed = 1,
-        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false) {
+        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false,
+        IReadOnlyList<string>? runModifiers = null) {
         // The game's own unseeded rolls (where the nurse leaves things, jitter) come out the same every run too.
         GD.Seed(seed);
         SurgeryState.ClockStartsAtEight();
         // The tray as the scenario lists it: a missing tool is a twist for another test.
         var scenario = Db.Scenario(scenarioId)! with { MissingToolChance = 0f };
         var player = new LobbyPlayer("Driver", [new QuirkRoll("normal_dude", "")], Ready: true);
-        Net.Instance.StartLocalSession(scenario, seed, player, patientQuirks ?? []);
+        Net.Instance.StartLocalSession(scenario, seed, player, patientQuirks ?? [], runModifiers);
         await Loaded();
         Surgery = GD.Load<PackedScene>(SurgeryScene).Instantiate<Surgery>();
         AddChild(Surgery);
@@ -110,16 +111,6 @@ public partial class SurgeryDriver : Node {
         await PlayerInput.Delivered();
         await Frames.Seconds(seconds);
         Release(InputActions.Interact);
-        await PlayerInput.Delivered();
-    }
-
-    /// <summary>Takes the patient card and clicks "Stop anesthesia" at the foot of its page.</summary>
-    public async Task PlayerStopsAnesthesia() {
-        await PlayerTakesCard();
-        var stop = Surgery.Hud.Overlay!.FindChildren("*", "Button", true, false).Cast<Button>()
-            .Single(button => button.Text == PatientCardView.StopAnesthesia);
-        Note("stops the anesthesia");
-        PlayerInput.Click(stop);
         await PlayerInput.Delivered();
     }
 
@@ -233,8 +224,8 @@ public partial class SurgeryDriver : Node {
 
     /// <summary>
     /// Stands at the table's long side nearest <paramref name="point"/>, facing it, close enough to reach it with
-    /// either hand. Off the table (the tray, the IV stand) it stands on the side facing the room's middle. Either way it
-    /// keeps its feet off the IV tubing, like a player stepping around it (walking into it rips the line out).
+    /// either hand. Off the table (the tray, the IV stand) it stands on the side facing the room's middle. Standing in the
+    /// IV tubing only pushes it aside: it rips out only when caught and walked off with.
     /// </summary>
     public async Task PlayerWalksTo(Vector3 point, float off = StandOff) {
         // Holding onto something with the other hand, stay put while the point is in reach: walking off would drag it.
@@ -267,7 +258,6 @@ public partial class SurgeryDriver : Node {
         }
         // Stand on the room's floor, clear of furniture and tubing. Between the tray and table, an overlapping
         // capsule slides out during recovery and can pull a needle out of a vial halfway through drawing a dose.
-        var line = Surgery.Room.IvLine;
         var body = Me.GetChildren().OfType<CollisionShape3D>().Single();
         using var query = new PhysicsShapeQueryParameters3D {
             Shape = body.Shape,
@@ -280,7 +270,7 @@ public partial class SurgeryDriver : Node {
             ? Surgery.Tools.Tools.Values.FirstOrDefault(tool => tool.Def.Action == "vial" && tool.State == ToolState.Free
                 && tool.TipPosition().DistanceTo(point) < 0.001f)
             : null;
-        bool Fits(Vector3 at) => !line.HangsLowAt(at, 0.12f) && CanStandAt(at, body, query);
+        bool Fits(Vector3 at) => CanStandAt(at, body, query);
         Vector3? chosen = null;
         var chosenYaw = 0f;
         foreach (var candidate in StandingSpots()) {

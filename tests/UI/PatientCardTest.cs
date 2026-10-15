@@ -11,8 +11,8 @@ namespace Scalpel.Tests.UI;
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class PatientCardTest {
-    // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.
-    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 2f);
+    // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 4.5f);
 
     [TestCase]
     public async Task OpensInHandTravelsToItsHookAndBackWhenTaken() {
