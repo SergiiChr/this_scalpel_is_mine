@@ -129,10 +129,12 @@ public partial class SurgeryDriver {
     /// Clicks the needle's thread through <paramref name="wound"/> in <paramref name="layer"/>: the first hole as close
     /// beside the wound as that layer shows (inside the opening for what's under the skin, Patient.SutureLayerAt()),
     /// then one <paramref name="stepCells"/> grid cells further along on the other side each click, the last at the
-    /// wound's end. Opt-in progress captures show the first two clicks (thread_hole_1, thread_hole_2). Returns false when the
-    /// layer shows nowhere beside the wound.
+    /// wound's end. Opt-in progress captures show the first two clicks (thread_hole_1, thread_hole_2), and an opt-in
+    /// check that each hole goes in where the aim dot was (<see cref="AssertHoleOnAim"/>). Returns false when the layer
+    /// shows nowhere beside the wound.
     /// </summary>
-    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false) {
+    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false,
+        bool checkAim = false) {
         // Grid cells along and across the wound, in uv: they're square in meters, not in uv.
         var along = (wound.Points[^1] - wound.Points[0]).Normalized();
         if (along == Vector2.Zero) {
@@ -147,7 +149,7 @@ public partial class SurgeryDriver {
         for (var i = 0; i < 16; i++) {
             var off = cell * (0.25f + (i * 0.25f));
             if (Patient.SutureLayerAt(BesideWound(wound, 0f, off), wound) == layer) {
-                // Skin holes well clear of the opening: the needle lands a little off where the hand aims.
+                // Skin holes a cell clear of the opening, not on its drawn-back edge.
                 first = off + (layer == TissueDepth.Skin ? cell : 0f);
                 break;
             }
@@ -171,15 +173,39 @@ public partial class SurgeryDriver {
                 Note("needle cannot reach intended puncture within 4 mm");
                 return false;
             }
+            // The dot as the player clicks, the needle's tip still held up over the skin.
+            var aim = Me.AimPoint();
             Use();
             await Frames.Seconds(0.2f);
+            var skin = checkAim ? SkinDrawn() : [];
             Use(false);
             await Frames.Physics(3);
+            if (checkAim) {
+                AssertHoleOnAim(aim, skin, i);
+            }
             if (captureProgress && i < 2) {
                 await Capture($"thread_hole_{i + 1}", $"the needle through hole {i + 1}, on its own side of the wound, thread trailing from it");
             }
         }
         return true;
+    }
+
+    /// <summary>Where each grid point of the skin is drawn (site-local).</summary>
+    private Vector3[] SkinDrawn() => [.. Enumerable.Range(0, Body.Tissue.Pos.Length).Select(k => Body.LayerPoint(0, k))];
+
+    /// <summary>The aim dot (<paramref name="aim"/>, as the player clicked) lay on the skin, and the newest hole
+    /// <paramref name="index"/> went in under it. The skin the hole holds on to may have moved since, drawn in by the
+    /// thread (<paramref name="before"/>: the skin as the click let go): the hole moves with it.</summary>
+    private void AssertHoleOnAim(Vector3 aim, Vector3[] before, int index) {
+        AssertFloat(aim.DistanceTo(Me.OnSurface(aim))).OverrideFailureMessage("the aim dot lies on the skin under the needle")
+            .IsLess(0.001f);
+        var thread = Body.Tissue.Thread(Me.HeldTool(Me.Active)!.Suture.Thread)!;
+        var k = thread.Anchors[^1];
+        var moved = Body.Site.GlobalBasis * (Body.LayerPoint(0, k) - before[k]);
+        var hole = Body.Site.ToGlobal(Body.DrawnThread(Me.HeldTool(Me.Active)!.Suture.Thread)!.Holes[^1]);
+        var missed = (hole - moved - aim).Slide(Vector3.Up).Length() * 1000f;
+        AssertFloat(missed).OverrideFailureMessage($"hole {index + 1} goes in where the aim dot was, not {missed:0.0} mm off")
+            .IsLess(0.5f);
     }
 
     /// <summary>Turns the wheel on the needle's thread (or a tensioned closure, paper clips) until the hand status reads

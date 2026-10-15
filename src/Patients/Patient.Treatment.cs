@@ -267,11 +267,10 @@ public partial class Patient {
             return false;
         }
         var layer = info?.Layer ?? SutureLayerAt(uv, wound!);
-        if (wound is not null) {
-            uv = HoleUv(uv, wound);
-        }
+        (var point, uv) = Hole(uv, layer, wound);
         var before = tissue.ThreadUvs(threadId).Count;
-        Rpc(MethodName.SutureAnchor, threadId, uv, (int)layer, tension, ThreadStrength[(int)layer], tissue.ThreadSlack(threadId, uv));
+        Rpc(MethodName.SutureAnchor, threadId, uv, point, (int)layer, tension, ThreadStrength[(int)layer],
+            tissue.ThreadSlack(threadId, point));
         if (tissue.ThreadUvs(threadId).Count == before) {
             return false;
         }
@@ -415,22 +414,23 @@ public partial class Patient {
         }
     }
 
-    /// <summary>The grid point (uv) a hole clicked at uv goes through: the nearest one on the clicked side of the wound,
-    /// never one on its line, so every bite goes across it.</summary>
-    private Vector2 HoleUv(Vector2 uv, Wound wound) {
+    /// <summary>The grid point a hole clicked at <paramref name="uv"/> in <paramref name="layer"/> holds on to, and where
+    /// (rest uv) it goes in: right where the needle is (PatientBody.RestSpot()), held by a point on the clicked side of
+    /// the wound so every bite goes across it. When none is near, the hole moves out from the line until its point is
+    /// on that side.</summary>
+    private (int Point, Vector2 Uv) Hole(Vector2 uv, TissueDepth layer, Wound? wound) {
         var tissue = Body.Tissue;
-        var line = wound.ClosestPoint(uv);
+        var line = wound?.ClosestPoint(uv) ?? uv;
         var away = (uv - line).Normalized();
-        if (away == Vector2.Zero) {
-            return uv;
-        }
         var cell = GridCell(away);
-        var hole = tissue.UvOf(tissue.Nearest(uv));
-        for (var i = 0; i < 3 && (hole - line).Dot(away) <= cell * 0.3f; i++) {
-            uv += away * cell * 0.5f;
-            hole = tissue.UvOf(tissue.Nearest(uv));
+        bool OnSide(int k) => away == Vector2.Zero || (tissue.UvOf(k) - line).Dot(away) > cell * 0.3f;
+        if (Body.RestSpot(layer, uv, OnSide) is { } spot) {
+            return spot;
         }
-        return hole;
+        for (var i = 0; i < 3 && !OnSide(tissue.Nearest(uv)); i++) {
+            uv += away * cell * 0.5f;
+        }
+        return (tissue.Nearest(uv), uv);
     }
 
     /// <summary>The tissue grid's cell size (uv) along <paramref name="direction"/>: cells are square in meters, not in

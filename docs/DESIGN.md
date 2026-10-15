@@ -380,7 +380,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
   (`Surgeon.OnSurface()`), not in the air at the hovering tool. Aimed across a cut, a Gelpi's < and > hang down
   from the lip on each side into the wound (`Hud.JawDepth`), where its tips go in. A stapler's legs go in exactly
-  where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
+  where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). A needle's hole goes in right
+  under its dot, between the tissue's grid points, and rides along with the one drawn nearest on its side of the cut
+  (`PatientBody.RestSpot()`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
   turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 

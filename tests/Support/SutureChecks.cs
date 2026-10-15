@@ -10,8 +10,8 @@ public static class SutureChecks {
         var tissue = body.Tissue;
         var wound = patient.Wounds[0];
         var needle = (await driver.PlayerRequestsItem("needle"))!;
-        AssertFloat(driver.Me.AimPoint().DistanceTo(needle.TipPosition())).OverrideFailureMessage("the aim point is the needle tip")
-            .IsLess(0.0001f);
+        AssertFloat((driver.Me.AimPoint() - needle.TipPosition()).Slide(Vector3.Up).Length())
+            .OverrideFailureMessage("the aim point is straight under the needle tip").IsLess(0.0001f);
         AssertObject(needle.FindChild("Thread", true, false)).OverrideFailureMessage("an idle needle has no placeholder thread")
             .IsNull();
         var jawA = (Node3D)needle.FindChild("JawA", true, false);
@@ -26,10 +26,11 @@ public static class SutureChecks {
             .IsEqual(0);
         AssertFloat(Mathf.Abs(needle.GlobalBasis.Z.Dot(Vector3.Up)))
             .OverrideFailureMessage("the loaded needle holder rests nearly horizontal").IsLess(0.35f);
-        AssertFloat(driver.Me.AimPoint().DistanceTo(needle.TipPosition()))
-            .OverrideFailureMessage("the horizontal pose keeps the aiming point on the sharp tip").IsLess(0.0001f);
-        await session.CaptureView("needle_ready", "the loaded needle holder nearly horizontal over the wound, aim on its tip, no thread yet");
-        AssertBool(await driver.PlayerThreads(wound, TissueDepth.Skin, captureProgress: true)).OverrideFailureMessage("holes go in beside the cut").IsTrue();
+        AssertFloat((driver.Me.AimPoint() - needle.TipPosition()).Slide(Vector3.Up).Length())
+            .OverrideFailureMessage("the horizontal pose keeps the aiming point under the sharp tip").IsLess(0.0001f);
+        await session.CaptureView("needle_ready", "the loaded needle holder nearly horizontal over the wound, the aim dot on the skin right under its tip, no thread yet");
+        AssertBool(await driver.PlayerThreads(wound, TissueDepth.Skin, captureProgress: true, checkAim: true))
+            .OverrideFailureMessage("holes go in beside the cut, each where the aim dot was").IsTrue();
         var thread = needle.Suture.Thread;
         var info = tissue.Thread(thread)!;
         AssertInt(info.Springs.Count).OverrideFailureMessage("one thread runs through every hole, a span between each two")
