@@ -38,13 +38,17 @@ public readonly record struct SnappedSpring(Vector2 A, Vector2 B, SpringKind Kin
 
 /// <summary>
 /// A running suture: its holes (particles) in order, the span from each hole to the next, each span's extra length
-/// (<see cref="TissueSim.ThreadSlack"/>), the layer it's sewn in, its tension and whether it's tied off or torn. The
-/// thread keeps its route, so pulling its free end changes every span.
+/// (<see cref="TissueSim.ThreadSlack"/>), the stitches joining the edges it holds shut while taut, the layer it's sewn
+/// in, its tension and whether it's tied off or torn. The thread keeps its route, so pulling its free end changes every
+/// span.
 /// </summary>
 public sealed class SutureThread(TissueDepth layer, float tension) {
     public List<int> Anchors { get; } = [];
     public List<int> Springs { get; } = [];
     public List<float> Slack { get; } = [];
+    /// <summary>The stitches holding the edges along a taut skin thread shut, by edge (see TissueSim.RefreshHolds()).
+    /// </summary>
+    public Dictionary<long, int> Holds { get; } = [];
     public TissueDepth Layer { get; set; } = layer;
     public float Tension { get; set; } = tension;
     public bool Final { get; set; }
@@ -1249,6 +1253,7 @@ public sealed partial class TissueSim {
         thread.Layer = layer;
         thread.Tension = tension;
         _threads[id] = thread;
+        _retractDirty = true;
         Reshaped();
         return true;
     }
@@ -1265,8 +1270,70 @@ public sealed partial class TissueSim {
             }
         }
         thread.Tension = tension;
+        _retractDirty = true;
         Wake();
         return true;
+    }
+
+    /// <summary>
+    /// A running skin thread pulled to ThreadClosed or tighter holds the edges along its route shut: its spans only
+    /// pull at the holes, and between them the edges would still be drawn back from the cut. So while it's that taut,
+    /// every severed edge within SeamReach of a span that still holds is joined. Loosened, tied off (its knot joins
+    /// them instead), torn or cut, it lets them go. Deeper threads close their layer without skin stitches. Returns
+    /// whether any hold changed.
+    /// </summary>
+    private bool RefreshHolds() {
+        var changed = false;
+        foreach (var thread in _threads.Values) {
+            var keep = new HashSet<long>();
+            if (!thread.Final && thread.Layer == TissueDepth.Skin && thread.Tension <= ThreadClosed[(int)TissueDepth.Skin]) {
+                foreach (var s in _severed) {
+                    var (a, b) = (_springs[s].A, _springs[s].B);
+                    var key = EdgeKey(a, b);
+                    if (!OnThread(thread, CrossingUv(s) * Size)) {
+                        continue;
+                    }
+                    if (thread.Holds.TryGetValue(key, out var hold)) {
+                        if (_springs[hold].Active || !Stitched(a, b)) {
+                            keep.Add(key);
+                            changed |= !_springs[hold].Active;
+                            _springs[hold].Active = true;
+                            _edgeToStitch[key] = hold;
+                        }
+                    } else if (!Stitched(a, b)) {
+                        thread.Holds[key] = AddSpring(a, b, SpringKind.Stitch, 1f, _springs[thread.Springs[0]].Break);
+                        keep.Add(key);
+                        changed = true;
+                    }
+                }
+            }
+            foreach (var (key, hold) in thread.Holds) {
+                if (!keep.Contains(key) && _springs[hold].Active) {
+                    _springs[hold].Active = false;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            TopologyVersion++;
+            _winDirty = true;
+        }
+        return changed;
+    }
+
+    /// <summary>True where <paramref name="at"/> (site meters) lies within SeamReach of a span of
+    /// <paramref name="thread"/> that still holds.</summary>
+    private bool OnThread(SutureThread thread, Vector2 at) {
+        for (var i = 0; i < thread.Springs.Count; i++) {
+            if (!_springs[thread.Springs[i]].Active) {
+                continue;
+            }
+            var (from, to) = (UvOf(thread.Anchors[i]) * Size, UvOf(thread.Anchors[i + 1]) * Size);
+            if (at.DistanceTo(Geometry2D.GetClosestPointToSegment(at, from, to)) < SeamReach) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>A span's rest length (relative to its length at rest) at <paramref name="tension"/> in
@@ -1284,6 +1351,10 @@ public sealed partial class TissueSim {
     public void FinishThread(int id) {
         if (_threads.TryGetValue(id, out var thread)) {
             thread.Final = true;
+            // Before the knot's own stitches go in: those join only edges nothing holds yet.
+            RefreshHolds();
+            _retractDirty = true;
+            Wake();
         }
     }
 
@@ -1294,7 +1365,7 @@ public sealed partial class TissueSim {
             return;
         }
         thread.Final = true;
-        foreach (var s in thread.Springs) {
+        foreach (var s in thread.Springs.Concat(thread.Holds.Values)) {
             _springs[s].Active = false;
         }
         UpdateRetraction();
@@ -2157,6 +2228,7 @@ public sealed partial class TissueSim {
     /// thread holds their edges together.
     /// </summary>
     private void UpdateRetraction() {
+        RefreshHolds();
         _retractDirty = false;
         if (_pull.Length != Rest.Length) {
             _pull = new Vector3[Rest.Length];

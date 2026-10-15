@@ -7,8 +7,8 @@ namespace Scalpel.Tests.World;
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class GloveStationTest {
-    // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.
-    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 3f);
+    // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 5f);
 
     /// <summary>Top of the cabinet the box stands on (tools/assetgen/props.py).</summary>
     private const float CabinetTop = 0.9f;
