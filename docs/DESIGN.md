@@ -287,11 +287,12 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
   it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
-  the hand crosses the screen as fast at both); the closer one makes the hands see-through. Zoomed in with the aim over
-  an open cavity, the surgeon leans in: the torso bends forward from the hips (everyone sees it) and the eyes come over
-  the opening and look down into it, never turning sideways, so the mouse still moves the hand left and right on
-  screen. Reach and collisions don't change. Aiming out of the opening, zooming out or crouching straightens back up;
-  walking away also zooms back out. The hands start turned in
+  the hand crosses the screen as fast at both); the closer one makes the hands see-through. Zoomed in with the hand over
+  the patient (skin, drapes or an opening, holding a tool or not, working or not), the surgeon leans in: the torso bends
+  forward from the hips (everyone sees it) and the eyes come over the hand and look down at it, into an opening past its
+  edges, never turning sideways, so the mouse still moves the hand left and right on screen. Reach and collisions don't
+  change. The hand off the patient for a second, zooming out or crouching straightens back up; a needle view keeps the
+  bend under it. Walking away also zooms back out. The hands start turned in
   toward the middle, so each tool points across in front of the eyes, beside its hand.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
@@ -594,14 +595,15 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 - **Blood pressure**: panic and stimulants (adrenaline, cocaine, ketamine) raise systolic pressure. Above 140 mmHg,
   and while heparin acts, sutures, staples, tape and gauze leak; cautery and clamps hold. Patients with fragile vessels
   (an aneurysm) can burst a deep vessel under the site above the same pressure.
-- **X-ray cart**: push it to the table by its handle, the wheel raises and lowers the arm, and a click locks it against
-  the floor (the wheel still works the arm, looking at the tube head). The collimator lights two fields on the patient:
-  AP, straight down from the tube head, and lateral, level and forward from just below it. An exposure takes both
-  films, rendered from the scene itself (`XrayExposure`): twins of the body, organs, targets and tools drawn with
-  `xray.gdshader` beside the patient's skeleton, which only films see (`RenderLayers.Xray`). Bone and metal come out
-  white, soft tissue and organs as faint outlines, a bullet's wound track as a grey streak. The films develop in the
-  cassette holder over six seconds. They're black where the beam got through and clear where something stopped it, so
-  a player holds them up against a light to read them.
+- **X-ray cart**: taken hold of like a tool, anywhere on it (Grab), it's pushed to the table, the wheel slides the level
+  arm up and down the upright column and Use tool takes an exposure. Let go, it locks against the floor. What the
+  player can take hold of or interact with lights up while they look at it. The collimator lights two fields on the
+  patient: AP, straight down from the tube head, and lateral, level and forward from just below it. An exposure takes
+  both films, rendered from the scene itself (`XrayExposure`): twins of the body, organs, targets and
+  tools drawn with `xray.gdshader` beside the patient's skeleton, which only films see (`RenderLayers.Xray`). Bone and
+  metal come out white, soft tissue and organs as faint outlines, a bullet's wound track as a grey streak. The films
+  develop in the cassette holder over six seconds. They're black where the beam got through and clear where something
+  stopped it, so a player holds them up against a light to read them.
 
 ### Ideas not yet approved
 
