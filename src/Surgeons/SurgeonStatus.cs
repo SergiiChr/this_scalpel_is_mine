@@ -128,7 +128,7 @@ public sealed class SurgeonStatus(Modifiers mods) {
     /// <summary>A stimulant is at work.</summary>
     public bool Stimulated { get; private set; }
     /// <summary>Seconds left before the racing heart gives out, 0 when it isn't racing.</summary>
-    public float RaceLeft { get; internal set; }
+    public float RaceLeft { get; private set; }
     /// <summary>Died of a heart attack: down for good.</summary>
     public bool Dead { get; private set; }
 

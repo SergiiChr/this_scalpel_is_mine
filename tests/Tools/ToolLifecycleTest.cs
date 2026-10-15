@@ -140,6 +140,8 @@ public class ToolLifecycleTest {
             AssertInt(tool.Charges).OverrideFailureMessage($"{def.Id} is used once").IsEqual(before - 1);
             await driver.PlayerPutsDown();
         }
+        // The snorted cocaine would quicken the hands of the cases sharing this scene.
+        driver.Me.Status.Drugs.Clear();
         await _scenes.Complete();
     }
 

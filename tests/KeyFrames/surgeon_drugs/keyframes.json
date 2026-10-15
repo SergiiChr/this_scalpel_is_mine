@@ -1,5 +1,6 @@
 {
   "00_eyes_open_view.jpg": "the player's view of the patient, wide open: no dark bands at the top or bottom",
+  "00_heart_attack_view.jpg": "the dead surgeon's view: black, the report of the failed operation over it",
   "01_eyelids_closing_view.jpg": "the eyelids half shut: dark from the top and bottom, the edges soft and curved, closer together at the sides; the patient seen through the slit in the middle",
   "02_eyelids_shut_view.jpg": "the eyelids shut: the whole view dark"
 }

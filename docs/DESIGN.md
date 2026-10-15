@@ -442,16 +442,17 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   builds (`stress_mult`) and how low it drains (`stress_floor`): Shaky hands 65%, Alcoholic 35% (none while a sip
   works), a coffee +15% while it works. Cold (run modifier) shakes on its own. Holding breath steadies all of it,
   Steady hands takes it all away.
-- **Sedatives for a surgeon** (diazepam, morphine, diphenhydramine, propofol, ketamine, pentobarbital: any drug with
-  `sedation` or `anesthesia`): injected into a hand (their own other hand or a partner's) or a partner's body, dosed by
-  the surgeon's weight. Each works like diazepam, its share of its own right dose adding up with the others.
+- **Sedatives for a surgeon** (diazepam, morphine, propofol, ketamine, pentobarbital: any drug with `sedation` or
+  `anesthesia` but an antihistamine): injected into a hand (their own other hand or a partner's) or a partner's body,
+  dosed by the surgeon's weight. Each works like diazepam (morphine but for the hands, below), its share of its own
+  right dose adding up with the others.
   At the right dose it stops stress shaking (not the cold) while it works, blurs the view (mip level 1) and delays the
   mouse's hand moves by 100 ms (looking around isn't); afterimages trail the gloves.
-  Past 1.4 times the dose the view darkens toward the edges and the delay grows, up to 300 ms. Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more
-  floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
+  Past 1.4 times the dose the view darkens toward the edges and the delay grows, up to 300 ms.
+  Twice the dose knocks the surgeon out for five minutes: they tip over sideways onto the side with more floor, lie facing the table with the view 80% dark at the edges, can't do anything and moan now and then
   (`surgeon_moan`, heard by everyone). Flumazenil (`reverse_benzo`) ends diazepam and naloxone (`reverse_opioid`)
-  morphine, bringing them round unless the other sedatives still knock them out; propofol, ketamine, diphenhydramine
-  and pentobarbital have no antidote. Adrenaline (`stimulant`) gets them up only while it lasts, and if enough sedative
+  morphine, bringing them round unless the other sedatives still knock them out; propofol, ketamine and pentobarbital
+  have no antidote. Adrenaline (`stimulant`) gets them up only while it lasts, and if enough sedative
   is still working they go down again. On the patient, flumazenil reverses diazepam too.
 - **Morphine nods a surgeon off** (`opioid`): its share of the sedatives doesn't delay the hands or trail the gloves.
   From half the dose, every 10 to 30 seconds the eyelids close from the top and bottom over 0.3 s (the post shader's
@@ -460,9 +461,10 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   hands 1.3 times as fast, stress building 1.5 times as fast, and a sub-bass heartbeat (`heartbeat`, heard only by
   them) at 110 a minute while it works. Two drugs `danger_with` each other at work at once (adrenaline and cocaine)
   race the heart: hands and feet 1.6 times as fast for three minutes, the heartbeat speeding up from 140 to 200, then
-  a heart attack kills the surgeon (down for good, the view black). Nothing stops it. Alone, the operation fails.
-- **Lidocaine into a glove** (`local_block`) numbs that hand for a minute: it drops what it holds, also a tool handed
-  to it later, and its grab doesn't close.
+  a heart attack kills the surgeon (down for good, the view black). Nothing stops it. Once every surgeon is dead,
+  the operation fails.
+- **Lidocaine into a glove** (`local_block`, any amount) numbs that hand for a minute: it drops what it holds, also a
+  tool handed to it later, and its grab doesn't close.
 - **Diphenhydramine** (`antihistamine`) isn't a sedative on a surgeon: it takes nausea away and keeps it away while it
   works. **An antidote** (`reverse_benzo`, `reverse_opioid`) with nothing of its kind to reverse adds 0.4 stress.
 

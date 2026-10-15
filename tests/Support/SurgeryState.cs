@@ -293,9 +293,6 @@ public static class SurgeryState {
     public static void SurgeonIsGiven(Surgeon surgeon, string drugId, float doses) =>
         surgeon.Status.Administer(drugId, Db.Drug(drugId)!.Dose * surgeon.Status.WeightKg * doses);
 
-    /// <summary>A surgeon's racing heart gives out in <paramref name="seconds"/>.</summary>
-    public static void SurgeonsHeartGivesOutIn(Surgeon surgeon, float seconds) => surgeon.Status.RaceLeft = seconds;
-
     /// <summary>A tool put straight into a surgeon's hand, the way a partner hands it over.</summary>
     public static void ToolIsPutInHand(Surgery surgery, SurgicalTool tool, int hand) =>
         surgery.Tools.RequestGrab(tool, hand);

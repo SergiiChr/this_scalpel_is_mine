@@ -25,6 +25,8 @@ public partial class Surgery : Node3D {
     private const ulong ContactRepeatMsec = 120;
     /// <summary>The quiet after a syringe pushes into the local surgeon that makes the next one news.</summary>
     private const ulong StingGapMsec = 3000;
+    /// <summary>Host: peers whose surgeon died of a heart attack.</summary>
+    private readonly HashSet<int> _dead = [];
 
     /// <summary>Turning the patient: who takes part, what each scored, time left and where they're turning to.
     /// </summary>
@@ -531,7 +533,7 @@ public partial class Surgery : Node3D {
         if (LocalSurgeon is null) {
             return;
         }
-        if (Db.Tool(toolId) is { Action: "inject" } def) {
+        if (Db.Tool(toolId) is { Drinkable: true, Action: "inject" } def && def.Drug.Length > 0) {
             // A baggie of cocaine, snorted.
             LocalSurgeon.Status.Take(def.Drug);
             Hud.Toast("A sharp sniff. Wide awake.");
@@ -595,8 +597,9 @@ public partial class Surgery : Node3D {
             case "heart_attack":
                 Scoring.Add("passed_out");
                 Announce($"{surgeon.DisplayName} clutches their chest and collapses.");
-                // Alone, nobody is left to finish the operation.
-                if (Surgeons.Count == 1) {
+                _dead.Add(surgeon.PeerId);
+                // Nobody is left to finish the operation.
+                if (Surgeons.Keys.All(_dead.Contains)) {
                     End(false, SurgeonDied);
                 }
                 break;

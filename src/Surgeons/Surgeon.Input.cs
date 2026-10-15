@@ -68,8 +68,9 @@ public partial class Surgeon {
     private Vector3? _aimWrist;
     /// <summary>Mouse moves held back by a sedative, oldest first.</summary>
     private readonly Queue<DelayedMove> _delayed = new();
-    /// <summary>The tool each numb hand was last told to drop.</summary>
-    private readonly SurgicalTool?[] _numbDropped = new SurgicalTool?[2];
+    /// <summary>Seconds before each numb hand asks to drop what it holds again.</summary>
+    private readonly float[] _numbDropWait = new float[2];
+    private const float NumbDropRetry = 0.2f;
 
     private readonly record struct DelayedMove(ulong DueMsec, int Hand, Vector2 Motion);
 
@@ -474,21 +475,22 @@ public partial class Surgeon {
         }
         _jolt = _jolt.Lerp(Vector3.Zero, Mathf.Min(delta * 8f, 1f));
         CheckBumps();
-        DropFromNumbHands();
+        DropFromNumbHands(delta);
         UpdateFocus();
         UpdateHover();
         HandleStatusEvents(Status.Update(delta, CurrentStatusContext()));
     }
 
     /// <summary>A numb hand lets go of whatever it holds, also what it was handed or took from the belt since. Asked
-    /// once for each tool: the host may be a frame or two behind.</summary>
-    private void DropFromNumbHands() {
+    /// again every NumbDropRetry seconds while it still holds on: the host may be a frame or two behind, and a tool can
+    /// come back in the same frame it went.</summary>
+    private void DropFromNumbHands(float delta) {
         for (var i = 0; i < 2; i++) {
-            var tool = HeldTool(i);
-            if (!Status.IsNumb(i) || tool is null || tool == _numbDropped[i]) {
+            _numbDropWait[i] = Mathf.Max(_numbDropWait[i] - delta, 0f);
+            if (!Status.IsNumb(i) || HeldTool(i) is null || _numbDropWait[i] > 0f) {
                 continue;
             }
-            _numbDropped[i] = tool;
+            _numbDropWait[i] = NumbDropRetry;
             Hands[i].Lowered = false;
             Hands[i].Trigger = false;
             Session.Hud.Toast("Your numb fingers can't hold it.");

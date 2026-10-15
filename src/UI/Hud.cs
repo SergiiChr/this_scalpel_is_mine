@@ -81,6 +81,9 @@ public partial class Hud : CanvasLayer {
     /// <summary>Takes the film grain off the view for good. It differs in every frame, and key frames are compared.
     /// </summary>
     internal void RemoveFilmGrain() => _post.SetShaderParameter(ShaderParam.Grain, 0f);
+
+    /// <summary>A uniform of the full screen post effect as the screen is drawn with it.</summary>
+    internal float PostEffect(StringName name) => _post.GetShaderParameter(name).AsSingle();
     /// <summary>How long since the view was clean.</summary>
     private float _lensAge;
     public NurseShop Shop { get; private set; } = null!;

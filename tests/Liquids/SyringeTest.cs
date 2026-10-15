@@ -800,7 +800,7 @@ public class SyringeTest {
     }
 
     /// <summary>In the room: lidocaine pushed into the surgeon's own other glove numbs it. A tool handed to that hand
-    /// drops, and the player's grab with it doesn't close on a tool.</summary>
+    /// drops, again when handed back, and the player's grab with it doesn't close on a tool.</summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task NumbGloveCantHoldATool() {
         await Begin();
@@ -820,6 +820,12 @@ public class SyringeTest {
                 && _toasts.Contains("Your numb fingers can't hold it."))
             .OverrideFailureMessage($"numb_glove: forceps handed to the numb hand drop ({string.Join(" | ", _toasts)})")
             .IsTrue();
+        SurgeryState.ToolIsPutInHand(Surgery, handed, numb);
+        var dropped = await Frames.Until(
+            () => _toasts.Count(toast => toast == "Your numb fingers can't hold it.") >= 2 && me.HeldTool(numb) is null
+                && handed.State != ToolState.Held, 1f);
+        AssertBool(dropped)
+            .OverrideFailureMessage($"numb_glove: the same forceps handed back drop again ({handed.State})").IsTrue();
         PlayerInput.Action(numb == 0 ? InputActions.MoveLeftHand : InputActions.MoveRightHand);
         await PlayerInput.Delivered();
         PlayerInput.Action(numb == 0 ? InputActions.MoveLeftHand : InputActions.MoveRightHand, false);

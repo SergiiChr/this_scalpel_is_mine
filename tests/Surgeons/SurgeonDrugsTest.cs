@@ -47,7 +47,7 @@ public class SurgeonDrugsTest {
 
     /// <summary>On morphine the eyelids close from the top and bottom, stay shut a moment and open again.</summary>
     [TestCase]
-    public async Task MorphineClosesTheEyelidsNowAndThen() {
+    public async Task MorphineClosesTheSoloSurgeonsEyelids() {
         var driver = await Begin();
         var me = driver.Me;
         await driver.Capture("eyes_open",
@@ -59,8 +59,12 @@ public class SurgeonDrugsTest {
         await driver.Capture("eyelids_closing",
             "the eyelids half shut: dark from the top and bottom, the edges soft and curved, closer together at the "
                 + "sides; the patient seen through the slit in the middle");
-        AssertBool(await Frames.Until(() => me.Status.Eyelids >= 1f, 1f))
-            .OverrideFailureMessage("morphine: the eyelids shut").IsTrue();
+        var hud = driver.Surgery.Hud;
+        AssertFloat(hud.PostEffect(ShaderParam.Eyelids))
+            .OverrideFailureMessage("morphine: the view is drawn with the eyelids half shut")
+            .IsEqualApprox(me.Status.Eyelids, 0.001f);
+        AssertBool(await Frames.Until(() => me.Status.Eyelids >= 1f, 1f) && hud.PostEffect(ShaderParam.Eyelids) >= 1f)
+            .OverrideFailureMessage("morphine: the eyelids shut, and the view is drawn with them shut").IsTrue();
         await driver.Capture("eyelids_shut", "the eyelids shut: the whole view dark");
         var shutAt = driver.Surgery.Elapsed;
         AssertBool(await Frames.Until(() => me.Status.Eyelids < 1f, SurgeonStatus.NodDarkMax + 1f))
@@ -68,14 +72,16 @@ public class SurgeonDrugsTest {
         var dark = driver.Surgery.Elapsed - shutAt;
         AssertFloat(dark).OverrideFailureMessage($"morphine: shut for 1 to 2 s ({dark:0.00} s)")
             .IsBetween(SurgeonStatus.NodDarkMin - 0.05f, SurgeonStatus.NodDarkMax + 0.05f);
-        AssertBool(await Frames.Until(() => me.Status.Eyelids == 0f, SurgeonStatus.LidOpen + 0.5f) && !me.Status.IsOut)
+        AssertBool(await Frames.Until(() => me.Status.Eyelids == 0f, SurgeonStatus.LidOpen + 0.5f) && !me.Status.IsOut
+                && hud.PostEffect(ShaderParam.Eyelids) == 0f)
             .OverrideFailureMessage("morphine: the eyes wide open again, the surgeon still on their feet").IsTrue();
     }
 
     /// <summary>Alone at the table, the surgeon snorts cocaine with adrenaline in their blood: the heart races, the
-    /// hands and feet speed up, and when the heart gives out the surgeon goes down and the operation fails.</summary>
-    [TestCase]
-    public async Task CocaineWithAdrenalineEndsASoloOperation() {
+    /// hands and feet speed up, and three minutes on the heart gives out: the surgeon goes down, the view goes black
+    /// and the operation fails.</summary>
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task CocaineWithAdrenalineKillsTheSoloSurgeon() {
         var driver = await Begin();
         var me = driver.Me;
         SurgeryState.SurgeonIsGiven(me, "adrenaline", 1f);
@@ -90,13 +96,18 @@ public class SurgeonDrugsTest {
         AssertBool(_toasts.Contains("Your heart hammers. Everything is so fast.")
                 && Mathf.IsEqualApprox(me.Status.HandSpeed(), SurgeonStatus.RaceSpeed))
             .OverrideFailureMessage($"racing: the surgeon feels it, hands {me.Status.HandSpeed():0.00}x").IsTrue();
-        SurgeryState.SurgeonsHeartGivesOutIn(me, 0.5f);
-        AssertBool(await Frames.Until(() => driver.Surgery.Finished, 3f))
-            .OverrideFailureMessage("racing: the heart attack ends the solo operation").IsTrue();
+        AssertFloat(me.Status.MoveSpeed()).OverrideFailureMessage("racing: the feet speed up too")
+            .IsEqualApprox(SurgeonStatus.RaceSpeed, 0.001f);
+        AssertBool(await Frames.Until(() => driver.Surgery.Finished, SurgeonStatus.RaceTime + 2f))
+            .OverrideFailureMessage("racing: three minutes on, the heart attack ends the solo operation").IsTrue();
         var report = driver.Surgery.Report!;
         AssertBool(!report.Success && report.Reason == Surgery.SurgeonDied && me.Status.Dead
                 && me.HeldTool(me.Active) is null)
             .OverrideFailureMessage($"racing: it fails because the surgeon died ({report.Reason}), the baggie dropped")
             .IsTrue();
+        AssertBool(await Frames.Until(() => me.IsDown, 2f))
+            .OverrideFailureMessage("racing: the dead surgeon lies on the floor").IsTrue();
+        await driver.AssertAndCapture(driver.Surgery.Hud.PostEffect(ShaderParam.Blackout) == 1f,
+            "the dead surgeon's view: black, the report of the failed operation over it", "heart_attack");
     }
 }
