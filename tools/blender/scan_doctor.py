@@ -1,24 +1,20 @@
-"""Alternative doctor body from a photogrammetry scan of a painted figurine, rebuilt in a T-pose and rigged.
+"""Alternative doctor from a photogrammetry scan of a painted figurine, rebuilt in a T-pose and rigged.
 
 The scan (sources/scan_doctor.glb) is one fused, textured shell. The figurine stands with crossed legs, a sway in the
 waist and both hands gripping the ends of a cape that spans her back, so it is rebuilt in parts:
-- Torso with the hips and both holsters, a short capelet and the right shoe stay scanned. The head is cut off at the neck (the game's head goes on
-  top), the rest of the cape, the arms and the legs are cut away, and the holes closed with smooth caps.
-- Legs are measured on the scan as tubes: rays cast out of a centerline give each ring's outline, and a finer grid of
-  rays its colors. Where the thighs press together the outline and colors are filled in from the clean rings around
-  them. Laid out straight, a measured ring keeps its shape, so the legs come out straight without stretching.
-- The left shoe is the right one mirrored, red and blue swapped: on the scan its toe is buried in the right heel.
-- Arms are tubes in the torso's skin tone in fingerless gauntlets of the scan's colors, rooted inside the shoulders: the scanned arms
-  are tangled in the cape. Hands are the glove
+- Head, hair, torso, a short capelet and the shoes stay scanned. The rest of the cape, the arms and the legs are cut
+  away and the holes closed.
+- Legs are measured on the scan as tubes: rays cast out of a centerline give each ring's outline and colors. Where
+  the thighs press together the outline and colors are filled in from the clean rings around them. Laid out
+  straight, a measured ring keeps its shape, so the legs come out straight without stretching.
+- Arms are tubes in the scan's skin and glove colors: the scanned arms are tangled in the cape. Hands are the glove
   generator's hand (hand.py) in skin color, as the scanned fists are fused around the cape.
-- The upper body is shifted upright over the hips and the figure turned to face -Z.
-The parts are fused with a voxel remesh, settled back onto their surfaces, decimated, unwrapped and baked into one
-texture from the scan's own.
+- The upper body is turned upright over the hips, the head kept as it is, and the figure turned to face -Z.
+The parts are fused with a voxel remesh, decimated, unwrapped and baked into one texture.
 
-Model space as the surgeon's body: feet on the floor at the origin, facing -Z, Y up, her right toward +X. Scaled to
-the surgeon's hip height, which puts the shoulders at the surgeon's too.
-Bones: Torso, Chest, Neck, Head (where the head sits, no weights), UpperArm/Forearm/Hand L/R with
-Index/Middle/Ring/Pinky/Thumb 1-3 L/R, Thigh/Shin/Foot L/R. Material: one textured `figure`.
+Model space as the surgeon's body: feet on the floor at the origin, facing -Z, Y up, her right toward +X.
+Bones: Torso, Chest, Neck, Head, UpperArm/Forearm/Hand L/R with Index/Middle/Ring/Pinky/Thumb 1-3 L/R,
+Thigh/Shin/Foot L/R. Material: one textured `figure`.
 """
 
 from __future__ import annotations
@@ -33,57 +29,39 @@ import bmesh
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.interpolate import poly_3d_calc
 from numpy.typing import NDArray
 
 from . import hand, scene
 from .scene import Vec3
 
 SOURCE = Path(__file__).resolve().parent / "sources" / "scan_doctor.glb"
-# The figure is scaled to put the hips where the surgeon's are (Surgeon.HipHeight): the shoulders then come out at the
-# surgeon's height too. The head stays the game's: the model ends at the neck.
-HIP_HEIGHT = 0.95
+# Hair top to shoe soles, as tall as the default surgeon.
+HEIGHT = 1.8
 # Triangles: the fused body, and each hand on its own.
 BUDGET = 40000
 HAND_BUDGET = 3000
 # Voxel size the parts are fused at, and the baked texture's size.
 VOXEL = 0.0011
-TEXTURE = 4096
-# Rays (and mesh columns) around each ring of a limb, and the finer grid its colors are cast on.
+TEXTURE = 2048
+# Rays (and mesh columns) around each ring of a limb.
 ANGLES = 128
-COLOR_ANGLES = 512
-COLOR_STEP = 0.00025
-# Below this saturation a color on a leg is gear, not stocking or skin (the skin's paint is a little over 0.2), and so
-# is a dull dark brown or black below this brightness (straps and holster sides; the dark stocking blue is saturated).
-GEAR_SATURATION = 0.15
-GEAR_DARK = 0.4
-GEAR_BLACK = 0.15
-# Leg colors are lifted to this share of their color's well-lit brightness at least.
-UNSHADE = 0.85
 
 # Everything below is measured on the scan in its own units: the figurine is 0.807 tall, feet at 0, the face toward
 # -Z, her right toward +X. Joints are where the limb's centerline meets them, in the scan's pose.
 
 # The sway: the chest sits this far toward her left of the hips, shifted back over them across the waist (y range).
 SWAY = (-0.043, 0.33, 0.4)
-# The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest (measured on
-# the holsters, which sit at her sides); turned back around the pelvis, the twist undone across the bare waist between
-# belt and corset (y range).
+# The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest; turned back
+# around the pelvis, the twist undone across the waist (y range).
 TURN = 20.0
-HIP_TURN = (37.0, 0.345, 0.38)
+HIP_TURN = (22.0, 0.33, 0.38)
 PELVIS = (0.008, 0.32, -0.038)
 # Rest hip joints sit this far either side of the pelvis center.
-HIP_X = 0.022
-# The legs stand a little apart: straight from the hip out to the ankle this far from the middle, so the shoes clear
-# each other.
-FOOT_X = 0.034
-# Each thigh's top fills its half of the hips' cut (measured there): an oval this wide across and front to back,
-# blended in over this stretch below the cut.
-HIP_RADII = (0.021, 0.038)
-HIP_BLEND = 0.05
-# Leg centerlines from the hip to inside the shoe. The legs cross: her right leg (blue stocking, red shoe, reference
-# photos) is the one in front, its foot under her left hip.
+HIP_X = 0.035
+# Leg centerlines from the hip to inside the shoe; the thighs cross, the left one in front.
 LEGS = {
-    "R": [
+    "L": [
         (0.0, 0.33, -0.05),
         (0.012, 0.275, -0.062),
         (0.014, 0.25, -0.066),
@@ -92,7 +70,7 @@ LEGS = {
         (0.016, 0.1, -0.069),
         (0.018, 0.06, -0.069),
     ],
-    "L": [
+    "R": [
         (0.04, 0.33, -0.025),
         (0.033, 0.25, -0.02),
         (0.046, 0.19, -0.014),
@@ -102,74 +80,54 @@ LEGS = {
         (0.092, 0.06, -0.025),
     ],
 }
+# Thigh top across and front to back, where the thighs are fused and the scan has no clean ring.
+HIP_RADII = (0.038, 0.042)
 # Shoes stay scanned below this height; the stocking tubes reach a little into them.
 ANKLE = 0.075
-# The heights skin tone is taken from (chest and shoulders), and the surface points the gauntlets' colors are
-# picked up from (blue on her right, red on her left; her nails are painted the other color). The paint is this
-# much darker under the arms than on top.
-SKIN_BAND = (0.37, 0.5)
-PAINT_SHADE = 0.25
+# Surface points the arm colors are picked up from: skin on the upper arm, the long gloves on the forearms.
+SKIN_SPOT = (0.05, 0.452, -0.03)
 GLOVE_SPOTS = {"R": (0.078, 0.49, -0.035), "L": (-0.1, 0.42, 0.065)}
 # Rest shoulder joints (after straightening), arm lengths and radii (shoulder, elbow, wrist), from the clean
-# stretches of the scanned arms. A fingerless gauntlet covers each forearm from the wrist to below the elbow: its
-# length, how much wider than the arm its top flares, and how much wider it is elsewhere (reference photos).
+# stretches of the scanned arms. The gloves start a little above the elbow.
 SHOULDERS = {"R": (0.037, 0.458, 0.0), "L": (-0.037, 0.458, 0.0)}
 UPPER_ARM = 0.075
 FOREARM = 0.058
 ARM_RADII = (0.0135, 0.0115, 0.009)
-GAUNTLET = (0.042, 1.35, 1.1)
-# The arm starts this far inside the shoulder, wider there, so it fuses into the torso like a deltoid.
-SHOULDER_ROOT = 0.014
+GLOVE_TOP = 0.068
+# Rounded shoulder over the arm's root: offset out from the joint (x away from the body, y, z) and radii (x, z, y in
+# Blender's axes, as the sphere is scaled there).
+DELTOID = ((0.004, 0.003, 0.0), (0.019, 0.018, 0.018))
 # Glove generator hand scaled to the figurine's wrist, and how far it reaches back into the forearm.
 HAND_SCALE = 0.21
 HAND_SOCKET = 0.02
-# Nails (glove generator's units): from this share along the last finger joint, within this reach of its axis.
-NAIL_FROM = 0.45
-NAIL_REACH = 0.012
 # Rest joints along the body's middle and the legs (heights), and where the foot bone points.
-SPINE_JOINTS = (0.31, 0.38, 0.47, 0.5, 0.56)
+SPINE_JOINTS = (0.31, 0.38, 0.47, 0.505, 0.72)
 KNEE = 0.185
 TOE = (0.0, 0.012, -0.05)
 
 # The upper body is kept within reach of the spine and the shoulder line: that keeps the chest, the shoulders and
-# the cape where it lies on them (the capelet), and drops the arms and the cape flaring out to the hands. The neck is
-# cut flat at the top, under the chin, for the game's head.
-UPPER = 0.375
-NECK_TOP = 0.5
-# Above this height only what lies this close to the spine line is neck.
-NECK = (0.49, 0.034)
+# the cape where it lies on them (the capelet), and drops the arms and the cape flaring out to the hands.
+UPPER = (0.375, 0.505)
 SPINE = ((0.0, 0.35, -0.044), (-0.035, 0.5, -0.03), 0.055)
-SHOULDER_LINE = ((-0.01, 0.458, -0.03), (-0.06, 0.458, 0.0), 0.027)
-# Legs and shoes go below this height: the crotch, where the thighs part, cut with a clean plane.
-HIPS = 0.305
-# The holsters are fused to the thighs on the scan: rebuilt as black boxes at her sides (rest pose: x of the middle,
-# bottom and top heights, thickness, width front to back) with a triangular flap on the outside, blue on her right and
-# red on her left (reference photos).
-HOLSTER = (0.048, 0.262, 0.335, 0.012, 0.034)
-HOLSTER_BLACK = (0.08, 0.08, 0.09)
-# The stockings' tops on the scan, with a folded cuff this long and this much wider; bare skin above.
-STOCKING_TOP = 0.276
-STOCKING_CUFF = (0.008, 1.06)
+SHOULDER_LINE = ((-0.005, 0.458, -0.03), (-0.07, 0.458, 0.005), 0.032)
+# Legs and shoes go below this height.
+HIPS = 0.3
 # Boxes: center, size.
 Box = tuple[Vec3, Vec3]
-# Cut even within reach of the spine: the cape bunched up under the right fist and the pigtail hanging in front of
-# the left shoulder.
-CUTS: list[Box] = [
-    ((0.075, 0.48, -0.01), (0.09, 0.08, 0.22)),
+# Cut even within reach of the spine or above the neck: the right fist rising beside the face and the cape bunched
+# up under it.
+CUTS: list[Box] = [((0.075, 0.54, -0.065), (0.05, 0.03, 0.06)), ((0.075, 0.48, -0.01), (0.09, 0.08, 0.22))]
+# Never cut: the head down to the chin and the pigtail hanging in front of the left shoulder.
+HEAD = ((-0.03, 0.64, -0.01), (0.15, 0.14, 0.15))
+KEEP: list[Box] = [
+    ((-0.04, 0.515, -0.085), (0.16, 0.05, 0.08)),
+    # The bust, which stands out further from the spine than the back.
+    ((-0.035, 0.41, -0.065), (0.11, 0.07, 0.07)),
     ((-0.2, 0.48, -0.09), (0.2, 0.1, 0.12)),
-    # The cape flaring up over the right shoulder toward the hand.
-    ((0.04, 0.5, -0.02), (0.05, 0.05, 0.12)),
 ]
-# The bust stands out further from the spine than the back: kept whole.
-BUST: Box = ((-0.035, 0.41, -0.065), (0.11, 0.07, 0.07))
-# The soles are fused and the left toe tucks against the right heel: seen from above, the right shoe is what lies
-# nearer its own heel-to-toe line (x, z) than the left one's.
-SHOE_LINES = {"R": ((0.034, -0.056), (-0.012, -0.108)), "L": ((0.094, -0.022), (0.056, -0.06))}
-# Where they touch, a plane between the right heel and the left toe gives both a clean cut (point, normal toward the
-# left shoe).
-SHOE_SPLIT = ((0.045, 0.0, -0.058), (0.98, 0.0, -0.18))
-# Hue of the figurine's blue (red is 0): the mirrored right shoe swaps the two.
-FIGURINE_BLUE_HUE = 0.57
+# The soles are fused and the right toe tucks against the left heel: seen from above, each shoe is what lies nearer
+# its own heel-to-toe line (x, z) than the other's.
+SHOE_LINES = {"L": ((0.034, -0.056), (-0.012, -0.108)), "R": ((0.094, -0.022), (0.056, -0.06))}
 
 
 def _game(v: Vector) -> NDArray[np.float64]:
@@ -185,6 +143,11 @@ def _yaw(degrees: float) -> NDArray[np.float64]:
 def _in_box(points: NDArray[np.float64], box: Box) -> NDArray[np.bool_]:
     center, size = box
     inside: NDArray[np.bool_] = np.all(np.abs(points - np.array(center)) <= np.array(size) / 2, axis=1)
+    return inside
+
+
+def _in_ellipsoid(points: NDArray[np.float64], center: Vec3, radii: Vec3) -> NDArray[np.bool_]:
+    inside: NDArray[np.bool_] = np.sum(((points - np.array(center)) / np.array(radii)) ** 2, axis=1) <= 1.0
     return inside
 
 
@@ -218,9 +181,6 @@ class Scan:
         self.bm.faces.ensure_lookup_table()
         self.uv = self.bm.loops.layers.uv.active
         self.tree = BVHTree.FromBMesh(self.bm)
-        # Every face's corners and texture coordinates, for sampling the texture at many points at once.
-        self.corners = np.array([[loop.vert.co[:] for loop in face.loops] for face in self.bm.faces])
-        self.corner_uvs = np.array([[loop[self.uv].uv[:] for loop in face.loops] for face in self.bm.faces])
 
     def texel(self, uv: Vector) -> NDArray[np.float64]:
         """Texture color (display values) at a texture coordinate."""
@@ -228,57 +188,11 @@ class Scan:
         color: NDArray[np.float64] = self.pixels[int(np.clip(uv.y % 1.0 * h, 0, h - 1)), int(np.clip(uv.x % 1.0 * w, 0, w - 1))]
         return color
 
-    def colors(self, faces: NDArray[np.int64], points: NDArray[np.float64]) -> NDArray[np.float64]:
-        """Texture colors (display values, blended between texels) at Blender-space points on the given faces."""
-        a, b, c = (self.corners[faces, k] for k in range(3))
-        ab, ac, ap = b - a, c - a, points - a
-        d00, d01, d11 = (ab * ab).sum(1), (ab * ac).sum(1), (ac * ac).sum(1)
-        d20, d21 = (ap * ab).sum(1), (ap * ac).sum(1)
-        denominator = np.where(np.abs(d00 * d11 - d01 * d01) > 1e-30, d00 * d11 - d01 * d01, 1e-30)
-        v = (d11 * d20 - d01 * d21) / denominator
-        w = (d00 * d21 - d01 * d20) / denominator
-        uv = self.corner_uvs[faces, 0] * (1.0 - v - w)[:, None] + self.corner_uvs[faces, 1] * v[:, None] + self.corner_uvs[faces, 2] * w[:, None]
-        h, wide = self.pixels.shape[:2]
-        x = np.clip(uv[:, 0] % 1.0 * wide - 0.5, 0.0, wide - 1.001)
-        y = np.clip(uv[:, 1] % 1.0 * h - 0.5, 0.0, h - 1.001)
-        x0, y0 = x.astype(int), y.astype(int)
-        fx, fy = (x - x0)[:, None], (y - y0)[:, None]
-        top = self.pixels[y0, x0] * (1.0 - fx) + self.pixels[y0, x0 + 1] * fx
-        bottom = self.pixels[y0 + 1, x0] * (1.0 - fx) + self.pixels[y0 + 1, x0 + 1] * fx
-        blended: NDArray[np.float64] = top * (1.0 - fy) + bottom * fy
-        return blended
-
-    def cast(self, curve: NDArray[np.float64], angles: int) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Rays out of each point of a centerline (game space), `angles` around it: distance to the surface (inf for
-        a miss) and the surface color there, per (point, angle)."""
-        _tangent, u, w = _frames(curve)
-        a = np.linspace(0.0, 2.0 * math.pi, angles, endpoint=False)
-        directions = np.cos(a)[None, :, None] * u[:, None, :] + np.sin(a)[None, :, None] * w[:, None, :]
-        distance = np.full((len(curve), angles), np.inf)
-        faces = np.zeros((len(curve), angles), dtype=np.int64)
-        points = np.zeros((len(curve), angles, 3))
-        for i, center in enumerate(curve):
-            origin = scene.to_blender(center)
-            for j in range(angles):
-                hit, _normal, index, dist = self.tree.ray_cast(origin, scene.to_blender(directions[i, j]), 0.08)
-                if hit is not None:
-                    distance[i, j], faces[i, j], points[i, j] = dist, index, hit[:]
-        colors = self.colors(faces.ravel(), points.reshape(-1, 3)).reshape(len(curve), angles, 3)
-        return distance, colors
-
-    def skin_tone(self, lit: bool = True) -> NDArray[np.float64]:
-        """The bare skin on the upper body: its median, the tone the scanned torso shows, or with `lit` the median of
-        its brighter part, nearer the pale paint (reference photos) as the scan's lighting shades much of it."""
-        centers = self.face_centers()
-        faces = np.nonzero((centers[:, 1] > SKIN_BAND[0]) & (centers[:, 1] < SKIN_BAND[1]))[0]
-        colors = self.colors(faces, np.array([self.bm.faces[i].calc_center_median()[:] for i in faces]))
-        r, g, b = colors.T
-        skin = (r > g) & (g > b) & (r - b > 0.12) & (r - b < 0.4) & (r > 0.45)
-        bare = colors[skin]
-        if lit:
-            bare = bare[bare.sum(axis=1) >= np.percentile(bare.sum(axis=1), 70)]
-        tone: NDArray[np.float64] = np.median(bare, axis=0)
-        return tone
+    def color(self, face_index: int, point: Vector) -> NDArray[np.float64]:
+        """Texture color on a face at a Blender-space point."""
+        face = self.bm.faces[face_index]
+        weights = poly_3d_calc([loop.vert.co for loop in face.loops], point)
+        return self.texel(sum((loop[self.uv].uv * w for loop, w in zip(face.loops, weights, strict=True)), Vector((0.0, 0.0))))
 
     def color_around(self, point: Vec3, radius: float = 0.012) -> NDArray[np.float64]:
         """Median texture color of the surface within `radius`: steadier than one texel against painted shading."""
@@ -286,14 +200,12 @@ class Scan:
         if not hits:
             hit, _normal, index, _dist = self.tree.find_nearest(scene.to_blender(point))
             hits = [(hit, None, index, 0.0)]
-        faces = np.array([index for _co, _normal, index, _dist in hits])
-        median: NDArray[np.float64] = np.median(self.colors(faces, np.array([co[:] for co, *_ in hits])), axis=0)
+        median: NDArray[np.float64] = np.median([self.color(index, co) for co, _normal, index, _dist in hits], axis=0)
         return median
 
-    def piece(self, name: str, keep: NDArray[np.bool_], planes: list[tuple[Vec3, Vec3]] | None = None, erode: int = 0) -> bpy.types.Object:
+    def piece(self, name: str, keep: NDArray[np.bool_], planes: list[tuple[Vec3, Vec3]] | None = None) -> bpy.types.Object:
         """A copy of the scan with only the faces in `keep`, trimmed to the side of each (point, normal) plane its normal
-        points to, its holes closed so it is solid again. `erode` rings of faces come off every cut edge first, which
-        takes away slivers too thin to read as anything (the ragged edge of a cut cloth)."""
+        points to, its holes closed so it is solid again."""
         obj = self.obj.copy()
         obj.data = self.obj.data.copy()
         obj.name = obj.data.name = name
@@ -302,8 +214,6 @@ class Scan:
         bm.from_mesh(obj.data)
         bm.faces.ensure_lookup_table()
         bmesh.ops.delete(bm, geom=[f for f in bm.faces if not keep[f.index]], context="FACES")
-        for _ in range(erode):
-            bmesh.ops.delete(bm, geom=[f for f in bm.faces if any(e.is_boundary for e in f.edges)], context="FACES")
         for point, normal in planes or []:
             geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
             bmesh.ops.bisect_plane(bm, geom=geom, plane_co=scene.to_blender(point), plane_no=scene.to_blender(normal), clear_inner=True)
@@ -314,21 +224,17 @@ class Scan:
         if any(e.is_boundary for e in bm.edges):
             raise RuntimeError(f"{name} has holes that would not close")
         patches = bmesh.ops.triangulate(bm, faces=filled, quad_method="BEAUTY", ngon_method="BEAUTY")["faces"]
+        # A cap has no texture of its own: it takes the colors around its rim, blended across, from a second material.
+        # The attribute holds linear color.
+        colors = bm.loops.layers.float_color.new("patch")
+        uv = bm.loops.layers.uv.active
         for face in patches:
             face.material_index = 1
-        _fair(bm)
-        # A cap has no texture of its own: it takes the colors around its rim, blended across, from a second material.
-        uv = bm.loops.layers.uv.active
-        rim = {}
-        for vert in bm.verts:
-            textured = [self.texel(corner[uv].uv) for corner in vert.link_loops if corner.face.material_index == 0]
-            if textured and any(face.material_index == 1 for face in vert.link_faces):
-                rim[vert] = np.mean(textured, axis=0)
-        colors = bm.loops.layers.float_color.new("patch")
-        for vert, color in _blend_inward(bm, rim).items():
-            # The attribute holds linear color.
-            for corner in vert.link_loops:
-                corner[colors] = (*(scene.to_linear(float(c)) for c in color), 1.0)
+        for face in patches:
+            for loop in face.loops:
+                textured = [self.texel(corner[uv].uv) for corner in loop.vert.link_loops if corner.face.material_index == 0]
+                rim = np.mean(textured, axis=0) if textured else np.full(3, 0.5)
+                loop[colors] = (*(scene.to_linear(float(c)) for c in rim), 1.0)
         bm.to_mesh(obj.data)
         bm.free()
         obj.data.materials.append(_patch_material())
@@ -348,31 +254,6 @@ def _patch_material() -> bpy.types.Material:
         attribute.attribute_name = "patch"
         mat.node_tree.links.new(attribute.outputs["Color"], nodes["Principled BSDF"].inputs["Base Color"])
     return mat
-
-
-def _fair(bm: bmesh.types.BMesh) -> None:
-    """Turns each cap (material 1) from a flat fan into a smooth membrane across its rim: its inner edges are split
-    a few times and the new points relaxed, the rim kept where it is."""
-    for _ in range(3):
-        inner = [e for e in bm.edges if all(face.material_index == 1 for face in e.link_faces) and len(e.link_faces) == 2]
-        bmesh.ops.subdivide_edges(bm, edges=inner, cuts=1)
-        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if f.material_index == 1 and len(f.verts) > 3])
-    free = [v for v in bm.verts if v.link_faces and all(face.material_index == 1 for face in v.link_faces)]
-    for _ in range(60):
-        bmesh.ops.smooth_vert(bm, verts=free, factor=0.8, use_axis_x=True, use_axis_y=True, use_axis_z=True)
-
-
-def _blend_inward(bm: bmesh.types.BMesh, rim: dict[bmesh.types.BMVert, NDArray[np.float64]]) -> dict[bmesh.types.BMVert, NDArray[np.float64]]:
-    """Colors for every cap vertex: the rim's own, spread smoothly to the inside (repeated neighbor averaging)."""
-    inside = [v for v in bm.verts if v not in rim and v.link_faces and all(face.material_index == 1 for face in v.link_faces)]
-    colors = dict(rim)
-    fallback = np.mean(list(rim.values()), axis=0) if rim else np.full(3, 0.5)
-    for vert in inside:
-        colors[vert] = fallback
-    for _ in range(80):
-        for vert in inside:
-            colors[vert] = np.mean([colors[e.other_vert(vert)] for e in vert.link_edges if e.other_vert(vert) in colors], axis=0)
-    return colors
 
 
 def _smooth_rims(bm: bmesh.types.BMesh) -> None:
@@ -422,13 +303,12 @@ def torso_faces(centers: NDArray[np.float64]) -> NDArray[np.bool_]:
     """Faces of the scan the torso piece keeps."""
     y = centers[:, 1]
     near = (_segment_distance(centers, SPINE[0], SPINE[1]) < SPINE[2]) | (_segment_distance(centers, SHOULDER_LINE[0], SHOULDER_LINE[1]) < SHOULDER_LINE[2])
-    # A margin past both cuts, so trimming the ragged rim still leaves the planes something to cut cleanly.
-    keep = (y >= HIPS - 0.012) & (y < NECK_TOP + 0.01) & ((y < UPPER) | near | _in_box(centers, BUST))
-    # Just under the chin only the neck itself: the hair's underside comes down close around it.
-    keep &= (y < NECK[0]) | (_segment_distance(centers, SPINE[0], SPINE[1]) < NECK[1])
+    keep = (y >= HIPS) & ((y < UPPER[0]) | (y > UPPER[1]) | near)
     for box in CUTS:
         keep &= ~_in_box(centers, box)
-    return keep
+    for box in KEEP:
+        keep |= _in_box(centers, box)
+    return keep | _in_ellipsoid(centers, *HEAD)
 
 
 # --- Straightening ------------------------------------------------------------------------------------------------
@@ -490,56 +370,16 @@ def _frames(curve: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np
     return t, u, np.cross(t, u)
 
 
-def _fill_columns(values: NDArray[np.float64], good: NDArray[np.bool_], nearest: bool = False) -> NDArray[np.float64]:
-    """Replaces bad samples of a (ring, angle, ...) grid along each angle's column: interpolated between the good
-    ones, or copied from the nearest (colors, so a painted edge like a stocking's top stays sharp)."""
+def _fill_columns(values: NDArray[np.float64], good: NDArray[np.bool_]) -> NDArray[np.float64]:
+    """Replaces bad samples of a (ring, angle, ...) grid by interpolating along each angle's column."""
     out = values.reshape(values.shape[0], values.shape[1], -1).copy()
     rows = np.arange(len(values))
     for j in range(out.shape[1]):
-        known = rows[good[:, j]]
-        if len(known) == 0:
-            continue
-        bad = rows[~good[:, j]]
-        if nearest:
-            after = np.clip(np.searchsorted(known, bad), 0, len(known) - 1)
-            before = np.clip(after - 1, 0, len(known) - 1)
-            source = np.where(np.abs(known[before] - bad) <= np.abs(known[after] - bad), known[before], known[after])
-            out[bad, j] = out[source, j]
-        else:
+        ok = good[:, j]
+        if ok.any():
             for k in range(out.shape[2]):
-                out[bad, j, k] = np.interp(bad, known, out[known, j, k])
+                out[~ok, j, k] = np.interp(rows[~ok], rows[ok], out[ok, j, k])
     return out.reshape(values.shape)
-
-
-def _unshade(colors: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Lifts the scan's baked shadows off evenly painted parts (stockings, reference photos): each color darker than
-    UNSHADE of the well-lit brightness (80th percentile) of its own dominant channel's colors is brightened up to it,
-    hue kept."""
-    flat = colors.reshape(-1, 3)
-    value = flat.max(axis=1)
-    channel = flat.argmax(axis=1)
-    target = np.zeros(len(flat))
-    for c in range(3):
-        mine = channel == c
-        if mine.any():
-            target[mine] = np.percentile(value[mine], 80) * UNSHADE
-    lifted = flat * np.maximum(1.0, target / np.maximum(value, 1e-6))[:, None]
-    unshaded: NDArray[np.float64] = np.clip(lifted, 0.0, 1.0).reshape(colors.shape)
-    return unshaded
-
-
-def _clean_rays(distance: NDArray[np.float64], reference: NDArray[np.float64]) -> NDArray[np.bool_]:
-    """Rays that ended near their ring's own radius, not inside a neighbor fused to the limb."""
-    clean: NDArray[np.bool_] = np.isfinite(distance) & (distance < reference[:, None] * 1.4) & (distance > reference[:, None] * 0.6)
-    return clean
-
-
-def _fill(values: NDArray[np.float64], good: NDArray[np.bool_], rings: NDArray[np.bool_], nearest: bool = False) -> NDArray[np.float64]:
-    """Fills the bad samples of a (ring, angle, ...) grid: around the ring in the given rings, then along the limb."""
-    out = values.copy()
-    for i in np.nonzero(rings)[0]:
-        out[i] = _fill_around(out[i], good[i])
-    return _fill_columns(out, np.repeat(rings[:, None], values.shape[1], axis=1), nearest)
 
 
 def _fill_around(values: NDArray[np.float64], good: NDArray[np.bool_]) -> NDArray[np.float64]:
@@ -572,34 +412,44 @@ class Tube:
         ring's usual radius went through a place where this limb is fused to something (the other thigh): it and
         any ring with too few clean rays are filled in from the clean rings above and below."""
         curve = _resample(np.array(centerline), 0.001)
-        tangent, u, _w = _frames(curve)
-        radii, _colors = scan.cast(curve, ANGLES)
+        tangent, u, w = _frames(curve)
+        angles = np.linspace(0.0, 2.0 * math.pi, ANGLES, endpoint=False)
+        radii = np.full((len(curve), ANGLES), np.inf)
+        colors = np.zeros((len(curve), ANGLES, 3))
+        for i, center in enumerate(curve):
+            for j, a in enumerate(angles):
+                direction = math.cos(a) * u[i] + math.sin(a) * w[i]
+                hit, _normal, index, dist = scan.tree.ray_cast(scene.to_blender(center), scene.to_blender(direction), 0.08)
+                if hit is not None:
+                    radii[i, j] = dist
+                    colors[i, j] = scan.color(index, hit)
+        finite = np.isfinite(radii)
         # A ring's own radius from its shorter rays: rays into a fused neighbor only ever run long.
-        reference = np.nan_to_num(np.nanpercentile(np.where(np.isfinite(radii), radii, np.nan), 30, axis=1), nan=0.0)
-        good = _clean_rays(radii, reference)
-        # Rings with enough clean rays fill their gaps around the ring, the others along the limb. The outline takes
-        # only rings that are nearly all clean.
+        reference = np.nan_to_num(np.nanpercentile(np.where(finite, radii, np.nan), 30, axis=1), nan=0.0)
+        good = finite & (radii < reference[:, None] * 1.4) & (radii > reference[:, None] * 0.6)
+        # Rings with enough clean rays fill their gaps around the ring, the others along the limb. Colors take any
+        # ring with a fair share of clean rays (the outer side of a fused thigh still shows its skin and stocking top);
+        # the outline only rings that are nearly all clean.
+        seen = good.mean(axis=1) > 0.4
         clean = good.mean(axis=1) > 0.85
         if not clean.any():
             raise RuntimeError("no clean ring on the limb")
-        radii = _fill(np.where(good, radii, 0.0), good, clean)
-        # Colors are cast again much finer, for the texture's detail. They take any ring with a fair share of clean
-        # rays: the outer side of a fused thigh still shows its skin and stocking top.
-        fine = _resample(np.array(centerline), COLOR_STEP)
-        distance, colors = scan.cast(fine, COLOR_ANGLES)
-        along = np.interp(np.linspace(0.0, 1.0, len(fine)), np.linspace(0.0, 1.0, len(curve)), reference)
-        # Gray and black (holsters and their straps lying against the thigh) aren't the leg's own paint either.
-        value, low = colors.max(axis=2), colors.min(axis=2)
-        saturation = (value - low) / np.maximum(value, 1e-6)
-        brown = (value < GEAR_DARK) & (saturation < 0.6) & (colors[..., 0] >= colors[..., 2])
-        # Near black is shadow too deep to tell the paint's hue.
-        gear = (saturation < GEAR_SATURATION) | brown | (value < GEAR_BLACK)
-        good = _clean_rays(distance, along) & ~gear
-        colors = _unshade(_fill(colors, good, good.mean(axis=1) > 0.4, nearest=True))
+        for rows, values in ((seen, colors), (clean, radii)):
+            for i in np.nonzero(rows)[0]:
+                values[i] = _fill_around(values[i], good[i])
+        colors = _fill_columns(colors, np.repeat(seen[:, None], ANGLES, axis=1))
+        radii = _fill_columns(np.where(good, radii, 0.0), np.repeat(clean[:, None], ANGLES, axis=1))
         tube = Tube(radii, colors, float(np.sum(np.linalg.norm(np.diff(curve, axis=0), axis=1))))
         tube.end_tangent, tube.end_normal = tangent[-1], u[-1]
         tube.top = int(np.argmax(clean))
         return tube
+
+    def widen_top(self, radius: NDArray[np.float64]) -> None:
+        """Above the topmost clean ring the outline blends to `radius` (per angle) at the top."""
+        if self.top > 0:
+            blend = _smoothstep(0.0, 1.0, np.linspace(1.0, 0.0, self.top + 1))[:-1, None]
+            self.radii[: self.top] = self.radii[self.top] * (1.0 - blend) + radius[None, :] * blend
+        self.smooth()
 
     def smooth(self) -> None:
         """A light smoothing around and along takes out ray noise."""
@@ -626,16 +476,14 @@ class Tube:
         u /= np.linalg.norm(u)
         w = np.cross(d, u)
         rings, angles = self.radii.shape
-        color_rings, color_angles = self.colors.shape[:2]
         a = np.linspace(0.0, 2.0 * math.pi, angles + 1)
         verts: list[NDArray[np.float64]] = []
         uvs: list[tuple[float, float]] = []
-        # The color image has one more column than angles, a copy of the first, so the texture wraps around smoothly.
         for i in range(rings):
             center = np.array(start) + d * self.length * i / (rings - 1)
             for j in range(angles + 1):
                 verts.append(center + self.radii[i, j % angles] * (math.cos(a[j]) * u + math.sin(a[j]) * w))
-                uvs.append(((j / angles * color_angles + 0.5) / (color_angles + 1), (i / (rings - 1) * (color_rings - 1) + 0.5) / color_rings))
+                uvs.append(((j + 0.5) / (angles + 1), (i + 0.5) / rings))
         faces = []
         loop_uvs = []
         for i in range(rings - 1):
@@ -647,7 +495,7 @@ class Tube:
         for i, flip in ((0, True), (rings - 1, False)):
             center = np.array(start) + d * self.length * i / (rings - 1)
             verts.append(center)
-            uvs.append((0.5 / (color_angles + 1), (i / (rings - 1) * (color_rings - 1) + 0.5) / color_rings))
+            uvs.append((0.5 / (angles + 1), (i + 0.5) / rings))
             for j in range(angles):
                 tri = [i * (angles + 1) + j, i * (angles + 1) + j + 1, len(verts) - 1]
                 faces.append(tri[::-1] if flip else tri)
@@ -655,9 +503,9 @@ class Tube:
         obj = scene.mesh_object(name, np.array(verts).tolist(), faces)
         layer = obj.data.uv_layers.new(name="UVMap")
         layer.data.foreach_set("uv", np.array(loop_uvs).ravel())
-        image = bpy.data.images.new(f"{name}Colors", color_angles + 1, color_rings)
-        pixels = np.ones((color_rings, color_angles + 1, 4))
-        pixels[:, :, :3] = self.colors[:, np.arange(color_angles + 1) % color_angles]
+        image = bpy.data.images.new(f"{name}Colors", angles + 1, rings)
+        pixels = np.ones((rings, angles + 1, 4))
+        pixels[:, :, :3] = self.colors[:, np.arange(angles + 1) % angles]
         image.pixels.foreach_set(pixels.astype(np.float32).ravel())
         obj.data.materials.append(_texture_material(f"{name}Material", image))
         return obj
@@ -719,191 +567,92 @@ def _toe_turn(heel: tuple[float, float], toe: tuple[float, float]) -> float:
     return (180.0 - b + 180.0) % 360.0 - 180.0
 
 
-def _right_shoe(scan: Scan) -> bpy.types.Object:
-    """The right shoe, cut free where the soles are fused, turned to point forward under the right hip."""
-    centers = scan.face_centers()
-    flat = centers * np.array([1.0, 0.0, 1.0])
-    reach = {k: _segment_distance(flat, (a[0], 0.0, a[1]), (b[0], 0.0, b[1])) for k, (a, b) in SHOE_LINES.items()}
-    split = (SHOE_SPLIT[0], tuple(-np.array(SHOE_SPLIT[1])))
-    shoe = scan.piece("ShoeR", (centers[:, 1] < ANKLE + 0.01) & (reach["R"] < reach["L"]), [((0.0, ANKLE, 0.0), (0.0, -1.0, 0.0)), split])
-    _transform(shoe, _yaw(_toe_turn(*SHOE_LINES["R"])), tuple(_at_height(LEGS["R"], ANKLE)), (FOOT_X, ANKLE, 0.0))
-    return shoe
-
-
-def _left_shoe(right: bpy.types.Object) -> bpy.types.Object:
-    """The left toe is buried in the right heel on the scan, so the left shoe is the right one mirrored, its red and
-    blue swapped as on the figurine's mismatched pair."""
-    shoe = _copy(right)
-    shoe.name = shoe.data.name = "ShoeL"
-    _transform(shoe, np.eye(3), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), mirror=True)
-    for slot in shoe.material_slots:
-        slot.material = _swap_red_blue(slot.material)
-    return shoe
-
-
-def _swap_red_blue(source: bpy.types.Material) -> bpy.types.Material:
-    """The material with its hues mirrored about the halfway point between the figurine's red and blue, so the two
-    trade places and everything keeps its shading."""
-    mat = source.copy()
-    tree = mat.node_tree
-    bsdf = tree.nodes["Principled BSDF"]
-    feed = bsdf.inputs["Base Color"].links[0].from_socket
-    split, join = tree.nodes.new("ShaderNodeSeparateColor"), tree.nodes.new("ShaderNodeCombineColor")
-    split.mode = join.mode = "HSV"
-    mirror, wrap = tree.nodes.new("ShaderNodeMath"), tree.nodes.new("ShaderNodeMath")
-    mirror.operation, wrap.operation = "SUBTRACT", "FRACT"
-    mirror.inputs[0].default_value = FIGURINE_BLUE_HUE
-    tree.links.new(feed, split.inputs["Color"])
-    tree.links.new(split.outputs["Red"], mirror.inputs[1])
-    tree.links.new(mirror.outputs[0], wrap.inputs[0])
-    tree.links.new(wrap.outputs[0], join.inputs["Red"])
-    tree.links.new(split.outputs["Green"], join.inputs["Green"])
-    tree.links.new(split.outputs["Blue"], join.inputs["Blue"])
-    tree.links.new(join.outputs["Color"], bsdf.inputs["Base Color"])
-    return mat
-
-
 def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
-    right = _right_shoe(scan)
-    parts = [right, _left_shoe(right)]
-    down = np.array([0.0, -1.0, 0.0])
-    skin = scan.skin_tone()
+    parts = []
+    centers = scan.face_centers()
     for side, sign in (("R", 1.0), ("L", -1.0)):
         centerline = LEGS[side]
+        flat = centers * np.array([1.0, 0.0, 1.0])
+        reach = {k: _segment_distance(flat, (a[0], 0.0, a[1]), (b[0], 0.0, b[1])) for k, (a, b) in SHOE_LINES.items()}
+        own = reach[side] < reach["L" if side == "R" else "R"]
+        shoe = scan.piece(f"Shoe{side}", (centers[:, 1] < ANKLE + 0.01) & own, [((0.0, ANKLE, 0.0), (0.0, -1.0, 0.0))])
+        ankle = _at_height(centerline, ANKLE)
+        turn = _yaw(_toe_turn(*SHOE_LINES[side]))
         hip = np.array([sign * HIP_X, centerline[0][1], 0.0])
-        end = np.array([sign * FOOT_X, centerline[-1][1], 0.0])
+        end = np.array([sign * HIP_X, centerline[-1][1], 0.0])
         tube = Tube.measure(scan, centerline)
         # Laid out straight down from the hip; the rings keep the turn they had at the ankle, plus the shoe's.
-        normal = _yaw(_toe_turn(*SHOE_LINES[side])) @ _turn_onto(tube.end_tangent, down) @ tube.end_normal
-        # The thigh's top, where the scan has the thighs fused, swells over its last stretch into an oval filling its
-        # half of the hips' cut, so the two meet without a step.
+        down = np.array([0.0, -1.0, 0.0])
+        normal = turn @ _turn_onto(tube.end_tangent, down) @ tube.end_normal
+        # The thigh's top, where the scan has the thighs fused, is an oval filling the hips' outline.
         a = np.linspace(0.0, 2.0 * math.pi, ANGLES, endpoint=False)
         side_way = normal[None, :] * np.cos(a)[:, None] + np.cross(down, normal)[None, :] * np.sin(a)[:, None]
-        reach = 1.0 / np.hypot(side_way[:, 0] / HIP_RADII[0], side_way[:, 2] / HIP_RADII[1])
+        tube.widen_top(1.0 / np.hypot(side_way[:, 0] / HIP_RADII[0], side_way[:, 2] / HIP_RADII[1]))
+        # Inside the hips it narrows again, so no rim of it shows past the hips' outline.
         heights = np.linspace(hip[1], end[1], len(tube.radii))
-        blend = _smoothstep(HIPS - HIP_BLEND, HIPS, heights)[:, None]
-        tube.radii = np.asarray(tube.radii * (1.0 - blend) + reach[None, :] * blend, dtype=np.float64)
-        tube.smooth()
-        # Bare skin above the stocking, in the paint's tone like the arms, and a folded cuff at the stocking's top.
-        tube.colors[np.linspace(hip[1], end[1], len(tube.colors)) > STOCKING_TOP] = skin
-        cuff = (heights <= STOCKING_TOP) & (heights > STOCKING_TOP - STOCKING_CUFF[0])
-        tube.radii[cuff] *= STOCKING_CUFF[1]
-        # The thigh ends just inside the hips' cut.
-        top = HIPS + 0.012
-        tube.radii = tube.radii[heights <= top]
-        tube.colors = tube.colors[np.linspace(hip[1], end[1], len(tube.colors)) <= top]
-        hip[1] = top
-        tube.length = float(np.linalg.norm(end - hip))
-        parts.append(tube.build(f"Leg{side}", tuple(hip), tuple((end - hip) / tube.length), tuple(normal)))
+        tube.radii *= (1.0 - 0.35 * _smoothstep(HIPS, hip[1], heights))[:, None]
+        tube.length = float(hip[1] - end[1])
+        parts.append(tube.build(f"Leg{side}", tuple(hip), tuple(down), tuple(normal)))
+        _transform(shoe, turn, tuple(ankle), (sign * HIP_X, ANKLE, 0.0))
+        parts.append(shoe)
     return parts
 
 
 def arms(scan: Scan) -> list[bpy.types.Object]:
-    """Round arms from a flared root inside the shoulder to the wrist, in the torso's skin tone, the forearm in a
-    gauntlet flaring at its top, shaded lighter on top and darker underneath like the figurine's paint."""
-    # From the scanned torso's own tone at the shoulder, so no seam shows there, to the paint's by the elbow.
-    torso, skin = scan.skin_tone(lit=False), scan.skin_tone()
+    skin = scan.color_around(SKIN_SPOT)
     parts = []
-    length = SHOULDER_ROOT + UPPER_ARM + FOREARM
-    root, elbow, top = SHOULDER_ROOT / length, (SHOULDER_ROOT + UPPER_ARM) / length, 1.0 - GAUNTLET[0] / length
-
-    def arm_radius(at: float) -> float:
-        return ARM_RADII[1] + (ARM_RADII[2] - ARM_RADII[1]) * (at - elbow) / (1.0 - elbow)
-
-    # The skin goes just inside the gauntlet's flared lip; the lip narrows onto the arm a little further down.
-    under, lip = top - 0.004, top + 0.03
+    length = UPPER_ARM + FOREARM
+    elbow = UPPER_ARM / length
     for side, sign in (("R", 1.0), ("L", -1.0)):
         glove = scan.color_around(GLOVE_SPOTS[side])
+        top = GLOVE_TOP / length
         tube = Tube.round(
-            [(0.0, ARM_RADII[0] * 1.35), (root, ARM_RADII[0] * 1.1), (root + 0.12, ARM_RADII[0]), (elbow, ARM_RADII[1])]
-            + [(under, arm_radius(under)), (top, arm_radius(top) * GAUNTLET[1]), (lip, arm_radius(lip) * GAUNTLET[2])]
-            + [(1.0, ARM_RADII[2] * GAUNTLET[2])],
-            [(0.0, torso), (root, torso), (elbow, skin), (under, skin), (top, glove), (1.0, glove)],
+            [(0.0, ARM_RADII[0]), (elbow, ARM_RADII[1]), (1.0, ARM_RADII[2])],
+            [(0.0, skin), (top - 0.01, skin), (top, glove), (1.0, glove)],
             length,
         )
-        # Angle 0 points up (the normal passed to build): light there, PAINT_SHADE darker straight underneath.
-        a = np.linspace(0.0, 2.0 * math.pi, tube.colors.shape[1], endpoint=False)
-        tube.colors *= (1.0 - PAINT_SHADE * (1.0 - np.cos(a)) / 2.0)[None, :, None]
-        start = np.array(SHOULDERS[side]) - np.array([sign * SHOULDER_ROOT, 0.0, 0.0])
-        parts.append(tube.build(f"Arm{side}", tuple(start), (sign, 0.0, 0.0), (0.0, 1.0, 0.0)))
+        arm = tube.build(f"Arm{side}", SHOULDERS[side], (sign, 0.0, 0.0), (0.0, 1.0, 0.0))
+        # A rounded shoulder where the arm meets the torso, in the arm's skin color.
+        bm = bmesh.new()
+        bm.from_mesh(arm.data)
+        sphere = bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=12, radius=1.0)["verts"]
+        deltoid = np.array(SHOULDERS[side]) + np.array([sign * DELTOID[0][0], DELTOID[0][1], DELTOID[0][2]])
+        bmesh.ops.transform(bm, matrix=Matrix.Translation(scene.to_blender(deltoid)) @ Matrix.Diagonal((*DELTOID[1], 1.0)), verts=sphere)
+        uv = bm.loops.layers.uv.active
+        for face in {f for v in sphere for f in v.link_faces}:
+            for loop in face.loops:
+                loop[uv].uv = (0.5 / (ANGLES + 1), 0.5 / len(tube.radii))
+        bm.to_mesh(arm.data)
+        bm.free()
+        parts.append(arm)
     return parts
 
 
-def _nail_faces(obj: bpy.types.Object) -> list[int]:
-    """Faces of the glove-generator hand (its own space) on the back of each fingertip, where a nail is painted."""
-    centers = np.array([_game(face.center) for face in obj.data.polygons])
-    nails = np.zeros(len(centers), bool)
-    for name, head, tail, _parent in hand.bones():
-        if not name.endswith("3"):
-            continue
-        a, b = np.array(head), np.array(tail)
-        t = np.clip((centers - a) @ (b - a) / np.dot(b - a, b - a), 0.0, 1.0)
-        off = centers - (a + t[:, None] * (b - a))
-        # The outer half of the last joint, on the back of the hand (+Y; the palm faces -Y).
-        nails |= (t > NAIL_FROM) & (np.linalg.norm(off, axis=1) < NAIL_REACH) & (off[:, 1] > NAIL_REACH * 0.3)
-    return [int(i) for i in np.nonzero(nails)[0]]
-
-
 def hands(scan: Scan) -> list[bpy.types.Object]:
-    """The glove generator's hand, cut at the wrist, scaled to the figurine and laid at the end of each arm, palm down,
-    its nails painted the other wrist's gauntlet color."""
-    skin = [float(c) for c in scan.skin_tone()]
+    """The glove generator's hand, cut at the wrist, scaled to the figurine and laid at the end of each arm, palm down."""
+    skin = [float(c) for c in scan.color_around(SKIN_SPOT)]
     template = scene.bisect(hand.shape(), (-HAND_SOCKET / HAND_SCALE, 0.0, 0.0), (1.0, 0.0, 0.0))
     bm = bmesh.new()
     bm.from_mesh(template.data)
     bmesh.ops.holes_fill(bm, edges=bm.edges, sides=0)
     bm.to_mesh(template.data)
     bm.free()
-    nails = _nail_faces(template)
     parts = []
     for side, sign in (("R", 1.0), ("L", -1.0)):
         obj = template.copy()
         obj.data = template.data.copy()
         obj.name = f"Hand{side}"
         scene.link(obj)
-        obj.data.materials.append(scene.material(f"Hand{side}Skin", skin))
-        polish = [float(c) for c in scan.color_around(GLOVE_SPOTS["L" if side == "R" else "R"])]
-        obj.data.materials.append(scene.material(f"Hand{side}Nails", polish))
-        for index in nails:
-            obj.data.polygons[index].material_index = 1
         wrist = np.array(SHOULDERS[side]) + np.array([sign * (UPPER_ARM + FOREARM), 0.0, 0.0])
         _transform(obj, np.eye(3) * HAND_SCALE, (0.0, 0.0, 0.0), tuple(wrist), mirror=sign < 0)
+        obj.data.materials.append(scene.material(f"Hand{side}Skin", skin))
         parts.append(obj)
     bpy.data.objects.remove(template)
     return parts
 
 
-def holsters(scan: Scan) -> list[bpy.types.Object]:
-    x, bottom, top, thick, wide = HOLSTER
-    parts = []
-    for side, sign in (("R", 1.0), ("L", -1.0)):
-        bm = bmesh.new()
-        bmesh.ops.create_cube(bm, size=1.0)
-        center = (sign * x, (bottom + top) / 2.0, 0.0)
-        bmesh.ops.transform(bm, matrix=Matrix.Translation(scene.to_blender(center)) @ Matrix.Diagonal((thick, wide, top - bottom, 1.0)), verts=bm.verts)
-        # The flap: a thin triangle on the outer face, its point down.
-        out = sign * (x + thick / 2.0)
-        corners = [(out, top - 0.004, -wide * 0.42), (out, top - 0.004, wide * 0.42), (out, top - (top - bottom) * 0.5, 0.0)]
-        points = [bm.verts.new(scene.to_blender((c[0] + sign * lift, c[1], c[2]))) for c in corners for lift in (-0.001, 0.002)]
-        flap = bmesh.ops.convex_hull(bm, input=points)["geom"]
-        for face in (g for g in flap if isinstance(g, bmesh.types.BMFace)):
-            face.material_index = 1
-        obj = scene.link(bpy.data.objects.new(f"Holster{side}", bpy.data.meshes.new(f"Holster{side}")))
-        bm.to_mesh(obj.data)
-        bm.free()
-        obj.data.materials.append(scene.material(f"Holster{side}Black", HOLSTER_BLACK))
-        obj.data.materials.append(scene.material(f"Holster{side}Flap", [float(c) for c in scan.color_around(GLOVE_SPOTS[side])]))
-        parts.append(obj)
-    return parts
-
-
 def torso(scan: Scan) -> bpy.types.Object:
-    centers = scan.face_centers()
-    # The scanned holsters' tops, standing off the hips' sides, give way to the rebuilt ones.
-    rest = straighten(centers)
-    scanned_holsters = (np.abs(rest[:, 0]) > HOLSTER[0] - HOLSTER[3] / 3.0) & (rest[:, 1] < HOLSTER[2] + 0.01) & (np.abs(rest[:, 2]) < HOLSTER[4])
-    planes = [((0.0, NECK_TOP, 0.0), (0.0, -1.0, 0.0)), ((0.0, HIPS, 0.0), (0.0, 1.0, 0.0))]
-    piece = scan.piece("Torso", torso_faces(centers) & ~scanned_holsters, planes, erode=3)
+    piece = scan.piece("Torso", torso_faces(scan.face_centers()))
     _straighten_object(piece)
     return piece
 
@@ -915,30 +664,6 @@ def _copy(obj: bpy.types.Object) -> bpy.types.Object:
     clone = obj.copy()
     clone.data = obj.data.copy()
     return scene.link(clone)
-
-
-def _settle(body: bpy.types.Object, sources: list[bpy.types.Object]) -> bpy.types.Object:
-    """Puts the fused surface back on the parts it was fused from: the voxels leave faint terraces that, decimated,
-    shade as blotches. Points further off than a voxel or two (the fill where parts meet) stay, and a light smoothing
-    evens out the seam between the two."""
-    shells = scene.join("Shells", *[_copy(obj) for obj in sources])
-    tree = BVHTree.FromObject(shells, bpy.context.evaluated_depsgraph_get())
-    count = len(body.data.vertices)
-    co = np.empty(count * 3)
-    body.data.vertices.foreach_get("co", co)
-    points = co.reshape(-1, 3)
-    for i, point in enumerate(points):
-        hit, _normal, _index, distance = tree.find_nearest(Vector(point), VOXEL * 1.5)
-        if hit is not None:
-            points[i] = hit[:]
-    body.data.vertices.foreach_set("co", points.ravel())
-    body.data.update()
-    bpy.data.objects.remove(shells)
-    smooth = body.modifiers.new("Smooth", "CORRECTIVE_SMOOTH")
-    smooth.iterations = 2
-    smooth.use_only_smooth = True
-    smooth.smooth_type = "LENGTH_WEIGHTED"
-    return scene.bake(body)
 
 
 def _unwrap(obj: bpy.types.Object) -> None:
@@ -986,7 +711,6 @@ def _bake(target: bpy.types.Object, sources: list[bpy.types.Object]) -> bpy.type
 def _bones() -> list[tuple[str, Vec3, Vec3, str | None]]:
     """The rig in the scan's units, rest pose."""
     hip, waist, chest, neck, crown = SPINE_JOINTS
-    # Head carries no part of this model: it marks where the game's head sits on the neck.
     bones: list[tuple[str, Vec3, Vec3, str | None]] = [
         ("Torso", (0.0, hip, 0.0), (0.0, waist, 0.0), None),
         ("Chest", (0.0, waist, 0.0), (0.0, chest, 0.0), "Torso"),
@@ -1006,18 +730,19 @@ def _bones() -> list[tuple[str, Vec3, Vec3, str | None]]:
             start, end = (tuple(wrist + np.array([sign * p[0], p[1], p[2]]) * HAND_SCALE) for p in (head, tail))
             bones.append((f"{name}{side}", start, end, f"{parent}{side}" if parent else f"Forearm{side}"))
         leg_top = np.array([sign * HIP_X, hip, 0.0])
-        ankle = np.array([sign * FOOT_X, ANKLE, 0.0])
-        knee = leg_top + (ankle - leg_top) * (hip - KNEE) / (hip - ANKLE)
+        knee = np.array([sign * HIP_X, KNEE, 0.0])
+        ankle = np.array([sign * HIP_X, ANKLE, 0.0])
         bones += [
             (f"Thigh{side}", tuple(leg_top), tuple(knee), "Torso"),
             (f"Shin{side}", tuple(knee), tuple(ankle), f"Thigh{side}"),
-            (f"Foot{side}", tuple(ankle), (sign * FOOT_X + TOE[0], TOE[1], TOE[2]), f"Shin{side}"),
+            (f"Foot{side}", tuple(ankle), (sign * HIP_X + TOE[0], TOE[1], TOE[2]), f"Shin{side}"),
         ]
     return bones
 
 
-# Skinning: blend width (scan units) either side of each joint.
+# Skinning: blend widths (scan units) at each joint, and the hanging pigtail (rest-space box) that rides the head.
 BLEND = 0.012
+PIGTAIL: Box = ((-0.16, 0.48, -0.07), (0.16, 0.1, 0.1))
 
 
 def _ramp(x: NDArray[np.float64], at: float, width: float = BLEND) -> NDArray[np.float64]:
@@ -1041,7 +766,7 @@ def _chain(t: NDArray[np.float64], joints: list[float]) -> list[NDArray[np.float
 
 def _skin(body: bpy.types.Object, rig: bpy.types.Object, body_vertices: int, scale: float) -> None:
     """Weights by rule, in the rest T-pose: the spine by height, arms along their length past the shoulder, legs by
-    height below the hips, and each hand shell between its nearest hand and finger bones."""
+    height below the hips, the head with all its hair, and each hand shell between its nearest hand and finger bones."""
     count = len(body.data.vertices)
     co = np.empty(count * 3)
     body.data.vertices.foreach_get("co", co)
@@ -1054,15 +779,18 @@ def _skin(body: bpy.types.Object, rig: bpy.types.Object, body_vertices: int, sca
         weights[bone] = weights.get(bone, np.zeros(count)) + w
 
     body_part = np.arange(count) < body_vertices
-    hip, waist, chest, _neck, _crown = SPINE_JOINTS
+    hip, waist, chest, neck, _crown = SPINE_JOINTS
+    head = (y > neck) | _in_box(p, PIGTAIL)
     side_of = np.where(x > 0.0, "R", "L")
     reach = np.abs(x)
     shoulder_x = abs(SHOULDERS["R"][0])
-    arm = body_part & (reach > shoulder_x - BLEND) & (np.abs(y - SHOULDERS["R"][1]) < ARM_RADII[0] * 1.6) & (np.abs(z) < ARM_RADII[0] * 1.6)
+    arm = body_part & ~head & (reach > shoulder_x - BLEND) & (np.abs(y - SHOULDERS["R"][1]) < ARM_RADII[0] * 1.6) & (np.abs(z) < ARM_RADII[0] * 1.6)
     leg = body_part & ~arm & (y < hip + BLEND)
-    trunk = body_part & ~arm & ~leg
-    spine = _chain(y, [-1.0, waist, chest, 2.0])
-    for bone, w in zip(("Torso", "Chest", "Neck"), spine, strict=True):
+    trunk = body_part & ~head & ~arm & ~leg
+    # Head, and the neck and spine below it.
+    add("Head", (head & body_part) * 1.0)
+    spine = _chain(y, [-1.0, waist, chest, neck - 0.004, 2.0])
+    for bone, w in zip(("Torso", "Chest", "Neck", "Head"), spine, strict=True):
         add(bone, trunk * w)
     # Arms: chest at the shoulder, then upper arm, forearm and hand along the arm.
     for side in ("R", "L"):
@@ -1100,14 +828,14 @@ def _skin(body: bpy.types.Object, rig: bpy.types.Object, body_vertices: int, sca
 def build() -> bpy.types.Object:
     """Builds the rigged figure in the scene and returns its armature."""
     scan = Scan()
-    sources = [torso(scan), *holsters(scan), *legs_and_shoes(scan), *arms(scan)]
+    sources = [torso(scan), *legs_and_shoes(scan), *arms(scan)]
     hand_sources = hands(scan)
     scan.bm.free()
     bpy.data.objects.remove(scan.obj)
 
     body = scene.join("ScanDoctor", *[_copy(obj) for obj in sources])
     body.data.materials.clear()
-    body = _settle(scene.remesh(body, VOXEL), sources)
+    body = scene.remesh(body, VOXEL, smooth=4)
     body = scene.fit(body, BUDGET)
     fitted_hands = [scene.fit(_copy(obj), HAND_BUDGET) for obj in hand_sources]
     for obj in [body, *fitted_hands]:
@@ -1120,7 +848,7 @@ def build() -> bpy.types.Object:
     for obj in sources + hand_sources:
         bpy.data.objects.remove(obj)
 
-    scale = HIP_HEIGHT / SPINE_JOINTS[0]
+    scale = HEIGHT / max(v.co.z for v in body.data.vertices)
     body.data.transform(Matrix.Scale(scale, 4))
     bones = [(name, tuple(np.array(head) * scale), tuple(np.array(tail) * scale), parent) for name, head, tail, parent in _bones()]
     rig = scene.armature("ScanDoctorRig", bones)

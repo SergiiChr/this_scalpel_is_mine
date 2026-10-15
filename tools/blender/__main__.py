@@ -11,8 +11,6 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-import bpy
-
 from . import anatomy, hand, patient, scan_doctor, scene
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,20 +50,12 @@ def _patient() -> list[Path]:
 
 def _scan_doctor() -> list[Path]:
     rig = scan_doctor.build()
-    # The denoiser smears painted detail: render the texture as it is, with samples enough to need none. Cycles shades
-    # a decimated smooth surface in blotches where the sun's shadow ends (the terminator) unless it is offset.
-    bpy.context.scene.cycles.use_denoising = False
-    bpy.context.scene.cycles.samples = 256
-    for obj in scene.meshes():
-        obj.shadow_terminator_geometry_offset = 0.6
     scene.export(OUT / "scan_doctor.glb", "JPEG")
     scene.export(CANDIDATES / "scan_doctor.glb", "JPEG")
     shots = scene.render_views(
         OUT, "scan_doctor", [("front", (0.0, 0.1, -1.0)), ("back", (0.0, 0.1, 1.0)), ("side", (1.0, 0.1, 0.0)), ("three_quarter", (-0.7, 0.4, -0.7))]
     )
-    shots += scene.render_views(OUT, "scan_doctor_chest", [("front", (0.0, 0.1, -1.0)), ("back", (0.0, 0.1, 1.0))], focus=((0.0, 1.3, 0.0), 0.3))
-    shots += scene.render_views(OUT, "scan_doctor_hips", [("front", (0.0, 0.1, -1.0)), ("back", (0.0, 0.1, 1.0))], focus=((0.0, 0.85, 0.0), 0.3))
-    shots += scene.render_views(OUT, "scan_doctor_feet", [("front", (0.3, 0.3, -1.0)), ("side", (1.0, 0.2, -0.3))], focus=((0.0, 0.15, -0.03), 0.22))
+    shots += scene.render_views(OUT, "scan_doctor_face", [("front", (0.0, 0.1, -1.0))], focus=((0.0, 1.38, -0.1), 0.32))
     scan_doctor.test_pose(rig)
     return shots + scene.render_views(OUT, "scan_doctor_posed", [("front", (0.0, 0.1, -1.0)), ("three_quarter", (0.7, 0.3, -0.7))])
 
