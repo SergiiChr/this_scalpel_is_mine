@@ -196,9 +196,12 @@ public class GelpiTest {
         await driver.PlayerOpensGelpi(ToolActions.SpreadRange.Y);
         AssertFloat(gelpi.Spread).OverrideFailureMessage($"the wheel stops short of fully open ({gelpi.Spread * 100f:0.0} cm)")
             .IsLess(ToolActions.SpreadRange.Y - ToolActions.SpreadStep);
+        var strain = Mathf.Max(tissue.StrainAt(Patient.SpreaderKey(gelpi.Uid, 0)), tissue.StrainAt(Patient.SpreaderKey(gelpi.Uid, 1)));
+        AssertFloat(strain).OverrideFailureMessage($"where the skin a jaw holds no longer gives (strained {strain:0.00})")
+            .IsGreater(ToolActions.SpreadStrain);
         var gap = tissue.GapAt(middle, body.MetersToUv(0.004f), TissueDepth.Muscle);
         AssertFloat(gap).OverrideFailureMessage($"but only once the wound stands {gap * 100f:0.0} cm open through the muscle").IsGreater(ThighOpen);
-        // Away from the cut's lips: the skin the jaws push toward the drape.
+        // Beyond the jaws' grips: the skin they push toward the drape, the lips included.
         var ridge = Enumerable.Range(0, tissue.Pos.Length)
             .Where(k => Mathf.Abs(tissue.UvOf(k).Y - middle.Y) * body.SiteSize.Y > 0.012f)
             .Max(k => tissue.Pos[k].Y - tissue.Rest[k].Y);

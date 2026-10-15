@@ -126,8 +126,7 @@ public sealed partial class TissueSim {
     /// has grown or shrunk since the grip took hold (see <see cref="StrainAt"/>). Pulled harder, the hand is held
     /// where the skin stops giving (<see cref="Restrain"/>, Patient.UpdateGrip()): skin can't be dragged across the
     /// site like rubber, nor pushed through itself. A flap cut free swings as far as its hinge lets it. Skin still
-    /// tears where a tool forces it (a spreader cranked open, a surgeon walking away holding on) or a thread cuts
-    /// through.</summary>
+    /// tears where a tool forces it (a surgeon walking away holding on) or a thread cuts through.</summary>
     public const float GripStrain = 1.5f;
     /// <summary>Skin bunches up to this share of its length, pushed along, before it holds the hand like
     /// <see cref="GripStrain"/> does: it piles up in front of the jaws, it doesn't pass through itself.</summary>
@@ -1129,7 +1128,7 @@ public sealed partial class TissueSim {
         var reach = Mathf.Max(held * (GripStrain / strain), held - GiveBack);
         var along = (target - home).Slide(Vector3.Up);
         var peel = Mathf.Max(along.Length() - reach, 0f);
-        // Lifted already as high as the skin peels (or higher, by Lift), it stays where it is.
+        // Lifted already as high as the skin peels (or higher, raised by the hand), it stays where it is.
         var height = Mathf.Min(target.Y + peel, Mathf.Max(now.Y, home.Y + PeelLift));
         return (home + along.LimitLength(reach)) with { Y = height };
     }
