@@ -166,6 +166,9 @@ public sealed partial class TissueSim {
     /// </summary>
     public const int MaxCatchUp = 2;
     public const float SleepEpsilon = 0.00002f;
+    /// <summary>The widest flip between two spots that still counts as at rest (see <see cref="IsSleeping"/>).
+    /// </summary>
+    public const float SleepJitter = 0.0001f;
     public const int SleepSteps = 20;
     /// <summary>Most solver steps the skin gets to settle at build time (see Settle()).</summary>
     public const int SettleSteps = 300;
@@ -657,7 +660,7 @@ public sealed partial class TissueSim {
     }
 
     /// <summary>Asleep once nothing has moved for SleepSteps steps, grips held still included: a moved grip wakes it.
-    /// </summary>
+    /// Skin flipping between two spots less than SleepJitter apart every step counts as not moving.</summary>
     public bool IsSleeping => _stillSteps >= SleepSteps;
 
     public void Wake() => _stillSteps = 0;
@@ -1642,9 +1645,11 @@ public sealed partial class TissueSim {
         if (_retractDirty) {
             UpdateRetraction();
         }
-        // A grip held still can leave a few particles where the constraints push them back and forth by a few hundredths
-        // of a millimeter every step, forever: back where they were two steps ago, they're at rest too.
-        _stillSteps = Mathf.Min(moved, wandered) < SleepEpsilon * SleepEpsilon ? _stillSteps + 1 : 0;
+        // A grip held still can leave a few particles where the constraints push them back and forth by a few
+        // hundredths of a millimeter every step, forever: back where they were two steps ago, they're at rest too.
+        var still = moved < SleepEpsilon * SleepEpsilon
+            || (wandered < SleepEpsilon * SleepEpsilon && moved < SleepJitter * SleepJitter);
+        _stillSteps = still ? _stillSteps + 1 : 0;
         if (_stillSteps >= SleepSteps) {
             if (_pins.Count == 0) { _fold.Active = false; }
             _fold.Expire(this);
