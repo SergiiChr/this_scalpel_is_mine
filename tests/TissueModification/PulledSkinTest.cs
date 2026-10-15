@@ -36,6 +36,8 @@ public class PulledSkinTest {
     /// must then stand this far (meters) above the muscle under it.</summary>
     private const float PeelPull = 0.04f;
     private const float Peeled = 0.01f;
+    /// <summary>How far (meters) the views of the peeled lip are taken from.</summary>
+    private const float PeelView = 0.15f;
 
     [TestCase("appendectomy")]
     [TestCase("leg_extension")]
@@ -145,8 +147,11 @@ public class PulledSkinTest {
             .IsGreater(Peeled);
         AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage("peeled without tearing").IsEqual(wounds);
         await AssertNothingClips(driver);
-        session.Along = body.Site.GlobalBasis.X;
-        await driver.Capture("peeled", $"forceps hold the thigh wound's lip peeled over {Peeled * 100f:0} cm up off the muscle: the skin and its fat lifted in a smooth arch, the muscle's cut edge showing flat under it, nothing through anything");
+        // From across the limb on the far side, under the lifted lip, the hands left out: the one holding the forceps
+        // hangs right over it.
+        var site = driver.SitePoint(middle);
+        var under = -body.Site.GlobalBasis.Z;
+        await session.CaptureOblique("peeled", $"forceps hold the thigh wound's lip peeled over {Peeled * 100f:0} cm up off the muscle: the skin and its fat lifted in a smooth arch, the muscle's cut edge showing flat under it, nothing through anything", site, under, PeelView);
 
         await driver.SwitchTo(SurgeryDriver.Left);
         var muscle = driver.Patient.Wounds.Where(wound => wound.ThroughMuscle).ToList();
@@ -156,7 +161,7 @@ public class PulledSkinTest {
         var sewn = muscle.Min(wound => wound.Muscle.Min());
         AssertFloat(sewn).OverrideFailureMessage($"the needle sews the muscle shut under the peeled lip ({sewn:0.00})\n{driver.Recent()}")
             .IsGreaterEqual(1f);
-        await driver.Capture("muscle_sewn", "the muscle sewn shut under the lip still held up: a thread across the muscle's cut, the skin edge peeled above it");
+        await session.CaptureOblique("muscle_sewn", "the muscle sewn shut: the thread draws its cut edges together into a closed seam in the opening, the skin and fat walls round it, nothing through anything", site, under, PeelView);
         await session.Finish(BudgetOverride);
     }
 

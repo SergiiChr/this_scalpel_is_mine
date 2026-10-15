@@ -3,12 +3,12 @@ namespace Scalpel.Tests.Tools;
 /// <summary>
 /// The Gelpi retractor (self-retaining) as a player uses it: laid along a cut and set in its middle with Use tool, its
 /// points going down into it as deep as it goes, opened on the wheel so the cut's edges move apart, let go of and left
-/// holding the wound open, taken back, closed and taken out. Opened too far it tears the skin. Pressed onto whole skin
-/// it bounces off. Set in a skin cut and let go of, the scalpel cuts the muscle between its jaws. Key frames: the site
-/// from above and obliquely and what the surgeon sees (the &lt; &gt; aim at the tips). Review them for the retractor
-/// lying along the cut with its arms over the skin, the points down in the cut on its edges, the opening widening with
-/// the tips and not past them, no skin passing through the jaws, the &lt; &gt; on the tips and the muscle cut showing
-/// between the jaws.
+/// holding the wound open, taken back, closed and taken out. On a tight thigh wound the wheel stops where the skin
+/// stops giving, before it bunches at the drape. Pressed onto whole skin it bounces off. Set in a skin cut and let go
+/// of, the scalpel cuts the muscle between its jaws. Key frames: the site from above and obliquely and what the surgeon
+/// sees (the &lt; &gt; aim at the tips). Review them for the retractor lying along the cut with its arms over the
+/// skin, the points down in the cut on its edges, the opening widening with the tips and not past them, no skin
+/// passing through the jaws, the &lt; &gt; on the tips and the muscle cut showing between the jaws.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_gelpi"), TestCategory("tissue_modification")]
@@ -118,25 +118,6 @@ public class GelpiTest {
         await driver.Capture("taken_out", "taken out: the jaws off the skin, the cut back to its own gape");
         await driver.PlayerPutsDown();
         AssertBool(driver.LiesOnTray(gelpi)).OverrideFailureMessage("the retractor is put back on the tray").IsTrue();
-        await session.Finish(BudgetOverride);
-    }
-
-    [TestCase(Timeout = Limits.Slow)]
-    public async Task GelpiOpenedTooFarTearsTheSkin() {
-        var session = await ToolSession.Start("appendectomy", "gelpi/too_far", views: true);
-        var driver = session.Driver;
-        var (from, to) = Cut(driver, 0.03f);
-        session.Along = driver.SitePoint(to) - driver.SitePoint(from);
-        await driver.PlayerCutsSkin(from, to, 2);
-        await driver.PlayerPutsDown();
-        var gelpi = await driver.PlayerSetsGelpi(from, to);
-        AssertBool(gelpi.InWound).OverrideFailureMessage("set in a 3 cm cut").IsTrue();
-        await driver.PlayerOpensGelpi(ToolActions.SpreadRange.Y);
-        await Frames.Seconds(1f);
-        AssertBool(driver.Patient.Flags.ContainsKey("tears"))
-            .OverrideFailureMessage($"opened {gelpi.Spread * 100f:0} cm across a 3 cm cut, the skin tears").IsTrue();
-        AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("skin_tear")).OverrideFailureMessage("a tear costs points").IsTrue();
-        await driver.Capture("torn", "opened wider than the 3 cm cut: the skin torn at its ends");
         await session.Finish(BudgetOverride);
     }
 
