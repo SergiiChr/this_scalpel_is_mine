@@ -66,8 +66,10 @@ public partial class Objectives : Node {
                 if (Missing(step) is { } missing) {
                     state.Spoiled = true;
                     surgery.AnnounceDebug($"Spoiled: {step.Label} (before \"{missing.Label}\")");
+                    surgery.Scoring.Note($"Spoiled: {step.Label}, \"{missing.Label}\" wasn't in place", false);
                     continue;
                 }
+                surgery.Scoring.Note($"Done: {step.Label}", true);
             }
             var done = met || (state.Reached && !ObjectiveChecks.IsState(step.Type));
             if (done != state.Done) {
@@ -88,14 +90,14 @@ public partial class Objectives : Node {
         return null;
     }
 
-    /// <summary>The outcome as the patient leaves: scores every step that counts and every required one that doesn't.
-    /// True when all required ones count.</summary>
+    /// <summary>The outcome as the patient leaves: scores every step that counts and every required one that doesn't,
+    /// each by its label on the timeline. True when all required ones count.</summary>
     public bool Settle(Scoring scoring) {
         for (var i = 0; i < Steps.Count; i++) {
             if (States[i].Counts) {
-                scoring.Add(Steps[i].Optional ? "optional_done" : "objective_done");
+                scoring.Add(Steps[i].Optional ? "optional_done" : "objective_done", note: $"Counted: {Steps[i].Label}");
             } else if (!Steps[i].Optional) {
-                scoring.Add("objective_missed");
+                scoring.Add("objective_missed", note: $"Missed: {Steps[i].Label}");
             }
         }
         return AllDone;
