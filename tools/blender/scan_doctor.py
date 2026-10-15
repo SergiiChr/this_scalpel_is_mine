@@ -77,6 +77,10 @@ SPINE_LINE = [
     (0.47, -0.044),
     (0.495, -0.044),
 ]
+# The figurine stands with her right hip and shoulder raised: the belt and corset edges on the back run 11.5 degrees
+# off level, the shoulders 6. Each height is rolled level around the spine (degrees, her right side lowered), from
+# nothing at the hip cut so the legs keep their sockets.
+ROLL = [(0.30, 0.0), (0.345, 11.5), (0.41, 11.5), (0.46, 6.0), (0.52, 6.0)]
 # The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest (measured on
 # the holsters, which sit at her sides); turned back around the pelvis, the twist undone across the bare waist between
 # belt and corset (y range).
@@ -388,7 +392,7 @@ def _smoothstep(edge0: float, edge1: float, x: NDArray[np.float64]) -> NDArray[n
 
 def straighten(points: NDArray[np.float64]) -> NDArray[np.float64]:
     """Scan pose to rest pose for the torso: each height shifted so the spine stands over the pelvis, the figure turned
-    to face -Z with the pelvis on the Y axis. Nothing is tilted, only shifted, so the head stays upright."""
+    to face -Z with the pelvis on the Y axis, then each height rolled level around the spine."""
     p = np.array(points, dtype=np.float64).reshape(-1, 3)
     heights, centers = (np.array(column) for column in zip(*SPINE_LINE, strict=True))
     p[:, 0] -= np.interp(p[:, 1], heights, centers) - centers[0]
@@ -396,7 +400,11 @@ def straighten(points: NDArray[np.float64]) -> NDArray[np.float64]:
     p -= pelvis
     angle = np.radians(-TURN - HIP_TURN[0] * (1.0 - _smoothstep(HIP_TURN[1], HIP_TURN[2], p[:, 1])))
     cos, sin = np.cos(angle), np.sin(angle)
-    return np.column_stack([p[:, 0] * cos + p[:, 2] * sin, p[:, 1], -p[:, 0] * sin + p[:, 2] * cos])
+    x, y, z = p[:, 0] * cos + p[:, 2] * sin, p[:, 1], -p[:, 0] * sin + p[:, 2] * cos
+    # A roll about the section's own center is, for these angles, a vertical shift growing with x.
+    roll_heights, rolls = (np.array(column) for column in zip(*ROLL, strict=True))
+    y = y - x * np.tan(np.radians(np.interp(y, roll_heights, rolls)))
+    return np.column_stack([x, y, z])
 
 
 def _straighten_object(obj: bpy.types.Object) -> None:
