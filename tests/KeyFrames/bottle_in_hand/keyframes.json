@@ -1,0 +1,8 @@
+{
+  "00_both_held_front.jpg": "the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip -0.89 up)",
+  "00_both_held_oblique.jpg": "the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip -0.89 up)",
+  "01_connected_front.jpg": "brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, the hand moved 2.1 cm to meet it (needle in the vial: True, tip 1.00 up, needle 0.4 cm from the cap)",
+  "01_connected_oblique.jpg": "brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, the hand moved 2.1 cm to meet it (needle in the vial: True, tip 1.00 up, needle 0.4 cm from the cap)",
+  "02_drawn_front.jpg": "three notches draw 3 ml of the drug from the held bottle (syringe 3.0 ml, bottle down 3.0 ml)",
+  "02_drawn_oblique.jpg": "three notches draw 3 ml of the drug from the held bottle (syringe 3.0 ml, bottle down 3.0 ml)"
+}
