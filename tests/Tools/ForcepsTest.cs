@@ -94,8 +94,13 @@ public class ForcepsTest {
             "held_up");
         AssertBool(hud.DepthShown && hud.AimText.Contains("Tip depth") && hud.AimText.Contains("held by the wheel"))
             .OverrideFailureMessage($"the aim shows the stem down to the tip and the depth beside it: {hud.AimText}").IsTrue();
+        // Zoomed in, so the stem shows.
+        PlayerInput.Tap(InputActions.Zoom);
+        await Frames.Seconds(0.5f);
         await session.CaptureView("held_up_view",
-            "the aim's stem from the opening's lip down to the forceps' tip, \"Tip depth\" and \"held by the wheel\" beside it");
+            "zoomed in over the opening, the aim's stem from its lip down to the forceps' tip, \"Tip depth\" and \"held by the wheel\" beside it");
+        PlayerInput.Tap(InputActions.Zoom);
+        await Frames.Seconds(0.5f);
 
         // Pressed there, the jaws close where the tip is: on nothing, the tip staying put.
         await Press(driver);
@@ -104,12 +109,13 @@ public class ForcepsTest {
             .OverrideFailureMessage($"pressed held up, the forceps close on nothing and stay up: {forceps.Hold}, {pressed.Depth} m deep")
             .IsTrue();
 
-        // Held deep, the tip slides along the lip rather than going under the skin.
-        var skin = driver.SitePoint(SkinBeside(driver, bullet.Uv) + new Vector2(0f, driver.Body.MetersToUv(0.01f)));
+        // Held deep and moved along the cut past its end, the tip stops at the end's lip rather than going under the skin.
+        var skin = driver.SitePoint(bullet.Uv + new Vector2(driver.Body.MetersToUv((Opening * 0.5f) + 0.01f), 0f));
         await driver.PlayerSweepsTo(skin);
         var stopped = forceps.TipPosition();
         await driver.AssertAndCapture(driver.Body.IsOpen(driver.Body.WorldToUv(stopped)) && hand.HeldDepth is not null,
-            "held deep and moved toward the skin, the forceps' tip stops at the opening's lip, still down in it", "at_the_lip");
+            "held deep and moved along the cut past its end, the forceps' tip stops at the end of the opening, still down in it",
+            "at_the_lip");
 
         // Lowered all the way, it rests on what's inside again.
         for (var i = 0; i < 10 && hand.HeldDepth is not null; i++) {
