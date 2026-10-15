@@ -11,6 +11,9 @@ public partial class PatientBody {
     /// down movement folds a layer over itself where the skin above it bunches up. See <see cref="LayerPoint"/>.
     /// </summary>
     private static readonly float[] LayerTether = [float.PositiveInfinity, float.PositiveInfinity, 0.008f];
+    /// <summary>How far (meters) the muscle rises with the skin over it before the skin and its fat peel off it (see
+    /// <see cref="LayerPoint"/>).</summary>
+    private const float MuscleLift = 0.004f;
     internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Movement over which the rendered skin adopts the deformed sheet's normals.</summary>
     private const float FlapMove = 0.015f;
@@ -1253,18 +1256,21 @@ public partial class PatientBody {
     /// rests, moved as far as the sim moved it (Moved()). The skin and its fat move as one. The muscle slides along
     /// only as far as its tether lets it (LayerTether) and stays down on its bed while the skin lifts off it, so a
     /// pull on whole skin slides the skin over it. Beside a cut through it the muscle is cut free and goes with the
-    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle, and a flap
-    /// takes its layers along. A flap turned right over takes everything.
+    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle along the
+    /// body. Lifted, the skin and its fat peel off the muscle: it rises with them only <see cref="MuscleLift"/>, so a
+    /// wound's edge held up shows the muscle's cut edge under it. A flap turned right over takes everything.
     /// </summary>
     public Vector3 LayerPoint(int layer, int k) {
         var moved = Moved(k);
-        var freed = float.IsPositiveInfinity(LayerTether[layer]) ? 1f : Tissue.Freed(LayerDepth[layer], k);
-        freed = Mathf.Max(freed, TurnedAmount(k, moved, Tissue.TurningFlap));
+        var tethered = !float.IsPositiveInfinity(LayerTether[layer]);
+        var turned = tethered ? TurnedAmount(k, moved, Tissue.TurningFlap) : 1f;
+        var freed = tethered ? Mathf.Max(Tissue.Freed(LayerDepth[layer], k), turned) : 1f;
         var lift = new Vector3(0f, moved.Y, 0f);
         var slide = moved - lift;
         var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
         var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
-        var point = _onModel[k] + slide * follow + lift * Mathf.Max(freed, follow);
+        var rise = moved.Y * Mathf.Max(freed, follow);
+        var point = _onModel[k] + slide * follow + Vector3.Up * Mathf.Lerp(Mathf.Min(rise, MuscleLift), rise, turned);
         // Skin folded out over the drape lies on the cloth where it is now, not at the body's height under its old
         // spot, and the layers that come with it lie on it too; skin under the drape stays under it. A tethered
         // layer that stayed behind under exposed skin is left where it is: it's under the skin, whatever lies over.

@@ -83,9 +83,11 @@ overview, the data formats designers edit and the design decisions.
   the edges actually meet. How it's simulated and drawn is documented on those classes.
 - A hand holding skin is held by it: pulled past what the skin gives (`TissueSim.GripStrain`, the longest spring at
   the held skin over its rest length) the grip stops where the skin does and the hand comes back to it
-  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. A flap cut
-  free swings as far as its hinge lets it. Skin still tears where a tool forces it (a spreader cranked open, a
-  surgeon walking away holding on, a thread pulled too tight).
+  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. Pulled on
+  from there, it peels a cut's lip up off what's under it instead (`TissueSim.PeelLift`): the skin and its fat rise,
+  the muscle stays down (`PatientBody.LayerPoint()`), so a tight wound held up shows its muscle edge for the needle.
+  A flap cut free swings as far as its hinge lets it. Skin still tears where a tool forces it (a surgeon walking away
+  holding on, a thread pulled too tight).
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
@@ -513,8 +515,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   as deep as the cut goes (through the skin, the fat or the muscle, at most `ToolActions.SpreadReach`), so how far
   the arms sink shows how deep the cut is (`SurgicalTool.DigTo()`). Pressed on skin with no cut between its tips it
   doesn't set: the hand bounces off and comes back down (`SurgeonHand.Bounce()`). Opened or closed, each edge moves
-  half the change (`Patient.OpenSpreader()`), and the cut opens like the skin lets it: opened too far it tears at the
-  ends. Use tool again takes it out.
+  half the change (`Patient.OpenSpreader()`), and the cut opens like the skin lets it. Once the skin either jaw
+  holds stops giving (`ToolActions.SpreadStrain`) the wheel opens it no further: past that the skin would only bunch
+  into a ridge at the drape. Use tool again takes it out.
 - Set, it stays where it went in: the hand holding it goes to it and doesn't shake (`Surgeon.HoldInWound()`).
   Put down, or walked away from, it stays set in the wound (self-retaining). Picked up again, the wheel works on it.
   Left set, it doesn't keep hands or tools off the cut: a blade cuts the layers under the skin between its jaws.

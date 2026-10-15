@@ -16,11 +16,6 @@ public class RetractorTest {
     /// <summary>How far (meters) from the cut the hook goes in, and how far the hand then draws it aside.</summary>
     private const float HookOff = 0.006f;
     private const float Pull = 0.02f;
-    /// <summary>How far (meters) the retractors on the thigh wound's edges are drawn across the limb, how far each
-    /// edge must follow, and how wide (meters, through the muscle) they must then hold it to sew its muscle.</summary>
-    private const float Spread = 0.03f;
-    private const float SpreadGiven = 0.02f;
-    private const float SewableGap = 0.035f;
     /// <summary>How far (meters) the hand sweeps a hooked edge away: more than the skin gives.</summary>
     private const float FarPull = 0.08f;
     /// <summary>How far (meters) from the cut's middle its gap is measured.</summary>
@@ -152,55 +147,40 @@ public class RetractorTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>The bullet's thigh wound held open to sew its muscle: the retractors on its edges are drawn
-    /// <see cref="Spread"/> across the limb, further than the skin gives, and the skin lets them most of the way
-    /// before it holds them. Across a narrow limb the skin pushed ahead of a hook humps up, it doesn't stop the hand a
-    /// centimeter and a half out.</summary>
     [TestCase]
-    public async Task RetractorsSpreadAWidenedThighWoundWideEnoughToSewItsMuscle() {
+    public async Task RetractorsLetGoRoundAWidenedThighWoundLieAlongTheLimb() {
         var session = await ToolSession.Start("bullet_muscle", "retractor/thigh");
         var driver = session.Driver;
         var body = driver.Body;
         var middle = driver.Patient.Wounds[0].Midpoint;
-        // The entry wound widened through every layer along the thigh.
+        // The entry wound widened through every layer along the thigh, then three retractors round it: one on each edge,
+        // one at its end, each drawn away from the wound and let go of.
         var half = new Vector2(body.MetersToUv(0.025f), 0f);
         await driver.PlayerCutsSkin(middle - half, middle + half, 3);
         await driver.PlayerPutsDown();
         await Frames.Seconds(1f);
         var wounds = driver.Patient.Wounds.Count;
         var hooks = new List<SurgicalTool>();
-        // On each side at the edge of the opening, pressed into it as a player does: the hook catches the edge on that
-        // side. Drawn across the limb in meters: the site's uv is narrower across it than along.
-        foreach (var away in (Vector2[])[new(0, -1), new(0, 1)]) {
+        foreach (var away in (Vector2[])[new(0, -1), new(0, 1), new(1, 0)]) {
             var number = hooks.Count + 1;
+            // On each side at the edge of the opening, pressed into it as a player does: the hook catches the edge on
+            // that side. At the end on the skin past it: drawn along the cut from inside it, it would tear it longer.
+            var atEnd = away.X != 0f;
+            var at = atEnd ? EdgeBeside(driver, middle + (half * 0.8f), away) : middle + (away * body.MetersToUv(0.003f));
             SurgeryState.ToolIsOnTray(driver.Surgery, "retractor");
-            var hookAt = driver.SitePoint(middle + (away * body.MetersToUv(0.003f)));
+            var hookAt = driver.SitePoint(at);
             var retractor = await Hook(driver, hookAt, $"retractor {number}");
-            await LetGoPulled(driver, retractor, driver.SitePoint(middle + (away * Spread / body.SiteSize.Y)) - driver.SitePoint(middle), number);
+            // The end only gently: the short strip of skin between the hook and the end of the cut tears pulled 2 cm.
+            var pull = driver.SitePoint(at + (away * body.MetersToUv(atEnd ? Pull * 0.5f : Pull))) - hookAt;
+            await LetGoPulled(driver, retractor, pull, number);
             AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage($"retractor {number} hooked and pulled without tearing")
                 .IsEqual(wounds);
-            var drawn = (retractor.TipPosition() - hookAt).Slide(Vector3.Up).Length();
-            AssertFloat(drawn).OverrideFailureMessage($"retractor {number} drawn {Spread * 100f:0} cm takes its edge {drawn * 1000f:0} mm out")
-                .IsGreater(SpreadGiven);
             hooks.Add(retractor);
         }
         foreach (var retractor in hooks) {
             AssertLiesOnBody(driver, retractor);
         }
-        // Across the wound's middle: the entry wound's midpoint lies a few millimeters off the widened cut.
-        var gap = body.Tissue.GapAt(middle, body.MetersToUv(0.004f), TissueDepth.Muscle);
-        AssertFloat(gap).OverrideFailureMessage($"the retractors hold the wound {gap * 100f:0.0} cm open through the muscle").IsGreater(SewableGap);
-        await driver.Capture("spread", $"two retractors let go on the thigh wound's edges hold it over {SewableGap * 100f:0} cm open: the muscle's cut edges show on both sides, the skin pushed ahead of each hook humped up smooth, nothing through the skin");
-
-        // The widened cut and the entry wound it runs through both go through the muscle.
-        await driver.PlayerRequestsItem("needle");
-        var muscle = driver.Patient.Wounds.Where(wound => wound.ThroughMuscle).ToList();
-        foreach (var wound in muscle) {
-            await driver.PlayerSews(wound, TissueDepth.Muscle);
-        }
-        var sewn = muscle.Min(wound => wound.Muscle.Min());
-        AssertFloat(sewn).OverrideFailureMessage($"the needle sews the muscle shut between the retractors ({sewn:0.00})\n{driver.Recent()}")
-            .IsGreaterEqual(1f);
+        await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
         await session.Finish(BudgetOverride);
     }
 

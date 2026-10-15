@@ -32,6 +32,10 @@ public class PulledSkinTest {
     /// up, and a little back toward its hinge, so the flap lifts and humps up.</summary>
     private static readonly Vector3 FlapPull = new(0f, 0.6f, 0.15f);
     private const int GripKey = 900;
+    /// <summary>How far (meters) the hand draws a thigh wound's lip across the limb: more than the skin gives. The lip
+    /// must then stand this far (meters) above the muscle under it.</summary>
+    private const float PeelPull = 0.04f;
+    private const float Peeled = 0.01f;
 
     [TestCase("appendectomy")]
     [TestCase("leg_extension")]
@@ -100,6 +104,59 @@ public class PulledSkinTest {
         await Frames.Seconds(3f);
         await AssertNothingClips(driver);
         await driver.Capture("flap_released", "the flap let go settles back over its bed, no sheet left through another");
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task ForcepsPeelATightThighWoundsEdgeUpOffItsMuscleToSewIt() {
+        var session = await ToolSession.Start("bullet_muscle", "skin_fold/peeled");
+        var driver = session.Driver;
+        var body = driver.Body;
+        var middle = driver.Patient.Wounds[0].Midpoint;
+        // The entry wound widened through every layer along the thigh.
+        var half = new Vector2(body.MetersToUv(0.025f), 0f);
+        await driver.PlayerCutsSkin(middle - half, middle + half, 3);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        var wounds = driver.Patient.Wounds.Count;
+        // The needle first: fetched while the other hand holds the lip, walking to the tray would drag it.
+        await driver.SwitchTo(SurgeryDriver.Left);
+        await driver.PlayerRequestsItem("needle");
+        await driver.SwitchTo(SurgeryDriver.Right);
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        // Across the limb (meters to uv: the site is narrower across it than along) to the lip, and a little past it.
+        var across = new Vector2(0f, 0.001f / body.SiteSize.Y);
+        var lip = middle;
+        for (var i = 0; i < 60 && body.LayerAt(lip) != "skin"; i++) {
+            lip += across;
+        }
+        lip += across * 2f;
+        var k = body.Tissue.Nearest(lip);
+        await driver.PlayerWalksTo(driver.SitePoint(lip));
+        await driver.PlayerReaches(driver.SitePoint(lip));
+        SurgeryDriver.Use();
+        await Frames.Physics(10);
+        AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage($"the forceps take the wound's lip ({forceps.Hold})").IsTrue();
+        // Further across than the thigh's tight skin gives.
+        await driver.PlayerSweepsTo(driver.SitePoint(middle + (across * PeelPull * 1000f)));
+        await Frames.Seconds(1f);
+        var peeled = body.LayerPoint(0, k).Y - body.LayerPoint(2, k).Y;
+        AssertFloat(peeled).OverrideFailureMessage($"pulled past what the skin gives, the lip peels {peeled * 1000f:0} mm up off the muscle")
+            .IsGreater(Peeled);
+        AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage("peeled without tearing").IsEqual(wounds);
+        await AssertNothingClips(driver);
+        session.Along = body.Site.GlobalBasis.X;
+        await driver.Capture("peeled", $"forceps hold the thigh wound's lip peeled over {Peeled * 100f:0} cm up off the muscle: the skin and its fat lifted in a smooth arch, the muscle's cut edge showing flat under it, nothing through anything");
+
+        await driver.SwitchTo(SurgeryDriver.Left);
+        var muscle = driver.Patient.Wounds.Where(wound => wound.ThroughMuscle).ToList();
+        foreach (var wound in muscle) {
+            await driver.PlayerSews(wound, TissueDepth.Muscle);
+        }
+        var sewn = muscle.Min(wound => wound.Muscle.Min());
+        AssertFloat(sewn).OverrideFailureMessage($"the needle sews the muscle shut under the peeled lip ({sewn:0.00})\n{driver.Recent()}")
+            .IsGreaterEqual(1f);
+        await driver.Capture("muscle_sewn", "the muscle sewn shut under the lip still held up: a thread across the muscle's cut, the skin edge peeled above it");
         await session.Finish(BudgetOverride);
     }
 
