@@ -6,7 +6,7 @@ namespace Scalpel.Tests.Tools;
 /// too small to sew, it stops that one for good. Debug mode says when a wound stops bleeding and whether for good.
 /// Gauze also wipes away the beads of blood a needle leaves. With key frames review the gauze lying on the cut while
 /// pressed, the skin wiped dry while the pressure holds, the blood welling back, the gauze in the incision over the
-/// vessel, and the bead on the arm gone after wiping.
+/// vessel, the bead on the arm gone after wiping, and the spot a needle leaves on the site before and after wiping.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
@@ -191,19 +191,21 @@ public class GauzeTest {
         var spots = effects.Beads().Where(bead => bead.Dome is null).ToList();
         AssertInt(spots.Count).OverrideFailureMessage($"the needle leaves a spot on the site's skin\n{driver.Recent()}").IsEqual(1);
         var uv = spots[0].Uv;
-        AssertFloat(map.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv))
-            .OverrideFailureMessage("the spot is painted on the skin").IsGreater(0f);
+        var at = spots[0].GlobalPosition;
+        AssertFloat(map.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv)).OverrideFailureMessage("the spot is painted on the skin")
+            .IsGreater(0f);
+        await session.CaptureAt("spot", "the needle's puncture: a flat vein-like spot on the site's skin, nothing standing off it", at, 0.15f);
 
         await driver.PlayerRequestsItem("gauze");
-        var at = spots[0].GlobalPosition;
         await driver.PlayerWalksTo(at);
         await driver.PlayerWorksAt(at, 3, 1f);
         await Frames.Seconds(0.3f);
         AssertInt(effects.Beads().Count(bead => bead.Dome is null))
             .OverrideFailureMessage("gauze wipes it away like any blood").IsEqual(0);
+        await driver.PlayerPutsDown();
         AssertFloat(map.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv))
             .OverrideFailureMessage("and it's gone from the skin with the next repaint").IsEqual(0f);
-        await driver.PlayerPutsDown();
+        await session.CaptureAt("spot_wiped", "the spot wiped away with gauze, the skin at the puncture clean", at, 0.15f);
         await session.Finish(BudgetOverride);
     }
 

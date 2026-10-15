@@ -11,6 +11,9 @@ public class SyringeWithdrawalTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("needle withdrawal exceeds the recorded CPU/render budget", 4f);
 
+    private static bool Painted(PatientBody body, Vector2 uv) =>
+        body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv) > 0f;
+
     [TestCase(Timeout = Limits.Slow)]
     public async Task ReleaseWithdrawsWithoutTraumaAndLeavesBloodAtThePuncture() {
         GD.Seed(42);
@@ -71,9 +74,9 @@ public class SyringeWithdrawalTest {
                 }
                 AssertFloat(bead.GlobalPosition.DistanceTo(puncture))
                     .OverrideFailureMessage(label + ": the bead sits exactly on the skin at the injection point").IsLess(0.0005f);
-                AssertBool(probe.Zone != SiteZone.Site
-                        || (bead.Dome is null && body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, probe.Uv) > 0f))
-                    .OverrideFailureMessage(label + ": on the site the bead is a spot painted on the skin, not a dome")
+                var onSite = probe.Zone == SiteZone.Site;
+                AssertBool(onSite ? bead.Dome is null && Painted(body, probe.Uv) : bead.Dome is not null)
+                    .OverrideFailureMessage(label + ": on the site the bead is a spot painted on the skin, elsewhere a dome")
                     .IsTrue();
                 AssertFloat(patient.Vitals.Pain).OverrideFailureMessage(label + ": withdrawal adds no pain").IsEqual(pain);
                 AssertBool(body.WoundMap.Snapshot(WoundMap.Layer.Wounds).SequenceEqual(wounds))
@@ -103,6 +106,8 @@ public class SyringeWithdrawalTest {
                 AssertBool(body.WoundMap.Snapshot(WoundMap.Layer.Wounds).SequenceEqual(wounds))
                     .OverrideFailureMessage(label + ": moving away adds no scratch").IsTrue();
                 AssertThat(bead.Dome?.Position).OverrideFailureMessage(label + ": the bead stays attached to the puncture").IsEqual(stuck);
+                AssertBool(!onSite || (Painted(body, probe.Uv) && bead.GlobalPosition.DistanceTo(body.SkinPoint(probe.Uv)) < 0.0005f))
+                    .OverrideFailureMessage(label + ": the spot stays painted at the puncture").IsTrue();
                 if (capture) {
                     await shots!.CaptureAt(label + "_moved_away", "the needle moved away: the bead stays at the puncture, no scratch", bead.GlobalPosition, 0.12f);
                 }

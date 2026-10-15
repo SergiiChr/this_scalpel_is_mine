@@ -10,7 +10,7 @@ public enum ToolEffect {
     Spatter,
     /// <summary>Defibrillator discharge: a blue-white flash and sparks at the paddles, the body jerks.</summary>
     Spark,
-    /// <summary>Injection or catheter: a bead of blood welling up where the needle went in.</summary>
+    /// <summary>Injection or catheter: a bead of blood where the needle went in, a spot on the site's skin.</summary>
     Bead,
 }
 

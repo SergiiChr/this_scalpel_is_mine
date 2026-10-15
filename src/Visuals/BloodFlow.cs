@@ -386,10 +386,12 @@ public partial class BloodFlow : Node3D {
     internal void RemovePuncture(Vector2 uv) => _punctures.Remove(uv);
 
     private void PaintPuncture(PatientBody body, Vector2 uv) {
-        var size = body.MetersToUv(PunctureRadius);
-        if (Overlaps(uv, size, 0f)) {
+        // Cut open since, it would split across the lips like a cut's own spot. It has only the skin's channel, so it
+        // needs no check against spots at other depths.
+        if (body.Tissue.IsOpen(uv, TissueDepth.Skin)) {
             return;
         }
+        var size = body.MetersToUv(PunctureRadius);
         body.WoundMap.Disk(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv, size, 1f, WoundMap.Mode.Max);
         _spots.Add((uv, size, 0f));
     }
