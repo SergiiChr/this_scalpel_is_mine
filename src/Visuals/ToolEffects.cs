@@ -21,6 +21,8 @@ public enum ToolEffect {
 public partial class ToolEffects : Node3D {
     /// <summary>Blood beads stay this long (seconds), then dry away.</summary>
     private const float BeadLife = 90f;
+    /// <summary>How long (seconds) a bead takes to dry away.</summary>
+    private const float BeadDrying = 10f;
 
     /// <summary>How a burst of particles looks and moves.</summary>
     private sealed record Burst(
@@ -148,7 +150,9 @@ public partial class ToolEffects : Node3D {
             var spot = new BloodBead(null, probe.Uv, body);
             body.Blood.AddPuncture(probe.Uv);
             _beads.Add(spot);
-            GetTree().CreateTimer(BeadLife, processAlways: false).Timeout += () => Remove(spot);
+            var dry = CreateTween();
+            dry.TweenInterval(BeadLife + BeadDrying);
+            dry.TweenCallback(Callable.From(() => Remove(spot)));
             return;
         }
         var dome = new MeshInstance3D {
@@ -180,7 +184,7 @@ public partial class ToolEffects : Node3D {
         var grow = CreateTween();
         grow.TweenProperty(dome, "scale", new Vector3(0.0035f, 0.0025f, 0.0035f), 2f);
         grow.TweenInterval(BeadLife);
-        grow.TweenProperty(dome, "scale", new Vector3(0.002f, 0.0004f, 0.002f), 10f);
+        grow.TweenProperty(dome, "scale", new Vector3(0.002f, 0.0004f, 0.002f), BeadDrying);
         grow.TweenCallback(Callable.From(() => Remove(bead)));
         _beads.Add(bead);
     }
@@ -220,6 +224,6 @@ public partial class ToolEffects : Node3D {
     internal sealed class BloodBead(MeshInstance3D? dome, Vector2 uv, PatientBody body) {
         public MeshInstance3D? Dome => dome;
         public Vector2 Uv => uv;
-        public Vector3 GlobalPosition => dome?.GlobalPosition ?? body.UvToWorld(uv);
+        public Vector3 GlobalPosition => dome?.GlobalPosition ?? body.SkinPoint(uv);
     }
 }

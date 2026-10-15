@@ -73,7 +73,7 @@ public class SyringeWithdrawalTest {
                     .OverrideFailureMessage(label + ": the bead sits exactly on the skin at the injection point").IsLess(0.0005f);
                 AssertBool(probe.Zone != SiteZone.Site
                         || (bead.Dome is null && body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, probe.Uv) > 0f))
-                    .OverrideFailureMessage(label + ": on the site the bead is a spot painted on the skin, which rides it when pulled")
+                    .OverrideFailureMessage(label + ": on the site the bead is a spot painted on the skin, not a dome")
                     .IsTrue();
                 AssertFloat(patient.Vitals.Pain).OverrideFailureMessage(label + ": withdrawal adds no pain").IsEqual(pain);
                 AssertBool(body.WoundMap.Snapshot(WoundMap.Layer.Wounds).SequenceEqual(wounds))

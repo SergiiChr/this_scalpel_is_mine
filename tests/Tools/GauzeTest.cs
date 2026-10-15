@@ -181,6 +181,32 @@ public class GauzeTest {
         await session.Finish(BudgetOverride);
     }
 
+    [TestCase]
+    public async Task GauzeWipesAwayTheSpotANeedleLeavesOnTheSite() {
+        var session = await ToolSession.Start("appendectomy", "gauze_site_spot");
+        var driver = session.Driver;
+        var map = driver.Body.WoundMap;
+        var effects = driver.Surgery.Effects;
+        await driver.PlayerNumbsSite();
+        var spots = effects.Beads().Where(bead => bead.Dome is null).ToList();
+        AssertInt(spots.Count).OverrideFailureMessage($"the needle leaves a spot on the site's skin\n{driver.Recent()}").IsEqual(1);
+        var uv = spots[0].Uv;
+        AssertFloat(map.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv))
+            .OverrideFailureMessage("the spot is painted on the skin").IsGreater(0f);
+
+        await driver.PlayerRequestsItem("gauze");
+        var at = spots[0].GlobalPosition;
+        await driver.PlayerWalksTo(at);
+        await driver.PlayerWorksAt(at, 3, 1f);
+        await Frames.Seconds(0.3f);
+        AssertInt(effects.Beads().Count(bead => bead.Dome is null))
+            .OverrideFailureMessage("gauze wipes it away like any blood").IsEqual(0);
+        AssertFloat(map.Value(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv))
+            .OverrideFailureMessage("and it's gone from the skin with the next repaint").IsEqual(0f);
+        await driver.PlayerPutsDown();
+        await session.Finish(BudgetOverride);
+    }
+
     private void Listen(SurgeryDriver driver) {
         _toasts.Clear();
         driver.Surgery.Hud.Toasted += _toasts.Add;

@@ -624,8 +624,7 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   along a line shows none there, as the cut would split it across its lips. Inside the opening it sits in the middle of
   the wall of the deepest layer it bleeds from, no bigger than that wall is high and never on the skin over it. Spots live in the wound map's Bleeds layer, repainted from the
   current sources, so they ride the tissue wherever it's pulled and go when the bleeding stops. Once the cavity pool
-  covers what one sees down the cut (`Patient.SlitView`) the same spot shows on the pool's surface, pulsing
-  (`bleed_spot.gdshader`). One
+  covers what one sees down the cut (`Patient.SlitView`) the pool hides it: nothing stands on its surface. One
   under skin that isn't cut spreads a bruise over itself instead.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.

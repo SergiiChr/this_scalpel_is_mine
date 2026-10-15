@@ -25,7 +25,6 @@ public static class Materials {
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
     public static readonly Shader Skin = GD.Load<Shader>("res://assets/shaders/skin.gdshader");
     public static readonly Shader TissueLayer = GD.Load<Shader>("res://assets/shaders/tissue_layer.gdshader");
-    private static readonly Shader BleedSpotShader = GD.Load<Shader>("res://assets/shaders/bleed_spot.gdshader");
     private static readonly Shader XrayShader = GD.Load<Shader>("res://assets/shaders/xray.gdshader");
     private static readonly Shader XrayFilmShader = GD.Load<Shader>("res://assets/shaders/xray_film.gdshader");
 
@@ -376,9 +375,6 @@ public static class Materials {
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         AlbedoColor = color,
     };
-
-    /// <summary>A bleed's spot on the cavity pool, drawn on a plane of size 2.</summary>
-    public static ShaderMaterial BleedSpot() => new() { Shader = BleedSpotShader };
 
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
