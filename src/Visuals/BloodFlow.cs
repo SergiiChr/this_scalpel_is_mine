@@ -7,23 +7,52 @@ namespace Scalpel.Visuals;
 public readonly record struct BleedSource(Vector2 Uv, float Rate, float Depth = 0f, bool Point = false) {
     public bool Inside => Depth > 0f;
 
-    public static Godot.Collections.Array ToVariant(IEnumerable<BleedSource> sources) =>
-        [.. sources.Select(source => (Variant)new Godot.Collections.Array { source.Uv, source.Rate, source.Depth, source.Point })];
+    /// <summary>Flat for the network, five floats a source: uv, rate, depth, point.</summary>
+    public static float[] Pack(List<BleedSource> sources) {
+        var flat = new float[sources.Count * 5];
+        for (var i = 0; i < sources.Count; i++) {
+            var (uv, rate, depth, point) = sources[i];
+            flat[i * 5] = uv.X;
+            flat[i * 5 + 1] = uv.Y;
+            flat[i * 5 + 2] = rate;
+            flat[i * 5 + 3] = depth;
+            flat[i * 5 + 4] = point ? 1f : 0f;
+        }
+        return flat;
+    }
 
-    public static List<BleedSource> FromVariant(Godot.Collections.Array sources) =>
-        [.. sources.Select(entry => entry.AsGodotArray())
-            .Select(entry => new BleedSource(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle(), entry[3].AsBool()))];
+    /// <summary>Replaces <paramref name="into"/> with what <see cref="Pack"/> wrote.</summary>
+    public static void Unpack(float[] flat, List<BleedSource> into) {
+        into.Clear();
+        for (var i = 0; i + 5 <= flat.Length; i += 5) {
+            into.Add(new BleedSource(new Vector2(flat[i], flat[i + 1]), flat[i + 2], flat[i + 3], flat[i + 4] > 0f));
+        }
+    }
 }
 
 /// <summary>Blood held in a cut that doesn't reach the cavity: where it bleeds (site uv), how deep under the skin the first
 /// layer it hasn't cut through lies (meters), which the blood rests on, and how full it is (0..1).</summary>
 public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill) {
-    public static Godot.Collections.Array ToVariant(IEnumerable<CutPool> pools) =>
-        [.. pools.Select(pool => (Variant)new Godot.Collections.Array { pool.Uv, pool.Floor, pool.Fill })];
+    /// <summary>Flat for the network, four floats a pool: uv, floor, fill.</summary>
+    public static float[] Pack(List<CutPool> pools) {
+        var flat = new float[pools.Count * 4];
+        for (var i = 0; i < pools.Count; i++) {
+            var (uv, floor, fill) = pools[i];
+            flat[i * 4] = uv.X;
+            flat[i * 4 + 1] = uv.Y;
+            flat[i * 4 + 2] = floor;
+            flat[i * 4 + 3] = fill;
+        }
+        return flat;
+    }
 
-    public static List<CutPool> FromVariant(Godot.Collections.Array pools) =>
-        [.. pools.Select(entry => entry.AsGodotArray())
-            .Select(entry => new CutPool(entry[0].AsVector2(), entry[1].AsSingle(), entry[2].AsSingle()))];
+    /// <summary>Replaces <paramref name="into"/> with what <see cref="Pack"/> wrote.</summary>
+    public static void Unpack(float[] flat, List<CutPool> into) {
+        into.Clear();
+        for (var i = 0; i + 4 <= flat.Length; i += 4) {
+            into.Add(new CutPool(new Vector2(flat[i], flat[i + 1]), flat[i + 2], flat[i + 3]));
+        }
+    }
 }
 
 /// <summary>
@@ -134,11 +163,28 @@ public partial class BloodFlow : Node3D {
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
     private PatientBody? _body;
 
-    /// <summary>The bleeding wounds.</summary>
-    public List<BleedSource> Sources { get; set; } = [];
+    /// <summary>The bleeding wounds. The patient swaps in a complete list every tick; nothing keeps a tick's own.
+    /// </summary>
+    public List<BleedSource> Sources { get; internal set; } = [];
 
-    /// <summary>Blood held in cuts that don't reach the cavity.</summary>
-    public List<CutPool> Pools { get; set; } = [];
+    /// <summary>Blood held in cuts that don't reach the cavity, swapped in like <see cref="Sources"/>.</summary>
+    public List<CutPool> Pools { get; internal set; } = [];
+
+    /// <summary>Scratch for <see cref="Spots"/>: the uvs bleeding inside, and the sources' indices by rate.</summary>
+    private readonly HashSet<Vector2> _insideUvs = [];
+    private readonly List<int> _byRate = [];
+    private readonly FasterFirst _fasterFirst;
+
+    /// <summary>Source indices, the fastest bleed first, equal rates in their order: the spots are painted in it.
+    /// </summary>
+    private sealed class FasterFirst(BloodFlow flow) : IComparer<int> {
+        public int Compare(int a, int b) {
+            var byRate = flow.Sources[b].Rate.CompareTo(flow.Sources[a].Rate);
+            return byRate != 0 ? byRate : a.CompareTo(b);
+        }
+    }
+
+    public BloodFlow() => _fasterFirst = new FasterFirst(this);
 
     /// <summary>Where the pools in cuts stand now (world).</summary>
     internal IReadOnlyList<Vector3> CutPools => _cutPools;
@@ -246,12 +292,18 @@ public partial class BloodFlow : Node3D {
         var multimesh = _wellMesh.Multimesh;
         _wells.Clear();
         // Every source gets its dome: the buffer grows with them (resizing clears it, all are set again below).
-        var inside = Sources.Count(source => source.Inside);
+        var inside = 0;
+        foreach (var source in Sources) {
+            inside += source.Inside ? 1 : 0;
+        }
         if (inside > multimesh.InstanceCount) {
             multimesh.InstanceCount = inside * 2;
         }
         var pulse = WellFlat * (1f + 0.3f * Mathf.Sin((float)GameClock.Seconds * Mathf.Tau * WellPulse));
-        foreach (var (uv, rate, depth, _) in Sources.Where(source => source.Inside)) {
+        foreach (var (uv, rate, depth, _) in Sources) {
+            if (depth <= 0f) {
+                continue;
+            }
             if (!body.Tissue.IsOpen(uv, TissueDepth.Skin)) {
                 Bruise(body, uv, rate * delta);
                 continue;
@@ -319,9 +371,18 @@ public partial class BloodFlow : Node3D {
             map.DiskOps(WoundMap.Layer.Bleeds, uv, radius, WipeSpot, soft: false);
         }
         _spots.Clear();
-        var inside = Sources.Where(source => source.Inside).Select(source => source.Uv).ToHashSet();
-        foreach (var (uv, rate, depth, point) in Sources.OrderByDescending(source => source.Rate)) {
-            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || inside.Contains(uv)) {
+        _insideUvs.Clear();
+        _byRate.Clear();
+        for (var i = 0; i < Sources.Count; i++) {
+            if (Sources[i].Inside) {
+                _insideUvs.Add(Sources[i].Uv);
+            }
+            _byRate.Add(i);
+        }
+        _byRate.Sort(_fasterFirst);
+        foreach (var index in _byRate) {
+            var (uv, rate, depth, point) = Sources[index];
+            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || _insideUvs.Contains(uv)) {
                 continue;
             }
             // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
@@ -333,7 +394,7 @@ public partial class BloodFlow : Node3D {
             }
             var size = body.MetersToUv(radius);
             var center = depth > 0f ? top + thickness * 0.5f : 0f;
-            if (_spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size)) {
+            if (Overlaps(uv, size, center)) {
                 continue;
             }
             if (depth <= 0f) {
@@ -348,6 +409,17 @@ public partial class BloodFlow : Node3D {
             }
             _spots.Add((uv, size, center));
         }
+    }
+
+    /// <summary>Whether a spot of <paramref name="size"/> at <paramref name="uv"/> would overlap one already painted
+    /// at another depth.</summary>
+    private bool Overlaps(Vector2 uv, float size, float center) {
+        foreach (var spot in _spots) {
+            if (spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -408,7 +480,8 @@ public partial class BloodFlow : Node3D {
     /// <summary>Rivulets slide downhill over the skin: gravity along the skin's own slope, wandering a little.</summary>
     private void Flow(PatientBody body, float delta) {
         var down = body.Site.GlobalBasis.Inverse() * Vector3.Down;
-        foreach (var rivulet in _rivulets.ToList()) {
+        for (var i = 0; i < _rivulets.Count; i++) {
+            var rivulet = _rivulets[i];
             var uv = rivulet.Uv;
             var slope = Slope(body, uv);
             var along = new Vector2(down.X, down.Z) + slope * down.Y;
@@ -424,9 +497,9 @@ public partial class BloodFlow : Node3D {
             if (next.X < 0f || next.Y < 0f || next.X > 1f || next.Y > 1f) {
                 // Ran off the site: it drips from here.
                 AddDrop(body.UvToWorld(next.Clamp(Vector2.Zero, Vector2.One)), Vector3.Zero);
-                _rivulets.Remove(rivulet);
+                _rivulets.RemoveAt(i--);
             } else if (rivulet.Volume <= 0f) {
-                _rivulets.Remove(rivulet);
+                _rivulets.RemoveAt(i--);
             }
         }
     }
@@ -474,14 +547,15 @@ public partial class BloodFlow : Node3D {
     /// <summary>Droplets fall under gravity and land on the table top or the floor, where they pool.</summary>
     private void Fall(float delta) {
         const float TableTop = Room.TableHeight + 0.07f;
-        foreach (var drop in _drops.ToList()) {
+        for (var i = 0; i < _drops.Count; i++) {
+            var drop = _drops[i];
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
             var onTable = position.X > Room.TableFoot && position.X < Room.TableHead && Mathf.Abs(position.Z) < 0.31f;
             var ground = onTable && drop.Position.Y >= TableTop ? TableTop : FloorY;
             if (position.Y <= ground) {
                 Pool(new Vector3(position.X, ground, position.Z));
-                _drops.Remove(drop);
+                _drops.RemoveAt(i--);
             } else {
                 drop.Position = position;
             }

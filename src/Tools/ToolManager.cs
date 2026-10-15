@@ -39,6 +39,14 @@ public partial class ToolManager : Node3D {
     public const string FloorGroup = "floor";
 
     private readonly Dictionary<int, SurgicalTool> _tools = [];
+    /// <summary>The tools ticked this physics frame: a tool's action may spawn another, which the dictionary can't
+    /// take while it is walked, so they are copied here first, into the same buffer every frame.</summary>
+    private readonly List<SurgicalTool> _ticking = [];
+    /// <summary>The free tools on the move, packed for <see cref="SyncFree"/>: their uids, and the four columns of
+    /// their transforms, <see cref="TransformFloats"/> each. Sized again only when their number changes.</summary>
+    private int[] _movingUids = [];
+    private float[] _movingTransforms = [];
+    private const int TransformFloats = 12;
     /// <summary>Host: syringes, vials, dishes and bags whose liquid changed since it was last sent.</summary>
     private readonly HashSet<int> _liquidChanged = [];
     private int _nextUid = 1;
@@ -521,7 +529,11 @@ public partial class ToolManager : Node3D {
 
     /// <summary>Host: a new tool falling from <paramref name="at"/>, as if it was dropped there (the floor soils it).
     /// </summary>
-    public void DropNew(string id, Vector3 at) => _tools[Spawn(id, at)].Falling = true;
+    public SurgicalTool DropNew(string id, Vector3 at) {
+        var tool = _tools[Spawn(id, at)];
+        tool.Falling = true;
+        return tool;
+    }
 
     /// <summary>Host: a skin graft cut from the patient, held at the tip of the tool that lifted it off. One piece
     /// covers one spot.</summary>
@@ -779,7 +791,9 @@ public partial class ToolManager : Node3D {
         if (!surgery.Running) {
             return;
         }
-        foreach (var tool in _tools.Values.ToList()) {
+        _ticking.Clear();
+        _ticking.AddRange(_tools.Values);
+        foreach (var tool in _ticking) {
             if (tool.State != ToolState.Held) {
                 Syringe.ReportPushed(tool);
             }
@@ -803,17 +817,43 @@ public partial class ToolManager : Node3D {
                     break;
             }
         }
+        _ticking.Clear();
         _syncAcc += dt;
         if (_syncAcc >= SyncInterval) {
             _syncAcc = 0f;
-            var moving = new Godot.Collections.Array();
-            foreach (var tool in _tools.Values.Where(t => t.State == ToolState.Free && !t.Sleeping)) {
-                moving.Add(new Godot.Collections.Array { tool.Uid, tool.GlobalTransform });
-            }
-            if (moving.Count > 0) {
-                Rpc(MethodName.SyncFree, moving);
-            }
+            SendMoving();
         }
+    }
+
+    /// <summary>Host: where the free tools still on the move are, to everyone else.</summary>
+    private void SendMoving() {
+        var moving = 0;
+        foreach (var tool in _tools.Values) {
+            moving += tool.State == ToolState.Free && !tool.Sleeping ? 1 : 0;
+        }
+        if (moving == 0) {
+            return;
+        }
+        if (_movingUids.Length != moving) {
+            _movingUids = new int[moving];
+            _movingTransforms = new float[moving * TransformFloats];
+        }
+        var at = 0;
+        foreach (var tool in _tools.Values) {
+            if (tool.State != ToolState.Free || tool.Sleeping) {
+                continue;
+            }
+            _movingUids[at] = tool.Uid;
+            var transform = tool.GlobalTransform;
+            var next = at * TransformFloats;
+            foreach (var column in (ReadOnlySpan<Vector3>)[transform.Basis.X, transform.Basis.Y, transform.Basis.Z, transform.Origin]) {
+                _movingTransforms[next++] = column.X;
+                _movingTransforms[next++] = column.Y;
+                _movingTransforms[next++] = column.Z;
+            }
+            at++;
+        }
+        Rpc(MethodName.SyncFree, _movingUids, _movingTransforms);
     }
 
     /// <summary>Where a dropped tool ended up decides what it costs you.</summary>
@@ -953,10 +993,12 @@ public partial class ToolManager : Node3D {
     private void SetSoiled(int uid, bool value) => ByUid(uid)?.SetSoiled(value);
 
     [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
-    private void SyncFree(Godot.Collections.Array moving) {
-        foreach (var entry in moving.Select(item => item.AsGodotArray())) {
-            if (ByUid(entry[0].AsInt32()) is { State: ToolState.Free } tool) {
-                tool.GlobalTransform = entry[1].AsTransform3D();
+    private void SyncFree(int[] uids, float[] transforms) {
+        Vector3 Column(int at) => new(transforms[at], transforms[at + 1], transforms[at + 2]);
+        for (var i = 0; i < uids.Length && (i + 1) * TransformFloats <= transforms.Length; i++) {
+            if (ByUid(uids[i]) is { State: ToolState.Free } tool) {
+                var at = i * TransformFloats;
+                tool.GlobalTransform = new Transform3D(Column(at), Column(at + 3), Column(at + 6), Column(at + 9));
             }
         }
     }

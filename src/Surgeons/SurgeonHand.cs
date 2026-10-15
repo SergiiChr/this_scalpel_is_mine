@@ -33,6 +33,10 @@ public partial class SurgeonHand : Node3D {
     /// <summary>Seconds of game time the hand's speed is measured over.</summary>
     private const float SpeedWindow = 0.25f;
     public static readonly IReadOnlyList<string> Fingers = ["Index", "Middle", "Ring", "Pinky", "Thumb"];
+    /// <summary>Each finger's joint bones in <see cref="Fingers"/>' order, root first: the poses name them every frame.
+    /// </summary>
+    private static readonly string[][] JointBones = [.. Fingers.Select(finger => (string[])[finger + "1", finger + "2", finger + "3"])];
+    private static readonly string[] ThumbBones = JointBones[^1];
     /// <summary>Radians each finger joint bends at full curl, knuckle first.</summary>
     private static readonly float[] JointBend = [0.9f, 1.2f, 0.8f];
     /// <summary>Most the thumb bends in all (radians) reaching for a syringe's plunger.</summary>
@@ -485,7 +489,7 @@ public partial class SurgeonHand : Node3D {
         for (var f = 0; f < Fingers.Count; f++) {
             var finger = Fingers[f];
             for (var joint = 0; joint < 3; joint++) {
-                var bone = $"{finger}{joint + 1}";
+                var bone = JointBones[f][joint];
                 // Each joint bends its bone toward the palm (the glove's -Y); the thumb folds in less.
                 var bend = Mathf.Min(_curl * amounts[f], 1f) * JointBend[joint] * (finger == "Thumb" ? 0.55f : 1f);
                 var axis = _gloveRig.Direction(bone).Cross(Vector3.Down).Normalized();
@@ -542,7 +546,7 @@ public partial class SurgeonHand : Node3D {
         var to = (target - root).Normalized();
         var aim = from.Cross(to).Length() > 0.0001f ? new Basis(new Quaternion(from, to)) : Basis.Identity;
         for (var joint = 0; joint < 3; joint++) {
-            _gloveRig.Rotate($"Thumb{joint + 1}", ThumbTurn(joint, bend, aim));
+            _gloveRig.Rotate(ThumbBones[joint], ThumbTurn(joint, bend, aim));
         }
     }
 
