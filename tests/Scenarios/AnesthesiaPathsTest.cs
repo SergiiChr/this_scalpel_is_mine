@@ -43,7 +43,7 @@ public class AnesthesiaPathsTest {
             await shots.CaptureView("awake", "the patient awake, eyes open, \"Put the patient under\" not checked off");
         }
         await driver.PlayerGivesDrug("vial_propofol", driver.DoseMl("vial_propofol"), SurgeryDriver.Route.Drip);
-        await Frames.Until(() => patient.Vitals.IsUnder, 30f);
+        await Frames.Until(() => patient.Vitals.IsUnder && patient.AnestheticWorks, 30f);
         await Frames.Seconds(Surgery.StatusInterval + 0.1f);
         AssertBool(patient.Vitals.IsUnder)
             .OverrideFailureMessage($"the chart dose puts the patient under: anesthesia {patient.Vitals.Anesthesia}").IsTrue();
@@ -72,20 +72,25 @@ public class AnesthesiaPathsTest {
         var objective = driver.Surgery.Objectives.States[0];
         var full = Mathf.Round(driver.DoseMl("vial_propofol"));
         var first = Mathf.Round(full * 0.5f);
+        var bag = driver.Surgery.Tools.DripBag()!;
+        var propofol = Db.Drug("propofol")!;
+        float Given() => patient.Drugs.Find(propofol.Id) is { } entry ? entry.Level + entry.Depot : 0f;
         await driver.PlayerGivesDrug("vial_propofol", first, SurgeryDriver.Route.Drip);
-        await Frames.Seconds(25f);
+        // Run down the line and soaked in.
+        await Frames.Until(() => bag.Bolus <= 0f && patient.Drugs.Find(propofol.Id)?.Depot < 0.01f, 60f);
+        AssertFloat(Given()).OverrideFailureMessage($"the first part is half the dose: {Given()}").IsBetween(0.45f, 0.55f);
         AssertBool(patient.Vitals.IsAwake && !objective.Done)
             .OverrideFailureMessage($"{first} of {full} ml leaves the patient awake and the objective open").IsTrue();
         await driver.PlayerGivesDrug("vial_propofol", full - first, SurgeryDriver.Route.Drip);
         // Everything run down the line, not just enough of it to put them under.
-        var bag = driver.Surgery.Tools.DripBag()!;
         await Frames.Until(() => objective.Done && bag.Bolus <= 0f, 30f);
-        var propofol = patient.Drugs.Find("propofol")!;
-        var given = propofol.Level + propofol.Depot;
-        AssertFloat(given)
-            .OverrideFailureMessage($"both parts add up to the right dose: {given}").IsBetween(0.95f, 1.05f);
+        AssertFloat(Given())
+            .OverrideFailureMessage($"both parts add up to the right dose: {Given()}").IsBetween(0.95f, 1.05f);
+        var fresh = propofol.Peak.Anesthesia;
+        var weak = fresh * driver.Surgery.RunMods.Mult("drug_strength_mult");
         AssertFloat(patient.Vitals.Anesthesia)
-            .OverrideFailureMessage("weak drugs leave the anesthesia shallower than fresh ones (0.9)").IsLess(0.7f);
+            .OverrideFailureMessage($"weak drugs leave the anesthesia at {weak}, shallower than fresh ones ({fresh})")
+            .IsEqualApprox(weak, 0.02f);
         AssertBool(objective.Done && patient.Vitals.IsUnder)
             .OverrideFailureMessage("the patient goes under and Put the patient under checks off").IsTrue();
         await driver.Stop();

@@ -29,8 +29,8 @@ public sealed class Vitals {
 
     public bool IsAwake => Consciousness > 0.45f;
 
-    /// <summary>Put under by an anesthetic, as anyone can see: eyes closed, breathing on the ventilator. A weaker
-    /// patient or weaker drugs leave the anesthesia shallower, but out is out.</summary>
+    /// <summary>Out with an anesthetic in, as anyone can see: eyes closed, no breathing of their own on the monitor. A
+    /// weaker patient or weaker drugs leave the anesthesia shallower, but out is out.</summary>
     public bool IsUnder => Anesthesia > 0f && !IsAwake;
 
     public float BloodRatio => BloodMl / MaxBloodMl;

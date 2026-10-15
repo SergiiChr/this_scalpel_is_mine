@@ -658,6 +658,9 @@ public partial class Patient : Node3D {
 
     private bool HasActive(string flag) => Drugs.Working(flag);
 
+    /// <summary>A general anesthetic is in at an effective level (<see cref="DrugDef.DoseEffective"/>).</summary>
+    public bool AnestheticWorks => Drugs.Entries.Any(entry => entry.IsWorking && entry.Def.Peak.Anesthesia > 0f);
+
     /// <summary>Says so when there's no line to give anything through, or it isn't in a vein.</summary>
     public bool IvReady() {
         if (!IvSet) {

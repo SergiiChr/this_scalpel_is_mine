@@ -268,7 +268,7 @@ public partial class SurgeryDriver {
         var vial = ((string[])["vial_propofol", "vial_ketamine"])
             .FirstOrDefault(id => FreeTools(id).Count > 0 || Surgery.Scenario.StartingTools.Contains(id), "vial_propofol");
         await PlayerGivesDrug(vial, DoseMl(vial), IvOrVein);
-        await Frames.Until(() => Patient.Vitals.IsUnder, 30f);
+        await Frames.Until(() => Patient.Vitals.IsUnder && Patient.AnestheticWorks, 30f);
         Note($"anesthesia {Patient.Vitals.Anesthesia:0.00}");
     }
 
