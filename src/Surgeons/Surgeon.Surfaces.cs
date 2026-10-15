@@ -1,12 +1,16 @@
 namespace Scalpel.Surgeons;
 
 /// <summary>What's under a point: how high (negative infinity for nothing), whether it's an opened incision (then the
-/// height is what's inside) and whether it gives like skin.</summary>
-public readonly record struct Surface(float Y, bool Open, bool Soft) {
+/// height is what's inside, and Lip the skin's height around it) and whether it gives like skin.</summary>
+public readonly record struct Surface(float Y, bool Open, bool Soft, float Lip = float.NaN) {
     public static readonly Surface None = new(float.NegativeInfinity, false, false);
 
     public bool Found => !float.IsNegativeInfinity(Y);
 }
+
+/// <summary>A tool tip over an opening: the lip straight above it, how deep under the lip it is and how deep it goes
+/// resting on what's inside (meters).</summary>
+public readonly record struct TipInOpening(Vector3 Lip, float Depth, float Bottom);
 
 /// <summary>Hands resting on what's under them, and syringes snapping into vials and the IV bag.</summary>
 public partial class Surgeon {
@@ -28,6 +32,10 @@ public partial class Surgeon {
     /// <summary>A syringe snapped into the IV bag points this far up (radians): the bag hangs high and the forearm rises
     /// to it, so level or lower the wrist would bend back.</summary>
     internal const float DripTilt = 0.5f;
+
+    /// <summary>How finely (meters) a forceps tip's move is checked for skin on its way (see InsideLip()): finer than the
+    /// thinnest skin between two cuts worth telling apart.</summary>
+    private const float LipStep = 0.002f;
 
     /// <summary>Hands whose syringe is snapped into a vial or the IV bag, or easing in or out.</summary>
     private readonly Dictionary<int, SnapState> _snaps = [];
@@ -61,7 +69,8 @@ public partial class Surgeon {
         var tip = WorkTip();
         // A grip with a working angle (a needle holder) pitches about its tip as it's lowered: the tip is where it
         // works.
-        if (tool is null || hand.Lowered || GripStyle.For(tool.Def.Grip).WorkTilt is not null) {
+        // Forceps held at a depth close where their tip is: Use tool doesn't bring them down.
+        if (tool is null || hand.Lowered || hand.HeldDepth is not null || GripStyle.For(tool.Def.Grip).WorkTilt is not null) {
             return tip;
         }
         var under = SurfaceBelow(tip);
@@ -102,6 +111,11 @@ public partial class Surgeon {
         if (IsNeedle(tool) && !hand.Attached) {
             surface = GloveBelow(hand, target + offset, surface);
         }
+        // Out of the opening the depth is forgotten: back over one, the tip rests on what's inside until the wheel says.
+        // Holding onto something, it's kept for when the jaws let go.
+        if (!hand.Attached && (!surface.Open || !HoldsDepth(hand.Index))) {
+            hand.HeldDepth = null;
+        }
         hand.OnHard = false;
         // A needle hovers right over what's under it, so its tip is on the aim, not a centimeter above it.
         var hover = IsNeedle(tool) ? NeedleHover : HoverGap;
@@ -112,7 +126,10 @@ public partial class Surgeon {
                 var gap = !hand.Lowered || tool is null ? hover
                     : tool.Def.Action == "cut" ? BladeInOpening[hand.Level]
                     : 0.001f;
-                target.Y = surface.Y + gap - offset.Y;
+                // Forceps held at a depth stay there, lowered or not, but never into what's inside.
+                var floor = surface.Y + gap;
+                var tip = hand.HeldDepth is { } depth ? Mathf.Max(surface.Lip - depth, floor) : floor;
+                target.Y = tip - offset.Y;
             } else if (hand.Lowered && surface.Soft) {
                 // Skin gives: a lowered tip presses into it, deeper with effort.
                 target.Y = surface.Y - 0.002f - (hand.Level * 0.004f) - offset.Y;
@@ -148,6 +165,63 @@ public partial class Surgeon {
         if (!hand.Attached) {
             hand.LocalTarget = ToLocal(hand.Target);
         }
+    }
+
+    /// <summary>Forceps and hemostats take a depth in an opening from the wheel. A skin hook only takes the lip, and a
+    /// pad or graft in the jaws goes where it's pressed.</summary>
+    internal bool HoldsDepth(int hand) => HeldTool(hand) is { Def.Action: "clamp" } tool
+        && !ToolActions.SkinHooks.Contains(tool.Def.Id) && Session.Tools.CarriedBy(tool) is null;
+
+    /// <summary>The hand's tool tip over an opening: how deep under the lip it is, and how deep it goes resting on what's
+    /// inside. Null when the tip isn't over one.</summary>
+    internal TipInOpening? InOpening(int index) {
+        if (HeldTool(index) is not { } tool) {
+            return null;
+        }
+        var hand = Hands[index];
+        var tip = hand.Target + hand.TipOffset(tool.Def.Length);
+        var under = SurfaceBelow(tip);
+        return under.Open ? new TipInOpening(tip with { Y = under.Lip }, under.Lip - tip.Y, under.Lip - under.Y - HoverGap) : null;
+    }
+
+    /// <summary>The wheel over an opening: up raises forceps' tip a notch, down lowers it, from the lip down to resting on
+    /// what's inside. All the way down it follows what's inside again, as it does untouched.</summary>
+    private void StepDepth(SurgeonHand hand, TipInOpening opening, bool up) {
+        var depth = Mathf.Clamp(opening.Depth + (up ? -DepthStep : DepthStep), 0f, opening.Bottom);
+        hand.HeldDepth = depth < opening.Bottom ? depth : null;
+    }
+
+    /// <summary>A move of a forceps tip held at a depth (<paramref name="from"/> to <paramref name="to"/>, the hand's
+    /// spot): deeper than <see cref="Patient.LipDepth"/> it stays in the opening, sliding along the lip rather than going
+    /// under the skin, also on its way (a fast move doesn't jump across skin into another opening). Lifted, it goes over.
+    /// </summary>
+    private Vector3 InsideLip(SurgeonHand hand, Vector3 from, Vector3 to) {
+        if (hand.HeldDepth is null || hand.Attached || hand.Lifted || HeldTool(hand.Index) is not { } tool) {
+            return to;
+        }
+        var offset = hand.TipOffset(tool.Def.Length);
+        var at = SurfaceBelow(from + offset);
+        if (!at.Open || at.Lip - (from + offset).Y < Patient.LipDepth) {
+            return to;
+        }
+        foreach (var move in (Vector3[])[to, to with { X = from.X }, to with { Z = from.Z }]) {
+            if (OpenAlong(from + offset, move + offset)) {
+                return move;
+            }
+        }
+        return from;
+    }
+
+    /// <summary>Every point from <paramref name="from"/> to <paramref name="to"/> is over an opening, checked every
+    /// <see cref="LipStep"/>.</summary>
+    private bool OpenAlong(Vector3 from, Vector3 to) {
+        var steps = Mathf.CeilToInt(from.DistanceTo(to) / LipStep);
+        for (var i = 1; i <= steps; i++) {
+            if (!SurfaceBelow(from.Lerp(to, (float)i / steps)).Open) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The hand's height over something hard (a tray, the table, a tool lying there), which doesn't give: every
@@ -306,7 +380,10 @@ public partial class Surgeon {
         var overSite = siteHit is not null;
         if (siteHit is { Position: var sitePosition } && body.IsOpen(body.WorldToUv(sitePosition))) {
             var inside = Rays.Cast(this, from, to, PatientBody.CavityLayer | CavityTarget.TouchLayer);
-            return new Surface(inside?.Position.Y ?? sitePosition.Y - 0.1f, true, true);
+            // The lip is measured as the probe measures depth (PatientBody.HeightAboveSite()).
+            var uv = body.WorldToUv(sitePosition);
+            var lip = body.Site.ToGlobal(body.SitePoint(uv, body.SkinHeight(uv))).Y;
+            return new Surface(inside?.Position.Y ?? sitePosition.Y - 0.1f, true, true, lip);
         }
         // Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the
         // tray).

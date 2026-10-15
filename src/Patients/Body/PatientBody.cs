@@ -449,6 +449,11 @@ public partial class PatientBody : Node3D {
     public string PartAt(Vector3 p, float radius = 0.025f) =>
         Overlapping(p, radius, PatientLayer, 4).OfType<BodyPart>().FirstOrDefault()?.Part ?? "";
 
+    /// <summary>Something in the cavity (its floor, an organ, a bone, a target) is within <paramref name="radius"/> of p
+    /// (world space), or p is in it.</summary>
+    public bool TouchesInside(Vector3 p, float radius) =>
+        Overlapping(p, radius, CavityLayer | CavityTarget.TouchLayer, 1).Count > 0;
+
     /// <summary>The colliders on <paramref name="mask"/> within <paramref name="radius"/> of p (world space).</summary>
     private List<GodotObject> Overlapping(Vector3 p, float radius, uint mask, int most) {
         _partSphere.Radius = radius;

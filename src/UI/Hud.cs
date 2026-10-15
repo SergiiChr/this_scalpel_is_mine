@@ -612,6 +612,9 @@ public partial class Hud : CanvasLayer {
             case "spread":
                 yield return $"{up} / {down}  Open / close";
                 break;
+            case "clamp" when me.HoldsDepth(me.Active):
+                yield return $"{up} / {down}  Raise / lower tip in an opening";
+                break;
             default:
                 if (me.UsesLevel(me.Active)) {
                     yield return $"Wheel  {ToolActions.LevelNames[action]}";
