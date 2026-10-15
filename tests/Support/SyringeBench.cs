@@ -179,7 +179,7 @@ public partial class SyringeBench : Node {
             StandBy(aim);
         }
         if (@case.Target == "drip" && !Surgery.Patient.IvWorking) {
-            // Only once the surgeon is in place: stepping over to the stand would count as walking through the tubing.
+            // Only once the surgeon is in place, so the tubing settles around where they stand.
             await Frames.Physics(5);
             Surgery.Patient.IvRemoved();
             Surgery.Patient.SetIv(VeinPoint(), true);
@@ -280,8 +280,9 @@ public partial class SyringeBench : Node {
         await Frames.Physics(20);
     }
 
-    /// <summary>Puts an IV catheter in the active hand over the forearm vein, <paramref name="miss"/> meters across the
-    /// arm from it, with no line in yet. <see cref="Press"/> then pushes it in.</summary>
+    /// <summary>Puts an IV catheter with the tubing on it in the active hand over the forearm vein,
+    /// <paramref name="miss"/> meters across the arm from it, with no line in yet. <see cref="Press"/> then pushes it in.
+    /// </summary>
     public async Task StageCatheter(float miss) {
         ConsumeStaged();
         Surgery.Patient.IvRemoved();
@@ -295,6 +296,7 @@ public partial class SyringeBench : Node {
         StandBy(aim);
         Surgery.Tools.RequestGrab(catheter, Me.Active);
         await Frames.Physics(2);
+        SurgeryState.IvLineIsOnCatheter(Surgery.Patient, catheter);
         var hand = Me.Hands[Me.Active];
         for (var i = 0; i < 40; i++) {
             hand.LocalTarget = Me.ToLocal(aim - hand.TipOffset(catheter.Def.Length) + (Vector3.Up * 0.04f));

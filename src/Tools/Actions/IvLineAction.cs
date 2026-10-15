@@ -1,7 +1,8 @@
 namespace Scalpel.Tools;
 
-/// <summary>The IV catheter: held against an arm it starts a line. It sticks wherever it goes into the arm, but only a
-/// needle in a vein lets anything through.</summary>
+/// <summary>The IV catheter: held against an arm it goes in and is taped down. It sticks wherever it goes into the arm,
+/// but only one in a vein with the IV tubing connected to it (<see cref="IvLine.HoldOn"/>) lets anything through.
+/// </summary>
 public sealed class IvLineAction : ToolAction {
     public override void Apply(ToolStep step) {
         var patient = step.Patient;
@@ -12,9 +13,13 @@ public sealed class IvLineAction : ToolAction {
             return;
         }
         var inVein = patient.Body.VeinAt(step.Tip);
-        patient.SetIv(step.Tip, inVein);
+        var connected = step.Surgery.Room.IvLine.Catheter == step.Tool;
+        patient.SetIv(step.Tip, inVein, connected);
         if (inVein) {
             step.Surgery.AnnounceDebug("Hit the vein");
+        }
+        if (!connected) {
+            step.Surgery.AnnounceDebug("The catheter isn't on the IV line");
         }
         step.Surgery.Effect(ToolEffect.Bead, step.Tip, 0);
         ToolActions.UseCharge(step.Tool);

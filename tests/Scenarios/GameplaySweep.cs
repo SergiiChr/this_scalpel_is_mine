@@ -200,46 +200,12 @@ internal sealed partial class GameplaySweep {
             }
             Tools.RequestRelease(1, Vector3.Zero);
         }
-        await IvTripChecks();
         await TourniquetChecks();
     }
 
     /// <summary>Tools lying free that the local surgeon's quirks let them take.</summary>
     private IEnumerable<SurgicalTool> FreeTools() =>
         Tools.Tools.Values.Where(tool => tool.State == ToolState.Free && Me.BlockedReason(tool.Def).Length == 0);
-
-    /// <summary>Walking into the IV tubing at full speed rips the line out.</summary>
-    private async Task IvTripChecks() {
-        // Reset any existing line so this check starts with pre-op tubing at the back of the hand.
-        if (Patient.IvSet) {
-            Patient.IvRemoved();
-        }
-        Patient.SetIv(Body.Root.ToGlobal(Patient.PreopIvPoint), true);
-        // Earlier checks drop tools where the catheter falls: landing on a pile of them, it never touches the floor.
-        SurgeryState.FloorIsClear(_surgery);
-        await Frames.Physics(5);
-        var line = _surgery.Room.IvLine;
-        var low = line.Points.Where(p => p.Y < IvLine.TripHeight).ToList();
-        if (low.Count == 0) {
-            Fail($"the IV line doesn't hang low enough to trip on (attached {line.IsAttached}, iv set {Patient.IvSet}, {line.Points.Count} points)");
-            return;
-        }
-        var crossing = low.MinBy(p => p.Y);
-        var from = new Vector3(crossing.X - 0.5f, 0f, crossing.Z);
-        for (var i = 0; i < 34; i++) {
-            Me.GlobalPosition = from + new Vector3(i * 0.03f, 0f, 0f);
-            await Frames.NextPhysics();
-        }
-        if (Patient.IvSet) {
-            Fail("walking through the IV line didn't pull it out");
-        }
-        await Frames.Physics(90);
-        var catheters = Tools.Tools.Values.Where(tool => tool.Def.Id == "iv_catheter").ToList();
-        if (!catheters.Any(tool => tool.State == ToolState.Free && tool.Soiled)) {
-            var where = catheters.Select(tool => $"{tool.State} {tool.GlobalPosition} soiled {tool.Soiled}");
-            Fail($"the IV catheter ripped out of the arm didn't land on the floor: {string.Join(", ", where)}");
-        }
-    }
 
     /// <summary>A tourniquet pressed onto a thigh wraps around it: a band snug around the leg, not lying on top of it.
     /// Taking it off loosens it again.</summary>

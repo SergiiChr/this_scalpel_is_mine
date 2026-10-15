@@ -80,6 +80,10 @@ public static class SurgeryState {
     public static void IvLineMissedTheVein(Patient patient) =>
         patient.SetIv(patient.Body.Root.ToGlobal(Patient.PreopIvPoint), false);
 
+    /// <summary>As if the IV tubing had been connected to <paramref name="catheter"/> at the stand.</summary>
+    public static void IvLineIsOnCatheter(Patient patient, SurgicalTool catheter) =>
+        patient.Rpc(Patient.MethodName.IvLineOn, catheter.Uid);
+
     /// <summary>A surgeon's cut from <paramref name="from"/> to <paramref name="to"/> (site uv),
     /// <paramref name="depth"/> deep (0..1, see <see cref="Wound.MuscleDepth"/>), as one clean stroke.</summary>
     public static Wound SkinIsCut(Patient patient, Vector2 from, Vector2 to, float depth) =>
@@ -289,6 +293,14 @@ public static class SurgeryState {
     }
 
     /// <summary>No stress-induced hand jitter during a camera or reach measurement.</summary>
+    /// <summary>As if <paramref name="surgeon"/> had walked to <paramref name="at"/> and turned to
+    /// <paramref name="yaw"/>.</summary>
+    public static void SurgeonStandsAt(Surgeon surgeon, Vector3 at, float yaw) {
+        surgeon.GlobalPosition = at;
+        surgeon.Velocity = Vector3.Zero;
+        surgeon.Rotation = surgeon.Rotation with { Y = yaw };
+    }
+
     public static void SurgeonIsSteady(Surgeon surgeon) => surgeon.Status.Stress = 0f;
 
     /// <summary>Stressed enough that the held tool plainly shakes (SurgeonStatus.TremorAmount()).</summary>

@@ -9,10 +9,10 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 
 ## 2.3 Cannulation
 1. Choose a site on the forearm or the back of the hand, away from the operative field. Prefer the arm on the side of the infusion stand, so the tubing does not cross the walkway.
-2. Take the catheter in the working hand.
+2. Take the catheter in the working hand and connect the giving set to it at the infusion stand ([b]Connect the IV line[/b]).
 3. Rest the tip on the skin over the vein and lower it ([b]Use tool[/b]) until the catheter seats. Hold it steady; a moving hand misses the vein. Zoom all the way in for a close view of the needle over the vein.
-> A catheter that misses the vein still sticks and the tubing still connects, but nothing will run through it.
-4. The giving set connects automatically and the tubing runs from the stand to the site. The catheter is single use.
+> A catheter that misses the vein, or goes in without the giving set connected, still sticks, but nothing will run through it and it cannot be connected afterwards.
+4. The tubing runs from the stand to the site. The catheter is single use.
 
 ## 2.4 Administering an infusion
 1. Drugs: rest the syringe needle on the bag hanging on the infusion stand and push the plunger. The dose starts down the line at once, about {ToolActions.DripRate} ml a second, and acts as it runs in. Drawing back takes fluid from the bag.
@@ -21,7 +21,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 > Without a patent line, a drug pushed into the bag stays there and a swapped bag is wasted.
 
 ## 2.5 Line security
-The tubing hangs low across the floor between stand and patient. Walking through it at speed pulls the catheter out of the vein: the line is lost, the patient is hurt and the line must be re-sited with a new catheter. Move slowly near the tubing, or crouch and step over it.
+The tubing hangs loose between stand and patient. Brushing it only pushes it aside, but tubing caught on the legs or hands and walked away with tears the catheter out of the arm: the skin rips, the line is lost and must be re-sited with a new catheter. Step around the tubing, or free it before walking off.
 
 ## 2.6 Fluid choice
 • Crystalloid (saline, {drug.saline.Peak.VolumeMl} ml): restores circulating volume after moderate blood loss.

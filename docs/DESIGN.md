@@ -304,14 +304,23 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   The host then settles the outcome, score and consequences (`Surgery.Discharge()`). Signed out too early, the patient
   can still go, as a failure. Only death and the time limit end a surgery without it.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
-- **IV line**: the catheter pressed onto an arm starts a line; tubing then runs from the stand to the arm
-  (`src/World/IvLine.cs`). It has to go into the forearm vein to work (`Patient.iv_in_vein`): beside it, it still
-  sticks and the tubing runs to it, but nothing goes through. The last zoom step fades the hands as for a syringe.
+- **IV line**: loose, flexible tubing from the drip chamber on the stand (`src/World/IvLine.cs`), its bare end hung
+  on the stand across from it. A rope of points: gravity pulls it down, each point keeps its distance to the next and
+  stays a little apart from the one after (the tube's stiffness), and it is pushed out of the floor and furniture
+  (their boxes), the patient's skin and drape (rays) and surgeons (a capsule around each body, a ball around each
+  hand). Every peer simulates its own; it sleeps once it hangs still, until an end moves or a surgeon near it does.
+  Holding a catheter, "Connect the IV line" at the stand puts the tubing's end on it; pressed onto an arm, the catheter
+  goes in and the tubing hangs from it. It has to go into the forearm vein with the tubing on it to work
+  (`Patient.IvWorking`): beside the vein, or without the tubing, it still sticks, but nothing goes through, and the
+  catheter can't be connected afterwards. The last zoom step fades the hands as for a syringe.
   Where it went in, the catheter is taped down on the forearm (`IvDressing`, riding the forearm bone): its stub going
   into the skin toward the elbow, the hub with a colored cap and wings, a clear film over it, two strips of woven tape
-  across the arm and the tubing taped along the arm before it hangs off to the stand.
-  Walking into the line at full speed rips it out and the catheter drops on the floor at the walker's feet (soiled,
-  wash and sanitize it to use it again); crouch-walking steps over it.
+  across the arm and the tubing taped along the arm before it hangs off to the stand (one strip, no tubing, without it).
+  A surgeon who catches the tubing on their legs or hands and walks off stretches it past its length
+  (`IvLine.YankStretch`): held stretched for a moment, the catheter rips out of the arm (`Patient.PullIv()`), leaving a
+  ragged tear in the skin (`IvTear`) and hanging on the tubing's end. Pushing into the slack only moves it aside.
+  Connecting a new catheter replaces the one on the end; one carried further from the stand than the tubing reaches
+  slips off.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
   and a little upward, the way the forearm rises to it (`Surgeon.SnapSpot()`); moved on, it comes out and the hand
