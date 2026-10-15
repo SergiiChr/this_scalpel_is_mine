@@ -48,11 +48,17 @@ public class NeedleTest {
             .OverrideFailureMessage($"all tight-thread punctures are reached\n{driver.Recent()}").IsTrue();
         var thread = needle.Suture.Thread;
         await driver.PlayerPullsThread("too tight");
+        // The thread claims the cut closed at once and the tissue has the last word a few solver steps later
+        // (Patient.SettleClosures()), so read it settled, not at whichever step the frames before left it.
+        // Live, the thread pulls only its holes shut and leaves a slight gap between them: its edges are what it holds.
+        await Frames.Seconds(1f);
         AssertString(SewAction.ThreadState(needle)).OverrideFailureMessage("the hand status reads too tight before it tears")
             .IsEqual("too tight");
         AssertBool(patient.SutureDone(thread)).OverrideFailureMessage("too tight thread is still intact before further tightening")
             .IsFalse();
-        AssertFloat(tight.Closure).OverrideFailureMessage($"too tight still holds the cut closed (closure {tight.Closure:0.000}, tension {needle.Suture.Tension:0.000}, anchors {tissue.Thread(thread)!.Anchors.Count})\n{driver.Recent()}").IsGreater(0.99f);
+        AssertFloat(tissue.GapAlong(tight.Points, 0.03f, TissueDepth.Skin))
+            .OverrideFailureMessage($"too tight still holds the cut's edges together (closure {tight.Closure:0.000}, tension {needle.Suture.Tension:0.000}, anchors {tissue.Thread(thread)!.Anchors.Count})\n{driver.Recent()}")
+            .IsLess(TissueSim.OpenGap);
         AssertFloat(tissue.SutureLip.Max()).OverrideFailureMessage("too tight thread visibly puckers the joined skin")
             .IsGreater(0.0009f);
         var holes = tissue.Thread(thread)!.Anchors.Count;
