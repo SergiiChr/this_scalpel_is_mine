@@ -12,6 +12,20 @@ public class ScalpelTest {
     private const float Length = 0.05f;
 
     [TestCase]
+    public async Task ABriskStrokeStillMakesAJaggedCut() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("appendectomy");
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        await driver.PlayerCutsSkin(new Vector2(0.3f, 0.45f), new Vector2(0.7f, 0.45f), 1, speed: 0.4f);
+        AssertBool(driver.Patient.Wounds.Any(wound => wound.MadeBySurgeon && wound.Jagged))
+            .OverrideFailureMessage("drawing the blade faster than 0.25 m/s still makes a jagged incision").IsTrue();
+        driver.Budget.Check(localOverride: BudgetOverride);
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase]
     public async Task ScalpelPickupFiveCentimeterCutAndTableDrop() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();

@@ -208,7 +208,9 @@ public partial class SurgeryDriver {
             await PlayerWalksTo(at);
             await PlayerReaches(at);
             if ((Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.004f) {
-                Note("needle cannot reach intended puncture within 4 mm");
+                Note($"needle cannot reach intended puncture within 4 mm: aim {BesideWound(wound, alongAt, off)}, "
+                    + $"tip {Body.WorldToUv(Tip(Me.Hands[Me.Active]))}, miss "
+                    + $"{(Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() * 1000f:0.0} mm, on body {Body.OnBody(Body.WorldToUv(at))}");
                 return false;
             }
             // The dot as the player clicks, the needle's tip still held up over the skin.

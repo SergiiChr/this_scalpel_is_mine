@@ -88,6 +88,18 @@ internal sealed class BladeContact {
             if (at < low) { low = at; first = hit; }
             if (at > high) { high = at; last = hit; }
         }
-        return float.IsFinite(low) && high - low > 0.00001f ? (first, last) : null;
+        if (!float.IsFinite(low) || high - low <= 0.00001f) { return null; }
+        // The continued sheet gives a stable height through a hole, but there is no skin there to stab.
+        // Sample at material-cell spacing so a narrow intact bridge between two openings still counts.
+        var firstUv = body.CutUv(first);
+        var lastUv = body.CutUv(last);
+        var cells = (lastUv - firstUv) * new Vector2(body.Tissue.ResX, body.Tissue.ResY);
+        var samples = Math.Max(1, Mathf.CeilToInt(cells.Length() * 2f));
+        for (var i = 0; i <= samples; i++) {
+            if (!body.Tissue.IsOpen(body.CutUv(first.Lerp(last, (float)i / samples)), TissueDepth.Skin)) {
+                return (first, last);
+            }
+        }
+        return null;
     }
 }
