@@ -17,7 +17,7 @@ See Chronic conditions: Intraoperative awareness, Alcohol use disorder, Malignan
 IV access, then induction, then skin preparation. Skin preparation may be done in the conscious patient; incision may not.
 
 ## 8.5 Emergence
-The anesthetic is maintained until it is reversed. Once the procedure is complete, give the anesthesia reversal ({drug.anesthesia_reversal.Dose} {drug.anesthesia_reversal.Unit} per kg, IV) and wait for the patient to wake, within about {Patient.WakeSeconds} seconds, before signing the discharge. Discharge only an awake patient. A new induction dose puts the patient under again.
+The anesthetic is maintained until it is reversed. Once the procedure is complete, give flumazenil ({drug.flumazenil.Dose} {drug.flumazenil.Unit} per kg, IV) and wait for the patient to wake, within about {Patient.WakeSeconds} seconds, before signing the discharge. Discharge only an awake patient. A new induction dose puts the patient under again.
 
 [font_size=16][b]References[/b]
 Gropper MA, ed. Miller's Anesthesia. 9th ed. Elsevier; 2020.

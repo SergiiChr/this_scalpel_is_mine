@@ -261,8 +261,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   clots, heart quirks); there is no random arrest event. Scripted arrests (heart attack) always happen.
 - General anesthesia holds for the whole surgery once given, side effects included (propofol and gas keep the pressure
   about 15-20 mmHg down, the manual says how to manage it). A repeat dose only tops it up. It wears off only with the
-  anesthesia resistant quirk, a scripted wake up (awake craniotomy) or once the anesthesia reversal (a vial from the
-  nurse) works: a right dose then wears off in `Patient.WakeSeconds`, and a new dose puts the patient under
+  anesthesia resistant quirk, a scripted wake up (awake craniotomy) or once flumazenil works (in this game it also
+  reverses general anesthesia): a right dose then wears off in `Patient.WakeSeconds`, and a new dose puts the patient under
   again.
 - Random events only disturb the surgeons (a pothole, a cough, a bump, flickering lights with the power trouble
   modifier). Nothing random happens to the patient that the chart, the monitor and the manual don't explain.

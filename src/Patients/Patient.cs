@@ -135,7 +135,7 @@ public partial class Patient : Node3D {
     /// <summary>The anesthetic put the patient under at some point of the surgery (as the anesthesia objective counts it).
     /// </summary>
     internal bool WentUnder { get; private set; }
-    /// <summary>The anesthesia reversal stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears
+    /// <summary>Flumazenil stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears
     /// off.</summary>
     internal bool AnesthesiaStopped { get; private set; }
     /// <summary>Shares of the right anesthetic dose given since <see cref="AnesthesiaStopped"/>.</summary>
@@ -830,7 +830,7 @@ public partial class Patient : Node3D {
         Reveal("epilepsy");
     }
 
-    /// <summary>The anesthesia reversal worked: the anesthetic is no longer topped up, so the patient comes round
+    /// <summary>Flumazenil worked: the anesthetic is no longer topped up, so the patient comes round
     /// before the discharge.</summary>
     private void StopAnesthesia() {
         if (AnesthesiaStopped || !Drugs.Entries.Any(entry => entry.Def.Peak.Anesthesia > 0f)) {

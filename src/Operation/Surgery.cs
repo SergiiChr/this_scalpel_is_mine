@@ -246,7 +246,7 @@ public partial class Surgery : Node3D {
     }
 
     /// <summary>Host: how the patient leaves the table, signed out or out of time: brought round from general anesthesia
-    /// by the anesthesia reversal (not woken by a quirk or a script), and with most of the blood wiped off the skin.</summary>
+    /// by flumazenil (not woken by a quirk or a script), and with most of the blood wiped off the skin.</summary>
     private void ScoreAftercare() {
         if (Patient.WentUnder && Patient.AnesthesiaStopped && Patient.Vitals.IsAwake) {
             Scoring.Add("patient_awake");

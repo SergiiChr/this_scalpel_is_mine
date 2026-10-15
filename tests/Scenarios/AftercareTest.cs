@@ -1,14 +1,14 @@
 namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
-/// How the patient leaves the table, scored at the discharge. Put under, then given the anesthesia reversal,
+/// How the patient leaves the table, scored at the discharge. Put under, then given flumazenil,
 /// the patient comes round and signed out awake scores; signed out still asleep doesn't. Blood wiped off the skin with
 /// gauze scores even with a smear left on the border of the site, where a swab barely reaches; left on, it doesn't.
 /// A new induction dose after the reversal puts the patient under again for good. With key frames also the toast as the
 /// reversal works.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_anesthesia_reversal"), TestCategory("tool_vial_propofol"),
+[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_flumazenil"), TestCategory("tool_vial_propofol"),
  TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class AftercareTest {
@@ -36,7 +36,7 @@ public class AftercareTest {
         if (reversed) {
             var toasts = new List<string>();
             surgery.Hud.Toasted += toasts.Add;
-            await driver.PlayerGivesDrug("vial_anesthesia_reversal", driver.DoseMl("vial_anesthesia_reversal"), driver.IvOrVein);
+            await driver.PlayerGivesDrug("vial_flumazenil", driver.DoseMl("vial_flumazenil"), driver.IvOrVein);
             AssertBool(await Frames.Until(() => patient.AnesthesiaStopped, 10f))
                 .OverrideFailureMessage($"the reversal stops the anesthesia: {driver.Recent()}").IsTrue();
             surgery.Hud.Toasted -= toasts.Add;
@@ -71,7 +71,7 @@ public class AftercareTest {
         var patient = driver.Patient;
         SurgeryState.PatientIsAsleep(patient);
         await Frames.Until(() => patient.WentUnder && !patient.Vitals.IsAwake, 20f);
-        await driver.PlayerGivesDrug("vial_anesthesia_reversal", driver.DoseMl("vial_anesthesia_reversal"), driver.IvOrVein);
+        await driver.PlayerGivesDrug("vial_flumazenil", driver.DoseMl("vial_flumazenil"), driver.IvOrVein);
         AssertBool(await Frames.Until(() => patient.Vitals.IsAwake, Patient.WakeSeconds + 10f))
             .OverrideFailureMessage($"the reversal wakes the patient: {driver.Recent()}").IsTrue();
         await driver.PlayerGivesDrug("vial_propofol", driver.DoseMl("vial_propofol"), driver.IvOrVein);
