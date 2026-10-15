@@ -165,7 +165,7 @@ public class GauzeTest {
         var driver = session.Driver;
         var effects = driver.Surgery.Effects;
         await driver.PlayerGivesDrug("vial_propofol", 1f, SurgeryDriver.Route.Vein);
-        var beads = effects.Beads();
+        var beads = effects.Beads().Select(bead => bead.GlobalPosition).ToList();
         AssertInt(beads.Count).OverrideFailureMessage($"the needle leaves a bead of blood on the arm\n{driver.Recent()}").IsEqual(1);
         await session.CaptureAt("bead", "one bead of blood on the arm where the needle went in", beads[0], 0.15f);
 

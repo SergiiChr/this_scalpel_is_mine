@@ -30,7 +30,7 @@ public partial class ToolEffects : Node3D {
     private static readonly Lazy<GradientTexture2D> SoftDot = new(MakeSoftDot);
 
     /// <summary>Blood beads still on the body: blood like any other, gauze or a pad wipes them away.</summary>
-    private readonly List<MeshInstance3D> _beads = [];
+    private readonly List<BloodBead> _beads = [];
 
     public Patient Patient { get; set; } = null!;
 
@@ -136,26 +136,30 @@ public partial class ToolEffects : Node3D {
         fade.TweenCallback(Callable.From(light.QueueFree));
     }
 
-    /// <summary>A small dome of blood on the skin, stuck to the body so it follows turns and breathing.</summary>
+    /// <summary>
+    /// A bead of blood where a needle went in. On the site it's a spot painted on the skin, so it rides the skin when a
+    /// cut there is pulled open, where a dome would hang in the air. Elsewhere a small dome stuck to the body, so it
+    /// follows turns and breathing.
+    /// </summary>
     private void Bead(Vector3 at) {
-        var bead = new MeshInstance3D {
+        var body = Patient.Body;
+        var probe = body.Probe(at);
+        if (probe.Zone == SiteZone.Site) {
+            var spot = new BloodBead(null, probe.Uv, body);
+            body.Blood.AddPuncture(probe.Uv);
+            _beads.Add(spot);
+            GetTree().CreateTimer(BeadLife, processAlways: false).Timeout += () => Remove(spot);
+            return;
+        }
+        var dome = new MeshInstance3D {
             Name = "BloodBead",
             Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 12, Rings = 4, IsHemisphere = true },
             MaterialOverride = Materials.BloodPool(),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
-        var body = Patient.Body;
         Node3D root = body.Root;
         var normal = root.GlobalBasis.Y.Normalized();
-        var probe = body.Probe(at);
-        if (probe.Zone == SiteZone.Site) {
-            // The needle tip is under the skin. Its puncture is directly above it on the drawn skin, riding the site.
-            root = body.Site;
-            var local = root.ToLocal(at);
-            local.Y = body.SkinHeight(probe.Uv);
-            at = root.ToGlobal(local);
-            normal = root.GlobalBasis.Y.Normalized();
-        } else if (probe.Zone != SiteZone.Cavity) {
+        if (probe.Zone != SiteZone.Cavity) {
             if (Rays.Cast(this, at + Vector3.Up * 0.03f, at + Vector3.Down * 0.03f, PatientBody.SurfaceLayer) is { } hit) {
                 at = hit.Position;
                 normal = hit.Normal;
@@ -164,24 +168,25 @@ public partial class ToolEffects : Node3D {
                 root = body.IvSite(at).Node;
             }
         }
-        root.AddChild(bead, true);
-        bead.GlobalPosition = at;
+        root.AddChild(dome, true);
+        dome.GlobalPosition = at;
         var across = root.GlobalBasis.X.Slide(normal).Normalized();
         if (across.IsZeroApprox()) {
             across = root.GlobalBasis.Z.Slide(normal).Normalized();
         }
-        bead.GlobalBasis = new Basis(across, normal, across.Cross(normal));
-        bead.Scale = new Vector3(0.002f, 0.0015f, 0.002f);
+        dome.GlobalBasis = new Basis(across, normal, across.Cross(normal));
+        dome.Scale = new Vector3(0.002f, 0.0015f, 0.002f);
+        var bead = new BloodBead(dome, default, body);
         var grow = CreateTween();
-        grow.TweenProperty(bead, "scale", new Vector3(0.0035f, 0.0025f, 0.0035f), 2f);
+        grow.TweenProperty(dome, "scale", new Vector3(0.0035f, 0.0025f, 0.0035f), 2f);
         grow.TweenInterval(BeadLife);
-        grow.TweenProperty(bead, "scale", new Vector3(0.002f, 0.0004f, 0.002f), 10f);
+        grow.TweenProperty(dome, "scale", new Vector3(0.002f, 0.0004f, 0.002f), 10f);
         grow.TweenCallback(Callable.From(() => Remove(bead)));
         _beads.Add(bead);
     }
 
-    /// <summary>Where the blood beads still on the body are (world).</summary>
-    internal List<Vector3> Beads() => [.. BeadsLeft().Select(bead => bead.GlobalPosition)];
+    /// <summary>The blood beads still on the body.</summary>
+    internal List<BloodBead> Beads() => [.. BeadsLeft()];
 
     /// <summary>Whether a blood bead lies within <paramref name="reach"/> (meters) of <paramref name="at"/>.</summary>
     public bool BeadNear(Vector3 at, float reach) => BeadsLeft().Any(bead => bead.GlobalPosition.DistanceTo(at) < reach);
@@ -194,15 +199,27 @@ public partial class ToolEffects : Node3D {
     }
 
     /// <summary>The beads not yet gone with what they were stuck to (an IV site taken away).</summary>
-    private List<MeshInstance3D> BeadsLeft() {
-        _beads.RemoveAll(bead => !IsInstanceValid(bead));
+    private List<BloodBead> BeadsLeft() {
+        _beads.RemoveAll(bead => bead.Dome is { } dome && !IsInstanceValid(dome));
         return _beads;
     }
 
-    private void Remove(MeshInstance3D bead) {
-        _beads.Remove(bead);
-        if (IsInstanceValid(bead)) {
-            bead.QueueFree();
+    private void Remove(BloodBead bead) {
+        if (!_beads.Remove(bead)) {
+            return;
         }
+        if (bead.Dome is null) {
+            Patient.Body.Blood.RemovePuncture(bead.Uv);
+        } else if (IsInstanceValid(bead.Dome)) {
+            bead.Dome.QueueFree();
+        }
+    }
+
+    /// <summary>A bead of blood: a <paramref name="dome"/> stuck to the body, or without one a spot painted on the site's
+    /// skin at <paramref name="uv"/>.</summary>
+    internal sealed class BloodBead(MeshInstance3D? dome, Vector2 uv, PatientBody body) {
+        public MeshInstance3D? Dome => dome;
+        public Vector2 Uv => uv;
+        public Vector3 GlobalPosition => dome?.GlobalPosition ?? body.UvToWorld(uv);
     }
 }

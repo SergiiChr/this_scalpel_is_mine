@@ -624,14 +624,16 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   along a line shows none there, as the cut would split it across its lips. Inside the opening it sits in the middle of
   the wall of the deepest layer it bleeds from, no bigger than that wall is high and never on the skin over it. Spots live in the wound map's Bleeds layer, repainted from the
   current sources, so they ride the tissue wherever it's pulled and go when the bleeding stops. Once the cavity pool
-  covers what one sees down the cut (`Patient.SlitView`) a bleed wells up as a pulsing dome on the pool's surface. One
+  covers what one sees down the cut (`Patient.SlitView`) the same spot shows on the pool's surface, pulsing
+  (`bleed_spot.gdshader`). One
   under skin that isn't cut spreads a bruise over itself instead.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
   the body jerking, a bead of blood where a needle or catheter goes in (gauze or a pad wipes it away like other
-  blood). Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
+  blood): on the site a spot painted on the skin like a bleed's, so it rides the skin when a cut is pulled open,
+  elsewhere a small dome. Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
   (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the

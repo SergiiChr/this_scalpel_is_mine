@@ -61,8 +61,9 @@ public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill) {
 /// (the fluid map). Where a rivulet runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
 /// Every bleed shows its source as a spot a little darker than blood: on the skin where it bleeds onto it, on the cut's
-/// wall at its depth where it bleeds inside the opening (never on the skin over it), and as a pulsing dome on the cavity
-/// pool's surface once that covers it. Spots are painted by uv, so they ride the tissue wherever it's pulled.
+/// wall at its depth where it bleeds inside the opening (never on the skin over it), and on the cavity pool's surface,
+/// pulsing, once that covers it. A needle's puncture of the skin shows the same spot as a bleed onto it.
+/// Spots are painted by uv, so they ride the tissue wherever it's pulled.
 /// Bleeding under skin that isn't cut open spreads a bruise over it.
 /// Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
 /// </summary>
@@ -99,6 +100,8 @@ public partial class BloodFlow : Node3D {
     /// </summary>
     private const float SpotMin = 0.0012f;
     private const float SpotGrowth = 0.0015f;
+    /// <summary>Radius (m) of the spot a needle leaves where it went into the skin.</summary>
+    private const float PunctureRadius = 0.003f;
     /// <summary>Radius (m) of the pool held in a cut when it starts, and full. The skin hides it beyond the opening.
     /// </summary>
     private const float CutPoolStart = 0.003f;
@@ -109,15 +112,9 @@ public partial class BloodFlow : Node3D {
     /// CutPoolFull (m).</summary>
     private const float CutPoolBrim = 0.3f;
     private const float CutPoolFull = 0.0006f;
-    /// <summary>Radius (m) of the dome welling up from a bleed under the cavity pool, and how much it grows per
-    /// sqrt(ml/s).</summary>
-    private const float WellStart = 0.002f;
-    private const float WellGrowth = 0.003f;
-    private const float WellMax = 0.008f;
-    /// <summary>A welling dome's height over its radius: a low bulge, not a ball.</summary>
-    private const float WellFlat = 0.5f;
-    /// <summary>Welling domes pulse this many times a second.</summary>
+    /// <summary>Spots on the cavity pool pulse this many times a second, by this share of their radius.</summary>
     private const float WellPulse = 1.2f;
+    private const float WellSwell = 0.1f;
     /// <summary>Bruise radius (uv) over a bleed under closed skin, and how much it grows per sqrt(ml).</summary>
     private const float BruiseStart = 0.02f;
     private const float BruiseGrowth = 0.01f;
@@ -161,6 +158,8 @@ public partial class BloodFlow : Node3D {
     /// <summary>The spots painted last (uv, radius in uv, depth of their center), wiped before the sources are painted
     /// again.</summary>
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
+    /// <summary>Where needles went into the skin (site uv), each showing a spot like a bleed onto the skin.</summary>
+    private readonly List<Vector2> _punctures = [];
     private PatientBody? _body;
 
     /// <summary>The bleeding wounds. The patient swaps in a complete list every tick; nothing keeps a tick's own.
@@ -189,7 +188,7 @@ public partial class BloodFlow : Node3D {
     /// <summary>Where the pools in cuts stand now (world).</summary>
     internal IReadOnlyList<Vector3> CutPools => _cutPools;
 
-    /// <summary>Where the domes welling up on the cavity pool stand now (world).</summary>
+    /// <summary>Where the spots welling up on the cavity pool stand now (world).</summary>
     internal IReadOnlyList<Vector3> Wells => _wells;
 
     public void Setup(PatientBody patientBody) {
@@ -214,11 +213,11 @@ public partial class BloodFlow : Node3D {
         _wellMesh = new MultiMeshInstance3D {
             Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = new SphereMesh { Radius = 1f, Height = 1f, RadialSegments = 16, Rings = 4, IsHemisphere = true },
+                Mesh = new PlaneMesh { Size = new Vector2(2f, 2f) },
                 InstanceCount = 16,
                 VisibleInstanceCount = 0,
             },
-            MaterialOverride = Materials.BloodPool(),
+            MaterialOverride = Materials.BleedSpot(),
             TopLevel = true,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
@@ -285,13 +284,13 @@ public partial class BloodFlow : Node3D {
     }
 
     /// <summary>
-    /// Bleeds inside: a pulsing dome on the cavity pool's surface where that covers a source in the opening, spurting
+    /// Bleeds inside: a pulsing spot on the cavity pool's surface where that covers a source in the opening, spurting
     /// when strong. A source under skin that isn't open spreads a bruise over itself instead.
     /// </summary>
     private void Well(PatientBody body, float delta) {
         var multimesh = _wellMesh.Multimesh;
         _wells.Clear();
-        // Every source gets its dome: the buffer grows with them (resizing clears it, all are set again below).
+        // Every source gets its spot: the buffer grows with them (resizing clears it, all are set again below).
         var inside = 0;
         foreach (var source in Sources) {
             inside += source.Inside ? 1 : 0;
@@ -299,7 +298,7 @@ public partial class BloodFlow : Node3D {
         if (inside > multimesh.InstanceCount) {
             multimesh.InstanceCount = inside * 2;
         }
-        var pulse = WellFlat * (1f + 0.3f * Mathf.Sin((float)GameClock.Seconds * Mathf.Tau * WellPulse));
+        var pulse = 1f + WellSwell * Mathf.Sin((float)GameClock.Seconds * Mathf.Tau * WellPulse);
         foreach (var (uv, rate, depth, _) in Sources) {
             if (depth <= 0f) {
                 continue;
@@ -310,12 +309,12 @@ public partial class BloodFlow : Node3D {
             }
             var local = body.Site.ToLocal(body.UvToWorld(uv, depth));
             var pooled = local.Y < body.CavityPoolHeight;
-            local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
+            local.Y = Mathf.Max(local.Y, body.CavityPoolHeight + CutPoolLift);
             var at = body.Site.ToGlobal(local);
-            // The pool doesn't move with the tissue, so a dome on it stays where it wells up.
+            // The pool doesn't move with the tissue, so a spot on it stays where it wells up.
             if (pooled) {
-                var radius = Mathf.Min(WellStart + Mathf.Sqrt(rate) * WellGrowth, WellMax);
-                var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, radius * pulse, radius));
+                var radius = (SpotMin + Mathf.Sqrt(rate) * SpotGrowth) * pulse;
+                var basis = body.Site.GlobalBasis.Orthonormalized().Scaled(new Vector3(radius, 1f, radius));
                 multimesh.SetInstanceTransform(_wells.Count, new Transform3D(basis, at));
                 _wells.Add(at);
             }
@@ -409,6 +408,27 @@ public partial class BloodFlow : Node3D {
             }
             _spots.Add((uv, size, center));
         }
+        foreach (var uv in _punctures) {
+            PaintPuncture(body, uv);
+        }
+    }
+
+    /// <summary>A needle went into the skin at <paramref name="uv"/>: its spot shows at once, not with the next repaint,
+    /// so it's there in the very frame the needle comes out.</summary>
+    internal void AddPuncture(Vector2 uv) {
+        _punctures.Add(uv);
+        if (_body is not null) {
+            PaintPuncture(_body, uv);
+        }
+    }
+
+    /// <summary>The spot at <paramref name="uv"/> dried or was wiped away: the next repaint leaves it out.</summary>
+    internal void RemovePuncture(Vector2 uv) => _punctures.Remove(uv);
+
+    private void PaintPuncture(PatientBody body, Vector2 uv) {
+        var size = body.MetersToUv(PunctureRadius);
+        body.WoundMap.Disk(WoundMap.Layer.Bleeds, WoundMap.SkinSpot, uv, size, 1f, WoundMap.Mode.Max);
+        _spots.Add((uv, size, 0f));
     }
 
     /// <summary>Whether a spot of <paramref name="size"/> at <paramref name="uv"/> would overlap one already painted
