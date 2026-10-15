@@ -175,9 +175,9 @@ public partial class PatientBody {
         // the same spring that pulls the skin, so loose thread bows on the surface and tightened thread straightens it.
         var slack = Mathf.Clamp(Mathf.InverseLerp(TissueSim.ThreadTear[layer], TissueSim.ThreadLoose[layer], info.Tension), 0f, 1f);
         var wasLive = drawn?.Live ?? [];
-        // Deep tissue between the punctures can settle even when both holes remain nearly stationary.
-        var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live)
-            || (tissueChanged && info.Layer != TissueDepth.Skin);
+        // The tissue between the punctures can settle even when both holes remain nearly stationary: deep layers, or
+        // skin edges a taut thread draws together.
+        var routesChanged = retension || moved.Contains(true) || !wasLive.SequenceEqual(live) || tissueChanged;
         var routes = drawn?.Routes ?? [];
         if (routesChanged) {
             var spans = new List<Vector3[]>();

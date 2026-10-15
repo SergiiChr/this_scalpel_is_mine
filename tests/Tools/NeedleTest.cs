@@ -48,6 +48,8 @@ public class NeedleTest {
             .OverrideFailureMessage($"all tight-thread punctures are reached\n{driver.Recent()}").IsTrue();
         var thread = needle.Suture.Thread;
         await driver.PlayerPullsThread("too tight");
+        // The patient settles a thread's claimed closure against the gaps the tissue shows on its own tick.
+        await Frames.Seconds(0.2f);
         AssertString(SewAction.ThreadState(needle)).OverrideFailureMessage("the hand status reads too tight before it tears")
             .IsEqual("too tight");
         AssertBool(patient.SutureDone(thread)).OverrideFailureMessage("too tight thread is still intact before further tightening")
