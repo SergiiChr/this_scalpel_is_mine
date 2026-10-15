@@ -73,7 +73,8 @@ public class BottlesTest {
     /// <summary>
     /// A bottle held in one hand and a syringe in the other: the needle brought to the bottle's fist turns the bottle up
     /// and both hands meet at its cap, the needle in it. The wheel draws the dose, and moved away, the bottle hand goes
-    /// back to how it held the bottle. With key frames the two hands from the front: before, connected and drawn.
+    /// back to where and how it held the bottle. With key frames the two hands from the front: before, connected, drawn
+    /// and moved away.
     /// </summary>
     [TestCase]
     public async Task ASyringeDrawsFromABottleHeldInTheOtherHand() {
@@ -97,7 +98,6 @@ public class BottlesTest {
         var vial = (await driver.PlayerRequestsItem(Vial))!;
         await driver.SwitchTo(SurgeryDriver.Right);
         var syringe = (await driver.PlayerRequestsItem("syringe_10"))!;
-        await driver.PlayerWalksTo(bottleHand.GlobalPosition);
         var held = TipUp(vial);
         var bottleAt = bottleHand.GlobalPosition;
         await driver.AssertAndCapture(me.HeldTool(SurgeryDriver.Left) == vial && held < 0f,
@@ -110,10 +110,14 @@ public class BottlesTest {
             () => Syringe.NeedleTarget(syringe, driver.Patient) is ContainerTarget { Container: var into } && into == vial, 2f);
         await Frames.Physics(30);
         var moved = bottleHand.GlobalPosition.DistanceTo(bottleAt);
-        await driver.AssertAndCapture(inVial && TipUp(vial) > 0.95f && moved > 0.01f
+        // Where the mouse holds the needle, before the meeting moves it.
+        var needleAt = me.ToGlobal(syringeHand.LocalTarget) + me.OwnTipOffset(SurgeryDriver.Right);
+        var needleMoved = syringe.TipPosition().DistanceTo(needleAt);
+        await driver.AssertAndCapture(inVial && TipUp(vial) > 0.95f && moved > 0.01f && needleMoved > 0.01f
                 && syringe.TipPosition().DistanceTo(vial.TipPosition()) < 0.01f,
-            $"brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, the hand moved "
-                + $"{moved * 100f:0.0} cm to meet it (needle in the vial: {inVial}, tip {TipUp(vial):0.00} up, needle "
+            $"brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, both hands "
+                + $"moved to meet (bottle {moved * 100f:0.0} cm, needle {needleMoved * 100f:0.0} cm; in the vial: {inVial}, "
+                + $"tip {TipUp(vial):0.00} up, needle "
                 + $"{syringe.TipPosition().DistanceTo(vial.TipPosition()) * 100f:0.0} cm from the cap)",
             "connected");
 
@@ -129,9 +133,12 @@ public class BottlesTest {
 
         await driver.PlayerReaches(bottleAt + (me.GlobalBasis.X * 0.15f));
         await Frames.Physics(30);
-        AssertFloat(TipUp(vial))
-            .OverrideFailureMessage($"moved away, the bottle hand holds it the way it did (tip {TipUp(vial):0.00} up, was {held:0.00})")
-            .IsEqualApprox(held, 0.05f);
+        var back = bottleHand.GlobalPosition.DistanceTo(bottleAt);
+        await driver.AssertAndCapture(Mathf.Abs(TipUp(vial) - held) < 0.05f && back < 0.01f
+                && Syringe.NeedleTarget(syringe, driver.Patient) is not ContainerTarget,
+            $"the syringe moved away, out of the bottle: the bottle hand holds it where and how it did, cap down (tip "
+                + $"{TipUp(vial):0.00} up, was {held:0.00}; {back * 100f:0.0} cm from where it held it)",
+            "moved_away");
         shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;

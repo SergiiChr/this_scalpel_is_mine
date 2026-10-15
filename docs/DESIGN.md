@@ -405,10 +405,11 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 - **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
   vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
   snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.
-- **Drawing from a bottle in the other hand**: a syringe brought within 8 cm (across the floor) of the fist holding a
-  vial in the other hand meets it halfway: the vial turns cap up and both hands ease to a point between the needle and
-  the cap, at the higher of the two, the needle going down into it (`Surgeon.HeldVialMeeting()`). Moved away, the vial
-  hand goes back to where and how it held it.
+- **Drawing from a vial in the other hand**: a syringe brought within 8 cm across the floor (and 15 cm up or down) of
+  the fist holding a vial in the other hand meets it halfway: the vial turns cap up and both hands ease to a point
+  between the needle and the cap, at the higher of the two, the needle going down into it
+  (`Surgeon.HeldVialMeeting()`). A vial lying about under the needle comes first, and a needle pressed into something
+  else or stuck in the patient doesn't meet it. Moved away, the vial hand goes back to where and how it held it.
 - **Standing a bottle up**: holding Grab a second with a bottle in hand stands it upright where it's held, on whatever is
   under it (`ToolManager.StandingOn()`). A click puts it down like any other tool. It lets go a little further out than it snaps in, so passing over doesn't hold it for
   long. Snapping in and out (onto the IV bag too) eases over 0.25 s, the needle gliding over rather than jumping.
