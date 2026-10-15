@@ -29,7 +29,6 @@ import bmesh
 import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
-from mathutils.interpolate import poly_3d_calc
 from numpy.typing import NDArray
 
 from . import hand, scene
@@ -43,9 +42,18 @@ BUDGET = 40000
 HAND_BUDGET = 3000
 # Voxel size the parts are fused at, and the baked texture's size.
 VOXEL = 0.0011
-TEXTURE = 2048
-# Rays (and mesh columns) around each ring of a limb.
+TEXTURE = 4096
+# Rays (and mesh columns) around each ring of a limb, and the finer grid its colors are cast on.
 ANGLES = 128
+COLOR_ANGLES = 512
+COLOR_STEP = 0.00025
+# Below this saturation a color on a leg is gear, not stocking or skin (the skin's paint is a little over 0.2), and so
+# is a dull dark brown or black below this brightness (straps and holster sides; the dark stocking blue is saturated).
+GEAR_SATURATION = 0.15
+GEAR_DARK = 0.4
+GEAR_BLACK = 0.15
+# Leg colors are lifted to this share of their color's well-lit brightness at least.
+UNSHADE = 0.85
 
 # Everything below is measured on the scan in its own units: the figurine is 0.807 tall, feet at 0, the face toward
 # -Z, her right toward +X. Joints are where the limb's centerline meets them, in the scan's pose.
@@ -84,16 +92,21 @@ LEGS = {
 HIP_RADII = (0.038, 0.042)
 # Shoes stay scanned below this height; the stocking tubes reach a little into them.
 ANKLE = 0.075
-# Surface points the arm colors are picked up from: skin on the upper arm, the long gloves on the forearms.
+# Skin color for the hands, picked up on the upper arm. The arms' own colors are cast along their centerlines on the
+# scan (shoulder, elbow, wrist): where the cape or the hand is fused to them the colors are filled in from the clean
+# stretches. A ring counts as seen with this share of clean rays.
 SKIN_SPOT = (0.05, 0.452, -0.03)
-GLOVE_SPOTS = {"R": (0.078, 0.49, -0.035), "L": (-0.1, 0.42, 0.065)}
+ARM_LINES = {
+    "R": [(0.011, 0.445, -0.03), (0.082, 0.448, -0.033), (0.086, 0.463, -0.038), (0.081, 0.509, -0.043)],
+    "L": [(-0.049, 0.461, 0.022), (-0.072, 0.403, 0.064), (-0.083, 0.399, 0.077), (-0.116, 0.436, 0.053)],
+}
+ARM_SEEN = 0.3
 # Rest shoulder joints (after straightening), arm lengths and radii (shoulder, elbow, wrist), from the clean
-# stretches of the scanned arms. The gloves start a little above the elbow.
+# stretches of the scanned arms.
 SHOULDERS = {"R": (0.037, 0.458, 0.0), "L": (-0.037, 0.458, 0.0)}
 UPPER_ARM = 0.075
 FOREARM = 0.058
 ARM_RADII = (0.0135, 0.0115, 0.009)
-GLOVE_TOP = 0.068
 # Rounded shoulder over the arm's root: offset out from the joint (x away from the body, y, z) and radii (x, z, y in
 # Blender's axes, as the sphere is scaled there).
 DELTOID = ((0.004, 0.003, 0.0), (0.019, 0.018, 0.018))
@@ -181,6 +194,9 @@ class Scan:
         self.bm.faces.ensure_lookup_table()
         self.uv = self.bm.loops.layers.uv.active
         self.tree = BVHTree.FromBMesh(self.bm)
+        # Every face's corners and texture coordinates, for sampling the texture at many points at once.
+        self.corners = np.array([[loop.vert.co[:] for loop in face.loops] for face in self.bm.faces])
+        self.corner_uvs = np.array([[loop[self.uv].uv[:] for loop in face.loops] for face in self.bm.faces])
 
     def texel(self, uv: Vector) -> NDArray[np.float64]:
         """Texture color (display values) at a texture coordinate."""
@@ -188,11 +204,43 @@ class Scan:
         color: NDArray[np.float64] = self.pixels[int(np.clip(uv.y % 1.0 * h, 0, h - 1)), int(np.clip(uv.x % 1.0 * w, 0, w - 1))]
         return color
 
-    def color(self, face_index: int, point: Vector) -> NDArray[np.float64]:
-        """Texture color on a face at a Blender-space point."""
-        face = self.bm.faces[face_index]
-        weights = poly_3d_calc([loop.vert.co for loop in face.loops], point)
-        return self.texel(sum((loop[self.uv].uv * w for loop, w in zip(face.loops, weights, strict=True)), Vector((0.0, 0.0))))
+    def colors(self, faces: NDArray[np.int64], points: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Texture colors (display values, blended between texels) at Blender-space points on the given faces."""
+        a, b, c = (self.corners[faces, k] for k in range(3))
+        ab, ac, ap = b - a, c - a, points - a
+        d00, d01, d11 = (ab * ab).sum(1), (ab * ac).sum(1), (ac * ac).sum(1)
+        d20, d21 = (ap * ab).sum(1), (ap * ac).sum(1)
+        denominator = np.where(np.abs(d00 * d11 - d01 * d01) > 1e-30, d00 * d11 - d01 * d01, 1e-30)
+        v = (d11 * d20 - d01 * d21) / denominator
+        w = (d00 * d21 - d01 * d20) / denominator
+        uv = self.corner_uvs[faces, 0] * (1.0 - v - w)[:, None] + self.corner_uvs[faces, 1] * v[:, None] + self.corner_uvs[faces, 2] * w[:, None]
+        h, wide = self.pixels.shape[:2]
+        x = np.clip(uv[:, 0] % 1.0 * wide - 0.5, 0.0, wide - 1.001)
+        y = np.clip(uv[:, 1] % 1.0 * h - 0.5, 0.0, h - 1.001)
+        x0, y0 = x.astype(int), y.astype(int)
+        fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+        top = self.pixels[y0, x0] * (1.0 - fx) + self.pixels[y0, x0 + 1] * fx
+        bottom = self.pixels[y0 + 1, x0] * (1.0 - fx) + self.pixels[y0 + 1, x0 + 1] * fx
+        blended: NDArray[np.float64] = top * (1.0 - fy) + bottom * fy
+        return blended
+
+    def cast(self, curve: NDArray[np.float64], angles: int) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Rays out of each point of a centerline (game space), `angles` around it: distance to the surface (inf for
+        a miss) and the surface color there, per (point, angle)."""
+        _tangent, u, w = _frames(curve)
+        a = np.linspace(0.0, 2.0 * math.pi, angles, endpoint=False)
+        directions = np.cos(a)[None, :, None] * u[:, None, :] + np.sin(a)[None, :, None] * w[:, None, :]
+        distance = np.full((len(curve), angles), np.inf)
+        faces = np.zeros((len(curve), angles), dtype=np.int64)
+        points = np.zeros((len(curve), angles, 3))
+        for i, center in enumerate(curve):
+            origin = scene.to_blender(center)
+            for j in range(angles):
+                hit, _normal, index, dist = self.tree.ray_cast(origin, scene.to_blender(directions[i, j]), 0.08)
+                if hit is not None:
+                    distance[i, j], faces[i, j], points[i, j] = dist, index, hit[:]
+        colors = self.colors(faces.ravel(), points.reshape(-1, 3)).reshape(len(curve), angles, 3)
+        return distance, colors
 
     def color_around(self, point: Vec3, radius: float = 0.012) -> NDArray[np.float64]:
         """Median texture color of the surface within `radius`: steadier than one texel against painted shading."""
@@ -200,7 +248,8 @@ class Scan:
         if not hits:
             hit, _normal, index, _dist = self.tree.find_nearest(scene.to_blender(point))
             hits = [(hit, None, index, 0.0)]
-        median: NDArray[np.float64] = np.median([self.color(index, co) for co, _normal, index, _dist in hits], axis=0)
+        faces = np.array([index for _co, _normal, index, _dist in hits])
+        median: NDArray[np.float64] = np.median(self.colors(faces, np.array([co[:] for co, *_ in hits])), axis=0)
         return median
 
     def piece(self, name: str, keep: NDArray[np.bool_], planes: list[tuple[Vec3, Vec3]] | None = None) -> bpy.types.Object:
@@ -370,16 +419,56 @@ def _frames(curve: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np
     return t, u, np.cross(t, u)
 
 
-def _fill_columns(values: NDArray[np.float64], good: NDArray[np.bool_]) -> NDArray[np.float64]:
-    """Replaces bad samples of a (ring, angle, ...) grid by interpolating along each angle's column."""
+def _fill_columns(values: NDArray[np.float64], good: NDArray[np.bool_], nearest: bool = False) -> NDArray[np.float64]:
+    """Replaces bad samples of a (ring, angle, ...) grid along each angle's column: interpolated between the good
+    ones, or copied from the nearest (colors, so a painted edge like a stocking's top stays sharp)."""
     out = values.reshape(values.shape[0], values.shape[1], -1).copy()
     rows = np.arange(len(values))
     for j in range(out.shape[1]):
-        ok = good[:, j]
-        if ok.any():
+        known = rows[good[:, j]]
+        if len(known) == 0:
+            continue
+        bad = rows[~good[:, j]]
+        if nearest:
+            after = np.clip(np.searchsorted(known, bad), 0, len(known) - 1)
+            before = np.clip(after - 1, 0, len(known) - 1)
+            source = np.where(np.abs(known[before] - bad) <= np.abs(known[after] - bad), known[before], known[after])
+            out[bad, j] = out[source, j]
+        else:
             for k in range(out.shape[2]):
-                out[~ok, j, k] = np.interp(rows[~ok], rows[ok], out[ok, j, k])
+                out[bad, j, k] = np.interp(bad, known, out[known, j, k])
     return out.reshape(values.shape)
+
+
+def _unshade(colors: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Lifts the scan's baked shadows off evenly painted parts (stockings, reference photos): each color darker than
+    UNSHADE of the well-lit brightness (80th percentile) of its own dominant channel's colors is brightened up to it,
+    hue kept."""
+    flat = colors.reshape(-1, 3)
+    value = flat.max(axis=1)
+    channel = flat.argmax(axis=1)
+    target = np.zeros(len(flat))
+    for c in range(3):
+        mine = channel == c
+        if mine.any():
+            target[mine] = np.percentile(value[mine], 80) * UNSHADE
+    lifted = flat * np.maximum(1.0, target / np.maximum(value, 1e-6))[:, None]
+    unshaded: NDArray[np.float64] = np.clip(lifted, 0.0, 1.0).reshape(colors.shape)
+    return unshaded
+
+
+def _clean_rays(distance: NDArray[np.float64], reference: NDArray[np.float64]) -> NDArray[np.bool_]:
+    """Rays that ended near their ring's own radius, not inside a neighbor fused to the limb."""
+    clean: NDArray[np.bool_] = np.isfinite(distance) & (distance < reference[:, None] * 1.4) & (distance > reference[:, None] * 0.6)
+    return clean
+
+
+def _fill(values: NDArray[np.float64], good: NDArray[np.bool_], rings: NDArray[np.bool_], nearest: bool = False) -> NDArray[np.float64]:
+    """Fills the bad samples of a (ring, angle, ...) grid: around the ring in the given rings, then along the limb."""
+    out = values.copy()
+    for i in np.nonzero(rings)[0]:
+        out[i] = _fill_around(out[i], good[i])
+    return _fill_columns(out, np.repeat(rings[:, None], values.shape[1], axis=1), nearest)
 
 
 def _fill_around(values: NDArray[np.float64], good: NDArray[np.bool_]) -> NDArray[np.float64]:
@@ -412,33 +501,30 @@ class Tube:
         ring's usual radius went through a place where this limb is fused to something (the other thigh): it and
         any ring with too few clean rays are filled in from the clean rings above and below."""
         curve = _resample(np.array(centerline), 0.001)
-        tangent, u, w = _frames(curve)
-        angles = np.linspace(0.0, 2.0 * math.pi, ANGLES, endpoint=False)
-        radii = np.full((len(curve), ANGLES), np.inf)
-        colors = np.zeros((len(curve), ANGLES, 3))
-        for i, center in enumerate(curve):
-            for j, a in enumerate(angles):
-                direction = math.cos(a) * u[i] + math.sin(a) * w[i]
-                hit, _normal, index, dist = scan.tree.ray_cast(scene.to_blender(center), scene.to_blender(direction), 0.08)
-                if hit is not None:
-                    radii[i, j] = dist
-                    colors[i, j] = scan.color(index, hit)
-        finite = np.isfinite(radii)
+        tangent, u, _w = _frames(curve)
+        radii, _colors = scan.cast(curve, ANGLES)
         # A ring's own radius from its shorter rays: rays into a fused neighbor only ever run long.
-        reference = np.nan_to_num(np.nanpercentile(np.where(finite, radii, np.nan), 30, axis=1), nan=0.0)
-        good = finite & (radii < reference[:, None] * 1.4) & (radii > reference[:, None] * 0.6)
-        # Rings with enough clean rays fill their gaps around the ring, the others along the limb. Colors take any
-        # ring with a fair share of clean rays (the outer side of a fused thigh still shows its skin and stocking top);
-        # the outline only rings that are nearly all clean.
-        seen = good.mean(axis=1) > 0.4
+        reference = np.nan_to_num(np.nanpercentile(np.where(np.isfinite(radii), radii, np.nan), 30, axis=1), nan=0.0)
+        good = _clean_rays(radii, reference)
+        # Rings with enough clean rays fill their gaps around the ring, the others along the limb. The outline takes
+        # only rings that are nearly all clean.
         clean = good.mean(axis=1) > 0.85
         if not clean.any():
             raise RuntimeError("no clean ring on the limb")
-        for rows, values in ((seen, colors), (clean, radii)):
-            for i in np.nonzero(rows)[0]:
-                values[i] = _fill_around(values[i], good[i])
-        colors = _fill_columns(colors, np.repeat(seen[:, None], ANGLES, axis=1))
-        radii = _fill_columns(np.where(good, radii, 0.0), np.repeat(clean[:, None], ANGLES, axis=1))
+        radii = _fill(np.where(good, radii, 0.0), good, clean)
+        # Colors are cast again much finer, for the texture's detail. They take any ring with a fair share of clean
+        # rays: the outer side of a fused thigh still shows its skin and stocking top.
+        fine = _resample(np.array(centerline), COLOR_STEP)
+        distance, colors = scan.cast(fine, COLOR_ANGLES)
+        along = np.interp(np.linspace(0.0, 1.0, len(fine)), np.linspace(0.0, 1.0, len(curve)), reference)
+        # Gray and black (holsters and their straps lying against the thigh) aren't the leg's own paint either.
+        value, low = colors.max(axis=2), colors.min(axis=2)
+        saturation = (value - low) / np.maximum(value, 1e-6)
+        brown = (value < GEAR_DARK) & (saturation < 0.6) & (colors[..., 0] >= colors[..., 2])
+        # Near black is shadow too deep to tell the paint's hue.
+        gear = (saturation < GEAR_SATURATION) | brown | (value < GEAR_BLACK)
+        good = _clean_rays(distance, along) & ~gear
+        colors = _unshade(_fill(colors, good, good.mean(axis=1) > 0.4, nearest=True))
         tube = Tube(radii, colors, float(np.sum(np.linalg.norm(np.diff(curve, axis=0), axis=1))))
         tube.end_tangent, tube.end_normal = tangent[-1], u[-1]
         tube.top = int(np.argmax(clean))
@@ -476,14 +562,16 @@ class Tube:
         u /= np.linalg.norm(u)
         w = np.cross(d, u)
         rings, angles = self.radii.shape
+        color_rings, color_angles = self.colors.shape[:2]
         a = np.linspace(0.0, 2.0 * math.pi, angles + 1)
         verts: list[NDArray[np.float64]] = []
         uvs: list[tuple[float, float]] = []
+        # The color image has one more column than angles, a copy of the first, so the texture wraps around smoothly.
         for i in range(rings):
             center = np.array(start) + d * self.length * i / (rings - 1)
             for j in range(angles + 1):
                 verts.append(center + self.radii[i, j % angles] * (math.cos(a[j]) * u + math.sin(a[j]) * w))
-                uvs.append(((j + 0.5) / (angles + 1), (i + 0.5) / rings))
+                uvs.append(((j / angles * color_angles + 0.5) / (color_angles + 1), (i / (rings - 1) * (color_rings - 1) + 0.5) / color_rings))
         faces = []
         loop_uvs = []
         for i in range(rings - 1):
@@ -495,7 +583,7 @@ class Tube:
         for i, flip in ((0, True), (rings - 1, False)):
             center = np.array(start) + d * self.length * i / (rings - 1)
             verts.append(center)
-            uvs.append((0.5 / (angles + 1), (i + 0.5) / rings))
+            uvs.append((0.5 / (color_angles + 1), (i / (rings - 1) * (color_rings - 1) + 0.5) / color_rings))
             for j in range(angles):
                 tri = [i * (angles + 1) + j, i * (angles + 1) + j + 1, len(verts) - 1]
                 faces.append(tri[::-1] if flip else tri)
@@ -503,9 +591,9 @@ class Tube:
         obj = scene.mesh_object(name, np.array(verts).tolist(), faces)
         layer = obj.data.uv_layers.new(name="UVMap")
         layer.data.foreach_set("uv", np.array(loop_uvs).ravel())
-        image = bpy.data.images.new(f"{name}Colors", angles + 1, rings)
-        pixels = np.ones((rings, angles + 1, 4))
-        pixels[:, :, :3] = self.colors[:, np.arange(angles + 1) % angles]
+        image = bpy.data.images.new(f"{name}Colors", color_angles + 1, color_rings)
+        pixels = np.ones((color_rings, color_angles + 1, 4))
+        pixels[:, :, :3] = self.colors[:, np.arange(color_angles + 1) % color_angles]
         image.pixels.foreach_set(pixels.astype(np.float32).ravel())
         obj.data.materials.append(_texture_material(f"{name}Material", image))
         return obj
@@ -598,20 +686,29 @@ def legs_and_shoes(scan: Scan) -> list[bpy.types.Object]:
     return parts
 
 
+def arm_colors(scan: Scan, side: str, radii: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """The scanned arm's colors around its centerline (ring, angle), the fused parts filled in, and the direction angle
+    0 points to once the arm is laid out straight along X (her right +X, left -X)."""
+    fine = _resample(np.array(ARM_LINES[side]), COLOR_STEP)
+    distance, colors = scan.cast(fine, COLOR_ANGLES)
+    along = np.interp(np.linspace(0.0, 1.0, len(fine)), np.linspace(0.0, 1.0, len(radii)), radii)
+    value = colors.max(axis=2)
+    good = _clean_rays(distance, along) & (value > GEAR_BLACK)
+    colors = _unshade(_fill(colors, good, good.mean(axis=1) > ARM_SEEN, nearest=True))
+    tangent, u, _w = _frames(fine)
+    sign = 1.0 if side == "R" else -1.0
+    return colors, _turn_onto(tangent[0], np.array([sign, 0.0, 0.0])) @ u[0]
+
+
 def arms(scan: Scan) -> list[bpy.types.Object]:
-    skin = scan.color_around(SKIN_SPOT)
+    """Round arms from the shoulder to the wrist in the scanned arms' own colors."""
     parts = []
     length = UPPER_ARM + FOREARM
     elbow = UPPER_ARM / length
     for side, sign in (("R", 1.0), ("L", -1.0)):
-        glove = scan.color_around(GLOVE_SPOTS[side])
-        top = GLOVE_TOP / length
-        tube = Tube.round(
-            [(0.0, ARM_RADII[0]), (elbow, ARM_RADII[1]), (1.0, ARM_RADII[2])],
-            [(0.0, skin), (top - 0.01, skin), (top, glove), (1.0, glove)],
-            length,
-        )
-        arm = tube.build(f"Arm{side}", SHOULDERS[side], (sign, 0.0, 0.0), (0.0, 1.0, 0.0))
+        tube = Tube.round([(0.0, ARM_RADII[0]), (elbow, ARM_RADII[1]), (1.0, ARM_RADII[2])], [(0.0, np.zeros(3))], length)
+        tube.colors, normal = arm_colors(scan, side, np.interp(np.linspace(0.0, 1.0, 3), [0.0, elbow, 1.0], ARM_RADII))
+        arm = tube.build(f"Arm{side}", SHOULDERS[side], (sign, 0.0, 0.0), tuple(normal))
         # A rounded shoulder where the arm meets the torso, in the arm's skin color.
         bm = bmesh.new()
         bm.from_mesh(arm.data)
@@ -621,7 +718,7 @@ def arms(scan: Scan) -> list[bpy.types.Object]:
         uv = bm.loops.layers.uv.active
         for face in {f for v in sphere for f in v.link_faces}:
             for loop in face.loops:
-                loop[uv].uv = (0.5 / (ANGLES + 1), 0.5 / len(tube.radii))
+                loop[uv].uv = (0.5 / (COLOR_ANGLES + 1), 0.5 / len(tube.colors))
         bm.to_mesh(arm.data)
         bm.free()
         parts.append(arm)
@@ -664,6 +761,30 @@ def _copy(obj: bpy.types.Object) -> bpy.types.Object:
     clone = obj.copy()
     clone.data = obj.data.copy()
     return scene.link(clone)
+
+
+def _settle(body: bpy.types.Object, sources: list[bpy.types.Object]) -> bpy.types.Object:
+    """Puts the fused surface back on the parts it was fused from: the voxels leave faint terraces that, decimated,
+    shade as blotches. Points further off than a voxel or two (the fill where parts meet) stay, and a light smoothing
+    evens out the seam between the two."""
+    shells = scene.join("Shells", *[_copy(obj) for obj in sources])
+    tree = BVHTree.FromObject(shells, bpy.context.evaluated_depsgraph_get())
+    count = len(body.data.vertices)
+    co = np.empty(count * 3)
+    body.data.vertices.foreach_get("co", co)
+    points = co.reshape(-1, 3)
+    for i, point in enumerate(points):
+        hit, _normal, _index, distance = tree.find_nearest(Vector(point), VOXEL * 1.5)
+        if hit is not None:
+            points[i] = hit[:]
+    body.data.vertices.foreach_set("co", points.ravel())
+    body.data.update()
+    bpy.data.objects.remove(shells)
+    smooth = body.modifiers.new("Smooth", "CORRECTIVE_SMOOTH")
+    smooth.iterations = 2
+    smooth.use_only_smooth = True
+    smooth.smooth_type = "LENGTH_WEIGHTED"
+    return scene.bake(body)
 
 
 def _unwrap(obj: bpy.types.Object) -> None:
@@ -835,7 +956,7 @@ def build() -> bpy.types.Object:
 
     body = scene.join("ScanDoctor", *[_copy(obj) for obj in sources])
     body.data.materials.clear()
-    body = scene.remesh(body, VOXEL, smooth=4)
+    body = _settle(scene.remesh(body, VOXEL), sources)
     body = scene.fit(body, BUDGET)
     fitted_hands = [scene.fit(_copy(obj), HAND_BUDGET) for obj in hand_sources]
     for obj in [body, *fitted_hands]:
