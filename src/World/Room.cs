@@ -178,6 +178,8 @@ public partial class Room : Node3D {
         BuildTable();
         BuildTray();
         BuildStations(surgery);
+        // Once all the furniture is in, which the tubing hangs against.
+        IvLine.Hang(_ivStand, IvDripPoint);
         var ambience = EnvironmentId switch {
             "ambulance" => "ambulance_rumble",
             "sidewalk" => "street_ambience",
@@ -515,6 +517,11 @@ public partial class Room : Node3D {
         var swap = Interactable.Create(this, "Swap IV bag", new Vector3(0.4f, 2f, 0.4f),
             Layout["iv"] + new Vector3(0f, 1f, 0f), surgery.UseIv);
         swap.Offered = surgeon => surgeon.HeldTool(surgeon.Active)?.Def.IvOnly == true;
+        // The tubing's end goes onto a catheter in hand before it goes into the arm.
+        var connect = Interactable.Create(this, "Connect the IV line", new Vector3(0.4f, 2f, 0.4f),
+            Layout["iv"] + new Vector3(0f, 1f, 0f), surgery.ConnectIvLine);
+        connect.Offered = surgeon => surgeon.HeldTool(surgeon.Active) is { Def.Action: "iv_line", Charges: not 0 } held
+            && IvLine.Catheter != held && !IvLine.IsAttached;
         IvLine = new IvLine { Name = "IvLine" };
         AddChild(IvLine);
         Monitor = new PatientMonitor { Name = "Monitor" };
@@ -545,10 +552,11 @@ public partial class Room : Node3D {
         return Interactable.Create(this, prompt, size, Layout[key] + new Vector3(0f, height, 0f), action);
     }
 
-    /// <summary>Runs the IV tubing from the stand's drip chamber to a catheter taped on at <paramref name="site"/> (local
-    /// to <paramref name="to"/>, see PatientBody.IvSite()) on an arm of this radius.</summary>
-    public void ConnectIv(Node3D to, Transform3D site, float armRadius) =>
-        IvLine.Attach(_ivStand, IvDripPoint, to, site, armRadius);
+    /// <summary>A catheter taped on at <paramref name="site"/> (local to <paramref name="to"/>, see
+    /// PatientBody.IvSite()) on an arm of this radius, <paramref name="connected"/>: with the tubing from the stand's
+    /// drip chamber on it.</summary>
+    public void ConnectIv(Node3D to, Transform3D site, float armRadius, bool connected) =>
+        IvLine.Attach(to, site, armRadius, connected);
 
     /// <summary>Places a layout prop, turned by its yaw, solid if it has a footprint in <see cref="StationSolids"/>.
     /// </summary>

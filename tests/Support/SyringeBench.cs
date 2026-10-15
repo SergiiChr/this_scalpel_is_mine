@@ -179,9 +179,9 @@ public partial class SyringeBench : Node {
             StandBy(aim);
         }
         if (@case.Target == "drip" && !Surgery.Patient.IvWorking) {
-            // Only once the surgeon is in place: stepping over to the stand would count as walking through the tubing.
+            // Only once the surgeon is in place, so the tubing settles around where they stand.
             await Frames.Physics(5);
-            Surgery.Patient.IvRemoved();
+            Surgery.Patient.IvRemoved(false);
             Surgery.Patient.SetIv(VeinPoint(), true);
         }
         await Frames.Physics(2);
@@ -280,11 +280,12 @@ public partial class SyringeBench : Node {
         await Frames.Physics(20);
     }
 
-    /// <summary>Puts an IV catheter in the active hand over the forearm vein, <paramref name="miss"/> meters across the
-    /// arm from it, with no line in yet. <see cref="Press"/> then pushes it in.</summary>
+    /// <summary>Puts an IV catheter with the tubing on it in the active hand over the forearm vein,
+    /// <paramref name="miss"/> meters across the arm from it, with no line in yet. <see cref="Press"/> then pushes it in.
+    /// </summary>
     public async Task StageCatheter(float miss) {
         ConsumeStaged();
-        Surgery.Patient.IvRemoved();
+        Surgery.Patient.IvRemoved(false);
         // Use tool let go, or the new catheter would go in wherever the hand passes over the arm.
         PlayerInput.Action(InputActions.UseTool, false);
         await PlayerInput.Delivered();
@@ -295,6 +296,7 @@ public partial class SyringeBench : Node {
         StandBy(aim);
         Surgery.Tools.RequestGrab(catheter, Me.Active);
         await Frames.Physics(2);
+        SurgeryState.IvLineIsOnCatheter(Surgery.Patient, catheter);
         var hand = Me.Hands[Me.Active];
         for (var i = 0; i < 40; i++) {
             hand.LocalTarget = Me.ToLocal(aim - hand.TipOffset(catheter.Def.Length) + (Vector3.Up * 0.04f));
@@ -386,8 +388,8 @@ public partial class SyringeBench : Node {
     /// <summary>Walks the surgeon to stand facing the aim from outside the table, close enough to reach it, and looking
     /// at it.</summary>
     private void StandBy(Vector3 aim) {
-        // Stepping over counts as walking through the tubing, which would rip a line out and jolt the hand: take it out.
-        Surgery.Patient.IvRemoved();
+        // Walking off with the tubing caught on the legs would rip a line out and jolt the hand: take it out.
+        Surgery.Patient.IvRemoved(false);
         var patient = Surgery.Patient.GlobalPosition;
         // Off the table's long side, on the aim's side of it.
         var away = Mathf.Abs(aim.Z - patient.Z) < 0.15f ? 1f : Mathf.Sign(aim.Z - patient.Z);

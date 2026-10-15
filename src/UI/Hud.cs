@@ -33,7 +33,7 @@ public partial class Hud : CanvasLayer {
     }
 
     private readonly record struct ClockShown(string Title, int Seconds);
-    private readonly record struct ObjectivesShown(SurgeryStatus Status, int Anesthesia);
+    private readonly record struct ObjectivesShown(SurgeryStatus Status);
     private readonly record struct BoardShown(string? Order, int Done, int SecondsLeft, int Cooldown);
     private readonly record struct HandShown(SurgicalTool? Tool, bool Full, bool Dirty, bool Holding);
     private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
@@ -658,14 +658,8 @@ public partial class Hud : CanvasLayer {
         if (!Settings.Debug) {
             return;
         }
-        var status = Surgery.Status;
-        var anesthesia = Mathf.FloorToInt(Surgery.Patient.Vitals.Anesthesia * 100f);
-        if (_objectivesShown.Changed(new ObjectivesShown(status, anesthesia))) {
-            var steps = Surgery.Scenario.Steps;
-            var rows = status.Objectives.Select((row, i) => !row.Done && steps[i].Type == "anesthesia"
-                ? row with { Label = $"{row.Label} ({Mathf.Floor(Surgery.Patient.Vitals.Anesthesia * 100f):0}% / {steps[i].Parameters.Float("level", 0.7f) * 100f:0}%)" }
-                : row).ToList();
-            _objectives.Refresh(status with { Objectives = rows });
+        if (_objectivesShown.Changed(new ObjectivesShown(Surgery.Status))) {
+            _objectives.Refresh(Surgery.Status);
         }
     }
 
