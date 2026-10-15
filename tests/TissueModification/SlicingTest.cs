@@ -81,7 +81,8 @@ public class SlicingTest {
     private sealed record SliceCase(string Id, string Scenario, bool Fat, string Inside, bool Along);
 
     /// <summary>
-    /// Progressive depth stays continuous through the three layers, with a thin skin lip and rounded cut ends.
+    /// Progressive depth stays continuous through the three layers, with a thin skin lip and clearly tapered
+    /// V-shaped cut ends.
     /// </summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task ProgressiveDepth() {
@@ -161,6 +162,7 @@ public class SlicingTest {
             $"after the first 2 cm the skin is open, nothing under it is cut ({Layers(first)})");
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
         CheckLayersUnderSkin();
+        CheckFinishingTip();
         await ShotsOf(slice.Id, "03_moved_low");
 
         // Medium: deeper, then 2 cm more.
@@ -179,6 +181,7 @@ public class SlicingTest {
         }
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
         CheckLayersUnderSkin();
+        CheckFinishingTip();
         await ShotsOf(slice.Id, "05_moved_medium");
 
         // High.
@@ -202,6 +205,7 @@ public class SlicingTest {
                 "cutting through the muscle nicks nothing inside");
             Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
             CheckLayersUnderSkin();
+            CheckFinishingTip();
             await ShotsOf(slice.Id, "07_moved_high");
         }
         _hand.Lowered = false;
@@ -515,6 +519,87 @@ public class SlicingTest {
         _hand.Lowered = true;
         _hand.Trigger = true;
         await Hold(PressTime);
+    }
+
+    /// <summary>The published skin has an open V at the stroke's material endpoint and narrows visibly over the
+    /// final millimeters, rather than leaving a square cap or overlapping faces there.</summary>
+    private void CheckFinishingTip() {
+        var body = _surgery.Patient.Body;
+        using var arrays = body.Layers[0].Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        using var skin = new TriangleMesh();
+        skin.CreateFromFaces(indices.Select(i => vertices[i]).ToArray());
+        var edges = new Dictionary<(int A, int B), int>();
+        for (var t = 0; t < indices.Length; t += 3) {
+            var p = vertices[indices[t]];
+            var q = vertices[indices[t + 1]];
+            var r = vertices[indices[t + 2]];
+            // Exact grid crossings share a lip and its corner: their zero-area faces have no surface boundary.
+            if ((q - p).Cross(r - p).LengthSquared() < 1e-16f) { continue; }
+            foreach (var (a, b) in new[] { (indices[t], indices[t + 1]), (indices[t + 1], indices[t + 2]), (indices[t + 2], indices[t]) }) {
+                var edge = (Math.Min(a, b), Math.Max(a, b));
+                edges[edge] = edges.GetValueOrDefault(edge) + 1;
+            }
+        }
+        var boundary = new Dictionary<int, List<int>>();
+        foreach (var (edge, count) in edges) {
+            if (count != 1) { continue; }
+            foreach (var (from, to) in new[] { (edge.A, edge.B), (edge.B, edge.A) }) {
+                if (!boundary.TryGetValue(from, out var neighbours)) { boundary[from] = neighbours = []; }
+                neighbours.Add(to);
+            }
+        }
+        var end = _scalpel.Use.LastUv;
+        var along = (_edgeUv * body.SiteSize).Normalized();
+        var pointed = false;
+        var tapered = false;
+        var widths = "";
+        var nearest = float.PositiveInfinity;
+        foreach (var (v, neighbours) in boundary) {
+            if (neighbours.Count != 2) { continue; }
+            var distance = ((uvs[v] - end) * body.SiteSize).Length();
+            nearest = Mathf.Min(nearest, distance);
+            if (distance > 0.0002f) { continue; }
+            var first = vertices[neighbours[0]] - vertices[v];
+            var second = vertices[neighbours[1]] - vertices[v];
+            var p = new Vector2(first.X, first.Z);
+            var q = new Vector2(second.X, second.Z);
+            // Identify the terminal lips in material coordinates; their physical directions turn as skin retracts.
+            var restP = (uvs[neighbours[0]] - uvs[v]) * body.SiteSize;
+            var restQ = (uvs[neighbours[1]] - uvs[v]) * body.SiteSize;
+            var isV = restP.Dot(along) < 0f && restQ.Dot(along) < 0f && Mathf.Abs(p.Cross(q)) > 1e-10f;
+            var sample = vertices[v] + (first + second) * 0.2f;
+            using var hit = skin.IntersectRay(sample with { Y = 0.2f }, Vector3.Down);
+            if (!isV || hit.Count != 0) { continue; }
+            pointed = true;
+            Vector3? LipAt(int next, float distance) {
+                var previous = v;
+                var progress = 0f;
+                for (var n = 0; n < boundary.Count && next != v; n++) {
+                    var to = -((uvs[next] - uvs[v]) * body.SiteSize).Dot(along);
+                    if (to >= distance) { return vertices[previous].Lerp(vertices[next], (distance - progress) / (to - progress)); }
+                    if (!boundary.TryGetValue(next, out var adjacent) || adjacent.Count != 2) { break; }
+                    var after = adjacent[0] == previous ? adjacent[1] : adjacent[0];
+                    previous = next;
+                    next = after;
+                    progress = to;
+                }
+                return null;
+            }
+            float WidthAt(float distance) {
+                if (LipAt(neighbours[0], distance) is not { } left || LipAt(neighbours[1], distance) is not { } right) { return float.NaN; }
+                var gap = right - left;
+                return Mathf.Abs(new Vector2(gap.X, gap.Z).Cross(along));
+            }
+            var near = WidthAt(0.001f);
+            var back = WidthAt(0.003f);
+            widths = $"{near * 1000f:0.00} mm at 1 mm, {back * 1000f:0.00} mm at 3 mm";
+            tapered |= near < back * 0.75f;
+        }
+        Check(pointed, $"the finishing stroke leaves an open V (nearest boundary corner {nearest * 1000f:0.00} mm from the material cut tip)");
+        Check(tapered, $"the opening visibly narrows toward its end ({widths})");
     }
 
     /// <summary>Moves the hand <see cref="Move"/> along the blade's edge over <see cref="MoveTime"/>, then checks the

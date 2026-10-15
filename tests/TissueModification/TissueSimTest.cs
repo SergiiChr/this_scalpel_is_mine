@@ -14,6 +14,7 @@ public class TissueSimTest {
     [TestCase]
     public void TissueGeometryAndPhysicsContracts() {
         CutGapes();
+        CutEndFollowsFineStroke();
         RetractionOnASlope();
         DepthLayers();
         RetractionAndTears();
@@ -111,6 +112,25 @@ public class TissueSimTest {
         Check(float.IsNaN(surface.HeightAt(0f, 0f)), "vertical faces leave no stale height in the contact grid");
         surface.Index(roof, Array.Empty<int>());
         Check(float.IsNaN(surface.HeightAt(0.2f, 0.3f)), "reindexing clears old surface buckets");
+    }
+
+    /// <summary>A slow finishing stroke can contain many segments inside its last triangle.</summary>
+    private static void CutEndFollowsFineStroke() {
+        var sim = Sim();
+        var a = new Vector2(0.4f, 0.4f);
+        var b = new Vector2(0.6f, 0.4f);
+        var c = new Vector2(0.4f, 0.6f);
+        var entry = new Vector2(0.45f, 0.4f);
+        var stop = new Vector2(0.45f, 0.46f);
+        sim.Cut(entry - Vector2.Down * 0.01f, entry, TissueDepth.Skin);
+        for (var step = 0; step < 64; step++) {
+            sim.Cut(entry.Lerp(stop, step / 64f), entry.Lerp(stop, (step + 1) / 64f), TissueDepth.Skin);
+        }
+        Check(sim.CutEndIn(a, b, c, entry) is { } end && end.DistanceTo(stop) < 0.00001f,
+            "the cut's drawn end follows the blade through every fine segment in its final triangle");
+        Check(sim.CutEndIn(a, b, new Vector2(c.X, 0.2f), entry) is { } start
+            && start.DistanceTo(entry - Vector2.Down * 0.01f) < 0.00001f,
+            "the opposite end traces back to the actual start of the blade stroke");
     }
 
     private static void CutGapes() {
