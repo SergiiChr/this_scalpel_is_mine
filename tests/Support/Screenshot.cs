@@ -15,6 +15,8 @@ namespace Scalpel.Tests.Support;
 /// the stand and the dressing close up (42_*), then a sedated and a knocked out surgeon (43_* to 46_*,
 /// --only=sedation). --only=&lt;case&gt; renders one.</item>
 /// <item>--menus: the main menu's pages and the lobby.</item>
+/// <item>--lighting: three room views and 120 warmed, uncapped frame samples per view; --lighting-baseline restores
+/// the operating theatre lighting from main at 5876605 for a repeatable performance comparison.</item>
 /// </list>
 /// Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 /// </summary>
@@ -47,7 +49,9 @@ public partial class Screenshot : Node {
             AddChild(surgery);
             await Frames(10);
             await SurgeryDriver.PlayerPutsCardBack(surgery);
-            if (Has("--anatomy")) {
+            if (Has("--lighting")) {
+                await LightingViews(surgery);
+            } else if (Has("--anatomy")) {
                 await Anatomy(surgery);
             } else if (Has("--materials")) {
                 await MaterialViews(surgery);
