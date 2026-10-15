@@ -311,7 +311,13 @@ public partial class Surgeon {
         // Tools lying about count too: set down on top of one, not into it (the two would be shoved apart, through the
         // tray).
         const uint SoftLayers = 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer;
-        if (Rays.Cast(this, from, to, 1 | SoftLayers | (tools ? SurgicalTool.ToolLayer : 0)) is not { } hit) {
+        var mask = 1 | SoftLayers | (tools ? SurgicalTool.ToolLayer : 0);
+        var first = Rays.Cast(this, from, to, mask);
+        // Where the site hangs off the body (past the side of a limb) its plane is in the air: what's under it counts.
+        if (first?.Collider == body.SiteCollider && !body.OnBody(body.WorldToUv(point))) {
+            first = Rays.Cast(this, from, to, mask & ~4u);
+        }
+        if (first is not { } hit) {
             return Surface.None;
         }
         var collider = (CollisionObject3D)hit.Collider;

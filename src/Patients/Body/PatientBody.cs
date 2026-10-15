@@ -63,10 +63,12 @@ public partial class PatientBody : Node3D {
     public const uint SurfaceLayer = 256;
     /// <summary>Dermis and epidermis at the incision: a narrow lip above the subcutaneous tissue.</summary>
     public const float SkinThickness = 0.0015f;
-    public const float MuscleThickness = 0.006f;
+    /// <summary>Muscle under a site without a skeleton to reach down to.</summary>
+    public const float DefaultMuscle = 0.006f;
+    /// <summary>How far under the muscle a bone's top lies.</summary>
+    private const float BoneGap = 0.003f;
     /// <summary>Subcutaneous fat where a site doesn't say ("fat" in patient_sites.json).</summary>
     public const float DefaultFat = SiteDef.DefaultFat;
-    private static readonly string[] LimbSites = ["forearm", "shoulder", "thigh", "lower_leg"];
     /// <summary>A vein drawn along the inside of each forearm runs over this part of the forearm (0 the elbow, 1 the
     /// wrist).</summary>
     public static readonly Vector2 VeinSpan = new(0.15f, 0.8f);
@@ -119,6 +121,8 @@ public partial class PatientBody : Node3D {
     /// <summary>Subcutaneous fat under this site, thicker on obese patients (set before <see cref="Build"/>). None on a
     /// forearm.</summary>
     public float FatThickness { get; set; } = DefaultFat;
+    /// <summary>Muscle under this site: on a limb, down to just over its bones (see MeasureLimbBones()).</summary>
+    public float MuscleThickness { get; private set; } = DefaultMuscle;
     /// <summary>Heart contraction 0..1, set by the animator from the vitals every frame.</summary>
     public float Heartbeat { get; set; }
     /// <summary>Lung fill 0..1, set by the animator from the vitals every frame.</summary>
@@ -244,21 +248,39 @@ public partial class PatientBody : Node3D {
         PublishLayers();
     }
 
-    public bool IsLimbSite => LimbSites.Contains(SiteId);
+    /// <summary>An arm, a leg or the shoulder: its bones are the skeleton's (<see cref="SiteDef.Skeleton"/>).</summary>
+    public bool IsLimbSite => SiteDef.Skeleton.Count > 0;
 
     /// <summary>
     /// How deep the cavity is under the skin in the middle of the site: at least deep enough for the site's bones to
     /// fit under the muscle from their middle on, where the cavity can already be shallower (a thick fat layer, a bone
-    /// off to one side like the shoulder's).
+    /// off to one side like the shoulder's). A limb is muscle down to its bones, not a hollow: its floor lies just under
+    /// their middle along it, so they lie half sunk in it, and this is where it lies deepest.
     /// </summary>
     public float CavityDepth() {
-        var depth = SiteDef.Depth;
+        var depth = _limbFloor.Length > 0 ? _limbFloor.Max() : SiteDef.Depth;
         foreach (var bone in SiteDef.Bones) {
             var bowl = Bowl((bone.From + bone.To) * 0.5f);
-            var needed = MuscleBottom + 0.003f + bone.Radius * 2f + 0.004f;
+            var needed = MuscleBottom + BoneGap + bone.Radius * 2f + 0.004f;
             depth = Mathf.Max(depth, (needed - (1f - bowl) * (SkinThickness + 0.003f)) / bowl);
         }
         return depth;
+    }
+
+    /// <summary>
+    /// How deep under the skin at uv a scenario target <paramref name="halfHeight"/> thick lies, given
+    /// <paramref name="depth"/>. In a limb, inside the thin cavity between the muscle and the bones, as near that depth
+    /// as it fits: its top under the muscle, its middle no deeper than the floor, so the depth fits every patient, the
+    /// thicker fat of a heavy one leaving less muscle. A <paramref name="bone"/> to saw takes the place of the limb's
+    /// own: half sunk in the floor like it. Elsewhere the depth as it is: a trunk target can lie in the skin or the bone
+    /// over the cavity (a knife sticking out, a sternum to saw).
+    /// </summary>
+    public float TargetDepth(Vector2 uv, float depth, float halfHeight, bool bone) {
+        if (!IsLimbSite) {
+            return depth;
+        }
+        var floor = SurfaceHeight(uv) - CavityFloor(uv);
+        return bone ? floor : Mathf.Min(Mathf.Max(depth, MuscleBottom + halfHeight), floor);
     }
 
     /// <summary>How far under the skin the muscle layer ends: bones lie right under it, organs further down.</summary>
