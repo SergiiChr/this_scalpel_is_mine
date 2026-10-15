@@ -79,8 +79,10 @@ public class XrayFilmTest {
                 .Single(spot => spot.Prompt.StartsWith("Hold up"));
             await driver.PlayerLooksAt(holder.GlobalPosition);
             await Frames.Physics(2);
-            AssertBool(driver.Me.Focused == holder && SurgeryDriver.IsLit(holder))
-                .OverrideFailureMessage($"looking at the developed films lights them up: focused on {driver.Me.Focused?.Prompt}")
+            var others = cart.FindChildren("*", "", true, false).OfType<Interactable>().Where(spot => spot != holder);
+            AssertBool(driver.Me.Focused == holder && SurgeryDriver.IsLit(holder) && !others.Any(SurgeryDriver.IsLit))
+                .OverrideFailureMessage($"looking at the developed films lights them up, and only them: focused on "
+                    + $"{driver.Me.Focused?.Prompt}")
                 .IsTrue();
             // One case shows it: the films light up the same whatever is on them.
             if (shots is not null && scenario == "bullet_muscle" && !lateral) {
@@ -90,6 +92,8 @@ public class XrayFilmTest {
             }
             await driver.PlayerHoldsUpFilms();
             AssertBool(driver.Me.HoldingFilms).OverrideFailureMessage("interact on the holder holds the films up").IsTrue();
+            await Frames.Physics(2);
+            AssertBool(SurgeryDriver.IsLit(holder)).OverrideFailureMessage("held up, the films are no longer lit").IsFalse();
             if (shots is not null) {
                 var lamp = driver.Surgery.Room.GetNode<Node3D>("SurgicalLamp").GlobalPosition;
                 await driver.PlayerLooksAt(lamp);

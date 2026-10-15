@@ -129,7 +129,7 @@ public class XrayCartTest {
     /// <summary>A view of the cart's side from 45° above, from the side toward the middle of the room: the column, the
     /// arm and the tube head side by side, and in its corner the view isn't inside the wall.</summary>
     private static Task CaptureCart(KeyFrames shots, XrayCart cart, string keyFrame, string description) {
-        var side = cart.GlobalBasis.X * Mathf.Sign(cart.GlobalBasis.X.Dot(-cart.GlobalPosition));
+        var side = cart.GlobalBasis.X.Dot(cart.GlobalPosition) > 0f ? -cart.GlobalBasis.X : cart.GlobalBasis.X;
         return shots.CaptureOblique(keyFrame, description, cart.ToGlobal(new Vector3(0f, 1.1f, -0.35f)), side, CartView);
     }
 }
