@@ -111,7 +111,7 @@ public class ForcepsTest {
             .IsTrue();
 
         // Held deep and moved along the cut past its end, the tip stops at the end's lip rather than going under the skin.
-        var skin = driver.SitePoint(bullet.Uv + new Vector2(driver.Body.MetersToUv((Opening * 0.5f) + 0.01f), 0f));
+        var skin = driver.SitePoint(SkinBeyond(driver, bullet.Uv, Vector2.Right));
         await driver.PlayerSweepsTo(skin);
         var stopped = forceps.TipPosition();
         await driver.AssertAndCapture(driver.Body.IsOpen(driver.Body.WorldToUv(stopped)) && hand.HeldDepth is not null,
@@ -132,7 +132,7 @@ public class ForcepsTest {
         PlayerInput.Action(InputActions.Lift, false);
         await Frames.Seconds(0.5f);
         AssertBool(!driver.Body.IsOpen(driver.Body.WorldToUv(forceps.TipPosition())) && hand.HeldDepth is null)
-            .OverrideFailureMessage("lifted, the tip goes over the lip onto the skin and rests on it").IsTrue();
+            .OverrideFailureMessage($"lifted, the tip goes over the lip onto the skin and rests on it: tip {driver.Body.WorldToUv(forceps.TipPosition())}, target {driver.Body.WorldToUv(skin)}, target open {driver.Body.IsOpen(driver.Body.WorldToUv(skin))}, held depth {hand.HeldDepth}").IsTrue();
         await driver.PlayerReaches(spot);
         SurgeryDriver.Use();
         await Frames.Seconds(0.5f);
@@ -292,10 +292,13 @@ public class ForcepsTest {
 
     /// <summary>The whole skin just past the opening's edge from <paramref name="uv"/> (in it), across the cut.
     /// </summary>
-    private static Vector2 SkinBeside(SurgeryDriver driver, Vector2 uv) {
-        var step = new Vector2(0f, driver.Body.MetersToUv(0.001f));
-        var probes = Mathf.CeilToInt(Mathf.Max(1f - uv.Y, 0f) / step.Y) + 1;
-        for (var probe = 0; probe < probes; probe++, uv += step) {
+    private static Vector2 SkinBeside(SurgeryDriver driver, Vector2 uv) => SkinBeyond(driver, uv, Vector2.Down);
+
+    /// <summary>Whole skin beyond the actual opening in a site direction. The blade's surface footprint,
+    /// rather than its buried tip's planned travel, determines where the longitudinal lip lies.</summary>
+    private static Vector2 SkinBeyond(SurgeryDriver driver, Vector2 uv, Vector2 direction) {
+        var step = direction * driver.Body.MetersToUv(0.001f);
+        for (; new Rect2(0f, 0f, 1f, 1f).HasPoint(uv); uv += step) {
             if (!driver.Body.IsOpen(uv)) {
                 return uv + (step * 2f);
             }

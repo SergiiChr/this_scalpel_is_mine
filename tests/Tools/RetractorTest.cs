@@ -226,7 +226,7 @@ public class RetractorTest {
         }
         AssertBool(hooks.All(Holding)).OverrideFailureMessage("all four hold the edges").IsTrue();
         AssertBool(body.IsOpen(appendix.Uv)).OverrideFailureMessage("the abdomen stands open between them").IsTrue();
-        var gap = body.Tissue.GapAt(appendix.Uv, Middle, TissueDepth.Muscle);
+        var gap = MuscleOpening(body, appendix.Uv);
         AssertFloat(gap).OverrideFailureMessage($"{gap * 100f:0.0} cm wide through the muscle").IsGreater(Pull);
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("held open without tearing").IsEqual(wounds);
         // Over a few breaths: the belly rises and falls, and the retractors on it with it.
@@ -303,6 +303,39 @@ public class RetractorTest {
         return heights;
     }
 
+    /// <summary>The actual opening through the published muscle sheet, across the incision at the target.
+    /// A rest-grid radius can miss the opening after its material has moved; this checks the space tools enter.</summary>
+    private static float MuscleOpening(PatientBody body, Vector2 uv) {
+        using var arrays = body.Layers[2].Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var at = body.SitePoint(uv, 0f);
+        var left = float.NegativeInfinity;
+        var right = float.PositiveInfinity;
+        for (var t = 0; t < indices.Length; t += 3) {
+            var low = float.PositiveInfinity;
+            var high = float.NegativeInfinity;
+            for (var e = 0; e < 3; e++) {
+                var a = vertices[indices[t + e]];
+                var b = vertices[indices[t + (e + 1) % 3]];
+                if (at.X < Mathf.Min(a.X, b.X) || at.X > Mathf.Max(a.X, b.X)) { continue; }
+                if (Mathf.Abs(b.X - a.X) < 1e-9f) {
+                    low = Mathf.Min(low, Mathf.Min(a.Z, b.Z));
+                    high = Mathf.Max(high, Mathf.Max(a.Z, b.Z));
+                } else {
+                    var z = Mathf.Lerp(a.Z, b.Z, (at.X - a.X) / (b.X - a.X));
+                    low = Mathf.Min(low, z);
+                    high = Mathf.Max(high, z);
+                }
+            }
+            if (!float.IsFinite(low)) { continue; }
+            if (low <= at.Z && high >= at.Z) { return 0f; }
+            if (high < at.Z) { left = Mathf.Max(left, high); }
+            if (low > at.Z) { right = Mathf.Min(right, low); }
+        }
+        return float.IsFinite(left) && float.IsFinite(right) ? right - left : 0f;
+    }
+
     private static bool Holding(SurgicalTool retractor) => retractor.State == ToolState.Standing && retractor.Hold is not null;
 
     /// <summary>A retractor (a fresh one when the tray has one) hooked at <paramref name="at"/> (world) with Use tool.
@@ -323,12 +356,15 @@ public class RetractorTest {
     /// <summary>Draws the hooked retractor <paramref name="pull"/> (world) aside and lets go of it with Grab: it stays
     /// hooked, its handle pointing the way it pulled.</summary>
     private static async Task LetGoPulled(SurgeryDriver driver, SurgicalTool retractor, Vector3 pull, int number) {
+        // Measure the complete pull since the hook entered the skin, including any settling before this sweep.
+        var hooked = driver.Body.UvToWorld(((SkinHold)retractor.Hold!).Anchor);
         await driver.PlayerSweepsTo(retractor.TipPosition() + pull);
+        var pulled = retractor.TipPosition() - hooked;
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(1f);
         AssertThat(retractor.State).OverrideFailureMessage($"retractor {number} stays hooked when let go of")
             .IsEqual(ToolState.Standing);
-        AssertPointsAway(retractor, pull);
+        AssertPointsAway(retractor, pulled);
     }
 
     /// <summary>The skin just outside the opening's edge from <paramref name="uv"/> (on the cut) toward

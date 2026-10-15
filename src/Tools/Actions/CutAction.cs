@@ -14,7 +14,8 @@ public sealed class CutAction : ToolAction {
         var from = span is { } contact ? body.CutUv(contact.From) : step.Uv;
         var to = span is { } contactEnd ? body.CutUv(contactEnd.To) : step.Uv;
         var surfaceContact = span is { } footprint ? body.Site.ToGlobal((footprint.From + footprint.To) * 0.5f) : step.Tip;
-        if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel) {
+        if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel
+            && (tool.Blade is null || span is not null)) {
             // Pressed in at a new depth: the point goes in as wide as the blade, before it's moved at all.
             use.StabbedLevel = level;
             if (span is null) {
@@ -43,9 +44,19 @@ public sealed class CutAction : ToolAction {
             patient.CutCavity(step.Uv, step.Probe.Depth, step.Def.Sharpness, !tool.Sterile, step.Dt * step.Effort,
                 use.CutWall ? null : use.PutDownAt);
         }
-        var moved = use.LastUv.X >= 0f && body.WorldToUv(use.LastCutContact).DistanceTo(body.WorldToUv(surfaceContact)) > 0.003f;
+        if (tool.Blade is not null && span is null
+            && !(body.Tissue.IsOpen(step.Uv, TissueDepth.Skin) && step.Probe.Depth > PatientBody.SkinThickness)) {
+            // A real blade must enter skin before making a surface wound. Inside an existing opening,
+            // a buried blade can cut the deeper wall without intersecting the skin above it.
+            use.LastUv = new Vector2(-1f, -1f);
+            use.LastCutContact = Vector3.Inf;
+            return;
+        }
+        var fresh = use.LastUv.X < 0f || !use.LastCutContact.IsFinite();
+        var motion = fresh ? Vector3.Zero : surfaceContact - use.LastCutContact;
+        var moved = !fresh && body.WorldToUv(use.LastCutContact).DistanceTo(body.WorldToUv(surfaceContact)) > 0.003f;
         if (moved) {
-            var along = (surfaceContact - use.LastCutContact) * new Vector3(1, 0, 1);
+            var along = motion * new Vector3(1, 0, 1);
             var aligned = Mathf.Abs(along.Normalized().Dot(direction)) >= ToolActions.AlongBlade;
             var end = along.Dot(direction) >= 0f ? to : from;
             if (aligned && patient.Cut(StrokeKey(tool), use.LastUv, end, ToolActions.DepthByLevel[level],
@@ -57,13 +68,15 @@ public sealed class CutAction : ToolAction {
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             } else if (!aligned) {
                 // Dragged sideways: the next stroke starts here.
-                use.Stroke++;
+                // Lowering or tilting can move the footprint sideways without being a sideways drag.
+                var grip = tool.GlobalPosition - use.LastCutGrip;
+                if (grip.X * grip.X + grip.Z * grip.Z > grip.Y * grip.Y) { use.Stroke++; }
             }
         }
-        if (use.LastUv.X < 0f || moved) {
-            var motion = surfaceContact - use.LastCutContact;
-            use.LastUv = use.LastUv.X < 0f ? (from + to) * 0.5f : motion.Dot(direction) >= 0f ? to : from;
+        if (fresh || moved) {
+            use.LastUv = fresh ? (from + to) * 0.5f : motion.Dot(direction) >= 0f ? to : from;
             use.LastCutContact = surfaceContact;
+            use.LastCutGrip = tool.GlobalPosition;
         }
     }
 

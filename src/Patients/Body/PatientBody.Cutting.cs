@@ -1,14 +1,32 @@
 namespace Scalpel.Patients;
 
 public partial class PatientBody {
-    /// <summary>The current material sheet, continued smoothly across its opening, where a blade enters.
-    /// Sampling separate lips would jump between banks while the incision retracts.</summary>
-    internal float CutSurfaceHeight(Vector3 p) => CutMaterial(p).Height;
-
     /// <summary>Material coordinates at a physical cutting contact, accounting for skin retraction.</summary>
-    internal Vector2 CutUv(Vector3 p) => CutMaterial(p).Uv;
+    internal Vector2 CutUv(Vector3 p) {
+        var uv = LocalToUv(p);
+        var nearest = float.PositiveInfinity;
+        if (!_skinBuckets.TryGetValue(SkinCell(p), out var bucket)) { return uv; }
+        foreach (var t in bucket) {
+            var ia = _skinSheetIndex[t];
+            var ib = _skinSheetIndex[t + 1];
+            var ic = _skinSheetIndex[t + 2];
+            var a = _skinSheet[ia];
+            var b = _skinSheet[ib];
+            var c = _skinSheet[ic];
+            var w = Barycentric(new Vector2(p.X, p.Z), new Vector2(a.X, a.Z), new Vector2(b.X, b.Z), new Vector2(c.X, c.Z));
+            if (!w.IsFinite() || Mathf.Min(w.X, Mathf.Min(w.Y, w.Z)) < -0.00001f) { continue; }
+            var distance = Mathf.Abs(p.Y - (a.Y * w.X + b.Y * w.Y + c.Y * w.Z));
+            if (distance >= nearest) { continue; }
+            nearest = distance;
+            uv = _skinSheetUv[ia] * w.X + _skinSheetUv[ib] * w.Y + _skinSheetUv[ic] * w.Z;
+        }
+        // An aperture has no skin material to invert: keep its anatomical coordinate for deeper work.
+        return uv;
+    }
 
-    private (Vector2 Uv, float Height) CutMaterial(Vector3 p) {
+    /// <summary>The current material sheet continued smoothly across its opening, for finding the blade section.
+    /// Sampling separate lips would jump between banks as the incision retracts.</summary>
+    internal float CutSurfaceHeight(Vector3 p) {
         var uv = LocalToUv(p);
         var cell = (Vector2I)(uv * new Vector2(Tissue.ResX, Tissue.ResY)).Floor();
         var best = float.PositiveInfinity;
@@ -38,8 +56,7 @@ public partial class PatientBody {
             if (off >= best) { return; }
             best = off;
             height = y;
-            uv = Tissue.UvOf(ia) * w.X + Tissue.UvOf(ib) * w.Y + Tissue.UvOf(ic) * w.Z;
         }
-        return (uv, height);
+        return height;
     }
 }

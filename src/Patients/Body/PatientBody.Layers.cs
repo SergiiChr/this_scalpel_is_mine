@@ -392,7 +392,10 @@ public partial class PatientBody {
         var built = new (Surface?, Surface?)[3];
         // The skin first: the layers under it are kept under its sheet (UnderSkin()).
         built[0] = FillLayer(0, _plans[0]);
-        Parallel.For(1, 3, layer => built[layer] = FillLayer(layer, _plans[layer]));
+        Parallel.For(1, 3, layer => {
+            _skinContacts[layer - 1].Index(_skinSheet, _skinSheetIndex);
+            built[layer] = FillLayer(layer, _plans[layer]);
+        });
         _built = built;
     }
 
@@ -966,11 +969,21 @@ public partial class PatientBody {
         }
         if (layer == 0) {
             // As drawn, curved lips included: what lies under the skin is kept under these triangles.
-            RememberSkinSheet(refinedVertices, index);
+            RememberSkinSheet(refinedVertices, refinedUvs, index);
         } else {
             for (var v = vertexCount; v < refinedVertices.Length; v++) {
                 refinedVertices[v] = UnderSkin(refinedVertices[v], refinedOwner[v]);
             }
+        }
+        if (layer != 0 && !_renderTurnover) {
+            // Vertices below skin can still span a crease in its curved sheet. Constrain the overlapping
+            // triangle interiors too, using separate reusable contact scratch for each parallel layer.
+            for (var t = 0; t < index.Count; t += 3) {
+                var (a, b, c) = (index[t], index[t + 1], index[t + 2]);
+                if (Tissue.Turned(refinedOwner[a]) || Tissue.Turned(refinedOwner[b]) || Tissue.Turned(refinedOwner[c])) { continue; }
+                _skinContacts[layer - 1].PushTriangle(refinedVertices, a, b, c, UnderSkinAbove, above: false);
+            }
+            Array.Copy(refinedVertices, vertices, vertexCount);
         }
         var wallVertices = new List<Vector3>();
         var wallNormals = new List<Vector3>();
@@ -1081,7 +1094,8 @@ public partial class PatientBody {
             var start = refinedVertices[a];
             var end = refinedVertices[b];
             var lip = plan.Apex.ContainsKey(a) ? b : a;
-            var low = UnderSkin(refinedVertices[lip] - Outward(layer, plan.Owner[lip]) * thickness, plan.Owner[lip]);
+            var tipThickness = WallThickness(plan.Owner[lip]);
+            var low = UnderSkin(refinedVertices[lip] - Outward(layer, plan.Owner[lip]) * tipThickness, plan.Owner[lip]);
             var normal = (end - start).Cross(low - start).Normalized();
             if (normal.IsZeroApprox()) { return; }
             if (normal.Dot(start - refinedVertices[inside]) < 0f) { normal = -normal; }
@@ -1090,7 +1104,7 @@ public partial class PatientBody {
             wallNormals.AddRange([normal, normal, normal]);
             wallUvs.AddRange([plan.Uv[a], plan.Uv[b], plan.Uv[lip]]);
             wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White]);
-            wallDepths.AddRange([new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + thickness, 0f)]);
+            wallDepths.AddRange([new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + tipThickness, 0f)]);
             if ((low - start).Cross(end - start).Dot(normal) > 0f) {
                 wallIndices.AddRange([first, first + 1, first + 2]);
             } else {
@@ -1104,15 +1118,18 @@ public partial class PatientBody {
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
     /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>
+    private readonly ContactSurface[] _skinContacts = [new(), new()];
     private Vector3[] _skinSheet = [];
+    private Vector2[] _skinSheetUv = [];
     private List<int> _skinSheetIndex = [];
     private readonly Dictionary<Vector2I, List<int>> _skinBuckets = [];
     private const float SkinBucket = 0.01f;
     /// <summary>How far (meters) what lies under the skin stays below the skin drawn over it.</summary>
     private const float UnderSkinAbove = 0.0003f;
 
-    private void RememberSkinSheet(Vector3[] vertices, List<int> index) {
+    private void RememberSkinSheet(Vector3[] vertices, Vector2[] uvs, List<int> index) {
         _skinSheet = vertices;
+        _skinSheetUv = uvs;
         _skinSheetIndex = index;
         foreach (var bucket in _skinBuckets.Values) {
             bucket.Clear();

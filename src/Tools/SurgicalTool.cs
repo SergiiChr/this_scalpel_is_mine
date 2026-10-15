@@ -38,9 +38,10 @@ public sealed class ToolUse {
     /// it a little.</summary>
     public Vector3[] StapleAim { get; set; } = [];
     public Vector2 LastUv { get; set; } = new(-1, -1);
-    /// <summary>The blade's previous surface contact (world), not its buried point: sinking or tilting the
-    /// blade can sweep its cutting edge along skin while its deepest tip moves sideways.</summary>
+    /// <summary>The blade's previous skin contact and grip (world). The grip distinguishes a sideways drag
+    /// from lowering the blade or recoil moving its footprint.</summary>
     public Vector3 LastCutContact { get; set; } = Vector3.Inf;
+    public Vector3 LastCutGrip { get; set; } = Vector3.Inf;
     public float ChargeTime { get; set; }
     /// <summary>The surgeon whose stopped heart the defibrillator charges on, 0 for the patient: the shock goes there
     /// even if the paddles lift off as they're let go.</summary>
@@ -68,6 +69,7 @@ public sealed class ToolUse {
         PressedBefore = false;
         LevelBefore = 0;
         LastCutContact = Vector3.Inf;
+        LastCutGrip = Vector3.Inf;
         PinchWait = null;
     }
 }

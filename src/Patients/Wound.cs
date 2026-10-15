@@ -106,7 +106,10 @@ public sealed class Wound {
         Clotted = false;
         PressedFor = 0f;
         var last = _points.Count - 1;
-        if (last >= 1 && _points[last - 1].DistanceTo(point) < PointSpacingUv) {
+        // Compact forward samples, but preserve a turnaround: returning near the previous point
+        // must not erase the blade's initial footprint or the endpoint still needing closure.
+        if (last >= 1 && _points[last - 1].DistanceTo(point) < PointSpacingUv
+            && (_points[last] - _points[last - 1]).Dot(point - _points[last]) >= 0f) {
             _length += _points[last - 1].DistanceTo(point) - _points[last - 1].DistanceTo(_points[last]);
             _points[last] = point;
         } else {
@@ -114,6 +117,25 @@ public sealed class Wound {
             _points.Add(point);
         }
         ResizeBins();
+    }
+
+    /// <summary>A continuous blade can reverse across its initial footprint or withdraw along its cut.
+    /// Keep one incision's extent instead of counting that same stretch twice.</summary>
+    internal void FollowStroke(Vector2 a, Vector2 b, float reach, bool throughMuscle) {
+        if (_points.Count == 2 && (_points[1] - _points[0]).Dot(b - a) < 0f) {
+            _points.Reverse();
+            Array.Reverse(Bins);
+            Array.Reverse(Muscle);
+            Array.Reverse(_jagged);
+            var reopened = _reopened.ToArray();
+            _reopened.Clear();
+            foreach (var (bin, seal) in reopened) { _reopened[Bins.Length - 1 - bin] = seal; }
+        }
+        if (Runs(a, b, reach)) {
+            Recut(a, b, throughMuscle);
+        } else {
+            Extend(b);
+        }
     }
 
     /// <summary>

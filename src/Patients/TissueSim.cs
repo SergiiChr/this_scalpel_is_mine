@@ -1078,7 +1078,7 @@ public sealed partial class TissueSim {
         // stays put, at the drape's rim, rows ahead of the jaws, and the hand stops when that pile can't take more.
         // Nor may the patch fold the skin over itself: a spring whose reach along the body has shrunk to
         // UprightShare of its rest reach (KeepUpright()) is at the limit, one row passing the next is over it.
-        foreach (var s in _winSprings) {
+        foreach (var s in patch.Springs) {
             ref readonly var spring = ref _springs[s];
             var unpulled = pin.UnpulledAll[s];
             if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f || !NearFold(spring.A) || !NearFold(spring.B)) {

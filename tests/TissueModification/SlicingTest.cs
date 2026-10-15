@@ -84,9 +84,11 @@ public class SlicingTest {
     /// Progressive depth stays continuous through the three layers, with a thin skin lip and clearly tapered
     /// V-shaped cut ends.
     /// </summary>
-    [TestCase(Timeout = Limits.Slow)]
-    public async Task ProgressiveDepth() {
-        await RunCases(depth: true, grafts: false);
+    [TestCase("arm", Timeout = Limits.Slow)]
+    [TestCase("thigh", Timeout = Limits.Slow)]
+    [TestCase("belly", Timeout = Limits.Slow)]
+    public async Task ProgressiveDepth(string site) {
+        await RunCases(depth: true, grafts: false, site);
     }
 
     /// <summary>
@@ -97,7 +99,7 @@ public class SlicingTest {
         await RunCases(depth: false, grafts: true);
     }
 
-    private async Task RunCases(bool depth, bool grafts) {
+    private async Task RunCases(bool depth, bool grafts, string? site = null) {
         _shots = KeyFrames.Wanted();
         _out = KeyFrames.Folder(KeyFrameFolder);
         _report.Clear();
@@ -109,7 +111,7 @@ public class SlicingTest {
         Frames.Tree.ProcessFrame += TimeFrame;
         try {
             if (depth) {
-                foreach (var slice in Cases) {
+                foreach (var slice in Cases.Where(slice => site is null || slice.Id == site)) {
                     await Run(slice);
                 }
             }
@@ -589,9 +591,11 @@ public class SlicingTest {
         using var bladeShape = new TriangleMesh();
         bladeShape.CreateFromFaces(bladeFaces);
         var bladeNormal = (body.Site.GlobalBasis.Inverse() * _scalpel.GlobalBasis.X).Normalized();
+        var bladeOrigin = body.Site.ToLocal(_scalpel.GlobalPosition);
+        var bladeLow = bladeFaces.Aggregate((a, b) => a.Min(b)) - Vector3.One * 0.003f;
+        var bladeHigh = bladeFaces.Aggregate((a, b) => a.Max(b)) + Vector3.One * 0.003f;
         var bladeGap = float.PositiveInfinity;
         var entersOpening = false;
-        var along = (_edgeUv * body.SiteSize).Normalized();
         var pointed = false;
         var tapered = false;
         var widths = "";
@@ -600,7 +604,9 @@ public class SlicingTest {
             if (neighbours.Count != 2) { continue; }
             var distance = ((uvs[v] - end) * body.SiteSize).Length();
             nearest = Mathf.Min(nearest, distance);
-            if (distance > TissueSim.Cell) { continue; }
+            // The latest contact can recoil inside a slit longer than one cell. Locate its visible V by
+            // the real blade's bounds; the physical contact check below still requires an uncovered aperture.
+            if (vertices[v].X < bladeLow.X || vertices[v].X > bladeHigh.X || vertices[v].Z < bladeLow.Z || vertices[v].Z > bladeHigh.Z) { continue; }
             var first = vertices[neighbours[0]] - vertices[v];
             var second = vertices[neighbours[1]] - vertices[v];
             var p = new Vector2(first.X, first.Z);
@@ -608,7 +614,9 @@ public class SlicingTest {
             // Identify the terminal lips in material coordinates; their physical directions turn as skin retracts.
             var restP = (uvs[neighbours[0]] - uvs[v]) * body.SiteSize;
             var restQ = (uvs[neighbours[1]] - uvs[v]) * body.SiteSize;
-            var isV = restP.Dot(along) < 0f && restQ.Dot(along) < 0f && Mathf.Abs(p.Cross(q)) > 1e-10f;
+            var along = -(restP + restQ).Normalized();
+            var isV = restP.LengthSquared() > 1e-12f && restQ.LengthSquared() > 1e-12f
+                && restP.Normalized().Dot(restQ.Normalized()) > 0.99f && Mathf.Abs(p.Cross(q)) > 1e-10f;
             var sample = vertices[v] + (first + second) * 0.2f;
             if (!isV || Covered(sample)) { continue; }
             pointed = true;
@@ -647,7 +655,12 @@ public class SlicingTest {
             }
             foreach (var distanceBack in new[] { 0.0005f, 0.001f, 0.003f }) {
                 if (LipAt(neighbours[0], distanceBack) is not { } left || LipAt(neighbours[1], distanceBack) is not { } right) { continue; }
-                var insideOpening = (left + right) * 0.5f;
+                // The blade can sit off-center in an asymmetrically retracted opening. Intersect its plane
+                // with the actual cross-section, then sample just inside the slit rather than on a skin edge.
+                var sideLeft = (left - bladeOrigin).Dot(bladeNormal);
+                var sideRight = (right - bladeOrigin).Dot(bladeNormal);
+                var share = Mathf.Abs(sideLeft - sideRight) > 1e-9f ? Mathf.Clamp(sideLeft / (sideLeft - sideRight), 0.01f, 0.99f) : 0.5f;
+                var insideOpening = left.Lerp(right, share);
                 using var frontHit = bladeShape.IntersectRay(insideOpening - bladeNormal * 0.01f, bladeNormal);
                 using var backHit = bladeShape.IntersectRay(insideOpening + bladeNormal * 0.01f, -bladeNormal);
                 var contactGap = float.PositiveInfinity;

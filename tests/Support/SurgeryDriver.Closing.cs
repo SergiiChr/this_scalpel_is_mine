@@ -171,7 +171,7 @@ public partial class SurgeryDriver {
     /// check that each hole goes in where the aim dot was (<see cref="AssertHoleOnAim"/>). Returns false when the layer
     /// shows nowhere beside the wound.
     /// </summary>
-    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false,
+    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1f, bool captureProgress = false,
         bool checkAim = false) {
         // Grid cells along and across the wound, in uv: they're square in meters, not in uv.
         var along = (wound.Points[^1] - wound.Points[0]).Normalized();
