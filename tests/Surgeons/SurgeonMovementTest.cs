@@ -195,7 +195,7 @@ public class SurgeonMovementTest {
         AssertFloat(bent).OverrideFailureMessage($"and sees their head bent forward over the table ({bent * 100f:0} cm ahead)")
             .IsLess(-0.15f);
         if (KeyFrames.Wanted()) {
-            var camera = new Camera3D { Fov = 55f };
+            var camera = new Camera3D { Fov = 55f, CullMask = RenderLayers.Normal };
             driver.Surgery.AddChild(camera);
             camera.GlobalPosition = neck + (puppet.GlobalBasis * new Vector3(1.1f, 0.2f, 0.3f));
             camera.LookAt(neck + (Vector3.Down * 0.4f));
@@ -277,7 +277,7 @@ public class SurgeonMovementTest {
         var driver = await Begin();
         var me = driver.Me;
         var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
-        var camera = new Camera3D { Fov = 55f };
+        var camera = new Camera3D { Fov = 55f, CullMask = RenderLayers.Normal };
         driver.Surgery.AddChild(camera);
         driver.Budget.Clear();
         foreach (var side in (float[])[-1f, 1f]) {

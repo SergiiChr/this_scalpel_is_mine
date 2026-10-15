@@ -119,12 +119,12 @@ internal sealed partial class GameplaySweep {
         cart.GlobalPosition = Patient.GlobalPosition + new Vector3(0f, -Room.TableHeight, 1f);
         Station(cart, "Take an X-ray").Interact(Me);
         await Frames.Physics((int)(XrayCart.ExposeTime * 60) + 10);
-        if (cart.Print is null) {
-            Fail("x-ray print missing");
+        if (cart.Films.Count != 2) {
+            Fail("x-ray films missing");
         }
-        _surgery.Hud.OpenXray(cart);
+        Station(cart, "Hold up").Interact(Me);
         await Frames.Physics(3);
-        _surgery.Hud.CloseOverlay();
+        Me.HoldingFilms = false;
     }
 
     /// <summary>The spot under <paramref name="parent"/> whose prompt starts with <paramref name="prompt"/>.</summary>

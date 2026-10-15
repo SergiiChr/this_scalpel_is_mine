@@ -24,7 +24,7 @@ public partial class GripGallery : Node3D {
         var hand = new SurgeonHand();
         body.AddChild(hand);
         hand.Build(left ? 0 : 1, Materials.ToonUnique(new Color(0.2f, 0.36f, 0.34f)));
-        var camera = new Camera3D { Fov = 40f };
+        var camera = new Camera3D { Fov = 40f, CullMask = RenderLayers.Normal };
         AddChild(camera);
         camera.Current = true;
         var shoulder = new Vector3(0.19f * side, 1.4f, -0.08f);

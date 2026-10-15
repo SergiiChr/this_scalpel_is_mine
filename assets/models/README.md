@@ -4,13 +4,13 @@ Generated from code; run `./build.py assets` to rebuild them all.
 The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name,
 so a replacement `.glb` only needs the same file name, node or bone names and material names.
 `tests/Models/ModelsTest.cs` checks the names the game depends on, and that each model stays within its triangle budget:
-patient 52k, surgeon parts 16k (the glove about 8k), organs 7k, targets 5k, tools 6k, props 15k.
+patient 60k (its skeleton, seen only on X-ray films, about 10k of it), surgeon parts 16k (the glove about 8k), organs 7k, targets 5k, tools 6k, props 15k.
 The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__main__.py` and `tools/blender/patient.py`);
 Godot adds LODs on import.
 
 | Folder | Contents | Made by | Animated (bone or node names) |
 |---|---|---|---|
-| `patient/` | `body.glb` (one skinned mesh) | `tools/blender` | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids |
+| `patient/` | `body.glb` (one skinned mesh, the skeleton in rigid parts) | `tools/blender` | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids, Skeleton&lt;Bone&gt; |
 | `surgeon/` | `glove` (skinned) | `tools/blender` | Bones: Hand, Index/Middle/Ring/Pinky/Thumb 1-3 |
 | `surgeon/` | `head.glb` (face skinned, cap and mask textures embedded) | delivered model, no generator in the repo | Bones: Neck, Head. Parts: Cap, Mask |
 | `surgeon/` | `body`, `upper_arm`, `forearm` | `tools/assetgen` | Torso, LegL/R |

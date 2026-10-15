@@ -9,6 +9,11 @@ public partial class Interactable : Area3D {
     /// <summary>True when this is on offer to that surgeon right now (the IV stand only for someone holding a bag).
     /// Unset: always.</summary>
     public Func<Surgeon, bool>? Offered { get; set; }
+    /// <summary>What the wheel does while this is focused, given 1 for up and -1 for down. Unset: it works the held tool.
+    /// </summary>
+    public Action<int>? Wheel { get; set; }
+    /// <summary>The prompt for <see cref="Wheel"/>.</summary>
+    public string WheelPrompt { get; set; } = "";
 
     public static Interactable Create(Node3D parent, string label, Vector3 size, Vector3 position, Action<Surgeon> action) {
         var area = new Interactable {

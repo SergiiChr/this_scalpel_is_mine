@@ -41,9 +41,13 @@ public partial class NetDriver : NetSession {
         var partner = Partner(surgery);
         var hook = surgery.Room.FindChildren("*", "", true, false).OfType<Interactable>()
             .First(spot => spot.Prompt == "Read the patient card");
-        await Wait(0.5);
-        Check(!card.OnHook && card.PaperOf(partner.PeerId)?.DistanceTo(partner.Camera.GlobalPosition) < 0.5f,
-            "at the start the partner reads their own copy and none hangs on the hook");
+        // The partner's view and card arrive with their first synced states: on a busy machine that takes a while.
+        bool partnerReads() =>
+            !card.OnHook && card.PaperOf(partner.PeerId)?.DistanceTo(partner.Camera.GlobalPosition) < 0.5f;
+        for (var i = 0; i < 50 && !partnerReads(); i++) {
+            await Wait(0.2);
+        }
+        Check(partnerReads(), "at the start the partner reads their own copy and none hangs on the hook");
         await SurgeryDriver.PlayerPutsCardBack(surgery);
         for (var i = 0; i < 50 && card.TravelOf(partner.PeerId) > 0f; i++) {
             await Wait(0.2);

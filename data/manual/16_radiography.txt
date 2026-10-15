@@ -4,18 +4,22 @@ Localization of radiopaque foreign bodies (bullets, blades, retained instruments
 
 ## 16.2 Procedure
 1. Take hold of the mobile unit's handle ([b]Interact[/b]). It follows until released.
-2. Position it beside the table.
-3. Expose. All staff stand clear during the exposure, which lasts a few seconds.
-4. The film is delivered onto the cart. It develops over about {XrayCart.DevelopTime} seconds.
+2. Position it beside the table. The collimator lights both fields on the patient: the frontal (AP) field straight below the tube head, the lateral field level and forward from just below it.
+3. Raise or lower the arm with the [b]wheel[/b]. [b]Use[/b] locks the unit against the floor and releases it; the arm still moves with the wheel on the tube head.
+4. Expose. All staff stand clear during the exposure, which lasts a few seconds. Each exposure takes both views.
+5. The two films are delivered into the cassette holder. They develop over about {XrayCart.DevelopTime} seconds.
+6. Hold the films up ([b]Interact[/b]) against a light to read them. [b]Interact[/b] again puts them back.
 > The unit requires {XrayCart.Cooldown} seconds between exposures.
 
 ## 16.3 Interpretation
+The frontal film is read as if facing the patient: the patient's head at the top, the patient's right on the reader's left.
 [table=2]
 [cell][b]Appearance[/b][/cell][cell][b]Finding[/b][/cell]
-[cell]Bright white[/cell][cell]Metal: projectiles, blades, instruments[/cell]
-[cell]Light grey, linear[/cell][cell]Bone[/cell]
-[cell]Soft grey, rounded[/cell][cell]Soft tissue mass, organ, clot[/cell]
-[cell]Black[/cell][cell]Trapped air[/cell]
+[cell]Solid white, sharp edges[/cell][cell]Metal: projectiles, blades, instruments, other foreign bodies[/cell]
+[cell]White, soft edges[/cell][cell]Bone. A break shows as a gap or a step in its outline[/cell]
+[cell]Faint grey outline[/cell][cell]Body outline, organs, soft tissue masses (appendix, tumor, clot)[/cell]
+[cell]Grey streak[/cell][cell]Wound track behind a projectile[/cell]
+[cell]Black[/cell][cell]Air, outside the body and trapped inside it[/cell]
 [/table]
 
 ## 16.4 Before closure

@@ -101,7 +101,7 @@ public class SlicingTest {
         _out = KeyFrames.Folder(KeyFrameFolder);
         _report.Clear();
         _frameTimes.Clear();
-        _camera = new Camera3D { Fov = CameraFov, Near = 0.01f };
+        _camera = new Camera3D { Fov = CameraFov, Near = 0.01f, CullMask = RenderLayers.Normal };
         Frames.Root.AddChild(_camera);
         // Drawn only for the screenshots: a software renderer would otherwise slow every frame of the surgery down.
         RenderingServer.RenderLoopEnabled = !_shots;

@@ -147,8 +147,9 @@ public partial class Hud : CanvasLayer {
         UpdateGauges(me);
         // Labels skip a text they already show, so setting one every frame is cheap; reading Text back would copy it.
         _hint.Text = me.Status.IsOut ? "" : string.Join("\n", ControlLines(me));
-        var prompt = me.Focused is { } focused && Overlay is null
+        var prompt = me.Focused is { } focused && Overlay is null && !me.HoldingFilms
             ? $"[{InputActions.BindingText(InputActions.Interact)}] {focused.Prompt}"
+                + (focused.Wheel is null ? "" : $"   [Wheel] {focused.WheelPrompt}")
             : "";
         if (prompt.Length == 0 && me.HeldTool(me.Active) is not null && me.PassTarget(me.Active) is { } partner) {
             prompt = $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.Surgeon.DisplayName}";
@@ -311,20 +312,6 @@ public partial class Hud : CanvasLayer {
     }
 
     private void UpdateShop() => Shop.Update(Surgery.Status.NurseBoard, Surgery.Status.NurseReady);
-
-    public void OpenXray(XrayCart cart) {
-        if (cart.Print is not { } print) {
-            return;
-        }
-        var box = Ui.VBox(12);
-        box.AddChild(new XrayPhoto(cart, print));
-        var close = Ui.Button("Put it down  [Esc]", CloseOverlay);
-        close.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
-        box.AddChild(close);
-        var center = new CenterContainer();
-        center.AddChild(box);
-        Open(Ui.Fullscreen(center, new Color(0f, 0f, 0f, 0.8f)));
-    }
 
     /// <summary>Starts the turning quick time event: <paramref name="done"/> gets the hits and whether a wrong key was
     /// pressed.</summary>
@@ -515,7 +502,13 @@ public partial class Hud : CanvasLayer {
         } else {
             lines.Add($"Mouse  Move {(me.Active == 0 ? "left" : "right")} hand");
         }
-        if (tool is not null) {
+        if (me.HoldingFilms) {
+            lines.Add($"{Key(InputActions.Interact)}  Put the films back");
+        }
+        if (me.PushedCart() is not null) {
+            lines.Add("Wheel  Raise / lower the arm");
+            lines.Add($"{Key(InputActions.UseTool)}  Lock the cart in place");
+        } else if (tool is not null) {
             lines.AddRange(ToolLines(me, tool, hand));
         } else {
             var hovered = IsInstanceValid(me.Hovered) ? " " + me.Hovered!.Label() : "";

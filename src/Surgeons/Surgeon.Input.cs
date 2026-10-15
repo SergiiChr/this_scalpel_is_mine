@@ -95,6 +95,8 @@ public partial class Surgeon {
             OnWheel(@event.IsActionPressed(InputActions.LevelUp));
         } else if (@event.IsActionPressed(InputActions.Zoom)) {
             Zoom = (Zoom + 1) % ZoomFov.Length;
+        } else if (@event.IsActionPressed(InputActions.UseTool) && PushedCart() is { } cart) {
+            cart.Lock();
         } else if (@event.IsActionPressed(InputActions.UseTool)) {
             // One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
             SetLowered(hand, true);
@@ -125,6 +127,8 @@ public partial class Surgeon {
         } else if (@event.IsActionReleased(InputActions.Grab) && _standHold is not null) {
             _standHold = null;
             GrabOrRelease();
+        } else if (@event.IsActionPressed(InputActions.Interact) && HoldingFilms) {
+            HoldingFilms = false;
         } else if (@event.IsActionPressed(InputActions.Interact) && Focused is not null) {
             Focused.Interact(this);
         } else if (@event.IsActionPressed(InputActions.Drink)) {
@@ -161,6 +165,14 @@ public partial class Surgeon {
     /// <summary>The wheel: a syringe's plunger, a needle holder's thread tension, a spreader's jaws or the effort level.
     /// </summary>
     private void OnWheel(bool up) {
+        if (PushedCart() is { } cart) {
+            cart.Raise(up ? 1 : -1);
+            return;
+        }
+        if (Focused?.Wheel is { } wheel) {
+            wheel(up ? 1 : -1);
+            return;
+        }
         var tools = Session.Tools;
         switch (HeldTool(Active)?.Def.Action) {
             case "syringe":
@@ -181,6 +193,10 @@ public partial class Surgeon {
                 break;
         }
     }
+
+    /// <summary>The X-ray cart this surgeon pushes: the wheel raises and lowers its arm, and Use tool locks it in place.
+    /// </summary>
+    internal XrayCart? PushedCart() => Session.Room.Xray is { } cart && cart.Pusher == PeerId ? cart : null;
 
     /// <summary>Back to the zoom step from before Use tool zoomed in on a syringe's needle, if it did.</summary>
     private void EndNeedleZoom() {

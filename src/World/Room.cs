@@ -86,7 +86,8 @@ public partial class Room : Node3D {
                 ["iv"] = new(0.95f, 0f, 0.85f),
                 ["monitor"] = new(1.25f, 1.55f, -0.95f),
                 ["defib_cart"] = new(0.3f, 0f, -1.95f),
-                ["xray"] = new(-1.9f, 0f, -1.7f),
+                // Parked arm toward the wall, its handle toward the room.
+                ["xray"] = new(-1.9f, 0f, -1.15f),
                 ["smoking"] = new(2.35f, 0f, -1.5f),
             },
             new Dictionary<string, float> {
@@ -531,7 +532,8 @@ public partial class Room : Node3D {
             Xray = new XrayCart { Name = "XrayCart" };
             AddChild(Xray);
             Xray.Position = Layout["xray"];
-            Xray.Bounds = (new Vector2(Layout.Size.X, Layout.Size.Z) * 0.5f) - new Vector2(0.45f, 0.45f);
+            Xray.Rotation = new Vector3(0f, Layout.YawOf("xray"), 0f);
+            Xray.Bounds = (new Vector2(Layout.Size.X, Layout.Size.Z) * 0.5f) - (Vector2.One * XrayCart.Extent);
             Xray.Build(surgery);
         }
         Interactable.Create(this, "Talk to the patient", new Vector3(0.25f, 0.3f, 0.3f), new Vector3(0.92f, 1.05f, 0f),

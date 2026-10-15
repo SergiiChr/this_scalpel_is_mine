@@ -86,7 +86,7 @@ public partial class KeyFrames : Node {
     public void Begin(Surgery surgery, string relative) {
         _surgery = surgery;
         OutDir = Folder(relative);
-        _camera = new Camera3D { Fov = Fov, Near = 0.01f };
+        _camera = new Camera3D { Fov = Fov, Near = 0.01f, CullMask = RenderLayers.Normal };
         surgery.AddChild(_camera);
     }
 
@@ -122,6 +122,14 @@ public partial class KeyFrames : Node {
         var front = face.Slide(Vector3.Up).Normalized();
         var side = front.Rotated(Vector3.Up, Mathf.Pi / 4f);
         return Views(keyFrame, description, at, [new("front", front, Vector3.Up), new("oblique", side, Vector3.Up)], distance, !hands);
+    }
+
+    /// <summary>One view from 45° above, from <paramref name="side"/> (world, across the floor), of something that a
+    /// view from straight above can't see (under the X-ray's tube head), saved as NN_name_oblique.png. The hands are
+    /// left out.</summary>
+    public Task CaptureOblique(string keyFrame, string description, Vector3 at, Vector3 side, float distance) {
+        var toward = side.Slide(Vector3.Up).Normalized();
+        return Views(keyFrame, description, at, [new("oblique", (Vector3.Up + toward).Normalized(), Vector3.Up)], distance, true);
     }
 
     /// <summary>Saves what the surgeon sees, the HUD's aim included, as NN_name_view.png.</summary>

@@ -70,7 +70,7 @@ public partial class Screenshot : Node {
     }
 
     private Camera3D NewCamera() {
-        var camera = new Camera3D();
+        var camera = new Camera3D { CullMask = RenderLayers.Normal };
         AddChild(camera);
         camera.Current = true;
         return camera;
@@ -229,14 +229,26 @@ public partial class Screenshot : Node {
     /// <summary>The X-ray print, the manual (a condition page too) and the patient card.</summary>
     private async Task PaperViews(Surgery surgery) {
         if (surgery.Room.Xray is { } cart) {
-            cart.GlobalPosition = surgery.Patient.GlobalPosition + new Vector3(-0.3f, -Room.TableHeight, 1.1f);
+            // Beside the table, its front toward it: the tube head over the patient's middle.
+            cart.GlobalPosition = surgery.Patient.GlobalPosition + new Vector3(-0.3f, -Room.TableHeight, 0.84f);
+            cart.GlobalRotation = Vector3.Zero;
+            var camera = NewCamera();
+            camera.GlobalPosition = cart.ToGlobal(new Vector3(-1.7f, 1.5f, 0.9f));
+            camera.LookAt(cart.ToGlobal(new Vector3(0f, 0.9f, -0.35f)));
+            await Frames(2);
+            await Shot("14a_xray_cart");
+            camera.QueueFree();
             cart.FindChildren("*", "", true, false).OfType<Interactable>().First(spot => spot.Prompt.StartsWith("Take an X-ray"))
                 .Interact(surgery.LocalSurgeon!);
             await Frames((int)(XrayCart.ExposeTime * 60) + 30);
             await ToSignal(GetTree().CreateTimer(XrayCart.DevelopTime + 0.5), SceneTreeTimer.SignalName.Timeout);
-            surgery.Hud.OpenXray(cart);
-            await Shot("14_xray_print");
-            surgery.Hud.CloseOverlay();
+            var me = surgery.LocalSurgeon!;
+            me.HoldingFilms = true;
+            // Held up against the ceiling's light.
+            me.Pitch = 0.6f;
+            await Frames(3);
+            await Shot("14_xray_films");
+            me.HoldingFilms = false;
         }
         surgery.Hud.OpenManual();
         await Shot("05_manual");
