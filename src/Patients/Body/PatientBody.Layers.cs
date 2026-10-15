@@ -872,6 +872,17 @@ public partial class PatientBody {
     private (Surface? Sheet, Surface? Walls) FillLayer(int layer, LayerPlan plan) {
         var depth = LayerTop(layer);
         var thickness = layer switch { 0 => SkinThickness, 1 => FatThickness, _ => MuscleThickness };
+        // A flap folded back takes the skin, the fat and the fascia over the muscle, not a limb's muscle down to its
+        // bones: that stays as the wound's bed, and walls that deep would stick out of the folded flap's edges. Skin
+        // pulled aside less than its anchors give (a retracted edge) keeps its muscle.
+        float WallThickness(int k) {
+            if (layer < 2) {
+                return thickness;
+            }
+            var folded = Mathf.Max(TurnedAmount(k, _renderMoved[k], _renderTurnover),
+                Mathf.SmoothStep(TissueSim.AnchorReach * 0.5f, TissueSim.AnchorReach, _renderMoved[k].Length()));
+            return Mathf.Lerp(thickness, Mathf.Min(DefaultMuscle, thickness), folded);
+        }
         var pointOf = _pointOf[layer];
         foreach (var k in _around) {
             pointOf[k] = _renderPoints[layer][k] - Outward(layer, k) * depth;
@@ -1005,8 +1016,9 @@ public partial class PatientBody {
             var topB = vertices[b];
             var outA = Outward(layer, plan.Owner[a]);
             var outB = Outward(layer, plan.Owner[b]);
-            var bottomA = UnderSkin(topA - outA * thickness, plan.Owner[a]);
-            var bottomB = UnderSkin(topB - outB * thickness, plan.Owner[b]);
+            var (thickA, thickB) = (WallThickness(plan.Owner[a]), WallThickness(plan.Owner[b]));
+            var bottomA = UnderSkin(topA - outA * thickA, plan.Owner[a]);
+            var bottomB = UnderSkin(topB - outB * thickB, plan.Owner[b]);
             var normal = (topB - topA).Cross(bottomA - topA).Normalized();
             // Facing into the cut, away from this side's own skin.
             if (normal.Dot(topA - vertices[plan.Wall[w + 2]]) < 0f) {
@@ -1015,7 +1027,7 @@ public partial class PatientBody {
             var mid = plan.MidpointOf.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var refined)
                 ? refinedVertices[refined]
                 : LipMidpoint(plan, vertices, a, b);
-            var midBottom = UnderSkin(mid - (outA + outB).Normalized() * thickness, plan.Owner[a]);
+            var midBottom = UnderSkin(mid - (outA + outB).Normalized() * ((thickA + thickB) * 0.5f), plan.Owner[a]);
             var midUv = plan.Uv[a].Lerp(plan.Uv[b], 0.5f);
             foreach (var (start, end, lowStart, lowEnd, uvStart, uvEnd) in new[]
                 { (topA, mid, bottomA, midBottom, plan.Uv[a], midUv), (mid, topB, midBottom, bottomB, midUv, plan.Uv[b]) }) {
@@ -1024,7 +1036,7 @@ public partial class PatientBody {
                 wallNormals.AddRange([normal, normal, normal, normal]);
                 wallUvs.AddRange([uvStart, uvEnd, uvEnd, uvStart]);
                 wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White, Colors.White]);
-                var (top, bottom) = (new Vector2(depth, 0f), new Vector2(depth + thickness, 0f));
+                var (top, bottom) = (new Vector2(depth, 0f), new Vector2(depth + (thickA + thickB) * 0.5f, 0f));
                 wallDepths.AddRange([top, top, bottom, bottom]);
                 // Godot's front faces wind clockwise seen from the side the normal points to.
                 if ((lowEnd - start).Cross(end - start).Dot(normal) > 0f) {
@@ -1247,13 +1259,7 @@ public partial class PatientBody {
     public Vector3 LayerPoint(int layer, int k) {
         var moved = Moved(k);
         var freed = float.IsPositiveInfinity(LayerTether[layer]) ? 1f : Tissue.Freed(LayerDepth[layer], k);
-        // A flap turned over takes everything with it, right to its hinge, and keeps it once the hands have let
-        // go of it.
-        if (Tissue.Turned(k)) {
-            freed = 1f;
-        } else if (Tissue.TurningFlap) {
-            freed = Mathf.Max(freed, Mathf.Clamp(moved.Length() / TissueSim.TurnoverReach, 0f, 1f));
-        }
+        freed = Mathf.Max(freed, TurnedAmount(k, moved, Tissue.TurningFlap));
         var lift = new Vector3(0f, moved.Y, 0f);
         var slide = moved - lift;
         var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
@@ -1274,6 +1280,12 @@ public partial class PatientBody {
         }
         return point;
     }
+
+    /// <summary>How far grid point k is part of a flap turned over (0..1), <paramref name="moved"/> as far as it has:
+    /// all the way once turned, right to its hinge, and kept once the hands have let go of it; while one is turning,
+    /// by how far toward turned over it has gone.</summary>
+    private float TurnedAmount(int k, Vector3 moved, bool turning) =>
+        Tissue.Turned(k) ? 1f : turning ? Mathf.Clamp(moved.Length() / TissueSim.TurnoverReach, 0f, 1f) : 0f;
 
     /// <summary>
     /// How far the sim moved grid point k since it settled, less any way back toward the body model: tension holds the

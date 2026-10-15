@@ -213,7 +213,8 @@ public partial class Patient : Node3D {
         }
         _initialSuction = Mathf.Max(Targets.Where(t => t.IsSuctionTarget).Sum(t => t.Amount), 1f);
         if (site.HasAnatomy) {
-            Body.BuildAnatomy([.. Targets.Where(t => !t.Covered).Select(t => t.RestUv)], [.. Targets.Select(t => t.Kind)]);
+            Body.BuildAnatomy([.. Targets.Where(t => !t.Covered).Select(t => t.RestUv)], [.. Targets.Select(t => t.Kind)],
+                [.. Targets.Where(t => t.Kind == "bone").Select(t => t.RestUv)]);
         } else if (Body.CavityDepth() > 0.1f) {
             for (var i = 0; i < 3; i++) {
                 var uv = new Vector2(Rng.RandfRange(0.2f, 0.8f), Rng.RandfRange(0.2f, 0.8f));

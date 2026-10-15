@@ -31,9 +31,13 @@ public partial class PatientBody {
     /// </summary>
     private const float SameBone = 0.015f;
 
-    /// <summary>A limb's bones: each skeleton part under the site, with the axis of each bone in it (two in a forearm
-    /// or a shin), its middle (site space) and radius per column.</summary>
-    private readonly List<(MeshInstance3D Part, List<List<(Vector3 Middle, float Radius)>> Axes)> _limbBones = [];
+    /// <summary>A limb's bones: each skeleton part under the site, its triangles (site space), and the axis of each
+    /// bone in it (two in a forearm or a shin), its middle (site space) and radius per column.</summary>
+    private readonly List<(MeshInstance3D Part, ModelPart Shape, List<List<(Vector3 Middle, float Radius)>> Axes)> _limbBones = [];
+
+    /// <summary>How many bones were found under a limb site, whether or not a scenario target takes one's place.
+    /// </summary>
+    internal int MeasuredLimbBones => _limbBones.Sum(bone => bone.Axes.Count);
     /// <summary>How deep a limb's cavity floor lies per column along it: just under its bones' middle there. Empty off
     /// a limb.</summary>
     private float[] _limbFloor = [];
@@ -72,10 +76,11 @@ public partial class PatientBody {
     }
 
     /// <summary>How much of the cavity's depth it has at uv: all of it in the middle, rising to nothing at the site's
-    /// edges. A limb goes on past the ends of its site: there it rises only toward the sides.</summary>
+    /// edges. A limb's bones run on past the ends of its site: there it rises only right at the end, so the bones keep
+    /// half sunk in it along the site and go on into the muscle.</summary>
     private float Bowl(Vector2 uv) {
-        var edge = new Vector2(IsLimbSite ? 0f : Mathf.Abs(uv.X * 2f - 1f), Mathf.Abs(uv.Y * 2f - 1f));
-        return (1f - Mathf.Pow(edge.X, 4f)) * (1f - Mathf.Pow(edge.Y, 4f));
+        var edge = new Vector2(Mathf.Abs(uv.X * 2f - 1f), Mathf.Abs(uv.Y * 2f - 1f));
+        return (1f - Mathf.Pow(edge.X, IsLimbSite ? 8f : 4f)) * (1f - Mathf.Pow(edge.Y, 4f));
     }
 
     private static Vector2 CavityUv(int i, int j) => new Vector2(i, j) / CavitySteps;
@@ -199,9 +204,10 @@ public partial class PatientBody {
     /// Builds the site's anatomy (patient_sites.json "anatomy"): organs in layers, the rib cage, limb bones.
     /// <paramref name="avoid"/>: uv of targets that must stay in view, top layer organs over one move aside.
     /// <paramref name="skipBones"/>: a scenario target takes the bones' place (a femur to saw, a sternum to open), so
-    /// the anatomical ones are left out.
+    /// the anatomical ones are left out. On a limb a bone to saw takes the place of the one bone it lies on, at
+    /// <paramref name="boneTargets"/> (uv): a shin's fibula stays when its tibia is to be sawn.
     /// </summary>
-    public void BuildAnatomy(IReadOnlyList<Vector2> avoid, IReadOnlyCollection<string> skipBones) {
+    public void BuildAnatomy(IReadOnlyList<Vector2> avoid, IReadOnlyCollection<string> skipBones, IReadOnlyList<Vector2> boneTargets) {
         foreach (var spec in SiteDef.Organs) {
             AddOrgan(spec.Uv, 0f, spec.Size, spec.Color, spec);
             if (spec.Layer == 0) {
@@ -212,8 +218,13 @@ public partial class PatientBody {
             foreach (var spec in SiteDef.Bones) {
                 AddBone("Bone", [spec.From, spec.To], spec.Radius, 1f);
             }
-            foreach (var (part, axes) in _limbBones) {
-                AddSkeletonBone(part, axes);
+        }
+        var replaced = boneTargets.Select(NearestLimbBone).ToHashSet();
+        for (var i = 0; i < _limbBones.Count; i++) {
+            for (var j = 0; j < _limbBones[i].Axes.Count; j++) {
+                if (!replaced.Contains((i, j))) {
+                    AddSkeletonBone(_limbBones[i], j);
+                }
             }
         }
         if (SiteDef.Sternum is { } sternum && !skipBones.Contains("sternum")) {
@@ -287,15 +298,59 @@ public partial class PatientBody {
         }
     }
 
-    /// <summary>A limb's bone: a copy of the skeleton part X-ray films show, where it lies, with capsules down the axes
-    /// measured in it for tools to rest on.</summary>
-    private void AddSkeletonBone(MeshInstance3D part, List<List<(Vector3 Middle, float Radius)>> axes) {
-        var bone = NewBone("Bone", part.Mesh, Site.GlobalTransform.AffineInverse() * part.GlobalTransform);
-        foreach (var axis in axes) {
-            for (var i = 1; i < axis.Count; i++) {
-                AddCapsule(bone, axis[i - 1].Middle, axis[i].Middle, (axis[i - 1].Radius + axis[i].Radius) * 0.5f);
+    /// <summary>A limb's bone, the one along axis <paramref name="index"/> of a skeleton part: the part's triangles
+    /// nearer that axis than any other of the part's, where they lie (X-ray films show the whole part), with capsules
+    /// down the axis for tools to rest on.</summary>
+    private void AddSkeletonBone((MeshInstance3D Part, ModelPart Shape, List<List<(Vector3 Middle, float Radius)>> Axes) limb,
+        int index) {
+        var (part, shape, axes) = limb;
+        var surface = new SurfaceTool();
+        surface.Begin(Mesh.PrimitiveType.Triangles);
+        for (var f = 0; f < shape.Faces.Count; f += 3) {
+            var middle = (shape.Faces[f] + shape.Faces[f + 1] + shape.Faces[f + 2]) / 3f;
+            var nearest = Enumerable.Range(0, axes.Count).MinBy(j => DistanceToAxis(axes[j], middle, Vector3.One));
+            if (nearest != index) {
+                continue;
+            }
+            for (var v = 0; v < 3; v++) {
+                surface.SetNormal(shape.Normals[f + v]);
+                surface.AddVertex(shape.Faces[f + v]);
             }
         }
+        var bone = NewBone("Bone", surface.Commit(), Transform3D.Identity);
+        bone.Part = part;
+        var axis = axes[index];
+        for (var i = 1; i < axis.Count; i++) {
+            AddCapsule(bone, axis[i - 1].Middle, axis[i].Middle, (axis[i - 1].Radius + axis[i].Radius) * 0.5f);
+        }
+    }
+
+    /// <summary>The limb bone (skeleton part, axis) nearest uv across the site: the one a bone to saw there replaces.
+    /// </summary>
+    private (int Part, int Axis) NearestLimbBone(Vector2 uv) {
+        var at = SitePoint(uv, 0f);
+        var flat = new Vector3(1f, 0f, 1f);
+        var (nearest, best) = ((-1, -1), float.PositiveInfinity);
+        for (var i = 0; i < _limbBones.Count; i++) {
+            for (var j = 0; j < _limbBones[i].Axes.Count; j++) {
+                var distance = DistanceToAxis(_limbBones[i].Axes[j], at, flat);
+                if (distance < best) {
+                    (nearest, best) = ((i, j), distance);
+                }
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>How far <paramref name="point"/> is from an axis' polyline, measured in the axes
+    /// <paramref name="scale"/> keeps (zero out Y to measure across the site only).</summary>
+    private static float DistanceToAxis(List<(Vector3 Middle, float Radius)> axis, Vector3 point, Vector3 scale) {
+        var best = float.PositiveInfinity;
+        for (var i = 1; i < axis.Count; i++) {
+            var closest = Geometry3D.GetClosestPointToSegment(point * scale, axis[i - 1].Middle * scale, axis[i].Middle * scale);
+            best = Mathf.Min(best, closest.DistanceTo(point * scale));
+        }
+        return best;
     }
 
     /// <summary>A bone on the site drawing <paramref name="mesh"/> at <paramref name="transform"/> (site space), its
@@ -339,9 +394,10 @@ public partial class PatientBody {
     /// </summary>
     private void MeasureLimbBones() {
         foreach (var part in Skeleton.Where(mesh => SiteDef.Skeleton.Any(name => mesh.Name.ToString().StartsWith("Skeleton" + name, StringComparison.Ordinal)))) {
-            var axes = BoneAxes(ModelPartOf(part));
+            var shape = ModelPartOf(part);
+            var axes = BoneAxes(shape);
             if (axes.Count > 0) {
-                _limbBones.Add((part, axes));
+                _limbBones.Add((part, shape, axes));
             }
         }
         var points = _limbBones.SelectMany(bone => bone.Axes).SelectMany(axis => axis)
@@ -355,16 +411,18 @@ public partial class PatientBody {
         var top = points.Where(point => Mathf.IsEqualApprox(point.X, middle)).Min(point => point.Depth - point.Radius);
         MuscleThickness = Mathf.Max(DefaultMuscle, top - BoneGap - SkinThickness - FatThickness);
         // Each column's floor, from the nearest column a bone was measured in: as deep as it has to go in the middle
-        // for the bowl, rising toward the sides, to lie just under the deepest bone's middle there. A bone right at the
-        // side, where the bowl has almost nothing left, lies under the floor.
+        // for the bowl, rising toward the sides, to lie just under the deepest bone's middle there, and over the
+        // bottom of a shallower one beside it (a forearm's two bones). A bone right at the side, where the bowl has
+        // almost nothing left, lies under the floor.
         _limbFloor = [.. Enumerable.Range(0, BoneColumns).Select(i => {
             var x = (i / (BoneColumns - 1f) - 0.5f) * SiteSize.X;
             var nearest = points.MinBy(point => Mathf.Abs(point.X - x)).X;
-            var depth = points.Where(point => Mathf.IsEqualApprox(point.X, nearest)).Max(point => {
-                var bowl = Mathf.Max(point.Bowl, 0.5f);
-                return (point.Depth + 0.002f - (1f - bowl) * (SkinThickness + 0.003f)) / bowl;
-            });
-            return Mathf.Max(depth, MuscleBottom + BoneGap);
+            var column = points.Where(point => Mathf.IsEqualApprox(point.X, nearest)).ToList();
+            var deepest = column.Max(point => point.Depth);
+            var under = Mathf.Max(Mathf.Min(deepest + 0.002f, column.Min(point => point.Depth + point.Radius) - 0.0025f),
+                deepest + 0.0005f);
+            var bowl = Mathf.Max(column.MaxBy(point => point.Depth).Bowl, 0.5f);
+            return Mathf.Max((under - (1f - bowl) * (SkinThickness + 0.003f)) / bowl, MuscleBottom + BoneGap);
         })];
     }
 
