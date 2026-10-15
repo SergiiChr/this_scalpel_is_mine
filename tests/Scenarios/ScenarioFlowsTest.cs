@@ -46,6 +46,7 @@ public class ScenarioFlowsTest {
         + "thread; not traced further", 15.5f, Timeout = Limits.Slow)]
     [TestCase("brain_tumor", false, BudgetOverride, 15.5f, Timeout = Limits.Slow)]
     [TestCase("euthanasia", false, BudgetOverride, 17.5f, Timeout = Limits.Slow)]
+    [TestCase("colon_cancer", false, BudgetOverride, 26f, Timeout = Limits.Slow)]
     [TestCase("gangrene_amputation", false, BudgetOverride, 22f, Timeout = Limits.Slow)]
     [TestCase("leg_extension", false, BudgetOverride, 22f, Timeout = Limits.Slow)]
     [TestCase("broken_ribs", false, BudgetOverride, 16.5f, Timeout = Limits.Slow)]
@@ -60,7 +61,6 @@ public class ScenarioFlowsTest {
     public async Task PlaysThroughToKnownIssue(string scenario, string failure) =>
         await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));
 
-    [TestCase("colon_cancer", Timeout = Limits.Slow, Description = "BROKEN: run beside another suite (--jobs 2), a 7.7 cm tear keeps bleeding 2.4 ml/s and \"Control the bleeding\" never completes; run alone it passes. Likely wall-clock driven, not yet debugged. Also, with key frames the worst frame takes 32 ms (budget 16 ms) while holding the bowel aside and sewing.")]
     [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Close the skin\" passes or fails on the random sequence.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);
