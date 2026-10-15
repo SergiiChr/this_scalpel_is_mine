@@ -357,7 +357,9 @@ public partial class PatientBody {
                 foreach (var k in _around) {
                     // The layers under the skin move with it where the drape's cloth pushed it (PlaceParticles()):
                     // placed from the sim alone they would come out beside or through the skin at the opening's rim.
-                    _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !Tissue.Exposed[k]
+                    // Without a drape (outside the operating room) nothing pushes it.
+                    var pushed = Tissue.Exposed.Length > k && Tissue.Exposed[k];
+                    _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !pushed
                         ? _skinOf[k]
                         : LayerPoint(layer, k) + (_skinOf[k] - LayerPoint(0, k));
                 }
