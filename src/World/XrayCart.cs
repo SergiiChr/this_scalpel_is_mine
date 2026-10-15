@@ -259,7 +259,8 @@ public partial class XrayCart : Node3D {
         // The front, where the arm reaches, faces where the pusher walks.
         Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y, follow) };
         _syncAccumulated += dt;
-        if (_syncAccumulated >= SyncInterval) {
+        // Not after the report, like the surgeons' states: the others may have left for the lobby.
+        if (_syncAccumulated >= SyncInterval && !_surgery.Finished) {
             _syncAccumulated = 0f;
             Rpc(MethodName.SyncPosition, GlobalPosition, Rotation.Y);
         }

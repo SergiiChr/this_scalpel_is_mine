@@ -57,6 +57,11 @@ public abstract partial class NetSession : Node {
         }
     }
 
+    /// <summary>Prints <paramref name="claim"/> for the network runner to find, or a FAIL line with what
+    /// <paramref name="seen"/> reports, which fails the run.</summary>
+    protected void Check(bool passed, string claim, Func<string>? seen = null) =>
+        GD.Print(passed ? $"[{Role}] {claim}" : $"FAIL: [{Role}] {claim}{(seen is null ? "" : $", seen: {seen()}")}");
+
     protected Task Wait(double seconds) => ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout)
         .AsTask();
 

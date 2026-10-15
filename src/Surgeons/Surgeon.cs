@@ -303,7 +303,9 @@ public partial class Surgeon : CharacterBody3D {
             LocalUpdate(dt);
             HandStates++;
             _syncAccumulated += dt;
-            if (_syncAccumulated >= SyncInterval && Net.Instance.IsOnline) {
+            // Not after the report: the others may have left the surgery for the lobby, where a late state finds no
+            // surgeon to land on.
+            if (_syncAccumulated >= SyncInterval && Net.Instance.IsOnline && !Session.Finished) {
                 _syncAccumulated = 0f;
                 using var state = PackState();
                 Rpc(MethodName.SyncState, state);
