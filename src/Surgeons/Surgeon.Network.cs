@@ -183,6 +183,25 @@ public partial class Surgeon {
                 case StatusEvent.Moan:
                     Rpc(MethodName.Moan);
                     break;
+                case StatusEvent.Heartbeat:
+                    // The surgeon's own heart: only they hear it.
+                    Sfx.Play("heartbeat");
+                    break;
+                case StatusEvent.Racing:
+                    hud.Toast("Your heart hammers. Everything is so fast.");
+                    break;
+                case StatusEvent.HeartAttack:
+                    DropEverything();
+                    _delayed.Clear();
+                    hud.Toast("A crushing pain in your chest...");
+                    Session.ReportIncident("heart_attack");
+                    break;
+                case StatusEvent.Jitters:
+                    hud.Toast("Your heart pounds for no reason.");
+                    break;
+                case StatusEvent.NauseaGone:
+                    hud.Toast("The nausea fades.");
+                    break;
             }
         }
     }

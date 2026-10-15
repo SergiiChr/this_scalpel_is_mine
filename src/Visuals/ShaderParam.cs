@@ -20,6 +20,7 @@ public static class ShaderParam {
     public static readonly StringName Damage = "damage";
     public static readonly StringName Daze = "daze";
     public static readonly StringName EmissionColor = "emission_color";
+    public static readonly StringName Eyelids = "eyelids";
     /// <summary>Global (project settings): the view's clock, see Hud.</summary>
     public static readonly StringName GameTime = "game_time";
     public static readonly StringName Grain = "grain";

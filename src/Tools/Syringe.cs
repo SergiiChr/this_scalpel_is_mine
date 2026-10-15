@@ -13,8 +13,9 @@ public sealed record VeinTarget : NeedleTarget;
 /// <summary>The patient's tissue: the deepest layer a cut shows there ("skin", "fat", "muscle" or "cavity").</summary>
 public sealed record TissueTarget(string Layer) : NeedleTarget;
 
-/// <summary>A surgeon: a glove (the other one of the hand holding it too) or a partner's body, at a point.</summary>
-public sealed record SurgeonTarget(int Peer, string Part, Vector3 At) : NeedleTarget;
+/// <summary>A surgeon: a glove (the other one of the hand holding it too, <paramref name="Hand"/> its index) or a
+/// partner's body (Hand -1), at a point.</summary>
+public sealed record SurgeonTarget(int Peer, string Part, Vector3 At, int Hand = -1) : NeedleTarget;
 
 /// <summary>Nothing: the air.</summary>
 public sealed record AirTarget : NeedleTarget;
@@ -39,7 +40,7 @@ public static class Syringe {
             if (surgeon.NeedlePart(tip, holding) is not { } hit) {
                 continue;
             }
-            var target = new SurgeonTarget(surgeon.PeerId, hit.Part, hit.At);
+            var target = new SurgeonTarget(surgeon.PeerId, hit.Part, hit.At, hit.Hand);
             if (hit.Part == "hand") {
                 return target;
             }
@@ -149,7 +150,7 @@ public static class Syringe {
                             patient.Vitals.BloodMl += amount;
                         }
                     } else if (target is SurgeonTarget surgeon) {
-                        surgery.DoseSurgeon(surgeon.Peer, drug, amount);
+                        surgery.DoseSurgeon(surgeon.Peer, drug, amount, surgeon.Hand);
                     } else {
                         patient.Administer(drug, target is VeinTarget ? DrugRoute.Vein : DrugRoute.Direct, amount);
                     }

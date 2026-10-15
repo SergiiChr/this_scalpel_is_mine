@@ -453,6 +453,18 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   morphine, bringing them round unless the other sedatives still knock them out; propofol, ketamine, diphenhydramine
   and pentobarbital have no antidote. Adrenaline (`stimulant`) gets them up only while it lasts, and if enough sedative
   is still working they go down again. On the patient, flumazenil reverses diazepam too.
+- **Morphine nods a surgeon off** (`opioid`): its share of the sedatives doesn't delay the hands or trail the gloves.
+  From half the dose, every 10 to 30 seconds the eyelids close from the top and bottom over 0.3 s (the post shader's
+  `eyelids`, curved so the corners shut first), stay shut 1 to 2 s and open over 0.4 s.
+- **Stimulants for a surgeon** (`stimulant`: adrenaline injected, cocaine snorted from its baggie with the drink key):
+  hands 1.3 times as fast, stress building 1.5 times as fast, and a sub-bass heartbeat (`heartbeat`, heard only by
+  them) at 110 a minute while it works. Two drugs `danger_with` each other at work at once (adrenaline and cocaine)
+  race the heart: hands and feet 1.6 times as fast for three minutes, the heartbeat speeding up from 140 to 200, then
+  a heart attack kills the surgeon (down for good, the view black). Nothing stops it. Alone, the operation fails.
+- **Lidocaine into a glove** (`local_block`) numbs that hand for a minute: it drops what it holds, also a tool handed
+  to it later, and its grab doesn't close.
+- **Diphenhydramine** (`antihistamine`) isn't a sedative on a surgeon: it takes nausea away and keeps it away while it
+  works. **An antidote** (`reverse_benzo`, `reverse_opioid`) with nothing of its kind to reverse adds 0.4 stress.
 
 ### Gelpi retractor
 

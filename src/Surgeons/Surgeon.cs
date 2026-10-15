@@ -1,7 +1,8 @@
 namespace Scalpel.Surgeons;
 
-/// <summary>Where a needle went into a surgeon: "hand" (at the glove's middle under it) or "body" (at the tip).</summary>
-public sealed record NeedleHit(string Part, Vector3 At);
+/// <summary>Where a needle went into a surgeon: "hand" (at the glove's middle under it, <paramref name="Hand"/> its
+/// index) or "body" (at the tip, Hand -1).</summary>
+public sealed record NeedleHit(string Part, Vector3 At, int Hand = -1);
 
 /// <summary>
 /// A player in the room. The owning peer reads input, moves the body and hands, and streams its state.
@@ -233,10 +234,10 @@ public partial class Surgeon : CharacterBody3D {
     /// go into.
     /// </summary>
     public NeedleHit? NeedlePart(Vector3 tip, SurgeonHand? holding) {
-        foreach (var hand in Hands) {
-            var middle = hand.GloveMiddle(tip);
-            if (hand != holding && middle.DistanceTo(tip) < GloveReach) {
-                return new NeedleHit("hand", middle);
+        for (var i = 0; i < Hands.Length; i++) {
+            var middle = Hands[i].GloveMiddle(tip);
+            if (Hands[i] != holding && middle.DistanceTo(tip) < GloveReach) {
+                return new NeedleHit("hand", middle, i);
             }
         }
         if (holding is not null && Hands.Contains(holding)) {

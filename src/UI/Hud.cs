@@ -64,7 +64,7 @@ public partial class Hud : CanvasLayer {
     private Shown<PromptShown> _promptShown;
     private readonly Dictionary<string, (HBoxContainer Row, ProgressBar Bar)> _gauges = [];
     private ShaderMaterial _post = null!;
-    private (float Blackout, float Daze, float Wobble, float Blur)? _postState;
+    private (float Blackout, float Daze, float Wobble, float Blur, float Eyelids)? _postState;
     /// <summary>Game time the view's moving effects run on (<see cref="ShaderParam.GameTime"/>), not the shaders' own
     /// TIME: it advances only with gameplay frames, so a scene looks the same whenever it is drawn.</summary>
     private float _effectsTime;
@@ -216,10 +216,11 @@ public partial class Hud : CanvasLayer {
     }
 
     private void UpdatePostFx(SurgeonStatus status, float delta) {
-        var state = (Blackout: status.PassedOut > 0f ? 1f : 0f,
+        var state = (Blackout: status.PassedOut > 0f || status.Dead ? 1f : 0f,
             Daze: status.IsKnockedOut ? KnockedOutDaze : status.Overdose * OverdoseDaze,
             Wobble: status.Sickness,
-            Blur: Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur));
+            Blur: Mathf.Max(status.Sickness * 1.5f, status.Calm * SedatedBlur),
+            Eyelids: status.Eyelids);
         // Godot queues material uploads even for unchanged parameter values.
         if (_postState?.Blackout != state.Blackout) {
             _post.SetShaderParameter(ShaderParam.Blackout, state.Blackout);
@@ -232,6 +233,9 @@ public partial class Hud : CanvasLayer {
         }
         if (_postState?.Blur != state.Blur) {
             _post.SetShaderParameter(ShaderParam.Blur, state.Blur);
+        }
+        if (_postState?.Eyelids != state.Eyelids) {
+            _post.SetShaderParameter(ShaderParam.Eyelids, state.Eyelids);
         }
         _postState = state;
         if (_lensBlood > 0f) {

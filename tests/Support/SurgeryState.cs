@@ -288,6 +288,18 @@ public static class SurgeryState {
         surgeon.FallSide = side;
     }
 
+    /// <summary>A drug in a surgeon's blood, <paramref name="doses"/> times the right dose for their weight, given into
+    /// the body.</summary>
+    public static void SurgeonIsGiven(Surgeon surgeon, string drugId, float doses) =>
+        surgeon.Status.Administer(drugId, Db.Drug(drugId)!.Dose * surgeon.Status.WeightKg * doses);
+
+    /// <summary>A surgeon's racing heart gives out in <paramref name="seconds"/>.</summary>
+    public static void SurgeonsHeartGivesOutIn(Surgeon surgeon, float seconds) => surgeon.Status.RaceLeft = seconds;
+
+    /// <summary>A tool put straight into a surgeon's hand, the way a partner hands it over.</summary>
+    public static void ToolIsPutInHand(Surgery surgery, SurgicalTool tool, int hand) =>
+        surgery.Tools.RequestGrab(tool, hand);
+
     /// <summary>No stress-induced hand jitter during a camera or reach measurement.</summary>
     public static void SurgeonIsSteady(Surgeon surgeon) => surgeon.Status.Stress = 0f;
 

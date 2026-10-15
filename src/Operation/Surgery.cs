@@ -15,6 +15,8 @@ public partial class Surgery : Node3D {
 
     public const float StatusInterval = 0.5f;
     public const float QteTimeout = 10f;
+    /// <summary>Why a solo surgery fails when its surgeon dies.</summary>
+    internal const string SurgeonDied = "The surgeon died of a heart attack.";
     public static readonly IReadOnlyList<string> QteKeys =
         [InputActions.MoveForward, InputActions.MoveBack, InputActions.MoveLeft, InputActions.MoveRight];
     /// <summary>Tools report their sound every physics frame while in use; one per this many msec per sound is plenty.
@@ -321,10 +323,10 @@ public partial class Surgery : Node3D {
 
     /// <summary>Host: a syringe pushed <paramref name="amount"/> of a drug into a surgeon, given as it goes in.
     /// </summary>
-    public void DoseSurgeon(int peer, string drug, float amount) {
+    public void DoseSurgeon(int peer, string drug, float amount, int hand = -1) {
         EmitSignal(SignalName.SurgeonDosed, peer, drug, amount);
         if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer)) {
-            RpcId(peer, MethodName.Dosed, drug, amount);
+            RpcId(peer, MethodName.Dosed, drug, amount, hand);
         }
     }
 
@@ -428,11 +430,11 @@ public partial class Surgery : Node3D {
     private void Sick(float amount) => LocalSurgeon?.Status.AddSickness(amount);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void Dosed(string drug, float amount) {
+    private void Dosed(string drug, float amount, int hand) {
         if (LocalSurgeon is null) {
             return;
         }
-        LocalSurgeon.Status.Administer(drug, amount);
+        LocalSurgeon.Status.Administer(drug, amount, hand);
         // Once for a few pushes in a row, not for every ml.
         var now = GameClock.Msec;
         if (_stungMsec == 0 || now - _stungMsec > StingGapMsec) {
@@ -529,6 +531,12 @@ public partial class Surgery : Node3D {
         if (LocalSurgeon is null) {
             return;
         }
+        if (Db.Tool(toolId) is { Action: "inject" } def) {
+            // A baggie of cocaine, snorted.
+            LocalSurgeon.Status.Take(def.Drug);
+            Hud.Toast("A sharp sniff. Wide awake.");
+            return;
+        }
         LocalSurgeon.Status.Drink(toolId);
         Sfx.Play("sip", LocalSurgeon.GlobalPosition);
         Hud.Toast(toolId switch {
@@ -583,6 +591,14 @@ public partial class Surgery : Node3D {
                 break;
             case "passed_out" or "knocked_out":
                 Scoring.Add("passed_out");
+                break;
+            case "heart_attack":
+                Scoring.Add("passed_out");
+                Announce($"{surgeon.DisplayName} clutches their chest and collapses.");
+                // Alone, nobody is left to finish the operation.
+                if (Surgeons.Count == 1) {
+                    End(false, SurgeonDied);
+                }
                 break;
             case "sweat_drip":
                 Patient.ContaminateSite("");

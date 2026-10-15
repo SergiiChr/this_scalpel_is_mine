@@ -68,6 +68,8 @@ public partial class Surgeon {
     private Vector3? _aimWrist;
     /// <summary>Mouse moves held back by a sedative, oldest first.</summary>
     private readonly Queue<DelayedMove> _delayed = new();
+    /// <summary>The tool each numb hand was last told to drop.</summary>
+    private readonly SurgicalTool?[] _numbDropped = new SurgicalTool?[2];
 
     private readonly record struct DelayedMove(ulong DueMsec, int Hand, Vector2 Motion);
 
@@ -472,9 +474,26 @@ public partial class Surgeon {
         }
         _jolt = _jolt.Lerp(Vector3.Zero, Mathf.Min(delta * 8f, 1f));
         CheckBumps();
+        DropFromNumbHands();
         UpdateFocus();
         UpdateHover();
         HandleStatusEvents(Status.Update(delta, CurrentStatusContext()));
+    }
+
+    /// <summary>A numb hand lets go of whatever it holds, also what it was handed or took from the belt since. Asked
+    /// once for each tool: the host may be a frame or two behind.</summary>
+    private void DropFromNumbHands() {
+        for (var i = 0; i < 2; i++) {
+            var tool = HeldTool(i);
+            if (!Status.IsNumb(i) || tool is null || tool == _numbDropped[i]) {
+                continue;
+            }
+            _numbDropped[i] = tool;
+            Hands[i].Lowered = false;
+            Hands[i].Trigger = false;
+            Session.Hud.Toast("Your numb fingers can't hold it.");
+            Session.Tools.RequestRelease(i, Vector3.Zero);
+        }
     }
 
     /// <summary>Where a hand goes this frame: held by a needle, a wound or the eyes, aimed from the wrist, or resting
@@ -560,7 +579,7 @@ public partial class Surgeon {
             * amount) + _jolt;
         hand.Shiver = new Vector3(
             Mathf.Sin((t * 41f) + (3f * i)), Mathf.Sin((t * 37f) + i), Mathf.Cos((t * 43f) + (2f * i))) * Status.Shiver();
-        hand.Trail = Status.Calm;
+        hand.Trail = Status.Calm * Status.Lag;
     }
 
     /// <summary>A syringe pressed into the patient sticks where its tip went in. Pulled on too hard, or walked away from
@@ -683,6 +702,10 @@ public partial class Surgeon {
             return;
         }
         if (tools.NearestGrabbable(hand.GlobalPosition + hand.TipOffset(0.05f)) is not { } near) {
+            return;
+        }
+        if (Status.IsNumb(Active)) {
+            Session.Hud.Toast("Your hand is numb. It won't close.");
             return;
         }
         if (Mods.Flag("contamination_vision") && !near.Sterile) {
