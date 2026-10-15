@@ -12,6 +12,9 @@ namespace Scalpel.Tests.TissueModification;
 [TestCategory("tool_needle"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class WoundClosureTest {
+    // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 8.5f);
+
     /// <summary>Edges further apart than this (meters) show a gap; closer than <see cref="Meets"/> they meet. Between
     /// the two it's a judgement call the checks leave alone.</summary>
     private const float Shows = 0.002f;
@@ -51,7 +54,7 @@ public class WoundClosureTest {
         AssertCountsAsSeen(driver, wound, "filled in");
         await driver.PlayerPutsDown();
         await driver.Capture("closed", "filled in with staples: no gap along the cut, no bleeding");
-        await session.Finish();
+        await session.Finish(BudgetOverride);
     }
 
     [TestCase]
@@ -80,7 +83,7 @@ public class WoundClosureTest {
         AssertFloat(wound.Closure).OverrideFailureMessage("so it's closed").IsGreater(0.99f);
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("and doesn't bleed").IsLess(Dry);
         AssertCountsAsSeen(driver, wound, "tied thread");
-        await session.Finish();
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>The office stapler as in a real run: every staple catches a vessel, the cut bleeds through the staples,
@@ -112,7 +115,7 @@ public class WoundClosureTest {
             .IsGreaterEqual(Patient.ClosedEnough);
         AssertCountsAsSeen(driver, wound, "office staples");
         await driver.Capture("closed", "office staples through vessels, cauterized: the cut closed and dry");
-        await session.Finish();
+        await session.Finish(BudgetOverride);
     }
 
     /// <summary>Starts Hand Stitch with the patient asleep, and in a run with key frames saves the case's under

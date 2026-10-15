@@ -1,5 +1,7 @@
 # Design and architecture
 
+Performance guidelines and the frame-time budget: [PERFORMANCE.md](PERFORMANCE.md).
+
 ## Architecture
 
 ```

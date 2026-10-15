@@ -14,8 +14,8 @@ public static class ScenarioFlow {
     private const float Settle = 20f;
 
     /// <summary>Plays <paramref name="scenarioId"/> through. <paramref name="budgetOverride"/> says why its frames are
-    /// known to go over the budget (see <see cref="FrameBudget.Check"/>).</summary>
-    public static async Task Play(string scenarioId, bool keyFrames = false, string budgetOverride = "",
+    /// known to go over the budget, and by how much (see <see cref="FrameBudget.Check"/>).</summary>
+    public static async Task Play(string scenarioId, bool keyFrames = false, BudgetAllowance? budgetOverride = null,
         Func<SurgeryDriver, ObjectiveStep, Task>? playStep = null, Action<SurgeryDriver>? validate = null,
         bool includeOptional = false) {
         FrameBudget.RenderingOff();

@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 namespace Scalpel.Patients;
 
 /// <summary>The site's tissue layers: measuring the site on the body model and drawing skin, fat and muscle from the
@@ -94,13 +96,14 @@ public partial class PatientBody {
     private List<int> _around = [];
     // Scratch space, one entry per particle (per spring end for _xmap), reused between rebuilds: the vertex each
     // particle or crossing got in the plan being made (-1: none yet), a mark, the uv of each particle, and where each
-    // planned particle's skin and layer lie now, which way is out of the skin and its normal.
+    // planned particle's skin lies now and each layer's (one array per layer: the layers are filled at once), which way
+    // is out of the skin and its normal.
     private int[] _vmap = [];
     private int[] _xmap = [];
     private bool[] _mark = [];
     private Vector2[] _uvOf = [];
     private Vector3[] _skinOf = [];
-    private Vector3[] _pointOf = [];
+    private Vector3[][] _pointOf = [[], [], []];
     private Vector3[] _outward = [];
     private Vector3[] _normal = [];
     /// <summary>
@@ -302,16 +305,17 @@ public partial class PatientBody {
         return dz.Cross(dx).Normalized();
     }
 
-    private static readonly int[][] StageLayers = [[0, 1], [2], []];
-    private static readonly int[] AllLayers = [0, 1, 2];
-    private int _renderStage;
     private int _renderSteps;
     private bool _renderFold;
     private bool _renderFootprint;
     private bool _renderTurnover;
     private Vector3[] _renderMoved = [];
     private readonly Vector3[][] _renderPoints = [[], [], []];
-    private readonly (Godot.Collections.Array? Sheet, Godot.Collections.Array? Walls)[] _renderArrays = new (Godot.Collections.Array?, Godot.Collections.Array?)[3];
+    /// <summary>Positions captured (RebuildLayers()) and waiting to be filled into the layers (BuildLayers()).
+    /// </summary>
+    private bool _buildPending;
+    /// <summary>The layers as filled and waiting to be put on their meshes (PublishLayers()), null for none.</summary>
+    private (Surface? Sheet, Surface? Walls)[]? _built;
 
     /// <summary>
     /// Rebuilds the skin, fat and muscle meshes from the tissue sim, only where the simulated skin replaces the body
@@ -322,43 +326,56 @@ public partial class PatientBody {
     /// each lip through the layer's thickness (dermis under the skin, fat, muscle), so the cut has depth.
     /// Which triangles there are and how they split only changes with the cuts and the region (PlanLayers()); while
     /// the skin just moves, only the vertices move.
+    /// This frame only captures where the skin is: BuildLayers() fills the meshes from that and PublishLayers() shows
+    /// them.
     /// </summary>
     private bool RebuildLayers() {
-        if (_planFor != Tissue.TopologyVersion) { _renderStage = 0; }
-        if (_renderStage == 0 && !_layersPrepared && (UpdateRegion() || _planFor != Tissue.TopologyVersion)) {
+        if (!_layersPrepared && (UpdateRegion() || _planFor != Tissue.TopologyVersion)) {
             PlanLayers();
             _layersPrepared = true;
             return true;
         }
         _layersPrepared = false;
-        var staged = _renderStage > 0 || Tissue.HasFoldFootprint;
-        if (_renderStage == 0) {
-            _renderSteps = Tissue.StepsDone;
-            PlaceParticles();
-            _renderFold = Tissue.HoldingFold;
-            _renderFootprint = Tissue.HasFoldFootprint;
-            _renderTurnover = Tissue.TurningFlap;
-            if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
-            foreach (var k in _around) { _renderMoved[k] = Moved(k); }
-            for (var layer = 0; layer < 3; layer++) {
-                if (_renderPoints[layer].Length != Tissue.Pos.Length) { _renderPoints[layer] = new Vector3[Tissue.Pos.Length]; }
-                foreach (var k in _around) {
-                    // The layers under the skin move with it where the drape's cloth pushed it (PlaceParticles()):
-                    // placed from the sim alone they would come out beside or through the skin at the opening's rim.
-                    _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !Tissue.Exposed[k]
-                        ? _skinOf[k]
-                        : LayerPoint(layer, k) + (_skinOf[k] - LayerPoint(0, k));
-                }
+        _renderSteps = Tissue.StepsDone;
+        PlaceParticles();
+        _renderFold = Tissue.HoldingFold;
+        _renderFootprint = Tissue.HasFoldFootprint;
+        _renderTurnover = Tissue.TurningFlap;
+        if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
+        foreach (var k in _around) { _renderMoved[k] = Moved(k); }
+        for (var layer = 0; layer < 3; layer++) {
+            if (_renderPoints[layer].Length != Tissue.Pos.Length) { _renderPoints[layer] = new Vector3[Tissue.Pos.Length]; }
+            foreach (var k in _around) {
+                // The layers under the skin move with it where the drape's cloth pushed it (PlaceParticles()):
+                // placed from the sim alone they would come out beside or through the skin at the opening's rim.
+                _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !Tissue.Exposed[k]
+                    ? _skinOf[k]
+                    : LayerPoint(layer, k) + (_skinOf[k] - LayerPoint(0, k));
             }
         }
-        foreach (var layer in staged ? StageLayers[_renderStage] : AllLayers) {
-            _renderArrays[layer] = FillLayer(layer, _plans[layer]);
-        }
-        if (staged && ++_renderStage < 3) { return true; }
-        _renderStage = 0;
+        _buildPending = true;
+        return true;
+    }
+
+    /// <summary>Fills the captured layers' arrays. It reads the tissue (Turned(), CutDepth()), so it runs right before
+    /// the frame's solver step on the same thread, on the worker while the frame draws (StepTissue()).</summary>
+    private void BuildLayers() {
+        if (!_buildPending) { return; }
+        _buildPending = false;
+        var built = new (Surface?, Surface?)[3];
+        // The skin first: the layers under it are kept under its sheet (UnderSkin()).
+        built[0] = FillLayer(0, _plans[0]);
+        Parallel.For(1, 3, layer => built[layer] = FillLayer(layer, _plans[layer]));
+        _built = built;
+    }
+
+    /// <summary>Puts the layers BuildLayers() filled on their meshes: the skin and its tethered bed together, from the
+    /// same captured positions.</summary>
+    private void PublishLayers() {
+        if (_built is not { } built) { return; }
+        _built = null;
         _layerVersion = _planFor;
         _layerSteps = _renderSteps;
-        // Publish the skin and its tethered bed together from the same captured positions.
         for (var layer = 0; layer < 3; layer++) {
             var instance = _layers[layer];
             var mesh = (ArrayMesh)instance.Mesh;
@@ -366,10 +383,10 @@ public partial class PatientBody {
             var plan = _plans[layer];
             instance.Visible = plan.Index.Count > 0 && (layer != 1 || FatThickness > 0.0005f);
             if (!instance.Visible) { continue; }
-            var (sheet, walls) = _renderArrays[layer];
-            foreach (var (arrays, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) }) {
-                if (arrays is null) { continue; }
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+            var (sheet, walls) = built[layer];
+            foreach (var (surface, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) }) {
+                if (surface is null) { continue; }
+                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, surface.ToArrays());
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
             }
         }
@@ -380,7 +397,6 @@ public partial class PatientBody {
             RegionTexture.Update(_regionImage);
             _regionDirty = false;
         }
-        return true;
     }
 
     /// <summary>
@@ -399,7 +415,7 @@ public partial class PatientBody {
             _vmap = new int[count];
             Array.Fill(_vmap, -1);
             _mark = new bool[count];
-            _pointOf = new Vector3[count];
+            _pointOf = [new Vector3[count], new Vector3[count], new Vector3[count]];
             _skinOf = new Vector3[count];
             _outward = new Vector3[count];
             _normal = new Vector3[count];
@@ -837,20 +853,21 @@ public partial class PatientBody {
         }
     }
 
-    /// <summary>One layer's sheet and the walls of its cuts, where the skin is now, as mesh arrays (null for no
-    /// triangles).</summary>
-    private (Godot.Collections.Array? Sheet, Godot.Collections.Array? Walls) FillLayer(int layer, LayerPlan plan) {
+    /// <summary>One layer's sheet and the walls of its cuts, where the skin was captured (null for no triangles).
+    /// </summary>
+    private (Surface? Sheet, Surface? Walls) FillLayer(int layer, LayerPlan plan) {
         var depth = LayerTop(layer);
         var thickness = layer switch { 0 => SkinThickness, 1 => FatThickness, _ => MuscleThickness };
+        var pointOf = _pointOf[layer];
         foreach (var k in _around) {
-            _pointOf[k] = _renderPoints[layer][k] - Outward(layer, k) * depth;
+            pointOf[k] = _renderPoints[layer][k] - Outward(layer, k) * depth;
         }
         var vertexCount = plan.Owner.Count;
         var vertices = new Vector3[vertexCount];
         var normals = new Vector3[vertexCount];
         for (var v = 0; v < vertexCount; v++) {
             var k = plan.Owner[v];
-            var p = _pointOf[k];
+            var p = pointOf[k];
             if (plan.Other[v] >= 0) {
                 var offset = _onModel[plan.Other[v]] - _onModel[k];
                 if (_renderTurnover) {
@@ -862,7 +879,7 @@ public partial class PatientBody {
                 } else {
                     if (plan.Slide[v] >= 0) {
                         var m = plan.Slide[v];
-                        offset += (_pointOf[m] - _onModel[m]) - (p - _onModel[k]);
+                        offset += (pointOf[m] - _onModel[m]) - (p - _onModel[k]);
                     }
                     p += offset * plan.Share[v];
                 }
@@ -1004,8 +1021,8 @@ public partial class PatientBody {
             }
         }
         return (
-            MeshArrays(refinedVertices, refinedNormals, refinedUvs, [.. index]),
-            MeshArrays([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
+            Surface.Of(refinedVertices, refinedNormals, refinedUvs, [.. index]),
+            Surface.Of([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
     }
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
@@ -1136,8 +1153,8 @@ public partial class PatientBody {
         if (Mathf.Abs(det) < 1e-10f) { return offset; }
         var u = (offset.X * dz.Z - offset.Z * dz.X) / det;
         var v = (offset.Z * dx.X - offset.X * dx.Z) / det;
-        var changeX = _pointOf[right] - _pointOf[left] - dx;
-        var changeZ = _pointOf[below] - _pointOf[above] - dz;
+        var changeX = _pointOf[layer][right] - _pointOf[layer][left] - dx;
+        var changeZ = _pointOf[layer][below] - _pointOf[layer][above] - dz;
         var transformed = offset + changeX * u + changeZ * v;
         // A lip is extrapolated beyond its owner's last intact cell. Under compression its reach must shrink
         // with that cell, or it can extend back through the folded skin a few rows ahead of it.
@@ -1178,26 +1195,31 @@ public partial class PatientBody {
         return mid + bend.LimitLength(limit);
     }
 
-    /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
-    /// them.</summary>
-    private static Godot.Collections.Array? MeshArrays(Vector3[] vertices, Vector3[] normals, Vector2[] uvs,
-        int[] indices, Color[]? colors = null, Vector2[]? uvs2 = null) {
-        if (indices.Length == 0) {
-            return null;
+    /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays()).
+    /// </summary>
+    private sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Vector2[] Uvs, int[] Indices, Color[]? Colors,
+        Vector2[]? Uvs2) {
+        /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
+        /// them.</summary>
+        public static Surface? Of(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] indices,
+            Color[]? colors = null, Vector2[]? uvs2 = null) =>
+            indices.Length == 0 ? null : new(vertices, normals, uvs, indices, colors, uvs2);
+
+        public Godot.Collections.Array ToArrays() {
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = Vertices;
+            arrays[(int)Mesh.ArrayType.Normal] = Normals;
+            arrays[(int)Mesh.ArrayType.TexUV] = Uvs;
+            arrays[(int)Mesh.ArrayType.Index] = Indices;
+            if (Colors is not null) {
+                arrays[(int)Mesh.ArrayType.Color] = Colors;
+            }
+            if (Uvs2 is not null) {
+                arrays[(int)Mesh.ArrayType.TexUV2] = Uvs2;
+            }
+            return arrays;
         }
-        var arrays = new Godot.Collections.Array();
-        arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
-        arrays[(int)Mesh.ArrayType.Normal] = normals;
-        arrays[(int)Mesh.ArrayType.TexUV] = uvs;
-        arrays[(int)Mesh.ArrayType.Index] = indices;
-        if (colors is not null) {
-            arrays[(int)Mesh.ArrayType.Color] = colors;
-        }
-        if (uvs2 is not null) {
-            arrays[(int)Mesh.ArrayType.TexUV2] = uvs2;
-        }
-        return arrays;
     }
 
     /// <summary>
