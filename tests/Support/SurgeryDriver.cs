@@ -223,8 +223,8 @@ public partial class SurgeryDriver : Node {
 
     /// <summary>
     /// Stands at the table's long side nearest <paramref name="point"/>, facing it, close enough to reach it with
-    /// either hand. Off the table (the tray, the IV stand) it stands on the side facing the room's middle. Either way it
-    /// keeps its feet off the IV tubing, like a player stepping around it (walking into it rips the line out).
+    /// either hand. Off the table (the tray, the IV stand) it stands on the side facing the room's middle. Standing in the
+    /// IV tubing only pushes it aside: it rips out only when caught and walked off with.
     /// </summary>
     public async Task PlayerWalksTo(Vector3 point, float off = StandOff) {
         // Holding onto something with the other hand, stay put while the point is in reach: walking off would drag it.
@@ -257,7 +257,6 @@ public partial class SurgeryDriver : Node {
         }
         // Stand on the room's floor, clear of furniture and tubing. Between the tray and table, an overlapping
         // capsule slides out during recovery and can pull a needle out of a vial halfway through drawing a dose.
-        var line = Surgery.Room.IvLine;
         var body = Me.GetChildren().OfType<CollisionShape3D>().Single();
         using var query = new PhysicsShapeQueryParameters3D {
             Shape = body.Shape,
@@ -270,7 +269,7 @@ public partial class SurgeryDriver : Node {
             ? Surgery.Tools.Tools.Values.FirstOrDefault(tool => tool.Def.Action == "vial" && tool.State == ToolState.Free
                 && tool.TipPosition().DistanceTo(point) < 0.001f)
             : null;
-        bool Fits(Vector3 at) => !line.HangsLowAt(at, 0.12f) && CanStandAt(at, body, query);
+        bool Fits(Vector3 at) => CanStandAt(at, body, query);
         Vector3? chosen = null;
         var chosenYaw = 0f;
         foreach (var candidate in StandingSpots()) {

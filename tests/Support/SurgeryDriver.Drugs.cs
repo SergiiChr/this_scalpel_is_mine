@@ -188,8 +188,8 @@ public partial class SurgeryDriver {
         return vein.ToGlobal(vein.Line[vein.Line.Length / 2]);
     }
 
-    /// <summary>Puts an IV catheter into the forearm vein (the arm away from the site when the site is a forearm).
-    /// </summary>
+    /// <summary>Connects the IV tubing to a catheter at the stand and puts the catheter into the forearm vein (the arm
+    /// away from the site when the site is a forearm).</summary>
     public async Task PlayerSetsIv() {
         Note("sets an IV line");
         // An awake patient in pain jerks their arm: settled first, or the catheter misses the vein, and a missed line
@@ -200,11 +200,36 @@ public partial class SurgeryDriver {
         if (await PlayerRequestsItem("iv_catheter") is not { } catheter) {
             return;
         }
+        await PlayerConnectsIvLine();
+        await PlayerPutsCatheterIn(catheter);
+    }
+
+    /// <summary>Walks up to the IV stand, looks at it and presses Interact on "Connect the IV line": the tubing goes
+    /// onto the catheter in hand.</summary>
+    public async Task PlayerConnectsIvLine() {
+        var stand = Surgery.Room.FindChildren("*", "", true, false).OfType<Interactable>()
+            .First(spot => spot.Prompt == "Connect the IV line");
+        await PlayerWalksTo(stand.GlobalPosition, 0.6f);
+        var pitch = Me.Pitch;
+        await PlayerLooksAt(stand.GlobalPosition);
+        await Frames.Physics(2);
+        PlayerInput.Tap(InputActions.Interact);
+        await PlayerInput.Delivered();
+        // Looking back up from the stand, as a player turns back to the patient: later steps work at eye level.
+        PlayerInput.Mouse(new Vector2(0f, Me.Pitch - pitch) / (Surgeon.LookSensitivity * Settings.MouseSensitivity));
+        await PlayerInput.Delivered();
+        await Frames.Physics(5);
+        Note($"connects the IV line: {Surgery.Room.IvLine.End}");
+    }
+
+    /// <summary>Puts the catheter in hand into the forearm vein, following it over and pushing in once the tip is over
+    /// it.</summary>
+    public async Task PlayerPutsCatheterIn(SurgicalTool catheter) {
         var hand = Me.Hands[Me.Active];
         await PlayerWalksTo(VeinPoint());
         // Following the vein (an awake patient's arm shifts as they flinch and tense up), and pushing in once the tip
         // is over it, still following it while the catheter goes in.
-        for (var i = 0; i < 240 && !Patient.IvSet; i++) {
+        for (var i = 0; i < 240 && Patient.CanSetIv(Surgery.Room.IvLine.Catheter == catheter); i++) {
             hand.LocalTarget = Me.ToLocal(VeinPoint() - hand.TipOffset(catheter.Def.Length) + (Vector3.Up * 0.04f));
             await Frames.NextPhysics();
             if (i >= 30 && !hand.Trigger && OverVein(catheter.TipPosition())) {
@@ -213,7 +238,7 @@ public partial class SurgeryDriver {
         }
         Use(false);
         await Frames.Physics(10);
-        Note($"IV in: {Patient.IvSet}, in the vein: {Patient.IvInVein}");
+        Note($"IV in: {Patient.IvSet}, in the vein: {Patient.IvInVein}, on the line: {Patient.IvConnected}");
         await PlayerPutsDown();
     }
 

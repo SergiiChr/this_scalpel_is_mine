@@ -745,8 +745,12 @@ public partial class Surgeon {
 
     private void UpdateFocus() {
         var from = Camera.GlobalPosition;
-        var focused = Rays.Cast(this, from, from - (Camera.GlobalBasis.Z * InteractRange), Interactable.Layer, areas: true)
-            ?.Collider as Interactable;
+        var to = from - (Camera.GlobalBasis.Z * InteractRange);
+        var focused = Rays.Cast(this, from, to, Interactable.Layer, areas: true)?.Collider as Interactable;
+        // Two can share a spot, each offered for a different held tool (the IV stand's bag and line).
+        if (focused is not null && !focused.OfferedTo(this)) {
+            focused = Rays.Cast(this, from, to, Interactable.Layer, focused.GetRid(), areas: true)?.Collider as Interactable;
+        }
         Focused = focused is not null && focused.OfferedTo(this) ? focused : null;
     }
 }

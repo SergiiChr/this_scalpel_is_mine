@@ -508,7 +508,7 @@ public class SyringeTest {
         await Frames.Physics(2);
         Surgery.Tools.RequestGrab(bag, me.Active);
         await Frames.Physics(2);
-        AssertBool(swap.OfferedTo(me)).OverrideFailureMessage("swap_bag: a hand holding a bag is offered Swap IV bag")
+        AssertBool(swap.OfferedTo(me)).OverrideFailureMessage($"swap_bag: a hand holding a bag is offered Swap IV bag (holding {me.HeldTool(me.Active)?.Def.Id}, bag {bag.State} at {bag.GlobalPosition}, me {me.GlobalPosition}, iv {patient.IvWorking}, flags {string.Join(",", patient.Flags.Keys)}, stretch {Surgery.Room.IvLine.Stretch:0.00})")
             .IsTrue();
         patient.Flags.Remove("drug_saline");
         swap.Interact(me);
@@ -518,7 +518,7 @@ public class SyringeTest {
         await Frames.Physics(Mathf.CeilToInt(Db.Drug("saline")!.Onset * 1.5f * Engine.PhysicsTicksPerSecond));
         AssertBool(hung && patient.Flags.ContainsKey("drug_saline"))
             .OverrideFailureMessage($"swap_bag: the bag hangs on the stand full ({drip.Ml:0} ml) and runs into the "
-                + $"line")
+                + $"line (working {patient.IvWorking}, set {patient.IvSet}, {Surgery.Room.IvLine.End}, flags {string.Join(",", patient.Flags.Keys)})")
             .IsTrue();
         await End();
     }

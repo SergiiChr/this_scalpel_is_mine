@@ -134,6 +134,8 @@ public partial class Patient : Node3D {
     /// <summary>The catheter went into a vein (set with IvSet). Missed, the line still sticks but nothing runs through
     /// it.</summary>
     public bool IvInVein { get; private set; }
+    /// <summary>The catheter in (set with IvSet) had the IV tubing on it. Without it nothing runs into it.</summary>
+    public bool IvConnected { get; private set; }
     public bool TourniquetOn { get; internal set; }
     public float TourniquetTime { get; private set; }
     public float CavityBloodMl { get; set; }
@@ -179,10 +181,11 @@ public partial class Patient : Node3D {
         Vitals.Apply(scenario.StartVitals);
         IvSet = scenario.PreopIv;
         IvInVein = IvSet;
+        IvConnected = IvSet;
         if (IvSet) {
             var vein = Body.Veins.Count > 0 ? Body.Veins[0] : null;
             var point = vein is null ? PreopIvPoint : Body.Root.ToLocal(vein.ToGlobal(vein.Line[1]));
-            ConnectIv(point);
+            ConnectIv(point, true);
         }
 
         foreach (var spec in scenario.Wounds) {
@@ -241,8 +244,11 @@ public partial class Patient : Node3D {
         var dt = (float)delta;
         Body.SettleOrgans(dt);
         HandleOrgans(dt);
-        if (surgery.Room.IvLine?.TrippedBy(surgery.Surgeons.Values) is { } tripped) {
-            PullIv(tripped);
+        var line = surgery.Room.IvLine;
+        if (line.YankedBy() is { } yanker) {
+            PullIv(yanker);
+        } else if (line.SlipsOff) {
+            Rpc(MethodName.IvLineOff);
         }
         _tickAcc += dt;
         while (_tickAcc >= Tick) {
@@ -656,14 +662,16 @@ public partial class Patient : Node3D {
     public bool IvReady() {
         if (!IvSet) {
             Session.Announce("Nothing happens. There's no IV line in.");
+        } else if (!IvConnected) {
+            Session.Announce("Nothing goes in. The catheter in the arm isn't on the IV line.");
         } else if (!IvInVein) {
             Session.Announce("Nothing goes in. The IV line missed the vein.");
         }
         return IvWorking;
     }
 
-    /// <summary>A line is in and in a vein: drugs and fluids run through it.</summary>
-    public bool IvWorking => IvSet && IvInVein;
+    /// <summary>A catheter on the line is in, in a vein: drugs and fluids run through it.</summary>
+    public bool IvWorking => IvSet && IvInVein && IvConnected;
 
     /// <summary>
     /// Gives a drug. <paramref name="amount"/>: how much was given in the drug's unit (see <see cref="DrugDef.Dose"/>);
