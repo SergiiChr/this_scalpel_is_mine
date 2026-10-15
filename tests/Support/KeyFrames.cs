@@ -53,6 +53,8 @@ public partial class KeyFrames : Node {
             // Refresh only the overlays: the action pose and HUD timers stay frozen.
             surgery?.Hud.RefreshFrame(0f);
             surgery?.Hud.RemoveFilmGrain();
+            // Paused, the body doesn't upload what was painted since its last sim step.
+            surgery?.Patient.Body.WoundMap.Flush();
             // Moving effects (sickness wobble, flesh, contamination pulse) at one fixed moment: their clock follows
             // frame time, which only --fixed-fps makes the same on every machine. Gameplay sets it again on resuming.
             RenderingServer.GlobalShaderParameterSet(ShaderParam.GameTime, 0f);

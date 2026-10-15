@@ -264,6 +264,9 @@ public sealed partial class TissueSim {
     public int TopologyVersion { get; private set; }
     /// <summary>Counts simulation steps, so meshes only rebuild when something moved.</summary>
     public int StepsDone { get; internal set; }
+    /// <summary>Counts the step boundaries <see cref="Advance"/> crossed, asleep or not: the sim's clock, for work that
+    /// keeps its pace while the skin lies still (uploading the wound map).</summary>
+    public int Ticks { get; private set; }
 
     private sealed class Pin(int particle, Vector3 target) {
         public int Particle { get; } = particle;
@@ -1540,6 +1543,7 @@ public sealed partial class TissueSim {
         _accumulator = Mathf.Min(_accumulator + delta, Step * MaxCatchUp);
         for (var n = 0; run && n < maxSteps && _accumulator >= Step; n++) {
             _accumulator -= Step;
+            Ticks++;
             if (IsSleeping) {
                 _accumulator = 0f;
                 _fold.Expire(this);

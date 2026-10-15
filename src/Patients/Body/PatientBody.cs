@@ -97,6 +97,8 @@ public partial class PatientBody : Node3D {
     /// </summary>
     private (float Delta, bool Run)? _pendingStep;
     private Task? _stepping;
+    /// <summary>The sim's clock (<see cref="TissueSim.Ticks"/>) when the wound map was last uploaded.</summary>
+    private int _uploadedTicks;
     private float _pallor = float.NaN;
     private bool _onBack;
     private float _siteBaseY;
@@ -173,7 +175,6 @@ public partial class PatientBody : Node3D {
             _pendingStep = null;
             Tissue.Advance(owed.Delta, owed.Run);
         }
-        WoundMap.Flush((float)delta);
         // Mesh preparation and simulation run on alternate frames. A large fold prepares its layers in groups,
         // then publishes the complete stack from one captured state.
         var stale = Tissue.TopologyVersion != _layerVersion || Tissue.StepsDone != _layerSteps;
@@ -196,6 +197,7 @@ public partial class PatientBody : Node3D {
         if (DisplayServer.WindowCanDraw() && RenderingServer.RenderLoopEnabled) {
             _pendingStep = ((float)delta, !rebuild);
         } else {
+            UploadWoundMap();
             Tissue.Advance((float)delta, !rebuild);
         }
         UpdateSutures();
@@ -206,9 +208,20 @@ public partial class PatientBody : Node3D {
     /// wait for vsync. Nothing on the main thread touches the tissue until FinishStep() joins it after the draw, so
     /// it needs no locks.</summary>
     private void StepWhileDrawing() {
+        UploadWoundMap();
         if (_pendingStep is { } step) {
             _pendingStep = null;
             _stepping = Task.Run(() => Tissue.Advance(step.Delta, step.Run));
+        }
+    }
+
+    /// <summary>Uploads what was painted into the wound map once per sim step, and on a frame the skin mesh was
+    /// rebuilt, so a cut's groove shows with its edges. On a drawn frame it runs after every node has processed
+    /// (the bleeding included) and before the draw, so paint shows the frame it's painted.</summary>
+    private void UploadWoundMap() {
+        if (_rebuiltLast || Tissue.Ticks != _uploadedTicks) {
+            WoundMap.Flush();
+            _uploadedTicks = Tissue.Ticks;
         }
     }
 

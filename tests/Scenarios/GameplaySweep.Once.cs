@@ -96,26 +96,18 @@ internal sealed partial class GameplaySweep {
         if (Patient.SanitizedFraction() <= 0f || pad.Fill >= 0.99f) {
             Fail("the soaked pad didn't sanitize the skin");
         }
-        // A second of wiping, one physics frame at a time: no single frame may take a big bite out of the CPU
-        // budget. Best of three runs, so a busy machine doesn't fail it.
-        var worstMs = double.MaxValue;
-        for (var run = 0; run < 3; run++) {
-            Tools.SetFill(pad, 1f);
-            var runWorst = 0.0;
-            for (var i = 0; i < 60; i++) {
-                var at = new Vector2(0.3f + (i * 0.006f), 0.5f);
-                var started = Time.GetTicksUsec();
-                Wipe(pad, SiteZone.Site, at, Body.UvToWorld(at), 1f / 60f);
-                Body.WoundMap.Flush(1f / 60f);
-                runWorst = Math.Max(runWorst, (Time.GetTicksUsec() - started) / 1000.0);
-            }
-            worstMs = Math.Min(worstMs, runWorst);
+        // A second of wiping, a frame at a time, within the frame budget: painting and uploading the wiped skin is
+        // part of a frame that does everything else too.
+        var budget = new FrameBudget();
+        Tools.SetFill(pad, 1f);
+        budget.Sample();
+        for (var i = 0; i < 60; i++) {
+            var at = new Vector2(0.3f + (i * 0.006f), 0.5f);
+            Wipe(pad, SiteZone.Site, at, Body.UvToWorld(at), 1f / 60f);
+            await Frames.NextProcess();
+            budget.Sample("wiping iodine");
         }
-        GD.Print($"    iodine wipe: worst frame {worstMs:0.00} ms");
-        // Half the CPU budget at most: the wipe is one of several things a frame does.
-        if (FrameBudget.Mode == BudgetMode.Cpu && worstMs > FrameBudget.Limit / 2 * 1000) {
-            Fail($"wiping iodine takes {worstMs:0.00} ms in one frame (stutters)");
-        }
+        budget.Check("iodine wipe");
         Tools.RequestRelease(1, Vector3.Zero);
         await Frames.Physics(3);
         // Let go over an opened chest or belly, the pad falls in: that's fine, it isn't on the forceps.
