@@ -243,12 +243,17 @@ public partial class Surgeon : CharacterBody3D {
         if (holding is not null && Hands.Contains(holding)) {
             return null;
         }
-        var hips = _body.GlobalTransform * SpineBottom;
-        var neck = _body.GlobalTransform * SpineTop;
-        return Geometry3D.GetClosestPointToSegment(tip, hips, neck).DistanceTo(tip) < TorsoRadius
-            ? new NeedleHit("body", tip)
-            : null;
+        return ChestAt(tip) ? new NeedleHit("body", tip) : null;
     }
+
+    /// <summary>Whether <paramref name="tip"/> is on this surgeon's torso, standing or lying down.</summary>
+    public bool ChestAt(Vector3 tip) {
+        var (hips, neck) = Spine();
+        return Geometry3D.GetClosestPointToSegment(tip, hips, neck).DistanceTo(tip) < TorsoRadius;
+    }
+
+    /// <summary>Where the middle of the torso runs, from the hips to the neck, standing or lying down.</summary>
+    internal (Vector3 Hips, Vector3 Neck) Spine() => (_body.GlobalTransform * SpineBottom, _body.GlobalTransform * SpineTop);
 
     /// <summary>A partner's empty hand close enough to take what this hand holds, null if none. A partner knocked out on
     /// the floor takes nothing.</summary>

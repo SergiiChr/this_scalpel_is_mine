@@ -49,6 +49,8 @@ public partial class Hud : CanvasLayer {
     private HBoxContainer _belt = null!;
     private Label _prompt = null!;
     private Label _netWarning = null!;
+    /// <summary>Seconds left to restart a stopped heart, for its owner only.</summary>
+    private Label _countdown = null!;
     /// <summary>Controls for what the player is doing right now, bottom right. Changes while a hand key or a tool is
     /// held.</summary>
     private Label _hint = null!;
@@ -84,6 +86,8 @@ public partial class Hud : CanvasLayer {
 
     /// <summary>A uniform of the full screen post effect as the screen is drawn with it.</summary>
     internal float PostEffect(StringName name) => _post.GetShaderParameter(name).AsSingle();
+
+    internal string Countdown => _countdown.Text;
     /// <summary>How long since the view was clean.</summary>
     private float _lensAge;
     public NurseShop Shop { get; private set; } = null!;
@@ -142,6 +146,10 @@ public partial class Hud : CanvasLayer {
         _netWarning.Position = new Vector2(-400f, 44f);
         _netWarning.CustomMinimumSize = new Vector2(800f, 0f);
         _netWarning.HorizontalAlignment = HorizontalAlignment.Center;
+        _countdown = CornerLabel(Control.LayoutPreset.Center, 40, Ui.Alert);
+        _countdown.Position += new Vector2(-300f, -120f);
+        _countdown.CustomMinimumSize = new Vector2(600f, 0f);
+        _countdown.HorizontalAlignment = HorizontalAlignment.Center;
         BuildAim();
         BuildBottomBar();
         BuildGauges();
@@ -185,6 +193,10 @@ public partial class Hud : CanvasLayer {
         UpdateGauges(me);
         UpdateHint(me);
         UpdatePrompt(me);
+        var countdown = me.Status.IsArrested ? $"Your heart has stopped\n{Mathf.CeilToInt(me.Status.ArrestLeft)} s" : "";
+        if (_countdown.Text != countdown) {
+            _countdown.Text = countdown;
+        }
         _subtitleTimer -= dt;
         if (_subtitleTimer <= 0f) {
             _subtitle.Text = "";

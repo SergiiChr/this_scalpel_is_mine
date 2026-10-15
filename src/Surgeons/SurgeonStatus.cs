@@ -2,7 +2,7 @@ namespace Scalpel.Surgeons;
 
 /// <summary>Something that happened to a surgeon's body this frame, for <see cref="Surgeon"/> to act on.</summary>
 public enum StatusEvent {
-    PassOut, Vomit, Cough, Slip, Drip, Gasp, KnockedOut, CameRound, Moan, Heartbeat, Racing, HeartAttack, Jitters,
+    PassOut, Vomit, Cough, Slip, Drip, Gasp, KnockedOut, CameRound, Moan, Heartbeat, Racing, Arrest, Died, Jitters,
     NauseaGone,
 }
 
@@ -70,12 +70,19 @@ public sealed class SurgeonStatus(Modifiers mods) {
     public const float StimulantStress = 1.5f;
     public const float StimulatedBpm = 110f;
     /// <summary>Two drugs dangerous together (adrenaline and cocaine) at work at once: hands and feet faster by
-    /// RaceSpeed for RaceTime seconds, the heart speeding up from RaceBpm.X to RaceBpm.Y, then a heart attack kills the
-    /// surgeon.
-    /// Nothing stops it.</summary>
+    /// RaceSpeed for RaceTime seconds, the heart speeding up from RaceBpm.X to RaceBpm.Y.
+    /// Nothing stops it.
+    /// Then the heart fails and the surgeon collapses: unless a partner's defibrillator brings them back (each shock
+    /// with ReviveChance) within ArrestTime seconds, they die.
+    /// Brought back, the heart and the hands and feet slow down to normal over RecoverTime seconds, from RestingBpm.
+    /// </summary>
     public const float RaceTime = 180f;
     public const float RaceSpeed = 1.6f;
     public static readonly Vector2 RaceBpm = new(140f, 200f);
+    public const float ArrestTime = 30f;
+    public const float ReviveChance = 0.5f;
+    public const float RecoverTime = 60f;
+    public const float RestingBpm = 70f;
     /// <summary>A local anaesthetic (local_block) injected into a hand numbs it for NumbTime seconds: it can't hold
     /// anything.</summary>
     public const float NumbTime = 60f;
@@ -95,6 +102,7 @@ public sealed class SurgeonStatus(Modifiers mods) {
     private float _nodLeft;
     private float _nodLength;
     private readonly float[] _numbLeft = new float[2];
+    private float _recoverLeft;
 
     public Modifiers Mods { get; } = mods;
     public float Stress { get; set; }
@@ -129,6 +137,8 @@ public sealed class SurgeonStatus(Modifiers mods) {
     public bool Stimulated { get; private set; }
     /// <summary>Seconds left before the racing heart gives out, 0 when it isn't racing.</summary>
     public float RaceLeft { get; private set; }
+    /// <summary>Seconds left for a defibrillator to restart the failed heart, 0 when it hasn't failed.</summary>
+    public float ArrestLeft { get; private set; }
     /// <summary>Died of a heart attack: down for good.</summary>
     public bool Dead { get; private set; }
 
@@ -137,9 +147,14 @@ public sealed class SurgeonStatus(Modifiers mods) {
 
     public bool IsOut => PassedOut > 0f || IsKnockedOut;
 
-    public bool IsKnockedOut => Dead || (KnockedOut > 0f && KeptUp <= 0f);
+    public bool IsKnockedOut => Dead || IsArrested || (KnockedOut > 0f && KeptUp <= 0f);
 
     public bool IsRacing => RaceLeft > 0f;
+
+    public bool IsArrested => ArrestLeft > 0f;
+
+    /// <summary>How far from normal a heart brought back still is: 1 just after, 0 once recovered.</summary>
+    private float Recovering => _recoverLeft / RecoverTime;
 
     /// <summary>The hand (0 left, 1 right) is numb and can't hold anything.</summary>
     public bool IsNumb(int hand) => _numbLeft[hand] > 0f;
@@ -196,7 +211,7 @@ public sealed class SurgeonStatus(Modifiers mods) {
     public float InputDelay() => (SedatedDelay * Calm + OverdoseDelay * Overdose) * Lag;
 
     public float HandSpeed() {
-        var stimulant = IsRacing ? RaceSpeed : Stimulated ? StimulantSpeed : 1f;
+        var stimulant = IsRacing ? RaceSpeed : Mathf.Lerp(Stimulated ? StimulantSpeed : 1f, RaceSpeed, Recovering);
         var speed = (CoffeeLeft > 0f ? 1.3f : 1f) * SmokeSpeedNow() * stimulant;
         if (Mods.Flag("caffeine") && CoffeeLeft <= 0f) {
             speed *= 1f - Mathf.Min(SinceCoffee / 300f, 0.4f);
@@ -204,15 +219,34 @@ public sealed class SurgeonStatus(Modifiers mods) {
         return speed;
     }
 
-    public float MoveSpeed() => Mods.Mult("move_speed_mult") * SmokeSpeedNow() * (IsRacing ? RaceSpeed : 1f);
+    public float MoveSpeed() =>
+        Mods.Mult("move_speed_mult") * SmokeSpeedNow() * (IsRacing ? RaceSpeed : Mathf.Lerp(1f, RaceSpeed, Recovering));
 
-    /// <summary>The heart's pace while a stimulant works (beats a minute), 0 otherwise.</summary>
-    public float HeartRate() => IsRacing ? Mathf.Lerp(RaceBpm.X, RaceBpm.Y, 1f - (RaceLeft / RaceTime))
-        : Stimulated ? StimulatedBpm : 0f;
+    /// <summary>The heart's pace while a stimulant works or the heart recovers (beats a minute), 0 otherwise. A failed
+    /// heart keeps pounding at the top pace.</summary>
+    public float HeartRate() {
+        if (IsRacing) {
+            return Mathf.Lerp(RaceBpm.X, RaceBpm.Y, 1f - (RaceLeft / RaceTime));
+        }
+        if (IsArrested) {
+            return RaceBpm.Y;
+        }
+        var normal = Stimulated ? StimulatedBpm : 0f;
+        return Recovering > 0f ? Mathf.Lerp(Mathf.Max(normal, RestingBpm), RaceBpm.Y, Recovering) : normal;
+    }
 
     private float SmokeSpeedNow() => SmokeLeft > 0f ? SmokeSpeed : 1f;
 
     public void Smoke() => SmokeLeft = SmokeTime;
+
+    /// <summary>A defibrillator restarted the failed heart: the surgeon gets up, and the heart and the speed ease back
+    /// to normal.</summary>
+    public void Revive() {
+        if (IsArrested) {
+            ArrestLeft = 0f;
+            _recoverLeft = RecoverTime;
+        }
+    }
 
     /// <summary>A dose (in the drug's unit) injected into this surgeon, into <paramref name="hand"/> (-1 the body).
     /// A local anaesthetic numbs the hand it goes into.</summary>
@@ -261,6 +295,9 @@ public sealed class SurgeonStatus(Modifiers mods) {
         if (Dead) {
             return events;
         }
+        if (_recoverLeft > 0f && !IsArrested) {
+            _recoverLeft = Mathf.Max(_recoverLeft - delta, 0f);
+        }
         for (var hand = 0; hand < 2; hand++) {
             _numbLeft[hand] = Mathf.Max(_numbLeft[hand] - delta, 0f);
         }
@@ -268,7 +305,8 @@ public sealed class SurgeonStatus(Modifiers mods) {
             Eyelids = 0f;
             _nodLeft = 0f;
             _moanWait -= delta;
-            if (_moanWait <= 0f) {
+            // A failed heart leaves no breath to moan with.
+            if (_moanWait <= 0f && !IsArrested) {
                 _moanWait = (float)GD.RandRange(MoanGap.X, MoanGap.Y);
                 events.Add(StatusEvent.Moan);
             }
@@ -404,14 +442,21 @@ public sealed class SurgeonStatus(Modifiers mods) {
         }
     }
 
-    /// <summary>A stimulant thumps the heart; racing, it speeds up until it gives out.</summary>
+    /// <summary>A stimulant thumps the heart; racing, it speeds up until it fails, and then the surgeon dies unless
+    /// revived in time.</summary>
     private void UpdateHeart(float delta, List<StatusEvent> events) {
         if (IsRacing) {
             RaceLeft = Mathf.Max(RaceLeft - delta, 0f);
             if (RaceLeft == 0f) {
-                Dead = true;
+                ArrestLeft = ArrestTime;
                 Eyelids = 0f;
-                events.Add(StatusEvent.HeartAttack);
+                events.Add(StatusEvent.Arrest);
+            }
+        } else if (IsArrested) {
+            ArrestLeft = Mathf.Max(ArrestLeft - delta, 0f);
+            if (ArrestLeft == 0f) {
+                Dead = true;
+                events.Add(StatusEvent.Died);
                 return;
             }
         }

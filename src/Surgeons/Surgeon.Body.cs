@@ -178,11 +178,16 @@ public partial class Surgeon {
         _walkPhase += delta * speed * 7f;
         var stride = Mathf.Clamp(speed / WalkSpeed, 0f, 1f) * 0.45f;
         var passedOut = IsLocal ? Status.PassedOut > 0f : _remoteOut;
+        var (collapse, down) = (_collapse, _down);
         _collapse = Mathf.MoveToward(_collapse, passedOut ? 1f : 0f, delta * 2.5f);
         if (IsLocal) {
             _fallSide = !Status.IsKnockedOut ? 0f : _fallSide != 0f ? _fallSide : RoomierSide();
         }
         _down = Mathf.MoveToward(_down, IsDown ? 1f : 0f, delta * 1.5f);
+        // The body hits the floor, whatever brought it down.
+        if ((collapse < 1f && _collapse == 1f) || (down < 1f && _down == 1f)) {
+            Sfx.Play("surgeon_collapse", GlobalPosition);
+        }
         var sway = Mathf.Abs(Mathf.Sin(_walkPhase)) * stride * 0.05f;
         // Lower the pelvis between spread knees, then solve both fixed-length legs to grounded feet.
         Pose("Torso", new Vector3(TorsoBend() + sway, 0f, 0f));

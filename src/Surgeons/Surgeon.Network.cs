@@ -190,10 +190,13 @@ public partial class Surgeon {
                 case StatusEvent.Racing:
                     hud.Toast("Your heart hammers. Everything is so fast.");
                     break;
-                case StatusEvent.HeartAttack:
+                case StatusEvent.Arrest:
                     DropEverything();
                     _delayed.Clear();
-                    hud.Toast("A crushing pain in your chest...");
+                    hud.Toast("A crushing pain in your chest. Your heart stops...");
+                    Session.ReportIncident("cardiac_arrest");
+                    break;
+                case StatusEvent.Died:
                     Session.ReportIncident("heart_attack");
                     break;
                 case StatusEvent.Jitters:

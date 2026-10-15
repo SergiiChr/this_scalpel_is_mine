@@ -757,14 +757,12 @@ public class SyringeTest {
     }
 
     /// <summary>Adrenaline and snorted cocaine at work together race a surgeon's heart: hands and feet 1.6 times as
-    /// fast and the heart speeding up for three minutes, then a heart attack kills them.</summary>
+    /// fast and the heart speeding up for three minutes. Then it fails: the surgeon goes down, the heart still pounding,
+    /// and with nobody to shock it they die half a minute later.</summary>
     [TestCase]
     public void AdrenalineWithCocaineStopsASurgeonsHeart() {
         var events = new List<StatusEvent>();
-        var status = new SurgeonStatus(new Modifiers());
-        status.Take("cocaine");
-        status.Administer("adrenaline", Db.Drug("adrenaline")!.Dose * 80f);
-        RunStatus(status, 5f, events);
+        var status = Racing(events);
         AssertBool(events.Contains(StatusEvent.Racing)
                 && Mathf.IsEqualApprox(status.HandSpeed(), SurgeonStatus.RaceSpeed)
                 && Mathf.IsEqualApprox(status.MoveSpeed(), SurgeonStatus.RaceSpeed) && status.HeartRate() < 150f)
@@ -776,13 +774,65 @@ public class SyringeTest {
             .OverrideFailureMessage($"racing: just short of three minutes, alive, the heart at {status.HeartRate():0}")
             .IsTrue();
         RunStatus(status, 3f, events);
-        AssertBool(events.Contains(StatusEvent.HeartAttack) && status.Dead && status.IsKnockedOut)
-            .OverrideFailureMessage("racing: three minutes in, a heart attack kills the surgeon").IsTrue();
+        AssertBool(events.Contains(StatusEvent.Arrest) && status.IsArrested && status.IsKnockedOut && !status.Dead)
+            .OverrideFailureMessage("racing: three minutes in, the heart fails and the surgeon goes down").IsTrue();
+        events.Clear();
+        RunStatus(status, SurgeonStatus.ArrestTime - 3f, events);
+        var beats = events.Count(happened => happened == StatusEvent.Heartbeat);
+        var expected = (SurgeonStatus.ArrestTime - 3f) * SurgeonStatus.RaceBpm.Y / 60f;
+        AssertBool(!status.Dead && beats >= expected - 2f && !events.Contains(StatusEvent.Moan))
+            .OverrideFailureMessage($"arrest: still alive, the heart pounding on ({beats} beats, {expected:0} expected), "
+                + "no moans")
+            .IsTrue();
+        RunStatus(status, 3f, events);
+        AssertBool(events.Contains(StatusEvent.Died) && status.Dead && status.IsKnockedOut)
+            .OverrideFailureMessage("arrest: nobody shocked the heart in time, the surgeon dies").IsTrue();
         events.Clear();
         status.Administer("naloxone", Db.Drug("naloxone")!.Dose * 80f);
         RunStatus(status, 600f, events);
         AssertBool(events.Count == 0 && status.Dead)
-            .OverrideFailureMessage($"racing: dead for good ({string.Join(", ", events)})").IsTrue();
+            .OverrideFailureMessage($"arrest: dead for good ({string.Join(", ", events)})").IsTrue();
+    }
+
+    /// <summary>A failed heart restarted gets the surgeon up at once, still racing; over a minute the heart and the
+    /// hands and feet slow down to normal.</summary>
+    [TestCase]
+    public void RestartedHeartSlowsDownOverAMinute() {
+        var events = new List<StatusEvent>();
+        var status = Racing(events);
+        RunStatus(status, SurgeonStatus.RaceTime - 2f, events);
+        AssertBool(status.IsArrested).OverrideFailureMessage("racing: three minutes in, the heart fails").IsTrue();
+        status.Revive();
+        RunStatus(status, 0.1f, events);
+        AssertBool(!status.IsOut && !status.IsRacing && status.HeartRate() >= SurgeonStatus.RaceBpm.Y - 1f
+                && status.HandSpeed() > SurgeonStatus.RaceSpeed - 0.01f)
+            .OverrideFailureMessage($"restarted: back up at once, the heart at {status.HeartRate():0}, hands "
+                + $"{status.HandSpeed():0.00}x")
+            .IsTrue();
+        RunStatus(status, SurgeonStatus.RecoverTime / 2f, events);
+        var (heart, hands, feet) = (status.HeartRate(), status.HandSpeed(), status.MoveSpeed());
+        AssertBool(heart > SurgeonStatus.RestingBpm && heart < SurgeonStatus.RaceBpm.Y - 30f
+                && hands is > 1.1f and < SurgeonStatus.RaceSpeed - 0.1f && feet is > 1.1f and < SurgeonStatus.RaceSpeed - 0.1f)
+            .OverrideFailureMessage($"restarted: half a minute on, slowing down: heart {heart:0}, hands {hands:0.00}x, "
+                + $"feet {feet:0.00}x")
+            .IsTrue();
+        events.Clear();
+        RunStatus(status, SurgeonStatus.RecoverTime / 2f, events);
+        AssertBool(events.Contains(StatusEvent.Heartbeat) && status.HeartRate() == 0f && status.HandSpeed() == 1f
+                && status.MoveSpeed() == 1f)
+            .OverrideFailureMessage($"restarted: a minute on, normal again: heart {status.HeartRate():0}, hands "
+                + $"{status.HandSpeed():0.00}x, feet {status.MoveSpeed():0.00}x")
+            .IsTrue();
+    }
+
+    /// <summary>A surgeon with snorted cocaine and injected adrenaline at work, a few seconds into the racing heart.
+    /// </summary>
+    private static SurgeonStatus Racing(List<StatusEvent> events) {
+        var status = new SurgeonStatus(new Modifiers());
+        status.Take("cocaine");
+        status.Administer("adrenaline", Db.Drug("adrenaline")!.Dose * 80f);
+        RunStatus(status, 5f, events);
+        return status;
     }
 
     /// <summary>Lidocaine injected into a glove numbs that hand for a minute, the other one not; into the body it numbs

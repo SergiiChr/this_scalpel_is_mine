@@ -460,9 +460,15 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 - **Stimulants for a surgeon** (`stimulant`: adrenaline injected, cocaine snorted from its baggie with the drink key):
   hands 1.3 times as fast, stress building 1.5 times as fast, and a sub-bass heartbeat (`heartbeat`, heard only by
   them) at 110 a minute while it works. Two drugs `danger_with` each other at work at once (adrenaline and cocaine)
-  race the heart: hands and feet 1.6 times as fast for three minutes, the heartbeat speeding up from 140 to 200, then
-  a heart attack kills the surgeon (down for good, the view black). Nothing stops it. Once every surgeon is dead,
-  the operation fails.
+  race the heart: hands and feet 1.6 times as fast for three minutes, the heartbeat speeding up from 140 to 200.
+  Nothing stops it. Then the heart stops: the surgeon drops what they hold and goes down like a knocked out one, the
+  heartbeat still pounding at 200, and only they see a 30 s countdown in the middle of the view. A partner's
+  defibrillator lowered onto their chest (a hand comes down onto a surgeon lying on the floor, not through them) and
+  let go charged restarts it half the time (the host rolls each shock). Brought back, they get up, and the heartbeat
+  and the hands and feet slow down to normal over a minute (from 200 to 70 a minute, then quiet). Not brought back in
+  time, they die (down for good, the view black). Once every surgeon is dead, the operation fails.
+- **A surgeon collapsing** for any reason (passing out, knocked out, a stopped heart) lands with a thunk
+  (`surgeon_collapse`) where they fall, heard by everyone.
 - **Lidocaine into a glove** (`local_block`, any amount) numbs that hand for a minute: it drops what it holds, also a
   tool handed to it later, and its grab doesn't close.
 - **Diphenhydramine** (`antihistamine`) isn't a sedative on a surgeon: it takes nausea away and keeps it away while it

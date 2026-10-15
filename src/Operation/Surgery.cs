@@ -12,6 +12,7 @@ namespace Scalpel.Operation;
 public partial class Surgery : Node3D {
     /// <summary>Host: a dose went into a surgeon (their own peer gets it through Dosed()).</summary>
     [Signal] public delegate void SurgeonDosedEventHandler(int peer, string drug, float amount);
+    [Signal] public delegate void SurgeonShockedEventHandler(int peer, bool revived);
 
     public const float StatusInterval = 0.5f;
     public const float QteTimeout = 10f;
@@ -27,6 +28,8 @@ public partial class Surgery : Node3D {
     private const ulong StingGapMsec = 3000;
     /// <summary>Host: peers whose surgeon died of a heart attack.</summary>
     private readonly HashSet<int> _dead = [];
+    /// <summary>Host: surgeons whose heart has stopped, waiting for a defibrillator.</summary>
+    private readonly HashSet<int> _arrested = [];
 
     /// <summary>Turning the patient: who takes part, what each scored, time left and where they're turning to.
     /// </summary>
@@ -445,6 +448,45 @@ public partial class Surgery : Node3D {
         _stungMsec = now;
     }
 
+    /// <summary>Host: a surgeon whose heart has stopped, not <paramref name="byPeer"/> themselves, with their chest at
+    /// <paramref name="tip"/>, null if none.</summary>
+    internal Surgeon? ArrestedAt(Vector3 tip, int byPeer) => Surgeons.Values.FirstOrDefault(surgeon =>
+        surgeon.PeerId != byPeer && _arrested.Contains(surgeon.PeerId) && surgeon.ChestAt(tip));
+
+    /// <summary>Host: <paramref name="surgeon"/>'s heart has stopped. A partner has until it's too late to restart it.
+    /// </summary>
+    internal void HeartStopped(Surgeon surgeon) {
+        _arrested.Add(surgeon.PeerId);
+        Announce($"{surgeon.DisplayName} clutches their chest and collapses. Their heart has stopped: get the "
+            + "defibrillator!");
+    }
+
+    /// <summary>Host: a defibrillator shock to a surgeon whose heart has stopped. It restarts the heart only by chance.
+    /// </summary>
+    public void Defibrillate(Surgeon surgeon) {
+        var peer = surgeon.PeerId;
+        var revived = Rng.Randf() < SurgeonStatus.ReviveChance;
+        EmitSignal(SignalName.SurgeonShocked, peer, revived);
+        if (!revived) {
+            Announce($"{surgeon.DisplayName} jerks under the paddles. Still no pulse.");
+            return;
+        }
+        _arrested.Remove(peer);
+        Announce($"{surgeon.DisplayName} gasps. Their heart is beating again.");
+        if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer)) {
+            RpcId(peer, MethodName.HeartRestarted);
+        }
+    }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void HeartRestarted() {
+        if (LocalSurgeon is null) {
+            return;
+        }
+        LocalSurgeon.Status.Revive();
+        Hud.Toast("A jolt through your chest. Your heart beats again.");
+    }
+
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void Zapped() {
         if (LocalSurgeon is null) {
@@ -570,7 +612,7 @@ public partial class Surgery : Node3D {
     }
 
     /// <summary>Something happened to the local surgeon the host scores or acts on: "vomit", "passed_out",
-    /// "knocked_out", "sweat_drip".</summary>
+    /// "knocked_out", "cardiac_arrest", "heart_attack", "sweat_drip".</summary>
     public void ReportIncident(string kind) => RpcId(Net.HostId, MethodName.Incident, kind);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -594,9 +636,13 @@ public partial class Surgery : Node3D {
             case "passed_out" or "knocked_out":
                 Scoring.Add("passed_out");
                 break;
-            case "heart_attack":
+            case "cardiac_arrest":
                 Scoring.Add("passed_out");
-                Announce($"{surgeon.DisplayName} clutches their chest and collapses.");
+                HeartStopped(surgeon);
+                break;
+            case "heart_attack":
+                _arrested.Remove(surgeon.PeerId);
+                Announce($"{surgeon.DisplayName} is dead.");
                 _dead.Add(surgeon.PeerId);
                 // Nobody is left to finish the operation.
                 if (Surgeons.Keys.All(_dead.Contains)) {

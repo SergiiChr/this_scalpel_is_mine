@@ -98,7 +98,7 @@ public partial class Surgeon {
         var from = Shoulder(hand.Index);
         var target = hand.Target;
         // A hand holding onto something keeps its height; Lift pulls it up (see LocalUpdate()).
-        var surface = hand.Attached ? Surface.None : SurfaceBelow(target + offset);
+        var surface = hand.Attached ? Surface.None : LyingBelow(target + offset, SurfaceBelow(target + offset));
         if (IsNeedle(tool) && !hand.Attached) {
             surface = GloveBelow(hand, target + offset, surface);
         }
@@ -330,6 +330,20 @@ public partial class Surgeon {
             }
         }
         return new Surface(position.Y, false, (layer & SoftLayers) != 0);
+    }
+
+    /// <summary>A partner lying on the floor: a hand comes down onto the round of their torso, not through it.</summary>
+    private Surface LyingBelow(Vector3 point, Surface surface) {
+        foreach (var other in Session.Surgeons.Values.Where(other => other != this && other.IsDown)) {
+            var (hips, neck) = other.Spine();
+            var axis = Geometry3D.GetClosestPointToSegment(point with { Y = hips.Lerp(neck, 0.5f).Y }, hips, neck);
+            var across = ((axis - point) with { Y = 0f }).Length();
+            var top = axis.Y + Mathf.Sqrt(Mathf.Max((TorsoRadius * TorsoRadius) - (across * across), 0f));
+            if (across < TorsoRadius && top > surface.Y) {
+                return new Surface(top, false, true);
+            }
+        }
+        return surface;
     }
 
     /// <summary>A needle over a glove (this surgeon's other hand or anyone's) rests on the back of it like on skin, from
