@@ -74,7 +74,8 @@ public sealed class SurgeonStatus(Modifiers mods) {
     /// Nothing stops it.
     /// Then the heart fails and the surgeon collapses: unless a partner's defibrillator brings them back (each shock
     /// with ReviveChance) within ArrestTime seconds, they die.
-    /// Brought back, the heart and the hands and feet slow down to normal over RecoverTime seconds, from RestingBpm.
+    /// Brought back, the heart and the hands and feet slow down to normal over RecoverTime seconds, the heart down to
+    /// RestingBpm.
     /// </summary>
     public const float RaceTime = 180f;
     public const float RaceSpeed = 1.6f;
@@ -240,12 +241,14 @@ public sealed class SurgeonStatus(Modifiers mods) {
     public void Smoke() => SmokeLeft = SmokeTime;
 
     /// <summary>A defibrillator restarted the failed heart: the surgeon gets up, and the heart and the speed ease back
-    /// to normal.</summary>
-    public void Revive() {
-        if (IsArrested) {
-            ArrestLeft = 0f;
-            _recoverLeft = RecoverTime;
+    /// to normal. False when the heart isn't stopped (any more).</summary>
+    public bool Revive() {
+        if (!IsArrested) {
+            return false;
         }
+        ArrestLeft = 0f;
+        _recoverLeft = RecoverTime;
+        return true;
     }
 
     /// <summary>A dose (in the drug's unit) injected into this surgeon, into <paramref name="hand"/> (-1 the body).
@@ -377,7 +380,8 @@ public sealed class SurgeonStatus(Modifiers mods) {
             if (crossing != DrugLevels.Crossing.Works) {
                 continue;
             }
-            if (!IsRacing && Drugs.Entries.Any(entry => entry.Def != def && entry.IsWorking
+            // A stopped heart doesn't race again: the clock for a defibrillator keeps running.
+            if (!IsRacing && !IsArrested && Drugs.Entries.Any(entry => entry.Def != def && entry.IsWorking
                     && (entry.Def.DangerWith.Contains(def.Id) || def.DangerWith.Contains(entry.Def.Id)))) {
                 RaceLeft = RaceTime;
                 events.Add(StatusEvent.Racing);

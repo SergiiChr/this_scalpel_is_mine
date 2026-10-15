@@ -14,12 +14,14 @@ public sealed class ShockAction : ToolAction {
                 step.Surgery.Sound("defib_charge", step.Tip);
             }
             use.ChargeTime += step.Dt;
+            use.ShockPeer = surgeon?.PeerId ?? 0;
         } else if (step.Released && use.ChargeTime >= ToolActions.DefibChargeTime * step.Hand.Mods.Mult("defib_charge_mult")) {
             step.Surgery.Sound("defib_shock", step.Tip);
             step.Surgery.Effect(ToolEffect.Spark, step.Tip, 0);
             use.ChargeTime = 0f;
-            if (surgeon is not null) {
-                step.Surgery.Defibrillate(surgeon);
+            if (use.ShockPeer != 0) {
+                step.Surgery.Defibrillate(use.ShockPeer);
+                use.ShockPeer = 0;
                 return;
             }
             patient.Shock(step.Def.Power * 0.5f);
@@ -30,6 +32,7 @@ public sealed class ShockAction : ToolAction {
             step.Surgery.ShockBystanders(step.Hand.Peer);
         } else if (!step.Trigger) {
             use.ChargeTime = 0f;
+            use.ShockPeer = 0;
         }
     }
 }

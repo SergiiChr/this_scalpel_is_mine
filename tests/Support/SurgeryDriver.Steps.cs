@@ -557,12 +557,16 @@ public partial class SurgeryDriver {
 
     /// <summary>Crouched beside <paramref name="surgeon"/>, lying on the floor with a stopped heart: the defibrillator's
     /// paddles on their chest, charged and let go until the heart is back, at most <paramref name="shocks"/> times.
-    /// Returns how many shocks it took, 0 if none brought it back. Captures the paddles on the chest as the first one
-    /// charges.</summary>
-    public async Task<int> PlayerDefibrillates(Surgeon surgeon, int shocks) {
+    /// Returns the shocks let go, those that reached the surgeon, which one brought the heart back (0 none), and whether
+    /// the paddles were on the chest every time they charged. Captures <paramref name="keyFrame"/> (if any) as the
+    /// first one charges.</summary>
+    public async Task<(int Released, int Given, int RevivedBy, bool OnChest)> PlayerDefibrillates(Surgeon surgeon,
+        int shocks, (string Name, string Description)? keyFrame = null) {
         Note("defibrillates a surgeon");
         var revivedBy = 0;
         var given = 0;
+        var released = 0;
+        var onChest = true;
         void Shocked(int peer, bool revived) {
             given++;
             if (peer == surgeon.PeerId && revived && revivedBy == 0) {
@@ -581,20 +585,21 @@ public partial class SurgeryDriver {
                 await PlayerReaches(chest);
                 Use();
                 await Frames.Seconds(ToolActions.DefibChargeTime / 2f);
-                if (shock == 0) {
-                    await Capture("paddles_on_chest", "crouched over the partner lying on the floor, the defibrillator's "
-                        + "paddles pressed onto their chest, not sunk into it or hovering above it");
+                onChest &= Me.HeldTool(Me.Active) is { } paddles && surgeon.ChestAt(paddles.TipPosition());
+                if (shock == 0 && keyFrame is var (name, description)) {
+                    await Capture(name, description);
                 }
                 await Frames.Seconds((ToolActions.DefibChargeTime / 2f) + 0.3f);
                 Use(false);
+                released++;
                 await Frames.Physics(5);
             }
         } finally {
             Surgery.SurgeonShocked -= Shocked;
             Release(InputActions.Crouch);
         }
-        Note($"shocks given {given}, revived by {revivedBy}");
-        return revivedBy;
+        Note($"shocks let go {released}, given {given}, revived by {revivedBy}");
+        return (released, given, revivedBy, onChest);
     }
 
     /// <summary>Gets the patient stable (heart going, oxygen 94+, pressure 90+): blood, or fluid without it, down the IV

@@ -777,7 +777,13 @@ public class SyringeTest {
         AssertBool(events.Contains(StatusEvent.Arrest) && status.IsArrested && status.IsKnockedOut && !status.Dead)
             .OverrideFailureMessage("racing: three minutes in, the heart fails and the surgeon goes down").IsTrue();
         events.Clear();
+        // Adrenaline given to try to restart the heart doesn't race it again or stop the clock.
+        status.Administer("adrenaline", Db.Drug("adrenaline")!.Dose * 80f);
         RunStatus(status, SurgeonStatus.ArrestTime - 3f, events);
+        AssertBool(!events.Contains(StatusEvent.Racing) && !status.IsRacing && status.ArrestLeft < 3.1f)
+            .OverrideFailureMessage($"arrest: adrenaline doesn't race the stopped heart again ({status.ArrestLeft:0.0} s "
+                + "left)")
+            .IsTrue();
         var beats = events.Count(happened => happened == StatusEvent.Heartbeat);
         var expected = (SurgeonStatus.ArrestTime - 3f) * SurgeonStatus.RaceBpm.Y / 60f;
         AssertBool(!status.Dead && beats >= expected - 2f && !events.Contains(StatusEvent.Moan))

@@ -138,8 +138,10 @@ public class SurgeonDrugsTest {
     }
 
     /// <summary>A partner's heart has stopped and they lie on the floor: the surgeon takes the defibrillator, crouches
-    /// beside them and shocks their chest until the heart is back, each shock a coin toss. The thunk of the fall is
-    /// heard here too; the countdown is the partner's alone.</summary>
+    /// beside them and shocks their chest until the host rolls the heart back, each shock a coin toss, every one of
+    /// them reaching the partner. The thunk of the fall is heard here too; the countdown is the partner's alone. The
+    /// partner is a puppet with no peer of their own: their status getting up is SyringeTest's
+    /// RestartedHeartSlowsDownOverAMinute.</summary>
     [TestCase]
     public async Task DefibrillatorRestartsAFellowSurgeonsHeart() {
         var driver = await Begin();
@@ -154,12 +156,15 @@ public class SurgeonDrugsTest {
             .OverrideFailureMessage($"the surgeon hears the partner's heart stopped, and sees no countdown "
                 + $"({string.Join(" | ", _toasts)}, \"{surgery.Hud.Countdown}\")")
             .IsTrue();
-        var shocks = await driver.PlayerDefibrillates(partner, 10);
+        var (released, given, revivedBy, onChest) = await driver.PlayerDefibrillates(partner, 10,
+            ("paddles_on_chest", "crouched over the partner lying on the floor, the defibrillator's paddles pressed onto "
+                + "their chest, not sunk into it or hovering above it"));
         var (hips, neck) = partner.Spine();
         var missed = _toasts.Count(toast => toast.EndsWith("Still no pulse."));
-        AssertBool(shocks > 0 && missed == shocks - 1 && _toasts.Any(toast => toast.EndsWith("Their heart is beating again."))
+        AssertBool(onChest && given == released && revivedBy == released && missed == released - 1
                 && surgery.ArrestedAt(hips.Lerp(neck, 0.7f), driver.Me.PeerId) is null)
-            .OverrideFailureMessage($"a shock brings the partner's heart back ({shocks} shocks, {missed} missed: "
+            .OverrideFailureMessage($"the paddles on the partner's chest, every shock theirs until one brings the heart "
+                + $"back ({released} let go, {given} given, revived by {revivedBy}, {missed} missed, on chest {onChest}: "
                 + $"{string.Join(" | ", _toasts)})")
             .IsTrue();
     }

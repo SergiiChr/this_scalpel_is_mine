@@ -461,10 +461,12 @@ public partial class Surgery : Node3D {
             + "defibrillator!");
     }
 
-    /// <summary>Host: a defibrillator shock to a surgeon whose heart has stopped. It restarts the heart only by chance.
-    /// </summary>
-    public void Defibrillate(Surgeon surgeon) {
-        var peer = surgeon.PeerId;
+    /// <summary>Host: a defibrillator shock to the surgeon <paramref name="peer"/>. It restarts a stopped heart only by
+    /// chance, and does nothing once they've died.</summary>
+    public void Defibrillate(int peer) {
+        if (!_arrested.Contains(peer) || !Surgeons.TryGetValue(peer, out var surgeon)) {
+            return;
+        }
         var revived = Rng.Randf() < SurgeonStatus.ReviveChance;
         EmitSignal(SignalName.SurgeonShocked, peer, revived);
         if (!revived) {
@@ -472,7 +474,6 @@ public partial class Surgery : Node3D {
             return;
         }
         _arrested.Remove(peer);
-        Announce($"{surgeon.DisplayName} gasps. Their heart is beating again.");
         if (peer == Multiplayer.GetUniqueId() || Multiplayer.GetPeers().Contains(peer)) {
             RpcId(peer, MethodName.HeartRestarted);
         }
@@ -483,8 +484,11 @@ public partial class Surgery : Node3D {
         if (LocalSurgeon is null) {
             return;
         }
-        LocalSurgeon.Status.Revive();
-        Hud.Toast("A jolt through your chest. Your heart beats again.");
+        // Too late if the heart gave out here first: the death is on its way to the host.
+        if (LocalSurgeon.Status.Revive()) {
+            Hud.Toast("A jolt through your chest. Your heart beats again.");
+            ReportIncident("revived");
+        }
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -612,7 +616,7 @@ public partial class Surgery : Node3D {
     }
 
     /// <summary>Something happened to the local surgeon the host scores or acts on: "vomit", "passed_out",
-    /// "knocked_out", "cardiac_arrest", "heart_attack", "sweat_drip".</summary>
+    /// "knocked_out", "cardiac_arrest", "revived", "heart_attack", "sweat_drip".</summary>
     public void ReportIncident(string kind) => RpcId(Net.HostId, MethodName.Incident, kind);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -639,6 +643,9 @@ public partial class Surgery : Node3D {
             case "cardiac_arrest":
                 Scoring.Add("passed_out");
                 HeartStopped(surgeon);
+                break;
+            case "revived":
+                Announce($"{surgeon.DisplayName} gasps. Their heart is beating again.");
                 break;
             case "heart_attack":
                 _arrested.Remove(surgeon.PeerId);
