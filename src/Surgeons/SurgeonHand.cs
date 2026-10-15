@@ -81,6 +81,9 @@ public partial class SurgeonHand : Node3D {
     /// <summary>How far out past its shoulder (meters, across the body) the elbow stays when a held tool draws it in
     /// toward the forearm's line.</summary>
     private const float ElbowOut = 0.15f;
+    /// <summary>Room between the elbow and the table, patient or drapes under it (meters): about a sleeve's thickness.
+    /// </summary>
+    private const float ElbowClearance = 0.07f;
     /// <summary>How fast (radians a second) a hand that let go of its tool rolls back from the tool's twist to palm
     /// down.</summary>
     internal const float UntwistSpeed = 3f;
@@ -153,6 +156,9 @@ public partial class SurgeonHand : Node3D {
     public Vector3? ElbowSupport { get; set; }
     public float ElbowSupportWeight { get; set; }
     public List<Vector3> KneeObstacles { get; } = [];
+    /// <summary>How high whatever lies under a point reaches (world), set by the surgeon: the elbow stays above it, so
+    /// a surgeon bent over the table doesn't put an elbow through the patient. Null for a hand on its own.</summary>
+    public Func<Vector3, float>? GroundAt { get; set; }
     /// <summary>Set by the surgeon each frame; drives how far the fingers curl.</summary>
     public bool Holding { get; set; }
     /// <summary><see cref="ToolDef.Grip"/> of the tool in this hand, set with <see cref="Holding"/>. Empty hands follow
@@ -635,6 +641,7 @@ public partial class SurgeonHand : Node3D {
         if (_elbowHold > 0f) {
             elbow = elbow.Lerp(Body.ToGlobal(_heldElbow), _elbowHold);
         }
+        elbow = AboveGround(elbow, shoulder + (direction * along), direction);
         _elbow = elbow;
         PlaceSegment(_upper, shoulder, elbow);
         var wrist = PlaceGlove(elbow, ownerBasis);
@@ -667,6 +674,26 @@ public partial class SurgeonHand : Node3D {
             if (cost < bestCost) {
                 bestCost = cost;
                 best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>The elbow, or where it goes round the same IK circle (about <paramref name="bendCenter"/>) nearest to it
+    /// to stay <see cref="ElbowClearance"/> above what's under it. Searched only while it's in something.</summary>
+    private Vector3 AboveGround(Vector3 elbow, Vector3 bendCenter, Vector3 direction) {
+        if (GroundAt is not { } groundAt || elbow.Y >= groundAt(elbow) + ElbowClearance) {
+            return elbow;
+        }
+        var spoke = elbow - bendCenter;
+        var best = elbow;
+        var bestDistance = float.PositiveInfinity;
+        for (var step = 1; step < 16; step++) {
+            var candidate = bendCenter + spoke.Rotated(direction, step * Mathf.Tau / 16f);
+            var distance = candidate.DistanceSquaredTo(elbow);
+            if (distance < bestDistance && candidate.Y >= groundAt(candidate) + ElbowClearance) {
+                best = candidate;
+                bestDistance = distance;
             }
         }
         return best;

@@ -94,6 +94,60 @@ public class SurgeonArmsTest {
         AssertFloat(hand.Twist).OverrideFailureMessage("C/V don't roll an empty hand").IsEqual(0f);
     }
 
+    /// <summary>Leaning in over an open belly, the surgeon's own arms and the partner's copy of them keep their elbows
+    /// above the patient, the drapes and the table: the bent torso brings the shoulders down, and the elbows go round
+    /// what's under them rather than through it.</summary>
+    [TestCase]
+    public async Task LeaningInKeepsTheElbowsOutOfThePatient() {
+        var driver = await Begin();
+        var me = driver.Me;
+        var at = new Vector2(0.5f, 0.62f);
+        SurgeryState.SkinIsCut(driver.Patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
+        await Frames.Seconds(1f);
+        var opening = driver.SitePoint(at);
+        await driver.PlayerWalksTo(opening);
+        await driver.PlayerReaches(opening);
+        var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
+        puppet.Visible = false;
+        SurgeryDriver.Tap(InputActions.Zoom);
+        for (var frame = 0; frame < 60; frame++) {
+            SurgeryState.SurgeonCopyHasOwnerState(me, puppet);
+            await Frames.Physics(1);
+        }
+        AssertFloat(puppet.Lean).OverrideFailureMessage($"the partner sees the surgeon lean in ({puppet.Lean:0.00} rad)")
+            .IsGreater(0.2f);
+        foreach (var (surgeon, whose) in (ValueTuple<Surgeon, string>[])[(me, "own"), (puppet, "partner's copy of the")]) {
+            foreach (var hand in surgeon.Hands) {
+                var under = me.SurfaceBelow(hand.Elbow, false);
+                AssertBool(!under.Found || hand.Elbow.Y > under.Y)
+                    .OverrideFailureMessage($"leaning in, the {whose} {(hand.Index == 0 ? "left" : "right")} elbow stays "
+                        + $"above what's under it ({(hand.Elbow.Y - under.Y) * 100f:0.0} cm)")
+                    .IsTrue();
+            }
+        }
+        if (KeyFrames.Wanted()) {
+            var camera = new Camera3D { Fov = 55f, CullMask = RenderLayers.Normal };
+            driver.Surgery.AddChild(camera);
+            var neck = puppet.FaceModel.GlobalTransform * Surgeon.HeadPivot;
+            camera.GlobalPosition = neck + (puppet.GlobalBasis * new Vector3(-1.1f, 0.2f, 0.3f));
+            camera.LookAt(neck + (Vector3.Down * 0.4f));
+            camera.MakeCurrent();
+            puppet.Visible = true;
+            // The surgeon's own see-through arms stand where the copy's do.
+            foreach (var hand in me.Hands) {
+                hand.Visible = false;
+            }
+            await driver.Capture("leaning_seen", "seen from the left: the surgeon bent over the open belly, the left "
+                + "elbow out to the side above the patient and the drapes, no sleeve through them");
+            puppet.Visible = false;
+            foreach (var hand in me.Hands) {
+                hand.Visible = true;
+            }
+            me.Camera.MakeCurrent();
+            camera.QueueFree();
+        }
+    }
+
     /// <summary>How much the back of the glove faces up (1 straight up).</summary>
     private static float Up(SurgeonHand hand) => hand.Glove.GlobalBasis.Y.Normalized().Dot(Vector3.Up);
 
