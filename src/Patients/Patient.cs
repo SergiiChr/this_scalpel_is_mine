@@ -205,6 +205,8 @@ public partial class Patient : Node3D {
         for (var i = 0; i < scenario.Targets.Count; i++) {
             var target = new CavityTarget();
             target.Setup(i, scenario.Targets[i], Mods.Flag("mirrored"));
+            target.Depth = Body.TargetDepth(target.Uv, target.Depth, PatientBody.LocalBounds(target, target).Size.Y * 0.5f,
+                target.IsBone);
             Body.Site.AddChild(target);
             target.Position = SiteLocal(target.Uv, target.Depth);
             Targets.Add(target);
@@ -214,7 +216,8 @@ public partial class Patient : Node3D {
         }
         _initialSuction = Mathf.Max(Targets.Where(t => t.IsSuctionTarget).Sum(t => t.Amount), 1f);
         if (site.HasAnatomy) {
-            Body.BuildAnatomy([.. Targets.Where(t => !t.Covered).Select(t => t.RestUv)], [.. Targets.Select(t => t.Kind)]);
+            Body.BuildAnatomy([.. Targets.Where(t => !t.Covered).Select(t => t.RestUv)], [.. Targets.Select(t => t.Kind)],
+                [.. Targets.Where(t => t.Kind == "bone").Select(t => t.RestUv)]);
         } else if (Body.CavityDepth() > 0.1f) {
             for (var i = 0; i < 3; i++) {
                 var uv = new Vector2(Rng.RandfRange(0.2f, 0.8f), Rng.RandfRange(0.2f, 0.8f));
