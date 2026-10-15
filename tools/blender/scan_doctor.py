@@ -60,10 +60,11 @@ UNSHADE = 0.85
 
 # The sway: the chest sits this far toward her left of the hips, shifted back over them across the waist (y range).
 SWAY = (-0.043, 0.33, 0.4)
-# The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest; turned back
-# around the pelvis, the twist undone across the waist (y range).
+# The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest (measured on
+# the holsters, which sit at her sides); turned back around the pelvis, the twist undone across the bare waist between
+# belt and corset (y range).
 TURN = 20.0
-HIP_TURN = (22.0, 0.33, 0.38)
+HIP_TURN = (37.0, 0.345, 0.38)
 PELVIS = (0.008, 0.32, -0.038)
 # Rest hip joints sit this far either side of the pelvis center.
 HIP_X = 0.035
@@ -103,13 +104,13 @@ ARM_LINES = {
 ARM_SEEN = 0.3
 # Rest shoulder joints (after straightening), arm lengths and radii (shoulder, elbow, wrist), from the clean
 # stretches of the scanned arms.
-SHOULDERS = {"R": (0.037, 0.458, 0.0), "L": (-0.037, 0.458, 0.0)}
+SHOULDERS = {"R": (0.046, 0.452, 0.008), "L": (-0.046, 0.452, 0.008)}
 UPPER_ARM = 0.075
 FOREARM = 0.058
 ARM_RADII = (0.0135, 0.0115, 0.009)
 # Rounded shoulder over the arm's root: offset out from the joint (x away from the body, y, z) and radii (x, z, y in
 # Blender's axes, as the sphere is scaled there).
-DELTOID = ((0.004, 0.003, 0.0), (0.019, 0.018, 0.018))
+DELTOID = ((-0.002, 0.002, 0.0), (0.017, 0.016, 0.016))
 # Glove generator hand scaled to the figurine's wrist, and how far it reaches back into the forearm.
 HAND_SCALE = 0.21
 HAND_SOCKET = 0.02
