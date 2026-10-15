@@ -135,8 +135,7 @@ public partial class Patient : Node3D {
     /// <summary>The anesthetic put the patient under at some point of the surgery (as the anesthesia objective counts it).
     /// </summary>
     internal bool WentUnder { get; private set; }
-    /// <summary>Flumazenil stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears
-    /// off.</summary>
+    /// <summary>Flumazenil stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears off.</summary>
     internal bool AnesthesiaStopped { get; private set; }
     /// <summary>Shares of the right anesthetic dose given since <see cref="AnesthesiaStopped"/>.</summary>
     private float _anestheticSinceStop;
