@@ -12,8 +12,8 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class PaperClipsTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "known to go over the frame budget: each clip changes the tissue, and rebuilding "
-        + "its layers takes about 6 ms (PatientBody.RebuildLayers()); not optimized yet";
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget: each clip changes the tissue, "
+        + "and rebuilding its layers takes about 6 ms (PatientBody.RebuildLayers()); not optimized yet", 14.5f);
 
     [TestCase]
     public async Task TheWheelPullsTheClips() {
