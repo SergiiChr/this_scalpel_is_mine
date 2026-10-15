@@ -117,8 +117,6 @@ public static class ToolActions {
     public const float PadReach = 0.04f;
     /// <summary>Clamps that only hook skin, the edge of a cut: never what lies under it in the opening.</summary>
     public static readonly IReadOnlySet<string> SkinHooks = new HashSet<string> { "retractor" };
-    /// <summary>ml of iodine a cotton pad soaks up from a dish.</summary>
-    public const float PadMl = 10f;
     /// <summary>A soaked pad runs dry after 1 / PadDrain seconds of wiping.</summary>
     public const float PadDrain = 0.12f;
     /// <summary>How fast drugs pushed into the IV bag run down the line into the patient (ml/s).</summary>
@@ -264,41 +262,47 @@ public static class ToolActions {
         }
     }
 
-    /// <summary>A cotton pad soaks up iodine in any dish, then leaves it on the skin until it runs dry. Iodine only
-    /// stays sterile on the way in if a clean pad is held with forceps: a glove on it spoils the site.</summary>
+    /// <summary>A cotton pad soaks up what's in any dish (iodine, and blood mixed in with it in its share), then leaves
+    /// the iodine on the skin until it runs dry. Iodine only stays sterile on the way in if a clean pad is held with
+    /// forceps: a glove on it spoils the site.</summary>
     public static void Wipe(SurgicalTool pad, ToolStep step, float dt, bool gloved) {
         var tools = step.Tools;
-        WipeBeads(step, pad.Def);
+        WipeBeads(step, pad);
         // On the patient it always wipes, even with a dish left right beside the site.
         if (!step.InSite) {
-            var dish = tools.NearestDish(step.Tip);
-            var iodine = dish?.Contents.GetValueOrDefault("iodine") ?? 0f;
-            var soak = Mathf.Min(Mathf.Min(dt * 2f, 1f - pad.Fill), iodine / PadMl);
-            if (soak > 0f && dish is not null) {
-                tools.SetFill(pad, pad.Fill + soak);
-                // What's mixed in with the iodine (blood) comes along in its share.
-                tools.Transfer(dish, null, soak * PadMl * dish.Ml / iodine);
+            if (tools.NearestDish(step.Tip) is { } dish) {
+                // An empty pad fills in half a second.
+                tools.Transfer(dish, pad, Mathf.Min(dt * 2f * pad.Def.Volume, pad.Room));
             }
             return;
         }
-        var soaked = pad.Fill > 0f;
+        var soaked = pad.Contents.GetValueOrDefault("iodine") > 0f;
         var wiped = Gather(pad, step.Uv, dt);
         if (wiped > 0f) {
-            step.Patient.SwabAt(step.Zone, step.Uv, pad.Def, wiped, soaked ? "iodine" : "");
+            Swab(step, pad, wiped, soaked ? "iodine" : "");
+            // It leaves its iodine on the skin with each paint, for the wiping time gathered for it.
+            tools.TakeOut(pad, "iodine", PadDrain * pad.Def.Volume * wiped);
         }
-        if (soaked) {
-            tools.SetFill(pad, pad.Fill - PadDrain * dt);
-            if ((gloved || !pad.Sterile) && step.Zone == SiteZone.Site && pad.Use.Reported.Add("dirty")) {
-                step.Patient.ContaminateSite("");
-                step.Surgery.Scoring.Add("dirty_tool");
-            }
+        if (soaked && (gloved || !pad.Sterile) && step.Zone == SiteZone.Site && pad.Use.Reported.Add("dirty")) {
+            step.Patient.ContaminateSite("");
+            step.Surgery.Scoring.Add("dirty_tool");
         }
     }
 
-    /// <summary>A swab (<paramref name="swab"/>) lowered onto the body wipes the blood beads under it away.</summary>
-    public static void WipeBeads(ToolStep step, ToolDef swab) {
-        if (step.Touching) {
-            step.Surgery.WipeBeads(step.Tip, swab.Radius);
+    /// <summary>Wipes the site with <paramref name="swab"/> for <paramref name="dt"/> seconds, soaking up the blood it
+    /// takes while it has room. A swab that holds no liquid (a whiskey flask) never fills.</summary>
+    public static void Swab(ToolStep step, SurgicalTool swab, float dt, string soakedIn = "") {
+        var blood = step.Patient.SwabAt(step.Zone, step.Uv, swab.Def, dt, swab.Room, soakedIn);
+        if (blood > 0f && swab.Def.Volume > 0f) {
+            step.Tools.AddLiquid(swab, blood, new Dictionary<string, float> { ["blood"] = blood });
+            step.Tools.AddBlood(swab, blood / swab.Def.Volume);
+        }
+    }
+
+    /// <summary>A swab lowered onto the body wipes the blood beads under it away, unless it's full.</summary>
+    public static void WipeBeads(ToolStep step, SurgicalTool swab) {
+        if (step.Touching && swab.Room > 0f) {
+            step.Surgery.WipeBeads(step.Tip, swab.Def.Radius);
         }
     }
 
@@ -374,7 +378,8 @@ public static class ToolActions {
         if (step.Zone == SiteZone.Cavity || cut) {
             wet = Mathf.Max(wet, 0.6f);
         }
-        if (wet > 0.15f) {
+        // A swab that holds liquid gets bloody by what it soaks up instead, see Swab().
+        if (wet > 0.15f && !(step.Def.Action == "swab" && step.Def.Volume > 0f)) {
             var rate = step.Def.Action == "swab" ? 1.2f : 0.5f;
             step.Tools.AddBlood(step.Tool, wet * rate * step.Dt);
         }

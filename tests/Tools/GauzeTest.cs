@@ -167,7 +167,7 @@ public class GauzeTest {
         await driver.PlayerGivesDrug("vial_propofol", 1f, SurgeryDriver.Route.Vein);
         var beads = effects.Beads();
         AssertInt(beads.Count).OverrideFailureMessage($"the needle leaves a bead of blood on the arm\n{driver.Recent()}").IsEqual(1);
-        await CaptureAt(session, "bead", "one bead of blood on the arm where the needle went in", beads[0]);
+        await session.CaptureAt("bead", "one bead of blood on the arm where the needle went in", beads[0], 0.15f);
 
         await driver.PlayerRequestsItem("gauze");
         foreach (var bead in beads) {
@@ -177,16 +177,8 @@ public class GauzeTest {
         await Frames.Physics(5);
         AssertInt(effects.Beads().Count).OverrideFailureMessage("gauze wipes it away like any blood").IsEqual(0);
         await driver.PlayerPutsDown();
-        await CaptureAt(session, "wiped", "the bead wiped away with gauze, the arm clean", beads[0]);
+        await session.CaptureAt("wiped", "the bead wiped away with gauze, the arm clean", beads[0], 0.15f);
         await session.Finish(BudgetOverride);
-    }
-
-    /// <summary>In a run with key frames, saves views of <paramref name="at"/> on the arm, off the site, which should
-    /// show <paramref name="description"/>.</summary>
-    private static async Task CaptureAt(ToolSession session, string keyFrame, string description, Vector3 at) {
-        if (session.Shots is { } shots) {
-            await session.Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, at, 0.15f));
-        }
     }
 
     private void Listen(SurgeryDriver driver) {

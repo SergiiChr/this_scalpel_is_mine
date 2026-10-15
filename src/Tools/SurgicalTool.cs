@@ -106,7 +106,7 @@ public partial class SurgicalTool : RigidBody3D {
     private List<(ShaderMaterial Material, float Grime)> _ownMaterials = [];
     /// <summary>The liquid parts' own colors before blood or iodine tinted them.</summary>
     private readonly Dictionary<MeshInstance3D, Color> _liquidColors = [];
-    /// <summary>The model parts' colors before iodine soaked into them.</summary>
+    /// <summary>The model parts' colors before liquid soaked into them.</summary>
     private readonly Dictionary<ShaderMaterial, Color> _dryColors = [];
     private Node3D _model = null!;
     private float _spread = ToolActions.SpreadRange.X;
@@ -132,12 +132,15 @@ public partial class SurgicalTool : RigidBody3D {
     public float Blood { get; private set; }
     /// <summary>Host-side blood exposure, building up to what everyone sees in Blood.</summary>
     public float BloodExposure { get; set; }
-    /// <summary>How full of liquid it is (0..1): iodine in the dish, soaked into a cotton pad, a syringe, vial or kidney
-    /// dish. Exact on the host, in steps elsewhere (a syringe, vial or kidney dish is exact everywhere, see Ml).
-    /// </summary>
+    /// <summary>How full of liquid it is (0..1): a dish, syringe or vial, or what gauze or a cotton pad soaked up. Follows
+    /// Ml.</summary>
     public float Fill { get; set; }
-    // ml of liquid in a syringe, vial or kidney dish, ml of air drawn into a syringe and the share of the liquid that
-    // is blood and iodine (0..1). Exact on every peer: the host sends changes (ToolManager.AddLiquid() and Transfer()).
+    /// <summary>ml of liquid it can still take: what a swab can still soak up. One that holds no liquid (a whiskey flask
+    /// used as a swab) never fills.</summary>
+    public float Room => Def.Volume > 0f ? Def.Volume - Ml - Air : float.PositiveInfinity;
+    // ml of liquid in a syringe, vial or dish or soaked into a swab, ml of air drawn into a syringe and the share of the
+    // liquid that is blood and iodine (0..1). Exact on every peer: the host sends changes (ToolManager.AddLiquid() and
+    // Transfer()).
     public float Ml { get; set; }
     public float Air { get; set; }
     public float Red { get; set; }
@@ -320,11 +323,11 @@ public partial class SurgicalTool : RigidBody3D {
         }
     }
 
-    /// <summary>Blood on the working end. Gauze and swabs soak through along their whole length; instruments only near
-    /// the tip.</summary>
+    /// <summary>Blood on the working end. Swabs soak through along their whole length; instruments only near the tip.
+    /// Gauze and cotton pads show it in what they soaked up instead (ShowSoaked()).</summary>
     public void SetBlood(float amount) {
         Blood = amount;
-        if (amount <= 0f && _ownMaterials.Count == 0) {
+        if (amount <= 0f && _ownMaterials.Count == 0 || Def.Action == "swab" && Def.Volume > 0f) {
             return;
         }
         var soaks = Def.Action == "swab";
@@ -336,14 +339,19 @@ public partial class SurgicalTool : RigidBody3D {
         }
     }
 
-    /// <summary>Iodine soaked into it tints the whole tool (a cotton pad).</summary>
-    public void ShowFill(float amount) {
+    /// <summary>What a swab soaked up tints all of it, deeper the fuller it is: iodine brown, blood red, a mix of both
+    /// by their shares.</summary>
+    private void ShowSoaked() {
+        if (Ml <= 0f && _dryColors.Count == 0) {
+            return;
+        }
+        var soaked = Red + Iodine > 0f ? IodineColor.Lerp(BloodColor, Red / (Red + Iodine)) : IodineColor;
         foreach (var (material, _) in OwnMaterials()) {
             if (!_dryColors.TryGetValue(material, out var dry)) {
                 dry = material.GetShaderParameter("albedo").AsColor();
                 _dryColors[material] = dry;
             }
-            material.SetShaderParameter(ShaderParam.Albedo, dry.Lerp(IodineColor, Mathf.Min(amount * 2f, 1f)));
+            material.SetShaderParameter(ShaderParam.Albedo, dry.Lerp(soaked, Mathf.Sqrt(Ml / Def.Volume)));
         }
     }
 
@@ -354,6 +362,10 @@ public partial class SurgicalTool : RigidBody3D {
     /// rises, the iodine dish's "Liquid" spreads.
     /// </summary>
     public void ShowLiquid() {
+        if (Def.Action == "swab") {
+            ShowSoaked();
+            return;
+        }
         var amount = Ml / Def.Volume;
         var level = LiquidPart("Level");
         if (level is not null) {

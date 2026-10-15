@@ -99,7 +99,7 @@ internal sealed partial class GameplaySweep {
         // A second of wiping, a frame at a time, within the frame budget: painting and uploading the wiped skin is
         // part of a frame that does everything else too.
         var budget = new FrameBudget();
-        Tools.SetFill(pad, 1f);
+        SurgeryState.ToolHolds(_surgery, pad, "iodine", pad.Room);
         budget.Sample();
         for (var i = 0; i < 60; i++) {
             var at = new Vector2(0.3f + (i * 0.006f), 0.5f);

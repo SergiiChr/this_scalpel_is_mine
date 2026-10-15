@@ -96,7 +96,7 @@ public partial class Screenshot : Node {
         patient.Bruise(new Vector2(0.2f, 0.25f), 0.1f, 0.8f);
         patient.Mark(new Vector2(0.2f, 0.8f), new Vector2(0.8f, 0.82f));
         patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.45f, 0.62f), new Vector2(0.45f, 0.62f), 0.08f, 1f, WoundMap.Mode.Max);
-        patient.SwabAt(SiteZone.Site, new Vector2(0.6f, 0.8f), Db.Tool("cotton_pad")!, 1f, "iodine");
+        patient.SwabAt(SiteZone.Site, new Vector2(0.6f, 0.8f), Db.Tool("cotton_pad")!, 1f, 0f, "iodine");
         await Frames(20);
         var me = surgery.LocalSurgeon!;
         var camera = NewCamera();
@@ -158,7 +158,7 @@ public partial class Screenshot : Node {
         await Shot("04b_table_foot");
         // Iodine in the dish and one soaked pad.
         foreach (var tool in surgery.Tools.Tools.Values.Where(tool => tool.Def.Id is "iodine_dish" or "cotton_pad")) {
-            surgery.Tools.SetFill(tool, 1f);
+            SurgeryState.ToolHolds(surgery, tool, "iodine", tool.Room);
         }
         var tray = surgery.Room.Layout.Tray + new Vector3(0f, 0.95f, 0f);
         camera.GlobalPosition = tray + new Vector3(0.45f, 0.45f, 0f);
