@@ -94,6 +94,9 @@ public static class InputActions {
 
     private static readonly Dictionary<StringName, string> BindingTexts = [];
 
+    /// <summary>Counts the times the bindings changed, for text that shows them to know it is stale.</summary>
+    public static int BindingsVersion { get; private set; }
+
     /// <summary>Human readable binding, e.g. "E" or "Mouse 1". Kept until the bindings change
     /// (<see cref="BindingsChanged"/>): the on-screen hint asks for it every frame.</summary>
     public static string BindingText(StringName action) {
@@ -107,6 +110,7 @@ public static class InputActions {
     /// <summary>The input map changed: binding texts are read afresh, now rather than the first frame the HUD
     /// shows them (reading one costs a fraction of a millisecond in engine calls).</summary>
     public static void BindingsChanged() {
+        BindingsVersion++;
         BindingTexts.Clear();
         foreach (var entry in Defaults) {
             BindingText(entry.Action);

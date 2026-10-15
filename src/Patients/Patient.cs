@@ -102,6 +102,10 @@ public partial class Patient : Node3D {
     private float _reassure;
     private bool _mhActive;
     private int _nextWoundId = 1;
+    /// <summary>The bleed sources and cut pools of the tick being simulated, swapped with the blood's when complete.
+    /// Two lists each, used in turn, so no tick allocates them.</summary>
+    private List<BleedSource> _nextSources = [];
+    private List<CutPool> _nextPools = [];
     private float _tickAcc;
     private float _syncAcc;
     private float _voiceCooldown;
@@ -276,8 +280,9 @@ public partial class Patient : Node3D {
         var total = 0f;
         var lasting = 0f;
         var heal = Mods.Num("heal_rate");
-        var sources = Body.Blood.Sources;
-        var pools = Body.Blood.Pools;
+        // Built aside and swapped in whole below: the visuals and the next sync never see a half-filled list.
+        var sources = _nextSources;
+        var pools = _nextPools;
         sources.Clear();
         pools.Clear();
         var leak = ClosureLeak(fx);
@@ -335,6 +340,8 @@ public partial class Patient : Node3D {
         }
         v.BleedRate = total;
         LastingBleedRate = lasting;
+        (Body.Blood.Sources, _nextSources) = (sources, Body.Blood.Sources);
+        (Body.Blood.Pools, _nextPools) = (pools, Body.Blood.Pools);
         v.BloodMl = Mathf.Clamp(v.BloodMl - total * dt + fx.VolumeMl * dt, 0f, v.MaxBloodMl * 1.1f);
         CavityBloodMl = Mathf.Max(CavityBloodMl, 0f);
         Body.SetCavityBlood(CavityBloodMl / CavityFullMl);

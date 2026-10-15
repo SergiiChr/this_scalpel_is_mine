@@ -98,8 +98,10 @@ public sealed class NurseShop {
 
     /// <summary>While it's shown: <paramref name="board"/> is the nurse board's text, <paramref name="nurseReady"/>
     /// whether she takes an order now.</summary>
-    public void Update(string board, bool nurseReady) {
-        _subtitle.Text = board;
+    public void ShowBoard(string board) => _subtitle.Text = board;
+
+    /// <summary>Whether the nurse takes an order now: the Place button follows it.</summary>
+    public void SetNurseReady(bool nurseReady) {
         if (nurseReady != _nurseReady) {
             _nurseReady = nurseReady;
             Refresh();

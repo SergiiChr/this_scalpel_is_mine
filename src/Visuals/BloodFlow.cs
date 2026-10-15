@@ -163,12 +163,28 @@ public partial class BloodFlow : Node3D {
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
     private PatientBody? _body;
 
-    /// <summary>The bleeding wounds. The patient's simulation refills the list every tick; nothing keeps a tick's
-    /// snapshot.</summary>
-    public List<BleedSource> Sources { get; } = [];
+    /// <summary>The bleeding wounds. The patient swaps in a complete list every tick; nothing keeps a tick's own.
+    /// </summary>
+    public List<BleedSource> Sources { get; internal set; } = [];
 
-    /// <summary>Blood held in cuts that don't reach the cavity, refilled like <see cref="Sources"/>.</summary>
-    public List<CutPool> Pools { get; } = [];
+    /// <summary>Blood held in cuts that don't reach the cavity, swapped in like <see cref="Sources"/>.</summary>
+    public List<CutPool> Pools { get; internal set; } = [];
+
+    /// <summary>Scratch for <see cref="Spots"/>: the uvs bleeding inside, and the sources' indices by rate.</summary>
+    private readonly HashSet<Vector2> _insideUvs = [];
+    private readonly List<int> _byRate = [];
+    private readonly FasterFirst _fasterFirst;
+
+    /// <summary>Source indices, the fastest bleed first, equal rates in their order: the spots are painted in it.
+    /// </summary>
+    private sealed class FasterFirst(BloodFlow flow) : IComparer<int> {
+        public int Compare(int a, int b) {
+            var byRate = flow.Sources[b].Rate.CompareTo(flow.Sources[a].Rate);
+            return byRate != 0 ? byRate : a.CompareTo(b);
+        }
+    }
+
+    public BloodFlow() => _fasterFirst = new FasterFirst(this);
 
     /// <summary>Where the pools in cuts stand now (world).</summary>
     internal IReadOnlyList<Vector3> CutPools => _cutPools;
@@ -355,9 +371,18 @@ public partial class BloodFlow : Node3D {
             map.DiskOps(WoundMap.Layer.Bleeds, uv, radius, WipeSpot, soft: false);
         }
         _spots.Clear();
-        var inside = Sources.Where(source => source.Inside).Select(source => source.Uv).ToHashSet();
-        foreach (var (uv, rate, depth, point) in Sources.OrderByDescending(source => source.Rate)) {
-            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || inside.Contains(uv)) {
+        _insideUvs.Clear();
+        _byRate.Clear();
+        for (var i = 0; i < Sources.Count; i++) {
+            if (Sources[i].Inside) {
+                _insideUvs.Add(Sources[i].Uv);
+            }
+            _byRate.Add(i);
+        }
+        _byRate.Sort(_fasterFirst);
+        foreach (var index in _byRate) {
+            var (uv, rate, depth, point) = Sources[index];
+            if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || _insideUvs.Contains(uv)) {
                 continue;
             }
             // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
@@ -369,7 +394,7 @@ public partial class BloodFlow : Node3D {
             }
             var size = body.MetersToUv(radius);
             var center = depth > 0f ? top + thickness * 0.5f : 0f;
-            if (_spots.Any(spot => spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size)) {
+            if (Overlaps(uv, size, center)) {
                 continue;
             }
             if (depth <= 0f) {
@@ -384,6 +409,17 @@ public partial class BloodFlow : Node3D {
             }
             _spots.Add((uv, size, center));
         }
+    }
+
+    /// <summary>Whether a spot of <paramref name="size"/> at <paramref name="uv"/> would overlap one already painted
+    /// at another depth.</summary>
+    private bool Overlaps(Vector2 uv, float size, float center) {
+        foreach (var spot in _spots) {
+            if (spot.Center != center && spot.Uv.DistanceTo(uv) < spot.Radius + size) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

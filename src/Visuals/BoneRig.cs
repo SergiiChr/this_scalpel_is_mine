@@ -24,15 +24,13 @@ public sealed class BoneRig(Skeleton3D skeleton) {
             .Select(i => (Skeleton.GetBoneName(i), Skeleton.GetBoneChildren(i) is { Length: > 0 } children ? children[0] : -1)),
     ];
 
-    /// <summary>Bone indices by name. The skeleton's bones never change, and asking it by name every frame marshals
-    /// the name each time.</summary>
-    private readonly Dictionary<string, int> _indices = [];
+    private Dictionary<string, int>? _indices;
 
+    /// <summary>The bone's index from <see cref="Bones"/>, -1 for none: asking the skeleton by name marshals the name
+    /// every call, and the poses ask every frame.</summary>
     private int Index(string bone) {
-        if (!_indices.TryGetValue(bone, out var i)) {
-            _indices[bone] = i = Skeleton.FindBone(bone);
-        }
-        return i;
+        _indices ??= Bones.Select((entry, i) => (entry.Name, i)).ToDictionary(pair => pair.Name, pair => pair.i);
+        return _indices.GetValueOrDefault(bone, -1);
     }
 
     public bool Has(string bone) => Index(bone) >= 0;

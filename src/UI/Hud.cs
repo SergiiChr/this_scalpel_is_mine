@@ -17,9 +17,29 @@ public partial class Hud : CanvasLayer {
     /// <summary>Lying knocked out the view is this dark: still enough to see by.</summary>
     private const float KnockedOutDaze = 0.8f;
     private static readonly string[] GaugeNames = ["stress", "sickness", "breath", "sweat"];
-    /// <summary>How often the text labels are built (seconds). Their strings were most of the HUD's garbage every
-    /// frame, and a hint that follows the hand a tenth of a second later reads the same.</summary>
-    private const float TextInterval = 0.1f;
+
+    /// <summary>Remembers the state a label showed when its text was last built, so the text is built again only when
+    /// that changes: building it allocates its strings, every frame otherwise.</summary>
+    private struct Shown<T> where T : struct, IEquatable<T> {
+        private T? _last;
+
+        public bool Changed(T now) {
+            if (_last is { } last && last.Equals(now)) {
+                return false;
+            }
+            _last = now;
+            return true;
+        }
+    }
+
+    private readonly record struct ClockShown(string Title, int Seconds);
+    private readonly record struct ObjectivesShown(SurgeryStatus Status, int Anesthesia);
+    private readonly record struct BoardShown(string? Order, int Done, int SecondsLeft, int Cooldown);
+    private readonly record struct HandShown(SurgicalTool? Tool, bool Full, bool Dirty, bool Holding);
+    private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
+    private readonly record struct HintShown(bool Out, int Moving, int Active, bool Attached, SurgicalTool? Tool, bool Full,
+        SurgicalTool? Hovered, bool HoveredFull, int Zoom, bool CanPass, int Bindings);
+    private readonly record struct PromptShown(string? Focused, string? Wheel, bool Held, Surgeon? Partner, int Bindings);
 
     public Surgery Surgery { get; private set; } = null!;
     private Control _root = null!;
@@ -35,8 +55,13 @@ public partial class Hud : CanvasLayer {
     private VBoxContainer _toasts = null!;
     private Label _subtitle = null!;
     private float _subtitleTimer;
-    /// <summary>Since the text labels were last built; starts due so the first frame shows them.</summary>
-    private float _textAcc = TextInterval;
+    private Shown<ClockShown> _clockShown;
+    private Shown<ObjectivesShown> _objectivesShown;
+    private Shown<BoardShown> _boardShown;
+    private Shown<HandsShown> _handsShown;
+    private Shown<(SurgicalTool? Tool, bool Full)>[] _beltShown = [];
+    private Shown<HintShown> _hintShown;
+    private Shown<PromptShown> _promptShown;
     private readonly Dictionary<string, (HBoxContainer Row, ProgressBar Bar)> _gauges = [];
     private ShaderMaterial _post = null!;
     private (float Blackout, float Daze, float Wobble, float Blur)? _postState;
@@ -138,16 +163,22 @@ public partial class Hud : CanvasLayer {
         if (Surgery?.LocalSurgeon is not { } me) {
             return;
         }
-        _textAcc += dt;
-        // A frozen capture (zero delta) shows the state as it is now.
-        if (_textAcc >= TextInterval || dt <= 0f) {
-            _textAcc = 0f;
-            RefreshText(me);
+        var left = Surgery.TimeLeft();
+        if (_clockShown.Changed(new ClockShown(Surgery.Scenario.Title, left >= 0f ? (int)left : -1))) {
+            var clock = left >= 0f ? $"{(int)left / 60}:{(int)left % 60:00}" : "no time limit";
+            _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
         }
+        UpdateObjectives();
         UpdateSignature(dt);
+        if (Shop.View.Visible) {
+            UpdateShop();
+        }
         UpdateNetWarning();
         UpdateAim(me);
+        UpdateHands(me);
         UpdateGauges(me);
+        UpdateHint(me);
+        UpdatePrompt(me);
         _subtitleTimer -= dt;
         if (_subtitleTimer <= 0f) {
             _subtitle.Text = "";
@@ -155,28 +186,30 @@ public partial class Hud : CanvasLayer {
         UpdatePostFx(me.Status, dt);
     }
 
-    /// <summary>The labels whose text is built from the game's state: every <see cref="TextInterval"/>, not every
-    /// frame, since each build allocates its strings.</summary>
-    private void RefreshText(Surgeon me) {
-        var left = Surgery.TimeLeft();
-        var clock = left >= 0f ? $"{(int)left / 60}:{(int)left % 60:00}" : "no time limit";
-        _clock.Text = $"{Surgery.Scenario.Title}   {clock}";
-        UpdateObjectives();
-        if (Shop.View.Visible) {
-            UpdateShop();
+    private void UpdateHint(Surgeon me) {
+        var tool = me.HeldTool(me.Active);
+        var hovered = IsInstanceValid(me.Hovered) ? me.Hovered : null;
+        var shown = new HintShown(me.Status.IsOut, Surgeon.MovingHand(), me.Active, me.Hands[me.Active].Attached, tool,
+            tool?.Ml > 0f, hovered, hovered?.Ml > 0f, me.Zoom, me.PassTarget(me.Active) is not null,
+            InputActions.BindingsVersion);
+        if (_hintShown.Changed(shown)) {
+            _hint.Text = shown.Out ? "" : string.Join("\n", ControlLines(me));
         }
-        UpdateHands(me);
-        // Labels skip a text they already show, so setting one that hasn't changed is cheap; reading Text back would
-        // copy it.
-        _hint.Text = me.Status.IsOut ? "" : string.Join("\n", ControlLines(me));
-        var prompt = me.Focused is { } focused && Overlay is null && !me.HoldingFilms
-            ? $"[{InputActions.BindingText(InputActions.Interact)}] {focused.Prompt}"
-                + (focused.Wheel is null ? "" : $"   [Wheel] {focused.WheelPrompt}")
+    }
+
+    private void UpdatePrompt(Surgeon me) {
+        var spot = Overlay is null && !me.HoldingFilms ? me.Focused : null;
+        var partner = me.PassTarget(me.Active)?.Surgeon;
+        var shown = new PromptShown(spot?.Prompt, spot?.Wheel is null ? null : spot.WheelPrompt,
+            me.HeldTool(me.Active) is not null, partner, InputActions.BindingsVersion);
+        if (!_promptShown.Changed(shown)) {
+            return;
+        }
+        _prompt.Text = shown.Focused is not null
+            ? $"[{InputActions.BindingText(InputActions.Interact)}] {shown.Focused}"
+                + (shown.Wheel is null ? "" : $"   [Wheel] {shown.Wheel}")
+            : shown.Held && partner is not null ? $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.DisplayName}"
             : "";
-        if (prompt.Length == 0 && me.HeldTool(me.Active) is not null && me.PassTarget(me.Active) is { } partner) {
-            prompt = $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.Surgeon.DisplayName}";
-        }
-        _prompt.Text = prompt;
     }
 
     private void UpdatePostFx(SurgeonStatus status, float delta) {
@@ -328,7 +361,15 @@ public partial class Hud : CanvasLayer {
         }, CloseOverlay));
     }
 
-    private void UpdateShop() => Shop.Update(Surgery.Status.NurseBoard, Surgery.Status.NurseReady);
+    private void UpdateShop() {
+        var status = Surgery.Status;
+        Shop.SetNurseReady(status.NurseReady);
+        var board = new BoardShown(status.Order?.Text, Mathf.RoundToInt((status.Order?.Progress ?? 0f) * 10f),
+            Mathf.CeilToInt(status.Order?.SecondsLeft ?? 0f), Mathf.CeilToInt(status.NurseCooldown));
+        if (_boardShown.Changed(board)) {
+            Shop.ShowBoard(status.NurseBoard);
+        }
+    }
 
     /// <summary>Starts the turning quick time event: <paramref name="done"/> gets the hits and whether a wrong key was
     /// pressed.</summary>
@@ -589,8 +630,12 @@ public partial class Hud : CanvasLayer {
 
     private void UpdateObjectives() {
         _objectives.Visible = Settings.Debug;
-        if (Settings.Debug) {
-            var status = Surgery.Status;
+        if (!Settings.Debug) {
+            return;
+        }
+        var status = Surgery.Status;
+        var anesthesia = Mathf.FloorToInt(Surgery.Patient.Vitals.Anesthesia * 100f);
+        if (_objectivesShown.Changed(new ObjectivesShown(status, anesthesia))) {
             var steps = Surgery.Scenario.Steps;
             var rows = status.Objectives.Select((row, i) => !row.Done && steps[i].Type == "anesthesia"
                 ? row with { Label = $"{row.Label} ({Mathf.Floor(Surgery.Patient.Vitals.Anesthesia * 100f):0}% / {steps[i].Parameters.Float("level", 0.7f) * 100f:0}%)" }
@@ -619,40 +664,59 @@ public partial class Hud : CanvasLayer {
     }
 
     private void UpdateHands(Surgeon me) {
-        var parts = new List<string>();
-        for (var i = 0; i < 2; i++) {
-            var tool = me.HeldTool(i);
-            var text = $"{(i == 0 ? "L" : "R")}: {tool?.Label() ?? "empty"}";
-            if (tool is { Sterile: false } && me.Mods.Flag("contamination_vision")) {
-                text += " (dirty)";
-            }
-            if (me.Hands[i].Attached) {
-                text += " [holding]";
-            }
-            parts.Add(i == me.Active ? $"▶ {text} ◀" : text);
-        }
         var active = me.HeldTool(me.Active);
-        if (active?.Def.Action == "sew") {
-            parts.Add($"thread: {SewAction.ThreadState(active)}");
+        var shown = new HandsShown(HandState(me, 0), HandState(me, 1), me.Active,
+            active?.Def.Action == "sew" ? SewAction.ThreadState(active) : null,
+            active?.Def.Action == "spread" ? Mathf.RoundToInt(active.Spread * 1000f) : 0, me.Hands[me.Active].Level);
+        if (_handsShown.Changed(shown)) {
+            _hands.Text = HandsText(me, shown);
         }
-        if (active?.Def.Action == "spread") {
-            parts.Add($"open: {active.Spread * 100f:0.0} cm");
-        }
-        if (LevelSteps(active) is { } steps) {
-            var level = me.Hands[me.Active].Level;
-            parts.Add($"{ToolActions.LevelNames[active!.Def.Action].ToLowerInvariant()}: {level} {steps[level]}");
-        }
-        _hands.Text = string.Join("   ", parts);
         var capacity = me.BeltCapacity();
         while (_belt.GetChildCount() < capacity) {
             var slot = Ui.Label("", 16, Ui.Dim);
             slot.AutowrapMode = TextServer.AutowrapMode.Off;
             _belt.AddChild(slot);
         }
+        if (_beltShown.Length < capacity) {
+            Array.Resize(ref _beltShown, capacity);
+        }
         for (var i = 0; i < capacity; i++) {
             var tool = Surgery.Tools.ToolOnBelt(me.PeerId, i);
-            _belt.GetChild<Label>(i).Text = $"[{i + 1}] {tool?.Label() ?? "—"}";
+            if (_beltShown[i].Changed((tool, tool?.Ml > 0f))) {
+                _belt.GetChild<Label>(i).Text = $"[{i + 1}] {tool?.Label() ?? "—"}";
+            }
         }
+    }
+
+    private static HandShown HandState(Surgeon me, int hand) {
+        var tool = me.HeldTool(hand);
+        return new HandShown(tool, tool?.Ml > 0f, tool is { Sterile: false } && me.Mods.Flag("contamination_vision"),
+            me.Hands[hand].Attached);
+    }
+
+    private static string HandsText(Surgeon me, HandsShown shown) {
+        var parts = new List<string>();
+        foreach (var (hand, state) in (ReadOnlySpan<(int, HandShown)>)[(0, shown.Left), (1, shown.Right)]) {
+            var text = $"{(hand == 0 ? "L" : "R")}: {state.Tool?.Label() ?? "empty"}";
+            if (state.Dirty) {
+                text += " (dirty)";
+            }
+            if (state.Holding) {
+                text += " [holding]";
+            }
+            parts.Add(hand == shown.Active ? $"▶ {text} ◀" : text);
+        }
+        var active = me.HeldTool(me.Active);
+        if (shown.Thread is { } thread) {
+            parts.Add($"thread: {thread}");
+        }
+        if (active?.Def.Action == "spread") {
+            parts.Add($"open: {active.Spread * 100f:0.0} cm");
+        }
+        if (LevelSteps(active) is { } steps) {
+            parts.Add($"{ToolActions.LevelNames[active!.Def.Action].ToLowerInvariant()}: {shown.Level} {steps[shown.Level]}");
+        }
+        return string.Join("   ", parts);
     }
 
     private void UpdateGauges(Surgeon me) {

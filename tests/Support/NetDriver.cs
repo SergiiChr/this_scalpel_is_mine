@@ -3,12 +3,17 @@ namespace Scalpel.Tests.Support;
 /// <summary>
 /// Two players in one surgery: the client crouches, cuts with the scalpel and hands it across the table to the host.
 /// Each side then prints the state that must come out the same on both (the painted wound map, cut, stitched and torn
-/// springs, the site's shape) for the network runner to compare.
+/// springs, the site's shape) for the network runner to compare. The host also drops a tool and sends the client where
+/// it came to rest and where the cut bleeds, which the client checks against its own copies: both cross the network
+/// packed, so a wrong stride or column order shows here and nowhere else.
 /// </summary>
 public partial class NetDriver : NetSession {
     private const int Port = 24599;
     private const float SquatTimeout = 15f;
+    /// <summary>On the floor beyond the table's foot, out of everyone's way.</summary>
+    private static readonly Vector3 DropFrom = new(Room.TableFoot - 0.4f, 1f, 0f);
     private bool _squatSeen;
+    private bool _comparedWithHost;
 
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void AcknowledgeSquat() => _squatSeen = true;
@@ -19,15 +24,64 @@ public partial class NetDriver : NetSession {
         var surgery = await Join("appendectomy", Port, () => SurgeryState.NetworkSessionHasOrdinarySurgeons());
         GD.Print($"[{Role}] surgery running, surgeons={surgery.Surgeons.Count} tools={surgery.Tools.Tools.Count}");
         await PassCardAround(surgery);
+        SurgicalTool? dropped = null;
         if (IsHost) {
             await CheckSquatAndTakeTool(surgery);
+            dropped = surgery.Tools.DropNew("gauze", DropFrom);
         } else if (!await SquatCutAndHandOver(surgery)) {
             GetTree().Quit(1);
             return;
         }
         await ReportState(surgery);
+        if (dropped is not null) {
+            await SendComparison(surgery, dropped);
+        } else {
+            await WaitForComparison();
+        }
         await Wait(1.0);
         GetTree().Quit();
+    }
+
+    /// <summary>Host: once the dropped tool has come to rest, where it lies and where the patient bleeds, to the client.
+    /// </summary>
+    private async Task SendComparison(Surgery surgery, SurgicalTool dropped) {
+        for (var i = 0; i < 40 && !dropped.Sleeping; i++) {
+            await Wait(0.2);
+        }
+        Check(dropped.Sleeping, "the dropped tool came to rest");
+        RpcId(Partner(surgery).PeerId, MethodName.CompareWithHost, BloodSummary(surgery), dropped.Uid, dropped.GlobalTransform);
+    }
+
+    /// <summary>Client: the host's report arrives after its own tool has settled.</summary>
+    private async Task WaitForComparison() {
+        for (var i = 0; i < 75 && !_comparedWithHost; i++) {
+            await Wait(0.2);
+        }
+        Check(_comparedWithHost, "the host reported its blood and dropped tool");
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void CompareWithHost(string blood, int droppedUid, Transform3D rest) {
+        var surgery = Surgery.Current!;
+        var mine = BloodSummary(surgery);
+        Check(mine == blood, $"bleed sources and cut pools match the host's: {blood}" + (mine == blood ? "" : $", here {mine}"));
+        Check(blood.Contains("sources=[("), "the host's cut bleeds, so sources crossed the network");
+        var here = surgery.Tools.ByUid(droppedUid)?.GlobalTransform;
+        // The last sync precedes the rest by up to a sync interval of creeping; a wrong column lands meters off.
+        var rests = here is { } t && t.Origin.DistanceTo(rest.Origin) < 0.05f && t.Basis.X.Dot(rest.Basis.X) > 0.9f
+            && t.Basis.Y.Dot(rest.Basis.Y) > 0.9f;
+        Check(rests, $"the dropped tool rests where it does on the host: {rest.Origin}, here {here?.Origin}");
+        _comparedWithHost = true;
+    }
+
+    /// <summary>The bleed sources and cut pools by what stays put between syncs: where they are, whether inside, a
+    /// point bleed, a pool's floor. Rates and fills change every tick.</summary>
+    private static string BloodSummary(Surgery surgery) {
+        var blood = surgery.Patient.Body.Blood;
+        var sources = blood.Sources.Select(source =>
+            $"({source.Uv.X:0.000},{source.Uv.Y:0.000},{(source.Inside ? "inside" : "skin")}{(source.Point ? ",point" : "")})");
+        var pools = blood.Pools.Select(pool => $"({pool.Uv.X:0.000},{pool.Uv.Y:0.000},floor={pool.Floor:0.00})");
+        return $"sources=[{string.Join(" ", sources)}] pools=[{string.Join(" ", pools)}]";
     }
 
     /// <summary>

@@ -198,7 +198,8 @@ public static class SurgeryState {
     /// <summary>The nurse and shop are ready for the next ordinary test's order.</summary>
     public static void NurseIsReady(Surgery surgery) {
         NurseHasDelivered(surgery);
-        surgery.Hud.Shop.Update("", surgery.Nurse.Idle);
+        surgery.Hud.Shop.ShowBoard("");
+        surgery.Hud.Shop.SetNurseReady(surgery.Nurse.Idle);
     }
 
     /// <summary>The bag on the IV stand has run dry.</summary>
