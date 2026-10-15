@@ -108,13 +108,15 @@ public class SurgeonMovementTest {
         await Frames.Physics(30);
         var heights = new List<float>();
         var maxDrop = 0f;
+        float? table = null;
         PlayerInput.Action(InputActions.MoveLeft);
         for (var frame = 0; frame < 60; frame++) {
             // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
             await PlayerInput.Delivered();
             var hand = me.Hands[me.Active];
             var under = me.SurfaceBelow(hand.Target);
-            if (!under.Soft && under.Y > 0.5f) {
+            // Over the table top: the first hard surface met, until the hand passes its end.
+            if (!under.Soft && under.Y > 0.5f && Mathf.Abs(under.Y - (table ??= under.Y)) < 0.001f) {
                 heights.Add(hand.GlobalPosition.Y - under.Y);
             }
             maxDrop = Mathf.Max(maxDrop, me.WalkDrop);

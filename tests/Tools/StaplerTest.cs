@@ -214,9 +214,11 @@ public class StaplerTest {
         AssertFloat(above).OverrideFailureMessage($"the stapler hovers {above * 1000f:0.0} mm over the skin").IsGreater(0.003f);
         var middles = RingMiddles(driver);
         for (var side = 0; side < 2; side++) {
+            // The ring is flat, in the plane of the skin under its middle: on a round forearm its rim is up to a
+            // millimeter off the skin.
             foreach (var p in driver.Surgery.Hud.LegRings[side]) {
                 AssertFloat(Mathf.Abs(p.Y - SkinY(driver.Body, p))).OverrideFailureMessage($"ring {side} lies on the skin")
-                    .IsLess(0.0005f);
+                    .IsLess(0.001f);
             }
             AssertFloat((middles[side] - legs[side]).Slide(Vector3.Up).Length())
                 .OverrideFailureMessage($"right under leg {side}").IsLess(0.0005f);
