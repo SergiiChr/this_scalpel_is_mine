@@ -38,13 +38,15 @@ public readonly record struct SnappedSpring(Vector2 A, Vector2 B, SpringKind Kin
 
 /// <summary>
 /// A running suture: its holes (particles) in order, the span from each hole to the next, each span's extra length
-/// (<see cref="TissueSim.ThreadSlack"/>), the layer it's sewn in, its tension and whether it's tied off or torn. The
-/// thread keeps its route, so pulling its free end changes every span.
+/// (<see cref="TissueSim.ThreadSlack"/>), the stitches joining the edges it holds shut while taut, the layer it's sewn
+/// in, its tension and whether it's tied off or torn. The thread keeps its route, so pulling its free end changes every
+/// span.
 /// </summary>
 public sealed class SutureThread(TissueDepth layer, float tension) {
     public List<int> Anchors { get; } = [];
     public List<int> Springs { get; } = [];
     public List<float> Slack { get; } = [];
+    public List<int> Holds { get; } = [];
     public TissueDepth Layer { get; set; } = layer;
     public float Tension { get; set; } = tension;
     public bool Final { get; set; }
@@ -1238,6 +1240,7 @@ public sealed partial class TissueSim {
         thread.Layer = layer;
         thread.Tension = tension;
         _threads[id] = thread;
+        HoldEdges(thread);
         Reshaped();
         return true;
     }
@@ -1254,8 +1257,38 @@ public sealed partial class TissueSim {
             }
         }
         thread.Tension = tension;
+        HoldEdges(thread);
         Wake();
         return true;
+    }
+
+    /// <summary>
+    /// A running thread pulled to ThreadClosed or tighter holds the edges along its route shut: its spans only pull at
+    /// the holes, and between them the edges would still be drawn back from the cut. So while it's that taut, every
+    /// severed edge within SeamReach of its route is joined like its knot will join it (StitchPath()). Loosened, it
+    /// lets them go; torn or burst, they went with it.
+    /// </summary>
+    private void HoldEdges(SutureThread thread) {
+        var taut = thread.Tension <= ThreadClosed[(int)thread.Layer] && thread.Springs.Any(s => _springs[s].Active);
+        if (!taut) {
+            foreach (var s in thread.Holds) {
+                _springs[s].Active = false;
+            }
+            if (thread.Holds.Count > 0) {
+                thread.Holds.Clear();
+                _retractDirty = true;
+            }
+            return;
+        }
+        var route = thread.Anchors.Select(k => UvOf(k) * Size).ToList();
+        var strength = _springs[thread.Springs[0]].Break;
+        foreach (var s in _severed) {
+            var (a, b) = (_springs[s].A, _springs[s].B);
+            if (!Stitched(a, b) && DistanceToLine(CrossingUv(s) * Size, route) < SeamReach) {
+                thread.Holds.Add(AddSpring(a, b, SpringKind.Stitch, 1f, strength));
+                _retractDirty = true;
+            }
+        }
     }
 
     /// <summary>A span's rest length (relative to its length at rest) at <paramref name="tension"/> in
@@ -1283,7 +1316,7 @@ public sealed partial class TissueSim {
             return;
         }
         thread.Final = true;
-        foreach (var s in thread.Springs) {
+        foreach (var s in thread.Springs.Concat(thread.Holds)) {
             _springs[s].Active = false;
         }
         UpdateRetraction();
