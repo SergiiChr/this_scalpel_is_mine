@@ -52,20 +52,21 @@ public partial class SurgeryDriver : Node {
 
     /// <summary>
     /// Starts <paramref name="scenarioId"/> solo, like the menu's single player: one surgeon who rolled nothing special,
-    /// a patient with only <paramref name="patientQuirks"/> and every tool the scenario lists on the tray, so the run
+    /// a patient with only <paramref name="patientQuirks"/>, the run with only <paramref name="runModifiers"/> and every tool the scenario lists on the tray, so the run
     /// only depends on the scenario. <paramref name="randomEvents"/> false leaves the escalation events out (scripted
     /// ones in the scenario still happen). The surgery opens on the patient card: the player puts it back first, unless
     /// <paramref name="readingCard"/>.
     /// </summary>
     public async Task Start(string scenarioId, bool randomEvents = false, uint seed = 1,
-        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false) {
+        IReadOnlyList<QuirkRoll>? patientQuirks = null, bool readingCard = false,
+        IReadOnlyList<string>? runModifiers = null) {
         // The game's own unseeded rolls (where the nurse leaves things, jitter) come out the same every run too.
         GD.Seed(seed);
         SurgeryState.ClockStartsAtEight();
         // The tray as the scenario lists it: a missing tool is a twist for another test.
         var scenario = Db.Scenario(scenarioId)! with { MissingToolChance = 0f };
         var player = new LobbyPlayer("Driver", [new QuirkRoll("normal_dude", "")], Ready: true);
-        Net.Instance.StartLocalSession(scenario, seed, player, patientQuirks ?? []);
+        Net.Instance.StartLocalSession(scenario, seed, player, patientQuirks ?? [], runModifiers);
         await Loaded();
         Surgery = GD.Load<PackedScene>(SurgeryScene).Instantiate<Surgery>();
         AddChild(Surgery);

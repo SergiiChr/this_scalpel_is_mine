@@ -205,6 +205,8 @@ Nothing ends the surgery when the steps are done: the players sign the patient o
 does it for them. Then every required step must count for a success; each one that doesn't is scored as missed.
 A step with `"or": {step}` also completes when that nested step's condition is met (hand stitch: a local block, or
 general anesthesia for a lidocaine allergy).
+`anesthesia` is met while the patient is under as anyone sees it (`Vitals.IsUnder`: an anesthetic in, eyes closed, no
+breathing of their own on the monitor), however deep: a right dose in a weaker patient counts too.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).

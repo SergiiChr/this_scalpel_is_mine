@@ -26,7 +26,7 @@ public static class ObjectiveChecks {
             case "iv":
                 return patient.IvWorking;
             case "anesthesia":
-                return vitals.Anesthesia >= parameters.Float("level", 0.7f);
+                return vitals.IsUnder;
             case "local_block":
                 return vitals.LocalBlock >= parameters.Float("level", 0.5f);
             case "mark":

@@ -34,22 +34,18 @@ public class AnesthesiaPathsTest {
             .OverrideFailureMessage("the dressing faces outward from the arm").IsGreater(0.99f);
         AssertBool(patient.Vitals.IsAwake).OverrideFailureMessage("the patient starts awake").IsTrue();
         AssertBool(driver.Surgery.Objectives.States[0].Done).OverrideFailureMessage("anesthesia is initially incomplete").IsFalse();
-        var panel = driver.Surgery.Hud.FindChildren("*", "", true, false).OfType<ObjectivesPanel>().Single();
-        AssertString(panel.GetChild<Label>(0).Text)
-            .OverrideFailureMessage("the debug objective shows actual and required anesthesia depth")
-            .Contains("0% / 70%");
         KeyFrames? shots = null;
         if (KeyFrames.Wanted()) {
             shots = new KeyFrames();
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, $"preop_anesthesia/{Seed}");
             await shots.CaptureAt("installed_iv", "the preinstalled IV in the arm under its dressing, the line attached", dressing.GlobalPosition, 0.24f);
-            await shots.CaptureView("awake", "the patient awake, the objective reading 0% / 70% anesthesia");
+            await shots.CaptureView("awake", "the patient awake, eyes open, \"Put the patient under\" not checked off");
         }
         await driver.PlayerGivesDrug("vial_propofol", driver.DoseMl("vial_propofol"), SurgeryDriver.Route.Drip);
-        await Frames.Until(() => patient.Vitals.Anesthesia >= 0.7f, 30f);
+        await Frames.Until(() => patient.Vitals.IsUnder, 30f);
         await Frames.Seconds(Surgery.StatusInterval + 0.1f);
-        AssertBool(patient.Vitals.Anesthesia >= 0.7f && !patient.Vitals.IsAwake)
+        AssertBool(patient.Vitals.IsUnder)
             .OverrideFailureMessage($"the chart dose puts the patient under: anesthesia {patient.Vitals.Anesthesia}").IsTrue();
         AssertBool(driver.Surgery.Objectives.States[0].Done)
             .OverrideFailureMessage("Put the patient under checks off after the dose works").IsTrue();
@@ -60,6 +56,38 @@ public class AnesthesiaPathsTest {
 
             shots.End();
         }
+        await driver.Stop();
+    }
+
+    /// <summary>
+    /// Expired stock (every drug 30% weaker) and propofol down the drip in two parts: the first part alone leaves the
+    /// patient awake, both together put them under though the anesthesia stays shallower than with fresh stock, and
+    /// that checks off the objective.
+    /// </summary>
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task SplitDoseOfWeakDrugsPutsThePatientUnder() {
+        var driver = SurgeryDriver.Create();
+        await driver.Start("bullet_muscle", runModifiers: ["expired_drugs"]);
+        var patient = driver.Patient;
+        var objective = driver.Surgery.Objectives.States[0];
+        var full = Mathf.Round(driver.DoseMl("vial_propofol"));
+        var first = Mathf.Round(full * 0.5f);
+        await driver.PlayerGivesDrug("vial_propofol", first, SurgeryDriver.Route.Drip);
+        await Frames.Seconds(25f);
+        AssertBool(patient.Vitals.IsAwake && !objective.Done)
+            .OverrideFailureMessage($"{first} of {full} ml leaves the patient awake and the objective open").IsTrue();
+        await driver.PlayerGivesDrug("vial_propofol", full - first, SurgeryDriver.Route.Drip);
+        // Everything run down the line, not just enough of it to put them under.
+        var bag = driver.Surgery.Tools.DripBag()!;
+        await Frames.Until(() => objective.Done && bag.Bolus <= 0f, 30f);
+        var propofol = patient.Drugs.Find("propofol")!;
+        var given = propofol.Level + propofol.Depot;
+        AssertFloat(given)
+            .OverrideFailureMessage($"both parts add up to the right dose: {given}").IsBetween(0.95f, 1.05f);
+        AssertFloat(patient.Vitals.Anesthesia)
+            .OverrideFailureMessage("weak drugs leave the anesthesia shallower than fresh ones (0.9)").IsLess(0.7f);
+        AssertBool(objective.Done && patient.Vitals.IsUnder)
+            .OverrideFailureMessage("the patient goes under and Put the patient under checks off").IsTrue();
         await driver.Stop();
     }
 

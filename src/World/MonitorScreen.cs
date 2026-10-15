@@ -88,7 +88,7 @@ public partial class MonitorScreen : Control {
     public void Tick(Vitals vitals, bool alive, List<string> alarms, float delta) {
         _rhythm = alive ? vitals.Rhythm : Rhythm.Asystole;
         _pulse = _rhythm == Rhythm.Sinus ? Mathf.Clamp(vitals.Systolic / 120f, 0f, 1.2f) : 0f;
-        _respRate = vitals.Anesthesia > 0.7f || !alive ? 0 : (int)(14 + (vitals.Panic * 12));
+        _respRate = vitals.IsUnder || !alive ? 0 : (int)(14 + (vitals.Panic * 12));
         _alarms = alarms;
         _readout = new Readout(
             $"{(int)vitals.HeartRate}",
