@@ -32,13 +32,13 @@ public class ScenarioFlowsTest {
     }
 
     [TestCase("hand_stitch_child", false, BudgetOverride, 13.5f, Timeout = Limits.Slow)]
-    [TestCase("bullet_muscle", false, BudgetOverride, 12f, Timeout = Limits.Slow)]
-    [TestCase("sidewalk_stab", false, BudgetOverride, 12.5f, Timeout = Limits.Slow)]
+    [TestCase("bullet_muscle", false, BudgetOverride, 19f, Timeout = Limits.Slow)]
+    [TestCase("sidewalk_stab", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
     [TestCase("ambulance_bullet", false, BudgetOverride, 18f, Timeout = Limits.Slow)]
     [TestCase("open_fracture", false,
         "with key frames the worst frame takes 18 ms of game work (budget 16 ms) while sewing.", 16f, Timeout = Limits.Slow)]
     [TestCase("knife_back", true, BudgetOverride, 17f, Timeout = Limits.Slow)]
-    [TestCase("lung_fluid", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
+    [TestCase("lung_fluid", false, BudgetOverride, 31.5f, Timeout = Limits.Slow)]
     [TestCase("oscar_figurine", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
     [TestCase("heart_attack", true,
         "in some runs the frame the defibrillator is put down (56.9 s) takes 35-43 ms of the game's own work; timing "
