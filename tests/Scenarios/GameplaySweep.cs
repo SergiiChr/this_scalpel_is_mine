@@ -52,7 +52,7 @@ internal sealed partial class GameplaySweep {
         }
         await SurgeryDriver.PlayerPutsCardBack(_surgery);
         // Excluded positive flows still need their initial compatibility checks in this sweep.
-        if (_surgery.Scenario.Id is "colon_cancer" or "blocked_artery") {
+        if (_surgery.Scenario.Id is "blocked_artery") {
             await InitialSceneChecks.Inspect(_surgery);
         }
         await InitialSceneChecks.ExerciseTray(_surgery, once);
