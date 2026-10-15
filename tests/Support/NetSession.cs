@@ -6,6 +6,10 @@ namespace Scalpel.Tests.Support;
 /// plays its <see cref="Role"/> from there.
 /// </summary>
 public abstract partial class NetSession : Node {
+    /// <summary>When (msec from this process's start) waits on the other side are given up: under build.py's limit for
+    /// a case, so one that never comes true fails it with what it saw instead of running into that limit.</summary>
+    private const ulong GiveUpMsec = 55_000;
+
     /// <summary>"host" or "client", from the command line's --role=.</summary>
     protected string Role { get; private set; } = "host";
 
@@ -26,6 +30,18 @@ public abstract partial class NetSession : Node {
 
     protected abstract Task Drive();
 
+    /// <summary>Waits a physics frame at a time until <paramref name="done"/>: a slow machine only makes it take longer.
+    /// Past <see cref="GiveUpMsec"/> it throws, naming <paramref name="what"/> never happened and what
+    /// <paramref name="seen"/> reports instead.</summary>
+    protected async Task Until(Func<bool> done, string what, Func<string> seen) {
+        while (!done()) {
+            if (Time.GetTicksMsec() > GiveUpMsec) {
+                throw new TimeoutException($"[{Role}] {what} never happened, last seen: {seen()}");
+            }
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+    }
+
     protected Task Wait(double seconds) => ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout)
         .AsTask();
 
@@ -39,21 +55,16 @@ public abstract partial class NetSession : Node {
             await Wait(0.5);
             net.Join("127.0.0.1", port);
         }
-        while (net.Roster.Count < 2) {
-            await Wait(0.2);
-        }
+        await Until(() => net.Roster.Count >= 2, "the other player joining", () => $"{net.Roster.Count} in the roster");
         net.SetReady(true);
         if (IsHost) {
-            while (!net.AllReady) {
-                await Wait(0.2);
-            }
+            await Until(() => net.AllReady, "everyone ready", () => "not all ready");
             beforeStart?.Invoke();
             net.StartSession();
         }
-        while (Surgery.Current is not { Running: true }) {
-            await Wait(0.2);
-        }
-        return Surgery.Current;
+        await Until(() => Surgery.Current is { Running: true }, "the surgery running",
+            () => Surgery.Current is null ? "no surgery" : "surgery not running");
+        return Surgery.Current!;
     }
 
     /// <summary>The other player's surgeon.</summary>
