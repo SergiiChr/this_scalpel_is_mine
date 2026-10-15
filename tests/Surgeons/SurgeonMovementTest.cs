@@ -311,8 +311,15 @@ public class SurgeonMovementTest {
                 camera.GlobalPosition = pivot + new Vector3(side * 0.8f, 0.6f, -0.7f);
                 camera.LookAt(pivot);
                 camera.MakeCurrent();
+                // The surgeon's own arms lie where the copy's do.
+                foreach (var hand in me.Hands) {
+                    hand.Visible = false;
+                }
                 await driver.Capture(side > 0f ? "fallen_left" : "fallen_right",
                     "the fallen surgeon lying on the floor, face turned up toward the patient, the head on the neck");
+                foreach (var hand in me.Hands) {
+                    hand.Visible = true;
+                }
                 me.Camera.MakeCurrent();
             }
         }
