@@ -129,19 +129,20 @@ public partial class Patient {
         if (Wounds.Find(w => w != own && w.Kind == WoundKind.Cut && w.Runs(a, b, reach)) is { } recut) {
             wound = recut;
             wound.Recut(a, b, depth >= Wound.MuscleDepth);
-        } else if (own is null || own.Points[^1].DistanceTo(a) > 0.02f) {
+        } else if (own is null || own.DistanceTo(a) > 0.02f) {
             wound = NewWound(WoundKind.Cut, a, depth);
             wound.MadeBySurgeon = true;
             _strokeWounds[strokeKey] = wound;
             wound.Extend(b);
         } else {
             wound = own;
-            wound.Extend(b);
+            wound.FollowStroke(a, b, reach, depth >= Wound.MuscleDepth);
         }
         wound.Depth = Mathf.Max(wound.Depth, depth);
         wound.Dirty = wound.Dirty || dirty;
         var jagged = speed > 0.25f || sharpness < 0.8f;
         if (jagged) {
+            GD.Print($"jagged {strokeKey}: {a} -> {b}, speed {speed}, sharpness {sharpness}");
             wound.MarkJagged(a, b);
         }
         var jitter = 0.004f * (1f - sharpness) + (speed > 0.25f ? 0.003f : 0f);

@@ -150,6 +150,9 @@ public partial class Surgeon {
             } else {
                 target.Y = surface.Y + HoverGap - offset.Y;
             }
+            if (hand.Lowered && surface.Open && tool is { Def.Action: "cut", Blade: { } blade }) {
+                target.Y += blade.HeelLift(Session.Patient.Body, new Transform3D(hand.GripTransform().Basis, target));
+            }
             // Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
             if (target.Y < from.Y - (Reach * 0.9f)) {
                 target.Y = GlobalPosition.Y + CarryHeight - (Crouch * CrouchDrop);

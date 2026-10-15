@@ -7,6 +7,7 @@ internal sealed class BladeContact {
     private readonly (int A, int B)[] _edges;
     private readonly Vector3[] _placed;
     private readonly float[] _heights;
+    private readonly float _heelZ;
 
     internal BladeContact(Vector3[] faces, Transform3D toTool) {
         var points = new List<Vector3>();
@@ -30,6 +31,24 @@ internal sealed class BladeContact {
         _edges = [.. edges];
         _placed = new Vector3[_points.Length];
         _heights = new float[_points.Length];
+        _heelZ = _points.Max(p => p.Z);
+    }
+
+    /// <summary>Keep the blade's heel from passing wholly under intact skin. An opening can admit it,
+    /// but intact skin at the handle end supports the knife while its cutting edge enters the body wall.</summary>
+    internal float HeelLift(PatientBody body, Transform3D pose) {
+        var highest = float.NegativeInfinity;
+        var toSite = body.Site.GlobalTransform.AffineInverse() * pose;
+        foreach (var point in _points) {
+            if (Mathf.Abs(point.Z - _heelZ) > 0.000001f) { continue; }
+            var local = toSite * point;
+            var uv = body.CutUv(local);
+            if (!new Rect2(0f, 0f, 1f, 1f).HasPoint(uv) || !body.OnBody(uv) || body.Tissue.IsOpen(uv, TissueDepth.Skin)) { continue; }
+            var skin = body.Site.ToGlobal(local with { Y = body.CutSurfaceHeight(local) });
+            highest = Mathf.Max(highest, (pose * point).Y - skin.Y);
+        }
+        // Half a millimeter leaves a genuine section through the blade instead of a grazing endpoint.
+        return float.IsFinite(highest) && highest < 0f ? -highest + 0.0005f : 0f;
     }
 
     /// <summary>Ends of the blade's footprint on the current skin, in site space, ordered along the blade.
@@ -62,6 +81,9 @@ internal sealed class BladeContact {
             var local = toTool * hit;
             local.X = 0f;
             hit = toSite * local;
+            var uv = body.CutUv(hit);
+            // The continued surface supplies a height across openings, but never creates skin past the body/site.
+            if (!new Rect2(0f, 0f, 1f, 1f).HasPoint(uv) || !body.OnBody(uv)) { continue; }
             var at = hit.Dot(along);
             if (at < low) { low = at; first = hit; }
             if (at > high) { high = at; last = hit; }

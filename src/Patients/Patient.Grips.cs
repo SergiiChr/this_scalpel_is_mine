@@ -26,7 +26,8 @@ public partial class Patient {
             if (tissue.GripBeside(toolUid, uv, line, uv - line) < 0) {
                 tissue.Grip(toolUid, uv);
             }
-            return new SkinHold(cut.Id, uv, Hook: true);
+            var held = tissue.GrippedParticle(toolUid);
+            return new SkinHold(cut.Id, uv, Hook: true, Offset: Body.LayerPoint(0, held) - tissue.Pos[held]);
         }
         // The nearest target the jaws close on, not one another tool already holds (two broken ends lie close
         // together). Forceps held up in the opening close on nothing under them: no target, vessel or bleeding wound.
@@ -61,9 +62,14 @@ public partial class Patient {
         }
         // Skin can be pinched anywhere on the site, but from inside the cavity only at a wound's edge, up by the lip.
         if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null && depthM < LipDepth)) {
-            tissue.Grip(toolUid, uv);
-            var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.Nearest(uv)).Count > 0;
-            return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece);
+            // A hook takes the skin it actually touches, including the model fit and its current deformation.
+            var material = skinOnly && zone == SiteZone.Site
+                ? Body.CutUv(Body.SitePoint(uv, Body.SkinHeight(uv) - depthM)) : uv;
+            tissue.Grip(toolUid, material);
+            var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.Nearest(material)).Count > 0;
+            var offset = skinOnly
+                ? Body.SitePoint(uv, Body.SkinHeight(uv)) - tissue.Pos[tissue.GrippedParticle(toolUid)] : Vector3.Zero;
+            return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset);
         }
         return null;
     }
@@ -159,8 +165,11 @@ public partial class Patient {
                 // inside the cut hold it at the surface, where the skin around would tear if the lip went down with
                 // the tip.
                 to.Y = Mathf.Max(to.Y, Body.SurfaceHeight(Body.LocalToUv(to)));
+                // A drawn skin contact can lie between grid particles and above their settled model fit.
+                // Preserve that offset so taking hold doesn't spend the skin's give before the hand pulls.
+                to -= skin.Offset;
                 var allowed = Body.Tissue.Restrain(toolUid, to);
-                heldAt = tip + Body.Site.GlobalBasis * (allowed - to);
+                heldAt = Body.Site.ToGlobal(allowed + skin.Offset);
                 Body.Tissue.MoveGrip(toolUid, allowed);
                 if (skin.Piece && Body.Site.ToLocal(tip).Y - Body.SurfaceHeight(skin.Anchor) > PieceLift) {
                     TakePiece(toolUid, skin.Anchor);

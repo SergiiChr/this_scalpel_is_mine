@@ -61,6 +61,21 @@ public partial class SurgeryDriver {
         var start = SitePoint(from);
         var finish = SitePoint(to);
         await PlayerWalksTo((start + finish) * 0.5f);
+        // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
+        // edge with the line while moving its actual skin contact sideways from the buried tip's path.
+        var facing = -((finish - start) with { Y = 0f }).Normalized();
+        var handSide = Me.Active == Right ? 1f : -1f;
+        if (facing.Cross(Vector3.Up).Dot((start + finish) * 0.5f - Me.GlobalPosition) * handSide < 0f) { facing = -facing; }
+        await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
+        await PlayerAimsStraight();
+        if (Body.Tissue.IsOpen(from, TissueDepth.Skin)) {
+            await PlayerReaches(start);
+            // Reaching and changing tools can leave the wrist almost flat. Pitch the blade down before
+            // entering an opening so the hand clears the intact skin beside it.
+            var tilt = Me.Hands[Me.Active].Tilt;
+            await PlayerAims(new Vector2(0f, (tilt + 0.8f) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
+            PlayerLetsGoOfAim();
+        }
         await PlayerTurnsBlade(finish - start);
         await PlayerWorksAlong([start, finish], level);
     }

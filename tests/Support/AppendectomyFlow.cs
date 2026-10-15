@@ -42,7 +42,18 @@ public sealed class AppendectomyFlow : IDisposable {
         await driver.PlayerCompletes(step);
         if (step.Type == "incise") {
             var incision = patient.Wounds.Single(wound => wound.MadeBySurgeon);
-            await driver.PlayerCutsSkin(incision.Points[0], incision.Points[^1], 3);
+            GD.Print($"before repeat {driver.Bleeders()}");
+            var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
+            var blade = scalpel.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>()
+                .First(mesh => mesh.Name.ToString().Contains("Blade", StringComparison.Ordinal));
+            var reach = blade.Mesh.GetFaces().Max(point => blade.ToGlobal(point).DistanceTo(scalpel.TipPosition()));
+            var along = (incision.Points[^1] - incision.Points[0]).Normalized();
+            var inset = reach / (along * driver.Body.SiteSize).Length();
+            AssertFloat(incision.LengthUv).OverrideFailureMessage("the full blade fits inside the existing incision")
+                .IsGreater(inset * 2f);
+            // A repeat pass keeps the whole visible blade inside the opening, not the buried tip at its V ends.
+            await driver.PlayerCutsSkin(SurgeryDriver.BesideWound(incision, inset, 0f),
+                SurgeryDriver.BesideWound(incision, incision.LengthUv - inset, 0f), 3);
             await driver.PlayerPutsDown();
             await Frames.Seconds(2f);
             AssertInt(patient.Wounds.Count)

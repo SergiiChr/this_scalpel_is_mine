@@ -100,16 +100,43 @@ public class LimbTargetsTest {
         // The muscle's cut walls on the flaps folded out over the drape, past the site's edge: as deep as the fascia,
         // not as the limb's muscle down to its bones.
         var mesh = body.Layers[2].Mesh;
-        var walls = mesh.SurfaceGetArrays(mesh.GetSurfaceCount() - 1)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        using var arrays = mesh.SurfaceGetArrays(mesh.GetSurfaceCount() - 1);
+        var walls = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var colors = arrays[(int)Mesh.ArrayType.Color].AsColorArray();
         var half = body.SiteSize * 0.5f + (Vector2.One * 0.01f);
         var deepest = 0f;
-        // Each wall is drawn in columns down from its lip, PatientBody.WallRows + 1 vertices each, top first.
-        var column = PatientBody.WallRows + 1;
-        for (var v = 0; v + column <= walls.Length; v += column) {
-            if (Mathf.Abs(walls[v].X) > half.X || Mathf.Abs(walls[v].Z) > half.Y) {
-                deepest = Mathf.Max(deepest, walls[v].DistanceTo(walls[v + column - 1]));
+        // Follow connected edges with the same material coordinate from lip to bottom. This measures the
+        // whole rounded column, and also the triangular V tips, without joining unrelated wall vertices.
+        var columns = new Dictionary<int, List<int>>();
+        for (var t = 0; t < indices.Length; t += 3) {
+            for (var e = 0; e < 3; e++) {
+                var a = indices[t + e];
+                var b = indices[t + (e + 1) % 3];
+                if (!uvs[a].IsEqualApprox(uvs[b]) || colors[a].R == colors[b].R) { continue; }
+                if (colors[a].R > colors[b].R) { (a, b) = (b, a); }
+                if (!columns.TryGetValue(a, out var next)) { columns[a] = next = []; }
+                next.Add(b);
             }
         }
+        var measured = 0;
+        foreach (var top in columns.Keys.Where(v => colors[v].R == 0f)) {
+            if (Mathf.Abs(walls[top].X) <= half.X && Mathf.Abs(walls[top].Z) <= half.Y) { continue; }
+            var pending = new Stack<int>();
+            var seen = new HashSet<int>();
+            pending.Push(top);
+            while (pending.TryPop(out var v)) {
+                if (!seen.Add(v)) { continue; }
+                if (colors[v].R == 1f) {
+                    deepest = Mathf.Max(deepest, walls[top].DistanceTo(walls[v]));
+                    measured++;
+                } else if (columns.TryGetValue(v, out var next)) {
+                    foreach (var n in next) { pending.Push(n); }
+                }
+            }
+        }
+        AssertInt(measured).OverrideFailureMessage("folded flap walls have top-to-bottom edges to measure").IsGreater(0);
         AssertFloat(deepest).OverrideFailureMessage(
                 $"the folded flaps' muscle is as deep as the fascia, not the limb's {body.MuscleThickness * 1000f:0} mm ({deepest * 1000f:0.0} mm)")
             .IsLessEqual(PatientBody.DefaultMuscle * 1.5f);

@@ -131,7 +131,7 @@ public class StaplerTest {
         await driver.PlayerStaples(wound);
         await Frames.Seconds(1f);
         AssertBool(tissue.Severed.Any(s => tissue.DepthOf(s) == TissueDepth.Muscle))
-            .OverrideFailureMessage("no muscle is left open").IsFalse();
+            .OverrideFailureMessage($"no muscle is left open\n{driver.Recent()}\n{string.Join("; ", driver.Patient.Wounds.Select(w => $"wound {w.Id}: {w.Points[0]} -> {w.Points[^1]}, closure {w.Closure}"))}").IsFalse();
         AssertFloat(wound.Closure).OverrideFailureMessage($"the skin is stapled shut over it\n{driver.Recent()}").IsGreater(0.99f);
         AssertFloat(tissue.GapAlong(wound.Points, 0.03f, TissueDepth.Skin)).OverrideFailureMessage("and its edges meet")
             .IsLess(TissueSim.OpenGap);
@@ -164,10 +164,7 @@ public class StaplerTest {
         AssertFloat(stapler.Def.TearChance + stapler.Def.BleedChance)
             .OverrideFailureMessage("an office staple only now and then goes wrong").IsBetween(0.01f, 0.25f);
         SurgeryState.ToolGoesWrong(stapler, 1f, 0f);
-        var at = driver.SitePoint(wound.Points[0].Lerp(wound.Points[^1], 0.25f));
-        await driver.PlayerWalksTo(at);
-        await driver.PlayerTurnsBlade(session.Along.Value);
-        await driver.PlayerReaches(at);
+        await AimOfficeStaple(driver, stapler, wound, 0.25f);
         var wounds = patient.Wounds.Count;
         await Click();
         AssertBool(patient.Flags.ContainsKey("tears")).OverrideFailureMessage("an office staple that tears out tears the skin")
@@ -177,8 +174,7 @@ public class StaplerTest {
         await driver.Capture("torn", "an office staple torn out: a new tear in the skin, the staple holding nothing");
 
         SurgeryState.ToolGoesWrong(stapler, 0f, 1f);
-        at = driver.SitePoint(wound.Points[0].Lerp(wound.Points[^1], 0.7f));
-        await driver.PlayerReaches(at);
+        await AimOfficeStaple(driver, stapler, wound, 0.7f);
         wounds = patient.Wounds.Count;
         await Click();
         await Frames.Seconds(1f);
@@ -196,6 +192,26 @@ public class StaplerTest {
         AssertFloat(wound.BleedRate(siteM, 1f)).OverrideFailureMessage("cauterized, the nicked vessel stops bleeding")
             .IsLess(0.05f);
         await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>The office stapler has no extending legs. Move its rings along the actual wound until
+    /// they both reach skin, before testing what a staple does there.</summary>
+    private static async Task AimOfficeStaple(SurgeryDriver driver, SurgicalTool stapler, Wound wound, float fraction) {
+        await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
+        foreach (var share in Enumerable.Range(1, 19).Select(i => i * 0.05f).OrderBy(share => Mathf.Abs(share - fraction))) {
+            var along = wound.LengthUv * share;
+            var uv = SurgeryDriver.BesideWound(wound, along, 0f);
+            var direction = SurgeryDriver.BesideWound(wound, along + Wound.BinLengthUv, 0f)
+                - SurgeryDriver.BesideWound(wound, along - Wound.BinLengthUv, 0f);
+            await driver.PlayerTurnsBlade(driver.SitePoint(uv + direction) - driver.SitePoint(uv));
+            await driver.PlayerReaches(driver.SitePoint(uv));
+            await Frames.Physics(2);
+            var legs = ToolActions.StapleLegs(stapler, driver.Body);
+            if (driver.Body.Tissue.StapleSpot(driver.Body.WorldToUv(legs[0]), driver.Body.WorldToUv(legs[1])).X >= 0f) {
+                return;
+            }
+        }
+        throw new InvalidOperationException("The office stapler's legs cannot reach both edges anywhere along the cut.");
     }
 
     private static async Task Click() {
