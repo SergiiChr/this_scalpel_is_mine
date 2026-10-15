@@ -5,7 +5,8 @@ namespace Scalpel.Tests.Patients;
 /// every target the scenario lists is built, on the body, inside the limb's cavity (its top under the muscle, its middle
 /// not under the floor), with no bone over it seen from above. The limb's bones are the skeleton's X-ray films show,
 /// half sunk in muscle, not in a hollow: the floor comes up their sides. A bullet lies along its wound track, no further aside from the entry wound
-/// than it lies deep. Key frames: the site opened wide on the ordinary patient, from above and along the limb.
+/// than it lies deep. Key frames: on the ordinary patient, a cut through every layer over the first target, from above
+/// and along the limb.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -13,6 +14,10 @@ namespace Scalpel.Tests.Patients;
 public class LimbTargetsTest {
     /// <summary>How far (meters) a measured height may be off: the site's heights are interpolated.</summary>
     private const float Slack = 0.0005f;
+    /// <summary>How long (meters) the cut over a target is in the key frames.</summary>
+    private const float Opening = 0.06f;
+    /// <summary>How far (meters) the key frames look at the cut from.</summary>
+    private const float Close = 0.15f;
 
     /// <summary>Thicker fat pushes the muscle, the floor and what lies on it down; a mirrored patient has the targets
     /// and wounds on the other side of the bones.</summary>
@@ -47,14 +52,19 @@ public class LimbTargetsTest {
                 BoneIsInMuscle(body, bone, $"{scenario} on {who}");
             }
             if (quirk == "" && KeyFrames.Wanted()) {
-                SurgeryState.SiteIsOpenedWide(patient);
-                await Frames.Physics(30);
+                // Cut through every layer along the limb over the first target, as a surgeon goes in for it.
+                var target = patient.Targets[0];
+                var half = new Vector2(body.MetersToUv(Opening * 0.5f), 0f);
+                SurgeryState.SkinIsCut(patient, target.Uv - half, target.Uv + half, 1f);
+                await Frames.Seconds(1f);
+                AssertBool(body.IsOpen(target.Uv)).OverrideFailureMessage($"{scenario}: the cut opens over the {target.Kind}")
+                    .IsTrue();
                 var shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(driver.Surgery, $"limb_targets/{scenario}");
-                await shots.Capture("opened",
-                    "the site opened wide: the bones half sunk in red muscle, no hollow round them, and every target lying in the muscle in view",
-                    body.Site.GlobalBasis.X);
+                await shots.CaptureAt("opened",
+                    $"close up, a cut along the limb through every layer: deep red muscle walls, the {target.Kind} down in the cut",
+                    body.UvToWorld(target.Uv), Close);
                 shots.End();
             }
             await driver.Stop();

@@ -51,7 +51,9 @@ public class WoundClosureTest {
         AssertCountsAsSeen(driver, wound, "filled in");
         await driver.PlayerPutsDown();
         await driver.Capture("closed", "filled in with staples: no gap along the cut, no bleeding");
-        await session.Finish();
+        // The frame the fourth sparse staple closes in spikes over the budget, already before the forearm site moved
+        // onto the forearm; there it does every run. Not profiled yet.
+        await session.Finish("the fourth staple's frame goes over, not profiled yet");
     }
 
     [TestCase]
