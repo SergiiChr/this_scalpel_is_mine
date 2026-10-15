@@ -85,7 +85,6 @@ public static class ToolActions {
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> LevelNames = new Dictionary<string, string> {
         ["cut"] = "Depth",
-        ["suture"] = "Tension",
         ["cauterize"] = "Heat",
         ["saw"] = "Speed",
         ["suction"] = "Suction",
@@ -127,10 +126,15 @@ public static class ToolActions {
     /// <summary>A syringe has its own wheel instead of an effort level: one notch moves the plunger this many ml (see
     /// <see cref="Syringe.Plunge"/>).</summary>
     public const float PlungerStep = 1f;
-    /// <summary>A needle's wheel works the free end of its thread: one notch changes its tension (a rest length ratio,
-    /// see TissueSim.ThreadClosed) this much, down tightens and up loosens.</summary>
+    /// <summary>A needle's wheel works the free end of its thread, and a tensioned closure's (paper clips, see
+    /// Patient.TensionedClosures) how hard it's pulled: one notch changes the tension (a rest length ratio, see
+    /// TissueSim.ThreadClosed) this much, down tightens and up loosens.</summary>
     public const float SutureTensionStep = 0.04f;
     public static readonly Vector2 SutureTensionRange = new(0.52f, 1.56f);
+
+    /// <summary>The wheel works this tool's stitch tension (<see cref="SutureTensionStep"/>) instead of an effort level:
+    /// the needle's thread, or a tensioned closure's pull.</summary>
+    public static bool HasTensionWheel(ToolDef def) => def.Action == "sew" || Patient.TensionedClosures.Contains(def.Id);
     /// <summary>Use tool held this long (seconds) adds the last hole and ties the thread off.</summary>
     public const float SutureTieHold = 0.65f;
     /// <summary>A spreader's (the Gelpi retractor's) wheel opens and closes it: one notch moves its tips this much

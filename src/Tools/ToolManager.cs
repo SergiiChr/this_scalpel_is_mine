@@ -243,7 +243,7 @@ public partial class ToolManager : Node3D {
     /// </summary>
     public void RequestPlunger(int hand, int notches) => RpcId(Net.HostId, MethodName.PlungerOnHost, hand, notches);
 
-    /// <summary>Needle wheel: direction &gt; 0 loosens, direction &lt; 0 tightens the live thread.</summary>
+    /// <summary>Needle or tensioned closure wheel: direction &gt; 0 loosens, direction &lt; 0 tightens.</summary>
     public void RequestSutureTension(int hand, int direction) => RpcId(Net.HostId, MethodName.SutureTensionOnHost, hand, direction);
 
     /// <summary>Spreader wheel: direction &gt; 0 opens it, direction &lt; 0 closes it.</summary>
@@ -261,7 +261,8 @@ public partial class ToolManager : Node3D {
 
     public void RequestWash(int hand) => RpcId(Net.HostId, MethodName.WashOnHost, hand);
 
-    /// <summary>Host: shows every peer the needle's thread tension and layer, for the holder's HUD.</summary>
+    /// <summary>Host: shows every peer a needle's or tensioned closure's tension and thread layer, for the holder's HUD.
+    /// </summary>
     public void SyncSuture(SurgicalTool tool) {
         if (Multiplayer.IsServer()) {
             Rpc(MethodName.SetSutureState, tool.Uid, tool.Suture.Thread, tool.Suture.Tension, (int)tool.Suture.Layer);
@@ -391,7 +392,7 @@ public partial class ToolManager : Node3D {
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SutureTensionOnHost(int hand, int direction) {
-        if (HeldForAction(hand, "sew") is { } tool) {
+        if (Session.Running && ToolInHand(Net.Instance.Sender(), hand) is { } tool && ToolActions.HasTensionWheel(tool.Def)) {
             SewAction.AdjustTension(tool, Math.Sign(direction), Session.Patient);
             SyncSuture(tool);
         }

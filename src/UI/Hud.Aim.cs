@@ -9,7 +9,6 @@ public partial class Hud {
     /// <summary>What each effort level (0..3) does, for tools that take one (see LevelSteps()).</summary>
     private static readonly Dictionary<string, string[]> LevelStepNames = new Dictionary<string, string[]> {
         ["cut"] = ["Resting on skin", "Skin", "Fat", "Muscle, into cavity"],
-        ["tension"] = ["Off", "Loose", "Correct", "Tight"],
         ["inject"] = ["Not pushed", "A third in", "Two thirds in", "All in"],
         ["effort"] = ["Off", "Low", "Medium", "High"],
     };
@@ -226,10 +225,7 @@ public partial class Hud {
         if (tool is null || !ToolActions.LevelNames.ContainsKey(tool.Def.Action)) {
             return null;
         }
-        var kind = Patient.TensionedClosures.Contains(tool.Def.Id) ? "tension"
-            : LevelStepNames.ContainsKey(tool.Def.Action) ? tool.Def.Action
-            : "effort";
-        return LevelStepNames[kind];
+        return LevelStepNames.GetValueOrDefault(tool.Def.Action, LevelStepNames["effort"]);
     }
 
     /// <summary>The levels, the current one marked; red while the tool is working at it.</summary>

@@ -333,7 +333,7 @@ public partial class Patient : Node3D {
                     var before = wound.Bins[i];
                     wound.Bins[i] = Mathf.Min(before + heal * dt, 1f);
                     if (before < 1f && wound.Bins[i] >= 1f && !wound.IsInternal) {
-                        Rpc(MethodName.TissueStitch, wound.BinPosition(i), StitchTension[0], TissueSim.TissueBreak);
+                        Rpc(MethodName.TissueStitch, wound.BinPosition(i), StitchTension["closed"], TissueSim.TissueBreak);
                     }
                 }
             }
