@@ -31,30 +31,29 @@ public class ScenarioFlowsTest {
         }
     }
 
-    [TestCase("hand_stitch_child", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("bullet_muscle", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("sidewalk_stab", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("ambulance_bullet", false, BudgetOverride, Timeout = Limits.Slow)]
+    [TestCase("hand_stitch_child", false, BudgetOverride, 13.5f, Timeout = Limits.Slow)]
+    [TestCase("bullet_muscle", false, BudgetOverride, 12f, Timeout = Limits.Slow)]
+    [TestCase("sidewalk_stab", false, BudgetOverride, 12.5f, Timeout = Limits.Slow)]
+    [TestCase("ambulance_bullet", false, BudgetOverride, 18f, Timeout = Limits.Slow)]
     [TestCase("open_fracture", false,
-        "with key frames the worst frame takes 18 ms of game work (budget 16 ms) while sewing.", Timeout = Limits.Slow)]
-    [TestCase("knife_back", true, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("lung_fluid", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("oscar_figurine", false, BudgetOverride, Timeout = Limits.Slow)]
+        "with key frames the worst frame takes 18 ms of game work (budget 16 ms) while sewing.", 16f, Timeout = Limits.Slow)]
+    [TestCase("knife_back", true, BudgetOverride, 17f, Timeout = Limits.Slow)]
+    [TestCase("lung_fluid", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
+    [TestCase("oscar_figurine", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
     [TestCase("heart_attack", true,
         "in some runs the frame the defibrillator is put down (56.9 s) takes 35-43 ms of the game's own work; timing "
         + "every _Process and _PhysicsProcess found nothing over 10 ms there, so it's in the engine or the finalizer "
-        + "thread; not traced further", Timeout = Limits.Slow)]
-    [TestCase("brain_tumor", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("euthanasia", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("colon_cancer", false,
-        "with key frames the worst frame takes 32 ms (budget 16 ms) while holding the bowel aside and sewing.", Timeout = Limits.Slow)]
-    [TestCase("gangrene_amputation", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("leg_extension", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("broken_ribs", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("slit_throat", false, BudgetOverride, Timeout = Limits.Slow)]
-    [TestCase("nose_job", false, BudgetOverride, Timeout = Limits.Slow)]
-    public async Task PlaysThrough(string scenario, bool keyFrames, string budgetOverride) => await
-        ScenarioFlow.Play(scenario, keyFrames, budgetOverride);
+        + "thread; not traced further", 15.5f, Timeout = Limits.Slow)]
+    [TestCase("brain_tumor", false, BudgetOverride, 15.5f, Timeout = Limits.Slow)]
+    [TestCase("euthanasia", false, BudgetOverride, 17.5f, Timeout = Limits.Slow)]
+    [TestCase("colon_cancer", false, BudgetOverride, 26f, Timeout = Limits.Slow)]
+    [TestCase("gangrene_amputation", false, BudgetOverride, 22f, Timeout = Limits.Slow)]
+    [TestCase("leg_extension", false, BudgetOverride, 22f, Timeout = Limits.Slow)]
+    [TestCase("broken_ribs", false, BudgetOverride, 16.5f, Timeout = Limits.Slow)]
+    [TestCase("slit_throat", false, BudgetOverride, 8f, Timeout = Limits.Slow)]
+    [TestCase("nose_job", false, BudgetOverride, 14.5f, Timeout = Limits.Slow)]
+    public async Task PlaysThrough(string scenario, bool keyFrames, string budgetReason,
+        float budgetFactor) => await ScenarioFlow.Play(scenario, keyFrames, new(budgetReason, budgetFactor));
 
     [TestCase("bullet_stomach", "\"Find and remove the bullet\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver finds no spot on the bowel in the opening clear of the bleeder to hold it aside, so the bullet stays covered and the forceps clamp the bleeder beside it instead.")]
     [TestCase("burn_graft", "\"Graft skin over the burns\" (graft) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: ten graft sheets cover only 61% of the burns, 70% needed.")]

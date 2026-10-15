@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Liquids;
 [GodotArgs("--fixed-fps", "60")]
 public class SyringeWithdrawalTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private const string BudgetOverride = "needle withdrawal exceeds the recorded CPU/render budget";
+    private static readonly BudgetAllowance BudgetOverride = new("needle withdrawal exceeds the recorded CPU/render budget", 4f);
 
     private static List<MeshInstance3D> Beads(Node body) =>
         [.. body.FindChildren("BloodBead*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>()];

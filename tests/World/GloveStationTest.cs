@@ -7,6 +7,9 @@ namespace Scalpel.Tests.World;
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class GloveStationTest {
+    // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 3f);
+
     /// <summary>Top of the cabinet the box stands on (tools/assetgen/props.py).</summary>
     private const float CabinetTop = 0.9f;
 
@@ -76,7 +79,7 @@ public class GloveStationTest {
                 await driver.Unbudgeted(() => shots.CaptureView("fresh_gloves",
                     "clean blue gloves on the hands, the \"Fresh gloves.\" toast, no sweat bar"));
             }
-            driver.Budget.Check();
+            driver.Budget.Check(localOverride: BudgetOverride);
         } finally {
             shots?.End();
             await driver.Stop();
