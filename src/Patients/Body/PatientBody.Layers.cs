@@ -137,7 +137,12 @@ public partial class PatientBody {
         _bodyRoot.AddChild(Site);
 
         var parts = ModelParts(model);
-        MeasureSite(parts);
+        var thickness = MeasureSite(parts);
+        MeasureLimbBones();
+        // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.
+        for (var n = 0; n < _onBody.Length; n++) {
+            _onBody[n] = thickness[n] > Mathf.Max(MinThickness, MuscleBottom);
+        }
         Tissue.Build(SiteSize, SurfaceHeight, OnBody);
         FitToModel(parts);
         _regionImage = Image.CreateEmpty(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8);
@@ -166,24 +171,28 @@ public partial class PatientBody {
     private List<ModelPart> ModelParts(Node3D model) {
         var parts = new List<ModelPart>();
         foreach (var partName in new[] { "Body", "Gown" }) {
-            if (model.FindChild(partName, true, false) is not MeshInstance3D mesh) {
-                continue;
+            if (model.FindChild(partName, true, false) is MeshInstance3D mesh) {
+                parts.Add(ModelPartOf(mesh));
             }
-            var part = new ModelPart();
-            var toSite = Site.GlobalTransform.AffineInverse() * mesh.GlobalTransform;
-            for (var s = 0; s < mesh.Mesh.GetSurfaceCount(); s++) {
-                var arrays = mesh.Mesh.SurfaceGetArrays(s);
-                var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
-                var normals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
-                foreach (var i in arrays[(int)Mesh.ArrayType.Index].AsInt32Array()) {
-                    part.Faces.Add(toSite * vertices[i]);
-                    part.Normals.Add((toSite.Basis * normals[i]).Normalized());
-                }
-            }
-            part.Mesh.CreateFromFaces([.. part.Faces]);
-            parts.Add(part);
         }
         return parts;
+    }
+
+    /// <summary>A part of the body model in site space, as it lies at rest.</summary>
+    private ModelPart ModelPartOf(MeshInstance3D mesh) {
+        var part = new ModelPart();
+        var toSite = Site.GlobalTransform.AffineInverse() * mesh.GlobalTransform;
+        for (var s = 0; s < mesh.Mesh.GetSurfaceCount(); s++) {
+            var arrays = mesh.Mesh.SurfaceGetArrays(s);
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var normals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+            foreach (var i in arrays[(int)Mesh.ArrayType.Index].AsInt32Array()) {
+                part.Faces.Add(toSite * vertices[i]);
+                part.Normals.Add((toSite.Basis * normals[i]).Normalized());
+            }
+        }
+        part.Mesh.CreateFromFaces([.. part.Faces]);
+        return part;
     }
 
     /// <summary>Where a ray straight down the site's normal at x, z (site space) first meets the body model. Null where
@@ -209,13 +218,15 @@ public partial class PatientBody {
 
     /// <summary>
     /// Measures the skin's height over the site plane on the body model, so the site hugs the body as it is now, and
-    /// which points are off it: where the site hangs past the body, or the body under the skin is too thin to hold
-    /// skin, fat and muscle (the edge of a limb or the flank). Nothing of the site is drawn, carved or probed there.
-    /// Every peer measures the same model the same way, so every player sees the same site.
+    /// the body's thickness under each point (0 where the site hangs past it), for which points are off it: there, or
+    /// where the body under the skin is too thin to hold skin, fat and muscle (the edge of a limb or the flank),
+    /// nothing of the site is drawn, carved or probed. Every peer measures the same model the same way, so every player
+    /// sees the same site.
     /// </summary>
-    private void MeasureSite(List<ModelPart> parts) {
+    private float[] MeasureSite(List<ModelPart> parts) {
         _heights = new float[Heights * Heights];
         _onBody = new bool[Heights * Heights];
+        var thickness = new float[Heights * Heights];
         var missed = new List<int>();
         for (var n = 0; n < Heights * Heights; n++) {
             var uv = new Vector2(n % Heights, n / Heights) / (Heights - 1);
@@ -227,7 +238,7 @@ public partial class PatientBody {
             _heights[n] = hit.Position.Y;
             // The body's thickness under this point: where the same ray comes out of the part again.
             var exit = hit.Part.Mesh.IntersectRay(hit.Position + Vector3.Down * 0.001f, Vector3.Down);
-            _onBody[n] = exit.Count > 0 && hit.Position.Y - exit["position"].AsVector3().Y > MinThickness;
+            thickness[n] = exit.Count > 0 ? hit.Position.Y - exit["position"].AsVector3().Y : 0f;
         }
         // Where nothing was met (past the body's outline, over a hole) the site goes on from the points around it, so
         // heights between points stay smooth up to the edge of the body.
@@ -258,6 +269,7 @@ public partial class PatientBody {
         foreach (var n in missed) {
             _heights[n] = 0f;
         }
+        return thickness;
     }
 
     /// <summary>Lays every tissue grid point onto the body model (see _onModel): straight down the site's normal onto

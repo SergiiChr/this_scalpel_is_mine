@@ -1,5 +1,5 @@
 {
-	"_about": "Surgical sites in patient body space (head at +X, face up +Y, meters). depth = cavity depth, left out on limbs: a limb is muscle round its bones, which lie half sunk in the cavity floor. fat = subcutaneous fat (meters, 0.012 when left out). back = faces down until the patient is turned. The game measures each site's skin heights on the body model when it builds the patient. anatomy: organs (uv, top = how far under the muscle the top of the organ lies, size = model scale in meters, yaw in degrees, mirror flips left-right, layer 0 on top and 1 under it, motion beat/breath follows the vitals) and bones (polylines in uv with a radius in meters; ribs are rows mirrored across the midline, running out and down from the breastbone). Bones sit right under the muscle.",
+	"_about": "Surgical sites in patient body space (head at +X, face up +Y, meters). depth = cavity depth, left out on limbs: a limb is muscle down to its bones, which lie half sunk in the cavity floor. fat = subcutaneous fat (meters, 0.012 when left out). back = faces down until the patient is turned. The game measures each site's skin heights on the body model when it builds the patient. anatomy: organs (uv, top = how far under the muscle the top of the organ lies, size = model scale in meters, yaw in degrees, mirror flips left-right, layer 0 on top and 1 under it, motion beat/breath follows the vitals) and bones (polylines in uv with a radius in meters; ribs are rows mirrored across the midline, running out and down from the breastbone). Bones sit right under the muscle. A limb's skeleton names the parts of the body model's skeleton under it (Thigh for SkeletonThighL/R): they are its bones, the ones X-ray films show, and its muscle reaches down to them.",
 	"abdomen": {
 		"pos": [0.0, 0.112, 0.0],
 		"size": [0.3, 0.3],
@@ -55,40 +55,22 @@
 	"shoulder": {
 		"pos": [0.38, 0.112, 0.15],
 		"size": [0.14, 0.14],
-		"anatomy": {
-			"bones": [
-				{"from": [0.1, 0.2], "to": [0.4, 0.3], "radius": 0.009}
-			]
-		}
+		"anatomy": {"skeleton": ["UpperArm"]}
 	},
 	"forearm": {
-		"pos": [0.2, 0.03, 0.25],
+		"pos": [0.0, 0.03, 0.254],
 		"size": [0.22, 0.09],
 		"fat": 0.0,
-		"anatomy": {
-			"bones": [
-				{"from": [0.0, 0.36], "to": [1.0, 0.4], "radius": 0.0065},
-				{"from": [0.0, 0.64], "to": [1.0, 0.6], "radius": 0.0065}
-			]
-		}
+		"anatomy": {"skeleton": ["Forearm"]}
 	},
 	"thigh": {
 		"pos": [-0.7, 0.06, 0.1],
 		"size": [0.2, 0.11],
-		"anatomy": {
-			"bones": [
-				{"from": [0.0, 0.5], "to": [1.0, 0.52], "radius": 0.013}
-			]
-		}
+		"anatomy": {"skeleton": ["Thigh"]}
 	},
 	"lower_leg": {
 		"pos": [-0.95, 0.025, 0.1],
 		"size": [0.25, 0.1],
-		"anatomy": {
-			"bones": [
-				{"from": [0.0, 0.42], "to": [1.0, 0.44], "radius": 0.011},
-				{"from": [0.0, 0.72], "to": [1.0, 0.7], "radius": 0.006}
-			]
-		}
+		"anatomy": {"skeleton": ["Shin"]}
 	}
 }

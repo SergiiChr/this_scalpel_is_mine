@@ -3,8 +3,8 @@ namespace Scalpel.Tests.Patients;
 /// <summary>
 /// What a scenario puts in a limb is there for the surgeon to find, on an ordinary, an obese and a mirrored patient:
 /// every target the scenario lists is built, on the body, inside the limb's cavity (its top under the muscle, its middle
-/// not under the floor), with no bone over it seen from above. The limb's bones lie half sunk in muscle, not in a
-/// hollow: the floor comes up their sides. A bullet lies along its wound track, no further aside from the entry wound
+/// not under the floor), with no bone over it seen from above. The limb's bones are the skeleton's X-ray films show,
+/// half sunk in muscle, not in a hollow: the floor comes up their sides. A bullet lies along its wound track, no further aside from the entry wound
 /// than it lies deep. Key frames: the site opened wide on the ordinary patient, from above and along the limb.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -103,16 +103,32 @@ public class LimbTargetsTest {
             + $"{target.Depth:0.000} m deep, along the wound track").IsLessEqual(target.Depth);
     }
 
-    /// <summary>The floor lies under the bone's middle and comes up its sides past its bottom: muscle round it.</summary>
+    /// <summary>The bone lies where the skeleton X-ray films show is, and along it, away from the site's sides where
+    /// the floor rises to the skin, the floor lies under its middle and comes up its sides past its bottom: muscle round
+    /// it.</summary>
     private static void BoneIsInMuscle(PatientBody body, Bone bone, string where) {
-        var middle = bone.GetChild<Node3D>(bone.GetChildCount() / 2).Position;
-        var radius = ((CapsuleShape3D)bone.GetChild<CollisionShape3D>(1).Shape).Radius;
-        var uv = body.LocalToUv(middle);
-        var beside = uv + new Vector2(0f, body.MetersToUv(radius + 0.002f));
-        var what = $"{where}: {bone.Name} at {uv}";
-        AssertFloat(body.CavityFloor(uv)).OverrideFailureMessage($"{what}: the floor lies under its middle")
-            .IsLess(middle.Y);
-        AssertFloat(body.CavityFloor(beside)).OverrideFailureMessage($"{what}: muscle comes up its side past its bottom")
-            .IsGreater(middle.Y - radius);
+        var mesh = bone.GetNode<MeshInstance3D>("Mesh");
+        var skeleton = body.Skeleton.SingleOrDefault(part => part.Mesh == mesh.Mesh);
+        AssertObject(skeleton).OverrideFailureMessage($"{where}: {bone.Name} is a part of the skeleton X-ray films show")
+            .IsNotNull();
+        var box = (skeleton!.GlobalTransform * skeleton.GetAabb()).Grow(0.001f);
+        foreach (var capsule in bone.GetChildren().OfType<CollisionShape3D>()) {
+            var middle = capsule.Position;
+            var radius = ((CapsuleShape3D)capsule.Shape).Radius;
+            var uv = body.LocalToUv(middle);
+            var what = $"{where}: {bone.Name} at {uv}";
+            AssertBool(box.HasPoint(body.Site.ToGlobal(middle)))
+                .OverrideFailureMessage($"{what} lies in the skeleton's {skeleton.Name}").IsTrue();
+            // Where a bone rises into the muscle itself (a forearm toward the wrist), the muscle is round it.
+            var underMuscle = body.SurfaceHeight(uv) - (middle.Y + radius) >= body.MuscleBottom;
+            if (uv.X is < 0.15f or > 0.85f || uv.Y is < 0.15f or > 0.85f || !underMuscle) {
+                continue;
+            }
+            var beside = uv + new Vector2(0f, body.MetersToUv(radius + 0.002f));
+            AssertFloat(body.CavityFloor(uv)).OverrideFailureMessage($"{what}: the floor lies under its middle")
+                .IsLess(middle.Y);
+            AssertFloat(body.CavityFloor(beside)).OverrideFailureMessage($"{what}: muscle comes up its side past its bottom")
+                .IsGreater(middle.Y - radius);
+        }
     }
 }

@@ -174,7 +174,7 @@ internal sealed partial class GameplaySweep {
             var what = first >= 0 ? Body.Organs[first] : null;
             Fail($"the {bone.Name} under a deep cut at {uv} isn't the first thing inside: {what?.Name ?? "nothing"} at {what?.Position ?? Vector3.Zero}, bone at {middle}");
         }
-        var top = PatientBody.SkinThickness + Body.FatThickness + PatientBody.MuscleThickness;
+        var top = PatientBody.SkinThickness + Body.FatThickness + Body.MuscleThickness;
         var depth = Body.SurfaceHeight(uv) - middle.Y;
         if (depth < top || depth > Body.CavityDepth()) {
             Fail($"the {bone.Name} sits {depth:0.000} m under the skin, not under the muscle inside the cavity");

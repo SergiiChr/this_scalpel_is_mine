@@ -202,7 +202,8 @@ public partial class Patient : Node3D {
         for (var i = 0; i < scenario.Targets.Count; i++) {
             var target = new CavityTarget();
             target.Setup(i, scenario.Targets[i], Mods.Flag("mirrored"));
-            target.Depth = Body.TargetDepth(target.Uv, target.Depth, PatientBody.LocalBounds(target, target).Size.Y * 0.5f);
+            target.Depth = Body.TargetDepth(target.Uv, target.Depth, PatientBody.LocalBounds(target, target).Size.Y * 0.5f,
+                target.IsBone);
             Body.Site.AddChild(target);
             target.Position = SiteLocal(target.Uv, target.Depth);
             Targets.Add(target);
