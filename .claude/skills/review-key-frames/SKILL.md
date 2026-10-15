@@ -6,10 +6,13 @@ description: Review only the key frames that changed against the committed basel
 # Review key frames
 
 A feature branch reviews only its own suites: `./build.py test --tag ... --with-key-frames`, then
-`./build.py screenshot_review --focused`, then steps 2 to 4 and 6. It never commits the baseline (step 5).
+`./build.py screenshot_review --focused`, then steps 2 to 4 and 6. It fails only on missing key frames, and never
+commits the baseline (step 5). The baseline is `main`'s: a changed key frame the change didn't mean to touch may come
+from a PR merged into `develop` since the last release (`git log main..develop`); check that before calling it a
+regression.
 A release branch (docs/RELEASE.md) runs every step.
 
-1. Run `./build.py screenshot_review` (smoke and lint pass first, see CLAUDE.md). It runs the same full regression as
+1. Run `./build.py screenshot_review` on a commit whose CI passed. It runs the same full regression as
    `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A case that fails runs once more
    on its own, and its successful run's key frames are the ones reviewed. It exits non-zero when the regression still
    failed (the report is still written) and while any key frame differs from the baseline.

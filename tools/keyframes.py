@@ -178,8 +178,10 @@ def sheet(frame: KeyFrame, label: str, out: Path) -> None:
 
 
 def report(current_root: Path, baseline_root: Path, out: Path, everything: bool, regression: str) -> tuple[str, int]:
-    """Writes the sheets and returns the Markdown index and how many key frames differ from the baseline."""
+    """Writes the sheets and returns the Markdown index and how many key frames fail the review: those that differ from
+    the baseline, or after a focused run only the missing ones, as its changes aren't in the baseline until a release."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
+    has_baseline = bool(baseline)
     if regression == "focused":
         # A focused run took only its own tests' key frames: the rest of the baseline isn't missing, just not run.
         taken = {folder for folder, _ in current}
@@ -225,13 +227,15 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
             "Review their sheets: the baseline takes them only if the case isn't visibly broken. "
             "Key frames they didn't take show as missing below and stay in the baseline.",
             "not-run": "Regression: not run, these are the key frames of an earlier run.",
-            "focused": "Focused run: only the folders it took key frames in are compared.",
+            "focused": "Focused run: only the folders it took key frames in are compared, and only missing key frames fail "
+            "it. Changed key frames in suites that PRs merged since the last release touched may be theirs: the baseline "
+            "has them only after the release.",
         }[regression],
         f"Current: `{current_root.as_posix()}`  ",
         f"Baseline: `{baseline_root.as_posix()}`"
-        if baseline
+        if has_baseline
         else f"Baseline: NONE in `{baseline_root.as_posix()}`. Every key frame shows as new and nothing was compared: "
-        "the review fails. Run `./build.py generate_baseline` on main first.",
+        "the review fails. Run `./build.py generate_baseline` on a release branch first.",
         "",
         ", ".join(f"{counts[state]} {state}" for state in states) + ".",
         "",
@@ -250,7 +254,8 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         if unchanged.get(folder):
             lines = [*lines, f"- {unchanged[folder]} unchanged"]
         text += ["", f"## {folder}", "", *lines]
-    return "\n".join(text) + "\n", counts["missing"] + counts["changed"] + counts["new"]
+    failing = counts["missing"] + (0 if regression == "focused" else counts["changed"] + counts["new"])
+    return "\n".join(text) + "\n", failing
 
 
 def prefix(frame: KeyFrame) -> str:
@@ -342,7 +347,8 @@ def main() -> int:
     index.write_text(text)
     print(f"Key frame review: {index}")
     if differ:
-        print(f"[ERROR] {differ} key frames are missing, changed or new against the baseline: review them.", file=sys.stderr)
+        what = "missing" if parsed.regression == "focused" else "missing, changed or new"
+        print(f"[ERROR] {differ} key frames are {what} against the baseline: review them.", file=sys.stderr)
         return 1
     return 0
 

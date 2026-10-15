@@ -85,8 +85,13 @@ class KeyFramesTest(unittest.TestCase):
         keyframes.update(self.run_frames, self.baseline)
         shutil.rmtree(self.run_frames / "suture")
         self.take("01_stitch")
-        self.assertEqual(keyframes.report(self.run_frames, self.baseline, self.root / "review", False, "focused")[1], 1)
+        focused = keyframes.report(self.run_frames, self.baseline, self.root / "review", False, "focused")
+        self.assertEqual(focused[1], 0, "a new key frame is listed but doesn't fail a focused review")
+        self.assertIn("1 new", focused[0])
         self.assertEqual(self.differ(), 2)
+        for path in (self.run_frames / "scalpel").glob("00_cut_*.png"):
+            path.unlink()
+        self.assertEqual(keyframes.report(self.run_frames, self.baseline, self.root / "review", False, "focused")[1], 1)
 
     def test_update_writes_only_what_differs(self) -> None:
         self.take("00_cut")

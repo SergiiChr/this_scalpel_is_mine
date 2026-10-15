@@ -899,6 +899,9 @@ def screenshot_review(arguments: list[str]) -> int:
     status, regression = 0, "not-run"
     if parsed.focused:
         regression = "focused"
+        if not has_key_frames(KEY_FRAMES):
+            print("[ERROR] The last run took no key frames: run the suites with test --with-key-frames first.", file=sys.stderr)
+            return 1
     elif not parsed.use_latest_set:
         status = key_frame_run()
         regression = "failed" if status else "passed"
@@ -906,7 +909,7 @@ def screenshot_review(arguments: list[str]) -> int:
     # The report comes first: it helps most when the regression failed.
     report_status = keyframes_tool("report", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags)
     if not has_key_frames(BASELINE):
-        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, nothing was compared: run ./build.py generate_baseline on main first.", file=sys.stderr)
+        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, run ./build.py generate_baseline on a release branch first.", file=sys.stderr)
         return 1
     return status or report_status
 

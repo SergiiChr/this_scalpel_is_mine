@@ -34,7 +34,8 @@ no cases, the command also fails.
 
 GitHub Actions runs smoke and full functional regression headlessly, then exports the game. It takes no key frames.
 
-- `./build.py test`: smoke suites, fast and headless. Run this first.
+- `./build.py test`: smoke suites, fast and headless. CI runs them on every PR; when to run them locally: see
+  docs/RELEASE.md.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
   only after smoke passes. A case that fails in it runs once more on its own, its key frames taken again (the whole
   suite when a failure belongs to no case); the first attempt's logs go to `build/retries/`.
