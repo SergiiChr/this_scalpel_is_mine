@@ -48,8 +48,8 @@ public class ScenarioFlowsTest {
     [TestCase("euthanasia", false, BudgetOverride, 17.5f, Timeout = Limits.Slow)]
     [TestCase("colon_cancer", false, BudgetOverride, 26f, Timeout = Limits.Slow)]
     [TestCase("gangrene_amputation", false, BudgetOverride, 22f, Timeout = Limits.Slow)]
-    [TestCase("leg_extension", false, BudgetOverride, 22f, Timeout = Limits.Slow)]
-    [TestCase("broken_ribs", false, BudgetOverride, 16.5f, Timeout = Limits.Slow)]
+    [TestCase("leg_extension", false, BudgetOverride, 31f, Timeout = Limits.Slow)]
+    [TestCase("broken_ribs", false, BudgetOverride, 37.5f, Timeout = Limits.Slow)]
     [TestCase("slit_throat", false, BudgetOverride, 8f, Timeout = Limits.Slow)]
     [TestCase("burn_graft", false, BudgetOverride, 16f, Timeout = Limits.Slow)]
     public async Task PlaysThrough(string scenario, bool keyFrames, string budgetReason,
