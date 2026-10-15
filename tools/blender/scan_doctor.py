@@ -58,8 +58,25 @@ UNSHADE = 0.85
 # Everything below is measured on the scan in its own units: the figurine is 0.807 tall, feet at 0, the face toward
 # -Z, her right toward +X. Joints are where the limb's centerline meets them, in the scan's pose.
 
-# The sway: the chest sits this far toward her left of the hips, shifted back over them across the waist (y range).
-SWAY = (-0.043, 0.33, 0.4)
+# The spine as the scan has it: the body's center (x) at each height, from the section centroids. The hips jog to her
+# right at the waist and the mid-back bows back toward it; every height is shifted so this line stands vertical over
+# the pelvis.
+SPINE_LINE = [
+    (0.30, 0.004),
+    (0.33, 0.004),
+    (0.35, -0.005),
+    (0.36, -0.014),
+    (0.37, -0.028),
+    (0.38, -0.034),
+    (0.40, -0.040),
+    (0.41, -0.043),
+    (0.42, -0.030),
+    (0.43, -0.027),
+    (0.44, -0.029),
+    (0.455, -0.038),
+    (0.47, -0.044),
+    (0.495, -0.044),
+]
 # The whole figure is turned this far (degrees around Y) toward her left, the hips further than the chest (measured on
 # the holsters, which sit at her sides); turned back around the pelvis, the twist undone across the bare waist between
 # belt and corset (y range).
@@ -370,10 +387,11 @@ def _smoothstep(edge0: float, edge1: float, x: NDArray[np.float64]) -> NDArray[n
 
 
 def straighten(points: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Scan pose to rest pose for the torso: the chest shifted back over the hips, the figure turned to face -Z with
-    the pelvis on the Y axis. The chest isn't tilted, only shifted, so the head on it stays upright."""
+    """Scan pose to rest pose for the torso: each height shifted so the spine stands over the pelvis, the figure turned
+    to face -Z with the pelvis on the Y axis. Nothing is tilted, only shifted, so the head stays upright."""
     p = np.array(points, dtype=np.float64).reshape(-1, 3)
-    p[:, 0] -= SWAY[0] * _smoothstep(SWAY[1], SWAY[2], p[:, 1])
+    heights, centers = (np.array(column) for column in zip(*SPINE_LINE, strict=True))
+    p[:, 0] -= np.interp(p[:, 1], heights, centers) - centers[0]
     pelvis = np.array([PELVIS[0], 0.0, PELVIS[2]])
     p -= pelvis
     angle = np.radians(-TURN - HIP_TURN[0] * (1.0 - _smoothstep(HIP_TURN[1], HIP_TURN[2], p[:, 1])))
