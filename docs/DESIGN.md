@@ -337,11 +337,12 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   Holding MMB the mouse turns the held tool about the wrist (tilt up and down, turn left and right,
   `Surgeon.AimTool()`): the wrist and forearm stay put, the tip follows the mouse and rises off what it rested on, and
   settles back down once MMB is let go.
-  Tools with a range take an effort level 0-3 from the wheel (cut depth, stitch tension, heat, saw speed,
-  suction, gauze pressure), 0 does nothing. Shift toggles between two zoom levels, Alt lifts.
+  Tools with a range take an effort level 0-3 from the wheel (cut depth, heat, saw speed, suction, gauze pressure),
+  0 does nothing. Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
-  needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture). And
-  the Gelpi retractor: up opens it, down closes it (see Gelpi retractor).
+  needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and
+  paper clips, pulled the same way (`ToolActions.HasTensionWheel()`). And the Gelpi retractor: up opens it, down
+  closes it (see Gelpi retractor). Tape and the other closures take no wheel: pressed on, they close.
 - **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
   accurate at any angle (`Surgeon.AimPoint()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
@@ -516,8 +517,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
 
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
 - **Organ handling damage**: organs held out of place for more than a few seconds, or shoved hard, bruise (they darken) and ooze.
-- **Suture tension**: the needle's wheel sets its thread's tension, the effort level sets paper clips'. Loose leaks,
-  tight can tear through.
+- **Suture tension**: the wheel sets the needle's thread tension and paper clips' pull alike, down tighter and up
+  looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through.
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,

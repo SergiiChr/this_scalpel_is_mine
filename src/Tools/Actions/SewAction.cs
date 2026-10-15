@@ -86,8 +86,8 @@ public sealed class SewAction : ToolAction {
         }
     }
 
-    /// <summary>The needle's wheel: <paramref name="direction"/> positive for up (loosen), negative for down
-    /// (tighten).</summary>
+    /// <summary>The needle's (or a tensioned closure's) wheel: <paramref name="direction"/> positive for up (loosen),
+    /// negative for down (tighten).</summary>
     public static void AdjustTension(SurgicalTool tool, int direction, Patient patient) {
         var suture = tool.Suture;
         suture.Tension = Mathf.Clamp(suture.Tension + direction * ToolActions.SutureTensionStep,
@@ -98,14 +98,17 @@ public sealed class SewAction : ToolAction {
         }
     }
 
-    /// <summary>How a needle's thread reads at its tension in the layer it's in (skin before a thread is started):
-    /// "loose" (the edges don't meet), "closed", or "too tight" (past halfway from closed to tearing through).</summary>
-    public static string ThreadState(SurgicalTool tool) {
-        var layer = (int)(tool.Suture.Layer != TissueDepth.None ? tool.Suture.Layer : TissueDepth.Skin);
-        var closed = TissueSim.ThreadClosed[layer];
-        if (tool.Suture.Tension > closed) {
+    /// <summary>How a needle's thread reads at its tension in the layer it's in (skin before a thread is started, and
+    /// for a tensioned closure): "loose" (the edges don't meet), "closed", or "too tight" (past halfway from closed to
+    /// tearing through).</summary>
+    public static string ThreadState(SurgicalTool tool) =>
+        ThreadState(tool.Suture.Tension, tool.Suture.Layer != TissueDepth.None ? tool.Suture.Layer : TissueDepth.Skin);
+
+    public static string ThreadState(float tension, TissueDepth layer) {
+        var closed = TissueSim.ThreadClosed[(int)layer];
+        if (tension > closed) {
             return "loose";
         }
-        return tool.Suture.Tension < (closed + TissueSim.ThreadTear[layer]) * 0.5f ? "too tight" : "closed";
+        return tension < (closed + TissueSim.ThreadTear[(int)layer]) * 0.5f ? "too tight" : "closed";
     }
 }

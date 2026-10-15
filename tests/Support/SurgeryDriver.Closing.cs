@@ -7,8 +7,8 @@ public partial class SurgeryDriver {
     /// <summary>
     /// Sews every open skin wound shut: the muscle first where a wound goes through it, then the skin. The needle sews
     /// a running thread along each (<see cref="PlayerSews"/>), a stapler staples along it (<see cref="PlayerStaples"/>);
-    /// tape (<paramref name="toolId"/>) goes segment by segment along it at medium tension, held on each until it's
-    /// closed. Goes round again for anything that didn't close.
+    /// tape (<paramref name="toolId"/>) goes segment by segment along it, paper clips pulled until they read closed,
+    /// held on each until it's closed. Goes round again for anything that didn't close.
     /// </summary>
     public async Task PlayerClosesWounds(string toolId = "needle") {
         Note($"closes the wounds with {toolId}");
@@ -42,8 +42,9 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>Tape or a closure strip pressed bin by bin along <paramref name="wound"/>: its muscle first where the cut
-    /// goes through it, then its skin.</summary>
-    private async Task PlayerTapes(Wound wound) {
+    /// goes through it, then its skin. A tensioned closure (paper clips) is pulled until it reads <paramref name="pull"/>
+    /// first.</summary>
+    public async Task PlayerTapes(Wound wound, string pull = "closed") {
         foreach (var muscle in (bool[])[true, false]) {
             if (muscle && !wound.ThroughMuscle) {
                 continue;
@@ -57,13 +58,15 @@ public partial class SurgeryDriver {
                 var at = SitePoint(wound.BinPosition(bin));
                 await WithinReach(at);
                 await PlayerReaches(at);
-                await SetLevel(2);
+                if (ToolActions.HasTensionWheel(Me.HeldTool(Me.Active)!.Def)) {
+                    await PlayerPullsThread(pull);
+                }
                 Use();
                 await Frames.Until(Closed, 3f);
                 if (!Closed()) {
                     var hand = Me.Hands[Me.Active];
                     var tip = Me.HeldTool(Me.Active) is { } held ? Body.Probe(held.TipPosition()).ToString() : "no tool";
-                    Note($"{(muscle ? "muscle" : "skin")} {bin} won't close: lowered {hand.Lowered}, level {hand.Level}, tip {tip}");
+                    Note($"{(muscle ? "muscle" : "skin")} {bin} won't close: lowered {hand.Lowered}, tip {tip}");
                 }
                 Use(false);
                 await Frames.Physics(3);
@@ -179,8 +182,9 @@ public partial class SurgeryDriver {
         return true;
     }
 
-    /// <summary>Turns the wheel on the needle's thread until the hand status reads <paramref name="state"/>
-    /// (SewAction.ThreadState()): down tightens, up loosens. Stops early when the thread goes (torn through).</summary>
+    /// <summary>Turns the wheel on the needle's thread (or a tensioned closure, paper clips) until the hand status reads
+    /// <paramref name="state"/> (SewAction.ThreadState()): down tightens, up loosens. Stops early when the thread goes
+    /// (torn through).</summary>
     public async Task PlayerPullsThread(string state) {
         var needle = Me.HeldTool(Me.Active)!;
         var thread = needle.Suture.Thread;

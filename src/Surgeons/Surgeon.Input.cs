@@ -162,7 +162,8 @@ public partial class Surgeon {
         }
     }
 
-    /// <summary>The wheel: a syringe's plunger, a needle holder's thread tension, a spreader's jaws or the effort level.
+    /// <summary>The wheel: a syringe's plunger, a needle's or a tensioned closure's stitch tension, a spreader's jaws or
+    /// the effort level.
     /// </summary>
     private void OnWheel(bool up) {
         if (PushedCart() is { } cart) {
@@ -174,13 +175,15 @@ public partial class Surgeon {
             return;
         }
         var tools = Session.Tools;
-        switch (HeldTool(Active)?.Def.Action) {
+        var held = HeldTool(Active);
+        if (held is not null && ToolActions.HasTensionWheel(held.Def)) {
+            // As on a syringe, the wheel works the tool itself: down pulls the thread tight, up pays more out.
+            tools.RequestSutureTension(Active, up ? 1 : -1);
+            return;
+        }
+        switch (held?.Def.Action) {
             case "syringe":
                 tools.RequestPlunger(Active, up ? -1 : 1);
-                break;
-            case "sew":
-                // As on a syringe, the wheel works the tool itself: down pulls the thread tight, up pays more out.
-                tools.RequestSutureTension(Active, up ? 1 : -1);
                 break;
             case "spread":
                 // Up opens the spreader, down closes it, set in a wound or not.
