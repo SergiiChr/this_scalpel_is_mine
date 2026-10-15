@@ -136,9 +136,9 @@ public partial class Patient : Node3D {
     /// <summary>Counters for scoring and the post-op report, see data/consequences.cfg.</summary>
     public Dictionary<string, float> Flags { get; } = [];
     /// <summary>General anesthesia reached <see cref="UnderLevel"/> at some point of the surgery.</summary>
-    public bool WentUnder { get; private set; }
+    internal bool WentUnder { get; private set; }
     /// <summary>General anesthesia is no longer topped up (<see cref="StopAnesthesia"/>) and wears off.</summary>
-    public bool AnesthesiaStopped { get; private set; }
+    internal bool AnesthesiaStopped { get; private set; }
     public bool IvSet { get; private set; }
     /// <summary>The catheter went into a vein (set with IvSet). Missed, the line still sticks but nothing runs through
     /// it.</summary>
@@ -653,10 +653,10 @@ public partial class Patient : Node3D {
         if (def.Peak.Anesthesia <= 0f) {
             return 1f;
         }
-        if (AnesthesiaStopped) {
-            return Mathf.Max(def.Duration / WakeSeconds, 1f);
-        }
         var decayMult = Mods.Mult("anesthesia_decay_mult");
+        if (AnesthesiaStopped) {
+            return Mathf.Max(def.Duration / WakeSeconds, Mathf.Max(decayMult, 1f));
+        }
         if (decayMult > 1f) {
             return decayMult;
         }
@@ -815,6 +815,9 @@ public partial class Patient : Node3D {
     public void StopAnesthesia() {
         if (!Drugs.Entries.Any(entry => entry.Def.Peak.Anesthesia > 0f)) {
             Session.Announce("The patient isn't under general anesthesia.");
+            return;
+        }
+        if (AnesthesiaStopped) {
             return;
         }
         AnesthesiaStopped = true;

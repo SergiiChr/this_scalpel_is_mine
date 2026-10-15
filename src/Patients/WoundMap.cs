@@ -172,7 +172,11 @@ public sealed class WoundMap {
     internal float Mean(Layer layer, int channel, float from, float to, int step, Func<Vector2, bool> counts) {
         var data = _data[(int)layer];
         var painted = _painted[(int)layer];
-        if (!painted.Where((_, i) => i % 4 == channel).Any(cell => cell)) {
+        var any = false;
+        for (var cell = channel; cell < painted.Length && !any; cell += 4) {
+            any = painted[cell];
+        }
+        if (!any) {
             return 0f;
         }
         var first = Mathf.RoundToInt(from * Size);
