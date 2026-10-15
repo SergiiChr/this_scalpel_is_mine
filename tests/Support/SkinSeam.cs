@@ -39,4 +39,23 @@ public static class SkinSeam {
         }
         return worst;
     }
+
+    /// <summary>
+    /// Over one breath (at the 12 a minute of a patient under), the most the site and the trunk moved (meters), and
+    /// the most they moved apart: the site has to ride the trunk, or the drawn body slides out from under its skin.
+    /// </summary>
+    public static async Task<(float Rise, float Apart)> OverBreath(PatientBody body) {
+        var skeleton = body.FindChildren("*", "Skeleton3D", true, false).OfType<Skeleton3D>().First();
+        var torso = skeleton.FindBone("Torso");
+        var rest = body.SiteDef.Position;
+        var (rise, apart) = (0f, 0f);
+        for (var frame = 0; frame < 5 * Engine.PhysicsTicksPerSecond; frame++) {
+            await Frames.NextPhysics();
+            var trunk = skeleton.GlobalBasis * (skeleton.GetBoneGlobalPose(torso).Origin - skeleton.GetBoneGlobalRest(torso).Origin);
+            var site = body.Site.GetParentNode3D().GlobalBasis * (body.Site.Position - rest);
+            rise = Mathf.Max(rise, trunk.Length());
+            apart = Mathf.Max(apart, trunk.DistanceTo(site));
+        }
+        return (rise, apart);
+    }
 }

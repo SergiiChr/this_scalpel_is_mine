@@ -56,6 +56,12 @@ public static class ScenarioFlow {
                 if (step.Type is "sanitize" or "flip") {
                     await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
                 }
+                if (step.Type == "flip" && surgery.Patient.Body.SiteActive) {
+                    var (rise, apart) = await SkinSeam.OverBreath(surgery.Patient.Body);
+                    AssertBool(rise > 0.001f && apart < SkinSeam.Max)
+                        .OverrideFailureMessage($"{scenarioId}: turned to the site, it rides the breathing trunk: the trunk rose {rise * 1000f:0.0} mm, the site moved {apart * 1000f:0.0} mm apart from it")
+                        .IsTrue();
+                }
             }
             AssertBool(surgery.Finished)
                 .OverrideFailureMessage($"{scenarioId}: the surgery waits for the discharge: {surgery.Report?.Reason}").IsFalse();
