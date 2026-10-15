@@ -72,6 +72,8 @@ public partial class PatientBody {
         /// where the cut crosses the triangle's edge (in Index from Closed on, three triangles), and pointed, the
         /// lips meeting at its apex.</summary>
         public List<(int Apex, int Closed, int[] Pointed)> Ends { get; } = [];
+        /// <summary>Paired lips near an end and their remaining gap share, fixed until topology changes.</summary>
+        public List<(int[] Vertices, float Share)> EndTapers { get; } = [];
         /// <summary>Per triangle of Index, where its pieces start in RefinedIndex and how many indices they take.
         /// </summary>
         public List<(int Start, int Count)> RefinedOf { get; } = [];
@@ -332,7 +334,6 @@ public partial class PatientBody {
 
     private int _renderSteps;
     private bool _renderFold;
-    private bool _renderFootprint;
     private bool _renderTurnover;
     private Vector3[] _renderMoved = [];
     private readonly Vector3[][] _renderPoints = [[], [], []];
@@ -364,7 +365,6 @@ public partial class PatientBody {
         _renderSteps = Tissue.StepsDone;
         PlaceParticles();
         _renderFold = Tissue.HoldingFold;
-        _renderFootprint = Tissue.HasFoldFootprint;
         _renderTurnover = Tissue.TurningFlap;
         if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
         foreach (var k in _around) { _renderMoved[k] = Moved(k); }
@@ -559,8 +559,7 @@ public partial class PatientBody {
             if (anyCut && side[0] == side[1] && side[1] == side[2]) {
                 // At a cut's end only one edge is severed: the cut runs into this triangle and stops. Its lips run on
                 // from that edge and meet where the blade's path stops, so the opening narrows to a point there: a cut
-                // ends in a V, not square across the last spring it cut. The opening there is too narrow to show a
-                // wall; one drawn down from lips pulled about would stand up through the skin beside them.
+                // ends in a V, not square across the last spring it cut. Its cut faces taper to zero at that tip.
                 var edge = Array.FindIndex(cut, value => value);
                 if (gone[corners[0]] || gone[corners[1]] || gone[corners[2]]) {
                     continue;
@@ -665,6 +664,7 @@ public partial class PatientBody {
                 plan.OppositeLip[v] = opposite;
             }
         }
+        PlanEndTapers(plan);
         // Refine only faces bordering a cut. Interior skin keeps its original triangles, avoiding extra mesh
         // uploads while sewing a long incision. Curved lip midpoints are shared by the sheet and its wall.
         var midpointOf = plan.MidpointOf;
@@ -715,69 +715,6 @@ public partial class PatientBody {
     private static void SetLipInside(LayerPlan plan, int a, int b, int inside) {
         var key = (Math.Min(a, b), Math.Max(a, b));
         if (plan.LipInside.ContainsKey(key)) { plan.LipInside[key] = inside; }
-    }
-
-    /// <summary>
-    /// The vertex where a cut that crossed edge ab of triangle (a, b, c) at <paramref name="entry"/> (uv) stops inside
-    /// it (TissueSim.CutEndIn()), on along the blade's path from the edge. At least a quarter of the way across the
-    /// triangle, so a blade that stopped right past the edge (or started right at it) still ends its cut in a point,
-    /// not square across the edge. A tear, with no blade path, runs half way across along
-    /// <paramref name="cutDir"/>.
-    /// </summary>
-    private int PlanApex(LayerPlan plan, int a, int b, int c, int lipA, Vector2 cutDir) {
-        var (ua, ub, uc) = (plan.Uv[a], plan.Uv[b], plan.Uv[c]);
-        var entry = plan.Uv[lipA];
-        var traced = Tissue.CutEndIn(ua, ub, uc, entry);
-        // In uv, toward c's side of the edge.
-        var along = traced is { } end && end.DistanceSquaredTo(entry) > 1e-10f
-            ? (end - entry).Normalized()
-            : new Vector2(cutDir.X / SiteSize.X, cutDir.Y / SiteSize.Y).Normalized();
-        var edge = ub - ua;
-        if (Mathf.Sign(edge.Cross(along)) != Mathf.Sign(edge.Cross(uc - ua))) {
-            along = -along;
-        }
-        var across = AcrossTriangle(entry, along, ua, ub, uc);
-        var reach = traced is { } stop ? Mathf.Max(stop.DistanceTo(entry), across * MinApexShare) : across * 0.5f;
-        var at = entry + along * Mathf.Min(reach, across * 0.9f);
-        var weights = Barycentric(at, ua, ub, uc);
-        var v = plan.Owner.Count;
-        plan.Owner.Add(plan.Owner[c]);
-        plan.Other.Add(-1);
-        plan.Share.Add(0f);
-        plan.Slide.Add(-1);
-        plan.Uv.Add(at);
-        plan.Apex[v] = (a, b, c, weights);
-        return v;
-    }
-
-    /// <summary>Least share of the way across its triangle a cut's end lies, see PlanApex().</summary>
-    private const float MinApexShare = 0.25f;
-
-    /// <summary>How far (uv) from <paramref name="from"/> on edge ab the triangle (a, b, c) reaches along
-    /// <paramref name="along"/>.</summary>
-    private static float AcrossTriangle(Vector2 from, Vector2 along, Vector2 a, Vector2 b, Vector2 c) {
-        var nearest = float.PositiveInfinity;
-        foreach (var (p, q) in new[] { (b, c), (c, a) }) {
-            var side = q - p;
-            var det = along.Cross(side);
-            if (Mathf.Abs(det) < 1e-12f) {
-                continue;
-            }
-            var t = (p - from).Cross(side) / det;
-            var u = (p - from).Cross(along) / det;
-            if (t > 0f && u >= -0.001f && u <= 1.001f) {
-                nearest = Mathf.Min(nearest, t);
-            }
-        }
-        return float.IsPositiveInfinity(nearest) ? 0f : nearest;
-    }
-
-    /// <summary>Weights of p between a, b and c (uv).</summary>
-    private static Vector3 Barycentric(Vector2 p, Vector2 a, Vector2 b, Vector2 c) {
-        var area = (b - a).Cross(c - a);
-        var wb = (p - a).Cross(c - a) / area;
-        var wc = (b - a).Cross(p - a) / area;
-        return new Vector3(1f - wb - wc, wb, wc);
     }
 
     /// <summary>The vertex of particle k in the plan, added the first time it's used.</summary>
@@ -940,6 +877,8 @@ public partial class PatientBody {
             vertices[v] = p;
             normals[v] = _normal[k];
         }
+        TaperCutEnds(plan, vertices);
+        ConstrainLipArea(plan, vertices);
         foreach (var (v, (a, b, c, w)) in plan.Apex) {
             vertices[v] = vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z;
         }
@@ -948,6 +887,7 @@ public partial class PatientBody {
         var uvs = plan.Uv.ToArray();
         SmoothLips(layer, plan, vertices, uvs);
         ConstrainLipArea(plan, vertices);
+        FitCutEnds(plan, vertices);
         if (layer != 0) {
             for (var v = 0; v < vertexCount; v++) {
                 vertices[v] = UnderSkin(vertices[v], plan.Owner[v]);
@@ -998,17 +938,11 @@ public partial class PatientBody {
         for (var n = 0; n < plan.Centers.Count; n++) {
             refinedOwner[vertexCount + plan.Midpoints.Count + n] = plan.Owner[plan.Centers[n].A];
         }
-        // Each cut's end pointed where the skin around it rests, closed where it was pulled, spread or folded about
-        // (or anywhere while a grip folds the skin): drawn that far from its rest shape, the end's triangle has no
-        // room left for the point.
+        // Keep the V as its local triangle deforms. A distant fold or an arbitrary displacement threshold must
+        // not close the incision over the scalpel; fall back only when these actual faces would invert or overlap.
         var pointedFrom = new HashSet<int>();
-        foreach (var (apex, closed, _) in _renderFold || _renderFootprint || _renderTurnover ? [] : plan.Ends) {
-            var (a, b, c, _) = plan.Apex[apex];
-            var moved = Mathf.Max(_renderMoved[plan.Owner[a]].LengthSquared(),
-                Mathf.Max(_renderMoved[plan.Owner[b]].LengthSquared(), _renderMoved[plan.Owner[c]].LengthSquared()));
-            if (moved <= TissueSim.LiftedOff * TissueSim.LiftedOff) {
-                pointedFrom.Add(closed);
-            }
+        foreach (var (apex, closed, pointed) in plan.Ends) {
+            if (PointedEndFits(plan, vertices, apex, pointed)) { pointedFrom.Add(closed); }
         }
         var index = plan.RefinedIndex;
         if (pointedFrom.Count > 0) {
@@ -1026,6 +960,9 @@ public partial class PatientBody {
                     index.AddRange(pointed);
                 }
             }
+        }
+        foreach (var (apex, closed, _) in plan.Ends) {
+            if (pointedFrom.Contains(closed)) { JoinEndAtEdge(plan, index, refinedVertices, apex); }
         }
         if (layer == 0) {
             // As drawn, curved lips included: what lies under the skin is kept under these triangles.
@@ -1131,6 +1068,33 @@ public partial class PatientBody {
                         wallIndices.AddRange([start, lowEnd, end, start, lowStart, lowEnd]);
                     }
                 }
+            }
+        }
+        foreach (var (apex, closed, pointed) in plan.Ends) {
+            if (!pointedFrom.Contains(closed)) { continue; }
+            // Terminal cut faces taper to zero thickness at the apex. A quad would leave a vertical spike;
+            // omitting them entirely hides the shallow V against the intact tissue underneath it.
+            TipWall(pointed[1], apex, pointed[0]);
+            TipWall(apex, pointed[4], pointed[5]);
+        }
+        void TipWall(int a, int b, int inside) {
+            var start = refinedVertices[a];
+            var end = refinedVertices[b];
+            var lip = plan.Apex.ContainsKey(a) ? b : a;
+            var low = UnderSkin(refinedVertices[lip] - Outward(layer, plan.Owner[lip]) * thickness, plan.Owner[lip]);
+            var normal = (end - start).Cross(low - start).Normalized();
+            if (normal.IsZeroApprox()) { return; }
+            if (normal.Dot(start - refinedVertices[inside]) < 0f) { normal = -normal; }
+            var first = wallVertices.Count;
+            wallVertices.AddRange([start, end, low]);
+            wallNormals.AddRange([normal, normal, normal]);
+            wallUvs.AddRange([plan.Uv[a], plan.Uv[b], plan.Uv[lip]]);
+            wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White]);
+            wallDepths.AddRange([new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + thickness, 0f)]);
+            if ((low - start).Cross(end - start).Dot(normal) > 0f) {
+                wallIndices.AddRange([first, first + 1, first + 2]);
+            } else {
+                wallIndices.AddRange([first, first + 2, first + 1]);
             }
         }
         return (

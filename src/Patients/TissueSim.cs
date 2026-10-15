@@ -530,7 +530,7 @@ public sealed partial class TissueSim {
         Vector2? end = null;
         var at = entry;
         // A stroke is short straight segments, a few to a cell: follow them on from one to the next.
-        for (var hop = 0; hop < 16; hop++) {
+        for (var hop = 0; hop < _cutSegments.Count; hop++) {
             Vector2? next = null;
             foreach (var (from, to) in _cutSegments) {
                 if (Geometry2D.GetClosestPointToSegment(at, from, to).DistanceTo(at) > near
