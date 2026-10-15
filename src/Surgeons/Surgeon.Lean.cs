@@ -11,15 +11,17 @@ public partial class Surgeon {
     /// <summary>Farthest the torso bends forward over the patient (radians).</summary>
     internal const float MaxLean = 1f;
     /// <summary>Leaning in, the eyes stop this far (m, across the floor) short of right over the spot they look at: the
-    /// view goes down into the opening steeply, not straight down onto the back of the hand.</summary>
-    private const float LeanSetback = 0.05f;
+    /// view goes down into the opening steeply, not straight down onto the back of the hand, and stays within how far
+    /// down the eyes can look (<see cref="LookPitch"/>).</summary>
+    private const float LeanSetback = 0.1f;
     /// <summary>Leaning in keeps the eyes at least this far (m) above the skin they look at, clear of the drapes, the
     /// organs and the tools in an opening.</summary>
     internal const float LeanClearance = 0.3f;
     /// <summary>The hand off the patient this long (seconds), the surgeon straightens up: a hand passing over a gap
     /// between drapes or reaching off the side for a moment doesn't bob the view.</summary>
     private const float LeanGrace = 1f;
-    /// <summary>Walking away from the spot leant over faster than this (m/s) leaves the close zoom.</summary>
+    /// <summary>Stepping back while leaning in faster than this (m/s) leaves the close zoom. Only back: stepping along
+    /// the table keeps it.</summary>
     private const float LeaveSpeed = 0.3f;
     /// <summary>How fast the bend and the view follow (a share of the way each second).</summary>
     private const float LeanRate = 5f;
@@ -59,7 +61,8 @@ public partial class Surgeon {
     /// <summary>
     /// Finds what the view leans in on, bends toward it and turns the eyes down at it, unless the player looks
     /// themselves. Zooming out, the hand off the patient, crouching or inspecting straightens back up, the eyes looking
-    /// where they did before. A needle view keeps the bend under it, so letting go of Use tool comes back to it.
+    /// where they did before. A needle view over the patient keeps the bend under it, so letting go of Use tool comes back
+    /// to it.
     /// Walking away leaves the close zoom too.
     /// </summary>
     private void UpdateLean(bool canAct, float delta) {
@@ -79,7 +82,7 @@ public partial class Surgeon {
         if (!close || _leanLost > LeanGrace) {
             LeanSpot = null;
         }
-        if (LeanSpot is { } from && Flat(Velocity).Dot(Flat(GlobalPosition - from).Normalized()) > LeaveSpeed) {
+        if (LeanSpot is not null && Velocity.Dot(GlobalBasis.Z) > LeaveSpeed) {
             Zoom = 0;
             _zoomBefore = null;
             LeanSpot = null;
@@ -114,6 +117,4 @@ public partial class Surgeon {
     /// faster than <see cref="LeanSpeed"/>.</summary>
     private static float Ease(float lean, float to, float follow, float delta) =>
         Mathf.MoveToward(lean, Mathf.Lerp(lean, to, follow), LeanSpeed * delta);
-
-    private static Vector3 Flat(Vector3 v) => v with { Y = 0f };
 }

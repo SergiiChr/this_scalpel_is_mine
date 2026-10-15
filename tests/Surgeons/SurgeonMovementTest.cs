@@ -140,7 +140,8 @@ public class SurgeonMovementTest {
     /// sideways, so a mouse move to the right still moves the hand right on screen. Cutting from the skin across the
     /// opening holds the bend steady: it doesn't let go as the blade goes down or crosses the edge. Their partner sees
     /// them bent over the table. Walking away zooms back out and straightens them up, just as gradually. Looking up while
-    /// leaning in, the look is the player's; zooming out, they straighten up.
+    /// leaning in, the look is the player's. Stepping along the table stays zoomed in; the hand moved off the patient,
+    /// they straighten up but stay zoomed in.
     /// </summary>
     [TestCase]
     public async Task ZoomingInOverThePatientLeansIn() {
@@ -193,15 +194,23 @@ public class SurgeonMovementTest {
         driver.Note("cutting from the skin across the opening");
         var bent = me.Lean;
         var least = bent;
+        var spotHeights = new List<float>();
+        var inOpening = false;
         var cut = driver.PlayerWorksAlong([skin, opening - (me.GlobalBasis.Z * 0.05f)], 0);
         while (!cut.IsCompleted) {
             await Frames.Physics(1);
             AssertObject(me.LeanSpot).OverrideFailureMessage("still leaning in while cutting").IsNotNull();
             least = Mathf.Min(least, me.Lean);
+            spotHeights.Add(me.LeanSpot!.Value.Y);
+            inOpening |= hand.Lowered && me.SurfaceBelow(driver.Tip(hand), false).Open;
         }
         await cut;
+        AssertBool(inOpening).OverrideFailureMessage("the lowered blade went over the opening").IsTrue();
         AssertFloat(bent - least).OverrideFailureMessage($"the bend holds while the blade goes down and across the edge "
             + $"(dropped {bent - least:0.000} rad)").IsLess(0.05f);
+        var spotJump = spotHeights.Zip(spotHeights.Skip(1), (a, b) => Mathf.Abs(b - a)).Max();
+        AssertFloat(spotJump).OverrideFailureMessage($"and the spot it leans over follows the skin, not dropping into the "
+            + $"opening ({spotJump * 1000f:0.0} mm at most in a frame)").IsLess(0.003f);
 
         var onScreen = me.Camera.UnprojectPosition(driver.Tip(hand));
         await driver.PlayerReaches(driver.Tip(hand) + (me.GlobalBasis.X * 0.03f));
@@ -253,11 +262,18 @@ public class SurgeonMovementTest {
         await FollowView(me, puppet, 20);
         AssertFloat(me.Pitch).OverrideFailureMessage("looking up while leaning in, the look stays where the player put it")
             .IsEqualApprox(lookedAt, 0.001f);
-        SurgeryDriver.Tap(InputActions.Zoom);
-        driver.Note("zooming out");
-        await FollowView(me, puppet, 90);
-        AssertObject(me.LeanSpot).OverrideFailureMessage("zoomed out, the lean lets go").IsNull();
+        PlayerInput.Action(InputActions.MoveLeft);
+        driver.Note("stepping along the table");
+        await FollowView(me, puppet, 15);
+        PlayerInput.Action(InputActions.MoveLeft, false);
+        AssertInt(me.Zoom).OverrideFailureMessage("stepping along the table stays zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
+        await driver.PlayerReaches(me.GlobalPosition + (me.GlobalBasis.Z * -0.2f));
+        driver.Note("moving the hand off the patient, in front of the body");
+        AssertBool(me.SurfaceBelow(driver.Tip(hand), false).Soft).OverrideFailureMessage("the hand is off the patient").IsFalse();
+        await FollowView(me, puppet, 120);
+        AssertObject(me.LeanSpot).OverrideFailureMessage("the hand off the patient, the lean lets go").IsNull();
         AssertFloat(me.Lean).OverrideFailureMessage($"and the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
+        AssertInt(me.Zoom).OverrideFailureMessage("still zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
         AssertFloat(me.Pitch).OverrideFailureMessage("the look still where the player put it").IsEqualApprox(lookedAt, 0.001f);
         driver.Budget.Check(localOverride: BudgetOverride);
     }
