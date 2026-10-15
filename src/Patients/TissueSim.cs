@@ -529,6 +529,9 @@ public sealed partial class TissueSim {
         var near = 0.002f / Math.Max(ResX, ResY);
         Vector2? end = null;
         var at = entry;
+        var edge = b - a;
+        var inward = new Vector2(-edge.Y, edge.X).Normalized();
+        if (inward.Dot(c - entry) < 0f) { inward = -inward; }
         // A stroke is short straight segments, a few to a cell: follow them on from one to the next.
         for (var hop = 0; hop < _cutSegments.Count; hop++) {
             Vector2? next = null;
@@ -539,9 +542,11 @@ public sealed partial class TissueSim {
                 }
                 // The way on is whichever end of the piece lies further from where the path has got to, and only
                 // onward: the piece it came along is near here too.
-                var far = start.DistanceSquaredTo(at) > finish.DistanceSquaredTo(at) ? start : finish;
-                if (far.DistanceSquaredTo(entry) > at.DistanceSquaredTo(entry) + near * near
-                    && (next is null || far.DistanceSquaredTo(entry) > next.Value.DistanceSquaredTo(entry))) {
+                var far = (start - entry).Dot(inward) > (finish - entry).Dot(inward) ? start : finish;
+                // Skin can recoil while the blade is held still and the path can return through the entry
+                // edge. Its furthest penetration is the end of the slit, not a point farther along that edge.
+                if ((far - at).Dot(inward) > near * 0.1f
+                    && (next is null || (far - next.Value).Dot(inward) > 0f)) {
                     next = far;
                 }
             }
