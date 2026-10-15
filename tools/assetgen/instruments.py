@@ -106,7 +106,7 @@ def _needle(m: Model, length: float) -> None:
     # Its plane is vertical when the holder is horizontal: the curve hangs below the jaws and its sharp tangent
     # points down and forward into the aiming point, like a real loaded needle holder.
     arc = [(0.0, center_y + radius * np.cos(t), center_z + radius * np.sin(t)) for t in np.linspace(tip_angle, 2.7, 14)]
-    m.add("SutureNeedle", tube(arc, [(0.0007, 0.0007)] * len(arc), ring=6), "chrome", (0.0, 0.0, -length), "JawA")
+    m.add("SutureNeedle", tube(arc, [(0.0007, 0.0007)] * len(arc), ring=6, up=(1.0, 0.0, 0.0)), "chrome", (0.0, 0.0, -length), "JawA")
 
 
 def _retractor(m: Model, length: float) -> None:
@@ -119,6 +119,7 @@ def _retractor(m: Model, length: float) -> None:
         [(0.0, 0.0, -length * 0.55), (0.0, 0.0, -length + 0.004), (0.0, -0.001, -length), (0.0, -0.004, -length + 0.0005), (0.0, -0.005, -length + 0.003)],
         [(wire, wire)] * 4 + [(0.0002, 0.0002)],
         ring=8,
+        up=(1.0, 0.0, 0.0),
         smooth=4,
     )
     m.add("Hook", hook, "chrome")
@@ -164,6 +165,7 @@ def _gelpi(m: Model, length: float) -> None:
             [(side * (half - 0.001), GELPI_DROP, end), (side * (half + 0.0005), GELPI_DROP - 0.002, -length), (side * half, 0.0, -length)],
             [(0.0016, 0.0016), (0.0012, 0.0012), (0.0003, 0.0003)],
             ring=8,
+            up=(1.0, 0.0, 0.0),
             smooth=3,
         )
         m.add(name, merge(arm, point), "steel", (0.0, GELPI_DROP, joint))
