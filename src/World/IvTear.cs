@@ -9,16 +9,16 @@ public partial class IvTear : Node3D {
     /// <summary>The middle of the tear: between where the catheter went in and its hub, which tore the skin with it.
     /// </summary>
     private const float Middle = -0.008f;
-    private static readonly Color RimColor = new(0.72f, 0.32f, 0.3f);
+    private static readonly Color RimColor = new(0.62f, 0.2f, 0.18f);
     private static readonly Color SlitColor = new(0.36f, 0.03f, 0.04f);
 
     public void Build(float armRadius) {
-        Add(Ragged(armRadius, 0.012f, 0.005f, 0.0004f, 1.3f), RimColor);
-        Add(Ragged(armRadius, 0.009f, 0.0016f, 0.0008f, 4.1f), SlitColor);
+        Add(Ragged(armRadius, 0.014f, 0.006f, 0.0004f, 1.3f), RimColor);
+        Add(Ragged(armRadius, 0.011f, 0.002f, 0.0008f, 4.1f), SlitColor);
     }
 
     private void Add(Mesh mesh, Color color) =>
-        AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = Materials.ToonShaded(color, 0.3f, false, 0.4f) });
+        AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = Materials.ToonShaded(color, 0.3f, false, 0.15f) });
 
     /// <summary>A flat oval on the skin, <paramref name="halfLength"/> along the arm and <paramref name="halfWidth"/>
     /// across it, <paramref name="lift"/> off it, its edge jagged: each edge point pulled in by a different amount

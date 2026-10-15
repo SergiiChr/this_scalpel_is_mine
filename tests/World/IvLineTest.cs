@@ -12,7 +12,7 @@ namespace Scalpel.Tests.World;
 [GodotArgs("--fixed-fps", "60")]
 public class IvLineTest {
     // The frame the surgeon walks the catheter from the tray to the arm also goes over in IvBagTest, without the tubing.
-    private static readonly BudgetAllowance BudgetOverride = new("carrying the catheter to the arm takes up to 8-9 ms of the game's own work here", 2f);
+    private static readonly BudgetAllowance BudgetOverride = new("connecting the line and carrying the catheter to the arm take up to 11 ms of the game's own work here, as picking the catheter up did before the line (IvBagTest)", 2.5f);
 
     /// <summary>How far (meters) the tubing may go into skin, furniture or a surgeon: where it bends around a curve, the
     /// straight stretch between two of its points cuts the corner by about this much.</summary>
@@ -44,7 +44,13 @@ public class IvLineTest {
                     "in_arm" => shots.CaptureAt(keyFrame, description, line.Dressing!.GlobalPosition, 0.3f),
                     "torn" => shots.CaptureAt(keyFrame, description, line.Tear!.GlobalPosition, 0.2f),
                     "loose_end" => shots.CaptureAt(keyFrame, description, line.Points[^1], 0.4f),
-                    _ => shots.CaptureAt(keyFrame, description, Middle(line), 1.6f),
+                    // Square onto the loop, from over the table: the wall is behind the stand.
+                    "clipped" => shots.CaptureOblique(keyFrame, description, Center(line),
+                        (line.Points[^1] - line.Points[0]).Cross(Vector3.Up), 1.5f),
+                    // Level views: one from above at this distance would be over the ceiling.
+                    "pushed" => ShowingLegs(driver.Me, () => shots.CaptureFacing(keyFrame, description,
+                        driver.Me.GlobalPosition + new Vector3(0f, 0.4f, 0f), Vector3.Right, 1.4f)),
+                    _ => shots.CaptureOblique(keyFrame, description, Middle(line), driver.Me.GlobalPosition - Middle(line), 1.6f),
                 };
             }
             driver.Budget.Clear();
@@ -183,6 +189,20 @@ public class IvLineTest {
 
     /// <summary>The middle of the tubing, between its ends.</summary>
     private static Vector3 Middle(IvLine line) => (line.Points[0] + line.Points[^1]) * 0.5f;
+
+    /// <summary>The middle of the whole tubing, its loop included: <see cref="Middle"/> is between its ends.</summary>
+    private static Vector3 Center(IvLine line) => line.Points.Aggregate(Vector3.Zero, (sum, point) => sum + point) / line.Points.Count;
+
+    /// <summary>Runs <paramref name="capture"/> with the local surgeon's body shown: first person hides it, and the
+    /// shot is of the tubing against the legs.</summary>
+    private static async Task ShowingLegs(Surgeon surgeon, Func<Task> capture) {
+        surgeon.BodyModel.Visible = true;
+        try {
+            await capture();
+        } finally {
+            surgeon.BodyModel.Visible = false;
+        }
+    }
 
     private static void AssertClear(IvLine line, Surgery surgery, string when) {
         var clipping = Clipping(line, surgery);
