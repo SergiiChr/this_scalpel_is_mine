@@ -807,6 +807,8 @@ def test(arguments: list[str]) -> int:
             (KEY_FRAMES / FAILED).write_text(json.dumps(folders, indent=2) + "\n")
         else:
             (KEY_FRAMES / PASSED).touch()
+    elif options.key_frames and not failed and not options.run_broken and has_key_frames(KEY_FRAMES):
+        (KEY_FRAMES / FOCUSED).touch()
     return 1 if failed else 0
 
 
@@ -820,6 +822,8 @@ BASELINE = ROOT / "tests" / "KeyFrames"
 # before they go in.
 PASSED = "passed"
 FAILED = "failed"
+# Left by a focused run with key frames that passed: a feature branch may add or replace its key frames in the baseline.
+FOCUSED = "focused"
 REVIEW = BUILD / "review"
 
 
@@ -852,7 +856,13 @@ def generate_baseline(arguments: list[str]) -> int:
         "keeps the key frames and views they didn't take: review those suites' sheets first.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression")
+    parser.add_argument("--focused", action="store_true", help="add or replace the key frames of the last focused run that passed")
     parsed = parser.parse_args(arguments)
+    if parsed.focused:
+        if not (KEY_FRAMES / FOCUSED).exists():
+            print("[ERROR] The baseline is left as it was: the last run wasn't a focused run with key frames that passed.", file=sys.stderr)
+            return 1
+        return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), "--focused")
     if not parsed.use_latest_set:
         key_frame_run()
     # Key frames of a partial run never become what later reviews compare against.

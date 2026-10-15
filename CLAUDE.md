@@ -42,7 +42,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow the `review-key-frames` skill.
-  `--focused` reviews the last focused run with key frames instead, only in the folders it took.
+  `--focused` reviews the last focused run with key frames instead, only in the folders it took, and
+  `generate_baseline --focused` adds or replaces its key frames in the baseline.
 - `./build.py generate_baseline`: the same full regression, then writes the key frames that differ into the baseline
   (every key frame the first time); unchanged ones keep their files. After a regression with failed suites it keeps
   the baseline's key frames and views those suites didn't take, in their folders. `--use-latest-set` takes the key
@@ -66,7 +67,7 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - Follow Development in [docs/RELEASE.md](docs/RELEASE.md): lint, the affected tests, and for a user-visible change a
   focused key frame review whose sheets go into the handoff. Fix failures and rerun; never hand off a failing run as
   ready.
-- Feature PRs don't commit `tests/KeyFrames`: only release branches update the baseline.
+- Commit the reviewed key frames of the suites the change ran (`./build.py generate_baseline --focused`).
 
 ## Test structure and policy
 
@@ -146,14 +147,14 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   keyFrame)` so the text is written once.
 - Review the frames for continuity, clipping, mesh intersections, material consistency, tool contact, animation
   transitions and UI legibility. Screenshot comparisons may flag regressions but don't replace that review.
-- `tests/KeyFrames` is the committed baseline the review compares against: JPEGs of the key frames of the last
-  reviewed full regression. It is updated only by `./build.py generate_baseline` on a release branch, which leaves it
-  alone after a focused run, and only after every sheet the report lists looks right.
+- `tests/KeyFrames` is the committed baseline the review compares against: JPEGs of reviewed key frames. Feature
+  branches add or replace theirs with `./build.py generate_baseline --focused`; release branches write the full
+  regression's with `./build.py generate_baseline`. Either only after every sheet the report lists looks right.
 - Rerun flaky tests individually and use the successful run as the new baseline: the full regression does this itself
   (above). Allow failure in the general baseline update flow. However review the failures manually and update the
   baseline only if the case is not visibly broken: open the sheets of every suite that still failed, and fix it first
   when one shows a defect.
-- Never commit key frames of a focused run, of a case marked broken, or ones that show a defect; never edit the folder
+- Never commit key frames of a failed run, of a case marked broken, or ones that show a defect; never edit the folder
   by hand. A change with no missing, changed or new key frames leaves it untouched.
 - Key frames are taken and compared in local runs only, never on CI.
   They are always rendered in a virtual display by the software renderer (`xvfb-run`), without film grain, so machines

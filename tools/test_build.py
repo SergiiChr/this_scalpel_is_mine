@@ -266,6 +266,15 @@ class CoverageReportingTest(unittest.TestCase):
             self.assertEqual(build.generate_baseline(["--use-latest-set"]), 0)
         self.assertEqual(tool.call_args.args[0], "update")
 
+    def test_focused_baseline_needs_a_focused_run_that_passed(self) -> None:
+        taken, _ = self.key_frames(passed=True)
+        with patch.object(build, "keyframes_tool", return_value=0) as tool, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(build.generate_baseline(["--focused"]), 1)
+            tool.assert_not_called()
+            (taken / build.FOCUSED).touch()
+            self.assertEqual(build.generate_baseline(["--focused"]), 0)
+        self.assertIn("--focused", tool.call_args.args)
+
     def test_baseline_run_that_fails_leaves_the_baseline_alone(self) -> None:
         taken, _ = self.key_frames(passed=True)
 

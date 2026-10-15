@@ -93,6 +93,19 @@ class KeyFramesTest(unittest.TestCase):
             path.unlink()
         self.assertEqual(keyframes.report(self.run_frames, self.baseline, self.root / "review", False, "focused")[1], 1)
 
+    def test_focused_update_only_adds_and_replaces(self) -> None:
+        self.take("00_cut")
+        self.take("01_stitch")
+        scene(self.run_frames / "suture" / "00_knot_top.png")
+        keyframes.update(self.run_frames, self.baseline)
+        shutil.rmtree(self.run_frames)
+        self.take("01_stitch", line=3)
+        self.take("02_staple")
+        self.assertEqual(keyframes.update(self.run_frames, self.baseline, focused=True), 2)
+        self.assertEqual({name for _, name in keyframes.key_frames(self.baseline)}, {"cut", "stitch", "staple", "knot"})
+        descriptions = json.loads((self.baseline / "scalpel" / keyframes.DESCRIPTIONS).read_text())
+        self.assertIn("00_cut_top.jpg", descriptions, "a key frame the run didn't take keeps its description")
+
     def test_update_writes_only_what_differs(self) -> None:
         self.take("00_cut")
         self.take("01_close")
