@@ -138,6 +138,8 @@ public partial class Patient : Node3D {
     /// <summary>The anesthesia reversal stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears
     /// off.</summary>
     internal bool AnesthesiaStopped { get; private set; }
+    /// <summary>Shares of the right anesthetic dose given since <see cref="AnesthesiaStopped"/>.</summary>
+    private float _anestheticSinceStop;
     public bool IvSet { get; private set; }
     /// <summary>The catheter went into a vein (set with IvSet). Missed, the line still sticks but nothing runs through
     /// it.</summary>
@@ -716,8 +718,12 @@ public partial class Patient : Node3D {
             }
         }
         var fresh = Drugs.Give(def, share, def.Onset * (route == DrugRoute.Direct ? DrugDef.DirectOnset : 1.5f));
-        // A new dose of an anesthetic puts the patient under again, kept topped up as before.
-        AnesthesiaStopped &= def.Peak.Anesthesia <= 0f;
+        if (AnesthesiaStopped && def.Peak.Anesthesia > 0f) {
+            // An effective dose given since puts the patient under again, kept topped up as before; leftovers trickling
+            // in from a bag or a syringe don't. Syringes push a dose in many small shares.
+            _anestheticSinceStop += share;
+            AnesthesiaStopped = _anestheticSinceStop < DrugDef.DoseEffective;
+        }
         if (!fresh) {
             return;
         }
@@ -831,6 +837,7 @@ public partial class Patient : Node3D {
             return;
         }
         AnesthesiaStopped = true;
+        _anestheticSinceStop = 0f;
         Session.Announce("The patient is coming round.");
     }
 

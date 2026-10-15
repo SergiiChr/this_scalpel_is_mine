@@ -736,6 +736,7 @@ public partial class Surgery : Node3D {
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void RequestComfort() => Patient.Reassure();
+
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void RequestDischarge() {
         if (Running) {
@@ -783,6 +784,7 @@ public partial class Surgery : Node3D {
     public void Smoke(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestSmoke, surgeon.Active);
 
     public void ComfortPatient() => RpcId(Net.HostId, MethodName.RequestComfort);
+
     /// <summary>The discharge on the patient card is signed: the host settles how the surgery went.</summary>
     public void SignDischarge() => RpcId(Net.HostId, MethodName.RequestDischarge);
 

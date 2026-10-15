@@ -4,10 +4,12 @@ namespace Scalpel.Tests.Scenarios;
 /// How the patient leaves the table, scored at the discharge. Put under, then given the anesthesia reversal,
 /// the patient comes round and signed out awake scores; signed out still asleep doesn't. Blood wiped off the skin with
 /// gauze scores even with a smear left on the border of the site, where a swab barely reaches; left on, it doesn't.
-/// With key frames also the toast as the reversal works.
+/// A new induction dose after the reversal puts the patient under again for good. With key frames also the toast as the
+/// reversal works.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_anesthesia_reversal"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_anesthesia_reversal"), TestCategory("tool_vial_propofol"),
+ TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class AftercareTest {
     private const string Awake = "Brought the patient round from anesthesia before the discharge";
@@ -59,6 +61,30 @@ public class AftercareTest {
         RenderingServer.RenderLoopEnabled = true;
     }
 
+    /// <summary>Woken by the reversal, a new induction dose puts the patient under again and keeps them there.
+    /// </summary>
+    [TestCase]
+    public async Task NewDoseAfterTheReversalPutsThePatientUnderAgain() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("hand_stitch");
+        var patient = driver.Patient;
+        SurgeryState.PatientIsAsleep(patient);
+        await Frames.Until(() => patient.WentUnder && !patient.Vitals.IsAwake, 20f);
+        await driver.PlayerGivesDrug("vial_anesthesia_reversal", driver.DoseMl("vial_anesthesia_reversal"), driver.IvOrVein);
+        AssertBool(await Frames.Until(() => patient.Vitals.IsAwake, Patient.WakeSeconds + 10f))
+            .OverrideFailureMessage($"the reversal wakes the patient: {driver.Recent()}").IsTrue();
+        await driver.PlayerGivesDrug("vial_propofol", driver.DoseMl("vial_propofol"), driver.IvOrVein);
+        AssertBool(await Frames.Until(() => patient.Vitals.IsUnder, 30f))
+            .OverrideFailureMessage($"a new dose puts the patient under again: {driver.Recent()}").IsTrue();
+        AssertBool(patient.AnesthesiaStopped).OverrideFailureMessage("and it's topped up again").IsFalse();
+        await Frames.Seconds(Patient.WakeSeconds * 2f);
+        AssertBool(patient.Vitals.IsUnder)
+            .OverrideFailureMessage($"kept under past the wake-up time (anesthesia {patient.Vitals.Anesthesia:0.00})").IsTrue();
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task SkinWipedCleanBeforeTheDischargeScores(bool wiped) {
@@ -71,9 +97,10 @@ public class AftercareTest {
         var spot = new Vector2(0.5f, 0.5f);
         var radius = body.MetersToUv(0.03f);
         SurgeryState.SkinIsBloody(patient, spot, radius);
+        var bloody = body.SkinBlood();
         // A smear on the border, under the drape's edge: it's left out, so it doesn't stand in the way.
         SurgeryState.SkinIsBloody(patient, new Vector2(PatientBody.CleanMargin * 0.5f, 0.5f), PatientBody.CleanMargin * 0.4f);
-        var bloody = body.SkinBlood();
+        AssertFloat(body.SkinBlood()).OverrideFailureMessage("the smear on the border doesn't count").IsEqual(bloody);
         AssertFloat(bloody).OverrideFailureMessage("the stain is blood to clean").IsGreater(Surgery.SkinBloodSeen);
         await Frames.Seconds(Surgery.StatusInterval + 0.1f);
         if (wiped) {
