@@ -100,6 +100,8 @@ if [[ "$mode" == lobby ]]; then
 	client=$!
 	finished "$client" net_lobby_client
 	finished "$host" net_lobby_host
+	expect "$logs/net_lobby_client.log" "\[client\] the client waits for the host in an empty lobby"
+	expect "$logs/net_lobby_host.log" "\[host\] the host still reads the report while the client waits"
 	for side in host client; do
 		expect "$logs/net_lobby_$side.log" "\[$side\] back in the lobby, still connected"
 		expect "$logs/net_lobby_$side.log" "\[$side\] the next surgery is appendectomy with both surgeons"

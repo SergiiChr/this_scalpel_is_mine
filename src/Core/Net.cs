@@ -266,17 +266,20 @@ public partial class Net : Node {
             RunModifiersToVariant());
     }
 
-    /// <summary>Everyone back to the lobby after a report, with fresh quirks, still connected. Any player can ask; the
-    /// first ask after a session wins.</summary>
-    public void ReturnToLobby() => RpcId(HostId, MethodName.RequestLobby);
-
-    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void RequestLobby() {
-        if (IsHost && InSession) {
+    /// <summary>Back to the lobby after a report, still connected. The host takes everyone there, with fresh quirks; a
+    /// client who leaves the report first waits there alone (<see cref="WaitingForHost"/>) until the host comes.
+    /// </summary>
+    public void ReturnToLobby() {
+        if (!IsHost) {
+            GetTree().ChangeSceneToFile(LobbyScene);
+        } else if (InSession) {
             ChangeScenario(ScenarioId);
             Rpc(MethodName.GoToLobby);
         }
     }
+
+    /// <summary>A client in the lobby while the host is still on the report.</summary>
+    public bool WaitingForHost => InSession && !IsHost;
 
     public void SetReady(bool value) => RpcId(HostId, MethodName.RequestReady, value);
 

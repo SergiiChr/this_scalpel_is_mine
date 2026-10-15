@@ -16,8 +16,9 @@ public class NetworkTest {
         Run("pinch", "the host sees a client's forceps, pressed while lifted, come down and take the bullet");
 
     [TestCase]
-    public void HostAndClientGoBackToTheLobbyTogetherAndPlayAnotherScenario() =>
-        Run("lobby", "after the report both players are back in the lobby, connected, and play the host's next pick");
+    public void ClientWaitsInTheLobbyForTheHostThenBothPlayAnotherScenario() =>
+        Run("lobby", "a client off the report first waits in an empty lobby; then both are back in the lobby, "
+            + "connected, and play the host's next pick");
 
     [TestCase]
     public void TenSecondClientStallKeepsSessionAndPausesInput() =>

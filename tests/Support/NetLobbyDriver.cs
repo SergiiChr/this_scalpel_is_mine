@@ -1,9 +1,10 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>
-/// After the game: the host signs the patient out, which ends the surgery for both, and the client takes everyone back
-/// to the lobby from the report. Both must land there still connected, and the host picks another scenario, which both
-/// play next without joining again.
+/// After the game: the host signs the patient out, which ends the surgery for both. The client leaves the report first
+/// and waits alone in an empty lobby while the host still reads the report; then the host takes everyone back to the
+/// lobby. Both must land there still connected, and the host picks another scenario, which both play next without
+/// joining again.
 /// </summary>
 public partial class NetLobbyDriver : NetSession {
     private const int Port = 24596;
@@ -23,13 +24,18 @@ public partial class NetLobbyDriver : NetSession {
             await SignOut(surgery);
         }
         await Until(() => surgery.Report is not null, "the post-op report", () => $"finished={surgery.Finished}");
-        // The client asks: either player takes both back.
-        if (!IsHost) {
+        if (IsHost) {
+            await Until(() => _heard.Contains("waiting"), "the client waiting in the lobby",
+                () => $"heard [{string.Join(", ", _heard)}]");
+            Check(Surgery.Current == surgery && surgery.Hud.Overlay is not null && net.Roster.Count == 2,
+                "the host still reads the report while the client waits", () => $"roster={net.Roster.Count}");
             SurgeryDriver.Click(ButtonIn(surgery.Hud, "Back to lobby"));
+        } else {
+            await WaitForHost(surgery);
         }
         string lobbySeen() => $"scene {GetTree().CurrentScene?.Name}, online={net.IsOnline}, roster={net.Roster.Count}";
-        await Until(() => GetTree().CurrentScene is Lobby && net.Roster.Count == 2, "both players back in the lobby",
-            lobbySeen);
+        await Until(() => GetTree().CurrentScene is Lobby && !net.InSession && net.Roster.Count == 2,
+            "both players back in the lobby", lobbySeen);
         Check(net.IsOnline && net.Silence(IsHost ? Partner() : Net.HostId) < 1f, "back in the lobby, still connected",
             lobbySeen);
         if (IsHost) {
@@ -62,6 +68,22 @@ public partial class NetLobbyDriver : NetSession {
             await Wait(1.0);
         }
         GetTree().Quit();
+    }
+
+    /// <summary>Client: leaves the report for an empty lobby that only offers to exit, until the host comes.</summary>
+    private async Task WaitForHost(Surgery surgery) {
+        var net = Net.Instance;
+        SurgeryDriver.Click(ButtonIn(surgery.Hud, "Back to lobby"));
+        await Until(() => GetTree().CurrentScene is Lobby, "the client's lobby",
+            () => $"scene {GetTree().CurrentScene?.Name}");
+        var lobby = GetTree().CurrentScene;
+        var buttons = lobby.FindChildren("*", nameof(Button), true, false).OfType<Button>().Select(button => button.Text);
+        var waiting = lobby.FindChildren("*", nameof(Label), true, false).OfType<Label>()
+            .Any(label => label.Text == "Waiting for host to finish the game.");
+        Check(net.WaitingForHost && net.IsOnline && waiting && buttons.SequenceEqual(["Exit lobby"]),
+            "the client waits for the host in an empty lobby",
+            () => $"waiting={net.WaitingForHost}, notice={waiting}, buttons [{string.Join(", ", buttons)}]");
+        RpcId(Net.HostId, MethodName.Told, "waiting");
     }
 
     /// <summary>Host: takes the patient card off its hook and holds Interact until the signature ends the surgery.</summary>

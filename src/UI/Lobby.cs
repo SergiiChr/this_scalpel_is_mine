@@ -10,6 +10,7 @@ public partial class Lobby : Control {
     private Button _ready = null!;
     private Button? _start;
     private OptionButton? _scenarioPicker;
+    private bool _waiting;
 
     private static Net Net => Net.Instance;
 
@@ -20,6 +21,13 @@ public partial class Lobby : Control {
         var box = Ui.VBox(16);
         box.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect, LayoutPresetMode.Minsize, 48);
         AddChild(box);
+        // Empty until the host leaves the report too, which opens the lobby anew for everyone.
+        _waiting = Net.WaitingForHost;
+        if (_waiting) {
+            box.AddChild(Ui.Label("Waiting for host to finish the game.", 24, Ui.Dim));
+            box.AddChild(Ui.Button("Exit lobby", Net.BackToMenu));
+            return;
+        }
         _header = Ui.VBox(6);
         box.AddChild(_header);
         if (Net.IsHost) {
@@ -55,6 +63,9 @@ public partial class Lobby : Control {
     }
 
     public override void _ExitTree() {
+        if (_waiting) {
+            return;
+        }
         Net.RosterChanged -= Refresh;
         Net.ScenarioChanged -= Refresh;
     }
