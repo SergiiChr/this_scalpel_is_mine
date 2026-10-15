@@ -18,8 +18,13 @@ public sealed record TimelineEntry(float Time, string Text, int Points, bool Goo
 public partial class Scoring : Node {
     private const double ThrottleSeconds = 4.0;
     private const int LogSize = 8;
+    /// <summary>Timeline lines kept: a game's report is saved in the history, so a long, messy surgery can't swell it.
+    /// </summary>
+    internal const int TimelineSize = 300;
 
     private readonly Dictionary<string, double> _lastTime = [];
+    /// <summary>The timeline reached <see cref="TimelineSize"/> and says so.</summary>
+    private bool _full;
 
     public int Points { get; private set; }
     /// <summary>Scoring id -> what it added up to.</summary>
@@ -30,7 +35,8 @@ public partial class Scoring : Node {
     public List<TimelineEntry> Timeline { get; } = [];
 
     /// <summary>Scores an action. <paramref name="throttled"/>: repeated calls within a few seconds count once (for
-    /// things that fire every frame). <paramref name="note"/> replaces the scoring text on the timeline.</summary>
+    /// things that fire every frame). <paramref name="note"/> replaces the scoring text on the timeline and is kept
+    /// there however long it is: the steps' outcome at the discharge.</summary>
     public void Add(string id, bool throttled = false, string? note = null) {
         if (!Multiplayer.IsServer() || !Db.Scoring.HasSection(id)) {
             return;
@@ -49,7 +55,7 @@ public partial class Scoring : Node {
         }
         entry.Points += value;
         entry.Count++;
-        Log(note ?? entry.Text, value, value >= 0);
+        Log(note ?? entry.Text, value, value >= 0, note is not null);
         Recent.Add((entry.Text, value));
         if (Recent.Count > LogSize) {
             Recent.RemoveAt(0);
@@ -67,12 +73,22 @@ public partial class Scoring : Node {
         }
     }
 
-    private void Log(string text, int points, bool good) {
+    /// <summary>Adds a timeline line. Past <see cref="TimelineSize"/> lines only <paramref name="kept"/> ones go on.
+    /// </summary>
+    private void Log(string text, int points, bool good, bool kept = false) {
         if (Timeline.Count > 0 && Timeline[^1] is var last && last.Text == text) {
             Timeline[^1] = last with { Points = last.Points + points, Count = last.Count + 1 };
             return;
         }
-        Timeline.Add(new TimelineEntry(Surgery.Current?.Elapsed ?? 0f, text, points, good));
+        var time = Surgery.Current?.Elapsed ?? 0f;
+        if (!kept && Timeline.Count >= TimelineSize) {
+            if (!_full) {
+                _full = true;
+                Timeline.Add(new TimelineEntry(time, "More happened than the timeline holds.", 0, false));
+            }
+            return;
+        }
+        Timeline.Add(new TimelineEntry(time, text, points, good));
     }
 
     /// <summary>Stars for a final score: none for a failed surgery.</summary>

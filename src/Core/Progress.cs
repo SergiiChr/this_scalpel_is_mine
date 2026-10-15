@@ -9,11 +9,13 @@ public sealed record KnownHost(string Name, string Ip, int Port);
 public sealed record PlayedGame(string PlayedAt, SurgeryReport Report);
 
 /// <summary>
-/// Save file: unlocked quirks, best scenario results, played games, known hosts. Stored in user://save.cfg and read on first use.
-/// The host's save is what counts for scenario progress. Quirk unlocks and played games are always local.
+/// Save file: unlocked quirks, best scenario results, known hosts. Stored in user://save.cfg and read on first use.
+/// The host's save is what counts for scenario progress. Quirk unlocks are always local, and so are played games, kept
+/// in user://history.cfg: written only as a game ends, so the other saves don't rewrite its reports.
 /// </summary>
 public static class Progress {
-    internal const string Path = "user://save.cfg";
+    private const string Path = "user://save.cfg";
+    internal const string HistoryPath = "user://history.cfg";
     /// <summary>Played games kept: the oldest one goes when another is recorded past it.</summary>
     internal const int HistorySize = 100;
 
@@ -25,6 +27,7 @@ public static class Progress {
     private static readonly List<PlayedGame> Games = [];
 
     static Progress() {
+        LoadHistory();
         var file = new ConfigFile();
         if (file.Load(Path) != Error.Ok) {
             return;
@@ -33,10 +36,6 @@ public static class Progress {
         UnlockedQuirks.UnionWith(file.GetValue("codex", "unlocked", Array.Empty<string>()).AsStringArray());
         foreach (var (id, stars) in file.GetValue("scenarios", "best_stars", new GodotDictionary()).AsGodotDictionary()) {
             BestStarsById[id.AsString()] = stars.AsInt32();
-        }
-        foreach (var game in file.GetValue("history", "games", new Godot.Collections.Array()).AsGodotArray()) {
-            var entry = game.AsGodotDictionary();
-            Games.Add(new PlayedGame(entry.String("played_at"), SurgeryReport.FromVariant(entry["report"].AsGodotDictionary())));
         }
         foreach (var host in file.GetValue("network", "known_hosts", new Godot.Collections.Array()).AsGodotArray()) {
             var entry = host.AsGodotDictionary();
@@ -65,11 +64,6 @@ public static class Progress {
             stars[id] = best;
         }
         file.SetValue("scenarios", "best_stars", stars);
-        var games = new Godot.Collections.Array();
-        foreach (var game in Games) {
-            games.Add(new GodotDictionary { ["played_at"] = game.PlayedAt, ["report"] = game.Report.ToVariant() });
-        }
-        file.SetValue("history", "games", games);
         var hosts = new Godot.Collections.Array();
         foreach (var host in Hosts) {
             hosts.Add(new GodotDictionary { ["name"] = host.Name, ["ip"] = host.Ip, ["port"] = host.Port });
@@ -96,20 +90,38 @@ public static class Progress {
         Save();
     }
 
-    /// <summary>When set, games are recorded as played at this time whatever the system clock says: tests set it so
-    /// the history reads the same in every run.</summary>
-    internal static string? FixedPlayedAt { get; set; }
-
-    public static void RecordGame(SurgeryReport report) {
-        Games.Insert(0, new PlayedGame(FixedPlayedAt ?? Time.GetDatetimeStringFromSystem(false, true), report));
+    /// <summary>Adds a game to the history as played now, or at <paramref name="playedAt"/>.</summary>
+    public static void RecordGame(SurgeryReport report, string? playedAt = null) {
+        Games.Insert(0, new PlayedGame(playedAt ?? Time.GetDatetimeStringFromSystem(false, true), report));
         if (Games.Count > HistorySize) {
             Games.RemoveAt(HistorySize);
         }
-        Save();
+        var games = new Godot.Collections.Array();
+        foreach (var game in Games) {
+            games.Add(new GodotDictionary { ["played_at"] = game.PlayedAt, ["report"] = game.Report.ToVariant() });
+        }
+        var file = new ConfigFile();
+        file.SetValue("history", "games", games);
+        file.Save(HistoryPath);
     }
 
-    /// <summary>Forgets every played game, without saving.</summary>
-    internal static void ForgetHistory() => Games.Clear();
+    /// <summary>Reads the history. A game that doesn't read (a hand edit, a write cut short) is left out rather than
+    /// keeping the game from starting.</summary>
+    private static void LoadHistory() {
+        var file = new ConfigFile();
+        if (file.Load(HistoryPath) != Error.Ok) {
+            return;
+        }
+        foreach (var game in file.GetValue("history", "games", new Godot.Collections.Array()).AsGodotArray()) {
+            try {
+                var entry = game.AsGodotDictionary();
+                Games.Add(new PlayedGame(entry.String("played_at"), SurgeryReport.FromVariant(entry["report"].AsGodotDictionary())));
+            } catch (Exception e) when (e is KeyNotFoundException or InvalidCastException or ArgumentOutOfRangeException
+                or IndexOutOfRangeException or NullReferenceException) {
+                GD.PushWarning($"Left a played game out of the history: {e.Message}");
+            }
+        }
+    }
 
     public static void RememberHost(string name, string ip, int port) {
         Hosts.RemoveAll(host => host.Ip == ip && host.Port == port);

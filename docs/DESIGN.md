@@ -11,7 +11,7 @@ Autoloads (src/Core)
   Sfx       plays sounds by id from data/audio.cfg, skips missing files
 Static
   Db        loads every file in data/ once; game code never parses files itself (src/Core/Db.cs)
-  Progress  save file: codex unlocks, best stars, played games, known hosts (user://save.cfg)
+  Progress  save file: codex unlocks, best stars, known hosts (user://save.cfg), played games (user://history.cfg)
 
 Surgery scene (scenes/surgery.tscn, src/Operation/Surgery.cs)
   Room        builds geometry, lights and stations per environment (or, ambulance, sidewalk) (src/World)
@@ -305,7 +305,8 @@ Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or 
   can still go, as a failure. Only death and the time limit end a surgery without it.
 - **Post-op report** (`ReportView`): the score lines, then a timeline of the surgery (`Scoring.Timeline`): each scored
   action, each step first done or spoiled (naming the step it comes after that wasn't in place), then at the discharge
-  which steps counted and which were missed. It's where a player learns what the hidden objectives were.
+  which steps counted and which were missed. It's where a player learns what the hidden objectives were. Repeats in a
+  row merge into one line; past `Scoring.TimelineSize` lines only the discharge's go on.
   Every peer keeps its last 100 games locally (`Progress.History`); the main menu's History lists them (scenario,
   outcome, stars, score) and opens the same report.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.

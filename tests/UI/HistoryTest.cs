@@ -2,7 +2,7 @@ namespace Scalpel.Tests.UI;
 
 /// <summary>
 /// The main menu's history lists the surgeries played on this computer, with scenario, outcome, stars and score. Clicking one opens its post-op report with the timeline, and the way back leads to the list. The game
-/// stays in the save file. With key frames also the list and the opened report.
+/// stays in the history file. With key frames also the list and the opened report.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -21,11 +21,8 @@ public class HistoryTest {
         };
         var report = new SurgeryReport("appendectomy", false, "Discharged before the job was done.", 44, 0,
             [new ReportLine("Jagged incision", -6, 2)], timeline, [], [], 610f);
-        // Only this game, at a fixed time: the list reads the same in every run.
-        Progress.ForgetHistory();
-        Progress.FixedPlayedAt = "2026-10-15 11:40:00";
-        Progress.RecordGame(report);
-        Progress.FixedPlayedAt = null;
+        // At a fixed time: the list reads the same in every run.
+        Progress.RecordGame(report, "2026-10-15 11:40:00");
         var game = Progress.History[0];
 
         var menu = AutoFree(GD.Load<PackedScene>("res://scenes/ui/main_menu.tscn").Instantiate<MainMenu>())!;
@@ -39,7 +36,8 @@ public class HistoryTest {
 
         await Click(row);
         foreach (var entry in timeline) {
-            Find<Label>(menu, entry.Text);
+            AssertObject(Find<Label>(menu, entry.Text).GetThemeColor("font_color"))
+                .OverrideFailureMessage($"\"{entry.Text}\" is green when good, red when not").IsEqual(entry.Good ? Ui.Good : Ui.Alert);
         }
         var cells = Find<Label>(menu, "3:00").GetParent().GetChildren().OfType<Label>().Select(label => label.Text).ToList();
         var at = cells.IndexOf("3:00");
@@ -52,10 +50,10 @@ public class HistoryTest {
         Find<Button>(menu, game.PlayedAt);
 
         var file = new ConfigFile();
-        AssertInt((int)file.Load(Progress.Path)).OverrideFailureMessage("the save file loads").IsEqual((int)Error.Ok);
+        AssertInt((int)file.Load(Progress.HistoryPath)).OverrideFailureMessage("the history file loads").IsEqual((int)Error.Ok);
         var saved = file.GetValue("history", "games").AsGodotArray()[0].AsGodotDictionary();
         AssertArray(SurgeryReport.FromVariant(saved["report"].AsGodotDictionary()).Timeline.ToList())
-            .OverrideFailureMessage("the game's timeline is in the save file as it was").IsEqual(timeline);
+            .OverrideFailureMessage("the game's timeline is in the history file as it was").IsEqual(timeline);
     }
 
     /// <summary>The first control of type <typeparamref name="T"/> whose text has <paramref name="text"/> in it; fails the
