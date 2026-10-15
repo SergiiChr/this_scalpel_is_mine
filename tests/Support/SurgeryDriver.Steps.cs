@@ -56,18 +56,12 @@ public partial class SurgeryDriver {
     /// to <paramref name="to"/> (site uv) at depth <paramref name="level"/> (1 through the skin, 3 through the muscle):
     /// the surgeon stands by the line, turns the edge along it, presses in and draws it slowly enough for a clean cut.
     /// The blade stays in hand.</summary>
-    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel") {
+    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel", float speed = Slow) {
         await PlayerRequestsItem(toolId);
         var start = SitePoint(from);
         var finish = SitePoint(to);
         await PlayerWalksTo((start + finish) * 0.5f);
-        // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
-        // edge with the line while moving its actual skin contact sideways from the buried tip's path.
-        var facing = -((finish - start) with { Y = 0f }).Normalized();
-        var handSide = Me.Active == Right ? 1f : -1f;
-        if (facing.Cross(Vector3.Up).Dot((start + finish) * 0.5f - Me.GlobalPosition) * handSide < 0f) { facing = -facing; }
-        await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
-        await PlayerAimsStraight();
+        await PlayerLinesUpBlade(start, finish);
         if (Body.Tissue.IsOpen(from, TissueDepth.Skin)) {
             await PlayerReaches(start);
             // Reaching and changing tools can leave the wrist almost flat. Pitch the blade down before
@@ -77,7 +71,17 @@ public partial class SurgeryDriver {
             PlayerLetsGoOfAim();
         }
         await PlayerTurnsBlade(finish - start);
-        await PlayerWorksAlong([start, finish], level);
+        await PlayerWorksAlong([start, finish], level, speed);
+    }
+
+    private async Task PlayerLinesUpBlade(Vector3 start, Vector3 finish) {
+        // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
+        // edge with the line while moving its actual skin contact sideways from the buried tip's path.
+        var facing = -((finish - start) with { Y = 0f }).Normalized();
+        var handSide = Me.Active == Right ? 1f : -1f;
+        if (facing.Cross(Vector3.Up).Dot((start + finish) * 0.5f - Me.GlobalPosition) * handSide < 0f) { facing = -facing; }
+        await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
+        await PlayerAimsStraight();
     }
 
     /// <summary>Sets the Gelpi retractor into the cut from <paramref name="from"/> to <paramref name="to"/> (site uv) at
@@ -258,6 +262,17 @@ public partial class SurgeryDriver {
         var scalpel = (await PlayerRequestsItem("scalpel"))!;
         var spot = Body.UvToWorld(target.Uv, target.Depth);
         await PlayerWalksTo(spot);
+        var opening = Patient.Wounds.Where(wound => !wound.IsInternal).MinBy(wound => wound.DistanceTo(target.Uv));
+        if (opening is not null) {
+            await PlayerLinesUpBlade(SitePoint(opening.Points[0]), SitePoint(opening.Points[^1]));
+        }
+        // Enter through the opening with the blade upright; a shallow carry angle puts its heel into intact skin.
+        var tilt = Me.Hands[Me.Active].Tilt;
+        await PlayerAims(new Vector2(0f, (tilt + 1.2f) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
+        PlayerLetsGoOfAim();
+        if (opening is not null) {
+            await PlayerTurnsBlade(SitePoint(opening.Points[^1]) - SitePoint(opening.Points[0]));
+        }
         await PlayerReaches(spot);
         // A scalpel taken up comes unrolled: across the opening, drawn along it would cut into the belly wall.
         if (drawn > 0f && Patient.Wounds.Where(wound => wound.MadeBySurgeon && wound.IsSkinCut)

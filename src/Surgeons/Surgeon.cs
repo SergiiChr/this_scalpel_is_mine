@@ -186,7 +186,8 @@ public partial class Surgeon : CharacterBody3D {
     public HandInput HandInput(int hand) {
         var h = Hands[hand];
         var awake = !Status.IsOut;
-        return new HandInput(h.Lowered && awake, h.Trigger && awake, h.Level, h.Speed, PeerId, Mods, HandStates);
+        var speed = HeldTool(hand)?.Def.Action == "cut" ? h.LateralSpeed : h.Speed;
+        return new HandInput(h.Lowered && awake, h.Trigger && awake, h.Level, speed, PeerId, Mods, HandStates);
     }
 
     /// <summary>How many states the hands have had: one a physics frame for a local surgeon, one a received

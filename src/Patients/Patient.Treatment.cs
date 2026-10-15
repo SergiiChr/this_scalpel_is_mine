@@ -142,7 +142,6 @@ public partial class Patient {
         wound.Dirty = wound.Dirty || dirty;
         var jagged = speed > 0.25f || sharpness < 0.8f;
         if (jagged) {
-            GD.Print($"jagged {strokeKey}: {a} -> {b}, speed {speed}, sharpness {sharpness}");
             wound.MarkJagged(a, b);
         }
         var jitter = 0.004f * (1f - sharpness) + (speed > 0.25f ? 0.003f : 0f);
