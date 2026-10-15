@@ -40,7 +40,8 @@ public class NetworkTest {
     private static void Run(string mode, string claim) {
         var output = new Godot.Collections.Array();
         var code = OS.Execute("/bin/bash",
-            [ProjectSettings.GlobalizePath(Runner), OS.GetExecutablePath(), ProjectSettings.GlobalizePath("res://"), mode],
+            [ProjectSettings.GlobalizePath(Runner), OS.GetExecutablePath(), ProjectSettings.GlobalizePath("res://"), mode,
+                $"{Limits.Default / 1000}"],
             output, true);
         AssertInt(code).OverrideFailureMessage($"{claim}: network {mode} runner failed\n{string.Join("\n", output)}")
             .IsEqual(0);

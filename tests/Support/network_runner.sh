@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Two real Godot processes over ENet on localhost, for tests/Network/NetworkTest.cs. It prints what's wrong and
 # exits non-zero on the first problem.
-# Usage: network_runner.sh GODOT ROOT sync|pinch|stall
+# Usage: network_runner.sh GODOT ROOT sync|pinch|stall LIMIT
+# LIMIT: seconds the test case may take (tests/Support/Limits.cs). Each driver is stopped there, and gives up waiting on
+# the other side 10 s earlier, which leaves room for the client starting later and both quitting.
 # The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch) and NetStallDriver.cs (stall), each
 # started from its scene.
 set -uo pipefail
@@ -9,6 +11,7 @@ set -uo pipefail
 godot=$1
 root=$2
 mode=$3
+limit=$4
 logs="$root/build/test-logs"
 mkdir -p "$logs"
 
@@ -41,7 +44,8 @@ expect() {
 
 run() {
 	# exec: started in the background, the job is the timeout wrapper itself, with Godot as its only child.
-	exec timeout 180 "$godot" --headless --path "$root" "res://tests/Support/$1.tscn" -- "--role=$2" >"$logs/$3.log" 2>&1
+	exec timeout "$limit" "$godot" --headless --path "$root" "res://tests/Support/$1.tscn" -- "--role=$2" \
+		"--give-up=$((limit - 10))" >"$logs/$3.log" 2>&1
 }
 
 if [[ "$mode" == sync ]]; then
