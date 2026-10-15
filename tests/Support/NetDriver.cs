@@ -17,7 +17,7 @@ public partial class NetDriver : NetSession {
     private static readonly Vector3 DropFrom = new(Room.TableFoot - 0.4f, 1f, 0f);
     private readonly HashSet<string> _heard = [];
     private string? _hostState;
-    private (string Blood, int DroppedUid, Transform3D Rest)? _hostComparison;
+    private (string Blood, int DroppedUid, Transform3D Resting)? _hostComparison;
 
     /// <summary>The other side has done <paramref name="step"/>.</summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -247,7 +247,7 @@ public partial class NetDriver : NetSession {
             Report(surgery, state);
         } else {
             await Until(() => _hostState is not null && SyncedState(body) == _hostState, "the host's state arriving",
-                () => $"host {_hostState ?? "not reported"}, client {SyncedState(body)}");
+                () => $"host {_hostState ?? "not reported"}, client {SyncedState(body)}", every: 0.1);
             Report(surgery, SyncedState(body));
             Tell(surgery, "reported");
         }

@@ -6,14 +6,16 @@ namespace Scalpel.Tests.Support;
 /// plays its <see cref="Role"/> from there.
 /// </summary>
 public abstract partial class NetSession : Node {
-    /// <summary>When (msec from this process's start) waits on the other side are given up: under build.py's limit for
-    /// a case, so one that never comes true fails it with what it saw instead of running into that limit.</summary>
-    private const ulong GiveUpMsec = 55_000;
-
     /// <summary>"host" or "client", from the command line's --role=.</summary>
     protected string Role { get; private set; } = "host";
 
     protected bool IsHost => Role == "host";
+
+    /// <summary>When (msec from this process's start) waits on the other side are given up, from --give-up= (seconds):
+    /// under the case's limit, so one that never comes true fails it with what it saw instead of running into that
+    /// limit. One deadline for all of them: a slow start leaves the later waits less time, as the case's limit does.
+    /// </summary>
+    private ulong _giveUpMsec;
 
     public override void _Ready() {
         // The scene's own node is freed with the scene: a copy named for its class drives from the root.
@@ -23,7 +25,9 @@ public abstract partial class NetSession : Node {
             GetTree().Root.CallDeferred(Node.MethodName.AddChild, driver);
             return;
         }
-        Role = OS.GetCmdlineUserArgs().FirstOrDefault(arg => arg.StartsWith("--role="))?.Split('=')[1] ?? "host";
+        var args = OS.GetCmdlineUserArgs();
+        Role = args.FirstOrDefault(arg => arg.StartsWith("--role="))?.Split('=')[1] ?? "host";
+        _giveUpMsec = ulong.Parse(args.First(arg => arg.StartsWith("--give-up=")).Split('=')[1]) * 1000;
         // Not from inside _Ready: the root is still adding this node, and hosting changes the scene under it.
         Callable.From(() => this.Start(Drive)).CallDeferred();
     }
@@ -31,14 +35,25 @@ public abstract partial class NetSession : Node {
     protected abstract Task Drive();
 
     /// <summary>Waits a physics frame at a time until <paramref name="done"/>: a slow machine only makes it take longer.
-    /// Past <see cref="GiveUpMsec"/> it throws, naming <paramref name="what"/> never happened and what
-    /// <paramref name="seen"/> reports instead.</summary>
-    protected async Task Until(Func<bool> done, string what, Func<string> seen) {
+    /// Past <see cref="_giveUpMsec"/> it throws, naming <paramref name="what"/> never happened and what
+    /// <paramref name="seen"/> reports instead. <paramref name="every"/> (seconds) spaces out a costly
+    /// <paramref name="done"/>.</summary>
+    protected async Task Until(Func<bool> done, string what, Func<string> seen, double every = 0) {
         while (!done()) {
-            if (Time.GetTicksMsec() > GiveUpMsec) {
-                throw new TimeoutException($"[{Role}] {what} never happened, last seen: {seen()}");
+            if (Time.GetTicksMsec() > _giveUpMsec) {
+                throw new TimeoutException($"[{Role}] {what} never happened, last seen: {Describe(seen)}");
             }
-            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            await (every > 0 ? Wait(every) : ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame).AsTask());
+        }
+    }
+
+    /// <summary>What <paramref name="seen"/> reports, or why it can't: the other side may have given up first and left,
+    /// taking the scene's nodes for it along.</summary>
+    private static string Describe(Func<string> seen) {
+        try {
+            return seen();
+        } catch (ObjectDisposedException gone) {
+            return $"nothing, its nodes are gone ({gone.ObjectName})";
         }
     }
 
