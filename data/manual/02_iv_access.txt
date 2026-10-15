@@ -11,7 +11,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 1. Choose a site on the forearm or the back of the hand, away from the operative field. Prefer the arm on the side of the infusion stand, so the tubing does not cross the walkway.
 2. Take the catheter in the working hand and connect the giving set to it at the infusion stand ([b]Connect the IV line[/b]).
 3. Rest the tip on the skin over the vein and lower it ([b]Use tool[/b]) until the catheter seats. Hold it steady; a moving hand misses the vein. Zoom all the way in for a close view of the needle over the vein.
-> A catheter that misses the vein, or goes in without the giving set connected, still sticks, but nothing will run through it and it cannot be connected afterwards.
+> A catheter that misses the vein, or goes in without the giving set connected, still sticks, but nothing will run through it and it cannot be connected afterwards. Seat a new catheter with the giving set connected in place of an unconnected one; a connected catheter outside the vein only comes out with the tubing (2.5).
 4. The tubing runs from the stand to the site. The catheter is single use.
 
 ## 2.4 Administering an infusion

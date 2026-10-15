@@ -229,7 +229,7 @@ public partial class SurgeryDriver {
         await PlayerWalksTo(VeinPoint());
         // Following the vein (an awake patient's arm shifts as they flinch and tense up), and pushing in once the tip
         // is over it, still following it while the catheter goes in.
-        for (var i = 0; i < 240 && !Patient.IvSet; i++) {
+        for (var i = 0; i < 240 && Patient.CanSetIv(Surgery.Room.IvLine.Catheter == catheter); i++) {
             hand.LocalTarget = Me.ToLocal(VeinPoint() - hand.TipOffset(catheter.Def.Length) + (Vector3.Up * 0.04f));
             await Frames.NextPhysics();
             if (i >= 30 && !hand.Trigger && OverVein(catheter.TipPosition())) {

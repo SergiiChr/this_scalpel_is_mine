@@ -144,13 +144,13 @@ public partial class Patient {
         ConnectIv(point, connected);
     }
 
-    /// <summary>The catheter is out of the arm, torn out with the tubing on it.</summary>
+    /// <summary>The catheter is out of the arm; <paramref name="torn"/>: ripped out with the tubing on it.</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    internal void IvRemoved() {
+    internal void IvRemoved(bool torn) {
         IvSet = false;
         IvInVein = false;
         IvConnected = false;
-        Surgery.Current?.Room.IvLine.PullOut();
+        Surgery.Current?.Room.IvLine.PullOut(torn);
     }
 
     /// <summary>The IV tubing goes onto the catheter <paramref name="uid"/>.</summary>

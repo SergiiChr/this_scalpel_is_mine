@@ -13,6 +13,7 @@ namespace Scalpel.Tests.World;
 public class IvLineTest {
     // The frame the surgeon walks the catheter from the tray to the arm also goes over in IvBagTest, without the tubing.
     private static readonly BudgetAllowance BudgetOverride = new("connecting the line and carrying the catheter to the arm take up to 11 ms of the game's own work here, as picking the catheter up did before the line (IvBagTest)", 2.5f);
+    private static readonly BudgetAllowance BagBudgetOverride = new("picking the saline bag up takes up to 18 ms of the game's own work with key frames, as in IvBagTest", 4.5f);
 
     /// <summary>How far (meters) the tubing may go into skin, furniture or a surgeon: where it bends around a curve, the
     /// straight stretch between two of its points cuts the corner by about this much.</summary>
@@ -140,7 +141,7 @@ public class IvLineTest {
     }
 
     [TestCase]
-    public async Task CatheterWithoutTheLineGoesInButNothingRunsIntoIt() {
+    public async Task CatheterWithoutTheLineGoesInButNothingRunsIntoItUntilOneOnTheLineReplacesIt() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         KeyFrames? shots = null;
@@ -178,8 +179,16 @@ public class IvLineTest {
                 .OverrideFailureMessage($"a bag hung on a line that isn't on the catheter gives nothing, and says why "
                     + $"({bag.State}; {string.Join(", ", toasts)})")
                 .IsTrue();
+            await driver.PlayerPutsDown();
+            await driver.PlayerSetsIv();
+            await Frames.Physics(30);
+            AssertBool(patient.IvWorking && line.IsAttached && line.Dressing is not null)
+                .OverrideFailureMessage($"a catheter on the line takes the place of the one that isn't, and the line works "
+                    + $"(set {patient.IvSet}, in the vein {patient.IvInVein}, connected {patient.IvConnected}, {line.End}). Last steps:\n"
+                    + driver.Recent())
+                .IsTrue();
             surgery.Hud.Toasted -= toasts.Add;
-            driver.Budget.Check(localOverride: BudgetOverride);
+            driver.Budget.Check(localOverride: BagBudgetOverride);
         } finally {
             shots?.End();
             await driver.Stop();

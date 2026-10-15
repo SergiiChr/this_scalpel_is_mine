@@ -73,7 +73,7 @@ internal sealed partial class GameplaySweep {
             Patient.Administer(drug, DrugRoute.Direct);
         }
         if (Patient.IvSet) {
-            Patient.IvRemoved();
+            Patient.IvRemoved(false);
         }
         Patient.SetIv(Body.Root.ToGlobal(Patient.PreopIvPoint), true);
         Patient.Administer("saline", DrugRoute.Iv);

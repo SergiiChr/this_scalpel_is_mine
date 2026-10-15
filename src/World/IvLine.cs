@@ -189,22 +189,26 @@ public partial class IvLine : Node3D {
         Wake();
     }
 
-    /// <summary>The catheter rips out of the arm, still on the tubing: the end hangs free and the skin where it went in
-    /// is torn.</summary>
-    public void PullOut() {
+    /// <summary>The catheter comes out of the arm. <paramref name="torn"/>: ripped out by the tubing, which keeps it on
+    /// its end, tearing the skin where it went in. A catheter that wasn't on the tubing leaves it where it is.</summary>
+    public void PullOut(bool torn) {
         if (_dressing is not null) {
-            _tear?.QueueFree();
-            _tear = new IvTear { Name = "IvTear" };
-            _dressing.GetParent().AddChild(_tear);
-            _tear.Transform = _dressing.Transform;
-            _tear.Build(_dressing.ArmRadius);
+            if (torn) {
+                _tear?.QueueFree();
+                _tear = new IvTear { Name = "IvTear" };
+                _dressing.GetParent().AddChild(_tear);
+                _tear.Transform = _dressing.Transform;
+                _tear.Build(_dressing.ArmRadius);
+            }
             _dressing.QueueFree();
             _dressing = null;
         }
-        var wasInArm = End == IvLineEnd.Arm;
+        if (End != IvLineEnd.Arm) {
+            return;
+        }
         End = IvLineEnd.Loose;
         Catheter = null;
-        ShowEndCatheter(wasInArm);
+        ShowEndCatheter(torn);
         Wake();
     }
 

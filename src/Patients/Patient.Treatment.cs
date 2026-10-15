@@ -856,7 +856,7 @@ public partial class Patient {
     /// vein. <paramref name="connected"/>: the IV tubing was on it, and now runs from the stand to there. The line works
     /// only with both. Host only (what runs through the line is decided here).</summary>
     public void SetIv(Vector3 at, bool inVein, bool connected = true) {
-        if (IvSet) {
+        if (!CanSetIv(connected)) {
             return;
         }
         IvSet = true;
@@ -865,6 +865,10 @@ public partial class Patient {
         Hurt(0.1f);
         Rpc(MethodName.IvPlaced, Body.Root.ToLocal(at), connected);
     }
+
+    /// <summary>Whether a catheter goes in: into an arm without one, or, <paramref name="connected"/> to the tubing, in
+    /// place of one that isn't, which nothing runs through.</summary>
+    internal bool CanSetIv(bool connected) => !IvSet || (connected && !IvConnected);
 
     /// <summary>Someone caught the IV tubing and walked off with it: the catheter rips out of the arm, tearing the skin,
     /// and hangs on the end of the tubing.</summary>
@@ -885,7 +889,7 @@ public partial class Patient {
             Session.Effect(ToolEffect.Bead, dressing.GlobalPosition, 0);
             Session.Sound("tear_skin", dressing.GlobalPosition);
         }
-        Rpc(MethodName.IvRemoved);
+        Rpc(MethodName.IvRemoved, true);
     }
 
     /// <summary>Tapes a catheter on at <paramref name="point"/> (local to the body's root), the tubing on it if

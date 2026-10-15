@@ -595,8 +595,12 @@ public partial class Surgery : Node3D {
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void RequestIvLine(int hand) {
         var peer = Net.Instance.Sender();
-        if (Tools.ToolInHand(peer, hand) is not { Def.Action: "iv_line", Charges: not 0 } catheter || Room.IvLine.IsAttached) {
+        if (Tools.ToolInHand(peer, hand) is not { Def.Action: "iv_line", Charges: not 0 } catheter) {
             Tell(peer, "Hold an IV catheter to connect the line to it.");
+            return;
+        }
+        if (Room.IvLine.IsAttached) {
+            Tell(peer, "The IV line is already in the arm.");
             return;
         }
         Patient.Rpc(Patient.MethodName.IvLineOn, catheter.Uid);

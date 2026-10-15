@@ -292,7 +292,6 @@ public static class SurgeryState {
         surgeon.FallSide = side;
     }
 
-    /// <summary>No stress-induced hand jitter during a camera or reach measurement.</summary>
     /// <summary>As if <paramref name="surgeon"/> had walked to <paramref name="at"/> and turned to
     /// <paramref name="yaw"/>.</summary>
     public static void SurgeonStandsAt(Surgeon surgeon, Vector3 at, float yaw) {
@@ -300,6 +299,8 @@ public static class SurgeryState {
         surgeon.Velocity = Vector3.Zero;
         surgeon.Rotation = surgeon.Rotation with { Y = yaw };
     }
+
+    /// <summary>No stress-induced hand jitter during a camera or reach measurement.</summary>
 
     public static void SurgeonIsSteady(Surgeon surgeon) => surgeon.Status.Stress = 0f;
 
