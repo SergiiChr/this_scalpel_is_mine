@@ -209,8 +209,30 @@ class CoverageReportingTest(unittest.TestCase):
                     status = build.test(["--all", "--jobs", "2"])
         self.assertEqual(status, 0)
         self.assertEqual(started, ["Scalpel.Tests.Example", "Scalpel.Tests.Other"])
-        # Only the suites after the first share a pool.
+        # Only the processes after the first share a pool.
         self.assertEqual(pooled, [2])
+
+    def test_isolated_rows_sharing_a_filter_run_in_one_process(self) -> None:
+        self.suite.isolate_cases = True
+        # Two rows of the same scenario, told apart only by a later argument.
+        self.suite.cases = [build.Case("Plays", [], "", ['"a"', '"b"', '"a"'])]
+        self.assertEqual([process.name for process in build.processes(self.suite, self.options)], ["Example__Plays_a", "Example__Plays_b"])
+
+    def test_slow_suites_processes_are_submitted_first(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        slow = build.Suite(Path("SlowTest.cs"), "Scalpel.Tests.Slow", ["slow"], [], True, [build.Case("Plays", [], "", ['"a"', '"b"'])])
+        (self.root / "runner.cs").touch()
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, slow]):
+            with patch.object(ThreadPoolExecutor, "submit", autospec=True, side_effect=ThreadPoolExecutor.submit) as submit:
+                with (
+                    patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"),
+                    patch.object(build, "run_process", return_value=self.result("<testsuite><testcase /></testsuite>")),
+                ):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        status = build.test(["--all", "--jobs", "2"])
+        self.assertEqual(status, 0)
+        submitted = [call.args[1].__self__.name for call in submit.call_args_list]
+        self.assertEqual(submitted, ["Slow__Plays_a", "Slow__Plays_b", "Example"])
 
     def test_isolated_cases_are_spread_over_the_pool(self) -> None:
         self.suite.isolate_cases = True

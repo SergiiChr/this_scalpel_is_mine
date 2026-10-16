@@ -667,13 +667,17 @@ def processes(suite: Suite, options: TestOptions) -> list[Process]:
     if not suite.isolate_cases:
         test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
         return [Process(suite, suite.name, test_filter, len(selected_names))]
-    found = []
+    found: list[Process] = []
     for case in cases:
         for value in case.values or [""]:
             name = f"{case.method}({value})" if value else case.method
             if options.case not in name:
                 continue
             test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if value else "")
+            # Rows that share their first value (a scenario with and without a flag) share the filter, so one process
+            # runs them both; a second with the same name would write the same log and report at the same time.
+            if any(process.test_filter == test_filter for process in found):
+                continue
             process_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
             found.append(Process(suite, process_name, test_filter, 1))
     return found
@@ -714,18 +718,26 @@ def run_together(suites: Sequence[Suite], todo: dict[str, list[Process]], option
     """Runs suites side by side, options.jobs of their processes (todo, by suite name) at a time, and yields each
     suite's outcome once its last process has ended, so suites come out in the order they finish. An isolated suite's
     cases are spread over the pool like any other processes: the longest suites isolate theirs, and run one after
-    another they would hold the whole run up long after the others have finished."""
+    another they would hold the whole run up long after the others have finished. Slow suites' processes start first
+    for the same reason: the longest process started last is what makes the run's tail.
+    The first test process ever writes the adapter's runner class and builds it into the assembly: it runs alone, as
+    processes starting beside that build would load a half-written assembly."""
     results: dict[str, list[ProcessResult]] = {suite.full_name: [] for suite in suites}
     for suite in suites:
         if not todo[suite.full_name]:
             yield skipped_outcome(suite)
+    queue = [process for group in todo.values() for process in group]
+    done = []
+    if queue and not RUNNER_CLASS.exists():
+        process = queue.pop(0)
+        done.append((process, process.run(options)))
+    queue.sort(key=lambda process: process.suite.timeout, reverse=True)
     with ThreadPoolExecutor(options.jobs) as pool:
-        futures = {pool.submit(process.run, options): process for group in todo.values() for process in group}
-        for future in as_completed(futures):
-            suite = futures[future].suite
-            results[suite.full_name].append(future.result())
-            if len(results[suite.full_name]) == len(todo[suite.full_name]):
-                yield gather(suite, results[suite.full_name])
+        futures = {pool.submit(process.run, options): process for process in queue}
+        for process, result in itertools.chain(done, ((futures[future], future.result()) for future in as_completed(futures))):
+            results[process.suite.full_name].append(result)
+            if len(results[process.suite.full_name]) == len(todo[process.suite.full_name]):
+                yield gather(process.suite, results[process.suite.full_name])
 
 
 def add(outcome: Outcome, result: ProcessResult) -> None:
@@ -829,16 +841,12 @@ def test(arguments: list[str]) -> int:
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
     alone = [suite for suite in suites if runs_alone(suite, options)]
     together = [suite for suite in suites if suite not in alone]
-    # The first test process ever writes the adapter's runner class and builds it into the assembly: it runs alone,
-    # as processes starting beside that build would load a half-written assembly.
-    first = [together.pop(0)] if together and not RUNNER_CLASS.exists() else []
     todo = {suite.full_name: processes(suite, options) for suite in together}
     if together:
         count = sum(len(group) for group in todo.values())
         print(f"Running {len(together)} test suites in {count} test processes, {options.jobs} at a time.")
     outcomes: list[Outcome] = []
     batches: tuple[Iterator[Outcome], ...] = (
-        (run_suite(suite, options) for suite in first),
         run_together(together, todo, options),
         (run_suite(suite, options) for suite in alone),
     )
