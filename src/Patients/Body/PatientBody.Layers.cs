@@ -1042,6 +1042,7 @@ public partial class PatientBody {
         }
         // Each lip vertex's way down and depth, eased along the lip like the lip itself: they follow its own grid
         // point, and neighbours along a lip pulled about ride different ones, so the walls' bottoms would run in steps.
+        // Depth only eases shallower: a folded flap's walls stay as shallow as its fascia (WallThickness()).
         var lipDown = new Dictionary<int, (Vector3 Out, float Thick)>();
         foreach (var v in plan.Lip.Keys) {
             lipDown[v] = (Outward(layer, plan.Owner[v]), WallThickness(plan.Owner[v]));
@@ -1053,7 +1054,7 @@ public partial class PatientBody {
                     var (out0, thick0) = lipDown[neighbours[0]];
                     var (out1, thick1) = lipDown[neighbours[1]];
                     var (outV, thickV) = lipDown[v];
-                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), (thickV * 2f + thick0 + thick1) * 0.25f);
+                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), Mathf.Min(thickV, (thickV * 2f + thick0 + thick1) * 0.25f));
                 }
             }
             foreach (var (v, down) in eased) {
