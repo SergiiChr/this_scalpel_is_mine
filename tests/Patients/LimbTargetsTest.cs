@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Patients;
 /// and along the limb.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class LimbTargetsTest {
     /// <summary>How far (meters) a measured height may be off: the site's heights are interpolated.</summary>

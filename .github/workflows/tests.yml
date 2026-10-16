@@ -40,9 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
-      # Four test processes at a time (an isolated case is one of its own): ubuntu-latest has four cores, and CI
-      # doesn't check frame times.
-      - run: tools/with_crash_stacks.sh ./build.py test --ci-run --jobs 4
+      # CI doesn't check frame times, so every process runs beside others, as many as the runner has cores for.
+      - run: tools/with_crash_stacks.sh ./build.py test --ci-run
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -61,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
       - name: Everything else, headless
-        run: tools/with_crash_stacks.sh ./build.py test --all --skip smoke --ci-run --jobs 4
+        run: tools/with_crash_stacks.sh ./build.py test --all --skip smoke --ci-run
       - run: SKIP_TESTS=1 ./build.py build
       - if: always()
         uses: actions/upload-artifact@v4

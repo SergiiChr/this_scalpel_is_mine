@@ -13,7 +13,7 @@ namespace Scalpel.Tests.Tools;
 /// needle leaves on the site before and after wiping.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class GauzeTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

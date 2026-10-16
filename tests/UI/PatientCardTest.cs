@@ -8,7 +8,7 @@ namespace Scalpel.Tests.UI;
 /// them for a legible, form-like page, the card in view all the way to the hook and hanging on the rail.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class PatientCardTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.

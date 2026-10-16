@@ -4,7 +4,7 @@ namespace Scalpel.Tests.World;
 /// interact area, looking at it offers "Change gloves", and interact swaps bloody, sweaty gloves for fresh ones.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class GloveStationTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.

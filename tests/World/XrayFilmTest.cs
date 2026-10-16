@@ -6,7 +6,7 @@ namespace Scalpel.Tests.World;
 /// beam runs through it, the lateral film shows it too, at its depth. Where the films are drawn (with key frames), metal
 /// and bone come out white on them.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("visual_confirmation"), TestCategory("scenario")]
+[TestCategory("visual_confirmation"), TestCategory("scenario"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 [IsolateCases]
 public class XrayFilmTest {

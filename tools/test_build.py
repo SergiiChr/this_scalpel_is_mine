@@ -1,11 +1,14 @@
 """Regression checks for the runner's coverage reporting; no Godot runtime needed."""
 
 import contextlib
+import dataclasses
 import io
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 import xml.etree.ElementTree as ElementTree
 from concurrent.futures import ThreadPoolExecutor
@@ -87,6 +90,12 @@ class CoverageReportingTest(unittest.TestCase):
             (self.root / folder).mkdir()
         self.options = build.TestOptions([], [], "", 1, False, True, False, False)
         self.suite = build.Suite(Path("ExampleTest.cs"), "Scalpel.Tests.Example", [], [], False)
+        # What the processes of a run (see alongside) record.
+        self.passed = self.result("<testsuite><testcase /></testsuite>")
+        self.started: list[str] = []
+        self.others_running: list[int] = []
+        self.running = 0
+        self.lock = threading.Lock()
 
     def result(self, xml: str, output: str = QUIT, status: int = 0) -> build.ProcessResult:
         log, report = self.root / "run.log", self.root / "run.xml"
@@ -191,26 +200,74 @@ class CoverageReportingTest(unittest.TestCase):
     def test_first_suite_runs_alone_until_the_adapter_installed_its_runner(self) -> None:
         self.suite.cases = [build.Case("Runs", [], "", [])]
         other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
-        started: list[str] = []
-        pooled: list[int] = []
-
-        def run_process(suite: build.Suite, *arguments: object) -> build.ProcessResult:
-            started.append(suite.full_name)
-            return self.result("<testsuite><testcase /></testsuite>")
-
-        class Pool(ThreadPoolExecutor):
-            def __init__(self, workers: int) -> None:
-                pooled.append(workers)
-                super().__init__(workers)
-
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
-            with patch.object(build, "ThreadPoolExecutor", Pool), patch.object(build, "RUNNER_CLASS", self.root / "missing"):
-                with patch.object(build, "run_process", side_effect=run_process), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(build, "RUNNER_CLASS", self.root / "missing"), patch.object(build, "run_process", side_effect=self.alongside):
+                with contextlib.redirect_stdout(io.StringIO()):
                     status = build.test(["--all", "--jobs", "2"])
         self.assertEqual(status, 0)
-        self.assertEqual(started, ["Scalpel.Tests.Example", "Scalpel.Tests.Other"])
-        # Only the processes after the first share a pool.
-        self.assertEqual(pooled, [2])
+        self.assertEqual(self.started, ["Scalpel.Tests.Example", "Scalpel.Tests.Other"])
+        # The second process started only once the first had ended.
+        self.assertEqual(self.others_running, [0, 0])
+
+    def alongside(self, suite: build.Suite, *arguments: object) -> build.ProcessResult:
+        """A run_process that notes how many other processes were running when it started, waiting a moment for any
+        the scheduler may be about to start beside it."""
+        with self.lock:
+            self.started.append(suite.full_name)
+            self.others_running.append(self.running)
+            self.running += 1
+        time.sleep(0.1)
+        with self.lock:
+            self.running -= 1
+        return self.passed
+
+    def test_frame_budget_suites_run_alone_and_first_then_the_rest_together(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        timed = build.Suite(Path("TimedTest.cs"), "Scalpel.Tests.Timed", ["frame_budget"], [], False, [build.Case("Runs", [], "", [])])
+        other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
+        (self.root / "runner.cs").touch()
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, timed, other]):
+            with patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"), patch.object(build, "run_process", side_effect=self.alongside):
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    status = build.test(["--all", "--jobs", "2"])
+        self.assertEqual(status, 0)
+        self.assertEqual(self.started[0], "Scalpel.Tests.Timed")
+        # The timed suite had the machine to itself; the two others shared it.
+        self.assertEqual(self.others_running, [0, 0, 1])
+        self.assertIn("3 test suites in 3 test processes: 1 alone, then 2 at a time.", output.getvalue())
+
+    def test_frame_budget_suites_share_the_machine_on_ci_where_frames_are_not_timed(self) -> None:
+        timed = build.Suite(Path("TimedTest.cs"), "Scalpel.Tests.Timed", ["frame_budget"], [], False)
+        local = dataclasses.replace(self.options, ci_run=False)
+        self.assertEqual(build.frame_budget(timed, local), "cpu")
+        self.assertTrue(build.runs_alone(timed, local))
+        self.assertEqual(build.frame_budget(timed, self.options), "off")
+        self.assertFalse(build.runs_alone(timed, self.options))
+        self.assertEqual(build.frame_budget(self.suite, local), "off")
+        self.assertFalse(build.runs_alone(self.suite, local))
+
+    def test_key_frame_takers_run_alone(self) -> None:
+        self.suite.categories = ["visual_confirmation"]
+        self.assertFalse(build.runs_alone(self.suite, self.options))
+        self.assertTrue(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))
+
+    def test_capacity_is_one_process_per_core_within_memory(self) -> None:
+        with patch.object(os, "cpu_count", return_value=8), patch.object(os, "sysconf", side_effect=[3 << 30, 1]):
+            self.assertEqual(build.capacity(), 1)
+        with patch.object(os, "cpu_count", return_value=8), patch.object(os, "sysconf", side_effect=[64 << 30, 1]):
+            self.assertEqual(build.capacity(), 8)
+
+    def test_every_suite_that_checks_frame_times_is_categorized(self) -> None:
+        """Only frame_budget suites run alone, so one that checks the budget without the category would fail its
+        frames on contention. The helpers that check it: tests/Support/ToolSession.cs, ScenarioFlow.cs and
+        tests/Scenarios/GameplaySweep.cs."""
+        helpers = ("FrameBudget", "Budget.Check", "ToolSession", "ScenarioFlow", "GameplaySweep")
+        with patch.object(build, "ROOT", Path(build.__file__).parent):
+            suites = build.discover()
+        for suite in suites:
+            with self.subTest(suite=suite.full_name):
+                checks = any(helper in suite.path.read_text() for helper in helpers)
+                self.assertEqual(checks, "frame_budget" in suite.categories)
 
     def test_isolated_rows_sharing_a_filter_run_in_one_process(self) -> None:
         self.suite.isolate_cases = True
@@ -256,7 +313,7 @@ class CoverageReportingTest(unittest.TestCase):
         # Each isolated case is a pool task of its own, beside the other suite's single process.
         self.assertEqual(sorted(started), ["Example__Plays_a", "Example__Plays_b", "Example__Plays_c", "Other"])
         self.assertEqual(submit.call_count, 4)
-        self.assertIn("2 test suites in 4 test processes, 4 at a time", output.getvalue())
+        self.assertIn("2 test suites in 4 test processes: 0 alone, then 4 at a time.", output.getvalue())
         self.assertIn("2 passed, 0 failed", output.getvalue())
 
     def test_entirely_skipped_run_cannot_pass(self) -> None:
@@ -354,14 +411,15 @@ class CoverageReportingTest(unittest.TestCase):
         """Runs test() whose one visual suite takes a key frame and passes; returns the screenshots folder."""
         taken, _ = self.key_frames(passed=True)
         self.suite.categories = ["visual_confirmation"]
+        self.suite.cases = [build.Case("Runs", [], "", [])]
 
-        def takes_a_key_frame(suite: build.Suite, options: build.TestOptions) -> build.Outcome:
+        def takes_a_key_frame(suite: build.Suite, *arguments: object) -> build.ProcessResult:
             (taken / "scalpel").mkdir(parents=True, exist_ok=True)
             (taken / "scalpel" / "00_cut_top.png").write_text("new")
-            return build.Outcome(suite, self.root / "log", [], 1)
+            return self.passed
 
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
-            with patch.object(build, "run_suite", side_effect=takes_a_key_frame), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(build, "run_process", side_effect=takes_a_key_frame), contextlib.redirect_stdout(io.StringIO()):
                 build.test(["--with-key-frames", *arguments])
         return taken
 
