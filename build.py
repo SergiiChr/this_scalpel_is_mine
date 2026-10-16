@@ -82,13 +82,18 @@ RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+
 KEY_FRAME_SAVED = re.compile(r"^\s*Key frame saved: (.+?)\s*$", re.MULTILINE)
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
-# An unexplained error in Godot's own C# glue that now and then hits a test process as GdUnit4 starts, with no game
-# code on its stack; the cases still pass. A process failing on nothing else runs once more.
-# Each hit is appended to STARTUP_RACE_LOG, for whoever pins the cause down.
-STARTUP_RACE = "The underlying collection was modified from outside of the BlockingCollection"
+# Unexplained errors outside the game that now and then hit a test process, with no game code on their stack; the
+# cases still pass. A process failing on nothing but one of them runs once more.
+# Each hit is appended to INFRASTRUCTURE_LOG, for whoever pins the cause down.
+INFRASTRUCTURE_ERRORS = {
+    # In Godot's own C# glue as GdUnit4 starts.
+    "The underlying collection was modified from outside of the BlockingCollection": "the startup race in Godot's C# glue",
+    # In the test host as it shuts down after its cases, its connection to `dotnet test` already gone.
+    "Unable to write data to the transport connection": "the test host's connection closing at its exit",
+}
 # Logs and JUnit reports of every test process or suite before it ran again, which would overwrite them.
 RETRIES = BUILD / "retries"
-STARTUP_RACE_LOG = RETRIES / "startup-race.log"
+INFRASTRUCTURE_LOG = RETRIES / "infrastructure-errors.log"
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
@@ -514,17 +519,19 @@ class ProcessResult:
 
 
 def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
-    """Runs one dotnet test process and counts the cases actually executed, once more after a STARTUP_RACE alone."""
+    """Runs one dotnet test process and counts the cases actually executed, once more after an infrastructure error
+    alone (INFRASTRUCTURE_ERRORS)."""
     result = run_process_once(suite, options, name, test_filter, cases)
-    if not result.failures or not all(STARTUP_RACE in failure for failure in result.failures):
+    known = [next((what for marker, what in INFRASTRUCTURE_ERRORS.items() if marker in failure), None) for failure in result.failures]
+    if not known or None in known:
         return result
     kept = keep_attempt(name)
-    with STARTUP_RACE_LOG.open("a") as out:
+    with INFRASTRUCTURE_LOG.open("a") as out:
         out.write(
             f"{time.strftime('%Y-%m-%d %H:%M:%S')} {name} (jobs {options.jobs}, key frames {options.key_frames}, "
             f"{result.executed} cases ran), kept in {kept}:\n  " + "\n  ".join(result.failures) + "\n"
         )
-    print(f"[WARN] {name} hit the startup race in Godot's C# glue (see {STARTUP_RACE_LOG}); running it again.")
+    print(f"[WARN] {name} hit {' and '.join(sorted(set(filter(None, known))))} (see {INFRASTRUCTURE_LOG}); running it again.")
     return run_process_once(suite, options, name, test_filter, cases)
 
 
