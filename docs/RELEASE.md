@@ -73,7 +73,9 @@ branch is open at a time.
 After a release PR merges, open a PR from `main` to `develop` and merge it with a merge commit (`develop` takes no
 direct pushes). It brings the release's fixes and baseline commit back to `develop`. When it conflicts with what
 `develop` took meanwhile, merge `main` into a branch from `develop`, resolve there (key frames: as in Development step
-9) and open that PR instead. Never rebase or force-push `develop`: open feature branches are built on its history.
+9) and open that PR instead.
+Either sync PR is merged as soon as its CI is green, without waiting for the owner.
+Never rebase or force-push `develop`: open feature branches are built on its history.
 
 Repository settings: `main` allows only merge commits, `develop` allows squash (features) and merge (syncs from
 `main`), `release/*` allows squash (fixes). All take changes only through PRs whose CI passed.
