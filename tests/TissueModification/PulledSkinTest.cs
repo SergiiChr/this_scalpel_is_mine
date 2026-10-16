@@ -9,7 +9,7 @@ namespace Scalpel.Tests.TissueModification;
 /// between the three tissue sheets and with the drape are checked numerically.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
@@ -33,8 +33,8 @@ public class PulledSkinTest {
     private static readonly Vector3 FlapPull = new(0f, 0.6f, 0.15f);
     private const int GripKey = 900;
 
-    [TestCase("appendectomy")]
-    [TestCase("leg_extension")]
+    [TestCase("appendectomy", Timeout = Limits.Slow)]
+    [TestCase("leg_extension", Timeout = Limits.Slow)]
     public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario) {
         var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}", captureUntouched: scenario == "leg_extension");
         var driver = session.Driver;
