@@ -18,6 +18,10 @@ public class XrayFilmTest {
     /// <summary>How close (of the film) something shows to where it lies when checked: breathing moves the abdomen
     /// about a centimeter between the exposure and the check, which a lateral film shows.</summary>
     private const float ShownWithin = 0.05f;
+    /// <summary>Slightly above the patient: how far (meters) the lens may be over the site's skin under it as the cart
+    /// starts, clear of the body and close enough to film it without lowering the arm.</summary>
+    private const float MinClearance = 0.05f;
+    private const float MaxClearance = 0.15f;
 
     [TestCase("bullet_muscle", "bullet", 1, true, false)]
     [TestCase("open_fracture", "fragment", 2, true, false)]
@@ -44,6 +48,12 @@ public class XrayFilmTest {
             // Loading the scenario isn't gameplay: the frame budget counts from here.
             driver.Budget.Clear();
             await driver.PlayerPushesXrayOver(middle, lateral ? middle.Y : null);
+            if (!lateral) {
+                var over = driver.Patient.Body.HeightAboveSite(cart.Beams()[0].Source.Origin);
+                AssertFloat(over).OverrideFailureMessage($"untouched, the arm holds the lens slightly above the site's skin: "
+                        + $"{over:0.000} m over it")
+                    .IsBetween(MinClearance, MaxClearance);
+            }
             var views = lateral ? cart.Beams() : cart.Beams()[..1];
             foreach (var beam in views) {
                 AssertBool(targets.All(target => beam.FilmPoint(target.GlobalPosition) is not null))

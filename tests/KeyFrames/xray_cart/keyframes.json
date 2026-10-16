@@ -1,7 +1,9 @@
 {
   "00_untouched_oblique.jpg": "the upright X-ray cart: a compact base with casters in front and wheels under the generator, a tall column left of the middle, a level arm curving from its top round to the middle, the tube head hanging under its end with a screen on its back, the red pedal down",
+  "00_untouched_view.jpg": "the upright X-ray cart put away in its niche in the wall, its push bar toward the room: an open steel H frame on swivel casters, a white cabinet with the films' holder, a square column, a straight dark steel arm to the box-shaped tube head with its control panel, the red pedal down, the niche's floor, walls and ceiling matching the room's, no gaps at its edges, the cart not lit up from this far",
   "01_cart_in_view_view.jpg": "the whole cart lit up warmer than the room, the prompt to push it with the right mouse button",
   "02_lowered_oblique.jpg": "the cart pushed away from its corner, the arm slid down the column, the tube head still level, the pedal up",
+  "02_raised_oblique.jpg": "the cart pushed away from its corner, the arm slid up the column, the tube head still level, the pedal up",
   "03_head_in_view_view.jpg": "the tube head in the middle of the view, the cart lit up, the prompt to push or let go of it",
-  "04_locked_oblique.jpg": "the cart from behind, its handle loop in front, the red pedal right of middle pressed down"
+  "04_locked_oblique.jpg": "the cart from behind, its push bar with black grips in front, the red pedal right of middle pressed down"
 }

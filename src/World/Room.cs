@@ -86,12 +86,13 @@ public partial class Room : Node3D {
                 ["iv"] = new(0.95f, 0f, 0.85f),
                 ["monitor"] = new(1.25f, 1.55f, -0.95f),
                 ["defib_cart"] = new(0.3f, 0f, -1.95f),
-                // Parked arm toward the wall, its handle toward the room.
-                ["xray"] = new(-1.9f, 0f, -1.15f),
+                // In its niche (XrayNiche), the tube head toward the back, the handle just inside the room.
+                ["xray"] = new(-3.04f, 0f, -1.65f),
                 ["smoking"] = new(2.35f, 0f, -1.5f),
             },
             new Dictionary<string, float> {
                 ["card"] = Mathf.Pi / 2f,
+                ["xray"] = Mathf.Pi / 2f,
                 ["bell"] = Mathf.Pi,
                 ["gloves"] = Mathf.Pi,
                 ["delivery_tray"] = Mathf.Pi,
@@ -126,6 +127,12 @@ public partial class Room : Node3D {
             },
             new Dictionary<string, float> { ["card"] = Mathf.Pi / 2f, ["defib_cart"] = Mathf.Pi }),
     };
+
+    /// <summary>The X-ray cart's niche in the wall left of the table's foot, in the corner, where it starts and is put
+    /// away out of the way: its floor's x and z from the room's left wall (the niche runs outward from it), and its
+    /// height.</summary>
+    private static readonly Rect2 XrayNiche = new(-1.4f, -2.15f, 1.4f, 1f);
+    private const float XrayNicheHeight = 2.3f;
 
     public string EnvironmentId { get; private set; } = "or";
     public RoomLayout Layout { get; private set; } = Layouts["or"];
@@ -415,7 +422,11 @@ public partial class Room : Node3D {
         var wall = Theatre ? Materials.TheatreGray : new Color(0.75f, 0.78f, 0.8f);
         foreach (var side in (float[])[-1f, 1f]) {
             Wall(new Vector3(size.X, size.Y, 0.1f), new Vector3(0f, size.Y * 0.5f, side * size.Z * 0.5f), wall);
-            Wall(new Vector3(0.1f, size.Y, size.Z), new Vector3(side * size.X * 0.5f, size.Y * 0.5f, 0f), wall);
+            if (side < 0f && Layout.Has("xray")) {
+                BuildXrayNiche(size, wall);
+            } else {
+                Wall(new Vector3(0.1f, size.Y, size.Z), new Vector3(side * size.X * 0.5f, size.Y * 0.5f, 0f), wall);
+            }
         }
         var ceiling = Theatre
             ? Shapes.Slab(this, size with { Y = 0.1f }, Materials.TheatreCeiling(new Color(0.88f, 0.89f, 0.9f), TheatreLights),
@@ -424,10 +435,57 @@ public partial class Room : Node3D {
         ceiling.Name = "Ceiling";
     }
 
-    private void Wall(Vector3 size, Vector3 position, Color color) {
+    /// <summary>The left wall with the X-ray cart's niche in it: the wall beside the niche, a lintel over it, and the
+    /// niche's floor, sides, back and ceiling.</summary>
+    private void BuildXrayNiche(Vector3 size, Color color) {
+        var x = -size.X * 0.5f;
+        var (from, to) = (XrayNiche.Position.Y, XrayNiche.End.Y);
+        var deep = XrayNiche.Size.X;
+        var beside = (size.Z * 0.5f) - to;
+        Wall(new Vector3(0.1f, size.Y, beside), new Vector3(x, size.Y * 0.5f, to + (beside * 0.5f)), color, Vector3.Left);
+        var lintel = size.Y - XrayNicheHeight;
+        var wide = XrayNiche.Size.Y;
+        var middle = (from + to) * 0.5f;
+        Wall(new Vector3(0.1f, lintel, wide), new Vector3(x, XrayNicheHeight + (lintel * 0.5f), middle), color, Vector3.Left);
+        // Inside, from the wall's outer face to the back, so no face lies in the same plane as the wall's own. In the
+        // corner the side runs on to meet the end of the wall behind the table.
+        var length = deep - 0.05f;
+        var inside = x - 0.05f - (length * 0.5f);
+        Wall(new Vector3(0.1f, XrayNicheHeight, wide + 0.2f), new Vector3(x - deep - 0.05f, XrayNicheHeight * 0.5f, middle),
+            color, Vector3.Left);
+        Wall(new Vector3(length, XrayNicheHeight, 0.1f), new Vector3(inside, XrayNicheHeight * 0.5f, to + 0.05f), color,
+            Vector3.Forward);
+        Wall(new Vector3(deep, size.Y, 0.1f), new Vector3(x - (deep * 0.5f), size.Y * 0.5f, from - 0.05f), color,
+            Vector3.Forward);
+        var floor = new Vector3(deep, 0.1f, wide);
+        var at = new Vector3(x - (deep * 0.5f), -0.05f, middle);
+        Shapes.Slab(this, floor, Theatre ? new Color(0.55f, 0.56f, 0.54f) : new Color(0.28f, 0.3f, 0.29f), at, 0.05f,
+            Theatre ? Pattern.Speckle : Pattern.None);
+        Shapes.StaticBox(this, floor, at).AddToGroup(ToolManager.FloorGroup);
+        Shapes.Slab(this, new Vector3(length, 0.1f, wide), color.Darkened(0.5f),
+            new Vector3(inside, XrayNicheHeight + 0.05f, middle), 0.45f);
+    }
+
+    /// <summary>True when <paramref name="point"/> (world, on the floor) is on the room's floor, or in the X-ray cart's
+    /// niche, at least <paramref name="margin"/> from the walls. Anywhere outdoors.</summary>
+    internal bool OnFloor(Vector3 point, float margin) {
+        if (!Indoors) {
+            return true;
+        }
+        var half = (new Vector2(Layout.Size.X, Layout.Size.Z) * 0.5f) - (Vector2.One * (0.05f + margin));
+        if (Mathf.Abs(point.X) <= half.X && Mathf.Abs(point.Z) <= half.Y) {
+            return true;
+        }
+        // Into the room a little, past the wall's face, so the two overlap where the cart rolls out.
+        var niche = new Rect2(XrayNiche.Position + new Vector2((-Layout.Size.X * 0.5f) + margin, margin),
+            XrayNiche.Size + new Vector2(0.2f, 0f) - (Vector2.One * margin * 2f));
+        return Layout.Has("xray") && niche.HasPoint(new Vector2(point.X, point.Z));
+    }
+
+    private void Wall(Vector3 size, Vector3 position, Color color, Vector3? facing = null) {
         if (Theatre) {
             var axis = size.X > size.Z ? new Vector2(1f, 0f) : new Vector2(0f, 1f);
-            var features = TheatreWalls[(position with { Y = 0f }).Normalized()];
+            var features = TheatreWalls[facing ?? (position with { Y = 0f }).Normalized()];
             Shapes.Slab(this, size, Materials.TheatreWall(color, Materials.TheatreBlue, axis, features), position);
         } else {
             Shapes.Slab(this, size, color, position, 0.3f);
@@ -560,7 +618,6 @@ public partial class Room : Node3D {
             AddChild(Xray);
             Xray.Position = Layout["xray"];
             Xray.Rotation = new Vector3(0f, Layout.YawOf("xray"), 0f);
-            Xray.Bounds = (new Vector2(Layout.Size.X, Layout.Size.Z) * 0.5f) - (Vector2.One * XrayCart.Extent);
             Xray.Build(surgery);
         }
         Interactable.Create(this, "Talk to the patient", new Vector3(0.25f, 0.3f, 0.3f), new Vector3(0.92f, 1.05f, 0f),
