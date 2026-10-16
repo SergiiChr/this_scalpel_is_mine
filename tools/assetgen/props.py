@@ -214,8 +214,9 @@ XRAY_ARM_ABOVE = 0.24
 
 
 def _block(size: tuple[float, float, float], center: tuple[float, float, float]) -> trimesh.Trimesh:
-    """A box with just its edges eased: sheet metal and steel section, not moulded plastic."""
-    return superellipsoid(size, 0.06, center)
+    """A box with just its edges eased: sheet metal and steel section, not moulded plastic.
+    Six rings already keep the eased edges, and the cart is made of many of these."""
+    return superellipsoid(size, 0.06, center, detail=6)
 
 
 def _beam(a: tuple[float, float, float], b: tuple[float, float, float], width: float, height: float) -> trimesh.Trimesh:
@@ -312,7 +313,7 @@ def _xray() -> Model:
         _block((0.2, 0.02, 0.07), (hx + 0.085, ay - 0.05, hz)),
     )
     m.add("Arm", merge(carriage, beam, yoke, crank), "dark_steel", XRAY_HEAD)
-    m.add("Knob", superellipsoid((0.035, 0.022, 0.022), 0.4, (cx + 0.15, ay - 0.15, cz)), "plastic", XRAY_HEAD, "Arm")
+    m.add("Knob", superellipsoid((0.035, 0.022, 0.022), 0.4, (cx + 0.15, ay - 0.15, cz), detail=8), "plastic", XRAY_HEAD, "Arm")
     m.add(
         "Pivot",
         merge(
