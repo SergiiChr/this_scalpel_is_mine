@@ -267,7 +267,7 @@ public partial class SurgicalTool : RigidBody3D {
         }
         if (Blood > 0f) {
             foreach (var (material, _) in _ownMaterials) {
-                material.SetShaderParameter(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
+                material.SetMatrix(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
             }
         }
     }
@@ -338,7 +338,7 @@ public partial class SurgicalTool : RigidBody3D {
             material.SetShaderParameter(ShaderParam.Coat, amount);
             material.SetShaderParameter(ShaderParam.CoatLength, Def.Length);
             material.SetShaderParameter(ShaderParam.CoatReach, Def.Length * (soaks ? 1.2f : 0.12f + 0.3f * amount));
-            material.SetShaderParameter(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
+            material.SetMatrix(ShaderParam.CoatInverse, new Projection(GlobalTransform.AffineInverse()));
         }
     }
 
