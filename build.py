@@ -482,9 +482,10 @@ PROCESS_MEMORY = 2 << 30
 
 
 def capacity() -> int:
-    """How many test processes this machine has room for: one per core, as far as its memory goes."""
+    """How many test processes this machine has room for: one per core this process may run on, as far as its memory
+    goes."""
     memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-    return max(1, min(os.cpu_count() or 1, memory // PROCESS_MEMORY))
+    return max(1, min(len(os.sched_getaffinity(0)), memory // PROCESS_MEMORY))
 
 
 def escape(text: str) -> str:
@@ -770,7 +771,7 @@ def run_suites(suites: Sequence[Suite], options: TestOptions) -> Iterator[Outcom
             yield skipped_outcome(suite)
     alone = sum(process.exclusive for group in todo.values() for process in group)
     count = sum(len(group) for group in todo.values())
-    print(f"Running {len(suites)} test suites in {count} test processes: {alone} alone, then {options.capacity} at a time.")
+    print(f"Running {len(suites)} test suites in {count} test processes: {alone} alone, then {options.capacity} at a time.", flush=True)
     for process, result in run_all([process for group in todo.values() for process in group], options):
         results[process.suite.full_name].append(result)
         if len(results[process.suite.full_name]) == len(todo[process.suite.full_name]):

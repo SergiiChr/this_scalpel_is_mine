@@ -95,8 +95,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
 - Categories describe the test type or a feature worth rerunning: `smoke`, `slow`, `scenario`, `network`,
   `tissue_modification`, `liquids`, `tool_<id>`, `tool_all`, `core_validation`, `visual_confirmation`, `frame_budget`,
-  `broken`. `frame_budget` marks a suite that checks frame times (`Budget.Check`, itself or through `ToolSession`,
-  `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its processes run alone, before the rest.
+  `broken`. `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
+  through `ToolSession`, `SutureChecks`, `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its
+  processes run alone, before the rest.
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take
   `[TestCase(Timeout = Limits.Slow)]`.
 - `smoke` cases are headless and programmatic, each under five minutes. They may take key frames only when their

@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import tempfile
 import threading
-import time
 import unittest
 import xml.etree.ElementTree as ElementTree
 from concurrent.futures import ThreadPoolExecutor
@@ -97,6 +96,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.others_running: list[int] = []
         self.running = 0
         self.lock = threading.Lock()
+        self.pair = threading.Barrier(2, timeout=0.5)
 
     def result(self, xml: str, output: str = QUIT, status: int = 0) -> build.ProcessResult:
         log, report = self.root / "run.log", self.root / "run.xml"
@@ -211,13 +211,18 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(self.others_running, [0, 0])
 
     def alongside(self, suite: build.Suite, *arguments: object) -> build.ProcessResult:
-        """A run_process that notes how many other processes were running when it started, waiting a moment for any
-        the scheduler may be about to start beside it."""
+        """A run_process that notes how many other processes were running when it started. It then waits for a second
+        process to arrive, so two allowed to share the machine are seen running together; one with the machine to
+        itself waits the barrier out."""
         with self.lock:
             self.started.append(suite.full_name)
             self.others_running.append(self.running)
             self.running += 1
-        time.sleep(0.1)
+        try:
+            self.pair.wait()
+        except threading.BrokenBarrierError:
+            # A timed-out barrier stays broken until reset.
+            self.pair.reset()
         with self.lock:
             self.running -= 1
         return self.passed
@@ -253,16 +258,17 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertTrue(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))
 
     def test_capacity_is_one_process_per_core_within_memory(self) -> None:
-        with patch.object(os, "cpu_count", return_value=8), patch.object(os, "sysconf", side_effect=[3 << 30, 1]):
+        with patch.object(os, "sched_getaffinity", return_value=set(range(8))), patch.object(os, "sysconf", side_effect=[3 << 30, 1]):
             self.assertEqual(build.capacity(), 1)
-        with patch.object(os, "cpu_count", return_value=8), patch.object(os, "sysconf", side_effect=[64 << 30, 1]):
+        with patch.object(os, "sched_getaffinity", return_value=set(range(8))), patch.object(os, "sysconf", side_effect=[64 << 30, 1]):
             self.assertEqual(build.capacity(), 8)
 
     def test_every_suite_that_checks_frame_times_is_categorized(self) -> None:
         """Only frame_budget suites run alone, so one that checks the budget without the category would fail its
         frames on contention. The helpers that check it: tests/Support/ToolSession.cs, ScenarioFlow.cs and
-        tests/Scenarios/GameplaySweep.cs. FrameBudget.RenderingOff() alone checks nothing."""
-        checks = re.compile(r"[Bb]udget\.Check\(|ToolSession|ScenarioFlow|GameplaySweep")
+        tests/Scenarios/GameplaySweep.cs, and SutureChecks.cs through ToolSession; NeedleTest compares against
+        FrameBudget.Limit itself. FrameBudget.RenderingOff() alone checks nothing."""
+        checks = re.compile(r"[Bb]udget\.Check\(|FrameBudget\.(Limit|Mode)|ToolSession|ScenarioFlow|GameplaySweep|SutureChecks")
         with patch.object(build, "ROOT", Path(build.__file__).parent):
             suites = build.discover()
         for suite in suites:
