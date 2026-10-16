@@ -103,6 +103,14 @@ public static class Materials {
         return (T)material;
     }
 
+    /// <summary>Added over what the player can interact with while they look at it (<see cref="Interactable.Light"/>).
+    /// </summary>
+    public static readonly StandardMaterial3D Highlight = new() {
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        AlbedoColor = new Color(1f, 0.78f, 0.2f, 0.35f),
+    };
+
     /// <summary>Cached per color/settings, so don't modify the result. Use <see cref="ToonUnique"/> for per-object
     /// tweaks.</summary>
     public static ShaderMaterial ToonShaded(Color color, float grime = 0.25f, bool outline = true, float roughness = 0.7f) =>

@@ -16,21 +16,20 @@ public partial class XrayCart : Node3D {
     /// <summary>Seconds a film takes to develop.</summary>
     public const float DevelopTime = 6f;
     private const float Reach = 1.6f;
-    internal const float PushOffset = 0.85f;
     private const float SyncInterval = 0.1f;
-    /// <summary>How far the cart reaches from its origin: the front casters. Keeps it off the walls whichever way it
-    /// faces.</summary>
+    /// <summary>How far the cart reaches from its origin, about: the tube head's front. Keeps it off the walls whichever
+    /// way it faces.</summary>
     internal const float Extent = 0.85f;
-    /// <summary>The arm's angle above level, in radians (the model is built level): where it starts, its range and one
-    /// wheel step.</summary>
-    internal const float ArmRest = 0.6f;
-    internal const float ArmLow = -0.25f;
-    internal const float ArmHigh = 0.75f;
+    /// <summary>The tube head's height above the floor, meters, as the arm slides up and down the column: where it
+    /// starts (the model is built there), its range and one wheel step.</summary>
+    internal const float ArmRest = 1.6f;
+    internal const float ArmLow = 1.1f;
+    internal const float ArmHigh = 1.75f;
     internal const float ArmStep = 0.05f;
     /// <summary>How far the floor lock's pedal goes down, in radians.</summary>
     private const float PedalDown = 0.35f;
     /// <summary>The developed films stand in the cassette holder on top of the generator, the AP one in front.</summary>
-    private static readonly Vector3 FilmSpot = new(0f, 1.12f, 0.25f);
+    private static readonly Vector3 FilmSpot = new(0f, 1.0f, 0.23f);
     /// <summary>The collimator's lens, local to the tube head.</summary>
     private static readonly Vector3 Lens = new(0f, -0.185f, 0f);
     /// <summary>How far below the tube head (meters) the lateral beam runs, level and forward from the cart: with the
@@ -55,11 +54,15 @@ public partial class XrayCart : Node3D {
     public IReadOnlyList<XrayFilm> Films { get; private set; } = [];
     /// <summary>The peer pushing the cart, 0 for nobody: then it's locked against the floor.</summary>
     public int Pusher { get; private set; }
-    /// <summary>The arm's angle above level, in radians.</summary>
+    /// <summary>The tube head's height above the floor, meters.</summary>
     public float Arm { get; private set; } = ArmRest;
     /// <summary>Half the room's floor minus the cart's size: pushing it never shoves it into a wall. Zero means no
     /// walls.</summary>
     public Vector2 Bounds { get; set; }
+    /// <summary>Where the cart is, and which way it faces, from its pusher as they took hold of it: like a held tool, it
+    /// keeps that as they walk and turn. Host only.</summary>
+    private Vector3 _gripOffset;
+    private float _gripYaw;
     private float _cooldown;
     private float _exposing;
     private float _syncAccumulated;
@@ -81,7 +84,8 @@ public partial class XrayCart : Node3D {
 
     public void Build(Surgery surgery) {
         _surgery = surgery;
-        _parts = ModelSlot.Parts(ModelSlot.Instantiate("props", "xray", this), "Arm", "Head", "Pedal");
+        var model = ModelSlot.Instantiate("props", "xray", this);
+        _parts = ModelSlot.Parts(model, "Arm", "Head", "Pedal");
         PoseArm(1f);
         _parts["Pedal"].Rotation = new Vector3(PedalDown, 0f, 0f);
         _viewports =
@@ -109,18 +113,32 @@ public partial class XrayCart : Node3D {
         // Only the generator and column block: the base and the arm reach under and over the table.
         _body = new AnimatableBody3D();
         _body.AddChild(new CollisionShape3D {
-            Shape = new BoxShape3D { Size = new Vector3(0.62f, 1.2f, 0.5f) },
-            Position = new Vector3(0f, 0.6f, 0.15f),
+            Shape = new BoxShape3D { Size = new Vector3(0.44f, 1.2f, 0.4f) },
+            Position = new Vector3(0f, 0.6f, 0.12f),
         });
         AddChild(_body);
-        Interactable.Create(this, "Push / let go of the X-ray cart", new Vector3(0.65f, 0.12f, 0.14f),
-            new Vector3(0f, 0.9f, 0.42f), _ => RpcId(Net.HostId, MethodName.RequestPush));
-        var head = Interactable.Create(_parts["Head"], "Take an X-ray", new Vector3(0.3f, 0.3f, 0.3f),
-            new Vector3(0f, 0.03f, 0f), _ => RpcId(Net.HostId, MethodName.RequestExpose));
-        head.Wheel = Raise;
-        head.WheelPrompt = "Raise / lower the arm";
-        Interactable.Create(this, "Hold up the X-ray films", new Vector3(0.44f, 0.44f, 0.1f), FilmSpot,
-            surgeon => surgeon.HoldingFilms = true).Offered = surgeon => Films.Count > 0 && !surgeon.HoldingFilms;
+        // Grab takes hold of it anywhere, like a tool: the base and generator, the handle, the column, and the arm with
+        // the tube head, which moves with it. The films' spot over the holder stays clear.
+        Interactable Hold(Node3D parent, Vector3 size, Vector3 position) {
+            var spot = Interactable.Create(parent, "Push / let go of the X-ray cart", size, position,
+                _ => RpcId(Net.HostId, MethodName.RequestPush));
+            spot.Button = InputActions.Grab;
+            spot.Highlight = [model];
+            // A hand that holds a tool lets go of it instead, and one by a tool picks that up.
+            spot.Offered = surgeon => Pusher == surgeon.PeerId
+                || (surgeon.HeldTool(surgeon.Active) is null && !IsInstanceValid(surgeon.Hovered));
+            return spot;
+        }
+        Hold(this, new Vector3(0.5f, 0.75f, 0.7f), new Vector3(0f, 0.375f, -0.02f))
+            .AddBox(new Vector3(0.6f, 0.12f, 0.14f), new Vector3(0f, 0.9f, 0.4f))
+            .AddBox(new Vector3(0.14f, 2.0f, 0.13f), new Vector3(-0.17f, 1.1f, -0.03f));
+        // Local to the tube head: the head, and the arm from it back to the column.
+        Hold(_parts["Arm"], new Vector3(0.34f, 0.4f, 0.3f), new Vector3(0f, -0.04f, 0f))
+            .AddBox(new Vector3(0.3f, 0.12f, 0.75f), new Vector3(-0.08f, 0.24f, 0.35f));
+        var films = Interactable.Create(this, "Hold up the X-ray films", new Vector3(0.44f, 0.44f, 0.1f), FilmSpot,
+            surgeon => surgeon.HoldingFilms = true);
+        films.Offered = surgeon => Films.Count > 0 && !surgeon.HoldingFilms;
+        films.Highlight = _films;
     }
 
     /// <summary>Raises the arm one wheel step (-1 lowers it).</summary>
@@ -128,6 +146,9 @@ public partial class XrayCart : Node3D {
 
     /// <summary>Lets go of the cart and locks it against the floor, if this peer pushes it.</summary>
     public void Lock() => RpcId(Net.HostId, MethodName.RequestLock);
+
+    /// <summary>Takes an exposure, if the cart is at the table and ready.</summary>
+    public void TakeXray() => RpcId(Net.HostId, MethodName.RequestExpose);
 
     public override void _Process(double delta) {
         PoseArm(Mathf.Min((float)delta * 10f, 1f));
@@ -227,12 +248,10 @@ public partial class XrayCart : Node3D {
         }
     }
 
-    /// <summary>Turns the arm toward <see cref="Arm"/> by `follow` of the way, and the head back by as much so it stays
-    /// level.</summary>
+    /// <summary>Slides the arm toward <see cref="Arm"/> by `follow` of the way.</summary>
     private void PoseArm(float follow) {
-        var angle = Mathf.Lerp(_parts["Arm"].Rotation.X, Arm, follow);
-        _parts["Arm"].Rotation = new Vector3(angle, 0f, 0f);
-        _parts["Head"].Rotation = new Vector3(-angle, 0f, 0f);
+        var arm = _parts["Arm"];
+        arm.Position = arm.Position with { Y = Mathf.Lerp(arm.Position.Y, Arm, follow) };
     }
 
     public override void _PhysicsProcess(double delta) {
@@ -250,14 +269,13 @@ public partial class XrayCart : Node3D {
         if (!_surgery.Surgeons.TryGetValue(Pusher, out var surgeon)) {
             return;
         }
-        var target = surgeon.GlobalPosition - (surgeon.GlobalBasis.Z * PushOffset);
+        var target = surgeon.ToGlobal(_gripOffset);
         if (Bounds != Vector2.Zero) {
             target = new Vector3(Mathf.Clamp(target.X, -Bounds.X, Bounds.X), 0f, Mathf.Clamp(target.Z, -Bounds.Y, Bounds.Y));
         }
         var follow = Mathf.Min(dt * 8f, 1f);
         GlobalPosition = GlobalPosition.Lerp(target with { Y = 0f }, follow);
-        // The front, where the arm reaches, faces where the pusher walks.
-        Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y, follow) };
+        Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y + _gripYaw, follow) };
         _syncAccumulated += dt;
         // Not after the report, like the surgeons' states: the others may have left for the lobby.
         if (_syncAccumulated >= SyncInterval && !_surgery.Finished) {
@@ -279,6 +297,10 @@ public partial class XrayCart : Node3D {
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]
     private void RequestPush() {
         var peer = Net.Instance.Sender();
+        if (Pusher != peer && _surgery.Surgeons.TryGetValue(peer, out var surgeon)) {
+            _gripOffset = surgeon.ToLocal(GlobalPosition) with { Y = 0f };
+            _gripYaw = Rotation.Y - surgeon.Rotation.Y;
+        }
         Rpc(MethodName.SyncState, Pusher == peer ? 0 : peer, Arm);
     }
 

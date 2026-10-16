@@ -2,7 +2,7 @@ namespace Scalpel.Tests.Surgeons;
 
 /// <summary>Real local input and normal surgery physics frames: the walk animation must not bob the camera, the reach
 /// origin or the arms and hands the player sees. Crouching changes only their height, while the visible rig leans
-/// forward. Zoomed in over an open belly the surgeon leans in to look down into it. A fallen surgeon's face tracks the
+/// forward. Zoomed in over the patient the surgeon leans in to look down at the hand. A fallen surgeon's face tracks the
 /// patient.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -135,70 +135,102 @@ public class SurgeonMovementTest {
     }
 
     /// <summary>
-    /// Standing at an open belly with the hand in the opening, zooming in bends the surgeon over it: the eyes come over
-    /// the opening and look down into it from above, gradually, without turning sideways, so a mouse move to the right
-    /// still moves the hand right on screen. Their partner sees them bent over the table. Walking away zooms back out
-    /// and straightens them up, just as gradually. Looking up while leaning in, the look is the player's; the hand moved
-    /// off the opening onto the skin, they straighten up but stay zoomed in.
+    /// Standing at an open belly with a scalpel over the skin beside the opening, zooming in bends the surgeon far over
+    /// it, the tool only hovering: the eyes come over the hand and look down at it from above, gradually, without turning
+    /// sideways, so a mouse move to the right still moves the hand right on screen. Cutting from the skin across the
+    /// opening holds the bend steady: it doesn't let go as the blade goes down or crosses the edge. Their partner sees
+    /// them bent over the table. Walking away zooms back out and straightens them up, just as gradually. Looking up while
+    /// leaning in, the look is the player's. Stepping along the table stays zoomed in; the hand moved off the patient,
+    /// they straighten up but stay zoomed in.
     /// </summary>
     [TestCase]
-    public async Task ZoomingInOverAnOpeningLeansInWhileTheHandIsInIt() {
+    public async Task ZoomingInOverThePatientLeansIn() {
         var driver = await Begin();
         var me = driver.Me;
         var patient = driver.Patient;
+        SurgeryState.PatientIsAsleep(patient);
         var at = new Vector2(0.5f, 0.62f);
         SurgeryState.SkinIsCut(patient, at - new Vector2(0.15f, 0f), at + new Vector2(0.15f, 0f), 1f);
         await Frames.Seconds(1f);
         AssertBool(driver.Body.IsOpen(at)).OverrideFailureMessage("the belly stands open").IsTrue();
+        AssertObject(await driver.PlayerRequestsItem("scalpel")).OverrideFailureMessage("a scalpel in hand").IsNotNull();
         var opening = driver.SitePoint(at);
         await driver.PlayerWalksTo(opening);
-        await driver.PlayerReaches(opening);
+        var skin = opening + (me.GlobalBasis.Z * 0.05f);
+        await driver.PlayerReaches(skin);
         await Frames.Physics(10);
         var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
         // It stands where the surgeon does: shown only from beside, it would fill the surgeon's own view.
         puppet.Visible = false;
         var standingEyes = me.ToLocal(me.Camera.GlobalPosition);
         var standingPitch = me.Pitch;
-        await driver.Capture("at_the_opening", "standing at the open belly, the hand over the opening, the view level");
+        await driver.Capture("at_the_opening", "standing at the open belly, the scalpel over the skin beside the opening, "
+            + "the view level");
         driver.Budget.Clear();
 
         SurgeryDriver.Tap(InputActions.Zoom);
-        driver.Note("zooming in over the opening");
+        driver.Note("zooming in over the skin, the scalpel hovering");
         await FollowView(me, puppet, 60);
         var spot = me.LeanSpot;
-        AssertObject(spot).OverrideFailureMessage("the view leans in on the opening").IsNotNull();
-        AssertFloat(me.Lean).OverrideFailureMessage($"the torso bends forward ({me.Lean:0.00} rad)").IsGreater(0.2f);
+        AssertObject(spot).OverrideFailureMessage("the view leans in over the patient, no tool in use").IsNotNull();
+        AssertFloat(me.Lean).OverrideFailureMessage($"the torso bends far forward ({me.Lean:0.00} rad)").IsGreater(0.6f);
+        foreach (var arm in me.Hands) {
+            var gap = ArmAbove(me, arm);
+            AssertFloat(gap).OverrideFailureMessage($"arm {arm.Index} stays above the patient ({gap * 100f:0} cm at its lowest)")
+                .IsGreater(0f);
+        }
         var eyes = me.Camera.GlobalPosition;
         var ahead = standingEyes.Z - me.ToLocal(eyes).Z;
-        AssertFloat(ahead).OverrideFailureMessage($"the eyes come forward over the table ({ahead * 100f:0} cm)").IsGreater(0.1f);
-        AssertFloat(eyes.Y - spot!.Value.Y).OverrideFailureMessage($"and stay clear above the opening ({(eyes.Y - spot.Value.Y) * 100f:0} cm)")
+        AssertFloat(ahead).OverrideFailureMessage($"the eyes come forward over the table ({ahead * 100f:0} cm)").IsGreater(0.3f);
+        AssertFloat(eyes.Y - spot!.Value.Y).OverrideFailureMessage($"and stay clear above the skin ({(eyes.Y - spot.Value.Y) * 100f:0} cm)")
             .IsGreater(Surgeon.LeanClearance - 0.01f);
         var forward = -me.Camera.GlobalBasis.Z;
-        AssertFloat(forward.Dot((spot.Value - eyes).Normalized())).OverrideFailureMessage("looking down into the opening")
+        AssertFloat(forward.Dot((spot.Value - eyes).Normalized())).OverrideFailureMessage("looking down at the hand")
             .IsGreater(0.99f);
         AssertFloat(me.Camera.GlobalBasis.X.Dot(me.GlobalBasis.X)).OverrideFailureMessage("without turning sideways")
             .IsGreater(0.9999f);
         var hand = me.Hands[me.Active];
-        var tip = hand.GlobalPosition + hand.TipOffset(0.05f);
+        var tip = driver.Tip(hand);
         AssertBool(me.Camera.IsPositionInFrustum(tip) && me.Camera.IsPositionInFrustum(hand.GlobalPosition) && hand.Visible)
-            .OverrideFailureMessage("the hand in the opening stays in view").IsTrue();
-        await driver.Capture("leaning_in", "zoomed in and leaning in: looking down into the open belly from above, the "
-            + "see-through hand in the opening, nothing clipped by drapes or organs");
+            .OverrideFailureMessage("the hand over the skin stays in view").IsTrue();
+        await driver.Capture("leaning_in", "zoomed in and leaning far in: looking down from close above at the see-through "
+            + "hand and the scalpel over the skin beside the open belly, nothing clipped by drapes or organs");
 
-        var onScreen = me.Camera.UnprojectPosition(tip);
-        await driver.PlayerReaches(opening + (me.GlobalBasis.X * 0.03f));
+        driver.Note("cutting from the skin across the opening");
+        var bent = me.Lean;
+        var least = bent;
+        var spotHeights = new List<float>();
+        var inOpening = false;
+        var cut = driver.PlayerWorksAlong([skin, opening - (me.GlobalBasis.Z * 0.05f)], 0);
+        while (!cut.IsCompleted) {
+            await Frames.Physics(1);
+            AssertObject(me.LeanSpot).OverrideFailureMessage("still leaning in while cutting").IsNotNull();
+            least = Mathf.Min(least, me.Lean);
+            spotHeights.Add(me.LeanSpot!.Value.Y);
+            inOpening |= hand.Lowered && me.SurfaceBelow(driver.Tip(hand), false).Open;
+        }
+        await cut;
+        AssertBool(inOpening).OverrideFailureMessage("the lowered blade went over the opening").IsTrue();
+        AssertFloat(bent - least).OverrideFailureMessage($"the bend holds while the blade goes down and across the edge "
+            + $"(dropped {bent - least:0.000} rad)").IsLess(0.05f);
+        var spotJump = spotHeights.Zip(spotHeights.Skip(1), (a, b) => Mathf.Abs(b - a)).Max();
+        AssertFloat(spotJump).OverrideFailureMessage($"and the spot it leans over follows the skin, not dropping into the "
+            + $"opening ({spotJump * 1000f:0.0} mm at most in a frame)").IsLess(0.003f);
+
+        var onScreen = me.Camera.UnprojectPosition(driver.Tip(hand));
+        await driver.PlayerReaches(driver.Tip(hand) + (me.GlobalBasis.X * 0.03f));
         await Frames.Physics(10);
-        var moved = me.Camera.UnprojectPosition(hand.GlobalPosition + hand.TipOffset(0.05f)) - onScreen;
+        var moved = me.Camera.UnprojectPosition(driver.Tip(hand)) - onScreen;
         AssertFloat(moved.X).OverrideFailureMessage($"moving the hand right moves it right on screen ({moved})").IsGreater(20f);
         AssertFloat(Mathf.Abs(moved.Y)).OverrideFailureMessage($"and not up or down ({moved})").IsLess(Mathf.Abs(moved.X) * 0.2f);
-        AssertObject(me.LeanSpot).OverrideFailureMessage("still leaning in over the opening").IsNotNull();
+        AssertObject(me.LeanSpot).OverrideFailureMessage("still leaning in over the patient").IsNotNull();
 
         await FollowView(me, puppet, 1);
         AssertFloat(puppet.Lean).OverrideFailureMessage("the partner gets how far they lean").IsEqualApprox(me.Lean, 0.001f);
         var neck = puppet.FaceModel.GlobalTransform * Surgeon.HeadPivot;
-        var bent = puppet.ToLocal(neck).Z;
-        AssertFloat(bent).OverrideFailureMessage($"and sees their head bent forward over the table ({bent * 100f:0} cm ahead)")
-            .IsLess(-0.15f);
+        var bentHead = puppet.ToLocal(neck).Z;
+        AssertFloat(bentHead).OverrideFailureMessage($"and sees their head bent forward over the table ({bentHead * 100f:0} cm ahead)")
+            .IsLess(-0.3f);
         if (KeyFrames.Wanted()) {
             var camera = new Camera3D { Fov = 55f, CullMask = RenderLayers.Normal };
             driver.Surgery.AddChild(camera);
@@ -206,8 +238,8 @@ public class SurgeonMovementTest {
             camera.LookAt(neck + (Vector3.Down * 0.4f));
             camera.MakeCurrent();
             puppet.Visible = true;
-            await driver.Capture("leaning_seen", "seen from beside: the surgeon bent forward from the hips over the open "
-                + "belly, head down over it, feet where they stood, nothing passing through the table");
+            await driver.Capture("leaning_seen", "seen from beside: the surgeon bent far forward from the hips over the "
+                + "open belly, head low over it, feet where they stood, nothing passing through the table");
             puppet.Visible = false;
             me.Camera.MakeCurrent();
             camera.QueueFree();
@@ -218,10 +250,11 @@ public class SurgeonMovementTest {
         await FollowView(me, puppet, 30);
         PlayerInput.Action(InputActions.MoveBack, false);
         AssertInt(me.Zoom).OverrideFailureMessage("walking away zooms back out").IsEqual(0);
-        await FollowView(me, puppet, 30);
+        await FollowView(me, puppet, 60);
         AssertFloat(me.Lean).OverrideFailureMessage($"and straightens back up ({me.Lean:0.000} rad)").IsLess(0.01f);
         AssertFloat(me.Pitch).OverrideFailureMessage("looking where they did before leaning in").IsEqualApprox(standingPitch, 0.02f);
-        await driver.Capture("walked_away", "walked back from the table: zoomed out, standing straight, looking at the table as before, the hands solid");
+        await driver.Capture("walked_away", "walked back from the table: zoomed out, standing straight, looking at the "
+            + "table as before, the hands solid");
 
         await driver.PlayerWalksTo(opening);
         await driver.PlayerReaches(opening);
@@ -234,13 +267,37 @@ public class SurgeonMovementTest {
         await FollowView(me, puppet, 20);
         AssertFloat(me.Pitch).OverrideFailureMessage("looking up while leaning in, the look stays where the player put it")
             .IsEqualApprox(lookedAt, 0.001f);
-        await driver.PlayerReaches(opening + (me.GlobalBasis.Z * 0.05f));
-        driver.Note("moving the hand off the opening onto the skin");
-        await FollowView(me, puppet, 60);
-        AssertObject(me.LeanSpot).OverrideFailureMessage("the hand on the skin beside the opening, the lean lets go").IsNull();
+        PlayerInput.Action(InputActions.MoveLeft);
+        driver.Note("stepping along the table");
+        await FollowView(me, puppet, 15);
+        PlayerInput.Action(InputActions.MoveLeft, false);
+        AssertInt(me.Zoom).OverrideFailureMessage("stepping along the table stays zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
+        await driver.PlayerReaches(me.GlobalPosition + (me.GlobalBasis.Z * -0.2f));
+        driver.Note("moving the hand off the patient, in front of the body");
+        AssertBool(me.SurfaceBelow(driver.Tip(hand), false).Soft).OverrideFailureMessage("the hand is off the patient").IsFalse();
+        await FollowView(me, puppet, 120);
+        AssertObject(me.LeanSpot).OverrideFailureMessage("the hand off the patient, the lean lets go").IsNull();
         AssertFloat(me.Lean).OverrideFailureMessage($"and the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
         AssertInt(me.Zoom).OverrideFailureMessage("still zoomed in").IsEqual(Surgeon.ZoomFov.Length - 1);
+        AssertFloat(me.Pitch).OverrideFailureMessage("the look still where the player put it").IsEqualApprox(lookedAt, 0.001f);
         driver.Budget.Check(localOverride: BudgetOverride);
+    }
+
+    /// <summary>How far (m) <paramref name="arm"/>'s sleeve, shoulder to elbow to wrist, is above what's under it at its
+    /// lowest: below zero it passes through the patient.</summary>
+    private static float ArmAbove(Surgeon me, SurgeonHand arm) {
+        Vector3[] joints = [me.VisualShoulder(arm.Index), arm.Elbow, arm.GlobalPosition];
+        var lowest = float.PositiveInfinity;
+        for (var bone = 0; bone < 2; bone++) {
+            for (var step = 0; step <= 10; step++) {
+                var point = joints[bone].Lerp(joints[bone + 1], step / 10f);
+                var under = me.SurfaceBelow(point, false);
+                if (under.Found) {
+                    lowest = Mathf.Min(lowest, point.Y - under.Y);
+                }
+            }
+        }
+        return lowest;
     }
 
     /// <summary>Plays <paramref name="frames"/> physics frames, the partner's copy getting each one, and checks the view
