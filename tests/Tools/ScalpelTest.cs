@@ -90,7 +90,7 @@ public class ScalpelTest {
             .IsLess(0.000001f);
         await driver.Capture("released", "released at the end: one clean 5 cm cut, the blade on its handle");
         var cuts = patient.Wounds.Where(wound => wound.MadeBySurgeon && wound.Kind == WoundKind.Cut).ToList();
-        AssertInt(cuts.Count).OverrideFailureMessage("one stroke makes one cut").IsEqual(1);
+        AssertInt(cuts.Count).OverrideFailureMessage($"one stroke makes one cut: {driver.Bleeders()}").IsEqual(1);
         var cut = cuts[0];
         AssertFloat(body.UvToMeters(cut.LengthUv)).OverrideFailureMessage("a light stroke along 5 cm cuts 5 cm")
             .IsEqualApprox(Length, 0.005f);

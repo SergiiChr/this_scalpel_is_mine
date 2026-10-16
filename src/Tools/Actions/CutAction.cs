@@ -11,13 +11,15 @@ public sealed class CutAction : ToolAction {
         var body = patient.Body;
         var direction = ToolActions.BladeDirection(tool);
         var span = step.Lowered && level > 0 && step.InSite ? tool.Blade?.SkinSpan(body, tool.GlobalTransform, direction) : null;
-        var from = span is { } contact ? body.CutUv(contact.From) : step.Uv;
-        var to = span is { } contactEnd ? body.CutUv(contactEnd.To) : step.Uv;
+        var from = span is { } contact ? contact.FromUv : step.Uv;
+        var to = span is { } contactEnd ? contactEnd.ToUv : step.Uv;
         var surfaceContact = span is { } footprint ? body.Site.ToGlobal((footprint.From + footprint.To) * 0.5f) : step.Tip;
+        var stabbed = false;
         if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel
             && (tool.Blade is null || span is not null)) {
             // Pressed in at a new depth: the point goes in as wide as the blade, before it's moved at all.
             use.StabbedLevel = level;
+            stabbed = true;
             if (span is null) {
                 var half = direction * ToolActions.StabLength * 0.5f;
                 from = body.WorldToUv(step.Tip - half);
@@ -53,6 +55,12 @@ public sealed class CutAction : ToolAction {
             return;
         }
         var fresh = use.LastUv.X < 0f || !use.LastCutContact.IsFinite();
+        if (fresh && !stabbed && span is not null) {
+            // Re-entering intact skin after running inside an opening still cuts the whole visible section.
+            // Starting at its midpoint leaves the half behind it as an intact bridge.
+            patient.Cut(StrokeKey(tool), from, to, ToolActions.DepthByLevel[level], step.Def.Sharpness,
+                !tool.Sterile, step.Hand.Speed);
+        }
         var motion = fresh ? Vector3.Zero : surfaceContact - use.LastCutContact;
         var moved = !fresh && body.WorldToUv(use.LastCutContact).DistanceTo(body.WorldToUv(surfaceContact)) > 0.003f;
         if (moved) {
@@ -70,7 +78,10 @@ public sealed class CutAction : ToolAction {
                 // Dragged sideways: the next stroke starts here.
                 // Lowering or tilting can move the footprint sideways without being a sideways drag.
                 var grip = tool.GlobalPosition - use.LastCutGrip;
-                if (grip.X * grip.X + grip.Z * grip.Z > grip.Y * grip.Y) { use.Stroke++; }
+                var across = grip.Slide(Vector3.Up);
+                if (body.WorldToUv(tool.GlobalPosition).DistanceTo(body.WorldToUv(use.LastCutGrip)) > 0.003f
+                    && across.LengthSquared() > grip.Y * grip.Y
+                    && Mathf.Abs(across.Normalized().Dot(direction)) < ToolActions.AlongBlade) { use.Stroke++; }
             }
         }
         if (fresh || moved) {

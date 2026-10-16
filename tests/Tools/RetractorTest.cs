@@ -357,14 +357,16 @@ public class RetractorTest {
     /// hooked, its handle pointing the way it pulled.</summary>
     private static async Task LetGoPulled(SurgeryDriver driver, SurgicalTool retractor, Vector3 pull, int number) {
         // Measure the complete pull since the hook entered the skin, including any settling before this sweep.
-        var hooked = driver.Body.UvToWorld(((SkinHold)retractor.Hold!).Anchor);
+        var hold = (SkinHold)retractor.Hold!;
+        var origin = hold.Origin ?? driver.Body.Site.ToLocal(driver.Body.UvToWorld(hold.Anchor));
         await driver.PlayerSweepsTo(retractor.TipPosition() + pull);
-        var pulled = retractor.TipPosition() - hooked;
+        var pulled = driver.Body.Site.GlobalBasis.Inverse()
+            * (retractor.TipPosition() - driver.Body.Site.ToGlobal(origin));
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(1f);
         AssertThat(retractor.State).OverrideFailureMessage($"retractor {number} stays hooked when let go of")
             .IsEqual(ToolState.Standing);
-        AssertPointsAway(retractor, pulled);
+        AssertPointsAway(retractor, driver.Body.Site.GlobalBasis * pulled);
     }
 
     /// <summary>The skin just outside the opening's edge from <paramref name="uv"/> (on the cut) toward

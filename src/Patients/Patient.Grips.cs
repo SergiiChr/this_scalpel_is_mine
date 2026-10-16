@@ -27,7 +27,8 @@ public partial class Patient {
                 tissue.Grip(toolUid, uv);
             }
             var held = tissue.GrippedParticle(toolUid);
-            return new SkinHold(cut.Id, uv, Hook: true, Offset: Body.LayerPoint(0, held) - tissue.Pos[held]);
+            var contact = Body.LayerPoint(0, held);
+            return new SkinHold(cut.Id, uv, Hook: true, Offset: contact - tissue.Pos[held], Origin: contact);
         }
         // The nearest target the jaws close on, not one another tool already holds (two broken ends lie close
         // together). Forceps held up in the opening close on nothing under them: no target, vessel or bleeding wound.
@@ -42,14 +43,15 @@ public partial class Patient {
             nearest.GrippedBy = toolUid;
             return new TargetHold(nearest.Index, depthM);
         }
-        if (!skinOnly && down && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal && w.Points[0].DistanceTo(uv) < 0.05f) is { } vessel) {
+        var at = Body.UvToWorld(uv, depthM);
+        var organ = zone == SiteZone.Cavity && !skinOnly ? Body.OrganAt(at, 0.02f) : -1;
+        if (!skinOnly && down && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal
+                && w.Points[0].DistanceTo(uv) < 0.05f && (organ < 0 || w.DepthM <= depthM + JawReach)) is { } vessel) {
             vessel.Clamped = 0.9f;
             return new VesselHold(vessel.Id);
         }
         if (zone == SiteZone.Cavity && !skinOnly) {
             // An organ in the way can be taken hold of and moved aside, to get at what's under it.
-            var at = Body.UvToWorld(uv, depthM);
-            var organ = Body.OrganAt(at, 0.02f);
             if (organ >= 0) {
                 var position = Body.Organs[organ].Position;
                 Body.HoldOrgan(organ, position);
@@ -69,7 +71,8 @@ public partial class Patient {
             var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.Nearest(material)).Count > 0;
             var offset = skinOnly
                 ? Body.SitePoint(uv, Body.SkinHeight(uv)) - tissue.Pos[tissue.GrippedParticle(toolUid)] : Vector3.Zero;
-            return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset);
+            return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset,
+                Origin: skinOnly ? tissue.Pos[tissue.GrippedParticle(toolUid)] + offset : null);
         }
         return null;
     }
