@@ -424,6 +424,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
+- **Reading a vial with a syringe**: a held syringe whose needle is in or just over a vial
+  (`ToolManager.NearestContainer()`) shows the vial's label beside the aim, as a tool's name shows there for an empty
+  hand.
 - **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
   vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
   snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.
