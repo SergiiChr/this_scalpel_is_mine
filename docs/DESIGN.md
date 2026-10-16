@@ -370,7 +370,7 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   `Surgeon.AimTool()`): the wrist and forearm stay put, the tip follows the mouse and rises off what it rested on, and
   settles back down once MMB is let go.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, heat, saw speed, suction), 0 does
-  nothing. Gauze and swabs take none: lowered, they wipe and press right where they point.
+  nothing. Gauze and other swabs take none: lowered, they wipe right where they point, and gauze presses there.
   Shift toggles between two zoom levels, Alt lifts.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and
