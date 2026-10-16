@@ -684,7 +684,7 @@ def suite_log(suite: Suite) -> Path:
     return BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
 
 
-def skipped(suite: Suite) -> Outcome:
+def skipped_outcome(suite: Suite) -> Outcome:
     """The outcome of a suite with no runnable case selected: a report that says so, nothing launched."""
     reason = "No runnable cases match the selection (broken cases are excluded unless RUN_BROKEN=1)."
     log = BUILD / "test-logs" / f"{suite.name}.log"
@@ -707,18 +707,18 @@ def gather(suite: Suite, results: Sequence[ProcessResult]) -> Outcome:
 def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
     """Runs a suite in its own Godot process, or each of its cases in one of its own when it isolates them."""
     todo = processes(suite, options)
-    return gather(suite, [process.run(options) for process in todo]) if todo else skipped(suite)
+    return gather(suite, [process.run(options) for process in todo]) if todo else skipped_outcome(suite)
 
 
-def run_together(suites: Sequence[Suite], options: TestOptions) -> Iterator[Outcome]:
-    """Runs suites side by side, options.jobs processes at a time, and yields each suite's outcome once its last
-    process has ended. An isolated suite's cases are spread over the pool like any other processes: the longest suites
-    isolate theirs, and run one after another they would hold the whole run up long after the others have finished."""
-    todo = {suite.full_name: processes(suite, options) for suite in suites}
+def run_together(suites: Sequence[Suite], todo: dict[str, list[Process]], options: TestOptions) -> Iterator[Outcome]:
+    """Runs suites side by side, options.jobs of their processes (todo, by suite name) at a time, and yields each
+    suite's outcome once its last process has ended, so suites come out in the order they finish. An isolated suite's
+    cases are spread over the pool like any other processes: the longest suites isolate theirs, and run one after
+    another they would hold the whole run up long after the others have finished."""
     results: dict[str, list[ProcessResult]] = {suite.full_name: [] for suite in suites}
     for suite in suites:
         if not todo[suite.full_name]:
-            yield skipped(suite)
+            yield skipped_outcome(suite)
     with ThreadPoolExecutor(options.jobs) as pool:
         futures = {pool.submit(process.run, options): process for group in todo.values() for process in group}
         for future in as_completed(futures):
@@ -832,13 +832,14 @@ def test(arguments: list[str]) -> int:
     # The first test process ever writes the adapter's runner class and builds it into the assembly: it runs alone,
     # as processes starting beside that build would load a half-written assembly.
     first = [together.pop(0)] if together and not RUNNER_CLASS.exists() else []
+    todo = {suite.full_name: processes(suite, options) for suite in together}
     if together:
-        count = sum(len(processes(suite, options)) for suite in together)
+        count = sum(len(group) for group in todo.values())
         print(f"Running {len(together)} test suites in {count} test processes, {options.jobs} at a time.")
     outcomes: list[Outcome] = []
     batches: tuple[Iterator[Outcome], ...] = (
         (run_suite(suite, options) for suite in first),
-        run_together(together, options),
+        run_together(together, todo, options),
         (run_suite(suite, options) for suite in alone),
     )
     for batch in batches:
