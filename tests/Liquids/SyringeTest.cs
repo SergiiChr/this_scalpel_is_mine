@@ -453,7 +453,7 @@ public class SyringeTest {
         AssertBool(me.Camera.Transform.IsEqualApprox(Transform3D.Identity) && Fade(hand) > 0.5f)
             .OverrideFailureMessage(
                 $"{name}: the last zoom step fades the hands over the catheter, the camera at the eyes "
-                    + $"({Fade(hand):0.00})")
+                    + $"(fade {Fade(hand):0.00}, zoom step {me.Zoom}, camera {me.Camera.Transform.Origin})")
             .IsTrue();
         // Checked before it goes in: the needle hurts, an awake patient's arm flinches and the vein moves with it.
         var off = (_bench.Catheter!.TipPosition() - _bench.VeinPoint()) * new Vector3(1f, 0f, 1f);
