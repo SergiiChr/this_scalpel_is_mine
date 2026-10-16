@@ -426,6 +426,13 @@ public partial class Surgeon {
         return lowest;
     }
 
+    /// <summary>How high the table, the patient, their drapes or anything else standing in the room reach under
+    /// <paramref name="point"/> (world), negative infinity over nothing. Up to 15 cm over it counts as under: what an
+    /// elbow sank into. One ray, cheap enough for the arms to keep their elbows out of them every frame.</summary>
+    internal float GroundUnder(Vector3 point) =>
+        Rays.Cast(this, point + (Vector3.Up * 0.15f), point + (Vector3.Down * 2f),
+            1 | 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer)?.Position.Y ?? float.NegativeInfinity;
+
     /// <summary>
     /// What's under <paramref name="point"/>. Over an opening it finds what's inside: organs and targets, or the cavity
     /// floor. Rests on the patient's real skin (<see cref="PatientBody.SurfaceLayer"/>), the table, trays, tools lying
