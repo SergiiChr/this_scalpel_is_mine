@@ -32,7 +32,6 @@ public class SwabCapacityTest {
         var on = driver.SitePoint(at);
         await driver.PlayerWalksTo(on);
         await driver.PlayerReaches(on);
-        await driver.SetLevel(3);
         SurgeryDriver.Use();
         var full = await Frames.Until(() => gauze.Room <= 0.01f, 10f);
         AssertBool(full).OverrideFailureMessage($"packed into a pool of blood, the gauze fills up ({gauze.Ml:0.0} of {gauze.Def.Volume} ml)")
