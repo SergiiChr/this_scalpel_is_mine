@@ -1853,6 +1853,7 @@ public sealed partial class TissueSim {
         if (window.Size == Vector2I.Zero) {
             _winParticles = [];
             _winSprings = [];
+            _windowBends = [];
             return;
         }
         var particles = new List<int>();
@@ -1878,6 +1879,7 @@ public sealed partial class TissueSim {
             }
         }
         _winParticles = [.. particles];
+        IndexBends();
         _winSprings = [.. springs];
         foreach (var k in _winParticles) {
             _free[k] = 1f;
