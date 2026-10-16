@@ -167,6 +167,7 @@ public static class Syringe {
                 break;
             default:
                 patient.Spill(tool.TipPosition(), liquid, surgery.Tools.Transfer(tool, null, liquid));
+                surgery.Effect(ToolEffect.Stream, tool.TipPosition(), 0);
                 break;
         }
     }

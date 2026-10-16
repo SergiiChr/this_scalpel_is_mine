@@ -23,8 +23,8 @@ public partial class Patient {
     public const float MuscleReach = 0.03f;
     /// <summary>Gap in meters that counts as a fully opened wound.</summary>
     public const float FullGap = 0.012f;
-    /// <summary>ml of liquid run through a dirty cut that wash it clean.</summary>
-    public const float RinseMl = 5f;
+    /// <summary>ml of liquid run through a dirty cut, per cm of its length (at least one), that wash it clean.</summary>
+    public const float RinseMlPerCm = 10f;
     /// <summary>How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
     /// </summary>
     public const float DeepBlock = 0.3f;
@@ -798,12 +798,16 @@ public partial class Patient {
         return drained;
     }
 
+    /// <summary>ml of liquid that wash <paramref name="wound"/> clean: the longer it is, the more.</summary>
+    public float RinseMl(Wound wound) => Mathf.Max(Body.UvToMeters(wound.LengthUv) * 100f, 1f) * RinseMlPerCm;
+
     /// <summary>
     /// <paramref name="ml"/> of liquid holding <paramref name="contents"/> (drug id -> amount, "blood" in ml) let out at
     /// <paramref name="at"/> (world), squirted from a syringe: it falls straight down. Landing on the site, it runs over
     /// the skin there like any liquid: it washes off the blood and dirt on it and leaves the blood it carries, and in a
     /// cut it flushes out what the cut holds. A cut with glass still in it is shut: the liquid runs off.
     /// </summary>
+
     public void Spill(Vector3 at, float ml, IReadOnlyDictionary<string, float> contents) {
         if (Body.Probe(at).Zone is not (SiteZone.Air or SiteZone.Site or SiteZone.Cavity)) {
             return;
@@ -819,7 +823,7 @@ public partial class Patient {
         }
         wound.Rinsed += ml;
         wound.PooledMl = Mathf.Max(wound.PooledMl - ml, 0f);
-        if (wound.Dirty && wound.Rinsed >= RinseMl) {
+        if (wound.Dirty && wound.Rinsed >= RinseMl(wound)) {
             wound.Dirty = false;
             Session.Announce("The cut is rinsed clean.");
         }

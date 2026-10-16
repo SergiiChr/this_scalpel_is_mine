@@ -65,22 +65,43 @@ public partial class SurgeryDriver {
         Note($"site sanitized: {Patient.SanitizedFraction():0.00}");
     }
 
+    private const float PourHeight = 0.06f;
+
     /// <summary>Saline from the IV bag drawn into the 50 ml syringe and squirted into every dirty cut from just over it
-    /// until it's rinsed clean, the syringe topped up from the bag when it runs low.</summary>
+    /// until it's rinsed clean, held a hand's width over it so the stream shows, the syringe refilled from the bag whenever it runs dry.</summary>
     public async Task PlayerRinsesCuts() {
         var syringe = (await PlayerRequestsItem("syringe_50"))!;
+        var shown = false;
         foreach (var cut in Patient.Wounds.Where(wound => wound.Dirty).ToList()) {
-            if (syringe.Ml < Patient.RinseMl * 2f) {
-                await DrawFromDrip(syringe);
+            var need = Patient.RinseMl(cut);
+            for (var pushes = 0; cut.Dirty && pushes < need * 2f;) {
+                if (syringe.Ml < 1f) {
+                    await DrawFromDrip(syringe);
+                }
+                await NeedleInto(SitePoint(cut.Midpoint) + (Vector3.Up * PourHeight), false);
+                for (; cut.Dirty && syringe.Ml >= 1f && pushes < need * 2f; pushes++) {
+                    await Notch(true);
+                    if (!shown && pushes == 2) {
+                        shown = true;
+                        await ShowsStreamInto(cut);
+                    }
+                }
+                await NeedleOut();
             }
-            await NeedleInto(SitePoint(cut.Midpoint), false);
-            for (var i = 0; i < 30 && cut.Dirty && syringe.Ml + syringe.Air > 0f; i++) {
-                await Notch(true);
-            }
-            Note($"rinsed {cut.Rinsed:0} ml through a cut, {(cut.Dirty ? "still dirty" : "clean")}");
-            await NeedleOut();
+            Note($"rinsed {cut.Rinsed:0} of {need:0} ml through a cut, {(cut.Dirty ? "still dirty" : "clean")}");
         }
         await PlayerPutsDown();
+    }
+
+    /// <summary>The saline squirting from the syringe shows as one stream falling onto <paramref name="cut"/>.</summary>
+    private async Task ShowsStreamInto(Wound cut) {
+        var streams = Surgery.Effects.Streams();
+        var lands = SitePoint(cut.Midpoint);
+        var onCut = streams.Count == 1 && streams[0].Top.Y - streams[0].Bottom.Y > PourHeight / 2f
+            && new Vector2(streams[0].Bottom.X - lands.X, streams[0].Bottom.Z - lands.Z).Length() < 0.02f;
+        AssertBool(onCut).OverrideFailureMessage($"one stream falls from the syringe into the cut at {lands}: {string.Join(", ", streams)}")
+            .IsTrue();
+        await Capture("rinsing", "a thin pale stream of saline falls from the syringe tip into the cut");
     }
 
     /// <summary>Fills <paramref name="syringe"/> from the IV drip bag on the stand, through its port.</summary>

@@ -12,6 +12,8 @@ public enum ToolEffect {
     Spark,
     /// <summary>Injection or catheter: a bead of blood where the needle went in, a spot on the site's skin.</summary>
     Bead,
+    /// <summary>Liquid squirted out of a syringe: a thin stream falling from the tip to where it lands.</summary>
+    Stream,
 }
 
 /// <summary>
@@ -23,6 +25,13 @@ public partial class ToolEffects : Node3D {
     private const float BeadLife = 90f;
     /// <summary>How long (seconds) a bead takes to dry away.</summary>
     private const float BeadDrying = 10f;
+    /// <summary>How long (seconds) a stream shows after a push, and how far (meters) it falls at most.</summary>
+    private const float StreamLife = 0.5f;
+    private const float StreamFall = 1.5f;
+    private const float StreamRadius = 0.0025f;
+    private const float StreamAlpha = 0.7f;
+    /// <summary>A push this close (meters) to where a stream still showing starts keeps that one going.</summary>
+    private const float StreamJoin = 0.03f;
 
     /// <summary>How a burst of particles looks and moves.</summary>
     private sealed record Burst(
@@ -33,6 +42,7 @@ public partial class ToolEffects : Node3D {
 
     /// <summary>Blood beads still on the body: blood like any other, gauze or a pad wipes them away.</summary>
     private readonly List<BloodBead> _beads = [];
+    private readonly List<LiquidStream> _streams = [];
 
     public Patient Patient { get; set; } = null!;
 
@@ -59,6 +69,9 @@ public partial class ToolEffects : Node3D {
                 break;
             case ToolEffect.Bead:
                 Bead(at);
+                break;
+            case ToolEffect.Stream:
+                Stream(at);
                 break;
         }
     }
@@ -136,6 +149,50 @@ public partial class ToolEffects : Node3D {
         var fade = CreateTween();
         fade.TweenProperty(light, "light_energy", 0f, 0.18f);
         fade.TweenCallback(Callable.From(light.QueueFree));
+    }
+
+    /// <summary>
+    /// A thin column of clear liquid from <paramref name="from"/> straight down to the first thing under it, fading out.
+    /// Pushes in a row from about the same spot keep one stream going rather than stacking new ones over it.
+    /// </summary>
+    private void Stream(Vector3 from) {
+        var hit = Rays.Cast(this, from, from + (Vector3.Down * StreamFall), PatientBody.SurfaceLayer | 1u);
+        var length = Mathf.Max(from.Y - (hit?.Position.Y ?? from.Y - StreamFall), 0.005f);
+        _streams.RemoveAll(stream => !IsInstanceValid(stream.Mesh));
+        var stream = _streams.FirstOrDefault(stream => stream.Top.DistanceTo(from) < StreamJoin);
+        if (stream is null) {
+            var mesh = new MeshInstance3D {
+                Name = "Stream",
+                Mesh = new CylinderMesh { TopRadius = StreamRadius, BottomRadius = StreamRadius * 0.6f, RadialSegments = 8, Rings = 1 },
+                MaterialOverride = Materials.Stream(),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            AddChild(mesh);
+            stream = new LiquidStream(mesh);
+            _streams.Add(stream);
+        }
+        stream.Top = from;
+        ((CylinderMesh)stream.Mesh.Mesh).Height = length;
+        stream.Mesh.GlobalPosition = from + (Vector3.Down * length / 2f);
+        var material = (StandardMaterial3D)stream.Mesh.MaterialOverride;
+        material.AlbedoColor = material.AlbedoColor with { A = StreamAlpha };
+        stream.Fade?.Kill();
+        stream.Fade = stream.Mesh.CreateTween();
+        stream.Fade.TweenInterval(StreamLife * 0.6f);
+        stream.Fade.TweenProperty(material, "albedo_color:a", 0f, StreamLife * 0.4f);
+        stream.Fade.TweenCallback(Callable.From(stream.Mesh.QueueFree));
+    }
+
+    /// <summary>Where each stream still showing starts and lands.</summary>
+    internal List<(Vector3 Top, Vector3 Bottom)> Streams() => [.. _streams
+        .Where(stream => IsInstanceValid(stream.Mesh))
+        .Select(stream => (stream.Top, stream.Top + (Vector3.Down * ((CylinderMesh)stream.Mesh.Mesh).Height)))];
+
+    /// <summary>A stream still showing, and where it starts.</summary>
+    private sealed class LiquidStream(MeshInstance3D mesh) {
+        public MeshInstance3D Mesh => mesh;
+        public Vector3 Top { get; set; }
+        public Tween? Fade { get; set; }
     }
 
     /// <summary>
