@@ -3,7 +3,7 @@ namespace Scalpel.Tests.Models;
 /// <summary>Grounded deep squat and torso-anchored neck. The puppet receives the owner's packed state; hard geometry
 /// checks cover the transition and rendered front/side/back views expose intersections.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class SurgeonPoseTest {
     private Room _room = null!;

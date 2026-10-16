@@ -3,7 +3,7 @@ namespace Scalpel.Tests.World;
 /// <summary>Ceiling fixture clearance and the theatre panels' independent shadow-casting lights.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class RoomTest {
     [TestCase]

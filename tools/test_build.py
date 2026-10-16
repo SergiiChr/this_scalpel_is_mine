@@ -4,6 +4,7 @@ import contextlib
 import dataclasses
 import io
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -260,14 +261,13 @@ class CoverageReportingTest(unittest.TestCase):
     def test_every_suite_that_checks_frame_times_is_categorized(self) -> None:
         """Only frame_budget suites run alone, so one that checks the budget without the category would fail its
         frames on contention. The helpers that check it: tests/Support/ToolSession.cs, ScenarioFlow.cs and
-        tests/Scenarios/GameplaySweep.cs."""
-        helpers = ("FrameBudget", "Budget.Check", "ToolSession", "ScenarioFlow", "GameplaySweep")
+        tests/Scenarios/GameplaySweep.cs. FrameBudget.RenderingOff() alone checks nothing."""
+        checks = re.compile(r"[Bb]udget\.Check\(|ToolSession|ScenarioFlow|GameplaySweep")
         with patch.object(build, "ROOT", Path(build.__file__).parent):
             suites = build.discover()
         for suite in suites:
             with self.subTest(suite=suite.full_name):
-                checks = any(helper in suite.path.read_text() for helper in helpers)
-                self.assertEqual(checks, "frame_budget" in suite.categories)
+                self.assertEqual(bool(checks.search(suite.path.read_text())), "frame_budget" in suite.categories)
 
     def test_isolated_rows_sharing_a_filter_run_in_one_process(self) -> None:
         self.suite.isolate_cases = True

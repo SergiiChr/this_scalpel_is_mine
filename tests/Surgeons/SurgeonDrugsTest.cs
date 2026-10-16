@@ -5,7 +5,7 @@ namespace Scalpel.Tests.Surgeons;
 /// partner whose heart stopped is brought back with the defibrillator. The status checks themselves live in
 /// SyringeTest.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("slow"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("smoke"), TestCategory("slow"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class SurgeonDrugsTest {
     private SurgeryDriver? _driver;

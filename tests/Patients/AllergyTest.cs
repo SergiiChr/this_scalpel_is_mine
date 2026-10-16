@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Patients;
 /// and a stronger stand-in given to them costs points.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("frame_budget")]
+[TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]
 public class AllergyTest {
     [TestCase("lidocaine", "Allergic to lidocaine.")]

@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Scenarios;
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_flumazenil"), TestCategory("tool_vial_propofol"),
- TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+ TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class AftercareTest {
     private const string Awake = "Brought the patient round from anesthesia before the discharge";

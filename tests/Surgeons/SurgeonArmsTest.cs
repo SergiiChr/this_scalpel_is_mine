@@ -4,7 +4,7 @@ namespace Scalpel.Tests.Surgeons;
 /// view from its bottom corners, empty or holding a tool at the site. A hand that lets go of a tool it twisted rolls
 /// back to palm down.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class SurgeonArmsTest {
     private SurgeryDriver? _driver;
