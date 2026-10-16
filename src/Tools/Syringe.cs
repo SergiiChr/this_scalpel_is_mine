@@ -141,6 +141,9 @@ public static class Syringe {
                     container.Bolus += liquid;
                 }
                 break;
+            case AirTarget or TissueTarget when IsPlainFluid(tool) && patient.Rinse(tool.TipPosition(), liquid):
+                surgery.Tools.Transfer(tool, null, liquid);
+                break;
             case VeinTarget or TissueTarget or SurgeonTarget:
                 // Given as it goes in: every push adds to what's already in that body (DrugLevels).
                 foreach (var (drug, amount) in surgery.Tools.Transfer(tool, null, liquid)) {
@@ -162,6 +165,10 @@ public static class Syringe {
                 break;
         }
     }
+
+    /// <summary>Holds only plain fluid (saline, as drawn from the IV bag): no drug and no blood in it.</summary>
+    private static bool IsPlainFluid(SurgicalTool tool) =>
+        tool.Contents.All(pair => pair.Key == "saline" || pair.Value <= 0.0001f);
 
     /// <summary>Draws <paramref name="ml"/> from the IV bag into a syringe by the port at its bottom: what was pushed in
     /// there and hasn't run down the line yet (<see cref="SurgicalTool.Bolus"/>) comes first, its drugs with it, then

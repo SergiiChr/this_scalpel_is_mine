@@ -53,7 +53,7 @@ public static class ScenarioFlow {
                     .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
                     .IsTrue();
                 // Action helpers capture cut/extraction/closure; internal flags have no unique site photograph.
-                if (step.Type is "sanitize" or "flip") {
+                if (step.Type is "sanitize" or "flip" or "irrigate") {
                     await driver.Capture($"{step.Type}_done", $"\"{step.Label}\" just completed, and the site shows it done");
                 }
                 if (step.Type == "flip" && surgery.Patient.Body.SiteActive) {

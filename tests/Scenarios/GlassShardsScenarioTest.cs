@@ -1,8 +1,10 @@
 namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
-/// The glass shards removal played through (<see cref="ScenarioFlow"/>), with the checks on embedded targets: each
-/// shard sticks out of the skin at its own depth and plugs the cut it went in by, which bleeds once it's pulled out. A sedative counts only while the patient stays awake.
+/// The glass shards removal played through (<see cref="ScenarioFlow"/>), with the checks on embedded targets: shards of
+/// different sizes stick out of the skin at their own depths, one is buried under it out of reach until its cut is
+/// spread, and each plugs the dirty cut it went in by, which bleeds once it's pulled out. A sedative counts only while
+/// the patient stays awake.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario"), TestCategory("visual_confirmation"), TestCategory("core_validation"),
@@ -18,19 +20,24 @@ public class GlassShardsScenarioTest {
                 CheckEmbedded(driver.Patient, shards);
                 plugged.AddRange(shards.Select(shard => shard.Plug!.Bleeding));
             }
+            if (step.Type == "extract") {
+                AssertBool(await driver.PlayerTakesHoldOf(shards.Single(shard => shard.Buried)))
+                    .OverrideFailureMessage("forceps can't get at the buried shard through its closed cut").IsFalse();
+                await driver.PlayerPutsDown();
+            }
             await driver.PlayerCompletes(step);
             if (step.Type == "extract") {
                 foreach (var (shard, before) in shards.Zip(plugged)) {
                     var track = shard.Plug!;
                     AssertBool(before > 0f && track.Held == 0f && track.Bleeding > before * 3f)
-                        .OverrideFailureMessage($"the cut a shard came out of bleeds: held {track.Held:0.00}, {before:0.00} ml/s plugged, {track.Bleeding:0.00} ml/s out")
+                        .OverrideFailureMessage($"the cut a shard came out of bleeds: held {track.Held:0.00}, {before:0.00} ml/s plugged, {track.Bleeding:0.00} ml/s out\n{driver.Recent()}")
                         .IsTrue();
                 }
             }
         }
         // Temporary local budget override, as every other scenario flow has.
         await ScenarioFlow.Play(scenario, keyFrames: true,
-            budgetOverride: new("scenario surgery has recorded CPU/render overruns; profiling deferred", 4f), playStep: PlayStep);
+            budgetOverride: new("scenario surgery has recorded CPU/render overruns; profiling deferred; closing a thread takes up to 37 ms", 6f), playStep: PlayStep);
     }
 
     /// <summary>Too much diazepam knocks the patient out. Waking up with it still working and calm, they're sedated
@@ -56,28 +63,40 @@ public class GlassShardsScenarioTest {
         await driver.Stop();
     }
 
-    /// <summary>Before anything is done: every shard's jagged top is out over the skin and its point under it, the
-    /// deeper ones reaching further in, and each plugs its own cut.</summary>
+    /// <summary>Before anything is done: every shard's jagged top is out over the skin and its point under it, but for
+    /// one buried under it. They range from a sliver to a long blade, the deepest cut through the muscle and the
+    /// shallowest not, and each plugs its own dirty cut.</summary>
     private static void CheckEmbedded(Patient patient, List<CavityTarget> shards) {
         var body = patient.Body;
-        AssertInt(shards.Count).OverrideFailureMessage("the arm has three shards in it").IsEqual(3);
-        var reaches = new List<float>();
+        AssertInt(shards.Count).OverrideFailureMessage("the arm has six shards in it").IsEqual(6);
+        AssertInt(shards.Count(shard => shard.Buried)).OverrideFailureMessage("one of them is buried under the skin").IsEqual(1);
         foreach (var shard in shards) {
             var bounds = PatientBody.LocalBounds(shard, body.Site);
             var skin = body.SurfaceHeight(shard.Uv);
-            AssertBool(bounds.End.Y > skin + 0.005f && bounds.Position.Y < skin - 0.01f)
-                .OverrideFailureMessage($"a shard sticks out of the skin and into the arm: {(bounds.End.Y - skin) * 1000f:0} mm out, {(skin - bounds.Position.Y) * 1000f:0} mm in")
+            // Buried, no corner of it comes up through the skin where the arm curves away.
+            Vector3[] corners = [bounds.End, bounds.End with { X = bounds.Position.X }, bounds.End with { Z = bounds.Position.Z },
+                bounds.Position with { Y = bounds.End.Y }];
+            var top = (shard.Buried ? corners.Max(corner => corner.Y - body.SurfaceHeight(body.LocalToUv(corner))) : bounds.End.Y - skin) * 1000f;
+            var under = (skin - bounds.Position.Y) * 1000f;
+            AssertBool(shard.Buried ? top < -2f : top > 5f && under > 10f)
+                .OverrideFailureMessage(shard.Buried
+                    ? $"the buried shard lies under the skin everywhere: its top {top:0} mm from it"
+                    : $"a shard sticks out of the skin and into the arm: {top:0} mm out, {under:0} mm in")
                 .IsTrue();
-            reaches.Add(skin - bounds.Position.Y);
-            AssertBool(shard.Plug is { Kind: WoundKind.Puncture } plug && Mathf.IsEqualApprox(plug.Held, CavityTarget.PlugHold, 0.01f))
-                .OverrideFailureMessage($"a shard plugs the cut it went in by: {shard.Plug?.Kind}, held {shard.Plug?.Held:0.00}")
+            AssertBool(shard.Plug!.Points.All(body.OnBody))
+                .OverrideFailureMessage($"a shard's cut lies on the arm, not where the site hangs off it: {shard.Plug.Points[0]}..{shard.Plug.Points[^1]}")
+                .IsTrue();
+            AssertBool(shard.Plug is { Kind: WoundKind.Puncture, Dirty: true } plug && Mathf.IsEqualApprox(plug.Held, CavityTarget.PlugHold, 0.01f))
+                .OverrideFailureMessage($"a shard plugs the dirty cut it went in by: {shard.Plug?.Kind}, dirty {shard.Plug?.Dirty}, held {shard.Plug?.Held:0.00}")
                 .IsTrue();
         }
-        AssertBool(reaches.Zip(reaches.Skip(1)).All(pair => pair.Second > pair.First + 0.004f))
-            .OverrideFailureMessage($"each shard goes deeper than the one before: {string.Join(", ", reaches.Select(r => $"{r * 1000f:0} mm"))}")
-            .IsTrue();
-        AssertBool(!shards[0].Plug!.ThroughMuscle && shards[^1].Plug!.ThroughMuscle)
-            .OverrideFailureMessage($"the shallowest shard's cut stops above the bottom of the muscle, the deepest's goes through it: depths {string.Join(", ", shards.Select(s => $"{s.Plug!.Depth:0.00}"))}")
+        var sizes = shards.Select(shard => PatientBody.LocalBounds(shard, shard).Size.Length()).ToList();
+        AssertFloat(sizes.Max() / sizes.Min())
+            .OverrideFailureMessage($"the biggest shard is at least twice the smallest: {string.Join(", ", sizes.Select(size => $"{size * 1000f:0} mm"))}")
+            .IsGreaterEqual(2f);
+        var reaches = shards.OrderBy(shard => body.SurfaceHeight(shard.Uv) - PatientBody.LocalBounds(shard, body.Site).Position.Y).ToList();
+        AssertBool(!reaches[0].Plug!.ThroughMuscle && reaches[^1].Plug!.ThroughMuscle)
+            .OverrideFailureMessage($"the shallowest shard's cut stops above the bottom of the muscle, the deepest's goes through it: depths {string.Join(", ", reaches.Select(s => $"{s.Plug!.Depth:0.00}"))}")
             .IsTrue();
     }
 }

@@ -21,6 +21,8 @@ public static class ObjectiveChecks {
         var vitals = patient.Vitals;
         var parameters = step.Parameters;
         switch (step.Type) {
+            case "irrigate":
+                return !patient.Wounds.Any(wound => wound.Dirty);
             case "sanitize":
                 return patient.SanitizedFraction() >= parameters.Float("amount", 0.5f);
             case "iv":

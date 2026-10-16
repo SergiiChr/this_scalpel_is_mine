@@ -65,6 +65,40 @@ public partial class SurgeryDriver {
         Note($"site sanitized: {Patient.SanitizedFraction():0.00}");
     }
 
+    /// <summary>Saline from the IV bag drawn into the 50 ml syringe and squirted into every dirty cut from just over it
+    /// until it's rinsed clean, the syringe topped up from the bag when it runs low.</summary>
+    public async Task PlayerRinsesCuts() {
+        var syringe = (await PlayerRequestsItem("syringe_50"))!;
+        foreach (var cut in Patient.Wounds.Where(wound => wound.Dirty).ToList()) {
+            if (syringe.Ml < Patient.RinseMl * 2f) {
+                await DrawFromDrip(syringe);
+            }
+            await NeedleInto(SitePoint(cut.Midpoint), false);
+            for (var i = 0; i < 30 && cut.Dirty && syringe.Ml + syringe.Air > 0f; i++) {
+                await Notch(true);
+            }
+            Note($"rinsed {cut.Rinsed:0} ml through a cut, {(cut.Dirty ? "still dirty" : "clean")}");
+            await NeedleOut();
+        }
+        await PlayerPutsDown();
+    }
+
+    /// <summary>Fills <paramref name="syringe"/> from the IV drip bag on the stand, through its port.</summary>
+    private async Task DrawFromDrip(SurgicalTool syringe) {
+        var bag = Surgery.Tools.DripBag()!;
+        await NeedleInto(bag.Middle(), false);
+        if (!await Frames.Until(() => Syringe.NeedleTarget(syringe, Patient) is ContainerTarget { Container: var into }
+            && into == bag, 2f)) {
+            Note("the needle didn't go into the bag");
+        }
+        var notches = Mathf.FloorToInt(syringe.Def.Volume - syringe.Ml - syringe.Air);
+        for (var i = 0; i < notches; i++) {
+            await Notch(false);
+        }
+        Note($"drew {syringe.Ml:0} ml of saline");
+        await NeedleOut();
+    }
+
     /// <summary>Pours iodine from the bottle into <paramref name="dish"/> and puts the bottle back.</summary>
     private async Task RefillDish(SurgicalTool dish) {
         await PlayerRequestsItem("iodine_bottle");

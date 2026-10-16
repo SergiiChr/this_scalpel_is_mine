@@ -223,7 +223,7 @@ Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at l
 comment beside it names the test.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
-`sanitize, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
+`sanitize, irrigate, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
 calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
 only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
@@ -239,6 +239,9 @@ dose of weaker drugs counts too. A weaker patient may need more than the right d
 `sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient
 below `max_panic` while they're still awake; a patient who was out at any point before (put under, too much
 sedative) never meets it.
+`irrigate` is met once no cut is dirty: glass leaves its track dirty, and plain fluid (saline drawn from the IV bag)
+squirted from a syringe into a cut or from just over it (`Patient.RinseReach`) rinses it, clean after `Patient.RinseMl`.
+A track its glass is still in can't be rinsed.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
@@ -248,6 +251,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 An `embedded` target (glass) is stuck in through the skin and sticks out of it: it keeps its `depth` on any site and
 comes with its own track, a puncture across it as deep as its tip reaches (`Patient.EmbeddedWound()`). While it's in
 it holds the track shut (`CavityTarget.PlugHold`) and hurts unless the site is numb; pulled out, the track bleeds.
+One whose top lies under the skin is buried: jaws reach it only once its track is spread open
+(`CavityTarget.SpreadToReach`, e.g. with the Gelpi retractor). A target's `scale` sizes its model (1 by default).
 
 ### Other data
 

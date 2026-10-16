@@ -24,7 +24,7 @@ Sutures, staples, strips and packing hold only while the blood clots behind them
 Pressure rises with panic and with stimulants: adrenaline, cocaine, ketamine.
 
 ## 5.6 Embedded glass
-A fragment left in place plugs its own wound. Do not remove it from an agitated patient: sedate first (see 1.4), then infiltrate the area (lidocaine), since each fragment hurts until the area is numb. Grasp it with forceps and withdraw it slowly along its track: a quick pull tears the skin. Every track bleeds once its fragment is out. Control it with pressure and close it with sutures; a track that reaches through the muscle is sutured at the muscle first, through the wound.
+A fragment left in place plugs its own wound. Do not remove it from an agitated patient: sedate first (see 1.4), then infiltrate the area (lidocaine), since each fragment hurts until the area is numb. Grasp it with forceps and withdraw it slowly along its track: a quick pull tears the skin. A fragment sunk below the skin is out of reach: spread its wound open (a self-retaining retractor) to see and grasp it. Every track bleeds once its fragment is out: control it with pressure. Glass carries dirt in: rinse each track with saline, squirted from a syringe filled at the IV bag, until it runs clean, then prepare the skin with iodine. Close it with sutures; a track that reaches through the muscle is sutured at the muscle first, through the wound.
 
 [font_size=16][b]References[/b]
 American College of Surgeons. Advanced Trauma Life Support (ATLS). 10th ed. 2018.

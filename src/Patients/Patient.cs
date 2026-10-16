@@ -228,6 +228,7 @@ public partial class Patient : Node3D {
             Targets.Add(target);
             if (target.Embedded) {
                 target.Plug = EmbeddedWound(target);
+                target.Buried = PatientBody.LocalBounds(target, target).End.Y < target.Depth;
             }
             if (target.Covered) {
                 Body.AddOrgan(target.Uv + new Vector2(0.03f, -0.02f), target.Depth - 0.03f, 0.04f, new Color(0.6f, 0.35f, 0.3f));
@@ -1058,6 +1059,8 @@ public partial class Patient : Node3D {
             .ToArray();
         var wound = NewWound(WoundKind.Puncture, ends[0], Mathf.Clamp(Wound.MuscleDepth * reach / Body.MuscleBottom, 0.3f, 1f));
         wound.Extend(ends[1]);
+        // Whatever the glass went through came in with it.
+        wound.Dirty = true;
         PaintWoundLocal(wound);
         return wound;
     }

@@ -23,6 +23,10 @@ public partial class Patient {
     public const float MuscleReach = 0.03f;
     /// <summary>Gap in meters that counts as a fully opened wound.</summary>
     public const float FullGap = 0.012f;
+    /// <summary>ml of saline rinsed through a dirty cut that wash it clean.</summary>
+    public const float RinseMl = 5f;
+    /// <summary>How high over the skin (meters) a syringe's squirt still lands where it's aimed.</summary>
+    public const float RinseReach = 0.06f;
     /// <summary>How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
     /// </summary>
     public const float DeepBlock = 0.3f;
@@ -794,6 +798,31 @@ public partial class Patient {
             drained += took;
         }
         return drained;
+    }
+
+    /// <summary>
+    /// Plain fluid (saline) squirted from a syringe at <paramref name="tip"/> (world), over a cut or in it: the
+    /// <paramref name="ml"/> rinse through it, flushing out the blood it holds and the dirt around it. A cut glass is
+    /// still in isn't rinsed: the fluid runs off it. Returns whether it rinsed a cut.
+    /// </summary>
+    public bool Rinse(Vector3 tip, float ml) {
+        var uv = Body.WorldToUv(tip);
+        if (Body.Probe(tip).Zone is not (SiteZone.Air or SiteZone.Site or SiteZone.Cavity)
+            || Body.HeightAboveSite(tip) > RinseReach
+            || NearestWound(uv, 0.02f, false) is not { } wound
+            || Targets.Any(target => target.Plug == wound && !target.Extracted)) {
+            return false;
+        }
+        wound.Rinsed += ml;
+        wound.PooledMl = Mathf.Max(wound.PooledMl - ml, 0f);
+        // It runs off over the skin around the cut too, taking the blood there with it.
+        PaintOps(WoundMap.Layer.Fluids, uv, 0.05f,
+            [new(WoundMap.Blood, ml * 0.3f, WoundMap.Mode.Sub), new(WoundMap.Grime, ml * 0.3f, WoundMap.Mode.Sub)]);
+        if (wound.Dirty && wound.Rinsed >= RinseMl) {
+            wound.Dirty = false;
+            Session.Announce("The cut is rinsed clean.");
+        }
+        return true;
     }
 
     /// <summary>Gauze pressed on a wound for <paramref name="dt"/> seconds: it stops the bleeding while the pressure
