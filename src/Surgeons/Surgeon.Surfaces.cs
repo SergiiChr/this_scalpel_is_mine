@@ -75,10 +75,9 @@ public partial class Surgeon {
         var hand = Hands[Active];
         var tool = HeldTool(Active);
         var tip = WorkTip();
-        // A grip with a working angle (a needle holder) pitches about its tip as it's lowered: the tip is where it
-        // works.
-        // Forceps held at a depth close where their tip is: Use tool doesn't bring them down.
-        if (tool is null || hand.Lowered || hand.HeldDepth is not null || GripStyle.For(tool.Def.Grip).WorkTilt is not null) {
+        // Forceps held at a depth close where their tip is: Use tool doesn't bring them down. A grip with a working
+        // angle (a needle holder) pitches about its tip as it's lowered, then comes straight down like the rest.
+        if (tool is null || hand.Lowered || hand.HeldDepth is not null) {
             return tip;
         }
         var under = SurfaceBelow(tip);
@@ -426,6 +425,13 @@ public partial class Surgeon {
         }
         return lowest;
     }
+
+    /// <summary>How high the table, the patient, their drapes or anything else standing in the room reach under
+    /// <paramref name="point"/> (world), negative infinity over nothing. Up to 15 cm over it counts as under: what an
+    /// elbow sank into. One ray, cheap enough for the arms to keep their elbows out of them every frame.</summary>
+    internal float GroundUnder(Vector3 point) =>
+        Rays.Cast(this, point + (Vector3.Up * 0.15f), point + (Vector3.Down * 2f),
+            1 | 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer)?.Position.Y ?? float.NegativeInfinity;
 
     /// <summary>
     /// What's under <paramref name="point"/>. Over an opening it finds what's inside: organs and targets, or the cavity

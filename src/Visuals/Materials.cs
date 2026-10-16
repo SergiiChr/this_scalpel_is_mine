@@ -314,7 +314,7 @@ public static class Materials {
     /// </summary>
     public static void SetCarve(ShaderMaterial material, Transform3D site, Vector2 halfSize, float depth, Texture2D region) {
         foreach (var pass in new[] { material, (ShaderMaterial)material.NextPass }) {
-            pass.SetShaderParameter(ShaderParam.CarveInverse, new Projection(site.AffineInverse()));
+            pass.SetMatrix(ShaderParam.CarveInverse, new Projection(site.AffineInverse()));
             pass.SetShaderParameter(ShaderParam.CarveBox, new Vector3(halfSize.X, depth, halfSize.Y));
             pass.SetShaderParameter(ShaderParam.CarveMap, region);
             pass.SetShaderParameter(ShaderParam.CarveGrid, (Vector2)region.GetSize());
@@ -332,7 +332,7 @@ public static class Materials {
 
     /// <summary>Cavity walls: only drawn inside the region (see flesh.gdshader).</summary>
     public static void SetReveal(ShaderMaterial material, Transform3D site, Vector2 halfSize, Texture2D region) {
-        material.SetShaderParameter("region_inverse", new Projection(site.AffineInverse()));
+        material.SetMatrix("region_inverse", new Projection(site.AffineInverse()));
         material.SetShaderParameter("region_box", new Vector3(halfSize.X, 1f, halfSize.Y));
         material.SetShaderParameter("region_map", region);
         material.SetShaderParameter("region_grid", (Vector2)region.GetSize());

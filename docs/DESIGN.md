@@ -292,8 +292,10 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   forward from the hips (everyone sees it) and the eyes come over the hand and look down at it, into an opening past its
   edges, never turning sideways, so the mouse still moves the hand left and right on screen. Reach and collisions don't
   change. The hand off the patient for a second, zooming out or crouching straightens back up; a needle view keeps the
-  bend under it. Walking away also zooms back out. The hands start turned in
-  toward the middle, so each tool points across in front of the eyes, beside its hand.
+  bend under it. Walking away also zooms back out. The hands start apart, turned in
+  toward the middle, so each tool points across in front of the eyes, beside its hand. The elbows bend out to the
+  sides (`SurgeonHand.ElbowPole`), so the player's own arms come into the view from its bottom corners, not up the
+  middle in front of the work.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -363,6 +365,7 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
+  A hand that lets go of a rolled tool rolls back to palm down; an empty hand has nothing to roll.
   Holding MMB the mouse turns the held tool about the wrist (tilt up and down, turn left and right,
   `Surgeon.AimTool()`): the wrist and forearm stay put, the tip follows the mouse and rises off what it rested on, and
   settles back down once MMB is let go.
@@ -385,7 +388,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
   (`Surgeon.OnSurface()`), not in the air at the hovering tool. Aimed across a cut, a Gelpi's < and > hang down
   from the lip on each side into the wound (`Hud.JawDepth`), where its tips go in. A stapler's legs go in exactly
-  where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
+  where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). A needle's hole goes in right
+  under its dot, between the tissue's grid points, and rides along with the one drawn nearest on its side of the cut
+  (`PatientBody.RestSpot()`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
   turns it. A blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
@@ -419,6 +424,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
+- **Reading a vial with a syringe**: a held syringe whose needle is in or just over a vial
+  (`ToolManager.NearestContainer()`) shows the vial's label beside the aim, as a tool's name shows there for an empty
+  hand.
 - **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
   vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
   snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.

@@ -616,8 +616,8 @@ public partial class IvLine : Node3D {
                 _normals[(i * Sides) + k] = normal;
             }
         }
-        _arrays[(int)Mesh.ArrayType.Vertex] = _vertices;
-        _arrays[(int)Mesh.ArrayType.Normal] = _normals;
+        Shapes.SetPacked(_arrays, Mesh.ArrayType.Vertex, _vertices);
+        Shapes.SetPacked(_arrays, Mesh.ArrayType.Normal, _normals);
         _tube.ClearSurfaces();
         _tube.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, _arrays);
     }

@@ -15,7 +15,8 @@ public static class SkinSeam {
         var sim = body.Tissue;
         var region = sim.Region();
         var up = body.Site.GlobalBasis.Y.Normalized();
-        var lift = body.Site.Position.Y - body.SiteDef.Position.Y;
+        // Along the site's own up: a site on the back is turned over in the body.
+        var lift = (body.Site.Basis.Inverse() * (body.Site.Position - body.SiteDef.Position)).Y;
         var space = body.GetWorld3D().DirectSpaceState;
         var worst = 0f;
         for (var k = 0; k < region.Length; k++) {
@@ -38,5 +39,26 @@ public static class SkinSeam {
             }
         }
         return worst;
+    }
+
+    /// <summary>
+    /// Over one breath (at the 12 a minute of a patient under), how far the trunk moved between its lowest and highest
+    /// (meters), and the most the site and the trunk moved apart: the site has to ride the trunk, or the drawn body
+    /// slides out from under its skin.
+    /// </summary>
+    public static async Task<(float Rise, float Apart)> OverBreath(PatientBody body) {
+        var skeleton = body.FindChildren("*", "Skeleton3D", true, false).OfType<Skeleton3D>().First();
+        var torso = skeleton.FindBone("Torso");
+        var rest = body.SiteDef.Position;
+        var (lowest, highest, apart) = (float.MaxValue, float.MinValue, 0f);
+        for (var frame = 0; frame < 5 * Engine.PhysicsTicksPerSecond; frame++) {
+            await Frames.NextPhysics();
+            var trunk = skeleton.GlobalBasis * (skeleton.GetBoneGlobalPose(torso).Origin - skeleton.GetBoneGlobalRest(torso).Origin);
+            var site = body.Site.GetParentNode3D().GlobalBasis * (body.Site.Position - rest);
+            lowest = Mathf.Min(lowest, trunk.Length());
+            highest = Mathf.Max(highest, trunk.Length());
+            apart = Mathf.Max(apart, trunk.DistanceTo(site));
+        }
+        return (highest - lowest, apart);
     }
 }

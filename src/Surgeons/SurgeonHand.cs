@@ -74,6 +74,24 @@ public partial class SurgeonHand : Node3D {
     private const float ForearmPull = 0.7f;
     /// <summary>How far under the shoulder a held tool can raise the elbow (meters).</summary>
     private const float ElbowBelowShoulder = 0.1f;
+    /// <summary>Which way the elbow bends (owner's space, the right arm's; the left one is mirrored): out to the side,
+    /// a little down and back. The player's own arms then come into the view from its bottom corners rather than up its
+    /// middle.</summary>
+    internal static readonly Vector3 ElbowPole = new(1f, -0.4f, 0.2f);
+    /// <summary>How far out past its shoulder (meters, across the body) the elbow stays when a held tool draws it in
+    /// toward the forearm's line.</summary>
+    private const float ElbowOut = 0.15f;
+    /// <summary>Room between the elbow and the table, patient or drapes under it (meters): about a sleeve's thickness.
+    /// </summary>
+    private const float ElbowClearance = 0.07f;
+    /// <summary>How many places round its IK circle the elbow tries to clear what's under it.</summary>
+    private const int GroundSteps = 32;
+    /// <summary>How fast (radians a second) the elbow turns round its IK circle to clear what's under it and back.
+    /// </summary>
+    private const float ElbowTurnSpeed = 4f;
+    /// <summary>How fast (radians a second) a hand that let go of its tool rolls back from the tool's twist to palm
+    /// down.</summary>
+    internal const float UntwistSpeed = 3f;
     /// <summary>Empty hand: the glove point (glove model space) at the hand's position, the hollow of the fingers.
     /// </summary>
     private static readonly Vector3 GripPoint = new(0.07f, -0.028f, 0f);
@@ -143,6 +161,9 @@ public partial class SurgeonHand : Node3D {
     public Vector3? ElbowSupport { get; set; }
     public float ElbowSupportWeight { get; set; }
     public List<Vector3> KneeObstacles { get; } = [];
+    /// <summary>How high whatever lies under a point reaches (world), set by the surgeon: the elbow stays above it, so
+    /// a surgeon bent over the table doesn't put an elbow through the patient. Null for a hand on its own.</summary>
+    public Func<Vector3, float>? GroundAt { get; set; }
     /// <summary>Set by the surgeon each frame; drives how far the fingers curl.</summary>
     public bool Holding { get; set; }
     /// <summary><see cref="ToolDef.Grip"/> of the tool in this hand, set with <see cref="Holding"/>. Empty hands follow
@@ -197,9 +218,9 @@ public partial class SurgeonHand : Node3D {
     private Vector3 _heldElbow;
     /// <summary>1 held, 0 free, eased back after aiming.</summary>
     private float _elbowHold;
+    /// <summary>How far round its IK circle (radians) the elbow is turned to stay above what's under it.</summary>
+    private float _groundTurn;
     private AnimatableBody3D _pusher = null!;
-    /// <summary>Fraction of the forearm hidden at the elbow end (local player only, keeps the view clear).</summary>
-    private float _forearmStart;
     private StandardMaterial3D? _ghost;
     private bool _seeThrough;
     private Node3D? _trailRoot;
@@ -239,15 +260,6 @@ public partial class SurgeonHand : Node3D {
         _pusher = new AnimatableBody3D { CollisionLayer = PatientBody.PusherLayer, CollisionMask = 0, TopLevel = true };
         _pusher.AddChild(new CollisionShape3D { Shape = new SphereShape3D { Radius = 0.025f } });
         AddChild(_pusher);
-    }
-
-    /// <summary>The local player sees forearms and gloves only; the upper arm would sit right under the camera.</summary>
-    public void HideUpperArm() {
-        _upper.Visible = false;
-        _forearmStart = 0.2f;
-        if (_fore.FindChild("Cuff", true, false) is Node3D cuff) {
-            cuff.Visible = false;
-        }
     }
 
     /// <summary>
@@ -345,6 +357,10 @@ public partial class SurgeonHand : Node3D {
     public void UpdatePose(Vector3 shoulder, float delta) {
         _lift = Mathf.MoveToward(_lift, Lifted ? LiftHeight : 0f, delta * SettleSpeed);
         _bounce = Mathf.Min(_bounce + (delta / BounceTime), 1f);
+        if (!Holding) {
+            // Twist wraps to -pi..pi, so this rolls back the short way.
+            Twist = Mathf.MoveToward(Twist, 0f, delta * UntwistSpeed);
+        }
         GlobalPosition = EffectivePosition();
         TrackSpeed(delta);
         GlobalBasis = GripTransform().Basis;
@@ -354,7 +370,7 @@ public partial class SurgeonHand : Node3D {
             _heldElbow = Body.ToLocal(_elbow);
         }
         _elbowHold = Aiming ? 1f : Mathf.MoveToward(_elbowHold, 0f, delta / ElbowEase);
-        SolveArm(shoulder);
+        SolveArm(shoulder, delta);
         AnimateFingers(delta);
         GloveDrop = GloveLowest() - GlobalPosition.Y;
         UpdateTrail(delta);
@@ -362,7 +378,7 @@ public partial class SurgeonHand : Node3D {
         if (Blood > 0f) {
             var coat = new Projection(CoatFrame * _glove.GlobalTransform.AffineInverse());
             foreach (var material in _gloveMaterials) {
-                material.SetShaderParameter(ShaderParam.CoatInverse, coat);
+                material.SetMatrix(ShaderParam.CoatInverse, coat);
             }
         }
     }
@@ -591,7 +607,7 @@ public partial class SurgeonHand : Node3D {
         return _thumb = new ThumbRest(joints[0], bones, axes);
     }
 
-    private void SolveArm(Vector3 shoulder) {
+    private void SolveArm(Vector3 shoulder, float delta) {
         var toHand = GlobalPosition - shoulder;
         var distance = Mathf.Clamp(toHand.Length(), 0.05f, UpperArm + Forearm - 0.001f);
         var direction = toHand.Normalized();
@@ -600,7 +616,7 @@ public partial class SurgeonHand : Node3D {
         var bendCenter = shoulder + (direction * along);
         var side = Index == 0 ? -1f : 1f;
         var ownerBasis = Body.GlobalBasis;
-        var pole = ((ownerBasis.X * side * 0.6f) + Vector3.Down).Normalized();
+        var pole = (ownerBasis * (ElbowPole * new Vector3(side, 1f, 1f))).Normalized();
         // Reaching straight along the pole (down and out) leaves no bend direction: bend the elbow back instead.
         if (Mathf.Abs(pole.Dot(direction)) > 0.98f) {
             pole = ownerBasis.Z;
@@ -609,7 +625,8 @@ public partial class SurgeonHand : Node3D {
         var elbow = bendCenter + (pole * height);
         if (Holding) {
             // The held tool sets which way the wrist points: the elbow goes toward the forearm's line from there, so the
-            // wrist doesn't bend over backwards when the hand comes close. Only as far as it stays under the shoulder.
+            // wrist doesn't bend over backwards when the hand comes close. Only as far as it stays under the shoulder
+            // and out to its side.
             // The tool as it's held before the wrist aims it: aiming bends the wrist, the elbow stays.
             var held = GloveFrame(elbow, ownerBasis, false);
             var line = held.Origin - (held.Basis.X.Normalized() * Forearm) - shoulder;
@@ -617,7 +634,8 @@ public partial class SurgeonHand : Node3D {
             if (toward.Length() > 0.001f) {
                 foreach (var pull in (float[])[ForearmPull, ForearmPull * 0.75f, ForearmPull * 0.5f, ForearmPull * 0.25f]) {
                     var bent = bendCenter + (((toward.Normalized() * pull) + (pole * (1f - pull))).Normalized() * height);
-                    if (bent.Y < shoulder.Y - ElbowBelowShoulder) {
+                    if (bent.Y < shoulder.Y - ElbowBelowShoulder
+                        && side * ownerBasis.X.Normalized().Dot(bent - shoulder) >= ElbowOut) {
                         elbow = bent;
                         break;
                     }
@@ -630,11 +648,12 @@ public partial class SurgeonHand : Node3D {
         if (_elbowHold > 0f) {
             elbow = elbow.Lerp(Body.ToGlobal(_heldElbow), _elbowHold);
         }
+        elbow = AboveGround(elbow, shoulder + (direction * along), direction, delta);
         _elbow = elbow;
         PlaceSegment(_upper, shoulder, elbow);
         var wrist = PlaceGlove(elbow, ownerBasis);
         var cuffEnd = wrist + (AimCuff(elbow, wrist) * CuffDepth);
-        PlaceSegment(_fore, elbow.Lerp(cuffEnd, _forearmStart), cuffEnd);
+        PlaceSegment(_fore, elbow, cuffEnd);
     }
 
     /// <summary>The elbow turned toward the knee it rests on (deep squat). Low working hands can leave the preferred
@@ -665,6 +684,31 @@ public partial class SurgeonHand : Node3D {
             }
         }
         return best;
+    }
+
+    /// <summary>The elbow turned round the same IK circle (about <paramref name="bendCenter"/>) as little as keeps it
+    /// <see cref="ElbowClearance"/> above what's under it, easing there and back so the arm doesn't pop. Searched only
+    /// while it's in something. A squat's knee support places the elbow itself.</summary>
+    private Vector3 AboveGround(Vector3 elbow, Vector3 bendCenter, Vector3 direction, float delta) {
+        var spoke = elbow - bendCenter;
+        var needed = 0f;
+        // Turned already, it comes back only once the elbow clears with room to spare, so it doesn't hover at the line.
+        var margin = _groundTurn != 0f ? ElbowClearance + 0.02f : ElbowClearance;
+        if (GroundAt is { } groundAt && ElbowSupportWeight <= 0f && elbow.Y < groundAt(elbow) + margin) {
+            needed = _groundTurn;
+            for (var step = 1; step <= GroundSteps / 2 && needed == _groundTurn; step++) {
+                foreach (var sign in (float[])[1f, -1f]) {
+                    var angle = sign * step * Mathf.Tau / GroundSteps;
+                    var candidate = bendCenter + spoke.Rotated(direction, angle);
+                    if (candidate.Y >= groundAt(candidate) + ElbowClearance) {
+                        needed = angle;
+                        break;
+                    }
+                }
+            }
+        }
+        _groundTurn = delta > 0f ? Mathf.MoveToward(_groundTurn, needed, delta * ElbowTurnSpeed) : needed;
+        return _groundTurn == 0f ? elbow : bendCenter + spoke.Rotated(direction, _groundTurn);
     }
 
     private float KneeClearance(Vector3 shoulder, Vector3 elbow) {
@@ -704,7 +748,7 @@ public partial class SurgeonHand : Node3D {
     /// Where the glove goes, its origin at the wrist. The left glove is the right one mirrored.
     /// Holding a tool, the glove sits on it by its grip, fitted as if the tool weren't tilted or turned (the grip's rest
     /// tilt, no turn), then turned along with it (unless not <paramref name="turned"/>): the wrist aims the tool, the
-    /// tool doesn't move in the hand. Empty, it points along the forearm, palm down.
+    /// tool doesn't move in the hand. Empty, it points along the forearm, palm down once it has untwisted.
     /// </summary>
     private Transform3D GloveFrame(Vector3 elbow, Basis ownerBasis, bool turned = true) {
         if (!Holding) {
@@ -714,7 +758,8 @@ public partial class SurgeonHand : Node3D {
                 up = ownerBasis.Z;
             }
             var side = forward.Cross(up);
-            var empty = new Basis(forward, up, Index == 1 ? side : -side);
+            // Still rolled by the twist of the tool it let go of, until it rolls back (see UpdatePose()).
+            var empty = new Basis(forward, Twist) * new Basis(forward, up, Index == 1 ? side : -side);
             return new Transform3D(empty, GlobalPosition - (empty * GripPoint));
         }
         var style = Style;

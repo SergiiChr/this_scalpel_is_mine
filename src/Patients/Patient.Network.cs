@@ -108,8 +108,8 @@ public partial class Patient {
         Body.Tissue.StitchPath(points, radius, tension, strength);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void SutureAnchor(int id, Vector2 uv, int layer, float tension, float strength, float slack) =>
-        Body.Tissue.ThreadAnchor(id, uv, (TissueDepth)layer, tension, strength, slack);
+    private void SutureAnchor(int id, Vector2 uv, int point, int layer, float tension, float strength, float slack) =>
+        Body.Tissue.ThreadAnchor(id, uv, (TissueDepth)layer, tension, strength, slack, point);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SutureTension(int id, float tension) => Body.Tissue.ThreadTension(id, tension);

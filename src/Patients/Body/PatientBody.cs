@@ -88,6 +88,9 @@ public partial class PatientBody : Node3D {
     private readonly List<Forearm> _forearms = [];
     /// <summary>Reused by <see cref="PartAt"/>, which runs every physics frame for every held tool.</summary>
     private readonly PhysicsShapeQueryParameters3D _partQuery = new();
+    /// <summary>The key of a shape query hit's collider, made once: a string key would be a new tracked wrapper on
+    /// every probe.</summary>
+    private static readonly Variant ColliderKey = "collider";
     private readonly SphereShape3D _partSphere = new();
     private Node3D _bodyRoot = null!;
     /// <summary>The body model's skin mesh, whose space the site skin lays out its pores and grime in.</summary>
@@ -477,10 +480,15 @@ public partial class PatientBody : Node3D {
         _partQuery.Transform = new Transform3D(Basis.Identity, p);
         _partQuery.CollisionMask = mask;
         var hits = GetWorld3D().DirectSpaceState.IntersectShape(_partQuery, most);
-        // Read and freed at once: each result is a tracked wrapper the runtime would otherwise collect later.
-        var colliders = hits.Select(hit => hit["collider"].AsGodotObject()).ToList();
+        // Read and freed at once: the results and their list are tracked wrappers the runtime would otherwise collect
+        // later.
+        using var storage = (Godot.Collections.Array)hits;
+        var colliders = new List<GodotObject>(hits.Count);
         foreach (var hit in hits) {
-            hit.Dispose();
+            using (hit) {
+                using var collider = hit[ColliderKey];
+                colliders.Add(collider.AsGodotObject());
+            }
         }
         return colliders;
     }
@@ -693,9 +701,10 @@ public partial class PatientBody : Node3D {
         }
     }
 
-    /// <summary>Breathing lifts sites that sit on top of the torso together with the chest.</summary>
+    /// <summary>Breathing moves sites on the torso together with it, the back included: left behind, the body would
+    /// sink under the site's skin and the fat's edge would show through around it.</summary>
     public void SetBreathOffset(float offset) {
-        if (SiteId is "abdomen" or "chest" or "shoulder") {
+        if (SiteId is "abdomen" or "chest" or "shoulder" or "back") {
             Site.Position = Site.Position with { Y = _siteBaseY + offset };
             UpdateCarve();
         }
@@ -718,7 +727,7 @@ public partial class PatientBody : Node3D {
             foreach (var material in _bodyMaterials) {
                 Materials.SetCarve(material, site, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
             }
-            SkinMaterial?.SetShaderParameter(ShaderParam.SiteToModel, new Projection(model.AffineInverse() * site));
+            SkinMaterial?.SetMatrix(ShaderParam.SiteToModel, new Projection(model.AffineInverse() * site));
             SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
             Materials.SetReveal(_cavityMaterial, site, SiteSize * 0.5f, RegionTexture);
             return;

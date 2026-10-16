@@ -79,6 +79,10 @@ public partial class SurgeryDriver {
         return Db.Drug(vial.Drug)!.Dose * Patient.WeightKg * share / vial.Concentration;
     }
 
+    /// <summary>Called once <see cref="PlayerGivesDrug"/>'s needle is in the vial, before drawing: a test's key frame
+    /// of the label beside the aim. Opt-in, so the shared flow doesn't add the same key frame to every suite.</summary>
+    public Func<Task>? OnNeedleInVial { get; set; }
+
     /// <summary>
     /// Draws <paramref name="ml"/> of a vial into a syringe big enough for it and gives it: Drip pushes it into the IV
     /// bag (it runs down the line), Vein straight into the forearm vein, Arm into the forearm muscle beside it, Tissue
@@ -110,6 +114,13 @@ public partial class SurgeryDriver {
             && into == vial, 2f)) {
             Note("the needle didn't go into the vial");
             return;
+        }
+        await Frames.Process(1);
+        AssertString(Surgery.Hud.AimName)
+            .OverrideFailureMessage($"the needle in the vial's cap, its label \"{vial.Def.Name}\" beside the aim")
+            .IsEqual(vial.Def.Name);
+        if (OnNeedleInVial is not null) {
+            await Unbudgeted(OnNeedleInVial);
         }
         var into = Syringe.NeedleTarget(syringe, Patient);
         for (var i = 0; i < Mathf.CeilToInt(ml); i++) {

@@ -1,4 +1,9 @@
 {
   "ambulance_ceiling_oblique.jpg": "ambulance: the whole ceiling panel clears the slab",
-  "ambulance_ceiling_reverse.jpg": "ambulance: the whole ceiling panel clears the slab"
+  "ambulance_ceiling_reverse.jpg": "ambulance: the whole ceiling panel clears the slab",
+  "theatre_CeilingLight1.jpg": "CeilingLight1 alone lights the block and casts its shadow away from that ceiling panel",
+  "theatre_CeilingLight2.jpg": "CeilingLight2 alone lights the block and casts its shadow away from that ceiling panel",
+  "theatre_CeilingLight3.jpg": "CeilingLight3 alone lights the block and casts its shadow away from that ceiling panel",
+  "theatre_CeilingLight4.jpg": "CeilingLight4 alone lights the block and casts its shadow away from that ceiling panel",
+  "theatre_all_panels.jpg": "four ceiling panels cast four soft shadows from the upright block across the floor"
 }
