@@ -137,6 +137,9 @@ public partial class Patient : Node3D {
     /// <summary>The anesthetic put the patient under at some point of the surgery (as the anesthesia objective counts it).
     /// </summary>
     internal bool WentUnder { get; private set; }
+    /// <summary>The patient was out at some point of the surgery, for whatever reason (an anesthetic, too much
+    /// sedative, shock).</summary>
+    internal bool PassedOut { get; private set; }
     /// <summary>Flumazenil stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears off.</summary>
     internal bool AnesthesiaStopped { get; private set; }
     /// <summary>Shares of the right anesthetic dose given since <see cref="AnesthesiaStopped"/>.</summary>
@@ -385,6 +388,7 @@ public partial class Patient : Node3D {
         var shock = Mathf.Clamp((0.6f - v.BloodRatio) / 0.3f, 0f, 1f);
         var glucoseComa = Mathf.Clamp((v.Glucose - GlucoseHigh) / 10f, 0f, 1f) + Mathf.Clamp((2.5f - v.Glucose) / 1.5f, 0f, 1f);
         v.Consciousness = v.IsArrested ? 0f : Mathf.Clamp(1f - Mathf.Max(v.Anesthesia, fx.Sedation * 0.8f) - shock - glucoseComa, 0f, 1f);
+        PassedOut |= !v.IsAwake;
 
         if (_reassure > 0f) {
             AddFlag("comfort_time", dt);

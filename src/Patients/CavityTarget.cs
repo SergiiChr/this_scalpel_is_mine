@@ -54,8 +54,9 @@ public partial class CavityTarget : Node3D {
         Covered = spec.Covered;
         Embedded = spec.Embedded;
         Name = $"{Kind.Capitalize()}_{index}";
-        // Degrees around the vertical, e.g. to lay a rib across the chest.
-        RotationDegrees = new Vector3(0, spec.YawDegrees, 0);
+        // Degrees around the vertical, e.g. to lay a rib across the chest. A mirrored patient's embedded glass leans the
+        // mirrored way: half a turn less the yaw mirrors both its edge and its lean across the body.
+        RotationDegrees = new Vector3(0, mirrored && spec.Embedded ? 180f - spec.YawDegrees : spec.YawDegrees, 0);
         ModelSlot.Instantiate("targets", Kind, this);
         _touch = new StaticBody3D { Name = "Touch", CollisionLayer = TouchLayer, CollisionMask = 0 };
         _touch.AddChild(new CollisionShape3D { Shape = new SphereShape3D { Radius = TouchRadius } });

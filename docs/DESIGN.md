@@ -237,7 +237,8 @@ general anesthesia for a lidocaine allergy).
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).
 `sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient
-below `max_panic` while they're still awake; a patient put under at any point before never meets it.
+below `max_panic` while they're still awake; a patient who was out at any point before (put under, too much
+sedative) never meets it.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).

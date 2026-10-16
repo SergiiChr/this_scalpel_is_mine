@@ -38,6 +38,7 @@ public static class XrayExposure {
     /// <summary>Film pixels per meter of field.</summary>
     private const float PixelsPerMeter = 1200f;
     private static readonly string[] Metal = ["bullet", "knife", "figurine"];
+    /// <summary>Bone, and glass, which stops the beam about as well.</summary>
     private static readonly string[] Bone = ["bone", "splinter", "shard", "nasal_hump", "sternum", "skull_flap"];
     /// <summary>Hollow broken pieces of shaft: the beam crosses their walls four times.</summary>
     private static readonly string[] Pieces = ["fragment", "rib"];
