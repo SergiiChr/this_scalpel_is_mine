@@ -88,7 +88,6 @@ public static class ToolActions {
         ["cauterize"] = "Heat",
         ["saw"] = "Speed",
         ["suction"] = "Suction",
-        ["swab"] = "Pressure",
         ["inject"] = "Plunger",
     };
     /// <summary>Actions listed here do their thing the moment Use tool is pressed (or while held), named by the value.
@@ -348,7 +347,7 @@ public static class ToolActions {
     private static void ContactSound(SurgicalTool tool, float speed, int level, float effort, Vector3 tip) {
         (string Id, float Strength)? sound = tool.Def.Action switch {
             "cut" when level > 0 && speed > 0.015f => ("contact_cut", Mathf.Clamp(speed * 2.5f, 0.2f, 1f)),
-            "swab" when level > 0 && speed > 0.01f => ("contact_swab", Mathf.Clamp(speed * 2f, 0.15f, 0.75f)),
+            "swab" when speed > 0.01f => ("contact_swab", Mathf.Clamp(speed * 2f, 0.15f, 0.75f)),
             "clamp" when tool.Hold is not null && speed > 0.01f => ("contact_swab", Mathf.Clamp(speed * 1.5f, 0.15f, 0.6f)),
             "suction" when level > 0 => ("contact_suction", effort),
             _ => null,

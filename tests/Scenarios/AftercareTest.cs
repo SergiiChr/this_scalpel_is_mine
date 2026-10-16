@@ -108,7 +108,7 @@ public class AftercareTest {
             await driver.PlayerWalksTo(driver.SitePoint(spot));
             for (var row = -radius; row <= radius; row += radius / 3f) {
                 await driver.PlayerWorksAlong(
-                    [driver.SitePoint(spot + new Vector2(-radius * 1.2f, row)), driver.SitePoint(spot + new Vector2(radius * 1.2f, row))], 1, 0.06f);
+                    [driver.SitePoint(spot + new Vector2(-radius * 1.2f, row)), driver.SitePoint(spot + new Vector2(radius * 1.2f, row))], 0, 0.06f);
             }
         }
         var left = body.SkinBlood();
