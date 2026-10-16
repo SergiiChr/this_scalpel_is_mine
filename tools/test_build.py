@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 import xml.etree.ElementTree as ElementTree
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -190,28 +191,49 @@ class CoverageReportingTest(unittest.TestCase):
     def test_first_suite_runs_alone_until_the_adapter_installed_its_runner(self) -> None:
         self.suite.cases = [build.Case("Runs", [], "", [])]
         other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
-        batches: list[tuple[int, list[str]]] = []
+        started: list[str] = []
+        pooled: list[int] = []
 
-        class Pool:
+        def run_process(suite: build.Suite, *arguments: object) -> build.ProcessResult:
+            started.append(suite.full_name)
+            return self.result("<testsuite><testcase /></testsuite>")
+
+        class Pool(ThreadPoolExecutor):
             def __init__(self, workers: int) -> None:
-                self.workers = workers
-
-            def __enter__(self) -> "Pool":
-                return self
-
-            def __exit__(self, *exception: object) -> None:
-                pass
-
-            def map(self, run: object, suites: list[build.Suite]) -> list[build.Outcome]:
-                batches.append((self.workers, [suite.full_name for suite in suites]))
-                return [build.Outcome(suite, Path(), [], 1) for suite in suites]
+                pooled.append(workers)
+                super().__init__(workers)
 
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
             with patch.object(build, "ThreadPoolExecutor", Pool), patch.object(build, "RUNNER_CLASS", self.root / "missing"):
-                with contextlib.redirect_stdout(io.StringIO()):
+                with patch.object(build, "run_process", side_effect=run_process), contextlib.redirect_stdout(io.StringIO()):
                     status = build.test(["--all", "--jobs", "2"])
         self.assertEqual(status, 0)
-        self.assertEqual(batches, [(1, ["Scalpel.Tests.Example"]), (2, ["Scalpel.Tests.Other"]), (1, [])])
+        self.assertEqual(started, ["Scalpel.Tests.Example", "Scalpel.Tests.Other"])
+        # Only the suites after the first share a pool.
+        self.assertEqual(pooled, [2])
+
+    def test_isolated_cases_are_spread_over_the_pool(self) -> None:
+        self.suite.isolate_cases = True
+        self.suite.cases = [build.Case("Plays", [], "", ['"a"', '"b"', '"c"'])]
+        other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
+        started: list[str] = []
+
+        def run_process(suite: build.Suite, options: build.TestOptions, name: str, *arguments: object) -> build.ProcessResult:
+            started.append(name)
+            return self.result("<testsuite><testcase /></testsuite>")
+
+        (self.root / "runner.cs").touch()
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
+            with patch.object(ThreadPoolExecutor, "submit", autospec=True, side_effect=ThreadPoolExecutor.submit) as submit:
+                with patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"), patch.object(build, "run_process", side_effect=run_process):
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        status = build.test(["--all", "--jobs", "4"])
+        self.assertEqual(status, 0)
+        # Each isolated case is a pool task of its own, beside the other suite's single process.
+        self.assertEqual(sorted(started), ["Example__Plays_a", "Example__Plays_b", "Example__Plays_c", "Other"])
+        self.assertEqual(submit.call_count, 4)
+        self.assertIn("2 test suites in 4 test processes, 4 at a time", output.getvalue())
+        self.assertIn("2 passed, 0 failed", output.getvalue())
 
     def test_entirely_skipped_run_cannot_pass(self) -> None:
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):

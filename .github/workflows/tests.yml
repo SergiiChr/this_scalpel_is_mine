@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
-      # Four suites at a time: ubuntu-latest has four cores, and CI doesn't check frame times.
+      # Four test processes at a time (an isolated case is one of its own): ubuntu-latest has four cores, and CI doesn't check frame times.
       - run: tools/with_crash_stacks.sh ./build.py test --ci-run --jobs 4
       - if: always()
         uses: actions/upload-artifact@v4

@@ -48,8 +48,8 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ElementTree
 import zipfile
-from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -642,38 +642,90 @@ def key_frame_files() -> dict[Path, int]:
     return {path: path.stat().st_mtime_ns for path in KEY_FRAMES.rglob("*.png")}
 
 
-def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
-    """Runs a suite in its own Godot process, or each of its cases in one of its own when it isolates them."""
+@dataclass
+class Process:
+    """One test process of a suite: the whole suite, or one of its isolated cases."""
+
+    suite: Suite
+    name: str
+    test_filter: str
+    cases: int
+
+    def run(self, options: TestOptions) -> ProcessResult:
+        return run_process(self.suite, options, self.name, self.test_filter, self.cases)
+
+
+def processes(suite: Suite, options: TestOptions) -> list[Process]:
+    """The processes that run a suite's selected cases: none when no runnable case is selected."""
     base = f"FullyQualifiedName~{suite.full_name}."
     if not options.run_broken:
         base += "&TestCategory!=broken"
     cases = [case for case in suite.cases if options.run_broken or not case.broken]
-    names = [name for case in cases for name in case.names() if options.case in name]
-    # Isolated cases each write a log of their own, named after the suite.
-    log = BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
-    if not names:
-        reason = "No runnable cases match the selection (broken cases are excluded unless RUN_BROKEN=1)."
-        log = BUILD / "test-logs" / f"{suite.name}.log"
-        log.write_text(reason + "\n")
-        xml = ElementTree.Element("testsuite", name=suite.full_name, tests="1", failures="0", errors="0", skipped="1")
-        skipped_case = ElementTree.SubElement(xml, "testcase", classname=suite.full_name, name="No runnable cases")
-        ElementTree.SubElement(skipped_case, "skipped", message=reason)
-        ElementTree.ElementTree(xml).write(BUILD / "test-results" / f"{suite.name}.xml", encoding="utf-8", xml_declaration=True)
-        return Outcome(suite, log, [])
+    selected_names = [name for case in cases for name in case.names() if options.case in name]
+    if not selected_names:
+        return []
     if not suite.isolate_cases:
         test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
-        result = run_process(suite, options, suite.name, test_filter, len(names))
-        return Outcome(suite, log, result.failures, result.executed, failed_cases=result.failed_cases, attributed=result.attributed)
-    outcome = Outcome(suite, log, [], attributed=True)
+        return [Process(suite, suite.name, test_filter, len(selected_names))]
+    found = []
     for case in cases:
         for value in case.values or [""]:
             name = f"{case.method}({value})" if value else case.method
             if options.case not in name:
                 continue
             test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if value else "")
-            case_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
-            add(outcome, run_process(suite, options, case_name, test_filter, 1))
+            process_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
+            found.append(Process(suite, process_name, test_filter, 1))
+    return found
+
+
+def suite_log(suite: Suite) -> Path:
+    """The suite's log, a glob when its isolated cases each write their own."""
+    return BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
+
+
+def skipped(suite: Suite) -> Outcome:
+    """The outcome of a suite with no runnable case selected: a report that says so, nothing launched."""
+    reason = "No runnable cases match the selection (broken cases are excluded unless RUN_BROKEN=1)."
+    log = BUILD / "test-logs" / f"{suite.name}.log"
+    log.write_text(reason + "\n")
+    xml = ElementTree.Element("testsuite", name=suite.full_name, tests="1", failures="0", errors="0", skipped="1")
+    skipped_case = ElementTree.SubElement(xml, "testcase", classname=suite.full_name, name="No runnable cases")
+    ElementTree.SubElement(skipped_case, "skipped", message=reason)
+    ElementTree.ElementTree(xml).write(BUILD / "test-results" / f"{suite.name}.xml", encoding="utf-8", xml_declaration=True)
+    return Outcome(suite, log, [])
+
+
+def gather(suite: Suite, results: Sequence[ProcessResult]) -> Outcome:
+    """A suite's outcome from the results of all its processes."""
+    outcome = Outcome(suite, suite_log(suite), [], attributed=True)
+    for result in results:
+        add(outcome, result)
     return outcome
+
+
+def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
+    """Runs a suite in its own Godot process, or each of its cases in one of its own when it isolates them."""
+    todo = processes(suite, options)
+    return gather(suite, [process.run(options) for process in todo]) if todo else skipped(suite)
+
+
+def run_together(suites: Sequence[Suite], options: TestOptions) -> Iterator[Outcome]:
+    """Runs suites side by side, options.jobs processes at a time, and yields each suite's outcome once its last
+    process has ended. An isolated suite's cases are spread over the pool like any other processes: the longest suites
+    isolate theirs, and run one after another they would hold the whole run up long after the others have finished."""
+    todo = {suite.full_name: processes(suite, options) for suite in suites}
+    results: dict[str, list[ProcessResult]] = {suite.full_name: [] for suite in suites}
+    for suite in suites:
+        if not todo[suite.full_name]:
+            yield skipped(suite)
+    with ThreadPoolExecutor(options.jobs) as pool:
+        futures = {pool.submit(process.run, options): process for group in todo.values() for process in group}
+        for future in as_completed(futures):
+            suite = futures[future].suite
+            results[suite.full_name].append(future.result())
+            if len(results[suite.full_name]) == len(todo[suite.full_name]):
+                yield gather(suite, results[suite.full_name])
 
 
 def add(outcome: Outcome, result: ProcessResult) -> None:
@@ -732,7 +784,7 @@ def test(arguments: list[str]) -> int:
     parser.add_argument("--tag", action="append", default=[], help="suites with all of these categories")
     parser.add_argument("--skip", action="append", default=[], help="leave out suites with this category")
     parser.add_argument("--case", default="", help="only the test cases whose name contains this")
-    parser.add_argument("--jobs", type=int, default=1, help="suites run at once")
+    parser.add_argument("--jobs", type=int, default=1, help="test processes run at once; an isolated case is one of its own")
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
@@ -781,15 +833,20 @@ def test(arguments: list[str]) -> int:
     # as processes starting beside that build would load a half-written assembly.
     first = [together.pop(0)] if together and not RUNNER_CLASS.exists() else []
     if together:
-        print(f"Running {len(together)} test suites, {options.jobs} at a time.")
+        count = sum(len(processes(suite, options)) for suite in together)
+        print(f"Running {len(together)} test suites in {count} test processes, {options.jobs} at a time.")
     outcomes: list[Outcome] = []
-    for batch, jobs in ((first, 1), (together, options.jobs), (alone, 1)):
-        with ThreadPoolExecutor(jobs) as pool:
-            for outcome in pool.map(lambda suite: run_suite(suite, options), batch):
-                print(report(outcome), flush=True)
-                if options.ci_run and outcome.failures:
-                    print(log_tail(outcome), flush=True)
-                outcomes.append(outcome)
+    batches: tuple[Iterator[Outcome], ...] = (
+        (run_suite(suite, options) for suite in first),
+        run_together(together, options),
+        (run_suite(suite, options) for suite in alone),
+    )
+    for batch in batches:
+        for outcome in batch:
+            print(report(outcome), flush=True)
+            if options.ci_run and outcome.failures:
+                print(log_tail(outcome), flush=True)
+            outcomes.append(outcome)
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
     if options.key_frames and full:
