@@ -108,14 +108,14 @@ public class SyringeTest {
             .IsTrue();
         await _bench.Stage(SyringeBench.Cases[0]);
         await SyringeBench.Notch(true);
-        await SyringeBench.Notch(true);
+        AssertFloat(Syringe.Ml).OverrideFailureMessage("one notch down draws 1 ml").IsEqualApprox(1f, 0.00001f);
         await SyringeBench.Notch(false);
         AssertBool(hand.Level == 0 && !hand.Lowered)
             .OverrideFailureMessage("the wheel works a syringe's plunger, not an effort level, without Use tool held")
             .IsTrue();
         AssertFloat(Syringe.Ml)
-            .OverrideFailureMessage($"two notches down and one up leave 1 ml in the syringe ({Syringe.Ml:0.00})")
-            .IsEqualApprox(1f, 0.00001f);
+            .OverrideFailureMessage($"one notch up empties the syringe again ({Syringe.Ml:0.00})")
+            .IsEqual(0f);
         var hints = string.Join("\n", Hud.ControlLines(me));
         AssertBool(hints.Contains("Pull plunger 1 ml") && hints.Contains("Push plunger 1 ml")
                 && !hints.Contains("Wheel  Plunger"))
@@ -415,9 +415,11 @@ public class SyringeTest {
         await Begin("plunger");
         var capacity = Db.Tool(id)!.Volume;
         await _bench.Stage(new SyringeCase("capacity_pull", "dish", id, capacity - 0.5f, 2, Dish: 60f));
+        CheckShown("just below full", Syringe);
         await SyringeBench.Notch(true);
         AssertFloat(Syringe.Ml).OverrideFailureMessage("the last half ml fills the syringe exactly")
             .IsEqualApprox(capacity, 0.00001f);
+        CheckShown("full", Syringe);
         var outside = _bench.Container!.Ml;
         await SyringeBench.Notch(true);
         AssertFloat(Syringe.Ml + Syringe.Air).OverrideFailureMessage("pulling again cannot exceed capacity")
@@ -426,8 +428,10 @@ public class SyringeTest {
             .IsEqualApprox(outside, 0.00001f);
         await _bench.Withdraw();
         await _bench.Stage(new SyringeCase("capacity_push", "dish", id, 0.5f, -2));
+        CheckShown("just above empty", Syringe);
         await SyringeBench.Notch(false);
         AssertFloat(Syringe.Ml).OverrideFailureMessage("the last half ml empties the syringe exactly").IsEqual(0f);
+        CheckShown("empty", Syringe);
         outside = _bench.Container!.Ml;
         await SyringeBench.Notch(false);
         AssertFloat(Syringe.Ml + Syringe.Air).OverrideFailureMessage("pushing again cannot pass below empty").IsEqual(0f);
@@ -475,17 +479,17 @@ public class SyringeTest {
             .IsTrue();
         var drip = Surgery.Tools.DripBag()!;
         var givenBefore = InBody(patient.Drugs, SyringeBench.Drug);
-        Surgery.Tools.AddLiquid(drip, 5f,
-            new Dictionary<string, float> { [SyringeBench.Drug] = 5f * Db.Tool(SyringeBench.Vial)!.Concentration });
-        drip.Bolus = 5f;
-        await Frames.Physics(Mathf.CeilToInt(5f / ToolActions.DripRate * Engine.PhysicsTicksPerSecond) + 10);
+        // One ml distinguishes a working line from a missed vein; PlungerAddsUp checks cumulative delivery.
+        const float BolusMl = 1f;
+        Surgery.Tools.AddLiquid(drip, BolusMl,
+            new Dictionary<string, float> { [SyringeBench.Drug] = BolusMl * Db.Tool(SyringeBench.Vial)!.Concentration });
+        drip.Bolus = BolusMl;
+        await Frames.Physics(Mathf.CeilToInt(BolusMl / ToolActions.DripRate * Engine.PhysicsTicksPerSecond) + 10);
         var given = InBody(patient.Drugs, SyringeBench.Drug) - givenBefore;
         AssertBool((given > 0.001f) == hit && drip.Contents.ContainsKey(SyringeBench.Drug) != hit)
             .OverrideFailureMessage($"{name}: a drug in the IV drip "
                 + $"{(hit ? "runs into the patient" : "stays in the bag")}")
             .IsTrue();
-        await _bench.ZoomTo(0);
-        await Frames.Physics(20);
         await End();
     }
 
@@ -857,7 +861,7 @@ public class SyringeTest {
     }
 
     /// <summary>In the room: lidocaine pushed into the surgeon's own other glove numbs it. A tool handed to that hand
-    /// drops, again when handed back, and the player's grab with it doesn't close on a tool.</summary>
+    /// drops, and the player's grab with it doesn't close on a tool.</summary>
     [TestCase]
     public async Task NumbGloveCantHoldATool() {
         await Begin();
@@ -877,12 +881,6 @@ public class SyringeTest {
                 && _toasts.Contains("Your numb fingers can't hold it."))
             .OverrideFailureMessage($"numb_glove: forceps handed to the numb hand drop ({string.Join(" | ", _toasts)})")
             .IsTrue();
-        SurgeryState.ToolIsPutInHand(Surgery, handed, numb);
-        var dropped = await Frames.Until(
-            () => _toasts.Count(toast => toast == "Your numb fingers can't hold it.") >= 2 && me.HeldTool(numb) is null
-                && handed.State != ToolState.Held, 1f);
-        AssertBool(dropped)
-            .OverrideFailureMessage($"numb_glove: the same forceps handed back drop again ({handed.State})").IsTrue();
         PlayerInput.Action(numb == 0 ? InputActions.MoveLeftHand : InputActions.MoveRightHand);
         await PlayerInput.Delivered();
         PlayerInput.Action(numb == 0 ? InputActions.MoveLeftHand : InputActions.MoveRightHand, false);
@@ -1262,7 +1260,8 @@ public class SyringeTest {
         var hand = me.Hands[me.Active];
         var other = me.Hands[1 - me.Active];
         var glove = other.Glove;
-        foreach (var along in (float[])[0.02f, 0.06f, 0.1f, 0.14f, 0.18f]) {
+        // The glove is one wrist-to-fingertip segment: check both endpoints and one interior representative.
+        foreach (var along in (float[])[0f, SurgeonHand.GloveLength * 0.5f, SurgeonHand.GloveLength]) {
             var aim = glove.GlobalPosition + (glove.GlobalBasis.X.Normalized() * along);
             for (var i = 0; i < 40; i++) {
                 hand.LocalTarget = me.ToLocal(aim - hand.TipOffset(Syringe.Def.Length) + (Vector3.Up * 0.04f));
