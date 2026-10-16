@@ -42,7 +42,7 @@ public class TapeTest {
 
     [TestCase]
     public async Task AStripStuckAlongAShallowCutHoldsItShut() {
-        var session = await ToolSession.Start("appendectomy", "tape/stuck", views: true);
+        var session = await ToolSession.Start("appendectomy", "tape/stuck");
         var driver = session.Driver;
         var me = driver.Me;
         var body = driver.Body;
@@ -66,6 +66,7 @@ public class TapeTest {
         AssertFloat(started is { Live.Length: > 1 } ? started.Live[^1].DistanceTo(roll) : float.PositiveInfinity)
             .OverrideFailureMessage("the strip runs from its first point up to the roll").IsLess(0.001f);
         await driver.Capture("started", "the strip pressed down beside the cut's end, running from there up to the roll in the hand");
+        await session.CaptureView("started", "the surgeon's view: the roll in the hand, the strip from it pressed down beside the cut, the controls saying a click sticks and a hold cuts off");
 
         await driver.PlayerSticksTape(to, cutOff: true);
         AssertBool(tape.Suture.Thread == 0 && body.Tissue.Tape(id) is { Final: true, Peeled: false })
