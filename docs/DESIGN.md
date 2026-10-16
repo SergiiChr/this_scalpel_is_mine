@@ -64,6 +64,11 @@ overview, the data formats designers edit and the design decisions.
   light under it, in a bluer white, brighter, and neutral ambient light instead of green. Outside, the streetlight
   does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
+  Forward+ adds SDFGI with four cascades and 10 cm cells; indoor rooms ignore sky lighting. Only the fixed room
+  shell contributes to the static GI field. Gameplay meshes, including later tool deliveries and new tissue,
+  receive indirect light but do not contribute static occlusion or emission. Direct lights and their shadows stay
+  live. Mobile and Compatibility retain the existing ambient fill.
+
 - Shading (`toon.gdshader`): smooth diffuse, soft specular, rim light, procedural grime.
   Every model material belongs to a family (`Materials.Families`, by material name): skin (light wraps past the
   terminator with a red tint), glove rubber, cloth (no highlight, soft sheen), metal (tinted highlight, a fake
@@ -110,6 +115,28 @@ overview, the data formats designers edit and the design decisions.
 - Patient vitals are only on the bedside monitor, never on the player's screen.
   The monitor is laid out like a real one: sweeping ECG, pleth and breathing traces, numbers in their trace's color,
   alarms in the top bar and lab results along the bottom.
+
+#### Lighting captures and benchmarks
+
+Capture paired Forward+ room, patient and station views (also accepts `ambulance_bullet` and `sidewalk_stab`):
+
+```bash
+RENDERER=forward_plus SHOTS_ARGS='--lighting' ./build.py shots appendectomy build/shots
+```
+
+For GPU timings, use the Godot executable provisioned by `./build.py setup` on the native display, with the
+bundled .NET runtime on `PATH` and in `DOTNET_ROOT` when needed:
+
+```bash
+GODOT --path . --rendering-method forward_plus --audio-driver Dummy --resolution 1920x1080 \
+  res://tests/Support/Screenshot.tscn -- \
+  --scenario=appendectomy --out=build/shots --lighting --benchmark
+```
+
+The benchmark freezes the simulation and shader clock, disables film grain, V-sync and the frame cap, then
+runs off/on/on/off passes per view: 180 warm-up frames and 240 GPU-timestamp samples each. `performance.csv`
+records the adapter, resolution and GPU/frame statistics. These steady-state captures exclude GI startup;
+`./build.py full_performance_run` checks moving gameplay against the frame budget.
 
 ## Data formats
 

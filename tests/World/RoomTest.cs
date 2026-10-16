@@ -74,5 +74,41 @@ public class RoomTest {
         RenderingServer.RenderLoopEnabled = true;
     }
 
+    [TestCase("or")]
+    [TestCase("ambulance")]
+    [TestCase("sidewalk")]
+    public void ShellIsStaticGiAndSdfgiSetUp(string environmentId) {
+        FrameBudget.RenderingOff();
+        var room = AutoFree(new Room())!;
+        Frames.Root.AddChild(room);
+        room.BuildShell(environmentId);
+        var environment = room.GetChildren().OfType<WorldEnvironment>().Single().Environment;
+        AssertBool(environment.SdfgiEnabled).IsEqual(RenderingServer.GetCurrentRenderingMethod() == "forward_plus");
+        AssertFloat(environment.SdfgiMinCellSize).IsEqual(0.1f);
+        AssertInt(environment.SdfgiCascades).IsEqual(4);
+        AssertBool(environment.SdfgiReadSkyLight).IsEqual(environmentId == "sidewalk");
+        var meshes = room.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>().ToArray();
+        AssertInt(meshes.Length).IsGreater(0);
+        AssertBool(meshes.All(mesh => mesh.GIMode == GeometryInstance3D.GIModeEnum.Static)).IsTrue();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase]
+    public async Task GameplayMeshesAreExcludedFromStaticGi() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        try {
+            await driver.Start("appendectomy");
+            var meshes = driver.Patient.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>().ToArray();
+            AssertInt(meshes.Length).IsGreater(0);
+            AssertBool(meshes.All(mesh => mesh.GIMode == GeometryInstance3D.GIModeEnum.Disabled)).IsTrue();
+            var delivered = new MeshInstance3D { Mesh = new BoxMesh() };
+            driver.Me.AddChild(delivered);
+            AssertBool(delivered.GIMode == GeometryInstance3D.GIModeEnum.Disabled).IsTrue();
+        } finally {
+            await driver.Stop();
+        }
+    }
+
     private readonly record struct Shot(string Name, Vector3 From);
 }
