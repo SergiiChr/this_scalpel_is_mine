@@ -2,9 +2,9 @@ namespace Scalpel.Tests.Tools;
 
 /// <summary>
 /// Gauze as a player uses it, with no pressure to set on the wheel: pressed on a cut it stops the bleeding, holds it
-/// for a while after it comes off, then the cut bleeds again.
+/// for a while after it comes off, then the cut bleeds again; pressed beside the cut, it doesn't.
 /// Packed into an incision, it holds the vessel it reaches at the bottom and the incision's edges it lies against the
-/// same way.
+/// same way, but not a vessel further along the incision.
 /// Pressed long enough on a cut too small to sew, it stops that one for good.
 /// Debug mode says when a wound stops bleeding and whether for good.
 /// Gauze also wipes away the beads of blood a needle leaves.
@@ -43,6 +43,10 @@ public class GauzeTest {
         await driver.PlayerRequestsItem("gauze");
         var on = driver.SitePoint(cut.Midpoint);
         await driver.PlayerWalksTo(on);
+        // It presses where it points: lowered on the skin a few centimeters beside the cut, it doesn't stop it.
+        await driver.PlayerWorksAt(driver.SitePoint(cut.Midpoint + new Vector2(0f, 0.06f)), 0, 1f);
+        AssertFloat(cut.Bleeding).OverrideFailureMessage($"gauze beside the cut doesn't press it: {driver.Bleeders()}")
+            .IsGreater(before * 0.9f);
         await driver.PlayerReaches(on);
         // Gauze has no pressure to set: the wheel does nothing, and the controls shown don't offer it.
         await SurgeryDriver.Notch(true);
@@ -144,10 +148,12 @@ public class GauzeTest {
         var cut = SurgeryState.SkinIsCut(patient, at - new Vector2(0.1f, 0f), at + new Vector2(0.1f, 0f), 1f);
         await Frames.Seconds(1f);
         var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
+        // Further along the same incision, out of the gauze's reach: packing one spot doesn't press the whole opening.
+        var far = SurgeryState.VesselBleeds(patient, at + new Vector2(0.08f, 0f), body.CavityDepth() * 0.5f);
         await Frames.Seconds(1f);
-        AssertBool(vessel.Bleeding > 0.1f && cut.Bleeding > 0.1f)
-            .OverrideFailureMessage($"the vessel in the incision and the incision's edges bleed: {driver.Bleeders()}").IsTrue();
-        await driver.Capture("vessel_bleeding", "a vessel bleeding at the bottom of the incision, the incision's edges bleeding too");
+        AssertBool(vessel.Bleeding > 0.1f && far.Bleeding > 0.1f && cut.Bleeding > 0.1f)
+            .OverrideFailureMessage($"both vessels in the incision and the incision's edges bleed: {driver.Bleeders()}").IsTrue();
+        await driver.Capture("vessel_bleeding", "a vessel bleeding in the incision, the incision's edges bleeding too");
 
         await driver.PlayerRequestsItem("gauze");
         var on = driver.SitePoint(at);
@@ -160,8 +166,11 @@ public class GauzeTest {
         AssertBool(vessel.Bleeding < 0.01f && cut.Bleeding < 0.01f)
             .OverrideFailureMessage($"packed with gauze, the vessel and the edges it lies against stop bleeding: {driver.Bleeders()}")
             .IsTrue();
-        AssertFloat(vessel.LastingBleeding).OverrideFailureMessage("but only while the pressure holds").IsGreater(0.1f);
-        await driver.Capture("packed", "gauze packed into the opening, neither the vessel nor the incision's edges bleeding");
+        AssertFloat(far.Bleeding).OverrideFailureMessage($"the vessel out of its reach keeps bleeding: {driver.Bleeders()}")
+            .IsGreater(0.1f);
+        AssertBool(vessel.LastingBleeding > 0.1f && cut.LastingBleeding > 0.1f)
+            .OverrideFailureMessage($"but only while the pressure holds: {driver.Bleeders()}").IsTrue();
+        await driver.Capture("packed", "gauze packed into the middle of the opening, the edges beside it dry");
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
         await session.Finish(BudgetOverride);
