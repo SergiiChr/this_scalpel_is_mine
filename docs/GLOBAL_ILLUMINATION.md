@@ -71,3 +71,21 @@ median/p95/max, are in `build/gi/{or,ambulance,sidewalk}/performance.csv`; `buil
 sheets. These values describe the fixed-shell implementation and exclude startup. They do not imply a full
 gameplay 16 ms worst-frame pass. `./build.py full_performance_run --tag room_lighting` passed the affected
 lighting suite on the native GPU; the deterministic suite and lint also passed.
+
+## Regression outcome
+
+- `./build.py lint`: passed.
+- `./build.py test`: 53 suites passed, no failures or pending cases.
+- Focused room-lighting tests, deterministic key-frame review and native GPU tests: passed. All nine deterministic
+  room key frames match the reviewed baseline.
+- `./build.py full_performance_run`: 59 suites passed, three failed, one pre-existing broken case pending. No reported
+  failure was a frame-budget assertion. Existing local budget allowances still apply; this does not establish an
+  unqualified 16 ms worst-frame pass.
+- Appendectomy needle pickup passed on an individual native-GPU retry.
+- `LayeredClosureOfACutIntoTheBelly` and the two lateral X-ray contrast cases repeated their failures. Both also fail
+  identically on an untouched archive of `codex/4_lights` (`06eba6279be1db1fe5cba5139e50df1d68b13a18`): thread clearance
+  0.08 mm; bullet AP brightness 1.00 against 0.85; figurine 1.00 against 0.77. These are baseline failures on this
+  renderer, not changes introduced by GI. Their assertions and thresholds remain unchanged.
+
+The full-run log, focused retries and baseline comparison logs are preserved in `build/gi/` and the screenshot
+archive. The full GPU regression is not green because of those existing functional failures.
