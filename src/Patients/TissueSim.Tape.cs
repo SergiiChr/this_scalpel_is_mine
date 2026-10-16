@@ -109,9 +109,6 @@ public sealed partial class TissueSim {
             .Select(s => Pos[_springs[s].A].DistanceTo(Pos[_springs[s].B]) / _springs[s].Rest)
             .DefaultIfEmpty(0f).Max();
 
-    /// <summary>How far strip <paramref name="id"/>'s stitches stretch before it lets go, 0 for none.</summary>
-    internal float TapeBreak(int id) => _tapes[id].Holds.Select(s => _springs[s].Break).DefaultIfEmpty(0f).Max();
-
     /// <summary>The strip is cut off the roll: nothing more is pressed down on it.</summary>
     public void FinishTape(int id) {
         if (_tapes.TryGetValue(id, out var tape)) {

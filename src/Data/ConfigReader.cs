@@ -4,10 +4,6 @@ namespace Scalpel.Data;
 public readonly struct ConfigReader(ConfigFile file, string section) {
     public string Section => section;
 
-    public bool Has(string key) => file.HasSectionKey(section, key);
-
-    public Variant Value(string key) => file.GetValue(section, key);
-
     public float Float(string key, float fallback = 0f) => file.GetValue(section, key, fallback).AsSingle();
 
     public int Int(string key, int fallback = 0) => file.GetValue(section, key, fallback).AsInt32();

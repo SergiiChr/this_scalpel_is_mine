@@ -180,10 +180,6 @@ public partial class BloodFlow : Node3D {
 
     public BloodFlow() => _fasterFirst = new FasterFirst(this);
 
-    /// <summary>Where the pools in cuts stand now (world).</summary>
-    internal IReadOnlyList<Vector3> CutPools => _cutPools;
-
-
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
         _dropMesh = new MultiMeshInstance3D {

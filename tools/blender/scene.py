@@ -81,21 +81,6 @@ def bake(obj: bpy.types.Object) -> bpy.types.Object:
     return result
 
 
-def skin(
-    name: str, points: Sequence[Vec3], edges: Sequence[tuple[int, int]], radii: Sequence[float | tuple[float, float]], subdivisions: int = 2
-) -> bpy.types.Object:
-    """Tube network from a skeleton (Skin modifier), smoothed by subdivision. Radii are per point, round or (a, b)."""
-    obj = mesh_object(name, points, [], edges)
-    obj.modifiers.new("Skin", "SKIN")
-    data = obj.data.skin_vertices[0].data
-    for i, r in enumerate(radii):
-        data[i].radius = (r, r) if isinstance(r, float | int) else r
-    data[0].use_root = True
-    sub = obj.modifiers.new("Subsurf", "SUBSURF")
-    sub.levels = sub.render_levels = subdivisions
-    return bake(obj)
-
-
 @dataclass(frozen=True)
 class Blob:
     """One metaball element in game space.

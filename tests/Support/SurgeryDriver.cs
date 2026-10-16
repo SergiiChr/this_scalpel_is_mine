@@ -119,16 +119,6 @@ public partial class SurgeryDriver : Node {
         Note("reads the card");
     }
 
-    /// <summary>Holds Interact over the card's page for <paramref name="seconds"/>, then lets go.</summary>
-    public async Task PlayerHoldsSignature(float seconds) {
-        Note($"holds the signature {seconds:0.0} s");
-        Press(InputActions.Interact);
-        await PlayerInput.Delivered();
-        await Frames.Seconds(seconds);
-        Release(InputActions.Interact);
-        await PlayerInput.Delivered();
-    }
-
     /// <summary>Signs the patient out like a player: takes the patient card and holds Interact until the signature is
     /// done and the surgery ends.</summary>
     public async Task PlayerDischarges() {

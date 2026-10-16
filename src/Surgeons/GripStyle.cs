@@ -65,12 +65,4 @@ public sealed record GripFit(float Lift = 0f, float Shift = 0f, float[]? Curl = 
         ? None
         : new(fit.Float("lift"), fit.Float("shift"),
             fit.TryGetValue("curl", out var curl) ? [.. curl.AsGodotArray().Select(value => value.AsSingle())] : null);
-
-    public Godot.Collections.Dictionary ToDictionary() {
-        var fit = new Godot.Collections.Dictionary { ["lift"] = Lift, ["shift"] = Shift };
-        if (Curl is not null) {
-            fit["curl"] = Curl;
-        }
-        return fit;
-    }
 }
