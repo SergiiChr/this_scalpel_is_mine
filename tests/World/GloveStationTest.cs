@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.World;
 
-/// <summary>The glove station as a player uses it: the dispenser box stands on the cabinet within the station's
-/// interact area, looking at it offers "Change gloves", and interact swaps bloody, sweaty gloves for fresh ones.
+/// <summary>The glove station as a player uses it: the dispenser box stands on the cart's top, under the organizer's
+/// front edge, within the station's interact area, looking at it offers "Change gloves", and interact swaps bloody, sweaty gloves for fresh ones.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -10,7 +10,7 @@ public class GloveStationTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 5f);
 
-    /// <summary>Top of the cabinet the box stands on (tools/assetgen/props.py).</summary>
+    /// <summary>Top of the cart the box stands on (CART_TOP in tools/assetgen/props.py).</summary>
     private const float CabinetTop = 0.9f;
 
     [TestCase]
@@ -50,16 +50,18 @@ public class GloveStationTest {
                 shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(driver.Surgery, "glove_station");
-                await shots.CaptureAt("untouched",
-                    "the glove box on a closed cabinet top, gloves out of its slot, a loose pair in front, "
-                        + "no black patch",
-                    bounds.GetCenter(), 0.6f);
+                // From the surgeon's side, 45° above: the organizer's shelves are in the way of a view from straight above.
+                await shots.CaptureOblique("untouched",
+                    "the glove box on the cart's closed top under the organizer's bins, gloves out of its slot, "
+                        + "a loose pair in front, no black patch",
+                    bounds.GetCenter(), me.GlobalPosition - bounds.GetCenter(), 0.6f);
                 // Thin parts once went black seen from across the room: the outline grew into them.
                 await driver.PlayerWalksTo(bounds.GetCenter(), 2f);
                 await driver.PlayerLooksAt(bounds.GetCenter());
                 await shots.CaptureView("from_across_the_room",
-                    "the glove station from 2 m: the gloves stay blue and the box white, each with a thin dark "
-                        + "outline, no black part");
+                    "the glove station from 2 m: the white drawer cart with blue drawers and bar handles on casters, "
+                        + "the organizer with its bins on its top, the gloves blue and the box white, each with a "
+                        + "thin dark outline, no black part");
             }
             // Loading the room isn't gameplay: the frame budget counts from here.
             driver.Budget.Clear();
