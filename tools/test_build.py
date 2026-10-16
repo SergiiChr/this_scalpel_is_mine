@@ -217,10 +217,12 @@ class CoverageReportingTest(unittest.TestCase):
         self.suite.cases = [build.Case("Plays", [], "", ['"a"', '"b"', '"c"'])]
         other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
         started: list[str] = []
+        # Built once: the pool's threads would otherwise write and parse the same report files at the same time.
+        passed = self.result("<testsuite><testcase /></testsuite>")
 
         def run_process(suite: build.Suite, options: build.TestOptions, name: str, *arguments: object) -> build.ProcessResult:
             started.append(name)
-            return self.result("<testsuite><testcase /></testsuite>")
+            return passed
 
         (self.root / "runner.cs").touch()
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
