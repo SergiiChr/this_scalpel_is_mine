@@ -172,7 +172,7 @@ public partial class Surgeon {
     }
 
     /// <summary>The wheel: a syringe's plunger, a needle's or a tensioned closure's stitch tension, a spreader's jaws,
-    /// forceps' depth in an opening or the effort level.</summary>
+    /// forceps' depth in an opening (or what they hold) or the effort level.</summary>
     private void OnWheel(bool up) {
         if (PushedCart() is { } cart) {
             cart.Raise(up ? 1 : -1);
@@ -197,7 +197,10 @@ public partial class Surgeon {
                 // Up opens the spreader, down closes it, set in a wound or not.
                 tools.RequestSpread(Active, up ? 1 : -1);
                 break;
-            case "clamp" when HoldsDepth(Active) && !Hands[Active].Attached && InOpening(Active) is { } opening:
+            case "clamp" when HoldsDepth(Active) && Hands[Active].Attached:
+                StepHeld(Hands[Active], up);
+                break;
+            case "clamp" when HoldsDepth(Active) && InOpening(Active) is { } opening:
                 StepDepth(Hands[Active], opening, up);
                 break;
             default:
@@ -541,6 +544,10 @@ public partial class Surgeon {
             HoldInWound(hand, tool);
             return;
         }
+        if (tool is { Taped: true }) {
+            HoldTaped(hand, tool);
+            return;
+        }
         if (hand.Inspecting) {
             // Held up in front of the eyes, the grip off to the hand's side so the whole tool crosses the view.
             hand.Lowered = false;
@@ -639,6 +646,21 @@ public partial class Surgeon {
         var shoulder = Shoulder(hand.Index);
         _strain[hand.Index] = tool.GlobalPosition.DistanceTo(shoulder) > Reach + 0.06f;
         hand.Target = InReach(tool.GlobalPosition, shoulder);
+        hand.LocalTarget = ToLocal(hand.Target);
+    }
+
+    /// <summary>Gauze taped down in the hand: the hand lies flat on it where it was taped, pressing it there, whichever
+    /// way the surgeon turns (the "press" grip, see UpdateHand()).</summary>
+    private void HoldTaped(SurgeonHand hand, SurgicalTool tool) {
+        hand.Turn = Mathf.Wrap(tool.GlobalRotation.Y - GlobalRotation.Y, -Mathf.Pi, Mathf.Pi);
+        hand.Tilt = 0f;
+        hand.Twist = 0f;
+        hand.Lifted = false;
+        hand.Lowered = false;
+        hand.Trigger = false;
+        hand.Tremor = Vector3.Zero;
+        _strain[hand.Index] = tool.GlobalPosition.DistanceTo(Shoulder(hand.Index)) > Reach + 0.06f;
+        hand.Target = tool.GlobalPosition;
         hand.LocalTarget = ToLocal(hand.Target);
     }
 

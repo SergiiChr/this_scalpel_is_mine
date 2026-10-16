@@ -217,6 +217,7 @@ public partial class PatientBody : Node3D {
             PublishLayers();
         }
         UpdateSutures();
+        UpdateTapes();
         JiggleOrgans((float)delta);
     }
 

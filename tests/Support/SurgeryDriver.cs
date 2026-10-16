@@ -53,6 +53,18 @@ public partial class SurgeryDriver : Node {
         return driver;
     }
 
+    /// <summary>Drives the local surgeon of a surgery already running: a network session's
+    /// (tests/Support/NetSession.cs).</summary>
+    public static SurgeryDriver For(Surgery surgery) {
+        var driver = Create();
+        driver.Surgery = surgery;
+        driver.Me = surgery.LocalSurgeon!;
+        driver.Patient = surgery.Patient;
+        driver.Body = surgery.Patient.Body;
+        driver.Me.Active = Right;
+        return driver;
+    }
+
     /// <summary>
     /// Starts <paramref name="scenarioId"/> solo, like the menu's single player: one surgeon who rolled nothing special,
     /// a patient with only <paramref name="patientQuirks"/>, the run with only <paramref name="runModifiers"/> and every tool the scenario lists on the tray, so the run

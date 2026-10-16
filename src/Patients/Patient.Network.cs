@@ -70,6 +70,10 @@ public partial class Patient {
         if (Surgery.Current is not { Running: true }) {
             return;
         }
+        if (Body.Tissue.TapeOf(snapped.Spring) is > 0 and var tape && Body.Tissue.Tape(tape) is { Peeled: false }) {
+            PeelTape(tape, "The tape let go of the skin and the cut pulled open.");
+            return;
+        }
         var wound = NearestWound(mid, 0.04f, false);
         if (snapped.Kind == SpringKind.Stitch) {
             if (wound is not null) {
@@ -121,6 +125,21 @@ public partial class Patient {
     private void SutureSnap(int id) => Body.Tissue.SnapThread(id);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapeAnchor(int id, Vector2 uv, int point, float halfWidth, Color color) {
+        Body.Tissue.TapeAnchor(id, uv, point, halfWidth);
+        Body.TapeColor(id, color);
+    }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapeStretch(int id, float tension, float strength) => Body.Tissue.TapeStretch(id, tension, strength);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapeFinish(int id) => Body.Tissue.FinishTape(id);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapePeel(int id) => Body.Tissue.PeelTape(id);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void TissueMuscle(Vector2 uv, float radius) => Body.Tissue.MuscleStitch(uv, radius);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -153,6 +172,12 @@ public partial class Patient {
         IvConnected = false;
         Surgery.Current?.Room.IvLine.PullOut(torn);
     }
+
+    /// <summary>The skin a ripped-out IV catheter tore is taped shut with a strip across it (Patient.TapeIvTear()).
+    /// </summary>
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void IvTearTaped(float z0, float z1, float halfWidth, Color color) =>
+        Surgery.Current?.Room.IvLine.Tear?.TapeOver(z0, z1, halfWidth, color);
 
     /// <summary>The IV tubing goes onto the catheter <paramref name="uid"/>.</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]

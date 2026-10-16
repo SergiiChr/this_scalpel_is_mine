@@ -310,8 +310,14 @@ public partial class ToolManager : Node3D {
             return;
         }
         Session.SetAttached(peer, hand, false);
+        if (tool.Taped) {
+            Rpc(MethodName.SetTaped, tool.Uid, false, tool.GlobalTransform);
+            LieTaped(tool, tool.GlobalTransform);
+            return;
+        }
         if (tool.Hold is not null) {
-            if (tool.Def.SelfRetaining) {
+            // Something pulled out is let go of even by a self-retaining tool: it would stand in the air holding it.
+            if (tool.Def.SelfRetaining && tool.Hold is not CarryHold) {
                 LeaveStanding(tool);
                 return;
             }
@@ -340,11 +346,16 @@ public partial class ToolManager : Node3D {
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void PassOnHost(int hand) {
         var peer = Net.Instance.Sender();
-        if (!Session.Surgeons.TryGetValue(peer, out var giver) || ToolInHand(peer, hand) is not { Hold: null } tool) {
+        if (!Session.Surgeons.TryGetValue(peer, out var giver) || ToolInHand(peer, hand) is not { Hold: null or CarryHold } tool) {
             return;
         }
         if (giver.PassTarget(hand) is not { } target) {
             return;
+        }
+        // Something pulled out is put aside first, as when it's let go of: only the tool changes hands.
+        if (tool.Hold is CarryHold carried) {
+            Session.Patient.ReleaseGrip(tool.Uid, carried, false);
+            tool.Hold = null;
         }
         var (receiver, receivingHand) = target;
         if (receiver.BlockedReason(tool.Def) is { Length: > 0 } blocked) {
@@ -566,6 +577,54 @@ public partial class ToolManager : Node3D {
         }
     }
 
+    /// <summary>Host: gauze taped down on the patient (Patient.PlaceTapePoint()) lies flat on the body where it is.
+    /// Held, it stays in the hand, which stays pressing on it there until it lets go (<see cref="SurgicalTool.Taped"/>);
+    /// let go of, it lies there riding the site.
+    /// Its middle goes down on the skin spot it's over (Patient.Body.WorldToUv()), the one it presses on, not straight
+    /// below: held off a curved belly, the two lie centimeters apart.</summary>
+    public void TapeDown(SurgicalTool gauze) {
+        var back = gauze.GlobalBasis.Z.Slide(Vector3.Up).Normalized();
+        if (back == Vector3.Zero) {
+            back = Vector3.Back;
+        }
+        var basis = new Basis(Vector3.Up.Cross(back).Normalized(), Vector3.Up, back);
+        var body = Session.Patient.Body;
+        var middle = body.UvToWorld(body.WorldToUv(gauze.Middle()));
+        var at = middle + (back * gauze.Def.Length * 0.5f);
+        at.Y = BodyUnder(gauze, middle) - gauze.Bounds.Position.Y + LyingClearance;
+        var pose = new Transform3D(basis, at);
+        if (gauze.State == ToolState.Held) {
+            Rpc(MethodName.SetTaped, gauze.Uid, true, pose);
+            Session.SetAttached(gauze.Holder, gauze.Slot, true);
+        } else {
+            LieTaped(gauze, pose);
+        }
+    }
+
+    /// <summary>Host: taped gauze no longer held lies at <paramref name="pose"/>, riding the site.</summary>
+    private void LieTaped(SurgicalTool gauze, Transform3D pose) {
+        Rpc(MethodName.SetToolState, gauze.Uid, (int)ToolState.Standing, gauze.Holder, -1, pose);
+        Rpc(MethodName.RideSite, gauze.Uid);
+    }
+
+    /// <summary>Host: gauze taped down in a hand comes off the skin with it (the tape let go), still held.</summary>
+    public void Untape(SurgicalTool gauze) {
+        Session.SetAttached(gauze.Holder, gauze.Slot, false);
+        Rpc(MethodName.SetTaped, gauze.Uid, false, gauze.GlobalTransform);
+    }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void SetTaped(int uid, bool taped, Transform3D pose) {
+        if (ByUid(uid) is not { } tool) {
+            return;
+        }
+        tool.Taped = taped;
+        tool.GlobalTransform = pose;
+        if (taped) {
+            tool.Ride(Session.Patient.Body.Site);
+        }
+    }
+
     /// <summary>A tool lying on the patient rises and falls with the site as the patient breathes
     /// (<see cref="SurgicalTool.Ride"/>).</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -626,7 +685,7 @@ public partial class ToolManager : Node3D {
         }
     }
 
-    private void LetFall(SurgicalTool tool) {
+    internal void LetFall(SurgicalTool tool) {
         Rpc(MethodName.SetToolState, tool.Uid, (int)ToolState.Free, 0, -1, tool.GlobalTransform);
         tool.Falling = true;
     }
@@ -770,8 +829,9 @@ public partial class ToolManager : Node3D {
         if (Session.Surgeons.GetValueOrDefault(tool.Holder) is not { } surgeon) {
             return;
         }
-        // A spreader set in a wound stays where it went in: the hand holds it there (Surgeon.HoldInWound()).
-        if (tool.State == ToolState.Held && !tool.InWound) {
+        // A spreader set in a wound stays where it went in, and taped gauze where it was taped: the hand holds it there
+        // (Surgeon.HoldInWound(), HoldTaped()).
+        if (tool.State == ToolState.Held && !tool.InWound && !tool.Taped) {
             tool.GlobalTransform = surgeon.Hands[tool.Slot].GripTransform();
         } else if (tool.State == ToolState.Belt) {
             tool.GlobalTransform = surgeon.BeltTransform(tool.Slot);

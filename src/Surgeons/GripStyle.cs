@@ -40,6 +40,10 @@ public sealed record GripStyle(
         // Pinched at the back edge between thumb and fingertips, palm down over it.
         ["flat"] = new(new(new(0f, 0.25f, -0.97f), new(0f, 0.97f, 0.25f), new(1f, 0f, 0f)),
             new(0.1f, -0.03f, 0f), new(0f, 0.004f, 0f), [0.55f, 0.55f, 0.6f, 0.65f, 0.5f]),
+        // Gauze taped down under the hand: the palm flat on top of it, the fingers straight out over its far half, the
+        // thumb off to the side, pressing it onto the skin.
+        ["press"] = new(new(new(0f, 0f, -1f), new(0f, 1f, 0f), new(1f, 0f, 0f)),
+            new(0.11f, -0.026f, 0f), new(0f, 0.004f, -0.03f), [0.1f, 0.08f, 0.1f, 0.15f, 0f], Tilt: 0f),
     };
 
     /// <summary>The style for a grip name; unknown names hold like a pencil.</summary>

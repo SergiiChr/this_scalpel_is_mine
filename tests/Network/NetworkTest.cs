@@ -16,6 +16,10 @@ public class NetworkTest {
         Run("pinch", "the host sees a client's forceps, pressed while lifted, come down and take the bullet");
 
     [TestCase]
+    public void GauzeTheHostHoldsStaysTapedWhereTheClientTapedIt() =>
+        Run("tape", "the client's strip tapes the gauze the host holds down in the host's hand, and it stays there once let go of");
+
+    [TestCase]
     public void ClientWaitsInTheLobbyForTheHostThenBothPlayAnotherScenario() =>
         Run("lobby", "a client off the report first waits in an empty lobby; then both are back in the lobby, "
             + "connected, and play the host's next pick");

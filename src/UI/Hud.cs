@@ -617,9 +617,11 @@ public partial class Hud : CanvasLayer {
         static string Key(StringName action) => InputActions.BindingText(action);
         var action = tool.Def.Action;
         var use = Key(InputActions.UseTool);
-        yield return action == "sew"
-            ? $"{use}  Stitch (click), tie off (hold)"
-            : $"{use} (hold)  {ToolActions.TriggerNames.GetValueOrDefault(action, action == "syringe" ? "Press in" : "Use")} {tool.Label()}";
+        yield return action switch {
+            "sew" => $"{use}  Stitch (click), tie off (hold)",
+            "tape" => $"{use}  Stick (click), cut off (hold)",
+            _ => $"{use} (hold)  {ToolActions.TriggerNames.GetValueOrDefault(action, action == "syringe" ? "Press in" : "Use")} {tool.Label()}",
+        };
         var (up, down) = (Key(InputActions.LevelUp), Key(InputActions.LevelDown));
         if (ToolActions.HasTensionWheel(tool.Def)) {
             yield return $"{up} / {down}  Loosen / tighten {(action == "sew" ? "thread" : tool.Label().ToLowerInvariant())}";
@@ -633,7 +635,7 @@ public partial class Hud : CanvasLayer {
                 yield return $"{up} / {down}  Open / close";
                 break;
             case "clamp" when me.HoldsDepth(me.Active):
-                yield return $"{up} / {down}  Raise / lower tip in an opening";
+                yield return $"{up} / {down}  Raise / lower {(me.Hands[me.Active].Attached ? "what it holds" : "tip in an opening")}";
                 break;
             default:
                 if (me.UsesLevel(me.Active)) {

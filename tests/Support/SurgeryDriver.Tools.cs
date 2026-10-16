@@ -230,8 +230,8 @@ public partial class SurgeryDriver {
             && Mathf.Abs(at.Y - Room.TraySurface) < 0.2f;
     }
 
-    /// <summary>Holds Use tool on <paramref name="point"/> at effort <paramref name="level"/> for
-    /// <paramref name="time"/> seconds.</summary>
+    /// <summary>Holds Use tool on <paramref name="point"/> at effort <paramref name="level"/> (0 for tools that take
+    /// none, like gauze) for <paramref name="time"/> seconds.</summary>
     public async Task PlayerWorksAt(Vector3 point, int level, float time) {
         await PlayerReaches(point);
         await SetLevel(level);
