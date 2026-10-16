@@ -44,6 +44,9 @@ public partial class SurgeryDriver {
         for (var i = 0; i < 12 && Mathf.Abs(head.GlobalPosition.X) > wall; i++) {
             await PlayerHoldsWalkKey(InputActions.MoveBack, 0.25f, () => { });
         }
+        if (Mathf.Abs(head.GlobalPosition.X) > wall) {
+            throw new InvalidOperationException($"The X-ray cart didn't come out of its niche: its head at {head.GlobalPosition}.");
+        }
         await Frames.Physics(30);
         if (lateral is { } height) {
             await PlayerBringsLateralBeamTo(height);

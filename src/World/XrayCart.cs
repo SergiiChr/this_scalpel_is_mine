@@ -281,12 +281,9 @@ public partial class XrayCart : Node3D {
         var follow = Mathf.Min(dt * 8f, 1f);
         var position = GlobalPosition.Lerp(surgeon.ToGlobal(_gripOffset) with { Y = 0f }, follow);
         var yaw = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y + _gripYaw, follow);
-        // Against a wall it slides along it, or only turns, or stays.
-        (Vector3, float)[] tries =
-        [
-            (position, yaw), (position with { X = GlobalPosition.X }, yaw), (position with { Z = GlobalPosition.Z }, yaw),
-            (GlobalPosition, yaw),
-        ];
+        // Against a wall it slides along it, or only turns, or moves without turning (out of its niche, say), or stays.
+        Vector3[] places = [position, position with { X = GlobalPosition.X }, position with { Z = GlobalPosition.Z }];
+        var tries = places.Select(at => (at, yaw)).Append((GlobalPosition, yaw)).Concat(places.Select(at => (at, Rotation.Y)));
         foreach (var (at, turn) in tries) {
             if (Fits(at, turn)) {
                 GlobalPosition = at;

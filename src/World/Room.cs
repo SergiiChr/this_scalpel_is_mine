@@ -443,27 +443,27 @@ public partial class Room : Node3D {
         var deep = XrayNiche.Size.X;
         var beside = (size.Z * 0.5f) - to;
         Wall(new Vector3(0.1f, size.Y, beside), new Vector3(x, size.Y * 0.5f, to + (beside * 0.5f)), color, Vector3.Left);
-        var corner = from + (size.Z * 0.5f);
-        if (corner > 0.01f) {
-            Wall(new Vector3(0.1f, size.Y, corner), new Vector3(x, size.Y * 0.5f, from - (corner * 0.5f)), color, Vector3.Left);
-        }
         var lintel = size.Y - XrayNicheHeight;
         var wide = XrayNiche.Size.Y;
         var middle = (from + to) * 0.5f;
         Wall(new Vector3(0.1f, lintel, wide), new Vector3(x, XrayNicheHeight + (lintel * 0.5f), middle), color, Vector3.Left);
-        var inside = x - (deep * 0.5f);
-        Wall(new Vector3(0.1f, XrayNicheHeight, wide + 0.1f), new Vector3(x - deep - 0.05f, XrayNicheHeight * 0.5f, middle),
+        // Inside, from the wall's outer face to the back, so no face lies in the same plane as the wall's own. In the
+        // corner the side runs on to meet the end of the wall behind the table.
+        var length = deep - 0.05f;
+        var inside = x - 0.05f - (length * 0.5f);
+        Wall(new Vector3(0.1f, XrayNicheHeight, wide + 0.2f), new Vector3(x - deep - 0.05f, XrayNicheHeight * 0.5f, middle),
             color, Vector3.Left);
-        foreach (var z in (float[])[from - 0.05f, to + 0.05f]) {
-            Wall(new Vector3(deep + 0.1f, XrayNicheHeight, 0.1f), new Vector3(inside - 0.05f, XrayNicheHeight * 0.5f, z), color,
-                Vector3.Forward);
-        }
+        Wall(new Vector3(length, XrayNicheHeight, 0.1f), new Vector3(inside, XrayNicheHeight * 0.5f, to + 0.05f), color,
+            Vector3.Forward);
+        Wall(new Vector3(deep, size.Y, 0.1f), new Vector3(x - (deep * 0.5f), size.Y * 0.5f, from - 0.05f), color,
+            Vector3.Forward);
         var floor = new Vector3(deep, 0.1f, wide);
-        var at = new Vector3(inside, -0.05f, middle);
+        var at = new Vector3(x - (deep * 0.5f), -0.05f, middle);
         Shapes.Slab(this, floor, Theatre ? new Color(0.55f, 0.56f, 0.54f) : new Color(0.28f, 0.3f, 0.29f), at, 0.05f,
             Theatre ? Pattern.Speckle : Pattern.None);
         Shapes.StaticBox(this, floor, at).AddToGroup(ToolManager.FloorGroup);
-        Shapes.Slab(this, floor, color.Darkened(0.5f), at with { Y = XrayNicheHeight + 0.05f }, 0.45f);
+        Shapes.Slab(this, new Vector3(length, 0.1f, wide), color.Darkened(0.5f),
+            new Vector3(inside, XrayNicheHeight + 0.05f, middle), 0.45f);
     }
 
     /// <summary>True when <paramref name="point"/> (world, on the floor) is on the room's floor, or in the X-ray cart's
