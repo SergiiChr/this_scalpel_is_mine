@@ -641,6 +641,7 @@ public partial class SurgeryDriver {
             "sanitize" => PlayerSanitizesSite(p.Float("amount", 0.5f)),
             "iv" => PlayerSetsIv(),
             "anesthesia" => PlayerAnesthetizes(),
+            "sedate" => PlayerSedates(p.Float("max_panic", 0.4f)),
             "local_block" => PlayerNumbsSite(),
             "mark" => PlayerMarksLine(p.Float("length", 0.1f)),
             "incise" => PlayerIncises(p.Float("length", 0.1f)),

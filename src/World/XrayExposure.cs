@@ -38,7 +38,7 @@ public static class XrayExposure {
     /// <summary>Film pixels per meter of field.</summary>
     private const float PixelsPerMeter = 1200f;
     private static readonly string[] Metal = ["bullet", "knife", "figurine"];
-    private static readonly string[] Bone = ["bone", "splinter", "nasal_hump", "sternum", "skull_flap"];
+    private static readonly string[] Bone = ["bone", "splinter", "shard", "nasal_hump", "sternum", "skull_flap"];
     /// <summary>Hollow broken pieces of shaft: the beam crosses their walls four times.</summary>
     private static readonly string[] Pieces = ["fragment", "rib"];
     private static readonly string[] Air = ["air"];

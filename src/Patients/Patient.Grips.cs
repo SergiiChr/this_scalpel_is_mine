@@ -233,6 +233,10 @@ public partial class Patient {
         } else {
             target.UpdateLook();
         }
+        if (target.Plug is { } track) {
+            track.Held = 0f;
+            Session.Announce("The cut it came out of bleeds.");
+        }
         if (target.Surge > 0f) {
             NewWound(WoundKind.Internal, target.Uv, Mathf.Clamp(0.4f + target.Surge * 0.15f, 0f, 1f)).DepthM = target.Depth;
             Session.Announce("Blood wells up where it came out!");

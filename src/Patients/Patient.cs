@@ -50,6 +50,8 @@ public partial class Patient : Node3D {
     /// <summary>An opening gaping less than this (meters) is shut: blood from under it seeps out onto the skin.
     /// </summary>
     public const float ShutSlit = 0.003f;
+    /// <summary>Pain per second each embedded target (glass) adds while it's in, unless the site is numb.</summary>
+    public const float EmbeddedPain = 0.02f;
     /// <summary>Total bleeding (ml/s) that frightens an awake patient: a surgical emergency.</summary>
     public const float HeavyBleeding = 1f;
     /// <summary>Seconds after adrenaline in which a shock can restart a flat line.</summary>
@@ -214,11 +216,16 @@ public partial class Patient : Node3D {
         for (var i = 0; i < scenario.Targets.Count; i++) {
             var target = new CavityTarget();
             target.Setup(i, scenario.Targets[i], Mods.Flag("mirrored"));
-            target.Depth = Body.TargetDepth(target.Uv, target.Depth, PatientBody.LocalBounds(target, target).Size.Y * 0.5f,
-                target.IsBone);
+            if (!target.Embedded) {
+                target.Depth = Body.TargetDepth(target.Uv, target.Depth, PatientBody.LocalBounds(target, target).Size.Y * 0.5f,
+                    target.IsBone);
+            }
             Body.Site.AddChild(target);
             target.Position = SiteLocal(target.Uv, target.Depth);
             Targets.Add(target);
+            if (target.Embedded) {
+                target.Plug = EmbeddedWound(target);
+            }
             if (target.Covered) {
                 Body.AddOrgan(target.Uv + new Vector2(0.03f, -0.02f), target.Depth - 0.03f, 0.04f, new Color(0.6f, 0.35f, 0.3f));
             }
@@ -296,6 +303,7 @@ public partial class Patient : Node3D {
         }
         SettleClosures();
         UpdateTapes(dt);
+        HoldEmbedded(dt);
         var total = 0f;
         var lasting = 0f;
         var heal = Mods.Num("heal_rate");
@@ -675,6 +683,10 @@ public partial class Patient : Node3D {
 
     private bool HasActive(string flag) => Drugs.Working(flag);
 
+    /// <summary>A sedative that isn't a general anesthetic (diazepam, morphine) is in at an effective level: it calms
+    /// the patient without putting them under.</summary>
+    public bool SedativeWorks => Drugs.Entries.Any(entry => entry.IsWorking && entry.Def.IsSedative && entry.Def.Peak.Anesthesia <= 0f);
+
     /// <summary>A general anesthetic is in at an effective level (<see cref="DrugDef.DoseEffective"/>).</summary>
     public bool AnestheticWorks => Drugs.Entries.Any(entry => entry.IsWorking && entry.Def.Peak.Anesthesia > 0f);
 
@@ -1028,6 +1040,31 @@ public partial class Patient : Node3D {
     /// <summary>A scenario's uv as on this patient: mirrored anatomy flips left and right (uv.y runs across the body).
     /// </summary>
     private Vector2 MirroredUv(Vector2 raw) => new(raw.X, Mods.Flag("mirrored") ? 1f - raw.Y : raw.Y);
+
+    /// <summary>
+    /// The track an embedded target went in by: a puncture across its width where it meets the skin, as deep as its
+    /// tip reaches (the bottom of the muscle is <see cref="Wound.MuscleDepth"/>, so a deeper one is sewn at the muscle
+    /// first). It's plugged while the target is in (<see cref="HoldEmbedded"/>).
+    /// </summary>
+    private Wound EmbeddedWound(CavityTarget target) {
+        var bounds = PatientBody.LocalBounds(target, target);
+        var reach = target.Depth - bounds.Position.Y;
+        var ends = new[] { bounds.Position.X, bounds.End.X }
+            .Select(x => Body.LocalToUv(target.Position + (target.Basis.X * x)))
+            .ToArray();
+        var wound = NewWound(WoundKind.Puncture, ends[0], Mathf.Clamp(Wound.MuscleDepth * reach / Body.MuscleBottom, 0.3f, 1f));
+        wound.Extend(ends[1]);
+        PaintWoundLocal(wound);
+        return wound;
+    }
+
+    /// <summary>Embedded targets still in hold their tracks shut and hurt.</summary>
+    private void HoldEmbedded(float dt) {
+        foreach (var target in Targets.Where(t => t.Plug is not null && !t.Extracted)) {
+            target.Plug!.Held = CavityTarget.PlugHold;
+            Hurt(EmbeddedPain * dt, target.Uv);
+        }
+    }
 
     private Vector3 SiteLocal(Vector2 uv, float depth) => Body.SitePoint(uv, Body.SurfaceHeight(uv) - depth);
 

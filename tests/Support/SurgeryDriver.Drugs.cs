@@ -279,6 +279,14 @@ public partial class SurgeryDriver {
         }
     }
 
+    /// <summary>A right dose of diazepam into the forearm muscle, then a moment for it to calm the patient below
+    /// <paramref name="maxPanic"/>.</summary>
+    public async Task PlayerSedates(float maxPanic) {
+        await PlayerGivesDrug("vial_diazepam", DoseMl("vial_diazepam"), Route.Arm);
+        await Frames.Until(() => Patient.SedativeWorks && Patient.Vitals.Panic < maxPanic, 30f);
+        Note($"sedated: panic {Patient.Vitals.Panic:0.00}, awake {Patient.Vitals.IsAwake}");
+    }
+
     /// <summary>General anesthesia from the scenario's own vial (propofol or ketamine): down the IV line if there's
     /// one, straight into the vein otherwise.</summary>
     public async Task PlayerAnesthetizes() {

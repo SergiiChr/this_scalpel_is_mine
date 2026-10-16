@@ -223,8 +223,8 @@ Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at l
 comment beside it names the test.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
-`sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
-inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
+`sanitize, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
+calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
 only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
 points. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
@@ -236,12 +236,17 @@ A step with `"or": {step}` also completes when that nested step's condition is m
 general anesthesia for a lidocaine allergy).
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).
+`sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient
+below `max_panic` while they're still awake; a patient put under at any point before never meets it.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
 A target's `depth` is meters under the skin. In a limb it's kept inside the thin cavity between the muscle and the
 bones (`PatientBody.TargetDepth()`): its top under the muscle and its middle no deeper than the floor, so it fits a
 heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor, in the limb bone's place.
+An `embedded` target (glass) is stuck in through the skin and sticks out of it: it keeps its `depth` on any site and
+comes with its own track, a puncture across it as deep as its tip reaches (`Patient.EmbeddedWound()`). While it's in
+it holds the track shut (`CavityTarget.PlugHold`) and hurts unless the site is numb; pulled out, the track bleeds.
 
 ### Other data
 
@@ -306,7 +311,7 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 - Personal gauges: stress (pass out), sickness (vomit), breath (steady hands), sweat (slippery gloves, drips).
 - Belt inventory, personal quirk items, drinking and wearing items, smoke breaks at the smoking spot.
 - Manual with Divine knowledge highlights, patient card with red herrings.
-- Scoring, stars, delayed consequences, codex unlocks, 23 scenarios.
+- Scoring, stars, delayed consequences, codex unlocks, 24 scenarios.
 
 ### First feedback round
 
