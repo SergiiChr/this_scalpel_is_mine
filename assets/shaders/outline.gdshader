@@ -24,7 +24,9 @@ void vertex() {
 	VERTEX = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec3 normal = normalize((MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	// Meters the screen's height covers at this depth.
-	float screen = 2.0 * max(-VERTEX.z, 0.01) / PROJECTION_MATRIX[1][1];
+	// Godot's projection flips Y, so [1][1] is negative. Without abs() the hull shrank into the model instead of growing,
+	// more the further away, and on parts thinner than twice that its back faces poked out in front, black.
+	float screen = 2.0 * max(-VERTEX.z, 0.01) / abs(PROJECTION_MATRIX[1][1]);
 	VERTEX += normal * min(width * screen, max_thickness);
 	world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
