@@ -3,13 +3,14 @@
 Co-op roguelike surgery thriller. Two surgeons, one patient, not enough hands.
 Inspired by Trauma Center, with Overcooked-style pressure and random surgeon and patient quirks every run.
 
-Built with Godot 4.7 .NET (C#, Forward+ renderer).
+Built with Godot 4.7.2 .NET (C#, Forward+ renderer).
 
 ## Install
 
 Everything goes through one script, `build.py` (Python 3, standard library only). It's written for Fedora and works on
 any x86_64 Linux.
-On Fedora it installs missing system packages itself with `dnf` (it asks for your password); elsewhere it tells you what to install.
+Development setup can install missing git and Python packages on Fedora with `sudo dnf`; elsewhere it tells you
+what to install. Visual-test dependencies are provisioned separately as described below.
 
 ### Just play
 
@@ -27,38 +28,43 @@ Already have Godot 4.7.2 .NET? `GODOT_BIN=/path/to/godot ./build.py play`.
 
 ### Develop
 
-Needs everything above plus Python 3.11 (`python3.11` on Fedora) and Xvfb (`xorg-x11-server-Xvfb`, for the screenshot tool
-and the visual tests). Any C# IDE works; the repository has Rider and VS Code test settings (`.runsettings`).
+Asset generation and lint need Python 3.11 (`python3.11` on Fedora). Screenshots and visual tests need Xvfb and
+xauth; headless tests need no GPU. Any C# IDE works; the repository has Rider and VS Code test settings (`.runsettings`).
+All agents start with [CLAUDE.md](CLAUDE.md), which links to the shared guidelines and [workflows](.claude/skills/).
 
 ```bash
 ./build.py dev      # one-time setup, see below
-./build.py setup    # only Godot, the .NET SDK, the build and the import, no sudo (enough to test and take screenshots)
+./build.py setup    # Godot, the .NET SDK, the build and the import, no sudo; visual runs also need Xvfb and xauth
 ./build.py editor   # open the Godot editor
 ./build.py test     # the smoke tests; --all for the full regression
 ./build.py build    # run the tests, export build/ThisScalpelIsMine.x86_64 and start it once
 ./build.py assets   # regenerate models and sounds
-./build.py lint     # C# analyzers and dotnet format, ruff and strict mypy on the Python tools
+./build.py lint     # C# analyzers, ExportRelease build and dotnet format; ruff and strict mypy
 ```
 
 `./build.py dev` does, in order:
 
-1. Installs missing system packages: `git`, `python3.11`, `xorg-x11-server-Xvfb`.
+1. Ensures `git` is installed and provisions Xvfb and xauth. On Fedora, missing visual dependencies are extracted
+   into `.tools/xvfb` without sudo; `dnf download`, `rpm2cpio`, `cpio` and `/usr/bin/xkbcomp` must already be installed.
+   Elsewhere install `xvfb` and `xauth` with the system package manager first.
 2. Downloads Godot 4.7.2 .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none) and the
    Linux export templates into `~/.local/share/godot/` (about 1 GB, one time).
-3. Creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the asset generator's libraries, Blender 5.0 as a Python module (`bpy`, about 360 MB), ruff and mypy.
+3. Ensures Python 3.11 is installed, creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the asset generator's libraries, Blender 5.0 as a Python module (`bpy`, about 360 MB), ruff and mypy.
 4. Builds the C# and imports the project so the editor opens straight away.
 
 It's safe to run again; it only fetches what's missing.
 
 ## Assets
 
-Every model and sound is generated from code; nothing is downloaded or made by hand.
+Most models and all bundled sound effects are generated from code. The surgeon head is a supplied model with no
+generator in this repository; some generated props incorporate source models in `tools/assetgen/sources/`.
+See [assets/models/README.md](assets/models/README.md) for provenance and model contracts.
 
 - `tools/assetgen`: props, instruments and sounds (lofted and lathed meshes exported as `.glb`, sounds synthesized from noise, oscillators and filters).
 - `tools/blender`: organic and rigged models (patient, gloves, organs) built with Blender's Python module.
   It renders review sheets to `build/blender_review/`.
 
-The generated files are committed, so you only need `./build.py assets` after changing a generator.
+The generated files are committed, so you only need `./build.py assets` after changing a generator or its inputs.
 
 ## Sources of truth
 
@@ -91,7 +97,7 @@ Default bindings: [src/Core/InputActions.cs](src/Core/InputActions.cs).
 
 The aim shows where the tool works: a dot for point tools, a line along a blade's edge. A blade only cuts along that
 line (rotate the tool to turn it); moving it sideways just drags it. Drugs come in labelled vials and syringes are
-unlabelled: lower the needle into a vial and the plunger draws, lower it into the patient and it pushes. Doses add
+unlabelled: place the needle in a vial or patient, then scroll down to draw or up to push the plunger. Doses add
 up, however many pushes they take. Work out the dose from the patient's weight and the manual. Don't drop syringes.
 
 The game never tells you what to do next: the manual on the shelf is the reference. **Settings > Debug mode**
@@ -120,22 +126,16 @@ tests/           GdUnit4 suites by feature, and in tests/Support the test helper
 tools/assetgen/  Model, sound and manual art generator (Python)
 tools/blender/   Organic and rigged models built with Blender (Python)
 tools/keyframes.py  Key frame review report (./build.py screenshot_review)
+.claude/skills/ Shared agent workflows, indexed in CLAUDE.md
 ```
 
 ## Tests
 
-```bash
-./build.py test    # the fast headless smoke suites; fails on any error
-./build.py screenshot_review  # full regression with key frames, and a report of the ones that differ from the
-                              # committed baseline (tests/KeyFrames): build/review/report.md. Fails while any differs.
-./build.py generate_baseline  # full regression with key frames; writes the ones that differ into the baseline
-./build.py shots   # screenshots of a scenario in a virtual display: ./build.py shots [scenario] [out dir]
-```
+The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog and source of truth.
+`./build.py test` runs the headless smoke category; `./build.py test --all` runs the full regression.
+`--with-key-frames` saves screenshots of key moments. Suites also run from the IDE's test explorer.
+CI gates the remaining functional regression and export on smoke; visual review runs locally.
 
-The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog and source of truth. `./build.py test`
-runs the smoke category; `./build.py test --all` runs the full regression, `--with-key-frames` saves screenshots of key
-moments. They also run from the IDE's test explorer. CI gates the full suite and export on smoke.
-Features land on `develop`; `main` fast-forwards to a `develop` commit once it's verified
-([docs/RELEASE.md](docs/RELEASE.md)).
-
-See [docs/DESIGN.md](docs/DESIGN.md) for architecture, data formats and the mechanics list.
+See [CLAUDE.md](CLAUDE.md#checking-a-change) for verification commands and test policy,
+[review-key-frames](.claude/skills/review-key-frames/SKILL.md) for visual review and baseline updates, and
+[docs/RELEASE.md](docs/RELEASE.md) for the development and release flow.

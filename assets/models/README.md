@@ -1,6 +1,7 @@
 # Models
 
-Generated from code; run `./build.py assets` to rebuild them all.
+Most models are generated from code; run `./build.py assets` to rebuild those models. Supplied models and generator
+inputs are identified in the table below.
 The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name,
 so a replacement `.glb` only needs the same file name, node or bone names and material names.
 `tests/Models/ModelsTest.cs` checks the names the game depends on, and that each model stays within its triangle budget:

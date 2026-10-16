@@ -1,19 +1,20 @@
 ---
 name: review-key-frames
-description: Review only the key frames that changed against the committed baseline, from a focused run for a feature or the full regression for a release, and commit the reviewed ones as the new baseline. Use it whenever a change needs its key frames reviewed (Visual verification in CLAUDE.md, docs/RELEASE.md), instead of opening screenshots one by one.
+description: Review only the key frames that changed against the committed baseline, from a focused run for a feature or the full regression for a release, and commit the reviewed ones as the new baseline. Use it whenever a change needs its key frames reviewed (Visual verification in CLAUDE.md and docs/RELEASE.md), instead of opening screenshots one by one.
 ---
 
 # Review key frames
 
 A feature branch reviews only its own suites: `./build.py test --tag ... --with-key-frames`, then
-`./build.py screenshot_review --focused`, which fails only on missing key frames. Steps 2 to 6 follow, with
+`./build.py screenshot_review --focused`, which fails on missing key frames or a missing baseline.
+The focused test run must pass separately; a successful comparison does not certify the run. Steps 2 to 6 follow, with
 `./build.py generate_baseline --focused` in step 5: it adds or replaces the run's key frames and deletes none.
-Release verification (docs/RELEASE.md) runs every step.
+Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and runs every step.
 
 1. Run `./build.py screenshot_review` on a commit whose CI passed. It runs the same full regression as
    `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A case that fails runs once more
    on its own, and its successful run's key frames are the ones reviewed. It exits non-zero when the regression still
-   failed (the report is still written) and while any key frame differs from the baseline.
+   failed (the report is still written), when no baseline exists, and while any key frame differs from the baseline.
 2. Read `build/review/report.md`. It lists, per test folder, only key frames that are missing, changed or new against
    the baseline committed in `tests/KeyFrames`, with where in the view a change is. A missing key frame or view is
    always a finding.
@@ -29,12 +30,15 @@ Release verification (docs/RELEASE.md) runs every step.
 
 ## What goes into the baseline
 
-- Only key frames of a full regression, or of a focused run that passed through `--focused`. `generate_baseline`
+- Only key frames of a full regression, or of a passing focused run accepted by `generate_baseline --focused`. `generate_baseline`
   refuses anything else; don't work around it by copying files into `tests/KeyFrames`.
 - A failed regression may still update the baseline. Review the failures manually: open the sheets of every suite
   that still failed and update the baseline only if the case is not visibly broken. `generate_baseline` names those
-  suites and, in their folders, keeps the baseline's key frames and views they didn't take. A case that can't be fixed in this change is a known
-  issue or broken (CLAUDE.md): it then takes no key frames and a passing regression drops its old ones.
+  suites and, in their folders, keeps the baseline's key frames and views they didn't take. This exception permits
+  reviewed frames from a failed full regression; it does not make the test run pass or the change ready for handoff.
+  Focused baseline updates always require a passing run. A case that can't be fixed in this change follows the
+  known-issue or broken policy in [CLAUDE.md](../../../CLAUDE.md#test-structure-and-policy); exclude broken cases'
+  frames from the baseline.
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
 - If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is
   off (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is
