@@ -7,6 +7,7 @@ namespace Scalpel.Tests.Liquids;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_syringe_3"),
  TestCategory("tool_syringe_10"), TestCategory("tool_syringe_50"), TestCategory("tool_iv_catheter")]
+[GodotArgs("--fixed-fps", "60")]
 public class SyringeTest {
     /// <summary>Where debug mode says each case's syringe pushed its liquid.</summary>
     private static readonly Dictionary<string, string> PushedInto = new() {
