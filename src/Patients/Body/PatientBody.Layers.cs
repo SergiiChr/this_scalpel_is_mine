@@ -74,6 +74,9 @@ public partial class PatientBody {
         /// <summary>Per triangle of Index, where its pieces start in RefinedIndex and how many indices they take.
         /// </summary>
         public List<(int Start, int Count)> RefinedOf { get; } = [];
+        /// <summary>Per vertex, the vertices it shares a triangle edge with (see SmoothSheet()), made on first use.
+        /// </summary>
+        public List<int>[]? Neighbours { get; set; }
     }
 
     private readonly List<MeshInstance3D> _layers = [];
@@ -924,6 +927,7 @@ public partial class PatientBody {
         foreach (var (v, (a, b, c, w)) in plan.Apex) {
             vertices[v] = vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z;
         }
+        SmoothSheet(layer, plan, vertices);
         SmoothLips(layer, plan, vertices);
         ConstrainLipArea(plan, vertices);
         if (layer != 0) {
@@ -1036,14 +1040,33 @@ public partial class PatientBody {
                 lipNormals[v] = lipNormals.GetValueOrDefault(v) + normal;
             }
         }
+        // Each lip vertex's way down and depth, eased along the lip like the lip itself: they follow its own grid
+        // point, and neighbours along a lip pulled about ride different ones, so the walls' bottoms would run in steps.
+        var lipDown = new Dictionary<int, (Vector3 Out, float Thick)>();
+        foreach (var v in plan.Lip.Keys) {
+            lipDown[v] = (Outward(layer, plan.Owner[v]), WallThickness(plan.Owner[v]));
+        }
+        for (var pass = 0; pass < LipSmoothing * 2; pass++) {
+            var eased = new Dictionary<int, (Vector3 Out, float Thick)>();
+            foreach (var (v, neighbours) in plan.Lip) {
+                if (neighbours.Count == 2) {
+                    var (out0, thick0) = lipDown[neighbours[0]];
+                    var (out1, thick1) = lipDown[neighbours[1]];
+                    var (outV, thickV) = lipDown[v];
+                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), (thickV * 2f + thick0 + thick1) * 0.25f);
+                }
+            }
+            foreach (var (v, down) in eased) {
+                lipDown[v] = down;
+            }
+        }
         var bulge = WallBulge[layer];
         for (var w = 0; w < plan.Wall.Count; w += 3) {
             var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
             var topA = vertices[a];
             var topB = vertices[b];
-            var outA = Outward(layer, plan.Owner[a]);
-            var outB = Outward(layer, plan.Owner[b]);
-            var (thickA, thickB) = (WallThickness(plan.Owner[a]), WallThickness(plan.Owner[b]));
+            var (outA, thickA) = lipDown[a];
+            var (outB, thickB) = lipDown[b];
             var normalA = lipNormals[a].Normalized();
             var normalB = lipNormals[b].Normalized();
             var mid = plan.MidpointOf.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var refined)
@@ -1190,6 +1213,61 @@ public partial class PatientBody {
                 vertices[v] = eased;
             }
         }
+    }
+
+    /// <summary>Passes of <see cref="SmoothSheet"/>.</summary>
+    private const int SheetSmoothing = 10;
+    /// <summary>Per layer, like <see cref="_easedLips"/>.</summary>
+    private readonly Vector3[][] _easedSheet = [[], [], []];
+
+    /// <summary>
+    /// A tethered layer beside a cut goes with the skin's slide over it (LayerPoint()), wrinkles and all, while its
+    /// height stays down on its bed: drawn as is, the muscle under a lip pulled aside creases cell by cell and its cut
+    /// edge runs in steps. Where the skin over it moved, each of its grid points is eased toward its neighbours on
+    /// its own side of the cut; the lips are left to <see cref="SmoothLips"/>.
+    /// </summary>
+    private void SmoothSheet(int layer, LayerPlan plan, Vector3[] vertices) {
+        if (float.IsPositiveInfinity(LayerTether[layer]) || _renderTurnover) {
+            return;
+        }
+        var neighbours = plan.Neighbours ??= SheetNeighbours(plan);
+        var eased = _easedSheet[layer];
+        if (eased.Length < vertices.Length) {
+            eased = _easedSheet[layer] = new Vector3[vertices.Length];
+        }
+        for (var pass = 0; pass < SheetSmoothing; pass++) {
+            for (var v = 0; v < vertices.Length; v++) {
+                eased[v] = vertices[v];
+                var k = plan.Owner[v];
+                var cell = Tissue.CellOf(k);
+                if (plan.Other[v] >= 0 || plan.Apex.ContainsKey(v) || neighbours[v].Count == 0
+                    || cell.X == 0 || cell.Y == 0 || cell.X == Tissue.ResX || cell.Y == Tissue.ResY) {
+                    continue;
+                }
+                var sum = Vector3.Zero;
+                foreach (var n in neighbours[v]) {
+                    sum += vertices[n];
+                }
+                var weight = 0.5f * Mathf.Clamp(_renderMoved[k].Length() / FlapMove, 0f, 1f);
+                eased[v] = vertices[v].Lerp(sum / neighbours[v].Count, weight);
+            }
+            Array.Copy(eased, vertices, vertices.Length);
+        }
+    }
+
+    private static List<int>[] SheetNeighbours(LayerPlan plan) {
+        var neighbours = new List<int>[plan.Owner.Count];
+        for (var v = 0; v < neighbours.Length; v++) {
+            neighbours[v] = [];
+        }
+        for (var t = 0; t < plan.Index.Count; t += 3) {
+            for (var n = 0; n < 3; n++) {
+                var (a, b) = (plan.Index[t + n], plan.Index[t + ((n + 1) % 3)]);
+                if (!neighbours[a].Contains(b)) { neighbours[a].Add(b); }
+                if (!neighbours[b].Contains(a)) { neighbours[b].Add(a); }
+            }
+        }
+        return neighbours;
     }
 
     /// <summary>Virtual lips have no simulation particles of their own. Keep their faces oriented with the sheet
