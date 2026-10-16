@@ -64,12 +64,21 @@ public static class Shapes {
         if (vertices.Count == 0) {
             return mesh;
         }
-        var arrays = new Godot.Collections.Array();
+        using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
-        arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
+        SetPacked(arrays, Mesh.ArrayType.Vertex, vertices.ToArray());
+        SetPacked(arrays, Mesh.ArrayType.Normal, normals.ToArray());
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
+    }
+
+    /// <summary>Puts <paramref name="values"/> in a mesh's arrays as a packed array. The engine copies it in through
+    /// a Variant held by a tracked wrapper with a finalizer, disposed here at once: a mesh rebuilt every frame (a
+    /// thread being sewn, tissue being cut) would otherwise leave thousands of them for one long collection. The
+    /// arrays themselves are the same kind of wrapper: dispose them once the surface is added.</summary>
+    public static void SetPacked<T>(Godot.Collections.Array arrays, Mesh.ArrayType slot, T[] values) {
+        using var packed = Variant.From(values);
+        arrays[(int)slot] = packed;
     }
 
     /// <summary>The tube's triangles, each vertex's normal the average of the faces meeting at its point, as

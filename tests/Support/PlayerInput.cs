@@ -10,7 +10,16 @@ public static class PlayerInput {
     /// <summary>Presses (with <paramref name="pressed"/> false, lets go of) an input action, as its key or mouse button
     /// does. Actions rather than raw mouse buttons: nothing else in the window catches them.</summary>
     public static void Action(string name, bool pressed = true) =>
-        Input.ParseInputEvent(new InputEventAction { Action = name, Pressed = pressed });
+        Send(new InputEventAction { Action = name, Pressed = pressed });
+
+    /// <summary>Queues <paramref name="input"/> with the engine, which keeps its own reference, and frees the wrapper
+    /// at once: one left to the runtime per frame of mouse motion piles up thousands for one long collection, which
+    /// the frame budget would count against the game.</summary>
+    private static void Send(InputEvent input) {
+        using (input) {
+            Input.ParseInputEvent(input);
+        }
+    }
 
     /// <summary>Presses and lets go of an action, like a click.</summary>
     public static void Tap(string name) {
@@ -23,10 +32,10 @@ public static class PlayerInput {
     public static void Key(string name) {
         var key = (InputEventKey)InputMap.ActionGetEvents(name).First(e => e is InputEventKey).Duplicate();
         key.Pressed = true;
-        Input.ParseInputEvent(key);
+        Send(key);
         var up = (InputEventKey)key.Duplicate();
         up.Pressed = false;
-        Input.ParseInputEvent(up);
+        Send(up);
     }
 
     /// <summary>Moves the mouse <paramref name="motion"/> pixels: it looks around, or with a hand's key held moves that
@@ -34,14 +43,14 @@ public static class PlayerInput {
     /// move on the window to the game's own layout, so it's sent scaled back by as much, whatever the window's size.
     /// </summary>
     public static void Mouse(Vector2 motion) =>
-        Input.ParseInputEvent(new InputEventMouseMotion { Relative = Frames.Root.GetFinalTransform().BasisXform(motion) });
+        Send(new InputEventMouseMotion { Relative = Frames.Root.GetFinalTransform().BasisXform(motion) });
 
     /// <summary>Clicks the left mouse button over the middle of <paramref name="control"/>, as on a menu button. Sent
     /// where the window has it: the engine scales it back to the game's own layout.</summary>
     public static void Click(Control control) {
         var at = Frames.Root.GetFinalTransform() * control.GetGlobalRect().GetCenter();
         foreach (var pressed in (bool[])[true, false]) {
-            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = pressed, Position = at, GlobalPosition = at });
+            Send(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = pressed, Position = at, GlobalPosition = at });
         }
     }
 
