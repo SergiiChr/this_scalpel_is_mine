@@ -192,10 +192,19 @@ public partial class Surgeon {
     }
 
     /// <summary>The wheel over an opening: up raises forceps' tip a notch, down lowers it, from the lip down to resting on
-    /// what's inside. All the way down it follows what's inside again, as it does untouched.</summary>
+    /// what's inside. All the way down it follows what's inside again, as it does untouched. A tip held over the lip
+    /// (something pulled out in the jaws) stays there going up.</summary>
     private void StepDepth(SurgeonHand hand, TipInOpening opening, bool up) {
-        var depth = Mathf.Clamp(opening.Depth + (up ? -DepthStep : DepthStep), 0f, opening.Bottom);
+        var depth = Mathf.Clamp(opening.Depth + (up ? -DepthStep : DepthStep), Mathf.Min(opening.Depth, 0f), opening.Bottom);
         hand.HeldDepth = depth < opening.Bottom ? depth : null;
+    }
+
+    /// <summary>The wheel while forceps hold onto something: up pulls it a notch higher, slow enough for something still
+    /// attached to come loose rather than rip (Patient.UpdateGrip()), down lets it a notch lower, never under what's
+    /// inside an opening.</summary>
+    private void StepHeld(SurgeonHand hand, bool up) {
+        var down = InOpening(hand.Index) is { } opening ? Mathf.Clamp(opening.Bottom - opening.Depth, 0f, DepthStep) : DepthStep;
+        hand.Target += Vector3.Up * (up ? DepthStep : -down);
     }
 
     /// <summary>A move of a forceps tip held at a depth (<paramref name="from"/> to <paramref name="to"/>, the hand's

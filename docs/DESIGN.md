@@ -381,8 +381,11 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   bleeding wound only with the tip down on what's inside (`Patient.JawReach`), on the cut's edge only up by the lip.
   Deeper than `Patient.LipDepth` it can't move out under the skin, anywhere along a move: it slides along the lip,
   and Lift takes it over. All the way down, or out of the opening, it rests on what's inside again. The aim shows a
-  stem from the lip down to the tip and the depth beside it. The retractor (a skin hook) and forceps holding a pad
-  or graft take no depth.
+  stem from the lip down to the tip and the depth beside it. Holding onto something, the wheel moves the hand instead:
+  up pulls it a notch higher, slowly enough for something still attached to come loose rather than rip, down lets it
+  a notch lower, never under what's inside. A target pulled out is carried, no longer holding the hand to the patient:
+  it walks with the surgeon, the tip kept as high over the lip as it came out. The retractor (a skin hook) and forceps
+  holding a pad or graft take no depth.
 - **Contextual aim**: shown on whatever is right under the tool's tip, where Use tool brings it down, so it's
   accurate at any angle (`Surgeon.AimPoint()`). A dot for point tools, a line along a blade's edge for blades, a < and a > at a Gelpi
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks

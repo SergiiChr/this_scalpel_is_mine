@@ -633,7 +633,7 @@ public partial class Hud : CanvasLayer {
                 yield return $"{up} / {down}  Open / close";
                 break;
             case "clamp" when me.HoldsDepth(me.Active):
-                yield return $"{up} / {down}  Raise / lower tip in an opening";
+                yield return $"{up} / {down}  Raise / lower {(me.Hands[me.Active].Attached ? "what it holds" : "tip in an opening")}";
                 break;
             default:
                 if (me.UsesLevel(me.Active)) {

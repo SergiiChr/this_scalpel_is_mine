@@ -172,7 +172,7 @@ public partial class Surgeon {
     }
 
     /// <summary>The wheel: a syringe's plunger, a needle's or a tensioned closure's stitch tension, a spreader's jaws,
-    /// forceps' depth in an opening or the effort level.</summary>
+    /// forceps' depth in an opening (or what they hold) or the effort level.</summary>
     private void OnWheel(bool up) {
         if (PushedCart() is { } cart) {
             cart.Raise(up ? 1 : -1);
@@ -197,7 +197,10 @@ public partial class Surgeon {
                 // Up opens the spreader, down closes it, set in a wound or not.
                 tools.RequestSpread(Active, up ? 1 : -1);
                 break;
-            case "clamp" when HoldsDepth(Active) && !Hands[Active].Attached && InOpening(Active) is { } opening:
+            case "clamp" when HoldsDepth(Active) && Hands[Active].Attached:
+                StepHeld(Hands[Active], up);
+                break;
+            case "clamp" when HoldsDepth(Active) && InOpening(Active) is { } opening:
                 StepDepth(Hands[Active], opening, up);
                 break;
             default:

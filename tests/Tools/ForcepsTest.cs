@@ -4,8 +4,9 @@ namespace Scalpel.Tests.Tools;
 /// Forceps close on what they come to rest on, not on whatever the tip passes on its way down: the thigh's entry wound
 /// is opened through every layer over the bullet, then the forceps are pressed in ways that leave the tip still coming
 /// down when the press counts. Key frames: the site from above and obliquely, the forceps on the skin beside the
-/// opening and holding the bullet, then held up in the opening by the wheel and stopped at its lip. Review them for the
-/// jaws on the skin edge, not down in the opening, then on the bullet down in it, then clear of it and of the skin.
+/// opening and holding the bullet, then held up in the opening by the wheel and stopped at its lip, then the bullet raised
+/// out by the wheel and carried away from the table. Review them for the jaws on the skin edge, not down in the opening,
+/// then on the bullet down in it, then clear of it and of the skin, then holding it over the opening and in the hand.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_forceps"), TestCategory("visual_confirmation")]
@@ -138,6 +139,51 @@ public class ForcepsTest {
         AssertBool(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid)
             .OverrideFailureMessage($"back over the bullet, the forceps rest on it and take it: {forceps.Hold}").IsTrue();
         await LetGo(driver, forceps);
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task ForcepsRaisedByTheWheelTakeTheBulletOutAndAway() {
+        var (session, bullet) = await OpenOverBullet("forceps/lifted_out");
+        var driver = session.Driver;
+        var me = driver.Me;
+        var hand = me.Hands[me.Active];
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        var spot = driver.Body.UvToWorld(bullet.Uv, bullet.Depth);
+        await driver.PlayerWalksTo(spot);
+        await driver.PlayerReaches(spot);
+        await Press(driver);
+        AssertBool(forceps.Hold is TargetHold && hand.Attached)
+            .OverrideFailureMessage($"pressed on the bullet, the forceps hold it: {forceps.Hold}").IsTrue();
+
+        // The wheel raises the tip holding it a notch at a time until it's out.
+        var before = forceps.TipPosition().Y;
+        await SurgeryDriver.Notch(true);
+        await Frames.Physics(2);
+        AssertFloat(forceps.TipPosition().Y - before).OverrideFailureMessage("a notch up raises the forceps holding the bullet")
+            .IsBetween(Surgeon.DepthStep * 0.5f, Surgeon.DepthStep * 1.5f);
+        for (var i = 0; i < 40 && !bullet.Extracted; i++) {
+            await SurgeryDriver.Notch(true);
+        }
+        await Frames.Seconds(0.5f);
+        var held = me.InOpening(me.Active);
+        await driver.AssertAndCapture(bullet.Extracted && forceps.Hold is CarryHold && !hand.Attached && held is { Depth: < 0f },
+            $"raised by the wheel, the forceps lift the bullet out of the opening and hold it over its lip: {forceps.Hold}, attached {hand.Attached}, {held}",
+            "lifted_out");
+
+        // Taken out, the bullet is carried: the hand walks away with the surgeon instead of staying over the opening.
+        var wounds = driver.Patient.Wounds.Count;
+        var from = me.GlobalPosition;
+        PlayerInput.Action(InputActions.MoveBack);
+        await Frames.Seconds(1f);
+        PlayerInput.Action(InputActions.MoveBack, false);
+        await Frames.Seconds(0.5f);
+        var walked = me.GlobalPosition.DistanceTo(from);
+        AssertBool(walked > 0.5f && forceps.Hold is CarryHold && bullet.GlobalPosition.DistanceTo(forceps.TipPosition()) < 0.01f)
+            .OverrideFailureMessage($"walked {walked} m away, the forceps still carry the bullet: {forceps.Hold}").IsTrue();
+        AssertBool(driver.Patient.Wounds.Count == wounds && forceps.TipPosition().DistanceTo(me.Shoulder(me.Active)) < Surgeon.Reach + 0.01f)
+            .OverrideFailureMessage("walked away, the hand comes along within reach and the thigh doesn't tear").IsTrue();
+        await session.CaptureView("carried_away", "stepped back from the table, the bullet still in the forceps in the surgeon's hand");
         await session.Finish(BudgetOverride);
     }
 
