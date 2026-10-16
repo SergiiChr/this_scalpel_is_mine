@@ -969,7 +969,7 @@ public partial class PatientBody {
             var (a, b) = plan.Midpoints[n];
             refinedVertices[vertexCount + n] = LipMidpoint(plan, vertices, a, b);
             refinedNormals[vertexCount + n] = (normals[a] + normals[b]).Normalized();
-            refinedUvs[vertexCount + n] = uvs[a].Lerp(uvs[b], 0.5f);
+            refinedUvs[vertexCount + n] = MidpointUv(vertices[a], vertices[b], refinedVertices[vertexCount + n], uvs[a], uvs[b]);
         }
         for (var n = 0; n < plan.Centers.Count; n++) {
             var (a, b, c) = plan.Centers[n];
@@ -1087,7 +1087,7 @@ public partial class PatientBody {
             var midOut = (outA + outB).Normalized();
             var midNormal = (normalA + normalB).Normalized();
             var midThick = (thickA + thickB) * 0.5f;
-            var midUv = uvs[a].Lerp(uvs[b], 0.5f);
+            var midUv = MidpointUv(topA, topB, mid, uvs[a], uvs[b]);
             var (swellA, swellB) = (Swell(a, thickA), Swell(b, thickB));
             // Three columns along the lip (its two ends and its midpoint), each a soft rounded profile down the wall.
             (Vector3 Top, Vector3 Out, Vector3 Normal, float Thick, float Swell, Vector2 Uv, int Owner)[] columns = [
@@ -1285,6 +1285,15 @@ public partial class PatientBody {
             }
         }
         return neighbours;
+    }
+
+    /// <summary>The uv of a lip edge's midpoint <paramref name="mid"/> (LipMidpoint()), between its ends' as far along
+    /// the edge as its bend put it: halfway, a bend along the lip would stretch the wound map's bleed spots on the walls
+    /// on one side of it and squeeze them on the other, like a lip eased without its uv (SmoothLips()).</summary>
+    private static Vector2 MidpointUv(Vector3 a, Vector3 b, Vector3 mid, Vector2 uvA, Vector2 uvB) {
+        var edge = b - a;
+        var length = edge.LengthSquared();
+        return length > 1e-12f ? uvA.Lerp(uvB, Mathf.Clamp((mid - a).Dot(edge) / length, 0f, 1f)) : uvA.Lerp(uvB, 0.5f);
     }
 
     /// <summary>Virtual lips have no simulation particles of their own. Keep their faces oriented with the sheet
