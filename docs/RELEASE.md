@@ -1,19 +1,23 @@
 # Development and release
 
-Fast changes land on `develop`; a release branch cut from it goes through a slower, independent visual verification
-and its fixes before it reaches `main`.
+Fast changes land on `develop`; a commit of it goes through a slower, independent visual verification before `main`
+fast-forwards to it.
 Commands and test policy: [CLAUDE.md](../CLAUDE.md).
 
 ## Branches
 
-- `main`: released state. Only release PRs (`release/<short hash>` → `main`) land here, merged with a merge commit.
-- `develop`: integration branch. Feature PRs land here, squashed.
+History on `main` and `develop` is linear: no merge commits.
+
+- `main`: released state. It only fast-forwards to a `develop` commit that passed release verification, so it's
+  always an ancestor of `develop` and never needs syncing back.
+- `develop`: integration branch. Every PR lands here squashed: features, release fixes and release key frames.
 - `<feature>`: branched from `develop`, one change each.
-- `release/<short hash>`: cut from a `develop` commit whose CI passed and verified there. It takes only fixes for what
-  its verification found, and the key frames the release review accepted.
+- `release/<short hash>`: points at the verified `develop` commit, only to carry the release PR to `main`.
+- `keyframes/<short hash>`: the release review's accepted key frames on top of the verified commit, PR'd to `develop`.
 
 `tests/KeyFrames` is `develop`'s baseline. A feature commits the key frames of the suites it ran, so the release review
-lists only what changed beyond them: side effects on suites the feature didn't run.
+lists only what changed beyond them: side effects on suites the feature didn't run. The key frames a release review
+accepts reach `main` with the next release.
 
 ## Development
 
@@ -45,37 +49,38 @@ lists only what changed beyond them: side effects on suites the feature didn't r
 
 ## Verification and release
 
-A scheduled run cuts a release branch from `develop` and verifies it. All follow-up fixes land on that branch only,
-so the release isn't held back by new features: `develop` keeps taking feature PRs the whole time. One release
-branch is open at a time.
+A scheduled run picks a `develop` commit and verifies it. `develop` keeps taking feature PRs the whole time. Fixes for
+what the verification finds land on `develop` like any other PR, and the next run verifies a newer commit that
+contains them. One release PR is open at a time.
 
-1. Cut. With no open release branch, take the newest `develop` commit whose CI passed and branch
-   `release/<short hash>` from it. Skip when that commit was already released.
-2. Verify. Run `./build.py screenshot_review` on the release branch's tip. A suite that still fails after its retry
-   is an issue (step 4), even when CI passed.
-3. Review the listed sheets against the PRs merged into `develop` since the last release, and the fixes merged into
-   the release branch. The features committed their own key frames, so every listed one is unexpected: a side
-   effect, a missing key frame or a flaky render.
+1. Pick. Take the newest `develop` commit whose CI passed. Skip while a release PR is open or `main` already contains
+   it.
+2. Verify. Run `./build.py screenshot_review` on that commit. A suite that still fails after its retry is an issue
+   (step 4), even when CI passed.
+3. Review the listed sheets against the PRs merged into `develop` between `main` and that commit. The features
+   committed their own key frames, so every listed one is unexpected: a side effect, a missing key frame or a flaky
+   render.
 4. Each problem gets an issue, and the run that opens it works it; it never opens an issue and stops. A clear-cut
-   defect gets its real cause fixed on a branch from the release branch and a PR back into it, under the development
-   flow above, driven to green CI and handed to the owner to merge. A change whose intent isn't obvious (user flow,
-   behavior) goes to the owner for a decision, with a recommendation, and the run acts on the answer. Once the
-   issues are closed, the next run verifies the release branch's tip again (step 2).
-5. With no issues: run `./build.py generate_baseline --use-latest-set` and commit `tests/KeyFrames` on the release
-   branch when anything changed, and open a PR to `main`. Its description lists the commit it was cut from, every PR
-   merged since the last release (features to `develop` and fixes to the release branch, titles, linked), and how
-   many key frames the features changed and the release review accepted, and why.
-6. Merge the release PR with a merge commit, never squash: a squashed release leaves `develop` without its
-   commits, and the next sync conflicts on everything the release touched.
+   defect gets its real cause fixed in a PR to `develop`, under the development flow above, driven to green CI and
+   handed to the owner to merge. A change whose intent isn't obvious (user flow, behavior) goes to the owner for a
+   decision, with a recommendation, and the run acts on the answer. Once the issues are closed, the next run starts
+   over at step 1.
+5. With no issues: push `release/<short hash>` at the verified commit and open a PR from it to `main`. Its
+   description lists the commit, every PR merged into `develop` since the last release (titles, linked), and how many
+   key frames the features changed and the release review accepted, and why. When the review listed key frames, run
+   `./build.py generate_baseline --use-latest-set`, commit `tests/KeyFrames` on `keyframes/<short hash>` from the
+   verified commit and open a PR to `develop`. On a conflict in `tests/KeyFrames`, a feature merged since owns the
+   file: take `develop`'s.
+6. Ask the owner to approve the release in the project thread (the PR is opened under their account, so GitHub won't
+   take their review). On their yes, fast-forward `main` to the verified commit (`git push origin <hash>:main`);
+   GitHub then marks the PR merged. Never merge it with the button: every method there makes a new commit, and
+   `main` would stop being an ancestor of `develop`. Delete `release/<short hash>` and `keyframes/<short hash>` once
+   their PRs are merged.
 
-## Keeping develop in sync
+The key frames PR is merged as soon as its CI is green, without waiting for the owner.
+Never rebase or force-push `develop` or `main`: open feature branches are built on `develop`'s history.
 
-After a release PR merges, open a PR from `main` to `develop` and merge it with a merge commit (`develop` takes no
-direct pushes). It brings the release's fixes and baseline commit back to `develop`. When it conflicts with what
-`develop` took meanwhile, merge `main` into a branch from `develop`, resolve there (key frames: as in Development step
-9) and open that PR instead.
-Either sync PR is merged as soon as its CI is green, without waiting for the owner.
-Never rebase or force-push `develop`: open feature branches are built on its history.
-
-Repository settings: `main` allows only merge commits, `develop` allows squash (features) and merge (syncs from
-`main`), `release/*` allows squash (fixes). All take changes only through PRs whose CI passed.
+Repository settings: squash is the only merge method. `main` and `develop` require linear history and block force
+pushes. `develop` takes changes only through PRs whose CI passed. `main` takes only fast-forward pushes, of commits whose CI
+passed on `develop`: its PR rule has a bypass for whoever the release run pushes as (the owner, or the Claude GitHub
+App).

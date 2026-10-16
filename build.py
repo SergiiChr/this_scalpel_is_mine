@@ -1054,7 +1054,7 @@ def screenshot_review(arguments: list[str]) -> int:
     # The report comes first: it helps most when the regression failed.
     report_status = keyframes_tool("report", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags)
     if not has_key_frames(BASELINE):
-        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, run ./build.py generate_baseline on a release branch first.", file=sys.stderr)
+        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, run ./build.py generate_baseline first.", file=sys.stderr)
         return 1
     return status or report_status
 
