@@ -599,9 +599,15 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   of its grip (`Patient.TapeHold`): a hand pulling the skin beside it, which a strip on blood doesn't survive. Blood
   oozing from the cut under it soaks in and loosens it further (`Patient.TapeSoak`). Let go, it peels off, the cut
   opens again and it costs points.
-- Gauze it goes over, lying on the skin or held over it by the other hand, is taped down there (`ToolManager.TapeDown()`):
-  it lies flat on the body, riding the site, and keeps pressing the cut under it as gauze pressed by hand does for as
-  long as the strip holds. Taken off, it takes the strip with it.
+- Gauze it goes over, lying on the skin or held over it in a hand (either surgeon's), is taped down there
+  (`ToolManager.TapeDown()`): it lies flat on the body, riding the site, and keeps pressing the cut under it as gauze
+  pressed by hand does for as long as the strip holds. A stretch over gauze holds the gauze, not the cut's edges under
+  it. Held, the gauze stays in the hand (`SurgicalTool.Taped`), which stays on it, flat (the `press` grip,
+  `Surgeon.HoldTaped()`), and keeps the surgeon there, until it lets go (Grab): then the gauze stays where it was
+  taped. Taken off, it takes the strip with it.
+- Taped gauze soaks up what its pressure holds back from the cut under it (`Wound.LastingBleeding`) until it's full;
+  then the blood soaks through into the tape (`Patient.SoakThrough` per ml), and soaked through, the tape lets go and
+  the gauze with it, pressing no more.
 - A strip is drawn flat along the skin between its points, over gauze it holds down, and from its last point to the
   roll while it's still on it (`PatientBody.UpdateTapes()`). A strip that came off is gone.
 

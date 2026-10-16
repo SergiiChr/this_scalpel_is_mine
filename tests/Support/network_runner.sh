@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Two real Godot processes over ENet on localhost, for tests/Network/NetworkTest.cs. It prints what's wrong and
 # exits non-zero on the first problem.
-# Usage: network_runner.sh GODOT ROOT sync|pinch|lobby|stall LIMIT
+# Usage: network_runner.sh GODOT ROOT sync|pinch|tape|lobby|stall LIMIT
 # LIMIT: seconds the test case may take (tests/Support/Limits.cs). Each driver is stopped there, and gives up waiting on
 # the other side 10 s earlier, which leaves room for the client starting later and both quitting.
-# The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch), NetLobbyDriver.cs (lobby) and
-# NetStallDriver.cs (stall), each started from its scene.
+# The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch), NetTapeDriver.cs (tape),
+# NetLobbyDriver.cs (lobby) and NetStallDriver.cs (stall), each started from its scene.
 set -uo pipefail
 
 godot=$1
@@ -89,6 +89,22 @@ if [[ "$mode" == pinch ]]; then
 	finished "$host" net_pinch_host
 	expect "$logs/net_pinch_client.log" "\[client\] forceps over the bullet"
 	expect "$logs/net_pinch_host.log" "\[host\] the client's forceps take the bullet"
+	exit 0
+fi
+
+if [[ "$mode" == tape ]]; then
+	run NetTapeDriver host net_tape_host &
+	host=$!
+	sleep 2
+	run NetTapeDriver client net_tape_client &
+	client=$!
+	finished "$client" net_tape_client
+	finished "$host" net_tape_host
+	expect "$logs/net_tape_host.log" "\[host\] holds the gauze over the cut"
+	expect "$logs/net_tape_client.log" "\[client\] my strip tapes the host's gauze down flat where it held it, still in their hand"
+	expect "$logs/net_tape_host.log" "\[host\] taped down, the gauze stays in my hand, pinned flat on it"
+	expect "$logs/net_tape_host.log" "\[host\] let go of, the gauze stays taped where it was and my hand walks away"
+	expect "$logs/net_tape_client.log" "\[client\] let go of, the host's gauze stays taped where it was"
 	exit 0
 fi
 

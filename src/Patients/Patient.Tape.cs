@@ -9,6 +9,8 @@ namespace Scalpel.Patients;
 /// they're pulled apart again by a share of that (<see cref="TapeHold"/>): a hand pulling on the skin beside it, a
 /// strain. Blood oozing under it soaks in and loosens it more. Let go, it peels off and the cut opens again. It can't
 /// close skin over open muscle.
+/// A stretch laid over gauze holds the gauze, not the edges under it. The gauze soaks up what its pressure holds back,
+/// and once it's full the blood soaks through into the tape, until the tape lets go and the gauze with it.
 /// </summary>
 public partial class Patient {
     /// <summary>Dry tape's grip on a cut through the skin, per unit of its <see cref="ToolDef.Power"/>: it pulls together
@@ -27,17 +29,24 @@ public partial class Patient {
     /// <summary>Gauze within this height (meters) over the skin under a stretch of tape is taped down with it: lying on
     /// the skin, or held over it by the other hand.</summary>
     public const float GauzeReach = 0.05f;
+    /// <summary>Taped gauze soaks up all that its pressure holds back from the cut under it: a cut bleeding hard fills
+    /// it, a small one barely stains it. Full, the blood soaks through into the tape: 1 / SoakThrough ml soak it through.
+    /// </summary>
+    public const float SoakThrough = 0.2f;
+    /// <summary>ml oozing into taped gauze it takes in at once, so a tick doesn't send every drop.</summary>
+    private const float SeepStep = 0.5f;
     /// <summary>Points along each stretch where what it lies on is looked at.</summary>
     private const int TapeSamples = 8;
 
-    /// <summary>A strip's tape, how wet it is (0..1), the deepest cut it lies on, the wounds it lies on and the gauze it
-    /// holds down.</summary>
+    /// <summary>A strip's tape, how wet it is (0..1), the deepest cut it lies on, the wounds it lies on, the gauze it
+    /// holds down and the blood (ml) oozing into that gauze not taken in yet.</summary>
     private sealed class Taping(ToolDef def) {
         public ToolDef Def { get; } = def;
         public float Wet { get; set; }
         public float Depth { get; set; }
         public HashSet<Wound> Wounds { get; } = [];
         public List<SurgicalTool> Gauze { get; } = [];
+        public float Seeping { get; set; }
     }
 
     private readonly Dictionary<int, Taping> _tapings = [];
@@ -82,12 +91,15 @@ public partial class Patient {
         Rpc(tape.Anchors.Count < 2 ? MethodName.TapePeel : MethodName.TapeFinish, id);
     }
 
-    /// <summary>The newest stretch of the strip goes down on the skin: it takes the wet of the blood on the skin under
-    /// it and the depth of the cuts it lies on, holds their edges shut where it sticks well enough, and tapes down the
-    /// gauze it goes over.</summary>
+    /// <summary>The newest stretch of the strip goes down on the skin: it tapes down the gauze it goes over, or else
+    /// takes the wet of the blood on the skin under it and the depth of the cuts it lies on, and holds their edges shut
+    /// where it sticks well enough.</summary>
     private void StickStretch(int id, Taping taping) {
         var tape = Body.Tissue.Tape(id)!;
         var (a, b) = (tape.Points[^2], tape.Points[^1]);
+        if (TapeGauze(taping, a, b, tape.HalfWidth)) {
+            return;
+        }
         var reach = Body.MetersToUv(tape.HalfWidth);
         var samples = Enumerable.Range(0, TapeSamples + 1).Select(i => a.Lerp(b, (float)i / TapeSamples)).ToList();
         var under = Wounds.Where(w => w.IsSkinCut && samples.Any(p => w.DistanceTo(p) < reach)).ToList();
@@ -110,7 +122,6 @@ public partial class Patient {
         if (under.Count > 0 && taping.Def.Id == "duct_tape") {
             AddFlag("duct_tape");
         }
-        TapeGauze(taping, a, b, tape.HalfWidth);
     }
 
     /// <summary>How far apart a strip pulls edges together, as the stretch of a stitch joining them: the tape's own
@@ -125,23 +136,31 @@ public partial class Patient {
     private static float Hold(Taping taping) => 1f + ((Grip(taping) - 1f) * TapeHold);
 
     /// <summary>Gauze lying on the skin, or held on it, under the stretch from <paramref name="a"/> to
-    /// <paramref name="b"/> (uv) is taped down there.</summary>
-    private void TapeGauze(Taping taping, Vector2 a, Vector2 b, float halfWidth) {
+    /// <paramref name="b"/> (uv) is taped down there. False when the stretch lies on no gauze, this strip's own
+    /// included.</summary>
+    private bool TapeGauze(Taping taping, Vector2 a, Vector2 b, float halfWidth) {
         var tools = Session.Tools;
-        foreach (var gauze in tools.Tools.Values.Where(t => t.Def.Id == "gauze" && t.State is ToolState.Free or ToolState.Held).ToList()) {
+        var over = false;
+        foreach (var gauze in tools.Tools.Values.Where(t => t.Def.Id == "gauze"
+            && (t.State is ToolState.Free or ToolState.Held || taping.Gauze.Contains(t))).ToList()) {
             var middle = gauze.Middle();
             var uv = Body.WorldToUv(middle);
             var off = ((uv - Geometry2D.GetClosestPointToSegment(uv, a, b)) * Body.SiteSize).Length();
-            if (Body.OnBody(uv) && off < halfWidth + (gauze.Def.Width * 0.5f)
-                && middle.Y - Body.UvToWorld(uv).Y < GauzeReach) {
+            if (!Body.OnBody(uv) || off >= halfWidth + (gauze.Def.Width * 0.5f) || middle.Y - Body.UvToWorld(uv).Y >= GauzeReach) {
+                continue;
+            }
+            over = true;
+            if (!taping.Gauze.Contains(gauze)) {
                 tools.TapeDown(gauze);
                 taping.Gauze.Add(gauze);
             }
         }
+        return over;
     }
 
-    /// <summary>Each tick: blood oozing from the wounds under a strip soaks into it, so it sticks less, and the gauze it
-    /// holds down presses on the wound under it. Gauze taken off takes its strip with it.</summary>
+    /// <summary>Each tick: blood oozing from the wounds under a strip, or through the gauze it holds down, soaks into
+    /// it, so it sticks less, and the gauze presses on the wound under it. Soaked through, it lets go of the gauze; gauze
+    /// taken off takes its strip with it.</summary>
     private void UpdateTapes(float dt) {
         foreach (var (id, taping) in _tapings.Where(entry => Body.Tissue.Tape(entry.Key) is { Peeled: false }).ToList()) {
             var soak = taping.Wounds.Sum(w => w.Bleeding) * TapeSoak * dt;
@@ -149,7 +168,7 @@ public partial class Patient {
                 taping.Wet = Mathf.Min(taping.Wet + soak, 1f);
                 Body.Tissue.TapeStrength(id, Hold(taping));
             }
-            if (taping.Gauze.Any(gauze => gauze.State != ToolState.Standing)) {
+            if (taping.Gauze.Any(gauze => gauze.State != ToolState.Standing && !gauze.Taped)) {
                 PeelTape(id, "The tape came off with the gauze.");
                 continue;
             }
@@ -157,18 +176,43 @@ public partial class Patient {
             foreach (var gauze in taping.Gauze) {
                 if (NearestWound(Body.WorldToUv(gauze.Middle()), Body.MetersToUv(gauze.Def.Width * 0.5f), false) is { } wound) {
                     Press(wound, dt);
+                    SeepInto(taping, gauze, wound.LastingBleeding * dt);
                 }
+            }
+            if (taping.Wet >= 1f && taping.Gauze.Count > 0) {
+                PeelTape(id, "Blood soaked through the gauze and the tape let go.");
             }
         }
     }
 
-    /// <summary>The strip comes off the skin: what it held opens again and the gauze it held lies loose. Said with
+    /// <summary>Blood oozing into taped <paramref name="gauze"/>: it soaks it up until it's full, and the rest soaks
+    /// through into the tape.</summary>
+    private void SeepInto(Taping taping, SurgicalTool gauze, float ml) {
+        taping.Seeping += ml;
+        if (taping.Seeping < SeepStep) {
+            return;
+        }
+        var taken = Mathf.Clamp(gauze.Room, 0f, taping.Seeping);
+        if (taken > 0f) {
+            Session.Tools.AddLiquid(gauze, taken, new Dictionary<string, float> { ["blood"] = taken });
+            Session.Tools.AddBlood(gauze, taken / gauze.Def.Volume);
+        }
+        taping.Wet = Mathf.Min(taping.Wet + ((taping.Seeping - taken) * SoakThrough), 1f);
+        taping.Seeping = 0f;
+    }
+
+    /// <summary>The strip comes off the skin: what it held opens again and the gauze it held lies loose, or comes up in
+    /// the hand still holding it. Said with
     /// <paramref name="notice"/> and scored, or quietly along with a closure bursting open (null).</summary>
     private void PeelTape(int id, string? notice) {
         Rpc(MethodName.TapePeel, id);
         var taping = _tapings[id];
-        foreach (var gauze in taping.Gauze.Where(gauze => gauze.State == ToolState.Standing)) {
-            Session.Tools.LetFall(gauze);
+        foreach (var gauze in taping.Gauze) {
+            if (gauze.Taped) {
+                Session.Tools.Untape(gauze);
+            } else if (gauze.State == ToolState.Standing) {
+                Session.Tools.LetFall(gauze);
+            }
         }
         taping.Gauze.Clear();
         if (notice is not null) {

@@ -59,7 +59,7 @@ public partial class PatientBody {
     private Node3D _tapeRoot = null!;
     private readonly Dictionary<int, Color> _tapeColors = [];
     private readonly Dictionary<int, DrawnTape> _tapeDrawn = [];
-    private (int Steps, int Topology) _tapesDrawnFor = (-1, -1);
+    private (int Steps, int Topology, int Gauze) _tapesDrawnFor = (-1, -1, 0);
 
     /// <summary>Every staple as drawn, in the order they went in.</summary>
     public List<DrawnStaple> DrawnStaples { get; private set; } = [];
@@ -413,10 +413,12 @@ public partial class PatientBody {
 
     /// <summary>Draws each strip of tape flat along the skin between the points it was pressed down at, over gauze it
     /// holds down, and from its last point up to the roll while it's still on it. A strip that came off is gone. Stuck
-    /// stretches are drawn again only when the skin as published changes; the one to the roll follows it every frame.
+    /// stretches are drawn again only when the skin as published or the gauze lying on it changes; the one to the roll
+    /// follows it every frame.
     /// </summary>
     internal void UpdateTapes() {
-        var drawnFor = (_layerSteps, _layerVersion);
+        var gauze = LyingGauze().Aggregate(0, (key, pad) => HashCode.Combine(key, pad.Uid, (Vector3I)(Site.ToLocal(pad.GlobalPosition) * 1000f).Round()));
+        var drawnFor = (_layerSteps, _layerVersion, gauze);
         var tissueChanged = drawnFor != _tapesDrawnFor;
         _tapesDrawnFor = drawnFor;
         foreach (var id in Tissue.TapeIds) {
@@ -472,7 +474,7 @@ public partial class PatientBody {
     /// thickness over it.</summary>
     private Vector3 OnSkin(Vector3 p, TapeStrip tape) {
         p.Y = SkinHeight(LocalToUv(p)) + SkinBias + TapeThickness;
-        foreach (var gauze in Surgery.Current?.Tools.Tools.Values.Where(t => t.Def.Id == "gauze" && t.State == ToolState.Standing) ?? []) {
+        foreach (var gauze in LyingGauze()) {
             var local = gauze.GlobalTransform.AffineInverse() * Site.ToGlobal(p);
             var bounds = gauze.Bounds.Grow(tape.HalfWidth * 0.5f);
             if (local.X > bounds.Position.X && local.X < bounds.End.X && local.Z > bounds.Position.Z && local.Z < bounds.End.Z) {
@@ -482,4 +484,8 @@ public partial class PatientBody {
         }
         return p;
     }
+
+    /// <summary>Gauze lying on the patient: let go of there, or taped down in a hand.</summary>
+    private static IEnumerable<SurgicalTool> LyingGauze() =>
+        Surgery.Current?.Tools.Tools.Values.Where(t => t.Def.Id == "gauze" && (t.State == ToolState.Standing || t.Taped)) ?? [];
 }

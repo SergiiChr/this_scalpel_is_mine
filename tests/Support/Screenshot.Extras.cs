@@ -121,7 +121,7 @@ public partial class Screenshot {
     /// <summary>Both hands holding a tool in <paramref name="grip"/>, the arm stretched out and folded up, seen from
     /// across the table.</summary>
     private async Task GripViews(string grip, Vector3 site, Camera3D camera) {
-        var def = Db.Tools.Values.First(tool => tool.Grip == grip);
+        var def = GripCheck.ToolFor(grip);
         var body = new Node3D();
         AddChild(body);
         // Standing on the floor at the table's side, facing the site.

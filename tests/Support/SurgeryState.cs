@@ -85,16 +85,17 @@ public static class SurgeryState {
         patient.Rpc(Patient.MethodName.IvLineOn, catheter.Uid);
 
     /// <summary>A surgeon's cut from <paramref name="from"/> to <paramref name="to"/> (site uv),
-    /// <paramref name="depth"/> deep (0..1, see <see cref="Wound.MuscleDepth"/>), as one clean stroke.</summary>
-    public static Wound SkinIsCut(Patient patient, Vector2 from, Vector2 to, float depth) =>
-        SkinIsCutAlong(patient, [from, to], depth);
+    /// <paramref name="depth"/> deep (0..1, see <see cref="Wound.MuscleDepth"/>), as one clean stroke, or a hasty
+    /// jagged one that bleeds far more (<paramref name="jagged"/>).</summary>
+    public static Wound SkinIsCut(Patient patient, Vector2 from, Vector2 to, float depth, bool jagged = false) =>
+        SkinIsCutAlong(patient, [from, to], depth, jagged);
 
-    /// <summary>A clean cut in one stroke through <paramref name="points"/> (site uv). Returns the stroke's wound, or the
-    /// cut already there it ran along.</summary>
-    public static Wound SkinIsCutAlong(Patient patient, IReadOnlyList<Vector2> points, float depth) {
+    /// <summary>A clean cut in one stroke through <paramref name="points"/> (site uv), or a jagged one made too fast.
+    /// Returns the stroke's wound, or the cut already there it ran along.</summary>
+    public static Wound SkinIsCutAlong(Patient patient, IReadOnlyList<Vector2> points, float depth, bool jagged = false) {
         var stroke = 800_000L + patient.Wounds.Count;
         for (var i = 1; i < points.Count; i++) {
-            patient.Cut(stroke, points[i - 1], points[i], depth, 1f, false, 0f);
+            patient.Cut(stroke, points[i - 1], points[i], depth, 1f, false, jagged ? 1f : 0f);
         }
         return patient.StrokeWound(stroke) ?? patient.Wounds.MinBy(wound => wound.DistanceTo(points[0]))!;
     }
