@@ -127,7 +127,26 @@ public partial class SurgeryDriver {
             stableFrames = stable ? stableFrames + 1 : 0;
             return stableFrames >= 3;
         }, 5f)).OverrideFailureMessage($"the spawned {id} lands before pickup\n{Recent()}").IsTrue();
-        await PlayerWalksTo(tool.GlobalPosition);
+        // Down on the floor, below any table or tray, a standing hand stops short of it: the player crouches, and
+        // steps closer, as the arm reaches less far across the floor going that far down.
+        var low = tool.GlobalPosition.Y < Room.TraySurface * 0.5f;
+        if (low) {
+            Press(InputActions.Crouch);
+            await Frames.Until(() => Me.Crouch >= 1f, 2f);
+        }
+        try {
+            return await PlayerGrabs(tool, low ? FloorStandOff : StandOff);
+        } finally {
+            if (low) {
+                Release(InputActions.Crouch);
+                await Frames.Physics(30);
+            }
+        }
+    }
+
+    private async Task<SurgicalTool?> PlayerGrabs(SurgicalTool tool, float off) {
+        var id = tool.Def.Id;
+        await PlayerWalksTo(tool.GlobalPosition, off);
         await PlayerReaches(tool.GlobalPosition);
         bool Wanted(SurgicalTool? candidate) => candidate?.Def.Id == id && candidate.Charges != 0;
         if (!Wanted(Surgery.Tools.NearestGrabbable(Tip(Me.Hands[Me.Active])))) {

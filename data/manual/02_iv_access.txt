@@ -13,6 +13,7 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 3. Rest the tip on the skin over the vein and lower it ([b]Use tool[/b]) until the catheter seats. Hold it steady; a moving hand misses the vein. Zoom all the way in for a close view of the needle over the vein.
 > A catheter that misses the vein, or goes in without the giving set connected, still sticks, but nothing will run through it and it cannot be connected afterwards. Seat a new catheter with the giving set connected in place of an unconnected one; a connected catheter outside the vein only comes out with the tubing (2.5).
 4. The tubing runs from the stand to the site. The catheter is single use.
+> A catheter dropped on the floor is no longer sterile. Take the giving set off it at the infusion stand ([b]Disconnect the IV line[/b]), wash and sanitize it, then connect it again. An unsterile catheter counts against you like any dirty instrument.
 
 ## 2.4 Administering an infusion
 1. Drugs: rest the syringe needle on the bag hanging on the infusion stand and push the plunger. The dose starts down the line at once, about {ToolActions.DripRate} ml a second, and acts as it runs in. Drawing back takes fluid from the bag.

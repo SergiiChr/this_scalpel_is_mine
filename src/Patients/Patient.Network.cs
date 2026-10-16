@@ -191,6 +191,10 @@ public partial class Patient {
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void IvLineOff() => Surgery.Current?.Room.IvLine.SlipOff();
 
+    /// <summary>The IV tubing was taken off its catheter at the stand and hung back on it.</summary>
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    internal void IvLineHungUp() => Surgery.Current?.Room.IvLine.HangUp();
+
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SetOrganDamage(int index, float amount) => Body.SetOrganDamage(index, amount);
 

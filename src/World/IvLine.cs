@@ -210,6 +210,13 @@ public partial class IvLine : Node3D {
         Wake();
     }
 
+    /// <summary>The far end comes off the catheter it was on and is hung back on the stand, bare.</summary>
+    public void HangUp() {
+        End = IvLineEnd.Clipped;
+        Catheter = null;
+        Wake();
+    }
+
     /// <summary>The far end slips off the catheter it was on and hangs bare.</summary>
     public void SlipOff() {
         End = IvLineEnd.Loose;

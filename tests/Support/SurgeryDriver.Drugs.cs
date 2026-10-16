@@ -217,9 +217,15 @@ public partial class SurgeryDriver {
 
     /// <summary>Walks up to the IV stand, looks at it and presses Interact on "Connect the IV line": the tubing goes
     /// onto the catheter in hand.</summary>
-    public async Task PlayerConnectsIvLine() {
+    public Task PlayerConnectsIvLine() => PlayerWorksIvStand("Connect the IV line");
+
+    /// <summary>As <see cref="PlayerConnectsIvLine"/>, on "Disconnect the IV line": the tubing comes off the catheter in
+    /// hand and is hung back on the stand.</summary>
+    public Task PlayerDisconnectsIvLine() => PlayerWorksIvStand("Disconnect the IV line");
+
+    private async Task PlayerWorksIvStand(string prompt) {
         var stand = Surgery.Room.FindChildren("*", "", true, false).OfType<Interactable>()
-            .First(spot => spot.Prompt == "Connect the IV line");
+            .First(spot => spot.Prompt == prompt);
         await PlayerWalksTo(stand.GlobalPosition, 0.6f);
         var pitch = Me.Pitch;
         await PlayerLooksAt(stand.GlobalPosition);
@@ -230,7 +236,7 @@ public partial class SurgeryDriver {
         PlayerInput.Mouse(new Vector2(0f, Me.Pitch - pitch) / (Surgeon.LookSensitivity * Settings.MouseSensitivity));
         await PlayerInput.Delivered();
         await Frames.Physics(5);
-        Note($"connects the IV line: {Surgery.Room.IvLine.End}");
+        Note($"{prompt}: {Surgery.Room.IvLine.End}");
     }
 
     /// <summary>Puts the catheter in hand into the forearm vein, following it over and pushing in once the tip is over

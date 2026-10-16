@@ -21,6 +21,8 @@ public sealed class IvLineAction : ToolAction {
         if (!connected) {
             step.Surgery.AnnounceDebug("The catheter isn't on the IV line");
         }
+        // In the arm, away from the site: scored like any dirty tool, without soiling the site.
+        ToolActions.ScoresDirty(step);
         step.Surgery.Effect(ToolEffect.Bead, step.Tip, 0);
         ToolActions.UseCharge(step.Tool);
     }
