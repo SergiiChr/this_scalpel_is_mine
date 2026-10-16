@@ -871,7 +871,7 @@ public partial class PatientBody {
     }
 
     /// <summary>Rows down each wall of a cut: enough for its rounded profile (<see cref="WallBulge"/>).</summary>
-    private const int WallRows = 4;
+    internal const int WallRows = 4;
     /// <summary>Per layer, how far (shares of its thickness) its cut face bulges into the cut halfway down: soft fat
     /// swells out, muscle a little, the skin's cut face stays flat.</summary>
     private static readonly float[] WallBulge = [0f, 0.25f, 0.08f];
