@@ -693,9 +693,10 @@ public partial class PatientBody : Node3D {
         }
     }
 
-    /// <summary>Breathing lifts sites that sit on top of the torso together with the chest.</summary>
+    /// <summary>Breathing moves sites on the torso together with it, the back included: left behind, the body would
+    /// sink under the site's skin and the fat's edge would show through around it.</summary>
     public void SetBreathOffset(float offset) {
-        if (SiteId is "abdomen" or "chest" or "shoulder") {
+        if (SiteId is "abdomen" or "chest" or "shoulder" or "back") {
             Site.Position = Site.Position with { Y = _siteBaseY + offset };
             UpdateCarve();
         }
