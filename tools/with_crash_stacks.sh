@@ -17,7 +17,7 @@ set -- "$cores"/core.*
 sudo apt-get install -y -qq lldb >/dev/null
 sos=$(mktemp -d)
 dotnet tool install --tool-path "$sos" dotnet-sos >/dev/null
-plugin=$(find "$sos" -name libsosplugin.so | head -n 1)
+plugin=$(find "$sos" -path "*/linux-x64/libsosplugin.so")
 for core; do
     echo "::group::$core: native stack of the crashed thread, then every managed stack"
     lldb --batch -c "$core" -o "plugin load $plugin" -o "bt 60" -o "clrstack -all"
