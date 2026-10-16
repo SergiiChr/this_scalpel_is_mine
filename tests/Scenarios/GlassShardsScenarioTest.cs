@@ -8,7 +8,7 @@ namespace Scalpel.Tests.Scenarios;
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario"), TestCategory("visual_confirmation"), TestCategory("core_validation"),
- TestCategory("tissue_modification"), TestCategory("tool_forceps"), TestCategory("tool_needle")]
+ TestCategory("tissue_modification"), TestCategory("tool_forceps"), TestCategory("tool_needle"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class GlassShardsScenarioTest {
     [TestCase("glass_shards", Timeout = Limits.Slow)]
