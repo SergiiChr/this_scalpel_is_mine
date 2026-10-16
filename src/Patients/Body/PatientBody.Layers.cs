@@ -870,6 +870,12 @@ public partial class PatientBody {
         }
     }
 
+    /// <summary>Rows down each wall of a cut: enough for its rounded profile (<see cref="WallBulge"/>).</summary>
+    private const int WallRows = 4;
+    /// <summary>Per layer, how far (shares of its thickness) its cut face bulges into the cut halfway down: soft fat
+    /// swells out, muscle a little, the skin's cut face stays flat.</summary>
+    private static readonly float[] WallBulge = [0f, 0.25f, 0.08f];
+
     /// <summary>One layer's sheet and the walls of its cuts, where the skin was captured (null for no triangles).
     /// </summary>
     private (Surface? Sheet, Surface? Walls) FillLayer(int layer, LayerPlan plan) {
@@ -918,6 +924,7 @@ public partial class PatientBody {
         foreach (var (v, (a, b, c, w)) in plan.Apex) {
             vertices[v] = vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z;
         }
+        SmoothLips(layer, plan, vertices);
         ConstrainLipArea(plan, vertices);
         if (layer != 0) {
             for (var v = 0; v < vertexCount; v++) {
@@ -1013,6 +1020,23 @@ public partial class PatientBody {
         // How deep under the skin each wall corner is, for bleed spots.
         var wallDepths = new List<Vector2>();
         var wallIndices = new List<int>();
+        // Each lip vertex's wall normal, averaged over the walls on both sides of it: a wall shaded flat stretch by
+        // stretch reads as a row of cards standing in the cut.
+        var lipNormals = new Dictionary<int, Vector3>();
+        Vector3 WallNormal(int w) {
+            var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
+            var bottom = vertices[a] - Outward(layer, plan.Owner[a]) * WallThickness(plan.Owner[a]);
+            var normal = (vertices[b] - vertices[a]).Cross(bottom - vertices[a]).Normalized();
+            // Facing into the cut, away from this side's own skin.
+            return normal.Dot(vertices[a] - vertices[plan.Wall[w + 2]]) < 0f ? -normal : normal;
+        }
+        for (var w = 0; w < plan.Wall.Count; w += 3) {
+            var normal = WallNormal(w);
+            foreach (var v in (int[])[plan.Wall[w], plan.Wall[w + 1]]) {
+                lipNormals[v] = lipNormals.GetValueOrDefault(v) + normal;
+            }
+        }
+        var bulge = WallBulge[layer];
         for (var w = 0; w < plan.Wall.Count; w += 3) {
             var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
             var topA = vertices[a];
@@ -1020,32 +1044,45 @@ public partial class PatientBody {
             var outA = Outward(layer, plan.Owner[a]);
             var outB = Outward(layer, plan.Owner[b]);
             var (thickA, thickB) = (WallThickness(plan.Owner[a]), WallThickness(plan.Owner[b]));
-            var bottomA = UnderSkin(topA - outA * thickA, plan.Owner[a]);
-            var bottomB = UnderSkin(topB - outB * thickB, plan.Owner[b]);
-            var normal = (topB - topA).Cross(bottomA - topA).Normalized();
-            // Facing into the cut, away from this side's own skin.
-            if (normal.Dot(topA - vertices[plan.Wall[w + 2]]) < 0f) {
-                normal = -normal;
-            }
+            var normalA = lipNormals[a].Normalized();
+            var normalB = lipNormals[b].Normalized();
             var mid = plan.MidpointOf.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var refined)
                 ? refinedVertices[refined]
                 : LipMidpoint(plan, vertices, a, b);
-            var midBottom = UnderSkin(mid - (outA + outB).Normalized() * ((thickA + thickB) * 0.5f), plan.Owner[a]);
+            var midOut = (outA + outB).Normalized();
+            var midNormal = (normalA + normalB).Normalized();
+            var midThick = (thickA + thickB) * 0.5f;
             var midUv = plan.Uv[a].Lerp(plan.Uv[b], 0.5f);
-            foreach (var (start, end, lowStart, lowEnd, uvStart, uvEnd) in new[]
-                { (topA, mid, bottomA, midBottom, plan.Uv[a], midUv), (mid, topB, midBottom, bottomB, midUv, plan.Uv[b]) }) {
-                var first = wallVertices.Count;
-                wallVertices.AddRange([start, end, lowEnd, lowStart]);
-                wallNormals.AddRange([normal, normal, normal, normal]);
-                wallUvs.AddRange([uvStart, uvEnd, uvEnd, uvStart]);
-                wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White, Colors.White]);
-                var (top, bottom) = (new Vector2(depth, 0f), new Vector2(depth + (thickA + thickB) * 0.5f, 0f));
-                wallDepths.AddRange([top, top, bottom, bottom]);
-                // Godot's front faces wind clockwise seen from the side the normal points to.
-                if ((lowEnd - start).Cross(end - start).Dot(normal) > 0f) {
-                    wallIndices.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
-                } else {
-                    wallIndices.AddRange([first, first + 2, first + 1, first, first + 3, first + 2]);
+            // Three columns along the lip (its two ends and its midpoint), each a soft rounded profile down the wall.
+            (Vector3 Top, Vector3 Out, Vector3 Normal, float Thick, Vector2 Uv, int Owner)[] columns = [
+                (topA, outA, normalA, thickA, plan.Uv[a], plan.Owner[a]),
+                (mid, midOut, midNormal, midThick, midUv, plan.Owner[a]),
+                (topB, outB, normalB, thickB, plan.Uv[b], plan.Owner[b])];
+            var first = wallVertices.Count;
+            foreach (var (top, outward, normal, thick, uv, owner) in columns) {
+                for (var row = 0; row <= WallRows; row++) {
+                    var t = (float)row / WallRows;
+                    // The tissue bulges into the cut halfway down, and its normal tilts up above that and down below.
+                    var swell = bulge * thick * Mathf.Sin(Mathf.Pi * t);
+                    var slope = bulge * Mathf.Pi * Mathf.Cos(Mathf.Pi * t);
+                    wallVertices.Add(UnderSkin(top - outward * (thick * t) + normal * swell, owner));
+                    wallNormals.Add((normal + outward * slope).Normalized());
+                    wallUvs.Add(uv);
+                    wallColors.Add(new Color(t, t, t));
+                    wallDepths.Add(new Vector2(depth + thick * t, 0f));
+                }
+            }
+            for (var column = 0; column < 2; column++) {
+                for (var row = 0; row < WallRows; row++) {
+                    var start = first + column * (WallRows + 1) + row;
+                    var (end, lowStart, lowEnd) = (start + WallRows + 1, start + 1, start + WallRows + 2);
+                    var normal = wallNormals[start];
+                    // Godot's front faces wind clockwise seen from the side the normal points to.
+                    if ((wallVertices[lowEnd] - wallVertices[start]).Cross(wallVertices[end] - wallVertices[start]).Dot(normal) > 0f) {
+                        wallIndices.AddRange([start, end, lowEnd, start, lowEnd, lowStart]);
+                    } else {
+                        wallIndices.AddRange([start, lowEnd, end, start, lowStart, lowEnd]);
+                    }
                 }
             }
         }
@@ -1129,6 +1166,31 @@ public partial class PatientBody {
         float.IsPositiveInfinity(LayerTether[layer]) || _renderTurnover ? _outward[k] : Vector3.Up;
 
     private readonly ContactSurface _clothFaces = new();
+
+    /// <summary>Passes of <see cref="SmoothLips"/>.</summary>
+    private const int LipSmoothing = 2;
+    /// <summary>Per layer: the layers are filled at once, on their own threads.</summary>
+    private readonly Dictionary<int, Vector3>[] _easedLips = [[], [], []];
+
+    /// <summary>
+    /// Each crossing on a lip rides the grid point on its side of the cut, and neighbours along the lip ride different
+    /// grid points: pulled or lifted unevenly, the lip zigzags and the walls down from it stand in the cut like a row
+    /// of cards. Eased toward its neighbours along the lip, it runs smooth; a lip's ends stay where they are.
+    /// </summary>
+    private void SmoothLips(int layer, LayerPlan plan, Vector3[] vertices) {
+        var easedLips = _easedLips[layer];
+        for (var pass = 0; pass < LipSmoothing; pass++) {
+            easedLips.Clear();
+            foreach (var (v, neighbours) in plan.Lip) {
+                if (neighbours.Count == 2) {
+                    easedLips[v] = vertices[v].Lerp((vertices[neighbours[0]] + vertices[neighbours[1]]) * 0.5f, 0.5f);
+                }
+            }
+            foreach (var (v, eased) in easedLips) {
+                vertices[v] = eased;
+            }
+        }
+    }
 
     /// <summary>Virtual lips have no simulation particles of their own. Keep their faces oriented with the sheet
     /// during a wave, so the cut boundary cannot fold back through the thicker tissue underneath it.</summary>
