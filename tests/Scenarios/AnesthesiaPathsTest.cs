@@ -66,34 +66,41 @@ public class AnesthesiaPathsTest {
     /// </summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task SplitDoseOfWeakDrugsPutsThePatientUnder() {
-        var driver = SurgeryDriver.Create();
-        await driver.Start("bullet_muscle", runModifiers: ["expired_drugs"]);
-        var patient = driver.Patient;
-        var objective = driver.Surgery.Objectives.States[0];
-        var full = Mathf.Round(driver.DoseMl("vial_propofol"));
-        var first = Mathf.Round(full * 0.5f);
-        var bag = driver.Surgery.Tools.DripBag()!;
-        var propofol = Db.Drug("propofol")!;
-        float Given() => patient.Drugs.Find(propofol.Id) is { } entry ? entry.Level + entry.Depot : 0f;
-        await driver.PlayerGivesDrug("vial_propofol", first, SurgeryDriver.Route.Drip);
-        // Run down the line and soaked in.
-        await Frames.Until(() => bag.Bolus <= 0f && patient.Drugs.Find(propofol.Id)?.Depot < 0.01f, 60f);
-        AssertFloat(Given()).OverrideFailureMessage($"the first part is half the dose: {Given()}").IsBetween(0.45f, 0.55f);
-        AssertBool(patient.Vitals.IsAwake && !objective.Done)
-            .OverrideFailureMessage($"{first} of {full} ml leaves the patient awake and the objective open").IsTrue();
-        await driver.PlayerGivesDrug("vial_propofol", full - first, SurgeryDriver.Route.Drip);
-        // Everything run down the line, not just enough of it to put them under.
-        await Frames.Until(() => objective.Done && bag.Bolus <= 0f, 30f);
-        AssertFloat(Given())
-            .OverrideFailureMessage($"both parts add up to the right dose: {Given()}").IsBetween(0.95f, 1.05f);
-        var fresh = propofol.Peak.Anesthesia;
-        var weak = fresh * driver.Surgery.RunMods.Mult("drug_strength_mult");
-        AssertFloat(patient.Vitals.Anesthesia)
-            .OverrideFailureMessage($"weak drugs leave the anesthesia at {weak}, shallower than fresh ones ({fresh})")
-            .IsEqualApprox(weak, 0.02f);
-        AssertBool(objective.Done && patient.Vitals.IsUnder)
-            .OverrideFailureMessage("the patient goes under and Put the patient under checks off").IsTrue();
-        await driver.Stop();
+        // No key frames here: under a display a software renderer would draw every frame of the wait for the drip.
+        var rendering = RenderingServer.RenderLoopEnabled;
+        FrameBudget.RenderingOff();
+        try {
+            var driver = SurgeryDriver.Create();
+            await driver.Start("bullet_muscle", runModifiers: ["expired_drugs"]);
+            var patient = driver.Patient;
+            var objective = driver.Surgery.Objectives.States[0];
+            var full = Mathf.Round(driver.DoseMl("vial_propofol"));
+            var first = Mathf.Round(full * 0.5f);
+            var bag = driver.Surgery.Tools.DripBag()!;
+            var propofol = Db.Drug("propofol")!;
+            float Given() => patient.Drugs.Find(propofol.Id) is { } entry ? entry.Level + entry.Depot : 0f;
+            await driver.PlayerGivesDrug("vial_propofol", first, SurgeryDriver.Route.Drip);
+            // Run down the line and soaked in.
+            await Frames.Until(() => bag.Bolus <= 0f && patient.Drugs.Find(propofol.Id)?.Depot < 0.01f, 60f);
+            AssertFloat(Given()).OverrideFailureMessage($"the first part is half the dose: {Given()}").IsBetween(0.45f, 0.55f);
+            AssertBool(patient.Vitals.IsAwake && !objective.Done)
+                .OverrideFailureMessage($"{first} of {full} ml leaves the patient awake and the objective open").IsTrue();
+            await driver.PlayerGivesDrug("vial_propofol", full - first, SurgeryDriver.Route.Drip);
+            // Everything run down the line, not just enough of it to put them under.
+            await Frames.Until(() => objective.Done && bag.Bolus <= 0f, 30f);
+            AssertFloat(Given())
+                .OverrideFailureMessage($"both parts add up to the right dose: {Given()}").IsBetween(0.95f, 1.05f);
+            var fresh = propofol.Peak.Anesthesia;
+            var weak = fresh * driver.Surgery.RunMods.Mult("drug_strength_mult");
+            AssertFloat(patient.Vitals.Anesthesia)
+                .OverrideFailureMessage($"weak drugs leave the anesthesia at {weak}, shallower than fresh ones ({fresh})")
+                .IsEqualApprox(weak, 0.02f);
+            AssertBool(objective.Done && patient.Vitals.IsUnder)
+                .OverrideFailureMessage("the patient goes under and Put the patient under checks off").IsTrue();
+            await driver.Stop();
+        } finally {
+            RenderingServer.RenderLoopEnabled = rendering;
+        }
     }
 
     /// <summary>
