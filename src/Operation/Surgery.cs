@@ -102,9 +102,21 @@ public partial class Surgery : Node3D {
 
     public bool IsHost => Multiplayer.IsServer();
 
-    public override void _EnterTree() => Current = this;
+    public override void _EnterTree() {
+        Current = this;
+        GetTree().NodeAdded += ConfigureDynamicGi;
+    }
+
+    // Godot defaults geometry to Static. Opt gameplay meshes out as they enter the tree, including
+    // tools delivered later and newly cut tissue. Room.BuildShell opts the fixed architecture back in.
+    private void ConfigureDynamicGi(Node node) {
+        if (node is GeometryInstance3D geometry && IsAncestorOf(node)) {
+            geometry.GIMode = GeometryInstance3D.GIModeEnum.Disabled;
+        }
+    }
 
     public override void _ExitTree() {
+        GetTree().NodeAdded -= ConfigureDynamicGi;
         if (Current == this) {
             Current = null;
         }

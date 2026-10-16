@@ -1,6 +1,9 @@
 {
   "ambulance_ceiling_oblique.jpg": "ambulance: the whole ceiling panel clears the slab",
   "ambulance_ceiling_reverse.jpg": "ambulance: the whole ceiling panel clears the slab",
+  "ambulance_gi_shell.jpg": "ambulance: fixed shell surfaces remain visible with ambient fallback on the compatibility renderer",
+  "or_gi_shell.jpg": "or: fixed shell surfaces remain visible with ambient fallback on the compatibility renderer",
+  "sidewalk_gi_shell.jpg": "sidewalk: fixed shell surfaces remain visible with ambient fallback on the compatibility renderer",
   "theatre_CeilingLight1.jpg": "CeilingLight1 alone lights the block and casts its shadow away from that ceiling panel",
   "theatre_CeilingLight2.jpg": "CeilingLight2 alone lights the block and casts its shadow away from that ceiling panel",
   "theatre_CeilingLight3.jpg": "CeilingLight3 alone lights the block and casts its shadow away from that ceiling panel",

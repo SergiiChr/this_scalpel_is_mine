@@ -3,7 +3,7 @@ namespace Scalpel.Tests.World;
 /// <summary>Ceiling fixture clearance and the theatre panels' independent shadow-casting lights.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("room_lighting")]
 [GodotArgs("--fixed-fps", "60")]
 public class RoomTest {
     [TestCase]
@@ -72,6 +72,51 @@ public class RoomTest {
             }
         }
         RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase("or")]
+    [TestCase("ambulance")]
+    [TestCase("sidewalk")]
+    public async Task ProceduralShellContributesToGlobalIllumination(string environmentId) {
+        FrameBudget.RenderingOff();
+        var room = AutoFree(new Room())!;
+        Frames.Root.AddChild(room);
+        room.BuildShell(environmentId);
+        var environment = room.GetChildren().OfType<WorldEnvironment>().Single().Environment;
+        AssertBool(environment.SdfgiEnabled).IsEqual(RenderingServer.GetCurrentRenderingMethod() == "forward_plus");
+        AssertFloat(environment.SdfgiMinCellSize).IsEqual(0.1f);
+        AssertInt(environment.SdfgiCascades).IsEqual(4);
+        AssertBool(environment.SdfgiReadSkyLight).IsEqual(environmentId == "sidewalk");
+        var meshes = room.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>().ToArray();
+        AssertInt(meshes.Length).IsGreater(0);
+        AssertBool(meshes.All(mesh => mesh.GIMode == GeometryInstance3D.GIModeEnum.Static)).IsTrue();
+        if (KeyFrames.Wanted()) {
+            var camera = new Camera3D { Position = new Vector3(1.7f, 1.6f, 0.85f), Fov = 75f };
+            room.AddChild(camera);
+            camera.LookAt(new Vector3(0f, 1f, 0f));
+            camera.MakeCurrent();
+            await KeyFrames.SaveViewport(KeyFrames.Folder("room").PathJoin($"{environmentId}_gi_shell.png"),
+                $"{environmentId}: fixed shell surfaces remain visible with ambient fallback on the compatibility renderer");
+        }
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase]
+    public async Task MovingGeometryReceivesGiWithoutLeavingStaticSilhouettes() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        try {
+            await driver.Start("appendectomy");
+            var meshes = driver.Patient.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>().ToArray();
+            AssertInt(meshes.Length).IsGreater(0);
+            AssertBool(meshes.All(mesh => mesh.GIMode == GeometryInstance3D.GIModeEnum.Disabled)).IsTrue();
+            var delivered = new MeshInstance3D { Mesh = new BoxMesh() };
+            driver.Me.AddChild(delivered);
+            AssertBool(delivered.GIMode == GeometryInstance3D.GIModeEnum.Disabled).IsTrue();
+            AssertBool(driver.Surgery.Room.GetNode<MeshInstance3D>("Ceiling").GIMode == GeometryInstance3D.GIModeEnum.Static).IsTrue();
+        } finally {
+            await driver.Stop();
+        }
     }
 
     private readonly record struct Shot(string Name, Vector3 From);

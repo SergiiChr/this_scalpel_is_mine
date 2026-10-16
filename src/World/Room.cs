@@ -303,6 +303,12 @@ public partial class Room : Node3D {
                 FogLightColor = Theatre ? new Color(0.4f, 0.42f, 0.45f) : new Color(0.25f, 0.32f, 0.3f),
                 FogDensity = Theatre ? 0.01f : 0.02f,
                 SsaoEnabled = true,
+                // Runtime GI for procedural rooms. Four cascades cover the street too; 10 cm cells resolve
+                // the shell's 10 cm walls. Keep the existing ambient fill for unsupported renderers.
+                SdfgiEnabled = RenderingServer.GetCurrentRenderingMethod() == "forward_plus",
+                SdfgiMinCellSize = 0.1f,
+                SdfgiCascades = 4,
+                SdfgiReadSkyLight = !Indoors,
                 AdjustmentEnabled = true,
                 AdjustmentSaturation = Theatre ? 0.95f : 0.85f,
             },
@@ -396,6 +402,11 @@ public partial class Room : Node3D {
         Layout = Layouts[EnvironmentId];
         BuildEnvironment();
         BuildWalls();
+        // Only the fixed shell contributes occlusion/emission. Patients, tools and movable stations must
+        // not leave stale silhouettes in SDFGI's static voxel field.
+        foreach (var mesh in FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>()) {
+            mesh.GIMode = GeometryInstance3D.GIModeEnum.Static;
+        }
     }
 
     private void BuildWalls() {
