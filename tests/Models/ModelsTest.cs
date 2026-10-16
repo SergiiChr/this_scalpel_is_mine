@@ -133,7 +133,7 @@ public class ModelsTest {
     private static void ArmLimits(Node3D holder) {
         SurgeonHand[] hands = [GripCheck.MakeHand(holder, 0), GripCheck.MakeHand(holder, 1)];
         var reach = SurgeonHand.UpperArm + SurgeonHand.Forearm;
-        var bend = new Vector3(0.6f, -1f, 0f).Normalized();
+        var bend = SurgeonHand.ElbowPole.Normalized();
         var limits = new Dictionary<string, Vector3> {
             ["stretched"] = new Vector3(0.3f, -0.25f, -1f).Normalized() * reach * 1.2f,
             ["folded"] = new(-0.02f, -0.03f, -0.04f),
