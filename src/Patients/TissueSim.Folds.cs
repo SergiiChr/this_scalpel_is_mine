@@ -104,6 +104,28 @@ public sealed partial class TissueSim {
         }
     }
 
+    private readonly record struct Bend(int A, int B, int FirstSpring, int SecondSpring, float Minimum);
+    private Bend[] _winBends = [];
+
+    /// <summary>The window and rest geometry stay fixed between SetWindow() calls. Visit particles in window order,
+    /// with the across span before the down span at each particle; spring cuts and turned particles are still checked on every solve.</summary>
+    private void IndexBends() {
+        var bends = new List<Bend>();
+        foreach (var k in _winParticles) {
+            var at = CellOf(k);
+            if (at.X + 2 <= ResX) {
+                bends.Add(new Bend(k, k + 2, SpringRight[k], SpringRight[k + 1],
+                    Rest[k].DistanceTo(Rest[k + 2]) * BendSpan));
+            }
+            var below = k + ResX + 1;
+            if (at.Y + 2 <= ResY) {
+                var end = below + ResX + 1;
+                bends.Add(new Bend(k, end, SpringDown[k], SpringDown[below], Rest[k].DistanceTo(Rest[end]) * BendSpan));
+            }
+        }
+        _winBends = [.. bends];
+    }
+
     /// <summary>Skin doesn't crease cell by cell: a grid point and the one two along its row or column, joined by
     /// whole springs, stay BendSpan of their rest distance apart. A spring turns any way for free, so skin pushed
     /// along by a grip, or crushed by a cut's lips drawing back into it, would otherwise fold back on itself a cell
@@ -111,16 +133,9 @@ public sealed partial class TissueSim {
     /// into one hump. Everywhere the sheet moves, until a flap is deliberately turned over.</summary>
     private void KeepBendsRound() {
         if (_fold.TurnedOver) { return; }
-        foreach (var k in _winParticles) {
-            if (_turned[k]) { continue; }
-            var at = CellOf(k);
-            if (at.X + 2 <= ResX && SpringWhole(SpringRight[k]) && SpringWhole(SpringRight[k + 1]) && !_turned[k + 2]) {
-                RoundBend(k, k + 2);
-            }
-            var below = k + ResX + 1;
-            if (at.Y + 2 <= ResY && SpringWhole(SpringDown[k]) && SpringWhole(SpringDown[below]) && !_turned[below + ResX + 1]) {
-                RoundBend(k, below + ResX + 1);
-            }
+        foreach (var bend in _winBends) {
+            if (_turned[bend.A] || _turned[bend.B] || !SpringWhole(bend.FirstSpring) || !SpringWhole(bend.SecondSpring)) { continue; }
+            RoundBend(bend.A, bend.B, bend.Minimum);
         }
     }
 
@@ -145,8 +160,7 @@ public sealed partial class TissueSim {
 
     private bool SpringWhole(int s) => s >= 0 && _springs[s].Active;
 
-    private void RoundBend(int a, int b) {
-        var minimum = Rest[a].DistanceTo(Rest[b]) * BendSpan;
+    private void RoundBend(int a, int b, float minimum) {
         var d = Pos[b] - Pos[a];
         var length = d.Length();
         var share = _free[a] + _free[b];
