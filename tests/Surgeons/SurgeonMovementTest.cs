@@ -5,7 +5,7 @@ namespace Scalpel.Tests.Surgeons;
 /// forward. Zoomed in over the patient the surgeon leans in to look down at the hand. A fallen surgeon's face tracks the
 /// patient.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class SurgeonMovementTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.

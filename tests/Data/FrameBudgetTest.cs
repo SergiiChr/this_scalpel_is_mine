@@ -5,7 +5,7 @@ namespace Scalpel.Tests.Data;
 /// <summary>A documented allowance passes only that budget call and only up to its factor; ordinary overruns and global
 /// limits stay intact.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke")]
+[TestCategory("smoke"), TestCategory("frame_budget")]
 public class FrameBudgetTest {
     [TestCase]
     public void LocalOverrideDoesNotDisableOrdinaryBudgetFailures() {

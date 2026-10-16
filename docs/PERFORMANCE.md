@@ -15,8 +15,11 @@
     8 ms on the reference machine (an i9-14900HX), scaled by how much slower this machine runs a fixed benchmark.
     It holds on any machine, with or without a GPU.
   - Render budget, `./build.py full_performance_run` only: rendering on, whole frames within 16 ms on the real GPU.
-- Frame times are checked only in suites that run alone (`--jobs 1`, the default, or with key frames). CI passes
-  `--ci-run`, which doesn't check them, and runs suites four at a time.
+- Frame times are checked by the `frame_budget` suites (`./build.py test --tag frame_budget` runs just them), each
+  of whose processes gets the machine to itself: a run does them first, one at a time, then the other processes as
+  many at once as the machine has cores and memory for (`--jobs N` overrides that). Most suites check frame times, so
+  a local run is mostly serial and `--jobs` gains little; `--ci-run` is what makes it fast. CI passes it: with no frame
+  times checked, every process there shares the machine.
 
 ## Writing fast code
 

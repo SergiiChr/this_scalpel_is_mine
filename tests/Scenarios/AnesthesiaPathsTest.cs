@@ -3,7 +3,7 @@ namespace Scalpel.Tests.Scenarios;
 /// <summary>Anesthesia given through player controls: the preinstalled IV and its objective, and alternative
 /// anesthesia paths through complete surgeries.</summary>
 [TestSuite, RequireGodotRuntime, IsolateCases]
-[TestCategory("scenario"), TestCategory("smoke"), TestCategory("slow"), TestCategory("visual_confirmation")]
+[TestCategory("scenario"), TestCategory("smoke"), TestCategory("slow"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class AnesthesiaPathsTest {
     [TestCase(Timeout = Limits.Slow)]

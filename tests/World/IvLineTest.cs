@@ -9,7 +9,7 @@ namespace Scalpel.Tests.World;
 /// The tubing never goes through the patient, a surgeon or the furniture.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_iv_catheter"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_iv_catheter"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class IvLineTest {
     // The frame the surgeon walks the catheter from the tray to the arm also goes over in IvBagTest, without the tubing.

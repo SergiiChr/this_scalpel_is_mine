@@ -14,7 +14,7 @@ namespace Scalpel.Tests.TissueModification;
 /// </para>
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("smoke"), TestCategory("tissue_modification"), TestCategory("tool_scalpel")]
+[TestCategory("slow"), TestCategory("smoke"), TestCategory("tissue_modification"), TestCategory("tool_scalpel"), TestCategory("frame_budget")]
 [TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class SlicingTest {

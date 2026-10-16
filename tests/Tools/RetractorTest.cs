@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Tools;
 /// standing up or sinking into the body.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class RetractorTest {
     private const float Length = 0.05f;

@@ -4,7 +4,7 @@ namespace Scalpel.Tests.World;
 /// wheel slides the arm up and down the column, Use tool takes an X-ray, and Grab again lets go and locks it against the
 /// floor. What the player can take hold of lights up while they look at it.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class XrayCartTest {
     // Temporary local budget override: recorded CPU overruns on the usual test machine remain measured.

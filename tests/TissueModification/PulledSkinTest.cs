@@ -10,7 +10,7 @@ namespace Scalpel.Tests.TissueModification;
 /// the lip further than the skin gives: it peels up off the muscle, held there while the other hand sews the muscle.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

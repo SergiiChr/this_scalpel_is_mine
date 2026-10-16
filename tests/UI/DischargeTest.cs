@@ -7,7 +7,7 @@ namespace Scalpel.Tests.UI;
 /// With key frames also the page before, part way through and once signed.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class DischargeTest {
     // Temporary local budget override: taking the card off its hook peaks at 6-11 ms on a fast machine, the same card

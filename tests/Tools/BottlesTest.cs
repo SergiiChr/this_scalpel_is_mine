@@ -8,7 +8,7 @@ namespace Scalpel.Tests.Tools;
 /// floating, not sunk into the tray or the skin) and lying flat after the click.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_vial_propofol"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_vial_propofol"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class BottlesTest {
     private const string Vial = "vial_propofol";

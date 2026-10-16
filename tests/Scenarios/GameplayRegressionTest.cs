@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Scenarios;
 /// nurse, anesthesia, smoking) only in the first one.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("scenario")]
+[TestCategory("slow"), TestCategory("scenario"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class GameplayRegressionTest {
     [TestCase]

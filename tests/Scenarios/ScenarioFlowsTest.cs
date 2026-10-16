@@ -10,7 +10,7 @@ namespace Scalpel.Tests.Scenarios;
 /// contact.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("scenario"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("scenario"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 // CI intermittently stalls when a second operation shares the first one's engine and rendering state.
 [IsolateCases]

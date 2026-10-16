@@ -8,7 +8,7 @@ namespace Scalpel.Tests.Tools;
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_gauze"), TestCategory("tool_cotton_pad"),
- TestCategory("visual_confirmation")]
+ TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class SwabCapacityTest {
     // Temporary local budget overrides, measured in a cloud container: recorded CPU overruns remain measured;
