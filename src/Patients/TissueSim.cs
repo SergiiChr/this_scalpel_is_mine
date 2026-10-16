@@ -383,9 +383,6 @@ public sealed partial class TissueSim {
 
     public int SpringCount => _springCount;
 
-    /// <summary>Every spring so far, grid springs first, then stitches in the order they were made.</summary>
-    public ReadOnlySpan<Spring> Springs => new(_springs, 0, _springCount);
-
     public ref readonly Spring SpringAt(int s) => ref _springs[s];
 
     /// <summary>
@@ -1571,9 +1568,6 @@ public sealed partial class TissueSim {
         }
         return float.NaN;
     }
-
-    /// <summary>Current stretch of the quad edge between two particles, relative to its rest length.</summary>
-    public float Stretch(int a, int b) => Pos[a].DistanceTo(Pos[b]) / Mathf.Max(Rest[a].DistanceTo(Rest[b]), 0.0001f);
 
     /// <summary>
     /// True for particles off the body, false elsewhere, except for skin folded out on top of the drape (see FloorAt):

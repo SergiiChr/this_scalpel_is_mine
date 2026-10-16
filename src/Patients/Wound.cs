@@ -139,9 +139,6 @@ public sealed class Wound {
         }
     }
 
-    /// <summary>Some of it was cut too fast or with a dull blade.</summary>
-    public bool Jagged => _jagged.Any(jagged => jagged);
-
     /// <summary>Seals it further with cautery at <paramref name="uv"/>, up to <paramref name="most"/>. A stretch cut
     /// open again within <paramref name="reach"/> of it is sealed again from scratch, as far as the rest at most.
     /// </summary>

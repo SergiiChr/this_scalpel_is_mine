@@ -86,8 +86,6 @@ public sealed class FrameBudget {
 
     private static float StallLimitHere => Mode == BudgetMode.Render ? StallLimit : (float)(StallLimit * Slowness);
 
-    public bool Within => Worst <= Limit;
-
     /// <summary>Turns rendering off so a frame costs only the game's own work, and tests run faster. A
     /// <see cref="BudgetMode.Render"/> run keeps it on: its frames are timed as drawn.</summary>
     public static void RenderingOff() => RenderingServer.RenderLoopEnabled = Mode == BudgetMode.Render;

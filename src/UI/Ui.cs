@@ -9,8 +9,6 @@ public static class Ui {
     public static readonly Color Good = new(0.45f, 0.95f, 0.55f);
     public static readonly Color Pip = new(0.35f, 1f, 0.5f);
     public static readonly Color Panel = new(0.05f, 0.07f, 0.07f, 0.88f);
-    public static readonly Color Paper = new(0.86f, 0.82f, 0.72f);
-    public static readonly Color PaperInk = new(0.12f, 0.1f, 0.09f);
     private static readonly Color Mixed = new(0.95f, 0.8f, 0.35f);
 
     public static Theme Theme { get; } = BuildTheme();
