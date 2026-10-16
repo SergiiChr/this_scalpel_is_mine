@@ -8,7 +8,7 @@ description: Review only the key frames that changed against the committed basel
 A feature branch reviews only its own suites: `./build.py test --tag ... --with-key-frames`, then
 `./build.py screenshot_review --focused`, which fails only on missing key frames. Steps 2 to 6 follow, with
 `./build.py generate_baseline --focused` in step 5: it adds or replaces the run's key frames and deletes none.
-A release branch (docs/RELEASE.md) runs every step.
+Release verification (docs/RELEASE.md) runs every step.
 
 1. Run `./build.py screenshot_review` on a commit whose CI passed. It runs the same full regression as
    `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A case that fails runs once more

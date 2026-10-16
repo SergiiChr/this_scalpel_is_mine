@@ -151,7 +151,7 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - Review the frames for continuity, clipping, mesh intersections, material consistency, tool contact, animation
   transitions and UI legibility. Screenshot comparisons may flag regressions but don't replace that review.
 - `tests/KeyFrames` is the committed baseline the review compares against: JPEGs of reviewed key frames. Feature
-  branches add or replace theirs with `./build.py generate_baseline --focused`; release branches write the full
+  branches add or replace theirs with `./build.py generate_baseline --focused`; release verification writes the full
   regression's with `./build.py generate_baseline`. Either only after every sheet the report lists looks right.
 - Rerun flaky tests individually and use the successful run as the new baseline: the full regression does this itself
   (above). Allow failure in the general baseline update flow. However review the failures manually and update the
