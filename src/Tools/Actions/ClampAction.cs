@@ -60,6 +60,9 @@ public sealed class ClampAction : ToolAction {
             tool.Hold = patient.UpdateGrip(tool.Uid, hold, step.Tip, power, step.Dt, step.Hand.Speed, out var heldAt);
             if (tool.Hold is null) {
                 step.Surgery.SetAttached(step.Hand.Peer, tool.Slot, false);
+            } else if (tool.Hold is CarryHold && hold is TargetHold) {
+                // Pulled free, it no longer holds the hand to the patient: it's carried wherever the surgeon goes.
+                step.Surgery.SetAttached(step.Hand.Peer, tool.Slot, false, keepHeight: true);
             } else if (heldAt.DistanceSquaredTo(step.Tip) > HeldBack * HeldBack) {
                 step.Surgery.HoldHandBack(step.Hand.Peer, tool.Slot, heldAt - step.Tip);
             }

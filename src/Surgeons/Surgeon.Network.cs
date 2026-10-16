@@ -109,9 +109,11 @@ public partial class Surgeon {
     }
 
     /// <summary>Host tells the owner a hand is now holding onto something (or let go). Attached hands don't follow the
-    /// body.</summary>
+    /// body. <paramref name="keepHeight"/>: let go of the patient with what it held still in the jaws (a bullet pulled
+    /// out), the forceps' tip stays as high over the opening as it came out, rather than coming back down into it.
+    /// </summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true)]
-    public void SetHandAttached(int hand, bool value) {
+    public void SetHandAttached(int hand, bool value, bool keepHeight) {
         if (Net.Instance.Sender() != Net.HostId) {
             return;
         }
@@ -126,6 +128,9 @@ public partial class Surgeon {
         }
         if (!value) {
             h.LocalTarget = ToLocal(h.Target);
+        }
+        if (keepHeight && HoldsDepth(hand) && InOpening(hand) is { } opening) {
+            h.HeldDepth = opening.Depth;
         }
     }
 
