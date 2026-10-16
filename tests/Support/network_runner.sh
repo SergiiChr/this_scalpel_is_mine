@@ -15,10 +15,16 @@ limit=$4
 logs="$root/build/test-logs"
 mkdir -p "$logs"
 
+# The drivers' logs: net_host and net_client for sync, net_MODE_host and net_MODE_client otherwise.
+players="net_$([[ "$mode" == sync ]] || echo "${mode}_")"
+
 # Stops a driver still running too, so it doesn't hold the port until its timeout.
+# Both drivers' reports (their lines naming their role in brackets) follow, so a failure on one side shows how far the
+# other got.
 fail() {
 	echo "FAIL: $*"
 	kill $(jobs -p) 2>/dev/null
+	grep -sh "\[host\]\|\[client\]" "$logs/${players}host.log" "$logs/${players}client.log"
 	exit 1
 }
 
@@ -38,10 +44,8 @@ finished() {
 	[[ $status -eq 0 ]] || fail "$2 exited with status $status$([[ $status -eq 124 ]] && echo ' (timed out)'), see $logs/$2.log"
 }
 
-# A missing line fails with what the driver reported instead (its lines start with its role in brackets).
 expect() {
-	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'; it reports:
-$(grep "^\[" "$1")"
+	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'"
 }
 
 run() {
