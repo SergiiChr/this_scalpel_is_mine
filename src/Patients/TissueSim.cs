@@ -1853,7 +1853,7 @@ public sealed partial class TissueSim {
         if (window.Size == Vector2I.Zero) {
             _winParticles = [];
             _winSprings = [];
-            _windowBends = [];
+            _winBends = [];
             return;
         }
         var particles = new List<int>();

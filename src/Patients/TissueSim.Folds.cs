@@ -105,10 +105,10 @@ public sealed partial class TissueSim {
     }
 
     private readonly record struct Bend(int A, int B, int FirstSpring, int SecondSpring, float Minimum);
-    private Bend[] _windowBends = [];
+    private Bend[] _winBends = [];
 
-    /// <summary>The window and rest geometry stay fixed between SetWindow() calls. Keep each span in the original
-    /// particle order (across, then down); spring cuts and turned particles are still checked on every solve.</summary>
+    /// <summary>The window and rest geometry stay fixed between SetWindow() calls. Visit particles in window order,
+    /// with the across span before the down span at each particle; spring cuts and turned particles are still checked on every solve.</summary>
     private void IndexBends() {
         var bends = new List<Bend>();
         foreach (var k in _winParticles) {
@@ -123,7 +123,7 @@ public sealed partial class TissueSim {
                 bends.Add(new Bend(k, end, SpringDown[k], SpringDown[below], Rest[k].DistanceTo(Rest[end]) * BendSpan));
             }
         }
-        _windowBends = [.. bends];
+        _winBends = [.. bends];
     }
 
     /// <summary>Skin doesn't crease cell by cell: a grid point and the one two along its row or column, joined by
@@ -133,7 +133,7 @@ public sealed partial class TissueSim {
     /// into one hump. Everywhere the sheet moves, until a flap is deliberately turned over.</summary>
     private void KeepBendsRound() {
         if (_fold.TurnedOver) { return; }
-        foreach (var bend in _windowBends) {
+        foreach (var bend in _winBends) {
             if (_turned[bend.A] || _turned[bend.B] || !SpringWhole(bend.FirstSpring) || !SpringWhole(bend.SecondSpring)) { continue; }
             RoundBend(bend.A, bend.B, bend.Minimum);
         }
