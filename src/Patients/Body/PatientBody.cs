@@ -483,9 +483,12 @@ public partial class PatientBody : Node3D {
         // Read and freed at once: the results and their list are tracked wrappers the runtime would otherwise collect
         // later.
         using var storage = (Godot.Collections.Array)hits;
-        var colliders = hits.Select(hit => hit[ColliderKey].AsGodotObject()).ToList();
+        var colliders = new List<GodotObject>(hits.Count);
         foreach (var hit in hits) {
-            hit.Dispose();
+            using (hit) {
+                using var collider = hit[ColliderKey];
+                colliders.Add(collider.AsGodotObject());
+            }
         }
         return colliders;
     }

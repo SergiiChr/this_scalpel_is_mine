@@ -76,7 +76,7 @@ public static class Shapes {
     /// a Variant held by a tracked wrapper with a finalizer, disposed here at once: a mesh rebuilt every frame (a
     /// thread being sewn, tissue being cut) would otherwise leave thousands of them for one long collection. The
     /// arrays themselves are the same kind of wrapper: dispose them once the surface is added.</summary>
-    public static void SetPacked<T>(Godot.Collections.Array arrays, Mesh.ArrayType slot, T[] values) {
+    public static void SetPacked<[MustBeVariant] T>(Godot.Collections.Array arrays, Mesh.ArrayType slot, T[] values) {
         using var packed = Variant.From(values);
         arrays[(int)slot] = packed;
     }

@@ -84,7 +84,8 @@ public sealed class WoundMap {
         Math.Clamp(1 << Mathf.RoundToInt(Mathf.Log(Mathf.Max(siteSize.X, siteSize.Y) / Texel) / Mathf.Log(2f)), MinSize, MaxSize);
 
     /// <summary>The jitter of <see cref="Stroke"/>, reseeded per stroke: a generator made per call is an engine
-    /// object the runtime has to collect, and blood flowing strokes every frame.</summary>
+    /// object the runtime has to collect, and blood flowing strokes every frame. Shared state: strokes come from the main
+    /// thread only.</summary>
     private readonly RandomNumberGenerator _strokeRng = new();
 
     /// <summary>Stamps hard-edged disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line.
