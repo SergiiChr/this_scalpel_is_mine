@@ -44,6 +44,9 @@ public readonly record struct SnappedSpring(Vector2 A, Vector2 B, SpringKind Kin
 /// </summary>
 public sealed class SutureThread(TissueDepth layer, float tension) {
     public List<int> Anchors { get; } = [];
+    /// <summary>Where each hole went in (uv of the tissue at rest), between the particles: it rides along with its
+    /// anchor.</summary>
+    public List<Vector2> Holes { get; } = [];
     public List<int> Springs { get; } = [];
     public List<float> Slack { get; } = [];
     /// <summary>The stitches holding the edges along a taut skin thread shut, by edge (see TissueSim.RefreshHolds()).
@@ -506,6 +509,15 @@ public sealed partial class TissueSim {
         var i = Math.Clamp(Mathf.RoundToInt(uv.X * ResX), 1, ResX - 1);
         var j = Math.Clamp(Mathf.RoundToInt(uv.Y * ResY), 1, ResY - 1);
         return Index(i, j);
+    }
+
+    /// <summary>Where hole <paramref name="uv"/> lies from its anchor particle <paramref name="k"/> on the sheet at rest
+    /// (site-local meters).</summary>
+    public Vector3 HoleOffset(int k, Vector2 uv) {
+        var x = (uv.X - 0.5f) * Size.X;
+        var z = (uv.Y - 0.5f) * Size.Y;
+        var height = SettledHeightAt(x, z);
+        return new Vector3(x - Rest[k].X, float.IsNaN(height) ? 0f : height - Settled[k].Y, z - Rest[k].Z);
     }
 
     /// <summary>Where along severed spring s the blade crossed it, in uv.</summary>
@@ -1219,25 +1231,25 @@ public sealed partial class TissueSim {
     }
 
     /// <summary>
-    /// How much thread (relative to the span at rest) a new hole at uv pays out from the last hole of thread
+    /// How much thread (relative to the span at rest) a new hole on grid point k pays out from the last hole of thread
     /// <paramref name="id"/>: the skin between them as it's stretched now. A careful rhythm stays near 1; erratic
     /// placement leaves up to twelve percent more thread to manage, never so much the wheel can't take it back. Host
     /// only: the result goes to every peer with the hole.
     /// </summary>
-    public float ThreadSlack(int id, Vector2 uv) {
+    public float ThreadSlack(int id, int k) {
         if (!_threads.TryGetValue(id, out var thread) || thread.Anchors.Count == 0) {
             return 1f;
         }
         var last = thread.Anchors[^1];
-        var k = Nearest(uv);
         return Mathf.Clamp(Pos[last].DistanceTo(Pos[k]) / Mathf.Max(Rest[last].DistanceTo(Rest[k]), 0.0001f), 0.95f, 1.12f);
     }
 
     /// <summary>Adds one puncture to a continuous running suture. The first puncture is only an anchor; every later
     /// one adds a span from the previous hole, <paramref name="slack"/> (see <see cref="ThreadSlack"/>) times as long
-    /// as the tension asks for.</summary>
-    public bool ThreadAnchor(int id, Vector2 uv, TissueDepth layer, float tension, float strength, float slack) {
-        var k = Nearest(uv);
+    /// as the tension asks for. The hole is at <paramref name="uv"/>, held by grid point <paramref name="point"/> (the
+    /// nearest when not given).</summary>
+    public bool ThreadAnchor(int id, Vector2 uv, TissueDepth layer, float tension, float strength, float slack, int point = -1) {
+        var k = point >= 0 ? point : Nearest(uv);
         if (!_threads.TryGetValue(id, out var thread)) {
             thread = new SutureThread(layer, tension);
         }
@@ -1249,6 +1261,7 @@ public sealed partial class TissueSim {
             thread.Springs.Add(AddSpring(thread.Anchors[^1], k, SpringKind.Stitch, ThreadRestScale(tension, layer) * slack, strength));
         }
         thread.Anchors.Add(k);
+        thread.Holes.Add(uv);
         thread.Layer = layer;
         thread.Tension = tension;
         _threads[id] = thread;

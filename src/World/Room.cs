@@ -324,9 +324,30 @@ public partial class Room : Node3D {
             // highlight (blood, wet tissue) into a big white patch.
             ShadowBlur = 2f,
         });
-        // Overhead room light: a ceiling panel over the table that lights the whole room from above. The theatre has no
-        // panel there: its ceiling lights are drawn flush in the ceiling (TheatreLights), the light stays.
-        if (Indoors && !Theatre) {
+        if (Theatre) {
+            // Each panel uses one shadow map instead of an omni's six faces. Put its emitter just below the lens,
+            // pointing down. The four panels provide the room lighting; the surgical lamp lights the table.
+            for (var i = 0; i < TheatreLights.Length; i++) {
+                var center = TheatreLights[i].GetCenter();
+                var panel = new SpotLight3D {
+                    Name = $"CeilingLight{i + 1}",
+                    Position = new Vector3(center.X, size.Y - 0.08f, center.Y),
+                    Rotation = new Vector3(-Mathf.Pi / 2f, 0f, 0f),
+                    SpotRange = 6f,
+                    SpotAngle = 70f,
+                    SpotAttenuation = 0.3f,
+                    LightColor = RoomLight,
+                    LightEnergy = 0.4f,
+                    ShadowEnabled = true,
+                    ShadowBlur = 2.5f,
+                };
+                AddChild(panel);
+                _flickerLights.Add(panel);
+            }
+            return;
+        }
+        // Other environments keep their single overhead fixture and unshadowed fill.
+        if (Indoors) {
             AddChild(new MeshInstance3D {
                 Name = "CeilingPanel",
                 Mesh = new BoxMesh { Size = new Vector3(1.4f, 0.04f, 0.5f) },
@@ -352,7 +373,6 @@ public partial class Room : Node3D {
         AddChild(overhead);
         _flickerLights.Add(overhead);
         Vector3[] tubes = EnvironmentId switch {
-            "or" => [.. TheatreLights.Select(light => new Vector3(light.GetCenter().X, size.Y - 0.2f, light.GetCenter().Y))],
             "sidewalk" => [new(3f, 4.5f, 2f)],
             _ => [new(0f, size.Y - 0.2f, 0f)],
         };
@@ -361,7 +381,7 @@ public partial class Room : Node3D {
                 Position = position,
                 OmniRange = 9f,
                 LightColor = Indoors ? RoomLight : new Color(1f, 0.7f, 0.35f),
-                LightEnergy = Theatre ? 0.2f : 0.35f,
+                LightEnergy = 0.35f,
             };
             AddChild(tube);
             _flickerLights.Add(tube);

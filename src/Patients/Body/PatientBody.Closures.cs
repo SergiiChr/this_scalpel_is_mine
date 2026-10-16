@@ -153,9 +153,38 @@ public partial class PatientBody {
         }
     }
 
+    /// <summary>The grid point of <paramref name="layer"/> drawn nearest to <paramref name="uv"/> (site uv) among those
+    /// <paramref name="fits"/> takes, and where the tissue drawn at uv lay at rest: cut edges drawn back, fat bulging
+    /// apart or skin pulled aside carried it there along with that point. Null when no point near fits.</summary>
+    public (int Point, Vector2 Uv)? RestSpot(TissueDepth layer, Vector2 uv, Func<int, bool> fits) {
+        var at = new Vector2((uv.X - 0.5f) * SiteSize.X, (uv.Y - 0.5f) * SiteSize.Y);
+        var near = Tissue.CellOf(Tissue.Nearest(uv));
+        (int, Vector2)? spot = null;
+        var best = float.MaxValue;
+        // Like Tissue.Nearest(), off the site's fixed border.
+        for (var j = Math.Max(near.Y - 2, 1); j <= Math.Min(near.Y + 2, Tissue.ResY - 1); j++) {
+            for (var i = Math.Max(near.X - 2, 1); i <= Math.Min(near.X + 2, Tissue.ResX - 1); i++) {
+                var k = Tissue.Index(i, j);
+                if (Tissue.Off[k] || Tissue.Excised[k] || !fits(k)) {
+                    continue;
+                }
+                var moved = LayerPoint((int)layer - 1, k) - Tissue.Rest[k];
+                var shift = new Vector2(moved.X, moved.Z);
+                var distance = (new Vector2(Tissue.Rest[k].X, Tissue.Rest[k].Z) + shift).DistanceSquaredTo(at);
+                if (distance < best) {
+                    best = distance;
+                    spot = (k, uv - (shift / SiteSize));
+                }
+            }
+        }
+        return spot;
+    }
+
     private DrawnSuture DrawThread(int id, SutureThread info, DrawnSuture? drawn, bool tissueChanged) {
         var layer = (int)info.Layer;
-        var holes = info.Anchors.Select(k => LayerPoint(layer - 1, k) - Vector3.Up * LayerTop(layer - 1)).ToArray();
+        var holes = info.Anchors
+            .Select((k, i) => LayerPoint(layer - 1, k) - (Vector3.Up * LayerTop(layer - 1)) + Tissue.HoleOffset(k, info.Holes[i]))
+            .ToArray();
         var live = info.Springs.Select(s => Tissue.SpringAt(s).Active).ToArray();
         var oldHoles = drawn?.Holes ?? [];
         var moved = new bool[holes.Length];

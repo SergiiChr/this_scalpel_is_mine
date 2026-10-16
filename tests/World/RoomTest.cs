@@ -1,11 +1,49 @@
 namespace Scalpel.Tests.World;
 
-/// <summary>Ceiling fixture geometry and two oblique views in the ambulance, the one room with a hanging ceiling panel.
+/// <summary>Ceiling fixture clearance and the theatre panels' independent shadow-casting lights.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class RoomTest {
+    [TestCase]
+    public async Task TheatrePanelsEachCastShadows() {
+        FrameBudget.RenderingOff();
+        var room = AutoFree(new Room())!;
+        Frames.Root.AddChild(room);
+        room.BuildShell("or");
+        var lights = room.GetChildren().OfType<SpotLight3D>().Where(light => light.Name.ToString().StartsWith("CeilingLight")).ToArray();
+        AssertInt(lights.Length).IsEqual(4);
+        AssertInt(lights.Select(light => light.Position).Distinct().Count()).IsEqual(4);
+        foreach (var light in lights) {
+            AssertBool(light.Visible).IsTrue();
+            AssertFloat(light.LightEnergy).IsGreater(0f);
+            AssertBool(light.ShadowEnabled).IsTrue();
+            AssertFloat(light.Position.Y).IsBetween(2.7f, 2.75f);
+            AssertFloat((-light.Basis.Z).Dot(Vector3.Down)).IsGreater(0.999f);
+        }
+        if (KeyFrames.Wanted()) {
+            // A neutral upright occluder makes each panel's distinct shadow direction easy to review.
+            Shapes.Slab(room, new Vector3(0.25f, 0.9f, 0.25f), new Color(0.6f, 0.6f, 0.6f), new Vector3(0f, 0.45f, 0f));
+            room.GetNode<SpotLight3D>("SurgicalLamp").Visible = false;
+            var camera = new Camera3D { Position = new Vector3(0f, 2.3f, 2f), Fov = 75f };
+            room.AddChild(camera);
+            camera.LookAt(new Vector3(0f, 0.3f, 0f));
+            camera.MakeCurrent();
+            var folder = KeyFrames.Folder("room");
+            await KeyFrames.SaveViewport(folder.PathJoin("theatre_all_panels.png"),
+                "four ceiling panels cast four soft shadows from the upright block across the floor");
+            foreach (var light in lights) {
+                foreach (var other in lights) {
+                    other.Visible = other == light;
+                }
+                await KeyFrames.SaveViewport(folder.PathJoin($"theatre_{light.Name}.png"),
+                    $"{light.Name} alone lights the block and casts its shadow away from that ceiling panel");
+            }
+        }
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
     [TestCase("ambulance")]
     public async Task CeilingPanelClearsTheSlab(string environment) {
         FrameBudget.RenderingOff();
