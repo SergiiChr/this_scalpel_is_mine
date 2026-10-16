@@ -104,6 +104,12 @@ public class BottlesTest {
             $"the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip {held:0.00} up)",
             "both_held");
 
+        // The bottle brought off the table toward the surgeon, clear of the drape over the feet, so the fist can come down
+        // to meet the needle.
+        await driver.SwitchTo(SurgeryDriver.Left);
+        await driver.PlayerReaches(bottleAt + ((me.GlobalPosition - bottleAt) with { Y = 0f }).Normalized() * 0.1f);
+        await driver.SwitchTo(SurgeryDriver.Right);
+        bottleAt = bottleHand.GlobalPosition;
         // The needle brought over the bottle's fist, as a player aims at the bottle in their other hand.
         await driver.PlayerReaches(bottleHand.GlobalPosition);
         var inVial = await Frames.Until(

@@ -10,6 +10,9 @@ namespace Scalpel.Tests.Surgeons;
 public class SurgeonMovementTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 10f);
+    /// <summary>How far (meters) a breath lifts the drape lying on the table past the legs: it rises with the trunk,
+    /// twice as deep in panic.</summary>
+    private const float Breath = PatientAnimator.TorsoTop * PatientAnimator.BreathDepth * 2f;
 
     private SurgeryDriver? _driver;
     private KeyFrames? _frames;
@@ -101,7 +104,7 @@ public class SurgeonMovementTest {
     }
 
     /// <summary>Walking along the table with a free hand over it, past the patient's arm (hand stitch): over the flat
-    /// table top the hand hovers at one height. How low its glove reaches keeps it off the table, and that mustn't bob
+    /// table top, bare or draped, the hand hovers at one height. How low its glove reaches keeps it off the table, and that mustn't bob
     /// with the stride.</summary>
     [TestCase]
     public async Task WalkingKeepsAFreeHandLevelOverTheTable() {
@@ -111,15 +114,15 @@ public class SurgeonMovementTest {
         await Frames.Physics(30);
         var heights = new List<float>();
         var maxDrop = 0f;
-        float? table = null;
         PlayerInput.Action(InputActions.MoveLeft);
         for (var frame = 0; frame < 60; frame++) {
             // PhysicsFrame is emitted before node physics callbacks; inspect the completed gameplay frame.
             await PlayerInput.Delivered();
             var hand = me.Hands[me.Active];
             var under = me.SurfaceBelow(hand.Target);
-            // Over the table top: the first hard surface met, until the hand passes its end.
-            if (!under.Soft && under.Y > 0.5f && Mathf.Abs(under.Y - (table ??= under.Y)) < 0.001f) {
+            // Over the flat table top, bare or under the drape lying on it past the patient's legs (lifted a little
+            // with the breathing trunk), until the hand passes its end.
+            if (under.Y > Room.TableHeight - 0.001f && under.Y < Room.TableHeight + Drape.Offset + Breath) {
                 heights.Add(hand.GlobalPosition.Y - under.Y);
             }
             maxDrop = Mathf.Max(maxDrop, me.WalkDrop);

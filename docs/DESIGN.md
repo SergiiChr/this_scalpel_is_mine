@@ -77,8 +77,10 @@ overview, the data formats designers edit and the design decisions.
 - Fine relief per family (`Materials.Detail`): skin pores, glove creases, cloth weave and folds, brushed steel.
   It only tilts the normal, so silhouettes and collisions are the model's own.
 - Surgical drape (`Drape.cs`, operating room only): a sheet over the torso and legs laid from the body's rest mesh,
-  1.2 cm off the skin so breathing never pushes the body through it, rising with the trunk. Its opening frames the
-  site and covers the site's edge. It hides while the patient is turned away from the site; hands rest on it.
+  1.2 cm off the skin so breathing never pushes the body through it, rising with the trunk. It falls off the flanks
+  and between the legs at a fixed slope and its long sides hang down to the table, over most of the table past the
+  legs and a little short of the arms beside the trunk (they may lift). Its opening frames the site and covers
+  the site's edge. It hides while the patient is turned away from the site; hands rest on it.
 - Organs and cavity walls (`flesh.gdshader`) show branching vessels and mottling.
 - Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
   so a blade gets a hairline and furniture a full line.
