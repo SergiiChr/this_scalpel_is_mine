@@ -33,15 +33,6 @@ public static class SurgeryState {
         return partner;
     }
 
-    /// <summary>Nothing lies on the floor: tools dropped there are gone, as if someone had cleared them away. They stop
-    /// colliding at once.</summary>
-    public static void FloorIsClear(Surgery surgery) {
-        foreach (var tool in surgery.Tools.Tools.Values
-            .Where(tool => tool.State == ToolState.Free && tool.GlobalPosition.Y < Room.TableHeight / 2f).ToList()) {
-            surgery.Tools.Consume(tool);
-        }
-    }
-
     /// <summary>Tray spots something slid away from, per surgery: they aren't offered again.</summary>
     private static readonly ConditionalWeakTable<Surgery, List<Vector3>> BadTraySpots = [];
 

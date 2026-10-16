@@ -89,9 +89,6 @@ public static class InputActions {
             : new InputEventMouseButton { ButtonIndex = (MouseButton)value };
     }
 
-    public static string LabelFor(string action) =>
-        Defaults.FirstOrDefault(entry => entry.Action == action)?.Label ?? action;
-
     private static readonly Dictionary<StringName, string> BindingTexts = [];
 
     /// <summary>Counts the times the bindings changed, for text that shows them to know it is stale.</summary>
