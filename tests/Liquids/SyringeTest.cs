@@ -508,7 +508,7 @@ public class SyringeTest {
         await Frames.Physics(2);
         Surgery.Tools.RequestGrab(bag, me.Active);
         await Frames.Physics(2);
-        AssertBool(swap.OfferedTo(me)).OverrideFailureMessage("swap_bag: a hand holding a bag is offered Swap IV bag")
+        AssertBool(swap.OfferedTo(me)).OverrideFailureMessage($"swap_bag: a hand holding a bag is offered Swap IV bag (holding {me.HeldTool(me.Active)?.Def.Id}, bag {bag.State} at {bag.GlobalPosition}, me {me.GlobalPosition}, iv {patient.IvWorking}, flags {string.Join(",", patient.Flags.Keys)}, stretch {Surgery.Room.IvLine.Stretch:0.00})")
             .IsTrue();
         patient.Flags.Remove("drug_saline");
         swap.Interact(me);
@@ -518,7 +518,7 @@ public class SyringeTest {
         await Frames.Physics(Mathf.CeilToInt(Db.Drug("saline")!.Onset * 1.5f * Engine.PhysicsTicksPerSecond));
         AssertBool(hung && patient.Flags.ContainsKey("drug_saline"))
             .OverrideFailureMessage($"swap_bag: the bag hangs on the stand full ({drip.Ml:0} ml) and runs into the "
-                + $"line")
+                + $"line (working {patient.IvWorking}, set {patient.IvSet}, {Surgery.Room.IvLine.End}, flags {string.Join(",", patient.Flags.Keys)})")
             .IsTrue();
         await End();
     }
@@ -613,6 +613,314 @@ public class SyringeTest {
         AssertBool(kept.IsOut)
             .OverrideFailureMessage("sedation: once the adrenaline wears off, 3.5 doses put them down again")
             .IsTrue();
+    }
+
+    /// <summary>Other sedatives work on a surgeon like diazepam: the right dose steadies stress shaking and delays
+    /// hand moves (an opioid doesn't delay them: see MorphineNodsOffInsteadOfSlowing), 2.5 doses knock them out. One
+    /// row per kind: an opioid with its antidote, an anaesthetic and a slow, short barbiturate with none (flumazenil,
+    /// diazepam's, leaves them out).</summary>
+    [TestCase("morphine", "naloxone", true)]
+    [TestCase("propofol", "flumazenil", false)]
+    [TestCase("pentobarbital", "flumazenil", false)]
+    public void SedativeSedatesASurgeon(string drug, string antidote, bool wakes) {
+        var right = Db.Drug(drug)!.Dose * 80f;
+        var status = Dosed(right, drug: drug);
+        status.Stress = 0.8f;
+        var delay = Db.Drug(drug)!.HasFlag("opioid") ? 0f : SurgeonStatus.SedatedDelay;
+        AssertBool(status.Calm > 0.95f && status.TremorAmount() == 0f
+                && Mathf.Abs(status.InputDelay() - delay) < 0.005f && !status.IsOut)
+            .OverrideFailureMessage($"{drug}: the right dose steadies stress shaking and delays hand moves "
+                + $"{status.InputDelay() * 1000f:0} ms, {delay * 1000f:0} ms expected ({status.Calm:0.00} calm)")
+            .IsTrue();
+        var events = new List<StatusEvent>();
+        var knocked = Dosed(right * 2.5f, events, drug);
+        AssertBool(events.Contains(StatusEvent.KnockedOut) && knocked.IsOut)
+            .OverrideFailureMessage($"{drug}: 2.5 doses knock the surgeon out").IsTrue();
+        events.Clear();
+        knocked.Administer(antidote, Db.Drug(antidote)!.Dose * 80f);
+        RunStatus(knocked, 3f, events);
+        var ended = knocked.Drugs.Level(drug) == 0f && knocked.Calm == 0f;
+        AssertBool(wakes ? events.Contains(StatusEvent.CameRound) && !knocked.IsOut && ended : knocked.IsOut)
+            .OverrideFailureMessage(wakes
+                ? $"{drug}: {antidote} brings them round and ends the {drug} ({string.Join(", ", events)})"
+                : $"{drug}: {antidote} leaves them out")
+            .IsTrue();
+    }
+
+    /// <summary>Sedatives add up: 1.6 doses of propofol and 0.6 of diazepam, each too little alone, knock a surgeon
+    /// out together. Flumazenil ends the diazepam and the propofol left can't keep them down; topped up past twice the
+    /// dose it knocks them out again, and then naloxone for a little morphine doesn't get them up.</summary>
+    [TestCase]
+    public void SedativesAddUpInASurgeon() {
+        var events = new List<StatusEvent>();
+        var status = new SurgeonStatus(new Modifiers());
+        var diazepam = Db.Drug("diazepam")!.Dose * 80f;
+        var propofol = Db.Drug("propofol")!.Dose * 80f;
+        var flumazenil = Db.Drug("flumazenil")!.Dose * 80f;
+        status.Administer("diazepam", diazepam * 0.6f);
+        status.Administer("propofol", propofol * 1.6f);
+        RunStatus(status, 10f, events);
+        AssertBool(events.Contains(StatusEvent.KnockedOut) && status.IsOut)
+            .OverrideFailureMessage("sedatives: 0.6 doses of diazepam and 1.6 of propofol knock the surgeon out")
+            .IsTrue();
+        status.Administer("flumazenil", flumazenil);
+        RunStatus(status, 3f, events);
+        AssertBool(!status.IsOut && status.Overdose > 0f && status.Drugs.Level("diazepam") == 0f)
+            .OverrideFailureMessage("sedatives: flumazenil brings them round, still past the dose on propofol "
+                + $"({status.Drugs.Level("propofol"):0.00} in)")
+            .IsTrue();
+        events.Clear();
+        status.Administer("propofol", propofol * 0.7f);
+        RunStatus(status, 10f, events);
+        AssertBool(events.Contains(StatusEvent.KnockedOut) && status.IsOut)
+            .OverrideFailureMessage("sedatives: propofol topped up past twice the dose knocks them out again "
+                + $"({status.Drugs.Level("propofol"):0.00} in)")
+            .IsTrue();
+        status.Administer("morphine", Db.Drug("morphine")!.Dose * 80f * 0.3f);
+        RunStatus(status, 10f, events);
+        status.Administer("naloxone", Db.Drug("naloxone")!.Dose * 80f);
+        RunStatus(status, 3f, events);
+        AssertBool(status.IsOut && status.Drugs.Level("morphine") == 0f)
+            .OverrideFailureMessage("sedatives: naloxone ends the morphine, the propofol keeps them out "
+                + $"({status.Drugs.Level("propofol"):0.00} in)")
+            .IsTrue();
+    }
+
+    /// <summary>Morphine doesn't slow a surgeon's hands: they nod off. Every 10 to 30 seconds the eyelids close
+    /// gradually, stay shut 1 to 2 seconds and open again.</summary>
+    [TestCase]
+    public void MorphineNodsOffInsteadOfSlowing() {
+        var status = Dosed(Db.Drug("morphine")!.Dose * 80f, drug: "morphine");
+        AssertBool(status.Calm > 0.95f && status.InputDelay() == 0f)
+            .OverrideFailureMessage($"morphine: calm ({status.Calm:0.00}) with no hand delay "
+                + $"({status.InputDelay() * 1000f:0} ms)")
+            .IsTrue();
+        const float Step = 0.05f;
+        var starts = new List<float>();
+        var shut = new List<float>();
+        var partway = false;
+        var was = 0f;
+        for (var time = 0f; time < 90f; time += Step) {
+            status.Update(Step, default);
+            var lids = status.Eyelids;
+            if (lids > 0f && was == 0f) {
+                starts.Add(time);
+                shut.Add(0f);
+                partway |= lids < 1f;
+            }
+            if (lids >= 1f) {
+                shut[^1] += Step;
+            }
+            was = lids;
+        }
+        if (was > 0f) {
+            // Cut off by the end of the run.
+            shut.RemoveAt(shut.Count - 1);
+        }
+        var gaps = starts.Zip(starts.Skip(1), (a, b) => b - a).ToList();
+        var longest = SurgeonStatus.NodGapMax + SurgeonStatus.LidClose + SurgeonStatus.NodDarkMax
+            + SurgeonStatus.LidOpen;
+        AssertBool(starts.Count >= 3 && gaps.All(gap => gap >= SurgeonStatus.NodGapMin && gap <= longest + Step))
+            .OverrideFailureMessage(
+                $"morphine: the eyelids drop every 10 to 30 s ({string.Join(", ", gaps.Select(gap => $"{gap:0.0}"))})")
+            .IsTrue();
+        AssertBool(shut.All(dark => dark >= SurgeonStatus.NodDarkMin - (2f * Step)
+                && dark <= SurgeonStatus.NodDarkMax + (2f * Step)))
+            .OverrideFailureMessage(
+                $"morphine: shut 1 to 2 s each time ({string.Join(", ", shut.Select(dark => $"{dark:0.0}"))} s)")
+            .IsTrue();
+        AssertBool(partway).OverrideFailureMessage("morphine: the eyelids close gradually, not at once").IsTrue();
+    }
+
+    /// <summary>A stimulant quickens a surgeon: hands 1.3 times as fast, stress building 1.5 times as fast and the
+    /// heart thumping at 110 a minute, until it wears off.</summary>
+    [TestCase]
+    public void StimulantQuickensASurgeon() {
+        var events = new List<StatusEvent>();
+        var status = Dosed(Db.Drug("adrenaline")!.Dose * 80f, events, "adrenaline");
+        status.AddStress(0.1f);
+        AssertBool(Mathf.IsEqualApprox(status.HandSpeed(), SurgeonStatus.StimulantSpeed) && status.MoveSpeed() == 1f
+                && Mathf.IsEqualApprox(status.Stress, 0.1f * SurgeonStatus.StimulantStress))
+            .OverrideFailureMessage($"stimulant: hands {status.HandSpeed():0.00}x, feet {status.MoveSpeed():0.00}x, "
+                + $"0.1 stress counts {status.Stress:0.00}")
+            .IsTrue();
+        events.Clear();
+        RunStatus(status, 6f, events);
+        var beats = events.Count(happened => happened == StatusEvent.Heartbeat);
+        AssertInt(beats).OverrideFailureMessage($"stimulant: 11 heartbeats in 6 s at 110 a minute ({beats})")
+            .IsBetween(10, 12);
+        RunStatus(status, Db.Drug("adrenaline")!.Duration, events);
+        events.Clear();
+        RunStatus(status, 5f, events);
+        AssertBool(!events.Contains(StatusEvent.Heartbeat) && status.HandSpeed() == 1f)
+            .OverrideFailureMessage("stimulant: worn off, the heart and hands calm down").IsTrue();
+    }
+
+    /// <summary>Adrenaline and snorted cocaine at work together race a surgeon's heart: hands and feet 1.6 times as
+    /// fast and the heart speeding up for three minutes. Then it fails: the surgeon goes down, the heart still pounding,
+    /// and with nobody to shock it they die half a minute later.</summary>
+    [TestCase]
+    public void AdrenalineWithCocaineStopsASurgeonsHeart() {
+        var events = new List<StatusEvent>();
+        var status = Racing(events);
+        AssertBool(events.Contains(StatusEvent.Racing)
+                && Mathf.IsEqualApprox(status.HandSpeed(), SurgeonStatus.RaceSpeed)
+                && Mathf.IsEqualApprox(status.MoveSpeed(), SurgeonStatus.RaceSpeed) && status.HeartRate() < 150f)
+            .OverrideFailureMessage($"racing: hands {status.HandSpeed():0.00}x, feet {status.MoveSpeed():0.00}x, heart "
+                + $"{status.HeartRate():0}")
+            .IsTrue();
+        RunStatus(status, SurgeonStatus.RaceTime - 7f, events);
+        AssertBool(!status.Dead && !status.IsOut && status.HeartRate() > 190f)
+            .OverrideFailureMessage($"racing: just short of three minutes, alive, the heart at {status.HeartRate():0}")
+            .IsTrue();
+        RunStatus(status, 3f, events);
+        AssertBool(events.Contains(StatusEvent.Arrest) && status.IsArrested && status.IsKnockedOut && !status.Dead)
+            .OverrideFailureMessage("racing: three minutes in, the heart fails and the surgeon goes down").IsTrue();
+        events.Clear();
+        // Adrenaline given to try to restart the heart doesn't race it again or stop the clock.
+        status.Administer("adrenaline", Db.Drug("adrenaline")!.Dose * 80f);
+        RunStatus(status, SurgeonStatus.ArrestTime - 3f, events);
+        AssertBool(!events.Contains(StatusEvent.Racing) && !status.IsRacing && status.ArrestLeft < 3.1f)
+            .OverrideFailureMessage($"arrest: adrenaline doesn't race the stopped heart again ({status.ArrestLeft:0.0} s "
+                + "left)")
+            .IsTrue();
+        var beats = events.Count(happened => happened == StatusEvent.Heartbeat);
+        var expected = (SurgeonStatus.ArrestTime - 3f) * SurgeonStatus.RaceBpm.Y / 60f;
+        AssertBool(!status.Dead && beats >= expected - 2f && !events.Contains(StatusEvent.Moan))
+            .OverrideFailureMessage($"arrest: still alive, the heart pounding on ({beats} beats, {expected:0} expected), "
+                + "no moans")
+            .IsTrue();
+        RunStatus(status, 3f, events);
+        AssertBool(events.Contains(StatusEvent.Died) && status.Dead && status.IsKnockedOut)
+            .OverrideFailureMessage("arrest: nobody shocked the heart in time, the surgeon dies").IsTrue();
+        events.Clear();
+        status.Administer("naloxone", Db.Drug("naloxone")!.Dose * 80f);
+        RunStatus(status, 600f, events);
+        AssertBool(events.Count == 0 && status.Dead)
+            .OverrideFailureMessage($"arrest: dead for good ({string.Join(", ", events)})").IsTrue();
+    }
+
+    /// <summary>A failed heart restarted gets the surgeon up at once, still racing; over a minute the heart and the
+    /// hands and feet slow down to normal.</summary>
+    [TestCase]
+    public void RestartedHeartSlowsDownOverAMinute() {
+        var events = new List<StatusEvent>();
+        var status = Racing(events);
+        RunStatus(status, SurgeonStatus.RaceTime - 2f, events);
+        AssertBool(status.IsArrested).OverrideFailureMessage("racing: three minutes in, the heart fails").IsTrue();
+        status.Revive();
+        RunStatus(status, 0.1f, events);
+        AssertBool(!status.IsOut && !status.IsRacing && status.HeartRate() >= SurgeonStatus.RaceBpm.Y - 1f
+                && status.HandSpeed() > SurgeonStatus.RaceSpeed - 0.01f)
+            .OverrideFailureMessage($"restarted: back up at once, the heart at {status.HeartRate():0}, hands "
+                + $"{status.HandSpeed():0.00}x")
+            .IsTrue();
+        RunStatus(status, SurgeonStatus.RecoverTime / 2f, events);
+        var (heart, hands, feet) = (status.HeartRate(), status.HandSpeed(), status.MoveSpeed());
+        AssertBool(heart > SurgeonStatus.RestingBpm && heart < SurgeonStatus.RaceBpm.Y - 30f
+                && hands is > 1.1f and < SurgeonStatus.RaceSpeed - 0.1f && feet is > 1.1f and < SurgeonStatus.RaceSpeed - 0.1f)
+            .OverrideFailureMessage($"restarted: half a minute on, slowing down: heart {heart:0}, hands {hands:0.00}x, "
+                + $"feet {feet:0.00}x")
+            .IsTrue();
+        events.Clear();
+        RunStatus(status, SurgeonStatus.RecoverTime / 2f, events);
+        AssertBool(events.Contains(StatusEvent.Heartbeat) && status.HeartRate() == 0f && status.HandSpeed() == 1f
+                && status.MoveSpeed() == 1f)
+            .OverrideFailureMessage($"restarted: a minute on, normal again: heart {status.HeartRate():0}, hands "
+                + $"{status.HandSpeed():0.00}x, feet {status.MoveSpeed():0.00}x")
+            .IsTrue();
+    }
+
+    /// <summary>A surgeon with snorted cocaine and injected adrenaline at work, a few seconds into the racing heart.
+    /// </summary>
+    private static SurgeonStatus Racing(List<StatusEvent> events) {
+        var status = new SurgeonStatus(new Modifiers());
+        status.Take("cocaine");
+        status.Administer("adrenaline", Db.Drug("adrenaline")!.Dose * 80f);
+        RunStatus(status, 5f, events);
+        return status;
+    }
+
+    /// <summary>Lidocaine injected into a glove numbs that hand for a minute, the other one not; into the body it numbs
+    /// nothing.</summary>
+    [TestCase]
+    public void LidocaineNumbsTheHandItGoesInto() {
+        var status = new SurgeonStatus(new Modifiers());
+        status.Administer("lidocaine", 20f, 0);
+        status.Administer("lidocaine", 20f);
+        RunStatus(status, SurgeonStatus.NumbTime - 1f, []);
+        AssertBool(status.IsNumb(0) && !status.IsNumb(1))
+            .OverrideFailureMessage("lidocaine: the left hand it went into is numb, the right one isn't").IsTrue();
+        RunStatus(status, 2f, []);
+        AssertBool(!status.IsNumb(0)).OverrideFailureMessage("lidocaine: a minute on, the hand works again").IsTrue();
+    }
+
+    /// <summary>In the room: lidocaine pushed into the surgeon's own other glove numbs it. A tool handed to that hand
+    /// drops, again when handed back, and the player's grab with it doesn't close on a tool.</summary>
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task NumbGloveCantHoldATool() {
+        await Begin();
+        await _bench.Stage(
+            new SyringeCase("own_hand_lidocaine", "own_hand", "syringe_10", 2f, -1, Vial: "vial_lidocaine"));
+        var me = Me;
+        var numb = 1 - me.Active;
+        await SyringeBench.Notch(false);
+        await Frames.Physics(2);
+        AssertBool(me.Status.IsNumb(numb) && !me.Status.IsNumb(me.Active))
+            .OverrideFailureMessage("numb_glove: the glove the lidocaine went into is numb, the syringe hand isn't")
+            .IsTrue();
+        await _bench.Withdraw();
+        var handed = SurgeryState.ToolLiesAt(Surgery, "forceps", me.Hands[numb].GlobalPosition + Vector3.Up * 0.1f);
+        SurgeryState.ToolIsPutInHand(Surgery, handed, numb);
+        AssertBool(await Frames.Until(() => me.HeldTool(numb) is null && handed.State != ToolState.Held, 1f)
+                && _toasts.Contains("Your numb fingers can't hold it."))
+            .OverrideFailureMessage($"numb_glove: forceps handed to the numb hand drop ({string.Join(" | ", _toasts)})")
+            .IsTrue();
+        SurgeryState.ToolIsPutInHand(Surgery, handed, numb);
+        var dropped = await Frames.Until(
+            () => _toasts.Count(toast => toast == "Your numb fingers can't hold it.") >= 2 && me.HeldTool(numb) is null
+                && handed.State != ToolState.Held, 1f);
+        AssertBool(dropped)
+            .OverrideFailureMessage($"numb_glove: the same forceps handed back drop again ({handed.State})").IsTrue();
+        PlayerInput.Action(numb == 0 ? InputActions.MoveLeftHand : InputActions.MoveRightHand);
+        await PlayerInput.Delivered();
+        PlayerInput.Action(numb == 0 ? InputActions.MoveLeftHand : InputActions.MoveRightHand, false);
+        await PlayerInput.Delivered();
+        var hand = me.Hands[numb];
+        var near = SurgeryState.ToolLiesAt(Surgery, "forceps", hand.GlobalPosition + hand.TipOffset(0.05f));
+        PlayerInput.Tap(InputActions.Grab);
+        await PlayerInput.Delivered();
+        await Frames.Physics(10);
+        AssertBool(me.Active == numb && me.HeldTool(numb) is null && near.State != ToolState.Held
+                && _toasts.Contains("Your hand is numb. It won't close."))
+            .OverrideFailureMessage($"numb_glove: the numb hand's grab doesn't close ({string.Join(" | ", _toasts)})")
+            .IsTrue();
+        await End();
+    }
+
+    /// <summary>Diphenhydramine takes a surgeon's nausea away and keeps it away while it works; it doesn't sedate
+    /// them.</summary>
+    [TestCase]
+    public void DiphenhydramineTakesNauseaAway() {
+        var events = new List<StatusEvent>();
+        var status = new SurgeonStatus(new Modifiers()) { Sickness = 0.8f };
+        status.Administer("antihistamine", Db.Drug("antihistamine")!.Dose * 80f);
+        RunStatus(status, 10f, events);
+        status.AddSickness(0.5f);
+        AssertBool(events.Contains(StatusEvent.NauseaGone) && status.Sickness == 0f && status.Calm == 0f)
+            .OverrideFailureMessage(
+                $"antihistamine: no nausea ({status.Sickness:0.00}), no sedation ({status.Calm:0.00})")
+            .IsTrue();
+    }
+
+    /// <summary>An antidote with nothing to reverse sets a sober surgeon's heart pounding: stress jumps.</summary>
+    [TestCase("flumazenil")]
+    [TestCase("naloxone")]
+    public void AntidoteJoltsASoberSurgeon(string antidote) {
+        var events = new List<StatusEvent>();
+        var status = Dosed(Db.Drug(antidote)!.Dose * 80f, events, antidote);
+        AssertBool(events.Contains(StatusEvent.Jitters) && status.Stress > SurgeonStatus.AntidoteStress - 0.1f)
+            .OverrideFailureMessage($"{antidote}: a sober surgeon's stress jumps ({status.Stress:0.00})").IsTrue();
     }
 
     /// <summary>Y19: the surgeon in the room, sedated: afterimages trail the gloves, mouse moves reach the hand late;
@@ -733,7 +1041,7 @@ public class SyringeTest {
         AssertObject(me.NeedleAnchor).OverrideFailureMessage("needle_hand: the needle is in the skin").IsNotNull();
         var wentIn = me.NeedleAnchor!.Value;
         var body = Surgery.Patient.Body;
-        var beadsBefore = Beads(body);
+        var beadsBefore = Surgery.Effects.Beads();
         for (var i = 0; i < 60 && !me.NeedleTorn; i++) {
             await _bench.Steer(new Vector2(20f, 0f));
             await Frames.Physics(1);
@@ -743,7 +1051,7 @@ public class SyringeTest {
             .OverrideFailureMessage(
                 $"needle_hand: pulled on, the needle tears out and leaves a scratch where it was in ({scratch:0.00})")
             .IsTrue();
-        var tornBeads = Beads(body).Except(beadsBefore).ToList();
+        var tornBeads = Surgery.Effects.Beads().Except(beadsBefore).ToList();
         AssertInt(tornBeads.Count).OverrideFailureMessage("needle_hand: tearing out leaves one bead").IsEqual(1);
         AssertFloat(((tornBeads[0].GlobalPosition - wentIn) * new Vector3(1f, 0f, 1f)).Length())
             .OverrideFailureMessage("needle_hand: even after tearing out, the bead stays at the injection point")
@@ -1013,9 +1321,6 @@ public class SyringeTest {
         return glove.MaterialOverride is StandardMaterial3D ghost ? 1f - ghost.AlbedoColor.A : 0f;
     }
 
-    private static List<MeshInstance3D> Beads(Node body) =>
-        [.. body.FindChildren("BloodBead*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>()];
-
     /// <summary>What kind of thing the needle is in, as the cases name it.</summary>
     private static string Kind(NeedleTarget target) => target switch {
         ContainerTarget => "container",
@@ -1039,12 +1344,12 @@ public class SyringeTest {
         return new SurgeonStatus(mods);
     }
 
-    /// <summary>A status given <paramref name="mg"/> of diazepam, run 10 seconds on (past its onset), the events it
-    /// gave collected.</summary>
-    private static SurgeonStatus Dosed(float mg, List<StatusEvent>? events = null) {
+    /// <summary>A status given <paramref name="mg"/> of <paramref name="drug"/>, run 10 seconds on (5 past a slower
+    /// onset), the events it gave collected.</summary>
+    private static SurgeonStatus Dosed(float mg, List<StatusEvent>? events = null, string drug = "diazepam") {
         var status = new SurgeonStatus(new Modifiers());
-        status.Administer("diazepam", mg);
-        RunStatus(status, 10f, events ?? []);
+        status.Administer(drug, mg);
+        RunStatus(status, Mathf.Max(Db.Drug(drug)!.Onset * DrugDef.DirectOnset + 5f, 10f), events ?? []);
         return status;
     }
 

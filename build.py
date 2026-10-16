@@ -565,6 +565,8 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
     # runs at the same time (--jobs, other checkouts) each need their own.
     with log.open("w") as out, tempfile.TemporaryDirectory(prefix="gdunit-") as temp:
         environment["TMPDIR"] = temp
+        # Godot's user:// (saves, settings, played games) under it too: tests never touch the player's own.
+        environment["XDG_DATA_HOME"] = temp
         status = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=False).returncode
     return problems(log, report, status, suite.timeout)
 
@@ -807,6 +809,8 @@ def test(arguments: list[str]) -> int:
             (KEY_FRAMES / FAILED).write_text(json.dumps(folders, indent=2) + "\n")
         else:
             (KEY_FRAMES / PASSED).touch()
+    elif options.key_frames and not failed and not options.run_broken and has_key_frames(KEY_FRAMES):
+        (KEY_FRAMES / FOCUSED).touch()
     return 1 if failed else 0
 
 
@@ -820,6 +824,8 @@ BASELINE = ROOT / "tests" / "KeyFrames"
 # before they go in.
 PASSED = "passed"
 FAILED = "failed"
+# Left by a focused run with key frames that passed: a feature branch may add or replace its key frames in the baseline.
+FOCUSED = "focused"
 REVIEW = BUILD / "review"
 
 
@@ -852,7 +858,13 @@ def generate_baseline(arguments: list[str]) -> int:
         "keeps the key frames and views they didn't take: review those suites' sheets first.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression")
+    parser.add_argument("--focused", action="store_true", help="add or replace the key frames of the last focused run that passed")
     parsed = parser.parse_args(arguments)
+    if parsed.focused:
+        if not (KEY_FRAMES / FOCUSED).exists():
+            print("[ERROR] The baseline is left as it was: the last run wasn't a focused run with key frames that passed.", file=sys.stderr)
+            return 1
+        return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), "--focused")
     if not parsed.use_latest_set:
         key_frame_run()
     # Key frames of a partial run never become what later reviews compare against.
@@ -893,17 +905,23 @@ def screenshot_review(arguments: list[str]) -> int:
         "the report.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="review the key frames of the last run")
+    parser.add_argument("--focused", action="store_true", help="review the last focused run with key frames, only in the folders it took")
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     parsed = parser.parse_args(arguments)
     status, regression = 0, "not-run"
-    if not parsed.use_latest_set:
+    if parsed.focused:
+        regression = "focused"
+        if not has_key_frames(KEY_FRAMES):
+            print("[ERROR] The last run took no key frames: run the suites with test --with-key-frames first.", file=sys.stderr)
+            return 1
+    elif not parsed.use_latest_set:
         status = key_frame_run()
         regression = "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
     # The report comes first: it helps most when the regression failed.
     report_status = keyframes_tool("report", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags)
     if not has_key_frames(BASELINE):
-        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, nothing was compared: run ./build.py generate_baseline on main first.", file=sys.stderr)
+        print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, run ./build.py generate_baseline on a release branch first.", file=sys.stderr)
         return 1
     return status or report_status
 

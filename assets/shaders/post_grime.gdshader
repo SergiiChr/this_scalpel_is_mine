@@ -1,7 +1,7 @@
 // Full screen grading: a restrained cool-green tint, vignette and a trace of film grain. The chromatic split stays
 // barely there until sickness wobbles the view; the grading must never wash out skin, gloves and steel.
 // Surgeon state drives the extra uniforms (sickness wobble, blackout when passing out, blur, a sedative's darkening,
-// blood on the view).
+// eyelids closing while nodding off, blood on the view).
 shader_type canvas_item;
 
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
@@ -18,6 +18,8 @@ uniform float blur = 0.0;
 uniform float blackout : hint_range(0.0, 1.0) = 0.0;
 // Too much sedative, or knocked out by it: the view darkens this much at the edges, half as much in the middle.
 uniform float daze : hint_range(0.0, 1.0) = 0.0;
+// Nodding off: eyelids close from the top and bottom (0 open, 1 shut), their edges curved, the corners first.
+uniform float eyelids : hint_range(0.0, 1.0) = 0.0;
 // Blood splashed on the view: how much (more drops, more opaque), seconds since it landed, and its pattern.
 uniform float lens_blood : hint_range(0.0, 1.0) = 0.0;
 uniform float lens_age = 0.0;
@@ -77,6 +79,13 @@ void fragment() {
 	// Thin blood is see-through red, the middle of a drop close to opaque.
 	col = mix(col, col * vec3(0.45, 0.05, 0.05) + vec3(0.06, 0.0, 0.005), lens * min(lens_blood * 3.0, 0.9));
 	col *= 1.0 - daze * mix(0.5, 1.0, smoothstep(0.15, 0.75, d));
+	if (eyelids > 0.0) {
+		// Half the opening between the lids, beyond the screen's edge when open and below its middle when shut.
+		float edge = 0.04;
+		float corner = SCREEN_UV.x * 2.0 - 1.0;
+		float open = (1.0 - eyelids) * (0.5 + 2.0 * edge) * (1.0 - 0.35 * eyelids * corner * corner) - edge;
+		col *= 1.0 - smoothstep(open, open + edge, abs(SCREEN_UV.y - 0.5));
+	}
 	col = mix(col, vec3(0.0), blackout);
 	COLOR = vec4(col, 1.0);
 }

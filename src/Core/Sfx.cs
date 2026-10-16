@@ -101,8 +101,12 @@ public partial class Sfx : Node {
         }
     }
 
+    /// <summary>Every one-shot sound asked for, deaf or not.</summary>
+    internal static event Action<string>? Played;
+
     /// <summary>Plays a sound once, in 3D at <paramref name="at"/> or flat when it's null.</summary>
     public static void Play(string id, Vector3? at = null, string bus = "SFX", float volumeDb = 0f) {
+        Played?.Invoke(id);
         if (_instance is null || Deaf || Stream(id) is not { } stream) {
             return;
         }

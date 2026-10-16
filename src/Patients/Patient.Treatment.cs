@@ -37,6 +37,8 @@ public partial class Patient {
     public const float BladeReach = 0.005f;
     /// <summary>How close (meters) to the blade's tip an organ has to be for it to be cut.</summary>
     public const float OrganReach = 0.001f;
+    /// <summary>ml of blood a swab of power 1 takes up per second of wiping, while it has room for it.</summary>
+    public const float SwabRate = 15f;
     /// <summary>A blade drawn within this far (meters) of a cut already there runs along that cut.</summary>
     public const float RecutReach = 0.004f;
     /// <summary>How high (meters) forceps lift a piece of skin cut out all round before it comes off whole, as a graft.
@@ -741,15 +743,22 @@ public partial class Patient {
         Paint(WoundMap.Layer.Fluids, WoundMap.Ink, a, b, 0.004f, 1f, WoundMap.Mode.Max);
     }
 
-    /// <summary>Wipes the site with a swab. <paramref name="soakedIn"/>: what the swab is soaked in, when that's not
-    /// fixed by the tool (a cotton pad dipped in iodine).</summary>
-    public void SwabAt(SiteZone zone, Vector2 uv, ToolDef def, float dt, string soakedIn = "") {
+    /// <summary>Wipes the site with a swab that can still soak up <paramref name="room"/> ml, and returns the ml of
+    /// blood it took. A full swab no longer wipes, but gauze still presses. <paramref name="soakedIn"/>: what
+    /// the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in iodine).</summary>
+    public float SwabAt(SiteZone zone, Vector2 uv, ToolDef def, float dt, float room, string soakedIn = "") {
         var drug = soakedIn.Length > 0 ? soakedIn : def.Drug;
         var radius = Body.MetersToUv(def.Radius);
         var sanitize = drug is "iodine" or "whiskey";
+        var rate = def.Power * SwabRate * dt;
+        var take = Mathf.Min(rate, room);
+        var taken = 0f;
         if (zone == SiteZone.Site) {
+            // What the cuts hold first, then the film of blood on the skin as much as the wipe takes off.
+            taken = DrainCuts(uv, take);
+            taken += Body.BloodAt(uv) * (take - taken);
             // One pass over the disk for every channel: a wipe runs every physics frame, so it has to be cheap.
-            var ops = new List<PaintOp> { new(WoundMap.Blood, def.Power * dt * 2f, WoundMap.Mode.Sub) };
+            var ops = new List<PaintOp> { new(WoundMap.Blood, def.Power * dt * 2f * take / rate, WoundMap.Mode.Sub) };
             if (sanitize) {
                 MarkGrid(_sanitized, uv, radius, drug == "iodine" ? 1f : 0.5f);
                 ops.Add(new PaintOp(WoundMap.Grime, dt * 2f, WoundMap.Mode.Sub));
@@ -759,26 +768,32 @@ public partial class Patient {
                 }
             }
             PaintOps(WoundMap.Layer.Fluids, uv, radius, ops);
-            DrainCuts(uv, def.Power * 15f * dt);
             if (def.Id == "gauze" && NearestWound(uv, 0.02f, false) is { } wound) {
                 Press(wound, dt);
             }
         } else if (zone == SiteZone.Cavity) {
-            CavityBloodMl = Mathf.Max(CavityBloodMl - def.Power * 15f * dt, 0f);
-            DrainCuts(uv, def.Power * 15f * dt);
+            taken = Mathf.Min(CavityBloodMl, take);
+            CavityBloodMl -= taken;
+            taken += DrainCuts(uv, take - taken);
             // Packed into the opening, it presses on the vessel it reaches, else on the edges of the cut it's in.
             var vessel = Wounds.Where(w => w.IsInternal && Reaches(w, uv)).MinBy(w => w.Points[0].DistanceTo(uv));
             if (def.Id == "gauze" && (vessel ?? NearestWound(uv, 0.02f, false)) is { } wound) {
                 Press(wound, dt);
             }
         }
+        return taken;
     }
 
-    /// <summary>Takes up to <paramref name="ml"/> of the blood held in each cut near <paramref name="uv"/>.</summary>
-    private void DrainCuts(Vector2 uv, float ml) {
+    /// <summary>Takes up to <paramref name="ml"/> in all of the blood held in the cuts near <paramref name="uv"/>, and
+    /// returns how much it took.</summary>
+    private float DrainCuts(Vector2 uv, float ml) {
+        var drained = 0f;
         foreach (var wound in Wounds.Where(wound => wound.PooledMl > 0f && wound.DistanceTo(uv) < 0.03f)) {
-            wound.PooledMl = Mathf.Max(wound.PooledMl - ml, 0f);
+            var took = Mathf.Min(wound.PooledMl, ml - drained);
+            wound.PooledMl -= took;
+            drained += took;
         }
+        return drained;
     }
 
     /// <summary>Gauze pressed on a wound for <paramref name="dt"/> seconds: it stops the bleeding while the pressure
@@ -852,44 +867,52 @@ public partial class Patient {
 
     public void RemoveTourniquet() => TourniquetOn = false;
 
-    /// <summary>A catheter went into the arm at <paramref name="at"/> (world space): tubing now runs from the stand to
-    /// there. <paramref name="inVein"/>: it hit a vein, so the line works. Host only (what runs through the line is
-    /// decided here).</summary>
-    public void SetIv(Vector3 at, bool inVein) {
-        if (IvSet) {
+    /// <summary>A catheter went into the arm at <paramref name="at"/> (world space). <paramref name="inVein"/>: it hit a
+    /// vein. <paramref name="connected"/>: the IV tubing was on it, and now runs from the stand to there. The line works
+    /// only with both. Host only (what runs through the line is decided here).</summary>
+    public void SetIv(Vector3 at, bool inVein, bool connected = true) {
+        if (!CanSetIv(connected)) {
             return;
         }
         IvSet = true;
         IvInVein = inVein;
+        IvConnected = connected;
         Hurt(0.1f);
-        Rpc(MethodName.IvPlaced, Body.Root.ToLocal(at));
+        Rpc(MethodName.IvPlaced, Body.Root.ToLocal(at), connected);
     }
 
-    /// <summary>Someone walked into the tubing: the catheter rips out of the arm and the stand rattles. The catheter
-    /// ends up on the floor at their feet, where it can be picked up, washed and used again.</summary>
+    /// <summary>Whether a catheter goes in: into an arm without one, or, <paramref name="connected"/> to the tubing, in
+    /// place of one that isn't, which nothing runs through.</summary>
+    internal bool CanSetIv(bool connected) => !IvSet || (connected && !IvConnected);
+
+    /// <summary>Someone caught the IV tubing and walked off with it: the catheter rips out of the arm, tearing the skin,
+    /// and hangs on the end of the tubing.</summary>
     public void PullIv(Surgeon surgeon) {
         if (!IvSet) {
             return;
         }
         IvSet = false;
         IvInVein = false;
+        IvConnected = false;
         Hurt(0.35f);
         AddFlag("iv_pulled");
         Session.Scoring.Add("iv_pulled");
         Session.Sound("cable_yank", surgeon.GlobalPosition);
         Session.Announce($"{surgeon.DisplayName} catches the IV line. It rips out of the arm.");
         Session.JoltPeer(surgeon.PeerId, 0.8f);
-        // At their feet: a step ahead could be under the table, which is solid down to the floor.
-        Session.Tools.DropNew("iv_catheter", surgeon.GlobalPosition + Vector3.Up * 0.1f);
-        Rpc(MethodName.IvRemoved);
+        if (Session.Room.IvLine.Dressing is { } dressing) {
+            Session.Effect(ToolEffect.Bead, dressing.GlobalPosition, 0);
+            Session.Sound("tear_skin", dressing.GlobalPosition);
+        }
+        Rpc(MethodName.IvRemoved, true);
     }
 
-    /// <summary>Runs the tubing to <paramref name="point"/> (local to the body's root). The dressing rides the forearm
-    /// it's on (<see cref="PatientBody.IvSite"/>).</summary>
-    private void ConnectIv(Vector3 point) {
+    /// <summary>Tapes a catheter on at <paramref name="point"/> (local to the body's root), the tubing on it if
+    /// <paramref name="connected"/>. The dressing rides the forearm it's on (<see cref="PatientBody.IvSite"/>).</summary>
+    private void ConnectIv(Vector3 point, bool connected) {
         if (Surgery.Current?.Room.IvLine is not null) {
             var site = Body.IvSite(Body.Root.ToGlobal(point));
-            Surgery.Current.Room.ConnectIv(site.Node, site.Frame, site.Radius);
+            Surgery.Current.Room.ConnectIv(site.Node, site.Frame, site.Radius, connected);
         }
     }
 

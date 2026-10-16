@@ -48,11 +48,15 @@ public class NeedleTest {
             .OverrideFailureMessage($"all tight-thread punctures are reached\n{driver.Recent()}").IsTrue();
         var thread = needle.Suture.Thread;
         await driver.PlayerPullsThread("too tight");
+        // The patient settles a thread's claimed closure against the gaps the tissue shows on its own tick.
+        await Frames.Seconds(Patient.Tick * 2f);
         AssertString(SewAction.ThreadState(needle)).OverrideFailureMessage("the hand status reads too tight before it tears")
             .IsEqual("too tight");
         AssertBool(patient.SutureDone(thread)).OverrideFailureMessage("too tight thread is still intact before further tightening")
             .IsFalse();
         AssertFloat(tight.Closure).OverrideFailureMessage($"too tight still holds the cut closed (closure {tight.Closure:0.000}, tension {needle.Suture.Tension:0.000}, anchors {tissue.Thread(thread)!.Anchors.Count})\n{driver.Recent()}").IsGreater(0.99f);
+        AssertFloat(tissue.GapAlong(tight.Points, 0.03f, TissueDepth.Skin))
+            .OverrideFailureMessage("its edges meet between the holes too").IsLessEqual(TissueSim.ClosedGap);
         AssertFloat(tissue.SutureLip.Max()).OverrideFailureMessage("too tight thread visibly puckers the joined skin")
             .IsGreater(0.0009f);
         var holes = tissue.Thread(thread)!.Anchors.Count;
@@ -69,8 +73,9 @@ public class NeedleTest {
         }
         AssertBool(patient.SutureDone(thread) && needle.Suture.Thread == 0)
             .OverrideFailureMessage("pulled tighter still, the thread tears through").IsTrue();
-        AssertBool(tissue.Thread(thread)!.Springs.All(s => !tissue.SpringAt(s).Active))
-            .OverrideFailureMessage("a torn thread lets go of every span").IsTrue();
+        var torn = tissue.Thread(thread)!;
+        AssertBool(torn.Springs.Concat(torn.Holds.Values).All(s => !tissue.SpringAt(s).Active))
+            .OverrideFailureMessage("a torn thread lets go of every span and the edges it held").IsTrue();
         AssertFloat(tight.Closure).OverrideFailureMessage("and holds the cut no more").IsLess(0.01f);
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("it tears the skin").IsGreater(wounds);
         AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("suture_tear_through"))

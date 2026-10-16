@@ -1,7 +1,10 @@
 namespace Scalpel.Surgeons;
 
 /// <summary>Something that happened to a surgeon's body this frame, for <see cref="Surgeon"/> to act on.</summary>
-public enum StatusEvent { PassOut, Vomit, Cough, Slip, Drip, Gasp, KnockedOut, CameRound, Moan }
+public enum StatusEvent {
+    PassOut, Vomit, Cough, Slip, Drip, Gasp, KnockedOut, CameRound, Moan, Heartbeat, Racing, Arrest, Died, Jitters,
+    NauseaGone,
+}
 
 /// <summary>What around a surgeon affects them: how fast the patient bleeds, and a partner's bad breath nearby.
 /// </summary>
@@ -40,15 +43,52 @@ public sealed class SurgeonStatus(Modifiers mods) {
     /// <summary>A surgeon's weight without quirks (kg). Doses given to a surgeon are worked out from it, like a
     /// patient's.</summary>
     public const float BaseWeight = 80f;
-    /// <summary>A sedative (flag "benzo") at the right dose steadies the shaking of stress, blurs the view and delays
-    /// hand moves by SedatedDelay. From DoseHigh times the dose on the view darkens and the delay grows, by up to
-    /// OverdoseDelay at KnockoutShare. There the surgeon is knocked out for KnockoutTime.</summary>
+    /// <summary>A sedative (<see cref="DrugDef.IsSedative"/>) at the right dose steadies the shaking of stress, blurs
+    /// the view and delays hand moves by SedatedDelay.
+    /// Every sedative's share of its own right dose adds up.
+    /// From DoseHigh times the dose on the view darkens and the delay grows, by up to OverdoseDelay at KnockoutShare.
+    /// There the surgeon is knocked out for KnockoutTime.</summary>
     public const float SedatedDelay = 0.1f;
     public const float OverdoseDelay = 0.2f;
     public const float KnockoutShare = 2f;
     public const float KnockoutTime = 300f;
     /// <summary>Knocked out, a moan every so often (s, random in between).</summary>
     public static readonly Vector2 MoanGap = new(8f, 20f);
+    /// <summary>An opioid (morphine) doesn't slow the hands: from DoseEffective times the dose the surgeon nods off
+    /// instead.
+    /// Every NodGapMin to NodGapMax seconds the eyelids close over LidClose seconds, stay shut NodDarkMin to NodDarkMax
+    /// seconds and open over LidOpen.</summary>
+    public const float NodGapMin = 10f;
+    public const float NodGapMax = 30f;
+    public const float NodDarkMin = 1f;
+    public const float NodDarkMax = 2f;
+    public const float LidClose = 0.3f;
+    public const float LidOpen = 0.4f;
+    /// <summary>A stimulant (adrenaline, cocaine) at work: hands faster by StimulantSpeed, stress builds faster by
+    /// StimulantStress, and the heart thumps at StimulatedBpm.</summary>
+    public const float StimulantSpeed = 1.3f;
+    public const float StimulantStress = 1.5f;
+    public const float StimulatedBpm = 110f;
+    /// <summary>Two drugs dangerous together (adrenaline and cocaine) at work at once: hands and feet faster by
+    /// RaceSpeed for RaceTime seconds, the heart speeding up from RaceBpm.X to RaceBpm.Y.
+    /// Nothing stops it.
+    /// Then the heart fails and the surgeon collapses: unless a partner's defibrillator brings them back (each shock
+    /// with ReviveChance) within ArrestTime seconds, they die.
+    /// Brought back, the heart and the hands and feet slow down to normal over RecoverTime seconds, the heart down to
+    /// RestingBpm.
+    /// </summary>
+    public const float RaceTime = 180f;
+    public const float RaceSpeed = 1.6f;
+    public static readonly Vector2 RaceBpm = new(140f, 200f);
+    public const float ArrestTime = 30f;
+    public const float ReviveChance = 0.5f;
+    public const float RecoverTime = 60f;
+    public const float RestingBpm = 70f;
+    /// <summary>A local anaesthetic (local_block) injected into a hand numbs it for NumbTime seconds: it can't hold
+    /// anything.</summary>
+    public const float NumbTime = 60f;
+    /// <summary>An antidote with nothing of its kind to reverse jolts the surgeon by this much stress.</summary>
+    public const float AntidoteStress = 0.4f;
 
     private float _dripTimer = 20f;
     private float _coughCooldown;
@@ -57,6 +97,13 @@ public sealed class SurgeonStatus(Modifiers mods) {
     private float _shiverWait = 3f;
     private float _shiverLeft;
     private float _moanWait = 5f;
+    private float _beatWait;
+    private bool _nodding;
+    private float _nodWait = NodGapMin;
+    private float _nodLeft;
+    private float _nodLength;
+    private readonly float[] _numbLeft = new float[2];
+    private float _recoverLeft;
 
     public Modifiers Mods { get; } = mods;
     public float Stress { get; set; }
@@ -83,22 +130,46 @@ public sealed class SurgeonStatus(Modifiers mods) {
     public float KnockedOut { get; internal set; }
     /// <summary>Seconds left of being kept up by a stimulant while knocked out.</summary>
     public float KeptUp { get; private set; }
+    /// <summary>The share of Calm that slows the hands: an opioid's part makes the surgeon nod off instead.</summary>
+    public float Lag { get; private set; } = 1f;
+    /// <summary>How far the eyelids are shut while nodding off (0 open, 1 shut).</summary>
+    public float Eyelids { get; private set; }
+    /// <summary>A stimulant is at work.</summary>
+    public bool Stimulated { get; private set; }
+    /// <summary>Seconds left before the racing heart gives out, 0 when it isn't racing.</summary>
+    public float RaceLeft { get; private set; }
+    /// <summary>Seconds left for a defibrillator to restart the failed heart, 0 when it hasn't failed.</summary>
+    public float ArrestLeft { get; private set; }
+    /// <summary>Died of a heart attack: down for good.</summary>
+    public bool Dead { get; private set; }
 
     /// <summary>A surgeon's weight (kg) with these quirks.</summary>
     public static float WeightOf(Modifiers modifiers) => BaseWeight + modifiers.Num("weight_kg");
 
     public bool IsOut => PassedOut > 0f || IsKnockedOut;
 
-    public bool IsKnockedOut => KnockedOut > 0f && KeptUp <= 0f;
+    public bool IsKnockedOut => Dead || IsArrested || (KnockedOut > 0f && KeptUp <= 0f);
+
+    public bool IsRacing => RaceLeft > 0f;
+
+    public bool IsArrested => ArrestLeft > 0f;
+
+    /// <summary>How far from normal a heart brought back still is: 1 just after, 0 once recovered.</summary>
+    private float Recovering => _recoverLeft / RecoverTime;
+
+    /// <summary>The hand (0 left, 1 right) is numb and can't hold anything.</summary>
+    public bool IsNumb(int hand) => _numbLeft[hand] > 0f;
 
     public void AddStress(float amount) {
         if (SmokeLeft <= 0f) {
-            Stress = Mathf.Clamp(Stress + amount * Mods.Mult("stress_mult"), 0f, 1f);
+            var stimulant = Stimulated ? StimulantStress : 1f;
+            Stress = Mathf.Clamp(Stress + amount * Mods.Mult("stress_mult") * stimulant, 0f, 1f);
         }
     }
 
     public void AddSickness(float amount) {
-        if (!Mods.Flag("sickness_immune")) {
+        // An antihistamine keeps nausea away while it works.
+        if (!Mods.Flag("sickness_immune") && !Drugs.Working("antihistamine")) {
             Sickness = Mathf.Clamp(Sickness + amount, 0f, 1f);
         }
     }
@@ -138,27 +209,65 @@ public sealed class SurgeonStatus(Modifiers mods) {
     }
 
     /// <summary>How long a sedative holds back what the mouse does to a hand (s).</summary>
-    public float InputDelay() => SedatedDelay * Calm + OverdoseDelay * Overdose;
+    public float InputDelay() => (SedatedDelay * Calm + OverdoseDelay * Overdose) * Lag;
 
     public float HandSpeed() {
-        var speed = (CoffeeLeft > 0f ? 1.3f : 1f) * SmokeSpeedNow();
+        var stimulant = IsRacing ? RaceSpeed : Mathf.Lerp(Stimulated ? StimulantSpeed : 1f, RaceSpeed, Recovering);
+        var speed = (CoffeeLeft > 0f ? 1.3f : 1f) * SmokeSpeedNow() * stimulant;
         if (Mods.Flag("caffeine") && CoffeeLeft <= 0f) {
             speed *= 1f - Mathf.Min(SinceCoffee / 300f, 0.4f);
         }
         return speed;
     }
 
-    public float MoveSpeed() => Mods.Mult("move_speed_mult") * SmokeSpeedNow();
+    public float MoveSpeed() =>
+        Mods.Mult("move_speed_mult") * SmokeSpeedNow() * (IsRacing ? RaceSpeed : Mathf.Lerp(1f, RaceSpeed, Recovering));
+
+    /// <summary>The heart's pace while a stimulant works or the heart recovers (beats a minute), 0 otherwise. A failed
+    /// heart keeps pounding at the top pace.</summary>
+    public float HeartRate() {
+        if (IsRacing) {
+            return Mathf.Lerp(RaceBpm.X, RaceBpm.Y, 1f - (RaceLeft / RaceTime));
+        }
+        if (IsArrested) {
+            return RaceBpm.Y;
+        }
+        var normal = Stimulated ? StimulatedBpm : 0f;
+        return Recovering > 0f ? Mathf.Lerp(Mathf.Max(normal, RestingBpm), RaceBpm.Y, Recovering) : normal;
+    }
 
     private float SmokeSpeedNow() => SmokeLeft > 0f ? SmokeSpeed : 1f;
 
     public void Smoke() => SmokeLeft = SmokeTime;
 
-    /// <summary>A dose (in the drug's unit) injected into this surgeon. Only sedatives and what wakes from them do
-    /// anything.</summary>
-    public void Administer(string drugId, float amount) {
-        if (Db.Drug(drugId) is { Dose: > 0f } def) {
-            Drugs.Give(def, amount / (def.Dose * WeightKg), def.Onset * DrugDef.DirectOnset);
+    /// <summary>A defibrillator restarted the failed heart: the surgeon gets up, and the heart and the speed ease back
+    /// to normal. False when the heart isn't stopped (any more).</summary>
+    public bool Revive() {
+        if (!IsArrested) {
+            return false;
+        }
+        ArrestLeft = 0f;
+        _recoverLeft = RecoverTime;
+        return true;
+    }
+
+    /// <summary>A dose (in the drug's unit) injected into this surgeon, into <paramref name="hand"/> (-1 the body).
+    /// A local anaesthetic numbs the hand it goes into.</summary>
+    public void Administer(string drugId, float amount, int hand = -1) {
+        if (Db.Drug(drugId) is not { Dose: > 0f } def) {
+            return;
+        }
+        Drugs.Give(def, amount / (def.Dose * WeightKg), def.Onset * DrugDef.DirectOnset);
+        if (hand >= 0 && def.Peak.LocalBlock > 0f) {
+            _numbLeft[hand] = NumbTime;
+        }
+    }
+
+    /// <summary>A drug taken without a needle (snorted cocaine): the right dose, soaking in like an injection.
+    /// </summary>
+    public void Take(string drugId) {
+        if (Db.Drug(drugId) is { } def) {
+            Drugs.Give(def, 1f, def.Onset * DrugDef.DirectOnset);
         }
     }
 
@@ -181,10 +290,26 @@ public sealed class SurgeonStatus(Modifiers mods) {
     /// <summary>Moves the gauges on by <paramref name="delta"/> seconds. Returns what happened.</summary>
     public List<StatusEvent> Update(float delta, StatusContext context) {
         var events = new List<StatusEvent>();
+        if (Dead) {
+            return events;
+        }
         UpdateDrugs(delta, events);
+        UpdateHeart(delta, events);
+        if (Dead) {
+            return events;
+        }
+        if (_recoverLeft > 0f && !IsArrested) {
+            _recoverLeft = Mathf.Max(_recoverLeft - delta, 0f);
+        }
+        for (var hand = 0; hand < 2; hand++) {
+            _numbLeft[hand] = Mathf.Max(_numbLeft[hand] - delta, 0f);
+        }
         if (IsKnockedOut) {
+            Eyelids = 0f;
+            _nodLeft = 0f;
             _moanWait -= delta;
-            if (_moanWait <= 0f) {
+            // A failed heart leaves no breath to moan with.
+            if (_moanWait <= 0f && !IsArrested) {
                 _moanWait = (float)GD.RandRange(MoanGap.X, MoanGap.Y);
                 events.Add(StatusEvent.Moan);
             }
@@ -194,6 +319,7 @@ public sealed class SurgeonStatus(Modifiers mods) {
             PassedOut -= delta;
             return events;
         }
+        UpdateNods(delta);
         Stress = Mathf.Max(Stress - delta * 0.01f, StressFloor());
         CoffeeLeft = Mathf.Max(CoffeeLeft - delta, 0f);
         WhiskeyLeft = Mathf.Max(WhiskeyLeft - delta, 0f);
@@ -246,16 +372,35 @@ public sealed class SurgeonStatus(Modifiers mods) {
         return events;
     }
 
-    /// <summary>Sedatives add up into calm and overdose, and knock the surgeon out at KnockoutShare. Flumazenil
-    /// (reverse_benzo) takes them all away; a stimulant only keeps a knocked out surgeon up while it lasts.</summary>
+    /// <summary>Sedatives add up into calm and overdose, and knock the surgeon out at KnockoutShare. An antidote
+    /// takes away its own kind (flumazenil benzo, naloxone opioid) and brings them round unless the other sedatives
+    /// still knock them out; a stimulant only keeps a knocked out surgeon up while it lasts.</summary>
     private void UpdateDrugs(float delta, List<StatusEvent> events) {
         foreach (var (def, crossing) in Drugs.Update(delta, (_, _) => 1f)) {
             if (crossing != DrugLevels.Crossing.Works) {
                 continue;
             }
-            if (def.HasFlag("reverse_benzo")) {
-                Drugs.Remove(drug => drug.HasFlag("benzo"));
-                if (KnockedOut > 0f) {
+            // A stopped heart doesn't race again: the clock for a defibrillator keeps running.
+            if (!IsRacing && !IsArrested && Drugs.Entries.Any(entry => entry.Def != def && entry.IsWorking
+                    && (entry.Def.DangerWith.Contains(def.Id) || def.DangerWith.Contains(entry.Def.Id)))) {
+                RaceLeft = RaceTime;
+                events.Add(StatusEvent.Racing);
+            }
+            if (def.HasFlag("antihistamine") && Sickness > 0f) {
+                Sickness = 0f;
+                events.Add(StatusEvent.NauseaGone);
+            }
+            var reverses = def.HasFlag("reverse_benzo") ? "benzo" : def.HasFlag("reverse_opioid") ? "opioid" : null;
+            if (reverses is not null) {
+                if (!Drugs.Entries.Any(entry => entry.Def.HasFlag(reverses))) {
+                    // Nothing to reverse: it only sets the heart pounding.
+                    AddStress(AntidoteStress);
+                    events.Add(StatusEvent.Jitters);
+                }
+                Drugs.Remove(drug => drug.HasFlag(reverses));
+                if (KnockedOut > 0f && SedativeLevel() < KnockoutShare) {
+                    // Woken under the knockout level, a top up past it knocks them out again.
+                    _knocked = false;
                     KnockedOut = 0f;
                     KeptUp = 0f;
                     events.Add(StatusEvent.CameRound);
@@ -265,7 +410,12 @@ public sealed class SurgeonStatus(Modifiers mods) {
                 events.Add(StatusEvent.CameRound);
             }
         }
-        var sedative = Drugs.Entries.Where(entry => entry.Def.HasFlag("benzo")).Sum(entry => entry.Level);
+        var sedative = SedativeLevel();
+        var opioid = Drugs.Entries.Where(entry => entry.Def.IsSedative && entry.Def.HasFlag("opioid"))
+            .Sum(entry => entry.Level);
+        Lag = sedative > 0f ? 1f - (opioid / sedative) : 1f;
+        _nodding = opioid >= DrugDef.DoseEffective;
+        Stimulated = Drugs.Working("stimulant");
         Calm = Mathf.Min(DrugDef.DoseStrength(sedative), 1f);
         Overdose = Mathf.Clamp((sedative - DrugDef.DoseHigh) / (KnockoutShare - DrugDef.DoseHigh), 0f, 1f);
         if (sedative >= KnockoutShare && !_knocked) {
@@ -295,4 +445,57 @@ public sealed class SurgeonStatus(Modifiers mods) {
             events.Add(StatusEvent.CameRound);
         }
     }
+
+    /// <summary>A stimulant thumps the heart; racing, it speeds up until it fails, and then the surgeon dies unless
+    /// revived in time.</summary>
+    private void UpdateHeart(float delta, List<StatusEvent> events) {
+        if (IsRacing) {
+            RaceLeft = Mathf.Max(RaceLeft - delta, 0f);
+            if (RaceLeft == 0f) {
+                ArrestLeft = ArrestTime;
+                Eyelids = 0f;
+                events.Add(StatusEvent.Arrest);
+            }
+        } else if (IsArrested) {
+            ArrestLeft = Mathf.Max(ArrestLeft - delta, 0f);
+            if (ArrestLeft == 0f) {
+                Dead = true;
+                events.Add(StatusEvent.Died);
+                return;
+            }
+        }
+        var bpm = HeartRate();
+        if (bpm <= 0f) {
+            _beatWait = 0f;
+            return;
+        }
+        _beatWait -= delta;
+        if (_beatWait <= 0f) {
+            _beatWait += 60f / bpm;
+            events.Add(StatusEvent.Heartbeat);
+        }
+    }
+
+    /// <summary>On an opioid the eyelids drop now and then: they close, stay shut a moment and open again. One already
+    /// closing finishes when the opioid wears off.</summary>
+    private void UpdateNods(float delta) {
+        if (_nodLeft <= 0f && _nodding) {
+            _nodWait -= delta;
+            if (_nodWait <= 0f) {
+                _nodLength = LidClose + (float)GD.RandRange(NodDarkMin, NodDarkMax) + LidOpen;
+                _nodLeft = _nodLength;
+                _nodWait = (float)GD.RandRange(NodGapMin, NodGapMax);
+            }
+        }
+        if (_nodLeft <= 0f) {
+            Eyelids = 0f;
+            return;
+        }
+        _nodLeft = Mathf.Max(_nodLeft - delta, 0f);
+        var shut = _nodLength - _nodLeft;
+        Eyelids = Mathf.SmoothStep(0f, 1f, Mathf.Min(Mathf.Min(shut / LidClose, _nodLeft / LidOpen), 1f));
+    }
+
+    /// <summary>Every sedative in the blood, as shares of its own right dose.</summary>
+    private float SedativeLevel() => Drugs.Entries.Where(entry => entry.Def.IsSedative).Sum(entry => entry.Level);
 }

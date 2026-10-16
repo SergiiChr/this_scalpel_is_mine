@@ -70,6 +70,14 @@ public sealed class ToolSession {
         }
     }
 
+    /// <summary>In a run with key frames, saves views of <paramref name="at"/> off the site from
+    /// <paramref name="distance"/> away, hands left out, which should show <paramref name="description"/>.</summary>
+    public async Task CaptureAt(string keyFrame, string description, Vector3 at, float distance) {
+        if (Shots is { } shots) {
+            await Driver.Unbudgeted(() => shots.CaptureAt(keyFrame, description, at, distance));
+        }
+    }
+
     /// <summary>Checks the frame budget (<paramref name="budgetOverride"/>: why it's known to go over, and by how much) and ends the
     /// surgery.</summary>
     public async Task Finish(BudgetAllowance? budgetOverride = null) {

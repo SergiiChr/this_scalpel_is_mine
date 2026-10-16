@@ -6,16 +6,19 @@ namespace Scalpel.Tests.Patients;
 /// isn't cut bruises it instead, and an opened incision and every vessel in it show a spot in the middle of the wall of
 /// the deepest layer they bleed from, never on the skin over it, however many there are. The spot grows with how fast
 /// it bleeds, the slightest bleed still shows, it's gone once the bleeding stops, and pulling the skin takes it along
-/// instead of leaving it hanging in the air. Under the blood pooled in the cavity it wells up on the pool's surface.
+/// instead of leaving it hanging in the air. The blood pooled in the cavity hides it, with nothing standing on the pool.
 /// With key frames review the puddles and the puncture's spot, the vein-like spots within the incision's layer walls,
-/// the spot riding the pulled edge and a dome on the pool over each vessel.
+/// the spot riding the pulled edge and the plain pool over the vessels.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class BleedSourcesTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private static readonly BudgetAllowance BudgetOverride = new("bleed spots, pools and many-vessel simulation exceed the recorded CPU/render budget", 13f);
+    // Measured in the cloud release run: a garbage collection during the long wait for the pool and single slow frames
+    // took up to 17.2 times the budget there.
+    private static readonly BudgetAllowance BudgetOverride = new("a garbage collection during the long wait for the pool and "
+        + "single slow frames go over the budget", 22.5f);
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task EveryBleedShowsWhereItComesFrom() {
@@ -59,7 +62,6 @@ public class BleedSourcesTest {
         await Frames.Seconds(1f);
         AssertString(Spot(body, middle)).OverrideFailureMessage("the vessel shows its spot on the cut's walls, not on the skin over it")
             .IsEqual("inside");
-        AssertInt(body.Blood.Wells.Count).OverrideFailureMessage("nothing of it stands off the tissue").IsEqual(0);
         AssertFloat(weak.Bleeding).OverrideFailureMessage("the weak vessel bleeds the least a vessel bleeds")
             .IsLess(strong.Bleeding * 0.05f);
         AssertString(Spot(body, weak.Points[0])).OverrideFailureMessage($"however little it bleeds ({weak.Bleeding:0.000} ml/s), its spot shows")
@@ -84,18 +86,11 @@ public class BleedSourcesTest {
         var moved = body.LayerPoint(0, k).DistanceTo(before);
         AssertFloat(moved).OverrideFailureMessage($"the edge is pulled ({moved * 1000f:0.0} mm)").IsGreater(0.012f);
         AssertString(Spot(body, middle)).OverrideFailureMessage("the spot stays on the pulled tissue").IsEqual("inside");
-        AssertInt(body.Blood.Wells.Count).OverrideFailureMessage("nothing is left hanging where the edge was").IsEqual(0);
         await CloseUp(session, "pulled_close", "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was", middle);
 
-        var risen = await Frames.Until(() => Wells(driver, vessel) == "at the vessel", 180f);
-        AssertBool(risen).OverrideFailureMessage($"once the cavity pool covers it, it wells up where it is ({patient.CavityBloodMl:0} ml, {Wells(driver, vessel)})")
-            .IsTrue();
-        await Frames.Seconds(0.5f);
-        var well = body.Blood.Wells.MinBy(well => body.WorldToUv(well).DistanceTo(middle));
-        // Placed on the frame before, while the pool keeps rising.
-        AssertFloat(body.Site.ToLocal(well).Y).OverrideFailureMessage($"on the pool's surface ({body.CavityPoolHeight:0.0000} m)")
-            .IsGreaterEqual(body.CavityPoolHeight - 0.002f);
-        await driver.Capture("vessel_under_pool", "the vessels covered by the pool, each welling up on the pool's surface above it");
+        var covered = await Frames.Until(() => UnderPool(body, middle), 180f);
+        AssertBool(covered).OverrideFailureMessage($"the cavity pool rises over the vessel ({patient.CavityBloodMl:0} ml)").IsTrue();
+        await driver.Capture("vessel_under_pool", "the vessels covered by the pool: its surface plain dark blood, nothing standing on it");
 
         // Many vessels at once along the incision: each shows its spot inside where the incision gapes, or lies right by a
         // faster one's in another layer, and puddles on the skin where it's shut.
@@ -197,11 +192,8 @@ public class BleedSourcesTest {
         return covered * mm * mm;
     }
 
-    /// <summary>"at the vessel" when a welling dome stands over it (within a few millimeters across the site), else
-    /// where the domes are.</summary>
-    private static string Wells(SurgeryDriver driver, Wound vessel) {
-        var wells = driver.Body.Blood.Wells;
-        var over = wells.Any(well => driver.Body.UvToMeters(driver.Body.WorldToUv(well).DistanceTo(vessel.Points[0])) < 0.003f);
-        return over ? "at the vessel" : $"wells at {string.Join(", ", wells.Select(driver.Body.WorldToUv))}";
-    }
+    /// <summary>Whether the cavity pool's surface lies over where the bleed at <paramref name="uv"/> comes from.</summary>
+    private static bool UnderPool(PatientBody body, Vector2 uv) =>
+        body.Blood.Sources.Where(source => source.Inside).OrderBy(source => source.Uv.DistanceTo(uv)).Take(1)
+            .Any(source => body.Site.ToLocal(body.UvToWorld(source.Uv, source.Depth)).Y < body.CavityPoolHeight);
 }

@@ -247,6 +247,7 @@ public partial class Net : Node {
         ScenarioDef scenario, uint seed, LobbyPlayer player, IReadOnlyList<QuirkRoll> patientQuirks,
         IReadOnlyList<string>? runModifiers = null) {
         Leave();
+        InSession = true;
         Scenario = scenario;
         SessionSeed = seed;
         Roster = new Dictionary<int, LobbyPlayer> { [HostId] = player };
@@ -265,13 +266,20 @@ public partial class Net : Node {
             RunModifiersToVariant());
     }
 
-    /// <summary>Host only. Back to the lobby after a report, with fresh quirks.</summary>
+    /// <summary>Back to the lobby after a report, still connected. The host takes everyone there, with fresh quirks; a
+    /// client who leaves the report first waits there alone (<see cref="WaitingForHost"/>) until the host comes.
+    /// </summary>
     public void ReturnToLobby() {
-        if (IsHost) {
+        if (!IsHost) {
+            GetTree().ChangeSceneToFile(LobbyScene);
+        } else if (InSession) {
             ChangeScenario(ScenarioId);
             Rpc(MethodName.GoToLobby);
         }
     }
+
+    /// <summary>A client in the lobby while the host is still on the report.</summary>
+    public bool WaitingForHost => InSession && !IsHost;
 
     public void SetReady(bool value) => RpcId(HostId, MethodName.RequestReady, value);
 

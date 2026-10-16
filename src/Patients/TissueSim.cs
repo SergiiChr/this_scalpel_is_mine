@@ -38,13 +38,17 @@ public readonly record struct SnappedSpring(Vector2 A, Vector2 B, SpringKind Kin
 
 /// <summary>
 /// A running suture: its holes (particles) in order, the span from each hole to the next, each span's extra length
-/// (<see cref="TissueSim.ThreadSlack"/>), the layer it's sewn in, its tension and whether it's tied off or torn. The
-/// thread keeps its route, so pulling its free end changes every span.
+/// (<see cref="TissueSim.ThreadSlack"/>), the stitches joining the edges it holds shut while taut, the layer it's sewn
+/// in, its tension and whether it's tied off or torn. The thread keeps its route, so pulling its free end changes every
+/// span.
 /// </summary>
 public sealed class SutureThread(TissueDepth layer, float tension) {
     public List<int> Anchors { get; } = [];
     public List<int> Springs { get; } = [];
     public List<float> Slack { get; } = [];
+    /// <summary>The stitches holding the edges along a taut skin thread shut, by edge (see TissueSim.RefreshHolds()).
+    /// </summary>
+    public Dictionary<long, int> Holds { get; } = [];
     public TissueDepth Layer { get; set; } = layer;
     public float Tension { get; set; } = tension;
     public bool Final { get; set; }
@@ -166,6 +170,9 @@ public sealed partial class TissueSim {
     /// </summary>
     public const int MaxCatchUp = 2;
     public const float SleepEpsilon = 0.00002f;
+    /// <summary>The widest flip between two spots that still counts as at rest (see <see cref="IsSleeping"/>).
+    /// </summary>
+    public const float SleepJitter = 0.0001f;
     public const int SleepSteps = 20;
     /// <summary>Most solver steps the skin gets to settle at build time (see Settle()).</summary>
     public const int SettleSteps = 300;
@@ -201,6 +208,9 @@ public sealed partial class TissueSim {
     public Vector3[] Rest { get; private set; } = [];
     public Vector3[] Pos { get; private set; } = [];
     private Vector3[] _prev = [];
+    /// <summary>Where each particle was a step before <see cref="_prev"/>: skin flipping between two spots every step
+    /// is as still as skin that doesn't move.</summary>
+    private Vector3[] _before = [];
     private float[] _anchor = [];
     private readonly Dictionary<Vector3I, List<int>> _foldNeighbors = [];
     private readonly List<List<int>> _usedFoldBuckets = [];
@@ -404,6 +414,7 @@ public sealed partial class TissueSim {
         }
         Pos = (Vector3[])Rest.Clone();
         _prev = (Vector3[])Rest.Clone();
+        _before = (Vector3[])Rest.Clone();
         _anchorTarget = (Vector3[])Rest.Clone();
         _restNormal = new Vector3[count];
         for (var j = 0; j <= ResY; j++) {
@@ -462,6 +473,7 @@ public sealed partial class TissueSim {
         _winLocked = false;
         Settled = (Vector3[])Pos.Clone();
         _prev = (Vector3[])Pos.Clone();
+        _before = (Vector3[])Pos.Clone();
         StepsDone = 0;
         for (var s = 0; s < _springCount; s++) {
             ref var spring = ref _springs[s];
@@ -652,7 +664,7 @@ public sealed partial class TissueSim {
     }
 
     /// <summary>Asleep once nothing has moved for SleepSteps steps, grips held still included: a moved grip wakes it.
-    /// </summary>
+    /// Skin flipping between two spots less than SleepJitter apart every step counts as not moving.</summary>
     public bool IsSleeping => _stillSteps >= SleepSteps;
 
     public void Wake() => _stillSteps = 0;
@@ -1230,6 +1242,7 @@ public sealed partial class TissueSim {
         thread.Layer = layer;
         thread.Tension = tension;
         _threads[id] = thread;
+        _retractDirty = true;
         Reshaped();
         return true;
     }
@@ -1246,8 +1259,70 @@ public sealed partial class TissueSim {
             }
         }
         thread.Tension = tension;
+        _retractDirty = true;
         Wake();
         return true;
+    }
+
+    /// <summary>
+    /// A running skin thread pulled to ThreadClosed or tighter holds the edges along its route shut: its spans only
+    /// pull at the holes, and between them the edges would still be drawn back from the cut. So while it's that taut,
+    /// every severed edge within SeamReach of a span that still holds is joined. Loosened, tied off (its knot joins
+    /// them instead), torn or cut, it lets them go. Deeper threads close their layer without skin stitches. Returns
+    /// whether any hold changed.
+    /// </summary>
+    private bool RefreshHolds() {
+        var changed = false;
+        foreach (var thread in _threads.Values) {
+            var keep = new HashSet<long>();
+            if (!thread.Final && thread.Layer == TissueDepth.Skin && thread.Tension <= ThreadClosed[(int)TissueDepth.Skin]) {
+                foreach (var s in _severed) {
+                    var (a, b) = (_springs[s].A, _springs[s].B);
+                    var key = EdgeKey(a, b);
+                    if (!OnThread(thread, CrossingUv(s) * Size)) {
+                        continue;
+                    }
+                    if (thread.Holds.TryGetValue(key, out var hold)) {
+                        if (_springs[hold].Active || !Stitched(a, b)) {
+                            keep.Add(key);
+                            changed |= !_springs[hold].Active;
+                            _springs[hold].Active = true;
+                            _edgeToStitch[key] = hold;
+                        }
+                    } else if (!Stitched(a, b)) {
+                        thread.Holds[key] = AddSpring(a, b, SpringKind.Stitch, 1f, _springs[thread.Springs[0]].Break);
+                        keep.Add(key);
+                        changed = true;
+                    }
+                }
+            }
+            foreach (var (key, hold) in thread.Holds) {
+                if (!keep.Contains(key) && _springs[hold].Active) {
+                    _springs[hold].Active = false;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            TopologyVersion++;
+            _winDirty = true;
+        }
+        return changed;
+    }
+
+    /// <summary>True where <paramref name="at"/> (site meters) lies within SeamReach of a span of
+    /// <paramref name="thread"/> that still holds.</summary>
+    private bool OnThread(SutureThread thread, Vector2 at) {
+        for (var i = 0; i < thread.Springs.Count; i++) {
+            if (!_springs[thread.Springs[i]].Active) {
+                continue;
+            }
+            var (from, to) = (UvOf(thread.Anchors[i]) * Size, UvOf(thread.Anchors[i + 1]) * Size);
+            if (at.DistanceTo(Geometry2D.GetClosestPointToSegment(at, from, to)) < SeamReach) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>A span's rest length (relative to its length at rest) at <paramref name="tension"/> in
@@ -1265,6 +1340,10 @@ public sealed partial class TissueSim {
     public void FinishThread(int id) {
         if (_threads.TryGetValue(id, out var thread)) {
             thread.Final = true;
+            // Before the knot's own stitches go in: those join only edges nothing holds yet.
+            RefreshHolds();
+            _retractDirty = true;
+            Wake();
         }
     }
 
@@ -1275,7 +1354,7 @@ public sealed partial class TissueSim {
             return;
         }
         thread.Final = true;
-        foreach (var s in thread.Springs) {
+        foreach (var s in thread.Springs.Concat(thread.Holds.Values)) {
             _springs[s].Active = false;
         }
         UpdateRetraction();
@@ -1565,6 +1644,7 @@ public sealed partial class TissueSim {
         foreach (var k in _winParticles) {
             var p = pos[k];
             pos[k] = p + (p - _prev[k]) * Damping;
+            _before[k] = _prev[k];
             _prev[k] = p;
             _free[k] = 1f;
         }
@@ -1622,9 +1702,11 @@ public sealed partial class TissueSim {
         StayAboveFloor();
         UpdateFoldContact();
         var moved = 0f;
+        var wandered = 0f;
         var farthest = 0f;
         foreach (var k in _winParticles) {
             moved = Mathf.Max(moved, pos[k].DistanceSquaredTo(_prev[k]));
+            wandered = Mathf.Max(wandered, pos[k].DistanceSquaredTo(_before[k]));
             farthest = Mathf.Max(farthest, pos[k].DistanceSquaredTo(Rest[k]));
         }
         _farthest = farthest;
@@ -1634,7 +1716,11 @@ public sealed partial class TissueSim {
         if (_retractDirty) {
             UpdateRetraction();
         }
-        _stillSteps = moved < SleepEpsilon * SleepEpsilon ? _stillSteps + 1 : 0;
+        // A grip held still can leave a few particles where the constraints push them back and forth by a few
+        // hundredths of a millimeter every step, forever: back where they were two steps ago, they're at rest too.
+        var still = moved < SleepEpsilon * SleepEpsilon
+            || (wandered < SleepEpsilon * SleepEpsilon && moved < SleepJitter * SleepJitter);
+        _stillSteps = still ? _stillSteps + 1 : 0;
         if (_stillSteps >= SleepSteps) {
             if (_pins.Count == 0) { _fold.Active = false; }
             _fold.Expire(this);
@@ -2131,6 +2217,7 @@ public sealed partial class TissueSim {
     /// thread holds their edges together.
     /// </summary>
     private void UpdateRetraction() {
+        RefreshHolds();
         _retractDirty = false;
         if (_pull.Length != Rest.Length) {
             _pull = new Vector3[Rest.Length];
