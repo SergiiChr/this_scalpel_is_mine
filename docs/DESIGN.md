@@ -371,7 +371,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and
   paper clips, pulled the same way (`ToolActions.HasTensionWheel()`). And the Gelpi retractor: up opens it, down
-  closes it (see Gelpi retractor). Tape and the other closures take no wheel: pressed on, they close. And forceps and
+  closes it (see Gelpi retractor). Tape and the other closures take no wheel: tape is clicked down like the needle's
+  holes (see Tape), the rest close where they're pressed on. And forceps and
   hemostats over an opening (`Surgeon.HoldsDepth()`): up raises the tip a notch (`Surgeon.DepthStep`), down lowers
   it, from the lip down to resting on what's inside, never into it. Held at a depth, the tip stays there as it moves
   (riding up over organs) and when Use tool is pressed, so the jaws close where the tip is: on a target, vessel or
@@ -578,6 +579,28 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   staple. A nick is no new wound to close.
 - How closed the skin is (`Patient.SkinClosure()`) is weighed by each wound's length: a small hole left open counts
   for as little of it as it is. The "close" objective is met at `Patient.ClosedEnough` (0.9) in every scenario.
+
+### Tape
+
+- Surgical and duct tape (`action="tape"`, `TapeAction`) are worked like the needle, no wheel: a click on the site
+  presses a strip down there, the first starting it off the roll, and each later click sticks it down all the way
+  from the one before. A hold presses the last point down and cuts the strip off the roll; one pressed down at a
+  single point comes away with it. Each point takes a charge.
+- A stretch stuck down holds every cut edge under it (`ToolDef.Radius` either side of its line) at the tension skin
+  closes at (`TissueSim.TapeStretch()`), so the cut counts closed where they then meet, like any closure. Not over cut
+  muscle: that holds the skin apart, and tape can't reach it.
+- How firmly it sticks is its grip (`Patient.Grip()`): the tape's `power` times `Patient.TapeGrip`, less on blood on
+  the skin under it (`Patient.WetGrip`) and on a cut into the fat (`Patient.DeepGrip`). It pulls together only edges
+  lying no further apart than that (`TissueSim.TapeLoad()`): on a deep or gaping cut, such as the forearm
+  laceration of hand stitch, it peels straight off. Once they're shut it lets go when they're pulled apart by a share
+  of its grip (`Patient.TapeHold`): a hand pulling the skin beside it, which a strip on blood doesn't survive. Blood
+  oozing from the cut under it soaks in and loosens it further (`Patient.TapeSoak`). Let go, it peels off, the cut
+  opens again and it costs points.
+- Gauze it goes over, lying on the skin or held over it by the other hand, is taped down there (`ToolManager.TapeDown()`):
+  it lies flat on the body, riding the site, and keeps pressing the cut under it as gauze pressed by hand does for as
+  long as the strip holds. Taken off, it takes the strip with it.
+- A strip is drawn flat along the skin between its points, over gauze it holds down, and from its last point to the
+  roll while it's still on it (`PatientBody.UpdateTapes()`). A strip that came off is gone.
 
 ### Tourniquet
 

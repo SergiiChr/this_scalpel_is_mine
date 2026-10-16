@@ -1,6 +1,6 @@
 namespace Scalpel.Tools;
 
-/// <summary>Closures pressed on with Use tool (tape, paper clips, quick stitches): on the skin they close the cut bin
+/// <summary>Closures pressed on with Use tool (paper clips, quick stitches): on the skin they close the cut bin
 /// by bin, in an opening the muscle, or an internal injury first. A tensioned one (Patient.TensionedClosures) is pulled
 /// as tight as its wheel says (<see cref="SutureState.Tension"/>).</summary>
 public sealed class SutureAction : ToolAction {
@@ -19,7 +19,7 @@ public sealed class SutureAction : ToolAction {
                 step.Surgery.Sound("suture_pull", step.Tip);
             } else if (patient.CloseAt(step.Uv, def, step.Dt, step.Hand.Mods.Mult("improvised_mult"), tool.Suture.Tension)) {
                 ToolActions.SpendCharge(tool);
-                step.Surgery.Sound(def.Id is "surgical_tape" or "duct_tape" ? "tape_rip" : "suture_pull", step.Tip);
+                step.Surgery.Sound("suture_pull", step.Tip);
             }
         } else if (step.Zone == SiteZone.Cavity) {
             // An internal injury under the needle comes first: sewing the muscle of the opening shut would close the way

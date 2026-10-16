@@ -592,7 +592,7 @@ public partial class Patient {
         Session.Announce("The staple went through a vessel. It's bleeding.", true);
     }
 
-    /// <summary>Closes the skin at uv with a closure tool (tape, paper clips, a quick stitch) pulled to
+    /// <summary>Closes the skin at uv with a closure tool (paper clips, a quick stitch) pulled to
     /// <paramref name="tension"/> (the wheel, see ToolActions.SutureTensionStep; only TensionedClosures mind it).
     /// Returns true when a bin closed.</summary>
     public bool CloseAt(Vector2 uv, ToolDef def, float dt, float improvisedMult, float tension) {
@@ -608,9 +608,6 @@ public partial class Patient {
         var loose = pull == "loose";
         var tight = pull == "too tight";
         var quality = def.Quality;
-        if (def.Action == "suture" && def.Id is "surgical_tape" or "duct_tape" && wound.Depth > 0.6f) {
-            quality *= 0.5f;
-        }
         if (def.Improvised) {
             quality = Mathf.Lerp(quality, 1f, 1f - improvisedMult);
         }
@@ -661,9 +658,6 @@ public partial class Patient {
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, p, p, 0.012f, 0.35f, WoundMap.Mode.Min);
         Paint(WoundMap.Layer.Wounds, WoundMap.Stitch, p - new Vector2(0.006f, 0f), p + new Vector2(0.006f, 0f), 0.002f, 1f, WoundMap.Mode.Max);
         Rpc(MethodName.TissueStitch, p, StitchTension[pull], 1.2f + quality);
-        if (def.Id == "duct_tape") {
-            AddFlag("duct_tape");
-        }
         ScoreNeatClosure(wound);
         Hurt(0.06f, uv);
         return true;
@@ -671,11 +665,11 @@ public partial class Patient {
 
     private Vector2 RandomDirection() => new(Rng.RandfRange(-1f, 1f), Rng.RandfRange(-1f, 1f));
 
-    /// <summary>Sewing inside the opening of a wound through the muscle closes the muscle, bin by bin. Tape can't.
-    /// Returns true when a bin of muscle closed.</summary>
+    /// <summary>Sewing inside the opening of a wound through the muscle closes the muscle, bin by bin. Returns true when
+    /// a bin of muscle closed.</summary>
     public bool CloseMuscleAt(Vector2 uv, ToolDef def, float dt) {
         var wound = NearestWound(uv, 0.03f, false);
-        if (wound is null || !wound.ThroughMuscle || def.Id is "surgical_tape" or "duct_tape") {
+        if (wound is null || !wound.ThroughMuscle) {
             return false;
         }
         var bin = wound.BinAt(uv);

@@ -566,6 +566,27 @@ public partial class ToolManager : Node3D {
         }
     }
 
+    /// <summary>Host: gauze taped down on the patient (Patient.PlaceTapePoint()) leaves the hand holding it and lies flat
+    /// on the body where it is, riding the site.
+    /// Its middle goes down on the skin spot it's over (Patient.Body.WorldToUv()), the one it presses on, not straight
+    /// below: held off a curved belly, the two lie centimeters apart.</summary>
+    public void TapeDown(SurgicalTool gauze) {
+        if (gauze.State == ToolState.Held) {
+            Session.SetAttached(gauze.Holder, gauze.Slot, false);
+        }
+        var back = gauze.GlobalBasis.Z.Slide(Vector3.Up).Normalized();
+        if (back == Vector3.Zero) {
+            back = Vector3.Back;
+        }
+        var basis = new Basis(Vector3.Up.Cross(back).Normalized(), Vector3.Up, back);
+        var body = Session.Patient.Body;
+        var middle = body.UvToWorld(body.WorldToUv(gauze.Middle()));
+        var at = middle + (back * gauze.Def.Length * 0.5f);
+        at.Y = BodyUnder(gauze, middle) - gauze.Bounds.Position.Y + LyingClearance;
+        Rpc(MethodName.SetToolState, gauze.Uid, (int)ToolState.Standing, gauze.Holder, -1, new Transform3D(basis, at));
+        Rpc(MethodName.RideSite, gauze.Uid);
+    }
+
     /// <summary>A tool lying on the patient rises and falls with the site as the patient breathes
     /// (<see cref="SurgicalTool.Ride"/>).</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -626,7 +647,7 @@ public partial class ToolManager : Node3D {
         }
     }
 
-    private void LetFall(SurgicalTool tool) {
+    internal void LetFall(SurgicalTool tool) {
         Rpc(MethodName.SetToolState, tool.Uid, (int)ToolState.Free, 0, -1, tool.GlobalTransform);
         tool.Falling = true;
     }

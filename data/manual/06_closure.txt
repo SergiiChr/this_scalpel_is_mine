@@ -30,17 +30,23 @@ Inside the cavity, hold the needle on an internal injury to repair it.
 A stapler puts in one staple per click ([b]Use tool[/b]). The aim shows two rings where its legs go in: turn the stapler so they sit across the wound, one on each edge, and click. Each staple joins the edges for a few millimetres; place them along the whole wound. Over open muscle the staple goes into the muscle first.
 An office stapler now and then tears out through the skin, or catches a vessel and the closed wound keeps bleeding. Cauterize where it bleeds.
 
-## 6.5 Clip tension
+## 6.5 Adhesive strips
+Tape is laid like a running suture, without the wheel. Click ([b]Use tool[/b]) to press the strip down at a point; each further click sticks it down along the way from the last one. Hold [b]Use tool[/b] to press the last point down and cut the strip off the roll.
+• Tape pulls a small, shallow cut shut. A deep or gaping cut is beyond it: the strip peels straight off. Close those with sutures.
+• Blood under the strip weakens it. Stop the ooze and dry the skin first, or a pull on the skin beside it lifts it off and the wound reopens.
+• Laid over gauze, the strip tapes it down onto the wound, and the gauze keeps pressing there for as long as the tape holds.
+
+## 6.6 Clip tension
 Paper clips are pulled like the thread: the mouse wheel sets how tight, down tighter and up looser, and the hand status reads it. They work once lowered onto the wound ([b]Use tool[/b]).
 • Loose: rapid, but the wound edges do not meet and continue to ooze.
 • Closed: edges apposed without blanching. The intended setting.
 • Too tight: strongest seal, but clips may cut through.
 > Traction on a sutured wound can pull sutures through.
 
-## 6.6 Strain on the closure
+## 6.7 Strain on the closure
 Seizures, coughing, falls and impacts load the closure. Weak closures dehisce. Heparin and high pressure make any closure leak (5.5). Internal injuries (stomach, bowel, arteries) are repaired with sutures or cautery within the cavity.
 
-## 6.7 Discharge
+## 6.8 Discharge
 The operation ends when a surgeon signs the discharge at the foot of the patient record: hold [b]Interact[/b] over the record until the signature is complete. Sign only once the procedure is finished, the closure holds, nothing bleeds and the patient is stable. A patient discharged early leaves with the work undone.
 
 [font_size=16][b]References[/b]

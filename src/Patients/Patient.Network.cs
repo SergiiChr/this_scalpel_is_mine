@@ -70,6 +70,10 @@ public partial class Patient {
         if (Surgery.Current is not { Running: true }) {
             return;
         }
+        if (Body.Tissue.TapeOf(snapped.Spring) is > 0 and var tape && Body.Tissue.Tape(tape) is { Peeled: false }) {
+            PeelTape(tape, "The tape let go of the skin and the cut pulled open.");
+            return;
+        }
         var wound = NearestWound(mid, 0.04f, false);
         if (snapped.Kind == SpringKind.Stitch) {
             if (wound is not null) {
@@ -119,6 +123,21 @@ public partial class Patient {
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SutureSnap(int id) => Body.Tissue.SnapThread(id);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapeAnchor(int id, Vector2 uv, int point, float halfWidth, Color color) {
+        Body.Tissue.TapeAnchor(id, uv, point, halfWidth);
+        Body.TapeColor(id, color);
+    }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapeStretch(int id, float tension, float strength) => Body.Tissue.TapeStretch(id, tension, strength);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapeFinish(int id) => Body.Tissue.FinishTape(id);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void TapePeel(int id) => Body.Tissue.PeelTape(id);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void TissueMuscle(Vector2 uv, float radius) => Body.Tissue.MuscleStitch(uv, radius);

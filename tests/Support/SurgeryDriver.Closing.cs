@@ -7,8 +7,8 @@ public partial class SurgeryDriver {
     /// <summary>
     /// Sews every open skin wound shut: the muscle first where a wound goes through it, then the skin. The needle sews
     /// a running thread along each (<see cref="PlayerSews"/>), a stapler staples along it (<see cref="PlayerStaples"/>);
-    /// tape (<paramref name="toolId"/>) goes segment by segment along it, paper clips pulled until they read closed,
-    /// held on each until it's closed. Goes round again for anything that didn't close.
+    /// other closures (<paramref name="toolId"/>) go segment by segment along it, paper clips pulled until they read
+    /// closed, held on each until it's closed. Goes round again for anything that didn't close.
     /// </summary>
     public async Task PlayerClosesWounds(string toolId = "needle") {
         Note($"closes the wounds with {toolId}");
@@ -41,7 +41,7 @@ public partial class SurgeryDriver {
         await PlayerPutsDown();
     }
 
-    /// <summary>Tape or a closure strip pressed bin by bin along <paramref name="wound"/>: its muscle first where the cut
+    /// <summary>A closure strip pressed bin by bin along <paramref name="wound"/>: its muscle first where the cut
     /// goes through it, then its skin. A tensioned closure (paper clips) is pulled until it reads <paramref name="pull"/>
     /// first.</summary>
     public async Task PlayerTapes(Wound wound, string pull = "closed") {
@@ -72,6 +72,41 @@ public partial class SurgeryDriver {
                 await Frames.Physics(3);
             }
         }
+    }
+
+    /// <summary>Tapes <paramref name="wound"/> with the roll in the active hand: one strip along it, pressed down
+    /// <paramref name="past"/> meters before its start, every <paramref name="spacing"/> meters along it and as far past
+    /// its end, where it's cut off (<see cref="PlayerLaysTape"/>).</summary>
+    public async Task PlayerTapesAlong(Wound wound, float past = 0.01f, float spacing = 0.03f) {
+        var length = wound.LengthUv;
+        var stretches = Math.Max(Mathf.CeilToInt(Body.UvToMeters(length) / spacing), 1);
+        var points = Enumerable.Range(0, stretches + 1).Select(i => BesideWound(wound, length * i / stretches, 0f)).ToList();
+        var along = points[^1] - points[0];
+        along = along == Vector2.Zero ? Vector2.Right : along.Normalized();
+        points[0] -= along * Body.MetersToUv(past);
+        points[^1] += along * Body.MetersToUv(past);
+        await PlayerLaysTape(points);
+        Note($"taped wound {wound.Id}, closed {wound.Closure:0.00}");
+    }
+
+    /// <summary>A strip of tape from the roll in the active hand pressed down at each of <paramref name="points"/> (site
+    /// uv) and cut off at the last (<see cref="PlayerSticksTape"/>).</summary>
+    public async Task PlayerLaysTape(IReadOnlyList<Vector2> points) {
+        for (var i = 0; i < points.Count; i++) {
+            await PlayerSticksTape(points[i], i == points.Count - 1);
+        }
+    }
+
+    /// <summary>Presses the strip on the roll in the active hand down at <paramref name="uv"/> (site uv) with a click,
+    /// or with a hold that cuts it off there (<paramref name="cutOff"/>).</summary>
+    public async Task PlayerSticksTape(Vector2 uv, bool cutOff = false) {
+        var at = SitePoint(uv);
+        await WithinReach(at);
+        await PlayerReaches(at);
+        Use();
+        await Frames.Seconds(cutOff ? ToolActions.SutureTieHold + 0.2f : 0.2f);
+        Use(false);
+        await Frames.Physics(3);
     }
 
     /// <summary>

@@ -138,6 +138,10 @@ public static class SurgeryState {
     public static void SkinIsBloody(Patient patient, Vector2 uv, float radius) =>
         patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, radius, 1f, WoundMap.Mode.Max);
 
+    /// <summary>No blood on the skin within <paramref name="radius"/> (uv) of <paramref name="uv"/>.</summary>
+    public static void SkinIsDry(Patient patient, Vector2 uv, float radius) =>
+        patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, radius, 1f, WoundMap.Mode.Sub);
+
     /// <summary>The skin at <paramref name="uv"/> is punctured (a stab of <paramref name="severity"/>, 0..1) and bleeds
     /// from the hole.</summary>
     public static Wound SkinIsPunctured(Patient patient, Vector2 uv, float severity) =>

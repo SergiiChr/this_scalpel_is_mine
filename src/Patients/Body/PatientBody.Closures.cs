@@ -19,7 +19,11 @@ public sealed record DrawnSuture(
     float PressureAmount,
     int PressureHoles);
 
-/// <summary>Closures drawn on the site: running threads and staples, riding the tissue they hold.</summary>
+/// <summary>A strip of tape as last drawn: the path it lies along on the skin, and from its last point to the roll
+/// while it's still on it (site space, empty when cut off).</summary>
+public sealed record DrawnTape(Vector3[] Stuck, Vector3[] Live);
+
+/// <summary>Closures drawn on the site: running threads, staples and tape, riding the tissue they hold.</summary>
 public partial class PatientBody {
     public const float SutureRadius = 0.00028f;
     private const float SutureEntryDepth = 0.00045f;
@@ -48,6 +52,14 @@ public partial class PatientBody {
     private PlaneMesh _suturePressureMesh = null!;
     private int _sutureSteps = -1;
     private int _sutureTopology = -1;
+    /// <summary>How thick tape is drawn (meters), and how many points along each stretch between two pressed down
+    /// follow the skin and what lies on it.</summary>
+    private const float TapeThickness = 0.0002f;
+    private const int TapeSamples = 12;
+    private Node3D _tapeRoot = null!;
+    private readonly Dictionary<int, Color> _tapeColors = [];
+    private readonly Dictionary<int, DrawnTape> _tapeDrawn = [];
+    private (int Steps, int Topology) _tapesDrawnFor = (-1, -1);
 
     /// <summary>Every staple as drawn, in the order they went in.</summary>
     public List<DrawnStaple> DrawnStaples { get; private set; } = [];
@@ -57,6 +69,15 @@ public partial class PatientBody {
 
     /// <summary>The node holding thread <paramref name="id"/>'s meshes, null before it's drawn.</summary>
     public Node3D? ThreadNode(int id) => _sutureRoot.GetNodeOrNull<Node3D>($"Suture{id}");
+
+    /// <summary>How strip <paramref name="id"/> was last drawn, null before it's drawn and once it came off.</summary>
+    public DrawnTape? DrawnStrip(int id) => _tapeDrawn.GetValueOrDefault(id);
+
+    /// <summary>The mesh strip <paramref name="id"/> is drawn in, null before it's drawn.</summary>
+    public MeshInstance3D? TapeNode(int id) => _tapeRoot.GetNodeOrNull<MeshInstance3D>($"Tape{id}");
+
+    /// <summary>Strip <paramref name="id"/> is drawn in <paramref name="color"/>, its tape's.</summary>
+    public void TapeColor(int id, Color color) => _tapeColors[id] = color;
 
     /// <summary>The mesh every staple is drawn in, null before the first staple.</summary>
     public MeshInstance3D? StapleWire => _stapleRoot.GetNodeOrNull<MeshInstance3D>("Wire");
@@ -75,6 +96,8 @@ public partial class PatientBody {
         var pressure = new ShaderMaterial { Shader = GD.Load<Shader>("res://assets/shaders/suture_pressure.gdshader") };
         pressure.SetShaderParameter("pressure_texture", GD.Load<Texture2D>("res://assets/sprites/suture_pressure.svg"));
         _suturePressureMesh = new PlaneMesh { Size = Vector2.One * SuturePressureSize, Material = pressure };
+        _tapeRoot = new Node3D { Name = "Tapes" };
+        Site.AddChild(_tapeRoot);
     }
 
     /// <summary>A staple put in with its legs at a and b (uv, where they touched the tissue) through
@@ -386,5 +409,77 @@ public partial class PatientBody {
         }
         var drawn = paths.Where(path => path.Length > 1).ToList();
         tubes.Mesh = drawn.Count > 0 ? Shapes.Tubes(drawn, SutureRadius, SutureRadius, 6, tubes.Mesh as ArrayMesh) : null;
+    }
+
+    /// <summary>Draws each strip of tape flat along the skin between the points it was pressed down at, over gauze it
+    /// holds down, and from its last point up to the roll while it's still on it. A strip that came off is gone. Stuck
+    /// stretches are drawn again only when the skin as published changes; the one to the roll follows it every frame.
+    /// </summary>
+    internal void UpdateTapes() {
+        var drawnFor = (_layerSteps, _layerVersion);
+        var tissueChanged = drawnFor != _tapesDrawnFor;
+        _tapesDrawnFor = drawnFor;
+        foreach (var id in Tissue.TapeIds) {
+            var tape = Tissue.Tape(id)!;
+            var node = TapeNode(id);
+            if (tape.Peeled) {
+                if (node is not null) {
+                    node.QueueFree();
+                    node.Name = $"Peeled{id}";
+                    _tapeDrawn.Remove(id);
+                }
+                continue;
+            }
+            var drawn = _tapeDrawn.GetValueOrDefault(id);
+            if (drawn is not null && tape.Final && drawn.Live.Length == 0 && !tissueChanged) {
+                continue;
+            }
+            if (node is null) {
+                node = new MeshInstance3D {
+                    Name = $"Tape{id}",
+                    MaterialOverride = Materials.FamilyUnique("cloth", _tapeColors.GetValueOrDefault(id, Colors.White), 0.95f),
+                };
+                _tapeRoot.AddChild(node);
+            }
+            var stuck = drawn is null || tissueChanged ? StuckTape(tape) : drawn.Stuck;
+            var live = Array.Empty<Vector3>();
+            if (!tape.Final && Surgery.Current?.Tools.SutureTip(id) is { } tip && stuck.Length > 0) {
+                live = [stuck[^1], Site.ToLocal(tip)];
+            }
+            _tapeDrawn[id] = new DrawnTape(stuck, live);
+            var paths = new[] { stuck, live }.Where(path => path.Length > 1).ToList();
+            node.Mesh = paths.Count > 0 ? Shapes.Tubes(paths, tape.HalfWidth, TapeThickness, 8, node.Mesh as ArrayMesh) : null;
+        }
+    }
+
+    /// <summary>Where a strip lies: through the points it was pressed down at as the skin carries them now, on the
+    /// skin as it's drawn (bridging a cut's gap level with its edges) or on the gauze it holds down.</summary>
+    private Vector3[] StuckTape(TapeStrip tape) {
+        var points = tape.Anchors.Select((k, i) => LayerPoint(0, k) + Tissue.HoleOffset(k, tape.Points[i])).ToArray();
+        if (points.Length < 2) {
+            return points.Length == 1 ? [OnSkin(points[0], tape)] : [];
+        }
+        var path = new List<Vector3>();
+        for (var i = 1; i < points.Length; i++) {
+            for (var n = i == 1 ? 0 : 1; n <= TapeSamples; n++) {
+                path.Add(OnSkin(points[i - 1].Lerp(points[i], (float)n / TapeSamples), tape));
+            }
+        }
+        return [.. path];
+    }
+
+    /// <summary><paramref name="p"/> (site space) lifted onto the skin as drawn, or onto gauze lying on it, the tape's
+    /// thickness over it.</summary>
+    private Vector3 OnSkin(Vector3 p, TapeStrip tape) {
+        p.Y = SkinHeight(LocalToUv(p)) + SkinBias + TapeThickness;
+        foreach (var gauze in Surgery.Current?.Tools.Tools.Values.Where(t => t.Def.Id == "gauze" && t.State == ToolState.Standing) ?? []) {
+            var local = gauze.GlobalTransform.AffineInverse() * Site.ToGlobal(p);
+            var bounds = gauze.Bounds.Grow(tape.HalfWidth * 0.5f);
+            if (local.X > bounds.Position.X && local.X < bounds.End.X && local.Z > bounds.Position.Z && local.Z < bounds.End.Z) {
+                var top = Site.ToLocal(gauze.GlobalTransform * (local with { Y = gauze.Bounds.End.Y }));
+                p.Y = Mathf.Max(p.Y, top.Y + TapeThickness);
+            }
+        }
+        return p;
     }
 }
