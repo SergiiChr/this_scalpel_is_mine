@@ -70,9 +70,10 @@ contains them. One release PR is open at a time.
    `./build.py generate_baseline --use-latest-set`, commit `tests/KeyFrames` on `keyframes/<short hash>` from the
    verified commit and open a PR to `develop`. On a conflict in `tests/KeyFrames`, a feature merged since owns the
    file: take `develop`'s.
-6. The owner approves the release PR. Release by fast-forwarding `main` to the verified commit
-   (`git push origin <hash>:main`); GitHub then marks the PR merged. Never merge it with the button: every method
-   there makes a new commit, and `main` would stop being an ancestor of `develop`.
+6. Ask the owner to approve the release in the project thread (the PR is opened under their account, so GitHub won't
+   take their review). On their yes, fast-forward `main` to the verified commit (`git push origin <hash>:main`);
+   GitHub then marks the PR merged. Never merge it with the button: every method there makes a new commit, and
+   `main` would stop being an ancestor of `develop`.
 
 The key frames PR is merged as soon as its CI is green, without waiting for the owner.
 Never rebase or force-push `develop` or `main`: open feature branches are built on `develop`'s history.
