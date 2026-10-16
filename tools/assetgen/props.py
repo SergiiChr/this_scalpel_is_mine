@@ -38,6 +38,28 @@ def _wheels(radius: float, spread: float, y: float = 0.0) -> trimesh.Trimesh:
     return merge(*parts)
 
 
+def _block(size: tuple[float, float, float], center: tuple[float, float, float]) -> trimesh.Trimesh:
+    """A box with just its edges eased: sheet metal and steel section, not moulded plastic.
+    Six rings already keep the eased edges, and the carts are made of many of these."""
+    return superellipsoid(size, 0.06, center, detail=6)
+
+
+def _caster(x: float, z: float) -> list[trimesh.Trimesh]:
+    """A swivel caster under a corner: its plate, the fork either side of the wheel and the stem, steel."""
+    return [
+        _block((0.06, 0.008, 0.06), (x, 0.096, z)),
+        cylinder(0.012, (x, 0.092, z), (x, 0.075, z), 10),
+        _block((0.005, 0.05, 0.04), (x - 0.022, 0.06, z + 0.012)),
+        _block((0.005, 0.05, 0.04), (x + 0.022, 0.06, z + 0.012)),
+        cylinder(0.006, (x - 0.026, 0.045, z + 0.02), (x + 0.026, 0.045, z + 0.02), 8),
+    ]
+
+
+def _wheel(x: float, z: float) -> trimesh.Trimesh:
+    """The rubber wheel in a caster's fork."""
+    return cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20)
+
+
 def _operating_table() -> Model:
     m = Model("props", "operating_table")
     m.add("Base", superellipsoid((0.7, 0.08, 0.45), 0.25, (0.0, 0.04, 0.0)), "dark_steel")
@@ -155,13 +177,90 @@ def _bell() -> Model:
     return m
 
 
+# The glove cart: a white drawer cart with a flat top, the glove box standing on it under the organizer at the back.
+CART_TOP = 0.9
+CART_WIDTH, CART_DEPTH = 0.56, 0.44
+# Drawer rows top down, one shallow row over three deep ones, in two columns.
+DRAWER_ROWS = (0.08, 0.195, 0.195, 0.195)
+DRAWER_GAP = 0.012
+
+
+def _drawer_cart(m: Model) -> None:
+    """A hospital cart: a white body on a steel chassis and four swivel casters, a flat top, two columns of blue
+    drawers with a chrome bar handle each, a push handle on the left and a flat chart holder on the right.
+    The top is closed, so things stand on it. The body fills the station's solid footprint; the handles and the holder
+    stand a few centimeters proud of it, like the old cabinet's door handles did.
+    """
+    hw, hd = CART_WIDTH / 2, CART_DEPTH / 2
+    top = _block((CART_WIDTH + 0.04, 0.03, CART_DEPTH + 0.02), (0.0, CART_TOP - 0.015, 0.0))
+    body = _block((CART_WIDTH, CART_TOP - 0.15, CART_DEPTH), (0.0, (CART_TOP - 0.03 + 0.12) / 2, 0.0))
+    chassis = _block((CART_WIDTH - 0.06, 0.03, CART_DEPTH - 0.08), (0.0, 0.105, 0.0))
+    corners = [(x, z) for x in (-hw + 0.06, hw - 0.06) for z in (-hd + 0.08, hd - 0.08)]
+    casters = [part for x, z in corners for part in _caster(x, z)]
+    wheels = [_wheel(x, z) for x, z in corners]
+    # The drawer fronts stand proud of the body, their handles a bar on two stand-offs just below the top edge.
+    fronts, handles = [], []
+    y = CART_TOP - 0.03 - DRAWER_GAP
+    for height in DRAWER_ROWS:
+        for x in (-hw / 2, hw / 2):
+            fronts.append(_block((hw - DRAWER_GAP, height, 0.016), (x, y - height / 2, hd + 0.006)))
+            bar_y, bar_z = y - 0.03, hd + 0.032
+            handles.append(cylinder(0.006, (x - 0.09, bar_y, bar_z), (x + 0.09, bar_y, bar_z), 10))
+            handles += [cylinder(0.005, (x + s * 0.08, bar_y, hd + 0.014), (x + s * 0.08, bar_y, bar_z), 8) for s in (-1, 1)]
+        y -= height + DRAWER_GAP
+    # The push handle: a loop out of the left side behind the middle, its grip in the middle.
+    loop = [(-hw, 0.62, -0.15), (-hw - 0.03, 0.62, -0.15), (-hw - 0.03, CART_TOP - 0.06, -0.15), (-hw, CART_TOP - 0.06, -0.15)]
+    handles += [cylinder(0.008, a, b, 10) for a, b in pairwise(loop)]
+    handles += [ellipsoid((0.008, 0.008, 0.008), bend, 1) for bend in loop[1:-1]]
+    m.add("Grip", cylinder(0.011, (-hw - 0.03, 0.68, -0.15), (-hw - 0.03, 0.78, -0.15), 12), "black_plastic")
+    # A flat steel chart holder hangs on the right side from a rail screwed into the body.
+    holder = merge(
+        _block((0.008, 0.36, 0.28), (hw + 0.012, 0.66, 0.0)),
+        _block((0.03, 0.012, 0.28), (hw + 0.001, 0.845, 0.0)),
+    )
+    m.add("Cabinet", merge(top, body), "plastic")
+    m.add("Drawers", merge(*fronts), "blue_plastic")
+    m.add("Handles", merge(*handles), "chrome")
+    m.add("Steel", merge(chassis, holder, *casters), "steel")
+    m.add("Wheels", merge(*wheels), "rubber")
+
+
+def _organizer(m: Model) -> None:
+    """The open organizer standing at the back of the cart top: two uprights with a back panel, two tiers of frosted
+    bins on shelves that reach forward over the glove box, and a top shelf with a lip. It clears the box and the gloves
+    fanned out of its slot, and the player at the station looks under its front edge at the box.
+    """
+    hw, hd = CART_WIDTH / 2, CART_DEPTH / 2
+    depth, back = 0.17, -hd - 0.005
+    front = back + depth
+    tiers = (1.12, 1.36)
+    top_y = tiers[-1] + 0.22
+    frame = [_block((0.025, top_y - CART_TOP, 0.025), (s * (hw - 0.0125), (top_y + CART_TOP) / 2, back + 0.0125)) for s in (-1, 1)]
+    frame.append(_block((CART_WIDTH - 0.05, top_y - CART_TOP - 0.02, 0.008), (0.0, (top_y + CART_TOP) / 2, back + 0.004)))
+    frame += [_block((CART_WIDTH, 0.015, depth), (0.0, y - 0.0075, back + depth / 2)) for y in (*tiers, top_y)]
+    frame += [_block((0.012, 0.2, depth), (s * (hw - 0.006), y + 0.1, back + depth / 2)) for y in tiers for s in (-1, 1)]
+    frame.append(_block((CART_WIDTH, 0.03, 0.01), (0.0, top_y + 0.015, front - 0.005)))
+    bins, labels = [], []
+    pitch = (CART_WIDTH - 0.05) / 3
+    for y in tiers:
+        for x in (-pitch, 0.0, pitch):
+            bins.append(superellipsoid((pitch - 0.015, 0.13, depth - 0.02), 0.08, (x, y + 0.065, back + depth / 2), detail=8))
+            labels.append(_block((pitch - 0.07, 0.03, 0.004), (x, y + 0.105, front - 0.008)))
+    m.add("Organizer", merge(*frame), "plastic")
+    m.add("Bins", merge(*bins), "frosted_plastic")
+    m.add("Labels", merge(*labels), "blue_plastic")
+
+
 def _gloves() -> Model:
-    """Cabinet with a dispenser box of gloves on top and a loose pair in front of it, from a hand-made source model."""
+    """Glove cart: a drawer cart with the organizer on its top and a dispenser box of gloves under the organizer's front
+    edge, a loose pair in front of the box, from a hand-made source model."""
     m = Model("props", "gloves")
-    _cabinet(m)
+    _drawer_cart(m)
+    _organizer(m)
     source = trimesh.load_scene(SOURCES / "glove_box.glb")
-    # The source is Z up with the loose pair toward -Y: stand it Y up with the pair toward the doors (+Z), centered on the cabinet's top.
-    place = trimesh.transformations.translation_matrix((0.0, 0.9, -0.12)) @ trimesh.transformations.rotation_matrix(-np.pi / 2, (1.0, 0.0, 0.0))
+    # The source is Z up with the loose pair toward -Y: stand it Y up with the pair toward the drawers (+Z), on the
+    # cart's top just in front of the organizer's uprights, so the pair ends at the top's front edge.
+    place = trimesh.transformations.translation_matrix((0.0, CART_TOP, -0.085)) @ trimesh.transformations.rotation_matrix(-np.pi / 2, (1.0, 0.0, 0.0))
     parts: dict[tuple[str, str], list[trimesh.Trimesh]] = {}
     for node in source.graph.nodes_geometry:
         transform, geometry = source.graph[node]
@@ -213,12 +312,6 @@ XRAY_COLUMN = (-0.17, -0.03)
 XRAY_ARM_ABOVE = 0.24
 
 
-def _block(size: tuple[float, float, float], center: tuple[float, float, float]) -> trimesh.Trimesh:
-    """A box with just its edges eased: sheet metal and steel section, not moulded plastic.
-    Six rings already keep the eased edges, and the cart is made of many of these."""
-    return superellipsoid(size, 0.06, center, detail=6)
-
-
 def _beam(a: tuple[float, float, float], b: tuple[float, float, float], width: float, height: float) -> trimesh.Trimesh:
     """A level rectangular steel section from a to b."""
     va, vb = np.asarray(a, float), np.asarray(b, float)
@@ -227,17 +320,6 @@ def _beam(a: tuple[float, float, float], b: tuple[float, float, float], width: f
     beam.apply_transform(trimesh.transformations.rotation_matrix(float(np.arctan2(run[0], run[2])), (0.0, 1.0, 0.0)))
     beam.apply_translation((va + vb) / 2)
     return beam
-
-
-def _caster(x: float, z: float) -> list[trimesh.Trimesh]:
-    """A swivel caster under a rail end: its plate, the fork either side of the wheel and the stem, steel."""
-    return [
-        _block((0.06, 0.008, 0.06), (x, 0.096, z)),
-        cylinder(0.012, (x, 0.092, z), (x, 0.075, z), 10),
-        _block((0.005, 0.05, 0.04), (x - 0.022, 0.06, z + 0.012)),
-        _block((0.005, 0.05, 0.04), (x + 0.022, 0.06, z + 0.012)),
-        cylinder(0.006, (x - 0.026, 0.045, z + 0.02), (x + 0.026, 0.045, z + 0.02), 8),
-    ]
 
 
 def _xray() -> Model:
@@ -253,9 +335,9 @@ def _xray() -> Model:
     foot = _block((0.12, 0.012, 0.12), (XRAY_COLUMN[0], 0.155, XRAY_COLUMN[1]))
     gussets = [_block((0.008, 0.12, 0.1), (XRAY_COLUMN[0] + s * 0.045, 0.21, XRAY_COLUMN[1])) for s in (-1, 1)]
     frame = [*rails, *cross, foot, *gussets]
-    casters = [_caster(x, z) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
-    forks = [part for caster in casters for part in caster]
-    wheels = [cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
+    corners = [(x, z) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
+    forks = [part for x, z in corners for part in _caster(x, z)]
+    wheels = [_wheel(x, z) for x, z in corners]
     m.add("Wheels", merge(*wheels), "rubber")
     cx, cz = XRAY_COLUMN
     # Tall enough that the carriage at its highest still clamps it.
