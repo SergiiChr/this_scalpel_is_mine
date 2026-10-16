@@ -282,11 +282,14 @@ public class RetractorTest {
     private static Dictionary<int, float> DrawnSkin(PatientBody body) {
         var tissue = body.Tissue;
         var heights = new Dictionary<int, float>();
+        // The sheet is the surface drawn in the skin's material; a layer with no sheet publishes only its walls.
         var skin = body.Layers[0].Mesh;
-        if (skin.GetSurfaceCount() == 0) {
+        var sheet = Enumerable.Range(0, skin.GetSurfaceCount()).Where(s => skin.SurfaceGetMaterial(s) == body.SkinMaterial)
+            .DefaultIfEmpty(-1).First();
+        if (sheet < 0) {
             return heights;
         }
-        var arrays = skin.SurfaceGetArrays(0);
+        var arrays = skin.SurfaceGetArrays(sheet);
         var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
         for (var v = 0; v < vertices.Length; v++) {
