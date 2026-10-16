@@ -199,9 +199,9 @@ public partial class Surgeon {
         hand.HeldDepth = depth < opening.Bottom ? depth : null;
     }
 
-    /// <summary>The wheel while forceps hold onto something: up pulls it a notch higher, slow enough for something still
-    /// attached to come loose rather than rip (Patient.UpdateGrip()), down lets it a notch lower, never under what's
-    /// inside an opening.</summary>
+    /// <summary>The wheel while forceps hold onto something: up pulls it a notch higher, down lets it a notch lower,
+    /// never under what's inside an opening. Notch by notch, something still attached comes loose; scrolled fast, it
+    /// rips like any fast pull (Patient.UpdateGrip()).</summary>
     private void StepHeld(SurgeonHand hand, bool up) {
         var down = InOpening(hand.Index) is { } opening ? Mathf.Clamp(opening.Bottom - opening.Depth, 0f, DepthStep) : DepthStep;
         hand.Target += Vector3.Up * (up ? DepthStep : -down);

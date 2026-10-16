@@ -253,8 +253,9 @@ public partial class Hud {
     /// <summary>How deep the forceps' tip is in the opening, and whether the wheel holds it there or it rests on what's
     /// inside.</summary>
     private static string DepthText(Surgeon me, TipInOpening opening) {
-        var where = me.Hands[me.Active].HeldDepth is not null ? "held by the wheel" : "resting on what's inside";
-        return $"Tip depth\n[color=#fff4c8][b]▶ {opening.Depth * 100f:0.0} cm[/b][/color]\n[color=#ffffffc0]   {where}[/color]";
+        var where = opening.Depth < 0f ? "over the lip"
+            : me.Hands[me.Active].HeldDepth is not null ? "held by the wheel" : "resting on what's inside";
+        return $"Tip depth\n[color=#fff4c8][b]▶ {Mathf.Max(opening.Depth, 0f) * 100f:0.0} cm[/b][/color]\n[color=#ffffffc0]   {where}[/color]";
     }
 
     /// <summary>The levels, the current one marked; red while the tool is working at it.</summary>
