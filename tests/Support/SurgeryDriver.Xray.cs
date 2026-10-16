@@ -7,6 +7,13 @@ public partial class SurgeryDriver {
     private Interactable CartSpot(string prompt) =>
         Cart.FindChildren("*", "", true, false).OfType<Interactable>().First(spot => spot.Prompt.StartsWith(prompt));
 
+    /// <summary>True when every part of <paramref name="spot"/>'s highlight is lit up.</summary>
+    public static bool IsLit(Interactable spot) =>
+        spot.Highlight.Count > 0 && spot.Highlight
+            .SelectMany(part => part.FindChildren("*", "GeometryInstance3D", true, false).Append(part))
+            .OfType<GeometryInstance3D>()
+            .All(mesh => mesh.MaterialOverlay == Materials.Highlight);
+
     /// <summary>Looks at the cart's spot whose prompt starts with <paramref name="prompt"/> and presses interact.
     /// </summary>
     private async Task PlayerInteractsWithCart(string prompt) {
@@ -18,44 +25,53 @@ public partial class SurgeryDriver {
         Note($"interacts with the X-ray cart: {prompt}");
     }
 
-    /// <summary>Takes the cart by its handle and pushes it until the tube head hangs over <paramref name="point"/>,
-    /// then locks it against the floor. With <paramref name="lateral"/>, the wheel first brings the head down until the
-    /// lateral beam runs at that height (lower, the arm reaches further).</summary>
-    public async Task PlayerParksXrayOver(Vector3 point, float? lateral = null) {
-        var handle = CartSpot("Push").GlobalPosition;
+    /// <summary>Takes hold of the cart by its handle and pushes it until the tube head hangs over
+    /// <paramref name="point"/>, still holding it. With <paramref name="lateral"/>, the wheel first brings the head down
+    /// until the lateral beam runs at that height.</summary>
+    public async Task PlayerPushesXrayOver(Vector3 point, float? lateral = null) {
+        var handle = Cart.ToGlobal(new Vector3(0f, 0.9f, 0.4f));
         await PlayerWalksTo(handle, 0.6f);
-        await PlayerInteractsWithCart("Push");
+        await PlayerLooksAt(handle);
+        await Frames.Physics(2);
+        PlayerInput.Tap(InputActions.Grab);
+        await PlayerInput.Delivered();
+        await Frames.Physics(2);
+        Note("takes hold of the X-ray cart");
+        await Frames.Physics(30);
         if (lateral is { } height) {
             await PlayerBringsLateralBeamTo(height);
         }
-        // The head reaches this far ahead of the cart, and the cart is this far ahead of its pusher.
-        var reach = -Cart.ToLocal(((Node3D)Cart.FindChild("Head", true, false)).GlobalPosition).Z;
+        // Held like a tool, the cart and its tube head keep where they are from the pusher, a little to one side or
+        // turned if they were grabbed that way: the pusher stands as far from the point as the head is from them, and
+        // faces off it by as much as the head is off their straight ahead.
+        var head = Me.ToLocal(((Node3D)Cart.FindChild("Head", true, false)).GlobalPosition) with { Y = 0f };
+        var held = Me.ToLocal(Cart.GlobalPosition) with { Y = 0f };
+        var offAhead = Mathf.Atan2(-head.X, -head.Z);
         var flat = point with { Y = Me.GlobalPosition.Y };
         // Across the table from the side the cart stands on first, then round toward its ends, until the pusher has
         // room to stand and the cart fits on the floor.
         var side = Mathf.Sign(Cart.GlobalPosition.Z - point.Z);
-        var parked = false;
+        Vector3? facing = null;
         foreach (var turn in (float[])[0f, 0.4f, -0.4f, 0.8f, -0.8f, Mathf.Pi, Mathf.Pi + 0.4f, Mathf.Pi - 0.4f]) {
             var away = new Vector3(0f, 0f, side).Rotated(Vector3.Up, turn);
-            var cart = flat + (away * reach);
+            var stand = flat + (away * head.Length());
+            var ahead = (-away).Rotated(Vector3.Up, -offAhead);
+            var cart = stand + (new Basis(Vector3.Up, Mathf.Atan2(-ahead.X, -ahead.Z)) * held);
             if (Mathf.Abs(cart.X) > Cart.Bounds.X || Mathf.Abs(cart.Z) > Cart.Bounds.Y) {
                 continue;
             }
-            var stand = flat + (away * (reach + XrayCart.PushOffset));
             await PlayerWalksTo(stand, 0f);
             if ((Me.GlobalPosition with { Y = stand.Y }).DistanceTo(stand) < 0.02f) {
-                parked = true;
+                facing = (stand + ahead) with { Y = point.Y };
                 break;
             }
         }
-        if (!parked) {
+        if (facing is not { } look) {
             throw new InvalidOperationException($"No room to push the X-ray cart over {point} in {Surgery.Scenario.Id}.");
         }
-        await PlayerLooksAt(point);
+        await PlayerLooksAt(look);
         await Frames.Physics(60);
-        PlayerInput.Tap(InputActions.UseTool);
-        await PlayerInput.Delivered();
-        Note($"parks the X-ray cart over {point}");
+        Note($"pushes the X-ray cart over {point}");
     }
 
     /// <summary>Rolls the wheel a step at a time, watching the lateral field's outline, until the beam runs within a
@@ -73,9 +89,14 @@ public partial class SurgeryDriver {
         Note($"brings the lateral beam to {Cart.Beams()[1].Source.Origin.Y:0.000} m for {height:0.000} m");
     }
 
-    /// <summary>Takes an exposure from the tube head and waits for both films to develop.</summary>
+    /// <summary>Takes an exposure with Use tool while holding the cart, lets go of it, locking it, and waits for both
+    /// films to develop.</summary>
     public async Task PlayerTakesXray() {
-        await PlayerInteractsWithCart("Take an X-ray");
+        PlayerInput.Tap(InputActions.UseTool);
+        await PlayerInput.Delivered();
+        PlayerInput.Tap(InputActions.Grab);
+        await PlayerInput.Delivered();
+        Note("takes an X-ray and lets go of the cart");
         await Frames.Physics((int)((XrayCart.ExposeTime + XrayCart.DevelopTime) * Engine.PhysicsTicksPerSecond) + 10);
     }
 

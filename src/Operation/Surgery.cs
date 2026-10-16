@@ -26,6 +26,12 @@ public partial class Surgery : Node3D {
     private const ulong ContactRepeatMsec = 120;
     /// <summary>The quiet after a syringe pushes into the local surgeon that makes the next one news.</summary>
     private const ulong StingGapMsec = 3000;
+    /// <summary>Mean blood on the skin (<see cref="PatientBody.SkinBlood"/>) from which there's something to clean.
+    /// </summary>
+    internal const float SkinBloodSeen = 0.002f;
+    /// <summary>Share of the most blood the skin held that may be left on it at the discharge for it to count as
+    /// cleaned.</summary>
+    internal const float SkinBloodLeft = 0.3f;
     /// <summary>Host: peers whose surgeon died of a heart attack.</summary>
     private readonly HashSet<int> _dead = [];
     /// <summary>Host: surgeons whose heart has stopped, waiting for a defibrillator.</summary>
@@ -47,6 +53,8 @@ public partial class Surgery : Node3D {
     private readonly Dictionary<ToolEffect, ulong> _effectMsec = [];
     private readonly ToolEffects _effects = new() { Name = "Effects" };
     private float _statusAcc;
+    /// <summary>Host: the most blood the skin held at once, looked at with every status.</summary>
+    private float _skinBloodPeak;
     private TurnAttempt? _turn;
     private ulong _stungMsec;
 
@@ -175,6 +183,7 @@ public partial class Surgery : Node3D {
         _statusAcc += dt;
         if (_statusAcc >= StatusInterval) {
             _statusAcc = 0f;
+            _skinBloodPeak = Mathf.Max(_skinBloodPeak, Patient.Body.SkinBlood());
             var status = CaptureStatus();
             if (Net.Instance.IsOnline) {
                 Rpc(MethodName.SyncStatus, status.ToVariant());
@@ -229,8 +238,22 @@ public partial class Surgery : Node3D {
         if (Finished) {
             return;
         }
+        if (canSucceed) {
+            ScoreAftercare();
+        }
         var ready = Objectives.Settle(Scoring) && canSucceed;
         Finish(ready, ready ? "" : reason);
+    }
+
+    /// <summary>Host: how the patient leaves the table, signed out or out of time: brought round from general anesthesia
+    /// by flumazenil (not woken by a quirk or a script), and with most of the blood wiped off the skin.</summary>
+    private void ScoreAftercare() {
+        if (Patient.WentUnder && Patient.AnesthesiaStopped && Patient.Vitals.IsAwake) {
+            Scoring.Add("patient_awake");
+        }
+        if (_skinBloodPeak >= SkinBloodSeen && Patient.Body.SkinBlood() <= _skinBloodPeak * SkinBloodLeft) {
+            Scoring.Add("clean_skin");
+        }
     }
 
     internal void Finish(bool success, string reason) {

@@ -166,6 +166,38 @@ public sealed class WoundMap {
         return _data[(int)layer][(at.Y * Size + at.X) * 4 + channel] / 255f;
     }
 
+    /// <summary>Mean of one channel (0..1) over the texels between <paramref name="from"/> and <paramref name="to"/>
+    /// (uv) that <paramref name="counts"/> keeps, read every <paramref name="step"/> texels. Cells never painted into
+    /// count as zero without being read, and a map with nothing painted in the channel isn't read at all.</summary>
+    internal float Mean(Layer layer, int channel, float from, float to, int step, Func<Vector2, bool> counts) {
+        var data = _data[(int)layer];
+        var painted = _painted[(int)layer];
+        var any = false;
+        for (var cell = channel; cell < painted.Length && !any; cell += 4) {
+            any = painted[cell];
+        }
+        if (!any) {
+            return 0f;
+        }
+        var first = Mathf.RoundToInt(from * Size);
+        var last = Mathf.RoundToInt(to * Size);
+        var sum = 0;
+        var count = 0;
+        for (var y = first; y < last; y += step) {
+            for (var x = first; x < last; x += step) {
+                var uv = new Vector2(x + 0.5f, y + 0.5f) / Size;
+                if (!counts(uv)) {
+                    continue;
+                }
+                count++;
+                if (painted[((y * Cells / Size * Cells) + (x * Cells / Size)) * 4 + channel]) {
+                    sum += data[(y * Size + x) * 4 + channel];
+                }
+            }
+        }
+        return count > 0 ? sum / 255f / count : 0f;
+    }
+
     /// <summary>Calls of <see cref="Flush"/> that had something to upload.</summary>
     internal int Uploads { get; private set; }
 

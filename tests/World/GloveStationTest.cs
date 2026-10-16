@@ -54,6 +54,12 @@ public class GloveStationTest {
                     "the glove box on a closed cabinet top, gloves out of its slot, a loose pair in front, "
                         + "no black patch",
                     bounds.GetCenter(), 0.6f);
+                // Thin parts once went black seen from across the room: the outline grew into them.
+                await driver.PlayerWalksTo(bounds.GetCenter(), 2f);
+                await driver.PlayerLooksAt(bounds.GetCenter());
+                await shots.CaptureView("from_across_the_room",
+                    "the glove station from 2 m: the gloves stay blue and the box white, each with a thin dark "
+                        + "outline, no black part");
             }
             // Loading the room isn't gameplay: the frame budget counts from here.
             driver.Budget.Clear();
