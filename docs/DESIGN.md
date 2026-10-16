@@ -345,7 +345,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   ragged tear in the skin (`IvTear`) and falling, still on the tubing's end, as a catheter to pick up and put back in
   (the floor soils it like any tool). Pushing into the slack only moves it aside.
   Connecting a new catheter replaces the one on the end; one carried further from the stand than the tubing reaches
-  slips off.
+  slips off. Holding the catheter the tubing is on, "Disconnect the IV line" at the stand takes the tubing off and hangs
+  it back on the stand: a catheter that fell is washed and sanitized bare, then connected again and put in.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
   and a little upward, the way the forearm rises to it (`Surgeon.SnapSpot()`); moved on, it comes out and the hand

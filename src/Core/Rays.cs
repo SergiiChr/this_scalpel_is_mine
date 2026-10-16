@@ -17,6 +17,34 @@ public static class Rays {
     /// bodies. <paramref name="inside"/>: also hits a shape from inside it.</summary>
     public static RayHit? Cast(Node3D world, Vector3 from, Vector3 to, uint mask, Rid exclude = default,
         bool areas = false, bool inside = false) {
+        var ray = Aim(world, from, to, mask, areas, inside);
+        if (exclude.IsValid) {
+            ray.AddExceptionRid(exclude);
+        }
+        ray.ForceRaycastUpdate();
+        return ray.IsColliding()
+            ? new RayHit(ray.GetCollisionPoint(), ray.GetCollisionNormal(), ray.GetCollider())
+            : null;
+    }
+
+    /// <summary>As <see cref="Cast"/>, the first collider that <paramref name="takes"/>, passing through the ones it
+    /// doesn't (several can share a spot); null when something else is met first or nothing is.</summary>
+    public static T? First<T>(Node3D world, Vector3 from, Vector3 to, uint mask, Func<T, bool> takes, bool areas = false)
+        where T : CollisionObject3D {
+        var ray = Aim(world, from, to, mask, areas, false);
+        while (true) {
+            ray.ForceRaycastUpdate();
+            if (ray.GetCollider() is not T hit) {
+                return null;
+            }
+            if (takes(hit)) {
+                return hit;
+            }
+            ray.AddException(hit);
+        }
+    }
+
+    private static RayCast3D Aim(Node3D world, Vector3 from, Vector3 to, uint mask, bool areas, bool inside) {
         var ray = RayIn(world.GetViewport());
         ray.Position = from;
         ray.TargetPosition = to - from;
@@ -25,13 +53,7 @@ public static class Rays {
         ray.CollideWithBodies = !areas;
         ray.HitFromInside = inside;
         ray.ClearExceptions();
-        if (exclude.IsValid) {
-            ray.AddExceptionRid(exclude);
-        }
-        ray.ForceRaycastUpdate();
-        return ray.IsColliding()
-            ? new RayHit(ray.GetCollisionPoint(), ray.GetCollisionNormal(), ray.GetCollider())
-            : null;
+        return ray;
     }
 
     /// <summary>The ray node in <paramref name="viewport"/>'s world, moved there from the last one asked for.</summary>

@@ -542,6 +542,10 @@ public partial class Room : Node3D {
             Layout["iv"] + new Vector3(0f, 1f, 0f), surgery.ConnectIvLine);
         connect.Offered = surgeon => surgeon.HeldTool(surgeon.Active) is { Def.Action: "iv_line", Charges: not 0 } held
             && IvLine.Catheter != held && !IvLine.IsAttached;
+        // And comes off it there, hung back on the stand: to clean a catheter that fell, say.
+        var disconnect = Interactable.Create(this, "Disconnect the IV line", new Vector3(0.4f, 2f, 0.4f),
+            Layout["iv"] + new Vector3(0f, 1f, 0f), surgery.DisconnectIvLine);
+        disconnect.Offered = surgeon => surgeon.HeldTool(surgeon.Active) is { } held && IvLine.Catheter == held;
         IvLine = new IvLine { Name = "IvLine" };
         AddChild(IvLine);
         Monitor = new PatientMonitor { Name = "Monitor" };

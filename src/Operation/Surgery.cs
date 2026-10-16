@@ -703,6 +703,18 @@ public partial class Surgery : Node3D {
         Sound("tool_pickup", catheter.GlobalPosition);
     }
 
+    /// <summary>The IV tubing's end comes off the catheter in hand and is hung back on the stand.</summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void RequestIvUnhook(int hand) {
+        var peer = Net.Instance.Sender();
+        if (Tools.ToolInHand(peer, hand) is not { } catheter || Room.IvLine.Catheter != catheter) {
+            Tell(peer, "Hold the catheter the IV line is on to take it off.");
+            return;
+        }
+        Patient.Rpc(Patient.MethodName.IvLineHungUp);
+        Sound("tool_pickup", catheter.GlobalPosition);
+    }
+
     /// <summary>A bag in hand takes the place of the one on the IV stand and runs into the line as a full dose.
     /// Drugs pushed into the old bag go with it.
     /// Without a working line nothing changes: the bag stays in hand and the hung one keeps what it had.</summary>
@@ -780,6 +792,8 @@ public partial class Surgery : Node3D {
     public void UseIv(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvBag, surgeon.Active);
 
     public void ConnectIvLine(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvLine, surgeon.Active);
+
+    public void DisconnectIvLine(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvUnhook, surgeon.Active);
 
     public void Smoke(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestSmoke, surgeon.Active);
 

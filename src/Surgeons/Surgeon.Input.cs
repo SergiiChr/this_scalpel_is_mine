@@ -750,16 +750,18 @@ public partial class Surgeon {
         }
     }
 
+    /// <summary>Whether an interactable is on offer to this surgeon, made once: focus is looked for every frame.
+    /// </summary>
+    private Func<Interactable, bool>? _offered;
+
     private void UpdateFocus() {
         var from = Camera.GlobalPosition;
         var to = from - (Camera.GlobalBasis.Z * InteractRange);
-        var focused = Rays.Cast(this, from, to, Interactable.Layer, areas: true)?.Collider as Interactable;
-        // Two can share a spot, each offered for a different held tool (the IV stand's bag and line).
-        if (focused is not null && !focused.OfferedTo(this)) {
-            focused = Rays.Cast(this, from, to, Interactable.Layer, focused.GetRid(), areas: true)?.Collider as Interactable;
-        }
+        // Several can share a spot, each offered for a different held tool (the IV stand's bag and line).
+        _offered ??= spot => spot.OfferedTo(this);
+        var focused = Rays.First(this, from, to, Interactable.Layer, _offered, areas: true);
         // Films held up in front of the eyes hide everything else.
-        focused = focused is not null && focused.OfferedTo(this) && !HoldingFilms ? focused : null;
+        focused = HoldingFilms ? null : focused;
         if (focused == Focused) {
             return;
         }

@@ -16,6 +16,9 @@ public partial class SurgeryDriver : Node {
     private const string SurgeryScene = "res://scenes/surgery.tscn";
     /// <summary>How far from what it works on (meters, across the floor) the surgeon stands.</summary>
     public const float StandOff = 0.45f;
+    /// <summary>How far from a tool on the floor the surgeon crouches: down there the arm reaches less far across it.
+    /// </summary>
+    public const float FloorStandOff = 0.25f;
     /// <summary>A hand move across the floor this slow (m/s) keeps cuts clean and pulls slow.</summary>
     public const float Slow = 0.02f;
     /// <summary>The right hand works; the left holds what a second tool needs.</summary>

@@ -4,8 +4,9 @@ namespace Scalpel.Tests.World;
 /// The IV tubing as a player meets it: loose tubing hanging from the stand's drip chamber, its bare end hung across from
 /// it. Connected at the stand to the catheter in hand, it follows the catheter into the arm. A surgeon pushing into
 /// its slack only moves it aside; one who catches it and walks off rips the catheter out: the skin tears and the
-/// catheter falls on the tubing's end, to be picked up and put back in. A catheter put in without the tubing sticks, but nothing runs into it. The
-/// tubing never goes through the patient, a surgeon or the furniture.
+/// catheter falls on the tubing's end, to be picked up and put back in. A catheter that fell is taken off the tubing at
+/// the stand to be cleaned and connected again. A catheter put in without the tubing sticks, but nothing runs into it.
+/// The tubing never goes through the patient, a surgeon or the furniture.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_iv_catheter"), TestCategory("visual_confirmation")]
@@ -175,6 +176,72 @@ public class IvLineTest {
                     + $"(working {patient.IvWorking}, {line.End})")
                 .IsTrue();
         } finally {
+            await driver.Stop();
+            RenderingServer.RenderLoopEnabled = true;
+        }
+    }
+
+    /// <summary>A catheter on the line dropped on the floor is soiled: picked up, it comes off the line at the stand,
+    /// is washed and sanitized, connected again and goes into the vein, and the line works.</summary>
+    [TestCase]
+    public async Task DroppedCatheterIsDisconnectedCleanedConnectedAgainAndGoesIn() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        KeyFrames? shots = null;
+        try {
+            await driver.Start("appendectomy");
+            SurgeryState.PatientIsAsleep(driver.Patient);
+            var surgery = driver.Surgery;
+            var patient = driver.Patient;
+            var line = surgery.Room.IvLine;
+            if (KeyFrames.Wanted()) {
+                shots = new KeyFrames();
+                driver.AddChild(shots);
+                shots.Begin(surgery, "iv_line_reconnect");
+                driver.OnKeyFrame = (keyFrame, description) => shots.CaptureOblique(keyFrame, description, Center(line),
+                    (line.Points[^1] - line.Points[0]).Cross(Vector3.Up), 1.5f);
+            }
+
+            var catheter = (await driver.PlayerRequestsItem("iv_catheter"))!;
+            await driver.PlayerConnectsIvLine();
+            // Out from the stand, away from the table: bare floor the tubing reaches.
+            var stand = surgery.Room.Layout["iv"];
+            var floorSpot = stand + ((stand with { Y = 0f }).Normalized() * 0.45f);
+            await driver.PlayerWalksTo(floorSpot, 0.4f);
+            await driver.PlayerReaches(floorSpot);
+            SurgeryDriver.Tap(InputActions.Grab);
+            await Frames.Seconds(2f);
+            AssertBool(catheter is { State: ToolState.Free, Soiled: true, Sterile: false } && line.Catheter == catheter)
+                .OverrideFailureMessage($"dropped on the floor, the catheter is soiled and still on the tubing "
+                    + $"({catheter.State}, soiled {catheter.Soiled}, {line.End})")
+                .IsTrue();
+
+            AssertObject(await driver.PlayerPicksUp(catheter))
+                .OverrideFailureMessage($"the player picks the dropped catheter up\n{driver.Recent()}").IsSame(catheter);
+            await driver.PlayerDisconnectsIvLine();
+            await Frames.Seconds(1f);
+            AssertClear(line, surgery, "hung back on the stand");
+            await driver.AssertAndCapture(line.End == IvLineEnd.Clipped && line.Catheter is null
+                    && catheter.State == ToolState.Held && line.Points[^1].DistanceTo(line.ClipAt) < 0.001f,
+                "disconnected at the stand: the tubing's bare end hung back on the stand across from the drip chamber, "
+                    + "the catheter in hand without it", "disconnected");
+
+            await driver.PlayerInteracts("Wash held tool");
+            await driver.PlayerInteracts("Sanitize held tool");
+            AssertBool(catheter is { Soiled: false, Sterile: true })
+                .OverrideFailureMessage($"washed and sanitized, the catheter is clean and sterile (soiled "
+                    + $"{catheter.Soiled}, sterile {catheter.Sterile})")
+                .IsTrue();
+            await driver.PlayerConnectsIvLine();
+            AssertBool(line.Catheter == catheter).OverrideFailureMessage($"connected again at the stand ({line.End})")
+                .IsTrue();
+            await driver.PlayerPutsCatheterIn(catheter);
+            await Frames.Physics(30);
+            AssertBool(patient.IvWorking && line.IsAttached)
+                .OverrideFailureMessage($"put into the vein, the line works (working {patient.IvWorking}, {line.End})")
+                .IsTrue();
+        } finally {
+            shots?.End();
             await driver.Stop();
             RenderingServer.RenderLoopEnabled = true;
         }
