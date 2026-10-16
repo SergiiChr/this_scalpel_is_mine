@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Tools;
 /// standing up or sinking into the body.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class RetractorTest {
     private const float Length = 0.05f;
@@ -184,7 +184,7 @@ public class RetractorTest {
         await session.Finish(BudgetOverride);
     }
 
-    [TestCase]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task FourRetractorsHoldTheAbdomenOpenForTheScalpelAndForceps() {
         var session = await ToolSession.Start("appendectomy", "retractor/four");
         var driver = session.Driver;

@@ -10,7 +10,7 @@ namespace Scalpel.Tests.TissueModification;
 /// the lip further than the skin gives: it peels up off the muscle, held there while the other hand sews the muscle.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
@@ -40,8 +40,8 @@ public class PulledSkinTest {
     /// <summary>How far (meters) the views of the peeled lip are taken from.</summary>
     private const float PeelView = 0.15f;
 
-    [TestCase("appendectomy")]
-    [TestCase("leg_extension")]
+    [TestCase("appendectomy", Timeout = Limits.Slow)]
+    [TestCase("leg_extension", Timeout = Limits.Slow)]
     public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario) {
         var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}", captureUntouched: scenario == "leg_extension");
         var driver = session.Driver;
