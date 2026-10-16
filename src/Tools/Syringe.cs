@@ -76,9 +76,10 @@ public static class Syringe {
             Draw(tool, Mathf.Min(ml, tool.Def.Volume - tool.Ml - tool.Air), target, patient);
             return;
         }
-        var pushedIn = tool.State == ToolState.Held && surgery.Surgeons.TryGetValue(tool.Holder, out var holder)
-            && holder.Hands[tool.Slot].Lowered;
-        if (!pushedIn && target is VeinTarget or TissueTarget or SurgeonTarget) {
+        // Held, the needle is in only while the hand pushes it in. A syringe left stuck in something stays in it.
+        var notIn = tool.State == ToolState.Held && surgery.Surgeons.TryGetValue(tool.Holder, out var holder)
+            && !holder.Hands[tool.Slot].Lowered;
+        if (notIn && target is VeinTarget or TissueTarget or SurgeonTarget) {
             target = new AirTarget();
         }
         var air = Mathf.Min(-ml, tool.Air);
