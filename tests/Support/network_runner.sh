@@ -38,11 +38,17 @@ finished() {
 	[[ $status -eq 0 ]] || fail "$2 exited with status $status$([[ $status -eq 124 ]] && echo ' (timed out)'), see $logs/$2.log"
 }
 
+# A missing line fails with what the driver reported instead (its lines start with its role in brackets).
 expect() {
-	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'"
+	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'; it reports:
+$(grep "^\[" "$1")"
 }
 
 run() {
+	# Each player's own user:// (Godot's under XDG_DATA_HOME), as on two machines: both write save.cfg on joining,
+	# and a player reading it while the other writes it reads half a file.
+	XDG_DATA_HOME=$(mktemp -d)
+	export XDG_DATA_HOME
 	# exec: started in the background, the job is the timeout wrapper itself, with Godot as its only child.
 	exec timeout "$limit" "$godot" --headless --path "$root" "res://tests/Support/$1.tscn" -- "--role=$2" \
 		"--give-up=$((limit - 10))" >"$logs/$3.log" 2>&1

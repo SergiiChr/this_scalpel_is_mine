@@ -78,6 +78,15 @@ public sealed class ToolSession {
         }
     }
 
+    /// <summary>In a run with key frames, saves one view of <paramref name="at"/> from 45° above, from
+    /// <paramref name="side"/> (world, across the floor) and <paramref name="distance"/> away, hands left out, which
+    /// should show <paramref name="description"/>.</summary>
+    public async Task CaptureOblique(string keyFrame, string description, Vector3 at, Vector3 side, float distance) {
+        if (Shots is { } shots) {
+            await Driver.Unbudgeted(() => shots.CaptureOblique(keyFrame, description, at, side, distance));
+        }
+    }
+
     /// <summary>Checks the frame budget (<paramref name="budgetOverride"/>: why it's known to go over, and by how much) and ends the
     /// surgery.</summary>
     public async Task Finish(BudgetAllowance? budgetOverride = null) {

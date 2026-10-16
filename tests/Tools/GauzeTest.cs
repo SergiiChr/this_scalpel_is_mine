@@ -1,8 +1,8 @@
 namespace Scalpel.Tests.Tools;
 
 /// <summary>
-/// Gauze as a player uses it: pressed on a cut it stops the bleeding, holds it for a while after it comes off, then the
-/// cut bleeds again. Packed into an incision, it holds the vessel it reaches the same way. Pressed long enough on a cut
+/// Gauze as a player uses it, with no pressure to set on the wheel: pressed on a cut it stops the bleeding, holds it
+/// for a while after it comes off, then the cut bleeds again. Packed into an incision, it holds the vessel it reaches the same way. Pressed long enough on a cut
 /// too small to sew, it stops that one for good. Debug mode says when a wound stops bleeding and whether for good.
 /// Gauze also wipes away the beads of blood a needle leaves. With key frames review the gauze lying on the cut while
 /// pressed, the skin wiped dry while the pressure holds, the blood welling back, the gauze in the incision over the
@@ -40,7 +40,11 @@ public class GauzeTest {
         var on = driver.SitePoint(cut.Midpoint);
         await driver.PlayerWalksTo(on);
         await driver.PlayerReaches(on);
-        await driver.SetLevel(3);
+        // Gauze has no pressure to set: the wheel does nothing, and the controls shown don't offer it.
+        await SurgeryDriver.Notch(true);
+        var hints = string.Join("\n", Hud.ControlLines(driver.Me));
+        AssertBool(driver.Me.Hands[driver.Me.Active].Level == 0 && !hints.Contains("Wheel"))
+            .OverrideFailureMessage("the wheel sets no pressure for gauze:\n" + hints).IsTrue();
         SurgeryDriver.Use();
         await Frames.Seconds(2f);
         AssertFloat(cut.Bleeding).OverrideFailureMessage($"pressed with gauze, the cut stops bleeding: {driver.Bleeders()}")
@@ -111,7 +115,6 @@ public class GauzeTest {
         var on = driver.SitePoint(small.Midpoint);
         await driver.PlayerWalksTo(on);
         await driver.PlayerReaches(on);
-        await driver.SetLevel(3);
         SurgeryDriver.Use();
         await Frames.Seconds(Wound.SmallCutPress + 1f);
         AssertBool(small.Clotted).OverrideFailureMessage("pressed long enough, the small cut stops for good").IsTrue();
@@ -145,7 +148,6 @@ public class GauzeTest {
         var on = driver.SitePoint(at);
         await driver.PlayerWalksTo(on);
         await driver.PlayerReaches(on);
-        await driver.SetLevel(3);
         SurgeryDriver.Use();
         await Frames.Seconds(2f);
         AssertString(body.Probe(driver.Me.HeldTool(driver.Me.Active)!.TipPosition()).Zone.ToString())

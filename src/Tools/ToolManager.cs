@@ -311,7 +311,8 @@ public partial class ToolManager : Node3D {
         }
         Session.SetAttached(peer, hand, false);
         if (tool.Hold is not null) {
-            if (tool.Def.SelfRetaining) {
+            // Something pulled out is let go of even by a self-retaining tool: it would stand in the air holding it.
+            if (tool.Def.SelfRetaining && tool.Hold is not CarryHold) {
                 LeaveStanding(tool);
                 return;
             }
@@ -340,11 +341,16 @@ public partial class ToolManager : Node3D {
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void PassOnHost(int hand) {
         var peer = Net.Instance.Sender();
-        if (!Session.Surgeons.TryGetValue(peer, out var giver) || ToolInHand(peer, hand) is not { Hold: null } tool) {
+        if (!Session.Surgeons.TryGetValue(peer, out var giver) || ToolInHand(peer, hand) is not { Hold: null or CarryHold } tool) {
             return;
         }
         if (giver.PassTarget(hand) is not { } target) {
             return;
+        }
+        // Something pulled out is put aside first, as when it's let go of: only the tool changes hands.
+        if (tool.Hold is CarryHold carried) {
+            Session.Patient.ReleaseGrip(tool.Uid, carried, false);
+            tool.Hold = null;
         }
         var (receiver, receivingHand) = target;
         if (receiver.BlockedReason(tool.Def) is { Length: > 0 } blocked) {

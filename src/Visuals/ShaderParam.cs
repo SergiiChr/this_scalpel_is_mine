@@ -2,8 +2,17 @@ namespace Scalpel.Visuals;
 
 /// <summary>Names of shader parameters set while the game runs, made once. A string passed to SetShaderParameter()
 /// becomes a new StringName on every call: a tracked wrapper the runtime has to collect, and frequent collections stall
-/// the game. Parameters only set when a material is made can stay strings.</summary>
+/// the game. Parameters only set when a material is made can stay strings. A matrix goes through such a wrapper too:
+/// send it with <see cref="SetMatrix"/>.</summary>
 public static class ShaderParam {
+    /// <summary>Sets a mat4 parameter. The engine takes a matrix as a Variant on the native heap, held by a tracked
+    /// wrapper with a finalizer; disposed here at once, so a matrix sent every frame (a blood coat following its tool)
+    /// doesn't leave thousands of them for one long collection.</summary>
+    public static void SetMatrix(this ShaderMaterial material, StringName name, Projection value) {
+        using var variant = Variant.CreateFrom(value);
+        material.SetShaderParameter(name, variant);
+    }
+
     public static readonly StringName Albedo = "albedo";
     public static readonly StringName Blackout = "blackout";
     public static readonly StringName Blur = "blur";

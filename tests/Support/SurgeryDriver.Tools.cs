@@ -108,7 +108,14 @@ public partial class SurgeryDriver {
             Note($"no {id} to be had");
             return null;
         }
-        var tool = found[0];
+        return await PlayerPicksUp(found[0]);
+    }
+
+    /// <summary>Picks <paramref name="tool"/> up in the active hand once it has landed, walking to it and grabbing it
+    /// like a player. Any usable tool of its kind that the grab finds first will do (supplies arrive as a stack).
+    /// </summary>
+    public async Task<SurgicalTool?> PlayerPicksUp(SurgicalTool tool) {
+        var id = tool.Def.Id;
         // Skip the nurse's artificial delivery clock, but observe the spawned rigid body's actual landing.
         var last = tool.GlobalPosition;
         var stableFrames = 0;
@@ -204,8 +211,8 @@ public partial class SurgeryDriver {
             && Mathf.Abs(at.Y - Room.TraySurface) < 0.2f;
     }
 
-    /// <summary>Holds Use tool on <paramref name="point"/> at effort <paramref name="level"/> for
-    /// <paramref name="time"/> seconds.</summary>
+    /// <summary>Holds Use tool on <paramref name="point"/> at effort <paramref name="level"/> (0 for tools that take
+    /// none, like gauze) for <paramref name="time"/> seconds.</summary>
     public async Task PlayerWorksAt(Vector3 point, int level, float time) {
         await PlayerReaches(point);
         await SetLevel(level);

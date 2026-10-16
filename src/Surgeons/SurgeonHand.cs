@@ -378,7 +378,7 @@ public partial class SurgeonHand : Node3D {
         if (Blood > 0f) {
             var coat = new Projection(CoatFrame * _glove.GlobalTransform.AffineInverse());
             foreach (var material in _gloveMaterials) {
-                material.SetShaderParameter(ShaderParam.CoatInverse, coat);
+                material.SetMatrix(ShaderParam.CoatInverse, coat);
             }
         }
     }

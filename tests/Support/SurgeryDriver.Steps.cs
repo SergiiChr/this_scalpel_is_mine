@@ -315,7 +315,7 @@ public partial class SurgeryDriver {
             await PlayerRequestsItem("gauze");
             foreach (var wound in small) {
                 await PlayerWalksTo(SitePoint(wound.Midpoint));
-                await PlayerWorksAt(SitePoint(wound.Midpoint), 3, Wound.SmallCutPress + 1f);
+                await PlayerWorksAt(SitePoint(wound.Midpoint), 0, Wound.SmallCutPress + 1f);
             }
             await PlayerPutsDown();
         }

@@ -3,8 +3,8 @@ namespace Scalpel.UI;
 /// <summary>
 /// The aim at the active tool tip: a dot, for blades a line along the edge where it will cut, for a spreader a &lt; and a
 /// &gt; at its tips, moving apart as it opens, for a stapler a ring where each leg goes in. Over an opening forceps also
-/// show a stem from the lip down to their tip. Beside it, the name of the tool the hand would pick up and the tool's
-/// effort levels or the forceps' depth.
+/// show a stem from the lip down to their tip. Beside it, the name of the tool the hand would pick up (or of the vial a
+/// held syringe's needle is over) and the tool's effort levels or the forceps' depth.
 /// </summary>
 public partial class Hud {
     /// <summary>What each effort level (0..3) does, for tools that take one (see LevelSteps()).</summary>
@@ -48,6 +48,9 @@ public partial class Hud {
     internal bool DepthShown => _depth.Visible;
     /// <summary>The text beside the aim: effort levels or forceps' depth, empty when none shows.</summary>
     internal string AimText => _levels.Visible ? _levels.Text : "";
+    /// <summary>The name beside the aim: the tool the hand would pick up or the vial under the needle, empty for none.
+    /// </summary>
+    internal string AimName => _dotLabel.Text;
     /// <summary>The aim shows a stapler's two leg rings.</summary>
     internal bool LegRingsShown => _legs.All(ring => ring.Visible);
     /// <summary>Where the shown &lt; and &gt; point (screen).</summary>
@@ -152,13 +155,19 @@ public partial class Hud {
             var tip = tipIn.Lip + (Vector3.Down * tipIn.Depth);
             DrawAim(_depth, [camera.UnprojectPosition(tipIn.Lip), camera.UnprojectPosition(tip)], false);
         }
-        _dotLabel.Text = IsInstanceValid(me.Hovered) ? me.Hovered!.Label() : "";
+        _dotLabel.Text = IsInstanceValid(me.Hovered) ? me.Hovered!.Label() : VialUnderNeedle(tool)?.Def.Name ?? "";
         _dotLabel.Position = at + new Vector2(10f, -10f);
         var levels = opening is { } depth ? DepthText(me, depth) : LevelText(me);
         _levels.Text = levels;
         _levels.Visible = levels.Length > 0;
         _levels.Position = at + new Vector2(14f, 12f);
     }
+
+    /// <summary>The vial a held syringe's needle is in or just over, so its label shows before drawing from it.</summary>
+    private SurgicalTool? VialUnderNeedle(SurgicalTool? tool) =>
+        tool?.Def.Action == "syringe" && Surgery.Tools.NearestContainer(tool.TipPosition()) is { Def.Action: "vial" } vial
+            ? vial
+            : null;
 
     /// <summary>
     /// A &lt; at the spreader's tip toward -X and a &gt; at the other, each pointing out from the middle: &lt;&gt; closed,
@@ -244,8 +253,9 @@ public partial class Hud {
     /// <summary>How deep the forceps' tip is in the opening, and whether the wheel holds it there or it rests on what's
     /// inside.</summary>
     private static string DepthText(Surgeon me, TipInOpening opening) {
-        var where = me.Hands[me.Active].HeldDepth is not null ? "held by the wheel" : "resting on what's inside";
-        return $"Tip depth\n[color=#fff4c8][b]▶ {opening.Depth * 100f:0.0} cm[/b][/color]\n[color=#ffffffc0]   {where}[/color]";
+        var where = opening.Depth < 0f ? "over the lip"
+            : me.Hands[me.Active].HeldDepth is not null ? "held by the wheel" : "resting on what's inside";
+        return $"Tip depth\n[color=#fff4c8][b]▶ {Mathf.Max(opening.Depth, 0f) * 100f:0.0} cm[/b][/color]\n[color=#ffffffc0]   {where}[/color]";
     }
 
     /// <summary>The levels, the current one marked; red while the tool is working at it.</summary>

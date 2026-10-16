@@ -4,7 +4,7 @@ namespace Scalpel.Tests.World;
 /// The IV tubing as a player meets it: loose tubing hanging from the stand's drip chamber, its bare end hung across from
 /// it. Connected at the stand to the catheter in hand, it follows the catheter into the arm. A surgeon pushing into
 /// its slack only moves it aside; one who catches it and walks off rips the catheter out: the skin tears and the
-/// catheter hangs on the tubing's end. A catheter put in without the tubing sticks, but nothing runs into it. The
+/// catheter falls on the tubing's end, to be picked up and put back in. A catheter put in without the tubing sticks, but nothing runs into it. The
 /// tubing never goes through the patient, a surgeon or the furniture.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -123,18 +123,58 @@ public class IvLineTest {
                     + $"{stretched:0.00} times, {driver.Me.GlobalPosition})")
                 .IsTrue();
             await Frames.Seconds(2f);
-            AssertBool(line.End == IvLineEnd.Loose && line.HasCatheter)
-                .OverrideFailureMessage($"the catheter came out still on the tubing's end ({line.End})").IsTrue();
+            var ripped = line.Catheter;
+            AssertBool(line.End == IvLineEnd.Catheter && ripped is { State: ToolState.Free, Charges: 1 }
+                    && line.Points[^1].DistanceTo(ripped.GlobalTransform * new Vector3(0f, 0f, ripped.Bounds.End.Z)) < 0.01f)
+                .OverrideFailureMessage($"the catheter came out still on the tubing's end, a catheter to pick up "
+                    + $"({line.End}, {ripped?.State}, {ripped?.Charges} charges)")
+                .IsTrue();
             AssertClear(line, surgery, "ripped out");
             var tear = line.Tear;
             await driver.AssertAndCapture(tear is not null && tear.GetParent() is Forearm && line.Dressing is null
                     && tear.GlobalPosition.DistanceTo(site) < 0.001f,
                 "a ragged tear in the skin where the catheter was, the dressing gone with it", "torn");
-            await driver.Capture("loose_end", "the catheter hanging on the end of the tubing, its needle pointing on "
-                + "from the tube, lying on the floor, not through it");
+            await driver.Capture("loose_end", "the catheter lying where it fell with the tubing on its back, not "
+                + "through the floor, the table or the patient");
             driver.Budget.Check(localOverride: BudgetOverride);
         } finally {
             shots?.End();
+            await driver.Stop();
+            RenderingServer.RenderLoopEnabled = true;
+        }
+    }
+
+    /// <summary>The scenario's own line, in before the surgery started, ripped out: its catheter is picked up off the
+    /// floor beside the tray's spare one, put back in the vein and the line works again.</summary>
+    [TestCase]
+    public async Task RippedOutPreopCatheterIsPickedUpAndGoesBackIn() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        try {
+            await driver.Start("bullet_muscle");
+            SurgeryState.PatientIsAsleep(driver.Patient);
+            var patient = driver.Patient;
+            var line = driver.Surgery.Room.IvLine;
+            AssertBool(patient.IvWorking).OverrideFailureMessage("the scenario starts with a working line").IsTrue();
+            SurgeryState.IvLineIsRippedOut(patient, driver.Me);
+            var ripped = line.Catheter;
+            AssertBool(!patient.IvSet && line.End == IvLineEnd.Catheter && ripped is { State: ToolState.Free })
+                .OverrideFailureMessage($"ripped out, the catheter is on the tubing's end, free to pick up ({line.End}, "
+                    + $"{ripped?.State})")
+                .IsTrue();
+
+            AssertObject(await driver.PlayerPicksUp(ripped!))
+                .OverrideFailureMessage($"the player picks the ripped-out catheter up\n{driver.Recent()}").IsSame(ripped!);
+            AssertBool(line.Catheter == ripped).OverrideFailureMessage($"the tubing stays on it in hand ({line.End})")
+                .IsTrue();
+            await driver.PlayerPutsCatheterIn(ripped!);
+            await Frames.Physics(30);
+            AssertBool(patient.IvWorking && line.IsAttached
+                    && line.Points[^1].DistanceTo(line.Dressing!.ToGlobal(IvDressing.Exit)) < 0.001f)
+                .OverrideFailureMessage($"put back into the vein, the line works again and hangs from the new dressing "
+                    + $"(working {patient.IvWorking}, {line.End})")
+                .IsTrue();
+        } finally {
             await driver.Stop();
             RenderingServer.RenderLoopEnabled = true;
         }

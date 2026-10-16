@@ -359,9 +359,11 @@ public partial class Surgery : Node3D {
         }
     }
 
-    public void SetAttached(int peer, int hand, bool value) {
+    /// <summary>This hand of this surgeon now holds onto something, or lets go (see Surgeon.SetHandAttached()).
+    /// </summary>
+    public void SetAttached(int peer, int hand, bool value, bool keepHeight = false) {
         if (Surgeons.TryGetValue(peer, out var surgeon) && hand >= 0) {
-            surgeon.RpcId(peer, Surgeon.MethodName.SetHandAttached, hand, value);
+            surgeon.RpcId(peer, Surgeon.MethodName.SetHandAttached, hand, value, keepHeight);
         }
     }
 

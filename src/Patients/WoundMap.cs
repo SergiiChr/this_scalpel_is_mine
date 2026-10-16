@@ -83,17 +83,22 @@ public sealed class WoundMap {
     public static int SizeFor(Vector2 siteSize) =>
         Math.Clamp(1 << Mathf.RoundToInt(Mathf.Log(Mathf.Max(siteSize.X, siteSize.Y) / Texel) / Mathf.Log(2f)), MinSize, MaxSize);
 
+    /// <summary>The jitter of <see cref="Stroke"/>, reseeded per stroke: a generator made per call is an engine
+    /// object the runtime has to collect, and blood flowing strokes every frame. Shared state: strokes come from the main
+    /// thread only.</summary>
+    private readonly RandomNumberGenerator _strokeRng = new();
+
     /// <summary>Stamps hard-edged disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line.
     /// </summary>
     public void Stroke(Layer layer, int channel, Vector2 a, Vector2 b, float radius, float value, Mode mode,
         float jitter = 0f, ulong seed = 0) {
         var step = Mathf.Max(radius * 0.5f, 0.5f / Size);
         var steps = Math.Max(1, Mathf.CeilToInt(a.DistanceTo(b) / step));
-        var rng = new RandomNumberGenerator { Seed = seed };
+        _strokeRng.Seed = seed;
         for (var i = 0; i <= steps; i++) {
             var p = a.Lerp(b, (float)i / steps);
             if (jitter > 0f) {
-                p += new Vector2(rng.RandfRange(-jitter, jitter), rng.RandfRange(-jitter, jitter));
+                p += new Vector2(_strokeRng.RandfRange(-jitter, jitter), _strokeRng.RandfRange(-jitter, jitter));
             }
             Disk(layer, channel, p, radius, value, mode, soft: false);
         }

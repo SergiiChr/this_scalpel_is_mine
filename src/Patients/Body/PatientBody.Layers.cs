@@ -11,6 +11,9 @@ public partial class PatientBody {
     /// down movement folds a layer over itself where the skin above it bunches up. See <see cref="LayerPoint"/>.
     /// </summary>
     private static readonly float[] LayerTether = [float.PositiveInfinity, float.PositiveInfinity, 0.008f];
+    /// <summary>How far (meters) the muscle rises with the skin over it before the skin and its fat peel off it (see
+    /// <see cref="LayerPoint"/>).</summary>
+    private const float MuscleLift = 0.004f;
     internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Movement over which the rendered skin adopts the deformed sheet's normals.</summary>
     private const float FlapMove = 0.015f;
@@ -71,6 +74,9 @@ public partial class PatientBody {
         /// <summary>Per triangle of Index, where its pieces start in RefinedIndex and how many indices they take.
         /// </summary>
         public List<(int Start, int Count)> RefinedOf { get; } = [];
+        /// <summary>Per vertex, the vertices it shares a triangle edge with (see SmoothSheet()), made on first use.
+        /// </summary>
+        public List<int>[]? Neighbours { get; set; }
     }
 
     private readonly List<MeshInstance3D> _layers = [];
@@ -400,7 +406,8 @@ public partial class PatientBody {
             var (sheet, walls) = built[layer];
             foreach (var (surface, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) }) {
                 if (surface is null) { continue; }
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, surface.ToArrays());
+                using var arrays = surface.ToArrays();
+                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
             }
         }
@@ -867,6 +874,12 @@ public partial class PatientBody {
         }
     }
 
+    /// <summary>Rows down each wall of a cut: enough for its rounded profile (<see cref="WallBulge"/>).</summary>
+    internal const int WallRows = 4;
+    /// <summary>Per layer, how far (shares of its thickness) its cut face bulges into the cut halfway down: soft fat
+    /// swells out, muscle a little, the skin's cut face stays flat.</summary>
+    private static readonly float[] WallBulge = [0f, 0.25f, 0.08f];
+
     /// <summary>One layer's sheet and the walls of its cuts, where the skin was captured (null for no triangles).
     /// </summary>
     private (Surface? Sheet, Surface? Walls) FillLayer(int layer, LayerPlan plan) {
@@ -915,6 +928,8 @@ public partial class PatientBody {
         foreach (var (v, (a, b, c, w)) in plan.Apex) {
             vertices[v] = vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z;
         }
+        SmoothSheet(layer, plan, vertices);
+        SmoothLips(layer, plan, vertices);
         ConstrainLipArea(plan, vertices);
         if (layer != 0) {
             for (var v = 0; v < vertexCount; v++) {
@@ -1010,39 +1025,89 @@ public partial class PatientBody {
         // How deep under the skin each wall corner is, for bleed spots.
         var wallDepths = new List<Vector2>();
         var wallIndices = new List<int>();
+        // Each lip vertex's wall normal, averaged over the walls on both sides of it: a wall shaded flat stretch by
+        // stretch reads as a row of cards standing in the cut.
+        var lipNormals = new Dictionary<int, Vector3>();
+        Vector3 WallNormal(int w) {
+            var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
+            var bottom = vertices[a] - Outward(layer, plan.Owner[a]) * WallThickness(plan.Owner[a]);
+            var normal = (vertices[b] - vertices[a]).Cross(bottom - vertices[a]).Normalized();
+            // Facing into the cut, away from this side's own skin.
+            return normal.Dot(vertices[a] - vertices[plan.Wall[w + 2]]) < 0f ? -normal : normal;
+        }
+        for (var w = 0; w < plan.Wall.Count; w += 3) {
+            var normal = WallNormal(w);
+            foreach (var v in (int[])[plan.Wall[w], plan.Wall[w + 1]]) {
+                lipNormals[v] = lipNormals.GetValueOrDefault(v) + normal;
+            }
+        }
+        // Each lip vertex's way down and depth, eased along the lip like the lip itself: they follow its own grid
+        // point, and neighbours along a lip pulled about ride different ones, so the walls' bottoms would run in steps.
+        // Depth only eases shallower: a folded flap's walls stay as shallow as its fascia (WallThickness()).
+        var lipDown = new Dictionary<int, (Vector3 Out, float Thick)>();
+        foreach (var v in plan.Lip.Keys) {
+            lipDown[v] = (Outward(layer, plan.Owner[v]), WallThickness(plan.Owner[v]));
+        }
+        for (var pass = 0; pass < LipSmoothing * 2; pass++) {
+            var eased = new Dictionary<int, (Vector3 Out, float Thick)>();
+            foreach (var (v, neighbours) in plan.Lip) {
+                if (neighbours.Count == 2) {
+                    var (out0, thick0) = lipDown[neighbours[0]];
+                    var (out1, thick1) = lipDown[neighbours[1]];
+                    var (outV, thickV) = lipDown[v];
+                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), Mathf.Min(thickV, (thickV * 2f + thick0 + thick1) * 0.25f));
+                }
+            }
+            foreach (var (v, down) in eased) {
+                lipDown[v] = down;
+            }
+        }
+        var bulge = WallBulge[layer];
         for (var w = 0; w < plan.Wall.Count; w += 3) {
             var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
             var topA = vertices[a];
             var topB = vertices[b];
-            var outA = Outward(layer, plan.Owner[a]);
-            var outB = Outward(layer, plan.Owner[b]);
-            var (thickA, thickB) = (WallThickness(plan.Owner[a]), WallThickness(plan.Owner[b]));
-            var bottomA = UnderSkin(topA - outA * thickA, plan.Owner[a]);
-            var bottomB = UnderSkin(topB - outB * thickB, plan.Owner[b]);
-            var normal = (topB - topA).Cross(bottomA - topA).Normalized();
-            // Facing into the cut, away from this side's own skin.
-            if (normal.Dot(topA - vertices[plan.Wall[w + 2]]) < 0f) {
-                normal = -normal;
-            }
+            var (outA, thickA) = lipDown[a];
+            var (outB, thickB) = lipDown[b];
+            var normalA = lipNormals[a].Normalized();
+            var normalB = lipNormals[b].Normalized();
             var mid = plan.MidpointOf.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var refined)
                 ? refinedVertices[refined]
                 : LipMidpoint(plan, vertices, a, b);
-            var midBottom = UnderSkin(mid - (outA + outB).Normalized() * ((thickA + thickB) * 0.5f), plan.Owner[a]);
+            var midOut = (outA + outB).Normalized();
+            var midNormal = (normalA + normalB).Normalized();
+            var midThick = (thickA + thickB) * 0.5f;
             var midUv = plan.Uv[a].Lerp(plan.Uv[b], 0.5f);
-            foreach (var (start, end, lowStart, lowEnd, uvStart, uvEnd) in new[]
-                { (topA, mid, bottomA, midBottom, plan.Uv[a], midUv), (mid, topB, midBottom, bottomB, midUv, plan.Uv[b]) }) {
-                var first = wallVertices.Count;
-                wallVertices.AddRange([start, end, lowEnd, lowStart]);
-                wallNormals.AddRange([normal, normal, normal, normal]);
-                wallUvs.AddRange([uvStart, uvEnd, uvEnd, uvStart]);
-                wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White, Colors.White]);
-                var (top, bottom) = (new Vector2(depth, 0f), new Vector2(depth + (thickA + thickB) * 0.5f, 0f));
-                wallDepths.AddRange([top, top, bottom, bottom]);
-                // Godot's front faces wind clockwise seen from the side the normal points to.
-                if ((lowEnd - start).Cross(end - start).Dot(normal) > 0f) {
-                    wallIndices.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
-                } else {
-                    wallIndices.AddRange([first, first + 2, first + 1, first, first + 3, first + 2]);
+            // Three columns along the lip (its two ends and its midpoint), each a soft rounded profile down the wall.
+            (Vector3 Top, Vector3 Out, Vector3 Normal, float Thick, Vector2 Uv, int Owner)[] columns = [
+                (topA, outA, normalA, thickA, plan.Uv[a], plan.Owner[a]),
+                (mid, midOut, midNormal, midThick, midUv, plan.Owner[a]),
+                (topB, outB, normalB, thickB, plan.Uv[b], plan.Owner[b])];
+            var first = wallVertices.Count;
+            foreach (var (top, outward, normal, thick, uv, owner) in columns) {
+                for (var row = 0; row <= WallRows; row++) {
+                    var t = (float)row / WallRows;
+                    // The tissue bulges into the cut halfway down, and its normal tilts up above that and down below.
+                    var swell = bulge * thick * Mathf.Sin(Mathf.Pi * t);
+                    var slope = bulge * Mathf.Pi * Mathf.Cos(Mathf.Pi * t);
+                    wallVertices.Add(UnderSkin(top - outward * (thick * t) + normal * swell, owner));
+                    wallNormals.Add((normal + outward * slope).Normalized());
+                    wallUvs.Add(uv);
+                    wallColors.Add(new Color(t, t, t));
+                    wallDepths.Add(new Vector2(depth + thick * t, 0f));
+                }
+            }
+            for (var column = 0; column < 2; column++) {
+                for (var row = 0; row < WallRows; row++) {
+                    var start = first + column * (WallRows + 1) + row;
+                    var (end, lowStart, lowEnd) = (start + WallRows + 1, start + 1, start + WallRows + 2);
+                    var normal = wallNormals[start];
+                    // Godot's front faces wind clockwise seen from the side the normal points to.
+                    if ((wallVertices[lowEnd] - wallVertices[start]).Cross(wallVertices[end] - wallVertices[start]).Dot(normal) > 0f) {
+                        wallIndices.AddRange([start, end, lowEnd, start, lowEnd, lowStart]);
+                    } else {
+                        wallIndices.AddRange([start, lowEnd, end, start, lowStart, lowEnd]);
+                    }
                 }
             }
         }
@@ -1126,6 +1191,86 @@ public partial class PatientBody {
         float.IsPositiveInfinity(LayerTether[layer]) || _renderTurnover ? _outward[k] : Vector3.Up;
 
     private readonly ContactSurface _clothFaces = new();
+
+    /// <summary>Passes of <see cref="SmoothLips"/>.</summary>
+    private const int LipSmoothing = 2;
+    /// <summary>Per layer: the layers are filled at once, on their own threads.</summary>
+    private readonly Dictionary<int, Vector3>[] _easedLips = [[], [], []];
+
+    /// <summary>
+    /// Each crossing on a lip rides the grid point on its side of the cut, and neighbours along the lip ride different
+    /// grid points: pulled or lifted unevenly, the lip zigzags and the walls down from it stand in the cut like a row
+    /// of cards. Eased toward its neighbours along the lip, it runs smooth; a lip's ends stay where they are.
+    /// </summary>
+    private void SmoothLips(int layer, LayerPlan plan, Vector3[] vertices) {
+        var easedLips = _easedLips[layer];
+        for (var pass = 0; pass < LipSmoothing; pass++) {
+            easedLips.Clear();
+            foreach (var (v, neighbours) in plan.Lip) {
+                if (neighbours.Count == 2) {
+                    easedLips[v] = vertices[v].Lerp((vertices[neighbours[0]] + vertices[neighbours[1]]) * 0.5f, 0.5f);
+                }
+            }
+            foreach (var (v, eased) in easedLips) {
+                vertices[v] = eased;
+            }
+        }
+    }
+
+    /// <summary>Passes of <see cref="SmoothSheet"/>.</summary>
+    private const int SheetSmoothing = 10;
+    /// <summary>Per layer, like <see cref="_easedLips"/>.</summary>
+    private readonly Vector3[][] _easedSheet = [[], [], []];
+
+    /// <summary>
+    /// A tethered layer beside a cut goes with the skin's slide over it (LayerPoint()), wrinkles and all, while its
+    /// height stays down on its bed: drawn as is, the muscle under a lip pulled aside creases cell by cell and its cut
+    /// edge runs in steps. Where the skin over it moved, each of its grid points is eased toward its neighbours on
+    /// its own side of the cut; the lips are left to <see cref="SmoothLips"/>.
+    /// </summary>
+    private void SmoothSheet(int layer, LayerPlan plan, Vector3[] vertices) {
+        if (float.IsPositiveInfinity(LayerTether[layer]) || _renderTurnover) {
+            return;
+        }
+        var neighbours = plan.Neighbours ??= SheetNeighbours(plan);
+        var eased = _easedSheet[layer];
+        if (eased.Length < vertices.Length) {
+            eased = _easedSheet[layer] = new Vector3[vertices.Length];
+        }
+        for (var pass = 0; pass < SheetSmoothing; pass++) {
+            for (var v = 0; v < vertices.Length; v++) {
+                eased[v] = vertices[v];
+                var k = plan.Owner[v];
+                var cell = Tissue.CellOf(k);
+                if (plan.Other[v] >= 0 || plan.Apex.ContainsKey(v) || neighbours[v].Count == 0
+                    || cell.X == 0 || cell.Y == 0 || cell.X == Tissue.ResX || cell.Y == Tissue.ResY) {
+                    continue;
+                }
+                var sum = Vector3.Zero;
+                foreach (var n in neighbours[v]) {
+                    sum += vertices[n];
+                }
+                var weight = 0.5f * Mathf.Clamp(_renderMoved[k].Length() / FlapMove, 0f, 1f);
+                eased[v] = vertices[v].Lerp(sum / neighbours[v].Count, weight);
+            }
+            Array.Copy(eased, vertices, vertices.Length);
+        }
+    }
+
+    private static List<int>[] SheetNeighbours(LayerPlan plan) {
+        var neighbours = new List<int>[plan.Owner.Count];
+        for (var v = 0; v < neighbours.Length; v++) {
+            neighbours[v] = [];
+        }
+        for (var t = 0; t < plan.Index.Count; t += 3) {
+            for (var n = 0; n < 3; n++) {
+                var (a, b) = (plan.Index[t + n], plan.Index[t + ((n + 1) % 3)]);
+                if (!neighbours[a].Contains(b)) { neighbours[a].Add(b); }
+                if (!neighbours[b].Contains(a)) { neighbours[b].Add(a); }
+            }
+        }
+        return neighbours;
+    }
 
     /// <summary>Virtual lips have no simulation particles of their own. Keep their faces oriented with the sheet
     /// during a wave, so the cut boundary cannot fold back through the thicker tissue underneath it.</summary>
@@ -1221,8 +1366,8 @@ public partial class PatientBody {
         return mid + bend.LimitLength(limit);
     }
 
-    /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays()).
-    /// </summary>
+    /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays(), which
+    /// the caller disposes once the surface is added, see <see cref="Shapes.SetPacked{T}"/>).</summary>
     private sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Vector2[] Uvs, int[] Indices, Color[]? Colors,
         Vector2[]? Uvs2) {
         /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
@@ -1234,15 +1379,15 @@ public partial class PatientBody {
         public Godot.Collections.Array ToArrays() {
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = Vertices;
-            arrays[(int)Mesh.ArrayType.Normal] = Normals;
-            arrays[(int)Mesh.ArrayType.TexUV] = Uvs;
-            arrays[(int)Mesh.ArrayType.Index] = Indices;
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, Vertices);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, Normals);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, Uvs);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Index, Indices);
             if (Colors is not null) {
-                arrays[(int)Mesh.ArrayType.Color] = Colors;
+                Shapes.SetPacked(arrays, Mesh.ArrayType.Color, Colors);
             }
             if (Uvs2 is not null) {
-                arrays[(int)Mesh.ArrayType.TexUV2] = Uvs2;
+                Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, Uvs2);
             }
             return arrays;
         }
@@ -1253,18 +1398,21 @@ public partial class PatientBody {
     /// rests, moved as far as the sim moved it (Moved()). The skin and its fat move as one. The muscle slides along
     /// only as far as its tether lets it (LayerTether) and stays down on its bed while the skin lifts off it, so a
     /// pull on whole skin slides the skin over it. Beside a cut through it the muscle is cut free and goes with the
-    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle, and a flap
-    /// takes its layers along. A flap turned right over takes everything.
+    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle along the
+    /// body. Lifted, the skin and its fat peel off the muscle: it rises with them only <see cref="MuscleLift"/>, so a
+    /// wound's edge held up shows the muscle's cut edge under it. A flap turned right over takes everything.
     /// </summary>
     public Vector3 LayerPoint(int layer, int k) {
         var moved = Moved(k);
-        var freed = float.IsPositiveInfinity(LayerTether[layer]) ? 1f : Tissue.Freed(LayerDepth[layer], k);
-        freed = Mathf.Max(freed, TurnedAmount(k, moved, Tissue.TurningFlap));
+        var tethered = !float.IsPositiveInfinity(LayerTether[layer]);
+        var turned = tethered ? TurnedAmount(k, moved, Tissue.TurningFlap) : 1f;
+        var freed = tethered ? Mathf.Max(Tissue.Freed(LayerDepth[layer], k), turned) : 1f;
         var lift = new Vector3(0f, moved.Y, 0f);
         var slide = moved - lift;
         var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
         var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
-        var point = _onModel[k] + slide * follow + lift * Mathf.Max(freed, follow);
+        var rise = moved.Y * Mathf.Max(freed, follow);
+        var point = _onModel[k] + slide * follow + Vector3.Up * Mathf.Lerp(Mathf.Min(rise, MuscleLift), rise, turned);
         // Skin folded out over the drape lies on the cloth where it is now, not at the body's height under its old
         // spot, and the layers that come with it lie on it too; skin under the drape stays under it. A tethered
         // layer that stayed behind under exposed skin is left where it is: it's under the skin, whatever lies over.
