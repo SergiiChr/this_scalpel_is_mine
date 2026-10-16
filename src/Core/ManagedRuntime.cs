@@ -54,7 +54,7 @@ public partial class ManagedRuntime : Node {
 
     /// <summary>Collects all garbage while nothing moves yet (a surgery about to start): play starts with an empty
     /// young generation and no Godot wrappers waiting for their finalizers.
-    /// A Godot wrapper's finalizer hands the engine a pointer into the wrapper itself, unpinned, to free its native value.
+    /// A Godot wrapper's finalizer frees its native value through an unpinned pointer into the wrapper itself.
     /// A compacting collection that moves the wrapper meanwhile makes the engine free whatever lies there and crash.
     /// So finalizers still running from earlier collections finish first, and this collection isn't forced to compact.
     /// Ordinary collections during play can still move one, rarely: only GodotSharp pinning the wrapper would end it.
