@@ -30,11 +30,11 @@ public static class PlayerInput {
     /// <summary>Presses the keyboard key bound to an action: for what listens to keys themselves (a quick-time event).
     /// </summary>
     public static void Key(string name) {
-        var key = (InputEventKey)InputMap.ActionGetEvents(name).First(e => e is InputEventKey).Duplicate();
-        key.Pressed = true;
-        Send(key);
-        var up = (InputEventKey)key.Duplicate();
+        var down = (InputEventKey)InputMap.ActionGetEvents(name).First(e => e is InputEventKey).Duplicate();
+        var up = (InputEventKey)down.Duplicate();
+        down.Pressed = true;
         up.Pressed = false;
+        Send(down);
         Send(up);
     }
 
