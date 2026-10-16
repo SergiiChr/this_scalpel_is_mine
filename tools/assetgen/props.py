@@ -248,7 +248,8 @@ def _xray() -> Model:
     m.add("Screen", superellipsoid((0.2, 0.14, 0.01), 0.1, (hx, hy + 0.04, hz + 0.13)), "screen", XRAY_HEAD, "Head")
     m.add("Knob", cylinder(0.035, (hx + 0.16, hy + 0.06, hz), (hx + 0.2, hy + 0.06, hz), 16), "dark_steel", XRAY_HEAD, "Head")
     grip = [(hx + 0.12, hy - 0.08, hz + 0.1), (hx + 0.22, hy - 0.06, hz + 0.16), (hx + 0.22, hy + 0.1, hz + 0.16), (hx + 0.16, hy + 0.12, hz + 0.1)]
-    m.add("Grip", tube(grip, [(0.011, 0.011)] * len(grip), ring=8, smooth=3), "chrome", XRAY_HEAD, "Head")
+    # Its middle runs straight up: its rings are laid out from the head's front axis, or they twist into a pinch there.
+    m.add("Grip", tube(grip, [(0.011, 0.011)] * len(grip), ring=8, up=(0.0, 0.0, 1.0), smooth=3), "chrome", XRAY_HEAD, "Head")
     collimator = merge(
         superellipsoid((0.18, 0.08, 0.18), 0.2, (hx, hy - 0.14, hz)),
         cylinder(0.04, (hx - 0.1, hy - 0.14, hz + 0.04), (hx - 0.09, hy - 0.14, hz + 0.04), 12),
@@ -317,7 +318,10 @@ def _sink() -> Model:
     # Out along the bottom and up the wall, then back down the inside: a hollow bowl.
     basin = lathe([(0.0, 0.0), (0.2, 0.0), (0.26, 0.12), (0.27, 0.13), (0.25, 0.13), (0.19, 0.02), (0.0, 0.02)], 28)
     m.add("Basin", moved(basin, (0.0, 0.78, 0.02)), "dark_steel")
-    m.add("Tap", tube([(0.0, 0.91, -0.2), (0.0, 1.12, -0.2), (0.0, 1.16, -0.1), (0.0, 1.06, -0.02)], [(0.012, 0.012)] * 4, ring=10), "chrome")
+    # Up and over in one plane: its rings are laid out from across that plane, or they twist into a pinch where it
+    # runs straight up.
+    tap = [(0.0, 0.91, -0.2), (0.0, 1.12, -0.2), (0.0, 1.16, -0.1), (0.0, 1.06, -0.02)]
+    m.add("Tap", tube(tap, [(0.012, 0.012)] * len(tap), ring=10, up=(1.0, 0.0, 0.0)), "chrome")
     m.add("Lever", cylinder(0.008, (-0.06, 1.0, -0.2), (0.06, 1.0, -0.2), 8), "chrome")
     return m
 
