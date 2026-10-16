@@ -466,11 +466,13 @@ def escape(text: str) -> str:
     return re.sub(r"([\\()&|=!~])", r"\\\1", text)
 
 
-def runsettings(suite: Suite, options: TestOptions, cases: int) -> Path:
-    """The test run settings for one suite's process: its Godot options and how long the whole run may take."""
-    args = [*suite.godot_args, *godot_view(suite, options)]
+def runsettings(suite: Suite, options: TestOptions, name: str, cases: int) -> Path:
+    """The test run settings for one test process: its Godot options and how long the whole run may take."""
+    # Godot writes its own output to a file too: the adapter keeps only what a case prints, so a crash's backtrace
+    # would show nowhere else.
+    args = [*suite.godot_args, *godot_view(suite, options), "--log-file", str(godot_log(name))]
     session = max(cases, 1) * suite.timeout * 1000 + 120_000
-    path = BUILD / "test-settings" / f"{suite.name}.runsettings"
+    path = BUILD / "test-settings" / f"{name}.runsettings"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f"""<?xml version="1.0" encoding="utf-8"?>
@@ -537,13 +539,19 @@ def keep_attempt(name: str) -> Path:
     return kept
 
 
+def godot_log(name: str) -> Path:
+    """Where the Godot of the test process called name writes its output."""
+    return BUILD / "test-logs" / f"{name}.godot.log"
+
+
 def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
     """Runs one dotnet test process and counts the cases actually executed."""
     log = BUILD / "test-logs" / f"{name}.log"
     report = BUILD / "test-results" / f"{name}.xml"
     report.unlink(missing_ok=True)
+    godot_log(name).unlink(missing_ok=True)
     command: list[str] = [
-        dotnet(), "test", str(ASSEMBLY), "--settings", str(runsettings(suite, options, cases)), "--filter", test_filter,
+        dotnet(), "test", str(ASSEMBLY), "--settings", str(runsettings(suite, options, name, cases)), "--filter", test_filter,
         "--logger", f"junit;LogFilePath={report}", "--logger", "console;verbosity=normal",
     ]  # fmt: skip
     # TEST_RUN tells the test assembly it runs tests, not the game (tests/Support/TestRun.cs).
@@ -691,6 +699,20 @@ def report(outcome: Outcome) -> str:
     return f"FAIL {outcome.suite.full_name}\n{lines}\n     log: {outcome.log.relative_to(ROOT)}"
 
 
+# Lines of a failed suite's log a CI run prints: the job's own output is often all there is to read of a crash or hang.
+CI_LOG_TAIL = 80
+
+
+def log_tail(outcome: Outcome) -> str:
+    """The end of each log of a failed suite, folded in a GitHub Actions group."""
+    parts = []
+    stem = outcome.log.name.removesuffix(".log")
+    for log in sorted({*outcome.log.parent.glob(f"{stem}.log"), *outcome.log.parent.glob(f"{stem}.godot.log")}):
+        tail = log.read_text(errors="replace").splitlines()[-CI_LOG_TAIL:]
+        parts.append(f"::group::{log.relative_to(ROOT)}, last {len(tail)} lines\n" + "\n".join(tail) + "\n::endgroup::")
+    return "\n".join(parts)
+
+
 def test(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="./build.py test",
@@ -758,6 +780,8 @@ def test(arguments: list[str]) -> int:
         with ThreadPoolExecutor(jobs) as pool:
             for outcome in pool.map(lambda suite: run_suite(suite, options), batch):
                 print(report(outcome), flush=True)
+                if options.ci_run and outcome.failures:
+                    print(log_tail(outcome), flush=True)
                 outcomes.append(outcome)
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)

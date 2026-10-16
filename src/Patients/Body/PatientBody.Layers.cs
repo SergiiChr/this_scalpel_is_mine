@@ -406,7 +406,8 @@ public partial class PatientBody {
             var (sheet, walls) = built[layer];
             foreach (var (surface, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) }) {
                 if (surface is null) { continue; }
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, surface.ToArrays());
+                using var arrays = surface.ToArrays();
+                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
             }
         }
@@ -1365,8 +1366,8 @@ public partial class PatientBody {
         return mid + bend.LimitLength(limit);
     }
 
-    /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays()).
-    /// </summary>
+    /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays(), which
+    /// the caller disposes once the surface is added, see <see cref="Shapes.SetPacked{T}"/>).</summary>
     private sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Vector2[] Uvs, int[] Indices, Color[]? Colors,
         Vector2[]? Uvs2) {
         /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
@@ -1378,15 +1379,15 @@ public partial class PatientBody {
         public Godot.Collections.Array ToArrays() {
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = Vertices;
-            arrays[(int)Mesh.ArrayType.Normal] = Normals;
-            arrays[(int)Mesh.ArrayType.TexUV] = Uvs;
-            arrays[(int)Mesh.ArrayType.Index] = Indices;
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, Vertices);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, Normals);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, Uvs);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Index, Indices);
             if (Colors is not null) {
-                arrays[(int)Mesh.ArrayType.Color] = Colors;
+                Shapes.SetPacked(arrays, Mesh.ArrayType.Color, Colors);
             }
             if (Uvs2 is not null) {
-                arrays[(int)Mesh.ArrayType.TexUV2] = Uvs2;
+                Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, Uvs2);
             }
             return arrays;
         }
