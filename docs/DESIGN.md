@@ -239,9 +239,9 @@ dose of weaker drugs counts too. A weaker patient may need more than the right d
 `sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient
 below `max_panic` while they're still awake; a patient who was out at any point before (put under, too much
 sedative) never meets it.
-`irrigate` is met once no cut is dirty: glass leaves its track dirty, and plain fluid (saline drawn from the IV bag)
-squirted from a syringe into a cut or from just over it (`Patient.RinseReach`) rinses it, clean after `Patient.RinseMl`.
-A track its glass is still in can't be rinsed.
+`irrigate` is met once no cut is dirty: glass leaves its track dirty. A syringe's plunger pushed without the needle in
+(Use tool not held) squirts its liquid out, and it falls like any liquid (`Patient.Spill()`): landing in a cut it
+flushes it, clean after `Patient.RinseMl`. A track its glass is still in is shut and can't be rinsed.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).

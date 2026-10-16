@@ -62,17 +62,24 @@ public static class Syringe {
     /// One move of a syringe's plunger, host only: <paramref name="ml"/> &gt; 0 pulls it out, &lt; 0 pushes it in,
     /// whether or not the needle is lowered. Pulled, it draws what the needle is in: a vial's or dish's liquid, blood
     /// from a vein, or air. In skin, fat or muscle nothing comes and the plunger stays put. Pushed, the air at the needle
-    /// goes first, then the liquid: into a vial (as much as fits) or the dish, a vein (blood goes back, drugs are given
-    /// as IV), the tissue (given as a direct injection), a surgeon (given to them, see Surgery.DoseSurgeon()) or
-    /// squirted out.
+    /// goes first, then the liquid: into a vial (as much as fits) or the dish, and with the needle pushed in (Use tool
+    /// held) into a vein (blood goes back, drugs are given as IV), the tissue (given as a direct injection) or a surgeon
+    /// (given to them, see Surgery.DoseSurgeon()). Anywhere else it squirts out and falls where it falls
+    /// (<see cref="Patient.Spill"/>).
     /// </summary>
     public static void Plunge(SurgicalTool tool, float ml, Patient patient) {
-        var tools = Surgery.Current!.Tools;
+        var surgery = Surgery.Current!;
+        var tools = surgery.Tools;
         var target = NeedleTarget(tool, patient);
         var container = (target as ContainerTarget)?.Container;
         if (ml > 0f) {
             Draw(tool, Mathf.Min(ml, tool.Def.Volume - tool.Ml - tool.Air), target, patient);
             return;
+        }
+        var pushedIn = tool.State == ToolState.Held && surgery.Surgeons.TryGetValue(tool.Holder, out var holder)
+            && holder.Hands[tool.Slot].Lowered;
+        if (!pushedIn && target is VeinTarget or TissueTarget or SurgeonTarget) {
+            target = new AirTarget();
         }
         var air = Mathf.Min(-ml, tool.Air);
         var liquid = Mathf.Min(-ml - air, tool.Ml);
@@ -141,9 +148,6 @@ public static class Syringe {
                     container.Bolus += liquid;
                 }
                 break;
-            case AirTarget or TissueTarget when IsPlainFluid(tool) && patient.Rinse(tool.TipPosition(), liquid):
-                surgery.Tools.Transfer(tool, null, liquid);
-                break;
             case VeinTarget or TissueTarget or SurgeonTarget:
                 // Given as it goes in: every push adds to what's already in that body (DrugLevels).
                 foreach (var (drug, amount) in surgery.Tools.Transfer(tool, null, liquid)) {
@@ -161,14 +165,10 @@ public static class Syringe {
                 surgery.Sound("syringe_inject", tool.TipPosition());
                 break;
             default:
-                surgery.Tools.Transfer(tool, null, liquid);
+                patient.Spill(tool.TipPosition(), liquid, surgery.Tools.Transfer(tool, null, liquid));
                 break;
         }
     }
-
-    /// <summary>Holds only plain fluid (saline, as drawn from the IV bag): no drug and no blood in it.</summary>
-    private static bool IsPlainFluid(SurgicalTool tool) =>
-        tool.Contents.All(pair => pair.Key == "saline" || pair.Value <= 0.0001f);
 
     /// <summary>Draws <paramref name="ml"/> from the IV bag into a syringe by the port at its bottom: what was pushed in
     /// there and hasn't run down the line yet (<see cref="SurgicalTool.Bolus"/>) comes first, its drugs with it, then

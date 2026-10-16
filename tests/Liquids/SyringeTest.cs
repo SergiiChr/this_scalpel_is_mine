@@ -405,6 +405,30 @@ public class SyringeTest {
         await End();
     }
 
+    /// <summary>The plunger pushed with the needle resting on the skin, Use tool not held: the liquid squirts out instead
+    /// of going in, and the patient gets none of the drug.</summary>
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task PushedWithTheNeedleOnlyRestingSquirtsOut() {
+        var @case = SyringeBench.Cases.Single(entry => entry.Name == "skin_push");
+        await Begin("plunger");
+        await _bench.Stage(@case, false);
+        var patient = Surgery.Patient;
+        var drug = Db.Tool(@case.Vial)!.Drug;
+        var givenBefore = InBody(patient.Drugs, drug);
+        var mlBefore = Syringe.Ml;
+        for (var i = 0; i < 2; i++) {
+            await SyringeBench.Notch(false);
+        }
+        AssertFloat(mlBefore - Syringe.Ml).OverrideFailureMessage("two notches push 2 ml out of the syringe")
+            .IsEqualApprox(2f, 0.0001f);
+        AssertFloat(InBody(patient.Drugs, drug)).OverrideFailureMessage("the patient gets none of it")
+            .IsLessEqual(givenBefore + 0.0001f);
+        await _bench.Withdraw();
+        AssertBool(_toasts.Any(toast => toast.Contains("Injected", StringComparison.Ordinal)))
+            .OverrideFailureMessage($"debug mode tells of no injection ({string.Join(", ", _toasts)})").IsFalse();
+        await End();
+    }
+
     /// <summary>Each syringe capacity: a partial final stroke reaches the boundary, then another stroke is rejected.
     /// Uses player wheel input; route equivalence cases above cover ordinary one-ml transfers.</summary>
     [TestCase("syringe_3", Timeout = Limits.Slow)]

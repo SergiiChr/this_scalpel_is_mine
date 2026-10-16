@@ -69,10 +69,10 @@ public sealed class Wound {
     /// <summary>A small cut pressed long enough: it's stopped bleeding for good, until it's torn or cut further.
     /// </summary>
     public bool Clotted { get; set; }
-    /// <summary>Has dirt in it (glass went in through it) until enough saline is rinsed through it (Patient.Rinse()).
+    /// <summary>Has dirt in it (glass went in through it) until enough liquid is run through it (Patient.Spill()).
     /// </summary>
     public bool Dirty { get; set; }
-    /// <summary>ml of saline rinsed through it so far.</summary>
+    /// <summary>ml of liquid run through it so far.</summary>
     public float Rinsed { get; set; }
     public bool MadeBySurgeon { get; set; }
     /// <summary>Closure progress per bin, 0..1.</summary>
