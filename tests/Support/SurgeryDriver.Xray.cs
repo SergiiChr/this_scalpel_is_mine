@@ -25,11 +25,11 @@ public partial class SurgeryDriver {
         Note($"interacts with the X-ray cart: {prompt}");
     }
 
-    /// <summary>Takes hold of the cart by its handle and pushes it until the tube head hangs over
+    /// <summary>Takes hold of the cart by its push bar and pushes it until the tube head hangs over
     /// <paramref name="point"/>, still holding it. With <paramref name="lateral"/>, the wheel first brings the head down
     /// until the lateral beam runs at that height.</summary>
     public async Task PlayerPushesXrayOver(Vector3 point, float? lateral = null) {
-        var handle = Cart.ToGlobal(new Vector3(0f, 0.9f, 0.4f));
+        var handle = Cart.ToGlobal(new Vector3(0f, 0.92f, 0.38f));
         await PlayerWalksTo(handle, 0.6f);
         await PlayerLooksAt(handle);
         await Frames.Physics(2);

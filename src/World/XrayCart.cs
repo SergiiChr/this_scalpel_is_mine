@@ -111,11 +111,11 @@ public partial class XrayCart : Node3D {
             },
         };
         AddChild(_outline);
-        // Only the generator and column block: the base and the arm reach under and over the table.
+        // Only the cabinet, the push bar and the column block: the base and the arm reach under and over the table.
         _body = new AnimatableBody3D();
         _body.AddChild(new CollisionShape3D {
-            Shape = new BoxShape3D { Size = new Vector3(0.44f, 1.2f, 0.4f) },
-            Position = new Vector3(0f, 0.6f, 0.12f),
+            Shape = new BoxShape3D { Size = new Vector3(0.5f, 0.95f, 0.5f) },
+            Position = new Vector3(0f, 0.475f, 0.15f),
         });
         AddChild(_body);
         // Grab takes hold of it anywhere, like a tool: the base and generator, the handle, the column, and the arm with
@@ -131,8 +131,8 @@ public partial class XrayCart : Node3D {
             return spot;
         }
         Hold(this, new Vector3(0.5f, 0.75f, 0.7f), new Vector3(0f, 0.375f, -0.02f))
-            .AddBox(new Vector3(0.6f, 0.12f, 0.14f), new Vector3(0f, 0.9f, 0.4f))
-            .AddBox(new Vector3(0.14f, 2.0f, 0.13f), new Vector3(-0.17f, 1.1f, -0.03f));
+            .AddBox(new Vector3(0.7f, 0.12f, 0.12f), new Vector3(0f, 0.92f, 0.38f))
+            .AddBox(new Vector3(0.14f, 2.1f, 0.13f), new Vector3(-0.17f, 1.12f, -0.03f));
         // Local to the tube head: the head, and the arm from it back to the column.
         Hold(_parts["Arm"], new Vector3(0.34f, 0.4f, 0.3f), new Vector3(0f, -0.04f, 0f))
             .AddBox(new Vector3(0.3f, 0.12f, 0.75f), new Vector3(-0.08f, 0.24f, 0.35f));

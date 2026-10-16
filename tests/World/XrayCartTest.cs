@@ -36,10 +36,11 @@ public class XrayCartTest {
                 await driver.PlayerWalksTo(cart.ToGlobal(new Vector3(0f, 0f, 2.3f)), 0f);
                 await driver.PlayerLooksAt(cart.ToGlobal(new Vector3(0f, 1f, -0.2f)));
                 await shots.CaptureView("untouched",
-                    "the upright X-ray cart put away in its niche in the wall, its handle toward the room: a compact "
-                        + "base with casters and wheels, a tall column, a level arm curving from its top round to the "
-                        + "middle, the tube head hanging under its end with a screen on its back, the red pedal down, the "
-                        + "niche's floor, walls and ceiling matching the room's, no gaps at its edges, the cart not lit up from this far");
+                    "the upright X-ray cart put away in its niche in the wall, its push bar toward the room: an open steel H "
+                        + "frame on swivel casters, a white cabinet with the films' holder, a square column, a straight dark "
+                        + "steel arm to the box-shaped tube head with its control panel, the red pedal down, the niche's "
+                        + "floor, walls and ceiling matching the room's, no gaps at its edges, the cart not lit up from "
+                        + "this far");
             }
             driver.Budget.Clear();
             // Put away in its niche, the cart leaves the way round the table's foot clear, between the tray and the wall.
@@ -155,7 +156,7 @@ public class XrayCartTest {
             if (shots is not null) {
                 // From above as well as behind: pushed and turned as a player would, its back may face the table.
                 await driver.Unbudgeted(() => shots.CaptureOblique("locked",
-                    "the cart from behind, its handle loop in front, the red pedal right of middle pressed down",
+                    "the cart from behind, its push bar with black grips in front, the red pedal right of middle pressed down",
                     cart.ToGlobal(new Vector3(0f, 0.4f, 0.3f)), cart.GlobalBasis.Z, 1.4f));
             }
             driver.Budget.Check(localOverride: BudgetOverride);
