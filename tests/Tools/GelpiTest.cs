@@ -3,12 +3,12 @@ namespace Scalpel.Tests.Tools;
 /// <summary>
 /// The Gelpi retractor (self-retaining) as a player uses it: laid along a cut and set in its middle with Use tool, its
 /// points going down into it as deep as it goes, opened on the wheel so the cut's edges move apart, let go of and left
-/// holding the wound open, taken back, closed and taken out. Opened too far it tears the skin. Pressed onto whole skin
-/// it bounces off. Set in a skin cut and let go of, the scalpel cuts the muscle between its jaws. Key frames: the site
-/// from above and obliquely and what the surgeon sees (the &lt; &gt; aim at the tips). Review them for the retractor
-/// lying along the cut with its arms over the skin, the points down in the cut on its edges, the opening widening with
-/// the tips and not past them, no skin passing through the jaws, the &lt; &gt; on the tips and the muscle cut showing
-/// between the jaws.
+/// holding the wound open, taken back, closed and taken out. On a tight thigh wound the wheel stops where the skin
+/// stops giving, before it bunches at the drape. Pressed onto whole skin it bounces off. Set in a skin cut and let go
+/// of, the scalpel cuts the muscle between its jaws. Key frames: the site from above and obliquely and what the surgeon
+/// sees (the &lt; &gt; aim at the tips). Review them for the retractor lying along the cut with its arms over the
+/// skin, the points down in the cut on its edges, the opening widening with the tips and not past them, no skin
+/// passing through the jaws, the &lt; &gt; on the tips and the muscle cut showing between the jaws.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_gelpi"), TestCategory("tissue_modification")]
@@ -19,6 +19,10 @@ public class GelpiTest {
     /// <summary>How far (meters) from the cut's middle its gap is measured.</summary>
     private const float Middle = 0.005f;
     private const float Open = 0.032f;
+    /// <summary>How wide (meters, through the muscle) the Gelpi must hold a tight thigh wound when its wheel stops, and
+    /// how high (meters) the skin it pushes toward the drape may rise then.</summary>
+    private const float ThighOpen = 0.025f;
+    private const float Ridge = 0.008f;
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 24.5f);
 
@@ -118,25 +122,6 @@ public class GelpiTest {
     }
 
     [TestCase(Timeout = Limits.Slow)]
-    public async Task GelpiOpenedTooFarTearsTheSkin() {
-        var session = await ToolSession.Start("appendectomy", "gelpi/too_far", views: true);
-        var driver = session.Driver;
-        var (from, to) = Cut(driver, 0.03f);
-        session.Along = driver.SitePoint(to) - driver.SitePoint(from);
-        await driver.PlayerCutsSkin(from, to, 2);
-        await driver.PlayerPutsDown();
-        var gelpi = await driver.PlayerSetsGelpi(from, to);
-        AssertBool(gelpi.InWound).OverrideFailureMessage("set in a 3 cm cut").IsTrue();
-        await driver.PlayerOpensGelpi(ToolActions.SpreadRange.Y);
-        await Frames.Seconds(1f);
-        AssertBool(driver.Patient.Flags.ContainsKey("tears"))
-            .OverrideFailureMessage($"opened {gelpi.Spread * 100f:0} cm across a 3 cm cut, the skin tears").IsTrue();
-        AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("skin_tear")).OverrideFailureMessage("a tear costs points").IsTrue();
-        await driver.Capture("torn", "opened wider than the 3 cm cut: the skin torn at its ends");
-        await session.Finish(BudgetOverride);
-    }
-
-    [TestCase(Timeout = Limits.Slow)]
     public async Task GelpiPressedOntoWholeSkinBouncesOff() {
         var session = await ToolSession.Start("appendectomy", "gelpi/bounce", views: true);
         var driver = session.Driver;
@@ -187,6 +172,43 @@ public class GelpiTest {
         AssertThat(body.Tissue.DeepestCut(middle, body.MetersToUv(0.004f)))
             .OverrideFailureMessage($"the scalpel cuts the muscle between its jaws\n{driver.Recent()}").IsEqual(TissueDepth.Muscle);
         await driver.Capture("muscle_cut", "the scalpel has cut the muscle between the Gelpi's jaws");
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task GelpiOnATightThighWoundStopsOpeningWhereTheSkinStopsGiving() {
+        var session = await ToolSession.Start("bullet_muscle", "gelpi/thigh", views: true);
+        var driver = session.Driver;
+        var body = driver.Body;
+        var tissue = body.Tissue;
+        var middle = driver.Patient.Wounds[0].Midpoint;
+        // The entry wound widened through every layer along the thigh, near the drape's edge on one side. Its midpoint
+        // lies a few millimeters off the widened cut.
+        var half = new Vector2(body.MetersToUv(0.025f), 0f);
+        var (from, to) = (middle - half, middle + half);
+        session.Along = driver.SitePoint(to) - driver.SitePoint(from);
+        await driver.PlayerCutsSkin(from, to, 3);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        var wounds = driver.Patient.Wounds.Count;
+        var gelpi = await driver.PlayerSetsGelpi(from, to);
+        AssertBool(gelpi.InWound).OverrideFailureMessage("set in the thigh wound").IsTrue();
+        await driver.PlayerOpensGelpi(ToolActions.SpreadRange.Y);
+        AssertFloat(gelpi.Spread).OverrideFailureMessage($"the wheel stops short of fully open ({gelpi.Spread * 100f:0.0} cm)")
+            .IsLess(ToolActions.SpreadRange.Y - ToolActions.SpreadStep);
+        var strain = Mathf.Max(tissue.StrainAt(Patient.SpreaderKey(gelpi.Uid, 0)), tissue.StrainAt(Patient.SpreaderKey(gelpi.Uid, 1)));
+        AssertFloat(strain).OverrideFailureMessage($"where the skin a jaw holds no longer gives (strained {strain:0.00})")
+            .IsGreater(ToolActions.SpreadStrain);
+        var gap = tissue.GapAt(middle, body.MetersToUv(0.004f), TissueDepth.Muscle);
+        AssertFloat(gap).OverrideFailureMessage($"but only once the wound stands {gap * 100f:0.0} cm open through the muscle").IsGreater(ThighOpen);
+        // Beyond the jaws' grips: the skin they push toward the drape, the lips included.
+        var ridge = Enumerable.Range(0, tissue.Pos.Length)
+            .Where(k => Mathf.Abs(tissue.UvOf(k).Y - middle.Y) * body.SiteSize.Y > 0.012f)
+            .Max(k => tissue.Pos[k].Y - tissue.Rest[k].Y);
+        AssertFloat(ridge).OverrideFailureMessage($"the skin pushed toward the drape rises {ridge * 1000f:0.0} mm, no ridge").IsLess(Ridge);
+        AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage("nothing tears").IsEqual(wounds);
+        await AssertLipsApart(driver);
+        await driver.Capture("stopped", $"the Gelpi opened as far as the thigh skin gives, the wound over {ThighOpen * 100f:0} cm open: the skin beside each jaw humped up smooth, no ridge at the drape's edge, nothing through the skin");
         await session.Finish(BudgetOverride);
     }
 

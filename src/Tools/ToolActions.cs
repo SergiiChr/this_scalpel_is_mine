@@ -142,6 +142,10 @@ public static class ToolActions {
     /// apart (GELPI_CLOSED in tools/assetgen/instruments.py).</summary>
     public const float SpreadStep = 0.005f;
     public static readonly Vector2 SpreadRange = new(0.012f, 0.08f);
+    /// <summary>A spreader's wheel stops opening once the skin either jaw holds is strained this much
+    /// (TissueSim.StrainAt()). Strain climbs slowly to about 2 as a cut opens, then shoots up within a notch or two as
+    /// the skin between a jaw and the drape bunches into a ridge; this stops a notch short of that.</summary>
+    public const float SpreadStrain = 1.8f;
     /// <summary>Steps (meters) a stapler's leg over an opening reaches out in for its edge (StapleLegs()).</summary>
     public const float StapleReachStep = 0.0005f;
     /// <summary>How deep (meters) a spreader's points reach into a cut: they hang GELPI_DROP

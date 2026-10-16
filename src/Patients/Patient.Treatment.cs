@@ -883,7 +883,7 @@ public partial class Patient {
     internal bool CanSetIv(bool connected) => !IvSet || (connected && !IvConnected);
 
     /// <summary>Someone caught the IV tubing and walked off with it: the catheter rips out of the arm, tearing the skin,
-    /// and hangs on the end of the tubing.</summary>
+    /// and falls still on the end of the tubing, a catheter like any other to pick up and put back in.</summary>
     public void PullIv(Surgeon surgeon) {
         if (!IvSet) {
             return;
@@ -897,11 +897,13 @@ public partial class Patient {
         Session.Sound("cable_yank", surgeon.GlobalPosition);
         Session.Announce($"{surgeon.DisplayName} catches the IV line. It rips out of the arm.");
         Session.JoltPeer(surgeon.PeerId, 0.8f);
+        var end = Session.Room.IvLine.Points[^1];
         if (Session.Room.IvLine.Dressing is { } dressing) {
             Session.Effect(ToolEffect.Bead, dressing.GlobalPosition, 0);
             Session.Sound("tear_skin", dressing.GlobalPosition);
         }
         Rpc(MethodName.IvRemoved, true);
+        Rpc(MethodName.IvLineOn, Session.Tools.DropNew("iv_catheter", end).Uid);
     }
 
     /// <summary>Tapes a catheter on at <paramref name="point"/> (local to the body's root), the tubing on it if

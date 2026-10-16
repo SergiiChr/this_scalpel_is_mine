@@ -163,7 +163,8 @@ public partial class Patient {
         ConnectIv(point, connected);
     }
 
-    /// <summary>The catheter is out of the arm; <paramref name="torn"/>: ripped out with the tubing on it.</summary>
+    /// <summary>The catheter is out of the arm; <paramref name="torn"/>: ripped out with the tubing on it (PullIv() puts
+    /// it back on the tubing's end as a tool).</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     internal void IvRemoved(bool torn) {
         IvSet = false;

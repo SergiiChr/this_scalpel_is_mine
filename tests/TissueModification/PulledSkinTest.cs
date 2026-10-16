@@ -6,10 +6,11 @@ namespace Scalpel.Tests.TissueModification;
 /// sides and pushed up and back toward its hinge so it humps up, each held and released, on a belly and a curved
 /// thigh. Review the frames for a smooth stretched mound at the grip that eases out into the skin around it, thin
 /// skin over its tethered bed, lips that stay smooth, the drape untouched, and no clipping; intersections within and
-/// between the three tissue sheets and with the drape are checked numerically.
+/// between the three tissue sheets and with the drape are checked numerically. On a tight thigh wound, forceps pull
+/// the lip further than the skin gives: it peels up off the muscle, held there while the other hand sews the muscle.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
@@ -32,9 +33,15 @@ public class PulledSkinTest {
     /// up, and a little back toward its hinge, so the flap lifts and humps up.</summary>
     private static readonly Vector3 FlapPull = new(0f, 0.6f, 0.15f);
     private const int GripKey = 900;
+    /// <summary>How far (meters) from the wound's middle the hand draws its lip across the limb: further than the skin
+    /// gives. The lip must then stand this far (meters) above the muscle under it.</summary>
+    private const float PeelPull = 0.04f;
+    private const float Peeled = 0.01f;
+    /// <summary>How far (meters) the views of the peeled lip are taken from.</summary>
+    private const float PeelView = 0.15f;
 
-    [TestCase("appendectomy")]
-    [TestCase("leg_extension")]
+    [TestCase("appendectomy", Timeout = Limits.Slow)]
+    [TestCase("leg_extension", Timeout = Limits.Slow)]
     public async Task PulledLipStretchesSmoothlyAndAFreedFlapHumpsUp(string scenario) {
         var session = await ToolSession.Start(scenario, $"skin_fold/{scenario}", captureUntouched: scenario == "leg_extension");
         var driver = session.Driver;
@@ -100,6 +107,66 @@ public class PulledSkinTest {
         await Frames.Seconds(3f);
         await AssertNothingClips(driver);
         await driver.Capture("flap_released", "the flap let go settles back over its bed, no sheet left through another");
+        await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task ForcepsPeelATightThighWoundsEdgeUpOffItsMuscleToSewIt() {
+        var session = await ToolSession.Start("bullet_muscle", "skin_fold/peeled");
+        var driver = session.Driver;
+        var body = driver.Body;
+        var middle = driver.Patient.Wounds[0].Midpoint;
+        // The entry wound widened through every layer along the thigh.
+        var half = new Vector2(body.MetersToUv(0.025f), 0f);
+        await driver.PlayerCutsSkin(middle - half, middle + half, 3);
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(1f);
+        var wounds = driver.Patient.Wounds.Count;
+        // The needle first: fetched while the other hand holds the lip, walking to the tray would drag it.
+        await driver.SwitchTo(SurgeryDriver.Left);
+        await driver.PlayerRequestsItem("needle");
+        await driver.SwitchTo(SurgeryDriver.Right);
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        // Across the limb (meters to uv: the site is narrower across it than along) to the lip, and a little past it.
+        var across = new Vector2(0f, 0.001f / body.SiteSize.Y);
+        var lip = middle;
+        for (var i = 0; i < 60 && body.LayerAt(lip) != "skin"; i++) {
+            lip += across;
+        }
+        lip += across * 2f;
+        var k = body.Tissue.Nearest(lip);
+        await driver.PlayerWalksTo(driver.SitePoint(lip));
+        await driver.PlayerReaches(driver.SitePoint(lip));
+        SurgeryDriver.Use();
+        await Frames.Physics(10);
+        AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage($"the forceps take the wound's lip ({forceps.Hold})").IsTrue();
+        // Further across than the thigh's tight skin gives.
+        await driver.PlayerSweepsTo(driver.SitePoint(middle + (across * PeelPull * 1000f)));
+        await Frames.Seconds(1f);
+        var peeled = body.LayerPoint(0, k).Y - body.LayerPoint(2, k).Y;
+        AssertFloat(peeled).OverrideFailureMessage($"pulled past what the skin gives, the lip peels {peeled * 1000f:0} mm up off the muscle")
+            .IsGreater(Peeled);
+        AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage("peeled without tearing").IsEqual(wounds);
+        await AssertNothingClips(driver);
+        // From across the limb on the far side, under the lifted lip, the hands left out: the one holding the forceps
+        // hangs right over it.
+        var site = driver.SitePoint(middle);
+        var under = -body.Site.GlobalBasis.Z;
+        await session.CaptureOblique("peeled", $"forceps hold the thigh wound's lip peeled over {Peeled * 100f:0} cm up off the muscle: the skin and its fat lifted in a smooth arch, the muscle's cut edge showing flat under it, nothing through anything", site, under, PeelView);
+
+        await driver.SwitchTo(SurgeryDriver.Left);
+        var muscle = driver.Patient.Wounds.Where(wound => wound.ThroughMuscle).ToList();
+        foreach (var wound in muscle) {
+            await driver.PlayerSews(wound, TissueDepth.Muscle);
+        }
+        var sewn = muscle.Select(wound => wound.Muscle.Min()).DefaultIfEmpty(0f).Min();
+        AssertFloat(sewn).OverrideFailureMessage($"the needle sews the muscle shut under the peeled lip ({sewn:0.00})\n{driver.Recent()}")
+            .IsGreaterEqual(1f);
+        // Held all along: the skin neither lets the lip down nor draws the hand back while the needle works.
+        var stillPeeled = body.LayerPoint(0, k).Y - body.LayerPoint(2, k).Y;
+        AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage("the forceps still hold the lip").IsTrue();
+        AssertFloat(stillPeeled).OverrideFailureMessage($"still peeled {stillPeeled * 1000f:0} mm up off the muscle").IsGreater(Peeled);
+        await session.CaptureOblique("muscle_sewn", "the muscle sewn shut: the thread draws its cut edges together into a closed seam in the opening, the skin and fat walls round it, nothing through anything", site, under, PeelView);
         await session.Finish(BudgetOverride);
     }
 

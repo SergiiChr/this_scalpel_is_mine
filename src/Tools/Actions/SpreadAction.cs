@@ -28,8 +28,12 @@ public sealed class SpreadAction : ToolAction {
     }
 
     /// <summary>The spreader's wheel: <paramref name="direction"/> positive for up (open), negative for down (close).
-    /// Set in a cut, the jaws take its edges along.</summary>
+    /// Set in a cut, the jaws take its edges along, and stop opening once the skin either one holds no longer gives
+    /// (<see cref="ToolActions.SpreadStrain"/>, as skin stops a hand): opened further, it would only bunch up.</summary>
     public static void Adjust(SurgicalTool tool, int direction, Patient patient) {
+        if (direction > 0 && tool.Hold is SpreadHold held && held.Keys.Any(key => patient.Body.Tissue.StrainAt(key) > ToolActions.SpreadStrain)) {
+            return;
+        }
         tool.Spread = Mathf.Clamp(tool.Spread + direction * ToolActions.SpreadStep, ToolActions.SpreadRange.X, ToolActions.SpreadRange.Y);
         if (tool.Hold is SpreadHold hold) {
             patient.OpenSpreader(hold, tool.Spread);

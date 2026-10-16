@@ -105,7 +105,10 @@ void fragment() {
 		c *= mix(1.0, 0.62, smoothstep(0.55, 1.0, wall_depth));
 	}
 	NORMAL = bumped(NORMAL, VERTEX, height);
-	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV).r);
+	// Down a cut's wall its uv stays that of the lip above: blood read there runs in straight columns, one per grid
+	// cell. Wobbled by the tissue's own position, it lies in soft irregular patches instead.
+	vec2 wobble = cut_face ? (vec2(noise3(local_pos * 90.0), noise3(local_pos * 90.0 + 13.0)) - 0.5) * 0.03 : vec2(0.0);
+	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV + wobble).r);
 	c = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
 	float spot = cut_face ? paint_spot(c, bleed_spot(texture(bleed_map, UV), UV2.x)) : 0.0;
 	ALBEDO = c;

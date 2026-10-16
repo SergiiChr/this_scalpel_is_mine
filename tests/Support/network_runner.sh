@@ -43,6 +43,10 @@ expect() {
 }
 
 run() {
+	# Each player's own user:// (Godot's under XDG_DATA_HOME), as on two machines: both write save.cfg on joining,
+	# and a player reading it while the other writes it reads half a file.
+	XDG_DATA_HOME=$(mktemp -d)
+	export XDG_DATA_HOME
 	# exec: started in the background, the job is the timeout wrapper itself, with Godot as its only child.
 	exec timeout "$limit" "$godot" --headless --path "$root" "res://tests/Support/$1.tscn" -- "--role=$2" \
 		"--give-up=$((limit - 10))" >"$logs/$3.log" 2>&1

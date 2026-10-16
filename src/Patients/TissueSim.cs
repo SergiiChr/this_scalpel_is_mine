@@ -129,8 +129,7 @@ public sealed partial class TissueSim {
     /// has grown or shrunk since the grip took hold (see <see cref="StrainAt"/>). Pulled harder, the hand is held
     /// where the skin stops giving (<see cref="Restrain"/>, Patient.UpdateGrip()): skin can't be dragged across the
     /// site like rubber, nor pushed through itself. A flap cut free swings as far as its hinge lets it. Skin still
-    /// tears where a tool forces it (a spreader cranked open, a surgeon walking away holding on) or a thread cuts
-    /// through.</summary>
+    /// tears where a tool forces it (a surgeon walking away holding on) or a thread cuts through.</summary>
     public const float GripStrain = 1.5f;
     /// <summary>Skin bunches up to this share of its length, pushed along, before it holds the hand like
     /// <see cref="GripStrain"/> does: it piles up in front of the jaws, it doesn't pass through itself.</summary>
@@ -143,6 +142,10 @@ public sealed partial class TissueSim {
     /// <summary>How far (meters) skin pushed along the body may press into it: bunched up, it rises off the body,
     /// it doesn't sink into it (see StayOnBody()).</summary>
     public const float BodyPress = 0.001f;
+
+    /// <summary>How high (meters) a grip pulled past what the skin gives peels its edge up off what's under it (see
+    /// <see cref="Restrain"/>).</summary>
+    public const float PeelLift = 0.02f;
 
     /// <summary>The most a grip past <see cref="GripStrain"/> is brought back toward home per solver step (3 cm/s at
     /// 60 steps a second).</summary>
@@ -1118,9 +1121,11 @@ public sealed partial class TissueSim {
 
     /// <summary>
     /// Where grip <paramref name="key"/> may go on its way to <paramref name="target"/>: anywhere while the skin it
-    /// holds gives (strained under <see cref="GripStrain"/>); stretched past that it only comes back, no further from
-    /// the spot the held skin belongs to than the strain over the limit says. The hand follows it there
-    /// (Patient.UpdateGrip()), so the held skin stops the hand like something held does.
+    /// holds gives (strained under <see cref="GripStrain"/>); stretched past that it only comes back along the body,
+    /// no further from the spot the held skin belongs to than the strain over the limit says. Pulled on from there, it
+    /// peels the skin's edge up off what's under it instead: it rises by as much as it would have gone further, up to
+    /// <see cref="PeelLift"/> over that spot (the muscle stays down, PatientBody.LayerPoint()). The hand follows it
+    /// there (Patient.UpdateGrip()), so the held skin stops the hand like something held does.
     /// </summary>
     public Vector3 Restrain(int key, Vector3 target) {
         var strain = StrainAt(key);
@@ -1128,11 +1133,16 @@ public sealed partial class TissueSim {
             return target;
         }
         var home = _anchorTarget[_pins[key].Particle];
-        var held = (_pins[key].Target - home).Length();
+        var now = _pins[key].Target;
+        var held = (now - home).Slide(Vector3.Up).Length();
         // Eased back a little per step rather than snapped home: the first crease past the limit reads as a huge
         // strain for a step, and the hand just stops there instead of jumping.
         var reach = Mathf.Max(held * (GripStrain / strain), held - GiveBack);
-        return home + (target - home).LimitLength(reach);
+        var along = (target - home).Slide(Vector3.Up);
+        var peel = Mathf.Max(along.Length() - reach, 0f);
+        // Lifted already as high as the skin peels (or higher, raised by the hand), it stays where it is.
+        var height = Mathf.Min(target.Y + peel, Mathf.Max(now.Y, home.Y + PeelLift));
+        return (home + along.LimitLength(reach)) with { Y = height };
     }
 
     public void MoveGrip(int key, Vector3 target) {

@@ -80,6 +80,10 @@ public static class SurgeryState {
     public static void IvLineMissedTheVein(Patient patient) =>
         patient.SetIv(patient.Body.Root.ToGlobal(Patient.PreopIvPoint), false);
 
+    /// <summary>As if <paramref name="by"/> had caught the IV tubing and walked off with it, ripping the catheter out.
+    /// </summary>
+    public static void IvLineIsRippedOut(Patient patient, Surgeon by) => patient.PullIv(by);
+
     /// <summary>As if the IV tubing had been connected to <paramref name="catheter"/> at the stand.</summary>
     public static void IvLineIsOnCatheter(Patient patient, SurgicalTool catheter) =>
         patient.Rpc(Patient.MethodName.IvLineOn, catheter.Uid);

@@ -83,9 +83,11 @@ overview, the data formats designers edit and the design decisions.
   the edges actually meet. How it's simulated and drawn is documented on those classes.
 - A hand holding skin is held by it: pulled past what the skin gives (`TissueSim.GripStrain`, the longest spring at
   the held skin over its rest length) the grip stops where the skin does and the hand comes back to it
-  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. A flap cut
-  free swings as far as its hinge lets it. Skin still tears where a tool forces it (a spreader cranked open, a
-  surgeon walking away holding on, a thread pulled too tight).
+  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. Pulled on
+  from there, it peels a cut's lip up off what's under it instead (`TissueSim.PeelLift`): the skin and its fat rise,
+  the muscle stays down (`PatientBody.LayerPoint()`), so a tight wound held up shows its muscle edge for the needle.
+  A flap cut free swings as far as its hinge lets it. Skin still tears where a tool forces it (a surgeon walking away
+  holding on, a thread pulled too tight).
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
@@ -340,7 +342,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   across the arm and the tubing taped along the arm before it hangs off to the stand (one strip, no tubing, without it).
   A surgeon who catches the tubing on their legs or hands and walks off stretches it past its length
   (`IvLine.YankStretch`): held stretched for a moment, the catheter rips out of the arm (`Patient.PullIv()`), leaving a
-  ragged tear in the skin (`IvTear`) and hanging on the tubing's end. Pushing into the slack only moves it aside.
+  ragged tear in the skin (`IvTear`) and falling, still on the tubing's end, as a catheter to pick up and put back in
+  (the floor soils it like any tool). Pushing into the slack only moves it aside.
   Connecting a new catheter replaces the one on the end; one carried further from the stand than the tubing reaches
   slips off.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
@@ -425,6 +428,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   Syringes (3, 10 and 50 ml) say only their size and whether they're full or empty, so players keep track of
   what's in which. The barrel is glass with a scale printed on one side, like a real syringe's: fine ticks (0.1 ml on
   the 3 ml, 0.2 on the 10, 1 on the 50) and numbered ml. The face of the black rubber stopper reads against it.
+- **Reading a vial with a syringe**: a held syringe whose needle is in or just over a vial
+  (`ToolManager.NearestContainer()`) shows the vial's label beside the aim, as a tool's name shows there for an empty
+  hand.
 - **Snapping to a vial**: a syringe whose tip passes over a vial's cap snaps its needle in through the cap along the
   vial (down into one standing, level into one lying), before Use tool is pressed. Only a cap that faces the surgeon
   snaps: up, or lying, pointing their way. Vials and bottles come from the nurse standing, cap up.
@@ -541,8 +547,9 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   as deep as the cut goes (through the skin, the fat or the muscle, at most `ToolActions.SpreadReach`), so how far
   the arms sink shows how deep the cut is (`SurgicalTool.DigTo()`). Pressed on skin with no cut between its tips it
   doesn't set: the hand bounces off and comes back down (`SurgeonHand.Bounce()`). Opened or closed, each edge moves
-  half the change (`Patient.OpenSpreader()`), and the cut opens like the skin lets it: opened too far it tears at the
-  ends. Use tool again takes it out.
+  half the change (`Patient.OpenSpreader()`), and the cut opens like the skin lets it. Once the skin either jaw
+  holds stops giving (`ToolActions.SpreadStrain`) the wheel opens it no further: past that the skin would only bunch
+  into a ridge at the drape. Use tool again takes it out.
 - Set, it stays where it went in: the hand holding it goes to it and doesn't shake (`Surgeon.HoldInWound()`).
   Put down, or walked away from, it stays set in the wound (self-retaining). Picked up again, the wheel works on it.
   Left set, it doesn't keep hands or tools off the cut: a blade cuts the layers under the skin between its jaws.
