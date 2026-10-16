@@ -166,8 +166,10 @@ public static class Syringe {
                 surgery.Sound("syringe_inject", tool.TipPosition());
                 break;
             default:
-                patient.Spill(tool.TipPosition(), liquid, surgery.Tools.Transfer(tool, null, liquid));
-                surgery.Effect(ToolEffect.Stream, tool.TipPosition(), 0);
+                // It lands where its arc meets something, a little over it so it still counts as over the site.
+                var lands = ToolEffects.StreamPath(surgery, tool.TipPosition(), tool.TipDirection())[^1];
+                patient.Spill(lands + (Vector3.Up * 0.002f), liquid, surgery.Tools.Transfer(tool, null, liquid));
+                surgery.Stream(tool);
                 break;
         }
     }

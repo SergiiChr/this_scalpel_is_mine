@@ -243,7 +243,7 @@ below `max_panic` while they're still awake; a patient who was out at any point 
 sedative) never meets it.
 `irrigate` is met once no cut is dirty: glass leaves its track dirty. A syringe's plunger pushed without the needle in
 (Use tool not held) squirts its liquid out, and it falls like any liquid (`Patient.Spill()`), shown as a thin stream
-down to where it lands: landing in a cut it flushes it, clean after `Patient.RinseMlPerCm` per cm of its length. A track its glass is still in is shut and can't be rinsed.
+arcing from the needle tip to where it lands (`ToolEffects.StreamPath()`, the same arc decides where it lands): landing in a cut it flushes it, clean after `Patient.RinseMlPerCm` per cm of its length. A track its glass is still in is shut and can't be rinsed.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
@@ -747,7 +747,7 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
   the body jerking, a bead of blood where a needle or catheter goes in (gauze or a pad wipes it away like other
   blood): on the site a spot painted on the skin like a bleed's, so it rides the skin when a cut is pulled open,
-  elsewhere a small dome, and a thin stream of liquid squirted from a syringe, kept going while pushes follow. Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
+  elsewhere a small dome, and a thin stream of liquid squirted from a syringe, arcing from its tip and following it while pushes go on. Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
   (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the

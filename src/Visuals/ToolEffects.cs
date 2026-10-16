@@ -12,8 +12,6 @@ public enum ToolEffect {
     Spark,
     /// <summary>Injection or catheter: a bead of blood where the needle went in, a spot on the site's skin.</summary>
     Bead,
-    /// <summary>Liquid squirted out of a syringe: a thin stream falling from the tip to where it lands.</summary>
-    Stream,
 }
 
 /// <summary>
@@ -25,13 +23,17 @@ public partial class ToolEffects : Node3D {
     private const float BeadLife = 90f;
     /// <summary>How long (seconds) a bead takes to dry away.</summary>
     private const float BeadDrying = 10f;
-    /// <summary>How long (seconds) a stream shows after a push, and how far (meters) it falls at most.</summary>
+    /// <summary>How long (seconds) a stream shows after a push.</summary>
     private const float StreamLife = 0.5f;
-    private const float StreamFall = 1.5f;
+    /// <summary>How fast (m/s) liquid leaves the needle, and the time step (seconds) and number of steps its arc is
+    /// traced in: it falls at most that long.</summary>
+    private const float StreamSpeed = 0.4f;
+    private const float StreamStep = 0.02f;
+    private const int StreamSteps = 40;
     private const float StreamRadius = 0.0025f;
+    private const int StreamSides = 6;
+    private const uint StreamStops = PatientBody.SurfaceLayer | 1u;
     private const float StreamAlpha = 0.7f;
-    /// <summary>A push this close (meters) to where a stream still showing starts keeps that one going.</summary>
-    private const float StreamJoin = 0.03f;
 
     /// <summary>How a burst of particles looks and moves.</summary>
     private sealed record Burst(
@@ -69,9 +71,6 @@ public partial class ToolEffects : Node3D {
                 break;
             case ToolEffect.Bead:
                 Bead(at);
-                break;
-            case ToolEffect.Stream:
-                Stream(at);
                 break;
         }
     }
@@ -152,28 +151,44 @@ public partial class ToolEffects : Node3D {
     }
 
     /// <summary>
-    /// A thin column of clear liquid from <paramref name="from"/> straight down to the first thing under it, fading out.
-    /// Pushes in a row from about the same spot keep one stream going rather than stacking new ones over it.
+    /// The arc liquid squirted from <paramref name="from"/> along <paramref name="along"/> falls in, up to the first thing
+    /// it lands on: the stream's points, the last where it lands.
     /// </summary>
-    private void Stream(Vector3 from) {
-        var hit = Rays.Cast(this, from, from + (Vector3.Down * StreamFall), PatientBody.SurfaceLayer | 1u);
-        var length = Mathf.Max(from.Y - (hit?.Position.Y ?? from.Y - StreamFall), 0.005f);
+    internal static List<Vector3> StreamPath(Node3D world, Vector3 from, Vector3 along) {
+        var path = new List<Vector3> { from };
+        var velocity = along.Normalized() * StreamSpeed;
+        var gravity = Vector3.Down * (float)ProjectSettings.GetSetting("physics/3d/default_gravity");
+        for (var i = 0; i < StreamSteps; i++) {
+            var next = path[^1] + (velocity * StreamStep);
+            if (Rays.Cast(world, path[^1], next, StreamStops) is { } hit) {
+                path.Add(hit.Position);
+                break;
+            }
+            path.Add(next);
+            velocity += gravity * StreamStep;
+        }
+        return path;
+    }
+
+    /// <summary>
+    /// A thin stream of clear liquid squirted from <paramref name="tool"/>'s tip, arcing down to where it lands, fading
+    /// out. It follows the tip while it shows, and pushes in a row keep it going.
+    /// </summary>
+    public void Stream(SurgicalTool tool) {
         _streams.RemoveAll(stream => !IsInstanceValid(stream.Mesh));
-        var stream = _streams.FirstOrDefault(stream => stream.Top.DistanceTo(from) < StreamJoin);
+        var stream = _streams.FirstOrDefault(stream => stream.Tool == tool);
         if (stream is null) {
             var mesh = new MeshInstance3D {
                 Name = "Stream",
-                Mesh = new CylinderMesh { TopRadius = StreamRadius, BottomRadius = StreamRadius * 0.6f, RadialSegments = 8, Rings = 1 },
+                Mesh = new ImmediateMesh(),
                 MaterialOverride = Materials.Stream(),
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             };
             AddChild(mesh);
-            stream = new LiquidStream(mesh);
+            stream = new LiquidStream(mesh, tool);
             _streams.Add(stream);
+            Follow(stream);
         }
-        stream.Top = from;
-        ((CylinderMesh)stream.Mesh.Mesh).Height = length;
-        stream.Mesh.GlobalPosition = from + (Vector3.Down * length / 2f);
         var material = (StandardMaterial3D)stream.Mesh.MaterialOverride;
         material.AlbedoColor = material.AlbedoColor with { A = StreamAlpha };
         stream.Fade?.Kill();
@@ -183,15 +198,64 @@ public partial class ToolEffects : Node3D {
         stream.Fade.TweenCallback(Callable.From(stream.Mesh.QueueFree));
     }
 
+    public override void _Process(double delta) {
+        _streams.RemoveAll(stream => !IsInstanceValid(stream.Mesh) || !IsInstanceValid(stream.Tool));
+        foreach (var stream in _streams) {
+            Follow(stream);
+        }
+    }
+
+    /// <summary>Lays <paramref name="stream"/> along the arc from where its tool's tip is now.</summary>
+    private void Follow(LiquidStream stream) {
+        stream.Path = StreamPath(this, stream.Tool.TipPosition(), stream.Tool.TipDirection());
+        Tube((ImmediateMesh)stream.Mesh.Mesh, stream.Path);
+    }
+
+    /// <summary>Rebuilds <paramref name="mesh"/> (world space: the node sits at the origin) as a thin tube along
+    /// <paramref name="path"/>, narrowing a little as it falls.</summary>
+    private static void Tube(ImmediateMesh mesh, List<Vector3> path) {
+        mesh.ClearSurfaces();
+        if (path.Count < 2) {
+            return;
+        }
+        var rings = new Vector3[path.Count][];
+        var normals = new Vector3[path.Count][];
+        for (var i = 0; i < path.Count; i++) {
+            var forward = (path[Math.Min(i + 1, path.Count - 1)] - path[Math.Max(i - 1, 0)]).Normalized();
+            var side = forward.Cross(Mathf.Abs(forward.Y) > 0.9f ? Vector3.Right : Vector3.Up).Normalized();
+            var up = side.Cross(forward);
+            var radius = StreamRadius * Mathf.Lerp(1f, 0.6f, (float)i / (path.Count - 1));
+            rings[i] = new Vector3[StreamSides];
+            normals[i] = new Vector3[StreamSides];
+            for (var k = 0; k < StreamSides; k++) {
+                var angle = Mathf.Tau * k / StreamSides;
+                normals[i][k] = (side * Mathf.Cos(angle)) + (up * Mathf.Sin(angle));
+                rings[i][k] = path[i] + (normals[i][k] * radius);
+            }
+        }
+        mesh.SurfaceBegin(Mesh.PrimitiveType.Triangles);
+        for (var i = 0; i + 1 < path.Count; i++) {
+            for (var k = 0; k < StreamSides; k++) {
+                var n = (k + 1) % StreamSides;
+                foreach (var (ring, side) in new[] { (i, k), (i + 1, k), (i + 1, n), (i, k), (i + 1, n), (i, n) }) {
+                    mesh.SurfaceSetNormal(normals[ring][side]);
+                    mesh.SurfaceAddVertex(rings[ring][side]);
+                }
+            }
+        }
+        mesh.SurfaceEnd();
+    }
+
     /// <summary>Where each stream still showing starts and lands.</summary>
     internal List<(Vector3 Top, Vector3 Bottom)> Streams() => [.. _streams
         .Where(stream => IsInstanceValid(stream.Mesh))
-        .Select(stream => (stream.Top, stream.Top + (Vector3.Down * ((CylinderMesh)stream.Mesh.Mesh).Height)))];
+        .Select(stream => (stream.Path[0], stream.Path[^1]))];
 
-    /// <summary>A stream still showing, and where it starts.</summary>
-    private sealed class LiquidStream(MeshInstance3D mesh) {
+    /// <summary>A stream still showing, the tool it comes from and the points it runs through.</summary>
+    private sealed class LiquidStream(MeshInstance3D mesh, SurgicalTool tool) {
         public MeshInstance3D Mesh => mesh;
-        public Vector3 Top { get; set; }
+        public SurgicalTool Tool => tool;
+        public List<Vector3> Path { get; set; } = [];
         public Tween? Fade { get; set; }
     }
 
