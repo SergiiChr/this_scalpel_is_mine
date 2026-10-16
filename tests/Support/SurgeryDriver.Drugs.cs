@@ -44,11 +44,13 @@ public partial class SurgeryDriver {
             await PlayerWalksTo(dish.GlobalPosition);
             await PlayerWorksAt(dish.Middle(), 0, 1f);
             Note($"pad dipped: {carried.Fill:0.00}, dish {dish.Fill:0.00}");
-            // Rows across the site, as long as the pad holds iodine.
+            // Rows across the skin the drape leaves open, as long as the pad holds iodine. Lowered onto the drape's
+            // frame, the pad is held off the skin, in the air, and the forceps let it go.
             await PlayerWalksTo(SitePoint(new Vector2(0.5f, 0.5f)));
+            var (from, to) = (Drape.Frame + radius, 1f - Drape.Frame - radius);
             for (; carried.Contents.GetValueOrDefault("iodine") > carried.Def.Volume * 0.05f && row < rows; row++) {
                 var v = (row + 0.5f) / rows;
-                Vector3[] line = [SitePoint(new Vector2(0.02f, v)), SitePoint(new Vector2(0.98f, v))];
+                Vector3[] line = [SitePoint(new Vector2(from, v)), SitePoint(new Vector2(to, v))];
                 await PlayerWorksAlong(row % 2 == 1 ? [.. line.Reverse()] : line, 0, 0.06f);
             }
         }
