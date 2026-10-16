@@ -26,7 +26,7 @@ A syringe that has held one drug keeps what is left in it; a second drug drawn i
 [cell]Morphine[/cell][cell]Analgesia. Depresses respiration[/cell][cell]{drug.morphine.Dose} {drug.morphine.Unit}[/cell]
 [cell]Naloxone[/cell][cell]Opioid reversal[/cell][cell]{drug.naloxone.Dose} {drug.naloxone.Unit}[/cell]
 [cell]Diazepam[/cell][cell]Seizure termination, anxiolysis[/cell][cell]{drug.diazepam.Dose} {drug.diazepam.Unit}[/cell]
-[cell]Flumazenil[/cell][cell]Diazepam reversal[/cell][cell]{drug.flumazenil.Dose} {drug.flumazenil.Unit}[/cell]
+[cell]Flumazenil[/cell][cell]Diazepam reversal. Emergence from general anesthesia at the end of the procedure[/cell][cell]{drug.flumazenil.Dose} {drug.flumazenil.Unit}[/cell]
 [cell]Diphenhydramine[/cell][cell]Mild allergic reactions[/cell][cell]{drug.antihistamine.Dose} {drug.antihistamine.Unit}[/cell]
 [cell]Cefazolin[/cell][cell]Antibiotic prophylaxis after any opening of the body[/cell][cell]{drug.cefazolin.Dose} {drug.cefazolin.Unit}[/cell]
 [cell]Clindamycin[/cell][cell]Antibiotic prophylaxis, penicillin allergy[/cell][cell]{drug.clindamycin.Dose} {drug.clindamycin.Unit}[/cell]

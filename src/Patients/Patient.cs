@@ -43,6 +43,8 @@ public partial class Patient : Node3D {
     public const float LethalTemperature = 42.5f;
     /// <summary>Chance that a dangerous drug combination (<see cref="DrugDef.DangerWith"/>) stops the heart.</summary>
     public const float DangerArrestChance = 0.5f;
+    /// <summary>Seconds a right dose of general anesthesia takes to wear off once it's stopped.</summary>
+    public const float WakeSeconds = 30f;
     /// <summary>How deep (meters) one sees down an opening per meter it gapes.</summary>
     public const float SlitView = 1f;
     /// <summary>An opening gaping less than this (meters) is shut: blood from under it seeps out onto the skin.
@@ -130,6 +132,13 @@ public partial class Patient : Node3D {
     public DrugLevels Drugs { get; internal set; } = new();
     /// <summary>Counters for scoring and the post-op report, see data/consequences.cfg.</summary>
     public Dictionary<string, float> Flags { get; } = [];
+    /// <summary>The anesthetic put the patient under at some point of the surgery (as the anesthesia objective counts it).
+    /// </summary>
+    internal bool WentUnder { get; private set; }
+    /// <summary>Flumazenil stopped the anesthetic being topped up (<see cref="StopAnesthesia"/>): it wears off.</summary>
+    internal bool AnesthesiaStopped { get; private set; }
+    /// <summary>Shares of the right anesthetic dose given since <see cref="AnesthesiaStopped"/>.</summary>
+    private float _anestheticSinceStop;
     public bool IvSet { get; private set; }
     /// <summary>The catheter went into a vein (set with IvSet). Missed, the line still sticks but nothing runs through
     /// it.</summary>
@@ -356,6 +365,7 @@ public partial class Patient : Node3D {
         Body.SetCavityBlood(CavityBloodMl / CavityFullMl);
 
         v.Anesthesia = Mathf.Clamp(fx.Anesthesia * Mods.Mult("sedation_mult"), 0f, 1f);
+        WentUnder |= v.IsUnder && AnestheticWorks;
         v.LocalBlock = Mathf.Clamp(fx.LocalBlock, 0f, 1f);
         v.Glucose += (Mods.Num("glucose_drift") * (1f + v.Panic) + fx.Glucose) * dt;
         v.Pain = Mathf.Clamp(v.Pain - dt * 0.05f - fx.PainRelief * dt * 0.2f, 0f, 1f);
@@ -643,13 +653,16 @@ public partial class Patient : Node3D {
     /// How fast a drug at <paramref name="level"/> wears off (1: one right dose over its duration). General
     /// anesthesia lasts the whole surgery, kept topped up to the right dose like an anesthetist would: more than that
     /// wears off as usual, so another dose deepens it only for a while. A patient who burns through it
-    /// (anesthesia_decay_mult) loses it all.
+    /// (anesthesia_decay_mult) loses it all. Stopped, a right dose wears off in <see cref="WakeSeconds"/>.
     /// </summary>
     private float Wear(DrugDef def, float level) {
         if (def.Peak.Anesthesia <= 0f) {
             return 1f;
         }
         var decayMult = Mods.Mult("anesthesia_decay_mult");
+        if (AnesthesiaStopped) {
+            return Mathf.Max(def.Duration / WakeSeconds, Mathf.Max(decayMult, 1f));
+        }
         if (decayMult > 1f) {
             return decayMult;
         }
@@ -704,6 +717,12 @@ public partial class Patient : Node3D {
             }
         }
         var fresh = Drugs.Give(def, share, def.Onset * (route == DrugRoute.Direct ? DrugDef.DirectOnset : 1.5f));
+        if (AnesthesiaStopped && def.Peak.Anesthesia > 0f) {
+            // An effective dose given since puts the patient under again, kept topped up as before; leftovers trickling
+            // in from a bag or a syringe don't. Syringes push a dose in many small shares.
+            _anestheticSinceStop += share;
+            AnesthesiaStopped = _anestheticSinceStop < DrugDef.DoseEffective;
+        }
         if (!fresh) {
             return;
         }
@@ -747,6 +766,9 @@ public partial class Patient : Node3D {
         }
         if (def.HasFlag("reverse_benzo")) {
             Drugs.Remove(drug => drug.HasFlag("benzo"));
+        }
+        if (def.HasFlag("reverse_anesthesia")) {
+            StopAnesthesia();
         }
         if (def.HasFlag("anticonvulsant")) {
             _seizureLeft = 0f;
@@ -805,6 +827,17 @@ public partial class Patient : Node3D {
         Vitals.Seizing = true;
         Session.Announce("Seizure!");
         Reveal("epilepsy");
+    }
+
+    /// <summary>Flumazenil worked: the anesthetic is no longer topped up, so the patient comes round
+    /// before the discharge.</summary>
+    private void StopAnesthesia() {
+        if (AnesthesiaStopped || !Drugs.Entries.Any(entry => entry.Def.Peak.Anesthesia > 0f)) {
+            return;
+        }
+        AnesthesiaStopped = true;
+        _anestheticSinceStop = 0f;
+        Session.Announce("The patient is coming round.");
     }
 
     public void WakeUp() {

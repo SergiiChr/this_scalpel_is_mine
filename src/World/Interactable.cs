@@ -14,6 +14,10 @@ public partial class Interactable : Area3D {
     public Action<int>? Wheel { get; set; }
     /// <summary>The prompt for <see cref="Wheel"/>.</summary>
     public string WheelPrompt { get; set; } = "";
+    /// <summary>The button that works this: interact, or grab for what's taken hold of like a tool.</summary>
+    public StringName Button { get; set; } = InputActions.Interact;
+    /// <summary>Parts that light up, with their children, while the local surgeon looks at this.</summary>
+    public IReadOnlyList<Node3D> Highlight { get; set; } = [];
 
     public static Interactable Create(Node3D parent, string label, Vector3 size, Vector3 position, Action<Surgeon> action) {
         var area = new Interactable {
@@ -30,7 +34,22 @@ public partial class Interactable : Area3D {
         return area;
     }
 
+    /// <summary>Another box where it can be focused too, placed in its parent like the first.</summary>
+    public Interactable AddBox(Vector3 size, Vector3 position) {
+        AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size }, Position = position - Position });
+        return this;
+    }
+
     public bool OfferedTo(Surgeon surgeon) => Offered?.Invoke(surgeon) ?? true;
 
     public void Interact(Surgeon surgeon) => _action?.Invoke(surgeon);
+
+    /// <summary>Lights <see cref="Highlight"/> up, or puts it back.</summary>
+    public void Light(bool on) {
+        foreach (var part in Highlight) {
+            foreach (var mesh in part.FindChildren("*", "GeometryInstance3D", true, false).Append(part).OfType<GeometryInstance3D>()) {
+                mesh.MaterialOverlay = on ? Materials.Highlight : null;
+            }
+        }
+    }
 }

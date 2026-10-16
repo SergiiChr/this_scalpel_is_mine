@@ -39,7 +39,7 @@ public partial class Hud : CanvasLayer {
     private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
     private readonly record struct HintShown(bool Out, int Moving, int Active, bool Attached, SurgicalTool? Tool, bool Full,
         SurgicalTool? Hovered, bool HoveredFull, int Zoom, bool CanPass, bool Films, bool Cart, int Bindings);
-    private readonly record struct PromptShown(string? Focused, string? Wheel, bool Held, Surgeon? Partner, int Bindings);
+    private readonly record struct PromptShown(string? Focused, StringName? Button, string? Wheel, bool Held, Surgeon? Partner, int Bindings);
 
     public Surgery Surgery { get; private set; } = null!;
     private Control _root = null!;
@@ -218,13 +218,13 @@ public partial class Hud : CanvasLayer {
     private void UpdatePrompt(Surgeon me) {
         var spot = Overlay is null && !me.HoldingFilms ? me.Focused : null;
         var partner = me.PassTarget(me.Active)?.Surgeon;
-        var shown = new PromptShown(spot?.Prompt, spot?.Wheel is null ? null : spot.WheelPrompt,
+        var shown = new PromptShown(spot?.Prompt, spot?.Button, spot?.Wheel is null ? null : spot.WheelPrompt,
             me.HeldTool(me.Active) is not null, partner, InputActions.BindingsVersion);
         if (!_promptShown.Changed(shown)) {
             return;
         }
         _prompt.Text = shown.Focused is not null
-            ? $"[{InputActions.BindingText(InputActions.Interact)}] {shown.Focused}"
+            ? $"[{InputActions.BindingText(shown.Button!)}] {shown.Focused}"
                 + (shown.Wheel is null ? "" : $"   [Wheel] {shown.Wheel}")
             : shown.Held && partner is not null ? $"[{InputActions.BindingText(InputActions.Grab)}] Pass to {partner.DisplayName}"
             : "";
@@ -587,7 +587,8 @@ public partial class Hud : CanvasLayer {
         }
         if (me.PushedCart() is not null) {
             lines.Add("Wheel  Raise / lower the arm");
-            lines.Add($"{Key(InputActions.UseTool)}  Lock the cart in place");
+            lines.Add($"{Key(InputActions.UseTool)}  Take an X-ray");
+            lines.Add($"{Key(InputActions.Grab)}  Let go, locking the cart in place");
         } else if (tool is not null) {
             lines.AddRange(ToolLines(me, tool, hand));
         } else {
