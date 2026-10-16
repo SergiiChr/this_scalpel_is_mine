@@ -231,7 +231,7 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         f"Baseline: `{baseline_root.as_posix()}`"
         if has_baseline
         else f"Baseline: NONE in `{baseline_root.as_posix()}`. Every key frame shows as new and nothing was compared: "
-        "the review fails. Run `./build.py generate_baseline` on a release branch first.",
+        "the review fails. Run `./build.py generate_baseline` first.",
         "",
         ", ".join(f"{counts[state]} {state}" for state in states) + ".",
         "",

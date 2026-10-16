@@ -6,7 +6,7 @@ Commands and test policy: [CLAUDE.md](../CLAUDE.md).
 
 ## Branches
 
-History is linear: no merge commits on any branch.
+History on `main` and `develop` is linear: no merge commits.
 
 - `main`: released state. It only fast-forwards to a `develop` commit that passed release verification, so it's
   always an ancestor of `develop` and never needs syncing back.
@@ -53,7 +53,8 @@ A scheduled run picks a `develop` commit and verifies it. `develop` keeps taking
 what the verification finds land on `develop` like any other PR, and the next run verifies a newer commit that
 contains them. One release PR is open at a time.
 
-1. Pick. Take the newest `develop` commit whose CI passed. Skip when `main` already contains it.
+1. Pick. Take the newest `develop` commit whose CI passed. Skip while a release PR is open or `main` already contains
+   it.
 2. Verify. Run `./build.py screenshot_review` on that commit. A suite that still fails after its retry is an issue
    (step 4), even when CI passed.
 3. Review the listed sheets against the PRs merged into `develop` between `main` and that commit. The features
@@ -73,11 +74,13 @@ contains them. One release PR is open at a time.
 6. Ask the owner to approve the release in the project thread (the PR is opened under their account, so GitHub won't
    take their review). On their yes, fast-forward `main` to the verified commit (`git push origin <hash>:main`);
    GitHub then marks the PR merged. Never merge it with the button: every method there makes a new commit, and
-   `main` would stop being an ancestor of `develop`.
+   `main` would stop being an ancestor of `develop`. Delete `release/<short hash>` and `keyframes/<short hash>` once
+   their PRs are merged.
 
 The key frames PR is merged as soon as its CI is green, without waiting for the owner.
 Never rebase or force-push `develop` or `main`: open feature branches are built on `develop`'s history.
 
 Repository settings: squash is the only merge method. `main` and `develop` require linear history and block force
-pushes. `develop` takes changes only through PRs whose CI passed. `main` takes only fast-forward pushes from the owner
-(a bypass of its PR rule), of commits whose CI passed on `develop`.
+pushes. `develop` takes changes only through PRs whose CI passed. `main` takes only fast-forward pushes, of commits whose CI
+passed on `develop`: its PR rule has a bypass for whoever the release run pushes as (the owner, or the Claude GitHub
+App).
