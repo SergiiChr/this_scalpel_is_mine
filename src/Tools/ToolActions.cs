@@ -364,13 +364,22 @@ public static class ToolActions {
             step.Patient.Touch();
             return;
         }
-        if (!tool.Sterile && tool.Def.Action != "swab" && tool.Use.Reported.Add("dirty")) {
+        if (tool.Def.Action != "swab" && ScoresDirty(step)) {
             step.Patient.ContaminateSite("");
-            step.Surgery.Scoring.Add("dirty_tool");
         }
         if (tool.Def.Improvised && tool.Use.Reported.Add("improvised")) {
             step.Surgery.Scoring.Add("improvised_tool");
         }
+    }
+
+    /// <summary>An unsterile tool used on the patient scores as dirty, once per tool until it's sanitized. True when it
+    /// did just now.</summary>
+    internal static bool ScoresDirty(ToolStep step) {
+        if (step.Tool.Sterile || !step.Tool.Use.Reported.Add("dirty")) {
+            return false;
+        }
+        step.Surgery.Scoring.Add("dirty_tool");
+        return true;
     }
 
     /// <summary>Working in blood leaves it on the tool: blades, clamps and suction pick it up fast, gauze soaks it up.
