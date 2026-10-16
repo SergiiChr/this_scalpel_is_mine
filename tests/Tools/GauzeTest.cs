@@ -2,11 +2,15 @@ namespace Scalpel.Tests.Tools;
 
 /// <summary>
 /// Gauze as a player uses it, with no pressure to set on the wheel: pressed on a cut it stops the bleeding, holds it
-/// for a while after it comes off, then the cut bleeds again. Packed into an incision, it holds the vessel it reaches the same way. Pressed long enough on a cut
-/// too small to sew, it stops that one for good. Debug mode says when a wound stops bleeding and whether for good.
-/// Gauze also wipes away the beads of blood a needle leaves. With key frames review the gauze lying on the cut while
-/// pressed, the skin wiped dry while the pressure holds, the blood welling back, the gauze in the incision over the
-/// vessel, the bead on the arm gone after wiping, and the spot a needle leaves on the site before and after wiping.
+/// for a while after it comes off, then the cut bleeds again.
+/// Packed into an incision, it holds the vessel it reaches at the bottom and the incision's edges it lies against the
+/// same way.
+/// Pressed long enough on a cut too small to sew, it stops that one for good.
+/// Debug mode says when a wound stops bleeding and whether for good.
+/// Gauze also wipes away the beads of blood a needle leaves.
+/// With key frames review the gauze lying on the cut while pressed, the skin wiped dry while the pressure holds, the
+/// blood welling back, the gauze in the incision over the vessel, the bead on the arm gone after wiping, and the spot a
+/// needle leaves on the site before and after wiping.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation")]
@@ -131,18 +135,19 @@ public class GauzeTest {
     }
 
     [TestCase]
-    public async Task GauzePackedIntoAnIncisionStopsTheVesselInIt() {
+    public async Task GauzePackedIntoAnIncisionStopsTheVesselAndTheEdgesAroundIt() {
         var session = await ToolSession.Start("appendectomy", "gauze_packed");
         var driver = session.Driver;
         var patient = driver.Patient;
         var body = driver.Body;
         var at = new Vector2(0.5f, 0.62f);
-        SurgeryState.SkinIsCut(patient, at - new Vector2(0.1f, 0f), at + new Vector2(0.1f, 0f), 1f);
+        var cut = SurgeryState.SkinIsCut(patient, at - new Vector2(0.1f, 0f), at + new Vector2(0.1f, 0f), 1f);
         await Frames.Seconds(1f);
         var vessel = SurgeryState.VesselBleeds(patient, at, body.CavityDepth() * 0.5f);
         await Frames.Seconds(1f);
-        AssertFloat(vessel.Bleeding).OverrideFailureMessage($"the vessel in the incision bleeds: {driver.Bleeders()}").IsGreater(0.1f);
-        await driver.Capture("vessel_bleeding", "a vessel bleeding in the incision");
+        AssertBool(vessel.Bleeding > 0.1f && cut.Bleeding > 0.1f)
+            .OverrideFailureMessage($"the vessel in the incision and the incision's edges bleed: {driver.Bleeders()}").IsTrue();
+        await driver.Capture("vessel_bleeding", "a vessel bleeding at the bottom of the incision, the incision's edges bleeding too");
 
         await driver.PlayerRequestsItem("gauze");
         var on = driver.SitePoint(at);
@@ -152,10 +157,11 @@ public class GauzeTest {
         await Frames.Seconds(2f);
         AssertString(body.Probe(driver.Me.HeldTool(driver.Me.Active)!.TipPosition()).Zone.ToString())
             .OverrideFailureMessage("the gauze is in the opening").IsEqual(nameof(SiteZone.Cavity));
-        AssertFloat(vessel.Bleeding).OverrideFailureMessage($"packed with gauze, the vessel stops bleeding: {driver.Bleeders()}")
-            .IsLess(0.01f);
+        AssertBool(vessel.Bleeding < 0.01f && cut.Bleeding < 0.01f)
+            .OverrideFailureMessage($"packed with gauze, the vessel and the edges it lies against stop bleeding: {driver.Bleeders()}")
+            .IsTrue();
         AssertFloat(vessel.LastingBleeding).OverrideFailureMessage("but only while the pressure holds").IsGreater(0.1f);
-        await driver.Capture("packed", "gauze packed into the opening, the vessel not bleeding");
+        await driver.Capture("packed", "gauze packed into the opening, neither the vessel nor the incision's edges bleeding");
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
         await session.Finish(BudgetOverride);
