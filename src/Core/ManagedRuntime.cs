@@ -56,7 +56,9 @@ public partial class ManagedRuntime : Node {
     /// young generation and no Godot wrappers waiting for their finalizers.
     /// A Godot wrapper's finalizer hands the engine a pointer into the wrapper itself, unpinned, to free its native value.
     /// A compacting collection that moves the wrapper meanwhile makes the engine free whatever lies there and crash.
-    /// So finalizers still running from earlier collections finish first, and this collection moves nothing.</summary>
+    /// So finalizers still running from earlier collections finish first, and this collection isn't forced to compact.
+    /// Ordinary collections during play can still move one, rarely: only GodotSharp pinning the wrapper would end it.
+    /// </summary>
     internal static void CollectNow() {
         GC.WaitForPendingFinalizers();
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
