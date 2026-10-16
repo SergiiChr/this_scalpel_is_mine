@@ -52,6 +52,7 @@ public abstract class ToolAction {
         ["spread"] = new SpreadAction(),
         ["staple"] = new StapleAction(),
         ["suture"] = new SutureAction(),
+        ["tape"] = new TapeAction(),
         ["cauterize"] = new CauterizeAction(),
         ["mark"] = new MarkAction(),
         ["inject"] = new InjectAction(),
@@ -99,6 +100,7 @@ public static class ToolActions {
         ["graft"] = "Place graft",
         ["shock"] = "Charge (hold), let go to shock",
         ["sew"] = "Stitch",
+        ["tape"] = "Stick",
         ["spread"] = "Set in / take out",
         ["staple"] = "Staple",
     };

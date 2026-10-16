@@ -11,6 +11,11 @@ public static class GripCheck {
     /// <summary>Liquid in a tool isn't solid: a finger may dip into a full dish.</summary>
     private static readonly HashSet<string> LiquidParts = ["Level", "Liquid", "Pool"];
 
+    /// <summary>A tool held with <paramref name="grip"/>: the first that names it, or gauze for the press grip, which a
+    /// hand takes on gauze taped down in it rather than for a kind of tool.</summary>
+    public static ToolDef ToolFor(string grip) =>
+        grip == "press" ? Db.Tool("gauze")! : Db.Tools.Values.First(def => def.Grip == grip);
+
     /// <summary>A glove under <paramref name="holder"/>, the way a surgeon's hand is built (on a body node of its own).
     /// </summary>
     public static SurgeonHand MakeHand(Node3D holder, int index) {

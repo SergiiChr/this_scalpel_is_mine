@@ -74,7 +74,7 @@ public sealed class ToolUse {
 /// A needle's running suture: the live thread's id (0 for none), its tension (the wheel, a tensioned closure's too, see
 /// Patient.TensionedClosures) and the layer it's in. Each Use tool press makes one hole, at where the needle last rested
 /// on the patient ((-1, -1) for nowhere): Hold is how long it's been held, PressUsed that it already did something (tied
-/// off, sewed an internal injury).
+/// off, sewed an internal injury). A roll of tape keeps its strip the same way (TapeAction).
 /// </summary>
 public sealed class SutureState {
     public int Thread { get; set; }
@@ -83,6 +83,10 @@ public sealed class SutureState {
     public float Hold { get; set; }
     public Vector2 At { get; set; } = new(-1, -1);
     public bool PressUsed { get; set; }
+    /// <summary>Tape: where (world) the latest press rests on the tear a ripped-out IV catheter left, and where a strip
+    /// over it was started.</summary>
+    public Vector3? ArmAt { get; set; }
+    public Vector3? ArmFrom { get; set; }
 }
 
 /// <summary>
@@ -175,8 +179,11 @@ public partial class SurgicalTool : RigidBody3D {
     /// <summary>A spreader set in a wound: it stays where it went in, held or not (see ToolManager.SyncSpread()).
     /// </summary>
     public bool InWound { get; set; }
-    /// <summary>Lying on the patient (a retractor let go of), it rides this node (the site): breathing lifts and lowers
-    /// it with the belly. Null for anything else.</summary>
+    /// <summary>Gauze taped down while held: it stays where it was taped, and the hand holding it presses on it there
+    /// until it lets go (see ToolManager.TapeDown()).</summary>
+    public bool Taped { get; set; }
+    /// <summary>Lying on the patient (a retractor let go of, gauze taped down), it rides this node (the site): breathing
+    /// lifts and lowers it with the belly. Null for anything else.</summary>
     public Node3D? Riding { get; private set; }
     /// <summary>Where it lies, in the space of the node it rides.</summary>
     public Transform3D RidingPose { get; private set; }
@@ -258,7 +265,7 @@ public partial class SurgicalTool : RigidBody3D {
         _animator.Animate(active, closed, dt);
         var lying = State is ToolState.Free or ToolState.Inside && !Def.Fixed;
         _animator.Rest(lying ? (GlobalBasis.Y.Dot(Vector3.Up) >= 0f ? 1f : -1f) : 0f, dt);
-        if (Riding is not null && State == ToolState.Standing) {
+        if (Riding is not null && (State == ToolState.Standing || Taped)) {
             GlobalTransform = Riding.GlobalTransform * RidingPose;
         }
         if (_dig < 1f) {
@@ -472,6 +479,9 @@ public partial class SurgicalTool : RigidBody3D {
         Holder = holder;
         Slot = slot;
         _animator.Settle();
+        if (state != ToolState.Held) {
+            Taped = false;
+        }
         if (state != ToolState.Standing) {
             Unwrap();
             Riding = null;

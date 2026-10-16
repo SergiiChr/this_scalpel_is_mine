@@ -771,7 +771,10 @@ public partial class SurgeonHand : Node3D {
         var mirror = Index == 0 ? new Vector3(-1f, 1f, 1f) : Vector3.One;
         var contact = tool * (style.On * mirror);
         var frame = toolBasis * Basis.FromScale(mirror) * style.Frame;
-        frame = TurnToForearm(frame, toolBasis * Vector3.Forward, contact, elbow, Grip != "fist");
+        // Pressing flat, it stays flat on what it presses, whichever way the forearm comes in.
+        if (Grip != "press") {
+            frame = TurnToForearm(frame, toolBasis * Vector3.Forward, contact, elbow, Grip != "fist");
+        }
         var wrist = contact - (frame * style.At) + (frame.Y.Normalized() * Fit.Lift) + (frame.Z.Normalized() * Fit.Shift);
         return new Transform3D(aim * frame, aimed.Origin + (aim * (wrist - aimed.Origin)));
     }

@@ -340,12 +340,23 @@ public partial class Surgeon : CharacterBody3D {
         var tool = HeldTool(i);
         hand.Holding = tool is not null;
         var uid = tool?.Uid ?? 0;
-        if (uid != _heldUid[i]) {
+        var changed = uid != _heldUid[i];
+        // Taped down, the hand lies flat on the gauze instead of holding it up (Surgeon.HoldTaped()), and takes the
+        // grip's own angles again once it's off.
+        var grip = tool is { Taped: true } ? "press" : tool?.Def.Grip ?? "pencil";
+        if (changed || grip != hand.Grip) {
+            var pressed = hand.Grip == "press";
+            hand.Grip = grip;
+            if (pressed) {
+                hand.Tilt = hand.DefaultTilt();
+                hand.Turn = hand.DefaultTurn();
+            }
+            hand.Fit = tool is null || tool.Taped ? GripFit.None : Db.GripFit(tool.Def, i);
+        }
+        if (changed) {
             _heldUid[i] = uid;
             hand.Level = 0;
-            hand.Grip = tool?.Def.Grip ?? "pencil";
             hand.Spreads = tool?.Def.Action == "spread";
-            hand.Fit = tool is null ? GripFit.None : Db.GripFit(tool.Def, i);
             if (tool is not null) {
                 // A new tool starts unrolled, even taken while the hand still untwists from the last one.
                 hand.Twist = 0f;

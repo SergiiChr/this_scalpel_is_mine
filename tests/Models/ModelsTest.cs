@@ -86,9 +86,6 @@ public class ModelsTest {
 
     private static string Holding(string grip) => grip.Length > 0 ? "holding by " + grip : "empty";
 
-    /// <summary>The first tool held with <paramref name="grip"/>.</summary>
-    private static ToolDef FirstWithGrip(string grip) => Db.Tools.Values.First(def => def.Grip == grip);
-
     /// <summary>Wherever the hand works (in front, out to the side, low, near), a held tool keeps the hand turned in:
     /// the back of the hand up, or for a fist round a handle facing out to the hand's own side, never palm
     /// up.</summary>
@@ -97,7 +94,7 @@ public class ModelsTest {
         var side = handIndex == 0 ? -1f : 1f;
         var outward = new Vector3(side, 0f, 0f);
         foreach (var grip in GripStyle.All.Keys) {
-            var def = FirstWithGrip(grip);
+            var def = GripCheck.ToolFor(grip);
             hand.Holding = true;
             hand.Grip = grip;
             hand.Fit = Db.GripFit(def, handIndex);
@@ -184,7 +181,7 @@ public class ModelsTest {
             foreach (var grip in GripsAndEmpty) {
                 hand.Holding = grip.Length > 0;
                 hand.Grip = grip.Length > 0 ? grip : "pencil";
-                hand.Fit = grip.Length > 0 ? Db.GripFit(FirstWithGrip(grip), handIndex) : GripFit.None;
+                hand.Fit = grip.Length > 0 ? Db.GripFit(GripCheck.ToolFor(grip), handIndex) : GripFit.None;
                 foreach (var at in CuffSpots) {
                     hand.Target = shoulder + new Vector3(at.X * side, at.Y, at.Z);
                     hand.SnapPose(shoulder);

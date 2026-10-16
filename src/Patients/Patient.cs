@@ -295,6 +295,7 @@ public partial class Patient : Node3D {
             bleedMult *= 0.1f;
         }
         SettleClosures();
+        UpdateTapes(dt);
         var total = 0f;
         var lasting = 0f;
         var heal = Mods.Num("heal_rate");
@@ -356,6 +357,9 @@ public partial class Patient : Node3D {
                 }
             }
         }
+        IvTearBleeding = Surgery.Current?.Room.IvLine.Tear is { Taped: false } ? IvTearOoze * bleedMult : 0f;
+        total += IvTearBleeding;
+        lasting += IvTearBleeding;
         v.BleedRate = total;
         LastingBleedRate = lasting;
         (Body.Blood.Sources, _nextSources) = (sources, Body.Blood.Sources);
@@ -922,6 +926,7 @@ public partial class Patient : Node3D {
                     wound.Bins[i] *= 0.4f;
                 }
                 Rpc(MethodName.TissueBurst, wound.Midpoint, wound.LengthUv * 0.5f + 0.03f);
+                PeelTapesOn(wound);
                 Session.Announce("A closure bursts open!");
                 PaintWound(wound);
             }
