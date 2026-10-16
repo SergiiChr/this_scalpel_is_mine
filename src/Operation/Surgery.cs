@@ -123,6 +123,7 @@ public partial class Surgery : Node3D {
         Room.Build(Scenario.Environment, this);
         Patient.Position = new Vector3(0, Room.TableHeight, 0);
         Patient.Setup(Scenario, net.PatientQuirks, net.SessionSeed);
+        Room.Xray?.StartOver(Patient.Body.UvToWorld(new Vector2(0.5f, 0.5f)));
         Patient.Died += OnPatientDied;
         _effects.Patient = Patient;
         AddChild(_effects);

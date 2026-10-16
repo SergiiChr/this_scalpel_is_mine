@@ -600,9 +600,11 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 - **Blood pressure**: panic and stimulants (adrenaline, cocaine, ketamine) raise systolic pressure. Above 140 mmHg,
   and while heparin acts, sutures, staples, tape and gauze leak; cautery and clamps hold. Patients with fragile vessels
   (an aneurysm) can burst a deep vessel under the site above the same pressure.
-- **X-ray cart**: taken hold of like a tool, anywhere on it (Grab), it's pushed to the table, the wheel slides the level
-  arm up and down the upright column and Use tool takes an exposure. Let go, it locks against the floor. What the
-  player can take hold of or interact with lights up while they look at it. The collimator lights two fields on the
+- **X-ray cart**: it starts put away in a niche in the wall left of the table's foot, out of the way round the table.
+  Taken hold of like a tool, anywhere on it (Grab), it's pushed to the table, the wheel slides the level arm up and down
+  the upright column (it starts with the lens just over the surgical site) and Use tool takes an exposure. Let go, it
+  locks against the floor. It rolls right up to the walls and back into its niche. What the player can take hold of or
+  interact with lights up while they look at it. The collimator lights two fields on the
   patient: AP, straight down from the tube head, and lateral, level and forward from just below it. An exposure takes
   both films, rendered from the scene itself (`XrayExposure`): twins of the body, organs, targets and
   tools drawn with `xray.gdshader` beside the patient's skeleton, which only films see (`RenderLayers.Xray`). Bone and

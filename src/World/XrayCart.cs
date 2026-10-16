@@ -17,15 +17,19 @@ public partial class XrayCart : Node3D {
     public const float DevelopTime = 6f;
     private const float Reach = 1.6f;
     private const float SyncInterval = 0.1f;
-    /// <summary>How far the cart reaches from its origin, about: the tube head's front. Keeps it off the walls whichever
-    /// way it faces.</summary>
-    internal const float Extent = 0.85f;
-    /// <summary>The tube head's height above the floor, meters, as the arm slides up and down the column: where it
-    /// starts (the model is built there), its range and one wheel step.</summary>
-    internal const float ArmRest = 1.6f;
+    /// <summary>The cart's outline on the floor, local, as points along it: the base with its wheels and handle, and the
+    /// tube head out in front. Every one stays on the room's floor (or in its niche) as it's pushed.</summary>
+    private static readonly Vector3[] Footprint = Outline(0.28f, -0.36f, 0.42f).Concat(Outline(0.16f, -0.86f, -0.36f)).ToArray();
+    /// <summary>How close (meters) the cart's outline comes to a wall.</summary>
+    private const float WallGap = 0.02f;
+    /// <summary>The tube head's height above the floor, meters, as the arm slides up and down the column: its range and
+    /// one wheel step.</summary>
     internal const float ArmLow = 1.1f;
     internal const float ArmHigh = 1.75f;
     internal const float ArmStep = 0.05f;
+    /// <summary>How far (meters) the collimator's lens at least starts over the surgical site: slightly above the
+    /// patient, ready for an AP film without touching them.</summary>
+    internal const float SiteClearance = 0.08f;
     /// <summary>How far the floor lock's pedal goes down, in radians.</summary>
     private const float PedalDown = 0.35f;
     /// <summary>The developed films stand in the cassette holder on top of the generator, the AP one in front.</summary>
@@ -55,10 +59,7 @@ public partial class XrayCart : Node3D {
     /// <summary>The peer pushing the cart, 0 for nobody: then it's locked against the floor.</summary>
     public int Pusher { get; private set; }
     /// <summary>The tube head's height above the floor, meters.</summary>
-    public float Arm { get; private set; } = ArmRest;
-    /// <summary>Half the room's floor minus the cart's size: pushing it never shoves it into a wall. Zero means no
-    /// walls.</summary>
-    public Vector2 Bounds { get; set; }
+    public float Arm { get; private set; } = ArmHigh;
     /// <summary>Where the cart is, and which way it faces, from its pusher as they took hold of it: like a held tool, it
     /// keeps that as they walk and turn. Host only.</summary>
     private Vector3 _gripOffset;
@@ -146,6 +147,14 @@ public partial class XrayCart : Node3D {
 
     /// <summary>Lets go of the cart and locks it against the floor, if this peer pushes it.</summary>
     public void Lock() => RpcId(Net.HostId, MethodName.RequestLock);
+
+    /// <summary>Starts the arm at the lowest wheel step that keeps the lens <see cref="SiteClearance"/> over
+    /// <paramref name="site"/> (world), the surgical site's skin.</summary>
+    public void StartOver(Vector3 site) {
+        var steps = Mathf.Ceil((site.Y + SiteClearance - Lens.Y - ArmLow) / ArmStep);
+        Arm = Mathf.Clamp(ArmLow + (steps * ArmStep), ArmLow, ArmHigh);
+        PoseArm(1f);
+    }
 
     /// <summary>Takes an exposure, if the cart is at the table and ready.</summary>
     public void TakeXray() => RpcId(Net.HostId, MethodName.RequestExpose);
@@ -269,18 +278,47 @@ public partial class XrayCart : Node3D {
         if (!_surgery.Surgeons.TryGetValue(Pusher, out var surgeon)) {
             return;
         }
-        var target = surgeon.ToGlobal(_gripOffset);
-        if (Bounds != Vector2.Zero) {
-            target = new Vector3(Mathf.Clamp(target.X, -Bounds.X, Bounds.X), 0f, Mathf.Clamp(target.Z, -Bounds.Y, Bounds.Y));
-        }
         var follow = Mathf.Min(dt * 8f, 1f);
-        GlobalPosition = GlobalPosition.Lerp(target with { Y = 0f }, follow);
-        Rotation = Rotation with { Y = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y + _gripYaw, follow) };
+        var position = GlobalPosition.Lerp(surgeon.ToGlobal(_gripOffset) with { Y = 0f }, follow);
+        var yaw = Mathf.LerpAngle(Rotation.Y, surgeon.Rotation.Y + _gripYaw, follow);
+        // Against a wall it slides along it, or only turns, or stays.
+        (Vector3, float)[] tries =
+        [
+            (position, yaw), (position with { X = GlobalPosition.X }, yaw), (position with { Z = GlobalPosition.Z }, yaw),
+            (GlobalPosition, yaw),
+        ];
+        foreach (var (at, turn) in tries) {
+            if (Fits(at, turn)) {
+                GlobalPosition = at;
+                Rotation = Rotation with { Y = turn };
+                break;
+            }
+        }
         _syncAccumulated += dt;
         // Not after the report, like the surgeons' states: the others may have left for the lobby.
         if (_syncAccumulated >= SyncInterval && !_surgery.Finished) {
             _syncAccumulated = 0f;
             Rpc(MethodName.SyncPosition, GlobalPosition, Rotation.Y);
+        }
+    }
+
+    /// <summary>True when the cart's outline stands on the floor, clear of the walls, at <paramref name="position"/>
+    /// turned to <paramref name="yaw"/>.</summary>
+    internal bool Fits(Vector3 position, float yaw) {
+        var basis = new Basis(Vector3.Up, yaw);
+        return Footprint.All(point => _surgery.Room.OnFloor(position + (basis * point), WallGap));
+    }
+
+    /// <summary>Points along a rectangle's outline on the floor, local: <paramref name="halfWidth"/> to each side, from
+    /// <paramref name="front"/> to <paramref name="back"/> along z, every 10 cm or so.</summary>
+    private static IEnumerable<Vector3> Outline(float halfWidth, float front, float back) {
+        Vector3[] corners = [new(-halfWidth, 0f, front), new(halfWidth, 0f, front), new(halfWidth, 0f, back), new(-halfWidth, 0f, back)];
+        for (var i = 0; i < 4; i++) {
+            var (a, b) = (corners[i], corners[(i + 1) % 4]);
+            var steps = Mathf.CeilToInt(a.DistanceTo(b) / 0.1f);
+            for (var step = 0; step < steps; step++) {
+                yield return a.Lerp(b, step / (float)steps);
+            }
         }
     }
 

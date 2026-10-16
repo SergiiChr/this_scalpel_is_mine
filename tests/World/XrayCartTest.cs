@@ -31,12 +31,25 @@ public class XrayCartTest {
                 shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(driver.Surgery, "xray_cart");
-                await CaptureCart(shots, cart, "untouched",
-                    "the upright X-ray cart: a compact base with casters in front and wheels under the generator, a tall "
-                        + "column left of the middle, a level arm curving from its top round to the middle, the tube head "
-                        + "hanging under its end with a screen on its back, the red pedal down");
+                // As a player sees it from the room: from above, the niche's lintel would be in the way, and from the
+                // side the tray.
+                await driver.PlayerWalksTo(cart.ToGlobal(new Vector3(0f, 0f, 2.3f)), 0f);
+                await driver.PlayerLooksAt(cart.ToGlobal(new Vector3(0f, 1f, -0.2f)));
+                await shots.CaptureView("untouched",
+                    "the upright X-ray cart put away in its niche in the wall, its handle toward the room: a compact "
+                        + "base with casters and wheels, a tall column, a level arm curving from its top round to the "
+                        + "middle, the tube head hanging under its end with a screen on its back, the red pedal down, the "
+                        + "niche's floor, walls and ceiling matching the room's, no gaps at its edges, the cart not lit up from this far");
             }
             driver.Budget.Clear();
+            // Put away in its niche, the cart leaves the way round the table's foot clear, between the tray and the wall.
+            var tray = driver.Surgery.Room.Layout.Tray;
+            await driver.PlayerWalksTo(new Vector3(tray.X - 0.6f, 0f, -1.2f), 0f);
+            await driver.PlayerLooksAt(new Vector3(tray.X - 0.6f, 1f, 2f));
+            await driver.PlayerHoldsWalkKey(InputActions.MoveForward, 3f, () => { });
+            AssertFloat(me.GlobalPosition.Z).OverrideFailureMessage($"the surgeon walks past the tray beside the cart's "
+                    + $"niche, round the table's foot: stopped at {me.GlobalPosition}")
+                .IsGreater(tray.Z + 0.6f);
             // Not the handle: the column, partway up, from behind its left corner.
             var column = cart.ToGlobal(new Vector3(-0.17f, 1.2f, -0.03f));
             await driver.PlayerWalksTo(cart.ToGlobal(new Vector3(-0.3f, 0f, 0.9f)), 0f);
@@ -69,26 +82,28 @@ public class XrayCartTest {
                     + $"then {now.Origin}")
                 .IsTrue();
 
-            var high = cart.ToLocal(head.GlobalPosition);
+            // The arm starts just over the patient, so it goes up from there.
+            var low = cart.ToLocal(head.GlobalPosition);
+            var started = cart.Arm;
             for (var i = 0; i < 4; i++) {
-                PlayerInput.Tap(InputActions.LevelDown);
+                PlayerInput.Tap(InputActions.LevelUp);
                 await PlayerInput.Delivered();
             }
             await Frames.Physics(40);
-            var lowered = XrayCart.ArmRest - (4 * XrayCart.ArmStep);
-            AssertFloat(cart.Arm).OverrideFailureMessage("four wheel steps down lower the arm four steps")
-                .IsEqualApprox(lowered, 0.001f);
-            var low = cart.ToLocal(head.GlobalPosition);
-            AssertFloat(high.Y - low.Y).OverrideFailureMessage("the tube head comes down with the arm")
+            var raised = started + (4 * XrayCart.ArmStep);
+            AssertFloat(cart.Arm).OverrideFailureMessage("four wheel steps up raise the arm four steps")
+                .IsEqualApprox(raised, 0.001f);
+            var high = cart.ToLocal(head.GlobalPosition);
+            AssertFloat(high.Y - low.Y).OverrideFailureMessage("the tube head goes up with the arm")
                 .IsEqualApprox(4 * XrayCart.ArmStep, 0.01f);
             AssertFloat(new Vector2(high.X - low.X, high.Z - low.Z).Length())
-                .OverrideFailureMessage($"the tube head comes straight down, no nearer or further: from {high} to {low}")
+                .OverrideFailureMessage($"the tube head goes straight up, no nearer or further: from {low} to {high}")
                 .IsLess(0.001f);
             AssertFloat(Mathf.Abs(head.GlobalRotation.X)).OverrideFailureMessage("the tube head stays level")
                 .IsLess(0.01f);
             if (shots is not null) {
-                await driver.Unbudgeted(() => CaptureCart(shots, cart, "lowered",
-                    "the cart pushed away from its corner, the arm slid down the column, the tube head still level, the pedal up"));
+                await driver.Unbudgeted(() => CaptureCart(shots, cart, "raised",
+                    "the cart pushed away from its corner, the arm slid up the column, the tube head still level, the pedal up"));
             }
             // Away from the table Use tool takes no X-ray, and doesn't let go of the cart either.
             PlayerInput.Tap(InputActions.UseTool);
@@ -120,11 +135,11 @@ public class XrayCartTest {
             await PlayerInput.Delivered();
             await Frames.Physics(2);
             AssertInt(cart.Pusher).OverrideFailureMessage("Grab on the tube head takes hold of the cart").IsEqual(me.PeerId);
-            PlayerInput.Tap(InputActions.LevelUp);
+            PlayerInput.Tap(InputActions.LevelDown);
             await PlayerInput.Delivered();
             await Frames.Physics(40);
-            AssertFloat(cart.Arm).OverrideFailureMessage("held by the head, the wheel raises the arm")
-                .IsEqualApprox(lowered + XrayCart.ArmStep, 0.001f);
+            AssertFloat(cart.Arm).OverrideFailureMessage("held by the head, the wheel lowers the arm")
+                .IsEqualApprox(raised - XrayCart.ArmStep, 0.001f);
             if (shots is not null) {
                 await driver.Unbudgeted(() => shots.CaptureView("head_in_view",
                     "the tube head in the middle of the view, the cart lit up, the prompt to push or let go of it"));
@@ -151,10 +166,10 @@ public class XrayCartTest {
         }
     }
 
-    /// <summary>A view of the cart's side from 45° above, from the side toward the middle of the room: the column, the
-    /// arm and the tube head side by side, and in its corner the view isn't inside the wall.</summary>
+    /// <summary>A view of the cart from 45° above, from the middle of the room: in or by its niche, the view isn't
+    /// inside a wall.</summary>
     private static Task CaptureCart(KeyFrames shots, XrayCart cart, string keyFrame, string description) {
-        var side = cart.GlobalBasis.X.Dot(cart.GlobalPosition) > 0f ? -cart.GlobalBasis.X : cart.GlobalBasis.X;
+        var side = -cart.GlobalPosition;
         return shots.CaptureOblique(keyFrame, description, cart.ToGlobal(new Vector3(0f, 1.1f, -0.35f)), side, CartView);
     }
 }

@@ -38,15 +38,23 @@ public partial class SurgeryDriver {
         await Frames.Physics(2);
         Note("takes hold of the X-ray cart");
         await Frames.Physics(30);
+        // Out of its niche straight back first: turning inside it, it would catch on the niche's sides.
+        var head = (Node3D)Cart.FindChild("Head", true, false);
+        var wall = (Surgery.Room.Layout.Size.X * 0.5f) - 0.3f;
+        for (var i = 0; i < 12 && Mathf.Abs(head.GlobalPosition.X) > wall; i++) {
+            await PlayerHoldsWalkKey(InputActions.MoveBack, 0.25f, () => { });
+        }
+        await Frames.Physics(30);
         if (lateral is { } height) {
             await PlayerBringsLateralBeamTo(height);
         }
         // Held like a tool, the cart and its tube head keep where they are from the pusher, a little to one side or
         // turned if they were grabbed that way: the pusher stands as far from the point as the head is from them, and
         // faces off it by as much as the head is off their straight ahead.
-        var head = Me.ToLocal(((Node3D)Cart.FindChild("Head", true, false)).GlobalPosition) with { Y = 0f };
+        var reach = Me.ToLocal(head.GlobalPosition) with { Y = 0f };
         var held = Me.ToLocal(Cart.GlobalPosition) with { Y = 0f };
-        var offAhead = Mathf.Atan2(-head.X, -head.Z);
+        var offAhead = Mathf.Atan2(-reach.X, -reach.Z);
+        var turned = Cart.Rotation.Y - Me.Rotation.Y;
         var flat = point with { Y = Me.GlobalPosition.Y };
         // Across the table from the side the cart stands on first, then round toward its ends, until the pusher has
         // room to stand and the cart fits on the floor.
@@ -54,10 +62,10 @@ public partial class SurgeryDriver {
         Vector3? facing = null;
         foreach (var turn in (float[])[0f, 0.4f, -0.4f, 0.8f, -0.8f, Mathf.Pi, Mathf.Pi + 0.4f, Mathf.Pi - 0.4f]) {
             var away = new Vector3(0f, 0f, side).Rotated(Vector3.Up, turn);
-            var stand = flat + (away * head.Length());
+            var stand = flat + (away * reach.Length());
             var ahead = (-away).Rotated(Vector3.Up, -offAhead);
-            var cart = stand + (new Basis(Vector3.Up, Mathf.Atan2(-ahead.X, -ahead.Z)) * held);
-            if (Mathf.Abs(cart.X) > Cart.Bounds.X || Mathf.Abs(cart.Z) > Cart.Bounds.Y) {
+            var yaw = Mathf.Atan2(-ahead.X, -ahead.Z);
+            if (!Cart.Fits(stand + (new Basis(Vector3.Up, yaw) * held), yaw + turned)) {
                 continue;
             }
             await PlayerWalksTo(stand, 0f);

@@ -121,6 +121,7 @@ internal sealed partial class GameplaySweep {
         await Frames.Physics(10);
         push.Interact(Me);
         cart.GlobalPosition = Patient.GlobalPosition + new Vector3(0f, -Room.TableHeight, 1f);
+        cart.GlobalRotation = Vector3.Zero;
         cart.TakeXray();
         await Frames.Physics((int)(XrayCart.ExposeTime * 60) + 10);
         if (cart.Films.Count != 2) {
