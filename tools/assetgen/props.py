@@ -40,18 +40,8 @@ def _wheels(radius: float, spread: float, y: float = 0.0) -> trimesh.Trimesh:
 
 def _block(size: tuple[float, float, float], center: tuple[float, float, float]) -> trimesh.Trimesh:
     """A box with just its edges eased: sheet metal and steel section, not moulded plastic.
-    Six rings already keep the eased edges, and the cart is made of many of these."""
+    Six rings already keep the eased edges, and the carts are made of many of these."""
     return superellipsoid(size, 0.06, center, detail=6)
-
-
-def _beam(a: tuple[float, float, float], b: tuple[float, float, float], width: float, height: float) -> trimesh.Trimesh:
-    """A level rectangular steel section from a to b."""
-    va, vb = np.asarray(a, float), np.asarray(b, float)
-    run = vb - va
-    beam = _block((width, height, float(np.linalg.norm(run))), (0.0, 0.0, 0.0))
-    beam.apply_transform(trimesh.transformations.rotation_matrix(float(np.arctan2(run[0], run[2])), (0.0, 1.0, 0.0)))
-    beam.apply_translation((va + vb) / 2)
-    return beam
 
 
 def _caster(x: float, z: float) -> list[trimesh.Trimesh]:
@@ -63,6 +53,11 @@ def _caster(x: float, z: float) -> list[trimesh.Trimesh]:
         _block((0.005, 0.05, 0.04), (x + 0.022, 0.06, z + 0.012)),
         cylinder(0.006, (x - 0.026, 0.045, z + 0.02), (x + 0.026, 0.045, z + 0.02), 8),
     ]
+
+
+def _wheel(x: float, z: float) -> trimesh.Trimesh:
+    """The rubber wheel in a caster's fork."""
+    return cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20)
 
 
 def _operating_table() -> Model:
@@ -191,17 +186,19 @@ DRAWER_GAP = 0.012
 
 
 def _drawer_cart(m: Model) -> None:
-    """A hospital cart: a white body on a steel chassis and four swivel casters, a flat top with a lip, two columns of
-    blue drawers with a chrome bar handle each, a push handle on the left and a flat chart holder on the right.
-    The top is closed, so things stand on it; everything stays inside the station's solid footprint.
+    """A hospital cart: a white body on a steel chassis and four swivel casters, a flat top, two columns of blue
+    drawers with a chrome bar handle each, a push handle on the left and a flat chart holder on the right.
+    The top is closed, so things stand on it. The body fills the station's solid footprint; the handles and the holder
+    stand a few centimeters proud of it, like the old cabinet's door handles did.
     """
     hw, hd = CART_WIDTH / 2, CART_DEPTH / 2
     top = _block((CART_WIDTH + 0.04, 0.03, CART_DEPTH + 0.02), (0.0, CART_TOP - 0.015, 0.0))
     body = _block((CART_WIDTH, CART_TOP - 0.15, CART_DEPTH), (0.0, (CART_TOP - 0.03 + 0.12) / 2, 0.0))
     chassis = _block((CART_WIDTH - 0.06, 0.03, CART_DEPTH - 0.08), (0.0, 0.105, 0.0))
-    casters = [part for x in (-hw + 0.06, hw - 0.06) for z in (-hd + 0.08, hd - 0.08) for part in _caster(x, z)]
-    wheels = [cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20) for x in (-hw + 0.06, hw - 0.06) for z in (-hd + 0.08, hd - 0.08)]
-    # The drawer fronts stand proud of the body, their handles a bar on two stand-offs along the top edge.
+    corners = [(x, z) for x in (-hw + 0.06, hw - 0.06) for z in (-hd + 0.08, hd - 0.08)]
+    casters = [part for x, z in corners for part in _caster(x, z)]
+    wheels = [_wheel(x, z) for x, z in corners]
+    # The drawer fronts stand proud of the body, their handles a bar on two stand-offs just below the top edge.
     fronts, handles = [], []
     y = CART_TOP - 0.03 - DRAWER_GAP
     for height in DRAWER_ROWS:
@@ -211,15 +208,15 @@ def _drawer_cart(m: Model) -> None:
             handles.append(cylinder(0.006, (x - 0.09, bar_y, bar_z), (x + 0.09, bar_y, bar_z), 10))
             handles += [cylinder(0.005, (x + s * 0.08, bar_y, hd + 0.014), (x + s * 0.08, bar_y, bar_z), 8) for s in (-1, 1)]
         y -= height + DRAWER_GAP
-    # The push handle: a loop out of the left side near the back, its grip in the middle.
-    loop = [(-hw, 0.62, -0.05), (-hw - 0.03, 0.62, -0.05), (-hw - 0.03, CART_TOP - 0.06, -0.05), (-hw, CART_TOP - 0.06, -0.05)]
+    # The push handle: a loop out of the left side behind the middle, its grip in the middle.
+    loop = [(-hw, 0.62, -0.15), (-hw - 0.03, 0.62, -0.15), (-hw - 0.03, CART_TOP - 0.06, -0.15), (-hw, CART_TOP - 0.06, -0.15)]
     handles += [cylinder(0.008, a, b, 10) for a, b in pairwise(loop)]
     handles += [ellipsoid((0.008, 0.008, 0.008), bend, 1) for bend in loop[1:-1]]
-    m.add("Grip", cylinder(0.011, (-hw - 0.03, 0.68, -0.05), (-hw - 0.03, 0.78, -0.05), 12), "black_plastic")
-    # A flat steel chart holder hangs on the right side.
+    m.add("Grip", cylinder(0.011, (-hw - 0.03, 0.68, -0.15), (-hw - 0.03, 0.78, -0.15), 12), "black_plastic")
+    # A flat steel chart holder hangs on the right side from a rail screwed into the body.
     holder = merge(
         _block((0.008, 0.36, 0.28), (hw + 0.012, 0.66, 0.0)),
-        _block((0.02, 0.012, 0.28), (hw + 0.012, 0.845, 0.0)),
+        _block((0.03, 0.012, 0.28), (hw + 0.001, 0.845, 0.0)),
     )
     m.add("Cabinet", merge(top, body), "plastic")
     m.add("Drawers", merge(*fronts), "blue_plastic")
@@ -315,6 +312,16 @@ XRAY_COLUMN = (-0.17, -0.03)
 XRAY_ARM_ABOVE = 0.24
 
 
+def _beam(a: tuple[float, float, float], b: tuple[float, float, float], width: float, height: float) -> trimesh.Trimesh:
+    """A level rectangular steel section from a to b."""
+    va, vb = np.asarray(a, float), np.asarray(b, float)
+    run = vb - va
+    beam = _block((width, height, float(np.linalg.norm(run))), (0.0, 0.0, 0.0))
+    beam.apply_transform(trimesh.transformations.rotation_matrix(float(np.arctan2(run[0], run[2])), (0.0, 1.0, 0.0)))
+    beam.apply_translation((va + vb) / 2)
+    return beam
+
+
 def _xray() -> Model:
     """Mobile X-ray unit, industrial: an open H frame of square steel on swivel casters, a square column at its front left
     braced by a gas strut, and a level steel arm from a carriage on the column to the box-shaped tube head, which hangs
@@ -328,9 +335,9 @@ def _xray() -> Model:
     foot = _block((0.12, 0.012, 0.12), (XRAY_COLUMN[0], 0.155, XRAY_COLUMN[1]))
     gussets = [_block((0.008, 0.12, 0.1), (XRAY_COLUMN[0] + s * 0.045, 0.21, XRAY_COLUMN[1])) for s in (-1, 1)]
     frame = [*rails, *cross, foot, *gussets]
-    casters = [_caster(x, z) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
-    forks = [part for caster in casters for part in caster]
-    wheels = [cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
+    corners = [(x, z) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
+    forks = [part for x, z in corners for part in _caster(x, z)]
+    wheels = [_wheel(x, z) for x, z in corners]
     m.add("Wheels", merge(*wheels), "rubber")
     cx, cz = XRAY_COLUMN
     # Tall enough that the carriage at its highest still clamps it.

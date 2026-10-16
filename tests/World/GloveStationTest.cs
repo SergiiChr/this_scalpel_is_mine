@@ -1,8 +1,8 @@
 namespace Scalpel.Tests.World;
 
 /// <summary>The glove station as a player uses it: the dispenser box stands on the cart's top, under the organizer's
-/// front edge, within the station's interact area, looking at it offers "Change gloves", and interact swaps bloody, sweaty gloves for fresh ones.
-/// </summary>
+/// front edge, within the station's interact area, looking at it offers "Change gloves", and interact swaps bloody,
+/// sweaty gloves for fresh ones.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
@@ -11,7 +11,7 @@ public class GloveStationTest {
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 5f);
 
     /// <summary>Top of the cart the box stands on (CART_TOP in tools/assetgen/props.py).</summary>
-    private const float CabinetTop = 0.9f;
+    private const float CartTop = 0.9f;
 
     [TestCase]
     public async Task LookingAtTheBoxAndInteractingGivesFreshGloves() {
@@ -27,8 +27,8 @@ public class GloveStationTest {
             var bounds = box.GlobalTransform * box.Mesh.GetAabb();
             var size = ((BoxShape3D)station.GetChild<CollisionShape3D>(0).Shape).Size;
             var area = new Aabb(station.GlobalPosition - (size * 0.5f), size);
-            AssertFloat(bounds.Position.Y).OverrideFailureMessage($"the glove box stands on the cabinet: {bounds}")
-                .IsEqualApprox(CabinetTop, 0.003f);
+            AssertFloat(bounds.Position.Y).OverrideFailureMessage($"the glove box stands on the cart: {bounds}")
+                .IsEqualApprox(CartTop, 0.003f);
             AssertBool(area.Encloses(bounds))
                 .OverrideFailureMessage($"the glove box {bounds} is inside the station's interact area {area}")
                 .IsTrue();
@@ -44,13 +44,14 @@ public class GloveStationTest {
                 .Select(hit => hit.AsVector3().Y)
                 .DefaultIfEmpty(float.NegativeInfinity)
                 .Max();
-            AssertFloat(top).OverrideFailureMessage("the cabinet's top is closed in the middle")
-                .IsEqualApprox(CabinetTop, 0.003f);
+            AssertFloat(top).OverrideFailureMessage("the cart's top is closed in the middle")
+                .IsEqualApprox(CartTop, 0.003f);
             if (KeyFrames.Wanted()) {
                 shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(driver.Surgery, "glove_station");
-                // From the surgeon's side, 45° above: the organizer's shelves are in the way of a view from straight above.
+                // From the surgeon's side, 45° above: the organizer's shelves are in the way of a view from straight
+                // above.
                 await shots.CaptureOblique("untouched",
                     "the glove box on the cart's closed top under the organizer's bins, gloves out of its slot, "
                         + "a loose pair in front, no black patch",
