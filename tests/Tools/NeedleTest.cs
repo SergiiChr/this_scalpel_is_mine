@@ -35,7 +35,9 @@ public class NeedleTest {
         await driver.Capture("cuts_before_sutures", "three cuts across the site, the lowest deeper, no thread in any");
         var needle = (await driver.PlayerRequestsItem("needle"))!;
 
-        AssertBool(await driver.PlayerThreads(loose, TissueDepth.Skin))
+        // Over the belly the hand stays clear of it, holding the needle's tip well above the skin: the dot still lies
+        // on the skin, where the hole goes in.
+        AssertBool(await driver.PlayerThreads(loose, TissueDepth.Skin, checkAim: true))
             .OverrideFailureMessage($"all loose-thread punctures are reached\n{driver.Recent()}").IsTrue();
         await driver.PlayerTiesOff("loose_tied", "tied off loose: the thread lies across the top cut, its edges still apart");
         await Frames.Seconds(1f);
