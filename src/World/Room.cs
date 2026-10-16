@@ -325,8 +325,8 @@ public partial class Room : Node3D {
             ShadowBlur = 2f,
         });
         if (Theatre) {
-            // One shadow map per panel, rather than the six faces a shadowed omni needs. Keep the emitters just
-            // below the visible lenses and aim down: no light leaking through the ceiling or invisible central lamp.
+            // Each panel uses one shadow map instead of an omni's six faces. Put its emitter just below the lens,
+            // pointing down. The four panels provide the room lighting; the surgical lamp lights the table.
             for (var i = 0; i < TheatreLights.Length; i++) {
                 var center = TheatreLights[i].GetCenter();
                 var panel = new SpotLight3D {
@@ -347,7 +347,7 @@ public partial class Room : Node3D {
             return;
         }
         // Other environments keep their single overhead fixture and unshadowed fill.
-        if (Indoors && !Theatre) {
+        if (Indoors) {
             AddChild(new MeshInstance3D {
                 Name = "CeilingPanel",
                 Mesh = new BoxMesh { Size = new Vector3(1.4f, 0.04f, 0.5f) },

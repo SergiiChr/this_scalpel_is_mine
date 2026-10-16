@@ -14,8 +14,10 @@ public class RoomTest {
         room.BuildShell("or");
         var lights = room.GetChildren().OfType<SpotLight3D>().Where(light => light.Name.ToString().StartsWith("CeilingLight")).ToArray();
         AssertInt(lights.Length).IsEqual(4);
-        AssertBool(room.HasNode("Overhead")).IsFalse();
+        AssertInt(lights.Select(light => light.Position).Distinct().Count()).IsEqual(4);
         foreach (var light in lights) {
+            AssertBool(light.Visible).IsTrue();
+            AssertFloat(light.LightEnergy).IsGreater(0f);
             AssertBool(light.ShadowEnabled).IsTrue();
             AssertFloat(light.Position.Y).IsBetween(2.7f, 2.75f);
             AssertFloat((-light.Basis.Z).Dot(Vector3.Down)).IsGreater(0.999f);
