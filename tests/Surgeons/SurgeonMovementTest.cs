@@ -10,9 +10,9 @@ namespace Scalpel.Tests.Surgeons;
 public class SurgeonMovementTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 10f);
-    /// <summary>How far (meters) a breath lifts the drape lying on the table past the legs: it rises with the trunk.
-    /// </summary>
-    private const float Breath = 0.005f;
+    /// <summary>How far (meters) a breath lifts the drape lying on the table past the legs: it rises with the trunk,
+    /// twice as deep in panic.</summary>
+    private const float Breath = PatientAnimator.TorsoTop * PatientAnimator.BreathDepth * 2f;
 
     private SurgeryDriver? _driver;
     private KeyFrames? _frames;

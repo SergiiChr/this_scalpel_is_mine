@@ -2,8 +2,9 @@ namespace Scalpel.Tests.Patients;
 
 /// <summary>
 /// The surgical drape covers the body around the site on the front, the chest, a thigh and the back: no skin or gown
-/// of the trunk and legs pokes through the sheet outside its opening, its long sides hang down to the table past the
-/// legs, and it lies over no arm, which may lift under it. Key frames: on the belly, the sheet from the surgeon's side
+/// of the trunk and legs pokes through the sheet outside its opening or out past its sides, its long sides hang down to
+/// the table past the legs, its sides and ends face outward to be drawn, and it lies over no arm, which may lift under
+/// it. Key frames: on the belly, the sheet from the surgeon's side
 /// and the other; SurgeonArmsTest shows what the surgeon sees.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -78,6 +79,62 @@ public class DrapeTest {
                     .IsTrue();
             }
         }
+
+        // From the side, level with the body, the sheet comes before the trunk and legs, or lies over them, where no
+        // arm hides them or lies pressed against them: no hip or chest pokes out past its hem.
+        var arms = new TriangleMesh();
+        arms.CreateFromFaces([.. armFaces]);
+        var outside = new List<string>();
+        for (var x = Drape.FromX + Step / 2f; x < Drape.ToX; x += Step) {
+            foreach (var sign in (float[])[-1f, 1f]) {
+                var armSide = armFaces.Where(p => Mathf.Abs(p.X - x) < Step && p.Z * sign > 0f).Select(p => p.Z * sign)
+                    .DefaultIfEmpty(float.PositiveInfinity).Min();
+                for (var height = -PatientBody.HalfHeight + Drape.Offset; height < 0.3f; height += Step) {
+                    var from = new Vector3(x, up * height, sign * (Drape.MaxHalfWidth + 0.1f));
+                    var toward = new Vector3(0f, 0f, -sign);
+                    var skin = trunk.IntersectRay(from, toward);
+                    if (skin.Count == 0) {
+                        continue;
+                    }
+                    var at = skin["position"].AsVector3();
+                    var uv = body.WorldToUv(root.ToGlobal(at));
+                    if (uv.X > Drape.Frame && uv.X < 1f - Drape.Frame && uv.Y > Drape.Frame && uv.Y < 1f - Drape.Frame) {
+                        continue;
+                    }
+                    var arm = arms.IntersectRay(from, toward);
+                    if ((arm.Count > 0 && arm["position"].AsVector3().Z * sign > at.Z * sign)
+                        || at.Z * sign > armSide - Drape.Offset - Drape.ArmClearance) {
+                        continue;
+                    }
+                    var hem = sheet.IntersectRay(from, toward);
+                    var covered = hem.Count > 0 && hem["position"].AsVector3().Z * sign >= at.Z * sign;
+                    if (!covered && !(HeightAt(sheet, at.X, at.Z) > up * at.Y)) {
+                        outside.Add($"({x:0.00}, {up * height:0.00}, {at.Z:0.00})");
+                    }
+                }
+            }
+        }
+        AssertInt(outside.Count).OverrideFailureMessage(
+                $"{scenario}: seen from the side the sheet covers the trunk and legs ({outside.Count} spots out past it, "
+                + $"body x, y and z: {string.Join(", ", outside.Take(8))})")
+            .IsEqual(0);
+
+        // The cloth is drawn one-sided: every steep face, down the sides and over the ends, faces away from the body,
+        // so the faces the camera sees are drawn.
+        var middle = (Drape.FromX + Drape.ToX) / 2f;
+        var inward = 0;
+        for (var n = 0; n + 2 < cloth.Length; n += 3) {
+            // Godot's front faces wind clockwise.
+            var normal = (cloth[n + 2] - cloth[n]).Cross(cloth[n + 1] - cloth[n]).Normalized();
+            var centre = (cloth[n] + cloth[n + 1] + cloth[n + 2]) / 3f;
+            var away = Mathf.Abs(normal.Z) > Mathf.Abs(normal.X) ? normal.Z * centre.Z : normal.X * (centre.X - middle);
+            if (Mathf.Abs(normal.Y) < 0.3f && away < 0f) {
+                inward++;
+            }
+        }
+        AssertInt(inward).OverrideFailureMessage($"{scenario}: the sheet's sides and ends face away from the body ({inward} "
+                + "steep faces turned toward it)")
+            .IsEqual(0);
 
         // Inside the sheet's least width the arm's skin is the armpit's, where the sheet always lay.
         var underSheet = armFaces.Where(p => Mathf.Abs(p.Z) > Drape.MinHalfWidth && HeightAt(sheet, p.X, p.Z) is not null).ToArray();
