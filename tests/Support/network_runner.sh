@@ -38,8 +38,10 @@ finished() {
 	[[ $status -eq 0 ]] || fail "$2 exited with status $status$([[ $status -eq 124 ]] && echo ' (timed out)'), see $logs/$2.log"
 }
 
+# A missing line fails with what the driver reported instead (its lines start with its role in brackets).
 expect() {
-	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'"
+	grep -q "$2" "$1" || fail "$(basename "$1") lacks '$2'; it reports:
+$(grep "^\[" "$1")"
 }
 
 run() {
