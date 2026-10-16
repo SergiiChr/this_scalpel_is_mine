@@ -173,6 +173,12 @@ public partial class Patient {
         Surgery.Current?.Room.IvLine.PullOut(torn);
     }
 
+    /// <summary>The skin a ripped-out IV catheter tore is taped shut with a strip across it (Patient.TapeIvTear()).
+    /// </summary>
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void IvTearTaped(float z0, float z1, float halfWidth, Color color) =>
+        Surgery.Current?.Room.IvLine.Tear?.TapeOver(z0, z1, halfWidth, color);
+
     /// <summary>The IV tubing goes onto the catheter <paramref name="uid"/>.</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     internal void IvLineOn(int uid) {

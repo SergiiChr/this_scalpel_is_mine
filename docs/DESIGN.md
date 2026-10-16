@@ -615,6 +615,11 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 - Taped gauze soaks up what its pressure holds back from the cut under it (`Wound.LastingBleeding`) until it's full;
   then the blood soaks through into the tape (`Patient.SoakThrough` per ml), and soaked through, the tape lets go and
   the gauze with it, pressing no more.
+- The skin a ripped-out IV catheter tore (`IvTear`) oozes (`Patient.IvTearOoze`) until a strip across it holds it
+  shut (`Patient.TapeIvTear()`). On the forearm a strip is short: a press near the tear starts it, the next sticks it
+  down from there and cuts it off. It holds when its middle lies over the slit and it reaches past the torn rim on both
+  sides (`IvTear.Covers()`), and is then drawn across the arm there, the blood bead under it wiped; otherwise it
+  doesn't stick and takes no tape.
 - A strip is drawn flat along the skin between its points, over gauze it holds down, and from its last point to the
   roll while it's still on it (`PatientBody.UpdateTapes()`). A strip that came off is gone.
 

@@ -357,6 +357,9 @@ public partial class Patient : Node3D {
                 }
             }
         }
+        IvTearBleeding = Surgery.Current?.Room.IvLine.Tear is { Taped: false } ? IvTearOoze * bleedMult : 0f;
+        total += IvTearBleeding;
+        lasting += IvTearBleeding;
         v.BleedRate = total;
         LastingBleedRate = lasting;
         (Body.Blood.Sources, _nextSources) = (sources, Body.Blood.Sources);

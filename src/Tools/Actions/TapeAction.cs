@@ -5,8 +5,13 @@ namespace Scalpel.Tools;
 /// the site presses the strip down there, starting one off the roll at the first, and every later click sticks the
 /// strip down all the way from the one before. A longer hold presses its last point down there and cuts it off the
 /// roll. No wheel: it's always pulled as tight as skin closes (Patient.PlaceTapePoint()).
+/// On the forearm, over the tear a ripped-out IV catheter left, a strip is short: the first press starts it, the next
+/// sticks it down from there and cuts it off (Patient.TapeIvTear()).
 /// </summary>
 public sealed class TapeAction : ToolAction {
+    /// <summary>How near (meters) the tear a press on the forearm counts as taping it.</summary>
+    private const float TearReach = 0.04f;
+
     public override void Apply(ToolStep step) {
         var tool = step.Tool;
         var patient = step.Patient;
@@ -16,10 +21,14 @@ public sealed class TapeAction : ToolAction {
             // the skin as the hand lets go doesn't lose a click that already landed.
             if (tape.Hold == 0f) {
                 tape.At = new Vector2(-1, -1);
+                tape.ArmAt = null;
             }
             tape.Hold += step.Dt;
             if (step.Lowered && step.Zone == SiteZone.Site) {
                 tape.At = step.Uv;
+            } else if (step.Lowered && step.Zone == SiteZone.Body && tape.Thread == 0
+                && step.Surgery.Room.IvLine.Tear is { Taped: false } tear && tear.Across(0f).DistanceTo(step.Tip) < TearReach) {
+                tape.ArmAt = step.Tip;
             }
             if (tape.Hold >= ToolActions.SutureTieHold && !tape.PressUsed && tape.Thread != 0) {
                 tape.PressUsed = true;
@@ -46,9 +55,14 @@ public sealed class TapeAction : ToolAction {
     private static void Stick(ToolStep step) {
         var tool = step.Tool;
         var tape = tool.Suture;
-        if (tape.At.X < 0f || tool.Charges == 0) {
+        if (tool.Charges == 0) {
             return;
         }
+        if (tape.At.X < 0f) {
+            StickOnArm(step);
+            return;
+        }
+        tape.ArmFrom = null;
         if (tape.Thread == 0) {
             tape.Thread = step.Patient.NewTape();
             step.Tools.SyncSuture(tool);
@@ -57,5 +71,25 @@ public sealed class TapeAction : ToolAction {
             ToolActions.SpendCharge(tool);
             step.Surgery.Sound("tape_rip", step.Tip);
         }
+    }
+
+    /// <summary>Starts a strip over the IV tear where the press rested, or sticks the one started down from there and
+    /// cuts it off.</summary>
+    private static void StickOnArm(ToolStep step) {
+        var tool = step.Tool;
+        var tape = tool.Suture;
+        if (tape.ArmAt is not { } at) {
+            return;
+        }
+        if (tape.ArmFrom is not { } from) {
+            tape.ArmFrom = at;
+            step.Surgery.Sound("tape_rip", step.Tip);
+            return;
+        }
+        tape.ArmFrom = null;
+        if (step.Patient.TapeIvTear(from, at, tool.Def)) {
+            ToolActions.SpendCharge(tool);
+        }
+        step.Surgery.Sound("tape_rip", step.Tip);
     }
 }

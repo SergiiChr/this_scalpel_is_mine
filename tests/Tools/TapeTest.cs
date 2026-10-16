@@ -26,6 +26,42 @@ public class TapeTest {
     /// <summary>How long (meters) the gash bleeding through taped gauze is.</summary>
     private const float GashLength = 0.06f;
 
+    /// <summary>The skin an IV catheter tore as the line ripped it out oozes until a strip across the tear, stuck down
+    /// on one side and cut off on the other, holds it shut. One that stops short of the far side doesn't stick.
+    /// </summary>
+    [TestCase]
+    public async Task AStripAcrossTheTearARippedOutIvLeftStopsItOozing() {
+        var session = await ToolSession.Start("bullet_muscle", "tape/iv_tear");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        SurgeryState.IvLineIsRippedOut(patient, driver.Me);
+        var tear = driver.Surgery.Room.IvLine.Tear!;
+        await Frames.Seconds(0.5f);
+        AssertFloat(patient.IvTearBleeding).OverrideFailureMessage("the torn skin oozes").IsGreater(0f);
+        await session.CaptureAt("torn", "a ragged, bloodied tear on the forearm where the catheter was, no tape on it",
+            tear.Across(0f), 0.2f);
+        var roll = (await driver.PlayerRequestsItem("surgical_tape"))!;
+        await driver.PlayerSticksTapeAt(tear.Across(-0.025f));
+        await driver.PlayerSticksTapeAt(tear.Across(-0.005f), true);
+        AssertBool(!tear.Taped && patient.IvTearBleeding > 0f && roll.Charges == roll.Def.Charges)
+            .OverrideFailureMessage($"a strip that stops short of the far side doesn't stick, and takes no tape (taped {tear.Taped}, "
+                + $"{roll.Charges} left)")
+            .IsTrue();
+        await driver.PlayerSticksTapeAt(tear.Across(-0.015f));
+        await driver.PlayerSticksTapeAt(tear.Across(0.015f), true);
+        await Frames.Seconds(0.5f);
+        AssertBool(tear.Taped && patient.IvTearBleeding == 0f)
+            .OverrideFailureMessage($"the strip holds the tear shut, so it stops oozing ({patient.IvTearBleeding:0.000} ml/s)\n{driver.Recent()}")
+            .IsTrue();
+        // The roll out of the way, to see the strip.
+        var me = driver.Me;
+        await driver.PlayerReaches(tear.Across(0f) + ((me.GlobalPosition - tear.Across(0f)).Slide(Vector3.Up).Normalized() * 0.2f)
+            + (Vector3.Up * 0.1f));
+        await session.CaptureAt("taped", "a strip of tape lying flat across the arm over the tear, covering its slit, "
+            + "neither sunk into the skin nor floating off it", tear.Across(0f), 0.2f);
+        await session.Finish(BudgetOverride);
+    }
+
     /// <summary>The hand stitch laceration is too deep and its forearm skin too tight for tape: a strip along it peels
     /// straight off, and the cut stays open for the needle.</summary>
     [TestCase]

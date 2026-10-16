@@ -83,6 +83,10 @@ public sealed class SutureState {
     public float Hold { get; set; }
     public Vector2 At { get; set; } = new(-1, -1);
     public bool PressUsed { get; set; }
+    /// <summary>Tape: where (world) the latest press rests on the tear a ripped-out IV catheter left, and where a strip
+    /// over it was started.</summary>
+    public Vector3? ArmAt { get; set; }
+    public Vector3? ArmFrom { get; set; }
 }
 
 /// <summary>

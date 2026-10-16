@@ -35,6 +35,8 @@ public partial class Patient {
     public const float SoakThrough = 0.2f;
     /// <summary>ml oozing into taped gauze it takes in at once, so a tick doesn't send every drop.</summary>
     private const float SeepStep = 0.5f;
+    /// <summary>How fast (ml a second) the skin a ripped-out IV catheter tore oozes until it's taped shut.</summary>
+    public const float IvTearOoze = 0.03f;
     /// <summary>Points along each stretch where what it lies on is looked at.</summary>
     private const int TapeSamples = 8;
 
@@ -79,6 +81,28 @@ public partial class Patient {
         if (before > 0) {
             StickStretch(id, taping);
         }
+        return true;
+    }
+
+    /// <summary>What the skin a ripped-out IV catheter tore oozes now (ml a second): nothing once it's taped shut.
+    /// </summary>
+    internal float IvTearBleeding { get; private set; }
+
+    /// <summary>A strip of <paramref name="def"/> stuck on the forearm from <paramref name="from"/> to
+    /// <paramref name="to"/> (world): across the tear a ripped-out IV catheter left, it holds it shut. Anywhere else it
+    /// doesn't stick. False when it didn't.</summary>
+    public bool TapeIvTear(Vector3 from, Vector3 to, ToolDef def) {
+        if (Session.Room.IvLine.Tear is not { Taped: false } tear) {
+            return false;
+        }
+        var (a, b) = (tear.OnArm(from), tear.OnArm(to));
+        if (!IvTear.Covers(a, b, def.Radius)) {
+            TearNotice("The strip didn't stick. Lay it across the tear, from one side of it to the other.");
+            return false;
+        }
+        Rpc(MethodName.IvTearTaped, a.Y, b.Y, def.Radius, def.Color);
+        // The blood the catheter left on the skin is under the tape now.
+        Session.WipeBeads(tear.Across(0f), def.Radius * 1.5f);
         return true;
     }
 

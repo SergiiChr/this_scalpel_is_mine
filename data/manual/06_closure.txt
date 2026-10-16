@@ -36,6 +36,7 @@ Tape is laid like a running suture, without the wheel. Click ([b]Use tool[/b]) t
 • Blood under the strip weakens it. Stop the ooze and dry the skin first, or a pull on the skin beside it lifts it off and the wound reopens.
 • Laid over gauze, the strip tapes it down onto the wound, and the gauze keeps pressing there for as long as the tape holds. Gauze held over the wound is taped down in the hand: the hand stays on it until you let go ([b]Grab[/b]), and the gauze stays put.
 • Taped gauze soaks up what the wound still bleeds. Once it's full the blood soaks through into the tape, which lets go, and the gauze presses no more.
+• Skin torn by an IV catheter ripped out of the arm oozes until it's taped shut: click on one side of the tear, then on the other, and the strip across it holds it. A strip that doesn't reach across both sides doesn't stick.
 
 ## 6.6 Clip tension
 Paper clips are pulled like the thread: the mouse wheel sets how tight, down tighter and up looser, and the hand status reads it. They work once lowered onto the wound ([b]Use tool[/b]).

@@ -99,8 +99,11 @@ public partial class SurgeryDriver {
 
     /// <summary>Presses the strip on the roll in the active hand down at <paramref name="uv"/> (site uv) with a click,
     /// or with a hold that cuts it off there (<paramref name="cutOff"/>).</summary>
-    public async Task PlayerSticksTape(Vector2 uv, bool cutOff = false) {
-        var at = SitePoint(uv);
+    public async Task PlayerSticksTape(Vector2 uv, bool cutOff = false) => await PlayerSticksTapeAt(SitePoint(uv), cutOff);
+
+    /// <summary>Presses the strip on the roll in the active hand down at <paramref name="at"/> (world, on the patient)
+    /// with a click, or with a hold that cuts it off there (<paramref name="cutOff"/>).</summary>
+    public async Task PlayerSticksTapeAt(Vector3 at, bool cutOff = false) {
         await WithinReach(at);
         await PlayerReaches(at);
         Use();
