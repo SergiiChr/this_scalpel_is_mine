@@ -778,10 +778,13 @@ public partial class Patient {
             taken = Mathf.Min(CavityBloodMl, take);
             CavityBloodMl -= taken;
             taken += DrainCuts(uv, take - taken);
-            // Packed into the opening, it presses on the vessel it reaches, else on the edges of the cut it's in.
-            var vessel = Wounds.Where(w => w.IsInternal && Reaches(w, uv)).MinBy(w => w.Points[0].DistanceTo(uv));
-            if (def.Id == "gauze" && (vessel ?? NearestWound(uv, 0.02f, false)) is { } wound) {
-                Press(wound, dt);
+            // Packed into the opening, it presses on everything it lies against: every vessel it reaches at the bottom and
+            // the edges of the cut it's in.
+            if (def.Id == "gauze") {
+                var cut = NearestWound(uv, 0.02f, false);
+                foreach (var wound in Wounds.Where(w => w == cut || (w.IsInternal && Reaches(w, uv))).ToList()) {
+                    Press(wound, dt);
+                }
             }
         }
         return taken;

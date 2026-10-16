@@ -1,6 +1,6 @@
 {
-  "00_vessel_bleeding_oblique.jpg": "a vessel bleeding in the incision",
-  "00_vessel_bleeding_top.jpg": "a vessel bleeding in the incision",
-  "01_packed_oblique.jpg": "gauze packed into the opening, the vessel not bleeding",
-  "01_packed_top.jpg": "gauze packed into the opening, the vessel not bleeding"
+  "00_vessel_bleeding_oblique.jpg": "a vessel bleeding in the incision, the incision's edges bleeding too",
+  "00_vessel_bleeding_top.jpg": "a vessel bleeding in the incision, the incision's edges bleeding too",
+  "01_packed_oblique.jpg": "gauze packed into the middle of the opening, the edges beside it dry",
+  "01_packed_top.jpg": "gauze packed into the middle of the opening, the edges beside it dry"
 }

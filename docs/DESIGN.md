@@ -255,6 +255,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   a belly properly is no emergency; a stretch cut too fast or with a dull blade bleeds in full.
   Gauze pressed on a wound stops it for a while after it comes off (`Wound.PressureHold`), then the bleeding comes
   back; it stops a cut too small to sew (`Wound.SmallCut`) for good when held on it long enough without a break.
+  Packed into an opening, it presses everything it lies against at once: each vessel it reaches at the bottom and the
+  edges of the cut it's in.
   The `stop_bleeding` objective counts only what stays stopped without gauze pressure. Debug mode toasts when a wound
   stops bleeding, `[permanently]` or `[temporarily]` (held only by gauze).
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
