@@ -97,9 +97,11 @@ public class LimbTargetsTest {
         var walls = mesh.SurfaceGetArrays(mesh.GetSurfaceCount() - 1)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         var half = body.SiteSize * 0.5f + (Vector2.One * 0.01f);
         var deepest = 0f;
-        for (var v = 0; v + 3 < walls.Length; v += 4) {
+        // Each wall is drawn in columns down from its lip, PatientBody.WallRows + 1 vertices each, top first.
+        var column = PatientBody.WallRows + 1;
+        for (var v = 0; v + column <= walls.Length; v += column) {
             if (Mathf.Abs(walls[v].X) > half.X || Mathf.Abs(walls[v].Z) > half.Y) {
-                deepest = Mathf.Max(deepest, Mathf.Max(walls[v].DistanceTo(walls[v + 3]), walls[v + 1].DistanceTo(walls[v + 2])));
+                deepest = Mathf.Max(deepest, walls[v].DistanceTo(walls[v + column - 1]));
             }
         }
         AssertFloat(deepest).OverrideFailureMessage(
