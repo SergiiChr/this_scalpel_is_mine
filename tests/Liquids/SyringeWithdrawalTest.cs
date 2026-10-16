@@ -5,7 +5,8 @@ namespace Scalpel.Tests.Liquids;
 /// once the needle moved away.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_syringe_3"),
- TestCategory("tool_syringe_10"), TestCategory("tool_syringe_50"), TestCategory("visual_confirmation")]
+ TestCategory("tool_syringe_10"), TestCategory("tool_syringe_50"), TestCategory("visual_confirmation"),
+ TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class SyringeWithdrawalTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Scenarios;
 /// leaves with the job undone.
 /// </summary>
 [TestSuite, RequireGodotRuntime, IsolateCases]
-[TestCategory("slow"), TestCategory("scenario")]
+[TestCategory("slow"), TestCategory("scenario"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class ProcedureOrderTest {
     [TestCase("local_block,sanitize,close,stop_bleeding", true, Timeout = Limits.Slow)]

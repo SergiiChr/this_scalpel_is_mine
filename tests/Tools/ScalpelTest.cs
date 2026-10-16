@@ -3,7 +3,7 @@ namespace Scalpel.Tests.Tools;
 /// <summary>The scalpel as a player uses it: asked for and taken off the tray, a light 5 cm cut along the blade's edge,
 /// the opening it leaves, and the scalpel put back on the tray.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_scalpel"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_scalpel"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class ScalpelTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

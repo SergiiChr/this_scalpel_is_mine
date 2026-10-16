@@ -10,7 +10,7 @@ namespace Scalpel.Tests.Tools;
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_scalpel"), TestCategory("tool_all"),
- TestCategory("visual_confirmation")]
+ TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class AimTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

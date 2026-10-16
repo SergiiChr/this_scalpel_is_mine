@@ -10,7 +10,7 @@ namespace Scalpel.Tests.UI;
 /// each other.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class NurseShopTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.

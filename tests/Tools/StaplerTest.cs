@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Tools;
 /// their legs in the skin on both sides, the edges meeting between them and the rings on the cut's edges.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_skin_stapler"), TestCategory("tool_office_stapler")]
+[TestCategory("smoke"), TestCategory("tool_skin_stapler"), TestCategory("tool_office_stapler"), TestCategory("frame_budget")]
 [TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class StaplerTest {

@@ -8,7 +8,7 @@ namespace Scalpel.Tests.UI;
 /// them for a legible, form-like page, the card in view all the way to the hook and hanging on the rail.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class PatientCardTest {
     // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
@@ -88,6 +88,7 @@ public class PatientCardTest {
     [TestCase(false)]
     [TestCase(true)]
     public async Task CorrectedChartReplacesPreviouslyReadRecord(bool stillOpen) {
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         try {
             await driver.Start("appendectomy", readingCard: true);
@@ -118,6 +119,7 @@ public class PatientCardTest {
                 .Contains("CORRECTED COPY");
         } finally {
             await driver.Stop();
+            RenderingServer.RenderLoopEnabled = true;
         }
     }
 
@@ -143,6 +145,7 @@ public class PatientCardTest {
     /// doesn't turn up on the hook as well.</summary>
     [TestCase]
     public async Task PartnerLeavingDoesNotDuplicateTheCard() {
+        FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
         var surgery = driver.Surgery;
@@ -155,6 +158,7 @@ public class PatientCardTest {
         AssertBool(surgery.Surgeons.ContainsKey(2)).OverrideFailureMessage("the partner left").IsFalse();
         AssertBool(card.OnHook).OverrideFailureMessage("no second card appears on the hook").IsFalse();
         await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
     }
 
     /// <summary>The card's paper is right in front of the eyes, facing them.</summary>

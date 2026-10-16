@@ -45,8 +45,7 @@ public partial class Settings : Node {
     /// <summary>The game is quitting. Wrappers of Godot objects nothing uses any more are let go now: freed by the
     /// garbage collector later, after the C# runtime has shut down, they abort the engine on its way out.</summary>
     public override void _ExitTree() {
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+        ManagedRuntime.CollectNow();
     }
 
     public override void _Ready() {

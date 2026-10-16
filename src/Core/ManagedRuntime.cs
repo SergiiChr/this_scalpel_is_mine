@@ -53,11 +53,16 @@ public partial class ManagedRuntime : Node {
     }
 
     /// <summary>Collects all garbage while nothing moves yet (a surgery about to start): play starts with an empty
-    /// young generation and no Godot wrappers waiting for their finalizers.</summary>
+    /// young generation and no Godot wrappers waiting for their finalizers.
+    /// A Godot wrapper's finalizer frees its native value through an unpinned pointer into the wrapper itself.
+    /// A compacting collection that moves the wrapper meanwhile makes the engine free whatever lies there and crash.
+    /// So finalizers still running from earlier collections finish first, and this collection isn't forced to compact.
+    /// Ordinary collections during play can still move one, rarely: only GodotSharp pinning the wrapper would end it.
+    /// </summary>
     internal static void CollectNow() {
-        GC.Collect();
         GC.WaitForPendingFinalizers();
-        GC.Collect();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
+        GC.WaitForPendingFinalizers();
     }
 
     private static void Prepare(CancellationToken cancellation) {

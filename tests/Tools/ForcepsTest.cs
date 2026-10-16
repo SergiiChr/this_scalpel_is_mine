@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Tools;
 /// then on the bullet down in it, then clear of it and of the skin, then holding it over the opening and in the hand.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_forceps"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_forceps"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class ForcepsTest {
     /// <summary>How long (meters) the cut over the bullet is.</summary>

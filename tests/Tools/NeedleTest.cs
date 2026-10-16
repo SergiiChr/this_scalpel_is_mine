@@ -8,7 +8,7 @@ namespace Scalpel.Tests.Tools;
 /// than an open red gap or seamless skin.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_needle"), TestCategory("tissue_modification")]
+[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_needle"), TestCategory("tissue_modification"), TestCategory("frame_budget")]
 [TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class NeedleTest {

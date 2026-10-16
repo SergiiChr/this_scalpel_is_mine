@@ -8,7 +8,7 @@ namespace Scalpel.Tests.Tools;
 /// the closed cut's edges meeting, and the hand status reading closed.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_paper_clips"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_paper_clips"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class PaperClipsTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

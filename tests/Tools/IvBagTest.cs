@@ -11,7 +11,7 @@ namespace Scalpel.Tests.Tools;
 /// the tray, the bag held in the fist without going through the glove and hanging under its hook.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_saline_bag"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("liquids"), TestCategory("tool_saline_bag"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class IvBagTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

@@ -12,7 +12,7 @@ namespace Scalpel.Tests.Tools;
 /// loose once the tape across it let go.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_surgical_tape"), TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
+[TestCategory("smoke"), TestCategory("tool_surgical_tape"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class TapeTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.

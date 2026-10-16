@@ -1,13 +1,17 @@
 """Regression checks for the runner's coverage reporting; no Godot runtime needed."""
 
 import contextlib
+import dataclasses
 import io
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 import xml.etree.ElementTree as ElementTree
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -86,6 +90,13 @@ class CoverageReportingTest(unittest.TestCase):
             (self.root / folder).mkdir()
         self.options = build.TestOptions([], [], "", 1, False, True, False, False)
         self.suite = build.Suite(Path("ExampleTest.cs"), "Scalpel.Tests.Example", [], [], False)
+        # What the processes of a run (see alongside) record.
+        self.passed = self.result("<testsuite><testcase /></testsuite>")
+        self.started: list[str] = []
+        self.others_running: list[int] = []
+        self.running = 0
+        self.lock = threading.Lock()
+        self.pair = threading.Barrier(2, timeout=0.5)
 
     def result(self, xml: str, output: str = QUIT, status: int = 0) -> build.ProcessResult:
         log, report = self.root / "run.log", self.root / "run.xml"
@@ -190,28 +201,126 @@ class CoverageReportingTest(unittest.TestCase):
     def test_first_suite_runs_alone_until_the_adapter_installed_its_runner(self) -> None:
         self.suite.cases = [build.Case("Runs", [], "", [])]
         other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
-        batches: list[tuple[int, list[str]]] = []
-
-        class Pool:
-            def __init__(self, workers: int) -> None:
-                self.workers = workers
-
-            def __enter__(self) -> "Pool":
-                return self
-
-            def __exit__(self, *exception: object) -> None:
-                pass
-
-            def map(self, run: object, suites: list[build.Suite]) -> list[build.Outcome]:
-                batches.append((self.workers, [suite.full_name for suite in suites]))
-                return [build.Outcome(suite, Path(), [], 1) for suite in suites]
-
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
-            with patch.object(build, "ThreadPoolExecutor", Pool), patch.object(build, "RUNNER_CLASS", self.root / "missing"):
+            with patch.object(build, "RUNNER_CLASS", self.root / "missing"), patch.object(build, "run_process", side_effect=self.alongside):
                 with contextlib.redirect_stdout(io.StringIO()):
                     status = build.test(["--all", "--jobs", "2"])
         self.assertEqual(status, 0)
-        self.assertEqual(batches, [(1, ["Scalpel.Tests.Example"]), (2, ["Scalpel.Tests.Other"]), (1, [])])
+        self.assertEqual(self.started, ["Scalpel.Tests.Example", "Scalpel.Tests.Other"])
+        # The second process started only once the first had ended.
+        self.assertEqual(self.others_running, [0, 0])
+
+    def alongside(self, suite: build.Suite, *arguments: object) -> build.ProcessResult:
+        """A run_process that notes how many other processes were running when it started. It then waits for a second
+        process to arrive, so two allowed to share the machine are seen running together; one with the machine to
+        itself waits the barrier out."""
+        with self.lock:
+            self.started.append(suite.full_name)
+            self.others_running.append(self.running)
+            self.running += 1
+        try:
+            self.pair.wait()
+        except threading.BrokenBarrierError:
+            # A timed-out barrier stays broken until reset.
+            self.pair.reset()
+        with self.lock:
+            self.running -= 1
+        return self.passed
+
+    def test_frame_budget_suites_run_alone_and_first_then_the_rest_together(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        timed = build.Suite(Path("TimedTest.cs"), "Scalpel.Tests.Timed", ["frame_budget"], [], False, [build.Case("Runs", [], "", [])])
+        other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
+        (self.root / "runner.cs").touch()
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, timed, other]):
+            with patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"), patch.object(build, "run_process", side_effect=self.alongside):
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    status = build.test(["--all", "--jobs", "2"])
+        self.assertEqual(status, 0)
+        self.assertEqual(self.started[0], "Scalpel.Tests.Timed")
+        # The timed suite had the machine to itself; the two others shared it.
+        self.assertEqual(self.others_running, [0, 0, 1])
+        self.assertIn("3 test suites in 3 test processes: 1 alone, then 2 at a time.", output.getvalue())
+
+    def test_frame_budget_suites_share_the_machine_on_ci_where_frames_are_not_timed(self) -> None:
+        timed = build.Suite(Path("TimedTest.cs"), "Scalpel.Tests.Timed", ["frame_budget"], [], False)
+        local = dataclasses.replace(self.options, ci_run=False)
+        self.assertEqual(build.frame_budget(timed, local), "cpu")
+        self.assertTrue(build.runs_alone(timed, local))
+        self.assertEqual(build.frame_budget(timed, self.options), "off")
+        self.assertFalse(build.runs_alone(timed, self.options))
+        self.assertEqual(build.frame_budget(self.suite, local), "off")
+        self.assertFalse(build.runs_alone(self.suite, local))
+
+    def test_key_frame_takers_run_alone(self) -> None:
+        self.suite.categories = ["visual_confirmation"]
+        self.assertFalse(build.runs_alone(self.suite, self.options))
+        self.assertTrue(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))
+
+    def test_capacity_is_one_process_per_core_within_memory(self) -> None:
+        with patch.object(os, "sched_getaffinity", return_value=set(range(8))), patch.object(os, "sysconf", side_effect=[3 << 30, 1]):
+            self.assertEqual(build.capacity(), 1)
+        with patch.object(os, "sched_getaffinity", return_value=set(range(8))), patch.object(os, "sysconf", side_effect=[64 << 30, 1]):
+            self.assertEqual(build.capacity(), 8)
+
+    def test_every_suite_that_checks_frame_times_is_categorized(self) -> None:
+        """Only frame_budget suites run alone, so one that checks the budget without the category would fail its
+        frames on contention. The helpers that check it: tests/Support/ToolSession.cs, ScenarioFlow.cs and
+        tests/Scenarios/GameplaySweep.cs, and SutureChecks.cs through ToolSession; NeedleTest compares against
+        FrameBudget.Limit itself. FrameBudget.RenderingOff() alone checks nothing."""
+        checks = re.compile(r"[Bb]udget\.Check\(|FrameBudget\.(Limit|Mode)|ToolSession|ScenarioFlow|GameplaySweep|SutureChecks")
+        with patch.object(build, "ROOT", Path(build.__file__).parent):
+            suites = build.discover()
+        for suite in suites:
+            with self.subTest(suite=suite.full_name):
+                self.assertEqual(bool(checks.search(suite.path.read_text())), "frame_budget" in suite.categories)
+
+    def test_isolated_rows_sharing_a_filter_run_in_one_process(self) -> None:
+        self.suite.isolate_cases = True
+        # Two rows of the same scenario, told apart only by a later argument.
+        self.suite.cases = [build.Case("Plays", [], "", ['"a"', '"b"', '"a"'])]
+        self.assertEqual([process.name for process in build.processes(self.suite, self.options)], ["Example__Plays_a", "Example__Plays_b"])
+
+    def test_slow_suites_processes_are_submitted_first(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        slow = build.Suite(Path("SlowTest.cs"), "Scalpel.Tests.Slow", ["slow"], [], True, [build.Case("Plays", [], "", ['"a"', '"b"'])])
+        (self.root / "runner.cs").touch()
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, slow]):
+            with patch.object(ThreadPoolExecutor, "submit", autospec=True, side_effect=ThreadPoolExecutor.submit) as submit:
+                with (
+                    patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"),
+                    patch.object(build, "run_process", return_value=self.result("<testsuite><testcase /></testsuite>")),
+                ):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        status = build.test(["--all", "--jobs", "2"])
+        self.assertEqual(status, 0)
+        submitted = [call.args[1].__self__.name for call in submit.call_args_list]
+        self.assertEqual(submitted, ["Slow__Plays_a", "Slow__Plays_b", "Example"])
+
+    def test_isolated_cases_are_spread_over_the_pool(self) -> None:
+        self.suite.isolate_cases = True
+        self.suite.cases = [build.Case("Plays", [], "", ['"a"', '"b"', '"c"'])]
+        other = build.Suite(Path("OtherTest.cs"), "Scalpel.Tests.Other", [], [], False, [build.Case("Runs", [], "", [])])
+        started: list[str] = []
+        # Built once: the pool's threads would otherwise write and parse the same report files at the same time.
+        passed = self.result("<testsuite><testcase /></testsuite>")
+
+        def run_process(suite: build.Suite, options: build.TestOptions, name: str, *arguments: object) -> build.ProcessResult:
+            started.append(name)
+            return passed
+
+        (self.root / "runner.cs").touch()
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, other]):
+            with patch.object(ThreadPoolExecutor, "submit", autospec=True, side_effect=ThreadPoolExecutor.submit) as submit:
+                with patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"), patch.object(build, "run_process", side_effect=run_process):
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        status = build.test(["--all", "--jobs", "4"])
+        self.assertEqual(status, 0)
+        # Each isolated case is a pool task of its own, beside the other suite's single process.
+        self.assertEqual(sorted(started), ["Example__Plays_a", "Example__Plays_b", "Example__Plays_c", "Other"])
+        self.assertEqual(submit.call_count, 4)
+        self.assertIn("2 test suites in 4 test processes: 0 alone, then 4 at a time.", output.getvalue())
+        self.assertIn("2 passed, 0 failed", output.getvalue())
 
     def test_entirely_skipped_run_cannot_pass(self) -> None:
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
@@ -308,14 +417,15 @@ class CoverageReportingTest(unittest.TestCase):
         """Runs test() whose one visual suite takes a key frame and passes; returns the screenshots folder."""
         taken, _ = self.key_frames(passed=True)
         self.suite.categories = ["visual_confirmation"]
+        self.suite.cases = [build.Case("Runs", [], "", [])]
 
-        def takes_a_key_frame(suite: build.Suite, options: build.TestOptions) -> build.Outcome:
+        def takes_a_key_frame(suite: build.Suite, *arguments: object) -> build.ProcessResult:
             (taken / "scalpel").mkdir(parents=True, exist_ok=True)
             (taken / "scalpel" / "00_cut_top.png").write_text("new")
-            return build.Outcome(suite, self.root / "log", [], 1)
+            return self.passed
 
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
-            with patch.object(build, "run_suite", side_effect=takes_a_key_frame), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(build, "run_process", side_effect=takes_a_key_frame), contextlib.redirect_stdout(io.StringIO()):
                 build.test(["--with-key-frames", *arguments])
         return taken
 

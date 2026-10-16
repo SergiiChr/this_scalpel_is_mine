@@ -8,7 +8,7 @@ namespace Scalpel.Tests.TissueModification;
 /// open, and no gap left where it counts closed.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tissue_modification"), TestCategory("tool_skin_stapler")]
+[TestCategory("smoke"), TestCategory("tissue_modification"), TestCategory("tool_skin_stapler"), TestCategory("frame_budget")]
 [TestCategory("tool_needle"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class WoundClosureTest {

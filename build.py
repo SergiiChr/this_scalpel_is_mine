@@ -48,9 +48,9 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ElementTree
 import zipfile
-from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from collections.abc import Iterator, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 GODOT_VERSION = "4.7.2"
@@ -350,6 +350,11 @@ class Suite:
         return "visual_confirmation" in self.categories
 
     @property
+    def checks_frames(self) -> bool:
+        """Whether its cases check frame times (FrameBudget.Check): such a process needs the machine to itself."""
+        return "frame_budget" in self.categories
+
+    @property
     def timeout(self) -> int:
         return SLOW_TEST_TIMEOUT if "slow" in self.categories else TEST_TIMEOUT
 
@@ -426,7 +431,8 @@ class TestOptions:
     tags: list[str]
     skips: list[str]
     case: str
-    jobs: int
+    # Test processes that may run at once; one needing the machine to itself waits for the others and runs alone.
+    capacity: int
     key_frames: bool
     ci_run: bool
     render_budget: bool
@@ -444,26 +450,42 @@ def selected(suites: list[Suite], options: TestOptions) -> list[Suite]:
     return picked
 
 
-def runs_alone(suite: Suite, options: TestOptions) -> bool:
-    """Whether the suite runs with no other beside it: one at a time, or one that takes key frames (whose files are
-    told apart by when they're written)."""
-    return options.jobs == 1 or (options.key_frames and suite.visual)
+def takes_key_frames(suite: Suite, options: TestOptions) -> bool:
+    return options.key_frames and suite.visual
 
 
 def frame_budget(suite: Suite, options: TestOptions) -> str:
-    """How the suite checks frame times (FRAME_BUDGET, see tests/Support/FrameBudget.cs). Not on CI, nor with suites
-    running alongside: they slow each other's frames down."""
-    if options.ci_run or not runs_alone(suite, options):
+    """How the suite checks frame times (FRAME_BUDGET, see tests/Support/FrameBudget.cs): not on CI, and only in suites
+    that check them, which run with no other process beside them (others would slow their frames down)."""
+    if options.ci_run or not suite.checks_frames:
         return "off"
     return "render" if options.render_budget else "cpu"
+
+
+def runs_alone(suite: Suite, options: TestOptions) -> bool:
+    """Whether the suite's processes need the machine to themselves: they time frames, take key frames (told apart
+    by when they're written), or draw on the one display of a render budget run."""
+    return frame_budget(suite, options) != "off" or takes_key_frames(suite, options) or options.render_budget
 
 
 def godot_view(suite: Suite, options: TestOptions) -> list[str]:
     """Where the suite draws: the key frame view, this machine's display without VSync (frames would wait for the
     screen) and without sound (a missing audio device would be an error), or nowhere."""
-    if options.key_frames and suite.visual:
+    if takes_key_frames(suite, options):
         return KEY_FRAME_ARGS
     return ["--disable-vsync", "--audio-driver", "Dummy"] if options.render_budget else ["--headless"]
+
+
+# What one test process (dotnet test, its Godot and the game) may take of the machine's memory: a smoke case measured
+# about 0.9 GiB, so this leaves room for the heavier scenarios and the system.
+PROCESS_MEMORY = 2 << 30
+
+
+def capacity() -> int:
+    """How many test processes this machine has room for: one per core this process may run on, as far as its memory
+    goes."""
+    memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    return max(1, min(len(os.sched_getaffinity(0)), memory // PROCESS_MEMORY))
 
 
 def escape(text: str) -> str:
@@ -516,6 +538,9 @@ class ProcessResult:
     failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
     # Every failure belongs to one of them: running them again is running all that failed.
     attributed: bool = False
+    # The key frames (PNGs) it saved: the files new or rewritten while it ran. A process that takes key frames runs
+    # alone, so no other's can be among them.
+    key_frames: set[Path] = field(default_factory=set)
 
 
 def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
@@ -528,7 +553,7 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
     kept = keep_attempt(name)
     with INFRASTRUCTURE_LOG.open("a") as out:
         out.write(
-            f"{time.strftime('%Y-%m-%d %H:%M:%S')} {name} (jobs {options.jobs}, key frames {options.key_frames}, "
+            f"{time.strftime('%Y-%m-%d %H:%M:%S')} {name} (capacity {options.capacity}, key frames {options.key_frames}, "
             f"{result.executed} cases ran), kept in {kept}:\n  " + "\n  ".join(result.failures) + "\n"
         )
     print(f"[WARN] {name} hit {' and '.join(sorted(set(filter(None, known))))} (see {INFRASTRUCTURE_LOG}); running it again.")
@@ -568,7 +593,7 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
     # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
     # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
     environment.setdefault("DOTNET_GCgen0size", hex(36 << 20))
-    if options.key_frames and suite.visual:
+    if takes_key_frames(suite, options):
         environment["WITH_KEY_FRAMES"] = "1"
         # Always a virtual display and the software renderer, on a machine with a screen and a GPU too.
         # Key frames are compared against the committed baseline, and no two GPUs draw the same pixels.
@@ -582,8 +607,11 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
         environment["TMPDIR"] = temp
         # Godot's user:// (saves, settings, played games) under it too: tests never touch the player's own.
         environment["XDG_DATA_HOME"] = temp
+        before = key_frame_files()
         status = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=False).returncode
-    return problems(log, report, status, suite.timeout)
+    result = problems(log, report, status, suite.timeout)
+    result.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
+    return result
 
 
 def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResult:
@@ -626,54 +654,128 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
     return ProcessResult(found, executed, failed_cases if found else {}, attributed)
 
 
-def run_suite(suite: Suite, options: TestOptions) -> Outcome:
-    """Runs a suite, noting the key frames it saved: the files new or rewritten while it ran. Suites that take key
-    frames run one at a time, so no other suite's can be among them."""
-    if not (options.key_frames and suite.visual):
-        return run_suite_once(suite, options)
-    before = key_frame_files()
-    outcome = run_suite_once(suite, options)
-    outcome.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
-    return outcome
-
-
 def key_frame_files() -> dict[Path, int]:
     """The run's key frames, each with when it was written."""
     return {path: path.stat().st_mtime_ns for path in KEY_FRAMES.rglob("*.png")}
 
 
-def run_suite_once(suite: Suite, options: TestOptions) -> Outcome:
-    """Runs a suite in its own Godot process, or each of its cases in one of its own when it isolates them."""
+@dataclass
+class Process:
+    """One test process of a suite: the whole suite, one of its isolated cases, or a case run again."""
+
+    suite: Suite
+    name: str
+    test_filter: str
+    cases: int
+    # Needs the machine to itself (see runs_alone).
+    exclusive: bool
+
+    def run(self, options: TestOptions) -> ProcessResult:
+        return run_process(self.suite, options, self.name, self.test_filter, self.cases)
+
+
+def processes(suite: Suite, options: TestOptions) -> list[Process]:
+    """The processes that run a suite's selected cases: none when no runnable case is selected."""
     base = f"FullyQualifiedName~{suite.full_name}."
     if not options.run_broken:
         base += "&TestCategory!=broken"
     cases = [case for case in suite.cases if options.run_broken or not case.broken]
-    names = [name for case in cases for name in case.names() if options.case in name]
-    # Isolated cases each write a log of their own, named after the suite.
-    log = BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
-    if not names:
-        reason = "No runnable cases match the selection (broken cases are excluded unless RUN_BROKEN=1)."
-        log = BUILD / "test-logs" / f"{suite.name}.log"
-        log.write_text(reason + "\n")
-        xml = ElementTree.Element("testsuite", name=suite.full_name, tests="1", failures="0", errors="0", skipped="1")
-        skipped_case = ElementTree.SubElement(xml, "testcase", classname=suite.full_name, name="No runnable cases")
-        ElementTree.SubElement(skipped_case, "skipped", message=reason)
-        ElementTree.ElementTree(xml).write(BUILD / "test-results" / f"{suite.name}.xml", encoding="utf-8", xml_declaration=True)
-        return Outcome(suite, log, [])
+    selected_names = [name for case in cases for name in case.names() if options.case in name]
+    if not selected_names:
+        return []
     if not suite.isolate_cases:
         test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
-        result = run_process(suite, options, suite.name, test_filter, len(names))
-        return Outcome(suite, log, result.failures, result.executed, failed_cases=result.failed_cases, attributed=result.attributed)
-    outcome = Outcome(suite, log, [], attributed=True)
+        return [Process(suite, suite.name, test_filter, len(selected_names), runs_alone(suite, options))]
+    found: list[Process] = []
     for case in cases:
         for value in case.values or [""]:
             name = f"{case.method}({value})" if value else case.method
             if options.case not in name:
                 continue
             test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if value else "")
-            case_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
-            add(outcome, run_process(suite, options, case_name, test_filter, 1))
+            # Rows that share their first value (a scenario with and without a flag) share the filter, so one process
+            # runs them both; a second with the same name would write the same log and report at the same time.
+            if any(process.test_filter == test_filter for process in found):
+                continue
+            process_name = f"{suite.name}__{case.method}_{re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')}".rstrip("_")
+            found.append(Process(suite, process_name, test_filter, 1, runs_alone(suite, options)))
+    return found
+
+
+def suite_log(suite: Suite) -> Path:
+    """The suite's log, a glob when its isolated cases each write their own."""
+    return BUILD / "test-logs" / (f"{suite.name}__*.log" if suite.isolate_cases else f"{suite.name}.log")
+
+
+def skipped_outcome(suite: Suite) -> Outcome:
+    """The outcome of a suite with no runnable case selected: a report that says so, nothing launched."""
+    reason = "No runnable cases match the selection (broken cases are excluded unless RUN_BROKEN=1)."
+    log = BUILD / "test-logs" / f"{suite.name}.log"
+    log.write_text(reason + "\n")
+    xml = ElementTree.Element("testsuite", name=suite.full_name, tests="1", failures="0", errors="0", skipped="1")
+    skipped_case = ElementTree.SubElement(xml, "testcase", classname=suite.full_name, name="No runnable cases")
+    ElementTree.SubElement(skipped_case, "skipped", message=reason)
+    ElementTree.ElementTree(xml).write(BUILD / "test-results" / f"{suite.name}.xml", encoding="utf-8", xml_declaration=True)
+    return Outcome(suite, log, [])
+
+
+def gather(suite: Suite, results: Sequence[ProcessResult]) -> Outcome:
+    """A suite's outcome from the results of all its processes."""
+    outcome = Outcome(suite, suite_log(suite), [], attributed=True)
+    for result in results:
+        add(outcome, result)
     return outcome
+
+
+def run_all(queue: list[Process], options: TestOptions) -> Iterator[tuple[Process, ProcessResult]]:
+    """Runs processes, options.capacity at a time, and yields each with its result as it ends. Exclusive processes go
+    first, one at a time with nothing beside them; then the others fill the capacity, slow suites' first, since the
+    longest process started last is what makes a run's tail. An isolated suite's cases are processes like any other:
+    run one after another they would hold the whole run up long after the others have finished.
+    The first test process ever writes the adapter's runner class and builds it into the assembly: it runs alone, as
+    processes starting beside that build would load a half-written assembly."""
+    queue = sorted(queue, key=lambda process: (not process.exclusive, -process.suite.timeout))
+    if queue and not RUNNER_CLASS.exists():
+        queue[0] = replace(queue[0], exclusive=True)
+    running: dict[Future[ProcessResult], Process] = {}
+    with ThreadPoolExecutor(options.capacity) as pool:
+        while queue or running:
+            while queue and fits(queue[0], list(running.values()), options.capacity):
+                process = queue.pop(0)
+                running[pool.submit(process.run, options)] = process
+            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in done:
+                yield running.pop(future), future.result()
+
+
+def fits(process: Process, running: Sequence[Process], capacity: int) -> bool:
+    """Whether the process may start beside the running ones."""
+    if process.exclusive or any(other.exclusive for other in running):
+        return not running
+    return len(running) < capacity
+
+
+def run_suite(suite: Suite, options: TestOptions) -> Outcome:
+    """Runs one suite's processes."""
+    todo = processes(suite, options)
+    return gather(suite, [result for _, result in run_all(todo, options)]) if todo else skipped_outcome(suite)
+
+
+def run_suites(suites: Sequence[Suite], options: TestOptions) -> Iterator[Outcome]:
+    """Runs the suites' processes through run_all and yields each suite's outcome once its last process has ended, so
+    suites come out in the order they finish."""
+    todo = {suite.full_name: processes(suite, options) for suite in suites}
+    results: dict[str, list[ProcessResult]] = {suite.full_name: [] for suite in suites}
+    for suite in suites:
+        if not todo[suite.full_name]:
+            yield skipped_outcome(suite)
+    alone = sum(process.exclusive for group in todo.values() for process in group)
+    count = sum(len(group) for group in todo.values())
+    print(f"Running {len(suites)} test suites in {count} test processes: {alone} alone, then {options.capacity} at a time.", flush=True)
+    for process, result in run_all([process for group in todo.values() for process in group], options):
+        results[process.suite.full_name].append(result)
+        if len(results[process.suite.full_name]) == len(todo[process.suite.full_name]):
+            yield gather(process.suite, results[process.suite.full_name])
 
 
 def add(outcome: Outcome, result: ProcessResult) -> None:
@@ -682,18 +784,25 @@ def add(outcome: Outcome, result: ProcessResult) -> None:
     outcome.executed += result.executed
     outcome.failed_cases |= result.failed_cases
     outcome.attributed &= result.attributed or not result.failures
+    outcome.key_frames |= result.key_frames
 
 
 def run_cases(suite: Suite, options: TestOptions, cases: Sequence[tuple[str, str]]) -> Outcome:
     """Runs the given cases (JUnit class and name) of a suite again, each in a process of its own."""
-    before = key_frame_files()
     outcome = Outcome(suite, BUILD / "test-logs" / f"{suite.name}__retry_*.log", [], attributed=True)
-    for _, name in cases:
+    todo = [
         # A case's name is its method's, with ":index (values)" after it for each row of one.
-        test_filter = f"FullyQualifiedName~{suite.full_name}.{name.partition(':')[0]}&Name={escape(name)}"
-        process = f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}"
-        add(outcome, run_process(suite, options, process, test_filter, 1))
-    outcome.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
+        Process(
+            suite,
+            f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}",
+            f"FullyQualifiedName~{suite.full_name}.{name.partition(':')[0]}&Name={escape(name)}",
+            1,
+            runs_alone(suite, options),
+        )
+        for _, name in cases
+    ]
+    for _, result in run_all(todo, options):
+        add(outcome, result)
     return outcome
 
 
@@ -732,17 +841,19 @@ def test(arguments: list[str]) -> int:
     parser.add_argument("--tag", action="append", default=[], help="suites with all of these categories")
     parser.add_argument("--skip", action="append", default=[], help="leave out suites with this category")
     parser.add_argument("--case", default="", help="only the test cases whose name contains this")
-    parser.add_argument("--jobs", type=int, default=1, help="suites run at once")
+    parser.add_argument(
+        "--jobs", type=int, default=0, help="test processes run at once (an isolated case is one of its own); as many as the machine has room for by default"
+    )
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
-        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer); they run alone, after the others",
+        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer); each of their processes runs alone",
     )
     parser.add_argument("--ci-run", action="store_true", help="don't check frame times")
     parser.add_argument(
         "--render-budget",
         action="store_true",
-        help="run on this machine's display and GPU, rendering on, one suite at a time, and check whole frames against "
+        help="run on this machine's display and GPU, rendering on, one process at a time, and check whole frames against "
         "the 16 ms budget instead of the game's own work against the CPU budget",
     )
     parser.add_argument("--list", action="store_true", help="show what would run")
@@ -755,7 +866,7 @@ def test(arguments: list[str]) -> int:
         tags=parsed.tag or ([] if parsed.all else ["smoke"]),
         skips=parsed.skip,
         case=parsed.case,
-        jobs=1 if parsed.render_budget else parsed.jobs,
+        capacity=parsed.jobs or capacity(),
         key_frames=parsed.with_key_frames,
         ci_run=parsed.ci_run,
         render_budget=parsed.render_budget,
@@ -775,21 +886,12 @@ def test(arguments: list[str]) -> int:
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
-    alone = [suite for suite in suites if runs_alone(suite, options)]
-    together = [suite for suite in suites if suite not in alone]
-    # The first test process ever writes the adapter's runner class and builds it into the assembly: it runs alone,
-    # as processes starting beside that build would load a half-written assembly.
-    first = [together.pop(0)] if together and not RUNNER_CLASS.exists() else []
-    if together:
-        print(f"Running {len(together)} test suites, {options.jobs} at a time.")
     outcomes: list[Outcome] = []
-    for batch, jobs in ((first, 1), (together, options.jobs), (alone, 1)):
-        with ThreadPoolExecutor(jobs) as pool:
-            for outcome in pool.map(lambda suite: run_suite(suite, options), batch):
-                print(report(outcome), flush=True)
-                if options.ci_run and outcome.failures:
-                    print(log_tail(outcome), flush=True)
-                outcomes.append(outcome)
+    for outcome in run_suites(suites, options):
+        print(report(outcome), flush=True)
+        if options.ci_run and outcome.failures:
+            print(log_tail(outcome), flush=True)
+        outcomes.append(outcome)
     # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
     full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
     if options.key_frames and full:
