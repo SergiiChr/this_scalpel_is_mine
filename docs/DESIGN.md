@@ -342,7 +342,8 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
   across the arm and the tubing taped along the arm before it hangs off to the stand (one strip, no tubing, without it).
   A surgeon who catches the tubing on their legs or hands and walks off stretches it past its length
   (`IvLine.YankStretch`): held stretched for a moment, the catheter rips out of the arm (`Patient.PullIv()`), leaving a
-  ragged tear in the skin (`IvTear`) and hanging on the tubing's end. Pushing into the slack only moves it aside.
+  ragged tear in the skin (`IvTear`) and falling, still on the tubing's end, as a catheter to pick up and put back in
+  (the floor soils it like any tool). Pushing into the slack only moves it aside.
   Connecting a new catheter replaces the one on the end; one carried further from the stand than the tubing reaches
   slips off.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.

@@ -8,7 +8,7 @@ public enum IvLineEnd {
     Catheter,
     /// <summary>On the catheter taped into the patient's arm.</summary>
     Arm,
-    /// <summary>Hanging free, with the catheter it was ripped out with or bare.</summary>
+    /// <summary>Hanging free and bare, slipped off its catheter.</summary>
     Loose,
 }
 
@@ -89,7 +89,6 @@ public partial class IvLine : Node3D {
     private readonly List<(CollisionObject3D Body, Aabb Local)> _skins = [];
     private readonly List<(Vector3 From, Vector3 To, Surgeon Surgeon)> _bodies = [];
     private readonly List<(Vector3 At, Surgeon Surgeon)> _hands = [];
-    private Node3D? _endCatheter;
     private IvDressing? _dressing;
     private IvTear? _tear;
     private Vector3 _lastStart;
@@ -108,8 +107,6 @@ public partial class IvLine : Node3D {
     public IvLineEnd End { get; private set; } = IvLineEnd.Clipped;
     /// <summary>The catheter the far end is on while <see cref="IvLineEnd.Catheter"/>.</summary>
     public SurgicalTool? Catheter { get; private set; }
-    /// <summary>A loose end still has the catheter it was ripped out with.</summary>
-    public bool HasCatheter => _endCatheter?.Visible == true;
     /// <summary>The catheter, film and tape on the arm, null while no catheter is in.</summary>
     internal IvDressing? Dressing => _dressing;
     /// <summary>The torn skin where a catheter was ripped out, null until one was.</summary>
@@ -134,11 +131,6 @@ public partial class IvLine : Node3D {
         AddChild(_mesh);
         _arrays.Resize((int)Mesh.ArrayType.Max);
         _arrays[(int)Mesh.ArrayType.Index] = TubeIndices();
-        if (Db.Tool("iv_catheter") is { } catheter) {
-            _endCatheter = ModelSlot.InstantiateTool(catheter, this);
-            _endCatheter.TopLevel = true;
-            _endCatheter.Visible = false;
-        }
     }
 
     /// <summary>Hangs the tubing from <paramref name="dripPoint"/> (local to <paramref name="stand"/>), its bare end
@@ -182,23 +174,22 @@ public partial class IvLine : Node3D {
         var jumps = End != IvLineEnd.Catheter;
         End = IvLineEnd.Arm;
         Catheter = null;
-        ShowEndCatheter(false);
         if (jumps) {
             Settle(true);
         }
         Wake();
     }
 
-    /// <summary>The far end goes onto <paramref name="catheter"/> (a used one on a loose end comes off).</summary>
+    /// <summary>The far end goes onto <paramref name="catheter"/>, off the one it was on.</summary>
     public void HoldOn(SurgicalTool catheter) {
         End = IvLineEnd.Catheter;
         Catheter = catheter;
-        ShowEndCatheter(false);
         Wake();
     }
 
-    /// <summary>The catheter comes out of the arm. <paramref name="torn"/>: ripped out by the tubing, which keeps it on
-    /// its end, tearing the skin where it went in. A catheter that wasn't on the tubing leaves it where it is.</summary>
+    /// <summary>The catheter comes out of the arm. <paramref name="torn"/>: ripped out by the tubing, tearing the skin
+    /// where it went in; the end hangs loose until the catheter goes back on it (Patient.PullIv()). A catheter that
+    /// wasn't on the tubing leaves it where it is.</summary>
     public void PullOut(bool torn) {
         if (_dressing is not null) {
             if (torn) {
@@ -216,7 +207,6 @@ public partial class IvLine : Node3D {
         }
         End = IvLineEnd.Loose;
         Catheter = null;
-        ShowEndCatheter(torn);
         Wake();
     }
 
@@ -224,7 +214,6 @@ public partial class IvLine : Node3D {
     public void SlipOff() {
         End = IvLineEnd.Loose;
         Catheter = null;
-        ShowEndCatheter(false);
         Wake();
     }
 
@@ -263,7 +252,6 @@ public partial class IvLine : Node3D {
             _stretchedFor = 0f;
         }
         Step(start, end, (float)delta, true);
-        PlaceEndCatheter();
         BuildMesh();
     }
 
@@ -516,7 +504,6 @@ public partial class IvLine : Node3D {
             Step(start, end, Dt, frame >= SettleFrames - 30);
         }
         Wake();
-        PlaceEndCatheter();
         BuildMesh();
     }
 
@@ -575,26 +562,6 @@ public partial class IvLine : Node3D {
                 _near.Add(new NearBox(toWorld.AffineInverse(), toWorld, half, bounds.Grow(Radius)));
             }
         }
-    }
-
-    private void ShowEndCatheter(bool shown) {
-        if (_endCatheter is not null) {
-            _endCatheter.Visible = shown;
-        }
-    }
-
-    /// <summary>A catheter on a loose end hangs off it, its back on the tubing, its needle pointing on.</summary>
-    private void PlaceEndCatheter() {
-        if (_endCatheter is not { Visible: true }) {
-            return;
-        }
-        var back = (_points[^2] - _points[^1]).Normalized();
-        var side = back.Cross(Vector3.Up);
-        if (side.LengthSquared() < 1e-4f) {
-            side = Vector3.Right;
-        }
-        var basis = new Basis(side.Normalized(), back.Cross(side).Normalized(), back);
-        _endCatheter.GlobalTransform = new Transform3D(basis.Orthonormalized(), _points[^1]);
     }
 
     /// <summary>A solid box near the tubing this frame: to its own space and back, its half size and what it reaches in

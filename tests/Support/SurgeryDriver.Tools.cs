@@ -108,7 +108,14 @@ public partial class SurgeryDriver {
             Note($"no {id} to be had");
             return null;
         }
-        var tool = found[0];
+        return await PlayerPicksUp(found[0]);
+    }
+
+    /// <summary>Picks <paramref name="tool"/> up in the active hand once it has landed, walking to it and grabbing it
+    /// like a player. Any usable tool of its kind that the grab finds first will do (supplies arrive as a stack).
+    /// </summary>
+    public async Task<SurgicalTool?> PlayerPicksUp(SurgicalTool tool) {
+        var id = tool.Def.Id;
         // Skip the nurse's artificial delivery clock, but observe the spawned rigid body's actual landing.
         var last = tool.GlobalPosition;
         var stableFrames = 0;
