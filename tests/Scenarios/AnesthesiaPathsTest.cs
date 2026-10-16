@@ -66,10 +66,8 @@ public class AnesthesiaPathsTest {
     /// </summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task SplitDoseOfWeakDrugsPutsThePatientUnder() {
-        // No key frames here: under a display a software renderer would draw every frame of the wait for the drip.
-        var rendering = RenderingServer.RenderLoopEnabled;
-        FrameBudget.RenderingOff();
-        try {
+        // No key frames here: under a display a software renderer would draw every frame of both infusions.
+        await WithoutRendering(async () => {
             var driver = SurgeryDriver.Create();
             await driver.Start("bullet_muscle", runModifiers: ["expired_drugs"]);
             var patient = driver.Patient;
@@ -98,9 +96,7 @@ public class AnesthesiaPathsTest {
             AssertBool(objective.Done && patient.Vitals.IsUnder)
                 .OverrideFailureMessage("the patient goes under and Put the patient under checks off").IsTrue();
             await driver.Stop();
-        } finally {
-            RenderingServer.RenderLoopEnabled = rendering;
-        }
+        });
     }
 
     /// <summary>
@@ -112,9 +108,7 @@ public class AnesthesiaPathsTest {
     [TestCase("hand_stitch_child", Timeout = Limits.Slow)]
     public async Task HandStitchLidocaineAllergyUnderGeneralAnesthesia(string scenario) {
         // No key frames here: under a display a software renderer would draw every frame of the whole surgery.
-        var rendering = RenderingServer.RenderLoopEnabled;
-        FrameBudget.RenderingOff();
-        try {
+        await WithoutRendering(async () => {
             var driver = SurgeryDriver.Create();
             await driver.Start(scenario, patientQuirks: [new QuirkRoll("allergy", "lidocaine")]);
             var surgery = driver.Surgery;
@@ -132,6 +126,16 @@ public class AnesthesiaPathsTest {
                     + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
                 .IsTrue();
             await driver.Stop();
+        });
+    }
+
+    /// <summary>Runs <paramref name="run"/> with rendering off, as a CPU frame budget run has it, and back as it was
+    /// after.</summary>
+    private static async Task WithoutRendering(Func<Task> run) {
+        var rendering = RenderingServer.RenderLoopEnabled;
+        FrameBudget.RenderingOff();
+        try {
+            await run();
         } finally {
             RenderingServer.RenderLoopEnabled = rendering;
         }

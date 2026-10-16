@@ -267,11 +267,10 @@ public partial class Patient {
             return false;
         }
         var layer = info?.Layer ?? SutureLayerAt(uv, wound!);
-        if (wound is not null) {
-            uv = HoleUv(uv, wound);
-        }
+        (var point, uv) = Hole(uv, layer, wound);
         var before = tissue.ThreadUvs(threadId).Count;
-        Rpc(MethodName.SutureAnchor, threadId, uv, (int)layer, tension, ThreadStrength[(int)layer], tissue.ThreadSlack(threadId, uv));
+        Rpc(MethodName.SutureAnchor, threadId, uv, point, (int)layer, tension, ThreadStrength[(int)layer],
+            tissue.ThreadSlack(threadId, point));
         if (tissue.ThreadUvs(threadId).Count == before) {
             return false;
         }
@@ -415,22 +414,26 @@ public partial class Patient {
         }
     }
 
-    /// <summary>The grid point (uv) a hole clicked at uv goes through: the nearest one on the clicked side of the wound,
-    /// never one on its line, so every bite goes across it.</summary>
-    private Vector2 HoleUv(Vector2 uv, Wound wound) {
+    /// <summary>The grid point a hole clicked at <paramref name="uv"/> in <paramref name="layer"/> holds on to, and where
+    /// (rest uv) it goes in: right where the needle is (PatientBody.RestSpot()), held by a point on the clicked side of
+    /// the wound so every bite goes across it. When none is near, the hole moves out from the line until its point is
+    /// on that side.</summary>
+    private (int Point, Vector2 Uv) Hole(Vector2 uv, TissueDepth layer, Wound? wound) {
         var tissue = Body.Tissue;
-        var line = wound.ClosestPoint(uv);
+        var line = wound?.ClosestPoint(uv) ?? uv;
         var away = (uv - line).Normalized();
-        if (away == Vector2.Zero) {
-            return uv;
-        }
         var cell = GridCell(away);
-        var hole = tissue.UvOf(tissue.Nearest(uv));
-        for (var i = 0; i < 3 && (hole - line).Dot(away) <= cell * 0.3f; i++) {
-            uv += away * cell * 0.5f;
-            hole = tissue.UvOf(tissue.Nearest(uv));
+        bool OnSide(int k) => away == Vector2.Zero || (tissue.UvOf(k) - line).Dot(away) > cell * 0.3f;
+        if (Body.RestSpot(layer, uv, OnSide) is { } spot) {
+            // Clicked over the gap, the edge drawn back from it would put the hole at rest across the line: it goes in
+            // at that edge instead.
+            var shy = (cell * 0.3f) - (spot.Uv - line).Dot(away);
+            return shy > 0f ? spot with { Uv = spot.Uv + (away * shy) } : spot;
         }
-        return hole;
+        for (var i = 0; i < 3 && !OnSide(tissue.Nearest(uv)); i++) {
+            uv += away * cell * 0.5f;
+        }
+        return (tissue.Nearest(uv), uv);
     }
 
     /// <summary>The tissue grid's cell size (uv) along <paramref name="direction"/>: cells are square in meters, not in
@@ -441,8 +444,8 @@ public partial class Patient {
     }
 
     /// <summary>Where a thread's spans (holes <paramref name="points"/>) cross its wound. Each end of the wound counts a
-    /// grid cell further: a bite round the end of a short stab or bullet hole goes past it, and the holes snap to the
-    /// grid.</summary>
+    /// grid cell further: a bite round the end of a short stab or bullet hole goes past it, and the holes pull by grid
+    /// points.</summary>
     private List<Vector2> ThreadCrossings(List<Vector2> points, Wound wound) {
         var line = wound.Points.ToList();
         if (line.Count < 2) {
@@ -483,7 +486,7 @@ public partial class Patient {
         for (var i = 1; i < at.Count; i++) {
             reach = Math.Max(reach, Mathf.CeilToInt((at[i] - at[i - 1]) * 0.5f));
         }
-        // A bite within one stitch spacing of an end holds that end too. Holes snap to the tissue grid, so the first
+        // A bite within one stitch spacing of an end holds that end too. Holes pull by tissue grid points, so the first
         // crossing can land a bin or two in even when the player clicks right beside the end of the incision.
         var first = at[0] <= reach * 2 ? 0 : at[0] - reach;
         var last = wound.Bins.Length - 1 - at[^1] <= reach * 2 ? wound.Bins.Length : at[^1] + reach + 1;

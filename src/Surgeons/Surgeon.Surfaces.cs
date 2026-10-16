@@ -75,10 +75,9 @@ public partial class Surgeon {
         var hand = Hands[Active];
         var tool = HeldTool(Active);
         var tip = WorkTip();
-        // A grip with a working angle (a needle holder) pitches about its tip as it's lowered: the tip is where it
-        // works.
-        // Forceps held at a depth close where their tip is: Use tool doesn't bring them down.
-        if (tool is null || hand.Lowered || hand.HeldDepth is not null || GripStyle.For(tool.Def.Grip).WorkTilt is not null) {
+        // Forceps held at a depth close where their tip is: Use tool doesn't bring them down. A grip with a working
+        // angle (a needle holder) pitches about its tip as it's lowered, then comes straight down like the rest.
+        if (tool is null || hand.Lowered || hand.HeldDepth is not null) {
             return tip;
         }
         var under = SurfaceBelow(tip);
