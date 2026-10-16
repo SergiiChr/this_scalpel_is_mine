@@ -880,7 +880,6 @@ public partial class PatientBody {
             vertices[v] = p;
             normals[v] = _normal[k];
         }
-        TaperCutEnds(plan, vertices);
         ConstrainLipArea(plan, vertices);
         foreach (var (v, (a, b, c, w)) in plan.Apex) {
             vertices[v] = vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z;
@@ -889,6 +888,8 @@ public partial class PatientBody {
         // Each vertex's uv as drawn: a lip's eased along with it.
         var uvs = plan.Uv.ToArray();
         SmoothLips(layer, plan, vertices, uvs);
+        // Smooth the sheet first so easing neighboring lips cannot round a V back into a blunt end.
+        TaperCutEnds(plan, vertices);
         ConstrainLipArea(plan, vertices);
         FitCutEnds(plan, vertices);
         if (layer != 0) {

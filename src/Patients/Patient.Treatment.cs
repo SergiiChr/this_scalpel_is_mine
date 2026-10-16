@@ -125,6 +125,7 @@ public partial class Patient {
         // stops growing where it comes into a cut, and grows its own wound again where it comes out (a new one, past a
         // longer stretch along the other).
         var own = _strokeWounds.GetValueOrDefault(strokeKey);
+        if (own is not null && own.DistanceTo(b) < own.DistanceTo(a)) { (a, b) = (b, a); }
         Wound wound;
         if (Wounds.Find(w => w != own && w.Kind == WoundKind.Cut && w.Runs(a, b, reach)) is { } recut) {
             wound = recut;

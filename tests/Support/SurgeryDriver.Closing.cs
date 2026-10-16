@@ -304,7 +304,18 @@ public partial class SurgeryDriver {
         Note("closes internal wounds");
         await PlayerRequestsItem("needle");
         foreach (var wound in Patient.Wounds.Where(wound => wound.IsInternal).ToList()) {
-            var spot = Body.UvToWorld(wound.Points[0], wound.DepthM);
+            // An incision can lie beside the injury's anatomical point. Enter its actual opening rather than
+            // pressing the needle onto the intact skin above the injury.
+            var injury = wound.Points[0];
+            var entry = Patient.Wounds.Where(cut => cut.IsSkinCut)
+                .SelectMany(cut => cut.Points.Append(cut.ClosestPoint(injury)))
+                .Prepend(injury).Where(uv => uv.DistanceTo(injury) < 0.05f && Body.IsOpen(uv))
+                .OrderBy(uv => uv.DistanceSquaredTo(injury)).Select(uv => (Vector2?)uv).FirstOrDefault();
+            if (entry is null) {
+                Note($"no opening reaches internal wound {wound.Id}");
+                continue;
+            }
+            var spot = Body.UvToWorld(entry.Value, wound.DepthM);
             await PlayerWalksTo(spot);
             // Deep in the belly, across it: the needle pointed straight ahead reaches further.
             await PlayerAimsStraight();
@@ -313,6 +324,10 @@ public partial class SurgeryDriver {
             await Frames.Until(() => wound.Closure >= 0.9f, 20f);
             Use(false);
             Note($"internal wound closed {wound.Closure:0.00}");
+            if (wound.Closure < 0.9f) {
+                Note($"needle at {Body.Probe(Tip(Me.Hands[Me.Active]))}, injury at {wound.Points[0]}, "
+                    + $"miss {(Tip(Me.Hands[Me.Active]) - spot).Slide(Vector3.Up).Length() * 1000f:0.0} mm");
+            }
         }
         await PlayerPutsDown();
     }

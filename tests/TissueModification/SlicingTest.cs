@@ -761,7 +761,10 @@ public class SlicingTest {
     private bool Zipper() {
         var gaps = Gaps();
         var widest = gaps.Max();
-        return widest > TissueSim.OpenGap * 500f && gaps[0] < widest * 0.7f && gaps[^1] < widest * 0.7f;
+        var first = gaps.FindIndex(gap => gap > 0f);
+        var last = gaps.FindLastIndex(gap => gap > 0f);
+        var continuous = first >= 0 && gaps.Skip(first).Take(last - first + 1).All(gap => gap > 0f);
+        return continuous && widest > TissueSim.OpenGap * 500f && gaps[0] < widest * 0.7f && gaps[^1] < widest * 0.7f;
     }
 
     /// <summary>There's a bone (or organs) right under the muscle along these points.</summary>
@@ -797,6 +800,11 @@ public class SlicingTest {
         GD.Print((ok ? "    ok   " : "FAIL: ") + what);
         _claims.Add(what);
         LogState();
+        if (!ok) {
+            foreach (var wound in _surgery.Patient.Wounds) {
+                GD.Print($"wound {wound.Id}: {string.Join("; ", wound.Points)}");
+            }
+        }
         AssertBool(ok).OverrideFailureMessage(what).IsTrue();
     }
 
