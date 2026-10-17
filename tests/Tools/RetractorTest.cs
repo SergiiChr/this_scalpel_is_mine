@@ -26,6 +26,9 @@ public class RetractorTest {
     /// thickness (tools/assetgen/instruments.py), so the stay still shows. It rises and falls with a breathing belly.
     /// </summary>
     private const float LyingPress = 0.002f;
+    /// <summary>How far (meters) the skin along the drape's window may rise over where it rested: a grip slides it along
+    /// the body there by a few millimeters, it doesn't lift it up onto the cloth.</summary>
+    private const float RimRise = 0.003f;
     /// <summary>How long (meters) the cut the four retractors hold open is.</summary>
     private const float Opening = 0.08f;
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
@@ -153,6 +156,7 @@ public class RetractorTest {
         var driver = session.Driver;
         var body = driver.Body;
         var middle = driver.Patient.Wounds[0].Midpoint;
+        var rim = WindowRim(body);
         // The entry wound widened through every layer along the thigh, then three retractors round it: one on each edge,
         // one at its end, each drawn away from the wound and let go of.
         var half = new Vector2(body.MetersToUv(0.025f), 0f);
@@ -180,6 +184,14 @@ public class RetractorTest {
         foreach (var retractor in hooks) {
             AssertLiesOnBody(driver, retractor);
         }
+        // Drawn as the skin's sheet shows it: a face pushed up over the drape's cloth lifts its corners.
+        var drawn = DrawnSkin(body);
+        var rimDrawn = rim.Where(edge => drawn.ContainsKey(edge.Index)).ToArray();
+        AssertBool(rimDrawn.Length > 0).OverrideFailureMessage("the skin's sheet reaches the window's edge").IsTrue();
+        var risen = rimDrawn.Select(edge => (edge.Index, Rise: drawn[edge.Index] - edge.Point.Y)).MaxBy(edge => edge.Rise);
+        AssertFloat(risen.Rise)
+            .OverrideFailureMessage($"the skin along the window's edge stays on the body under the drape's rim, no peak: it rises {risen.Rise * 1000f:0.0} mm at uv {body.Tissue.UvOf(risen.Index)}")
+            .IsLess(RimRise);
         await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
         await session.Finish(BudgetOverride);
     }
@@ -252,6 +264,43 @@ public class RetractorTest {
             .OverrideFailureMessage($"the forceps lift the appendix out between the retractors\n{driver.Recent()}").IsTrue();
         AssertBool(hooks.All(Holding)).OverrideFailureMessage("the retractors still hold the edges").IsTrue();
         await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>The skin along the edge of the drape's window (exposed grid points beside one under the drape), each
+    /// with where it's drawn now.</summary>
+    private static (int Index, Vector3 Point)[] WindowRim(PatientBody body) {
+        var tissue = body.Tissue;
+        bool Covered(int i, int j) => i >= 0 && j >= 0 && i <= tissue.ResX && j <= tissue.ResY && !tissue.Exposed[tissue.Index(i, j)];
+        return [.. Enumerable.Range(0, tissue.Rest.Length)
+            .Where(k => tissue.Exposed[k] && tissue.CellOf(k) is var at
+                && (Covered(at.X - 1, at.Y) || Covered(at.X + 1, at.Y) || Covered(at.X, at.Y - 1) || Covered(at.X, at.Y + 1)))
+            .Select(k => (k, body.LayerPoint(0, k)))];
+    }
+
+    /// <summary>How high (site y) the skin's sheet is drawn at each grid point it has a vertex on: the highest of them.
+    /// </summary>
+    private static Dictionary<int, float> DrawnSkin(PatientBody body) {
+        var tissue = body.Tissue;
+        var heights = new Dictionary<int, float>();
+        // The sheet is the surface drawn in the skin's material; a layer with no sheet publishes only its walls.
+        var skin = body.Layers[0].Mesh;
+        var sheet = Enumerable.Range(0, skin.GetSurfaceCount()).Where(s => skin.SurfaceGetMaterial(s) == body.SkinMaterial)
+            .DefaultIfEmpty(-1).First();
+        if (sheet < 0) {
+            return heights;
+        }
+        var arrays = skin.SurfaceGetArrays(sheet);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        for (var v = 0; v < vertices.Length; v++) {
+            var cell = new Vector2I(Mathf.RoundToInt(uvs[v].X * tissue.ResX), Mathf.RoundToInt(uvs[v].Y * tissue.ResY));
+            if (uvs[v].DistanceTo(new Vector2((float)cell.X / tissue.ResX, (float)cell.Y / tissue.ResY)) > 0.0001f) {
+                continue;
+            }
+            var k = tissue.Index(cell.X, cell.Y);
+            heights[k] = heights.TryGetValue(k, out var height) ? Mathf.Max(height, vertices[v].Y) : vertices[v].Y;
+        }
+        return heights;
     }
 
     private static bool Holding(SurgicalTool retractor) => retractor.State == ToolState.Standing && retractor.Hold is not null;

@@ -1960,6 +1960,40 @@ public sealed partial class TissueSim {
         }
     }
 
+    /// <summary>Whether exposed skin k lies on the drape (see StayAboveFloor()): past the opening's edge and folded out,
+    /// lifted off the body or taken further than skin rests on it. Skin that has only slid a few millimeters past the
+    /// edge, pushed there by a grip, stays on the body under the cloth.</summary>
+    internal bool LiesOnCloth(int k) =>
+        FloorAt is not null && k < Exposed.Length && Exposed[k] && Settled.Length == Pos.Length
+        && !FloorOpen.HasPoint(new Vector2(Pos[k].X, Pos[k].Z)) && FoldedOut(k);
+
+    /// <summary>Whether skin k is lifted off the body, or taken further than skin rests on it.</summary>
+    private bool FoldedOut(int k) {
+        var body = SettledHeightAt(Pos[k].X, Pos[k].Z);
+        return Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff
+            || Pos[k].DistanceSquaredTo(Settled[k]) > BodyReach * BodyReach;
+    }
+
+    /// <summary>Whether skin k lies on the drape, or is part of the contact skirt (FoldContact()) joining skin on it to
+    /// the body: its faces would otherwise cross the cloth.</summary>
+    internal bool OnClothOrSkirt(int k) {
+        if (LiesOnCloth(k)) {
+            return true;
+        }
+        if (!FoldContact(k)) {
+            return false;
+        }
+        var at = CellOf(k);
+        for (var j = Math.Max(0, at.Y - 1); j <= Math.Min(ResY, at.Y + 1); j++) {
+            for (var i = Math.Max(0, at.X - 1); i <= Math.Min(ResX, at.X + 1); i++) {
+                if (LiesOnCloth(Index(i, j))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private void StayAboveFloor() {
         if (FloorAt is null) {
             return;
@@ -1977,9 +2011,7 @@ public sealed partial class TissueSim {
                     // the cloth. Skin that has only slid a little way along the body under the drape's edge, pushed
                     // there by a grip, stays on the body under the cloth: counted as lifted by how far it moved, it
                     // would be ratcheted up onto the rim.
-                    var body = SettledHeightAt(Pos[k].X, Pos[k].Z);
-                    if (Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff
-                        || Pos[k].DistanceSquaredTo(Settled[k]) > BodyReach * BodyReach) {
+                    if (FoldedOut(k)) {
                         Pos[k] = AboveFloor(k, Pos[k]);
                     } else if (!NearFold(k)) {
                         // A millimetre of creep at the lip of the drape must not pass underneath its raised edge,
