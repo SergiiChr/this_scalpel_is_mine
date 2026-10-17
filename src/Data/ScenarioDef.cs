@@ -29,7 +29,9 @@ public sealed record TargetSpec(
     float Refill,
     float Surge,
     bool Covered,
-    float YawDegrees) {
+    float YawDegrees,
+    bool Embedded,
+    float Scale) {
     public static TargetSpec FromVariant(GodotDictionary data) => new(
         data.String("kind", "bullet"),
         data.String("remove_with", "clamp"),
@@ -41,7 +43,9 @@ public sealed record TargetSpec(
         data.Float("refill"),
         data.Float("surge"),
         data.Bool("covered"),
-        data.Float("yaw"));
+        data.Float("yaw"),
+        data.Bool("embedded"),
+        data.Float("scale", 1f));
 }
 
 /// <summary>

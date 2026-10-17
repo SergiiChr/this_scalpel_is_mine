@@ -62,17 +62,25 @@ public static class Syringe {
     /// One move of a syringe's plunger, host only: <paramref name="ml"/> &gt; 0 pulls it out, &lt; 0 pushes it in,
     /// whether or not the needle is lowered. Pulled, it draws what the needle is in: a vial's or dish's liquid, blood
     /// from a vein, or air. In skin, fat or muscle nothing comes and the plunger stays put. Pushed, the air at the needle
-    /// goes first, then the liquid: into a vial (as much as fits) or the dish, a vein (blood goes back, drugs are given
-    /// as IV), the tissue (given as a direct injection), a surgeon (given to them, see Surgery.DoseSurgeon()) or
-    /// squirted out.
+    /// goes first, then the liquid: into a vial (as much as fits) or the dish, and with the needle pushed in (Use tool
+    /// held) into a vein (blood goes back, drugs are given as IV), the tissue (given as a direct injection) or a surgeon
+    /// (given to them, see Surgery.DoseSurgeon()). Anywhere else it squirts out and falls where it falls
+    /// (<see cref="Patient.Spill"/>).
     /// </summary>
     public static void Plunge(SurgicalTool tool, float ml, Patient patient) {
-        var tools = Surgery.Current!.Tools;
+        var surgery = Surgery.Current!;
+        var tools = surgery.Tools;
         var target = NeedleTarget(tool, patient);
         var container = (target as ContainerTarget)?.Container;
         if (ml > 0f) {
             Draw(tool, Mathf.Min(ml, tool.Def.Volume - tool.Ml - tool.Air), target, patient);
             return;
+        }
+        // Held, the needle is in only while the hand pushes it in. A syringe left stuck in something stays in it.
+        var notIn = tool.State == ToolState.Held && surgery.Surgeons.TryGetValue(tool.Holder, out var holder)
+            && !holder.Hands[tool.Slot].Lowered;
+        if (notIn && target is VeinTarget or TissueTarget or SurgeonTarget) {
+            target = new AirTarget();
         }
         var air = Mathf.Min(-ml, tool.Air);
         var liquid = Mathf.Min(-ml - air, tool.Ml);
@@ -158,7 +166,10 @@ public static class Syringe {
                 surgery.Sound("syringe_inject", tool.TipPosition());
                 break;
             default:
-                surgery.Tools.Transfer(tool, null, liquid);
+                // It lands where its arc meets something, a little over it so it still counts as over the site.
+                var lands = ToolEffects.StreamPath(surgery, tool.TipPosition(), tool.TipDirection())[^1];
+                patient.Spill(lands + (Vector3.Up * 0.002f), liquid, surgery.Tools.Transfer(tool, null, liquid));
+                surgery.Stream(tool);
                 break;
         }
     }

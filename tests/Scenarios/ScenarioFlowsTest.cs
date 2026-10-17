@@ -19,7 +19,8 @@ public class ScenarioFlowsTest {
     private const string BudgetOverride = "scenario surgery has recorded CPU/render overruns; profiling deferred";
     [TestCase]
     public void EveryScenarioHasAFlow() {
-        var cases = new[] { typeof(ScenarioFlowsTest), typeof(HandStitchScenarioTest), typeof(AppendectomyScenarioTest) }
+        var cases = new[] { typeof(ScenarioFlowsTest), typeof(HandStitchScenarioTest), typeof(AppendectomyScenarioTest),
+                typeof(GlassShardsScenarioTest) }
             .SelectMany(suite => suite.GetMethods())
             .SelectMany(method => method.GetCustomAttributes<TestCaseAttribute>())
             .Where(row => row.Arguments.Length > 0)

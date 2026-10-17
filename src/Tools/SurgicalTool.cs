@@ -307,6 +307,9 @@ public partial class SurgicalTool : RigidBody3D {
 
     public Vector3 TipPosition() => GlobalTransform * new Vector3(0, 0, -Def.Length);
 
+    /// <summary>The way the tip points.</summary>
+    public Vector3 TipDirection() => -GlobalBasis.Z.Normalized();
+
     /// <summary>The middle of the tool, halfway to its tip.</summary>
     public Vector3 Middle() => GlobalTransform * new Vector3(0, 0, -Def.Length * 0.5f);
 

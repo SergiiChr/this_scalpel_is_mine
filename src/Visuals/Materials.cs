@@ -384,6 +384,14 @@ public static class Materials {
         AlbedoColor = color,
     };
 
+    /// <summary>A stream of clear liquid, its own copy so it can fade on its own.</summary>
+    public static StandardMaterial3D Stream() => new() {
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        AlbedoColor = new Color(0.82f, 0.92f, 1f, 0.7f),
+        Roughness = 0.05f,
+        MetallicSpecular = 0.9f,
+    };
+
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
         Roughness = 0.05f,

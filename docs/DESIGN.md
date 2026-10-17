@@ -225,8 +225,8 @@ Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at l
 comment beside it names the test.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
-`sanitize, iv, anesthesia, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize, calm,
-inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
+`sanitize, irrigate, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
+calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
 Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
 only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
 points. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
@@ -238,12 +238,23 @@ A step with `"or": {step}` also completes when that nested step's condition is m
 general anesthesia for a lidocaine allergy).
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).
+`sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient
+below `max_panic` while they're still awake; a patient who was out at any point before (put under, too much
+sedative) never meets it.
+`irrigate` is met once no cut is dirty: glass leaves its track dirty. A syringe's plunger pushed without the needle in
+(Use tool not held) squirts its liquid out, and it falls like any liquid (`Patient.Spill()`), shown as a thin stream
+arcing from the needle tip to where it lands (`ToolEffects.StreamPath()`, the same arc decides where it lands): landing in a cut it flushes it, clean after `Patient.RinseMlPerCm` per cm of its length. A track its glass is still in is shut and can't be rinsed.
 
 Target `remove_with`: `clamp` (grab and pull out, `anchor` > 0 needs cutting or a slow pull first),
 `suction` (drain `amount`, `refill` per second), `saw` / `smash` (bone).
 A target's `depth` is meters under the skin. In a limb it's kept inside the thin cavity between the muscle and the
 bones (`PatientBody.TargetDepth()`): its top under the muscle and its middle no deeper than the floor, so it fits a
 heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor, in the limb bone's place.
+An `embedded` target (glass) is stuck in through the skin and sticks out of it: it keeps its `depth` on any site and
+comes with its own track, a puncture across it as deep as its tip reaches (`Patient.EmbeddedWound()`). While it's in
+it holds the track shut (`CavityTarget.PlugHold`) and hurts unless the site is numb; pulled out, the track bleeds.
+One whose top lies under the skin is buried: jaws reach it only once its track is spread open
+(`CavityTarget.SpreadToReach`, e.g. with the Gelpi retractor). A target's `scale` sizes its model (1 by default).
 
 ### Other data
 
@@ -308,7 +319,7 @@ heavy patient's thicker fat too. A bone to saw there lies half sunk in the floor
 - Personal gauges: stress (pass out), sickness (vomit), breath (steady hands), sweat (slippery gloves, drips).
 - Belt inventory, personal quirk items, drinking and wearing items, smoke breaks at the smoking spot.
 - Manual with Divine knowledge highlights, patient card with red herrings.
-- Scoring, stars, delayed consequences, codex unlocks, 23 scenarios.
+- Scoring, stars, delayed consequences, codex unlocks, 24 scenarios.
 
 ### First feedback round
 
@@ -736,7 +747,7 @@ All models and sounds are generated from code (`./build.py assets`), so they can
   smoke, bone dust from the saw, blood thrown up by the mallet, a flash and sparks at the defibrillator paddles with
   the body jerking, a bead of blood where a needle or catheter goes in (gauze or a pad wipes it away like other
   blood): on the site a spot painted on the skin like a bleed's, so it rides the skin when a cut is pulled open,
-  elsewhere a small dome. Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
+  elsewhere a small dome, and a thin stream of liquid squirted from a syringe, arcing from its tip and following it while pushes go on. Lasting marks (cuts, burns, stitches, ink, iodine, paddle marks) go into the wound map. Tools working in blood come away bloody at the tip
   (`toon.gdshader` coat); the sink washes it off. The IV catheter gets a film dressing.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the

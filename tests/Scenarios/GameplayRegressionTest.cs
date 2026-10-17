@@ -45,6 +45,7 @@ public class GameplayRegressionTest {
     [TestCase("bullet_near_heart", Timeout = Limits.Slow)]
     [TestCase("leg_extension", Timeout = Limits.Slow)]
     [TestCase("brain_tumor", Timeout = Limits.Slow)]
+    [TestCase("glass_shards", Timeout = Limits.Slow)]
     public async Task Sweeps(string scenario) {
         // The first scenario also runs the checks that don't depend on the scenario.
         var failures = await GameplaySweep.Run(Db.Scenario(scenario)!, scenario == Db.Scenarios[0].Id);

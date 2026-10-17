@@ -35,7 +35,7 @@ public partial class Patient {
             .Where(t => !t.Extracted && !t.IsSuctionTarget && !(t.IsBone && t.Anchor > 0f))
             .Where(t => t.GrippedBy == 0 || t.GrippedBy == toolUid)
             .Where(t => zone is SiteZone.Cavity or SiteZone.Site && t.Uv.DistanceTo(uv) < 0.05f
-                && Mathf.Abs(t.Depth - depthM) < 0.05f && !Covered(t))
+                && Mathf.Abs(t.Depth - depthM) < 0.05f && !Covered(t) && t.InReach)
             .MinBy(t => t.Uv.DistanceTo(uv));
         if (nearest is not null) {
             nearest.GrippedBy = toolUid;
@@ -232,6 +232,10 @@ public partial class Patient {
             target.SetAside();
         } else {
             target.UpdateLook();
+        }
+        if (target.Plug is { } track) {
+            track.Held = 0f;
+            Session.Announce("The cut it came out of bleeds.");
         }
         if (target.Surge > 0f) {
             NewWound(WoundKind.Internal, target.Uv, Mathf.Clamp(0.4f + target.Surge * 0.15f, 0f, 1f)).DepthM = target.Depth;

@@ -21,6 +21,8 @@ public static class ObjectiveChecks {
         var vitals = patient.Vitals;
         var parameters = step.Parameters;
         switch (step.Type) {
+            case "irrigate":
+                return !patient.Wounds.Any(wound => wound.Dirty);
             case "sanitize":
                 return patient.SanitizedFraction() >= parameters.Float("amount", 0.5f);
             case "iv":
@@ -49,6 +51,11 @@ public static class ObjectiveChecks {
                 return Held(state, stable, parameters.Float("seconds", 30f), delta);
             case "calm":
                 return Held(state, vitals.Panic < parameters.Float("max_panic", 0.6f), 60f, delta);
+            case "sedate":
+                // Calmed by a sedative while still awake: out at any point before (put under, or too much of it), it no
+                // longer counts.
+                return patient.SedativeWorks && vitals.IsAwake && !patient.PassedOut
+                    && vitals.Panic < parameters.Float("max_panic", 0.4f);
             case "inject":
                 return patient.Flags.ContainsKey(parameters.ContainsKey("drug") ? "drug_" + parameters.String("drug") : parameters.String("flag"));
             case "defib":

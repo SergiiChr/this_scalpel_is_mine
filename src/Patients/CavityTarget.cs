@@ -9,6 +9,10 @@ public partial class CavityTarget : Node3D {
     /// </summary>
     public const uint TouchLayer = 64;
     private const float TouchRadius = 0.012f;
+    /// <summary>How much an embedded target holds back the bleeding of the track it's in, while it's in.</summary>
+    public const float PlugHold = 0.9f;
+    /// <summary>How far open (Wound.Opened) a buried target's cut must be spread before jaws reach it.</summary>
+    public const float SpreadToReach = 0.5f;
 
     private StaticBody3D _touch = null!;
 
@@ -26,6 +30,14 @@ public partial class CavityTarget : Node3D {
     /// <summary>Extra bleeding when it comes out (knives plug their own wound).</summary>
     public float Surge { get; private set; }
     public bool Covered { get; private set; }
+    /// <summary>Stuck in through the skin and sticking out of it (glass): it lies at its depth on any site and plugs
+    /// its own track (<see cref="Plug"/>).</summary>
+    public bool Embedded { get; private set; }
+    /// <summary>The wound an embedded target went in through. It bleeds once the target is out.</summary>
+    internal Wound? Plug { get; set; }
+    /// <summary>Embedded all the way under the skin: only its cut shows, and it's out of reach until the cut is spread
+    /// (<see cref="InReach"/>).</summary>
+    internal bool Buried { get; set; }
     public bool Extracted { get; set; }
     /// <summary>Tool uid currently holding it, 0 if none.</summary>
     public int GrippedBy { get; set; }
@@ -45,16 +57,21 @@ public partial class CavityTarget : Node3D {
         Refill = spec.Refill;
         Surge = spec.Surge;
         Covered = spec.Covered;
+        Embedded = spec.Embedded;
         Name = $"{Kind.Capitalize()}_{index}";
-        // Degrees around the vertical, e.g. to lay a rib across the chest.
-        RotationDegrees = new Vector3(0, spec.YawDegrees, 0);
-        ModelSlot.Instantiate("targets", Kind, this);
+        // Degrees around the vertical, e.g. to lay a rib across the chest. A mirrored patient's embedded glass leans the
+        // mirrored way: half a turn less the yaw mirrors both its edge and its lean across the body.
+        RotationDegrees = new Vector3(0, mirrored && spec.Embedded ? 180f - spec.YawDegrees : spec.YawDegrees, 0);
+        ModelSlot.Instantiate("targets", Kind, this).Scale = Vector3.One * spec.Scale;
         _touch = new StaticBody3D { Name = "Touch", CollisionLayer = TouchLayer, CollisionMask = 0 };
         _touch.AddChild(new CollisionShape3D { Shape = new SphereShape3D { Radius = TouchRadius } });
         AddChild(_touch);
     }
 
     public bool IsSuctionTarget => RemoveWith == "suction";
+
+    /// <summary>Jaws can get at it: anything but a buried target whose cut isn't spread open.</summary>
+    internal bool InReach => !Buried || Plug is not { Opened: < SpreadToReach };
 
     /// <summary>Taken out with a saw or a mallet: a bone.</summary>
     public bool IsBone => RemoveWith is "saw" or "smash";

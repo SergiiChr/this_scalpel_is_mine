@@ -142,7 +142,8 @@ public partial class SurgeryDriver {
 
     /// <summary>Forceps onto the target and out over the floor beside the table. Still attached, it comes loose with a
     /// slow pull. Under an organ, its attachment is cut through first, the organ is held aside with forceps in the
-    /// other hand while the target comes out, and let go again quickly (held aside too long it bruises).</summary>
+    /// other hand while the target comes out, and let go again quickly (held aside too long it bruises). Buried under
+    /// the skin, its cut is spread with the Gelpi retractor first, taken out again once the target is out.</summary>
     private async Task LiftOut(CavityTarget target) {
         var aside = new List<SurgicalTool>();
         if (Patient.Covered(target)) {
@@ -154,6 +155,35 @@ public partial class SurgeryDriver {
             await PlayerRequestsItem("forceps");
             aside = await HoldAside(target);
         }
+        var spreader = target.InReach ? null : await PlayerSpreadsCut(target.Plug!);
+        if (spreader is not null) {
+            await Capture("spread_" + target.Kind, $"the Gelpi spreads the cut open over the buried {target.Kind}: it shows in the cut");
+        }
+        if (await PlayerTakesHoldOf(target)) {
+            var forceps = Me.HeldTool(Right)!;
+            // A steady pull, a couple of centimeters up, held until it lets go.
+            PlayerInput.Action(InputActions.Lift);
+            await Frames.Until(() => Body.Site.ToLocal(forceps.TipPosition()).Y > -target.Depth + 0.025f, 3f);
+            PlayerInput.Action(InputActions.Lift, false);
+            await Frames.Until(() => target.Anchor <= 0f, 30f);
+            PlayerInput.Action(InputActions.Lift);
+            await Frames.Until(() => target.Extracted, 5f);
+            await Frames.Seconds(0.5f);
+            PlayerInput.Action(InputActions.Lift, false);
+        }
+        await LetGo(aside);
+        await SwitchTo(Right);
+        Use(false);
+        await Frames.Physics(10);
+        if (spreader is not null) {
+            await PlayerPutsDown();
+            await PlayerTakesOutGelpi(spreader);
+        }
+    }
+
+    /// <summary>Forceps in the right hand lowered onto <paramref name="target"/> and closed. Returns whether they took
+    /// hold of it; if not, they're opened again.</summary>
+    public async Task<bool> PlayerTakesHoldOf(CavityTarget target) {
         await SwitchTo(Right);
         var forceps = (await PlayerRequestsItem("forceps"))!;
         var spot = Body.UvToWorld(target.Uv, target.Depth);
@@ -161,25 +191,48 @@ public partial class SurgeryDriver {
         await PlayerReaches(spot);
         Use();
         await Frames.Physics(5);
-        if (forceps.Hold is not TargetHold) {
-            Note($"forceps didn't take hold of {target.Kind}: {forceps.Hold}");
-            Use(false);
-            await LetGo(aside);
+        if (forceps.Hold is TargetHold) {
+            return true;
+        }
+        Note($"forceps didn't take hold of {target.Kind}: {forceps.Hold}");
+        Use(false);
+        await Frames.Physics(5);
+        return false;
+    }
+
+    /// <summary>The Gelpi retractor set in <paramref name="cut"/> with the right hand, opened to
+    /// <paramref name="spread"/> meters and let go of: it stands in the cut, holding it open, the hand free.</summary>
+    public async Task<SurgicalTool> PlayerSpreadsCut(Wound cut, float spread = 0.025f) {
+        await SwitchTo(Right);
+        var gelpi = await PlayerSetsGelpi(cut.Points[0], cut.Points[^1]);
+        await PlayerOpensGelpi(spread);
+        Tap(InputActions.Grab);
+        await Frames.Seconds(1f);
+        Note($"cut spread open {cut.Opened:0.00}");
+        return gelpi;
+    }
+
+    /// <summary>The right hand takes a Gelpi retractor standing in a cut back, closes it, takes it out and puts it
+    /// down.</summary>
+    public async Task PlayerTakesOutGelpi(SurgicalTool gelpi) {
+        await SwitchTo(Right);
+        // By its points in the cut: its grip end may lie out of reach over the patient.
+        var at = gelpi.TipPosition() + (Vector3.Up * 0.03f);
+        await PlayerWalksTo(at);
+        await PlayerReaches(at);
+        Press(InputActions.Grab);
+        await Frames.Physics(10);
+        Release(InputActions.Grab);
+        if (Me.HeldTool(Right) != gelpi) {
+            Note($"didn't take the gelpi back: {gelpi.State}, hovered {Me.Hovered?.Def.Id}, hand {Me.Hands[Right].GlobalPosition.DistanceTo(gelpi.TipPosition()):0.00} m from its points");
             return;
         }
-        // A steady pull, a couple of centimeters up, held until it lets go.
-        PlayerInput.Action(InputActions.Lift);
-        await Frames.Until(() => Body.Site.ToLocal(forceps.TipPosition()).Y > -target.Depth + 0.025f, 3f);
-        PlayerInput.Action(InputActions.Lift, false);
-        await Frames.Until(() => target.Anchor <= 0f, 30f);
-        PlayerInput.Action(InputActions.Lift);
-        await Frames.Until(() => target.Extracted, 5f);
-        await Frames.Seconds(0.5f);
-        PlayerInput.Action(InputActions.Lift, false);
-        await LetGo(aside);
-        await SwitchTo(Right);
-        Use(false);
+        await PlayerOpensGelpi(ToolActions.SpreadRange.X);
+        Use();
         await Frames.Physics(10);
+        Use(false);
+        await Frames.Seconds(1f);
+        await PlayerPutsDown();
     }
 
     /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through. Put
@@ -641,6 +694,8 @@ public partial class SurgeryDriver {
             "sanitize" => PlayerSanitizesSite(p.Float("amount", 0.5f)),
             "iv" => PlayerSetsIv(),
             "anesthesia" => PlayerAnesthetizes(),
+            "sedate" => PlayerSedates(p.Float("max_panic", 0.4f)),
+            "irrigate" => PlayerRinsesCuts(),
             "local_block" => PlayerNumbsSite(),
             "mark" => PlayerMarksLine(p.Float("length", 0.1f)),
             "incise" => PlayerIncises(p.Float("length", 0.1f)),

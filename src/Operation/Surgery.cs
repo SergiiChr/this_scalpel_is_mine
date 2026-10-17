@@ -326,6 +326,9 @@ public partial class Surgery : Node3D {
         }
     }
 
+    /// <summary>Host: liquid squirted from <paramref name="tool"/>, shown as a stream on every peer.</summary>
+    public void Stream(SurgicalTool tool) => Rpc(MethodName.PlayStream, tool.Uid);
+
     internal ToolEffects Effects => _effects;
 
     /// <summary>Host: a swab within <paramref name="reach"/> of <paramref name="at"/> wipes the blood beads there away on
@@ -449,6 +452,13 @@ public partial class Surgery : Node3D {
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
     private void PlayEffect(int kind, Vector3 at) => _effects.Play((ToolEffect)kind, at);
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
+    private void PlayStream(int uid) {
+        if (Tools.ByUid(uid) is { } tool) {
+            _effects.Stream(tool);
+        }
+    }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void WipeBeadsOnPeer(Vector3 at, float reach) => _effects.WipeBeads(at, reach);

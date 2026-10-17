@@ -1,4 +1,4 @@
-"""Non-anatomical targets scenarios make you take out: bullets, a knife, a figurine, fluid and trapped air.
+"""Non-anatomical targets scenarios make you take out: bullets, a knife, glass, a figurine, fluid and trapped air.
 Centered on their origin. Organs and anatomical targets come from tools/blender.
 """
 
@@ -24,6 +24,13 @@ def _targets() -> list[Model]:
     knife.add("Handle", handle, "wood")
     knife.add("Rivets", rivets, "brass")
     out.append(knife)
+
+    # A broken pane's piece, stuck in point first and leaning over: its origin is where it meets the skin, the jagged
+    # top sticks out. Frosted rather than clear glass, so it reads against the skin.
+    shard = Model("targets", "shard")
+    outline = [(-0.01, 0.02), (-0.004, 0.026), (0.002, 0.022), (0.01, 0.025), (0.008, 0.004), (0.001, -0.032), (-0.006, -0.006)]
+    shard.add("Glass", rotated(extrude(outline, 0.003), 0.6, (1, 0, 0)), "frosted_plastic")
+    out.append(shard)
 
     figurine = Model("targets", "figurine")
     body = lathe(
