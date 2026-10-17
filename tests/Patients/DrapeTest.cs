@@ -22,6 +22,7 @@ public class DrapeTest {
     [TestCase("heart_attack")]
     [TestCase("bullet_muscle")]
     [TestCase("knife_back")]
+    [TestCase("glass_shards")]
     public async Task DrapeCoversTheBodyAndHangsToTheTable(string scenario) {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
@@ -40,6 +41,24 @@ public class DrapeTest {
         trunk.CreateFromFaces([.. trunkFaces]);
         // The sheet as it was laid, before breathing lifts it with the trunk.
         var cloth = drape.Mesh.GetFaces();
+        // Project every cloth triangle into the site's plane. No part of a top face or hanging hem may
+        // cross the opening, including a narrow strip whose vertices all lie outside it.
+        Vector2[] opening = [new(Drape.Frame, Drape.Frame), new(1f - Drape.Frame, Drape.Frame),
+            new(1f - Drape.Frame, 1f - Drape.Frame), new(Drape.Frame, 1f - Drape.Frame)];
+        var acrossOpening = 0;
+        for (var n = 0; n + 2 < cloth.Length; n += 3) {
+            var triangle = Enumerable.Range(n, 3).Select(k => body.WorldToUv(root.ToGlobal(cloth[k]))).ToArray();
+            foreach (var polygon in Geometry2D.IntersectPolygons(triangle, opening)) {
+                var area = 0f;
+                for (var k = 0; k < polygon.Length; k++) {
+                    area += polygon[k].Cross(polygon[(k + 1) % polygon.Length]);
+                }
+                if (Mathf.Abs(area) > 1e-7f) { acrossOpening++; }
+            }
+        }
+        AssertInt(acrossOpening).OverrideFailureMessage(
+                $"{scenario}: the sheet and its hems leave the surgical opening clear ({acrossOpening} faces cross it)")
+            .IsEqual(0);
         var sheet = new TriangleMesh();
         sheet.CreateFromFaces(cloth);
         float? HeightAt(TriangleMesh mesh, float x, float z) {
