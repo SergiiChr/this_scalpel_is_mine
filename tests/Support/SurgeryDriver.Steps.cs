@@ -57,27 +57,42 @@ public partial class SurgeryDriver {
     /// the surgeon stands by the line, turns the edge along it, presses in and draws it slowly enough for a clean cut.
     /// The blade stays in hand.</summary>
     public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel", float speed = Slow) {
-        await PlayerRequestsItem(toolId);
+        var tool = (await PlayerRequestsItem(toolId))!;
         var start = SitePoint(from);
         var finish = SitePoint(to);
-        await PlayerWalksTo((start + finish) * 0.5f);
+        const float EntryTilt = 0.8f;
+        bool ReachesStroke(Vector3 standing) {
+            var facing = BladeFacing(start, finish, standing);
+            var pose = new Transform3D(new Basis(Vector3.Up, Mathf.Atan2(-facing.X, -facing.Z)), standing);
+            var shoulder = Surgeon.StandingShoulder(pose, Me.Active, Me.Crouch);
+            var offset = pose.Basis * new Basis(Vector3.Right, -EntryTilt) * new Vector3(0f, 0f, -tool.Def.Length);
+            // Check both ends in the working pose, including room to descend into the opening. A stance
+            // that reaches only the hovering midpoint can leave a full-depth stroke short of the injury.
+            var depth = level >= 3 ? Body.MuscleBottom + 0.01f : 0.002f + level * 0.004f;
+            return new[] { start, finish }.All(point => (point - Vector3.Up * depth - offset).DistanceTo(shoulder) < Surgeon.Reach - 0.01f);
+        }
+        await PlayerWalksTo((start + finish) * 0.5f, canWorkFrom: ReachesStroke);
         await PlayerLinesUpBlade(start, finish);
         await PlayerReaches(start);
         // A shallow carry angle puts the heel well behind the planned start. Enter steeply so a short
         // incision stays centered on the intended site, including while widening an existing puncture.
         var tilt = Me.Hands[Me.Active].Tilt;
-        await PlayerAims(new Vector2(0f, (tilt + 0.8f) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
+        await PlayerAims(new Vector2(0f, (tilt + EntryTilt) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
         PlayerLetsGoOfAim();
         await PlayerTurnsBlade(finish - start);
         await PlayerWorksAlong([start, finish], level, speed);
     }
 
+    private Vector3 BladeFacing(Vector3 start, Vector3 finish, Vector3 standing) {
+        var facing = -((finish - start) with { Y = 0f }).Normalized();
+        var handSide = Me.Active == Right ? 1f : -1f;
+        return facing.Cross(Vector3.Up).Dot((start + finish) * 0.5f - standing) * handSide < 0f ? -facing : facing;
+    }
+
     private async Task PlayerLinesUpBlade(Vector3 start, Vector3 finish) {
         // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
         // edge with the line while moving its actual skin contact sideways from the buried tip's path.
-        var facing = -((finish - start) with { Y = 0f }).Normalized();
-        var handSide = Me.Active == Right ? 1f : -1f;
-        if (facing.Cross(Vector3.Up).Dot((start + finish) * 0.5f - Me.GlobalPosition) * handSide < 0f) { facing = -facing; }
+        var facing = BladeFacing(start, finish, Me.GlobalPosition);
         await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
         await PlayerAimsStraight();
     }
