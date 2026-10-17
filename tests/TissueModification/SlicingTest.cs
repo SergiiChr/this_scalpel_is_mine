@@ -837,23 +837,39 @@ public class SlicingTest {
         Check(through.Count == 0, $"the fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(3))})");
         var body = _surgery.Patient.Body;
         var protrusion = 0f;
-        var up = body.Site.GlobalBasis.Y.Normalized();
+        var worst = "";
+        var samples = 0;
+        // Godot's triangle indexing rounds vertices enough to exceed this tolerance on a steep limb.
+        // Index the raw rendered vertices in millimetres so that rounding stays below a micrometre,
+        // and raycast them independently of the renderer's height cache.
+        const float ReferenceScale = 1000f;
+        using var restingSkin = new TriangleMesh();
+        var toSite = body.Site.GlobalTransform.AffineInverse() * body.SkinMesh.GlobalTransform;
+        var faces = new List<Vector3>();
+        for (var surface = 0; surface < body.SkinMesh.Mesh.GetSurfaceCount(); surface++) {
+            using var arrays = body.SkinMesh.Mesh.SurfaceGetArrays(surface);
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            faces.AddRange(arrays[(int)Mesh.ArrayType.Index].AsInt32Array().Select(i => (toSite * vertices[i]) * ReferenceScale));
+        }
+        restingSkin.CreateFromFaces([.. faces]);
         var lift = (body.Site.Basis.Inverse() * (body.Site.Position - body.SiteDef.Position)).Y;
-        var space = body.GetWorld3D().DirectSpaceState;
         foreach (var layer in body.Layers) {
             for (var surface = 0; surface < layer.Mesh.GetSurfaceCount(); surface++) {
                 using var arrays = layer.Mesh.SurfaceGetArrays(surface);
                 foreach (var point in arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array()) {
-                    var world = body.Site.ToGlobal(point);
-                    using var query = PhysicsRayQueryParameters3D.Create(world + up * 0.05f, world - up * 0.05f, PatientBody.SurfaceLayer);
-                    using var hit = space.IntersectRay(query);
-                    if (hit.Count == 0) { continue; }
-                    var rest = body.Site.ToLocal(hit["position"].AsVector3()).Y + lift;
-                    protrusion = Mathf.Max(protrusion, point.Y - rest);
+                    using var original = restingSkin.IntersectRay((point + Vector3.Up * 0.1f) * ReferenceScale, Vector3.Down);
+                    if (original.Count == 0) { continue; }
+                    samples++;
+                    var rest = original["position"].AsVector3().Y / ReferenceScale + lift;
+                    if (point.Y - rest > protrusion) {
+                        protrusion = point.Y - rest;
+                        worst = $"{layer.Name} surface {surface} at {point}, original mesh {rest:0.000000}";
+                    }
                 }
             }
         }
-        Check(protrusion < 0.0001f, $"unpulled wound layers stay within the resting skin silhouette ({protrusion * 1000f:0.000} mm above it)");
+        Check(samples > 0, "the original skin mesh covers the wound-layer silhouette samples");
+        Check(protrusion < 0.0001f, $"unpulled wound layers stay within the resting skin silhouette ({protrusion * 1000f:0.000} mm above it; {worst})");
     }
 
     private void Check(bool ok, string what) {
