@@ -184,15 +184,21 @@ public class RetractorTest {
         foreach (var retractor in hooks) {
             AssertLiesOnBody(driver, retractor);
         }
+        await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
         // Drawn as the skin's sheet shows it: a face pushed up over the drape's cloth lifts its corners.
         var drawn = DrawnSkin(body);
         var rimDrawn = rim.Where(edge => drawn.ContainsKey(edge.Index)).ToArray();
         AssertBool(rimDrawn.Length > 0).OverrideFailureMessage("the skin's sheet reaches the window's edge").IsTrue();
         var risen = rimDrawn.Select(edge => (edge.Index, Rise: drawn[edge.Index] - edge.Point.Y)).MaxBy(edge => edge.Rise);
+        if (risen.Rise >= RimRise) {
+            var k = risen.Index;
+            GD.Print($"rim peak at {body.Tissue.UvOf(k)}: before {rim.First(edge => edge.Index == k).Point}, "
+                + $"LayerPoint {body.LayerPoint(0, k)}, drawn height {drawn[k]}, sim {body.Tissue.Pos[k]}, settled {body.Tissue.Settled[k]}, "
+                + $"fold {body.Tissue.NearFold(k)}, cloth {body.Tissue.OnClothOrSkirt(k)}, exposed {body.Tissue.Exposed[k]}");
+        }
         AssertFloat(risen.Rise)
             .OverrideFailureMessage($"the skin along the window's edge stays on the body under the drape's rim, no peak: it rises {risen.Rise * 1000f:0.0} mm at uv {body.Tissue.UvOf(risen.Index)}")
             .IsLess(RimRise);
-        await driver.Capture("let_go", "the retractors let go round the widened thigh wound, each lying along the limb on the skin");
         await session.Finish(BudgetOverride);
     }
 

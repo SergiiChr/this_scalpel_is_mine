@@ -820,10 +820,9 @@ public partial class PatientBody {
             if (Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[a].X, _skinOf[a].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[b].X, _skinOf[b].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[c].X, _skinOf[c].Z))) { return; }
-            // Only a face with a corner the sim lays on the cloth or its skirt: one a grip only slid a few millimeters
-            // past the opening's edge stays on the body under the drape's rim. Pushed up over the cloth, it would stand
-            // up there as a peak.
-            if (!Tissue.OnClothOrSkirt(a) && !Tissue.OnClothOrSkirt(b) && !Tissue.OnClothOrSkirt(c)) { return; }
+            // Only the cloth-contact skirt may be lifted onto the cloth. A neighbouring folded corner
+            // must not drag quiet skin from under the drape's rim up into a peak.
+            if (!Tissue.OnClothOrSkirt(a) || !Tissue.OnClothOrSkirt(b) || !Tissue.OnClothOrSkirt(c)) { return; }
             _clothFaces.PushTriangle(_skinOf, a, b, c, 0.004f, above: true);
         }
     }
