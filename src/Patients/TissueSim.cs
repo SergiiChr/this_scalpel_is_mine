@@ -713,20 +713,8 @@ public sealed partial class TissueSim {
         }
         _cutSegments.Add((a, b));
         _segmentStroke.Add(_strokes.Count - 1);
-        // A short cut on its own (a blade pressed in) might fall between springs: it severs the ones a cell's length of
-        // its line crosses, so the sim has it at all. A stroke going on is cut where the blade really went. The
-        // stroke ends where the severing does, so the stab's edges stay drawn together at its ends like any cut's
-        // (see UpdateRetraction()) instead of gaping along their whole length.
-        var cell = Mathf.Max(Size.X / ResX, Size.Y / ResY);
-        var meters = ((b - a) * Size).Length();
-        if (starts && meters < cell) {
-            var middle = (a + b) * 0.5f;
-            var half = (b - a) * (cell / meters) * 0.5f;
-            a = middle - half;
-            b = middle + half;
-            stroke[0] = a;
-            stroke[1] = b;
-        }
+        // Record the real blade path even before it reaches a grid edge. Expanding a tiny first contact
+        // to a whole cell cuts skin the blade never touched and detaches the visible V from the wound's endpoint.
         var gridEnd = new Vector2I(ResX, ResY);
         var low = new Vector2I(Mathf.FloorToInt(Mathf.Min(a.X, b.X) * ResX) - 1, Mathf.FloorToInt(Mathf.Min(a.Y, b.Y) * ResY) - 1)
             .Clamp(Vector2I.Zero, gridEnd);
