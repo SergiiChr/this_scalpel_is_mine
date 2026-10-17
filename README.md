@@ -22,14 +22,15 @@ cd this_scalpel_is_mine
 ./build.py play
 ```
 
-The first run downloads Godot 4.7.2 .NET (about 70 MB) into `.tools/`, and the .NET 10 SDK too unless you have it, builds
-the C# and starts the game.
+The first run downloads Godot 4.7.2 .NET (about 70 MB) into `.tools/`, and the .NET 10 SDK too unless you have it,
+builds the C# and starts the game.
 Already have Godot 4.7.2 .NET? `GODOT_BIN=/path/to/godot ./build.py play`.
 
 ### Develop
 
 Asset generation and lint need Python 3.11 (`python3.11` on Fedora). Screenshots and visual tests need Xvfb and
-xauth; headless tests need no GPU. Any C# IDE works; the repository has Rider and VS Code test settings (`.runsettings`).
+xauth; headless tests need no GPU. Any C# IDE works; the repository has Rider and VS Code test settings
+(`.runsettings`).
 All agents start with [CLAUDE.md](CLAUDE.md), which links to the shared guidelines and [workflows](.claude/skills/).
 
 ```bash
@@ -49,7 +50,8 @@ All agents start with [CLAUDE.md](CLAUDE.md), which links to the shared guidelin
    Elsewhere install `xvfb` and `xauth` with the system package manager first.
 2. Downloads Godot 4.7.2 .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none) and the
    Linux export templates into `~/.local/share/godot/` (about 1 GB, one time).
-3. Ensures Python 3.11 is installed, creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the asset generator's libraries, Blender 5.0 as a Python module (`bpy`, about 360 MB), ruff and mypy.
+3. Ensures Python 3.11 is installed, creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the
+   asset generator's libraries, Blender 5.0 as a Python module (`bpy`, about 360 MB), ruff and mypy.
 4. Builds the C# and imports the project so the editor opens straight away.
 
 It's safe to run again; it only fetches what's missing.
@@ -60,7 +62,8 @@ Most models and all bundled sound effects are generated from code. The surgeon h
 generator in this repository; some generated props incorporate source models in `tools/assetgen/sources/`.
 See [assets/models/README.md](assets/models/README.md) for provenance and model contracts.
 
-- `tools/assetgen`: props, instruments and sounds (lofted and lathed meshes exported as `.glb`, sounds synthesized from noise, oscillators and filters).
+- `tools/assetgen`: props, instruments and sounds (lofted and lathed meshes exported as `.glb`, sounds synthesized
+  from noise, oscillators and filters).
 - `tools/blender`: organic and rigged models (patient, gloves, organs) built with Blender's Python module.
   It renders review sheets to `build/blender_review/`.
 

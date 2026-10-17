@@ -28,8 +28,8 @@ accepts reach `main` with the next release.
    unrelated modules. Otherwise CI covers them.
 5. For a user-visible change, take the key frames of its suites and check them against the baseline:
    `./build.py test --tag ... --with-key-frames`, then `./build.py screenshot_review --focused`. Review the sheets in
-   `build/review/report.md` (follow [review-key-frames](../.claude/skills/review-key-frames/SKILL.md)). The comparison fails
-   on missing key frames or a missing baseline; the test run must pass separately. Changed and new
+   `build/review/report.md` (follow [review-key-frames](../.claude/skills/review-key-frames/SKILL.md)). The comparison
+   fails on missing key frames or a missing baseline; the test run must pass separately. Changed and new
    ones are the evidence for the handoff. Once they look right, `./build.py generate_baseline --focused` adds or
    replaces them in `tests/KeyFrames`; commit it with the change. It never deletes: removed key frames go at release.
 6. Raise a PR to `develop` (see PR description).

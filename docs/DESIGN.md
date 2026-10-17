@@ -708,7 +708,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 ## Assets and animation
 
 Most models and all bundled sound effects are generated from code (`./build.py assets`). Supplied models and
-source assets are identified in [the model catalog](../assets/models/README.md); preserve those inputs when regenerating.
+source assets are identified in [the model catalog](../assets/models/README.md); preserve those inputs when
+regenerating.
 
 - **Organic and rigged models** (`tools/blender`, Blender as a Python module): the patient, the surgeon's glove,
   organs and anatomical targets. Metaball and tube shells are fused with a voxel remesh, shaped with scripted
