@@ -45,9 +45,10 @@ public class GlassShardsScenarioTest {
     [TestCase(Timeout = Limits.Slow)]
     public async Task SedationThatKnocksThePatientOutNeverCounts() {
         var rendering = RenderingServer.RenderLoopEnabled;
-        FrameBudget.RenderingOff();
-        var driver = SurgeryDriver.Create();
+        SurgeryDriver? driver = null;
         try {
+            FrameBudget.RenderingOff();
+            driver = SurgeryDriver.Create();
             await driver.Start("glass_shards");
             var patient = driver.Patient;
             var vitals = patient.Vitals;
@@ -65,7 +66,9 @@ public class GlassShardsScenarioTest {
                 .IsFalse();
         } finally {
             RenderingServer.RenderLoopEnabled = rendering;
-            await driver.Stop();
+            if (driver is not null) {
+                await driver.Stop();
+            }
         }
     }
 
