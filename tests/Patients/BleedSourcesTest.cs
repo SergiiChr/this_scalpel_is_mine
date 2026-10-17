@@ -72,6 +72,9 @@ public class BleedSourcesTest {
                 .IsGreater(weakSpot * 2f);
             return Task.CompletedTask;
         });
+        foreach (var layer in (int[])[1, 2]) {
+            WallsKeepTheirSpotsInPlace(body, layer, at, 0.1f);
+        }
         await CloseUp(session, "vessels_close", "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut", at);
 
         SurgeryState.WoundIsClamped(weak);
@@ -148,6 +151,48 @@ public class BleedSourcesTest {
         var spilled = await Frames.Until(() => Blood(body, at) > 0.8f, 10f);
         await driver.AssertAndCapture(spilled, "full, the cut brims with blood that spills over its lips onto the skin", "spills");
         await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>How far (meters) along a straight cut a point of a wall's lip may lie from where its neighbours along
+    /// the lip put its uv.</summary>
+    private const float LipSlide = 0.0001f;
+
+    /// <summary>
+    /// Along a straight cut along the site's x, within <paramref name="reach"/> (uv) of <paramref name="at"/>, each
+    /// point at the top of a layer's walls lies along the lip where its uv puts it, as far from its neighbours as their
+    /// uvs are apart (give or take the lip's own even stretch): a bleed spot (painted by uv) on the wall is as round as
+    /// painted, not stretched or squeezed along the lip.
+    /// </summary>
+    private static void WallsKeepTheirSpotsInPlace(PatientBody body, int layer, Vector2 at, float reach) {
+        var name = body.Layers[layer].Name;
+        var mesh = body.Layers[layer].Mesh;
+        AssertInt(mesh.GetSurfaceCount()).OverrideFailureMessage($"the incision has {name} walls").IsGreaterEqual(2);
+        var arrays = mesh.SurfaceGetArrays(mesh.GetSurfaceCount() - 1);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var middle = body.SitePoint(at, 0f).Z;
+        // Per side of the cut, each lip point's uv along the cut and how far along it lies from where that uv is.
+        var sides = new[] { new SortedDictionary<float, float>(), new SortedDictionary<float, float>() };
+        // Each wall is drawn in columns down from its lip, PatientBody.WallRows + 1 vertices each, top first.
+        for (var v = 0; v < vertices.Length; v += PatientBody.WallRows + 1) {
+            if (Mathf.Abs(uvs[v].X - at.X) <= reach && Mathf.Abs(uvs[v].Y - at.Y) <= reach) {
+                sides[vertices[v].Z > middle ? 0 : 1][uvs[v].X] = vertices[v].X - body.SitePoint(uvs[v], 0f).X;
+            }
+        }
+        var (worst, where) = (0f, 0f);
+        foreach (var lip in sides.Select(side => side.ToArray())) {
+            AssertInt(lip.Length).OverrideFailureMessage($"{name} walls along both lips of the incision").IsGreaterEqual(3);
+            for (var n = 1; n < lip.Length - 1; n++) {
+                var (before, here, after) = (lip[n - 1], lip[n], lip[n + 1]);
+                var expected = Mathf.Lerp(before.Value, after.Value, (here.Key - before.Key) / (after.Key - before.Key));
+                if (Mathf.Abs(here.Value - expected) > worst) {
+                    (worst, where) = (Mathf.Abs(here.Value - expected), here.Key);
+                }
+            }
+        }
+        AssertFloat(worst).OverrideFailureMessage(
+                $"the {name} walls' lips lie where their uvs put them, not slid along away from them: {worst * 1000f:0.00} mm off at uv x {where:0.000}")
+            .IsLessEqual(LipSlide);
     }
 
     /// <summary>The pool held in a cut at uv, if any.</summary>

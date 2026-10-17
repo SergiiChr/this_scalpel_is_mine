@@ -5,8 +5,8 @@ namespace Scalpel.Tests.Patients;
 /// every target the scenario lists is built, on the body, inside the limb's cavity (its top under the muscle, its middle
 /// not under the floor), with no bone over it seen from above. The limb's bones are the skeleton's X-ray films show,
 /// half sunk in muscle, not in a hollow: the floor comes up their sides. A bullet lies along its wound track, no further aside from the entry wound
-/// than it lies deep. Key frames: on the ordinary patient, a cut through every layer over the first target, from above
-/// and along the limb.
+/// than it lies deep. On the ordinary patient, a cut through every layer over the first target stays open down its fat
+/// and muscle walls, which bulge into it only a little. Key frames: that cut, from above and along the limb.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -56,7 +56,7 @@ public class LimbTargetsTest {
             AssertInt(body.Bones.Count).OverrideFailureMessage(
                     $"{scenario} on {who}: of the {body.MeasuredLimbBones} bones under the site, {sawn} to saw take one's place each")
                 .IsEqual(body.MeasuredLimbBones - sawn);
-            if (quirk == "" && KeyFrames.Wanted()) {
+            if (quirk == "") {
                 // Cut through every layer along the limb over the first target, as a surgeon goes in for it.
                 var target = patient.Targets[0];
                 var half = new Vector2(body.MetersToUv(Opening * 0.5f), 0f);
@@ -64,6 +64,12 @@ public class LimbTargetsTest {
                 await Frames.Seconds(1f);
                 AssertBool(body.IsOpen(target.Uv)).OverrideFailureMessage($"{scenario}: the cut opens over the {target.Kind}")
                     .IsTrue();
+                foreach (var layer in (int[])[1, 2]) {
+                    WallsLeaveTheCutOpen(body, layer, target.Uv - half, target.Uv + half, scenario);
+                }
+            }
+            if (quirk == "" && KeyFrames.Wanted()) {
+                var target = patient.Targets[0];
                 var shots = new KeyFrames();
                 driver.AddChild(shots);
                 shots.Begin(driver.Surgery, $"limb_targets/{scenario}");
@@ -117,6 +123,53 @@ public class LimbTargetsTest {
             shots.End();
         }
         await driver.Stop();
+    }
+
+    /// <summary>How much of a cut's gap halfway down its walls may close, bulging into it from both sides.</summary>
+    private const float WallsClose = 0.3f;
+
+    /// <summary>
+    /// Along the middle third of a cut from <paramref name="from"/> to <paramref name="to"/> (along the site's x), a
+    /// layer's walls bulge into the cut only a little: halfway down, the gap between its two walls stays most of what
+    /// walls running straight from its lips to their bottoms would leave, so what lies under it shows from above.
+    /// </summary>
+    private static void WallsLeaveTheCutOpen(PatientBody body, int layer, Vector2 from, Vector2 to, string where) {
+        var name = body.Layers[layer].Name;
+        // A limb with next to no fat (a forearm) draws no fat layer at all.
+        if (!body.Layers[layer].Visible) {
+            return;
+        }
+        var mesh = body.Layers[layer].Mesh;
+        AssertInt(mesh.GetSurfaceCount()).OverrideFailureMessage($"{where}: the cut has {name} walls").IsGreaterEqual(2);
+        var walls = mesh.SurfaceGetArrays(mesh.GetSurfaceCount() - 1)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var (start, end) = (body.SitePoint(from, 0f), body.SitePoint(to, 0f));
+        var third = Mathf.Abs(end.X - start.X) / 6f;
+        var middle = (start + end) * 0.5f;
+        // Each wall is drawn in columns down from its lip, PatientBody.WallRows + 1 vertices each, top first.
+        var column = PatientBody.WallRows + 1;
+        // Per side of the cut (by its lip) and row down its walls, how near the cut's line the wall comes.
+        var near = new float[2, column];
+        for (var row = 0; row < column; row++) {
+            near[0, row] = near[1, row] = float.MaxValue;
+        }
+        for (var v = 0; v + column <= walls.Length; v += column) {
+            if (Mathf.Abs(walls[v].X - middle.X) > third) {
+                continue;
+            }
+            var side = walls[v].Z > middle.Z ? 0 : 1;
+            var sign = side == 0 ? 1f : -1f;
+            for (var row = 0; row < column; row++) {
+                near[side, row] = Mathf.Min(near[side, row], (walls[v + row].Z - middle.Z) * sign);
+            }
+        }
+        AssertBool(near[0, 0] < float.MaxValue && near[1, 0] < float.MaxValue)
+            .OverrideFailureMessage($"{where}: {name} walls on both sides of the cut").IsTrue();
+        var gaps = Enumerable.Range(0, column).Select(row => near[0, row] + near[1, row]).ToArray();
+        // Walls running straight from the lips to their bottoms leave the gap between those two halfway down.
+        var (halfway, straight) = (gaps[column / 2], (gaps[0] + gaps[^1]) * 0.5f);
+        AssertFloat(halfway).OverrideFailureMessage(
+                $"{where}: the {name} walls bulge into the cut only a little, halfway down a gap of {halfway * 1000f:0.0} mm against {straight * 1000f:0.0} mm between straight walls (top to bottom {string.Join(", ", gaps.Select(gap => $"{gap * 1000f:0.0}"))} mm)")
+            .IsGreaterEqual(straight * (1f - WallsClose));
     }
 
     /// <summary>On the body, its top under the muscle, its middle not under the floor, and seen from straight above no
