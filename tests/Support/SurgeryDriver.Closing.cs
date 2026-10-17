@@ -184,23 +184,31 @@ public partial class SurgeryDriver {
         // A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
         var holes = Mathf.FloorToInt(wound.LengthUv / step) + 2;
         var first = -1f;
-        for (var i = 0; i < 16; i++) {
-            var off = cell * (0.25f + (i * 0.25f));
-            if (Patient.SutureLayerAt(BesideWound(wound, 0f, off), wound) == layer) {
-                // Skin holes a cell clear of the opening, not on its drawn-back edge.
-                first = off + (layer == TissueDepth.Skin ? cell : 0f);
-                break;
+        var reverse = false;
+        // A tapered tip, or a neighbouring repair, may cover the muscle at one end. Start at the
+        // accessible end while still sewing the entire incision, rather than starting in the skin above it.
+        for (var end = 0; end < 2 && first < 0f; end++) {
+            var alongAt = end == 0 ? 0f : wound.LengthUv;
+            for (var i = 0; i < 16; i++) {
+                var off = cell * (0.25f + (i * 0.25f));
+                if (Patient.SutureLayerAt(BesideWound(wound, alongAt, off), wound) == layer) {
+                    // Skin holes a cell clear of the opening, not on its drawn-back edge.
+                    first = off + (layer == TissueDepth.Skin ? cell : 0f);
+                    reverse = end == 1;
+                    break;
+                }
             }
         }
         if (first < 0f) {
             Note($"no {layer} shows beside wound {wound.Id} to sew");
             return false;
         }
-        Note($"threads {layer} along wound {wound.Id}: {holes} holes");
+        Note($"threads {layer} along wound {wound.Id}: {holes} holes{(reverse ? " from its far end" : "")}");
         for (var i = 0; i < holes; i++) {
             // The rest a grid cell off at least, so each lands on its own side of the wound. Only the final hole is
             // clamped to the far end: a two-hole stitch runs from one end to the other.
             var alongAt = i == holes - 1 ? wound.LengthUv : Mathf.Min(i * step, wound.LengthUv);
+            if (reverse) { alongAt = wound.LengthUv - alongAt; }
             var off = (i == 0 ? first : Mathf.Max(first, cell)) * (i % 2 == 0 ? 1f : -1f);
             var at = SitePoint(BesideWound(wound, alongAt, off));
             // Re-squared to each puncture: the holder's carry and its tip-pivot working pose reach differently, and
