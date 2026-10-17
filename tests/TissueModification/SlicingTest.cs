@@ -607,9 +607,18 @@ public class SlicingTest {
         var end = _scalpel.Use.LastUv;
         var bladeMesh = _scalpel.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>()
             .First(m => m.Name.ToString().Contains("Blade", StringComparison.Ordinal));
-        var bladeFaces = bladeMesh.Mesh.GetFaces().Select(p => body.Site.ToLocal(bladeMesh.ToGlobal(p))).ToArray();
+        var bladeFaces = new List<Vector3>();
+        for (var surface = 0; surface < bladeMesh.Mesh.GetSurfaceCount(); surface++) {
+            using var bladeArrays = bladeMesh.Mesh.SurfaceGetArrays(surface);
+            var positions = bladeArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var bladeIndices = bladeArrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            foreach (var i in bladeIndices.Length == 0 ? Enumerable.Range(0, positions.Length) : bladeIndices) {
+                bladeFaces.Add(body.Site.ToLocal(bladeMesh.ToGlobal(positions[i])));
+            }
+        }
         using var bladeShape = new TriangleMesh();
-        bladeShape.CreateFromFaces(bladeFaces);
+        const float BladeReferenceScale = 1000f;
+        bladeShape.CreateFromFaces([.. bladeFaces.Select(p => p * BladeReferenceScale)]);
         var bladeNormal = (body.Site.GlobalBasis.Inverse() * _scalpel.GlobalBasis.X).Normalized();
         var bladeOrigin = body.Site.ToLocal(_scalpel.GlobalPosition);
         var bladeLow = bladeFaces.Aggregate((a, b) => a.Min(b)) - Vector3.One * 0.003f;
@@ -640,7 +649,7 @@ public class SlicingTest {
             var sample = vertices[v] + (first + second) * 0.2f;
             if (!isV || Covered(sample)) { continue; }
             pointed = true;
-            for (var t = 0; t < bladeFaces.Length; t += 3) {
+            for (var t = 0; t < bladeFaces.Count; t += 3) {
                 var a = bladeFaces[t];
                 var b = bladeFaces[t + 1];
                 var c = bladeFaces[t + 2];
@@ -681,11 +690,11 @@ public class SlicingTest {
                 var sideRight = (right - bladeOrigin).Dot(bladeNormal);
                 var share = Mathf.Abs(sideLeft - sideRight) > 1e-9f ? Mathf.Clamp(sideLeft / (sideLeft - sideRight), 0.01f, 0.99f) : 0.5f;
                 var insideOpening = left.Lerp(right, share);
-                using var frontHit = bladeShape.IntersectRay(insideOpening - bladeNormal * 0.01f, bladeNormal);
-                using var backHit = bladeShape.IntersectRay(insideOpening + bladeNormal * 0.01f, -bladeNormal);
+                using var frontHit = bladeShape.IntersectRay((insideOpening - bladeNormal * 0.01f) * BladeReferenceScale, bladeNormal);
+                using var backHit = bladeShape.IntersectRay((insideOpening + bladeNormal * 0.01f) * BladeReferenceScale, -bladeNormal);
                 var contactGap = float.PositiveInfinity;
-                if (frontHit.Count > 0) { contactGap = insideOpening.DistanceTo(frontHit["position"].AsVector3()); }
-                if (backHit.Count > 0) { contactGap = Mathf.Min(contactGap, insideOpening.DistanceTo(backHit["position"].AsVector3())); }
+                if (frontHit.Count > 0) { contactGap = insideOpening.DistanceTo(frontHit["position"].AsVector3() / BladeReferenceScale); }
+                if (backHit.Count > 0) { contactGap = Mathf.Min(contactGap, insideOpening.DistanceTo(backHit["position"].AsVector3() / BladeReferenceScale)); }
                 entersOpening |= contactGap < 0.0005f && !Covered(insideOpening);
             }
             var near = WidthAt(0.001f);

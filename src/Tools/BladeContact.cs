@@ -11,7 +11,18 @@ internal sealed class BladeContact {
     private readonly Vector3[] _placed;
     private readonly float[] _heights;
 
-    internal BladeContact(Vector3[] faces, Transform3D toTool) {
+    internal BladeContact(Mesh mesh, Transform3D toTool) {
+        // GetFaces() goes through Godot's rounded triangle index. A thin cutting edge needs the exact
+        // positions sent to the renderer, transformed through the blade's own tool slot only once.
+        var faces = new List<Vector3>();
+        for (var surface = 0; surface < mesh.GetSurfaceCount(); surface++) {
+            using var arrays = mesh.SurfaceGetArrays(surface);
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            if (indices.Length == 0) { faces.AddRange(vertices); } else {
+                foreach (var index in indices) { faces.Add(vertices[index]); }
+            }
+        }
         var points = new List<Vector3>();
         var edges = new HashSet<(int, int)>();
         var triangles = new List<int>();
@@ -23,7 +34,7 @@ internal sealed class BladeContact {
             points.Add(toTool * p);
             return v;
         }
-        for (var t = 0; t < faces.Length; t += 3) {
+        for (var t = 0; t < faces.Count; t += 3) {
             for (var e = 0; e < 3; e++) {
                 var a = Vertex(faces[t + e]);
                 var b = Vertex(faces[t + (e + 1) % 3]);
