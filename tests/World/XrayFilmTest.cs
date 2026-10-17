@@ -22,6 +22,11 @@ public class XrayFilmTest {
     /// starts, clear of the body and close enough to film it without lowering the arm.</summary>
     private const float MinClearance = 0.05f;
     private const float MaxClearance = 0.15f;
+    /// <summary>Physics frames for both fields' outlines to be redrawn once the cart is parked.</summary>
+    private const int OutlineFrames = 20;
+    /// <summary>How far (meters) under an outline's point the drape it's drawn on lies at most: the outline is lifted
+    /// 12 mm off what it lands on.</summary>
+    private const float DrapeReach = 0.02f;
 
     [TestCase("bullet_muscle", "bullet", 1, true, false)]
     [TestCase("open_fracture", "fragment", 2, true, false)]
@@ -58,6 +63,14 @@ public class XrayFilmTest {
             foreach (var beam in views) {
                 AssertBool(targets.All(target => beam.FilmPoint(target.GlobalPosition) is not null))
                     .OverrideFailureMessage($"parked, the {beam.View} field takes in every {kind}").IsTrue();
+            }
+            await Frames.Physics(OutlineFrames);
+            for (var i = 0; i < views.Length; i++) {
+                var (shown, on, under) = OnDrape(cart, views[i], cart.FieldBands[i]);
+                AssertBool(on > 0 && under == 0)
+                    .OverrideFailureMessage($"the {views[i].View} field's outline lies on the drape, not under it: "
+                        + $"of {shown} points {on} on it, {under} under it")
+                    .IsTrue();
             }
             if (shots is not null) {
                 if (lateral) {
@@ -119,6 +132,22 @@ public class XrayFilmTest {
             await driver.Stop();
             RenderingServer.RenderLoopEnabled = true;
         }
+    }
+
+    /// <summary>How many points along a field's outline are drawn, how many lie on the drape and how many it hides.
+    /// Down the field's parallel rays: the drape hides a point when it lies between the lens and the point. Where the
+    /// drape rises above the lens, beside a limb, no light reaches it. The drape's collider is one-sided, so the rays
+    /// look from above.</summary>
+    private static (int Shown, int On, int Under) OnDrape(XrayCart cart, XrayBeam beam, IReadOnlyList<Vector3> band) {
+        // Toward the lens.
+        var back = beam.Source.Basis.Z;
+        // Each piece is six corners, two triangles across a segment: its ends lie halfway across them.
+        var ends = band.Chunk(6).SelectMany(piece => new[] { (piece[0] + piece[5]) / 2f, (piece[1] + piece[2]) / 2f })
+            .ToList();
+        var on = ends.Count(end => Rays.Cast(cart, end, end - (back * DrapeReach), Drape.DrapeLayer) is not null);
+        var under = ends.Count(end =>
+            Rays.Cast(cart, end + (back * back.Dot(beam.Source.Origin - end)), end, Drape.DrapeLayer) is not null);
+        return (ends.Count, on, under);
     }
 
     /// <summary>The film shows every one of <paramref name="targets"/> where it lies, and where the film is drawn, a

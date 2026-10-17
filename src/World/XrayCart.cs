@@ -78,6 +78,8 @@ public partial class XrayCart : Node3D {
     /// <summary>Each field's outline triangles, redrawn one field at a time: how many are still to redraw since the
     /// tube head last moved, and which one is next.</summary>
     private readonly List<Vector3>[] _bands = [[], []];
+    /// <summary>Each field's outline triangles as last drawn, AP then lateral.</summary>
+    internal IReadOnlyList<Vector3>[] FieldBands => _bands;
     private int _staleFields;
     private int _nextField;
     private Dictionary<string, Node3D> _parts = null!;
@@ -226,8 +228,9 @@ public partial class XrayCart : Node3D {
             for (var step = 0; step <= OutlineSteps; step++) {
                 var at = corners[side].Lerp(corners[(side + 1) % 4], step / (float)OutlineSteps);
                 var from = beam.Source * new Vector3(at.X, at.Y, 0f);
-                // The lateral beam starts inside the cart itself.
-                var hit = Rays.Cast(this, from, from + (along * XrayExposure.Depth), PatientBody.SurfaceLayer | 1u, _body.GetRid());
+                // The lateral beam starts inside the cart itself. The drape is lit where it covers the body.
+                var hit = Rays.Cast(this, from, from + (along * XrayExposure.Depth),
+                    PatientBody.SurfaceLayer | Drape.DrapeLayer | 1u, _body.GetRid());
                 var point = hit is { } h ? h.Position - (along * OutlineLift) : (Vector3?)null;
                 if (point is { } b && last is { } a && a.DistanceTo(b) < 0.15f) {
                     var across = along.Cross(b - a).Normalized() * OutlineWidth;
