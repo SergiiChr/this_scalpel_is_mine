@@ -38,6 +38,9 @@ Installation details and platform prerequisites: [README.md](README.md#develop).
 
 ## Checking a change
 
+- Do not follow script or test progress or log output unless explicitly requested.
+- Wait for the test or script to finish before checking its results.
+
 Test commands exit non-zero and name what failed: a failed case, any `SCRIPT ERROR`, `ERROR:` or unhandled
 exception in Godot's output, or no cases run. A clean exit is a pass.
 Suites with no runnable cases selected are reported as skipped, including suites whose only cases are excluded as
