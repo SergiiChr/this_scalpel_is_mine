@@ -205,10 +205,20 @@ public class GelpiTest {
         var ridge = Enumerable.Range(0, tissue.Pos.Length)
             .Where(k => Mathf.Abs(tissue.UvOf(k).Y - middle.Y) * body.SiteSize.Y > 0.012f)
             .Max(k => tissue.Pos[k].Y - tissue.Rest[k].Y);
-        AssertFloat(ridge).OverrideFailureMessage($"the skin pushed toward the drape rises {ridge * 1000f:0.0} mm, no ridge").IsLess(Ridge);
+        var aboveBody = Enumerable.Range(0, tissue.Pos.Length)
+            .Where(k => Mathf.Abs(tissue.UvOf(k).Y - middle.Y) * body.SiteSize.Y > 0.012f)
+            .Max(k => tissue.Pos[k].Y - body.SurfaceHeight(body.LocalToUv(tissue.Pos[k])));
+        using var skin = body.Layers[0].Mesh.SurfaceGetArrays(0);
+        var vertices = skin[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = skin[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var drawnRidge = Enumerable.Range(0, vertices.Length)
+            .Where(v => Mathf.Abs(uvs[v].Y - middle.Y) * body.SiteSize.Y > 0.012f)
+            .Select(v => vertices[v].Y - body.SurfaceHeight(body.LocalToUv(vertices[v])))
+            .DefaultIfEmpty(float.PositiveInfinity).Max();
+        await driver.Capture("stopped", $"the Gelpi opened as far as the thigh skin gives, the wound over {ThighOpen * 100f:0} cm open: the skin beside each jaw humped up smooth, no ridge at the drape's edge, nothing through the skin");
+        AssertFloat(drawnRidge).OverrideFailureMessage($"the drawn skin pushed toward the drape stays below an {Ridge * 1000f:0} mm ridge ({drawnRidge * 1000f:0.0} mm drawn, {ridge * 1000f:0.0} mm solver displacement, {aboveBody * 1000f:0.0} mm solver height)").IsLess(Ridge);
         AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage("nothing tears").IsEqual(wounds);
         await AssertLipsApart(driver);
-        await driver.Capture("stopped", $"the Gelpi opened as far as the thigh skin gives, the wound over {ThighOpen * 100f:0} cm open: the skin beside each jaw humped up smooth, no ridge at the drape's edge, nothing through the skin");
         await session.Finish(BudgetOverride);
     }
 

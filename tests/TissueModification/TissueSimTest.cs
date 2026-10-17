@@ -12,6 +12,18 @@ public class TissueSimTest {
     private static readonly Vector2 CutTo = new(0.8f, 0.51f);
 
     [TestCase]
+    public void ShortBladeSectionKeepsItsActualEndpoints() {
+        var sim = Sim();
+        var middle = new Vector2((float)(sim.ResX / 2) / sim.ResX, (sim.ResY / 2 + 0.25f) / sim.ResY);
+        var half = new Vector2(0.1f / sim.ResX, 0f);
+        sim.Cut(middle - half, middle + half, TissueDepth.Skin);
+        Check(sim.AnySevered, "the short blade section crosses a real tissue spring");
+        Check(sim.Severed.All(s => Geometry2D.GetClosestPointToSegment(sim.CrossingUv(s), middle - half, middle + half)
+                .DistanceTo(sim.CrossingUv(s)) < 0.00001f),
+            "a blade already crossing the grid severs no skin outside its actual section");
+    }
+
+    [TestCase]
     public void TissueGeometryAndPhysicsContracts() {
         CutGapes();
         CutEndFollowsFineStroke();

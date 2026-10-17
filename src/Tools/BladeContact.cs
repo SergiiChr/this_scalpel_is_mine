@@ -6,7 +6,7 @@ internal sealed class BladeContact {
     private readonly Vector3[] _points;
     private readonly (int A, int B)[] _edges;
     private readonly int[] _faces;
-    private readonly int[][] _support;
+    private readonly int[][] _sections;
     private readonly float _heelZ;
     private readonly Vector3[] _placed;
     private readonly float[] _heights;
@@ -34,7 +34,7 @@ internal sealed class BladeContact {
         _points = [.. points];
         _edges = [.. edges];
         _faces = [.. triangles];
-        _support = _points.Select((point, index) => (point, index)).GroupBy(v => v.point.Z)
+        _sections = _points.Select((point, index) => (point, index)).GroupBy(v => v.point.Z)
             .Select(group => group.Select(v => v.index).ToArray()).ToArray();
         _heelZ = _points.Max(point => point.Z);
         _placed = new Vector3[_points.Length];
@@ -44,21 +44,25 @@ internal sealed class BladeContact {
     /// <summary>Keep the blade from passing wholly under intact skin beside an opening. A buried blade fits
     /// inside the aperture; advancing beyond it must bring its edge through the skin at the rim.</summary>
     internal float HeelLift(PatientBody body, Transform3D pose) {
-        var lift = 0f;
+        var highest = float.NegativeInfinity;
         var toSite = body.Site.GlobalTransform.AffineInverse() * pose;
-        foreach (var section in _support) {
-            // The upper envelope at each longitudinal section, not one heel vertex that may already lie
-            // over the opening while the blade's front has slipped wholly under intact skin ahead of it.
+        foreach (var point in _points) {
+            if (Mathf.Abs(point.Z - _heelZ) > 0.000001f) { continue; }
+            var local = toSite * point;
+            if (!body.SkinTopAt(local, out var height)) { continue; }
+            var skin = body.Site.ToGlobal(local with { Y = height });
+            highest = Mathf.Max(highest, (pose * point).Y - skin.Y);
+        }
+        var lift = float.IsFinite(highest) && highest < 0f ? -highest + 0.0005f : 0f;
+        foreach (var section in _sections) {
             var top = section[0];
             foreach (var v in section) {
                 if ((pose * _points[v]).Y > (pose * _points[top]).Y) { top = v; }
             }
-            var point = _points[top];
-            var local = toSite * point;
+            var local = toSite * _points[top];
             if (!body.SkinTopAt(local, out var height)) { continue; }
             var skin = body.Site.ToGlobal(local with { Y = height });
-            var clearance = Mathf.Abs(point.Z - _heelZ) < 0.000001f ? 0.0005f : -PatientBody.SkinThickness;
-            lift = Mathf.Max(lift, skin.Y + clearance - (pose * point).Y);
+            lift = Mathf.Max(lift, skin.Y - PatientBody.SkinThickness - (pose * _points[top]).Y);
         }
         return lift;
     }
@@ -78,7 +82,7 @@ internal sealed class BladeContact {
         for (var v = 0; v < _points.Length; v++) {
             var p = toSite * _points[v];
             _placed[v] = p;
-            _heights[v] = p.Y - body.CutSurfaceHeight(p);
+            _heights[v] = p.Y - body.RestingSkinHeight(p);
         }
         if (body.RenderedBladeSpan(_points, _faces, _placed, toTool, along) is { } rendered) {
             first = rendered.From;
@@ -96,7 +100,7 @@ internal sealed class BladeContact {
             // Resolve the curved surface along this model edge, rather than cutting against a flat height limit.
             for (var n = 0; n < 10; n++) {
                 var mid = (left + right) * 0.5f;
-                if ((mid.Y > body.CutSurfaceHeight(mid)) == above) { left = mid; } else { right = mid; }
+                if ((mid.Y > body.RestingSkinHeight(mid)) == above) { left = mid; } else { right = mid; }
             }
             var hit = (left + right) * 0.5f;
             // The blade is extruded across local X: use its center plane for the incision's centerline.

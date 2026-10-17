@@ -50,7 +50,8 @@ public sealed class CutAction : ToolAction {
             && !(body.Tissue.IsOpen(step.Uv, TissueDepth.Skin) && step.Probe.Depth > PatientBody.SkinThickness)) {
             // A real blade must enter skin before making a surface wound. Inside an existing opening,
             // a buried blade can cut the deeper wall without intersecting the skin above it.
-            use.LastUv = new Vector2(-1f, -1f);
+            // Retain the last real material contact while the blade lies wholly inside its slit.
+            // Mark a fresh footprint on re-entry, rather than treating a missing intersection as a cut.
             use.LastCutContact = Vector3.Inf;
             return;
         }

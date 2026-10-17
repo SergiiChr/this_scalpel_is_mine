@@ -75,6 +75,8 @@ public sealed class Wound {
     /// <summary>ml of liquid run through it so far.</summary>
     public float Rinsed { get; set; }
     public bool MadeBySurgeon { get; set; }
+    /// <summary>At least one stretch was cut too fast or with a dull blade.</summary>
+    internal bool Jagged => _jagged.Any(value => value);
     /// <summary>Closure progress per bin, 0..1.</summary>
     public float[] Bins { get; set; } = [];
     /// <summary>Muscle closure per bin, 0..1, for wounds through the muscle (sewn from inside the opening, before the
