@@ -100,7 +100,9 @@ public partial class Drape : MeshInstance3D {
         // out round the hips and the chest where they bulge past the sheet's side, but no nearer the arm.
         void Hem(Vector3 a, Vector3 b, Vector3[] below, float facing) {
             if (Mathf.Abs(below[0].Y - a.Y) > 0.002f || Mathf.Abs(below[1].Y - b.Y) > 0.002f) {
-                Quad(surface, [a, b, below[1], below[0]], facing);
+                // A rotated site can reach the hanging sides as well as the top of the sheet.
+                OutsideOpening(surface, site, siteSize, [a, b, below[1]], facing);
+                OutsideOpening(surface, site, siteSize, [a, below[1], below[0]], facing);
             }
         }
         Vector3 EndBelow(Vector3 p, Vector3 outward) {
@@ -278,11 +280,4 @@ public partial class Drape : MeshInstance3D {
         return result;
     }
 
-    /// <summary>Two triangles, wound so the side facing <paramref name="up"/> is the front.</summary>
-    private static void Quad(SurfaceTool surface, Vector3[] corners, float up) {
-        int[] order = up > 0f ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
-        foreach (var n in order) {
-            surface.AddVertex(corners[n]);
-        }
-    }
 }
