@@ -2006,9 +2006,10 @@ public sealed partial class TissueSim {
                     // would be ratcheted up onto the rim.
                     if (FoldedOut(k)) {
                         Pos[k] = AboveFloor(k, Pos[k]);
-                    } else if (!NearFold(k)) {
+                    } else {
                         // A millimetre of creep at the lip of the drape must not pass underneath its raised edge,
                         // nor get ratcheted up onto it. Keep this nearly stationary skin on its original side.
+                        // Being near a fold doesn't mean this point itself has lifted or travelled onto the cloth.
                         var floorY = FloorAt(Pos[k].X, Pos[k].Z);
                         if (!float.IsNaN(floorY) && floorY > Settled[k].Y + UnderDrape) {
                             Pos[k] = Pos[k] with { X = Settled[k].X, Z = Settled[k].Z };
