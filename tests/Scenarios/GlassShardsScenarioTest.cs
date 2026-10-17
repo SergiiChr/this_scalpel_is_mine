@@ -44,23 +44,32 @@ public class GlassShardsScenarioTest {
     /// and awake, but the step doesn't count: they were out.</summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task SedationThatKnocksThePatientOutNeverCounts() {
-        var driver = SurgeryDriver.Create();
-        await driver.Start("glass_shards");
-        var patient = driver.Patient;
-        var vitals = patient.Vitals;
-        var objectives = driver.Surgery.Objectives;
-        var index = objectives.Steps.FindIndex(step => step.Type == "sedate");
-        var step = objectives.Steps[index];
-        patient.Administer("diazepam", DrugRoute.Direct, Db.Drug("diazepam")!.Dose * patient.WeightKg * 2.2f);
-        AssertBool(await Frames.Until(() => !vitals.IsAwake, 30f))
-            .OverrideFailureMessage($"2.2 times the dose knocks the patient out: consciousness {vitals.Consciousness:0.00}").IsTrue();
-        AssertBool(await Frames.Until(() => vitals.IsAwake && patient.SedativeWorks && vitals.Panic < step.Parameters.Float("max_panic"), 400f))
-            .OverrideFailureMessage($"the patient comes round with it still working, calm: consciousness {vitals.Consciousness:0.00}, panic {vitals.Panic:0.00}")
-            .IsTrue();
-        await Frames.Seconds(2f);
-        AssertBool(objectives.States[index].Done).OverrideFailureMessage("sedation that knocked the patient out doesn't count")
-            .IsFalse();
-        await driver.Stop();
+        var rendering = RenderingServer.RenderLoopEnabled;
+        SurgeryDriver? driver = null;
+        try {
+            FrameBudget.RenderingOff();
+            driver = SurgeryDriver.Create();
+            await driver.Start("glass_shards");
+            var patient = driver.Patient;
+            var vitals = patient.Vitals;
+            var objectives = driver.Surgery.Objectives;
+            var index = objectives.Steps.FindIndex(step => step.Type == "sedate");
+            var step = objectives.Steps[index];
+            patient.Administer("diazepam", DrugRoute.Direct, Db.Drug("diazepam")!.Dose * patient.WeightKg * 2.2f);
+            AssertBool(await Frames.Until(() => !vitals.IsAwake, 30f))
+                .OverrideFailureMessage($"2.2 times the dose knocks the patient out: consciousness {vitals.Consciousness:0.00}").IsTrue();
+            AssertBool(await Frames.Until(() => vitals.IsAwake && patient.SedativeWorks && vitals.Panic < step.Parameters.Float("max_panic"), 400f))
+                .OverrideFailureMessage($"the patient comes round with it still working, calm: consciousness {vitals.Consciousness:0.00}, panic {vitals.Panic:0.00}")
+                .IsTrue();
+            await Frames.Seconds(2f);
+            AssertBool(objectives.States[index].Done).OverrideFailureMessage("sedation that knocked the patient out doesn't count")
+                .IsFalse();
+        } finally {
+            RenderingServer.RenderLoopEnabled = rendering;
+            if (driver is not null) {
+                await driver.Stop();
+            }
+        }
     }
 
     /// <summary>Before anything is done: every shard's jagged top is out over the skin and its point under it, but for
