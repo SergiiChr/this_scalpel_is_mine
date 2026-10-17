@@ -1,5 +1,7 @@
 # Agent instructions
 
-Read and follow [CLAUDE.md](CLAUDE.md). It is the single authoritative instruction file for this repository; do not duplicate its rules here.
+Read and follow [CLAUDE.md](CLAUDE.md). It is the single authoritative instruction file for every agent in this
+repository; do not duplicate its rules here.
 
-Skills live in [.claude/skills](.claude/skills): each folder's `SKILL.md` is a workflow to follow when its description fits the task.
+Shared workflows live in [.claude/skills](.claude/skills) and are indexed in CLAUDE.md. Read each applicable
+`SKILL.md` with ordinary file tools; no vendor-specific loader is required.
