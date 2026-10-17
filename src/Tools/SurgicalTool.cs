@@ -222,7 +222,7 @@ public partial class SurgicalTool : RigidBody3D {
         MaxContactsReported = 2;
         _model = ModelSlot.InstantiateTool(def, this);
         if (def.Action == "cut" && _model.FindChild("Blade", true, false) is MeshInstance3D blade) {
-            Blade = new BladeContact(blade.Mesh.GetFaces(), GlobalTransform.AffineInverse() * blade.GlobalTransform);
+            Blade = new BladeContact(blade.Mesh, GlobalTransform.AffineInverse() * blade.GlobalTransform);
         }
         // The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.
         Bounds = ModelBounds();
