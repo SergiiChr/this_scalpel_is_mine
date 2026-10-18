@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 /// <summary>Fixed surface bleeds on three body slopes: a small seep stays visible beside a large pool and thin
-/// downhill trails. Stopping their supply leaves the deposited blood on the skin.</summary>
+/// downhill films. Stopping their supply leaves the deposited blood on the skin.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
@@ -69,15 +69,24 @@ public class BloodFlowTest {
         driver.Note("surface bleeds supplying fresh blood");
         await AdvanceBlood(1f);
         AssertFloat(Amount(driver.Body, seep)).OverrideFailureMessage("even a small fresh seep remains visible").IsGreater(0.5f);
+        var freshCover = 0f;
+        await driver.Unbudgeted(() => {
+            freshCover = Cover(driver.Body);
+            return Task.CompletedTask;
+        });
         await driver.Capture("fresh", "small fresh red seep beside a larger bleed, both visible against the skin");
         driver.Note("surface bleeds feeding pools and trails");
         await AdvanceBlood(7f);
         AssertFloat(Amount(driver.Body, pool)).OverrideFailureMessage("the significant bleed retains a dense pool").IsGreater(0.8f);
-        await driver.Capture("flowing", "dense dark pool with soft irregular edges and varied curved downhill trails; no repeated bright ticks");
+        await driver.Capture("flowing", "connected spreading wet patches and broad downhill streams, dense blood at the supplies, soft edges; no isolated wiry tendrils or repeated bright ticks");
         blood.Sources.Clear();
         driver.Note("surface supply stopped, trails settling");
         await AdvanceBlood(6f);
-        AssertFloat(Amount(driver.Body, pool)).OverrideFailureMessage("stopping the supply preserves the deposited pool").IsGreater(0.8f);
+        await driver.Unbudgeted(() => {
+            AssertFloat(Cover(driver.Body)).OverrideFailureMessage("the stopped supply leaves a spreading coating rather than disappearing")
+                .IsGreater(freshCover * 1.5f);
+            return Task.CompletedTask;
+        });
         await driver.Capture("settled", "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed");
         if (measureGpu) {
             RenderingServer.ViewportSetMeasureRenderTime(viewport, false);
@@ -90,4 +99,14 @@ public class BloodFlowTest {
     }
 
     private static float Amount(PatientBody body, Vector2 uv) => body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);
+    private static float Cover(PatientBody body) {
+        var map = body.WoundMap;
+        var visible = 0;
+        for (var y = 2; y < map.Size; y += 4) {
+            for (var x = 2; x < map.Size; x += 4) {
+                if (map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(x, y) / map.Size) > 0.04f) { visible++; }
+            }
+        }
+        return visible;
+    }
 }

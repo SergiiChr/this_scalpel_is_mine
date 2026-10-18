@@ -57,8 +57,8 @@ public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill) {
 
 /// <summary>
 /// Blood as a fluid, on every peer. Bleeding wounds (sources, synced by the host) well up into a puddle that grows
-/// with the blood lost, and release rivulets from its edge that run downhill over the skin, staining it as they go
-/// (the fluid map). Where a rivulet runs off the body it drips: droplets fall to the table or the floor and collect
+/// with the blood lost. A volume grid spreads the film across the skin and carries it downhill, leaving a thin stain
+/// in the fluid map. Where the film runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
 /// Every bleed shows its source as a spot a little darker than blood: on the skin where it bleeds onto it, on the cut's
 /// wall at its depth where it bleeds inside the opening (never on the skin over it), hidden once the cavity pool covers
@@ -72,12 +72,7 @@ public partial class BloodFlow : Node3D {
     /// </summary>
     [Signal] public delegate void SplashedEventHandler(float amount);
 
-    private const int MaxRivulets = 48;
     private const int MaxDrops = 96;
-    /// <summary>Rivulets per ml of blood lost.</summary>
-    private const float RivuletsPerMl = 0.35f;
-    private const float RivuletSpeed = 0.05f;
-    private const float StainRadius = 0.009f;
     private const float DropRadius = 0.0035f;
     /// <summary>Bleeding faster than this (ml/s) spurts.</summary>
     private const float SpurtRate = 3f;
@@ -117,18 +112,6 @@ public partial class BloodFlow : Node3D {
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    private sealed class Rivulet(Vector2 uv, float volume, float wander, Vector2 direction) {
-        public Vector2 Uv = uv;
-        public float Volume = volume;
-        public float Wander { get; } = wander;
-        public Vector2 Direction = direction;
-        public Vector2 SpreadDirection { get; } = direction;
-        public float Age;
-        public bool Branched;
-        public float Width { get; } = 0.8f + 0.35f * Mathf.Sin(wander * 17f);
-        public float Speed { get; } = 0.85f + 0.3f * Mathf.Cos(wander * 23f);
-    }
-
     private sealed class Drop(Vector3 position, Vector3 velocity) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
@@ -140,10 +123,12 @@ public partial class BloodFlow : Node3D {
         new(WoundMap.SpotRadius, 1f, WoundMap.Mode.Sub), new(WoundMap.SpotDepth, 1f, WoundMap.Mode.Sub),
     ];
 
-    private readonly List<Rivulet> _rivulets = [];
+    private SurfaceBlood _surface = null!;
+    private float _surfaceClock;
+    private bool _surfaceNeedsPaint;
+    private float _dripMl;
     private readonly List<Drop> _drops = [];
     private readonly List<MeshInstance3D> _pools = [];
-    private readonly Dictionary<int, float> _spawnAcc = [];
     /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
     /// order.</summary>
     private readonly Dictionary<Vector2I, float> _pooled = [];
@@ -188,6 +173,7 @@ public partial class BloodFlow : Node3D {
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, patientBody.OnBody);
         _dropMesh = new MultiMeshInstance3D {
             Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
@@ -244,14 +230,8 @@ public partial class BloodFlow : Node3D {
             if (Sources[i].Inside) {
                 continue;
             }
-            var radius = Puddle(body, uv, rate * delta, _paintPuddles);
-            var acc = _spawnAcc.GetValueOrDefault(i) + rate * delta * RivuletsPerMl;
-            while (acc >= 1f && _rivulets.Count < MaxRivulets) {
-                acc -= 1f;
-                var edge = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0.6f, 0.95f);
-                _rivulets.Add(new Rivulet(uv + edge, _rng.RandfRange(0.6f, 1.2f), _rng.RandfRange(-1f, 1f), edge.Normalized()));
-            }
-            _spawnAcc[i] = Mathf.Min(acc, 3f);
+            Puddle(body, uv, rate * delta, _paintPuddles);
+            _surface.Add(uv, rate * delta);
             Spurt(body, body.UvToWorld(uv), rate, delta);
         }
     }
@@ -470,67 +450,36 @@ public partial class BloodFlow : Node3D {
         return radius;
     }
 
-    /// <summary>Viscous trails accelerate on steep skin, spread on flatter skin and join nearby flows. Each head
-    /// has its own curvature and width; a large head can shed one smaller branch, conserving its volume.</summary>
+    /// <summary>Pressure spreads a connected film sideways while gravity transports it downhill. The film retains
+    /// thin residue, coalesces without separate path heads, and loses volume when a swab removes its painted blood.</summary>
     private void Flow(PatientBody body, float delta) {
-        var down = body.Site.GlobalBasis.Inverse() * Vector3.Down;
-        for (var i = 0; i < _rivulets.Count; i++) {
-            var rivulet = _rivulets[i];
-            var uv = rivulet.Uv;
-            var slope = Slope(body, uv);
-            var along = new Vector2(down.X, down.Z) + slope * down.Y;
-            var steep = Mathf.Clamp(along.Length(), 0f, 1f);
-            rivulet.Age += delta;
-            if (along.LengthSquared() < 0.0004f) {
-                // Surface tension spreads a head on nearly level skin, without a shared artificial downhill.
-                along = rivulet.SpreadDirection;
-            }
-            var bend = Mathf.Sin(rivulet.Age * rivulet.Speed * 1.7f + rivulet.Wander * 13f);
-            var direction = along.Normalized().Rotated(bend * Mathf.Lerp(0.65f, 0.16f, steep));
-            rivulet.Direction = rivulet.Direction.Lerp(direction, 1f - Mathf.Exp(-delta * 4f)).Normalized();
-            var speed = RivuletSpeed * rivulet.Speed * Mathf.Lerp(0.12f, 1.1f, Mathf.Sqrt(steep));
-            var step = rivulet.Direction * speed * delta / ((body.SiteSize.X + body.SiteSize.Y) * 0.5f);
-            var next = uv + step;
-            var width = StainRadius * rivulet.Width * Mathf.Sqrt(Mathf.Max(rivulet.Volume, 0.18f))
-                * Mathf.Lerp(1.3f, 0.7f, steep) * (1f + bend * 0.12f);
-            body.WoundMap.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, uv, next, width,
-                Mathf.Clamp(0.35f + rivulet.Volume * 0.2f, 0.35f, 0.85f), WoundMap.Mode.Max, soft: true);
-            rivulet.Uv = next;
-            rivulet.Volume -= delta * 0.25f;
-            for (var j = i + 1; j < _rivulets.Count; j++) {
-                var other = _rivulets[j];
-                if (next.DistanceSquaredTo(other.Uv) < width * width * 0.7f
-                    && rivulet.Direction.Dot(other.Direction) > 0.4f && rivulet.Volume + other.Volume <= 2.8f) {
-                    rivulet.Volume += other.Volume;
-                    _rivulets.RemoveAt(j--);
-                }
-            }
-            if (!rivulet.Branched && rivulet.Volume > 1.1f && steep > 0.25f && rivulet.Age > 0.6f
-                && _rivulets.Count < MaxRivulets && _rng.Randf() < delta * 0.3f) {
-                rivulet.Branched = true;
-                var branchDirection = rivulet.Direction.Rotated(rivulet.Wander < 0f ? -0.65f : 0.65f);
-                var share = rivulet.Volume * 0.3f;
-                rivulet.Volume -= share;
-                _rivulets.Add(new Rivulet(next + branchDirection * width, share, -rivulet.Wander, branchDirection) {
-                    Branched = true,
-                });
-            }
-            if (next.X < 0f || next.Y < 0f || next.X > 1f || next.Y > 1f) {
-                // Ran off the site: it drips from here.
-                AddDrop(body.UvToWorld(next.Clamp(Vector2.Zero, Vector2.One)), Vector3.Zero);
-                _rivulets.RemoveAt(i--);
-            } else if (rivulet.Volume <= 0f) {
-                _rivulets.RemoveAt(i--);
-            }
+        _surfaceClock += delta;
+        // Alternate transport and texture work so they do not land together on the same gameplay frame.
+        if (_surfaceNeedsPaint) {
+            _surface.ReconcileWipes(body.WoundMap);
+            _surface.Paint(body.WoundMap);
+            _surfaceNeedsPaint = false;
+            return;
         }
-    }
-
-    /// <summary>Skin slope at uv (height change per uv unit), from the baked skin heights.</summary>
-    private static Vector2 Slope(PatientBody body, Vector2 uv) {
-        const float E = 0.02f;
-        var dx = body.SurfaceHeight(uv + new Vector2(E, 0)) - body.SurfaceHeight(uv - new Vector2(E, 0));
-        var dy = body.SurfaceHeight(uv + new Vector2(0, E)) - body.SurfaceHeight(uv - new Vector2(0, E));
-        return new Vector2(dx / body.SiteSize.X, dy / body.SiteSize.Y) / (2f * E);
+        const float Step = 1f / 30f;
+        if (_surfaceClock < Step) {
+            return;
+        }
+        _surface.ReconcileWipes(body.WoundMap);
+        // Substeps limit outflow so steep skin cannot empty a cell below zero.
+        var elapsed = Mathf.Min(_surfaceClock, 0.1f);
+        _surfaceClock = 0f;
+        var steps = Mathf.CeilToInt(elapsed * 60f);
+        var drained = _surface.RunoffMl;
+        for (var i = 0; i < steps; i++) {
+            _surface.Step(body.Site.GlobalBasis, elapsed / steps);
+        }
+        _dripMl += _surface.RunoffMl - drained;
+        while (_dripMl >= 0.15f && _drops.Count < MaxDrops) {
+            _dripMl -= 0.15f;
+            AddDrop(body.UvToWorld(_surface.DrainUv), Vector3.Zero);
+        }
+        _surfaceNeedsPaint = true;
     }
 
     /// <summary>Throws <paramref name="count"/> droplets up and out from <paramref name="at"/> (an impact, a saw),

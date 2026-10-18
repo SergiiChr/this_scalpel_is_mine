@@ -60,9 +60,15 @@ public sealed class WoundMap {
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
     private readonly bool[][] _painted = new bool[LayerCount][];
     private readonly Image[] _images = new Image[LayerCount];
+    private readonly byte[] _bloodFilm;
+    private Rect2I _bloodFilmBounds;
+    private int[] _filmIndex = [];
+    private float[] _filmFraction = [];
+    private float[] _filmRow = [];
 
     public WoundMap(int texels = MaxSize) {
         Size = texels;
+        _bloodFilm = new byte[Size * Size];
         Textures = new ImageTexture[LayerCount];
         for (var i = 0; i < LayerCount; i++) {
             _images[i] = Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8);
@@ -107,6 +113,75 @@ public sealed class WoundMap {
 
     public void Disk(Layer layer, int channel, Vector2 center, float radius, float value, Mode mode, bool soft = true) =>
         DiskOps(layer, center, radius, [new PaintOp(channel, value, mode)], soft);
+
+    /// <summary>Resamples a continuous fluid film into the existing blood channel. Old deposits leave thin stains;
+    /// interpolation fills the space between cells without tiled disk outlines or allocating stamps per cell.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+    internal void PaintBloodFilm(ReadOnlySpan<float> film, int resolution) {
+        var left = resolution;
+        var right = -1;
+        var top = resolution;
+        var bottom = -1;
+        for (var y = 0; y < resolution; y++) {
+            for (var x = 0; x < resolution; x++) {
+                if (film[y * resolution + x] < 0.002f) { continue; }
+                left = Math.Min(left, x);
+                right = Math.Max(right, x);
+                top = Math.Min(top, y);
+                bottom = Math.Max(bottom, y);
+            }
+        }
+        var data = _data[(int)Layer.Fluids];
+        var painted = _painted[(int)Layer.Fluids];
+        if (_filmRow.Length != resolution) {
+            _filmRow = new float[resolution];
+            _filmIndex = new int[Size];
+            _filmFraction = new float[Size];
+            for (var pixel = 0; pixel < Size; pixel++) {
+                var cell = Mathf.Clamp((pixel + 0.5f) * resolution / Size - 0.5f, 0f, resolution - 1);
+                _filmIndex[pixel] = Math.Min((int)cell, resolution - 2);
+                _filmFraction[pixel] = cell - _filmIndex[pixel];
+            }
+        }
+        var current = right < left ? new Rect2I() : new Rect2I(
+            Math.Max(0, (left - 1) * Size / resolution), Math.Max(0, (top - 1) * Size / resolution), 0, 0);
+        if (right >= left) {
+            current.End = new Vector2I(Math.Min(Size, (right + 2) * Size / resolution + 1),
+                Math.Min(Size, (bottom + 2) * Size / resolution + 1));
+        }
+        var bounds = _bloodFilmBounds.HasArea() ? (current.HasArea() ? _bloodFilmBounds.Merge(current) : _bloodFilmBounds) : current;
+        _bloodFilmBounds = current;
+        var (fromX, fromY) = (bounds.Position.X, bounds.Position.Y);
+        var (toX, toY) = (bounds.End.X, bounds.End.Y);
+        for (var y = fromY; y < toY; y++) {
+            var iy = _filmIndex[y];
+            var fy = _filmFraction[y];
+            // Blend the small solver row once, rather than resampling four cells at every output texel.
+            for (var cell = 0; cell < resolution; cell++) {
+                _filmRow[cell] = Mathf.Lerp(film[iy * resolution + cell], film[(iy + 1) * resolution + cell], fy);
+            }
+            for (var x = fromX; x < toX; x++) {
+                var ix = _filmIndex[x];
+                var amount = (byte)Math.Clamp(Mathf.RoundToInt(Mathf.Lerp(_filmRow[ix], _filmRow[ix + 1], _filmFraction[x]) * 255f), 0, 255);
+                var i = (y * Size + x) * 4 + Blood;
+                var pixel = y * Size + x;
+                var previous = _bloodFilm[pixel];
+                // Respect paint from other systems, and never restore a wipe smaller than one solver cell.
+                var under = data[i] > previous ? data[i] : Math.Min((int)data[i], 30);
+                _bloodFilm[pixel] = amount;
+                if (previous > 0 && data[i] < previous) {
+                    // Keep the raw previous film as the reference. Only newly arriving liquid can refill a fine wipe.
+                    amount = (byte)(Math.Max(0, (int)amount - previous)
+                        + Math.Min((int)amount, previous) * data[i] / previous);
+                }
+                var next = (byte)Math.Max(amount, under);
+                if (next == data[i]) { continue; }
+                data[i] = next;
+                painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
+                _dirty[(int)Layer.Fluids] = true;
+            }
+        }
+    }
 
     /// <summary>
     /// Paints several channels of one disk. Each channel gets its own tight loop over the disk's rows, with the mode
