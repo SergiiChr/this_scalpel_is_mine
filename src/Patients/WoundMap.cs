@@ -88,10 +88,11 @@ public sealed class WoundMap {
     /// thread only.</summary>
     private readonly RandomNumberGenerator _strokeRng = new();
 
-    /// <summary>Stamps hard-edged disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line.
+    /// <summary>Stamps disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line;
+    /// <paramref name="soft"/> feathers fluid trails instead of leaving a hard texel boundary.
     /// </summary>
     public void Stroke(Layer layer, int channel, Vector2 a, Vector2 b, float radius, float value, Mode mode,
-        float jitter = 0f, ulong seed = 0) {
+        float jitter = 0f, ulong seed = 0, bool soft = false) {
         var step = Mathf.Max(radius * 0.5f, 0.5f / Size);
         var steps = Math.Max(1, Mathf.CeilToInt(a.DistanceTo(b) / step));
         _strokeRng.Seed = seed;
@@ -100,7 +101,7 @@ public sealed class WoundMap {
             if (jitter > 0f) {
                 p += new Vector2(_strokeRng.RandfRange(-jitter, jitter), _strokeRng.RandfRange(-jitter, jitter));
             }
-            Disk(layer, channel, p, radius, value, mode, soft: false);
+            Disk(layer, channel, p, radius, value, mode, soft);
         }
     }
 

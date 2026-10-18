@@ -44,7 +44,8 @@ float blood_amount(float blood, float grain) {
 
 // How far blood stands off the skin, in meters.
 float blood_thickness(float blood) {
-	return smoothstep(0.1, 0.8, blood) * 0.0025;
+	// A low meniscus gives a continuous sheen; tall rims turn each map stamp into a bright tick.
+	return smoothstep(0.05, 0.85, blood) * 0.0007;
 }
 
 // Tilts the view space normal along the blood's edges as if it were a raised film, so the light catches its rim

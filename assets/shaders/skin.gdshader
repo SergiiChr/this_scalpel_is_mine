@@ -59,8 +59,10 @@ void fragment() {
 	// Only tied sutures mark joined edges; a low-quality closure in w.a is not a seam marker.
 	w.r *= texture(seam_map, UV).r;
 	vec4 f = texture(fluid_map, UV);
+	// Pigment can break up at the rim without turning that grain into separate shiny bumps.
+	float thickness = blood_thickness(f.r);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
-	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
+	NORMAL = blood_normal(NORMAL, VERTEX, thickness);
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
 	NORMAL = blood_normal(NORMAL, VERTEX, (noise(local_pos.xz * 900.0 + local_pos.y * 300.0) + noise(local_pos.xy * 700.0) - 1.0) * 0.00004);
 	float n = noise(local_pos.xz * 14.0) * 0.6 + noise(local_pos.xy * 6.3 + 7.0) * 0.4;
@@ -82,9 +84,9 @@ void light() {
 	vec3 halfway = normalize(VIEW + LIGHT);
 	// Dry skin gets the body's small dull highlight; only blood and open cuts (low roughness) shine wet.
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
-	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
+	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.99, wet);
 	float spec = smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway)) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.18, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }

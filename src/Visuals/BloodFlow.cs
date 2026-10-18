@@ -117,10 +117,16 @@ public partial class BloodFlow : Node3D {
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    private sealed class Rivulet(Vector2 uv, float volume, float wander) {
+    private sealed class Rivulet(Vector2 uv, float volume, float wander, Vector2 direction) {
         public Vector2 Uv = uv;
         public float Volume = volume;
         public float Wander { get; } = wander;
+        public Vector2 Direction = direction;
+        public Vector2 SpreadDirection { get; } = direction;
+        public float Age;
+        public bool Branched;
+        public float Width { get; } = 0.8f + 0.35f * Mathf.Sin(wander * 17f);
+        public float Speed { get; } = 0.85f + 0.3f * Mathf.Cos(wander * 23f);
     }
 
     private sealed class Drop(Vector3 position, Vector3 velocity) {
@@ -243,7 +249,7 @@ public partial class BloodFlow : Node3D {
             while (acc >= 1f && _rivulets.Count < MaxRivulets) {
                 acc -= 1f;
                 var edge = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0.6f, 0.95f);
-                _rivulets.Add(new Rivulet(uv + edge, _rng.RandfRange(0.6f, 1.2f), _rng.RandfRange(-1f, 1f)));
+                _rivulets.Add(new Rivulet(uv + edge, _rng.RandfRange(0.6f, 1.2f), _rng.RandfRange(-1f, 1f), edge.Normalized()));
             }
             _spawnAcc[i] = Mathf.Min(acc, 3f);
             Spurt(body, body.UvToWorld(uv), rate, delta);
@@ -439,7 +445,7 @@ public partial class BloodFlow : Node3D {
     /// <summary>
     /// Grows the puddle around a wound by <paramref name="ml"/> and returns its radius (uv). Swabbing it away (the
     /// fluid map comes back clean at the wound) starts it over. Painted a few times a second as overlapping blobs, so
-    /// its edge is ragged.
+    /// its edge is irregular. Anchored lobes grow with the pool instead of changing shape at each repaint.
     /// </summary>
     private float Puddle(PatientBody body, Vector2 uv, float ml, bool paint) {
         var key = (Vector2I)(uv * 100f).Round();
@@ -451,14 +457,21 @@ public partial class BloodFlow : Node3D {
         _pooled[key] = pooled;
         var radius = Mathf.Min(PuddleStart + Mathf.Sqrt(pooled) * PuddleGrowth, PuddleMax);
         if (paint) {
-            var blob = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0f, 0.35f);
-            map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv + blob, radius * _rng.RandfRange(0.7f, 1f), 0.95f,
-                WoundMap.Mode.Max);
+            map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv, radius * 0.8f, 0.95f, WoundMap.Mode.Max);
+            var phase = key.X * 2.39f + key.Y * 3.71f;
+            var lobes = 3 + Math.Abs((key.X * 7 + key.Y * 11) % 3);
+            for (var lobe = 0; lobe < lobes; lobe++) {
+                var angle = phase + lobe * Mathf.Tau / lobes;
+                var blob = Vector2.FromAngle(angle) * radius * (0.17f + 0.12f * Mathf.Sin(angle * 3f));
+                map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv + blob,
+                    radius * (0.76f + 0.1f * Mathf.Cos(angle * 2f)), 0.95f, WoundMap.Mode.Max);
+            }
         }
         return radius;
     }
 
-    /// <summary>Rivulets slide downhill over the skin: gravity along the skin's own slope, wandering a little.</summary>
+    /// <summary>Viscous trails accelerate on steep skin, spread on flatter skin and join nearby flows. Each head
+    /// has its own curvature and width; a large head can shed one smaller branch, conserving its volume.</summary>
     private void Flow(PatientBody body, float delta) {
         var down = body.Site.GlobalBasis.Inverse() * Vector3.Down;
         for (var i = 0; i < _rivulets.Count; i++) {
@@ -466,15 +479,42 @@ public partial class BloodFlow : Node3D {
             var uv = rivulet.Uv;
             var slope = Slope(body, uv);
             var along = new Vector2(down.X, down.Z) + slope * down.Y;
-            if (along.Length() < 0.05f) {
-                along = new Vector2(rivulet.Wander, 1f) * 0.05f;
+            var steep = Mathf.Clamp(along.Length(), 0f, 1f);
+            rivulet.Age += delta;
+            if (along.LengthSquared() < 0.0004f) {
+                // Surface tension spreads a head on nearly level skin, without a shared artificial downhill.
+                along = rivulet.SpreadDirection;
             }
-            var direction = along.Normalized().Rotated(Mathf.Sin((float)GameClock.Msec * 0.0015f + rivulet.Wander * 9f) * 0.2f);
-            var step = direction * RivuletSpeed * delta / ((body.SiteSize.X + body.SiteSize.Y) * 0.5f);
+            var bend = Mathf.Sin(rivulet.Age * rivulet.Speed * 1.7f + rivulet.Wander * 13f);
+            var direction = along.Normalized().Rotated(bend * Mathf.Lerp(0.65f, 0.16f, steep));
+            rivulet.Direction = rivulet.Direction.Lerp(direction, 1f - Mathf.Exp(-delta * 4f)).Normalized();
+            var speed = RivuletSpeed * rivulet.Speed * Mathf.Lerp(0.12f, 1.1f, Mathf.Sqrt(steep));
+            var step = rivulet.Direction * speed * delta / ((body.SiteSize.X + body.SiteSize.Y) * 0.5f);
             var next = uv + step;
-            body.WoundMap.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, uv, next, StainRadius, 0.55f, WoundMap.Mode.Max);
+            var width = StainRadius * rivulet.Width * Mathf.Sqrt(Mathf.Max(rivulet.Volume, 0.18f))
+                * Mathf.Lerp(1.3f, 0.7f, steep) * (1f + bend * 0.12f);
+            body.WoundMap.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, uv, next, width,
+                Mathf.Clamp(0.35f + rivulet.Volume * 0.2f, 0.35f, 0.85f), WoundMap.Mode.Max, soft: true);
             rivulet.Uv = next;
             rivulet.Volume -= delta * 0.25f;
+            for (var j = i + 1; j < _rivulets.Count; j++) {
+                var other = _rivulets[j];
+                if (next.DistanceSquaredTo(other.Uv) < width * width * 0.7f
+                    && rivulet.Direction.Dot(other.Direction) > 0.4f && rivulet.Volume + other.Volume <= 2.8f) {
+                    rivulet.Volume += other.Volume;
+                    _rivulets.RemoveAt(j--);
+                }
+            }
+            if (!rivulet.Branched && rivulet.Volume > 1.1f && steep > 0.25f && rivulet.Age > 0.6f
+                && _rivulets.Count < MaxRivulets && _rng.Randf() < delta * 0.3f) {
+                rivulet.Branched = true;
+                var branchDirection = rivulet.Direction.Rotated(rivulet.Wander < 0f ? -0.65f : 0.65f);
+                var share = rivulet.Volume * 0.3f;
+                rivulet.Volume -= share;
+                _rivulets.Add(new Rivulet(next + branchDirection * width, share, -rivulet.Wander, branchDirection) {
+                    Branched = true,
+                });
+            }
             if (next.X < 0f || next.Y < 0f || next.X > 1f || next.Y > 1f) {
                 // Ran off the site: it drips from here.
                 AddDrop(body.UvToWorld(next.Clamp(Vector2.Zero, Vector2.One)), Vector3.Zero);
@@ -490,7 +530,7 @@ public partial class BloodFlow : Node3D {
         const float E = 0.02f;
         var dx = body.SurfaceHeight(uv + new Vector2(E, 0)) - body.SurfaceHeight(uv - new Vector2(E, 0));
         var dy = body.SurfaceHeight(uv + new Vector2(0, E)) - body.SurfaceHeight(uv - new Vector2(0, E));
-        return new Vector2(dx / body.SiteSize.X, dy / body.SiteSize.Y) / (2f * E) * 8f;
+        return new Vector2(dx / body.SiteSize.X, dy / body.SiteSize.Y) / (2f * E);
     }
 
     /// <summary>Throws <paramref name="count"/> droplets up and out from <paramref name="at"/> (an impact, a saw),
