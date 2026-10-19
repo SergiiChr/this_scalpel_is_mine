@@ -79,10 +79,11 @@ public partial class BloodFlow : Node3D {
     private const float PoolMerge = 0.03f;
     private const float PoolMaxRadius = 0.18f;
     /// <summary>Pool area (m²) added per drop.</summary>
-    private const float PoolAreaPerDrop = 0.00008f;
+    internal const float PoolAreaPerDrop = 0.00008f;
     /// <summary>How high a pool stands.</summary>
     private const float PoolThickness = 0.003f;
     private const float FloorY = 0.004f;
+    internal const float TableTop = Room.TableHeight + 0.001f;
     /// <summary>Puddle radius around a bleeding wound (uv) with no blood yet.</summary>
     private const float PuddleStart = 0.015f;
     /// <summary>How much a puddle grows per sqrt(ml).</summary>
@@ -112,9 +113,10 @@ public partial class BloodFlow : Node3D {
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    private sealed class Drop(Vector3 position, Vector3 velocity) {
+    private sealed class Drop(Vector3 position, Vector3 velocity, float area) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
+        public readonly float Area = area;
     }
 
     private static readonly PaintOp[] WipeSpot =
@@ -128,7 +130,16 @@ public partial class BloodFlow : Node3D {
     private bool _surfaceNeedsPaint;
     private float _dripMl;
     private readonly List<Drop> _drops = [];
-    private readonly List<MeshInstance3D> _pools = [];
+    private sealed class GroundPool(MeshInstance3D mesh, bool onBed) {
+        public readonly MeshInstance3D Mesh = mesh;
+        public readonly bool OnBed = onBed;
+        public float Radius;
+        public float Runoff;
+    }
+
+    private readonly List<GroundPool> _pools = [];
+    private readonly SphereMesh _poolShape = new() { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 6, IsHemisphere = true };
+    private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
     /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
     /// order.</summary>
     private readonly Dictionary<Vector2I, float> _pooled = [];
@@ -508,27 +519,42 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    private void AddDrop(Vector3 at, Vector3 velocity) {
+    private void AddDrop(Vector3 at, Vector3 velocity, float area = PoolAreaPerDrop) {
         if (_drops.Count < MaxDrops) {
-            _drops.Add(new Drop(at, velocity));
+            _drops.Add(new Drop(at, velocity, area));
         }
     }
 
-    /// <summary>Droplets fall under gravity and land on the table top or the floor, where they pool.</summary>
+    private static bool OnBed(Vector3 at) => at.X > Room.TableFoot && at.X < Room.TableHead
+        && Mathf.Abs(at.Z) < Room.TableHalfWidth;
+
+    /// <summary>Droplets intersect the bed plane only over its footprint; below it they keep falling to the floor.</summary>
     private void Fall(float delta) {
-        const float TableTop = Room.TableHeight + 0.07f;
         for (var i = 0; i < _drops.Count; i++) {
             var drop = _drops[i];
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
-            var onTable = position.X > Room.TableFoot && position.X < Room.TableHead && Mathf.Abs(position.Z) < 0.31f;
-            var ground = onTable && drop.Position.Y >= TableTop ? TableTop : FloorY;
-            if (position.Y <= ground) {
-                Pool(new Vector3(position.X, ground, position.Z));
+            var bedHit = position;
+            var hitsBed = drop.Position.Y >= TableTop && position.Y <= TableTop;
+            if (hitsBed) {
+                bedHit = drop.Position.Lerp(position, (drop.Position.Y - TableTop) / (drop.Position.Y - position.Y));
+                hitsBed = OnBed(bedHit);
+            }
+            if (hitsBed || position.Y <= FloorY) {
+                var hit = hitsBed ? bedHit : drop.Position.Lerp(position,
+                    Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
+                hit.Y = hitsBed ? TableTop : FloorY;
                 _drops.RemoveAt(i--);
+                Pool(hit, drop.Area);
             } else {
                 drop.Position = position;
             }
+        }
+        // Retain queued runoff when the particle limit is full instead of losing it or growing the bed pool.
+        foreach (var pool in _pools) {
+            if (pool.Runoff <= 0f || _drops.Count >= MaxDrops) { continue; }
+            AddDrop(DrainAt(pool.Mesh.Position), Vector3.Down * 0.1f, pool.Runoff);
+            pool.Runoff = 0f;
         }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
@@ -537,27 +563,55 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    /// <summary>
-    /// Adds a drop's worth of blood to the nearest pool, or starts a new one. Pools grow with the square root of
-    /// volume. Each is a very flat dome, so its rounded rim catches the light like standing liquid.
-    /// </summary>
-    private void Pool(Vector3 at) {
+    /// <summary>The closest bed edge, just outside its footprint so runoff cannot land on the bed again.</summary>
+    private static Vector3 DrainAt(Vector3 at) {
+        var end = at.X - Room.TableFoot < Room.TableHead - at.X ? Room.TableFoot : Room.TableHead;
+        var side = at.Z < 0f ? -Room.TableHalfWidth : Room.TableHalfWidth;
+        if (Mathf.Abs(end - at.X) < Mathf.Abs(side - at.Z)) {
+            at.X = end + Mathf.Sign(end - at.X) * DropRadius * 2f;
+        } else {
+            at.Z = side + Mathf.Sign(side - at.Z) * DropRadius * 2f;
+        }
+        return at;
+    }
+
+    /// <summary>Pool footprint area grows with deposited blood. Bed pools narrow at the supporting edges; the
+    /// unsupported share becomes runoff with its own area, which falls and grows a separate floor pool.</summary>
+    internal void Pool(Vector3 at, float area = PoolAreaPerDrop) {
+        GroundPool? target = null;
         foreach (var pool in _pools) {
-            if (pool.Position.DistanceTo(at) < PoolMerge + pool.Scale.X) {
-                var radius = Mathf.Min(Mathf.Sqrt(pool.Scale.X * pool.Scale.X + PoolAreaPerDrop), PoolMaxRadius);
-                pool.Scale = new Vector3(radius, PoolThickness, radius);
-                return;
+            var mesh = pool.Mesh;
+            if (Mathf.Abs(mesh.Position.Y - at.Y) < 0.001f
+                && mesh.Position.DistanceTo(at) < PoolMerge + Mathf.Max(mesh.Scale.X, mesh.Scale.Z)) {
+                target = pool;
+                break;
             }
         }
-        var mesh = new MeshInstance3D {
-            Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 6, IsHemisphere = true },
-            MaterialOverride = Materials.BloodPool(),
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            TopLevel = true,
-        };
-        AddChild(mesh);
-        mesh.Position = at;
-        mesh.Scale = new Vector3(0.012f, PoolThickness, 0.012f);
-        _pools.Add(mesh);
+        if (target is null) {
+            var mesh = new MeshInstance3D {
+                Mesh = _poolShape,
+                MaterialOverride = _poolMaterial,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                TopLevel = true,
+            };
+            AddChild(mesh);
+            mesh.Position = at;
+            mesh.Scale = new Vector3(0f, PoolThickness, 0f);
+            target = new GroundPool(mesh, Mathf.Abs(at.Y - TableTop) < 0.001f);
+            _pools.Add(target);
+        }
+        var previousArea = target.Mesh.Scale.X * target.Mesh.Scale.Z;
+        target.Radius = Mathf.Min(Mathf.Sqrt(target.Radius * target.Radius + area), PoolMaxRadius);
+        var x = target.Radius;
+        var z = target.Radius;
+        if (target.OnBed) {
+            var center = target.Mesh.Position;
+            x = Mathf.Min(x, Mathf.Max(0f, Mathf.Min(center.X - Room.TableFoot, Room.TableHead - center.X)));
+            z = Mathf.Min(z, Mathf.Max(0f, Room.TableHalfWidth - Mathf.Abs(center.Z)));
+            if (x < target.Radius || z < target.Radius) {
+                target.Runoff += Mathf.Max(0f, area - Mathf.Max(0f, x * z - previousArea));
+            }
+        }
+        target.Mesh.Scale = new Vector3(x, PoolThickness, z);
     }
 }

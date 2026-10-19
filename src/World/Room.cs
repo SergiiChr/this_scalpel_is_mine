@@ -23,6 +23,8 @@ public sealed record RoomLayout(
 /// </summary>
 public partial class Room : Node3D {
     public const float TableHeight = 0.85f;
+    /// <summary>Usable mattress half-width, excluding the wider frame and side rails.</summary>
+    public const float TableHalfWidth = 0.28f;
     /// <summary>Height of the instrument tray's surface above its base.</summary>
     public const float TraySurface = 0.915f;
     /// <summary>Table top end along x where the feet lie.</summary>
