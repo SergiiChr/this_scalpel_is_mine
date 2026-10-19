@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 namespace Scalpel.Visuals;
 
 /// <summary>A bleeding wound: where (site uv), how fast (ml/s) and how deep under the skin (meters). Depth 0 bleeds onto
@@ -148,13 +150,15 @@ public partial class BloodFlow : Node3D {
         public float Radius;
         public float Area;
         public float Runoff;
+        public float Incoming;
+        public float Clock = seed * 0.013f % (1f / 15f);
         public bool Dirty;
+        public Task<LiquidSurface>? Building;
     }
 
     private readonly List<GroundPool> _pools = [];
     private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
     private readonly RandomNumberGenerator _dripRng = new() { Seed = 83 };
-    private float _groundClock;
     private float _cutClock;
     private MultiMeshInstance3D _neckMesh = null!;
     /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
@@ -644,25 +648,22 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    private static bool OnBed(Vector3 at) => at.X > Room.TableFoot && at.X < Room.TableHead
-        && Mathf.Abs(at.Z) < Room.TableHalfWidth;
+    internal bool GroundMeshesReady => _pools.All(pool => !pool.Dirty && pool.Building is null);
 
-    /// <summary>Droplets intersect the bed plane only over its footprint; below it they keep falling to the floor.</summary>
+    private BedLiquidSurface Bed => _body!.GetParent<Patient>().GetParent<Surgery>().Room.BedSurface;
+
+    /// <summary>Droplets intersect the actual upper mattress triangles; below it they keep falling to the floor.</summary>
     private void Fall(float delta) {
         for (var i = 0; i < _drops.Count; i++) {
             var drop = _drops[i];
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
-            var bedHit = position;
-            var hitsBed = drop.Position.Y >= TableTop && position.Y <= TableTop;
-            if (hitsBed) {
-                bedHit = drop.Position.Lerp(position, (drop.Position.Y - TableTop) / (drop.Position.Y - position.Y));
-                hitsBed = OnBed(bedHit);
-            }
-            if (hitsBed || position.Y <= FloorY) {
-                var hit = hitsBed ? bedHit : drop.Position.Lerp(position,
+            var bedHit = drop.Position.Y >= Room.TableHeight - 0.03f ? Bed.Landing(drop.Position, position) : null;
+            if (bedHit is not null || position.Y <= FloorY) {
+                var hit = bedHit ?? drop.Position.Lerp(position,
                     Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
-                hit.Y = hitsBed ? TableTop : FloorY;
+                // Pools keep a stable reference plane; only their visible vertices follow the mattress.
+                hit.Y = bedHit is not null ? TableTop : FloorY;
                 _drops.RemoveAt(i--);
                 Pool(hit, drop.Area);
             } else {
@@ -670,16 +671,45 @@ public partial class BloodFlow : Node3D {
             }
         }
         ReleaseRunoff(delta);
-        _groundClock += delta;
-        if (_groundClock >= 1f / 15f) {
-            _groundClock = 0f;
-            foreach (var pool in _pools) {
-                if (!pool.Dirty) { continue; }
+        foreach (var pool in _pools) {
+            if (pool.Building is not { IsCompleted: true } built) { continue; }
+            pool.Mesh.Mesh = built.GetAwaiter().GetResult().Upload(pool.Mesh.Mesh as ArrayMesh);
+            pool.Building = null;
+        }
+        foreach (var pool in _pools) {
+            // Spread the 15 Hz work across frames when several pools are growing together.
+            pool.Clock += delta;
+            if (pool.Clock < 1f / 15f) { continue; }
+            pool.Clock %= 1f / 15f;
+            if (pool.Incoming > 0f) {
+                var previousArea = pool.Area;
+                pool.Radius = Mathf.Min(Mathf.Sqrt(pool.Radius * pool.Radius + pool.Incoming), PoolMaxRadius);
+                pool.Outline = LiquidSurface.Outline(pool.Radius, pool.Phase);
+                pool.Area = pool.OnBed ? Bed.Area(pool.Outline, pool.Mesh.Position) : LiquidSurface.Area(pool.Outline);
+                if (pool.OnBed) {
+                    pool.Runoff += Mathf.Max(0f, pool.Incoming - Mathf.Max(0f, pool.Area - previousArea));
+                    OutletsAtEdges(pool);
+                }
+                pool.Incoming = 0f;
+            }
+            if (!pool.Dirty || pool.Building is not null) { continue; }
+            if (pool.OnBed) {
+                // Only pure geometry runs on the worker. Simulation accounting stays deterministic here;
+                // scene nodes and mesh uploads stay on the main thread.
+                var bed = Bed;
+                var outline = pool.Outline;
+                var center = pool.Mesh.Position;
+                pool.Building = Task.Run(() => {
+                    var surface = new LiquidSurface();
+                    bed.Cover(outline, center, surface);
+                    return surface;
+                });
+            } else {
                 var surface = new LiquidSurface();
                 surface.Patch(pool.Outline, PoolThickness);
                 pool.Mesh.Mesh = surface.Upload(pool.Mesh.Mesh as ArrayMesh);
-                pool.Dirty = false;
             }
+            pool.Dirty = false;
         }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
@@ -721,28 +751,12 @@ public partial class BloodFlow : Node3D {
         necks.VisibleInstanceCount = count;
     }
 
-    private static void OutletsAtEdges(GroundPool pool) {
-        var center = pool.Mesh.Position;
-        for (var edge = 0; edge < 4; edge++) {
-            var end = edge < 2;
-            var boundary = edge switch { 0 => Room.TableFoot, 1 => Room.TableHead, 2 => -Room.TableHalfWidth, _ => Room.TableHalfWidth };
-            var first = float.PositiveInfinity;
-            var last = float.NegativeInfinity;
-            foreach (var p in pool.Outline) {
-                var world = p + new Vector2(center.X, center.Z);
-                if (Mathf.Abs((end ? world.X : world.Y) - boundary) > 0.00001f) { continue; }
-                first = Mathf.Min(first, end ? world.Y : world.X);
-                last = Mathf.Max(last, end ? world.Y : world.X);
-            }
-            if (last <= first) { continue; }
-            var amount = Math.Clamp(Mathf.CeilToInt((last - first) / 0.045f), 1, 3);
-            for (var stream = 0; stream < amount; stream++) {
-                var outlet = pool.Outlets[edge * 3 + stream];
-                var along = Mathf.Lerp(first, last, (stream + 0.32f + 0.27f * Mathf.Sin(pool.Phase + stream * 2.3f)) / amount);
-                var outside = boundary + (edge is 0 or 2 ? -1f : 1f) * 0.0002f;
-                outlet.Position = end ? new Vector3(outside, TableTop, along) : new Vector3(along, TableTop, outside);
-                outlet.Active = true;
-            }
+    private void OutletsAtEdges(GroundPool pool) {
+        var positions = Bed.Outlets(pool.Outline, pool.Mesh.Position);
+        for (var i = 0; i < pool.Outlets.Length; i++) {
+            var outlet = pool.Outlets[i];
+            outlet.Active = i < positions.Length;
+            if (outlet.Active) { outlet.Position = positions[i]; }
         }
     }
 
@@ -753,7 +767,7 @@ public partial class BloodFlow : Node3D {
         foreach (var pool in _pools) {
             var mesh = pool.Mesh;
             if (Mathf.Abs(mesh.Position.Y - at.Y) < 0.001f
-                && mesh.Position.DistanceTo(at) < PoolMerge + pool.Radius) {
+                && mesh.Position.DistanceTo(at) < PoolMerge + Mathf.Min(Mathf.Sqrt(pool.Radius * pool.Radius + pool.Incoming), PoolMaxRadius)) {
                 target = pool;
                 break;
             }
@@ -770,19 +784,7 @@ public partial class BloodFlow : Node3D {
             target = new GroundPool(mesh, Mathf.Abs(at.Y - TableTop) < 0.001f, _pools.Count + 1);
             _pools.Add(target);
         }
-        var previousArea = target.Area;
-        target.Radius = Mathf.Min(Mathf.Sqrt(target.Radius * target.Radius + area), PoolMaxRadius);
-        target.Outline = LiquidSurface.Outline(target.Radius, target.Phase);
-        if (target.OnBed) {
-            var center = target.Mesh.Position;
-            target.Outline = LiquidSurface.Clip(target.Outline, new Rect2(Room.TableFoot - center.X,
-                -Room.TableHalfWidth - center.Z, Room.TableHead - Room.TableFoot, Room.TableHalfWidth * 2f));
-        }
-        target.Area = LiquidSurface.Area(target.Outline);
-        if (target.OnBed) {
-            target.Runoff += Mathf.Max(0f, area - Mathf.Max(0f, target.Area - previousArea));
-            OutletsAtEdges(target);
-        }
+        target.Incoming += area;
         target.Dirty = true;
     }
 }

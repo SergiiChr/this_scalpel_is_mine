@@ -177,6 +177,8 @@ internal sealed class LiquidSurface {
         }
     }
 
+    internal void Facet(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc) => Triangle(a, b, c, na, nb, nc);
+
     private void Triangle(Vector3 a, Vector3 b, Vector3 c) => Triangle(a, b, c, Vector3.Up, Vector3.Up, Vector3.Up);
 
     private void Triangle(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc) {

@@ -27,6 +27,16 @@ public class BedBloodTest {
             new(-0.4f, height, Room.TableHalfWidth - 0.025f),
             new(Room.TableHead - 0.02f, height, -Room.TableHalfWidth + 0.02f),
         ];
+        var mattress = driver.Surgery.Room.BedSurface;
+        foreach (var at in new[] { new Vector2(0.92f, 0f), new Vector2(0.96f, -0.22f) }) {
+            var landing = mattress.Landing(new Vector3(at.X, 1.1f, at.Y), new Vector3(at.X, 0.7f, at.Y));
+            AssertBool(landing.HasValue).OverrideFailureMessage("a falling drop contacts both the flat centre and rounded mattress slope").IsTrue();
+            AssertFloat(landing!.Value.Y).IsEqualApprox(mattress.HeightAt(at)!.Value, 0.00001f);
+        }
+        foreach (var at in new[] { new Vector2(0.405f, 0f), new Vector2(0.999f, -0.279f) }) {
+            AssertBool(mattress.Landing(new Vector3(at.X, 1.1f, at.Y), new Vector3(at.X, 0.7f, at.Y)).HasValue)
+                .OverrideFailureMessage("drops miss gaps between pads and the unsupported outer corner").IsFalse();
+        }
         var view = new Vector3(0.7f, 0.6f, -Room.TableHalfWidth);
         await session.CaptureOblique("untouched", "the empty bed end and floor before blood lands", view, Vector3.Forward, 1.8f);
         if (FrameBudget.Mode == BudgetMode.Render) {
@@ -41,6 +51,9 @@ public class BedBloodTest {
         var viewport = driver.GetViewport().GetViewportRid();
         driver.Note("blood supplying the bed ends, sides and corner");
         driver.Budget.Clear();
+        blood.Pool(supplies[0]);
+        blood.Pool(supplies[0] + Vector3.Back * 0.035f);
+        AssertInt(Deposits(blood).Count()).OverrideFailureMessage("nearby landed drops merge before the next mesh update").IsEqual(1);
         var shapes = new HashSet<Vector2>();
         var headStreams = 0;
         var shownNecks = false;
@@ -53,8 +66,8 @@ public class BedBloodTest {
                 shapes.Add(new Vector2(Mathf.Round(shape.X * 100000f), Mathf.Round(shape.Y * 100000f)));
             }
             var necks = blood.AttachedDrips.ToArray();
-            headStreams = Math.Max(headStreams, necks.Count(at => at.X > Room.TableHead));
-            var atSide = necks.Count(at => at.Z < -Room.TableHalfWidth && Mathf.Abs(at.X - supplies[2].X) < 0.1f);
+            headStreams = Math.Max(headStreams, necks.Count(at => at.X > Room.TableHead - 0.045f));
+            var atSide = necks.Count(at => at.Z < -Room.TableHalfWidth + 0.012f && Mathf.Abs(at.X - supplies[2].X) < 0.1f);
             if (!shownNecks && atSide >= 2) {
                 shownNecks = true;
                 await session.CaptureOblique("ligaments", "several wet necks stretch over the edge and break into drops of different lengths",
@@ -63,12 +76,27 @@ public class BedBloodTest {
         }
         AssertInt(shapes.Count).OverrideFailureMessage("falling drops vary their width and stretched length").IsGreater(3);
         AssertInt(headStreams).OverrideFailureMessage("a wetted bed end feeds more than one attached stream").IsGreaterEqual(2);
-        await session.CaptureAt("edge_contact", "the free pool keeps its broad shape and follows the straight bed edge with a soft lip", supplies[1], 0.35f);
+        var meshWait = System.Diagnostics.Stopwatch.StartNew();
+        while (!blood.GroundMeshesReady && meshWait.Elapsed.TotalSeconds < 5) { await Frames.NextProcess(); }
+        AssertBool(blood.GroundMeshesReady).OverrideFailureMessage("bed liquid geometry catches up with the final deposited volume").IsTrue();
+        await session.CaptureAt("edge_contact", "the pool follows the rounded mattress slopes and corner without floating above the pad", supplies[1], 0.35f);
+        await session.CaptureOblique("rounded_corner", "blood conforms to the rounded mattress corner with no square floating lip",
+            supplies[4], new Vector3(1f, 0f, -1f).Normalized(), 0.3f);
         await session.CaptureOblique("overflow", "blood stays supported by the bed end, drips fall beyond it and collect below", view, Vector3.Forward, 1.8f);
         await driver.Unbudgeted(() => {
             var beds = Deposits(blood).Where(pool => pool.Position.Y > Room.TableHeight).ToArray();
             AssertInt(beds.Length).OverrideFailureMessage("all four edges and a corner retain a supported pool").IsEqual(supplies.Length);
             foreach (var pool in beds) {
+                var heightRange = new List<float>();
+                using var arrays = pool.Mesh.SurfaceGetArrays(0);
+                foreach (var vertex in arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array()) {
+                    var at = pool.Position + vertex;
+                    var support = driver.Surgery.Room.BedSurface.HeightAt(new Vector2(at.X, at.Z));
+                    AssertBool(support.HasValue).OverrideFailureMessage($"every bed liquid vertex has mattress beneath it, including rounded corners: {at}").IsTrue();
+                    AssertFloat(at.Y - support!.Value).OverrideFailureMessage("liquid adheres within a millimetre of the actual mattress mesh").IsBetween(0.0005f, 0.0009f);
+                    heightRange.Add(at.Y);
+                }
+                AssertFloat(heightRange.Max() - heightRange.Min()).OverrideFailureMessage("edge pools bend down the mattress instead of using a flat plane").IsGreater(0.005f);
                 AssertFloat(pool.Position.X + pool.Mesh.GetAabb().Position.X).OverrideFailureMessage("no pool hangs beyond the foot of the bed").IsGreaterEqual(Room.TableFoot - 0.00001f);
                 AssertFloat(pool.Position.X + pool.Mesh.GetAabb().End.X).OverrideFailureMessage("no pool hangs beyond the head of the bed").IsLessEqual(Room.TableHead + 0.00001f);
                 AssertFloat(Mathf.Max(Mathf.Abs(pool.Position.Z + pool.Mesh.GetAabb().Position.Z), Mathf.Abs(pool.Position.Z + pool.Mesh.GetAabb().End.Z))).OverrideFailureMessage("no pool hangs beyond either side of the bed").IsLessEqual(Room.TableHalfWidth + 0.00001f);
@@ -83,7 +111,7 @@ public class BedBloodTest {
             floorArea = floors.Sum(pool => FootprintArea(pool));
             AssertFloat(Deposits(blood).Sum(pool => FootprintArea(pool)))
                 .OverrideFailureMessage("all incoming blood remains on the bed or reaches the floor after staggered release")
-                .IsEqualApprox(supplies.Length * 60 * BloodFlow.PoolAreaPerDrop, 0.00001f);
+                .IsEqualApprox((supplies.Length * 60 + 2) * BloodFlow.PoolAreaPerDrop, 0.00001f);
             return Task.CompletedTask;
         });
         for (var frame = 0; frame < 60; frame++) {
@@ -119,7 +147,8 @@ public class BedBloodTest {
     }
 
     private static float FootprintArea(MeshInstance3D pool) {
-        var faces = pool.Mesh.GetFaces();
+        using var arrays = pool.Mesh.SurfaceGetArrays(0);
+        var faces = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         var area = 0f;
         for (var i = 0; i + 2 < faces.Length; i += 3) {
             var a = faces[i];
