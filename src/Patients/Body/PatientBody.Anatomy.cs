@@ -567,9 +567,12 @@ public partial class PatientBody {
             return;
         }
         _poolHeight = height;
-        CavityBlood.Mesh = CavityGrid(_ => height, (i, j) => {
-            var uv = CavityUv(i, j);
-            return OnBody(uv) && CavityFloor(uv) < height && height < SurfaceHeight(uv) - SkinThickness;
-        });
+        var surface = new LiquidSurface();
+        float Inside(Vector2 uv) => OnBody(uv)
+            ? Mathf.Min(height - CavityFloor(uv), SurfaceHeight(uv) - SkinThickness - height) - 0.00015f : -0.001f;
+        surface.Field(new Rect2(Vector2.Zero, Vector2.One), 48, 48, Inside,
+            (uv, clearance) => SitePoint(uv, Mathf.Min(height + 0.0001f * Mathf.Exp(-Mathf.Max(clearance, 0f) / 0.001f),
+                SurfaceHeight(uv) - SkinThickness - 0.00005f)));
+        CavityBlood.Mesh = surface.Upload(CavityBlood.Mesh as ArrayMesh);
     }
 }

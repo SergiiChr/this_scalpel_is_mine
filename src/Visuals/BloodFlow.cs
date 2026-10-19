@@ -100,8 +100,6 @@ public partial class BloodFlow : Node3D {
     private const float PunctureRadius = 0.003f;
     /// <summary>Radius (m) of the pool held in a cut when it starts, and full. The skin hides it beyond the opening.
     /// </summary>
-    private const float CutPoolStart = 0.003f;
-    private const float CutPoolReach = 0.008f;
     /// <summary>How far (m) a pool in a cut keeps off its floor, and how high it stands.</summary>
     private const float CutPoolLift = 0.0003f;
     /// <summary>How deep under the skin a full pool in a cut lies: this share of its floor's depth, at least
@@ -113,10 +111,12 @@ public partial class BloodFlow : Node3D {
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    private sealed class Drop(Vector3 position, Vector3 velocity, float area) {
+    internal sealed class Drop(Vector3 position, Vector3 velocity, float area, Vector3 shape, float twist) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
         public readonly float Area = area;
+        public readonly Vector3 Shape = shape;
+        public readonly float Twist = twist;
     }
 
     private static readonly PaintOp[] WipeSpot =
@@ -130,16 +130,33 @@ public partial class BloodFlow : Node3D {
     private bool _surfaceNeedsPaint;
     private float _dripMl;
     private readonly List<Drop> _drops = [];
-    private sealed class GroundPool(MeshInstance3D mesh, bool onBed) {
+    internal IReadOnlyList<Drop> Drops => _drops;
+    internal IEnumerable<Vector3> AttachedDrips => _pools.SelectMany(pool => pool.Outlets)
+        .Where(outlet => outlet.Active && outlet.Pulse.Pending > 0f).Select(outlet => outlet.Position);
+    private sealed class Outlet(int seed) {
+        public readonly LiquidPulse Pulse = new(seed);
+        public Vector3 Position;
+        public bool Active;
+    }
+
+    private sealed class GroundPool(MeshInstance3D mesh, bool onBed, int seed) {
         public readonly MeshInstance3D Mesh = mesh;
         public readonly bool OnBed = onBed;
+        public readonly float Phase = seed * 0.7548777f;
+        public readonly Outlet[] Outlets = onBed ? Enumerable.Range(0, 12).Select(i => new Outlet(seed * 31 + i)).ToArray() : [];
+        public Vector2[] Outline = [];
         public float Radius;
+        public float Area;
         public float Runoff;
+        public bool Dirty;
     }
 
     private readonly List<GroundPool> _pools = [];
-    private readonly SphereMesh _poolShape = new() { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 6, IsHemisphere = true };
     private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
+    private readonly RandomNumberGenerator _dripRng = new() { Seed = 83 };
+    private float _groundClock;
+    private float _cutClock;
+    private MultiMeshInstance3D _neckMesh = null!;
     /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
     /// order.</summary>
     private readonly Dictionary<Vector2I, float> _pooled = [];
@@ -150,8 +167,16 @@ public partial class BloodFlow : Node3D {
     /// <summary>This frame paints puddles and bruises.</summary>
     private bool _paintPuddles;
     private MultiMeshInstance3D _dropMesh = null!;
-    private MultiMeshInstance3D _cutPoolMesh = null!;
-    private readonly List<Vector3> _cutPools = [];
+    private MeshInstance3D _cutPoolMesh = null!;
+    private sealed class RinsePool(Vector2 uv, MeshInstance3D mesh) {
+        public Vector2 Uv = uv;
+        public readonly MeshInstance3D Mesh = mesh;
+        public float Ml;
+        public float Blood;
+        public float DrawnFill = -1f;
+        public (int Topology, int Step) DrawnTissue = (-1, -1);
+    }
+    private readonly Dictionary<int, RinsePool> _rinses = [];
     /// <summary>The spots painted last (uv, radius in uv, depth of their center), wiped before the sources are painted
     /// again.</summary>
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
@@ -186,14 +211,10 @@ public partial class BloodFlow : Node3D {
         _body = patientBody;
         _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, patientBody.OnBody);
         _dropMesh = new MultiMeshInstance3D {
+            Name = "BloodDrops",
             Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = new SphereMesh {
-                    Radius = DropRadius,
-                    Height = DropRadius * 2.6f,
-                    RadialSegments = 6,
-                    Rings = 4,
-                },
+                Mesh = LiquidSurface.Drop(),
                 InstanceCount = MaxDrops,
                 VisibleInstanceCount = 0,
             },
@@ -202,18 +223,26 @@ public partial class BloodFlow : Node3D {
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_dropMesh);
-        _cutPoolMesh = new MultiMeshInstance3D {
+        _neckMesh = new MultiMeshInstance3D {
+            Name = "BloodNecks",
             Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 20, Rings = 4, IsHemisphere = true },
-                InstanceCount = 16,
-                VisibleInstanceCount = 0,
+                Mesh = _dropMesh.Multimesh.Mesh,
+                InstanceCount = MaxDrops,
+                VisibleInstanceCount = 0
             },
-            MaterialOverride = Materials.BloodPool(),
+            MaterialOverride = _poolMaterial,
             TopLevel = true,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
-        AddChild(_cutPoolMesh);
+        AddChild(_neckMesh);
+        _cutPoolMesh = new MeshInstance3D {
+            Name = "CutPools",
+            Mesh = new ArrayMesh(),
+            MaterialOverride = _poolMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+        };
+        patientBody.Site.AddChild(_cutPoolMesh);
     }
 
     public override void _Process(double delta) {
@@ -222,7 +251,16 @@ public partial class BloodFlow : Node3D {
         }
         Spawn(_body, (float)delta);
         Inside(_body, (float)delta);
-        PoolInCuts(_body);
+        foreach (var rinse in _rinses.Values) {
+            var draining = Mathf.Exp(-(float)delta * 0.9f);
+            rinse.Ml *= draining;
+            rinse.Blood *= draining;
+        }
+        _cutClock += (float)delta;
+        if (_cutClock >= 0.1f) {
+            _cutClock = 0f;
+            PoolInCuts(_body);
+        }
         if (_paintPuddles) {
             Spots(_body);
         }
@@ -282,33 +320,111 @@ public partial class BloodFlow : Node3D {
     /// in the opening. It doesn't move with the tissue, like the cavity's pool.
     /// </summary>
     private void PoolInCuts(PatientBody body) {
-        var multimesh = _cutPoolMesh.Multimesh;
-        _cutPools.Clear();
-        if (Pools.Count > multimesh.InstanceCount) {
-            multimesh.InstanceCount = Pools.Count * 2;
+        if (Pools.Count > 0) {
+            var surface = new LiquidSurface();
+            foreach (var (uv, floor, fill) in Pools) { AddWoundSurface(surface, body, uv, floor, fill); }
+            _cutPoolMesh.Mesh = surface.Upload(_cutPoolMesh.Mesh as ArrayMesh);
+        } else if (_cutPoolMesh.Mesh.GetSurfaceCount() > 0) {
+            ((ArrayMesh)_cutPoolMesh.Mesh).ClearSurfaces();
         }
-        foreach (var (uv, floor, fill) in Pools) {
-            // Just above the floor when it starts, so it never sinks into the layer it rests on, and full still a little
-            // under the skin, which curves away from a flat pool around the cut.
-            var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
-            // No wider than the cut gapes: the skin beside it curves away, sharply on a limb, and would show it.
-            var radius = Mathf.Min(Mathf.Lerp(CutPoolStart, CutPoolReach, Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f))),
-                Mathf.Max(body.Tissue.GapAt(uv, 0.02f) * 0.5f, CutPoolLift * 2f));
-            var at = body.UvToWorld(uv, depth);
-            // Level with the skin over it, which a limb tilts away from the site's own plane.
-            var e = body.MetersToUv(0.003f);
-            var across = body.UvToWorld(uv + new Vector2(e, 0f)) - body.UvToWorld(uv - new Vector2(e, 0f));
-            var along = body.UvToWorld(uv + new Vector2(0f, e)) - body.UvToWorld(uv - new Vector2(0f, e));
-            var up = along.Cross(across).Normalized();
-            if (up.Dot(body.Site.GlobalBasis.Y) < 0f) {
-                up = -up;
+        foreach (var (id, rinse) in _rinses) {
+            if (rinse.Ml < 0.02f) {
+                // Keep one reusable surface per wound. Releasing a just-drawn mesh can stall the render thread.
+                rinse.Mesh.Visible = false;
+                rinse.Ml = rinse.Blood = 0f;
+                rinse.DrawnFill = -1f;
+                continue;
             }
-            var x = across.Slide(up).Normalized();
-            var basis = new Basis(x, up, x.Cross(up)).Scaled(new Vector3(radius, CutPoolLift, radius));
-            multimesh.SetInstanceTransform(_cutPools.Count, new Transform3D(basis, at));
-            _cutPools.Add(at);
+            var floor = body.OpeningDepth(rinse.Uv, 0.015f);
+            if (body.Tissue.IsOpen(rinse.Uv)) { floor = body.SurfaceHeight(rinse.Uv) - body.CavityFloor(rinse.Uv); }
+            if (floor <= 0f) { rinse.Mesh.Visible = false; continue; }
+            var wound = body.GetParent<Patient>().Wounds.FirstOrDefault(w => w.Id == id);
+            var gap = Mathf.Max(body.Tissue.GapAt(rinse.Uv, 0.04f), 0.001f);
+            var length = (wound?.LengthUv ?? 0.02f) * Mathf.Max(body.SiteSize.X, body.SiteSize.Y);
+            var capacity = Mathf.Max(0.25f, length * gap * floor * 500000f);
+            var fill = Mathf.Clamp(rinse.Ml / capacity, 0f, 1f);
+            var tissue = (body.Tissue.TopologyVersion, body.Tissue.StepsDone);
+            // Skip sub-pixel settling in a stationary opening; moving tissue still rebuilds its contour.
+            var levelChange = Mathf.Abs(fill - rinse.DrawnFill) * floor * (1f - CutPoolBrim);
+            var edgeChange = Mathf.Abs(Mathf.Sqrt(fill) - Mathf.Sqrt(Mathf.Max(rinse.DrawnFill, 0f))) * gap * 0.2f;
+            if (rinse.DrawnFill < 0f || tissue != rinse.DrawnTissue || levelChange > 0.0001f || edgeChange > 0.0001f) {
+                var water = new LiquidSurface();
+                AddWoundSurface(water, body, rinse.Uv, floor, fill);
+                rinse.Mesh.Mesh = water.Upload(rinse.Mesh.Mesh as ArrayMesh);
+                rinse.DrawnFill = fill;
+                rinse.DrawnTissue = tissue;
+            }
+            rinse.Mesh.Visible = true;
+            var fraction = Mathf.Clamp(rinse.Blood / Mathf.Max(rinse.Ml, 0.01f), 0f, 1f);
+            var material = (StandardMaterial3D)rinse.Mesh.MaterialOverride;
+            material.AlbedoColor = new Color(0.08f, 0.15f, 0.17f, 0.2f).Lerp(new Color(0.22f, 0.01f, 0.025f, 0.9f), fraction);
         }
-        multimesh.VisibleInstanceCount = _cutPools.Count;
+    }
+
+    /// <summary>The visible part of irrigation gathers briefly in the opening while the treatment flushes it.
+    /// Called with the stream event on every peer; it doesn't change blood loss or treatment volume.</summary>
+    internal void Irrigate(Vector3 at, float ml, float bloodShare) {
+        if (_body is null || ml <= 0f) { return; }
+        if (_body.Probe(at).Zone is not (SiteZone.Site or SiteZone.Cavity)) { return; }
+        var uv = _body.WorldToUv(at);
+        if (uv.X < 0f || uv.X > 1f || uv.Y < 0f || uv.Y > 1f || !_body.OnBody(uv)
+            || !_body.Tissue.IsOpen(uv, TissueDepth.Skin)) { return; }
+        var wound = _body.GetParent<Patient>().Wounds.Where(w => !w.IsInternal).MinBy(w => w.DistanceTo(uv));
+        if (wound is null || wound.DistanceTo(uv) > 0.05f) { return; }
+        if (!_rinses.TryGetValue(wound.Id, out var rinse)) {
+            var mesh = new MeshInstance3D {
+                Name = "IrrigationPool",
+                Mesh = new ArrayMesh(),
+                MaterialOverride = Materials.Stream(),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            ((StandardMaterial3D)mesh.MaterialOverride).Roughness = 0.22f;
+            ((StandardMaterial3D)mesh.MaterialOverride).MetallicSpecular = 0.2f;
+            _body.Site.AddChild(mesh);
+            rinse = new RinsePool(wound.BleedPoint, mesh);
+            _rinses.Add(wound.Id, rinse);
+        }
+        if (rinse.Ml <= 0f) {
+            rinse.Uv = wound.BleedPoint;
+            rinse.DrawnFill = -1f;
+            rinse.DrawnTissue = (-1, -1);
+        }
+        rinse.Ml = Mathf.Min(50f, rinse.Ml + ml);
+        rinse.Blood += ml * Mathf.Clamp(bloodShare, 0f, 1f);
+    }
+
+    private static void AddWoundSurface(LiquidSurface surface, PatientBody body, Vector2 uv, float floor, float fill) {
+        var wound = body.GetParent<Patient>().Wounds.Where(w => !w.IsInternal).MinBy(w => w.DistanceTo(uv));
+        var margin = new Vector2(0.008f / body.SiteSize.X, 0.008f / body.SiteSize.Y);
+        var low = uv;
+        var high = uv;
+        if (wound is not null) {
+            foreach (var p in wound.Points) { low = low.Min(p); high = high.Max(p); }
+        }
+        var gap = body.Tissue.GapAt(uv, 0.04f);
+        margin += new Vector2(gap / body.SiteSize.X, gap / body.SiteSize.Y);
+        var bounds = new Rect2(low - margin, high - low + margin * 2f).Intersection(new Rect2(Vector2.Zero, Vector2.One));
+        if (!bounds.HasArea()) { return; }
+        var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
+        var height = body.SurfaceHeight(uv) - depth;
+        var inset = gap * 0.2f * (1f - Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f)));
+        var cavity = floor > PatientBody.SkinThickness + body.FatThickness + 0.005f;
+        float Inside(Vector2 p) {
+            if (!body.OnBody(p)) { return -0.001f; }
+            var ground = cavity ? body.CavityFloor(p) : body.SurfaceHeight(p) - floor;
+            return Mathf.Min(body.Tissue.OpeningDistance(p) - inset,
+                Mathf.Min(height - ground - 0.00005f, body.SurfaceHeight(p) - height - 0.0001f));
+        }
+        Vector3 Point(Vector2 p, float clearance) {
+            var rim = 0.00012f * Mathf.Exp(-Mathf.Max(clearance, 0f) / 0.001f);
+            return body.SitePoint(p, Mathf.Min(height + rim, body.SurfaceHeight(p) - 0.00005f));
+        }
+        if (wound is { Points.Count: >= 2 }) {
+            surface.Ribbon(wound.Points.Select(p => p * body.SiteSize).ToArray(), Mathf.Max(gap * 0.8f + 0.002f, 0.004f),
+                p => Inside(p / body.SiteSize), (p, clearance) => Point(p / body.SiteSize, clearance));
+        } else {
+            surface.Field(bounds, 16, 16, Inside, Point);
+        }
     }
 
     /// <summary>
@@ -521,7 +637,10 @@ public partial class BloodFlow : Node3D {
 
     private void AddDrop(Vector3 at, Vector3 velocity, float area = PoolAreaPerDrop) {
         if (_drops.Count < MaxDrops) {
-            _drops.Add(new Drop(at, velocity, area));
+            var amount = Mathf.Clamp(Mathf.Pow(area / PoolAreaPerDrop, 1f / 3f), 0.5f, 1.5f);
+            _drops.Add(new Drop(at, velocity, area, new Vector3(_dripRng.RandfRange(0.6f, 1.15f),
+                _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f)) * amount,
+                _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
         }
     }
 
@@ -550,29 +669,81 @@ public partial class BloodFlow : Node3D {
                 drop.Position = position;
             }
         }
-        // Retain queued runoff when the particle limit is full instead of losing it or growing the bed pool.
-        foreach (var pool in _pools) {
-            if (pool.Runoff <= 0f || _drops.Count >= MaxDrops) { continue; }
-            AddDrop(DrainAt(pool.Mesh.Position), Vector3.Down * 0.1f, pool.Runoff);
-            pool.Runoff = 0f;
+        ReleaseRunoff(delta);
+        _groundClock += delta;
+        if (_groundClock >= 1f / 15f) {
+            _groundClock = 0f;
+            foreach (var pool in _pools) {
+                if (!pool.Dirty) { continue; }
+                var surface = new LiquidSurface();
+                surface.Patch(pool.Outline, PoolThickness);
+                pool.Mesh.Mesh = surface.Upload(pool.Mesh.Mesh as ArrayMesh);
+                pool.Dirty = false;
+            }
         }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
         for (var i = 0; i < _drops.Count; i++) {
-            multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, _drops[i].Position));
+            var drop = _drops[i];
+            var up = -drop.Velocity.Normalized();
+            var x = Vector3.Right.Slide(up).Normalized();
+            if (x.IsZeroApprox()) { x = Vector3.Forward; }
+            var shape = drop.Shape * DropRadius;
+            shape.Y *= 1f + Mathf.Min(drop.Velocity.Length(), 4f) * 0.15f;
+            var basis = new Basis(x, up, x.Cross(up)).Rotated(up, drop.Twist).Scaled(shape);
+            multimesh.SetInstanceTransform(i, new Transform3D(basis, drop.Position));
         }
     }
 
-    /// <summary>The closest bed edge, just outside its footprint so runoff cannot land on the bed again.</summary>
-    private static Vector3 DrainAt(Vector3 at) {
-        var end = at.X - Room.TableFoot < Room.TableHead - at.X ? Room.TableFoot : Room.TableHead;
-        var side = at.Z < 0f ? -Room.TableHalfWidth : Room.TableHalfWidth;
-        if (Mathf.Abs(end - at.X) < Mathf.Abs(side - at.Z)) {
-            at.X = end + Mathf.Sign(end - at.X) * DropRadius * 2f;
-        } else {
-            at.Z = side + Mathf.Sign(side - at.Z) * DropRadius * 2f;
+    private void ReleaseRunoff(float delta) {
+        var necks = _neckMesh.Multimesh;
+        var count = 0;
+        foreach (var pool in _pools) {
+            if (!pool.OnBed) { continue; }
+            var active = pool.Outlets.Count(outlet => outlet.Active);
+            foreach (var outlet in pool.Outlets) {
+                if (!outlet.Active) { continue; }
+                var pulse = outlet.Pulse;
+                pulse.Add(pool.Runoff / Math.Max(active, 1));
+                var length = pulse.Length;
+                var released = pulse.Advance(delta, _drops.Count < MaxDrops);
+                if (released > 0f) {
+                    AddDrop(outlet.Position + Vector3.Down * length, new Vector3(_dripRng.RandfRange(-0.025f, 0.025f),
+                        -_dripRng.RandfRange(0.08f, 0.18f), _dripRng.RandfRange(-0.025f, 0.025f)), released);
+                }
+                if (pulse.Pending <= 0f || count >= MaxDrops) { continue; }
+                var shape = new Vector3(pulse.Width, pulse.Length * 0.5f, pulse.Width * 0.8f);
+                necks.SetInstanceTransform(count++, new Transform3D(Basis.Identity.Scaled(shape),
+                    outlet.Position + Vector3.Down * pulse.Length * 0.5f));
+            }
+            if (active > 0) { pool.Runoff = 0f; }
         }
-        return at;
+        necks.VisibleInstanceCount = count;
+    }
+
+    private static void OutletsAtEdges(GroundPool pool) {
+        var center = pool.Mesh.Position;
+        for (var edge = 0; edge < 4; edge++) {
+            var end = edge < 2;
+            var boundary = edge switch { 0 => Room.TableFoot, 1 => Room.TableHead, 2 => -Room.TableHalfWidth, _ => Room.TableHalfWidth };
+            var first = float.PositiveInfinity;
+            var last = float.NegativeInfinity;
+            foreach (var p in pool.Outline) {
+                var world = p + new Vector2(center.X, center.Z);
+                if (Mathf.Abs((end ? world.X : world.Y) - boundary) > 0.00001f) { continue; }
+                first = Mathf.Min(first, end ? world.Y : world.X);
+                last = Mathf.Max(last, end ? world.Y : world.X);
+            }
+            if (last <= first) { continue; }
+            var amount = Math.Clamp(Mathf.CeilToInt((last - first) / 0.045f), 1, 3);
+            for (var stream = 0; stream < amount; stream++) {
+                var outlet = pool.Outlets[edge * 3 + stream];
+                var along = Mathf.Lerp(first, last, (stream + 0.32f + 0.27f * Mathf.Sin(pool.Phase + stream * 2.3f)) / amount);
+                var outside = boundary + (edge is 0 or 2 ? -1f : 1f) * 0.0002f;
+                outlet.Position = end ? new Vector3(outside, TableTop, along) : new Vector3(along, TableTop, outside);
+                outlet.Active = true;
+            }
+        }
     }
 
     /// <summary>Pool footprint area grows with deposited blood. Bed pools narrow at the supporting edges; the
@@ -582,36 +753,36 @@ public partial class BloodFlow : Node3D {
         foreach (var pool in _pools) {
             var mesh = pool.Mesh;
             if (Mathf.Abs(mesh.Position.Y - at.Y) < 0.001f
-                && mesh.Position.DistanceTo(at) < PoolMerge + Mathf.Max(mesh.Scale.X, mesh.Scale.Z)) {
+                && mesh.Position.DistanceTo(at) < PoolMerge + pool.Radius) {
                 target = pool;
                 break;
             }
         }
         if (target is null) {
             var mesh = new MeshInstance3D {
-                Mesh = _poolShape,
+                Mesh = new ArrayMesh(),
                 MaterialOverride = _poolMaterial,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 TopLevel = true,
             };
             AddChild(mesh);
             mesh.Position = at;
-            mesh.Scale = new Vector3(0f, PoolThickness, 0f);
-            target = new GroundPool(mesh, Mathf.Abs(at.Y - TableTop) < 0.001f);
+            target = new GroundPool(mesh, Mathf.Abs(at.Y - TableTop) < 0.001f, _pools.Count + 1);
             _pools.Add(target);
         }
-        var previousArea = target.Mesh.Scale.X * target.Mesh.Scale.Z;
+        var previousArea = target.Area;
         target.Radius = Mathf.Min(Mathf.Sqrt(target.Radius * target.Radius + area), PoolMaxRadius);
-        var x = target.Radius;
-        var z = target.Radius;
+        target.Outline = LiquidSurface.Outline(target.Radius, target.Phase);
         if (target.OnBed) {
             var center = target.Mesh.Position;
-            x = Mathf.Min(x, Mathf.Max(0f, Mathf.Min(center.X - Room.TableFoot, Room.TableHead - center.X)));
-            z = Mathf.Min(z, Mathf.Max(0f, Room.TableHalfWidth - Mathf.Abs(center.Z)));
-            if (x < target.Radius || z < target.Radius) {
-                target.Runoff += Mathf.Max(0f, area - Mathf.Max(0f, x * z - previousArea));
-            }
+            target.Outline = LiquidSurface.Clip(target.Outline, new Rect2(Room.TableFoot - center.X,
+                -Room.TableHalfWidth - center.Z, Room.TableHead - Room.TableFoot, Room.TableHalfWidth * 2f));
         }
-        target.Mesh.Scale = new Vector3(x, PoolThickness, z);
+        target.Area = LiquidSurface.Area(target.Outline);
+        if (target.OnBed) {
+            target.Runoff += Mathf.Max(0f, area - Mathf.Max(0f, target.Area - previousArea));
+            OutletsAtEdges(target);
+        }
+        target.Dirty = true;
     }
 }

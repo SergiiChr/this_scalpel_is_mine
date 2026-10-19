@@ -394,7 +394,7 @@ public static class Materials {
 
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
-        Roughness = 0.05f,
-        MetallicSpecular = 0.9f,
+        Roughness = 0.28f,
+        MetallicSpecular = 0.1f,
     };
 }

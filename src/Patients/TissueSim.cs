@@ -1473,6 +1473,55 @@ public sealed partial class TissueSim {
         return false;
     }
 
+    private readonly record struct OpeningRegion(Vector2 Center, Vector2 Across, float HalfGap, float HalfLength, TissueDepth Depth);
+    private const int OpeningBins = 32;
+    private readonly List<OpeningRegion>[] _openingBins = Enumerable.Range(0, OpeningBins * OpeningBins).Select(_ => new List<OpeningRegion>()).ToArray();
+    private (int Topology, int Step) _openingsFor = (-1, -1);
+
+    /// <summary>Signed visual clearance inside the cut strips, in meters. Cache and spatially index spring geometry once
+    /// per tissue step so contour samples only inspect nearby edges.</summary>
+    internal float OpeningDistance(Vector2 uv, TissueDepth depth = TissueDepth.Skin) {
+        var cell = Mathf.Max(Size.X / ResX, Size.Y / ResY);
+        if (depth <= TissueDepth.Skin && Excised[Nearest(uv)]) { return cell * 0.5f; }
+        if (_openingsFor != (TopologyVersion, StepsDone)) {
+            _openingsFor = (TopologyVersion, StepsDone);
+            foreach (var bin in _openingBins) { bin.Clear(); }
+            foreach (var spring in _severed) {
+                var gap = GapOf(spring);
+                if (gap <= OpenGap) { continue; }
+                var direction = _springs[spring].CutDir;
+                var across = new Vector2(-direction.Y, direction.X).Normalized();
+                var center = CrossingUv(spring) * Size;
+                var region = new OpeningRegion(center, across, gap * 0.5f, cell * 0.6f, DepthOf(spring));
+                // Include a blend-width halo; samples farther away cannot affect the zero contour.
+                var reach = new Vector2(Mathf.Abs(across.X), Mathf.Abs(across.Y)) * region.HalfGap
+                    + new Vector2(Mathf.Abs(across.Y), Mathf.Abs(across.X)) * region.HalfLength + Vector2.One * cell;
+                var low = OpeningBin((center - reach) / Size);
+                var high = OpeningBin((center + reach) / Size);
+                for (var y = low.Y; y <= high.Y; y++) {
+                    for (var x = low.X; x <= high.X; x++) { _openingBins[y * OpeningBins + x].Add(region); }
+                }
+            }
+        }
+        var at = uv * Size;
+        var best = -cell;
+        var binAt = OpeningBin(uv);
+        foreach (var region in _openingBins[binAt.Y * OpeningBins + binAt.X]) {
+            if (region.Depth < depth) { continue; }
+            var offset = at - region.Center;
+            var side = offset.Dot(region.Across);
+            var distance = Mathf.Min(region.HalfGap - Mathf.Abs(side), region.HalfLength - (offset - region.Across * side).Length());
+            // Blend adjacent strips into a continuous meniscus rather than exposing each spring as a notch.
+            var blend = cell * 0.2f;
+            var h = Mathf.Clamp(0.5f + 0.5f * (best - distance) / blend, 0f, 1f);
+            best = Mathf.Lerp(distance, best, h) + blend * h * (1f - h);
+        }
+        return best;
+    }
+
+    private static Vector2I OpeningBin(Vector2 uv) => new(Math.Clamp((int)(uv.X * OpeningBins), 0, OpeningBins - 1),
+        Math.Clamp((int)(uv.Y * OpeningBins), 0, OpeningBins - 1));
+
     /// <summary>Meters the tissue has pulled apart across springs severed at least <paramref name="depth"/> deep near
     /// uv.</summary>
     public float GapAt(Vector2 uv, float radius = 0.04f, TissueDepth depth = TissueDepth.Skin) => GapAlong([uv], radius, depth);

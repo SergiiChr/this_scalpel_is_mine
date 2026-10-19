@@ -11,6 +11,7 @@ namespace Scalpel.Tests.Patients;
 /// the spot riding the pulled edge and the plain pool over the vessels.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
+[TestCategory("liquid_contours")]
 [TestCategory("smoke"), TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class BleedSourcesTest {
