@@ -134,15 +134,21 @@ public partial class BloodFlow : Node3D {
     private readonly List<Drop> _drops = [];
     internal IReadOnlyList<Drop> Drops => _drops;
     internal IEnumerable<Vector3> AttachedDrips => _pools.SelectMany(pool => pool.Outlets)
-        .Where(outlet => outlet.Active && outlet.Pulse.Pending > 0f).Select(outlet => outlet.Position);
+        .Where(outlet => outlet.Active && outlet.Pulse.Pending > 0f && outlet.Progress >= 1f).Select(outlet => outlet.Position);
     private sealed class Outlet(int seed) {
         public readonly LiquidPulse Pulse = new(seed);
         public Vector3 Position;
         public bool Active;
+        public BedLiquidSurface.Flow Flow;
+        public float Progress;
+        public readonly float Speed = 0.07f + 0.035f * (0.5f + 0.5f * Mathf.Sin(seed * 2.13f));
     }
 
-    private sealed class GroundPool(MeshInstance3D mesh, bool onBed, int seed) {
+    private readonly record struct GroundDrawing(LiquidSurface Top, LiquidSurface Side);
+
+    private sealed class GroundPool(MeshInstance3D mesh, MeshInstance3D side, bool onBed, int seed) {
         public readonly MeshInstance3D Mesh = mesh;
+        public readonly MeshInstance3D Side = side;
         public readonly bool OnBed = onBed;
         public readonly float Phase = seed * 0.7548777f;
         public readonly Outlet[] Outlets = onBed ? Enumerable.Range(0, 12).Select(i => new Outlet(seed * 31 + i)).ToArray() : [];
@@ -153,7 +159,7 @@ public partial class BloodFlow : Node3D {
         public float Incoming;
         public float Clock = seed * 0.013f % (1f / 15f);
         public bool Dirty;
-        public Task<LiquidSurface>? Building;
+        public Task<GroundDrawing>? Building;
     }
 
     private readonly List<GroundPool> _pools = [];
@@ -673,7 +679,9 @@ public partial class BloodFlow : Node3D {
         ReleaseRunoff(delta);
         foreach (var pool in _pools) {
             if (pool.Building is not { IsCompleted: true } built) { continue; }
-            pool.Mesh.Mesh = built.GetAwaiter().GetResult().Upload(pool.Mesh.Mesh as ArrayMesh);
+            var drawing = built.GetAwaiter().GetResult();
+            pool.Mesh.Mesh = drawing.Top.Upload(pool.Mesh.Mesh as ArrayMesh);
+            pool.Side.Mesh = drawing.Side.Upload(pool.Side.Mesh as ArrayMesh);
             pool.Building = null;
         }
         foreach (var pool in _pools) {
@@ -699,10 +707,13 @@ public partial class BloodFlow : Node3D {
                 var bed = Bed;
                 var outline = pool.Outline;
                 var center = pool.Mesh.Position;
+                var flows = pool.Outlets.Where(o => o.Active).Select(o => o.Flow with { Progress = o.Progress }).ToArray();
                 pool.Building = Task.Run(() => {
                     var surface = new LiquidSurface();
                     bed.Cover(outline, center, surface);
-                    return surface;
+                    var side = new LiquidSurface();
+                    bed.Rivulets(side, flows, center);
+                    return new GroundDrawing(surface, side);
                 });
             } else {
                 var surface = new LiquidSurface();
@@ -735,6 +746,11 @@ public partial class BloodFlow : Node3D {
                 if (!outlet.Active) { continue; }
                 var pulse = outlet.Pulse;
                 pulse.Add(pool.Runoff / Math.Max(active, 1));
+                if (pulse.Pending > 0f && outlet.Progress < 1f) {
+                    outlet.Progress = Mathf.Min(1f, outlet.Progress + delta * outlet.Speed / Mathf.Max(outlet.Flow.Length, 0.001f));
+                    pool.Dirty = true;
+                }
+                if (outlet.Progress < 1f) { continue; }
                 var length = pulse.Length;
                 var released = pulse.Advance(delta, _drops.Count < MaxDrops);
                 if (released > 0f) {
@@ -755,8 +771,11 @@ public partial class BloodFlow : Node3D {
         var positions = Bed.Outlets(pool.Outline, pool.Mesh.Position);
         for (var i = 0; i < pool.Outlets.Length; i++) {
             var outlet = pool.Outlets[i];
-            outlet.Active = i < positions.Length;
-            if (outlet.Active) { outlet.Position = positions[i]; }
+            outlet.Active = i < positions.Length || outlet.Pulse.Pending > 0f;
+            if (i < positions.Length) {
+                outlet.Flow = positions[i] with { Phase = pool.Phase + i * 2.17f };
+                outlet.Position = positions[i].End;
+            }
         }
     }
 
@@ -781,7 +800,14 @@ public partial class BloodFlow : Node3D {
             };
             AddChild(mesh);
             mesh.Position = at;
-            target = new GroundPool(mesh, Mathf.Abs(at.Y - TableTop) < 0.001f, _pools.Count + 1);
+            var side = new MeshInstance3D {
+                Name = "BedRivulets",
+                Mesh = new ArrayMesh(),
+                MaterialOverride = _poolMaterial,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            mesh.AddChild(side);
+            target = new GroundPool(mesh, side, Mathf.Abs(at.Y - TableTop) < 0.001f, _pools.Count + 1);
             _pools.Add(target);
         }
         target.Incoming += area;

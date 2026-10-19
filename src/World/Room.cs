@@ -535,7 +535,8 @@ public partial class Room : Node3D {
 
     private void BuildTable() {
         var table = ModelSlot.Instantiate("props", "operating_table", this, FurnitureLook);
-        BedSurface = new BedLiquidSurface((MeshInstance3D)ModelSlot.Parts(table, "Pads")["Pads"]);
+        var bedParts = ModelSlot.Parts(table, "Pads", "Frame");
+        BedSurface = new BedLiquidSurface((MeshInstance3D)bedParts["Pads"], (MeshInstance3D)bedParts["Frame"]);
         Shapes.StaticBox(this, new Vector3(TableHead - TableFoot, TableHeight, 0.62f),
             new Vector3((TableHead + TableFoot) * 0.5f, TableHeight * 0.5f, 0f));
         if (EnvironmentId != "or") {

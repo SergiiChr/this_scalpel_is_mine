@@ -26,6 +26,7 @@ public class BedBloodTest {
             new(0.1f, height, -Room.TableHalfWidth + 0.025f),
             new(-0.4f, height, Room.TableHalfWidth - 0.025f),
             new(Room.TableHead - 0.02f, height, -Room.TableHalfWidth + 0.02f),
+            new(0.39f, height, 0f),
         ];
         var mattress = driver.Surgery.Room.BedSurface;
         foreach (var at in new[] { new Vector2(0.92f, 0f), new Vector2(0.96f, -0.22f) }) {
@@ -58,19 +59,24 @@ public class BedBloodTest {
         var headStreams = 0;
         var shownNecks = false;
         // Controlled landed drops isolate bed runoff from the patient's wound and vital signs.
-        for (var frame = 0; frame < 60; frame++) {
-            foreach (var at in supplies) { blood.Pool(at); }
+        for (var frame = 0; frame < 120; frame++) {
+            if (frame < 60) { foreach (var at in supplies) { blood.Pool(at); } }
             await Frames.NextProcess();
             if (blood.Drops.Count > 0) {
                 var shape = blood.Drops[0].Shape;
                 shapes.Add(new Vector2(Mathf.Round(shape.X * 100000f), Mathf.Round(shape.Y * 100000f)));
             }
             var necks = blood.AttachedDrips.ToArray();
+            AssertBool(necks.All(at => at.Y < mattress.DripHeight + 0.001f))
+                .OverrideFailureMessage("attached drops begin only at the bottom frame lip, never midway down the mattress").IsTrue();
+            if (frame < 20) {
+                AssertInt(blood.Drops.Count).OverrideFailureMessage("runoff wets the bed side before any free drops detach").IsEqual(0);
+            }
             headStreams = Math.Max(headStreams, necks.Count(at => at.X > Room.TableHead - 0.045f));
             var atSide = necks.Count(at => at.Z < -Room.TableHalfWidth + 0.012f && Mathf.Abs(at.X - supplies[2].X) < 0.1f);
             if (!shownNecks && atSide >= 2) {
                 shownNecks = true;
-                await session.CaptureOblique("ligaments", "several wet necks stretch over the edge and break into drops of different lengths",
+                await session.CaptureOblique("ligaments", "uneven rivulets stay attached down the pad and frame; necks and drops begin at the bottom lip",
                     new Vector3(supplies[2].X, height - 0.05f, -Room.TableHalfWidth), Vector3.Forward, 0.28f);
             }
         }
@@ -79,21 +85,30 @@ public class BedBloodTest {
         var meshWait = System.Diagnostics.Stopwatch.StartNew();
         while (!blood.GroundMeshesReady && meshWait.Elapsed.TotalSeconds < 5) { await Frames.NextProcess(); }
         AssertBool(blood.GroundMeshesReady).OverrideFailureMessage("bed liquid geometry catches up with the final deposited volume").IsTrue();
-        await session.CaptureAt("edge_contact", "the pool follows the rounded mattress slopes and corner without floating above the pad", supplies[1], 0.35f);
-        await session.CaptureOblique("rounded_corner", "blood conforms to the rounded mattress corner with no square floating lip",
+        await session.CaptureAt("edge_contact", "a thin blood pool follows the rounded pad and narrows into attached side rivulets", supplies[1], 0.35f);
+        await session.CaptureOblique("rounded_corner", "a thin wet coating narrows into irregular rivulets down to the bottom frame before dripping",
             supplies[4], new Vector3(1f, 0f, -1f).Normalized(), 0.3f);
         await session.CaptureOblique("overflow", "blood stays supported by the bed end, drips fall beyond it and collect below", view, Vector3.Forward, 1.8f);
         await driver.Unbudgeted(() => {
             var beds = Deposits(blood).Where(pool => pool.Position.Y > Room.TableHeight).ToArray();
             AssertInt(beds.Length).OverrideFailureMessage("all four edges and a corner retain a supported pool").IsEqual(supplies.Length);
             foreach (var pool in beds) {
+                var side = pool.GetNode<MeshInstance3D>("BedRivulets");
+                AssertInt(side.Mesh.GetSurfaceCount()).OverrideFailureMessage("every overflowing pool leaves attached rivulets down the bed side").IsGreater(0);
+                using var sideArrays = side.Mesh.SurfaceGetArrays(0);
+                var wet = sideArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Select(p => p + pool.Position).ToArray();
+                AssertFloat(wet.Min(p => p.Y)).OverrideFailureMessage("attached side coating reaches the lower frame lip").IsLessEqual(mattress.DripHeight + 0.001f);
+                if (Mathf.Abs(pool.Position.X - 0.39f) < 0.001f) {
+                    AssertBool(wet.Any(p => p.Y > 0.795f && p.Y < 0.81f && Mathf.Abs(p.Z) > 0.1f && Mathf.Abs(p.Z) < 0.24f))
+                        .OverrideFailureMessage("gap runoff visibly traverses the supporting frame top before reaching its outer side").IsTrue();
+                }
                 var heightRange = new List<float>();
                 using var arrays = pool.Mesh.SurfaceGetArrays(0);
                 foreach (var vertex in arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array()) {
                     var at = pool.Position + vertex;
                     var support = driver.Surgery.Room.BedSurface.HeightAt(new Vector2(at.X, at.Z));
                     AssertBool(support.HasValue).OverrideFailureMessage($"every bed liquid vertex has mattress beneath it, including rounded corners: {at}").IsTrue();
-                    AssertFloat(at.Y - support!.Value).OverrideFailureMessage("liquid adheres within a millimetre of the actual mattress mesh").IsBetween(0.0005f, 0.0009f);
+                    AssertFloat(at.Y - support!.Value).OverrideFailureMessage("liquid adheres within a millimetre of the actual mattress mesh").IsBetween(0.0001f, 0.0004f);
                     heightRange.Add(at.Y);
                 }
                 AssertFloat(heightRange.Max() - heightRange.Min()).OverrideFailureMessage("edge pools bend down the mattress instead of using a flat plane").IsGreater(0.005f);
