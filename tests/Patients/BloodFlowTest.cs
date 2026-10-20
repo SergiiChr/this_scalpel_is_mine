@@ -88,6 +88,24 @@ public class BloodFlowTest {
             return Task.CompletedTask;
         });
         await driver.Capture("settled", "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed");
+        if (scenario == "hand_stitch") {
+            await driver.Unbudgeted(() => {
+                var continued = false;
+                var body = driver.Body;
+                var margin = 2f / SurfaceBlood.Size;
+                for (var y = 2; y < SurfaceBlood.Size - 2; y++) {
+                    for (var x = 2; x < SurfaceBlood.Size - 2; x++) {
+                        var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
+                        if (body.OnBody(uv) || body.OnBody(uv + Vector2.Right * margin)
+                            || body.OnBody(uv - Vector2.Right * margin) || body.OnBody(uv + Vector2.Down * margin)
+                            || body.OnBody(uv - Vector2.Down * margin) || body.LiquidSupport(uv) <= 0f) { continue; }
+                        continued |= Amount(body, uv) > 0.25f;
+                    }
+                }
+                AssertBool(continued).OverrideFailureMessage("blood crosses beyond the tissue patch onto actual thin model skin, rather than stopping at the surgical mesh edge").IsTrue();
+                return Task.CompletedTask;
+            });
+        }
         if (measureGpu) {
             RenderingServer.ViewportSetMeasureRenderTime(viewport, false);
             AssertInt(gpu.Count).OverrideFailureMessage("the host GPU supplies render timestamps").IsGreater(0);

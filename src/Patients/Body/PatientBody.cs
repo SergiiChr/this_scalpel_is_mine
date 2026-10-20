@@ -431,7 +431,7 @@ public partial class PatientBody : Node3D {
         return _onBody[cell.Y * Heights + cell.X];
     }
 
-    /// <summary>Continuous thickness margin for liquid contact. Interpolating the measured margin keeps a sloping
+    /// <summary>Continuous model-contact margin, independent of the surgical layers' minimum thickness. Interpolation keeps a sloping
     /// boundary continuous instead of drawing the nearest support cell's rectangular outline.</summary>
     internal float LiquidSupport(Vector2 uv) {
         if (_liquidSupport.Length != Heights * Heights) { return 1f; }

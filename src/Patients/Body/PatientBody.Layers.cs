@@ -152,8 +152,10 @@ public partial class PatientBody {
         // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.
         _liquidSupport = new float[thickness.Length];
         for (var n = 0; n < _onBody.Length; n++) {
-            _liquidSupport[n] = thickness[n] - Mathf.Max(MinThickness, MuscleBottom);
-            _onBody[n] = _liquidSupport[n] > 0f;
+            _onBody[n] = thickness[n] > Mathf.Max(MinThickness, MuscleBottom);
+            // Liquid needs a model surface, not room for all surgical tissue layers beneath it. Continue over
+            // thin curved skin beyond the simulated patch, stopping only where the model itself is absent.
+            _liquidSupport[n] = thickness[n] - 0.0005f;
         }
         Tissue.Build(SiteSize, SurfaceHeight, OnBody);
         FitToModel(parts);
