@@ -61,17 +61,16 @@ def _arm_segments() -> list[Model]:
     upper.add(
         "Sleeve",
         # Round the shoulder into the torso instead of exposing a flat cylindrical end cap.
-        merge(
-            tube(
-                [(0, -0.64, 0), (0, -0.59, 0), (0, -0.5, 0), (0, -0.2, 0), (0, 0.2, 0), (0, 0.5, 0)],
-                [(0.014, 0.013), (0.05, 0.047), (0.064, 0.059), (0.056, 0.052), (0.05, 0.048), (0.045, 0.043)],
-                up=(0, 0, 1),
-            ),
-            # A rounded elbow covers both sleeve end caps when the forearm folds sharply.
-            ellipsoid((0.051, 0.16, 0.049), (0, 0.5, 0), 2),
+        tube(
+            [(0, -0.64, 0), (0, -0.59, 0), (0, -0.5, 0), (0, -0.2, 0), (0, 0.2, 0), (0, 0.5, 0)],
+            [(0.014, 0.013), (0.05, 0.047), (0.064, 0.059), (0.056, 0.052), (0.05, 0.048), (0.045, 0.043)],
+            up=(0, 0, 1),
         ),
         "tint",
     )
+    # A rounded elbow covers both sleeve end caps when the forearm folds sharply.
+    # Its own part: the player's own arms show only the elbow, which ends the forearm.
+    upper.add("Elbow", ellipsoid((0.051, 0.16, 0.049), (0, 0.5, 0), 2), "tint")
     # The gown's sleeve down to a knit cuff at the wrist; the wrist end sits inside the glove's cuff (+Y).
     fore = Model("surgeon", "forearm")
     fore.add(

@@ -1,8 +1,8 @@
 namespace Scalpel.Tests.Surgeons;
 
-/// <summary>The arms the player sees stay out of the way: the elbows bend out to the sides, so the arms come into the
-/// view from its bottom corners, empty or holding a tool at the site. A hand that lets go of a tool it twisted rolls
-/// back to palm down.</summary>
+/// <summary>The arms the player sees stay out of the way: they start at the elbows, which bend out to the sides, so the
+/// arms come into the view from its bottom corners, empty or holding a tool at the site. A hand that lets go of a tool
+/// it twisted rolls back to palm down.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
@@ -118,6 +118,10 @@ public class SurgeonArmsTest {
             .IsGreater(0.2f);
         foreach (var (surgeon, whose) in (ValueTuple<Surgeon, string>[])[(me, "own"), (puppet, "partner's copy of the")]) {
             foreach (var hand in surgeon.Hands) {
+                AssertBool(hand.UpperArmShown)
+                    .OverrideFailureMessage($"the {whose} {(hand.Index == 0 ? "left" : "right")} upper arm above the "
+                        + "elbow is drawn only for the partner")
+                    .IsEqual(surgeon == puppet);
                 var under = me.SurfaceBelow(hand.Elbow, false);
                 AssertBool(!under.Found || hand.Elbow.Y > under.Y)
                     .OverrideFailureMessage($"leaning in, the {whose} {(hand.Index == 0 ? "left" : "right")} elbow stays "

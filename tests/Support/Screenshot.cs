@@ -225,6 +225,9 @@ public partial class Screenshot : Node {
         foreach (var face in me.FindChildren("Face", "Node3D", true, false)) {
             face.GetParent<Node3D>().Visible = true;
         }
+        foreach (var hand in me.Hands) {
+            hand.UpperArmShown = true;
+        }
         await Shot("09_surgeon");
     }
 
