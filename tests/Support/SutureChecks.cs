@@ -89,8 +89,12 @@ public static class SutureChecks {
         AssertFloat(tissue.SutureLip.Max())
             .OverrideFailureMessage("the pressed edges rise into a lip instead of passing through each other").IsGreater(0.0005f);
         var map = body.WoundMap;
-        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, wound.Midpoint))
-            .OverrideFailureMessage("no blood stands in the closed seam").IsLess(0.12f);
+        // Retained surface blood can flow across a closed seam. Check the wound's actual pool and
+        // bleed instead of treating blood in the skin's fluid map as an opening that failed to close.
+        AssertFloat(wound.Bleeding).OverrideFailureMessage("the tied wound has stopped bleeding").IsEqual(0f);
+        AssertFloat(wound.PooledMl).OverrideFailureMessage("no blood remains held inside the closed wound").IsEqual(0f);
+        AssertInt(body.Site.GetNode<MeshInstance3D>("CutPools").Mesh.GetSurfaceCount())
+            .OverrideFailureMessage("the closed wound leaves no recessed liquid surface").IsEqual(0);
         var seam = map.Value(WoundMap.Layer.Wounds, WoundMap.Cut, wound.Midpoint);
         AssertFloat(seam).OverrideFailureMessage("a tied wound keeps a visible incision line").IsGreater(0.06f);
         AssertFloat(seam).OverrideFailureMessage("the incision line is healed-looking rather than an open groove").IsLess(0.16f);
