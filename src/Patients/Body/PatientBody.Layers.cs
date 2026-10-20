@@ -14,6 +14,10 @@ public partial class PatientBody {
     /// <summary>How far (meters) the muscle rises with the skin over it before the skin and its fat peel off it (see
     /// <see cref="LayerPoint"/>).</summary>
     private const float MuscleLift = 0.004f;
+    /// <summary>How far (meters) the fat stretches between skin lifted off the muscle and the muscle before the skin
+    /// starts to peel off it. Lifted as far again, the skin has come off: the fat lies back on the muscle and the skin
+    /// rises alone (see <see cref="LayerPoint"/>).</summary>
+    internal const float FatStretch = 0.006f;
     internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Movement over which the rendered skin adopts the deformed sheet's normals.</summary>
     private const float FlapMove = 0.015f;
@@ -116,6 +120,9 @@ public partial class PatientBody {
     private Vector3[][] _pointOf = [[], [], []];
     private Vector3[] _outward = [];
     private Vector3[] _normal = [];
+    /// <summary>Per grid point: how far (meters) its fat is stretched between the lifted skin and the muscle, as
+    /// captured for the layers: its walls reach down that much further.</summary>
+    private float[] _fatStretch = [];
     /// <summary>
     /// Where each grid point's skin lies on the body model (site space). The layers are drawn from these, not from where
     /// the sim settled (tension pulls the sheet a few millimeters off a round limb): resting skin lies exactly on the
@@ -370,15 +377,15 @@ public partial class PatientBody {
         _renderFold = Tissue.HoldingFold;
         _renderTurnover = Tissue.TurningFlap;
         if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
-        foreach (var k in _around) { _renderMoved[k] = Moved(k); }
+        foreach (var k in _around) {
+            _renderMoved[k] = Moved(k);
+            // Only lifted skin stretches its fat, and only where the layers are drawn apart from it.
+            _fatStretch[k] = _renderMoved[k].Y > 0f && LayersApart(k) ? FatLift(FatGap(k, _renderMoved[k])) : 0f;
+        }
         for (var layer = 0; layer < 3; layer++) {
             if (_renderPoints[layer].Length != Tissue.Pos.Length) { _renderPoints[layer] = new Vector3[Tissue.Pos.Length]; }
             foreach (var k in _around) {
-                // The layers under the skin move with it where the drape's cloth pushed it (PlaceParticles()):
-                // placed from the sim alone they would come out beside or through the skin at the opening's rim.
-                // Without a drape (outside the operating room) nothing pushes it.
-                var pushed = Tissue.Exposed.Length > k && Tissue.Exposed[k];
-                _renderPoints[layer][k] = layer == 0 || !Tissue.NearFold(k) || !pushed
+                _renderPoints[layer][k] = layer == 0 || !LayersApart(k)
                     ? _skinOf[k]
                     : LayerPoint(layer, k) + (_skinOf[k] - LayerPoint(0, k));
             }
@@ -386,6 +393,12 @@ public partial class PatientBody {
         _buildPending = true;
         return true;
     }
+
+    /// <summary>Whether the layers under grid point k's skin are drawn where they go themselves (LayerPoint()) rather
+    /// than right under the skin. They move with it where the drape's cloth pushed it (PlaceParticles()): placed from
+    /// the sim alone they would come out beside or through the skin at the opening's rim. Without a drape (outside the
+    /// operating room) nothing pushes it.</summary>
+    internal bool LayersApart(int k) => Tissue.NearFold(k) && Tissue.Exposed.Length > k && Tissue.Exposed[k];
 
     /// <summary>Fills the captured layers' arrays. It reads the tissue (Turned(), CutDepth()), so it runs right before
     /// the frame's solver step on the same thread, on the worker while the frame draws (StepTissue()).</summary>
@@ -451,6 +464,7 @@ public partial class PatientBody {
             _mark = new bool[count];
             _pointOf = [new Vector3[count], new Vector3[count], new Vector3[count]];
             _skinOf = new Vector3[count];
+            _fatStretch = new float[count];
             _outward = new Vector3[count];
             _normal = new Vector3[count];
         }
@@ -846,8 +860,11 @@ public partial class PatientBody {
         // bones: that stays as the wound's bed, and walls that deep would stick out of the folded flap's edges. Skin
         // pulled aside less than its anchors give (a retracted edge) keeps its muscle.
         float WallThickness(int k) {
-            if (layer < 2) {
+            if (layer == 0) {
                 return thickness;
+            }
+            if (layer == 1) {
+                return thickness + _fatStretch[k];
             }
             var folded = Mathf.Max(TurnedAmount(k, _renderMoved[k], _renderTurnover),
                 Mathf.SmoothStep(TissueSim.AnchorReach * 0.5f, TissueSim.AnchorReach, _renderMoved[k].Length()));
@@ -1031,7 +1048,9 @@ public partial class PatientBody {
                     var (out0, thick0) = lipDown[neighbours[0]];
                     var (out1, thick1) = lipDown[neighbours[1]];
                     var (outV, thickV) = lipDown[v];
-                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), Mathf.Min(thickV, (thickV * 2f + thick0 + thick1) * 0.25f));
+                    // Stretched fat eases both ways: kept to the thinner side, its wall would stop short of the muscle.
+                    var average = (thickV * 2f + thick0 + thick1) * 0.25f;
+                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), layer == 1 ? average : Mathf.Min(thickV, average));
                 }
             }
             foreach (var (v, down) in eased) {
@@ -1440,20 +1459,23 @@ public partial class PatientBody {
     /// only as far as its tether lets it (LayerTether) and stays down on its bed while the skin lifts off it, so a
     /// pull on whole skin slides the skin over it. Beside a cut through it the muscle is cut free and goes with the
     /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle along the
-    /// body. Lifted, the skin and its fat peel off the muscle: it rises with them only <see cref="MuscleLift"/>, so a
-    /// wound's edge held up shows the muscle's cut edge under it. A flap turned right over takes everything.
+    /// body. Lifted, the skin peels up off the muscle: it rises with them only <see cref="MuscleLift"/>, so a wound's
+    /// edge held up shows the muscle's cut edge under it. The fat between them first stretches with the skin (its
+    /// walls reach down to the muscle, FillLayer()); lifted further than <see cref="FatStretch"/> the skin comes off it
+    /// and the fat lies back on the muscle. A flap turned right over takes everything.
     /// </summary>
     public Vector3 LayerPoint(int layer, int k) {
         var moved = Moved(k);
-        var tethered = !float.IsPositiveInfinity(LayerTether[layer]);
-        var turned = tethered ? TurnedAmount(k, moved, Tissue.TurningFlap) : 1f;
-        var freed = tethered ? Mathf.Max(Tissue.Freed(LayerDepth[layer], k), turned) : 1f;
-        var lift = new Vector3(0f, moved.Y, 0f);
-        var slide = moved - lift;
-        var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
-        var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
-        var rise = moved.Y * Mathf.Max(freed, follow);
-        var point = _onModel[k] + slide * follow + Vector3.Up * Mathf.Lerp(Mathf.Min(rise, MuscleLift), rise, turned);
+        var (slide, follow, rise) = Follow(layer, k, moved);
+        if (layer == 1) {
+            var muscle = Follow(2, k, moved);
+            var gap = rise - muscle.Rise;
+            if (gap > FatStretch) {
+                slide = slide.Lerp(muscle.Slide, Peeled(gap) * 0.5f);
+                rise = muscle.Rise + FatLift(gap);
+            }
+        }
+        var point = _onModel[k] + slide + Vector3.Up * rise;
         // Skin folded out over the drape lies on the cloth where it is now, not at the body's height under its old
         // spot, and the layers that come with it lie on it too; skin under the drape stays under it. A tethered
         // layer that stayed behind under exposed skin is left where it is: it's under the skin, whatever lies over.
@@ -1471,6 +1493,31 @@ public partial class PatientBody {
         }
         return point;
     }
+
+    /// <summary>How far a layer at grid point k slides along the body and rises with the skin moved by
+    /// <paramref name="moved"/> (Follow: the share of the skin's slide it goes along), see <see cref="LayerPoint"/>.
+    /// </summary>
+    private (Vector3 Slide, float Follow, float Rise) Follow(int layer, int k, Vector3 moved) {
+        var tethered = !float.IsPositiveInfinity(LayerTether[layer]);
+        var turned = tethered ? TurnedAmount(k, moved, Tissue.TurningFlap) : 1f;
+        var freed = tethered ? Mathf.Max(Tissue.Freed(LayerDepth[layer], k), turned) : 1f;
+        var slide = moved with { Y = 0f };
+        var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
+        var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
+        var rise = moved.Y * Mathf.Max(freed, follow);
+        return (slide * follow, follow, Mathf.Lerp(Mathf.Min(rise, MuscleLift), rise, turned));
+    }
+
+    /// <summary>How far (meters) the skin at grid point k, moved by <paramref name="moved"/>, stands above where the
+    /// muscle under it rises with it: what the fat between them has to bridge.</summary>
+    private float FatGap(int k, Vector3 moved) => Follow(0, k, moved).Rise - Follow(2, k, moved).Rise;
+
+    /// <summary>How far (meters) the fat's top stands above the muscle under skin <paramref name="gap"/> above it:
+    /// right under the skin while it stretches, then easing back down as the skin peels off it.</summary>
+    private static float FatLift(float gap) => gap <= FatStretch ? Mathf.Max(gap, 0f) : FatStretch * (1f - Peeled(gap));
+
+    /// <summary>How far skin <paramref name="gap"/> (meters) above the muscle has come off its fat (0..1).</summary>
+    private static float Peeled(float gap) => Mathf.SmoothStep(FatStretch, FatStretch * 2f, gap);
 
     /// <summary>How far grid point k is part of a flap turned over (0..1), <paramref name="moved"/> as far as it has:
     /// all the way once turned, right to its hinge, and kept once the hands have let go of it; while one is turning,

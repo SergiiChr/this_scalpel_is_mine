@@ -65,14 +65,19 @@ public class PulledSkinTest {
         var farBed = tissue.Nearest(new Vector2(0.05f, 0.5f));
         var muscleBefore = body.LayerPoint(2, farBed);
         driver.Note($"a hand pulls the lip {LipPull.Z * 1000f:0} mm away from the cut and {LipPull.Y * 1000f:0} mm up");
-        await HandPulls(tissue, from, LipPull);
+        var hand = await HandPulls(tissue, from, LipPull);
         var pulled = tissue.Pos[k] - from;
         AssertFloat(pulled.Length()).OverrideFailureMessage($"the skin holds the hand short of where it went ({pulled.Length() * 1000f:0} of {LipPull.Length() * 1000f:0} mm)")
             .IsLess(LipPull.Length() * 0.9f);
         AssertFloat(pulled.Length()).OverrideFailureMessage($"but it does give ({pulled.Length() * 1000f:0} mm)")
             .IsGreater(0.006f);
-        AssertFloat(tissue.StrainAt(GripKey)).OverrideFailureMessage($"stretched no further than it gives ({tissue.StrainAt(GripKey):0.00} of {TissueSim.GripStrain})")
-            .IsLess(TissueSim.GripStrain + 0.3f);
+        // Past what it gives the sim's strain may stay over the limit (an edge peeled up reads over it), but the lip
+        // goes no further along the body however hard the hand pulls on.
+        var stopped = tissue.Pos[k];
+        await PullsOn(tissue, hand, LipPull with { Y = 0f } * 0.5f);
+        var further = (tissue.Pos[k] - stopped).Slide(Vector3.Up).Length();
+        AssertFloat(further).OverrideFailureMessage($"pulled on past what it gives, the lip goes no further along the body ({further * 1000f:0.0} mm)")
+            .IsLess(0.001f);
         var bedMovement = (body.LayerPoint(2, k) - bedUnderGrip).Length();
         AssertFloat(bedMovement)
             .OverrideFailureMessage($"the wound's edge comes along as one block: the muscle under the grip, cut through beside it, moves with the skin ({bedMovement * 1000f:0} of {pulled.Length() * 1000f:0} mm)")
@@ -170,23 +175,29 @@ public class PulledSkinTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>Takes grip <see cref="GripKey"/> from <paramref name="from"/> by <paramref name="pull"/> over 90
-    /// physics frames the way a hand does: a step at a time from wherever it got to, held back where the skin stops
-    /// giving (the hand comes back to the grip, Patient.UpdateGrip()).</summary>
-    private static async Task HandPulls(TissueSim tissue, Vector3 from, Vector3 pull) {
+    /// <summary>Takes grip <see cref="GripKey"/> at Grip and pulls from <paramref name="from"/> by
+    /// <paramref name="pull"/> (<see cref="PullsOn"/>), then holds still for 1 s. Returns where the hand ends up.</summary>
+    private static async Task<Vector3> HandPulls(TissueSim tissue, Vector3 from, Vector3 pull) {
         tissue.Grip(GripKey, Grip);
-        var at = from;
-        for (var n = 1; n <= 90; n++) {
-            at = tissue.Restrain(GripKey, at + pull / 90f);
-            tissue.MoveGrip(GripKey, at);
-            await Frames.Physics(1);
-        }
+        var at = await PullsOn(tissue, from, pull);
         // Holding still, the hand still gives where the skin asks it to.
         for (var n = 0; n < 60; n++) {
             at = tissue.Restrain(GripKey, at);
             tissue.MoveGrip(GripKey, at);
             await Frames.Physics(1);
         }
+        return at;
+    }
+
+    /// <summary>The hand holding on at <paramref name="at"/> pulls by <paramref name="pull"/> over 1.5 s, as far as the
+    /// skin lets it. Returns where it ends up.</summary>
+    private static async Task<Vector3> PullsOn(TissueSim tissue, Vector3 at, Vector3 pull) {
+        for (var n = 1; n <= 90; n++) {
+            at = tissue.Restrain(GripKey, at + pull / 90f);
+            tissue.MoveGrip(GripKey, at);
+            await Frames.Physics(1);
+        }
+        return at;
     }
 
     private static void AssertRimQuiet(PatientBody body, (int Index, Vector3 Point)[] rim, string claim) {
