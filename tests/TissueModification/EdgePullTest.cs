@@ -198,8 +198,10 @@ public class EdgePullTest {
     private static Vector3 Rises(PatientBody body, int k) =>
         new(body.LayerPoint(0, k).Y, body.LayerPoint(1, k).Y, body.LayerPoint(2, k).Y);
 
-    /// <summary>How far the tip strays (meters) from a steady path between its first and last spot: moving or settling
-    /// back steadily isn't shaking.</summary>
-    private static float Shake(List<Vector3> tip) =>
-        tip.Select((p, i) => p.DistanceTo(tip[0].Lerp(tip[^1], i / (tip.Count - 1f)))).Max();
+    /// <summary>How far (meters) the tip went back against its way from the first spot to the last, all together: going
+    /// one way, however it bends or slows, isn't shaking.</summary>
+    private static float Shake(List<Vector3> tip) {
+        var way = (tip[^1] - tip[0]).Normalized();
+        return tip.Zip(tip.Skip(1), (before, after) => Mathf.Max(-(after - before).Dot(way), 0f)).Sum();
+    }
 }
