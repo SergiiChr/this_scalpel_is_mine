@@ -339,7 +339,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   bend under it. Walking away also zooms back out. The hands start apart, turned in
   toward the middle, so each tool points across in front of the eyes, beside its hand. The elbows bend out to the
   sides (`SurgeonHand.ElbowPole`), so the player's own arms come into the view from its bottom corners, not up the
-  middle in front of the work.
+  middle in front of the work. The player's own arms are drawn only from the rounded elbows down; partners see whole
+  arms.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns

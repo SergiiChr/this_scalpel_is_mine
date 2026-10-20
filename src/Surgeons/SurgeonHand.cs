@@ -209,7 +209,7 @@ public partial class SurgeonHand : Node3D {
     internal Node3D UpperSleeve => _upper;
     private Node3D _upperArm = null!;
 
-    /// <summary>Whether the upper arm shows above the rounded elbow, which always does and ends the forearm.</summary>
+    /// <summary>Whether the upper arm is drawn above the elbow; the rounded elbow that ends the forearm always is.</summary>
     internal bool UpperArmShown {
         get => _upperArm.Visible;
         set => _upperArm.Visible = value;

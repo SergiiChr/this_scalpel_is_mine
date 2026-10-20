@@ -118,10 +118,15 @@ public class SurgeonArmsTest {
             .IsGreater(0.2f);
         foreach (var (surgeon, whose) in (ValueTuple<Surgeon, string>[])[(me, "own"), (puppet, "partner's copy of the")]) {
             foreach (var hand in surgeon.Hands) {
-                AssertBool(hand.UpperArmShown)
+                var parts = ModelSlot.Parts(hand.UpperSleeve, "Sleeve", "Elbow");
+                AssertBool(parts["Sleeve"].Visible && hand.UpperArmShown)
                     .OverrideFailureMessage($"the {whose} {(hand.Index == 0 ? "left" : "right")} upper arm above the "
                         + "elbow is drawn only for the partner")
                     .IsEqual(surgeon == puppet);
+                AssertBool(parts["Elbow"].Visible)
+                    .OverrideFailureMessage($"the {whose} {(hand.Index == 0 ? "left" : "right")} rounded elbow ends the "
+                        + "forearm")
+                    .IsTrue();
                 var under = me.SurfaceBelow(hand.Elbow, false);
                 AssertBool(!under.Found || hand.Elbow.Y > under.Y)
                     .OverrideFailureMessage($"leaning in, the {whose} {(hand.Index == 0 ? "left" : "right")} elbow stays "
