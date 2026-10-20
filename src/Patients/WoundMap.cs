@@ -62,9 +62,15 @@ public sealed class WoundMap {
     private readonly Image[] _images = new Image[LayerCount];
     private readonly byte[] _bloodFilm;
     private Rect2I _bloodFilmBounds;
+    private byte[] _bloodSupport = [];
+    internal int BloodRemovalVersion { get; private set; }
     private int[] _filmIndex = [];
     private float[] _filmFraction = [];
     private float[] _filmRow = [];
+    private byte[] _filmSamples = [];
+    private bool[] _filmChangedRows = [];
+    private bool[] _filmChanged = [];
+    private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {
         Size = texels;
@@ -114,6 +120,19 @@ public sealed class WoundMap {
     public void Disk(Layer layer, int channel, Vector2 center, float radius, float value, Mode mode, bool soft = true) =>
         DiskOps(layer, center, radius, [new PaintOp(channel, value, mode)], soft);
 
+    /// <summary>Cache the continuous contact boundary once, at texture resolution. Rendering never has to sample
+    /// the coarse simulation's binary support cells or add shader texture reads.</summary>
+    internal void SetBloodFilmSupport(Func<Vector2, float> margin) {
+        _bloodSupport = new byte[Size * Size];
+        _filmRow = [];
+        for (var y = 0; y < Size; y++) {
+            for (var x = 0; x < Size; x++) {
+                var distance = margin(new Vector2(x + 0.5f, y + 0.5f) / Size);
+                _bloodSupport[y * Size + x] = (byte)Mathf.RoundToInt(255f * Mathf.SmoothStep(-Texel, Texel, distance));
+            }
+        }
+    }
+
     /// <summary>Resamples a continuous fluid film into the existing blood channel. Old deposits leave thin stains;
     /// interpolation fills the space between cells without tiled disk outlines or allocating stamps per cell.</summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
@@ -133,14 +152,32 @@ public sealed class WoundMap {
         }
         var data = _data[(int)Layer.Fluids];
         var painted = _painted[(int)Layer.Fluids];
-        if (_filmRow.Length != resolution) {
+        var reset = _filmRow.Length != resolution;
+        if (reset) {
             _filmRow = new float[resolution];
+            _filmSamples = new byte[resolution * resolution];
+            _filmChangedRows = new bool[resolution];
+            _filmChanged = new bool[resolution * resolution];
+            _filmPixelStart = Enumerable.Repeat(Size, resolution).ToArray();
             _filmIndex = new int[Size];
             _filmFraction = new float[Size];
             for (var pixel = 0; pixel < Size; pixel++) {
                 var cell = Mathf.Clamp((pixel + 0.5f) * resolution / Size - 0.5f, 0f, resolution - 1);
                 _filmIndex[pixel] = Math.Min((int)cell, resolution - 2);
                 _filmFraction[pixel] = cell - _filmIndex[pixel];
+                _filmPixelStart[_filmIndex[pixel]] = Math.Min(_filmPixelStart[_filmIndex[pixel]], pixel);
+            }
+        }
+        Array.Fill(_filmChangedRows, reset);
+        Array.Fill(_filmChanged, reset);
+        for (var y = 0; y < resolution; y++) {
+            for (var x = 0; x < resolution; x++) {
+                var i = y * resolution + x;
+                var sample = (byte)Math.Clamp(Mathf.RoundToInt(film[i] * 255f), 0, 255);
+                if (sample == _filmSamples[i]) { continue; }
+                _filmSamples[i] = sample;
+                _filmChanged[i] = true;
+                _filmChangedRows[y] = true;
             }
         }
         var current = right < left ? new Rect2I() : new Rect2I(
@@ -156,29 +193,35 @@ public sealed class WoundMap {
         for (var y = fromY; y < toY; y++) {
             var iy = _filmIndex[y];
             var fy = _filmFraction[y];
+            if (!_filmChangedRows[iy] && !_filmChangedRows[iy + 1]) { continue; }
             // Blend the small solver row once, rather than resampling four cells at every output texel.
             for (var cell = 0; cell < resolution; cell++) {
-                _filmRow[cell] = Mathf.Lerp(film[iy * resolution + cell], film[(iy + 1) * resolution + cell], fy);
+                _filmRow[cell] = Mathf.Lerp(_filmSamples[iy * resolution + cell], _filmSamples[(iy + 1) * resolution + cell], fy);
             }
-            for (var x = fromX; x < toX; x++) {
-                var ix = _filmIndex[x];
-                var amount = (byte)Math.Clamp(Mathf.RoundToInt(Mathf.Lerp(_filmRow[ix], _filmRow[ix + 1], _filmFraction[x]) * 255f), 0, 255);
-                var i = (y * Size + x) * 4 + Blood;
-                var pixel = y * Size + x;
-                var previous = _bloodFilm[pixel];
-                // Respect paint from other systems, and never restore a wipe smaller than one solver cell.
-                var under = data[i] > previous ? data[i] : Math.Min((int)data[i], 30);
-                _bloodFilm[pixel] = amount;
-                if (previous > 0 && data[i] < previous) {
-                    // Keep the raw previous film as the reference. Only newly arriving liquid can refill a fine wipe.
-                    amount = (byte)(Math.Max(0, (int)amount - previous)
-                        + Math.Min((int)amount, previous) * data[i] / previous);
+            for (var ix = 0; ix + 1 < resolution; ix++) {
+                var cell = iy * resolution + ix;
+                if (!_filmChanged[cell] && !_filmChanged[cell + 1]
+                    && !_filmChanged[cell + resolution] && !_filmChanged[cell + resolution + 1]) { continue; }
+                for (var x = Math.Max(fromX, _filmPixelStart[ix]); x < Math.Min(toX, _filmPixelStart[ix + 1]); x++) {
+                    var amount = (byte)Math.Clamp(Mathf.RoundToInt(Mathf.Lerp(_filmRow[ix], _filmRow[ix + 1], _filmFraction[x])), 0, 255);
+                    var i = (y * Size + x) * 4 + Blood;
+                    var pixel = y * Size + x;
+                    if (_bloodSupport.Length > 0) { amount = (byte)(amount * _bloodSupport[pixel] / 255); }
+                    var previous = _bloodFilm[pixel];
+                    // Respect paint from other systems, and never restore a wipe smaller than one solver cell.
+                    var under = data[i] > previous ? data[i] : Math.Min((int)data[i], 30);
+                    _bloodFilm[pixel] = amount;
+                    if (previous > 0 && data[i] < previous) {
+                        // Keep the raw previous film as the reference. Only newly arriving liquid can refill a fine wipe.
+                        amount = (byte)(Math.Max(0, (int)amount - previous)
+                            + Math.Min((int)amount, previous) * data[i] / previous);
+                    }
+                    var next = (byte)Math.Max(amount, under);
+                    if (next == data[i]) { continue; }
+                    data[i] = next;
+                    painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
+                    _dirty[(int)Layer.Fluids] = true;
                 }
-                var next = (byte)Math.Max(amount, under);
-                if (next == data[i]) { continue; }
-                data[i] = next;
-                painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
-                _dirty[(int)Layer.Fluids] = true;
             }
         }
     }
@@ -195,6 +238,7 @@ public sealed class WoundMap {
         var lastCell = new Vector2I(Cells - 1, Cells - 1);
         var cellFrom = ((Vector2I)((center - Vector2.One * radius) * Cells)).Clamp(Vector2I.Zero, lastCell);
         var cellTo = ((Vector2I)((center + Vector2.One * radius) * Cells)).Clamp(Vector2I.Zero, lastCell);
+        var bloodRemoved = false;
         foreach (var (channel, value, mode) in ops) {
             var k = value * 255f;
             var hard = Mathf.RoundToInt(k);
@@ -228,15 +272,18 @@ public sealed class WoundMap {
                         var dx = (x + 0.5f - c.X) / r;
                         amount = Mathf.RoundToInt(k * (edge - dx * dx));
                     }
+                    var previous = data[i];
                     data[i] = mode switch {
                         Mode.Max => (byte)Math.Clamp(Math.Max(data[i], amount), 0, 255),
                         Mode.Add => (byte)Math.Clamp(data[i] + amount, 0, 255),
                         Mode.Sub => (byte)Math.Clamp(data[i] - amount, 0, 255),
                         _ => (byte)Math.Clamp(Math.Min(data[i], hard), 0, 255),
                     };
+                    bloodRemoved |= layer == Layer.Fluids && channel == Blood && data[i] < previous;
                 }
             }
         }
+        if (bloodRemoved) { BloodRemovalVersion++; }
         _dirty[(int)layer] = true;
     }
 

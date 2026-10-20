@@ -10,6 +10,9 @@ internal sealed class BedLiquidSurface {
     private const float Lift = 0.00025f;
     private readonly List<Face>[] _shellRows = Enumerable.Range(0, 64).Select(_ => new List<Face>()).ToArray();
     private readonly float _bottom;
+    private readonly float _padBottom;
+    private readonly float _padTop;
+    private readonly Rect2 _padBounds;
     private readonly float _shoulder;
     private readonly List<Face> _frameTop = [];
     private readonly List<Face> _shell = [];
@@ -22,6 +25,10 @@ internal sealed class BedLiquidSurface {
         var frameVertices = frame.Mesh.GetFaces().Select(p => frame.GlobalTransform * p).ToArray();
         _bottom = frameVertices.Min(p => p.Y);
         var vertices = pads.Mesh.GetFaces().Select(p => pads.GlobalTransform * p).ToArray();
+        _padBottom = vertices.Min(p => p.Y);
+        _padTop = vertices.Max(p => p.Y);
+        _padBounds = new Rect2(Xz(vertices[0]), Vector2.Zero);
+        foreach (var vertex in vertices) { _padBounds = _padBounds.Expand(Xz(vertex)); }
         var normals = CacheShell(vertices);
         CacheShell(frameVertices, frame: true);
         _shoulder = _frameTop.Min(face => Mathf.Min(face.A.Y, Mathf.Min(face.B.Y, face.C.Y))) + 0.0001f;
@@ -166,7 +173,8 @@ internal sealed class BedLiquidSurface {
         return direction;
     }
 
-    private readonly record struct StripTriangle(Vector2 A, Vector2 B, Vector2 C, Rect2 Bounds);
+    internal sealed class RivuletScratch { internal readonly List<StripTriangle> Triangles = []; }
+    internal readonly record struct StripTriangle(Vector2 A, Vector2 B, Vector2 C, Rect2 Bounds);
 
     private static float FlowWidth(Flow flow, float t) {
         var width = (0.002f + 0.0006f * Mathf.Sin(flow.Phase)) + flow.Width * (0.8f + 0.25f * Mathf.Sin(flow.Phase * 1.7f)) * Mathf.Exp(-t * (19f + 8f * Mathf.Sin(flow.Phase)));
@@ -177,7 +185,7 @@ internal sealed class BedLiquidSurface {
 
     /// <summary>Clip narrow wet masks to actual side triangles rather than stretching a ribbon over their corners.
     /// This avoids floating fins and visible gaps where a rounded pad meets the supporting frame.</summary>
-    internal void Rivulets(LiquidSurface surface, IReadOnlyList<Flow> flows, Vector3 center) {
+    internal void Rivulets(LiquidSurface surface, IReadOnlyList<Flow> flows, Vector3 center, RivuletScratch scratch) {
         foreach (var flow in flows) {
             if (flow.Progress <= 0f) { continue; }
             if (!flow.Gap) {
@@ -193,7 +201,7 @@ internal sealed class BedLiquidSurface {
             var to = Xz(flow.Exit);
             var direction = (to - from).Normalized();
             var across = new Vector2(-direction.Y, direction.X);
-            var middle = MakeStrip(flow, 0.25f, 0.8f, from.DistanceTo(to), t => from.Lerp(to, (t - 0.25f) / 0.55f), across);
+            var middle = MakeStrip(flow, 0.25f, 0.8f, from.DistanceTo(to), from, to, across, false, scratch.Triangles);
             Coat(surface, middle, Vector3.Up, entry, center);
             Vertical(flow, flow.Exit, flow.Direction, frameExit.Value.Position.Y, DripHeight, 0.8f, 1f);
         }
@@ -202,22 +210,22 @@ internal sealed class BedLiquidSurface {
             var across = Vector3.Up.Cross(outward);
             var origin = start.Dot(across);
             var strips = MakeStrip(flow, begin, end, top - bottom,
-                t => new Vector2(origin + Mathf.Sin(t * 7f + flow.Phase) * 0.001f * t, Mathf.Lerp(top, bottom, (t - begin) / (end - begin))), Vector2.Right);
+                new Vector2(origin, top), new Vector2(origin, bottom), Vector2.Right, true, scratch.Triangles);
             Coat(surface, strips, outward, start, center);
         }
     }
 
-    private static List<StripTriangle> MakeStrip(Flow flow, float begin, float end, float length, Func<float, Vector2> position, Vector2 across) {
-        var triangles = new List<StripTriangle>();
+    private static List<StripTriangle> MakeStrip(Flow flow, float begin, float end, float length, Vector2 from, Vector2 to, Vector2 across, bool vertical, List<StripTriangle> triangles) {
+        triangles.Clear();
         var nominalEnd = end;
         end = Mathf.Min(end, flow.Progress);
         if (end <= begin) { return triangles; }
         var steps = Math.Max(2, Mathf.CeilToInt(length * (end - begin) / (nominalEnd - begin) / 0.002f));
-        var previous = position(begin);
+        var previous = Position(begin);
         var previousWidth = FlowWidth(flow, begin) * 0.5f;
         for (var i = 1; i <= steps; i++) {
             var t = Mathf.Lerp(begin, end, (float)i / steps);
-            var at = position(t);
+            var at = Position(t);
             var width = FlowWidth(flow, t) * 0.5f;
             var a = previous - across * previousWidth; var b = previous + across * previousWidth;
             var c = at - across * width; var d = at + across * width;
@@ -226,6 +234,11 @@ internal sealed class BedLiquidSurface {
         }
         return triangles;
 
+        Vector2 Position(float t) {
+            var at = from.Lerp(to, (t - begin) / (nominalEnd - begin));
+            if (vertical) { at.X += Mathf.Sin(t * 7f + flow.Phase) * 0.001f * t; }
+            return at;
+        }
         void Add(Vector2 a, Vector2 b, Vector2 c) => triangles.Add(new StripTriangle(a, b, c, new Rect2(a, Vector2.Zero).Expand(b).Expand(c)));
     }
 
@@ -322,8 +335,9 @@ internal sealed class BedLiquidSurface {
 
     internal Vector3? Landing(Vector3 from, Vector3 to) {
         var motion = to - from;
-        if (motion.Y >= 0f) { return null; }
+        if (motion.Y >= 0f || to.Y > _padTop || from.Y < _padBottom) { return null; }
         var bounds = new Rect2(Xz(from), Vector2.Zero).Expand(Xz(to)).Grow(0.000001f);
+        if (!_padBounds.Intersects(bounds, includeBorders: true)) { return null; }
         foreach (var face in _faces) {
             if (!face.Bounds.Intersects(bounds)) { continue; }
             var start = face.Normal.Dot(from - face.A);

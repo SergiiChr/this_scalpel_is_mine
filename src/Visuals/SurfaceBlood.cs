@@ -27,6 +27,8 @@ internal sealed class SurfaceBlood {
     private bool _canFlow;
     private bool _hasBasis;
     private Basis _basis;
+    private int _wipeVersion = -1;
+    private readonly List<(int Index, int[] Neighbors)> _edgeNeighbors = [];
     internal bool NeedsTransport(Basis basis) => HasFilm && (_canFlow || !_hasBasis || basis != _basis);
     private readonly float _depthPerMl;
     private readonly Vector2 _cell;
@@ -44,6 +46,16 @@ internal sealed class SurfaceBlood {
                 var i = y * Size + x;
                 _skin[i] = new Vector3((uv.X - 0.5f) * siteSize.X, height(uv), (uv.Y - 0.5f) * siteSize.Y);
                 _holds[i] = holds?.Invoke(uv) ?? true;
+            }
+        }
+        for (var y = 0; y < Size; y++) {
+            for (var x = 0; x < Size; x++) {
+                var i = y * Size + x;
+                if (_holds[i]) { continue; }
+                var neighbors = Neighbors.Select(n => (X: x + n.X, Y: y + n.Y))
+                    .Where(p => p.X >= 0 && p.X < Size && p.Y >= 0 && p.Y < Size && _holds[p.Y * Size + p.X])
+                    .Select(p => p.Y * Size + p.X).ToArray();
+                if (neighbors.Length > 0) { _edgeNeighbors.Add((i, neighbors)); }
             }
         }
     }
@@ -71,11 +83,11 @@ internal sealed class SurfaceBlood {
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal void Step(Basis basis, float delta) {
         if (!NeedsTransport(basis)) { return; }
-        _basis = basis; _hasBasis = true;
-        Array.Clear(_change);
-        for (var i = 0; i < _ml.Length; i++) {
-            _height[i] = (basis * _skin[i]).Y;
+        if (!_hasBasis || basis != _basis) {
+            for (var i = 0; i < _ml.Length; i++) { _height[i] = (basis * _skin[i]).Y; }
+            _basis = basis; _hasBasis = true;
         }
+        Array.Clear(_change);
         for (var y = 0; y < Size; y++) {
             for (var x = 0; x < Size; x++) {
                 var i = y * Size + x;
@@ -160,7 +172,8 @@ internal sealed class SurfaceBlood {
     }
 
     internal void ReconcileWipes(WoundMap map) {
-        if (!HasFilm) { return; }
+        if (!HasFilm || _wipeVersion == map.BloodRemovalVersion) { return; }
+        _wipeVersion = map.BloodRemovalVersion;
         HasFilm = false;
         for (var y = 0; y < Size; y++) {
             for (var x = 0; x < Size; x++) {
@@ -185,6 +198,13 @@ internal sealed class SurfaceBlood {
         NeedsPaint = false;
         for (var i = 0; i < _ml.Length; i++) {
             _coverage[i] = 1f - Mathf.Exp(-_ml[i] * _depthPerMl / 0.0004f);
+        }
+        // Extend only the displayed density into one boundary cell. The cached continuous contact mask clips
+        // it back to the body, so the simulation grid cannot imprint teeth into a saturated pool's edge.
+        foreach (var (i, neighbors) in _edgeNeighbors) {
+            var sum = 0f;
+            foreach (var neighbor in neighbors) { sum += _coverage[neighbor]; }
+            _coverage[i] = sum / neighbors.Length;
         }
         map.PaintBloodFilm(_coverage, Size);
         for (var y = 0; y < Size; y++) {

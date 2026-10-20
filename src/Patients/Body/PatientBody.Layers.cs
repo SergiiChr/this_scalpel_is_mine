@@ -93,6 +93,7 @@ public partial class PatientBody {
     /// <summary>Per measured point: true on the body, false where the site hangs off it or the body is too thin under
     /// it for the layers.</summary>
     private bool[] _onBody = [];
+    private float[] _liquidSupport = [];
     /// <summary>The layers' plans (see PlanLayers()) and the topology they were made for.</summary>
     private readonly List<LayerPlan> _plans = [];
     private int _planFor = -1;
@@ -149,8 +150,10 @@ public partial class PatientBody {
         var thickness = MeasureSite(parts);
         MeasureLimbBones();
         // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.
+        _liquidSupport = new float[thickness.Length];
         for (var n = 0; n < _onBody.Length; n++) {
-            _onBody[n] = thickness[n] > Mathf.Max(MinThickness, MuscleBottom);
+            _liquidSupport[n] = thickness[n] - Mathf.Max(MinThickness, MuscleBottom);
+            _onBody[n] = _liquidSupport[n] > 0f;
         }
         Tissue.Build(SiteSize, SurfaceHeight, OnBody);
         FitToModel(parts);

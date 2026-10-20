@@ -162,6 +162,10 @@ public partial class BloodFlow : Node3D {
         public bool TopDirty;
         public bool SideDirty;
         public Task<GroundDrawing>? Building;
+        public readonly LiquidSurface TopBuffer = new();
+        public readonly LiquidSurface? SideBuffer = onBed ? new() : null;
+        public readonly BedLiquidSurface.RivuletScratch? RivuletBuffer = onBed ? new() : null;
+        public readonly BedLiquidSurface.Flow[] FlowBuffer = onBed ? new BedLiquidSurface.Flow[12] : [];
     }
 
     private readonly List<GroundPool> _pools = [];
@@ -182,10 +186,12 @@ public partial class BloodFlow : Node3D {
     private MultiMeshInstance3D _dropMesh = null!;
     private MeshInstance3D _cutPoolMesh = null!;
     private readonly List<CutPool> _drawnCuts = [];
+    private readonly LiquidSurface _cutBuffer = new();
     private (int Topology, int Step) _cutsFor = (-1, -1);
     private sealed class RinsePool(Vector2 uv, MeshInstance3D mesh) {
         public Vector2 Uv = uv;
         public readonly MeshInstance3D Mesh = mesh;
+        public readonly LiquidSurface Buffer = new();
         public float Ml;
         public float Blood;
         public float DrawnFill = -1f;
@@ -224,7 +230,8 @@ public partial class BloodFlow : Node3D {
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
-        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, patientBody.OnBody);
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, uv => patientBody.LiquidSupport(uv) >= 0f);
+        patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
         _dropMesh = new MultiMeshInstance3D {
             Name = "BloodDrops",
             Multimesh = new MultiMesh {
@@ -334,10 +341,29 @@ public partial class BloodFlow : Node3D {
     /// through, rising toward the skin as it fills and spreading along the cut. The skin around hides all but what lies
     /// in the opening. It doesn't move with the tissue, like the cavity's pool.
     /// </summary>
+    private bool CutPoolsChanged(PatientBody body) {
+        if (Pools.Count != _drawnCuts.Count) { return true; }
+        for (var i = 0; i < Pools.Count; i++) {
+            var current = Pools[i];
+            var previous = _drawnCuts[i];
+            if (current.Uv != previous.Uv || current.Floor != previous.Floor
+                || (current.Fill <= 0f) != (previous.Fill <= 0f) || (current.Fill >= 1f) != (previous.Fill >= 1f)) { return true; }
+            if (current == previous) { continue; }
+            var gap = body.Tissue.GapAt(current.Uv, 0.04f);
+            if (VisibleFillChange(current.Fill, previous.Fill, current.Floor, gap)) { return true; }
+        }
+        return false;
+    }
+
+    private static bool VisibleFillChange(float fill, float drawn, float floor, float gap) => drawn < 0f
+        || Mathf.Abs(fill - drawn) * floor * (1f - CutPoolBrim) > 0.0001f
+        || Mathf.Abs(Mathf.Sqrt(fill) - Mathf.Sqrt(Mathf.Max(drawn, 0f))) * gap * 0.2f > 0.0001f;
+
     private void PoolInCuts(PatientBody body) {
         var cutTissue = (body.Tissue.TopologyVersion, body.Tissue.StepsDone);
-        if (Pools.Count > 0 && (cutTissue != _cutsFor || !Pools.SequenceEqual(_drawnCuts))) {
-            var surface = new LiquidSurface();
+        if (Pools.Count > 0 && (cutTissue != _cutsFor || CutPoolsChanged(body))) {
+            var surface = _cutBuffer;
+            surface.Clear();
             foreach (var (uv, floor, fill) in Pools) { AddWoundSurface(surface, body, uv, floor, fill); }
             _cutPoolMesh.Mesh = surface.Upload(_cutPoolMesh.Mesh as ArrayMesh);
             _drawnCuts.Clear();
@@ -366,10 +392,9 @@ public partial class BloodFlow : Node3D {
             var fill = Mathf.Clamp(rinse.Ml / capacity, 0f, 1f);
             var tissue = (body.Tissue.TopologyVersion, body.Tissue.StepsDone);
             // Skip sub-pixel settling in a stationary opening; moving tissue still rebuilds its contour.
-            var levelChange = Mathf.Abs(fill - rinse.DrawnFill) * floor * (1f - CutPoolBrim);
-            var edgeChange = Mathf.Abs(Mathf.Sqrt(fill) - Mathf.Sqrt(Mathf.Max(rinse.DrawnFill, 0f))) * gap * 0.2f;
-            if (rinse.DrawnFill < 0f || tissue != rinse.DrawnTissue || levelChange > 0.0001f || edgeChange > 0.0001f) {
-                var water = new LiquidSurface();
+            if (tissue != rinse.DrawnTissue || VisibleFillChange(fill, rinse.DrawnFill, floor, gap)) {
+                var water = rinse.Buffer;
+                water.Clear();
                 AddWoundSurface(water, body, rinse.Uv, floor, fill);
                 rinse.Mesh.Mesh = water.Upload(rinse.Mesh.Mesh as ArrayMesh);
                 rinse.DrawnFill = fill;
@@ -729,24 +754,34 @@ public partial class BloodFlow : Node3D {
                 var outline = pool.Outline;
                 var center = pool.Mesh.Position;
                 var topDirty = pool.TopDirty;
-                var flows = pool.SideDirty ? pool.Outlets.Select(o => o.Flow with { Progress = o.Active ? o.Progress : 0f }).ToArray() : null;
+                BedLiquidSurface.Flow[]? flows = null;
+                if (pool.SideDirty) {
+                    flows = pool.FlowBuffer;
+                    for (var i = 0; i < pool.Outlets.Length; i++) {
+                        var outlet = pool.Outlets[i];
+                        flows[i] = outlet.Flow with { Progress = outlet.Active ? outlet.Progress : 0f };
+                    }
+                }
                 pool.Building = Task.Run(() => {
                     LiquidSurface? top = null;
                     LiquidSurface? side = null;
                     if (topDirty) {
-                        top = new LiquidSurface();
+                        top = pool.TopBuffer;
+                        top.Clear();
                         bed.Cover(outline, center, top);
                         top.PrepareUpload();
                     }
                     if (flows is not null) {
-                        side = new LiquidSurface();
-                        bed.Rivulets(side, flows, center);
+                        side = pool.SideBuffer!;
+                        side.Clear();
+                        bed.Rivulets(side, flows, center, pool.RivuletBuffer!);
                         side.PrepareUpload();
                     }
                     return new GroundDrawing(top, side, flows);
                 });
             } else {
-                var surface = new LiquidSurface();
+                var surface = pool.TopBuffer;
+                surface.Clear();
                 surface.Patch(pool.Outline, PoolThickness);
                 pool.Mesh.Mesh = surface.Upload(pool.Mesh.Mesh as ArrayMesh);
             }

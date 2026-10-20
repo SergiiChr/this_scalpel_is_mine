@@ -175,6 +175,48 @@ public class SurfaceBloodTest {
         AssertFloat(positions.Count * 0.15f + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
     }
 
+    [TestCase]
+    public void SupportedFilmHasAContinuousSlopingEdgeWithoutChangingVolume() {
+        static float Margin(Vector2 uv) => (uv.Y - 0.25f - uv.X * 0.35f) * 0.05f;
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f, uv => Margin(uv) >= 0f);
+        var map = new WoundMap(WoundMap.MinSize);
+        map.SetBloodFilmSupport(Margin);
+        var supplied = 0f;
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
+                if (Margin(uv) < 0f) { continue; }
+                film.Add(uv, 1f);
+                supplied++;
+            }
+        }
+        film.Step(Basis.Identity, 1f / 60f);
+        film.Paint(map);
+        var pixels = map.Snapshot(WoundMap.Layer.Fluids);
+        for (var x = 4; x < map.Size - 4; x++) {
+            var edge = Enumerable.Range(0, map.Size).First(y => pixels[(y * map.Size + x) * 4 + WoundMap.Blood] >= 128);
+            var expected = 0.25f + (x + 0.5f) / map.Size * 0.35f;
+            AssertFloat(Mathf.Abs((edge + 0.5f) / map.Size - expected))
+                .OverrideFailureMessage("a sloping support boundary stays within one texture pixel, rather than stepping by solver cells")
+                .IsLess(1.1f / map.Size);
+        }
+        AssertFloat(film.HeldMl + film.RunoffMl).IsEqualApprox(supplied, 0.01f);
+    }
+
+    [TestCase]
+    public void FilmReconstructionClearsOldCoverageWhenResolutionChanges() {
+        var map = new WoundMap(WoundMap.MinSize);
+        var film = new float[SurfaceBlood.Size * SurfaceBlood.Size];
+        film[31 * SurfaceBlood.Size + 62] = 1f;
+        map.PaintBloodFilm(film, SurfaceBlood.Size);
+        var before = map.Snapshot(WoundMap.Layer.Fluids);
+        var peak = Enumerable.Range(0, map.Size * map.Size).MaxBy(i => before[i * 4 + WoundMap.Blood]);
+        AssertInt(before[peak * 4 + WoundMap.Blood]).IsGreater(127);
+        map.PaintBloodFilm(new float[32 * 32], 32);
+        AssertFloat(map.Snapshot(WoundMap.Layer.Fluids)[peak * 4 + WoundMap.Blood] / 255f)
+            .OverrideFailureMessage("changing reconstruction resolution clears old liquid, leaving only its thin stain").IsLess(0.12f);
+    }
+
     private static void Advance(SurfaceBlood film, float seconds) {
         for (var i = 0; i < seconds * 60f; i++) {
             film.Step(Basis.Identity, 1f / 60f);

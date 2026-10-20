@@ -431,6 +431,18 @@ public partial class PatientBody : Node3D {
         return _onBody[cell.Y * Heights + cell.X];
     }
 
+    /// <summary>Continuous thickness margin for liquid contact. Interpolating the measured margin keeps a sloping
+    /// boundary continuous instead of drawing the nearest support cell's rectangular outline.</summary>
+    internal float LiquidSupport(Vector2 uv) {
+        if (_liquidSupport.Length != Heights * Heights) { return 1f; }
+        var p = uv.Clamp(Vector2.Zero, Vector2.One) * (Heights - 1);
+        var x = Math.Min((int)p.X, Heights - 2);
+        var y = Math.Min((int)p.Y, Heights - 2);
+        var f = p - new Vector2(x, y);
+        return Mathf.Lerp(Mathf.Lerp(_liquidSupport[y * Heights + x], _liquidSupport[y * Heights + x + 1], f.X),
+            Mathf.Lerp(_liquidSupport[(y + 1) * Heights + x], _liquidSupport[(y + 1) * Heights + x + 1], f.X), f.Y);
+    }
+
     /// <summary>Blood on the skin at uv, 0..1, from the fluid map.</summary>
     public float BloodAt(Vector2 uv) {
         if (uv.X < 0f || uv.Y < 0f || uv.X > 1f || uv.Y > 1f) {
