@@ -13,7 +13,7 @@ internal sealed class BedLiquidSurface {
     private readonly float _shoulder;
     private readonly List<Face> _frameTop = [];
     private readonly List<Face> _shell = [];
-    private Dictionary<Vector3, Vector3> _padNormals = [];
+    private readonly Dictionary<Vector3, Coating> _coatings = [];
     internal float DripHeight => _bottom + 0.003f;
     internal readonly record struct Flow(Vector3 Start, Vector3 Direction, Vector3 End, float Width, float Phase = 0f, float Progress = 0f, bool Gap = false, Vector3 Entry = default, float Length = 0.08f, Vector3 Exit = default);
 
@@ -21,16 +21,19 @@ internal sealed class BedLiquidSurface {
     internal BedLiquidSurface(MeshInstance3D pads, MeshInstance3D frame) {
         var frameVertices = frame.Mesh.GetFaces().Select(p => frame.GlobalTransform * p).ToArray();
         _bottom = frameVertices.Min(p => p.Y);
-        CacheShell(pads.Mesh.GetFaces().Select(p => pads.GlobalTransform * p).ToArray());
+        var vertices = pads.Mesh.GetFaces().Select(p => pads.GlobalTransform * p).ToArray();
+        var normals = CacheShell(vertices);
         CacheShell(frameVertices, frame: true);
         _shoulder = _frameTop.Min(face => Mathf.Min(face.A.Y, Mathf.Min(face.B.Y, face.C.Y))) + 0.0001f;
+        foreach (var direction in new[] { Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }) {
+            _coatings.Add(direction, new Coating(_shell, Vector3.Up.Cross(direction), Vector3.Up, direction));
+        }
+        _coatings.Add(Vector3.Up, new Coating(_frameTop, Vector3.Right, Vector3.Back, Vector3.Up));
         var edges = new Dictionary<(Vector3, Vector3), int>();
-        var normals = _padNormals;
-        var vertices = pads.Mesh.GetFaces();
         for (var i = 0; i < vertices.Length; i += 3) {
-            var a = pads.GlobalTransform * vertices[i];
-            var b = pads.GlobalTransform * vertices[i + 1];
-            var c = pads.GlobalTransform * vertices[i + 2];
+            var a = vertices[i];
+            var b = vertices[i + 1];
+            var c = vertices[i + 2];
             var normal = (c - a).Cross(b - a).Normalized();
             if (normal.Y <= 0.001f) { continue; }
             var bounds = new Rect2(Xz(a), Vector2.Zero).Expand(Xz(b)).Expand(Xz(c));
@@ -78,13 +81,12 @@ internal sealed class BedLiquidSurface {
 
     private int Row(float y) => Math.Clamp((int)((y - _bottom) / (Room.TableHeight - _bottom) * _shellRows.Length), 0, _shellRows.Length - 1);
 
-    private void CacheShell(Vector3[] vertices, bool frame = false) {
+    private Dictionary<Vector3, Vector3> CacheShell(Vector3[] vertices, bool frame = false) {
         var normals = new Dictionary<Vector3, Vector3>();
         for (var i = 0; i < vertices.Length; i += 3) {
             var weighted = (vertices[i + 2] - vertices[i]).Cross(vertices[i + 1] - vertices[i]);
             for (var j = 0; j < 3; j++) { normals[vertices[i + j]] = normals.GetValueOrDefault(vertices[i + j]) + weighted; }
         }
-        if (!frame) { _padNormals = normals; }
         for (var i = 0; i < vertices.Length; i += 3) {
             var a = vertices[i]; var b = vertices[i + 1]; var c = vertices[i + 2];
             var normal = (c - a).Cross(b - a).Normalized();
@@ -97,6 +99,7 @@ internal sealed class BedLiquidSurface {
             var last = Row(Mathf.Max(a.Y, Mathf.Max(b.Y, c.Y)));
             for (var row = first; row <= last; row++) { _shellRows[row].Add(face); }
         }
+        return normals;
     }
 
     private (Vector3 Position, Vector3 Normal)? SideAt(Vector3 start, Vector3 direction, float y) {
@@ -191,7 +194,7 @@ internal sealed class BedLiquidSurface {
             var direction = (to - from).Normalized();
             var across = new Vector2(-direction.Y, direction.X);
             var middle = MakeStrip(flow, 0.25f, 0.8f, from.DistanceTo(to), t => from.Lerp(to, (t - 0.25f) / 0.55f), across);
-            Coat(surface, middle, _frameTop, Vector3.Right, Vector3.Back, Vector3.Up, entry, center);
+            Coat(surface, middle, Vector3.Up, entry, center);
             Vertical(flow, flow.Exit, flow.Direction, frameExit.Value.Position.Y, DripHeight, 0.8f, 1f);
         }
 
@@ -200,15 +203,16 @@ internal sealed class BedLiquidSurface {
             var origin = start.Dot(across);
             var strips = MakeStrip(flow, begin, end, top - bottom,
                 t => new Vector2(origin + Mathf.Sin(t * 7f + flow.Phase) * 0.001f * t, Mathf.Lerp(top, bottom, (t - begin) / (end - begin))), Vector2.Right);
-            Coat(surface, strips, _shell, across, Vector3.Up, outward, start, center);
+            Coat(surface, strips, outward, start, center);
         }
     }
 
     private static List<StripTriangle> MakeStrip(Flow flow, float begin, float end, float length, Func<float, Vector2> position, Vector2 across) {
         var triangles = new List<StripTriangle>();
+        var nominalEnd = end;
         end = Mathf.Min(end, flow.Progress);
         if (end <= begin) { return triangles; }
-        var steps = Math.Max(2, Mathf.CeilToInt(length / 0.002f));
+        var steps = Math.Max(2, Mathf.CeilToInt(length * (end - begin) / (nominalEnd - begin) / 0.002f));
         var previous = position(begin);
         var previousWidth = FlowWidth(flow, begin) * 0.5f;
         for (var i = 1; i <= steps; i++) {
@@ -225,40 +229,79 @@ internal sealed class BedLiquidSurface {
         void Add(Vector2 a, Vector2 b, Vector2 c) => triangles.Add(new StripTriangle(a, b, c, new Rect2(a, Vector2.Zero).Expand(b).Expand(c)));
     }
 
-    private static void Coat(LiquidSurface surface, List<StripTriangle> strips, List<Face> faces, Vector3 uAxis, Vector3 vAxis, Vector3 outward, Vector3 origin, Vector3 center) {
+    private readonly record struct ProjectedFace(Face Face, Vector2 A, Vector2 B, Vector2 C, Rect2 Bounds, float Determinant, float Near, float Far, int FirstBin = 0);
+
+    /// <summary>Fixed cardinal projections and interval bins shared by all rivulet workers. A narrow streak visits
+    /// only overlapping faces, rather than projecting every mattress and frame triangle for every stream.</summary>
+    private sealed class Coating {
+        internal readonly ProjectedFace[] Faces;
+        internal readonly List<int>[] Bins = Enumerable.Range(0, 64).Select(_ => new List<int>()).ToArray();
+        private readonly float _left;
+        private readonly float _width;
+        internal int Bin(float u) => Math.Clamp((int)((u - _left) / _width * Bins.Length), 0, Bins.Length - 1);
+
+        internal Coating(List<Face> faces, Vector3 uAxis, Vector3 vAxis, Vector3 outward) {
+            var projected = new List<ProjectedFace>();
+            foreach (var face in faces) {
+                if (face.Normal.Dot(outward) <= 0.0001f) { continue; }
+                Vector2 Project(Vector3 p) => new(p.Dot(uAxis), p.Dot(vAxis));
+                var a = Project(face.A); var b = Project(face.B); var c = Project(face.C);
+                var determinant = (b - a).Cross(c - a);
+                if (Mathf.Abs(determinant) < 1e-12f) { continue; }
+                var depths = new Vector3(face.A.Dot(outward), face.B.Dot(outward), face.C.Dot(outward));
+                projected.Add(new ProjectedFace(face, a, b, c, new Rect2(a, Vector2.Zero).Expand(b).Expand(c), determinant,
+                    Mathf.Min(depths.X, Mathf.Min(depths.Y, depths.Z)), Mathf.Max(depths.X, Mathf.Max(depths.Y, depths.Z))));
+            }
+            Faces = [.. projected];
+            _left = Faces.Min(face => face.Bounds.Position.X);
+            _width = Mathf.Max(Faces.Max(face => face.Bounds.End.X) - _left, 0.0001f);
+            for (var i = 0; i < Faces.Length; i++) {
+                var first = Bin(Faces[i].Bounds.Position.X);
+                Faces[i] = Faces[i] with { FirstBin = first };
+                for (var bin = first; bin <= Bin(Faces[i].Bounds.End.X); bin++) { Bins[bin].Add(i); }
+            }
+        }
+    }
+
+    private void Coat(LiquidSurface surface, List<StripTriangle> strips, Vector3 outward, Vector3 origin, Vector3 center) {
         if (strips.Count == 0) { return; }
+        var coating = _coatings[outward];
         var bounds = strips[0].Bounds;
         foreach (var strip in strips) { bounds = bounds.Merge(strip.Bounds); }
         Span<Vector2> first = stackalloc Vector2[8];
         Span<Vector2> second = stackalloc Vector2[8];
-        foreach (var face in faces) {
-            if (face.Normal.Dot(outward) <= 0.0001f) { continue; }
-            var depths = new Vector3((face.A - origin).Dot(outward), (face.B - origin).Dot(outward), (face.C - origin).Dot(outward));
-            if (outward.Y == 0f && (Mathf.Min(depths.X, Mathf.Min(depths.Y, depths.Z)) > 0.04f
-                || Mathf.Max(depths.X, Mathf.Max(depths.Y, depths.Z)) < -0.08f)) { continue; }
-            Vector2 Project(Vector3 p) => new(p.Dot(uAxis), p.Dot(vAxis));
-            var a = Project(face.A); var b = Project(face.B); var c = Project(face.C);
-            var determinant = (b - a).Cross(c - a);
-            if (Mathf.Abs(determinant) < 1e-12f) { continue; }
-            var faceBounds = new Rect2(a, Vector2.Zero).Expand(b).Expand(c);
-            if (!faceBounds.Intersects(bounds)) { continue; }
-            foreach (var strip in strips) {
-                if (!faceBounds.Intersects(strip.Bounds)) { continue; }
-                first[0] = strip.A; first[1] = strip.B; first[2] = strip.C;
-                var count = determinant > 0f ? Clip(first[..3], second, a, b) : Clip(first[..3], second, b, a);
-                count = determinant > 0f ? Clip(second[..count], first, b, c) : Clip(second[..count], first, c, b);
-                count = determinant > 0f ? Clip(first[..count], second, c, a) : Clip(first[..count], second, a, c);
-                for (var i = 1; i + 1 < count; i++) {
-                    var p = Vertex(second[0]); var q = Vertex(second[i]); var t = Vertex(second[i + 1]);
-                    if ((t.Position - p.Position).Cross(q.Position - p.Position).Dot(face.Normal) < 0f) { (q, t) = (t, q); }
-                    surface.Facet(p.Position - center, q.Position - center, t.Position - center, p.Normal, q.Normal, t.Normal);
+        var firstBin = coating.Bin(bounds.Position.X);
+        var lastBin = coating.Bin(bounds.End.X);
+        var originDepth = origin.Dot(outward);
+        for (var bin = firstBin; bin <= lastBin; bin++) {
+            foreach (var index in coating.Bins[bin]) {
+                var projected = coating.Faces[index];
+                // Faces spanning several bins are visited once without a per-build hash set.
+                if (bin != Math.Max(firstBin, projected.FirstBin)) { continue; }
+                if (outward.Y == 0f && (projected.Near - originDepth > 0.04f || projected.Far - originDepth < -0.08f)) { continue; }
+                var face = projected.Face;
+                var a = projected.A; var b = projected.B; var c = projected.C;
+                var determinant = projected.Determinant;
+                var faceBounds = projected.Bounds;
+                if (!faceBounds.Intersects(bounds)) { continue; }
+                foreach (var strip in strips) {
+                    if (!faceBounds.Intersects(strip.Bounds)) { continue; }
+                    first[0] = strip.A; first[1] = strip.B; first[2] = strip.C;
+                    var count = determinant > 0f ? Clip(first[..3], second, a, b) : Clip(first[..3], second, b, a);
+                    count = determinant > 0f ? Clip(second[..count], first, b, c) : Clip(second[..count], first, c, b);
+                    count = determinant > 0f ? Clip(first[..count], second, c, a) : Clip(first[..count], second, a, c);
+                    for (var i = 1; i + 1 < count; i++) {
+                        var p = Vertex(second[0]); var q = Vertex(second[i]); var t = Vertex(second[i + 1]);
+                        if ((t.Position - p.Position).Cross(q.Position - p.Position).Dot(face.Normal) < 0f) { (q, t) = (t, q); }
+                        surface.Facet(p.Position - center, q.Position - center, t.Position - center, p.Normal, q.Normal, t.Normal);
+                    }
                 }
-            }
-            (Vector3 Position, Vector3 Normal) Vertex(Vector2 at) {
-                var u = (at - a).Cross(c - a) / determinant;
-                var v = (b - a).Cross(at - a) / determinant;
-                var normal = (face.Na * (1f - u - v) + face.Nb * u + face.Nc * v).Normalized();
-                return (face.A + (face.B - face.A) * u + (face.C - face.A) * v + normal * Lift, normal);
+                (Vector3 Position, Vector3 Normal) Vertex(Vector2 at) {
+                    var u = (at - a).Cross(c - a) / determinant;
+                    var v = (b - a).Cross(at - a) / determinant;
+                    var normal = (face.Na * (1f - u - v) + face.Nb * u + face.Nc * v).Normalized();
+                    return (face.A + (face.B - face.A) * u + (face.C - face.A) * v + normal * Lift, normal);
+                }
             }
         }
     }

@@ -137,9 +137,25 @@ public class BedBloodTest {
         await driver.Unbudgeted(() => {
             AssertFloat(Deposits(blood).Where(pool => pool.Position.Y < 0.01f).Sum(pool => FootprintArea(pool)))
                 .OverrideFailureMessage("continued bed overflow grows the floor pools").IsGreater(floorArea);
+            AssertFloat(blood.GroundLiquidArea)
+                .OverrideFailureMessage("continued overflow conserves deposited liquid and liquid still travelling down the bed")
+                .IsEqualApprox((supplies.Length * 120 + 2) * BloodFlow.PoolAreaPerDrop, 0.00001f);
             return Task.CompletedTask;
         });
         await session.CaptureOblique("floor_pool", "the bed pool remains inside its edge while the floor pool grows from later overflow", view, Vector3.Forward, 1.8f);
+        // A floor has no unsupported share to spill away: continued supply must grow beyond the former cap.
+        var floorHeight = Deposits(blood).First(pool => pool.Position.Y < 0.01f).Position.Y;
+        var largeAt = new Vector3(2f, floorHeight, 2f);
+        blood.Pool(largeAt, 0.05f);
+        await Frames.Process(5);
+        blood.Pool(largeAt, 0.05f);
+        await Frames.Process(5);
+        await driver.Unbudgeted(() => {
+            var large = Deposits(blood).Single(pool => pool.Position.DistanceTo(largeAt) < 0.001f);
+            AssertFloat(FootprintArea(large)).OverrideFailureMessage("continued floor pooling retains the full dose beyond the old radius cap")
+                .IsEqualApprox(0.1f, 0.00001f);
+            return Task.CompletedTask;
+        });
         if (FrameBudget.Mode == BudgetMode.Render) {
             // GPU timestamp queries synchronize the render thread. Profile a separate replay so their waits
             // cannot distort the whole-frame budget already sampled through the behavior above.
@@ -158,6 +174,22 @@ public class BedBloodTest {
                     + $"p95 {gpu[(int)(gpu.Count * 0.95)]:0.000} ms, max {gpu[^1]:0.000} ms");
             });
         }
+        var floorBeforeCenter = Deposits(blood).Where(pool => pool.Position.Y < 0.01f).Sum(pool => FootprintArea(pool));
+        var centerAt = new Vector3(0f, height, 0f);
+        blood.Pool(centerAt, 0.1f);
+        await Frames.Process(5);
+        blood.Pool(centerAt, 0.02f);
+        await Frames.Seconds(2f);
+        var centerWait = System.Diagnostics.Stopwatch.StartNew();
+        while (!blood.GroundMeshesReady && centerWait.Elapsed.TotalSeconds < 5) { await Frames.NextProcess(); }
+        AssertBool(blood.GroundMeshesReady).IsTrue();
+        await driver.Unbudgeted(() => {
+            var middle = Deposits(blood).Single(pool => pool.Position.DistanceTo(centerAt) < 0.001f);
+            AssertFloat(FootprintArea(middle)).OverrideFailureMessage("an interior pool spreads beyond the old radius cap until it can drain").IsGreater(0.04f);
+            AssertFloat(Deposits(blood).Where(pool => pool.Position.Y < 0.01f).Sum(pool => FootprintArea(pool)))
+                .OverrideFailureMessage("a central supply eventually drains to the floor instead of accumulating invisible runoff").IsGreater(floorBeforeCenter + 0.005f);
+            return Task.CompletedTask;
+        });
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : null);
     }
 

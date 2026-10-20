@@ -18,6 +18,16 @@ internal sealed class SurfaceBlood {
     private readonly bool[] _holds = new bool[Size * Size];
     private readonly float[] _weights = new float[8];
     private readonly float[] _distances = new float[8];
+    private readonly float[] _runoff = new float[32];
+    private int _drainCursor;
+    private readonly int[] _runoffCursor = new int[4];
+    private readonly Vector2[] _runoffUv = new Vector2[32];
+    internal bool HasFilm { get; private set; }
+    internal bool NeedsPaint { get; private set; }
+    private bool _canFlow;
+    private bool _hasBasis;
+    private Basis _basis;
+    internal bool NeedsTransport(Basis basis) => HasFilm && (_canFlow || !_hasBasis || basis != _basis);
     private readonly float _depthPerMl;
     private readonly Vector2 _cell;
 
@@ -40,12 +50,14 @@ internal sealed class SurfaceBlood {
 
     internal float RunoffMl { get; private set; }
     internal float RemovedMl { get; private set; }
-    internal Vector2 DrainUv { get; private set; }
+    internal float QueuedRunoffMl => _runoff.Sum();
     internal float HeldMl => _ml.Sum();
     internal float At(int x, int y) => _ml[y * Size + x];
     private static Vector2 Uv(int x, int y) => new Vector2(x + 0.5f, y + 0.5f) / Size;
 
     internal void Add(Vector2 uv, float ml) {
+        if (ml <= 0f) { return; }
+        HasFilm = NeedsPaint = _canFlow = true;
         var p = (uv * Size - Vector2.One * 0.5f).Clamp(Vector2.Zero, Vector2.One * (Size - 1));
         var x = Math.Min((int)p.X, Size - 2);
         var y = Math.Min((int)p.Y, Size - 2);
@@ -58,6 +70,8 @@ internal sealed class SurfaceBlood {
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal void Step(Basis basis, float delta) {
+        if (!NeedsTransport(basis)) { return; }
+        _basis = basis; _hasBasis = true;
         Array.Clear(_change);
         for (var i = 0; i < _ml.Length; i++) {
             _height[i] = (basis * _skin[i]).Y;
@@ -67,8 +81,7 @@ internal sealed class SurfaceBlood {
                 var i = y * Size + x;
                 if (!_holds[i]) {
                     _change[i] -= _ml[i];
-                    RunoffMl += _ml[i];
-                    if (_ml[i] > 0f) { DrainUv = Uv(x, y); }
+                    CollectRunoff(Uv(x, y), _ml[i]);
                     continue;
                 }
                 var movable = _ml[i] - ResidueDepth / _depthPerMl;
@@ -99,35 +112,77 @@ internal sealed class SurfaceBlood {
                     if (nx >= 0 && nx < Size && ny >= 0 && ny < Size && _holds[ny * Size + nx]) {
                         _change[ny * Size + nx] += amount;
                     } else {
-                        RunoffMl += amount;
-                        if (amount > 0f) { DrainUv = Uv(x, y); }
+                        CollectRunoff(Uv(x, y), amount);
                     }
                 }
             }
         }
+        HasFilm = _canFlow = false;
         for (var i = 0; i < _ml.Length; i++) {
-            _ml[i] = Mathf.Max(_ml[i] + _change[i], 0f);
+            var before = _ml[i];
+            _ml[i] = Mathf.Max(before + _change[i], 0f);
+            HasFilm |= _ml[i] > 0f;
+            _canFlow |= _ml[i] != before;
         }
+        NeedsPaint |= _canFlow;
+    }
+
+    private void CollectRunoff(Vector2 uv, float ml) {
+        if (ml <= 0f) { return; }
+        var x = Mathf.Min(uv.X, 1f - uv.X);
+        var y = Mathf.Min(uv.Y, 1f - uv.Y);
+        var side = x < y ? (uv.X < 0.5f ? 0 : 1) : (uv.Y < 0.5f ? 2 : 3);
+        var along = side < 2 ? uv.Y : uv.X;
+        var bucket = side * 8 + Math.Clamp((int)(along * 8), 0, 7);
+        RunoffMl += ml;
+        _runoff[bucket] += ml;
+        _runoffUv[bucket] += uv * ml;
+    }
+
+    /// <summary>Each side retains its own queued volume and release position, including while drop capacity is full.</summary>
+    internal bool TryRunoff(float ml, out Vector2 uv) {
+        for (var n = 0; n < 4; n++) {
+            var side = (_drainCursor + n) % 4;
+            for (var k = 0; k < 8; k++) {
+                var along = (_runoffCursor[side] + k) % 8;
+                var bucket = side * 8 + along;
+                if (_runoff[bucket] < ml) { continue; }
+                uv = _runoffUv[bucket] / _runoff[bucket];
+                _runoff[bucket] -= ml;
+                _runoffUv[bucket] = uv * _runoff[bucket];
+                _runoffCursor[side] = (along + 1) % 8;
+                _drainCursor = (side + 1) % 4;
+                return true;
+            }
+        }
+        uv = Vector2.Zero;
+        return false;
     }
 
     internal void ReconcileWipes(WoundMap map) {
+        if (!HasFilm) { return; }
+        HasFilm = false;
         for (var y = 0; y < Size; y++) {
             for (var x = 0; x < Size; x++) {
                 var i = y * Size + x;
-                if (_painted[i] <= 0f || _ml[i] <= 0f) { continue; }
-                var now = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, Uv(x, y));
-                if (now + 0.5f / 255f < _painted[i]) {
-                    var remains = _ml[i] * now / _painted[i];
-                    RemovedMl += _ml[i] - remains;
-                    _ml[i] = remains;
-                    _painted[i] = now;
+                if (_painted[i] > 0f && _ml[i] > 0f) {
+                    var now = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, Uv(x, y));
+                    if (now + 0.5f / 255f < _painted[i]) {
+                        var remains = _ml[i] * now / _painted[i];
+                        RemovedMl += _ml[i] - remains;
+                        _ml[i] = remains;
+                        _painted[i] = now;
+                        NeedsPaint = _canFlow = true;
+                    }
                 }
+                HasFilm |= _ml[i] > 0f;
             }
         }
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal void Paint(WoundMap map) {
+        NeedsPaint = false;
         for (var i = 0; i < _ml.Length; i++) {
             _coverage[i] = 1f - Mathf.Exp(-_ml[i] * _depthPerMl / 0.0004f);
         }

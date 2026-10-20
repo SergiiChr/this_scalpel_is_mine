@@ -5,6 +5,8 @@ namespace Scalpel.Visuals;
 internal sealed class LiquidSurface {
     private readonly List<Vector3> _vertices = [];
     private readonly List<Vector3> _normals = [];
+    private Vector3[]? _packedVertices;
+    private Vector3[]? _packedNormals;
     private readonly record struct Sample(Vector2 At, float Inside, Vector3 Vertex);
 
     internal static Vector2[] Outline(float radius, float phase) {
@@ -182,6 +184,7 @@ internal sealed class LiquidSurface {
     private void Triangle(Vector3 a, Vector3 b, Vector3 c) => Triangle(a, b, c, Vector3.Up, Vector3.Up, Vector3.Up);
 
     private void Triangle(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc) {
+        _packedVertices = _packedNormals = null;
         _vertices.Add(a);
         _vertices.Add(b);
         _vertices.Add(c);
@@ -211,14 +214,20 @@ internal sealed class LiquidSurface {
         return mesh;
     }
 
+    /// <summary>Freeze managed geometry on its build worker, before the main-thread engine upload.</summary>
+    internal void PrepareUpload() {
+        _packedVertices ??= _vertices.ToArray();
+        _packedNormals ??= _normals.ToArray();
+    }
+
     internal ArrayMesh Upload(ArrayMesh? into = null) {
         var mesh = into ?? new ArrayMesh();
         mesh.ClearSurfaces();
         if (_vertices.Count == 0) { return mesh; }
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, _vertices.ToArray());
-        Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, _normals.ToArray());
+        Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, _packedVertices ?? _vertices.ToArray());
+        Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, _packedNormals ?? _normals.ToArray());
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }

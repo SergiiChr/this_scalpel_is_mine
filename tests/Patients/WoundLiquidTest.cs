@@ -87,6 +87,13 @@ public class WoundLiquidTest {
         AssertBool(pool.Visible).OverrideFailureMessage("fresh irrigation can gather again after the wound drains").IsTrue();
         AssertFloat(material.AlbedoColor.R).OverrideFailureMessage("drained blood does not tint the next clear dose")
             .IsEqualApprox(clearRed, 0.00001f);
+        body.Blood.Irrigate(body.UvToWorld(at), 100f, 1f);
+        await Frames.Process(8);
+        var saturatedRed = material.AlbedoColor.R;
+        body.Blood.Irrigate(body.UvToWorld(at), 100f, 0f);
+        await Frames.Process(8);
+        AssertFloat(material.AlbedoColor.R).OverrideFailureMessage("fresh saline dilutes blood even after the retained pool reaches its volume cap")
+            .IsLess(saturatedRed - 0.05f);
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
             : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);
     }

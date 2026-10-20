@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("liquids")]
+[TestCategory("smoke"), TestCategory("liquids"), TestCategory("surface_film")]
 public class SurfaceBloodTest {
     [TestCase]
     public void SurfaceFilmSpreadsInTwoDimensionsAndKeepsItsVolume() {
@@ -111,6 +111,68 @@ public class SurfaceBloodTest {
         map.PaintBloodFilm(cover, SurfaceBlood.Size);
         AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at))
             .OverrideFailureMessage("newly arriving liquid can wet the cleared area again").IsBetween(0.08f, 0.15f);
+    }
+
+    [TestCase]
+    public void DryFilmSleepsAndOppositeSidesKeepTheirOwnRunoff() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        AssertBool(film.HasFilm).IsFalse();
+        film.Add(new Vector2(0.5f, 0.5f), 0f);
+        Advance(film, 1f);
+        AssertBool(film.HasFilm).OverrideFailureMessage("zero-volume deposits do not wake a dry film").IsFalse();
+        film.Add(new Vector2(0f, 0.5f), 2f);
+        film.Add(new Vector2(1f, 0.5f), 2f);
+        AssertBool(film.HasFilm).IsTrue();
+        Advance(film, 1f);
+        var positions = new List<Vector2>();
+        while (film.TryRunoff(0.15f, out var uv)) { positions.Add(uv); }
+        AssertBool(positions.Any(p => p.X < 0.25f) && positions.Any(p => p.X > 0.75f))
+            .OverrideFailureMessage("simultaneous opposite-side runoff produces drops on both sides").IsTrue();
+        AssertBool(positions.Take(2).Any(p => p.X < 0.25f) && positions.Take(2).Any(p => p.X > 0.75f))
+            .OverrideFailureMessage("limited drop capacity cannot starve one draining side").IsTrue();
+        AssertFloat(positions.Count * 0.15f + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
+        AssertFloat(film.HeldMl + film.RunoffMl).IsEqualApprox(4f, 0.0001f);
+        var map = new WoundMap(WoundMap.MinSize);
+        film.Paint(map);
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.5f), 1f, 1f, WoundMap.Mode.Sub, soft: false);
+        film.ReconcileWipes(map);
+        film.Step(Basis.Identity, 1f / 60f);
+        film.Paint(map);
+        AssertBool(film.NeedsTransport(Basis.Identity))
+            .OverrideFailureMessage("a complete wipe leaves only pinned residue below the texture precision, without ongoing transport").IsFalse();
+        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0f, 0.5f))).IsEqual(0f);
+    }
+
+    [TestCase]
+    public void SettledFilmSleepsUntilTheSurfaceOrSupplyChanges() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        film.Add(new Vector2(0.5f, 0.5f), 0.0001f);
+        film.Step(Basis.Identity, 1f / 60f);
+        var map = new WoundMap(WoundMap.MinSize);
+        film.Paint(map);
+        AssertBool(film.HasFilm).IsTrue();
+        AssertBool(film.NeedsTransport(Basis.Identity)).OverrideFailureMessage("pinned residue stays visible without continuously running transport").IsFalse();
+        AssertBool(film.NeedsPaint).IsFalse();
+        var tilted = new Basis(Vector3.Forward, 0.2f);
+        AssertBool(film.NeedsTransport(tilted)).OverrideFailureMessage("a changed body slope wakes transport").IsTrue();
+        film.Step(tilted, 1f / 60f);
+        AssertBool(film.NeedsTransport(tilted)).IsFalse();
+        film.Add(new Vector2(0.5f, 0.5f), 1f);
+        AssertBool(film.NeedsTransport(tilted)).OverrideFailureMessage("new supply wakes a settled surface").IsTrue();
+    }
+
+    [TestCase]
+    public void SeparateBleedsOnOneEdgeKeepSeparateReleasePositions() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        film.Add(new Vector2(0f, 0.15f), 2f);
+        film.Add(new Vector2(0f, 0.85f), 2f);
+        Advance(film, 1f);
+        var positions = new List<Vector2>();
+        while (film.TryRunoff(0.15f, out var uv)) { positions.Add(uv); }
+        AssertBool(positions.Any(p => p.Y < 0.3f) && positions.Any(p => p.Y > 0.7f)).IsTrue();
+        AssertBool(positions.All(p => p.Y < 0.3f || p.Y > 0.7f))
+            .OverrideFailureMessage("separate outlets do not combine their release point into an unwetted midpoint").IsTrue();
+        AssertFloat(positions.Count * 0.15f + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
     }
 
     private static void Advance(SurfaceBlood film, float seconds) {
