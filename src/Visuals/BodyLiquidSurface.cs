@@ -24,7 +24,7 @@ internal sealed class BodyLiquidSurface {
                 var low = 0f; var high = 1f;
                 for (var n = 0; n < 14; n++) {
                     var f = (low + high) * 0.5f;
-                    if (a.Ml + SegmentMl(a, b, f) <= ml) { low = f; } else { high = f; }
+                    if (a.Ml + SegmentMl(a, b, f, Scale) <= ml) { low = f; } else { high = f; }
                 }
                 return Mathf.Lerp(a.Distance, b.Distance, low);
             }
@@ -34,21 +34,26 @@ internal sealed class BodyLiquidSurface {
             for (var i = 1; i < Samples.Length; i++) {
                 if (distance >= Samples[i].Distance) { continue; }
                 var a = Samples[i - 1]; var b = Samples[i];
-                return a.Ml + SegmentMl(a, b, Mathf.Clamp((distance - a.Distance) / (b.Distance - a.Distance), 0f, 1f));
+                return a.Ml + SegmentMl(a, b, Mathf.Clamp((distance - a.Distance) / (b.Distance - a.Distance), 0f, 1f), Scale);
             }
             return CapacityMl;
         }
         private static (Vector3 Left, Vector3 Right) Front(Sample a, Sample b, float f) {
             var left = a.Left.Lerp(b.Left, f); var right = a.Right.Lerp(b.Right, f);
-            var middle = (left + right) * 0.5f;
+            var middle = a.At.Lerp(b.At, f);
             // Widen continuously as the segment fills; no half-strip volume jump at a sample boundary.
             var width = Mathf.SmoothStep(0f, 1f, f);
             return (middle.Lerp(left, width), middle.Lerp(right, width));
         }
-        private float SegmentMl(Sample a, Sample b, float f) {
+        internal static float SegmentMl(Sample a, Sample b, float f, float scale) {
             var (left, right) = Front(a, b, f);
-            return ((a.Right - a.Left).Cross(left - a.Left).Length()
-                + (right - a.Right).Cross(left - a.Right).Length()) * 0.5f * Scale * Scale * FilmDepth * 1000000f;
+            var middle = a.At.Lerp(b.At, f);
+            static float TwiceArea(Vector3 p, Vector3 q, Vector3 r) => (q - p).Cross(r - p).Length();
+            // Exact quartic-profile means for UV triangles (0,.5,0), (.5,.5,0), (.5,1,.5), (1,1,.5).
+            // A centre contact prevents a narrow ribbon cutting a chord through rounded skin.
+            var area = TwiceArea(a.Left, a.At, left) * 0.625f + TwiceArea(a.At, middle, left) * 1.375f
+                + TwiceArea(a.At, a.Right, middle) * 1.375f + TwiceArea(a.Right, right, middle) * 0.625f;
+            return area * 0.5f * scale * scale * FilmDepth * 1000000f;
         }
         internal void Draw(LiquidSurface surface, float distance) {
             for (var i = 1; i < Samples.Length && Samples[i - 1].Distance < distance; i++) {
@@ -57,8 +62,13 @@ internal sealed class BodyLiquidSurface {
                 var (left, right) = Front(a, b, f);
                 var nl = a.LeftNormal.Lerp(b.LeftNormal, f).Normalized();
                 var nr = a.RightNormal.Lerp(b.RightNormal, f).Normalized();
-                surface.Facet(a.Left, a.Right, left, a.LeftNormal, a.RightNormal, nl);
-                surface.Facet(a.Right, right, left, a.RightNormal, nr, nl);
+                var middle = a.At.Lerp(b.At, f);
+                var nm = a.Normal.Lerp(b.Normal, f).Normalized();
+                var uvMiddle = Vector2.Right * 0.5f;
+                surface.Facet(a.Left, a.At, left, a.LeftNormal, a.Normal, nl, Vector2.Zero, uvMiddle, Vector2.Zero);
+                surface.Facet(a.At, middle, left, a.Normal, nm, nl, uvMiddle, uvMiddle, Vector2.Zero);
+                surface.Facet(a.At, a.Right, middle, a.Normal, a.RightNormal, nm, uvMiddle, Vector2.Right, uvMiddle);
+                surface.Facet(a.Right, right, middle, a.RightNormal, nr, nm, Vector2.Right, Vector2.Right, uvMiddle);
             }
         }
     }
@@ -118,22 +128,18 @@ internal sealed class BodyLiquidSurface {
             var segment = i == 0 ? 0f : p.At.DistanceTo(points[i - 1].At);
             distance += segment;
             var t = distance / Mathf.Max(length, 0.001f);
-            var width = Mathf.Lerp(0.009f + 0.003f * Mathf.Sin(seed * 1.7f), 0.0012f + 0.0003f * Mathf.Sin(seed * 0.7f + 1f), Mathf.Pow(t, 0.65f))
+            // The broad film already follows the flank; this ribbon is only its final attached tail.
+            var width = Mathf.Lerp(0.0045f + 0.0015f * Mathf.Sin(seed * 1.7f), 0.0006f + 0.00015f * Mathf.Sin(seed * 0.7f + 1f), Mathf.Pow(t, 0.65f))
                 * (0.9f + 0.1f * Mathf.Sin(seed * 1.37f + t * 9f)) / scale;
             width *= Mathf.SmoothStep(0f, 0.008f / scale, distance);
             var along = points[Math.Min(i + 1, points.Count - 1)].At - points[Math.Max(i - 1, 0)].At;
             var across = p.Normal.Cross(along).Normalized();
             var left = Closest(p.At - across * width * 0.5f, p.Face);
             var right = Closest(p.At + across * width * 0.5f, p.Face);
-            if (i > 0) {
-                var previous = samples[i - 1];
-                var a = toWorld * previous.Left; var b = toWorld * previous.Right;
-                var c = toWorld * (left.At + left.Normal * (Lift / scale)); var d = toWorld * (right.At + right.Normal * (Lift / scale));
-                var area = ((b - a).Cross(c - a).Length() + (d - b).Cross(c - b).Length()) * 0.5f;
-                ml += area * FilmDepth * 1000000f;
-            }
-            samples[i] = new Sample(p.At + p.Normal * (Lift / scale), p.Normal, left.At + left.Normal * (Lift / scale),
-                right.At + right.Normal * (Lift / scale), left.Normal, right.Normal, distance, ml, width);
+            var sample = new Sample(p.At + p.Normal * (Lift / scale), p.Normal, left.At + left.Normal * (Lift / scale),
+                right.At + right.Normal * (Lift / scale), left.Normal, right.Normal, distance, 0f, width);
+            if (i > 0) { ml += Path.SegmentMl(samples[i - 1], sample, 1f, scale); }
+            samples[i] = sample with { Ml = ml };
         }
         return new Path(samples, onBed, scale);
     }

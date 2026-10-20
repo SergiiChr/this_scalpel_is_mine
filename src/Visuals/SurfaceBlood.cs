@@ -6,15 +6,28 @@ internal sealed class SurfaceBlood {
     internal const int Size = 64;
     private const float Pinning = 0.00008f;
     private const float ResidueDepth = 0.00004f;
+    // Bounded wetting pressure on inclined skin; horizontal pools retain their hydrostatic spreading.
+    private const float ContactHead = 0.04f;
+    private const float ContactDepth = 0.004f;
+    private const float CoverDepth = 0.0004f;
     private static readonly (int X, int Y)[] Neighbors = [
         (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1),
     ];
     private readonly float[] _ml = new float[Size * Size];
     private readonly float[] _change = new float[Size * Size];
     private readonly float[] _height = new float[Size * Size];
+    private readonly float[] _head = new float[Size * Size];
+    private readonly float[] _thickness = new float[Size * Size];
+    private readonly float[] _wetRow = new float[Size * Size];
+    private readonly float[] _wettingHead = new float[Size * Size];
+    private readonly float[] _curved = new float[Size * Size];
+    private readonly List<int> _wetCells = new(Size * Size);
+    private readonly List<int> _blurCells = new(Size * Size);
+    private readonly bool[] _blurNeeded = new bool[Size * Size];
     private readonly float[] _coverage = new float[Size * Size];
     private readonly float[] _painted = new float[Size * Size];
     private readonly Vector3[] _skin = new Vector3[Size * Size];
+    private readonly Vector3[] _normal = new Vector3[Size * Size];
     private readonly bool[] _holds = new bool[Size * Size];
     private readonly float[] _weights = new float[8];
     private readonly float[] _distances = new float[8];
@@ -28,12 +41,13 @@ internal sealed class SurfaceBlood {
     private int _wipeVersion = -1;
     private readonly List<(int Index, int[] Neighbors)> _edgeNeighbors = [];
     internal bool NeedsTransport(Basis basis) => HasFilm && (_canFlow || !_hasBasis || basis != _basis);
-    private readonly float _depthPerMl;
+    private readonly float[] _normalDepthPerMl = new float[Size * Size];
+    private readonly float _projectedDepthPerMl;
     private readonly Vector2 _cell;
 
     internal SurfaceBlood(Vector2 siteSize, Func<Vector2, float> height, Func<Vector2, bool>? holds = null, float scale = 1f) {
         _cell = siteSize * scale / Size;
-        _depthPerMl = 0.000001f / (_cell.X * _cell.Y);
+        _projectedDepthPerMl = 0.000001f / (_cell.X * _cell.Y);
         for (var n = 0; n < Neighbors.Length; n++) {
             var (x, y) = Neighbors[n];
             _distances[n] = new Vector2(x * _cell.X, y * _cell.Y).Length();
@@ -44,6 +58,36 @@ internal sealed class SurfaceBlood {
                 var i = y * Size + x;
                 _skin[i] = new Vector3((uv.X - 0.5f) * siteSize.X, height(uv), (uv.Y - 0.5f) * siteSize.Y);
                 _holds[i] = holds?.Invoke(uv) ?? true;
+            }
+        }
+        // A projected cell covers more skin on a steep flank. Use its actual surface area for both
+        // normal film thickness and pigment, otherwise curved skin visibly multiplies the supplied blood.
+        for (var y = 0; y < Size; y++) {
+            for (var x = 0; x < Size; x++) {
+                var i = y * Size + x;
+                float Slope(int dx, int dy, float spacing) {
+                    var before = x - dx >= 0 && y - dy >= 0 && _holds[(y - dy) * Size + x - dx] ? i - dy * Size - dx : i;
+                    var after = x + dx < Size && y + dy < Size && _holds[(y + dy) * Size + x + dx] ? i + dy * Size + dx : i;
+                    var steps = (before == i ? 0 : 1) + (after == i ? 0 : 1);
+                    return steps == 0 ? 0f : (_skin[after].Y - _skin[before].Y) * scale / (spacing * steps);
+                }
+                var sx = Slope(1, 0, _cell.X); var sy = Slope(0, 1, _cell.Y);
+                _normalDepthPerMl[i] = _projectedDepthPerMl / Mathf.Sqrt(1f + sx * sx + sy * sy);
+                _normal[i] = new Vector3(-sx, 1f, -sy).Normalized();
+            }
+        }
+        // Gathering belongs on a convex flank, where the film wraps around the model. A broad surface
+        // tilted by the patient's pose must still spread rather than being forced into parallel channels.
+        for (var y = 0; y < Size; y++) {
+            for (var x = 0; x < Size; x++) {
+                var i = y * Size + x;
+                float Curvature(int dx, int dy) {
+                    var before = x - dx >= 0 && y - dy >= 0 && _holds[(y - dy) * Size + x - dx] ? i - dy * Size - dx : i;
+                    var after = x + dx < Size && y + dy < Size && _holds[(y + dy) * Size + x + dx] ? i + dy * Size + dx : i;
+                    var span = _skin[after] - _skin[before];
+                    return span.LengthSquared() > 0f ? (_normal[after] - _normal[before]).Dot(span) / (span.LengthSquared() * scale) : 0f;
+                }
+                _curved[i] = Mathf.SmoothStep(8f, 22f, Curvature(1, 0) + Curvature(0, 1));
             }
         }
         for (var y = 0; y < Size; y++) {
@@ -82,8 +126,42 @@ internal sealed class SurfaceBlood {
     internal void Step(Basis basis, float delta) {
         if (!NeedsTransport(basis)) { return; }
         if (!_hasBasis || basis != _basis) {
-            for (var i = 0; i < _ml.Length; i++) { _height[i] = (basis * _skin[i]).Y; }
+            _wetCells.Clear(); _blurCells.Clear();
+            Array.Clear(_blurNeeded);
+            for (var i = 0; i < _ml.Length; i++) {
+                _height[i] = (basis * _skin[i]).Y;
+                _wettingHead[i] = 0f;
+                if (!_holds[i] || _curved[i] <= 0f) { continue; }
+                var up = (basis * _normal[i]).Normalized().Y;
+                _wettingHead[i] = ContactHead * _curved[i] * Mathf.SmoothStep(0.5f, 0.9f, 1f - up * up);
+                if (_wettingHead[i] <= 0f) { continue; }
+                _wetCells.Add(i);
+                for (var dy = -2; dy <= 2; dy++) { _blurNeeded[Math.Clamp(i / Size + dy, 0, Size - 1) * Size + i % Size] = true; }
+            }
+            for (var i = 0; i < _blurNeeded.Length; i++) { if (_blurNeeded[i]) { _blurCells.Add(i); } }
             _basis = basis; _hasBasis = true;
+        }
+        for (var i = 0; i < _ml.Length; i++) {
+            _thickness[i] = _ml[i] * _normalDepthPerMl[i];
+            _head[i] = _height[i] + _ml[i] * _projectedDepthPerMl;
+        }
+        // The five-by-five footprint is separable. Cache its required cells with the pose, so flat
+        // areas never pay for cohesion and the hot path allocates nothing.
+        foreach (var i in _blurCells) {
+            var x = i % Size; var row = i - x;
+            _wetRow[i] = (_thickness[row + Math.Max(x - 2, 0)] + 4f * _thickness[row + Math.Max(x - 1, 0)]
+                + 6f * _thickness[i] + 4f * _thickness[row + Math.Min(x + 1, Size - 1)]
+                + _thickness[row + Math.Min(x + 2, Size - 1)]) / 16f;
+        }
+        foreach (var i in _wetCells) {
+            var x = i % Size; var y = i / Size;
+            var before2 = Math.Max(y - 2, 0) * Size; var before = Math.Max(y - 1, 0) * Size;
+            var after = Math.Min(y + 1, Size - 1) * Size; var after2 = Math.Min(y + 2, Size - 1) * Size;
+            var wet = (_wetRow[before2 + x] + 4f * _wetRow[before + x] + 6f * _wetRow[i]
+                + 4f * _wetRow[after + x] + _wetRow[after2 + x]) / 16f;
+            // Resolve cohesion over neighbouring skin, not individual cells: the latter creates
+            // grid-sized holes rather than continuous narrowing rivulets.
+            _head[i] -= _wettingHead[i] * wet / (wet + ContactDepth);
         }
         Array.Clear(_change);
         for (var y = 0; y < Size; y++) {
@@ -94,9 +172,9 @@ internal sealed class SurfaceBlood {
                     CollectRunoff(Uv(x, y), _ml[i]);
                     continue;
                 }
-                var movable = _ml[i] - ResidueDepth / _depthPerMl;
+                var movable = _ml[i] - ResidueDepth / _normalDepthPerMl[i];
                 if (movable <= 0f) { continue; }
-                var head = _height[i] + _ml[i] * _depthPerMl;
+                var head = _head[i];
                 var total = 0f;
                 for (var n = 0; n < Neighbors.Length; n++) {
                     var (dx, dy) = Neighbors[n];
@@ -107,12 +185,16 @@ internal sealed class SurfaceBlood {
                         : Math.Clamp(y - dy, 0, Size - 1) * Size + Math.Clamp(x - dx, 0, Size - 1);
                     // Continue the local slope off the boundary instead of inventing a vertical drop there.
                     var ground = inside ? _height[neighbor] : 2f * _height[i] - _height[neighbor];
-                    var other = ground + (inside && _holds[neighbor] ? _ml[neighbor] * _depthPerMl : 0f);
+                    var other = inside && _holds[neighbor] ? _head[neighbor] : ground;
                     _weights[n] = Mathf.Max(head - other - Pinning, 0f) / _distances[n];
                     total += _weights[n];
                 }
                 if (total <= 0f) { continue; }
-                var outflow = movable * Mathf.Min(0.24f, total * delta * 1.5f);
+                // Viscous film mobility scales with thickness squared. A thin advancing rim must slow down
+                // instead of travelling as quickly as its deep supply and leaving a uniformly broad sheet.
+                var thickness = _thickness[i];
+                var mobility = Mathf.Lerp(1f, Mathf.Min(1f, thickness * thickness / (CoverDepth * CoverDepth)), _wettingHead[i] / ContactHead);
+                var outflow = movable * Mathf.Min(0.24f, total * delta * 1.5f * mobility);
                 _change[i] -= outflow;
                 for (var n = 0; n < Neighbors.Length; n++) {
                     var (dx, dy) = Neighbors[n];
@@ -192,7 +274,7 @@ internal sealed class SurfaceBlood {
     internal void Paint(WoundMap map) {
         NeedsPaint = false;
         for (var i = 0; i < _ml.Length; i++) {
-            _coverage[i] = 1f - Mathf.Exp(-_ml[i] * _depthPerMl / 0.0004f);
+            _coverage[i] = 1f - Mathf.Exp(-_ml[i] * _normalDepthPerMl[i] / CoverDepth);
         }
         // Extend only the displayed density into one boundary cell. The cached continuous contact mask clips
         // it back to the body, so the simulation grid cannot imprint teeth into a saturated pool's edge.

@@ -232,13 +232,15 @@ public class SurfaceBloodTest {
             .IsBetween(3.5f, 4.5f);
     }
 
-    [TestCase(1f)]
-    [TestCase(2f)]
-    public void PaintedSurfaceFilmIntegratesToItsDose(float scale) {
+    [TestCase(1f, 0f)]
+    [TestCase(2f, 0f)]
+    [TestCase(1f, 1.7320508f)]
+    [TestCase(2f, 1.7320508f)]
+    public void PaintedSurfaceFilmIntegratesToItsDose(float scale, float slope) {
         const float DoseMl = 0.02f;
         const float CoverDepth = 0.0004f;
         var siteSize = new Vector2(0.3f, 0.3f);
-        var film = new SurfaceBlood(siteSize, _ => 0f, scale: scale);
+        var film = new SurfaceBlood(siteSize, uv => uv.X * siteSize.X * slope, scale: scale);
         var map = new WoundMap(WoundMap.MinSize);
         film.Add(new Vector2(0.5f, 0.5f), DoseMl);
         film.Paint(map);
@@ -251,7 +253,7 @@ public class SurfaceBloodTest {
             var cover = pixels[pixel * 4 + WoundMap.Blood] / 255f;
             if (cover <= 0f) { continue; }
             var depth = -Mathf.Log(1f - cover) * CoverDepth;
-            volumeM3 += depth * siteSize.X * siteSize.Y * scale * scale / (map.Size * map.Size);
+            volumeM3 += depth * siteSize.X * siteSize.Y * scale * scale * Mathf.Sqrt(1f + slope * slope) / (map.Size * map.Size);
         }
         var visibleDoseMl = (float)(volumeM3 * 1_000_000d);
         AssertFloat(visibleDoseMl)

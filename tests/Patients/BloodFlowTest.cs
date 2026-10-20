@@ -92,6 +92,21 @@ public class BloodFlowTest {
         driver.Note("surface bleeds feeding pools and trails");
         await AdvanceBlood(7f);
         AssertFloat(Amount(driver.Body, pool)).OverrideFailureMessage("the significant bleed retains a dense pool").IsGreater(0.8f);
+        AssertFloat(Amount(driver.Body, pool.Lerp(new Vector2(0.65f, 0.6f), 0.5f)))
+            .OverrideFailureMessage("neighbouring bleeds join into a spreading film rather than staying separate parallel strips").IsGreater(0.5f);
+        if (scenario == "hand_stitch") {
+            await driver.Unbudgeted(() => {
+                var continued = 0;
+                for (var y = 0; y < SurfaceBlood.Size; y++) {
+                    for (var x = 0; x < SurfaceBlood.Size; x++) {
+                        var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
+                        if (!driver.Body.OnBody(uv) && driver.Body.LiquidSupport(uv) > 0f && driver.Body.BloodAt(uv) > 0.5f) { continued++; }
+                    }
+                }
+                AssertInt(continued).OverrideFailureMessage("the continuous wet film crosses the surgical boundary before it narrows into attached model runoff").IsGreater(3);
+                return Task.CompletedTask;
+            });
+        }
         await driver.Capture("flowing", "connected spreading wet patches and broad downhill streams, dense blood at the supplies, soft edges; no isolated wiry tendrils or repeated bright ticks");
         blood.Sources.Clear();
         driver.Note("surface supply stopped, trails settling");
@@ -105,6 +120,14 @@ public class BloodFlowTest {
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
                 AssertBool(checkedDelayedBed).OverrideFailureMessage("attached narrowing runoff is visible before the first bed deposit").IsTrue();
+                var rendered = driver.Body.Site.GetNode<MeshInstance3D>("BodyRunoff");
+                var material = (ShaderMaterial)rendered.MaterialOverride;
+                AssertFloat((float)material.GetShaderParameter("rivulet_depth"))
+                    .OverrideFailureMessage("the actual runoff material uses its conserved mean film depth").IsEqual(BodyLiquidSurface.FilmDepth);
+                using var arrays = rendered.Mesh.SurfaceGetArrays(0);
+                AssertInt(arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array().Length)
+                    .OverrideFailureMessage("the rendered tails carry their rounded cross-section coordinates")
+                    .IsEqual(arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length);
                 var paths = blood.ModelRunoff.Paths.Where(p => p.Length > 0.015f).ToArray();
                 AssertInt(paths.Length).OverrideFailureMessage("several model-attached paths carry runoff").IsGreater(1);
                 AssertBool(paths.Any(p => p.Samples.Any(s => !driver.Body.OnBody(driver.Body.WorldToUv(driver.Body.Site.ToGlobal(s.At))))))

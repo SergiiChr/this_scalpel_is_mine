@@ -99,24 +99,37 @@ public class LiquidShapeTest {
             .IsEqualApprox(drops * BloodFlow.DropMl, 0.0002f);
     }
 
-    [TestCase(1f)]
-    [TestCase(2f)]
-    public void GrowingStreakMeshUsesItsActualDose(float scale) {
+    [TestCase(1f, false)]
+    [TestCase(2f, true)]
+    public void GrowingStreakMeshUsesItsActualDose(float scale, bool curved) {
         const float Width = 0.006f, Length = 0.0025f;
-        var capacity = Width * Length * scale * scale * BodyLiquidSurface.FilmDepth * 1000000f;
+        var edge = curved ? -0.0003f : 0f;
+        var perimeter = 2f * new Vector2(Width * 0.5f, edge).Length();
+        var capacity = perimeter * Length * scale * scale * BodyLiquidSurface.FilmDepth * 1000000f;
         BodyLiquidSurface.Sample Sample(float z, float ml) => new(new Vector3(0f, 0f, z), Vector3.Up,
-            new Vector3(-Width * 0.5f, 0f, z), new Vector3(Width * 0.5f, 0f, z), Vector3.Up, Vector3.Up, z, ml, Width);
+            new Vector3(-Width * 0.5f, edge, z), new Vector3(Width * 0.5f, edge, z), Vector3.Up, Vector3.Up, z, ml, Width);
         var path = new BodyLiquidSurface.Path([Sample(0f, 0f), Sample(Length, capacity)], false, scale);
+        AssertFloat(path.VolumeAt(0f)).OverrideFailureMessage("a curved cross-section does not invent volume before the front advances").IsEqual(0f);
         foreach (var fraction in new[] { 0.1f, 0.5f, 0.999f, 1f }) {
-            var surface = new LiquidSurface();
+            var surface = new LiquidSurface(withUv: true);
             var distance = Length * fraction;
             path.Draw(surface, distance);
             using var mesh = surface.Upload();
             using var arrays = mesh.SurfaceGetArrays(0);
             var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            AssertInt(uv.Length).IsEqual(vertices.Length);
             var area = 0f;
             for (var i = 0; i < vertices.Length; i += 3) {
-                area += (vertices[i + 1] - vertices[i]).Cross(vertices[i + 2] - vertices[i]).Length() * 0.5f;
+                var triangle = (vertices[i + 1] - vertices[i]).Cross(vertices[i + 2] - vertices[i]).Length() * 0.5f;
+                var a = 2f * uv[i].X - 1f; var b = 2f * uv[i + 1].X - 1f; var c = 2f * uv[i + 2].X - 1f;
+                // Exact moments of the shader's rounded depth over each actual rendered triangle.
+                var meanSquare = (a * a + b * b + c * c + a * b + b * c + c * a) / 6f;
+                var fourth = 0f;
+                for (var n = 0; n <= 4; n++) {
+                    for (var m = 0; m <= 4 - n; m++) { fourth += Mathf.Pow(a, n) * Mathf.Pow(b, m) * Mathf.Pow(c, 4 - n - m); }
+                }
+                area += triangle * 1.875f * (1f - 2f * meanSquare + fourth / 15f);
             }
             var renderedMl = area * scale * scale * BodyLiquidSurface.FilmDepth * 1000000f;
             AssertFloat(path.VolumeAt(distance)).OverrideFailureMessage("the growing tip reports the volume of its actual triangles")

@@ -83,6 +83,8 @@ public partial class PatientBody : Node3D {
     public const float VeinReach = 0.014f;
 
     private readonly List<ShaderMaterial> _bodyMaterials = [];
+    private readonly List<ShaderMaterial> _siteMaterials = [];
+    internal void RegisterSkinMaterial(ShaderMaterial material) => _siteMaterials.Add(material);
     /// <summary>Each forearm vein (its mesh rides the forearm bone), for <see cref="VeinAt"/>.</summary>
     private readonly List<Vein> _veins = [];
     private readonly List<Forearm> _forearms = [];
@@ -432,9 +434,6 @@ public partial class PatientBody : Node3D {
         return _onBody[cell.Y * Heights + cell.X];
     }
 
-    /// <summary>The broad surgical film hands off to attached model rivulets at the tissue boundary.</summary>
-    internal float FilmSupport(Vector2 uv) => LiquidSupport(uv) + 0.0005f - Mathf.Max(MinThickness, MuscleBottom);
-
     /// <summary>Continuous model-contact margin, independent of the surgical layers' minimum thickness. Interpolation keeps a sloping
     /// boundary continuous instead of drawing the nearest support cell's rectangular outline.</summary>
     internal float LiquidSupport(Vector2 uv) {
@@ -744,8 +743,11 @@ public partial class PatientBody : Node3D {
             foreach (var material in _bodyMaterials) {
                 Materials.SetCarve(material, site, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
             }
-            SkinMaterial?.SetMatrix(ShaderParam.SiteToModel, new Projection(model.AffineInverse() * site));
-            SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
+            var coordinates = new Projection(model.AffineInverse() * site);
+            foreach (var material in _siteMaterials) {
+                material.SetMatrix(ShaderParam.SiteToModel, coordinates);
+                material.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
+            }
             Materials.SetReveal(_cavityMaterial, site, SiteSize * 0.5f, RegionTexture);
             return;
         }
@@ -753,7 +755,8 @@ public partial class PatientBody : Node3D {
         foreach (var material in _bodyMaterials) {
             Materials.LiftCarve(material, lift);
         }
-        SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, model.Basis.Inverse() * lift);
+        var localLift = model.Basis.Inverse() * lift;
+        foreach (var material in _siteMaterials) { material.SetShaderParameter(ShaderParam.SiteLift, localLift); }
         _cavityMaterial.SetShaderParameter(ShaderParam.RegionLift, lift);
     }
 
@@ -763,7 +766,7 @@ public partial class PatientBody : Node3D {
             return;
         }
         _pallor = value;
-        SkinMaterial?.SetShaderParameter(ShaderParam.Pallor, value);
+        foreach (var material in _siteMaterials) { material.SetShaderParameter(ShaderParam.Pallor, value); }
         _bodyMaterials[0].SetShaderParameter(ShaderParam.Pallor, value);
     }
 

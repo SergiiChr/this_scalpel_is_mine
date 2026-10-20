@@ -237,12 +237,13 @@ public partial class BloodFlow : Node3D {
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
-        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, uv => patientBody.FilmSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
-        patientBody.WoundMap.SetBloodFilmSupport(patientBody.FilmSupport);
-        var bodyFilm = Materials.BodyBloodFilm();
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, uv => patientBody.LiquidSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
+        patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
+        var bodyFilm = Materials.BodyBloodFilm(patientBody.SkinMaterial!, patientBody.SiteSize);
+        patientBody.RegisterSkinMaterial(bodyFilm);
         var runoff = new MeshInstance3D {
             Name = "BodyRunoff",
-            Mesh = new ArrayMesh(),
+            Mesh = LiquidSurface.Primed(withUv: true),
             MaterialOverride = bodyFilm,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };

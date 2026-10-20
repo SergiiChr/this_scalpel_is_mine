@@ -2,18 +2,21 @@ namespace Scalpel.Visuals;
 
 /// <summary>Continuous liquid footprints. A boundary cuts the free outline instead of squeezing the whole pool;
 /// sampled wound boundaries interpolate their crossings rather than dropping complete grid squares.</summary>
-internal sealed class LiquidSurface {
+internal sealed class LiquidSurface(bool withUv = false) {
     // Integral of Patch's .88 inner ring, .65 central height and .15 rim, divided by footprint area.
     internal const float PatchMeanDepth = 0.5924f;
     private readonly List<Vector3> _vertices = [];
     private readonly List<Vector3> _normals = [];
+    private readonly List<Vector2>? _uv = withUv ? [] : null;
     private Vector3[] _packedVertices = [];
     private Vector3[] _packedNormals = [];
+    private Vector2[] _packedUv = [];
     private bool _prepared;
 
     internal void Clear() {
         _vertices.Clear();
         _normals.Clear();
+        _uv?.Clear();
         _prepared = false;
     }
     private readonly record struct Sample(Vector2 At, float Inside, Vector3 Vertex);
@@ -188,11 +191,15 @@ internal sealed class LiquidSurface {
         }
     }
 
-    internal void Facet(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc) => Triangle(a, b, c, na, nb, nc);
+    internal void Facet(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc,
+        Vector2 ua = default, Vector2 ub = default, Vector2 uc = default) {
+        Triangle(a, b, c, na, nb, nc, ua, ub, uc);
+    }
 
     private void Triangle(Vector3 a, Vector3 b, Vector3 c) => Triangle(a, b, c, Vector3.Up, Vector3.Up, Vector3.Up);
 
-    private void Triangle(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc) {
+    private void Triangle(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc,
+        Vector2 ua = default, Vector2 ub = default, Vector2 uc = default) {
         _prepared = false;
         _vertices.Add(a);
         _vertices.Add(b);
@@ -200,6 +207,17 @@ internal sealed class LiquidSurface {
         _normals.Add(na);
         _normals.Add(nb);
         _normals.Add(nc);
+        if (_uv is not null) { _uv.Add(ua); _uv.Add(ub); _uv.Add(uc); }
+    }
+
+    /// <summary>Submit the real vertex format during scene setup, before a dynamic film first becomes visible.
+    /// A microscopic seed is below pixel size and replaced by the first worker upload; an empty mesh would defer
+    /// shader pipeline compilation until blood starts flowing.</summary>
+    internal static ArrayMesh Primed(bool withUv = false) {
+        var surface = new LiquidSurface(withUv);
+        surface.Facet(Vector3.Zero, Vector3.Right * 0.000001f, Vector3.Back * 0.000001f,
+            Vector3.Up, Vector3.Up, Vector3.Up, Vector2.Zero, Vector2.Right, Vector2.Zero);
+        return surface.Upload();
     }
 
     internal static ArrayMesh Drop(out float volume) {
@@ -238,6 +256,10 @@ internal sealed class LiquidSurface {
         }
         _vertices.CopyTo(_packedVertices);
         _normals.CopyTo(_packedNormals);
+        if (_uv is not null) {
+            if (_packedUv.Length != _uv.Count) { _packedUv = new Vector2[_uv.Count]; }
+            _uv.CopyTo(_packedUv);
+        }
         _prepared = true;
     }
 
@@ -250,6 +272,7 @@ internal sealed class LiquidSurface {
         PrepareUpload();
         Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, _packedVertices);
         Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, _packedNormals);
+        if (_uv is not null) { Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, _packedUv); }
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }

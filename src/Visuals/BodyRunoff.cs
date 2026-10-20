@@ -18,7 +18,7 @@ internal sealed class BodyRunoff(BodyLiquidSurface model, Node3D site, BedLiquid
     }
     private readonly Outlet[] _outlets = Enumerable.Range(0, 32).Select(i => new Outlet(i + 301)).ToArray();
     private readonly (BodyLiquidSurface.Path? Path, float Distance)[] _snapshot = new (BodyLiquidSurface.Path?, float)[32];
-    private readonly LiquidSurface _surface = new();
+    private readonly LiquidSurface _surface = new(withUv: true);
     private Task<BodyLiquidSurface.Path>? _tracing;
     private int _traceIndex;
     private Task? _drawing;

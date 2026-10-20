@@ -166,6 +166,7 @@ public partial class PatientBody {
         skin.SetShaderParameter("seam_map", WoundMap.Texture(WoundMap.Layer.Seams));
         skin.SetShaderParameter("bleed_map", WoundMap.Texture(WoundMap.Layer.Bleeds));
         SkinMaterial = skin;
+        RegisterSkinMaterial(skin);
         string[] names = ["Skin", "Fat", "Muscle"];
         for (var i = 0; i < 3; i++) {
             var layer = new MeshInstance3D { Name = names[i], Mesh = new ArrayMesh() };
