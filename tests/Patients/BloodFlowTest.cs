@@ -3,6 +3,7 @@ namespace Scalpel.Tests.Patients;
 /// <summary>Fixed surface bleeds on three body slopes: a small seep stays visible beside a large pool and thin
 /// downhill films. Stopping their supply leaves the deposited blood on the skin.</summary>
 [TestSuite, RequireGodotRuntime]
+[TestCategory("liquid_contours")]
 [TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class BloodFlowTest {
@@ -49,9 +50,22 @@ public class BloodFlowTest {
             driver.Budget.Clear();
             RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
         }
+        var checkedDelayedBed = false;
+        var capturedRunoff = false;
         async Task AdvanceBlood(float seconds) {
             for (var frame = 0; frame < Mathf.RoundToInt(seconds * 60f); frame++) {
                 await Frames.NextProcess();
+                if (scenario == "hand_stitch" && blood.ModelRunoff.HasGrowingStreak && !capturedRunoff) {
+                    if (!blood.ModelRunoff.HasReachedEnd) {
+                        AssertFloat(blood.GroundLiquidArea).OverrideFailureMessage("the bed stays clean until an attached stream reaches its end").IsEqual(0f);
+                        checkedDelayedBed = true;
+                    }
+                    capturedRunoff = true;
+                    var path = blood.ModelRunoff.GrowingPath!;
+                    var at = driver.Body.Site.ToGlobal(path.Samples[0].At);
+                    var side = (driver.Body.Site.GlobalBasis * path.Samples[0].Normal).Slide(Vector3.Up).Normalized();
+                    await session.CaptureOblique("attached_runoff", "a narrowing wet streak runs down the actual curved limb, with its growing tip still attached before blood reaches the bed", at, side, 0.24f);
+                }
                 if (measureGpu) {
                     var ms = RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
                     if (ms > 0.0) {
@@ -90,28 +104,67 @@ public class BloodFlowTest {
         await driver.Capture("settled", "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed");
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
-                var continued = false;
-                var body = driver.Body;
-                var margin = 2f / SurfaceBlood.Size;
-                for (var y = 2; y < SurfaceBlood.Size - 2; y++) {
-                    for (var x = 2; x < SurfaceBlood.Size - 2; x++) {
-                        var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
-                        if (body.OnBody(uv) || body.OnBody(uv + Vector2.Right * margin)
-                            || body.OnBody(uv - Vector2.Right * margin) || body.OnBody(uv + Vector2.Down * margin)
-                            || body.OnBody(uv - Vector2.Down * margin) || body.LiquidSupport(uv) <= 0f) { continue; }
-                        continued |= Amount(body, uv) > 0.25f;
+                AssertBool(checkedDelayedBed).OverrideFailureMessage("attached narrowing runoff is visible before the first bed deposit").IsTrue();
+                var paths = blood.ModelRunoff.Paths.Where(p => p.Length > 0.015f).ToArray();
+                AssertInt(paths.Length).OverrideFailureMessage("several model-attached paths carry runoff").IsGreater(1);
+                AssertBool(paths.Any(p => p.Samples.Any(s => !driver.Body.OnBody(driver.Body.WorldToUv(driver.Body.Site.ToGlobal(s.At))))))
+                    .OverrideFailureMessage("the narrowing streaks continue beyond the surgical mesh onto model skin").IsTrue();
+                foreach (var path in paths) {
+                    AssertFloat(path.InletWidth / path.Samples[^1].Width).IsGreater(2f);
+                    AssertFloat((driver.Body.Site.ToGlobal(path.Samples[0].At) - driver.Body.Site.ToGlobal(path.End)).Y).IsGreater(0.005f);
+                    foreach (var sample in path.Samples) {
+                        AssertFloat(driver.Body.LiquidContact.DistanceTo(sample.At))
+                            .OverrideFailureMessage("every attached streak sample remains within a millimetre of actual model triangles").IsLess(0.001f);
                     }
                 }
-                AssertBool(continued).OverrideFailureMessage("blood crosses beyond the tissue patch onto actual thin model skin, rather than stopping at the surgical mesh edge").IsTrue();
                 return Task.CompletedTask;
             });
         }
+        AssertFloat(blood.SurfaceAccountedMl).OverrideFailureMessage("skin, attached streaks, queued liquid, drops and ground deposits conserve the supplied milliliters")
+            .IsEqualApprox(blood.SurfaceSuppliedMl, 0.01f);
+        AssertFloat(blood.ModelRunoff.VisibleMl).IsLessEqual(blood.ModelRunoff.HeldMl + 0.0001f);
         if (measureGpu) {
             RenderingServer.ViewportSetMeasureRenderTime(viewport, false);
             AssertInt(gpu.Count).OverrideFailureMessage("the host GPU supplies render timestamps").IsGreater(0);
             gpu.Sort();
             GD.Print($"blood GPU {scenario} ({RenderingServer.GetVideoAdapterName()}, {RenderingServer.GetCurrentRenderingMethod()}): "
                 + $"mean {gpu.Average():0.000} ms, p95 {gpu[(int)(gpu.Count * 0.95)]:0.000} ms, max {gpu[^1]:0.000} ms");
+        }
+        // A second, strong dose also exercises spurts: thrown blood must come out of the surface dose.
+        var beforeDose = blood.SurfaceAccountedMl;
+        var beforeSupply = blood.SurfaceSuppliedMl;
+        blood.Sources = [new(pool, 12f)];
+        var sawSpurt = false;
+        for (var frame = 0; frame < 60; frame++) {
+            await Frames.NextProcess();
+            sawSpurt |= blood.Drops.Count > 0;
+            foreach (var drop in blood.Drops) {
+                var visible = blood.DropShapeMl * drop.Shape.X * drop.Shape.Y * drop.Shape.Z;
+                AssertFloat(visible).OverrideFailureMessage("random drop shape preserves its supplied volume")
+                    .IsEqualApprox(drop.Area * BloodFlow.DropMl / BloodFlow.PoolAreaPerDrop, 0.0001f);
+            }
+        }
+        blood.Sources.Clear();
+        AssertBool(sawSpurt).IsTrue();
+        AssertFloat(blood.SurfaceAccountedMl - beforeDose)
+            .OverrideFailureMessage("a later poured dose increases the accounted liquid inventory by exactly the added dose, including spurts")
+            .IsEqualApprox(blood.SurfaceSuppliedMl - beforeSupply, 0.01f);
+        if (scenario == "hand_stitch") {
+            // No supporting model is a real detachment case, even when there is only one finite dose.
+            using var emptySurface = new ArrayMesh();
+            var emptyMesh = new MeshInstance3D { Mesh = emptySurface };
+            var detached = new BodyRunoff(new BodyLiquidSurface([], []), driver.Body.Site, driver.Surgery.Room.BedSurface, emptyMesh);
+            detached.Add(new Vector2(0f, 0.5f), Vector3.Up * 10f, 0.03f);
+            var released = 0f;
+            for (var frame = 0; frame < 120 && released <= 0f; frame++) {
+                detached.Tick(1f / 60f);
+                if (detached.TryRelease(out _, out var ml, out _)) { released += ml; }
+                await Frames.NextProcess();
+            }
+            AssertFloat(released).OverrideFailureMessage("one unsupported finite dose releases after its pulse instead of becoming stuck in a zero-capacity path")
+                .IsEqualApprox(0.03f, 0.00001f);
+            AssertFloat(detached.HeldMl).IsEqual(0f);
+            emptyMesh.Free();
         }
         await session.Finish(measureGpu ? RenderAllowance : CpuAllowance);
     }

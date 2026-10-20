@@ -3,6 +3,8 @@ namespace Scalpel.Visuals;
 /// <summary>Continuous liquid footprints. A boundary cuts the free outline instead of squeezing the whole pool;
 /// sampled wound boundaries interpolate their crossings rather than dropping complete grid squares.</summary>
 internal sealed class LiquidSurface {
+    // Integral of Patch's .88 inner ring, .65 central height and .15 rim, divided by footprint area.
+    internal const float PatchMeanDepth = 0.5924f;
     private readonly List<Vector3> _vertices = [];
     private readonly List<Vector3> _normals = [];
     private Vector3[] _packedVertices = [];
@@ -200,7 +202,7 @@ internal sealed class LiquidSurface {
         _normals.Add(nc);
     }
 
-    internal static ArrayMesh Drop() {
+    internal static ArrayMesh Drop(out float volume) {
         using var sphere = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 8, Rings = 6 };
         using var arrays = sphere.GetMeshArrays();
         var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
@@ -214,6 +216,12 @@ internal sealed class LiquidSurface {
             normals[i] = new Vector3(p.X / (width * width), p.Y + 0.28f * (p.X * p.X + p.Z * p.Z) / (width * width * width),
                 p.Z / (width * width)).Normalized();
         }
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var signedVolume = 0f;
+        for (var i = 0; i + 2 < indices.Length; i += 3) {
+            signedVolume += vertices[indices[i]].Dot(vertices[indices[i + 1]].Cross(vertices[indices[i + 2]])) / 6f;
+        }
+        volume = Mathf.Abs(signedVolume);
         Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, vertices);
         Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, normals);
         var mesh = new ArrayMesh();

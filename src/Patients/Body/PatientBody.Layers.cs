@@ -147,6 +147,7 @@ public partial class PatientBody {
         _bodyRoot.AddChild(Site);
 
         var parts = ModelParts(model);
+        LiquidContact = new BodyLiquidSurface(parts.SelectMany(p => p.Faces).ToArray(), parts.SelectMany(p => p.Normals).ToArray());
         var thickness = MeasureSite(parts);
         MeasureLimbBones();
         // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.

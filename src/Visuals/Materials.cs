@@ -392,6 +392,18 @@ public static class Materials {
         MetallicSpecular = 0.9f,
     };
 
+    /// <summary>Attached skin runoff uses the same blood pigment and light as the surgical skin pool.</summary>
+    internal static ShaderMaterial BodyBloodFilm() {
+        using var clear = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
+        clear.Fill(new Color(0f, 0f, 0f, 0f));
+        using var blood = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
+        blood.Fill(new Color(1f, 0f, 0f, 0f));
+        var material = SkinSite(Colors.White, ImageTexture.CreateFromImage(clear), ImageTexture.CreateFromImage(blood));
+        material.SetShaderParameter("site_to_model", Transform3D.Identity);
+        material.SetShaderParameter("grime", 0f);
+        return material;
+    }
+
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
         Roughness = 0.28f,

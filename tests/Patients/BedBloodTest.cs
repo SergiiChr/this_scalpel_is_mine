@@ -59,28 +59,42 @@ public class BedBloodTest {
         var headStreams = 0;
         var shownNecks = false;
         // Controlled landed drops isolate bed runoff from the patient's wound and vital signs.
-        for (var frame = 0; frame < 120; frame++) {
-            if (frame < 60) { foreach (var at in supplies) { blood.Pool(at); } }
+        // Retaining the side film adds a filling phase before the first free drop.
+        for (var frame = 0; frame < 360; frame++) {
+            if (frame < 60) { foreach (var at in supplies) { blood.Pool(at, BloodFlow.PoolAreaPerDrop * 3f); } }
             await Frames.NextProcess();
             if (blood.Drops.Count > 0) {
                 var shape = blood.Drops[0].Shape;
                 shapes.Add(new Vector2(Mathf.Round(shape.X * 100000f), Mathf.Round(shape.Y * 100000f)));
             }
-            var necks = blood.AttachedDrips.ToArray();
-            AssertBool(necks.All(at => at.Y < mattress.DripHeight + 0.001f))
+            if (frame == 45) {
+                AssertBool(Deposits(blood).Any(pool => pool.HasNode("BedRivulets") && pool.GetNode<MeshInstance3D>("BedRivulets").Mesh.GetSurfaceCount() > 0))
+                    .OverrideFailureMessage("side coating starts while the pool is still being supplied and growing").IsTrue();
+            }
+            var belowLip = true; var heads = 0; var atSide = 0;
+            foreach (var at in blood.AttachedDrips) {
+                belowLip &= at.Y < mattress.DripHeight + 0.001f;
+                if (at.X > Room.TableHead - 0.045f) { heads++; }
+                if (at.Z < -Room.TableHalfWidth + 0.012f && Mathf.Abs(at.X - supplies[2].X) < 0.1f) { atSide++; }
+            }
+            AssertBool(belowLip)
                 .OverrideFailureMessage("attached drops begin only at the bottom frame lip, never midway down the mattress").IsTrue();
             if (frame < 20) {
                 AssertInt(blood.Drops.Count).OverrideFailureMessage("runoff wets the bed side before any free drops detach").IsEqual(0);
             }
-            headStreams = Math.Max(headStreams, necks.Count(at => at.X > Room.TableHead - 0.045f));
-            var atSide = necks.Count(at => at.Z < -Room.TableHalfWidth + 0.012f && Mathf.Abs(at.X - supplies[2].X) < 0.1f);
+            headStreams = Math.Max(headStreams, heads);
             if (!shownNecks && atSide >= 2) {
                 shownNecks = true;
+                // The headless dummy renderer returns identity for MultiMesh transforms.
+                if (KeyFrames.Wanted() || FrameBudget.Mode == BudgetMode.Render) {
+                    AssertFloat(blood.DrawnNeckMl).OverrideFailureMessage("random attached neck geometry cannot exceed its pending milliliters")
+                        .IsLessEqual(blood.PendingDripMl + 0.00001f);
+                }
                 await session.CaptureOblique("ligaments", "uneven rivulets stay attached down the pad and frame; necks and drops begin at the bottom lip",
                     new Vector3(supplies[2].X, height - 0.05f, -Room.TableHalfWidth), Vector3.Forward, 0.28f);
             }
         }
-        AssertInt(shapes.Count).OverrideFailureMessage("falling drops vary their width and stretched length").IsGreater(3);
+        AssertInt(shapes.Count).OverrideFailureMessage($"falling drops vary their width and stretched length ({shapes.Count} observed)").IsGreater(3);
         AssertInt(headStreams).OverrideFailureMessage("a wetted bed end feeds more than one attached stream").IsGreaterEqual(2);
         var meshWait = System.Diagnostics.Stopwatch.StartNew();
         while (!blood.GroundMeshesReady && meshWait.Elapsed.TotalSeconds < 5) { await Frames.NextProcess(); }
@@ -97,7 +111,7 @@ public class BedBloodTest {
                 AssertInt(side.Mesh.GetSurfaceCount()).OverrideFailureMessage("every overflowing pool leaves attached rivulets down the bed side").IsGreater(0);
                 using var sideArrays = side.Mesh.SurfaceGetArrays(0);
                 var wet = sideArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Select(p => p + pool.Position).ToArray();
-                AssertFloat(wet.Min(p => p.Y)).OverrideFailureMessage("attached side coating reaches the lower frame lip").IsLessEqual(mattress.DripHeight + 0.001f);
+                AssertFloat(wet.Min(p => p.Y)).OverrideFailureMessage($"attached side coating reaches the lower frame lip: {pool.Position}, bottom {wet.Min(p => p.Y)}, expected {mattress.DripHeight}").IsLessEqual(mattress.DripHeight + 0.001f);
                 if (Mathf.Abs(pool.Position.X - 0.39f) < 0.001f) {
                     AssertBool(wet.Any(p => p.Y > 0.795f && p.Y < 0.81f && Mathf.Abs(p.Z) > 0.1f && Mathf.Abs(p.Z) < 0.24f))
                         .OverrideFailureMessage("gap runoff visibly traverses the supporting frame top before reaching its outer side").IsTrue();
@@ -121,12 +135,13 @@ public class BedBloodTest {
         await Frames.Seconds(1f);
         var floorArea = 0f;
         await driver.Unbudgeted(() => {
+            AssertFloat(blood.PendingDripMl).OverrideFailureMessage("a completed finite supply does not strand pulses at almost-complete paths").IsLess(0.0001f);
             var floors = Deposits(blood).Where(pool => pool.Position.Y < 0.01f).ToArray();
             AssertInt(floors.Length).OverrideFailureMessage("overflow from each tested bed edge reaches a separate floor pool").IsGreaterEqual(supplies.Length);
             floorArea = floors.Sum(pool => FootprintArea(pool));
-            AssertFloat(Deposits(blood).Sum(pool => FootprintArea(pool)))
-                .OverrideFailureMessage("all incoming blood remains on the bed or reaches the floor after staggered release")
-                .IsEqualApprox((supplies.Length * 60 + 2) * BloodFlow.PoolAreaPerDrop, 0.00001f);
+            AssertFloat(Deposits(blood).Sum(pool => FootprintArea(pool) * (pool.Position.Y > Room.TableHeight ? BloodFlow.BedAreaVolumeRatio : 1f) + SideCoatingArea(pool)))
+                .OverrideFailureMessage("all incoming blood remains in the bed pool, its retained side coating, or the floor after staggered release")
+                .IsEqualApprox((supplies.Length * 60 * 3 + 2) * BloodFlow.PoolAreaPerDrop, 0.00001f);
             return Task.CompletedTask;
         });
         for (var frame = 0; frame < 60; frame++) {
@@ -139,7 +154,7 @@ public class BedBloodTest {
                 .OverrideFailureMessage("continued bed overflow grows the floor pools").IsGreater(floorArea);
             AssertFloat(blood.GroundLiquidArea)
                 .OverrideFailureMessage("continued overflow conserves deposited liquid and liquid still travelling down the bed")
-                .IsEqualApprox((supplies.Length * 120 + 2) * BloodFlow.PoolAreaPerDrop, 0.00001f);
+                .IsEqualApprox((supplies.Length * 240 + 2) * BloodFlow.PoolAreaPerDrop, 0.00001f);
             return Task.CompletedTask;
         });
         await session.CaptureOblique("floor_pool", "the bed pool remains inside its edge while the floor pool grows from later overflow", view, Vector3.Forward, 1.8f);
@@ -191,6 +206,60 @@ public class BedBloodTest {
             return Task.CompletedTask;
         });
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : null);
+    }
+
+    [TestCase]
+    public async Task BedSideCoatingRetainsAFiniteDoseBeforeReleasingExcess() {
+        var session = await ToolSession.Start("appendectomy", "bed_finite_coating", captureUntouched: false);
+        var driver = session.Driver;
+        driver.Patient.SetPhysicsProcess(false);
+        driver.Body.SetProcess(false);
+        var blood = driver.Body.Blood;
+        blood.Sources.Clear();
+        blood.Pools.Clear();
+        var at = new Vector3(Room.TableHead - 0.00001f, BloodFlow.TableTop, 0f);
+        var dose = BloodFlow.PoolAreaPerDrop * 0.01f;
+        blood.Pool(at, dose);
+        await Frames.Seconds(2f);
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (!blood.GroundMeshesReady && wait.Elapsed.TotalSeconds < 5) { await Frames.NextProcess(); }
+        AssertBool(blood.GroundMeshesReady).IsTrue();
+        await driver.Unbudgeted(() => {
+            var pool = Deposits(blood).Single();
+            var side = SideCoatingArea(pool);
+            AssertFloat(side).OverrideFailureMessage("a small finite runoff wets a visible part of the bed side").IsGreater(0f);
+            AssertFloat(side).OverrideFailureMessage("the actual generated side geometry cannot contain more liquid than the dose").IsLessEqual(dose);
+            AssertFloat(FootprintArea(pool) * BloodFlow.BedAreaVolumeRatio + side)
+                .OverrideFailureMessage("the finite dose remains in the pool and its attached coating").IsEqualApprox(dose, dose * 0.02f);
+            AssertInt(blood.Drops.Count).OverrideFailureMessage("the side coating retains its small supply before it can reach the lower lip").IsEqual(0);
+            using var arrays = pool.GetNode<MeshInstance3D>("BedRivulets").Mesh.SurfaceGetArrays(0);
+            var wet = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            AssertFloat(wet.Min(p => p.Y + pool.Position.Y)).IsGreater(driver.Surgery.Room.BedSurface.DripHeight + 0.01f);
+            AssertFloat(blood.GroundLiquidArea).IsEqualApprox(dose, dose * 0.001f);
+            return Task.CompletedTask;
+        });
+        blood.Pool(at, BloodFlow.PoolAreaPerDrop * 5f);
+        await Frames.Seconds(3f);
+        await driver.Unbudgeted(() => {
+            AssertBool(Deposits(blood).Any(pool => pool.Position.Y < 0.01f))
+                .OverrideFailureMessage("later supply fills the side coating and releases only its excess to the floor").IsTrue();
+            AssertFloat(blood.GroundLiquidArea).IsEqualApprox(dose + BloodFlow.PoolAreaPerDrop * 5f, 0.000001f);
+            return Task.CompletedTask;
+        });
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : null);
+    }
+
+    private static float SideCoatingArea(MeshInstance3D pool) {
+        if (!pool.HasNode("BedRivulets")) { return 0f; }
+        var mesh = pool.GetNode<MeshInstance3D>("BedRivulets").Mesh;
+        if (mesh.GetSurfaceCount() == 0) { return 0f; }
+        using var arrays = mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var area = 0f;
+        for (var i = 0; i + 2 < vertices.Length; i += 3) {
+            area += (vertices[i + 1] - vertices[i]).Cross(vertices[i + 2] - vertices[i]).Length() * 0.5f;
+        }
+        return area / Mathf.Pi * BloodFlow.BedAreaVolumeRatio;
     }
 
     private static float FootprintArea(MeshInstance3D pool) {

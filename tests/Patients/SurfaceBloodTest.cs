@@ -125,12 +125,12 @@ public class SurfaceBloodTest {
         AssertBool(film.HasFilm).IsTrue();
         Advance(film, 1f);
         var positions = new List<Vector2>();
-        while (film.TryRunoff(0.15f, out var uv)) { positions.Add(uv); }
+        var drained = 0f;
+        while (film.TakeRunoff(out var uv, out var ml)) { positions.Add(uv); drained += ml; }
         AssertBool(positions.Any(p => p.X < 0.25f) && positions.Any(p => p.X > 0.75f))
             .OverrideFailureMessage("simultaneous opposite-side runoff produces drops on both sides").IsTrue();
-        AssertBool(positions.Take(2).Any(p => p.X < 0.25f) && positions.Take(2).Any(p => p.X > 0.75f))
-            .OverrideFailureMessage("limited drop capacity cannot starve one draining side").IsTrue();
-        AssertFloat(positions.Count * 0.15f + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
+        AssertInt(positions.Count).OverrideFailureMessage("all runoff transfers in at most one operation per local outlet").IsLessEqual(32);
+        AssertFloat(drained + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
         AssertFloat(film.HeldMl + film.RunoffMl).IsEqualApprox(4f, 0.0001f);
         var map = new WoundMap(WoundMap.MinSize);
         film.Paint(map);
@@ -168,11 +168,12 @@ public class SurfaceBloodTest {
         film.Add(new Vector2(0f, 0.85f), 2f);
         Advance(film, 1f);
         var positions = new List<Vector2>();
-        while (film.TryRunoff(0.15f, out var uv)) { positions.Add(uv); }
+        var drained = 0f;
+        while (film.TakeRunoff(out var uv, out var ml)) { positions.Add(uv); drained += ml; }
         AssertBool(positions.Any(p => p.Y < 0.3f) && positions.Any(p => p.Y > 0.7f)).IsTrue();
         AssertBool(positions.All(p => p.Y < 0.3f || p.Y > 0.7f))
             .OverrideFailureMessage("separate outlets do not combine their release point into an unwetted midpoint").IsTrue();
-        AssertFloat(positions.Count * 0.15f + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
+        AssertFloat(drained + film.QueuedRunoffMl).IsEqualApprox(film.RunoffMl, 0.0001f);
     }
 
     [TestCase]
@@ -215,6 +216,47 @@ public class SurfaceBloodTest {
         map.PaintBloodFilm(new float[32 * 32], 32);
         AssertFloat(map.Snapshot(WoundMap.Layer.Fluids)[peak * 4 + WoundMap.Blood] / 255f)
             .OverrideFailureMessage("changing reconstruction resolution clears old liquid, leaving only its thin stain").IsLess(0.12f);
+    }
+
+    [TestCase]
+    public void SameDoseHasLowerDepthOnALargerBodySurface() {
+        float Depth(float scale) {
+            var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f, scale: scale);
+            var map = new WoundMap(WoundMap.MinSize);
+            film.Add(new Vector2(0.5f, 0.5f), 0.005f);
+            film.Paint(map);
+            var cover = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.5f));
+            return -Mathf.Log(1f - cover) * 0.0004f;
+        }
+        AssertFloat(Depth(1f) / Depth(2f)).OverrideFailureMessage("doubling body scale gives four times the area and one quarter of the depth for the same milliliters")
+            .IsBetween(3.5f, 4.5f);
+    }
+
+    [TestCase(1f)]
+    [TestCase(2f)]
+    public void PaintedSurfaceFilmIntegratesToItsDose(float scale) {
+        const float DoseMl = 0.02f;
+        const float CoverDepth = 0.0004f;
+        var siteSize = new Vector2(0.3f, 0.3f);
+        var film = new SurfaceBlood(siteSize, _ => 0f, scale: scale);
+        var map = new WoundMap(WoundMap.MinSize);
+        film.Add(new Vector2(0.5f, 0.5f), DoseMl);
+        film.Paint(map);
+
+        // SurfaceBlood encodes depth as 1 - exp(-depth / CoverDepth). Undo that law after
+        // resampling and 8-bit storage, then integrate over the physical site area.
+        var pixels = map.Snapshot(WoundMap.Layer.Fluids);
+        var volumeM3 = 0d;
+        for (var pixel = 0; pixel < map.Size * map.Size; pixel++) {
+            var cover = pixels[pixel * 4 + WoundMap.Blood] / 255f;
+            if (cover <= 0f) { continue; }
+            var depth = -Mathf.Log(1f - cover) * CoverDepth;
+            volumeM3 += depth * siteSize.X * siteSize.Y * scale * scale / (map.Size * map.Size);
+        }
+        var visibleDoseMl = (float)(volumeM3 * 1_000_000d);
+        AssertFloat(visibleDoseMl)
+            .OverrideFailureMessage($"the painted low-dose surface film integrates to its supplied {DoseMl} ml after 8-bit resampling")
+            .IsBetween(DoseMl * 0.9f, DoseMl * 1.1f);
     }
 
     private static void Advance(SurfaceBlood film, float seconds) {

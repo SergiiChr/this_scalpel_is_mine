@@ -76,21 +76,22 @@ public partial class BloodFlow : Node3D {
 
     private const int MaxDrops = 96;
     private const float DropRadius = 0.0035f;
+    private float _dropVolumeScale;
+    private float _unitDropMl;
+    internal float DropShapeMl { get; private set; }
     /// <summary>Bleeding faster than this (ml/s) spurts.</summary>
     private const float SpurtRate = 3f;
     private const float PoolMerge = 0.03f;
     private const float PoolMaxRadius = 0.18f;
-    /// <summary>Pool area (m²) added per drop.</summary>
-    internal const float PoolAreaPerDrop = 0.00008f;
+    /// <summary>Reference detached drop volume in milliliters.</summary>
+    internal const float DropMl = 0.15f;
+    internal const float BedAreaVolumeRatio = BedLiquidSurface.FilmDepth / (PoolThickness * LiquidSurface.PatchMeanDepth);
+    /// <summary>Footprint area divided by pi, calibrated to the floor mesh's integrated depth.</summary>
+    internal const float PoolAreaPerDrop = DropMl * 0.000001f / (Mathf.Pi * PoolThickness * LiquidSurface.PatchMeanDepth);
     /// <summary>How high a pool stands.</summary>
-    private const float PoolThickness = 0.003f;
+    internal const float PoolThickness = 0.003f;
     private const float FloorY = 0.004f;
     internal const float TableTop = Room.TableHeight + 0.001f;
-    /// <summary>Puddle radius around a bleeding wound (uv) with no blood yet.</summary>
-    private const float PuddleStart = 0.015f;
-    /// <summary>How much a puddle grows per sqrt(ml).</summary>
-    private const float PuddleGrowth = 0.012f;
-    private const float PuddleMax = 0.14f;
     private const float PuddlePaintInterval = 0.2f;
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
     private const float SplashReach = 0.75f;
@@ -128,6 +129,11 @@ public partial class BloodFlow : Node3D {
     ];
 
     private SurfaceBlood _surface = null!;
+    private BodyRunoff _bodyRunoff = null!;
+    internal BodyRunoff ModelRunoff => _bodyRunoff;
+    internal float SurfaceSuppliedMl { get; private set; }
+    internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
+        + _bodyRunoff.HeldMl + GroundLiquidArea * DropMl / PoolAreaPerDrop;
     private float _surfaceClock;
     private bool _surfaceNeedsPaint;
     private readonly List<Drop> _drops = [];
@@ -141,10 +147,14 @@ public partial class BloodFlow : Node3D {
         public BedLiquidSurface.Flow Flow;
         public float Progress;
         public float DrawnProgress;
+        public float AllowedProgress;
+        public float CoatingMl;
+        public float CapacityMl;
         public readonly float Speed = 0.07f + 0.035f * (0.5f + 0.5f * Mathf.Sin(seed * 2.13f));
     }
 
-    private readonly record struct GroundDrawing(LiquidSurface? Top, LiquidSurface? Side, BedLiquidSurface.Flow[]? Flows);
+    private sealed record GroundFootprint(float Incoming, float Radius, Vector2[] Outline, float Area, BedLiquidSurface.Flow[] Outlets);
+    private readonly record struct GroundDrawing(LiquidSurface? Top, LiquidSurface? Side, GroundFootprint? Footprint = null);
 
     private sealed class GroundPool(MeshInstance3D mesh, MeshInstance3D? side, bool onBed, int seed) {
         public readonly MeshInstance3D Mesh = mesh;
@@ -174,10 +184,7 @@ public partial class BloodFlow : Node3D {
     private readonly RandomNumberGenerator _dripRng = new() { Seed = 83 };
     private float _cutClock;
     private MultiMeshInstance3D _neckMesh = null!;
-    /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
-    /// order.</summary>
-    private readonly Dictionary<Vector2I, float> _pooled = [];
-    /// <summary>Blood (ml) collected under closed skin at each source, keyed like <see cref="_pooled"/>.</summary>
+    /// <summary>Blood (ml) collected under closed skin, keyed by source UV.</summary>
     private readonly Dictionary<Vector2I, float> _bruised = [];
     private readonly RandomNumberGenerator _rng = new() { Seed = 7 };
     private float _puddleTimer;
@@ -230,13 +237,26 @@ public partial class BloodFlow : Node3D {
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
-        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, uv => patientBody.LiquidSupport(uv) >= 0f);
-        patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, uv => patientBody.FilmSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
+        patientBody.WoundMap.SetBloodFilmSupport(patientBody.FilmSupport);
+        var bodyFilm = Materials.BodyBloodFilm();
+        var runoff = new MeshInstance3D {
+            Name = "BodyRunoff",
+            Mesh = new ArrayMesh(),
+            MaterialOverride = bodyFilm,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+        };
+        patientBody.Site.AddChild(runoff);
+        _bodyRunoff = new BodyRunoff(patientBody.LiquidContact, patientBody.Site, Bed, runoff);
+        var dropShape = LiquidSurface.Drop(out var dropVolume);
+        _unitDropMl = dropVolume * 1000000f;
+        DropShapeMl = dropVolume * DropRadius * DropRadius * DropRadius * 1000000f;
+        _dropVolumeScale = Mathf.Pow(DropMl / DropShapeMl, 1f / 3f);
         _dropMesh = new MultiMeshInstance3D {
             Name = "BloodDrops",
             Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = LiquidSurface.Drop(),
+                Mesh = dropShape,
                 InstanceCount = MaxDrops,
                 VisibleInstanceCount = 0,
             },
@@ -301,20 +321,24 @@ public partial class BloodFlow : Node3D {
             if (Sources[i].Inside) {
                 continue;
             }
-            Puddle(body, uv, rate * delta, _paintPuddles);
-            _surface.Add(uv, rate * delta);
-            Spurt(body, body.UvToWorld(uv), rate, delta);
+            var supplied = rate * delta;
+            SurfaceSuppliedMl += supplied;
+            var thrown = Spurt(body, body.UvToWorld(uv), rate, delta, supplied);
+            _surface.Add(uv, supplied - thrown);
         }
     }
 
     /// <summary>A strong bleed throws droplets up from <paramref name="at"/> now and then.</summary>
-    private void Spurt(PatientBody body, Vector3 at, float rate, float delta) {
-        if (rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f) {
+    private float Spurt(PatientBody body, Vector3 at, float rate, float delta, float available = DropMl) {
+        if (_drops.Count < MaxDrops && rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f) {
             var spray = body.Site.GlobalBasis.Y * _rng.RandfRange(0.6f, 1.3f)
                 + new Vector3(_rng.RandfRange(-0.4f, 0.4f), 0f, _rng.RandfRange(-0.4f, 0.4f));
-            AddDrop(at, spray);
+            var ml = Mathf.Min(DropMl, available);
+            AddDrop(at, spray, ml * PoolAreaPerDrop / DropMl);
             Splash(at, 0.04f);
+            return ml;
         }
+        return 0f;
     }
 
     /// <summary>
@@ -597,39 +621,16 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    /// <summary>
-    /// Grows the puddle around a wound by <paramref name="ml"/> and returns its radius (uv). Swabbing it away (the
-    /// fluid map comes back clean at the wound) starts it over. Painted a few times a second as overlapping blobs, so
-    /// its edge is irregular. Anchored lobes grow with the pool instead of changing shape at each repaint.
-    /// </summary>
-    private float Puddle(PatientBody body, Vector2 uv, float ml, bool paint) {
-        var key = (Vector2I)(uv * 100f).Round();
-        var map = body.WoundMap;
-        if (_pooled.ContainsKey(key) && map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv) < 0.3f) {
-            _pooled[key] = 0f;
-        }
-        var pooled = _pooled.GetValueOrDefault(key) + ml;
-        _pooled[key] = pooled;
-        var radius = Mathf.Min(PuddleStart + Mathf.Sqrt(pooled) * PuddleGrowth, PuddleMax);
-        if (paint) {
-            map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv, radius * 0.8f, 0.95f, WoundMap.Mode.Max);
-            var phase = key.X * 2.39f + key.Y * 3.71f;
-            var lobes = 3 + Math.Abs((key.X * 7 + key.Y * 11) % 3);
-            for (var lobe = 0; lobe < lobes; lobe++) {
-                var angle = phase + lobe * Mathf.Tau / lobes;
-                var blob = Vector2.FromAngle(angle) * radius * (0.17f + 0.12f * Mathf.Sin(angle * 3f));
-                map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv + blob,
-                    radius * (0.76f + 0.1f * Mathf.Cos(angle * 2f)), 0.95f, WoundMap.Mode.Max);
-            }
-        }
-        return radius;
-    }
-
     /// <summary>Pressure spreads a connected film sideways while gravity transports it downhill. The film retains
     /// thin residue, coalesces without separate path heads, and loses volume when a swab removes its painted blood.</summary>
     private void Flow(PatientBody body, float delta) {
-        while (_drops.Count < MaxDrops && _surface.TryRunoff(0.15f, out var uv)) {
-            AddDrop(body.UvToWorld(uv), Vector3.Zero);
+        while (_surface.TakeRunoff(out var uv, out var runoffMl)) {
+            _bodyRunoff.Add(uv, body.Site.ToLocal(body.UvToWorld(uv)), runoffMl);
+        }
+        _bodyRunoff.Tick(delta);
+        while (_drops.Count < MaxDrops && _bodyRunoff.TryRelease(out var at, out var ml, out var onBed)) {
+            var area = ml * PoolAreaPerDrop / DropMl;
+            if (onBed) { Pool(at with { Y = TableTop }, area); } else { AddDrop(at, Vector3.Zero, area); }
         }
         // A pristine or fully wiped site has no transport or texture work. A final pending paint still runs.
         if (!_surface.HasFilm && !_surface.NeedsPaint && !_surfaceNeedsPaint) { _surfaceClock = 0f; return; }
@@ -683,10 +684,9 @@ public partial class BloodFlow : Node3D {
 
     private void AddDrop(Vector3 at, Vector3 velocity, float area = PoolAreaPerDrop) {
         if (_drops.Count < MaxDrops) {
-            var amount = Mathf.Clamp(Mathf.Pow(area / PoolAreaPerDrop, 1f / 3f), 0.5f, 1.5f);
-            _drops.Add(new Drop(at, velocity, area, new Vector3(_dripRng.RandfRange(0.6f, 1.15f),
-                _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f)) * amount,
-                _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
+            var shape = new Vector3(_dripRng.RandfRange(0.6f, 1.15f), _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f));
+            var amount = Mathf.Pow(area / PoolAreaPerDrop / (shape.X * shape.Y * shape.Z), 1f / 3f) * _dropVolumeScale;
+            _drops.Add(new Drop(at, velocity, area, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
         }
     }
 
@@ -720,9 +720,25 @@ public partial class BloodFlow : Node3D {
             if (pool.Building is not { IsCompleted: true } built) { continue; }
             var drawing = built.GetAwaiter().GetResult();
             if (drawing.Top is { } top) { pool.Mesh.Mesh = top.Upload(pool.Mesh.Mesh as ArrayMesh); }
+            if (drawing.Footprint is { } footprint) {
+                pool.Runoff += Mathf.Max(0f, footprint.Incoming - Mathf.Max(0f, footprint.Area - pool.Area));
+                pool.Incoming = Mathf.Max(0f, pool.Incoming - footprint.Incoming);
+                pool.Radius = footprint.Radius;
+                pool.Outline = footprint.Outline;
+                pool.Area = footprint.Area;
+                OutletsAtEdges(pool, footprint.Outlets);
+                pool.SideDirty = true;
+            }
             if (drawing.Side is { } side) {
                 pool.Side!.Mesh = side.Upload(pool.Side.Mesh as ArrayMesh);
-                for (var i = 0; i < pool.Outlets.Length; i++) { pool.Outlets[i].DrawnProgress = drawing.Flows![i].Progress; }
+                for (var i = 0; i < pool.Outlets.Length; i++) {
+                    var outlet = pool.Outlets[i];
+                    var state = pool.RivuletBuffer!.States[i];
+                    outlet.DrawnProgress = state.DrawnProgress;
+                    outlet.Progress = state.DrawnProgress;
+                    outlet.AllowedProgress = state.AllowedProgress;
+                    outlet.CapacityMl = state.CapacityMl;
+                }
             }
             pool.Building = null;
             _uploadCursor = (index + 1) % _pools.Count;
@@ -733,17 +749,37 @@ public partial class BloodFlow : Node3D {
             pool.Clock += delta;
             if (pool.Clock < 1f / 15f) { continue; }
             pool.Clock %= 1f / 15f;
+            if (pool.Building is not null) { continue; }
             if (pool.Incoming > 0f) {
-                var previousArea = pool.Area;
                 var radius = GrowingRadius(pool, pool.Incoming);
-                if (radius != pool.Radius) {
+                if (pool.OnBed && radius != pool.Radius) {
+                    var amount = pool.Incoming;
+                    var outline = LiquidSurface.Outline(radius, pool.Phase);
+                    var center = pool.Mesh.Position;
+                    var bed = Bed;
+                    var flows = SnapshotRivulets(pool);
+                    pool.TopDirty = pool.SideDirty = false;
+                    pool.Building = Task.Run(() => {
+                        var top = pool.TopBuffer;
+                        top.Clear();
+                        // One intersection supplies both the displayed footprint and its conserved capacity.
+                        var area = bed.Cover(outline, center, top) * BedAreaVolumeRatio;
+                        var outlets = bed.Outlets(outline, center);
+                        top.PrepareUpload();
+                        var side = DrawRivulets(pool, bed, flows, center);
+                        return new GroundDrawing(top, side, new GroundFootprint(amount, radius, outline, area, outlets));
+                    });
+                    continue;
+                }
+                if (pool.OnBed) {
+                    // An already draining footprint keeps its size; every additional milliliter feeds its outlets.
+                    pool.Runoff += pool.Incoming;
+                } else {
                     pool.Radius = radius;
                     pool.Outline = LiquidSurface.Outline(radius, pool.Phase);
-                    pool.Area = pool.OnBed ? Bed.Area(pool.Outline, pool.Mesh.Position) : LiquidSurface.Area(pool.Outline);
+                    pool.Area = LiquidSurface.Area(pool.Outline);
                     pool.TopDirty = true;
-                    if (pool.OnBed) { OutletsAtEdges(pool); pool.SideDirty = true; }
                 }
-                if (pool.OnBed) { pool.Runoff += Mathf.Max(0f, pool.Incoming - Mathf.Max(0f, pool.Area - previousArea)); }
                 pool.Incoming = 0f;
             }
             if ((!pool.TopDirty && !pool.SideDirty) || pool.Building is not null) { continue; }
@@ -754,14 +790,7 @@ public partial class BloodFlow : Node3D {
                 var outline = pool.Outline;
                 var center = pool.Mesh.Position;
                 var topDirty = pool.TopDirty;
-                BedLiquidSurface.Flow[]? flows = null;
-                if (pool.SideDirty) {
-                    flows = pool.FlowBuffer;
-                    for (var i = 0; i < pool.Outlets.Length; i++) {
-                        var outlet = pool.Outlets[i];
-                        flows[i] = outlet.Flow with { Progress = outlet.Active ? outlet.Progress : 0f };
-                    }
-                }
+                var flows = SnapshotRivulets(pool);
                 pool.Building = Task.Run(() => {
                     LiquidSurface? top = null;
                     LiquidSurface? side = null;
@@ -771,19 +800,18 @@ public partial class BloodFlow : Node3D {
                         bed.Cover(outline, center, top);
                         top.PrepareUpload();
                     }
-                    if (flows is not null) {
-                        side = pool.SideBuffer!;
-                        side.Clear();
-                        bed.Rivulets(side, flows, center, pool.RivuletBuffer!);
-                        side.PrepareUpload();
-                    }
-                    return new GroundDrawing(top, side, flows);
+                    side = DrawRivulets(pool, bed, flows, center);
+                    return new GroundDrawing(top, side);
                 });
             } else {
                 var surface = pool.TopBuffer;
-                surface.Clear();
-                surface.Patch(pool.Outline, PoolThickness);
-                pool.Mesh.Mesh = surface.Upload(pool.Mesh.Mesh as ArrayMesh);
+                var outline = pool.Outline;
+                pool.Building = Task.Run(() => {
+                    surface.Clear();
+                    surface.Patch(outline, PoolThickness);
+                    surface.PrepareUpload();
+                    return new GroundDrawing(surface, null);
+                });
             }
             pool.TopDirty = pool.SideDirty = false;
         }
@@ -795,10 +823,33 @@ public partial class BloodFlow : Node3D {
             var x = Vector3.Right.Slide(up).Normalized();
             if (x.IsZeroApprox()) { x = Vector3.Forward; }
             var shape = drop.Shape * DropRadius;
-            shape.Y *= 1f + Mathf.Min(drop.Velocity.Length(), 4f) * 0.15f;
+            var stretch = 1f + Mathf.Min(drop.Velocity.Length(), 4f) * 0.15f;
+            shape.Y *= stretch;
+            shape.X /= Mathf.Sqrt(stretch);
+            shape.Z /= Mathf.Sqrt(stretch);
             var basis = new Basis(x, up, x.Cross(up)).Rotated(up, drop.Twist).Scaled(shape);
             multimesh.SetInstanceTransform(i, new Transform3D(basis, drop.Position));
         }
+    }
+
+    private static BedLiquidSurface.Flow[]? SnapshotRivulets(GroundPool pool) {
+        if (!pool.SideDirty) { return null; }
+        var flows = pool.FlowBuffer;
+        for (var i = 0; i < pool.Outlets.Length; i++) {
+            var outlet = pool.Outlets[i];
+            flows[i] = outlet.Flow with { Progress = outlet.Active ? outlet.Progress : 0f };
+            pool.RivuletBuffer!.AvailableMl[i] = outlet.CoatingMl;
+        }
+        return flows;
+    }
+
+    private static LiquidSurface? DrawRivulets(GroundPool pool, BedLiquidSurface bed, BedLiquidSurface.Flow[]? flows, Vector3 center) {
+        if (flows is null) { return null; }
+        var side = pool.SideBuffer!;
+        side.Clear();
+        bed.Rivulets(side, flows, center, pool.RivuletBuffer!);
+        side.PrepareUpload();
+        return side;
     }
 
     private void ReleaseRunoff(float delta) {
@@ -807,15 +858,21 @@ public partial class BloodFlow : Node3D {
         foreach (var pool in _pools) {
             if (!pool.OnBed) { continue; }
             var active = pool.Outlets.Count(outlet => outlet.Active);
+            var supplied = pool.Runoff * DropMl / PoolAreaPerDrop / Math.Max(active, 1);
             foreach (var outlet in pool.Outlets) {
                 if (!outlet.Active) { continue; }
                 var pulse = outlet.Pulse;
-                pulse.Add(pool.Runoff / Math.Max(active, 1));
-                if (pulse.Pending > 0f && outlet.Progress < 1f) {
-                    outlet.Progress = Mathf.Min(1f, outlet.Progress + delta * outlet.Speed / Mathf.Max(outlet.Flow.Length, 0.001f));
+                outlet.CoatingMl += supplied;
+                if (supplied > 0f && outlet.Progress < 1f) { pool.SideDirty = true; }
+                if (outlet.Progress < outlet.AllowedProgress) {
+                    outlet.Progress = Mathf.Min(outlet.AllowedProgress, outlet.Progress + delta * outlet.Speed / Mathf.Max(outlet.Flow.Length, 0.001f));
                     pool.SideDirty = true;
                 }
                 if (outlet.Progress < 1f || outlet.DrawnProgress < 1f) { continue; }
+                // The attached coating stays on the bed. Only liquid beyond its actual mesh capacity can drip.
+                var excess = Mathf.Max(0f, outlet.CoatingMl - outlet.CapacityMl);
+                pulse.Add(excess * PoolAreaPerDrop / DropMl);
+                if (excess > 0f) { outlet.CoatingMl = outlet.CapacityMl; }
                 var length = pulse.Length;
                 var released = pulse.Advance(delta, _drops.Count < MaxDrops);
                 if (released > 0f) {
@@ -823,7 +880,9 @@ public partial class BloodFlow : Node3D {
                         -_dripRng.RandfRange(0.08f, 0.18f), _dripRng.RandfRange(-0.025f, 0.025f)), released);
                 }
                 if (pulse.Pending <= 0f || count >= MaxDrops) { continue; }
-                var shape = new Vector3(pulse.Width, pulse.Length * 0.5f, pulse.Width * 0.8f);
+                // A thin pending dose may stretch a neck, but cannot create a full-width ligament for free.
+                var width = Mathf.Min(pulse.Width, Mathf.Sqrt(pulse.Pending * DropMl / PoolAreaPerDrop / (_unitDropMl * pulse.Length * 0.4f)));
+                var shape = new Vector3(width, pulse.Length * 0.5f, width * 0.8f);
                 necks.SetInstanceTransform(count++, new Transform3D(Basis.Identity.Scaled(shape),
                     outlet.Position + Vector3.Down * pulse.Length * 0.5f));
             }
@@ -832,13 +891,14 @@ public partial class BloodFlow : Node3D {
         necks.VisibleInstanceCount = count;
     }
 
-    private void OutletsAtEdges(GroundPool pool) {
-        var positions = Bed.Outlets(pool.Outline, pool.Mesh.Position);
+    private static void OutletsAtEdges(GroundPool pool, BedLiquidSurface.Flow[] positions) {
         pool.HasOutlet = positions.Length > 0;
         for (var i = 0; i < pool.Outlets.Length; i++) {
             var outlet = pool.Outlets[i];
-            outlet.Active = i < positions.Length || outlet.Pulse.Pending > 0f;
-            if (i < positions.Length) {
+            outlet.Active = i < positions.Length || outlet.CoatingMl > 0f || outlet.Pulse.Pending > 0f;
+            // A wetted streak stays anchored as its upstream pool grows over it. Its retained capacity then
+            // remains valid instead of moving already deposited film to a different outlet on every repaint.
+            if (i < positions.Length && outlet.CoatingMl <= 0f && outlet.DrawnProgress <= 0f) {
                 outlet.Flow = positions[i] with { Phase = pool.Phase + i * 2.17f };
                 outlet.Position = positions[i].End;
             }
@@ -846,14 +906,23 @@ public partial class BloodFlow : Node3D {
     }
 
     private static float GrowingRadius(GroundPool pool, float incoming) {
-        var radius = Mathf.Sqrt(pool.Radius * pool.Radius + incoming);
+        var radius = Mathf.Sqrt(pool.Radius * pool.Radius + incoming / (pool.OnBed ? BedAreaVolumeRatio : 1f));
         // Retaining a footprint only makes sense once there is a real drain. Interior pools must reach one;
         // a floor has no unsupported area into which excess volume can disappear.
         return pool.OnBed && pool.HasOutlet ? Mathf.Min(radius, Mathf.Max(pool.Radius, PoolMaxRadius)) : radius;
     }
 
+    internal float PendingDripMl => _pools.Sum(p => p.Outlets.Sum(o => o.Pulse.Pending)) * DropMl / PoolAreaPerDrop;
+    internal float DrawnNeckMl {
+        get {
+            var mesh = _neckMesh.Multimesh;
+            var total = 0f;
+            for (var i = 0; i < mesh.VisibleInstanceCount; i++) { total += Mathf.Abs(mesh.GetInstanceTransform(i).Basis.Determinant()) * _unitDropMl; }
+            return total;
+        }
+    }
     internal float GroundLiquidArea => _drops.Sum(drop => drop.Area)
-        + _pools.Sum(pool => pool.Area + pool.Incoming + pool.Runoff + pool.Outlets.Sum(outlet => outlet.Pulse.Pending));
+        + _pools.Sum(pool => pool.Area + pool.Incoming + pool.Runoff + pool.Outlets.Sum(outlet => outlet.CoatingMl * PoolAreaPerDrop / DropMl + outlet.Pulse.Pending));
 
     /// <summary>Pool footprint area grows with deposited blood. Bed pools narrow at the supporting edges; the
     /// unsupported share becomes runoff with its own area, which falls and grows a separate floor pool.</summary>

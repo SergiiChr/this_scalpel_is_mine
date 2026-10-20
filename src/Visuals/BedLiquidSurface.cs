@@ -7,7 +7,8 @@ internal sealed class BedLiquidSurface {
     private readonly List<Face> _faces = [];
     private readonly List<(Vector3 A, Vector3 B)> _edges = [];
     private readonly List<(Vector2[] Outline, Rect2 Bounds)> _supports = [];
-    private const float Lift = 0.00025f;
+    internal const float FilmDepth = 0.00025f;
+    private const float Lift = FilmDepth;
     private readonly List<Face>[] _shellRows = Enumerable.Range(0, 64).Select(_ => new List<Face>()).ToArray();
     private readonly float _bottom;
     private readonly float _padBottom;
@@ -173,45 +174,119 @@ internal sealed class BedLiquidSurface {
         return direction;
     }
 
-    internal sealed class RivuletScratch { internal readonly List<StripTriangle> Triangles = []; }
-    internal readonly record struct StripTriangle(Vector2 A, Vector2 B, Vector2 C, Rect2 Bounds);
+    internal sealed class RivuletScratch {
+        internal readonly List<StripTriangle> Triangles = [];
+        internal readonly CoatingPath?[] Paths = new CoatingPath?[12];
+        internal readonly float[] AvailableMl = new float[12];
+        internal readonly RivuletState[] States = new RivuletState[12];
+    }
+    internal readonly record struct RivuletState(float AllowedProgress, float DrawnProgress, float CapacityMl);
+    internal readonly record struct StripTriangle(Vector2 A, Vector2 B, Vector2 C, Rect2 Bounds, float Ta, float Tb, float Tc);
+    internal readonly record struct CoatingVertex(Vector3 Position, Vector3 Normal, float Progress) {
+        internal CoatingVertex Lerp(CoatingVertex other, float f) => new(Position.Lerp(other.Position, f), Normal.Lerp(other.Normal, f).Normalized(), Mathf.Lerp(Progress, other.Progress, f));
+    }
+
+    /// <summary>Cache the actual clipped triangles once per outlet geometry. Progress clips that same geometry,
+    /// so its capacity and visible coating use identical surface area without repeating mattress intersections.</summary>
+    internal sealed class CoatingPath(Flow flow) {
+        internal readonly Flow Flow = flow;
+        internal readonly List<(CoatingVertex A, CoatingVertex B, CoatingVertex C)> Triangles = [];
+        internal float CapacityMl;
+        internal float LastMl = float.NaN;
+        internal float LastProgress;
+        internal void Add(CoatingVertex a, CoatingVertex b, CoatingVertex c) {
+            Triangles.Add((a, b, c));
+            CapacityMl += (b.Position - a.Position).Cross(c.Position - a.Position).Length() * 0.5f * FilmDepth * 1000000f;
+        }
+        internal float Paint(float progress, LiquidSurface? surface = null, Vector3 center = default) {
+            if (progress <= 0f) { return 0f; }
+            var ml = 0f;
+            Span<CoatingVertex> input = stackalloc CoatingVertex[3];
+            Span<CoatingVertex> output = stackalloc CoatingVertex[4];
+            foreach (var (a, b, c) in Triangles) {
+                input[0] = a; input[1] = b; input[2] = c;
+                var count = 0;
+                for (var i = 0; i < 3; i++) {
+                    var from = input[i]; var to = input[(i + 1) % 3];
+                    if (from.Progress <= progress) { output[count++] = from; }
+                    if ((from.Progress <= progress) != (to.Progress <= progress)) {
+                        output[count++] = from.Lerp(to, (progress - from.Progress) / (to.Progress - from.Progress));
+                    }
+                }
+                for (var i = 1; i + 1 < count; i++) {
+                    var p = output[0]; var q = output[i]; var r = output[i + 1];
+                    ml += (q.Position - p.Position).Cross(r.Position - p.Position).Length() * 0.5f * FilmDepth * 1000000f;
+                    surface?.Facet(p.Position - center, q.Position - center, r.Position - center, p.Normal, q.Normal, r.Normal);
+                }
+            }
+            return ml;
+        }
+        internal float ProgressFor(float ml) {
+            if (ml >= CapacityMl) { return 1f; }
+            if (ml <= 0f) { return 0f; }
+            var low = 0f; var high = 1f;
+            // Always retain the affordable lower bound; a finite dose cannot overdraw its visible coating.
+            for (var i = 0; i < 14; i++) {
+                var middle = (low + high) * 0.5f;
+                if (Paint(middle) <= ml) { low = middle; } else { high = middle; }
+            }
+            return low;
+        }
+    }
 
     private static float FlowWidth(Flow flow, float t) {
         var width = (0.002f + 0.0006f * Mathf.Sin(flow.Phase)) + flow.Width * (0.8f + 0.25f * Mathf.Sin(flow.Phase * 1.7f)) * Mathf.Exp(-t * (19f + 8f * Mathf.Sin(flow.Phase)));
         width *= 1f + 0.15f * Mathf.Sin(t * 11f + flow.Phase);
-        if (flow.Progress < 1f) { width *= Mathf.Clamp((flow.Progress - t) * flow.Length / 0.0015f, 0f, 1f); }
         return width;
     }
 
     /// <summary>Clip narrow wet masks to actual side triangles rather than stretching a ribbon over their corners.
     /// This avoids floating fins and visible gaps where a rounded pad meets the supporting frame.</summary>
     internal void Rivulets(LiquidSurface surface, IReadOnlyList<Flow> flows, Vector3 center, RivuletScratch scratch) {
-        foreach (var flow in flows) {
-            if (flow.Progress <= 0f) { continue; }
-            if (!flow.Gap) {
-                Vertical(flow, flow.Start, flow.Direction, flow.Start.Y + Lift, DripHeight, 0f, 1f);
-                continue;
+        for (var i = 0; i < flows.Count; i++) {
+            var flow = flows[i];
+            if (flow.Length <= 0f) { scratch.States[i] = default; continue; }
+            var geometry = flow with { Progress = 1f };
+            var path = scratch.Paths[i];
+            if (path is null || path.Flow != geometry) { scratch.Paths[i] = path = TraceRivulet(geometry, scratch); }
+            var available = scratch.AvailableMl[i];
+            if (available != path.LastMl) {
+                path.LastProgress = path.ProgressFor(available);
+                path.LastMl = available;
             }
-            var frameStart = FrameTopAt(Xz(flow.Start));
-            var frameExit = FrameTopAt(Xz(flow.Exit));
-            if (frameStart is null || frameExit is null) { continue; }
-            var entry = SideAt(flow.Start, flow.Entry, frameStart.Value.Position.Y)?.Position ?? flow.Start;
-            Vertical(flow, flow.Start, flow.Entry, flow.Start.Y + Lift, frameStart.Value.Position.Y, 0f, 0.25f);
-            var from = Xz(entry);
-            var to = Xz(flow.Exit);
-            var direction = (to - from).Normalized();
-            var across = new Vector2(-direction.Y, direction.X);
-            var middle = MakeStrip(flow, 0.25f, 0.8f, from.DistanceTo(to), from, to, across, false, scratch.Triangles);
-            Coat(surface, middle, Vector3.Up, entry, center);
-            Vertical(flow, flow.Exit, flow.Direction, frameExit.Value.Position.Y, DripHeight, 0.8f, 1f);
+            var allowed = path.LastProgress;
+            var drawn = Mathf.Min(flow.Progress, allowed);
+            path.Paint(drawn, surface, center);
+            scratch.States[i] = new RivuletState(allowed, drawn, path.CapacityMl);
         }
+    }
+
+    private CoatingPath TraceRivulet(Flow flow, RivuletScratch scratch) {
+        var path = new CoatingPath(flow);
+        if (!flow.Gap) {
+            Vertical(flow, flow.Start, flow.Direction, flow.Start.Y + Lift, DripHeight, 0f, 1f);
+            return path;
+        }
+        var frameStart = FrameTopAt(Xz(flow.Start));
+        var frameExit = FrameTopAt(Xz(flow.Exit));
+        if (frameStart is null || frameExit is null) { return path; }
+        var entry = SideAt(flow.Start, flow.Entry, frameStart.Value.Position.Y)?.Position ?? flow.Start;
+        Vertical(flow, flow.Start, flow.Entry, flow.Start.Y + Lift, frameStart.Value.Position.Y, 0f, 0.25f);
+        var from = Xz(entry);
+        var to = Xz(flow.Exit);
+        var direction = (to - from).Normalized();
+        var across = new Vector2(-direction.Y, direction.X);
+        var middle = MakeStrip(flow, 0.25f, 0.8f, from.DistanceTo(to), from, to, across, false, scratch.Triangles);
+        Coat(path, middle, Vector3.Up, entry);
+        Vertical(flow, flow.Exit, flow.Direction, frameExit.Value.Position.Y, DripHeight, 0.8f, 1f);
+        return path;
 
         void Vertical(Flow flow, Vector3 start, Vector3 outward, float top, float bottom, float begin, float end) {
             var across = Vector3.Up.Cross(outward);
             var origin = start.Dot(across);
             var strips = MakeStrip(flow, begin, end, top - bottom,
                 new Vector2(origin, top), new Vector2(origin, bottom), Vector2.Right, true, scratch.Triangles);
-            Coat(surface, strips, outward, start, center);
+            Coat(path, strips, outward, start);
         }
     }
 
@@ -223,14 +298,15 @@ internal sealed class BedLiquidSurface {
         var steps = Math.Max(2, Mathf.CeilToInt(length * (end - begin) / (nominalEnd - begin) / 0.002f));
         var previous = Position(begin);
         var previousWidth = FlowWidth(flow, begin) * 0.5f;
+        var previousT = begin;
         for (var i = 1; i <= steps; i++) {
             var t = Mathf.Lerp(begin, end, (float)i / steps);
             var at = Position(t);
             var width = FlowWidth(flow, t) * 0.5f;
             var a = previous - across * previousWidth; var b = previous + across * previousWidth;
             var c = at - across * width; var d = at + across * width;
-            Add(a, b, c); Add(b, d, c);
-            previous = at; previousWidth = width;
+            Add(a, b, c, previousT, previousT, t); Add(b, d, c, previousT, t, t);
+            previous = at; previousWidth = width; previousT = t;
         }
         return triangles;
 
@@ -239,7 +315,7 @@ internal sealed class BedLiquidSurface {
             if (vertical) { at.X += Mathf.Sin(t * 7f + flow.Phase) * 0.001f * t; }
             return at;
         }
-        void Add(Vector2 a, Vector2 b, Vector2 c) => triangles.Add(new StripTriangle(a, b, c, new Rect2(a, Vector2.Zero).Expand(b).Expand(c)));
+        void Add(Vector2 a, Vector2 b, Vector2 c, float ta, float tb, float tc) => triangles.Add(new StripTriangle(a, b, c, new Rect2(a, Vector2.Zero).Expand(b).Expand(c), ta, tb, tc));
     }
 
     private readonly record struct ProjectedFace(Face Face, Vector2 A, Vector2 B, Vector2 C, Rect2 Bounds, float Determinant, float Near, float Far, int FirstBin = 0);
@@ -276,7 +352,7 @@ internal sealed class BedLiquidSurface {
         }
     }
 
-    private void Coat(LiquidSurface surface, List<StripTriangle> strips, Vector3 outward, Vector3 origin, Vector3 center) {
+    private void Coat(CoatingPath path, List<StripTriangle> strips, Vector3 outward, Vector3 origin) {
         if (strips.Count == 0) { return; }
         var coating = _coatings[outward];
         var bounds = strips[0].Bounds;
@@ -299,6 +375,8 @@ internal sealed class BedLiquidSurface {
                 if (!faceBounds.Intersects(bounds)) { continue; }
                 foreach (var strip in strips) {
                     if (!faceBounds.Intersects(strip.Bounds)) { continue; }
+                    var stripDet = (strip.B - strip.A).Cross(strip.C - strip.A);
+                    if (Mathf.Abs(stripDet) < 1e-15f) { continue; }
                     first[0] = strip.A; first[1] = strip.B; first[2] = strip.C;
                     var count = determinant > 0f ? Clip(first[..3], second, a, b) : Clip(first[..3], second, b, a);
                     count = determinant > 0f ? Clip(second[..count], first, b, c) : Clip(second[..count], first, c, b);
@@ -306,15 +384,19 @@ internal sealed class BedLiquidSurface {
                     for (var i = 1; i + 1 < count; i++) {
                         var p = Vertex(second[0]); var q = Vertex(second[i]); var t = Vertex(second[i + 1]);
                         if ((t.Position - p.Position).Cross(q.Position - p.Position).Dot(face.Normal) < 0f) { (q, t) = (t, q); }
-                        surface.Facet(p.Position - center, q.Position - center, t.Position - center, p.Normal, q.Normal, t.Normal);
+                        path.Add(p, q, t);
+                    }
+                    CoatingVertex Vertex(Vector2 at) {
+                        var u = (at - a).Cross(c - a) / determinant;
+                        var v = (b - a).Cross(at - a) / determinant;
+                        var normal = (face.Na * (1f - u - v) + face.Nb * u + face.Nc * v).Normalized();
+                        var su = (at - strip.A).Cross(strip.C - strip.A) / stripDet;
+                        var sv = (strip.B - strip.A).Cross(at - strip.A) / stripDet;
+                        var progress = strip.Ta * (1f - su - sv) + strip.Tb * su + strip.Tc * sv;
+                        return new CoatingVertex(face.A + (face.B - face.A) * u + (face.C - face.A) * v + normal * Lift, normal, Mathf.Clamp(progress, 0f, 1f));
                     }
                 }
-                (Vector3 Position, Vector3 Normal) Vertex(Vector2 at) {
-                    var u = (at - a).Cross(c - a) / determinant;
-                    var v = (b - a).Cross(at - a) / determinant;
-                    var normal = (face.Na * (1f - u - v) + face.Nb * u + face.Nc * v).Normalized();
-                    return (face.A + (face.B - face.A) * u + (face.C - face.A) * v + normal * Lift, normal);
-                }
+
             }
         }
     }
@@ -349,27 +431,6 @@ internal sealed class BedLiquidSurface {
                 && (a - c).Cross(p - c) >= -0.00000001f) { return hit; }
         }
         return null;
-    }
-
-    internal float Area(IReadOnlyList<Vector2> outline, Vector3 center) {
-        Span<Vector2> first = stackalloc Vector2[256];
-        Span<Vector2> second = stackalloc Vector2[256];
-        var area = 0f;
-        var bounds = new Rect2(outline[0] + Xz(center), Vector2.Zero);
-        foreach (var point in outline) { bounds = bounds.Expand(point + Xz(center)); }
-        foreach (var (support, supportBounds) in _supports) {
-            if (!supportBounds.Intersects(bounds)) { continue; }
-            for (var i = 0; i < outline.Count; i++) { first[i] = outline[i] + Xz(center); }
-            var count = outline.Count;
-            for (var i = 0; i < support.Length && count > 0; i++) {
-                count = Clip(first[..count], second, support[i], support[(i + 1) % support.Length]);
-                second[..count].CopyTo(first);
-            }
-            var signed = 0f;
-            for (var i = 1; i + 1 < count; i++) { signed += (first[i] - first[0]).Cross(first[i + 1] - first[0]); }
-            area += Mathf.Abs(signed) / (2f * Mathf.Pi);
-        }
-        return area;
     }
 
     internal float Cover(IReadOnlyList<Vector2> outline, Vector3 center, LiquidSurface? surface = null) {

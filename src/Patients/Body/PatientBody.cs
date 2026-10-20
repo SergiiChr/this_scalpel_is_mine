@@ -97,6 +97,7 @@ public partial class PatientBody : Node3D {
     private Node3D _skinModel = null!;
     /// <summary>The body model's skin, skinned to its rig.</summary>
     internal MeshInstance3D SkinMesh => (MeshInstance3D)_skinModel;
+    internal BodyLiquidSurface LiquidContact { get; private set; } = null!;
     /// <summary>The skeleton's parts, one per rig bone (Skeleton&lt;Bone&gt;), drawn only on X-ray films.</summary>
     internal IReadOnlyList<MeshInstance3D> Skeleton { get; private set; } = [];
     /// <summary>The site's and the body model's transforms and the region when the carve was last placed in full.
@@ -430,6 +431,9 @@ public partial class PatientBody : Node3D {
         var cell = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Heights - 1)).Round();
         return _onBody[cell.Y * Heights + cell.X];
     }
+
+    /// <summary>The broad surgical film hands off to attached model rivulets at the tissue boundary.</summary>
+    internal float FilmSupport(Vector2 uv) => LiquidSupport(uv) + 0.0005f - Mathf.Max(MinThickness, MuscleBottom);
 
     /// <summary>Continuous model-contact margin, independent of the surgical layers' minimum thickness. Interpolation keeps a sloping
     /// boundary continuous instead of drawing the nearest support cell's rectangular outline.</summary>

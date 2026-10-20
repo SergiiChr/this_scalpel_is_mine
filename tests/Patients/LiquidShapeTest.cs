@@ -81,6 +81,53 @@ public class LiquidShapeTest {
         AssertInt(widths.Count).OverrideFailureMessage("necks change thickness between releases").IsGreater(3);
         AssertFloat(extra + pulse.Pending).IsEqualApprox(2.4f, 0.00001f);
     }
+    [TestCase(1)]
+    [TestCase(7)]
+    public void FloorPoolMeshContainsTheDepositedMilliliters(int drops) {
+        var surface = new LiquidSurface();
+        surface.Patch(LiquidSurface.Outline(Mathf.Sqrt(drops * BloodFlow.PoolAreaPerDrop), 1.3f), BloodFlow.PoolThickness);
+        using var mesh = surface.Upload();
+        using var arrays = mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var cubicMeters = 0f;
+        for (var i = 0; i < vertices.Length; i += 3) {
+            var a = vertices[i]; var b = vertices[i + 1]; var c = vertices[i + 2];
+            var area = Mathf.Abs(new Vector2(b.X - a.X, b.Z - a.Z).Cross(new Vector2(c.X - a.X, c.Z - a.Z))) * 0.5f;
+            cubicMeters += area * (a.Y + b.Y + c.Y) / 3f;
+        }
+        AssertFloat(cubicMeters * 1000000f).OverrideFailureMessage($"the rendered floor-pool profile integrates to the actual deposited dose: {cubicMeters * 1000000f} ml for {drops * BloodFlow.DropMl} ml")
+            .IsEqualApprox(drops * BloodFlow.DropMl, 0.0002f);
+    }
+
+    [TestCase(1f)]
+    [TestCase(2f)]
+    public void GrowingStreakMeshUsesItsActualDose(float scale) {
+        const float Width = 0.006f, Length = 0.0025f;
+        var capacity = Width * Length * scale * scale * BodyLiquidSurface.FilmDepth * 1000000f;
+        BodyLiquidSurface.Sample Sample(float z, float ml) => new(new Vector3(0f, 0f, z), Vector3.Up,
+            new Vector3(-Width * 0.5f, 0f, z), new Vector3(Width * 0.5f, 0f, z), Vector3.Up, Vector3.Up, z, ml, Width);
+        var path = new BodyLiquidSurface.Path([Sample(0f, 0f), Sample(Length, capacity)], false, scale);
+        foreach (var fraction in new[] { 0.1f, 0.5f, 0.999f, 1f }) {
+            var surface = new LiquidSurface();
+            var distance = Length * fraction;
+            path.Draw(surface, distance);
+            using var mesh = surface.Upload();
+            using var arrays = mesh.SurfaceGetArrays(0);
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var area = 0f;
+            for (var i = 0; i < vertices.Length; i += 3) {
+                area += (vertices[i + 1] - vertices[i]).Cross(vertices[i + 2] - vertices[i]).Length() * 0.5f;
+            }
+            var renderedMl = area * scale * scale * BodyLiquidSurface.FilmDepth * 1000000f;
+            AssertFloat(path.VolumeAt(distance)).OverrideFailureMessage("the growing tip reports the volume of its actual triangles")
+                .IsEqualApprox(renderedMl, 0.000001f);
+            AssertFloat(path.DistanceFor(renderedMl)).OverrideFailureMessage("the supplied dose limits the drawn front")
+                .IsEqualApprox(distance, Length * 0.0001f);
+        }
+        AssertFloat(path.VolumeAt(Length) - path.VolumeAt(Length * 0.999f))
+            .OverrideFailureMessage("finishing a segment has no abrupt volume jump").IsLess(capacity * 0.003f);
+    }
+
     // Centreline samples lie on shared triangle edges. Permit floating point round-off at those edges.
     private static bool Contains(Vector2 p, Vector2 a, Vector2 b, Vector2 c) {
         var area = (b - a).Cross(c - a);

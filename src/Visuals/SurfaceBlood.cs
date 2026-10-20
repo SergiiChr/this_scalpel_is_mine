@@ -19,8 +19,6 @@ internal sealed class SurfaceBlood {
     private readonly float[] _weights = new float[8];
     private readonly float[] _distances = new float[8];
     private readonly float[] _runoff = new float[32];
-    private int _drainCursor;
-    private readonly int[] _runoffCursor = new int[4];
     private readonly Vector2[] _runoffUv = new Vector2[32];
     internal bool HasFilm { get; private set; }
     internal bool NeedsPaint { get; private set; }
@@ -33,8 +31,8 @@ internal sealed class SurfaceBlood {
     private readonly float _depthPerMl;
     private readonly Vector2 _cell;
 
-    internal SurfaceBlood(Vector2 siteSize, Func<Vector2, float> height, Func<Vector2, bool>? holds = null) {
-        _cell = siteSize / Size;
+    internal SurfaceBlood(Vector2 siteSize, Func<Vector2, float> height, Func<Vector2, bool>? holds = null, float scale = 1f) {
+        _cell = siteSize * scale / Size;
         _depthPerMl = 0.000001f / (_cell.X * _cell.Y);
         for (var n = 0; n < Neighbors.Length; n++) {
             var (x, y) = Neighbors[n];
@@ -141,34 +139,31 @@ internal sealed class SurfaceBlood {
 
     private void CollectRunoff(Vector2 uv, float ml) {
         if (ml <= 0f) { return; }
-        var x = Mathf.Min(uv.X, 1f - uv.X);
-        var y = Mathf.Min(uv.Y, 1f - uv.Y);
-        var side = x < y ? (uv.X < 0.5f ? 0 : 1) : (uv.Y < 0.5f ? 2 : 3);
-        var along = side < 2 ? uv.Y : uv.X;
-        var bucket = side * 8 + Math.Clamp((int)(along * 8), 0, 7);
+        var bucket = RunoffBucket(uv);
         RunoffMl += ml;
         _runoff[bucket] += ml;
         _runoffUv[bucket] += uv * ml;
     }
 
-    /// <summary>Each side retains its own queued volume and release position, including while drop capacity is full.</summary>
-    internal bool TryRunoff(float ml, out Vector2 uv) {
-        for (var n = 0; n < 4; n++) {
-            var side = (_drainCursor + n) % 4;
-            for (var k = 0; k < 8; k++) {
-                var along = (_runoffCursor[side] + k) % 8;
-                var bucket = side * 8 + along;
-                if (_runoff[bucket] < ml) { continue; }
-                uv = _runoffUv[bucket] / _runoff[bucket];
-                _runoff[bucket] -= ml;
-                _runoffUv[bucket] = uv * _runoff[bucket];
-                _runoffCursor[side] = (along + 1) % 8;
-                _drainCursor = (side + 1) % 4;
-                return true;
-            }
+    internal static int RunoffBucket(Vector2 uv) {
+        var x = Mathf.Min(uv.X, 1f - uv.X);
+        var y = Mathf.Min(uv.Y, 1f - uv.Y);
+        var side = x < y ? (uv.X < 0.5f ? 0 : 1) : (uv.Y < 0.5f ? 2 : 3);
+        var along = side < 2 ? uv.Y : uv.X;
+        return side * 8 + Math.Clamp((int)(along * 8), 0, 7);
+    }
+
+    /// <summary>Transfers each local outlet in one operation, without quantizing or iterating over drop counts.</summary>
+    internal bool TakeRunoff(out Vector2 uv, out float ml) {
+        for (var bucket = 0; bucket < _runoff.Length; bucket++) {
+            if (_runoff[bucket] <= 0f) { continue; }
+            ml = _runoff[bucket];
+            uv = _runoffUv[bucket] / ml;
+            _runoff[bucket] = 0f;
+            _runoffUv[bucket] = Vector2.Zero;
+            return true;
         }
-        uv = Vector2.Zero;
-        return false;
+        uv = Vector2.Zero; ml = 0f; return false;
     }
 
     internal void ReconcileWipes(WoundMap map) {

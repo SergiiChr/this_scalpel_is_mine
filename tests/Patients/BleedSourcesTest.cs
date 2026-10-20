@@ -31,8 +31,12 @@ public class BleedSourcesTest {
         await Frames.Seconds(2f);
         AssertFloat(tiny.Bleeding).OverrideFailureMessage($"a tiny shallow cut bleeds a little: {driver.Bleeders()}")
             .IsBetween(0.001f, 0.05f);
-        AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself")
-            .IsGreater(0.5f);
+        // A .01 ml seep is translucent; requiring an opaque disk would invent blood beyond the supplied dose.
+        // Its four source cells give a conservative visible-opacity estimate before downhill spreading.
+        var sourceArea = body.SiteSize.X * body.SiteSize.Y * Mathf.Pow(body.Site.GlobalBasis.Scale.X, 2f) * 4f / (SurfaceBlood.Size * SurfaceBlood.Size);
+        var suppliedOpacity = 1f - Mathf.Exp(-tiny.Bleeding * 2f * 0.000001f / sourceArea / 0.0004f);
+        AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage("the small supplied dose remains visibly pooled at its source without an extra opaque stamp")
+            .IsGreater(suppliedOpacity * 0.5f);
         AssertString(Spot(body, tiny.BleedPoint)).OverrideFailureMessage("with no spot the cut would split across its lips").IsEqual("none");
         var puncture = SurgeryState.SkinIsPunctured(patient, new Vector2(0.3f, 0.4f), 0.05f);
         await Frames.Seconds(1f);
