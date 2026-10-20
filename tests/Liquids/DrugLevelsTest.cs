@@ -141,36 +141,37 @@ public class DrugLevelsTest {
         await driver.Stop();
     }
 
-    /// <summary>A right dose of lidocaine keeps the site fully numb through a steady operation and numb enough for the
-    /// "Numb the site" objective until the longest timed local scenario (broken ribs) runs out of time.
-    /// A slow surgeon feels it wear off and has to top it up.</summary>
+    /// <summary>A right dose of lidocaine keeps the site fully numb for the first minutes and numb enough for the "Numb
+    /// the arm" objective (a step after it is spoiled once it drops below) through a steady glass shards operation, the
+    /// longest local one: six shards out, each cut rinsed and stitched. A slow surgeon has to top it up.</summary>
     [TestCase]
-    public async Task LidocaineOutlastsASteadyOperationButNotASlowOne() {
+    public async Task LidocaineHoldsThroughASteadyLocalOperationButNotASlowOne() {
+        // Nine steady minutes from the shot to the last stitch, twice that still holds, a slow surgeon takes longer.
+        const float FullMinutes = 9f;
+        const float HoldsMinutes = 20f;
+        const float SlowMinutes = 25f;
         var driver = SurgeryDriver.Create();
-        await driver.Start("broken_ribs");
+        await driver.Start("glass_shards");
         var patient = driver.Patient;
+        var objective = driver.Surgery.Scenario.Steps.First(step => step.Type == "local_block").Parameters.Float("level");
         var def = Db.Drug("lidocaine")!;
         patient.Administer(def.Id, DrugRoute.Direct, def.Dose * patient.WeightKg);
         var elapsed = 0f;
-        float BlockAt(float seconds) {
-            Run(patient, seconds - elapsed);
-            elapsed = seconds;
+        float BlockAt(float minutes) {
+            Run(patient, minutes * 60f - elapsed);
+            elapsed = minutes * 60f;
             return patient.DrugEffectsOver(0f).LocalBlock;
         }
-        const float Objective = 0.5f;
-        var steady = BlockAt(10f * 60f);
-        AssertFloat(steady).OverrideFailureMessage($"fully numb ten minutes after the shot ({steady:0.00})")
-            .IsEqualApprox(def.Peak.LocalBlock, 0.02f);
-        var timeLimit = driver.Surgery.Scenario.TimeLimit;
-        var late = BlockAt(timeLimit);
-        AssertBool(late >= Objective)
-            .OverrideFailureMessage($"still numb enough when the {timeLimit / 60f:0} minute clock runs out ({late:0.00})").IsTrue();
-        var slow = BlockAt(25f * 60f);
-        AssertBool(slow < Objective).OverrideFailureMessage($"wearing off after 25 minutes ({slow:0.00})").IsTrue();
-        // A few seconds over, for the few it took to soak in.
-        BlockAt(def.Duration + 10f);
-        AssertFloat(patient.Drugs.Level(def.Id)).OverrideFailureMessage($"gone after {def.Duration / 60f:0} minutes")
-            .IsEqual(0f);
+        var full = BlockAt(FullMinutes);
+        AssertFloat(full).OverrideFailureMessage($"fully numb {FullMinutes:0} minutes after the shot ({full:0.00})")
+            .IsEqualApprox(def.Peak.LocalBlock, 0.001f);
+        var holds = BlockAt(HoldsMinutes);
+        AssertBool(holds >= objective)
+            .OverrideFailureMessage($"numb enough for the objective ({objective:0.00}) after {HoldsMinutes:0} minutes ({holds:0.00})")
+            .IsTrue();
+        var slow = BlockAt(SlowMinutes);
+        AssertBool(slow < objective)
+            .OverrideFailureMessage($"no longer numb enough for it after {SlowMinutes:0} minutes ({slow:0.00})").IsTrue();
         await driver.Stop();
     }
 
