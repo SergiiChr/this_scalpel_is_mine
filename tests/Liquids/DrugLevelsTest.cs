@@ -141,6 +141,39 @@ public class DrugLevelsTest {
         await driver.Stop();
     }
 
+    /// <summary>A right dose of lidocaine keeps the site fully numb through a steady operation and numb enough for the
+    /// "Numb the site" objective until the longest timed local scenario (broken ribs) runs out of time.
+    /// A slow surgeon feels it wear off and has to top it up.</summary>
+    [TestCase]
+    public async Task LidocaineOutlastsASteadyOperationButNotASlowOne() {
+        var driver = SurgeryDriver.Create();
+        await driver.Start("broken_ribs");
+        var patient = driver.Patient;
+        var def = Db.Drug("lidocaine")!;
+        patient.Administer(def.Id, DrugRoute.Direct, def.Dose * patient.WeightKg);
+        var elapsed = 0f;
+        float BlockAt(float seconds) {
+            Run(patient, seconds - elapsed);
+            elapsed = seconds;
+            return patient.DrugEffectsOver(0f).LocalBlock;
+        }
+        const float Objective = 0.5f;
+        var steady = BlockAt(10f * 60f);
+        AssertFloat(steady).OverrideFailureMessage($"fully numb ten minutes after the shot ({steady:0.00})")
+            .IsEqualApprox(def.Peak.LocalBlock, 0.02f);
+        var timeLimit = driver.Surgery.Scenario.TimeLimit;
+        var late = BlockAt(timeLimit);
+        AssertBool(late >= Objective)
+            .OverrideFailureMessage($"still numb enough when the {timeLimit / 60f:0} minute clock runs out ({late:0.00})").IsTrue();
+        var slow = BlockAt(25f * 60f);
+        AssertBool(slow < Objective).OverrideFailureMessage($"wearing off after 25 minutes ({slow:0.00})").IsTrue();
+        // A few seconds over, for the few it took to soak in.
+        BlockAt(def.Duration + 10f);
+        AssertFloat(patient.Drugs.Level(def.Id)).OverrideFailureMessage($"gone after {def.Duration / 60f:0} minutes")
+            .IsEqual(0f);
+        await driver.Stop();
+    }
+
     [TestCase]
     public async Task DrawingFromTheIvBagTakesWhatWasPushedInFirst() {
         var driver = SurgeryDriver.Create();
