@@ -20,6 +20,7 @@ internal sealed class LiquidSurface(bool withUv = false) {
         _prepared = false;
     }
     private readonly record struct Sample(Vector2 At, float Inside, Vector3 Vertex);
+    private Sample[] _fieldSamples = [];
 
     internal static Vector2[] Outline(float radius, float phase) {
         const int Count = 64;
@@ -45,30 +46,6 @@ internal sealed class LiquidSurface(bool withUv = false) {
         return Mathf.Abs(twice) / (2f * Mathf.Pi);
     }
 
-    internal static Vector2[] Clip(IReadOnlyList<Vector2> outline, Rect2 support) {
-        var points = outline.ToList();
-        for (var edge = 0; edge < 4; edge++) {
-            var next = new List<Vector2>(points.Count + 2);
-            for (var i = 0; i < points.Count; i++) {
-                var a = points[i];
-                var b = points[(i + 1) % points.Count];
-                var da = Margin(a, edge, support);
-                var db = Margin(b, edge, support);
-                if (da >= 0f) { next.Add(a); }
-                if ((da >= 0f) != (db >= 0f)) { next.Add(a.Lerp(b, da / (da - db))); }
-            }
-            points = next;
-        }
-        return [.. points];
-    }
-
-    private static float Margin(Vector2 p, int edge, Rect2 box) => edge switch {
-        0 => p.X - box.Position.X,
-        1 => box.End.X - p.X,
-        2 => p.Y - box.Position.Y,
-        _ => box.End.Y - p.Y,
-    };
-
     internal void Patch(IReadOnlyList<Vector2> outline, float depth) {
         if (outline.Count < 3) { return; }
         var center = new Vector3(0f, depth * 0.65f, 0f);
@@ -90,7 +67,9 @@ internal sealed class LiquidSurface(bool withUv = false) {
     }
 
     internal void Field(Rect2 bounds, int columns, int rows, Func<Vector2, float> inside, Func<Vector2, float, Vector3> position) {
-        var samples = new Sample[(columns + 1) * (rows + 1)];
+        var count = (columns + 1) * (rows + 1);
+        if (_fieldSamples.Length != count) { _fieldSamples = new Sample[count]; }
+        var samples = _fieldSamples;
         for (var y = 0; y <= rows; y++) {
             for (var x = 0; x <= columns; x++) {
                 var at = bounds.Position + bounds.Size * new Vector2((float)x / columns, (float)y / rows);

@@ -5,19 +5,6 @@ namespace Scalpel.Tests.Patients;
 [TestCategory("smoke"), TestCategory("liquids")]
 public class LiquidShapeTest {
     [TestCase]
-    public void LiquidContoursKeepTheFreeSideWhenTheyMeetAnEdge() {
-        var outline = LiquidSurface.Outline(0.1f, 1.3f);
-        var clipped = LiquidSurface.Clip(outline, new Rect2(-1f, -1f, 1.025f, 2f));
-        AssertFloat(clipped.Max(p => p.X)).IsEqualApprox(0.025f, 0.000001f);
-        AssertFloat(clipped.Min(p => p.X)).OverrideFailureMessage("contact does not squeeze the opposite free edge")
-            .IsEqualApprox(outline.Min(p => p.X), 0.000001f);
-        AssertFloat(LiquidSurface.Area(clipped)).IsLess(LiquidSurface.Area(outline));
-        AssertFloat(LiquidSurface.Area(outline)).OverrideFailureMessage("organic variation preserves deposited volume")
-            .IsEqualApprox(0.01f, 0.000001f);
-        AssertInt(clipped.Count(p => Mathf.Abs(p.X - 0.025f) < 0.000001f)).IsGreaterEqual(2);
-    }
-
-    [TestCase]
     public void LiquidGridInterpolatesAnObliqueBoundary() {
         var surface = new LiquidSurface();
         surface.Field(new Rect2(Vector2.Zero, Vector2.One), 8, 8, p => 0.813f - p.X - p.Y, (p, _) => new Vector3(p.X, 0f, p.Y));
@@ -27,6 +14,15 @@ public class LiquidShapeTest {
         AssertBool(points.All(p => p.X + p.Z <= 0.81301f)).OverrideFailureMessage("no fluid triangle crosses its supporting boundary").IsTrue();
         AssertBool(points.Any(p => Mathf.Abs(p.X + p.Z - 0.813f) < 0.00001f))
             .OverrideFailureMessage("the contour reaches the boundary instead of stopping at stair steps").IsTrue();
+
+        surface.Clear();
+        surface.Field(new Rect2(-0.1f, -0.1f, 0.2f, 0.2f), 8, 8,
+            p => 0.025f - p.X, (p, _) => new Vector3(p.X, 0f, p.Y));
+        using var clippedMesh = surface.Upload();
+        var clippedPoints = clippedMesh.GetFaces();
+        AssertFloat(clippedPoints.Max(p => p.X)).OverrideFailureMessage("the supported edge is interpolated").IsEqualApprox(0.025f, 0.000001f);
+        AssertFloat(clippedPoints.Min(p => p.X)).OverrideFailureMessage("contact does not squeeze the opposite free edge")
+            .IsLess(-0.09f);
     }
 
     [TestCase]

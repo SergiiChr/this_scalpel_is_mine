@@ -101,8 +101,6 @@ public partial class BloodFlow : Node3D {
     private const float SpotGrowth = 0.0015f;
     /// <summary>Radius (m) of the spot a needle leaves where it went into the skin.</summary>
     private const float PunctureRadius = 0.003f;
-    /// <summary>Radius (m) of the pool held in a cut when it starts, and full. The skin hides it beyond the opening.
-    /// </summary>
     /// <summary>How far (m) a pool in a cut keeps off its floor, and how high it stands.</summary>
     private const float CutPoolLift = 0.0003f;
     /// <summary>How deep under the skin a full pool in a cut lies: this share of its floor's depth, at least

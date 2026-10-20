@@ -47,6 +47,7 @@ public partial class PatientBody {
     private readonly Dictionary<int, Vector3> _heldOrgans = [];
     private ShaderMaterial _cavityMaterial = null!;
     private float _poolHeight = float.NegativeInfinity;
+    private readonly LiquidSurface _cavityBloodSurface = new();
 
     public MeshInstance3D CavityBlood { get; private set; } = null!;
     /// <summary>Site-local height of the cavity pool's surface, -infinity with no pool.</summary>
@@ -567,7 +568,8 @@ public partial class PatientBody {
             return;
         }
         _poolHeight = height;
-        var surface = new LiquidSurface();
+        var surface = _cavityBloodSurface;
+        surface.Clear();
         float Inside(Vector2 uv) => OnBody(uv)
             ? Mathf.Min(height - CavityFloor(uv), SurfaceHeight(uv) - SkinThickness - height) - 0.00015f : -0.001f;
         surface.Field(new Rect2(Vector2.Zero, Vector2.One), 48, 48, Inside,
