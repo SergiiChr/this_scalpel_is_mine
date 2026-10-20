@@ -5,6 +5,41 @@ namespace Scalpel.Tests.Patients;
 [TestCategory("smoke"), TestCategory("liquids")]
 public class LiquidShapeTest {
     [TestCase]
+    public void ADelayedBedUploadDoesNotRewindLiveFlow() {
+        var outlet = new BloodFlow.Outlet(1) { Progress = 0.8f, AllowedProgress = 0.9f, CoatingMl = 0.2f };
+        outlet.Uploaded(new BedLiquidSurface.RivuletState(0.6f, 0.4f, 0.1f));
+        AssertFloat(outlet.Progress).OverrideFailureMessage("time advanced while the worker built its older snapshot").IsEqual(0.8f);
+        AssertFloat(outlet.DrawnProgress).OverrideFailureMessage("release still waits for the actually uploaded front").IsEqual(0.4f);
+        AssertFloat(outlet.AllowedProgress).OverrideFailureMessage("an old snapshot cannot reduce an already affordable front").IsEqual(0.9f);
+        AssertFloat(outlet.CoatingMl).OverrideFailureMessage("uploading a snapshot does not consume the current dose").IsEqual(0.2f);
+    }
+
+    [TestCase]
+    public void WorkerFailuresAreConsumedOnceAndAllowLaterWork() {
+        var source = new TaskCompletionSource<int>();
+        Task<int>? pending = source.Task;
+        AssertBool(WorkerTask.TryTake(ref pending, out _)).OverrideFailureMessage("unfinished work keeps its buffer ownership").IsFalse();
+        AssertObject(pending).IsSame(source.Task);
+        var failure = new InvalidOperationException("failed liquid build");
+        source.SetException(failure);
+        AssertBool(WorkerTask.TryTake(ref pending, out var completed)).IsTrue();
+        Exception? caught = null;
+        try { _ = completed!.GetAwaiter().GetResult(); } catch (InvalidOperationException error) { caught = error; }
+        AssertObject(caught).IsSame(failure);
+        AssertObject(pending).OverrideFailureMessage("a failed worker no longer blocks the next frame").IsNull();
+        AssertBool(WorkerTask.TryTake(ref pending, out _)).OverrideFailureMessage("the same fault cannot be consumed again").IsFalse();
+        pending = Task.FromResult(7);
+        AssertBool(WorkerTask.TryTake(ref pending, out var replacement)).IsTrue();
+        AssertInt(replacement!.GetAwaiter().GetResult()).IsEqual(7);
+        Task? draw = Task.FromException(failure);
+        AssertBool(WorkerTask.TryTake(ref draw, out var failedDraw)).IsTrue();
+        caught = null;
+        try { failedDraw!.GetAwaiter().GetResult(); } catch (InvalidOperationException error) { caught = error; }
+        AssertObject(caught).IsSame(failure);
+        AssertObject(draw).OverrideFailureMessage("mesh-only workers follow the same fault-safe ownership rule").IsNull();
+    }
+
+    [TestCase]
     public void LiquidGridInterpolatesAnObliqueBoundary() {
         var surface = new LiquidSurface();
         surface.Field(new Rect2(Vector2.Zero, Vector2.One), 8, 8, p => 0.813f - p.X - p.Y, (p, _) => new Vector3(p.X, 0f, p.Y));
@@ -23,6 +58,23 @@ public class LiquidShapeTest {
         AssertFloat(clippedPoints.Max(p => p.X)).OverrideFailureMessage("the supported edge is interpolated").IsEqualApprox(0.025f, 0.000001f);
         AssertFloat(clippedPoints.Min(p => p.X)).OverrideFailureMessage("contact does not squeeze the opposite free edge")
             .IsLess(-0.09f);
+    }
+
+    [TestCase]
+    public void LiquidContoursFollowCurvedInnerAndOuterBoundaries() {
+        const float Inner = 0.037f, Outer = 0.083f;
+        var surface = new LiquidSurface();
+        surface.Field(new Rect2(-0.1f, -0.1f, 0.2f, 0.2f), 16, 16,
+            point => Mathf.Min(point.Length() - Inner, Outer - point.Length()),
+            (point, _) => new Vector3(point.X, 0f, point.Y));
+        using var mesh = surface.Upload();
+        var radii = mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array()
+            .Select(point => new Vector2(point.X, point.Z).Length()).ToArray();
+        AssertInt(radii.Length).IsGreater(0);
+        AssertFloat(radii.Min()).OverrideFailureMessage("liquid does not cross a curved inner obstacle").IsGreaterEqual(Inner - 0.000025f);
+        AssertFloat(radii.Max()).OverrideFailureMessage($"liquid stays inside the curved outer support (maximum radius {radii.Max()})").IsLessEqual(Outer + 0.000025f);
+        AssertBool(radii.Any(radius => Mathf.Abs(radius - Inner) < 0.0001f)).IsTrue();
+        AssertBool(radii.Any(radius => Mathf.Abs(radius - Outer) < 0.0001f)).IsTrue();
     }
 
     [TestCase]

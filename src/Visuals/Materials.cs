@@ -392,13 +392,6 @@ public static class Materials {
         MetallicSpecular = 0.9f,
     };
 
-    /// <summary>Attached runoff shares the surrounding skin, with a rounded film of its actual mean depth.</summary>
-    internal static ShaderMaterial BodyBloodFilm(ShaderMaterial skin, Vector2 siteSize) {
-        var material = (ShaderMaterial)skin.Duplicate();
-        material.SetShaderParameter("rivulet_depth", BodyLiquidSurface.FilmDepth);
-        material.SetShaderParameter("rivulet_site_size", siteSize);
-        return material;
-    }
 
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),

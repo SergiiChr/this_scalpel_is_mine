@@ -10,6 +10,8 @@ internal sealed class SurfaceBlood {
     private const float ContactHead = 0.04f;
     private const float ContactDepth = 0.004f;
     private const float CoverDepth = 0.0004f;
+    // Dense films approach full mobility; thinner films move more slowly under viscous drag.
+    private const float MobilityDepth = 0.0006f;
     private static readonly (int X, int Y)[] Neighbors = [
         (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1),
     ];
@@ -193,7 +195,7 @@ internal sealed class SurfaceBlood {
                 // Viscous film mobility scales with thickness squared. A thin advancing rim must slow down
                 // instead of travelling as quickly as its deep supply and leaving a uniformly broad sheet.
                 var thickness = _thickness[i];
-                var mobility = Mathf.Lerp(1f, Mathf.Min(1f, thickness * thickness / (CoverDepth * CoverDepth)), _wettingHead[i] / ContactHead);
+                var mobility = Mathf.Min(1f, thickness * thickness / (MobilityDepth * MobilityDepth));
                 var outflow = movable * Mathf.Min(0.24f, total * delta * 1.5f * mobility);
                 _change[i] -= outflow;
                 for (var n = 0; n < Neighbors.Length; n++) {

@@ -117,12 +117,29 @@ public class BloodFlowTest {
             return Task.CompletedTask;
         });
         await driver.Capture("settled", "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed");
+        if (scenario == "knife_back") {
+            await driver.Unbudgeted(() => {
+                foreach (var mesh in blood.GetChildren().OfType<MeshInstance3D>().Where(mesh => mesh.TopLevel && Mathf.Abs(mesh.GlobalPosition.Y - BloodFlow.TableTop) < 0.001f && mesh.Mesh.GetSurfaceCount() > 0)) {
+                    var vertices = mesh.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                    foreach (var vertex in vertices) {
+                        var world = mesh.ToGlobal(vertex);
+                        var supported = driver.Surgery.Room.BedSurface.HeightAt(new Vector2(world.X, world.Z));
+                        AssertBool(supported.HasValue).OverrideFailureMessage("the back's deposited pool remains over the actual mattress").IsTrue();
+                        AssertFloat(world.Y).OverrideFailureMessage("the mattress pool stays on the mattress, independent of patient orientation")
+                            .IsEqualApprox(supported!.Value + BedLiquidSurface.FilmDepth, 0.0001f);
+                    }
+                }
+                return Task.CompletedTask;
+            });
+            await session.CaptureOblique("settled_contact", "blood on the upright back drains onto a horizontal mattress pool supported below the patient",
+                new Vector3(0.18f, 0.86f, -0.11f), Vector3.Forward, 0.7f);
+        }
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
                 AssertBool(checkedDelayedBed).OverrideFailureMessage("attached narrowing runoff is visible before the first bed deposit").IsTrue();
                 var rendered = driver.Body.Site.GetNode<MeshInstance3D>("BodyRunoff");
-                var material = (ShaderMaterial)rendered.MaterialOverride;
-                AssertFloat((float)material.GetShaderParameter("rivulet_depth"))
+                AssertObject(rendered.MaterialOverride).OverrideFailureMessage("runoff shares the live skin material").IsSame(driver.Body.SkinMaterial!);
+                AssertFloat((float)rendered.GetInstanceShaderParameter("rivulet_depth"))
                     .OverrideFailureMessage("the actual runoff material uses its conserved mean film depth").IsEqual(BodyLiquidSurface.FilmDepth);
                 using var arrays = rendered.Mesh.SurfaceGetArrays(0);
                 AssertInt(arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array().Length)
@@ -190,6 +207,142 @@ public class BloodFlowTest {
             emptyMesh.Free();
         }
         await session.Finish(measureGpu ? RenderAllowance : CpuAllowance);
+    }
+
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task ModelRunoffKeepsSeparatedSourcesAndRetracesForTheCurrentPose() {
+        var session = await ToolSession.Start("hand_stitch", "blood_flow/runoff_pose");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var site = body.Site;
+        var originalPose = body.Pose;
+        patient.SetPhysicsProcess(false);
+        patient.SetProcess(false);
+        body.SetProcess(false);
+
+        var mesh = new MeshInstance3D { Mesh = LiquidSurface.Primed(withUv: true), MaterialOverride = body.SkinMaterial };
+        mesh.SetInstanceShaderParameter("rivulet_depth", BodyLiquidSurface.FilmDepth);
+        mesh.SetInstanceShaderParameter("rivulet_site_size", body.SiteSize);
+        site.AddChild(mesh);
+        var runoff = new BodyRunoff(body.LiquidContact, site, driver.Surgery.Room.BedSurface, mesh);
+        const float FrameDelta = 1f / 60f;
+        var releasedMl = 0f;
+        var suppliedMl = 0f;
+        var firstUv = new Vector2(0f, 0.3f);
+        var secondUv = new Vector2(0f, 0.31f);
+        var thirdUv = new Vector2(0f, 0.32f);
+        var firstSurfaceUv = new Vector2(0.4f, 0.5f);
+        var secondSurfaceUv = new Vector2(0.6f, 0.5f);
+        var thirdSurfaceUv = new Vector2(0.43f, 0.5f);
+        var firstSource = site.ToLocal(body.UvToWorld(firstSurfaceUv));
+        var secondSource = site.ToLocal(body.UvToWorld(secondSurfaceUv));
+        var thirdSource = site.ToLocal(body.UvToWorld(thirdSurfaceUv));
+        AssertInt(SurfaceBlood.RunoffBucket(firstUv)).OverrideFailureMessage("the first two runoff labels share a bucket")
+            .IsEqual(SurfaceBlood.RunoffBucket(secondUv));
+        AssertFloat(firstSource.DistanceTo(secondSource)).OverrideFailureMessage("the model sources are actually separated")
+            .IsGreater(0.04f);
+
+        async Task<bool> Until(Func<bool> condition, int maxFrames = 600) {
+            for (var frame = 0; frame < maxFrames; frame++) {
+                runoff.Tick(FrameDelta);
+                await Frames.NextProcess();
+                if (condition()) { return true; }
+            }
+            return condition();
+        }
+        void Add(Vector2 label, Vector3 source, float ml) {
+            runoff.Add(label, source, ml);
+            suppliedMl += ml;
+        }
+        void AssertConserved(string phase) => AssertFloat(runoff.HeldMl + releasedMl)
+            .OverrideFailureMessage($"attached coating, queued drops and releases conserve the supplied dose {phase}")
+            .IsEqualApprox(suppliedMl, 0.01f);
+
+        Add(firstUv, firstSource, 0.05f);
+        var growing = await Until(() => runoff.HasGrowingStreak);
+        AssertBool(growing).OverrideFailureMessage("the first model source forms a growing attached streak").IsTrue();
+        var firstPath = runoff.GrowingPath!;
+        var firstPaths = runoff.ActivePaths.ToArray();
+        AssertInt(firstPaths.Length).OverrideFailureMessage("the initial pose has one active source path").IsEqual(1);
+        AssertConserved("after the first source");
+
+        Add(secondUv, secondSource, 0.05f);
+        var secondRoute = await Until(() => runoff.ActivePaths.Any(path => path.Samples.Length > 0
+            && path.Samples[0].At.DistanceTo(secondSource) < 0.01f));
+        AssertBool(secondRoute).OverrideFailureMessage("a second source in the same runoff bucket gets its own route")
+            .IsTrue();
+        var originalSecondPath = runoff.ActivePaths.First(path => path.Samples.Length > 0
+            && path.Samples[0].At.DistanceTo(secondSource) < 0.01f);
+        AssertFloat(originalSecondPath.Samples[0].At.DistanceTo(firstSource))
+            .OverrideFailureMessage("the second route starts near its own physical source, not the older source")
+            .IsGreater(0.04f);
+        AssertInt(runoff.ActivePaths.Count()).OverrideFailureMessage("both separated sources remain active")
+            .IsEqual(2);
+        AssertConserved("after the second source");
+
+        // Start both a trace and an upload, then change gravity before either task is consumed.
+        Add(thirdUv, thirdSource, 0.03f);
+        runoff.Tick(1f / 15f);
+        AssertBool(runoff.TracePending).OverrideFailureMessage("a third inlet starts an asynchronous model trace")
+            .IsTrue();
+        AssertBool(runoff.DrawPending).OverrideFailureMessage("the flowing first streak has an asynchronous mesh upload pending")
+            .IsTrue();
+        body.SetPose(PatientPose.Side);
+        runoff.Tick(FrameDelta);
+        var sideRoutes = await Until(() => runoff.ActivePaths.Count(path => path.Samples.Length > 0) >= 3);
+        AssertBool(sideRoutes).OverrideFailureMessage("the side pose gets fresh routes for all three physical inlets")
+            .IsTrue();
+        var sidePaths = runoff.ActivePaths.Where(path => path.Samples.Length > 0).ToArray();
+        foreach (var (source, label) in new[] { (firstSource, "first"), (secondSource, "second"), (thirdSource, "third") }) {
+            AssertBool(sidePaths.Any(path => path.Samples[0].At.DistanceTo(source) < 0.01f))
+                .OverrideFailureMessage($"the {label} current-pose trace starts at its own source after stale work is discarded")
+                .IsTrue();
+        }
+        foreach (var path in sidePaths) {
+            var start = site.ToGlobal(path.Samples[0].At);
+            var end = site.ToGlobal(path.End);
+            AssertFloat(start.Y - end.Y).OverrideFailureMessage("each side-pose path descends under current world gravity")
+                .IsGreater(0.005f);
+        }
+        AssertConserved("after stale trace and draw work is invalidated by the side pose");
+
+        body.SetPose(originalPose);
+        runoff.Tick(FrameDelta);
+        var returned = await Until(() => runoff.ActivePaths.Any(path => ReferenceEquals(path, firstPath))
+            && runoff.ActivePaths.Any(path => ReferenceEquals(path, originalSecondPath)));
+        AssertBool(returned).OverrideFailureMessage("returning to the original pose reuses both existing source coatings")
+            .IsTrue();
+        AssertConserved("after returning to the original pose without adding blood");
+
+        Add(secondUv, secondSource, 20f);
+        var fullRoute = await Until(() => runoff.HasReachedEnd, 900);
+        AssertBool(fullRoute).OverrideFailureMessage("the larger supplied dose reaches a traced outlet")
+            .IsTrue();
+        _ = await Until(() => false, 30); // Let the outlet pulse become ready without consuming it yet.
+        patient.GlobalPosition += Vector3.Up * 2f;
+        var releasedAboveBed = false;
+        var releaseOnBed = true;
+        var releasePoint = Vector3.Zero;
+        for (var frame = 0; frame < 300 && !releasedAboveBed; frame++) {
+            runoff.Tick(FrameDelta);
+            if (runoff.TryRelease(out releasePoint, out var ml, out releaseOnBed)) {
+                releasedMl += ml;
+                releasedAboveBed = true;
+                break;
+            }
+            await Frames.NextProcess();
+        }
+        AssertBool(releasedAboveBed).OverrideFailureMessage("a real queued outlet releases after the patient is translated")
+            .IsTrue();
+        AssertFloat(releasedMl).OverrideFailureMessage("the release contains supplied liquid").IsGreater(0f);
+        AssertBool(releaseOnBed).OverrideFailureMessage("release contact is checked against the patient's current translated position")
+            .IsFalse();
+        AssertObject(driver.Surgery.Room.BedSurface.Landing(releasePoint + Vector3.Up * 0.001f,
+            releasePoint - Vector3.Up * 0.002f)).OverrideFailureMessage("there is no bed contact below the translated release")
+            .IsNull();
+        AssertConserved("after release with no current bed contact");
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : CpuAllowance);
     }
 
     private static float Amount(PatientBody body, Vector2 uv) => body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);

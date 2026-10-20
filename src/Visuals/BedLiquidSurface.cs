@@ -6,16 +6,19 @@ internal sealed class BedLiquidSurface {
     private readonly record struct Face(Vector3 A, Vector3 B, Vector3 C, Vector3 Normal, Rect2 Bounds, Vector3 Na, Vector3 Nb, Vector3 Nc);
     private readonly List<Face> _faces = [];
     private readonly List<(Vector3 A, Vector3 B)> _edges = [];
+    private readonly List<(Vector3 A, Vector3 B)> _frameEdges = [];
     private readonly List<(Vector2[] Outline, Rect2 Bounds)> _supports = [];
     internal const float FilmDepth = 0.00025f;
     private const float Lift = FilmDepth;
     private readonly List<Face>[] _shellRows = Enumerable.Range(0, 64).Select(_ => new List<Face>()).ToArray();
     private readonly float _bottom;
-    private readonly float _padBottom;
-    private readonly float _padTop;
-    private readonly Rect2 _padBounds;
+    private readonly float _landingBottom;
+    private readonly float _landingTop;
+    private readonly Rect2 _landingBounds;
+    private readonly List<Face> _landingFaces = [];
     private readonly float _shoulder;
     private readonly List<Face> _frameTop = [];
+    private readonly List<Face> _visibleFrameTop = [];
     private readonly List<Face> _shell = [];
     private readonly Dictionary<Vector3, Coating> _coatings = [];
     internal float DripHeight => _bottom + 0.003f;
@@ -26,17 +29,13 @@ internal sealed class BedLiquidSurface {
         var frameVertices = frame.Mesh.GetFaces().Select(p => frame.GlobalTransform * p).ToArray();
         _bottom = frameVertices.Min(p => p.Y);
         var vertices = pads.Mesh.GetFaces().Select(p => pads.GlobalTransform * p).ToArray();
-        _padBottom = vertices.Min(p => p.Y);
-        _padTop = vertices.Max(p => p.Y);
-        _padBounds = new Rect2(Xz(vertices[0]), Vector2.Zero);
-        foreach (var vertex in vertices) { _padBounds = _padBounds.Expand(Xz(vertex)); }
         var normals = CacheShell(vertices);
         CacheShell(frameVertices, frame: true);
+        CacheEdges(_frameTop, _frameEdges);
         _shoulder = _frameTop.Min(face => Mathf.Min(face.A.Y, Mathf.Min(face.B.Y, face.C.Y))) + 0.0001f;
         foreach (var direction in new[] { Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }) {
             _coatings.Add(direction, new Coating(_shell, Vector3.Up.Cross(direction), Vector3.Up, direction));
         }
-        _coatings.Add(Vector3.Up, new Coating(_frameTop, Vector3.Right, Vector3.Back, Vector3.Up));
         var edges = new Dictionary<(Vector3, Vector3), int>();
         for (var i = 0; i < vertices.Length; i += 3) {
             var a = vertices[i];
@@ -52,6 +51,13 @@ internal sealed class BedLiquidSurface {
             var face = _faces[i];
             _faces[i] = face with { Na = normals[face.A].Normalized(), Nb = normals[face.B].Normalized(), Nc = normals[face.C].Normalized() };
         }
+        _landingFaces.AddRange(_faces);
+        _landingFaces.AddRange(_frameTop);
+        var landingVertices = _landingFaces.SelectMany(face => new[] { face.A, face.B, face.C }).ToArray();
+        _landingBottom = landingVertices.Min(p => p.Y);
+        _landingTop = landingVertices.Max(p => p.Y);
+        _landingBounds = new Rect2(Xz(landingVertices[0]), Vector2.Zero);
+        foreach (var vertex in landingVertices) { _landingBounds = _landingBounds.Expand(Xz(vertex)); }
         foreach (var (edge, count) in edges) { if (count == 1) { _edges.Add(edge); } }
         var remaining = _edges.SelectMany(edge => new[] { edge.A, edge.B }).ToHashSet();
         while (remaining.Count > 0) {
@@ -75,7 +81,8 @@ internal sealed class BedLiquidSurface {
             foreach (var point in hull) { bounds = bounds.Expand(point); }
             _supports.Add((hull, bounds));
         }
-
+        CacheExposedFrame();
+        _coatings.Add(Vector3.Up, new Coating(_visibleFrameTop, Vector3.Right, Vector3.Back, Vector3.Up));
 
         void Edge(Vector3 a, Vector3 b) {
             // Imported vertices at a material seam can differ only by floating-point roundoff.
@@ -108,6 +115,22 @@ internal sealed class BedLiquidSurface {
             for (var row = first; row <= last; row++) { _shellRows[row].Add(face); }
         }
         return normals;
+    }
+
+    private static void CacheEdges(IReadOnlyList<Face> faces, List<(Vector3 A, Vector3 B)> output) {
+        var counts = new Dictionary<(Vector3, Vector3), int>();
+        foreach (var face in faces) {
+            Edge(face.A, face.B); Edge(face.B, face.C); Edge(face.C, face.A);
+        }
+        foreach (var (edge, count) in counts) { if (count == 1) { output.Add(edge); } }
+
+        void Edge(Vector3 a, Vector3 b) {
+            a = a.Snapped(Vector3.One * 0.000001f);
+            b = b.Snapped(Vector3.One * 0.000001f);
+            var swap = a.X > b.X || (a.X == b.X && (a.Z > b.Z || (a.Z == b.Z && a.Y > b.Y)));
+            var key = swap ? (b, a) : (a, b);
+            counts[key] = counts.GetValueOrDefault(key) + 1;
+        }
     }
 
     private (Vector3 Position, Vector3 Normal)? SideAt(Vector3 start, Vector3 direction, float y) {
@@ -406,34 +429,121 @@ internal sealed class BedLiquidSurface {
         - (face.Normal.X * (at.X - face.A.X) + face.Normal.Z * (at.Y - face.A.Z)) / face.Normal.Y;
 
     internal float? HeightAt(Vector2 at) {
+        float? highest = null;
         foreach (var face in _faces) {
             if (!face.Bounds.Grow(0.000003f).HasPoint(at)) { continue; }
             var a = Xz(face.A); var b = Xz(face.B); var c = Xz(face.C);
             if ((b - a).Cross(at - a) >= -0.000003f * (b - a).Length() && (c - b).Cross(at - b) >= -0.000003f * (c - b).Length()
-                && (a - c).Cross(at - c) >= -0.000003f * (a - c).Length()) { return Height(face, at); }
+                && (a - c).Cross(at - c) >= -0.000003f * (a - c).Length()) {
+                var height = Height(face, at);
+                if (!highest.HasValue || height > highest.Value) { highest = height; }
+            }
         }
-        return null;
+        return highest;
     }
 
-    internal Vector3? Landing(Vector3 from, Vector3 to) {
+    // Compute the shelf's exposed triangles once during loading. A frame pool must not grow beneath
+    // a pad, and the same clipped support is used for its footprint, volume and attached coating.
+    private void CacheExposedFrame() {
+        foreach (var frame in _frameTop) {
+            List<Vector2[]> pieces = [[Xz(frame.A), Xz(frame.B), Xz(frame.C)]];
+            // The pads sit above the frame. Reuse their existing convex projected outlines instead
+            // of cutting the shelf against every interior pad triangle and generating redundant fragments.
+            foreach (var (outline, bounds) in _supports) {
+                if (!frame.Bounds.Intersects(bounds)) { continue; }
+                var exposed = new List<Vector2[]>();
+                foreach (var piece in pieces) {
+                    var remaining = piece;
+                    for (var edge = 0; edge < outline.Length; edge++) {
+                        var a = outline[edge]; var b = outline[(edge + 1) % outline.Length];
+                        var outside = ClipHalfPlane(remaining, a, b, -1f);
+                        if (outside.Length >= 3) { exposed.Add(outside); }
+                        remaining = ClipHalfPlane(remaining, a, b, 1f);
+                        if (remaining.Length < 3) { break; }
+                    }
+                }
+                pieces = exposed;
+                if (pieces.Count == 0) { break; }
+            }
+            foreach (var piece in pieces) {
+                for (var i = 1; i + 1 < piece.Length; i++) {
+                    var a = piece[0]; var b = piece[i]; var c = piece[i + 1];
+                    // Repeated pad intersections can leave nearly collinear fan triangles. Exclude
+                    // sub-micron slivers: their ill-conditioned edges can extrapolate a later pool clip.
+                    var longest = Mathf.Max(a.DistanceTo(b), Mathf.Max(b.DistanceTo(c), c.DistanceTo(a)));
+                    if (Mathf.Abs((b - a).Cross(c - a)) < longest * 0.000001f) { continue; }
+                    Vector3 At(Vector2 p) => new(p.X, Height(frame, p), p.Y);
+                    _visibleFrameTop.Add(new Face(At(a), At(b), At(c), frame.Normal,
+                        new Rect2(a, Vector2.Zero).Expand(b).Expand(c), Normal(frame, a), Normal(frame, b), Normal(frame, c)));
+                }
+            }
+        }
+    }
+
+    private static Vector2[] ClipHalfPlane(Vector2[] input, Vector2 a, Vector2 b, float sign) {
+        var output = new List<Vector2>(input.Length + 1);
+        var x = (double)b.X - a.X; var y = (double)b.Y - a.Y;
+        // A five-micron overlap avoids ambiguous ownership of an edge after float reconstruction.
+        var margin = 0.000005 * Math.Sqrt(x * x + y * y);
+        double Distance(Vector2 p) => (x * ((double)p.Y - a.Y) - y * ((double)p.X - a.X) + margin) * sign;
+        for (var i = 0; i < input.Length; i++) {
+            var from = input[i]; var to = input[(i + 1) % input.Length];
+            var first = Distance(from); var second = Distance(to);
+            if (first >= 0f) { output.Add(from); }
+            if ((first >= 0.0) != (second >= 0.0)) {
+                var fraction = first / (first - second);
+                output.Add(new Vector2((float)(from.X + ((double)to.X - from.X) * fraction),
+                    (float)(from.Y + ((double)to.Y - from.Y) * fraction)));
+            }
+        }
+        var area = 0f;
+        for (var i = 1; i + 1 < output.Count; i++) { area += (output[i] - output[0]).Cross(output[i + 1] - output[0]); }
+        return Mathf.Abs(area) > 1e-12f ? output.ToArray() : [];
+    }
+
+    internal readonly record struct Hit(Vector3 At, bool Frame);
+
+    internal bool FrameSupports(Vector2 at) => Contact(new Vector3(at.X, _landingTop + 0.001f, at.Y),
+        new Vector3(at.X, _landingBottom - 0.001f, at.Y)) is { Frame: true };
+
+    internal Vector3? Landing(Vector3 from, Vector3 to) => Contact(from, to)?.At;
+
+    internal Hit? Contact(Vector3 from, Vector3 to) {
         var motion = to - from;
-        if (motion.Y >= 0f || to.Y > _padTop || from.Y < _padBottom) { return null; }
+        if (motion.Y >= 0f || to.Y > _landingTop || from.Y < _landingBottom) { return null; }
         var bounds = new Rect2(Xz(from), Vector2.Zero).Expand(Xz(to)).Grow(0.000001f);
-        if (!_padBounds.Intersects(bounds, includeBorders: true)) { return null; }
-        foreach (var face in _faces) {
-            if (!face.Bounds.Intersects(bounds)) { continue; }
+        if (!_landingBounds.Intersects(bounds, includeBorders: true)) { return null; }
+        Hit? closest = null;
+        var closestProgress = float.PositiveInfinity;
+        for (var index = 0; index < _landingFaces.Count; index++) {
+            var face = _landingFaces[index];
+            if (!face.Bounds.Grow(0.000003f).Intersects(bounds)) { continue; }
             var start = face.Normal.Dot(from - face.A);
             var end = face.Normal.Dot(to - face.A);
             if (start < 0f || end > 0f) { continue; }
-            var hit = from.Lerp(to, start / (start - end));
+            var progress = start / (start - end);
+            if (progress >= closestProgress) { continue; }
+            var hit = from.Lerp(to, progress);
             var p = Xz(hit); var a = Xz(face.A); var b = Xz(face.B); var c = Xz(face.C);
-            if ((b - a).Cross(p - a) >= -0.00000001f && (c - b).Cross(p - b) >= -0.00000001f
-                && (a - c).Cross(p - c) >= -0.00000001f) { return hit; }
+            if ((b - a).Cross(p - a) >= -0.000003f * (b - a).Length()
+                && (c - b).Cross(p - b) >= -0.000003f * (c - b).Length()
+                && (a - c).Cross(p - c) >= -0.000003f * (a - c).Length()) {
+                closest = new Hit(hit, index >= _faces.Count);
+                closestProgress = progress;
+            }
         }
-        return null;
+        return closest;
     }
 
     internal float Cover(IReadOnlyList<Vector2> outline, Vector3 center, LiquidSurface? surface = null) {
+        return CoverFaces(outline, center, surface, _faces);
+    }
+
+    internal float CoverFrame(IReadOnlyList<Vector2> outline, Vector3 center, LiquidSurface? surface = null) {
+        return CoverFaces(outline, center, surface, _visibleFrameTop);
+    }
+
+    private static float CoverFaces(IReadOnlyList<Vector2> outline, Vector3 center, LiquidSurface? surface, IReadOnlyList<Face> faces) {
         var world = outline.Select(p => p + Xz(center)).ToArray();
         var bounds = new Rect2(world[0], Vector2.Zero);
         foreach (var point in world) { bounds = bounds.Expand(point); }
@@ -448,7 +558,7 @@ internal sealed class BedLiquidSurface {
         Span<Vector2> first = stackalloc Vector2[8];
         Span<Vector2> second = stackalloc Vector2[8];
         var area = 0f;
-        foreach (var face in _faces) {
+        foreach (var face in faces) {
             if (!face.Bounds.Intersects(bounds)) { continue; }
             foreach (var (a, b, sourceBounds) in sources) {
                 if (!face.Bounds.Intersects(sourceBounds)) { continue; }
@@ -457,7 +567,7 @@ internal sealed class BedLiquidSurface {
                 count = Clip(second[..count], first, Xz(face.B), Xz(face.C));
                 count = Clip(first[..count], second, Xz(face.C), Xz(face.A));
                 for (var i = 1; i + 1 < count; i++) {
-                    var p = second[0]; var q = second[i]; var t = second[i + 1];
+                    var p = Constrain(face, second[0]); var q = Constrain(face, second[i]); var t = Constrain(face, second[i + 1]);
                     area += Mathf.Abs((q - p).Cross(t - p)) / (2f * Mathf.Pi);
                     if (surface is null) { continue; }
                     Vector3 Position(Vector2 point) => new Vector3(point.X, Height(face, point) + Lift, point.Y) - center;
@@ -466,6 +576,24 @@ internal sealed class BedLiquidSurface {
             }
         }
         return area;
+    }
+
+    private static Vector2 Constrain(Face face, Vector2 at) {
+        var a = Xz(face.A); var b = Xz(face.B); var c = Xz(face.C);
+        double Cross(Vector2 p, Vector2 q, Vector2 r) => ((double)q.X - p.X) * ((double)r.Y - p.Y)
+            - ((double)q.Y - p.Y) * ((double)r.X - p.X);
+        if (Cross(a, b, at) >= 0.0 && Cross(b, c, at) >= 0.0 && Cross(c, a, at) >= 0.0) { return at; }
+        // Clipping an almost collinear wedge can amplify float roundoff along its long edge. Keep
+        // the final point on the finite supporting triangle, including its endpoints.
+        var nearest = a;
+        var distance = float.PositiveInfinity;
+        ReadOnlySpan<(Vector2 From, Vector2 To)> edges = stackalloc[] { (a, b), (b, c), (c, a) };
+        foreach (var (from, to) in edges) {
+            var point = Geometry2D.GetClosestPointToSegment(at, from, to);
+            var candidate = point.DistanceSquaredTo(at);
+            if (candidate < distance) { distance = candidate; nearest = point; }
+        }
+        return nearest;
     }
 
     private static Vector3 Normal(Face face, Vector2 at) {
@@ -478,12 +606,19 @@ internal sealed class BedLiquidSurface {
 
     private static int Clip(ReadOnlySpan<Vector2> input, Span<Vector2> output, Vector2 a, Vector2 b) {
         var count = 0;
-        var edge = b - a;
+        // Thin shelf fragments can be almost parallel to a pool edge. Compute crossings in double
+        // precision so cancellation cannot move the wet film outside its supporting triangle.
+        var x = (double)b.X - a.X; var y = (double)b.Y - a.Y;
         for (var i = 0; i < input.Length; i++) {
             var p = input[i]; var q = input[(i + 1) % input.Length];
-            var dp = edge.Cross(p - a); var dq = edge.Cross(q - a);
-            if (dp >= 0f) { output[count++] = p; }
-            if ((dp >= 0f) != (dq >= 0f)) { output[count++] = p.Lerp(q, dp / (dp - dq)); }
+            var dp = x * ((double)p.Y - a.Y) - y * ((double)p.X - a.X);
+            var dq = x * ((double)q.Y - a.Y) - y * ((double)q.X - a.X);
+            if (dp >= 0.0) { output[count++] = p; }
+            if ((dp >= 0.0) != (dq >= 0.0)) {
+                var fraction = dp / (dp - dq);
+                output[count++] = new Vector2((float)(p.X + ((double)q.X - p.X) * fraction),
+                    (float)(p.Y + ((double)q.Y - p.Y) * fraction));
+            }
         }
         return count;
     }
@@ -498,12 +633,20 @@ internal sealed class BedLiquidSurface {
     }
 
     internal Flow[] Outlets(IReadOnlyList<Vector2> outline, Vector3 center) {
+        return Outlets(outline, center, _edges, frameOnly: false);
+    }
+
+    internal Flow[] FrameOutlets(IReadOnlyList<Vector2> outline, Vector3 center) {
+        return Outlets(outline, center, _frameEdges, frameOnly: true);
+    }
+
+    private Flow[] Outlets(IReadOnlyList<Vector2> outline, Vector3 center, IReadOnlyList<(Vector3 A, Vector3 B)> edges, bool frameOnly) {
         var polygon = outline.ToArray();
         var bounds = new Rect2(polygon[0] + Xz(center), Vector2.Zero);
         foreach (var point in polygon) { bounds = bounds.Expand(point + Xz(center)); }
         var wet = new List<(Vector3 A, Vector3 B)>();
         var length = 0f;
-        foreach (var (a, b) in _edges) {
+        foreach (var (a, b) in edges) {
             if (Mathf.Max(a.X, b.X) < bounds.Position.X || Mathf.Min(a.X, b.X) > bounds.End.X
                 || Mathf.Max(a.Z, b.Z) < bounds.Position.Y || Mathf.Min(a.Z, b.Z) > bounds.End.Y) { continue; }
             var crossings = new List<float> { 0f, 1f };
@@ -537,7 +680,7 @@ internal sealed class BedLiquidSurface {
                     var start = a.Lerp(b, remaining / span);
                     var direction = Outward(start);
                     var edge = FrameEdge(start, direction);
-                    var gap = Xz(start).DistanceTo(Xz(edge)) > 0.035f;
+                    var gap = !frameOnly && Xz(start).DistanceTo(Xz(edge)) > 0.035f;
                     if (SideAt(gap ? edge : start, direction, DripHeight) is { } bottom
                         && SideAt(edge, direction, _shoulder) is { } top) {
                         var exit = top.Position - top.Normal * Lift;

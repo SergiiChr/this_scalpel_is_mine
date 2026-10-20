@@ -14,8 +14,8 @@ uniform float specular_strength = 0.12;
 uniform float grime = 0.12;
 uniform float pallor = 0.0;
 // Attached runoff only: a rounded cross-section, whose mean is its conserved film depth.
-uniform float rivulet_depth = 0.0;
-uniform vec2 rivulet_site_size = vec2(1.0);
+instance uniform float rivulet_depth = 0.0;
+instance uniform vec2 rivulet_site_size = vec2(1.0);
 // Set from Materials.FAMILIES.skin, like the body's skin (toon.gdshader).
 uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);

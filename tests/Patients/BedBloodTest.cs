@@ -9,6 +9,10 @@ public class BedBloodTest {
     // spikes with 30% headroom rounded to a half-factor; the headless CPU check keeps its strict limit.
     private static readonly BudgetAllowance RenderAllowance = new("bed scene spikes also measured without any liquid", 4f);
 
+    // Software key-frame capture reached 8.5 ms while strict headless CPU passed and native GPU
+    // viewport p95 was 2.7 ms. This capture-only allowance includes 30% headroom, rounded to a half-factor.
+    private static readonly BudgetAllowance ScreenshotAllowance = new("software screenshot renderer synchronizes bed mesh updates", 2f);
+
     [TestCase]
     public async Task BloodAtEveryBedEdgeDripsOntoTheFloor() {
         var session = await ToolSession.Start("appendectomy", "blood_bed_edges", captureUntouched: false);
@@ -34,9 +38,12 @@ public class BedBloodTest {
             AssertBool(landing.HasValue).OverrideFailureMessage("a falling drop contacts both the flat centre and rounded mattress slope").IsTrue();
             AssertFloat(landing!.Value.Y).IsEqualApprox(mattress.HeightAt(at)!.Value, 0.00001f);
         }
-        foreach (var at in new[] { new Vector2(0.405f, 0f), new Vector2(0.999f, -0.279f) }) {
+        var frameShelf = mattress.Landing(new Vector3(0.405f, 1.1f, 0.2f), new Vector3(0.405f, 0.7f, 0.2f));
+        AssertBool(frameShelf.HasValue).OverrideFailureMessage("a falling drop contacts the actual frame shelf beneath the pad gap").IsTrue();
+        AssertFloat(frameShelf!.Value.Y).OverrideFailureMessage("frame contact uses the imported support mesh height").IsBetween(0.79f, 0.83f);
+        foreach (var at in new[] { new Vector2(0.405f, 0.31f), new Vector2(0.999f, -0.279f) }) {
             AssertBool(mattress.Landing(new Vector3(at.X, 1.1f, at.Y), new Vector3(at.X, 0.7f, at.Y)).HasValue)
-                .OverrideFailureMessage("drops miss gaps between pads and the unsupported outer corner").IsFalse();
+                .OverrideFailureMessage("drops miss the unsupported frame edge and outer corner").IsFalse();
         }
         var view = new Vector3(0.7f, 0.6f, -Room.TableHalfWidth);
         await session.CaptureOblique("untouched", "the empty bed end and floor before blood lands", view, Vector3.Forward, 1.8f);
@@ -121,8 +128,11 @@ public class BedBloodTest {
                 foreach (var vertex in arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array()) {
                     var at = pool.Position + vertex;
                     var support = driver.Surgery.Room.BedSurface.HeightAt(new Vector2(at.X, at.Z));
-                    AssertBool(support.HasValue).OverrideFailureMessage($"every bed liquid vertex has mattress beneath it, including rounded corners: {at}").IsTrue();
-                    AssertFloat(at.Y - support!.Value).OverrideFailureMessage("liquid adheres within a millimetre of the actual mattress mesh").IsBetween(0.0001f, 0.0004f);
+                    // Frame-only pools occupy the real shelf beneath the pad gap; use the same actual
+                    // mesh landing query when the pad surface has no support at this vertex.
+                    support ??= driver.Surgery.Room.BedSurface.Landing(at + Vector3.Up * 0.01f, at - Vector3.Up * 0.01f)?.Y;
+                    AssertBool(support.HasValue).OverrideFailureMessage($"every bed liquid vertex has pad or frame beneath it: {at}, pool {pool.Position}").IsTrue();
+                    AssertFloat(at.Y - support!.Value).OverrideFailureMessage($"liquid adheres within a millimetre of the actual bed mesh (vertex {at}, support {support}, pool {pool.Position})").IsBetween(0.0001f, 0.0004f);
                     heightRange.Add(at.Y);
                 }
                 AssertFloat(heightRange.Max() - heightRange.Min()).OverrideFailureMessage("edge pools bend down the mattress instead of using a flat plane").IsGreater(0.005f);
@@ -162,9 +172,11 @@ public class BedBloodTest {
         var floorHeight = Deposits(blood).First(pool => pool.Position.Y < 0.01f).Position.Y;
         var largeAt = new Vector3(2f, floorHeight, 2f);
         blood.Pool(largeAt, 0.05f);
-        await Frames.Process(5);
+        AssertBool(await Frames.Until(() => blood.GroundMeshesReady, 5f))
+            .OverrideFailureMessage("the first large floor dose finishes its mesh build").IsTrue();
         blood.Pool(largeAt, 0.05f);
-        await Frames.Process(5);
+        AssertBool(await Frames.Until(() => blood.GroundMeshesReady, 5f))
+            .OverrideFailureMessage("the added floor dose finishes its mesh build before its rendered volume is measured").IsTrue();
         await driver.Unbudgeted(() => {
             var large = Deposits(blood).Single(pool => pool.Position.DistanceTo(largeAt) < 0.001f);
             AssertFloat(FootprintArea(large)).OverrideFailureMessage("continued floor pooling retains the full dose beyond the old radius cap")
@@ -205,7 +217,8 @@ public class BedBloodTest {
                 .OverrideFailureMessage("a central supply eventually drains to the floor instead of accumulating invisible runoff").IsGreater(floorBeforeCenter + 0.005f);
             return Task.CompletedTask;
         });
-        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : null);
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
+            : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);
     }
 
     [TestCase]
@@ -246,7 +259,86 @@ public class BedBloodTest {
             AssertFloat(blood.GroundLiquidArea).IsEqualApprox(dose + BloodFlow.PoolAreaPerDrop * 5f, 0.000001f);
             return Task.CompletedTask;
         });
-        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : null);
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
+            : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);
+    }
+
+    [TestCase]
+    public async Task FrameShelfPoolStaysVisibleAndDrainsConservedBlood() {
+        var session = await ToolSession.Start("appendectomy", "bed_frame_shelf", captureUntouched: false);
+        var driver = session.Driver;
+        driver.Patient.SetPhysicsProcess(false);
+        driver.Body.SetProcess(false);
+        var blood = driver.Body.Blood;
+        blood.Sources.Clear();
+        blood.Pools.Clear();
+        var bed = driver.Surgery.Room.BedSurface;
+        var shelf = new Vector3(0.405f, BloodFlow.TableTop, 0.26f);
+        var contact = bed.Landing(new Vector3(shelf.X, 1.1f, shelf.Z), new Vector3(shelf.X, 0.7f, shelf.Z));
+        AssertBool(contact.HasValue).OverrideFailureMessage("a drop lands on the imported frame shelf between mattress pads").IsTrue();
+        AssertFloat(contact!.Value.Y).OverrideFailureMessage("the shelf hit follows the actual frame triangles").IsBetween(0.79f, 0.83f);
+
+        var dose = BloodFlow.PoolAreaPerDrop * 0.05f;
+        blood.Pool(shelf, dose);
+        await Frames.Seconds(0.5f);
+        var first = Deposits(blood).Single(pool => pool.Position.Y > Room.TableHeight);
+        AssertInt(first.Mesh.GetSurfaceCount()).OverrideFailureMessage("a frame-supported deposit paints its actual frame surface").IsGreater(0);
+        await session.CaptureOblique("frame_shelf", "a thin blood film stays on the frame shelf between pads", shelf, Vector3.Right, 0.28f);
+        blood.Spray(new Vector3(shelf.X, 1.1f, shelf.Z), 1, 0f);
+        await Frames.Seconds(0.5f);
+
+        const int Supplies = 200;
+        for (var i = 0; i < Supplies; i++) {
+            blood.Pool(shelf, dose);
+            await Frames.NextProcess();
+        }
+        await Frames.Seconds(2f);
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (!blood.GroundMeshesReady && wait.Elapsed.TotalSeconds < 5) { await Frames.NextProcess(); }
+        AssertBool(blood.GroundMeshesReady).IsTrue();
+        AssertBool(Deposits(blood).Any(pool => pool.Position.Y < 0.01f))
+            .OverrideFailureMessage("blood on the frame shelf runs down its supporting frame and reaches the floor").IsTrue();
+        AssertFloat(blood.GroundLiquidArea).OverrideFailureMessage("frame shelf coating and floor runoff conserve every finite deposit")
+            .IsEqualApprox(BloodFlow.PoolAreaPerDrop + (Supplies + 1) * dose, 0.000001f);
+        await session.CaptureOblique("frame_shelf_drip", "blood spreads across the exposed frame shelf without crossing adjacent pad boundaries", shelf, Vector3.Right, 0.28f);
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
+            : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);
+    }
+
+    [TestCase]
+    public async Task NearbyFrameAndPadDepositsKeepTheirOwnSupport() {
+        var session = await ToolSession.Start("appendectomy", "bed_mixed_support", captureUntouched: false);
+        var driver = session.Driver;
+        driver.Patient.SetPhysicsProcess(false);
+        driver.Body.SetProcess(false);
+        var blood = driver.Body.Blood;
+        blood.Sources.Clear();
+        blood.Pools.Clear();
+        var bed = driver.Surgery.Room.BedSurface;
+        var dose = BloodFlow.PoolAreaPerDrop * 0.05f;
+        var pairs = new[] {
+            (Frame: new Vector2(0.405f, 0.2f), Pad: new Vector2(0.425f, 0.2f)),
+            (Frame: new Vector2(0.835f, 0.2f), Pad: new Vector2(0.82f, 0.2f)),
+        };
+        for (var index = 0; index < pairs.Length; index++) {
+            var (frame, pad) = pairs[index];
+            AssertBool(bed.FrameSupports(frame)).IsTrue();
+            AssertBool(bed.FrameSupports(pad)).IsFalse();
+            AssertFloat(frame.DistanceTo(pad)).OverrideFailureMessage("these impacts are close enough to merge if support is ignored").IsLess(0.03f);
+            var first = index == 0 ? frame : pad;
+            var second = index == 0 ? pad : frame;
+            blood.Pool(new Vector3(first.X, BloodFlow.TableTop, first.Y), dose);
+            blood.Pool(new Vector3(second.X, BloodFlow.TableTop, second.Y), dose);
+            AssertInt(Deposits(blood).Count()).OverrideFailureMessage("pad and frame impacts remain separate in either arrival order")
+                .IsEqual((index + 1) * 2);
+        }
+        AssertBool(await Frames.Until(() => blood.GroundMeshesReady, 5f)).IsTrue();
+        AssertFloat(blood.GroundLiquidArea).OverrideFailureMessage("separating support classes retains every supplied milliliter")
+            .IsEqualApprox(pairs.Length * 2 * dose, 0.000001f);
+        await session.CaptureOblique("separate_supports", "nearby blood films stay on their own pad or lower frame shelf without jumping between heights",
+            new Vector3(0.415f, 0.81f, 0.2f), Vector3.Back, 0.35f);
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
+            : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);
     }
 
     private static float SideCoatingArea(MeshInstance3D pool) {

@@ -13,9 +13,10 @@ public class WoundLiquidTest {
     // This capture-only allowance uses 30% headroom rounded to a half-factor and never applies to headless CPU.
     private static readonly BudgetAllowance ScreenshotAllowance = new("software screenshot renderer synchronizes dynamic mesh updates", 4.5f);
 
-    [TestCase]
-    public async Task IrrigationLiquidFollowsAndDrainsFromADeepOpening() {
-        var session = await ToolSession.Start("appendectomy", "wound_liquids");
+    [TestCase(5f)]
+    [TestCase(50f)]
+    public async Task IrrigationLiquidFollowsAndDrainsFromADeepOpening(float initialMl) {
+        var session = await ToolSession.Start("appendectomy", initialMl > 5f ? "wound_liquids/full" : "wound_liquids");
         var driver = session.Driver;
         var body = driver.Body;
         var at = new Vector2(0.5f, 0.5f);
@@ -44,21 +45,21 @@ public class WoundLiquidTest {
         driver.Note("clear irrigation gathering against the opening");
         driver.Budget.Clear();
         // Set a measured irrigation dose directly: this case verifies the liquid contour, not syringe handling.
-        body.Blood.Irrigate(body.UvToWorld(at, body.OpeningDepth(at, 0.015f) * 0.5f), 5f, 0f);
+        body.Blood.Irrigate(body.UvToWorld(at, body.OpeningDepth(at, 0.015f) * 0.5f), initialMl, 0f);
         await Frames.Process(8);
         var pool = body.Site.GetChildren().OfType<MeshInstance3D>().Single(p => p.Name == "IrrigationPool");
         await driver.Unbudgeted(() => {
             var faces = pool.Mesh.GetFaces();
             AssertInt(faces.Length).OverrideFailureMessage("clear liquid has a connected surface inside the opening").IsGreater(6);
             AssertBool(faces.All(p => body.Tissue.OpeningDistance(body.LocalToUv(p)) > -0.00025f))
-                .OverrideFailureMessage("clear liquid follows the wound opening rather than a circular bead").IsTrue();
+                .OverrideFailureMessage($"clear liquid follows the wound opening rather than a circular bead (minimum clearance {faces.Min(p => body.Tissue.OpeningDistance(body.LocalToUv(p)))})").IsTrue();
             return Task.CompletedTask;
         });
         var material = (StandardMaterial3D)pool.MaterialOverride;
         AssertFloat(material.AlbedoColor.A).OverrideFailureMessage("saline remains translucent").IsBetween(0.1f, 0.8f);
         var clearRed = material.AlbedoColor.R;
         await session.CaptureAt("clear_pool", "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it", driver.SitePoint(at), 0.17f);
-        body.Blood.Irrigate(body.UvToWorld(at), 10f, 1f);
+        body.Blood.Irrigate(body.UvToWorld(at), initialMl * 2f, 1f);
         await Frames.Process(8);
         AssertFloat(material.AlbedoColor.R).OverrideFailureMessage("blood carried into the clear liquid changes its tint").IsGreater(clearRed + 0.05f);
         await session.CaptureAt("mixed_pool", "blood and irrigation share the same wound-shaped pool, with a darker translucent surface", driver.SitePoint(at), 0.17f);
@@ -96,5 +97,73 @@ public class WoundLiquidTest {
             .IsLess(saturatedRed - 0.05f);
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
             : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);
+    }
+
+    // The same live tissue-pull fixture exceeds the calibrated 6 ms CPU limit even with blood processing
+    // disabled (6.9 ms). Its combined worst frame was 10.6 ms, including at most 1.35 ms of liquid work.
+    // Keep this pre-existing tissue update bounded with 30% headroom rounded to a half-factor.
+    private static readonly BudgetAllowance TissuePullAllowance = new("live tissue-pull scene exceeds CPU budget without liquid processing", 2.5f);
+
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task WoundLiquidsRefreshForGeometryChangesRatherThanSolverTicks() {
+        var session = await ToolSession.Start("appendectomy", "wound_liquid_refresh", captureUntouched: false);
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var at = new Vector2(0.5f, 0.5f);
+        var wound = SurgeryState.SkinIsCut(patient, at - new Vector2(0.08f, 0f), at + new Vector2(0.08f, 0f), 0.5f);
+        SurgeryState.TissueIsPulled(patient, at + new Vector2(0f, body.MetersToUv(0.002f)), new Vector3(0f, 0f, 0.02f));
+        AssertBool(await Frames.Until(() => body.Tissue.IsOpen(at, TissueDepth.Fat), 10f))
+            .OverrideFailureMessage("the fixture opens a deep incision").IsTrue();
+        patient.SetPhysicsProcess(false);
+        SurgeryState.WoundIsClamped(wound);
+        body.Blood.Sources.Clear();
+        body.Blood.Pools.Clear();
+        body.SetCavityBlood(0f);
+        AssertBool(await Frames.Until(() => body.Tissue.IsSleeping, 10f))
+            .OverrideFailureMessage("the pulled wound settles before the refresh checks").IsTrue();
+
+        body.Blood.Irrigate(body.UvToWorld(at, body.OpeningDepth(at, 0.015f) * 0.5f), 100f, 0f);
+        var rinseReady = await Frames.Until(() => body.Blood.RinseMeshRefreshes(wound.Id) > 0, 5f);
+        AssertBool(rinseReady).OverrideFailureMessage("irrigation draws its opening contour").IsTrue();
+        var cutRefreshes = body.Blood.CutPoolMeshRefreshes;
+        body.Blood.Pools.Add(new CutPool(at, body.OpeningDepth(at, 0.015f), 0.6f));
+        var cutReady = await Frames.Until(() => body.Blood.CutPoolMeshRefreshes > cutRefreshes, 5f);
+        AssertBool(cutReady).OverrideFailureMessage("blood draws a recessed surface in this opening").IsTrue();
+        await driver.Unbudgeted(() => {
+            var faces = body.Site.GetNode<MeshInstance3D>("CutPools").Mesh.GetFaces();
+            AssertInt(faces.Length).OverrideFailureMessage("the wound has a rendered blood surface").IsGreater(6);
+            AssertBool(faces.All(point => body.Tissue.OpeningDistance(body.LocalToUv(point)) > -0.001f))
+                .OverrideFailureMessage("the blood surface stays inside the local wound opening").IsTrue();
+            return Task.CompletedTask;
+        });
+
+        // Wake the solver while the opening is at rest. Solver steps advance, but its sampled contour and support
+        // stay within the sub-millimetre refresh tolerance.
+        driver.Note("settled wound contours survive solver ticks and refresh for a tissue pull");
+        driver.Budget.Clear();
+        var rinseRefreshes = body.Blood.RinseMeshRefreshes(wound.Id);
+        cutRefreshes = body.Blood.CutPoolMeshRefreshes;
+        var stepsBefore = body.Tissue.StepsDone;
+        for (var frame = 0; frame < 24; frame++) {
+            body.Tissue.Wake();
+            await Frames.NextProcess();
+        }
+        AssertInt(body.Tissue.StepsDone).OverrideFailureMessage("the settled tissue still advances solver steps")
+            .IsGreater(stepsBefore);
+        AssertInt(body.Blood.RinseMeshRefreshes(wound.Id)).OverrideFailureMessage("stationary solver steps reuse the irrigation contour")
+            .IsEqual(rinseRefreshes);
+        AssertInt(body.Blood.CutPoolMeshRefreshes).OverrideFailureMessage("stationary solver steps reuse the blood contour")
+            .IsEqual(cutRefreshes);
+
+        var pulledAt = at + new Vector2(body.MetersToUv(0.025f), 0f);
+        SurgeryState.TissueIsPulled(patient, pulledAt, new Vector3(0.015f, 0f, 0f));
+        var moved = await Frames.Until(() => body.Blood.RinseMeshRefreshes(wound.Id) > rinseRefreshes
+            && body.Blood.CutPoolMeshRefreshes > cutRefreshes, 5f);
+        AssertBool(moved).OverrideFailureMessage("both wound-liquid meshes rebuild when a real tissue pull changes their contour")
+            .IsTrue();
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
+            : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance
+            : FrameBudget.Mode == BudgetMode.Cpu ? TissuePullAllowance : null);
     }
 }

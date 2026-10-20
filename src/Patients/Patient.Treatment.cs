@@ -1025,7 +1025,7 @@ public partial class Patient {
             map.Stroke(WoundMap.Layer.Wounds, WoundMap.Cut, a, b, 0.006f, Mathf.Min(wound.Depth * 0.75f, 0.7f), WoundMap.Mode.Max,
                 wound.Kind == WoundKind.Tear ? 0.003f : 0f, (ulong)wound.Id);
             Body.Tissue.Cut(a, b, depth);
-            map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, a, b, 0.02f, 0.8f, WoundMap.Mode.Max);
+            map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, a, b, 0.02f, 0.8f, WoundMap.Mode.Max, soft: true);
         }
         if (wound.Points.Count == 1) {
             var center = wound.Points[0];

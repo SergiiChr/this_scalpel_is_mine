@@ -83,8 +83,6 @@ public partial class PatientBody : Node3D {
     public const float VeinReach = 0.014f;
 
     private readonly List<ShaderMaterial> _bodyMaterials = [];
-    private readonly List<ShaderMaterial> _siteMaterials = [];
-    internal void RegisterSkinMaterial(ShaderMaterial material) => _siteMaterials.Add(material);
     /// <summary>Each forearm vein (its mesh rides the forearm bone), for <see cref="VeinAt"/>.</summary>
     private readonly List<Vein> _veins = [];
     private readonly List<Forearm> _forearms = [];
@@ -744,10 +742,8 @@ public partial class PatientBody : Node3D {
                 Materials.SetCarve(material, site, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
             }
             var coordinates = new Projection(model.AffineInverse() * site);
-            foreach (var material in _siteMaterials) {
-                material.SetMatrix(ShaderParam.SiteToModel, coordinates);
-                material.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
-            }
+            SkinMaterial?.SetMatrix(ShaderParam.SiteToModel, coordinates);
+            SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
             Materials.SetReveal(_cavityMaterial, site, SiteSize * 0.5f, RegionTexture);
             return;
         }
@@ -756,7 +752,7 @@ public partial class PatientBody : Node3D {
             Materials.LiftCarve(material, lift);
         }
         var localLift = model.Basis.Inverse() * lift;
-        foreach (var material in _siteMaterials) { material.SetShaderParameter(ShaderParam.SiteLift, localLift); }
+        SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, localLift);
         _cavityMaterial.SetShaderParameter(ShaderParam.RegionLift, lift);
     }
 
@@ -766,7 +762,7 @@ public partial class PatientBody : Node3D {
             return;
         }
         _pallor = value;
-        foreach (var material in _siteMaterials) { material.SetShaderParameter(ShaderParam.Pallor, value); }
+        SkinMaterial?.SetShaderParameter(ShaderParam.Pallor, value);
         _bodyMaterials[0].SetShaderParameter(ShaderParam.Pallor, value);
     }
 

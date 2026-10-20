@@ -51,17 +51,31 @@ public partial class NetPinchDriver : NetSession {
         // Along the table until the bullet is in front: the thigh is out of reach from where the client starts.
         var walk = me.ToLocal(spot).X < 0f ? InputActions.MoveLeft : InputActions.MoveRight;
         PlayerInput.Action(walk);
-        await Until(() => Mathf.Abs(me.ToLocal(spot).X) < 0.1f);
+        var walkedIntoReach = await Until(() => Mathf.Abs(me.ToLocal(spot).X) < 0.1f);
         PlayerInput.Action(walk, false);
+        if (!walkedIntoReach) {
+            GD.Print("FAIL: [client] never walked the bullet into reach");
+            return;
+        }
         await Wait(0.5);
         // The hand's key makes it the active one and lets the mouse move it.
         PlayerInput.Action(InputActions.MoveRightHand);
-        for (var i = 0; i < 20 && ((spot - forceps.TipPosition()) with { Y = 0f }).Length() > 0.002f; i++) {
+        await PlayerInput.Delivered();
+        const float PlacementTolerance = 0.002f;
+        const int MaxCorrections = 60;
+        float Missed() => ((spot - forceps.TipPosition()) with { Y = 0f }).Length();
+        for (var i = 0; i < MaxCorrections && Missed() > PlacementTolerance; i++) {
             PlayerInput.Mouse(PlayerInput.HandMotion(me, (spot - forceps.TipPosition()) with { Y = 0f }));
-            await Physics(6);
+            await PlayerInput.Delivered();
+            await Physics(5);
         }
         PlayerInput.Action(InputActions.MoveRightHand, false);
-        GD.Print($"[client] forceps over the bullet, {((spot - forceps.TipPosition()) with { Y = 0f }).Length() * 1000f:0.0} mm off");
+        var missed = Missed();
+        if (missed > PlacementTolerance) {
+            GD.Print($"FAIL: [client] forceps positioning did not converge after {MaxCorrections} acknowledged corrections: {missed * 1000f:0.0} mm off");
+            return;
+        }
+        GD.Print($"[client] forceps over the bullet, {missed * 1000f:0.0} mm off");
         PlayerInput.Action(InputActions.Lift);
         await Wait(0.5);
         PlayerInput.Action(InputActions.UseTool);

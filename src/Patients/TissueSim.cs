@@ -1510,7 +1510,7 @@ public sealed partial class TissueSim {
             if (region.Depth < depth) { continue; }
             var offset = at - region.Center;
             var side = offset.Dot(region.Across);
-            var distance = Mathf.Min(region.HalfGap - Mathf.Abs(side), region.HalfLength - (offset - region.Across * side).Length());
+            var distance = Mathf.Min(region.HalfGap - Mathf.Abs(side), region.HalfLength - Mathf.Abs(offset.Cross(region.Across)));
             // Blend adjacent strips into a continuous meniscus rather than exposing each spring as a notch.
             var blend = cell * 0.2f;
             var h = Mathf.Clamp(0.5f + 0.5f * (best - distance) / blend, 0f, 1f);

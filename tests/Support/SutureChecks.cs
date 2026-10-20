@@ -77,7 +77,12 @@ public static class SutureChecks {
         AssertInt(marks.Multimesh.InstanceCount).OverrideFailureMessage("the renderer has one pressure sprite per puncture")
             .IsEqual(info.Anchors.Count);
         AssertThreadClearsSkin(body, tight.Routes[0], "tight exposed thread");
-        await driver.PlayerTiesOff();
+        var map = body.WoundMap;
+        await driver.PlayerTiesOff(onTied: () => {
+            AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, wound.Midpoint))
+                .OverrideFailureMessage("tying off removes standing blood from this wound seam at the actual closure event")
+                .IsLess(0.12f);
+        });
         await Frames.Seconds(1f);
         AssertBool(patient.SutureDone(thread) && needle.Suture.Thread == 0).OverrideFailureMessage("a long hold ties the thread off")
             .IsTrue();
@@ -88,13 +93,12 @@ public static class SutureChecks {
             .OverrideFailureMessage("no split edge is left along the seam").IsEqual(0);
         AssertFloat(tissue.SutureLip.Max())
             .OverrideFailureMessage("the pressed edges rise into a lip instead of passing through each other").IsGreater(0.0005f);
-        var map = body.WoundMap;
-        // Retained surface blood can flow across a closed seam. Check the wound's actual pool and
-        // bleed instead of treating blood in the skin's fluid map as an opening that failed to close.
+        // Retained surface blood can flow across a closed seam. Check only recessed fluid associated
+        // with this wound; another wound can still own a cut-pool mesh elsewhere on the site.
         AssertFloat(wound.Bleeding).OverrideFailureMessage("the tied wound has stopped bleeding").IsEqual(0f);
         AssertFloat(wound.PooledMl).OverrideFailureMessage("no blood remains held inside the closed wound").IsEqual(0f);
-        AssertInt(body.Site.GetNode<MeshInstance3D>("CutPools").Mesh.GetSurfaceCount())
-            .OverrideFailureMessage("the closed wound leaves no recessed liquid surface").IsEqual(0);
+        var localPool = body.Blood.Pools.Any(pool => pool.Fill > 0f && pool.Uv.IsEqualApprox(wound.BleedPoint));
+        AssertBool(localPool).OverrideFailureMessage("the closed wound has no recessed blood pool of its own").IsFalse();
         var seam = map.Value(WoundMap.Layer.Wounds, WoundMap.Cut, wound.Midpoint);
         AssertFloat(seam).OverrideFailureMessage("a tied wound keeps a visible incision line").IsGreater(0.06f);
         AssertFloat(seam).OverrideFailureMessage("the incision line is healed-looking rather than an open groove").IsLess(0.16f);

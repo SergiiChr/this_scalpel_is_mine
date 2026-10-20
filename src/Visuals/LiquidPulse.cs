@@ -18,6 +18,12 @@ internal sealed class LiquidPulse {
 
     internal void Add(float area) => Pending += area;
 
+    internal float Drain() {
+        var pending = Pending;
+        Pending = 0f;
+        return pending;
+    }
+
     internal float Advance(float delta, bool room) {
         if (Pending <= 0f) { return 0f; }
         Wait -= delta;

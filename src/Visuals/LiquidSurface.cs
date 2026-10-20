@@ -74,7 +74,7 @@ internal sealed class LiquidSurface(bool withUv = false) {
             for (var x = 0; x <= columns; x++) {
                 var at = bounds.Position + bounds.Size * new Vector2((float)x / columns, (float)y / rows);
                 var clearance = inside(at);
-                samples[y * (columns + 1) + x] = new Sample(at, clearance, position(at, clearance));
+                samples[y * (columns + 1) + x] = new Sample(at, clearance, clearance >= 0f ? position(at, clearance) : default);
             }
         }
         for (var y = 0; y < rows; y++) {
@@ -84,17 +84,29 @@ internal sealed class LiquidSurface(bool withUv = false) {
                 var b = samples[i + 1];
                 var c = samples[i + columns + 2];
                 var d = samples[i + columns + 1];
-                ClippedTriangle(a, b, c);
-                ClippedTriangle(a, c, d);
+                ClippedTriangle(a, b, c, inside, position);
+                ClippedTriangle(a, c, d, inside, position);
             }
         }
     }
 
     /// <summary>Sample an incision along its own centreline. Even a narrow diagonal opening keeps an inside row;
     /// a world-aligned coarse grid could miss the liquid entirely between its vertices.</summary>
-    internal void Ribbon(IReadOnlyList<Vector2> path, float reach, Func<Vector2, float> inside, Func<Vector2, float, Vector3> position) {
+    internal sealed record RibbonGrid(Vector2[] Centers, Vector2[] Normals, float Reach, int Rows) {
+        internal int Columns => Centers.Length - 1;
+        internal Vector2 At(float column, float offset) {
+            column = Mathf.Clamp(column, 0f, Columns);
+            var left = Math.Min((int)column, Columns - 1);
+            var fraction = column - left;
+            return Centers[left].Lerp(Centers[left + 1], fraction)
+                + Normals[left].Lerp(Normals[left + 1], fraction) * offset;
+        }
+        internal float RowOffset(int row) => -Reach + Reach * 2f * ((float)row / Rows);
+    }
+
+    internal static RibbonGrid PlanRibbon(IReadOnlyList<Vector2> path, float reach) {
         var points = Simplify(path);
-        if (points.Length < 2) { return; }
+        if (points.Length < 2) { return new RibbonGrid([], [], reach, 0); }
         points[0] -= (points[1] - points[0]).Normalized() * 0.004f;
         points[^1] += (points[^1] - points[^2]).Normalized() * 0.004f;
         var centers = new List<Vector2>();
@@ -117,11 +129,15 @@ internal sealed class LiquidSurface(bool withUv = false) {
             // Both adjoining strips share this cross-section. Limit an almost-reversing turn's miter.
             normals[x] = miter / Mathf.Max(miter.Dot(outgoing), 0.3f);
         }
-        Vector2 At(Vector2 p) {
-            var column = Math.Clamp(Mathf.RoundToInt(p.X), 0, columns);
-            return centers[column] + normals[column] * p.Y;
-        }
-        Field(new Rect2(0f, -reach, columns, reach * 2f), columns, rows, p => inside(At(p)), (p, clearance) => position(At(p), clearance));
+        return new RibbonGrid(centers.ToArray(), normals, reach, rows);
+    }
+
+    internal void Ribbon(IReadOnlyList<Vector2> path, float reach, Func<Vector2, float> inside, Func<Vector2, float, Vector3> position) {
+        var grid = PlanRibbon(path, reach);
+        if (grid.Columns < 1) { return; }
+        Vector2 At(Vector2 p) => grid.At(p.X, p.Y);
+        Field(new Rect2(0f, -reach, grid.Columns, reach * 2f), grid.Columns, grid.Rows,
+            p => inside(At(p)), (p, clearance) => position(At(p), clearance));
     }
 
     private static Vector2[] Simplify(IReadOnlyList<Vector2> path) {
@@ -153,7 +169,7 @@ internal sealed class LiquidSurface(bool withUv = false) {
         return path.Where((_, i) => keep[i]).ToArray();
     }
 
-    private void ClippedTriangle(Sample a, Sample b, Sample c) {
+    private void ClippedTriangle(Sample a, Sample b, Sample c, Func<Vector2, float> inside, Func<Vector2, float, Vector3> position) {
         Span<Sample> input = stackalloc Sample[] { a, b, c };
         Span<Vector3> output = stackalloc Vector3[4];
         var count = 0;
@@ -162,7 +178,33 @@ internal sealed class LiquidSurface(bool withUv = false) {
             var to = input[(i + 1) % 3];
             if (from.Inside >= 0f) { output[count++] = from.Vertex; }
             if ((from.Inside >= 0f) != (to.Inside >= 0f)) {
-                output[count++] = from.Vertex.Lerp(to.Vertex, from.Inside / (from.Inside - to.Inside));
+                var fraction = from.Inside / (from.Inside - to.Inside);
+                var at = from.At.Lerp(to.At, fraction);
+                var clearance = inside(at);
+                // Refine nonlinear crossings only to the visible contour tolerance. A safeguarded
+                // secant step usually converges immediately; bisection bounds difficult corners.
+                var lower = 0f;
+                var upper = 1f;
+                var lowerValue = from.Inside;
+                var upperValue = to.Inside;
+                for (var step = 0; step < 8 && Mathf.Abs(clearance) > 0.000025f; step++) {
+                    if ((clearance >= 0f) == (lowerValue >= 0f)) {
+                        lower = fraction;
+                        lowerValue = clearance;
+                    } else {
+                        upper = fraction;
+                        upperValue = clearance;
+                    }
+                    var next = lower + (upper - lower) * lowerValue / (lowerValue - upperValue);
+                    fraction = Mathf.Clamp(next, lower + (upper - lower) * 0.1f, upper - (upper - lower) * 0.1f);
+                    at = from.At.Lerp(to.At, fraction);
+                    clearance = inside(at);
+                }
+                if (Mathf.Abs(clearance) > 0.000025f) {
+                    at = from.At.Lerp(to.At, lowerValue >= 0f ? lower : upper);
+                    clearance = inside(at);
+                }
+                output[count++] = position(at, clearance);
             }
         }
         for (var i = 1; i + 1 < count; i++) {

@@ -35,7 +35,8 @@ public partial class Patient {
         if (a == b) {
             Body.WoundMap.Disk((WoundMap.Layer)layer, channel, a, radius, value, (WoundMap.Mode)mode);
         } else {
-            Body.WoundMap.Stroke((WoundMap.Layer)layer, channel, a, b, radius, value, (WoundMap.Mode)mode, jitter, seed);
+            Body.WoundMap.Stroke((WoundMap.Layer)layer, channel, a, b, radius, value, (WoundMap.Mode)mode, jitter, seed,
+                soft: layer == (int)WoundMap.Layer.Fluids && channel == WoundMap.Blood && mode == (int)WoundMap.Mode.Max);
         }
     }
 
