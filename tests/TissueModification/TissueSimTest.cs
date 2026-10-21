@@ -12,8 +12,21 @@ public class TissueSimTest {
     private static readonly Vector2 CutTo = new(0.8f, 0.51f);
 
     [TestCase]
+    public void ShortBladeSectionKeepsItsActualEndpoints() {
+        var sim = Sim();
+        var middle = new Vector2((float)(sim.ResX / 2) / sim.ResX, (sim.ResY / 2 + 0.25f) / sim.ResY);
+        var half = new Vector2(0.1f / sim.ResX, 0f);
+        sim.Cut(middle - half, middle + half, TissueDepth.Skin);
+        Check(sim.AnySevered, "the short blade section crosses a real tissue spring");
+        Check(sim.Severed.All(s => Geometry2D.GetClosestPointToSegment(sim.CrossingUv(s), middle - half, middle + half)
+                .DistanceTo(sim.CrossingUv(s)) < 0.00001f),
+            "a blade already crossing the grid severs no skin outside its actual section");
+    }
+
+    [TestCase]
     public void TissueGeometryAndPhysicsContracts() {
         CutGapes();
+        CutEndFollowsFineStroke();
         RetractionOnASlope();
         DepthLayers();
         RetractionAndTears();
@@ -102,8 +115,39 @@ public class TissueSimTest {
             Check(triangle.All(p => above ? p.Y >= p.X + 0.00399f : p.Y <= p.X - 0.00399f),
                 "triangle contact preserves clearance above and below the sloping face");
         }
+        Vector3[] shifted = [new(-0.01f, 0.02f, -0.01f), new(0f, 0.03f, -0.01f), new(-0.01f, 0.02f, 0f)];
+        surface.Index(shifted, ContactTriangle);
+        Check(Mathf.Abs(surface.HeightAt(-0.008f, -0.007f) - 0.022f) < 0.000001f,
+            "reindexing a smaller surface preserves slopes across negative grid coordinates");
+        Check(float.IsNaN(surface.HeightAt(0.2f, 0.3f)), "a moved surface leaves no contact at its old position");
+        surface.Index([Vector3.Zero, Vector3.Up, Vector3.Up * 2f], ContactTriangle);
+        Check(float.IsNaN(surface.HeightAt(0f, 0f)), "vertical faces leave no stale height in the contact grid");
         surface.Index(roof, Array.Empty<int>());
         Check(float.IsNaN(surface.HeightAt(0.2f, 0.3f)), "reindexing clears old surface buckets");
+    }
+
+    /// <summary>A slow finishing stroke can contain many segments inside its last triangle.</summary>
+    private static void CutEndFollowsFineStroke() {
+        var sim = Sim();
+        var a = new Vector2(0.4f, 0.4f);
+        var b = new Vector2(0.6f, 0.4f);
+        var c = new Vector2(0.4f, 0.6f);
+        var entry = new Vector2(0.45f, 0.4f);
+        var stop = new Vector2(0.45f, 0.46f);
+        sim.Cut(entry - Vector2.Down * 0.01f, entry, TissueDepth.Skin);
+        for (var step = 0; step < 64; step++) {
+            sim.Cut(entry.Lerp(stop, step / 64f), entry.Lerp(stop, (step + 1) / 64f), TissueDepth.Skin);
+        }
+        Check(sim.CutEndIn(a, b, c, entry) is { } end && end.DistanceTo(stop) < 0.00001f,
+            "the cut's drawn end follows the blade through every fine segment in its final triangle");
+        Check(sim.CutEndIn(a, b, new Vector2(c.X, 0.2f), entry) is { } start
+            && start.DistanceTo(entry - Vector2.Down * 0.01f) < 0.00001f,
+            "the opposite end traces back to the actual start of the blade stroke");
+        // Recoil can take the held contact back out through the same entry edge. This point is farther from
+        // entry sideways, but it must not replace the furthest penetration and collapse the V onto that edge.
+        sim.Cut(stop, new Vector2(0.53f, 0.4f), TissueDepth.Skin);
+        Check(sim.CutEndIn(a, b, c, entry) is { } recoilEnd && recoilEnd.DistanceTo(stop) < 0.00001f,
+            "a returning blade contact preserves the slit end instead of following sideways along its entry");
     }
 
     private static void CutGapes() {

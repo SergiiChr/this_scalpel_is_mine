@@ -640,8 +640,9 @@ public partial class ToolManager : Node3D {
         var tip = tool.TipPosition();
         tip.Y = BodyUnder(tool, tip) + LyingClearance;
         var flat = new Vector3(1, 0, 1);
-        var away = (tip - body.UvToWorld(hold.Anchor)) * flat;
-        if (away.Length() < 0.005f && Session.Patient.WoundWithId(hold.Wound) is { } cut) {
+        var origin = hold.Origin is { } contact ? body.Site.ToGlobal(contact) : body.UvToWorld(hold.Anchor);
+        var away = (tip - origin) * flat;
+        if (away.Length() < 0.001f && Session.Patient.WoundWithId(hold.Wound) is { } cut) {
             away = (body.UvToWorld(hold.Anchor) - body.UvToWorld(cut.ClosestPoint(hold.Anchor))) * flat;
         }
         if (away.Length() < 0.001f) {

@@ -38,7 +38,12 @@ public sealed class ToolUse {
     /// it a little.</summary>
     public Vector3[] StapleAim { get; set; } = [];
     public Vector2 LastUv { get; set; } = new(-1, -1);
-    public Vector3 LastTip { get; set; } = Vector3.Inf;
+    /// <summary>The blade's previous skin contact and grip (world). The grip distinguishes a sideways drag
+    /// from lowering the blade or recoil moving its footprint.</summary>
+    public Vector3 LastCutContact { get; set; } = Vector3.Inf;
+    public Vector3 LastCutGrip { get; set; } = Vector3.Inf;
+    /// <summary>Where (world) the incision's end at <see cref="LastUv"/> was cut.</summary>
+    public Vector3 LastCutEnd { get; set; } = Vector3.Inf;
     public float ChargeTime { get; set; }
     /// <summary>The surgeon whose stopped heart the defibrillator charges on, 0 for the patient: the shock goes there
     /// even if the paddles lift off as they're let go.</summary>
@@ -65,7 +70,8 @@ public sealed class ToolUse {
         TriggerBefore = false;
         PressedBefore = false;
         LevelBefore = 0;
-        LastTip = Vector3.Inf;
+        LastCutContact = Vector3.Inf;
+        LastCutGrip = Vector3.Inf;
         PinchWait = null;
     }
 }
@@ -116,6 +122,7 @@ public partial class SurgicalTool : RigidBody3D {
     /// <summary>The model parts' colors before liquid soaked into them.</summary>
     private readonly Dictionary<ShaderMaterial, Color> _dryColors = [];
     private Node3D _model = null!;
+    internal BladeContact? Blade { get; private set; }
     private float _spread = ToolActions.SpreadRange.X;
     private Transform3D _digFrom;
     private Transform3D _digTo;
@@ -216,6 +223,9 @@ public partial class SurgicalTool : RigidBody3D {
         ContactMonitor = true;
         MaxContactsReported = 2;
         _model = ModelSlot.InstantiateTool(def, this);
+        if (def.Action == "cut" && _model.FindChild("Blade", true, false) is MeshInstance3D blade) {
+            Blade = new BladeContact(blade.Mesh, GlobalTransform.AffineInverse() * blade.GlobalTransform);
+        }
         // The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.
         Bounds = ModelBounds();
         AddChild(new CollisionShape3D {

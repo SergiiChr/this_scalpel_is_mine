@@ -13,7 +13,22 @@ public static class SkinSeam {
     /// </summary>
     public static float Measure(PatientBody body) {
         var sim = body.Tissue;
-        var region = sim.Region();
+        // The published replacement mask excludes quiet gown points even when they belong to the solver's
+        // working region. Only where skin is actually drawn does it hand over to the body model.
+        using var mask = body.RegionTexture.GetImage();
+        var region = mask.GetData();
+        if (body.Layers[0].Mesh.GetSurfaceCount() == 0) { return 0f; }
+        using var arrays = body.Layers[0].Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var drawn = new Dictionary<Vector2I, List<Vector3>>();
+        for (var v = 0; v < vertices.Length; v++) {
+            var grid = uvs[v] * new Vector2(sim.ResX, sim.ResY);
+            var cell = (Vector2I)grid.Round();
+            if (grid.DistanceSquaredTo(cell) > 1e-8f) { continue; }
+            if (!drawn.TryGetValue(cell, out var points)) { drawn[cell] = points = []; }
+            points.Add(vertices[v]);
+        }
         var up = body.Site.GlobalBasis.Y.Normalized();
         // Along the site's own up: a site on the back is turned over in the body.
         var lift = (body.Site.Basis.Inverse() * (body.Site.Position - body.SiteDef.Position)).Y;
@@ -30,12 +45,15 @@ public static class SkinSeam {
             if (!edge) {
                 continue;
             }
-            var skin = body.Site.ToGlobal(body.LayerPoint(0, k));
-            var hit = space.IntersectRay(
-                PhysicsRayQueryParameters3D.Create(skin + (up * 0.05f), skin - (up * 0.05f), PatientBody.SurfaceLayer));
-            if (hit.Count > 0) {
-                var onModel = body.Site.ToLocal(hit["position"].AsVector3()).Y + lift;
-                worst = Mathf.Max(worst, Mathf.Abs(onModel - body.LayerPoint(0, k).Y));
+            if (!drawn.TryGetValue(at, out var points)) { continue; }
+            foreach (var point in points) {
+                var skin = body.Site.ToGlobal(point);
+                using var query = PhysicsRayQueryParameters3D.Create(skin + (up * 0.05f), skin - (up * 0.05f), PatientBody.SurfaceLayer);
+                using var hit = space.IntersectRay(query);
+                if (hit.Count > 0) {
+                    var onModel = body.Site.ToLocal(hit["position"].AsVector3()).Y + lift;
+                    worst = Mathf.Max(worst, Mathf.Abs(onModel - point.Y));
+                }
             }
         }
         return worst;

@@ -12,6 +12,20 @@ public class ScalpelTest {
     private const float Length = 0.05f;
 
     [TestCase]
+    public async Task ABriskStrokeStillMakesAJaggedCut() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("appendectomy");
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        await driver.PlayerCutsSkin(new Vector2(0.3f, 0.45f), new Vector2(0.7f, 0.45f), 1, speed: 0.4f);
+        AssertBool(driver.Patient.Wounds.Any(wound => wound.MadeBySurgeon && wound.Jagged))
+            .OverrideFailureMessage("drawing the blade faster than 0.25 m/s still makes a jagged incision").IsTrue();
+        driver.Budget.Check(localOverride: BudgetOverride);
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase]
     public async Task ScalpelPickupFiveCentimeterCutAndTableDrop() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
@@ -28,6 +42,7 @@ public class ScalpelTest {
         var bladeRest = handle.GlobalTransform.AffineInverse() * blade.GlobalTransform;
         var activeFrames = 0;
         var bladeDrift = 0f;
+        var bladeBasisDrift = 0f;
         // Every frame the blade works, how far it moved on its handle.
         void Measure() {
             var hand = driver.Me.Hands[scalpel.Slot];
@@ -37,6 +52,9 @@ public class ScalpelTest {
             activeFrames++;
             var relative = handle.GlobalTransform.AffineInverse() * blade.GlobalTransform;
             bladeDrift = Mathf.Max(bladeDrift, relative.Origin.DistanceTo(bladeRest.Origin));
+            for (var axis = 0; axis < 3; axis++) {
+                bladeBasisDrift = Mathf.Max(bladeBasisDrift, relative.Basis[axis].DistanceTo(bladeRest.Basis[axis]));
+            }
         }
         Frames.Tree.ProcessFrame += Measure;
 
@@ -74,9 +92,12 @@ public class ScalpelTest {
         AssertFloat(bladeDrift)
             .OverrideFailureMessage($"the blade stays fixed to its handle while cutting ({bladeDrift * 1000f:0.000} mm drift)")
             .IsLess(0.000001f);
+        AssertFloat(bladeBasisDrift)
+            .OverrideFailureMessage("the blade's rotation and scale stay fixed to its handle throughout cutting")
+            .IsLess(0.00001f);
         await driver.Capture("released", "released at the end: one clean 5 cm cut, the blade on its handle");
         var cuts = patient.Wounds.Where(wound => wound.MadeBySurgeon && wound.Kind == WoundKind.Cut).ToList();
-        AssertInt(cuts.Count).OverrideFailureMessage("one stroke makes one cut").IsEqual(1);
+        AssertInt(cuts.Count).OverrideFailureMessage($"one stroke makes one cut: {driver.Bleeders()}").IsEqual(1);
         var cut = cuts[0];
         AssertFloat(body.UvToMeters(cut.LengthUv)).OverrideFailureMessage("a light stroke along 5 cm cuts 5 cm")
             .IsEqualApprox(Length, 0.005f);

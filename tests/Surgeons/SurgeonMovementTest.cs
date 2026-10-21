@@ -37,7 +37,7 @@ public class SurgeonMovementTest {
     [AfterTest]
     public async Task End() {
         try {
-            foreach (var action in (string[])[InputActions.MoveLeft, InputActions.MoveRight, InputActions.MoveBack, InputActions.Crouch]) {
+            foreach (var action in (string[])[InputActions.MoveForward, InputActions.MoveLeft, InputActions.MoveRight, InputActions.MoveBack, InputActions.Crouch]) {
                 PlayerInput.Action(action, false);
             }
             await PlayerInput.Delivered();
@@ -135,6 +135,81 @@ public class SurgeonMovementTest {
         var spread = level.DefaultIfEmpty(0f).Max() - level.DefaultIfEmpty(0f).Min();
         AssertFloat(spread).OverrideFailureMessage($"and hovered at one height over it ({spread * 1000f:0.0} mm up and down)")
             .IsLess(0.001f);
+    }
+
+    /// <summary>Strafing side-on into the table, the surgeon stops where their legs meet its side: they never pass into
+    /// it on the way, and stop no further off, or its corners would catch the player early. The torso is above the table
+    /// top and may reach over it.</summary>
+    [TestCase]
+    public async Task SideOnAgainstTheTableTheLegsMeetItsSide() {
+        var driver = await Begin();
+        var me = driver.Me;
+        var side = TableSide(driver);
+        // Facing the head end, the left side toward the table.
+        SurgeryState.SurgeonStandsAt(me, side + new Vector3(0f, 0f, Surgeon.BodyRadius + 0.1f), -Mathf.Pi / 2f);
+        float LegsOff() => Surgeon.JointNames.Select(name => (MeshInstance3D)me.Joint(name))
+            .Select(part => part.GlobalTransform * part.GetAabb())
+            .Where(box => box.Position.Y < Room.TableHeight)
+            .Min(box => box.Position.Z) - side.Z;
+        var closest = float.PositiveInfinity;
+        await Walk(me, InputActions.MoveLeft, 30, () => closest = Mathf.Min(closest, LegsOff()));
+        for (var frame = 0; frame < 30; frame++) {
+            await Frames.Physics(1);
+            closest = Mathf.Min(closest, LegsOff());
+        }
+        AssertFloat(closest).OverrideFailureMessage($"the legs never pass into the table ({closest * 100f:0.0} cm off it at the closest)")
+            .IsGreaterEqual(0f);
+        var gap = LegsOff();
+        AssertFloat(gap).OverrideFailureMessage($"and stop where they meet its side ({gap * 100f:0.0} cm off it)").IsLessEqual(0.02f);
+    }
+
+    /// <summary>Walking past the head end of the table nearly head-on into its corner, the middle of the body 1 cm beside
+    /// it: the surgeon slides round the corner, the body clear of the table all the way, and on past its head end to the
+    /// other side instead of stopping on it.</summary>
+    [TestCase]
+    public async Task WalkingIntoTheTableCornerSlidesRoundIt() {
+        var driver = await Begin();
+        var me = driver.Me;
+        var room = driver.Surgery.Room;
+        var corner = TableSide(driver) + new Vector3(Room.TableHead, 0f, 0f);
+        SurgeryState.SurgeonStandsAt(me, corner + new Vector3(0.01f, 0f, 0.6f), 0f);
+        // How far the middle of the body is from the table's footprint, on the floor.
+        float OffTable() {
+            var at = room.ToLocal(me.GlobalPosition);
+            var outside = new Vector2(
+                Mathf.Max(Mathf.Max(Room.TableFoot - at.X, at.X - Room.TableHead), 0f),
+                Mathf.Max(Mathf.Abs(at.Z) - (Room.TableWidth * 0.5f), 0f));
+            return outside.Length();
+        }
+        var closest = float.PositiveInfinity;
+        var moved = await Walk(me, InputActions.MoveForward, 90, () => closest = Mathf.Min(closest, OffTable()));
+        // Sliding round the corner edge, the physics lets the capsule sink in a few millimeters before pushing it out.
+        AssertFloat(closest).OverrideFailureMessage($"the body stays clear of the table ({closest * 100f:0.0} cm from its "
+            + "footprint at the closest)").IsGreaterEqual(Surgeon.BodyRadius - 0.01f);
+        var past = room.ToLocal(me.GlobalPosition);
+        AssertFloat(past.X - Room.TableHead).OverrideFailureMessage($"went round past the head end ({past.X - Room.TableHead:0.00} m)")
+            .IsGreaterEqual(Surgeon.BodyRadius - 0.002f);
+        AssertFloat(-moved.Z).OverrideFailureMessage($"and on to the other side ({-moved.Z:0.00} m in 1.5 s)")
+            .IsGreater(Room.TableWidth + 0.6f);
+    }
+
+    /// <summary>The floor along the table's +z side, level with its middle.</summary>
+    private static Vector3 TableSide(SurgeryDriver driver) =>
+        driver.Surgery.Room.ToGlobal(new Vector3(0f, 0f, Room.TableWidth * 0.5f)) with { Y = driver.Me.GlobalPosition.Y };
+
+    /// <summary>Holds <paramref name="action"/> for <paramref name="frames"/> physics frames, calling
+    /// <paramref name="eachFrame"/> after each, and returns how far the surgeon went.</summary>
+    private static async Task<Vector3> Walk(Surgeon me, StringName action, int frames, Action eachFrame) {
+        await Frames.Physics(3);
+        var start = me.GlobalPosition;
+        PlayerInput.Action(action);
+        for (var frame = 0; frame < frames; frame++) {
+            await Frames.Physics(1);
+            eachFrame();
+        }
+        PlayerInput.Action(action, false);
+        await PlayerInput.Delivered();
+        return me.GlobalPosition - start;
     }
 
     /// <summary>

@@ -152,6 +152,9 @@ public partial class SurgeonHand : Node3D {
     /// it in.</summary>
     public bool OnHard { get; set; }
     public float Speed { get; private set; }
+
+    /// <summary>Motion across the operating surface, excluding the hand settling into an opening.</summary>
+    internal float LateralSpeed { get; private set; }
     /// <summary>Remote copies receive the final position already including lift and tremor.</summary>
     public bool Puppet { get; set; }
     /// <summary>How bloody the glove is (0..1). Every peer soaks it from the held tool's synced blood, so it matches
@@ -484,7 +487,10 @@ public partial class SurgeonHand : Node3D {
             _history.Dequeue();
         }
         var oldest = _history.Peek();
-        Speed = GlobalPosition.DistanceTo(oldest.Position) / Mathf.Max(_clock - oldest.Time, 0.016f);
+        var motion = GlobalPosition - oldest.Position;
+        var elapsed = Mathf.Max(_clock - oldest.Time, 0.016f);
+        Speed = motion.Length() / elapsed;
+        LateralSpeed = motion.Slide(Vector3.Up).Length() / elapsed;
     }
 
     /// <summary>Relaxed when empty, closed around a held tool as its grip says, squeezed a little tighter while using it.

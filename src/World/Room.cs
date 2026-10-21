@@ -31,6 +31,8 @@ public partial class Room : Node3D {
     public const float TableFoot = -1.3f;
     /// <summary>Table top end along x where the head lies.</summary>
     public const float TableHead = 1f;
+    /// <summary>Across the table top, side rails included.</summary>
+    internal const float TableWidth = 0.62f;
     /// <summary>The patient card hangs facing out from the middle of the table's head rail (HEAD_RAIL_X in
     /// tools/assetgen/props.py): in view from either side of the table, where the surgeons start.</summary>
     private const float CardHook = TableHead + 0.04f;
@@ -537,7 +539,7 @@ public partial class Room : Node3D {
         var table = ModelSlot.Instantiate("props", "operating_table", this, FurnitureLook);
         var bedParts = ModelSlot.Parts(table, "Pads", "Frame");
         BedSurface = new BedLiquidSurface((MeshInstance3D)bedParts["Pads"], (MeshInstance3D)bedParts["Frame"]);
-        Shapes.StaticBox(this, new Vector3(TableHead - TableFoot, TableHeight, 0.62f),
+        Shapes.StaticBox(this, new Vector3(TableHead - TableFoot, TableHeight, TableWidth),
             new Vector3((TableHead + TableFoot) * 0.5f, TableHeight * 0.5f, 0f));
         if (EnvironmentId != "or") {
             ModelSlot.Instantiate("props", "straps", this);

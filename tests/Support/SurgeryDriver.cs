@@ -232,9 +232,10 @@ public partial class SurgeryDriver : Node {
     /// either hand. Off the table (the tray, the IV stand) it stands on the side facing the room's middle. Standing in the
     /// IV tubing only pushes it aside: it rips out only when caught and walked off with.
     /// </summary>
-    public async Task PlayerWalksTo(Vector3 point, float off = StandOff) {
+    public async Task PlayerWalksTo(Vector3 point, float off = StandOff, Func<Vector3, bool>? canWorkFrom = null) {
         // Holding onto something with the other hand, stay put while the point is in reach: walking off would drag it.
-        if (Me.Hands.Any(hand => hand.Attached) && point.DistanceTo(Me.Shoulder(Me.Active)) < Surgeon.Reach - 0.05f) {
+        if (Me.Hands.Any(hand => hand.Attached) && point.DistanceTo(Me.Shoulder(Me.Active)) < Surgeon.Reach - 0.05f
+            && (canWorkFrom is null || canWorkFrom(Me.GlobalPosition))) {
             return;
         }
         var standingY = Me.GlobalPosition.Y;
@@ -298,6 +299,7 @@ public partial class SurgeryDriver : Node {
                 }
             }
             var toward = point - at;
+            if (canWorkFrom is not null && !canWorkFrom(at)) { continue; }
             var yaw = Mathf.Atan2(-toward.X, -toward.Z);
             if (vial is not null) {
                 var into = (vial.GlobalPosition - point).Normalized();

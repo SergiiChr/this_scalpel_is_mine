@@ -496,7 +496,7 @@ public partial class Patient : Node3D {
 
     /// <summary>Debug toast when a wound stops bleeding: for good, or only while gauze pressure holds it.</summary>
     private void ReportStopped(Wound wound, float rate, float lastingRate) {
-        var what = wound.IsInternal ? "vessel" : $"{wound.Kind.ToString().ToLowerInvariant()} {Body.UvToMeters(wound.LengthUv) * 100f:0.0} cm";
+        var what = wound.IsInternal ? "vessel" : $"{wound.Kind.ToString().ToLowerInvariant()} {Body.PathMeters(wound.Points) * 100f:0.0} cm";
         if (lastingRate <= 0f && wound.LastingBleeding > 0f) {
             Session.AnnounceDebug($"Bleeding stopped: {what} [permanently]");
         } else if (rate <= 0f && wound.Bleeding > 0f) {
@@ -989,7 +989,7 @@ public partial class Patient : Node3D {
 
     public float SurgeonCutLengthM(float minDepth) =>
         Wounds.Where(w => w.MadeBySurgeon && w.Kind == WoundKind.Cut && w.Depth >= minDepth)
-            .Sum(w => Body.UvToMeters(w.LengthUv));
+            .Sum(w => Body.PathMeters(w.Points));
 
     /// <summary>How much of the skin's wounds is closed, by length: a small hole left open counts for as little of it
     /// as it is.</summary>

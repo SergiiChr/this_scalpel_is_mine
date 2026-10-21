@@ -63,8 +63,8 @@ public class SlicingTest {
     private Surgery _surgery = null!;
     private SurgeonHand _hand = null!;
     private SurgicalTool _scalpel = null!;
-    /// <summary>Where the blade's tip was when the cut started and after each move (site uv), and the way it moves (uv
-    /// per meter).</summary>
+    /// <summary>The material contacts when the cut started and after each move, and the planned hand direction
+    /// in site uv per meter. The hand still follows the physical tip; checks follow the skin it actually cuts.</summary>
     private readonly List<Vector2> _path = [];
     private Vector2 _edgeUv;
     /// <summary>The middle of the whole cut as planned, where the cameras look.</summary>
@@ -81,11 +81,14 @@ public class SlicingTest {
     private sealed record SliceCase(string Id, string Scenario, bool Fat, string Inside, bool Along);
 
     /// <summary>
-    /// Progressive depth stays continuous through the three layers, with a thin skin lip and rounded cut ends.
+    /// Progressive depth stays continuous through the three layers, with a thin skin lip and clearly tapered
+    /// V-shaped cut ends.
     /// </summary>
-    [TestCase(Timeout = Limits.Slow)]
-    public async Task ProgressiveDepth() {
-        await RunCases(depth: true, grafts: false);
+    [TestCase("arm", Timeout = Limits.Slow)]
+    [TestCase("thigh", Timeout = Limits.Slow)]
+    [TestCase("belly", Timeout = Limits.Slow)]
+    public async Task ProgressiveDepth(string site) {
+        await RunCases(depth: true, grafts: false, site);
     }
 
     /// <summary>
@@ -96,7 +99,7 @@ public class SlicingTest {
         await RunCases(depth: false, grafts: true);
     }
 
-    private async Task RunCases(bool depth, bool grafts) {
+    private async Task RunCases(bool depth, bool grafts, string? site = null) {
         _shots = KeyFrames.Wanted();
         _out = KeyFrames.Folder(KeyFrameFolder);
         _report.Clear();
@@ -108,7 +111,7 @@ public class SlicingTest {
         Frames.Tree.ProcessFrame += TimeFrame;
         try {
             if (depth) {
-                foreach (var slice in Cases) {
+                foreach (var slice in Cases.Where(slice => site is null || slice.Id == site)) {
                     await Run(slice);
                 }
             }
@@ -152,21 +155,31 @@ public class SlicingTest {
         // Low: the point goes through the skin.
         await Press(1);
         _path.Clear();
-        _path.Add(TipUv());
+        _path.Add(_scalpel.Use.LastUv);
         Check(Tissue.AnySevered && Deepest() == TissueDepth.Skin, "pressed at low it goes through the skin only");
         await ShotsOf(slice.Id, "02_pressed_low");
         await MoveAlong();
         var first = Segment(0);
+        await ShotsOf(slice.Id, "03_moved_low");
         Check(Open(first, TissueDepth.Skin) && !Open(first, TissueDepth.Fat),
             $"after the first 2 cm the skin is open, nothing under it is cut ({Layers(first)})");
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
         CheckLayersUnderSkin();
-        await ShotsOf(slice.Id, "03_moved_low");
+        CheckFinishingTip();
 
         // Medium: deeper, then 2 cm more.
         var before = TipDepth();
+        var boneBeforeMedium = patient.Flags.GetValueOrDefault("bone_scraped");
+        var painBeforeMedium = patient.Vitals.Pain;
         await Press(2);
-        Check(TipDepth() > before, $"pressed at medium it digs deeper ({before:0.0000} -> {TipDepth():0.0000} m)");
+        var reachesBone = !slice.Fat && patient.Flags.GetValueOrDefault("bone_scraped") > boneBeforeMedium
+            && patient.Body.BoneAt(_scalpel.TipPosition(), Patient.BladeReach).Length > 0;
+        Check(TipDepth() > before || reachesBone,
+            $"pressed at medium it digs deeper or reaches exposed bone ({before:0.0000} -> {TipDepth():0.0000} m, bone {reachesBone})");
+        if (reachesBone) {
+            Check(patient.Vitals.Pain > painBeforeMedium + 0.1f,
+                $"first contact with exposed bone hurts through the local block (pain {painBeforeMedium:0.00} -> {patient.Vitals.Pain:0.00})");
+        }
         await ShotsOf(slice.Id, "04_pressed_medium");
         await MoveAlong();
         var second = Segment(1);
@@ -179,30 +192,54 @@ public class SlicingTest {
         }
         Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
         CheckLayersUnderSkin();
+        CheckFinishingTip();
         await ShotsOf(slice.Id, "05_moved_medium");
 
         // High.
+        if (!slice.Fat) {
+            // Steepen the working blade to reach bone through the existing slit, rather than pushing
+            // its spine beneath intact skin beside it. Send the same wrist input a player uses.
+            var tip = _scalpel.TipPosition();
+            PlayerInput.Action(InputActions.AimTool);
+            await PlayerInput.Delivered();
+            PlayerInput.Mouse(new Vector2(0f, (_hand.Tilt + 0.65f) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)));
+            await PlayerInput.Delivered();
+            PlayerInput.Action(InputActions.AimTool, false);
+            await PlayerInput.Delivered();
+            var move = (tip - _scalpel.TipPosition()).Slide(Vector3.Up) / 30f;
+            PlayerInput.Action(InputActions.MoveRightHand);
+            await PlayerInput.Delivered();
+            for (var i = 0; i < 30; i++) {
+                PlayerInput.Mouse(PlayerInput.HandMotion(_surgery.LocalSurgeon!, move));
+                await PlayerInput.Delivered();
+            }
+            PlayerInput.Action(InputActions.MoveRightHand, false);
+            await PlayerInput.Delivered();
+        }
         before = TipDepth();
         var pain = patient.Vitals.Pain;
         var scraped = patient.Flags.GetValueOrDefault("bone_scraped");
         await Press(3);
         if (!slice.Fat) {
             Check(patient.Flags.GetValueOrDefault("bone_scraped") > scraped, "pressed at high it hits the bone");
-            Check(patient.Vitals.Pain > pain + 0.1f, "hitting the bone hurts through the local block "
-                + $"(pain {pain:0.00} -> {patient.Vitals.Pain:0.00}, block {patient.Vitals.LocalBlock:0.00})");
+            if (!reachesBone) {
+                Check(patient.Vitals.Pain > pain + 0.1f, "hitting the bone hurts through the local block "
+                    + $"(pain {pain:0.00} -> {patient.Vitals.Pain:0.00}, block {patient.Vitals.LocalBlock:0.00})");
+            }
             await ShotsOf(slice.Id, "06_pressed_high");
         } else {
             Check(TipDepth() > before, $"pressed at high it digs deeper ({before:0.0000} -> {TipDepth():0.0000} m)");
             await ShotsOf(slice.Id, "06_pressed_high");
             await MoveAlong();
             var third = Segment(2);
+            await ShotsOf(slice.Id, "07_moved_high");
             Check(Open(third, TissueDepth.Muscle), $"after the third 2 cm the muscle is cut ({Layers(third)})");
             Check(Under(third, slice.Inside), $"{slice.Inside} lie under the cut muscle");
             Check(!patient.Wounds.Any(w => w.Kind == WoundKind.Internal),
                 "cutting through the muscle nicks nothing inside");
             Check(Zipper(), $"the incision opens in the middle and closes at its ends ({Profile()})");
             CheckLayersUnderSkin();
-            await ShotsOf(slice.Id, "07_moved_high");
+            CheckFinishingTip();
         }
         _hand.Lowered = false;
         _hand.Trigger = false;
@@ -517,20 +554,172 @@ public class SlicingTest {
         await Hold(PressTime);
     }
 
+    /// <summary>The published skin narrows into a genuine open V and reaches the visible blade at the skin's
+    /// surface. The deepest tip alone is not a surface contact on a tilted blade. A held blade can retreat
+    /// slightly as the skin recoils, leaving its most recent material contact inside the existing slit.</summary>
+    private void CheckFinishingTip() {
+        var body = _surgery.Patient.Body;
+        using var arrays = body.Layers[0].Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        // Godot's ray tolerance can cover a slit only a few microns wide. Test the published triangles
+        // directly in double precision so an outside point is not reported as an intact skin bridge.
+        bool Covered(Vector3 point) {
+            for (var t = 0; t < indices.Length; t += 3) {
+                var a = vertices[indices[t]];
+                var b = vertices[indices[t + 1]];
+                var c = vertices[indices[t + 2]];
+                var bx = (double)b.X - a.X;
+                var bz = (double)b.Z - a.Z;
+                var cx = (double)c.X - a.X;
+                var cz = (double)c.Z - a.Z;
+                var dx = (double)point.X - a.X;
+                var dz = (double)point.Z - a.Z;
+                var area = bx * cz - bz * cx;
+                if (Math.Abs(area) < 1e-14) { continue; }
+                var wb = (dx * cz - dz * cx) / area;
+                var wc = (bx * dz - bz * dx) / area;
+                if (wb >= -1e-7 && wc >= -1e-7 && wb + wc <= 1.0000001) { return true; }
+            }
+            return false;
+        }
+        var edges = new Dictionary<(int A, int B), int>();
+        for (var t = 0; t < indices.Length; t += 3) {
+            var p = vertices[indices[t]];
+            var q = vertices[indices[t + 1]];
+            var r = vertices[indices[t + 2]];
+            // Exact grid crossings share a lip and its corner: their zero-area faces have no surface boundary.
+            if ((q - p).Cross(r - p).LengthSquared() < 1e-16f) { continue; }
+            foreach (var (a, b) in new[] { (indices[t], indices[t + 1]), (indices[t + 1], indices[t + 2]), (indices[t + 2], indices[t]) }) {
+                var edge = (Math.Min(a, b), Math.Max(a, b));
+                edges[edge] = edges.GetValueOrDefault(edge) + 1;
+            }
+        }
+        var boundary = new Dictionary<int, List<int>>();
+        foreach (var (edge, count) in edges) {
+            if (count != 1) { continue; }
+            foreach (var (from, to) in new[] { (edge.A, edge.B), (edge.B, edge.A) }) {
+                if (!boundary.TryGetValue(from, out var neighbours)) { boundary[from] = neighbours = []; }
+                neighbours.Add(to);
+            }
+        }
+        var end = _scalpel.Use.LastUv;
+        var bladeMesh = _scalpel.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>()
+            .First(m => m.Name.ToString().Contains("Blade", StringComparison.Ordinal));
+        var bladeFaces = new List<Vector3>();
+        for (var surface = 0; surface < bladeMesh.Mesh.GetSurfaceCount(); surface++) {
+            using var bladeArrays = bladeMesh.Mesh.SurfaceGetArrays(surface);
+            var positions = bladeArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var bladeIndices = bladeArrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            foreach (var i in bladeIndices.Length == 0 ? Enumerable.Range(0, positions.Length) : bladeIndices) {
+                bladeFaces.Add(body.Site.ToLocal(bladeMesh.ToGlobal(positions[i])));
+            }
+        }
+        using var bladeShape = new TriangleMesh();
+        const float BladeReferenceScale = 1000f;
+        bladeShape.CreateFromFaces([.. bladeFaces.Select(p => p * BladeReferenceScale)]);
+        var bladeNormal = (body.Site.GlobalBasis.Inverse() * _scalpel.GlobalBasis.X).Normalized();
+        var bladeOrigin = body.Site.ToLocal(_scalpel.GlobalPosition);
+        var bladeLow = bladeFaces.Aggregate((a, b) => a.Min(b)) - Vector3.One * 0.003f;
+        var bladeHigh = bladeFaces.Aggregate((a, b) => a.Max(b)) + Vector3.One * 0.003f;
+        var bladeGap = float.PositiveInfinity;
+        var entersOpening = false;
+        var pointed = false;
+        var tapered = false;
+        var widths = "";
+        var nearest = float.PositiveInfinity;
+        foreach (var (v, neighbours) in boundary) {
+            if (neighbours.Count != 2) { continue; }
+            var distance = ((uvs[v] - end) * body.SiteSize).Length();
+            nearest = Mathf.Min(nearest, distance);
+            // The latest contact can recoil inside a slit longer than one cell. Locate its visible V by
+            // the real blade's bounds; the physical contact check below still requires an uncovered aperture.
+            if (vertices[v].X < bladeLow.X || vertices[v].X > bladeHigh.X || vertices[v].Z < bladeLow.Z || vertices[v].Z > bladeHigh.Z) { continue; }
+            var first = vertices[neighbours[0]] - vertices[v];
+            var second = vertices[neighbours[1]] - vertices[v];
+            var p = new Vector2(first.X, first.Z);
+            var q = new Vector2(second.X, second.Z);
+            // Identify the terminal lips in material coordinates; their physical directions turn as skin retracts.
+            var restP = (uvs[neighbours[0]] - uvs[v]) * body.SiteSize;
+            var restQ = (uvs[neighbours[1]] - uvs[v]) * body.SiteSize;
+            var along = -(restP + restQ).Normalized();
+            var isV = restP.LengthSquared() > 1e-12f && restQ.LengthSquared() > 1e-12f
+                && restP.Normalized().Dot(restQ.Normalized()) > 0.99f && Mathf.Abs(p.Cross(q)) > 1e-10f;
+            var sample = vertices[v] + (first + second) * 0.2f;
+            if (!isV || Covered(sample)) { continue; }
+            pointed = true;
+            for (var t = 0; t < bladeFaces.Count; t += 3) {
+                var a = bladeFaces[t];
+                var b = bladeFaces[t + 1];
+                var c = bladeFaces[t + 2];
+                var normal = (b - a).Cross(c - a).Normalized();
+                var projected = vertices[v] - normal * (vertices[v] - a).Dot(normal);
+                var weights = Geometry3D.GetTriangleBarycentricCoords(projected, a, b, c);
+                if (Mathf.Min(weights.X, Mathf.Min(weights.Y, weights.Z)) >= 0f) {
+                    bladeGap = Mathf.Min(bladeGap, projected.DistanceTo(vertices[v]));
+                }
+                foreach (var (from, to) in new[] { (a, b), (b, c), (c, a) }) {
+                    bladeGap = Mathf.Min(bladeGap, Geometry3D.GetClosestPointToSegment(vertices[v], from, to).DistanceTo(vertices[v]));
+                }
+            }
+            Vector3? LipAt(int next, float distance) {
+                var previous = v;
+                var progress = 0f;
+                for (var n = 0; n < boundary.Count && next != v; n++) {
+                    var to = -((uvs[next] - uvs[v]) * body.SiteSize).Dot(along);
+                    if (to >= distance) { return vertices[previous].Lerp(vertices[next], (distance - progress) / (to - progress)); }
+                    if (!boundary.TryGetValue(next, out var adjacent) || adjacent.Count != 2) { break; }
+                    var after = adjacent[0] == previous ? adjacent[1] : adjacent[0];
+                    previous = next;
+                    next = after;
+                    progress = to;
+                }
+                return null;
+            }
+            float WidthAt(float distance) {
+                if (LipAt(neighbours[0], distance) is not { } left || LipAt(neighbours[1], distance) is not { } right) { return float.NaN; }
+                var gap = right - left;
+                return Mathf.Abs(new Vector2(gap.X, gap.Z).Cross(along));
+            }
+            foreach (var distanceBack in new[] { 0.0005f, 0.001f, 0.003f }) {
+                if (LipAt(neighbours[0], distanceBack) is not { } left || LipAt(neighbours[1], distanceBack) is not { } right) { continue; }
+                // The blade can sit off-center in an asymmetrically retracted opening. Intersect its plane
+                // with the actual cross-section, then sample just inside the slit rather than on a skin edge.
+                var sideLeft = (left - bladeOrigin).Dot(bladeNormal);
+                var sideRight = (right - bladeOrigin).Dot(bladeNormal);
+                var share = Mathf.Abs(sideLeft - sideRight) > 1e-9f ? Mathf.Clamp(sideLeft / (sideLeft - sideRight), 0.01f, 0.99f) : 0.5f;
+                var insideOpening = left.Lerp(right, share);
+                using var frontHit = bladeShape.IntersectRay((insideOpening - bladeNormal * 0.01f) * BladeReferenceScale, bladeNormal);
+                using var backHit = bladeShape.IntersectRay((insideOpening + bladeNormal * 0.01f) * BladeReferenceScale, -bladeNormal);
+                var contactGap = float.PositiveInfinity;
+                if (frontHit.Count > 0) { contactGap = insideOpening.DistanceTo(frontHit["position"].AsVector3() / BladeReferenceScale); }
+                if (backHit.Count > 0) { contactGap = Mathf.Min(contactGap, insideOpening.DistanceTo(backHit["position"].AsVector3() / BladeReferenceScale)); }
+                entersOpening |= contactGap < 0.0005f && !Covered(insideOpening);
+            }
+            var near = WidthAt(0.001f);
+            var back = WidthAt(0.003f);
+            widths = $"{near * 1000f:0.00} mm at 1 mm, {back * 1000f:0.00} mm at 3 mm";
+            tapered |= near < back * 0.75f;
+        }
+        Check(pointed, $"the finishing stroke leaves an open V near the blade's latest cut (nearest boundary corner {nearest * 1000f:0.00} mm from its material contact)");
+        Check(tapered, $"the opening visibly narrows toward its end ({widths})");
+        Check(entersOpening, $"the visible blade enters the opening without an intact skin bridge (V is {bladeGap * 1000f:0.000} mm from the blade)");
+    }
+
     /// <summary>Moves the hand <see cref="Move"/> along the blade's edge over <see cref="MoveTime"/>, then checks the
     /// cut stayed clean.</summary>
     private async Task MoveAlong() {
-        var body = _surgery.Patient.Body;
         var me = _surgery.LocalSurgeon!;
         var flat = new Vector3(1f, 0f, 1f);
-        var at = _path[^1];
-        var step = (body.UvToWorld(at + (_edgeUv * Move)) - body.UvToWorld(at)) * flat;
+        var origin = _scalpel.TipPosition();
+        var step = ToolActions.BladeDirection(_scalpel) * Move;
         var frames = (int)(MoveTime * Engine.PhysicsTicksPerSecond);
         _topSpeed = 0f;
         for (var i = 0; i < frames; i++) {
-            // Like a player watching the blade: along the edge, and steered back onto the line if the tip drifts off it
-            // (pressed deeper on a round limb, an angled blade's tip shifts sideways).
-            var planned = body.UvToWorld(at + (_edgeUv * Move * (i + 1) / frames));
+            // Keep the blade in its physical cutting plane. Projecting the buried tip back onto the surface
+            // of a tilted site shifts that plane sideways as depth increases, cutting a separate parallel slit.
+            var planned = origin + step * ((float)(i + 1) / frames);
             var drift = (planned - _scalpel.TipPosition()) * flat;
             drift -= step.Normalized() * drift.Dot(step.Normalized());
             _hand.LocalTarget += me.GlobalBasis.Inverse() * ((step / frames) + (drift * 0.3f));
@@ -538,7 +727,7 @@ public class SlicingTest {
             _topSpeed = Mathf.Max(_topSpeed, _hand.Speed);
         }
         await Hold(0.5f);
-        _path.Add(TipUv());
+        _path.Add(_scalpel.Use.LastUv);
         var tears = Tears();
         Check(tears == 0 && _topSpeed < 0.25f,
             $"the incision stays clean: {tears} tears, hand at most {_topSpeed:0.000} m/s");
@@ -568,17 +757,21 @@ public class SlicingTest {
     /// <summary>Deepest any spring is cut so far.</summary>
     private TissueDepth Deepest() => Tissue.Severed.Select(Tissue.CutDepth).DefaultIfEmpty(TissueDepth.None).Max();
 
-    /// <summary>How wide the skin gapes along the whole cut so far (mm), every 4 mm, from where it starts (the blade
-    /// pressed in there cut as wide as itself, half of it behind the first move) to the blade.</summary>
+    /// <summary>Skin gape (mm) along the actual material stroke, every 4 mm. Its ends come from the recorded wound,
+    /// since the surface footprint differs from the buried tip and can shift as the skin recoils.</summary>
     private List<float> Gaps() {
         var size = _surgery.Patient.Body.SiteSize;
-        var gaps = new List<float> { SkinGapMm(_path[0] - (_edgeUv * ToolActions.StabLength * 0.5f)) };
+        var along = (_edgeUv * size).Normalized();
+        var points = _surgery.Patient.Wounds.Where(w => w.Kind == WoundKind.Cut).SelectMany(w => w.Points).ToArray();
+        var start = points.MinBy(p => (p * size).Dot(along));
+        var end = points.MaxBy(p => (p * size).Dot(along));
+        var gaps = new List<float> { RenderedGapMm(start) };
         for (var n = 1; n < _path.Count; n++) {
             var a = _path[n - 1];
             var b = _path[n];
             var steps = Math.Max(1, Mathf.RoundToInt(((b - a) * size).Length() / 0.004f));
             for (var i = 0; i < steps + (n == _path.Count - 1 ? 1 : 0); i++) {
-                gaps.Add(SkinGapMm(a.Lerp(b, (float)i / steps)));
+                gaps.Add(n == _path.Count - 1 && i == steps ? RenderedGapMm(end) : SkinGapMm(a.Lerp(b, (float)i / steps)));
             }
         }
         return gaps;
@@ -588,6 +781,28 @@ public class SlicingTest {
     /// </summary>
     private float SkinGapMm(Vector2 uv) => Tissue.GapAlong([uv], 0.5f / Tissue.ResX, TissueDepth.Skin) * 1000f;
 
+    /// <summary>The actual rendered gap at an exact material endpoint. Nearby severed springs can gape several
+    /// millimetres even though the two lips meet at the V between them.</summary>
+    private float RenderedGapMm(Vector2 uv) {
+        using var arrays = _surgery.Patient.Body.Layers[0].Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var contacts = new List<Vector3>();
+        for (var t = 0; t < indices.Length; t += 3) {
+            var (a, b, c) = (indices[t], indices[t + 1], indices[t + 2]);
+            var w = TissueLayers.Barycentric(uv, uvs[a], uvs[b], uvs[c]);
+            if (Mathf.Min(w.X, Mathf.Min(w.Y, w.Z)) < -0.00001f) { continue; }
+            contacts.Add(vertices[a] * w.X + vertices[b] * w.Y + vertices[c] * w.Z);
+        }
+        if (contacts.Count == 0) { return float.PositiveInfinity; }
+        var gap = 0f;
+        foreach (var a in contacts) {
+            foreach (var b in contacts) { gap = Mathf.Max(gap, a.DistanceTo(b)); }
+        }
+        return gap * 1000f;
+    }
+
     private string Profile() => string.Join(" ", Gaps().Select(gap => $"{gap:0.0}")) + " mm";
 
     /// <summary>Like opening a zipper: the cut gapes widest somewhere along it and narrows toward both ends. The end at
@@ -596,7 +811,10 @@ public class SlicingTest {
     private bool Zipper() {
         var gaps = Gaps();
         var widest = gaps.Max();
-        return widest > TissueSim.OpenGap * 500f && gaps[0] < widest * 0.7f && gaps[^1] < widest * 0.7f;
+        var first = gaps.FindIndex(gap => gap > 0f);
+        var last = gaps.FindLastIndex(gap => gap > 0f);
+        var continuous = first >= 0 && gaps.Skip(first).Take(last - first + 1).All(gap => gap > 0f);
+        return continuous && widest > TissueSim.OpenGap * 500f && gaps[0] < widest * 0.7f && gaps[^1] < widest * 0.7f;
     }
 
     /// <summary>There's a bone (or organs) right under the muscle along these points.</summary>
@@ -615,19 +833,64 @@ public class SlicingTest {
     }
 
     /// <summary>How deep under the site's surface the scalpel's tip is now.</summary>
-    private float TipDepth() => -_surgery.Patient.Body.HeightAboveSite(_scalpel.TipPosition());
+    // Compare depth levels against the same anatomical surface; a cut can move the live skin between levels.
+    private float TipDepth() {
+        var body = _surgery.Patient.Body;
+        return body.SurfaceHeight(TipUv()) - body.Site.ToLocal(_scalpel.TipPosition()).Y;
+    }
 
     /// <summary>Logs the check and the state of the tip and the wounds after it (the log reads as the run's story),
     /// then asserts it.</summary>
     private void CheckLayersUnderSkin() {
         var through = TissueLayers.ThroughSkin(_surgery.Patient.Body);
         Check(through.Count == 0, $"the fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(3))})");
+        var body = _surgery.Patient.Body;
+        var protrusion = 0f;
+        var worst = "";
+        var samples = 0;
+        // Godot's triangle indexing rounds vertices enough to exceed this tolerance on a steep limb.
+        // Index the raw rendered vertices in millimetres so that rounding stays below a micrometre,
+        // and raycast them independently of the renderer's height cache.
+        const float ReferenceScale = 1000f;
+        using var restingSkin = new TriangleMesh();
+        var toSite = body.Site.GlobalTransform.AffineInverse() * body.SkinMesh.GlobalTransform;
+        var faces = new List<Vector3>();
+        for (var surface = 0; surface < body.SkinMesh.Mesh.GetSurfaceCount(); surface++) {
+            using var arrays = body.SkinMesh.Mesh.SurfaceGetArrays(surface);
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            faces.AddRange(arrays[(int)Mesh.ArrayType.Index].AsInt32Array().Select(i => (toSite * vertices[i]) * ReferenceScale));
+        }
+        restingSkin.CreateFromFaces([.. faces]);
+        var lift = (body.Site.Basis.Inverse() * (body.Site.Position - body.SiteDef.Position)).Y;
+        foreach (var layer in body.Layers) {
+            for (var surface = 0; surface < layer.Mesh.GetSurfaceCount(); surface++) {
+                using var arrays = layer.Mesh.SurfaceGetArrays(surface);
+                foreach (var point in arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array()) {
+                    using var original = restingSkin.IntersectRay((point + Vector3.Up * 0.1f) * ReferenceScale, Vector3.Down);
+                    if (original.Count == 0) { continue; }
+                    samples++;
+                    var rest = original["position"].AsVector3().Y / ReferenceScale + lift;
+                    if (point.Y - rest > protrusion) {
+                        protrusion = point.Y - rest;
+                        worst = $"{layer.Name} surface {surface} at {point}, original mesh {rest:0.000000}";
+                    }
+                }
+            }
+        }
+        Check(samples > 0, "the original skin mesh covers the wound-layer silhouette samples");
+        Check(protrusion < 0.0001f, $"unpulled wound layers stay within the resting skin silhouette ({protrusion * 1000f:0.000} mm above it; {worst})");
     }
 
     private void Check(bool ok, string what) {
         GD.Print((ok ? "    ok   " : "FAIL: ") + what);
         _claims.Add(what);
         LogState();
+        if (!ok) {
+            GD.Print($"stage contacts: {string.Join("; ", _path)}");
+            foreach (var wound in _surgery.Patient.Wounds) {
+                GD.Print($"wound {wound.Id}: {string.Join("; ", wound.Points)}");
+            }
+        }
         AssertBool(ok).OverrideFailureMessage(what).IsTrue();
     }
 

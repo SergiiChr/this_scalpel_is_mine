@@ -18,8 +18,10 @@ public sealed class ClampAction : ToolAction {
     internal const float RestReach = 0.005f;
     internal const float RestTime = 0.03f;
     internal const float MaxWait = 0.5f;
-    /// <summary>Skin stopping the tip this far (meters) short of where the hand took it holds the hand back.</summary>
-    private const float HeldBack = 0.0005f;
+    /// <summary>Skin stopping the tip more than this (meters, float noise) short of where the hand took it holds the
+    /// hand back. Any amount counts: skin that gives only part of each move (TissueSim.Restrain()) would otherwise
+    /// give it all to a hand moving slowly enough, step by step.</summary>
+    private const float HeldBack = 0.00001f;
 
     public override void Apply(ToolStep step) {
         var tool = step.Tool;

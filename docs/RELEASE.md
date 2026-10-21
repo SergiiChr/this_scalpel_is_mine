@@ -42,10 +42,7 @@ accepts reach `main` with the next release.
 
 ## PR description
 
-- Bullet points with a high level summary of the changes.
-- Caveats and unexpected results.
-- Relevant validation and its result; include measurements when testing or performance was the point.
-- Nothing unrelated, no signatures.
+See [PR description](../CLAUDE.md#pr-description) in CLAUDE.md.
 
 ## Verification and release
 
