@@ -30,6 +30,10 @@ public sealed record NeedleHit(string Part, Vector3 At, int Hand = -1);
 public partial class Surgeon : CharacterBody3D {
     public const float WalkSpeed = 1.6f;
     public const float Reach = 0.72f;
+    /// <summary>Radius of the body's capsule, as wide as the torso and the thighs: side-on, the legs stop right at the
+    /// table's side instead of short of it, so its corners don't catch the player early. The upper arms reach a little
+    /// past it.</summary>
+    internal const float BodyRadius = 0.2f;
     /// <summary>Closest a hand comes to its shoulder (meters): an elbow folds only so far, closer the forearm would
     /// squash.</summary>
     public const float MinReach = 0.18f;
@@ -159,8 +163,11 @@ public partial class Surgeon : CharacterBody3D {
         _netYaw = Rotation.Y;
         CollisionLayer = 16;
         CollisionMask = 1 | 16;
+        // Godot stops a walk dead within 15° of head-on into a wall: walking at a corner of the table, a few centimeters
+        // beside it, would stop on it instead of sliding round.
+        WallMinSlideAngle = 0f;
         AddChild(new CollisionShape3D {
-            Shape = new CapsuleShape3D { Radius = 0.24f, Height = 1.75f },
+            Shape = new CapsuleShape3D { Radius = BodyRadius, Height = 1.75f },
             Position = new Vector3(0f, 0.875f, 0f),
         });
         BuildVisuals();
