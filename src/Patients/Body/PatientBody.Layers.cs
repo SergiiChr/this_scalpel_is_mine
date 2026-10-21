@@ -97,7 +97,8 @@ public partial class PatientBody {
     /// <summary>The skin's height over the site plane, measured on the body model at Heights points per side (see
     /// MeasureSite()).</summary>
     private float[] _heights = [];
-    private readonly ContactSurface _restingSkin = new();
+    // Fine cells: over a limb the whole body's skin lies in the same columns, and every face in one is checked.
+    private readonly ContactSurface _restingSkin = new(0.0025f);
     /// <summary>Per measured point: true on the body, false where the site hangs off it or the body is too thin under
     /// it for the layers.</summary>
     private bool[] _onBody = [];
@@ -408,10 +409,7 @@ public partial class PatientBody {
         var built = new (Surface?, Surface?)[3];
         // The skin first: the layers under it are kept under its sheet (UnderSkin()).
         built[0] = FillLayer(0, _plans[0]);
-        Parallel.For(1, 3, layer => {
-            _skinContacts[layer - 1].Index(_skinSheet, _skinSheetIndex);
-            built[layer] = FillLayer(layer, _plans[layer]);
-        });
+        Parallel.For(1, 3, layer => built[layer] = FillLayer(layer, _plans[layer]));
         _built = built;
     }
 
@@ -1004,10 +1002,18 @@ public partial class PatientBody {
         if (layer != 0 && !_renderTurnover) {
             // Vertices below skin can still span a crease in its curved sheet. Constrain the overlapping
             // triangle interiors too, using separate reusable contact scratch for each parallel layer.
+            // Only a fold creases the skin that much: elsewhere the layers lie a skin's thickness under it.
+            var contacts = _skinContacts[layer - 1];
+            var indexed = false;
             for (var t = 0; t < index.Count; t += 3) {
                 var (a, b, c) = (index[t], index[t + 1], index[t + 2]);
-                if (Tissue.Turned(refinedOwner[a]) || Tissue.Turned(refinedOwner[b]) || Tissue.Turned(refinedOwner[c])) { continue; }
-                _skinContacts[layer - 1].PushTriangle(refinedVertices, a, b, c, UnderSkinAbove, above: false);
+                if (Tissue.Turned(refinedOwner[a]) || Tissue.Turned(refinedOwner[b]) || Tissue.Turned(refinedOwner[c])
+                    || !Tissue.NearFold(refinedOwner[a]) && !Tissue.NearFold(refinedOwner[b]) && !Tissue.NearFold(refinedOwner[c])) { continue; }
+                if (!indexed) {
+                    contacts.Index(_skinSheet, _skinSheetIndex);
+                    indexed = true;
+                }
+                contacts.PushTriangle(refinedVertices, a, b, c, UnderSkinAbove, above: false);
             }
             Array.Copy(refinedVertices, vertices, vertexCount);
         }
@@ -1085,12 +1091,14 @@ public partial class PatientBody {
                 (topB, outB, normalB, thickB, swellB, uvs[b], plan.Owner[b])];
             var first = wallVertices.Count;
             foreach (var (top, outward, normal, thick, most, uv, owner) in columns) {
+                // A wall drops nearly straight down from its top: the resting skin over it is the one over its top.
+                var ceiling = RestingCeiling(top, owner);
                 for (var row = 0; row <= WallRows; row++) {
                     var t = (float)row / WallRows;
                     // The tissue bulges into the cut halfway down, and its normal tilts up above that and down below.
                     var swell = most * Mathf.Sin(Mathf.Pi * t);
                     var slope = thick > 0f ? most / thick * Mathf.Pi * Mathf.Cos(Mathf.Pi * t) : 0f;
-                    wallVertices.Add(UnderSkin(WithinRestingSkin(top - outward * (thick * t) + normal * swell, owner, depth + thick * t), owner));
+                    wallVertices.Add(UnderSkin(WithinRestingSkin(top - outward * (thick * t) + normal * swell, depth + thick * t, ceiling), owner));
                     wallNormals.Add((normal + outward * slope).Normalized());
                     wallUvs.Add(uv);
                     wallColors.Add(new Color(t, t, t));
@@ -1225,12 +1233,20 @@ public partial class PatientBody {
 
     /// <summary>Interpolation may smooth a cut, but cannot lift resting tissue beyond the body's silhouette.
     /// Locally pulled or turned skin keeps its full simulated motion.</summary>
-    private Vector3 WithinRestingSkin(Vector3 point, int owner, float depth) {
-        if (_renderTurnover || Tissue.Turned(owner) || Tissue.NearFold(owner)) { return point; }
-        var ceiling = RestingSkinHeight(point) - depth;
-        point.Y = depth == 0f ? ceiling : Mathf.Min(point.Y, ceiling);
+    private Vector3 WithinRestingSkin(Vector3 point, int owner, float depth) =>
+        WithinRestingSkin(point, depth, RestingCeiling(point, owner));
+
+    private static Vector3 WithinRestingSkin(Vector3 point, float depth, float ceiling) {
+        if (float.IsPositiveInfinity(ceiling)) { return point; }
+        point.Y = depth == 0f ? ceiling : Mathf.Min(point.Y, ceiling - depth);
         return point;
     }
+
+    /// <summary>How high the resting skin lies over <paramref name="point"/>, as high as it likes where the skin of
+    /// grid point <paramref name="owner"/> is pulled or turned (see <see cref="WithinRestingSkin(Vector3, int, float)"/>).
+    /// </summary>
+    private float RestingCeiling(Vector3 point, int owner) =>
+        _renderTurnover || Tissue.Turned(owner) || Tissue.NearFold(owner) ? float.PositiveInfinity : RestingSkinHeight(point);
 
     /// <summary>The imported skin's exact resting silhouette, cached once at loading. The coarse anatomical
     /// height field remains the fallback in model holes.</summary>

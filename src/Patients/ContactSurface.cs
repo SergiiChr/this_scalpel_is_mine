@@ -1,15 +1,14 @@
 namespace Scalpel.Patients;
 
-/// <summary>Reusable spatial index and exact triangle contact against a sloping surface.</summary>
-internal sealed class ContactSurface {
+/// <summary>Reusable spatial index and exact triangle contact against a sloping surface, its faces bucketed in cells
+/// <paramref name="cell"/> (meters) wide.</summary>
+internal sealed class ContactSurface(float cell = 0.01f) {
     // A compact grid avoids hashing neighboring cells for every rendered tissue triangle.
     // Buckets survive reindexing as the skin moves; only their contents and the grid origin change.
     private List<int>?[] _faces = [];
     private Vector2I _firstCell;
     private int _width;
     private int _height;
-    // Preserve the existing 10 mm query order while replacing dictionary buckets with a reusable grid.
-    private const float ContactCell = 0.01f;
     private readonly record struct ContactFace(Vector3 A, Vector3 B, Vector3 C,
         Vector3 Low, Vector3 High, float SlopeX, float SlopeZ, float OriginY, float Winding);
 
@@ -43,8 +42,8 @@ internal sealed class ContactSurface {
             var sz = (ac.Y * ab.X - ab.Y * ac.X) / det;
             var index = t / 3;
             _triangles[index] = new ContactFace(a, b, c, low, high, sx, sz, a.Y - sx * a.X - sz * a.Z, MathF.Sign(det));
-            var first = (Vector2I)(new Vector2(low.X, low.Z) / ContactCell).Floor();
-            var last = (Vector2I)(new Vector2(high.X, high.Z) / ContactCell).Floor();
+            var first = (Vector2I)(new Vector2(low.X, low.Z) / cell).Floor();
+            var last = (Vector2I)(new Vector2(high.X, high.Z) / cell).Floor();
             firstCell = firstCell.Min(first);
             lastCell = lastCell.Max(last);
         }
@@ -55,12 +54,11 @@ internal sealed class ContactSurface {
         for (var index = 0; index < count; index++) {
             ref readonly var face = ref _triangles[index];
             if (face.Winding == 0f) { continue; }
-            var first = (Vector2I)(new Vector2(face.Low.X, face.Low.Z) / ContactCell).Floor() - _firstCell;
-            var last = (Vector2I)(new Vector2(face.High.X, face.High.Z) / ContactCell).Floor() - _firstCell;
+            var first = (Vector2I)(new Vector2(face.Low.X, face.Low.Z) / cell).Floor() - _firstCell;
+            var last = (Vector2I)(new Vector2(face.High.X, face.High.Z) / cell).Floor() - _firstCell;
             for (var j = first.Y; j <= last.Y; j++) {
                 for (var i = first.X; i <= last.X; i++) {
-                    var cell = j * _width + i;
-                    var near = _faces[cell] ??= [];
+                    var near = _faces[j * _width + i] ??= [];
                     near.Add(index);
                 }
             }
@@ -73,7 +71,7 @@ internal sealed class ContactSurface {
 
     /// <summary>Highest face over this point, or NaN outside the indexed surface.</summary>
     internal float HeightAt(float x, float z) {
-        var key = (Vector2I)(new Vector2(x, z) / ContactCell).Floor() - _firstCell;
+        var key = (Vector2I)(new Vector2(x, z) / cell).Floor() - _firstCell;
         if (key.X < 0 || key.Y < 0 || key.X >= _width || key.Y >= _height) { return float.NaN; }
         var faces = _faces[key.Y * _width + key.X];
         if (faces is null) { return float.NaN; }
@@ -101,8 +99,8 @@ internal sealed class ContactSurface {
         if (Mathf.Abs(determinant) < 1e-10f) { return; }
         var low = vertices[a].Min(vertices[b]).Min(vertices[c]);
         var high = vertices[a].Max(vertices[b]).Max(vertices[c]);
-        var first = ((Vector2I)(new Vector2(low.X, low.Z) / ContactCell).Floor() - _firstCell).Max(Vector2I.Zero);
-        var last = ((Vector2I)(new Vector2(high.X, high.Z) / ContactCell).Floor() - _firstCell).Min(new Vector2I(_width - 1, _height - 1));
+        var first = ((Vector2I)(new Vector2(low.X, low.Z) / cell).Floor() - _firstCell).Max(Vector2I.Zero);
+        var last = ((Vector2I)(new Vector2(high.X, high.Z) / cell).Floor() - _firstCell).Min(new Vector2I(_width - 1, _height - 1));
         _contactFaces.Clear();
         // Store each face once; buckets and query scratch hold compact indices rather than face copies.
         // A generation stamp deduplicates neighboring buckets without hashing every candidate again.
