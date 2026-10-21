@@ -14,6 +14,12 @@
     <IsTestProject Condition="!$(Configuration.StartsWith('Export'))">true</IsTestProject>
   </PropertyGroup>
 
+  <!-- Tests build Debug: optimized, so the frame budget times the code an exported game runs, not code compiled for
+       stepping through in a debugger. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Roslynator.Analyzers" Version="4.14.1" PrivateAssets="all" />
   </ItemGroup>
