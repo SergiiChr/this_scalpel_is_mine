@@ -141,6 +141,40 @@ public class DrugLevelsTest {
         await driver.Stop();
     }
 
+    /// <summary>The local block of a right dose of lidocaine over time: full at first, still at the level the glass
+    /// shards "Numb the arm" step asks for when a steady operation would be done, below it when a slow one isn't.
+    /// Only the drug level is checked here, not the objective itself.</summary>
+    [TestCase]
+    public async Task LidocaineBlockStaysAboveTheNumbLevelForTwentyMinutes() {
+        // Nine steady minutes from the shot to the last stitch, twice that still holds, a slow surgeon takes longer.
+        const float FullMinutes = 9f;
+        const float HoldsMinutes = 20f;
+        const float SlowMinutes = 25f;
+        var driver = SurgeryDriver.Create();
+        await driver.Start("glass_shards");
+        var patient = driver.Patient;
+        var objective = driver.Surgery.Scenario.Steps.First(step => step.Type == "local_block").Parameters.Float("level");
+        var def = Db.Drug("lidocaine")!;
+        patient.Administer(def.Id, DrugRoute.Direct, def.Dose * patient.WeightKg);
+        var elapsed = 0f;
+        float BlockAt(float minutes) {
+            Run(patient, minutes * 60f - elapsed);
+            elapsed = minutes * 60f;
+            return patient.DrugEffectsOver(0f).LocalBlock;
+        }
+        var full = BlockAt(FullMinutes);
+        AssertFloat(full).OverrideFailureMessage($"fully numb {FullMinutes:0} minutes after the shot ({full:0.00})")
+            .IsEqualApprox(def.Peak.LocalBlock, 0.001f);
+        var holds = BlockAt(HoldsMinutes);
+        AssertBool(holds >= objective)
+            .OverrideFailureMessage($"numb enough for the objective ({objective:0.00}) after {HoldsMinutes:0} minutes ({holds:0.00})")
+            .IsTrue();
+        var slow = BlockAt(SlowMinutes);
+        AssertBool(slow < objective)
+            .OverrideFailureMessage($"no longer numb enough for it after {SlowMinutes:0} minutes ({slow:0.00})").IsTrue();
+        await driver.Stop();
+    }
+
     [TestCase]
     public async Task DrawingFromTheIvBagTakesWhatWasPushedInFirst() {
         var driver = SurgeryDriver.Create();
