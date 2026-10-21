@@ -77,19 +77,23 @@ public sealed class SewAction : ToolAction {
         return placed;
     }
 
-    /// <summary>A thread tied off or torn through is done with: the needle's next hole starts a new one.</summary>
+    /// <summary>A thread tied off or torn through is done with: the needle's next hole starts a new, slack one.</summary>
     private static void EndFinished(SurgicalTool tool, Patient patient) {
         if (tool.Suture.Thread != 0 && patient.SutureDone(tool.Suture.Thread)) {
             tool.Suture.Thread = 0;
+            tool.Suture.Tension = ToolActions.SutureStartTension;
             tool.Suture.Layer = TissueDepth.None;
             Surgery.Current!.Tools.SyncSuture(tool);
         }
     }
 
     /// <summary>The needle's (or a tensioned closure's) wheel: <paramref name="direction"/> positive for up (loosen),
-    /// negative for down (tighten).</summary>
+    /// negative for down (tighten). A needle without a thread has nothing to pull.</summary>
     public static void AdjustTension(SurgicalTool tool, int direction, Patient patient) {
         var suture = tool.Suture;
+        if (suture.Thread == 0 && tool.Def.Action == "sew") {
+            return;
+        }
         suture.Tension = Mathf.Clamp(suture.Tension + direction * ToolActions.SutureTensionStep,
             ToolActions.SutureTensionRange.X, ToolActions.SutureTensionRange.Y);
         if (suture.Thread != 0) {

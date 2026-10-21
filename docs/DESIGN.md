@@ -682,7 +682,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
 - **Organ handling damage**: organs held out of place for more than a few seconds, or shoved hard, bruise (they darken) and ooze.
 - **Suture tension**: the wheel sets the needle's thread tension and paper clips' pull alike, down tighter and up
-  looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through.
+  looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through. The
+  needle pulls its current thread only: without one the wheel does nothing, and each new thread starts loose
+  (`ToolActions.SutureStartTension`).
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,
