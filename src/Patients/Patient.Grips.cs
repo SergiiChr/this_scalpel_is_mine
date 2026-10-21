@@ -9,6 +9,9 @@ public partial class Patient {
     /// edge, deeper there's none to take. A forceps tip held deeper can't move out under the skin
     /// (Surgeon.InsideLip()).</summary>
     public const float LipDepth = 0.005f;
+    /// <summary>Jaws close on embedded glass with the tip over any of it that shows, or at most this far (meters)
+    /// beside it: open, they straddle a blade seen edge on.</summary>
+    public const float GlassReach = 0.005f;
 
     /// <summary>
     /// Called when a clamp tool closes at the tip. Returns what it took hold of, for <see cref="UpdateGrip"/> and
@@ -30,16 +33,21 @@ public partial class Patient {
         }
         // The nearest target the jaws close on, not one another tool already holds (two broken ends lie close
         // together). Forceps held up in the opening close on nothing under them: no target, vessel or bleeding wound.
-        var down = zone != SiteZone.Cavity || Body.TouchesInside(Body.UvToWorld(uv, depthM), JawReach);
-        var nearest = skinOnly || !down ? null : Targets
+        // Glass sticking out of the skin is taken anywhere along it, not only where it went in.
+        var at = Body.UvToWorld(uv, depthM);
+        var down = zone != SiteZone.Cavity || Body.TouchesInside(at, JawReach);
+        // Glass the tip is over comes before a target whose middle is merely near.
+        var candidates = skinOnly || !down ? [] : Targets
             .Where(t => !t.Extracted && !t.IsSuctionTarget && !(t.IsBone && t.Anchor > 0f))
             .Where(t => t.GrippedBy == 0 || t.GrippedBy == toolUid)
-            .Where(t => zone is SiteZone.Cavity or SiteZone.Site && t.Uv.DistanceTo(uv) < 0.05f
-                && Mathf.Abs(t.Depth - depthM) < 0.05f && !Covered(t) && t.InReach)
-            .MinBy(t => t.Uv.DistanceTo(uv));
+            .Where(t => zone is SiteZone.Cavity or SiteZone.Site && Mathf.Abs(t.Depth - depthM) < 0.05f && !Covered(t) && t.InReach)
+            .ToList();
+        var nearest = candidates.FirstOrDefault(t => t.Embedded && OverGlass(t, Body.Site.ToLocal(at)))
+            ?? candidates.Where(t => t.Uv.DistanceTo(uv) < 0.05f).MinBy(t => t.Uv.DistanceTo(uv));
         if (nearest is not null) {
             nearest.GrippedBy = toolUid;
-            return new TargetHold(nearest.Index, depthM);
+            var offset = nearest.Embedded ? (nearest.Position - Body.Site.ToLocal(at)) with { Y = 0f } : Vector3.Zero;
+            return new TargetHold(nearest.Index, depthM, offset);
         }
         if (!skinOnly && down && Inside(zone, uv) && Wounds.FirstOrDefault(w => w.IsInternal && w.Points[0].DistanceTo(uv) < 0.05f) is { } vessel) {
             vessel.Clamped = 0.9f;
@@ -47,7 +55,6 @@ public partial class Patient {
         }
         if (zone == SiteZone.Cavity && !skinOnly) {
             // An organ in the way can be taken hold of and moved aside, to get at what's under it.
-            var at = Body.UvToWorld(uv, depthM);
             var organ = Body.OrganAt(at, 0.02f);
             if (organ >= 0) {
                 var position = Body.Organs[organ].Position;
@@ -142,16 +149,16 @@ public partial class Patient {
                     }
                     return hold;
                 }
-                target.Position = local;
-                target.Uv = Body.LocalToUv(local);
+                target.Position = local + grip.Offset;
+                target.Uv = Body.LocalToUv(target.Position);
                 target.Depth = -height;
                 if (!target.IsFragment && height > 0.03f) {
                     Extract(target);
-                    return new CarryHold(target.Index);
+                    return new CarryHold(target.Index, grip.Offset);
                 }
                 return hold;
             case CarryHold carry:
-                Targets[carry.Target].GlobalPosition = tip;
+                Targets[carry.Target].GlobalPosition = tip + (Body.Site.GlobalBasis * carry.Offset);
                 return hold;
             case SkinHold skin:
                 var to = Body.Site.ToLocal(tip);
@@ -216,6 +223,21 @@ public partial class Patient {
         Session.Tools.GiveGraft(toolUid);
         AddFlag("graft_taken");
         Session.Announce("The skin comes away in one piece.");
+    }
+
+    /// <summary>The corners of an embedded target's glass that stick out of the skin (site space).</summary>
+    internal IEnumerable<Vector3> GlassShowing(CavityTarget target) => target
+        .FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()
+        .SelectMany(mesh => mesh.Mesh.GetFaces().Select(corner => Body.Site.ToLocal(mesh.GlobalTransform * corner)))
+        .Where(local => local.Y > Body.SurfaceHeight(Body.LocalToUv(local)));
+
+    /// <summary>Whether <paramref name="local"/> (site space) lies over the glass showing of
+    /// <paramref name="target"/> across the skin, or at most <see cref="GlassReach"/> beside it.</summary>
+    private bool OverGlass(CavityTarget target, Vector3 local) {
+        var hull = Geometry2D.ConvexHull(GlassShowing(target).Select(corner => new Vector2(corner.X, corner.Z)).ToArray());
+        var point = new Vector2(local.X, local.Z);
+        return hull.Length > 2 && (Geometry2D.IsPointInPolygon(point, hull) || hull.Zip(hull.Skip(1))
+            .Any(side => Geometry2D.GetClosestPointToSegment(point, side.First, side.Second).DistanceTo(point) <= GlassReach));
     }
 
     /// <summary>An organ lies over the target, between it and the opening.</summary>
