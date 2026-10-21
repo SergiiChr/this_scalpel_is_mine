@@ -501,9 +501,11 @@ public partial class PatientBody : Node3D {
     public LimbRing? LimbRingAt(Vector3 p) {
         // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides. That
         // reaches the trunk's box too where a limb lies beside it (a forearm, a thigh), and by the hand a leg's.
-        var limbs = Overlapping(p, 0.08f, PatientLayer, 4).OfType<BodyPart>().Where(body =>
+        // The physics query lists them in no set order: the limb whose skin p is nearest wins.
+        var limbs = Overlapping(p, 0.08f, PatientLayer, 8).OfType<BodyPart>().Where(body =>
             body.Part.StartsWith("arm", StringComparison.Ordinal) || body.Part.StartsWith("leg", StringComparison.Ordinal));
-        return limbs.Select(limb => RingAround(limb, p)).FirstOrDefault(ring => ring is not null);
+        return limbs.Select(limb => RingAround(limb, p)).OfType<LimbRing>()
+            .MinBy(ring => (p - ring.Center).Slide(ring.Axis).Length() - ring.Radius);
     }
 
     /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>

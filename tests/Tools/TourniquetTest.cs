@@ -29,25 +29,13 @@ public class TourniquetTest {
         var bleeding = patient.Vitals.BleedRate;
         AssertFloat(bleeding).OverrideFailureMessage("the cut bleeds").IsGreater(0f);
 
-        var tourniquet = await driver.PlayerRequestsItem("tourniquet");
+        var tourniquet = (await driver.PlayerRequestsItem("tourniquet"))!;
         await driver.PlayerWalksTo(spot);
         await driver.PlayerWorksAt(spot, 0, 0.5f);
         AssertBool(patient.TourniquetOn)
             .OverrideFailureMessage($"pressed onto the forearm the tourniquet goes on\n{driver.Recent()}").IsTrue();
-        if (tourniquet?.Band is not { } band) {
-            AssertBool(false).OverrideFailureMessage("the tourniquet wraps around the forearm with a band").IsTrue();
-            await session.Finish(BudgetOverride);
-            return;
-        }
-        var axis = band.GlobalBasis.Y.Normalized();
-        AssertFloat(Mathf.Abs(axis.Dot(driver.Body.Root.GlobalBasis.X.Normalized())))
-            .OverrideFailureMessage($"the band runs around the forearm (axis {axis})").IsGreater(0.95f);
-        var center = band.GlobalPosition;
-        AssertFloat(center.Y).OverrideFailureMessage($"the band goes around the forearm, not over it (center {center.Y:0.000}, "
-            + $"skin on top {spot.Y:0.000})").IsLess(spot.Y - 0.02f);
-        var inside = center.Y + ((TorusMesh)band.Mesh).InnerRadius;
-        AssertFloat(inside).OverrideFailureMessage($"the band is snug on the forearm (inside at {inside:0.000}, skin at {spot.Y:0.000})")
-            .IsEqualApprox(spot.Y, 0.015f);
+        var problems = TourniquetBand.Problems(tourniquet, driver.Body, spot, "forearm");
+        AssertBool(problems.Count == 0).OverrideFailureMessage(string.Join("\n", problems)).IsTrue();
         AssertBool(tourniquet.State == ToolState.Standing && driver.Me.HeldTool(driver.Me.Active) is null)
             .OverrideFailureMessage("the hand lets go of the tourniquet once it's on").IsTrue();
         await session.CaptureAt("on", "the tourniquet's band around the forearm above the cut, snug on the skin", spot,
