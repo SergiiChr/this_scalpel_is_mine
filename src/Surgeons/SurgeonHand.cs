@@ -207,6 +207,14 @@ public partial class SurgeonHand : Node3D {
     private Node3D _upper = null!;
     /// <summary>The upper arm's sleeve model.</summary>
     internal Node3D UpperSleeve => _upper;
+    private Node3D _upperArm = null!;
+
+    /// <summary>Whether the upper arm is drawn above the elbow; the rounded elbow that ends the forearm always is.</summary>
+    internal bool UpperArmShown {
+        get => _upperArm.Visible;
+        set => _upperArm.Visible = value;
+    }
+
     private Node3D _fore = null!;
     /// <summary>The forearm's sleeve model.</summary>
     internal Node3D ForeSleeve => _fore;
@@ -255,6 +263,7 @@ public partial class SurgeonHand : Node3D {
         _gloveRig = BoneRig.Find(_glove);
         _upper = ModelSlot.Instantiate("surgeon", "upper_arm", this, sleeve);
         _fore = ModelSlot.Instantiate("surgeon", "forearm", this, sleeve);
+        _upperArm = ModelSlot.Parts(_upper, "Sleeve")["Sleeve"];
         _upper.TopLevel = true;
         _fore.TopLevel = true;
         _pusher = new AnimatableBody3D { CollisionLayer = PatientBody.PusherLayer, CollisionMask = 0, TopLevel = true };
