@@ -141,11 +141,11 @@ public class DrugLevelsTest {
         await driver.Stop();
     }
 
-    /// <summary>A right dose of lidocaine keeps the site fully numb for the first minutes and numb enough for the "Numb
-    /// the arm" objective (a step after it is spoiled once it drops below) through a steady glass shards operation, the
-    /// longest local one: six shards out, each cut rinsed and stitched. A slow surgeon has to top it up.</summary>
+    /// <summary>The local block of a right dose of lidocaine over time: full at first, still at the level the glass
+    /// shards "Numb the arm" step asks for when a steady operation would be done, below it when a slow one isn't.
+    /// Only the drug level is checked here, not the objective itself.</summary>
     [TestCase]
-    public async Task LidocaineHoldsThroughASteadyLocalOperationButNotASlowOne() {
+    public async Task LidocaineBlockStaysAboveTheNumbLevelForTwentyMinutes() {
         // Nine steady minutes from the shot to the last stitch, twice that still holds, a slow surgeon takes longer.
         const float FullMinutes = 9f;
         const float HoldsMinutes = 20f;
