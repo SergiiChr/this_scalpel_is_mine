@@ -100,6 +100,11 @@ public partial class Surgeon {
             Zoom = (Zoom + 1) % ZoomFov.Length;
         } else if (@event.IsActionPressed(InputActions.UseTool) && PushedCart() is { } cart) {
             cart.TakeXray();
+        } else if (@event.IsActionPressed(InputActions.UseTool) && HoldsPatient(Active)) {
+            LetGoOfPatient(Active);
+        } else if (@event.IsActionPressed(InputActions.UseTool) && HoldSpot() is (var at, var normal)) {
+            // An empty hand clicked on the patient holds it there until clicked again (see KeepHold()).
+            HoldPatient(at, normal);
         } else if (@event.IsActionPressed(InputActions.UseTool)) {
             // One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
             SetLowered(hand, true);
@@ -110,7 +115,7 @@ public partial class Surgeon {
                 _zoomBefore = Zoom;
                 Zoom = ZoomFov.Length - 1;
             }
-        } else if (@event.IsActionReleased(InputActions.UseTool)) {
+        } else if (@event.IsActionReleased(InputActions.UseTool) && !HoldsPatient(Active)) {
             if (_needleAnchor is { } anchor) {
                 Session.Tools.RequestNeedleWithdrawal(Active, anchor);
                 // Release the anchor before another mouse event can bend or pull the withdrawn needle.
@@ -548,6 +553,9 @@ public partial class Surgeon {
             HoldTaped(hand, tool);
             return;
         }
+        if (KeepHold(hand)) {
+            return;
+        }
         if (hand.Inspecting) {
             // Held up in front of the eyes, the grip off to the hand's side so the whole tool crosses the view.
             hand.Lowered = false;
@@ -724,6 +732,10 @@ public partial class Surgeon {
     private void GrabOrRelease() {
         var hand = Hands[Active];
         var tools = Session.Tools;
+        if (HoldsPatient(Active)) {
+            LetGoOfPatient(Active);
+            return;
+        }
         if (HeldTool(Active) is not null) {
             hand.Lowered = false;
             hand.Trigger = false;

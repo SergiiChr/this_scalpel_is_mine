@@ -175,13 +175,24 @@ public partial class SurgeonHand : Node3D {
     /// <summary>A held syringe's thumb press: how far behind the grip it is along the syringe (meters, it moves with the
     /// plunger), set by the surgeon. NaN for any other tool.</summary>
     public float Press { get; set; } = float.NaN;
+    /// <summary>Empty and pressed flat on the patient (Surgeon.HoldPatient()): the skin's normal there, its palm laid on
+    /// the skin across it. Null while it isn't.</summary>
+    public Vector3? PressNormal { get; set; }
+    /// <summary>The patient's rig bone a hand pressed on the patient holds, which keeps that part still ("" while it
+    /// isn't).</summary>
+    public string PressBone { get; set; } = "";
+    /// <summary>How far the fingers of a hand pressed on the patient curl round what they hold: 0 flat on a trunk, more
+    /// round a limb.</summary>
+    public float PressWrap { get; set; }
     /// <summary>How this hand's grip is fitted to the tool it holds (see <see cref="GripFit"/>).</summary>
     public GripFit Fit { get; set; } = GripFit.None;
     /// <summary>How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon
     /// keeps that clear of tables and trays, not only the hand's middle.</summary>
     public float GloveDrop { get; private set; } = -0.03f;
 
-    private GripStyle Style => GripStyle.For(Grip);
+    private GripStyle Style => GripStyle.For(PressNormal is null ? Grip : "press");
+    /// <summary>The fingers close as a grip says: around a held tool or pressed on the patient.</summary>
+    private bool Gripping => Holding || PressNormal is not null;
     private Node3D Body => GetParent<Node3D>();
 
     private float _lift;
@@ -240,7 +251,7 @@ public partial class SurgeonHand : Node3D {
     private readonly List<TrailFrame> _trailFrames = [];
     private float _trailAccumulated;
 
-    private readonly record struct PoseKey(float Curl, string Grip, bool Holding, GripFit Fit, float Press);
+    private readonly record struct PoseKey(float Curl, string Grip, bool Holding, GripFit Fit, float Press, float Wrap);
 
     /// <summary>The thumb at rest, glove space: where its root is, each bone (to the next joint, the last to its tip) and
     /// the axis each joint bends about.</summary>
@@ -495,7 +506,7 @@ public partial class SurgeonHand : Node3D {
 
     /// <summary>Relaxed when empty, closed around a held tool as its grip says, squeezed a little tighter while using it.
     /// </summary>
-    private float TargetCurl() => !Holding ? 0.15f : Lowered || Trigger ? 1.1f : 1f;
+    private float TargetCurl() => PressNormal is not null ? 1f : !Holding ? 0.15f : Lowered || Trigger ? 1.1f : 1f;
 
     private void AnimateFingers(float delta) {
         _curl = Mathf.MoveToward(_curl, TargetCurl(), delta * 4f);
@@ -510,16 +521,19 @@ public partial class SurgeonHand : Node3D {
         }
         // Keyed on the plunger's own position, not where it is in the glove (which shifts with every shiver of the
         // hand): otherwise every bone would be posed again every frame.
-        var pose = new PoseKey(_curl, Grip, Holding, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN);
+        var wrap = PressNormal is null ? 0f : PressWrap;
+        var pose = new PoseKey(_curl, Grip, Gripping, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN, wrap);
         if (pose == _posed) {
             return;
         }
         _posed = pose;
         var plunger = PressInGlove();
         var style = Style;
-        var amounts = Holding ? Fit.Curl ?? style.Curl : [1f, 1f, 1f, 1f, 1f];
+        float[] amounts = PressNormal is not null ? [.. style.Curl.Select(curl => curl + wrap)]
+            : Holding ? Fit.Curl ?? style.Curl
+            : [1f, 1f, 1f, 1f, 1f];
         // The thumb swings across under the index from its root, as far as the fingers are closed.
-        var oppose = Holding ? style.Oppose * Mathf.Min(_curl, 1f) : 0f;
+        var oppose = Gripping ? style.Oppose * Mathf.Min(_curl, 1f) : 0f;
         for (var f = 0; f < Fingers.Count; f++) {
             var finger = Fingers[f];
             for (var joint = 0; joint < 3; joint++) {
@@ -766,6 +780,9 @@ public partial class SurgeonHand : Node3D {
     /// tool doesn't move in the hand. Empty, it points along the forearm, palm down once it has untwisted.
     /// </summary>
     private Transform3D GloveFrame(Vector3 elbow, Basis ownerBasis, bool turned = true) {
+        if (PressNormal is { } normal) {
+            return PressFrame(elbow, normal);
+        }
         if (!Holding) {
             var forward = (GlobalPosition - elbow).Normalized();
             var up = (Vector3.Up - (forward * Vector3.Up.Dot(forward))).Normalized();
@@ -792,6 +809,21 @@ public partial class SurgeonHand : Node3D {
         }
         var wrist = contact - (frame * style.At) + (frame.Y.Normalized() * Fit.Lift) + (frame.Z.Normalized() * Fit.Shift);
         return new Transform3D(aim * frame, aimed.Origin + (aim * (wrist - aimed.Origin)));
+    }
+
+    /// <summary>Pressed flat on the patient: the palm (the press grip's glove point) on the hand's position, laid on the
+    /// skin across <paramref name="normal"/>, the fingers pointing on the way the forearm comes in.</summary>
+    private Transform3D PressFrame(Vector3 elbow, Vector3 normal) {
+        var style = GripStyle.All["press"];
+        var fingers = (GlobalPosition - elbow).Slide(normal);
+        if (fingers.LengthSquared() < 0.000001f) {
+            fingers = Body.GlobalBasis.Z.Slide(normal);
+        }
+        // The press grip's tool frame: its -Z (where the fingers point) along the fingers, +Y out of the skin.
+        var tool = Basis.LookingAt(fingers.Normalized(), normal);
+        var mirror = Index == 0 ? new Vector3(-1f, 1f, 1f) : Vector3.One;
+        var frame = tool * Basis.FromScale(mirror) * style.Frame;
+        return new Transform3D(frame, GlobalPosition - (frame * style.At));
     }
 
     /// <summary>

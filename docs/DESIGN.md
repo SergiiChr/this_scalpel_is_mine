@@ -677,6 +677,16 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.LimbRing()`
   measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off.
 
+### Holding the patient
+
+- Use tool with an empty hand aimed at the patient lays the hand flat on the skin there and holds it (`Surgeon.HoldPatient()`,
+  the `press` grip): palm and fingers on the skin, pressed a little into it (`Surgeon.PressSink`), the fingers curled round
+  a limb. Over an opening it lies on the lip. Use tool again or Grab lets go; so does walking out of reach.
+- It stays on the spot it holds as that part moves (anchored to the rig bone under it), and keeps that part still: an
+  arm, a leg or the head stops flailing (`PatientAnimator`). The trunk still breathes.
+- Like gauze it holds the cuts in the skin under the palm (`Patient.PressByHand()`, `Patient.HandPressReach`), the one
+  an opening is in too, without soaking anything up or reaching what bleeds inside.
+
 ### Approved mechanics (in this build)
 
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
@@ -757,7 +767,8 @@ regenerating.
 - **Animation** is procedural and driven by synced game state, so it matches on every peer:
   - Patient (`PatientAnimator.cs`, bones posed through `BoneRig.cs` in model-space axes): breathing at the
     respiration rate (the trunk and surgical site rise together), eyes open when conscious,
-    jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint.
+    jaw moves while talking, head tracks and flinches with pain, panic flails, seizures shake every joint. The limb a
+    site is on moves too, the site riding it (`PatientBody.RideLimb()`); a part a surgeon's hand holds stays still.
   - Surgeon: walk cycle from movement speed, collapse when passed out, lying on the side when knocked out, head tilt
     from camera pitch,
     two-bone IK arms, glove finger bones relax, wrap around a held tool and squeeze while using it.

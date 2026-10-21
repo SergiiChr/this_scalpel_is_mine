@@ -3,7 +3,8 @@ namespace Scalpel.Patients;
 /// <summary>
 /// Procedural animation of the patient's skeleton, driven by the synced vitals on every peer.
 /// Breathing follows the respiration rate, awake patients look around, talk, flinch and panic, seizures shake every
-/// joint. The limb carrying the surgical site stays still so the site doesn't drift.
+/// joint, the limb carrying the surgical site too, though it only thrashes (the site rides it, PatientBody.RideLimb()).
+/// A part a surgeon's hand holds (Surgeon.HoldPatient()) stays still: an arm, a leg or the head.
 /// Every motion is a rotation in model space (X toward the head, Y up, Z the patient's left) about the joint.
 /// </summary>
 public partial class PatientAnimator : Node {
@@ -17,9 +18,10 @@ public partial class PatientAnimator : Node {
     private static readonly Limb[] Limbs = [Limb.Of("L"), Limb.Of("R")];
 
     /// <summary>One side's limb bones, named once: the animator asks for them every frame.</summary>
-    private sealed record Limb(string Side, string UpperArm, string Forearm, string Hand, string Thigh, string Shin) {
-        public static Limb Of(string side) =>
-            new(side, "UpperArm" + side, "Forearm" + side, "Hand" + side, "Thigh" + side, "Shin" + side);
+    private sealed record Limb(
+        string Side, string UpperArm, string Forearm, string Hand, string Thigh, string Shin, string Arm, string Leg) {
+        public static Limb Of(string side) => new(
+            side, "UpperArm" + side, "Forearm" + side, "Hand" + side, "Thigh" + side, "Shin" + side, "arm" + side, "leg" + side);
     }
 
     private PatientBody _body = null!;
@@ -31,7 +33,11 @@ public partial class PatientAnimator : Node {
     private float _flinch;
     private float _jolt;
     private float _lastPain;
-    private string _lockedSide = "";
+    /// <summary>How still each part a hand can hold is kept (0 free, 1 held), eased so it settles rather than snaps.
+    /// </summary>
+    private readonly Dictionary<string, float> _still = [];
+    /// <summary>Reused for the parts held this frame.</summary>
+    private readonly HashSet<string> _held = [];
     /// <summary>Seconds until the next blink.</summary>
     private float _blinkIn = 3f;
     /// <summary>How much of the current blink is left.</summary>
@@ -45,9 +51,27 @@ public partial class PatientAnimator : Node {
         _rng.Seed = Net.Instance.SessionSeed + 11;
         _rig = BoneRig.Find(model);
         _parts = ModelSlot.Parts(model, "EyeL", "EyeR", "Lids");
-        if (body.IsLimbSite) {
-            _lockedSide = "L";
-        }
+    }
+
+    internal BoneRig? Rig => _rig;
+
+    /// <summary>The part a hand holding <paramref name="bone"/> keeps still: "armL", "legR", "head", or "" for the trunk,
+    /// which only breathes.</summary>
+    internal static string PartOf(string bone) => bone switch {
+        "Neck" or "Head" or "Jaw" => "head",
+        _ when bone.StartsWith("UpperArm", StringComparison.Ordinal) || bone.StartsWith("Forearm", StringComparison.Ordinal)
+            || bone.StartsWith("Hand", StringComparison.Ordinal) => "arm" + bone[^1],
+        _ when bone.StartsWith("Thigh", StringComparison.Ordinal) || bone.StartsWith("Shin", StringComparison.Ordinal)
+            || bone.StartsWith("Foot", StringComparison.Ordinal) => "leg" + bone[^1],
+        _ => "",
+    };
+
+    /// <summary>How still <paramref name="part"/> is held this frame (0..1), eased toward whether a hand holds it.
+    /// </summary>
+    private float Still(string part, float delta) {
+        var still = Mathf.MoveToward(_still.GetValueOrDefault(part), _held.Contains(part) ? 1f : 0f, delta * 4f);
+        _still[part] = still;
+        return still;
     }
 
     /// <summary>Patient said something: move the jaw for a while.</summary>
@@ -56,9 +80,15 @@ public partial class PatientAnimator : Node {
     /// <summary>A defibrillator shock: every muscle contracts at once for an instant.</summary>
     public void Jolt() => _jolt = 1f;
 
-    public void Animate(Vitals vitals, bool alive, float delta) {
+    /// <summary>Poses the patient for this frame. <paramref name="heldBones"/>: the rig bones surgeons' hands hold.
+    /// </summary>
+    public void Animate(Vitals vitals, bool alive, float delta, IReadOnlyList<string>? heldBones = null) {
         if (_rig is null) {
             return;
+        }
+        _held.Clear();
+        foreach (var bone in heldBones ?? []) {
+            _held.Add(PartOf(bone));
         }
         var t = (float)GameClock.Seconds;
         var breathing = alive && !vitals.IsArrested;
@@ -110,20 +140,28 @@ public partial class PatientAnimator : Node {
         } else if (awake && vitals.Panic > 0.6f) {
             shake = (vitals.Panic - 0.6f) * 0.8f;
         }
-        _rig.Rotate("Head", Basis.FromEuler(head + Jitter(shake * 0.6f, t, 1f)));
+        var headFree = 1f - Still("head", delta);
+        _rig.Rotate("Head", Basis.FromEuler((head + Jitter(shake * 0.6f, t, 1f)) * headFree));
         foreach (var limb in Limbs) {
             var mirror = limb.Side == "L" ? 1f : -1f;
-            var still = limb.Side == _lockedSide;
-            var amount = still ? 0f : shake + _flinch * 0.2f + _jolt * 0.35f;
+            var amount = shake + _flinch * 0.2f + _jolt * 0.35f;
+            // The limb the site is on only thrashes: a flinch or a calm patient's raised arm would pull the site out
+            // from under a blade or a needle at every touch.
+            var site = _body.SitePart;
+            var arm = 1f - Still(limb.Arm, delta);
+            var leg = 1f - Still(limb.Leg, delta);
+            var armAmount = (limb.Arm == site ? shake : amount) * arm;
+            var legAmount = (limb.Leg == site ? shake : amount) * leg;
             // Panicking patients lift their arms off the table: the arms point toward the feet, so a negative turn
             // about Z raises them.
-            var lift = still || !awake ? 0f : vitals.Panic * 0.15f;
-            _rig.Rotate(limb.UpperArm, Basis.FromEuler(new Vector3(0, 0, -lift) + Jitter(amount, t, 2f + mirror)));
-            _rig.Rotate(limb.Forearm, Basis.FromEuler(new Vector3(0, 0, -lift * 0.8f) + Jitter(amount, t, 3f + mirror)));
-            _rig.Rotate(limb.Hand, Basis.FromEuler(Jitter(amount * 1.5f, t, 4f + mirror)));
-            _rig.Rotate(limb.Thigh, Basis.FromEuler(Jitter(amount * 0.4f, t, 5f + mirror)));
-            _rig.Rotate(limb.Shin, Basis.FromEuler(Jitter(amount * 0.4f, t, 6f + mirror)));
+            var lift = awake && limb.Arm != site ? vitals.Panic * 0.15f * arm : 0f;
+            _rig.Rotate(limb.UpperArm, Basis.FromEuler(new Vector3(0, 0, -lift) + Jitter(armAmount, t, 2f + mirror)));
+            _rig.Rotate(limb.Forearm, Basis.FromEuler(new Vector3(0, 0, -lift * 0.8f) + Jitter(armAmount, t, 3f + mirror)));
+            _rig.Rotate(limb.Hand, Basis.FromEuler(Jitter(armAmount * 1.5f, t, 4f + mirror)));
+            _rig.Rotate(limb.Thigh, Basis.FromEuler(Jitter(legAmount * 0.4f, t, 5f + mirror)));
+            _rig.Rotate(limb.Shin, Basis.FromEuler(Jitter(legAmount * 0.4f, t, 6f + mirror)));
         }
+        _body.RideLimb();
     }
 
     /// <summary>Heart contraction 0..1: a quick squeeze once per beat in sinus rhythm, a feeble quiver in V-fib, still

@@ -27,6 +27,9 @@ public partial class Patient {
     public const float RinseMlPerCm = 10f;
     /// <summary>How far (uv) liquid spilled on the site runs over it: what it washes and the cut it flushes.</summary>
     private const float SpillReach = 0.05f;
+    /// <summary>How far (meters) from where a bare hand presses the patient its palm holds a cut: about half a palm.
+    /// </summary>
+    public const float HandPressReach = 0.04f;
     /// <summary>How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
     /// </summary>
     public const float DeepBlock = 0.3f;
@@ -829,6 +832,21 @@ public partial class Patient {
         if (wound.Dirty && wound.Rinsed >= RinseMl(wound)) {
             wound.Dirty = false;
             Session.Announce("The cut is rinsed clean.");
+        }
+    }
+
+    /// <summary>
+    /// A bare hand pressed flat on the patient at <paramref name="at"/> (world) for <paramref name="dt"/> seconds: like
+    /// gauze it holds every cut in the skin under the palm (<see cref="HandPressReach"/>), one an opening is in too, but
+    /// soaks nothing up and doesn't reach down to what bleeds inside.
+    /// </summary>
+    public void PressByHand(Vector3 at, float dt) {
+        var uv = Body.WorldToUv(at);
+        var reach = Body.MetersToUv(HandPressReach);
+        foreach (var wound in Wounds) {
+            if (wound.IsSkinCut && wound.DistanceTo(uv) < reach) {
+                Press(wound, dt);
+            }
         }
     }
 
