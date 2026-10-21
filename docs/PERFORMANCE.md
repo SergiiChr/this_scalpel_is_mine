@@ -14,6 +14,7 @@
   - CPU budget, every local run: rendering off (`FrameBudget.RenderingOff()`), the game's own work per frame within
     8 ms on the reference machine (an i9-14900HX), scaled by how much slower this machine runs a fixed benchmark.
     It holds on any machine, with or without a GPU.
+    Tests build optimized, so it times the code an exported game runs.
   - Render budget, `./build.py full_performance_run` only: rendering on, whole frames within 16 ms on the real GPU.
 - Frame times are checked by the `frame_budget` suites (`./build.py test --tag frame_budget` runs just them), each
   of whose processes gets the machine to itself: a run does them first, one at a time, then the other processes as
