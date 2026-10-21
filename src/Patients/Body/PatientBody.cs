@@ -504,8 +504,9 @@ public partial class PatientBody : Node3D {
         // The physics query lists them in no set order: the limb whose skin p is nearest wins.
         var limbs = Overlapping(p, 0.08f, PatientLayer, 8).OfType<BodyPart>().Where(body =>
             body.Part.StartsWith("arm", StringComparison.Ordinal) || body.Part.StartsWith("leg", StringComparison.Ordinal));
-        return limbs.Select(limb => RingAround(limb, p)).OfType<LimbRing>()
-            .MinBy(ring => (p - ring.Center).Slide(ring.Axis).Length() - ring.Radius);
+        // Nullable, so none found is null rather than MinBy() throwing.
+        return limbs.Select(limb => RingAround(limb, p)).Where(ring => ring is not null)
+            .MinBy(ring => (p - ring!.Value.Center).Slide(ring.Value.Axis).Length() - ring.Value.Radius);
     }
 
     /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>
