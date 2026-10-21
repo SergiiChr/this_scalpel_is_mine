@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("liquids"), TestCategory("surface_film")]
+[TestCategory("smoke"), TestCategory("liquids")]
 public class SurfaceBloodTest {
     [TestCase]
     public void SurfaceFilmSpreadsInTwoDimensionsAndKeepsItsVolume() {

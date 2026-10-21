@@ -293,7 +293,7 @@ public partial class NetDriver : NetSession {
             }
         }
         var severed = Enumerable.Range(0, tissue.SpringCount).Count(s => !tissue.SpringAt(s).Active);
-        return $"painted texels={painted}, blood paints={BloodPaintSamples(body)}, severed springs={severed}, "
+        return $"painted texels={painted}, severed springs={severed}, "
             + $"topology={tissue.TopologyHash()}, site shape={body.ShapeHash()}";
     }
 
@@ -311,8 +311,9 @@ public partial class NetDriver : NetSession {
             BloodPaintValue, WoundMap.Mode.Max, soft: true);
     }
 
-    /// <summary>Quantized blood coverage at interior and feathered-edge probes. These values are also part of
-    /// <see cref="SyncedState"/>, so each peer must match the sender as well as pass the hard/soft assertions.</summary>
+    /// <summary>Quantized blood coverage at interior and feathered-edge probes.
+    /// Each peer checks them on its own: the local surface film paints the same channel and differs between players, so
+    /// they stay out of <see cref="SyncedState"/>.</summary>
     private static (int HardDiskEdge, int SoftDiskCenter, int SoftDiskEdge, int HardStrokeEdge, int SoftStrokeCenter,
         int SoftStrokeEdge) BloodPaintSamples(PatientBody body) {
         var map = body.WoundMap;

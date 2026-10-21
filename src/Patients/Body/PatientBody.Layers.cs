@@ -155,11 +155,14 @@ public partial class PatientBody {
         MeasureLimbBones();
         // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.
         _liquidSupport = new float[thickness.Length];
+        // Half the grid spacing, signed: interpolated between a point on the body and one off it, this is the distance
+        // to the edge in meters, so the film's edge feathers over the same width everywhere.
+        var reach = 0.5f * Mathf.Min(SiteSize.X, SiteSize.Y) / (Heights - 1);
         for (var n = 0; n < _onBody.Length; n++) {
             _onBody[n] = thickness[n] > Mathf.Max(MinThickness, MuscleBottom);
             // Liquid needs a model surface, not room for all surgical tissue layers beneath it. Continue over
             // thin curved skin beyond the simulated patch, stopping only where the model itself is absent.
-            _liquidSupport[n] = thickness[n] - 0.0005f;
+            _liquidSupport[n] = thickness[n] >= 0.0005f ? reach : -reach;
         }
         Tissue.Build(SiteSize, SurfaceHeight, OnBody);
         FitToModel(parts);
@@ -210,19 +213,20 @@ public partial class PatientBody {
             var perVertex = vertices.Length == 0 ? 0 : Math.Min(bones.Length, weights.Length) / vertices.Length;
             var influences = new BodyLiquidSurface.SkinWeights[vertices.Length];
             for (var v = 0; v < vertices.Length; v++) {
+                // The four heaviest influences, heaviest first.
                 var bone = new Vector4I(); var weight = Vector4.Zero;
-                var top = Enumerable.Range(0, perVertex).Select(j => v * perVertex + j)
-                    .Where(n => weights[n] > 0f).OrderByDescending(n => weights[n]).Take(4).ToArray();
-                for (var j = 0; j < top.Length; j++) {
-                    var n = top[j];
-                    switch (j) {
-                        case 0: bone.X = bones[n]; weight.X = weights[n]; break;
-                        case 1: bone.Y = bones[n]; weight.Y = weights[n]; break;
-                        case 2: bone.Z = bones[n]; weight.Z = weights[n]; break;
-                        case 3: bone.W = bones[n]; weight.W = weights[n]; break;
+                for (var j = 0; j < perVertex; j++) {
+                    var n = v * perVertex + j;
+                    if (weights[n] <= weight[3]) { continue; }
+                    var slot = 3;
+                    for (; slot > 0 && weight[slot - 1] < weights[n]; slot--) {
+                        weight[slot] = weight[slot - 1];
+                        bone[slot] = bone[slot - 1];
                     }
+                    weight[slot] = weights[n];
+                    bone[slot] = bones[n];
                 }
-                if (top.Length == 0) { weight.X = 1f; }
+                if (weight == Vector4.Zero) { weight.X = 1f; }
                 influences[v] = new BodyLiquidSurface.SkinWeights(bone, weight);
             }
             foreach (var i in indices) {

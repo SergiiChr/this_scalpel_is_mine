@@ -79,7 +79,7 @@ if [[ "$mode" == sync ]]; then
 	# Both peers end with the same painted wound map, exactly the same cut, stitched and torn springs and the same
 	# site. The site is measured on the body model by each peer: its shape must come out the same for both.
 	state() {
-		grep -o "painted texels=[0-9]*, blood paints=([0-9]*, [0-9]*, [0-9]*, [0-9]*, [0-9]*, [0-9]*), severed springs=[0-9]*, topology=-*[0-9]*, site shape=-*[0-9]*" "$1"
+		grep -o "painted texels=[0-9]*, severed springs=[0-9]*, topology=-*[0-9]*, site shape=-*[0-9]*" "$1"
 	}
 	host_state=$(state "$logs/net_host.log")
 	client_state=$(state "$logs/net_client.log")

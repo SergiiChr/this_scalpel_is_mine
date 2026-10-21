@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquids"), TestCategory("liquid_contours"), TestCategory("frame_budget")]
+[TestCategory("liquids"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class BedGroundWorkerFailureTest {
     [TestCase]

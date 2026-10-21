@@ -77,6 +77,8 @@ public partial class BloodFlow : Node3D {
     private const int MaxDrops = 96;
     private const int RinsePoolSlots = 64;
     private const int GroundBuildFailureLimit = 5;
+    /// <summary>Each pool is one surface of the shared ground meshes, which Godot caps at 256 surfaces.</summary>
+    private const int MaxGroundPools = 256;
     private const float DropRadius = 0.0035f;
     private float _dropVolumeScale;
     private float _unitDropMl;
@@ -446,7 +448,8 @@ public partial class BloodFlow : Node3D {
             }
             var local = body.Site.ToLocal(body.UvToWorld(uv, depth));
             local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
-            Spurt(body, body.Site.ToGlobal(local), rate, delta);
+            // The cavity pool keeps its own volume; thrown drops are extra surface liquid.
+            SurfaceSuppliedMl += Spurt(body, body.Site.ToGlobal(local), rate, delta);
         }
     }
 
@@ -887,6 +890,7 @@ public partial class BloodFlow : Node3D {
             var outward = new Vector3(_rng.RandfRange(-1f, 1f), 0f, _rng.RandfRange(-1f, 1f)) * 0.6f;
             AddDrop(at + up * 0.004f, (up + outward).Normalized() * speed * _rng.RandfRange(0.5f, 1f));
         }
+        SurfaceSuppliedMl += count * DropMl;
         Splash(at, count * speed * 0.05f);
     }
 
@@ -1095,8 +1099,7 @@ public partial class BloodFlow : Node3D {
             index = -1;
         }
         if (surface.VertexCount == 0) { return; }
-        surface.AppendUpload(mesh);
-        index = mesh.GetSurfaceCount() - 1;
+        index = surface.AppendUpload(mesh);
     }
 
     private static LiquidSurface? DrawRivulets(GroundPool pool, BedLiquidSurface bed, BedLiquidSurface.Flow[]? flows, Vector3 center) {
@@ -1202,6 +1205,11 @@ public partial class BloodFlow : Node3D {
                 target = pool;
                 break;
             }
+        }
+        if (target is null && _pools.Count >= MaxGroundPools) {
+            float Distance(GroundPool pool) => pool.Center.DistanceSquaredTo(at);
+            target = _pools.Where(pool => pool.OnBed == onBed && pool.Support == support).MinBy(Distance)
+                ?? _pools.MinBy(Distance);
         }
         if (target is null) {
             target = new GroundPool(at, _pools.Count + 1);

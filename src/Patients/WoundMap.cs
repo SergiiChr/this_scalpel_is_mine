@@ -68,6 +68,9 @@ public sealed class WoundMap {
     private Rect2I _bloodFilmBounds;
     private byte[] _bloodSupport = [];
     private readonly byte[] _filmPainted;
+    /// <summary>Blood other systems painted under the film (cuts, staples), kept apart so the film never takes it
+    /// over and erases it when it moves on.</summary>
+    private readonly byte[] _filmForeign;
     private bool _filmReductionAcknowledged;
     private bool _filmReductionGlobal;
     private bool[] _filmReductionCells = [];
@@ -84,6 +87,7 @@ public sealed class WoundMap {
     public WoundMap(int texels = MaxSize) {
         Size = texels;
         _filmPainted = new byte[Size * Size];
+        _filmForeign = new byte[Size * Size];
         _filmSourceDepth = new float[Size * Size];
         _filmRemovedDepth = new float[Size * Size];
         Textures = new ImageTexture[LayerCount];
@@ -142,6 +146,14 @@ public sealed class WoundMap {
                 _bloodSupport[y * Size + x] = (byte)Mathf.RoundToInt(255f * Mathf.SmoothStep(-Texel, Texel, distance));
             }
         }
+    }
+
+    /// <summary>How much of the texel at <paramref name="uv"/> the film may cover (0..1), the same texel
+    /// <see cref="Value"/> reads.</summary>
+    internal float BloodSupport(Vector2 uv) {
+        if (_bloodSupport.Length == 0) { return 1f; }
+        var at = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Size - 1)).Floor();
+        return _bloodSupport[at.Y * Size + at.X] / 255f;
     }
 
     /// <summary>Convenience for direct map fixtures that reconcile a uniform reduction.</summary>
@@ -312,8 +324,14 @@ public sealed class WoundMap {
                     var shownDepth = Math.Max(0f, depth - _filmRemovedDepth[pixel]);
                     var incoming = (byte)(Math.Clamp(Mathf.RoundToInt(BloodCoverageFromDepth(shownDepth) * 255f), 0, 255)
                         * support / 255);
-                    // Respect paint from other systems, and keep their thin residual stain when the film moves.
-                    var under = data[i] > paintedBefore ? data[i] : Math.Min((int)data[i], 30);
+                    // Paint from other systems stays, and the film leaves a thin residual stain when it moves.
+                    // A wipe lowers both.
+                    if (data[i] > paintedBefore) {
+                        _filmForeign[pixel] = Math.Max(_filmForeign[pixel], data[i]);
+                    } else if (data[i] < paintedBefore) {
+                        _filmForeign[pixel] = Math.Min(_filmForeign[pixel], data[i]);
+                    }
+                    var under = Math.Max(_filmForeign[pixel], Math.Min((int)data[i], 30));
                     var next = (byte)Math.Max(incoming, under);
                     _filmPainted[pixel] = next;
                     _filmSourceDepth[pixel] = depth;

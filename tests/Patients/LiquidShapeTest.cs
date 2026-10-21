@@ -1,7 +1,6 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquid_contours")]
 [TestCategory("smoke"), TestCategory("liquids")]
 public class LiquidShapeTest {
     [TestCase]

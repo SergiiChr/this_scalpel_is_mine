@@ -159,7 +159,11 @@ public partial class SurgeryDriver {
             await PlayerPullsThread("closed");
             // Tension can finish or tear through the active thread. Only an anchored thread can be tied;
             // the operation's closure checks still decide whether the wound was actually closed.
-            if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) { await PlayerTiesOff(); }
+            if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
+                await PlayerTiesOff();
+            } else {
+                Note("the thread finished or tore before it could be tied off");
+            }
         }
         var bins = layer == TissueDepth.Muscle ? wound.Muscle : wound.Bins;
         Note($"{layer} of wound {wound.Id} closed {bins.DefaultIfEmpty(0f).Min():0.00}");

@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquids"), TestCategory("liquid_contours")]
+[TestCategory("liquids")]
 public class BodyRunoffWorkerFailureTest {
     [TestCase]
     public void TraceAndDrawFailuresBackOffWithoutLosingTheHeldDose() {

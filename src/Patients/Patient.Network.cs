@@ -6,11 +6,13 @@ namespace Scalpel.Patients;
 public partial class Patient {
     private ulong _paintSeed;
 
-    /// <summary>Host: paint on every peer.</summary>
+    /// <summary>Host: paint on every peer.
+    /// Unless <paramref name="soft"/> says otherwise, a disk (a == b) feathers its edge and a stroke doesn't.</summary>
     public void Paint(WoundMap.Layer layer, int channel, Vector2 a, Vector2 b, float radius, float value, WoundMap.Mode mode,
-        float jitter = 0f, bool soft = false) {
+        float jitter = 0f, bool? soft = null) {
         _paintSeed++;
-        Rpc(MethodName.PaintOnPeer, (int)layer, channel, a, b, radius, value, (int)mode, jitter, soft, _paintSeed);
+        Rpc(MethodName.PaintOnPeer, (int)layer, channel, a, b, radius, value, (int)mode, jitter, soft ?? a == b,
+            _paintSeed);
     }
 
     /// <summary>Host: paints several channels of one disk on every peer.</summary>

@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquids"), TestCategory("liquid_contours")]
+[TestCategory("liquids")]
 public class BedLiquidSupportTest {
     [TestCase]
     public void StackedFrameSupportsClipIndependentlyAcrossSeamsCornersAndSweptCells() {

@@ -3,7 +3,6 @@ namespace Scalpel.Tests.Patients;
 /// <summary>Fixed surface bleeds on three body slopes: a small seep stays visible beside a large pool and thin
 /// downhill films. Stopping their supply leaves the deposited blood on the skin.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquid_contours")]
 [TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class BloodFlowTest {

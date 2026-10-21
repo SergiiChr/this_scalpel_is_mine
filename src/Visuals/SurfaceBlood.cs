@@ -411,8 +411,10 @@ internal sealed class SurfaceBlood {
                 if (_painted[i] > 0f && _ml[i] > 0f) {
                     var now = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, Uv(x, y));
                     if (now + 0.5f / 255f < _painted[i]) {
+                        // The map holds coverage times the contact mask; the painted depth has no mask.
+                        var unmasked = now / map.BloodSupport(Uv(x, y));
                         var reduction = _paintedDepth[i] > 0f
-                            ? Mathf.Clamp(WoundMap.FilmDepthFromCoverage(now) / _paintedDepth[i], 0f, 1f) : 0f;
+                            ? Mathf.Clamp(WoundMap.FilmDepthFromCoverage(unmasked) / _paintedDepth[i], 0f, 1f) : 0f;
                         var remains = _ml[i] * reduction;
                         if (remains < _ml[i]) {
                             _reducedCells[i] = true;
