@@ -102,9 +102,9 @@ public partial class Surgeon {
             cart.TakeXray();
         } else if (@event.IsActionPressed(InputActions.UseTool) && HoldsPatient(Active)) {
             LetGoOfPatient(Active);
-        } else if (@event.IsActionPressed(InputActions.UseTool) && HoldSpot() is (var at, var normal)) {
+        } else if (@event.IsActionPressed(InputActions.UseTool) && HoldSpot() is (var at, var normal, var overOpening)) {
             // An empty hand clicked on the patient holds it there until clicked again (see KeepHold()).
-            HoldPatient(at, normal);
+            HoldPatient(at, normal, overOpening);
         } else if (@event.IsActionPressed(InputActions.UseTool)) {
             // One button lowers the tool and fires its single action (a clamp pinches, the defibrillator charges).
             SetLowered(hand, true);

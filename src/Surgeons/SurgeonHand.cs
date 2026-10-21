@@ -182,7 +182,7 @@ public partial class SurgeonHand : Node3D {
     /// isn't).</summary>
     public string PressBone { get; set; } = "";
     /// <summary>How far the fingers of a hand pressed on the patient curl round what they hold: 0 flat on a trunk, more
-    /// round a limb.</summary>
+    /// round a limb, negative straightened out over an opening.</summary>
     public float PressWrap { get; set; }
     /// <summary>How this hand's grip is fitted to the tool it holds (see <see cref="GripFit"/>).</summary>
     public GripFit Fit { get; set; } = GripFit.None;
@@ -529,7 +529,7 @@ public partial class SurgeonHand : Node3D {
         _posed = pose;
         var plunger = PressInGlove();
         var style = Style;
-        float[] amounts = PressNormal is not null ? [.. style.Curl.Select(curl => curl + wrap)]
+        float[] amounts = PressNormal is not null ? [.. style.Curl.Select(curl => Mathf.Max(curl + wrap, 0f))]
             : Holding ? Fit.Curl ?? style.Curl
             : [1f, 1f, 1f, 1f, 1f];
         // The thumb swings across under the index from its root, as far as the fingers are closed.
