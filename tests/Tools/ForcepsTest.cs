@@ -90,8 +90,9 @@ public class ForcepsTest {
         await Frames.Physics(2);
         var raised = me.InOpening(me.Active)!.Value;
         var wanted = resting!.Value.Bottom - Surgeon.DepthStep;
+        await SurgeryState.SiteIsSwabbed(driver.Patient);
         await driver.AssertAndCapture(hand.HeldDepth is not null && Mathf.Abs(raised.Depth - wanted) < 0.001f,
-            $"a notch up, the forceps' tip is held higher in the blood-filled opening over the bullet, below the lip: {raised.Depth} m deep, {wanted} wanted",
+            $"a notch up, the site wiped: the forceps' tip is held higher in the opening over the bullet, below the lip: {raised.Depth} m deep, {wanted} wanted",
             "held_up");
         AssertBool(hud.DepthShown && hud.AimText.Contains("Tip depth") && hud.AimText.Contains("held by the wheel"))
             .OverrideFailureMessage($"the aim shows the stem down to the tip and the depth beside it: {hud.AimText}").IsTrue();
@@ -114,8 +115,9 @@ public class ForcepsTest {
         var skin = driver.SitePoint(SkinBeyond(driver, bullet.Uv, Vector2.Right));
         await driver.PlayerSweepsTo(skin);
         var stopped = forceps.TipPosition();
+        await SurgeryState.SiteIsSwabbed(driver.Patient);
         await driver.AssertAndCapture(driver.Body.IsOpen(driver.Body.WorldToUv(stopped)) && hand.HeldDepth is not null,
-            "held deep and moved along the cut past its end, the forceps' tip stops at the end of the blood-filled opening, still down in it",
+            "held deep and moved along the cut past its end, the site wiped: the forceps' tip stops at the end of the opening, still down in it",
             "at_the_lip");
 
         // Lowered all the way, it rests on what's inside again.
@@ -166,9 +168,10 @@ public class ForcepsTest {
             await SurgeryDriver.Notch(true);
         }
         await Frames.Seconds(0.5f);
+        await SurgeryState.SiteIsSwabbed(driver.Patient);
         var held = me.InOpening(me.Active);
         await driver.AssertAndCapture(bullet.Extracted && forceps.Hold is CarryHold && !hand.Attached && held is { Depth: < 0f },
-            $"raised by the wheel, the forceps lift the bullet out of the opening and hold it over the blood pooled on its lip: {forceps.Hold}, attached {hand.Attached}, {held}",
+            $"raised by the wheel, the site wiped: the forceps lift the bullet out of the opening and hold it over its lip: {forceps.Hold}, attached {hand.Attached}, {held}",
             "lifted_out");
 
         // Taken out, the bullet is carried: the hand walks away with the surgeon instead of staying over the opening.
@@ -285,7 +288,8 @@ public class ForcepsTest {
         await Frames.Seconds(1f);
         AssertBool(driver.Body.IsOpen(bullet.Uv)).OverrideFailureMessage("the cut opens over the bullet").IsTrue();
         if (folder == "forceps/edge_and_bullet") {
-            await driver.Capture("opened", "the entry wound cut open along the bullet, through every layer, the bullet showing in the opening under the blood pooled over it");
+            await SurgeryState.SiteIsSwabbed(driver.Patient);
+            await driver.Capture("opened", "the entry wound cut open along the bullet, through every layer, the site wiped");
         }
         return (session, bullet);
     }

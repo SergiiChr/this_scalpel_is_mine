@@ -138,6 +138,15 @@ public static class SurgeryState {
     public static void SkinIsDry(Patient patient, Vector2 uv, float radius) =>
         patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, radius, 1f, WoundMap.Mode.Sub);
 
+    /// <summary>The whole site just swabbed: no blood on its skin, in its cuts or in the opening. For key frames of what
+    /// retained blood would hide; bleeding goes on and fills it again. Returns once the film has redrawn.</summary>
+    public static async Task SiteIsSwabbed(Patient patient) {
+        SkinIsDry(patient, new Vector2(0.5f, 0.5f), 0.75f);
+        foreach (var wound in patient.Wounds) { wound.PooledMl = 0f; }
+        CavityHoldsBlood(patient, 0f);
+        await Frames.Process(3);
+    }
+
     /// <summary>The skin at <paramref name="uv"/> is punctured (a stab of <paramref name="severity"/>, 0..1) and bleeds
     /// from the hole.</summary>
     public static Wound SkinIsPunctured(Patient patient, Vector2 uv, float severity) =>

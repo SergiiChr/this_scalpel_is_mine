@@ -72,7 +72,8 @@ public class NeedleTest {
         AssertInt(drawn.PressureHoles).OverrideFailureMessage("every over-tight hole shows pressure").IsEqual(holes);
         AssertInt(driver.Body.ThreadNode(thread)!.GetNode<MultiMeshInstance3D>("Pressure").Multimesh.InstanceCount)
             .OverrideFailureMessage("every over-tight hole has a rendered pressure sprite").IsEqual(holes);
-        await driver.Capture("too_tight_intact", "the middle cut sewn too tight, intact: its stitches and the pressure marks round the holes under the blood pooled over it");
+        await SurgeryState.SiteIsSwabbed(patient);
+        await driver.Capture("too_tight_intact", "the middle cut sewn too tight, intact, the site wiped: strong pressure marks around every hole");
         var wounds = patient.Wounds.Count;
         for (var i = 0; i < 6 && !patient.SutureDone(thread); i++) {
             await SurgeryDriver.Notch(false);
