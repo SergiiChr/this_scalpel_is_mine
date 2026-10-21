@@ -34,11 +34,15 @@ public class NeedleTest {
         await Frames.Seconds(1f);
         await driver.Capture("cuts_before_sutures", "three cuts across the site, the lowest deeper, no thread in any");
         var needle = (await driver.PlayerRequestsItem("needle"))!;
+        AssertBool(Hud.ControlLines(driver.Me).Any(line => line.Contains("tighten thread")))
+            .OverrideFailureMessage("before the first hole the controls offer no thread to pull").IsFalse();
 
         // Over the belly the hand stays clear of it, holding the needle's tip well above the skin: the dot still lies
         // on the skin, where the hole goes in.
         AssertBool(await driver.PlayerThreads(loose, TissueDepth.Skin, checkAim: true))
             .OverrideFailureMessage($"all loose-thread punctures are reached\n{driver.Recent()}").IsTrue();
+        AssertBool(Hud.ControlLines(driver.Me).Any(line => line.Contains("tighten thread")))
+            .OverrideFailureMessage("once threaded the controls offer pulling it").IsTrue();
         await driver.PlayerTiesOff("loose_tied", "tied off loose: the thread lies across the top cut, its edges still apart");
         await Frames.Seconds(1f);
         AssertFloat(loose.Closure).OverrideFailureMessage("tied off loose, the thread leaves the cut open").IsLess(0.99f);
@@ -83,7 +87,9 @@ public class NeedleTest {
         AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("suture_tear_through"))
             .OverrideFailureMessage("a thread torn through costs points").IsTrue();
 
-        await driver.PlayerPullsThread("loose");
+        await SurgeryDriver.Notch(false);
+        AssertFloat(needle.Suture.Tension)
+            .OverrideFailureMessage("without a thread the wheel has nothing to pull, the needle stays slack").IsEqual(ToolActions.SutureStartTension);
         AssertBool(await driver.PlayerThreads(deep, TissueDepth.Skin))
             .OverrideFailureMessage($"all deep-thread punctures are reached\n{driver.Recent()}").IsTrue();
         AssertFloat(deep.Closure).OverrideFailureMessage("skin won't meet over open muscle").IsLess(0.2f);
@@ -171,12 +177,15 @@ public class NeedleTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>Threads <paramref name="wound"/> through <paramref name="layer"/>, pulls it closed and ties it off, the
-    /// thread resting on that layer throughout.</summary>
+    /// <summary>Threads <paramref name="wound"/> through <paramref name="layer"/> starting slack, pulls it closed and
+    /// ties it off, the thread resting on that layer throughout.</summary>
     private static async Task SewDeepLayer(SurgeryDriver driver, Wound wound, TissueDepth layer) {
         AssertBool(await driver.PlayerThreads(wound, layer)).OverrideFailureMessage("the horizontal needle reaches every deep puncture")
             .IsTrue();
         var thread = driver.Me.HeldTool(driver.Me.Active)!.Suture.Thread;
+        // Whatever the last thread was pulled to before it was tied, a new one starts slack.
+        AssertFloat(driver.Body.Tissue.Thread(thread)!.Tension)
+            .OverrideFailureMessage($"the {layer} thread starts slack").IsEqual(ToolActions.SutureStartTension);
         var routes = driver.Body.DrawnThread(thread)!.Routes;
         AssertBool(routes.Count > 0).OverrideFailureMessage("the deep layer has exposed thread spans").IsTrue();
         AssertThreadStaysOnLayer(driver.Body, routes, layer);

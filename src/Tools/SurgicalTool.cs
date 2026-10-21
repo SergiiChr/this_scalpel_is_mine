@@ -78,7 +78,7 @@ public sealed class ToolUse {
 /// </summary>
 public sealed class SutureState {
     public int Thread { get; set; }
-    public float Tension { get; set; } = 1.15f;
+    public float Tension { get; set; } = ToolActions.SutureStartTension;
     public TissueDepth Layer { get; set; } = TissueDepth.None;
     public float Hold { get; set; }
     public Vector2 At { get; set; } = new(-1, -1);
