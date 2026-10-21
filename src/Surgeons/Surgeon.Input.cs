@@ -161,7 +161,7 @@ public partial class Surgeon {
             AimTool(motion);
         } else if (MovingHand() < 0) {
             Rotation = Rotation with { Y = Rotation.Y - (motion.X * LookSensitivity) };
-            Pitch = Mathf.Clamp(Pitch - (motion.Y * LookSensitivity), LookPitch.X, LookPitch.Y);
+            Pitch = Mathf.Clamp(Pitch - (motion.Y * LookSensitivity), LowestLook(), LookPitch.Y);
             if (motion.Y != 0f) {
                 TakeLook();
             }
