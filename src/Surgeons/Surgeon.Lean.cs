@@ -12,7 +12,7 @@ public partial class Surgeon {
     internal const float MaxLean = 0.7f;
     /// <summary>Leaning in, the eyes stop this far (m, across the floor) short of right over the spot they look at: the
     /// view goes down into the opening steeply, not straight down onto the back of the hand, and stays within how far
-    /// down the eyes can look (<see cref="LookPitch"/>).</summary>
+    /// down the eyes can look (<see cref="LowestLook"/>).</summary>
     private const float LeanSetback = 0.1f;
     /// <summary>Leaning in keeps the eyes at least this far (m) above the skin they look at, clear of the drapes, the
     /// organs and the tools in an opening.</summary>
@@ -54,6 +54,11 @@ public partial class Surgeon {
         }
     }
 
+    /// <summary>Lowest the eyes look (radians): bent forward, as much further down as the torso bends, so leaning in
+    /// close to the body they still look right at the spot rather than stopping above it. Never past straight down.
+    /// </summary>
+    private float LowestLook() => Mathf.Max(LookPitch.X - Lean, -Mathf.Pi / 2f);
+
     /// <summary>How far a forward bend of <paramref name="lean"/> radians moves the eyes (surgeon space).</summary>
     internal static Vector3 LeanShift(float lean) =>
         new(0f, -EyeAboveHips * (1f - Mathf.Cos(lean)), -EyeAboveHips * Mathf.Sin(lean));
@@ -93,6 +98,8 @@ public partial class Surgeon {
             if (_uprightPitch is { } upright) {
                 Pitch = Mathf.Lerp(Pitch, upright, follow);
             }
+            // A look the player took down past the standing limit comes up with the torso.
+            Pitch = Mathf.Max(Pitch, LowestLook());
             if (Lean < 0.01f) {
                 // Straight again, the mouse has the look back.
                 _uprightPitch = null;
@@ -108,7 +115,7 @@ public partial class Surgeon {
         Lean = Ease(Lean, Mathf.Min(Mathf.Asin(ahead / EyeAboveHips), Mathf.Acos(clear)), follow, delta);
         if (!_lookTaken) {
             var toSpot = local - (new Vector3(0f, EyeHeight, 0f) + LeanShift(Lean));
-            var look = Mathf.Clamp(Mathf.Atan2(toSpot.Y, -toSpot.Z), LookPitch.X, LookPitch.Y);
+            var look = Mathf.Clamp(Mathf.Atan2(toSpot.Y, -toSpot.Z), LowestLook(), LookPitch.Y);
             Pitch = Mathf.Lerp(Pitch, look, follow);
         }
     }

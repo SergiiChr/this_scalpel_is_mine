@@ -361,6 +361,31 @@ public class SurgeonMovementTest {
         driver.Budget.Check(localOverride: BudgetOverride);
     }
 
+    /// <summary>
+    /// Zooming in with the scalpel over the belly <paramref name="toward"/> m nearer the surgeon than where they stand
+    /// for, the spot it aims at ends up in the middle of the view. Close to the body the eyes stay further back rather
+    /// than looking down as far as they can and stopping above it.
+    /// </summary>
+    [TestCase("close", 0.1f)]
+    [TestCase("far", -0.1f)]
+    public async Task LeaningInCentersTheAimedSpot(string name, float toward) {
+        var driver = await Begin();
+        var me = driver.Me;
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        AssertObject(await driver.PlayerRequestsItem("scalpel")).OverrideFailureMessage("a scalpel in hand").IsNotNull();
+        var site = driver.SitePoint(new Vector2(0.5f, 0.62f));
+        await driver.PlayerWalksTo(site);
+        await driver.PlayerReaches(site + (me.GlobalBasis.Z * toward));
+        SurgeryDriver.Tap(InputActions.Zoom);
+        await Frames.Physics(150);
+        AssertObject(me.LeanSpot).OverrideFailureMessage("leaning in over the belly").IsNotNull();
+        var view = me.Camera.GetViewport().GetVisibleRect().Size;
+        var off = me.Camera.UnprojectPosition(me.AimPoint()) - (view / 2f);
+        await driver.AssertAndCapture(off.Length() < view.Y * 0.01f,
+            $"leaning in, the aim mark under the scalpel is in the middle of the view ({off.X:0}, {off.Y:0} px off)",
+            $"centered_{name}");
+    }
+
     /// <summary>How far (m) <paramref name="arm"/>'s sleeve, shoulder to elbow to wrist, is above what's under it at its
     /// lowest: below zero it passes through the patient.</summary>
     private static float ArmAbove(Surgeon me, SurgeonHand arm) {
