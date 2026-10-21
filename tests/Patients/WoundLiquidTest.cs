@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class WoundLiquidTest {
     // The identical camera with no liquid reached 47.7 ms on the RTX 4080. Preserve that pre-existing scene
@@ -12,7 +12,7 @@ public class WoundLiquidTest {
     // This capture-only allowance uses 30% headroom rounded to a half-factor and never applies to headless CPU.
     private static readonly BudgetAllowance ScreenshotAllowance = new("software screenshot renderer synchronizes dynamic mesh updates", 4.5f);
 
-    [TestCase(5f)]
+    [TestCase(5f, Timeout = Limits.Slow)]
     [TestCase(50f)]
     public async Task IrrigationLiquidFollowsAndDrainsFromADeepOpening(float initialMl) {
         var captureVisuals = initialMl == 5f;
