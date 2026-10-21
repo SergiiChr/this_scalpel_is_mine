@@ -792,9 +792,10 @@ def run_cases(suite: Suite, options: TestOptions, cases: Sequence[tuple[str, str
     outcome = Outcome(suite, BUILD / "test-logs" / f"{suite.name}__retry_*.log", [], attributed=True)
     todo = [
         # A case's name is its method's, with ":index (values)" after it for each row of one.
+        # The process is named without the values: a long one would make its report's file name too long.
         Process(
             suite,
-            f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}",
+            f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.partition(' ')[0].lower()).strip('_')}",
             f"FullyQualifiedName~{suite.full_name}.{name.partition(':')[0]}&Name={escape(name)}",
             1,
             runs_alone(suite, options),
