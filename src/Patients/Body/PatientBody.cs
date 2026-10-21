@@ -499,9 +499,12 @@ public partial class PatientBody : Node3D {
     /// or a leg. Arms and legs lie along the body; rays cast out from inside the limb find its skin.
     /// </summary>
     public LimbRing? LimbRingAt(Vector3 p) {
-        // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides.
-        var part = PartAt(p, 0.08f);
-        if (!(part.StartsWith("arm", StringComparison.Ordinal) || part.StartsWith("leg", StringComparison.Ordinal))) {
+        // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides. That
+        // reaches the trunk's box too where a limb lies beside it (a forearm, a thigh): the limb is the one wanted.
+        var part = Overlapping(p, 0.08f, PatientLayer, 4).OfType<BodyPart>().Select(body => body.Part)
+            .FirstOrDefault(name =>
+                name.StartsWith("arm", StringComparison.Ordinal) || name.StartsWith("leg", StringComparison.Ordinal));
+        if (part is null) {
             return null;
         }
         var box = (Node3D)_bodyRoot.FindChild(part.ToPascalCase(), false, false);
