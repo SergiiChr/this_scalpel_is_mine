@@ -92,14 +92,14 @@ public partial class Surgeon {
             _zoomBefore = null;
             LeanSpot = null;
         }
+        // A look the player took down past the standing limit comes up as the torso straightens.
+        Pitch = Mathf.Max(Pitch, LowestLook());
         var follow = Mathf.Min(delta * LeanRate, 1f);
         if (LeanSpot is not { } at) {
             Lean = Ease(Lean, 0f, follow, delta);
             if (_uprightPitch is { } upright) {
                 Pitch = Mathf.Lerp(Pitch, upright, follow);
             }
-            // A look the player took down past the standing limit comes up with the torso.
-            Pitch = Mathf.Max(Pitch, LowestLook());
             if (Lean < 0.01f) {
                 // Straight again, the mouse has the look back.
                 _uprightPitch = null;

@@ -362,12 +362,13 @@ public class SurgeonMovementTest {
     }
 
     /// <summary>
-    /// Zooming in with the scalpel over the belly <paramref name="toward"/> m nearer the surgeon than where they stand
-    /// for, the spot it aims at ends up in the middle of the view. Close to the body the eyes stay further back rather
-    /// than looking down as far as they can and stopping above it.
+    /// Zooming in with the scalpel over the belly close to the near edge of the table, <paramref name="toward"/> m nearer
+    /// the surgeon than the spot they walked up to, the surgeon bends in and the eyes look further down than they can
+    /// standing, so the spot the scalpel aims at ends up in the middle of the view. Looking down further still, then
+    /// zooming out, the look comes up with the torso to no lower than standing.
     /// </summary>
     [TestCase("close", 0.1f)]
-    [TestCase("far", -0.1f)]
+    [TestCase("edge", 0.2f)]
     public async Task LeaningInCentersTheAimedSpot(string name, float toward) {
         var driver = await Begin();
         var me = driver.Me;
@@ -379,11 +380,30 @@ public class SurgeonMovementTest {
         SurgeryDriver.Tap(InputActions.Zoom);
         await Frames.Physics(150);
         AssertObject(me.LeanSpot).OverrideFailureMessage("leaning in over the belly").IsNotNull();
+        AssertFloat(me.Pitch).OverrideFailureMessage($"looking further down than standing ({me.Pitch:0.00} rad)")
+            .IsLess(Surgeon.LookPitch.X);
         var view = me.Camera.GetViewport().GetVisibleRect().Size;
         var off = me.Camera.UnprojectPosition(me.AimPoint()) - (view / 2f);
         await driver.AssertAndCapture(off.Length() < view.Y * 0.01f,
             $"leaning in, the aim mark under the scalpel is in the middle of the view ({off.X:0}, {off.Y:0} px off)",
             $"centered_{name}");
+
+        PlayerInput.Mouse(new Vector2(0f, 400f));
+        await PlayerInput.Delivered();
+        var lookedDown = me.Pitch;
+        AssertFloat(lookedDown).OverrideFailureMessage($"the player looks further down ({lookedDown:0.00} rad)")
+            .IsLess(Surgeon.LookPitch.X - 0.2f);
+        SurgeryDriver.Tap(InputActions.Zoom);
+        var rise = 0f;
+        for (var frame = 0; frame < 120; frame++) {
+            var was = me.Pitch;
+            await Frames.Physics(1);
+            rise = Mathf.Max(rise, me.Pitch - was);
+        }
+        AssertFloat(me.Lean).OverrideFailureMessage($"zoomed out, the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
+        AssertFloat(me.Pitch).OverrideFailureMessage($"and the look taken down to {lookedDown:0.00} rad comes up to standing "
+            + $"({me.Pitch:0.00} rad)").IsEqualApprox(Surgeon.LookPitch.X, 0.001f);
+        AssertFloat(rise).OverrideFailureMessage($"gradually ({rise:0.000} rad in a frame at most)").IsLess(0.08f);
     }
 
     /// <summary>How far (m) <paramref name="arm"/>'s sleeve, shoulder to elbow to wrist, is above what's under it at its
