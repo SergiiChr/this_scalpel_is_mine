@@ -369,7 +369,7 @@ public class BedBloodTest {
     }
 
     [TestCase]
-    public async Task SustainedFloorDripCoalescesIntoConservedPools() {
+    public async Task SustainedFloorDripKeepsItsStainWithFewPools() {
         var session = await ToolSession.Start("appendectomy", "bed_sustained_floor", captureUntouched: false);
         var driver = session.Driver;
         driver.Patient.SetPhysicsProcess(false);
@@ -381,32 +381,35 @@ public class BedBloodTest {
         var drip = new Vector3(Room.TableHead + 0.15f, BloodFlow.FloorY, 0f);
         var rng = new RandomNumberGenerator { Seed = 7 };
         const int Drops = 600;
-        var most = 0;
+        var landed = new List<Vector3>(Drops);
         driver.Note("a steady drip spreading over the floor");
         for (var i = 0; i < Drops; i++) {
             var offset = Vector2.FromAngle(rng.Randf() * Mathf.Tau) * Mathf.Sqrt(rng.Randf()) * 0.12f;
-            blood.Pool(drip + new Vector3(offset.X, 0f, offset.Y));
-            most = Math.Max(most, Deposits(blood).Count());
+            landed.Add(drip + new Vector3(offset.X, 0f, offset.Y));
+            blood.Pool(landed[^1]);
             await Frames.NextProcess();
         }
         AssertBool(await Frames.Until(() => blood.GroundMeshesReady, 5f)).IsTrue();
         await driver.Unbudgeted(() => {
             var floor = Deposits(blood).Where(pool => !pool.OnBed).ToArray();
+            static float Apart(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Z - b.Z).Length();
             foreach (var (a, b) in floor.SelectMany((a, i) => floor.Skip(i + 1).Select(b => (a, b)))) {
-                var apart = new Vector2(a.Center.X - b.Center.X, a.Center.Z - b.Center.Z).Length();
-                AssertFloat(apart)
-                    .OverrideFailureMessage($"touching floor pools merge ({a.Radius:0.000} m, {b.Radius:0.000} m)")
-                    .IsGreaterEqual(a.Radius + b.Radius);
+                var (large, small) = a.Radius >= b.Radius ? (a, b) : (b, a);
+                AssertFloat(Apart(large.Center, small.Center) + small.Radius)
+                    .OverrideFailureMessage($"a pool spread over a smaller one takes it in ({large.Radius:0.000} m, {small.Radius:0.000} m)")
+                    .IsGreater(large.Radius);
             }
-            AssertInt(floor.Length).OverrideFailureMessage(
-                    $"a steady drip ends as a few pools, not one per landing (at most {most} on the way)")
-                .IsLessEqual(3);
+            // A drop landing within the merge distance of a pool joins it without moving it.
+            var uncovered = landed.Count(at => !floor.Any(pool => Apart(pool.Center, at) <= pool.Radius + BloodFlow.PoolMerge));
+            AssertInt(uncovered).OverrideFailureMessage("every landing spot stays under the floor's stain").IsEqual(0);
+            AssertInt(floor.Length).OverrideFailureMessage($"a steady drip doesn't keep one pool per landing ({floor.Length} pools)")
+                .IsLessEqual(Drops / 20);
             AssertFloat(blood.GroundLiquidArea).OverrideFailureMessage("merging keeps every supplied milliliter")
                 .IsEqualApprox(Drops * BloodFlow.PoolAreaPerDrop, Drops * BloodFlow.PoolAreaPerDrop * 0.0001f);
             return Task.CompletedTask;
         });
         await session.CaptureOblique("sustained_floor_pool",
-            "one broad, smooth floor pool where the drip landed, no separate puddles overlapping inside it",
+            "where the drip landed, round floor pools overlapping into one connected stain, none floating off the floor",
             drip, Vector3.Back, 0.8f);
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance
             : FrameBudget.Mode == BudgetMode.Cpu && KeyFrames.Wanted() ? ScreenshotAllowance : null);

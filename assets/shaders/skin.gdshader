@@ -92,10 +92,6 @@ void fragment() {
 	// Pigment can break up at the rim without turning that grain into separate shiny bumps.
 	float thickness = max(profile_depth, base_thickness);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
-	// Where a rivulet thins out at its sides it would only paint skin over the film or a neighbouring rivulet.
-	if (rivulet_depth > 0.0 && f.r < 0.02) {
-		discard;
-	}
 	NORMAL = blood_normal(NORMAL, VERTEX, thickness);
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
 	NORMAL = blood_normal(NORMAL, VERTEX, (noise(local_pos.xz * 900.0 + local_pos.y * 300.0) + noise(local_pos.xy * 700.0) - 1.0) * 0.00004);

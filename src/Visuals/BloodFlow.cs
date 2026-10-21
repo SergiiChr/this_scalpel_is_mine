@@ -85,7 +85,7 @@ public partial class BloodFlow : Node3D {
     internal float DropShapeMl { get; private set; }
     /// <summary>Bleeding faster than this (ml/s) spurts.</summary>
     private const float SpurtRate = 3f;
-    private const float PoolMerge = 0.03f;
+    internal const float PoolMerge = 0.03f;
     private const float PoolMaxRadius = 0.18f;
     /// <summary>Reference detached drop volume in milliliters.</summary>
     internal const float DropMl = 0.15f;
@@ -121,7 +121,7 @@ public partial class BloodFlow : Node3D {
     internal sealed class Drop(Vector3 position, Vector3 velocity, float area, Vector3 shape, float twist) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
-        public readonly float Area = area;
+        public float Area = area;
         public readonly Vector3 Shape = shape;
         public readonly float Twist = twist;
     }
@@ -909,11 +909,14 @@ public partial class BloodFlow : Node3D {
     }
 
     private void AddDrop(Vector3 at, Vector3 velocity, float area = PoolAreaPerDrop) {
-        if (_drops.Count < MaxDrops) {
-            var shape = new Vector3(_dripRng.RandfRange(0.6f, 1.15f), _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f));
-            var amount = Mathf.Pow(area / PoolAreaPerDrop / (shape.X * shape.Y * shape.Z), 1f / 3f) * _dropVolumeScale;
-            _drops.Add(new Drop(at, velocity, area, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
+        if (_drops.Count >= MaxDrops) {
+            // No room to draw another: the newest drop in flight carries this liquid too, so none is lost.
+            _drops[^1].Area += area;
+            return;
         }
+        var shape = new Vector3(_dripRng.RandfRange(0.6f, 1.15f), _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f));
+        var amount = Mathf.Pow(area / PoolAreaPerDrop / (shape.X * shape.Y * shape.Z), 1f / 3f) * _dropVolumeScale;
+        _drops.Add(new Drop(at, velocity, area, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
     }
 
     internal bool GroundMeshesReady => _pools.All(pool => pool.Incoming <= 0f && !pool.TopDirty && !pool.SideDirty && pool.Building is null);
@@ -1074,12 +1077,11 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    /// <summary>Floor pools that have grown into each other run together: the larger takes the other's volume, and
-    /// its footprint recenters on the pair's area-weighted centre. A long bleed then keeps a few spreading pools
-    /// instead of one draw call per landing spot.</summary>
+    /// <summary>A floor pool that has spread over a smaller one takes its volume: the smaller one's stain lies inside
+    /// it already, so nothing moves or uncovers, and a long bleed doesn't keep one draw call per landing spot. Pools
+    /// that only overlap stay apart; drawn together, they already read as one stain.</summary>
     private void CoalesceFloorPools() {
-        // A pool that took another's volume moved its centre, so it is checked again. Builds already running work
-        // from their own snapshot; the next tick redraws the merged pool.
+        // A pool that took another's volume grows on its next tick and may cover more, so it is checked again.
         while (_grownFloorPools.Count > 0) {
             var pool = _grownFloorPools[^1];
             _grownFloorPools.RemoveAt(_grownFloorPools.Count - 1);
@@ -1087,13 +1089,10 @@ public partial class BloodFlow : Node3D {
             foreach (var other in _pools) {
                 if (ReferenceEquals(other, pool) || other.OnBed
                     || Mathf.Abs(other.Center.Y - pool.Center.Y) > 0.001f) { continue; }
-                var apart = new Vector2(other.Center.X - pool.Center.X, other.Center.Z - pool.Center.Z).Length();
-                if (apart >= pool.Radius + other.Radius) { continue; }
-                var (into, from) = pool.Area >= other.Area ? (pool, other) : (other, pool);
-                var moved = from.Area + from.Incoming;
-                into.Center = (into.Center * (into.Area + into.Incoming) + from.Center * moved)
-                    / (into.Area + into.Incoming + moved);
-                into.Incoming += moved;
+                var (into, from) = pool.Radius >= other.Radius ? (pool, other) : (other, pool);
+                var apart = new Vector2(from.Center.X - into.Center.X, from.Center.Z - into.Center.Z).Length();
+                if (apart + from.Radius > into.Radius) { continue; }
+                into.Incoming += from.Area + from.Incoming;
                 into.TopDirty = true;
                 ReplaceTopSurface(from, NoSurface);
                 _pools.Remove(from);
