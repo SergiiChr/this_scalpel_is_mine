@@ -171,7 +171,7 @@ public partial class SurgeryDriver {
     /// check that each hole goes in where the aim dot was (<see cref="AssertHoleOnAim"/>). Returns false when the layer
     /// shows nowhere beside the wound.
     /// </summary>
-    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1.5f, bool captureProgress = false,
+    public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1f, bool captureProgress = false,
         bool checkAim = false) {
         // Grid cells along and across the wound, in uv: they're square in meters, not in uv.
         var along = (wound.Points[^1] - wound.Points[0]).Normalized();
@@ -184,23 +184,31 @@ public partial class SurgeryDriver {
         // A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
         var holes = Mathf.FloorToInt(wound.LengthUv / step) + 2;
         var first = -1f;
-        for (var i = 0; i < 16; i++) {
-            var off = cell * (0.25f + (i * 0.25f));
-            if (Patient.SutureLayerAt(BesideWound(wound, 0f, off), wound) == layer) {
-                // Skin holes a cell clear of the opening, not on its drawn-back edge.
-                first = off + (layer == TissueDepth.Skin ? cell : 0f);
-                break;
+        var reverse = false;
+        // A tapered tip, or a neighbouring repair, may cover the muscle at one end. Start at the
+        // accessible end while still sewing the entire incision, rather than starting in the skin above it.
+        for (var end = 0; end < 2 && first < 0f; end++) {
+            var alongAt = end == 0 ? 0f : wound.LengthUv;
+            for (var i = 0; i < 16; i++) {
+                var off = cell * (0.25f + (i * 0.25f));
+                if (Patient.SutureLayerAt(BesideWound(wound, alongAt, off), wound) == layer) {
+                    // Skin holes a cell clear of the opening, not on its drawn-back edge.
+                    first = off + (layer == TissueDepth.Skin ? cell : 0f);
+                    reverse = end == 1;
+                    break;
+                }
             }
         }
         if (first < 0f) {
             Note($"no {layer} shows beside wound {wound.Id} to sew");
             return false;
         }
-        Note($"threads {layer} along wound {wound.Id}: {holes} holes");
+        Note($"threads {layer} along wound {wound.Id}: {holes} holes{(reverse ? " from its far end" : "")}");
         for (var i = 0; i < holes; i++) {
             // The rest a grid cell off at least, so each lands on its own side of the wound. Only the final hole is
             // clamped to the far end: a two-hole stitch runs from one end to the other.
             var alongAt = i == holes - 1 ? wound.LengthUv : Mathf.Min(i * step, wound.LengthUv);
+            if (reverse) { alongAt = wound.LengthUv - alongAt; }
             var off = (i == 0 ? first : Mathf.Max(first, cell)) * (i % 2 == 0 ? 1f : -1f);
             var at = SitePoint(BesideWound(wound, alongAt, off));
             // Re-squared to each puncture: the holder's carry and its tip-pivot working pose reach differently, and
@@ -208,7 +216,9 @@ public partial class SurgeryDriver {
             await PlayerWalksTo(at);
             await PlayerReaches(at);
             if ((Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.004f) {
-                Note("needle cannot reach intended puncture within 4 mm");
+                Note($"needle cannot reach intended puncture within 4 mm: aim {BesideWound(wound, alongAt, off)}, "
+                    + $"tip {Body.WorldToUv(Tip(Me.Hands[Me.Active]))}, miss "
+                    + $"{(Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() * 1000f:0.0} mm, on body {Body.OnBody(Body.WorldToUv(at))}");
                 return false;
             }
             // The dot as the player clicks, the needle's tip still held up over the skin.
@@ -302,7 +312,18 @@ public partial class SurgeryDriver {
         Note("closes internal wounds");
         await PlayerRequestsItem("needle");
         foreach (var wound in Patient.Wounds.Where(wound => wound.IsInternal).ToList()) {
-            var spot = Body.UvToWorld(wound.Points[0], wound.DepthM);
+            // An incision can lie beside the injury's anatomical point. Enter its actual opening rather than
+            // pressing the needle onto the intact skin above the injury.
+            var injury = wound.Points[0];
+            var entry = Patient.Wounds.Where(cut => cut.IsSkinCut)
+                .SelectMany(cut => cut.Points.Append(cut.ClosestPoint(injury)))
+                .Prepend(injury).Where(uv => uv.DistanceTo(injury) < 0.05f && Body.IsOpen(uv))
+                .OrderBy(uv => uv.DistanceSquaredTo(injury)).Select(uv => (Vector2?)uv).FirstOrDefault();
+            if (entry is null) {
+                Note($"no opening reaches internal wound {wound.Id}");
+                continue;
+            }
+            var spot = Body.UvToWorld(entry.Value, wound.DepthM);
             await PlayerWalksTo(spot);
             // Deep in the belly, across it: the needle pointed straight ahead reaches further.
             await PlayerAimsStraight();
@@ -311,6 +332,10 @@ public partial class SurgeryDriver {
             await Frames.Until(() => wound.Closure >= 0.9f, 20f);
             Use(false);
             Note($"internal wound closed {wound.Closure:0.00}");
+            if (wound.Closure < 0.9f) {
+                Note($"needle at {Body.Probe(Tip(Me.Hands[Me.Active]))}, injury at {wound.Points[0]}, "
+                    + $"miss {(Tip(Me.Hands[Me.Active]) - spot).Slide(Vector3.Up).Length() * 1000f:0.0} mm");
+            }
         }
         await PlayerPutsDown();
     }

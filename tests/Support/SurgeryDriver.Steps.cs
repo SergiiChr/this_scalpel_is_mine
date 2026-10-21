@@ -9,7 +9,7 @@ public partial class SurgeryDriver {
         var strokes = new List<(Vector2, Vector2)>();
         var along = Body.SiteSize.X >= Body.SiteSize.Y ? new Vector2(1f, 0f) : new Vector2(0f, 1f);
         var across = new Vector2(along.Y, along.X);
-        var span = Mathf.Min(length / Body.UvToMeters(1f), 0.84f);
+        var span = Mathf.Min(length / (along * Body.SiteSize).Length(), 0.84f);
         for (var row = 0; row < 7; row++) {
             var shift = across * 0.1f * ((row + 1) / 2) * (row % 2 == 1 ? 1 : -1);
             var middle = (center + shift).Clamp(
@@ -56,13 +56,45 @@ public partial class SurgeryDriver {
     /// to <paramref name="to"/> (site uv) at depth <paramref name="level"/> (1 through the skin, 3 through the muscle):
     /// the surgeon stands by the line, turns the edge along it, presses in and draws it slowly enough for a clean cut.
     /// The blade stays in hand.</summary>
-    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel") {
-        await PlayerRequestsItem(toolId);
+    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel", float speed = Slow) {
+        var tool = (await PlayerRequestsItem(toolId))!;
         var start = SitePoint(from);
         var finish = SitePoint(to);
-        await PlayerWalksTo((start + finish) * 0.5f);
+        const float EntryTilt = 0.8f;
+        bool ReachesStroke(Vector3 standing) {
+            var facing = BladeFacing(start, finish, standing);
+            var pose = new Transform3D(new Basis(Vector3.Up, Mathf.Atan2(-facing.X, -facing.Z)), standing);
+            var shoulder = Surgeon.StandingShoulder(pose, Me.Active, Me.Crouch);
+            var offset = pose.Basis * new Basis(Vector3.Right, -EntryTilt) * new Vector3(0f, 0f, -tool.Def.Length);
+            // Check both ends in the working pose, including room to descend into the opening. A stance
+            // that reaches only the hovering midpoint can leave a full-depth stroke short of the injury.
+            var depth = level >= 3 ? Body.MuscleBottom + 0.01f : 0.002f + level * 0.004f;
+            return new[] { start, finish }.All(point => (point - Vector3.Up * depth - offset).DistanceTo(shoulder) < Surgeon.Reach - 0.01f);
+        }
+        await PlayerWalksTo((start + finish) * 0.5f, canWorkFrom: ReachesStroke);
+        await PlayerLinesUpBlade(start, finish);
+        await PlayerReaches(start);
+        // A shallow carry angle puts the heel well behind the planned start. Enter steeply so a short
+        // incision stays centered on the intended site, including while widening an existing puncture.
+        var tilt = Me.Hands[Me.Active].Tilt;
+        await PlayerAims(new Vector2(0f, (tilt + EntryTilt) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
+        PlayerLetsGoOfAim();
         await PlayerTurnsBlade(finish - start);
-        await PlayerWorksAlong([start, finish], level);
+        await PlayerWorksAlong([start, finish], level, speed);
+    }
+
+    private Vector3 BladeFacing(Vector3 start, Vector3 finish, Vector3 standing) {
+        var facing = -((finish - start) with { Y = 0f }).Normalized();
+        var handSide = Me.Active == Right ? 1f : -1f;
+        return facing.Cross(Vector3.Up).Dot((start + finish) * 0.5f - standing) * handSide < 0f ? -facing : facing;
+    }
+
+    private async Task PlayerLinesUpBlade(Vector3 start, Vector3 finish) {
+        // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
+        // edge with the line while moving its actual skin contact sideways from the buried tip's path.
+        var facing = BladeFacing(start, finish, Me.GlobalPosition);
+        await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
+        await PlayerAimsStraight();
     }
 
     /// <summary>Sets the Gelpi retractor into the cut from <paramref name="from"/> to <paramref name="to"/> (site uv) at
@@ -265,12 +297,18 @@ public partial class SurgeryDriver {
         var scalpel = (await PlayerRequestsItem("scalpel"))!;
         var spot = Body.UvToWorld(target.Uv, target.Depth);
         await PlayerWalksTo(spot);
-        await PlayerReaches(spot);
-        // A scalpel taken up comes unrolled: across the opening, drawn along it would cut into the belly wall.
-        if (drawn > 0f && Patient.Wounds.Where(wound => wound.MadeBySurgeon && wound.IsSkinCut)
-                .MinBy(wound => wound.Points.Min(point => point.DistanceTo(target.Uv))) is { } opening) {
-            await PlayerTurnsBlade(Body.UvToWorld(opening.Points[^1]) - Body.UvToWorld(opening.Points[0]));
+        var opening = Patient.Wounds.Where(wound => !wound.IsInternal).MinBy(wound => wound.DistanceTo(target.Uv));
+        if (opening is not null) {
+            await PlayerLinesUpBlade(SitePoint(opening.Points[0]), SitePoint(opening.Points[^1]));
         }
+        // Enter through the opening with the blade upright; a shallow carry angle puts its heel into intact skin.
+        var tilt = Me.Hands[Me.Active].Tilt;
+        await PlayerAims(new Vector2(0f, (tilt + 1.2f) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
+        PlayerLetsGoOfAim();
+        if (opening is not null) {
+            await PlayerTurnsBlade(SitePoint(opening.Points[^1]) - SitePoint(opening.Points[0]));
+        }
+        await PlayerReaches(spot);
         await SetLevel(3);
         Use();
         if (drawn > 0f) {
@@ -324,10 +362,16 @@ public partial class SurgeryDriver {
         for (var step = 0; step < 6; step++) {
             var local = organ.Position + (new Vector3(away.X, 0f, away.Y) * step * 0.008f);
             var uv = Body.LocalToUv(local);
-            if (!Body.IsOpen(uv) || Patient.Wounds.Any(wound => wound.IsInternal && wound.Points[0].DistanceTo(uv) < 0.055f)) {
+            if (!Body.IsOpen(uv)) {
                 continue;
             }
             var top = Body.Site.ToGlobal(local with { Y = organ.Position.Y });
+            var surface = Me.SurfaceBelow(top, false);
+            if (!surface.Found || !surface.Open) { continue; }
+            top.Y = surface.Y;
+            var depth = Body.Probe(top).Depth;
+            if (Patient.Wounds.Any(wound => wound.IsInternal && wound.Points[0].DistanceTo(uv) < 0.055f
+                && wound.DepthM <= depth + Patient.JawReach)) { continue; }
             if (Body.OrganAt(top, 0.02f) == index) {
                 return top;
             }
@@ -370,7 +414,12 @@ public partial class SurgeryDriver {
                     await PlayerWorksAt(spot, 3, 3f);
                 } else {
                     await PlayerWalksTo(SitePoint(wound.Midpoint));
-                    await PlayerWorksAlong(Beside(wound), 2, 0.01f);
+                    var edge = Beside(wound);
+                    if (edge.Count == 0) {
+                        Note($"no exposed skin beside wound {wound.Id} for cautery; trying its bleeder with a clamp");
+                        continue;
+                    }
+                    await PlayerWorksAlong(edge, 2, 0.01f);
                 }
             }
             await PlayerPutsDown();
@@ -415,7 +464,7 @@ public partial class SurgeryDriver {
         .Where(entry => entry.Rate >= 0.05f)
         .Select(entry => {
             var w = entry.Wound;
-            return $"{w.Kind} {entry.Rate:0.00} ml/s ({Body.UvToMeters(w.LengthUv) * 100f:0.0} cm, open {w.Opened:0.00}, "
+            return $"{w.Kind} {entry.Rate:0.00} ml/s ({Body.PathMeters(w.Points) * 100f:0.0} cm, open {w.Opened:0.00}, "
                 + $"sealed {w.Cauterized:0.00}, held {w.Held:0.00}, pressed {w.Pressed:0.00}, clamped {w.Clamped:0.00}, closed {w.Closure:0.00})";
         }));
 

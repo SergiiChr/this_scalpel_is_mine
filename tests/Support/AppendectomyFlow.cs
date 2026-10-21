@@ -32,7 +32,7 @@ public sealed class AppendectomyFlow : IDisposable {
         if (step.Type == "extract") {
             await driver.PlayerCutsFree(appendix, Drawn);
             AssertInt(patient.Wounds.Count(wound => !wound.IsInternal))
-                .OverrideFailureMessage("drawn along inside the opening, the blade cuts nothing more of the belly wall").IsEqual(1);
+                .OverrideFailureMessage($"drawn along inside the opening, the blade cuts nothing more of the belly wall: {driver.Bleeders()}\n{driver.Recent()}").IsEqual(1);
             AssertFloat(appendix.Anchor)
                 .OverrideFailureMessage($"put down on the base and drawn along it, the scalpel cuts the appendix free\n{driver.Recent()}")
                 .IsEqual(0f);
@@ -42,7 +42,17 @@ public sealed class AppendectomyFlow : IDisposable {
         await driver.PlayerCompletes(step);
         if (step.Type == "incise") {
             var incision = patient.Wounds.Single(wound => wound.MadeBySurgeon);
-            await driver.PlayerCutsSkin(incision.Points[0], incision.Points[^1], 3);
+            var scalpel = (await driver.PlayerRequestsItem("scalpel"))!;
+            var blade = scalpel.FindChildren("*", "MeshInstance3D", true, false).OfType<MeshInstance3D>()
+                .First(mesh => mesh.Name.ToString().Contains("Blade", StringComparison.Ordinal));
+            var reach = blade.Mesh.GetFaces().Max(point => blade.ToGlobal(point).DistanceTo(scalpel.TipPosition()));
+            var along = (incision.Points[^1] - incision.Points[0]).Normalized();
+            var inset = reach / (along * driver.Body.SiteSize).Length();
+            AssertFloat(incision.LengthUv).OverrideFailureMessage("the full blade fits inside the existing incision")
+                .IsGreater(inset * 2f);
+            // A repeat pass keeps the whole visible blade inside the opening, not the buried tip at its V ends.
+            await driver.PlayerCutsSkin(SurgeryDriver.BesideWound(incision, inset, 0f),
+                SurgeryDriver.BesideWound(incision, incision.LengthUv - inset, 0f), 3);
             await driver.PlayerPutsDown();
             await Frames.Seconds(2f);
             AssertInt(patient.Wounds.Count)
@@ -58,7 +68,7 @@ public sealed class AppendectomyFlow : IDisposable {
             var aside = appendix.Uv + ((incision.Points[^1] - incision.Points[0]).Normalized() * Aside);
             var onAppendix = driver.Body.UvToWorld(appendix.Uv, appendix.Depth);
             await driver.PlayerWalksTo(onAppendix);
-            await driver.PlayerWorksAlong([driver.Body.UvToWorld(aside, appendix.Depth), onAppendix], 3);
+            await driver.PlayerCutsSkin(aside, appendix.Uv, 3);
             AssertBool(appendix.Anchor == attached && !appendix.Opened)
                 .OverrideFailureMessage($"slid onto the appendix from elsewhere in the opening, the blade passes over it\n{driver.Recent()}")
                 .IsTrue();

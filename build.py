@@ -692,7 +692,9 @@ def processes(suite: Suite, options: TestOptions) -> list[Process]:
             name = f"{case.method}({value})" if value else case.method
             if options.case not in name:
                 continue
-            test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if value else "")
+            # GdUnit4 names a method's only row without its values, so that row can't be told apart by them.
+            by_value = value and len(case.values) > 1
+            test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if by_value else "")
             # Rows that share their first value (a scenario with and without a flag) share the filter, so one process
             # runs them both; a second with the same name would write the same log and report at the same time.
             if any(process.test_filter == test_filter for process in found):

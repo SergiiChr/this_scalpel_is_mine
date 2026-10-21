@@ -446,6 +446,16 @@ public partial class PatientBody : Node3D {
 
     public float UvToMeters(float uvLength) => uvLength * (SiteSize.X + SiteSize.Y) * 0.5f;
 
+    /// <summary>How long (meters) a line through <paramref name="points"/> (site uv) runs over the site: on a site
+    /// longer one way than the other, <see cref="UvToMeters"/> would measure a cut along it short.</summary>
+    public float PathMeters(IReadOnlyList<Vector2> points) {
+        var meters = 0f;
+        for (var i = 1; i < points.Count; i++) {
+            meters += ((points[i] - points[i - 1]) * SiteSize).Length();
+        }
+        return meters;
+    }
+
     public float MetersToUv(float meters) => meters / ((SiteSize.X + SiteSize.Y) * 0.5f);
 
     /// <summary>What a tool tip at p is touching.</summary>

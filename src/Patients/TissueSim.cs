@@ -147,9 +147,13 @@ public sealed partial class TissueSim {
     /// <see cref="Restrain"/>).</summary>
     public const float PeelLift = 0.02f;
 
-    /// <summary>The most a grip past <see cref="GripStrain"/> is brought back toward home per solver step (3 cm/s at
-    /// 60 steps a second).</summary>
-    private const float GiveBack = 0.0005f;
+    /// <summary>Skin starts holding a hand back at this strain: from here to <see cref="GripStrain"/> it gives less
+    /// and less of each move away from where it belongs, down to <see cref="LeastGive"/> (see <see cref="Restrain"/>).
+    /// </summary>
+    private const float FirmStrain = 1.15f;
+    /// <summary>The share of a move away from where the held skin belongs that it still gives just short of
+    /// <see cref="GripStrain"/>.</summary>
+    private const float LeastGive = 0.2f;
     /// <summary>Pulls up to this far (meters) drag the patch fully, twice as far not at all.</summary>
     public const float DragReach = 0.035f;
     /// <summary>Pulls beyond this are deliberate flap turnovers, whose faces may turn past vertical.</summary>
@@ -529,8 +533,11 @@ public sealed partial class TissueSim {
         var near = 0.002f / Math.Max(ResX, ResY);
         Vector2? end = null;
         var at = entry;
+        var edge = b - a;
+        var inward = new Vector2(-edge.Y, edge.X).Normalized();
+        if (inward.Dot(c - entry) < 0f) { inward = -inward; }
         // A stroke is short straight segments, a few to a cell: follow them on from one to the next.
-        for (var hop = 0; hop < 16; hop++) {
+        for (var hop = 0; hop < _cutSegments.Count; hop++) {
             Vector2? next = null;
             foreach (var (from, to) in _cutSegments) {
                 if (Geometry2D.GetClosestPointToSegment(at, from, to).DistanceTo(at) > near
@@ -539,9 +546,11 @@ public sealed partial class TissueSim {
                 }
                 // The way on is whichever end of the piece lies further from where the path has got to, and only
                 // onward: the piece it came along is near here too.
-                var far = start.DistanceSquaredTo(at) > finish.DistanceSquaredTo(at) ? start : finish;
-                if (far.DistanceSquaredTo(entry) > at.DistanceSquaredTo(entry) + near * near
-                    && (next is null || far.DistanceSquaredTo(entry) > next.Value.DistanceSquaredTo(entry))) {
+                var far = (start - entry).Dot(inward) > (finish - entry).Dot(inward) ? start : finish;
+                // Skin can recoil while the blade is held still and the path can return through the entry
+                // edge. Its furthest penetration is the end of the slit, not a point farther along that edge.
+                if ((far - at).Dot(inward) > near * 0.1f
+                    && (next is null || (far - next.Value).Dot(inward) > 0f)) {
                     next = far;
                 }
             }
@@ -708,20 +717,8 @@ public sealed partial class TissueSim {
         }
         _cutSegments.Add((a, b));
         _segmentStroke.Add(_strokes.Count - 1);
-        // A short cut on its own (a blade pressed in) might fall between springs: it severs the ones a cell's length of
-        // its line crosses, so the sim has it at all. A stroke going on is cut where the blade really went. The
-        // stroke ends where the severing does, so the stab's edges stay drawn together at its ends like any cut's
-        // (see UpdateRetraction()) instead of gaping along their whole length.
-        var cell = Mathf.Max(Size.X / ResX, Size.Y / ResY);
-        var meters = ((b - a) * Size).Length();
-        if (starts && meters < cell) {
-            var middle = (a + b) * 0.5f;
-            var half = (b - a) * (cell / meters) * 0.5f;
-            a = middle - half;
-            b = middle + half;
-            stroke[0] = a;
-            stroke[1] = b;
-        }
+        // Record the real blade path even before it reaches a grid edge. Expanding a tiny first contact
+        // to a whole cell cuts skin the blade never touched and detaches the visible V from the wound's endpoint.
         var gridEnd = new Vector2I(ResX, ResY);
         var low = new Vector2I(Mathf.FloorToInt(Mathf.Min(a.X, b.X) * ResX) - 1, Mathf.FloorToInt(Mathf.Min(a.Y, b.Y) * ResY) - 1)
             .Clamp(Vector2I.Zero, gridEnd);
@@ -1073,7 +1070,7 @@ public sealed partial class TissueSim {
         // stays put, at the drape's rim, rows ahead of the jaws, and the hand stops when that pile can't take more.
         // Nor may the patch fold the skin over itself: a spring whose reach along the body has shrunk to
         // UprightShare of its rest reach (KeepUpright()) is at the limit, one row passing the next is over it.
-        foreach (var s in _winSprings) {
+        foreach (var s in patch.Springs) {
             ref readonly var spring = ref _springs[s];
             var unpulled = pin.UnpulledAll[s];
             if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f || !NearFold(spring.A) || !NearFold(spring.B)) {
@@ -1118,28 +1115,38 @@ public sealed partial class TissueSim {
 
     /// <summary>
     /// Where grip <paramref name="key"/> may go on its way to <paramref name="target"/>: anywhere while the skin it
-    /// holds gives (strained under <see cref="GripStrain"/>); stretched past that it only comes back along the body,
-    /// no further from the spot the held skin belongs to than the strain over the limit says. Pulled on from there, it
-    /// peels the skin's edge up off what's under it instead: it rises by as much as it would have gone further, up to
-    /// <see cref="PeelLift"/> over that spot (the muscle stays down, PatientBody.LayerPoint()). The hand follows it
-    /// there (Patient.UpdateGrip()), so the held skin stops the hand like something held does.
+    /// holds gives easily (strained under <see cref="FirmStrain"/>). Firmer from there, it goes a shrinking share of
+    /// each move away from the spot the held skin belongs to, until at <see cref="GripStrain"/> it goes no further
+    /// along the body. Pulled on from there, it peels the skin's edge up off what's under it instead: it rises by a
+    /// share of the rest of the move, less the higher it is, up to <see cref="PeelLift"/> over that spot (the muscle
+    /// stays down, PatientBody.LayerPoint()). The hand follows it there (Patient.UpdateGrip()), so the held skin holds
+    /// the hand back harder the further it's pulled, the way something held does. Moves back toward the spot always go.
     /// </summary>
     public Vector3 Restrain(int key, Vector3 target) {
         var strain = StrainAt(key);
-        if (strain <= GripStrain) {
+        if (strain <= FirmStrain) {
             return target;
         }
         var home = _anchorTarget[_pins[key].Particle];
         var now = _pins[key].Target;
-        var held = (now - home).Slide(Vector3.Up).Length();
-        // Eased back a little per step rather than snapped home: the first crease past the limit reads as a huge
-        // strain for a step, and the hand just stops there instead of jumping.
-        var reach = Mathf.Max(held * (GripStrain / strain), held - GiveBack);
-        var along = (target - home).Slide(Vector3.Up);
-        var peel = Mathf.Max(along.Length() - reach, 0f);
-        // Lifted already as high as the skin peels (or higher, raised by the hand), it stays where it is.
-        var height = Mathf.Min(target.Y + peel, Mathf.Max(now.Y, home.Y + PeelLift));
-        return (home + along.LimitLength(reach)) with { Y = height };
+        var nowAlong = (now - home).Slide(Vector3.Up);
+        var away = nowAlong.Normalized();
+        var move = (target - now).Slide(Vector3.Up);
+        // Only the part of the move away from home is held back; sideways the grip still stays within what it gave.
+        var outward = nowAlong.IsZeroApprox() ? 0f : Mathf.Max(move.Dot(away), 0f);
+        var give = strain >= GripStrain ? 0f : Mathf.Lerp(1f, LeastGive, Mathf.SmoothStep(FirmStrain, GripStrain, strain));
+        // Over the limit the grip stays where it got to rather than being drawn back: skin piling up against the
+        // drape's rim reads as a brief spike in strain now and then, and drawn back on each the hand would be thrown
+        // back and forth. The edge peeled up reads over the limit too: the sim's skin doesn't come off its bed.
+        var reach = nowAlong.Length() + outward * give;
+        var kept = (nowAlong + move - away * (outward * (1f - give))).LimitLength(reach);
+        var height = target.Y;
+        if (strain >= GripStrain) {
+            // Lifted already as high as the skin peels (or higher, raised by the hand), it stays where it is.
+            var lifted = Mathf.Clamp((now.Y - home.Y) / PeelLift, 0f, 1f);
+            height = Mathf.Min(target.Y + outward * (1f - lifted * lifted), Mathf.Max(now.Y, home.Y + PeelLift));
+        }
+        return (home + kept) with { Y = height };
     }
 
     public void MoveGrip(int key, Vector3 target) {
@@ -2013,9 +2020,10 @@ public sealed partial class TissueSim {
                     // would be ratcheted up onto the rim.
                     if (FoldedOut(k)) {
                         Pos[k] = AboveFloor(k, Pos[k]);
-                    } else if (!NearFold(k)) {
+                    } else {
                         // A millimetre of creep at the lip of the drape must not pass underneath its raised edge,
                         // nor get ratcheted up onto it. Keep this nearly stationary skin on its original side.
+                        // Being near a fold doesn't mean this point itself has lifted or travelled onto the cloth.
                         var floorY = FloorAt(Pos[k].X, Pos[k].Z);
                         if (!float.IsNaN(floorY) && floorY > Settled[k].Y + UnderDrape) {
                             Pos[k] = Pos[k] with { X = Settled[k].X, Z = Settled[k].Z };

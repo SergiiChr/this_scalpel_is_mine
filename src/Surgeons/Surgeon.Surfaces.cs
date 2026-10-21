@@ -115,6 +115,15 @@ public partial class Surgeon {
         var target = hand.Target;
         // A hand holding onto something keeps its height; Lift pulls it up (see LocalUpdate()).
         var surface = hand.Attached ? Surface.None : LyingBelow(target + offset, SurfaceBelow(target + offset));
+        if (!hand.Attached && tool is { Def.Action: "cut", Blade: not null } && surface.Open) {
+            var body = Session.Patient.Body;
+            var local = body.Site.ToLocal(target + offset);
+            if (body.SkinTopAt(local, out var height)) {
+                // A solver gap can extend beyond the rendered V. Until the visible skin is cut here,
+                // the blade presses into that skin instead of dropping underneath it onto the cavity floor.
+                surface = new Surface(body.Site.ToGlobal(local with { Y = height }).Y, false, true);
+            }
+        }
         if (IsNeedle(tool) && !hand.Attached) {
             surface = GloveBelow(hand, target + offset, surface);
         }
@@ -149,6 +158,9 @@ public partial class Surgeon {
                 target.Y = ClearOfHard(hand, tool, target, surface, hand.Lowered ? 0.001f : hover);
             } else {
                 target.Y = surface.Y + HoverGap - offset.Y;
+            }
+            if (hand.Lowered && surface.Open && tool is { Def.Action: "cut", Blade: { } blade }) {
+                target.Y += blade.HeelLift(Session.Patient.Body, new Transform3D(hand.GripTransform().Basis, target));
             }
             // Too far down to reach (the floor while standing): carry the hand instead of stretching for it.
             if (target.Y < from.Y - (Reach * 0.9f)) {

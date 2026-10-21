@@ -65,14 +65,19 @@ public class PulledSkinTest {
         var farBed = tissue.Nearest(new Vector2(0.05f, 0.5f));
         var muscleBefore = body.LayerPoint(2, farBed);
         driver.Note($"a hand pulls the lip {LipPull.Z * 1000f:0} mm away from the cut and {LipPull.Y * 1000f:0} mm up");
-        await HandPulls(tissue, from, LipPull);
+        var hand = await HandPulls(tissue, from, LipPull);
         var pulled = tissue.Pos[k] - from;
         AssertFloat(pulled.Length()).OverrideFailureMessage($"the skin holds the hand short of where it went ({pulled.Length() * 1000f:0} of {LipPull.Length() * 1000f:0} mm)")
             .IsLess(LipPull.Length() * 0.9f);
         AssertFloat(pulled.Length()).OverrideFailureMessage($"but it does give ({pulled.Length() * 1000f:0} mm)")
             .IsGreater(0.006f);
-        AssertFloat(tissue.StrainAt(GripKey)).OverrideFailureMessage($"stretched no further than it gives ({tissue.StrainAt(GripKey):0.00} of {TissueSim.GripStrain})")
-            .IsLess(TissueSim.GripStrain + 0.3f);
+        // Past what it gives the sim's strain may stay over the limit (an edge peeled up reads over it), but the lip
+        // goes no further along the body however hard the hand pulls on.
+        var stopped = tissue.Pos[k];
+        await PullsOn(tissue, hand, LipPull with { Y = 0f } * 0.5f);
+        var further = (tissue.Pos[k] - stopped).Slide(Vector3.Up).Length();
+        AssertFloat(further).OverrideFailureMessage($"pulled on past what it gives, the lip goes no further along the body ({further * 1000f:0.0} mm)")
+            .IsLess(0.001f);
         var bedMovement = (body.LayerPoint(2, k) - bedUnderGrip).Length();
         AssertFloat(bedMovement)
             .OverrideFailureMessage($"the wound's edge comes along as one block: the muscle under the grip, cut through beside it, moves with the skin ({bedMovement * 1000f:0} of {pulled.Length() * 1000f:0} mm)")
@@ -170,23 +175,29 @@ public class PulledSkinTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>Takes grip <see cref="GripKey"/> from <paramref name="from"/> by <paramref name="pull"/> over 90
-    /// physics frames the way a hand does: a step at a time from wherever it got to, held back where the skin stops
-    /// giving (the hand comes back to the grip, Patient.UpdateGrip()).</summary>
-    private static async Task HandPulls(TissueSim tissue, Vector3 from, Vector3 pull) {
+    /// <summary>Takes grip <see cref="GripKey"/> at Grip and pulls from <paramref name="from"/> by
+    /// <paramref name="pull"/> (<see cref="PullsOn"/>), then holds still for 1 s. Returns where the hand ends up.</summary>
+    private static async Task<Vector3> HandPulls(TissueSim tissue, Vector3 from, Vector3 pull) {
         tissue.Grip(GripKey, Grip);
-        var at = from;
-        for (var n = 1; n <= 90; n++) {
-            at = tissue.Restrain(GripKey, at + pull / 90f);
-            tissue.MoveGrip(GripKey, at);
-            await Frames.Physics(1);
-        }
+        var at = await PullsOn(tissue, from, pull);
         // Holding still, the hand still gives where the skin asks it to.
         for (var n = 0; n < 60; n++) {
             at = tissue.Restrain(GripKey, at);
             tissue.MoveGrip(GripKey, at);
             await Frames.Physics(1);
         }
+        return at;
+    }
+
+    /// <summary>The hand holding on at <paramref name="at"/> pulls by <paramref name="pull"/> over 1.5 s, as far as the
+    /// skin lets it. Returns where it ends up.</summary>
+    private static async Task<Vector3> PullsOn(TissueSim tissue, Vector3 at, Vector3 pull) {
+        for (var n = 1; n <= 90; n++) {
+            at = tissue.Restrain(GripKey, at + pull / 90f);
+            tissue.MoveGrip(GripKey, at);
+            await Frames.Physics(1);
+        }
+        return at;
     }
 
     private static void AssertRimQuiet(PatientBody body, (int Index, Vector3 Point)[] rim, string claim) {
@@ -206,6 +217,7 @@ public class PulledSkinTest {
         AssertTissueSheetsDoNotIntersect(driver.Body);
         TissueLayers.AssertUnderSkin(driver.Body);
         AssertSkinDoesNotCrossDrape(driver.Body);
+        AssertDistantGownIsNotReplacedBySkin(driver.Body);
         return Task.CompletedTask;
     });
 
@@ -272,6 +284,52 @@ public class PulledSkinTest {
         }
         AssertInt(intersections.Count).OverrideFailureMessage(
                 $"the skin doesn't pass through itself, nor fat or muscle in view through another sheet ({intersections.Count} crossings: {string.Join("; ", intersections.Take(6))})")
+            .IsEqual(0);
+    }
+
+    /// <summary>Quiet gown well inside its own surface cannot acquire islands of replacement skin.</summary>
+    private static void AssertDistantGownIsNotReplacedBySkin(PatientBody body) {
+        TriangleMesh Surface(string name) {
+            var instance = (MeshInstance3D)body.FindChild(name, true, false);
+            var toSite = body.Site.GlobalTransform.AffineInverse() * instance.GlobalTransform;
+            var mesh = new TriangleMesh();
+            mesh.CreateFromFaces([.. instance.Mesh.GetFaces().Select(point => toSite * point)]);
+            return mesh;
+        }
+        using var gown = Surface("Gown");
+        using var skin = Surface("Body");
+        using var replacement = new TriangleMesh();
+        replacement.CreateFromFaces(body.Layers[0].Mesh.GetFaces());
+        var tissue = body.Tissue;
+        var covered = new bool[tissue.Rest.Length];
+        var heights = new float[covered.Length];
+        for (var k = 0; k < covered.Length; k++) {
+            var point = tissue.Rest[k];
+            var origin = new Vector3(point.X, 0.5f, point.Z);
+            using var cloth = gown.IntersectRay(origin, Vector3.Down);
+            using var bodyHit = skin.IntersectRay(origin, Vector3.Down);
+            if (cloth.Count == 0) { continue; }
+            heights[k] = cloth["position"].AsVector3().Y;
+            covered[k] = bodyHit.Count == 0 || heights[k] > bodyHit["position"].AsVector3().Y + 0.00001f;
+        }
+        var islands = 0;
+        var samples = 0;
+        for (var j = 1; j < tissue.ResY; j++) {
+            for (var i = 1; i < tissue.ResX; i++) {
+                var k = tissue.Index(i, j);
+                if (!covered[k] || !covered[k - 1] || !covered[k + 1]
+                    || !covered[k - tissue.ResX - 1] || !covered[k + tissue.ResX + 1]) { continue; }
+                var point = new Vector2(tissue.Rest[k].X, tissue.Rest[k].Z);
+                if (point.Length() < 0.1f || !tissue.FloorOpen.HasPoint(point)) { continue; }
+                samples++;
+                using var hit = replacement.IntersectRay(new Vector3(point.X, 0.5f, point.Y), Vector3.Down);
+                if (hit.Count > 0 && hit["position"].AsVector3().Y >= heights[k] - 0.0005f) { islands++; }
+            }
+        }
+        if (body.SiteId == "abdomen") {
+            AssertInt(samples).OverrideFailureMessage("the belly gown rim is sampled outside the local fold").IsGreater(0);
+        }
+        AssertInt(islands).OverrideFailureMessage($"quiet gown away from the grip has no skin-coloured replacement islands ({islands} covered samples)")
             .IsEqual(0);
     }
 
