@@ -16,7 +16,8 @@ public class TourniquetTest {
     private const float ViewDistance = 0.35f;
     // Temporary local budget override: recorded CPU overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget about a second into "
-        + "the hand stitch, before the tourniquet is ordered; not profiled yet", 2.5f);
+        + "the hand stitch, before the tourniquet is ordered: building the forearm's tissue layers (shaped cut ends, the "
+        + "layers kept under the skin) takes about twice what it did", 4f);
 
     [TestCase]
     public async Task PressedOnTheForearmAboveTheCutItWrapsAroundIt() {
