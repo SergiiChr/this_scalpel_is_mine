@@ -177,7 +177,7 @@ public class TapeTest {
         if (bloody) {
             AssertBool(tissue.Tape(id)!.Peeled).OverrideFailureMessage($"on blood, the strip lets go (stretched {tissue.TapeStrain(id):0.00})").IsTrue();
             await driver.AssertAndCapture(cut.Closure < Patient.ClosedEnough,
-                $"the skin beside the cut pulled {Pull * 100f:0} cm, the tape gone and the cut open again ({cut.Closure:0.00})", "let_go");
+                $"the skin beside the cut pulled {Pull * 100f:0} cm, the tape gone and the cut open again, bleeding into a pool ({cut.Closure:0.00})", "let_go");
         } else {
             AssertBool(tissue.Tape(id)!.Peeled).OverrideFailureMessage($"on dry skin, the strip holds (stretched {tissue.TapeStrain(id):0.00})").IsFalse();
             AssertFloat(cut.Closure).OverrideFailureMessage($"and the cut stays shut ({cut.Closure:0.00})").IsGreaterEqual(Patient.ClosedEnough);

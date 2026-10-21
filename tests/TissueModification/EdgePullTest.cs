@@ -153,12 +153,12 @@ public class EdgePullTest {
             // Apart from the skin only where they're drawn apart from it (PatientBody.LayersApart()).
             if (stretched < 0 && body.LayersApart(k) && skin - muscle > PatientBody.FatStretch * 0.5f && skin - fat < 0.0015f) {
                 stretched = gave.Count;
-                await session.CaptureOblique("fat_stretched", "the edge lifted, its fat wall stretched up with the skin: "
+                await session.CaptureOblique("fat_stretched", "the edge lifted under its blood film, its fat wall stretched up with the skin: "
                     + "no gap between skin and fat, the skin bends smoothly, nothing pokes through it", at, facing, 0.12f, 30f);
             }
             if (peeled < 0 && body.LayersApart(k) && skin - fat > PatientBody.FatStretch * 0.75f) {
                 peeled = gave.Count;
-                await session.CaptureOblique("skin_peeled", "the skin peeled off the fat: a thin band of skin lifted in "
+                await session.CaptureOblique("skin_peeled", "the skin peeled off the fat: a thin, blood-covered band of skin lifted in "
                     + "the jaws, the fat left lying on the muscle under it, no fat or muscle through the skin", at, facing, 0.12f, 30f);
             }
             stalled = tip.DistanceTo(lastTip) < Stalled ? stalled + 1 : 0;
@@ -176,7 +176,7 @@ public class EdgePullTest {
         AssertBool(stretched > 0 && peeled > stretched).OverrideFailureMessage("the skin lifts with the fat stretched under it "
             + $"before it peels off the fat (stretched at stage {stretched}, peeled at stage {peeled})").IsTrue();
         await session.CaptureOblique("final", "the edge pulled as far as the hand goes, from above: the opening drawn "
-            + "wide, the peeled skin lifted in the jaws, fat and muscle lying evenly below it", at, -facing, 0.2f, 70f);
+            + "wide, the peeled skin lifted in the jaws, fat and muscle lying evenly below it under the blood film", at, -facing, 0.2f, 70f);
         await session.Finish(BudgetOverride);
     }
 

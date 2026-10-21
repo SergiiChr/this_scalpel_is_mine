@@ -157,7 +157,7 @@ public class PulledSkinTest {
         // hangs right over it.
         var site = driver.SitePoint(middle);
         var under = -body.Site.GlobalBasis.Z;
-        await session.CaptureOblique("peeled", $"forceps hold the thigh wound's lip peeled over {Peeled * 100f:0} cm up off the muscle: the skin and its fat lifted in a smooth arch, the muscle's cut edge showing flat under it, nothing through anything", site, under, PeelView);
+        await session.CaptureOblique("peeled", $"forceps hold the thigh wound's lip peeled over {Peeled * 100f:0} cm up off the muscle: the skin lifted in a smooth arch over the opening, the blood film covering the wound, nothing through anything", site, under, PeelView);
 
         await driver.SwitchTo(SurgeryDriver.Left);
         var muscle = driver.Patient.Wounds.Where(wound => wound.ThroughMuscle).ToList();
@@ -171,7 +171,7 @@ public class PulledSkinTest {
         var stillPeeled = body.LayerPoint(0, k).Y - body.LayerPoint(2, k).Y;
         AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage("the forceps still hold the lip").IsTrue();
         AssertFloat(stillPeeled).OverrideFailureMessage($"still peeled {stillPeeled * 1000f:0} mm up off the muscle").IsGreater(Peeled);
-        await session.CaptureOblique("muscle_sewn", "the muscle sewn shut: the thread draws its cut edges together into a closed seam in the opening, the skin and fat walls round it, nothing through anything", site, under, PeelView);
+        await session.CaptureOblique("muscle_sewn", "the muscle sewn shut in the opening under the lifted skin, the site covered by the blood it shed, nothing through anything", site, under, PeelView);
         await session.Finish(BudgetOverride);
     }
 

@@ -299,7 +299,7 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>What a tied off suture should look like.</summary>
-    private const string TiedOff = "the knot is tied: the thread runs across the wound between its holes and draws the edges together";
+    private const string TiedOff = "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it";
 
     /// <summary>The point <paramref name="along"/> (uv) from the start of <paramref name="wound"/> on its line, clamped
     /// to its ends, moved <paramref name="off"/> (uv) to its left (negative: right).</summary>

@@ -85,6 +85,8 @@ public sealed class WoundMap {
     private bool[] _filmSpreadRows = [];
     private bool[] _filmSpread = [];
     private bool[] _filmReducedNear = [];
+    /// <summary>Standard deviation of the film's upsampling, in solver cells: about a cubic B-spline's.</summary>
+    private const float FilmSpread = 0.6f;
     private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {
@@ -236,7 +238,7 @@ public sealed class WoundMap {
             for (var pixel = 0; pixel < Size; pixel++) {
                 var cell = Mathf.Clamp((pixel + 0.5f) * resolution / Size - 0.5f, 0f, resolution - 1);
                 _filmIndex[pixel] = Math.Min((int)cell, resolution - 2);
-                _filmWeights[pixel] = Spline(cell - _filmIndex[pixel]);
+                _filmWeights[pixel] = FilmWeights(cell - _filmIndex[pixel]);
                 _filmPixelStart[_filmIndex[pixel]] = Math.Min(_filmPixelStart[_filmIndex[pixel]], pixel);
             }
         }
@@ -265,7 +267,7 @@ public sealed class WoundMap {
                     if (!_filmReductionCells[row + x]) { continue; }
                     _filmChanged[row + x] = true;
                     _filmChangedRows[y] = true;
-                    // The texels of cells x - 2 .. x + 1 read this one through the spline.
+                    // The texels of cells x - 2 .. x + 1 read this one through the upsampling.
                     for (var ny = Math.Max(y - 2, 0); ny <= Math.Min(y + 1, resolution - 1); ny++) {
                         for (var nx = Math.Max(x - 2, 0); nx <= Math.Min(x + 1, resolution - 1); nx++) {
                             _filmReducedNear[ny * resolution + nx] = true;
@@ -274,7 +276,7 @@ public sealed class WoundMap {
                 }
             }
         }
-        // A changed cell reaches the texels of the cells around it through the spline.
+        // A changed cell reaches the texels of the cells around it through the upsampling.
         for (var y = 0; y < resolution; y++) {
             _filmSpreadRows[y] = _filmChangedRows[Math.Max(y - 1, 0)] || _filmChangedRows[y]
                 || _filmChangedRows[Math.Min(y + 1, resolution - 1)];
@@ -382,13 +384,13 @@ public sealed class WoundMap {
         _filmReductionGlobal = false;
     }
 
-    /// <summary>Cubic B-spline weights of the four cells around a texel <paramref name="t"/> past the second.
-    /// They sum to one, so the film keeps its dose, and a film only a cell or two wide comes out round instead of
-    /// taking the grid's square.</summary>
-    private static Vector4 Spline(float t) {
-        var u = 1f - t;
-        return new Vector4(u * u * u, 3f * t * t * t - 6f * t * t + 4f, -3f * t * t * t + 3f * t * t + 3f * t + 1f,
-            t * t * t) / 6f;
+    /// <summary>Gaussian weights of the four cells around a texel <paramref name="t"/> past the second.
+    /// The product of two is round, so a film only a cell or two wide comes out as a disc rather than the grid's
+    /// square, and they sum to one, so the film keeps its dose.</summary>
+    private static Vector4 FilmWeights(float t) {
+        static float Weight(float d) => Mathf.Exp(-d * d / (2f * FilmSpread * FilmSpread));
+        var w = new Vector4(Weight(t + 1f), Weight(t), Weight(1f - t), Weight(2f - t));
+        return w / (w.X + w.Y + w.Z + w.W);
     }
 
     /// <summary>

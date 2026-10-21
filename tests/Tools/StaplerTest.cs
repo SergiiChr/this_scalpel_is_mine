@@ -96,7 +96,7 @@ public class StaplerTest {
         await driver.PlayerPutsDown();
         // Back at the patient, to see the result from where the surgeon works.
         await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
-        await driver.Capture("stapled", "the cut stapled shut, staples square across it, seen from where the surgeon works");
+        await driver.Capture("stapled", "the cut stapled shut, staples square across it in the blood pooled round the seam, seen from where the surgeon works");
         await session.Finish(BudgetOverride);
     }
 
@@ -142,7 +142,7 @@ public class StaplerTest {
         await driver.PlayerPutsDown();
         // Back at the patient, to see the result from where the surgeon works.
         await driver.PlayerWalksTo(driver.SitePoint(wound.Midpoint));
-        await driver.Capture("stapled", "staples in both the muscle and the skin, the skin ones square across the cut");
+        await driver.Capture("stapled", "staples in both the muscle and the skin, the skin ones square across the cut, the blood pushed into pools either side of the seam");
         await session.Finish(BudgetOverride);
     }
 

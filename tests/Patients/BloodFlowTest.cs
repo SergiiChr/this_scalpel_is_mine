@@ -106,7 +106,7 @@ public class BloodFlowTest {
                 return Task.CompletedTask;
             });
         }
-        await driver.Capture("flowing", "connected spreading wet patches and broad downhill streams, dense blood at the supplies, soft edges; no isolated wiry tendrils or repeated bright ticks");
+        await driver.Capture("flowing", "the bleeds spread into connected pools round the supplies, dense blood at the supplies, a sharp edge with a lighter rim; no isolated wiry tendrils or repeated bright ticks");
         blood.Sources.Clear();
         driver.Note("surface supply stopped, trails settling");
         await AdvanceBlood(6f);
@@ -115,7 +115,7 @@ public class BloodFlowTest {
                 .IsGreater(freshCover * 1.5f);
             return Task.CompletedTask;
         });
-        await driver.Capture("settled", "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed");
+        await driver.Capture("settled", "the supply stopped: the pools stay where they spread, none of the significant bleed disappearing");
         if (scenario == "knife_back") {
             await driver.Unbudgeted(() => {
                 foreach (var pool in blood.GroundDeposits.Where(pool => pool.OnBed && Mathf.Abs(pool.Center.Y - BloodFlow.TableTop) < 0.001f)) {

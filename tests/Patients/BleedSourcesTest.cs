@@ -105,7 +105,7 @@ public class BleedSourcesTest {
             var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f && Blood(body, v.Points[0]) < 0.5f)
                 .Select(v => v.Points[0]).ToList();
             await driver.AssertAndCapture(unseen.Count == 0,
-                $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
+                $"every vessel bleeds into the film, the spots under the blood (unseen at {string.Join(", ", unseen)})", "many_vessels");
         });
         await session.Finish(BudgetOverride);
     }
@@ -134,7 +134,7 @@ public class BleedSourcesTest {
             .IsEqualApprox(PatientBody.SkinThickness, 0.0001f);
         AssertFloat(patient.CavityBloodMl).OverrideFailureMessage("none of it reaches the cavity").IsEqual(0f);
         await Frames.Seconds(1f);
-        await CloseUp(session, "on_fat", "the skin cut held open: blood pooled in the opening on the yellow fat under it", at);
+        await CloseUp(session, "on_fat", "the skin cut held open: blood in the opening on the yellow fat under it and pushed onto the skin either side", at);
 
         SurgeryState.SkinIsCut(patient, from, to, 0.5f);
         var deeper = await Frames.Until(() => PoolAt(body, at) is { } pool && pool.Floor > onFat.Floor, 10f);
@@ -143,7 +143,7 @@ public class BleedSourcesTest {
         AssertFloat(onMuscle!.Value.Floor).OverrideFailureMessage("on the muscle, under the fat")
             .IsEqualApprox(PatientBody.SkinThickness + body.FatThickness, 0.0001f);
         await Frames.Seconds(1f);
-        await CloseUp(session, "on_muscle", "cut through the fat too: the blood pooled lower in the opening, on the red muscle", at);
+        await CloseUp(session, "on_muscle", "cut through the fat too: the opening's floor dark with blood on the red muscle, blood on the skin either side", at);
 
         var full = await Frames.Until(() => PoolAt(body, at) is { Fill: >= 1f }, 120f);
         AssertBool(full).OverrideFailureMessage($"it fills ({PoolAt(body, at)?.Fill:0.00})").IsTrue();

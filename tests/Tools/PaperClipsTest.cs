@@ -56,7 +56,7 @@ public class PaperClipsTest {
         AssertBool(driver.Surgery.Hud.HandsLine.Contains("pull: closed"))
             .OverrideFailureMessage("the hand status reads the pull: " + driver.Surgery.Hud.HandsLine).IsTrue();
         await driver.AssertAndCapture(closed.Closure >= Patient.ClosedEnough,
-            $"the clips pulled closed shut the lower cut (closure {closed.Closure:0.00}), its edges meeting, the hand status reading closed",
+            $"the clips pulled closed shut the lower cut (closure {closed.Closure:0.00}), its edges meeting under the blood, the hand status reading closed",
             "clipped_closed");
 
         await driver.PlayerPullsThread("too tight");

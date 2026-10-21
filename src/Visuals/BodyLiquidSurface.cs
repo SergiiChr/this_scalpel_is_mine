@@ -197,6 +197,14 @@ internal sealed class BodyLiquidSurface {
             }
             points.Add(next);
         }
+        // Steepest descent across the model's flat faces flips from side to side along a crease between them.
+        // Relax the line back onto the surface so it reads as one rivulet instead of a zigzag.
+        for (var pass = 0; pass < 4; pass++) {
+            for (var i = 1; i < points.Count - 1; i++) {
+                var middle = (points[i - 1].At + points[i + 1].At) * 0.5f;
+                points[i] = Closest(points[i].At.Lerp(middle, 0.5f), points[i].Face);
+            }
+        }
         var samples = new Sample[points.Count];
         var length = 0f;
         for (var i = 1; i < points.Count; i++) { length += points[i].At.DistanceTo(points[i - 1].At); }

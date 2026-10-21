@@ -4,7 +4,7 @@ namespace Scalpel.Tests.Support;
 public static class SutureChecks {
     public static async Task CloseForearm(SurgeryDriver driver) {
         var session = await ToolSession.Attach(driver, "needle/forearm_skin",
-            untouchedDescription: "the cleaned forearm cut ready for stitching, no thread yet");
+            untouchedDescription: "the forearm cut ready for stitching, the blood it shed pooled round it, no thread yet");
         var patient = driver.Patient;
         var body = driver.Body;
         var tissue = body.Tissue;

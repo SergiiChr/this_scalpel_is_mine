@@ -67,7 +67,7 @@ public class GauzeTest {
             .IsLess(0.01f);
         AssertFloat(patient.LastingBleedRate)
             .OverrideFailureMessage("held only by gauze, it doesn't count as stopped for good").IsGreater(before * 0.9f);
-        await driver.Capture("held", "the gauze off, the cut still dry while the pressure holds");
+        await driver.Capture("held", "the gauze off while the pressure holds: no fresh pool round the cut, only the blood already lying in it");
 
         var back = await Frames.Until(() => cut.Bleeding > before * 0.9f, Wound.PressureFade + 6f);
         AssertBool(back).OverrideFailureMessage($"then the cut bleeds as before: {driver.Bleeders()}").IsTrue();
@@ -170,7 +170,7 @@ public class GauzeTest {
             .IsGreater(0.1f);
         AssertBool(vessel.LastingBleeding > 0.1f && cut.LastingBleeding > 0.1f)
             .OverrideFailureMessage($"but only while the pressure holds: {driver.Bleeders()}").IsTrue();
-        await driver.Capture("packed", "gauze packed into the middle of the opening, the edges beside it dry");
+        await driver.Capture("packed", "gauze packed into the middle of the opening, the edges beside it no longer bleeding, only earlier blood on the skin next to it");
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
         await session.Finish(BudgetOverride);
