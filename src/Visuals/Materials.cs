@@ -353,6 +353,7 @@ public static class Materials {
 
     public static ShaderMaterial SkinSite(Color tone, Texture2D woundTexture, Texture2D fluidTexture) {
         var material = new ShaderMaterial { Shader = Skin };
+        material.SetShaderParameter("blood_cover_depth", SurfaceBlood.CoverDepth);
         material.SetShaderParameter("skin_color", tone);
         // Lit like the body's skin around it (BodySkin()).
         var family = Families["skin"];

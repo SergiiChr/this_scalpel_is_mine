@@ -31,9 +31,8 @@ public class BleedSourcesTest {
         await Frames.Seconds(2f);
         AssertFloat(tiny.Bleeding).OverrideFailureMessage($"a tiny shallow cut bleeds a little: {driver.Bleeders()}")
             .IsBetween(0.001f, 0.05f);
-        var visible = await Frames.Until(() => Blood(body, tiny.BleedPoint) >= 0.5f, 60f);
-        AssertBool(visible).OverrideFailureMessage($"the supplied blood from a tiny shallow cut becomes visibly pooled at its source (coverage {Blood(body, tiny.BleedPoint)}, rate {tiny.Bleeding} ml/s, supplied {body.Blood.SurfaceSuppliedMl} ml)")
-            .IsTrue();
+        AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage($"the supplied blood from a tiny shallow cut is visibly pooled at its source after two seconds (coverage {Blood(body, tiny.BleedPoint)}, rate {tiny.Bleeding} ml/s, supplied {body.Blood.SurfaceSuppliedMl} ml)")
+            .IsGreater(0.5f);
         AssertString(Spot(body, tiny.BleedPoint)).OverrideFailureMessage("with no spot the cut would split across its lips").IsEqual("none");
         var puncture = SurgeryState.SkinIsPunctured(patient, new Vector2(0.3f, 0.4f), 0.05f);
         await Frames.Seconds(1f);

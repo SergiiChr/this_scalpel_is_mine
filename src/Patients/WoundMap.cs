@@ -45,6 +45,9 @@ public sealed class WoundMap {
     /// <summary>Cells per side of the coarse grid that remembers what's been painted into.</summary>
     private const int Cells = 16;
     private const int LayerCount = 4;
+    private const int BloodDepthLookupSteps = 8192;
+    private const float BloodDepthLookupMax = 8f;
+    private static readonly float[] BloodDepthCoverage = CreateBloodDepthCoverage();
 
     /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures by <see cref="Flush"/>.
     /// </summary>
@@ -60,21 +63,29 @@ public sealed class WoundMap {
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
     private readonly bool[][] _painted = new bool[LayerCount][];
     private readonly Image[] _images = new Image[LayerCount];
-    private readonly byte[] _bloodFilm;
+    private readonly float[] _filmSourceDepth;
+    private readonly float[] _filmRemovedDepth;
     private Rect2I _bloodFilmBounds;
     private byte[] _bloodSupport = [];
+    private readonly byte[] _filmPainted;
+    private bool _filmReductionAcknowledged;
+    private bool _filmReductionGlobal;
+    private bool[] _filmReductionCells = [];
+    private int _filmReductionResolution;
     internal int BloodRemovalVersion { get; private set; }
     private int[] _filmIndex = [];
     private float[] _filmFraction = [];
     private float[] _filmRow = [];
-    private byte[] _filmSamples = [];
+    private float[] _filmSamples = [];
     private bool[] _filmChangedRows = [];
     private bool[] _filmChanged = [];
     private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {
         Size = texels;
-        _bloodFilm = new byte[Size * Size];
+        _filmPainted = new byte[Size * Size];
+        _filmSourceDepth = new float[Size * Size];
+        _filmRemovedDepth = new float[Size * Size];
         Textures = new ImageTexture[LayerCount];
         for (var i = 0; i < LayerCount; i++) {
             _images[i] = Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8);
@@ -133,10 +144,53 @@ public sealed class WoundMap {
         }
     }
 
-    /// <summary>Resamples a continuous fluid film into the existing blood channel. Old deposits leave thin stains;
-    /// interpolation fills the space between cells without tiled disk outlines or allocating stamps per cell.</summary>
+    /// <summary>Convenience for direct map fixtures that reconcile a uniform reduction.</summary>
+    internal void AcknowledgeBloodFilmReduction() {
+        _filmReductionAcknowledged = true;
+        _filmReductionGlobal = true;
+    }
+
+    /// <summary>The solver consumed a wipe in selected cells. The next paint preserves fine holes only where those
+    /// cells contribute to the resampled physical depth.</summary>
+    internal void AcknowledgeBloodFilmReduction(ReadOnlySpan<bool> reducedCells, int resolution) {
+        if (_filmReductionCells.Length != reducedCells.Length) { _filmReductionCells = new bool[reducedCells.Length]; }
+        reducedCells.CopyTo(_filmReductionCells);
+        _filmReductionResolution = resolution;
+        _filmReductionAcknowledged = true;
+        _filmReductionGlobal = false;
+    }
+
+    /// <summary>Film volume tracks optical depth: coverage is 1 - exp(-depth), so a change in alpha is not the same
+    /// fraction of liquid at different densities.</summary>
+    internal static float FilmDepthFromCoverage(float coverage) =>
+        coverage >= 1f ? 8f : -Mathf.Log(Mathf.Max(1f - Mathf.Clamp(coverage, 0f, 1f), 1f / 255f));
+
+    private static float[] CreateBloodDepthCoverage() {
+        var values = new float[BloodDepthLookupSteps + 1];
+        for (var i = 0; i < values.Length; i++) {
+            values[i] = 1f - Mathf.Exp(-BloodDepthLookupMax * i / BloodDepthLookupSteps);
+        }
+        return values;
+    }
+
+    private static float BloodCoverageFromDepth(float depth) {
+        if (depth <= 0f) { return 0f; }
+        if (depth >= BloodDepthLookupMax) { return BloodDepthCoverage[^1]; }
+        var at = depth * (BloodDepthLookupSteps / BloodDepthLookupMax);
+        var from = (int)at;
+        return Mathf.Lerp(BloodDepthCoverage[from], BloodDepthCoverage[from + 1], at - from);
+    }
+
+    /// <summary>Resamples coverage values into the existing blood channel. The solver path uses
+    /// <see cref="PaintBloodFilmDepth"/> to interpolate optical depth before converting it to coverage.</summary>
+    internal void PaintBloodFilm(ReadOnlySpan<float> film, int resolution) => PaintBloodFilm(film, resolution, false);
+
+    /// <summary>Resamples physical optical depth into blood coverage, preserving dose when neighboring solver cells
+    /// have different densities.</summary>
+    internal void PaintBloodFilmDepth(ReadOnlySpan<float> depth, int resolution) => PaintBloodFilm(depth, resolution, true);
+
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
-    internal void PaintBloodFilm(ReadOnlySpan<float> film, int resolution) {
+    private void PaintBloodFilm(ReadOnlySpan<float> film, int resolution, bool isOpticalDepth) {
         var left = resolution;
         var right = -1;
         var top = resolution;
@@ -155,7 +209,7 @@ public sealed class WoundMap {
         var reset = _filmRow.Length != resolution;
         if (reset) {
             _filmRow = new float[resolution];
-            _filmSamples = new byte[resolution * resolution];
+            _filmSamples = new float[resolution * resolution];
             _filmChangedRows = new bool[resolution];
             _filmChanged = new bool[resolution * resolution];
             _filmPixelStart = Enumerable.Repeat(Size, resolution).ToArray();
@@ -173,11 +227,26 @@ public sealed class WoundMap {
         for (var y = 0; y < resolution; y++) {
             for (var x = 0; x < resolution; x++) {
                 var i = y * resolution + x;
-                var sample = (byte)Math.Clamp(Mathf.RoundToInt(film[i] * 255f), 0, 255);
+                var value = Mathf.Max(film[i], 0f);
+                var sample = isOpticalDepth ? value : FilmDepthFromCoverage(value);
+                sample = Mathf.Round(sample * 4096f) / 4096f;
                 if (sample == _filmSamples[i]) { continue; }
                 _filmSamples[i] = sample;
                 _filmChanged[i] = true;
                 _filmChangedRows[y] = true;
+            }
+        }
+        if (_filmReductionAcknowledged && _filmReductionGlobal) {
+            Array.Fill(_filmChanged, true);
+            Array.Fill(_filmChangedRows, true);
+        } else if (_filmReductionAcknowledged && _filmReductionResolution == resolution) {
+            for (var y = 0; y < resolution; y++) {
+                var row = y * resolution;
+                for (var x = 0; x < resolution; x++) {
+                    if (!_filmReductionCells[row + x]) { continue; }
+                    _filmChanged[row + x] = true;
+                    _filmChangedRows[y] = true;
+                }
             }
         }
         var current = right < left ? new Rect2I() : new Rect2I(
@@ -203,20 +272,51 @@ public sealed class WoundMap {
                 if (!_filmChanged[cell] && !_filmChanged[cell + 1]
                     && !_filmChanged[cell + resolution] && !_filmChanged[cell + resolution + 1]) { continue; }
                 for (var x = Math.Max(fromX, _filmPixelStart[ix]); x < Math.Min(toX, _filmPixelStart[ix + 1]); x++) {
-                    var amount = (byte)Math.Clamp(Mathf.RoundToInt(Mathf.Lerp(_filmRow[ix], _filmRow[ix + 1], _filmFraction[x])), 0, 255);
+                    var depth = Mathf.Max(Mathf.Lerp(_filmRow[ix], _filmRow[ix + 1], _filmFraction[x]), 0f);
                     var i = (y * Size + x) * 4 + Blood;
                     var pixel = y * Size + x;
-                    if (_bloodSupport.Length > 0) { amount = (byte)(amount * _bloodSupport[pixel] / 255); }
-                    var previous = _bloodFilm[pixel];
-                    // Respect paint from other systems, and never restore a wipe smaller than one solver cell.
-                    var under = data[i] > previous ? data[i] : Math.Min((int)data[i], 30);
-                    _bloodFilm[pixel] = amount;
-                    if (previous > 0 && data[i] < previous) {
-                        // Keep the raw previous film as the reference. Only newly arriving liquid can refill a fine wipe.
-                        amount = (byte)(Math.Max(0, (int)amount - previous)
-                            + Math.Min((int)amount, previous) * data[i] / previous);
+                    var support = _bloodSupport.Length > 0 ? _bloodSupport[pixel] : byte.MaxValue;
+                    var paintedBefore = _filmPainted[pixel];
+                    var previousSourceDepth = _filmSourceDepth[pixel];
+                    var previousShownDepth = Math.Max(0f, previousSourceDepth - _filmRemovedDepth[pixel]);
+                    var reductionAcknowledged = _filmReductionAcknowledged && (_filmReductionGlobal
+                        || _filmReductionResolution == resolution && FilmReductionTouches(x, y, resolution));
+                    var externallyWiped = support > 0 && data[i] < paintedBefore;
+                    if (depth <= 0f) {
+                        _filmRemovedDepth[pixel] = 0f;
+                    } else if (externallyWiped) {
+                        var unmasked = Mathf.Clamp(data[i] / (float)support, 0f, 1f);
+                        var wantedDepth = Math.Min(previousShownDepth, FilmDepthFromCoverage(unmasked));
+                        previousShownDepth = wantedDepth;
+                        _filmRemovedDepth[pixel] = reductionAcknowledged && depth > 0f
+                            ? depth - wantedDepth
+                            : previousSourceDepth - wantedDepth;
+                    } else if (reductionAcknowledged) {
+                        // Reconciliation already consumed this coarse volume reduction. Keep the fine-pixel
+                        // appearance and represent any compensation as a signed optical-depth deficit.
+                        _filmRemovedDepth[pixel] = depth - previousShownDepth;
+                    } else if (depth < previousSourceDepth && previousSourceDepth > 0f) {
+                        // Ordinary transport changes the source field without a wipe; retain the fine wipe pattern
+                        // in proportion to the physical source that remains.
+                        _filmRemovedDepth[pixel] *= depth / previousSourceDepth;
                     }
-                    var next = (byte)Math.Max(amount, under);
+                    if (!isOpticalDepth && depth > previousSourceDepth && _filmRemovedDepth[pixel] > 0f) {
+                        // The direct coverage API is also used by fixtures to model newly supplied film. Preserve
+                        // its legacy additive-alpha behavior while converting the result back to physical depth.
+                        var oldCoverage = BloodCoverageFromDepth(previousShownDepth);
+                        var oldSourceCoverage = BloodCoverageFromDepth(previousSourceDepth);
+                        var newSourceCoverage = BloodCoverageFromDepth(depth);
+                        var shownCoverage = Mathf.Clamp(oldCoverage + newSourceCoverage - oldSourceCoverage, 0f, 1f);
+                        _filmRemovedDepth[pixel] = depth - FilmDepthFromCoverage(shownCoverage);
+                    }
+                    var shownDepth = Math.Max(0f, depth - _filmRemovedDepth[pixel]);
+                    var incoming = (byte)(Math.Clamp(Mathf.RoundToInt(BloodCoverageFromDepth(shownDepth) * 255f), 0, 255)
+                        * support / 255);
+                    // Respect paint from other systems, and keep their thin residual stain when the film moves.
+                    var under = data[i] > paintedBefore ? data[i] : Math.Min((int)data[i], 30);
+                    var next = (byte)Math.Max(incoming, under);
+                    _filmPainted[pixel] = next;
+                    _filmSourceDepth[pixel] = depth;
                     if (next == data[i]) { continue; }
                     data[i] = next;
                     painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
@@ -224,6 +324,16 @@ public sealed class WoundMap {
                 }
             }
         }
+        _filmReductionAcknowledged = false;
+        _filmReductionGlobal = false;
+    }
+
+    private bool FilmReductionTouches(int x, int y, int resolution) {
+        var rx = _filmIndex[x];
+        var ry = _filmIndex[y];
+        var row = ry * resolution + rx;
+        return _filmReductionCells[row] || _filmReductionCells[row + 1]
+            || _filmReductionCells[row + resolution] || _filmReductionCells[row + resolution + 1];
     }
 
     /// <summary>

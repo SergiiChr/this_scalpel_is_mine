@@ -86,6 +86,9 @@ public static class SutureChecks {
         await Frames.Seconds(1f);
         AssertBool(patient.SutureDone(thread) && needle.Suture.Thread == 0).OverrideFailureMessage("a long hold ties the thread off")
             .IsTrue();
+        AssertBool(body.Blood.Sources.Any(source => source.Rate > 0f && source.Uv.IsEqualApprox(wound.BleedPoint)))
+            .OverrideFailureMessage("one second after tie-off the closed wound supplies no fresh blood, while existing surface liquid may cross it")
+            .IsFalse();
         AssertFloat(tissue.GapAlong(wound.Points, 0.03f, TissueDepth.Skin))
             .OverrideFailureMessage("the tied off thread holds the edges together").IsLess(TissueSim.OpenGap);
         AssertFloat(wound.Closure).OverrideFailureMessage("so the cut is closed along its whole length").IsGreater(0.99f);

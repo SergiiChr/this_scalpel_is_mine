@@ -101,7 +101,7 @@ public partial class Patient {
         var onSite = probe.Zone == SiteZone.Site;
         if (onSite) {
             Paint(WoundMap.Layer.Wounds, WoundMap.Cut, Body.WorldToUv(from), probe.Uv, 0.003f, 0.3f, WoundMap.Mode.Max);
-            Paint(WoundMap.Layer.Fluids, WoundMap.Blood, probe.Uv, probe.Uv, 0.01f, 0.5f, WoundMap.Mode.Max);
+            Paint(WoundMap.Layer.Fluids, WoundMap.Blood, probe.Uv, probe.Uv, 0.01f, 0.5f, WoundMap.Mode.Max, soft: true);
         }
         Hurt(0.15f, onSite ? probe.Uv : null);
         Session.Effect(ToolEffect.Bead, from, 0);
@@ -395,6 +395,7 @@ public partial class Patient {
     /// <paramref name="path"/> (uv). A separate seam mask reveals that line without overloading closure quality in the
     /// stitch channel.</summary>
     private void PaintSeam(IReadOnlyList<Vector2> path) {
+        DisplaceSeamFilm(path.ToArray(), 0.026f);
         for (var i = 0; i < path.Count; i++) {
             var previous = path[Math.Max(i - 1, 0)];
             Paint(WoundMap.Layer.Wounds, WoundMap.Cut, previous, path[i], 0.012f, 0f, WoundMap.Mode.Min);
@@ -591,7 +592,7 @@ public partial class Patient {
     /// bleed no faster: they're sealed together.</summary>
     private void StapleBleed(Wound wound, Vector2 uv) {
         wound.Nicked = StapleNick;
-        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.02f, 0.9f, WoundMap.Mode.Max);
+        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.02f, 0.9f, WoundMap.Mode.Max, soft: true);
         Session.Sound("blood_spurt", Body.UvToWorld(uv));
         Session.Announce("The staple went through a vessel. It's bleeding.", true);
     }
@@ -971,7 +972,7 @@ public partial class Patient {
         }
         _debrided[cell] = true;
         Paint(WoundMap.Layer.Wounds, WoundMap.Burn, uv, uv, 0.8f / Grid, 0.45f, WoundMap.Mode.Min);
-        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.5f / Grid, 0.4f, WoundMap.Mode.Max);
+        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.5f / Grid, 0.4f, WoundMap.Mode.Max, soft: true);
         Hurt(0.2f, uv);
     }
 

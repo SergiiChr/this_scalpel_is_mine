@@ -367,6 +367,8 @@ public sealed partial class TissueSim {
     /// <summary>Skin triangles (particle indices) and, per bin, the first index in them of each triangle overlapping
     /// it.</summary>
     private int[] _binTriangles = [];
+    private int _binTriangleCount;
+    private bool[] _triangleOpen = [];
     private readonly List<int>[] _bins = [.. Enumerable.Range(0, Bins * Bins).Select(_ => new List<int>())];
     private (int Topology, int Steps) _binsFor = (-1, -1);
     /// <summary>True for skin cut free from what's around it (see StayAboveFloor()), for the topology it was worked
@@ -1648,32 +1650,42 @@ public sealed partial class TissueSim {
     /// <paramref name="depth"/> deep and pulled open, and minus triangles off the body. The meshes split triangles
     /// along the cut instead (PatientBody), this is what tests and contact count as open.</summary>
     public int[] Triangles(TissueDepth depth) {
-        var open = new bool[_springCount];
+        var triangles = new int[TriangleCount * 3];
+        FillTriangles(depth, triangles, out var count);
+        if (count != triangles.Length) { Array.Resize(ref triangles, count); }
+        return triangles;
+    }
+
+    private void FillTriangles(TissueDepth depth, int[] triangles, out int count) {
+        count = 0;
+        if (_triangleOpen.Length != _springCount) { _triangleOpen = new bool[_springCount]; }
+        else { Array.Clear(_triangleOpen); }
         foreach (var s in _severed) {
             if (DepthOf(s) >= depth && GapOf(s) > 0f) {
-                open[s] = true;
+                _triangleOpen[s] = true;
             }
         }
         var hanging = HangingOff();
         // Where skin was taken off, the skin layer has a hole; the layers under it are whole.
-        var gone = depth <= TissueDepth.Skin ? Excised : new bool[Rest.Length];
-        var triangles = new List<int>();
         for (var j = 0; j < ResY; j++) {
             for (var i = 0; i < ResX; i++) {
                 var a = Index(i, j);
                 var c = a + ResX + 1;
-                if (gone[a] || gone[a + 1] || gone[c + 1] || gone[c]) {
+                if (depth <= TissueDepth.Skin && (Excised[a] || Excised[a + 1] || Excised[c + 1] || Excised[c])) {
                     continue;
                 }
-                if (!(open[SpringRight[a]] || open[SpringDiag[a]] || open[SpringDown[a]] || hanging[a] || hanging[a + 1] || hanging[c])) {
-                    triangles.AddRange([a, a + 1, c]);
+                if (!(_triangleOpen[SpringRight[a]] || _triangleOpen[SpringDiag[a]] || _triangleOpen[SpringDown[a]] || hanging[a] || hanging[a + 1] || hanging[c])) {
+                    triangles[count++] = a;
+                    triangles[count++] = a + 1;
+                    triangles[count++] = c;
                 }
-                if (!(open[SpringDown[a + 1]] || open[SpringRight[c]] || open[SpringDiag[a]] || hanging[a + 1] || hanging[c + 1] || hanging[c])) {
-                    triangles.AddRange([a + 1, c + 1, c]);
+                if (!(_triangleOpen[SpringDown[a + 1]] || _triangleOpen[SpringRight[c]] || _triangleOpen[SpringDiag[a]] || hanging[a + 1] || hanging[c + 1] || hanging[c])) {
+                    triangles[count++] = a + 1;
+                    triangles[count++] = c + 1;
+                    triangles[count++] = c;
                 }
             }
         }
-        return [.. triangles];
     }
 
     /// <summary>Triangles in the whole grid, for comparing with <see cref="Triangles"/>.</summary>
@@ -2470,12 +2482,14 @@ public sealed partial class TissueSim {
             return;
         }
         _binsFor = (TopologyVersion, StepsDone);
-        _binTriangles = Triangles(TissueDepth.Skin);
+        var capacity = TriangleCount * 3;
+        if (_binTriangles.Length < capacity) { _binTriangles = new int[capacity]; }
+        FillTriangles(TissueDepth.Skin, _binTriangles, out _binTriangleCount);
         foreach (var bin in _bins) {
             bin.Clear();
         }
         var last = new Vector2I(Bins - 1, Bins - 1);
-        for (var t = 0; t < _binTriangles.Length; t += 3) {
+        for (var t = 0; t < _binTriangleCount; t += 3) {
             var low = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             var high = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
             for (var n = 0; n < 3; n++) {

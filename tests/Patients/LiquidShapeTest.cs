@@ -18,25 +18,27 @@ public class LiquidShapeTest {
     public void WorkerFailuresAreConsumedOnceAndAllowLaterWork() {
         var source = new TaskCompletionSource<int>();
         Task<int>? pending = source.Task;
-        AssertBool(WorkerTask.TryTake(ref pending, out _)).OverrideFailureMessage("unfinished work keeps its buffer ownership").IsFalse();
+        AssertBool(WorkerTask.TryTakeResult(ref pending, out _, out _))
+            .OverrideFailureMessage("unfinished work keeps ownership of its captured buffers").IsFalse();
         AssertObject(pending).IsSame(source.Task);
         var failure = new InvalidOperationException("failed liquid build");
         source.SetException(failure);
-        AssertBool(WorkerTask.TryTake(ref pending, out var completed)).IsTrue();
-        Exception? caught = null;
-        try { _ = completed!.GetAwaiter().GetResult(); } catch (InvalidOperationException error) { caught = error; }
+        AssertBool(WorkerTask.TryTakeResult(ref pending, out var failedValue, out var caught)).IsTrue();
         AssertObject(caught).IsSame(failure);
-        AssertObject(pending).OverrideFailureMessage("a failed worker no longer blocks the next frame").IsNull();
-        AssertBool(WorkerTask.TryTake(ref pending, out _)).OverrideFailureMessage("the same fault cannot be consumed again").IsFalse();
+        AssertInt(failedValue).OverrideFailureMessage("a failed value task returns the type default")
+            .IsEqual(0);
+        AssertObject(pending).OverrideFailureMessage("the failed handle is detached after one observation").IsNull();
+        AssertBool(WorkerTask.TryTakeResult(ref pending, out _, out _))
+            .OverrideFailureMessage("a fault cannot be consumed a second time").IsFalse();
         pending = Task.FromResult(7);
-        AssertBool(WorkerTask.TryTake(ref pending, out var replacement)).IsTrue();
-        AssertInt(replacement!.GetAwaiter().GetResult()).IsEqual(7);
+        AssertBool(WorkerTask.TryTakeResult(ref pending, out var value, out var successFailure)).IsTrue();
+        AssertInt(value!).IsEqual(7);
+        AssertObject(successFailure).IsNull();
         Task? draw = Task.FromException(failure);
-        AssertBool(WorkerTask.TryTake(ref draw, out var failedDraw)).IsTrue();
-        caught = null;
-        try { failedDraw!.GetAwaiter().GetResult(); } catch (InvalidOperationException error) { caught = error; }
-        AssertObject(caught).IsSame(failure);
-        AssertObject(draw).OverrideFailureMessage("mesh-only workers follow the same fault-safe ownership rule").IsNull();
+        AssertBool(WorkerTask.TryTakeTaskResult(ref draw, out var drawFailure)).IsTrue();
+        AssertObject(drawFailure).OverrideFailureMessage("non-generic draw faults are observed without throwing")
+            .IsSame(failure);
+        AssertObject(draw).OverrideFailureMessage("mesh-only worker handles are also detached").IsNull();
     }
 
     [TestCase]
@@ -154,19 +156,87 @@ public class LiquidShapeTest {
         var edge = curved ? -0.0003f : 0f;
         var perimeter = 2f * new Vector2(Width * 0.5f, edge).Length();
         var capacity = perimeter * Length * scale * scale * BodyLiquidSurface.FilmDepth * 1000000f;
+        BodyLiquidSurface.SkinWeights Bone(int index) => new(new Vector4I(index, 0, 0, 0), new Vector4(1f, 0f, 0f, 0f));
         BodyLiquidSurface.Sample Sample(float z, float ml) => new(new Vector3(0f, 0f, z), Vector3.Up,
-            new Vector3(-Width * 0.5f, edge, z), new Vector3(Width * 0.5f, edge, z), Vector3.Up, Vector3.Up, z, ml, Width);
-        var path = new BodyLiquidSurface.Path([Sample(0f, 0f), Sample(Length, capacity)], false, scale);
+            new Vector3(-Width * 0.5f, edge, z), new Vector3(Width * 0.5f, edge, z), Vector3.Up, Vector3.Up,
+            Bone(0), Bone(1), Bone(2), z, ml, Width);
+        var start = Sample(0f, 0f);
+        var middle = Sample(Length * 0.5f, 0f);
+        var end = Sample(Length, 0f);
+        middle = middle with { Ml = BodyLiquidSurface.Path.SegmentMl(start, middle, 1f, scale) };
+        end = end with { Ml = middle.Ml + BodyLiquidSurface.Path.SegmentMl(middle, end, 1f, scale) };
+        var path = new BodyLiquidSurface.Path([start, middle, end], false, scale);
         AssertFloat(path.VolumeAt(0f)).OverrideFailureMessage("a curved cross-section does not invent volume before the front advances").IsEqual(0f);
-        foreach (var fraction in new[] { 0.1f, 0.5f, 0.999f, 1f }) {
-            var surface = new LiquidSurface(withUv: true);
+        foreach (var fraction in new[] { 0.1f, 0.5f, 0.75f, 1f }) {
             var distance = Length * fraction;
-            path.Draw(surface, distance);
-            using var mesh = surface.Upload();
-            using var arrays = mesh.SurfaceGetArrays(0);
+            var flat = new LiquidSurface(withUv: true);
+            var skinned = new LiquidSurface(withUv: true, withSkin: true, withUv2: true);
+            path.Draw(flat, distance);
+            path.Draw(skinned, distance, Transform3D.Identity, Vector2.One);
+            using var flatMesh = flat.Upload();
+            using var indexedMesh = skinned.Upload();
+            using var arrays = flatMesh.SurfaceGetArrays(0);
+            using var indexedArrays = indexedMesh.SurfaceGetArrays(0);
             var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
             var uv = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            var flatNormals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+            var flatFaces = flatMesh.GetFaces();
+            var indexedVertices = indexedArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var indexedNormals = indexedArrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+            var indexedUv = indexedArrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            var indexedUv2 = indexedArrays[(int)Mesh.ArrayType.TexUV2].AsVector2Array();
+            var indices = indexedArrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            var indexedFaces = indexedMesh.GetFaces();
+            var bones = indexedArrays[(int)Mesh.ArrayType.Bones].AsInt32Array();
+            var skinWeights = indexedArrays[(int)Mesh.ArrayType.Weights].AsFloat32Array();
             AssertInt(uv.Length).IsEqual(vertices.Length);
+            AssertInt(indices.Length).OverrideFailureMessage("the indexed runoff strip expands to the same triangle count as flat facets")
+                .IsEqual(flatFaces.Length);
+            AssertInt(indexedFaces.Length).OverrideFailureMessage("both meshes expose the same actual triangle-expanded face vertices")
+                .IsEqual(flatFaces.Length);
+            AssertInt(indexedVertices.Length).OverrideFailureMessage("shared rows use at most half as many uploaded vertices as flat facets")
+                .IsLessEqual(vertices.Length / 2);
+            AssertInt(indexedUv2.Length).OverrideFailureMessage("indexed runoff retains the site-map UV2 at every shared row vertex")
+                .IsEqual(indexedVertices.Length);
+            AssertInt(indexedArrays[(int)Mesh.ArrayType.Bones].AsInt32Array().Length)
+                .OverrideFailureMessage("each indexed runoff vertex carries four skin bind indices").IsEqual(indexedVertices.Length * 4);
+            AssertInt(skinWeights.Length)
+                .OverrideFailureMessage("each indexed runoff vertex carries four skin weights").IsEqual(indexedVertices.Length * 4);
+            var segmentFraction = fraction <= 0.5f ? fraction * 2f : (fraction - 0.5f) * 2f;
+            var frontWidth = Mathf.SmoothStep(0f, 1f, segmentFraction);
+            var frontLeft = indexedVertices.Length - 3;
+            var frontRight = indexedVertices.Length - 1;
+            float Influence(int vertex, int bone) {
+                var value = 0f;
+                for (var slot = 0; slot < 4; slot++) {
+                    if (bones[vertex * 4 + slot] == bone) { value += skinWeights[vertex * 4 + slot]; }
+                }
+                return value;
+            }
+            AssertFloat(Influence(frontLeft, 0)).OverrideFailureMessage("the partial left front blends from centre skin weights toward the full edge by the geometric smoothstep")
+                .IsEqualApprox(frontWidth, 0.00001f);
+            AssertFloat(Influence(frontLeft, 1)).OverrideFailureMessage("the partial left front retains the complementary centre skin weight")
+                .IsEqualApprox(1f - frontWidth, 0.00001f);
+            AssertFloat(Influence(frontRight, 2)).OverrideFailureMessage("the partial right front blends from centre skin weights toward its full edge by the geometric smoothstep")
+                .IsEqualApprox(frontWidth, 0.00001f);
+            AssertFloat(Influence(frontRight, 1)).OverrideFailureMessage("the partial right front retains the complementary centre skin weight")
+                .IsEqualApprox(1f - frontWidth, 0.00001f);
+            for (var i = 0; i < flatFaces.Length; i++) {
+                var flatVertex = flatFaces[i];
+                AssertFloat(indexedFaces[i].DistanceTo(flatVertex))
+                    .OverrideFailureMessage($"indexed and flat meshes expose identical actual face positions at vertex {i}")
+                    .IsLess(0.000001f);
+                var indexedVertexIndex = indices[i];
+                AssertFloat(indexedVertices[indexedVertexIndex].DistanceTo(vertices[i]))
+                    .OverrideFailureMessage($"indexed vertex expansion matches flat surface-array order at vertex {i}")
+                    .IsLess(0.000001f);
+                AssertFloat(indexedNormals[indexedVertexIndex].DistanceTo(flatNormals[i]))
+                    .OverrideFailureMessage($"indexed and flat runoff triangles have identical normals at expanded vertex {i}")
+                    .IsLess(0.000001f);
+                AssertFloat(indexedUv[indexedVertexIndex].DistanceTo(uv[i]))
+                    .OverrideFailureMessage($"indexed and flat runoff triangles have identical cross-section UVs at expanded vertex {i}")
+                    .IsLess(0.000001f);
+            }
             var area = 0f;
             for (var i = 0; i < vertices.Length; i += 3) {
                 var triangle = (vertices[i + 1] - vertices[i]).Cross(vertices[i + 2] - vertices[i]).Length() * 0.5f;

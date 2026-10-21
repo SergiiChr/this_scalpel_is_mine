@@ -15,7 +15,8 @@ uniform float grime = 0.12;
 uniform float pallor = 0.0;
 // Attached runoff only: a rounded cross-section, whose mean is its conserved film depth.
 instance uniform float rivulet_depth = 0.0;
-instance uniform vec2 rivulet_site_size = vec2(1.0);
+// Shared with the volume-backed surface film through Materials.SkinSite.
+uniform float blood_cover_depth = 0.00015;
 // Set from Materials.FAMILIES.skin, like the body's skin (toon.gdshader).
 uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
@@ -49,9 +50,10 @@ float noise(vec2 p) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	map_uv = rivulet_depth > 0.0 ? VERTEX.xz / rivulet_site_size + 0.5 : UV;
-	site_up = normalize((VIEW_MATRIX * MODEL_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
+	map_uv = rivulet_depth > 0.0 ? UV2 : UV;
+	vec3 site_normal = rivulet_depth > 0.0 ? (site_to_model * vec4(0.0, 1.0, 0.0, 0.0)).xyz : vec3(0.0, 1.0, 0.0);
+	site_up = normalize((VIEW_MATRIX * MODEL_MATRIX * vec4(site_normal, 0.0)).xyz);
+	local_pos = rivulet_depth > 0.0 ? VERTEX : (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
 	// Not raised by bruises, burns or blood, like the body's skin (toon.gdshader): raised, this sheet would lift off
 	// the walls down its cuts and off the layers under it, which don't rise with it, and step up where it meets the
 	// body. Blood reads as standing on it from its lighting (blood_normal) alone. Cuts don't sink: the mesh itself is
@@ -84,7 +86,7 @@ void fragment() {
 		// Integral of (1 - x*x)^2 on [-1, 1] is 16/15: peak 15/8 preserves the mean depth.
 		profile_depth = 1.875 * rivulet_depth * section * section;
 		// Add the tail's optical depth to the actual underlying film, retaining already-wet rims.
-		f.r = 1.0 - (1.0 - f.r) * exp(-profile_depth / 0.0004);
+		f.r = 1.0 - (1.0 - f.r) * exp(-profile_depth / blood_cover_depth);
 	}
 	// Pigment can break up at the rim without turning that grain into separate shiny bumps.
 	float thickness = max(profile_depth, base_thickness);

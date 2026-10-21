@@ -34,6 +34,7 @@ public partial class PatientBody {
         public TriangleMesh Mesh { get; } = new();
         public List<Vector3> Faces { get; } = [];
         public List<Vector3> Normals { get; } = [];
+        public List<BodyLiquidSurface.SkinWeights> SkinWeights { get; } = [];
     }
 
     /// <summary>Where a ray down the site's normal meets the body model: its position, the model's smooth normal there
@@ -147,7 +148,9 @@ public partial class PatientBody {
         _bodyRoot.AddChild(Site);
 
         var parts = ModelParts(model);
-        LiquidContact = new BodyLiquidSurface(parts.SelectMany(p => p.Faces).ToArray(), parts.SelectMany(p => p.Normals).ToArray());
+        var skinPart = parts[0];
+        LiquidContact = new BodyLiquidSurface(skinPart.Faces, skinPart.Normals, skinPart.SkinWeights, SiteSize,
+            SkinMesh.GlobalTransform.AffineInverse() * Site.GlobalTransform);
         var thickness = MeasureSite(parts);
         MeasureLimbBones();
         // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.
@@ -201,9 +204,31 @@ public partial class PatientBody {
             var arrays = mesh.Mesh.SurfaceGetArrays(s);
             var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
             var normals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
-            foreach (var i in arrays[(int)Mesh.ArrayType.Index].AsInt32Array()) {
+            var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            var bones = arrays[(int)Mesh.ArrayType.Bones].AsInt32Array();
+            var weights = arrays[(int)Mesh.ArrayType.Weights].AsFloat32Array();
+            var perVertex = vertices.Length == 0 ? 0 : Math.Min(bones.Length, weights.Length) / vertices.Length;
+            var influences = new BodyLiquidSurface.SkinWeights[vertices.Length];
+            for (var v = 0; v < vertices.Length; v++) {
+                var bone = new Vector4I(); var weight = Vector4.Zero;
+                var top = Enumerable.Range(0, perVertex).Select(j => v * perVertex + j)
+                    .Where(n => weights[n] > 0f).OrderByDescending(n => weights[n]).Take(4).ToArray();
+                for (var j = 0; j < top.Length; j++) {
+                    var n = top[j];
+                    switch (j) {
+                        case 0: bone.X = bones[n]; weight.X = weights[n]; break;
+                        case 1: bone.Y = bones[n]; weight.Y = weights[n]; break;
+                        case 2: bone.Z = bones[n]; weight.Z = weights[n]; break;
+                        case 3: bone.W = bones[n]; weight.W = weights[n]; break;
+                    }
+                }
+                if (top.Length == 0) { weight.X = 1f; }
+                influences[v] = new BodyLiquidSurface.SkinWeights(bone, weight);
+            }
+            foreach (var i in indices) {
                 part.Faces.Add(toSite * vertices[i]);
                 part.Normals.Add((toSite.Basis * normals[i]).Normalized());
+                part.SkinWeights.Add(influences[i]);
             }
         }
         part.Mesh.CreateFromFaces([.. part.Faces]);

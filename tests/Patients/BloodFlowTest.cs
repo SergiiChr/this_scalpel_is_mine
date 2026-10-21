@@ -119,10 +119,9 @@ public class BloodFlowTest {
         await driver.Capture("settled", "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed");
         if (scenario == "knife_back") {
             await driver.Unbudgeted(() => {
-                foreach (var mesh in blood.GetChildren().OfType<MeshInstance3D>().Where(mesh => mesh.TopLevel && Mathf.Abs(mesh.GlobalPosition.Y - BloodFlow.TableTop) < 0.001f && mesh.Mesh.GetSurfaceCount() > 0)) {
-                    var vertices = mesh.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
-                    foreach (var vertex in vertices) {
-                        var world = mesh.ToGlobal(vertex);
+                foreach (var pool in blood.GroundDeposits.Where(pool => pool.OnBed && Mathf.Abs(pool.Center.Y - BloodFlow.TableTop) < 0.001f)) {
+                    foreach (var vertex in pool.TopVertices) {
+                        var world = pool.Center + vertex;
                         var supported = driver.Surgery.Room.BedSurface.HeightAt(new Vector2(world.X, world.Z));
                         AssertBool(supported.HasValue).OverrideFailureMessage("the back's deposited pool remains over the actual mattress").IsTrue();
                         AssertFloat(world.Y).OverrideFailureMessage("the mattress pool stays on the mattress, independent of patient orientation")
@@ -137,14 +136,20 @@ public class BloodFlowTest {
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
                 AssertBool(checkedDelayedBed).OverrideFailureMessage("attached narrowing runoff is visible before the first bed deposit").IsTrue();
-                var rendered = driver.Body.Site.GetNode<MeshInstance3D>("BodyRunoff");
+                var rendered = driver.Body.SkinMesh.GetParent().GetNode<MeshInstance3D>("BodyRunoff");
                 AssertObject(rendered.MaterialOverride).OverrideFailureMessage("runoff shares the live skin material").IsSame(driver.Body.SkinMaterial!);
+                AssertFloat((float)driver.Body.SkinMaterial!.GetShaderParameter("blood_cover_depth"))
+                    .OverrideFailureMessage("attached runoff and the volume-backed film use the same optical depth").IsEqual(SurfaceBlood.CoverDepth);
                 AssertFloat((float)rendered.GetInstanceShaderParameter("rivulet_depth"))
                     .OverrideFailureMessage("the actual runoff material uses its conserved mean film depth").IsEqual(BodyLiquidSurface.FilmDepth);
                 using var arrays = rendered.Mesh.SurfaceGetArrays(0);
+                var vertexCount = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length;
                 AssertInt(arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array().Length)
-                    .OverrideFailureMessage("the rendered tails carry their rounded cross-section coordinates")
-                    .IsEqual(arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length);
+                    .OverrideFailureMessage("the rendered tails carry their rounded cross-section coordinates").IsEqual(vertexCount);
+                AssertInt(arrays[(int)Mesh.ArrayType.TexUV2].AsVector2Array().Length)
+                    .OverrideFailureMessage("the rendered tails preserve the surgical site map coordinates in UV2").IsEqual(vertexCount);
+                AssertInt(arrays[(int)Mesh.ArrayType.Bones].AsInt32Array().Length)
+                    .OverrideFailureMessage("the rendered tails carry four skin influences per vertex").IsEqual(vertexCount * 4);
                 var paths = blood.ModelRunoff.Paths.Where(p => p.Length > 0.015f).ToArray();
                 AssertInt(paths.Length).OverrideFailureMessage("several model-attached paths carry runoff").IsGreater(1);
                 AssertBool(paths.Any(p => p.Samples.Any(s => !driver.Body.OnBody(driver.Body.WorldToUv(driver.Body.Site.ToGlobal(s.At))))))
@@ -160,7 +165,8 @@ public class BloodFlowTest {
                 return Task.CompletedTask;
             });
         }
-        AssertFloat(blood.SurfaceAccountedMl).OverrideFailureMessage("skin, attached streaks, queued liquid, drops and ground deposits conserve the supplied milliliters")
+        var accounted = blood.SurfaceAccountedMl;
+        AssertFloat(accounted).OverrideFailureMessage($"skin, attached streaks, queued liquid, drops and ground deposits conserve the supplied milliliters: {accounted:0.000} ml accounted of {blood.SurfaceSuppliedMl:0.000} ml supplied")
             .IsEqualApprox(blood.SurfaceSuppliedMl, 0.01f);
         AssertFloat(blood.ModelRunoff.VisibleMl).IsLessEqual(blood.ModelRunoff.HeldMl + 0.0001f);
         if (measureGpu) {
@@ -186,9 +192,11 @@ public class BloodFlowTest {
         }
         blood.Sources.Clear();
         AssertBool(sawSpurt).IsTrue();
-        AssertFloat(blood.SurfaceAccountedMl - beforeDose)
-            .OverrideFailureMessage("a later poured dose increases the accounted liquid inventory by exactly the added dose, including spurts")
-            .IsEqualApprox(blood.SurfaceSuppliedMl - beforeSupply, 0.01f);
+        var accountedDose = blood.SurfaceAccountedMl - beforeDose;
+        var suppliedDose = blood.SurfaceSuppliedMl - beforeSupply;
+        AssertFloat(accountedDose)
+            .OverrideFailureMessage($"a later poured dose increases the accounted liquid inventory by exactly the added dose, including spurts: {accountedDose:0.000} ml accounted of {suppliedDose:0.000} ml supplied")
+            .IsEqualApprox(suppliedDose, 0.01f);
         if (scenario == "hand_stitch") {
             // No supporting model is a real detachment case, even when there is only one finite dose.
             using var emptySurface = new ArrayMesh();
@@ -221,11 +229,18 @@ public class BloodFlowTest {
         patient.SetProcess(false);
         body.SetProcess(false);
 
-        var mesh = new MeshInstance3D { Mesh = LiquidSurface.Primed(withUv: true), MaterialOverride = body.SkinMaterial };
+        var skinMesh = body.SkinMesh;
+        var skeleton = skinMesh.GetNodeOrNull<Skeleton3D>(skinMesh.Skeleton)!;
+        var mesh = new MeshInstance3D {
+            Mesh = LiquidSurface.Primed(withUv: true, withSkin: true, withUv2: true),
+            MaterialOverride = body.SkinMaterial,
+            Skin = skinMesh.Skin,
+            Skeleton = skinMesh.Skeleton,
+            Transform = skinMesh.Transform,
+        };
         mesh.SetInstanceShaderParameter("rivulet_depth", BodyLiquidSurface.FilmDepth);
-        mesh.SetInstanceShaderParameter("rivulet_site_size", body.SiteSize);
-        site.AddChild(mesh);
-        var runoff = new BodyRunoff(body.LiquidContact, site, driver.Surgery.Room.BedSurface, mesh);
+        skinMesh.GetParent().AddChild(mesh);
+        var runoff = new BodyRunoff(body.LiquidContact, site, driver.Surgery.Room.BedSurface, mesh, skinMesh, skeleton, body.SiteSize);
         const float FrameDelta = 1f / 60f;
         var releasedMl = 0f;
         var suppliedMl = 0f;
@@ -262,8 +277,49 @@ public class BloodFlowTest {
         Add(firstUv, firstSource, 0.05f);
         var growing = await Until(() => runoff.HasGrowingStreak);
         AssertBool(growing).OverrideFailureMessage("the first model source forms a growing attached streak").IsTrue();
+        var uploaded = await Until(() => !runoff.DrawPending && mesh.Mesh.GetSurfaceCount() > 0
+            && mesh.Mesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length > 3);
+        AssertBool(uploaded).OverrideFailureMessage("the runoff worker uploaded skinned path geometry").IsTrue();
+        AssertObject(mesh.Skin).OverrideFailureMessage("the runoff renderer is bound to the source skin").IsSame(skinMesh.Skin);
+        AssertObject(mesh.Skeleton).OverrideFailureMessage("the runoff renderer is bound to the source skeleton").IsEqual(skinMesh.Skeleton);
+        using (var arrays = mesh.Mesh.SurfaceGetArrays(0)) {
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var bones = arrays[(int)Mesh.ArrayType.Bones].AsInt32Array();
+            var weights = arrays[(int)Mesh.ArrayType.Weights].AsFloat32Array();
+            AssertInt(bones.Length).OverrideFailureMessage("every runoff vertex carries four bone bindings").IsEqual(vertices.Length * 4);
+            AssertInt(weights.Length).OverrideFailureMessage("every runoff vertex carries four skin weights").IsEqual(vertices.Length * 4);
+            var sample = runoff.GrowingPath!.Samples[1];
+            var expectedLocal = body.LiquidContact.SiteToMesh * sample.At;
+            var vertexIndex = Enumerable.Range(0, vertices.Length).MinBy(index => vertices[index].DistanceSquaredTo(expectedLocal));
+            AssertFloat(vertices[vertexIndex].DistanceTo(expectedLocal))
+                .OverrideFailureMessage("the uploaded runoff vertex maps to the sampled original body surface point")
+                .IsLess(0.0001f);
+            var influence = new BodyLiquidSurface.SkinWeights(
+                new Vector4I(bones[vertexIndex * 4], bones[vertexIndex * 4 + 1], bones[vertexIndex * 4 + 2], bones[vertexIndex * 4 + 3]),
+                new Vector4(weights[vertexIndex * 4], weights[vertexIndex * 4 + 1], weights[vertexIndex * 4 + 2], weights[vertexIndex * 4 + 3]));
+            var pose = body.LiquidContact.CaptureSkinPose(skinMesh, skeleton);
+            var uploadedWorld = pose.Deform(vertices[vertexIndex], influence);
+            var sourceWorld = body.LiquidContact.Deform(sample.At, sample.AtSkin, skinMesh, skeleton);
+            AssertFloat(uploadedWorld.DistanceTo(sourceWorld))
+                .OverrideFailureMessage("the rendered runoff vertex deforms onto the same animated body-surface point")
+                .IsLess(0.0001f);
+        }
         var firstPath = runoff.GrowingPath!;
         var firstPaths = runoff.ActivePaths.ToArray();
+        var animatedSample = firstPath.Samples[^1];
+        var beforeLimbMotion = body.LiquidContact.Deform(animatedSample.At, animatedSample.AtSkin, skinMesh, skeleton);
+        var skin = skinMesh.Skin!;
+        var bind = animatedSample.AtSkin.Bones.X;
+        var weightedBone = skin.GetBindBone(bind);
+        var boneName = weightedBone >= 0 ? skeleton.GetBoneName(weightedBone).ToString() : skin.GetBindName(bind).ToString();
+        AssertBool(weightedBone >= 0 || boneName.ToString().Length > 0)
+            .OverrideFailureMessage("the attached streak endpoint retains its skin bone binding").IsTrue();
+        var limbRig = new BoneRig(skeleton);
+        limbRig.Rotate(boneName, new Basis(Vector3.Forward, 0.35f));
+        await Frames.NextProcess();
+        var afterLimbMotion = body.LiquidContact.Deform(animatedSample.At, animatedSample.AtSkin, skinMesh, skeleton);
+        AssertFloat(afterLimbMotion.DistanceTo(beforeLimbMotion))
+            .OverrideFailureMessage("the runoff endpoint follows the animated skin bone after its trace starts").IsGreater(0.001f);
         AssertInt(firstPaths.Length).OverrideFailureMessage("the initial pose has one active source path").IsEqual(1);
         AssertConserved("after the first source");
 
@@ -338,10 +394,78 @@ public class BloodFlowTest {
         AssertFloat(releasedMl).OverrideFailureMessage("the release contains supplied liquid").IsGreater(0f);
         AssertBool(releaseOnBed).OverrideFailureMessage("release contact is checked against the patient's current translated position")
             .IsFalse();
+        var closestCurrentEndpoint = runoff.ActivePaths.Where(path => path.Samples.Length > 0)
+            .Select(path => body.LiquidContact.Deform(path.EndSample.At, path.EndSample.AtSkin, skinMesh, skeleton)
+                .DistanceTo(releasePoint)).Min();
+        AssertFloat(closestCurrentEndpoint)
+            .OverrideFailureMessage("a queued release follows its cached endpoint through the current skin pose and body transform")
+            .IsLess(0.0001f);
         AssertObject(driver.Surgery.Room.BedSurface.Landing(releasePoint + Vector3.Up * 0.001f,
             releasePoint - Vector3.Up * 0.002f)).OverrideFailureMessage("there is no bed contact below the translated release")
             .IsNull();
         AssertConserved("after release with no current bed contact");
+        await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : CpuAllowance);
+    }
+
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task ModelRunoffFollowsBreathingSkinAndConservesLiquid() {
+        var session = await ToolSession.Start("appendectomy", "blood_flow/runoff_breathing", captureUntouched: false);
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        patient.SetPhysicsProcess(false);
+        patient.SetProcess(false);
+        body.SetProcess(false);
+        var skinMesh = body.SkinMesh;
+        var skeleton = skinMesh.GetNodeOrNull<Skeleton3D>(skinMesh.Skeleton)!;
+        var runoffMesh = new MeshInstance3D {
+            Name = "BreathingRunoff",
+            Mesh = LiquidSurface.Primed(withUv: true, withSkin: true, withUv2: true),
+            MaterialOverride = body.SkinMaterial,
+            Skin = skinMesh.Skin,
+            Skeleton = skinMesh.Skeleton,
+            Transform = skinMesh.Transform,
+        };
+        runoffMesh.SetInstanceShaderParameter("rivulet_depth", BodyLiquidSurface.FilmDepth);
+        skinMesh.GetParent().AddChild(runoffMesh);
+        var runoff = new BodyRunoff(body.LiquidContact, body.Site, driver.Surgery.Room.BedSurface,
+            runoffMesh, skinMesh, skeleton, body.SiteSize);
+        const float Supplied = 0.04f;
+        var uv = new Vector2(0.5f, 0.5f);
+        runoff.Add(uv, body.Site.ToLocal(body.UvToWorld(uv)), Supplied);
+        BodyLiquidSurface.Path? path = null;
+        for (var frame = 0; frame < 300 && path is null; frame++) {
+            runoff.Tick(1f / 60f);
+            path = runoff.GrowingPath;
+            await Frames.NextProcess();
+        }
+        AssertObject(path).OverrideFailureMessage("a trunk outlet forms an attached streak before the breathing check").IsNotNull();
+        var skin = skinMesh.Skin!;
+        bool HasTorsoWeight(BodyLiquidSurface.SkinWeights influence) {
+            for (var i = 0; i < 4; i++) {
+                var weight = i switch { 0 => influence.Weights.X, 1 => influence.Weights.Y, 2 => influence.Weights.Z, _ => influence.Weights.W };
+                if (weight <= 0f) { continue; }
+                var bind = i switch { 0 => influence.Bones.X, 1 => influence.Bones.Y, 2 => influence.Bones.Z, _ => influence.Bones.W };
+                var bone = bind >= 0 && bind < skin.GetBindCount() ? skin.GetBindBone(bind) : -1;
+                if (bone < 0 && bind >= 0 && bind < skin.GetBindCount()) { bone = skeleton.FindBone(skin.GetBindName(bind)); }
+                if (bone >= 0 && bone < skeleton.GetBoneCount()
+                    && skeleton.GetBoneName(bone).ToString().Contains("Torso", StringComparison.Ordinal)) { return true; }
+            }
+            return false;
+        }
+        var sample = path!.Samples.FirstOrDefault(candidate => HasTorsoWeight(candidate.AtSkin));
+        AssertBool(HasTorsoWeight(sample.AtSkin)).OverrideFailureMessage("the abdominal streak samples a positive, resolved torso skin influence").IsTrue();
+        var before = body.LiquidContact.Deform(sample.At, sample.AtSkin, skinMesh, skeleton);
+        var initialBreath = body.Breath;
+        for (var step = 0; step < 30 && Mathf.Abs(body.Breath - initialBreath) < 0.6f; step++) {
+            body.Animator.Animate(patient.Vitals, true, 0.2f);
+        }
+        await Frames.Process(2);
+        var after = body.LiquidContact.Deform(sample.At, sample.AtSkin, skinMesh, skeleton);
+        AssertFloat(Mathf.Abs(body.Breath - initialBreath)).OverrideFailureMessage("the patient animator advanced the breathing cycle").IsGreater(0.01f);
+        AssertFloat(after.DistanceTo(before)).OverrideFailureMessage($"the attached runoff sample follows the animated torso skin (movement {after.DistanceTo(before):0.000000} m, breath {initialBreath:0.000}->{body.Breath:0.000})").IsGreater(0.001f);
+        AssertFloat(runoff.HeldMl).OverrideFailureMessage("breathing changes the skin pose without changing the held liquid volume")
+            .IsEqualApprox(Supplied, 0.0001f);
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : CpuAllowance);
     }
 

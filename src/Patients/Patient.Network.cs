@@ -8,9 +8,9 @@ public partial class Patient {
 
     /// <summary>Host: paint on every peer.</summary>
     public void Paint(WoundMap.Layer layer, int channel, Vector2 a, Vector2 b, float radius, float value, WoundMap.Mode mode,
-        float jitter = 0f) {
+        float jitter = 0f, bool soft = false) {
         _paintSeed++;
-        Rpc(MethodName.PaintOnPeer, (int)layer, channel, a, b, radius, value, (int)mode, jitter, _paintSeed);
+        Rpc(MethodName.PaintOnPeer, (int)layer, channel, a, b, radius, value, (int)mode, jitter, soft, _paintSeed);
     }
 
     /// <summary>Host: paints several channels of one disk on every peer.</summary>
@@ -18,6 +18,9 @@ public partial class Patient {
         var flat = ops.SelectMany(op => new float[] { op.Channel, op.Value, (float)op.Mode }).ToArray();
         Rpc(MethodName.PaintOpsOnPeer, (int)layer, uv, radius, flat);
     }
+
+    /// <summary>Host: squeezes surface blood away from a newly tied seam on every peer.</summary>
+    internal void DisplaceSeamFilm(Vector2[] path, float radius) => Rpc(MethodName.DisplaceSeamFilmOnPeer, path, radius);
 
     /// <summary>Host: the patient's state, 5 times a second, to every client.</summary>
     private void BroadcastState() {
@@ -31,14 +34,18 @@ public partial class Patient {
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void PaintOnPeer(int layer, int channel, Vector2 a, Vector2 b, float radius, float value, int mode, float jitter, ulong seed) {
+    private void PaintOnPeer(int layer, int channel, Vector2 a, Vector2 b, float radius, float value, int mode,
+        float jitter, bool soft, ulong seed) {
         if (a == b) {
-            Body.WoundMap.Disk((WoundMap.Layer)layer, channel, a, radius, value, (WoundMap.Mode)mode);
+            Body.WoundMap.Disk((WoundMap.Layer)layer, channel, a, radius, value, (WoundMap.Mode)mode, soft);
         } else {
             Body.WoundMap.Stroke((WoundMap.Layer)layer, channel, a, b, radius, value, (WoundMap.Mode)mode, jitter, seed,
-                soft: layer == (int)WoundMap.Layer.Fluids && channel == WoundMap.Blood && mode == (int)WoundMap.Mode.Max);
+                soft);
         }
     }
+
+    [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void DisplaceSeamFilmOnPeer(Vector2[] path, float radius) => Body.Blood.DisplaceSurfaceFilm(path, radius);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void PaintOpsOnPeer(int layer, Vector2 uv, float radius, float[] flat) {

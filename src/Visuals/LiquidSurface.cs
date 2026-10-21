@@ -2,21 +2,41 @@ namespace Scalpel.Visuals;
 
 /// <summary>Continuous liquid footprints. A boundary cuts the free outline instead of squeezing the whole pool;
 /// sampled wound boundaries interpolate their crossings rather than dropping complete grid squares.</summary>
-internal sealed class LiquidSurface(bool withUv = false) {
+internal sealed class LiquidSurface(bool withUv = false, bool withSkin = false, bool withUv2 = false) {
     // Integral of Patch's .88 inner ring, .65 central height and .15 rim, divided by footprint area.
     internal const float PatchMeanDepth = 0.5924f;
     private readonly List<Vector3> _vertices = [];
     private readonly List<Vector3> _normals = [];
     private readonly List<Vector2>? _uv = withUv ? [] : null;
+    private readonly List<Vector2>? _uv2 = withUv2 ? [] : null;
+    private readonly List<int>? _bones = withSkin ? [] : null;
+    private readonly List<float>? _weights = withSkin ? [] : null;
+    private readonly List<int>? _indices = withSkin ? [] : null;
     private Vector3[] _packedVertices = [];
     private Vector3[] _packedNormals = [];
     private Vector2[] _packedUv = [];
+    private Vector2[] _packedUv2 = [];
+    private int[] _packedBones = [];
+    private float[] _packedWeights = [];
+    private int[] _packedIndices = [];
     private bool _prepared;
+    private Vector3 _preparedOffset;
+    private bool _hasRibbonRow;
+    private int _lastRibbonVertex;
+
+    internal int VertexCount => _vertices.Count;
+    internal IReadOnlyList<Vector3> Vertices => _vertices;
+    internal bool SupportsSkin => _bones is not null;
 
     internal void Clear() {
         _vertices.Clear();
         _normals.Clear();
         _uv?.Clear();
+        _uv2?.Clear();
+        _bones?.Clear();
+        _weights?.Clear();
+        _indices?.Clear();
+        _hasRibbonRow = false;
         _prepared = false;
     }
     private readonly record struct Sample(Vector2 At, float Inside, Vector3 Vertex);
@@ -217,6 +237,55 @@ internal sealed class LiquidSurface(bool withUv = false) {
         Triangle(a, b, c, na, nb, nc, ua, ub, uc);
     }
 
+    internal void SkinnedFacet(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc,
+        Vector2 ua, Vector2 ub, Vector2 uc, Vector2 mapA, Vector2 mapB, Vector2 mapC,
+        BodyLiquidSurface.SkinWeights skinA, BodyLiquidSurface.SkinWeights skinB, BodyLiquidSurface.SkinWeights skinC) {
+        _prepared = false;
+        _vertices.Add(a); _vertices.Add(b); _vertices.Add(c);
+        _normals.Add(na); _normals.Add(nb); _normals.Add(nc);
+        _uv?.Add(ua); _uv?.Add(ub); _uv?.Add(uc);
+        _uv2?.Add(mapA); _uv2?.Add(mapB); _uv2?.Add(mapC);
+        AddSkin(skinA); AddSkin(skinB); AddSkin(skinC);
+        AddTriangleIndices(_vertices.Count - 3);
+        _hasRibbonRow = false;
+    }
+
+    internal void BeginRibbon() => _hasRibbonRow = false;
+
+    /// <summary>Add one shared three-vertex cross-section row, joining it to the prior row with four indexed triangles.</summary>
+    internal void RibbonRow(Vector3 left, Vector3 center, Vector3 right, Vector3 nl, Vector3 nc, Vector3 nr,
+        Vector2 mapLeft, Vector2 mapCenter, Vector2 mapRight,
+        BodyLiquidSurface.SkinWeights skinLeft, BodyLiquidSurface.SkinWeights skinCenter, BodyLiquidSurface.SkinWeights skinRight) {
+        if (_bones is null || _weights is null || _indices is null) { throw new InvalidOperationException("Ribbon rows require a skinned liquid surface."); }
+        _prepared = false;
+        var row = _vertices.Count;
+        _vertices.Add(left); _vertices.Add(center); _vertices.Add(right);
+        _normals.Add(nl); _normals.Add(nc); _normals.Add(nr);
+        _uv?.Add(Vector2.Zero); _uv?.Add(Vector2.Right * 0.5f); _uv?.Add(Vector2.Right);
+        _uv2?.Add(mapLeft); _uv2?.Add(mapCenter); _uv2?.Add(mapRight);
+        AddSkin(skinLeft); AddSkin(skinCenter); AddSkin(skinRight);
+        if (_hasRibbonRow) {
+            var previous = _lastRibbonVertex;
+            _indices.Add(previous); _indices.Add(previous + 1); _indices.Add(row);
+            _indices.Add(previous + 1); _indices.Add(row + 1); _indices.Add(row);
+            _indices.Add(previous + 1); _indices.Add(previous + 2); _indices.Add(row + 1);
+            _indices.Add(previous + 2); _indices.Add(row + 2); _indices.Add(row + 1);
+        }
+        _lastRibbonVertex = row;
+        _hasRibbonRow = true;
+    }
+
+    private void AddTriangleIndices(int first) {
+        if (_indices is null) { return; }
+        _indices.Add(first); _indices.Add(first + 1); _indices.Add(first + 2);
+    }
+
+    private void AddSkin(BodyLiquidSurface.SkinWeights skin) {
+        if (_bones is null || _weights is null) { return; }
+        _bones.Add(skin.Bones.X); _bones.Add(skin.Bones.Y); _bones.Add(skin.Bones.Z); _bones.Add(skin.Bones.W);
+        _weights.Add(skin.Weights.X); _weights.Add(skin.Weights.Y); _weights.Add(skin.Weights.Z); _weights.Add(skin.Weights.W);
+    }
+
     private void Triangle(Vector3 a, Vector3 b, Vector3 c) => Triangle(a, b, c, Vector3.Up, Vector3.Up, Vector3.Up);
 
     private void Triangle(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc,
@@ -229,15 +298,29 @@ internal sealed class LiquidSurface(bool withUv = false) {
         _normals.Add(nb);
         _normals.Add(nc);
         if (_uv is not null) { _uv.Add(ua); _uv.Add(ub); _uv.Add(uc); }
+        _uv2?.Add(ua); _uv2?.Add(ub); _uv2?.Add(uc);
+        if (_bones is not null && _weights is not null) {
+            var rigid = new BodyLiquidSurface.SkinWeights(Vector4I.Zero, new Vector4(1f, 0f, 0f, 0f));
+            AddSkin(rigid); AddSkin(rigid); AddSkin(rigid);
+        }
+        AddTriangleIndices(_vertices.Count - 3);
+        _hasRibbonRow = false;
     }
 
     /// <summary>Submit the real vertex format during scene setup, before a dynamic film first becomes visible.
     /// A microscopic seed is below pixel size and replaced by the first worker upload; an empty mesh would defer
     /// shader pipeline compilation until blood starts flowing.</summary>
-    internal static ArrayMesh Primed(bool withUv = false) {
-        var surface = new LiquidSurface(withUv);
-        surface.Facet(Vector3.Zero, Vector3.Right * 0.000001f, Vector3.Back * 0.000001f,
-            Vector3.Up, Vector3.Up, Vector3.Up, Vector2.Zero, Vector2.Right, Vector2.Zero);
+    internal static ArrayMesh Primed(bool withUv = false, bool withSkin = false, bool withUv2 = false) {
+        var surface = new LiquidSurface(withUv, withSkin, withUv2);
+        if (withSkin) {
+            var rigid = new BodyLiquidSurface.SkinWeights(Vector4I.Zero, new Vector4(1f, 0f, 0f, 0f));
+            surface.SkinnedFacet(Vector3.Zero, Vector3.Right * 0.000001f, Vector3.Back * 0.000001f,
+                Vector3.Up, Vector3.Up, Vector3.Up, Vector2.Zero, Vector2.Right, Vector2.Zero,
+                Vector2.Zero, Vector2.Right, Vector2.Zero, rigid, rigid, rigid);
+        } else {
+            surface.Facet(Vector3.Zero, Vector3.Right * 0.000001f, Vector3.Back * 0.000001f,
+                Vector3.Up, Vector3.Up, Vector3.Up, Vector2.Zero, Vector2.Right, Vector2.Zero);
+        }
         return surface.Upload();
     }
 
@@ -269,19 +352,51 @@ internal sealed class LiquidSurface(bool withUv = false) {
     }
 
     /// <summary>Freeze managed geometry on its build worker, before the main-thread engine upload.</summary>
-    internal void PrepareUpload() {
-        if (_prepared) { return; }
+    internal void PrepareUpload(Vector3 offset = default) {
+        if (_prepared && _preparedOffset == offset) { return; }
         if (_packedVertices.Length != _vertices.Count) {
             _packedVertices = new Vector3[_vertices.Count];
             _packedNormals = new Vector3[_vertices.Count];
         }
-        _vertices.CopyTo(_packedVertices);
+        for (var i = 0; i < _vertices.Count; i++) { _packedVertices[i] = _vertices[i] + offset; }
         _normals.CopyTo(_packedNormals);
+        if (_uv2 is not null) {
+            if (_packedUv2.Length != _uv2.Count) { _packedUv2 = new Vector2[_uv2.Count]; }
+            _uv2.CopyTo(_packedUv2);
+        }
+        if (_bones is not null && _weights is not null) {
+            if (_packedBones.Length != _bones.Count) { _packedBones = new int[_bones.Count]; _packedWeights = new float[_weights.Count]; }
+            _bones.CopyTo(_packedBones); _weights.CopyTo(_packedWeights);
+        }
+        if (_indices is not null) {
+            if (_packedIndices.Length != _indices.Count) { _packedIndices = new int[_indices.Count]; }
+            _indices.CopyTo(_packedIndices);
+        }
         if (_uv is not null) {
             if (_packedUv.Length != _uv.Count) { _packedUv = new Vector2[_uv.Count]; }
             _uv.CopyTo(_packedUv);
         }
+        _preparedOffset = offset;
         _prepared = true;
+    }
+
+    /// <summary>Add this prepared surface to a shared mesh without clearing its other pools.</summary>
+    internal int AppendUpload(ArrayMesh into) {
+        if (_vertices.Count == 0) { return -1; }
+        PrepareUpload(_preparedOffset);
+        using var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, _packedVertices);
+        Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, _packedNormals);
+        if (_uv is not null) { Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, _packedUv); }
+        if (_uv2 is not null) { Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, _packedUv2); }
+        if (_bones is not null && _weights is not null) {
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Bones, _packedBones);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Weights, _packedWeights);
+        }
+        if (_indices is not null && _indices.Count > 0) { Shapes.SetPacked(arrays, Mesh.ArrayType.Index, _packedIndices); }
+        into.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return into.GetSurfaceCount() - 1;
     }
 
     internal ArrayMesh Upload(ArrayMesh? into = null) {
@@ -294,6 +409,12 @@ internal sealed class LiquidSurface(bool withUv = false) {
         Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, _packedVertices);
         Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, _packedNormals);
         if (_uv is not null) { Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, _packedUv); }
+        if (_uv2 is not null) { Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, _packedUv2); }
+        if (_bones is not null && _weights is not null) {
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Bones, _packedBones);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Weights, _packedWeights);
+        }
+        if (_indices is not null && _indices.Count > 0) { Shapes.SetPacked(arrays, Mesh.ArrayType.Index, _packedIndices); }
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }

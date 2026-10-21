@@ -16,7 +16,8 @@ public class WoundLiquidTest {
     [TestCase(5f)]
     [TestCase(50f)]
     public async Task IrrigationLiquidFollowsAndDrainsFromADeepOpening(float initialMl) {
-        var session = await ToolSession.Start("appendectomy", initialMl > 5f ? "wound_liquids/full" : "wound_liquids");
+        var captureVisuals = initialMl == 5f;
+        var session = await ToolSession.Start("appendectomy", "wound_liquids", captureUntouched: captureVisuals);
         var driver = session.Driver;
         var body = driver.Body;
         var at = new Vector2(0.5f, 0.5f);
@@ -29,7 +30,9 @@ public class WoundLiquidTest {
         SurgeryState.CavityHoldsBlood(driver.Patient, 0f);
         body.SetCavityBlood(0f);
         await Frames.Process(12);
-        await session.CaptureAt("dry_opening", "an open deep wound before clear liquid collects inside", driver.SitePoint(at), 0.17f);
+        if (captureVisuals) {
+            await session.CaptureAt("dry_opening", "an open deep wound before clear liquid collects inside", driver.SitePoint(at), 0.17f);
+        }
         // Keep the prepared wound fixed while measuring liquid accumulation and drainage.
         body.SetProcess(false);
         body.Blood.Irrigate(body.UvToWorld(at) - Vector3.Up, 5f, 0f);
@@ -58,11 +61,15 @@ public class WoundLiquidTest {
         var material = (StandardMaterial3D)pool.MaterialOverride;
         AssertFloat(material.AlbedoColor.A).OverrideFailureMessage("saline remains translucent").IsBetween(0.1f, 0.8f);
         var clearRed = material.AlbedoColor.R;
-        await session.CaptureAt("clear_pool", "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it", driver.SitePoint(at), 0.17f);
+        if (captureVisuals) {
+            await session.CaptureAt("clear_pool", "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it", driver.SitePoint(at), 0.17f);
+        }
         body.Blood.Irrigate(body.UvToWorld(at), initialMl * 2f, 1f);
         await Frames.Process(8);
         AssertFloat(material.AlbedoColor.R).OverrideFailureMessage("blood carried into the clear liquid changes its tint").IsGreater(clearRed + 0.05f);
-        await session.CaptureAt("mixed_pool", "blood and irrigation share the same wound-shaped pool, with a darker translucent surface", driver.SitePoint(at), 0.17f);
+        if (captureVisuals) {
+            await session.CaptureAt("mixed_pool", "blood and irrigation share the same wound-shaped pool, with a darker translucent surface", driver.SitePoint(at), 0.17f);
+        }
         if (FrameBudget.Mode == BudgetMode.Render) {
             await driver.Unbudgeted(async () => {
                 var viewport = driver.GetViewport().GetViewportRid();
@@ -82,7 +89,9 @@ public class WoundLiquidTest {
         }
         await Frames.Seconds(9f);
         AssertBool(pool.Visible).OverrideFailureMessage("irrigation drains after supply stops").IsFalse();
-        await session.CaptureAt("drained", "the deep wound remains open after irrigation drains, with no floating liquid surface", driver.SitePoint(at), 0.17f);
+        if (captureVisuals) {
+            await session.CaptureAt("drained", "the deep wound remains open after irrigation drains, with no floating liquid surface", driver.SitePoint(at), 0.17f);
+        }
         body.Blood.Irrigate(body.UvToWorld(at, body.OpeningDepth(at, 0.015f) * 0.5f), 1f, 0f);
         await Frames.Process(8);
         AssertBool(pool.Visible).OverrideFailureMessage("fresh irrigation can gather again after the wound drains").IsTrue();

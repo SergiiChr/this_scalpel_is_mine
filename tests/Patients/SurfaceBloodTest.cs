@@ -76,9 +76,13 @@ public class SurfaceBloodTest {
             film.ReconcileWipes(map);
             film.Paint(map);
         }
-        AssertFloat(film.RemovedMl).OverrideFailureMessage("ordinary small swab batches remove the dense film's volume").IsGreater(0.95f);
-        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.5f)))
-            .OverrideFailureMessage("repeated swabbing cleans the visible film too").IsLess(0.05f);
+        AssertFloat(film.RemovedMl).OverrideFailureMessage(
+            $"ordinary small swab batches remove the dense film's volume (removed {film.RemovedMl:0.000}, held {film.HeldMl:0.000})")
+            .IsGreater(0.95f);
+        var visible = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.5f));
+        AssertFloat(visible).OverrideFailureMessage(
+            $"repeated swabbing cleans the visible film too (visible {visible:0.000}, removed {film.RemovedMl:0.000}, held {film.HeldMl:0.000})")
+            .IsLess(0.05f);
     }
 
     [TestCase]
@@ -111,6 +115,161 @@ public class SurfaceBloodTest {
         map.PaintBloodFilm(cover, SurfaceBlood.Size);
         AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at))
             .OverrideFailureMessage("newly arriving liquid can wet the cleared area again").IsBetween(0.08f, 0.15f);
+    }
+
+    [TestCase]
+    public void UniformWipeHalvesRealFilmVolumeAndItsOpticalDepthOnce() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        var map = new WoundMap(WoundMap.MinSize);
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                film.Add(new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size, 0.001f);
+            }
+        }
+        film.Paint(map);
+        var at = new Vector2(0.5f, 0.5f);
+        var before = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at);
+        var volumeBefore = film.HeldMl;
+        var halfDepthCoverage = 1f - Mathf.Sqrt(1f - before);
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, at, 1f, before - halfDepthCoverage,
+            WoundMap.Mode.Sub, soft: false);
+        film.ReconcileWipes(map);
+        AssertFloat(film.HeldMl).OverrideFailureMessage(
+            $"a uniform wipe removes half of the real surface-film volume (before {volumeBefore:0.000}, after {film.HeldMl:0.000})")
+            .IsEqualApprox(volumeBefore * 0.5f, 0.01f);
+        film.Paint(map);
+        var after = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at);
+        AssertFloat(after).OverrideFailureMessage(
+            $"half the film volume produces its exponential half-depth coverage once (before {before:0.000}, after {after:0.000}, expected {halfDepthCoverage:0.000})")
+            .IsEqualApprox(1f - Mathf.Sqrt(1f - before), 2f / 255f);
+    }
+
+    [TestCase]
+    public void PartialCoarseWipeKeepsUntouchedTexelsBrightAndFineHoleClear() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        var map = new WoundMap(WoundMap.MinSize);
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                film.Add(new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size, 0.01f);
+            }
+        }
+        film.Paint(map);
+        var pixels = map.Snapshot(WoundMap.Layer.Fluids);
+        var coarsePixel = (32 * 2) * map.Size + 32 * 2;
+        var before = pixels[coarsePixel * 4 + WoundMap.Blood] / 255f;
+        var coarseWipe = new Vector2(64.5f, 64.5f) / map.Size;
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, coarseWipe, 0.25f / map.Size, before * 0.5f,
+            WoundMap.Mode.Sub, soft: false);
+        var fineWipe = new Vector2(65.5f, 64.5f) / map.Size;
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, fineWipe, 0.25f / map.Size, 1f,
+            WoundMap.Mode.Sub, soft: false);
+        film.ReconcileWipes(map);
+        film.Paint(map);
+        pixels = map.Snapshot(WoundMap.Layer.Fluids);
+        var hole = pixels[(64 * map.Size + 65) * 4 + WoundMap.Blood] / 255f;
+        var untouched = pixels[(64 * map.Size + 66) * 4 + WoundMap.Blood] / 255f;
+        AssertFloat(hole).OverrideFailureMessage("the fine wiped texel stays clear inside the coarsely reduced cell")
+            .IsEqual(0f);
+        AssertFloat(untouched).OverrideFailureMessage(
+            $"untouched texels retain their prior depth while the fine hole stays clear (before {before:0.000}, after {untouched:0.000})")
+            .IsEqualApprox(before, 0.03f);
+    }
+
+    [TestCase]
+    public void ReconciledFilmReductionIsNotAppliedAgainToTheVisibleBlood() {
+        var map = new WoundMap();
+        var cover = Enumerable.Repeat(0.8f, SurfaceBlood.Size * SurfaceBlood.Size).ToArray();
+        var at = new Vector2(0.5f, 0.5f);
+        map.PaintBloodFilm(cover, SurfaceBlood.Size);
+        var before = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at);
+        var afterHalfDepth = 1f - Mathf.Sqrt(1f - before);
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, at, 1f, before - afterHalfDepth, WoundMap.Mode.Sub, soft: false);
+        var wiped = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at);
+        map.AcknowledgeBloodFilmReduction();
+        Array.Fill(cover, afterHalfDepth);
+        map.PaintBloodFilm(cover, SurfaceBlood.Size);
+        var repainted = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, at);
+        AssertFloat(wiped).OverrideFailureMessage(
+            $"the wipe removes half the displayed optical depth (before {before:0.000}, wiped {wiped:0.000}, expected {afterHalfDepth:0.000})")
+            .IsEqualApprox(afterHalfDepth, 1f / 255f);
+        AssertFloat(repainted).OverrideFailureMessage(
+            $"reconciled liquid reduction is reflected once in the display (wiped {wiped:0.000}, repainted {repainted:0.000})")
+            .IsEqualApprox(wiped, 1f / 255f);
+    }
+
+    [TestCase]
+    public void AcknowledgedFilmRepaintRespectsTheBloodSupportMask() {
+        var map = new WoundMap(WoundMap.MinSize);
+        map.SetBloodFilmSupport(uv => uv.X < 0.4f ? -WoundMap.Texel : uv.X < 0.7f ? 0f : WoundMap.Texel);
+        var depth = Enumerable.Repeat(2f, SurfaceBlood.Size * SurfaceBlood.Size).ToArray();
+        map.PaintBloodFilmDepth(depth, SurfaceBlood.Size);
+        byte At(int x, int y) => map.Snapshot(WoundMap.Layer.Fluids)[(y * map.Size + x) * 4 + WoundMap.Blood];
+        var unsupportedBefore = At(32, 64);
+        var untouchedPartialBefore = At(64, 64);
+        var untouchedNeighborBefore = At(72, 64);
+        var wipedUv = new Vector2(74.5f, 64.5f) / map.Size;
+        var wipedBefore = At(74, 64);
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, wipedUv, 0.25f / map.Size,
+            wipedBefore / 510f, WoundMap.Mode.Sub, soft: false);
+        var wipedAfter = At(74, 64);
+
+        var reducedCells = new bool[SurfaceBlood.Size * SurfaceBlood.Size];
+        for (var y = 31; y <= 32; y++) {
+            for (var x = 36; x <= 37; x++) { reducedCells[y * SurfaceBlood.Size + x] = true; }
+        }
+        map.AcknowledgeBloodFilmReduction(reducedCells, SurfaceBlood.Size);
+        for (var cell = 0; cell < depth.Length; cell++) { if (reducedCells[cell]) { depth[cell] = 1f; } }
+        map.PaintBloodFilmDepth(depth, SurfaceBlood.Size);
+
+        AssertInt(unsupportedBefore).IsEqual(0);
+        AssertInt(At(32, 64)).OverrideFailureMessage("acknowledged depth scaling does not paint outside the support mask")
+            .IsEqual(0);
+        AssertInt(At(64, 64)).OverrideFailureMessage("an untouched partially supported pixel keeps its previous coverage")
+            .IsEqual(untouchedPartialBefore);
+        AssertInt(At(72, 64)).OverrideFailureMessage("an untouched partially supported neighbor survives local reconciliation")
+            .IsEqual(untouchedNeighborBefore);
+        AssertInt(At(74, 64)).OverrideFailureMessage("the wiped partially supported pixel stays at its cleared coverage")
+            .IsEqual(wipedAfter);
+
+        Array.Fill(depth, 0.5f);
+        map.PaintBloodFilmDepth(depth, SurfaceBlood.Size);
+        AssertInt(At(32, 64)).OverrideFailureMessage("later source changes still leave unsupported pixels physically masked")
+            .IsEqual(0);
+        AssertInt(At(64, 64)).OverrideFailureMessage("later source changes never exceed the partial support mask")
+            .IsLessEqual(128);
+        AssertInt(At(74, 64)).OverrideFailureMessage("later source changes never exceed support at a wiped partial pixel")
+            .IsLessEqual(128);
+    }
+
+    [TestCase]
+    public void LocalWipeAcknowledgmentDoesNotSuppressDistantNewFilm() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        var map = new WoundMap(WoundMap.MinSize);
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                film.Add(new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size, 0.001f);
+            }
+        }
+        film.Paint(map);
+        var distant = new Vector2(0.8f, 0.8f);
+        var distantBefore = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, distant);
+        var volumeBefore = film.HeldMl;
+        map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.25f, 0.25f), 0.1f, 1f,
+            WoundMap.Mode.Sub, soft: false);
+        film.ReconcileWipes(map);
+        var removed = film.RemovedMl;
+        film.Add(distant, 0.02f);
+        film.Paint(map);
+        var distantAfter = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, distant);
+
+        AssertFloat(removed).OverrideFailureMessage("the local swab removes its real fluid volume")
+            .IsGreater(0f);
+        AssertFloat(distantAfter).OverrideFailureMessage(
+            $"new fluid outside the wiped cells remains visible (before {distantBefore:0.000}, after {distantAfter:0.000})")
+            .IsGreater(distantBefore + 0.1f);
+        AssertFloat(film.HeldMl + removed).OverrideFailureMessage(
+            $"distant supply is retained while removed volume is accounted (before {volumeBefore:0.000}, held {film.HeldMl:0.000}, removed {removed:0.000})")
+            .IsEqualApprox(volumeBefore + 0.02f, 0.001f);
     }
 
     [TestCase]
@@ -226,7 +385,7 @@ public class SurfaceBloodTest {
             film.Add(new Vector2(0.5f, 0.5f), 0.005f);
             film.Paint(map);
             var cover = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.5f));
-            return -Mathf.Log(1f - cover) * 0.0004f;
+            return -Mathf.Log(1f - cover) * SurfaceBlood.CoverDepth;
         }
         AssertFloat(Depth(1f) / Depth(2f)).OverrideFailureMessage("doubling body scale gives four times the area and one quarter of the depth for the same milliliters")
             .IsBetween(3.5f, 4.5f);
@@ -238,7 +397,6 @@ public class SurfaceBloodTest {
     [TestCase(2f, 1.7320508f)]
     public void PaintedSurfaceFilmIntegratesToItsDose(float scale, float slope) {
         const float DoseMl = 0.02f;
-        const float CoverDepth = 0.0004f;
         var siteSize = new Vector2(0.3f, 0.3f);
         var film = new SurfaceBlood(siteSize, uv => uv.X * siteSize.X * slope, scale: scale);
         var map = new WoundMap(WoundMap.MinSize);
@@ -252,13 +410,73 @@ public class SurfaceBloodTest {
         for (var pixel = 0; pixel < map.Size * map.Size; pixel++) {
             var cover = pixels[pixel * 4 + WoundMap.Blood] / 255f;
             if (cover <= 0f) { continue; }
-            var depth = -Mathf.Log(1f - cover) * CoverDepth;
+            var depth = -Mathf.Log(1f - cover) * SurfaceBlood.CoverDepth;
             volumeM3 += depth * siteSize.X * siteSize.Y * scale * scale * Mathf.Sqrt(1f + slope * slope) / (map.Size * map.Size);
         }
         var visibleDoseMl = (float)(volumeM3 * 1_000_000d);
         AssertFloat(visibleDoseMl)
             .OverrideFailureMessage($"the painted low-dose surface film integrates to its supplied {DoseMl} ml after 8-bit resampling")
             .IsBetween(DoseMl * 0.9f, DoseMl * 1.1f);
+    }
+
+    [TestCase]
+    public void ClosingASeamDisplacesItsFilmAndAllowsFreshBloodAfterwards() {
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), _ => 0f);
+        var map = new WoundMap(WoundMap.MinSize);
+        var center = new Vector2(0.5f, 0.5f);
+        Vector2[] path = [new(0.3f, 0.5f), new(0.7f, 0.5f)];
+        const float Dose = 0.02f;
+        film.Add(center, Dose);
+        film.Paint(map);
+        AssertFloat(film.DisplaceStroke(path, 0.026f)).IsEqualApprox(Dose, 0.000001f);
+        map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, path[0], path[1], 0.026f, 1f, WoundMap.Mode.Sub);
+        film.ReconcileWipes(map);
+        film.Paint(map);
+        AssertFloat(film.RemovedMl).OverrideFailureMessage("closure displaces blood instead of deleting its volume").IsEqual(0f);
+        AssertFloat(film.HeldMl + film.RunoffMl).IsEqualApprox(Dose, 0.000001f);
+        Advance(film, 1f);
+        film.Paint(map);
+        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, center))
+            .OverrideFailureMessage("the displaced film leaves the closure band dry after it settles").IsLess(0.05f);
+        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.55725f)))
+            .OverrideFailureMessage("the displaced blood is visible beside the seam").IsGreater(0.1f);
+        film.Add(center, Dose);
+        film.Paint(map);
+        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, center))
+            .OverrideFailureMessage("a later bleed can wet the closed seam; displacement is not a permanent paint mask").IsGreater(0.3f);
+        AssertFloat(film.HeldMl + film.RunoffMl).IsEqualApprox(Dose * 2f, 0.000001f);
+    }
+
+    [TestCase]
+    public void ChangedSkinGeometryRedirectsTheFilmWithoutAddingLiquid() {
+        var rise = 0f;
+        var samples = 0;
+        var film = new SurfaceBlood(new Vector2(0.3f, 0.3f), uv => { samples++; return rise * (uv.X - 0.5f); });
+        const float Dose = 2f;
+        film.Add(new Vector2(0.5f, 0.5f), Dose);
+        film.Paint(new WoundMap(WoundMap.MinSize));
+        rise = 0.06f;
+        samples = 0;
+        AssertBool(film.BeginGeometryRefit()).IsTrue();
+        film.ProcessGeometryRefit(1);
+        AssertInt(samples).OverrideFailureMessage("a geometry refresh obeys its per-frame sampling budget").IsEqual(1);
+        AssertBool(film.NeedsPaint).OverrideFailureMessage("a partial sample batch does not publish mixed geometry").IsFalse();
+        for (var batch = 0; batch < 128; batch++) { film.ProcessGeometryRefit(32); }
+        AssertInt(samples).OverrideFailureMessage("only the wet patch and its slope margin are sampled").IsLess(SurfaceBlood.Size * SurfaceBlood.Size);
+        AssertFloat(film.HeldMl).OverrideFailureMessage("changing the support geometry preserves the supplied liquid")
+            .IsEqualApprox(Dose, 0.000001f);
+        for (var frame = 0; frame < 120; frame++) {
+            if (frame % 6 == 0) { film.BeginGeometryRefit(); }
+            film.ProcessGeometryRefit(32);
+            film.Step(Basis.Identity, 1f / 60f);
+        }
+        var meanX = 0f;
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) { meanX += film.At(x, y) * (x + 0.5f) / SurfaceBlood.Size; }
+        }
+        AssertFloat(meanX / film.HeldMl).OverrideFailureMessage($"the existing film flows downhill on the changed skin instead of its old flat support (mean {meanX / film.HeldMl})")
+            .IsLess(0.49f);
+        AssertFloat(film.HeldMl + film.RemovedMl + film.RunoffMl).IsEqualApprox(Dose, 0.000001f);
     }
 
     private static void Advance(SurfaceBlood film, float seconds) {

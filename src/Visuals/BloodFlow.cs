@@ -75,6 +75,8 @@ public partial class BloodFlow : Node3D {
     [Signal] public delegate void SplashedEventHandler(float amount);
 
     private const int MaxDrops = 96;
+    private const int RinsePoolSlots = 64;
+    private const int GroundBuildFailureLimit = 5;
     private const float DropRadius = 0.0035f;
     private float _dropVolumeScale;
     private float _unitDropMl;
@@ -134,7 +136,12 @@ public partial class BloodFlow : Node3D {
     internal float SurfaceSuppliedMl { get; private set; }
     internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
         + _bodyRunoff.HeldMl + GroundLiquidArea * DropMl / PoolAreaPerDrop;
+    /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
+    internal float DisplaceSurfaceFilm(Vector2[] path, float radius) => _surface.DisplaceStroke(path, radius);
     private float _surfaceClock;
+    private float _surfaceGeometryClock;
+    private int _surfaceGeometrySteps;
+    private int _surfaceGeometryTopology;
     private bool _surfaceNeedsPaint;
     private readonly List<Drop> _drops = [];
     internal IReadOnlyList<Drop> Drops => _drops;
@@ -158,15 +165,14 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    private sealed record GroundFootprint(float Incoming, float Radius, Vector2[] Outline, float Area, BedLiquidSurface.Flow[] Outlets, bool FrameOnly = false);
-    private readonly record struct GroundDrawing(LiquidSurface? Top, LiquidSurface? Side, GroundFootprint? Footprint = null);
+    internal sealed record GroundFootprint(float Incoming, float Radius, Vector2[] Outline, float Area, BedLiquidSurface.Flow[] Outlets, bool FrameOnly = false);
+    internal readonly record struct GroundDrawing(LiquidSurface? Top, LiquidSurface? Side, GroundFootprint? Footprint = null);
 
-    private sealed class GroundPool(MeshInstance3D mesh, MeshInstance3D? side, bool onBed, int seed) {
-        public readonly MeshInstance3D Mesh = mesh;
-        public readonly MeshInstance3D? Side = side;
-        public readonly bool OnBed = onBed;
+    internal sealed class GroundPool(Vector3 center, int seed) {
+        public Vector3 Center = center;
+        public bool OnBed;
         public readonly float Phase = seed * 0.7548777f;
-        public readonly Outlet[] Outlets = onBed ? Enumerable.Range(0, 12).Select(i => new Outlet(seed * 31 + i)).ToArray() : [];
+        public readonly Outlet[] Outlets = Enumerable.Range(0, 12).Select(i => new Outlet(seed * 31 + i)).ToArray();
         public Vector2[] Outline = [];
         public float Radius;
         public float Area;
@@ -175,16 +181,47 @@ public partial class BloodFlow : Node3D {
         public float Clock = seed * 0.013f % (1f / 15f);
         public bool HasOutlet;
         public bool FrameOnly;
+        public int Support = -1;
         public bool TopDirty;
         public bool SideDirty;
         public Task<GroundDrawing>? Building;
+        public float RetryIn;
+        public float RetryDelay = 0.25f;
+        public int Faults;
+        internal int TopSurface = -1;
+        internal int SideSurface = -1;
         public readonly LiquidSurface TopBuffer = new();
-        public readonly LiquidSurface? SideBuffer = onBed ? new() : null;
-        public readonly BedLiquidSurface.RivuletScratch? RivuletBuffer = onBed ? new() : null;
-        public readonly BedLiquidSurface.Flow[] FlowBuffer = onBed ? new BedLiquidSurface.Flow[12] : [];
+        public readonly LiquidSurface SideBuffer = new();
+        internal IReadOnlyList<Vector3> TopVertices => TopBuffer.Vertices;
+        internal IReadOnlyList<Vector3> SideVertices => SideBuffer.Vertices;
+        public readonly BedLiquidSurface.RivuletScratch RivuletBuffer = new();
+        public readonly BedLiquidSurface.Flow[] FlowBuffer = new BedLiquidSurface.Flow[12];
+
+        public void Activate(Vector3 at, bool onBed, bool frameOnly) {
+            OnBed = onBed;
+            Center = at;
+            FrameOnly = frameOnly;
+            Outline = [];
+            Radius = Area = Runoff = Incoming = 0f;
+            HasOutlet = TopDirty = SideDirty = false;
+            RetryIn = 0f;
+            RetryDelay = 0.25f;
+            Faults = 0;
+            Clock = 0f;
+            foreach (var outlet in Outlets) {
+                outlet.Active = false;
+                outlet.Progress = outlet.DrawnProgress = outlet.AllowedProgress = outlet.CoatingMl = outlet.CapacityMl = 0f;
+                outlet.Pulse.Drain();
+            }
+        }
     }
 
     private readonly List<GroundPool> _pools = [];
+    internal IEnumerable<GroundPool> GroundDeposits => _pools;
+    private MeshInstance3D _groundTopBatch = null!;
+    private MeshInstance3D _groundSideBatch = null!;
+    private ArrayMesh _groundTopMesh = null!;
+    private ArrayMesh _groundSideMesh = null!;
     private int _uploadCursor;
     private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
     private readonly RandomNumberGenerator _dripRng = new() { Seed = 83 };
@@ -215,6 +252,9 @@ public partial class BloodFlow : Node3D {
         public int MeshRefreshes;
     }
     private readonly Dictionary<int, RinsePool> _rinses = [];
+    private readonly Queue<RinsePool> _availableRinses = [];
+    private readonly Dictionary<int, RinsePool> _drainedRinses = [];
+    private readonly List<int> _drainedRinseIds = [];
     /// <summary>The spots painted last (uv, radius in uv, depth of their center), wiped before the sources are painted
     /// again.</summary>
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
@@ -247,18 +287,56 @@ public partial class BloodFlow : Node3D {
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
-        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SurfaceHeight, uv => patientBody.LiquidSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SkinHeight, uv => patientBody.LiquidSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
+        _surfaceGeometrySteps = patientBody.Tissue.StepsDone;
+        _surfaceGeometryTopology = patientBody.Tissue.TopologyVersion;
         patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
+        _groundTopMesh = new ArrayMesh();
+        _groundTopBatch = new MeshInstance3D {
+            Name = "GroundPoolTops",
+            Mesh = _groundTopMesh,
+            MaterialOverride = _poolMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            TopLevel = true,
+        };
+        _groundSideMesh = new ArrayMesh();
+        _groundSideBatch = new MeshInstance3D {
+            Name = "GroundPoolSides",
+            Mesh = _groundSideMesh,
+            MaterialOverride = _poolMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            TopLevel = true,
+        };
+        AddChild(_groundTopBatch);
+        AddChild(_groundSideBatch);
+        for (var i = 0; i < RinsePoolSlots; i++) {
+            var material = Materials.Stream();
+            material.Roughness = 0.22f;
+            material.MetallicSpecular = 0.2f;
+            var mesh = new MeshInstance3D {
+                Name = "IrrigationPoolSlot",
+                Mesh = new ArrayMesh(),
+                MaterialOverride = material,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                Visible = false,
+            };
+            patientBody.Site.AddChild(mesh);
+            _availableRinses.Enqueue(new RinsePool(Vector2.Zero, mesh));
+        }
+        var skinMesh = patientBody.SkinMesh;
+        var skeleton = skinMesh.GetNodeOrNull<Skeleton3D>(skinMesh.Skeleton);
         var runoff = new MeshInstance3D {
             Name = "BodyRunoff",
-            Mesh = LiquidSurface.Primed(withUv: true),
+            Mesh = LiquidSurface.Primed(withUv: true, withSkin: true, withUv2: true),
             MaterialOverride = patientBody.SkinMaterial,
+            Skin = skinMesh.Skin,
+            Skeleton = skinMesh.Skeleton,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
+        runoff.Transform = skinMesh.Transform;
         runoff.SetInstanceShaderParameter("rivulet_depth", BodyLiquidSurface.FilmDepth);
-        runoff.SetInstanceShaderParameter("rivulet_site_size", patientBody.SiteSize);
-        patientBody.Site.AddChild(runoff);
-        _bodyRunoff = new BodyRunoff(patientBody.LiquidContact, patientBody.Site, Bed, runoff);
+        skinMesh.GetParent().AddChild(runoff);
+        _bodyRunoff = new BodyRunoff(patientBody.LiquidContact, patientBody.Site, Bed, runoff, skinMesh, skeleton, patientBody.SiteSize);
         var dropShape = LiquidSurface.Drop(out var dropVolume);
         _unitDropMl = dropVolume * 1000000f;
         DropShapeMl = dropVolume * DropRadius * DropRadius * DropRadius * 1000000f;
@@ -309,6 +387,7 @@ public partial class BloodFlow : Node3D {
             rinse.Ml *= draining;
             rinse.Blood *= draining;
         }
+        _drainedRinseIds.Clear();
         _cutClock += (float)delta;
         if (_cutClock >= 0.1f) {
             _cutClock = 0f;
@@ -407,7 +486,9 @@ public partial class BloodFlow : Node3D {
     private static Wound? NearestWound(PatientBody body, Vector2 uv) =>
         body.GetParent<Patient>().Wounds.Where(wound => !wound.IsInternal).MinBy(wound => wound.DistanceTo(uv));
 
-    private sealed record WoundGeometry(int Topology, float Gap, Vector2[] Uvs, float[] Values);
+    private sealed record WoundGeometry(int Topology, float Gap, Vector2[] Uvs, float[] Values) {
+        internal int CheckCursor;
+    }
 
     /// <summary>Cache a wound's sampling positions and baseline only when its visible mesh changes.
     /// Ordinary solver ticks compare against that baseline without allocating or uploading geometry.</summary>
@@ -435,16 +516,26 @@ public partial class BloodFlow : Node3D {
             values[i * 2] = body.Tissue.OpeningDistance(uvs[i]);
             values[i * 2 + 1] = body.SurfaceHeight(uvs[i]);
         }
-        return new WoundGeometry(body.Tissue.TopologyVersion, gap, uvs, values);
+        var result = new WoundGeometry(body.Tissue.TopologyVersion, gap, uvs, values);
+        return result;
     }
 
     private static bool GeometryChanged(WoundGeometry? drawn, PatientBody body, Vector2 uv) {
         if (drawn is null || drawn.Topology != body.Tissue.TopologyVersion
             || Mathf.Abs(drawn.Gap - body.Tissue.GapAt(uv, 0.04f)) > WoundLiquidGeometryTolerance) { return true; }
-        for (var i = 0; i < drawn.Uvs.Length; i++) {
+        // A long cut ribbon can contain hundreds of samples. Rechecking every point of every cut and rinse
+        // contour on every solver frame makes a settled pool expensive even though its mesh is unchanged.
+        // Rotate through a bounded batch; a real displacement is still caught as soon as its sample is visited.
+        const int SamplesPerFrame = 32;
+        var count = Math.Min(SamplesPerFrame, drawn.Uvs.Length);
+        for (var n = 0; n < count; n++) {
+            var i = (drawn.CheckCursor + n) % drawn.Uvs.Length;
             if (Mathf.Abs(body.Tissue.OpeningDistance(drawn.Uvs[i]) - drawn.Values[i * 2]) > WoundLiquidGeometryTolerance
-                || Mathf.Abs(body.SurfaceHeight(drawn.Uvs[i]) - drawn.Values[i * 2 + 1]) > WoundLiquidGeometryTolerance) { return true; }
+                || Mathf.Abs(body.SurfaceHeight(drawn.Uvs[i]) - drawn.Values[i * 2 + 1]) > WoundLiquidGeometryTolerance) {
+                return true;
+            }
         }
+        drawn.CheckCursor = (drawn.CheckCursor + count) % drawn.Uvs.Length;
         return false;
     }
 
@@ -494,12 +585,14 @@ public partial class BloodFlow : Node3D {
         foreach (var (id, rinse) in _rinses) {
             if (rinse.Ml <= 0f) { continue; }
             if (rinse.Ml < 0.02f) {
-                // Keep one reusable surface per wound. Releasing a just-drawn mesh can stall the render thread.
+                // Return drained wound surfaces to the prewarmed slot pool. Releasing GPU surfaces can stall the render thread.
                 rinse.Mesh.Visible = false;
+                ((ArrayMesh)rinse.Mesh.Mesh).ClearSurfaces();
                 rinse.Ml = rinse.Blood = 0f;
                 rinse.DrawnFill = -1f;
                 rinse.DrawnFloor = -1f;
                 rinse.DrawnGeometry = null;
+                _drainedRinseIds.Add(id);
                 continue;
             }
             var floor = body.OpeningDepth(rinse.Uv, 0.015f);
@@ -520,13 +613,21 @@ public partial class BloodFlow : Node3D {
                 rinse.Mesh.Mesh = water.Upload(rinse.Mesh.Mesh as ArrayMesh);
                 rinse.DrawnFill = fill;
                 rinse.DrawnFloor = floor;
-                if (geometryChanged) { rinse.DrawnGeometry = CaptureWoundGeometry(body, wound, rinse.Uv); }
+                if (geometryChanged) {
+                    rinse.DrawnGeometry = CaptureWoundGeometry(body, wound, rinse.Uv);
+                }
                 rinse.MeshRefreshes++;
             }
             rinse.Mesh.Visible = true;
             var fraction = Mathf.Clamp(rinse.Blood / Mathf.Max(rinse.Ml, 0.01f), 0f, 1f);
             var material = (StandardMaterial3D)rinse.Mesh.MaterialOverride;
             material.AlbedoColor = new Color(0.08f, 0.15f, 0.17f, 0.2f).Lerp(new Color(0.22f, 0.01f, 0.025f, 0.9f), fraction);
+        }
+        foreach (var id in _drainedRinseIds) {
+            var rinse = _rinses[id];
+            _rinses.Remove(id);
+            rinse.Mesh.Name = "IrrigationPoolSlot";
+            _drainedRinses[id] = rinse;
         }
     }
 
@@ -541,16 +642,16 @@ public partial class BloodFlow : Node3D {
         var wound = _body.GetParent<Patient>().Wounds.Where(w => !w.IsInternal).MinBy(w => w.DistanceTo(uv));
         if (wound is null || wound.DistanceTo(uv) > 0.05f) { return; }
         if (!_rinses.TryGetValue(wound.Id, out var rinse)) {
-            var mesh = new MeshInstance3D {
-                Name = "IrrigationPool",
-                Mesh = new ArrayMesh(),
-                MaterialOverride = Materials.Stream(),
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
-            };
-            ((StandardMaterial3D)mesh.MaterialOverride).Roughness = 0.22f;
-            ((StandardMaterial3D)mesh.MaterialOverride).MetallicSpecular = 0.2f;
-            _body.Site.AddChild(mesh);
-            rinse = new RinsePool(wound.BleedPoint, mesh);
+            if (!_drainedRinses.Remove(wound.Id, out rinse!)) {
+                if (_availableRinses.Count > 0) { rinse = _availableRinses.Dequeue(); } else if (_drainedRinses.Count > 0) {
+                    var reusable = _drainedRinses.First();
+                    _drainedRinses.Remove(reusable.Key);
+                    rinse = reusable.Value;
+                } else { return; }
+            }
+            rinse.Uv = wound.BleedPoint;
+            rinse.Mesh.Name = "IrrigationPool";
+            rinse.Mesh.Visible = true;
             _rinses.Add(wound.Id, rinse);
         }
         if (rinse.Ml <= 0f) {
@@ -735,8 +836,22 @@ public partial class BloodFlow : Node3D {
         _bodyRunoff.Tick(delta);
         while (_drops.Count < MaxDrops && _bodyRunoff.TryRelease(out var at, out var ml, out var onBed)) {
             var area = ml * PoolAreaPerDrop / DropMl;
-            if (onBed) { Pool(at with { Y = TableTop }, area); } else { AddDrop(at, Vector3.Zero, area); }
+            if (onBed) { Pool(at, area); } else { AddDrop(at, Vector3.Zero, area); }
         }
+        if (_surface.HasFilm) {
+            _surfaceGeometryClock += delta;
+            if (_surfaceGeometryClock >= 0.1f) {
+                _surfaceGeometryClock %= 0.1f;
+                var tissueSteps = body.Tissue.StepsDone;
+                var topology = body.Tissue.TopologyVersion;
+                if ((tissueSteps != _surfaceGeometrySteps || topology != _surfaceGeometryTopology)
+                    && _surface.BeginGeometryRefit()) {
+                    _surfaceGeometrySteps = tissueSteps;
+                    _surfaceGeometryTopology = topology;
+                }
+            }
+        }
+        _surface.ProcessGeometryRefit(32);
         // A pristine or fully wiped site has no transport or texture work. A final pending paint still runs.
         if (!_surface.HasFilm && !_surface.NeedsPaint && !_surfaceNeedsPaint) { _surfaceClock = 0f; return; }
         _surfaceClock += delta;
@@ -810,10 +925,9 @@ public partial class BloodFlow : Node3D {
             if (bedHit is not null || position.Y <= FloorY) {
                 var hit = bedHit?.At ?? drop.Position.Lerp(position,
                     Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
-                // Pools keep a stable reference plane; only their visible vertices follow the mattress.
-                hit.Y = bedHit is not null ? TableTop : FloorY;
+                if (bedHit is null) { hit.Y = FloorY; }
                 _drops.RemoveAt(i--);
-                Pool(hit, drop.Area, bedHit?.Frame ?? false);
+                Pool(hit, drop.Area, bedHit?.Frame ?? false, bedHit?.Support ?? -1);
             } else {
                 drop.Position = position;
             }
@@ -823,28 +937,35 @@ public partial class BloodFlow : Node3D {
         for (var n = 0; n < _pools.Count; n++) {
             var index = (_uploadCursor + n) % _pools.Count;
             var pool = _pools[index];
-            if (!WorkerTask.TryTake(ref pool.Building, out var built)) { continue; }
-            // Release the completed handle before observing a worker failure. A failed build keeps its
-            // input inventory and is retried on the next tick instead of faulting every frame.
-            GroundDrawing drawing;
-            try { drawing = built.GetAwaiter().GetResult(); } catch {
+            if (!WorkerTask.TryTakeResult(ref pool.Building, out var drawing, out var failure)) { continue; }
+            if (failure is not null) {
                 pool.TopDirty = true;
                 pool.SideDirty = true;
-                throw;
+                pool.Faults++;
+                if (pool.Faults == 1) { GD.PushWarning($"Blood ground-pool mesh build failed; retrying with backoff: {failure}"); }
+                pool.RetryIn = pool.Faults >= GroundBuildFailureLimit ? float.PositiveInfinity : pool.RetryDelay;
+                pool.RetryDelay = Mathf.Min(pool.RetryDelay * 2f, 8f);
+                continue;
             }
-            if (drawing.Top is { } top) { pool.Mesh.Mesh = top.Upload(pool.Mesh.Mesh as ArrayMesh); }
-            if (drawing.Footprint is { } footprint) {
-                pool.Runoff += Mathf.Max(0f, footprint.Incoming - Mathf.Max(0f, footprint.Area - pool.Area));
+            pool.Faults = 0;
+            pool.RetryDelay = 0.25f;
+            var completedDrawing = drawing!;
+            if (completedDrawing.Top is { } top) { ReplaceTopSurface(pool, top); }
+            if (completedDrawing.Footprint is { } footprint) {
+                // Cover() returns projected footprint area; a thin bed film holds only its calibrated share of
+                // the equivalent flat-pool volume. Convert before reconciling the incoming dose.
+                var heldArea = footprint.Area * BedAreaVolumeRatio;
+                pool.Runoff += Mathf.Max(0f, footprint.Incoming - Mathf.Max(0f, heldArea - pool.Area));
                 pool.Incoming = Mathf.Max(0f, pool.Incoming - footprint.Incoming);
                 pool.Radius = footprint.Radius;
                 pool.Outline = footprint.Outline;
-                pool.Area = footprint.Area;
+                pool.Area = heldArea;
                 pool.FrameOnly = footprint.FrameOnly;
                 OutletsAtEdges(pool, footprint.Outlets);
                 pool.SideDirty = true;
             }
-            if (drawing.Side is { } side) {
-                pool.Side!.Mesh = side.Upload(pool.Side.Mesh as ArrayMesh);
+            if (completedDrawing.Side is { } side) {
+                ReplaceSideSurface(pool, side);
                 for (var i = 0; i < pool.Outlets.Length; i++) {
                     var outlet = pool.Outlets[i];
                     outlet.Uploaded(pool.RivuletBuffer!.States[i]);
@@ -855,16 +976,18 @@ public partial class BloodFlow : Node3D {
         }
         foreach (var pool in _pools) {
             // Spread the 15 Hz work across frames when several pools are growing together.
+            pool.RetryIn = Mathf.Max(0f, pool.RetryIn - delta);
             pool.Clock += delta;
             if (pool.Clock < 1f / 15f) { continue; }
             pool.Clock %= 1f / 15f;
+            if (pool.RetryIn > 0f) { continue; }
             if (pool.Building is not null) { continue; }
             if (pool.Incoming > 0f) {
                 var radius = GrowingRadius(pool, pool.Incoming);
                 if (pool.OnBed && radius != pool.Radius) {
                     var amount = pool.Incoming;
                     var outline = LiquidSurface.Outline(radius, pool.Phase);
-                    var center = pool.Mesh.Position;
+                    var center = pool.Center;
                     var bed = Bed;
                     var flows = SnapshotRivulets(pool);
                     pool.TopDirty = pool.SideDirty = false;
@@ -873,15 +996,9 @@ public partial class BloodFlow : Node3D {
                         top.Clear();
                         // One intersection supplies both the displayed footprint and its conserved capacity.
                         var frameOnly = pool.FrameOnly;
-                        var area = frameOnly ? bed.CoverFrame(outline, center, top) : bed.Cover(outline, center, top);
-                        if (!frameOnly && area <= 0.0000001f) {
-                            frameOnly = true;
-                            top.Clear();
-                            area = bed.CoverFrame(outline, center, top);
-                        }
-                        area *= BedAreaVolumeRatio;
-                        var outlets = frameOnly ? bed.FrameOutlets(outline, center) : bed.Outlets(outline, center);
-                        top.PrepareUpload();
+                        var area = frameOnly ? bed.CoverFrame(outline, center, top, pool.Support) : bed.Cover(outline, center, top, pool.Support);
+                        var outlets = frameOnly ? bed.FrameOutlets(outline, center, pool.Support) : bed.Outlets(outline, center, pool.Support);
+                        top.PrepareUpload(center);
                         var side = DrawRivulets(pool, bed, flows, center);
                         return new GroundDrawing(top, side, new GroundFootprint(amount, radius, outline, area, outlets, frameOnly));
                     });
@@ -904,7 +1021,7 @@ public partial class BloodFlow : Node3D {
                 // freeze its packed arrays on the worker so uploads do not copy geometry on the gameplay thread.
                 var bed = Bed;
                 var outline = pool.Outline;
-                var center = pool.Mesh.Position;
+                var center = pool.Center;
                 var topDirty = pool.TopDirty;
                 var flows = SnapshotRivulets(pool);
                 pool.Building = Task.Run(() => {
@@ -913,8 +1030,8 @@ public partial class BloodFlow : Node3D {
                     if (topDirty) {
                         top = pool.TopBuffer;
                         top.Clear();
-                        if (pool.FrameOnly) { bed.CoverFrame(outline, center, top); } else { bed.Cover(outline, center, top); }
-                        top.PrepareUpload();
+                        if (pool.FrameOnly) { bed.CoverFrame(outline, center, top, pool.Support); } else { bed.Cover(outline, center, top, pool.Support); }
+                        top.PrepareUpload(center);
                     }
                     side = DrawRivulets(pool, bed, flows, center);
                     return new GroundDrawing(top, side);
@@ -922,10 +1039,11 @@ public partial class BloodFlow : Node3D {
             } else {
                 var surface = pool.TopBuffer;
                 var outline = pool.Outline;
+                var center = pool.Center;
                 pool.Building = Task.Run(() => {
                     surface.Clear();
                     surface.Patch(outline, PoolThickness);
-                    surface.PrepareUpload();
+                    surface.PrepareUpload(center);
                     return new GroundDrawing(surface, null);
                 });
             }
@@ -959,12 +1077,34 @@ public partial class BloodFlow : Node3D {
         return flows;
     }
 
+    private void ReplaceTopSurface(GroundPool pool, LiquidSurface surface) =>
+        ReplaceBatchSurface(_groundTopMesh, pool, surface, ref pool.TopSurface, false);
+
+    private void ReplaceSideSurface(GroundPool pool, LiquidSurface surface) =>
+        ReplaceBatchSurface(_groundSideMesh, pool, surface, ref pool.SideSurface, true);
+
+    private void ReplaceBatchSurface(ArrayMesh mesh, GroundPool pool, LiquidSurface surface, ref int index, bool side) {
+        if (index >= 0) {
+            var removed = index;
+            mesh.SurfaceRemove(removed);
+            foreach (var other in _pools) {
+                if (ReferenceEquals(other, pool)) { continue; }
+                ref var otherIndex = ref (side ? ref other.SideSurface : ref other.TopSurface);
+                if (otherIndex > removed) { otherIndex--; }
+            }
+            index = -1;
+        }
+        if (surface.VertexCount == 0) { return; }
+        surface.AppendUpload(mesh);
+        index = mesh.GetSurfaceCount() - 1;
+    }
+
     private static LiquidSurface? DrawRivulets(GroundPool pool, BedLiquidSurface bed, BedLiquidSurface.Flow[]? flows, Vector3 center) {
         if (flows is null) { return null; }
         var side = pool.SideBuffer!;
         side.Clear();
         bed.Rivulets(side, flows, center, pool.RivuletBuffer!);
-        side.PrepareUpload();
+        side.PrepareUpload(center);
         return side;
     }
 
@@ -1042,44 +1182,31 @@ public partial class BloodFlow : Node3D {
 
     /// <summary>Pool footprint area grows with deposited blood. Bed pools narrow at the supporting edges; the
     /// unsupported share becomes runoff with its own area, which falls and grows a separate floor pool.</summary>
-    internal void Pool(Vector3 at, float area = PoolAreaPerDrop, bool? frameOnly = null) {
-        var onBed = Mathf.Abs(at.Y - TableTop) < 0.001f;
-        if (onBed && frameOnly is null) {
-            // A repeated inlet on a static bed can reuse its contact. Other impacts must keep the
-            // actual support class: the reference plane alone cannot distinguish pad and frame.
-            foreach (var pool in _pools) {
-                if (pool.OnBed && pool.Mesh.Position == at) { frameOnly = pool.FrameOnly; break; }
-            }
-            frameOnly ??= Bed.FrameSupports(new Vector2(at.X, at.Z));
+    internal void Pool(Vector3 at, float area = PoolAreaPerDrop, bool? frameOnly = null, int support = -1) {
+        BedLiquidSurface.Hit? landing = support >= 0 ? new BedLiquidSurface.Hit(at, frameOnly == true, support) : null;
+        if (landing is null && at.Y > FloorY + 0.01f) {
+            // Legacy/manual deposits on the reference plane are resolved to the real support. Physical
+            // impacts already carry their exact support and height, including lower overlapping shelves.
+            var reach = Mathf.Abs(at.Y - TableTop) < 0.0015f ? 0.2f : 0.003f;
+            landing = Bed.Contact(at + Vector3.Up * 0.002f, at - Vector3.Up * reach);
+            if (landing is null) { AddDrop(at, Vector3.Zero, area); return; }
         }
-        var onFrame = onBed && frameOnly == true;
+        var onBed = landing.HasValue;
+        var onFrame = landing?.Frame ?? false;
+        support = landing?.Support ?? -1;
+        at = landing?.At ?? at;
         GroundPool? target = null;
         foreach (var pool in _pools) {
-            var mesh = pool.Mesh;
-            if (pool.FrameOnly == onFrame && Mathf.Abs(mesh.Position.Y - at.Y) < 0.001f
-                && mesh.Position.DistanceTo(at) < PoolMerge + GrowingRadius(pool, pool.Incoming)) {
+            if (pool.OnBed == onBed && pool.Support == support && (onBed || Mathf.Abs(pool.Center.Y - at.Y) < 0.001f)
+                && pool.Center.DistanceTo(at) < PoolMerge + GrowingRadius(pool, pool.Incoming)) {
                 target = pool;
                 break;
             }
         }
         if (target is null) {
-            var mesh = new MeshInstance3D {
-                Mesh = new ArrayMesh(),
-                MaterialOverride = _poolMaterial,
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-                TopLevel = true,
-            };
-            AddChild(mesh);
-            mesh.Position = at;
-            var side = onBed ? new MeshInstance3D {
-                Name = "BedRivulets",
-                Mesh = new ArrayMesh(),
-                MaterialOverride = _poolMaterial,
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            } : null;
-            if (side is not null) { mesh.AddChild(side); }
-            target = new GroundPool(mesh, side, onBed, _pools.Count + 1);
-            target.FrameOnly = onFrame;
+            target = new GroundPool(at, _pools.Count + 1);
+            target.Activate(at, onBed, onFrame);
+            target.Support = support;
             _pools.Add(target);
         }
         target.Incoming += area;

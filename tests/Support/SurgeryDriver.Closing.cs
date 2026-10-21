@@ -157,7 +157,9 @@ public partial class SurgeryDriver {
     public async Task PlayerSews(Wound wound, TissueDepth layer) {
         if (await PlayerThreads(wound, layer)) {
             await PlayerPullsThread("closed");
-            await PlayerTiesOff();
+            // Tension can finish or tear through the active thread. Only an anchored thread can be tied;
+            // the operation's closure checks still decide whether the wound was actually closed.
+            if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) { await PlayerTiesOff(); }
         }
         var bins = layer == TissueDepth.Muscle ? wound.Muscle : wound.Bins;
         Note($"{layer} of wound {wound.Id} closed {bins.DefaultIfEmpty(0f).Min():0.00}");
