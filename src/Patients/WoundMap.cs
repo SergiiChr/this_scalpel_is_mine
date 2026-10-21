@@ -84,6 +84,7 @@ public sealed class WoundMap {
     private bool[] _filmChanged = [];
     private bool[] _filmSpreadRows = [];
     private bool[] _filmSpread = [];
+    private bool[] _filmReducedNear = [];
     private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {
@@ -228,6 +229,7 @@ public sealed class WoundMap {
             _filmChanged = new bool[resolution * resolution];
             _filmSpreadRows = new bool[resolution];
             _filmSpread = new bool[resolution * resolution];
+            _filmReducedNear = new bool[resolution * resolution];
             _filmPixelStart = Enumerable.Repeat(Size, resolution).ToArray();
             _filmIndex = new int[Size];
             _filmWeights = new Vector4[Size];
@@ -256,12 +258,19 @@ public sealed class WoundMap {
             Array.Fill(_filmChanged, true);
             Array.Fill(_filmChangedRows, true);
         } else if (_filmReductionAcknowledged && _filmReductionResolution == resolution) {
+            Array.Clear(_filmReducedNear);
             for (var y = 0; y < resolution; y++) {
                 var row = y * resolution;
                 for (var x = 0; x < resolution; x++) {
                     if (!_filmReductionCells[row + x]) { continue; }
                     _filmChanged[row + x] = true;
                     _filmChangedRows[y] = true;
+                    // The texels of cells x - 2 .. x + 1 read this one through the spline.
+                    for (var ny = Math.Max(y - 2, 0); ny <= Math.Min(y + 1, resolution - 1); ny++) {
+                        for (var nx = Math.Max(x - 2, 0); nx <= Math.Min(x + 1, resolution - 1); nx++) {
+                            _filmReducedNear[ny * resolution + nx] = true;
+                        }
+                    }
                 }
             }
         }
@@ -319,7 +328,7 @@ public sealed class WoundMap {
                     var previousSourceDepth = _filmSourceDepth[pixel];
                     var previousShownDepth = Math.Max(0f, previousSourceDepth - _filmRemovedDepth[pixel]);
                     var reductionAcknowledged = _filmReductionAcknowledged && (_filmReductionGlobal
-                        || _filmReductionResolution == resolution && FilmReductionTouches(x, y, resolution));
+                        || _filmReductionResolution == resolution && _filmReducedNear[cell]);
                     var externallyWiped = support > 0 && data[i] < paintedBefore;
                     if (depth <= 0f) {
                         _filmRemovedDepth[pixel] = 0f;
@@ -371,17 +380,6 @@ public sealed class WoundMap {
         }
         _filmReductionAcknowledged = false;
         _filmReductionGlobal = false;
-    }
-
-    /// <summary>Whether a reduced cell is among the four by four the spline reads for texel x, y.</summary>
-    private bool FilmReductionTouches(int x, int y, int resolution) {
-        var (rx, ry) = (_filmIndex[x], _filmIndex[y]);
-        for (var cy = Math.Max(ry - 1, 0); cy <= Math.Min(ry + 2, resolution - 1); cy++) {
-            for (var cx = Math.Max(rx - 1, 0); cx <= Math.Min(rx + 2, resolution - 1); cx++) {
-                if (_filmReductionCells[cy * resolution + cx]) { return true; }
-            }
-        }
-        return false;
     }
 
     /// <summary>Cubic B-spline weights of the four cells around a texel <paramref name="t"/> past the second.
