@@ -41,7 +41,7 @@ public partial class Room : Node3D {
     private const float MonitorYaw = -70f;
     /// <summary>The monitor's pole, from its lower clamp to the arm: solid, as it stands where surgeons walk round the head.
     /// Same as MONITOR_POLE in tools/assetgen/props.py.</summary>
-    private static readonly Aabb MonitorPole = new(new Vector3(1.055f, 0.75f, -0.22f), new Vector3(0.04f, 0.54f, 0.04f));
+    private static readonly Aabb MonitorPole = new(new Vector3(1.055f, 0.75f, -0.22f), new Vector3(0.04f, 0.47f, 0.04f));
     /// <summary>Between items the nurse brings together, across the delivery tray (meters): five fit inside its rim.
     /// </summary>
     private const float DeliveryGap = 0.095f;

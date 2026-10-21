@@ -7,9 +7,10 @@ namespace Scalpel.World;
 /// </summary>
 public partial class MonitorScreen : Control {
     public static readonly Vector2 ScreenSize = new(760f, 500f);
-    private static readonly Color Background = new(0.01f, 0.015f, 0.02f);
-    private static readonly Color Bar = new(0.11f, 0.13f, 0.17f);
-    private static readonly Color Line = new(0.2f, 0.23f, 0.28f);
+    /// <summary>Dark gray, not black, so the black bezel round the glass shows.</summary>
+    internal static readonly Color Background = new(0.1f, 0.11f, 0.12f);
+    private static readonly Color Bar = new(0.19f, 0.21f, 0.25f);
+    private static readonly Color Line = new(0.28f, 0.31f, 0.36f);
     private static readonly Color Ecg = new(0.3f, 1f, 0.4f);
     private static readonly Color Pleth = new(0.3f, 0.85f, 1f);
     private static readonly Color Nibp = new(1f, 0.45f, 0.45f);

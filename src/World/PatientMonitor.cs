@@ -19,7 +19,7 @@ public partial class PatientMonitor : Node3D {
 
     public void Build() {
         ModelSlot.Instantiate("props", "monitor", this,
-            new Dictionary<string, Material> { ["screen"] = Materials.Glow(new Color(0.02f, 0.05f, 0.04f)) });
+            new Dictionary<string, Material> { ["screen"] = Materials.Glow(MonitorScreen.Background) });
         BuildScreen();
         var player = new AudioStreamPlayer3D {
             Stream = new AudioStreamGenerator { MixRate = SampleRate, BufferLength = 0.2f },
