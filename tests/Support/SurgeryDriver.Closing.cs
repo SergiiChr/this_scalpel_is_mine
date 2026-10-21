@@ -161,16 +161,23 @@ public partial class SurgeryDriver {
         var needle = Me.Active;
         var other = needle == Right ? Left : Right;
         SurgicalTool? gelpi = null;
+        // Gelpis the hand couldn't reach back with the thread through the tissue holding the needle hand in place.
+        List<SurgicalTool> left = [];
         // Where a layer under the skin hides under the lip, the other hand spreads the cut there with a Gelpi until it
         // shows, moving it along the cut as the needle goes. A stab or bullet hole has nothing to spread, and a hand
         // already holding something (the lip, lifted with forceps) is busy.
         async Task Spread(float along) {
             if (gelpi is not null) {
                 await PlayerTakesOutGelpi(gelpi, other, putDown: false);
+                if (Me.HeldTool(other) != gelpi) {
+                    left.Add(gelpi);
+                }
             }
             await SwitchTo(other);
             var direction = (wound.Points[^1] - wound.Points[0]).Normalized() * Body.MetersToUv(0.01f);
-            var at = BesideWound(wound, along, 0f);
+            // Near an end of a long cut the arms would sit past it and spread nothing: keep them inside.
+            var inset = Body.MetersToUv(0.015f);
+            var at = BesideWound(wound, wound.LengthUv > inset * 2f ? Mathf.Clamp(along, inset, wound.LengthUv - inset) : along, 0f);
             gelpi = await PlayerSetsGelpi(at - direction, at + direction);
             await PlayerOpensGelpi(SpreadToSew);
             Tap(InputActions.Grab);
@@ -188,6 +195,14 @@ public partial class SurgeryDriver {
         } else if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
             // A thread that can't go on is tied off as it is: the next one may be in another layer.
             await PlayerTiesOff();
+        }
+        // Tied off, the surgeon is free to walk round to them: one left spreading the cut would tear the skin closed
+        // over it.
+        foreach (var stuck in left.Where(tool => tool.InWound)) {
+            await PlayerTakesOutGelpi(stuck, other);
+        }
+        if (left.Count > 0) {
+            await SwitchTo(needle);
         }
         var bins = layer == TissueDepth.Muscle ? wound.Muscle : wound.Bins;
         Note($"{layer} of wound {wound.Id} closed {bins.DefaultIfEmpty(0f).Min():0.00}");
