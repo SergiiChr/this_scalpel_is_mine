@@ -34,6 +34,14 @@ public partial class Room : Node3D {
     /// <summary>The patient card hangs facing out from the middle of the table's head rail (HEAD_RAIL_X in
     /// tools/assetgen/props.py): in view from either side of the table, where the surgeons start.</summary>
     private const float CardHook = TableHead + 0.04f;
+    /// <summary>The monitor's screen center, on its pole at the table's head end, and its turn from facing +Z: down the
+    /// table, a little toward the near side. Same as MONITOR_SCREEN and MONITOR_YAW in tools/assetgen/props.py, which
+    /// builds the pole and arm to reach the table from there.</summary>
+    private static readonly Vector3 MonitorAt = new(1.02f, 1.45f, -0.32f);
+    private const float MonitorYaw = -70f;
+    /// <summary>The monitor's pole, from its lower clamp to the arm: solid, as it stands where surgeons walk round the head.
+    /// Same as MONITOR_POLE in tools/assetgen/props.py.</summary>
+    private static readonly Aabb MonitorPole = new(new Vector3(1.055f, 0.75f, -0.22f), new Vector3(0.04f, 0.54f, 0.04f));
     /// <summary>Between items the nurse brings together, across the delivery tray (meters): five fit inside its rim.
     /// </summary>
     private const float DeliveryGap = 0.095f;
@@ -86,7 +94,6 @@ public partial class Room : Node3D {
                 ["sink"] = new(1.5f, 0f, 1.9f),
                 ["sanitizer"] = new(2.25f, 0f, 1.92f),
                 ["iv"] = new(0.95f, 0f, 0.85f),
-                ["monitor"] = new(1.25f, 1.55f, -0.95f),
                 ["defib_cart"] = new(0.3f, 0f, -1.95f),
                 // In its niche (XrayNiche), the tube head toward the back, the handle just inside the room.
                 ["xray"] = new(-3.04f, 0f, -1.65f),
@@ -109,7 +116,6 @@ public partial class Room : Node3D {
                 ["gloves"] = new(1.8f, 0f, 0.85f),
                 ["sanitizer"] = new(-1.8f, 0f, -0.8f),
                 ["iv"] = new(0.85f, 0f, -0.75f),
-                ["monitor"] = new(1.4f, 1.4f, -1.05f),
                 ["defib_cart"] = new(1.8f, 0f, 0f),
                 // By the back doors.
                 ["smoking"] = new(-1.88f, 0f, -0.2f),
@@ -122,7 +128,6 @@ public partial class Room : Node3D {
                 ["card"] = new(CardHook, 0f, 0f),
                 ["gloves"] = new(-1.6f, 0f, -1.5f),
                 ["iv"] = new(0.95f, 0f, 0.85f),
-                ["monitor"] = new(1.4f, 1.1f, -1f),
                 ["defib_cart"] = new(-0.6f, 0f, 1.8f),
                 // Under the streetlight.
                 ["smoking"] = new(2.6f, 0f, 3f),
@@ -621,10 +626,12 @@ public partial class Room : Node3D {
         AddChild(IvLine);
         Monitor = new PatientMonitor { Name = "Monitor" };
         AddChild(Monitor);
-        Monitor.Position = Layout["monitor"];
-        Monitor.Rotation = new Vector3(0f, Mathf.Atan2(-Monitor.Position.X, -Monitor.Position.Z), 0f);
+        Monitor.Position = MonitorAt;
+        Monitor.RotationDegrees = new Vector3(0f, MonitorYaw, 0f);
         Monitor.Build();
-        Interactable.Create(this, "Order blood work", new Vector3(0.5f, 0.5f, 0.3f), Layout["monitor"],
+        Shapes.StaticBox(this, MonitorPole.Size, MonitorPole.GetCenter());
+        // Just the screen, across its width: any taller and it would reach down into "Talk to the patient" around the head.
+        Interactable.Create(this, "Order blood work", new Vector3(0.2f, 0.3f, 0.44f), MonitorAt,
             _ => surgery.OpenLab());
         foreach (var side in (float[])[-1f, 1f]) {
             Interactable.Create(this, "Turn the patient", new Vector3(0.3f, 0.3f, 0.2f),

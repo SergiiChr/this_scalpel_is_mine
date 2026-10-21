@@ -1,6 +1,7 @@
 namespace Scalpel.Tests.World;
 
-/// <summary>Ceiling fixture clearance and the theatre panels' independent shadow-casting lights.
+/// <summary>Ceiling fixture clearance, the theatre panels' independent shadow-casting lights and the monitor's mount on
+/// the table.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -108,6 +109,54 @@ public class RoomTest {
         } finally {
             await driver.Stop();
         }
+    }
+
+    /// <summary>How far past the table's head end and sides the monitor may stand out into the room.</summary>
+    private const float MonitorReach = 0.25f;
+
+    [TestCase]
+    public async Task MonitorIsMountedOnTheTableHead() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        try {
+            await driver.Start("appendectomy");
+            var surgery = driver.Surgery;
+            var monitor = surgery.Room.Monitor;
+            var bounds = RoomBounds(monitor, surgery.Room);
+            // Its pole's lower clamp reaches into the frame's end under the pads, inside the table's sides.
+            var pole = RoomBounds(ModelSlot.Parts(monitor, "Pole")["Pole"], surgery.Room);
+            var clamped = pole.Position.X < Room.TableHead && pole.Position.Y < Room.TableHeight - 0.05f
+                && Mathf.Abs(pole.GetCenter().Z) < Room.TableWidth * 0.5f;
+            AssertBool(clamped).OverrideFailureMessage($"the monitor's pole is clamped to the table's head end: {pole}").IsTrue();
+            var tucked = bounds.End.X - Room.TableHead <= MonitorReach
+                && Mathf.Max(-bounds.Position.Z, bounds.End.Z) <= (Room.TableWidth * 0.5f) + MonitorReach;
+            AssertBool(tucked).OverrideFailureMessage($"the monitor stays close to the table: {bounds}").IsTrue();
+            if (KeyFrames.Wanted()) {
+                var shots = new KeyFrames();
+                driver.AddChild(shots);
+                shots.Begin(surgery, "room/monitor");
+                await shots.CaptureView("start",
+                    "from where the surgeon starts, the patient and the table's head end are in full view, the monitor up "
+                    + "at the edge of the view beyond the head");
+                await shots.CaptureFacing("mount", "the flat screen on a short arm from a pole clamped to the table's "
+                    + "head rail and frame, the module rack under the arm's elbow, all within 25 cm of the table",
+                    new Vector3(Room.TableHead + 0.05f, 1.2f, -0.3f), new Vector3(-1f, 0f, -1f), 1.8f);
+                await driver.PlayerLooksAt(monitor.GlobalPosition);
+                await shots.CaptureView("screen", "the vitals on the screen read clearly, its glass turned toward the surgeon");
+                shots.End();
+            }
+        } finally {
+            await driver.Stop();
+        }
+    }
+
+    /// <summary>The box round every vertex of the meshes at and under <paramref name="node"/>, in <paramref name="room"/>'s
+    /// space. Not their boxes turned into it, which would stand further out than the parts do.</summary>
+    private static Aabb RoomBounds(Node3D node, Node3D room) {
+        var toRoom = room.GlobalTransform.AffineInverse();
+        var points = node.FindChildren("*", nameof(MeshInstance3D), true, false).Append(node).OfType<MeshInstance3D>()
+            .SelectMany(mesh => mesh.Mesh.GetFaces().Select(vertex => toRoom * mesh.GlobalTransform * vertex)).ToArray();
+        return points.Aggregate(new Aabb(points[0], Vector3.Zero), (box, point) => box.Expand(point));
     }
 
     private readonly record struct Shot(string Name, Vector3 From);
