@@ -159,7 +159,7 @@ public class LiquidShapeTest {
         BodyLiquidSurface.SkinWeights Bone(int index) => new(new Vector4I(index, 0, 0, 0), new Vector4(1f, 0f, 0f, 0f));
         BodyLiquidSurface.Sample Sample(float z, float ml) => new(new Vector3(0f, 0f, z), Vector3.Up,
             new Vector3(-Width * 0.5f, edge, z), new Vector3(Width * 0.5f, edge, z), Vector3.Up, Vector3.Up,
-            Bone(0), Bone(1), Bone(2), z, ml, Width);
+            Bone(1), Bone(0), Bone(2), z, ml, Width);
         var start = Sample(0f, 0f);
         var middle = Sample(Length * 0.5f, 0f);
         var end = Sample(Length, 0f);
