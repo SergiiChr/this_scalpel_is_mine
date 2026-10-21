@@ -81,7 +81,7 @@ public partial class PatientBody {
     /// drawn: on the skin, or on the fat or muscle a cut lays bare. Moved out over a cut from its lip the tip goes down
     /// the wall beside it (<see cref="WallSlide"/>), touching the skin's cut face first, then the fat's and the
     /// muscle's, instead of dropping off the lip: every layer can be aimed at. Away from the simulated tissue it's the
-    /// body's skin. Null where nothing is near enough to touch in an opening through the muscle.
+    /// body's skin. Null off the site, and where nothing is near enough to touch in an opening through the muscle.
     /// </summary>
     internal ExposedTissue? ExposedAt(Vector3 local) {
         if (_drawnPending is { } pending) {
@@ -116,10 +116,11 @@ public partial class PatientBody {
                 under = new ExposedTissue(height, nearest, face.Layer);
             }
         }
-        // Nothing drawn near, away from any opening: the body's own skin, where the tissue isn't simulated.
+        // Nothing drawn near, away from any opening: the body's own skin, where the tissue isn't simulated. Off the
+        // site, nothing.
         if (under is null) {
             var uv = LocalToUv(local);
-            if (IsOpen(uv)) {
+            if (!new Rect2(Vector2.Zero, Vector2.One).HasPoint(uv) || !OnBody(uv) || IsOpen(uv)) {
                 return null;
             }
             var skin = local with { Y = SurfaceHeight(uv) };
