@@ -500,16 +500,16 @@ public partial class PatientBody : Node3D {
     /// </summary>
     public LimbRing? LimbRingAt(Vector3 p) {
         // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides. That
-        // reaches the trunk's box too where a limb lies beside it (a forearm, a thigh): the limb is the one wanted.
-        var part = Overlapping(p, 0.08f, PatientLayer, 4).OfType<BodyPart>().Select(body => body.Part)
-            .FirstOrDefault(name =>
-                name.StartsWith("arm", StringComparison.Ordinal) || name.StartsWith("leg", StringComparison.Ordinal));
-        if (part is null) {
-            return null;
-        }
-        var box = (Node3D)_bodyRoot.FindChild(part.ToPascalCase(), false, false);
+        // reaches the trunk's box too where a limb lies beside it (a forearm, a thigh), and by the hand a leg's.
+        var limbs = Overlapping(p, 0.08f, PatientLayer, 4).OfType<BodyPart>().Where(body =>
+            body.Part.StartsWith("arm", StringComparison.Ordinal) || body.Part.StartsWith("leg", StringComparison.Ordinal));
+        return limbs.Select(limb => RingAround(limb, p)).FirstOrDefault(ring => ring is not null);
+    }
+
+    /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>
+    private LimbRing? RingAround(BodyPart limb, Vector3 p) {
         var axis = _bodyRoot.GlobalBasis.X.Normalized();
-        var inside = box.GlobalPosition + axis * axis.Dot(p - box.GlobalPosition);
+        var inside = limb.GlobalPosition + axis * axis.Dot(p - limb.GlobalPosition);
         var hits = new List<Vector3>();
         for (var i = 0; i < 16; i++) {
             var outward = new Basis(axis, Mathf.Tau * i / 16f) * _bodyRoot.GlobalBasis.Y.Normalized();
