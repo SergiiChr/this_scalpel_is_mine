@@ -217,6 +217,7 @@ public partial class SurgeryDriver {
         }
         Note($"drew {syringe.Ml:0.0} ml and {syringe.Air:0.0} ml of air (needle in {into})");
         await NeedleOut();
+        var holds = route is Route.Vein or Route.Arm && await PlayerHoldsThrashingForearm();
         var target = route switch {
             Route.Drip => Surgery.Tools.DripBag()!.Middle(),
             Route.Vein => VeinPoint(),
@@ -224,20 +225,51 @@ public partial class SurgeryDriver {
             _ => SitePoint(at ?? new Vector2(0.5f, 0.5f)),
         };
         await NeedleInto(target, route != Route.Drip);
-        if (!await NeedleIsIn(syringe)) {
+        var isIn = await NeedleIsIn(syringe);
+        if (isIn) {
+            into = Syringe.NeedleTarget(syringe, Patient);
+            var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
+            for (var i = 0; i < notches; i++) {
+                await Notch(true);
+            }
+            Note($"pushed into {into}, {syringe.Ml:0.0} ml left");
+        }
+        await NeedleOut();
+        if (holds) {
+            await SwitchTo(1 - Me.Active);
+            await PlayerLetsGoOfPatient();
+            await SwitchTo(1 - Me.Active);
+        }
+        if (!isIn) {
             Note($"the needle didn't go in ({route})");
             return;
         }
-        into = Syringe.NeedleTarget(syringe, Patient);
-        var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
-        for (var i = 0; i < notches; i++) {
-            await Notch(true);
-        }
-        Note($"pushed into {into}, {syringe.Ml:0.0} ml left");
-        await NeedleOut();
         await Frames.Physics(10);
         await PlayerPutsDown();
     }
+
+    /// <summary>A patient thrashing about (awake, in pain or panicking) has the forearm held still with the free hand,
+    /// by the wrist, so a needle can go in beside its vein. False when the patient lies still or no hand is free.
+    /// </summary>
+    private async Task<bool> PlayerHoldsThrashingForearm() {
+        var other = 1 - Me.Active;
+        if (!Thrashes || Me.HeldTool(other) is not null) {
+            return false;
+        }
+        // Where the arm lies on the table, not where it has jerked to: the hand presses it back down there.
+        var vein = Body.Veins[0];
+        var skeleton = Body.Animator.Rig!.Skeleton.GlobalTransform;
+        var unmoved = skeleton * Body.Animator.Rig.Moved(((Forearm)vein.GetParent()).BoneName).AffineInverse()
+            * skeleton.AffineInverse();
+        var wrist = unmoved * vein.ToGlobal(vein.Line[^1]);
+        await SwitchTo(other);
+        await PlayerHoldsPatientAt(wrist);
+        await SwitchTo(1 - other);
+        return true;
+    }
+
+    /// <summary>An awake patient in pain or panicking jerks their arms.</summary>
+    private bool Thrashes => Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f;
 
     /// <summary>Waits until <paramref name="syringe"/>'s needle is in something: the bag, a vein or tissue.</summary>
     private Task<bool> NeedleIsIn(SurgicalTool syringe) =>
@@ -292,9 +324,8 @@ public partial class SurgeryDriver {
     /// away from the site when the site is a forearm).</summary>
     public async Task PlayerSetsIv() {
         Note("sets an IV line");
-        // An awake patient in pain jerks their arm: settled first, or the catheter misses the vein, and a missed line
-        // can't be put right.
-        if (Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f) {
+        // Settled first, or the jerking arm makes the catheter miss the vein, and a missed line can't be put right.
+        if (Thrashes) {
             await PlayerCalmsPatient();
         }
         if (await PlayerRequestsItem("iv_catheter") is not { } catheter) {
