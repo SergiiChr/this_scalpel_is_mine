@@ -11,8 +11,7 @@ public partial class Surgeon {
     /// <summary>Farthest the torso bends forward over the patient (radians).</summary>
     internal const float MaxLean = 0.7f;
     /// <summary>Leaning in, the eyes stop this far (m, across the floor) short of right over the spot they look at: the
-    /// view goes down into the opening steeply, not straight down onto the back of the hand, and stays within how far
-    /// down the eyes can look (<see cref="LowestLook"/>).</summary>
+    /// view goes down into the opening steeply, not straight down onto the back of the hand.</summary>
     private const float LeanSetback = 0.1f;
     /// <summary>Leaning in keeps the eyes at least this far (m) above the skin they look at, clear of the drapes, the
     /// organs and the tools in an opening.</summary>

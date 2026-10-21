@@ -362,13 +362,14 @@ public class SurgeonMovementTest {
     }
 
     /// <summary>
-    /// Zooming in with the scalpel over the belly close to the near edge of the table, <paramref name="toward"/> m nearer
-    /// the surgeon than the spot they walked up to, the surgeon bends in and the eyes look further down than they can
-    /// standing, so the spot the scalpel aims at ends up in the middle of the view. Looking down further still, then
-    /// zooming out, the look comes up with the torso to no lower than standing.
+    /// Zooming in with the scalpel over the skin <paramref name="toward"/> m nearer the surgeon than the spot they walked
+    /// up to (the edge row: on the arm lying along the table edge, the nearest the hand is still over the patient), the
+    /// surgeon bends in and the eyes look further down than they can standing, so the spot the scalpel aims at ends up
+    /// in the middle of the view. Looking down further still, then zooming out, the look comes up with the torso to no lower
+    /// than standing.
     /// </summary>
     [TestCase("close", 0.1f)]
-    [TestCase("edge", 0.2f)]
+    [TestCase("edge", 0.35f)]
     public async Task LeaningInCentersTheAimedSpot(string name, float toward) {
         var driver = await Begin();
         var me = driver.Me;
@@ -401,6 +402,7 @@ public class SurgeonMovementTest {
             rise = Mathf.Max(rise, me.Pitch - was);
         }
         AssertFloat(me.Lean).OverrideFailureMessage($"zoomed out, the surgeon straightens up ({me.Lean:0.000} rad)").IsLess(0.01f);
+        // The look is the player's now: it stops at the standing limit rather than going back to where it was before.
         AssertFloat(me.Pitch).OverrideFailureMessage($"and the look taken down to {lookedDown:0.00} rad comes up to standing "
             + $"({me.Pitch:0.00} rad)").IsEqualApprox(Surgeon.LookPitch.X, 0.001f);
         AssertFloat(rise).OverrideFailureMessage($"gradually ({rise:0.000} rad in a frame at most)").IsLess(0.08f);
