@@ -131,8 +131,8 @@ public static class ToolActions {
     /// The needle's pull is on its current thread only: with no thread the wheel does nothing, and each new thread
     /// starts at SutureStartTension.</summary>
     public const float SutureTensionStep = 0.04f;
-    /// <summary>A new thread's tension, and a tensioned closure's before its wheel is turned: loose in skin, fully slack
-    /// deeper.</summary>
+    /// <summary>A new thread's tension, and a tensioned closure's before its wheel is turned: loose in skin, fully
+    /// slack deeper.</summary>
     public const float SutureStartTension = 1.15f;
     public static readonly Vector2 SutureTensionRange = new(0.52f, 1.56f);
 

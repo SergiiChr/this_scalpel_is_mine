@@ -77,7 +77,8 @@ public sealed class SewAction : ToolAction {
         return placed;
     }
 
-    /// <summary>A thread tied off or torn through is done with: the needle's next hole starts a new, slack one.</summary>
+    /// <summary>A thread tied off or torn through is done with: the needle's next hole starts a new, slack one.
+    /// </summary>
     private static void EndFinished(SurgicalTool tool, Patient patient) {
         if (tool.Suture.Thread != 0 && patient.SutureDone(tool.Suture.Thread)) {
             tool.Suture.Thread = 0;

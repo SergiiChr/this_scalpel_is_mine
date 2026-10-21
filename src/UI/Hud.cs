@@ -38,7 +38,8 @@ public partial class Hud : CanvasLayer {
     private readonly record struct HandShown(SurgicalTool? Tool, bool Full, bool Dirty, bool Holding);
     private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
     private readonly record struct HintShown(bool Out, int Moving, int Active, bool Attached, SurgicalTool? Tool, bool Full,
-        SurgicalTool? Hovered, bool HoveredFull, int Zoom, bool CanPass, bool Films, bool Cart, int Bindings);
+        bool Threaded, SurgicalTool? Hovered, bool HoveredFull, int Zoom, bool CanPass, bool Films, bool Cart,
+        int Bindings);
     private readonly record struct PromptShown(string? Focused, StringName? Button, string? Wheel, bool Held, Surgeon? Partner, int Bindings);
 
     public Surgery Surgery { get; private set; } = null!;
@@ -208,8 +209,8 @@ public partial class Hud : CanvasLayer {
         var tool = me.HeldTool(me.Active);
         var hovered = IsInstanceValid(me.Hovered) ? me.Hovered : null;
         var shown = new HintShown(me.Status.IsOut, Surgeon.MovingHand(), me.Active, me.Hands[me.Active].Attached, tool,
-            tool?.Ml > 0f, hovered, hovered?.Ml > 0f, me.Zoom, me.PassTarget(me.Active) is not null, me.HoldingFilms,
-            me.PushedCart() is not null, InputActions.BindingsVersion);
+            tool?.Ml > 0f, tool?.Suture.Thread > 0, hovered, hovered?.Ml > 0f, me.Zoom,
+            me.PassTarget(me.Active) is not null, me.HoldingFilms, me.PushedCart() is not null, InputActions.BindingsVersion);
         if (_hintShown.Changed(shown)) {
             _hint.Text = shown.Out ? "" : string.Join("\n", ControlLines(me));
         }
@@ -623,7 +624,8 @@ public partial class Hud : CanvasLayer {
             _ => $"{use} (hold)  {ToolActions.TriggerNames.GetValueOrDefault(action, action == "syringe" ? "Press in" : "Use")} {tool.Label()}",
         };
         var (up, down) = (Key(InputActions.LevelUp), Key(InputActions.LevelDown));
-        if (ToolActions.HasTensionWheel(tool.Def)) {
+        // A needle's wheel pulls its thread, so it has nothing to do before the first hole.
+        if (ToolActions.HasTensionWheel(tool.Def) && (action != "sew" || tool.Suture.Thread != 0)) {
             yield return $"{up} / {down}  Loosen / tighten {(action == "sew" ? "thread" : tool.Label().ToLowerInvariant())}";
         }
         switch (action) {
