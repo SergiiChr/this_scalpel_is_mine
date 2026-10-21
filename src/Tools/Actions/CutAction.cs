@@ -11,8 +11,16 @@ public sealed class CutAction : ToolAction {
         var body = patient.Body;
         var direction = ToolActions.BladeDirection(tool);
         var span = step.Lowered && level > 0 && step.InSite ? tool.Blade?.SkinSpan(body, tool.GlobalTransform, direction) : null;
-        var from = span is { } contact ? contact.FromUv : step.Uv;
-        var to = span is { } contactEnd ? contactEnd.ToUv : step.Uv;
+        // Inside the cut the blade meets the lips it's parting, and their skin lies to one side or the other of the line
+        // it cuts: there the incision's end keeps across to where the blade has gone over the body since it went in.
+        var cutting = use.LastUv.X >= 0f && use.LastCutEnd.IsFinite();
+        var offset = cutting ? use.LastUv - body.WorldToUv(use.LastCutEnd) : Vector2.Zero;
+        var side = (body.WorldToUv(step.Tip + direction.Cross(Vector3.Up) * 0.01f) - body.WorldToUv(step.Tip)).Normalized();
+        Vector2 Placed(Vector3 end, Vector2 uv) => cutting && body.Tissue.IsOpen(uv, TissueDepth.Skin)
+            ? uv + side * (body.WorldToUv(body.Site.ToGlobal(end)) + offset - uv).Dot(side)
+            : uv;
+        var from = span is { } contact ? Placed(contact.From, contact.FromUv) : step.Uv;
+        var to = span is { } contactEnd ? Placed(contactEnd.To, contactEnd.ToUv) : step.Uv;
         var surfaceContact = span is { } footprint ? body.Site.ToGlobal((footprint.From + footprint.To) * 0.5f) : step.Tip;
         var stabbed = false;
         if (step.Lowered && level > 0 && step.Zone == SiteZone.Site && level > use.StabbedLevel
@@ -86,7 +94,11 @@ public sealed class CutAction : ToolAction {
             }
         }
         if (fresh || moved) {
-            use.LastUv = fresh ? (from + to) * 0.5f : motion.Dot(direction) >= 0f ? to : from;
+            var forward = motion.Dot(direction) >= 0f;
+            use.LastUv = fresh ? (from + to) * 0.5f : forward ? to : from;
+            use.LastCutEnd = fresh || span is not { } reached
+                ? surfaceContact
+                : body.Site.ToGlobal(forward ? reached.To : reached.From);
             use.LastCutContact = surfaceContact;
             use.LastCutGrip = tool.GlobalPosition;
         }

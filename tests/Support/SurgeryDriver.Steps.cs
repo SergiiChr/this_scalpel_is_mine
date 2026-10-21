@@ -9,7 +9,7 @@ public partial class SurgeryDriver {
         var strokes = new List<(Vector2, Vector2)>();
         var along = Body.SiteSize.X >= Body.SiteSize.Y ? new Vector2(1f, 0f) : new Vector2(0f, 1f);
         var across = new Vector2(along.Y, along.X);
-        var span = Mathf.Min(length / Body.UvToMeters(1f), 0.84f);
+        var span = Mathf.Min(length / (along * Body.SiteSize).Length(), 0.84f);
         for (var row = 0; row < 7; row++) {
             var shift = across * 0.1f * ((row + 1) / 2) * (row % 2 == 1 ? 1 : -1);
             var middle = (center + shift).Clamp(
@@ -464,7 +464,7 @@ public partial class SurgeryDriver {
         .Where(entry => entry.Rate >= 0.05f)
         .Select(entry => {
             var w = entry.Wound;
-            return $"{w.Kind} {entry.Rate:0.00} ml/s ({Body.UvToMeters(w.LengthUv) * 100f:0.0} cm, open {w.Opened:0.00}, "
+            return $"{w.Kind} {entry.Rate:0.00} ml/s ({Body.PathMeters(w.Points) * 100f:0.0} cm, open {w.Opened:0.00}, "
                 + $"sealed {w.Cauterized:0.00}, held {w.Held:0.00}, pressed {w.Pressed:0.00}, clamped {w.Clamped:0.00}, closed {w.Closure:0.00})";
         }));
 

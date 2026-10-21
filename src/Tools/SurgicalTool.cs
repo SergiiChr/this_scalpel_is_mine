@@ -42,6 +42,8 @@ public sealed class ToolUse {
     /// from lowering the blade or recoil moving its footprint.</summary>
     public Vector3 LastCutContact { get; set; } = Vector3.Inf;
     public Vector3 LastCutGrip { get; set; } = Vector3.Inf;
+    /// <summary>Where (world) the incision's end at <see cref="LastUv"/> was cut.</summary>
+    public Vector3 LastCutEnd { get; set; } = Vector3.Inf;
     public float ChargeTime { get; set; }
     /// <summary>The surgeon whose stopped heart the defibrillator charges on, 0 for the patient: the shock goes there
     /// even if the paddles lift off as they're let go.</summary>
