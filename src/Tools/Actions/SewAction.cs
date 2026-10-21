@@ -35,7 +35,11 @@ public sealed class SewAction : ToolAction {
             }
             suture.Hold += step.Dt;
             if (step.Lowered && inSite) {
-                suture.At = uv;
+                // The hole goes where the tip touches the tissue (down a cut's wall beside it), in that layer.
+                var body = patient.Body;
+                var touched = body.ExposedUnder(step.Tip)?.Tissue;
+                suture.At = touched is { } tissue ? body.LocalToUv(tissue.Contact) : uv;
+                suture.AtLayer = touched?.Layer ?? TissueDepth.None;
             }
             if (step.Lowered && zone == SiteZone.Cavity && patient.CloseInternalAt(uv, tool.Def, step.Dt)) {
                 suture.PressUsed = true;
@@ -66,7 +70,10 @@ public sealed class SewAction : ToolAction {
         if (suture.Thread == 0) {
             suture.Thread = patient.NewSuture();
         }
-        var placed = patient.PlaceSutureAnchor(suture.Thread, suture.At, suture.Tension);
+        var placed = patient.PlaceSutureAnchor(suture.Thread, suture.At, suture.AtLayer, suture.Tension, out var miss);
+        if (miss is not null && Surgery.Current!.Surgeons.TryGetValue(tool.Holder, out var surgeon)) {
+            Surgery.Current.Tell(surgeon.PeerId, miss);
+        }
         var info = patient.Body.Tissue.Thread(suture.Thread);
         if (info is null) {
             suture.Thread = 0;
