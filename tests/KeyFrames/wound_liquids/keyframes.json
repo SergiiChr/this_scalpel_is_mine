@@ -1,10 +1,12 @@
 {
-  "00_dry_opening_oblique.jpg": "an open deep wound before clear liquid collects inside",
-  "00_dry_opening_top.jpg": "an open deep wound before clear liquid collects inside",
-  "01_clear_pool_oblique.jpg": "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it",
-  "01_clear_pool_top.jpg": "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it",
-  "02_mixed_pool_oblique.jpg": "blood and irrigation share the same wound-shaped pool, with a darker translucent surface",
-  "02_mixed_pool_top.jpg": "blood and irrigation share the same wound-shaped pool, with a darker translucent surface",
-  "03_drained_oblique.jpg": "the deep wound remains open after irrigation drains, with no floating liquid surface",
-  "03_drained_top.jpg": "the deep wound remains open after irrigation drains, with no floating liquid surface"
+  "00_untouched_oblique.jpg": "the site before any tool touches it: intact skin, nothing in it",
+  "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
+  "01_dry_opening_oblique.jpg": "an open deep wound before clear liquid collects inside",
+  "01_dry_opening_top.jpg": "an open deep wound before clear liquid collects inside",
+  "02_clear_pool_oblique.jpg": "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it",
+  "02_clear_pool_top.jpg": "translucent irrigation gathers along the deep wound boundary, with tissue still visible beneath it",
+  "03_mixed_pool_oblique.jpg": "blood and irrigation share the same wound-shaped pool, with a darker translucent surface",
+  "03_mixed_pool_top.jpg": "blood and irrigation share the same wound-shaped pool, with a darker translucent surface",
+  "04_drained_oblique.jpg": "the deep wound remains open after irrigation drains, with no floating liquid surface",
+  "04_drained_top.jpg": "the deep wound remains open after irrigation drains, with no floating liquid surface"
 }

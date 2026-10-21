@@ -1658,8 +1658,7 @@ public sealed partial class TissueSim {
 
     private void FillTriangles(TissueDepth depth, int[] triangles, out int count) {
         count = 0;
-        if (_triangleOpen.Length != _springCount) { _triangleOpen = new bool[_springCount]; }
-        else { Array.Clear(_triangleOpen); }
+        if (_triangleOpen.Length != _springCount) { _triangleOpen = new bool[_springCount]; } else { Array.Clear(_triangleOpen); }
         foreach (var s in _severed) {
             if (DepthOf(s) >= depth && GapOf(s) > 0f) {
                 _triangleOpen[s] = true;

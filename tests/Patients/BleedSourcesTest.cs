@@ -150,7 +150,9 @@ public class BleedSourcesTest {
         AssertBool(full).OverrideFailureMessage($"it fills ({PoolAt(body, at)?.Fill:0.00})").IsTrue();
         // Thicker than the film on the lip where it bleeds from: a puddle.
         var spilled = await Frames.Until(() => Blood(body, at) > 0.8f, 10f);
-        await driver.AssertAndCapture(spilled, "full, the cut brims with blood that spills over its lips onto the skin", "spills");
+        const string SpillClaim = "full, the cut brims with blood that spills over its lips onto the skin";
+        AssertBool(spilled).OverrideFailureMessage(SpillClaim).IsTrue();
+        await CloseUp(session, "spills", SpillClaim, at);
         await session.Finish(BudgetOverride);
     }
 
