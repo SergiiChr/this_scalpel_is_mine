@@ -94,7 +94,7 @@ public partial class BloodFlow : Node3D {
     internal const float PoolAreaPerDrop = DropMl * 0.000001f / (Mathf.Pi * PoolThickness * LiquidSurface.PatchMeanDepth);
     /// <summary>How high a pool stands.</summary>
     internal const float PoolThickness = 0.003f;
-    private const float FloorY = 0.004f;
+    internal const float FloorY = 0.004f;
     internal const float TableTop = Room.TableHeight + 0.001f;
     private const float PuddlePaintInterval = 0.2f;
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
@@ -219,6 +219,8 @@ public partial class BloodFlow : Node3D {
     }
 
     private readonly List<GroundPool> _pools = [];
+    private readonly List<GroundPool> _grownFloorPools = [];
+    private static readonly LiquidSurface NoSurface = new();
     internal IEnumerable<GroundPool> GroundDeposits => _pools;
     private MeshInstance3D _groundTopBatch = null!;
     private MeshInstance3D _groundSideBatch = null!;
@@ -1016,6 +1018,7 @@ public partial class BloodFlow : Node3D {
                     pool.Outline = LiquidSurface.Outline(radius, pool.Phase);
                     pool.Area = LiquidSurface.Area(pool.Outline);
                     pool.TopDirty = true;
+                    _grownFloorPools.Add(pool);
                 }
                 pool.Incoming = 0f;
             }
@@ -1053,6 +1056,7 @@ public partial class BloodFlow : Node3D {
             }
             pool.TopDirty = pool.SideDirty = false;
         }
+        CoalesceFloorPools();
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
         for (var i = 0; i < _drops.Count; i++) {
@@ -1067,6 +1071,35 @@ public partial class BloodFlow : Node3D {
             shape.Z /= Mathf.Sqrt(stretch);
             var basis = new Basis(x, up, x.Cross(up)).Rotated(up, drop.Twist).Scaled(shape);
             multimesh.SetInstanceTransform(i, new Transform3D(basis, drop.Position));
+        }
+    }
+
+    /// <summary>Floor pools that have grown into each other run together: the larger takes the other's volume, and
+    /// its footprint recenters on the pair's area-weighted centre. A long bleed then keeps a few spreading pools
+    /// instead of one draw call per landing spot.</summary>
+    private void CoalesceFloorPools() {
+        // A pool that took another's volume moved its centre, so it is checked again. Builds already running work
+        // from their own snapshot; the next tick redraws the merged pool.
+        while (_grownFloorPools.Count > 0) {
+            var pool = _grownFloorPools[^1];
+            _grownFloorPools.RemoveAt(_grownFloorPools.Count - 1);
+            if (!_pools.Contains(pool)) { continue; }
+            foreach (var other in _pools) {
+                if (ReferenceEquals(other, pool) || other.OnBed
+                    || Mathf.Abs(other.Center.Y - pool.Center.Y) > 0.001f) { continue; }
+                var apart = new Vector2(other.Center.X - pool.Center.X, other.Center.Z - pool.Center.Z).Length();
+                if (apart >= pool.Radius + other.Radius) { continue; }
+                var (into, from) = pool.Area >= other.Area ? (pool, other) : (other, pool);
+                var moved = from.Area + from.Incoming;
+                into.Center = (into.Center * (into.Area + into.Incoming) + from.Center * moved)
+                    / (into.Area + into.Incoming + moved);
+                into.Incoming += moved;
+                into.TopDirty = true;
+                ReplaceTopSurface(from, NoSurface);
+                _pools.Remove(from);
+                _grownFloorPools.Add(into);
+                break;
+            }
         }
     }
 

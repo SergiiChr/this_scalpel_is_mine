@@ -77,11 +77,13 @@ public sealed class WoundMap {
     private int _filmReductionResolution;
     internal int BloodRemovalVersion { get; private set; }
     private int[] _filmIndex = [];
-    private float[] _filmFraction = [];
+    private Vector4[] _filmWeights = [];
     private float[] _filmRow = [];
     private float[] _filmSamples = [];
     private bool[] _filmChangedRows = [];
     private bool[] _filmChanged = [];
+    private bool[] _filmSpreadRows = [];
+    private bool[] _filmSpread = [];
     private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {
@@ -224,13 +226,15 @@ public sealed class WoundMap {
             _filmSamples = new float[resolution * resolution];
             _filmChangedRows = new bool[resolution];
             _filmChanged = new bool[resolution * resolution];
+            _filmSpreadRows = new bool[resolution];
+            _filmSpread = new bool[resolution * resolution];
             _filmPixelStart = Enumerable.Repeat(Size, resolution).ToArray();
             _filmIndex = new int[Size];
-            _filmFraction = new float[Size];
+            _filmWeights = new Vector4[Size];
             for (var pixel = 0; pixel < Size; pixel++) {
                 var cell = Mathf.Clamp((pixel + 0.5f) * resolution / Size - 0.5f, 0f, resolution - 1);
                 _filmIndex[pixel] = Math.Min((int)cell, resolution - 2);
-                _filmFraction[pixel] = cell - _filmIndex[pixel];
+                _filmWeights[pixel] = Spline(cell - _filmIndex[pixel]);
                 _filmPixelStart[_filmIndex[pixel]] = Math.Min(_filmPixelStart[_filmIndex[pixel]], pixel);
             }
         }
@@ -261,11 +265,29 @@ public sealed class WoundMap {
                 }
             }
         }
+        // A changed cell reaches the texels of the cells around it through the spline.
+        for (var y = 0; y < resolution; y++) {
+            _filmSpreadRows[y] = _filmChangedRows[Math.Max(y - 1, 0)] || _filmChangedRows[y]
+                || _filmChangedRows[Math.Min(y + 1, resolution - 1)];
+            if (!_filmSpreadRows[y]) {
+                Array.Fill(_filmSpread, false, y * resolution, resolution);
+                continue;
+            }
+            for (var x = 0; x < resolution; x++) {
+                var spread = false;
+                for (var dy = Math.Max(y - 1, 0); dy <= Math.Min(y + 1, resolution - 1) && !spread; dy++) {
+                    var row = dy * resolution;
+                    spread = _filmChanged[row + Math.Max(x - 1, 0)] || _filmChanged[row + x]
+                        || _filmChanged[row + Math.Min(x + 1, resolution - 1)];
+                }
+                _filmSpread[y * resolution + x] = spread;
+            }
+        }
         var current = right < left ? new Rect2I() : new Rect2I(
-            Math.Max(0, (left - 1) * Size / resolution), Math.Max(0, (top - 1) * Size / resolution), 0, 0);
+            Math.Max(0, (left - 2) * Size / resolution), Math.Max(0, (top - 2) * Size / resolution), 0, 0);
         if (right >= left) {
-            current.End = new Vector2I(Math.Min(Size, (right + 2) * Size / resolution + 1),
-                Math.Min(Size, (bottom + 2) * Size / resolution + 1));
+            current.End = new Vector2I(Math.Min(Size, (right + 3) * Size / resolution + 1),
+                Math.Min(Size, (bottom + 3) * Size / resolution + 1));
         }
         var bounds = _bloodFilmBounds.HasArea() ? (current.HasArea() ? _bloodFilmBounds.Merge(current) : _bloodFilmBounds) : current;
         _bloodFilmBounds = current;
@@ -273,18 +295,23 @@ public sealed class WoundMap {
         var (toX, toY) = (bounds.End.X, bounds.End.Y);
         for (var y = fromY; y < toY; y++) {
             var iy = _filmIndex[y];
-            var fy = _filmFraction[y];
-            if (!_filmChangedRows[iy] && !_filmChangedRows[iy + 1]) { continue; }
-            // Blend the small solver row once, rather than resampling four cells at every output texel.
+            var wy = _filmWeights[y];
+            if (!_filmSpreadRows[iy] && !_filmSpreadRows[iy + 1]) { continue; }
+            // Blend the small solver rows once, rather than resampling sixteen cells at every output texel.
+            var (r0, r1) = (Math.Max(iy - 1, 0) * resolution, iy * resolution);
+            var (r2, r3) = ((iy + 1) * resolution, Math.Min(iy + 2, resolution - 1) * resolution);
             for (var cell = 0; cell < resolution; cell++) {
-                _filmRow[cell] = Mathf.Lerp(_filmSamples[iy * resolution + cell], _filmSamples[(iy + 1) * resolution + cell], fy);
+                _filmRow[cell] = wy.X * _filmSamples[r0 + cell] + wy.Y * _filmSamples[r1 + cell]
+                    + wy.Z * _filmSamples[r2 + cell] + wy.W * _filmSamples[r3 + cell];
             }
             for (var ix = 0; ix + 1 < resolution; ix++) {
                 var cell = iy * resolution + ix;
-                if (!_filmChanged[cell] && !_filmChanged[cell + 1]
-                    && !_filmChanged[cell + resolution] && !_filmChanged[cell + resolution + 1]) { continue; }
+                if (!_filmSpread[cell] && !_filmSpread[cell + 1]
+                    && !_filmSpread[cell + resolution] && !_filmSpread[cell + resolution + 1]) { continue; }
+                var (c0, c3) = (_filmRow[Math.Max(ix - 1, 0)], _filmRow[Math.Min(ix + 2, resolution - 1)]);
                 for (var x = Math.Max(fromX, _filmPixelStart[ix]); x < Math.Min(toX, _filmPixelStart[ix + 1]); x++) {
-                    var depth = Mathf.Max(Mathf.Lerp(_filmRow[ix], _filmRow[ix + 1], _filmFraction[x]), 0f);
+                    var wx = _filmWeights[x];
+                    var depth = Mathf.Max(wx.X * c0 + wx.Y * _filmRow[ix] + wx.Z * _filmRow[ix + 1] + wx.W * c3, 0f);
                     var i = (y * Size + x) * 4 + Blood;
                     var pixel = y * Size + x;
                     var support = _bloodSupport.Length > 0 ? _bloodSupport[pixel] : byte.MaxValue;
@@ -346,12 +373,24 @@ public sealed class WoundMap {
         _filmReductionGlobal = false;
     }
 
+    /// <summary>Whether a reduced cell is among the four by four the spline reads for texel x, y.</summary>
     private bool FilmReductionTouches(int x, int y, int resolution) {
-        var rx = _filmIndex[x];
-        var ry = _filmIndex[y];
-        var row = ry * resolution + rx;
-        return _filmReductionCells[row] || _filmReductionCells[row + 1]
-            || _filmReductionCells[row + resolution] || _filmReductionCells[row + resolution + 1];
+        var (rx, ry) = (_filmIndex[x], _filmIndex[y]);
+        for (var cy = Math.Max(ry - 1, 0); cy <= Math.Min(ry + 2, resolution - 1); cy++) {
+            for (var cx = Math.Max(rx - 1, 0); cx <= Math.Min(rx + 2, resolution - 1); cx++) {
+                if (_filmReductionCells[cy * resolution + cx]) { return true; }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Cubic B-spline weights of the four cells around a texel <paramref name="t"/> past the second.
+    /// They sum to one, so the film keeps its dose, and a film only a cell or two wide comes out round instead of
+    /// taking the grid's square.</summary>
+    private static Vector4 Spline(float t) {
+        var u = 1f - t;
+        return new Vector4(u * u * u, 3f * t * t * t - 6f * t * t + 4f, -3f * t * t * t + 3f * t * t + 3f * t + 1f,
+            t * t * t) / 6f;
     }
 
     /// <summary>
