@@ -170,6 +170,8 @@ public partial class Surgeon : CharacterBody3D {
             hand.Build(i, _scrubs);
             hand.LocalTarget = new Vector3(i == 0 ? -RestHandOut : RestHandOut, 1.18f, -0.45f);
             hand.Puppet = !IsLocal;
+            // The player's own upper arms aren't drawn, like the rest of their body: they'd block much of the view.
+            hand.UpperArmShown = !IsLocal;
             hand.GroundAt = GroundUnder;
             hand.Target = ToGlobal(hand.LocalTarget);
             Hands[i] = hand;

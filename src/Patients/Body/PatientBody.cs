@@ -512,14 +512,20 @@ public partial class PatientBody : Node3D {
     /// or a leg. Arms and legs lie along the body; rays cast out from inside the limb find its skin.
     /// </summary>
     public LimbRing? LimbRingAt(Vector3 p) {
-        // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides.
-        var part = PartAt(p, 0.08f);
-        if (!(part.StartsWith("arm", StringComparison.Ordinal) || part.StartsWith("leg", StringComparison.Ordinal))) {
-            return null;
-        }
-        var box = (Node3D)_bodyRoot.FindChild(part.ToPascalCase(), false, false);
+        // The limb boxes are rough and thinner than the limbs, so look well around p; the skin found decides. That
+        // reaches the trunk's box too where a limb lies beside it (a forearm, a thigh), and by the hand a leg's.
+        // The physics query lists them in no set order: the limb whose skin p is nearest wins.
+        var limbs = Overlapping(p, 0.08f, PatientLayer, 8).OfType<BodyPart>().Where(body =>
+            body.Part.StartsWith("arm", StringComparison.Ordinal) || body.Part.StartsWith("leg", StringComparison.Ordinal));
+        // Nullable, so none found is null rather than MinBy() throwing.
+        return limbs.Select(limb => RingAround(limb, p)).Where(ring => ring is not null)
+            .MinBy(ring => (p - ring!.Value.Center).Slide(ring.Value.Axis).Length() - ring.Value.Radius);
+    }
+
+    /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>
+    private LimbRing? RingAround(BodyPart limb, Vector3 p) {
         var axis = _bodyRoot.GlobalBasis.X.Normalized();
-        var inside = box.GlobalPosition + axis * axis.Dot(p - box.GlobalPosition);
+        var inside = limb.GlobalPosition + axis * axis.Dot(p - limb.GlobalPosition);
         var hits = new List<Vector3>();
         for (var i = 0; i < 16; i++) {
             var outward = new Basis(axis, Mathf.Tau * i / 16f) * _bodyRoot.GlobalBasis.Y.Normalized();

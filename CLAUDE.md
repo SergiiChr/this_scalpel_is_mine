@@ -10,6 +10,8 @@ Keep repository-wide instructions here and specialized guidance in the linked do
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): frame budgets and performance policy.
 - [review-key-frames](.claude/skills/review-key-frames/SKILL.md): visual review and baseline acceptance. Read and follow
   it whenever reviewing key frames or updating their baseline.
+- [self-review](.claude/skills/self-review/SKILL.md): own and independent review of a finished branch. Follow it
+  before handing off a change for merge.
 
 Shared workflows live in `.claude/skills/<name>/SKILL.md`. Read their Markdown instructions with ordinary file tools;
 if a workflow calls for a capability such as opening an image, use the equivalent tool available to your agent.

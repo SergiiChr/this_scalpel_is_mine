@@ -234,24 +234,12 @@ internal sealed partial class GameplaySweep {
             ToolActions.Update(tourniquet, hand, Patient, 1f / 60f);
         }
         await Frames.Physics(2);
-        if (!Patient.TourniquetOn || tourniquet.Band is not { } band) {
+        if (!Patient.TourniquetOn || tourniquet.Band is null) {
             Fail($"the tourniquet didn't go on the thigh at {tip} (on={Patient.TourniquetOn}, part {Body.PartAt(tip, 0.08f)})");
             Tools.RequestRelease(1, Vector3.Zero);
             return;
         }
-        var torus = (TorusMesh)band.Mesh;
-        var center = band.GlobalPosition;
-        var axis = band.GlobalBasis.Y.Normalized();
-        if (Mathf.Abs(axis.Dot(Body.Root.GlobalBasis.X.Normalized())) < 0.95f) {
-            Fail($"the tourniquet band doesn't run around the leg (axis {axis})");
-        }
-        if (center.Y > top.Y - 0.03f) {
-            Fail($"the tourniquet lies on top of the leg instead of around it (center {center.Y:0.000}, skin on top {top.Y:0.000})");
-        }
-        // Snug: the band's inside passes just over the top of the thigh.
-        if (Mathf.Abs(center.Y + torus.InnerRadius - top.Y) > 0.015f) {
-            Fail($"the tourniquet band isn't snug on the thigh (inside at {center.Y + torus.InnerRadius:0.000}, skin at {top.Y:0.000})");
-        }
+        TourniquetBand.Problems(tourniquet, Body, top, "thigh").ForEach(Fail);
         if (tourniquet.State != ToolState.Standing || Tools.ToolInHand(1, 1) is not null) {
             Fail("the hand still holds the tourniquet once it's on");
         }

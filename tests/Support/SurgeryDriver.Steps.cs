@@ -170,6 +170,13 @@ public partial class SurgeryDriver {
             await Frames.Until(() => target.Extracted, 5f);
             await Frames.Seconds(0.5f);
             PlayerInput.Action(InputActions.Lift, false);
+            if (target.Embedded && Patient.Targets.Count(other => other.Embedded && other.Extracted) == 1) {
+                var held = Body.Site.ToLocal(target.GlobalPosition) - Body.Site.ToLocal(forceps.TipPosition());
+                var across = (held with { Y = 0f }).Length() * 1000f;
+                await AssertAndCapture(forceps.Hold is CarryHold carry && held.DistanceTo(carry.Offset) < 0.001f,
+                    $"the first {target.Kind} out of its cut, held up in the forceps where they took its glass, {across:0} mm from its middle",
+                    "pulled_" + target.Kind);
+            }
         }
         await LetGo(aside);
         await SwitchTo(Right);
@@ -181,23 +188,38 @@ public partial class SurgeryDriver {
         }
     }
 
-    /// <summary>Forceps in the right hand lowered onto <paramref name="target"/> and closed. Returns whether they took
-    /// hold of it; if not, they're opened again.</summary>
+    /// <summary>Where the forceps tip was when <see cref="PlayerTakesHoldOf"/> last took hold of each target (world).
+    /// </summary>
+    public Dictionary<CavityTarget, Vector3> TookHoldAt { get; } = [];
+
+    /// <summary>Forceps in the right hand lowered onto <paramref name="target"/> and closed: glass sticking out of the
+    /// skin by the end of it (<see cref="GlassEnd"/>). Returns whether they took hold of it; if not, they're opened
+    /// again.</summary>
     public async Task<bool> PlayerTakesHoldOf(CavityTarget target) {
         await SwitchTo(Right);
         var forceps = (await PlayerRequestsItem("forceps"))!;
-        var spot = Body.UvToWorld(target.Uv, target.Depth);
+        var spot = target.Embedded && !target.Buried ? GlassEnd(target) : Body.UvToWorld(target.Uv, target.Depth);
         await PlayerWalksTo(spot);
         await PlayerReaches(spot);
         Use();
         await Frames.Physics(5);
         if (forceps.Hold is TargetHold) {
+            TookHoldAt[target] = forceps.TipPosition();
             return true;
         }
         Note($"forceps didn't take hold of {target.Kind}: {forceps.Hold}");
         Use(false);
         await Frames.Physics(5);
         return false;
+    }
+
+    /// <summary>The skin two thirds of the way from where <paramref name="shard"/> went in to the end of its glass that
+    /// shows furthest from there (world): well over the glass, as a tip lowered there lands a few millimeters off.
+    /// </summary>
+    public Vector3 GlassEnd(CavityTarget shard) {
+        var at = Body.UvToWorld(shard.Uv);
+        var end = Patient.GlassShowing(shard).Select(local => Body.UvToWorld(Body.LocalToUv(local))).MaxBy(point => point.DistanceTo(at));
+        return at.Lerp(end, 2f / 3f);
     }
 
     /// <summary>The Gelpi retractor set in <paramref name="cut"/> with the right hand, opened to

@@ -20,7 +20,7 @@ A wound through the muscle is closed in layers. The cut muscle retracts and hold
 
 ## 6.3 Running suture
 The needle sews one continuous thread. Each click ([b]Use tool[/b]) beside the wound passes it through a new hole: zig-zag from one side of the wound to the other, along its whole length. The thread goes through the layer under its first hole, so sew muscle (and fat) from inside the opening, the skin last. Hold [b]Use tool[/b] to make the last hole and tie the thread off: only then are the edges joined for good.
-The mouse wheel pulls the free end, every span at once: down tightens, up loosens. The hand status shows how the thread reads:
+The mouse wheel pulls the free end, every span at once: down tightens, up loosens. Each new thread starts loose. The hand status shows how the thread reads:
 • Loose: the wound edges do not meet and continue to ooze.
 • Closed: edges apposed, raised into a slight ridge. The intended setting.
 • Too tight: the ridge rises. Pulled tighter still, the thread tears through: muscle takes a much firmer pull than skin.

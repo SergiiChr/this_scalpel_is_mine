@@ -127,8 +127,13 @@ public static class ToolActions {
     public const float PlungerStep = 1f;
     /// <summary>A needle's wheel works the free end of its thread, and a tensioned closure's (paper clips, see
     /// Patient.TensionedClosures) how hard it's pulled: one notch changes the tension (a rest length ratio, see
-    /// TissueSim.ThreadClosed) this much, down tightens and up loosens.</summary>
+    /// TissueSim.ThreadClosed) this much, down tightens and up loosens.
+    /// The needle's pull is on its current thread only: with no thread the wheel does nothing, and each new thread
+    /// starts at SutureStartTension.</summary>
     public const float SutureTensionStep = 0.04f;
+    /// <summary>A new thread's tension, and a tensioned closure's before its wheel is turned: loose in skin, fully
+    /// slack deeper.</summary>
+    public const float SutureStartTension = 1.15f;
     public static readonly Vector2 SutureTensionRange = new(0.52f, 1.56f);
 
     /// <summary>The wheel works this tool's stitch tension (<see cref="SutureTensionStep"/>) instead of an effort level:

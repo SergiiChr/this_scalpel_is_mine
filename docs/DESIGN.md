@@ -339,7 +339,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   bend under it. Walking away also zooms back out. The hands start apart, turned in
   toward the middle, so each tool points across in front of the eyes, beside its hand. The elbows bend out to the
   sides (`SurgeonHand.ElbowPole`), so the player's own arms come into the view from its bottom corners, not up the
-  middle in front of the work.
+  middle in front of the work. The player's own arms are drawn only from the rounded elbows down; partners see whole
+  arms.
   The tool the empty hand would pick up is highlighted and named at the aim dot; Grab takes it in one press.
 - **Grips**: every tool has a grip (`grip` in tools.cfg: pencil, rings, fist, flat) that places the glove on it and
   curls each finger. The glove then turns around the tool toward the forearm, only as far as a forearm turns
@@ -681,7 +682,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
 - **Organ handling damage**: organs held out of place for more than a few seconds, or shoved hard, bruise (they darken) and ooze.
 - **Suture tension**: the wheel sets the needle's thread tension and paper clips' pull alike, down tighter and up
-  looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through.
+  looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through. The
+  needle pulls its current thread only: without one the wheel does nothing, and each new thread starts loose
+  (`ToolActions.SutureStartTension`).
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,

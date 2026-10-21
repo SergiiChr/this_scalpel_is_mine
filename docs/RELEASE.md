@@ -22,7 +22,7 @@ accepts reach `main` with the next release.
 ## Development
 
 1. Branch from `develop`.
-2. Make the change. Run `./build.py lint` and whatever else the change needs for self-review.
+2. Make the change. Run `./build.py lint` and whatever else the change needs.
 3. Run the affected and newly added tests (`./build.py test --tag ... --case ...`).
 4. Run `./build.py test` (smoke) or `--all` (full regression) locally only for a wide core change that can break
    unrelated modules. Otherwise CI covers them.
@@ -32,11 +32,10 @@ accepts reach `main` with the next release.
    fails on missing key frames or a missing baseline; the test run must pass separately. Changed and new
    ones are the evidence for the handoff. Once they look right, `./build.py generate_baseline --focused` adds or
    replaces them in `tests/KeyFrames`; commit it with the change. It never deletes: removed key frames go at release.
-6. Raise a PR to `develop` (see PR description).
-7. Review the PR without bias: a subagent with no context of the work gets only the diff and the PR description.
-   Address everything it finds.
-8. Hand over a summary of the change and its evidence, with the reviewed sheets for a visual change, as a prompt
-   that asks for the merge decision.
+6. Follow [self-review](../.claude/skills/self-review/SKILL.md), then rerun the checks above for what it changed.
+7. Raise a PR to `develop` (see PR description).
+8. Hand over a summary of the change and its evidence, with the self-review summary and, for a visual change, the
+   reviewed sheets, as a prompt that asks for the merge decision.
 9. Watch the PR for merge conflicts and failing CI until it's merged: merge `develop` into the branch to resolve
    conflicts, never rebase a branch with an open PR. On a conflict in `tests/KeyFrames`, take `develop`'s files, run
    the focused key frames again and regenerate them.
@@ -50,9 +49,9 @@ accepts reach `main` with the next release.
 
 ## Verification and release
 
-A scheduled run picks a `develop` commit and verifies it. `develop` keeps taking feature PRs the whole time. Fixes for
-what the verification finds land on `develop` like any other PR, and the next run verifies a newer commit that
-contains them. One release PR is open at a time.
+The owner starts a release run on demand; it picks a `develop` commit and verifies it.
+`develop` keeps taking feature PRs the whole time. Fixes for what the verification finds land on `develop` like any
+other PR, and the next run verifies a newer commit that contains them. One release PR is open at a time.
 
 1. Pick. Take the newest `develop` commit whose CI passed. Skip while a release PR is open or `main` already contains
    it.
