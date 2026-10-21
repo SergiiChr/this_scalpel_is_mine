@@ -27,6 +27,12 @@ public class GlassShardsScenarioTest {
             }
             await driver.PlayerCompletes(step);
             if (step.Type == "extract") {
+                // The long blade is taken by the end of its glass, past the reach round a cavity target's middle.
+                var blade = shards.Where(shard => !shard.Buried).MaxBy(shard => PatientBody.LocalBounds(shard, shard).Size.Length())!;
+                var reach = driver.Body.UvToMeters(0.05f) * 1000f;
+                var from = ((driver.TookHoldAt[blade] - driver.Body.UvToWorld(blade.Uv)) with { Y = 0f }).Length() * 1000f;
+                AssertFloat(from).OverrideFailureMessage($"forceps take the long blade by the end of its glass: {from:0} mm from its cut, past {reach:0} mm")
+                    .IsGreater(reach);
                 foreach (var (shard, before) in shards.Zip(plugged)) {
                     var track = shard.Plug!;
                     AssertBool(before > 0f && track.Held == 0f && track.Bleeding > before * 3f)

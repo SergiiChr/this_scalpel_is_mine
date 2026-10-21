@@ -12,11 +12,14 @@ public abstract record ToolHold;
 /// comes off when lifted. <paramref name="Hold"/>: where a self-retaining tool set down keeps it (site space).</summary>
 public sealed record SkinHold(int Wound, Vector2 Anchor, bool Hook, bool Piece = false, Vector3? Hold = null) : ToolHold;
 
-/// <summary>A cavity target (by index) taken hold of while still attached, at <paramref name="StartDepth"/>.</summary>
-public sealed record TargetHold(int Target, float StartDepth) : ToolHold;
+/// <summary>A cavity target (by index) taken hold of while still attached, at <paramref name="StartDepth"/>.
+/// <paramref name="Offset"/>: where the target is from the tip across the skin (site space), so glass taken by its end
+/// stays where it was taken instead of sliding sideways into the jaws.</summary>
+public sealed record TargetHold(int Target, float StartDepth, Vector3 Offset = default) : ToolHold;
 
-/// <summary>A cavity target (by index) taken out and carried in the jaws.</summary>
-public sealed record CarryHold(int Target) : ToolHold;
+/// <summary>A cavity target (by index) taken out and carried in the jaws, <paramref name="Offset"/> from the tip (site
+/// space).</summary>
+public sealed record CarryHold(int Target, Vector3 Offset = default) : ToolHold;
 
 /// <summary>A bleeding vessel (internal wound by id) clamped shut.</summary>
 public sealed record VesselHold(int Wound) : ToolHold;
