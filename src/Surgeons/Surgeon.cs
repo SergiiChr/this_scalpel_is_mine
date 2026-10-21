@@ -30,6 +30,9 @@ public sealed record NeedleHit(string Part, Vector3 At, int Hand = -1);
 public partial class Surgeon : CharacterBody3D {
     public const float WalkSpeed = 1.6f;
     public const float Reach = 0.72f;
+    /// <summary>Radius of the body's capsule, as wide as the torso: legs at table height stop about 1 cm off its side, so
+    /// walking round it doesn't catch on corners the player can't see reached.</summary>
+    internal const float BodyRadius = 0.2f;
     /// <summary>Closest a hand comes to its shoulder (meters): an elbow folds only so far, closer the forearm would
     /// squash.</summary>
     public const float MinReach = 0.18f;
@@ -160,7 +163,7 @@ public partial class Surgeon : CharacterBody3D {
         CollisionLayer = 16;
         CollisionMask = 1 | 16;
         AddChild(new CollisionShape3D {
-            Shape = new CapsuleShape3D { Radius = 0.24f, Height = 1.75f },
+            Shape = new CapsuleShape3D { Radius = BodyRadius, Height = 1.75f },
             Position = new Vector3(0f, 0.875f, 0f),
         });
         BuildVisuals();

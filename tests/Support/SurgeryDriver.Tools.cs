@@ -194,7 +194,8 @@ public partial class SurgeryDriver {
             if ((tool.Middle() - spot).Slide(Vector3.Up).Length() >= 0.04f) {
                 await PlayerReaches(spot - (tool.Middle() - tool.TipPosition()));
             }
-            if ((tool.Middle() - spot).Slide(Vector3.Up).Length() < 0.04f) {
+            // Held well above the spot, a tool let go of there drops and can bounce off the tray's edge.
+            if ((tool.Middle() - spot).Slide(Vector3.Up).Length() < 0.04f && tool.Middle().Y - spot.Y < 0.06f) {
                 break;
             }
             // Out of this tool's reach from the side of the tray: another spot.

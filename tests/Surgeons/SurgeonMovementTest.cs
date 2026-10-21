@@ -137,6 +137,54 @@ public class SurgeonMovementTest {
             .IsLess(0.001f);
     }
 
+    /// <summary>Strafing side-on into the table, the surgeon stops where their legs meet its side: no closer, or they
+    /// would pass into it, and no further off, or its corners would catch the player before they look reached. The torso
+    /// is above the table top and may reach over it.</summary>
+    [TestCase]
+    public async Task SideOnAgainstTheTableTheLegsMeetItsSide() {
+        var driver = await Begin();
+        var me = driver.Me;
+        var side = TableSide(driver);
+        // Facing the head end, the left side toward the table.
+        SurgeryState.SurgeonStandsAt(me, side + new Vector3(0f, 0f, Surgeon.BodyRadius + 0.1f), -Mathf.Pi / 2f);
+        await Walk(me, InputActions.MoveLeft, 30);
+        await Frames.Physics(30);
+        var gap = Surgeon.JointNames.Select(name => (MeshInstance3D)me.Joint(name))
+            .Select(part => part.GlobalTransform * part.GetAabb())
+            .Where(box => box.Position.Y < Room.TableHeight)
+            .Min(box => box.Position.Z) - side.Z;
+        AssertFloat(gap).OverrideFailureMessage($"the legs meet the table's side ({gap * 100f:0.0} cm off it)").IsBetween(0f, 0.02f);
+    }
+
+    /// <summary>Walking past the head end of the table, the body just 3 cm into its corner: the surgeon slides round the
+    /// corner and on to the other side instead of stopping on it.</summary>
+    [TestCase]
+    public async Task WalkingIntoTheTableCornerSlidesRoundIt() {
+        var driver = await Begin();
+        var me = driver.Me;
+        var corner = TableSide(driver) + new Vector3(Room.TableHead, 0f, 0f);
+        SurgeryState.SurgeonStandsAt(me, corner + new Vector3(Surgeon.BodyRadius - 0.03f, 0f, 0.6f), 0f);
+        var moved = await Walk(me, InputActions.MoveForward, 90);
+        AssertFloat(-moved.Z).OverrideFailureMessage($"went round the corner to the other side ({-moved.Z:0.00} m in 1.5 s)")
+            .IsGreater(Room.TableWidth + 0.6f);
+    }
+
+    /// <summary>The floor along the table's +z side, level with its middle.</summary>
+    private static Vector3 TableSide(SurgeryDriver driver) =>
+        driver.Surgery.Room.ToGlobal(new Vector3(0f, 0f, Room.TableWidth * 0.5f)) with { Y = driver.Me.GlobalPosition.Y };
+
+    /// <summary>Holds <paramref name="action"/> for <paramref name="frames"/> physics frames and returns how far the
+    /// surgeon went.</summary>
+    private static async Task<Vector3> Walk(Surgeon me, StringName action, int frames) {
+        await Frames.Physics(3);
+        var start = me.GlobalPosition;
+        PlayerInput.Action(action);
+        await Frames.Physics(frames);
+        PlayerInput.Action(action, false);
+        await PlayerInput.Delivered();
+        return me.GlobalPosition - start;
+    }
+
     /// <summary>
     /// Standing at an open belly with a scalpel over the skin beside the opening, zooming in bends the surgeon far over
     /// it, the tool only hovering: the eyes come over the hand and look down at it from above, gradually, without turning
