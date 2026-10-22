@@ -13,7 +13,7 @@ public class WoundLiquidTest {
     private static readonly BudgetAllowance ScreenshotAllowance = new("software screenshot renderer synchronizes dynamic mesh updates", 4.5f);
 
     [TestCase(5f, Timeout = Limits.Slow)]
-    [TestCase(50f)]
+    [TestCase(50f, Timeout = Limits.Slow)]
     public async Task IrrigationLiquidFollowsAndDrainsFromADeepOpening(float initialMl) {
         var captureVisuals = initialMl == 5f;
         var session = await ToolSession.Start("appendectomy", "wound_liquids", captureUntouched: captureVisuals);

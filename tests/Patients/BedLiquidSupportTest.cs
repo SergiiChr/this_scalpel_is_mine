@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.Patients;
 
 [TestSuite, RequireGodotRuntime]
-[TestCategory("liquids")]
+[TestCategory("smoke"), TestCategory("liquids")]
 public class BedLiquidSupportTest {
     [TestCase]
     public void StackedFrameShelvesAreHitTopFirstAcrossSeamsCornersAndSweptCells() {
@@ -11,23 +11,22 @@ public class BedLiquidSupportTest {
         Frames.Tree.Root.AddChild(pads);
         try {
             var bed = new BedLiquidSurface(pads, frame);
-            var upperHit = bed.Contact(new Vector3(0f, 1.1f, 0f), new Vector3(0f, 0.4f, 0f));
-            var lowerHit = bed.Contact(new Vector3(0f, 0.7f, 0f), new Vector3(0f, 0.4f, 0f));
-            AssertBool(upperHit.HasValue && upperHit.Value.Frame).IsTrue();
-            AssertBool(lowerHit.HasValue && lowerHit.Value.Frame).IsTrue();
-            AssertFloat(upperHit!.Value.At.Y).OverrideFailureMessage("the upper overlapping shelf is hit first").IsEqualApprox(0.8f, 0.00001f);
-            AssertFloat(lowerHit!.Value.At.Y).OverrideFailureMessage("a ray starting below the upper shelf reaches the lower shelf").IsEqualApprox(0.5f, 0.00001f);
+            var upperHit = bed.Landing(new Vector3(0f, 1.1f, 0f), new Vector3(0f, 0.4f, 0f));
+            var lowerHit = bed.Landing(new Vector3(0f, 0.7f, 0f), new Vector3(0f, 0.4f, 0f));
+            AssertBool(upperHit.HasValue && lowerHit.HasValue).OverrideFailureMessage("a drop over the frame's shelves lands on them").IsTrue();
+            AssertFloat(upperHit!.Value.Y).OverrideFailureMessage("the upper overlapping shelf is hit first").IsEqualApprox(0.8f, 0.00001f);
+            AssertFloat(lowerHit!.Value.Y).OverrideFailureMessage("a ray starting below the upper shelf reaches the lower shelf").IsEqualApprox(0.5f, 0.00001f);
 
             foreach (var (x, z) in new[] { (-0.5f, -0.25f), (0f, 0f), (1f, 1f) }) {
-                var hit = bed.Contact(new Vector3(x, 1.1f, z), new Vector3(x, 0.4f, z));
+                var hit = bed.Landing(new Vector3(x, 1.1f, z), new Vector3(x, 0.4f, z));
                 AssertBool(hit.HasValue).OverrideFailureMessage($"analytic upper-plane intersection exists at seam/corner ({x}, {z})").IsTrue();
-                AssertFloat(hit!.Value.At.Y).OverrideFailureMessage("seams and corners keep the exact upper support height").IsEqualApprox(0.8f, 0.00001f);
+                AssertFloat(hit!.Value.Y).OverrideFailureMessage("seams and corners keep the exact upper support height").IsEqualApprox(0.8f, 0.00001f);
             }
-            var swept = bed.Contact(new Vector3(-1.5f, 1.1f, 0f), new Vector3(1.5f, 0.4f, 0f));
+            var swept = bed.Landing(new Vector3(-1.5f, 1.1f, 0f), new Vector3(1.5f, 0.4f, 0f));
             AssertBool(swept.HasValue).OverrideFailureMessage("a long descending ray crossing many contact-grid cells still hits the shelf").IsTrue();
             var crossing = (1.1f - 0.8f) / (1.1f - 0.4f);
-            AssertFloat(swept!.Value.At.X).OverrideFailureMessage("the swept hit follows the analytic segment-plane crossing").IsEqualApprox(-1.5f + 3f * crossing, 0.00002f);
-            AssertFloat(swept.Value.At.Y).IsEqualApprox(0.8f, 0.00001f);
+            AssertFloat(swept!.Value.X).OverrideFailureMessage("the swept hit follows the analytic segment-plane crossing").IsEqualApprox(-1.5f + 3f * crossing, 0.00002f);
+            AssertFloat(swept.Value.Y).IsEqualApprox(0.8f, 0.00001f);
 
             AssertInt(bed.Triangles.Length).OverrideFailureMessage("the bed's film covers every pad and frame triangle")
                 .IsEqual(18);

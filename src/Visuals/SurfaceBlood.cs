@@ -63,7 +63,15 @@ internal sealed class SurfaceBlood {
     private Basis _basis;
     private int _wipeVersion = -1;
     private readonly List<(int Index, int[] Neighbors)> _edgeNeighbors = [];
-    internal bool NeedsTransport(Basis basis) => HasFilm && (_canFlow || !_hasBasis || basis != _basis);
+    internal bool NeedsTransport(Basis basis) => HasFilm && (_canFlow || !_hasBasis || !SameAs(basis));
+
+    /// <summary>Whether the site's basis still lies as it did when the heights were last taken: a limb breathing or
+    /// flinching turns it by less than this every frame, which would keep a settled film stepping for good. A slow
+    /// turn adds up to it and takes the film along then.</summary>
+    private bool SameAs(Basis basis) => (basis.X - _basis.X).LengthSquared() + (basis.Y - _basis.Y).LengthSquared()
+        + (basis.Z - _basis.Z).LengthSquared() < BasisTolerance * BasisTolerance;
+
+    private const float BasisTolerance = 0.002f;
     private readonly float[] _normalDepthPerMl = new float[Size * Size];
     private readonly float _projectedDepthPerMl;
     private readonly Vector2 _cell;
@@ -289,7 +297,7 @@ internal sealed class SurfaceBlood {
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     internal void Step(Basis basis, float delta) {
         if (!NeedsTransport(basis)) { return; }
-        if (!_hasBasis || basis != _basis || _basisGeometryRevision != _geometryRevision) {
+        if (!_hasBasis || !SameAs(basis) || _basisGeometryRevision != _geometryRevision) {
             _wetCells.Clear(); _blurCells.Clear();
             Array.Clear(_blurNeeded);
             for (var i = 0; i < _ml.Length; i++) {
@@ -443,8 +451,10 @@ internal sealed class SurfaceBlood {
                 if (_painted[i] > 0f && _ml[i] > 0f) {
                     var now = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, Uv(x, y));
                     if (now + 0.5f / 255f < _painted[i]) {
-                        // The map holds coverage times the contact mask; the painted depth has no mask.
-                        var unmasked = now / map.BloodSupport(Uv(x, y));
+                        // The map holds coverage times the contact mask; the painted depth has no mask. Where the
+                        // mask hides everything the wipe took all of it.
+                        var support = map.BloodSupport(Uv(x, y));
+                        var unmasked = support > 0f ? now / support : 0f;
                         var reduction = _paintedDepth[i] > 0f
                             ? Mathf.Clamp(WoundMap.FilmDepthFromCoverage(unmasked) / _paintedDepth[i], 0f, 1f) : 0f;
                         var remains = _ml[i] * reduction;

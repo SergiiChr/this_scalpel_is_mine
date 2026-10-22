@@ -790,8 +790,7 @@ public partial class PatientBody : Node3D {
             foreach (var material in _bodyMaterials) {
                 Materials.SetCarve(material, site, SiteSize * 0.5f, CavityDepth() + 0.02f, RegionTexture);
             }
-            var coordinates = new Projection(model.AffineInverse() * site);
-            SkinMaterial?.SetMatrix(ShaderParam.SiteToModel, coordinates);
+            SkinMaterial?.SetMatrix(ShaderParam.SiteToModel, new Projection(model.AffineInverse() * site));
             SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, Vector3.Zero);
             Materials.SetReveal(_cavityMaterial, site, SiteSize * 0.5f, RegionTexture);
             return;
@@ -800,8 +799,7 @@ public partial class PatientBody : Node3D {
         foreach (var material in _bodyMaterials) {
             Materials.LiftCarve(material, lift);
         }
-        var localLift = model.Basis.Inverse() * lift;
-        SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, localLift);
+        SkinMaterial?.SetShaderParameter(ShaderParam.SiteLift, model.Basis.Inverse() * lift);
         _cavityMaterial.SetShaderParameter(ShaderParam.RegionLift, lift);
     }
 

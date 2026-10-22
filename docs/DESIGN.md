@@ -791,9 +791,17 @@ regenerating.
   The measuring also finds grid points off the body: where the site overhangs it (or a ray goes through a hole the
   eyes fill), or the body under the skin is too thin for skin, fat and muscle (the edge of a limb or the flank).
   Nothing of the site is drawn, carved or probed there, so it never sticks out past the body's outline.
-- **Blood** (`src/Visuals/BloodFlow.cs`): bleeding wounds well up into a puddle that grows with the blood lost and
-  release rivulets from its edge that run downhill over the skin and stain it, drip off the body as droplets and pool
-  on the table and the floor; strong bleeds spurt. An open wound fills what's under it first, then spills over onto
+- **Blood** (`src/Visuals/BloodFlow.cs`): bleeding wounds feed a shallow film on the site's skin (`SurfaceBlood`, a
+  grid of milliliters): pressure spreads it sideways, gravity carries it downhill and it leaves a thin stain in the
+  fluid map as it moves on; strong bleeds spurt. What reaches the site's edges or its steep flanks runs on over films
+  laid on the body round the site, the bed (pads and frame) and the floor (`SurfaceFilm`, one per surface, points
+  spread over its triangles). Each film steps on a worker thread at a fixed rate and draws its own mesh
+  (`blood_film.gdshader`, the edge fading between points); where it faces down it drips onto whatever lies below,
+  and skin pressed on the mattress hands its blood straight to the bed's film, so turning the patient carries it
+  down onto the bed. A staple squeezes half the film off its seam (`Patient.StapleSqueeze`) without wiping it clean.
+  Irrigation from a syringe gathers briefly as a pool in the opening it lands in (`BloodFlow.Irrigate`, sent with
+  the stream effect along with how much of it is blood), tinted by the blood it washes out, and drains away. An open
+  wound fills what's under it first, then spills over onto
   the skin: the cavity once it's cut through the muscle, else the cut itself, its blood resting on the first layer it
   hasn't cut through (the fat under a skin cut, the muscle once the fat is cut) and rising as it fills. A cut holds as
   much as it is long, gapes and is deep to that layer (`Patient.CutHolds()`); suction and swabs drain it.
@@ -835,4 +843,4 @@ regenerating.
 - Physics pushing of organs runs on the host only; clients see synced positions.
 - Tilt and twist change tool orientation and tip position, but no target yet requires a specific twist.
 - Late joining mid-surgery isn't supported. Both players join in the lobby.
-- Blood rivulets, drips and pools are drawn by each peer on its own, so they differ slightly between players.
+- Blood films, drips and pools are simulated by each peer on its own, so they differ slightly between players.

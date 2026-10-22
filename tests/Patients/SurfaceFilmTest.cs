@@ -72,9 +72,12 @@ public class SurfaceFilmTest {
         inline.Add(node, 2f);
         var steps = 0;
         for (var frame = 0; frame < 60; frame++) {
-            if (worker.Tick(1f / 60f, Vector3.Down)) { steps++; }
+            if (!worker.Tick(1f / 60f)) { continue; }
+            worker.Start(Vector3.Down);
+            // Waited for: a tick finds a step still running (frames here take no time) and leaves it be.
+            worker.Finish();
+            steps++;
         }
-        worker.Finish();
         for (var step = 0; step < steps; step++) { inline.StepNow(Vector3.Down, 1f / SurfaceFilm.Rate); }
         var differs = Enumerable.Range(0, worker.Count).Count(k => worker.MlAt(k) != inline.MlAt(k));
         AssertInt(steps).OverrideFailureMessage("a second at 60 fps runs the film's fixed steps").IsEqual((int)SurfaceFilm.Rate);

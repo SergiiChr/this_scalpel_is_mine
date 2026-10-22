@@ -8,7 +8,6 @@ internal sealed class BedLiquidSurface {
     private readonly record struct Face(Vector3 A, Vector3 B, Vector3 C, Vector3 Normal, Rect2 Bounds);
     private readonly List<Face> _pads = [];
     private readonly List<Face> _landingFaces = [];
-    private readonly float _bottom;
     private readonly float _padTop;
     private readonly float _landingBottom;
     private readonly float _landingTop;
@@ -24,16 +23,10 @@ internal sealed class BedLiquidSurface {
     /// leaves out where they press together (see <see cref="Exposed"/>).</summary>
     internal Vector3[] Triangles { get; }
 
-    /// <summary>Just above the frame's lowest point: what hangs below it hangs off the bed.</summary>
-    internal float DripHeight => _bottom + 0.003f;
-
-    internal readonly record struct Hit(Vector3 At, bool Frame);
-
     internal BedLiquidSurface(MeshInstance3D pads, MeshInstance3D frame) {
         var frameVertices = frame.Mesh.GetFaces().Select(p => frame.GlobalTransform * p).ToArray();
         var padVertices = pads.Mesh.GetFaces().Select(p => pads.GlobalTransform * p).ToArray();
         Triangles = [.. padVertices, .. frameVertices];
-        _bottom = frameVertices.Min(p => p.Y);
         _pads.AddRange(UpwardFaces(padVertices));
         _padTop = padVertices.Max(p => p.Y);
         _landingFaces.AddRange(_pads);
@@ -73,7 +66,8 @@ internal sealed class BedLiquidSurface {
     internal bool Exposed(Vector3 at, Vector3 normal) {
         var xz = Xz(at);
         if (Mathf.Abs(normal.Y) <= 0.5f || !_landingBounds.Grow(0.01f).HasPoint(xz)) { return true; }
-        var cell = _flatCells[ContactCell(xz).Y * ContactColumns + ContactCell(xz).X];
+        var cellAt = ContactCell(xz);
+        var cell = _flatCells[cellAt.Y * ContactColumns + cellAt.X];
         bool? pad = null;
         foreach (var index in cell) {
             var (face, onPad) = _flats[index];
@@ -126,26 +120,26 @@ internal sealed class BedLiquidSurface {
         return highest;
     }
 
-    /// <summary>Whether <paramref name="at"/> lies on the mattress or sunk into it, as skin pressed on it does.</summary>
+    /// <summary>Whether <paramref name="at"/> lies on the mattress or sunk into it, as skin pressed on it does. Deeper
+    /// than <see cref="SinkDepth"/> under its top it's past the mattress, not in it.</summary>
     internal bool Touches(Vector3 at) => at.Y < _padTop + ContactGap && HeightAt(new Vector2(at.X, at.Z)) is { } top
-        && at.Y < top + ContactGap;
+        && at.Y < top + ContactGap && at.Y > top - SinkDepth;
 
     private const float ContactGap = 0.003f;
+    private const float SinkDepth = 0.1f;
 
     private Vector2I ContactCell(Vector2 at) => new(
         Math.Clamp((int)((at.X - _landingBounds.Position.X) / _landingBounds.Size.X * ContactColumns), 0, ContactColumns - 1),
         Math.Clamp((int)((at.Y - _landingBounds.Position.Y) / _landingBounds.Size.Y * ContactRows), 0, ContactRows - 1));
 
-    internal Vector3? Landing(Vector3 from, Vector3 to) => Contact(from, to)?.At;
-
     /// <summary>Where a drop moving from <paramref name="from"/> to <paramref name="to"/> first meets the top of a pad
     /// or of the frame, or null.</summary>
-    internal Hit? Contact(Vector3 from, Vector3 to) {
+    internal Vector3? Landing(Vector3 from, Vector3 to) {
         var motion = to - from;
         if (motion.Y >= 0f || to.Y > _landingTop || from.Y < _landingBottom) { return null; }
         var bounds = new Rect2(Xz(from), Vector2.Zero).Expand(Xz(to)).Grow(0.000001f);
         if (!_landingBounds.Intersects(bounds, includeBorders: true)) { return null; }
-        Hit? closest = null;
+        Vector3? closest = null;
         var closestProgress = float.PositiveInfinity;
         var low = ContactCell(bounds.Position); var high = ContactCell(bounds.End);
         for (var row = low.Y; row <= high.Y; row++) {
@@ -163,7 +157,7 @@ internal sealed class BedLiquidSurface {
                     if (progress >= closestProgress) { continue; }
                     var hit = from.Lerp(to, progress);
                     if (!Covers(face, Xz(hit))) { continue; }
-                    closest = new Hit(hit, index >= _pads.Count);
+                    closest = hit;
                     closestProgress = progress;
                 }
             }

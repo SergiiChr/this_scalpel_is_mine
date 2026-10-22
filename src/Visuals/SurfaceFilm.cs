@@ -80,7 +80,9 @@ internal sealed class SurfaceFilm {
     private readonly float[] _shed;
     private readonly float[] _change;
     private readonly float[] _height;
-    private readonly float[] _weights = new float[16];
+    /// <summary>Neighbours a point passes liquid to at most: the nearest within reach.</summary>
+    private const int MaxNeighbors = 16;
+    private readonly float[] _weights = new float[MaxNeighbors];
     private readonly List<int> _wet = [];
     private readonly bool[] _isWet;
     private readonly List<Drip> _drips = [];
@@ -183,12 +185,13 @@ internal sealed class SurfaceFilm {
             var (a, b, c) = (triangles[t], triangles[t + 1], triangles[t + 2]);
             var face = (c - a).Cross(b - a);
             if (face.LengthSquared() < 1e-14f) { continue; }
+            var (wa, wb, wc) = skin is null ? default : (skin[t], skin[t + 1], skin[t + 2]);
             if (outward is not null && face.Dot(outward[t] + outward[t + 1] + outward[t + 2]) < 0f) {
                 (b, c) = (c, b);
+                (wb, wc) = (wc, wb);
+                face = -face;
             }
-            var (wa, wb, wc) = skin is null ? default : (skin[t], skin[t + 1], skin[t + 2]);
-            if (outward is not null && face.Dot(outward[t] + outward[t + 1] + outward[t + 2]) < 0f) { (wb, wc) = (wc, wb); }
-            var side = (c - a).Cross(b - a).Normalized();
+            var side = face.Normalized();
             // Where the triangle's middle and corners agree, the whole triangle is in or out: asking once for each of
             // its many small faces would cost far more than building them.
             bool? whole = null;
@@ -293,7 +296,7 @@ internal sealed class SurfaceFilm {
                 }
             }
             around.Sort(static (x, y) => x.Distance.CompareTo(y.Distance));
-            for (var i = 0; i < Math.Min(around.Count, _weights.Length); i++) { flat.Add(around[i].Node); }
+            for (var i = 0; i < Math.Min(around.Count, MaxNeighbors); i++) { flat.Add(around[i].Node); }
         }
         _neighborStart[count] = flat.Count;
         _neighbors = [.. flat];
@@ -342,12 +345,15 @@ internal sealed class SurfaceFilm {
         }
         var distance = Enumerable.Repeat(float.PositiveInfinity, _at.Length).ToArray();
         var open = new PriorityQueue<int, float>();
+        void OnEdge(int k) {
+            if (!fadesAt(_at[k])) { return; }
+            distance[k] = 0f;
+            open.Enqueue(k, 0f);
+        }
         foreach (var ((a, b), uses) in edges) {
-            foreach (var k in new[] { a, b }) {
-                if (uses != 1 || !fadesAt(_at[k])) { continue; }
-                distance[k] = 0f;
-                open.Enqueue(k, 0f);
-            }
+            if (uses != 1) { continue; }
+            OnEdge(a);
+            OnEdge(b);
         }
         while (open.TryDequeue(out var k, out var d)) {
             if (d > distance[k] || d >= reach) { continue; }
@@ -415,26 +421,28 @@ internal sealed class SurfaceFilm {
         _pendingMl += ml;
     }
 
-    /// <summary>Advances the main thread's clock. At every step's time it finishes the running step (waiting for the
-    /// worker if it isn't done), which fills <see cref="Released"/> and <see cref="Mesh"/>, and starts the next with
-    /// gravity <paramref name="gravity"/> (in the film's space). Returns whether a step's time came.
+    /// <summary>Advances the main thread's clock. At every step's time it finishes the running step, which fills
+    /// <see cref="Released"/> and <see cref="Mesh"/>, and returns true: the caller then starts the next with
+    /// <see cref="Start"/>. A step the worker hasn't finished isn't waited for: the frame goes on and the step's time
+    /// stays due, so a film too big for its rate falls behind rather than stall the game.</summary>
+    internal bool Tick(float delta) {
+        _clock = Mathf.Min(_clock + delta, 1f / Rate);
+        if (_clock < 1f / Rate || _step is { IsCompleted: false }) { return false; }
+        _clock = 0f;
+        Finish();
+        return true;
+    }
+
+    /// <summary>Starts a step on the worker with gravity <paramref name="gravity"/> (in the film's space).
     /// <paramref name="drains"/> marks points where the surface meets another one, such as skin pressed on the bed:
     /// their liquid leaves as drips there, to pass on to that surface. It runs on the worker.</summary>
-    /// <summary>Whether <see cref="Tick"/> with <paramref name="delta"/> reaches a step's time.</summary>
-    internal bool Due(float delta) => _clock + delta >= 1f / Rate;
-
-    internal bool Tick(float delta, Vector3 gravity, Func<int, bool>? drains = null) {
-        _clock += delta;
-        if (_clock < 1f / Rate) { return false; }
-        _clock -= 1f / Rate;
-        Finish();
+    internal void Start(Vector3 gravity, Func<int, bool>? drains = null) {
         var down = gravity.Normalized();
         // A settled film stays as it is until liquid comes or the surface turns: stepping it would change nothing.
-        if (_pending.Count == 0 && (_wet.Count == 0 || _settled && down.IsEqualApprox(_gravity))) { return true; }
+        if (_pending.Count == 0 && (_wet.Count == 0 || _settled && down.IsEqualApprox(_gravity))) { return; }
         TakePending();
         _drains = drains;
         _step = Task.Run(() => Step(down, 1f / Rate));
-        return true;
     }
 
     /// <summary>Finishes any running step, then runs one on this thread; for tests.</summary>
@@ -691,9 +699,11 @@ internal sealed class SurfaceFilm {
         Mesh.AddSurfaceFromArrays(Godot.Mesh.PrimitiveType.Triangles, arrays);
     }
 
-    /// <summary>Milliliters at point k, as of the last finished step.</summary>
+    /// <summary>Milliliters at point k, as of the last finished step: 0 while one runs (<see cref="Finish"/> first).
+    /// </summary>
     internal float MlAt(int node) => _step is null ? _ml[node] : 0f;
 
-    /// <summary>How much of the surface at point k the liquid hides (0..1), as of the last finished step.</summary>
+    /// <summary>How much of the surface at point k the liquid hides (0..1), as of the last finished step: 0 while one
+    /// runs (<see cref="Finish"/> first).</summary>
     internal float CoverageAt(int node) => _step is null ? Coverage(node) : 0f;
 }

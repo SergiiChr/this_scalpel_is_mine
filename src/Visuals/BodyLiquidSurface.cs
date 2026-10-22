@@ -33,17 +33,32 @@ internal sealed class BodyLiquidSurface {
         SiteToMesh = siteToMesh;
     }
 
-    internal static SkinPose CaptureSkinPose(MeshInstance3D skinMesh, Skeleton3D skeleton) {
-        if (skinMesh.Skin is not { } skin) { return new SkinPose(skinMesh.GlobalTransform, [], []); }
-        var bind = new Transform3D[skin.GetBindCount()];
-        var valid = new bool[bind.Length];
-        for (var i = 0; i < bind.Length; i++) {
+    /// <summary>The skeleton's bone each of the skin's binds poses, -1 for one it doesn't have. Looked up once: by
+    /// name where a bind names its bone, which costs a string per bind.</summary>
+    internal static int[] ResolveBinds(MeshInstance3D skinMesh, Skeleton3D skeleton) {
+        if (skinMesh.Skin is not { } skin) { return []; }
+        var bones = new int[skin.GetBindCount()];
+        for (var i = 0; i < bones.Length; i++) {
             var bone = skin.GetBindBone(i);
             if (bone < 0 && skin.GetBindName(i).ToString().Length > 0) { bone = skeleton.FindBone(skin.GetBindName(i)); }
-            if (bone >= 0 && bone < skeleton.GetBoneCount()) {
-                bind[i] = skeleton.GlobalTransform * skeleton.GetBoneGlobalPose(bone) * skin.GetBindPose(i);
-                valid[i] = true;
-            }
+            bones[i] = bone >= 0 && bone < skeleton.GetBoneCount() ? bone : -1;
+        }
+        return bones;
+    }
+
+    internal static SkinPose CaptureSkinPose(MeshInstance3D skinMesh, Skeleton3D skeleton) =>
+        CaptureSkinPose(skinMesh, skeleton, ResolveBinds(skinMesh, skeleton));
+
+    /// <summary>The skin's pose now, from <paramref name="bindBones"/> (<see cref="ResolveBinds"/>).</summary>
+    internal static SkinPose CaptureSkinPose(MeshInstance3D skinMesh, Skeleton3D skeleton, int[] bindBones) {
+        if (skinMesh.Skin is not { } skin) { return new SkinPose(skinMesh.GlobalTransform, [], []); }
+        var bind = new Transform3D[bindBones.Length];
+        var valid = new bool[bind.Length];
+        var skeletonToWorld = skeleton.GlobalTransform;
+        for (var i = 0; i < bind.Length; i++) {
+            if (bindBones[i] < 0) { continue; }
+            bind[i] = skeletonToWorld * skeleton.GetBoneGlobalPose(bindBones[i]) * skin.GetBindPose(i);
+            valid[i] = true;
         }
         return new SkinPose(skinMesh.GlobalTransform, bind, valid);
     }

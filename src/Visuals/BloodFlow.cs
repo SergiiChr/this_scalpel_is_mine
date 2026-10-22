@@ -124,7 +124,7 @@ public partial class BloodFlow : Node3D {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
         public float Ml = ml;
-        public readonly Vector3 Shape = shape;
+        public Vector3 Shape = shape;
         public readonly float Twist = twist;
     }
 
@@ -141,6 +141,8 @@ public partial class BloodFlow : Node3D {
     private Task<SurfaceFilm> _floorFilmBuild = null!;
     private MeshInstance3D _skinMesh = null!;
     private Skeleton3D? _skeleton;
+    private int[] _bindBones = [];
+    private BedLiquidSurface _bed = null!;
     /// <summary>Blood on the skin round the site, in the skin mesh's space.</summary>
     internal SurfaceFilm BodyFilm => _bodyFilmBuild.Result;
     /// <summary>Blood on the mattress and frame, in world space.</summary>
@@ -151,10 +153,18 @@ public partial class BloodFlow : Node3D {
     internal Task FilmsBuilt => Task.WhenAll(_bodyFilmBuild, _bedFilmBuild, _floorFilmBuild);
     /// <summary>Builds a film on a thread of its own. Seconds long, a build on the shared pool would hold up the short
     /// jobs the game waits for each frame (the tissue's step, the hands' grip fitting) and stall it.</summary>
-    private static Task<SurfaceFilm> Build(Func<SurfaceFilm> build) =>
-        Task.Factory.StartNew(build, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    private static Task<SurfaceFilm> Build(Func<SurfaceFilm> build) {
+        var task = Task.Factory.StartNew(build, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        // Said once: a film that failed to build is left out (Built) rather than asked for every frame.
+        task.ContinueWith(failed => GD.PushError($"Blood film build failed: {failed.Exception?.InnerException}"),
+            TaskContinuationOptions.OnlyOnFaulted);
+        return task;
+    }
 
-    private static float HeldOn(Task<SurfaceFilm> build) => build.IsCompletedSuccessfully ? build.Result.HeldMl : 0f;
+    /// <summary>The film <paramref name="build"/> made, or null while it's still building or when it failed.</summary>
+    private static SurfaceFilm? Built(Task<SurfaceFilm> build) => build.IsCompletedSuccessfully ? build.Result : null;
+
+    private static float HeldOn(Task<SurfaceFilm> build) => Built(build)?.HeldMl ?? 0f;
     internal float SurfaceSuppliedMl { get; private set; }
     internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
         + HeldOn(_bodyFilmBuild) + GroundMl;
@@ -162,13 +172,15 @@ public partial class BloodFlow : Node3D {
     internal float GroundMl => _drops.Sum(drop => drop.Ml) + HeldOn(_bedFilmBuild) + HeldOn(_floorFilmBuild);
     /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
     internal float DisplaceSurfaceFilm(Vector2[] path, float radius, float share) =>
-        _surface.DisplaceStroke(path, radius, share);
+        _body is null ? 0f : _surface.DisplaceStroke(path, radius, share);
     private float _surfaceClock;
     private float _surfaceGeometryClock;
     private int _surfaceGeometrySteps;
     private int _surfaceGeometryTopology;
     private bool _surfaceNeedsPaint;
     private int _surfaceSteps;
+    // Cut pools and irrigation pools take turns rebuilding when a pull changes both (see PoolInCuts).
+    private bool _rinseFirst;
     private readonly List<Drop> _drops = [];
     internal IReadOnlyList<Drop> Drops => _drops;
     private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
@@ -387,10 +399,12 @@ public partial class BloodFlow : Node3D {
         || Mathf.Abs(fill - drawn) * floor * (1f - CutPoolBrim) > 0.0001f
         || Mathf.Abs(Mathf.Sqrt(fill) - Mathf.Sqrt(Mathf.Max(drawn, 0f))) * gap * 0.2f > 0.0001f;
 
-    private static Wound? NearestWound(PatientBody body, Vector2 uv) =>
-        body.GetParent<Patient>().Wounds.Where(wound => !wound.IsInternal).MinBy(wound => wound.DistanceTo(uv));
-
-    private sealed record WoundGeometry(int Topology, float Gap, Vector2[] Uvs, float[] Values) {
+    private sealed class WoundGeometry(int topology, float gap, Vector2[] uvs, float[] values) {
+        internal int Topology { get; } = topology;
+        internal float Gap { get; } = gap;
+        internal Vector2[] Uvs { get; } = uvs;
+        internal float[] Values { get; } = values;
+        /// <summary>Where the next bounded recheck of <see cref="Uvs"/> starts.</summary>
         internal int CheckCursor;
     }
 
@@ -443,17 +457,18 @@ public partial class BloodFlow : Node3D {
         return false;
     }
 
-    private bool _rinseFirst;
-
     private void PoolInCuts(PatientBody body) {
         // A tissue pull can invalidate blood and irrigation simultaneously. Spread their contour builds
         // across consecutive frames, while alternating priority so continued filling cannot starve either.
         var deferCuts = _rinseFirst && _rinses.Count > 0;
         _rinseFirst = false;
+        var patient = body.GetParent<Patient>();
         if (!deferCuts && Pools.Count > 0 && (_drawnCutGeometry.Count != _drawnCuts.Count || CutPoolsChanged(body))) {
             var surface = _cutBuffer;
             surface.Clear();
-            foreach (var (uv, floor, fill) in Pools) { AddWoundSurface(surface, body, uv, floor, fill); }
+            foreach (var (uv, floor, fill) in Pools) {
+                AddWoundSurface(surface, body, patient.NearestWound(uv, float.PositiveInfinity, false), uv, floor, fill);
+            }
             _cutPoolMesh.Mesh = surface.Upload(_cutPoolMesh.Mesh as ArrayMesh);
             var captureAll = _drawnCutGeometry.Count != _drawnCuts.Count
                 || _drawnCutGeometry.Count != Pools.Count
@@ -463,13 +478,13 @@ public partial class BloodFlow : Node3D {
             if (captureAll) {
                 _drawnCutGeometry.Clear();
                 foreach (var pool in Pools) {
-                    _drawnCutGeometry.Add(CaptureWoundGeometry(body, NearestWound(body, pool.Uv), pool.Uv));
+                    _drawnCutGeometry.Add(CaptureWoundGeometry(body, patient.NearestWound(pool.Uv, float.PositiveInfinity, false), pool.Uv));
                 }
             } else {
                 for (var i = 0; i < Pools.Count; i++) {
                     if (!_cutGeometryNeedsCapture[i]) { continue; }
                     var pool = Pools[i];
-                    _drawnCutGeometry[i] = CaptureWoundGeometry(body, NearestWound(body, pool.Uv), pool.Uv);
+                    _drawnCutGeometry[i] = CaptureWoundGeometry(body, patient.NearestWound(pool.Uv, float.PositiveInfinity, false), pool.Uv);
                 }
             }
             _cutGeometryNeedsCapture.Clear();
@@ -502,7 +517,7 @@ public partial class BloodFlow : Node3D {
             var floor = body.OpeningDepth(rinse.Uv, 0.015f);
             if (body.Tissue.IsOpen(rinse.Uv)) { floor = body.SurfaceHeight(rinse.Uv) - body.CavityFloor(rinse.Uv); }
             if (floor <= 0f) { rinse.Mesh.Visible = false; continue; }
-            var wound = body.GetParent<Patient>().Wounds.FirstOrDefault(w => w.Id == id);
+            var wound = patient.Wounds.FirstOrDefault(w => w.Id == id);
             var gap = Mathf.Max(body.Tissue.GapAt(rinse.Uv, 0.04f), 0.001f);
             var length = (wound?.LengthUv ?? 0.02f) * Mathf.Max(body.SiteSize.X, body.SiteSize.Y);
             var capacity = Mathf.Max(0.25f, length * gap * floor * 500000f);
@@ -513,7 +528,7 @@ public partial class BloodFlow : Node3D {
                 || Mathf.Abs(floor - rinse.DrawnFloor) > WoundLiquidGeometryTolerance) {
                 var water = rinse.Buffer;
                 water.Clear();
-                AddWoundSurface(water, body, rinse.Uv, floor, fill);
+                AddWoundSurface(water, body, wound, rinse.Uv, floor, fill);
                 rinse.Mesh.Mesh = water.Upload(rinse.Mesh.Mesh as ArrayMesh);
                 rinse.DrawnFill = fill;
                 rinse.DrawnFloor = floor;
@@ -543,8 +558,7 @@ public partial class BloodFlow : Node3D {
         var uv = _body.WorldToUv(at);
         if (uv.X < 0f || uv.X > 1f || uv.Y < 0f || uv.Y > 1f || !_body.OnBody(uv)
             || !_body.Tissue.IsOpen(uv, TissueDepth.Skin)) { return; }
-        var wound = _body.GetParent<Patient>().Wounds.Where(w => !w.IsInternal).MinBy(w => w.DistanceTo(uv));
-        if (wound is null || wound.DistanceTo(uv) > 0.05f) { return; }
+        if (_body.GetParent<Patient>().NearestWound(uv, 0.05f, false) is not { } wound) { return; }
         if (!_rinses.TryGetValue(wound.Id, out var rinse)) {
             if (!_drainedRinses.Remove(wound.Id, out rinse!)) {
                 if (_availableRinses.Count > 0) { rinse = _availableRinses.Dequeue(); } else if (_drainedRinses.Count > 0) {
@@ -573,8 +587,7 @@ public partial class BloodFlow : Node3D {
     internal int RinseMeshRefreshes(int woundId) =>
         _rinses.TryGetValue(woundId, out var rinse) ? rinse.MeshRefreshes : 0;
 
-    private static void AddWoundSurface(LiquidSurface surface, PatientBody body, Vector2 uv, float floor, float fill) {
-        var wound = body.GetParent<Patient>().Wounds.Where(w => !w.IsInternal).MinBy(w => w.DistanceTo(uv));
+    private static void AddWoundSurface(LiquidSurface surface, PatientBody body, Wound? wound, Vector2 uv, float floor, float fill) {
         var margin = new Vector2(0.008f / body.SiteSize.X, 0.008f / body.SiteSize.Y);
         var low = uv;
         var high = uv;
@@ -737,18 +750,18 @@ public partial class BloodFlow : Node3D {
         // What runs off the site's edges goes on down the body's own skin.
         var siteToMesh = body.LiquidContact.SiteToMesh;
         // Until the body's film is built, runoff waits in the site's queue.
-        while (_bodyFilmBuild.IsCompleted && _surface.TakeRunoff(out var uv, out var runoffMl)) {
-            BodyFilm.Add(BodyFilm.Nearest(siteToMesh * body.Site.ToLocal(body.UvToWorld(uv))), runoffMl);
-        }
-        // The pose is read only when a step starts: it's what the step and the drips it lets go need.
-        if (_bodyFilmBuild.IsCompleted && BodyFilm.Due(delta)) {
-            var world = BodyToWorld();
-            // Skin pressed on the mattress (lying on the back or turned) hands its blood to the bed's film.
-            var bed = Bed;
-            BodyFilm.Tick(delta, _skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(world(node, BodyFilm.At(node))));
-            ReleaseBodyDrips(world);
-        } else if (_bodyFilmBuild.IsCompleted) {
-            BodyFilm.Tick(delta, Vector3.Zero);
+        if (Built(_bodyFilmBuild) is { } film) {
+            while (_surface.TakeRunoff(out var uv, out var runoffMl)) {
+                film.Add(film.Nearest(siteToMesh * body.Site.ToLocal(body.UvToWorld(uv))), runoffMl);
+            }
+            // The pose is read only when a step starts: it's what the step and the drips it lets go need.
+            if (film.Tick(delta)) {
+                var world = BodyToWorld();
+                // Skin pressed on the mattress (lying on the back or turned) hands its blood to the bed's film.
+                var bed = _bed;
+                film.Start(_skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(world(node, film.At(node))));
+                ReleaseBodyDrips(world);
+            }
         }
         if (_surface.HasFilm) {
             _surfaceGeometryClock += delta;
@@ -820,7 +833,9 @@ public partial class BloodFlow : Node3D {
     private void AddDrop(Vector3 at, Vector3 velocity, float ml = DropMl) {
         if (_drops.Count >= MaxDrops) {
             // No room to draw another: the newest drop in flight carries this liquid too, so none is lost.
-            _drops[^1].Ml += ml;
+            var newest = _drops[^1];
+            newest.Shape *= Mathf.Pow((newest.Ml + ml) / newest.Ml, 1f / 3f);
+            newest.Ml += ml;
             return;
         }
         var shape = new Vector3(_dripRng.RandfRange(0.6f, 1.15f), _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f));
@@ -830,18 +845,19 @@ public partial class BloodFlow : Node3D {
 
     /// <summary>Places a body film point on the body as it's posed now. Safe to call from the film's worker.</summary>
     private Func<int, Vector3, Vector3> BodyToWorld() {
-        var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton);
+        var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton, _bindBones);
         var film = BodyFilm;
         var mesh = _skinMesh.GlobalTransform;
         return (node, at) => pose?.Deform(at, film.SkinAt(node)) ?? mesh * at;
     }
 
     private void ReleaseBodyDrips(Func<int, Vector3, Vector3> world) {
-        var bed = Bed;
+        // Until the bed's film is built, what the skin presses into the mattress falls as drops and waits above it.
+        var bedFilm = Built(_bedFilmBuild);
         foreach (var drip in BodyFilm.Released) {
             var at = world(drip.Node, drip.At);
-            if (bed.Touches(at)) {
-                BedFilm.Add(BedFilm.Nearest(at with { Y = bed.HeightAt(new Vector2(at.X, at.Z))!.Value }, Vector3.Up), drip.Ml);
+            if (bedFilm is not null && _bed.Touches(at)) {
+                bedFilm.Add(bedFilm.Nearest(at with { Y = _bed.HeightAt(new Vector2(at.X, at.Z))!.Value }, Vector3.Up), drip.Ml);
             } else {
                 AddDrop(at, Vector3.Zero, drip.Ml);
             }
@@ -854,13 +870,13 @@ public partial class BloodFlow : Node3D {
         BedFilm.ClearReleased();
     }
 
-    private BedLiquidSurface Bed => _body!.GetParent<Patient>().GetParent<Surgery>().Room.BedSurface;
-
     /// <summary>The body's skin round the site, the bed and the floor, each with its own film, drawn by its own mesh.
     /// </summary>
     private void SetupFilms(PatientBody body) {
         _skinMesh = body.SkinMesh;
         _skeleton = _skinMesh.GetNodeOrNull<Skeleton3D>(_skinMesh.Skeleton);
+        _bindBones = _skeleton is null ? [] : BodyLiquidSurface.ResolveBinds(_skinMesh, _skeleton);
+        _bed = body.GetParent<Patient>().GetParent<Surgery>().Room.BedSurface;
         var skin = body.LiquidContact;
         var siteToMesh = skin.SiteToMesh;
         var half = body.SiteSize * 0.5f;
@@ -884,10 +900,9 @@ public partial class BloodFlow : Node3D {
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             Transform = _skinMesh.Transform,
         });
-        var bed = Bed.Triangles;
+        var bed = _bed;
         var bedMesh = new ArrayMesh();
-        var bedSurface = Bed;
-        _bedFilmBuild = Build(() => new SurfaceFilm(bed, BedFilmSettings, keep: bedSurface.Exposed, mesh: bedMesh));
+        _bedFilmBuild = Build(() => new SurfaceFilm(bed.Triangles, BedFilmSettings, keep: bed.Exposed, mesh: bedMesh));
         var (foot, head, side) = (Room.TableFoot - FloorFilmMargin, Room.TableHead + FloorFilmMargin, Room.TableHalfWidth + FloorFilmMargin);
         Vector3[] floor = [new(foot, FloorY, -side), new(head, FloorY, -side), new(head, FloorY, side),
             new(foot, FloorY, -side), new(head, FloorY, side), new(foot, FloorY, side)];
@@ -909,32 +924,31 @@ public partial class BloodFlow : Node3D {
     /// <summary>Droplets fall until they meet the mattress's or frame's top, or the floor, and join that surface's
     /// film. The bed's film drips onto the floor's in turn.</summary>
     private void Fall(float delta) {
-        var landingBed = _drops.Count > 0 ? Bed : null;
+        var bedFilm = Built(_bedFilmBuild);
+        var floorFilm = Built(_floorFilmBuild);
         for (var i = 0; i < _drops.Count; i++) {
             var drop = _drops[i];
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
-            var bedHit = landingBed?.Landing(drop.Position, position);
-            var landing = bedHit is not null ? _bedFilmBuild : position.Y <= FloorY ? _floorFilmBuild : null;
-            if (landing is { IsCompleted: false }) {
-                // The film it lands on is still being built: it waits just above, rather than stall the frame.
-                drop.Velocity = Vector3.Zero;
-            } else if (bedHit is { } onBed) {
+            // A film still being built keeps the drop waiting just above it, rather than stall the frame for the build.
+            if (_bed.Landing(drop.Position, position) is { } onBed) {
+                if (bedFilm is null) { drop.Velocity = Vector3.Zero; continue; }
                 _drops.RemoveAt(i--);
-                BedFilm.Add(BedFilm.Nearest(onBed, Vector3.Up), drop.Ml);
+                bedFilm.Add(bedFilm.Nearest(onBed, Vector3.Up), drop.Ml);
             } else if (position.Y <= FloorY) {
+                if (floorFilm is null) { drop.Velocity = Vector3.Zero; continue; }
                 var hit = drop.Position.Lerp(position, Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
                 _drops.RemoveAt(i--);
-                FloorFilm.Add(FloorFilm.Nearest(hit with { Y = FloorY }, Vector3.Up), drop.Ml);
+                floorFilm.Add(floorFilm.Nearest(hit with { Y = FloorY }, Vector3.Up), drop.Ml);
             } else {
                 drop.Position = position;
             }
         }
-        if (_bedFilmBuild.IsCompleted) {
-            BedFilm.Tick(delta, Vector3.Down);
+        if (bedFilm is not null && bedFilm.Tick(delta)) {
+            bedFilm.Start(Vector3.Down);
             ReleaseBedDrips();
         }
-        if (_floorFilmBuild.IsCompleted) { FloorFilm.Tick(delta, Vector3.Down); }
+        if (floorFilm is not null && floorFilm.Tick(delta)) { floorFilm.Start(Vector3.Down); }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
         for (var i = 0; i < _drops.Count; i++) {
@@ -955,10 +969,10 @@ public partial class BloodFlow : Node3D {
     /// <summary>Puts <paramref name="ml"/> straight onto whatever surface is at <paramref name="at"/> (world): the
     /// bed's top within a few millimeters, else the floor near its level, else as a drop to fall there.</summary>
     internal void Deposit(Vector3 at, float ml) {
-        if (Bed.Landing(at + Vector3.Up * 0.002f, at - Vector3.Up * 0.003f) is { } onBed) {
-            BedFilm.Add(BedFilm.Nearest(onBed, Vector3.Up), ml);
-        } else if (at.Y <= FloorY + 0.01f) {
-            FloorFilm.Add(FloorFilm.Nearest(at with { Y = FloorY }, Vector3.Up), ml);
+        if (_bed.Landing(at + Vector3.Up * 0.002f, at - Vector3.Up * 0.003f) is { } onBed && Built(_bedFilmBuild) is { } bed) {
+            bed.Add(bed.Nearest(onBed, Vector3.Up), ml);
+        } else if (at.Y <= FloorY + 0.01f && Built(_floorFilmBuild) is { } floor) {
+            floor.Add(floor.Nearest(at with { Y = FloorY }, Vector3.Up), ml);
         } else {
             AddDrop(at, Vector3.Zero, ml);
         }
