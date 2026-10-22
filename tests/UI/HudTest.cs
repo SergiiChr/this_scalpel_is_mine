@@ -24,7 +24,7 @@ public class HudTest {
             AssertInt(panel.GetChildCount())
                 .OverrideFailureMessage("setup creates objective rows, the discharge, the first one's subtasks and the score before any HUD frame")
                 .IsEqual(surgery.Scenario.Steps.Count + 1 + surgery.Status.Objectives[0].Subtasks.Length + 1);
-            AssertString(panel.GetChild<Label>(0).Text).IsEqual("☐ " + surgery.Scenario.Steps[0].Label);
+            AssertString(panel.GetChild<Label>(0).Text).IsEqual("□ " + surgery.Scenario.Steps[0].Label);
             AssertString(panel.GetChild<Label>(1).Text).IsEqual("• " + surgery.Status.Objectives[0].Subtasks[0]);
             AssertBool(panel.Visible).IsTrue();
             AssertFloat(surgery.Elapsed).OverrideFailureMessage("still before the first periodic status update")
@@ -49,7 +49,7 @@ public class HudTest {
         panel.Refresh(active);
         await Frames.NextProcess();
         var objective = panel.GetChild<Label>(0);
-        AssertString(objective.Text).OverrideFailureMessage("the open objective is shown").IsEqual("☐ Close the incision");
+        AssertString(objective.Text).OverrideFailureMessage("the open objective is shown").IsEqual("□ Close the incision");
         AssertThat(objective.GetThemeColor("font_color")).OverrideFailureMessage("the open objective is in plain ink")
             .IsEqual(Ui.Ink);
         var changes = 0;
@@ -61,7 +61,7 @@ public class HudTest {
         AssertInt(changes).OverrideFailureMessage("unchanged objectives keep their shaped text and layout").IsEqual(0);
         panel.Refresh(active with { Objectives = [new ObjectiveView("Close the incision", true, false, false, [])], Score = 10 });
         await Frames.NextProcess();
-        AssertString(objective.Text).OverrideFailureMessage("completion updates immediately").IsEqual("☑ Close the incision");
+        AssertString(objective.Text).OverrideFailureMessage("completion updates immediately").IsEqual("✓ Close the incision");
         AssertThat(objective.GetThemeColor("font_color")).OverrideFailureMessage("completed objectives are dimmed")
             .IsEqual(Ui.Dim);
         AssertString(panel.GetChild<Label>(1).Text).OverrideFailureMessage("the score updates alongside the objective")
@@ -69,7 +69,7 @@ public class HudTest {
         AssertInt(changes).OverrideFailureMessage("a changed objective refreshes its theme").IsGreater(0);
         panel.Refresh(active with { Objectives = [new ObjectiveView("Close the incision", false, false, true, [])] });
         await Frames.NextProcess();
-        AssertString(objective.Text).OverrideFailureMessage("a spoiled objective is crossed out").IsEqual("☒ Close the incision");
+        AssertString(objective.Text).OverrideFailureMessage("a spoiled objective is crossed out").IsEqual("✗ Close the incision");
         AssertThat(objective.GetThemeColor("font_color")).OverrideFailureMessage("a spoiled objective shows in red")
             .IsEqual(Ui.Alert);
     }
@@ -89,14 +89,14 @@ public class HudTest {
             [.. ObjectivesPanel.Lines(status, difficulty, debug).Select(line => line.Text)];
         AssertArray(Texts(Difficulty.Baby, false)).OverrideFailureMessage("baby: every task, the subtasks under theirs")
             .IsEqual(new List<string> {
-                "☑ Set up an IV line", "☐ [optional] Mark the incision", "• Pick up the surgical marker", "☐ [optional] Find the bullet on an X-ray",
-                "☐ Open the abdomen", "• Pick up the scalpel", "• Cut through the muscle", "☐ Close the incision",
+                "✓ Set up an IV line", "□ [optional] Mark the incision", "• Pick up the surgical marker", "□ [optional] Find the bullet on an X-ray",
+                "□ Open the abdomen", "• Pick up the scalpel", "• Cut through the muscle", "□ Close the incision",
             });
         AssertFloat(ObjectivesPanel.Lines(status, Difficulty.Baby, false)[2].Indent)
             .OverrideFailureMessage("subtasks sit indented, wrapped lines too").IsGreater(0f);
         AssertArray(Texts(Difficulty.Intern, false)).OverrideFailureMessage("intern: the required main tasks and the hints")
             .IsEqual(new List<string> {
-                "☑ Set up an IV line", "☐ [optional] Find the bullet on an X-ray", "☐ Open the abdomen", "☐ Close the incision",
+                "✓ Set up an IV line", "□ [optional] Find the bullet on an X-ray", "□ Open the abdomen", "□ Close the incision",
             });
         AssertArray(Texts(Difficulty.Md, false)).OverrideFailureMessage("MD: no objectives").IsEmpty();
         AssertArray(Texts(Difficulty.Md, true)).OverrideFailureMessage("debug mode adds only the score")

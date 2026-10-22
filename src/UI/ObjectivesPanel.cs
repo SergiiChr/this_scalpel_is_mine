@@ -60,7 +60,7 @@ public partial class ObjectivesPanel : VBoxContainer {
         var lines = new List<Line>();
         if (difficulty != Difficulty.Md) {
             foreach (var row in status.Objectives.Where(row => difficulty == Difficulty.Baby || !row.Optional || row.Hint)) {
-                var mark = row.Spoiled ? "☒" : row.Done ? "☑" : "☐";
+                var mark = row.Spoiled ? "✗" : row.Done ? "✓" : "□";
                 var optional = row.Optional ? "[optional] " : "";
                 lines.Add(new Line($"{mark} {optional}{row.Label}", TaskSize, row.Spoiled ? Ui.Alert : row.Done ? Ui.Dim : Ui.Ink));
                 if (difficulty == Difficulty.Baby) {

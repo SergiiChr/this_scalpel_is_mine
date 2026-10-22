@@ -66,6 +66,11 @@ public class NurseShopTest {
         AssertString(shown).OverrideFailureMessage("the cart counts five").Contains("Cart  5 / 5");
         AssertString(shown).OverrideFailureMessage("the same item twice shows as one line with its count").Contains("Gauze  ×2");
         AssertString(shown).OverrideFailureMessage("the sixth item didn't fit").NotContains("Suture needle  ×");
+        foreach (var category in Db.Tools.Values.Where(def => def.Orderable).GroupBy(def => def.Category)) {
+            var names = category.OrderBy(def => shop.RowOf(def.Id).Add.GetParent().GetIndex()).Select(def => def.Name).ToList();
+            AssertArray(names).OverrideFailureMessage($"{category.Key} lists its items alphabetically")
+                .IsEqual(names.Order(StringComparer.OrdinalIgnoreCase).ToList());
+        }
         await driver.Capture("cart_full", "the shop with a full cart: 5 / 5, gauze as one line ×2, no suture needle, [+] off");
         // [-] takes one back out, [+] puts it back, so a full cart can still change.
         driver.PlayerPicksCategory(Db.Tool("gauze")!.Category);
