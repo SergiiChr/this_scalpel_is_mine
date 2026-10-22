@@ -96,9 +96,10 @@ internal sealed class SurfaceBlood {
     internal float At(int x, int y) => _ml[y * Size + x];
     private static Vector2 Uv(int x, int y) => new Vector2(x + 0.5f, y + 0.5f) / Size;
 
-    /// <summary>Moves the film already under a closure stroke to both sides of it. This is a one-time physical
-    /// displacement; subsequent bleeding remains free to wet the seam again.</summary>
-    internal float DisplaceStroke(IReadOnlyList<Vector2> path, float radius) {
+    /// <summary>Moves the film already under a closure stroke to both sides of it, the <paramref name="share"/> of it
+    /// the closure squeezes out. This is a one-time physical displacement; subsequent bleeding remains free to wet the
+    /// seam again.</summary>
+    internal float DisplaceStroke(IReadOnlyList<Vector2> path, float radius, float share = 1f) {
         if (path.Count < 2 || radius <= 0f || !HasFilm) { return 0f; }
         Array.Clear(_change);
         var moved = 0f;
@@ -147,6 +148,7 @@ internal sealed class SurfaceBlood {
                 }
                 if (distanceSquared > radius * radius || tangent == Vector2.Zero) { continue; }
                 var perpendicular = new Vector2(-tangent.Y, tangent.X);
+                amount *= share;
                 _change[i] -= amount;
                 Deposit(nearest + perpendicular * clearance, amount * 0.5f);
                 Deposit(nearest - perpendicular * clearance, amount * 0.5f);

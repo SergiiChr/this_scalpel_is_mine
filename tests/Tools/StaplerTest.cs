@@ -60,6 +60,8 @@ public class StaplerTest {
         await Frames.Physics(2);
         await driver.Capture("ready", "the stapler over the cut, its rings on the skin");
         var gap = tissue.GapAt(wound.Midpoint, 0.02f);
+        var bloodBefore = body.BloodAt(wound.Midpoint);
+        AssertFloat(bloodBefore).OverrideFailureMessage("the cut has bled onto its seam before the first staple").IsGreater(0.1f);
         var aimed = RingMiddles(driver);
         SurgeryDriver.Use();
         await Frames.Physics(4);
@@ -76,6 +78,10 @@ public class StaplerTest {
             .OverrideFailureMessage($"and its edges meet under it ({closedGap * 1000f:0.0} mm, were {gap * 1000f:0.0} mm)")
             .IsLess(gap * 0.5f);
         AssertFloat(wound.Closure).OverrideFailureMessage("one staple closes a bit of the cut").IsBetween(0.01f, 0.5f);
+        var bloodAfter = body.BloodAt(wound.Midpoint);
+        AssertFloat(bloodAfter).OverrideFailureMessage(
+                $"the staple squeezes blood aside but leaves a stain on the seam ({bloodAfter:0.00}, was {bloodBefore:0.00})")
+            .IsGreater(bloodBefore * 0.33f);
         AssertBool(body.StapleWire is not null && body.DrawnStaples.Count == 1).OverrideFailureMessage("the staple is drawn")
             .IsTrue();
 

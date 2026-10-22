@@ -21,8 +21,10 @@ public partial class Patient {
         Rpc(MethodName.PaintOpsOnPeer, (int)layer, uv, radius, flat);
     }
 
-    /// <summary>Host: squeezes surface blood away from a newly tied seam on every peer.</summary>
-    internal void DisplaceSeamFilm(Vector2[] path, float radius) => Rpc(MethodName.DisplaceSeamFilmOnPeer, path, radius);
+    /// <summary>Host: squeezes the <paramref name="share"/> of the surface blood on a newly closed seam aside on every
+    /// peer.</summary>
+    internal void DisplaceSeamFilm(Vector2[] path, float radius, float share) =>
+        Rpc(MethodName.DisplaceSeamFilmOnPeer, path, radius, share);
 
     /// <summary>Host: the patient's state, 5 times a second, to every client.</summary>
     private void BroadcastState() {
@@ -47,7 +49,8 @@ public partial class Patient {
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void DisplaceSeamFilmOnPeer(Vector2[] path, float radius) => Body.Blood.DisplaceSurfaceFilm(path, radius);
+    private void DisplaceSeamFilmOnPeer(Vector2[] path, float radius, float share) =>
+        Body.Blood.DisplaceSurfaceFilm(path, radius, share);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void PaintOpsOnPeer(int layer, Vector2 uv, float radius, float[] flat) {

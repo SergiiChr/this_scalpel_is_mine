@@ -139,7 +139,8 @@ public partial class BloodFlow : Node3D {
     internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
         + _bodyRunoff.HeldMl + GroundLiquidArea * DropMl / PoolAreaPerDrop;
     /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
-    internal float DisplaceSurfaceFilm(Vector2[] path, float radius) => _surface.DisplaceStroke(path, radius);
+    internal float DisplaceSurfaceFilm(Vector2[] path, float radius, float share) =>
+        _surface.DisplaceStroke(path, radius, share);
     private float _surfaceClock;
     private float _surfaceGeometryClock;
     private int _surfaceGeometrySteps;
