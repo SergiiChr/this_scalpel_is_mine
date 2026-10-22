@@ -586,7 +586,6 @@ public partial class Hud : CanvasLayer {
         var tool = me.HeldTool(me.Active);
         var lines = new List<string>();
         if (moving < 0) {
-            lines.Add("Mouse  Look around");
             lines.Add($"{Key(InputActions.MoveLeftHand)} / {Key(InputActions.MoveRightHand)} (hold)  Move left / right hand");
         } else {
             lines.Add($"Mouse  Move {(me.Active == 0 ? "left" : "right")} hand");
@@ -612,10 +611,6 @@ public partial class Hud : CanvasLayer {
             lines.Add($"{Key(InputActions.ToggleGoals)}  {(away ? "Show" : "Hide")} goals");
         }
         if (moving < 0) {
-            var move = string.Join("/", new[] {
-                InputActions.MoveForward, InputActions.MoveLeft, InputActions.MoveBack, InputActions.MoveRight,
-            }.Select(Key));
-            lines.Add($"{move}  Move");
             lines.Add($"{Key(InputActions.Crouch)} (hold)  Crouch");
             lines.Add($"{Key(InputActions.Interact)}  Interact");
             lines.Add($"{Key(InputActions.Drink)}  Drink / wear");
