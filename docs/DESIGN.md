@@ -80,7 +80,8 @@ overview, the data formats designers edit and the design decisions.
   1.2 cm off the skin so breathing never pushes the body through it, rising with the trunk. It falls off the flanks
   and between the legs at a fixed slope and its long sides hang down to the table, over most of the table past the
   legs and a little short of the arms beside the trunk (they may lift). Its opening frames the site and covers
-  the site's edge. It hides while the patient is turned away from the site; hands rest on it.
+  the site's edge. It hides while the patient is turned away from the site; hands rest on it. A hand holding the
+  patient through it presses it down onto the skin under the hand, rising back round it (`Drape.Press()`).
 - Organs and cavity walls (`flesh.gdshader`) show branching vessels and mottling.
 - Ink outline via inverted hull (`outline.gdshader`): about 1.4 px wide at any distance, capped by the part's size,
   so a blade gets a hairline and furniture a full line.
@@ -690,9 +691,11 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   only a little under pressure (the glove's `Palm` bone, its knuckle half, `SurgeonHand.MaxPalmCup`). It is turned
   round the limb, touches it where along its length lays it closest, and leans along it. On a limb about as wide as the
   palm is long it lies across the round like a chord, heel and knuckles lifting off. Held firmly, it presses into
-  its palm, slanted toward the near side (on the limb's top: down and toward the surgeon), until the palm gives as much as a flat hold's (`Surgeon.PressSink`), the fingers closer round
-  the far side. The fit reads the palm's underside
-  off the glove model. The fingers across the limb wrap its far side (over a cut there) from the knuckle out: each
+  its palm, slanted toward the near side (on the limb's top: down and toward the surgeon), until the palm gives as
+  much as a flat hold's (`Surgeon.PressSink`), the fingers closer round the far side. The fit reads the palm's
+  underside off the glove model, and the limb's outer skin in slices along it past the palm's sides, between which
+  it interpolates (a thigh widens toward the hip). Skin facing along the limb (the top of a foot) is held flat
+  instead. Where the drape covers the body the hand holds the skin under it, pressing the sheet down. The fingers across the limb wrap its far side (over a cut there) from the knuckle out: each
   joint bends until its bone rests on the skin. Over an opening on the trunk
   it rests on the lip without pressing in, its fingers straight across it, so none dips in. Use tool again or Grab lets go; so does walking out of reach.
 - It stays on the spot it holds as that part moves (anchored to the rig bone under it), and keeps that part still: an

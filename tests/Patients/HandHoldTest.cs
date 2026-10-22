@@ -5,7 +5,8 @@ namespace Scalpel.Tests.Patients;
 /// it stops the cuts under its palm bleeding the way gauze does, without soaking anything up; over an opening it lies
 /// on the lip, holding the incision but not the vessel bleeding inside; over the cut on a panicking patient's flailing
 /// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing; and it grasps
-/// an arm from the side the surgeon stands beside it as well as from over it.
+/// an arm from the side the surgeon stands beside it as well as from over it, and a thigh through the drape, pressing
+/// the sheet onto the skin under it.
 /// Key frames: review the glove lying flat on the skin over the cut, its palm and fingers on it and pressed a little
 /// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and
 /// grasping the forearm, the stiff palm across its top and the fingers bent round it over the cut.
@@ -29,6 +30,10 @@ public class HandHoldTest {
     /// <summary>Most (meters) a grasping finger's first bone ends off the skin: it wraps the limb from the knuckle.
     /// </summary>
     private const float FingerTouch = 0.003f;
+    /// <summary>Most (meters) a drape pressed onto the skin lies off it: a little off, as the sheet is laid
+    /// <see cref="Drape.Offset"/> off it, and the body's collider and its drawn skin differ by a few millimeters.
+    /// </summary>
+    private const float DrapePressed = Drape.Offset * 0.75f;
     // Temporary local budget override: recorded CPU overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget about a second into "
         + "the surgery, before the hand holds the patient; not profiled yet", 6f);
@@ -152,6 +157,66 @@ public class HandHoldTest {
             + "stands: the palm on the arm, the fingers wrapped over its top, each bone resting on the skin, nothing of "
             + "it in the skin", on, -ring.Axis, CloseUp, 12f, true);
         await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task ThroughTheDrapeTheHandPressesItOntoTheSkin() {
+        var session = await ToolSession.Start("appendectomy", "hand_hold_drape");
+        var driver = session.Driver;
+        var body = driver.Body;
+        var drape = body.Drape!;
+        // The top of the left thigh, under the drape.
+        var thigh = body.RigBonePose("ThighL").Origin.Lerp(body.RigBonePose("ShinL").Origin, 0.5f);
+        var on = Rays.Cast(body, thigh + (Vector3.Up * 0.3f), thigh, PatientBody.SurfaceLayer)!.Value.Position;
+        var laid = DrapeOver(drape, on);
+        var sheet = SheetVertices(drape);
+        AssertFloat(laid - on.Y).OverrideFailureMessage($"the drape lies over the thigh: {laid - on.Y:0.000} m off it")
+            .IsGreater(Drape.Offset * 0.5f);
+
+        await driver.PlayerHoldsPatientAt(on);
+        await Frames.Seconds(1f);
+        var hand = driver.Me.Hands[driver.Me.Active];
+        AssertBool(driver.Me.HoldsPatient(driver.Me.Active)).OverrideFailureMessage("the hand holds the thigh").IsTrue();
+        var ring = body.LimbRingAt(on)!.Value;
+        AssertGrasps(hand, ring);
+        var under = SheetUnder(drape, hand);
+        AssertBool(under.Length > 0).OverrideFailureMessage("the drape runs over the fingers on the thigh").IsTrue();
+        AssertFloat(under.Max()).OverrideFailureMessage($"under the hand the drape is pressed onto the skin: up to "
+            + $"{under.Max():0.000} m off it").IsLess(DrapePressed);
+        // From high over the far side of the thigh, where the fingers wrap its top and the sheet's dent round them shows.
+        await session.CaptureOblique("through_drape", "the glove grasping the thigh through the drape, seen from high over its far side: "
+            + "the sheet pressed down onto the leg under the hand and rising back round it, none of the glove in the sheet or the sheet "
+            + "over it", on, on - driver.Me.GlobalPosition, CloseUp, 70f, true);
+
+        await driver.PlayerLetsGoOfPatient();
+        await Frames.Seconds(0.5f);
+        AssertFloat(SheetVertices(drape).Zip(sheet).Max(pair => pair.First.DistanceTo(pair.Second)))
+            .OverrideFailureMessage("let go, the drape lies where it was laid").IsLess(0.0001f);
+        await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>The drape's sheet as it's drawn now, in its own space.</summary>
+    private static Vector3[] SheetVertices(Drape drape) =>
+        ((ArrayMesh)drape.Mesh).SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+
+    /// <summary>How far (meters) off the skin under it the drape's sheet is drawn where it runs over the fingers of
+    /// <paramref name="hand"/>, at each of its points within a finger's width of one.</summary>
+    private static float[] SheetUnder(Drape drape, SurgeonHand hand) {
+        var fingers = (string[])["Index", "Middle", "Ring", "Pinky"];
+        var points = fingers.SelectMany(finger => hand.BonePoints(finger)).ToArray();
+        return [.. SheetVertices(drape).Select(drape.ToGlobal)
+            .Where(v => points.Any(point => point.Position.Y < v.Y
+                && new Vector2(v.X - point.Position.X, v.Z - point.Position.Z).Length() < point.Radius))
+            .Select(v => v.Y - Rays.Cast(drape, v + Vector3.Up * 0.01f, v + Vector3.Down * 0.3f, PatientBody.SurfaceLayer)!.Value.Position.Y)];
+    }
+
+    /// <summary>How high the drape's sheet is (world) where it is drawn over <paramref name="at"/>: at its vertex
+    /// nearest across.</summary>
+    private static float DrapeOver(Drape drape, Vector3 at) {
+        var local = drape.ToLocal(at);
+        var nearest = SheetVertices(drape).Where(v => v.Y > local.Y - 0.05f)
+            .MinBy(v => new Vector2(v.X - local.X, v.Z - local.Z).LengthSquared());
+        return drape.ToGlobal(nearest).Y;
     }
 
     /// <summary>Asserts the hand grasps the limb round <paramref name="ring"/>: its stiff palm on it, pressed in no more

@@ -11,6 +11,12 @@ public partial class Surgeon {
     /// <summary>Over an opening the fingers straighten out of the press grip's slight curl (see
     /// <see cref="SurgeonHand.PressWrap"/>), lying across it on the skin beyond instead of dipping into it.</summary>
     private const float OpeningWrap = -1f;
+    /// <summary>How far under the drape (meters) a hand reaches for the skin it holds: down from where the sheet tents
+    /// over the toes to the top of the foot.</summary>
+    private const float UnderDrape = 0.15f;
+    /// <summary>Skin facing further along a limb than this (the cosine) isn't on its round, for a hand to grasp.
+    /// </summary>
+    private const float AlongLimb = 0.5f;
 
     /// <summary>Where an empty hand holds the patient: the rig bone under it, and the spot on the skin and the skin's
     /// normal there in that bone's frame, so the hand stays on the skin however the part moves, and which way its
@@ -35,6 +41,11 @@ public partial class Surgeon {
             return null;
         }
         var at = aim with { Y = under.Open ? under.Lip : under.Y };
+        // Through the drape the hand holds the skin under it, pressing the sheet onto it (Drape.Press()).
+        if (!under.Open && Rays.Cast(this, aim + (Vector3.Up * 0.35f), at + (Vector3.Down * 0.01f), Drape.DrapeLayer) is not null
+            && Rays.Cast(this, at, at + (Vector3.Down * UnderDrape), PatientBody.SurfaceLayer) is { } skin) {
+            at = skin.Position;
+        }
         // A centimeter in, the probe finds the body part even where its box is thinner than the limb.
         var zone = body.Probe(at + (Vector3.Down * 0.01f)).Zone;
         if (zone is not (SiteZone.Site or SiteZone.Cavity or SiteZone.Body)) {
@@ -54,7 +65,9 @@ public partial class Surgeon {
         var bone = body.RigBoneAt(at);
         var across = Vector3.Zero;
         var cup = Vector3.Zero;
-        if (body.LimbRingAt(at) is { } ring) {
+        // Skin facing along the limb isn't on its round (the top of a foot, standing up off the leg's line): the hand
+        // presses on it flat.
+        if (body.LimbRingAt(at) is { } ring && Mathf.Abs(normal.Dot(ring.Axis)) < AlongLimb) {
             // A limb is grasped: the palm on its near side, the fingers over the top (and what's held there) and round
             // the far side.
             (at, normal, across, cup) = hand.GraspFit(ring, at, GlobalPosition);

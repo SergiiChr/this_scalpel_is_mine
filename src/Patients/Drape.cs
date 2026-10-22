@@ -5,6 +5,7 @@ namespace Scalpel.Patients;
 /// Built once from the body model at rest, in body space (patient along X, head at +X), a little off the skin so the
 /// body never pokes through it, even breathing. It covers the edge of the site, where the simulated skin meets the
 /// body, and the flanks the flat site can't follow. Hands rest on it (DrapeLayer), tools and rays for limbs don't.
+/// A hand holding the patient through it presses it onto the skin under it (<see cref="Press"/>).
 /// </summary>
 public partial class Drape : MeshInstance3D {
     // Where the sheet lies, body space: from past the feet to just under the collarbones, and across the table as far as
@@ -43,6 +44,23 @@ public partial class Drape : MeshInstance3D {
     /// <summary>Columns either side of one whose narrowest side holds it in, so the sheet's side runs straight past an
     /// elbow or a hand instead of zigzagging round it.</summary>
     private const int SideSpan = 3;
+    /// <summary>How far (meters) round a hand pressing through the sheet it lies on the skin, and how far past that it
+    /// rises back to where it was laid.</summary>
+    private const float DentHold = 0.005f;
+    private const float DentRise = 0.03f;
+    /// <summary>How far (meters) a point of a pressing hand moves before the dent under it follows.</summary>
+    private const float DentStep = 0.002f;
+    /// <summary>How far (meters) off the skin a pressed sheet lies: inside the glove pressed into the skin, and over
+    /// skin that rises between the sheet's points.</summary>
+    private const float DentLift = 0.004f;
+
+    /// <summary>The sheet's vertices as laid, and how high (along <see cref="Up"/>) the skin under each is: NaN where
+    /// there's none (the sides hanging past the body).</summary>
+    private Vector3[] _laid = [];
+    private float[] _skin = [];
+    private Godot.Collections.Array _arrays = [];
+    /// <summary>The points of each hand pressing through the sheet, body space, as last dented for.</summary>
+    private readonly Dictionary<Node, BonePoint[]> _pressing = [];
 
     /// <summary>
     /// Lays the sheet. <paramref name="meshes"/>: the body model's meshes (skin, gown). <paramref name="site"/>: the
@@ -132,6 +150,10 @@ public partial class Drape : MeshInstance3D {
         surface.Index();
         surface.GenerateNormals();
         Mesh = surface.Commit();
+        _arrays = ((ArrayMesh)Mesh).SurfaceGetArrays(0);
+        _laid = _arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        _skin = [.. _laid.Select(v => trunk.IntersectRay(new Vector3(v.X, up * 0.5f, v.Z), Vector3.Down * up) is { Count: > 0 } hit
+            ? up * hit["position"].AsVector3().Y : float.NaN)];
         var material = Materials.FamilyUnique("cloth", DrapeColor, 0.95f);
         MaterialOverride = material;
         // A thin cloth sheet blocks the light from either side. Its edge is shaded by the lights rather than an
@@ -140,6 +162,53 @@ public partial class Drape : MeshInstance3D {
         var solid = new StaticBody3D { CollisionLayer = DrapeLayer, CollisionMask = 0 };
         solid.AddChild(new CollisionShape3D { Shape = Mesh.CreateTrimeshShape() });
         AddChild(solid);
+    }
+
+    /// <summary>
+    /// <paramref name="hand"/> holds the patient through the sheet at <paramref name="points"/> (world space, see
+    /// SurgeonHand.BonePoints()), or no longer does (null): under the hand and a little round it, the sheet is pressed
+    /// down onto the skin, rising back to where it was laid round that. Dented again only when the hand has moved.
+    /// </summary>
+    internal void Press(Node hand, IReadOnlyList<BonePoint>? points) {
+        if (points is null) {
+            if (_pressing.Remove(hand)) {
+                Dent();
+            }
+            return;
+        }
+        var local = GlobalTransform.AffineInverse();
+        BonePoint[] now = [.. points.Select(point => point with { Position = local * point.Position })];
+        if (_pressing.TryGetValue(hand, out var was) && was.Length == now.Length
+            && !was.Where((point, i) => point.Position.DistanceTo(now[i].Position) > DentStep).Any()) {
+            return;
+        }
+        _pressing[hand] = now;
+        Dent();
+    }
+
+    /// <summary>Lays the sheet again, pressed down where hands press through it (<see cref="Press"/>).</summary>
+    private void Dent() {
+        var vertices = (Vector3[])_laid.Clone();
+        var points = _pressing.Values.SelectMany(hand => hand).ToArray();
+        for (var v = 0; v < vertices.Length && points.Length > 0; v++) {
+            var height = Up * vertices[v].Y;
+            if (float.IsNaN(_skin[v]) || height <= _skin[v]) {
+                continue;
+            }
+            // Only where the hand is under the sheet's height: not a hand on an arm beside it.
+            var pressed = 0f;
+            foreach (var point in points) {
+                if (Up * point.Position.Y < height) {
+                    var off = new Vector2(vertices[v].X - point.Position.X, vertices[v].Z - point.Position.Z).Length() - point.Radius;
+                    pressed = Mathf.Max(pressed, 1f - Mathf.SmoothStep(DentHold, DentHold + DentRise, off));
+                }
+            }
+            vertices[v].Y = Up * Mathf.Lerp(height, Mathf.Min(_skin[v] + DentLift, height), pressed);
+        }
+        _arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        var mesh = (ArrayMesh)Mesh;
+        mesh.ClearSurfaces();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, _arrays);
     }
 
     /// <summary>Sorts the faces of <paramref name="mesh"/> (at rest, moved by <paramref name="toRoot"/>) into those of

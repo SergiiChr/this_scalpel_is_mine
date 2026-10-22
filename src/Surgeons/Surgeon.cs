@@ -392,5 +392,6 @@ public partial class Surgeon : CharacterBody3D {
         hand.Soak(tool?.Blood ?? 0f, dt);
         SupportElbow(hand);
         hand.UpdatePose(IsLocal ? SteadyShoulder(i) : VisualShoulder(i), dt);
+        Session.Patient.Body.Drape?.Press(hand, hand.PressNormal is null ? null : hand.PosedPoints);
     }
 }

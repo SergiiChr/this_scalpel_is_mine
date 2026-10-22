@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace Scalpel.Surgeons;
@@ -64,9 +65,17 @@ public partial class SurgeonHand : Node3D {
     private const float GraspPressSlant = Mathf.Pi / 4f;
     /// <summary>How many directions round a limb <see cref="GraspFit"/> finds its skin in.</summary>
     private const int GraspAngles = 48;
-    /// <summary>Where along a limb (meters from the grasp) <see cref="GraspFit"/> finds its skin round it: under the
-    /// palm's sides and middle.</summary>
-    private static readonly float[] GraspSlices = [-0.024f, 0f, 0.024f];
+    /// <summary>How far past the first surface out from a limb's middle (meters) <see cref="GraspFit"/> looks for its
+    /// skin's outside.</summary>
+    private const float UnderSkin = 0.02f;
+    /// <summary>How many times <see cref="GraspFit"/> reads the skin's distance where a spot of the palm comes to.
+    /// </summary>
+    private const int ClearingReads = 3;
+    /// <summary>How far apart along a limb (meters) <see cref="GraspFit"/> finds its skin round it, and how many times
+    /// either side of the grasp: past the palm's sides, so a limb widening under it (a thigh toward the hip) counts.
+    /// </summary>
+    private const float GraspSliceStep = 0.02f;
+    private const int GraspSlicesEachSide = 2;
     /// <summary>The cells under the palm, heel to knuckles and thumb side to little finger side (glove space x, z): the
     /// lowest point of the glove's skin in each is where the palm's underside is there (see
     /// <see cref="PalmUnderside"/>).</summary>
@@ -492,6 +501,9 @@ public partial class SurgeonHand : Node3D {
         UpdatePose(shoulder, 0f);
         PoseFingers();
     }
+
+    /// <summary>Points inside the glove as it was last posed (world space, see <see cref="BonePoints"/>).</summary>
+    internal IReadOnlyList<BonePoint> PosedPoints => _gloveScratch;
 
     private float GloveLowest() {
         _gloveScratch.Clear();
@@ -976,28 +988,36 @@ public partial class SurgeonHand : Node3D {
     /// it lies across the round like a chord, its ends lifting. Held firmly, it then presses down and toward the near
     /// side as far as the palm gives. The fingers close round the rest from the knuckles (<see cref="GraspWith"/>).
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal (Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) GraspFit(LimbRing ring, Vector3 at, Vector3 from) {
         var axis = ring.Axis;
         var center = ring.Center + (axis * axis.Dot(at - ring.Center));
         var top = Vector3.Up.Slide(axis).Normalized();
         var side = axis.Cross(top);
         // The limb's skin round its middle line, where the palm's sides and middle lie along it.
-        var slices = GraspSlices.Select(along => SkinRound(center + (axis * along), top, axis)).ToArray();
-        // Where a spot is round the limb: the slice nearest it, and how far it is from the middle line toward the top
-        // and toward the side.
-        (int Slice, Vector2 Off) Round(Vector3 spot) {
-            var along = axis.Dot(spot - center);
-            var slice = along < (GraspSlices[0] + GraspSlices[1]) * 0.5f ? 0
-                : along < (GraspSlices[1] + GraspSlices[2]) * 0.5f ? 1 : 2;
+        var slices = Enumerable.Range(-GraspSlicesEachSide, (GraspSlicesEachSide * 2) + 1)
+            .Select(step => SkinRound(center + (axis * GraspSliceStep * step), top, axis)).ToArray();
+        // Where a spot is round the limb: how far along it, counted in slices, and how far it is from the middle line
+        // toward the top and toward the side.
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        (float Slice, Vector2 Off) Round(Vector3 spot) {
+            var slice = Mathf.Clamp((axis.Dot(spot - center) / GraspSliceStep) + GraspSlicesEachSide, 0f, slices.Length - 1f);
             return (slice, new Vector2(top.Dot(spot - center), side.Dot(spot - center)));
         }
-        // How far a spot there is out from the skin (negative: in it).
-        float GapAt(int slice, Vector2 off) {
-            var radii = slices[slice];
-            var round = Mathf.PosMod(Mathf.Atan2(off.Y, off.X), Mathf.Tau) / Mathf.Tau * radii.Length;
-            var below = (int)round % radii.Length;
-            return off.Length() - Mathf.Lerp(radii[below], radii[(below + 1) % radii.Length], round - Mathf.Floor(round));
+        // How far out from the middle line the skin is in the direction of a spot there, read between the slices
+        // either side.
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        float SkinAt(float slice, Vector2 off) {
+            var count = slices[0].Length;
+            var round = Mathf.PosMod(Mathf.Atan2(off.Y, off.X), Mathf.Tau) / Mathf.Tau * count;
+            var (below, next, past) = ((int)round % count, ((int)round + 1) % count, round - Mathf.Floor(round));
+            var before = Mathf.Min((int)slice, slices.Length - 2);
+            var (near, far) = (slices[before], slices[before + 1]);
+            return Mathf.Lerp(Mathf.Lerp(near[below], near[next], past), Mathf.Lerp(far[below], far[next], past),
+                slice - before);
         }
+        // How far a spot there is out from the skin (negative: in it).
+        float GapAt(float slice, Vector2 off) => off.Length() - SkinAt(slice, off);
         float Gap(Vector3 spot) {
             var (slice, off) = Round(spot);
             return GapAt(slice, off);
@@ -1015,6 +1035,7 @@ public partial class SurgeonHand : Node3D {
         Vector3[] thumbRestPoints = [.. thumbJoints, .. thumbJoints.Skip(1).Select((end, joint) => end.Lerp(thumbJoints[joint], 0.5f))];
         // The palm turned round the limb, touching it at a spot along its length, leaning along it and giving a little:
         // where its lower palm rests and how far the part of it furthest off the skin is.
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         (float Spread, Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) Fit(int step, int touch, int lean,
             int cupStep, int slant) {
             var turned = new Basis(axis, toNear * MaxGraspTurn * step / GraspSteps) * top;
@@ -1027,41 +1048,45 @@ public partial class SurgeonHand : Node3D {
             // That spot of the palm over the limb's middle line: a stiff palm lies on a limb's round like a chord, its
             // ends lifting off where it touches nearest its middle.
             var touching = new Vector3(PalmLength * touch / TouchSteps, LowerPalm.Y, 0f);
-            // The palm only moves out across the limb from here on: each spot stays in its slice.
+            // The palm only moves out across the limb from here on: each spot stays as far along it.
             var knuckles = KnuckleHalf(cup);
-            var spots = new (int Slice, Vector2 Off)[underside.Length];
+            var spots = new (float Slice, Vector2 Off)[underside.Length];
             for (var k = 0; k < spots.Length; k++) {
                 spots[k] = Round(center + (frame * (Cupped(underside[k], knuckles) - touching)));
             }
-            var thumb = new (int Slice, Vector2 Off)[thumbRestPoints.Length];
+            var thumb = new (float Slice, Vector2 Off)[thumbRestPoints.Length];
             for (var k = 0; k < thumb.Length; k++) {
                 thumb[k] = Round(center + (frame * (thumbRestPoints[k] - touching)));
             }
             var outward = new Vector2(top.Dot(turned), side.Dot(turned));
-            bool Clear(float mid) {
-                foreach (var (slice, off) in spots) {
-                    if (GapAt(slice, off + (outward * mid)) < 0f) {
-                        return false;
+            // How far out the palm goes for a spot to stand off the skin by clear: where its line out meets the skin,
+            // the skin read again where it comes to, as it's nearer or further round the limb. Negative infinity
+            // where the line passes it by.
+            [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+            float Clearing(float slice, Vector2 off, float clear) {
+                var along = off.Dot(outward);
+                var at = off;
+                var mid = float.NegativeInfinity;
+                for (var i = 0; i < ClearingReads; i++) {
+                    var radius = SkinAt(slice, at) + clear;
+                    var square = (along * along) - off.LengthSquared() + (radius * radius);
+                    if (square < 0f) {
+                        return float.NegativeInfinity;
                     }
+                    mid = Mathf.Sqrt(square) - along;
+                    at = off + (outward * mid);
                 }
-                foreach (var (slice, off) in thumb) {
-                    if (GapAt(slice, off + (outward * mid)) < FingerRadius) {
-                        return false;
-                    }
-                }
-                return true;
+                return mid;
             }
-            // Bisects how far out from the middle line the palm goes: as close as leaves it out of the skin.
-            var low = 0f;
-            var high = GraspClear;
-            for (var i = 0; i < 10; i++) {
-                var mid = (low + high) * 0.5f;
-                if (Clear(mid)) {
-                    high = mid;
-                } else {
-                    low = mid;
-                }
+            // As close to the middle line as leaves the palm out of the skin.
+            var high = 0f;
+            foreach (var (slice, off) in spots) {
+                high = Mathf.Max(high, Clearing(slice, off, 0f));
             }
+            foreach (var (slice, off) in thumb) {
+                high = Mathf.Max(high, Clearing(slice, off, FingerRadius));
+            }
+            high = Mathf.Min(high, GraspClear);
             var resting = center + (turned * high);
             var spread = float.NegativeInfinity;
             foreach (var (slice, off) in spots) {
@@ -1090,7 +1115,8 @@ public partial class SurgeonHand : Node3D {
         }
         var tries = new List<(int Step, int Touch, int Lean, int Cup, int Slant)>();
         for (var step = -GraspStepsPastTop; step <= GraspSteps; step++) {
-            for (var touch = 0; touch <= TouchSteps; touch++) {
+            // Every other touch: the last round tries those either side of the one found.
+            for (var touch = 0; touch <= TouchSteps; touch += 2) {
                 tries.Add((step, touch, 0, 0, 0));
             }
         }
@@ -1190,13 +1216,18 @@ public partial class SurgeonHand : Node3D {
     }
 
     /// <summary>How far out from <paramref name="middle"/> the skin is all round it (meters), from
-    /// <paramref name="top"/> on round <paramref name="axis"/>.</summary>
+    /// <paramref name="top"/> on round <paramref name="axis"/>. Its outside: a surface under the skin (the gown over a
+    /// hip) is looked past, though not as far as another limb.</summary>
     private float[] SkinRound(Vector3 middle, Vector3 top, Vector3 axis) =>
     [
         .. Enumerable.Range(0, GraspAngles).Select(k => {
             var outward = new Basis(axis, Mathf.Tau * k / GraspAngles) * top;
-            return Rays.Cast(this, middle, middle + (outward * GraspClear), PatientBody.SurfaceLayer, inside: true)
-                is { } hit ? hit.Position.DistanceTo(middle) : GraspClear;
+            if (Rays.Cast(this, middle, middle + (outward * GraspClear), PatientBody.SurfaceLayer, inside: true) is not { } inner) {
+                return GraspClear;
+            }
+            var near = inner.Position.DistanceTo(middle);
+            return Rays.Cast(this, middle + (outward * (near + UnderSkin)), middle, PatientBody.SurfaceLayer) is { } outer
+                ? outer.Position.DistanceTo(middle) : near;
         }),
     ];
 
