@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Patients;
 /// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing.
 /// Key frames: review the glove lying flat on the skin over the cut, its palm and fingers on it and pressed a little
 /// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and over
-/// the forearm's cut, the fingers curled round the arm. No finger dips into an opening or a cut.
+/// the forearm's cut, grasping it, the fingers over the cut and round the arm. No finger dips into an opening or a cut.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("hand_hold"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
@@ -105,8 +105,10 @@ public class HandHoldTest {
         AssertFloat(await Wander(() => body.RigBonePose("HandR").Origin))
             .OverrideFailureMessage("the other arm flails").IsGreater(0.01f);
         AssertFloat(hand.PressWrap).OverrideFailureMessage("on the forearm the fingers curl round it").IsGreater(0f);
-        await session.CaptureOblique("on_forearm", "the glove over the forearm's cut, its fingers curled round the arm beyond it, none in the cut",
-            on, driver.Me.GlobalPosition - on, CloseUp, 30f, true);
+        // From across the arm, where the fingers come over it.
+        await session.CaptureOblique("on_forearm", "the glove grasping the forearm from the near side, its fingers over the "
+            + "top and the cut there and curled down the far side, none in the cut", on,
+            (driver.Me.GlobalPosition - on).Rotated(Vector3.Up, Mathf.Pi), CloseUp, 35f, true);
 
         await driver.PlayerLetsGoOfPatient();
         SurgeryState.PatientPanics(patient);

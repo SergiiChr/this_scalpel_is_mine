@@ -184,6 +184,9 @@ public partial class SurgeonHand : Node3D {
     /// <summary>How far the fingers of a hand pressed on the patient curl round what they hold: 0 flat on a trunk, more
     /// round a limb, negative straightened out over an opening.</summary>
     public float PressWrap { get; set; }
+    /// <summary>The axis of the limb a hand pressed on the patient holds, zero off a limb: the fingers point across it,
+    /// so they curl round it rather than into it along its length.</summary>
+    public Vector3 PressLimb { get; set; }
     /// <summary>How this hand's grip is fitted to the tool it holds (see <see cref="GripFit"/>).</summary>
     public GripFit Fit { get; set; } = GripFit.None;
     /// <summary>How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon
@@ -815,7 +818,9 @@ public partial class SurgeonHand : Node3D {
     /// skin across <paramref name="normal"/>, the fingers pointing on the way the forearm comes in.</summary>
     private Transform3D PressFrame(Vector3 elbow, Vector3 normal) {
         var style = GripStyle.All["press"];
-        var fingers = (GlobalPosition - elbow).Slide(normal);
+        // Grasping a limb from its side, they point up round it, over its top.
+        var fingers = PressLimb == Vector3.Zero ? (GlobalPosition - elbow).Slide(normal)
+            : Vector3.Up.Slide(normal).Slide(PressLimb);
         if (fingers.LengthSquared() < 0.000001f) {
             fingers = Body.GlobalBasis.Z.Slide(normal);
         }

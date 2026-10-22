@@ -680,9 +680,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 ### Holding the patient
 
 - Use tool with an empty hand aimed at the patient lays the hand flat on the skin there and holds it (`Surgeon.HoldPatient()`,
-  the `press` grip): palm and fingers on the skin, pressed a little into it (`Surgeon.PressSink`), the fingers curled round
-  a limb. Over an opening it rests on the lip without pressing in, its fingers straight across it (or round the limb
-  beyond it), so none dips in. Use tool again or Grab lets go; so does walking out of reach.
+  the `press` grip): palm and fingers on the skin, pressed a little into it (`Surgeon.PressSink`). A limb it grasps: the
+  palm on the near side, the fingers across the limb, over its top (and a cut there) and curled down the far side. Over
+  an opening on the trunk it rests on the lip without pressing in, its fingers straight across it, so none dips in. Use tool again or Grab lets go; so does walking out of reach.
 - It stays on the spot it holds as that part moves (anchored to the rig bone under it), and keeps that part still: an
   arm, a leg or the head stops flailing (`PatientAnimator`). The trunk still breathes.
 - Like gauze it holds the cuts in the skin under the palm (`Patient.PressByHand()`, `Patient.HandPressReach`), the one
