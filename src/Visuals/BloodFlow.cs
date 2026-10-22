@@ -170,6 +170,9 @@ public partial class BloodFlow : Node3D {
         + HeldOn(_bodyFilmBuild) + GroundMl;
     /// <summary>Blood that has left the patient: falling, and on the bed and floor.</summary>
     internal float GroundMl => _drops.Sum(drop => drop.Ml) + HeldOn(_bedFilmBuild) + HeldOn(_floorFilmBuild);
+    /// <summary>Whether the site's film keeps blood at uv rather than handing it to the body's film.</summary>
+    internal bool SiteFilmCarries(Vector2 uv) => _surface.Carries(uv);
+
     /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
     internal float DisplaceSurfaceFilm(Vector2[] path, float radius, float share) =>
         _body is null ? 0f : _surface.DisplaceStroke(path, radius, share);
@@ -881,15 +884,20 @@ public partial class BloodFlow : Node3D {
         var siteToMesh = skin.SiteToMesh;
         var half = body.SiteSize * 0.5f;
         // The site's own skin carries its film (SurfaceBlood); the body's film takes over at its edges and on its steep
-        // flanks, and covers the far side under it, which the site's film doesn't reach.
+        // flanks, and covers the far side under it, which the site's film doesn't reach. The site's film says which of
+        // its cells it carries, so both films draw the line through the same cells: judged by the model's own normal
+        // instead, a strip along the flank came out carried by both films or neither. The model's normal only tells the
+        // skin the site's heights were measured on (facing the site's up) from the far side under it.
+        var surface = _surface;
+        bool OverSite(Vector3 sitePoint, float margin = 0f) => Mathf.Abs(sitePoint.X) < half.X + margin && Mathf.Abs(sitePoint.Z) < half.Y + margin;
         bool OffSite(Vector3 sitePoint, Vector3 siteNormal) => sitePoint.Length() < BodyFilmReach
-            && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > SurfaceBlood.SteepNormal);
+            && !(OverSite(sitePoint) && siteNormal.Y > 0f && surface.Carries(body.LocalToUv(sitePoint)));
         var meshToSite = siteToMesh.AffineInverse();
         var bodyMesh = new ArrayMesh();
         _bodyFilmBuild = Build(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
             skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
             (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh,
-            at => (meshToSite * at).Length() > BodyFilmReach - 0.02f));
+            at => (meshToSite * at).Length() > BodyFilmReach - 0.02f, at => OverSite(meshToSite * at, BodyFilmSettings.Spacing)));
         _skinMesh.GetParent().AddChild(new MeshInstance3D {
             Name = "BodyFilm",
             Mesh = bodyMesh,

@@ -117,6 +117,8 @@ internal sealed class SurfaceFilm {
     private bool _mustDraw;
 
     internal int Count => _at.Length;
+    /// <summary>How far apart (m) the film's points are laid.</summary>
+    internal float Spacing => _settings.Spacing;
     internal Vector3 At(int node) => _at[node];
     internal Vector3 NormalAt(int node) => _normal[node];
     internal BodyLiquidSurface.SkinWeights SkinAt(int node) => _skin?[node] ?? default;
@@ -145,9 +147,12 @@ internal sealed class SurfaceFilm {
     /// <param name="fadesAt">Which points of the surface's open edges the drawn film fades out toward: where the
     /// surface was cut out of a larger one (the body round the site), so that edge is no edge of the real thing.
     /// </param>
+    /// <param name="fine">Where <paramref name="keep"/> tells apart patches smaller than a triangle (the site's cells):
+    /// a triangle reaching in there is asked for each of its faces, any other once when its middle and corners agree.
+    /// </param>
     internal SurfaceFilm(IReadOnlyList<Vector3> triangles, Settings settings, IReadOnlyList<Vector3>? outward = null,
         IReadOnlyList<BodyLiquidSurface.SkinWeights>? skin = null, Func<Vector3, Vector3, bool>? keep = null,
-        ArrayMesh? mesh = null, Func<Vector3, bool>? fadesAt = null) {
+        ArrayMesh? mesh = null, Func<Vector3, bool>? fadesAt = null, Func<Vector3, bool>? fine = null) {
         _settings = settings;
         Mesh = mesh ?? new ArrayMesh();
         var index = new Dictionary<(long, long, long), int>();
@@ -193,13 +198,16 @@ internal sealed class SurfaceFilm {
             }
             var side = face.Normalized();
             // Where the triangle's middle and corners agree, the whole triangle is in or out: asking once for each of
-            // its many small faces would cost far more than building them.
+            // its many small faces would cost far more than building them. Not where keep draws a finer line than the
+            // triangle: there its middle and corners can agree with a patch of the other kind between them.
             bool? whole = null;
             if (keep is not null) {
                 var middle = (a + b + c) / 3f;
-                var inside = keep(middle, side);
-                if (keep(middle.Lerp(a, 0.9f), side) == inside && keep(middle.Lerp(b, 0.9f), side) == inside
-                    && keep(middle.Lerp(c, 0.9f), side) == inside) { whole = inside; }
+                var (nearA, nearB, nearC) = (middle.Lerp(a, 0.9f), middle.Lerp(b, 0.9f), middle.Lerp(c, 0.9f));
+                if (fine is null || !(fine(middle) || fine(nearA) || fine(nearB) || fine(nearC))) {
+                    var inside = keep(middle, side);
+                    if (keep(nearA, side) == inside && keep(nearB, side) == inside && keep(nearC, side) == inside) { whole = inside; }
+                }
             }
             if (whole == false) { continue; }
             var kab = EdgeSteps(a, b);

@@ -39,7 +39,9 @@ internal sealed class SurfaceBlood {
     /// <summary>Skin turned further from the site's up than this (the up component of its normal) is the body's film's
     /// (SurfaceFilm): projected onto the site's grid, a steep flank stretches each cell into a sliver, and a film's
     /// edge drawn over slivers comes out as teeth.</summary>
-    internal const float SteepNormal = 0.45f;
+    private const float SteepNormal = 0.45f;
+    /// <summary>Which cells are a steep flank, from the skin at rest: the body's film is laid out once from the same
+    /// cells (<see cref="Carries"/>), so a cell that steepens later as the skin moves still keeps its blood.</summary>
     private readonly bool[] _steep = new bool[Size * Size];
     /// <summary>Blood that reached steep skin, per cell, on its way to the body's film there.</summary>
     private readonly float[] _steepRunoff = new float[Size * Size];
@@ -96,6 +98,7 @@ internal sealed class SurfaceBlood {
             }
         }
         RebuildGeometryCache();
+        for (var i = 0; i < _steep.Length; i++) { _steep[i] = _normal[i].Y < SteepNormal; }
         for (var y = 0; y < Size; y++) {
             for (var x = 0; x < Size; x++) {
                 var i = y * Size + x;
@@ -114,6 +117,16 @@ internal sealed class SurfaceBlood {
     internal float HeldMl => _ml.Sum();
     internal float At(int x, int y) => _ml[y * Size + x];
     private static Vector2 Uv(int x, int y) => new Vector2(x + 0.5f, y + 0.5f) / Size;
+
+    /// <summary>Whether this film keeps blood at uv: on the body and not on a steep flank. Anywhere else blood runs on
+    /// to the body's film, which covers exactly the skin this says it doesn't, so the two neither overlap nor leave a
+    /// gap. Fixed once the film is made, so it's safe to ask from the thread that builds the body's film.</summary>
+    internal bool Carries(Vector2 uv) {
+        var x = Math.Clamp((int)(uv.X * Size), 0, Size - 1);
+        var y = Math.Clamp((int)(uv.Y * Size), 0, Size - 1);
+        var i = y * Size + x;
+        return _holds[i] && !_steep[i];
+    }
 
     /// <summary>Moves the film already under a closure stroke to both sides of it, the <paramref name="share"/> of it
     /// the closure squeezes out. This is a one-time physical displacement; subsequent bleeding remains free to wet the
@@ -262,7 +275,6 @@ internal sealed class SurfaceBlood {
                 var sx = Slope(1, 0, _cell.X); var sy = Slope(0, 1, _cell.Y);
                 _normalDepthPerMl[i] = _projectedDepthPerMl / Mathf.Sqrt(1f + sx * sx + sy * sy);
                 _normal[i] = new Vector3(-sx, 1f, -sy).Normalized();
-                _steep[i] = _normal[i].Y < SteepNormal;
             }
         }
         // Gathering belongs on a convex flank, where the film wraps around the model. A broad surface

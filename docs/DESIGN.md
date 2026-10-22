@@ -795,7 +795,8 @@ regenerating.
   grid of milliliters): pressure spreads it sideways, gravity carries it downhill and it leaves a thin stain in the
   fluid map as it moves on; strong bleeds spurt. What reaches the site's edges or its steep flanks runs on over films
   laid on the body round the site, the bed (pads and frame) and the floor (`SurfaceFilm`, one per surface, points
-  spread over its triangles). Each film steps on a worker thread at a fixed rate and draws its own mesh
+  spread over its triangles). The body's film is laid out from the site film's own cells (`SurfaceBlood.Carries`), so
+  the two meet along one line. Each film steps on a worker thread at a fixed rate and draws its own mesh
   (`blood_film.gdshader`, the edge fading between points); where it faces down it drips onto whatever lies below,
   and skin pressed on the mattress hands its blood straight to the bed's film, so turning the patient carries it
   down onto the bed. A staple squeezes half the film off its seam (`Patient.StapleSqueeze`) without wiping it clean.
