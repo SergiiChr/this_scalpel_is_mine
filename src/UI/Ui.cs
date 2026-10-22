@@ -148,6 +148,15 @@ public static class Ui {
         return Fullscreen(holder, backdrop);
     }
 
+    /// <summary>A run modifier's name in <paramref name="color"/> over its explanation.</summary>
+    public static Control ModifierLine(string id, Color color) {
+        var modifier = new ConfigReader(Db.RunModifiers, id);
+        var text = VBox(2);
+        text.AddChild(Label(modifier.String("name", id), 20, color));
+        text.AddChild(Label(modifier.String("description"), 16, Dim, true));
+        return text;
+    }
+
     public static Control QuirkLine(QuirkDef quirk, string variant, bool detailed) {
         var row = HBox(12);
         row.AddChild(Icon(quirk.Icon(), detailed ? 56 : 36));

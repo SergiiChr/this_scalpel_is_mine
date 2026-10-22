@@ -1,7 +1,7 @@
 namespace Scalpel.UI;
 
-/// <summary>Pre-op briefing. Shows the scenario, everyone's rolled quirks and, in a column beside them, every run
-/// modifier: this run's, available and locked. Everyone readies up, the host starts.
+/// <summary>Pre-op briefing. Shows the scenario, everyone's rolled quirks and, in a column beside them, this run's
+/// modifiers. Everyone readies up, the host starts.
 /// </summary>
 public partial class Lobby : Control {
     private static readonly Color ModifierColor = new(0.95f, 0.8f, 0.35f);
@@ -50,7 +50,7 @@ public partial class Lobby : Control {
         var roster = Ui.Scroll(_roster);
         roster.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         columns.AddChild(roster);
-        _modifiers = Ui.VBox(4);
+        _modifiers = Ui.VBox(6);
         var modifiers = Ui.PanelAround(_modifiers);
         modifiers.CustomMinimumSize = new Vector2(640f, 0f);
         modifiers.SizeFlagsVertical = SizeFlags.ShrinkBegin;
@@ -117,37 +117,17 @@ public partial class Lobby : Control {
         }
     }
 
-    /// <summary>Every run modifier: this run's, the ones seen in earlier runs and the locked rest.</summary>
+    /// <summary>This run's modifiers. The main menu lists all of them.</summary>
     private void ListModifiers() {
         foreach (var child in _modifiers.GetChildren()) {
             child.QueueFree();
         }
-        var unlocked = Db.RunModifiers.GetSections().Where(id => !Net.RunModifiers.Contains(id))
-            .ToLookup(Progress.IsModifierUnlocked);
         _modifiers.AddChild(Ui.Label("RUN MODIFIERS", 24, Ui.Pip));
-        _modifiers.AddChild(Ui.Label(
-            "The host rolls 1-2 for every run, and again with a new scenario. Any of them can come up, locked ones too.",
-            16, Ui.Dim, true));
-        AddModifiers(_modifiers, "ACTIVE THIS RUN", Net.RunModifiers, ModifierColor);
-        AddModifiers(_modifiers, "AVAILABLE", unlocked[true], Ui.Ink);
-        if (unlocked[false].Count() is var locked and > 0) {
-            _modifiers.AddChild(Ui.Label("LOCKED", 20, Ui.Pip));
-            _modifiers.AddChild(Ui.Label($"{locked} more. Each unlocks the first time a run starts with it.", 16, Ui.Dim, true));
+        _modifiers.AddChild(Ui.Label("The host rolls 1-2 for every run, and again with a new scenario.", 16, Ui.Dim, true));
+        foreach (var id in Net.RunModifiers) {
+            _modifiers.AddChild(Ui.ModifierLine(id, ModifierColor));
         }
     }
-
-    private static void AddModifiers(VBoxContainer list, string title, IEnumerable<string> ids, Color color) {
-        list.AddChild(Ui.Label(title, 20, Ui.Pip));
-        if (!ids.Any()) {
-            list.AddChild(Ui.Label("None", 16, Ui.Dim));
-        }
-        foreach (var id in ids) {
-            list.AddChild(Ui.Label(ModifierName(id), 20, color));
-            list.AddChild(Ui.Label(new ConfigReader(Db.RunModifiers, id).String("description"), 16, Ui.Dim, true));
-        }
-    }
-
-    private static string ModifierName(string id) => new ConfigReader(Db.RunModifiers, id).String("name", id);
 
     private static bool IsReady => Net.Roster.GetValueOrDefault(Net.LocalId)?.Ready ?? false;
 

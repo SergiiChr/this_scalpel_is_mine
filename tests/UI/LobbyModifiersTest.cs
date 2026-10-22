@@ -1,9 +1,9 @@
 namespace Scalpel.Tests.UI;
 
 /// <summary>
-/// The lobby lists every run modifier in a column right of the surgeons' cards: this run's with their explanations, the
-/// available ones seen in earlier runs and a count of the locked rest. The run starts with the listed modifiers, which
-/// unlocks them. With key frames also the lobby.
+/// The lobby lists this run's modifiers with their explanations in a column right of the surgeons' cards. The run
+/// starts with them, which unlocks them, and the main menu's Run modifiers list then shows them beside the one seen
+/// earlier, the rest locked. With key frames also the lobby and that list.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("visual_confirmation")]
@@ -12,7 +12,7 @@ public class LobbyModifiersTest {
     private const string Seen = "cold_room";
 
     [TestCase]
-    public async Task LobbyListsActiveAvailableAndLockedModifiersThenTheRunUnlocksThem() {
+    public async Task LobbyListsTheRunsModifiersAndTheRunUnlocksThemInTheMenu() {
         // A fresh save (every test process has its own user://), but for one modifier seen in an earlier run.
         Progress.UnlockModifierForSession(Seen);
         var net = Net.Instance;
@@ -25,26 +25,19 @@ public class LobbyModifiersTest {
         await Frames.Process(2);
         var lobby = Frames.Tree.CurrentScene;
         var texts = Texts(lobby);
-        var order = ((string[])["RUN MODIFIERS", "ACTIVE THIS RUN", "Understaffed night shift", "Chart mix-up", "AVAILABLE",
-            "Broken heating", "LOCKED"]).Select(text => texts.IndexOf(text)).ToList();
+        var order = ((string[])["RUN MODIFIERS", Name("understaffed"), Description("understaffed"), Name("chart_error"),
+            Description("chart_error")]).Select(text => texts.IndexOf(text)).ToList();
         AssertBool(order[0] >= 0 && order.Zip(order.Skip(1)).All(pair => pair.First < pair.Second))
-            .OverrideFailureMessage($"active, then available, then locked modifiers: [{string.Join(" | ", texts)}]").IsTrue();
-        AssertBool(texts.Contains(Description("understaffed")) && texts.Contains(Description(Seen)))
-            .OverrideFailureMessage("each named modifier has its explanation").IsTrue();
-        AssertBool(Active.All(id => texts.Count(text => text == Name(id)) == 1))
-            .OverrideFailureMessage("an active modifier is listed once, not again as available").IsTrue();
-        var locked = Db.RunModifiers.GetSections().Except(Active.Append(Seen)).ToList();
-        AssertBool(texts.Contains($"{locked.Count} more. Each unlocks the first time a run starts with it.")
-                && !locked.Any(id => texts.Contains(Name(id)) || texts.Contains(Description(id))))
-            .OverrideFailureMessage("the rest are locked: counted with their unlock condition, names hidden").IsTrue();
+            .OverrideFailureMessage($"this run's modifiers, each with its explanation: [{string.Join(" | ", texts)}]").IsTrue();
+        AssertBool(Db.RunModifiers.GetSections().Except(Active).All(id => !texts.Contains(Name(id))))
+            .OverrideFailureMessage("the lobby lists no other modifier").IsTrue();
         var card = Find<Label>(lobby, "Doctor (you)").GetParent<Control>().GetGlobalRect();
         var column = Find<Label>(lobby, "RUN MODIFIERS").GetParent<Control>().GetGlobalRect();
         AssertBool(column.Position.X >= card.End.X && column.Position.Y < card.End.Y)
             .OverrideFailureMessage($"the modifiers column is right of the surgeon's card: {column} beside {card}").IsTrue();
         await Capture("lobby", "the pre-op briefing for Appendectomy: the surgeon's card on the left and, right of it, a "
-            + "RUN MODIFIERS column with ACTIVE THIS RUN listing Understaffed night shift and Chart mix-up in yellow, "
-            + "AVAILABLE with Broken heating, each with a grey explanation, then LOCKED with "
-            + $"\"{locked.Count} more\" and the unlock condition; Ready, Start surgery and Leave buttons below");
+            + "RUN MODIFIERS column with Understaffed night shift and Chart mix-up in yellow, each with a grey "
+            + "explanation; Ready, Start surgery and Leave buttons below");
 
         await Click(Find<Button>(lobby, "Ready"));
         await Click(Find<Button>(lobby, "Start surgery"));
@@ -61,6 +54,22 @@ public class LobbyModifiersTest {
             .OverrideFailureMessage($"the unlocks are saved: [{string.Join(", ", saved)}]")
             .IsTrue();
         net.BackToMenu();
+
+        AssertBool(await Frames.Until(() => Frames.Tree.CurrentScene is MainMenu, 10f))
+            .OverrideFailureMessage("Leave opens the main menu").IsTrue();
+        await Frames.Process(2);
+        var menu = Frames.Tree.CurrentScene;
+        await Click(Find<Button>(menu, "Run modifiers"));
+        texts = Texts(menu);
+        var known = Db.RunModifiers.GetSections().Where(id => Active.Contains(id) || id == Seen).ToList();
+        AssertBool(known.All(id => texts.Contains(Name(id)) && texts.Contains(Description(id))))
+            .OverrideFailureMessage($"the run's and the earlier seen modifiers are unlocked in the menu: [{string.Join(" | ", texts)}]")
+            .IsTrue();
+        var locked = Db.RunModifiers.GetSections().Length - known.Count;
+        AssertInt(texts.Count(text => text == "???  (locked)"))
+            .OverrideFailureMessage("the rest are locked, names hidden").IsEqual(locked);
+        await Capture("menu", "the main menu's RUN MODIFIERS list: Understaffed night shift first, then "
+            + $"{locked} ???  (locked) lines, then Broken heating and Chart mix-up, each named one with a grey explanation");
     }
 
     private static string Name(string id) => new ConfigReader(Db.RunModifiers, id).String("name");
