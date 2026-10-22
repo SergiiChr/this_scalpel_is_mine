@@ -1,7 +1,7 @@
 """Surgeon's gloved right hand, rigged.
 
 Rest pose: wrist at the origin, fingers along +X, palm facing down (-Y), thumb on the -Z side, fingers slightly relaxed.
-Bones: Hand, Palm (its knuckle half, which cups toward the palm round what it lies on), Index1-3, Middle1-3, Ring1-3,
+Bones: Hand, Palm (its knuckle half, which gives a little toward the palm pressed on something), Index1-3, Middle1-3, Ring1-3,
 Pinky1-3, Thumb1-3 (local X bends toward the palm), and Cuff, pointing back from the wrist: the game aims it down the
 forearm so the cuff stays on the sleeve however the wrist bends.
 Each finger is its own metaball shell so fingers don't melt together; a voxel remesh fuses them into the palm.
@@ -21,8 +21,8 @@ GLOVE = (0.3, 0.45, 0.8)
 OPENING = -0.1
 # Distance behind the wrist over which the glove goes from following the hand to following the cuff.
 CUFF_BLEND = 0.045
-# Where the palm cups (along the fingers from the wrist), and how far either side of it it goes from the heel to the
-# knuckles: across the whole palm, so a cupped palm curves along its length instead of creasing.
+# Where the palm gives (along the fingers from the wrist), and how far either side of it it goes from the heel to the
+# knuckles: across the whole palm, so a pressed palm curves a little along its length instead of creasing.
 PALM_HINGE = 0.045
 PALM_BLEND = 0.04
 

@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Patients;
 /// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing.
 /// Key frames: review the glove lying flat on the skin over the cut, its palm and fingers on it and pressed a little
 /// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and
-/// grasping the forearm, the palm cupped over its round and the fingers round it over the cut.
+/// grasping the forearm, the stiff palm across its top and the fingers bent round it over the cut.
 /// Nothing of the hand goes into the skin or an opening.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -19,12 +19,12 @@ public class HandHoldTest {
     /// <summary>How far (meters) a spot of a grasping palm may seem in the skin: the fit reads the skin in a few
     /// slices along the limb and interpolates between them.</summary>
     private const float PalmGapSlack = 0.001f;
-    /// <summary>Most (meters) half a grasping palm's underside stands off the skin: its pads, heel and knuckles lie on it.
-    /// </summary>
-    private const float PalmContact = 0.005f;
-    /// <summary>Most (meters) any of a grasping palm's underside stands off the skin: the hollow between its pads.
-    /// </summary>
-    private const float PalmHollow = 0.015f;
+    /// <summary>Most (meters) a grasping palm's underside stands off the skin where it's closest: it touches.</summary>
+    private const float PalmTouch = 0.002f;
+    /// <summary>Most (meters) any of a grasping palm's underside stands off the skin. A palm bends only at the wrist and
+    /// the knuckles, so on a limb about as wide as it is long it lies across the round like a chord, its heel and
+    /// knuckle end lifting.</summary>
+    private const float PalmLift = 0.03f;
     // Temporary local budget override: recorded CPU overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget about a second into "
         + "the surgery, before the hand holds the patient; not profiled yet", 6f);
@@ -117,19 +117,16 @@ public class HandHoldTest {
         AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
         var ring = body.LimbRingAt(on)!.Value;
         var gaps = PalmGaps(hand, ring);
-        AssertFloat(gaps.Min()).OverrideFailureMessage($"its palm lies on the arm, not in it: {gaps.Min():0.000} m in")
-            .IsGreater(-PalmGapSlack);
-        var median = gaps.Order().ElementAt(gaps.Length / 2);
-        AssertFloat(median).OverrideFailureMessage($"its palm lies on the arm, not over it: {median:0.000} m off")
-            .IsLess(PalmContact);
-        AssertFloat(gaps.Max()).OverrideFailureMessage($"its palm's hollow stays close over the arm: {gaps.Max():0.000} m off")
-            .IsLess(PalmHollow);
+        AssertFloat(gaps.Min()).OverrideFailureMessage($"its palm lies on the arm, not in it: {gaps.Min():0.000} m off")
+            .IsBetween(-PalmGapSlack, PalmTouch);
+        AssertFloat(gaps.Max()).OverrideFailureMessage($"its stiff palm lies across the arm's round: {gaps.Max():0.000} m "
+            + "off at its ends").IsLess(PalmLift);
         AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, nothing of it in it")
             .IsEqual(0);
         // Along the arm, low, where the palm's curve on the arm's round shows.
-        await session.CaptureOblique("on_forearm", "the glove grasping the forearm seen along it: the palm cupped over the "
-            + "arm's round, heel and knuckles on the skin, the fingers down the far side over the cut, nothing of it in "
-            + "the skin", on, ring.Axis, CloseUp, 12f, true);
+        await session.CaptureOblique("on_forearm", "the glove grasping the forearm seen along it: the palm flat across the "
+            + "arm's top, touching it at its middle, the heel and knuckles a little off the round, the fingers bent at "
+            + "their joints down the far side over the cut, nothing of it in the skin", on, ring.Axis, CloseUp, 12f, true);
 
         await driver.PlayerLetsGoOfPatient();
         SurgeryState.PatientPanics(patient);

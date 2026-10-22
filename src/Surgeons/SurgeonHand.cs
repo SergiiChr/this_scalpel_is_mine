@@ -43,9 +43,15 @@ public partial class SurgeonHand : Node3D {
     private const float MaxThumbBend = 3.2f;
     /// <summary>How far a finger's tip reaches past its last joint (meters).</summary>
     private const float FingerTip = 0.02f;
-    /// <summary>How many turns of the palm round a limb <see cref="GraspFit"/> tries, from its top to
-    /// <see cref="MaxGraspTurn"/> toward the near side.</summary>
+    /// <summary>How many turns of the palm round a limb <see cref="GraspFit"/> tries from its top to
+    /// <see cref="MaxGraspTurn"/> toward the near side, and how many past the top toward the far side (where the lower
+    /// palm lies with the palm's middle over the top).</summary>
     private const int GraspSteps = 16;
+    private const int GraspStepsPastTop = 8;
+    /// <summary>The palm's length along its middle, heel to knuckles (meters), and how many spots along it
+    /// <see cref="GraspFit"/> tries touching a limb's top with.</summary>
+    private const float PalmLength = 0.085f;
+    private const int TouchSteps = 10;
     /// <summary>Furthest (radians) a hand grasping a limb turns its palm from the limb's top toward the near side.
     /// </summary>
     private const float MaxGraspTurn = 1.3f;
@@ -79,11 +85,12 @@ public partial class SurgeonHand : Node3D {
     /// <see cref="GraspFit"/> tries each way.</summary>
     private const float MaxCupSlant = 0.6f;
     private const int SlantSteps = 4;
-    /// <summary>Most a hand grasping a limb cups its palm round it (radians).</summary>
-    private const float MaxPalmCup = 0.9f;
+    /// <summary>Most a hand grasping a limb cups its palm round it (radians). A palm bends only at the wrist and the
+    /// knuckles: between them it just gives a little, its soft flesh pressed against the limb.</summary>
+    private const float MaxPalmCup = 0.12f;
     /// <summary>How many cups of the palm <see cref="GraspFit"/> tries at each turn, from flat to
     /// <see cref="MaxPalmCup"/>.</summary>
-    private const int CupSteps = 9;
+    private const int CupSteps = 4;
     /// <summary>Furthest (radians) a hand grasping a limb leans its palm along it, and how many leans
     /// <see cref="GraspFit"/> tries each way.</summary>
     private const float MaxGraspLean = 0.3f;
@@ -958,9 +965,11 @@ public partial class SurgeonHand : Node3D {
     /// <summary>
     /// Where a hand grasping the limb round <paramref name="ring"/> at <paramref name="at"/> lays its palm, seen from
     /// <paramref name="from"/>: the spot the lower palm lies on, the palm's normal, which way the fingers point (from the
-    /// near side over the top) and how far the palm cups. The palm is turned from the limb's top toward the near side
-    /// and cupped round the limb as far as lays its whole underside closest to the skin, and rests on it with no part
-    /// of it in it. The fingers close round the rest (<see cref="GraspWith"/>).
+    /// near side over the top) and how the palm gives. A palm bends only at the wrist and the knuckles: it is turned
+    /// round the limb, touches it at the spot along its length, leans along it and gives as little as it takes to lay
+    /// its underside closest to the skin all over, with no part of it in it. On a limb about as wide as the palm is long
+    /// it lies across the round like a chord, its ends lifting. The fingers close round the rest from the knuckles
+    /// (<see cref="GraspWith"/>).
     /// </summary>
     internal (Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) GraspFit(LimbRing ring, Vector3 at, Vector3 from) {
         var axis = ring.Axis;
@@ -993,10 +1002,10 @@ public partial class SurgeonHand : Node3D {
         }
         Vector3[] thumbRestPoints = [.. thumbJoints, .. thumbJoints.Skip(1).Select((end, joint) => end.Lerp(thumbJoints[joint], 0.5f))];
         var thumb = new Vector3[thumbRestPoints.Length];
-        // The palm turned round the limb, leaning along it and cupped: where it rests on the skin and how far the part
-        // of it furthest off the skin is.
-        (float Spread, Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) Fit(int step, int lean, int cupStep,
-            int slant) {
+        // The palm turned round the limb, touching it at a spot along its length, leaning along it and giving a little:
+        // where its lower palm rests and how far the part of it furthest off the skin is.
+        (float Spread, Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) Fit(int step, int touch, int lean,
+            int cupStep, int slant) {
             var turned = new Basis(axis, toNear * MaxGraspTurn * step / GraspSteps) * top;
             // Round the limb away from the near side, the way the palm turns back to its top.
             var fingers = -toNear * axis.Cross(turned);
@@ -1004,12 +1013,14 @@ public partial class SurgeonHand : Node3D {
             var normal = new Basis(fingers, MaxGraspLean * lean / LeanSteps) * turned;
             var frame = PressBasis(normal, fingers);
             var cup = new Basis(Vector3.Up, MaxCupSlant * slant / SlantSteps) * PalmCupAxis * (MaxPalmCup * cupStep / CupSteps);
-            // The lower palm over the limb's middle line, the knuckle half cupped round it toward the far side.
+            // That spot of the palm over the limb's middle line: a stiff palm lies on a limb's round like a chord, its
+            // ends lifting off where it touches nearest its middle.
+            var touching = new Vector3(PalmLength * touch / TouchSteps, LowerPalm.Y, 0f);
             for (var k = 0; k < spots.Length; k++) {
-                spots[k] = frame * (Cupped(underside[k], cup) - LowerPalm);
+                spots[k] = frame * (Cupped(underside[k], cup) - touching);
             }
             for (var k = 0; k < thumb.Length; k++) {
-                thumb[k] = frame * (thumbRestPoints[k] - LowerPalm);
+                thumb[k] = frame * (thumbRestPoints[k] - touching);
             }
             // Bisects how far out from the middle line the palm goes: as close as leaves it out of the skin.
             var low = 0f;
@@ -1024,37 +1035,41 @@ public partial class SurgeonHand : Node3D {
                 }
             }
             var resting = center + (turned * high);
-            return (spots.Average(spot => Gap(resting + spot)), resting, normal, fingers, cup);
+            return (spots.Max(spot => Gap(resting + spot)), resting + (frame * (LowerPalm - touching)), normal, fingers, cup);
         }
-        // Turn and cup first, then the cup's slant, the lean, and the turn and cup again near where they were: each
-        // matters far more than the next, and all of them together would take a great many tries.
-        var (bestStep, bestCup, bestSlant, bestLean) = (0, 0, 0, 0);
-        var best = Fit(0, 0, 0, 0);
-        void Try(int step, int lean, int cupStep, int slant) {
-            // A cup, slant or lean that lays the palm barely closer isn't worth it.
-            if (Fit(step, lean, cupStep, slant) is var fit && fit.Spread < best.Spread - 0.0002f) {
-                (best, bestStep, bestLean, bestCup, bestSlant) = (fit, step, lean, cupStep, slant);
+        // Where the palm touches and its turn first, then how it gives and the slant of that, the lean, and the turn,
+        // the touch and the give again near where they were: each matters far more than the next, and all of them
+        // together would take a great many tries. On a round limb every turn fits alike: the first tried, its top, is
+        // kept.
+        var (bestStep, bestTouch, bestLean, bestCup, bestSlant) = (0, TouchSteps / 2, 0, 0, 0);
+        var best = Fit(bestStep, bestTouch, 0, 0, 0);
+        void Try(int step, int touch, int lean, int cupStep, int slant) {
+            // A change that lays the palm barely closer isn't worth it.
+            if (Fit(step, touch, lean, cupStep, slant) is var fit && fit.Spread < best.Spread - 0.0002f) {
+                (best, bestStep, bestTouch, bestLean, bestCup, bestSlant) = (fit, step, touch, lean, cupStep, slant);
             }
         }
-        for (var step = 0; step <= GraspSteps; step++) {
-            for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
-                Try(step, 0, cupStep, 0);
+        for (var step = -GraspStepsPastTop; step <= GraspSteps; step++) {
+            for (var touch = 0; touch <= TouchSteps; touch++) {
+                Try(step, touch, 0, 0, 0);
             }
         }
-        var (turnedTo, leanedTo) = (bestStep, bestLean);
+        var (turnedTo, touchedAt) = (bestStep, bestTouch);
         for (var slant = -SlantSteps; slant <= SlantSteps; slant++) {
             for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
-                Try(turnedTo, leanedTo, cupStep, slant);
+                Try(turnedTo, touchedAt, 0, cupStep, slant);
             }
         }
         var (cuppedTo, slantedTo) = (bestCup, bestSlant);
         for (var lean = -LeanSteps; lean <= LeanSteps; lean++) {
-            Try(turnedTo, lean, cuppedTo, slantedTo);
+            Try(turnedTo, touchedAt, lean, cuppedTo, slantedTo);
         }
-        (turnedTo, leanedTo, slantedTo) = (bestStep, bestLean, bestSlant);
-        for (var step = Mathf.Max(turnedTo - 2, 0); step <= Mathf.Min(turnedTo + 2, GraspSteps); step++) {
-            for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
-                Try(step, leanedTo, cupStep, slantedTo);
+        var leanedTo = bestLean;
+        for (var step = Mathf.Max(turnedTo - 2, -GraspStepsPastTop); step <= Mathf.Min(turnedTo + 2, GraspSteps); step++) {
+            for (var touch = Mathf.Max(touchedAt - 1, 0); touch <= Mathf.Min(touchedAt + 1, TouchSteps); touch++) {
+                for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
+                    Try(step, touch, leanedTo, cupStep, slantedTo);
+                }
             }
         }
         return (best.At, best.Normal, best.Fingers, best.Cup);

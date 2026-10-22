@@ -681,10 +681,12 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 - Use tool with an empty hand aimed at the patient lays the hand flat on the skin there and holds it (`Surgeon.HoldPatient()`,
   the `press` grip): palm and fingers on the skin, pressed a little into it (`Surgeon.PressSink`). A limb it grasps
-  (`SurgeonHand.GraspFit()`): the palm cups round it (the glove's `Palm` bone, its knuckle half, bends toward the palm
-  and may slant like the palm's crease), turned round and leaned along the limb as far as lays its pads, heel and
-  knuckles closest. The fit reads the palm's underside off the glove model. The fingers across the limb curl round its
-  far side (over a cut there) until they meet the skin. Nothing of it goes into the skin. Over an opening on the trunk
+  (`SurgeonHand.GraspFit()`): a palm bends only at the wrist and the knuckles, so it lies on the limb stiff, giving
+  only a little under pressure (the glove's `Palm` bone, its knuckle half, `SurgeonHand.MaxPalmCup`). It is turned
+  round the limb, touches it where along its length lays it closest, and leans along it. On a limb about as wide as the
+  palm is long it lies across the round like a chord, heel and knuckles lifting off. The fit reads the palm's underside
+  off the glove model. The fingers across the limb bend at their joints round its far side (over a cut there) until
+  they meet the skin. Nothing of it goes into the skin. Over an opening on the trunk
   it rests on the lip without pressing in, its fingers straight across it, so none dips in. Use tool again or Grab lets go; so does walking out of reach.
 - It stays on the spot it holds as that part moves (anchored to the rig bone under it), and keeps that part still: an
   arm, a leg or the head stops flailing (`PatientAnimator`). The trunk still breathes.
