@@ -61,7 +61,8 @@ overview, the data formats designers edit and the design decisions.
   Its walls, floor and ceiling carry almost no grime. Tools and people keep their colors.
 - Lighting: a ceiling panel light over the table lights the room from above, the surgical lamp's spot focuses
   on the site, dim tubes fill the corners. The theatre has four flush LED panels in the ceiling instead, each with a
-  light under it, in a bluer white, brighter, and neutral ambient light instead of green. Outside, the streetlight
+  light under it, in a bluer white, brighter, and neutral ambient light instead of green. The ambulance also uses
+  neutral light, with a flush ceiling fixture and no hanging surgical-lamp model. Outside, the streetlight
   does the ceiling light's job.
   The flicker event dims every room light but the surgical lamp.
   Forward+ adds SDFGI with four cascades and 10 cm cells; indoor rooms ignore sky lighting. Only the fixed room
@@ -456,6 +457,16 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 - **Same tray every time** (`data/starter_kit.cfg`): scalpel, forceps, kidney dish, cotton pads, iodine bottle with
   its dish, a 3, 10 and 50 ml syringe, IV catheter and saline bag. Everything else is ordered.
+- **Ambulance cabin** (`Room.Ambulance.cs`, `props.py`): fitted blue and white storage, rear double doors,
+  a cab partition, folded attendant seat and ceiling grab rails. References: the
+  [Ambulance Patient Compartment Human Factors Design Guidebook](https://www.naemt.org/docs/default-source/ems-health-and-safety-documents/health-safety-grid/ambulance-patient-compartment-human-factors-design-guidebook.pdf?sfvrsn=2)
+  and [NAFFCO ambulance interior catalogue](https://www.naffco.com/media-downloads/pdf/ambulance.pdf).
+  The current monitor model and module rack mount to the side wall beside the patient's head, using a swivel
+  bracket instead of the bed clamp. The IV pole sits beside it, clear of the display and overhead cupboards.
+  The stretcher divides two one-person aisles; end lockers prevent walking round it. Surgical instruments,
+  closures and dressings occupy the +Z compartments; IV supplies, medication and suction occupy -Z.
+  The briefing warns that co-op is intended, while leaving solo selectable. The fixed kit cannot randomly lose
+  essential tools, since there is no nurse to replace them.
 - **Tray layout** (`tray` in tools.cfg, `Room.TrayZones`): scalpel and forceps lie in a small steel tray, the cotton
   pads in a pile in another, the syringes side by side and the bottles and vials standing at one end. The rest fills
   the space left.

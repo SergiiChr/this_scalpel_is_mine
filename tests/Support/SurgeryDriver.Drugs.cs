@@ -56,7 +56,7 @@ public partial class SurgeryDriver {
         }
         // Pressed in the air, the forceps let the pad fall.
         if (Surgery.Tools.CarriedBy(forceps) is not null) {
-            var spot = SurgeryState.FreeTraySpot(Surgery);
+            var spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
             await PlayerWalksTo(spot);
             await PlayerReaches(spot);
             Use();
@@ -275,7 +275,7 @@ public partial class SurgeryDriver {
 
     /// <summary>A point on the forearm <paramref name="off"/> meters across it from the middle of the vein.</summary>
     private Vector3 BesideVein(float off) {
-        var vein = Body.Veins[0];
+        var vein = WorkingVein();
         var line = vein.Line;
         var middle = line.Length / 2;
         var across = vein.GlobalBasis * (line[middle + 1] - line[middle - 1]);
@@ -283,8 +283,11 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>The middle of the forearm vein (world space), where an IV catheter or a needle goes in.</summary>
+    private Vein WorkingVein() => StandingConstraint is null ? Body.Veins[0]
+        : Body.Veins.OrderBy(vein => vein.ToGlobal(vein.Line[vein.Line.Length / 2]).DistanceSquaredTo(Me.GlobalPosition)).First();
+
     public Vector3 VeinPoint() {
-        var vein = Body.Veins[0];
+        var vein = WorkingVein();
         return vein.ToGlobal(vein.Line[vein.Line.Length / 2]);
     }
 

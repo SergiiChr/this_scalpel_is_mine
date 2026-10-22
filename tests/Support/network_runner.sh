@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Two real Godot processes over ENet on localhost, for tests/Network/NetworkTest.cs. It prints what's wrong and
 # exits non-zero on the first problem.
-# Usage: network_runner.sh GODOT ROOT sync|pinch|tape|lobby|stall LIMIT
+# Usage: network_runner.sh GODOT ROOT sync|pinch|tape|lobby|ambulance|stall LIMIT
 # LIMIT: seconds the test case may take (tests/Support/Limits.cs). Each driver is stopped there, and gives up waiting on
 # the other side 10 s earlier, which leaves room for the client starting later and both quitting.
 # The drivers are tests/Support/NetDriver.cs (sync), NetPinchDriver.cs (pinch), NetTapeDriver.cs (tape),
-# NetLobbyDriver.cs (lobby) and NetStallDriver.cs (stall), each started from its scene.
+# NetLobbyDriver.cs (lobby), NetAmbulanceFlowDriver.cs (ambulance) and NetStallDriver.cs (stall), each started from its scene.
 set -uo pipefail
 
 godot=$1
@@ -131,6 +131,21 @@ if [[ "$mode" == lobby ]]; then
 	for side in host client; do
 		expect "$logs/net_lobby_$side.log" "\[$side\] back in the lobby, still connected"
 		expect "$logs/net_lobby_$side.log" "\[$side\] the next surgery is appendectomy with both surgeons"
+	done
+	exit 0
+fi
+
+if [[ "$mode" == ambulance ]]; then
+	run NetAmbulanceFlowDriver host net_ambulance_host &
+	host=$!
+	sleep 2
+	run NetAmbulanceFlowDriver client net_ambulance_client &
+	client=$!
+	finished "$client" net_ambulance_client
+	finished "$host" net_ambulance_host
+	for side in host client; do
+		expect "$logs/net_ambulance_$side.log" "\[$side\] both cooperating surgeons receive the game's successful surgery report"
+		expect "$logs/net_ambulance_$side.log" "\[$side\] $side remains on its assigned aisle through discharge"
 	done
 	exit 0
 fi

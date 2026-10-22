@@ -17,9 +17,14 @@ public partial class PatientMonitor : Node3D {
     private float _alarmTimer;
     private Vector2[] _samples = [];
 
-    public void Build() {
-        ModelSlot.Instantiate("props", "monitor", this,
+    public void Build(bool wallMounted = false) {
+        var model = ModelSlot.Instantiate("props", "monitor", this,
             new Dictionary<string, Material> { ["screen"] = Materials.Glow(MonitorScreen.Background) });
+        if (wallMounted) {
+            ModelSlot.Parts(model, "Pole")["Pole"].Visible = false;
+            var mount = ModelSlot.Instantiate("props", "monitor_wall_mount", this);
+            mount.Name = "WallMount";
+        }
         BuildScreen();
         var player = new AudioStreamPlayer3D {
             Stream = new AudioStreamGenerator { MixRate = SampleRate, BufferLength = 0.2f },

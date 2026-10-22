@@ -185,7 +185,7 @@ public partial class SurgeryDriver {
         if (Me.UsesLevel(Me.Active)) {
             await SetLevel(0);
         }
-        var spot = SurgeryState.FreeTraySpot(Surgery);
+        var spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
         for (var i = 0; i < 4; i++) {
             await PlayerWalksTo(spot);
             // The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
@@ -200,7 +200,7 @@ public partial class SurgeryDriver {
             }
             // Out of this tool's reach from the side of the tray: another spot.
             SurgeryState.TraySpotIsBad(Surgery, spot);
-            spot = SurgeryState.FreeTraySpot(Surgery);
+            spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
         }
         // Set down onto the tray before letting go, or a bottle would fall and roll.
         if (!ToolActions.TriggerNames.ContainsKey(tool.Def.Action)) {

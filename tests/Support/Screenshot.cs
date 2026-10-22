@@ -151,11 +151,12 @@ public partial class Screenshot : Node {
 
     /// <summary>The room, the foot of the table, the tray with iodine poured and the board over the bell.</summary>
     private async Task RoomViews(Surgery surgery, Camera3D camera) {
-        camera.GlobalPosition = new Vector3(2.3f, 2.5f, 1.9f);
-        camera.LookAt(new Vector3(0f, 0.9f, 0f));
+        var ambulance = surgery.Room.EnvironmentId == "ambulance";
+        camera.GlobalPosition = ambulance ? new Vector3(-1.39f, 1.8f, 0f) : new Vector3(2.3f, 2.5f, 1.9f);
+        camera.LookAt(ambulance ? new Vector3(0.8f, 1.15f, 0f) : new Vector3(0f, 0.9f, 0f));
         await Shot("04_room");
         // The feet end of the table, with the instrument tray past it.
-        camera.GlobalPosition = new Vector3(-1f, 1.5f, 1.4f);
+        camera.GlobalPosition = ambulance ? new Vector3(-0.8f, 1.5f, 0.65f) : new Vector3(-1f, 1.5f, 1.4f);
         camera.LookAt(new Vector3(-1.4f, 0.9f, 0f));
         await Shot("04b_table_foot");
         // Iodine in the dish and one soaked pad.
