@@ -6,7 +6,7 @@ internal readonly record struct ExposedTissue(float Height, Vector3 Contact, Tis
 
 public partial class PatientBody {
     /// <summary>One drawn triangle of a layer's sheet or of the walls down its cut edges (site space).</summary>
-    private readonly record struct DrawnFace(Vector3 A, Vector3 B, Vector3 C, TissueDepth Layer) {
+    private readonly record struct DrawnFace(Vector3 A, Vector3 B, Vector3 C, TissueDepth Layer, bool Wall) {
         /// <summary>The point at weights <paramref name="w"/> of A, B and C.</summary>
         public Vector3 At(Vector3 w) => (A * w.X) + (B * w.Y) + (C * w.Z);
 
@@ -36,18 +36,18 @@ public partial class PatientBody {
                 continue;
             }
             var (sheet, walls) = built[layer];
-            BucketDrawnFaces(sheet, LayerDepth[layer]);
-            BucketDrawnFaces(walls, LayerDepth[layer]);
+            BucketDrawnFaces(sheet, LayerDepth[layer], false);
+            BucketDrawnFaces(walls, LayerDepth[layer], true);
         }
     }
 
-    private void BucketDrawnFaces(Surface? surface, TissueDepth depth) {
+    private void BucketDrawnFaces(Surface? surface, TissueDepth depth, bool wall) {
         if (surface is null) {
             return;
         }
         var (v, index) = (surface.Vertices, surface.Indices);
         for (var t = 0; t < index.Length; t += 3) {
-            var face = new DrawnFace(v[index[t]], v[index[t + 1]], v[index[t + 2]], depth);
+            var face = new DrawnFace(v[index[t]], v[index[t + 1]], v[index[t + 2]], depth, wall);
             var low = SkinCell(face.A.Min(face.B).Min(face.C));
             var high = SkinCell(face.A.Max(face.B).Max(face.C));
             for (var x = low.X; x <= high.X; x++) {
@@ -148,7 +148,10 @@ public partial class PatientBody {
             var distance = (contact * DepthWeight).DistanceSquaredTo(tip * DepthWeight);
             if (distance < closest) {
                 closest = distance;
-                best = new ExposedTissue(height, contact, face.Layer);
+                // On a layer's wall, its top edge: the hole goes into the layer's surface, wherever down its face the
+                // tip touched.
+                var top = Mathf.Max(face.A.Y, Mathf.Max(face.B.Y, face.C.Y));
+                best = new ExposedTissue(height, face.Wall ? contact with { Y = top } : contact, face.Layer);
             }
         }
         return best;
