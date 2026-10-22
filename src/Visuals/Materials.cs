@@ -400,7 +400,12 @@ public static class Materials {
         MetallicSpecular = 0.1f,
     };
 
-    /// <summary>Blood spread over a surface (<see cref="Visuals.SurfaceFilm"/>): the pool's color, as see-through as
-    /// each vertex's alpha says, so its edge fades instead of ending at a line.</summary>
-    public static ShaderMaterial BloodFilm() => new() { Shader = BloodFilmShader };
+    /// <summary>Blood spread over a surface (<see cref="Visuals.SurfaceFilm"/>), drawn by blood_film.gdshader, which
+    /// says what <paramref name="towardCamera"/> and <paramref name="edge"/> do.</summary>
+    public static ShaderMaterial BloodFilm(float towardCamera = 0f, Vector2? edge = null) {
+        var material = new ShaderMaterial { Shader = BloodFilmShader };
+        material.SetShaderParameter("toward_camera", towardCamera);
+        material.SetShaderParameter("edge_fade", edge ?? new Vector2(0.15f, 0.6f));
+        return material;
+    }
 }

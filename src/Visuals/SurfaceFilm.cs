@@ -33,6 +33,8 @@ internal sealed class SurfaceFilm {
     private const float Overhang = -0.2f;
     /// <summary>Liquid depth (m) that hides about two thirds of the surface, as on the site's skin.</summary>
     private const float CoverDepth = SurfaceBlood.CoverDepth;
+    /// <summary>How far (m) the drawn film rises with its depth at most.</summary>
+    private const float MaxRise = 0.001f;
     /// <summary>Drawn coverage below which a triangle's corner shows nothing.</summary>
     private const float Visible = 0.01f;
     /// <summary>How many spacings the drawn film fades over toward an open edge it fades at.</summary>
@@ -52,6 +54,8 @@ internal sealed class SurfaceFilm {
     private readonly int[] _pointTriangles;
     private readonly int[] _drawnStamp;
     private readonly List<int> _drawn = [];
+    private readonly List<int> _reached = [];
+    private readonly int[] _reachedStamp;
     private int _stamp;
     private readonly BodyLiquidSurface.SkinWeights[]? _skin;
     private readonly Dictionary<Vector3I, List<int>> _cells = [];
@@ -91,6 +95,9 @@ internal sealed class SurfaceFilm {
     private readonly int[] _drainAsked;
     private readonly bool[] _drainsHere;
     private float _clock;
+    // Whether liquid was added or moved since the film was last drawn, and whether the last step drew it anew.
+    private bool _moved;
+    private bool _rebuilt;
 
     internal int Count => _at.Length;
     internal Vector3 At(int node) => _at[node];
@@ -155,6 +162,8 @@ internal sealed class SurfaceFilm {
             return points.Count - 1;
         }
 
+        // Built on a worker beside the game: reused buffers keep it from piling up garbage the game would pause for.
+        var grid = Array.Empty<int>();
         for (var t = 0; t + 2 < triangles.Count; t += 3) {
             var (a, b, c) = (triangles[t], triangles[t + 1], triangles[t + 2]);
             var face = (c - a).Cross(b - a);
@@ -170,15 +179,17 @@ internal sealed class SurfaceFilm {
             bool? whole = null;
             if (keep is not null) {
                 var middle = (a + b + c) / 3f;
-                var votes = new[] { middle, middle.Lerp(a, 0.9f), middle.Lerp(b, 0.9f), middle.Lerp(c, 0.9f) }.Select(at => keep(at, side)).ToArray();
-                if (votes.All(v => v == votes[0])) { whole = votes[0]; }
+                var inside = keep(middle, side);
+                if (keep(middle.Lerp(a, 0.9f), side) == inside && keep(middle.Lerp(b, 0.9f), side) == inside
+                    && keep(middle.Lerp(c, 0.9f), side) == inside) { whole = inside; }
             }
             if (whole == false) { continue; }
             var kab = EdgeSteps(a, b);
             var kbc = EdgeSteps(b, c);
             var kca = EdgeSteps(c, a);
             var n = Math.Max(kab, Math.Max(kbc, kca));
-            var grid = new int[(n + 1) * (n + 2) / 2];
+            var size = (n + 1) * (n + 2) / 2;
+            if (grid.Length < size) { grid = new int[size]; }
             var row = 0;
             // u weighs b, v weighs c. Points on an edge snap to that edge's own steps, so the triangle beside it,
             // stepped differently, shares them and the surface stays one piece.
@@ -208,10 +219,8 @@ internal sealed class SurfaceFilm {
                 var centroid = (points[p] + points[q] + points[r]) / 3f;
                 if (whole is null && keep is not null && !keep(centroid, normal.Normalized())) { return; }
                 var third = normal.Length() / 6f;
-                foreach (var k in new[] { p, q, r }) {
-                    normals[k] += normal;
-                    areas[k] += third;
-                }
+                normals[p] += normal; normals[q] += normal; normals[r] += normal;
+                areas[p] += third; areas[q] += third; areas[r] += third;
                 faces.Add(p); faces.Add(q); faces.Add(r);
             }
             for (var i = 0; i < n; i++) {
@@ -268,7 +277,8 @@ internal sealed class SurfaceFilm {
                     }
                 }
             }
-            flat.AddRange(around.OrderBy(n => n.Distance).Take(_weights.Length).Select(n => n.Node));
+            around.Sort(static (x, y) => x.Distance.CompareTo(y.Distance));
+            for (var i = 0; i < Math.Min(around.Count, _weights.Length); i++) { flat.Add(around[i].Node); }
         }
         _neighborStart[count] = flat.Count;
         _neighbors = [.. flat];
@@ -292,6 +302,7 @@ internal sealed class SurfaceFilm {
         _isWet = new bool[count];
         _drainAsked = new int[count];
         _drainsHere = new bool[count];
+        _reachedStamp = new int[count];
         _blurredOnce = new float[count];
         _blurredTwice = new float[count];
         _onceAsked = new int[count];
@@ -431,6 +442,7 @@ internal sealed class SurfaceFilm {
             if (!_isWet[node]) { _isWet[node] = true; _wet.Add(node); }
         }
         _committed += _pendingMl;
+        _moved |= _pending.Count > 0;
         _pending.Clear();
         _pendingMl = 0f;
         _drips.Clear();
@@ -442,7 +454,8 @@ internal sealed class SurfaceFilm {
             _committed -= drip.Ml;
         }
         _drips.Clear();
-        Upload();
+        if (_rebuilt) { Upload(); }
+        _rebuilt = false;
     }
 
     /// <summary>Whether point k passes its liquid on, asked once a step.</summary>
@@ -476,6 +489,7 @@ internal sealed class SurfaceFilm {
                 if (-_normal[k].Dot(down) < Overhang || Drains(k)) {
                     // Facing the floor nothing holds it up; where it meets another surface it passes onto that.
                     _change[k] -= movable;
+                    _moved = true;
                     _shed[k] += movable;
                     continue;
                 }
@@ -496,6 +510,7 @@ internal sealed class SurfaceFilm {
                 var mobility = Mathf.Min(1f, depth * depth / (MobilityDepth * MobilityDepth));
                 var outflow = movable * Mathf.Min(0.24f, total * dt * FlowRate * mobility);
                 _change[k] -= outflow;
+                _moved |= outflow > 0f;
                 for (var e = first; e < last; e++) {
                     var share = outflow * _weights[e - first] / total;
                     if (share <= 0f) { continue; }
@@ -519,18 +534,37 @@ internal sealed class SurfaceFilm {
                 _wet.RemoveAt(_wet.Count - 1);
             }
         }
-        BuildMesh();
+        // A settled film looks the same: drawing it again would only cost the main thread an upload.
+        if (_moved) { BuildMesh(); }
+        _rebuilt = _moved;
+        _moved = false;
     }
 
     /// <summary>How much of the surface at point k the liquid hides, 0..1.</summary>
     private float Coverage(int k) => 1f - Mathf.Exp(-_ml[k] * 0.000001f / _area[k] / CoverDepth);
 
+    private void Reach(int k) {
+        if (_reachedStamp[k] == _stamp) { return; }
+        _reachedStamp[k] = _stamp;
+        _reached.Add(k);
+    }
+
     private void BuildMesh() {
         // Each point is drawn with its liquid blended with its neighbours', as the site's film is painted: a pool's
-        // edge then rounds off between the points instead of following them.
+        // edge then rounds off between the points instead of following them. The blur reaches two rings of
+        // neighbours past the wet points, so their triangles are drawn too, or the fade would stop at a triangle's edge.
         _stamp++;
         _drawn.Clear();
-        foreach (var k in _wet) {
+        _reached.Clear();
+        foreach (var k in _wet) { Reach(k); }
+        for (var ring = 0; ring < 2; ring++) {
+            var count = _reached.Count;
+            for (var r = 0; r < count; r++) {
+                var k = _reached[r];
+                for (var e = _neighborStart[k]; e < _neighborStart[k + 1]; e++) { Reach(_neighbors[e]); }
+            }
+        }
+        foreach (var k in _reached) {
             for (var i = _pointTriangleStart[k]; i < _pointTriangleStart[k + 1]; i++) {
                 var t = _pointTriangles[i];
                 if (_drawnStamp[t] == _stamp) { continue; }
@@ -554,7 +588,9 @@ internal sealed class SurfaceFilm {
         foreach (var t in _drawn) {
             for (var corner = 0; corner < 3; corner++) {
                 var k = _triangles[t + corner];
-                var depth = Mathf.Min(_ml[k] * 0.000001f / _area[k], 0.003f);
+                // Raised by its depth, tapering with the drawn coverage: a deep point beside a dry one would stand out
+                // of curved skin as a flap.
+                var depth = Mathf.Min(_ml[k] * 0.000001f / _area[k], MaxRise) * _blurredTwice[k];
                 _vertices[v] = _at[k] + _normal[k] * (_settings.Lift + depth);
                 _normals[v] = _normal[k];
                 _uvs[v] = new Vector2(_blurredTwice[k], OpticalDepth(k) * _shown[k]);

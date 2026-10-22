@@ -865,7 +865,8 @@ public partial class BloodFlow : Node3D {
         _skinMesh.GetParent().AddChild(new MeshInstance3D {
             Name = "BodyFilm",
             Mesh = bodyMesh,
-            MaterialOverride = Materials.BloodFilm(),
+            // The skin is drawn smoothed and posed by the GPU; its film follows it to within a couple of millimeters.
+            MaterialOverride = Materials.BloodFilm(0.002f, new Vector2(0f, 0.8f)),
             Skin = _skinMesh.Skin,
             Skeleton = _skinMesh.Skeleton,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
@@ -881,11 +882,12 @@ public partial class BloodFlow : Node3D {
         var floorMesh = new ArrayMesh();
         _floorFilmBuild = Task.Run(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(),
             mesh: floorMesh, fadesAt: _ => true));
-        foreach (var (name, mesh) in new[] { ("BedFilm", bedMesh), ("FloorFilm", floorMesh) }) {
+        // The frame's long thin triangles would turn a crisp edge into teeth; the floor's even grid keeps one.
+        foreach (var (name, mesh, edge) in new[] { ("BedFilm", bedMesh, new Vector2(0.05f, 0.7f)), ("FloorFilm", floorMesh, new Vector2(0.15f, 0.6f)) }) {
             AddChild(new MeshInstance3D {
                 Name = name,
                 Mesh = mesh,
-                MaterialOverride = Materials.BloodFilm(),
+                MaterialOverride = Materials.BloodFilm(edge: edge),
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 TopLevel = true,
             });
