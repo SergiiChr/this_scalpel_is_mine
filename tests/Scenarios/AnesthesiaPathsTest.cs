@@ -42,11 +42,12 @@ public class AnesthesiaPathsTest {
             shots.Begin(driver.Surgery, $"preop_anesthesia/{Seed}");
             await shots.CaptureAt("installed_iv", "the preinstalled IV in the arm under its dressing, the line attached", dressing.GlobalPosition, 0.24f);
             await shots.CaptureView("awake", "the patient awake, eyes open, \"Put the patient under general anesthesia\" not checked off, its subtasks below it");
-            var label = Db.Tool("vial_propofol")!.Name;
+            var label = Db.Tool("vial_ketamine")!.Name;
             driver.OnNeedleInVial = () => shots.CaptureView("needle_in_vial",
-                $"the syringe's needle in the propofol vial's cap, its label \"{label}\" beside the aim");
+                $"the syringe's needle in the ketamine vial's cap, its label \"{label}\" beside the aim");
         }
-        await driver.PlayerGivesDrug("vial_propofol", driver.DoseMl("vial_propofol"), SurgeryDriver.Route.Drip);
+        // Ketamine, as the subtasks say for a gunshot wound.
+        await driver.PlayerGivesDrug("vial_ketamine", driver.DoseMl("vial_ketamine"), SurgeryDriver.Route.Drip);
         await Frames.Until(() => patient.Vitals.IsUnder && patient.AnestheticWorks, 30f);
         await Frames.Seconds(Surgery.StatusInterval + 0.1f);
         AssertBool(patient.Vitals.IsUnder)

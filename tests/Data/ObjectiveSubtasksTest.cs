@@ -90,7 +90,7 @@ public class ObjectiveSubtasksTest {
         var glass = Db.Scenario("glass_shards")!;
         AssertString(Subtasks.Discharge(glass, Facts(glass))[0])
             .OverrideFailureMessage("a patient never put under starts at the checks")
-            .IsEqual("Finish first: the closure holds, nothing bleeds and the patient is stable");
+            .IsEqual("Finish the required tasks above first");
     }
 
     private static (ScenarioDef Scenario, ObjectiveStep Step) Step(string scenarioId, string type) {

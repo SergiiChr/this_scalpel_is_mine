@@ -87,7 +87,7 @@ public partial class NetPinchDriver : NetSession {
         await Wait(0.5);
         GD.Print(forceps.Hold is TargetHold && bullet.GrippedBy == forceps.Uid
             ? "[host] the client's forceps take the bullet"
-            : $"FAIL: [host] the client's forceps, pressed while lifted, don't take the bullet: {forceps.Hold?.ToString() ?? "nothing"}");
+            : $"FAIL: [host] the client's forceps, pressed over the bullet, don't take it: {forceps.Hold?.ToString() ?? "nothing"}");
         // Let the client finish before the host goes away.
         await Wait(4.0);
     }

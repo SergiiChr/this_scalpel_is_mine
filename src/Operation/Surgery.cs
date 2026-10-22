@@ -146,10 +146,8 @@ public partial class Surgery : Node3D {
             personal[peers[i]] = surgeon.Mods.List("items");
         }
         Tools.SpawnInitial(Scenario.RollTools(Rng, RunMods.Num("missing_tool_chance")), Room.TraySpots(), personal, Room.StationTools());
-        // An allergy the chart doesn't name stays unknown until the lab screen, in the subtasks too.
-        var allergyUnknown = Patient.Rolls.Any(roll => roll.Id == "allergy" && roll.Variant.StartsWith("unknown_", StringComparison.Ordinal));
-        Objectives.Setup(Scenario, new SubtaskFacts(Patient.WeightKg, allergyUnknown ? [] : Patient.Mods.List("allergen"),
-            Patient.BloodType, [.. Tools.Tools.Values.Select(tool => tool.Def.Id)], Scenario.Nurse, allergyUnknown));
+        Objectives.Setup(Scenario, WrittenFor(Patient.Rolls.Any(roll => roll.Id == "allergy"
+            && roll.Variant.StartsWith("unknown_", StringComparison.Ordinal))));
         Director.Setup(Scenario, net.SessionSeed);
         // The HUD builds its objective rows during setup, rather than on the first status tick during play.
         Status = CaptureStatus();
@@ -408,6 +406,16 @@ public partial class Surgery : Node3D {
     public void CorrectChart() => Rpc(MethodName.ChartCorrection);
 
     public void PublishLab(string text) => Rpc(MethodName.LabResult, text);
+
+    /// <summary>Host: the patient's allergies are known now (an allergy screen, or a reaction): the subtasks name them.
+    /// </summary>
+    internal void AllergiesKnown() => Objectives.WorkOutSubtasks(Scenario, WrittenFor(false));
+
+    /// <summary>What the subtasks are written for. An allergy the chart doesn't name stays
+    /// <paramref name="allergyUnknown"/> until a screen or a reaction shows it.</summary>
+    private SubtaskFacts WrittenFor(bool allergyUnknown) =>
+        new(Patient.WeightKg, allergyUnknown ? [] : Patient.Mods.List("allergen"), Patient.BloodType,
+            [.. Tools.Tools.Values.Select(tool => tool.Def.Id)], Scenario.Nurse, allergyUnknown);
 
     /// <summary>Defibrillator discharge: anyone else touching the patient gets zapped.</summary>
     public void ShockBystanders(int sourcePeer) {

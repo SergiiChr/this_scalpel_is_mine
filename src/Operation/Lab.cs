@@ -40,6 +40,9 @@ public partial class Lab : Node {
             if (order.Eta <= 0f) {
                 _pending.Remove(order);
                 surgery.PublishLab(Result(order.Kind, surgery.Patient));
+                if (order.Kind is "allergy" or "full") {
+                    surgery.AllergiesKnown();
+                }
             }
         }
     }

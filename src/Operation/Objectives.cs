@@ -45,6 +45,7 @@ public partial class Objectives : Node {
     public List<StepState> States { get; } = [];
     /// <summary>Each step's subtasks, worked out for this patient (<see cref="Operation.Subtasks"/>).</summary>
     private readonly List<string[]> _subtasks = [];
+    internal IReadOnlyList<string[]> StepSubtasks => _subtasks;
     private string[] _discharge = [];
 
     /// <summary>The last task the HUD lists after the steps: the discharge ends the surgery, so it's never shown done.
@@ -55,8 +56,14 @@ public partial class Objectives : Node {
         foreach (var step in scenario.Steps) {
             Steps.Add(step);
             States.Add(new StepState());
-            _subtasks.Add([.. Subtasks.For(step, scenario, facts)]);
         }
+        WorkOutSubtasks(scenario, facts);
+    }
+
+    /// <summary>Every step's subtasks for <paramref name="facts"/>, again when they change.</summary>
+    internal void WorkOutSubtasks(ScenarioDef scenario, SubtaskFacts facts) {
+        _subtasks.Clear();
+        _subtasks.AddRange(Steps.Select(step => (string[])[.. Subtasks.For(step, scenario, facts)]));
         _discharge = [.. Subtasks.Discharge(scenario, facts)];
     }
 

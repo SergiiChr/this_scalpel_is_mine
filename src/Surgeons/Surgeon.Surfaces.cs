@@ -411,7 +411,7 @@ public partial class Surgeon {
             var across = new Vector2(tip.X - cap.X, tip.Z - cap.Z).Length();
             var toward = new Vector2(GlobalPosition.X - cap.X, GlobalPosition.Z - cap.Z).Normalized();
             var facing = -into.Y > VialUpright || new Vector2(-into.X, -into.Z).Normalized().Dot(toward) > VialFacing;
-            // Carried over it higher up (lifted, or at chest height), it isn't pulled down onto it.
+            // Carried over it higher up (at chest height), it isn't pulled down onto it.
             if (across >= nearest || !facing || Mathf.Abs(tip.Y - cap.Y) > VialAbove) {
                 continue;
             }

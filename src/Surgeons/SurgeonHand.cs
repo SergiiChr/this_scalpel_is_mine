@@ -27,7 +27,7 @@ public partial class SurgeonHand : Node3D {
     /// onto.</summary>
     public const float BounceHeight = 0.02f;
     private const float BounceTime = 0.35f;
-    /// <summary>How fast (m/s) a lifted or raised hand comes back down.</summary>
+    /// <summary>How fast (m/s) a raised hand comes back down.</summary>
     public const float SettleSpeed = 0.8f;
     /// <summary>Seconds of game time the hand's speed is measured over.</summary>
     private const float SpeedWindow = 0.25f;

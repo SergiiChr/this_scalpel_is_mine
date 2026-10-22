@@ -297,7 +297,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 - Two-hand control, one active at a time, idle hand frozen mid-action (controls: see Controls rework).
 - Holding tissue anchors the hand; walking away tears it.
-- Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
+- Hand bumps between surgeons. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
 - A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
   past the end of an opening it's already in; inside the opening there's no wall left to cut. Drawn along a cut already
@@ -340,9 +340,10 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 ### First feedback round
 
-- **Figure it out**: no objectives, score or "done" toasts on screen, and the chart shows only the complaint (symptoms
-  and history), never a plan. The manual is the one reference. Everything is still tracked internally; the debug
-  setting shows the objectives, score and every scored action. Easy scenarios (1-2 stars) have no time limit.
+- **Figure it out**: at the MD difficulty, no objectives, score or "done" toasts on screen, and the chart shows only the
+  complaint (symptoms and history), never a plan. The manual is the one reference. Everything is still tracked
+  internally; the easier difficulties show the objectives (see Scenarios), and the debug setting the score and every
+  scored action. Easy scenarios (1-2 stars) have no time limit.
 - **Hands**: no height control. A hand rests the tool tip just above whatever is under it (skin, tray, organs or a
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
   end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Hands of two surgeons in the same space collide. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
@@ -425,7 +426,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. A clamp's jaws
   close once its tip has come to rest on what's under it (`ClampAction.RestTime`), so one pressed while still coming
-  down (out of an aim or a lift, or a remote player's late moves) takes what it lands on. Forceps holding
+  down (out of an aim, or a remote player's late moves) takes what it lands on. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.

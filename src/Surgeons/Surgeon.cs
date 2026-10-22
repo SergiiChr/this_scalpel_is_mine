@@ -21,7 +21,7 @@ public sealed record NeedleHit(string Part, Vector3 At, int Hand = -1);
 /// <para>
 /// Hands turn and walk with the body, unless they hold onto something (attached): then they stay put. The inactive
 /// hand stays exactly where it was, still doing what it was doing. Hands have no height control: the tool tip rests
-/// just above whatever is under it (skin, tray, organs, a target in an open cavity), or higher while lifted. Crouching
+/// just above whatever is under it (skin, tray, organs, a target in an open cavity). Crouching
 /// brings everything down within reach of the floor.
 /// Forceps and hemostats are the exception: over an opening the wheel raises and lowers the tip in it (see
 /// <see cref="HoldsDepth"/>).
