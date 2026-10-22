@@ -436,6 +436,7 @@ public partial class PatientBody {
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
             }
         }
+        RememberDrawnTissue(built);
         if (_regionDirty) {
             // Carve the body only when the replacement meshes are ready, so the planning frame leaves no holes.
             _regionImage.SetData(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8,
