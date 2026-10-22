@@ -36,6 +36,14 @@ internal sealed class SurfaceBlood {
     private readonly Vector3[] _skin = new Vector3[Size * Size];
     private readonly Vector3[] _normal = new Vector3[Size * Size];
     private readonly bool[] _holds = new bool[Size * Size];
+    /// <summary>Skin turned further from the site's up than this (the up component of its normal) is the body's film's
+    /// (SurfaceFilm): projected onto the site's grid, a steep flank stretches each cell into a sliver, and a film's
+    /// edge drawn over slivers comes out as teeth.</summary>
+    internal const float SteepNormal = 0.45f;
+    private readonly bool[] _steep = new bool[Size * Size];
+    /// <summary>Blood that reached steep skin, per cell, on its way to the body's film there.</summary>
+    private readonly float[] _steepRunoff = new float[Size * Size];
+    private readonly List<int> _steepPending = [];
     private readonly bool[] _refitMarked = new bool[Size * Size];
     private readonly float[] _refitHeights = new float[Size * Size];
     private readonly List<int> _refitQueue = new(Size * Size);
@@ -94,7 +102,7 @@ internal sealed class SurfaceBlood {
 
     internal float RunoffMl { get; private set; }
     internal float RemovedMl { get; private set; }
-    internal float QueuedRunoffMl => _runoff.Sum();
+    internal float QueuedRunoffMl => _runoff.Sum() + _steepRunoff.Sum();
     internal float HeldMl => _ml.Sum();
     internal float At(int x, int y) => _ml[y * Size + x];
     private static Vector2 Uv(int x, int y) => new Vector2(x + 0.5f, y + 0.5f) / Size;
@@ -246,6 +254,7 @@ internal sealed class SurfaceBlood {
                 var sx = Slope(1, 0, _cell.X); var sy = Slope(0, 1, _cell.Y);
                 _normalDepthPerMl[i] = _projectedDepthPerMl / Mathf.Sqrt(1f + sx * sx + sy * sy);
                 _normal[i] = new Vector3(-sx, 1f, -sy).Normalized();
+                _steep[i] = _normal[i].Y < SteepNormal;
             }
         }
         // Gathering belongs on a convex flank, where the film wraps around the model. A broad surface
@@ -373,6 +382,12 @@ internal sealed class SurfaceBlood {
         for (var i = 0; i < _ml.Length; i++) {
             var before = _ml[i];
             _ml[i] = Mathf.Max(before + _change[i], 0f);
+            if (_steep[i] && _ml[i] > 0f) {
+                if (_steepRunoff[i] <= 0f) { _steepPending.Add(i); }
+                _steepRunoff[i] += _ml[i];
+                RunoffMl += _ml[i];
+                _ml[i] = 0f;
+            }
             HasFilm |= _ml[i] > 0f;
             _canFlow |= _ml[i] != before;
         }
@@ -403,6 +418,14 @@ internal sealed class SurfaceBlood {
             uv = _runoffUv[bucket] / ml;
             _runoff[bucket] = 0f;
             _runoffUv[bucket] = Vector2.Zero;
+            return true;
+        }
+        if (_steepPending.Count > 0) {
+            var i = _steepPending[^1];
+            _steepPending.RemoveAt(_steepPending.Count - 1);
+            ml = _steepRunoff[i];
+            uv = Uv(i % Size, i / Size);
+            _steepRunoff[i] = 0f;
             return true;
         }
         uv = Vector2.Zero; ml = 0f; return false;

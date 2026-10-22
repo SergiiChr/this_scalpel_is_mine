@@ -852,10 +852,10 @@ public partial class BloodFlow : Node3D {
         var skin = body.LiquidContact;
         var siteToMesh = skin.SiteToMesh;
         var half = body.SiteSize * 0.5f;
-        // The site's own skin carries its film (SurfaceBlood); the body's film takes over at its edges, and covers
-        // the far side under it, which the site's film doesn't reach.
+        // The site's own skin carries its film (SurfaceBlood); the body's film takes over at its edges and on its steep
+        // flanks, and covers the far side under it, which the site's film doesn't reach.
         bool OffSite(Vector3 sitePoint, Vector3 siteNormal) => sitePoint.Length() < BodyFilmReach
-            && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > 0.2f);
+            && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > SurfaceBlood.SteepNormal);
         var meshToSite = siteToMesh.AffineInverse();
         var bodyMesh = new ArrayMesh();
         _bodyFilmBuild = Task.Run(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,

@@ -112,9 +112,14 @@ public class BloodFlowTest {
             var coat = scenario == "knife_back" ? 0.15f : 0.5f;
             var wet = Enumerable.Range(0, film.Count).Where(k => film.CoverageAt(k) > coat).ToArray();
             AssertInt(wet.Length).OverrideFailureMessage($"blood runs on past the site's edge onto the body's own skin ({wet.Length} points wet, {film.HeldMl:0.00} ml on the body, {blood.GroundMl:0.00} ml off it)").IsGreater(10);
-            var lowest = wet.MinBy(k => (skin.GlobalTransform * film.At(k)).Y);
-            var at = skin.GlobalTransform * film.At(lowest);
-            var side = (skin.GlobalBasis * film.NormalAt(lowest)).Slide(Vector3.Up).Normalized();
+            // Look at the flank where the site's film hands over, from beside it: further down, under a limb, the
+            // drape hides it.
+            Vector3 Normal(int k) => (skin.GlobalBasis * film.NormalAt(k)).Normalized();
+            var site = driver.Body.Site.GlobalPosition;
+            var flank = wet.Where(k => Mathf.Abs(Normal(k).Y) < 0.4f).DefaultIfEmpty(wet[0])
+                .MinBy(k => (skin.GlobalTransform * film.At(k)).DistanceTo(site));
+            var at = skin.GlobalTransform * film.At(flank);
+            var side = Normal(flank).Slide(Vector3.Up).Normalized();
             await session.CaptureOblique("attached_runoff", "blood runs on from the site's edge down the body's side as one film, its edge fading, no separate streaks or stubs",
                 at, side.IsZeroApprox() ? Vector3.Forward : side, 0.3f);
         }
