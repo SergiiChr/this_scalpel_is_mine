@@ -25,6 +25,9 @@ public class HandHoldTest {
     /// the knuckles, so on a limb about as wide as it is long it lies across the round like a chord, its heel and
     /// knuckle end lifting.</summary>
     private const float PalmLift = 0.03f;
+    /// <summary>Most (meters) a grasping finger's first bone ends off the skin: it wraps the limb from the knuckle.
+    /// </summary>
+    private const float FingerTouch = 0.003f;
     // Temporary local budget override: recorded CPU overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget about a second into "
         + "the surgery, before the hand holds the patient; not profiled yet", 6f);
@@ -117,16 +120,24 @@ public class HandHoldTest {
         AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
         var ring = body.LimbRingAt(on)!.Value;
         var gaps = PalmGaps(hand, ring);
-        AssertFloat(gaps.Min()).OverrideFailureMessage($"its palm presses on the arm, no further in than a flat hold: {gaps.Min():0.000} m off")
+        AssertFloat(gaps.Min())
+            .OverrideFailureMessage($"its palm presses on the arm, no further in than a flat hold: {gaps.Min():0.000} m off")
             .IsBetween(-Surgeon.PressSink - PalmGapSlack, PalmTouch);
         AssertFloat(gaps.Max()).OverrideFailureMessage($"its stiff palm lies across the arm's round: {gaps.Max():0.000} m "
             + "off at its ends").IsLess(PalmLift);
+        foreach (var finger in (string[])["Index", "Middle", "Ring", "Pinky"]) {
+            var knuckleEnd = hand.BonePoints(finger + "1")[^1];
+            var off = SkinGap(hand, knuckleEnd.Position, ring) - knuckleEnd.Radius;
+            AssertFloat(off).OverrideFailureMessage($"the {finger.ToLowerInvariant()} finger wraps the arm from the knuckle: "
+                + $"its first bone ends {off:0.000} m off the skin").IsLess(FingerTouch);
+        }
         AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, nothing of it in it")
             .IsEqual(0);
         // Along the arm, low, where the palm's curve on the arm's round shows.
         await session.CaptureOblique("on_forearm", "the glove grasping the forearm seen along it: the palm flat across the "
             + "arm's top, pressed a little into it at its middle, the heel and knuckles a little off the round, the "
-            + "fingers bent at their joints down the far side over the cut, nothing else of it in the skin", on, ring.Axis,
+            + "fingers wrapped from the knuckles down the far side over the cut, each bone resting on the skin, nothing "
+            + "else of it in the skin", on, ring.Axis,
             CloseUp, 12f, true);
 
         await driver.PlayerLetsGoOfPatient();
@@ -170,15 +181,17 @@ public class HandHoldTest {
     /// <summary>How far (meters) each spot of the hand's palm underside is off the skin of the limb round
     /// <paramref name="ring"/>, straight out from its middle line (negative: in it).</summary>
     private static float[] PalmGaps(SurgeonHand hand, LimbRing ring) =>
-    [
-        .. hand.PalmUndersidePosed().Select(spot => {
-            var middle = ring.Center + (ring.Axis * ring.Axis.Dot(spot - ring.Center));
-            var outward = (spot - middle).Normalized();
-            return Rays.Cast(hand, spot + (outward * 0.03f), middle, PatientBody.SurfaceLayer) is { } hit
-                ? (spot - hit.Position).Dot(outward)
-                : float.NegativeInfinity;
-        }),
-    ];
+        [.. hand.PalmUndersidePosed().Select(spot => SkinGap(hand, spot, ring))];
+
+    /// <summary>How far (meters) <paramref name="spot"/> (in <paramref name="world"/>) is off the skin of the limb round <paramref name="ring"/>,
+    /// straight out from its middle line (negative: in it).</summary>
+    private static float SkinGap(Node3D world, Vector3 spot, LimbRing ring) {
+        var middle = ring.Center + (ring.Axis * ring.Axis.Dot(spot - ring.Center));
+        var outward = (spot - middle).Normalized();
+        return Rays.Cast(world, spot + (outward * 0.05f), middle, PatientBody.SurfaceLayer) is { } hit
+            ? (spot - hit.Position).Dot(outward)
+            : float.NegativeInfinity;
+    }
 
     /// <summary>How far (meters) <paramref name="where"/> strays from where it starts over a second.</summary>
     private static async Task<float> Wander(Func<Vector3> where) {

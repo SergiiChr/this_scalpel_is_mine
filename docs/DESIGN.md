@@ -692,8 +692,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   palm is long it lies across the round like a chord, heel and knuckles lifting off. Held firmly, it presses down
   and toward the near side until the palm gives as much as a flat hold's (`Surgeon.PressSink`), the fingers closer round
   the far side. The fit reads the palm's underside
-  off the glove model. The fingers across the limb bend at their joints round its far side (over a cut there) until
-  they meet the skin. Over an opening on the trunk
+  off the glove model. The fingers across the limb wrap its far side (over a cut there) from the knuckle out: each
+  joint bends until its bone rests on the skin. Over an opening on the trunk
   it rests on the lip without pressing in, its fingers straight across it, so none dips in. Use tool again or Grab lets go; so does walking out of reach.
 - It stays on the spot it holds as that part moves (anchored to the rig bone under it), and keeps that part still: an
   arm, a leg or the head stops flailing (`PatientAnimator`). The trunk still breathes.
