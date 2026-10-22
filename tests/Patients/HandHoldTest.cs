@@ -117,16 +117,17 @@ public class HandHoldTest {
         AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
         var ring = body.LimbRingAt(on)!.Value;
         var gaps = PalmGaps(hand, ring);
-        AssertFloat(gaps.Min()).OverrideFailureMessage($"its palm lies on the arm, not in it: {gaps.Min():0.000} m off")
-            .IsBetween(-PalmGapSlack, PalmTouch);
+        AssertFloat(gaps.Min()).OverrideFailureMessage($"its palm presses on the arm, no further in than a flat hold: {gaps.Min():0.000} m off")
+            .IsBetween(-Surgeon.PressSink - PalmGapSlack, PalmTouch);
         AssertFloat(gaps.Max()).OverrideFailureMessage($"its stiff palm lies across the arm's round: {gaps.Max():0.000} m "
             + "off at its ends").IsLess(PalmLift);
         AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, nothing of it in it")
             .IsEqual(0);
         // Along the arm, low, where the palm's curve on the arm's round shows.
         await session.CaptureOblique("on_forearm", "the glove grasping the forearm seen along it: the palm flat across the "
-            + "arm's top, touching it at its middle, the heel and knuckles a little off the round, the fingers bent at "
-            + "their joints down the far side over the cut, nothing of it in the skin", on, ring.Axis, CloseUp, 12f, true);
+            + "arm's top, pressed a little into it at its middle, the heel and knuckles a little off the round, the "
+            + "fingers bent at their joints down the far side over the cut, nothing else of it in the skin", on, ring.Axis,
+            CloseUp, 12f, true);
 
         await driver.PlayerLetsGoOfPatient();
         SurgeryState.PatientPanics(patient);

@@ -968,8 +968,8 @@ public partial class SurgeonHand : Node3D {
     /// near side over the top) and how the palm gives. A palm bends only at the wrist and the knuckles: it is turned
     /// round the limb, touches it at the spot along its length, leans along it and gives as little as it takes to lay
     /// its underside closest to the skin all over, with no part of it in it. On a limb about as wide as the palm is long
-    /// it lies across the round like a chord, its ends lifting. The fingers close round the rest from the knuckles
-    /// (<see cref="GraspWith"/>).
+    /// it lies across the round like a chord, its ends lifting. Held firmly, it then presses down and toward the near
+    /// side as far as the palm gives. The fingers close round the rest from the knuckles (<see cref="GraspWith"/>).
     /// </summary>
     internal (Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) GraspFit(LimbRing ring, Vector3 at, Vector3 from) {
         var axis = ring.Axis;
@@ -1072,7 +1072,24 @@ public partial class SurgeonHand : Node3D {
                 }
             }
         }
-        return (best.At, best.Normal, best.Fingers, best.Cup);
+        // Held firmly, the hand presses down onto the limb and toward the near side, round under the knuckles: the palm
+        // gives as much as a hand pressed flat on the skin (Surgeon.PressSink).
+        var pressFrame = PressBasis(best.Normal, best.Fingers);
+        Vector3[] pressed = [.. underside.Select(spot => pressFrame * (Cupped(spot, best.Cup) - LowerPalm))];
+        Vector3[] thumbPressed = [.. thumbRestPoints.Select(point => pressFrame * (point - LowerPalm))];
+        var press = ((toNear * side) + Vector3.Down).Normalized();
+        var (shallow, deep) = (0f, GraspClear);
+        for (var i = 0; i < 10; i++) {
+            var mid = (shallow + deep) * 0.5f;
+            var place = best.At + (press * mid);
+            if (pressed.Any(spot => Gap(place + spot) < -Surgeon.PressSink)
+                || thumbPressed.Any(point => Gap(place + point) < FingerRadius - Surgeon.PressSink)) {
+                deep = mid;
+            } else {
+                shallow = mid;
+            }
+        }
+        return (best.At + (press * shallow), best.Normal, best.Fingers, best.Cup);
     }
 
     /// <summary>How the palm's knuckle half (and the fingers on it) is moved cupped by <paramref name="cup"/>, glove
