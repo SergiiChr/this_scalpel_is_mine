@@ -21,7 +21,7 @@ The patient record does not specify the technique. Select it from the indication
 Verify blood group and allergies against the chart. Look up every recorded condition under Chronic conditions (17) before the first incision. Where a records discrepancy has been reported, treat both as unknown until the corrected chart arrives from the nurse.
 
 ## 1.4 The conscious patient
-Agitated patients move unpredictably, and panic raises blood pressure. Reassure them verbally from the head of the table, or sedate with diazepam. A right dose of diazepam calms without putting the patient under: they stay awake and can still cooperate.
+Agitated patients move unpredictably, the operative limb included: hold it still with a free hand ([b]Use tool[/b] with an empty hand). Panic raises blood pressure. Reassure them verbally from the head of the table, or sedate with diazepam. A right dose of diazepam calms without putting the patient under: they stay awake and can still cooperate.
 
 ## 1.5 Skin preparation
 1. Pour povidone-iodine from the bottle into the iodine dish (hold [b]Use tool[/b] over the dish). Any dish will do.

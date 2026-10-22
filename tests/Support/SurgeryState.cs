@@ -45,6 +45,9 @@ public static class SurgeryState {
         surgeon.Status.Sweat = 0.8f;
     }
 
+    /// <summary>An awake patient in full panic, flailing; it calms down by itself over the next minute.</summary>
+    public static void PatientPanics(Patient patient) => patient.Vitals.Panic = 1f;
+
     /// <summary>As if a right dose of propofol had gone in: asleep within seconds, for the rest of the surgery.
     /// </summary>
     public static void PatientIsAsleep(Patient patient) =>

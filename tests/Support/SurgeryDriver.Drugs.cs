@@ -217,6 +217,7 @@ public partial class SurgeryDriver {
         }
         Note($"drew {syringe.Ml:0.0} ml and {syringe.Air:0.0} ml of air (needle in {into})");
         await NeedleOut();
+        var holds = route is Route.Vein or Route.Arm && await PlayerHoldsThrashingForearm();
         var target = route switch {
             Route.Drip => Surgery.Tools.DripBag()!.Middle(),
             Route.Vein => VeinPoint(),
@@ -224,20 +225,100 @@ public partial class SurgeryDriver {
             _ => SitePoint(at ?? new Vector2(0.5f, 0.5f)),
         };
         await NeedleInto(target, route != Route.Drip);
-        if (!await NeedleIsIn(syringe)) {
+        var isIn = await NeedleIsIn(syringe);
+        if (isIn) {
+            into = Syringe.NeedleTarget(syringe, Patient);
+            var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
+            for (var i = 0; i < notches; i++) {
+                await Notch(true);
+            }
+            Note($"pushed into {into}, {syringe.Ml:0.0} ml left");
+        }
+        await NeedleOut();
+        if (holds) {
+            await PlayerLetsGoWithFreeHand();
+        }
+        if (!isIn) {
             Note($"the needle didn't go in ({route})");
             return;
         }
-        into = Syringe.NeedleTarget(syringe, Patient);
-        var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
-        for (var i = 0; i < notches; i++) {
-            await Notch(true);
-        }
-        Note($"pushed into {into}, {syringe.Ml:0.0} ml left");
-        await NeedleOut();
         await Frames.Physics(10);
         await PlayerPutsDown();
     }
+
+    /// <summary>A patient thrashing about (awake, in pain or panicking) has the forearm held still with the free hand,
+    /// by the wrist, so a needle can go in beside its vein. False when the patient lies still or no hand is free.
+    /// </summary>
+    private async Task<bool> PlayerHoldsThrashingForearm() {
+        var other = 1 - Me.Active;
+        if (!Thrashes || Me.HeldTool(other) is not null) {
+            return false;
+        }
+        // Where the arm lies on the table, not where it has jerked to: the hand presses it back down there.
+        var vein = Body.Veins[0];
+        var wrist = WhereItLies(((Forearm)vein.GetParent()).BoneName, vein.ToGlobal(vein.Line[^1]));
+        await SwitchTo(other);
+        await PlayerHoldsPatientAt(wrist);
+        await SwitchTo(1 - other);
+        return true;
+    }
+
+    /// <summary>Where <paramref name="point"/> (world), on the part of the body <paramref name="bone"/> moves, is with
+    /// that part lying at rest, not jerked away.</summary>
+    private Vector3 WhereItLies(string bone, Vector3 point) {
+        var skeleton = Body.Animator.Rig!.Skeleton.GlobalTransform;
+        return skeleton * Body.Animator.Rig.Moved(bone).AffineInverse() * skeleton.AffineInverse() * point;
+    }
+
+    /// <summary>A patient thrashing about (awake, in pain or panicking) has the limb the site is on held still with the
+    /// free hand where it lies, on its top a little way along it from <paramref name="wound"/>, out of the needle's way.
+    /// False when the patient lies still, the site isn't on a limb or no hand is free.</summary>
+    private async Task<bool> PlayerHoldsThrashingSiteLimb(Wound wound) {
+        var other = 1 - Me.Active;
+        if (!Thrashes || Me.HeldTool(other) is not null || Body.SitePart.Length == 0) {
+            return false;
+        }
+        var site = SitePoint(wound.Midpoint);
+        var bone = Body.RigBoneAt(site);
+        var middle = WhereItLies(bone, site);
+        if (Body.LimbRingAt(middle) is not { } ring) {
+            return false;
+        }
+        // Past the wound's end and the palm's half width, either way along the limb, as long as it's still that part.
+        var away = (Body.UvToMeters(wound.LengthUv) * 0.5f) + HoldBesideWound;
+        foreach (var along in (float[])[away, -away]) {
+            var beside = middle + (ring.Axis * along);
+            if (Body.RigBoneAt(beside) != bone
+                || Rays.Cast(Body, beside + (Vector3.Up * 0.2f), beside + (Vector3.Down * 0.2f), PatientBody.SurfaceLayer)
+                    is not { } top) {
+                continue;
+            }
+            await SwitchTo(other);
+            await PlayerHoldsPatientAt(top.Position);
+            await SwitchTo(1 - other);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>How far (meters) past a wound's end a hand holding the limb lies: the palm's half width and a little,
+    /// so the needle's holes beside the wound stay clear of it.</summary>
+    private const float HoldBesideWound = 0.06f;
+
+    /// <summary>The free hand lets go of the patient if it still holds them (walking away lets go on its own).
+    /// </summary>
+    private async Task PlayerLetsGoWithFreeHand() {
+        var other = 1 - Me.Active;
+        if (!Me.HoldsPatient(other)) {
+            return;
+        }
+        await SwitchTo(other);
+        await PlayerLetsGoOfPatient();
+        await SwitchTo(1 - other);
+    }
+
+    /// <summary>An awake patient in pain or panicking jerks their arms.</summary>
+    private bool Thrashes => Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f;
 
     /// <summary>Waits until <paramref name="syringe"/>'s needle is in something: the bag, a vein or tissue.</summary>
     private Task<bool> NeedleIsIn(SurgicalTool syringe) =>
@@ -295,9 +376,8 @@ public partial class SurgeryDriver {
     /// away from the site when the site is a forearm).</summary>
     public async Task PlayerSetsIv() {
         Note("sets an IV line");
-        // An awake patient in pain jerks their arm: settled first, or the catheter misses the vein, and a missed line
-        // can't be put right.
-        if (Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f) {
+        // Settled first, or the jerking arm makes the catheter miss the vein, and a missed line can't be put right.
+        if (Thrashes) {
             await PlayerCalmsPatient();
         }
         if (await PlayerRequestsItem("iv_catheter") is not { } catheter) {
