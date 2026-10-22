@@ -353,7 +353,6 @@ public static class Materials {
 
     public static ShaderMaterial SkinSite(Color tone, Texture2D woundTexture, Texture2D fluidTexture) {
         var material = new ShaderMaterial { Shader = Skin };
-        material.SetShaderParameter("blood_cover_depth", SurfaceBlood.CoverDepth);
         material.SetShaderParameter("skin_color", tone);
         // Lit like the body's skin around it (BodySkin()).
         var family = Families["skin"];
@@ -396,6 +395,16 @@ public static class Materials {
 
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
+        Roughness = 0.28f,
+        MetallicSpecular = 0.1f,
+    };
+
+    /// <summary>Blood spread over a surface (<see cref="Visuals.SurfaceFilm"/>): the pool's color, as see-through as
+    /// each vertex's alpha says, so its edge fades instead of ending at a line.</summary>
+    public static StandardMaterial3D BloodFilm() => new() {
+        AlbedoColor = new Color(0.22f, 0f, 0.02f),
+        VertexColorUseAsAlbedo = true,
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         Roughness = 0.28f,
         MetallicSpecular = 0.1f,
     };

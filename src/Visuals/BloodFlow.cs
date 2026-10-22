@@ -76,26 +76,27 @@ public partial class BloodFlow : Node3D {
 
     private const int MaxDrops = 96;
     private const int RinsePoolSlots = 64;
-    private const int GroundBuildFailureLimit = 5;
-    /// <summary>Each pool is one surface of the shared ground meshes, which Godot caps at 256 surfaces.</summary>
-    private const int MaxGroundPools = 256;
     private const float DropRadius = 0.0035f;
     private float _dropVolumeScale;
     private float _unitDropMl;
     internal float DropShapeMl { get; private set; }
     /// <summary>Bleeding faster than this (ml/s) spurts.</summary>
     private const float SpurtRate = 3f;
-    internal const float PoolMerge = 0.03f;
-    private const float PoolMaxRadius = 0.18f;
     /// <summary>Reference detached drop volume in milliliters.</summary>
     internal const float DropMl = 0.15f;
-    internal const float BedAreaVolumeRatio = BedLiquidSurface.FilmDepth / (PoolThickness * LiquidSurface.PatchMeanDepth);
-    /// <summary>Footprint area divided by pi, calibrated to the floor mesh's integrated depth.</summary>
-    internal const float PoolAreaPerDrop = DropMl * 0.000001f / (Mathf.Pi * PoolThickness * LiquidSurface.PatchMeanDepth);
-    /// <summary>How high a pool stands.</summary>
-    internal const float PoolThickness = 0.003f;
     internal const float FloorY = 0.004f;
     internal const float TableTop = Room.TableHeight + 0.001f;
+    /// <summary>Blood on the skin around the site: a thin film that runs off the body's sides.</summary>
+    private static readonly SurfaceFilm.Settings BodyFilmSettings = new(0.006f, 0.00015f, 0.0003f, 0.03f);
+    /// <summary>Blood on the mattress and frame: a thin soaked layer that runs over the edges.</summary>
+    private static readonly SurfaceFilm.Settings BedFilmSettings = new(0.01f, 0.0004f, 0.0005f);
+    /// <summary>Blood on the floor: puddles about a millimeter and a half deep.</summary>
+    private static readonly SurfaceFilm.Settings FloorFilmSettings = new(0.02f, 0.0015f, 0.0008f);
+    /// <summary>How far (m) from the site's middle the body's film reaches: far enough round a limb or the torso to
+    /// carry runoff down to the bed.</summary>
+    private const float BodyFilmReach = 0.35f;
+    /// <summary>How far (m) round the table the floor's film reaches.</summary>
+    private const float FloorFilmMargin = 0.8f;
     private const float PuddlePaintInterval = 0.2f;
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
     private const float SplashReach = 0.75f;
@@ -118,10 +119,10 @@ public partial class BloodFlow : Node3D {
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    internal sealed class Drop(Vector3 position, Vector3 velocity, float area, Vector3 shape, float twist) {
+    internal sealed class Drop(Vector3 position, Vector3 velocity, float ml, Vector3 shape, float twist) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
-        public float Area = area;
+        public float Ml = ml;
         public readonly Vector3 Shape = shape;
         public readonly float Twist = twist;
     }
@@ -133,11 +134,24 @@ public partial class BloodFlow : Node3D {
     ];
 
     private SurfaceBlood _surface = null!;
-    private BodyRunoff _bodyRunoff = null!;
-    internal BodyRunoff ModelRunoff => _bodyRunoff;
+    // Built on workers while the scene loads: nothing lands on a film for a while, and the first that does waits for it.
+    private Task<SurfaceFilm> _bodyFilmBuild = null!;
+    private Task<SurfaceFilm> _bedFilmBuild = null!;
+    private Task<SurfaceFilm> _floorFilmBuild = null!;
+    private MeshInstance3D _skinMesh = null!;
+    private Skeleton3D? _skeleton;
+    /// <summary>Blood on the skin round the site, in the skin mesh's space.</summary>
+    internal SurfaceFilm BodyFilm => _bodyFilmBuild.Result;
+    /// <summary>Blood on the mattress and frame, in world space.</summary>
+    internal SurfaceFilm BedFilm => _bedFilmBuild.Result;
+    /// <summary>Blood on the floor, in world space.</summary>
+    internal SurfaceFilm FloorFilm => _floorFilmBuild.Result;
+    private static float HeldOn(Task<SurfaceFilm> build) => build.IsCompletedSuccessfully ? build.Result.HeldMl : 0f;
     internal float SurfaceSuppliedMl { get; private set; }
     internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
-        + _bodyRunoff.HeldMl + GroundLiquidArea * DropMl / PoolAreaPerDrop;
+        + HeldOn(_bodyFilmBuild) + GroundMl;
+    /// <summary>Blood that has left the patient: falling, and on the bed and floor.</summary>
+    internal float GroundMl => _drops.Sum(drop => drop.Ml) + HeldOn(_bedFilmBuild) + HeldOn(_floorFilmBuild);
     /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
     internal float DisplaceSurfaceFilm(Vector2[] path, float radius, float share) =>
         _surface.DisplaceStroke(path, radius, share);
@@ -148,90 +162,9 @@ public partial class BloodFlow : Node3D {
     private bool _surfaceNeedsPaint;
     private readonly List<Drop> _drops = [];
     internal IReadOnlyList<Drop> Drops => _drops;
-    internal IEnumerable<Vector3> AttachedDrips => _pools.SelectMany(pool => pool.Outlets)
-        .Where(outlet => outlet.Active && outlet.Pulse.Pending > 0f && outlet.Progress >= 1f && outlet.DrawnProgress >= 1f).Select(outlet => outlet.Position);
-    internal sealed class Outlet(int seed) {
-        public readonly LiquidPulse Pulse = new(seed);
-        public Vector3 Position;
-        public bool Active;
-        public BedLiquidSurface.Flow Flow;
-        public float Progress;
-        public float DrawnProgress;
-        public float AllowedProgress;
-        public float CoatingMl;
-        public float CapacityMl;
-        public readonly float Speed = 0.07f + 0.035f * (0.5f + 0.5f * Mathf.Sin(seed * 2.13f));
-        internal void Uploaded(BedLiquidSurface.RivuletState state) {
-            DrawnProgress = state.DrawnProgress;
-            AllowedProgress = Mathf.Max(AllowedProgress, state.AllowedProgress);
-            CapacityMl = state.CapacityMl;
-        }
-    }
-
-    internal sealed record GroundFootprint(float Incoming, float Radius, Vector2[] Outline, float Area, BedLiquidSurface.Flow[] Outlets, bool FrameOnly = false);
-    internal readonly record struct GroundDrawing(LiquidSurface? Top, LiquidSurface? Side, GroundFootprint? Footprint = null);
-
-    internal sealed class GroundPool(Vector3 center, int seed) {
-        public Vector3 Center = center;
-        public bool OnBed;
-        public readonly float Phase = seed * 0.7548777f;
-        public readonly Outlet[] Outlets = Enumerable.Range(0, 12).Select(i => new Outlet(seed * 31 + i)).ToArray();
-        public Vector2[] Outline = [];
-        public float Radius;
-        public float Area;
-        public float Runoff;
-        public float Incoming;
-        public float Clock = seed * 0.013f % (1f / 15f);
-        public bool HasOutlet;
-        public bool FrameOnly;
-        public int Support = -1;
-        public bool TopDirty;
-        public bool SideDirty;
-        public Task<GroundDrawing>? Building;
-        public float RetryIn;
-        public float RetryDelay = 0.25f;
-        public int Faults;
-        internal int TopSurface = -1;
-        internal int SideSurface = -1;
-        public readonly LiquidSurface TopBuffer = new();
-        public readonly LiquidSurface SideBuffer = new();
-        internal IReadOnlyList<Vector3> TopVertices => TopBuffer.Vertices;
-        internal IReadOnlyList<Vector3> SideVertices => SideBuffer.Vertices;
-        public readonly BedLiquidSurface.RivuletScratch RivuletBuffer = new();
-        public readonly BedLiquidSurface.Flow[] FlowBuffer = new BedLiquidSurface.Flow[12];
-
-        public void Activate(Vector3 at, bool onBed, bool frameOnly) {
-            OnBed = onBed;
-            Center = at;
-            FrameOnly = frameOnly;
-            Outline = [];
-            Radius = Area = Runoff = Incoming = 0f;
-            HasOutlet = TopDirty = SideDirty = false;
-            RetryIn = 0f;
-            RetryDelay = 0.25f;
-            Faults = 0;
-            Clock = 0f;
-            foreach (var outlet in Outlets) {
-                outlet.Active = false;
-                outlet.Progress = outlet.DrawnProgress = outlet.AllowedProgress = outlet.CoatingMl = outlet.CapacityMl = 0f;
-                outlet.Pulse.Drain();
-            }
-        }
-    }
-
-    private readonly List<GroundPool> _pools = [];
-    private readonly List<GroundPool> _grownFloorPools = [];
-    private static readonly LiquidSurface NoSurface = new();
-    internal IEnumerable<GroundPool> GroundDeposits => _pools;
-    private MeshInstance3D _groundTopBatch = null!;
-    private MeshInstance3D _groundSideBatch = null!;
-    private ArrayMesh _groundTopMesh = null!;
-    private ArrayMesh _groundSideMesh = null!;
-    private int _uploadCursor;
     private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
     private readonly RandomNumberGenerator _dripRng = new() { Seed = 83 };
     private float _cutClock;
-    private MultiMeshInstance3D _neckMesh = null!;
     /// <summary>Blood (ml) collected under closed skin, keyed by source UV.</summary>
     private readonly Dictionary<Vector2I, float> _bruised = [];
     private readonly RandomNumberGenerator _rng = new() { Seed = 7 };
@@ -296,24 +229,6 @@ public partial class BloodFlow : Node3D {
         _surfaceGeometrySteps = patientBody.Tissue.StepsDone;
         _surfaceGeometryTopology = patientBody.Tissue.TopologyVersion;
         patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
-        _groundTopMesh = new ArrayMesh();
-        _groundTopBatch = new MeshInstance3D {
-            Name = "GroundPoolTops",
-            Mesh = _groundTopMesh,
-            MaterialOverride = _poolMaterial,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            TopLevel = true,
-        };
-        _groundSideMesh = new ArrayMesh();
-        _groundSideBatch = new MeshInstance3D {
-            Name = "GroundPoolSides",
-            Mesh = _groundSideMesh,
-            MaterialOverride = _poolMaterial,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            TopLevel = true,
-        };
-        AddChild(_groundTopBatch);
-        AddChild(_groundSideBatch);
         for (var i = 0; i < RinsePoolSlots; i++) {
             var material = Materials.Stream();
             material.Roughness = 0.22f;
@@ -328,20 +243,7 @@ public partial class BloodFlow : Node3D {
             patientBody.Site.AddChild(mesh);
             _availableRinses.Enqueue(new RinsePool(Vector2.Zero, mesh));
         }
-        var skinMesh = patientBody.SkinMesh;
-        var skeleton = skinMesh.GetNodeOrNull<Skeleton3D>(skinMesh.Skeleton);
-        var runoff = new MeshInstance3D {
-            Name = "BodyRunoff",
-            Mesh = LiquidSurface.Primed(withUv: true, withSkin: true, withUv2: true),
-            MaterialOverride = patientBody.SkinMaterial,
-            Skin = skinMesh.Skin,
-            Skeleton = skinMesh.Skeleton,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
-        };
-        runoff.Transform = skinMesh.Transform;
-        runoff.SetInstanceShaderParameter("rivulet_depth", BodyLiquidSurface.FilmDepth);
-        skinMesh.GetParent().AddChild(runoff);
-        _bodyRunoff = new BodyRunoff(patientBody.LiquidContact, patientBody.Site, Bed, runoff, skinMesh, skeleton, patientBody.SiteSize);
+        SetupFilms(patientBody);
         var dropShape = LiquidSurface.Drop(out var dropVolume);
         _unitDropMl = dropVolume * 1000000f;
         DropShapeMl = dropVolume * DropRadius * DropRadius * DropRadius * 1000000f;
@@ -359,19 +261,6 @@ public partial class BloodFlow : Node3D {
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_dropMesh);
-        _neckMesh = new MultiMeshInstance3D {
-            Name = "BloodNecks",
-            Multimesh = new MultiMesh {
-                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = _dropMesh.Multimesh.Mesh,
-                InstanceCount = MaxDrops,
-                VisibleInstanceCount = 0
-            },
-            MaterialOverride = _poolMaterial,
-            TopLevel = true,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        };
-        AddChild(_neckMesh);
         _cutPoolMesh = new MeshInstance3D {
             Name = "CutPools",
             Mesh = new ArrayMesh(),
@@ -429,7 +318,7 @@ public partial class BloodFlow : Node3D {
             var spray = body.Site.GlobalBasis.Y * _rng.RandfRange(0.6f, 1.3f)
                 + new Vector3(_rng.RandfRange(-0.4f, 0.4f), 0f, _rng.RandfRange(-0.4f, 0.4f));
             var ml = Mathf.Min(DropMl, available);
-            AddDrop(at, spray, ml * PoolAreaPerDrop / DropMl);
+            AddDrop(at, spray, ml);
             Splash(at, 0.04f);
             return ml;
         }
@@ -836,13 +725,28 @@ public partial class BloodFlow : Node3D {
     /// <summary>Pressure spreads a connected film sideways while gravity transports it downhill. The film retains
     /// thin residue, coalesces without separate path heads, and loses volume when a swab removes its painted blood.</summary>
     private void Flow(PatientBody body, float delta) {
+        // What runs off the site's edges goes on down the body's own skin.
+        var siteToMesh = body.LiquidContact.SiteToMesh;
         while (_surface.TakeRunoff(out var uv, out var runoffMl)) {
-            _bodyRunoff.Add(uv, body.Site.ToLocal(body.UvToWorld(uv)), runoffMl);
+            BodyFilm.Add(BodyFilm.Nearest(siteToMesh * body.Site.ToLocal(body.UvToWorld(uv))), runoffMl);
         }
-        _bodyRunoff.Tick(delta);
-        while (_drops.Count < MaxDrops && _bodyRunoff.TryRelease(out var at, out var ml, out var onBed)) {
-            var area = ml * PoolAreaPerDrop / DropMl;
-            if (onBed) { Pool(at, area); } else { AddDrop(at, Vector3.Zero, area); }
+        if (_bodyFilmBuild.IsCompleted) {
+            var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton);
+            var film = BodyFilm;
+            var mesh = _skinMesh.GlobalTransform;
+            Vector3 World(int node, Vector3 at) => pose?.Deform(at, film.SkinAt(node)) ?? mesh * at;
+            // Skin pressed on the mattress (lying on the back or turned) hands its blood to the bed's film.
+            var bed = Bed;
+            if (film.Tick(delta, _skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(World(node, film.At(node))))) {
+                foreach (var drip in film.Released) {
+                    var at = World(drip.Node, drip.At);
+                    if (bed.Touches(at)) {
+                        BedFilm.Add(BedFilm.Nearest(at with { Y = bed.HeightAt(new Vector2(at.X, at.Z))!.Value }), drip.Ml);
+                    } else {
+                        AddDrop(at, Vector3.Zero, drip.Ml);
+                    }
+                }
+            }
         }
         if (_surface.HasFilm) {
             _surfaceGeometryClock += delta;
@@ -909,158 +813,88 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    private void AddDrop(Vector3 at, Vector3 velocity, float area = PoolAreaPerDrop) {
+    private void AddDrop(Vector3 at, Vector3 velocity, float ml = DropMl) {
         if (_drops.Count >= MaxDrops) {
             // No room to draw another: the newest drop in flight carries this liquid too, so none is lost.
-            _drops[^1].Area += area;
+            _drops[^1].Ml += ml;
             return;
         }
         var shape = new Vector3(_dripRng.RandfRange(0.6f, 1.15f), _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f));
-        var amount = Mathf.Pow(area / PoolAreaPerDrop / (shape.X * shape.Y * shape.Z), 1f / 3f) * _dropVolumeScale;
-        _drops.Add(new Drop(at, velocity, area, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
+        var amount = Mathf.Pow(ml / DropMl / (shape.X * shape.Y * shape.Z), 1f / 3f) * _dropVolumeScale;
+        _drops.Add(new Drop(at, velocity, ml, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
     }
-
-    internal bool GroundMeshesReady => _pools.All(pool => pool.Incoming <= 0f && !pool.TopDirty && !pool.SideDirty && pool.Building is null);
 
     private BedLiquidSurface Bed => _body!.GetParent<Patient>().GetParent<Surgery>().Room.BedSurface;
 
-    /// <summary>Droplets intersect the actual upper mattress or frame triangles; below them they keep falling to the floor.</summary>
+    /// <summary>The body's skin round the site, the bed and the floor, each with its own film, drawn by its own mesh.
+    /// </summary>
+    private void SetupFilms(PatientBody body) {
+        _skinMesh = body.SkinMesh;
+        _skeleton = _skinMesh.GetNodeOrNull<Skeleton3D>(_skinMesh.Skeleton);
+        var skin = body.LiquidContact;
+        var siteToMesh = skin.SiteToMesh;
+        var half = body.SiteSize * 0.5f;
+        // The site's own skin carries its film (SurfaceBlood); the body's film takes over at its edges, and covers
+        // the far side under it, which the site's film doesn't reach.
+        bool OffSite(Vector3 sitePoint, Vector3 siteNormal) => sitePoint.Length() < BodyFilmReach
+            && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > 0.2f);
+        var meshToSite = siteToMesh.AffineInverse();
+        var bodyMesh = new ArrayMesh();
+        _bodyFilmBuild = Task.Run(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
+            skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
+            (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh));
+        _skinMesh.GetParent().AddChild(new MeshInstance3D {
+            Name = "BodyFilm",
+            Mesh = bodyMesh,
+            MaterialOverride = Materials.BloodFilm(),
+            Skin = _skinMesh.Skin,
+            Skeleton = _skinMesh.Skeleton,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Transform = _skinMesh.Transform,
+        });
+        var bed = Bed.Triangles;
+        var bedMesh = new ArrayMesh();
+        _bedFilmBuild = Task.Run(() => new SurfaceFilm(bed, BedFilmSettings, mesh: bedMesh));
+        var (foot, head, side) = (Room.TableFoot - FloorFilmMargin, Room.TableHead + FloorFilmMargin, Room.TableHalfWidth + FloorFilmMargin);
+        Vector3[] floor = [new(foot, FloorY, -side), new(head, FloorY, -side), new(head, FloorY, side),
+            new(foot, FloorY, -side), new(head, FloorY, side), new(foot, FloorY, side)];
+        var floorMesh = new ArrayMesh();
+        _floorFilmBuild = Task.Run(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(), mesh: floorMesh));
+        foreach (var (name, mesh) in new[] { ("BedFilm", bedMesh), ("FloorFilm", floorMesh) }) {
+            AddChild(new MeshInstance3D {
+                Name = name,
+                Mesh = mesh,
+                MaterialOverride = Materials.BloodFilm(),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                TopLevel = true,
+            });
+        }
+    }
+
+    /// <summary>Droplets fall until they meet the mattress's or frame's top, or the floor, and join that surface's
+    /// film. The bed's film drips onto the floor's in turn.</summary>
     private void Fall(float delta) {
         var landingBed = _drops.Count > 0 ? Bed : null;
         for (var i = 0; i < _drops.Count; i++) {
             var drop = _drops[i];
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
-            var bedHit = landingBed?.Contact(drop.Position, position);
-            if (bedHit is not null || position.Y <= FloorY) {
-                var hit = bedHit?.At ?? drop.Position.Lerp(position,
-                    Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
-                if (bedHit is null) { hit.Y = FloorY; }
+            var bedHit = landingBed?.Landing(drop.Position, position);
+            if (bedHit is { } onBed) {
                 _drops.RemoveAt(i--);
-                Pool(hit, drop.Area, bedHit?.Frame ?? false, bedHit?.Support ?? -1);
+                BedFilm.Add(BedFilm.Nearest(onBed), drop.Ml);
+            } else if (position.Y <= FloorY) {
+                var hit = drop.Position.Lerp(position, Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
+                _drops.RemoveAt(i--);
+                FloorFilm.Add(FloorFilm.Nearest(hit with { Y = FloorY }), drop.Ml);
             } else {
                 drop.Position = position;
             }
         }
-        ReleaseRunoff(delta);
-        // Task completion can bunch up even when submissions are staggered. Upload one pool per frame.
-        for (var n = 0; n < _pools.Count; n++) {
-            var index = (_uploadCursor + n) % _pools.Count;
-            var pool = _pools[index];
-            if (!WorkerTask.TryTakeResult(ref pool.Building, out var drawing, out var failure)) { continue; }
-            if (failure is not null) {
-                pool.TopDirty = true;
-                pool.SideDirty = true;
-                pool.Faults++;
-                if (pool.Faults == 1) { GD.PushWarning($"Blood ground-pool mesh build failed; retrying with backoff: {failure}"); }
-                pool.RetryIn = pool.Faults >= GroundBuildFailureLimit ? float.PositiveInfinity : pool.RetryDelay;
-                pool.RetryDelay = Mathf.Min(pool.RetryDelay * 2f, 8f);
-                continue;
-            }
-            pool.Faults = 0;
-            pool.RetryDelay = 0.25f;
-            var completedDrawing = drawing!;
-            if (completedDrawing.Top is { } top) { ReplaceTopSurface(pool, top); }
-            if (completedDrawing.Footprint is { } footprint) {
-                // Cover() returns projected footprint area; a thin bed film holds only its calibrated share of
-                // the equivalent flat-pool volume. Convert before reconciling the incoming dose.
-                var heldArea = footprint.Area * BedAreaVolumeRatio;
-                pool.Runoff += Mathf.Max(0f, footprint.Incoming - Mathf.Max(0f, heldArea - pool.Area));
-                pool.Incoming = Mathf.Max(0f, pool.Incoming - footprint.Incoming);
-                pool.Radius = footprint.Radius;
-                pool.Outline = footprint.Outline;
-                pool.Area = heldArea;
-                pool.FrameOnly = footprint.FrameOnly;
-                OutletsAtEdges(pool, footprint.Outlets);
-                pool.SideDirty = true;
-            }
-            if (completedDrawing.Side is { } side) {
-                ReplaceSideSurface(pool, side);
-                for (var i = 0; i < pool.Outlets.Length; i++) {
-                    var outlet = pool.Outlets[i];
-                    outlet.Uploaded(pool.RivuletBuffer!.States[i]);
-                }
-            }
-            _uploadCursor = (index + 1) % _pools.Count;
-            break;
+        if (_bedFilmBuild.IsCompleted && BedFilm.Tick(delta, Vector3.Down)) {
+            foreach (var drip in BedFilm.Released) { AddDrop(drip.At, Vector3.Zero, drip.Ml); }
         }
-        foreach (var pool in _pools) {
-            // Spread the 15 Hz work across frames when several pools are growing together.
-            pool.RetryIn = Mathf.Max(0f, pool.RetryIn - delta);
-            pool.Clock += delta;
-            if (pool.Clock < 1f / 15f) { continue; }
-            pool.Clock %= 1f / 15f;
-            if (pool.RetryIn > 0f) { continue; }
-            if (pool.Building is not null) { continue; }
-            if (pool.Incoming > 0f) {
-                var radius = GrowingRadius(pool, pool.Incoming);
-                if (pool.OnBed && radius != pool.Radius) {
-                    var amount = pool.Incoming;
-                    var outline = LiquidSurface.Outline(radius, pool.Phase);
-                    var center = pool.Center;
-                    var bed = Bed;
-                    var flows = SnapshotRivulets(pool);
-                    pool.TopDirty = pool.SideDirty = false;
-                    pool.Building = Task.Run(() => {
-                        var top = pool.TopBuffer;
-                        top.Clear();
-                        // One intersection supplies both the displayed footprint and its conserved capacity.
-                        var frameOnly = pool.FrameOnly;
-                        var area = frameOnly ? bed.CoverFrame(outline, center, top, pool.Support) : bed.Cover(outline, center, top, pool.Support);
-                        var outlets = frameOnly ? bed.FrameOutlets(outline, center, pool.Support) : bed.Outlets(outline, center, pool.Support);
-                        top.PrepareUpload(center);
-                        var side = DrawRivulets(pool, bed, flows, center);
-                        return new GroundDrawing(top, side, new GroundFootprint(amount, radius, outline, area, outlets, frameOnly));
-                    });
-                    continue;
-                }
-                if (pool.OnBed) {
-                    // An already draining footprint keeps its size; every additional milliliter feeds its outlets.
-                    pool.Runoff += pool.Incoming;
-                } else {
-                    pool.Radius = radius;
-                    pool.Outline = LiquidSurface.Outline(radius, pool.Phase);
-                    pool.Area = LiquidSurface.Area(pool.Outline);
-                    pool.TopDirty = true;
-                    _grownFloorPools.Add(pool);
-                }
-                pool.Incoming = 0f;
-            }
-            if ((!pool.TopDirty && !pool.SideDirty) || pool.Building is not null) { continue; }
-            if (pool.OnBed) {
-                // A growing rivulet does not change the pool above it. Build each surface only when it changed;
-                // freeze its packed arrays on the worker so uploads do not copy geometry on the gameplay thread.
-                var bed = Bed;
-                var outline = pool.Outline;
-                var center = pool.Center;
-                var topDirty = pool.TopDirty;
-                var flows = SnapshotRivulets(pool);
-                pool.Building = Task.Run(() => {
-                    LiquidSurface? top = null;
-                    LiquidSurface? side = null;
-                    if (topDirty) {
-                        top = pool.TopBuffer;
-                        top.Clear();
-                        if (pool.FrameOnly) { bed.CoverFrame(outline, center, top, pool.Support); } else { bed.Cover(outline, center, top, pool.Support); }
-                        top.PrepareUpload(center);
-                    }
-                    side = DrawRivulets(pool, bed, flows, center);
-                    return new GroundDrawing(top, side);
-                });
-            } else {
-                var surface = pool.TopBuffer;
-                var outline = pool.Outline;
-                var center = pool.Center;
-                pool.Building = Task.Run(() => {
-                    surface.Clear();
-                    surface.Patch(outline, PoolThickness);
-                    surface.PrepareUpload(center);
-                    return new GroundDrawing(surface, null);
-                });
-            }
-            pool.TopDirty = pool.SideDirty = false;
-        }
-        CoalesceFloorPools();
+        if (_floorFilmBuild.IsCompleted) { FloorFilm.Tick(delta, Vector3.Down); }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
         for (var i = 0; i < _drops.Count; i++) {
@@ -1078,178 +912,22 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    /// <summary>A floor pool that has spread over a smaller one takes its volume: the smaller one's stain lies inside
-    /// it already, so nothing moves or uncovers, and a long bleed doesn't keep one draw call per landing spot. Pools
-    /// that only overlap stay apart; drawn together, they already read as one stain.</summary>
-    private void CoalesceFloorPools() {
-        // A pool that took another's volume grows on its next tick and may cover more, so it is checked again.
-        while (_grownFloorPools.Count > 0) {
-            var pool = _grownFloorPools[^1];
-            _grownFloorPools.RemoveAt(_grownFloorPools.Count - 1);
-            if (!_pools.Contains(pool)) { continue; }
-            foreach (var other in _pools) {
-                if (ReferenceEquals(other, pool) || other.OnBed
-                    || Mathf.Abs(other.Center.Y - pool.Center.Y) > 0.001f) { continue; }
-                var (into, from) = pool.Radius >= other.Radius ? (pool, other) : (other, pool);
-                var apart = new Vector2(from.Center.X - into.Center.X, from.Center.Z - into.Center.Z).Length();
-                if (apart + from.Radius > into.Radius) { continue; }
-                into.Incoming += from.Area + from.Incoming;
-                into.TopDirty = true;
-                ReplaceTopSurface(from, NoSurface);
-                _pools.Remove(from);
-                _grownFloorPools.Add(into);
-                break;
-            }
+    /// <summary>Puts <paramref name="ml"/> straight onto whatever surface is at <paramref name="at"/> (world): the
+    /// bed's top within a few millimeters, else the floor near its level, else as a drop to fall there.</summary>
+    internal void Deposit(Vector3 at, float ml) {
+        if (Bed.Landing(at + Vector3.Up * 0.002f, at - Vector3.Up * 0.003f) is { } onBed) {
+            BedFilm.Add(BedFilm.Nearest(onBed), ml);
+        } else if (at.Y <= FloorY + 0.01f) {
+            FloorFilm.Add(FloorFilm.Nearest(at with { Y = FloorY }), ml);
+        } else {
+            AddDrop(at, Vector3.Zero, ml);
         }
     }
 
-    private static BedLiquidSurface.Flow[]? SnapshotRivulets(GroundPool pool) {
-        if (!pool.SideDirty) { return null; }
-        var flows = pool.FlowBuffer;
-        for (var i = 0; i < pool.Outlets.Length; i++) {
-            var outlet = pool.Outlets[i];
-            flows[i] = outlet.Flow with { Progress = outlet.Active ? outlet.Progress : 0f };
-            pool.RivuletBuffer!.AvailableMl[i] = outlet.CoatingMl;
-        }
-        return flows;
-    }
-
-    private void ReplaceTopSurface(GroundPool pool, LiquidSurface surface) =>
-        ReplaceBatchSurface(_groundTopMesh, pool, surface, ref pool.TopSurface, false);
-
-    private void ReplaceSideSurface(GroundPool pool, LiquidSurface surface) =>
-        ReplaceBatchSurface(_groundSideMesh, pool, surface, ref pool.SideSurface, true);
-
-    private void ReplaceBatchSurface(ArrayMesh mesh, GroundPool pool, LiquidSurface surface, ref int index, bool side) {
-        if (index >= 0) {
-            var removed = index;
-            mesh.SurfaceRemove(removed);
-            foreach (var other in _pools) {
-                if (ReferenceEquals(other, pool)) { continue; }
-                ref var otherIndex = ref (side ? ref other.SideSurface : ref other.TopSurface);
-                if (otherIndex > removed) { otherIndex--; }
-            }
-            index = -1;
-        }
-        if (surface.VertexCount == 0) { return; }
-        index = surface.AppendUpload(mesh);
-    }
-
-    private static LiquidSurface? DrawRivulets(GroundPool pool, BedLiquidSurface bed, BedLiquidSurface.Flow[]? flows, Vector3 center) {
-        if (flows is null) { return null; }
-        var side = pool.SideBuffer!;
-        side.Clear();
-        bed.Rivulets(side, flows, center, pool.RivuletBuffer!);
-        side.PrepareUpload(center);
-        return side;
-    }
-
-    private void ReleaseRunoff(float delta) {
-        var necks = _neckMesh.Multimesh;
-        var count = 0;
-        foreach (var pool in _pools) {
-            if (!pool.OnBed) { continue; }
-            var active = pool.Outlets.Count(outlet => outlet.Active);
-            var supplied = pool.Runoff * DropMl / PoolAreaPerDrop / Math.Max(active, 1);
-            foreach (var outlet in pool.Outlets) {
-                if (!outlet.Active) { continue; }
-                var pulse = outlet.Pulse;
-                outlet.CoatingMl += supplied;
-                if (supplied > 0f && outlet.Progress < 1f) { pool.SideDirty = true; }
-                if (outlet.Progress < outlet.AllowedProgress) {
-                    outlet.Progress = Mathf.Min(outlet.AllowedProgress, outlet.Progress + delta * outlet.Speed / Mathf.Max(outlet.Flow.Length, 0.001f));
-                    pool.SideDirty = true;
-                }
-                if (outlet.Progress < 1f || outlet.DrawnProgress < 1f) { continue; }
-                // The attached coating stays on the bed. Only liquid beyond its actual mesh capacity can drip.
-                var excess = Mathf.Max(0f, outlet.CoatingMl - outlet.CapacityMl);
-                pulse.Add(excess * PoolAreaPerDrop / DropMl);
-                if (excess > 0f) { outlet.CoatingMl = outlet.CapacityMl; }
-                var length = pulse.Length;
-                var released = pulse.Advance(delta, _drops.Count < MaxDrops);
-                if (released > 0f) {
-                    AddDrop(outlet.Position + Vector3.Down * length, new Vector3(_dripRng.RandfRange(-0.025f, 0.025f),
-                        -_dripRng.RandfRange(0.08f, 0.18f), _dripRng.RandfRange(-0.025f, 0.025f)), released);
-                }
-                if (pulse.Pending <= 0f || count >= MaxDrops) { continue; }
-                // A thin pending dose may stretch a neck, but cannot create a full-width ligament for free.
-                var width = Mathf.Min(pulse.Width, Mathf.Sqrt(pulse.Pending * DropMl / PoolAreaPerDrop / (_unitDropMl * pulse.Length * 0.4f)));
-                var shape = new Vector3(width, pulse.Length * 0.5f, width * 0.8f);
-                necks.SetInstanceTransform(count++, new Transform3D(Basis.Identity.Scaled(shape),
-                    outlet.Position + Vector3.Down * pulse.Length * 0.5f));
-            }
-            if (active > 0) { pool.Runoff = 0f; }
-        }
-        necks.VisibleInstanceCount = count;
-    }
-
-    private static void OutletsAtEdges(GroundPool pool, BedLiquidSurface.Flow[] positions) {
-        pool.HasOutlet = positions.Length > 0;
-        for (var i = 0; i < pool.Outlets.Length; i++) {
-            var outlet = pool.Outlets[i];
-            outlet.Active = i < positions.Length || outlet.CoatingMl > 0f || outlet.Pulse.Pending > 0f;
-            // A wetted streak stays anchored as its upstream pool grows over it. Its retained capacity then
-            // remains valid instead of moving already deposited film to a different outlet on every repaint.
-            if (i < positions.Length && outlet.CoatingMl <= 0f && outlet.DrawnProgress <= 0f) {
-                outlet.Flow = positions[i] with { Phase = pool.Phase + i * 2.17f };
-                outlet.Position = positions[i].End;
-            }
-        }
-    }
-
-    private static float GrowingRadius(GroundPool pool, float incoming) {
-        var radius = Mathf.Sqrt(pool.Radius * pool.Radius + incoming / (pool.OnBed ? BedAreaVolumeRatio : 1f));
-        // Retaining a footprint only makes sense once there is a real drain. Interior pools must reach one;
-        // a floor has no unsupported area into which excess volume can disappear.
-        return pool.OnBed && pool.HasOutlet ? Mathf.Min(radius, Mathf.Max(pool.Radius, PoolMaxRadius)) : radius;
-    }
-
-    internal float PendingDripMl => _pools.Sum(p => p.Outlets.Sum(o => o.Pulse.Pending)) * DropMl / PoolAreaPerDrop;
-    internal float DrawnNeckMl {
-        get {
-            var mesh = _neckMesh.Multimesh;
-            var total = 0f;
-            for (var i = 0; i < mesh.VisibleInstanceCount; i++) { total += Mathf.Abs(mesh.GetInstanceTransform(i).Basis.Determinant()) * _unitDropMl; }
-            return total;
-        }
-    }
-    internal float GroundLiquidArea => _drops.Sum(drop => drop.Area)
-        + _pools.Sum(pool => pool.Area + pool.Incoming + pool.Runoff + pool.Outlets.Sum(outlet => outlet.CoatingMl * PoolAreaPerDrop / DropMl + outlet.Pulse.Pending));
-
-    /// <summary>Pool footprint area grows with deposited blood. Bed pools narrow at the supporting edges; the
-    /// unsupported share becomes runoff with its own area, which falls and grows a separate floor pool.</summary>
-    internal void Pool(Vector3 at, float area = PoolAreaPerDrop, bool? frameOnly = null, int support = -1) {
-        BedLiquidSurface.Hit? landing = support >= 0 ? new BedLiquidSurface.Hit(at, frameOnly == true, support) : null;
-        if (landing is null && at.Y > FloorY + 0.01f) {
-            // Legacy/manual deposits on the reference plane are resolved to the real support. Physical
-            // impacts already carry their exact support and height, including lower overlapping shelves.
-            var reach = Mathf.Abs(at.Y - TableTop) < 0.0015f ? 0.2f : 0.003f;
-            landing = Bed.Contact(at + Vector3.Up * 0.002f, at - Vector3.Up * reach);
-            if (landing is null) { AddDrop(at, Vector3.Zero, area); return; }
-        }
-        var onBed = landing.HasValue;
-        var onFrame = landing?.Frame ?? false;
-        support = landing?.Support ?? -1;
-        at = landing?.At ?? at;
-        GroundPool? target = null;
-        foreach (var pool in _pools) {
-            if (pool.OnBed == onBed && pool.Support == support && (onBed || Mathf.Abs(pool.Center.Y - at.Y) < 0.001f)
-                && pool.Center.DistanceTo(at) < PoolMerge + GrowingRadius(pool, pool.Incoming)) {
-                target = pool;
-                break;
-            }
-        }
-        if (target is null && _pools.Count >= MaxGroundPools) {
-            float Distance(GroundPool pool) => pool.Center.DistanceSquaredTo(at);
-            target = _pools.Where(pool => pool.OnBed == onBed && pool.Support == support).MinBy(Distance)
-                ?? _pools.MinBy(Distance);
-        }
-        if (target is null) {
-            target = new GroundPool(at, _pools.Count + 1);
-            target.Activate(at, onBed, onFrame);
-            target.Support = support;
-            _pools.Add(target);
-        }
-        target.Incoming += area;
+    /// <summary>Waits for every film's running step and publishes it; for tests.</summary>
+    internal void FinishFilms() {
+        BodyFilm.Finish();
+        BedFilm.Finish();
+        FloorFilm.Finish();
     }
 }

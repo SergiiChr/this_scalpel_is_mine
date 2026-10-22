@@ -163,7 +163,7 @@ public partial class PatientBody {
 
         var parts = ModelParts(model);
         var skinPart = parts.First(part => !part.Gown);
-        LiquidContact = new BodyLiquidSurface(skinPart.Faces, skinPart.Normals, skinPart.SkinWeights, SiteSize,
+        LiquidContact = new BodyLiquidSurface(skinPart.Faces, skinPart.Normals, skinPart.SkinWeights,
             SkinMesh.GlobalTransform.AffineInverse() * Site.GlobalTransform);
         var skinFaces = parts.Where(part => !part.Gown).SelectMany(part => part.Faces).ToArray();
         _restingSkin.Index(skinFaces, Enumerable.Range(0, skinFaces.Length).ToArray());

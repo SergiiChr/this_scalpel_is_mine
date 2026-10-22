@@ -4,7 +4,7 @@ namespace Scalpel.Tests.Patients;
 [TestCategory("liquids")]
 public class BedLiquidSupportTest {
     [TestCase]
-    public void StackedFrameSupportsClipIndependentlyAcrossSeamsCornersAndSweptCells() {
+    public void StackedFrameShelvesAreHitTopFirstAcrossSeamsCornersAndSweptCells() {
         var frame = Surface(Plane(-1f, 1f, -1f, 1f, 0.5f).Concat(Plane(-1f, 1f, -1f, 1f, 0.8f)).ToArray());
         var pads = Surface(Plane(2f, 3f, -1f, 1f, 1f));
         Frames.Tree.Root.AddChild(frame);
@@ -17,8 +17,6 @@ public class BedLiquidSupportTest {
             AssertBool(lowerHit.HasValue && lowerHit.Value.Frame).IsTrue();
             AssertFloat(upperHit!.Value.At.Y).OverrideFailureMessage("the upper overlapping shelf is hit first").IsEqualApprox(0.8f, 0.00001f);
             AssertFloat(lowerHit!.Value.At.Y).OverrideFailureMessage("a ray starting below the upper shelf reaches the lower shelf").IsEqualApprox(0.5f, 0.00001f);
-            AssertBool(upperHit.Value.Support != lowerHit.Value.Support)
-                .OverrideFailureMessage("overlapping shelves at the same XZ coordinates remain distinct supports").IsTrue();
 
             foreach (var (x, z) in new[] { (-0.5f, -0.25f), (0f, 0f), (1f, 1f) }) {
                 var hit = bed.Contact(new Vector3(x, 1.1f, z), new Vector3(x, 0.4f, z));
@@ -31,18 +29,8 @@ public class BedLiquidSupportTest {
             AssertFloat(swept!.Value.At.X).OverrideFailureMessage("the swept hit follows the analytic segment-plane crossing").IsEqualApprox(-1.5f + 3f * crossing, 0.00002f);
             AssertFloat(swept.Value.At.Y).IsEqualApprox(0.8f, 0.00001f);
 
-            var outline = LiquidSurface.Outline(0.3f, 0.37f);
-            var expectedArea = LiquidSurface.Area(outline);
-            var upper = new LiquidSurface();
-            var lower = new LiquidSurface();
-            var upperArea = bed.CoverFrame(outline, new Vector3(0f, 0.8f, 0f), upper, upperHit.Value.Support);
-            var lowerArea = bed.CoverFrame(outline, new Vector3(0f, 0.5f, 0f), lower, lowerHit.Value.Support);
-            AssertFloat(upperArea).OverrideFailureMessage("the upper pool covers its own projected outline once").IsEqualApprox(expectedArea, 0.00002f);
-            AssertFloat(lowerArea).OverrideFailureMessage("the lower pool covers its own projected outline once").IsEqualApprox(expectedArea, 0.00002f);
-            AssertBool(upper.Vertices.All(p => Mathf.Abs(p.Y - BedLiquidSurface.FilmDepth) < 0.00001f))
-                .OverrideFailureMessage("upper vertices stay at the upper support plus film lift").IsTrue();
-            AssertBool(lower.Vertices.All(p => Mathf.Abs(p.Y - BedLiquidSurface.FilmDepth) < 0.00001f))
-                .OverrideFailureMessage("lower vertices stay at the lower support plus film lift").IsTrue();
+            AssertInt(bed.Triangles.Length).OverrideFailureMessage("the bed's film covers every pad and frame triangle")
+                .IsEqual(18);
         } finally {
             frame.Free();
             pads.Free();
