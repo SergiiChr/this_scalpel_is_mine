@@ -5,6 +5,7 @@ namespace Scalpel.Patients;
 /// Built once from the body model at rest, in body space (patient along X, head at +X), a little off the skin so the
 /// body never pokes through it, even breathing. It covers the edge of the site, where the simulated skin meets the
 /// body, and the flanks the flat site can't follow. Hands rest on it (DrapeLayer), tools and rays for limbs don't.
+/// A hand holding the patient through it presses it onto the skin under it (<see cref="Press"/>).
 /// </summary>
 public partial class Drape : MeshInstance3D {
     // Where the sheet lies, body space: from past the feet to just under the collarbones, and across the table as far as
@@ -43,6 +44,29 @@ public partial class Drape : MeshInstance3D {
     /// <summary>Columns either side of one whose narrowest side holds it in, so the sheet's side runs straight past an
     /// elbow or a hand instead of zigzagging round it.</summary>
     private const int SideSpan = 3;
+    /// <summary>How far (meters) round a hand pressing through the sheet it lies on the skin, and how far past that it
+    /// rises back to where it was laid.</summary>
+    private const float DentHold = 0.005f;
+    private const float DentRise = 0.03f;
+    /// <summary>How far (meters) a point of a pressing hand moves before the dent under it follows.</summary>
+    private const float DentStep = 0.002f;
+    /// <summary>How far (meters) off the skin a pressed sheet lies: inside the glove pressed into the skin.</summary>
+    private const float DentLift = 0.004f;
+    /// <summary>How steep (rise over run) a pressed sheet gets at most. Dropped steeper beside skin that rises sharply
+    /// (toes), its faces turn their backs to the view and leave holes.</summary>
+    private const float DentSlope = 2.5f;
+
+    /// <summary>The sheet's vertices as laid, and how high (along <see cref="Up"/>) the skin under each is: NaN where
+    /// there's none (the sides hanging past the body).</summary>
+    private Vector3[] _laid = [];
+    private float[] _skin = [];
+    /// <summary>How high the skin rises round each of the sheet's vertices, as far as the next.</summary>
+    private float[] _skinAround = [];
+    /// <summary>The sheet's vertices next to each: sharing a face or the same place (a hem's top and the sheet's edge).</summary>
+    private int[][] _next = [];
+    private Godot.Collections.Array _arrays = [];
+    /// <summary>The points of each hand pressing through the sheet, body space, as last dented for.</summary>
+    private readonly Dictionary<Node, BonePoint[]> _pressing = [];
 
     /// <summary>
     /// Lays the sheet. <paramref name="meshes"/>: the body model's meshes (skin, gown). <paramref name="site"/>: the
@@ -132,6 +156,30 @@ public partial class Drape : MeshInstance3D {
         surface.Index();
         surface.GenerateNormals();
         Mesh = surface.Commit();
+        _arrays = ((ArrayMesh)Mesh).SurfaceGetArrays(0);
+        _laid = _arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        float SkinUnder(float x, float z) => trunk.IntersectRay(new Vector3(x, up * 0.5f, z), Vector3.Down * up) is { Count: > 0 } hit
+            ? up * hit["position"].AsVector3().Y : float.NaN;
+        _skin = [.. _laid.Select(v => SkinUnder(v.X, v.Z))];
+        // Up to a cell each way, diagonals too: the skin rising between the sheet's points (toes) is under the faces
+        // round a point.
+        (int X, int Z)[] around = [.. from x in Enumerable.Range(-2, 5) from z in Enumerable.Range(-2, 5) select (x, z)];
+        _skinAround = [.. _laid.Select((v, i) => around
+            .Select(d => SkinUnder(v.X + (d.X * Cell / 2f), v.Z + (d.Z * Cell / 2f)))
+            .Where(height => !float.IsNaN(height)).Append(_skin[i]).Max())];
+        var next = _laid.Select(_ => new HashSet<int>()).ToArray();
+        var faces = _arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        for (var n = 0; n < faces.Length; n += 3) {
+            for (var k = 0; k < 3; k++) {
+                next[faces[n + k]].UnionWith([faces[n + ((k + 1) % 3)], faces[n + ((k + 2) % 3)]]);
+            }
+        }
+        foreach (var same in Enumerable.Range(0, _laid.Length).GroupBy(v => _laid[v]).Where(same => same.Count() > 1)) {
+            foreach (var v in same) {
+                next[v].UnionWith(same.Where(other => other != v));
+            }
+        }
+        _next = [.. next.Select(vertices => vertices.ToArray())];
         var material = Materials.FamilyUnique("cloth", DrapeColor, 0.95f);
         MaterialOverride = material;
         // A thin cloth sheet blocks the light from either side. Its edge is shaded by the lights rather than an
@@ -140,6 +188,75 @@ public partial class Drape : MeshInstance3D {
         var solid = new StaticBody3D { CollisionLayer = DrapeLayer, CollisionMask = 0 };
         solid.AddChild(new CollisionShape3D { Shape = Mesh.CreateTrimeshShape() });
         AddChild(solid);
+    }
+
+    /// <summary>
+    /// <paramref name="hand"/> holds the patient through the sheet at <paramref name="points"/> (world space, see
+    /// SurgeonHand.BonePoints()), or no longer does (null): under the hand and a little round it, the sheet is pressed
+    /// down onto the skin, rising back to where it was laid round that. Dented again only when the hand has moved.
+    /// </summary>
+    internal void Press(Node hand, IReadOnlyList<BonePoint>? points) {
+        if (points is null) {
+            if (_pressing.Remove(hand)) {
+                Dent();
+            }
+            return;
+        }
+        var local = GlobalTransform.AffineInverse();
+        // Across the sheet only: breathing lifts it (PatientBody.SetBreathOffset()) under a hand on a leg that stays.
+        if (_pressing.TryGetValue(hand, out var was) && was.Length == points.Count
+            && !was.Where((point, i) => Flat(point.Position - (local * points[i].Position)).Length() > DentStep).Any()) {
+            return;
+        }
+        _pressing[hand] = [.. points.Select(point => point with { Position = local * point.Position })];
+        Dent();
+    }
+
+    private static Vector2 Flat(Vector3 v) => new(v.X, v.Z);
+
+    /// <summary>Lays the sheet again, pressed down where hands press through it (<see cref="Press"/>).</summary>
+    private void Dent() {
+        var vertices = (Vector3[])_laid.Clone();
+        var points = _pressing.Values.SelectMany(hand => hand).ToArray();
+        for (var v = 0; v < vertices.Length && points.Length > 0; v++) {
+            var height = Up * vertices[v].Y;
+            if (float.IsNaN(_skin[v]) || height <= _skin[v]) {
+                continue;
+            }
+            // Only where the hand is under the sheet's height: not a hand on an arm beside it.
+            var (pressed, under) = (0f, float.PositiveInfinity);
+            foreach (var point in points) {
+                if (Up * point.Position.Y < height) {
+                    var off = Flat(vertices[v] - point.Position).Length() - point.Radius;
+                    pressed = Mathf.Max(pressed, 1f - Mathf.SmoothStep(DentHold, DentHold + DentRise, off));
+                    if (off < DentHold) {
+                        under = Mathf.Min(under, (Up * point.Position.Y) - point.Radius);
+                    }
+                }
+            }
+            // On the highest skin round the point, not just under it: the sheet's faces are flat between its points, and
+            // a face dropped beside a steep rise (toes) would cut through it. Under the hand as low as the hand, down a
+            // limb's side.
+            var floor = Mathf.Max(_skin[v] + DentLift, Mathf.Min(_skinAround[v] + DentLift, under));
+            vertices[v].Y = Up * Mathf.Lerp(height, Mathf.Min(floor, height), pressed);
+        }
+        // Raise what dropped too steeply below a neighbor, until the steepest is no more than DentSlope.
+        var dropped = Enumerable.Range(0, vertices.Length).Where(v => vertices[v].Y != _laid[v].Y).ToList();
+        for (var changed = true; changed;) {
+            changed = false;
+            foreach (var v in dropped) {
+                var least = Mathf.Min(Up * _laid[v].Y,
+                    _next[v].Max(n => (Up * vertices[n].Y) - (DentSlope * Flat(vertices[v] - vertices[n]).Length())));
+                if (least > (Up * vertices[v].Y) + 0.0001f) {
+                    vertices[v].Y = Up * least;
+                    changed = true;
+                }
+            }
+        }
+        _arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        var mesh = (ArrayMesh)Mesh;
+        mesh.ClearSurfaces();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, _arrays);
     }
 
     /// <summary>Sorts the faces of <paramref name="mesh"/> (at rest, moved by <paramref name="toRoot"/>) into those of

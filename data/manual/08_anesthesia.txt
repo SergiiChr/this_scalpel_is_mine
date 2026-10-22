@@ -1,7 +1,7 @@
 tags: propofol, sevoflurane
 title: 8. Anesthesia management
 ## 8.1 Depth
-Adequate depth is indicated by absent spontaneous respiration on the monitor. A patient who begins to speak is lightening.
+Adequate depth is indicated by closed eyes and absent spontaneous respiration on the monitor. A patient who begins to speak is lightening.
 One correct induction dose is maintained for the whole procedure, until it is reversed (8.5). A repeat dose of the same agent only tops it up.
 
 ## 8.2 Blood pressure under anesthesia

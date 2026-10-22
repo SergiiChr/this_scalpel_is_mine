@@ -1,20 +1,20 @@
 title: 11. Bone
 ## 11.1 Osteotomy
-Hold the saw on the bone and keep it there until the cut is complete. A saw applied to skin lacerates it.
+Set the saw's speed with the wheel, hold it on the bone ([b]Use tool[/b]) and keep it there until the cut is complete. A saw applied to skin lacerates it.
 
 ## 11.2 Bone quality
 The mallet is effective on any bone but bruises the surrounding soft tissue.
 See Chronic conditions: High bone density, Osteoporosis.
 
 ## 11.3 Fracture reduction
-Requires two operators.
-1. Each grasps one fragment with forceps.
+Requires forceps on each fragment: with two operators in the room, one on each; operating alone, forceps in both hands.
+1. Grasp each fragment with forceps.
 2. Draw both back into alignment together.
 3. Hold until reduction is confirmed.
 [center][img=560]res://assets/manual/diagrams/alignment.svg[/img][/center]
 
 ## 11.4 Rib fractures
-Reduce as above, one operator per fragment. Free splinters are removed with slow, steady traction. They bleed on release: have suction ready.
+Reduce as above, forceps on each fragment. Free splinters are removed with slow, steady traction. They bleed on release: have suction ready.
 
 ## 11.5 Reduction rhinoplasty
 The dorsal hump is bone superiorly and cartilage toward the tip, immediately beneath the skin.

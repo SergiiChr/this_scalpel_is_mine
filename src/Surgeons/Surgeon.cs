@@ -21,7 +21,7 @@ public sealed record NeedleHit(string Part, Vector3 At, int Hand = -1);
 /// <para>
 /// Hands turn and walk with the body, unless they hold onto something (attached): then they stay put. The inactive
 /// hand stays exactly where it was, still doing what it was doing. Hands have no height control: the tool tip rests
-/// just above whatever is under it (skin, tray, organs, a target in an open cavity), or higher while lifted. Crouching
+/// just above whatever is under it (skin, tray, organs, a target in an open cavity). Crouching
 /// brings everything down within reach of the floor.
 /// Forceps and hemostats are the exception: over an opening the wheel raises and lowers the tip in it (see
 /// <see cref="HoldsDepth"/>).
@@ -60,9 +60,6 @@ public partial class Surgeon : CharacterBody3D {
     public static readonly float[] BladeInOpening = [HoverGap, 0.008f, 0.005f, 0.002f];
     /// <summary>One notch of the wheel moves forceps' tip this far (meters) up or down in an opening.</summary>
     public const float DepthStep = 0.005f;
-    /// <summary>Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
-    /// </summary>
-    public const float PullSpeed = 0.05f;
     /// <summary>Room between the hand (or forearm) and the surface under it: about half a hand's thickness.</summary>
     public const float HandClearance = 0.03f;
     /// <summary>Where hands hang when nothing within reach is under them (the floor while standing): about waist height.
@@ -278,7 +275,7 @@ public partial class Surgeon : CharacterBody3D {
                 continue;
             }
             for (var i = 0; i < 2; i++) {
-                if (other.HeldTool(i) is null && other.Hands[i].GlobalPosition.DistanceTo(from) < PassDistance) {
+                if (other.HeldTool(i) is null && !other.HoldsPatient(i) && other.Hands[i].GlobalPosition.DistanceTo(from) < PassDistance) {
                     return (other, i);
                 }
             }
@@ -305,6 +302,7 @@ public partial class Surgeon : CharacterBody3D {
 
     public void DropEverything() {
         for (var i = 0; i < 2; i++) {
+            LetGoOfPatient(i);
             Hands[i].Lowered = false;
             Hands[i].Trigger = false;
             if (HeldTool(i) is not null) {
@@ -391,5 +389,6 @@ public partial class Surgeon : CharacterBody3D {
         hand.Soak(tool?.Blood ?? 0f, dt);
         SupportElbow(hand);
         hand.UpdatePose(IsLocal ? SteadyShoulder(i) : VisualShoulder(i), dt);
+        Session.Patient.Body.Drape?.Press(hand, hand.PressNormal is null ? null : hand.PosedPoints);
     }
 }

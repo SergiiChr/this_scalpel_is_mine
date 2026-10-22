@@ -1,7 +1,7 @@
 {
   "00_installed_iv_oblique.jpg": "the preinstalled IV in the arm under its dressing, the line attached",
   "00_installed_iv_top.jpg": "the preinstalled IV in the arm under its dressing, the line attached",
-  "01_awake_view.jpg": "the patient awake, eyes open, \"Put the patient under\" not checked off",
-  "02_needle_in_vial_view.jpg": "the syringe's needle in the propofol vial's cap, its label \"Propofol 10 mg/ml, 50 ml\" beside the aim",
-  "03_anesthetized_view.jpg": "the patient under after the chart dose, \"Put the patient under\" checked off"
+  "01_awake_view.jpg": "the patient awake, eyes open, \"Put the patient under general anesthesia\" not checked off, its subtasks below it",
+  "02_needle_in_vial_view.jpg": "the syringe's needle in the ketamine vial's cap, its label \"Ketamine 50 mg/ml, 10 ml\" beside the aim",
+  "03_anesthetized_view.jpg": "the patient under after the chart dose, \"Put the patient under general anesthesia\" checked off, its subtasks gone"
 }

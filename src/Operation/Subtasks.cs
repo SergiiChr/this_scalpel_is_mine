@@ -1,0 +1,123 @@
+using System.Text.RegularExpressions;
+using GodotDictionary = Godot.Collections.Dictionary;
+
+namespace Scalpel.Operation;
+
+/// <summary>What the subtasks of a surgery are written for: the patient's weight, the allergies the chart names and
+/// whether it claims one it doesn't name, blood group, the tools in the room at the start and whether a nurse takes
+/// orders.</summary>
+public sealed record SubtaskFacts(
+    float WeightKg,
+    IReadOnlyCollection<string> Allergens,
+    string BloodType,
+    IReadOnlyCollection<string> ToolsInRoom,
+    bool Nurse,
+    bool AllergyUnknown = false);
+
+/// <summary>
+/// The detailed steps under an objective step, for the "I'm just a baby" difficulty: the scenario step's own subtasks
+/// or its type's (data/objectives.cfg), with doses and tools worked out for this patient (tokens explained there).
+/// </summary>
+public static partial class Subtasks {
+    [GeneratedRegex(@"\{(get|dose|syringe)\.(\w+)\}")]
+    private static partial Regex Token();
+
+    public static List<string> For(ObjectiveStep step, ScenarioDef scenario, SubtaskFacts facts) {
+        var defaults = new ConfigReader(Db.Objectives, Section(step, scenario));
+        var drug = step.Parameters.String("drug", defaults.String("drug"));
+        if (facts.Allergens.Contains(drug) && defaults.String("allergy_instead") is { Length: > 0 } instead) {
+            defaults = new ConfigReader(Db.Objectives, instead);
+        }
+        return Worked(step.Subtasks ?? defaults.Strings("subtasks"), drug, scenario, facts, step.Parameters);
+    }
+
+    /// <summary>The subtasks of the discharge that ends every surgery, waking a patient who was put under first.
+    /// </summary>
+    public static List<string> Discharge(ScenarioDef scenario, SubtaskFacts facts) {
+        var section = new ConfigReader(Db.Objectives, "discharge");
+        var under = scenario.Steps.Any(step => step.Type == "anesthesia" || step.Alternative?.Type == "anesthesia");
+        return Worked([.. under ? section.Strings("anesthesia_subtasks") : [], .. section.Strings("subtasks")], "",
+            scenario, facts, []);
+    }
+
+    private static List<string> Worked(IEnumerable<string> lines, string drug, ScenarioDef scenario, SubtaskFacts facts,
+        GodotDictionary parameters) =>
+        [.. lines.Select(line => ManualPage.FillNumbers(Token().Replace(line, found => Fill(found, drug, facts)),
+            $"{scenario.Id} subtasks", parameters))];
+
+    /// <summary>The line naming the steps of <paramref name="open"/> that <paramref name="step"/> has to come after,
+    /// none once they're all in place.</summary>
+    public static IEnumerable<string> OnlyAfter(ObjectiveStep step, IEnumerable<ObjectiveStep> open) {
+        var before = open.Where(other => step.After.Contains(other.Id)).Select(other => other.Label).ToList();
+        return before.Count > 0 ? ["Only after: " + string.Join("; ", before)] : [];
+    }
+
+    /// <summary>The step type's section of data/objectives.cfg; an extract step's by how its target comes out.
+    /// </summary>
+    private static string Section(ObjectiveStep step, ScenarioDef scenario) {
+        if (step.Type != "extract") {
+            return step.Type;
+        }
+        var kind = step.Parameters.String("target");
+        return "extract_" + (scenario.Targets.FirstOrDefault(target => target.Kind == kind)?.RemoveWith ?? "clamp");
+    }
+
+    /// <summary>One token's text; <paramref name="drug"/> is the step's.</summary>
+    private static string Fill(Match found, string drug, SubtaskFacts facts) {
+        var id = found.Groups[2].Value switch {
+            "step" => drug,
+            "blood" => facts.BloodType == "Bombay" ? "blood_rare" : "blood_o_neg",
+            var named => named,
+        };
+        if (Db.Tool(id) is { } item) {
+            return Get(item, facts);
+        }
+        var (given, allergy) = Usable(id, facts);
+        if (Db.Tools.Values.FirstOrDefault(tool => tool.Drug == given.Id && tool.Concentration > 0f) is not { } vial) {
+            GD.PushError($"Subtasks: no vial of {id}");
+            return found.Value;
+        }
+        // Whole notches of the plunger: the leeway around the right dose takes the rest. Data floats are a hair off
+        // their decimals (0.01 * 75 / 0.5 comes to 1.4999...), so a half rounds up only after dropping that hair.
+        var exact = (double)given.Dose * facts.WeightKg / vial.Concentration / ToolActions.PlungerStep;
+        var notches = Math.Round(Math.Round(exact, 4), MidpointRounding.AwayFromZero);
+        var ml = Math.Max(notches, 1) * ToolActions.PlungerStep;
+        return found.Groups[1].Value switch {
+            "get" => Get(vial, facts),
+            "dose" => $"{ml:0.#} ml of {given.Name}{AllergyNote(given, allergy, facts)}",
+            _ => "the " + (Db.Tools.Values.Where(tool => tool.Action == "syringe").OrderBy(tool => tool.Volume)
+                .FirstOrDefault(tool => tool.Volume >= ml) ?? Db.Tool("syringe_50")!).Name,
+        };
+    }
+
+    /// <summary>The drug, or for a patient allergic to it its first alternative they can take, with the drug they're
+    /// allergic to.</summary>
+    private static (DrugDef Drug, DrugDef? Allergy) Usable(string id, SubtaskFacts facts) {
+        var drug = Db.Drug(id)!;
+        if (!facts.Allergens.Contains(id)) {
+            return (drug, null);
+        }
+        var alternative = drug.Alternatives.Select(Db.Drug)
+            .FirstOrDefault(other => other is { Dose: > 0f } && !facts.Allergens.Contains(other.Id));
+        return (alternative ?? drug, alternative is null ? null : drug);
+    }
+
+    private static string AllergyNote(DrugDef given, DrugDef? allergy, SubtaskFacts facts) =>
+        allergy is not null ? $" (allergic to {allergy.Name})"
+        : facts.AllergyUnknown && given.HasFlag("allergen_candidate")
+            ? " (unknown allergy: order the allergy screen at the monitor first)"
+            : "";
+
+    /// <summary>Where to get a tool: in the room, from the nurse, or wherever there is one.</summary>
+    private static string Get(ToolDef tool, SubtaskFacts facts) {
+        var vial = tool.Concentration > 0f;
+        // In a sentence, but a vial's label and an initialism (IV catheter) stay as written.
+        var name = vial || char.IsUpper(tool.Name.ElementAtOrDefault(1))
+            ? tool.Name
+            : char.ToLowerInvariant(tool.Name[0]) + tool.Name[1..];
+        var thing = vial ? name + " vial" : name;
+        return facts.ToolsInRoom.Contains(tool.Id) || !(facts.Nurse && tool.Orderable)
+            ? $"Pick up the {thing}"
+            : $"Order the {thing} from the nurse ({tool.Category})";
+    }
+}

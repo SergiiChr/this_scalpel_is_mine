@@ -65,6 +65,9 @@ public partial class XrayCart : Node3D {
     private Vector3 _gripOffset;
     private float _gripYaw;
     private float _cooldown;
+
+    /// <summary>Seconds until the unit takes another exposure.</summary>
+    internal float WarmingUp => _cooldown + _exposing;
     private float _exposing;
     private float _syncAccumulated;
     private ulong _takenAtMsec;

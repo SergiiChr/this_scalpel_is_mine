@@ -24,6 +24,8 @@ public static class Db {
     public static readonly ConfigFile Consequences = LoadConfig("res://data/consequences.cfg");
     public static readonly ConfigFile Audio = LoadConfig("res://data/audio.cfg");
     public static readonly ConfigFile RunModifiers = LoadConfig("res://data/run_modifiers.cfg");
+    /// <summary>Default subtasks per objective step type, see data/objectives.cfg.</summary>
+    public static readonly ConfigFile Objectives = LoadConfig("res://data/objectives.cfg");
     /// <summary>Tool ids every surgery starts with, see data/starter_kit.cfg.</summary>
     public static readonly IReadOnlyList<string> StarterKit =
         new ConfigReader(LoadConfig("res://data/starter_kit.cfg"), "starter_kit").Strings("tools");

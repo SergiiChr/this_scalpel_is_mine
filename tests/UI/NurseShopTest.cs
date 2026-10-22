@@ -17,17 +17,21 @@ public class NurseShopTest {
     private static readonly string[] Wanted = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol", "needle"];
     private static readonly string[] Ordered = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol"];
     private IDisposable? _debugHud;
+    private IDisposable? _difficulty;
 
     [BeforeTest]
     public void EnableDebugHud() {
-        // Exercise the objective rows too, independently of this machine's saved preferences.
+        // Exercise the objective rows and the score too.
         _debugHud = SurgeryState.DebugHudIsEnabled();
+        _difficulty = SurgeryState.DifficultyIs(Difficulty.Baby);
     }
 
     [AfterTest]
     public void RestoreDebugHud() {
         _debugHud?.Dispose();
         _debugHud = null;
+        _difficulty?.Dispose();
+        _difficulty = null;
     }
 
     [TestCase]

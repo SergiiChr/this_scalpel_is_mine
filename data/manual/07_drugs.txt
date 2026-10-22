@@ -2,14 +2,14 @@ tags: cefazolin, clindamycin, morphine, ketamine, lidocaine, propofol
 title: 7. Drug formulary
 ## 7.1 Routes
 • [b]Direct injection[/b] (syringe into the patient): rapid onset, high peak effect.
-• [b]Intravenous infusion[/b] (at the infusion stand): slower, smoother onset. The whole syringe goes into the line. Requires a patent line (section 2). Blood products and crystalloids are given by this route only.
+• [b]Intravenous[/b] (into the bag at the infusion stand, or straight into a vein): slower, smoother onset. Through the stand the whole syringe goes into the line, which must be patent (section 2). Blood products and crystalloids are given through the line only.
 
 ## 7.2 Drawing up a dose
 Drugs come in labelled vials; the label gives the strength per ml. Syringes are not labelled and come in {tool.syringe_3.Volume}, {tool.syringe_10.Volume} and {tool.syringe_50.Volume} ml sizes, each marked in tenths of its volume.
 1. Weigh the patient (see the chart) and find the dose per kg below.
 2. Dose in mg = weight in kg × dose per kg. Volume in ml = dose ÷ strength of the vial.
-3. Lower the needle into the vial and draw with the plunger up to the right mark.
-4. Lower the needle into the patient and push the plunger. What goes in adds up: ten small pushes are one big dose.
+3. Lower the needle into the vial and draw with the plunger up to the right mark: the wheel moves it {ToolActions.PlungerStep} ml a notch, down draws, up pushes.
+4. Lower the needle into the patient, the vein or the bag and push the plunger. What goes in adds up: ten small pushes are one big dose.
 A syringe that has held one drug keeps what is left in it; a second drug drawn into it mixes. [b]Remember what is in each syringe.[/b] Glass syringes do not survive the floor. To read the volume, hold the syringe up to the eye ([b]Inspect[/b]): the barrel is marked in tenths of its capacity, the long marks at the half and the full.
 > Roughly right is right. Half a dose barely works, twice the dose is twice the trouble.
 

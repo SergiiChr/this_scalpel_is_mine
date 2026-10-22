@@ -6,7 +6,7 @@ namespace Scalpel.Tools;
 /// </summary>
 public sealed class ClampAction : ToolAction {
     /// <summary>A pinch closes once the tip has stayed within RestReach (meters, up or down) for RestTime (seconds) on the
-    /// patient, not when the press counts: lowered out of an aim or a lift, or by a remote hand whose moves come late,
+    /// patient, not when the press counts: lowered out of an aim, or by a remote hand whose moves come late,
     /// the tip is still coming down then.
     /// RestReach is more than a shaking hand moves the tip in a frame (SurgeonStatus.MaxTremor) and less than a tool
     /// settling at SurgeonHand.SettleSpeed comes down.

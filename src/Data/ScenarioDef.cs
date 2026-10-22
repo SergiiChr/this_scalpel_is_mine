@@ -63,6 +63,12 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
     /// </summary>
     public IReadOnlyList<string> After { get; init; } = [];
 
+    /// <summary>The scenario's own subtasks, null for the step type's (data/objectives.cfg).</summary>
+    public IReadOnlyList<string>? Subtasks { get; init; }
+
+    /// <summary>An optional step the Intern difficulty lists too, where it lists only required ones otherwise.</summary>
+    public bool Hint { get; init; }
+
     public static ObjectiveStep FromVariant(GodotDictionary data) =>
         new(data.String("type"), data.String("label"), data.Bool("optional"), data) {
             Alternative = data.TryGetValue("or", out var alternative)
@@ -70,6 +76,8 @@ public sealed record ObjectiveStep(string Type, string Label, bool Optional, God
                 : null,
             Id = data.String("id", data.String("type")),
             After = data.TryGetValue("after", out var after) ? [.. after.AsGodotArray().Select(id => id.AsString())] : [],
+            Subtasks = data.TryGetValue("subtasks", out var subtasks) ? subtasks.AsStringArray() : null,
+            Hint = data.Bool("hint"),
         };
 }
 

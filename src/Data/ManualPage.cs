@@ -71,11 +71,11 @@ public sealed partial class ManualPage {
     }
 
     /// <summary>Replaces every "{expression}" with its value. One that can't be worked out is reported and left as
-    /// written.</summary>
-    public static string FillNumbers(string text, string where) {
+    /// written. <paramref name="step"/> is what expressions call "step" (an objective step's own numbers).</summary>
+    public static string FillNumbers(string text, string where, GodotDictionary? step = null) {
         var filled = text;
         foreach (Match found in NumberPattern().Matches(text)) {
-            var value = Evaluate(found.Groups[1].Value);
+            var value = Evaluate(found.Groups[1].Value, step);
             if (value is null) {
                 GD.PushError($"Manual: can't work out {{{found.Groups[1].Value}}} in {where}");
                 continue;
@@ -86,9 +86,9 @@ public sealed partial class ManualPage {
     }
 
     /// <summary>The value of one expression, or null when it can't be worked out.</summary>
-    public static Variant? Evaluate(string expression) {
-        var names = new List<string> { "drug", "tool", "quirk" };
-        var inputs = new Godot.Collections.Array(_tables ??= [ById(Db.Drugs), ById(Db.Tools), QuirkEffects()]);
+    public static Variant? Evaluate(string expression, GodotDictionary? step = null) {
+        var names = new List<string> { "drug", "tool", "quirk", "step" };
+        var inputs = new Godot.Collections.Array(_tables ??= [ById(Db.Drugs), ById(Db.Tools), QuirkEffects()]) { step ?? [] };
         foreach (Match word in ClassNamePattern().Matches(expression)) {
             if (!names.Contains(word.Value) && ConstantsOf(word.Value) is { } constants) {
                 names.Add(word.Value);
