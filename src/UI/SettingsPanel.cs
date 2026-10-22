@@ -1,6 +1,7 @@
 namespace Scalpel.UI;
 
-/// <summary>Resolution, audio, mouse and key rebinding. Changes apply immediately, Save writes them to disk.</summary>
+/// <summary>Resolution, audio, mouse, difficulty and key rebinding. Changes apply immediately, Save writes them to
+/// disk.</summary>
 public partial class SettingsPanel : VBoxContainer {
     /// <summary>The action waiting for its new key, empty when none is.</summary>
     private string _waitingFor = "";
@@ -36,7 +37,20 @@ public partial class SettingsPanel : VBoxContainer {
         }
         AddChild(SliderRow("Mouse sensitivity", Settings.MouseSensitivity, 0.2f, 3f,
             value => Settings.MouseSensitivity = value));
-        AddChild(CheckBox("Debug mode (show objectives and every scored action)", Settings.Debug,
+        var difficulty = Ui.HBox(12);
+        var choices = new OptionButton();
+        foreach (var choice in DifficultyPicker.Choices) {
+            choices.AddIconItem(GD.Load<Texture2D>(choice.Icon), choice.Name);
+            choices.SetItemTooltip(choices.ItemCount - 1, choice.Description);
+        }
+        choices.AddThemeConstantOverride("icon_max_width", 24);
+        choices.GetPopup().AddThemeConstantOverride("icon_max_width", 24);
+        choices.Select(DifficultyPicker.Choices.ToList().FindIndex(choice => choice.Difficulty == Settings.Difficulty));
+        choices.ItemSelected += index => Settings.Difficulty = DifficultyPicker.Choices[(int)index].Difficulty;
+        difficulty.AddChild(Ui.Label("Difficulty", 18));
+        difficulty.AddChild(choices);
+        AddChild(difficulty);
+        AddChild(CheckBox("Debug mode (extra log messages and every scored action)", Settings.Debug,
             on => Settings.Debug = on));
 
         AddChild(Ui.Label("Controls (click, then press a key or mouse button)", 18, Ui.Pip));

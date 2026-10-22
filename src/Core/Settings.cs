@@ -3,6 +3,10 @@ using GodotDictionary = Godot.Collections.Dictionary;
 
 namespace Scalpel.Core;
 
+/// <summary>How much the game tells about the treatment: Baby lists every main task with its subtasks, exact doses
+/// and order; Intern only the required main tasks; Md nothing.</summary>
+public enum Difficulty { Baby, Intern, Md }
+
 /// <summary>
 /// Player settings: display, audio, mouse and key bindings, saved to user://settings.cfg. An autoload, so the audio
 /// buses, saved settings and key bindings are in place before the first scene; the settings themselves are static.
@@ -25,8 +29,9 @@ public partial class Settings : Node {
         ["Voice"] = 1f,
         ["Music"] = 0.6f,
     };
-    /// <summary>Debug mode: shows what the game tracks behind the scenes (objectives, scored actions).
-    /// Off in normal play, where finding out what to do is the game.</summary>
+    /// <summary>Null until the player picks one: the main menu asks first.</summary>
+    public static Difficulty? Difficulty { get; set; }
+    /// <summary>Debug mode: extra log messages (objective progress, doses delivered, every scored action).</summary>
     public static bool Debug { get; set; }
     /// <summary>Leaves the settings file alone: the game runs on the defaults above and never writes them back.
     /// Tests set it so the machine's own settings (debug mode, volumes, bindings) can't change what they see.</summary>
@@ -63,6 +68,11 @@ public partial class Settings : Node {
         Fullscreen = file.GetValue("display", "fullscreen", Fullscreen).AsBool();
         MouseSensitivity = file.GetValue("input", "mouse_sensitivity", MouseSensitivity).AsSingle();
         Debug = file.GetValue("debug", "enabled", Debug).AsBool();
+        // TryParse also takes a number, any number: only a named difficulty counts.
+        Difficulty = Enum.TryParse<Difficulty>(file.GetValue("game", "difficulty", "").AsString(), out var difficulty)
+            && Enum.IsDefined(difficulty)
+            ? difficulty
+            : null;
         Bindings.Clear();
         foreach (var (action, code) in file.GetValue("input", "bindings", new GodotDictionary()).AsGodotDictionary()) {
             Bindings[action.AsString()] = code.AsString();
@@ -86,6 +96,9 @@ public partial class Settings : Node {
         }
         file.SetValue("input", "bindings", bindings);
         file.SetValue("debug", "enabled", Debug);
+        if (Difficulty is { } difficulty) {
+            file.SetValue("game", "difficulty", difficulty.ToString());
+        }
         foreach (var bus in Buses) {
             file.SetValue("audio", bus, Volumes[bus]);
         }

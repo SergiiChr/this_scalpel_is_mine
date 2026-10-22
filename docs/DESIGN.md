@@ -236,6 +236,20 @@ Nothing ends the surgery when the steps are done: the players sign the patient o
 does it for them. Then every required step must count for a success; each one that doesn't is scored as missed.
 A step with `"or": {step}` also completes when that nested step's condition is met (hand stitch: a local block, or
 general anesthesia for a lidocaine allergy).
+Each step's `"label"` is its main task as the HUD lists it, written for a new player: what to do and with what.
+Its subtasks, which only the easiest difficulty shows, come from its type's section of `data/objectives.cfg` (an
+`extract` step's by its target's `remove_with`), or from its own `"subtasks"` list. They're worked out for the patient
+when the surgery starts (`Subtasks.cs`, tokens explained in that file): the dose for the patient's weight in ml of the
+vial and the syringe for it, the first alternative of a drug the chart says the patient is allergic to (a section's
+`allergy_instead` gives the subtasks for it), a lab screen first for an allergy the chart doesn't name, and ordering
+from the nurse when the room has no such tool. The host sends them only for the open steps up to the next required one,
+with the steps they come `"after"` that don't hold yet. A state step shows done only once the required steps before it
+count. A drug step (`anesthesia`, `local_block`, `sedate`,
+`inject`) names its drug in `"drug"`, else its section's. Every instruction matches the manual's wording for it.
+
+Difficulty (`Settings.Difficulty`, per player, asked on the first start): **I'm just a baby** lists every main task,
+optional ones marked, with the subtasks of the next ones to do; **Intern** only the required main tasks; **MD** none.
+Debug mode adds the score, the latest scored actions and the debug toasts at any difficulty.
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).
 `sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient

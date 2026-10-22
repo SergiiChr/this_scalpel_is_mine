@@ -146,9 +146,12 @@ public partial class Surgery : Node3D {
             personal[peers[i]] = surgeon.Mods.List("items");
         }
         Tools.SpawnInitial(Scenario.RollTools(Rng, RunMods.Num("missing_tool_chance")), Room.TraySpots(), personal, Room.StationTools());
-        Objectives.Setup(Scenario);
+        // An allergy the chart doesn't name stays unknown until the lab screen, in the subtasks too.
+        var allergyUnknown = Patient.Rolls.Any(roll => roll.Id == "allergy" && roll.Variant.StartsWith("unknown_", StringComparison.Ordinal));
+        Objectives.Setup(Scenario, new SubtaskFacts(Patient.WeightKg, allergyUnknown ? [] : Patient.Mods.List("allergen"),
+            Patient.BloodType, [.. Tools.Tools.Values.Select(tool => tool.Def.Id)], Scenario.Nurse, allergyUnknown));
         Director.Setup(Scenario, net.SessionSeed);
-        // The debug HUD builds its objective rows during setup, rather than on the first status tick during play.
+        // The HUD builds its objective rows during setup, rather than on the first status tick during play.
         Status = CaptureStatus();
         Hud.Setup(this);
         Multiplayer.PeerDisconnected += id => OnPeerLeft((int)id);
@@ -293,8 +296,8 @@ public partial class Surgery : Node3D {
         Rpc(MethodName.Toast, text);
     }
 
-    /// <summary>Host: toast only players in debug mode see (objective progress and other things the game keeps to
-    /// itself).</summary>
+    /// <summary>Host: toast only players in debug mode see (objective progress, doses delivered and other things the
+    /// game keeps to itself).</summary>
     public void AnnounceDebug(string text) {
         if (IsHost) {
             Rpc(MethodName.ToastDebug, text);

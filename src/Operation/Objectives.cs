@@ -1,12 +1,14 @@
 namespace Scalpel.Operation;
 
-/// <summary>An objective step as the debug HUD shows it.</summary>
-public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled) {
-    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled];
+/// <summary>An objective step as the HUD shows it: a main task and, for the easiest difficulty, its subtasks.
+/// </summary>
+public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled, string[] Subtasks) {
+    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled, Subtasks];
 
     public static ObjectiveView FromVariant(Variant data) {
         var view = data.AsGodotArray();
-        return new ObjectiveView(view[0].AsString(), view[1].AsBool(), view[2].AsBool(), view[3].AsBool());
+        return new ObjectiveView(view[0].AsString(), view[1].AsBool(), view[2].AsBool(), view[3].AsBool(),
+            view[4].AsStringArray());
     }
 }
 
@@ -40,11 +42,14 @@ public sealed class StepState {
 public partial class Objectives : Node {
     public List<ObjectiveStep> Steps { get; } = [];
     public List<StepState> States { get; } = [];
+    /// <summary>Each step's subtasks, worked out for this patient (<see cref="Operation.Subtasks"/>).</summary>
+    private readonly List<string[]> _subtasks = [];
 
-    public void Setup(ScenarioDef scenario) {
+    public void Setup(ScenarioDef scenario, SubtaskFacts facts) {
         foreach (var step in scenario.Steps) {
             Steps.Add(step);
             States.Add(new StepState());
+            _subtasks.Add([.. Subtasks.For(step, scenario, facts)]);
         }
     }
 
@@ -103,7 +108,25 @@ public partial class Objectives : Node {
         return AllDone;
     }
 
-    /// <summary>Compact state for the HUD.</summary>
-    public List<ObjectiveView> Snapshot() =>
-        [.. Steps.Select((step, i) => new ObjectiveView(step.Label, States[i].Done, step.Optional, States[i].Spoiled))];
+    /// <summary>Compact state for the HUD. A state step shows done only once the required steps before it count: a
+    /// wound isn't closed before it's been opened. Subtasks go only with the open steps up to the next required one,
+    /// all the HUD lists, which keeps the status small.</summary>
+    public List<ObjectiveView> Snapshot() {
+        var views = new List<ObjectiveView>(Steps.Count);
+        var settled = true;
+        var ahead = true;
+        for (var i = 0; i < Steps.Count; i++) {
+            var (step, state) = (Steps[i], States[i]);
+            var done = state.Done && (settled || !ObjectiveChecks.IsState(step.Type));
+            string[] subtasks = [];
+            if (ahead && !done && !state.Spoiled) {
+                ahead = step.Optional;
+                // Missing() is what spoils a step: a step it comes after that doesn't hold right now.
+                subtasks = [.. _subtasks[i], .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
+            }
+            settled &= step.Optional || state.Counts;
+            views.Add(new ObjectiveView(step.Label, done, step.Optional, state.Spoiled, subtasks));
+        }
+        return views;
+    }
 }

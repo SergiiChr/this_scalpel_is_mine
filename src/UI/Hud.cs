@@ -33,7 +33,7 @@ public partial class Hud : CanvasLayer {
     }
 
     private readonly record struct ClockShown(string Title, int Seconds);
-    private readonly record struct ObjectivesShown(SurgeryStatus Status);
+    private readonly record struct ObjectivesShown(SurgeryStatus Status, Difficulty? Difficulty, bool Debug);
     private readonly record struct BoardShown(string? Order, int Done, int SecondsLeft, int Cooldown);
     private readonly record struct HandShown(SurgicalTool? Tool, bool Full, bool Dirty, bool Holding);
     private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
@@ -553,7 +553,7 @@ public partial class Hud : CanvasLayer {
     }
 
     /// <summary>A soft dark box behind HUD text that has to read over anything.</summary>
-    private static StyleBoxFlat Backing() {
+    internal static StyleBoxFlat Backing() {
         var box = new StyleBoxFlat { BgColor = new Color(0f, 0f, 0f, 0.55f) };
         box.SetCornerRadiusAll(4);
         box.SetContentMarginAll(6f);
@@ -659,11 +659,7 @@ public partial class Hud : CanvasLayer {
     // --- Updating ------------------------------------------------------------------------------------------------
 
     private void UpdateObjectives() {
-        _objectives.Visible = Settings.Debug;
-        if (!Settings.Debug) {
-            return;
-        }
-        if (_objectivesShown.Changed(new ObjectivesShown(Surgery.Status))) {
+        if (_objectivesShown.Changed(new ObjectivesShown(Surgery.Status, Settings.Difficulty, Settings.Debug))) {
             _objectives.Refresh(Surgery.Status);
         }
     }

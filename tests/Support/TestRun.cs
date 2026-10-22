@@ -11,7 +11,14 @@ internal static class TestRun {
     /// <summary>Runs when the assembly loads, before the autoloads: the machine's settings file (debug mode on, another
     /// resolution) must not change what a test sees or ends up in its key frames.
     /// Debug builds of the game load this assembly too, so it acts only when the test runner set the marker.
-    /// It reads the variable through .NET, not Godot: the test host loads the assembly without an engine.</summary>
+    /// It reads the variable through .NET, not Godot: the test host loads the assembly without an engine.
+    /// Tests play at MD, which shows no objectives and asks for no difficulty first: a test about them picks its own.
+    /// </summary>
     [ModuleInitializer]
-    internal static void Start() => Settings.IgnoreFile = System.Environment.GetEnvironmentVariable(Marker) == "1";
+    internal static void Start() {
+        Settings.IgnoreFile = System.Environment.GetEnvironmentVariable(Marker) == "1";
+        if (Settings.IgnoreFile) {
+            Settings.Difficulty = Difficulty.Md;
+        }
+    }
 }

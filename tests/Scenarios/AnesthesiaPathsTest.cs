@@ -9,6 +9,7 @@ public class AnesthesiaPathsTest {
     [TestCase(Timeout = Limits.Slow)]
     public async Task PreinstalledIvDeliversAnesthesiaAndCompletesTheObjective() {
         using var debug = SurgeryState.DebugHudIsEnabled();
+        using var difficulty = SurgeryState.DifficultyIs(Difficulty.Baby);
         var driver = SurgeryDriver.Create();
         const uint Seed = 1;
         await driver.Start("bullet_muscle", seed: Seed);
@@ -40,7 +41,7 @@ public class AnesthesiaPathsTest {
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, $"preop_anesthesia/{Seed}");
             await shots.CaptureAt("installed_iv", "the preinstalled IV in the arm under its dressing, the line attached", dressing.GlobalPosition, 0.24f);
-            await shots.CaptureView("awake", "the patient awake, eyes open, \"Put the patient under\" not checked off");
+            await shots.CaptureView("awake", "the patient awake, eyes open, \"Put the patient under general anesthesia\" not checked off, its subtasks below it");
             var label = Db.Tool("vial_propofol")!.Name;
             driver.OnNeedleInVial = () => shots.CaptureView("needle_in_vial",
                 $"the syringe's needle in the propofol vial's cap, its label \"{label}\" beside the aim");
@@ -51,11 +52,11 @@ public class AnesthesiaPathsTest {
         AssertBool(patient.Vitals.IsUnder)
             .OverrideFailureMessage($"the chart dose puts the patient under: anesthesia {patient.Vitals.Anesthesia}").IsTrue();
         AssertBool(driver.Surgery.Objectives.States[0].Done)
-            .OverrideFailureMessage("Put the patient under checks off after the dose works").IsTrue();
+            .OverrideFailureMessage("Put the patient under general anesthesia checks off after the dose works").IsTrue();
         AssertBool(driver.Surgery.Status.Objectives[0].Done)
             .OverrideFailureMessage("the HUD receives the completed anesthesia objective").IsTrue();
         if (shots is not null) {
-            await shots.CaptureView("anesthetized", "the patient under after the chart dose, \"Put the patient under\" checked off");
+            await shots.CaptureView("anesthetized", "the patient under after the chart dose, \"Put the patient under general anesthesia\" checked off, its subtasks gone");
 
             shots.End();
         }
@@ -104,7 +105,7 @@ public class AnesthesiaPathsTest {
 
     /// <summary>
     /// A patient allergic to lidocaine, put under instead as the manual (17_conditions/allergy.txt) says: "Numb the
-    /// area, or put the patient under" counts general anesthesia, and signed out, the surgery ends in success.
+    /// area with lidocaine, or put the patient under" counts general anesthesia, and signed out, the surgery ends in success.
     /// The lidocaine path is <see cref="ScenarioFlowsTest.PlaysThrough"/>.
     /// </summary>
     [TestCase("hand_stitch", Timeout = Limits.Slow)]

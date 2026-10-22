@@ -62,7 +62,7 @@ public class ScenarioFlowsTest {
     public async Task PlaysThroughToKnownIssue(string scenario, string failure) =>
         await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));
 
-    [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Close the skin\" passes or fails on the random sequence.")]
+    [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Stitch the skin closed\" passes or fails on the random sequence.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);
 }

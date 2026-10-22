@@ -14,14 +14,21 @@ public static class SurgeryState {
     public static void PatientChartIsCorrected(Surgery surgery) => surgery.CorrectChart();
 
     /// <summary>Enable debug displays for a test and restore the previous preference when its scope ends.</summary>
-    public static IDisposable DebugHudIsEnabled() => new DebugHudScope();
+    public static IDisposable DebugHudIsEnabled() {
+        var was = Settings.Debug;
+        Settings.Debug = true;
+        return new Scope(() => Settings.Debug = was);
+    }
 
-    private sealed class DebugHudScope : IDisposable {
-        private readonly bool _was = Settings.Debug;
+    /// <summary>The player has picked <paramref name="difficulty"/> (null: none yet) until the scope ends.</summary>
+    public static IDisposable DifficultyIs(Difficulty? difficulty) {
+        var was = Settings.Difficulty;
+        Settings.Difficulty = difficulty;
+        return new Scope(() => Settings.Difficulty = was);
+    }
 
-        public DebugHudScope() => Settings.Debug = true;
-
-        public void Dispose() => Settings.Debug = _was;
+    private sealed class Scope(Action restore) : IDisposable {
+        public void Dispose() => restore();
     }
 
     /// <summary>A second, remote surgeon (peer 2) standing at the second spawn, as if they'd joined and put their card
@@ -65,6 +72,9 @@ public static class SurgeryState {
     /// <summary>As if lidocaine had gone into the site: numb within seconds.</summary>
     public static void PatientIsNumb(Patient patient) =>
         patient.Administer("lidocaine", DrugRoute.Direct, Db.Drug("lidocaine")!.Dose * patient.WeightKg);
+
+    /// <summary>As if a catheter had gone into the arm's vein with the drip line on it.</summary>
+    public static void IvLineIsIn(Patient patient) => patient.SetIv(patient.Body.Root.ToGlobal(Patient.PreopIvPoint), true);
 
     /// <summary>As if a catheter had gone into the arm and missed the vein: the line is in, but nothing runs through it.
     /// </summary>
