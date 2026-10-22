@@ -7,7 +7,7 @@ namespace Scalpel.Tests.Patients;
 /// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing.
 /// Key frames: review the glove lying flat on the skin over the cut, its palm and fingers on it and pressed a little
 /// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and
-/// grasping the forearm, the lower palm on it, the knuckles rising off it and the fingers round it over the cut.
+/// grasping the forearm, the palm cupped over its round and the fingers round it over the cut.
 /// Nothing of the hand goes into the skin or an opening.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
@@ -16,6 +16,15 @@ namespace Scalpel.Tests.Patients;
 public class HandHoldTest {
     /// <summary>How far (meters) the close-ups look from.</summary>
     private const float CloseUp = 0.35f;
+    /// <summary>How far (meters) a spot of a grasping palm may seem in the skin: the fit reads the skin in a few
+    /// slices along the limb and interpolates between them.</summary>
+    private const float PalmGapSlack = 0.001f;
+    /// <summary>Most (meters) half a grasping palm's underside stands off the skin: its pads, heel and knuckles lie on it.
+    /// </summary>
+    private const float PalmContact = 0.005f;
+    /// <summary>Most (meters) any of a grasping palm's underside stands off the skin: the hollow between its pads.
+    /// </summary>
+    private const float PalmHollow = 0.015f;
     // Temporary local budget override: recorded CPU overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget about a second into "
         + "the surgery, before the hand holds the patient; not profiled yet", 6f);
@@ -106,16 +115,21 @@ public class HandHoldTest {
         AssertFloat(await Wander(() => body.RigBonePose("HandR").Origin))
             .OverrideFailureMessage("the other arm flails").IsGreater(0.01f);
         AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
-        var normal = hand.PressNormal!.Value;
-        var skin = Rays.Cast(body, hand.Target + (normal * 0.03f), hand.Target - (normal * 0.03f), PatientBody.SurfaceLayer);
-        var off = skin is { } hit ? hit.Position.DistanceTo(hand.Target) : float.PositiveInfinity;
-        AssertFloat(off).OverrideFailureMessage($"its lower palm lies on the arm's skin: {off:0.000} m off").IsLess(0.005f);
+        var ring = body.LimbRingAt(on)!.Value;
+        var gaps = PalmGaps(hand, ring);
+        AssertFloat(gaps.Min()).OverrideFailureMessage($"its palm lies on the arm, not in it: {gaps.Min():0.000} m in")
+            .IsGreater(-PalmGapSlack);
+        var median = gaps.Order().ElementAt(gaps.Length / 2);
+        AssertFloat(median).OverrideFailureMessage($"its palm lies on the arm, not over it: {median:0.000} m off")
+            .IsLess(PalmContact);
+        AssertFloat(gaps.Max()).OverrideFailureMessage($"its palm's hollow stays close over the arm: {gaps.Max():0.000} m off")
+            .IsLess(PalmHollow);
         AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, nothing of it in it")
             .IsEqual(0);
-        // From across the arm, where the fingers come over it.
-        await session.CaptureOblique("on_forearm", "the glove grasping the forearm, its lower palm on the arm's top, the "
-            + "fingers round the far side over the cut, nothing of it in the skin", on,
-            (driver.Me.GlobalPosition - on).Rotated(Vector3.Up, Mathf.Pi), CloseUp, 35f, true);
+        // Along the arm, low, where the palm's curve on the arm's round shows.
+        await session.CaptureOblique("on_forearm", "the glove grasping the forearm seen along it: the palm cupped over the "
+            + "arm's round, heel and knuckles on the skin, the fingers down the far side over the cut, nothing of it in "
+            + "the skin", on, ring.Axis, CloseUp, 12f, true);
 
         await driver.PlayerLetsGoOfPatient();
         SurgeryState.PatientPanics(patient);
@@ -154,6 +168,19 @@ public class HandHoldTest {
             return crossings % 2 == 1;
         });
     }
+
+    /// <summary>How far (meters) each spot of the hand's palm underside is off the skin of the limb round
+    /// <paramref name="ring"/>, straight out from its middle line (negative: in it).</summary>
+    private static float[] PalmGaps(SurgeonHand hand, LimbRing ring) =>
+    [
+        .. hand.PalmUndersidePosed().Select(spot => {
+            var middle = ring.Center + (ring.Axis * ring.Axis.Dot(spot - ring.Center));
+            var outward = (spot - middle).Normalized();
+            return Rays.Cast(hand, spot + (outward * 0.03f), middle, PatientBody.SurfaceLayer) is { } hit
+                ? (spot - hit.Position).Dot(outward)
+                : float.NegativeInfinity;
+        }),
+    ];
 
     /// <summary>How far (meters) <paramref name="where"/> strays from where it starts over a second.</summary>
     private static async Task<float> Wander(Func<Vector3> where) {

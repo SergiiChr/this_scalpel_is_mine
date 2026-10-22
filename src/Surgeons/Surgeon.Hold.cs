@@ -14,9 +14,10 @@ public partial class Surgeon {
 
     /// <summary>Where an empty hand holds the patient: the rig bone under it, and the spot on the skin and the skin's
     /// normal there in that bone's frame, so the hand stays on the skin however the part moves, and which way its
-    /// fingers point round a limb it grasps (zero off a limb) in that frame too. Over an opening it rests on the lip
-    /// without pressing in, where there is no skin under it to press.</summary>
-    private readonly record struct PatientHold(string Bone, Vector3 At, Vector3 Normal, Vector3 Across, bool OverOpening);
+    /// fingers point round a limb it grasps (zero off a limb) in that frame too, and how far its palm cups round it.
+    /// Over an opening it rests on the lip without pressing in, where there is no skin under it to press.</summary>
+    private readonly record struct PatientHold(string Bone, Vector3 At, Vector3 Normal, Vector3 Across, Vector3 Cup,
+        bool OverOpening);
 
     private readonly PatientHold?[] _holds = new PatientHold?[2];
 
@@ -52,15 +53,16 @@ public partial class Surgeon {
         // The bone under the spot held: where a limb's grasp puts the hand reaches round past it.
         var bone = body.RigBoneAt(at);
         var across = Vector3.Zero;
+        var cup = Vector3.Zero;
         if (body.LimbRingAt(at) is { } ring) {
             // A limb is grasped: the palm on its near side, the fingers over the top (and what's held there) and round
             // the far side.
-            (at, normal, across) = hand.GraspFit(ring, at, GlobalPosition);
+            (at, normal, across, cup) = hand.GraspFit(ring, at, GlobalPosition);
         }
         // Round a limb the fingers close until they meet its skin (SurgeonHand.GraspWith()).
         hand.PressWrap = overOpening && across == Vector3.Zero ? OpeningWrap : 0f;
         var pose = body.RigBonePose(bone).AffineInverse();
-        _holds[Active] = new PatientHold(bone, pose * at, (pose.Basis * normal).Normalized(), pose.Basis * across,
+        _holds[Active] = new PatientHold(bone, pose * at, (pose.Basis * normal).Normalized(), pose.Basis * across, cup,
             overOpening);
         hand.Lowered = false;
         hand.Trigger = false;
@@ -71,6 +73,7 @@ public partial class Surgeon {
         _holds[index] = null;
         Hands[index].PressNormal = null;
         Hands[index].PressAcross = Vector3.Zero;
+        Hands[index].PressCup = Vector3.Zero;
         Hands[index].PressBone = "";
     }
 
@@ -91,6 +94,7 @@ public partial class Surgeon {
         var normal = (pose.Basis * hold.Normal).Normalized();
         hand.PressNormal = normal;
         hand.PressAcross = (pose.Basis * hold.Across).Normalized();
+        hand.PressCup = hold.Cup;
         hand.PressBone = hold.Bone;
         hand.Lifted = false;
         hand.Raise = 0f;

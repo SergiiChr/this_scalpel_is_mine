@@ -1,8 +1,9 @@
 """Surgeon's gloved right hand, rigged.
 
 Rest pose: wrist at the origin, fingers along +X, palm facing down (-Y), thumb on the -Z side, fingers slightly relaxed.
-Bones: Hand, Index1-3, Middle1-3, Ring1-3, Pinky1-3, Thumb1-3 (local X bends toward the palm), and Cuff, pointing
-back from the wrist: the game aims it down the forearm so the cuff stays on the sleeve however the wrist bends.
+Bones: Hand, Palm (its knuckle half, which cups toward the palm round what it lies on), Index1-3, Middle1-3, Ring1-3,
+Pinky1-3, Thumb1-3 (local X bends toward the palm), and Cuff, pointing back from the wrist: the game aims it down the
+forearm so the cuff stays on the sleeve however the wrist bends.
 Each finger is its own metaball shell so fingers don't melt together; a voxel remesh fuses them into the palm.
 """
 
@@ -20,6 +21,10 @@ GLOVE = (0.3, 0.45, 0.8)
 OPENING = -0.1
 # Distance behind the wrist over which the glove goes from following the hand to following the cuff.
 CUFF_BLEND = 0.045
+# Where the palm cups (along the fingers from the wrist), and how far either side of it it goes from the heel to the
+# knuckles: across the whole palm, so a cupped palm curves along its length instead of creasing.
+PALM_HINGE = 0.045
+PALM_BLEND = 0.04
 
 # name, knuckle (MCP) position, phalanx lengths, proximal radius, spread (radians around Y, + toward the pinky side)
 FINGERS: tuple[tuple[str, Vec3, tuple[float, float, float], float, float], ...] = (
@@ -95,17 +100,21 @@ def build() -> bpy.types.Object:
     scene.finish(rim, scene.material("glove", GLOVE))
     scene.clean()
 
-    bones: list[tuple[str, Vec3, Vec3, str | None]] = [("Hand", (0.0, 0.0, 0.0), (0.09, 0.0, 0.0), None)]
+    bones: list[tuple[str, Vec3, Vec3, str | None]] = [
+        ("Hand", (0.0, 0.0, 0.0), (PALM_HINGE, 0.0, 0.0), None),
+        ("Palm", (PALM_HINGE, 0.0, 0.0), (0.09, 0.0, 0.0), "Hand"),
+    ]
     for name, knuckle, lengths, _radius, spread in FINGERS:
         chain = joints(knuckle, lengths, spread)
         for i in range(3):
-            bones.append((f"{name}{i + 1}", chain[i], chain[i + 1], "Hand" if i == 0 else f"{name}{i}"))
+            bones.append((f"{name}{i + 1}", chain[i], chain[i + 1], "Palm" if i == 0 else f"{name}{i}"))
     for i in range(3):
         bones.append((f"Thumb{i + 1}", THUMB[i], THUMB[i + 1], "Hand" if i == 0 else f"Thumb{i}"))
     bones.append(("Cuff", (0.0, 0.0, 0.0), (OPENING, 0.0, 0.0), "Hand"))
     rig = scene.armature("GloveRig", bones)
     scene.bind(hand, rig)
     scene.reweight(hand, "Cuff", cuff_weight, "Hand")
+    scene.split(hand, "Hand", "Palm", palm_weight)
     scene.attach(rim, rig, "Cuff")
     return rig
 
@@ -114,6 +123,12 @@ def cuff_weight(p: NDArray[np.float64]) -> NDArray[np.float64]:
     """How much each point follows the cuff (0..1): all of it past CUFF_BLEND behind the wrist, none of the hand,
     blended smoothly between, so a bent wrist stretches the glove over it instead of kinking."""
     t = np.clip(-p[:, 0] / CUFF_BLEND, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def palm_weight(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """How much of each point's share of the hand follows the palm's knuckle half (0..1), smoothly across the hinge."""
+    t = np.clip((p[:, 0] - PALM_HINGE + PALM_BLEND) / (2.0 * PALM_BLEND), 0.0, 1.0)
     return t * t * (3.0 - 2.0 * t)
 
 

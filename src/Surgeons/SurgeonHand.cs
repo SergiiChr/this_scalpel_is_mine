@@ -56,15 +56,38 @@ public partial class SurgeonHand : Node3D {
     /// <summary>Where along a limb (meters from the grasp) <see cref="GraspFit"/> finds its skin round it: under the
     /// palm's sides and middle.</summary>
     private static readonly float[] GraspSlices = [-0.024f, 0f, 0.024f];
-    /// <summary>Spots under the palm, heel to knuckles and side to side, glove space.</summary>
-    private static readonly Vector3[] PalmUnderside =
+    /// <summary>The cells under the palm, heel to knuckles and thumb side to little finger side (glove space x, z): the
+    /// lowest point of the glove's skin in each is where the palm's underside is there (see
+    /// <see cref="PalmUnderside"/>).</summary>
+    private static readonly Vector2[] PalmCells =
     [
-        .. Enumerable.Range(0, 5).SelectMany(i => Enumerable.Range(0, 3)
-            .Select(j => new Vector3(0.085f * i / 4f, -PalmHalfThickness, -0.024f + (0.024f * j)))),
+        .. Enumerable.Range(0, 9).SelectMany(i => Enumerable.Range(0, 5)
+            .Select(j => new Vector2(0.011f * i, -0.032f + (0.016f * j)))),
     ];
+    private static readonly Vector2 PalmCellSize = new(0.011f, 0.016f);
     /// <summary>The middle of the lower half of the palm's underside, glove space: what a hand grasping a limb lays on
     /// it.</summary>
     private static readonly Vector3 LowerPalm = new(0.0213f, -PalmHalfThickness, 0f);
+    /// <summary>Where the palm's knuckle half turns to cup it, glove space, and how far either side of it the cup bends
+    /// the palm, heel to knuckles (the Palm bone and its skin weights, tools/blender/hand.py).</summary>
+    private static readonly Vector3 PalmHinge = new(0.045f, 0f, 0f);
+    private const float PalmBlend = 0.04f;
+    /// <summary>The axis the palm cups about straight across it, glove space: its knuckle half bends toward the palm
+    /// (-Y). It may slant as the palm's crease does, cupping the index side more or the little finger side.</summary>
+    private static readonly Vector3 PalmCupAxis = Vector3.Forward;
+    /// <summary>Furthest (radians) the palm's cup slants from straight across it, and how many slants
+    /// <see cref="GraspFit"/> tries each way.</summary>
+    private const float MaxCupSlant = 0.6f;
+    private const int SlantSteps = 4;
+    /// <summary>Most a hand grasping a limb cups its palm round it (radians).</summary>
+    private const float MaxPalmCup = 0.9f;
+    /// <summary>How many cups of the palm <see cref="GraspFit"/> tries at each turn, from flat to
+    /// <see cref="MaxPalmCup"/>.</summary>
+    private const int CupSteps = 9;
+    /// <summary>Furthest (radians) a hand grasping a limb leans its palm along it, and how many leans
+    /// <see cref="GraspFit"/> tries each way.</summary>
+    private const float MaxGraspLean = 0.3f;
+    private const int LeanSteps = 6;
     /// <summary>Most a finger curls closing round a limb it grasps (times <see cref="JointBend"/>).</summary>
     private const float MaxGraspCurl = 1.3f;
     /// <summary>Furthest the thumb's root slides toward a plunger out of its reach (meters).</summary>
@@ -211,6 +234,9 @@ public partial class SurgeonHand : Node3D {
     /// <summary>Which way the fingers of a hand grasping a limb point, across it and round it (zero off a limb): they
     /// close round it until they meet its skin (see GraspWith()).</summary>
     public Vector3 PressAcross { get; set; }
+    /// <summary>How a hand grasping a limb cups its palm round it, its knuckle half turned toward the palm (see
+    /// GraspFit()): the axis it turns about (glove space) times how far (radians); zero flat.</summary>
+    public Vector3 PressCup { get; set; }
     /// <summary>How this hand's grip is fitted to the tool it holds (see <see cref="GripFit"/>).</summary>
     public GripFit Fit { get; set; } = GripFit.None;
     /// <summary>How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon
@@ -230,6 +256,7 @@ public partial class SurgeonHand : Node3D {
     private readonly Queue<(float Time, Vector3 Position)> _history = new();
     private float _clock;
     private readonly Dictionary<string, FingerRest> _fingerRests = [];
+    private Vector3[]? _palmUnderside;
     private float _curl = 0.2f;
     /// <summary>What the fingers were last posed for.</summary>
     private PoseKey? _posed;
@@ -279,7 +306,7 @@ public partial class SurgeonHand : Node3D {
     private float _trailAccumulated;
 
     private readonly record struct PoseKey(float Curl, string Grip, bool Holding, GripFit Fit, float Press, float Wrap,
-        Vector3 Grasping);
+        Vector3 Grasping, Vector3 Cup);
 
     /// <summary>A finger at rest, glove space: where its root is, each bone (to the next joint, the last to its tip) and
     /// the axis each joint bends about.</summary>
@@ -479,7 +506,7 @@ public partial class SurgeonHand : Node3D {
         var bones = _gloveRig.Bones;
         for (var i = 0; i < bones.Count; i++) {
             var (bone, child) = bones[i];
-            if (bone is "Hand" or "Cuff" || (part.Length > 0 && !bone.StartsWith(part, StringComparison.Ordinal))) {
+            if (bone is "Hand" or "Palm" or "Cuff" || (part.Length > 0 && !bone.StartsWith(part, StringComparison.Ordinal))) {
                 continue;
             }
             var at = toWorld * skeleton.GetBoneGlobalPose(i).Origin;
@@ -491,13 +518,15 @@ public partial class SurgeonHand : Node3D {
         if (part.Length > 0 && part != "Palm") {
             return;
         }
-        // The palm is wide and flat: a grid through it, glove model space (fingers +X, back of the hand +Y).
+        // The palm is wide and flat: a grid through it, glove model space (fingers +X, back of the hand +Y), cupped as
+        // it is.
         var glove = _glove.GlobalTransform;
+        var cup = PressNormal is null ? Vector3.Zero : PressCup;
         for (var i = 0; i < 7; i++) {
             for (var j = 0; j < 5; j++) {
                 foreach (var y in PalmLayers) {
                     var at = new Vector3(0.085f * i / 6f, y, -0.024f + (0.012f * j));
-                    points.Add(new(glove * at, PalmHalfThickness * 0.5f));
+                    points.Add(new(glove * Cupped(at, cup), PalmHalfThickness * 0.5f));
                 }
             }
         }
@@ -553,12 +582,14 @@ public partial class SurgeonHand : Node3D {
         // Grasping a limb, the fingers close round its skin from where the glove is: posed again once it has moved.
         var grasping = PressNormal is not null && PressAcross != Vector3.Zero ? _glove.GlobalPosition.Snapped(0.001f)
             : Vector3.Zero;
+        var cup = PressNormal is null ? Vector3.Zero : PressCup;
         var pose = new PoseKey(_curl, Grip, Gripping, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN, wrap,
-            grasping);
+            grasping, cup);
         if (pose == _posed) {
             return;
         }
         _posed = pose;
+        _gloveRig.Rotate("Palm", CupTurn(cup));
         var plunger = PressInGlove();
         var style = Style;
         float[] amounts = PressNormal is not null ? [.. style.Curl.Select(curl => Mathf.Max(curl + wrap, 0f))]
@@ -709,8 +740,10 @@ public partial class SurgeonHand : Node3D {
     /// the palm side of its bone's end crosses it.</summary>
     private bool FingerInSkin(FingerRest rest, float[] bends) {
         var toWorld = _gloveRig!.Skeleton.GlobalTransform;
-        var at = rest.Root;
-        var turned = Basis.Identity;
+        // The fingers ride the palm's knuckle half, cupped as it is.
+        var knuckles = KnuckleHalf(PressCup);
+        var at = knuckles * rest.Root;
+        var turned = knuckles.Basis;
         for (var joint = 0; joint < 3; joint++) {
             turned *= new Basis(rest.Axes[joint], bends[joint]);
             var end = at + (turned * rest.Bones[joint]);
@@ -924,14 +957,12 @@ public partial class SurgeonHand : Node3D {
 
     /// <summary>
     /// Where a hand grasping the limb round <paramref name="ring"/> at <paramref name="at"/> lays its palm, seen from
-    /// <paramref name="from"/>: the spot the lower palm lies on, the palm's normal and which way the fingers point, from
-    /// the near side over the top. The palm is turned
-    /// from the limb's top toward the near side as far as lays it closest along its whole length, the heel as much as
-    /// the knuckles, and rests on the skin with no part of it in it. A flat palm can't lie along a limb thinner than it:
-    /// there it rests with both ends a little off the skin, and the fingers close round the rest
-    /// (<see cref="GraspWith"/>).
+    /// <paramref name="from"/>: the spot the lower palm lies on, the palm's normal, which way the fingers point (from the
+    /// near side over the top) and how far the palm cups. The palm is turned from the limb's top toward the near side
+    /// and cupped round the limb as far as lays its whole underside closest to the skin, and rests on it with no part
+    /// of it in it. The fingers close round the rest (<see cref="GraspWith"/>).
     /// </summary>
-    internal (Vector3 At, Vector3 Normal, Vector3 Fingers) GraspFit(LimbRing ring, Vector3 at, Vector3 from) {
+    internal (Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) GraspFit(LimbRing ring, Vector3 at, Vector3 from) {
         var axis = ring.Axis;
         var center = ring.Center + (axis * axis.Dot(at - ring.Center));
         var top = Vector3.Up.Slide(axis).Normalized();
@@ -941,7 +972,8 @@ public partial class SurgeonHand : Node3D {
         // How far a spot is out from the skin (negative: in it), by the slice nearest it.
         float Gap(Vector3 spot) {
             var along = axis.Dot(spot - center);
-            var slice = Enumerable.Range(0, GraspSlices.Length).MinBy(k => Mathf.Abs(GraspSlices[k] - along));
+            var slice = along < (GraspSlices[0] + GraspSlices[1]) * 0.5f ? 0
+                : along < (GraspSlices[1] + GraspSlices[2]) * 0.5f ? 1 : 2;
             var off = (spot - center).Slide(axis);
             var radii = slices[slice];
             var round = Mathf.PosMod(Mathf.Atan2(off.Dot(side), off.Dot(top)), Mathf.Tau) / Mathf.Tau * radii.Length;
@@ -950,38 +982,127 @@ public partial class SurgeonHand : Node3D {
         }
         // Which way round the axis turns the top toward the near side.
         var toNear = side.Dot(from - center) >= 0f ? 1f : -1f;
-        var best = (Spread: float.PositiveInfinity, At: at, Normal: top, Fingers: side);
-        var spots = new Vector3[PalmUnderside.Length];
-        for (var step = 0; step <= GraspSteps; step++) {
-            var normal = new Basis(axis, toNear * MaxGraspTurn * step / GraspSteps) * top;
+        var underside = PalmUnderside();
+        var spots = new Vector3[underside.Length];
+        // The thumb lies along the palm's near edge as the press grip leaves it, at rest: it mustn't go in either.
+        var thumbRest = ThumbAtRest();
+        var thumbJoints = new Vector3[4];
+        thumbJoints[0] = thumbRest.Root;
+        for (var joint = 0; joint < 3; joint++) {
+            thumbJoints[joint + 1] = thumbJoints[joint] + thumbRest.Bones[joint];
+        }
+        Vector3[] thumbRestPoints = [.. thumbJoints, .. thumbJoints.Skip(1).Select((end, joint) => end.Lerp(thumbJoints[joint], 0.5f))];
+        var thumb = new Vector3[thumbRestPoints.Length];
+        // The palm turned round the limb, leaning along it and cupped: where it rests on the skin and how far the part
+        // of it furthest off the skin is.
+        (float Spread, Vector3 At, Vector3 Normal, Vector3 Fingers, Vector3 Cup) Fit(int step, int lean, int cupStep,
+            int slant) {
+            var turned = new Basis(axis, toNear * MaxGraspTurn * step / GraspSteps) * top;
             // Round the limb away from the near side, the way the palm turns back to its top.
-            var fingers = -toNear * axis.Cross(normal);
+            var fingers = -toNear * axis.Cross(turned);
+            // Leaning along the limb, the palm follows it narrowing toward the wrist.
+            var normal = new Basis(fingers, MaxGraspLean * lean / LeanSteps) * turned;
             var frame = PressBasis(normal, fingers);
-            // The lower palm over the limb's middle line: it lies on the limb's round, and the knuckles rise off it
-            // toward the far side for the fingers to close round it from there.
+            var cup = new Basis(Vector3.Up, MaxCupSlant * slant / SlantSteps) * PalmCupAxis * (MaxPalmCup * cupStep / CupSteps);
+            // The lower palm over the limb's middle line, the knuckle half cupped round it toward the far side.
             for (var k = 0; k < spots.Length; k++) {
-                spots[k] = frame * (PalmUnderside[k] - LowerPalm);
+                spots[k] = frame * (Cupped(underside[k], cup) - LowerPalm);
+            }
+            for (var k = 0; k < thumb.Length; k++) {
+                thumb[k] = frame * (thumbRestPoints[k] - LowerPalm);
             }
             // Bisects how far out from the middle line the palm goes: as close as leaves it out of the skin.
             var low = 0f;
             var high = GraspClear;
-            for (var i = 0; i < 12; i++) {
+            for (var i = 0; i < 10; i++) {
                 var mid = (low + high) * 0.5f;
-                var place = center + (normal * mid);
-                if (spots.Any(spot => Gap(place + spot) < 0f)) {
+                var place = center + (turned * mid);
+                if (spots.Any(spot => Gap(place + spot) < 0f) || thumb.Any(spot => Gap(place + spot) < FingerRadius)) {
                     low = mid;
                 } else {
                     high = mid;
                 }
             }
-            var resting = center + (normal * high);
-            var spread = Enumerable.Range(0, spots.Length).Where(k => PalmUnderside[k].X <= LowerPalm.X * 2f)
-                .Max(k => Gap(resting + spots[k]));
-            if (spread < best.Spread) {
-                best = (spread, resting, normal, fingers);
+            var resting = center + (turned * high);
+            return (spots.Average(spot => Gap(resting + spot)), resting, normal, fingers, cup);
+        }
+        // Turn and cup first, then the cup's slant, the lean, and the turn and cup again near where they were: each
+        // matters far more than the next, and all of them together would take a great many tries.
+        var (bestStep, bestCup, bestSlant, bestLean) = (0, 0, 0, 0);
+        var best = Fit(0, 0, 0, 0);
+        void Try(int step, int lean, int cupStep, int slant) {
+            // A cup, slant or lean that lays the palm barely closer isn't worth it.
+            if (Fit(step, lean, cupStep, slant) is var fit && fit.Spread < best.Spread - 0.0002f) {
+                (best, bestStep, bestLean, bestCup, bestSlant) = (fit, step, lean, cupStep, slant);
             }
         }
-        return (best.At, best.Normal, best.Fingers);
+        for (var step = 0; step <= GraspSteps; step++) {
+            for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
+                Try(step, 0, cupStep, 0);
+            }
+        }
+        var (turnedTo, leanedTo) = (bestStep, bestLean);
+        for (var slant = -SlantSteps; slant <= SlantSteps; slant++) {
+            for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
+                Try(turnedTo, leanedTo, cupStep, slant);
+            }
+        }
+        var (cuppedTo, slantedTo) = (bestCup, bestSlant);
+        for (var lean = -LeanSteps; lean <= LeanSteps; lean++) {
+            Try(turnedTo, lean, cuppedTo, slantedTo);
+        }
+        (turnedTo, leanedTo, slantedTo) = (bestStep, bestLean, bestSlant);
+        for (var step = Mathf.Max(turnedTo - 2, 0); step <= Mathf.Min(turnedTo + 2, GraspSteps); step++) {
+            for (var cupStep = 0; cupStep <= CupSteps; cupStep++) {
+                Try(step, leanedTo, cupStep, slantedTo);
+            }
+        }
+        return (best.At, best.Normal, best.Fingers, best.Cup);
+    }
+
+    /// <summary>How the palm's knuckle half (and the fingers on it) is moved cupped by <paramref name="cup"/>, glove
+    /// space.</summary>
+    private static Transform3D KnuckleHalf(Vector3 cup) {
+        var turn = CupTurn(cup);
+        return new Transform3D(turn, PalmHinge - (turn * PalmHinge));
+    }
+
+    /// <summary>The palm's underside at rest, glove space: the lowest point of the glove's skin in each of
+    /// <see cref="PalmCells"/> (none where the glove has no skin under it). Read off the model once.</summary>
+    private Vector3[] PalmUnderside() {
+        if (_palmUnderside is not null) {
+            return _palmUnderside;
+        }
+        var skin = _glove.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()
+            .First(mesh => mesh.Skin is not null);
+        var toGlove = _glove.GlobalTransform.AffineInverse() * skin.GlobalTransform;
+        using var arrays = skin.Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Select(vertex => toGlove * vertex).ToArray();
+        return _palmUnderside =
+        [
+            .. PalmCells.Select(cell => vertices
+                    .Where(v => Mathf.Abs(v.X - cell.X) <= PalmCellSize.X * 0.5f && Mathf.Abs(v.Z - cell.Y) <= PalmCellSize.Y * 0.5f)
+                    .Select(v => (Vector3?)new Vector3(cell.X, v.Y, cell.Y)).MinBy(v => v!.Value.Y))
+                .OfType<Vector3>(),
+        ];
+    }
+
+    /// <summary>The palm's underside as the hand is posed now (world space): where it should lie on what it holds.
+    /// </summary>
+    internal IEnumerable<Vector3> PalmUndersidePosed() {
+        var cup = PressNormal is null ? Vector3.Zero : PressCup;
+        return PalmUnderside().Select(spot => _glove.GlobalTransform * Cupped(spot, cup));
+    }
+
+    /// <summary>The turn of the palm's knuckle half cupped by <paramref name="cup"/> (see <see cref="PressCup"/>).
+    /// </summary>
+    private static Basis CupTurn(Vector3 cup) => cup.IsZeroApprox() ? Basis.Identity : new Basis(cup.Normalized(), cup.Length());
+
+    /// <summary>Where a point of the palm (glove space) goes with it cupped by <paramref name="cup"/>: as its skin
+    /// does, with the knuckle half past the hinge and blended across it.</summary>
+    private static Vector3 Cupped(Vector3 point, Vector3 cup) {
+        var share = Mathf.SmoothStep(PalmHinge.X - PalmBlend, PalmHinge.X + PalmBlend, point.X);
+        return point.Lerp(KnuckleHalf(cup) * point, share);
     }
 
     /// <summary>How far out from <paramref name="middle"/> the skin is all round it (meters), from
