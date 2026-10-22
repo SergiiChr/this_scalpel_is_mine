@@ -30,10 +30,10 @@ public class HandHoldTest {
     /// <summary>Most (meters) a grasping finger's first bone ends off the skin: it wraps the limb from the knuckle.
     /// </summary>
     private const float FingerTouch = 0.003f;
-    /// <summary>Most (meters) a drape pressed onto the skin lies off it: a little off, as the sheet is laid
-    /// <see cref="Drape.Offset"/> off it, and the body's collider and its drawn skin differ by a few millimeters.
-    /// </summary>
-    private const float DrapePressed = Drape.Offset * 0.75f;
+    /// <summary>Most of the way off the skin it was laid a drape pressed onto it lies: a little off, where the skin
+    /// rises beside it (between the sheet's points) and as the body's collider and its drawn skin differ by a few
+    /// millimeters.</summary>
+    private const float DrapePressed = 0.5f;
     // Temporary local budget override: recorded CPU overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget about a second into "
         + "the surgery, before the hand holds the patient; not profiled yet", 6f);
@@ -179,10 +179,10 @@ public class HandHoldTest {
         AssertBool(driver.Me.HoldsPatient(driver.Me.Active)).OverrideFailureMessage("the hand holds the thigh").IsTrue();
         var ring = body.LimbRingAt(on)!.Value;
         AssertGrasps(hand, ring);
-        var under = SheetUnder(drape, hand);
+        var under = SheetUnder(drape, sheet, hand);
         AssertBool(under.Length > 0).OverrideFailureMessage("the drape runs over the fingers on the thigh").IsTrue();
-        AssertFloat(under.Max()).OverrideFailureMessage($"under the hand the drape is pressed onto the skin: up to "
-            + $"{under.Max():0.000} m off it").IsLess(DrapePressed);
+        AssertFloat(under.Max()).OverrideFailureMessage($"under the hand the drape is pressed down onto the skin: up "
+            + $"to {under.Max():0.00} of the way it was laid off it").IsLess(DrapePressed);
         // From high over the far side of the thigh, where the fingers wrap its top and the sheet's dent round them shows.
         await session.CaptureOblique("through_drape", "the glove grasping the thigh through the drape, seen from high over its far side: "
             + "the sheet pressed down onto the leg under the hand and rising back round it, none of the glove in the sheet or the sheet "
@@ -199,15 +199,20 @@ public class HandHoldTest {
     private static Vector3[] SheetVertices(Drape drape) =>
         ((ArrayMesh)drape.Mesh).SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
 
-    /// <summary>How far (meters) off the skin under it the drape's sheet is drawn where it runs over the fingers of
-    /// <paramref name="hand"/>, at each of its points within a finger's width of one.</summary>
-    private static float[] SheetUnder(Drape drape, SurgeonHand hand) {
+    /// <summary>How far off the skin under it the drape's sheet is drawn where it runs over the fingers of
+    /// <paramref name="hand"/>, as a share of how far off it the sheet was <paramref name="laid"/> (<see
+    /// cref="SheetVertices"/>), at each of its points within a finger's width of one.</summary>
+    private static float[] SheetUnder(Drape drape, Vector3[] laid, SurgeonHand hand) {
         var fingers = (string[])["Index", "Middle", "Ring", "Pinky"];
         var points = fingers.SelectMany(finger => hand.BonePoints(finger)).ToArray();
-        return [.. SheetVertices(drape).Select(drape.ToGlobal)
-            .Where(v => points.Any(point => point.Position.Y < v.Y
-                && new Vector2(v.X - point.Position.X, v.Z - point.Position.Z).Length() < point.Radius))
-            .Select(v => v.Y - Rays.Cast(drape, v + Vector3.Up * 0.01f, v + Vector3.Down * 0.3f, PatientBody.SurfaceLayer)!.Value.Position.Y)];
+        return [.. SheetVertices(drape).Select(drape.ToGlobal).Zip(laid.Select(drape.ToGlobal))
+            .Where(pair => points.Any(point => point.Position.Y < pair.Second.Y
+                && new Vector2(pair.First.X - point.Position.X, pair.First.Z - point.Position.Z).Length() < point.Radius))
+            .Select(pair => {
+                var skin = Rays.Cast(drape, pair.Second + Vector3.Up * 0.01f, pair.Second + Vector3.Down * 0.3f,
+                    PatientBody.SurfaceLayer)!.Value.Position.Y;
+                return (pair.First.Y - skin) / (pair.Second.Y - skin);
+            })];
     }
 
     /// <summary>How high the drape's sheet is (world) where it is drawn over <paramref name="at"/>: at its vertex
