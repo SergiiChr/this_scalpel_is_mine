@@ -168,6 +168,7 @@ public partial class BloodFlow : Node3D {
     private int _surfaceGeometrySteps;
     private int _surfaceGeometryTopology;
     private bool _surfaceNeedsPaint;
+    private int _surfaceSteps;
     private readonly List<Drop> _drops = [];
     internal IReadOnlyList<Drop> Drops => _drops;
     private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
@@ -739,12 +740,15 @@ public partial class BloodFlow : Node3D {
         while (_bodyFilmBuild.IsCompleted && _surface.TakeRunoff(out var uv, out var runoffMl)) {
             BodyFilm.Add(BodyFilm.Nearest(siteToMesh * body.Site.ToLocal(body.UvToWorld(uv))), runoffMl);
         }
-        if (_bodyFilmBuild.IsCompleted) {
+        // The pose is read only when a step starts: it's what the step and the drips it lets go need.
+        if (_bodyFilmBuild.IsCompleted && BodyFilm.Due(delta)) {
             var world = BodyToWorld();
             // Skin pressed on the mattress (lying on the back or turned) hands its blood to the bed's film.
             var bed = Bed;
             BodyFilm.Tick(delta, _skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(world(node, BodyFilm.At(node))));
             ReleaseBodyDrips(world);
+        } else if (_bodyFilmBuild.IsCompleted) {
+            BodyFilm.Tick(delta, Vector3.Zero);
         }
         if (_surface.HasFilm) {
             _surfaceGeometryClock += delta;
@@ -781,7 +785,9 @@ public partial class BloodFlow : Node3D {
         var steps = Mathf.CeilToInt(elapsed * 60f);
         var basis = body.Site.GlobalBasis;
         for (var i = 0; i < steps; i++) { _surface.Step(basis, elapsed / steps); }
-        _surfaceNeedsPaint = _surface.NeedsPaint;
+        // Painted after every other step: the skin's blood redrawn 15 times a second reads as smooth, at half the cost.
+        // A step that skips it leaves NeedsPaint set for the next.
+        _surfaceNeedsPaint = _surface.NeedsPaint && ++_surfaceSteps % 2 == 0;
     }
 
     /// <summary>Throws <paramref name="count"/> droplets up and out from <paramref name="at"/> (an impact, a saw),

@@ -33,6 +33,11 @@ internal sealed class SurfaceFilm {
     private const float Overhang = -0.2f;
     /// <summary>Liquid depth (m) that hides about two thirds of the surface, as on the site's skin.</summary>
     private const float CoverDepth = SurfaceBlood.CoverDepth;
+    /// <summary>Milliliters a point passes on in a substep below which the film counts as settled: a pool's last
+    /// trickle, which would otherwise keep every pool stepping and redrawn for good.</summary>
+    private const float SettledMl = 0.00001f;
+    /// <summary>Steps between drawings of a moving film.</summary>
+    private const int StepsPerDraw = 3;
     /// <summary>How far (m) the drawn film rises with its depth at most.</summary>
     private const float MaxRise = 0.001f;
     /// <summary>Drawn coverage below which a triangle's corner shows nothing.</summary>
@@ -64,6 +69,8 @@ internal sealed class SurfaceFilm {
     private readonly float[] _shown;
     // Drawn coverage blurred once and twice over each point's neighbours, worked out once a step (stamped).
     private readonly float[] _blurredOnce;
+    private readonly float[] _coverage;
+    private readonly int[] _coverageAsked;
     private readonly float[] _blurredTwice;
     private readonly int[] _onceAsked;
     private readonly int[] _twiceAsked;
@@ -81,6 +88,10 @@ internal sealed class SurfaceFilm {
     private Vector3[] _vertices = [];
     private Vector3[] _normals = [];
     private Vector2[] _uvs = [];
+    private int[] _indices = [];
+    private readonly List<int> _drawnPoints = [];
+    private readonly int[] _vertexStamp;
+    private readonly int[] _vertexOf;
     private int[] _bones = [];
     private float[] _boneWeights = [];
 
@@ -98,6 +109,10 @@ internal sealed class SurfaceFilm {
     // Whether liquid was added or moved since the film was last drawn, and whether the last step drew it anew.
     private bool _moved;
     private bool _rebuilt;
+    // Whether the last step moved nothing worth drawing; the film then sleeps (see Tick).
+    private bool _settled;
+    // Moved since it was last drawn: drawn on its turn, or as soon as it stops moving, so it never settles undrawn.
+    private bool _mustDraw;
 
     internal int Count => _at.Length;
     internal Vector3 At(int node) => _at[node];
@@ -303,7 +318,11 @@ internal sealed class SurfaceFilm {
         _drainAsked = new int[count];
         _drainsHere = new bool[count];
         _reachedStamp = new int[count];
+        _vertexStamp = new int[count];
+        _vertexOf = new int[count];
         _blurredOnce = new float[count];
+        _coverage = new float[count];
+        _coverageAsked = new int[count];
         _blurredTwice = new float[count];
         _onceAsked = new int[count];
         _twiceAsked = new int[count];
@@ -401,14 +420,18 @@ internal sealed class SurfaceFilm {
     /// gravity <paramref name="gravity"/> (in the film's space). Returns whether a step's time came.
     /// <paramref name="drains"/> marks points where the surface meets another one, such as skin pressed on the bed:
     /// their liquid leaves as drips there, to pass on to that surface. It runs on the worker.</summary>
+    /// <summary>Whether <see cref="Tick"/> with <paramref name="delta"/> reaches a step's time.</summary>
+    internal bool Due(float delta) => _clock + delta >= 1f / Rate;
+
     internal bool Tick(float delta, Vector3 gravity, Func<int, bool>? drains = null) {
         _clock += delta;
         if (_clock < 1f / Rate) { return false; }
         _clock -= 1f / Rate;
         Finish();
-        if (_pending.Count == 0 && _wet.Count == 0) { return true; }
-        TakePending();
         var down = gravity.Normalized();
+        // A settled film stays as it is until liquid comes or the surface turns: stepping it would change nothing.
+        if (_pending.Count == 0 && (_wet.Count == 0 || _settled && down.IsEqualApprox(_gravity))) { return true; }
+        TakePending();
         _drains = drains;
         _step = Task.Run(() => Step(down, 1f / Rate));
         return true;
@@ -510,7 +533,7 @@ internal sealed class SurfaceFilm {
                 var mobility = Mathf.Min(1f, depth * depth / (MobilityDepth * MobilityDepth));
                 var outflow = movable * Mathf.Min(0.24f, total * dt * FlowRate * mobility);
                 _change[k] -= outflow;
-                _moved |= outflow > 0f;
+                _moved |= outflow > SettledMl;
                 for (var e = first; e < last; e++) {
                     var share = outflow * _weights[e - first] / total;
                     if (share <= 0f) { continue; }
@@ -534,9 +557,13 @@ internal sealed class SurfaceFilm {
                 _wet.RemoveAt(_wet.Count - 1);
             }
         }
-        // A settled film looks the same: drawing it again would only cost the main thread an upload.
-        if (_moved) { BuildMesh(); }
-        _rebuilt = _moved;
+        // A settled film looks the same: drawing it again would only cost the main thread an upload. A moving one is
+        // drawn every few steps: liquid creeping over skin reads the same, at a fraction of the work.
+        var undrawn = _moved || _mustDraw;
+        _rebuilt = undrawn && (_stepCount % StepsPerDraw == 0 || !_moved);
+        if (_rebuilt) { BuildMesh(); }
+        _mustDraw = undrawn && !_rebuilt;
+        _settled = !_moved && !_mustDraw;
         _moved = false;
     }
 
@@ -576,7 +603,18 @@ internal sealed class SurfaceFilm {
             }
         }
         _drawn.Sort();
-        var vertices = _drawn.Count * 3;
+        // One vertex per point, shared by its triangles: a third or less of the data to upload.
+        _drawnPoints.Clear();
+        foreach (var t in _drawn) {
+            for (var corner = 0; corner < 3; corner++) {
+                var k = _triangles[t + corner];
+                if (_vertexStamp[k] == _stamp) { continue; }
+                _vertexStamp[k] = _stamp;
+                _vertexOf[k] = _drawnPoints.Count;
+                _drawnPoints.Add(k);
+            }
+        }
+        var vertices = _drawnPoints.Count;
         if (_vertices.Length != vertices) {
             _vertices = new Vector3[vertices];
             _normals = new Vector3[vertices];
@@ -584,25 +622,26 @@ internal sealed class SurfaceFilm {
             _bones = _skin is null ? [] : new int[vertices * 4];
             _boneWeights = _skin is null ? [] : new float[vertices * 4];
         }
-        var v = 0;
-        foreach (var t in _drawn) {
-            for (var corner = 0; corner < 3; corner++) {
-                var k = _triangles[t + corner];
-                // Raised by its depth, tapering with the drawn coverage: a deep point beside a dry one would stand out
-                // of curved skin as a flap.
-                var depth = Mathf.Min(_ml[k] * 0.000001f / _area[k], MaxRise) * _blurredTwice[k];
-                _vertices[v] = _at[k] + _normal[k] * (_settings.Lift + depth);
-                _normals[v] = _normal[k];
-                _uvs[v] = new Vector2(_blurredTwice[k], OpticalDepth(k) * _shown[k]);
-                if (_skin is not null) {
-                    var skin = _skin[k];
-                    for (var b = 0; b < 4; b++) {
-                        _bones[v * 4 + b] = skin.Bones[b];
-                        _boneWeights[v * 4 + b] = skin.Weights[b];
-                    }
+        if (_indices.Length != _drawn.Count * 3) { _indices = new int[_drawn.Count * 3]; }
+        for (var v = 0; v < vertices; v++) {
+            var k = _drawnPoints[v];
+            // Raised by its depth, tapering with the drawn coverage: a deep point beside a dry one would stand out
+            // of curved skin as a flap.
+            var depth = Mathf.Min(_ml[k] * 0.000001f / _area[k], MaxRise) * _blurredTwice[k];
+            _vertices[v] = _at[k] + _normal[k] * (_settings.Lift + depth);
+            _normals[v] = _normal[k];
+            _uvs[v] = new Vector2(_blurredTwice[k], OpticalDepth(k) * _shown[k]);
+            if (_skin is not null) {
+                var skin = _skin[k];
+                for (var b = 0; b < 4; b++) {
+                    _bones[v * 4 + b] = skin.Bones[b];
+                    _boneWeights[v * 4 + b] = skin.Weights[b];
                 }
-                v++;
             }
+        }
+        var index = 0;
+        foreach (var t in _drawn) {
+            for (var corner = 0; corner < 3; corner++) { _indices[index++] = _vertexOf[_triangles[t + corner]]; }
         }
     }
 
@@ -618,15 +657,19 @@ internal sealed class SurfaceFilm {
         return _blurredTwice[k] = sum / (last - first + 1);
     }
 
+    private float ShownCoverage(int k) {
+        if (!_isWet[k]) { return 0f; }
+        if (_coverageAsked[k] == _stamp) { return _coverage[k]; }
+        _coverageAsked[k] = _stamp;
+        return _coverage[k] = Coverage(k) * _shown[k];
+    }
+
     private float BlurredOnce(int k) {
         if (_onceAsked[k] == _stamp) { return _blurredOnce[k]; }
         _onceAsked[k] = _stamp;
         var (first, last) = (_neighborStart[k], _neighborStart[k + 1]);
-        var sum = _isWet[k] ? Coverage(k) * _shown[k] : 0f;
-        for (var e = first; e < last; e++) {
-            var other = _neighbors[e];
-            if (_isWet[other]) { sum += Coverage(other) * _shown[other]; }
-        }
+        var sum = ShownCoverage(k);
+        for (var e = first; e < last; e++) { sum += ShownCoverage(_neighbors[e]); }
         return _blurredOnce[k] = sum / (last - first + 1);
     }
 
@@ -640,6 +683,7 @@ internal sealed class SurfaceFilm {
         Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Vertex, _vertices);
         Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Normal, _normals);
         Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.TexUV, _uvs);
+        Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Index, _indices);
         if (_skin is not null) {
             Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Bones, _bones);
             Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Weights, _boneWeights);
