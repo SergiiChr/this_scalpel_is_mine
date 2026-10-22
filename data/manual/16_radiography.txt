@@ -16,7 +16,7 @@ The frontal film is read as if facing the patient: the patient's head at the top
 [table=2]
 [cell][b]Appearance[/b][/cell][cell][b]Finding[/b][/cell]
 [cell]Solid white, sharp edges[/cell][cell]Metal: projectiles, blades, instruments, other foreign bodies[/cell]
-[cell]White, soft edges[/cell][cell]Bone. A break shows as a gap or a step in its outline[/cell]
+[cell]White, soft edges[/cell][cell]Bone, and glass. A break shows as a gap or a step in its outline[/cell]
 [cell]Faint grey outline[/cell][cell]Body outline, organs, soft tissue masses (appendix, tumor, clot)[/cell]
 [cell]Grey streak[/cell][cell]Wound track behind a projectile[/cell]
 [cell]Black[/cell][cell]Air, outside the body and trapped inside it[/cell]

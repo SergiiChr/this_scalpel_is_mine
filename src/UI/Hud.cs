@@ -33,13 +33,13 @@ public partial class Hud : CanvasLayer {
     }
 
     private readonly record struct ClockShown(string Title, int Seconds);
-    private readonly record struct ObjectivesShown(SurgeryStatus Status);
+    private readonly record struct ObjectivesShown(SurgeryStatus Status, Difficulty? Difficulty, bool Debug);
     private readonly record struct BoardShown(string? Order, int Done, int SecondsLeft, int Cooldown);
     private readonly record struct HandShown(SurgicalTool? Tool, bool Full, bool Dirty, bool Holding);
     private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
     private readonly record struct HintShown(bool Out, int Moving, int Active, bool Attached, SurgicalTool? Tool, bool Full,
         bool Threaded, SurgicalTool? Hovered, bool HoveredFull, int Zoom, bool CanPass, bool Films, bool Cart,
-        int Bindings, bool HoldsPatient, bool CanHold);
+        int Bindings, bool HoldsPatient, bool CanHold, bool? GoalsPutAway);
     private readonly record struct PromptShown(string? Focused, StringName? Button, string? Wheel, bool Held, Surgeon? Partner, int Bindings);
 
     public Surgery Surgery { get; private set; } = null!;
@@ -211,9 +211,10 @@ public partial class Hud : CanvasLayer {
         var shown = new HintShown(me.Status.IsOut, Surgeon.MovingHand(), me.Active, me.Hands[me.Active].Attached, tool,
             tool?.Ml > 0f, tool?.Suture.Thread > 0, hovered, hovered?.Ml > 0f, me.Zoom,
             me.PassTarget(me.Active) is not null, me.HoldingFilms, me.PushedCart() is not null, InputActions.BindingsVersion,
-            me.HoldsPatient(me.Active), tool is null && me.HoldSpot() is not null);
+            me.HoldsPatient(me.Active), tool is null && me.HoldSpot() is not null,
+            Settings.Difficulty is Difficulty.Baby or Difficulty.Intern ? _objectives.PutAway : null);
         if (_hintShown.Changed(shown)) {
-            _hint.Text = shown.Out ? "" : string.Join("\n", ControlLines(me));
+            _hint.Text = shown.Out ? "" : string.Join("\n", ControlLines(me, shown.GoalsPutAway));
         }
     }
 
@@ -285,6 +286,12 @@ public partial class Hud : CanvasLayer {
     }
 
     public override void _UnhandledInput(InputEvent @event) {
+        if (@event.IsActionPressed(InputActions.ToggleGoals)) {
+            GetViewport().SetInputAsHandled();
+            _objectives.PutAway = !_objectives.PutAway;
+            _objectives.Refresh(Surgery.Status);
+            return;
+        }
         if (!@event.IsActionPressed(InputActions.Pause)) {
             return;
         }
@@ -554,7 +561,7 @@ public partial class Hud : CanvasLayer {
     }
 
     /// <summary>A soft dark box behind HUD text that has to read over anything.</summary>
-    private static StyleBoxFlat Backing() {
+    internal static StyleBoxFlat Backing() {
         var box = new StyleBoxFlat { BgColor = new Color(0f, 0f, 0f, 0.55f) };
         box.SetCornerRadiusAll(4);
         box.SetContentMarginAll(6f);
@@ -571,15 +578,15 @@ public partial class Hud : CanvasLayer {
     }
 
     /// <summary>The controls that do something right now. Holding a hand key swaps looking for moving that hand.
+    /// <paramref name="goalsPutAway"/> is whether the goals are put away, null at a difficulty that shows none.
     /// </summary>
-    public static List<string> ControlLines(Surgeon me) {
+    public static List<string> ControlLines(Surgeon me, bool? goalsPutAway = null) {
         static string Key(StringName action) => InputActions.BindingText(action);
         var moving = Surgeon.MovingHand();
         var hand = me.Hands[me.Active];
         var tool = me.HeldTool(me.Active);
         var lines = new List<string>();
         if (moving < 0) {
-            lines.Add("Mouse  Look around");
             lines.Add($"{Key(InputActions.MoveLeftHand)} / {Key(InputActions.MoveRightHand)} (hold)  Move left / right hand");
         } else {
             lines.Add($"Mouse  Move {(me.Active == 0 ? "left" : "right")} hand");
@@ -606,13 +613,11 @@ public partial class Hud : CanvasLayer {
         }
         var seeThrough = Surgeon.IsNeedle(tool) && me.Zoom == Surgeon.ZoomFov.Length - 1;
         lines.Add($"{Key(InputActions.Zoom)}  Zoom {me.Zoom + 1}/{Surgeon.ZoomFov.Length}{(seeThrough ? ", hands see-through" : "")}");
-        lines.Add($"{Key(InputActions.Lift)} (hold)  {(hand.Attached ? "Pull up" : "Lift hand over")}");
         lines.Add($"{Key(InputActions.Steady)} (hold)  Hold breath");
+        if (goalsPutAway is { } away) {
+            lines.Add($"{Key(InputActions.ToggleGoals)}  {(away ? "Show" : "Hide")} goals");
+        }
         if (moving < 0) {
-            var move = string.Join("/", new[] {
-                InputActions.MoveForward, InputActions.MoveLeft, InputActions.MoveBack, InputActions.MoveRight,
-            }.Select(Key));
-            lines.Add($"{move}  Move");
             lines.Add($"{Key(InputActions.Crouch)} (hold)  Crouch");
             lines.Add($"{Key(InputActions.Interact)}  Interact");
             lines.Add($"{Key(InputActions.Drink)}  Drink / wear");
@@ -667,11 +672,7 @@ public partial class Hud : CanvasLayer {
     // --- Updating ------------------------------------------------------------------------------------------------
 
     private void UpdateObjectives() {
-        _objectives.Visible = Settings.Debug;
-        if (!Settings.Debug) {
-            return;
-        }
-        if (_objectivesShown.Changed(new ObjectivesShown(Surgery.Status))) {
+        if (_objectivesShown.Changed(new ObjectivesShown(Surgery.Status, Settings.Difficulty, Settings.Debug))) {
             _objectives.Refresh(Surgery.Status);
         }
     }

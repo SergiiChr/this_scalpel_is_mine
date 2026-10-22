@@ -228,16 +228,33 @@ comment beside it names the test.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, irrigate, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
-calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
+calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait, xray`.
+`xray` is met once developed films show its `"target"` kind, or with `"clear": true` show none once none is left in
+the patient.
 Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
 only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
-points. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
+points; `"hint": true` lists an optional one for Intern too. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
 tourniquet still on, the block not worn off); otherwise it's spoiled and no longer counts. Used only where the order matters medically: numbing before cutting or
 stitching, cleaning before opening, a tourniquet before cutting a limb, heparin before clamping.
 Nothing ends the surgery when the steps are done: the players sign the patient out (see Discharge), or the time limit
 does it for them. Then every required step must count for a success; each one that doesn't is scored as missed.
 A step with `"or": {step}` also completes when that nested step's condition is met (hand stitch: a local block, or
 general anesthesia for a lidocaine allergy).
+Each step's `"label"` is its main task as the HUD lists it, written for a new player: what to do and with what.
+Its subtasks, which only the easiest difficulty shows, come from its type's section of `data/objectives.cfg` (an
+`extract` step's by its target's `remove_with`), or from its own `"subtasks"` list. They're worked out for the patient
+when the surgery starts (`Subtasks.cs`, tokens explained in that file): the dose for the patient's weight in ml of the
+vial and the syringe for it, the first alternative of a drug the chart says the patient is allergic to (a section's
+`allergy_instead` gives the subtasks for it), a lab screen first for an allergy the chart doesn't name, and ordering
+from the nurse when the room has no such tool. The host sends them only for the open steps up to the next required one,
+with the steps they come `"after"` that don't hold yet. A state step shows done only once the required steps before it
+count. A drug step (`anesthesia`, `local_block`, `sedate`,
+`inject`) names its drug in `"drug"`, else its section's. Every instruction matches the manual's wording for it.
+
+Difficulty (`Settings.Difficulty`, per player, asked on the first start): **I'm just a baby** lists every main task,
+optional ones marked `[optional]`, with the subtasks of the next ones to do; **Intern** the required main tasks and the hints; **MD** none.
+Both end with the discharge, which isn't a step (it ends the surgery); its subtasks wake a patient who was put under.
+Debug mode adds the score, the latest scored actions and the debug toasts at any difficulty.
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).
 `sedate` is met once a sedative that isn't a general anesthetic (diazepam, morphine) works and has calmed the patient
@@ -282,7 +299,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 - Two-hand control, one active at a time, idle hand frozen mid-action (controls: see Controls rework).
 - Holding tissue anchors the hand; walking away tears it.
-- Hand bumps between surgeons, lift to pass over. Jolts from seizures, coughs, potholes, pedestrians.
+- Hand bumps between surgeons. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
 - A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
   past the end of an opening it's already in; inside the opening there's no wall left to cut. Drawn along a cut already
@@ -325,13 +342,13 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 ### First feedback round
 
-- **Figure it out**: no objectives, score or "done" toasts on screen, and the chart shows only the complaint (symptoms
-  and history), never a plan. The manual is the one reference. Everything is still tracked internally; the debug
-  setting shows the objectives, score and every scored action. Easy scenarios (1-2 stars) have no time limit.
+- **Figure it out**: at the MD difficulty, no objectives, score or "done" toasts on screen, and the chart shows only the
+  complaint (symptoms and history), never a plan. The manual is the one reference. Everything is still tracked
+  internally; the easier difficulties show the objectives (see Scenarios), and the debug setting the score and every
+  scored action. Easy scenarios (1-2 stars) have no time limit.
 - **Hands**: no height control. A hand rests the tool tip just above whatever is under it (skin, tray, organs or a
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
-  end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
-  it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
+  end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Hands of two surgeons in the same space collide. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
   the hand crosses the screen as fast at both); the closer one makes the hands see-through. Zoomed in with the hand over
   the patient (skin, drapes or an opening, holding a tool or not, working or not), the surgeon leans in: the torso bends
@@ -411,7 +428,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. A clamp's jaws
   close once its tip has come to rest on what's under it (`ClampAction.RestTime`), so one pressed while still coming
-  down (out of an aim or a lift, or a remote player's late moves) takes what it lands on. Forceps holding
+  down (out of an aim, or a remote player's late moves) takes what it lands on. Forceps holding
   a cotton pad wipe or dip it, and let it go when used in the air away from the dish. Forceps holding a graft taken
   from the skin put it on a cleaned burn, or let it go in the air.
   The Rotate keys (C/V) roll a held tool about its length: a scalpel's blade turns with it, to follow a curve.
@@ -421,7 +438,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   settles back down once MMB is let go.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, heat, saw speed, suction), 0 does
   nothing. Gauze and other swabs take none: lowered, they wipe right where they point, and gauze presses there.
-  Shift toggles between two zoom levels, Alt lifts.
+  Shift toggles between two zoom levels.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and
   paper clips, pulled the same way (`ToolActions.HasTensionWheel()`). And the Gelpi retractor: up opens it, down
@@ -432,7 +449,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   (riding up over organs) and when Use tool is pressed, so the jaws close where the tip is: on a target, vessel or
   bleeding wound only with the tip down on what's inside (`Patient.JawReach`), on the cut's edge only up by the lip.
   Deeper than `Patient.LipDepth` it can't move out under the skin, anywhere along a move: it slides along the lip,
-  and Lift takes it over. All the way down, or out of the opening, it rests on what's inside again. The aim shows a
+  and raised to the lip it goes over. All the way down, or out of the opening, it rests on what's inside again. The aim shows a
   stem from the lip down to the tip and the depth beside it. Holding onto something, the wheel moves the hand instead:
   up pulls it a notch higher, down lets it a notch lower, never under what's inside. Notch by notch, something still
   attached comes loose; scrolled fast, it rips like any fast pull. A target pulled out is carried, no longer holding the hand to the patient:

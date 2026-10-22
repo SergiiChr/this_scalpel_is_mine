@@ -40,6 +40,17 @@ public partial class MainMenu : Control {
         } else {
             ShowScenarios();
         }
+        if (Settings.Difficulty is null) {
+            ShowDifficultyPicker();
+        }
+    }
+
+    /// <summary>The difficulty screen over the menu until one is picked.</summary>
+    private void ShowDifficultyPicker() {
+        var picker = new DifficultyPicker();
+        var screen = Ui.CenteredPanel(picker, new Vector2(900f, 0f), new Color(0.03f, 0.04f, 0.04f));
+        picker.Picked += screen.QueueFree;
+        AddChild(screen);
     }
 
     public override void _ExitTree() => Net.Instance.ConnectionFailed -= ShowStatus;

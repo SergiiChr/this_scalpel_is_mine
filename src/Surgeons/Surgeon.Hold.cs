@@ -109,7 +109,6 @@ public partial class Surgeon {
         hand.PressAcross = (pose.Basis * hold.Across).Normalized();
         hand.PressCup = hold.Cup;
         hand.PressBone = hold.Bone;
-        hand.Lifted = false;
         hand.Raise = 0f;
         hand.Tremor = Vector3.Zero;
         // A hand grasping a limb rests on it (GraspFit()): pressed in, its flat palm would cut into the limb's round.

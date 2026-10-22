@@ -321,7 +321,6 @@ public partial class Surgeon {
             hand.Raise = 0f;
             hand.Lowered = false;
             hand.Trigger = false;
-            hand.Lifted = false;
             hand.Inspecting = false;
             hand.Tremor = Vector3.Zero;
             hand.Shiver = Vector3.Zero;

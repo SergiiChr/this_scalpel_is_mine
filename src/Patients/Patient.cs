@@ -774,6 +774,7 @@ public partial class Patient : Node3D {
             Session.Scoring.Add("allergic_reaction");
             Session.AnnounceDebug($"Allergic reaction: {def.Name}");
             Reveal("allergy");
+            Session.AllergiesKnown();
         }
         // A stronger stand-in for a drug the patient could have had after all, whether the chart named the allergy or
         // not.

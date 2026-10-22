@@ -464,11 +464,6 @@ public partial class Surgeon {
                 var twist = Input.GetAxis(InputActions.TwistLeft, InputActions.TwistRight);
                 hand.Twist = Mathf.Wrap(hand.Twist + (twist * delta * TwistSpeed), -Mathf.Pi, Mathf.Pi);
             }
-            var lift = Input.IsActionPressed(InputActions.Lift);
-            hand.Lifted = lift && !hand.Attached;
-            if (hand.Attached && lift) {
-                hand.Target += new Vector3(0f, PullSpeed * delta, 0f);
-            }
             Status.HoldingBreath = Input.IsActionPressed(InputActions.Steady) && Status.Breath > 0f;
         }
         HoldNeedle(delta);
@@ -536,8 +531,7 @@ public partial class Surgeon {
             hand.Tilt = SurgeonHand.SpreaderTilt;
         }
         if (i == Active && _needleAnchor is { } anchor && !hand.Inspecting) {
-            // The tip stays where it went in, steady and unlifted: the hand goes wherever the tilt puts it.
-            hand.Lifted = false;
+            // The tip stays where it went in, steady: the hand goes wherever the tilt puts it.
             hand.Raise = 0f;
             hand.Target = anchor - hand.TipOffset(tool!.Def.Length);
             hand.LocalTarget = ToLocal(hand.Target);
@@ -649,7 +643,6 @@ public partial class Surgeon {
         hand.Turn = Mathf.Clamp(yaw, -SurgeonHand.TurnRange, SurgeonHand.TurnRange);
         hand.Tilt = Mathf.Clamp(angles.X, SurgeonHand.TiltRange.X, SurgeonHand.TiltRange.Y);
         hand.Twist = yaw - hand.Turn;
-        hand.Lifted = false;
         hand.Tremor = Vector3.Zero;
         var shoulder = Shoulder(hand.Index);
         _strain[hand.Index] = tool.GlobalPosition.DistanceTo(shoulder) > Reach + 0.06f;
@@ -663,7 +656,6 @@ public partial class Surgeon {
         hand.Turn = Mathf.Wrap(tool.GlobalRotation.Y - GlobalRotation.Y, -Mathf.Pi, Mathf.Pi);
         hand.Tilt = 0f;
         hand.Twist = 0f;
-        hand.Lifted = false;
         hand.Lowered = false;
         hand.Trigger = false;
         hand.Tremor = Vector3.Zero;
@@ -759,16 +751,16 @@ public partial class Surgeon {
         tools.RequestGrab(near, Active);
     }
 
-    /// <summary>Hands that aren't lifted knock into other surgeons' hands.</summary>
+    /// <summary>Hands knock into other surgeons' hands.</summary>
     private void CheckBumps() {
         var mine = Hands[Active];
         var tool = HeldTool(Active);
         // A needle held into a partner's hand or body is close on purpose.
-        if (mine.Lifted || (IsSyringe(tool) && Syringe.NeedleTarget(tool!, Session.Patient) is SurgeonTarget)) {
+        if (IsSyringe(tool) && Syringe.NeedleTarget(tool!, Session.Patient) is SurgeonTarget) {
             return;
         }
         foreach (var other in Session.Surgeons.Values.Where(other => other != this)) {
-            foreach (var theirs in other.Hands.Where(hand => !hand.Lifted)) {
+            foreach (var theirs in other.Hands) {
                 var gap = mine.GlobalPosition - theirs.GlobalPosition;
                 if (gap.Length() >= BumpDistance) {
                     continue;

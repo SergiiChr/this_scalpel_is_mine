@@ -29,13 +29,13 @@ public static class InputActions {
     public static readonly StringName Zoom = "zoom";
     public static readonly StringName Inspect = "inspect";
     public static readonly StringName Interact = "interact";
-    public static readonly StringName Lift = "lift";
     public static readonly StringName Crouch = "crouch";
     public static readonly StringName Steady = "steady";
     public static readonly StringName AimTool = "aim_tool";
     public static readonly StringName TwistLeft = "twist_left";
     public static readonly StringName TwistRight = "twist_right";
     public static readonly StringName Drink = "drink";
+    public static readonly StringName ToggleGoals = "toggle_goals";
     public static readonly StringName Pause = "pause";
 
     /// <summary>Order here is the order in the settings menu and the on-screen hint.</summary>
@@ -54,7 +54,6 @@ public static class InputActions {
         new(Zoom, "Zoom (2 steps)", Key.Shift),
         new(Inspect, "Look at held tool (hold)", Key.X),
         new(Interact, "Interact", Key.F),
-        new(Lift, "Lift hand over (hold)", Key.Alt),
         new(Crouch, "Crouch (hold)", Key.Ctrl),
         new(Steady, "Hold breath (hold)", Key.Space),
         new(AimTool, "Turn tool with the mouse (hold)", Mouse: MouseButton.Middle),
@@ -65,6 +64,7 @@ public static class InputActions {
         new(BeltSlot(2), "Belt slot 2", Key.Key2),
         new(BeltSlot(3), "Belt slot 3", Key.Key3),
         new(BeltSlot(4), "Belt slot 4", Key.Key4),
+        new(ToggleGoals, "Show / hide goals", Key.F1),
         new(Pause, "Pause", Key.Escape),
     ];
 

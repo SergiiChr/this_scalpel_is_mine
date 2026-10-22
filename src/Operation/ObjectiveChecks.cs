@@ -5,6 +5,12 @@ namespace Scalpel.Operation;
 /// the step's state persists between ticks.
 /// </summary>
 public static class ObjectiveChecks {
+    /// <summary>A stable patient: oxygen saturation (%) and systolic pressure (mmHg) at least this.</summary>
+    public const float StableSpo2 = 94f;
+    public const float StableSystolic = 90f;
+    /// <summary>How long panic has to stay low for a calm patient.</summary>
+    public const float CalmSeconds = 60f;
+
     /// <summary>Types that count only while their condition holds (the wound closed, the patient stable). The rest are
     /// milestones: done once reached, whatever happens after.</summary>
     private static readonly HashSet<string> StateTypes = ["close", "close_internal", "stop_bleeding", "stabilize"];
@@ -47,10 +53,10 @@ public static class ObjectiveChecks {
                 // Gauze only holds it for a while: it counts once the bleeding stays stopped without it.
                 return Held(state, patient.LastingBleedRate <= parameters.Float("max_ml_s", 0.3f), 3f, delta);
             case "stabilize":
-                var stable = !vitals.IsArrested && vitals.Spo2 >= 94f && vitals.Systolic >= 90f;
+                var stable = !vitals.IsArrested && vitals.Spo2 >= StableSpo2 && vitals.Systolic >= StableSystolic;
                 return Held(state, stable, parameters.Float("seconds", 30f), delta);
             case "calm":
-                return Held(state, vitals.Panic < parameters.Float("max_panic", 0.6f), 60f, delta);
+                return Held(state, vitals.Panic < parameters.Float("max_panic", 0.6f), CalmSeconds, delta);
             case "sedate":
                 // Calmed by a sedative while still awake: out at any point before (put under, or too much of it), it no
                 // longer counts.
@@ -75,6 +81,8 @@ public static class ObjectiveChecks {
                 return patient.GridFraction(Patient.BurnGrid.Debrided) >= parameters.Float("amount", 0.5f);
             case "graft":
                 return patient.GridFraction(Patient.BurnGrid.Grafted) >= parameters.Float("amount", 0.7f);
+            case "xray":
+                return Xrayed(surgery, parameters.String("target"), parameters.Bool("clear"));
             case "listen":
                 return Held(state, patient.Flags.ContainsKey("euthanized"), parameters.Float("seconds", 90f), delta);
             case "comfort":
@@ -98,6 +106,17 @@ public static class ObjectiveChecks {
             }
         }
         return aligned && holders.Count >= Math.Min(2, surgery.Surgeons.Count);
+    }
+
+    /// <summary>The developed films show a <paramref name="kind"/>, or with <paramref name="clear"/> show none once none is
+    /// left in the patient: before that, a clear film only missed them. The host develops its own films of the same
+    /// scene, so what its films show everyone's do.</summary>
+    private static bool Xrayed(Surgery surgery, string kind, bool clear) {
+        if (surgery.Room.Xray is not { } xray || xray.Developed() < 1f) {
+            return false;
+        }
+        var shown = xray.Films.Any(film => film.Findings.Any(found => found.Kind == kind));
+        return clear ? !shown && surgery.Patient.Targets.All(target => target.Kind != kind || target.Extracted) : shown;
     }
 
     /// <summary>True once <paramref name="condition"/> has held continuously for <paramref name="seconds"/>.</summary>
