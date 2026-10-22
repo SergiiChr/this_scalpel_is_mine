@@ -30,7 +30,7 @@ window/stretch/mode="canvas_items"
 
 [gui]
 
-theme/custom_font="res://assets/fonts/Inter-Medium.ttf"
+theme/custom_font="res://assets/fonts/ui_font.tres"
 
 [layer_names]
 
