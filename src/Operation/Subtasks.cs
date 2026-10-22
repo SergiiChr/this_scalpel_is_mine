@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using GodotDictionary = Godot.Collections.Dictionary;
 
 namespace Scalpel.Operation;
 
@@ -27,10 +28,22 @@ public static partial class Subtasks {
         if (facts.Allergens.Contains(drug) && defaults.String("allergy_instead") is { Length: > 0 } instead) {
             defaults = new ConfigReader(Db.Objectives, instead);
         }
-        return [.. (step.Subtasks ?? defaults.Strings("subtasks"))
-            .Select(line => ManualPage.FillNumbers(Token().Replace(line, found => Fill(found, drug, facts)),
-                $"{scenario.Id} subtasks", step.Parameters))];
+        return Worked(step.Subtasks ?? defaults.Strings("subtasks"), drug, scenario, facts, step.Parameters);
     }
+
+    /// <summary>The subtasks of the discharge that ends every surgery, waking a patient who was put under first.
+    /// </summary>
+    public static List<string> Discharge(ScenarioDef scenario, SubtaskFacts facts) {
+        var section = new ConfigReader(Db.Objectives, "discharge");
+        var under = scenario.Steps.Any(step => step.Type == "anesthesia" || step.Alternative?.Type == "anesthesia");
+        return Worked([.. under ? section.Strings("anesthesia_subtasks") : [], .. section.Strings("subtasks")], "",
+            scenario, facts, []);
+    }
+
+    private static List<string> Worked(IEnumerable<string> lines, string drug, ScenarioDef scenario, SubtaskFacts facts,
+        GodotDictionary parameters) =>
+        [.. lines.Select(line => ManualPage.FillNumbers(Token().Replace(line, found => Fill(found, drug, facts)),
+            $"{scenario.Id} subtasks", parameters))];
 
     /// <summary>The line naming the steps of <paramref name="open"/> that <paramref name="step"/> has to come after,
     /// none once they're all in place.</summary>
@@ -64,9 +77,10 @@ public static partial class Subtasks {
             GD.PushError($"Subtasks: no vial of {id}");
             return found.Value;
         }
-        // Whole notches of the plunger: the leeway around the right dose takes the rest.
-        var notches = Math.Round((double)given.Dose * facts.WeightKg / vial.Concentration / ToolActions.PlungerStep,
-            MidpointRounding.AwayFromZero);
+        // Whole notches of the plunger: the leeway around the right dose takes the rest. Data floats are a hair off
+        // their decimals (0.01 * 75 / 0.5 comes to 1.4999...), so a half rounds up only after dropping that hair.
+        var exact = (double)given.Dose * facts.WeightKg / vial.Concentration / ToolActions.PlungerStep;
+        var notches = Math.Round(Math.Round(exact, 4), MidpointRounding.AwayFromZero);
         var ml = Math.Max(notches, 1) * ToolActions.PlungerStep;
         return found.Groups[1].Value switch {
             "get" => Get(vial, facts),

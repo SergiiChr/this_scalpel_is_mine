@@ -29,13 +29,25 @@ public partial class SurgeryDriver {
     /// <paramref name="point"/>, still holding it. With <paramref name="lateral"/>, the wheel first brings the head down
     /// until the lateral beam runs at that height.</summary>
     public async Task PlayerPushesXrayOver(Vector3 point, float? lateral = null) {
+        // A grab with a tool in hand puts the tool down instead.
+        await PlayerPutsDown();
         var handle = Cart.ToGlobal(new Vector3(0f, 0.92f, 0.38f));
         await PlayerWalksTo(handle, 0.6f);
-        await PlayerLooksAt(handle);
-        await Frames.Physics(2);
+        // Grab takes it anywhere but the films' holder: from in front, the handle lies behind the holder, so the
+        // cabinet's middle then.
+        foreach (var part in (Vector3[])[handle, Cart.ToGlobal(new Vector3(0f, 0.5f, 0.15f))]) {
+            await PlayerLooksAt(part);
+            await Frames.Physics(2);
+            if (Me.Focused?.Prompt.StartsWith("Push") == true) {
+                break;
+            }
+        }
         PlayerInput.Tap(InputActions.Grab);
         await PlayerInput.Delivered();
         await Frames.Physics(2);
+        if (Cart.Pusher != Me.PeerId) {
+            throw new InvalidOperationException($"The grab didn't take hold of the X-ray cart: focused on {Me.Focused?.Prompt}, holding {Me.HeldTool(Me.Active)?.Def.Id}, hovering {Me.Hovered?.Name}.\n{Recent()}");
+        }
         Note("takes hold of the X-ray cart");
         await Frames.Physics(30);
         // Out of its niche straight back first: turning inside it, it would catch on the niche's sides.
@@ -100,15 +112,32 @@ public partial class SurgeryDriver {
         Note($"brings the lateral beam to {Cart.Beams()[1].Source.Origin.Y:0.000} m for {height:0.000} m");
     }
 
-    /// <summary>Takes an exposure with Use tool while holding the cart, lets go of it, locking it, and waits for both
-    /// films to develop.</summary>
-    public async Task PlayerTakesXray() {
+    /// <summary>Waits out the unit's warm-up, as its message asks, takes an exposure with Use tool while holding the
+    /// cart, lets go of it, locking it, and waits for both films to develop. With <paramref name="backAway"/>, it first
+    /// waits for the exposure and walks the cart back a meter.</summary>
+    public async Task PlayerTakesXray(bool backAway = false) {
+        await Frames.Until(() => Cart.WarmingUp <= 0f, XrayCart.Cooldown + XrayCart.ExposeTime + 1f);
         PlayerInput.Tap(InputActions.UseTool);
         await PlayerInput.Delivered();
+        var waited = 0f;
+        if (backAway) {
+            waited = XrayCart.ExposeTime + 0.2f;
+            await Frames.Physics((int)(waited * Engine.PhysicsTicksPerSecond));
+            await PlayerHoldsWalkKey(InputActions.MoveBack, 1f, () => { });
+        }
         PlayerInput.Tap(InputActions.Grab);
         await PlayerInput.Delivered();
         Note("takes an X-ray and lets go of the cart");
-        await Frames.Physics((int)((XrayCart.ExposeTime + XrayCart.DevelopTime) * Engine.PhysicsTicksPerSecond) + 10);
+        await Frames.Physics((int)((XrayCart.ExposeTime + XrayCart.DevelopTime - waited) * Engine.PhysicsTicksPerSecond) + 10);
+    }
+
+    /// <summary>Pushes the cart over where the <paramref name="kind"/> targets lie, or lay before they came out, takes
+    /// an exposure and, once it's taken, pulls the cart back from the table out of the way, and lets the films develop.
+    /// Left at the table, its push bar would hang over the tools there, which a grab takes first.</summary>
+    public async Task PlayerXrays(string kind) {
+        var places = Patient.Targets.Where(target => target.Kind == kind).Select(target => Body.UvToWorld(target.Uv)).ToList();
+        await PlayerPushesXrayOver(places.Aggregate(Vector3.Zero, (sum, place) => sum + place) / places.Count);
+        await PlayerTakesXray(backAway: true);
     }
 
     /// <summary>Takes the films out of the holder and holds them up in front of the eyes.</summary>

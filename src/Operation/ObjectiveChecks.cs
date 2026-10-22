@@ -81,6 +81,8 @@ public static class ObjectiveChecks {
                 return patient.GridFraction(Patient.BurnGrid.Debrided) >= parameters.Float("amount", 0.5f);
             case "graft":
                 return patient.GridFraction(Patient.BurnGrid.Grafted) >= parameters.Float("amount", 0.7f);
+            case "xray":
+                return Xrayed(surgery, parameters.String("target"), parameters.Bool("clear"));
             case "listen":
                 return Held(state, patient.Flags.ContainsKey("euthanized"), parameters.Float("seconds", 90f), delta);
             case "comfort":
@@ -104,6 +106,17 @@ public static class ObjectiveChecks {
             }
         }
         return aligned && holders.Count >= Math.Min(2, surgery.Surgeons.Count);
+    }
+
+    /// <summary>The developed films show a <paramref name="kind"/>, or with <paramref name="clear"/> show none once none is
+    /// left in the patient: before that, a clear film only missed them. The host develops its own films of the same
+    /// scene, so what its films show everyone's do.</summary>
+    private static bool Xrayed(Surgery surgery, string kind, bool clear) {
+        if (surgery.Room.Xray is not { } xray || xray.Developed() < 1f) {
+            return false;
+        }
+        var shown = xray.Films.Any(film => film.Findings.Any(found => found.Kind == kind));
+        return clear ? !shown && surgery.Patient.Targets.All(target => target.Kind != kind || target.Extracted) : shown;
     }
 
     /// <summary>True once <paramref name="condition"/> has held continuously for <paramref name="seconds"/>.</summary>

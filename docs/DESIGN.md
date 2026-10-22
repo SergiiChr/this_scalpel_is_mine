@@ -226,10 +226,12 @@ comment beside it names the test.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, irrigate, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
-calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait`.
+calm, inject, defib, tourniquet, clamp, transfuse, flip, align, debride, graft, listen, comfort, wait, xray`.
+`xray` is met once developed films show its `"target"` kind, or with `"clear": true` show none once none is left in
+the patient.
 Steps are requirements checked all the time, in any order. `close, close_internal, stop_bleeding, stabilize` count
 only while their condition holds; the rest are milestones, done once reached. `"optional": true` steps give bonus
-points. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
+points; `"hint": true` lists an optional one for Intern too. `"after": [ids]` names steps (by `"id"`, else type) whose condition must hold when the step is first met (the
 tourniquet still on, the block not worn off); otherwise it's spoiled and no longer counts. Used only where the order matters medically: numbing before cutting or
 stitching, cleaning before opening, a tourniquet before cutting a limb, heparin before clamping.
 Nothing ends the surgery when the steps are done: the players sign the patient out (see Discharge), or the time limit
@@ -248,7 +250,8 @@ count. A drug step (`anesthesia`, `local_block`, `sedate`,
 `inject`) names its drug in `"drug"`, else its section's. Every instruction matches the manual's wording for it.
 
 Difficulty (`Settings.Difficulty`, per player, asked on the first start): **I'm just a baby** lists every main task,
-optional ones marked, with the subtasks of the next ones to do; **Intern** only the required main tasks; **MD** none.
+optional ones marked `[optional]`, with the subtasks of the next ones to do; **Intern** the required main tasks and the hints; **MD** none.
+Both end with the discharge, which isn't a step (it ends the surgery); its subtasks wake a patient who was put under.
 Debug mode adds the score, the latest scored actions and the debug toasts at any difficulty.
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).

@@ -19,6 +19,8 @@ public class ObjectiveSubtasksTest {
                         .OverrideFailureMessage($"{scenario.Id}: \"{line}\" is worked out").IsFalse();
                 }
             }
+            AssertBool(Subtasks.Discharge(scenario, Facts(scenario)).All(line => !line.Contains('{') && !line.Contains('}')))
+                .OverrideFailureMessage($"{scenario.Id}: the discharge is worked out").IsTrue();
         }
     }
 
@@ -77,6 +79,18 @@ public class ObjectiveSubtasksTest {
             .OverrideFailureMessage("only those still open")
             .IsEqual(new List<string> { "Only after: Sanitize the abdomen with iodine" });
         AssertArray(Subtasks.OnlyAfter(incise, []).ToList()).OverrideFailureMessage("none once all are done").IsEmpty();
+    }
+
+    [TestCase]
+    public void TheDischargeWakesAPatientPutUnderFirst() {
+        var appendectomy = Db.Scenario("appendectomy")!;
+        var wake = Subtasks.Discharge(appendectomy, Facts(appendectomy))[1];
+        AssertString(wake).OverrideFailureMessage($"flumazenil for 75 kg, as the anesthesia chapter says: {wake}")
+            .IsEqual("Draw 2 ml of Flumazenil into the 3 ml syringe and push it into the IV bag or a vein (wheel up)");
+        var glass = Db.Scenario("glass_shards")!;
+        AssertString(Subtasks.Discharge(glass, Facts(glass))[0])
+            .OverrideFailureMessage("a patient never put under starts at the checks")
+            .IsEqual("Finish first: the closure holds, nothing bleeds and the patient is stable");
     }
 
     private static (ScenarioDef Scenario, ObjectiveStep Step) Step(string scenarioId, string type) {

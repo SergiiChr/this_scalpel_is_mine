@@ -43,7 +43,8 @@ public class GlassShardsScenarioTest {
         }
         // Temporary local budget override, as every other scenario flow has.
         await ScenarioFlow.Play(scenario, keyFrames: true,
-            budgetOverride: new("scenario surgery has recorded CPU/render overruns; profiling deferred; closing a thread takes up to 37 ms", 6f), playStep: PlayStep);
+            budgetOverride: new("scenario surgery has recorded CPU/render overruns; profiling deferred; closing a thread takes up to 37 ms", 6f), playStep: PlayStep,
+            includeOptional: true);
     }
 
     /// <summary>Too much diazepam knocks the patient out. Waking up with it still working and calm, they're sedated

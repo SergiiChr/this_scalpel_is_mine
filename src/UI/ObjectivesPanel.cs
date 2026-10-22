@@ -1,8 +1,8 @@
 namespace Scalpel.UI;
 
 /// <summary>Top right: the steps the game checks, as far as the player's difficulty tells them. "I'm just a baby" lists
-/// every main task, optional ones marked, with the subtasks the host sends for the next ones to do; Intern only the
-/// required main tasks; MD none. Debug mode adds the score and the latest scored actions.</summary>
+/// every main task, optional ones marked, with the subtasks the host sends for the next ones to do; Intern the required
+/// main tasks and the optional ones marked as hints (an X-ray); MD none. Debug mode adds the score and the latest scored actions.</summary>
 public partial class ObjectivesPanel : VBoxContainer {
     private const int TaskSize = 18;
     private const int SubtaskSize = 15;
@@ -56,10 +56,10 @@ public partial class ObjectivesPanel : VBoxContainer {
     internal static List<Line> Lines(SurgeryStatus status, Difficulty difficulty, bool debug) {
         var lines = new List<Line>();
         if (difficulty != Difficulty.Md) {
-            foreach (var row in status.Objectives.Where(row => difficulty == Difficulty.Baby || !row.Optional)) {
+            foreach (var row in status.Objectives.Where(row => difficulty == Difficulty.Baby || !row.Optional || row.Hint)) {
                 var mark = row.Spoiled ? "☒" : row.Done ? "☑" : "☐";
-                var optional = difficulty == Difficulty.Baby && row.Optional ? "  (optional)" : "";
-                lines.Add(new Line($"{mark} {row.Label}{optional}", TaskSize, row.Spoiled ? Ui.Alert : row.Done ? Ui.Dim : Ui.Ink));
+                var optional = row.Optional ? "[optional] " : "";
+                lines.Add(new Line($"{mark} {optional}{row.Label}", TaskSize, row.Spoiled ? Ui.Alert : row.Done ? Ui.Dim : Ui.Ink));
                 if (difficulty == Difficulty.Baby) {
                     lines.AddRange(row.Subtasks.Select(subtask => new Line("• " + subtask, SubtaskSize, Ui.Dim, SubtaskIndent)));
                 }

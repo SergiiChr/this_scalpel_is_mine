@@ -787,6 +787,7 @@ public partial class SurgeryDriver {
             "graft" => PlayerGrafts(p.Float("amount", 0.7f)),
             "comfort" => PlayerInteracts("Talk to the patient"),
             "stabilize" => PlayerStabilizes(),
+            "xray" => PlayerXrays(p.String("target")),
             // Waiting it out: calm, listen and wait hold for a while on their own.
             _ => Task.CompletedTask,
         };

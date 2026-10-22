@@ -2,13 +2,14 @@ namespace Scalpel.Operation;
 
 /// <summary>An objective step as the HUD shows it: a main task and, for the easiest difficulty, its subtasks.
 /// </summary>
-public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled, string[] Subtasks) {
-    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled, Subtasks];
+public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled, string[] Subtasks,
+    bool Hint = false) {
+    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled, Subtasks, Hint];
 
     public static ObjectiveView FromVariant(Variant data) {
         var view = data.AsGodotArray();
         return new ObjectiveView(view[0].AsString(), view[1].AsBool(), view[2].AsBool(), view[3].AsBool(),
-            view[4].AsStringArray());
+            view[4].AsStringArray(), view[5].AsBool());
     }
 }
 
@@ -44,6 +45,11 @@ public partial class Objectives : Node {
     public List<StepState> States { get; } = [];
     /// <summary>Each step's subtasks, worked out for this patient (<see cref="Operation.Subtasks"/>).</summary>
     private readonly List<string[]> _subtasks = [];
+    private string[] _discharge = [];
+
+    /// <summary>The last task the HUD lists after the steps: the discharge ends the surgery, so it's never shown done.
+    /// </summary>
+    internal const string DischargeLabel = "Discharge the patient: sign their card";
 
     public void Setup(ScenarioDef scenario, SubtaskFacts facts) {
         foreach (var step in scenario.Steps) {
@@ -51,6 +57,7 @@ public partial class Objectives : Node {
             States.Add(new StepState());
             _subtasks.Add([.. Subtasks.For(step, scenario, facts)]);
         }
+        _discharge = [.. Subtasks.Discharge(scenario, facts)];
     }
 
     /// <summary>Every required step counts: the patient is ready to go.</summary>
@@ -125,8 +132,9 @@ public partial class Objectives : Node {
                 subtasks = [.. _subtasks[i], .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
             }
             settled &= step.Optional || state.Counts;
-            views.Add(new ObjectiveView(step.Label, done, step.Optional, state.Spoiled, subtasks));
+            views.Add(new ObjectiveView(step.Label, done, step.Optional, state.Spoiled, subtasks, step.Hint));
         }
+        views.Add(new ObjectiveView(DischargeLabel, false, false, false, ahead ? _discharge : []));
         return views;
     }
 }

@@ -102,17 +102,19 @@ public class DifficultyTest {
                 .OverrideFailureMessage($"baby: the subtasks name this patient's dose: {string.Join(" | ", Lines(panel))}").IsTrue();
             await View(shots, "baby", "the player's view of the patient with the objectives top right on a dark backing: "
                 + "the IV line ticked, the anesthesia's grey subtasks under it with the propofol dose, the marking "
-                + "further down marked (optional), the main tasks after the anesthesia without subtasks");
+                + "and the X-ray further down marked [optional] in front, the main tasks after the anesthesia without "
+                + "subtasks, the discharge last");
 
             Settings.Difficulty = Difficulty.Intern;
             await Frames.Process(2);
             // A wound closed and nothing bleeding hold from the start, but don't show done before what comes first.
             AssertArray(Lines(panel))
-                .OverrideFailureMessage($"intern: the required main tasks only, the IV line done: {string.Join(" | ", Lines(panel))}")
-                .IsEqual(driver.Surgery.Scenario.Steps.Where(step => !step.Optional)
-                    .Select(step => (step.Type == "iv" ? "☑ " : "☐ ") + step.Label).ToList());
-            await View(shots, "intern", "the same view, the objectives top right on a dark backing only the required "
-                + "main tasks, the IV line ticked, no subtasks and no marking");
+                .OverrideFailureMessage($"intern: the required main tasks, the X-ray hint and the discharge, the IV line done: {string.Join(" | ", Lines(panel))}")
+                .IsEqual(driver.Surgery.Scenario.Steps.Where(step => !step.Optional || step.Hint)
+                    .Select(step => (step.Type == "iv" ? "☑ " : "☐ ") + (step.Optional ? "[optional] " : "") + step.Label)
+                    .Append("☐ " + Objectives.DischargeLabel).ToList());
+            await View(shots, "intern", "the same view, the objectives top right on a dark backing the required main "
+                + "tasks, the IV line ticked, the X-ray marked [optional], the discharge last, no subtasks and no marking");
 
             Settings.Difficulty = Difficulty.Md;
             await Frames.Process(2);

@@ -1,4 +1,4 @@
 {
-  "00_baby_view.jpg": "the player's view of the patient with the objectives top right on a dark backing: the IV line ticked, the anesthesia's grey subtasks under it with the propofol dose, the marking further down marked (optional), the main tasks after the anesthesia without subtasks",
-  "01_intern_view.jpg": "the same view, the objectives top right on a dark backing only the required main tasks, the IV line ticked, no subtasks and no marking"
+  "00_baby_view.jpg": "the player's view of the patient with the objectives top right on a dark backing: the IV line ticked, the anesthesia's grey subtasks under it with the propofol dose, the marking and the X-ray further down marked [optional] in front, the main tasks after the anesthesia without subtasks, the discharge last",
+  "01_intern_view.jpg": "the same view, the objectives top right on a dark backing the required main tasks, the IV line ticked, the X-ray marked [optional], the discharge last, no subtasks and no marking"
 }
