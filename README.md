@@ -105,7 +105,8 @@ up, however many pushes they take. Work out the dose from the patient's weight a
 
 How much the game tells you depends on the difficulty, picked on the first start and changed under **Settings**:
 **I'm just a baby** lists the scenario's main tasks with step-by-step subtasks (doses for this patient included),
-**Intern** only the main tasks (and an optional X-ray), and at **MD** the manual on the shelf is your only reference. **Settings > Debug mode**
+**Intern** only the main tasks (and an optional X-ray), and at **MD** the manual on the shelf is your only reference.
+F1 hides or shows the goals. **Settings > Debug mode**
 adds what the game tracks behind the scenes (the score and every scored action, objective progress, a needle that hit
 the vein, how many ml of what each syringe pushed where and each ml of a drug that runs down the IV line).
 

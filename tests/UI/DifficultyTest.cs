@@ -116,6 +116,19 @@ public class DifficultyTest {
             await View(shots, "intern", "the same view, the objectives top right on a dark backing the required main "
                 + "tasks, the IV line ticked, the X-ray marked [optional], the discharge last, no subtasks and no marking");
 
+            var hint = driver.Surgery.Hud.FindChildren("*", "", true, false).OfType<Label>()
+                .Single(label => label.Text.Contains("Hold breath"));
+            AssertString(hint.Text).OverrideFailureMessage("the controls name the goals' key").Contains("F1  Hide goals");
+            PlayerInput.Tap(InputActions.ToggleGoals);
+            await PlayerInput.Delivered();
+            await Frames.Process(2);
+            AssertBool(!panel.Visible && hint.Text.Contains("F1  Show goals"))
+                .OverrideFailureMessage($"F1 puts the goals away: visible {panel.Visible}, hint {hint.Text}").IsTrue();
+            PlayerInput.Tap(InputActions.ToggleGoals);
+            await PlayerInput.Delivered();
+            await Frames.Process(2);
+            AssertBool(panel.Visible).OverrideFailureMessage("F1 again brings them back").IsTrue();
+
             Settings.Difficulty = Difficulty.Md;
             await Frames.Process(2);
             AssertBool(panel.Visible).OverrideFailureMessage("MD: no objectives").IsFalse();

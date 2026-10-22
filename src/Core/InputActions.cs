@@ -36,6 +36,7 @@ public static class InputActions {
     public static readonly StringName TwistLeft = "twist_left";
     public static readonly StringName TwistRight = "twist_right";
     public static readonly StringName Drink = "drink";
+    public static readonly StringName ToggleGoals = "toggle_goals";
     public static readonly StringName Pause = "pause";
 
     /// <summary>Order here is the order in the settings menu and the on-screen hint.</summary>
@@ -65,6 +66,7 @@ public static class InputActions {
         new(BeltSlot(2), "Belt slot 2", Key.Key2),
         new(BeltSlot(3), "Belt slot 3", Key.Key3),
         new(BeltSlot(4), "Belt slot 4", Key.Key4),
+        new(ToggleGoals, "Show / hide goals", Key.F1),
         new(Pause, "Pause", Key.Escape),
     ];
 

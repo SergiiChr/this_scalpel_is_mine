@@ -15,6 +15,9 @@ public partial class ObjectivesPanel : VBoxContainer {
 
     public ObjectivesPanel() => AddThemeConstantOverride("separation", 4);
 
+    /// <summary>Put away by the player: the panel stays hidden whatever it would show.</summary>
+    internal bool PutAway { get; set; }
+
     /// <summary>The backing reaches past the labels by its margin, as it does round a label that has it as its own.</summary>
     public override void _Draw() =>
         DrawStyleBox(_backing, new Rect2(Vector2.Zero, Size).Grow(_backing.GetMargin(Side.Left)));
@@ -22,7 +25,7 @@ public partial class ObjectivesPanel : VBoxContainer {
     /// <summary>Shows the host's last status. Labels only change when their text or look does.</summary>
     public void Refresh(SurgeryStatus status) {
         var lines = Lines(status, Settings.Difficulty ?? Difficulty.Md, Settings.Debug);
-        Visible = lines.Count > 0;
+        Visible = !PutAway && lines.Count > 0;
         while (GetChildCount() < lines.Count) {
             var label = Ui.Label("", TaskSize, Ui.Ink, true);
             // The theme's own box leaves its margins unset (-1): with one of its own the indent check below holds.
