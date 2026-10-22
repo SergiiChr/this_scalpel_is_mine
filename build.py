@@ -280,7 +280,12 @@ def fetch_templates() -> None:
 def build_project() -> None:
     """Compiles the C# (the analyzers run as part of it), then lets Godot import the assets."""
     run([dotnet(), "build", "--nologo", "-v", "quiet", ROOT / "ThisScalpelIsMine.csproj"])
-    run_godot("import", [GODOT, "--headless", "--path", ROOT, "--import"])
+    command: list[str | Path] = [GODOT, "--headless", "--path", ROOT, "--import"]
+    if not (ROOT / ".godot" / "imported").is_dir():
+        # A fresh checkout: Godot loads the project's own startup resources (the UI theme's font) before this first
+        # import has made them, and says so. The import that counts comes after, when it finds them.
+        subprocess.run([str(part) for part in command], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=False)
+    run_godot("import", command)
 
 
 def setup() -> None:
