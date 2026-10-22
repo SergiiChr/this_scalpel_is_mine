@@ -4,13 +4,14 @@ namespace Scalpel.Tests.UI;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 public class FontPreparationTest {
-    private const int FontSize = 18;
     private const int OutlineSize = 2;
     private const float Oversampling = 1.5f;
     private const string Text = "\u2219";
 
-    [TestCase]
-    public void PreparedFallbackGlyphsDoNotGrowTheirCacheWhenDrawnAtFractionalPositions() {
+    [TestCase(8, 12)]
+    [TestCase(18, 27)]
+    [TestCase(40, 60)]
+    public void PreparedFallbackGlyphsDoNotGrowTheirCacheWhenDrawnAtFractionalPositions(int fontSize, int pixels) {
         using var primary = (FontFile)GD.Load<FontFile>("res://assets/fonts/LaBelleAurore-Regular.ttf").Duplicate();
         using var fallback = (FontFile)GD.Load<FontFile>("res://assets/fonts/IMFellEnglish-Regular.ttf").Duplicate();
         primary.ClearCache();
@@ -18,7 +19,7 @@ public class FontPreparationTest {
         primary.Fallbacks = [fallback];
 
         using var line = new TextLine();
-        _ = line.AddString(Text, primary, FontSize);
+        _ = line.AddString(Text, primary, fontSize);
         var server = TextServerManager.GetPrimaryInterface();
         var shaped = server.ShapedTextGetGlyphs(line.GetRid());
         var fallbackGlyphs = shaped
@@ -28,13 +29,13 @@ public class FontPreparationTest {
             .OverrideFailureMessage("the bullet operator is supplied by the fresh fallback font").IsTrue();
         var fontRids = fallbackGlyphs.Select(glyph => glyph.Font).Distinct().ToArray();
 
-        Ui.PrepareFontText(primary, FontSize, OutlineSize, Text, Oversampling);
+        Ui.PrepareFontText(primary, fontSize, OutlineSize, Text, Oversampling);
         var prepared = fontRids.Select(font => Snapshot(server, font)).ToArray();
         foreach (var cache in prepared) {
-            AssertBool(cache.Sizes.Contains(new Vector2I(27, 0)))
-                .OverrideFailureMessage("preparation caches fill glyphs at 18 px times 1.5 oversampling").IsTrue();
-            AssertBool(cache.Sizes.Contains(new Vector2I(27, 3)))
-                .OverrideFailureMessage("preparation caches the 2 px outline at 18 px times 1.5 oversampling").IsTrue();
+            AssertBool(cache.Sizes.Contains(new Vector2I(pixels, 0)))
+                .OverrideFailureMessage("preparation caches fill glyphs at the viewport's raster size").IsTrue();
+            AssertBool(cache.Sizes.Contains(new Vector2I(pixels, 3)))
+                .OverrideFailureMessage("preparation caches the 2 px outline at 1.5 oversampling").IsTrue();
         }
 
         var canvas = RenderingServer.CanvasItemCreate();

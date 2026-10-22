@@ -68,8 +68,9 @@ public static class Ui {
         var canvas = RenderingServer.CanvasItemCreate();
         try {
             foreach (var glyph in glyphs) {
-                for (var shift = 0; shift < 4; shift++) {
-                    var at = new Vector2(shift * 0.25f, 0f);
+                var positions = SubpixelPositions(server, glyph.Font, size, oversampling);
+                for (var shift = 0; shift < positions; shift++) {
+                    var at = new Vector2(shift / (float)positions, 0f);
                     server.FontDrawGlyph(glyph.Font, canvas, size, at, glyph.Index, Colors.White, oversampling);
                     if (outline > 0) {
                         server.FontDrawGlyphOutline(glyph.Font, canvas, size, outline, at, glyph.Index,
@@ -80,6 +81,23 @@ public static class Ui {
         } finally {
             RenderingServer.FreeRid(canvas);
         }
+    }
+
+    /// <summary>Match the font's raster positions at its effective pixel size, including viewport scaling.</summary>
+    private static int SubpixelPositions(TextServer server, Rid font, int size, float oversampling) {
+        if (server.FontIsMultichannelSignedDistanceField(font)) {
+            return 1;
+        }
+        var fixedSize = server.FontGetFixedSize(font);
+        var pixels = fixedSize > 0 ? fixedSize
+            : size * (Mathf.Floor(Mathf.Clamp(oversampling, 0.1f, 100f) * 64f) / 64f);
+        return server.FontGetSubpixelPositioning(font) switch {
+            TextServer.SubpixelPositioning.OneQuarter => 4,
+            TextServer.SubpixelPositioning.OneHalf => 2,
+            TextServer.SubpixelPositioning.Auto when pixels <= (int)TextServer.SubpixelPositioning.OneQuarterMaxSize => 4,
+            TextServer.SubpixelPositioning.Auto when pixels <= (int)TextServer.SubpixelPositioning.OneHalfMaxSize => 2,
+            _ => 1,
+        };
     }
 
     public static Button Button(string text, Action pressed) {

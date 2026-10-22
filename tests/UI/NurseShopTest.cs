@@ -100,11 +100,19 @@ public class NurseShopTest {
         AssertBool(await Frames.Until(() => progress.Filled == 3, slowest))
             .OverrideFailureMessage("the nurse board advances to three of its ten progress blocks while fetching")
             .IsTrue();
+        var secondsLabel = progress.GetParent().GetChildren().OfType<Label>().Single();
+        var worldBoard = surgery.Room.FindChildren("*", nameof(Label3D), true, false).OfType<Label3D>()
+            .Single(label => label.Text.StartsWith(placed.Text + "\n", StringComparison.Ordinal));
+        AssertString(worldBoard.Text).OverrideFailureMessage("the board above the bell shows the same countdown")
+            .IsEqual($"{placed.Text}\n{secondsLabel.Text}");
+        var secondsBefore = secondsLabel.Text;
         var orderLine = shop.View.FindChildren("*", nameof(Label), true, false).OfType<Label>()
             .Single(label => label.Text == placed.Text);
         var reshaped = false;
         orderLine.MinimumSizeChanged += () => reshaped = true;
         await Frames.Seconds(Surgery.StatusInterval * 2f + 0.1f);
+        AssertString(secondsLabel.Text).OverrideFailureMessage("the displayed countdown advances while fetching")
+            .IsNotEqual(secondsBefore);
         AssertBool(reshaped).OverrideFailureMessage("countdown updates leave the order names' text layout unchanged")
             .IsFalse();
         if (shots is not null) {
@@ -114,6 +122,9 @@ public class NurseShopTest {
             await driver.Unbudgeted(() => boardShots.CaptureView("fetching",
                 "the open nurse shop waiting for delivery: the order names above ten square progress blocks, "
                     + "some filled and the rest outlined, seconds remaining beside them, Place order disabled"));
+            await driver.Unbudgeted(() => boardShots.CaptureOblique("bell_board",
+                "above the nurse bell, the order names and seconds remaining, no percentage or square glyphs",
+                worldBoard.GlobalPosition, -worldBoard.GlobalPosition, 2.5f, 0f));
             boardShots.End();
         }
         AssertBool(await Frames.Until(() => surgery.Nurse.Current is null, 0.05f))
