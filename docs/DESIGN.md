@@ -686,6 +686,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   needle pulls its current thread only: without one the wheel does nothing, and each new thread starts loose
   (`ToolActions.SutureStartTension`).
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
+  A column beside the surgeons' cards explains this run's; the main menu's Run modifiers lists all of them, the locked
+  ones hidden. A modifier unlocks the first time a run starts with it; locked ones roll all the same.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,
   until the nurse brings the corrected copy partway through.

@@ -1,6 +1,7 @@
 namespace Scalpel.UI;
 
-/// <summary>Pre-op briefing. Shows the scenario and everyone's rolled quirks. Everyone readies up, the host starts.
+/// <summary>Pre-op briefing. Shows the scenario, everyone's rolled quirks and, in a column beside them, this run's
+/// modifiers. Everyone readies up, the host starts.
 /// </summary>
 public partial class Lobby : Control {
     private static readonly Color ModifierColor = new(0.95f, 0.8f, 0.35f);
@@ -10,6 +11,7 @@ public partial class Lobby : Control {
     private Button _ready = null!;
     private Button? _start;
     private OptionButton? _scenarioPicker;
+    private VBoxContainer _modifiers = null!;
     private bool _waiting;
 
     private static Net Net => Net.Instance;
@@ -42,8 +44,18 @@ public partial class Lobby : Control {
             box.AddChild(row);
             _scenarioPicker = picker;
         }
+        var columns = Ui.HBox(20);
+        columns.SizeFlagsVertical = SizeFlags.ExpandFill;
         _roster = Ui.VBox(20);
-        box.AddChild(Ui.Scroll(_roster));
+        var roster = Ui.Scroll(_roster);
+        roster.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        columns.AddChild(roster);
+        _modifiers = Ui.VBox(6);
+        var modifiers = Ui.PanelAround(_modifiers);
+        modifiers.CustomMinimumSize = new Vector2(640f, 0f);
+        modifiers.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        columns.AddChild(modifiers);
+        box.AddChild(columns);
         var buttons = Ui.HBox(12);
         _ready = Ui.Button("Ready", ToggleReady);
         buttons.AddChild(_ready);
@@ -78,11 +90,6 @@ public partial class Lobby : Control {
             _header.AddChild(Ui.Label($"PRE-OP BRIEFING: {(scenario.Hidden ? "???" : scenario.Title)}", 32, Ui.Pip));
             var description = scenario.Hidden ? "One injection. Then you listen." : scenario.Description;
             _header.AddChild(Ui.Label($"{scenario.StarsText}   {description}", 18, Ui.Ink, true));
-            foreach (var id in Net.RunModifiers) {
-                var modifier = new ConfigReader(Db.RunModifiers, id);
-                _header.AddChild(Ui.Label(
-                    $"RUN MODIFIER  {modifier.String("name", id)}: {modifier.String("description")}", 18, ModifierColor, true));
-            }
             _scenarioPicker?.Select(Db.Scenarios.ToList().IndexOf(scenario));
         }
         foreach (var child in _roster.GetChildren()) {
@@ -102,9 +109,23 @@ public partial class Lobby : Control {
             }
             _roster.AddChild(Ui.PanelAround(card));
         }
+        // Rerolled modifiers (a new scenario) reach the lobby with the roster.
+        ListModifiers();
         _ready.Text = IsReady ? "Not ready" : "Ready";
         if (_start is not null) {
             _start.Disabled = !Net.AllReady;
+        }
+    }
+
+    /// <summary>This run's modifiers. The main menu lists all of them.</summary>
+    private void ListModifiers() {
+        foreach (var child in _modifiers.GetChildren()) {
+            child.QueueFree();
+        }
+        _modifiers.AddChild(Ui.Label("RUN MODIFIERS", 24, Ui.Pip));
+        _modifiers.AddChild(Ui.Label("The host rolls 1-2 for every run, and again with a new scenario.", 16, Ui.Dim, true));
+        foreach (var id in Net.RunModifiers) {
+            _modifiers.AddChild(Ui.ModifierLine(id, ModifierColor));
         }
     }
 
