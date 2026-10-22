@@ -72,9 +72,10 @@ public partial class ToolManager : Node3D {
         var groups = new Dictionary<string, List<SurgicalTool>>();
         foreach (var id in trayIds) {
             var tool = Create(_nextUid, id, new Transform3D(Basis.Identity, traySpots[spot % traySpots.Count]));
-            if (!groups.TryGetValue(tool.Def.Tray, out var group)) {
+            var compartment = Session.Room.InitialToolGroup(tool.Def);
+            if (!groups.TryGetValue(compartment, out var group)) {
                 group = [];
-                groups[tool.Def.Tray] = group;
+                groups[compartment] = group;
             }
             group.Add(tool);
             spot++;

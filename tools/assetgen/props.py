@@ -359,6 +359,21 @@ def _monitor() -> Model:
     return m
 
 
+def _monitor_wall_mount() -> Model:
+    """Wall plate and swivel stem supporting the monitor arm in the ambulance."""
+    m = Model("props", "monitor_wall_mount")
+    screen = trimesh.transformations.rotation_matrix(np.radians(MONITOR_YAW), (0.0, 1.0, 0.0))
+    screen[:3, 3] = MONITOR_SCREEN
+    local_endpoint = np.linalg.inv(screen) @ (MONITOR_POLE[0], 1.2, MONITOR_POLE[1], 1.0)
+    x, y, end_z = (float(value) for value in local_endpoint[:3])
+
+    m.add("Plate", _block((0.12, 0.16, 0.02), (x, -0.25, -0.14)), "steel")
+    bolts = [cylinder(0.004, (x + dx, -0.25 + dy, -0.131), (x + dx, -0.25 + dy, -0.126), 12) for dx in (-0.042, 0.042) for dy in (-0.06, 0.06)]
+    m.add("Bolts", merge(*bolts), "chrome")
+    m.add("SwivelStem", cylinder(0.016, (x, -0.25, -0.13), (x, y, end_z), 16), "steel")
+    return m
+
+
 # Mobile X-ray unit, front (-Z) toward the table. The arm slides straight up and down the column, level, and carries the
 # tube head; the game moves Arm along Y, its node origin at the tube head's. Same as XrayCart (src/World/XrayCart.cs).
 XRAY_HEAD = (0.0, 1.6, -0.72)
@@ -564,6 +579,92 @@ def _smoking() -> Model:
     return m
 
 
+def _ambulance_fittings() -> Model:
+    """Fitted ambulance cabin furniture, built around a table at the origin and a clear central ceiling panel."""
+    m = Model("props", "ambulance")
+
+    # Low side cabinets leave the middle of the floor open. Their inner faces are open shelves, with dividers,
+    # while the worktops give the tools a flat, continuous surface at y=0.915.
+    cabinet_parts: dict[str, list[trimesh.Trimesh]] = {"plastic": [], "blue_plastic": [], "chrome": []}
+    for side in (-1, 1):
+        outer = side * 1.13
+        inner = side * 0.89
+        mid = side * 1.01
+        cabinet_parts["plastic"].append(_block((2.4, 0.9, 0.025), (-0.1, 0.45, outer)))
+        cabinet_parts["plastic"].append(_block((2.4, 0.9, 0.025), (-0.1, 0.45, inner)))
+        cabinet_parts["plastic"].append(_block((2.4, 0.035, 0.24), (-0.1, 0.0175, mid)))
+        cabinet_parts["plastic"].append(_block((2.4, 0.035, 0.24), (-0.1, 0.8825, mid)))
+        # Open shelf levels; broad compartments fit bottles and trays.
+        for y in (0.25, 0.5, 0.75):
+            cabinet_parts["plastic"].append(_block((2.35, 0.018, 0.22), (-0.1, y, mid)))
+        for x in (-1.18, -0.4, 0.38, 1.0):
+            cabinet_parts["blue_plastic"].append(_block((0.025, 0.82, 0.23), (x, 0.45, mid)))
+        # Counter worktop, top face exactly at 0.915.
+        cabinet_parts["blue_plastic"].append(_block((2.4, 0.03, 0.26), (-0.1, 0.9, mid)))
+        # Low dividers keep the two rows of tool space legible without adding a front lip that would catch a grab.
+        divider_x = (-0.7, -0.075, 0.375, 0.7) if side == 1 else (-0.7, -0.275, 0.075, 0.75)
+        for x in divider_x:
+            cabinet_parts["blue_plastic"].append(_block((0.01, 0.025, 0.24), (x, 0.9275, side * 1.005)))
+        # Inward facing latches on the upper shelf fascia.
+        for x in (-1.05, -0.3, 0.45, 0.9):
+            cabinet_parts["chrome"].append(cylinder(0.008, (x, 0.84, inner), (x, 0.89, inner), 8))
+    for material, meshes in cabinet_parts.items():
+        m.add(f"Low{material.title().replace('_', '')}", merge(*meshes), material)
+
+    upper_parts: dict[str, list[trimesh.Trimesh]] = {"plastic": [], "blue_plastic": [], "black_plastic": [], "chrome": []}
+    for side in (-1, 1):
+        inner = side * 0.95
+        center_z = side * 1.04
+        upper_parts["plastic"].append(_block((2.4, 0.32, 0.18), (-0.1, 1.82, center_z)))
+        # Inward facing blue doors, seams, and small chrome pulls.
+        for x, width in ((-0.9, 0.78), (-0.1, 0.78), (0.7, 0.78)):
+            upper_parts["blue_plastic"].append(_block((width, 0.27, 0.012), (x, 1.82, inner)))
+            upper_parts["chrome"].append(
+                cylinder(0.006, (x + width / 2 - 0.06, 1.77, inner - side * 0.01), (x + width / 2 - 0.06, 1.84, inner - side * 0.01), 8)
+            )
+        for x in (-0.5, 0.3):
+            upper_parts["black_plastic"].append(_block((0.012, 0.27, 0.004), (x, 1.82, inner - side * 0.008)))
+    for material, meshes in upper_parts.items():
+        m.add(f"Upper{material.title().replace('_', '')}", merge(*meshes), material)
+
+    # End bulkhead storage, rear loading locker behind the feet, and rear double doors.
+    m.add("EndBulkheadCabinet", _block((0.5, 0.9, 2.2), (1.5, 0.45, 0.0)), "plastic")
+    m.add("EndBulkheadWorktop", _block((0.52, 0.03, 2.2), (1.5, 0.9, 0.0)), "blue_plastic")
+    m.add("LoadingLocker", _block((0.26, 0.9, 2.2), (-1.57, 0.45, 0.0)), "plastic")
+    m.add("LoadingWorktop", _block((0.28, 0.03, 2.2), (-1.57, 0.9, 0.0)), "blue_plastic")
+    door_leaves = [_block((0.035, 2.02, 1.05), (-1.74, 1.01, side * 0.525)) for side in (-1, 1)]
+    m.add("RearDoors", merge(*door_leaves), "plastic")
+    windows = [_block((0.008, 0.35, 0.54), (-1.715, 1.5, side * 0.48)) for side in (-1, 1)]
+    m.add("RearDoorWindows", merge(*windows), "black_plastic")
+    m.add("RearDoorSeam", _block((0.01, 2.0, 0.012), (-1.708, 1.0, 0.0)), "dark_steel")
+    rear_handles = [cylinder(0.009, (-1.7, 0.75, side * 0.07), (-1.7, 0.92, side * 0.07), 10) for side in (-1, 1)]
+    m.add("RearDoorHandles", merge(*rear_handles), "chrome")
+
+    # Cab partition at the head end; its tinted window remains above the storage cabinet.
+    m.add("CabPartitionWindow", _block((0.018, 0.48, 1.6), (1.735, 1.55, 0.0)), "frosted_plastic")
+    partition_frame = [
+        _block((0.035, 0.035, 1.7), (1.725, 1.82, 0.0)),
+        _block((0.035, 0.035, 1.7), (1.725, 1.28, 0.0)),
+    ]
+    partition_frame.extend(_block((0.035, 0.58, 0.035), (1.725, 1.55, z)) for z in (-0.85, 0.85))
+    m.add("CabPartitionFrame", merge(*partition_frame), "blue_plastic")
+
+    # Folded seat is parked flat against the +Z cabinet front, clear of the aisle.
+    m.add("FoldedSideSeat", _block((0.6, 0.5, 0.04), (-1.0, 1.22, 0.87)), "blue_plastic")
+    hinges = [cylinder(0.018, (-1.0 + dx, 1.19, 0.88), (-1.0 + dx, 1.25, 0.88), 10) for dx in (-0.24, 0.24)]
+    m.add("SideSeatHinges", merge(*hinges), "chrome")
+
+    # Side grab rails sit above the upper cabinets, leaving the central ceiling panel clear.
+    rails = []
+    for side in (-1, 1):
+        z = side * 0.65
+        rails.append(cylinder(0.014, (-1.3, 1.99, z), (1.3, 1.99, z), 12))
+        for x in (-1.2, -0.4, 0.4, 1.2):
+            rails.append(cylinder(0.01, (x, 1.99, z), (x, 2.05, z), 8))
+    m.add("GrabRails", merge(*rails), "chrome")
+    return m
+
+
 def build() -> list[Model]:
     return [
         _operating_table(),
@@ -576,6 +677,7 @@ def build() -> list[Model]:
         _sanitizer(),
         _lamp(),
         _monitor(),
+        _monitor_wall_mount(),
         _xray(),
         _stretcher_straps(),
         _streetlight(),
@@ -583,4 +685,5 @@ def build() -> list[Model]:
         _defib_cart(),
         _sink(),
         _smoking(),
+        _ambulance_fittings(),
     ]
