@@ -111,8 +111,8 @@ public class DifficultyTest {
             AssertArray(Lines(panel))
                 .OverrideFailureMessage($"intern: the required main tasks, the X-ray hint and the discharge, the IV line done: {string.Join(" | ", Lines(panel))}")
                 .IsEqual(driver.Surgery.Scenario.Steps.Where(step => !step.Optional || step.Hint)
-                    .Select(step => (step.Type == "iv" ? "☑ " : "☐ ") + (step.Optional ? "[optional] " : "") + step.Label)
-                    .Append("☐ " + Objectives.DischargeLabel).ToList());
+                    .Select(step => (step.Type == "iv" ? "✓ " : "□ ") + (step.Optional ? "[optional] " : "") + step.Label)
+                    .Append("□ " + Objectives.DischargeLabel).ToList());
             await View(shots, "intern", "the same view, the objectives top right on a dark backing the required main "
                 + "tasks, the IV line ticked, the X-ray marked [optional], the discharge last, no subtasks and no marking");
 

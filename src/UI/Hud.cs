@@ -484,7 +484,8 @@ public partial class Hud : CanvasLayer {
         var groups = Db.Tools.Values
             .Where(def => def.Orderable)
             .GroupBy(def => def.Category)
-            .Select(group => (group.Key, (IReadOnlyList<ToolDef>)[.. group]));
+            .Select(group => (group.Key,
+                (IReadOnlyList<ToolDef>)[.. group.OrderBy(def => def.Name, StringComparer.OrdinalIgnoreCase)]));
         Shop = new NurseShop(groups, ids => {
             Surgery.OrderTools(ids);
             CloseOverlay();

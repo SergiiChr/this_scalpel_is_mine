@@ -1,10 +1,10 @@
 {
-  "00_both_held_front.jpg": "the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip -0.89 up)",
-  "00_both_held_oblique.jpg": "the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip -0.89 up)",
-  "01_connected_front.jpg": "brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, both hands moved to meet (bottle 2.1 cm, needle 2.5 cm; in the vial: True, tip 1.00 up, needle 0.4 cm from the cap)",
-  "01_connected_oblique.jpg": "brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, both hands moved to meet (bottle 2.1 cm, needle 2.5 cm; in the vial: True, tip 1.00 up, needle 0.4 cm from the cap)",
+  "00_both_held_front.jpg": "the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip -0.88 up)",
+  "00_both_held_oblique.jpg": "the bottle held in the left fist, cap down the way a fist holds it, the empty syringe in the right hand (tip -0.88 up)",
+  "01_connected_front.jpg": "brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, both hands moved to meet (bottle 2.1 cm, needle 5.8 cm; in the vial: True, tip 1.00 up, needle 0.4 cm from the cap)",
+  "01_connected_oblique.jpg": "brought over the bottle's fist, the needle goes in through its cap: the bottle turned cap up, both hands moved to meet (bottle 2.1 cm, needle 5.8 cm; in the vial: True, tip 1.00 up, needle 0.4 cm from the cap)",
   "02_drawn_front.jpg": "three notches draw 3 ml of the drug from the held bottle (syringe 3.0 ml, bottle down 3.0 ml)",
   "02_drawn_oblique.jpg": "three notches draw 3 ml of the drug from the held bottle (syringe 3.0 ml, bottle down 3.0 ml)",
-  "03_moved_away_front.jpg": "the syringe moved away, out of the bottle: the bottle hand holds it where and how it did, cap down (tip -0.89 up, was -0.89; 0.0 cm from where it held it)",
-  "03_moved_away_oblique.jpg": "the syringe moved away, out of the bottle: the bottle hand holds it where and how it did, cap down (tip -0.89 up, was -0.89; 0.0 cm from where it held it)"
+  "03_moved_away_front.jpg": "the syringe moved away, out of the bottle: the bottle hand holds it where and how it did, cap down (tip -0.89 up, was -0.88; 0.0 cm from where it held it)",
+  "03_moved_away_oblique.jpg": "the syringe moved away, out of the bottle: the bottle hand holds it where and how it did, cap down (tip -0.89 up, was -0.88; 0.0 cm from where it held it)"
 }
