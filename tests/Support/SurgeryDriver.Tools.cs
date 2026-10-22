@@ -200,7 +200,7 @@ public partial class SurgeryDriver {
             }
             // Out of this tool's reach from the side of the tray: another spot.
             SurgeryState.TraySpotIsBad(Surgery, spot);
-            spot = SurgeryState.FreeTraySpot(Surgery);
+            spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
         }
         // Set down onto the tray before letting go, or a bottle would fall and roll.
         if (!ToolActions.TriggerNames.ContainsKey(tool.Def.Action)) {

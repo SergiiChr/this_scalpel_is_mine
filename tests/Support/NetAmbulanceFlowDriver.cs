@@ -48,7 +48,12 @@ public partial class NetAmbulanceFlowDriver : NetSession {
             () => $"report={surgery.Report?.Reason ?? "none"}");
         Check((driver.Me.GlobalPosition.Z - tableZ) * side > 0f,
             $"{Role} remains on its assigned aisle through discharge");
-        await Wait(1.0);
+        // The client goes first: left behind, its heartbeat would call RPCs on a host that's gone.
+        if (IsHost) {
+            await Until(() => Multiplayer.GetPeers().Length == 0, "the client leaving", () => "still connected");
+        } else {
+            await Wait(1.0);
+        }
         GetTree().Quit();
     }
 

@@ -3,7 +3,7 @@ namespace Scalpel.Tests.Scenarios;
 /// <summary>A real two-peer positive flow: two players complete Ambulance Run from their assigned sides.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario"), TestCategory("network"), TestCategory("core_validation")]
-public class CooperativeScenarioFlowTest {
+public class AmbulanceCoopTest {
     [TestCase(Timeout = Limits.Slow)]
     public void TwoSurgeonsCooperateToCompleteAmbulanceRun() {
         var output = new Godot.Collections.Array();

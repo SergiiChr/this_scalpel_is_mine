@@ -238,7 +238,7 @@ public class RoomTest {
             }
             SurgeryState.SurgeonStandsAt(surgeon, firstSpawn.Origin, firstSpawn.Basis.GetEuler().Y);
             await Frames.Physics(3);
-            var camera = new Camera3D { Fov = 80f, Near = 0.02f };
+            var camera = new Camera3D { Fov = 80f, Near = 0.02f, CullMask = RenderLayers.Normal };
             room.AddChild(camera);
             async Task Cabin(string name, Vector3 from, Vector3 toward, string claim) {
                 if (!KeyFrames.Wanted()) { return; }

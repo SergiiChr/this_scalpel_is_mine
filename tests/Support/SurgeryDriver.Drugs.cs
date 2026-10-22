@@ -56,7 +56,7 @@ public partial class SurgeryDriver {
         }
         // Pressed in the air, the forceps let the pad fall.
         if (Surgery.Tools.CarriedBy(forceps) is not null) {
-            var spot = SurgeryState.FreeTraySpot(Surgery);
+            var spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
             await PlayerWalksTo(spot);
             await PlayerReaches(spot);
             Use();
