@@ -41,8 +41,10 @@ public partial class SurgeonHand : Node3D {
     private static readonly float[] JointBend = [0.9f, 1.2f, 0.8f];
     /// <summary>Most the thumb bends in all (radians) reaching for a syringe's plunger.</summary>
     private const float MaxThumbBend = 3.2f;
-    /// <summary>How far the thumb's tip reaches past its last joint (meters).</summary>
-    private const float ThumbTip = 0.02f;
+    /// <summary>How far a finger's tip reaches past its last joint (meters).</summary>
+    private const float FingerTip = 0.02f;
+    /// <summary>Most a finger curls closing round a limb it grasps (times <see cref="JointBend"/>).</summary>
+    private const float MaxGraspCurl = 1.3f;
     /// <summary>Furthest the thumb's root slides toward a plunger out of its reach (meters).</summary>
     private const float ThumbSlide = 0.012f;
     /// <summary>How far behind the thumb press its pad's middle is (meters).</summary>
@@ -184,8 +186,8 @@ public partial class SurgeonHand : Node3D {
     /// <summary>How far the fingers of a hand pressed on the patient curl round what they hold: 0 flat on a trunk, more
     /// round a limb, negative straightened out over an opening.</summary>
     public float PressWrap { get; set; }
-    /// <summary>The axis of the limb a hand pressed on the patient holds, zero off a limb: the fingers point across it,
-    /// so they curl round it rather than into it along its length.</summary>
+    /// <summary>The axis of the limb a hand pressed on the patient grasps, zero off a limb: the fingers point across it
+    /// and close round it until they meet its skin (see GraspWith()).</summary>
     public Vector3 PressLimb { get; set; }
     /// <summary>How this hand's grip is fitted to the tool it holds (see <see cref="GripFit"/>).</summary>
     public GripFit Fit { get; set; } = GripFit.None;
@@ -205,7 +207,7 @@ public partial class SurgeonHand : Node3D {
     /// not the wall clock: physics frames run back to back after a stall would read as a burst of speed.</summary>
     private readonly Queue<(float Time, Vector3 Position)> _history = new();
     private float _clock;
-    private ThumbRest? _thumb;
+    private readonly Dictionary<string, FingerRest> _fingerRests = [];
     private float _curl = 0.2f;
     /// <summary>What the fingers were last posed for.</summary>
     private PoseKey? _posed;
@@ -254,11 +256,12 @@ public partial class SurgeonHand : Node3D {
     private readonly List<TrailFrame> _trailFrames = [];
     private float _trailAccumulated;
 
-    private readonly record struct PoseKey(float Curl, string Grip, bool Holding, GripFit Fit, float Press, float Wrap);
+    private readonly record struct PoseKey(float Curl, string Grip, bool Holding, GripFit Fit, float Press, float Wrap,
+        Vector3 Grasping);
 
-    /// <summary>The thumb at rest, glove space: where its root is, each bone (to the next joint, the last to its tip) and
+    /// <summary>A finger at rest, glove space: where its root is, each bone (to the next joint, the last to its tip) and
     /// the axis each joint bends about.</summary>
-    internal sealed record ThumbRest(Vector3 Root, Vector3[] Bones, Vector3[] Axes);
+    internal sealed record FingerRest(Vector3 Root, Vector3[] Bones, Vector3[] Axes);
 
     private readonly record struct TrailFrame(Transform3D Glove, Transform3D[] Poses);
 
@@ -525,7 +528,11 @@ public partial class SurgeonHand : Node3D {
         // Keyed on the plunger's own position, not where it is in the glove (which shifts with every shiver of the
         // hand): otherwise every bone would be posed again every frame.
         var wrap = PressNormal is null ? 0f : PressWrap;
-        var pose = new PoseKey(_curl, Grip, Gripping, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN, wrap);
+        // Grasping a limb, the fingers close round its skin from where the glove is: posed again once it has moved.
+        var grasping = PressNormal is not null && PressLimb != Vector3.Zero ? _glove.GlobalPosition.Snapped(0.001f)
+            : Vector3.Zero;
+        var pose = new PoseKey(_curl, Grip, Gripping, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN, wrap,
+            grasping);
         if (pose == _posed) {
             return;
         }
@@ -539,6 +546,10 @@ public partial class SurgeonHand : Node3D {
         var oppose = Gripping ? style.Oppose * Mathf.Min(_curl, 1f) : 0f;
         for (var f = 0; f < Fingers.Count; f++) {
             var finger = Fingers[f];
+            if (grasping != Vector3.Zero && finger != "Thumb") {
+                GraspWith(finger);
+                continue;
+            }
             for (var joint = 0; joint < 3; joint++) {
                 var bone = JointBones[f][joint];
                 // Each joint bends its bone toward the palm (the glove's -Y); the thumb folds in less.
@@ -621,22 +632,74 @@ public partial class SurgeonHand : Node3D {
         return at;
     }
 
-    internal ThumbRest ThumbAtRest() {
-        if (_thumb is not null) {
-            return _thumb;
+    internal FingerRest ThumbAtRest() => FingerAtRest("Thumb");
+
+    private FingerRest FingerAtRest(string finger) {
+        if (_fingerRests.TryGetValue(finger, out var known)) {
+            return known;
         }
         var rig = _gloveRig!;
         var joints = Enumerable.Range(1, 3)
-            .Select(joint => rig.Skeleton.GetBoneGlobalRest(rig.Skeleton.FindBone($"Thumb{joint}")).Origin)
+            .Select(joint => rig.Skeleton.GetBoneGlobalRest(rig.Skeleton.FindBone($"{finger}{joint}")).Origin)
             .ToArray();
         var bones = new Vector3[3];
         var axes = new Vector3[3];
         for (var joint = 0; joint < 3; joint++) {
-            var direction = rig.Direction($"Thumb{joint + 1}");
-            bones[joint] = joint < 2 ? joints[joint + 1] - joints[joint] : direction * ThumbTip;
+            var direction = rig.Direction($"{finger}{joint + 1}");
+            bones[joint] = joint < 2 ? joints[joint + 1] - joints[joint] : direction * FingerTip;
             axes[joint] = direction.Cross(Vector3.Down).Normalized();
         }
-        return _thumb = new ThumbRest(joints[0], bones, axes);
+        return _fingerRests[finger] = new FingerRest(joints[0], bones, axes);
+    }
+
+    /// <summary>Closes a finger round the limb the hand grasps: its joints bend together as for any curl, as far as the
+    /// curl closes them short of the finger's palm side going into the skin, so it ends against the skin whatever the
+    /// limb's shape.</summary>
+    private void GraspWith(string finger) {
+        var rest = FingerAtRest(finger);
+        var bends = new float[3];
+        // Bisects the curl: curled further, the finger reaches the skin.
+        var low = 0f;
+        var high = Mathf.Min(_curl, 1f) * MaxGraspCurl;
+        for (var i = 0; i < 7; i++) {
+            var mid = (low + high) * 0.5f;
+            if (FingerInSkin(rest, Bend(bends, mid))) {
+                high = mid;
+            } else {
+                low = mid;
+            }
+        }
+        Bend(bends, low);
+        for (var joint = 0; joint < 3; joint++) {
+            _gloveRig!.Rotate($"{finger}{joint + 1}", new Basis(rest.Axes[joint], bends[joint]));
+        }
+    }
+
+    /// <summary>Fills <paramref name="bends"/> with each joint's bend (radians) at <paramref name="curl"/>.</summary>
+    private static float[] Bend(float[] bends, float curl) {
+        for (var joint = 0; joint < 3; joint++) {
+            bends[joint] = curl * JointBend[joint];
+        }
+        return bends;
+    }
+
+    /// <summary>Whether a finger bent by <paramref name="bends"/> goes into the patient's skin: a line from a joint to
+    /// the palm side of its bone's end crosses it.</summary>
+    private bool FingerInSkin(FingerRest rest, float[] bends) {
+        var toWorld = _gloveRig!.Skeleton.GlobalTransform;
+        var at = rest.Root;
+        var turned = Basis.Identity;
+        for (var joint = 0; joint < 3; joint++) {
+            turned *= new Basis(rest.Axes[joint], bends[joint]);
+            var end = at + (turned * rest.Bones[joint]);
+            // The palm side: the way the joint bends, square to the bone.
+            var palm = turned * rest.Axes[joint].Cross(rest.Bones[joint]).Normalized();
+            if (Rays.Cast(this, toWorld * at, toWorld * (end + (palm * FingerRadius)), PatientBody.SurfaceLayer) is not null) {
+                return true;
+            }
+            at = end;
+        }
+        return false;
     }
 
     private void SolveArm(Vector3 shoulder, float delta) {

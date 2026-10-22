@@ -8,8 +8,6 @@ public partial class Surgeon {
     /// <summary>Skin facing further from straight up than this (the cosine) is too steep to lay a hand flat on.
     /// </summary>
     private const float SteepestPress = 0.3f;
-    /// <summary>How far the fingers curl round a limb they hold, on top of the press grip's own.</summary>
-    private const float LimbWrap = 0.6f;
     /// <summary>How far round to the near side a hand grasping a limb lays its palm (the tangent of the angle from
     /// its top).</summary>
     private const float GraspSide = 0.1f;
@@ -64,7 +62,8 @@ public partial class Surgeon {
             normal = (Vector3.Up.Slide(limb).Normalized() + (near * GraspSide)).Normalized();
             at = center + (normal * ring.Radius);
         }
-        hand.PressWrap = limb != Vector3.Zero ? LimbWrap : overOpening ? OpeningWrap : 0f;
+        // Round a limb the fingers close until they meet its skin (SurgeonHand.GraspWith()).
+        hand.PressWrap = overOpening && limb == Vector3.Zero ? OpeningWrap : 0f;
         var bone = body.RigBoneAt(at);
         var pose = body.RigBonePose(bone).AffineInverse();
         _holds[Active] = new PatientHold(bone, pose * at, (pose.Basis * normal).Normalized(), pose.Basis * limb,

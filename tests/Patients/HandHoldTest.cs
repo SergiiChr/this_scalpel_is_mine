@@ -104,7 +104,9 @@ public class HandHoldTest {
             .OverrideFailureMessage("and the hand holding it stays on it").IsLess(0.001f);
         AssertFloat(await Wander(() => body.RigBonePose("HandR").Origin))
             .OverrideFailureMessage("the other arm flails").IsGreater(0.01f);
-        AssertFloat(hand.PressWrap).OverrideFailureMessage("on the forearm the fingers curl round it").IsGreater(0f);
+        AssertBool(hand.PressLimb != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
+        AssertInt(FingerPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, not into it")
+            .IsEqual(0);
         // From across the arm, where the fingers come over it.
         await session.CaptureOblique("on_forearm", "the glove grasping the forearm from the near side, its fingers over the "
             + "top and the cut there and curled down the far side, none in the cut", on,
@@ -125,6 +127,28 @@ public class HandHoldTest {
 
     private static string Lying(SurgeonHand hand, Vector3 on) =>
         $"the hand lies on the skin where it held: hand at {hand.GlobalPosition}, skin at {on}, pressing {hand.PressNormal}";
+
+    /// <summary>How many points along the hand's finger bones (SurgeonHand.BonePoints()) are inside the patient's skin
+    /// by more than a finger's thickness: a ray out from one crosses the skin an odd number of times.</summary>
+    private static int FingerPointsInSkin(SurgeonHand hand) {
+        var space = hand.GetWorld3D().DirectSpaceState;
+        var outward = new Vector3(0.013f, 1f, 0.007f).Normalized();
+        return SurgeonHand.Fingers.Take(4).SelectMany(finger => hand.BonePoints(finger)).Count(point => {
+            var crossings = 0;
+            var from = point.Position;
+            for (var i = 0; i < 32; i++) {
+                var query = PhysicsRayQueryParameters3D.Create(from, point.Position + outward, PatientBody.SurfaceLayer);
+                query.HitBackFaces = true;
+                var hit = space.IntersectRay(query);
+                if (hit.Count == 0) {
+                    break;
+                }
+                crossings++;
+                from = hit["position"].AsVector3() + (outward * 0.0002f);
+            }
+            return crossings % 2 == 1;
+        });
+    }
 
     /// <summary>How far (meters) <paramref name="where"/> strays from where it starts over a second.</summary>
     private static async Task<float> Wander(Func<Vector3> where) {
