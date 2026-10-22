@@ -390,7 +390,7 @@ public partial class Hud : CanvasLayer {
         var board = new BoardShown(status.Order?.Text, Mathf.RoundToInt((status.Order?.Progress ?? 0f) * 10f),
             Mathf.CeilToInt(status.Order?.SecondsLeft ?? 0f), Mathf.CeilToInt(status.NurseCooldown));
         if (_boardShown.Changed(board)) {
-            Shop.ShowBoard(status.NurseBoard);
+            Shop.ShowBoard(status);
         }
     }
 

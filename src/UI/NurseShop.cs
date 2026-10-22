@@ -17,6 +17,9 @@ public sealed class NurseShop {
     private readonly List<string> _cart = [];
     private readonly Action<IReadOnlyList<string>> _order;
     private readonly Label _subtitle;
+    private readonly HBoxContainer _progress;
+    private readonly Label _seconds;
+    private readonly NurseProgress _blocks;
     private readonly Label _cartTitle;
     private readonly Label _cartLines;
     private readonly Label _cartEta;
@@ -78,6 +81,16 @@ public sealed class NurseShop {
         page.AddChild(Ui.Label("Ring for the nurse", 28, Ui.Pip));
         _subtitle = Ui.Label("", 16, Ui.Dim, true);
         page.AddChild(_subtitle);
+        // Unicode squares force a system-font fallback lookup every time the countdown reshapes. Geometry keeps
+        // the same ten-step progress indicator without doing font discovery during play.
+        _progress = Ui.HBox(2);
+        _blocks = new NurseProgress();
+        _progress.AddChild(_blocks);
+        _progress.AddChild(new Control { CustomMinimumSize = new Vector2(6f, 0f) });
+        _seconds = Ui.Label("", 16, Ui.Dim);
+        _progress.AddChild(_seconds);
+        _progress.Hide();
+        page.AddChild(_progress);
         page.AddChild(columns);
         page.AddChild(Ui.Button("Never mind  [Esc]", close));
         View = Ui.CenteredPanel(page, new Vector2(1100f, 640f), new Color(0f, 0f, 0f, 0.6f));
@@ -87,18 +100,37 @@ public sealed class NurseShop {
     /// <summary>Prepare every cart and nurse status glyph while the surgery is being built.</summary>
     public void Prepare() {
         var names = string.Join(" ", _rows.Keys.Select(id => Db.Tool(id)!.Name));
-        var changing = names + " 0123456789 × ■ □ Nurse ready Nurse is busy for s Ready in about Nothing yet. Cart /";
+        var changing = names + " 0123456789 × Nurse ready Nurse is busy for s Ready in about Nothing yet. Cart /";
         foreach (var label in View.FindChildren("*", nameof(Label), true, false).OfType<Label>()) {
             Ui.PrepareLabelText(label, label.Text + changing);
+        }
+        // Button text is drawn by the button itself, rather than a Label child.
+        foreach (var button in View.FindChildren("*", nameof(Button), true, false).OfType<Button>()) {
+            Ui.PrepareFontText(button.GetThemeFont("font"), button.GetThemeFontSize("font_size"),
+                button.GetThemeConstant("outline_size"), button.Text, button.GetViewport().GetOversampling());
         }
     }
 
     /// <summary>A tool's row in its category's list.</summary>
     public ItemRow RowOf(string toolId) => _rows[toolId];
 
-    /// <summary>While it's shown: <paramref name="board"/> is the nurse board's text, <paramref name="nurseReady"/>
-    /// whether she takes an order now.</summary>
-    public void ShowBoard(string board) => _subtitle.Text = board;
+    /// <summary>The order's names stay shaped while its progress and seconds change independently.</summary>
+    public void ShowBoard(SurgeryStatus status) {
+        var order = status.Order;
+        var text = order?.Text ?? status.NurseBoard;
+        if (_subtitle.Text != text) {
+            _subtitle.Text = text;
+        }
+        _progress.Visible = order is not null;
+        if (order is not { } fetching) {
+            return;
+        }
+        _blocks.ShowProgress(fetching.Progress);
+        var seconds = $"{Mathf.CeilToInt(fetching.SecondsLeft)} s";
+        if (_seconds.Text != seconds) {
+            _seconds.Text = seconds;
+        }
+    }
 
     /// <summary>Whether the nurse takes an order now: the Place button follows it.</summary>
     public void SetNurseReady(bool nurseReady) {

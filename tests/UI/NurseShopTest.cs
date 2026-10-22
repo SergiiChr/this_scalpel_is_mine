@@ -13,9 +13,6 @@ namespace Scalpel.Tests.UI;
 [TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class NurseShopTest {
-    // Temporary local budget override: recorded CPU overruns of the cloud release run remain measured.
-    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 11f);
-
     /// <summary>Two of the same, from three categories, and a sixth that doesn't fit.</summary>
     private static readonly string[] Wanted = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol", "needle"];
     private static readonly string[] Ordered = ["gauze", "gauze", "scalpel", "hemostat", "vial_propofol"];
@@ -54,6 +51,7 @@ public class NurseShopTest {
         driver.Budget.Clear();
         var before = surgery.Tools.Tools.Keys.ToHashSet();
         var shop = surgery.Hud.Shop;
+        var progress = shop.View.FindChildren("*", "", true, false).OfType<NurseProgress>().Single();
 
         await driver.PlayerFillsCart(Wanted);
         var needleRow = shop.RowOf("needle");
@@ -99,6 +97,25 @@ public class NurseShopTest {
             .OverrideFailureMessage("a hidden row disables [-] when its item leaves the cart").IsTrue();
         await Frames.Seconds(Surgery.StatusInterval + 0.1f);
         AssertBool(shop.PlaceButton.Disabled).OverrideFailureMessage("Place order waits while the nurse is fetching").IsTrue();
+        AssertBool(await Frames.Until(() => progress.Filled == 3, slowest))
+            .OverrideFailureMessage("the nurse board advances to three of its ten progress blocks while fetching")
+            .IsTrue();
+        var orderLine = shop.View.FindChildren("*", nameof(Label), true, false).OfType<Label>()
+            .Single(label => label.Text == placed.Text);
+        var reshaped = false;
+        orderLine.MinimumSizeChanged += () => reshaped = true;
+        await Frames.Seconds(Surgery.StatusInterval * 2f + 0.1f);
+        AssertBool(reshaped).OverrideFailureMessage("countdown updates leave the order names' text layout unchanged")
+            .IsFalse();
+        if (shots is not null) {
+            var boardShots = new KeyFrames();
+            driver.AddChild(boardShots);
+            boardShots.Begin(surgery, "nurse_shop_fetching");
+            await driver.Unbudgeted(() => boardShots.CaptureView("fetching",
+                "the open nurse shop waiting for delivery: the order names above ten square progress blocks, "
+                    + "some filled and the rest outlined, seconds remaining beside them, Place order disabled"));
+            boardShots.End();
+        }
         AssertBool(await Frames.Until(() => surgery.Nurse.Current is null, 0.05f))
             .OverrideFailureMessage("a short delivery wait expires while the nurse is still fetching").IsFalse();
         var timedOut = false;
@@ -170,7 +187,7 @@ public class NurseShopTest {
     }
 
     private static async Task Stop(SurgeryDriver driver, KeyFrames? shots) {
-        driver.Budget.Check(localOverride: BudgetOverride);
+        driver.Budget.Check();
         if (shots is not null) {
             GD.Print($"key frames: {shots.OutDir}");
             shots.End();
