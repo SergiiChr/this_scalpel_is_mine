@@ -605,7 +605,6 @@ public partial class Hud : CanvasLayer {
         }
         var seeThrough = Surgeon.IsNeedle(tool) && me.Zoom == Surgeon.ZoomFov.Length - 1;
         lines.Add($"{Key(InputActions.Zoom)}  Zoom {me.Zoom + 1}/{Surgeon.ZoomFov.Length}{(seeThrough ? ", hands see-through" : "")}");
-        lines.Add($"{Key(InputActions.Lift)} (hold)  {(hand.Attached ? "Pull up" : "Lift hand over")}");
         lines.Add($"{Key(InputActions.Steady)} (hold)  Hold breath");
         if (goalsPutAway is { } away) {
             lines.Add($"{Key(InputActions.ToggleGoals)}  {(away ? "Show" : "Hide")} goals");

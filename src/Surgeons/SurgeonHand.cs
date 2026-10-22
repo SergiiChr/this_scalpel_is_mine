@@ -23,7 +23,6 @@ public partial class SurgeonHand : Node3D {
     /// <summary>The tilt a glove is fitted onto its tool at (see GloveFrame()). Tilted or turned from there, both turn
     /// together.</summary>
     public const float RestTilt = -1.1f;
-    public const float LiftHeight = 0.12f;
     /// <summary>How high (meters) and for how long (seconds) the hand hops when its tool bounces off what it was pressed
     /// onto.</summary>
     public const float BounceHeight = 0.02f;
@@ -132,7 +131,6 @@ public partial class SurgeonHand : Node3D {
     /// <summary>How deep under an opening's lip (meters) the wheel holds this hand's forceps tip, null while it rests on
     /// what's inside (see Surgeon.HoldsDepth()). Only the owner places its hands, so it isn't streamed.</summary>
     public float? HeldDepth { get; set; }
-    public bool Lifted { get; set; }
     /// <summary>Set by the surgeon while the wrist aims the tool: the elbow stays put.</summary>
     public bool Aiming { get; set; }
     /// <summary>How far above its resting spot (meters) the hand is held while aiming.</summary>
@@ -184,7 +182,6 @@ public partial class SurgeonHand : Node3D {
     private GripStyle Style => GripStyle.For(Grip);
     private Node3D Body => GetParent<Node3D>();
 
-    private float _lift;
     /// <summary>How far through a bounce (<see cref="Bounce"/>) the hand is, 1 for none.</summary>
     private float _bounce = 1f;
     /// <summary>Recent positions in game time. Speed over a short window ignores tremor and network jitter. Game time,
@@ -302,14 +299,14 @@ public partial class SurgeonHand : Node3D {
     /// <summary>The tool bounced off what it was pressed onto: the hand hops up off it and comes back down.</summary>
     public void Bounce() => _bounce = 0f;
 
-    /// <summary>Final world position: target plus lift, bounce and tremor.</summary>
+    /// <summary>Final world position: target plus raise, bounce and tremor.</summary>
     public Vector3 EffectivePosition() {
         if (Puppet) {
             return Target;
         }
         var hop = BounceHeight * Mathf.Sin(Mathf.Pi * _bounce);
         var tremor = OnHard ? Tremor with { Y = Mathf.Max(Tremor.Y, 0f) } : Tremor;
-        return Target + new Vector3(0f, _lift + Raise + hop, 0f) + tremor;
+        return Target + new Vector3(0f, Raise + hop, 0f) + tremor;
     }
 
     public Transform3D GripTransform() =>
@@ -367,7 +364,6 @@ public partial class SurgeonHand : Node3D {
     public Vector3 WristOffset() => GloveFrame(_elbow, Body.GlobalBasis).Origin - GlobalPosition;
 
     public void UpdatePose(Vector3 shoulder, float delta) {
-        _lift = Mathf.MoveToward(_lift, Lifted ? LiftHeight : 0f, delta * SettleSpeed);
         _bounce = Mathf.Min(_bounce + (delta / BounceTime), 1f);
         if (!Holding) {
             // Twist wraps to -pi..pi, so this rolls back the short way.

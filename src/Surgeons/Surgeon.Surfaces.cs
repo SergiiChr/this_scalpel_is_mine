@@ -121,7 +121,7 @@ public partial class Surgeon {
         var offset = tool is not null ? hand.TipOffset(tool.Def.Length) : new Vector3(0f, -0.03f, 0f);
         var from = Shoulder(hand.Index);
         var target = hand.Target;
-        // A hand holding onto something keeps its height; Lift pulls it up (see LocalUpdate()).
+        // A hand holding onto something keeps its height; the wheel raises it (StepHeld()).
         var surface = hand.Attached ? Surface.None : LyingBelow(target + offset, SurfaceBelow(target + offset));
         if (!hand.Attached && ExposedBelow(tool, target + offset, surface) is { } exposed) {
             surface = exposed.Surface;
@@ -232,10 +232,10 @@ public partial class Surgeon {
 
     /// <summary>A move of a forceps tip held at a depth (<paramref name="from"/> to <paramref name="to"/>, the hand's
     /// spot): deeper than <see cref="Patient.LipDepth"/> it stays in the opening, sliding along the lip rather than going
-    /// under the skin, also on its way (a fast move doesn't jump across skin into another opening). Lifted, it goes over.
-    /// </summary>
+    /// under the skin, also on its way (a fast move doesn't jump across skin into another opening). Raised by the wheel
+    /// up to the lip, it goes over.</summary>
     private Vector3 InsideLip(SurgeonHand hand, Vector3 from, Vector3 to) {
-        if (hand.HeldDepth is null || hand.Attached || hand.Lifted || HeldTool(hand.Index) is not { } tool) {
+        if (hand.HeldDepth is null || hand.Attached || HeldTool(hand.Index) is not { } tool) {
             return to;
         }
         var offset = hand.TipOffset(tool.Def.Length);

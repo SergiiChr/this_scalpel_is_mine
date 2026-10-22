@@ -1,10 +1,10 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>
-/// Late remote input: the client presses its forceps while lifted over the bullet in the host's opened thigh, then lets
-/// Lift bring them down. The host works the client's tools from hand states that come at most 30 times a second, so
-/// the tip it sees comes down in steps, holding still in between. The host must see the forceps take the bullet, not
-/// close on nothing, or on whatever is passed on the way, as the press counts.
+/// Late remote input: the client moves its forceps into the host's opened thigh over the bullet and presses them. The
+/// host works the client's tools from hand states that come at most 30 times a second, so the tip it sees moves in
+/// steps, holding still in between. The host must see the forceps take the bullet, not close on nothing, or on whatever
+/// is passed on the way, as the press counts.
 /// </summary>
 public partial class NetPinchDriver : NetSession {
     private const int Port = 24597;
@@ -23,14 +23,14 @@ public partial class NetPinchDriver : NetSession {
             SurgeryState.SkinIsCut(surgery.Patient, bullet.Uv - half, bullet.Uv + half, 1f);
             await WatchPinch(surgery, bullet);
         } else {
-            await PinchLifted(surgery, bullet);
+            await PinchOverBullet(surgery, bullet);
         }
         GetTree().Quit();
     }
 
-    /// <summary>Client: forceps from the tray in the right hand, over the bullet once the cut has come, Lift held, Use
-    /// tool pressed and held, then Lift let go of.</summary>
-    private async Task PinchLifted(Surgery surgery, CavityTarget bullet) {
+    /// <summary>Client: forceps from the tray in the right hand, moved over the bullet once the cut has come, then Use
+    /// tool pressed and held.</summary>
+    private async Task PinchOverBullet(Surgery surgery, CavityTarget bullet) {
         var me = surgery.LocalSurgeon!;
         var body = surgery.Patient.Body;
         if (!await Until(() => body.IsOpen(bullet.Uv))) {
@@ -66,11 +66,7 @@ public partial class NetPinchDriver : NetSession {
         }
         PlayerInput.Action(InputActions.MoveRightHand, false);
         GD.Print($"[client] forceps over the bullet, {((spot - forceps.TipPosition()) with { Y = 0f }).Length() * 1000f:0.0} mm off");
-        PlayerInput.Action(InputActions.Lift);
-        await Wait(0.5);
         PlayerInput.Action(InputActions.UseTool);
-        await Physics(5);
-        PlayerInput.Action(InputActions.Lift, false);
         // Held until the host has had time to report.
         await Wait(3.0);
         PlayerInput.Action(InputActions.UseTool, false);

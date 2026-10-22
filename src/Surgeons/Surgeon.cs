@@ -60,9 +60,6 @@ public partial class Surgeon : CharacterBody3D {
     public static readonly float[] BladeInOpening = [HoverGap, 0.008f, 0.005f, 0.002f];
     /// <summary>One notch of the wheel moves forceps' tip this far (meters) up or down in an opening.</summary>
     public const float DepthStep = 0.005f;
-    /// <summary>Holding Lift while holding onto something pulls it up this fast (m/s): slow and steady, so nothing rips.
-    /// </summary>
-    public const float PullSpeed = 0.05f;
     /// <summary>Room between the hand (or forearm) and the surface under it: about half a hand's thickness.</summary>
     public const float HandClearance = 0.03f;
     /// <summary>Where hands hang when nothing within reach is under them (the floor while standing): about waist height.

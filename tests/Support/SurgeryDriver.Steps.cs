@@ -193,15 +193,15 @@ public partial class SurgeryDriver {
         }
         if (await PlayerTakesHoldOf(target)) {
             var forceps = Me.HeldTool(Right)!;
-            // A steady pull, a couple of centimeters up, held until it lets go.
-            PlayerInput.Action(InputActions.Lift);
-            await Frames.Until(() => Body.Site.ToLocal(forceps.TipPosition()).Y > -target.Depth + 0.025f, 3f);
-            PlayerInput.Action(InputActions.Lift, false);
+            // A steady pull, a couple of centimeters up a notch at a time, held until it lets go.
+            for (var i = 0; i < 10 && Body.Site.ToLocal(forceps.TipPosition()).Y <= -target.Depth + 0.025f; i++) {
+                await PlayerPullsANotch();
+            }
             await Frames.Until(() => target.Anchor <= 0f, 30f);
-            PlayerInput.Action(InputActions.Lift);
-            await Frames.Until(() => target.Extracted, 5f);
+            for (var i = 0; i < 40 && !target.Extracted; i++) {
+                await PlayerPullsANotch();
+            }
             await Frames.Seconds(0.5f);
-            PlayerInput.Action(InputActions.Lift, false);
             if (target.Embedded && Patient.Targets.Count(other => other.Embedded && other.Extracted) == 1) {
                 var held = Body.Site.ToLocal(target.GlobalPosition) - Body.Site.ToLocal(forceps.TipPosition());
                 var across = (held with { Y = 0f }).Length() * 1000f;
@@ -218,6 +218,13 @@ public partial class SurgeryDriver {
             await PlayerPutsDown();
             await PlayerTakesOutGelpi(spreader);
         }
+    }
+
+    /// <summary>The wheel a notch up on forceps holding onto something, then a pause: scrolled slowly, nothing rips.
+    /// </summary>
+    public static async Task PlayerPullsANotch() {
+        await Notch(true);
+        await Frames.Seconds(0.1f);
     }
 
     /// <summary>Where the forceps tip was when <see cref="PlayerTakesHoldOf"/> last took hold of each target (world).

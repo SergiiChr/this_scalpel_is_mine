@@ -29,7 +29,6 @@ public static class InputActions {
     public static readonly StringName Zoom = "zoom";
     public static readonly StringName Inspect = "inspect";
     public static readonly StringName Interact = "interact";
-    public static readonly StringName Lift = "lift";
     public static readonly StringName Crouch = "crouch";
     public static readonly StringName Steady = "steady";
     public static readonly StringName AimTool = "aim_tool";
@@ -55,7 +54,6 @@ public static class InputActions {
         new(Zoom, "Zoom (2 steps)", Key.Shift),
         new(Inspect, "Look at held tool (hold)", Key.X),
         new(Interact, "Interact", Key.F),
-        new(Lift, "Lift hand over (hold)", Key.Alt),
         new(Crouch, "Crouch (hold)", Key.Ctrl),
         new(Steady, "Hold breath (hold)", Key.Space),
         new(AimTool, "Turn tool with the mouse (hold)", Mouse: MouseButton.Middle),

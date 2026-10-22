@@ -345,8 +345,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   setting shows the objectives, score and every scored action. Easy scenarios (1-2 stars) have no time limit.
 - **Hands**: no height control. A hand rests the tool tip just above whatever is under it (skin, tray, organs or a
   target in an open cavity), measured on a collider made from the real body and gown meshes. The hand and the
-  end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Lift raises it over hands and tall tools, and while it holds onto something Lift pulls
-  it up slowly. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
+  end of the forearm also keep clear of what's under them, so nothing sinks into a leg. Hands of two surgeons in the same space collide. Hands stay within reach and hang at waist height when nothing reachable is below. Crouch reaches the
   floor and walks slowly. Zoom toggles between two levels (hand motion scales with the magnification for precision, so
   the hand crosses the screen as fast at both); the closer one makes the hands see-through. Zoomed in with the hand over
   the patient (skin, drapes or an opening, holding a tool or not, working or not), the surgeon leans in: the torso bends
@@ -436,7 +435,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   settles back down once MMB is let go.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, heat, saw speed, suction), 0 does
   nothing. Gauze and other swabs take none: lowered, they wipe right where they point, and gauze presses there.
-  Shift toggles between two zoom levels, Alt lifts.
+  Shift toggles between two zoom levels.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and
   paper clips, pulled the same way (`ToolActions.HasTensionWheel()`). And the Gelpi retractor: up opens it, down
@@ -447,7 +446,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   (riding up over organs) and when Use tool is pressed, so the jaws close where the tip is: on a target, vessel or
   bleeding wound only with the tip down on what's inside (`Patient.JawReach`), on the cut's edge only up by the lip.
   Deeper than `Patient.LipDepth` it can't move out under the skin, anywhere along a move: it slides along the lip,
-  and Lift takes it over. All the way down, or out of the opening, it rests on what's inside again. The aim shows a
+  and raised to the lip it goes over. All the way down, or out of the opening, it rests on what's inside again. The aim shows a
   stem from the lip down to the tip and the depth beside it. Holding onto something, the wheel moves the hand instead:
   up pulls it a notch higher, down lets it a notch lower, never under what's inside. Notch by notch, something still
   attached comes loose; scrolled fast, it rips like any fast pull. A target pulled out is carried, no longer holding the hand to the patient:
