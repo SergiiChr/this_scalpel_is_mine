@@ -43,6 +43,28 @@ public partial class SurgeonHand : Node3D {
     private const float MaxThumbBend = 3.2f;
     /// <summary>How far a finger's tip reaches past its last joint (meters).</summary>
     private const float FingerTip = 0.02f;
+    /// <summary>How many turns of the palm round a limb <see cref="GraspFit"/> tries, from its top to
+    /// <see cref="MaxGraspTurn"/> toward the near side.</summary>
+    private const int GraspSteps = 16;
+    /// <summary>Furthest (radians) a hand grasping a limb turns its palm from the limb's top toward the near side.
+    /// </summary>
+    private const float MaxGraspTurn = 1.3f;
+    /// <summary>Furthest out from a limb's middle line (meters) <see cref="GraspFit"/> looks for its skin.</summary>
+    private const float GraspClear = 0.15f;
+    /// <summary>How many directions round a limb <see cref="GraspFit"/> finds its skin in.</summary>
+    private const int GraspAngles = 48;
+    /// <summary>Where along a limb (meters from the grasp) <see cref="GraspFit"/> finds its skin round it: under the
+    /// palm's sides and middle.</summary>
+    private static readonly float[] GraspSlices = [-0.024f, 0f, 0.024f];
+    /// <summary>Spots under the palm, heel to knuckles and side to side, glove space.</summary>
+    private static readonly Vector3[] PalmUnderside =
+    [
+        .. Enumerable.Range(0, 5).SelectMany(i => Enumerable.Range(0, 3)
+            .Select(j => new Vector3(0.085f * i / 4f, -PalmHalfThickness, -0.024f + (0.024f * j)))),
+    ];
+    /// <summary>The middle of the lower half of the palm's underside, glove space: what a hand grasping a limb lays on
+    /// it.</summary>
+    private static readonly Vector3 LowerPalm = new(0.0213f, -PalmHalfThickness, 0f);
     /// <summary>Most a finger curls closing round a limb it grasps (times <see cref="JointBend"/>).</summary>
     private const float MaxGraspCurl = 1.3f;
     /// <summary>Furthest the thumb's root slides toward a plunger out of its reach (meters).</summary>
@@ -186,9 +208,9 @@ public partial class SurgeonHand : Node3D {
     /// <summary>How far the fingers of a hand pressed on the patient curl round what they hold: 0 flat on a trunk, more
     /// round a limb, negative straightened out over an opening.</summary>
     public float PressWrap { get; set; }
-    /// <summary>The axis of the limb a hand pressed on the patient grasps, zero off a limb: the fingers point across it
-    /// and close round it until they meet its skin (see GraspWith()).</summary>
-    public Vector3 PressLimb { get; set; }
+    /// <summary>Which way the fingers of a hand grasping a limb point, across it and round it (zero off a limb): they
+    /// close round it until they meet its skin (see GraspWith()).</summary>
+    public Vector3 PressAcross { get; set; }
     /// <summary>How this hand's grip is fitted to the tool it holds (see <see cref="GripFit"/>).</summary>
     public GripFit Fit { get; set; } = GripFit.None;
     /// <summary>How far below the hand's position the glove reaches as it's posed now (negative: below). The surgeon
@@ -529,7 +551,7 @@ public partial class SurgeonHand : Node3D {
         // hand): otherwise every bone would be posed again every frame.
         var wrap = PressNormal is null ? 0f : PressWrap;
         // Grasping a limb, the fingers close round its skin from where the glove is: posed again once it has moved.
-        var grasping = PressNormal is not null && PressLimb != Vector3.Zero ? _glove.GlobalPosition.Snapped(0.001f)
+        var grasping = PressNormal is not null && PressAcross != Vector3.Zero ? _glove.GlobalPosition.Snapped(0.001f)
             : Vector3.Zero;
         var pose = new PoseKey(_curl, Grip, Gripping, Fit, Holding ? Mathf.Snapped(Press, 0.001f) : float.NaN, wrap,
             grasping);
@@ -880,19 +902,98 @@ public partial class SurgeonHand : Node3D {
     /// <summary>Pressed flat on the patient: the palm (the press grip's glove point) on the hand's position, laid on the
     /// skin across <paramref name="normal"/>, the fingers pointing on the way the forearm comes in.</summary>
     private Transform3D PressFrame(Vector3 elbow, Vector3 normal) {
-        var style = GripStyle.All["press"];
-        // Grasping a limb from its side, they point up round it, over its top.
-        var fingers = PressLimb == Vector3.Zero ? (GlobalPosition - elbow).Slide(normal)
-            : Vector3.Up.Slide(normal).Slide(PressLimb);
+        var fingers = (PressAcross == Vector3.Zero ? GlobalPosition - elbow : PressAcross).Slide(normal);
         if (fingers.LengthSquared() < 0.000001f) {
             fingers = Body.GlobalBasis.Z.Slide(normal);
         }
+        var frame = PressBasis(normal, fingers);
+        // Grasping a limb, the hand's position is where its lower palm lies (GraspFit()).
+        return new Transform3D(frame, GlobalPosition - (frame * (PressAcross == Vector3.Zero ? PressStyle.At : LowerPalm)));
+    }
+
+    private static GripStyle PressStyle => GripStyle.All["press"];
+
+    /// <summary>The glove's axes pressed flat across <paramref name="normal"/>, the fingers along
+    /// <paramref name="fingers"/>.</summary>
+    private Basis PressBasis(Vector3 normal, Vector3 fingers) {
         // The press grip's tool frame: its -Z (where the fingers point) along the fingers, +Y out of the skin.
         var tool = Basis.LookingAt(fingers.Normalized(), normal);
         var mirror = Index == 0 ? new Vector3(-1f, 1f, 1f) : Vector3.One;
-        var frame = tool * Basis.FromScale(mirror) * style.Frame;
-        return new Transform3D(frame, GlobalPosition - (frame * style.At));
+        return tool * Basis.FromScale(mirror) * PressStyle.Frame;
     }
+
+    /// <summary>
+    /// Where a hand grasping the limb round <paramref name="ring"/> at <paramref name="at"/> lays its palm, seen from
+    /// <paramref name="from"/>: the spot the lower palm lies on, the palm's normal and which way the fingers point, from
+    /// the near side over the top. The palm is turned
+    /// from the limb's top toward the near side as far as lays it closest along its whole length, the heel as much as
+    /// the knuckles, and rests on the skin with no part of it in it. A flat palm can't lie along a limb thinner than it:
+    /// there it rests with both ends a little off the skin, and the fingers close round the rest
+    /// (<see cref="GraspWith"/>).
+    /// </summary>
+    internal (Vector3 At, Vector3 Normal, Vector3 Fingers) GraspFit(LimbRing ring, Vector3 at, Vector3 from) {
+        var axis = ring.Axis;
+        var center = ring.Center + (axis * axis.Dot(at - ring.Center));
+        var top = Vector3.Up.Slide(axis).Normalized();
+        var side = axis.Cross(top);
+        // The limb's skin round its middle line, where the palm's sides and middle lie along it.
+        var slices = GraspSlices.Select(along => SkinRound(center + (axis * along), top, axis)).ToArray();
+        // How far a spot is out from the skin (negative: in it), by the slice nearest it.
+        float Gap(Vector3 spot) {
+            var along = axis.Dot(spot - center);
+            var slice = Enumerable.Range(0, GraspSlices.Length).MinBy(k => Mathf.Abs(GraspSlices[k] - along));
+            var off = (spot - center).Slide(axis);
+            var radii = slices[slice];
+            var round = Mathf.PosMod(Mathf.Atan2(off.Dot(side), off.Dot(top)), Mathf.Tau) / Mathf.Tau * radii.Length;
+            var below = (int)round % radii.Length;
+            return off.Length() - Mathf.Lerp(radii[below], radii[(below + 1) % radii.Length], round - Mathf.Floor(round));
+        }
+        // Which way round the axis turns the top toward the near side.
+        var toNear = side.Dot(from - center) >= 0f ? 1f : -1f;
+        var best = (Spread: float.PositiveInfinity, At: at, Normal: top, Fingers: side);
+        var spots = new Vector3[PalmUnderside.Length];
+        for (var step = 0; step <= GraspSteps; step++) {
+            var normal = new Basis(axis, toNear * MaxGraspTurn * step / GraspSteps) * top;
+            // Round the limb away from the near side, the way the palm turns back to its top.
+            var fingers = -toNear * axis.Cross(normal);
+            var frame = PressBasis(normal, fingers);
+            // The lower palm over the limb's middle line: it lies on the limb's round, and the knuckles rise off it
+            // toward the far side for the fingers to close round it from there.
+            for (var k = 0; k < spots.Length; k++) {
+                spots[k] = frame * (PalmUnderside[k] - LowerPalm);
+            }
+            // Bisects how far out from the middle line the palm goes: as close as leaves it out of the skin.
+            var low = 0f;
+            var high = GraspClear;
+            for (var i = 0; i < 12; i++) {
+                var mid = (low + high) * 0.5f;
+                var place = center + (normal * mid);
+                if (spots.Any(spot => Gap(place + spot) < 0f)) {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            var resting = center + (normal * high);
+            var spread = Enumerable.Range(0, spots.Length).Where(k => PalmUnderside[k].X <= LowerPalm.X * 2f)
+                .Max(k => Gap(resting + spots[k]));
+            if (spread < best.Spread) {
+                best = (spread, resting, normal, fingers);
+            }
+        }
+        return (best.At, best.Normal, best.Fingers);
+    }
+
+    /// <summary>How far out from <paramref name="middle"/> the skin is all round it (meters), from
+    /// <paramref name="top"/> on round <paramref name="axis"/>.</summary>
+    private float[] SkinRound(Vector3 middle, Vector3 top, Vector3 axis) =>
+    [
+        .. Enumerable.Range(0, GraspAngles).Select(k => {
+            var outward = new Basis(axis, Mathf.Tau * k / GraspAngles) * top;
+            return Rays.Cast(this, middle, middle + (outward * GraspClear), PatientBody.SurfaceLayer, inside: true)
+                is { } hit ? hit.Position.DistanceTo(middle) : GraspClear;
+        }),
+    ];
 
     /// <summary>
     /// Turns a held glove about the tool so the wrist faces the elbow, without letting go: first it rolls around the

@@ -6,8 +6,9 @@ namespace Scalpel.Tests.Patients;
 /// on the lip, holding the incision but not the vessel bleeding inside; over the cut on a panicking patient's flailing
 /// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing.
 /// Key frames: review the glove lying flat on the skin over the cut, its palm and fingers on it and pressed a little
-/// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and over
-/// the forearm's cut, grasping it, the fingers over the cut and round the arm. No finger dips into an opening or a cut.
+/// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and
+/// grasping the forearm, the lower palm on it, the knuckles rising off it and the fingers round it over the cut.
+/// Nothing of the hand goes into the skin or an opening.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("hand_hold"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
@@ -104,12 +105,16 @@ public class HandHoldTest {
             .OverrideFailureMessage("and the hand holding it stays on it").IsLess(0.001f);
         AssertFloat(await Wander(() => body.RigBonePose("HandR").Origin))
             .OverrideFailureMessage("the other arm flails").IsGreater(0.01f);
-        AssertBool(hand.PressLimb != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
-        AssertInt(FingerPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, not into it")
+        AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
+        var normal = hand.PressNormal!.Value;
+        var skin = Rays.Cast(body, hand.Target + (normal * 0.03f), hand.Target - (normal * 0.03f), PatientBody.SurfaceLayer);
+        var off = skin is { } hit ? hit.Position.DistanceTo(hand.Target) : float.PositiveInfinity;
+        AssertFloat(off).OverrideFailureMessage($"its lower palm lies on the arm's skin: {off:0.000} m off").IsLess(0.005f);
+        AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, nothing of it in it")
             .IsEqual(0);
         // From across the arm, where the fingers come over it.
-        await session.CaptureOblique("on_forearm", "the glove grasping the forearm from the near side, its fingers over the "
-            + "top and the cut there and curled down the far side, none in the cut", on,
+        await session.CaptureOblique("on_forearm", "the glove grasping the forearm, its lower palm on the arm's top, the "
+            + "fingers round the far side over the cut, nothing of it in the skin", on,
             (driver.Me.GlobalPosition - on).Rotated(Vector3.Up, Mathf.Pi), CloseUp, 35f, true);
 
         await driver.PlayerLetsGoOfPatient();
@@ -128,12 +133,12 @@ public class HandHoldTest {
     private static string Lying(SurgeonHand hand, Vector3 on) =>
         $"the hand lies on the skin where it held: hand at {hand.GlobalPosition}, skin at {on}, pressing {hand.PressNormal}";
 
-    /// <summary>How many points along the hand's finger bones (SurgeonHand.BonePoints()) are inside the patient's skin
-    /// by more than a finger's thickness: a ray out from one crosses the skin an odd number of times.</summary>
-    private static int FingerPointsInSkin(SurgeonHand hand) {
+    /// <summary>How many points through the hand (SurgeonHand.BonePoints()) are inside the patient's skin, well under
+    /// the glove's surface: a ray out from one crosses the skin an odd number of times.</summary>
+    private static int HandPointsInSkin(SurgeonHand hand) {
         var space = hand.GetWorld3D().DirectSpaceState;
         var outward = new Vector3(0.013f, 1f, 0.007f).Normalized();
-        return SurgeonHand.Fingers.Take(4).SelectMany(finger => hand.BonePoints(finger)).Count(point => {
+        return hand.BonePoints().Count(point => {
             var crossings = 0;
             var from = point.Position;
             for (var i = 0; i < 32; i++) {

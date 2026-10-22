@@ -8,18 +8,15 @@ public partial class Surgeon {
     /// <summary>Skin facing further from straight up than this (the cosine) is too steep to lay a hand flat on.
     /// </summary>
     private const float SteepestPress = 0.3f;
-    /// <summary>How far round to the near side a hand grasping a limb lays its palm (the tangent of the angle from
-    /// its top).</summary>
-    private const float GraspSide = 0.1f;
     /// <summary>Over an opening the fingers straighten out of the press grip's slight curl (see
     /// <see cref="SurgeonHand.PressWrap"/>), lying across it on the skin beyond instead of dipping into it.</summary>
     private const float OpeningWrap = -1f;
 
     /// <summary>Where an empty hand holds the patient: the rig bone under it, and the spot on the skin and the skin's
-    /// normal there in that bone's frame, so the hand stays on the skin however the part moves, and the axis of the
-    /// limb it's on (zero off a limb) in that frame too. Over an opening it rests on the lip without pressing in, where
-    /// there is no skin under it to press.</summary>
-    private readonly record struct PatientHold(string Bone, Vector3 At, Vector3 Normal, Vector3 Limb, bool OverOpening);
+    /// normal there in that bone's frame, so the hand stays on the skin however the part moves, and which way its
+    /// fingers point round a limb it grasps (zero off a limb) in that frame too. Over an opening it rests on the lip
+    /// without pressing in, where there is no skin under it to press.</summary>
+    private readonly record struct PatientHold(string Bone, Vector3 At, Vector3 Normal, Vector3 Across, bool OverOpening);
 
     private readonly PatientHold?[] _holds = new PatientHold?[2];
 
@@ -52,21 +49,18 @@ public partial class Surgeon {
     private void HoldPatient(Vector3 at, Vector3 normal, bool overOpening) {
         var body = Session.Patient.Body;
         var hand = Hands[Active];
-        var limb = Vector3.Zero;
+        // The bone under the spot held: where a limb's grasp puts the hand reaches round past it.
+        var bone = body.RigBoneAt(at);
+        var across = Vector3.Zero;
         if (body.LimbRingAt(at) is { } ring) {
-            // A limb is grasped: the palm on its near side, half way up, the fingers over the top (and what's held
-            // there) and round the far side.
-            limb = ring.Axis;
-            var center = ring.Center + (limb * limb.Dot(at - ring.Center));
-            var near = (GlobalPosition - center).Slide(limb).Normalized();
-            normal = (Vector3.Up.Slide(limb).Normalized() + (near * GraspSide)).Normalized();
-            at = center + (normal * ring.Radius);
+            // A limb is grasped: the palm on its near side, the fingers over the top (and what's held there) and round
+            // the far side.
+            (at, normal, across) = hand.GraspFit(ring, at, GlobalPosition);
         }
         // Round a limb the fingers close until they meet its skin (SurgeonHand.GraspWith()).
-        hand.PressWrap = overOpening && limb == Vector3.Zero ? OpeningWrap : 0f;
-        var bone = body.RigBoneAt(at);
+        hand.PressWrap = overOpening && across == Vector3.Zero ? OpeningWrap : 0f;
         var pose = body.RigBonePose(bone).AffineInverse();
-        _holds[Active] = new PatientHold(bone, pose * at, (pose.Basis * normal).Normalized(), pose.Basis * limb,
+        _holds[Active] = new PatientHold(bone, pose * at, (pose.Basis * normal).Normalized(), pose.Basis * across,
             overOpening);
         hand.Lowered = false;
         hand.Trigger = false;
@@ -76,7 +70,7 @@ public partial class Surgeon {
     private void LetGoOfPatient(int index) {
         _holds[index] = null;
         Hands[index].PressNormal = null;
-        Hands[index].PressLimb = Vector3.Zero;
+        Hands[index].PressAcross = Vector3.Zero;
         Hands[index].PressBone = "";
     }
 
@@ -96,12 +90,13 @@ public partial class Surgeon {
         }
         var normal = (pose.Basis * hold.Normal).Normalized();
         hand.PressNormal = normal;
-        hand.PressLimb = (pose.Basis * hold.Limb).Normalized();
+        hand.PressAcross = (pose.Basis * hold.Across).Normalized();
         hand.PressBone = hold.Bone;
         hand.Lifted = false;
         hand.Raise = 0f;
         hand.Tremor = Vector3.Zero;
-        hand.Target = hold.OverOpening ? at : at - (normal * PressSink);
+        // A hand grasping a limb rests on it (GraspFit()): pressed in, its flat palm would cut into the limb's round.
+        hand.Target = hold.OverOpening || hold.Across != Vector3.Zero ? at : at - (normal * PressSink);
         hand.LocalTarget = ToLocal(hand.Target);
         _strain[hand.Index] = false;
         return true;
