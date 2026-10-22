@@ -63,6 +63,35 @@ public sealed class BoneRig(Skeleton3D skeleton) {
         return parent >= 0 ? Skeleton.GetBoneGlobalRest(parent).Basis : Basis.Identity;
     }
 
+    /// <summary>The bone posed nearest <paramref name="point"/> (skeleton space), measured to its length from its joint
+    /// to its first child's.</summary>
+    public string Nearest(Vector3 point) {
+        var best = "";
+        var bestDistance = float.PositiveInfinity;
+        for (var i = 0; i < Bones.Count; i++) {
+            var from = Skeleton.GetBoneGlobalPose(i).Origin;
+            var to = Bones[i].FirstChild >= 0 ? Skeleton.GetBoneGlobalPose(Bones[i].FirstChild).Origin : from;
+            var distance = Geometry3D.GetClosestPointToSegment(point, from, to).DistanceTo(point);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = Bones[i].Name;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>Where the bone is posed now (skeleton space), identity for none.</summary>
+    public Transform3D Pose(string bone) {
+        var i = Index(bone);
+        return i >= 0 ? Skeleton.GetBoneGlobalPose(i) : Transform3D.Identity;
+    }
+
+    /// <summary>How the bone is moved from its rest (skeleton space): posed now from where it rests.</summary>
+    public Transform3D Moved(string bone) {
+        var i = Index(bone);
+        return i >= 0 ? Skeleton.GetBoneGlobalPose(i) * Skeleton.GetBoneGlobalRest(i).AffineInverse() : Transform3D.Identity;
+    }
+
     /// <summary>Model-space direction the bone points at rest: toward its first child, or on from its parent at the
     /// tips.</summary>
     public Vector3 Direction(string bone) {

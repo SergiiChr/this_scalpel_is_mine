@@ -12,8 +12,8 @@ public class NetworkTest {
         Run("sync", "host/client wounds, hard/soft blood disks and strokes, topology and handoff agree");
 
     [TestCase]
-    public void ClientForcepsPressedWhileLiftedTakeTheBulletOnTheHost() =>
-        Run("pinch", "the host sees a client's forceps, pressed while lifted, come down and take the bullet");
+    public void ClientForcepsTakeTheBulletOnTheHost() =>
+        Run("pinch", "the host sees a client's forceps, pressed over the bullet, take it");
 
     [TestCase]
     public void GauzeTheHostHoldsStaysTapedWhereTheClientTapedIt() =>

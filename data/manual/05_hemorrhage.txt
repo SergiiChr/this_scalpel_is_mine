@@ -4,7 +4,7 @@ title: 5. Hemorrhage control
 The monitor displays total blood loss rate in ml/s. A rate above {Patient.HeavyBleeding} ml/s is a surgical emergency.
 
 ## 5.2 Methods, in order of preference
-1. [b]Direct pressure[/b] with gauze, held on the wound ([b]Use tool[/b]). Bleeding stops while pressed and for {Wound.PressureHold} seconds after, then returns over {Wound.PressureFade} seconds. Temporizing only, except on cuts shorter than {Wound.SmallCut * 100} cm, which are not sutured: press gauze on one for {Wound.SmallCutPress} seconds without lifting it and the bleeding stops for good.
+1. [b]Direct pressure[/b] with gauze, held on the wound ([b]Use tool[/b]), or with the flat of a gloved hand ([b]Use tool[/b] with an empty hand, again to let go), which absorbs nothing. Bleeding stops while pressed and for {Wound.PressureHold} seconds after, then returns over {Wound.PressureFade} seconds. Temporizing only, except on cuts shorter than {Wound.SmallCut * 100} cm, which are not sutured: press gauze on one for {Wound.SmallCutPress} seconds without lifting it and the bleeding stops for good.
 2. [b]Clamping[/b] the vessel with a hemostat. Leave it in place while you work.
 3. [b]Electrocautery[/b] for small bleeding points. Adjacent healthy tissue is coagulated as well.
 4. [b]Closure[/b] of the full length of the wound with sutures or staples.
@@ -23,8 +23,11 @@ See Chronic conditions: Mild hemophilia, Thrombophilia, Aneurysm.
 Sutures, staples, strips and packing hold only while the blood clots behind them. They leak while heparin acts, and while systolic pressure is above {Patient.HighPressure} mmHg. Cauterized points and clamps hold regardless.
 Pressure rises with panic and with stimulants: adrenaline, cocaine, ketamine.
 
-## 5.6 Embedded glass
-A fragment left in place plugs its own wound. Do not remove it from an agitated patient: sedate first (see 1.4), then infiltrate the area (lidocaine), since each fragment hurts until the area is numb. Grasp it with forceps and withdraw it slowly along its track: a quick pull tears the skin. A fragment sunk below the skin is out of reach: spread its wound open (a self-retaining retractor) to see and grasp it. Every track bleeds once its fragment is out: control it with pressure. Glass carries dirt in: rinse each track with saline, squirted from a syringe filled at the IV bag, about {Patient.RinseMlPerCm} ml per cm of track, until it runs clean, then prepare the skin with iodine. Close it with sutures; a track that reaches through the muscle is sutured at the muscle first, through the wound.
+## 5.6 Stabilization
+The patient is stable with the heart beating, oxygen saturation at {ObjectiveChecks.StableSpo2}% or more and systolic pressure at {ObjectiveChecks.StableSystolic} mmHg or more. Low pressure after blood loss: run saline or blood through the IV line (2.4, 10). A heart that stops: section 9.
+
+## 5.7 Embedded glass
+A fragment left in place plugs its own wound. Do not remove it from an agitated patient: sedate first (see 1.4), then infiltrate the area (lidocaine), since each fragment hurts until the area is numb. Grasp it with forceps and withdraw it slowly along its track: a quick pull tears the skin. A fragment sunk below the skin is out of reach: spread its wound open (a self-retaining retractor) to see and grasp it. Every track bleeds once its fragment is out: control it with pressure. Glass carries dirt in: rinse each track with saline, squirted from a syringe filled at the IV bag (the needle aimed at the track, not in the skin, and the plunger pushed), about {Patient.RinseMlPerCm} ml per cm of track, until it runs clean, then prepare the skin with iodine. Close it with sutures; a track that reaches through the muscle is sutured at the muscle first, through the wound.
 
 [font_size=16][b]References[/b]
 American College of Surgeons. Advanced Trauma Life Support (ATLS). 10th ed. 2018.

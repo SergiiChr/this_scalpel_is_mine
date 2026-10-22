@@ -12,13 +12,26 @@ public partial class SurgeryDriver {
     /// </summary>
     public async Task PlayerClosesWounds(string toolId = "needle") {
         Note($"closes the wounds with {toolId}");
+        if (toolId == "needle") {
+            // A stab or bullet hole through the muscle is too small to sew inside: cut open first, it bares the muscle.
+            foreach (var hole in Patient.Wounds.Where(wound => wound.IsHole && wound.ThroughMuscle
+                && wound.Muscle.Any(m => m < 1f) && !CanSpread(wound)).ToList()) {
+                await PlayerCutsOpen(hole);
+            }
+        }
         var tool = (await PlayerRequestsItem(toolId))!;
         for (var round = 0; round < 4 && Patient.SkinClosure() < 0.98f; round++) {
             // Every muscle before any skin: a skin stitch near another cut can reach across it, and over its open muscle
             // it tears through.
             if (tool.Def.Action == "sew") {
-                foreach (var wound in Patient.Wounds.Where(wound => wound.ThroughMuscle && wound.Muscle.Any(m => m < 1f)).ToList()) {
-                    await PlayerSews(wound, TissueDepth.Muscle);
+                // Only where its muscle is cut: a slit whose glass went in at a slant reaches it only at its deep end. A
+                // second thread where the first left some open, before the skin over it tears.
+                bool MuscleOpen(Wound wound) => wound.ThroughMuscle && wound.Muscle.Where((m, bin) => m < 1f
+                    && Body.Tissue.MuscleOpenNear(wound.BinPosition(bin), Patient.MuscleReach)).Any();
+                foreach (var wound in Patient.Wounds.Where(MuscleOpen).ToList()) {
+                    for (var thread = 0; thread < 2 && MuscleOpen(wound); thread++) {
+                        await PlayerSews(wound, TissueDepth.Muscle);
+                    }
                 }
             }
             foreach (var wound in Patient.Wounds.Where(wound => wound.IsSkinCut).ToList()) {
@@ -40,6 +53,30 @@ public partial class SurgeryDriver {
         Note($"skin closure {Patient.SkinClosure():0.00}");
         await PlayerPutsDown();
     }
+
+    /// <summary>The scalpel drawn through the skin along a stab or bullet hole, past both its ends and at least
+    /// <see cref="HoleOpening"/> meters long, so the muscle under all of it shows to sew.</summary>
+    public async Task PlayerCutsOpen(Wound hole) {
+        Note($"cuts hole {hole.Id} open");
+        var along = hole.Points[^1] - hole.Points[0];
+        var length = Mathf.Max(hole.LengthUv + Body.MetersToUv(0.01f), Body.MetersToUv(HoleOpening));
+        var half = (along.LengthSquared() > 0f ? along.Normalized() : Vector2.Right) * length * 0.5f;
+        await PlayerCutsSkin(hole.Midpoint - half, hole.Midpoint + half, 2);
+        await PlayerPutsDown();
+    }
+
+    /// <summary>The shortest cut (meters) that opens a stab or bullet hole to sew its muscle.</summary>
+    private const float HoleOpening = 0.03f;
+
+    /// <summary>Whether a stab or bullet hole can be spread to sew inside: long enough for a Gelpi's arms, gaping
+    /// already, or cut open.</summary>
+    public bool CanSpread(Wound hole) => hole.LengthUv >= Body.MetersToUv(HoleOpening)
+        || Body.Tissue.IsOpen(hole.Midpoint, TissueDepth.Skin) || IsCutOpen(hole);
+
+    /// <summary>Whether a cut runs through <paramref name="hole"/>. A blade drawn along a hole already gaping cuts
+    /// nothing until past it.</summary>
+    public bool IsCutOpen(Wound hole) => Patient.Wounds.Any(wound => wound.IsSkinCut && !wound.IsHole
+        && wound.DistanceTo(hole.Midpoint) < Body.MetersToUv(0.005f));
 
     /// <summary>A closure strip pressed bin by bin along <paramref name="wound"/>: its muscle first where the cut
     /// goes through it, then its skin. A tensioned closure (paper clips) is pulled until it reads <paramref name="pull"/>
@@ -152,10 +189,54 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>Sews <paramref name="wound"/> with a running thread through <paramref name="layer"/>, the needle in the
-    /// active hand: holes along it (<see cref="PlayerThreads"/>), the wheel until the hand status reads closed
-    /// (<see cref="PlayerPullsThread"/>), and the knot (<see cref="PlayerTiesOff"/>).</summary>
-    public async Task PlayerSews(Wound wound, TissueDepth layer) {
-        if (await PlayerThreads(wound, layer)) {
+    /// active hand: holes along it (<see cref="PlayerThreads"/>), spread with a Gelpi where the layer hides, the
+    /// wheel until the hand status reads closed (<see cref="PlayerPullsThread"/>), and the knot
+    /// (<see cref="PlayerTiesOff"/>). <paramref name="threaded"/> runs once the thread is through the layer, before
+    /// it's pulled, the cut still spread: to look at it.</summary>
+    public async Task PlayerSews(Wound wound, TissueDepth layer, Func<Task>? threaded = null) {
+        var needle = Me.Active;
+        var other = needle == Right ? Left : Right;
+        SurgicalTool? gelpi = null;
+        // Gelpis the hand couldn't reach back with the thread through the tissue holding the needle hand in place.
+        List<SurgicalTool> left = [];
+        // Where a layer under the skin hides under the lip, the other hand spreads the cut there with a Gelpi until it
+        // shows, moving it along the cut as the needle goes. A stab or bullet hole has nothing to spread until it's cut
+        // open, and a hand already holding something (the lip, lifted with forceps) is busy.
+        async Task Spread(float along) {
+            if (gelpi is not null) {
+                await PlayerTakesOutGelpi(gelpi, other, putDown: false);
+                if (Me.HeldTool(other) != gelpi) {
+                    left.Add(gelpi);
+                }
+            }
+            await SwitchTo(other);
+            // Where there's none to be had (in an ambulance), the needle goes on with what shows.
+            if (await PlayerRequestsItem("gelpi") is null) {
+                await SwitchTo(needle);
+                return;
+            }
+            var direction = (wound.Points[^1] - wound.Points[0]).Normalized() * Body.MetersToUv(0.01f);
+            // Near an end of a long cut the arms would sit past it and spread nothing: keep them inside.
+            var inset = Body.MetersToUv(0.015f);
+            var at = BesideWound(wound, wound.LengthUv > inset * 2f ? Mathf.Clamp(along, inset, wound.LengthUv - inset) : along, 0f);
+            gelpi = await PlayerSetsGelpi(at - direction, at + direction);
+            await PlayerOpensGelpi(SpreadToSew);
+            Tap(InputActions.Grab);
+            await Frames.Seconds(1f);
+            await SwitchTo(needle);
+        }
+        var spreads = layer != TissueDepth.Skin && (!wound.IsHole || CanSpread(wound)) && Me.HeldTool(other) is null;
+        // A thrashing limb moves the wound away from the needle: the free hand holds it still.
+        var holds = !spreads && await PlayerHoldsThrashingSiteLimb(wound);
+        var through = await PlayerThreads(wound, layer, expose: spreads ? Spread : null);
+        if (threaded is not null) {
+            await threaded();
+        }
+        if (gelpi is not null) {
+            await PlayerTakesOutGelpi(gelpi, other);
+            await SwitchTo(needle);
+        }
+        if (through) {
             await PlayerPullsThread("closed");
             // Tension can finish or tear through the active thread. Only an anchored thread can be tied;
             // the operation's closure checks still decide whether the wound was actually closed.
@@ -164,21 +245,38 @@ public partial class SurgeryDriver {
             } else {
                 Note("the thread finished or tore before it could be tied off");
             }
+        } else if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
+            // A thread that can't go on is tied off as it is: the next one may be in another layer.
+            await PlayerTiesOff();
+        }
+        if (holds) {
+            await PlayerLetsGoWithFreeHand();
+        }
+        // Tied off, the surgeon is free to walk round to them: one left spreading the cut would tear the skin closed
+        // over it.
+        foreach (var stuck in left.Where(tool => tool.InWound)) {
+            await PlayerTakesOutGelpi(stuck, other);
+        }
+        if (left.Count > 0) {
+            await SwitchTo(needle);
         }
         var bins = layer == TissueDepth.Muscle ? wound.Muscle : wound.Bins;
         Note($"{layer} of wound {wound.Id} closed {bins.DefaultIfEmpty(0f).Min():0.00}");
     }
 
+    /// <summary>How far (meters) a Gelpi spreads a cut to lay its muscle bare to sew.</summary>
+    private const float SpreadToSew = 0.025f;
+
     /// <summary>
-    /// Clicks the needle's thread through <paramref name="wound"/> in <paramref name="layer"/>: the first hole as close
-    /// beside the wound as that layer shows (inside the opening for what's under the skin, Patient.SutureLayerAt()),
-    /// then one <paramref name="stepCells"/> grid cells further along on the other side each click, the last at the
-    /// wound's end. Opt-in progress captures show the first two clicks (thread_hole_1, thread_hole_2), and an opt-in
-    /// check that each hole goes in where the aim dot was (<see cref="AssertHoleOnAim"/>). Returns false when the layer
-    /// shows nowhere beside the wound.
+    /// Clicks the needle's thread through <paramref name="wound"/> in <paramref name="layer"/>, each hole where that layer
+    /// shows (<see cref="ShowsBeside"/>): the first as close beside the wound as it does, then one
+    /// <paramref name="stepCells"/> grid cells further along on the other side each click, the last at the wound's end.
+    /// The muscle shows only where the cut is spread far enough to lay it bare. Opt-in progress captures show the first
+    /// two clicks (thread_hole_1, thread_hole_2), and an opt-in check that each hole goes in where the aim dot was
+    /// (<see cref="AssertHoleOnAim"/>). Returns false when the layer doesn't show beside the wound where a hole goes.
     /// </summary>
     public async Task<bool> PlayerThreads(Wound wound, TissueDepth layer, float stepCells = 1f, bool captureProgress = false,
-        bool checkAim = false) {
+        bool checkAim = false, Func<float, Task>? expose = null) {
         // Grid cells along and across the wound, in uv: they're square in meters, not in uv.
         var along = (wound.Points[^1] - wound.Points[0]).Normalized();
         if (along == Vector2.Zero) {
@@ -189,79 +287,160 @@ public partial class SurgeryDriver {
         var cell = (Mathf.Abs(along.Y) / tissue.ResX) + (Mathf.Abs(along.X) / tissue.ResY);
         // A fractional remainder gets one final endpoint, not two overshooting samples clamped to the same end.
         var holes = Mathf.FloorToInt(wound.LengthUv / step) + 2;
-        var first = -1f;
-        var reverse = false;
-        // A tapered tip, or a neighbouring repair, may cover the muscle at one end. Start at the
-        // accessible end while still sewing the entire incision, rather than starting in the skin above it.
-        for (var end = 0; end < 2 && first < 0f; end++) {
-            var alongAt = end == 0 ? 0f : wound.LengthUv;
-            for (var i = 0; i < 16; i++) {
-                var off = cell * (0.25f + (i * 0.25f));
-                if (Patient.SutureLayerAt(BesideWound(wound, alongAt, off), wound) == layer) {
-                    // Skin holes a cell clear of the opening, not on its drawn-back edge.
-                    first = off + (layer == TissueDepth.Skin ? cell : 0f);
-                    reverse = end == 1;
-                    break;
+        Note($"threads {layer} along wound {wound.Id}: {holes} holes");
+        var side = -1f;
+        for (var i = 0; i < holes; i++) {
+            // Only the final hole is clamped to the far end: a two-hole stitch runs from one end to the other.
+            var alongAt = i == holes - 1 ? wound.LengthUv : Mathf.Min(i * step, wound.LengthUv);
+            // Across from the last hole made, so every span crosses the cut.
+            side = -side;
+            // A cut tapers at its ends, where the layers under the skin show less far along: in from there.
+            Vector2? Spot() {
+                var found = ShowsBeside(wound, alongAt, side, layer, cell);
+                for (var inset = 0.25f; found is null && inset <= 2f; inset += 0.25f) {
+                    var inward = alongAt < wound.LengthUv * 0.5f ? alongAt + (inset * step) : alongAt - (inset * step);
+                    found = ShowsBeside(wound, inward, side, layer, cell);
+                }
+                return found;
+            }
+            var spot = Spot();
+            if (spot is not null) {
+                // Re-squared to each puncture: the holder's carry and its tip-pivot working pose reach differently, and
+                // standing by it keeps both sides of the bite inside the arm's range. Looked at again from there: the
+                // thread draws the tissue in as it's pulled through.
+                await PlayerWalksTo(SitePoint(spot.Value));
+                spot = Spot();
+            }
+            if (spot is null && expose is not null) {
+                await expose(alongAt);
+                spot = Spot();
+                if (spot is not null) {
+                    await PlayerWalksTo(SitePoint(spot.Value));
+                    spot = Spot();
                 }
             }
-        }
-        if (first < 0f) {
-            Note($"no {layer} shows beside wound {wound.Id} to sew");
-            return false;
-        }
-        Note($"threads {layer} along wound {wound.Id}: {holes} holes{(reverse ? " from its far end" : "")}");
-        for (var i = 0; i < holes; i++) {
-            // The rest a grid cell off at least, so each lands on its own side of the wound. Only the final hole is
-            // clamped to the far end: a two-hole stitch runs from one end to the other.
-            var alongAt = i == holes - 1 ? wound.LengthUv : Mathf.Min(i * step, wound.LengthUv);
-            if (reverse) { alongAt = wound.LengthUv - alongAt; }
-            var off = (i == 0 ? first : Mathf.Max(first, cell)) * (i % 2 == 0 ? 1f : -1f);
-            var at = SitePoint(BesideWound(wound, alongAt, off));
-            // Re-squared to each puncture: the holder's carry and its tip-pivot working pose reach differently, and
-            // standing by it keeps both sides of the bite inside the arm's range.
-            await PlayerWalksTo(at);
+            if (spot is null) {
+                Note($"no {layer} shows beside wound {wound.Id} for hole {i + 1}");
+                // A layer under the skin is cut shorter than the skin over it: its thread runs only where it shows.
+                if (layer == TissueDepth.Skin) {
+                    return false;
+                }
+                side = -side;
+                continue;
+            }
+            var at = SitePoint(spot.Value);
             await PlayerReaches(at);
+            // As a player does, nudged until the needle is where it was aimed: a layer's wall is a narrow band to touch.
+            for (var nudge = 0; nudge < 4 && (Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.0005f; nudge++) {
+                await PlayerReaches(at + (at - Tip(Me.Hands[Me.Active])).Slide(Vector3.Up) * 0.8f);
+            }
             if ((Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.004f) {
-                Note($"needle cannot reach intended puncture within 4 mm: aim {BesideWound(wound, alongAt, off)}, "
-                    + $"tip {Body.WorldToUv(Tip(Me.Hands[Me.Active]))}, miss "
-                    + $"{(Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() * 1000f:0.0} mm, on body {Body.OnBody(Body.WorldToUv(at))}");
+                Note($"needle cannot reach intended puncture within 4 mm: aim {spot}, tip {Body.WorldToUv(Tip(Me.Hands[Me.Active]))}, "
+                    + $"miss {(Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() * 1000f:0.0} mm, on body {Body.OnBody(spot.Value)}");
                 return false;
             }
-            // The dot as the player clicks, the needle's tip still held up over the skin.
+            // The dot as the player clicks, the needle's tip still held up over the tissue, and what it touches.
             var aim = Me.AimPoint();
+            var touched = Body.ExposedUnder(Tip(Me.Hands[Me.Active]))?.Tissue;
             Use();
             await Frames.Seconds(0.2f);
             var drawn = checkAim ? LayerDrawn(layer) : [];
             Use(false);
             await Frames.Physics(3);
             if (checkAim) {
-                AssertHoleOnAim(aim, drawn, layer, i);
+                AssertHoleOnAim(aim, touched, drawn, layer, i);
             }
             if (captureProgress && i < 2) {
                 await Capture($"thread_hole_{i + 1}", $"the needle through hole {i + 1}, on its own side of the wound, thread trailing from it");
             }
         }
-        return true;
+        var made = Me.HeldTool(Me.Active)!.Suture.Thread is var sewn and not 0 ? Body.Tissue.ThreadUvs(sewn).Count : 0;
+        Note($"{made} {layer} holes along wound {wound.Id}");
+        return made >= 2;
     }
+
+    /// <summary>Where (site uv, as drawn now) a needle coming down meets <paramref name="layer"/> going out from
+    /// <paramref name="wound"/> at <paramref name="along"/> on <paramref name="side"/> (PatientBody.ExposedUnder()): over
+    /// the opening it goes down the cut's walls, the skin's, the fat's and the muscle's. Skin holes go a grid cell
+    /// (<paramref name="cell"/>) out past the opening on skin, not on its drawn-back edge; a deeper layer in the middle of where
+    /// its wall is met. Null when it isn't met within four cells.</summary>
+    public Vector2? ShowsBeside(Wound wound, float along, float side, TissueDepth layer, float cell) {
+        float? from = null;
+        var to = 0f;
+        var line = BesideWound(wound, along, 0f);
+        var outward = BesideWound(wound, along, side) - line;
+        for (var off = 0f; off <= 4f; off += 0.05f) {
+            var uv = BesideWound(wound, along, off * cell * side);
+            var touched = Touched(uv);
+            // Down a wall, on this side's: over a narrow opening the far side's can be nearer.
+            var met = touched is { } tissue && tissue.Layer == layer && (Body.LocalToUv(tissue.Contact) - line).Dot(outward) > 0f;
+            if (layer == TissueDepth.Skin) {
+                // A cell out past the opening on skin met all the way there: at a cut's end, a cell across can be over
+                // the opening's end wall.
+                from = met ? from ?? off : null;
+                if (off >= from + 1f) {
+                    return uv;
+                }
+                continue;
+            }
+            if (met) {
+                from ??= off;
+                to = off;
+            } else if (from is not null) {
+                break;
+            }
+        }
+        // A sliver a needle can't be held on is no band to sew.
+        return from is { } start && to - start >= 0.1f ? BesideWound(wound, along, (start + to) * 0.5f * cell * side) : null;
+    }
+
+    /// <summary>Where along <paramref name="wound"/> (every grid cell, each side) <paramref name="layer"/> shows still cut
+    /// apart, to sew (<see cref="ShowsBeside"/>), as "along/side" pairs, empty when nowhere.</summary>
+    public string ShowsAlong(Wound wound, TissueDepth layer) {
+        var tissue = Body.Tissue;
+        var along = (wound.Points[^1] - wound.Points[0]).Normalized();
+        var step = (Mathf.Abs(along.X) / tissue.ResX) + (Mathf.Abs(along.Y) / tissue.ResY);
+        var cell = (Mathf.Abs(along.Y) / tissue.ResX) + (Mathf.Abs(along.X) / tissue.ResY);
+        var shows = new List<string>();
+        for (var at = 0f; at <= wound.LengthUv; at += step) {
+            foreach (var side in (float[])[1f, -1f]) {
+                // Shown and still apart there: a sewn seam shows too, its edges together.
+                if (ShowsBeside(wound, at, side, layer, cell) is { } spot && tissue.GapAt(spot, cell, layer) > TissueSim.OpenGap) {
+                    shows.Add($"{at:0.000}/{side:+0;-0}");
+                }
+            }
+        }
+        return string.Join(" ", shows);
+    }
+
+    /// <summary>What a needle coming straight down at <paramref name="uv"/> (site uv, as drawn now) touches
+    /// (PatientBody.ExposedUnder()). Null in an opening through the muscle.</summary>
+    internal ExposedTissue? Touched(Vector2 uv) => Body.ExposedUnder(SitePoint(uv))?.Tissue;
 
     /// <summary>Where each grid point of <paramref name="layer"/> is drawn (site-local).</summary>
     private Vector3[] LayerDrawn(TissueDepth layer) =>
         [.. Enumerable.Range(0, Body.Tissue.Pos.Length).Select(k => Body.LayerPoint((int)layer - 1, k))];
 
-    /// <summary>The aim dot (<paramref name="aim"/>, as the player clicked) lay on what's under the needle, and the
-    /// newest hole <paramref name="index"/> went in under it. The tissue of <paramref name="layer"/> the hole holds on to
-    /// may have moved since, drawn in by the thread (<paramref name="before"/>: that layer as the click let go): the hole
-    /// moves with it.</summary>
-    private void AssertHoleOnAim(Vector3 aim, Vector3[] before, TissueDepth layer, int index) {
-        AssertFloat(aim.DistanceTo(Me.OnSurface(aim))).OverrideFailureMessage("the aim dot lies on what's under the needle")
-            .IsLess(0.001f);
+    /// <summary>The aim dot (<paramref name="aim"/>, as the player clicked) lay on <paramref name="layer"/> as it's
+    /// drawn, where the needle <paramref name="touched"/> it as the player clicked, and the newest hole <paramref name="index"/> went in
+    /// under it. The tissue of <paramref name="layer"/> the hole holds on to may have moved since, drawn in by the thread
+    /// (<paramref name="before"/>: that layer as the click let go): the hole moves with it.</summary>
+    private void AssertHoleOnAim(Vector3 aim, ExposedTissue? touched, Vector3[] before, TissueDepth layer, int index) {
+        AssertBool(touched?.Layer == layer).OverrideFailureMessage($"the needle for hole {index + 1} touches the "
+            + $"{touched?.Layer.ToString() ?? "opening"}, not the {layer}").IsTrue();
+        var contact = Body.Site.ToGlobal(touched!.Value.Contact);
+        AssertFloat(aim.DistanceTo(contact) * 1000f)
+            .OverrideFailureMessage($"the aim dot for hole {index + 1} is where the needle touches the {layer}, not {aim.DistanceTo(contact) * 1000f:0.0} mm off").IsLess(1f);
         var thread = Body.Tissue.Thread(Me.HeldTool(Me.Active)!.Suture.Thread)!;
         var k = thread.Anchors[^1];
         var moved = Body.Site.GlobalBasis * (Body.LayerPoint((int)layer - 1, k) - before[k]);
         var hole = Body.Site.ToGlobal(Body.DrawnThread(Me.HeldTool(Me.Active)!.Suture.Thread)!.Holes[^1]);
         var missed = (hole - moved - aim).Slide(Vector3.Up).Length() * 1000f;
+        // On a cut's wall the needle bites in from the edge: the hole holds on 0.3 of a grid cell back from the cut's line
+        // (Patient.Hole()), and is drawn on the layer's top, back from the wall by as much as it leans.
+        var allowed = 0.5f + (layer == TissueDepth.Skin ? 0f : TissueSim.Cell * 0.6f * 1000f);
         AssertFloat(missed).OverrideFailureMessage($"hole {index + 1} goes in where the aim dot was, not {missed:0.0} mm off")
-            .IsLess(0.5f);
+            .IsLess(allowed);
     }
 
     /// <summary>Turns the wheel on the needle's thread (or a tensioned closure, paper clips) until the hand status reads

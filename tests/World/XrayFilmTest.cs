@@ -87,7 +87,7 @@ public class XrayFilmTest {
             }
             // With key frames, drawing is off for the frame budget, so the films are drawn by a forced draw of the
             // whole scene in software: not gameplay, where they're drawn within the frame. Headless it's all counted.
-            await (KeyFrames.Wanted() ? driver.Unbudgeted(driver.PlayerTakesXray) : driver.PlayerTakesXray());
+            await (KeyFrames.Wanted() ? driver.Unbudgeted(() => driver.PlayerTakesXray()) : driver.PlayerTakesXray());
             AssertInt(cart.Films.Count).OverrideFailureMessage("an exposure gives two films").IsEqual(2);
             // Reading a film's picture back and scanning it is the test's work, not the game's.
             await driver.Unbudgeted(() => {

@@ -14,14 +14,21 @@ public static class SurgeryState {
     public static void PatientChartIsCorrected(Surgery surgery) => surgery.CorrectChart();
 
     /// <summary>Enable debug displays for a test and restore the previous preference when its scope ends.</summary>
-    public static IDisposable DebugHudIsEnabled() => new DebugHudScope();
+    public static IDisposable DebugHudIsEnabled() {
+        var was = Settings.Debug;
+        Settings.Debug = true;
+        return new Scope(() => Settings.Debug = was);
+    }
 
-    private sealed class DebugHudScope : IDisposable {
-        private readonly bool _was = Settings.Debug;
+    /// <summary>The player has picked <paramref name="difficulty"/> (null: none yet) until the scope ends.</summary>
+    public static IDisposable DifficultyIs(Difficulty? difficulty) {
+        var was = Settings.Difficulty;
+        Settings.Difficulty = difficulty;
+        return new Scope(() => Settings.Difficulty = was);
+    }
 
-        public DebugHudScope() => Settings.Debug = true;
-
-        public void Dispose() => Settings.Debug = _was;
+    private sealed class Scope(Action restore) : IDisposable {
+        public void Dispose() => restore();
     }
 
     /// <summary>A second, remote surgeon (peer 2) standing at the second spawn, as if they'd joined and put their card
@@ -45,6 +52,9 @@ public static class SurgeryState {
         surgeon.Status.Sweat = 0.8f;
     }
 
+    /// <summary>An awake patient in full panic, flailing; it calms down by itself over the next minute.</summary>
+    public static void PatientPanics(Patient patient) => patient.Vitals.Panic = 1f;
+
     /// <summary>As if a right dose of propofol had gone in: asleep within seconds, for the rest of the surgery.
     /// </summary>
     public static void PatientIsAsleep(Patient patient) =>
@@ -65,6 +75,9 @@ public static class SurgeryState {
     /// <summary>As if lidocaine had gone into the site: numb within seconds.</summary>
     public static void PatientIsNumb(Patient patient) =>
         patient.Administer("lidocaine", DrugRoute.Direct, Db.Drug("lidocaine")!.Dose * patient.WeightKg);
+
+    /// <summary>As if a catheter had gone into the arm's vein with the drip line on it.</summary>
+    public static void IvLineIsIn(Patient patient) => patient.SetIv(patient.Body.Root.ToGlobal(Patient.PreopIvPoint), true);
 
     /// <summary>As if a catheter had gone into the arm and missed the vein: the line is in, but nothing runs through it.
     /// </summary>
@@ -199,6 +212,12 @@ public static class SurgeryState {
         net.SeedSessionRolls(seed);
     }
 
+    /// <summary>Host: the run's modifiers are <paramref name="ids"/> instead of the lobby's random roll.</summary>
+    public static void RunHasModifiers(params string[] ids) {
+        Net.Instance.RunModifiers.Clear();
+        Net.Instance.RunModifiers.AddRange(ids);
+    }
+
     /// <summary>Surgeries start at 08:00 on the operating room's clock, whatever the system clock says, so it reads the
     /// same in every run's key frames.</summary>
     public static void ClockStartsAtEight() => GameClock.FixedStartOfDay = 8 * 3600;
@@ -223,7 +242,7 @@ public static class SurgeryState {
     /// <summary>The nurse and shop are ready for the next ordinary test's order.</summary>
     public static void NurseIsReady(Surgery surgery) {
         NurseHasDelivered(surgery);
-        surgery.Hud.Shop.ShowBoard("");
+        surgery.Hud.Shop.ShowBoard(SurgeryStatus.Empty);
         surgery.Hud.Shop.SetNurseReady(surgery.Nurse.Idle);
     }
 
@@ -246,15 +265,27 @@ public static class SurgeryState {
     /// <summary>
     /// A free place on the instrument tray, nothing else lying within 8 cm: the clear strip down its middle first. A
     /// spot something slid away from (<see cref="TraySpotIsBad"/>) isn't offered again.
+    /// The ambulance has no tray: the spot is on the counter of the aisle <paramref name="near"/> is in.
     /// </summary>
-    public static Vector3 FreeTraySpot(Surgery surgery) {
-        var rest = surgery.Room.TrayZone("");
-        var strip = rest.End.X + 0.07f;
+    public static Vector3 FreeTraySpot(Surgery surgery, Vector3? near = null) {
         var spots = new List<Vector3>();
-        foreach (var x in (float[])[strip, strip + 0.1f, rest.End.X - 0.05f, rest.Position.X + 0.05f]) {
-            for (var i = 0; i < 9; i++) {
-                var along = i == 8 ? 0f : ((i / 2) + 1) * 0.06f * (i % 2 == 0 ? 1 : -1);
-                spots.Add(new Vector3(x, rest.Position.Y + 0.05f, rest.GetCenter().Z + along));
+        if (surgery.Room.EnvironmentId == "ambulance") {
+            // Empty counter beyond the tool compartments, on the same side as the doctor putting it down.
+            var side = (near ?? surgery.LocalSurgeon!.GlobalPosition).Z >= 0f ? 1f : -1f;
+            float[] xs = side > 0f ? [0.95f, 0.85f, 0.75f] : [-1f, -0.9f, -1.1f, -0.8f];
+            foreach (var x in xs) {
+                foreach (var z in (float[])[1.01f, 0.95f]) {
+                    spots.Add(new Vector3(x, Room.TraySurface + 0.05f, side * z));
+                }
+            }
+        } else {
+            var rest = surgery.Room.TrayZone("");
+            var strip = rest.End.X + 0.07f;
+            foreach (var x in (float[])[strip, strip + 0.1f, rest.End.X - 0.05f, rest.Position.X + 0.05f]) {
+                for (var i = 0; i < 9; i++) {
+                    var along = i == 8 ? 0f : ((i / 2) + 1) * 0.06f * (i % 2 == 0 ? 1 : -1);
+                    spots.Add(new Vector3(x, rest.Position.Y + 0.05f, rest.GetCenter().Z + along));
+                }
             }
         }
         var bad = BadTraySpots.GetOrCreateValue(surgery);

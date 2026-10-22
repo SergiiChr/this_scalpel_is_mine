@@ -475,6 +475,25 @@ def reweight(mesh: bpy.types.Object, bone: str, weight: Callable[[NDArray[np.flo
     del source
 
 
+def split(mesh: bpy.types.Object, source: str, bone: str, weight: Callable[[NDArray[np.float64]], NDArray[np.float64]]) -> None:
+    """Hands `bone` the part weight() gives (game space, 0..1) of each vertex's `source` weight, leaving its other bones
+    alone. Whatever automatic weighting gave `bone` goes back to `source` first, so only the function decides."""
+    count = len(mesh.data.vertices)
+    co = np.empty(count * 3)
+    mesh.data.vertices.foreach_get("co", co)
+    b = co.reshape(-1, 3)
+    w = weight(np.column_stack([b[:, 0], b[:, 2], -b[:, 1]]))
+    giver = mesh.vertex_groups[source]
+    target = mesh.vertex_groups[bone]
+    for vertex in mesh.data.vertices:
+        old = {mesh.vertex_groups[g.group].name: g.weight for g in vertex.groups}
+        total = old.get(source, 0.0) + old.get(bone, 0.0)
+        if total == 0.0:
+            continue
+        giver.add([vertex.index], total * (1.0 - float(w[vertex.index])), "REPLACE")
+        target.add([vertex.index], total * float(w[vertex.index]), "REPLACE")
+
+
 def attach(obj: bpy.types.Object, rig: bpy.types.Object, bone: str) -> None:
     """Rigid attachment (eyes, nails): parented straight to a bone."""
     bpy.context.view_layer.update()

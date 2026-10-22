@@ -79,8 +79,8 @@ public sealed class Wound {
     internal bool Jagged => _jagged.Any(value => value);
     /// <summary>Closure progress per bin, 0..1.</summary>
     public float[] Bins { get; set; } = [];
-    /// <summary>Muscle closure per bin, 0..1, for wounds through the muscle (sewn from inside the opening, before the
-    /// skin).</summary>
+    /// <summary>Muscle closure per bin, 0..1, for wounds through the muscle (sewn on the cut's muscle faces, before
+    /// the skin).</summary>
     public float[] Muscle { get; set; } = [];
     /// <summary>Weighted closure quality, lower bursts easier.</summary>
     public float ClosureQuality { get; set; } = 1f;

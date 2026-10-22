@@ -37,6 +37,8 @@ public partial class SurgeryDriver : Node {
     /// <summary>Called (and awaited) with a name and a description of what it should show right after a step's key
     /// interaction: a cut made, a target out. Unset: no pictures.</summary>
     public Func<string, string, Task>? OnKeyFrame { get; set; }
+    /// <summary>Optional room-side restriction used by co-op flows whose surgeons must work from opposing aisles.</summary>
+    public Func<Vector3, bool>? StandingConstraint { get; set; }
     private bool _budgetPaused;
 
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
@@ -239,8 +241,10 @@ public partial class SurgeryDriver : Node {
     /// </summary>
     public async Task PlayerWalksTo(Vector3 point, float off = StandOff, Func<Vector3, bool>? canWorkFrom = null) {
         // Holding onto something with the other hand, stay put while the point is in reach: walking off would drag it.
+        bool Allowed(Vector3 at) => (StandingConstraint is null || StandingConstraint(at))
+            && (canWorkFrom is null || canWorkFrom(at));
         if (Me.Hands.Any(hand => hand.Attached) && point.DistanceTo(Me.Shoulder(Me.Active)) < Surgeon.Reach - 0.05f
-            && (canWorkFrom is null || canWorkFrom(Me.GlobalPosition))) {
+            && Allowed(Me.GlobalPosition)) {
             return;
         }
         var standingY = Me.GlobalPosition.Y;
@@ -254,6 +258,10 @@ public partial class SurgeryDriver : Node {
                 foreach (var s in (float[])[side, -side]) {
                     foreach (var along in (float[])[0f, 0.15f, -0.15f, 0.3f, -0.3f, 0.45f, -0.45f, 0.6f, -0.6f]) {
                         yield return new Vector3(point.X + along, standingY, table.Z + (s * Mathf.Max(Mathf.Abs(point.Z - table.Z) + off, 0.55f + (Me.SafeMargin * 2f))));
+                        if (Surgery.Room.EnvironmentId == "ambulance") {
+                            // Work from the existing aisle when the usual stand-off would put the body in cabinetry.
+                            yield return new Vector3(point.X + along, standingY, table.Z + (s * 0.62f));
+                        }
                     }
                 }
             } else {
@@ -304,7 +312,7 @@ public partial class SurgeryDriver : Node {
                 }
             }
             var toward = point - at;
-            if (canWorkFrom is not null && !canWorkFrom(at)) { continue; }
+            if (!Allowed(at)) { continue; }
             var yaw = Mathf.Atan2(-toward.X, -toward.Z);
             if (vial is not null) {
                 var into = (vial.GlobalPosition - point).Normalized();

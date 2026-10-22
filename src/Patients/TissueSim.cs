@@ -1395,9 +1395,9 @@ public sealed partial class TissueSim {
 
     public SutureThread? Thread(int id) => _threads.GetValueOrDefault(id);
 
-    /// <summary>The holes of thread <paramref name="id"/> (uv), in the order they were made.</summary>
-    public List<Vector2> ThreadUvs(int id) =>
-        _threads.TryGetValue(id, out var thread) ? [.. thread.Anchors.Select(UvOf)] : [];
+    /// <summary>The holes of thread <paramref name="id"/> (uv at rest), in the order they were made: where the needle
+    /// went in, not the grid point each pulls by, which can lie a cell along the wound.</summary>
+    public List<Vector2> ThreadUvs(int id) => _threads.TryGetValue(id, out var thread) ? [.. thread.Holes] : [];
 
     /// <summary>Removes stitches near uv (a closure bursting open).</summary>
     public void Burst(Vector2 uv, float radius) {

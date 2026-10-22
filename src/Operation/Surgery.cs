@@ -146,9 +146,10 @@ public partial class Surgery : Node3D {
             personal[peers[i]] = surgeon.Mods.List("items");
         }
         Tools.SpawnInitial(Scenario.RollTools(Rng, RunMods.Num("missing_tool_chance")), Room.TraySpots(), personal, Room.StationTools());
-        Objectives.Setup(Scenario);
+        Objectives.Setup(Scenario, WrittenFor(Patient.Rolls.Any(roll => roll.Id == "allergy"
+            && roll.Variant.StartsWith("unknown_", StringComparison.Ordinal))));
         Director.Setup(Scenario, net.SessionSeed);
-        // The debug HUD builds its objective rows during setup, rather than on the first status tick during play.
+        // The HUD builds its objective rows during setup, rather than on the first status tick during play.
         Status = CaptureStatus();
         Hud.Setup(this);
         Multiplayer.PeerDisconnected += id => OnPeerLeft((int)id);
@@ -293,8 +294,8 @@ public partial class Surgery : Node3D {
         Rpc(MethodName.Toast, text);
     }
 
-    /// <summary>Host: toast only players in debug mode see (objective progress and other things the game keeps to
-    /// itself).</summary>
+    /// <summary>Host: toast only players in debug mode see (objective progress, doses delivered and other things the
+    /// game keeps to itself).</summary>
     public void AnnounceDebug(string text) {
         if (IsHost) {
             Rpc(MethodName.ToastDebug, text);
@@ -405,6 +406,16 @@ public partial class Surgery : Node3D {
     public void CorrectChart() => Rpc(MethodName.ChartCorrection);
 
     public void PublishLab(string text) => Rpc(MethodName.LabResult, text);
+
+    /// <summary>Host: the patient's allergies are known now (an allergy screen, or a reaction): the subtasks name them.
+    /// </summary>
+    internal void AllergiesKnown() => Objectives.WorkOutSubtasks(Scenario, WrittenFor(false));
+
+    /// <summary>What the subtasks are written for. An allergy the chart doesn't name stays
+    /// <paramref name="allergyUnknown"/> until a screen or a reaction shows it.</summary>
+    private SubtaskFacts WrittenFor(bool allergyUnknown) =>
+        new(Patient.WeightKg, allergyUnknown ? [] : Patient.Mods.List("allergen"), Patient.BloodType,
+            [.. Tools.Tools.Values.Select(tool => tool.Def.Id)], Scenario.Nurse, allergyUnknown);
 
     /// <summary>Defibrillator discharge: anyone else touching the patient gets zapped.</summary>
     public void ShockBystanders(int sourcePeer) {

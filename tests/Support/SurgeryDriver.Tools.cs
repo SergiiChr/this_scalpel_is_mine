@@ -166,6 +166,26 @@ public partial class SurgeryDriver {
         return Me.HeldTool(Me.Active);
     }
 
+    /// <summary>Walks to <paramref name="point"/> on the patient, brings the empty active hand over it and clicks Use
+    /// tool: the hand holds the patient there.</summary>
+    public async Task PlayerHoldsPatientAt(Vector3 point) {
+        await PlayerWalksTo(point);
+        await PlayerReaches(point);
+        Tap(InputActions.UseTool);
+        await PlayerInput.Delivered();
+        AssertBool(Me.HoldsPatient(Me.Active))
+            .OverrideFailureMessage($"the empty hand clicked on the patient holds it\n{Recent()}").IsTrue();
+        Note("holds the patient");
+    }
+
+    /// <summary>Clicks Use tool with the active hand holding the patient: it lets go.</summary>
+    public async Task PlayerLetsGoOfPatient() {
+        Tap(InputActions.UseTool);
+        await PlayerInput.Delivered();
+        AssertBool(Me.HoldsPatient(Me.Active)).OverrideFailureMessage("clicked again, the hand lets go").IsFalse();
+        Note("lets go of the patient");
+    }
+
     /// <summary>Puts the active hand's tool back on the instrument tray (holding nothing, does nothing).
     /// <paramref name="standing"/>: a bottle is stood upright there (Grab held), so a needle can go in through its cap.
     /// </summary>
@@ -185,7 +205,7 @@ public partial class SurgeryDriver {
         if (Me.UsesLevel(Me.Active)) {
             await SetLevel(0);
         }
-        var spot = SurgeryState.FreeTraySpot(Surgery);
+        var spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
         for (var i = 0; i < 4; i++) {
             await PlayerWalksTo(spot);
             // The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.
@@ -200,7 +220,7 @@ public partial class SurgeryDriver {
             }
             // Out of this tool's reach from the side of the tray: another spot.
             SurgeryState.TraySpotIsBad(Surgery, spot);
-            spot = SurgeryState.FreeTraySpot(Surgery);
+            spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
         }
         // Set down onto the tray before letting go, or a bottle would fall and roll.
         if (!ToolActions.TriggerNames.ContainsKey(tool.Def.Action)) {

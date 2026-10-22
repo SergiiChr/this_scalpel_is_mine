@@ -1,0 +1,15 @@
+title: 18. Burns
+## 18.1 Preparation
+Burns are debrided and grafted under general anesthesia (section 8). Clean the burned skin with iodine first (1.5).
+
+## 18.2 Debridement
+Dead skin must be cut away before a graft will take. Draw the scalpel over the burned skin at level 1 (4.1), row by row, until it is cut away.
+
+## 18.3 Grafting
+Skin grafts are ordered from the nurse (Closing). Press the graft onto the debrided burn ([b]Use tool[/b]): each press places one patch, and a graft holds {tool.skin_graft.Charges} patches. Cover the debrided area patch by patch and order more as they run out.
+
+## 18.4 Infection
+Burned skin is an open wound. Give an antibiotic (7.3).
+
+[font_size=16][b]References[/b]
+Herndon DN, ed. Total Burn Care. 5th ed. Elsevier; 2018.[/font_size]

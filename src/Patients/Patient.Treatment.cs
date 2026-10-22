@@ -29,6 +29,9 @@ public partial class Patient {
     public const float RinseMlPerCm = 10f;
     /// <summary>How far (uv) liquid spilled on the site runs over it: what it washes and the cut it flushes.</summary>
     private const float SpillReach = 0.05f;
+    /// <summary>How far (meters) from where a bare hand presses the patient its palm holds a cut: about half a palm.
+    /// </summary>
+    public const float HandPressReach = 0.04f;
     /// <summary>How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
     /// </summary>
     public const float DeepBlock = 0.3f;
@@ -235,45 +238,41 @@ public partial class Patient {
     /// <summary>A new running thread for the needle: its id for <see cref="PlaceSutureAnchor"/> and the rest.</summary>
     public int NewSuture() => ++_nextSuture;
 
-    /// <summary>
-    /// The tissue layer a thread started at uv goes through: the skin from a hole in it beside the wound, the deepest
-    /// layer still open from a hole inside the wound's opening or on its line (within half a grid cell), and the muscle
-    /// under a stab or bullet hole too small to reach into (the needle goes in through the hole and sews it first).
-    /// </summary>
-    public TissueDepth SutureLayerAt(Vector2 uv, Wound wound) {
-        var line = wound.ClosestPoint(uv);
-        var at = wound.BinPosition(wound.BinAt(uv));
-        var hole = wound.IsHole && !Body.IsOpen(at);
-        var inside = Body.LayerAt(uv) != "skin" || uv.DistanceTo(line) < GridCell(uv - line) * 0.5f;
-        if (!inside && !hole) {
-            return TissueDepth.Skin;
-        }
-        if (Body.Tissue.MuscleOpenNear(at, MuscleReach)) {
-            return TissueDepth.Muscle;
-        }
-        return !hole && Body.Tissue.FatOpenNear(at, MuscleReach) ? TissueDepth.Fat : TissueDepth.Skin;
-    }
+    private static string LayerName(TissueDepth layer) => layer.ToString().ToLowerInvariant();
+
+    /// <summary>How far (uv) a needle's hole reaches for a wound. Holes sit beside the incision, not on its line: a bite
+    /// reaches four grid cells (about 2.5 cm) from it. In grid cells, not uv: a narrow site like a forearm has few cells
+    /// across, each wide in uv.</summary>
+    private float BiteReach => 4f / Math.Min(Body.Tissue.ResX, Body.Tissue.ResY);
 
     /// <summary>
-    /// One click with the needle makes one puncture in a continuous thread. The first click, beside a wound, only
-    /// anchors it in the layer under it (<see cref="SutureLayerAt"/>); later ones pass the same thread through the same
-    /// layer at the new hole, making spans that are all pulled from the free end. The thread closes every wound it
-    /// crosses. Returns false when no hole was made (no wound near the first, the same hole again, a thread already tied
-    /// off or torn).
+    /// One click with the needle makes one puncture in a continuous thread at <paramref name="uv"/> (site uv as drawn),
+    /// in the layer it touched there (<paramref name="layer"/>, PatientBody.ExposedUnder()). The first click, beside a
+    /// wound, only anchors it there; later ones pass the same thread through the same layer at the new hole, making
+    /// spans that are all pulled from the free end. The thread closes every wound it crosses. Returns false when no
+    /// hole was made (no tissue under the tip, no wound near the first, another layer than the thread's, the same hole
+    /// again, a thread already tied off or torn); <paramref name="miss"/> then says why where the player can do
+    /// something about it.
     /// </summary>
-    public bool PlaceSutureAnchor(int threadId, Vector2 uv, float tension) {
+    public bool PlaceSutureAnchor(int threadId, Vector2 uv, TissueDepth layer, float tension, out string? miss) {
+        miss = null;
         var tissue = Body.Tissue;
         var info = tissue.Thread(threadId);
         if (info is { Final: true }) {
             return false;
         }
-        // Holes sit beside the incision, not on its line: a bite reaches four grid cells (about 2.5 cm) from it. In grid
-        // cells, not uv: a narrow site like a forearm has few cells across, each wide in uv.
-        var wound = NearestWound(uv, 4f / Math.Min(tissue.ResX, tissue.ResY), false);
+        if (layer == TissueDepth.None) {
+            miss = "The needle touches no tissue here. Spread the wound until the layer shows.";
+            return false;
+        }
+        if (info is not null && info.Layer != layer) {
+            miss = $"This thread is in the {LayerName(info.Layer)}: tie it off before sewing the {LayerName(layer)}.";
+            return false;
+        }
+        var wound = NearestWound(uv, BiteReach, false);
         if (wound is null && info is null) {
             return false;
         }
-        var layer = info?.Layer ?? SutureLayerAt(uv, wound!);
         (var point, uv) = Hole(uv, layer, wound);
         var before = tissue.ThreadUvs(threadId).Count;
         Rpc(MethodName.SutureAnchor, threadId, uv, point, (int)layer, tension, ThreadStrength[(int)layer],
@@ -331,6 +330,7 @@ public partial class Patient {
         var crossed = new List<(Wound Wound, List<Vector2> Crossings)>();
         var all = new List<Vector2>();
         var overMuscle = false;
+        var overHole = false;
         foreach (var wound in Wounds.Where(w => w.IsSkinCut)) {
             var crossings = ThreadCrossings(points, wound);
             if (crossings.Count == 0) {
@@ -338,8 +338,11 @@ public partial class Patient {
             }
             crossed.Add((wound, crossings));
             all.AddRange(crossings);
-            overMuscle = overMuscle || (info.Layer == TissueDepth.Skin && wound.ThroughMuscle
-                && crossings.Any(c => tissue.MuscleOpenNear(c, MuscleReach)));
+            if (info.Layer == TissueDepth.Skin && wound.ThroughMuscle
+                && crossings.Any(c => tissue.MuscleOpenNear(c, MuscleReach))) {
+                overMuscle = true;
+                overHole = overHole || (wound.IsHole && !crossings.Any(Body.IsOpen));
+            }
         }
         if (crossed.Count == 0) {
             return;
@@ -349,7 +352,10 @@ public partial class Patient {
             return;
         }
         if (overMuscle) {
-            TearNotice("The skin won't meet over the open muscle. Sew the muscle first.");
+            // A stab or bullet hole is too small to sew inside: it's cut open to bare the muscle.
+            TearNotice(overHole
+                ? "The skin won't meet over the open muscle. Cut the hole open and sew the muscle first."
+                : "The skin won't meet over the open muscle. Sew the muscle first.");
             closure = Mathf.Min(closure, 0.15f);
         }
         // Pressed edges rise into a small lip rather than sliding through one another, higher the harder it's pulled.
@@ -839,6 +845,21 @@ public partial class Patient {
         if (wound.Dirty && wound.Rinsed >= RinseMl(wound)) {
             wound.Dirty = false;
             Session.Announce("The cut is rinsed clean.");
+        }
+    }
+
+    /// <summary>
+    /// A bare hand pressed flat on the patient at <paramref name="at"/> (world) for <paramref name="dt"/> seconds: like
+    /// gauze it holds every cut in the skin under the palm (<see cref="HandPressReach"/>), one an opening is in too, but
+    /// soaks nothing up and doesn't reach down to what bleeds inside.
+    /// </summary>
+    public void PressByHand(Vector3 at, float dt) {
+        var uv = Body.WorldToUv(at);
+        var reach = Body.MetersToUv(HandPressReach);
+        foreach (var wound in Wounds) {
+            if (wound.IsSkinCut && wound.DistanceTo(uv) < reach) {
+                Press(wound, dt);
+            }
         }
     }
 

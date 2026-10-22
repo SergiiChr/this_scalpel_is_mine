@@ -5,7 +5,7 @@ title: 13. Patient positioning
 Supine, lateral, prone: one step at a time, never directly from supine to prone.
 1. All staff at the table stand on the same side.
 2. Release all tissue and instruments. No one holds the patient's tissue during a turn.
-3. Follow the prompts together as they appear. A mistimed movement rolls the patient off the table.
+3. Use the turning handle at the side of the table ([b]Interact[/b]) and follow the prompts together as they appear. A mistimed movement rolls the patient off the table.
 
 ## 13.2 Falls
 A fall from the table can fracture the hip, disrupt closures and cause further blood loss. It must be reported.

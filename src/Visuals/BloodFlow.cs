@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Scalpel.Visuals;
@@ -148,6 +149,11 @@ public partial class BloodFlow : Node3D {
     internal SurfaceFilm FloorFilm => _floorFilmBuild.Result;
     /// <summary>Done once every film is built: blood that reaches a film before then waits for it.</summary>
     internal Task FilmsBuilt => Task.WhenAll(_bodyFilmBuild, _bedFilmBuild, _floorFilmBuild);
+    /// <summary>Builds a film on a thread of its own. Seconds long, a build on the shared pool would hold up the short
+    /// jobs the game waits for each frame (the tissue's step, the hands' grip fitting) and stall it.</summary>
+    private static Task<SurfaceFilm> Build(Func<SurfaceFilm> build) =>
+        Task.Factory.StartNew(build, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
     private static float HeldOn(Task<SurfaceFilm> build) => build.IsCompletedSuccessfully ? build.Result.HeldMl : 0f;
     internal float SurfaceSuppliedMl { get; private set; }
     internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
@@ -858,7 +864,7 @@ public partial class BloodFlow : Node3D {
             && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > SurfaceBlood.SteepNormal);
         var meshToSite = siteToMesh.AffineInverse();
         var bodyMesh = new ArrayMesh();
-        _bodyFilmBuild = Task.Run(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
+        _bodyFilmBuild = Build(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
             skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
             (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh,
             at => (meshToSite * at).Length() > BodyFilmReach - 0.02f));
@@ -875,12 +881,12 @@ public partial class BloodFlow : Node3D {
         var bed = Bed.Triangles;
         var bedMesh = new ArrayMesh();
         var bedSurface = Bed;
-        _bedFilmBuild = Task.Run(() => new SurfaceFilm(bed, BedFilmSettings, keep: bedSurface.Exposed, mesh: bedMesh));
+        _bedFilmBuild = Build(() => new SurfaceFilm(bed, BedFilmSettings, keep: bedSurface.Exposed, mesh: bedMesh));
         var (foot, head, side) = (Room.TableFoot - FloorFilmMargin, Room.TableHead + FloorFilmMargin, Room.TableHalfWidth + FloorFilmMargin);
         Vector3[] floor = [new(foot, FloorY, -side), new(head, FloorY, -side), new(head, FloorY, side),
             new(foot, FloorY, -side), new(head, FloorY, side), new(foot, FloorY, side)];
         var floorMesh = new ArrayMesh();
-        _floorFilmBuild = Task.Run(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(),
+        _floorFilmBuild = Build(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(),
             mesh: floorMesh, fadesAt: _ => true));
         // The frame's long thin triangles would turn a crisp edge into teeth; the floor's even grid keeps one.
         foreach (var (name, mesh, edge) in new[] { ("BedFilm", bedMesh, new Vector2(0.05f, 0.7f)), ("FloorFilm", floorMesh, new Vector2(0.15f, 0.6f)) }) {

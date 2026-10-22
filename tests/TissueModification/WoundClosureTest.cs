@@ -87,7 +87,7 @@ public class WoundClosureTest {
     }
 
     /// <summary>The office stapler as in a real run: every staple catches a vessel, the cut bleeds through the staples,
-    /// cautery stops it. Stapled shut and dry, the cut counts closed, enough for Hand Stitch's "Close the cut".
+    /// cautery stops it. Stapled shut and dry, the cut counts closed, enough for Hand Stitch's "Stitch the cut closed".
     /// </summary>
     [TestCase]
     public async Task OfficeStaplesThroughVesselsCountClosedOnceDry() {
@@ -111,7 +111,7 @@ public class WoundClosureTest {
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("the cautery stops it").IsLess(Dry);
         AssertFloat(patient.SkinClosure())
             .OverrideFailureMessage(
-                $"stapled and dry, the cut is closed enough for \"Close the cut\"\n{OpenBins(driver, wound)}")
+                $"stapled and dry, the cut is closed enough for \"Stitch the cut closed\"\n{OpenBins(driver, wound)}")
             .IsGreaterEqual(Patient.ClosedEnough);
         AssertCountsAsSeen(driver, wound, "office staples");
         await driver.Capture("closed", "office staples through vessels, cauterized: the cut closed under its staples, the blood it shed left as a film round the seam");

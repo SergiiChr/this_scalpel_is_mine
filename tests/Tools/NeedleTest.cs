@@ -2,7 +2,7 @@ namespace Scalpel.Tests.Tools;
 
 /// <summary>
 /// The needle as a player uses it: a running thread clicked through a cut hole by hole, pulled on the wheel and tied
-/// off with a long hold, layer by layer through a cut into the belly. Key frames: the site untouched, after the first
+/// off with a long hold, layer by layer through a cut into the belly, and across a bullet hole. Key frames: the site untouched, after the first
 /// two holes and tied off. Review those for one continuous thread dipping into its holes, edges meeting in a slight
 /// ridge without passing through each other, and a narrow incision line still visible beneath the tied thread rather
 /// than an open red gap or seamless skin.
@@ -101,15 +101,43 @@ public class NeedleTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>A cut through the belly wall sewn layer by layer from inside the opening: the muscle, the fat, then the
-    /// skin.</summary>
+    /// <summary>A bullet hole shows no muscle to sew, and the skin won't close over it: cut open, it bares the muscle,
+    /// sewn first, then the skin.</summary>
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task BulletHoleThroughMuscleIsCutOpenAndSewnLayerByLayer() {
+        var session = await ToolSession.Start("bullet_muscle", "needle/bullet_hole");
+        var driver = session.Driver;
+        var tissue = driver.Body.Tissue;
+        var hole = driver.Patient.Wounds.Single(wound => wound.IsHole);
+        var middle = hole.Midpoint;
+        AssertBool(hole.ThroughMuscle && tissue.MuscleOpenNear(middle, Patient.MuscleReach))
+            .OverrideFailureMessage("the bullet hole goes through the muscle, open under it").IsTrue();
+        AssertString(driver.ShowsAlong(hole, TissueDepth.Muscle)).OverrideFailureMessage("the hole shows no muscle to sew")
+            .IsEmpty();
+        await driver.PlayerCutsOpen(hole);
+        await driver.AssertAndCapture(driver.IsCutOpen(hole), "the hole cut open through the skin along it", "cut_open");
+        await driver.PlayerRequestsItem("needle");
+        await driver.PlayerSews(hole, TissueDepth.Muscle, () => session.CaptureAt("muscle_threaded",
+            "close up, the hole spread open by the Gelpi, a loose thread through the muscle's cut faces under the skin",
+            driver.SitePoint(middle), 0.1f));
+        AssertBool(hole.Muscle.All(m => m >= 1f) && !tissue.MuscleOpenNear(middle, Patient.MuscleReach))
+            .OverrideFailureMessage($"the muscle under the hole is sewn shut\n{driver.Recent()}").IsTrue();
+        foreach (var wound in driver.Patient.Wounds.Where(wound => wound.IsSkinCut).ToList()) {
+            await driver.PlayerSews(wound, TissueDepth.Skin);
+        }
+        await Frames.Seconds(1f);
+        AssertFloat(driver.Patient.SkinClosure()).OverrideFailureMessage($"then the skin closes over it\n{driver.Recent()}")
+            .IsGreater(0.99f);
+        await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>A cut through the belly wall sewn layer by layer, each hole where the needle touches that layer down the
+    /// cut's walls: the muscle, the fat, then the skin.</summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task LayeredClosureOfACutIntoTheBelly() {
         var session = await ToolSession.Start("appendectomy", "needle/layers");
         var driver = session.Driver;
         var tissue = driver.Body.Tissue;
-        // Where the belly's sides hang off the table the site isn't drawn at all: what the fat layer shows uncut.
-        var wholeFat = tissue.Triangles(TissueDepth.Fat).Length;
         var wound = SurgeryState.SkinIsCut(driver.Patient, new Vector2(0.3f, 0.5f), new Vector2(0.7f, 0.5f), 1f);
         await Frames.Seconds(1f);
         var middle = wound.Midpoint;
@@ -122,7 +150,9 @@ public class NeedleTest {
         await SewDeepLayer(driver, wound, TissueDepth.Fat);
         AssertBool(tissue.FatOpenNear(middle, Patient.MuscleReach)).OverrideFailureMessage("a thread through the fat closes it")
             .IsFalse();
-        AssertInt(tissue.Triangles(TissueDepth.Fat).Length).OverrideFailureMessage("the fat layer shows no opening").IsEqual(wholeFat);
+        // Only what shows can be sewn: a needle can't reach fat still apart out of sight under the skin.
+        AssertString(driver.ShowsAlong(wound, TissueDepth.Fat)).OverrideFailureMessage($"no cut fat shows beside the wound to sew ({driver.ShowsAlong(wound, TissueDepth.Fat)})")
+            .IsEmpty();
         await driver.PlayerSews(wound, TissueDepth.Skin);
         await Frames.Seconds(1f);
         AssertFloat(wound.Closure).OverrideFailureMessage("the skin closes over the sewn layers").IsGreater(0.99f);
@@ -181,7 +211,7 @@ public class NeedleTest {
     /// <summary>Threads <paramref name="wound"/> through <paramref name="layer"/> starting slack, pulls it closed and
     /// ties it off, the thread resting on that layer throughout.</summary>
     private static async Task SewDeepLayer(SurgeryDriver driver, Wound wound, TissueDepth layer) {
-        AssertBool(await driver.PlayerThreads(wound, layer)).OverrideFailureMessage("the horizontal needle reaches every deep puncture")
+        AssertBool(await driver.PlayerThreads(wound, layer, checkAim: true)).OverrideFailureMessage("the horizontal needle reaches every deep puncture where the layer shows")
             .IsTrue();
         var thread = driver.Me.HeldTool(driver.Me.Active)!.Suture.Thread;
         // Whatever the last thread was pulled to before it was tied, a new one starts slack.

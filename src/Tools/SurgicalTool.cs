@@ -88,6 +88,9 @@ public sealed class SutureState {
     public TissueDepth Layer { get; set; } = TissueDepth.None;
     public float Hold { get; set; }
     public Vector2 At { get; set; } = new(-1, -1);
+    /// <summary>A needle: the layer drawn under its tip at <see cref="At"/> (PatientBody.ExposedUnder()), the one its hole
+    /// goes into.</summary>
+    public TissueDepth AtLayer { get; set; } = TissueDepth.None;
     public bool PressUsed { get; set; }
     /// <summary>Tape: where (world) the latest press rests on the tear a ripped-out IV catheter left, and where a strip
     /// over it was started.</summary>

@@ -113,6 +113,9 @@ public partial class PatientBody : Node3D {
     /// <summary>The sim's clock (<see cref="TissueSim.Ticks"/>) when the wound map was last uploaded.</summary>
     private int _uploadedTicks;
     private float _pallor = float.NaN;
+    /// <summary>The site where it was built, and the rig bone a limb site rides from there ("" for none).</summary>
+    private Transform3D _siteRest;
+    private string _siteBone = "";
     private bool _onBack;
     private float _siteBaseY;
 
@@ -167,6 +170,11 @@ public partial class PatientBody : Node3D {
         BuildColliders();
         BuildSurface(model);
         BuildSite(tone, model);
+        _siteRest = Site.Transform;
+        // Only a site over a limb's bone rides it: one on the trunk by a shoulder stays with the trunk.
+        var bone = Animator.Rig is { } rig ? rig.Nearest(rig.Skeleton.ToLocal(Site.GlobalPosition)) : "";
+        _siteBone = IsLimbSite && PatientAnimator.PartOf(bone) is not ("" or "head") ? bone : "";
+        SitePart = PatientAnimator.PartOf(_siteBone);
         BuildClosureDrawing();
         BuildVeins(model);
         AddChild(Blood);
@@ -731,6 +739,30 @@ public partial class PatientBody : Node3D {
             surface.Transform = _bodyRoot.GlobalTransform.AffineInverse() * mesh.GlobalTransform;
         }
     }
+
+    /// <summary>A limb site moves with the bone under it however the animator poses the limb: its skin, layers and
+    /// colliders go along, as they do with a breath.</summary>
+    internal void RideLimb() {
+        if (_siteBone.Length == 0 || Animator.Rig is not { } rig) {
+            return;
+        }
+        var toRoot = _bodyRoot.GlobalTransform.AffineInverse() * rig.Skeleton.GlobalTransform;
+        var ridden = toRoot * rig.Moved(_siteBone) * toRoot.AffineInverse() * _siteRest;
+        if (!ridden.IsEqualApprox(Site.Transform)) {
+            Site.Transform = ridden;
+            UpdateCarve();
+        }
+    }
+
+    /// <summary>The part the site rides (PatientAnimator.PartOf()), "" when it doesn't ride one.</summary>
+    internal string SitePart { get; private set; } = "";
+
+    /// <summary>The rig bone nearest p (world), the one a hand on the body there holds ("" without a rig).</summary>
+    internal string RigBoneAt(Vector3 p) => Animator.Rig is { } rig ? rig.Nearest(rig.Skeleton.ToLocal(p)) : "";
+
+    /// <summary>Where a rig bone is posed now (world).</summary>
+    internal Transform3D RigBonePose(string bone) =>
+        Animator.Rig is { } rig ? rig.Skeleton.GlobalTransform * rig.Pose(bone) : GlobalTransform;
 
     /// <summary>Breathing moves sites on the torso together with it, the back included: left behind, the body would
     /// sink under the site's skin and the fat's edge would show through around it.</summary>

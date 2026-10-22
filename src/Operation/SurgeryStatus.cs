@@ -14,13 +14,12 @@ public sealed record SurgeryStatus(
     float Elapsed) {
     public static readonly SurgeryStatus Empty = new([], 0, [], 0f, null, 0f, 0f);
 
-    /// <summary>What the board over the nurse's bell shows: the order on its way with its progress, or her cooldown.
+    /// <summary>What the board over the nurse's bell shows: the order on its way with its remaining time, or her cooldown.
     /// </summary>
     public string NurseBoard {
         get {
             if (Order is { } order) {
-                var done = Mathf.RoundToInt(order.Progress * 10f);
-                return $"{order.Text}\n{new string('■', done)}{new string('□', 10 - done)}  {Mathf.CeilToInt(order.SecondsLeft)} s";
+                return $"{order.Text}\n{Mathf.CeilToInt(order.SecondsLeft)} s";
             }
             return NurseCooldown > 0f ? $"Nurse is busy for {Mathf.CeilToInt(NurseCooldown)} s" : "Nurse ready";
         }

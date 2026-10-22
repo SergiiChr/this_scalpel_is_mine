@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Scalpel.Patients;
@@ -470,6 +471,7 @@ public partial class PatientBody {
                 mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
             }
         }
+        RememberDrawnTissue(built);
         if (_regionDirty) {
             // Carve the body only when the replacement meshes are ready, so the planning frame leaves no holes.
             _regionImage.SetData(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8,
@@ -907,9 +909,10 @@ public partial class PatientBody {
         foreach (var k in _around) {
             pointOf[k] = _renderPoints[layer][k] - Outward(layer, k) * depth;
         }
+        var scratch = _fillScratch[layer];
         var vertexCount = plan.Owner.Count;
-        var vertices = new Vector3[vertexCount];
-        var normals = new Vector3[vertexCount];
+        var vertices = Sized(ref scratch.Vertices, vertexCount);
+        var normals = Sized(ref scratch.Normals, vertexCount);
         for (var v = 0; v < vertexCount; v++) {
             var k = plan.Owner[v];
             var p = pointOf[k];
@@ -938,7 +941,8 @@ public partial class PatientBody {
         }
         SmoothSheet(layer, plan, vertices);
         // Each vertex's uv as drawn: a lip's eased along with it.
-        var uvs = plan.Uv.ToArray();
+        var uvs = Sized(ref scratch.Uvs, plan.Uv.Count);
+        plan.Uv.CopyTo(uvs);
         SmoothLips(layer, plan, vertices, uvs);
         // Smooth the sheet first so easing neighboring lips cannot round a V back into a blunt end.
         TaperCutEnds(plan, vertices);
@@ -952,7 +956,8 @@ public partial class PatientBody {
                 vertices[v] = UnderSkin(vertices[v], plan.Owner[v]);
             }
         }
-        var faceNormals = new Vector3[vertexCount];
+        var faceNormals = Sized(ref scratch.FaceNormals, vertexCount);
+        Array.Clear(faceNormals);
         for (var t = 0; t < plan.Index.Count; t += 3) {
             var a = plan.Index[t];
             var b = plan.Index[t + 1];
@@ -989,7 +994,7 @@ public partial class PatientBody {
             refinedUvs[v] = (uvs[a] + uvs[b] + uvs[c]) / 3f;
         }
         // The midpoints and centers belong to the grid point of their first corner.
-        var refinedOwner = new int[refinedVertices.Length];
+        var refinedOwner = Sized(ref scratch.RefinedOwner, refinedVertices.Length);
         plan.Owner.CopyTo(refinedOwner);
         for (var n = 0; n < plan.Midpoints.Count; n++) {
             refinedOwner[vertexCount + n] = plan.Owner[plan.Midpoints[n].A];
@@ -1002,7 +1007,8 @@ public partial class PatientBody {
         }
         // Keep the V as its local triangle deforms. A distant fold or an arbitrary displacement threshold must
         // not close the incision over the scalpel; fall back only when these actual faces would invert or overlap.
-        var pointedFrom = new HashSet<int>();
+        var pointedFrom = scratch.PointedFrom;
+        pointedFrom.Clear();
         foreach (var (apex, closed, pointed) in plan.Ends) {
             if (PointedEndFits(plan, vertices, apex, pointed)) { pointedFrom.Add(closed); }
         }
@@ -1014,7 +1020,7 @@ public partial class PatientBody {
                 var end = pointedFrom.Contains(t * 3) || pointedFrom.Contains(t * 3 - 3) || pointedFrom.Contains(t * 3 - 6);
                 if (!end) {
                     var (start, count) = plan.RefinedOf[t];
-                    index.AddRange(plan.RefinedIndex.GetRange(start, count));
+                    index.AddRange(CollectionsMarshal.AsSpan(plan.RefinedIndex).Slice(start, count));
                 }
             }
             foreach (var (_, closed, pointed) in plan.Ends) {
@@ -1052,16 +1058,10 @@ public partial class PatientBody {
             }
             Array.Copy(refinedVertices, vertices, vertexCount);
         }
-        var wallVertices = new List<Vector3>();
-        var wallNormals = new List<Vector3>();
-        var wallUvs = new List<Vector2>();
-        var wallColors = new List<Color>();
-        // How deep under the skin each wall corner is, for bleed spots.
-        var wallDepths = new List<Vector2>();
-        var wallIndices = new List<int>();
-        // Each lip vertex's wall normal, averaged over the walls on both sides of it: a wall shaded flat stretch by
-        // stretch reads as a row of cards standing in the cut.
-        var lipNormals = new Dictionary<int, Vector3>();
+        scratch.ClearWalls();
+        var (wallVertices, wallNormals, wallUvs) = (scratch.WallVertices, scratch.WallNormals, scratch.WallUvs);
+        var (wallColors, wallDepths, wallIndices) = (scratch.WallColors, scratch.WallDepths, scratch.WallIndices);
+        var lipNormals = scratch.LipNormals;
         Vector3 WallNormal(int w) {
             var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
             var bottom = vertices[a] - Outward(layer, plan.Owner[a]) * WallThickness(plan.Owner[a]);
@@ -1071,19 +1071,20 @@ public partial class PatientBody {
         }
         for (var w = 0; w < plan.Wall.Count; w += 3) {
             var normal = WallNormal(w);
-            foreach (var v in (int[])[plan.Wall[w], plan.Wall[w + 1]]) {
+            foreach (var v in (ReadOnlySpan<int>)[plan.Wall[w], plan.Wall[w + 1]]) {
                 lipNormals[v] = lipNormals.GetValueOrDefault(v) + normal;
             }
         }
         // Each lip vertex's way down and depth, eased along the lip like the lip itself: they follow its own grid
         // point, and neighbours along a lip pulled about ride different ones, so the walls' bottoms would run in steps.
         // Depth only eases shallower: a folded flap's walls stay as shallow as its fascia (WallThickness()).
-        var lipDown = new Dictionary<int, (Vector3 Out, float Thick)>();
+        var lipDown = scratch.LipDown;
         foreach (var v in plan.Lip.Keys) {
             lipDown[v] = (Outward(layer, plan.Owner[v]), WallThickness(plan.Owner[v]));
         }
         for (var pass = 0; pass < LipSmoothing * 2; pass++) {
-            var eased = new Dictionary<int, (Vector3 Out, float Thick)>();
+            var eased = scratch.EasedLipDown;
+            eased.Clear();
             foreach (var (v, neighbours) in plan.Lip) {
                 if (neighbours.Count == 2) {
                     var (out0, thick0) = lipDown[neighbours[0]];
@@ -1120,7 +1121,7 @@ public partial class PatientBody {
             var midUv = MidpointUv(topA, topB, mid, uvs[a], uvs[b]);
             var (swellA, swellB) = (Swell(a, thickA), Swell(b, thickB));
             // Three columns along the lip (its two ends and its midpoint), each a soft rounded profile down the wall.
-            (Vector3 Top, Vector3 Out, Vector3 Normal, float Thick, float Swell, Vector2 Uv, int Owner)[] columns = [
+            ReadOnlySpan<(Vector3 Top, Vector3 Out, Vector3 Normal, float Thick, float Swell, Vector2 Uv, int Owner)> columns = [
                 (topA, outA, normalA, thickA, swellA, uvs[a], plan.Owner[a]),
                 (mid, midOut, midNormal, midThick, (swellA + swellB) * 0.5f, midUv, plan.Owner[a]),
                 (topB, outB, normalB, thickB, swellB, uvs[b], plan.Owner[b])];
@@ -1147,9 +1148,9 @@ public partial class PatientBody {
                     var normal = wallNormals[start];
                     // Godot's front faces wind clockwise seen from the side the normal points to.
                     if ((wallVertices[lowEnd] - wallVertices[start]).Cross(wallVertices[end] - wallVertices[start]).Dot(normal) > 0f) {
-                        wallIndices.AddRange([start, end, lowEnd, start, lowEnd, lowStart]);
+                        wallIndices.AddRange((ReadOnlySpan<int>)[start, end, lowEnd, start, lowEnd, lowStart]);
                     } else {
-                        wallIndices.AddRange([start, lowEnd, end, start, lowStart, lowEnd]);
+                        wallIndices.AddRange((ReadOnlySpan<int>)[start, lowEnd, end, start, lowStart, lowEnd]);
                     }
                 }
             }
@@ -1185,6 +1186,52 @@ public partial class PatientBody {
         return (
             Surface.Of(refinedVertices, refinedNormals, refinedUvs, [.. index]),
             Surface.Of([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
+    }
+
+    /// <summary>One layer's working space for FillLayer(), kept between rebuilds: a rebuild every other frame would
+    /// otherwise allocate most of what the game allocates, and the collections that frees stall frames. Per layer: the
+    /// layers are filled at once. What a filled surface keeps is allocated anew.</summary>
+    private sealed class FillScratch {
+        public Vector3[] Vertices = [];
+        public Vector3[] Normals = [];
+        public Vector2[] Uvs = [];
+        public Vector3[] FaceNormals = [];
+        public int[] RefinedOwner = [];
+        public HashSet<int> PointedFrom { get; } = [];
+        public List<Vector3> WallVertices { get; } = [];
+        public List<Vector3> WallNormals { get; } = [];
+        public List<Vector2> WallUvs { get; } = [];
+        public List<Color> WallColors { get; } = [];
+        /// <summary>How deep under the skin each wall corner is, for bleed spots.</summary>
+        public List<Vector2> WallDepths { get; } = [];
+        public List<int> WallIndices { get; } = [];
+        /// <summary>Each lip vertex's wall normal, averaged over the walls on both sides of it: a wall shaded flat
+        /// stretch by stretch reads as a row of cards standing in the cut.</summary>
+        public Dictionary<int, Vector3> LipNormals { get; } = [];
+        public Dictionary<int, (Vector3 Out, float Thick)> LipDown { get; } = [];
+        public Dictionary<int, (Vector3 Out, float Thick)> EasedLipDown { get; } = [];
+
+        public void ClearWalls() {
+            WallVertices.Clear();
+            WallNormals.Clear();
+            WallUvs.Clear();
+            WallColors.Clear();
+            WallDepths.Clear();
+            WallIndices.Clear();
+            LipNormals.Clear();
+            LipDown.Clear();
+        }
+    }
+
+    private readonly FillScratch[] _fillScratch = [new(), new(), new()];
+
+    /// <summary><paramref name="array"/>, replaced by a new one unless it is <paramref name="length"/> long already
+    /// (the plan's sizes stay the same until the topology changes). Its contents are left as they were.</summary>
+    private static T[] Sized<T>(ref T[] array, int length) {
+        if (array.Length != length) {
+            array = new T[length];
+        }
+        return array;
     }
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
@@ -1468,7 +1515,7 @@ public partial class PatientBody {
             // Round within this side's sheet, rather than lifting a midpoint through an adjoining face.
             bend = bend.Slide(edge.Cross(vertices[inside] - mid).Normalized());
         }
-        foreach (var v in new[] { a, b }) {
+        foreach (var v in (ReadOnlySpan<int>)[a, b]) {
             if (plan.OppositeLip.TryGetValue(v, out var opposite)) {
                 var gap = vertices[v] - vertices[opposite];
                 limit = Mathf.Min(limit, gap.Length() * 0.2f);

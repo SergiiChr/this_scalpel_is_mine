@@ -36,6 +36,14 @@ public partial class Room : Node3D {
     /// <summary>The patient card hangs facing out from the middle of the table's head rail (HEAD_RAIL_X in
     /// tools/assetgen/props.py): in view from either side of the table, where the surgeons start.</summary>
     private const float CardHook = TableHead + 0.04f;
+    /// <summary>The monitor's screen center, on its pole at the table's head end, and its turn from facing +Z: down the
+    /// table, a little toward the near side. Same as MONITOR_SCREEN and MONITOR_YAW in tools/assetgen/props.py, which
+    /// builds the pole and arm to reach the table from there.</summary>
+    private static readonly Vector3 MonitorAt = new(1.02f, 1.45f, -0.32f);
+    private const float MonitorYaw = -70f;
+    /// <summary>The monitor's pole, from its lower clamp to the arm: solid, as it stands where surgeons walk round the head.
+    /// Same as MONITOR_POLE in tools/assetgen/props.py.</summary>
+    private static readonly Aabb MonitorPole = new(new Vector3(1.055f, 0.75f, -0.22f), new Vector3(0.04f, 0.47f, 0.04f));
     /// <summary>Between items the nurse brings together, across the delivery tray (meters): five fit inside its rim.
     /// </summary>
     private const float DeliveryGap = 0.095f;
@@ -88,7 +96,6 @@ public partial class Room : Node3D {
                 ["sink"] = new(1.5f, 0f, 1.9f),
                 ["sanitizer"] = new(2.25f, 0f, 1.92f),
                 ["iv"] = new(0.95f, 0f, 0.85f),
-                ["monitor"] = new(1.25f, 1.55f, -0.95f),
                 ["defib_cart"] = new(0.3f, 0f, -1.95f),
                 // In its niche (XrayNiche), the tube head toward the back, the handle just inside the room.
                 ["xray"] = new(-3.04f, 0f, -1.65f),
@@ -104,19 +111,25 @@ public partial class Room : Node3D {
                 ["sanitizer"] = Mathf.Pi,
             }),
         ["ambulance"] = new(
-            new(4.2f, 2.1f, 2.3f), [new(0f, 0f, 0.62f), new(0f, 0f, -0.62f)], new(-1.72f, 0f, 0.55f),
+            new(3.6f, 2.1f, 2.4f), [new(0f, 0f, 0.62f), new(0f, 0f, -0.62f)], new(0f, 0f, 1.01f),
             new Dictionary<string, Vector3> {
-                ["manual"] = new(1.8f, 0f, -0.85f),
+                ["manual"] = new(1.5f, -0.3f, -0.9f),
                 ["card"] = new(CardHook, 0f, 0f),
-                ["gloves"] = new(1.8f, 0f, 0.85f),
-                ["sanitizer"] = new(-1.8f, 0f, -0.8f),
-                ["iv"] = new(0.85f, 0f, -0.75f),
-                ["monitor"] = new(1.4f, 1.4f, -1.05f),
-                ["defib_cart"] = new(1.8f, 0f, 0f),
+                ["gloves"] = new(1.5f, 0.015f, 0.65f),
+                ["sanitizer"] = new(-1.57f, 0.015f, -0.65f),
+                ["iv"] = new(1.05f, 0f, -0.9f),
+                ["monitor"] = new(0.72f, 1.45f, -1f),
+                ["defib_cart"] = new(1.5f, 0.015f, 0.05f),
                 // By the back doors.
-                ["smoking"] = new(-1.88f, 0f, -0.2f),
+                ["smoking"] = new(-1.62f, 0f, 0.65f),
             },
-            new Dictionary<string, float> { ["card"] = Mathf.Pi / 2f, ["defib_cart"] = -Mathf.Pi / 2f }),
+            new Dictionary<string, float> {
+                ["card"] = Mathf.Pi / 2f,
+                ["defib_cart"] = -Mathf.Pi / 2f,
+                ["manual"] = -Mathf.Pi / 2f,
+                ["gloves"] = -Mathf.Pi / 2f,
+                ["sanitizer"] = Mathf.Pi / 2f,
+            }),
         ["sidewalk"] = new(
             new(14f, 0f, 10f), [new(0f, 0f, 0.62f), new(0f, 0f, -0.62f)], new(-1.7f, 0f, 0.3f),
             new Dictionary<string, Vector3> {
@@ -124,7 +137,6 @@ public partial class Room : Node3D {
                 ["card"] = new(CardHook, 0f, 0f),
                 ["gloves"] = new(-1.6f, 0f, -1.5f),
                 ["iv"] = new(0.95f, 0f, 0.85f),
-                ["monitor"] = new(1.4f, 1.1f, -1f),
                 ["defib_cart"] = new(-0.6f, 0f, 1.8f),
                 // Under the streetlight.
                 ["smoking"] = new(2.6f, 0f, 3f),
@@ -173,11 +185,11 @@ public partial class Room : Node3D {
         new(-1.8f, -1.8f, 1.2f, 0.6f), new(0.6f, -1.8f, 1.2f, 0.6f), new(-1.8f, 1.2f, 1.2f, 0.6f), new(0.6f, 1.2f, 1.2f, 0.6f),
     ];
 
-    private Color RoomLight => Theatre ? Materials.TheatreLight : Materials.Fluorescent;
+    private Color RoomLight => Theatre || EnvironmentId == "ambulance" ? Materials.TheatreLight : Materials.Fluorescent;
 
     /// <summary>Furniture recolored for the theatre: blue drapes and white laminate instead of wood.
     /// Material name -> material (see ModelSlot.Instantiate).</summary>
-    private IReadOnlyDictionary<string, Material>? FurnitureLook => Theatre
+    private IReadOnlyDictionary<string, Material>? FurnitureLook => Theatre || EnvironmentId == "ambulance"
         ? new Dictionary<string, Material> {
             ["gown"] = Materials.Furniture("cloth", Materials.DrapeBlue, 0.9f),
             ["wood"] = Materials.Furniture("plastic", new Color(0.86f, 0.87f, 0.88f), 0.6f),
@@ -218,6 +230,11 @@ public partial class Room : Node3D {
     /// <summary>Where a group of tools lies at the start (<see cref="TrayZones"/>): the area seen from above, in world
     /// space, at the height of what it lies on. Inside a small tray it keeps a little off the walls.</summary>
     public Aabb TrayZone(string group) {
+        if (EnvironmentId == "ambulance") {
+            var compartment = AmbulanceCompartments[group];
+            return new Aabb(new Vector3(compartment.Position.X, TraySurface, compartment.Position.Y),
+                new Vector3(compartment.Size.X, 0f, compartment.Size.Y));
+        }
         var area = TrayZones.GetValueOrDefault(group, TrayZones[""]);
         var bottom = TrayTop();
         if (SmallTrays.Contains(group)) {
@@ -299,7 +316,7 @@ public partial class Room : Node3D {
                 BackgroundMode = Environment.BGMode.Color,
                 BackgroundColor = Indoors ? new Color(0.02f, 0.025f, 0.03f) : new Color(0.03f, 0.035f, 0.06f),
                 AmbientLightSource = Environment.AmbientSource.Color,
-                AmbientLightColor = Theatre ? new Color(0.78f, 0.82f, 0.86f) : Materials.SurgicalGreen.Darkened(0.2f),
+                AmbientLightColor = Theatre || EnvironmentId == "ambulance" ? new Color(0.78f, 0.82f, 0.86f) : Materials.SurgicalGreen.Darkened(0.2f),
                 AmbientLightEnergy = Theatre ? 0.4f : 0.5f,
                 TonemapMode = Environment.ToneMapper.Filmic,
                 // Highlights roll off instead of clipping: pale skin and white linen keep their shape under the lamp.
@@ -413,6 +430,9 @@ public partial class Room : Node3D {
         Layout = Layouts[EnvironmentId];
         BuildEnvironment();
         BuildWalls();
+        if (EnvironmentId == "ambulance") {
+            BuildAmbulance();
+        }
         // Only the fixed shell contributes occlusion/emission. Patients, tools and movable stations must
         // not leave stale silhouettes in SDFGI's static voxel field.
         foreach (var mesh in FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>()) {
@@ -446,7 +466,7 @@ public partial class Room : Node3D {
         var ceiling = Theatre
             ? Shapes.Slab(this, size with { Y = 0.1f }, Materials.TheatreCeiling(new Color(0.88f, 0.89f, 0.9f), TheatreLights),
                 new Vector3(0f, size.Y, 0f))
-            : Shapes.Slab(this, size with { Y = 0.1f }, wall.Darkened(0.5f), new Vector3(0f, size.Y, 0f), 0.45f);
+            : Shapes.Slab(this, size with { Y = 0.1f }, EnvironmentId == "ambulance" ? wall : wall.Darkened(0.5f), new Vector3(0f, size.Y, 0f), 0.05f);
         ceiling.Name = "Ceiling";
     }
 
@@ -544,6 +564,9 @@ public partial class Room : Node3D {
         if (EnvironmentId != "or") {
             ModelSlot.Instantiate("props", "straps", this);
         }
+        if (EnvironmentId == "ambulance") {
+            return;
+        }
         var lamp = ModelSlot.Instantiate("props", "surgical_lamp", this, FurnitureLook);
         lamp.Position = new Vector3(0f, LampHeight, 0f);
         // The lamp head hangs right under the ceiling light; its shadow would black out the middle of the table.
@@ -554,6 +577,9 @@ public partial class Room : Node3D {
     }
 
     private void BuildTray() {
+        if (EnvironmentId == "ambulance") {
+            return; // The instruments lie in the fitted wall compartments.
+        }
         var tray = ModelSlot.Instantiate("props", "instrument_tray", this, FurnitureLook);
         tray.Position = Layout.Tray;
         Shapes.StaticBox(this, new Vector3(0.7f, 0.05f, 0.8f), Layout.Tray + new Vector3(0f, TraySurface - 0.025f, 0f));
@@ -585,9 +611,11 @@ public partial class Room : Node3D {
             Station("bell", "Ring for the nurse", new Vector3(0.5f, 1.2f, 0.5f), _ => surgery.OpenNurse());
             _nurseBoard = Shapes.Label(this, "", Layout["bell"] + new Vector3(0f, 1.5f, 0f), 40);
             _nurseBoard.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+            _nurseBoard.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _nurseBoard.Width = 600f;
             _nurseBoard.Font = ThemeDB.GetDefaultTheme().DefaultFont ?? ThemeDB.FallbackFont;
             var text = string.Join(", ", Db.Tools.Values.Where(tool => tool.Orderable).Select(tool => tool.Name))
-                + " Nurse ready Nurse is busy for 0123456789 s × ■ □";
+                + " Nurse ready Nurse is busy for 0123456789 s ×";
             Ui.PrepareFontText(_nurseBoard.Font, _nurseBoard.FontSize, _nurseBoard.OutlineSize, text);
         }
         if (Layout.Has("gloves")) {
@@ -627,10 +655,16 @@ public partial class Room : Node3D {
         AddChild(IvLine);
         Monitor = new PatientMonitor { Name = "Monitor" };
         AddChild(Monitor);
-        Monitor.Position = Layout["monitor"];
-        Monitor.Rotation = new Vector3(0f, Mathf.Atan2(-Monitor.Position.X, -Monitor.Position.Z), 0f);
-        Monitor.Build();
-        Interactable.Create(this, "Order blood work", new Vector3(0.5f, 0.5f, 0.3f), Layout["monitor"],
+        var wallMonitor = EnvironmentId == "ambulance";
+        var monitorAt = wallMonitor ? Layout["monitor"] : MonitorAt;
+        Monitor.Position = monitorAt;
+        Monitor.RotationDegrees = new Vector3(0f, wallMonitor ? 0f : MonitorYaw, 0f);
+        Monitor.Build(wallMonitor);
+        if (!wallMonitor) {
+            Shapes.StaticBox(this, MonitorPole.Size, MonitorPole.GetCenter());
+        }
+        // Just the screen, across its width: any taller and it would reach down into "Talk to the patient" around the head.
+        Interactable.Create(this, "Order blood work", wallMonitor ? new Vector3(0.44f, 0.3f, 0.2f) : new Vector3(0.2f, 0.3f, 0.44f), monitorAt,
             _ => surgery.OpenLab());
         foreach (var side in (float[])[-1f, 1f]) {
             Interactable.Create(this, "Turn the patient", new Vector3(0.3f, 0.3f, 0.2f),
@@ -667,7 +701,9 @@ public partial class Room : Node3D {
         var root = ModelSlot.Instantiate("props", key, this, key == "card" ? null : FurnitureLook);
         root.Position = position;
         root.Rotation = new Vector3(0f, yaw, 0f);
-        if (StationSolids.TryGetValue(key, out var solid)) {
+        if (EnvironmentId == "ambulance") {
+            FitAmbulanceStation(key, root);
+        } else if (StationSolids.TryGetValue(key, out var solid)) {
             if (Mathf.Abs(Mathf.Sin(yaw)) > 0.5f) {
                 solid = new Vector3(solid.Z, solid.Y, solid.X);
             }

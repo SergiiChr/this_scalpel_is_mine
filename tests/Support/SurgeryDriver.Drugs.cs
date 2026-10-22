@@ -56,7 +56,7 @@ public partial class SurgeryDriver {
         }
         // Pressed in the air, the forceps let the pad fall.
         if (Surgery.Tools.CarriedBy(forceps) is not null) {
-            var spot = SurgeryState.FreeTraySpot(Surgery);
+            var spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
             await PlayerWalksTo(spot);
             await PlayerReaches(spot);
             Use();
@@ -68,7 +68,7 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>Saline from the IV bag drawn into the 50 ml syringe and squirted into every dirty cut until it's rinsed
-    /// clean, the syringe lifted (Lift held) and back so its stream arcs into the cut, and refilled from the bag
+    /// clean, the syringe held over the cut so its stream lands in it, and refilled from the bag
     /// whenever it runs dry.</summary>
     public async Task PlayerRinsesCuts() {
         var syringe = (await PlayerRequestsItem("syringe_50"))!;
@@ -87,7 +87,6 @@ public partial class SurgeryDriver {
                         await ShowsStreamInto(cut, syringe);
                     }
                 }
-                PlayerInput.Action(InputActions.Lift, false);
                 await NeedleOut();
             }
             Note($"rinsed {cut.Rinsed:0} of {need:0} ml through a cut, {(cut.Dirty ? "still dirty" : "clean")}");
@@ -95,11 +94,10 @@ public partial class SurgeryDriver {
         await PlayerPutsDown();
     }
 
-    /// <summary>Lifts <paramref name="syringe"/> over <paramref name="spot"/> (Lift held until the pushes are done) and
-    /// moves it until where its stream would land is right there, as a player does watching it.</summary>
+    /// <summary>Holds <paramref name="syringe"/> over <paramref name="spot"/> and moves it until where its stream would land
+    /// is right there, as a player does watching it.</summary>
     private async Task AimsStreamAt(SurgicalTool syringe, Vector3 spot) {
         var over = spot;
-        PlayerInput.Action(InputActions.Lift);
         await NeedleInto(over, false);
         await Steadies(syringe);
         for (var i = 0; i < 2; i++) {
@@ -123,19 +121,19 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>The saline squirting from <paramref name="syringe"/> shows as one stream leaving its needle tip and
-    /// arcing down into <paramref name="cut"/>.</summary>
+    /// landing in <paramref name="cut"/>.</summary>
     private async Task ShowsStreamInto(Wound cut, SurgicalTool syringe) {
         // The stream follows the tip on every drawn frame.
         await Frames.Process(1);
         var streams = Surgery.Effects.Streams();
         var lands = SitePoint(cut.Midpoint);
         static float Across(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Z - b.Z).Length();
-        var arcs = streams.Count == 1 && streams[0].Top.DistanceTo(syringe.TipPosition()) < 0.003f
-            && Across(streams[0].Top, streams[0].Bottom) > 0.01f && Across(streams[0].Bottom, lands) < 0.02f;
-        AssertBool(arcs).OverrideFailureMessage(
-            $"one stream leaves the needle tip {syringe.TipPosition()} and arcs into the cut at {lands}: {string.Join(", ", streams)}")
+        var into = streams.Count == 1 && streams[0].Top.DistanceTo(syringe.TipPosition()) < 0.003f
+            && Across(streams[0].Bottom, lands) < 0.02f;
+        AssertBool(into).OverrideFailureMessage(
+            $"one stream leaves the needle tip {syringe.TipPosition()} and lands in the cut at {lands}: {string.Join(", ", streams)}")
             .IsTrue();
-        await Capture("rinsing", "a thin pale stream of saline leaves the needle tip and arcs down into the cut");
+        await Capture("rinsing", "the syringe held over the cut, a thin pale stream of saline from its needle tip down into the cut");
     }
 
     /// <summary>Fills <paramref name="syringe"/> from the IV drip bag on the stand, through its port.</summary>
@@ -217,6 +215,7 @@ public partial class SurgeryDriver {
         }
         Note($"drew {syringe.Ml:0.0} ml and {syringe.Air:0.0} ml of air (needle in {into})");
         await NeedleOut();
+        var holds = route is Route.Vein or Route.Arm && await PlayerHoldsThrashingForearm();
         var target = route switch {
             Route.Drip => Surgery.Tools.DripBag()!.Middle(),
             Route.Vein => VeinPoint(),
@@ -224,20 +223,100 @@ public partial class SurgeryDriver {
             _ => SitePoint(at ?? new Vector2(0.5f, 0.5f)),
         };
         await NeedleInto(target, route != Route.Drip);
-        if (!await NeedleIsIn(syringe)) {
+        var isIn = await NeedleIsIn(syringe);
+        if (isIn) {
+            into = Syringe.NeedleTarget(syringe, Patient);
+            var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
+            for (var i = 0; i < notches; i++) {
+                await Notch(true);
+            }
+            Note($"pushed into {into}, {syringe.Ml:0.0} ml left");
+        }
+        await NeedleOut();
+        if (holds) {
+            await PlayerLetsGoWithFreeHand();
+        }
+        if (!isIn) {
             Note($"the needle didn't go in ({route})");
             return;
         }
-        into = Syringe.NeedleTarget(syringe, Patient);
-        var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
-        for (var i = 0; i < notches; i++) {
-            await Notch(true);
-        }
-        Note($"pushed into {into}, {syringe.Ml:0.0} ml left");
-        await NeedleOut();
         await Frames.Physics(10);
         await PlayerPutsDown();
     }
+
+    /// <summary>A patient thrashing about (awake, in pain or panicking) has the forearm held still with the free hand,
+    /// by the wrist, so a needle can go in beside its vein. False when the patient lies still or no hand is free.
+    /// </summary>
+    private async Task<bool> PlayerHoldsThrashingForearm() {
+        var other = 1 - Me.Active;
+        if (!Thrashes || Me.HeldTool(other) is not null) {
+            return false;
+        }
+        // Where the arm lies on the table, not where it has jerked to: the hand presses it back down there.
+        var vein = Body.Veins[0];
+        var wrist = WhereItLies(((Forearm)vein.GetParent()).BoneName, vein.ToGlobal(vein.Line[^1]));
+        await SwitchTo(other);
+        await PlayerHoldsPatientAt(wrist);
+        await SwitchTo(1 - other);
+        return true;
+    }
+
+    /// <summary>Where <paramref name="point"/> (world), on the part of the body <paramref name="bone"/> moves, is with
+    /// that part lying at rest, not jerked away.</summary>
+    private Vector3 WhereItLies(string bone, Vector3 point) {
+        var skeleton = Body.Animator.Rig!.Skeleton.GlobalTransform;
+        return skeleton * Body.Animator.Rig.Moved(bone).AffineInverse() * skeleton.AffineInverse() * point;
+    }
+
+    /// <summary>A patient thrashing about (awake, in pain or panicking) has the limb the site is on held still with the
+    /// free hand where it lies, on its top a little way along it from <paramref name="wound"/>, out of the needle's way.
+    /// False when the patient lies still, the site isn't on a limb or no hand is free.</summary>
+    private async Task<bool> PlayerHoldsThrashingSiteLimb(Wound wound) {
+        var other = 1 - Me.Active;
+        if (!Thrashes || Me.HeldTool(other) is not null || Body.SitePart.Length == 0) {
+            return false;
+        }
+        var site = SitePoint(wound.Midpoint);
+        var bone = Body.RigBoneAt(site);
+        var middle = WhereItLies(bone, site);
+        if (Body.LimbRingAt(middle) is not { } ring) {
+            return false;
+        }
+        // Past the wound's end and the palm's half width, either way along the limb, as long as it's still that part.
+        var away = (Body.UvToMeters(wound.LengthUv) * 0.5f) + HoldBesideWound;
+        foreach (var along in (float[])[away, -away]) {
+            var beside = middle + (ring.Axis * along);
+            if (Body.RigBoneAt(beside) != bone
+                || Rays.Cast(Body, beside + (Vector3.Up * 0.2f), beside + (Vector3.Down * 0.2f), PatientBody.SurfaceLayer)
+                    is not { } top) {
+                continue;
+            }
+            await SwitchTo(other);
+            await PlayerHoldsPatientAt(top.Position);
+            await SwitchTo(1 - other);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>How far (meters) past a wound's end a hand holding the limb lies: the palm's half width and a little,
+    /// so the needle's holes beside the wound stay clear of it.</summary>
+    private const float HoldBesideWound = 0.06f;
+
+    /// <summary>The free hand lets go of the patient if it still holds them (walking away lets go on its own).
+    /// </summary>
+    private async Task PlayerLetsGoWithFreeHand() {
+        var other = 1 - Me.Active;
+        if (!Me.HoldsPatient(other)) {
+            return;
+        }
+        await SwitchTo(other);
+        await PlayerLetsGoOfPatient();
+        await SwitchTo(1 - other);
+    }
+
+    /// <summary>An awake patient in pain or panicking jerks their arms.</summary>
+    private bool Thrashes => Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f;
 
     /// <summary>Waits until <paramref name="syringe"/>'s needle is in something: the bag, a vein or tissue.</summary>
     private Task<bool> NeedleIsIn(SurgicalTool syringe) =>
@@ -275,7 +354,7 @@ public partial class SurgeryDriver {
 
     /// <summary>A point on the forearm <paramref name="off"/> meters across it from the middle of the vein.</summary>
     private Vector3 BesideVein(float off) {
-        var vein = Body.Veins[0];
+        var vein = WorkingVein();
         var line = vein.Line;
         var middle = line.Length / 2;
         var across = vein.GlobalBasis * (line[middle + 1] - line[middle - 1]);
@@ -283,8 +362,11 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>The middle of the forearm vein (world space), where an IV catheter or a needle goes in.</summary>
+    private Vein WorkingVein() => StandingConstraint is null ? Body.Veins[0]
+        : Body.Veins.OrderBy(vein => vein.ToGlobal(vein.Line[vein.Line.Length / 2]).DistanceSquaredTo(Me.GlobalPosition)).First();
+
     public Vector3 VeinPoint() {
-        var vein = Body.Veins[0];
+        var vein = WorkingVein();
         return vein.ToGlobal(vein.Line[vein.Line.Length / 2]);
     }
 
@@ -292,9 +374,8 @@ public partial class SurgeryDriver {
     /// away from the site when the site is a forearm).</summary>
     public async Task PlayerSetsIv() {
         Note("sets an IV line");
-        // An awake patient in pain jerks their arm: settled first, or the catheter misses the vein, and a missed line
-        // can't be put right.
-        if (Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f) {
+        // Settled first, or the jerking arm makes the catheter miss the vein, and a missed line can't be put right.
+        if (Thrashes) {
             await PlayerCalmsPatient();
         }
         if (await PlayerRequestsItem("iv_catheter") is not { } catheter) {

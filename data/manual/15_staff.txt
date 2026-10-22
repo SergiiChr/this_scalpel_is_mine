@@ -21,7 +21,7 @@ Sweat makes gloves slippery: change them at the glove box. A surgical cap preven
 
 ## 15.5 Working together
 • [b]Instrument handover:[/b] hold the instrument close to your colleague's empty hand and hand it over ([b]Grab[/b]). Both hands must be still, or it is dropped.
-• [b]Crossing hands:[/b] two hands in the same space collide. Lift one over the other ([b]Lift[/b]), or agree on sides beforehand.
+• [b]Crossing hands:[/b] two hands in the same space collide. Agree on sides beforehand.
 • [b]Traction while moving:[/b] a hand holding tissue stays where it is when you walk. Moving too far tears the tissue. Release before stepping away.
 • [b]Changing hands:[/b] the hand you are not using stays exactly where it was and keeps doing what it was doing. A closed clamp stays closed; active cautery keeps burning.
 

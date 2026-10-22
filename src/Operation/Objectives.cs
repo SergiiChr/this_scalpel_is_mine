@@ -1,12 +1,15 @@
 namespace Scalpel.Operation;
 
-/// <summary>An objective step as the debug HUD shows it.</summary>
-public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled) {
-    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled];
+/// <summary>An objective step as the HUD shows it: a main task and, for the easiest difficulty, its subtasks.
+/// </summary>
+public readonly record struct ObjectiveView(string Label, bool Done, bool Optional, bool Spoiled, string[] Subtasks,
+    bool Hint = false) {
+    public Godot.Collections.Array ToVariant() => [Label, Done, Optional, Spoiled, Subtasks, Hint];
 
     public static ObjectiveView FromVariant(Variant data) {
         var view = data.AsGodotArray();
-        return new ObjectiveView(view[0].AsString(), view[1].AsBool(), view[2].AsBool(), view[3].AsBool());
+        return new ObjectiveView(view[0].AsString(), view[1].AsBool(), view[2].AsBool(), view[3].AsBool(),
+            view[4].AsStringArray(), view[5].AsBool());
     }
 }
 
@@ -40,12 +43,28 @@ public sealed class StepState {
 public partial class Objectives : Node {
     public List<ObjectiveStep> Steps { get; } = [];
     public List<StepState> States { get; } = [];
+    /// <summary>Each step's subtasks, worked out for this patient (<see cref="Operation.Subtasks"/>).</summary>
+    private readonly List<string[]> _subtasks = [];
+    internal IReadOnlyList<string[]> StepSubtasks => _subtasks;
+    private string[] _discharge = [];
 
-    public void Setup(ScenarioDef scenario) {
+    /// <summary>The last task the HUD lists after the steps: the discharge ends the surgery, so it's never shown done.
+    /// </summary>
+    internal const string DischargeLabel = "Discharge the patient: sign their card";
+
+    public void Setup(ScenarioDef scenario, SubtaskFacts facts) {
         foreach (var step in scenario.Steps) {
             Steps.Add(step);
             States.Add(new StepState());
         }
+        WorkOutSubtasks(scenario, facts);
+    }
+
+    /// <summary>Every step's subtasks for <paramref name="facts"/>, again when they change.</summary>
+    internal void WorkOutSubtasks(ScenarioDef scenario, SubtaskFacts facts) {
+        _subtasks.Clear();
+        _subtasks.AddRange(Steps.Select(step => (string[])[.. Subtasks.For(step, scenario, facts)]));
+        _discharge = [.. Subtasks.Discharge(scenario, facts)];
     }
 
     /// <summary>Every required step counts: the patient is ready to go.</summary>
@@ -103,7 +122,26 @@ public partial class Objectives : Node {
         return AllDone;
     }
 
-    /// <summary>Compact state for the HUD.</summary>
-    public List<ObjectiveView> Snapshot() =>
-        [.. Steps.Select((step, i) => new ObjectiveView(step.Label, States[i].Done, step.Optional, States[i].Spoiled))];
+    /// <summary>Compact state for the HUD. A state step shows done only once the required steps before it count: a
+    /// wound isn't closed before it's been opened. Subtasks go only with the open steps up to the next required one,
+    /// all the HUD lists, which keeps the status small.</summary>
+    public List<ObjectiveView> Snapshot() {
+        var views = new List<ObjectiveView>(Steps.Count);
+        var settled = true;
+        var ahead = true;
+        for (var i = 0; i < Steps.Count; i++) {
+            var (step, state) = (Steps[i], States[i]);
+            var done = state.Done && (settled || !ObjectiveChecks.IsState(step.Type));
+            string[] subtasks = [];
+            if (ahead && !done && !state.Spoiled) {
+                ahead = step.Optional;
+                // Missing() is what spoils a step: a step it comes after that doesn't hold right now.
+                subtasks = [.. _subtasks[i], .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
+            }
+            settled &= step.Optional || state.Counts;
+            views.Add(new ObjectiveView(step.Label, done, step.Optional, state.Spoiled, subtasks, step.Hint));
+        }
+        views.Add(new ObjectiveView(DischargeLabel, false, false, false, ahead ? _discharge : []));
+        return views;
+    }
 }

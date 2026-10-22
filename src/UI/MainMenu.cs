@@ -23,6 +23,7 @@ public partial class MainMenu : Control {
         nav.AddChild(Ui.Button("History", ShowHistory));
         nav.AddChild(Ui.Button("Multiplayer", ShowMultiplayer));
         nav.AddChild(Ui.Button("Quirk codex", ShowCodex));
+        nav.AddChild(Ui.Button("Run modifiers", ShowModifiers));
         nav.AddChild(Ui.Button("Settings", ShowSettings));
         nav.AddChild(Ui.Button("Quit", () => GetTree().Quit()));
         layout.AddChild(nav);
@@ -39,6 +40,17 @@ public partial class MainMenu : Control {
         } else {
             ShowScenarios();
         }
+        if (Settings.Difficulty is null) {
+            ShowDifficultyPicker();
+        }
+    }
+
+    /// <summary>The difficulty screen over the menu until one is picked.</summary>
+    private void ShowDifficultyPicker() {
+        var picker = new DifficultyPicker();
+        var screen = Ui.CenteredPanel(picker, new Vector2(900f, 0f), new Color(0.03f, 0.04f, 0.04f));
+        picker.Picked += screen.QueueFree;
+        AddChild(screen);
     }
 
     public override void _ExitTree() => Net.Instance.ConnectionFailed -= ShowStatus;
@@ -256,6 +268,19 @@ public partial class MainMenu : Control {
             tabs.AddChild(scroll);
         }
         box.AddChild(tabs);
+        SetContent(box);
+    }
+
+    internal void ShowModifiers() {
+        var box = Ui.VBox(10);
+        box.AddChild(Ui.Label("RUN MODIFIERS", 28, Ui.Pip));
+        box.AddChild(Ui.Label("The host rolls 1-2 for every run. Each unlocks here the first time a run starts with it; "
+            + "locked ones come up all the same.", 16, Ui.Dim, true));
+        var list = Ui.VBox(14);
+        foreach (var id in Db.RunModifiers.GetSections()) {
+            list.AddChild(Progress.IsModifierUnlocked(id) ? Ui.ModifierLine(id, Ui.Ink) : Ui.Label("???  (locked)", 18, Ui.Dim));
+        }
+        box.AddChild(Ui.Scroll(list));
         SetContent(box);
     }
 
