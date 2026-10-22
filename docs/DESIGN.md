@@ -689,8 +689,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   (`SurgeonHand.GraspFit()`): a palm bends only at the wrist and the knuckles, so it lies on the limb stiff, giving
   only a little under pressure (the glove's `Palm` bone, its knuckle half, `SurgeonHand.MaxPalmCup`). It is turned
   round the limb, touches it where along its length lays it closest, and leans along it. On a limb about as wide as the
-  palm is long it lies across the round like a chord, heel and knuckles lifting off. Held firmly, it presses down
-  and toward the near side until the palm gives as much as a flat hold's (`Surgeon.PressSink`), the fingers closer round
+  palm is long it lies across the round like a chord, heel and knuckles lifting off. Held firmly, it presses into
+  its palm, slanted toward the near side (on the limb's top: down and toward the surgeon), until the palm gives as much as a flat hold's (`Surgeon.PressSink`), the fingers closer round
   the far side. The fit reads the palm's underside
   off the glove model. The fingers across the limb wrap its far side (over a cut there) from the knuckle out: each
   joint bends until its bone rests on the skin. Over an opening on the trunk

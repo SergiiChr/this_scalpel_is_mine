@@ -4,7 +4,8 @@ namespace Scalpel.Tests.Patients;
 /// An empty hand clicked on the patient holds it there, as a player does it: laid flat on the skin and pressing into it,
 /// it stops the cuts under its palm bleeding the way gauze does, without soaking anything up; over an opening it lies
 /// on the lip, holding the incision but not the vessel bleeding inside; over the cut on a panicking patient's flailing
-/// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing.
+/// forearm, the arm the surgical site is on, it keeps the arm still while the other one goes on flailing; and it grasps
+/// an arm from the side the surgeon stands beside it as well as from over it.
 /// Key frames: review the glove lying flat on the skin over the cut, its palm and fingers on it and pressed a little
 /// in, neither floating nor sunk through; flat over the opening at its lip, the fingers straight across it; and
 /// grasping the forearm, the stiff palm across its top and the fingers bent round it over the cut.
@@ -117,22 +118,8 @@ public class HandHoldTest {
             .OverrideFailureMessage("and the hand holding it stays on it").IsLess(0.001f);
         AssertFloat(await Wander(() => body.RigBonePose("HandR").Origin))
             .OverrideFailureMessage("the other arm flails").IsGreater(0.01f);
-        AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the forearm the hand grasps it").IsTrue();
         var ring = body.LimbRingAt(on)!.Value;
-        var gaps = PalmGaps(hand, ring);
-        AssertFloat(gaps.Min())
-            .OverrideFailureMessage($"its palm presses on the arm, no further in than a flat hold: {gaps.Min():0.000} m off")
-            .IsBetween(-Surgeon.PressSink - PalmGapSlack, PalmTouch);
-        AssertFloat(gaps.Max()).OverrideFailureMessage($"its stiff palm lies across the arm's round: {gaps.Max():0.000} m "
-            + "off at its ends").IsLess(PalmLift);
-        foreach (var finger in (string[])["Index", "Middle", "Ring", "Pinky"]) {
-            var knuckleEnd = hand.BonePoints(finger + "1")[^1];
-            var off = SkinGap(hand, knuckleEnd.Position, ring) - knuckleEnd.Radius;
-            AssertFloat(off).OverrideFailureMessage($"the {finger.ToLowerInvariant()} finger wraps the arm from the knuckle: "
-                + $"its first bone ends {off:0.000} m off the skin").IsLess(FingerTouch);
-        }
-        AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the arm's skin, nothing of it in it")
-            .IsEqual(0);
+        AssertGrasps(hand, ring);
         // Along the arm, low, where the palm's curve on the arm's round shows.
         await session.CaptureOblique("on_forearm", "the glove grasping the forearm seen along it: the palm flat across the "
             + "arm's top, pressed a little into it at its middle, the heel and knuckles a little off the round, the "
@@ -145,6 +132,46 @@ public class HandHoldTest {
         AssertFloat(await Wander(() => body.Site.GlobalPosition))
             .OverrideFailureMessage("let go, it flails the forearm the site is on").IsGreater(0.01f);
         await session.Finish(BudgetOverride);
+    }
+
+    [TestCase]
+    public async Task AHandGraspsTheFarSideArmFromBesideIt() {
+        var session = await ToolSession.Start("appendectomy", "hand_hold_side");
+        var driver = session.Driver;
+        var body = driver.Body;
+        // The middle of the right forearm's top, the surgeon walking round to that side of the table to reach it.
+        var forearm = body.RigBonePose("ForearmR").Origin.Lerp(body.RigBonePose("HandR").Origin, 0.5f);
+        var on = Rays.Cast(body, forearm + Vector3.Up * 0.3f, forearm, PatientBody.SurfaceLayer)!.Value.Position;
+
+        await driver.PlayerHoldsPatientAt(on);
+        await Frames.Seconds(1f);
+        var hand = driver.Me.Hands[driver.Me.Active];
+        var ring = body.LimbRingAt(on)!.Value;
+        AssertGrasps(hand, ring);
+        await session.CaptureOblique("beside_forearm", "the glove grasping the right forearm from the side the surgeon "
+            + "stands: the palm on the arm, the fingers wrapped over its top, each bone resting on the skin, nothing of "
+            + "it in the skin", on, -ring.Axis, CloseUp, 12f, true);
+        await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>Asserts the hand grasps the limb round <paramref name="ring"/>: its stiff palm on it, pressed in no more
+    /// than a flat hold, and its fingers wrapped round it from the knuckles, nothing of it in the skin.</summary>
+    private static void AssertGrasps(SurgeonHand hand, LimbRing ring) {
+        AssertBool(hand.PressAcross != Vector3.Zero).OverrideFailureMessage("on the limb the hand grasps it").IsTrue();
+        var gaps = PalmGaps(hand, ring);
+        AssertFloat(gaps.Min())
+            .OverrideFailureMessage($"its palm presses on the limb, no further in than a flat hold: {gaps.Min():0.000} m off")
+            .IsBetween(-Surgeon.PressSink - PalmGapSlack, PalmTouch);
+        AssertFloat(gaps.Max()).OverrideFailureMessage($"its stiff palm lies across the limb's round: {gaps.Max():0.000} m "
+            + "off at its ends").IsLess(PalmLift);
+        foreach (var finger in (string[])["Index", "Middle", "Ring", "Pinky"]) {
+            var knuckleEnd = hand.BonePoints(finger + "1")[^1];
+            var off = SkinGap(hand, knuckleEnd.Position, ring) - knuckleEnd.Radius;
+            AssertFloat(off).OverrideFailureMessage($"the {finger.ToLowerInvariant()} finger wraps the limb from the "
+                + $"knuckle: its first bone ends {off:0.000} m off the skin").IsLess(FingerTouch);
+        }
+        AssertInt(HandPointsInSkin(hand)).OverrideFailureMessage("its fingers close round the limb's skin, nothing of it in it")
+            .IsEqual(0);
     }
 
     /// <summary>The hand lies on the skin at <paramref name="on"/>: across the floor within a palm of it, and as high as

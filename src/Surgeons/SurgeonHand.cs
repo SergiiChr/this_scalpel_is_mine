@@ -59,6 +59,9 @@ public partial class SurgeonHand : Node3D {
     private const float MaxGraspTurn = 1.3f;
     /// <summary>Furthest out from a limb's middle line (meters) <see cref="GraspFit"/> looks for its skin.</summary>
     private const float GraspClear = 0.15f;
+    /// <summary>How far round toward the near side of a limb (radians) from straight into its palm a hand grasping it
+    /// presses.</summary>
+    private const float GraspPressSlant = Mathf.Pi / 4f;
     /// <summary>How many directions round a limb <see cref="GraspFit"/> finds its skin in.</summary>
     private const int GraspAngles = 48;
     /// <summary>Where along a limb (meters from the grasp) <see cref="GraspFit"/> finds its skin round it: under the
@@ -1116,12 +1119,13 @@ public partial class SurgeonHand : Node3D {
             }
         }
         Try(tries);
-        // Held firmly, the hand presses down onto the limb and toward the near side, round under the knuckles: the palm
-        // gives as much as a hand pressed flat on the skin (Surgeon.PressSink).
+        // Held firmly, the hand presses into the limb and toward the near side, round under the knuckles: the palm gives
+        // as much as a hand pressed flat on the skin (Surgeon.PressSink).
         var pressFrame = PressBasis(best.Normal, best.Fingers);
         Vector3[] pressed = [.. underside.Select(spot => pressFrame * (Cupped(spot, KnuckleHalf(best.Cup)) - LowerPalm))];
         Vector3[] thumbPressed = [.. thumbRestPoints.Select(point => pressFrame * (point - LowerPalm))];
-        var press = ((toNear * side) + Vector3.Down).Normalized();
+        // Into the palm and round toward the near side, whichever way round the limb it lies.
+        var press = new Basis(axis, -toNear * GraspPressSlant) * (-best.Normal).Slide(axis).Normalized();
         var (shallow, deep) = (0f, GraspClear);
         for (var i = 0; i < 10; i++) {
             var mid = (shallow + deep) * 0.5f;
