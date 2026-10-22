@@ -185,7 +185,7 @@ public partial class SurgeryDriver {
         if (Me.UsesLevel(Me.Active)) {
             await SetLevel(0);
         }
-        var spot = SurgeryState.FreeTraySpot(Surgery);
+        var spot = SurgeryState.FreeTraySpot(Surgery, Me.GlobalPosition);
         for (var i = 0; i < 4; i++) {
             await PlayerWalksTo(spot);
             // The middle of the tool over the spot: a bottle held in a fist lies well away from its tip.

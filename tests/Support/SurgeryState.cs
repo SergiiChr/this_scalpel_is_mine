@@ -244,7 +244,12 @@ public static class SurgeryState {
     /// A free place on the instrument tray, nothing else lying within 8 cm: the clear strip down its middle first. A
     /// spot something slid away from (<see cref="TraySpotIsBad"/>) isn't offered again.
     /// </summary>
-    public static Vector3 FreeTraySpot(Surgery surgery) {
+    public static Vector3 FreeTraySpot(Surgery surgery, Vector3? near = null) {
+        if (surgery.Room.EnvironmentId == "ambulance") {
+            var side = Mathf.Sign((near ?? surgery.LocalSurgeon!.GlobalPosition).Z);
+            // Empty counter beyond the tool compartments, on the same side as the doctor putting it down.
+            return new Vector3(side > 0f ? 0.95f : -1f, Room.TraySurface + 0.05f, side * 1.01f);
+        }
         var rest = surgery.Room.TrayZone("");
         var strip = rest.End.X + 0.07f;
         var spots = new List<Vector3>();
