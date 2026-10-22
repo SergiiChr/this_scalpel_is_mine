@@ -215,7 +215,8 @@ public class GelpiTest {
             .Where(v => Mathf.Abs(uvs[v].Y - middle.Y) * body.SiteSize.Y > 0.012f)
             .Select(v => vertices[v].Y - body.SurfaceHeight(body.LocalToUv(vertices[v])))
             .DefaultIfEmpty(float.PositiveInfinity).Max();
-        await driver.Capture("stopped", $"the Gelpi opened as far as the thigh skin gives, the wound over {ThighOpen * 100f:0} cm open: the skin beside each jaw humped up smooth, no ridge at the drape's edge, nothing through the skin");
+        await SurgeryState.SiteIsSwabbed(driver.Patient);
+        await driver.Capture("stopped", $"the Gelpi opened as far as the thigh skin gives, the wound over {ThighOpen * 100f:0} cm open, the site wiped: the skin beside each jaw humped up smooth, no ridge at the drape's edge, nothing through the skin");
         AssertFloat(drawnRidge).OverrideFailureMessage($"the drawn skin pushed toward the drape stays below an {Ridge * 1000f:0} mm ridge ({drawnRidge * 1000f:0.0} mm drawn, {ridge * 1000f:0.0} mm solver displacement, {aboveBody * 1000f:0.0} mm solver height)").IsLess(Ridge);
         AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage("nothing tears").IsEqual(wounds);
         await AssertLipsApart(driver);

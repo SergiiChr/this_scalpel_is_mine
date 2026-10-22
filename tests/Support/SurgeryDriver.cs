@@ -188,6 +188,11 @@ public partial class SurgeryDriver : Node {
         Budget.Resume();
     }
 
+    /// <summary>Waits, outside the frame budget, until the blood's films are built on their workers.</summary>
+    public Task BloodFilmsBuilt() => Unbudgeted(async () => {
+        while (!Body.Blood.FilmsBuilt.IsCompleted) { await Frames.NextProcess(); }
+    });
+
     // --- Controls ------------------------------------------------------------------------------------------------
 
     /// <summary>Presses (and with <paramref name="pressed"/> false, lets go of) an input action.</summary>

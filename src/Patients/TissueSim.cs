@@ -371,6 +371,8 @@ public sealed partial class TissueSim {
     /// <summary>Skin triangles (particle indices) and, per bin, the first index in them of each triangle overlapping
     /// it.</summary>
     private int[] _binTriangles = [];
+    private int _binTriangleCount;
+    private bool[] _triangleOpen = [];
     private readonly List<int>[] _bins = [.. Enumerable.Range(0, Bins * Bins).Select(_ => new List<int>())];
     private (int Topology, int Steps) _binsFor = (-1, -1);
     /// <summary>True for skin cut free from what's around it (see StayAboveFloor()), for the topology it was worked
@@ -1480,6 +1482,55 @@ public sealed partial class TissueSim {
         return false;
     }
 
+    private readonly record struct OpeningRegion(Vector2 Center, Vector2 Across, float HalfGap, float HalfLength, TissueDepth Depth);
+    private const int OpeningBins = 32;
+    private readonly List<OpeningRegion>[] _openingBins = Enumerable.Range(0, OpeningBins * OpeningBins).Select(_ => new List<OpeningRegion>()).ToArray();
+    private (int Topology, int Step) _openingsFor = (-1, -1);
+
+    /// <summary>Signed visual clearance inside the cut strips, in meters. Cache and spatially index spring geometry once
+    /// per tissue step so contour samples only inspect nearby edges.</summary>
+    internal float OpeningDistance(Vector2 uv, TissueDepth depth = TissueDepth.Skin) {
+        var cell = Mathf.Max(Size.X / ResX, Size.Y / ResY);
+        if (depth <= TissueDepth.Skin && Excised[Nearest(uv)]) { return cell * 0.5f; }
+        if (_openingsFor != (TopologyVersion, StepsDone)) {
+            _openingsFor = (TopologyVersion, StepsDone);
+            foreach (var bin in _openingBins) { bin.Clear(); }
+            foreach (var spring in _severed) {
+                var gap = GapOf(spring);
+                if (gap <= OpenGap) { continue; }
+                var direction = _springs[spring].CutDir;
+                var across = new Vector2(-direction.Y, direction.X).Normalized();
+                var center = CrossingUv(spring) * Size;
+                var region = new OpeningRegion(center, across, gap * 0.5f, cell * 0.6f, DepthOf(spring));
+                // Include a blend-width halo; samples farther away cannot affect the zero contour.
+                var reach = new Vector2(Mathf.Abs(across.X), Mathf.Abs(across.Y)) * region.HalfGap
+                    + new Vector2(Mathf.Abs(across.Y), Mathf.Abs(across.X)) * region.HalfLength + Vector2.One * cell;
+                var low = OpeningBin((center - reach) / Size);
+                var high = OpeningBin((center + reach) / Size);
+                for (var y = low.Y; y <= high.Y; y++) {
+                    for (var x = low.X; x <= high.X; x++) { _openingBins[y * OpeningBins + x].Add(region); }
+                }
+            }
+        }
+        var at = uv * Size;
+        var best = -cell;
+        var binAt = OpeningBin(uv);
+        foreach (var region in _openingBins[binAt.Y * OpeningBins + binAt.X]) {
+            if (region.Depth < depth) { continue; }
+            var offset = at - region.Center;
+            var side = offset.Dot(region.Across);
+            var distance = Mathf.Min(region.HalfGap - Mathf.Abs(side), region.HalfLength - Mathf.Abs(offset.Cross(region.Across)));
+            // Blend adjacent strips into a continuous meniscus rather than exposing each spring as a notch.
+            var blend = cell * 0.2f;
+            var h = Mathf.Clamp(0.5f + 0.5f * (best - distance) / blend, 0f, 1f);
+            best = Mathf.Lerp(distance, best, h) + blend * h * (1f - h);
+        }
+        return best;
+    }
+
+    private static Vector2I OpeningBin(Vector2 uv) => new(Math.Clamp((int)(uv.X * OpeningBins), 0, OpeningBins - 1),
+        Math.Clamp((int)(uv.Y * OpeningBins), 0, OpeningBins - 1));
+
     /// <summary>Meters the tissue has pulled apart across springs severed at least <paramref name="depth"/> deep near
     /// uv.</summary>
     public float GapAt(Vector2 uv, float radius = 0.04f, TissueDepth depth = TissueDepth.Skin) => GapAlong([uv], radius, depth);
@@ -1606,32 +1657,41 @@ public sealed partial class TissueSim {
     /// <paramref name="depth"/> deep and pulled open, and minus triangles off the body. The meshes split triangles
     /// along the cut instead (PatientBody), this is what tests and contact count as open.</summary>
     public int[] Triangles(TissueDepth depth) {
-        var open = new bool[_springCount];
+        var triangles = new int[TriangleCount * 3];
+        FillTriangles(depth, triangles, out var count);
+        if (count != triangles.Length) { Array.Resize(ref triangles, count); }
+        return triangles;
+    }
+
+    private void FillTriangles(TissueDepth depth, int[] triangles, out int count) {
+        count = 0;
+        if (_triangleOpen.Length != _springCount) { _triangleOpen = new bool[_springCount]; } else { Array.Clear(_triangleOpen); }
         foreach (var s in _severed) {
             if (DepthOf(s) >= depth && GapOf(s) > 0f) {
-                open[s] = true;
+                _triangleOpen[s] = true;
             }
         }
         var hanging = HangingOff();
         // Where skin was taken off, the skin layer has a hole; the layers under it are whole.
-        var gone = depth <= TissueDepth.Skin ? Excised : new bool[Rest.Length];
-        var triangles = new List<int>();
         for (var j = 0; j < ResY; j++) {
             for (var i = 0; i < ResX; i++) {
                 var a = Index(i, j);
                 var c = a + ResX + 1;
-                if (gone[a] || gone[a + 1] || gone[c + 1] || gone[c]) {
+                if (depth <= TissueDepth.Skin && (Excised[a] || Excised[a + 1] || Excised[c + 1] || Excised[c])) {
                     continue;
                 }
-                if (!(open[SpringRight[a]] || open[SpringDiag[a]] || open[SpringDown[a]] || hanging[a] || hanging[a + 1] || hanging[c])) {
-                    triangles.AddRange([a, a + 1, c]);
+                if (!(_triangleOpen[SpringRight[a]] || _triangleOpen[SpringDiag[a]] || _triangleOpen[SpringDown[a]] || hanging[a] || hanging[a + 1] || hanging[c])) {
+                    triangles[count++] = a;
+                    triangles[count++] = a + 1;
+                    triangles[count++] = c;
                 }
-                if (!(open[SpringDown[a + 1]] || open[SpringRight[c]] || open[SpringDiag[a]] || hanging[a + 1] || hanging[c + 1] || hanging[c])) {
-                    triangles.AddRange([a + 1, c + 1, c]);
+                if (!(_triangleOpen[SpringDown[a + 1]] || _triangleOpen[SpringRight[c]] || _triangleOpen[SpringDiag[a]] || hanging[a + 1] || hanging[c + 1] || hanging[c])) {
+                    triangles[count++] = a + 1;
+                    triangles[count++] = c + 1;
+                    triangles[count++] = c;
                 }
             }
         }
-        return [.. triangles];
     }
 
     /// <summary>Triangles in the whole grid, for comparing with <see cref="Triangles"/>.</summary>
@@ -2429,12 +2489,14 @@ public sealed partial class TissueSim {
             return;
         }
         _binsFor = (TopologyVersion, StepsDone);
-        _binTriangles = Triangles(TissueDepth.Skin);
+        var capacity = TriangleCount * 3;
+        if (_binTriangles.Length < capacity) { _binTriangles = new int[capacity]; }
+        FillTriangles(TissueDepth.Skin, _binTriangles, out _binTriangleCount);
         foreach (var bin in _bins) {
             bin.Clear();
         }
         var last = new Vector2I(Bins - 1, Bins - 1);
-        for (var t = 0; t < _binTriangles.Length; t += 3) {
+        for (var t = 0; t < _binTriangleCount; t += 3) {
             var low = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
             var high = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
             for (var n = 0; n < 3; n++) {

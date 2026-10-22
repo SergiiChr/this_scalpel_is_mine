@@ -40,6 +40,7 @@ public partial class PatientBody {
         public TriangleMesh Mesh { get; } = new();
         public List<Vector3> Faces { get; } = [];
         public List<Vector3> Normals { get; } = [];
+        public List<BodyLiquidSurface.SkinWeights> SkinWeights { get; } = [];
     }
 
     /// <summary>Where a ray down the site's normal meets the body model: its position, the model's smooth normal there
@@ -103,6 +104,7 @@ public partial class PatientBody {
     /// <summary>Per measured point: true on the body, false where the site hangs off it or the body is too thin under
     /// it for the layers.</summary>
     private bool[] _onBody = [];
+    private float[] _liquidSupport = [];
     /// <summary>The layers' plans (see PlanLayers()) and the topology they were made for.</summary>
     private readonly List<LayerPlan> _plans = [];
     private int _planFor = -1;
@@ -161,13 +163,23 @@ public partial class PatientBody {
         _bodyRoot.AddChild(Site);
 
         var parts = ModelParts(model);
+        var skinPart = parts.First(part => !part.Gown);
+        LiquidContact = new BodyLiquidSurface(skinPart.Faces, skinPart.Normals, skinPart.SkinWeights,
+            SkinMesh.GlobalTransform.AffineInverse() * Site.GlobalTransform);
         var skinFaces = parts.Where(part => !part.Gown).SelectMany(part => part.Faces).ToArray();
         _restingSkin.Index(skinFaces, Enumerable.Range(0, skinFaces.Length).ToArray());
         var thickness = MeasureSite(parts);
         MeasureLimbBones();
         // Only where the body is thick enough to hold the site's layers: a limb's muscle reaches down to its bones.
+        _liquidSupport = new float[thickness.Length];
+        // Half the grid spacing, signed: interpolated between a point on the body and one off it, this is the distance
+        // to the edge in meters, so the film's edge feathers over the same width everywhere.
+        var reach = 0.5f * Mathf.Min(SiteSize.X, SiteSize.Y) / (Heights - 1);
         for (var n = 0; n < _onBody.Length; n++) {
             _onBody[n] = thickness[n] > Mathf.Max(MinThickness, MuscleBottom);
+            // Liquid needs a model surface, not room for all surgical tissue layers beneath it. Continue over
+            // thin curved skin beyond the simulated patch, stopping only where the model itself is absent.
+            _liquidSupport[n] = thickness[n] >= 0.0005f ? reach : -reach;
         }
         Tissue.Build(SiteSize, SurfaceHeight, OnBody);
         FitToModel(parts);
@@ -214,9 +226,32 @@ public partial class PatientBody {
             using var arrays = mesh.Mesh.SurfaceGetArrays(s);
             var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
             var normals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
-            foreach (var i in arrays[(int)Mesh.ArrayType.Index].AsInt32Array()) {
+            var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            var bones = arrays[(int)Mesh.ArrayType.Bones].AsInt32Array();
+            var weights = arrays[(int)Mesh.ArrayType.Weights].AsFloat32Array();
+            var perVertex = vertices.Length == 0 ? 0 : Math.Min(bones.Length, weights.Length) / vertices.Length;
+            var influences = new BodyLiquidSurface.SkinWeights[vertices.Length];
+            for (var v = 0; v < vertices.Length; v++) {
+                // The four heaviest influences, heaviest first.
+                var bone = new Vector4I(); var weight = Vector4.Zero;
+                for (var j = 0; j < perVertex; j++) {
+                    var n = v * perVertex + j;
+                    if (weights[n] <= weight[3]) { continue; }
+                    var slot = 3;
+                    for (; slot > 0 && weight[slot - 1] < weights[n]; slot--) {
+                        weight[slot] = weight[slot - 1];
+                        bone[slot] = bone[slot - 1];
+                    }
+                    weight[slot] = weights[n];
+                    bone[slot] = bones[n];
+                }
+                if (weight == Vector4.Zero) { weight.X = 1f; }
+                influences[v] = new BodyLiquidSurface.SkinWeights(bone, weight);
+            }
+            foreach (var i in indices) {
                 part.Faces.Add(toSite * vertices[i]);
                 part.Normals.Add((toSite.Basis * normals[i]).Normalized());
+                part.SkinWeights.Add(influences[i]);
             }
         }
         part.Mesh.CreateFromFaces([.. part.Faces]);

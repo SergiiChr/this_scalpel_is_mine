@@ -13,6 +13,14 @@ public partial class NetDriver : NetSession {
     /// <summary>Game seconds the cut settles before its state is reported. Without it, a freshly imported project can
     /// catch the same transient raised seam on both peers.</summary>
     private const float Settle = 2f;
+    private const float BloodPaintRadius = 0.025f;
+    private const float BloodPaintValue = 0.8f;
+    private static readonly Vector2 HardDisk = new(0.12f, 0.16f);
+    private static readonly Vector2 SoftDisk = new(0.30f, 0.16f);
+    private static readonly Vector2 HardStrokeStart = new(0.12f, 0.30f);
+    private static readonly Vector2 HardStrokeEnd = new(0.20f, 0.30f);
+    private static readonly Vector2 SoftStrokeStart = new(0.30f, 0.30f);
+    private static readonly Vector2 SoftStrokeEnd = new(0.38f, 0.30f);
     /// <summary>On the floor beyond the table's foot, out of everyone's way.</summary>
     private static readonly Vector3 DropFrom = new(Room.TableFoot - 0.4f, 1f, 0f);
     private readonly HashSet<string> _heard = [];
@@ -39,6 +47,7 @@ public partial class NetDriver : NetSession {
         SurgicalTool? dropped = null;
         if (IsHost) {
             await CheckSquatAndTakeTool(surgery);
+            PaintBloodModes(surgery);
             dropped = surgery.Tools.DropNew("gauze", DropFrom);
         } else {
             await SquatCutAndHandOver(surgery);
@@ -257,6 +266,13 @@ public partial class NetDriver : NetSession {
         if (IsHost) {
             Check(surgeonWounds > 0, "the client's scalpel cut the skin");
         }
+        var bloodPaint = BloodPaintSamples(body);
+        Check(bloodPaint.HardDiskEdge > 190, "hard blood disk keeps full coverage at its edge", () => bloodPaint.ToString());
+        Check(bloodPaint.SoftDiskCenter > 190 && bloodPaint.SoftDiskEdge is > 0 and < 130,
+            "soft blood disk keeps its center and feathers its edge", () => bloodPaint.ToString());
+        Check(bloodPaint.HardStrokeEdge > 190, "hard blood stroke keeps full coverage at its edge", () => bloodPaint.ToString());
+        Check(bloodPaint.SoftStrokeCenter > 190 && bloodPaint.SoftStrokeEdge is > 0 and < 130,
+            "soft blood stroke keeps its center and feathers its edge", () => bloodPaint.ToString());
         // Each player's simulated skin meets the body model where the cut opened it, without a step.
         var seam = SkinSeam.Measure(body);
         if (seam >= SkinSeam.Max) {
@@ -277,6 +293,38 @@ public partial class NetDriver : NetSession {
             }
         }
         var severed = Enumerable.Range(0, tissue.SpringCount).Count(s => !tissue.SpringAt(s).Active);
-        return $"painted texels={painted}, severed springs={severed}, topology={tissue.TopologyHash()}, site shape={body.ShapeHash()}";
+        return $"painted texels={painted}, severed springs={severed}, "
+            + $"topology={tissue.TopologyHash()}, site shape={body.ShapeHash()}";
+    }
+
+    /// <summary>The host uses the public patient paint path, which sends the selected feathering mode to every peer.
+    /// Distinct clean UV patches keep these checks separate from the surgeon's central incision.</summary>
+    private static void PaintBloodModes(Surgery surgery) {
+        var patient = surgery.Patient;
+        patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, HardDisk, HardDisk, BloodPaintRadius,
+            BloodPaintValue, WoundMap.Mode.Max, soft: false);
+        patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, SoftDisk, SoftDisk, BloodPaintRadius,
+            BloodPaintValue, WoundMap.Mode.Max, soft: true);
+        patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, HardStrokeStart, HardStrokeEnd, BloodPaintRadius,
+            BloodPaintValue, WoundMap.Mode.Max, soft: false);
+        patient.Paint(WoundMap.Layer.Fluids, WoundMap.Blood, SoftStrokeStart, SoftStrokeEnd, BloodPaintRadius,
+            BloodPaintValue, WoundMap.Mode.Max, soft: true);
+    }
+
+    /// <summary>Quantized blood coverage at interior and feathered-edge probes.
+    /// Each peer checks them on its own: the local surface film paints the same channel and differs between players, so
+    /// they stay out of <see cref="SyncedState"/>.</summary>
+    private static (int HardDiskEdge, int SoftDiskCenter, int SoftDiskEdge, int HardStrokeEdge, int SoftStrokeCenter,
+        int SoftStrokeEdge) BloodPaintSamples(PatientBody body) {
+        var map = body.WoundMap;
+        int At(Vector2 uv) => Mathf.RoundToInt(255f * map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv));
+        var hardDiskEdge = At(HardDisk + new Vector2(BloodPaintRadius * 0.8f, 0f));
+        var softDiskCenter = At(SoftDisk);
+        var softDiskEdge = At(SoftDisk + new Vector2(BloodPaintRadius * 0.8f, 0f));
+        var strokeOffset = new Vector2(0f, BloodPaintRadius * 0.75f);
+        var hardStrokeMiddle = HardStrokeStart.Lerp(HardStrokeEnd, 0.5f);
+        var softStrokeMiddle = SoftStrokeStart.Lerp(SoftStrokeEnd, 0.5f);
+        return (hardDiskEdge, softDiskCenter, softDiskEdge,
+            At(hardStrokeMiddle + strokeOffset), At(softStrokeMiddle), At(softStrokeMiddle + strokeOffset));
     }
 }

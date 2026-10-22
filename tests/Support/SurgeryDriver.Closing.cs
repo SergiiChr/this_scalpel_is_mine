@@ -238,7 +238,13 @@ public partial class SurgeryDriver {
         }
         if (through) {
             await PlayerPullsThread("closed");
-            await PlayerTiesOff();
+            // Tension can finish or tear through the active thread. Only an anchored thread can be tied;
+            // the operation's closure checks still decide whether the wound was actually closed.
+            if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
+                await PlayerTiesOff();
+            } else {
+                Note("the thread finished or tore before it could be tied off");
+            }
         } else if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
             // A thread that can't go on is tied off as it is: the next one may be in another layer.
             await PlayerTiesOff();
@@ -455,16 +461,24 @@ public partial class SurgeryDriver {
 
     /// <summary>Holds Use tool where the needle is until the thread is tied off, then captures
     /// <paramref name="keyFrame"/>, which should show <paramref name="description"/>.</summary>
-    public async Task PlayerTiesOff(string keyFrame = "tied_off", string description = TiedOff) {
+    public async Task PlayerTiesOff(string keyFrame = "tied_off", string description = TiedOff, Action? onTied = null) {
+        var needle = Me.HeldTool(Me.Active)!;
+        var thread = needle.Suture.Thread;
+        var tied = false;
         Use();
-        await Frames.Seconds(ToolActions.SutureTieHold + 0.2f);
-        Use(false);
+        try {
+            tied = thread != 0 && await Frames.Until(() => needle.Suture.Thread == 0, ToolActions.SutureTieHold + 0.2f);
+        } finally {
+            Use(false);
+        }
+        AssertBool(tied).OverrideFailureMessage("holding Use ties off the anchored suture").IsTrue();
+        onTied?.Invoke();
         await Frames.Physics(3);
         await Capture(keyFrame, description);
     }
 
     /// <summary>What a tied off suture should look like.</summary>
-    private const string TiedOff = "the knot is tied: the thread runs across the wound between its holes and draws the edges together";
+    private const string TiedOff = "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it";
 
     /// <summary>The point <paramref name="along"/> (uv) from the start of <paramref name="wound"/> on its line, clamped
     /// to its ends, moved <paramref name="off"/> (uv) to its left (negative: right).</summary>

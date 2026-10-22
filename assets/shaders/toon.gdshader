@@ -138,11 +138,14 @@ void fragment() {
 		float facing = smoothstep(-0.3, 0.2, dot(NORMAL, site_up));
 		if (in_site && facing > 0.0) {
 			vec4 f = texture(site_fluids, cuv);
-			// The fluid map ends at the site's edges: blood thins out toward them instead of stopping at a line.
+			// Only blood deeper than the site film's pinning runs on onto the body's film (SurfaceFilm), so a thin
+			// film thins out toward the site's edges instead of stopping along them, over a ragged band.
 			vec2 inside = min(cuv, 1.0 - cuv);
-			f.r *= smoothstep(0.0, 0.1, min(inside.x, inside.y)) * facing;
-			f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
+			float ragged = (noise(world_pos.xz * 60.0 + world_pos.y * 25.0) - 0.5) * 0.04;
+			f.r *= smoothstep(0.0, 0.15, min(inside.x, inside.y) + ragged) * facing;
+			// Use the smooth film for its normal, not the grain in its pigment.
 			blood = f.r;
+			f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 			wet = apply_wounds(base, texture(site_wounds, cuv), f);
 			// Only on skin facing out of the site, like its damage.
 			wet = max(wet, paint_spot(base, mix(2.0, skin_spot(texture(site_bleeds, cuv)), step(0.5, facing))));
@@ -187,15 +190,15 @@ void light() {
 	float wrapped = max((facing + wrap) / (1.0 + wrap), 0.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * (lit + scatter_tint.rgb * (wrapped - ndl) * ATTENUATION) / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a bright glint.
+	// Wet spots (blood, open cuts: ROUGHNESS below the material's own) get a subdued, wider glint.
 	float wet = clamp((roughness - ROUGHNESS) / max(roughness - 0.08, 0.01), 0.0, 1.0);
-	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.994, wet);
+	float spec_size = mix(mix(0.995, 0.9, ROUGHNESS), 0.99, wet);
 	// Match the simulated skin at its boundary without changing other material families.
 	float spec = (detail == 1 ? skin_specular(dot(NORMAL, halfway), wet)
 		: smoothstep(spec_size, (spec_size + 1.0) * 0.5, dot(NORMAL, halfway))) * ATTENUATION;
 	// Metal highlights take the metal's color; everything else reflects the light's own.
 	vec3 spec_color = mix(vec3(1.0), ALBEDO / (1.0 - metallic * 0.4), metallic);
-	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.5, wet) / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.18, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }

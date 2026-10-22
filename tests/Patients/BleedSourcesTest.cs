@@ -30,7 +30,7 @@ public class BleedSourcesTest {
         await Frames.Seconds(2f);
         AssertFloat(tiny.Bleeding).OverrideFailureMessage($"a tiny shallow cut bleeds a little: {driver.Bleeders()}")
             .IsBetween(0.001f, 0.05f);
-        AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage("however little it bleeds, it puddles on the skin at itself")
+        AssertFloat(Blood(body, tiny.BleedPoint)).OverrideFailureMessage($"the supplied blood from a tiny shallow cut is visibly pooled at its source after two seconds (coverage {Blood(body, tiny.BleedPoint)}, rate {tiny.Bleeding} ml/s, supplied {body.Blood.SurfaceSuppliedMl} ml)")
             .IsGreater(0.5f);
         AssertString(Spot(body, tiny.BleedPoint)).OverrideFailureMessage("with no spot the cut would split across its lips").IsEqual("none");
         var puncture = SurgeryState.SkinIsPunctured(patient, new Vector2(0.3f, 0.4f), 0.05f);
@@ -105,7 +105,7 @@ public class BleedSourcesTest {
             var unseen = vessels.Where(v => SpotArea(body, v.Points[0], 2f * WoundMap.MaxSpotRadius) == 0f && Blood(body, v.Points[0]) < 0.5f)
                 .Select(v => v.Points[0]).ToList();
             await driver.AssertAndCapture(unseen.Count == 0,
-                $"every vessel shows where it bleeds (unseen at {string.Join(", ", unseen)})", "many_vessels");
+                $"every vessel bleeds into the film, the spots under the blood (unseen at {string.Join(", ", unseen)})", "many_vessels");
         });
         await session.Finish(BudgetOverride);
     }
@@ -134,7 +134,7 @@ public class BleedSourcesTest {
             .IsEqualApprox(PatientBody.SkinThickness, 0.0001f);
         AssertFloat(patient.CavityBloodMl).OverrideFailureMessage("none of it reaches the cavity").IsEqual(0f);
         await Frames.Seconds(1f);
-        await CloseUp(session, "on_fat", "the skin cut held open: blood pooled in the opening on the yellow fat under it", at);
+        await CloseUp(session, "on_fat", "the skin cut held open: blood in the opening on the yellow fat under it and pushed onto the skin either side", at);
 
         SurgeryState.SkinIsCut(patient, from, to, 0.5f);
         var deeper = await Frames.Until(() => PoolAt(body, at) is { } pool && pool.Floor > onFat.Floor, 10f);
@@ -143,13 +143,15 @@ public class BleedSourcesTest {
         AssertFloat(onMuscle!.Value.Floor).OverrideFailureMessage("on the muscle, under the fat")
             .IsEqualApprox(PatientBody.SkinThickness + body.FatThickness, 0.0001f);
         await Frames.Seconds(1f);
-        await CloseUp(session, "on_muscle", "cut through the fat too: the blood pooled lower in the opening, on the red muscle", at);
+        await CloseUp(session, "on_muscle", "cut through the fat too: the opening's floor dark with blood on the red muscle, blood on the skin either side", at);
 
         var full = await Frames.Until(() => PoolAt(body, at) is { Fill: >= 1f }, 120f);
         AssertBool(full).OverrideFailureMessage($"it fills ({PoolAt(body, at)?.Fill:0.00})").IsTrue();
         // Thicker than the film on the lip where it bleeds from: a puddle.
         var spilled = await Frames.Until(() => Blood(body, at) > 0.8f, 10f);
-        await driver.AssertAndCapture(spilled, "full, the cut brims with blood that spills over its lips onto the skin", "spills");
+        const string SpillClaim = "full, the cut brims with blood that spills over its lips onto the skin";
+        AssertBool(spilled).OverrideFailureMessage(SpillClaim).IsTrue();
+        await CloseUp(session, "spills", SpillClaim, at);
         await session.Finish(BudgetOverride);
     }
 

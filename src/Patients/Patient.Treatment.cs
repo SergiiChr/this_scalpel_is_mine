@@ -19,6 +19,8 @@ public partial class Patient {
     public const float ClosedEnough = 0.9f;
     /// <summary>Bleeding (ml/s) from a vessel a staple goes through.</summary>
     public const float StapleNick = 0.6f;
+    /// <summary>The share of the blood on a seam a staple squeezes aside; the rest stays as a stain.</summary>
+    public const float StapleSqueeze = 0.5f;
     /// <summary>How far (uv) from a point of a wound its muscle counts as underneath it.</summary>
     public const float MuscleReach = 0.03f;
     /// <summary>Gap in meters that counts as a fully opened wound.</summary>
@@ -104,7 +106,7 @@ public partial class Patient {
         var onSite = probe.Zone == SiteZone.Site;
         if (onSite) {
             Paint(WoundMap.Layer.Wounds, WoundMap.Cut, Body.WorldToUv(from), probe.Uv, 0.003f, 0.3f, WoundMap.Mode.Max);
-            Paint(WoundMap.Layer.Fluids, WoundMap.Blood, probe.Uv, probe.Uv, 0.01f, 0.5f, WoundMap.Mode.Max);
+            Paint(WoundMap.Layer.Fluids, WoundMap.Blood, probe.Uv, probe.Uv, 0.01f, 0.5f, WoundMap.Mode.Max, soft: true);
         }
         Hurt(0.15f, onSite ? probe.Uv : null);
         Session.Effect(ToolEffect.Bead, from, 0);
@@ -400,14 +402,18 @@ public partial class Patient {
 
     /// <summary>Meeting edges squeeze the broad wet groove and blood out, but a narrow pink incision line remains along
     /// <paramref name="path"/> (uv). A separate seam mask reveals that line without overloading closure quality in the
-    /// stitch channel.</summary>
-    private void PaintSeam(IReadOnlyList<Vector2> path) {
+    /// stitch channel. A staple squeezes out only the <paramref name="squeezed"/> share of the blood on it and leaves
+    /// the rest as a stain; a tied thread draws the whole seam clean.</summary>
+    private void PaintSeam(IReadOnlyList<Vector2> path, float squeezed = 1f) {
+        DisplaceSeamFilm(path.ToArray(), 0.026f, squeezed);
         for (var i = 0; i < path.Count; i++) {
             var previous = path[Math.Max(i - 1, 0)];
             Paint(WoundMap.Layer.Wounds, WoundMap.Cut, previous, path[i], 0.012f, 0f, WoundMap.Mode.Min);
             Paint(WoundMap.Layer.Wounds, WoundMap.Cut, previous, path[i], 0.004f, 0.09f, WoundMap.Mode.Max);
             Paint(WoundMap.Layer.Seams, WoundMap.ClosedSeam, previous, path[i], 0.0045f, 1f, WoundMap.Mode.Max);
-            Paint(WoundMap.Layer.Fluids, WoundMap.Blood, previous, path[i], 0.026f, 1f, WoundMap.Mode.Sub);
+            if (squeezed >= 1f) {
+                Paint(WoundMap.Layer.Fluids, WoundMap.Blood, previous, path[i], 0.026f, 1f, WoundMap.Mode.Sub);
+            }
         }
     }
 
@@ -580,7 +586,11 @@ public partial class Patient {
         }
         var quality = def.Improvised ? Mathf.Lerp(def.Quality, 1f, 1f - improvisedMult) : def.Quality;
         Rpc(MethodName.TissueStitch, at, StitchTension["closed"], 1.2f + quality);
-        PaintSeam(bins.Select(wound.BinPosition).ToList());
+        // One bin either side as well, so even a staple over a single bin has a direction along the cut to squeeze.
+        var (first, last) = bins.Count > 0
+            ? (Math.Max(bins.Min() - 1, 0), Math.Min(bins.Max() + 1, wound.Bins.Length - 1)) : (0, -1);
+        var seam = Enumerable.Range(first, last - first + 1).Select(wound.BinPosition).ToList();
+        PaintSeam(seam, StapleSqueeze);
         ClosedWith(wound, quality);
         Rpc(MethodName.TissueStaple, a, b, (int)TissueDepth.Skin);
         if (def.Id == "office_stapler") {
@@ -598,7 +608,7 @@ public partial class Patient {
     /// bleed no faster: they're sealed together.</summary>
     private void StapleBleed(Wound wound, Vector2 uv) {
         wound.Nicked = StapleNick;
-        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.02f, 0.9f, WoundMap.Mode.Max);
+        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.02f, 0.9f, WoundMap.Mode.Max, soft: true);
         Session.Sound("blood_spurt", Body.UvToWorld(uv));
         Session.Announce("The staple went through a vessel. It's bleeding.", true);
     }
@@ -993,7 +1003,7 @@ public partial class Patient {
         }
         _debrided[cell] = true;
         Paint(WoundMap.Layer.Wounds, WoundMap.Burn, uv, uv, 0.8f / Grid, 0.45f, WoundMap.Mode.Min);
-        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.5f / Grid, 0.4f, WoundMap.Mode.Max);
+        Paint(WoundMap.Layer.Fluids, WoundMap.Blood, uv, uv, 0.5f / Grid, 0.4f, WoundMap.Mode.Max, soft: true);
         Hurt(0.2f, uv);
     }
 
@@ -1047,7 +1057,7 @@ public partial class Patient {
             map.Stroke(WoundMap.Layer.Wounds, WoundMap.Cut, a, b, 0.006f, Mathf.Min(wound.Depth * 0.75f, 0.7f), WoundMap.Mode.Max,
                 wound.Kind == WoundKind.Tear ? 0.003f : 0f, (ulong)wound.Id);
             Body.Tissue.Cut(a, b, depth);
-            map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, a, b, 0.02f, 0.8f, WoundMap.Mode.Max);
+            map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, a, b, 0.02f, 0.8f, WoundMap.Mode.Max, soft: true);
         }
         if (wound.Points.Count == 1) {
             var center = wound.Points[0];

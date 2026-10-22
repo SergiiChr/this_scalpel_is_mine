@@ -168,8 +168,9 @@ public static class Syringe {
             default:
                 // It lands where its arc meets something, a little over it so it still counts as over the site.
                 var lands = ToolEffects.StreamPath(surgery, tool.TipPosition(), tool.TipDirection())[^1];
-                patient.Spill(lands + (Vector3.Up * 0.002f), liquid, surgery.Tools.Transfer(tool, null, liquid));
-                surgery.Stream(tool);
+                var spilled = surgery.Tools.Transfer(tool, null, liquid);
+                patient.Spill(lands + (Vector3.Up * 0.002f), liquid, spilled);
+                surgery.Stream(tool, liquid, spilled.GetValueOrDefault("blood") / Mathf.Max(liquid, 0.001f));
                 break;
         }
     }

@@ -45,6 +45,9 @@ public sealed class WoundMap {
     /// <summary>Cells per side of the coarse grid that remembers what's been painted into.</summary>
     private const int Cells = 16;
     private const int LayerCount = 4;
+    private const int BloodDepthLookupSteps = 8192;
+    private const float BloodDepthLookupMax = 8f;
+    private static readonly float[] BloodDepthCoverage = CreateBloodDepthCoverage();
 
     /// <summary>The pixels painted into, 4 bytes per texel. Copied into images and textures by <see cref="Flush"/>.
     /// </summary>
@@ -60,9 +63,38 @@ public sealed class WoundMap {
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
     private readonly bool[][] _painted = new bool[LayerCount][];
     private readonly Image[] _images = new Image[LayerCount];
+    private readonly float[] _filmSourceDepth;
+    private readonly float[] _filmRemovedDepth;
+    private Rect2I _bloodFilmBounds;
+    private byte[] _bloodSupport = [];
+    private readonly byte[] _filmPainted;
+    /// <summary>Blood other systems painted under the film (cuts, staples), kept apart so the film never takes it
+    /// over and erases it when it moves on.</summary>
+    private readonly byte[] _filmForeign;
+    private bool _filmReductionAcknowledged;
+    private bool _filmReductionGlobal;
+    private bool[] _filmReductionCells = [];
+    private int _filmReductionResolution;
+    internal int BloodRemovalVersion { get; private set; }
+    private int[] _filmIndex = [];
+    private Vector4[] _filmWeights = [];
+    private float[] _filmRow = [];
+    private float[] _filmSamples = [];
+    private bool[] _filmChangedRows = [];
+    private bool[] _filmChanged = [];
+    private bool[] _filmSpreadRows = [];
+    private bool[] _filmSpread = [];
+    private bool[] _filmReducedNear = [];
+    /// <summary>Standard deviation of the film's upsampling, in solver cells: about a cubic B-spline's.</summary>
+    private const float FilmSpread = 0.55f;
+    private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {
         Size = texels;
+        _filmPainted = new byte[Size * Size];
+        _filmForeign = new byte[Size * Size];
+        _filmSourceDepth = new float[Size * Size];
+        _filmRemovedDepth = new float[Size * Size];
         Textures = new ImageTexture[LayerCount];
         for (var i = 0; i < LayerCount; i++) {
             _images[i] = Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8);
@@ -88,10 +120,11 @@ public sealed class WoundMap {
     /// thread only.</summary>
     private readonly RandomNumberGenerator _strokeRng = new();
 
-    /// <summary>Stamps hard-edged disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line.
+    /// <summary>Stamps disks along a segment. <paramref name="jitter"/> &gt; 0 makes a ragged, torn line;
+    /// <paramref name="soft"/> feathers fluid trails instead of leaving a hard texel boundary.
     /// </summary>
     public void Stroke(Layer layer, int channel, Vector2 a, Vector2 b, float radius, float value, Mode mode,
-        float jitter = 0f, ulong seed = 0) {
+        float jitter = 0f, ulong seed = 0, bool soft = false) {
         var step = Mathf.Max(radius * 0.5f, 0.5f / Size);
         var steps = Math.Max(1, Mathf.CeilToInt(a.DistanceTo(b) / step));
         _strokeRng.Seed = seed;
@@ -100,12 +133,265 @@ public sealed class WoundMap {
             if (jitter > 0f) {
                 p += new Vector2(_strokeRng.RandfRange(-jitter, jitter), _strokeRng.RandfRange(-jitter, jitter));
             }
-            Disk(layer, channel, p, radius, value, mode, soft: false);
+            Disk(layer, channel, p, radius, value, mode, soft);
         }
     }
 
     public void Disk(Layer layer, int channel, Vector2 center, float radius, float value, Mode mode, bool soft = true) =>
         DiskOps(layer, center, radius, [new PaintOp(channel, value, mode)], soft);
+
+    /// <summary>Cache the continuous contact boundary once, at texture resolution. Rendering never has to sample
+    /// the coarse simulation's binary support cells or add shader texture reads.</summary>
+    internal void SetBloodFilmSupport(Func<Vector2, float> margin) {
+        _bloodSupport = new byte[Size * Size];
+        _filmRow = [];
+        for (var y = 0; y < Size; y++) {
+            for (var x = 0; x < Size; x++) {
+                var distance = margin(new Vector2(x + 0.5f, y + 0.5f) / Size);
+                _bloodSupport[y * Size + x] = (byte)Mathf.RoundToInt(255f * Mathf.SmoothStep(-Texel, Texel, distance));
+            }
+        }
+    }
+
+    /// <summary>How much of the texel at <paramref name="uv"/> the film may cover (0..1), the same texel
+    /// <see cref="Value"/> reads.</summary>
+    internal float BloodSupport(Vector2 uv) {
+        if (_bloodSupport.Length == 0) { return 1f; }
+        var at = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Size - 1)).Floor();
+        return _bloodSupport[at.Y * Size + at.X] / 255f;
+    }
+
+    /// <summary>Convenience for direct map fixtures that reconcile a uniform reduction.</summary>
+    internal void AcknowledgeBloodFilmReduction() {
+        _filmReductionAcknowledged = true;
+        _filmReductionGlobal = true;
+    }
+
+    /// <summary>The solver consumed a wipe in selected cells. The next paint preserves fine holes only where those
+    /// cells contribute to the resampled physical depth.</summary>
+    internal void AcknowledgeBloodFilmReduction(ReadOnlySpan<bool> reducedCells, int resolution) {
+        if (_filmReductionCells.Length != reducedCells.Length) { _filmReductionCells = new bool[reducedCells.Length]; }
+        reducedCells.CopyTo(_filmReductionCells);
+        _filmReductionResolution = resolution;
+        _filmReductionAcknowledged = true;
+        _filmReductionGlobal = false;
+    }
+
+    /// <summary>Film volume tracks optical depth: coverage is 1 - exp(-depth), so a change in alpha is not the same
+    /// fraction of liquid at different densities.</summary>
+    internal static float FilmDepthFromCoverage(float coverage) =>
+        coverage >= 1f ? 8f : -Mathf.Log(Mathf.Max(1f - Mathf.Clamp(coverage, 0f, 1f), 1f / 255f));
+
+    private static float[] CreateBloodDepthCoverage() {
+        var values = new float[BloodDepthLookupSteps + 1];
+        for (var i = 0; i < values.Length; i++) {
+            values[i] = 1f - Mathf.Exp(-BloodDepthLookupMax * i / BloodDepthLookupSteps);
+        }
+        return values;
+    }
+
+    private static float BloodCoverageFromDepth(float depth) {
+        if (depth <= 0f) { return 0f; }
+        if (depth >= BloodDepthLookupMax) { return BloodDepthCoverage[^1]; }
+        var at = depth * (BloodDepthLookupSteps / BloodDepthLookupMax);
+        var from = (int)at;
+        return Mathf.Lerp(BloodDepthCoverage[from], BloodDepthCoverage[from + 1], at - from);
+    }
+
+    /// <summary>Resamples coverage values into the existing blood channel. The solver path uses
+    /// <see cref="PaintBloodFilmDepth"/> to interpolate optical depth before converting it to coverage.</summary>
+    internal void PaintBloodFilm(ReadOnlySpan<float> film, int resolution) => PaintBloodFilm(film, resolution, false);
+
+    /// <summary>Resamples physical optical depth into blood coverage, preserving dose when neighboring solver cells
+    /// have different densities.</summary>
+    internal void PaintBloodFilmDepth(ReadOnlySpan<float> depth, int resolution) => PaintBloodFilm(depth, resolution, true);
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+    private void PaintBloodFilm(ReadOnlySpan<float> film, int resolution, bool isOpticalDepth) {
+        var left = resolution;
+        var right = -1;
+        var top = resolution;
+        var bottom = -1;
+        for (var y = 0; y < resolution; y++) {
+            for (var x = 0; x < resolution; x++) {
+                if (film[y * resolution + x] < 0.002f) { continue; }
+                left = Math.Min(left, x);
+                right = Math.Max(right, x);
+                top = Math.Min(top, y);
+                bottom = Math.Max(bottom, y);
+            }
+        }
+        var data = _data[(int)Layer.Fluids];
+        var painted = _painted[(int)Layer.Fluids];
+        var reset = _filmRow.Length != resolution;
+        if (reset) {
+            _filmRow = new float[resolution];
+            _filmSamples = new float[resolution * resolution];
+            _filmChangedRows = new bool[resolution];
+            _filmChanged = new bool[resolution * resolution];
+            _filmSpreadRows = new bool[resolution];
+            _filmSpread = new bool[resolution * resolution];
+            _filmReducedNear = new bool[resolution * resolution];
+            _filmPixelStart = Enumerable.Repeat(Size, resolution).ToArray();
+            _filmIndex = new int[Size];
+            _filmWeights = new Vector4[Size];
+            for (var pixel = 0; pixel < Size; pixel++) {
+                var cell = Mathf.Clamp((pixel + 0.5f) * resolution / Size - 0.5f, 0f, resolution - 1);
+                _filmIndex[pixel] = Math.Min((int)cell, resolution - 2);
+                _filmWeights[pixel] = FilmWeights(cell - _filmIndex[pixel]);
+                _filmPixelStart[_filmIndex[pixel]] = Math.Min(_filmPixelStart[_filmIndex[pixel]], pixel);
+            }
+        }
+        Array.Fill(_filmChangedRows, reset);
+        Array.Fill(_filmChanged, reset);
+        for (var y = 0; y < resolution; y++) {
+            for (var x = 0; x < resolution; x++) {
+                var i = y * resolution + x;
+                var value = Mathf.Max(film[i], 0f);
+                var sample = isOpticalDepth ? value : FilmDepthFromCoverage(value);
+                sample = Mathf.Round(sample * 4096f) / 4096f;
+                if (sample == _filmSamples[i]) { continue; }
+                _filmSamples[i] = sample;
+                _filmChanged[i] = true;
+                _filmChangedRows[y] = true;
+            }
+        }
+        if (_filmReductionAcknowledged && _filmReductionGlobal) {
+            Array.Fill(_filmChanged, true);
+            Array.Fill(_filmChangedRows, true);
+        } else if (_filmReductionAcknowledged && _filmReductionResolution == resolution) {
+            Array.Clear(_filmReducedNear);
+            for (var y = 0; y < resolution; y++) {
+                var row = y * resolution;
+                for (var x = 0; x < resolution; x++) {
+                    if (!_filmReductionCells[row + x]) { continue; }
+                    _filmChanged[row + x] = true;
+                    _filmChangedRows[y] = true;
+                    // The texels of cells x - 2 .. x + 1 read this one through the upsampling.
+                    for (var ny = Math.Max(y - 2, 0); ny <= Math.Min(y + 1, resolution - 1); ny++) {
+                        for (var nx = Math.Max(x - 2, 0); nx <= Math.Min(x + 1, resolution - 1); nx++) {
+                            _filmReducedNear[ny * resolution + nx] = true;
+                        }
+                    }
+                }
+            }
+        }
+        // A changed cell reaches the texels of the cells around it through the upsampling.
+        for (var y = 0; y < resolution; y++) {
+            _filmSpreadRows[y] = _filmChangedRows[Math.Max(y - 1, 0)] || _filmChangedRows[y]
+                || _filmChangedRows[Math.Min(y + 1, resolution - 1)];
+            if (!_filmSpreadRows[y]) {
+                Array.Fill(_filmSpread, false, y * resolution, resolution);
+                continue;
+            }
+            for (var x = 0; x < resolution; x++) {
+                var spread = false;
+                for (var dy = Math.Max(y - 1, 0); dy <= Math.Min(y + 1, resolution - 1) && !spread; dy++) {
+                    var row = dy * resolution;
+                    spread = _filmChanged[row + Math.Max(x - 1, 0)] || _filmChanged[row + x]
+                        || _filmChanged[row + Math.Min(x + 1, resolution - 1)];
+                }
+                _filmSpread[y * resolution + x] = spread;
+            }
+        }
+        var current = right < left ? new Rect2I() : new Rect2I(
+            Math.Max(0, (left - 2) * Size / resolution), Math.Max(0, (top - 2) * Size / resolution), 0, 0);
+        if (right >= left) {
+            current.End = new Vector2I(Math.Min(Size, (right + 3) * Size / resolution + 1),
+                Math.Min(Size, (bottom + 3) * Size / resolution + 1));
+        }
+        var bounds = _bloodFilmBounds.HasArea() ? (current.HasArea() ? _bloodFilmBounds.Merge(current) : _bloodFilmBounds) : current;
+        _bloodFilmBounds = current;
+        var (fromX, fromY) = (bounds.Position.X, bounds.Position.Y);
+        var (toX, toY) = (bounds.End.X, bounds.End.Y);
+        for (var y = fromY; y < toY; y++) {
+            var iy = _filmIndex[y];
+            var wy = _filmWeights[y];
+            if (!_filmSpreadRows[iy] && !_filmSpreadRows[iy + 1]) { continue; }
+            // Blend the small solver rows once, rather than resampling sixteen cells at every output texel.
+            var (r0, r1) = (Math.Max(iy - 1, 0) * resolution, iy * resolution);
+            var (r2, r3) = ((iy + 1) * resolution, Math.Min(iy + 2, resolution - 1) * resolution);
+            for (var cell = 0; cell < resolution; cell++) {
+                _filmRow[cell] = wy.X * _filmSamples[r0 + cell] + wy.Y * _filmSamples[r1 + cell]
+                    + wy.Z * _filmSamples[r2 + cell] + wy.W * _filmSamples[r3 + cell];
+            }
+            for (var ix = 0; ix + 1 < resolution; ix++) {
+                var cell = iy * resolution + ix;
+                if (!_filmSpread[cell] && !_filmSpread[cell + 1]
+                    && !_filmSpread[cell + resolution] && !_filmSpread[cell + resolution + 1]) { continue; }
+                var (c0, c3) = (_filmRow[Math.Max(ix - 1, 0)], _filmRow[Math.Min(ix + 2, resolution - 1)]);
+                for (var x = Math.Max(fromX, _filmPixelStart[ix]); x < Math.Min(toX, _filmPixelStart[ix + 1]); x++) {
+                    var wx = _filmWeights[x];
+                    var depth = Mathf.Max(wx.X * c0 + wx.Y * _filmRow[ix] + wx.Z * _filmRow[ix + 1] + wx.W * c3, 0f);
+                    var i = (y * Size + x) * 4 + Blood;
+                    var pixel = y * Size + x;
+                    var support = _bloodSupport.Length > 0 ? _bloodSupport[pixel] : byte.MaxValue;
+                    var paintedBefore = _filmPainted[pixel];
+                    var previousSourceDepth = _filmSourceDepth[pixel];
+                    var previousShownDepth = Math.Max(0f, previousSourceDepth - _filmRemovedDepth[pixel]);
+                    var reductionAcknowledged = _filmReductionAcknowledged && (_filmReductionGlobal
+                        || _filmReductionResolution == resolution && _filmReducedNear[cell]);
+                    var externallyWiped = support > 0 && data[i] < paintedBefore;
+                    if (depth <= 0f) {
+                        _filmRemovedDepth[pixel] = 0f;
+                    } else if (externallyWiped) {
+                        var unmasked = Mathf.Clamp(data[i] / (float)support, 0f, 1f);
+                        var wantedDepth = Math.Min(previousShownDepth, FilmDepthFromCoverage(unmasked));
+                        previousShownDepth = wantedDepth;
+                        _filmRemovedDepth[pixel] = reductionAcknowledged && depth > 0f
+                            ? depth - wantedDepth
+                            : previousSourceDepth - wantedDepth;
+                    } else if (reductionAcknowledged) {
+                        // Reconciliation already consumed this coarse volume reduction. Keep the fine-pixel
+                        // appearance and represent any compensation as a signed optical-depth deficit.
+                        _filmRemovedDepth[pixel] = depth - previousShownDepth;
+                    } else if (depth < previousSourceDepth && previousSourceDepth > 0f) {
+                        // Ordinary transport changes the source field without a wipe; retain the fine wipe pattern
+                        // in proportion to the physical source that remains.
+                        _filmRemovedDepth[pixel] *= depth / previousSourceDepth;
+                    }
+                    if (!isOpticalDepth && depth > previousSourceDepth && _filmRemovedDepth[pixel] > 0f) {
+                        // The direct coverage API is also used by fixtures to model newly supplied film. Preserve
+                        // its legacy additive-alpha behavior while converting the result back to physical depth.
+                        var oldCoverage = BloodCoverageFromDepth(previousShownDepth);
+                        var oldSourceCoverage = BloodCoverageFromDepth(previousSourceDepth);
+                        var newSourceCoverage = BloodCoverageFromDepth(depth);
+                        var shownCoverage = Mathf.Clamp(oldCoverage + newSourceCoverage - oldSourceCoverage, 0f, 1f);
+                        _filmRemovedDepth[pixel] = depth - FilmDepthFromCoverage(shownCoverage);
+                    }
+                    var shownDepth = Math.Max(0f, depth - _filmRemovedDepth[pixel]);
+                    var incoming = (byte)(Math.Clamp(Mathf.RoundToInt(BloodCoverageFromDepth(shownDepth) * 255f), 0, 255)
+                        * support / 255);
+                    // Paint from other systems stays, and the film leaves a thin residual stain when it moves.
+                    // A wipe lowers both.
+                    if (data[i] > paintedBefore) {
+                        _filmForeign[pixel] = Math.Max(_filmForeign[pixel], data[i]);
+                    } else if (data[i] < paintedBefore) {
+                        _filmForeign[pixel] = Math.Min(_filmForeign[pixel], data[i]);
+                    }
+                    var under = Math.Max(_filmForeign[pixel], Math.Min((int)data[i], 30));
+                    var next = (byte)Math.Max(incoming, under);
+                    _filmPainted[pixel] = next;
+                    _filmSourceDepth[pixel] = depth;
+                    if (next == data[i]) { continue; }
+                    data[i] = next;
+                    painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
+                    _dirty[(int)Layer.Fluids] = true;
+                }
+            }
+        }
+        _filmReductionAcknowledged = false;
+        _filmReductionGlobal = false;
+    }
+
+    /// <summary>Gaussian weights of the four cells around a texel <paramref name="t"/> past the second.
+    /// The product of two is round, so a film only a cell or two wide comes out as a disc rather than the grid's
+    /// square, and they sum to one, so the film keeps its dose.</summary>
+    private static Vector4 FilmWeights(float t) {
+        static float Weight(float d) => Mathf.Exp(-d * d / (2f * FilmSpread * FilmSpread));
+        var w = new Vector4(Weight(t + 1f), Weight(t), Weight(1f - t), Weight(2f - t));
+        return w / (w.X + w.Y + w.Z + w.W);
+    }
 
     /// <summary>
     /// Paints several channels of one disk. Each channel gets its own tight loop over the disk's rows, with the mode
@@ -119,6 +405,7 @@ public sealed class WoundMap {
         var lastCell = new Vector2I(Cells - 1, Cells - 1);
         var cellFrom = ((Vector2I)((center - Vector2.One * radius) * Cells)).Clamp(Vector2I.Zero, lastCell);
         var cellTo = ((Vector2I)((center + Vector2.One * radius) * Cells)).Clamp(Vector2I.Zero, lastCell);
+        var bloodRemoved = false;
         foreach (var (channel, value, mode) in ops) {
             var k = value * 255f;
             var hard = Mathf.RoundToInt(k);
@@ -152,15 +439,18 @@ public sealed class WoundMap {
                         var dx = (x + 0.5f - c.X) / r;
                         amount = Mathf.RoundToInt(k * (edge - dx * dx));
                     }
+                    var previous = data[i];
                     data[i] = mode switch {
                         Mode.Max => (byte)Math.Clamp(Math.Max(data[i], amount), 0, 255),
                         Mode.Add => (byte)Math.Clamp(data[i] + amount, 0, 255),
                         Mode.Sub => (byte)Math.Clamp(data[i] - amount, 0, 255),
                         _ => (byte)Math.Clamp(Math.Min(data[i], hard), 0, 255),
                     };
+                    bloodRemoved |= layer == Layer.Fluids && channel == Blood && data[i] < previous;
                 }
             }
         }
+        if (bloodRemoved) { BloodRemovalVersion++; }
         _dirty[(int)layer] = true;
     }
 

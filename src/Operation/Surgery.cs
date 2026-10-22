@@ -328,7 +328,7 @@ public partial class Surgery : Node3D {
     }
 
     /// <summary>Host: liquid squirted from <paramref name="tool"/>, shown as a stream on every peer.</summary>
-    public void Stream(SurgicalTool tool) => Rpc(MethodName.PlayStream, tool.Uid);
+    public void Stream(SurgicalTool tool, float ml, float bloodShare) => Rpc(MethodName.PlayStream, tool.Uid, ml, bloodShare);
 
     internal ToolEffects Effects => _effects;
 
@@ -465,9 +465,9 @@ public partial class Surgery : Node3D {
     private void PlayEffect(int kind, Vector3 at) => _effects.Play((ToolEffect)kind, at);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
-    private void PlayStream(int uid) {
+    private void PlayStream(int uid, float ml, float bloodShare) {
         if (Tools.ByUid(uid) is { } tool) {
-            _effects.Stream(tool);
+            _effects.Stream(tool, ml, bloodShare);
         }
     }
 

@@ -28,6 +28,7 @@ const float DEPTH_BIAS = 0.0002;
 
 varying vec3 world_pos;
 varying vec3 local_pos;
+varying float site_facing;
 
 #include "res://assets/shaders/wound.gdshaderinc"
 #include "res://assets/shaders/skin_light.gdshaderinc"
@@ -46,6 +47,9 @@ float noise(vec2 p) {
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
+	// How far this skin faces out of the site (its up axis), faded as on the body's skin (toon.gdshader): where this
+	// sheet's ragged outline lies over the body, the two show the same blood.
+	site_facing = smoothstep(-0.3, 0.2, normalize(NORMAL).y);
 	// Not raised by bruises, burns or blood, like the body's skin (toon.gdshader): raised, this sheet would lift off
 	// the walls down its cuts and off the layers under it, which don't rise with it, and step up where it meets the
 	// body. Blood reads as standing on it from its lighting (blood_normal) alone. Cuts don't sink: the mesh itself is
@@ -60,6 +64,9 @@ void fragment() {
 	// Only tied sutures mark joined edges; a low-quality closure in w.a is not a seam marker.
 	w.r *= texture(seam_map, UV).r;
 	vec4 f = texture(fluid_map, UV);
+	// Fades toward the site's edges over the same ragged band as the body's skin (toon.gdshader).
+	vec2 inside = min(UV, 1.0 - UV);
+	f.r *= smoothstep(0.0, 0.15, min(inside.x, inside.y) + (noise(world_pos.xz * 60.0 + world_pos.y * 25.0) - 0.5) * 0.04) * site_facing;
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
@@ -84,7 +91,7 @@ void light() {
 	// Dry skin gets the body's broad, dull highlight; blood and open cuts (low roughness) shine wet.
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
 	float spec = skin_specular(dot(NORMAL, halfway), wet) * ATTENUATION;
-	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.5, wet) / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.18, wet) / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }

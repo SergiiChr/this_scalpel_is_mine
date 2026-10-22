@@ -1046,7 +1046,7 @@ public partial class Patient : Node3D {
 
     public Wound? WoundWithId(int id) => Wounds.Find(w => w.Id == id);
 
-    private Wound? NearestWound(Vector2 uv, float maxDistance, bool internalWound) {
+    internal Wound? NearestWound(Vector2 uv, float maxDistance, bool internalWound) {
         Wound? best = null;
         var bestDistance = maxDistance;
         foreach (var wound in Wounds) {

@@ -1,3 +1,6 @@
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace Scalpel.Visuals;
 
 /// <summary>A bleeding wound: where (site uv), how fast (ml/s) and how deep under the skin (meters). Depth 0 bleeds onto
@@ -57,8 +60,8 @@ public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill) {
 
 /// <summary>
 /// Blood as a fluid, on every peer. Bleeding wounds (sources, synced by the host) well up into a puddle that grows
-/// with the blood lost, and release rivulets from its edge that run downhill over the skin, staining it as they go
-/// (the fluid map). Where a rivulet runs off the body it drips: droplets fall to the table or the floor and collect
+/// with the blood lost. A volume grid spreads the film across the skin and carries it downhill, leaving a thin stain
+/// in the fluid map. Where the film runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
 /// Every bleed shows its source as a spot a little darker than blood: on the skin where it bleeds onto it, on the cut's
 /// wall at its depth where it bleeds inside the opening (never on the skin over it), hidden once the cavity pool covers
@@ -72,27 +75,29 @@ public partial class BloodFlow : Node3D {
     /// </summary>
     [Signal] public delegate void SplashedEventHandler(float amount);
 
-    private const int MaxRivulets = 48;
     private const int MaxDrops = 96;
-    /// <summary>Rivulets per ml of blood lost.</summary>
-    private const float RivuletsPerMl = 0.35f;
-    private const float RivuletSpeed = 0.05f;
-    private const float StainRadius = 0.009f;
+    private const int RinsePoolSlots = 64;
     private const float DropRadius = 0.0035f;
+    private float _dropVolumeScale;
+    private float _unitDropMl;
+    internal float DropShapeMl { get; private set; }
     /// <summary>Bleeding faster than this (ml/s) spurts.</summary>
     private const float SpurtRate = 3f;
-    private const float PoolMerge = 0.03f;
-    private const float PoolMaxRadius = 0.18f;
-    /// <summary>Pool area (m²) added per drop.</summary>
-    private const float PoolAreaPerDrop = 0.00008f;
-    /// <summary>How high a pool stands.</summary>
-    private const float PoolThickness = 0.003f;
-    private const float FloorY = 0.004f;
-    /// <summary>Puddle radius around a bleeding wound (uv) with no blood yet.</summary>
-    private const float PuddleStart = 0.015f;
-    /// <summary>How much a puddle grows per sqrt(ml).</summary>
-    private const float PuddleGrowth = 0.012f;
-    private const float PuddleMax = 0.14f;
+    /// <summary>Reference detached drop volume in milliliters.</summary>
+    internal const float DropMl = 0.15f;
+    internal const float FloorY = 0.004f;
+    internal const float TableTop = Room.TableHeight + 0.001f;
+    /// <summary>Blood on the skin around the site: a thin film that runs off the body's sides.</summary>
+    private static readonly SurfaceFilm.Settings BodyFilmSettings = new(0.007f, 0.00015f, 0.0003f, 0.03f);
+    /// <summary>Blood on the mattress and frame: a thin soaked layer that runs over the edges.</summary>
+    private static readonly SurfaceFilm.Settings BedFilmSettings = new(0.01f, 0.0004f, 0.0005f);
+    /// <summary>Blood on the floor: puddles about a millimeter and a half deep.</summary>
+    private static readonly SurfaceFilm.Settings FloorFilmSettings = new(0.015f, 0.0015f, 0.0008f);
+    /// <summary>How far (m) from the site's middle the body's film reaches: far enough round a limb or the torso to
+    /// carry runoff down to the bed.</summary>
+    private const float BodyFilmReach = 0.6f;
+    /// <summary>How far (m) round the table the floor's film reaches.</summary>
+    private const float FloorFilmMargin = 0.8f;
     private const float PuddlePaintInterval = 0.2f;
     /// <summary>Blood thrown up closer than this (m) to the camera, while looking at it, can land on the view.</summary>
     private const float SplashReach = 0.75f;
@@ -102,30 +107,25 @@ public partial class BloodFlow : Node3D {
     private const float SpotGrowth = 0.0015f;
     /// <summary>Radius (m) of the spot a needle leaves where it went into the skin.</summary>
     private const float PunctureRadius = 0.003f;
-    /// <summary>Radius (m) of the pool held in a cut when it starts, and full. The skin hides it beyond the opening.
-    /// </summary>
-    private const float CutPoolStart = 0.003f;
-    private const float CutPoolReach = 0.008f;
     /// <summary>How far (m) a pool in a cut keeps off its floor, and how high it stands.</summary>
     private const float CutPoolLift = 0.0003f;
     /// <summary>How deep under the skin a full pool in a cut lies: this share of its floor's depth, at least
     /// CutPoolFull (m).</summary>
     private const float CutPoolBrim = 0.3f;
     private const float CutPoolFull = 0.0006f;
+    /// <summary>Rebuild a wound liquid when its sampled opening contour or supporting skin moves at least this far.</summary>
+    private const float WoundLiquidGeometryTolerance = 0.0001f;
     /// <summary>Bruise radius (uv) over a bleed under closed skin, and how much it grows per sqrt(ml).</summary>
     private const float BruiseStart = 0.02f;
     private const float BruiseGrowth = 0.01f;
     private const float BruiseMax = 0.1f;
 
-    private sealed class Rivulet(Vector2 uv, float volume, float wander) {
-        public Vector2 Uv = uv;
-        public float Volume = volume;
-        public float Wander { get; } = wander;
-    }
-
-    private sealed class Drop(Vector3 position, Vector3 velocity) {
+    internal sealed class Drop(Vector3 position, Vector3 velocity, float ml, Vector3 shape, float twist) {
         public Vector3 Position = position;
         public Vector3 Velocity = velocity;
+        public float Ml = ml;
+        public Vector3 Shape = shape;
+        public readonly float Twist = twist;
     }
 
     private static readonly PaintOp[] WipeSpot =
@@ -134,22 +134,86 @@ public partial class BloodFlow : Node3D {
         new(WoundMap.SpotRadius, 1f, WoundMap.Mode.Sub), new(WoundMap.SpotDepth, 1f, WoundMap.Mode.Sub),
     ];
 
-    private readonly List<Rivulet> _rivulets = [];
+    private SurfaceBlood _surface = null!;
+    // Built on workers while the scene loads: nothing lands on a film for a while, and the first that does waits for it.
+    private Task<SurfaceFilm> _bodyFilmBuild = null!;
+    private Task<SurfaceFilm> _bedFilmBuild = null!;
+    private Task<SurfaceFilm> _floorFilmBuild = null!;
+    private MeshInstance3D _skinMesh = null!;
+    private Skeleton3D? _skeleton;
+    private int[] _bindBones = [];
+    private BedLiquidSurface _bed = null!;
+    /// <summary>Blood on the skin round the site, in the skin mesh's space.</summary>
+    internal SurfaceFilm BodyFilm => _bodyFilmBuild.Result;
+    /// <summary>Blood on the mattress and frame, in world space.</summary>
+    internal SurfaceFilm BedFilm => _bedFilmBuild.Result;
+    /// <summary>Blood on the floor, in world space.</summary>
+    internal SurfaceFilm FloorFilm => _floorFilmBuild.Result;
+    /// <summary>Done once every film is built: blood that reaches a film before then waits for it.</summary>
+    internal Task FilmsBuilt => Task.WhenAll(_bodyFilmBuild, _bedFilmBuild, _floorFilmBuild);
+    /// <summary>Builds a film on a thread of its own. Seconds long, a build on the shared pool would hold up the short
+    /// jobs the game waits for each frame (the tissue's step, the hands' grip fitting) and stall it.</summary>
+    private static Task<SurfaceFilm> Build(Func<SurfaceFilm> build) {
+        var task = Task.Factory.StartNew(build, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        // Said once: a film that failed to build is left out (Built) rather than asked for every frame.
+        task.ContinueWith(failed => GD.PushError($"Blood film build failed: {failed.Exception?.InnerException}"),
+            TaskContinuationOptions.OnlyOnFaulted);
+        return task;
+    }
+
+    /// <summary>The film <paramref name="build"/> made, or null while it's still building or when it failed.</summary>
+    private static SurfaceFilm? Built(Task<SurfaceFilm> build) => build.IsCompletedSuccessfully ? build.Result : null;
+
+    private static float HeldOn(Task<SurfaceFilm> build) => Built(build)?.HeldMl ?? 0f;
+    internal float SurfaceSuppliedMl { get; private set; }
+    internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
+        + HeldOn(_bodyFilmBuild) + GroundMl;
+    /// <summary>Blood that has left the patient: falling, and on the bed and floor.</summary>
+    internal float GroundMl => _drops.Sum(drop => drop.Ml) + HeldOn(_bedFilmBuild) + HeldOn(_floorFilmBuild);
+    /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
+    internal float DisplaceSurfaceFilm(Vector2[] path, float radius, float share) =>
+        _body is null ? 0f : _surface.DisplaceStroke(path, radius, share);
+    private float _surfaceClock;
+    private float _surfaceGeometryClock;
+    private int _surfaceGeometrySteps;
+    private int _surfaceGeometryTopology;
+    private bool _surfaceNeedsPaint;
+    private int _surfaceSteps;
+    // Cut pools and irrigation pools take turns rebuilding when a pull changes both (see PoolInCuts).
+    private bool _rinseFirst;
     private readonly List<Drop> _drops = [];
-    private readonly List<MeshInstance3D> _pools = [];
-    private readonly Dictionary<int, float> _spawnAcc = [];
-    /// <summary>Blood (ml) welled up around each source, keyed by its rounded uv. Sources come and go and change
-    /// order.</summary>
-    private readonly Dictionary<Vector2I, float> _pooled = [];
-    /// <summary>Blood (ml) collected under closed skin at each source, keyed like <see cref="_pooled"/>.</summary>
+    internal IReadOnlyList<Drop> Drops => _drops;
+    private readonly StandardMaterial3D _poolMaterial = Materials.BloodPool();
+    private readonly RandomNumberGenerator _dripRng = new() { Seed = 83 };
+    private float _cutClock;
+    /// <summary>Blood (ml) collected under closed skin, keyed by source UV.</summary>
     private readonly Dictionary<Vector2I, float> _bruised = [];
     private readonly RandomNumberGenerator _rng = new() { Seed = 7 };
     private float _puddleTimer;
     /// <summary>This frame paints puddles and bruises.</summary>
     private bool _paintPuddles;
     private MultiMeshInstance3D _dropMesh = null!;
-    private MultiMeshInstance3D _cutPoolMesh = null!;
-    private readonly List<Vector3> _cutPools = [];
+    private MeshInstance3D _cutPoolMesh = null!;
+    private readonly List<CutPool> _drawnCuts = [];
+    private readonly List<WoundGeometry> _drawnCutGeometry = [];
+    private readonly List<bool> _cutGeometryNeedsCapture = [];
+    private readonly LiquidSurface _cutBuffer = new();
+    internal int CutPoolMeshRefreshes { get; private set; }
+    private sealed class RinsePool(Vector2 uv, MeshInstance3D mesh) {
+        public Vector2 Uv = uv;
+        public readonly MeshInstance3D Mesh = mesh;
+        public readonly LiquidSurface Buffer = new();
+        public float Ml;
+        public float Blood;
+        public float DrawnFill = -1f;
+        public float DrawnFloor = -1f;
+        public WoundGeometry? DrawnGeometry;
+        public int MeshRefreshes;
+    }
+    private readonly Dictionary<int, RinsePool> _rinses = [];
+    private readonly Queue<RinsePool> _availableRinses = [];
+    private readonly Dictionary<int, RinsePool> _drainedRinses = [];
+    private readonly List<int> _drainedRinseIds = [];
     /// <summary>The spots painted last (uv, radius in uv, depth of their center), wiped before the sources are painted
     /// again.</summary>
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
@@ -182,15 +246,34 @@ public partial class BloodFlow : Node3D {
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SkinHeight, uv => patientBody.LiquidSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
+        _surfaceGeometrySteps = patientBody.Tissue.StepsDone;
+        _surfaceGeometryTopology = patientBody.Tissue.TopologyVersion;
+        patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
+        for (var i = 0; i < RinsePoolSlots; i++) {
+            var material = Materials.Stream();
+            material.Roughness = 0.22f;
+            material.MetallicSpecular = 0.2f;
+            var mesh = new MeshInstance3D {
+                Name = "IrrigationPoolSlot",
+                Mesh = new ArrayMesh(),
+                MaterialOverride = material,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                Visible = false,
+            };
+            patientBody.Site.AddChild(mesh);
+            _availableRinses.Enqueue(new RinsePool(Vector2.Zero, mesh));
+        }
+        SetupFilms(patientBody);
+        var dropShape = LiquidSurface.Drop(out var dropVolume);
+        _unitDropMl = dropVolume * 1000000f;
+        DropShapeMl = dropVolume * DropRadius * DropRadius * DropRadius * 1000000f;
+        _dropVolumeScale = Mathf.Pow(DropMl / DropShapeMl, 1f / 3f);
         _dropMesh = new MultiMeshInstance3D {
+            Name = "BloodDrops",
             Multimesh = new MultiMesh {
                 TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = new SphereMesh {
-                    Radius = DropRadius,
-                    Height = DropRadius * 2.6f,
-                    RadialSegments = 6,
-                    Rings = 4,
-                },
+                Mesh = dropShape,
                 InstanceCount = MaxDrops,
                 VisibleInstanceCount = 0,
             },
@@ -199,18 +282,13 @@ public partial class BloodFlow : Node3D {
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_dropMesh);
-        _cutPoolMesh = new MultiMeshInstance3D {
-            Multimesh = new MultiMesh {
-                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 20, Rings = 4, IsHemisphere = true },
-                InstanceCount = 16,
-                VisibleInstanceCount = 0,
-            },
-            MaterialOverride = Materials.BloodPool(),
-            TopLevel = true,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        _cutPoolMesh = new MeshInstance3D {
+            Name = "CutPools",
+            Mesh = new ArrayMesh(),
+            MaterialOverride = _poolMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
-        AddChild(_cutPoolMesh);
+        patientBody.Site.AddChild(_cutPoolMesh);
     }
 
     public override void _Process(double delta) {
@@ -219,7 +297,17 @@ public partial class BloodFlow : Node3D {
         }
         Spawn(_body, (float)delta);
         Inside(_body, (float)delta);
-        PoolInCuts(_body);
+        foreach (var rinse in _rinses.Values) {
+            var draining = Mathf.Exp(-(float)delta * 0.9f);
+            rinse.Ml *= draining;
+            rinse.Blood *= draining;
+        }
+        _drainedRinseIds.Clear();
+        _cutClock += (float)delta;
+        if (_cutClock >= 0.1f) {
+            _cutClock = 0f;
+            PoolInCuts(_body);
+        }
         if (_paintPuddles) {
             Spots(_body);
         }
@@ -238,26 +326,24 @@ public partial class BloodFlow : Node3D {
             if (Sources[i].Inside) {
                 continue;
             }
-            var radius = Puddle(body, uv, rate * delta, _paintPuddles);
-            var acc = _spawnAcc.GetValueOrDefault(i) + rate * delta * RivuletsPerMl;
-            while (acc >= 1f && _rivulets.Count < MaxRivulets) {
-                acc -= 1f;
-                var edge = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0.6f, 0.95f);
-                _rivulets.Add(new Rivulet(uv + edge, _rng.RandfRange(0.6f, 1.2f), _rng.RandfRange(-1f, 1f)));
-            }
-            _spawnAcc[i] = Mathf.Min(acc, 3f);
-            Spurt(body, body.UvToWorld(uv), rate, delta);
+            var supplied = rate * delta;
+            SurfaceSuppliedMl += supplied;
+            var thrown = Spurt(body, body.UvToWorld(uv), rate, delta, supplied);
+            _surface.Add(uv, supplied - thrown);
         }
     }
 
     /// <summary>A strong bleed throws droplets up from <paramref name="at"/> now and then.</summary>
-    private void Spurt(PatientBody body, Vector3 at, float rate, float delta) {
-        if (rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f) {
+    private float Spurt(PatientBody body, Vector3 at, float rate, float delta, float available = DropMl) {
+        if (_drops.Count < MaxDrops && rate > SpurtRate && _rng.Randf() < delta * (rate - SpurtRate) * 1.5f) {
             var spray = body.Site.GlobalBasis.Y * _rng.RandfRange(0.6f, 1.3f)
                 + new Vector3(_rng.RandfRange(-0.4f, 0.4f), 0f, _rng.RandfRange(-0.4f, 0.4f));
-            AddDrop(at, spray);
+            var ml = Mathf.Min(DropMl, available);
+            AddDrop(at, spray, ml);
             Splash(at, 0.04f);
+            return ml;
         }
+        return 0f;
     }
 
     /// <summary>
@@ -275,7 +361,8 @@ public partial class BloodFlow : Node3D {
             }
             var local = body.Site.ToLocal(body.UvToWorld(uv, depth));
             local.Y = Mathf.Max(local.Y, body.CavityPoolHeight);
-            Spurt(body, body.Site.ToGlobal(local), rate, delta);
+            // The cavity pool keeps its own volume; thrown drops are extra surface liquid.
+            SurfaceSuppliedMl += Spurt(body, body.Site.ToGlobal(local), rate, delta);
         }
     }
 
@@ -284,34 +371,255 @@ public partial class BloodFlow : Node3D {
     /// through, rising toward the skin as it fills and spreading along the cut. The skin around hides all but what lies
     /// in the opening. It doesn't move with the tissue, like the cavity's pool.
     /// </summary>
-    private void PoolInCuts(PatientBody body) {
-        var multimesh = _cutPoolMesh.Multimesh;
-        _cutPools.Clear();
-        if (Pools.Count > multimesh.InstanceCount) {
-            multimesh.InstanceCount = Pools.Count * 2;
-        }
-        foreach (var (uv, floor, fill) in Pools) {
-            // Just above the floor when it starts, so it never sinks into the layer it rests on, and full still a little
-            // under the skin, which curves away from a flat pool around the cut.
-            var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
-            // No wider than the cut gapes: the skin beside it curves away, sharply on a limb, and would show it.
-            var radius = Mathf.Min(Mathf.Lerp(CutPoolStart, CutPoolReach, Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f))),
-                Mathf.Max(body.Tissue.GapAt(uv, 0.02f) * 0.5f, CutPoolLift * 2f));
-            var at = body.UvToWorld(uv, depth);
-            // Level with the skin over it, which a limb tilts away from the site's own plane.
-            var e = body.MetersToUv(0.003f);
-            var across = body.UvToWorld(uv + new Vector2(e, 0f)) - body.UvToWorld(uv - new Vector2(e, 0f));
-            var along = body.UvToWorld(uv + new Vector2(0f, e)) - body.UvToWorld(uv - new Vector2(0f, e));
-            var up = along.Cross(across).Normalized();
-            if (up.Dot(body.Site.GlobalBasis.Y) < 0f) {
-                up = -up;
+    private bool CutPoolsChanged(PatientBody body) {
+        _cutGeometryNeedsCapture.Clear();
+        if (Pools.Count != _drawnCuts.Count || Pools.Count != _drawnCutGeometry.Count) { return true; }
+        var changed = false;
+        for (var i = 0; i < Pools.Count; i++) {
+            var current = Pools[i];
+            var previous = _drawnCuts[i];
+            var uvDelta = body.UvToMeters(current.Uv.DistanceTo(previous.Uv));
+            var geometryChanged = uvDelta > WoundLiquidGeometryTolerance
+                || GeometryChanged(_drawnCutGeometry[i], body, current.Uv);
+            _cutGeometryNeedsCapture.Add(geometryChanged);
+            if (geometryChanged
+                || Mathf.Abs(current.Floor - previous.Floor) > WoundLiquidGeometryTolerance
+                || (current.Fill <= 0f) != (previous.Fill <= 0f) || (current.Fill >= 1f) != (previous.Fill >= 1f)) {
+                changed = true;
+                continue;
             }
-            var x = across.Slide(up).Normalized();
-            var basis = new Basis(x, up, x.Cross(up)).Scaled(new Vector3(radius, CutPoolLift, radius));
-            multimesh.SetInstanceTransform(_cutPools.Count, new Transform3D(basis, at));
-            _cutPools.Add(at);
+            if (current.Fill == previous.Fill) { continue; }
+            var gap = body.Tissue.GapAt(current.Uv, 0.04f);
+            changed |= VisibleFillChange(current.Fill, previous.Fill, current.Floor, gap);
         }
-        multimesh.VisibleInstanceCount = _cutPools.Count;
+        return changed;
+    }
+
+    private static bool VisibleFillChange(float fill, float drawn, float floor, float gap) => drawn < 0f
+        || Mathf.Abs(fill - drawn) * floor * (1f - CutPoolBrim) > 0.0001f
+        || Mathf.Abs(Mathf.Sqrt(fill) - Mathf.Sqrt(Mathf.Max(drawn, 0f))) * gap * 0.2f > 0.0001f;
+
+    private sealed class WoundGeometry(int topology, float gap, Vector2[] uvs, float[] values) {
+        internal int Topology { get; } = topology;
+        internal float Gap { get; } = gap;
+        internal Vector2[] Uvs { get; } = uvs;
+        internal float[] Values { get; } = values;
+        /// <summary>Where the next bounded recheck of <see cref="Uvs"/> starts.</summary>
+        internal int CheckCursor;
+    }
+
+    /// <summary>Cache a wound's sampling positions and baseline only when its visible mesh changes.
+    /// Ordinary solver ticks compare against that baseline without allocating or uploading geometry.</summary>
+    private static WoundGeometry CaptureWoundGeometry(PatientBody body, Wound? wound, Vector2 uv) {
+        var positions = new List<Vector2>();
+        var gap = body.Tissue.GapAt(uv, 0.04f);
+        if (wound is not { Points.Count: >= 2 }) {
+            for (var y = -1; y <= 1; y++) {
+                for (var x = -1; x <= 1; x++) {
+                    positions.Add(uv + new Vector2(x * 0.008f / body.SiteSize.X, y * 0.008f / body.SiteSize.Y));
+                }
+            }
+        } else {
+            var reach = Mathf.Max(gap * 0.8f + 0.002f, 0.004f);
+            var grid = LiquidSurface.PlanRibbon(wound.Points.Select(point => point * body.SiteSize).ToArray(), reach);
+            for (var column = 0; column <= grid.Columns; column++) {
+                for (var row = 0; row <= grid.Rows; row++) {
+                    positions.Add(grid.At(column, grid.RowOffset(row)) / body.SiteSize);
+                }
+            }
+        }
+        var uvs = positions.ToArray();
+        var values = new float[uvs.Length * 2];
+        for (var i = 0; i < uvs.Length; i++) {
+            values[i * 2] = body.Tissue.OpeningDistance(uvs[i]);
+            values[i * 2 + 1] = body.SurfaceHeight(uvs[i]);
+        }
+        var result = new WoundGeometry(body.Tissue.TopologyVersion, gap, uvs, values);
+        return result;
+    }
+
+    private static bool GeometryChanged(WoundGeometry? drawn, PatientBody body, Vector2 uv) {
+        if (drawn is null || drawn.Topology != body.Tissue.TopologyVersion
+            || Mathf.Abs(drawn.Gap - body.Tissue.GapAt(uv, 0.04f)) > WoundLiquidGeometryTolerance) { return true; }
+        // A long cut ribbon can contain hundreds of samples. Rechecking every point of every cut and rinse
+        // contour on every solver frame makes a settled pool expensive even though its mesh is unchanged.
+        // Rotate through a bounded batch; a real displacement is still caught as soon as its sample is visited.
+        const int SamplesPerFrame = 32;
+        var count = Math.Min(SamplesPerFrame, drawn.Uvs.Length);
+        for (var n = 0; n < count; n++) {
+            var i = (drawn.CheckCursor + n) % drawn.Uvs.Length;
+            if (Mathf.Abs(body.Tissue.OpeningDistance(drawn.Uvs[i]) - drawn.Values[i * 2]) > WoundLiquidGeometryTolerance
+                || Mathf.Abs(body.SurfaceHeight(drawn.Uvs[i]) - drawn.Values[i * 2 + 1]) > WoundLiquidGeometryTolerance) {
+                return true;
+            }
+        }
+        drawn.CheckCursor = (drawn.CheckCursor + count) % drawn.Uvs.Length;
+        return false;
+    }
+
+    private void PoolInCuts(PatientBody body) {
+        // A tissue pull can invalidate blood and irrigation simultaneously. Spread their contour builds
+        // across consecutive frames, while alternating priority so continued filling cannot starve either.
+        var deferCuts = _rinseFirst && _rinses.Count > 0;
+        _rinseFirst = false;
+        var patient = body.GetParent<Patient>();
+        if (!deferCuts && Pools.Count > 0 && (_drawnCutGeometry.Count != _drawnCuts.Count || CutPoolsChanged(body))) {
+            var surface = _cutBuffer;
+            surface.Clear();
+            foreach (var (uv, floor, fill) in Pools) {
+                AddWoundSurface(surface, body, patient.NearestWound(uv, float.PositiveInfinity, false), uv, floor, fill);
+            }
+            _cutPoolMesh.Mesh = surface.Upload(_cutPoolMesh.Mesh as ArrayMesh);
+            var captureAll = _drawnCutGeometry.Count != _drawnCuts.Count
+                || _drawnCutGeometry.Count != Pools.Count
+                || _cutGeometryNeedsCapture.Count != Pools.Count;
+            _drawnCuts.Clear();
+            _drawnCuts.AddRange(Pools);
+            if (captureAll) {
+                _drawnCutGeometry.Clear();
+                foreach (var pool in Pools) {
+                    _drawnCutGeometry.Add(CaptureWoundGeometry(body, patient.NearestWound(pool.Uv, float.PositiveInfinity, false), pool.Uv));
+                }
+            } else {
+                for (var i = 0; i < Pools.Count; i++) {
+                    if (!_cutGeometryNeedsCapture[i]) { continue; }
+                    var pool = Pools[i];
+                    _drawnCutGeometry[i] = CaptureWoundGeometry(body, patient.NearestWound(pool.Uv, float.PositiveInfinity, false), pool.Uv);
+                }
+            }
+            _cutGeometryNeedsCapture.Clear();
+            CutPoolMeshRefreshes++;
+            if (_rinses.Count > 0) {
+                _rinseFirst = true;
+                _cutClock = 0.1f;
+                return;
+            }
+        } else if (Pools.Count == 0 && _drawnCuts.Count > 0) {
+            ((ArrayMesh)_cutPoolMesh.Mesh).ClearSurfaces();
+            _drawnCuts.Clear();
+            _drawnCutGeometry.Clear();
+            _cutGeometryNeedsCapture.Clear();
+        }
+        if (deferCuts) { _cutClock = 0.1f; }
+        foreach (var (id, rinse) in _rinses) {
+            if (rinse.Ml <= 0f) { continue; }
+            if (rinse.Ml < 0.02f) {
+                // Return drained wound surfaces to the prewarmed slot pool. Releasing GPU surfaces can stall the render thread.
+                rinse.Mesh.Visible = false;
+                ((ArrayMesh)rinse.Mesh.Mesh).ClearSurfaces();
+                rinse.Ml = rinse.Blood = 0f;
+                rinse.DrawnFill = -1f;
+                rinse.DrawnFloor = -1f;
+                rinse.DrawnGeometry = null;
+                _drainedRinseIds.Add(id);
+                continue;
+            }
+            var floor = body.OpeningDepth(rinse.Uv, 0.015f);
+            if (body.Tissue.IsOpen(rinse.Uv)) { floor = body.SurfaceHeight(rinse.Uv) - body.CavityFloor(rinse.Uv); }
+            if (floor <= 0f) { rinse.Mesh.Visible = false; continue; }
+            var wound = patient.Wounds.FirstOrDefault(w => w.Id == id);
+            var gap = Mathf.Max(body.Tissue.GapAt(rinse.Uv, 0.04f), 0.001f);
+            var length = (wound?.LengthUv ?? 0.02f) * Mathf.Max(body.SiteSize.X, body.SiteSize.Y);
+            var capacity = Mathf.Max(0.25f, length * gap * floor * 500000f);
+            var fill = Mathf.Clamp(rinse.Ml / capacity, 0f, 1f);
+            var geometryChanged = GeometryChanged(rinse.DrawnGeometry, body, rinse.Uv);
+            if (geometryChanged
+                || VisibleFillChange(fill, rinse.DrawnFill, floor, gap)
+                || Mathf.Abs(floor - rinse.DrawnFloor) > WoundLiquidGeometryTolerance) {
+                var water = rinse.Buffer;
+                water.Clear();
+                AddWoundSurface(water, body, wound, rinse.Uv, floor, fill);
+                rinse.Mesh.Mesh = water.Upload(rinse.Mesh.Mesh as ArrayMesh);
+                rinse.DrawnFill = fill;
+                rinse.DrawnFloor = floor;
+                if (geometryChanged) {
+                    rinse.DrawnGeometry = CaptureWoundGeometry(body, wound, rinse.Uv);
+                }
+                rinse.MeshRefreshes++;
+            }
+            rinse.Mesh.Visible = true;
+            var fraction = Mathf.Clamp(rinse.Blood / Mathf.Max(rinse.Ml, 0.01f), 0f, 1f);
+            var material = (StandardMaterial3D)rinse.Mesh.MaterialOverride;
+            material.AlbedoColor = new Color(0.08f, 0.15f, 0.17f, 0.2f).Lerp(new Color(0.22f, 0.01f, 0.025f, 0.9f), fraction);
+        }
+        foreach (var id in _drainedRinseIds) {
+            var rinse = _rinses[id];
+            _rinses.Remove(id);
+            rinse.Mesh.Name = "IrrigationPoolSlot";
+            _drainedRinses[id] = rinse;
+        }
+    }
+
+    /// <summary>The visible part of irrigation gathers briefly in the opening while the treatment flushes it.
+    /// Called with the stream event on every peer; it doesn't change blood loss or treatment volume.</summary>
+    internal void Irrigate(Vector3 at, float ml, float bloodShare) {
+        if (_body is null || ml <= 0f) { return; }
+        if (_body.Probe(at).Zone is not (SiteZone.Site or SiteZone.Cavity)) { return; }
+        var uv = _body.WorldToUv(at);
+        if (uv.X < 0f || uv.X > 1f || uv.Y < 0f || uv.Y > 1f || !_body.OnBody(uv)
+            || !_body.Tissue.IsOpen(uv, TissueDepth.Skin)) { return; }
+        if (_body.GetParent<Patient>().NearestWound(uv, 0.05f, false) is not { } wound) { return; }
+        if (!_rinses.TryGetValue(wound.Id, out var rinse)) {
+            if (!_drainedRinses.Remove(wound.Id, out rinse!)) {
+                if (_availableRinses.Count > 0) { rinse = _availableRinses.Dequeue(); } else if (_drainedRinses.Count > 0) {
+                    var reusable = _drainedRinses.First();
+                    _drainedRinses.Remove(reusable.Key);
+                    rinse = reusable.Value;
+                } else { return; }
+            }
+            rinse.Uv = wound.BleedPoint;
+            rinse.Mesh.Name = "IrrigationPool";
+            rinse.Mesh.Visible = true;
+            _rinses.Add(wound.Id, rinse);
+        }
+        if (rinse.Ml <= 0f) {
+            rinse.Uv = wound.BleedPoint;
+            rinse.DrawnFill = -1f;
+            rinse.DrawnFloor = -1f;
+            rinse.DrawnGeometry = null;
+        }
+        var total = rinse.Ml + ml;
+        var retain = Mathf.Min(1f, 50f / total);
+        rinse.Ml = total * retain;
+        rinse.Blood = (rinse.Blood + ml * Mathf.Clamp(bloodShare, 0f, 1f)) * retain;
+    }
+
+    internal int RinseMeshRefreshes(int woundId) =>
+        _rinses.TryGetValue(woundId, out var rinse) ? rinse.MeshRefreshes : 0;
+
+    private static void AddWoundSurface(LiquidSurface surface, PatientBody body, Wound? wound, Vector2 uv, float floor, float fill) {
+        var margin = new Vector2(0.008f / body.SiteSize.X, 0.008f / body.SiteSize.Y);
+        var low = uv;
+        var high = uv;
+        if (wound is not null) {
+            foreach (var p in wound.Points) { low = low.Min(p); high = high.Max(p); }
+        }
+        var gap = body.Tissue.GapAt(uv, 0.04f);
+        margin += new Vector2(gap / body.SiteSize.X, gap / body.SiteSize.Y);
+        var bounds = new Rect2(low - margin, high - low + margin * 2f).Intersection(new Rect2(Vector2.Zero, Vector2.One));
+        if (!bounds.HasArea()) { return; }
+        var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
+        var height = body.SurfaceHeight(uv) - depth;
+        var inset = gap * 0.2f * (1f - Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f)));
+        var cavity = floor > PatientBody.SkinThickness + body.FatThickness + 0.005f;
+        float Inside(Vector2 p) {
+            if (!body.OnBody(p)) { return -0.001f; }
+            var opening = body.Tissue.OpeningDistance(p) - inset;
+            if (opening < 0f) { return opening; }
+            var skin = body.SurfaceHeight(p);
+            var ground = cavity ? body.CavityFloor(p) : skin - floor;
+            return Mathf.Min(opening, Mathf.Min(height - ground - 0.00005f, skin - height - 0.0001f));
+        }
+        Vector3 Point(Vector2 p, float clearance) {
+            var rim = 0.00012f * Mathf.Exp(-Mathf.Max(clearance, 0f) / 0.001f);
+            return body.SitePoint(p, Mathf.Min(height + rim, body.SurfaceHeight(p) - 0.00005f));
+        }
+        if (wound is { Points.Count: >= 2 }) {
+            surface.Ribbon(wound.Points.Select(p => p * body.SiteSize).ToArray(), Mathf.Max(gap * 0.8f + 0.002f, 0.004f),
+                p => Inside(p / body.SiteSize), (p, clearance) => Point(p / body.SiteSize, clearance));
+        } else {
+            surface.Field(bounds, 16, 16, Inside, Point);
+        }
     }
 
     /// <summary>
@@ -436,61 +744,63 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    /// <summary>
-    /// Grows the puddle around a wound by <paramref name="ml"/> and returns its radius (uv). Swabbing it away (the
-    /// fluid map comes back clean at the wound) starts it over. Painted a few times a second as overlapping blobs, so
-    /// its edge is ragged.
-    /// </summary>
-    private float Puddle(PatientBody body, Vector2 uv, float ml, bool paint) {
-        var key = (Vector2I)(uv * 100f).Round();
-        var map = body.WoundMap;
-        if (_pooled.ContainsKey(key) && map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv) < 0.3f) {
-            _pooled[key] = 0f;
-        }
-        var pooled = _pooled.GetValueOrDefault(key) + ml;
-        _pooled[key] = pooled;
-        var radius = Mathf.Min(PuddleStart + Mathf.Sqrt(pooled) * PuddleGrowth, PuddleMax);
-        if (paint) {
-            var blob = Vector2.FromAngle(_rng.Randf() * Mathf.Tau) * radius * _rng.RandfRange(0f, 0.35f);
-            map.Disk(WoundMap.Layer.Fluids, WoundMap.Blood, uv + blob, radius * _rng.RandfRange(0.7f, 1f), 0.95f,
-                WoundMap.Mode.Max);
-        }
-        return radius;
-    }
-
-    /// <summary>Rivulets slide downhill over the skin: gravity along the skin's own slope, wandering a little.</summary>
+    /// <summary>Pressure spreads a connected film sideways while gravity transports it downhill. The film retains
+    /// thin residue, coalesces without separate path heads, and loses volume when a swab removes its painted blood.</summary>
     private void Flow(PatientBody body, float delta) {
-        var down = body.Site.GlobalBasis.Inverse() * Vector3.Down;
-        for (var i = 0; i < _rivulets.Count; i++) {
-            var rivulet = _rivulets[i];
-            var uv = rivulet.Uv;
-            var slope = Slope(body, uv);
-            var along = new Vector2(down.X, down.Z) + slope * down.Y;
-            if (along.Length() < 0.05f) {
-                along = new Vector2(rivulet.Wander, 1f) * 0.05f;
+        // What runs off the site's edges goes on down the body's own skin.
+        var siteToMesh = body.LiquidContact.SiteToMesh;
+        // Until the body's film is built, runoff waits in the site's queue.
+        if (Built(_bodyFilmBuild) is { } film) {
+            while (_surface.TakeRunoff(out var uv, out var runoffMl)) {
+                film.Add(film.Nearest(siteToMesh * body.Site.ToLocal(body.UvToWorld(uv))), runoffMl);
             }
-            var direction = along.Normalized().Rotated(Mathf.Sin((float)GameClock.Msec * 0.0015f + rivulet.Wander * 9f) * 0.2f);
-            var step = direction * RivuletSpeed * delta / ((body.SiteSize.X + body.SiteSize.Y) * 0.5f);
-            var next = uv + step;
-            body.WoundMap.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, uv, next, StainRadius, 0.55f, WoundMap.Mode.Max);
-            rivulet.Uv = next;
-            rivulet.Volume -= delta * 0.25f;
-            if (next.X < 0f || next.Y < 0f || next.X > 1f || next.Y > 1f) {
-                // Ran off the site: it drips from here.
-                AddDrop(body.UvToWorld(next.Clamp(Vector2.Zero, Vector2.One)), Vector3.Zero);
-                _rivulets.RemoveAt(i--);
-            } else if (rivulet.Volume <= 0f) {
-                _rivulets.RemoveAt(i--);
+            // The pose is read only when a step starts: it's what the step and the drips it lets go need.
+            if (film.Tick(delta)) {
+                var world = BodyToWorld();
+                // Skin pressed on the mattress (lying on the back or turned) hands its blood to the bed's film.
+                var bed = _bed;
+                film.Start(_skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(world(node, film.At(node))));
+                ReleaseBodyDrips(world);
             }
         }
-    }
-
-    /// <summary>Skin slope at uv (height change per uv unit), from the baked skin heights.</summary>
-    private static Vector2 Slope(PatientBody body, Vector2 uv) {
-        const float E = 0.02f;
-        var dx = body.SurfaceHeight(uv + new Vector2(E, 0)) - body.SurfaceHeight(uv - new Vector2(E, 0));
-        var dy = body.SurfaceHeight(uv + new Vector2(0, E)) - body.SurfaceHeight(uv - new Vector2(0, E));
-        return new Vector2(dx / body.SiteSize.X, dy / body.SiteSize.Y) / (2f * E) * 8f;
+        if (_surface.HasFilm) {
+            _surfaceGeometryClock += delta;
+            if (_surfaceGeometryClock >= 0.1f) {
+                _surfaceGeometryClock %= 0.1f;
+                var tissueSteps = body.Tissue.StepsDone;
+                var topology = body.Tissue.TopologyVersion;
+                if ((tissueSteps != _surfaceGeometrySteps || topology != _surfaceGeometryTopology)
+                    && _surface.BeginGeometryRefit()) {
+                    _surfaceGeometrySteps = tissueSteps;
+                    _surfaceGeometryTopology = topology;
+                }
+            }
+        }
+        _surface.ProcessGeometryRefit(32);
+        // A pristine or fully wiped site has no transport or texture work. A final pending paint still runs.
+        if (!_surface.HasFilm && !_surface.NeedsPaint && !_surfaceNeedsPaint) { _surfaceClock = 0f; return; }
+        _surfaceClock += delta;
+        // Alternate transport and texture work so they do not land together on the same gameplay frame.
+        if (_surfaceNeedsPaint) {
+            _surface.ReconcileWipes(body.WoundMap);
+            if (_surface.NeedsPaint) { _surface.Paint(body.WoundMap); }
+            _surfaceNeedsPaint = false;
+            return;
+        }
+        const float Step = 1f / 30f;
+        if (_surfaceClock < Step) {
+            return;
+        }
+        _surface.ReconcileWipes(body.WoundMap);
+        // Substeps limit outflow so steep skin cannot empty a cell below zero.
+        var elapsed = Mathf.Min(_surfaceClock, 0.1f);
+        _surfaceClock = 0f;
+        var steps = Mathf.CeilToInt(elapsed * 60f);
+        var basis = body.Site.GlobalBasis;
+        for (var i = 0; i < steps; i++) { _surface.Step(basis, elapsed / steps); }
+        // Painted after every other step: the skin's blood redrawn 15 times a second reads as smooth, at half the cost.
+        // A step that skips it leaves NeedsPaint set for the next.
+        _surfaceNeedsPaint = _surface.NeedsPaint && ++_surfaceSteps % 2 == 0;
     }
 
     /// <summary>Throws <paramref name="count"/> droplets up and out from <paramref name="at"/> (an impact, a saw),
@@ -504,6 +814,7 @@ public partial class BloodFlow : Node3D {
             var outward = new Vector3(_rng.RandfRange(-1f, 1f), 0f, _rng.RandfRange(-1f, 1f)) * 0.6f;
             AddDrop(at + up * 0.004f, (up + outward).Normalized() * speed * _rng.RandfRange(0.5f, 1f));
         }
+        SurfaceSuppliedMl += count * DropMl;
         Splash(at, count * speed * 0.05f);
     }
 
@@ -519,56 +830,160 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    private void AddDrop(Vector3 at, Vector3 velocity) {
-        if (_drops.Count < MaxDrops) {
-            _drops.Add(new Drop(at, velocity));
+    private void AddDrop(Vector3 at, Vector3 velocity, float ml = DropMl) {
+        if (_drops.Count >= MaxDrops) {
+            // No room to draw another: the newest drop in flight carries this liquid too, so none is lost.
+            var newest = _drops[^1];
+            newest.Shape *= Mathf.Pow((newest.Ml + ml) / newest.Ml, 1f / 3f);
+            newest.Ml += ml;
+            return;
+        }
+        var shape = new Vector3(_dripRng.RandfRange(0.6f, 1.15f), _dripRng.RandfRange(1.1f, 2.7f), _dripRng.RandfRange(0.65f, 1.1f));
+        var amount = Mathf.Pow(ml / DropMl / (shape.X * shape.Y * shape.Z), 1f / 3f) * _dropVolumeScale;
+        _drops.Add(new Drop(at, velocity, ml, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
+    }
+
+    /// <summary>Places a body film point on the body as it's posed now. Safe to call from the film's worker.</summary>
+    private Func<int, Vector3, Vector3> BodyToWorld() {
+        var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton, _bindBones);
+        var film = BodyFilm;
+        var mesh = _skinMesh.GlobalTransform;
+        return (node, at) => pose?.Deform(at, film.SkinAt(node)) ?? mesh * at;
+    }
+
+    private void ReleaseBodyDrips(Func<int, Vector3, Vector3> world) {
+        // Until the bed's film is built, what the skin presses into the mattress falls as drops and waits above it.
+        var bedFilm = Built(_bedFilmBuild);
+        foreach (var drip in BodyFilm.Released) {
+            var at = world(drip.Node, drip.At);
+            if (bedFilm is not null && _bed.Touches(at)) {
+                bedFilm.Add(bedFilm.Nearest(at with { Y = _bed.HeightAt(new Vector2(at.X, at.Z))!.Value }, Vector3.Up), drip.Ml);
+            } else {
+                AddDrop(at, Vector3.Zero, drip.Ml);
+            }
+        }
+        BodyFilm.ClearReleased();
+    }
+
+    private void ReleaseBedDrips() {
+        foreach (var drip in BedFilm.Released) { AddDrop(drip.At, Vector3.Zero, drip.Ml); }
+        BedFilm.ClearReleased();
+    }
+
+    /// <summary>The body's skin round the site, the bed and the floor, each with its own film, drawn by its own mesh.
+    /// </summary>
+    private void SetupFilms(PatientBody body) {
+        _skinMesh = body.SkinMesh;
+        _skeleton = _skinMesh.GetNodeOrNull<Skeleton3D>(_skinMesh.Skeleton);
+        _bindBones = _skeleton is null ? [] : BodyLiquidSurface.ResolveBinds(_skinMesh, _skeleton);
+        _bed = body.GetParent<Patient>().GetParent<Surgery>().Room.BedSurface;
+        var skin = body.LiquidContact;
+        var siteToMesh = skin.SiteToMesh;
+        var half = body.SiteSize * 0.5f;
+        // The site's own skin carries its film (SurfaceBlood); the body's film takes over at its edges and on its steep
+        // flanks, and covers the far side under it, which the site's film doesn't reach.
+        bool OffSite(Vector3 sitePoint, Vector3 siteNormal) => sitePoint.Length() < BodyFilmReach
+            && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > SurfaceBlood.SteepNormal);
+        var meshToSite = siteToMesh.AffineInverse();
+        var bodyMesh = new ArrayMesh();
+        _bodyFilmBuild = Build(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
+            skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
+            (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh,
+            at => (meshToSite * at).Length() > BodyFilmReach - 0.02f));
+        _skinMesh.GetParent().AddChild(new MeshInstance3D {
+            Name = "BodyFilm",
+            Mesh = bodyMesh,
+            // The skin is drawn smoothed and posed by the GPU; its film follows it to within a couple of millimeters.
+            MaterialOverride = Materials.BloodFilm(0.002f, new Vector2(0f, 0.8f)),
+            Skin = _skinMesh.Skin,
+            Skeleton = _skinMesh.Skeleton,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Transform = _skinMesh.Transform,
+        });
+        var bed = _bed;
+        var bedMesh = new ArrayMesh();
+        _bedFilmBuild = Build(() => new SurfaceFilm(bed.Triangles, BedFilmSettings, keep: bed.Exposed, mesh: bedMesh));
+        var (foot, head, side) = (Room.TableFoot - FloorFilmMargin, Room.TableHead + FloorFilmMargin, Room.TableHalfWidth + FloorFilmMargin);
+        Vector3[] floor = [new(foot, FloorY, -side), new(head, FloorY, -side), new(head, FloorY, side),
+            new(foot, FloorY, -side), new(head, FloorY, side), new(foot, FloorY, side)];
+        var floorMesh = new ArrayMesh();
+        _floorFilmBuild = Build(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(),
+            mesh: floorMesh, fadesAt: _ => true));
+        // The frame's long thin triangles would turn a crisp edge into teeth; the floor's even grid keeps one.
+        foreach (var (name, mesh, edge) in new[] { ("BedFilm", bedMesh, new Vector2(0.05f, 0.7f)), ("FloorFilm", floorMesh, new Vector2(0.15f, 0.6f)) }) {
+            AddChild(new MeshInstance3D {
+                Name = name,
+                Mesh = mesh,
+                MaterialOverride = Materials.BloodFilm(edge: edge),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                TopLevel = true,
+            });
         }
     }
 
-    /// <summary>Droplets fall under gravity and land on the table top or the floor, where they pool.</summary>
+    /// <summary>Droplets fall until they meet the mattress's or frame's top, or the floor, and join that surface's
+    /// film. The bed's film drips onto the floor's in turn.</summary>
     private void Fall(float delta) {
-        const float TableTop = Room.TableHeight + 0.07f;
+        var bedFilm = Built(_bedFilmBuild);
+        var floorFilm = Built(_floorFilmBuild);
         for (var i = 0; i < _drops.Count; i++) {
             var drop = _drops[i];
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
-            var onTable = position.X > Room.TableFoot && position.X < Room.TableHead && Mathf.Abs(position.Z) < 0.31f;
-            var ground = onTable && drop.Position.Y >= TableTop ? TableTop : FloorY;
-            if (position.Y <= ground) {
-                Pool(new Vector3(position.X, ground, position.Z));
+            // A film still being built keeps the drop waiting just above it, rather than stall the frame for the build.
+            if (_bed.Landing(drop.Position, position) is { } onBed) {
+                if (bedFilm is null) { drop.Velocity = Vector3.Zero; continue; }
                 _drops.RemoveAt(i--);
+                bedFilm.Add(bedFilm.Nearest(onBed, Vector3.Up), drop.Ml);
+            } else if (position.Y <= FloorY) {
+                if (floorFilm is null) { drop.Velocity = Vector3.Zero; continue; }
+                var hit = drop.Position.Lerp(position, Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
+                _drops.RemoveAt(i--);
+                floorFilm.Add(floorFilm.Nearest(hit with { Y = FloorY }, Vector3.Up), drop.Ml);
             } else {
                 drop.Position = position;
             }
         }
+        if (bedFilm is not null && bedFilm.Tick(delta)) {
+            bedFilm.Start(Vector3.Down);
+            ReleaseBedDrips();
+        }
+        if (floorFilm is not null && floorFilm.Tick(delta)) { floorFilm.Start(Vector3.Down); }
         var multimesh = _dropMesh.Multimesh;
         multimesh.VisibleInstanceCount = _drops.Count;
         for (var i = 0; i < _drops.Count; i++) {
-            multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity, _drops[i].Position));
+            var drop = _drops[i];
+            var up = -drop.Velocity.Normalized();
+            var x = Vector3.Right.Slide(up).Normalized();
+            if (x.IsZeroApprox()) { x = Vector3.Forward; }
+            var shape = drop.Shape * DropRadius;
+            var stretch = 1f + Mathf.Min(drop.Velocity.Length(), 4f) * 0.15f;
+            shape.Y *= stretch;
+            shape.X /= Mathf.Sqrt(stretch);
+            shape.Z /= Mathf.Sqrt(stretch);
+            var basis = new Basis(x, up, x.Cross(up)).Rotated(up, drop.Twist).Scaled(shape);
+            multimesh.SetInstanceTransform(i, new Transform3D(basis, drop.Position));
         }
     }
 
-    /// <summary>
-    /// Adds a drop's worth of blood to the nearest pool, or starts a new one. Pools grow with the square root of
-    /// volume. Each is a very flat dome, so its rounded rim catches the light like standing liquid.
-    /// </summary>
-    private void Pool(Vector3 at) {
-        foreach (var pool in _pools) {
-            if (pool.Position.DistanceTo(at) < PoolMerge + pool.Scale.X) {
-                var radius = Mathf.Min(Mathf.Sqrt(pool.Scale.X * pool.Scale.X + PoolAreaPerDrop), PoolMaxRadius);
-                pool.Scale = new Vector3(radius, PoolThickness, radius);
-                return;
-            }
+    /// <summary>Puts <paramref name="ml"/> straight onto whatever surface is at <paramref name="at"/> (world): the
+    /// bed's top within a few millimeters, else the floor near its level, else as a drop to fall there.</summary>
+    internal void Deposit(Vector3 at, float ml) {
+        if (_bed.Landing(at + Vector3.Up * 0.002f, at - Vector3.Up * 0.003f) is { } onBed && Built(_bedFilmBuild) is { } bed) {
+            bed.Add(bed.Nearest(onBed, Vector3.Up), ml);
+        } else if (at.Y <= FloorY + 0.01f && Built(_floorFilmBuild) is { } floor) {
+            floor.Add(floor.Nearest(at with { Y = FloorY }, Vector3.Up), ml);
+        } else {
+            AddDrop(at, Vector3.Zero, ml);
         }
-        var mesh = new MeshInstance3D {
-            Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 6, IsHemisphere = true },
-            MaterialOverride = Materials.BloodPool(),
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            TopLevel = true,
-        };
-        AddChild(mesh);
-        mesh.Position = at;
-        mesh.Scale = new Vector3(0.012f, PoolThickness, 0.012f);
-        _pools.Add(mesh);
+    }
+
+    /// <summary>Waits for every film's running step and publishes it; for tests.</summary>
+    internal void FinishFilms() {
+        BodyFilm.Finish();
+        ReleaseBodyDrips(BodyToWorld());
+        BedFilm.Finish();
+        ReleaseBedDrips();
+        FloorFilm.Finish();
     }
 }

@@ -4,7 +4,7 @@ namespace Scalpel.Tests.Support;
 public static class SutureChecks {
     public static async Task CloseForearm(SurgeryDriver driver) {
         var session = await ToolSession.Attach(driver, "needle/forearm_skin",
-            untouchedDescription: "the cleaned forearm cut ready for stitching, no thread yet");
+            untouchedDescription: "the forearm cut ready for stitching, the blood it shed pooled round it, no thread yet");
         var patient = driver.Patient;
         var body = driver.Body;
         var tissue = body.Tissue;
@@ -77,10 +77,18 @@ public static class SutureChecks {
         AssertInt(marks.Multimesh.InstanceCount).OverrideFailureMessage("the renderer has one pressure sprite per puncture")
             .IsEqual(info.Anchors.Count);
         AssertThreadClearsSkin(body, tight.Routes[0], "tight exposed thread");
-        await driver.PlayerTiesOff();
+        var map = body.WoundMap;
+        await driver.PlayerTiesOff(onTied: () => {
+            AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, wound.Midpoint))
+                .OverrideFailureMessage("tying off removes standing blood from this wound seam at the actual closure event")
+                .IsLess(0.12f);
+        });
         await Frames.Seconds(1f);
         AssertBool(patient.SutureDone(thread) && needle.Suture.Thread == 0).OverrideFailureMessage("a long hold ties the thread off")
             .IsTrue();
+        AssertBool(body.Blood.Sources.Any(source => source.Rate > 0f && source.Uv.IsEqualApprox(wound.BleedPoint)))
+            .OverrideFailureMessage("one second after tie-off the closed wound supplies no fresh blood, while existing surface liquid may cross it")
+            .IsFalse();
         AssertFloat(tissue.GapAlong(wound.Points, 0.03f, TissueDepth.Skin))
             .OverrideFailureMessage("the tied off thread holds the edges together").IsLess(TissueSim.OpenGap);
         AssertFloat(wound.Closure).OverrideFailureMessage("so the cut is closed along its whole length").IsGreater(0.99f);
@@ -88,9 +96,12 @@ public static class SutureChecks {
             .OverrideFailureMessage("no split edge is left along the seam").IsEqual(0);
         AssertFloat(tissue.SutureLip.Max())
             .OverrideFailureMessage("the pressed edges rise into a lip instead of passing through each other").IsGreater(0.0005f);
-        var map = body.WoundMap;
-        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, wound.Midpoint))
-            .OverrideFailureMessage("no blood stands in the closed seam").IsLess(0.12f);
+        // Retained surface blood can flow across a closed seam. Check only recessed fluid associated
+        // with this wound; another wound can still own a cut-pool mesh elsewhere on the site.
+        AssertFloat(wound.Bleeding).OverrideFailureMessage("the tied wound has stopped bleeding").IsEqual(0f);
+        AssertFloat(wound.PooledMl).OverrideFailureMessage("no blood remains held inside the closed wound").IsEqual(0f);
+        var localPool = body.Blood.Pools.Any(pool => pool.Fill > 0f && pool.Uv.IsEqualApprox(wound.BleedPoint));
+        AssertBool(localPool).OverrideFailureMessage("the closed wound has no recessed blood pool of its own").IsFalse();
         var seam = map.Value(WoundMap.Layer.Wounds, WoundMap.Cut, wound.Midpoint);
         AssertFloat(seam).OverrideFailureMessage("a tied wound keeps a visible incision line").IsGreater(0.06f);
         AssertFloat(seam).OverrideFailureMessage("the incision line is healed-looking rather than an open groove").IsLess(0.16f);

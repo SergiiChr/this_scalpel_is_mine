@@ -9,7 +9,7 @@ public class NetworkTest {
 
     [TestCase]
     public void MultiplayerCutTopologyAndToolHandoffStayInSync() =>
-        Run("sync", "host/client wounds, painted map, topology and handoff agree");
+        Run("sync", "host/client wounds, hard/soft blood disks and strokes, topology and handoff agree");
 
     [TestCase]
     public void ClientForcepsTakeTheBulletOnTheHost() =>

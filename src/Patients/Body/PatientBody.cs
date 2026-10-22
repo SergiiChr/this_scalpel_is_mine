@@ -97,6 +97,7 @@ public partial class PatientBody : Node3D {
     private Node3D _skinModel = null!;
     /// <summary>The body model's skin, skinned to its rig.</summary>
     internal MeshInstance3D SkinMesh => (MeshInstance3D)_skinModel;
+    internal BodyLiquidSurface LiquidContact { get; private set; } = null!;
     /// <summary>The skeleton's parts, one per rig bone (Skeleton&lt;Bone&gt;), drawn only on X-ray films.</summary>
     internal IReadOnlyList<MeshInstance3D> Skeleton { get; private set; } = [];
     /// <summary>The site's and the body model's transforms and the region when the carve was last placed in full.
@@ -437,6 +438,19 @@ public partial class PatientBody : Node3D {
         }
         var cell = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Heights - 1)).Round();
         return _onBody[cell.Y * Heights + cell.X];
+    }
+
+    /// <summary>Signed distance to the edge of the body model in meters, positive on it, independent of the surgical
+    /// layers' minimum thickness. Interpolation keeps a sloping boundary continuous instead of drawing the nearest
+    /// support cell's rectangular outline.</summary>
+    internal float LiquidSupport(Vector2 uv) {
+        if (_liquidSupport.Length != Heights * Heights) { return 1f; }
+        var p = uv.Clamp(Vector2.Zero, Vector2.One) * (Heights - 1);
+        var x = Math.Min((int)p.X, Heights - 2);
+        var y = Math.Min((int)p.Y, Heights - 2);
+        var f = p - new Vector2(x, y);
+        return Mathf.Lerp(Mathf.Lerp(_liquidSupport[y * Heights + x], _liquidSupport[y * Heights + x + 1], f.X),
+            Mathf.Lerp(_liquidSupport[(y + 1) * Heights + x], _liquidSupport[(y + 1) * Heights + x + 1], f.X), f.Y);
     }
 
     /// <summary>Blood on the skin at uv, 0..1, from the fluid map.</summary>

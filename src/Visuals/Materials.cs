@@ -25,6 +25,7 @@ public static class Materials {
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
     public static readonly Shader Skin = GD.Load<Shader>("res://assets/shaders/skin.gdshader");
     public static readonly Shader TissueLayer = GD.Load<Shader>("res://assets/shaders/tissue_layer.gdshader");
+    private static readonly Shader BloodFilmShader = GD.Load<Shader>("res://assets/shaders/blood_film.gdshader");
     private static readonly Shader XrayShader = GD.Load<Shader>("res://assets/shaders/xray.gdshader");
     private static readonly Shader XrayFilmShader = GD.Load<Shader>("res://assets/shaders/xray_film.gdshader");
 
@@ -394,7 +395,16 @@ public static class Materials {
 
     public static StandardMaterial3D BloodPool() => new() {
         AlbedoColor = new Color(0.22f, 0f, 0.02f),
-        Roughness = 0.05f,
-        MetallicSpecular = 0.9f,
+        Roughness = 0.28f,
+        MetallicSpecular = 0.1f,
     };
+
+    /// <summary>Blood spread over a surface (<see cref="Visuals.SurfaceFilm"/>), drawn by blood_film.gdshader, which
+    /// says what <paramref name="towardCamera"/> and <paramref name="edge"/> do.</summary>
+    public static ShaderMaterial BloodFilm(float towardCamera = 0f, Vector2? edge = null) {
+        var material = new ShaderMaterial { Shader = BloodFilmShader };
+        material.SetShaderParameter("toward_camera", towardCamera);
+        material.SetShaderParameter("edge_fade", edge ?? new Vector2(0.15f, 0.6f));
+        return material;
+    }
 }

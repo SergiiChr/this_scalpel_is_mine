@@ -8,6 +8,21 @@ namespace Scalpel.Tests.Patients;
 [GodotArgs("--fixed-fps", "60")]
 public class WoundMapTest {
     [TestCase]
+    public void SoftFluidTrailsKeepADenseCenterAndFeatherTheirEdges() {
+        var map = new WoundMap(WoundMap.MinSize);
+        map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.3f, 0.5f), new Vector2(0.7f, 0.5f),
+            0.06f, 0.85f, WoundMap.Mode.Max, soft: true);
+        foreach (var x in (float[])[0.35f, 0.5f, 0.65f]) {
+            var center = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(x, 0.5f));
+            var rim = map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(x, 0.545f));
+            AssertFloat(center).OverrideFailureMessage("the trail stays dense and continuous along its center").IsGreater(0.8f);
+            AssertFloat(rim).OverrideFailureMessage("the rim has intermediate coverage rather than a hard step").IsBetween(0.1f, 0.6f);
+        }
+        AssertFloat(map.Value(WoundMap.Layer.Fluids, WoundMap.Blood, new Vector2(0.5f, 0.58f)))
+            .OverrideFailureMessage("feathering does not spread blood beyond the trail").IsEqual(0f);
+    }
+
+    [TestCase]
     public void FlushPutsThePaintedPixelsOnTheTexture() {
         var map = new WoundMap(WoundMap.MinSize);
         map.Flush();

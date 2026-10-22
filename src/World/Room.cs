@@ -23,6 +23,8 @@ public sealed record RoomLayout(
 /// </summary>
 public partial class Room : Node3D {
     public const float TableHeight = 0.85f;
+    /// <summary>Usable mattress half-width, excluding the wider frame and side rails.</summary>
+    public const float TableHalfWidth = 0.28f;
     /// <summary>Height of the instrument tray's surface above its base.</summary>
     public const float TraySurface = 0.915f;
     /// <summary>Table top end along x where the feet lie.</summary>
@@ -551,8 +553,12 @@ public partial class Room : Node3D {
         }
     }
 
+    internal BedLiquidSurface BedSurface { get; private set; } = null!;
+
     private void BuildTable() {
-        ModelSlot.Instantiate("props", "operating_table", this, FurnitureLook);
+        var table = ModelSlot.Instantiate("props", "operating_table", this, FurnitureLook);
+        var bedParts = ModelSlot.Parts(table, "Pads", "Frame");
+        BedSurface = new BedLiquidSurface((MeshInstance3D)bedParts["Pads"], (MeshInstance3D)bedParts["Frame"]);
         Shapes.StaticBox(this, new Vector3(TableHead - TableFoot, TableHeight, TableWidth),
             new Vector3((TableHead + TableFoot) * 0.5f, TableHeight * 0.5f, 0f));
         if (EnvironmentId != "or") {

@@ -56,16 +56,31 @@ public partial class NetPinchDriver : NetSession {
         for (var tick = 0; tick < Timeout * Engine.PhysicsTicksPerSecond && Mathf.Abs(me.ToLocal(spot).X) >= 0.1f; tick++) {
             await Physics(1);
         }
+        var walkedIntoReach = Mathf.Abs(me.ToLocal(spot).X) < 0.1f;
         PlayerInput.Action(walk, false);
+        if (!walkedIntoReach) {
+            GD.Print("FAIL: [client] never walked the bullet into reach");
+            return;
+        }
         await Wait(0.5);
         // The hand's key makes it the active one and lets the mouse move it.
         PlayerInput.Action(InputActions.MoveRightHand);
-        for (var i = 0; i < 20 && ((spot - forceps.TipPosition()) with { Y = 0f }).Length() > 0.002f; i++) {
+        await PlayerInput.Delivered();
+        const float PlacementTolerance = 0.002f;
+        const int MaxCorrections = 60;
+        float Missed() => ((spot - forceps.TipPosition()) with { Y = 0f }).Length();
+        for (var i = 0; i < MaxCorrections && Missed() > PlacementTolerance; i++) {
             PlayerInput.Mouse(PlayerInput.HandMotion(me, (spot - forceps.TipPosition()) with { Y = 0f }));
-            await Physics(6);
+            await PlayerInput.Delivered();
+            await Physics(5);
         }
         PlayerInput.Action(InputActions.MoveRightHand, false);
-        GD.Print($"[client] forceps over the bullet, {((spot - forceps.TipPosition()) with { Y = 0f }).Length() * 1000f:0.0} mm off");
+        var missed = Missed();
+        if (missed > PlacementTolerance) {
+            GD.Print($"FAIL: [client] forceps positioning did not converge after {MaxCorrections} acknowledged corrections: {missed * 1000f:0.0} mm off");
+            return;
+        }
+        GD.Print($"[client] forceps over the bullet, {missed * 1000f:0.0} mm off");
         PlayerInput.Action(InputActions.UseTool);
         // Held until the host has had time to report.
         await Wait(3.0);

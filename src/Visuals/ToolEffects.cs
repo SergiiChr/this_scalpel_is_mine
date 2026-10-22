@@ -32,7 +32,7 @@ public partial class ToolEffects : Node3D {
     private const int StreamSteps = 40;
     private const float StreamRadius = 0.0025f;
     private const int StreamSides = 6;
-    private const uint StreamStops = PatientBody.SurfaceLayer | 1u;
+    private const uint StreamStops = PatientBody.SurfaceLayer | PatientBody.CavityLayer | 1u;
     private const float StreamAlpha = 0.7f;
 
     /// <summary>How a burst of particles looks and moves.</summary>
@@ -174,7 +174,7 @@ public partial class ToolEffects : Node3D {
     /// A thin stream of clear liquid squirted from <paramref name="tool"/>'s tip, arcing down to where it lands, fading
     /// out. It follows the tip while it shows, and pushes in a row keep it going.
     /// </summary>
-    public void Stream(SurgicalTool tool) {
+    public void Stream(SurgicalTool tool, float ml, float bloodShare) {
         _streams.RemoveAll(stream => !IsInstanceValid(stream.Mesh));
         var stream = _streams.FirstOrDefault(stream => stream.Tool == tool);
         if (stream is null) {
@@ -187,8 +187,9 @@ public partial class ToolEffects : Node3D {
             AddChild(mesh);
             stream = new LiquidStream(mesh, tool);
             _streams.Add(stream);
-            Follow(stream);
         }
+        Follow(stream);
+        Patient.Body.Blood.Irrigate(stream.Path[^1] + Vector3.Up * 0.002f, ml, bloodShare);
         var material = (StandardMaterial3D)stream.Mesh.MaterialOverride;
         material.AlbedoColor = material.AlbedoColor with { A = StreamAlpha };
         stream.Fade?.Kill();
