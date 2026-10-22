@@ -447,9 +447,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   out over a cut from its lip it goes down the wall beside it, through the skin's, the fat's and the muscle's cut faces,
   then into the cavity, and its dot is on what it touches. The hole goes into that layer. An edge drawn back more than
   a few millimeters under the layer over it can't be reached until the cut is spread or its lip lifted. A stab or
-  bullet hole shows no muscle: a skin thread tied off across it closes the muscle under it
-  (`Patient.ClosesMuscleUnder()`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or
-  turning it (MMB) turns it. A blade only cuts moving along its edge; sideways it drags.
+  bullet hole shows no muscle, and skin won't close over the muscle open under it: it's cut open to sew the muscle
+  first. The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB) turns it. A
+  blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
 ### Starter kit and ordering

@@ -100,21 +100,33 @@ public class NeedleTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>A bullet hole shows no muscle to sew: a skin stitch tied across it closes the muscle under it too.
-    /// </summary>
+    /// <summary>A bullet hole shows no muscle to sew, and the skin won't close over it: cut open, it bares the muscle,
+    /// sewn first, then the skin.</summary>
     [TestCase(Timeout = Limits.Slow)]
-    public async Task SkinStitchTiedAcrossABulletHoleClosesTheMuscleUnderIt() {
+    public async Task BulletHoleThroughMuscleIsCutOpenAndSewnLayerByLayer() {
         var session = await ToolSession.Start("bullet_muscle", "needle/bullet_hole");
         var driver = session.Driver;
+        var tissue = driver.Body.Tissue;
         var hole = driver.Patient.Wounds.Single(wound => wound.IsHole);
-        AssertBool(hole.ThroughMuscle && driver.Body.Tissue.MuscleOpenNear(hole.Midpoint, Patient.MuscleReach))
+        var middle = hole.Midpoint;
+        AssertBool(hole.ThroughMuscle && tissue.MuscleOpenNear(middle, Patient.MuscleReach))
             .OverrideFailureMessage("the bullet hole goes through the muscle, open under it").IsTrue();
+        AssertString(driver.ShowsAlong(hole, TissueDepth.Muscle)).OverrideFailureMessage("the hole shows no muscle to sew")
+            .IsEmpty();
+        await driver.PlayerCutsOpen(hole);
+        await driver.AssertAndCapture(driver.IsCutOpen(hole), "the hole cut open through the skin along it", "cut_open");
         await driver.PlayerRequestsItem("needle");
-        await driver.PlayerSews(hole, TissueDepth.Skin);
-        AssertFloat(hole.Closure).OverrideFailureMessage($"the skin stitch closes the hole ({hole.Closure:0.00})\n{driver.Recent()}")
+        await driver.PlayerSews(hole, TissueDepth.Muscle, () => session.CaptureAt("muscle_threaded",
+            "close up, the hole spread open by the Gelpi, a loose thread through the muscle's cut faces under the skin",
+            driver.SitePoint(middle), 0.1f));
+        AssertBool(hole.Muscle.All(m => m >= 1f) && !tissue.MuscleOpenNear(middle, Patient.MuscleReach))
+            .OverrideFailureMessage($"the muscle under the hole is sewn shut\n{driver.Recent()}").IsTrue();
+        foreach (var wound in driver.Patient.Wounds.Where(wound => wound.IsSkinCut).ToList()) {
+            await driver.PlayerSews(wound, TissueDepth.Skin);
+        }
+        await Frames.Seconds(1f);
+        AssertFloat(driver.Patient.SkinClosure()).OverrideFailureMessage($"then the skin closes over it\n{driver.Recent()}")
             .IsGreater(0.99f);
-        AssertBool(hole.Muscle.All(m => m >= 1f) && !driver.Body.Tissue.MuscleOpenNear(hole.Midpoint, Patient.MuscleReach))
-            .OverrideFailureMessage("tied off, it closes the muscle under the hole too").IsTrue();
         await session.Finish(BudgetOverride);
     }
 

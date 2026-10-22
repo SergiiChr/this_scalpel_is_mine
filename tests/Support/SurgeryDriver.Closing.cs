@@ -12,15 +12,26 @@ public partial class SurgeryDriver {
     /// </summary>
     public async Task PlayerClosesWounds(string toolId = "needle") {
         Note($"closes the wounds with {toolId}");
+        if (toolId == "needle") {
+            // A stab or bullet hole through the muscle is too small to sew inside: cut open first, it bares the muscle.
+            foreach (var hole in Patient.Wounds.Where(wound => wound.IsHole && wound.ThroughMuscle
+                && wound.Muscle.Any(m => m < 1f) && !CanSpread(wound)).ToList()) {
+                await PlayerCutsOpen(hole);
+            }
+        }
         var tool = (await PlayerRequestsItem(toolId))!;
         for (var round = 0; round < 4 && Patient.SkinClosure() < 0.98f; round++) {
             // Every muscle before any skin: a skin stitch near another cut can reach across it, and over its open muscle
             // it tears through.
             if (tool.Def.Action == "sew") {
-                // A stab or bullet hole shows no muscle: the skin stitch across it closes that too.
-                foreach (var wound in Patient.Wounds.Where(wound => wound.ThroughMuscle && wound.Muscle.Any(m => m < 1f)
-                    && !(wound.IsHole && !Body.IsOpen(wound.Midpoint))).ToList()) {
-                    await PlayerSews(wound, TissueDepth.Muscle);
+                // Only where its muscle is cut: a slit whose glass went in at a slant reaches it only at its deep end. A
+                // second thread where the first left some open, before the skin over it tears.
+                bool MuscleOpen(Wound wound) => wound.ThroughMuscle && wound.Muscle.Where((m, bin) => m < 1f
+                    && Body.Tissue.MuscleOpenNear(wound.BinPosition(bin), Patient.MuscleReach)).Any();
+                foreach (var wound in Patient.Wounds.Where(MuscleOpen).ToList()) {
+                    for (var thread = 0; thread < 2 && MuscleOpen(wound); thread++) {
+                        await PlayerSews(wound, TissueDepth.Muscle);
+                    }
                 }
             }
             foreach (var wound in Patient.Wounds.Where(wound => wound.IsSkinCut).ToList()) {
@@ -42,6 +53,30 @@ public partial class SurgeryDriver {
         Note($"skin closure {Patient.SkinClosure():0.00}");
         await PlayerPutsDown();
     }
+
+    /// <summary>The scalpel drawn through the skin along a stab or bullet hole, past both its ends and at least
+    /// <see cref="HoleOpening"/> meters long, so the muscle under all of it shows to sew.</summary>
+    public async Task PlayerCutsOpen(Wound hole) {
+        Note($"cuts hole {hole.Id} open");
+        var along = hole.Points[^1] - hole.Points[0];
+        var length = Mathf.Max(hole.LengthUv + Body.MetersToUv(0.01f), Body.MetersToUv(HoleOpening));
+        var half = (along.LengthSquared() > 0f ? along.Normalized() : Vector2.Right) * length * 0.5f;
+        await PlayerCutsSkin(hole.Midpoint - half, hole.Midpoint + half, 2);
+        await PlayerPutsDown();
+    }
+
+    /// <summary>The shortest cut (meters) that opens a stab or bullet hole to sew its muscle.</summary>
+    private const float HoleOpening = 0.03f;
+
+    /// <summary>Whether a stab or bullet hole can be spread to sew inside: long enough for a Gelpi's arms, gaping
+    /// already, or cut open.</summary>
+    public bool CanSpread(Wound hole) => hole.LengthUv >= Body.MetersToUv(HoleOpening)
+        || Body.Tissue.IsOpen(hole.Midpoint, TissueDepth.Skin) || IsCutOpen(hole);
+
+    /// <summary>Whether a cut runs through <paramref name="hole"/>. A blade drawn along a hole already gaping cuts
+    /// nothing until past it.</summary>
+    public bool IsCutOpen(Wound hole) => Patient.Wounds.Any(wound => wound.IsSkinCut && !wound.IsHole
+        && wound.DistanceTo(hole.Midpoint) < Body.MetersToUv(0.005f));
 
     /// <summary>A closure strip pressed bin by bin along <paramref name="wound"/>: its muscle first where the cut
     /// goes through it, then its skin. A tensioned closure (paper clips) is pulled until it reads <paramref name="pull"/>
@@ -156,16 +191,17 @@ public partial class SurgeryDriver {
     /// <summary>Sews <paramref name="wound"/> with a running thread through <paramref name="layer"/>, the needle in the
     /// active hand: holes along it (<see cref="PlayerThreads"/>), spread with a Gelpi where the layer hides, the
     /// wheel until the hand status reads closed (<see cref="PlayerPullsThread"/>), and the knot
-    /// (<see cref="PlayerTiesOff"/>).</summary>
-    public async Task PlayerSews(Wound wound, TissueDepth layer) {
+    /// (<see cref="PlayerTiesOff"/>). <paramref name="threaded"/> runs once the thread is through the layer, before
+    /// it's pulled, the cut still spread: to look at it.</summary>
+    public async Task PlayerSews(Wound wound, TissueDepth layer, Func<Task>? threaded = null) {
         var needle = Me.Active;
         var other = needle == Right ? Left : Right;
         SurgicalTool? gelpi = null;
         // Gelpis the hand couldn't reach back with the thread through the tissue holding the needle hand in place.
         List<SurgicalTool> left = [];
         // Where a layer under the skin hides under the lip, the other hand spreads the cut there with a Gelpi until it
-        // shows, moving it along the cut as the needle goes. A stab or bullet hole has nothing to spread, and a hand
-        // already holding something (the lip, lifted with forceps) is busy.
+        // shows, moving it along the cut as the needle goes. A stab or bullet hole has nothing to spread until it's cut
+        // open, and a hand already holding something (the lip, lifted with forceps) is busy.
         async Task Spread(float along) {
             if (gelpi is not null) {
                 await PlayerTakesOutGelpi(gelpi, other, putDown: false);
@@ -174,6 +210,11 @@ public partial class SurgeryDriver {
                 }
             }
             await SwitchTo(other);
+            // Where there's none to be had (in an ambulance), the needle goes on with what shows.
+            if (await PlayerRequestsItem("gelpi") is null) {
+                await SwitchTo(needle);
+                return;
+            }
             var direction = (wound.Points[^1] - wound.Points[0]).Normalized() * Body.MetersToUv(0.01f);
             // Near an end of a long cut the arms would sit past it and spread nothing: keep them inside.
             var inset = Body.MetersToUv(0.015f);
@@ -184,12 +225,16 @@ public partial class SurgeryDriver {
             await Frames.Seconds(1f);
             await SwitchTo(needle);
         }
-        var threaded = await PlayerThreads(wound, layer, expose: layer == TissueDepth.Skin || wound.IsHole || Me.HeldTool(other) is not null ? null : Spread);
+        var spreads = layer != TissueDepth.Skin && (!wound.IsHole || CanSpread(wound)) && Me.HeldTool(other) is null;
+        var through = await PlayerThreads(wound, layer, expose: spreads ? Spread : null);
+        if (threaded is not null) {
+            await threaded();
+        }
         if (gelpi is not null) {
             await PlayerTakesOutGelpi(gelpi, other);
             await SwitchTo(needle);
         }
-        if (threaded) {
+        if (through) {
             await PlayerPullsThread("closed");
             await PlayerTiesOff();
         } else if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {

@@ -303,23 +303,6 @@ public partial class Patient {
         ApplyThreadClosure(threadId, quality);
     }
 
-    /// <summary>A skin thread across a stab or bullet hole (<paramref name="crossings"/>) draws the muscle under it shut
-    /// with the skin: the hole is too small to show the muscle, so it's never sewn on its own. A hole cut open shows its
-    /// muscle, and that's sewn first.</summary>
-    private bool ClosesMuscleUnder(Wound wound, List<Vector2> crossings) =>
-        wound.IsHole && wound.ThroughMuscle && !crossings.Any(Body.IsOpen);
-
-    /// <summary>Tied off across a stab or bullet hole, the skin thread closes the muscle under it for good
-    /// (<see cref="ClosesMuscleUnder"/>): all of it, the hole too small for more than one stitch.</summary>
-    private void CloseMuscleUnderHole(Wound wound) {
-        for (var bin = 0; bin < wound.Muscle.Length; bin++) {
-            if (wound.Muscle[bin] < 1f) {
-                wound.Muscle[bin] = 1f;
-                Rpc(MethodName.TissueMuscle, wound.BinPosition(bin), MuscleReach);
-            }
-        }
-    }
-
     /// <summary>True once the thread can take no more holes: tied off, or torn through the tissue.</summary>
     public bool SutureDone(int threadId) => Body.Tissue.Thread(threadId) is { Final: true };
 
@@ -342,6 +325,7 @@ public partial class Patient {
         var crossed = new List<(Wound Wound, List<Vector2> Crossings)>();
         var all = new List<Vector2>();
         var overMuscle = false;
+        var overHole = false;
         foreach (var wound in Wounds.Where(w => w.IsSkinCut)) {
             var crossings = ThreadCrossings(points, wound);
             if (crossings.Count == 0) {
@@ -349,9 +333,11 @@ public partial class Patient {
             }
             crossed.Add((wound, crossings));
             all.AddRange(crossings);
-            // The muscle under a stab or bullet hole comes shut with the skin over it (ClosesMuscleUnder()).
-            overMuscle = overMuscle || (info.Layer == TissueDepth.Skin && wound.ThroughMuscle
-                && !ClosesMuscleUnder(wound, crossings) && crossings.Any(c => tissue.MuscleOpenNear(c, MuscleReach)));
+            if (info.Layer == TissueDepth.Skin && wound.ThroughMuscle
+                && crossings.Any(c => tissue.MuscleOpenNear(c, MuscleReach))) {
+                overMuscle = true;
+                overHole = overHole || (wound.IsHole && !crossings.Any(Body.IsOpen));
+            }
         }
         if (crossed.Count == 0) {
             return;
@@ -361,7 +347,10 @@ public partial class Patient {
             return;
         }
         if (overMuscle) {
-            TearNotice("The skin won't meet over the open muscle. Sew the muscle first.");
+            // A stab or bullet hole is too small to sew inside: it's cut open to bare the muscle.
+            TearNotice(overHole
+                ? "The skin won't meet over the open muscle. Cut the hole open and sew the muscle first."
+                : "The skin won't meet over the open muscle. Sew the muscle first.");
             closure = Mathf.Min(closure, 0.15f);
         }
         // Pressed edges rise into a small lip rather than sliding through one another, higher the harder it's pulled.
@@ -382,9 +371,6 @@ public partial class Patient {
                 LayClosure(wound.Muscle, held.Muscle, bins, closure);
             }
             if (tied) {
-                if (info.Layer == TissueDepth.Skin && ClosesMuscleUnder(wound, crossings)) {
-                    CloseMuscleUnderHole(wound);
-                }
                 TieOff(wound, crossings, bins, info.Layer, quality);
             }
         }
