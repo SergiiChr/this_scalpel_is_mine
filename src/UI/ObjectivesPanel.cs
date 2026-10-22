@@ -16,7 +16,7 @@ public partial class ObjectivesPanel : VBoxContainer {
         for (var i = 0; i < rows.Count; i++) {
             var row = rows[i];
             var label = GetChild<Label>(i);
-            var mark = row.Spoiled ? "☒" : row.Done ? "☑" : "☐";
+            var mark = row.Spoiled ? "✗" : row.Done ? "✓" : "□";
             var text = $"{mark} {row.Label}{(row.Optional ? "  (bonus)" : "")}";
             if (label.Text != text) {
                 label.Text = text;
