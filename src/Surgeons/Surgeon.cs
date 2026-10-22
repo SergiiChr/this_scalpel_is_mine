@@ -275,7 +275,7 @@ public partial class Surgeon : CharacterBody3D {
                 continue;
             }
             for (var i = 0; i < 2; i++) {
-                if (other.HeldTool(i) is null && other.Hands[i].GlobalPosition.DistanceTo(from) < PassDistance) {
+                if (other.HeldTool(i) is null && !other.HoldsPatient(i) && other.Hands[i].GlobalPosition.DistanceTo(from) < PassDistance) {
                     return (other, i);
                 }
             }
@@ -302,6 +302,7 @@ public partial class Surgeon : CharacterBody3D {
 
     public void DropEverything() {
         for (var i = 0; i < 2; i++) {
+            LetGoOfPatient(i);
             Hands[i].Lowered = false;
             Hands[i].Trigger = false;
             if (HeldTool(i) is not null) {
@@ -388,5 +389,6 @@ public partial class Surgeon : CharacterBody3D {
         hand.Soak(tool?.Blood ?? 0f, dt);
         SupportElbow(hand);
         hand.UpdatePose(IsLocal ? SteadyShoulder(i) : VisualShoulder(i), dt);
+        Session.Patient.Body.Drape?.Press(hand, hand.PressNormal is null ? null : hand.PosedPoints);
     }
 }

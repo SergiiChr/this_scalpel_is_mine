@@ -26,7 +26,8 @@ public class ScenarioFlowsTest {
             .Where(row => row.Arguments.Length > 0)
             .Select(row => row.Arguments[0] as string)
             .ToHashSet();
-        foreach (var scenario in Db.Scenarios.Concat(Db.DisabledScenarios)) {
+        // The ambulance's aisles can't be crossed, so one surgeon can't win it: its flow is two players in AmbulanceCoopTest.
+        foreach (var scenario in Db.Scenarios.Concat(Db.DisabledScenarios).Where(scenario => scenario.Id != "ambulance_bullet")) {
             AssertBool(cases.Contains(scenario.Id)).OverrideFailureMessage($"scenario {scenario.Id} has a positive flow case")
                 .IsTrue();
         }
@@ -35,7 +36,6 @@ public class ScenarioFlowsTest {
     [TestCase("hand_stitch_child", false, BudgetOverride, 13.5f, Timeout = Limits.Slow)]
     [TestCase("bullet_muscle", false, BudgetOverride, 19f, Timeout = Limits.Slow)]
     [TestCase("sidewalk_stab", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
-    [TestCase("ambulance_bullet", false, BudgetOverride, 18f, Timeout = Limits.Slow)]
     [TestCase("open_fracture", false,
         "with key frames the worst frame takes 18 ms of game work (budget 16 ms) while sewing.", 16f, Timeout = Limits.Slow)]
     [TestCase("knife_back", true, BudgetOverride, 17f, Timeout = Limits.Slow)]

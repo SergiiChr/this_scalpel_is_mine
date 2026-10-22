@@ -49,7 +49,7 @@ public class ModelsTest {
         Rig("patient", "body", PatientBones, PatientParts, holder);
         var gloveBones = SurgeonHand.Fingers
             .SelectMany(finger => Enumerable.Range(1, 3).Select(joint => $"{finger}{joint}"))
-            .Prepend("Hand");
+            .Prepend("Palm").Prepend("Hand");
         Rig("surgeon", "glove", gloveBones, [], holder);
         foreach (var organ in Organs) {
             Exists("organs", organ);

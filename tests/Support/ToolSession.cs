@@ -80,10 +80,11 @@ public sealed class ToolSession {
 
     /// <summary>In a run with key frames, saves one view of <paramref name="at"/> from <paramref name="elevation"/>
     /// degrees above, from <paramref name="side"/> (world, across the floor) and <paramref name="distance"/> away, hands
-    /// left out, which should show <paramref name="description"/>.</summary>
-    public async Task CaptureOblique(string keyFrame, string description, Vector3 at, Vector3 side, float distance, float elevation = 45f) {
+    /// left out unless <paramref name="hands"/>, which should show <paramref name="description"/>.</summary>
+    public async Task CaptureOblique(string keyFrame, string description, Vector3 at, Vector3 side, float distance, float elevation = 45f,
+        bool hands = false) {
         if (Shots is { } shots) {
-            await Driver.Unbudgeted(() => shots.CaptureOblique(keyFrame, description, at, side, distance, elevation));
+            await Driver.Unbudgeted(() => shots.CaptureOblique(keyFrame, description, at, side, distance, elevation, hands));
         }
     }
 

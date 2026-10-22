@@ -226,6 +226,8 @@ public partial class SurgeryDriver {
             await SwitchTo(needle);
         }
         var spreads = layer != TissueDepth.Skin && (!wound.IsHole || CanSpread(wound)) && Me.HeldTool(other) is null;
+        // A thrashing limb moves the wound away from the needle: the free hand holds it still.
+        var holds = !spreads && await PlayerHoldsThrashingSiteLimb(wound);
         var through = await PlayerThreads(wound, layer, expose: spreads ? Spread : null);
         if (threaded is not null) {
             await threaded();
@@ -240,6 +242,9 @@ public partial class SurgeryDriver {
         } else if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
             // A thread that can't go on is tied off as it is: the next one may be in another layer.
             await PlayerTiesOff();
+        }
+        if (holds) {
+            await PlayerLetsGoWithFreeHand();
         }
         // Tied off, the surgeon is free to walk round to them: one left spreading the cut would tear the skin closed
         // over it.

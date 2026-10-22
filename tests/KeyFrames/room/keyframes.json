@@ -1,6 +1,11 @@
 {
   "ambulance_ceiling_oblique.jpg": "ambulance: the whole ceiling panel clears the slab",
   "ambulance_ceiling_reverse.jpg": "ambulance: the whole ceiling panel clears the slab",
+  "ambulance_fitted_cabin.jpg": "ambulance cabin with fitted blue and white storage, a cab partition, overhead grab rails and two narrow aisles beside the patient",
+  "ambulance_instrument_pickup.jpg": "the surgical doctor holds the scalpel picked up from the surgery compartment, staying beside the patient",
+  "ambulance_instrument_stowed.jpg": "the scalpel remains on the surgical doctor's belt after pickup, leaving its wall compartment clear",
+  "ambulance_rear_doors.jpg": "rear double doors and windows, the loading locker, folded seat and opposite work compartments clear of the patient",
+  "ambulance_wall_monitor.jpg": "the new monitor and module rack sit on a swivel arm fixed to the ambulance side wall beside the patient's head, clear of the IV and worktop, without a bed-mounted pole",
   "theatre_CeilingLight1.jpg": "CeilingLight1 alone lights the block and casts its shadow away from that ceiling panel",
   "theatre_CeilingLight2.jpg": "CeilingLight2 alone lights the block and casts its shadow away from that ceiling panel",
   "theatre_CeilingLight3.jpg": "CeilingLight3 alone lights the block and casts its shadow away from that ceiling panel",

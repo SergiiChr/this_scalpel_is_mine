@@ -112,6 +112,8 @@ public partial class Patient : Node3D {
     private List<CutPool> _nextPools = [];
     private float _tickAcc;
     private float _syncAcc;
+    /// <summary>Reused for the rig bones surgeons' hands hold each frame.</summary>
+    private readonly List<string> _heldBones = [];
     private float _voiceCooldown;
     private float _breathCooldown;
     private float _burstCooldown;
@@ -264,6 +266,13 @@ public partial class Patient : Node3D {
         var dt = (float)delta;
         Body.SettleOrgans(dt);
         HandleOrgans(dt);
+        foreach (var surgeon in surgery.Surgeons.Values) {
+            foreach (var hand in surgeon.Hands) {
+                if (hand.PressNormal is not null) {
+                    PressByHand(hand.Target, dt);
+                }
+            }
+        }
         var line = surgery.Room.IvLine;
         if (line.YankedBy() is { } yanker) {
             PullIv(yanker);
@@ -283,7 +292,17 @@ public partial class Patient : Node3D {
     }
 
     public override void _Process(double delta) {
-        Body.Animator.Animate(Vitals, Alive, (float)delta);
+        _heldBones.Clear();
+        if (Surgery.Current is { } surgery) {
+            foreach (var surgeon in surgery.Surgeons.Values) {
+                foreach (var hand in surgeon.Hands) {
+                    if (hand.PressBone.Length > 0) {
+                        _heldBones.Add(hand.PressBone);
+                    }
+                }
+            }
+        }
+        Body.Animator.Animate(Vitals, Alive, (float)delta, _heldBones);
         if (Body.SkinMaterial is not null) {
             Body.SetPallor(Mathf.Clamp(1f - Vitals.BloodRatio * 1.4f + 0.4f, 0f, 1f));
         }

@@ -27,6 +27,10 @@ public class DrapeTest {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start(scenario);
+        // A panicking patient thrashes the limb the site rides: asleep, it lies where the sheet was laid around it.
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        AssertBool(await Frames.Until(() => !driver.Patient.Vitals.IsAwake, 30f)).OverrideFailureMessage("the patient falls asleep")
+            .IsTrue();
         var body = driver.Body;
         var drape = body.Drape!;
         var root = body.Root;

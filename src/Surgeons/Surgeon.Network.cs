@@ -26,6 +26,7 @@ public partial class Surgeon {
         foreach (var h in Hands) {
             using var hand = new GodotArray {
                 h.EffectivePosition(), h.Tilt, h.Twist, h.Lowered, h.Trigger, h.Level, h.Inspecting, h.Turn,
+                h.PressNormal ?? Vector3.Zero, h.PressWrap, h.PressBone, h.PressAcross, h.PressCup,
             };
             hands.Add(hand);
         }
@@ -61,6 +62,12 @@ public partial class Surgeon {
             h.Level = d[5].AsInt32();
             h.Inspecting = d[6].AsBool();
             h.Turn = d[7].AsSingle();
+            var pressed = d[8].AsVector3();
+            h.PressNormal = pressed.IsZeroApprox() ? null : pressed;
+            h.PressWrap = d[9].AsSingle();
+            h.PressBone = d[10].AsString();
+            h.PressAcross = d[11].AsVector3();
+            h.PressCup = d[12].AsVector3();
         }
         if (Multiplayer.IsServer()) {
             var strain = data[5].AsGodotArray();

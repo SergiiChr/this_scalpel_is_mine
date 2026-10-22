@@ -39,7 +39,7 @@ public partial class Hud : CanvasLayer {
     private readonly record struct HandsShown(HandShown Left, HandShown Right, int Active, string? Thread, int Spread, int Level);
     private readonly record struct HintShown(bool Out, int Moving, int Active, bool Attached, SurgicalTool? Tool, bool Full,
         bool Threaded, SurgicalTool? Hovered, bool HoveredFull, int Zoom, bool CanPass, bool Films, bool Cart,
-        int Bindings, bool? GoalsPutAway);
+        int Bindings, bool HoldsPatient, bool CanHold, bool? GoalsPutAway);
     private readonly record struct PromptShown(string? Focused, StringName? Button, string? Wheel, bool Held, Surgeon? Partner, int Bindings);
 
     public Surgery Surgery { get; private set; } = null!;
@@ -211,6 +211,7 @@ public partial class Hud : CanvasLayer {
         var shown = new HintShown(me.Status.IsOut, Surgeon.MovingHand(), me.Active, me.Hands[me.Active].Attached, tool,
             tool?.Ml > 0f, tool?.Suture.Thread > 0, hovered, hovered?.Ml > 0f, me.Zoom,
             me.PassTarget(me.Active) is not null, me.HoldingFilms, me.PushedCart() is not null, InputActions.BindingsVersion,
+            me.HoldsPatient(me.Active), tool is null && me.HoldSpot() is not null,
             Settings.Difficulty is Difficulty.Baby or Difficulty.Intern ? _objectives.PutAway : null);
         if (_hintShown.Changed(shown)) {
             _hint.Text = shown.Out ? "" : string.Join("\n", ControlLines(me, shown.GoalsPutAway));
@@ -601,7 +602,14 @@ public partial class Hud : CanvasLayer {
             lines.AddRange(ToolLines(me, tool, hand));
         } else {
             var hovered = IsInstanceValid(me.Hovered) ? " " + me.Hovered!.Label() : "";
-            lines.Add($"{Key(InputActions.Grab)}  Pick up{hovered}");
+            if (me.HoldsPatient(me.Active)) {
+                lines.Add($"{Key(InputActions.UseTool)} / {Key(InputActions.Grab)}  Let go of the patient");
+            } else {
+                lines.Add($"{Key(InputActions.Grab)}  Pick up{hovered}");
+                if (me.HoldSpot() is not null) {
+                    lines.Add($"{Key(InputActions.UseTool)}  Hold the patient here");
+                }
+            }
         }
         var seeThrough = Surgeon.IsNeedle(tool) && me.Zoom == Surgeon.ZoomFov.Length - 1;
         lines.Add($"{Key(InputActions.Zoom)}  Zoom {me.Zoom + 1}/{Surgeon.ZoomFov.Length}{(seeThrough ? ", hands see-through" : "")}");

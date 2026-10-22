@@ -128,11 +128,13 @@ public partial class KeyFrames : Node {
 
     /// <summary>One view from <paramref name="elevation"/> degrees above, from <paramref name="side"/> (world, across
     /// the floor), of something that a view from straight above can't see (under the X-ray's tube head), saved as
-    /// NN_name_oblique.png. A low view shows a profile: how high a lifted lip stands. The hands are left out.</summary>
-    public Task CaptureOblique(string keyFrame, string description, Vector3 at, Vector3 side, float distance, float elevation = 45f) {
+    /// NN_name_oblique.png. A low view shows a profile: how high a lifted lip stands. The hands show only when
+    /// <paramref name="hands"/>.</summary>
+    public Task CaptureOblique(string keyFrame, string description, Vector3 at, Vector3 side, float distance, float elevation = 45f,
+        bool hands = false) {
         var toward = side.Slide(Vector3.Up).Normalized();
         var from = toward.Rotated(toward.Cross(Vector3.Up).Normalized(), Mathf.DegToRad(elevation));
-        return Views(keyFrame, description, at, [new("oblique", from, Vector3.Up)], distance, true);
+        return Views(keyFrame, description, at, [new("oblique", from, Vector3.Up)], distance, !hands);
     }
 
     /// <summary>Saves what the surgeon sees, the HUD's aim included, as NN_name_view.png.</summary>
