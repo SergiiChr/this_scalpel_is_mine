@@ -45,7 +45,7 @@ public partial class PatientMonitor : Node3D {
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 AlbedoTexture = viewport.GetTexture(),
             },
-            Position = new Vector3(0f, 0.01f, 0.004f),
+            Position = new Vector3(0f, 0f, 0.004f),
         });
     }
 

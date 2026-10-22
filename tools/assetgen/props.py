@@ -323,9 +323,9 @@ def _monitor() -> Model:
 
     # The flat panel: black bezel and glass in front, a light housing behind, and the white block under it that the arm
     # holds it by.
-    m.add("Bezel", superellipsoid((0.44, 0.3, 0.026), 0.12, (0.0, 0.0, -0.013)), "black_plastic")
-    m.add("Screen", superellipsoid((0.39, 0.258, 0.004), 0.05, (0.0, 0.01, 0.0)), "screen")
-    m.add("Housing", merge(superellipsoid((0.4, 0.26, 0.03), 0.3, (0.0, 0.0, -0.035)), _block((0.3, 0.045, 0.06), (0.0, -0.17, -0.025))), "plastic")
+    m.add("Bezel", superellipsoid((0.434, 0.302, 0.026), 0.04, (0.0, 0.0, -0.013)), "black_plastic")
+    m.add("Screen", superellipsoid((0.39, 0.258, 0.004), 0.02, (0.0, 0.0, 0.0)), "screen")
+    m.add("Housing", merge(superellipsoid((0.4, 0.27, 0.03), 0.1, (0.0, 0.0, -0.035)), _block((0.3, 0.045, 0.06), (0.0, -0.17, -0.025))), "plastic")
     # Pole: clamped round the head rail's top bar and bolted to the frame's end below it.
     x, z = MONITOR_POLE
     pole_top = 1.2
