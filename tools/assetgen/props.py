@@ -15,6 +15,13 @@ TABLE_HEIGHT = 0.85
 # over the bar's top.
 HEAD_RAIL_X = 1.025
 HEAD_RAIL_TOP = 0.939
+# The monitor's screen above the table's head end: its glass center and its turn about Y from facing +Z (degrees), same
+# as MonitorScreen and MonitorYaw in src/World/Room.cs. It faces down the table, turned a little toward the near side.
+MONITOR_SCREEN = (1.02, 1.45, -0.32)
+MONITOR_YAW = -70.0
+# Where the monitor's pole stands, x and z: just outside the head rail, clear of the patient card in its middle. Room.cs
+# makes it solid there (MonitorPole).
+MONITOR_POLE = (1.075, -0.2)
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
 # tray's middle. Same as "instruments" and "swabs" in Room.TrayZones (src/World/Room.cs).
 SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
@@ -294,12 +301,61 @@ def _lamp() -> Model:
 
 
 def _monitor() -> Model:
-    """Bedside monitor casing, origin at the screen center, screen facing +Z."""
+    """Vital signs monitor on the table's head end, origin at the screen center, screen facing +Z.
+    A pole clamped to the head rail and the frame's end carries a short folded arm, the module rack hanging under its
+    elbow and the flat screen on the white mounting block under it, at the arm's end.
+    Built where it stands by the table, then moved into the screen's frame, since the game places it by the screen.
+    """
     m = Model("props", "monitor")
-    m.add("Casing", superellipsoid((0.46, 0.34, 0.08), 0.2, (0.0, 0.0, -0.04)), "plastic")
-    m.add("Screen", superellipsoid((0.4, 0.27, 0.01), 0.1, (0.0, 0.01, 0.0)), "screen")
-    m.add("Knobs", merge(*[cylinder(0.01, (0.2, y, 0.0), (0.2, y, 0.012), 12) for y in (-0.08, -0.12)]), "black_plastic")
-    m.add("Arm", merge(cylinder(0.015, (0.0, -0.17, -0.06), (0.0, -0.4, -0.2)), superellipsoid((0.08, 0.02, 0.08), 0.3, (0.0, -0.41, -0.2))), "dark_steel")
+    screen = trimesh.transformations.rotation_matrix(np.radians(MONITOR_YAW), (0.0, 1.0, 0.0))
+    screen[:3, 3] = MONITOR_SCREEN
+    to_screen = np.linalg.inv(screen)
+
+    def by_table(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """A mesh built in the table's space, moved into the screen's."""
+        out = mesh.copy()
+        out.apply_transform(to_screen)
+        return out
+
+    def on_table(point: tuple[float, float, float]) -> tuple[float, float, float]:
+        x, y, z = (screen @ (*point, 1.0))[:3]
+        return (float(x), float(y), float(z))
+
+    # The flat panel: black bezel and glass in front, a light housing behind, and the white block under it that the arm
+    # holds it by.
+    m.add("Bezel", superellipsoid((0.434, 0.302, 0.026), 0.04, (0.0, 0.0, -0.013)), "black_plastic")
+    m.add("Screen", superellipsoid((0.39, 0.258, 0.004), 0.02, (0.0, 0.0, 0.0)), "screen")
+    m.add("Housing", merge(superellipsoid((0.4, 0.27, 0.03), 0.1, (0.0, 0.0, -0.035)), _block((0.3, 0.045, 0.06), (0.0, -0.17, -0.025))), "plastic")
+    # Pole: clamped round the head rail's top bar and bolted to the frame's end below it.
+    x, z = MONITOR_POLE
+    pole_top = 1.2
+    clamps = [
+        _block((x - HEAD_RAIL_X + 0.04, 0.04, 0.04), ((x + HEAD_RAIL_X) / 2, HEAD_RAIL_TOP, z)),
+        _block((x - 0.98, 0.03, 0.04), ((x + 0.98) / 2, TABLE_HEIGHT - 0.075, z)),
+    ]
+    pole = [cylinder(0.016, (x, TABLE_HEIGHT - 0.1, z), (x, pole_top, z), 16)]
+    m.add("Pole", by_table(merge(*clamps, *pole)), "steel")
+    # Arm: out from the pole top to an elbow beyond the head end, back to under the screen, and up into its block.
+    tilt = on_table((0.0, -0.19, -0.025))
+    elbow = (1.14, pole_top, -0.3)
+    below_tilt = (tilt[0], pole_top, tilt[2])
+    arm = [_beam((x, pole_top, z), elbow, 0.036, 0.03), _beam(elbow, below_tilt, 0.036, 0.03)]
+    knuckles = [cylinder(0.022, (px, pole_top - 0.022, pz), (px, pole_top + 0.022, pz), 20) for px, _, pz in ((x, 0, z), elbow, below_tilt)]
+    riser = cylinder(0.016, below_tilt, tilt, 16)
+    m.add("Arm", by_table(merge(*arm, *knuckles, riser)), "plastic")
+    # Module rack hanging under the elbow, facing the same way as the screen: a small screen and plug-in modules.
+    rack = screen.copy()
+    rack[:3, 3] = (elbow[0], pole_top - 0.13, elbow[2])
+
+    def by_rack(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        out = mesh.copy()
+        out.apply_transform(rack)
+        return by_table(out)
+
+    hanger = cylinder(0.01, (0.0, 0.04, 0.0), (0.0, 0.11, 0.0), 10)
+    m.add("Rack", by_rack(merge(_block((0.17, 0.08, 0.08), (0.0, 0.0, 0.0)), hanger)), "plastic")
+    modules = [_block((0.018, 0.06, 0.004), (0.015 + i * 0.022, 0.0, 0.04)) for i in range(3)]
+    m.add("Modules", by_rack(merge(_block((0.06, 0.045, 0.004), (-0.045, 0.005, 0.04)), *modules)), "black_plastic")
     return m
 
 
