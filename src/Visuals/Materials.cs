@@ -25,6 +25,7 @@ public static class Materials {
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
     public static readonly Shader Skin = GD.Load<Shader>("res://assets/shaders/skin.gdshader");
     public static readonly Shader TissueLayer = GD.Load<Shader>("res://assets/shaders/tissue_layer.gdshader");
+    private static readonly Shader BloodFilmShader = GD.Load<Shader>("res://assets/shaders/blood_film.gdshader");
     private static readonly Shader XrayShader = GD.Load<Shader>("res://assets/shaders/xray.gdshader");
     private static readonly Shader XrayFilmShader = GD.Load<Shader>("res://assets/shaders/xray_film.gdshader");
 
@@ -401,11 +402,5 @@ public static class Materials {
 
     /// <summary>Blood spread over a surface (<see cref="Visuals.SurfaceFilm"/>): the pool's color, as see-through as
     /// each vertex's alpha says, so its edge fades instead of ending at a line.</summary>
-    public static StandardMaterial3D BloodFilm() => new() {
-        AlbedoColor = new Color(0.22f, 0f, 0.02f),
-        VertexColorUseAsAlbedo = true,
-        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-        Roughness = 0.28f,
-        MetallicSpecular = 0.1f,
-    };
+    public static ShaderMaterial BloodFilm() => new() { Shader = BloodFilmShader };
 }

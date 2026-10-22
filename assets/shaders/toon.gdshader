@@ -138,10 +138,11 @@ void fragment() {
 		float facing = smoothstep(-0.3, 0.2, dot(NORMAL, site_up));
 		if (in_site && facing > 0.0) {
 			vec4 f = texture(site_fluids, cuv);
-			// The site's own film reaches its edges, where the body's film (SurfaceFilm) takes over: only the
-			// texture's last texels fade, so the two meet without a gap.
+			// Only blood deeper than the site film's pinning runs on onto the body's film (SurfaceFilm), so a thin
+			// film thins out toward the site's edges instead of stopping along them, over a ragged band.
 			vec2 inside = min(cuv, 1.0 - cuv);
-			f.r *= smoothstep(0.0, 0.004, min(inside.x, inside.y)) * facing;
+			float ragged = (noise(world_pos.xz * 60.0 + world_pos.y * 25.0) - 0.5) * 0.04;
+			f.r *= smoothstep(0.0, 0.15, min(inside.x, inside.y) + ragged) * facing;
 			// Use the smooth film for its normal, not the grain in its pigment.
 			blood = f.r;
 			f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));

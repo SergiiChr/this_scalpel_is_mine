@@ -33,8 +33,10 @@ internal sealed class SurfaceFilm {
     private const float Overhang = -0.2f;
     /// <summary>Liquid depth (m) that hides about two thirds of the surface, as on the site's skin.</summary>
     private const float CoverDepth = SurfaceBlood.CoverDepth;
-    /// <summary>Coverage below this isn't drawn.</summary>
-    private const float Visible = 0.004f;
+    /// <summary>Drawn coverage below which a triangle's corner shows nothing.</summary>
+    private const float Visible = 0.01f;
+    /// <summary>How many spacings the drawn film fades over toward an open edge it fades at.</summary>
+    private const float EdgeFadeSpacings = 5f;
 
     private readonly Settings _settings;
     private readonly Vector3[] _at;
@@ -54,6 +56,13 @@ internal sealed class SurfaceFilm {
     private readonly BodyLiquidSurface.SkinWeights[]? _skin;
     private readonly Dictionary<Vector3I, List<int>> _cells = [];
     private readonly float _reach;
+    /// <summary>How much of a point's liquid is drawn, 0 at an open edge the film fades toward, else 1.</summary>
+    private readonly float[] _shown;
+    // Drawn coverage blurred once and twice over each point's neighbours, worked out once a step (stamped).
+    private readonly float[] _blurredOnce;
+    private readonly float[] _blurredTwice;
+    private readonly int[] _onceAsked;
+    private readonly int[] _twiceAsked;
 
     // Owned by the worker while a step runs.
     private readonly float[] _ml;
@@ -67,7 +76,7 @@ internal sealed class SurfaceFilm {
     private Vector3 _gravity;
     private Vector3[] _vertices = [];
     private Vector3[] _normals = [];
-    private Color[] _colors = [];
+    private Vector2[] _uvs = [];
     private int[] _bones = [];
     private float[] _boneWeights = [];
 
@@ -109,9 +118,12 @@ internal sealed class SurfaceFilm {
     /// <param name="skin">One set of bone weights per corner, for a film drawn on a skinned mesh.</param>
     /// <param name="keep">Whether the part of the surface at a point with a normal belongs to the film.</param>
     /// <param name="mesh">Where to draw it; made on the main thread when the film is built on a worker.</param>
+    /// <param name="fadesAt">Which points of the surface's open edges the drawn film fades out toward: where the
+    /// surface was cut out of a larger one (the body round the site), so that edge is no edge of the real thing.
+    /// </param>
     internal SurfaceFilm(IReadOnlyList<Vector3> triangles, Settings settings, IReadOnlyList<Vector3>? outward = null,
         IReadOnlyList<BodyLiquidSurface.SkinWeights>? skin = null, Func<Vector3, Vector3, bool>? keep = null,
-        ArrayMesh? mesh = null) {
+        ArrayMesh? mesh = null, Func<Vector3, bool>? fadesAt = null) {
         _settings = settings;
         Mesh = mesh ?? new ArrayMesh();
         var index = new Dictionary<(long, long, long), int>();
@@ -280,6 +292,45 @@ internal sealed class SurfaceFilm {
         _isWet = new bool[count];
         _drainAsked = new int[count];
         _drainsHere = new bool[count];
+        _blurredOnce = new float[count];
+        _blurredTwice = new float[count];
+        _onceAsked = new int[count];
+        _twiceAsked = new int[count];
+        _shown = fadesAt is null ? Enumerable.Repeat(1f, count).ToArray() : EdgeFade(fadesAt, settings.Spacing * EdgeFadeSpacings);
+    }
+
+    /// <summary>For each point, how far it lies from the surface's open edge (an edge of one triangle only) where
+    /// <paramref name="fadesAt"/>, over <paramref name="reach"/>, eased: 0 on the edge, 1 from reach on.</summary>
+    private float[] EdgeFade(Func<Vector3, bool> fadesAt, float reach) {
+        var edges = new Dictionary<(int, int), int>();
+        for (var i = 0; i < _triangles.Length; i += 3) {
+            for (var e = 0; e < 3; e++) {
+                var (a, b) = (_triangles[i + e], _triangles[i + (e + 1) % 3]);
+                var key = a < b ? (a, b) : (b, a);
+                edges[key] = edges.GetValueOrDefault(key) + 1;
+            }
+        }
+        var distance = Enumerable.Repeat(float.PositiveInfinity, _at.Length).ToArray();
+        var open = new PriorityQueue<int, float>();
+        foreach (var ((a, b), uses) in edges) {
+            foreach (var k in new[] { a, b }) {
+                if (uses != 1 || !fadesAt(_at[k])) { continue; }
+                distance[k] = 0f;
+                open.Enqueue(k, 0f);
+            }
+        }
+        while (open.TryDequeue(out var k, out var d)) {
+            if (d > distance[k] || d >= reach) { continue; }
+            for (var e = _neighborStart[k]; e < _neighborStart[k + 1]; e++) {
+                var other = _neighbors[e];
+                var through = d + _distance[e];
+                if (through < distance[other]) {
+                    distance[other] = through;
+                    open.Enqueue(other, through);
+                }
+            }
+        }
+        return distance.Select(d => Mathf.SmoothStep(0f, 1f, Mathf.Min(d / reach, 1f))).ToArray();
     }
 
     private int EdgeSteps(Vector3 a, Vector3 b) => Math.Max(1, Mathf.CeilToInt(a.DistanceTo(b) / _settings.Spacing));
@@ -475,7 +526,8 @@ internal sealed class SurfaceFilm {
     private float Coverage(int k) => 1f - Mathf.Exp(-_ml[k] * 0.000001f / _area[k] / CoverDepth);
 
     private void BuildMesh() {
-        // Only triangles at a wet point can show any liquid.
+        // Each point is drawn with its liquid blended with its neighbours', as the site's film is painted: a pool's
+        // edge then rounds off between the points instead of following them.
         _stamp++;
         _drawn.Clear();
         foreach (var k in _wet) {
@@ -484,8 +536,9 @@ internal sealed class SurfaceFilm {
                 if (_drawnStamp[t] == _stamp) { continue; }
                 _drawnStamp[t] = _stamp;
                 var c = t * 3;
-                if (Coverage(_triangles[c]) > Visible || Coverage(_triangles[c + 1]) > Visible
-                    || Coverage(_triangles[c + 2]) > Visible) { _drawn.Add(c); }
+                var shows = false;
+                for (var corner = 0; corner < 3; corner++) { shows |= DrawnCoverage(_triangles[c + corner]) > Visible; }
+                if (shows) { _drawn.Add(c); }
             }
         }
         _drawn.Sort();
@@ -493,7 +546,7 @@ internal sealed class SurfaceFilm {
         if (_vertices.Length != vertices) {
             _vertices = new Vector3[vertices];
             _normals = new Vector3[vertices];
-            _colors = new Color[vertices];
+            _uvs = new Vector2[vertices];
             _bones = _skin is null ? [] : new int[vertices * 4];
             _boneWeights = _skin is null ? [] : new float[vertices * 4];
         }
@@ -504,7 +557,7 @@ internal sealed class SurfaceFilm {
                 var depth = Mathf.Min(_ml[k] * 0.000001f / _area[k], 0.003f);
                 _vertices[v] = _at[k] + _normal[k] * (_settings.Lift + depth);
                 _normals[v] = _normal[k];
-                _colors[v] = new Color(1f, 1f, 1f, Coverage(k));
+                _uvs[v] = new Vector2(_blurredTwice[k], OpticalDepth(k) * _shown[k]);
                 if (_skin is not null) {
                     var skin = _skin[k];
                     for (var b = 0; b < 4; b++) {
@@ -517,6 +570,32 @@ internal sealed class SurfaceFilm {
         }
     }
 
+    /// <summary>How much of the surface point k is drawn hiding: its coverage blurred twice over its neighbours, faded
+    /// toward an open edge. A pool's coverage drops from full to none within a point; blurred, it falls off over a few,
+    /// and the drawn edge where it crosses one half runs round between the points instead of along them.</summary>
+    private float DrawnCoverage(int k) {
+        if (_twiceAsked[k] == _stamp) { return _blurredTwice[k]; }
+        _twiceAsked[k] = _stamp;
+        var (first, last) = (_neighborStart[k], _neighborStart[k + 1]);
+        var sum = BlurredOnce(k);
+        for (var e = first; e < last; e++) { sum += BlurredOnce(_neighbors[e]); }
+        return _blurredTwice[k] = sum / (last - first + 1);
+    }
+
+    private float BlurredOnce(int k) {
+        if (_onceAsked[k] == _stamp) { return _blurredOnce[k]; }
+        _onceAsked[k] = _stamp;
+        var (first, last) = (_neighborStart[k], _neighborStart[k + 1]);
+        var sum = _isWet[k] ? Coverage(k) * _shown[k] : 0f;
+        for (var e = first; e < last; e++) {
+            var other = _neighbors[e];
+            if (_isWet[other]) { sum += Coverage(other) * _shown[other]; }
+        }
+        return _blurredOnce[k] = sum / (last - first + 1);
+    }
+
+    private float OpticalDepth(int k) => _ml[k] * 0.000001f / _area[k] / CoverDepth;
+
     private void Upload() {
         Mesh.ClearSurfaces();
         if (_vertices.Length == 0) { return; }
@@ -524,7 +603,7 @@ internal sealed class SurfaceFilm {
         arrays.Resize((int)Godot.Mesh.ArrayType.Max);
         Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Vertex, _vertices);
         Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Normal, _normals);
-        Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Color, _colors);
+        Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.TexUV, _uvs);
         if (_skin is not null) {
             Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Bones, _bones);
             Shapes.SetPacked(arrays, Godot.Mesh.ArrayType.Weights, _boneWeights);

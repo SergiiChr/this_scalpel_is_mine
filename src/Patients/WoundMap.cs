@@ -86,7 +86,7 @@ public sealed class WoundMap {
     private bool[] _filmSpread = [];
     private bool[] _filmReducedNear = [];
     /// <summary>Standard deviation of the film's upsampling, in solver cells: about a cubic B-spline's.</summary>
-    private const float FilmSpread = 0.6f;
+    private const float FilmSpread = 0.55f;
     private int[] _filmPixelStart = [];
 
     public WoundMap(int texels = MaxSize) {

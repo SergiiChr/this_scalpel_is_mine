@@ -12,6 +12,9 @@ internal sealed class SurfaceBlood {
     internal const float CoverDepth = 0.00015f;
     // Dense films approach full mobility; thinner films move more slowly under viscous drag.
     private const float MobilityDepth = 0.0006f;
+    /// <summary>How fast a thin film runs for its slope, and a deep pool, as on the body's own film (SurfaceFilm). A
+    /// small seep stays where it starts; a deep pool runs off instead of standing millimeters high.</summary>
+    private const float ThinFlowRate = 1.5f, DeepFlowRate = 6f;
     private static readonly (int X, int Y)[] Neighbors = [
         (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1),
     ];
@@ -328,6 +331,7 @@ internal sealed class SurfaceBlood {
                 var movable = _ml[i] - ResidueDepth / _normalDepthPerMl[i];
                 if (movable <= 0f) { continue; }
                 var head = _head[i];
+                var cohesion = _height[i] + _ml[i] * _projectedDepthPerMl - head;
                 var total = 0f;
                 for (var n = 0; n < Neighbors.Length; n++) {
                     var (dx, dy) = Neighbors[n];
@@ -336,8 +340,10 @@ internal sealed class SurfaceBlood {
                     var inside = nx >= 0 && nx < Size && ny >= 0 && ny < Size;
                     var neighbor = inside ? ny * Size + nx
                         : Math.Clamp(y - dy, 0, Size - 1) * Size + Math.Clamp(x - dx, 0, Size - 1);
-                    // Continue the local slope off the boundary instead of inventing a vertical drop there.
-                    var ground = inside ? _height[neighbor] : 2f * _height[i] - _height[neighbor];
+                    // Continue the local slope off the boundary instead of inventing a vertical drop there. The skin
+                    // beyond the site holds blood as this cell does, so cohesion holds nothing back at the edge: what
+                    // stands deeper than the pinning depth runs on onto the body's film.
+                    var ground = inside ? _height[neighbor] : 2f * _height[i] - _height[neighbor] - cohesion;
                     var other = inside && _holds[neighbor] ? _head[neighbor] : ground;
                     _weights[n] = Mathf.Max(head - other - Pinning, 0f) / _distances[n];
                     total += _weights[n];
@@ -347,7 +353,8 @@ internal sealed class SurfaceBlood {
                 // instead of travelling as quickly as its deep supply and leaving a uniformly broad sheet.
                 var thickness = _thickness[i];
                 var mobility = Mathf.Min(1f, thickness * thickness / (MobilityDepth * MobilityDepth));
-                var outflow = movable * Mathf.Min(0.24f, total * delta * 1.5f * mobility);
+                var rate = Mathf.Lerp(ThinFlowRate, DeepFlowRate, mobility);
+                var outflow = movable * Mathf.Min(0.24f, total * delta * rate * mobility);
                 _change[i] -= outflow;
                 for (var n = 0; n < Neighbors.Length; n++) {
                     var (dx, dy) = Neighbors[n];

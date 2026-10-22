@@ -137,8 +137,8 @@ public class BloodFlowTest {
                 var vertexCount = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length;
                 AssertInt(arrays[(int)Mesh.ArrayType.Bones].AsInt32Array().Length)
                     .OverrideFailureMessage("every drawn film vertex carries four skin influences").IsEqual(vertexCount * 4);
-                AssertInt(arrays[(int)Mesh.ArrayType.Color].AsColorArray().Length)
-                    .OverrideFailureMessage("every drawn film vertex carries its coverage").IsEqual(vertexCount);
+                AssertInt(arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array().Length)
+                    .OverrideFailureMessage("every drawn film vertex carries its liquid's depth").IsEqual(vertexCount);
                 return Task.CompletedTask;
             });
         }

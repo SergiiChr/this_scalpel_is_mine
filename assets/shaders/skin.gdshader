@@ -60,6 +60,9 @@ void fragment() {
 	// Only tied sutures mark joined edges; a low-quality closure in w.a is not a seam marker.
 	w.r *= texture(seam_map, UV).r;
 	vec4 f = texture(fluid_map, UV);
+	// Fades toward the site's edges over the same ragged band as the body's skin (toon.gdshader).
+	vec2 inside = min(UV, 1.0 - UV);
+	f.r *= smoothstep(0.0, 0.15, min(inside.x, inside.y) + (noise(world_pos.xz * 60.0 + world_pos.y * 25.0) - 0.5) * 0.04);
 	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
 	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.

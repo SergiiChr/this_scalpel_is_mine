@@ -87,14 +87,14 @@ public partial class BloodFlow : Node3D {
     internal const float FloorY = 0.004f;
     internal const float TableTop = Room.TableHeight + 0.001f;
     /// <summary>Blood on the skin around the site: a thin film that runs off the body's sides.</summary>
-    private static readonly SurfaceFilm.Settings BodyFilmSettings = new(0.006f, 0.00015f, 0.0003f, 0.03f);
+    private static readonly SurfaceFilm.Settings BodyFilmSettings = new(0.007f, 0.00015f, 0.0003f, 0.03f);
     /// <summary>Blood on the mattress and frame: a thin soaked layer that runs over the edges.</summary>
     private static readonly SurfaceFilm.Settings BedFilmSettings = new(0.01f, 0.0004f, 0.0005f);
     /// <summary>Blood on the floor: puddles about a millimeter and a half deep.</summary>
-    private static readonly SurfaceFilm.Settings FloorFilmSettings = new(0.02f, 0.0015f, 0.0008f);
+    private static readonly SurfaceFilm.Settings FloorFilmSettings = new(0.015f, 0.0015f, 0.0008f);
     /// <summary>How far (m) from the site's middle the body's film reaches: far enough round a limb or the torso to
     /// carry runoff down to the bed.</summary>
-    private const float BodyFilmReach = 0.35f;
+    private const float BodyFilmReach = 0.6f;
     /// <summary>How far (m) round the table the floor's film reaches.</summary>
     private const float FloorFilmMargin = 0.8f;
     private const float PuddlePaintInterval = 0.2f;
@@ -860,7 +860,8 @@ public partial class BloodFlow : Node3D {
         var bodyMesh = new ArrayMesh();
         _bodyFilmBuild = Task.Run(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
             skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
-            (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh));
+            (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh,
+            at => (meshToSite * at).Length() > BodyFilmReach - 0.02f));
         _skinMesh.GetParent().AddChild(new MeshInstance3D {
             Name = "BodyFilm",
             Mesh = bodyMesh,
@@ -878,7 +879,8 @@ public partial class BloodFlow : Node3D {
         Vector3[] floor = [new(foot, FloorY, -side), new(head, FloorY, -side), new(head, FloorY, side),
             new(foot, FloorY, -side), new(head, FloorY, side), new(foot, FloorY, side)];
         var floorMesh = new ArrayMesh();
-        _floorFilmBuild = Task.Run(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(), mesh: floorMesh));
+        _floorFilmBuild = Task.Run(() => new SurfaceFilm(floor, FloorFilmSettings, Enumerable.Repeat(Vector3.Up, 6).ToArray(),
+            mesh: floorMesh, fadesAt: _ => true));
         foreach (var (name, mesh) in new[] { ("BedFilm", bedMesh), ("FloorFilm", floorMesh) }) {
             AddChild(new MeshInstance3D {
                 Name = name,
