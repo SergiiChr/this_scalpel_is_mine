@@ -203,12 +203,12 @@ public partial class Drape : MeshInstance3D {
             return;
         }
         var local = GlobalTransform.AffineInverse();
-        BonePoint[] now = [.. points.Select(point => point with { Position = local * point.Position })];
-        if (_pressing.TryGetValue(hand, out var was) && was.Length == now.Length
-            && !was.Where((point, i) => point.Position.DistanceTo(now[i].Position) > DentStep).Any()) {
+        // Across the sheet only: breathing lifts it (PatientBody.SetBreathOffset()) under a hand on a leg that stays.
+        if (_pressing.TryGetValue(hand, out var was) && was.Length == points.Count
+            && !was.Where((point, i) => Flat(point.Position - (local * points[i].Position)).Length() > DentStep).Any()) {
             return;
         }
-        _pressing[hand] = now;
+        _pressing[hand] = [.. points.Select(point => point with { Position = local * point.Position })];
         Dent();
     }
 
