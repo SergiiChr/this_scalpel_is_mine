@@ -53,25 +53,51 @@ public static class Ui {
     /// <summary>Shapes, rasterizes and uploads text glyphs during setup, including any fallback fonts.</summary>
     internal static void PrepareLabelText(Label label, string text) =>
         PrepareFontText(label.GetThemeFont("font"), label.GetThemeFontSize("font_size"),
-            label.GetThemeConstant("outline_size"), text);
+            label.GetThemeConstant("outline_size"), text, label.GetViewport().GetOversampling());
 
     /// <summary>Prepare filled glyphs and, when present, their outlines, including fallback font textures.</summary>
-    internal static void PrepareFontText(Font font, int size, int outline, string text) {
+    internal static void PrepareFontText(Font font, int size, int outline, string text, float oversampling = 1f) {
         using var line = new TextLine();
         _ = line.AddString(text, font, size);
         var server = TextServerManager.GetPrimaryInterface();
         var glyphs = server.ShapedTextGetGlyphs(line.GetRid())
             .Select(glyph => (Font: glyph["font_rid"].AsRid(), Index: glyph["index"].AsInt64()))
             .Where(glyph => glyph.Font.IsValid && glyph.Index > 0).Distinct().ToArray();
-        foreach (var stroke in outline > 0 ? new[] { 0, outline } : new[] { 0 }) {
-            var pixels = new Vector2I(size, stroke);
+        // Canvas-item stretching draws from a different cache than FontRenderGlyph's unscaled one, often at a
+        // fractional pixel size. An unattached canvas warms the actual draw cache without showing any text.
+        var canvas = RenderingServer.CanvasItemCreate();
+        try {
             foreach (var glyph in glyphs) {
-                server.FontRenderGlyph(glyph.Font, pixels, glyph.Index);
+                var positions = SubpixelPositions(server, glyph.Font, size, oversampling);
+                for (var shift = 0; shift < positions; shift++) {
+                    var at = new Vector2(shift / (float)positions, 0f);
+                    server.FontDrawGlyph(glyph.Font, canvas, size, at, glyph.Index, Colors.White, oversampling);
+                    if (outline > 0) {
+                        server.FontDrawGlyphOutline(glyph.Font, canvas, size, outline, at, glyph.Index,
+                            Colors.White, oversampling);
+                    }
+                }
             }
-            foreach (var glyph in glyphs) {
-                _ = server.FontGetGlyphTextureRid(glyph.Font, pixels, glyph.Index);
-            }
+        } finally {
+            RenderingServer.FreeRid(canvas);
         }
+    }
+
+    /// <summary>Match the font's raster positions at its effective pixel size, including viewport scaling.</summary>
+    private static int SubpixelPositions(TextServer server, Rid font, int size, float oversampling) {
+        if (server.FontIsMultichannelSignedDistanceField(font)) {
+            return 1;
+        }
+        var fixedSize = server.FontGetFixedSize(font);
+        var pixels = fixedSize > 0 ? fixedSize
+            : size * (Mathf.Floor(Mathf.Clamp(oversampling, 0.1f, 100f) * 64f) / 64f);
+        return server.FontGetSubpixelPositioning(font) switch {
+            TextServer.SubpixelPositioning.OneQuarter => 4,
+            TextServer.SubpixelPositioning.OneHalf => 2,
+            TextServer.SubpixelPositioning.Auto when pixels <= (int)TextServer.SubpixelPositioning.OneQuarterMaxSize => 4,
+            TextServer.SubpixelPositioning.Auto when pixels <= (int)TextServer.SubpixelPositioning.OneHalfMaxSize => 2,
+            _ => 1,
+        };
     }
 
     public static Button Button(string text, Action pressed) {

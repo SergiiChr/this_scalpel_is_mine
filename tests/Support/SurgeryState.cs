@@ -220,7 +220,7 @@ public static class SurgeryState {
     /// <summary>The nurse and shop are ready for the next ordinary test's order.</summary>
     public static void NurseIsReady(Surgery surgery) {
         NurseHasDelivered(surgery);
-        surgery.Hud.Shop.ShowBoard("");
+        surgery.Hud.Shop.ShowBoard(SurgeryStatus.Empty);
         surgery.Hud.Shop.SetNurseReady(surgery.Nurse.Idle);
     }
 
