@@ -51,7 +51,11 @@ public partial class NetPinchDriver : NetSession {
         // Along the table until the bullet is in front: the thigh is out of reach from where the client starts.
         var walk = me.ToLocal(spot).X < 0f ? InputActions.MoveLeft : InputActions.MoveRight;
         PlayerInput.Action(walk);
-        await Until(() => Mathf.Abs(me.ToLocal(spot).X) < 0.1f);
+        // Checked every physics tick: checked every 0.1 s, a slow frame lets the walk step over the 20 cm window and on
+        // into the wall.
+        for (var tick = 0; tick < Timeout * Engine.PhysicsTicksPerSecond && Mathf.Abs(me.ToLocal(spot).X) >= 0.1f; tick++) {
+            await Physics(1);
+        }
         PlayerInput.Action(walk, false);
         await Wait(0.5);
         // The hand's key makes it the active one and lets the mouse move it.

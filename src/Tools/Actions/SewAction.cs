@@ -35,14 +35,18 @@ public sealed class SewAction : ToolAction {
             }
             suture.Hold += step.Dt;
             if (step.Lowered && inSite) {
-                suture.At = uv;
+                // The hole goes where the tip touches the tissue (down a cut's wall beside it), in that layer.
+                var body = patient.Body;
+                var touched = body.ExposedUnder(step.Tip)?.Tissue;
+                suture.At = touched is { } tissue ? body.LocalToUv(tissue.Contact) : uv;
+                suture.AtLayer = touched?.Layer ?? TissueDepth.None;
             }
             if (step.Lowered && zone == SiteZone.Cavity && patient.CloseInternalAt(uv, tool.Def, step.Dt)) {
                 suture.PressUsed = true;
             } else if (suture.Hold >= ToolActions.SutureTieHold && !suture.PressUsed && suture.Thread != 0) {
                 // The last hole, if there's room for one here, then the knot either way.
                 suture.PressUsed = true;
-                AddHole(tool, patient);
+                AddHole(tool, patient, tellMiss: false);
                 patient.FinishSuture(suture.Thread, tool.Def.Quality);
                 step.Surgery.Sound("suture_pull", step.Tip);
             }
@@ -57,8 +61,9 @@ public sealed class SewAction : ToolAction {
     }
 
     /// <summary>Passes the needle's thread through a new hole where it was last on the patient, starting a thread if it
-    /// has none.</summary>
-    private static bool AddHole(SurgicalTool tool, Patient patient) {
+    /// has none. Where it can't, the player is told why, unless <paramref name="tellMiss"/> is false: tying off, the last
+    /// hole is only made if there's room for it.</summary>
+    private static bool AddHole(SurgicalTool tool, Patient patient, bool tellMiss = true) {
         var suture = tool.Suture;
         if (suture.At.X < 0f) {
             return false;
@@ -66,7 +71,10 @@ public sealed class SewAction : ToolAction {
         if (suture.Thread == 0) {
             suture.Thread = patient.NewSuture();
         }
-        var placed = patient.PlaceSutureAnchor(suture.Thread, suture.At, suture.Tension);
+        var placed = patient.PlaceSutureAnchor(suture.Thread, suture.At, suture.AtLayer, suture.Tension, out var miss);
+        if (tellMiss && miss is not null && Surgery.Current!.Surgeons.TryGetValue(tool.Holder, out var surgeon)) {
+            Surgery.Current.Tell(surgeon.PeerId, miss);
+        }
         var info = patient.Body.Tissue.Thread(suture.Thread);
         if (info is null) {
             suture.Thread = 0;

@@ -43,6 +43,9 @@ public partial class Surgeon {
     /// <summary>How finely (meters) a forceps tip's move is checked for skin on its way (see InsideLip()): finer than the
     /// thinnest skin between two cuts worth telling apart.</summary>
     private const float LipStep = 0.002f;
+    /// <summary>How far (meters) under the skin's rest surface a needle still finds the drawn tissue of a cut there:
+    /// deeper than skin, fat and muscle together.</summary>
+    private const float CutWallReach = 0.04f;
 
     /// <summary>Hands whose syringe is snapped into a vial or the IV bag, or whose vial is held up to the other hand's
     /// syringe, or easing in or out.</summary>
@@ -84,6 +87,11 @@ public partial class Surgeon {
         if (IsNeedle(tool)) {
             under = GloveBelow(hand, tip, under);
         }
+        // A suture needle's dot is on the tissue its tip touches, down a cut's wall beside it over an opening.
+        if (ExposedBelow(tool, tip, under) is { } exposed && exposed.Surface != under) {
+            var contact = Session.Patient.Body.Site.ToGlobal(exposed.Tissue.Contact);
+            return tip.Y - contact.Y < AimDrop ? contact : tip;
+        }
         return Dropped(tip, under);
     }
 
@@ -115,6 +123,9 @@ public partial class Surgeon {
         var target = hand.Target;
         // A hand holding onto something keeps its height; Lift pulls it up (see LocalUpdate()).
         var surface = hand.Attached ? Surface.None : LyingBelow(target + offset, SurfaceBelow(target + offset));
+        if (!hand.Attached && ExposedBelow(tool, target + offset, surface) is { } exposed) {
+            surface = exposed.Surface;
+        }
         if (!hand.Attached && tool is { Def.Action: "cut", Blade: not null } && surface.Open) {
             var body = Session.Patient.Body;
             var local = body.Site.ToLocal(target + offset);
@@ -501,6 +512,25 @@ public partial class Surgeon {
             }
         }
         return new Surface(position.Y, false, (layer & SoftLayers) != 0);
+    }
+
+    /// <summary>A suture needle rests on the tissue as it's drawn under its tip (PatientBody.ExposedUnder()): the skin,
+    /// down a cut's walls through the skin, fat and muscle, and onto what a spread cut lays bare, so its dot can be put
+    /// on any layer the player can see. Null where that isn't what it rests on: another tool, a glove, or an opening
+    /// through the muscle with nothing near enough to touch, where it goes down inside.</summary>
+    private (Surface Surface, ExposedTissue Tissue)? ExposedBelow(SurgicalTool? tool, Vector3 point, Surface surface) {
+        if (tool is not { Def.Action: "sew" } || !surface.Found) {
+            return null;
+        }
+        var body = Session.Patient.Body;
+        if (body.ExposedUnder(point) is not var (exposed, top)) {
+            return null;
+        }
+        // Skin drawn just under the body's rest surface (the lips of a cut not open through the muscle) is still what
+        // it rests on; anything else standing over the tissue (a tool, a glove) comes first, and so does what's inside
+        // an opening where it's higher than the tip would go down a wall.
+        var onTissue = top >= surface.Y || (!surface.Open && surface.Soft && surface.Y - top < CutWallReach);
+        return onTissue ? (new Surface(top, false, true), exposed) : null;
     }
 
     /// <summary>A partner lying on the floor: a hand comes down onto the round of their torso, not through it.</summary>
