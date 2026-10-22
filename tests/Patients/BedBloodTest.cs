@@ -16,7 +16,7 @@ public class BedBloodTest {
     public async Task BloodAtEveryBedEdgeRunsDownItsSidesAndDripsOntoTheFloor() {
         var session = await ToolSession.Start("appendectomy", "blood_bed_edges", captureUntouched: false);
         var driver = session.Driver;
-        var blood = HoldStill(driver);
+        var blood = await HoldStill(driver);
         var height = BloodFlow.TableTop;
         Vector3[] supplies = [
             new(Room.TableFoot + 0.025f, height, 0.05f),
@@ -60,7 +60,7 @@ public class BedBloodTest {
                 AssertFloat(side).OverrideFailureMessage($"blood at {at} runs over the bed's edge and down its side").IsGreater(0.3f);
             }
             AssertFloat(blood.FloorFilm.HeldMl).OverrideFailureMessage("what runs off the bed drips onto the floor").IsGreater(1f);
-            AssertFloat(blood.GroundMl).OverrideFailureMessage("bed, drops and floor keep every supplied milliliter")
+            AssertFloat(blood.GroundMl).OverrideFailureMessage($"bed, drops and floor keep every supplied milliliter ({blood.BedFilm.HeldMl:0.000} bed, {blood.FloorFilm.HeldMl:0.000} floor, {blood.Drops.Sum(d => d.Ml):0.000} falling of {supplied:0.000})")
                 .IsEqualApprox(supplied, supplied * 0.0001f);
             return Task.CompletedTask;
         });
@@ -75,7 +75,7 @@ public class BedBloodTest {
     public async Task BloodOnTheFrameShelfDrainsToTheFloor() {
         var session = await ToolSession.Start("appendectomy", "bed_frame_shelf", captureUntouched: false);
         var driver = session.Driver;
-        var blood = HoldStill(driver);
+        var blood = await HoldStill(driver);
         var bed = driver.Surgery.Room.BedSurface;
         var shelf = new Vector3(0.405f, BloodFlow.TableTop, 0.26f);
         var contact = bed.Landing(new Vector3(shelf.X, 1.1f, shelf.Z), new Vector3(shelf.X, 0.7f, shelf.Z));
@@ -92,7 +92,7 @@ public class BedBloodTest {
         await driver.Unbudgeted(() => {
             var film = blood.BedFilm;
             var onShelf = Enumerable.Range(0, film.Count).Where(k => film.At(k).DistanceTo(contact.Value) < 0.02f).Max(film.CoverageAt);
-            AssertFloat(onShelf).OverrideFailureMessage("blood stands on the shelf where it lands").IsGreater(0.5f);
+            AssertFloat(onShelf).OverrideFailureMessage($"blood stands on the shelf where it lands ({onShelf:0.00} cover, {film.HeldMl:0.00} ml on the bed)").IsGreater(0.5f);
             AssertFloat(blood.FloorFilm.HeldMl).OverrideFailureMessage("the shelf drains over the frame onto the floor").IsGreater(0f);
             AssertFloat(blood.GroundMl).OverrideFailureMessage("shelf, frame, drops and floor keep every supplied milliliter")
                 .IsEqualApprox(Supplies * Dose, Supplies * Dose * 0.0001f);
@@ -107,7 +107,7 @@ public class BedBloodTest {
     public async Task SustainedFloorDripSpreadsIntoOneConnectedPool() {
         var session = await ToolSession.Start("appendectomy", "bed_sustained_floor", captureUntouched: false);
         var driver = session.Driver;
-        var blood = HoldStill(driver);
+        var blood = await HoldStill(driver);
         // Ten seconds of a steady drip off the bed's head end, scattering over the floor like real splashes.
         var drip = new Vector3(Room.TableHead + 0.15f, BloodFlow.FloorY, 0f);
         var rng = new RandomNumberGenerator { Seed = 7 };
@@ -136,12 +136,13 @@ public class BedBloodTest {
     }
 
     /// <summary>The bed fixtures hold the patient still: the patient's bleeding and tissue are other suites' work.</summary>
-    private static BloodFlow HoldStill(SurgeryDriver driver) {
+    private static async Task<BloodFlow> HoldStill(SurgeryDriver driver) {
         driver.Patient.SetPhysicsProcess(false);
         driver.Body.SetProcess(false);
         var blood = driver.Body.Blood;
         blood.Sources.Clear();
         blood.Pools.Clear();
+        await driver.BloodFilmsBuilt();
         return blood;
     }
 

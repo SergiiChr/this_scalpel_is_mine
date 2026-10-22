@@ -146,6 +146,8 @@ public partial class BloodFlow : Node3D {
     internal SurfaceFilm BedFilm => _bedFilmBuild.Result;
     /// <summary>Blood on the floor, in world space.</summary>
     internal SurfaceFilm FloorFilm => _floorFilmBuild.Result;
+    /// <summary>Done once every film is built: blood that reaches a film before then waits for it.</summary>
+    internal Task FilmsBuilt => Task.WhenAll(_bodyFilmBuild, _bedFilmBuild, _floorFilmBuild);
     private static float HeldOn(Task<SurfaceFilm> build) => build.IsCompletedSuccessfully ? build.Result.HeldMl : 0f;
     internal float SurfaceSuppliedMl { get; private set; }
     internal float SurfaceAccountedMl => _surface.HeldMl + _surface.QueuedRunoffMl + _surface.RemovedMl
@@ -727,26 +729,16 @@ public partial class BloodFlow : Node3D {
     private void Flow(PatientBody body, float delta) {
         // What runs off the site's edges goes on down the body's own skin.
         var siteToMesh = body.LiquidContact.SiteToMesh;
-        while (_surface.TakeRunoff(out var uv, out var runoffMl)) {
+        // Until the body's film is built, runoff waits in the site's queue.
+        while (_bodyFilmBuild.IsCompleted && _surface.TakeRunoff(out var uv, out var runoffMl)) {
             BodyFilm.Add(BodyFilm.Nearest(siteToMesh * body.Site.ToLocal(body.UvToWorld(uv))), runoffMl);
         }
         if (_bodyFilmBuild.IsCompleted) {
-            var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton);
-            var film = BodyFilm;
-            var mesh = _skinMesh.GlobalTransform;
-            Vector3 World(int node, Vector3 at) => pose?.Deform(at, film.SkinAt(node)) ?? mesh * at;
+            var world = BodyToWorld();
             // Skin pressed on the mattress (lying on the back or turned) hands its blood to the bed's film.
             var bed = Bed;
-            if (film.Tick(delta, _skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(World(node, film.At(node))))) {
-                foreach (var drip in film.Released) {
-                    var at = World(drip.Node, drip.At);
-                    if (bed.Touches(at)) {
-                        BedFilm.Add(BedFilm.Nearest(at with { Y = bed.HeightAt(new Vector2(at.X, at.Z))!.Value }), drip.Ml);
-                    } else {
-                        AddDrop(at, Vector3.Zero, drip.Ml);
-                    }
-                }
-            }
+            BodyFilm.Tick(delta, _skinMesh.GlobalBasis.Inverse() * Vector3.Down, node => bed.Touches(world(node, BodyFilm.At(node))));
+            ReleaseBodyDrips(world);
         }
         if (_surface.HasFilm) {
             _surfaceGeometryClock += delta;
@@ -824,6 +816,32 @@ public partial class BloodFlow : Node3D {
         _drops.Add(new Drop(at, velocity, ml, shape * amount, _dripRng.RandfRange(-Mathf.Pi, Mathf.Pi)));
     }
 
+    /// <summary>Places a body film point on the body as it's posed now. Safe to call from the film's worker.</summary>
+    private Func<int, Vector3, Vector3> BodyToWorld() {
+        var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton);
+        var film = BodyFilm;
+        var mesh = _skinMesh.GlobalTransform;
+        return (node, at) => pose?.Deform(at, film.SkinAt(node)) ?? mesh * at;
+    }
+
+    private void ReleaseBodyDrips(Func<int, Vector3, Vector3> world) {
+        var bed = Bed;
+        foreach (var drip in BodyFilm.Released) {
+            var at = world(drip.Node, drip.At);
+            if (bed.Touches(at)) {
+                BedFilm.Add(BedFilm.Nearest(at with { Y = bed.HeightAt(new Vector2(at.X, at.Z))!.Value }, Vector3.Up), drip.Ml);
+            } else {
+                AddDrop(at, Vector3.Zero, drip.Ml);
+            }
+        }
+        BodyFilm.ClearReleased();
+    }
+
+    private void ReleaseBedDrips() {
+        foreach (var drip in BedFilm.Released) { AddDrop(drip.At, Vector3.Zero, drip.Ml); }
+        BedFilm.ClearReleased();
+    }
+
     private BedLiquidSurface Bed => _body!.GetParent<Patient>().GetParent<Surgery>().Room.BedSurface;
 
     /// <summary>The body's skin round the site, the bed and the floor, each with its own film, drawn by its own mesh.
@@ -854,7 +872,8 @@ public partial class BloodFlow : Node3D {
         });
         var bed = Bed.Triangles;
         var bedMesh = new ArrayMesh();
-        _bedFilmBuild = Task.Run(() => new SurfaceFilm(bed, BedFilmSettings, mesh: bedMesh));
+        var bedSurface = Bed;
+        _bedFilmBuild = Task.Run(() => new SurfaceFilm(bed, BedFilmSettings, keep: bedSurface.Exposed, mesh: bedMesh));
         var (foot, head, side) = (Room.TableFoot - FloorFilmMargin, Room.TableHead + FloorFilmMargin, Room.TableHalfWidth + FloorFilmMargin);
         Vector3[] floor = [new(foot, FloorY, -side), new(head, FloorY, -side), new(head, FloorY, side),
             new(foot, FloorY, -side), new(head, FloorY, side), new(foot, FloorY, side)];
@@ -880,19 +899,24 @@ public partial class BloodFlow : Node3D {
             drop.Velocity += Vector3.Down * 9.8f * delta;
             var position = drop.Position + drop.Velocity * delta;
             var bedHit = landingBed?.Landing(drop.Position, position);
-            if (bedHit is { } onBed) {
+            var landing = bedHit is not null ? _bedFilmBuild : position.Y <= FloorY ? _floorFilmBuild : null;
+            if (landing is { IsCompleted: false }) {
+                // The film it lands on is still being built: it waits just above, rather than stall the frame.
+                drop.Velocity = Vector3.Zero;
+            } else if (bedHit is { } onBed) {
                 _drops.RemoveAt(i--);
-                BedFilm.Add(BedFilm.Nearest(onBed), drop.Ml);
+                BedFilm.Add(BedFilm.Nearest(onBed, Vector3.Up), drop.Ml);
             } else if (position.Y <= FloorY) {
                 var hit = drop.Position.Lerp(position, Mathf.Clamp((drop.Position.Y - FloorY) / (drop.Position.Y - position.Y), 0f, 1f));
                 _drops.RemoveAt(i--);
-                FloorFilm.Add(FloorFilm.Nearest(hit with { Y = FloorY }), drop.Ml);
+                FloorFilm.Add(FloorFilm.Nearest(hit with { Y = FloorY }, Vector3.Up), drop.Ml);
             } else {
                 drop.Position = position;
             }
         }
-        if (_bedFilmBuild.IsCompleted && BedFilm.Tick(delta, Vector3.Down)) {
-            foreach (var drip in BedFilm.Released) { AddDrop(drip.At, Vector3.Zero, drip.Ml); }
+        if (_bedFilmBuild.IsCompleted) {
+            BedFilm.Tick(delta, Vector3.Down);
+            ReleaseBedDrips();
         }
         if (_floorFilmBuild.IsCompleted) { FloorFilm.Tick(delta, Vector3.Down); }
         var multimesh = _dropMesh.Multimesh;
@@ -916,9 +940,9 @@ public partial class BloodFlow : Node3D {
     /// bed's top within a few millimeters, else the floor near its level, else as a drop to fall there.</summary>
     internal void Deposit(Vector3 at, float ml) {
         if (Bed.Landing(at + Vector3.Up * 0.002f, at - Vector3.Up * 0.003f) is { } onBed) {
-            BedFilm.Add(BedFilm.Nearest(onBed), ml);
+            BedFilm.Add(BedFilm.Nearest(onBed, Vector3.Up), ml);
         } else if (at.Y <= FloorY + 0.01f) {
-            FloorFilm.Add(FloorFilm.Nearest(at with { Y = FloorY }), ml);
+            FloorFilm.Add(FloorFilm.Nearest(at with { Y = FloorY }, Vector3.Up), ml);
         } else {
             AddDrop(at, Vector3.Zero, ml);
         }
@@ -927,7 +951,9 @@ public partial class BloodFlow : Node3D {
     /// <summary>Waits for every film's running step and publishes it; for tests.</summary>
     internal void FinishFilms() {
         BodyFilm.Finish();
+        ReleaseBodyDrips(BodyToWorld());
         BedFilm.Finish();
+        ReleaseBedDrips();
         FloorFilm.Finish();
     }
 }

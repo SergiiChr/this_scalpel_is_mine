@@ -78,6 +78,9 @@ internal sealed class SurfaceFilm {
     private float _committed;
     private Task? _step;
     private Func<int, bool>? _drains;
+    private int _stepCount;
+    private readonly int[] _drainAsked;
+    private readonly bool[] _drainsHere;
     private float _clock;
 
     internal int Count => _at.Length;
@@ -91,9 +94,11 @@ internal sealed class SurfaceFilm {
     /// <summary>Liquid on the surface or gathering into drips, including what was added for the next step.</summary>
     internal float HeldMl => _committed + _pendingMl;
 
-    /// <summary>Drips the last finished step let go, until the next <see cref="Tick"/>. Their liquid has left the
-    /// film.</summary>
+    /// <summary>Drips finished steps let go, until <see cref="ClearReleased"/>. Their liquid has left the film.
+    /// </summary>
     internal IReadOnlyList<Drip> Released => _released;
+
+    internal void ClearReleased() => _released.Clear();
 
     /// <summary>Whether a step is running on the worker.</summary>
     internal bool Stepping => _step is not null;
@@ -116,13 +121,21 @@ internal sealed class SurfaceFilm {
         var weights = skin is null ? null : new List<BodyLiquidSurface.SkinWeights>();
         var faces = new List<int>();
 
-        // Points closer than a third of the spacing are one: a long sliver of a triangle, stepped along its length,
-        // would otherwise crowd thousands of points across its width.
-        var weld = 1f / (settings.Spacing * 0.35f);
-        int Node(Vector3 p, BodyLiquidSurface.SkinWeights weight) {
+        // Points closer than about half the spacing are one: a long sliver of a triangle, stepped along its length,
+        // would otherwise crowd thousands of points across its width. Faces turned against each other, such as the two
+        // sides of a thin plate, keep their own points.
+        var weld = 1f / (settings.Spacing * 0.6f);
+        var facing = new List<Vector3>();
+        var sameCell = new List<int>();
+        int Node(Vector3 p, BodyLiquidSurface.SkinWeights weight, Vector3 side) {
             var key = ((long)Mathf.Round(p.X * weld), (long)Mathf.Round(p.Y * weld), (long)Mathf.Round(p.Z * weld));
-            if (index.TryGetValue(key, out var found)) { return found; }
-            index.Add(key, points.Count);
+            var first = index.GetValueOrDefault(key, -1);
+            for (var found = first; found >= 0; found = sameCell[found]) {
+                if (facing[found].Dot(side) > -0.3f) { return found; }
+            }
+            index[key] = points.Count;
+            sameCell.Add(first);
+            facing.Add(side);
             points.Add(p);
             normals.Add(Vector3.Zero);
             areas.Add(0f);
@@ -139,6 +152,16 @@ internal sealed class SurfaceFilm {
             }
             var (wa, wb, wc) = skin is null ? default : (skin[t], skin[t + 1], skin[t + 2]);
             if (outward is not null && face.Dot(outward[t] + outward[t + 1] + outward[t + 2]) < 0f) { (wb, wc) = (wc, wb); }
+            var side = (c - a).Cross(b - a).Normalized();
+            // Where the triangle's middle and corners agree, the whole triangle is in or out: asking once for each of
+            // its many small faces would cost far more than building them.
+            bool? whole = null;
+            if (keep is not null) {
+                var middle = (a + b + c) / 3f;
+                var votes = new[] { middle, middle.Lerp(a, 0.9f), middle.Lerp(b, 0.9f), middle.Lerp(c, 0.9f) }.Select(at => keep(at, side)).ToArray();
+                if (votes.All(v => v == votes[0])) { whole = votes[0]; }
+            }
+            if (whole == false) { continue; }
             var kab = EdgeSteps(a, b);
             var kbc = EdgeSteps(b, c);
             var kca = EdgeSteps(c, a);
@@ -162,7 +185,7 @@ internal sealed class SurfaceFilm {
                     }
                     var weight = skin is null ? default
                         : BodyLiquidSurface.BlendSkin(wa, wb, wc, new Vector3(1f - u - v, u, v));
-                    grid[row + j] = Node(p, weight);
+                    grid[row + j] = Node(p, weight, side);
                 }
                 row += n + 1 - i;
             }
@@ -171,7 +194,7 @@ internal sealed class SurfaceFilm {
                 if (p == q || q == r || r == p) { return; }
                 var normal = (points[r] - points[p]).Cross(points[q] - points[p]);
                 var centroid = (points[p] + points[q] + points[r]) / 3f;
-                if (keep is not null && !keep(centroid, normal.Normalized())) { return; }
+                if (whole is null && keep is not null && !keep(centroid, normal.Normalized())) { return; }
                 var third = normal.Length() / 6f;
                 foreach (var k in new[] { p, q, r }) {
                     normals[k] += normal;
@@ -255,6 +278,8 @@ internal sealed class SurfaceFilm {
         _change = new float[count];
         _height = new float[count];
         _isWet = new bool[count];
+        _drainAsked = new int[count];
+        _drainsHere = new bool[count];
     }
 
     private int EdgeSteps(Vector3 a, Vector3 b) => Math.Max(1, Mathf.CeilToInt(a.DistanceTo(b) / _settings.Spacing));
@@ -270,8 +295,10 @@ internal sealed class SurfaceFilm {
 
     private Vector3I Cell(Vector3 p) => (Vector3I)(p / _reach).Floor();
 
-    /// <summary>The point nearest <paramref name="local"/>, or -1 for an empty film.</summary>
-    internal int Nearest(Vector3 local) {
+    /// <summary>The point nearest <paramref name="local"/>, or -1 for an empty film. With <paramref name="facing"/> it
+    /// takes the nearest that faces that way, if any does: liquid landing on a thin plate wets its top, not its
+    /// underside.</summary>
+    internal int Nearest(Vector3 local, Vector3? facing = null) {
         var best = -1;
         var distance = float.PositiveInfinity;
         var home = Cell(local);
@@ -283,6 +310,7 @@ internal sealed class SurfaceFilm {
                         if (Math.Max(Math.Abs(x), Math.Max(Math.Abs(y), Math.Abs(z))) != ring
                             || !_cells.TryGetValue(home + new Vector3I(x, y, z), out var list)) { continue; }
                         foreach (var k in list) {
+                            if (facing is { } side && _normal[k].Dot(side) < 0.3f) { continue; }
                             var d = _at[k].DistanceSquaredTo(local);
                             if (d < distance) { distance = d; best = k; }
                         }
@@ -292,10 +320,11 @@ internal sealed class SurfaceFilm {
         }
         if (best >= 0) { return best; }
         for (var k = 0; k < _at.Length; k++) {
+            if (facing is { } side && _normal[k].Dot(side) < 0.3f) { continue; }
             var d = _at[k].DistanceSquaredTo(local);
             if (d < distance) { distance = d; best = k; }
         }
-        return best;
+        return best < 0 && facing is not null ? Nearest(local) : best;
     }
 
     /// <summary>Adds <paramref name="ml"/> at point <paramref name="node"/>, from the next step on.</summary>
@@ -311,7 +340,6 @@ internal sealed class SurfaceFilm {
     /// <paramref name="drains"/> marks points where the surface meets another one, such as skin pressed on the bed:
     /// their liquid leaves as drips there, to pass on to that surface. It runs on the worker.</summary>
     internal bool Tick(float delta, Vector3 gravity, Func<int, bool>? drains = null) {
-        _released.Clear();
         _clock += delta;
         if (_clock < 1f / Rate) { return false; }
         _clock -= 1f / Rate;
@@ -366,7 +394,18 @@ internal sealed class SurfaceFilm {
         Upload();
     }
 
+    /// <summary>Whether point k passes its liquid on, asked once a step.</summary>
+    private bool Drains(int k) {
+        if (_drains is null) { return false; }
+        if (_drainAsked[k] != _stepCount) {
+            _drainAsked[k] = _stepCount;
+            _drainsHere[k] = _drains(k);
+        }
+        return _drainsHere[k];
+    }
+
     private void Step(Vector3 down, float delta) {
+        _stepCount++;
         if (down != _gravity) {
             _gravity = down;
             for (var k = 0; k < _at.Length; k++) { _height[k] = -_at[k].Dot(down); }
@@ -383,7 +422,7 @@ internal sealed class SurfaceFilm {
                 var depth = ml * 0.000001f / _area[k];
                 var movable = ml - ResidueDepth * _area[k] * 1000000f;
                 if (movable <= 0f) { continue; }
-                if (-_normal[k].Dot(down) < Overhang || _drains?.Invoke(k) == true) {
+                if (-_normal[k].Dot(down) < Overhang || Drains(k)) {
                     // Facing the floor nothing holds it up; where it meets another surface it passes onto that.
                     _change[k] -= movable;
                     _shed[k] += movable;
@@ -396,7 +435,8 @@ internal sealed class SurfaceFilm {
                 for (var e = first; e < last; e++) {
                     var other = _neighbors[e];
                     var otherHead = _height[other] + _ml[other] * 0.000001f / _area[other];
-                    var weight = Mathf.Max(head - otherHead - hold, 0f) / _distance[e];
+                    // A dry edge holds the liquid back until it stands HoldDepth deep, however far the surface drops.
+                    var weight = _ml[other] <= 0f && depth <= hold ? 0f : Mathf.Max(head - otherHead - hold, 0f) / _distance[e];
                     _weights[e - first] = weight;
                     total += weight;
                 }
