@@ -266,10 +266,10 @@ public partial class SurgeryDriver {
         return gelpi;
     }
 
-    /// <summary>The right hand takes a Gelpi retractor standing in a cut back, closes it, takes it out and puts it
-    /// down.</summary>
-    public async Task PlayerTakesOutGelpi(SurgicalTool gelpi) {
-        await SwitchTo(Right);
+    /// <summary>The right hand (or <paramref name="hand"/>) takes a Gelpi retractor standing in a cut back, closes it,
+    /// takes it out and puts it down, or keeps it in hand to set again (<paramref name="putDown"/> false).</summary>
+    public async Task PlayerTakesOutGelpi(SurgicalTool gelpi, int hand = Right, bool putDown = true) {
+        await SwitchTo(hand);
         // By its points in the cut: its grip end may lie out of reach over the patient.
         var at = gelpi.TipPosition() + (Vector3.Up * 0.03f);
         await PlayerWalksTo(at);
@@ -277,8 +277,8 @@ public partial class SurgeryDriver {
         Press(InputActions.Grab);
         await Frames.Physics(10);
         Release(InputActions.Grab);
-        if (Me.HeldTool(Right) != gelpi) {
-            Note($"didn't take the gelpi back: {gelpi.State}, hovered {Me.Hovered?.Def.Id}, hand {Me.Hands[Right].GlobalPosition.DistanceTo(gelpi.TipPosition()):0.00} m from its points");
+        if (Me.HeldTool(hand) != gelpi) {
+            Note($"didn't take the gelpi back: {gelpi.State}, hovered {Me.Hovered?.Def.Id}, hand {Me.Hands[hand].GlobalPosition.DistanceTo(gelpi.TipPosition()):0.00} m from its points");
             return;
         }
         await PlayerOpensGelpi(ToolActions.SpreadRange.X);
@@ -286,7 +286,9 @@ public partial class SurgeryDriver {
         await Frames.Physics(10);
         Use(false);
         await Frames.Seconds(1f);
-        await PlayerPutsDown();
+        if (putDown) {
+            await PlayerPutsDown();
+        }
     }
 
     /// <summary>The scalpel worked round a target from inside the opening until whatever holds it is cut through. Put

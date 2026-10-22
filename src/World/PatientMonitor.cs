@@ -19,7 +19,7 @@ public partial class PatientMonitor : Node3D {
 
     public void Build() {
         ModelSlot.Instantiate("props", "monitor", this,
-            new Dictionary<string, Material> { ["screen"] = Materials.Glow(new Color(0.02f, 0.05f, 0.04f)) });
+            new Dictionary<string, Material> { ["screen"] = Materials.Glow(MonitorScreen.Background) });
         BuildScreen();
         var player = new AudioStreamPlayer3D {
             Stream = new AudioStreamGenerator { MixRate = SampleRate, BufferLength = 0.2f },
@@ -45,7 +45,7 @@ public partial class PatientMonitor : Node3D {
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 AlbedoTexture = viewport.GetTexture(),
             },
-            Position = new Vector3(0f, 0.01f, 0.0155f),
+            Position = new Vector3(0f, 0f, 0.004f),
         });
     }
 

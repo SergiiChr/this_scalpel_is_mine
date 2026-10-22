@@ -443,8 +443,13 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   from the lip on each side into the wound (`Hud.JawDepth`), where its tips go in. A stapler's legs go in exactly
   where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). A needle's hole goes in right
   under its dot, between the tissue's grid points, and rides along with the one drawn nearest on its side of the cut
-  (`PatientBody.RestSpot()`). The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB)
-  turns it. A blade only cuts moving along its edge; sideways it drags.
+  (`PatientBody.RestSpot()`). A suture needle rests on the tissue as it's drawn (`PatientBody.ExposedUnder()`): moved
+  out over a cut from its lip it goes down the wall beside it, through the skin's, the fat's and the muscle's cut faces,
+  then into the cavity, and its dot is on what it touches. The hole goes into that layer. An edge drawn back more than
+  a few millimeters under the layer over it can't be reached until the cut is spread or its lip lifted. A stab or
+  bullet hole shows no muscle, and skin won't close over the muscle open under it: it's cut open to sew the muscle
+  first. The edge is where the blade plane meets the skin, so rolling the tool (C/V) or turning it (MMB) turns it. A
+  blade only cuts moving along its edge; sideways it drags.
 - **Controls shown for what you're doing**: the bottom right hint changes while a hand key is held or a tool is lowered.
 
 ### Starter kit and ordering
@@ -704,6 +709,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   needle pulls its current thread only: without one the wheel does nothing, and each new thread starts loose
   (`ToolActions.SutureStartTension`).
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
+  A column beside the surgeons' cards explains this run's; the main menu's Run modifiers lists all of them, the locked
+  ones hidden. A modifier unlocks the first time a run starts with it; locked ones roll all the same.
   Understaffed, expired drugs, bad wiring, med student, short supplies, blood shortage, broken heating, chart mix-up.
 - **Chart mix-up** (a run modifier): the patient card shows a wrong blood type and allergy and misses a real condition,
   until the nurse brings the corrected copy partway through.

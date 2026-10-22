@@ -223,9 +223,9 @@ public partial class Net : Node {
         return [.. ids.Take(_rng.RandiRange(1, 2))];
     }
 
-    private static void Shuffle<T>(List<T> list) {
+    private void Shuffle<T>(List<T> list) {
         for (var i = list.Count - 1; i > 0; i--) {
-            var j = (int)(GD.Randi() % (uint)(i + 1));
+            var j = _rng.RandiRange(0, i);
             (list[i], list[j]) = (list[j], list[i]);
         }
     }
@@ -332,6 +332,9 @@ public partial class Net : Node {
         InSession = true;
         foreach (var roll in LocalQuirks) {
             Progress.Unlock(Db.Quirk(QuirkKind.Surgeon, roll.Id), roll.Variant);
+        }
+        foreach (var id in RunModifiers) {
+            Progress.UnlockModifier(id);
         }
         _loaded = [];
         EmitSignal(SignalName.SessionStarted);

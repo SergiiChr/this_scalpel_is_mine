@@ -388,10 +388,10 @@ public partial class Hud : CanvasLayer {
     private void UpdateShop() {
         var status = Surgery.Status;
         Shop.SetNurseReady(status.NurseReady);
-        var board = new BoardShown(status.Order?.Text, Mathf.RoundToInt((status.Order?.Progress ?? 0f) * 10f),
+        var board = new BoardShown(status.Order?.Text, Mathf.RoundToInt((status.Order?.Progress ?? 0f) * NurseProgress.Steps),
             Mathf.CeilToInt(status.Order?.SecondsLeft ?? 0f), Mathf.CeilToInt(status.NurseCooldown));
         if (_boardShown.Changed(board)) {
-            Shop.ShowBoard(status.NurseBoard);
+            Shop.ShowBoard(status);
         }
     }
 

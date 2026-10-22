@@ -9,7 +9,7 @@ public sealed record KnownHost(string Name, string Ip, int Port);
 public sealed record PlayedGame(string PlayedAt, SurgeryReport Report);
 
 /// <summary>
-/// Save file: unlocked quirks, best scenario results, known hosts. Stored in user://save.cfg and read on first use.
+/// Save file: unlocked quirks and run modifiers, best scenario results, known hosts. Stored in user://save.cfg and read on first use.
 /// The host's save is what counts for scenario progress. Quirk unlocks are always local, and so are played games, kept
 /// in user://history.cfg: written only as a game ends, so the other saves don't rewrite its reports.
 /// </summary>
@@ -19,7 +19,8 @@ public static class Progress {
     /// <summary>Played games kept: the oldest one goes when another is recorded past it.</summary>
     internal const int HistorySize = 100;
 
-    private static readonly HashSet<string> UnlockedQuirks = [];
+    /// <summary>Quirk unlock keys (<see cref="QuirkDef.UnlockKey"/>) and "modifier:id" for run modifiers.</summary>
+    private static readonly HashSet<string> Unlocked = [];
     /// <summary>Scenario id -> best star count (0-3).</summary>
     private static readonly Dictionary<string, int> BestStarsById = [];
     private static readonly List<KnownHost> Hosts = [];
@@ -33,7 +34,7 @@ public static class Progress {
             return;
         }
         PlayerName = file.GetValue("player", "name", PlayerName).AsString();
-        UnlockedQuirks.UnionWith(file.GetValue("codex", "unlocked", Array.Empty<string>()).AsStringArray());
+        Unlocked.UnionWith(file.GetValue("codex", "unlocked", Array.Empty<string>()).AsStringArray());
         foreach (var (id, stars) in file.GetValue("scenarios", "best_stars", new GodotDictionary()).AsGodotDictionary()) {
             BestStarsById[id.AsString()] = stars.AsInt32();
         }
@@ -58,7 +59,7 @@ public static class Progress {
     public static void Save() {
         var file = new ConfigFile();
         file.SetValue("player", "name", PlayerName);
-        file.SetValue("codex", "unlocked", UnlockedQuirks.ToArray());
+        file.SetValue("codex", "unlocked", Unlocked.ToArray());
         var stars = new GodotDictionary();
         foreach (var (id, best) in BestStarsById) {
             stars[id] = best;
@@ -72,18 +73,32 @@ public static class Progress {
         file.Save(Path);
     }
 
-    public static bool IsUnlocked(QuirkDef quirk) => UnlockedQuirks.Contains(quirk.UnlockKey);
+    public static bool IsUnlocked(QuirkDef quirk) => Unlocked.Contains(quirk.UnlockKey);
 
     /// <summary>Unlocks <paramref name="quirk"/> until the game quits, without saving it or announcing it.</summary>
-    internal static void UnlockForSession(QuirkDef quirk) => UnlockedQuirks.Add(quirk.UnlockKey);
+    internal static void UnlockForSession(QuirkDef quirk) => Unlocked.Add(quirk.UnlockKey);
 
     public static void Unlock(QuirkDef? quirk, string variant = "") {
-        if (quirk is null || !UnlockedQuirks.Add(quirk.UnlockKey)) {
+        if (quirk is null || !Unlocked.Add(quirk.UnlockKey)) {
             return;
         }
         Save();
         QuirkUnlocked?.Invoke(quirk, variant);
     }
+
+    public static bool IsModifierUnlocked(string id) => Unlocked.Contains(ModifierKey(id));
+
+    /// <summary>Unlocks a run modifier until the game quits, without saving it.</summary>
+    internal static void UnlockModifierForSession(string id) => Unlocked.Add(ModifierKey(id));
+
+    /// <summary>A run modifier unlocks the first time a run starts with it.</summary>
+    public static void UnlockModifier(string id) {
+        if (Unlocked.Add(ModifierKey(id))) {
+            Save();
+        }
+    }
+
+    private static string ModifierKey(string id) => $"modifier:{id}";
 
     public static void RecordResult(string scenarioId, int stars) {
         BestStarsById[scenarioId] = Math.Max(BestStarsById.GetValueOrDefault(scenarioId), stars);

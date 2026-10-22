@@ -193,6 +193,12 @@ public static class SurgeryState {
         net.SeedSessionRolls(seed);
     }
 
+    /// <summary>Host: the run's modifiers are <paramref name="ids"/> instead of the lobby's random roll.</summary>
+    public static void RunHasModifiers(params string[] ids) {
+        Net.Instance.RunModifiers.Clear();
+        Net.Instance.RunModifiers.AddRange(ids);
+    }
+
     /// <summary>Surgeries start at 08:00 on the operating room's clock, whatever the system clock says, so it reads the
     /// same in every run's key frames.</summary>
     public static void ClockStartsAtEight() => GameClock.FixedStartOfDay = 8 * 3600;
@@ -217,7 +223,7 @@ public static class SurgeryState {
     /// <summary>The nurse and shop are ready for the next ordinary test's order.</summary>
     public static void NurseIsReady(Surgery surgery) {
         NurseHasDelivered(surgery);
-        surgery.Hud.Shop.ShowBoard("");
+        surgery.Hud.Shop.ShowBoard(SurgeryStatus.Empty);
         surgery.Hud.Shop.SetNurseReady(surgery.Nurse.Idle);
     }
 
