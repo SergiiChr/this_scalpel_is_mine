@@ -1168,6 +1168,8 @@ public sealed partial class TissueSim {
     }
 
     /// <summary>Every grip on the skin, for syncing to clients.</summary>
+    /// <summary>Whether anything holds the sheet now: it may be moving.</summary>
+    internal bool Gripped => _pins.Count > 0;
     public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target))];
 
     /// <summary>The particle grip <paramref name="key"/> holds, -1 when it holds none.</summary>

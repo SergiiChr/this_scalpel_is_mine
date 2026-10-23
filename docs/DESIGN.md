@@ -794,9 +794,16 @@ regenerating.
 - **Blood** (`src/Visuals/BloodFlow.cs`): bleeding wounds feed a shallow film on the site's skin (`SurfaceBlood`, a
   grid of milliliters): pressure spreads it sideways, gravity carries it downhill and it leaves a thin stain in the
   fluid map as it moves on; strong bleeds spurt. What reaches the site's edges or its steep flanks runs on over films
-  laid on the body round the site, the bed (pads and frame) and the floor (`SurfaceFilm`, one per surface, points
-  spread over its triangles). Each film steps on a worker thread at a fixed rate and draws its own mesh
-  (`blood_film.gdshader`, the edge fading between points); where it faces down it drips onto whatever lies below,
+  laid on the whole body, the bed (pads and frame) and the floor (`SurfaceFilm`, one per surface, points
+  spread over its triangles). The site's film keeps the skin the model's own faces call level, as far as the first
+  steep flank and no deeper than its grid's surface; the body's film is laid out from that same answer
+  (`SurfaceBlood.Carries`), so liquid is held by only one solver at a time. Both supply one body-wide spatial field
+  (`BodyBloodLayer`), sampled identically by the body's skin and the deformable site skin, a little outside the skin
+  so a flap's underside stays clean. It lies in the site's frame, so breathing moves nothing in it, and is rebuilt
+  on a worker within a few frames of the skin moving or its blood changing: blood has no rendering boundary at the
+  site or a mesh edge, and follows a pull or a turn. Each film steps on a worker thread
+  at a fixed rate; the bed and floor draw their own meshes (`blood_film.gdshader`, the edge fading between points).
+  Where a film faces down it drips onto whatever lies below,
   and skin pressed on the mattress hands its blood straight to the bed's film, so turning the patient carries it
   down onto the bed. A staple squeezes half the film off its seam (`Patient.StapleSqueeze`) without wiping it clean.
   Irrigation from a syringe gathers briefly as a pool in the opening it lands in (`BloodFlow.Irrigate`, sent with

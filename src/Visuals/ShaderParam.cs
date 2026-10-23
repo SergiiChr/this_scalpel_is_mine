@@ -16,6 +16,11 @@ public static class ShaderParam {
     public static readonly StringName Albedo = "albedo";
     public static readonly StringName Blackout = "blackout";
     public static readonly StringName Blur = "blur";
+    public static readonly StringName BloodCell = "body_blood_cell";
+    public static readonly StringName BloodColumns = "body_blood_columns";
+    public static readonly StringName BloodGrid = "body_blood_grid";
+    public static readonly StringName BloodOrigin = "body_blood_origin";
+    public static readonly StringName BloodInverse = "body_blood_inverse";
     public static readonly StringName CarveBox = "carve_box";
     public static readonly StringName CarveGrid = "carve_grid";
     public static readonly StringName CarveInverse = "carve_inverse";

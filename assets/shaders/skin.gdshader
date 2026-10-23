@@ -28,10 +28,10 @@ const float DEPTH_BIAS = 0.0002;
 
 varying vec3 world_pos;
 varying vec3 local_pos;
-varying float site_facing;
 
 #include "res://assets/shaders/wound.gdshaderinc"
 #include "res://assets/shaders/skin_light.gdshaderinc"
+#include "res://assets/shaders/body_blood.gdshaderinc"
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -47,9 +47,6 @@ float noise(vec2 p) {
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
-	// How far this skin faces out of the site (its up axis), faded as on the body's skin (toon.gdshader): where this
-	// sheet's ragged outline lies over the body, the two show the same blood.
-	site_facing = smoothstep(-0.3, 0.2, normalize(NORMAL).y);
 	// Not raised by bruises, burns or blood, like the body's skin (toon.gdshader): raised, this sheet would lift off
 	// the walls down its cuts and off the layers under it, which don't rise with it, and step up where it meets the
 	// body. Blood reads as standing on it from its lighting (blood_normal) alone. Cuts don't sink: the mesh itself is
@@ -64,11 +61,9 @@ void fragment() {
 	// Only tied sutures mark joined edges; a low-quality closure in w.a is not a seam marker.
 	w.r *= texture(seam_map, UV).r;
 	vec4 f = texture(fluid_map, UV);
-	// Fades toward the site's edges over the same ragged band as the body's skin (toon.gdshader).
-	vec2 inside = min(UV, 1.0 - UV);
-	f.r *= smoothstep(0.0, 0.15, min(inside.x, inside.y) + (noise(world_pos.xz * 60.0 + world_pos.y * 25.0) - 0.5) * 0.04) * site_facing;
-	f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
-	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(f.r));
+	float blood = body_blood(world_pos, mat3(INV_VIEW_MATRIX) * NORMAL);
+	f.r = 0.0;
+	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
 	NORMAL = blood_normal(NORMAL, VERTEX, (noise(local_pos.xz * 900.0 + local_pos.y * 300.0) + noise(local_pos.xy * 700.0) - 1.0) * 0.00004);
 	float n = noise(local_pos.xz * 14.0) * 0.6 + noise(local_pos.xy * 6.3 + 7.0) * 0.4;
@@ -76,6 +71,7 @@ void fragment() {
 	c = mix(c, vec3(0.78, 0.8, 0.8), pallor * 0.5);
 	float wet = apply_wounds(c, w, f);
 	wet = max(wet, paint_spot(c, skin_spot(texture(bleed_map, UV))));
+	wet = max(wet, apply_blood(c, blood_amount(blood, noise(world_pos.xz * 120.0 + world_pos.y * 50.0))));
 	ALBEDO = c;
 	ROUGHNESS = mix(0.6, 0.08, wet);
 }

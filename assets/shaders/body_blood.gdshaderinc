@@ -1,0 +1,27 @@
+// One body-wide field, independent of the surgical site's UVs and the skin mesh that happens to draw a fragment.
+uniform sampler2D body_blood_atlas : filter_linear, repeat_disable, hint_default_black;
+uniform mat4 body_blood_inverse;
+uniform vec3 body_blood_origin;
+uniform vec3 body_blood_grid = vec3(0.0);
+uniform float body_blood_cell = 0.0025;
+uniform float body_blood_columns = 1.0;
+// How far outside the skin, in voxels, the field is read (BodyBloodLayer.ReadOutside): blood lies on the skin's
+// outside, so its underside and the wall of a cut read nothing of it.
+const float BODY_BLOOD_READ_OUTSIDE = 0.75;
+
+float body_blood_slice(vec2 xy, float z) {
+	vec2 tile = vec2(mod(z, body_blood_columns), floor(z / body_blood_columns));
+	vec2 pixel = tile * body_blood_grid.xy + xy + 0.5;
+	return texture(body_blood_atlas, pixel / vec2(textureSize(body_blood_atlas, 0))).r;
+}
+
+// Blood on skin at world facing world_normal.
+float body_blood(vec3 world, vec3 world_normal) {
+	if (body_blood_grid.x < 2.0) { return 0.0; }
+	vec3 at = (body_blood_inverse * vec4(world, 1.0)).xyz
+		+ normalize(mat3(body_blood_inverse) * world_normal) * body_blood_cell * BODY_BLOOD_READ_OUTSIDE;
+	vec3 p = (at - body_blood_origin) / body_blood_cell;
+	if (any(lessThan(p, vec3(0.0))) || any(greaterThan(p, body_blood_grid - 1.0))) { return 0.0; }
+	float z = floor(p.z);
+	return mix(body_blood_slice(p.xy, z), body_blood_slice(p.xy, min(z + 1.0, body_blood_grid.z - 1.0)), fract(p.z));
+}

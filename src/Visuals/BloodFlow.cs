@@ -89,13 +89,13 @@ public partial class BloodFlow : Node3D {
     internal const float TableTop = Room.TableHeight + 0.001f;
     /// <summary>Blood on the skin around the site: a thin film that runs off the body's sides.</summary>
     private static readonly SurfaceFilm.Settings BodyFilmSettings = new(0.007f, 0.00015f, 0.0003f, 0.03f);
+    /// <summary>One physical reconstruction radius for skin blood, wide enough to bridge the coarser body samples.
+    /// Changing the radius with the source grid imprints its resolution boundary onto the shared field.</summary>
+    private static readonly float LayerBlendRadius = BodyFilmSettings.Spacing * 1.6f;
     /// <summary>Blood on the mattress and frame: a thin soaked layer that runs over the edges.</summary>
     private static readonly SurfaceFilm.Settings BedFilmSettings = new(0.01f, 0.0004f, 0.0005f);
     /// <summary>Blood on the floor: puddles about a millimeter and a half deep.</summary>
     private static readonly SurfaceFilm.Settings FloorFilmSettings = new(0.015f, 0.0015f, 0.0008f);
-    /// <summary>How far (m) from the site's middle the body's film reaches: far enough round a limb or the torso to
-    /// carry runoff down to the bed.</summary>
-    private const float BodyFilmReach = 0.6f;
     /// <summary>How far (m) round the table the floor's film reaches.</summary>
     private const float FloorFilmMargin = 0.8f;
     private const float PuddlePaintInterval = 0.2f;
@@ -170,6 +170,10 @@ public partial class BloodFlow : Node3D {
         + HeldOn(_bodyFilmBuild) + GroundMl;
     /// <summary>Blood that has left the patient: falling, and on the bed and floor.</summary>
     internal float GroundMl => _drops.Sum(drop => drop.Ml) + HeldOn(_bedFilmBuild) + HeldOn(_floorFilmBuild);
+    /// <summary>Whether the site's film keeps blood on the skin at uv, <paramref name="height"/> over the site plane
+    /// (its top when omitted), rather than handing it to the body's film.</summary>
+    internal bool SiteFilmCarries(Vector2 uv, float height = float.PositiveInfinity) => _surface.Carries(uv, height);
+
     /// <summary>Physically squeezes existing surface film away from a newly closed seam.</summary>
     internal float DisplaceSurfaceFilm(Vector2[] path, float radius, float share) =>
         _body is null ? 0f : _surface.DisplaceStroke(path, radius, share);
@@ -219,6 +223,37 @@ public partial class BloodFlow : Node3D {
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
     /// <summary>Where needles went into the skin (site uv), each showing a spot like a bleed onto the skin.</summary>
     private readonly List<Vector2> _punctures = [];
+    /// <summary>The blood drawn on the skin, body and site alike, built from both films' samples.</summary>
+    internal BodyBloodLayer Layer { get; } = new();
+    /// <summary>How often (s) the skin is sampled for the layer while it holds still: the blood on it changes slowly.
+    /// </summary>
+    private const float LayerInterval = 0.1f;
+    /// <summary>How often while the skin moves (a pull, a cut, the body turning), so its blood goes with it within a
+    /// frame or two, and for a second after, while it settles. Samples that haven't changed cost no field.</summary>
+    private const float MovingLayerInterval = 1f / 30f;
+    /// <summary>The most site samples along a side: one per voxel of the layer up to this.</summary>
+    private const int MaxSiteSamples = 160;
+    private float _layerClock;
+    /// <summary>Seconds left of the moving rate since the skin last moved.</summary>
+    private float _layerMoving;
+    /// <summary>Whether the site's blood or skin changed since the layer last sampled it.</summary>
+    private bool _layerDue;
+    private int _layerFluidsVersion;
+    private Transform3D[] _layerBonePoses = [];
+    private int _layerTopology;
+    // The worker's input (PrepareLayerInput) and its own scratch (GatherLayerSamples).
+    private readonly SkinSnapshot _layerSkin = new();
+    private byte[] _layerFluids = [];
+    private int _layerFluidsSize;
+    private bool _layerSitePainted;
+    private Vector2 _layerSiteSize;
+    private Transform3D _layerWorldToField, _layerSiteToField, _layerMeshToWorld;
+    private SurfaceFilm? _layerFilm;
+    private readonly List<SurfaceFilm.FilmSample> _layerFilmSamples = [];
+    private BodyLiquidSurface.SkinPose? _layerPose;
+    private readonly List<BodyBloodLayer.Sample> _layerSamples = [];
+    private readonly Func<IReadOnlyList<BodyBloodLayer.Sample>> _gatherLayer;
+    private float[] _siteCoverage = [];
     private PatientBody? _body;
 
     /// <summary>The bleeding wounds. The patient swaps in a complete list every tick; nothing keeps a tick's own.
@@ -242,11 +277,15 @@ public partial class BloodFlow : Node3D {
         }
     }
 
-    public BloodFlow() => _fasterFirst = new FasterFirst(this);
+    public BloodFlow() {
+        _fasterFirst = new FasterFirst(this);
+        _gatherLayer = GatherLayerSamples;
+    }
 
     public void Setup(PatientBody patientBody) {
         _body = patientBody;
-        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SkinHeight, uv => patientBody.LiquidSupport(uv) >= 0f, patientBody.Site.GlobalBasis.Scale.X);
+        _surface = new SurfaceBlood(patientBody.SiteSize, patientBody.SkinHeight, uv => patientBody.LiquidSupport(uv) >= 0f,
+            patientBody.Site.GlobalBasis.Scale.X, patientBody.ModelFaceNormal);
         _surfaceGeometrySteps = patientBody.Tissue.StepsDone;
         _surfaceGeometryTopology = patientBody.Tissue.TopologyVersion;
         patientBody.WoundMap.SetBloodFilmSupport(patientBody.LiquidSupport);
@@ -313,6 +352,7 @@ public partial class BloodFlow : Node3D {
         }
         Flow(_body, (float)delta);
         Fall((float)delta);
+        UpdateLayer((float)delta);
     }
 
     private void Spawn(PatientBody body, float delta) {
@@ -880,26 +920,22 @@ public partial class BloodFlow : Node3D {
         var skin = body.LiquidContact;
         var siteToMesh = skin.SiteToMesh;
         var half = body.SiteSize * 0.5f;
-        // The site's own skin carries its film (SurfaceBlood); the body's film takes over at its edges and on its steep
-        // flanks, and covers the far side under it, which the site's film doesn't reach.
-        bool OffSite(Vector3 sitePoint, Vector3 siteNormal) => sitePoint.Length() < BodyFilmReach
-            && !(Mathf.Abs(sitePoint.X) < half.X && Mathf.Abs(sitePoint.Z) < half.Y && siteNormal.Y > SurfaceBlood.SteepNormal);
+        // The site's own skin holds its film's liquid (SurfaceBlood); the body's film takes over at its edges and on its
+        // steep flanks, and holds the far side under it, which the site's film doesn't reach. The site's film says
+        // which skin it holds, so no liquid is held by both films or neither: judged by the model's own normal instead,
+        // a strip along the flank was. The model's normal only tells the skin the site's heights were measured on
+        // (facing the site's up) from the far side under it. Both films draw through one layer (BodyBloodLayer).
+        var surface = _surface;
+        bool OverSite(Vector3 sitePoint, float margin = 0f) => Mathf.Abs(sitePoint.X) < half.X + margin && Mathf.Abs(sitePoint.Z) < half.Y + margin;
+        bool OffSite(Vector3 sitePoint, Vector3 siteNormal) =>
+            !(OverSite(sitePoint) && siteNormal.Y > 0f && surface.Carries(body.LocalToUv(sitePoint), sitePoint.Y));
         var meshToSite = siteToMesh.AffineInverse();
-        var bodyMesh = new ArrayMesh();
+        // Transport covers the entire body. Its samples feed the same field as the detailed site solver;
+        // there is no separately drawn runoff mesh or skin/site rendering handover.
         _bodyFilmBuild = Build(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
             skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
-            (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh,
-            at => (meshToSite * at).Length() > BodyFilmReach - 0.02f));
-        _skinMesh.GetParent().AddChild(new MeshInstance3D {
-            Name = "BodyFilm",
-            Mesh = bodyMesh,
-            // The skin is drawn smoothed and posed by the GPU; its film follows it to within a couple of millimeters.
-            MaterialOverride = Materials.BloodFilm(0.002f, new Vector2(0f, 0.8f)),
-            Skin = _skinMesh.Skin,
-            Skeleton = _skinMesh.Skeleton,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            Transform = _skinMesh.Transform,
-        });
+            carries: (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), drawMesh: false));
+        foreach (var material in body.BloodMaterials) { Layer.Bind(material); }
         var bed = _bed;
         var bedMesh = new ArrayMesh();
         _bedFilmBuild = Build(() => new SurfaceFilm(bed.Triangles, BedFilmSettings, keep: bed.Exposed, mesh: bedMesh));
@@ -978,6 +1014,138 @@ public partial class BloodFlow : Node3D {
         }
     }
 
+    /// <summary>Copies what the layer's samples are built from, for the worker (<see cref="GatherLayerSamples"/>):
+    /// the site's fluid map and skin as drawn now, the body film's wet points and the skin's pose. The field lies in
+    /// the site's frame, without its scale: breathing moves the site and the trunk's skin together, so nothing in it.
+    /// </summary>
+    private void PrepareLayerInput(PatientBody body) {
+        var siteToWorld = body.Site.GlobalTransform;
+        _layerWorldToField = siteToWorld.Orthonormalized().AffineInverse();
+        _layerSiteToField = _layerWorldToField * siteToWorld;
+        _layerMeshToWorld = _skinMesh.GlobalTransform;
+        Layer.Place(_layerWorldToField);
+        _layerSitePainted = body.WoundMap.HasPainted(WoundMap.Layer.Fluids, WoundMap.Blood);
+        if (_layerSitePainted) {
+            body.SnapshotSkin(_layerSkin);
+            body.WoundMap.CopyLayer(WoundMap.Layer.Fluids, ref _layerFluids);
+            _layerFluidsSize = body.WoundMap.Size;
+            _layerSiteSize = body.SiteSize;
+        }
+        var film = Built(_bodyFilmBuild);
+        _layerFilm = film is { Samples.Count: > 0 } ? film : null;
+        _layerFilmSamples.Clear();
+        if (_layerFilm is { } wet) { _layerFilmSamples.AddRange(wet.Samples); }
+        _layerPose = _layerFilm is null || _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton, _bindBones);
+    }
+
+    /// <summary>The samples the skin's blood is drawn from, on the worker from <see cref="PrepareLayerInput"/>: one
+    /// per voxel of the layer over the site with the mean of its fluid map texels, on the skin as it's drawn and
+    /// facing the body's own face there, or the simulated skin's where that is drawn (a pulled flap); plus the body
+    /// film's wet points in the skin's pose. Dry samples ring the wet ones, so a pool ends between them.</summary>
+    private List<BodyBloodLayer.Sample> GatherLayerSamples() {
+        _layerSamples.Clear();
+        if (_layerSitePainted) {
+            var size = _layerSiteSize * _layerSiteToField.Basis.Scale.X;
+            var nx = Math.Min(Mathf.CeilToInt(size.X / BodyBloodLayer.CellSize), MaxSiteSamples);
+            var ny = Math.Min(Mathf.CeilToInt(size.Y / BodyBloodLayer.CellSize), MaxSiteSamples);
+            if (_siteCoverage.Length != nx * ny) { _siteCoverage = new float[nx * ny]; }
+            var step = new Vector2(1f / nx, 1f / ny);
+            for (var j = 0; j < ny; j++) {
+                for (var i = 0; i < nx; i++) {
+                    _siteCoverage[j * nx + i] = WoundMap.BoxMean(_layerFluids, _layerFluidsSize, WoundMap.Blood, new Vector2(i, j) * step, new Vector2(i + 1, j + 1) * step);
+                }
+            }
+            var radius = Mathf.Max(Mathf.Max(size.X / nx, size.Y / ny) * 1.5f, LayerBlendRadius);
+            for (var j = 0; j < ny; j++) {
+                for (var i = 0; i < nx; i++) {
+                    var wet = false;
+                    for (var dj = Math.Max(j - 1, 0); dj <= Math.Min(j + 1, ny - 1) && !wet; dj++) {
+                        for (var di = Math.Max(i - 1, 0); di <= Math.Min(i + 1, nx - 1) && !wet; di++) { wet = _siteCoverage[dj * nx + di] > 0f; }
+                    }
+                    var uv = new Vector2(i + 0.5f, j + 0.5f) * step;
+                    if (!wet || _layerSkin.Support(uv) < 0f) { continue; }
+                    // The map interpolates paint beyond its solver's cells. There the body's samples own the
+                    // film: reading that fringe again dilutes them and draws the handover as a red band.
+                    if (!_surface.Carries(uv) && !_layerSkin.Simulated(uv)) { continue; }
+                    var at = _layerSiteToField * _layerSkin.Point(uv);
+                    var normal = _layerSkin.Simulated(uv)
+                        ? (_layerSkin.Point(uv + step with { X = 0f }) - _layerSkin.Point(uv - step with { X = 0f }))
+                            .Cross(_layerSkin.Point(uv + step with { Y = 0f }) - _layerSkin.Point(uv - step with { Y = 0f }))
+                        : _surface.SkinNormalAt(uv);
+                    _layerSamples.Add(new BodyBloodLayer.Sample(at, (_layerSiteToField.Basis * normal).Normalized(), _siteCoverage[j * nx + i], radius));
+                }
+            }
+        }
+        if (_layerFilm is { } film) {
+            var pose = _layerPose;
+            foreach (var sample in _layerFilmSamples) {
+                var skin = film.SkinAt(sample.Node);
+                var at = pose is null ? _layerMeshToWorld * sample.At : pose.Deform(sample.At, skin);
+                var normal = pose is null ? _layerMeshToWorld.Basis * sample.Normal
+                    : pose.Deform(sample.At + sample.Normal, skin) - pose.Deform(sample.At, skin);
+                _layerSamples.Add(new BodyBloodLayer.Sample(_layerWorldToField * at, (_layerWorldToField.Basis * normal).Normalized(),
+                    sample.Coverage, LayerBlendRadius));
+            }
+        }
+        return _layerSamples;
+    }
+
+    private void UpdateLayer(float delta) {
+        if (_body is not { } body) { return; }
+        Layer.Place(body.Site.GlobalTransform.Orthonormalized().AffineInverse());
+        Layer.PublishFinished();
+        _layerClock += delta;
+        // The body film's samples follow the bones and drift with the breath, so a wet film is sampled at the resting
+        // rate whatever else holds. A dry one leaves only the site, which is sampled again once its blood or skin
+        // changed: a bleeding site with a thrashing patient costs no field until blood runs off it.
+        var filmWet = Built(_bodyFilmBuild) is { Samples.Count: > 0 };
+        var fluids = body.WoundMap.Version(WoundMap.Layer.Fluids);
+        var moved = SkinMoved(body, filmWet);
+        _layerDue |= moved || fluids != _layerFluidsVersion;
+        _layerMoving = moved ? 1f : Mathf.Max(_layerMoving - delta, 0f);
+        if (!_layerDue && !filmWet) { return; }
+        if (_layerClock < (_layerMoving > 0f ? MovingLayerInterval : LayerInterval) || Layer.Busy) { return; }
+        (_layerClock, _layerDue, _layerFluidsVersion) = (0f, false, fluids);
+        PrepareLayerInput(body);
+        Layer.Request(_gatherLayer);
+    }
+
+    /// <summary>A bone counts as moving past this much in one frame. Breathing shifts the trunk, and holds the limbs
+    /// against it, by a hundredth of this a frame: the resting rate and the samples' own tolerance follow that drift.
+    /// A thrashing or turned limb goes much farther.</summary>
+    private const float MovingBoneDistance = 0.001f;
+    private const float MovingBoneAngle = 0.5f * Mathf.Pi / 180f;
+
+    /// <summary>Whether the skin may have moved since the last call: the sheet is held or was cut, or, when the body
+    /// film's blood rides them (<paramref name="bones"/>), a bone moved faster than breathing.</summary>
+    private bool SkinMoved(PatientBody body, bool bones) {
+        var moved = body.Tissue.Gripped || body.Tissue.TopologyVersion != _layerTopology;
+        _layerTopology = body.Tissue.TopologyVersion;
+        if (_skeleton is not { } skeleton || !bones) { return moved; }
+        if (_layerBonePoses.Length != _bindBones.Length) { _layerBonePoses = new Transform3D[_bindBones.Length]; moved = true; }
+        for (var i = 0; i < _bindBones.Length; i++) {
+            if (_bindBones[i] < 0) { continue; }
+            var pose = skeleton.GetBoneGlobalPose(_bindBones[i]);
+            var was = _layerBonePoses[i];
+            _layerBonePoses[i] = pose;
+            moved |= pose.Origin.DistanceSquaredTo(was.Origin) > MovingBoneDistance * MovingBoneDistance
+                || pose.Basis.GetRotationQuaternion().AngleTo(was.Basis.GetRotationQuaternion()) > MovingBoneAngle;
+        }
+        return moved;
+    }
+
+    /// <summary>Refreshes the shared skin field after a paused action, so captures show current blood and tissue.</summary>
+    internal void FinishLayer() {
+        if (_body is not { } body) { return; }
+        Layer.Finish();
+        PrepareLayerInput(body);
+        Layer.Rebuild(_gatherLayer);
+    }
+
+    public override void _Notification(int what) {
+        if (what == NotificationPredelete) { Layer.Dispose(); }
+    }
+
     /// <summary>Waits for every film's running step and publishes it; for tests.</summary>
     internal void FinishFilms() {
         BodyFilm.Finish();
@@ -985,5 +1153,6 @@ public partial class BloodFlow : Node3D {
         BedFilm.Finish();
         ReleaseBedDrips();
         FloorFilm.Finish();
+        FinishLayer();
     }
 }

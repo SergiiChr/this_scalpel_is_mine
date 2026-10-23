@@ -400,10 +400,9 @@ public static class Materials {
     };
 
     /// <summary>Blood spread over a surface (<see cref="Visuals.SurfaceFilm"/>), drawn by blood_film.gdshader, which
-    /// says what <paramref name="towardCamera"/> and <paramref name="edge"/> do.</summary>
-    public static ShaderMaterial BloodFilm(float towardCamera = 0f, Vector2? edge = null) {
+    /// says what <paramref name="edge"/> does.</summary>
+    public static ShaderMaterial BloodFilm(Vector2? edge = null) {
         var material = new ShaderMaterial { Shader = BloodFilmShader };
-        material.SetShaderParameter("toward_camera", towardCamera);
         material.SetShaderParameter("edge_fade", edge ?? new Vector2(0.15f, 0.6f));
         return material;
     }
