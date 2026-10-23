@@ -65,6 +65,7 @@ varying vec3 local_pos;
 
 #include "res://assets/shaders/wound.gdshaderinc"
 #include "res://assets/shaders/skin_light.gdshaderinc"
+#include "res://assets/shaders/body_blood.gdshaderinc"
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -123,7 +124,7 @@ void fragment() {
 		base = mix(base, vec3(0.3, 0.03, 0.04), smoothstep(edge, edge + 0.04, s) * 0.85);
 	}
 	float wet = 0.0;
-	float blood = 0.0;
+	float blood = body_blood(world_pos);
 	if (carve_box.x > 0.0) {
 		vec3 lp = (carve_inverse * vec4(world_pos - carve_lift, 1.0)).xyz;
 		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
@@ -138,18 +139,15 @@ void fragment() {
 		float facing = smoothstep(-0.3, 0.2, dot(NORMAL, site_up));
 		if (in_site && facing > 0.0) {
 			vec4 f = texture(site_fluids, cuv);
-			// Only blood deeper than the site film's pinning runs on onto the body's film (SurfaceFilm), so a thin
-			// film thins out toward the site's edges instead of stopping along them, over a ragged band.
-			vec2 inside = min(cuv, 1.0 - cuv);
-			float ragged = (noise(world_pos.xz * 60.0 + world_pos.y * 25.0) - 0.5) * 0.04;
-			f.r *= smoothstep(0.0, 0.15, min(inside.x, inside.y) + ragged) * facing;
-			// Use the smooth film for its normal, not the grain in its pigment.
-			blood = f.r;
-			f.r = blood_amount(f.r, noise(world_pos.xz * 120.0 + world_pos.y * 50.0));
+			// Skin blood is sampled once from the body-wide field after local wound paint.
+			f.r = 0.0;
 			wet = apply_wounds(base, texture(site_wounds, cuv), f);
 			// Only on skin facing out of the site, like its damage.
 			wet = max(wet, paint_spot(base, mix(2.0, skin_spot(texture(site_bleeds, cuv)), step(0.5, facing))));
 		}
+	}
+	if (body_blood_grid.x > 1.0) {
+		wet = max(wet, apply_blood(base, blood_amount(blood, noise(world_pos.xz * 120.0 + world_pos.y * 50.0))));
 		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
 	}
 	if (detail > 0) {

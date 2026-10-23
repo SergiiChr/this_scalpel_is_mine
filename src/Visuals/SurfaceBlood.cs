@@ -115,9 +115,9 @@ internal sealed class SurfaceBlood {
         for (var y = 0; y < Size; y++) {
             for (var x = 0; x < Size; x++) {
                 var i = y * Size + x;
-                if (_holds[i]) { continue; }
+                if (_holds[i] && !_steep[i]) { continue; }
                 var neighbors = Neighbors.Select(n => (X: x + n.X, Y: y + n.Y))
-                    .Where(p => p.X >= 0 && p.X < Size && p.Y >= 0 && p.Y < Size && _holds[p.Y * Size + p.X])
+                    .Where(p => p.X >= 0 && p.X < Size && p.Y >= 0 && p.Y < Size && _holds[p.Y * Size + p.X] && !_steep[p.Y * Size + p.X])
                     .Select(p => p.Y * Size + p.X).ToArray();
                 if (neighbors.Length > 0) { _edgeNeighbors.Add((i, neighbors)); }
             }
@@ -129,6 +129,7 @@ internal sealed class SurfaceBlood {
     internal float QueuedRunoffMl => _runoff.Sum() + _steepRunoff.Sum();
     internal float HeldMl => _ml.Sum();
     internal float At(int x, int y) => _ml[y * Size + x];
+    internal Vector3 NormalAt(int x, int y) => _normal[y * Size + x];
     private static Vector2 Uv(int x, int y) => new Vector2(x + 0.5f, y + 0.5f) / Size;
 
     /// <summary>The cells this film carries are the level skin round the site's middle, as far as the first steep
@@ -545,8 +546,9 @@ internal sealed class SurfaceBlood {
         for (var i = 0; i < _ml.Length; i++) {
             _opticalDepth[i] = _ml[i] * _normalDepthPerMl[i] / CoverDepth;
         }
-        // Extend only the displayed density into one boundary cell. The cached continuous contact mask clips
-        // it back to the body, so the simulation grid cannot imprint teeth into a saturated pool's edge.
+        // Extend the resampled density into one ghost cell, including the steep transport handover.
+        // This is interpolation support, not extra physical liquid. The shared body-wide field consumes
+        // these samples together with the body's; the contact mask clips them back to real skin.
         foreach (var (i, neighbors) in _edgeNeighbors) {
             var sum = 0f;
             foreach (var neighbor in neighbors) { sum += _opticalDepth[neighbor]; }

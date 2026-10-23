@@ -93,9 +93,6 @@ public partial class BloodFlow : Node3D {
     private static readonly SurfaceFilm.Settings BedFilmSettings = new(0.01f, 0.0004f, 0.0005f);
     /// <summary>Blood on the floor: puddles about a millimeter and a half deep.</summary>
     private static readonly SurfaceFilm.Settings FloorFilmSettings = new(0.015f, 0.0015f, 0.0008f);
-    /// <summary>How far (m) from the site's middle the body's film reaches: far enough round a limb or the torso to
-    /// carry runoff down to the bed.</summary>
-    private const float BodyFilmReach = 0.6f;
     /// <summary>How far (m) round the table the floor's film reaches.</summary>
     private const float FloorFilmMargin = 0.8f;
     private const float PuddlePaintInterval = 0.2f;
@@ -223,6 +220,10 @@ public partial class BloodFlow : Node3D {
     private readonly List<(Vector2 Uv, float Radius, float Center)> _spots = [];
     /// <summary>Where needles went into the skin (site uv), each showing a spot like a bleed onto the skin.</summary>
     private readonly List<Vector2> _punctures = [];
+    internal BodyBloodLayer Layer { get; } = new();
+    private float _layerClock;
+    private readonly List<BodyBloodLayer.Sample> _layerSamples = [];
+    private readonly float[] _siteCoverage = new float[SurfaceBlood.Size * SurfaceBlood.Size];
     private PatientBody? _body;
 
     /// <summary>The bleeding wounds. The patient swaps in a complete list every tick; nothing keeps a tick's own.
@@ -318,6 +319,7 @@ public partial class BloodFlow : Node3D {
         }
         Flow(_body, (float)delta);
         Fall((float)delta);
+        UpdateLayer((float)delta);
     }
 
     private void Spawn(PatientBody body, float delta) {
@@ -892,24 +894,15 @@ public partial class BloodFlow : Node3D {
         // skin the site's heights were measured on (facing the site's up) from the far side under it.
         var surface = _surface;
         bool OverSite(Vector3 sitePoint, float margin = 0f) => Mathf.Abs(sitePoint.X) < half.X + margin && Mathf.Abs(sitePoint.Z) < half.Y + margin;
-        bool OffSite(Vector3 sitePoint, Vector3 siteNormal) => sitePoint.Length() < BodyFilmReach
-            && !(OverSite(sitePoint) && siteNormal.Y > 0f && surface.Carries(body.LocalToUv(sitePoint), sitePoint.Y));
+        bool OffSite(Vector3 sitePoint, Vector3 siteNormal) =>
+            !(OverSite(sitePoint) && siteNormal.Y > 0f && surface.Carries(body.LocalToUv(sitePoint), sitePoint.Y));
         var meshToSite = siteToMesh.AffineInverse();
-        var bodyMesh = new ArrayMesh();
+        // Transport covers the entire body. Its samples feed the same field as the detailed site solver;
+        // there is no separately drawn runoff mesh or skin/site rendering handover.
         _bodyFilmBuild = Build(() => new SurfaceFilm(skin.Corners.Select(p => siteToMesh * p).ToArray(), BodyFilmSettings,
             skin.Normals.Select(n => siteToMesh.Basis * n).ToArray(), skin.Skin,
-            (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), bodyMesh,
-            at => (meshToSite * at).Length() > BodyFilmReach - 0.02f, at => OverSite(meshToSite * at, BodyFilmSettings.Spacing)));
-        _skinMesh.GetParent().AddChild(new MeshInstance3D {
-            Name = "BodyFilm",
-            Mesh = bodyMesh,
-            // The skin is drawn smoothed and posed by the GPU; its film follows it to within a couple of millimeters.
-            MaterialOverride = Materials.BloodFilm(0.002f, new Vector2(0f, 0.8f)),
-            Skin = _skinMesh.Skin,
-            Skeleton = _skinMesh.Skeleton,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            Transform = _skinMesh.Transform,
-        });
+            carries: (at, normal) => OffSite(meshToSite * at, (meshToSite.Basis * normal).Normalized()), drawMesh: false));
+        foreach (var material in body.BloodMaterials) { Layer.Bind(material); }
         var bed = _bed;
         var bedMesh = new ArrayMesh();
         _bedFilmBuild = Build(() => new SurfaceFilm(bed.Triangles, BedFilmSettings, keep: bed.Exposed, mesh: bedMesh));
@@ -988,6 +981,64 @@ public partial class BloodFlow : Node3D {
         }
     }
 
+    private BodyBloodLayer.Sample[] LayerSamples() {
+        _layerSamples.Clear();
+        if (_body is not { } body) { return []; }
+        var inverse = _skinMesh.GlobalTransform.AffineInverse();
+        Layer.Place(inverse);
+        var film = Built(_bodyFilmBuild);
+        if (!body.WoundMap.HasPainted(WoundMap.Layer.Fluids, WoundMap.Blood) && (film is null || film.HeldMl <= 0f)) { return []; }
+        var wet = false;
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
+                var value = body.BloodAt(uv);
+                _siteCoverage[y * SurfaceBlood.Size + x] = value;
+                wet |= value > 0f;
+            }
+        }
+        if (!wet && (film is null || film.HeldMl <= 0f)) { return []; }
+        var siteToField = inverse * body.Site.GlobalTransform;
+        var radius = Mathf.Max(body.SiteSize.X, body.SiteSize.Y) / SurfaceBlood.Size * 1.6f;
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
+                if (body.LiquidSupport(uv) < 0f) { continue; }
+                var coverage = _siteCoverage[y * SurfaceBlood.Size + x];
+                if (!_surface.Carries(uv) && coverage <= 0f) { continue; }
+                var at = inverse * body.SkinPoint(uv);
+                var normal = (siteToField.Basis * _surface.NormalAt(x, y)).Normalized();
+                _layerSamples.Add(new BodyBloodLayer.Sample(at, normal, coverage, radius));
+            }
+        }
+        if (film is not null) {
+            var pose = _skeleton is null ? null : BodyLiquidSurface.CaptureSkinPose(_skinMesh, _skeleton, _bindBones);
+            foreach (var sample in film.Samples) {
+                var skin = film.SkinAt(sample.Node);
+                var at = pose is null ? sample.At : inverse * pose.Deform(sample.At, skin);
+                var normal = pose is null ? sample.Normal
+                    : (inverse.Basis * (pose.Deform(sample.At + sample.Normal, skin) - pose.Deform(sample.At, skin))).Normalized();
+                _layerSamples.Add(new BodyBloodLayer.Sample(at, normal, sample.Coverage, film.Spacing * 1.6f));
+            }
+        }
+        return _layerSamples.ToArray();
+    }
+
+    private void UpdateLayer(float delta) {
+        Layer.Place(_skinMesh.GlobalTransform.AffineInverse());
+        Layer.PublishFinished();
+        _layerClock += delta;
+        if (_layerClock < 0.1f || Layer.Busy) { return; }
+        _layerClock = 0f;
+        var samples = LayerSamples();
+        if (samples.Length > 0 || Layer.HasCoverage) { Layer.Request(samples); }
+    }
+
+    /// <summary>Refreshes the shared skin field after a paused action, so captures show current blood and tissue.</summary>
+    internal void FinishLayer() => Layer.Rebuild(LayerSamples());
+
+    public override void _ExitTree() => Layer.Dispose();
+
     /// <summary>Waits for every film's running step and publishes it; for tests.</summary>
     internal void FinishFilms() {
         BodyFilm.Finish();
@@ -995,5 +1046,6 @@ public partial class BloodFlow : Node3D {
         BedFilm.Finish();
         ReleaseBedDrips();
         FloorFilm.Finish();
+        FinishLayer();
     }
 }

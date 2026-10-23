@@ -85,6 +85,69 @@ public class SurfaceFilmTest {
         AssertInt(worker.Mesh.GetSurfaceCount()).OverrideFailureMessage("the finished step's film is drawn").IsEqual(1);
     }
 
+    [TestCase]
+    public void TheDrawnFilmKeepsTheSurfaceOutwardNormals() {
+        var outward = new Vector3(0.3f, 1f, -0.2f).Normalized();
+        var surface = Plane(0.2f);
+        var film = new SurfaceFilm(surface, new SurfaceFilm.Settings(0.01f, 0.001f, 0f),
+            Enumerable.Repeat(outward, surface.Length).ToArray());
+        // Wet every node so the drawn mesh contains points from both source triangles.
+        for (var node = 0; node < film.Count; node++) { film.Add(node, 1f); }
+        // Moving films publish a mesh every third transport step.
+        for (var step = 0; step < 3; step++) { film.StepNow(Vector3.Down, 1f / SurfaceFilm.Rate); }
+
+        using var arrays = film.Mesh.SurfaceGetArrays(0);
+        var normals = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+        var worstAlignment = normals.Min(normal => normal.Dot(outward));
+        AssertFloat(worstAlignment).OverrideFailureMessage(
+            $"the film shades with its surface's outward normal (worst dot {worstAlignment:0.000})").IsGreater(0.999f);
+    }
+
+    [TestCase]
+    public void AFilmHandoffKeepsDrawingAcrossTheTransportBoundary() {
+        var surface = Plane(0.2f);
+        var film = new SurfaceFilm(surface, new SurfaceFilm.Settings(0.01f, 0.001f, 0f), Up(surface.Length),
+            carries: (point, _) => point.X >= 0f);
+        var source = film.Nearest(new Vector3(-0.001f, 0f, 0f));
+        AssertBool(film.CarriesAt(source)).OverrideFailureMessage("a source on the excluded side is handed to the carried side")
+            .IsTrue();
+        film.Add(source, 1f);
+        for (var step = 0; step < 5; step++) { film.StepNow(Vector3.Down, 1f / SurfaceFilm.Rate); }
+
+        var excludedLiquid = Enumerable.Range(0, film.Count)
+            .Where(node => !film.CarriesAt(node)).Sum(film.MlAt);
+        AssertFloat(excludedLiquid).OverrideFailureMessage("liquid transport stays on the carried side").IsEqualApprox(0f, 0.0001f);
+        AssertFloat(film.HeldMl + film.Released.Sum(drip => drip.Ml))
+            .OverrideFailureMessage("restricting transport preserves the film's volume").IsEqualApprox(1f, 0.0001f);
+
+        using var arrays = film.Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        AssertBool(vertices.Any(point => point.X < 0f))
+            .OverrideFailureMessage("draw coverage fades across the boundary onto the handoff side").IsTrue();
+    }
+
+    [TestCase]
+    public void TessellatingALongThinTriangleDoesNotFoldDrawnFacesBackwards() {
+        Vector3 a = new(0f, 0f, 0f), b = new(0.3f, 0f, 0f), c = new(0.27f, 0f, 0.025f);
+        var source = new[] { a, b, c };
+        var film = new SurfaceFilm(source, new SurfaceFilm.Settings(0.012f, 0.001f, 0f), Up(source.Length));
+        for (var node = 0; node < film.Count; node++) { film.Add(node, 1f); }
+        // Moving films publish a mesh every third transport step.
+        for (var step = 0; step < 3; step++) { film.StepNow(Vector3.Down, 1f / SurfaceFilm.Rate); }
+
+        using var arrays = film.Mesh.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var backwards = 0;
+        for (var t = 0; t < indices.Length; t += 3) {
+            var face = (vertices[indices[t + 2]] - vertices[indices[t]])
+                .Cross(vertices[indices[t + 1]] - vertices[indices[t]]);
+            if (face.Dot(Vector3.Up) <= 0f) { backwards++; }
+        }
+        AssertInt(indices.Length / 3).OverrideFailureMessage("the thin surface still has drawable faces").IsGreater(0);
+        AssertInt(backwards).OverrideFailureMessage("welded tessellation does not emit reversed shard faces").IsEqual(0);
+    }
+
     private static void Run(SurfaceFilm film, Vector3 gravity, float seconds) {
         for (var step = 0; step < seconds * SurfaceFilm.Rate; step++) { film.StepNow(gravity, 1f / SurfaceFilm.Rate); }
     }

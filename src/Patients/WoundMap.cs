@@ -111,6 +111,14 @@ public sealed class WoundMap {
 
     public ImageTexture Texture(Layer layer) => Textures[(int)layer];
 
+    internal bool HasPainted(Layer layer, int channel) {
+        var cells = _painted[(int)layer];
+        for (var i = channel; i < cells.Length; i += 4) {
+            if (cells[i]) { return true; }
+        }
+        return false;
+    }
+
     /// <summary>The texture size for a site of this size in meters (a power of two).</summary>
     public static int SizeFor(Vector2 siteSize) =>
         Math.Clamp(1 << Mathf.RoundToInt(Mathf.Log(Mathf.Max(siteSize.X, siteSize.Y) / Texel) / Mathf.Log(2f)), MinSize, MaxSize);

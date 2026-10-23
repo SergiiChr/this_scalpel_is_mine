@@ -127,6 +127,7 @@ public partial class PatientBody : Node3D {
     /// <summary>The thin box on SiteLayer over the site, that rays and hands meet over it.</summary>
     public StaticBody3D SiteCollider { get; private set; } = null!;
     public ShaderMaterial? SkinMaterial { get; private set; }
+    internal IReadOnlyList<ShaderMaterial> BloodMaterials => [_bodyMaterials[0], SkinMaterial!];
     public TissueSim Tissue { get; } = new();
     /// <summary>Subcutaneous fat under this site, thicker on obese patients (set before <see cref="Build"/>). None on a
     /// forearm.</summary>

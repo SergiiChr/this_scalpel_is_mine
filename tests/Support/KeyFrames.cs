@@ -55,6 +55,7 @@ public partial class KeyFrames : Node {
             surgery?.Hud.RemoveFilmGrain();
             // Paused, the body doesn't upload what was painted since its last sim step.
             surgery?.Patient.Body.WoundMap.Flush();
+            surgery?.Patient.Body.Blood.FinishLayer();
             // Moving effects (sickness wobble, flesh, contamination pulse) at one fixed moment: their clock follows
             // frame time, which only --fixed-fps makes the same on every machine. Gameplay sets it again on resuming.
             RenderingServer.GlobalShaderParameterSet(ShaderParam.GameTime, 0f);

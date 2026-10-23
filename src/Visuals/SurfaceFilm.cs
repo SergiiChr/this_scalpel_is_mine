@@ -6,8 +6,8 @@ namespace Scalpel.Visuals;
 /// Liquid spreading over one surface (the body, the bed, the floor). Points spread over its triangles hold milliliters
 /// and pass them downhill to their neighbours by surface height plus liquid depth, as <see cref="SurfaceBlood"/> does
 /// on the site's grid. Where the surface faces down, the liquid gathers into drips that leave it; whatever lies below
-/// takes them as its own input. A film steps on a worker thread and draws its own mesh, every edge fading over a
-/// point's spacing rather than stopping at a line.
+/// takes them as its own input. A film steps on a worker thread and either draws a surface mesh or publishes
+/// samples for the single body-wide skin layer.
 /// </summary>
 internal sealed class SurfaceFilm {
     /// <summary>How a surface holds its film.</summary>
@@ -20,6 +20,7 @@ internal sealed class SurfaceFilm {
     /// <summary><paramref name="Ml"/> leaving the surface at point <paramref name="Node"/>, local position
     /// <paramref name="At"/>.</summary>
     internal readonly record struct Drip(int Node, Vector3 At, float Ml);
+    internal readonly record struct FilmSample(int Node, Vector3 At, Vector3 Normal, float Coverage);
 
     /// <summary>Steps per second. Fixed, so a run plays out the same however fast the worker is.</summary>
     internal const float Rate = 30f;
@@ -46,8 +47,12 @@ internal sealed class SurfaceFilm {
     private const float EdgeFadeSpacings = 5f;
 
     private readonly Settings _settings;
+    private readonly bool _drawMesh;
+    private FilmSample[] _stepSamples = [];
     private readonly Vector3[] _at;
     private readonly Vector3[] _normal;
+    private readonly Vector3[] _drawNormal;
+    private readonly bool[] _carries;
     private readonly float[] _area;
     private readonly int[] _neighborStart;
     private readonly int[] _neighbors;
@@ -120,11 +125,13 @@ internal sealed class SurfaceFilm {
     /// <summary>How far apart (m) the film's points are laid.</summary>
     internal float Spacing => _settings.Spacing;
     internal Vector3 At(int node) => _at[node];
+    internal bool CarriesAt(int node) => _carries[node];
     internal Vector3 NormalAt(int node) => _normal[node];
     internal BodyLiquidSurface.SkinWeights SkinAt(int node) => _skin?[node] ?? default;
 
     /// <summary>The film drawn: what the last finished step left.</summary>
     internal ArrayMesh Mesh { get; }
+    internal IReadOnlyList<FilmSample> Samples { get; private set; } = [];
 
     /// <summary>Liquid on the surface or gathering into drips, including what was added for the next step.</summary>
     internal float HeldMl => _committed + _pendingMl;
@@ -147,17 +154,19 @@ internal sealed class SurfaceFilm {
     /// <param name="fadesAt">Which points of the surface's open edges the drawn film fades out toward: where the
     /// surface was cut out of a larger one (the body round the site), so that edge is no edge of the real thing.
     /// </param>
-    /// <param name="fine">Where <paramref name="keep"/> tells apart patches smaller than a triangle (the site's cells):
-    /// a triangle reaching in there is asked for each of its faces, any other once when its middle and corners agree.
-    /// </param>
+    /// <param name="carries">Which points hold liquid. Other points remain in the drawn mesh as a dry margin,
+    /// so the interpolated coverage can fade across a handover without clipping along triangle edges.</param>
     internal SurfaceFilm(IReadOnlyList<Vector3> triangles, Settings settings, IReadOnlyList<Vector3>? outward = null,
         IReadOnlyList<BodyLiquidSurface.SkinWeights>? skin = null, Func<Vector3, Vector3, bool>? keep = null,
-        ArrayMesh? mesh = null, Func<Vector3, bool>? fadesAt = null, Func<Vector3, bool>? fine = null) {
+        ArrayMesh? mesh = null, Func<Vector3, bool>? fadesAt = null, Func<Vector3, Vector3, bool>? carries = null,
+        bool drawMesh = true) {
         _settings = settings;
+        _drawMesh = drawMesh;
         Mesh = mesh ?? new ArrayMesh();
         var index = new Dictionary<(long, long, long), int>();
         var points = new List<Vector3>();
         var normals = new List<Vector3>();
+        var drawNormals = new List<Vector3>();
         var areas = new List<float>();
         var weights = skin is null ? null : new List<BodyLiquidSurface.SkinWeights>();
         var faces = new List<int>();
@@ -168,17 +177,18 @@ internal sealed class SurfaceFilm {
         var weld = 1f / (settings.Spacing * 0.6f);
         var facing = new List<Vector3>();
         var sameCell = new List<int>();
-        int Node(Vector3 p, BodyLiquidSurface.SkinWeights weight, Vector3 side) {
+        int Node(Vector3 p, BodyLiquidSurface.SkinWeights weight, Vector3 side, Vector3 smooth) {
             var key = ((long)Mathf.Round(p.X * weld), (long)Mathf.Round(p.Y * weld), (long)Mathf.Round(p.Z * weld));
             var first = index.GetValueOrDefault(key, -1);
             for (var found = first; found >= 0; found = sameCell[found]) {
-                if (facing[found].Dot(side) > -0.3f) { return found; }
+                if (facing[found].Dot(side) > -0.3f) { drawNormals[found] += smooth; return found; }
             }
             index[key] = points.Count;
             sameCell.Add(first);
             facing.Add(side);
             points.Add(p);
             normals.Add(Vector3.Zero);
+            drawNormals.Add(smooth);
             areas.Add(0f);
             weights?.Add(weight);
             return points.Count - 1;
@@ -191,23 +201,24 @@ internal sealed class SurfaceFilm {
             var face = (c - a).Cross(b - a);
             if (face.LengthSquared() < 1e-14f) { continue; }
             var (wa, wb, wc) = skin is null ? default : (skin[t], skin[t + 1], skin[t + 2]);
+            var (na, nb, nc) = outward is null ? (face.Normalized(), face.Normalized(), face.Normalized())
+                : (outward[t], outward[t + 1], outward[t + 2]);
             if (outward is not null && face.Dot(outward[t] + outward[t + 1] + outward[t + 2]) < 0f) {
                 (b, c) = (c, b);
                 (wb, wc) = (wc, wb);
+                (nb, nc) = (nc, nb);
                 face = -face;
             }
             var side = face.Normalized();
             // Where the triangle's middle and corners agree, the whole triangle is in or out: asking once for each of
-            // its many small faces would cost far more than building them. Not where keep draws a finer line than the
-            // triangle: there its middle and corners can agree with a patch of the other kind between them.
+            // its many small faces would cost far more than building them. Fine ownership boundaries use carries
+            // instead: the drawn triangles remain intact while only their liquid transport is restricted.
             bool? whole = null;
             if (keep is not null) {
                 var middle = (a + b + c) / 3f;
                 var (nearA, nearB, nearC) = (middle.Lerp(a, 0.9f), middle.Lerp(b, 0.9f), middle.Lerp(c, 0.9f));
-                if (fine is null || !(fine(middle) || fine(nearA) || fine(nearB) || fine(nearC))) {
-                    var inside = keep(middle, side);
-                    if (keep(nearA, side) == inside && keep(nearB, side) == inside && keep(nearC, side) == inside) { whole = inside; }
-                }
+                var inside = keep(middle, side);
+                if (keep(nearA, side) == inside && keep(nearB, side) == inside && keep(nearC, side) == inside) { whole = inside; }
             }
             if (whole == false) { continue; }
             var kab = EdgeSteps(a, b);
@@ -234,7 +245,7 @@ internal sealed class SurfaceFilm {
                     }
                     var weight = skin is null ? default
                         : BodyLiquidSurface.BlendSkin(wa, wb, wc, new Vector3(1f - u - v, u, v));
-                    grid[row + j] = Node(p, weight, side);
+                    grid[row + j] = Node(p, weight, side, na * (1f - u - v) + nb * u + nc * v);
                 }
                 row += n + 1 - i;
             }
@@ -242,6 +253,9 @@ internal sealed class SurfaceFilm {
             void Face(int p, int q, int r) {
                 if (p == q || q == r || r == p) { return; }
                 var normal = (points[r] - points[p]).Cross(points[q] - points[p]);
+                // Snapping and welding a thin source triangle can fold a tiny face over its neighbour.
+                // It is no part of the outer surface, and would show as a detached dark/red shard.
+                if (normal.Dot(side) <= 0f) { return; }
                 var centroid = (points[p] + points[q] + points[r]) / 3f;
                 if (whole is null && keep is not null && !keep(centroid, normal.Normalized())) { return; }
                 var third = normal.Length() / 6f;
@@ -266,13 +280,17 @@ internal sealed class SurfaceFilm {
         }
         _at = new Vector3[count];
         _normal = new Vector3[count];
+        _drawNormal = new Vector3[count];
         _area = new float[count];
+        _carries = new bool[count];
         _skin = weights is null ? null : new BodyLiquidSurface.SkinWeights[count];
         for (var k = 0; k < points.Count; k++) {
             if (used[k] < 0) { continue; }
             _at[used[k]] = points[k];
             _normal[used[k]] = normals[k].Normalized();
+            _drawNormal[used[k]] = outward is null ? _normal[used[k]] : drawNormals[k].Normalized();
             _area[used[k]] = Mathf.Max(areas[k], 1e-9f);
+            _carries[used[k]] = carries?.Invoke(_at[used[k]], _normal[used[k]]) ?? true;
             if (_skin is not null) { _skin[used[k]] = weights![k]; }
         }
         _triangles = faces.Select(k => used[k]).ToArray();
@@ -405,7 +423,7 @@ internal sealed class SurfaceFilm {
                         if (Math.Max(Math.Abs(x), Math.Max(Math.Abs(y), Math.Abs(z))) != ring
                             || !_cells.TryGetValue(home + new Vector3I(x, y, z), out var list)) { continue; }
                         foreach (var k in list) {
-                            if (facing is { } side && _normal[k].Dot(side) < 0.3f) { continue; }
+                            if (!_carries[k] || facing is { } side && _normal[k].Dot(side) < 0.3f) { continue; }
                             var d = _at[k].DistanceSquaredTo(local);
                             if (d < distance) { distance = d; best = k; }
                         }
@@ -415,7 +433,7 @@ internal sealed class SurfaceFilm {
         }
         if (best >= 0) { return best; }
         for (var k = 0; k < _at.Length; k++) {
-            if (facing is { } side && _normal[k].Dot(side) < 0.3f) { continue; }
+            if (!_carries[k] || facing is { } side && _normal[k].Dot(side) < 0.3f) { continue; }
             var d = _at[k].DistanceSquaredTo(local);
             if (d < distance) { distance = d; best = k; }
         }
@@ -425,6 +443,8 @@ internal sealed class SurfaceFilm {
     /// <summary>Adds <paramref name="ml"/> at point <paramref name="node"/>, from the next step on.</summary>
     internal void Add(int node, float ml) {
         if (ml <= 0f || node < 0) { return; }
+        if (!_carries[node]) { node = Nearest(_at[node], _normal[node]); }
+        if (node < 0) { return; }
         _pending.Add((node, ml));
         _pendingMl += ml;
     }
@@ -493,7 +513,13 @@ internal sealed class SurfaceFilm {
             _committed -= drip.Ml;
         }
         _drips.Clear();
-        if (_rebuilt) { Upload(); }
+        if (_rebuilt) {
+            if (_drawMesh) {
+                Upload();
+            } else {
+                Samples = _stepSamples;
+            }
+        }
         _rebuilt = false;
     }
 
@@ -540,7 +566,7 @@ internal sealed class SurfaceFilm {
                     var other = _neighbors[e];
                     var otherHead = _height[other] + _ml[other] * 0.000001f / _area[other];
                     // A dry edge holds the liquid back until it stands HoldDepth deep, however far the surface drops.
-                    var weight = _ml[other] <= 0f && depth <= hold ? 0f : Mathf.Max(head - otherHead - hold, 0f) / _distance[e];
+                    var weight = !_carries[other] || _ml[other] <= 0f && depth <= hold ? 0f : Mathf.Max(head - otherHead - hold, 0f) / _distance[e];
                     _weights[e - first] = weight;
                     total += weight;
                 }
@@ -577,7 +603,9 @@ internal sealed class SurfaceFilm {
         // drawn every few steps: liquid creeping over skin reads the same, at a fraction of the work.
         var undrawn = _moved || _mustDraw;
         _rebuilt = undrawn && (_stepCount % StepsPerDraw == 0 || !_moved);
-        if (_rebuilt) { BuildMesh(); }
+        if (_rebuilt) {
+            if (_drawMesh) { BuildMesh(); } else { BuildSamples(); }
+        }
         _mustDraw = undrawn && !_rebuilt;
         _settled = !_moved && !_mustDraw;
         _moved = false;
@@ -592,12 +620,8 @@ internal sealed class SurfaceFilm {
         _reached.Add(k);
     }
 
-    private void BuildMesh() {
-        // Each point is drawn with its liquid blended with its neighbours', as the site's film is painted: a pool's
-        // edge then rounds off between the points instead of following them. The blur reaches two rings of
-        // neighbours past the wet points, so their triangles are drawn too, or the fade would stop at a triangle's edge.
+    private void ReachWet() {
         _stamp++;
-        _drawn.Clear();
         _reached.Clear();
         foreach (var k in _wet) { Reach(k); }
         for (var ring = 0; ring < 2; ring++) {
@@ -607,6 +631,20 @@ internal sealed class SurfaceFilm {
                 for (var e = _neighborStart[k]; e < _neighborStart[k + 1]; e++) { Reach(_neighbors[e]); }
             }
         }
+    }
+
+    private void BuildSamples() {
+        ReachWet();
+        // The shared spatial field filters these densities once, uniformly on both sides of the site.
+        // Exporting the old mesh blur here would smooth only the body a second time.
+        _stepSamples = _reached.Where(k => _carries[k])
+            .Select(k => new FilmSample(k, _at[k], _drawNormal[k], Coverage(k))).ToArray();
+    }
+
+    private void BuildMesh() {
+        // Draw the two-ring blur and its dry margin together, so the fade never ends on a triangle edge.
+        ReachWet();
+        _drawn.Clear();
         foreach (var k in _reached) {
             for (var i = _pointTriangleStart[k]; i < _pointTriangleStart[k + 1]; i++) {
                 var t = _pointTriangles[i];
@@ -645,7 +683,9 @@ internal sealed class SurfaceFilm {
             // of curved skin as a flap.
             var depth = Mathf.Min(_ml[k] * 0.000001f / _area[k], MaxRise) * _blurredTwice[k];
             _vertices[v] = _at[k] + _normal[k] * (_settings.Lift + depth);
-            _normals[v] = _normal[k];
+            // Preserve the source skin's smooth lighting across the film boundary. Clipped microtriangles
+            // still supply geometric normals for transport, never the reflected highlight.
+            _normals[v] = _drawNormal[k];
             _uvs[v] = new Vector2(_blurredTwice[k], OpticalDepth(k) * _shown[k]);
             if (_skin is not null) {
                 var skin = _skin[k];

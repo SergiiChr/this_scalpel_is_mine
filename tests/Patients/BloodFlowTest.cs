@@ -143,14 +143,14 @@ public class BloodFlowTest {
         }
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
-                var rendered = driver.Body.SkinMesh.GetParent().GetNode<MeshInstance3D>("BodyFilm");
-                AssertObject(rendered.Skin).OverrideFailureMessage("the body's film moves with the skin's bones").IsSame(driver.Body.SkinMesh.Skin);
-                using var arrays = rendered.Mesh.SurfaceGetArrays(0);
-                var vertexCount = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length;
-                AssertInt(arrays[(int)Mesh.ArrayType.Bones].AsInt32Array().Length)
-                    .OverrideFailureMessage("every drawn film vertex carries four skin influences").IsEqual(vertexCount * 4);
-                AssertInt(arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array().Length)
-                    .OverrideFailureMessage("every drawn film vertex carries its liquid's depth").IsEqual(vertexCount);
+                AssertBool(driver.Body.SkinMesh.GetParent().HasNode("BodyFilm"))
+                    .OverrideFailureMessage("blood uses the skin's shared layer, without a separate runoff overlay").IsFalse();
+                foreach (var material in driver.Body.BloodMaterials) {
+                    AssertObject(material.GetShaderParameter("body_blood_atlas").AsGodotObject())
+                        .OverrideFailureMessage("body and surgical skin read the same blood layer").IsSame(blood.Layer.Texture);
+                }
+                AssertFloat(blood.Layer.CoverageAt(driver.Body.SkinPoint(pool)))
+                    .OverrideFailureMessage("the shared body layer covers the significant source on the skin").IsGreater(0.5f);
                 return Task.CompletedTask;
             });
         }
@@ -283,6 +283,7 @@ public class BloodFlowTest {
         var shared = 0;
         var sharedAt = new Rect2();
         for (var k = 0; k < film.Count; k++) {
+            if (!film.CarriesAt(k)) { continue; }
             var p = meshToSite * film.At(k);
             if (Mathf.Abs(p.X) >= half.X || Mathf.Abs(p.Z) >= half.Y || (meshToSite.Basis * film.NormalAt(k)).Y <= 0f) { continue; }
             var at = new Vector2(p.X, p.Z);
