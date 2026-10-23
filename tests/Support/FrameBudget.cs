@@ -2,15 +2,15 @@ using System.Runtime;
 
 namespace Scalpel.Tests.Support;
 
-/// <summary>How a run checks frame times: build.py sets it in FRAME_BUDGET, and a run without it (an IDE's) checks
-/// <see cref="Cpu"/>.</summary>
+/// <summary>How a run checks frame times: build.py sets it in FRAME_BUDGET (focused runs and performance_test check
+/// them), and a run without it (an IDE's) checks <see cref="Cpu"/>.</summary>
 public enum BudgetMode {
-    /// <summary>Frame times aren't checked: on CI, or with suites running alongside each other.</summary>
+    /// <summary>Frame times aren't checked: on CI, in a full regression or smoke run.</summary>
     Off,
     /// <summary>The game's own work per frame, rendering off, scaled to this machine's speed: a check that holds on
     /// any machine.</summary>
     Cpu,
-    /// <summary>Whole frames as drawn, on a real display and GPU (./build.py full_performance_run).</summary>
+    /// <summary>Whole frames as drawn, on a real display and GPU (./build.py performance_test --render-budget).</summary>
     Render,
 }
 
@@ -43,6 +43,10 @@ public sealed class FrameBudget {
     /// <summary>The longest runtime stall in one frame on the reference machine still taken as the known issue
     /// <see cref="RuntimeStalls"/>: a longer one fails, so pauses that grow don't go unnoticed.</summary>
     public const float StallLimit = 0.040f;
+
+    /// <summary>How far over its limit a frame may go before a check fails: frame times vary from run to run, so only
+    /// an overrun of 30% or more is an issue.</summary>
+    public const float Fluctuation = 1.3f;
 
     /// <summary>Known issue: frames over the budget only for the runtime's own stalls.</summary>
     public const string RuntimeStalls = "the .NET runtime stalls a frame now and then: a garbage collection (up to "
@@ -124,9 +128,11 @@ public sealed class FrameBudget {
     }
 
     /// <summary>
-    /// The one frame budget check for every test: fails when a frame went over <see cref="Limit"/>, and does nothing in
-    /// a run that doesn't check frame times (<see cref="BudgetMode.Off"/>). A <paramref name="localOverride"/> raises
-    /// the limit for this case only, by its factor, as a hard ceiling on the whole frame, runtime stalls included.
+    /// The one frame budget check for every test: fails when a frame went over <see cref="Limit"/> by
+    /// <see cref="Fluctuation"/> or more, and does nothing in a run that doesn't check frame times
+    /// (<see cref="BudgetMode.Off"/>). A <paramref name="localOverride"/>, a known issue, raises the limit for this case
+    /// only, by its factor, as a hard ceiling on the whole frame, runtime stalls included: the factor already holds
+    /// the case's own fluctuation.
     /// Functional assertions still run.
     /// Without an override, frames over the limit only for the runtime's own stalls pass within their bounded
     /// allowance.
@@ -135,16 +141,17 @@ public sealed class FrameBudget {
         if (Mode == BudgetMode.Off) {
             return;
         }
-        var limit = Limit * (localOverride?.Factor ?? 1f);
+        var limit = Limit * (localOverride?.Factor ?? Fluctuation);
         var report = (label.Length > 0 ? label + ": " : "") + Summary()
             + (localOverride is { } allowed ? $"; local budget override up to {allowed.Factor:0.0}x, "
-                + $"{limit * 1000f:0.0} ms: {allowed.Reason}" : "");
+                + $"{limit * 1000f:0.0} ms: {allowed.Reason}" : $"; fails past {limit * 1000f:0.0} ms");
         if (Worst <= limit) {
             GD.Print(report);
         } else if (localOverride is null && WorstOwn <= limit && WorstStall <= StallLimitHere) {
             GD.Print($"PASS: {RuntimeStalls}; {report}");
         } else {
-            AssertBool(false).OverrideFailureMessage(report).IsTrue();
+            var issue = localOverride is null ? "new frame budget issue" : "known frame budget issue grew past its override";
+            AssertBool(false).OverrideFailureMessage($"{issue}: {report}").IsTrue();
         }
     }
 

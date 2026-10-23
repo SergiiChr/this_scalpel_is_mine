@@ -140,7 +140,7 @@ GODOT --path . --rendering-method forward_plus --audio-driver Dummy --resolution
 The benchmark freezes the simulation and shader clock, disables film grain, V-sync and the frame cap, then
 runs off/on/on/off passes per view: 180 warm-up frames and 240 GPU-timestamp samples each. `performance.csv`
 records the adapter, resolution and GPU/frame statistics. These steady-state captures exclude GI startup;
-`./build.py full_performance_run` checks moving gameplay against the frame budget.
+`./build.py performance_test --render-budget` checks moving gameplay against the frame budget.
 
 ## Data formats
 

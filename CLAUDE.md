@@ -53,8 +53,8 @@ no cases, the command also fails.
 GitHub Actions runs smoke and full functional regression headlessly, then exports the game. It takes no key frames.
 
 - `./build.py test`: smoke suites, fast and headless. CI runs them on every PR; when to run them locally: see
-  docs/RELEASE.md.
-- `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots and the frame budget. Run
+  docs/RELEASE.md. This default smoke run and full regressions don't check frame times; focused runs (`--tag`, `--case`) do.
+- `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots. Run
   after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). A case that fails in it
   runs once more on its own, its key frames taken again (the whole suite when a failure belongs to no case); the first
   attempt's logs go to `build/retries/`.
@@ -71,9 +71,10 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   frames of the last run instead of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
-- `./build.py full_performance_run`: the full regression on this machine's display and GPU, rendering on, checking
-  whole frames against 16 ms. Only on a machine with a GPU, never in a cloud container; it takes no key frames. Run it
-  after changes that may cost drawing time (shaders, lighting, models, many new nodes).
+- `./build.py performance_test`: every `frame_budget` suite with its frame times checked; a failure is a new issue or
+  a known one grown by 30% or more (see docs/PERFORMANCE.md). Takes `test` options. `--render-budget` checks whole
+  frames against 16 ms on this machine's display and GPU, rendering on: only on a machine with a GPU, never in a cloud
+  container. Run that after changes that may cost drawing time (shaders, lighting, models, many new nodes).
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
   minutes). Headless tests don't compile shaders, so run it after any shader, lighting or model change and look at
   the PNGs. Other views: `SHOTS_ARGS=--materials|--anatomy|--syringe|--menus` (see `tests/Support/Screenshot.cs`).

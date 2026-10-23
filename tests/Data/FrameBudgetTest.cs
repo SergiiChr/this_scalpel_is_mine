@@ -2,10 +2,10 @@ using GdUnit4.Core.Execution.Exceptions;
 
 namespace Scalpel.Tests.Data;
 
-/// <summary>A documented allowance passes only that budget call and only up to its factor; ordinary overruns and global
-/// limits stay intact.</summary>
+/// <summary>A documented allowance passes only that budget call and only up to its factor; an overrun within the
+/// fluctuation passes, larger ones fail, and global limits stay intact.</summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("frame_budget")]
+[TestCategory("frame_budget")]
 public class FrameBudgetTest {
     [TestCase]
     public void LocalOverrideDoesNotDisableOrdinaryBudgetFailures() {
@@ -28,6 +28,27 @@ public class FrameBudgetTest {
             .OverrideFailureMessage("an overrun past the local override's factor still fails").IsTrue();
         AssertBool(Fails(() => budget.Check()))
             .OverrideFailureMessage("the same overrun still fails without a local override").IsTrue();
+    }
+
+    [TestCase]
+    public void OnlyOverrunsPastFluctuationFail() {
+        if (FrameBudget.Mode == BudgetMode.Off) {
+            return;
+        }
+        // Read before sampling: the first read benchmarks this machine.
+        var limit = FrameBudget.Limit;
+        var budget = new FrameBudget();
+        budget.Sample();
+        // A little over the limit, well within the fluctuation.
+        OS.DelayUsec((int)(limit * 1_050_000f));
+        budget.Sample();
+        AssertFloat(budget.Worst).OverrideFailureMessage("the probe goes over the limit").IsGreater(limit);
+        AssertBool(Fails(() => budget.Check())).OverrideFailureMessage("an overrun under 30% passes").IsFalse();
+        budget.Clear();
+        budget.Sample();
+        OS.DelayUsec((int)(limit * FrameBudget.Fluctuation * 1_050_000f));
+        budget.Sample();
+        AssertBool(Fails(() => budget.Check())).OverrideFailureMessage("an overrun past 30% fails").IsTrue();
     }
 
     private static bool Fails(Action check) {

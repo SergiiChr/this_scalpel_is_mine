@@ -23,7 +23,7 @@ accepts reach `main` with the next release.
 
 1. Branch from `develop`.
 2. Make the change. Run `./build.py lint` and whatever else the change needs.
-3. Run the affected and newly added tests (`./build.py test --tag ... --case ...`).
+3. Run the affected and newly added tests (`./build.py test --tag ... --case ...`). They check the frame budget too.
 4. Run `./build.py test` (smoke) or `--all` (full regression) locally only for a wide core change that can break
    unrelated modules. Otherwise CI covers them.
 5. For a user-visible change, take the key frames of its suites and check them against the baseline:
