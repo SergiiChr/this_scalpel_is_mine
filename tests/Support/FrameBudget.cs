@@ -118,6 +118,20 @@ public sealed class FrameBudget {
         _runtimeWas = runtime;
     }
 
+    /// <summary>Runs <paramref name="work"/>, the test's own work, without counting its time (runtime stalls included)
+    /// in this frame. Not nested: the outer call would take the inner one's time off again.</summary>
+    public T Uncounted<T>(Func<T> work) {
+        var (started, runtime) = (Time.GetTicksUsec(), RuntimeMs());
+        try {
+            return work();
+        } finally {
+            if (_lastUsec > 0) {
+                _lastUsec += Time.GetTicksUsec() - started;
+            }
+            _runtimeWas += RuntimeMs() - runtime;
+        }
+    }
+
     public void Clear() {
         _frames = 0;
         Worst = 0f;
