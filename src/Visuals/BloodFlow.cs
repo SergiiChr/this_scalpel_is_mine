@@ -89,6 +89,9 @@ public partial class BloodFlow : Node3D {
     internal const float TableTop = Room.TableHeight + 0.001f;
     /// <summary>Blood on the skin around the site: a thin film that runs off the body's sides.</summary>
     private static readonly SurfaceFilm.Settings BodyFilmSettings = new(0.007f, 0.00015f, 0.0003f, 0.03f);
+    /// <summary>One physical reconstruction radius for skin blood, wide enough to bridge the coarser body samples.
+    /// Changing the radius with the source grid imprints its resolution boundary onto the shared field.</summary>
+    private static readonly float LayerBlendRadius = BodyFilmSettings.Spacing * 1.6f;
     /// <summary>Blood on the mattress and frame: a thin soaked layer that runs over the edges.</summary>
     private static readonly SurfaceFilm.Settings BedFilmSettings = new(0.01f, 0.0004f, 0.0005f);
     /// <summary>Blood on the floor: puddles about a millimeter and a half deep.</summary>
@@ -1049,7 +1052,7 @@ public partial class BloodFlow : Node3D {
                     _siteCoverage[j * nx + i] = WoundMap.BoxMean(_layerFluids, _layerFluidsSize, WoundMap.Blood, new Vector2(i, j) * step, new Vector2(i + 1, j + 1) * step);
                 }
             }
-            var radius = Mathf.Max(size.X / nx, size.Y / ny) * 1.5f;
+            var radius = Mathf.Max(Mathf.Max(size.X / nx, size.Y / ny) * 1.5f, LayerBlendRadius);
             for (var j = 0; j < ny; j++) {
                 for (var i = 0; i < nx; i++) {
                     var wet = false;
@@ -1058,6 +1061,9 @@ public partial class BloodFlow : Node3D {
                     }
                     var uv = new Vector2(i + 0.5f, j + 0.5f) * step;
                     if (!wet || _layerSkin.Support(uv) < 0f) { continue; }
+                    // The map interpolates paint beyond its solver's cells. There the body's samples own the
+                    // film: reading that fringe again dilutes them and draws the handover as a red band.
+                    if (!_surface.Carries(uv) && !_layerSkin.Simulated(uv)) { continue; }
                     var at = _layerSiteToField * _layerSkin.Point(uv);
                     var normal = _layerSkin.Simulated(uv)
                         ? (_layerSkin.Point(uv + step with { X = 0f }) - _layerSkin.Point(uv - step with { X = 0f }))
@@ -1075,7 +1081,7 @@ public partial class BloodFlow : Node3D {
                 var normal = pose is null ? _layerMeshToWorld.Basis * sample.Normal
                     : pose.Deform(sample.At + sample.Normal, skin) - pose.Deform(sample.At, skin);
                 _layerSamples.Add(new BodyBloodLayer.Sample(_layerWorldToField * at, (_layerWorldToField.Basis * normal).Normalized(),
-                    sample.Coverage, film.Spacing * 1.2f));
+                    sample.Coverage, LayerBlendRadius));
             }
         }
         return _layerSamples;
