@@ -43,9 +43,11 @@ public partial class PatientBody {
         public List<BodyLiquidSurface.SkinWeights> SkinWeights { get; } = [];
     }
 
-    /// <summary>Where a ray down the site's normal meets the body model: its position, the model's smooth normal there
-    /// and the part it hit.</summary>
-    private readonly record struct ModelHit(Vector3 Position, Vector3 Normal, ModelPart Part);
+    /// <summary>Where a ray down the site's normal meets the body model: its position, the model's smooth normal there,
+    /// the face's own normal and the part it hit.</summary>
+    private readonly record struct ModelHit(Vector3 Position, Vector3 Normal, Vector3 FaceNormal, ModelPart Part);
+    /// <summary>The body model's parts at rest, in site space, kept for what asks about the model's skin later.</summary>
+    private List<ModelPart> _modelParts = [];
 
     /// <summary>
     /// How one layer's mesh is put together (see PlanLayers()): per vertex the particle it belongs to (owner), and for
@@ -163,6 +165,7 @@ public partial class PatientBody {
         _bodyRoot.AddChild(Site);
 
         var parts = ModelParts(model);
+        _modelParts = parts;
         var skinPart = parts.First(part => !part.Gown);
         LiquidContact = new BodyLiquidSurface(skinPart.Faces, skinPart.Normals, skinPart.SkinWeights,
             SkinMesh.GlobalTransform.AffineInverse() * Site.GlobalTransform);
@@ -273,10 +276,17 @@ public partial class PatientBody {
             var w = Geometry3D.GetTriangleBarycentricCoords(at, part.Faces[f], part.Faces[f + 1], part.Faces[f + 2]);
             var normal = (part.Normals[f] * w.X + part.Normals[f + 1] * w.Y + part.Normals[f + 2] * w.Z).Normalized();
             if (normal.Y > 0f) {
-                best = new ModelHit(at, normal, part);
+                best = new ModelHit(at, normal, hit["normal"].AsVector3(), part);
             }
         }
         return best;
+    }
+
+    /// <summary>The normal of the body model's face straight under uv (site space), null where the model is absent
+    /// there. The face's own, not the smooth one: the body's blood film is laid over the faces as they are.</summary>
+    internal Vector3? ModelFaceNormal(Vector2 uv) {
+        var local = SitePoint(uv, 0f);
+        return ModelHitAt(_modelParts, local.X, local.Z)?.FaceNormal;
     }
 
     /// <summary>

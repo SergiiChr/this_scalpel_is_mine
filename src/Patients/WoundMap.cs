@@ -59,6 +59,7 @@ public sealed class WoundMap {
     /// </summary>
     internal byte[] Uploaded(Layer layer) => _images[(int)layer].GetData();
     private readonly bool[] _dirty = new bool[LayerCount];
+    private readonly int[] _versions = new int[LayerCount];
     /// <summary>Which cells of a coarse Cells x Cells grid have ever been painted into, per layer and channel.
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
     private readonly bool[][] _painted = new bool[LayerCount][];
@@ -110,6 +111,14 @@ public sealed class WoundMap {
     public ImageTexture[] Textures { get; }
 
     public ImageTexture Texture(Layer layer) => Textures[(int)layer];
+
+    internal bool HasPainted(Layer layer, int channel) {
+        var cells = _painted[(int)layer];
+        for (var i = channel; i < cells.Length; i += 4) {
+            if (cells[i]) { return true; }
+        }
+        return false;
+    }
 
     /// <summary>The texture size for a site of this size in meters (a power of two).</summary>
     public static int SizeFor(Vector2 siteSize) =>
@@ -376,7 +385,7 @@ public sealed class WoundMap {
                     if (next == data[i]) { continue; }
                     data[i] = next;
                     painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
-                    _dirty[(int)Layer.Fluids] = true;
+                    Touch(Layer.Fluids);
                 }
             }
         }
@@ -451,14 +460,46 @@ public sealed class WoundMap {
             }
         }
         if (bloodRemoved) { BloodRemovalVersion++; }
-        _dirty[(int)layer] = true;
+        Touch(layer);
     }
+
+    private void Touch(Layer layer) {
+        _dirty[(int)layer] = true;
+        _versions[(int)layer]++;
+    }
+
+    /// <summary>Counts up with every paint into the layer, flushed or not, so a reader can tell whether it has
+    /// changed since it last looked.</summary>
+    internal int Version(Layer layer) => _versions[(int)layer];
 
     /// <summary>One channel of the painted map at uv, 0..1, as painted so far (no need to wait for
     /// <see cref="Flush"/>).</summary>
     public float Value(Layer layer, int channel, Vector2 uv) {
         var at = (Vector2I)(uv.Clamp(Vector2.Zero, Vector2.One) * (Size - 1)).Floor();
         return _data[(int)layer][(at.Y * Size + at.X) * 4 + channel] / 255f;
+    }
+
+    /// <summary>Copies a layer's texels (RGBA bytes, <see cref="Size"/> square) into <paramref name="into"/>, for a
+    /// worker to read while this map goes on being painted.</summary>
+    internal void CopyLayer(Layer layer, ref byte[] into) {
+        var data = _data[(int)layer];
+        if (into.Length != data.Length) { into = new byte[data.Length]; }
+        Buffer.BlockCopy(data, 0, into, 0, data.Length);
+    }
+
+    /// <summary>Mean of one channel (0..1) over the texels in the box from <paramref name="from"/> to
+    /// <paramref name="to"/> (uv) of a layer's texels (<see cref="CopyLayer"/>), at least one texel.</summary>
+    internal static float BoxMean(byte[] data, int size, int channel, Vector2 from, Vector2 to) {
+        var x0 = Math.Clamp((int)(from.X * size), 0, size - 1);
+        var y0 = Math.Clamp((int)(from.Y * size), 0, size - 1);
+        var x1 = Math.Clamp(Mathf.CeilToInt(to.X * size), x0 + 1, size);
+        var y1 = Math.Clamp(Mathf.CeilToInt(to.Y * size), y0 + 1, size);
+        var sum = 0;
+        for (var y = y0; y < y1; y++) {
+            var row = y * size;
+            for (var x = x0; x < x1; x++) { sum += data[(row + x) * 4 + channel]; }
+        }
+        return sum / (255f * (x1 - x0) * (y1 - y0));
     }
 
     /// <summary>Mean of one channel (0..1) over the texels between <paramref name="from"/> and <paramref name="to"/>

@@ -112,16 +112,24 @@ public class BloodFlowTest {
             var coat = scenario == "knife_back" ? 0.15f : 0.5f;
             var wet = Enumerable.Range(0, film.Count).Where(k => film.CoverageAt(k) > coat).ToArray();
             AssertInt(wet.Length).OverrideFailureMessage($"blood runs on past the site's edge onto the body's own skin ({wet.Length} points wet, {film.HeldMl:0.00} ml on the body, {blood.GroundMl:0.00} ml off it)").IsGreater(10);
-            // Look at the flank where the site's film hands over, from beside it: further down, under a limb, the
-            // drape hides it.
-            Vector3 Normal(int k) => (skin.GlobalBasis * film.NormalAt(k)).Normalized();
-            var site = driver.Body.Site.GlobalPosition;
-            var flank = wet.Where(k => Mathf.Abs(Normal(k).Y) < 0.4f).DefaultIfEmpty(wet[0])
-                .MinBy(k => (skin.GlobalTransform * film.At(k)).DistanceTo(site));
-            var at = skin.GlobalTransform * film.At(flank);
-            var side = Normal(flank).Slide(Vector3.Up).Normalized();
-            await session.CaptureOblique("attached_runoff", "blood runs on from the site's edge down the body's side as one film, its edge fading, no separate streaks or stubs",
-                at, side.IsZeroApprox() ? Vector3.Forward : side, 0.3f);
+            await driver.Unbudgeted(() => {
+                AssertFilmsMeet(driver.Body, film);
+                if (scenario == "hand_stitch") { AssertSmoothHandoff(driver.Body, film); }
+                return Task.CompletedTask;
+            });
+            if (scenario == "hand_stitch") {
+                // Look at the flank where the site's film hands over, from beside it: further down, under a limb, the
+                // drape hides it. The turned back's flank lies in the mattress, where no camera can look at it; what
+                // runs off it shows where it meets the bed (settled_contact).
+                Vector3 Normal(int k) => (skin.GlobalBasis * film.NormalAt(k)).Normalized();
+                var site = driver.Body.Site.GlobalPosition;
+                var flank = wet.Where(k => Mathf.Abs(Normal(k).Y) < 0.4f).DefaultIfEmpty(wet[0])
+                    .MinBy(k => (skin.GlobalTransform * film.At(k)).DistanceTo(site));
+                var at = skin.GlobalTransform * film.At(flank);
+                var side = Normal(flank).Slide(Vector3.Up).Normalized();
+                await session.CaptureOblique("attached_runoff", "blood runs on from the site's edge down the body's side as one film, its edge fading, no separate streaks or stubs",
+                    at, side.IsZeroApprox() ? Vector3.Forward : side, 0.3f);
+            }
         }
         if (scenario == "knife_back") {
             await driver.Unbudgeted(() => {
@@ -136,14 +144,14 @@ public class BloodFlowTest {
         }
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
-                var rendered = driver.Body.SkinMesh.GetParent().GetNode<MeshInstance3D>("BodyFilm");
-                AssertObject(rendered.Skin).OverrideFailureMessage("the body's film moves with the skin's bones").IsSame(driver.Body.SkinMesh.Skin);
-                using var arrays = rendered.Mesh.SurfaceGetArrays(0);
-                var vertexCount = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length;
-                AssertInt(arrays[(int)Mesh.ArrayType.Bones].AsInt32Array().Length)
-                    .OverrideFailureMessage("every drawn film vertex carries four skin influences").IsEqual(vertexCount * 4);
-                AssertInt(arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array().Length)
-                    .OverrideFailureMessage("every drawn film vertex carries its liquid's depth").IsEqual(vertexCount);
+                AssertBool(driver.Body.SkinMesh.GetParent().HasNode("BodyFilm"))
+                    .OverrideFailureMessage("blood uses the skin's shared layer, without a separate runoff overlay").IsFalse();
+                foreach (var material in driver.Body.BloodMaterials) {
+                    AssertObject(material.GetShaderParameter("body_blood_atlas").AsGodotObject())
+                        .OverrideFailureMessage("body and surgical skin read the same blood layer").IsSame(blood.Layer.Texture);
+                }
+                AssertFloat(blood.Layer.CoverageAt(driver.Body.SkinPoint(pool)))
+                    .OverrideFailureMessage("the shared body layer covers the significant source on the skin").IsGreater(0.5f);
                 return Task.CompletedTask;
             });
         }
@@ -179,6 +187,79 @@ public class BloodFlowTest {
             .OverrideFailureMessage($"a later poured dose increases the accounted liquid inventory by exactly the added dose, including spurts: {accountedDose:0.000} ml accounted of {suppliedDose:0.000} ml supplied")
             .IsEqualApprox(suppliedDose, 0.01f);
         await session.Finish(measureGpu ? RenderAllowance : CpuAllowance);
+    }
+
+    [TestCase]
+    public async Task SmallArmCutFeedsSurfaceRunoff() {
+        var original = Db.Scenario("hand_stitch")!;
+        ToolSession session;
+        Db.ReplaceScenario(original with { Wounds = [], Targets = [] });
+        try {
+            session = await ToolSession.Start("hand_stitch", "blood_flow/small_arm_cut");
+        } finally {
+            Db.ReplaceScenario(original);
+        }
+        var driver = session.Driver;
+        var body = driver.Body;
+        var blood = body.Blood;
+        driver.Patient.SetPhysicsProcess(false);
+        blood.Sources.Clear();
+        blood.Pools.Clear();
+        await driver.BloodFilmsBuilt();
+        var skin = body.SkinMesh;
+        var film = blood.BodyFilm;
+        Vector3 Normal(int k) => (skin.GlobalBasis * film.NormalAt(k)).Normalized();
+        // The same framing as attached_runoff, chosen from the arm geometry before any blood is added.
+        var flank = Enumerable.Range(0, film.Count).Where(k => Mathf.Abs(Normal(k).Y) < 0.4f)
+            .MinBy(k => (skin.GlobalTransform * film.At(k)).DistanceTo(body.Site.GlobalPosition));
+        var at = skin.GlobalTransform * film.At(flank);
+        var side = Normal(flank).Slide(Vector3.Up).Normalized();
+        Task SideView(string name, string claim) => session.CaptureOblique(name, claim, at, side, 0.3f);
+        var source = new Vector2(0.55f, 0.4f);
+        var halfCut = new Vector2(0.003f / body.SiteSize.X, 0f);
+        SurgeryState.SkinIsCut(driver.Patient, source - halfCut, source + halfCut, 0.1f);
+        await driver.Capture("small_cut", "a short superficial cut on the upper slope of the arm, before bleeding");
+        await SideView("small_cut_side", "the same side-on arm framing, a small cut above the flank");
+        blood.Sources = [new(source, 0.03f)];
+        driver.Note("the small cut supplies a slow surface bleed");
+        await Frames.Process(1200);
+        blood.FinishFilms();
+        await driver.Capture("running", "a small upper-arm source feeding a localized trail down the slope");
+        await SideView("running_side", "blood from the small cut runs from the upper slope down the side, staying attached across the handoff");
+        blood.Sources.Clear();
+        driver.Note("the small cut's supply stops, leaving its trail");
+        await Frames.Process(360);
+        blood.FinishFilms();
+        AssertFloat(blood.BodyFilm.HeldMl).OverrideFailureMessage("the small surface bleed reaches the body's flank").IsGreater(0f);
+        AssertFloat(blood.SurfaceAccountedMl).OverrideFailureMessage("the small bleed conserves its supplied blood")
+            .IsEqualApprox(blood.SurfaceSuppliedMl, 0.01f);
+        await SideView("settled_side", "the localized runoff remains on the arm after its small source stops");
+        await session.Finish(CpuAllowance);
+    }
+
+    private static void AssertSmoothHandoff(PatientBody body, SurfaceFilm film) {
+        var skin = body.SkinMesh;
+        var pose = BodyLiquidSurface.CaptureSkinPose(skin, skin.GetNode<Skeleton3D>(skin.Skeleton));
+        var up = body.Site.GlobalBasis.Y.Normalized();
+        var checkedPoints = 0;
+        var worst = 0f;
+        foreach (var sample in film.Samples) {
+            if (sample.Coverage < 0.5f) { continue; }
+            var weights = film.SkinAt(sample.Node);
+            var at = pose.Deform(sample.At, weights);
+            var normal = (pose.Deform(sample.At + sample.Normal, weights) - at).Normalized();
+            var facing = normal.Dot(up);
+            if (Mathf.Abs(body.Site.ToLocal(at).X) > 0.03f || facing < 0.25f || facing > 0.65f) { continue; }
+            var step = up.Slide(normal).Normalized() * BodyBloodLayer.CellSize;
+            var center = body.Blood.Layer.CoverageOn(at, normal);
+            var before = body.Blood.Layer.CoverageOn(at - step, normal);
+            var after = body.Blood.Layer.CoverageOn(at + step, normal);
+            worst = Mathf.Max(worst, Mathf.Abs(before + after - 2f * center));
+            checkedPoints++;
+        }
+        AssertInt(checkedPoints).OverrideFailureMessage("the wet arm fixture exercises skin at the solver handoff").IsGreater(20);
+        AssertFloat(worst).OverrideFailureMessage("the shared film has no narrow coverage ripple along the site/body handoff")
+            .IsLess(0.06f);
     }
 
     [TestCase]
@@ -243,6 +324,53 @@ public class BloodFlowTest {
         AssertFloat(film.HeldMl + blood.GroundMl).OverrideFailureMessage("the body, drops, bed and floor keep every milliliter")
             .IsEqualApprox(1.5f, 0.0001f);
         await session.Finish(FrameBudget.Mode == BudgetMode.Render ? RenderAllowance : CpuAllowance);
+    }
+
+    /// <summary>The site's film and the body's meet along one line: where the site's film carries blood, the body's
+    /// has no point on that skin, and where the site's hands over, the body's film is there to take it. Both are laid
+    /// out on cells and film points, so a point may sit within a film spacing and half a cell of the line.</summary>
+    private static void AssertFilmsMeet(PatientBody body, SurfaceFilm film) {
+        var blood = body.Blood;
+        var meshToSite = body.LiquidContact.SiteToMesh.AffineInverse();
+        var half = body.SiteSize * 0.5f;
+        var cell = body.SiteSize / SurfaceBlood.Size;
+        var slack = film.Spacing + cell.Length() * 0.5f;
+        var handsOver = new List<Vector2>();
+        var boundary = new List<Vector2>();
+        for (var y = 0; y < SurfaceBlood.Size; y++) {
+            for (var x = 0; x < SurfaceBlood.Size; x++) {
+                var uv = new Vector2(x + 0.5f, y + 0.5f) / SurfaceBlood.Size;
+                if (blood.SiteFilmCarries(uv)) { continue; }
+                var at = new Vector2((uv.X - 0.5f) * body.SiteSize.X, (uv.Y - 0.5f) * body.SiteSize.Y);
+                handsOver.Add(at);
+                // A steep cell on the body beside a carried one: the line between the films runs between them.
+                var beside = false;
+                for (var dy = -1; dy <= 1 && !beside; dy++) {
+                    for (var dx = -1; dx <= 1 && !beside; dx++) {
+                        beside = blood.SiteFilmCarries(new Vector2(x + dx + 0.5f, y + dy + 0.5f) / SurfaceBlood.Size);
+                    }
+                }
+                if (beside && body.LiquidSupport(uv) >= 0f) { boundary.Add(at); }
+            }
+        }
+        var onSite = new List<Vector2>();
+        var shared = 0;
+        var sharedAt = new Rect2();
+        for (var k = 0; k < film.Count; k++) {
+            if (!film.CarriesAt(k)) { continue; }
+            var p = meshToSite * film.At(k);
+            if (Mathf.Abs(p.X) >= half.X || Mathf.Abs(p.Z) >= half.Y || (meshToSite.Basis * film.NormalAt(k)).Y <= 0f) { continue; }
+            var at = new Vector2(p.X, p.Z);
+            onSite.Add(at);
+            // The site's edge hands over too: a face of the body's film beyond it reaches in by up to a spacing.
+            var toEdge = Mathf.Min(half.X - Mathf.Abs(p.X), half.Y - Mathf.Abs(p.Z));
+            if (blood.SiteFilmCarries(body.LocalToUv(p), p.Y) && toEdge > slack && handsOver.Select(c => c.DistanceTo(at)).DefaultIfEmpty(float.PositiveInfinity).Min() > slack) {
+                sharedAt = shared++ == 0 ? new Rect2(body.LocalToUv(p), Vector2.Zero) : sharedAt.Expand(body.LocalToUv(p));
+            }
+        }
+        AssertInt(shared).OverrideFailureMessage($"the body's film keeps off the skin the site's film carries ({shared} of {onSite.Count} points over the site lie on it, over uv {sharedAt}; {handsOver.Count} of {SurfaceBlood.Size * SurfaceBlood.Size} cells hand over)").IsEqual(0);
+        var orphaned = boundary.Count(c => onSite.Select(p => p.DistanceTo(c)).DefaultIfEmpty(float.PositiveInfinity).Min() > slack);
+        AssertInt(orphaned).OverrideFailureMessage($"the body's film takes over right where the site's film hands over ({orphaned} of {boundary.Count} flank cells beside the site's film have no body film point)").IsEqual(0);
     }
 
     private static float Amount(PatientBody body, Vector2 uv) => body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);

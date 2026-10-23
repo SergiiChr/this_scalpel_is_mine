@@ -127,6 +127,7 @@ public partial class PatientBody : Node3D {
     /// <summary>The thin box on SiteLayer over the site, that rays and hands meet over it.</summary>
     public StaticBody3D SiteCollider { get; private set; } = null!;
     public ShaderMaterial? SkinMaterial { get; private set; }
+    internal IReadOnlyList<ShaderMaterial> BloodMaterials => [_bodyMaterials[0], SkinMaterial!];
     public TissueSim Tissue { get; } = new();
     /// <summary>Subcutaneous fat under this site, thicker on obese patients (set before <see cref="Build"/>). None on a
     /// forearm.</summary>
@@ -386,6 +387,21 @@ public partial class PatientBody : Node3D {
         var k = Tissue.Nearest(uv);
         var moved = k < _region.Length && _region[k] == 1 ? LayerPoint(0, k) - _onModel[k] : Vector3.Zero;
         return Site.ToGlobal(SitePoint(uv, SurfaceHeight(uv)) + moved);
+    }
+
+    private Vector3[] _snapshotMoved = [];
+    private bool[] _snapshotSimulated = [];
+
+    /// <summary>Copies the skin as it's drawn now into <paramref name="into"/>, for a worker to ask where it is.
+    /// </summary>
+    internal void SnapshotSkin(SkinSnapshot into) {
+        var count = (Tissue.ResX + 1) * (Tissue.ResY + 1);
+        if (_snapshotMoved.Length != count) { _snapshotMoved = new Vector3[count]; _snapshotSimulated = new bool[count]; }
+        for (var k = 0; k < count; k++) {
+            _snapshotSimulated[k] = k < _region.Length && _region[k] == 1;
+            _snapshotMoved[k] = _snapshotSimulated[k] ? LayerPoint(0, k) - _onModel[k] : Vector3.Zero;
+        }
+        into.Fill(_heights, Heights, _liquidSupport, _snapshotMoved, _snapshotSimulated, Tissue.ResX, Tissue.ResY, SiteSize);
     }
 
     /// <summary>Meters between the skin and p along the site normal. Negative = under the skin.</summary>
