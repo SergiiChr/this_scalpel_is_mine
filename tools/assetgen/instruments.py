@@ -122,7 +122,7 @@ def _retractor(m: Model, length: float) -> None:
         up=(1.0, 0.0, 0.0),
         smooth=4,
     )
-    m.add("Hook", hook, "chrome")
+    m.add("Hook", hook, "dark_steel")
 
 
 # A Gelpi retractor's tips stand this far apart closed (ToolActions.SPREAD_RANGE.x in the game), this far in front of
