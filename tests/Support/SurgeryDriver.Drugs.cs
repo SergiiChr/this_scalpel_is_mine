@@ -219,7 +219,8 @@ public partial class SurgeryDriver {
         var target = route switch {
             Route.Drip => Surgery.Tools.DripBag()!.Middle(),
             Route.Vein => VeinPoint(),
-            Route.Arm => BesideVein(0.025f),
+            // Where the held arm lies: it may still be jerked away while the hand presses it back down.
+            Route.Arm => WhereItLies(((Forearm)WorkingVein().GetParent()).BoneName, BesideVein(0.025f)),
             _ => SitePoint(at ?? new Vector2(0.5f, 0.5f)),
         };
         await NeedleInto(target, route != Route.Drip);
