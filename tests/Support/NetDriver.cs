@@ -17,10 +17,13 @@ public partial class NetDriver : NetSession {
     private const float BloodPaintValue = 0.8f;
     private static readonly Vector2 HardDisk = new(0.12f, 0.16f);
     private static readonly Vector2 SoftDisk = new(0.30f, 0.16f);
-    private static readonly Vector2 HardStrokeStart = new(0.12f, 0.30f);
-    private static readonly Vector2 HardStrokeEnd = new(0.20f, 0.30f);
-    private static readonly Vector2 SoftStrokeStart = new(0.30f, 0.30f);
-    private static readonly Vector2 SoftStrokeEnd = new(0.38f, 0.30f);
+    /// <summary>The hard stroke lies next to the incision, whose blood the skin film spreads over it, and is checked
+    /// only for full coverage.
+    /// The soft stroke's feathered edge needs skin the film doesn't reach.</summary>
+    private static readonly Vector2 HardStrokeStart = new(0.30f, 0.30f);
+    private static readonly Vector2 HardStrokeEnd = new(0.38f, 0.30f);
+    private static readonly Vector2 SoftStrokeStart = new(0.12f, 0.30f);
+    private static readonly Vector2 SoftStrokeEnd = new(0.20f, 0.30f);
     /// <summary>On the floor beyond the table's foot, out of everyone's way.</summary>
     private static readonly Vector3 DropFrom = new(Room.TableFoot - 0.4f, 1f, 0f);
     private readonly HashSet<string> _heard = [];
