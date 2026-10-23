@@ -3,9 +3,9 @@
   "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
   "01_fresh_oblique.jpg": "small fresh red seep beside a larger bleed, both visible against the skin",
   "01_fresh_top.jpg": "small fresh red seep beside a larger bleed, both visible against the skin",
-  "02_attached_runoff_oblique.jpg": "a narrowing wet streak runs down the actual curved limb, with its growing tip still attached before blood reaches the bed",
-  "03_flowing_oblique.jpg": "connected spreading wet patches and broad downhill streams, dense blood at the supplies, soft edges; no isolated wiry tendrils or repeated bright ticks",
-  "03_flowing_top.jpg": "connected spreading wet patches and broad downhill streams, dense blood at the supplies, soft edges; no isolated wiry tendrils or repeated bright ticks",
-  "04_settled_oblique.jpg": "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed",
-  "04_settled_top.jpg": "the supply stopped: persistent pool and thin residual films, no disappearing significant bleed"
+  "02_flowing_oblique.jpg": "the bleeds spread into connected pools round the supplies, dense blood at the supplies, a sharp edge with a lighter rim; no isolated wiry tendrils or repeated bright ticks",
+  "02_flowing_top.jpg": "the bleeds spread into connected pools round the supplies, dense blood at the supplies, a sharp edge with a lighter rim; no isolated wiry tendrils or repeated bright ticks",
+  "03_settled_oblique.jpg": "the supply stopped: the pools stay where they spread, none of the significant bleed disappearing",
+  "03_settled_top.jpg": "the supply stopped: the pools stay where they spread, none of the significant bleed disappearing",
+  "04_attached_runoff_oblique.jpg": "blood runs on from the site's edge down the body's side as one film, its edge fading, no separate streaks or stubs"
 }

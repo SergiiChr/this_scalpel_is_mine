@@ -1,6 +1,6 @@
 {
-  "00_gaps_oblique.jpg": "staples 2.5 cm apart: the cut gapes and bleeds between them",
-  "00_gaps_top.jpg": "staples 2.5 cm apart: the cut gapes and bleeds between them",
-  "01_closed_oblique.jpg": "filled in with staples: no gap along the cut, no bleeding",
-  "01_closed_top.jpg": "filled in with staples: no gap along the cut, no bleeding"
+  "00_gaps_oblique.jpg": "staples 2.5 cm apart: the cut still bleeds between them, its blood pooling over the seam",
+  "00_gaps_top.jpg": "staples 2.5 cm apart: the cut still bleeds between them, its blood pooling over the seam",
+  "01_closed_oblique.jpg": "filled in with staples along the whole cut, no fresh bleeding, the blood it shed left pooled round them",
+  "01_closed_top.jpg": "filled in with staples along the whole cut, no fresh bleeding, the blood it shed left pooled round them"
 }

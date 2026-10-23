@@ -5,8 +5,10 @@
   "01_flip_done_top.jpg": "\"Turn the patient face down\" just completed, and the site shows it done",
   "02_extracted_knife_oblique.jpg": "every knife is out of the opening and the tool put down",
   "02_extracted_knife_top.jpg": "every knife is out of the opening and the tool put down",
-  "03_tied_off_oblique.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together",
-  "03_tied_off_top.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together",
-  "04_tied_off_oblique.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together",
-  "04_tied_off_top.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together"
+  "03_tied_off_oblique.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it",
+  "03_tied_off_top.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it",
+  "04_tied_off_oblique.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it",
+  "04_tied_off_top.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it",
+  "05_tied_off_oblique.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it",
+  "05_tied_off_top.jpg": "the knot is tied: the thread runs across the wound between its holes and draws the edges together, under any blood pooled over it"
 }
