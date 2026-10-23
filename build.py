@@ -53,6 +53,7 @@ from collections.abc import Iterator, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Literal
 
 GODOT_VERSION = "4.7.2"
 # The SDK installed when the system has none, and the runtime the project targets (TargetFramework in the .csproj).
@@ -441,8 +442,8 @@ class TestOptions:
     capacity: int
     key_frames: bool
     ci_run: bool
-    # How frame_budget suites check frame times (FRAME_BUDGET): off, cpu or render.
-    budget: str
+    # How frame_budget suites check frame times (FRAME_BUDGET).
+    budget: Literal["off", "cpu", "render"]
     run_broken: bool
 
 
@@ -872,7 +873,7 @@ def test(arguments: list[str]) -> int:
         parser.error("--render-budget needs a display")
     # Frame times are checked in a focused run, where the change is, and left to performance_test in broad ones: a
     # full regression or a smoke run.
-    focused = (parsed.tag or parsed.case) and not parsed.ci_run
+    focused = bool(parsed.tag or parsed.case) and not parsed.ci_run
     options = TestOptions(
         tags=parsed.tag or ([] if parsed.all else ["smoke"]),
         skips=parsed.skip,

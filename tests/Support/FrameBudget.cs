@@ -10,7 +10,7 @@ public enum BudgetMode {
     /// <summary>The game's own work per frame, rendering off, scaled to this machine's speed: a check that holds on
     /// any machine.</summary>
     Cpu,
-    /// <summary>Whole frames as drawn, on a real display and GPU (./build.py full_performance_run).</summary>
+    /// <summary>Whole frames as drawn, on a real display and GPU (./build.py performance_test --render-budget).</summary>
     Render,
 }
 
@@ -150,7 +150,8 @@ public sealed class FrameBudget {
         } else if (localOverride is null && WorstOwn <= limit && WorstStall <= StallLimitHere) {
             GD.Print($"PASS: {RuntimeStalls}; {report}");
         } else {
-            AssertBool(false).OverrideFailureMessage(report).IsTrue();
+            var issue = localOverride is null ? "new frame budget issue" : "known frame budget issue grew past its override";
+            AssertBool(false).OverrideFailureMessage($"{issue}: {report}").IsTrue();
         }
     }
 
