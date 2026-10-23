@@ -1,5 +1,5 @@
 {
-  "00_lifted_out_oblique.jpg": "raised by the wheel, the forceps lift the bullet out of the opening and hold it over its lip: CarryHold { Target = 0, Offset = (0, 0, 0) }, attached False, TipInOpening { Lip = (-0.7616446, 1.0240842, 0.09575717), Depth = -0.049671173, Bottom = 0.07441305 }",
-  "00_lifted_out_top.jpg": "raised by the wheel, the forceps lift the bullet out of the opening and hold it over its lip: CarryHold { Target = 0, Offset = (0, 0, 0) }, attached False, TipInOpening { Lip = (-0.7616446, 1.0240842, 0.09575717), Depth = -0.049671173, Bottom = 0.07441305 }",
+  "00_lifted_out_oblique.jpg": "raised by the wheel, the site wiped: the forceps lift the bullet out of the opening and hold it over its lip: CarryHold { Target = 0, Offset = (0, 0, 0) }, attached False, TipInOpening { Lip = (-0.7616446, 1.0240842, 0.09575726), Depth = -0.049671173, Bottom = 0.07441305 }",
+  "00_lifted_out_top.jpg": "raised by the wheel, the site wiped: the forceps lift the bullet out of the opening and hold it over its lip: CarryHold { Target = 0, Offset = (0, 0, 0) }, attached False, TipInOpening { Lip = (-0.7616446, 1.0240842, 0.09575726), Depth = -0.049671173, Bottom = 0.07441305 }",
   "01_carried_away_view.jpg": "stepped back from the table, the bullet still in the forceps in the surgeon's hand"
 }
