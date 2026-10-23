@@ -13,9 +13,10 @@
   ./build.py generate_baseline
                        Run the full regression with key frames and write the ones that differ into the baseline, all of
                        them the first time. --use-latest-set takes the key frames of the last run instead. See --help.
-  ./build.py full_performance_run
-                       Run the full regression on this machine's display and GPU, rendering on, and check whole frames
-                       against the 16 ms budget. Only on a machine with a GPU. Takes ./build.py test options.
+  ./build.py performance_test
+                       Run every frame_budget suite and check its frame times; full regressions don't. --render-budget
+                       checks whole frames on this machine's display and GPU instead (only on a machine with a GPU).
+                       Takes ./build.py test options.
   ./build.py shots     Render screenshots of a scenario in a virtual display (needs xvfb-run):
                        ./build.py shots [scenario] [out dir], default appendectomy into build/shots.
                        RENDERER=forward_plus for the default renderer, SHOTS_ARGS=--materials for the material board.
@@ -440,7 +441,8 @@ class TestOptions:
     capacity: int
     key_frames: bool
     ci_run: bool
-    render_budget: bool
+    # How frame_budget suites check frame times (FRAME_BUDGET): off, cpu or render.
+    budget: str
     run_broken: bool
 
 
@@ -460,17 +462,15 @@ def takes_key_frames(suite: Suite, options: TestOptions) -> bool:
 
 
 def frame_budget(suite: Suite, options: TestOptions) -> str:
-    """How the suite checks frame times (FRAME_BUDGET, see tests/Support/FrameBudget.cs): not on CI, and only in suites
-    that check them, which run with no other process beside them (others would slow their frames down)."""
-    if options.ci_run or not suite.checks_frames:
-        return "off"
-    return "render" if options.render_budget else "cpu"
+    """How the suite checks frame times (FRAME_BUDGET, see tests/Support/FrameBudget.cs): only in suites that check
+    them, which run with no other process beside them (others would slow their frames down)."""
+    return options.budget if suite.checks_frames else "off"
 
 
 def runs_alone(suite: Suite, options: TestOptions) -> bool:
     """Whether the suite's processes need the machine to themselves: they time frames, take key frames (told apart
     by when they're written), or draw on the one display of a render budget run."""
-    return frame_budget(suite, options) != "off" or takes_key_frames(suite, options) or options.render_budget
+    return frame_budget(suite, options) != "off" or takes_key_frames(suite, options) or options.budget == "render"
 
 
 def godot_view(suite: Suite, options: TestOptions) -> list[str]:
@@ -478,7 +478,7 @@ def godot_view(suite: Suite, options: TestOptions) -> list[str]:
     screen) and without sound (a missing audio device would be an error), or nowhere."""
     if takes_key_frames(suite, options):
         return KEY_FRAME_ARGS
-    return ["--disable-vsync", "--audio-driver", "Dummy"] if options.render_budget else ["--headless"]
+    return ["--disable-vsync", "--audio-driver", "Dummy"] if options.budget == "render" else ["--headless"]
 
 
 # What one test process (dotnet test, its Godot and the game) may take of the machine's memory: a smoke case measured
@@ -857,7 +857,7 @@ def test(arguments: list[str]) -> int:
         action="store_true",
         help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer); each of their processes runs alone",
     )
-    parser.add_argument("--ci-run", action="store_true", help="don't check frame times")
+    parser.add_argument("--ci-run", action="store_true", help="never check frame times, print failed suites' logs")
     parser.add_argument(
         "--render-budget",
         action="store_true",
@@ -870,6 +870,9 @@ def test(arguments: list[str]) -> int:
         parser.error("--render-budget times frames on a real GPU: not with --with-key-frames or --ci-run")
     if parsed.render_budget and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         parser.error("--render-budget needs a display")
+    # Frame times are checked in a focused run, where the change is, and left to performance_test in broad ones: a
+    # full regression or a smoke run.
+    focused = (parsed.tag or parsed.case) and not parsed.ci_run
     options = TestOptions(
         tags=parsed.tag or ([] if parsed.all else ["smoke"]),
         skips=parsed.skip,
@@ -877,7 +880,7 @@ def test(arguments: list[str]) -> int:
         capacity=parsed.jobs or capacity(),
         key_frames=parsed.with_key_frames,
         ci_run=parsed.ci_run,
-        render_budget=parsed.render_budget,
+        budget="render" if parsed.render_budget else "cpu" if focused else "off",
         run_broken=os.environ.get("RUN_BROKEN") == "1",
     )
     suites = selected(discover(), options)
@@ -1116,8 +1119,8 @@ def main() -> int:
         return screenshot_review(arguments)
     elif command == "generate_baseline":
         return generate_baseline(arguments)
-    elif command == "full_performance_run":
-        return test(["--all", "--render-budget", *arguments])
+    elif command == "performance_test":
+        return test(["--tag", "frame_budget", *arguments])
     elif command == "shots":
         setup()
         scenario = arguments[0] if arguments else "appendectomy"

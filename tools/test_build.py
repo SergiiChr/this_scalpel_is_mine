@@ -88,7 +88,7 @@ class CoverageReportingTest(unittest.TestCase):
         patch.object(build, "ROOT", self.root).start()
         for folder in ("test-logs", "test-results"):
             (self.root / folder).mkdir()
-        self.options = build.TestOptions([], [], "", 1, False, True, False, False)
+        self.options = build.TestOptions([], [], "", 1, False, True, "off", False)
         self.suite = build.Suite(Path("ExampleTest.cs"), "Scalpel.Tests.Example", [], [], False)
         # What the processes of a run (see alongside) record.
         self.passed = self.result("<testsuite><testcase /></testsuite>")
@@ -235,16 +235,28 @@ class CoverageReportingTest(unittest.TestCase):
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, timed, other]):
             with patch.object(build, "RUNNER_CLASS", self.root / "runner.cs"), patch.object(build, "run_process", side_effect=self.alongside):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
-                    status = build.test(["--all", "--jobs", "2"])
+                    status = build.test(["--all", "--case", "Runs", "--jobs", "2"])
         self.assertEqual(status, 0)
         self.assertEqual(self.started[0], "Scalpel.Tests.Timed")
         # The timed suite had the machine to itself; the two others shared it.
         self.assertEqual(self.others_running, [0, 0, 1])
         self.assertIn("3 test suites in 3 test processes: 1 alone, then 2 at a time.", output.getvalue())
 
-    def test_frame_budget_suites_share_the_machine_on_ci_where_frames_are_not_timed(self) -> None:
+    def test_only_focused_runs_check_frame_times(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        self.suite.categories = ["smoke", "frame_budget"]
+        budgets = []
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
+            for arguments in (["--all"], [], ["--tag", "smoke"], ["--case", "Runs"], ["--case", "Runs", "--ci-run"]):
+                with patch.object(build, "run_suites", return_value=iter([])) as run_suites, contextlib.redirect_stdout(io.StringIO()):
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        build.test(arguments)
+                budgets.append(run_suites.call_args.args[1].budget)
+        self.assertEqual(budgets, ["off", "off", "cpu", "cpu", "off"])
+
+    def test_frame_budget_suites_share_the_machine_when_frames_are_not_timed(self) -> None:
         timed = build.Suite(Path("TimedTest.cs"), "Scalpel.Tests.Timed", ["frame_budget"], [], False)
-        local = dataclasses.replace(self.options, ci_run=False)
+        local = dataclasses.replace(self.options, budget="cpu")
         self.assertEqual(build.frame_budget(timed, local), "cpu")
         self.assertTrue(build.runs_alone(timed, local))
         self.assertEqual(build.frame_budget(timed, self.options), "off")
