@@ -1093,8 +1093,14 @@ public partial class BloodFlow : Node3D {
         Layer.Request(_gatherLayer);
     }
 
-    /// <summary>Whether the skin may have moved since the last call: the sheet is held or was cut, or a bone moved.
-    /// </summary>
+    /// <summary>A bone counts as moving past this much in one frame. Breathing shifts the trunk, and holds the limbs
+    /// against it, by a hundredth of this a frame: the resting rate and the samples' own tolerance follow that drift.
+    /// A thrashing or turned limb goes much farther.</summary>
+    private const float MovingBoneDistance = 0.001f;
+    private const float MovingBoneAngle = 0.5f * Mathf.Pi / 180f;
+
+    /// <summary>Whether the skin may have moved since the last call: the sheet is held or was cut, or a bone moved
+    /// faster than breathing.</summary>
     private bool SkinMoved(PatientBody body) {
         var moved = body.Tissue.Gripped || body.Tissue.TopologyVersion != _layerTopology;
         _layerTopology = body.Tissue.TopologyVersion;
@@ -1103,9 +1109,10 @@ public partial class BloodFlow : Node3D {
         for (var i = 0; i < _bindBones.Length; i++) {
             if (_bindBones[i] < 0) { continue; }
             var pose = skeleton.GetBoneGlobalPose(_bindBones[i]);
-            if (pose == _layerBonePoses[i]) { continue; }
+            var was = _layerBonePoses[i];
             _layerBonePoses[i] = pose;
-            moved = true;
+            moved |= pose.Origin.DistanceSquaredTo(was.Origin) > MovingBoneDistance * MovingBoneDistance
+                || pose.Basis.GetRotationQuaternion().AngleTo(was.Basis.GetRotationQuaternion()) > MovingBoneAngle;
         }
         return moved;
     }

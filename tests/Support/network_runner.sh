@@ -31,7 +31,8 @@ fail() {
 # Godot keeps going after script errors and unhandled C# exceptions. Engine leak reports printed while quitting are noise.
 clean_log() {
 	local errors
-	errors=$(grep -E "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception|^FAIL:" "$1" | grep -vE "at exit|leaked")
+	# With the lines after each: a C# exception's object name and stack follow its first line.
+	errors=$(grep -E -A 12 "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception|^FAIL:" "$1" | grep -vE "at exit|leaked")
 	[[ -z "$errors" ]] || fail "$(basename "$1"): $errors"
 }
 
