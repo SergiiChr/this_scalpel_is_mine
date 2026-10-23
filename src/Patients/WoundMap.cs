@@ -59,6 +59,7 @@ public sealed class WoundMap {
     /// </summary>
     internal byte[] Uploaded(Layer layer) => _images[(int)layer].GetData();
     private readonly bool[] _dirty = new bool[LayerCount];
+    private readonly int[] _versions = new int[LayerCount];
     /// <summary>Which cells of a coarse Cells x Cells grid have ever been painted into, per layer and channel.
     /// Subtracting where a channel was never painted changes nothing, so a wipe over clean skin skips it.</summary>
     private readonly bool[][] _painted = new bool[LayerCount][];
@@ -384,7 +385,7 @@ public sealed class WoundMap {
                     if (next == data[i]) { continue; }
                     data[i] = next;
                     painted[((y * Cells / Size * Cells) + x * Cells / Size) * 4 + Blood] = true;
-                    _dirty[(int)Layer.Fluids] = true;
+                    Touch(Layer.Fluids);
                 }
             }
         }
@@ -459,8 +460,17 @@ public sealed class WoundMap {
             }
         }
         if (bloodRemoved) { BloodRemovalVersion++; }
-        _dirty[(int)layer] = true;
+        Touch(layer);
     }
+
+    private void Touch(Layer layer) {
+        _dirty[(int)layer] = true;
+        _versions[(int)layer]++;
+    }
+
+    /// <summary>Counts up with every paint into the layer, flushed or not, so a reader can tell whether it has
+    /// changed since it last looked.</summary>
+    internal int Version(Layer layer) => _versions[(int)layer];
 
     /// <summary>One channel of the painted map at uv, 0..1, as painted so far (no need to wait for
     /// <see cref="Flush"/>).</summary>

@@ -236,6 +236,9 @@ public partial class BloodFlow : Node3D {
     private float _layerClock;
     /// <summary>Seconds left of the moving rate since the skin last moved.</summary>
     private float _layerMoving;
+    /// <summary>Whether the site's blood or skin changed since the layer last sampled it.</summary>
+    private bool _layerDue;
+    private int _layerFluidsVersion;
     private Transform3D[] _layerBonePoses = [];
     private int _layerTopology;
     // The worker's input (PrepareLayerInput) and its own scratch (GatherLayerSamples).
@@ -1092,9 +1095,17 @@ public partial class BloodFlow : Node3D {
         Layer.Place(body.Site.GlobalTransform.Orthonormalized().AffineInverse());
         Layer.PublishFinished();
         _layerClock += delta;
-        _layerMoving = SkinMoved(body) ? 1f : Mathf.Max(_layerMoving - delta, 0f);
+        // The body film's samples follow the bones and drift with the breath, so a wet film is sampled at the resting
+        // rate whatever else holds. A dry one leaves only the site, which is sampled again once its blood or skin
+        // changed: a bleeding site with a thrashing patient costs no field until blood runs off it.
+        var filmWet = Built(_bodyFilmBuild) is { Samples.Count: > 0 };
+        var fluids = body.WoundMap.Version(WoundMap.Layer.Fluids);
+        var moved = SkinMoved(body, filmWet);
+        _layerDue |= moved || fluids != _layerFluidsVersion;
+        _layerMoving = moved ? 1f : Mathf.Max(_layerMoving - delta, 0f);
+        if (!_layerDue && !filmWet) { return; }
         if (_layerClock < (_layerMoving > 0f ? MovingLayerInterval : LayerInterval) || Layer.Busy) { return; }
-        _layerClock = 0f;
+        (_layerClock, _layerDue, _layerFluidsVersion) = (0f, false, fluids);
         PrepareLayerInput(body);
         Layer.Request(_gatherLayer);
     }
@@ -1105,12 +1116,12 @@ public partial class BloodFlow : Node3D {
     private const float MovingBoneDistance = 0.001f;
     private const float MovingBoneAngle = 0.5f * Mathf.Pi / 180f;
 
-    /// <summary>Whether the skin may have moved since the last call: the sheet is held or was cut, or a bone moved
-    /// faster than breathing.</summary>
-    private bool SkinMoved(PatientBody body) {
+    /// <summary>Whether the skin may have moved since the last call: the sheet is held or was cut, or, when the body
+    /// film's blood rides them (<paramref name="bones"/>), a bone moved faster than breathing.</summary>
+    private bool SkinMoved(PatientBody body, bool bones) {
         var moved = body.Tissue.Gripped || body.Tissue.TopologyVersion != _layerTopology;
         _layerTopology = body.Tissue.TopologyVersion;
-        if (_skeleton is not { } skeleton) { return moved; }
+        if (_skeleton is not { } skeleton || !bones) { return moved; }
         if (_layerBonePoses.Length != _bindBones.Length) { _layerBonePoses = new Transform3D[_bindBones.Length]; moved = true; }
         for (var i = 0; i < _bindBones.Length; i++) {
             if (_bindBones[i] < 0) { continue; }
