@@ -253,9 +253,8 @@ public class BloodFlowTest {
     }
 
     /// <summary>The site's film and the body's meet along one line: where the site's film carries blood, the body's
-    /// has no point on the skin facing the site's up, and where the site's hands over, the body's film is there to
-    /// take it. Both are laid out on cells and film points, so a point may sit within a film spacing and half a cell
-    /// of the line.</summary>
+    /// has no point on that skin, and where the site's hands over, the body's film is there to take it. Both are laid
+    /// out on cells and film points, so a point may sit within a film spacing and half a cell of the line.</summary>
     private static void AssertFilmsMeet(PatientBody body, SurfaceFilm film) {
         var blood = body.Blood;
         var meshToSite = body.LiquidContact.SiteToMesh.AffineInverse();
@@ -290,7 +289,7 @@ public class BloodFlowTest {
             onSite.Add(at);
             // The site's edge hands over too: a face of the body's film beyond it reaches in by up to a spacing.
             var toEdge = Mathf.Min(half.X - Mathf.Abs(p.X), half.Y - Mathf.Abs(p.Z));
-            if (blood.SiteFilmCarries(body.LocalToUv(p)) && toEdge > slack && handsOver.Select(c => c.DistanceTo(at)).DefaultIfEmpty(float.PositiveInfinity).Min() > slack) {
+            if (blood.SiteFilmCarries(body.LocalToUv(p), p.Y) && toEdge > slack && handsOver.Select(c => c.DistanceTo(at)).DefaultIfEmpty(float.PositiveInfinity).Min() > slack) {
                 sharedAt = shared++ == 0 ? new Rect2(body.LocalToUv(p), Vector2.Zero) : sharedAt.Expand(body.LocalToUv(p));
             }
         }
