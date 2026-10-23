@@ -389,6 +389,21 @@ public partial class PatientBody : Node3D {
         return Site.ToGlobal(SitePoint(uv, SurfaceHeight(uv)) + moved);
     }
 
+    private Vector3[] _snapshotMoved = [];
+    private bool[] _snapshotSimulated = [];
+
+    /// <summary>Copies the skin as it's drawn now into <paramref name="into"/>, for a worker to ask where it is.
+    /// </summary>
+    internal void SnapshotSkin(SkinSnapshot into) {
+        var count = (Tissue.ResX + 1) * (Tissue.ResY + 1);
+        if (_snapshotMoved.Length != count) { _snapshotMoved = new Vector3[count]; _snapshotSimulated = new bool[count]; }
+        for (var k = 0; k < count; k++) {
+            _snapshotSimulated[k] = k < _region.Length && _region[k] == 1;
+            _snapshotMoved[k] = _snapshotSimulated[k] ? LayerPoint(0, k) - _onModel[k] : Vector3.Zero;
+        }
+        into.Fill(_heights, Heights, _liquidSupport, _snapshotMoved, _snapshotSimulated, Tissue.ResX, Tissue.ResY, SiteSize);
+    }
+
     /// <summary>Meters between the skin and p along the site normal. Negative = under the skin.</summary>
     public float HeightAboveSite(Vector3 p) {
         var local = Site.ToLocal(p);

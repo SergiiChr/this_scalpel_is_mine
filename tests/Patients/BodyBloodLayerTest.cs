@@ -27,6 +27,23 @@ public class BodyBloodLayerTest {
     }
 
     [TestCase]
+    public void BloodLiesOnTheSkinsOutside() {
+        using var layer = new BodyBloodLayer();
+        var samples = new List<BodyBloodLayer.Sample>();
+        for (var x = -6; x <= 6; x++) {
+            for (var z = -6; z <= 6; z++) {
+                samples.Add(new BodyBloodLayer.Sample(new Vector3(x, 0f, z) * BodyBloodLayer.CellSize, Vector3.Up, 0.9f, 0.004f));
+            }
+        }
+        layer.Rebuild(samples);
+        AssertFloat(layer.CoverageOn(Vector3.Zero, Vector3.Up)).OverrideFailureMessage("the skin's top shows its blood").IsGreater(0.8f);
+        AssertFloat(layer.CoverageOn(Vector3.Down * PatientBody.SkinThickness, Vector3.Down))
+            .OverrideFailureMessage("the underside of the thinnest skin shows none of it").IsEqual(0f);
+        AssertFloat(layer.CoverageOn(Vector3.Down * PatientBody.SkinThickness, Vector3.Right))
+            .OverrideFailureMessage("the foot of a cut's wall shows less than half").IsLess(0.5f);
+    }
+
+    [TestCase]
     public void RebuildClearsOldCoverageAndPlacementFollowsTheBody() {
         using var layer = new BodyBloodLayer();
         using var material = new ShaderMaterial { Shader = Materials.Skin };

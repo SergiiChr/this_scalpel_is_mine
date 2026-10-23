@@ -48,7 +48,10 @@ internal sealed class SurfaceFilm {
 
     private readonly Settings _settings;
     private readonly bool _drawMesh;
-    private FilmSample[] _stepSamples = [];
+    /// <summary>The step's samples go into whichever of these the published <see cref="Samples"/> isn't in, so a
+    /// reader of those never sees the next step's. They grow to the most samples a step had.</summary>
+    private readonly FilmSample[][] _sampleBuffers = [[], []];
+    private ArraySegment<FilmSample> _stepSamples;
     private readonly Vector3[] _at;
     private readonly Vector3[] _normal;
     private readonly Vector3[] _drawNormal;
@@ -131,7 +134,7 @@ internal sealed class SurfaceFilm {
 
     /// <summary>The film drawn: what the last finished step left.</summary>
     internal ArrayMesh Mesh { get; }
-    internal IReadOnlyList<FilmSample> Samples { get; private set; } = [];
+    internal ArraySegment<FilmSample> Samples { get; private set; } = ArraySegment<FilmSample>.Empty;
 
     /// <summary>Liquid on the surface or gathering into drips, including what was added for the next step.</summary>
     internal float HeldMl => _committed + _pendingMl;
@@ -154,8 +157,9 @@ internal sealed class SurfaceFilm {
     /// <param name="fadesAt">Which points of the surface's open edges the drawn film fades out toward: where the
     /// surface was cut out of a larger one (the body round the site), so that edge is no edge of the real thing.
     /// </param>
-    /// <param name="carries">Which points hold liquid. Other points remain in the drawn mesh as a dry margin,
-    /// so the interpolated coverage can fade across a handover without clipping along triangle edges.</param>
+    /// <param name="carries">Which points hold liquid: liquid added at any other point goes to the nearest one that
+    /// does, and never flows to one that doesn't. The body's film leaves the site's own skin to the site's film this
+    /// way.</param>
     internal SurfaceFilm(IReadOnlyList<Vector3> triangles, Settings settings, IReadOnlyList<Vector3>? outward = null,
         IReadOnlyList<BodyLiquidSurface.SkinWeights>? skin = null, Func<Vector3, Vector3, bool>? keep = null,
         ArrayMesh? mesh = null, Func<Vector3, bool>? fadesAt = null, Func<Vector3, Vector3, bool>? carries = null,
@@ -637,8 +641,16 @@ internal sealed class SurfaceFilm {
         ReachWet();
         // The shared spatial field filters these densities once, uniformly on both sides of the site.
         // Exporting the old mesh blur here would smooth only the body a second time.
-        _stepSamples = _reached.Where(k => _carries[k])
-            .Select(k => new FilmSample(k, _at[k], _drawNormal[k], Coverage(k))).ToArray();
+        var slot = ReferenceEquals(Samples.Array, _sampleBuffers[0]) ? 1 : 0;
+        var buffer = _sampleBuffers[slot];
+        var count = 0;
+        foreach (var k in _reached) {
+            if (!_carries[k]) { continue; }
+            if (count == buffer.Length) { Array.Resize(ref buffer, Math.Max(buffer.Length * 2, 256)); }
+            buffer[count++] = new FilmSample(k, _at[k], _drawNormal[k], Coverage(k));
+        }
+        _sampleBuffers[slot] = buffer;
+        _stepSamples = new ArraySegment<FilmSample>(buffer, 0, count);
     }
 
     private void BuildMesh() {

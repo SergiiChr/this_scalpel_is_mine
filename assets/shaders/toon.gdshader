@@ -124,7 +124,7 @@ void fragment() {
 		base = mix(base, vec3(0.3, 0.03, 0.04), smoothstep(edge, edge + 0.04, s) * 0.85);
 	}
 	float wet = 0.0;
-	float blood = body_blood(world_pos);
+	float blood = body_blood(world_pos, mat3(INV_VIEW_MATRIX) * NORMAL);
 	if (carve_box.x > 0.0) {
 		vec3 lp = (carve_inverse * vec4(world_pos - carve_lift, 1.0)).xyz;
 		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;

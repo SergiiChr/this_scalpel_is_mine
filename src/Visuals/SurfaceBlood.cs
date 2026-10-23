@@ -45,6 +45,11 @@ internal sealed class SurfaceBlood {
     /// from the skin at rest: the body's film is laid out once from the same cells (<see cref="Carries"/>), so a cell
     /// that steepens later as the skin moves still keeps its blood.</summary>
     private readonly bool[] _steep = new bool[Size * Size];
+    /// <summary>The skin's own normal under each cell at rest, from the body model's faces where it has them
+    /// (<see cref="MarkHandover"/>), else the grid's: what the shared blood layer lays a cell's blood on.</summary>
+    private readonly Vector3[] _skinNormal = new Vector3[Size * Size];
+    /// <summary>The skin's height at rest per cell: <see cref="Carries"/> answers from it after the skin moves.</summary>
+    private readonly float[] _restHeight = new float[Size * Size];
     /// <summary>Blood that reached steep skin, per cell, on its way to the body's film there.</summary>
     private readonly float[] _steepRunoff = new float[Size * Size];
     private readonly List<int> _steepPending = [];
@@ -112,12 +117,13 @@ internal sealed class SurfaceBlood {
         }
         RebuildGeometryCache();
         MarkHandover(skinNormal);
+        for (var i = 0; i < _restHeight.Length; i++) { _restHeight[i] = _skin[i].Y; }
         for (var y = 0; y < Size; y++) {
             for (var x = 0; x < Size; x++) {
                 var i = y * Size + x;
-                if (_holds[i] && !_steep[i]) { continue; }
+                if (_holds[i]) { continue; }
                 var neighbors = Neighbors.Select(n => (X: x + n.X, Y: y + n.Y))
-                    .Where(p => p.X >= 0 && p.X < Size && p.Y >= 0 && p.Y < Size && _holds[p.Y * Size + p.X] && !_steep[p.Y * Size + p.X])
+                    .Where(p => p.X >= 0 && p.X < Size && p.Y >= 0 && p.Y < Size && _holds[p.Y * Size + p.X])
                     .Select(p => p.Y * Size + p.X).ToArray();
                 if (neighbors.Length > 0) { _edgeNeighbors.Add((i, neighbors)); }
             }
@@ -129,7 +135,8 @@ internal sealed class SurfaceBlood {
     internal float QueuedRunoffMl => _runoff.Sum() + _steepRunoff.Sum();
     internal float HeldMl => _ml.Sum();
     internal float At(int x, int y) => _ml[y * Size + x];
-    internal Vector3 NormalAt(int x, int y) => _normal[y * Size + x];
+    internal Vector3 SkinNormalAt(Vector2 uv) =>
+        _skinNormal[Math.Clamp((int)(uv.Y * Size), 0, Size - 1) * Size + Math.Clamp((int)(uv.X * Size), 0, Size - 1)];
     private static Vector2 Uv(int x, int y) => new Vector2(x + 0.5f, y + 0.5f) / Size;
 
     /// <summary>The cells this film carries are the level skin round the site's middle, as far as the first steep
@@ -137,7 +144,8 @@ internal sealed class SurfaceBlood {
     private void MarkHandover(Func<Vector2, Vector3?>? skinNormal) {
         var level = new bool[Size * Size];
         for (var i = 0; i < level.Length; i++) {
-            level[i] = (skinNormal?.Invoke(Uv(i % Size, i / Size)) ?? _normal[i]).Y >= SteepNormal;
+            _skinNormal[i] = skinNormal?.Invoke(Uv(i % Size, i / Size)) ?? _normal[i];
+            level[i] = _skinNormal[i].Y >= SteepNormal;
         }
         Array.Fill(_steep, true);
         // From the level cell nearest the site's middle.
@@ -166,16 +174,16 @@ internal sealed class SurfaceBlood {
     }
 
     /// <summary>Whether this film keeps blood on the skin at uv, <paramref name="height"/> over the site plane: on the
-    /// body, this side of the first steep flank, and no deeper under the grid's own surface than that surface falls
-    /// across a cell. Skin lower than that in the same column is the flank seen edge-on from the site's up, which the
-    /// grid can't tell from the top of it. Anywhere else blood runs on to the body's film, which covers exactly the
-    /// skin this says it doesn't, so the two neither overlap nor leave a gap. Fixed once the film is made, so it's
-    /// safe to ask from the thread that builds the body's film.</summary>
+    /// body, this side of the first steep flank, and no deeper under the grid's own surface at rest than that surface
+    /// falls across a cell. Skin lower than that in the same column is the flank seen edge-on from the site's up,
+    /// which the grid can't tell from the top of it. Anywhere else blood runs on to the body's film, which holds
+    /// exactly the skin this says it doesn't, so no liquid is held twice or by neither. Fixed once the film is made,
+    /// so it's safe to ask from the thread that builds the body's film.</summary>
     internal bool Carries(Vector2 uv, float height) {
         var x = Math.Clamp((int)(uv.X * Size), 0, Size - 1);
         var y = Math.Clamp((int)(uv.Y * Size), 0, Size - 1);
         var i = y * Size + x;
-        return _holds[i] && !_steep[i] && height >= _skin[i].Y - _flankDrop;
+        return _holds[i] && !_steep[i] && height >= _restHeight[i] - _flankDrop;
     }
 
     /// <summary>Whether this film keeps the blood that reaches the cell at uv (<see cref="Carries"/> for its top).
@@ -546,9 +554,8 @@ internal sealed class SurfaceBlood {
         for (var i = 0; i < _ml.Length; i++) {
             _opticalDepth[i] = _ml[i] * _normalDepthPerMl[i] / CoverDepth;
         }
-        // Extend the resampled density into one ghost cell, including the steep transport handover.
-        // This is interpolation support, not extra physical liquid. The shared body-wide field consumes
-        // these samples together with the body's; the contact mask clips them back to real skin.
+        // Extend only the displayed density into one boundary cell. The cached continuous contact mask clips
+        // it back to the body, so the simulation grid cannot imprint teeth into a saturated pool's edge.
         foreach (var (i, neighbors) in _edgeNeighbors) {
             var sum = 0f;
             foreach (var neighbor in neighbors) { sum += _opticalDepth[neighbor]; }

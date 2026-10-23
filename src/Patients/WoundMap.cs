@@ -469,6 +469,29 @@ public sealed class WoundMap {
         return _data[(int)layer][(at.Y * Size + at.X) * 4 + channel] / 255f;
     }
 
+    /// <summary>Copies a layer's texels (RGBA bytes, <see cref="Size"/> square) into <paramref name="into"/>, for a
+    /// worker to read while this map goes on being painted.</summary>
+    internal void CopyLayer(Layer layer, ref byte[] into) {
+        var data = _data[(int)layer];
+        if (into.Length != data.Length) { into = new byte[data.Length]; }
+        Buffer.BlockCopy(data, 0, into, 0, data.Length);
+    }
+
+    /// <summary>Mean of one channel (0..1) over the texels in the box from <paramref name="from"/> to
+    /// <paramref name="to"/> (uv) of a layer's texels (<see cref="CopyLayer"/>), at least one texel.</summary>
+    internal static float BoxMean(byte[] data, int size, int channel, Vector2 from, Vector2 to) {
+        var x0 = Math.Clamp((int)(from.X * size), 0, size - 1);
+        var y0 = Math.Clamp((int)(from.Y * size), 0, size - 1);
+        var x1 = Math.Clamp(Mathf.CeilToInt(to.X * size), x0 + 1, size);
+        var y1 = Math.Clamp(Mathf.CeilToInt(to.Y * size), y0 + 1, size);
+        var sum = 0;
+        for (var y = y0; y < y1; y++) {
+            var row = y * size;
+            for (var x = x0; x < x1; x++) { sum += data[(row + x) * 4 + channel]; }
+        }
+        return sum / (255f * (x1 - x0) * (y1 - y0));
+    }
+
     /// <summary>Mean of one channel (0..1) over the texels between <paramref name="from"/> and <paramref name="to"/>
     /// (uv) that <paramref name="counts"/> keeps, read every <paramref name="step"/> texels. Cells never painted into
     /// count as zero without being read, and a map with nothing painted in the channel isn't read at all.</summary>
