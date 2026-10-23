@@ -363,8 +363,13 @@ public partial class SurgeryDriver {
     /// <paramref name="wound"/> at <paramref name="along"/> on <paramref name="side"/> (PatientBody.ExposedUnder()): over
     /// the opening it goes down the cut's walls, the skin's, the fat's and the muscle's. Skin holes go a grid cell
     /// (<paramref name="cell"/>) out past the opening on skin, not on its drawn-back edge; a deeper layer in the middle of where
-    /// its wall is met. Null when it isn't met within four cells.</summary>
-    public Vector2? ShowsBeside(Wound wound, float along, float side, TissueDepth layer, float cell) {
+    /// its wall is met. Null when it isn't met within four cells.
+    /// <para>Up to a few hundred lookups in one frame, so outside the frame budget: they stand in for a player looking
+    /// where to put the needle, not for the game's work.</para></summary>
+    public Vector2? ShowsBeside(Wound wound, float along, float side, TissueDepth layer, float cell) =>
+        Budget.Uncounted(() => MeetsBeside(wound, along, side, layer, cell));
+
+    private Vector2? MeetsBeside(Wound wound, float along, float side, TissueDepth layer, float cell) {
         float? from = null;
         var to = 0f;
         var line = BesideWound(wound, along, 0f);
