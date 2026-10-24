@@ -92,7 +92,8 @@ public class GelpiTest {
 
         SurgeryDriver.Press(InputActions.Grab);
         await Frames.Seconds(2f);
-        AssertThat(gelpi.State).OverrideFailureMessage("let go of, the retractor stands in the wound").IsEqual(ToolState.Standing);
+        AssertBool(gelpi.State == ToolState.Standing).OverrideFailureMessage($"let go of, the retractor stands in the wound ({gelpi.State})")
+            .IsTrue();
         AssertBool(hand.Attached).OverrideFailureMessage("and the hand is free").IsFalse();
         AssertFloat(tissue.GapAt(middle, Middle)).OverrideFailureMessage("left alone, it still holds the cut open")
             .IsGreater(opened - 0.002f);
@@ -165,12 +166,13 @@ public class GelpiTest {
         await driver.PlayerOpensGelpi(Open);
         SurgeryDriver.Press(InputActions.Grab);
         await Frames.Seconds(1f);
-        AssertThat(gelpi.State).OverrideFailureMessage("let go of, it stays set").IsEqual(ToolState.Standing);
+        AssertBool(gelpi.State == ToolState.Standing).OverrideFailureMessage($"let go of, it stays set ({gelpi.State})").IsTrue();
         await driver.Capture("skin_held_open", "the Gelpi through the skin only, holding it open, standing by itself");
         var inside = body.MetersToUv(0.008f);
         await driver.PlayerCutsSkin(middle - new Vector2(inside, 0f), middle + new Vector2(inside, 0f), 3);
-        AssertThat(body.Tissue.DeepestCut(middle, body.MetersToUv(0.004f)))
-            .OverrideFailureMessage($"the scalpel cuts the muscle between its jaws\n{driver.Recent()}").IsEqual(TissueDepth.Muscle);
+        var deepest = body.Tissue.DeepestCut(middle, body.MetersToUv(0.004f));
+        AssertBool(deepest == TissueDepth.Muscle)
+            .OverrideFailureMessage($"the scalpel cuts the muscle between its jaws ({deepest})\n{driver.Recent()}").IsTrue();
         await driver.Capture("muscle_cut", "the scalpel has cut the muscle between the Gelpi's jaws");
         await session.Finish(BudgetOverride);
     }
