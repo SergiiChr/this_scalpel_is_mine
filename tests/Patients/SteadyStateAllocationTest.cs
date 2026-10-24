@@ -9,8 +9,8 @@ namespace Scalpel.Tests.Patients;
 public class SteadyStateAllocationTest {
     private static readonly Vector2 Mid = new(0.5f, 0.5f);
 
-    /// <summary>A grip pulls the skin next to a cut back and forth, so the window keeps refreshing and growing, and the
-    /// body takes the region every step as it does every other frame.</summary>
+    /// <summary>A grip pulls the skin next to a cut back and forth, so the window keeps refreshing (its lists at the
+    /// size the warm-up grew them to), and the body takes the region every step as it does every other frame.</summary>
     [TestCase]
     public void MovingSkinBesideACut() {
         var sim = new TissueSim { Tearing = true };

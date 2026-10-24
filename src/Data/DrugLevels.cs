@@ -66,7 +66,7 @@ public sealed class DrugLevels {
     public List<(DrugDef Def, Crossing Crossing)> Update(float dt, Func<DrugDef, float, float> wear) {
         var crossed = _crossed;
         crossed.Clear();
-        // Removing the current entry doesn't break the enumeration.
+        // Removing the current entry doesn't break the enumeration; adding one (wear giving a drug) would.
         foreach (var entry in _entries.Values) {
             var def = entry.Def;
             // All of it as it came in, before this step wears any off.

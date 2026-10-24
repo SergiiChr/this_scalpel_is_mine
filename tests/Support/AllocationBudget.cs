@@ -22,8 +22,10 @@ public static class AllocationBudget {
             work();
         }
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        var report = $"{label}: {bytes} B over {runs} runs, {(double)bytes / runs:0.#} B per run (budget {maxBytesPerRun} B)";
+        var report = $"{label}: {bytes} B over {runs} runs, {(double)bytes / runs:0.#} B per run "
+            + $"(budget {maxBytesPerRun} B)";
         GD.Print(report);
-        AssertBool(bytes <= maxBytesPerRun * runs).OverrideFailureMessage($"allocation budget exceeded: {report}").IsTrue();
+        AssertBool(bytes <= maxBytesPerRun * runs)
+            .OverrideFailureMessage($"allocation budget exceeded: {report}").IsTrue();
     }
 }

@@ -776,12 +776,14 @@ public partial class Patient {
             taken = DrainCuts(uv, take);
             taken += Body.BloodAt(uv) * (take - taken);
             // One pass over the disk for every channel: a wipe runs every physics frame, so it has to be cheap.
-            Span<PaintOp> ops = [new(WoundMap.Blood, def.Power * dt * 2f * take / rate, WoundMap.Mode.Sub), default, default];
+            Span<PaintOp> ops =
+                [new(WoundMap.Blood, def.Power * dt * 2f * take / rate, WoundMap.Mode.Sub), default, default];
             var count = 1;
             if (sanitize) {
                 MarkGrid(_sanitized, uv, radius, drug == "iodine" ? 1f : 0.5f);
                 ops[count++] = new PaintOp(WoundMap.Grime, dt * 2f, WoundMap.Mode.Sub);
-                ops[count++] = new PaintOp(drug == "iodine" ? WoundMap.Iodine : WoundMap.Grime, 0.3f * dt * 10f, WoundMap.Mode.Add);
+                var stain = drug == "iodine" ? WoundMap.Iodine : WoundMap.Grime;
+                ops[count++] = new PaintOp(stain, 0.3f * dt * 10f, WoundMap.Mode.Add);
                 if (drug == "whiskey" && NearestWound(uv, 0.03f, false) is not null) {
                     Hurt(0.5f * dt * 10f, uv);
                 }

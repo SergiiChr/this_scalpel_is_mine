@@ -192,8 +192,8 @@ public sealed class FrameBudget {
         + ")" + (_worstDuring.Length > 0 ? ", during: " + _worstDuring : "")
         + $"; {WorstOwn * 1000f:0.0} ms without the runtime's own stalls, the longest of which took "
         + $"{WorstStall * 1000f:0.0} ms (limit {StallLimitHere * 1000f:0} ms), garbage collection at most "
-        + $"{WorstGcPause * 1000f:0.0} ms of it; {_gc.Bytes / 1024.0 / Math.Max(_frames, 1):0.0} KB allocated per frame, "
-        + $"{_gc.Collections} collections, {_gc.Full} of them gen2";
+        + $"{WorstGcPause * 1000f:0.0} ms of it; {_gc.Bytes / 1024.0 / Math.Max(_frames, 1):0.0} KB allocated per "
+        + $"frame, {_gc.Collections} collections of any generation, {_gc.Full} of them gen2";
 
     /// <summary>The fastest of a few runs of <see cref="Benchmark"/>, in seconds, the first one compiling it.</summary>
     private static double Benchmarked() {

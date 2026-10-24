@@ -662,8 +662,8 @@ public sealed partial class TissueSim {
         return region;
     }
 
-    /// <summary>Fills <paramref name="region"/>, one byte per particle, as <see cref="Region(int)"/> without allocating:
-    /// the body takes it every other frame the skin moves.</summary>
+    /// <summary>Fills <paramref name="region"/>, one byte per particle, as <see cref="Region(int)"/> without
+    /// allocating: the body takes it every other frame the skin moves.</summary>
     public void Region(Span<byte> region, int reach = 1) {
         region.Clear();
         foreach (var s in _severed) {

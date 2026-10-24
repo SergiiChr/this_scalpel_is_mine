@@ -292,8 +292,8 @@ class CoverageReportingTest(unittest.TestCase):
         """Only frame_budget suites run alone, so one that checks the budget without the category would fail its
         frames on contention. The helpers that check it: tests/Support/ToolSession.cs, ScenarioFlow.cs and
         tests/Scenarios/GameplaySweep.cs, and SutureChecks.cs through ToolSession; NeedleTest compares against
-        FrameBudget.Limit itself. FrameBudget.RenderingOff() alone checks nothing."""
-        checks = re.compile(r"[Bb]udget\.Check\(|FrameBudget\.(Limit|Mode)|ToolSession|ScenarioFlow|GameplaySweep|SutureChecks")
+        FrameBudget.Limit itself. FrameBudget.RenderingOff() alone checks nothing, nor does AllocationBudget.Check()."""
+        checks = re.compile(r"(?<!Allocation)[Bb]udget\.Check\(|FrameBudget\.(Limit|Mode)|ToolSession|ScenarioFlow|GameplaySweep|SutureChecks")
         with patch.object(build, "ROOT", Path(build.__file__).parent):
             suites = build.discover()
         for suite in suites:
