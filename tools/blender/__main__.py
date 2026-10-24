@@ -1,6 +1,6 @@
 """Builds the Blender models, exports them for review and renders a contact sheet per model.
 
-Run from the repo root with Blender's Python module installed (pip install bpy, Python 3.11):
+Run from the repo root with Blender's Python module installed (pip install bpy, Python 3.13):
     python -m tools.blender [model ...]
 Review renders go to build/blender_review/, the models themselves into assets/models/ for the game.
 """

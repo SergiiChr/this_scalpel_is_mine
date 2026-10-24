@@ -58,7 +58,7 @@ from typing import Literal
 GODOT_VERSION = "4.7.2"
 # The SDK installed when the system has none, and the runtime the project targets (TargetFramework in the .csproj).
 DOTNET_CHANNEL = "10.0"
-PYTHON_VERSION = "3.11"
+PYTHON_VERSION = "3.13"
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / ".tools"
 XVFB_LOCAL = TOOLS / "xvfb"
@@ -298,9 +298,10 @@ def setup() -> None:
 def setup_python() -> None:
     python = f"python{PYTHON_VERSION}"
     require(f"{python}:{python}")
-    if not (VENV / "bin/python").exists():
+    # A virtualenv of another Python version, left by an older checkout, is replaced.
+    if not (VENV / f"bin/{python}").exists():
         print("Creating the Python virtualenv in .venv...")
-        run([python, "-m", "venv", VENV])
+        run([python, "-m", "venv", "--clear", VENV])
     run([VENV / "bin/pip", "install", "--quiet", "--upgrade", "pip"])
     run([VENV / "bin/pip", "install", "--quiet", "-r", ROOT / "requirements-dev.txt"])
 

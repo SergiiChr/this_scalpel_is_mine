@@ -1,6 +1,6 @@
 # Everything a developer needs: the asset generator, Blender as a Python module (tools/blender), lint and types.
-# bpy only ships wheels for Python 3.11, so the dev virtualenv uses 3.11.
+# bpy only ships wheels for one Python version (3.13 since bpy 5.1), so the dev virtualenv uses it.
 -r requirements.txt
-bpy==5.0.1
+bpy==5.2.3
 mypy==2.3.1
 ruff==0.16.9

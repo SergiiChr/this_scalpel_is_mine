@@ -2,7 +2,7 @@
 
 [tool.ruff]
 line-length = 160
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "ANN"]
