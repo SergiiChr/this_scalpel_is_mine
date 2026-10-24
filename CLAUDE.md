@@ -130,7 +130,9 @@ These rules override any default PR or commit format a tool or agent brings.
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
 - Categories describe the test type or a feature worth rerunning: `smoke`, `slow`, `scenario`, `network`,
   `tissue_modification`, `liquids`, `tool_<id>`, `tool_all`, `core_validation`, `visual_confirmation`, `frame_budget`,
-  `broken`. `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
+  `allocation_budget`, `broken`. `allocation_budget` marks a suite that holds per-frame code to its allocation budget
+  (`AllocationBudget.Check`, see docs/PERFORMANCE.md).
+  `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
   through `ToolSession`, `SutureChecks`, `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its
   processes run alone, before the rest.
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take

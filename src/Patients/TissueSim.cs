@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Scalpel.Patients;
 
 /// <summary>How deep a severed spring was cut: through the skin, into the fat, or through the muscle into the cavity.
@@ -337,9 +339,12 @@ public sealed partial class TissueSim {
     /// <summary>The active window: particle columns and rows [x0, x1] x [y0, y1], empty when nothing needs
     /// simulating.</summary>
     private Rect2I _win;
-    /// <summary>Movable particles inside the window, and every grid spring touching one.</summary>
-    private int[] _winParticles = [];
-    private int[] _winSprings = [];
+    /// <summary>Movable particles inside the window, and every grid spring touching one. Refilled in place when the
+    /// window changes, which it does every few steps while the skin moves: the lists keep their capacity.</summary>
+    private readonly List<int> _winParticleList = [];
+    private readonly List<int> _winSpringList = [];
+    private ReadOnlySpan<int> WindowParticles => CollectionsMarshal.AsSpan(_winParticleList);
+    private ReadOnlySpan<int> WindowSprings => CollectionsMarshal.AsSpan(_winSpringList);
     private int _winSteps;
     private bool _winDirty = true;
     /// <summary>While the skin settles at build time the whole grid is simulated.</summary>
@@ -653,45 +658,54 @@ public sealed partial class TissueSim {
     /// </summary>
     public byte[] Region(int reach = 1) {
         var region = new byte[Rest.Length];
-        var seeds = new List<int>();
+        Region(region, reach);
+        return region;
+    }
+
+    /// <summary>Fills <paramref name="region"/>, one byte per particle, as <see cref="Region(int)"/> without
+    /// allocating: the body takes it every other frame the skin moves.</summary>
+    public void Region(Span<byte> region, int reach = 1) {
+        region.Clear();
         foreach (var s in _severed) {
-            seeds.Add(_springs[s].A);
-            seeds.Add(_springs[s].B);
+            MarkRegion(region, _springs[s].A, reach);
+            MarkRegion(region, _springs[s].B, reach);
         }
-        seeds.AddRange(_pins.Values.Select(pin => pin.Particle));
+        foreach (var pin in _pins.Values) {
+            MarkRegion(region, pin.Particle, reach);
+        }
         foreach (var thread in _threads.Values) {
-            seeds.AddRange(thread.Anchors);
-        }
-        seeds.AddRange(_excisedList);
-        // Only skin in the window moves: everything outside it holds still where it settled.
-        foreach (var k in _winParticles) {
-            if (Pos[k].DistanceSquaredTo(Settled[k]) > RegionMove * RegionMove) {
-                seeds.Add(k);
+            foreach (var k in thread.Anchors) {
+                MarkRegion(region, k, reach);
             }
         }
-        foreach (var k in seeds) {
-            var at = CellOf(k);
-            for (var y = Math.Max(at.Y - reach, 0); y <= Math.Min(at.Y + reach, ResY); y++) {
-                for (var x = Math.Max(at.X - reach, 0); x <= Math.Min(at.X + reach, ResX); x++) {
-                    region[Index(x, y)] = 1;
-                }
+        foreach (var k in _excisedList) {
+            MarkRegion(region, k, reach);
+        }
+        // Only skin in the window moves: everything outside it holds still where it settled.
+        foreach (var k in WindowParticles) {
+            if (Pos[k].DistanceSquaredTo(Settled[k]) > RegionMove * RegionMove) {
+                MarkRegion(region, k, reach);
             }
         }
         // Off the body, and right next to it: triangles touching skin off the body aren't drawn, so the body model has
         // to cover up to there, or its cut-away edge (halfway between region points) would leave a gap.
         var hanging = HangingOff();
         foreach (var k in _offList) {
-            if (!hanging[k]) {
-                continue;
-            }
-            var at = CellOf(k);
-            for (var y = Math.Max(at.Y - 1, 0); y <= Math.Min(at.Y + 1, ResY); y++) {
-                for (var x = Math.Max(at.X - 1, 0); x <= Math.Min(at.X + 1, ResX); x++) {
-                    region[Index(x, y)] = 0;
-                }
+            if (hanging[k]) {
+                MarkRegion(region, k, 1, 0);
             }
         }
-        return region;
+    }
+
+    /// <summary>Sets the region points within <paramref name="reach"/> of particle <paramref name="k"/> to
+    /// <paramref name="value"/>.</summary>
+    private void MarkRegion(Span<byte> region, int k, int reach, byte value = 1) {
+        var at = CellOf(k);
+        for (var y = Math.Max(at.Y - reach, 0); y <= Math.Min(at.Y + reach, ResY); y++) {
+            for (var x = Math.Max(at.X - reach, 0); x <= Math.Min(at.X + reach, ResX); x++) {
+                region[Index(x, y)] = value;
+            }
+        }
     }
 
     /// <summary>Asleep once nothing has moved for SleepSteps steps, grips held still included: a moved grip wakes it.
@@ -1057,7 +1071,7 @@ public sealed partial class TissueSim {
         if (pin.UnpulledAll.Length != _springs.Length) {
             pin.UnpulledAll = new float[_springs.Length];
             pin.UnpulledAlong = new float[_springs.Length];
-            foreach (var s in _winSprings) {
+            foreach (var s in WindowSprings) {
                 pin.UnpulledAll[s] = Pos[_springs[s].A].DistanceTo(Pos[_springs[s].B]);
                 pin.UnpulledAlong[s] = Along(s);
             }
@@ -1459,7 +1473,7 @@ public sealed partial class TissueSim {
     /// <summary>Seizures, coughs and bumps shake the tissue (visual, every peer). Only skin that's being simulated
     /// shakes: the rest lies still under the body model anyway.</summary>
     public void Shake(float amount) {
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             _prev[k] = Pos[k] - new Vector3((float)GD.RandRange(-1.0, 1.0), (float)GD.RandRange(-1.0, 1.0), (float)GD.RandRange(-1.0, 1.0)) * amount;
         }
         Wake();
@@ -1649,7 +1663,10 @@ public sealed partial class TissueSim {
             return _hanging;
         }
         _hangingFor = (StepsDone, hasFloor);
-        _hanging = (bool[])Off.Clone();
+        if (_hanging.Length != Off.Length) {
+            _hanging = new bool[Off.Length];
+        }
+        Off.CopyTo(_hanging, 0);
         if (FloorAt is not null && Settled.Length == Pos.Length) {
             foreach (var k in _offList) {
                 if (_hanging[k] && Pos[k].DistanceSquaredTo(Settled[k]) > LiftedOff * LiftedOff) {
@@ -1735,7 +1752,7 @@ public sealed partial class TissueSim {
             RefreshWindow();
         }
         var pos = Pos;
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             var p = pos[k];
             pos[k] = p + (p - _prev[k]) * Damping;
             _before[k] = _prev[k];
@@ -1753,16 +1770,16 @@ public sealed partial class TissueSim {
                 DragPatch(pin);
             }
             // Sweeping the springs forward then backward keeps corrections from always flowing one way across the grid.
-            var count = _winSprings.Length;
+            var count = WindowSprings.Length;
             for (var n = 0; n < count; n++) {
-                Solve(_winSprings[iteration % 2 == 0 ? n : count - 1 - n]);
+                Solve(WindowSprings[iteration % 2 == 0 ? n : count - 1 - n]);
             }
             for (var pass = 0; pass <= StitchPasses; pass++) {
                 foreach (var s in _stitches) {
                     Solve(s);
                 }
             }
-            foreach (var k in _winParticles) {
+            foreach (var k in WindowParticles) {
                 // Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back. A
                 // cut's edge lifted off the body isn't drawn back along it any more either: only skin lying on it is.
                 var back = _anchorTarget[k] - pos[k];
@@ -1798,7 +1815,7 @@ public sealed partial class TissueSim {
         var moved = 0f;
         var wandered = 0f;
         var farthest = 0f;
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             moved = Mathf.Max(moved, pos[k].DistanceSquaredTo(_prev[k]));
             wandered = Mathf.Max(wandered, pos[k].DistanceSquaredTo(_before[k]));
             farthest = Mathf.Max(farthest, pos[k].DistanceSquaredTo(Rest[k]));
@@ -1867,25 +1884,24 @@ public sealed partial class TissueSim {
         _winSteps = 0;
         var low = new Vector2I(ResX + 1, ResY + 1);
         var high = new Vector2I(-1, -1);
-        var seeds = new List<int>();
-        foreach (var s in _severed) {
-            seeds.Add(_springs[s].A);
-            seeds.Add(_springs[s].B);
-        }
-        foreach (var s in _stitches) {
-            if (_springs[s].Active) {
-                seeds.Add(_springs[s].A);
-            }
-        }
-        foreach (var k in _winParticles) {
-            if (Pos[k].DistanceSquaredTo(Settled[k]) > WindowMove * WindowMove) {
-                seeds.Add(k);
-            }
-        }
-        foreach (var k in seeds) {
+        void Include(int k) {
             var at = CellOf(k);
             low = low.Min(at);
             high = high.Max(at);
+        }
+        foreach (var s in _severed) {
+            Include(_springs[s].A);
+            Include(_springs[s].B);
+        }
+        foreach (var s in _stitches) {
+            if (_springs[s].Active) {
+                Include(_springs[s].A);
+            }
+        }
+        foreach (var k in WindowParticles) {
+            if (Pos[k].DistanceSquaredTo(Settled[k]) > WindowMove * WindowMove) {
+                Include(k);
+            }
         }
         foreach (var pin in _pins.Values) {
             // A grip drags a whole patch along: all of it moves.
@@ -1917,17 +1933,17 @@ public sealed partial class TissueSim {
 
     private void SetWindow(Rect2I window) {
         var before = _win;
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             _free[k] = 0f;
         }
         _win = window;
+        _winParticleList.Clear();
+        _winSpringList.Clear();
+        _winBendList.Clear();
         if (window.Size == Vector2I.Zero) {
-            _winParticles = [];
-            _winSprings = [];
-            _winBends = [];
             return;
         }
-        var particles = new List<int>();
+        var particles = _winParticleList;
         for (var j = window.Position.Y; j <= window.End.Y; j++) {
             for (var i = window.Position.X; i <= window.End.X; i++) {
                 var k = Index(i, j);
@@ -1938,7 +1954,7 @@ public sealed partial class TissueSim {
         }
         // Every spring with an end inside: springs leaving each particle in the window and the ones arriving from the
         // row above and the column to the left of it.
-        var springs = new List<int>();
+        var springs = _winSpringList;
         for (var j = Math.Max(window.Position.Y - 1, 0); j <= window.End.Y; j++) {
             for (var i = Math.Max(window.Position.X - 1, 0); i <= window.End.X; i++) {
                 var k = Index(i, j);
@@ -1949,10 +1965,8 @@ public sealed partial class TissueSim {
                 }
             }
         }
-        _winParticles = [.. particles];
         IndexBends();
-        _winSprings = [.. springs];
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             _free[k] = 1f;
             // Skin coming back into the window starts out still, not with whatever motion it had when it left.
             if (!Inside(before, CellOf(k))) {
@@ -2018,7 +2032,7 @@ public sealed partial class TissueSim {
     /// body it would count as lying on top of the drape.
     /// </summary>
     private void StayOnBody() {
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             if (Off[k] || _free[k] == 0f || AtBorder(k)) {
                 continue;
             }
@@ -2076,7 +2090,7 @@ public sealed partial class TissueSim {
             return;
         }
         FindCutFree();
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             if (_free[k] == 0f) {
                 continue;
             }
@@ -2142,7 +2156,7 @@ public sealed partial class TissueSim {
     }
 
     private void SnapOverstretched() {
-        foreach (var s in _winSprings) {
+        foreach (var s in WindowSprings) {
             CheckSnap(s);
         }
         foreach (var s in _stitches) {

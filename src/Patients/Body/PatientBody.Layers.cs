@@ -189,6 +189,10 @@ public partial class PatientBody {
     /// <summary>Where the simulated skin replaces the body model, one byte per tissue grid point (see
     /// <see cref="TissueSim.Region"/>).</summary>
     private byte[] _region = [];
+    /// <summary>The next region, filled and compared with <see cref="_region"/>, then swapped with it when it changed.
+    /// </summary>
+    private byte[] _nextRegion = [];
+    private static readonly Vector2I[] Neighbors = [Vector2I.Left, Vector2I.Right, Vector2I.Up, Vector2I.Down];
     /// <summary>True for region points next to one outside it, where the body model takes over: they're drawn right on
     /// the model.</summary>
     private bool[] _regionEdge = [];
@@ -367,7 +371,7 @@ public partial class PatientBody {
             foreach (var n in missed) {
                 var sum = 0f;
                 var found = 0;
-                foreach (var step in new[] { Vector2I.Left, Vector2I.Right, Vector2I.Up, Vector2I.Down }) {
+                foreach (var step in Neighbors) {
                     var at = new Vector2I(n % Heights, n / Heights) + step;
                     if (at.X >= 0 && at.Y >= 0 && at.X < Heights && at.Y < Heights && !float.IsNaN(_heights[at.Y * Heights + at.X])) {
                         sum += _heights[at.Y * Heights + at.X];
@@ -1795,7 +1799,9 @@ public partial class PatientBody {
 
     /// <summary>Takes the tissue's current region. True when it changed.</summary>
     private bool UpdateRegion() {
-        var region = Tissue.Region();
+        if (_nextRegion.Length != Tissue.Rest.Length) { _nextRegion = new byte[Tissue.Rest.Length]; }
+        var region = _nextRegion;
+        Tissue.Region(region);
         for (var k = 0; k < region.Length; k++) {
             if (region[k] == 0 || !_onGown[k] || Tissue.Turned(k)) { continue; }
             var lifted = Tissue.NearFold(k) && (Tissue.Pos[k] - Tissue.Settled[k]).Dot(GridNormal(_onModel, k)) > TissueSim.LiftedOff;
@@ -1805,13 +1811,17 @@ public partial class PatientBody {
         if (region.AsSpan().SequenceEqual(_region)) {
             return false;
         }
-        _region = region;
-        _regionEdge = new bool[region.Length];
+        (_region, _nextRegion) = (region, _region);
+        if (_regionEdge.Length != region.Length) {
+            _regionEdge = new bool[region.Length];
+        } else {
+            Array.Clear(_regionEdge);
+        }
         var last = new Vector2I(Tissue.ResX, Tissue.ResY);
         for (var k = 0; k < region.Length; k++) {
             if (region[k] == 1) {
                 var at = Tissue.CellOf(k);
-                foreach (var step in new[] { Vector2I.Left, Vector2I.Right, Vector2I.Up, Vector2I.Down }) {
+                foreach (var step in Neighbors) {
                     var n = (at + step).Clamp(Vector2I.Zero, last);
                     if (region[Tissue.Index(n.X, n.Y)] == 0) {
                         _regionEdge[k] = true;

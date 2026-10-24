@@ -30,7 +30,8 @@ public readonly record struct BudgetAllowance(string Reason, float Factor);
 /// in sampling (loading, a screenshot), <see cref="Resume"/> starts again without counting the gap.</para>
 /// <para>Also measured: how much of each frame the .NET runtime took for itself, collecting garbage and compiling code
 /// on first use. A frame over the budget only because of that is the known issue <see cref="RuntimeStalls"/>, not a
-/// failure.</para>
+/// failure. What the frames allocated, on every thread, and the collections that caused are reported alongside, to
+/// find where garbage comes from (<see cref="AllocationBudget"/> holds code to none).</para>
 /// </summary>
 public sealed class FrameBudget {
     /// <summary>A whole frame, drawn, must stay within this so 60 fps remains possible.</summary>
@@ -73,6 +74,9 @@ public sealed class FrameBudget {
     private int _frames;
     private ulong _lastUsec;
     private double _runtimeWas;
+    private GcCounts _gcWas;
+    /// <summary>What the sampled frames allocated and collected.</summary>
+    private GcCounts _gc;
     /// <summary>What was going on during the slowest frame, to find where to look.</summary>
     private string _worstDuring = "";
 
@@ -84,6 +88,10 @@ public sealed class FrameBudget {
 
     /// <summary>The longest the runtime stalled within one frame, in seconds.</summary>
     public float WorstStall { get; private set; }
+
+    /// <summary>The longest garbage collection pause within one frame, in seconds: the part of
+    /// <see cref="WorstStall"/> that allocations cause.</summary>
+    public float WorstGcPause { get; private set; }
 
     /// <summary>This run's limit for one frame, in seconds.</summary>
     public static float Limit => Mode == BudgetMode.Render ? RenderBudget : (float)(CpuBudget * Slowness);
@@ -97,12 +105,14 @@ public sealed class FrameBudget {
     public void Resume() {
         _lastUsec = 0;
         _runtimeWas = RuntimeMs();
+        _gcWas = GcCounts.Now;
     }
 
     /// <summary>Records the time since the last sample, <paramref name="during"/> what.</summary>
     public void Sample(string during = "", double gameTime = -1) {
         var now = Time.GetTicksUsec();
         var runtime = RuntimeMs();
+        var gc = GcCounts.Now;
         if (_lastUsec > 0) {
             var time = (now - _lastUsec) / 1_000_000f;
             _frames++;
@@ -113,15 +123,18 @@ public sealed class FrameBudget {
             var stall = (float)((runtime - _runtimeWas) / 1000.0);
             WorstOwn = Mathf.Max(WorstOwn, time - stall);
             WorstStall = Mathf.Max(WorstStall, stall);
+            WorstGcPause = Mathf.Max(WorstGcPause, (float)((gc.PauseMs - _gcWas.PauseMs) / 1000.0));
+            _gc += gc - _gcWas;
         }
         _lastUsec = now;
         _runtimeWas = runtime;
+        _gcWas = gc;
     }
 
     /// <summary>Runs <paramref name="work"/>, the test's own work, without counting its time (runtime stalls included)
     /// in this frame. Not nested: the outer call would take the inner one's time off again.</summary>
     public T Uncounted<T>(Func<T> work) {
-        var (started, runtime) = (Time.GetTicksUsec(), RuntimeMs());
+        var (started, runtime, gc) = (Time.GetTicksUsec(), RuntimeMs(), GcCounts.Now);
         try {
             return work();
         } finally {
@@ -129,6 +142,7 @@ public sealed class FrameBudget {
                 _lastUsec += Time.GetTicksUsec() - started;
             }
             _runtimeWas += RuntimeMs() - runtime;
+            _gcWas += GcCounts.Now - gc;
         }
     }
 
@@ -137,6 +151,8 @@ public sealed class FrameBudget {
         Worst = 0f;
         WorstOwn = 0f;
         WorstStall = 0f;
+        WorstGcPause = 0f;
+        _gc = default;
         _worstDuring = "";
         Resume();
     }
@@ -175,7 +191,9 @@ public sealed class FrameBudget {
             + $"{ReferenceBenchmark * 1000:0.00} ms there" : "")
         + ")" + (_worstDuring.Length > 0 ? ", during: " + _worstDuring : "")
         + $"; {WorstOwn * 1000f:0.0} ms without the runtime's own stalls, the longest of which took "
-        + $"{WorstStall * 1000f:0.0} ms (limit {StallLimitHere * 1000f:0} ms)";
+        + $"{WorstStall * 1000f:0.0} ms (limit {StallLimitHere * 1000f:0} ms), garbage collection at most "
+        + $"{WorstGcPause * 1000f:0.0} ms of it; {_gc.Bytes / 1024.0 / Math.Max(_frames, 1):0.0} KB allocated per "
+        + $"frame, {_gc.Collections} collections of any generation, {_gc.Full} of them gen2";
 
     /// <summary>The fastest of a few runs of <see cref="Benchmark"/>, in seconds, the first one compiling it.</summary>
     private static double Benchmarked() {
@@ -204,6 +222,19 @@ public sealed class FrameBudget {
             }
         }
         return sum;
+    }
+
+    /// <summary>Bytes allocated on every thread, time spent in garbage collection pauses in ms, collections and full
+    /// (gen2) ones among them: so far (<see cref="Now"/>) or between two points.</summary>
+    private readonly record struct GcCounts(long Bytes, double PauseMs, int Collections, int Full) {
+        public static GcCounts Now => new(GC.GetTotalAllocatedBytes(), GC.GetTotalPauseDuration().TotalMilliseconds,
+            GC.CollectionCount(0), GC.CollectionCount(2));
+
+        public static GcCounts operator +(GcCounts a, GcCounts b) =>
+            new(a.Bytes + b.Bytes, a.PauseMs + b.PauseMs, a.Collections + b.Collections, a.Full + b.Full);
+
+        public static GcCounts operator -(GcCounts a, GcCounts b) =>
+            new(a.Bytes - b.Bytes, a.PauseMs - b.PauseMs, a.Collections - b.Collections, a.Full - b.Full);
     }
 
     /// <summary>Time the runtime has spent so far on garbage collection pauses and on compiling on the main thread.

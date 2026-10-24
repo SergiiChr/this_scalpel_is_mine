@@ -406,7 +406,7 @@ public sealed class WoundMap {
     /// Paints several channels of one disk. Each channel gets its own tight loop over the disk's rows, with the mode
     /// picked outside the loop: a wipe paints big disks every frame.
     /// </summary>
-    public void DiskOps(Layer layer, Vector2 center, float radius, IEnumerable<PaintOp> ops, bool soft = true) {
+    public void DiskOps(Layer layer, Vector2 center, float radius, ReadOnlySpan<PaintOp> ops, bool soft = true) {
         var data = _data[(int)layer];
         var painted = _painted[(int)layer];
         var c = center * Size;

@@ -650,9 +650,15 @@ public partial class Patient : Node3D {
 
     // --- Drugs --------------------------------------------------------------------------------------------
 
+    /// <summary>Drugs that started working this tick, and <see cref="Wear"/> as a delegate: both kept, not made again
+    /// every tick.</summary>
+    private readonly List<DrugDef> _working = [];
+    private Func<DrugDef, float, float>? _wear;
+
     internal DrugEffects DrugEffectsOver(float dt) {
-        var working = new List<DrugDef>();
-        foreach (var (def, crossing) in Drugs.Update(dt, Wear)) {
+        var working = _working;
+        working.Clear();
+        foreach (var (def, crossing) in Drugs.Update(dt, _wear ??= Wear)) {
             if (crossing == DrugLevels.Crossing.Works) {
                 DrugWorks(def, working);
                 working.Add(def);
