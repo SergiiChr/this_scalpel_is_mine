@@ -69,8 +69,10 @@ public partial class PatientBody {
         /// <summary>The refined vertex of each lip edge's midpoint, by its two ends (lower first).</summary>
         public Dictionary<(int, int), int> MidpointOf { get; } = [];
         /// <summary>The sheet's triangles with their lips refined. The skin's is kept as drawn (RememberSkinSheet()):
-        /// a new plan starts a new list, so it stays whole until the skin is filled again.</summary>
+        /// a new plan fills the other of two lists, so it stays whole until the skin is filled again. Every plan is
+        /// filled before the next one, so the list a plan takes back was replaced as the drawn one already.</summary>
         public List<int> RefinedIndex { get; private set; } = [];
+        private List<int> _spareRefinedIndex = [];
         public List<(int A, int B, int C)> Centers { get; } = [];
         public Dictionary<int, int> OppositeLip { get; } = [];
         public Dictionary<(int, int), int> LipInside { get; } = [];
@@ -104,7 +106,8 @@ public partial class PatientBody {
             Index.Clear();
             Wall.Clear();
             Midpoints.Clear();
-            RefinedIndex = new List<int>(RefinedIndex.Count);
+            (RefinedIndex, _spareRefinedIndex) = (_spareRefinedIndex, RefinedIndex);
+            RefinedIndex.Clear();
             Centers.Clear();
             CutFaces.Clear();
             Ends.Clear();
