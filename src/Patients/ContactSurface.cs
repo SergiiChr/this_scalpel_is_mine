@@ -92,7 +92,7 @@ internal sealed class ContactSurface(float cell = 0.01f) {
         return float.IsFinite(height) ? height : float.NaN;
     }
 
-    internal void PushTriangle(Vector3[] vertices, int a, int b, int c, float gap, bool above) {
+    internal void PushTriangle(Vector3[] vertices, int a, int b, int c, float gap, bool above, bool crossingOnly = false) {
         var ab = vertices[b] - vertices[a];
         var ac = vertices[c] - vertices[a];
         var determinant = ab.X * ac.Z - ab.Z * ac.X;
@@ -142,6 +142,18 @@ internal sealed class ContactSurface(float cell = 0.01f) {
             Clip(x, y, face.Winding, ref count);
             Clip(y, z, face.Winding, ref count);
             Clip(z, x, face.Winding, ref count);
+            if (crossingOnly) {
+                // A lifted cut wall can lie wholly above another skin facet. Keep that separation; only a wall
+                // reaching through the facet from its protected side needs pushing away. Check the overlap itself,
+                // not vertices outside this face's footprint.
+                var protectedSide = false;
+                for (var n = 0; n < count; n++) {
+                    var p = _contactPolygon[n];
+                    var side = p.Y - (slopeX * p.X + slopeZ * p.Z + face.OriginY);
+                    protectedSide |= above ? side > 0.000001f : side < -0.000001f;
+                }
+                if (!protectedSide) { continue; }
+            }
             for (var n = 0; n < count; n++) {
                 var p = _contactPolygon[n];
                 var roof = slopeX * p.X + slopeZ * p.Z + originY;

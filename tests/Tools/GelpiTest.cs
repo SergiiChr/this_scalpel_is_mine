@@ -11,7 +11,7 @@ namespace Scalpel.Tests.Tools;
 /// passing through the jaws, the &lt; &gt; on the tips and the muscle cut showing between the jaws.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_gelpi"), TestCategory("tissue_modification"), TestCategory("frame_budget")]
+[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_gelpi"), TestCategory("tissue_modification"), TestCategory("skin_pull"), TestCategory("frame_budget")]
 [TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class GelpiTest {

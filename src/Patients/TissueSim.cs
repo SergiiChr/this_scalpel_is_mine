@@ -291,6 +291,12 @@ public sealed partial class TissueSim {
     private sealed class Pin(int particle, Vector3 target) {
         public int Particle { get; } = particle;
         public Vector3 Target { get; set; } = target;
+        /// <summary>The skin's position when this grip took hold. Planar resistance and reversal share that origin,
+        /// just as the strain is measured from acquisition, rather than an anchor displaced by the wound's gape.</summary>
+        public Vector3 Origin { get; } = target;
+        /// <summary>Once an outward pull starts peeling, a relaxed solver step must not interrupt the lift.
+        /// Moving inward releases that resistance.</summary>
+        public bool Peeling { get; set; }
         /// <summary>How long each spring of the patch was when the grip took hold (see
         /// <see cref="StrainAt"/>), and the topology that patch was made for.</summary>
         public float[]? Unpulled { get; set; }
@@ -1125,15 +1131,25 @@ public sealed partial class TissueSim {
     /// the hand back harder the further it's pulled, the way something held does. Moves back toward the spot always go.
     /// </summary>
     public Vector3 Restrain(int key, Vector3 target) {
-        var strain = StrainAt(key);
-        if (strain <= FirmStrain) {
+        if (!_pins.TryGetValue(key, out var pin)) {
             return target;
         }
-        var home = _anchorTarget[_pins[key].Particle];
-        var now = _pins[key].Target;
+        var strain = StrainAt(key);
+        // Across the body, return to where the tool took hold, including the wound's existing gape. The height
+        // limit still belongs to the body's rest surface: pinching an already raised lip must not raise that cap.
+        var home = pin.Origin with { Y = _anchorTarget[pin.Particle].Y };
+        var now = pin.Target;
         var nowAlong = (now - home).Slide(Vector3.Up);
         var away = nowAlong.Normalized();
         var move = (target - now).Slide(Vector3.Up);
+        if (move.Dot(away) < -0.000001f) {
+            pin.Peeling = false;
+        } else if (strain >= GripStrain) {
+            pin.Peeling = true;
+        }
+        if (strain <= FirmStrain && !pin.Peeling) {
+            return target;
+        }
         // Only the part of the move away from home is held back; sideways the grip still stays within what it gave.
         var outward = nowAlong.IsZeroApprox() ? 0f : Mathf.Max(move.Dot(away), 0f);
         var give = strain >= GripStrain ? 0f : Mathf.Lerp(1f, LeastGive, Mathf.SmoothStep(FirmStrain, GripStrain, strain));
@@ -1143,7 +1159,7 @@ public sealed partial class TissueSim {
         var reach = nowAlong.Length() + outward * give;
         var kept = (nowAlong + move - away * (outward * (1f - give))).LimitLength(reach);
         var height = target.Y;
-        if (strain >= GripStrain) {
+        if (pin.Peeling) {
             // Lifted already as high as the skin peels (or higher, raised by the hand), it stays where it is.
             var lifted = Mathf.Clamp((now.Y - home.Y) / PeelLift, 0f, 1f);
             height = Mathf.Min(target.Y + outward * (1f - lifted * lifted), Mathf.Max(now.Y, home.Y + PeelLift));
@@ -1174,6 +1190,21 @@ public sealed partial class TissueSim {
 
     /// <summary>The particle grip <paramref name="key"/> holds, -1 when it holds none.</summary>
     public int GrippedParticle(int key) => _pins.TryGetValue(key, out var pin) ? pin.Particle : -1;
+
+    /// <summary>Captures the cut-aware material held directly by the current grips into a caller-owned mask.</summary>
+    internal void CaptureGripFootprint(bool[] footprint) {
+        Array.Clear(footprint, 0, footprint.Length);
+        foreach (var pin in _pins.Values) {
+            var particle = pin.Particle;
+            if ((uint)particle >= (uint)footprint.Length) { continue; }
+            footprint[particle] = true;
+            foreach (var held in PatchOf(particle).Held) {
+                if ((uint)held < (uint)footprint.Length) {
+                    footprint[held] = true;
+                }
+            }
+        }
+    }
 
     /// <summary>Clients mirror the host's grips.</summary>
     public void SetGrips(IReadOnlyList<TissueGrip> grips) {

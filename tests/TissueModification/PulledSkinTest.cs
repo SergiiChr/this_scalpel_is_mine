@@ -11,7 +11,7 @@ namespace Scalpel.Tests.TissueModification;
 /// where that lays it bare.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("skin_pull"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class PulledSkinTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
@@ -167,7 +167,13 @@ public class PulledSkinTest {
         var muscle = driver.Patient.Wounds.Where(wound => wound.ThroughMuscle).ToList();
         var cut = muscle.MaxBy(wound => wound.LengthUv)!;
         AssertString(driver.ShowsAlong(cut, TissueDepth.Muscle)).OverrideFailureMessage("the peeled lip lays the muscle bare").IsNotEmpty();
-        foreach (var wound in muscle) {
+        if (KeyFrames.Wanted()) {
+            // Close views without the hands: both are working over the seam while the other holds the lip up.
+            driver.OnKeyFrame = (keyFrame, description) => session.CaptureAt(keyFrame, description, site, PeelView);
+        }
+        // Close the widened incision while it is exposed. Closing the short original entry first can draw
+        // its neighboring incision back beneath the held lip before the needle reaches it.
+        foreach (var wound in muscle.OrderByDescending(wound => wound.LengthUv)) {
             await driver.PlayerSews(wound, TissueDepth.Muscle);
         }
         // The muscle shows only where the lip is peeled off it: sewn there.

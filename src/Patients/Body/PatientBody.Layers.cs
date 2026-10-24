@@ -393,6 +393,7 @@ public partial class PatientBody {
     private bool _renderFold;
     private bool _renderTurnover;
     private Vector3[] _renderMoved = [];
+    private bool[] _renderGrip = [];
     private readonly Vector3[][] _renderPoints = [[], [], []];
     /// <summary>Positions captured (RebuildLayers()) and waiting to be filled into the layers (BuildLayers()).
     /// </summary>
@@ -424,6 +425,8 @@ public partial class PatientBody {
         _renderFold = Tissue.HoldingFold;
         _renderTurnover = Tissue.TurningFlap;
         if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
+        if (_renderGrip.Length != Tissue.Pos.Length) { _renderGrip = new bool[Tissue.Pos.Length]; }
+        Tissue.CaptureGripFootprint(_renderGrip);
         foreach (var k in _around) {
             _renderMoved[k] = Moved(k);
             // Only lifted skin stretches its fat, and only where the layers are drawn apart from it.
@@ -445,7 +448,11 @@ public partial class PatientBody {
     /// than right under the skin. They move with it where the drape's cloth pushed it (PlaceParticles()): placed from
     /// the sim alone they would come out beside or through the skin at the opening's rim. Without a drape (outside the
     /// operating room) nothing pushes it.</summary>
-    internal bool LayersApart(int k) => Tissue.NearFold(k) && Tissue.Exposed.Length > k && Tissue.Exposed[k];
+    internal bool LayersApart(int k) => RenderLift(k) && Tissue.Exposed.Length > k && Tissue.Exposed[k];
+
+    // A grip can lift before the solver starts treating it as a fold. Keep that small motion in the drawn lip,
+    // while quiet skin outside the held material still fits the imported body's exact silhouette.
+    private bool RenderLift(int k) => Tissue.NearFold(k) || k < _renderGrip.Length && _renderGrip[k] && _renderMoved[k].Y > 0f;
 
     /// <summary>Fills the captured layers' arrays. It reads the tissue (Turned(), CutDepth()), so it runs right before
     /// the frame's solver step on the same thread, on the worker while the frame draws (StepTissue()).</summary>
@@ -1059,7 +1066,7 @@ public partial class PatientBody {
             for (var t = 0; t < index.Count; t += 3) {
                 var (a, b, c) = (index[t], index[t + 1], index[t + 2]);
                 if (Tissue.Turned(refinedOwner[a]) || Tissue.Turned(refinedOwner[b]) || Tissue.Turned(refinedOwner[c])
-                    || !Tissue.NearFold(refinedOwner[a]) && !Tissue.NearFold(refinedOwner[b]) && !Tissue.NearFold(refinedOwner[c])) { continue; }
+                    || !RenderLift(refinedOwner[a]) && !RenderLift(refinedOwner[b]) && !RenderLift(refinedOwner[c])) { continue; }
                 if (!indexed) {
                     contacts.Index(_skinSheet, _skinSheetIndex);
                     indexed = true;
@@ -1193,9 +1200,30 @@ public partial class PatientBody {
                 wallIndices.AddRange([first, first + 2, first + 1]);
             }
         }
+        var wallPoints = wallVertices.ToArray();
+        if (!_renderTurnover) {
+            // Clamping wall corners is insufficient where a pulled lip bends over its own skin: the triangle
+            // between them can still cross a skin facet. Use the same exact overlap contact as the deep sheets.
+            // A lifted skin wall may stay above another facet; deeper walls stay below it. Each parallel layer
+            // owns its contact scratch.
+            var contacts = scratch.WallContacts;
+            var indexed = false;
+            for (var pass = 0; pass < 2; pass++) {
+                for (var t = 0; t < wallIndices.Count; t += 3) {
+                    var (a, b, c) = (wallIndices[t], wallIndices[t + 1], wallIndices[t + 2]);
+                    var (ka, kb, kc) = (Tissue.Nearest(wallUvs[a]), Tissue.Nearest(wallUvs[b]), Tissue.Nearest(wallUvs[c]));
+                    if (Tissue.Turned(ka) || Tissue.Turned(kb) || Tissue.Turned(kc)) { continue; }
+                    if (!indexed) {
+                        contacts.Index(_skinSheet, _skinSheetIndex);
+                        indexed = true;
+                    }
+                    contacts.PushTriangle(wallPoints, a, b, c, UnderSkinAbove, above: false, crossingOnly: layer == 0);
+                }
+            }
+        }
         return (
             Surface.Of(refinedVertices, refinedNormals, refinedUvs, [.. index]),
-            Surface.Of([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
+            Surface.Of(wallPoints, [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
     }
 
     /// <summary>One layer's working space for FillLayer(), kept between rebuilds: a rebuild every other frame would
@@ -1215,6 +1243,7 @@ public partial class PatientBody {
         /// <summary>How deep under the skin each wall corner is, for bleed spots.</summary>
         public List<Vector2> WallDepths { get; } = [];
         public List<int> WallIndices { get; } = [];
+        public ContactSurface WallContacts { get; } = new();
         /// <summary>Each lip vertex's wall normal, averaged over the walls on both sides of it: a wall shaded flat
         /// stretch by stretch reads as a row of cards standing in the cut.</summary>
         public Dictionary<int, Vector3> LipNormals { get; } = [];
@@ -1318,8 +1347,16 @@ public partial class PatientBody {
     /// moved (_outward, PlaceParticles()) for a layer that moves with the skin, straight down for a tethered layer
     /// that stayed on its bed under the skin's wave, unless a flap is turning right over and takes everything.
     /// </summary>
-    private Vector3 Outward(int layer, int k) =>
-        float.IsPositiveInfinity(LayerTether[layer]) || _renderTurnover ? _outward[k] : Vector3.Up;
+    private Vector3 Outward(int layer, int k) {
+        if (_renderTurnover) { return _outward[k]; }
+        if (layer == 1 && LayersApart(k)) {
+            // As fat stretches between skin and muscle its columns lengthen vertically. Lay their direction
+            // back onto that bed before peeling starts: retaining the skin's steep normal during the stretch
+            // makes neighboring long columns converge into a pleat, even before their tops descend.
+            return _outward[k].Slerp(Vector3.Up, Mathf.SmoothStep(0f, FatStretch, FatGap(k, _renderMoved[k]))).Normalized();
+        }
+        return float.IsPositiveInfinity(LayerTether[layer]) ? _outward[k] : Vector3.Up;
+    }
 
     private readonly ContactSurface _clothFaces = new();
 
@@ -1338,7 +1375,7 @@ public partial class PatientBody {
     /// grid point <paramref name="owner"/> is pulled or turned (see <see cref="WithinRestingSkin(Vector3, int, float)"/>).
     /// </summary>
     private float RestingCeiling(Vector3 point, int owner) =>
-        _renderTurnover || Tissue.Turned(owner) || Tissue.NearFold(owner) ? float.PositiveInfinity : RestingSkinHeight(point);
+        _renderTurnover || Tissue.Turned(owner) || RenderLift(owner) ? float.PositiveInfinity : RestingSkinHeight(point);
 
     /// <summary>The imported skin's exact resting silhouette, cached once at loading. The coarse anatomical
     /// height field remains the fallback in model holes.</summary>

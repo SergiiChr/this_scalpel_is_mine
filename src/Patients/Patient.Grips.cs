@@ -71,15 +71,22 @@ public partial class Patient {
         }
         // Skin can be pinched anywhere on the site, but from inside the cavity only at a wound's edge, up by the lip.
         if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null && depthM < LipDepth)) {
-            // A hook takes the skin it actually touches, including the model fit and its current deformation.
-            var material = skinOnly && zone == SiteZone.Site
+            // Both jaws and hooks take the skin they actually touch, including the model fit and its current
+            // deformation. Preserve the contact offset from the simulation particle so pinching doesn't drag that
+            // particle up to the tip and spend part of the skin's give before the mouse has moved.
+            var material = zone == SiteZone.Site
                 ? Body.CutUv(Body.SitePoint(uv, Body.SkinHeight(uv) - depthM)) : uv;
-            tissue.Grip(toolUid, material);
-            var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.Nearest(material)).Count > 0;
-            var offset = skinOnly
-                ? Body.SitePoint(uv, Body.SkinHeight(uv)) - tissue.Pos[tissue.GrippedParticle(toolUid)] : Vector3.Zero;
+            // A shallow pinch inside the opening must choose the approached edge, just like a hook. Find that
+            // side's nearest deformed particle; rest-grid rounding can pick the opposite lip of a narrow cut.
+            var line = wound?.ClosestPoint(uv) ?? uv;
+            if (zone != SiteZone.Cavity || wound is null || tissue.GripBeside(toolUid, uv, line, uv - line) < 0) {
+                tissue.Grip(toolUid, material);
+            }
+            var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.GrippedParticle(toolUid)).Count > 0;
+            var contact = Body.SitePoint(uv, Body.SkinHeight(uv));
+            var offset = contact - tissue.Pos[tissue.GrippedParticle(toolUid)];
             return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset,
-                Origin: skinOnly ? tissue.Pos[tissue.GrippedParticle(toolUid)] + offset : null);
+                Origin: contact);
         }
         return null;
     }

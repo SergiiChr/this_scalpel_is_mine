@@ -115,6 +115,39 @@ public class TissueSimTest {
             Check(triangle.All(p => above ? p.Y >= p.X + 0.00399f : p.Y <= p.X - 0.00399f),
                 "triangle contact preserves clearance above and below the sloping face");
         }
+
+        // A valley crease can lie below the interior of a triangle even when each corner is below its own roof face.
+        Vector3[] crease = [
+            new(-1f, 1f, 0f), new(0f, 0f, 0f), new(1f, 1f, 0f),
+            new(-1f, 1f, 1f), new(0f, 0f, 1f), new(1f, 1f, 1f)
+        ];
+        int[] creaseFaces = [0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4];
+        surface.Index(crease, creaseFaces);
+        Vector3[] liftedWall = [new(-0.8f, 1.2f, 0.15f), new(0.8f, 1.2f, 0.15f), new(0f, 1.2f, 0.85f)];
+        var liftedBefore = (Vector3[])liftedWall.Clone();
+        surface.PushTriangle(liftedWall, 0, 1, 2, 0.004f, above: false, crossingOnly: true);
+        Check(liftedWall.Zip(liftedBefore).All(pair => pair.First.IsEqualApprox(pair.Second)),
+            "a lifted cut wall entirely above a crease stays above when only crossings are constrained");
+
+        Vector3[] crossingWall = [new(-0.8f, 0.79f, 0.15f), new(0.8f, 0.79f, 0.15f), new(0f, -0.01f, 0.85f)];
+        var interior = new Vector2(0f, 0.35f);
+        float TriangleHeight(Vector3[] triangle, Vector2 point) {
+            var a = new Vector2(triangle[0].X, triangle[0].Z);
+            var b = new Vector2(triangle[1].X, triangle[1].Z);
+            var c = new Vector2(triangle[2].X, triangle[2].Z);
+            var area = (b - a).Cross(c - a);
+            var wb = (point - a).Cross(c - a) / area;
+            var wc = (b - a).Cross(point - a) / area;
+            return triangle[0].Y * (1f - wb - wc) + triangle[1].Y * wb + triangle[2].Y * wc;
+        }
+        Check(crossingWall.All(p => p.Y < surface.HeightAt(p.X, p.Z)),
+            "the crossing wall's vertices each start below their local roof face");
+        Check(TriangleHeight(crossingWall, interior) > surface.HeightAt(interior.X, interior.Y),
+            "the triangle interior crosses the lower crease despite its vertices being below the roof");
+        surface.PushTriangle(crossingWall, 0, 1, 2, 0.004f, above: false, crossingOnly: true);
+        Check(TriangleHeight(crossingWall, interior) <= surface.HeightAt(interior.X, interior.Y) - 0.0039f,
+            "an interior crossing is pushed below the crease with clearance");
+
         Vector3[] shifted = [new(-0.01f, 0.02f, -0.01f), new(0f, 0.03f, -0.01f), new(-0.01f, 0.02f, 0f)];
         surface.Index(shifted, ContactTriangle);
         Check(Mathf.Abs(surface.HeightAt(-0.008f, -0.007f) - 0.022f) < 0.000001f,

@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Tools;
 /// standing up or sinking into the body.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("slow"), TestCategory("smoke"), TestCategory("tool_retractor"), TestCategory("tissue_modification"), TestCategory("skin_pull"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class RetractorTest {
     private const float Length = 0.05f;
@@ -156,14 +156,8 @@ public class RetractorTest {
         await session.Finish(BudgetOverride);
     }
 
-    [TestCase(Description = "KNOWN ISSUE: the skin under the drape's rim past the wound's end peaks up 5 mm once the "
-        + "retractors are let go. The rim's skin piles up from small changes in how far they draw the skin: with the "
-        + "skin holding the hand back gradually they draw it a little less; before that, drawing the end one 12 mm instead "
-        + "of 10 mm peaked it the same.")]
-    public async Task RetractorsLetGoRoundAWidenedThighWoundLieAlongTheLimb() =>
-        await KnownIssue.Expect("under the drape's rim, no peak", LetGoRoundAWidenedThighWound);
-
-    private async Task LetGoRoundAWidenedThighWound() {
+    [TestCase]
+    public async Task RetractorsLetGoRoundAWidenedThighWoundLieAlongTheLimb() {
         var session = await ToolSession.Start("bullet_muscle", "retractor/thigh");
         var driver = session.Driver;
         var body = driver.Body;
