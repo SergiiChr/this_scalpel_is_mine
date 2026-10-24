@@ -10,10 +10,9 @@ namespace Scalpel.Tests.UI;
 [TestCategory("smoke"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class DischargeTest {
-    // Temporary local budget override: taking the card off its hook peaks at 6-11 ms on a fast machine, the same card
-    // path PatientCardTest overrides; signing itself stays far below it. The factor covers a 43.7 ms frame while
-    // waiting for the discharge in the cloud release run.
-    private static readonly BudgetAllowance BudgetOverride = new("taking the patient card off its hook sometimes exceeds the CPU budget", 20f);
+    // Temporary local budget override: the forearm's bleeding and the surgery's periodic checks peak at up to 4.7 times
+    // the budget in a cloud run while signing; taking the card off its hook no longer stands out.
+    private static readonly BudgetAllowance BudgetOverride = new("bleeding and the surgery's periodic checks go over the CPU budget while signing", 6.5f);
 
     [TestCase]
     public async Task SignatureWritesWhileHeldRollsBackAndSignsOutTooEarly() {
