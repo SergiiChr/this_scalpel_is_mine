@@ -14,9 +14,33 @@ public static class TissueLayers {
         var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
         if (vertices.Length == 0 || indices.Length < 3) { return float.PositiveInfinity; }
         var toSite = body.Site.GlobalTransform.AffineInverse() * skinLayer.GlobalTransform;
+        for (var v = 0; v < vertices.Length; v++) { vertices[v] = toSite * vertices[v]; }
+        return DistanceToTriangles(vertices, indices, point);
+    }
+
+    /// <summary>The skin's cut wall must meet its sheet without a visible slit along the lip.</summary>
+    public static void AssertSkinWallJoinsSheet(PatientBody body) {
+        var mesh = body.Layers[0].Mesh;
+        if (mesh.GetSurfaceCount() < 2) { return; }
+        var sheet = mesh.SurfaceGetArrays(0);
+        var vertices = sheet[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var indices = sheet[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var wall = mesh.SurfaceGetArrays(1);
+        var points = wall[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var colors = wall[(int)Mesh.ArrayType.Color].AsColorArray();
+        var worst = 0f;
+        for (var v = 0; v < points.Length; v++) {
+            if (colors[v].R > 0f) { continue; }
+            worst = Mathf.Max(worst, DistanceToTriangles(vertices, indices, points[v]));
+        }
+        AssertFloat(worst).OverrideFailureMessage($"the skin wall joins its sheet without a slit ({worst * 1000f:0.00} mm gap)")
+            .IsLess(0.0001f);
+    }
+
+    private static float DistanceToTriangles(Vector3[] vertices, int[] indices, Vector3 point) {
         var nearest = float.PositiveInfinity;
         for (var t = 0; t + 2 < indices.Length; t += 3) {
-            var (a, b, c) = (toSite * vertices[indices[t]], toSite * vertices[indices[t + 1]], toSite * vertices[indices[t + 2]]);
+            var (a, b, c) = (vertices[indices[t]], vertices[indices[t + 1]], vertices[indices[t + 2]]);
             var normal = (b - a).Cross(c - a);
             if (normal.LengthSquared() > 1e-16f) {
                 normal = normal.Normalized();

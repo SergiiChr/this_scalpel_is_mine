@@ -31,7 +31,7 @@ public struct Spring {
 }
 
 /// <summary>A tool holding the skin: the particle it pins and where it pulls it (site-local).</summary>
-public readonly record struct TissueGrip(int Key, int Particle, Vector3 Target);
+public readonly record struct TissueGrip(int Key, int Particle, Vector3 Target, Vector3 Origin);
 
 /// <summary>A spring that snapped on the host: its ends (uv), kind and index.</summary>
 public readonly record struct SnappedSpring(Vector2 A, Vector2 B, SpringKind Kind, int Spring);
@@ -293,7 +293,7 @@ public sealed partial class TissueSim {
         public Vector3 Target { get; set; } = target;
         /// <summary>The skin's position when this grip took hold. Planar resistance and reversal share that origin,
         /// just as the strain is measured from acquisition, rather than an anchor displaced by the wound's gape.</summary>
-        public Vector3 Origin { get; } = target;
+        public Vector3 Origin { get; init; } = target;
         /// <summary>Once an outward pull starts peeling, a relaxed solver step must not interrupt the lift.
         /// Moving inward releases that resistance.</summary>
         public bool Peeling { get; set; }
@@ -1186,22 +1186,26 @@ public sealed partial class TissueSim {
     /// <summary>Every grip on the skin, for syncing to clients.</summary>
     /// <summary>Whether anything holds the sheet now: it may be moving.</summary>
     internal bool Gripped => _pins.Count > 0;
-    public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target))];
+    public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target, pin.Value.Origin))];
 
     /// <summary>The particle grip <paramref name="key"/> holds, -1 when it holds none.</summary>
     public int GrippedParticle(int key) => _pins.TryGetValue(key, out var pin) ? pin.Particle : -1;
 
-    /// <summary>Captures the cut-aware material held directly by the current grips into a caller-owned mask.</summary>
-    internal void CaptureGripFootprint(bool[] footprint) {
+    /// <summary>Captures lift influence, fading across the cut-aware material around each lifted grip.</summary>
+    internal void CaptureGripLift(float[] footprint) {
         Array.Clear(footprint, 0, footprint.Length);
         foreach (var pin in _pins.Values) {
             var particle = pin.Particle;
             if ((uint)particle >= (uint)footprint.Length) { continue; }
-            footprint[particle] = true;
-            foreach (var held in PatchOf(particle).Held) {
-                if ((uint)held < (uint)footprint.Length) {
-                    footprint[held] = true;
-                }
+            var lift = Mathf.Max(pin.Target.Y - pin.Origin.Y, 0f);
+            footprint[particle] = 1f;
+            var patch = PatchOf(particle);
+            foreach (var held in patch.Held) { footprint[held] = 1f; }
+            var lifting = Mathf.SmoothStep(0f, LiftedOff, lift);
+            for (var n = 0; n < patch.Around.Length; n++) {
+                var other = patch.Around[n];
+                if ((uint)other >= (uint)footprint.Length) { continue; }
+                footprint[other] = Mathf.Max(footprint[other], lifting * patch.Weights[n]);
             }
         }
     }
@@ -1211,7 +1215,7 @@ public sealed partial class TissueSim {
         var before = Grips();
         _pins.Clear();
         foreach (var grip in grips) {
-            _pins[grip.Key] = new Pin(grip.Particle, grip.Target) { HeldAt = StepsDone };
+            _pins[grip.Key] = new Pin(grip.Particle, grip.Target) { HeldAt = StepsDone, Origin = grip.Origin };
         }
         if (!before.Select(g => g.Key).SequenceEqual(grips.Select(g => g.Key))) {
             _winDirty = true;

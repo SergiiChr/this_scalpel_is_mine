@@ -99,6 +99,17 @@ public class TissueSimTest {
         sim.MoveGrip(2, sim.Settled[k] + Vector3.Up * 0.002f);
         sim.Substep();
         Check(!sim.HasFoldFootprint, "a subsequent small pull does not inherit the earlier fold footprint");
+        var peer = Sim();
+        var hostLift = new float[sim.Pos.Length];
+        var peerLift = new float[peer.Pos.Length];
+        sim.CaptureGripLift(hostLift);
+        for (var snapshot = 0; snapshot < 2; snapshot++) {
+            peer.SetGrips(sim.Grips());
+            peer.CaptureGripLift(peerLift);
+            Check(hostLift.SequenceEqual(peerLift), "repeated grip snapshots preserve the lifted skin's shoulder on a peer");
+        }
+        Check(hostLift.Any(influence => influence > 0f && influence < 1f),
+            "a small lifted grip has a fading shoulder beyond its directly held skin");
     }
 
     private static void ContactSurfaceGeometry() {

@@ -277,6 +277,7 @@ public class EdgePullTest {
             await driver.Unbudgeted(() => {
                 TissueLayers.AssertUnderSkin(body);
                 if (entry) {
+                    TissueLayers.AssertSkinWallJoinsSheet(body);
                     var material = body.LayerPoint(0, k);
                     var distance = TissueLayers.DistanceToSkin(body, material) * siteScale;
                     AssertFloat(distance).OverrideFailureMessage($"the drawn skin follows the gripped material {when} "
