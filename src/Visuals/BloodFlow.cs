@@ -758,7 +758,7 @@ public partial class BloodFlow : Node3D {
     /// through.
     /// </summary>
     private static (float Top, float Thickness) LayerAt(PatientBody body, Vector2 uv, float depth) {
-        var cut = body.Tissue.DeepestCut(uv, body.Tissue.OpenReach * 2f) switch {
+        var cut = body.Tissue.DeepestCut(uv, body.MetersToUv(body.Tissue.OpenReach * 2f)) switch {
             TissueDepth.Muscle => 2,
             TissueDepth.Fat => 1,
             _ => 0,

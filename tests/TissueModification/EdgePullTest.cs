@@ -198,8 +198,16 @@ public class EdgePullTest {
                 }
                 peeled = samples;
                 peeledPixels = pixels;
+                if (entry) {
+                    AssertFloat(driver.Patient.CavityBloodMl)
+                        .OverrideFailureMessage("the open thigh wound is still bleeding into its cavity").IsGreater(0f);
+                    AssertInt(body.Blood.Pools.Count)
+                        .OverrideFailureMessage("the thigh incision goes through muscle: its blood drains into the cavity instead of floating on a skin-depth pool")
+                        .IsEqual(0);
+                }
                 await session.CaptureOblique("skin_peeled", "the skin peeled off the fat: a thin, blood-covered band of skin lifted in "
-                    + "the jaws, the fat left lying on the muscle under it, no fat or muscle through the skin", at, facing, 0.12f, 30f);
+                    + "the jaws, the fat left lying on the muscle under it, no fat or muscle through the skin and no floating blood tab inside the opening",
+                    at, facing, 0.12f, 30f);
             }
         }
         while (input < MaxPull - 0.0001f && stalled < 2) {
