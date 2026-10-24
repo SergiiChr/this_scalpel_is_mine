@@ -20,8 +20,7 @@ internal sealed class LiquidSurface {
 
     internal void Field(Rect2 bounds, int columns, int rows, Func<Vector2, float> inside, Func<Vector2, float, Vector3> position) {
         var count = (columns + 1) * (rows + 1);
-        if (_fieldSamples.Length != count) { _fieldSamples = new Sample[count]; }
-        var samples = _fieldSamples;
+        var samples = Buffers.Sized(ref _fieldSamples, count);
         for (var y = 0; y <= rows; y++) {
             for (var x = 0; x <= columns; x++) {
                 var at = bounds.Position + bounds.Size * new Vector2((float)x / columns, (float)y / rows);

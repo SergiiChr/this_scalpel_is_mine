@@ -27,8 +27,7 @@ internal sealed class SkinSnapshot {
     }
 
     private static T[] Copy<T>(ReadOnlySpan<T> from, T[] into) {
-        if (into.Length != from.Length) { into = new T[from.Length]; }
-        from.CopyTo(into);
+        from.CopyTo(Buffers.Sized(ref into, from.Length));
         return into;
     }
 

@@ -179,7 +179,7 @@ public sealed class WoundMap {
     /// <summary>The solver consumed a wipe in selected cells. The next paint preserves fine holes only where those
     /// cells contribute to the resampled physical depth.</summary>
     internal void AcknowledgeBloodFilmReduction(ReadOnlySpan<bool> reducedCells, int resolution) {
-        if (_filmReductionCells.Length != reducedCells.Length) { _filmReductionCells = new bool[reducedCells.Length]; }
+        Buffers.Sized(ref _filmReductionCells, reducedCells.Length);
         reducedCells.CopyTo(_filmReductionCells);
         _filmReductionResolution = resolution;
         _filmReductionAcknowledged = true;
@@ -483,7 +483,7 @@ public sealed class WoundMap {
     /// worker to read while this map goes on being painted.</summary>
     internal void CopyLayer(Layer layer, ref byte[] into) {
         var data = _data[(int)layer];
-        if (into.Length != data.Length) { into = new byte[data.Length]; }
+        Buffers.Sized(ref into, data.Length);
         Buffer.BlockCopy(data, 0, into, 0, data.Length);
     }
 

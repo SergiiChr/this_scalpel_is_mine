@@ -76,9 +76,7 @@ public sealed partial class TissueSim {
     /// fold forms a broad wave while its two cut lips remain free to move independently.</summary>
     private void RelaxFolds() {
         if (!_fold.Bending) { return; }
-        if (_bend.Length != Pos.Length) {
-            _bend = new Vector3[Pos.Length];
-        }
+        Buffers.Sized(ref _bend, Pos.Length);
         foreach (var k in WindowParticles) {
             // Within the grip's footprint whether lifted or not: skin pushed along the body ahead of a grip would
             // otherwise crease cell by cell instead of bunching into one wave.
@@ -148,9 +146,7 @@ public sealed partial class TissueSim {
     private bool[] _turned = [];
 
     private void TrackTurned() {
-        if (_turned.Length != Pos.Length) {
-            _turned = new bool[Pos.Length];
-        }
+        Buffers.Sized(ref _turned, Pos.Length);
         foreach (var k in WindowParticles) {
             var moved = Pos[k].DistanceSquaredTo(Settled.Length == Pos.Length ? Settled[k] : Rest[k]);
             if (_fold.TurnedOver && moved > LiftedOff * LiftedOff) {
@@ -259,8 +255,7 @@ public sealed partial class TissueSim {
     private void FindCompressedCells() {
         _foldCells.Clear();
         if (!_fold.Active || _fold.TurnedOver) { return; }
-        if (_foldCellMarks.Length != ResX * ResY) { _foldCellMarks = new bool[ResX * ResY]; }
-        Array.Clear(_foldCellMarks);
+        Buffers.Cleared(ref _foldCellMarks, ResX * ResY);
         var threshold = Size.X / ResX * (Size.Y / ResY) * CompressedArea;
         float Area(int a, int b, int c) => (Pos[c] - Pos[a]).Cross(Pos[b] - Pos[a]).Length();
         foreach (var k in WindowParticles) {
