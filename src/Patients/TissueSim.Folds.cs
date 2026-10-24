@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Scalpel.Patients;
 
 public sealed partial class TissueSim {
@@ -77,7 +79,7 @@ public sealed partial class TissueSim {
         if (_bend.Length != Pos.Length) {
             _bend = new Vector3[Pos.Length];
         }
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             // Within the grip's footprint whether lifted or not: skin pushed along the body ahead of a grip would
             // otherwise crease cell by cell instead of bunching into one wave.
             if (_free[k] == 0f || (_fold.Near[k] <= 0f && Pos[k].DistanceSquaredTo(Settled[k]) <= LiftedOff * LiftedOff)) {
@@ -99,19 +101,21 @@ public sealed partial class TissueSim {
             // it across that boundary by a fraction of a cell.
             _bend[k] = count > 1 ? (sum / count - (Pos[k] - Rest[k])) * FoldBend * _free[k] : Vector3.Zero;
         }
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             Pos[k] += _bend[k];
         }
     }
 
     private readonly record struct Bend(int A, int B, int FirstSpring, int SecondSpring, float Minimum);
-    private Bend[] _winBends = [];
+    private readonly List<Bend> _winBendList = [];
+    private ReadOnlySpan<Bend> WindowBends => CollectionsMarshal.AsSpan(_winBendList);
 
     /// <summary>The window and rest geometry stay fixed between SetWindow() calls. Visit particles in window order,
     /// with the across span before the down span at each particle; spring cuts and turned particles are still checked on every solve.</summary>
     private void IndexBends() {
-        var bends = new List<Bend>();
-        foreach (var k in _winParticles) {
+        var bends = _winBendList;
+        bends.Clear();
+        foreach (var k in WindowParticles) {
             var at = CellOf(k);
             if (at.X + 2 <= ResX) {
                 bends.Add(new Bend(k, k + 2, SpringRight[k], SpringRight[k + 1],
@@ -123,7 +127,6 @@ public sealed partial class TissueSim {
                 bends.Add(new Bend(k, end, SpringDown[k], SpringDown[below], Rest[k].DistanceTo(Rest[end]) * BendSpan));
             }
         }
-        _winBends = [.. bends];
     }
 
     /// <summary>Skin doesn't crease cell by cell: a grid point and the one two along its row or column, joined by
@@ -133,7 +136,7 @@ public sealed partial class TissueSim {
     /// into one hump. Everywhere the sheet moves, until a flap is deliberately turned over.</summary>
     private void KeepBendsRound() {
         if (_fold.TurnedOver) { return; }
-        foreach (var bend in _winBends) {
+        foreach (var bend in WindowBends) {
             if (_turned[bend.A] || _turned[bend.B] || !SpringWhole(bend.FirstSpring) || !SpringWhole(bend.SecondSpring)) { continue; }
             RoundBend(bend.A, bend.B, bend.Minimum);
         }
@@ -148,7 +151,7 @@ public sealed partial class TissueSim {
         if (_turned.Length != Pos.Length) {
             _turned = new bool[Pos.Length];
         }
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             var moved = Pos[k].DistanceSquaredTo(Settled.Length == Pos.Length ? Settled[k] : Rest[k]);
             if (_fold.TurnedOver && moved > LiftedOff * LiftedOff) {
                 _turned[k] = true;
@@ -178,7 +181,7 @@ public sealed partial class TissueSim {
     /// deliberately turned over.</summary>
     private void KeepUpright() {
         if (_fold.TurnedOver) { return; }
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             if (_turned[k]) { continue; }
             var at = CellOf(k);
             if (at.X < ResX && SpringWhole(SpringRight[k]) && !_turned[k + 1]) { Upright(k, k + 1); }
@@ -240,7 +243,7 @@ public sealed partial class TissueSim {
         // A dormant footprint retains its final contact skirt for a flap resting on cloth.
         if (_fold.Roots.Count == 0) { return; }
         Array.Clear(_fold.Contact);
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             if (!NearFold(k) || Pos[k].DistanceSquaredTo(Settled[k]) < 0.000001f) { continue; }
             var at = CellOf(k);
             // Contact covers whole faces. Include the stationary row joining a moving fold back to the body;
@@ -260,7 +263,7 @@ public sealed partial class TissueSim {
         Array.Clear(_foldCellMarks);
         var threshold = Size.X / ResX * (Size.Y / ResY) * CompressedArea;
         float Area(int a, int b, int c) => (Pos[c] - Pos[a]).Cross(Pos[b] - Pos[a]).Length();
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             if (!NearFold(k)) { continue; }
             var at = CellOf(k);
             if (at.X >= ResX || at.Y >= ResY) { continue; }
@@ -283,10 +286,10 @@ public sealed partial class TissueSim {
         if (!_fold.Active || _fold.TurnedOver) { return false; }
         var changed = false;
         var minimum = Size.X / ResX * (Size.Y / ResY) * MinimumFoldArea;
-        var count = compressedOnly ? _foldCells.Count : _winParticles.Length;
+        var count = compressedOnly ? _foldCells.Count : WindowParticles.Length;
         for (var n = 0; n < count; n++) {
             var index = reverse ? count - 1 - n : n;
-            var k = compressedOnly ? _foldCells[index] : _winParticles[index];
+            var k = compressedOnly ? _foldCells[index] : WindowParticles[index];
             if (!NearFold(k)) { continue; }
             var cell = CellOf(k);
             if (cell.X >= ResX || cell.Y >= ResY) { continue; }
@@ -336,7 +339,7 @@ public sealed partial class TissueSim {
         _usedFoldBuckets.Clear();
         var cells = _foldNeighbors;
         var across = Mathf.Min(Size.X / ResX, Size.Y / ResY) * 0.7f;
-        foreach (var k in _winParticles) {
+        foreach (var k in WindowParticles) {
             if (!NearFold(k)) { continue; }
             var key = new Vector3I(Mathf.FloorToInt(Pos[k].X / across), 0, Mathf.FloorToInt(Pos[k].Z / across));
             var at = CellOf(k);

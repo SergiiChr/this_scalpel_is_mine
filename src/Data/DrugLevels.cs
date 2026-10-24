@@ -37,7 +37,11 @@ public sealed class DrugLevels {
 
     private readonly Dictionary<string, Entry> _entries = [];
 
-    public IReadOnlyCollection<Entry> Entries => _entries.Values;
+    /// <summary>What crossed a threshold in the last <see cref="Update"/>: reused, the patient ticks it 10 times a
+    /// second.</summary>
+    private readonly List<(DrugDef, Crossing)> _crossed = [];
+
+    public Dictionary<string, Entry>.ValueCollection Entries => _entries.Values;
 
     public Entry? Find(string id) => _entries.GetValueOrDefault(id);
 
@@ -56,11 +60,14 @@ public sealed class DrugLevels {
 
     /// <summary>
     /// Moves every drug on by <paramref name="dt"/> seconds: soaking in, then wearing off as fast as
-    /// <paramref name="wear"/> says (1 for a dose over its duration, 0 holds it). Returns what crossed a threshold.
+    /// <paramref name="wear"/> says (1 for a dose over its duration, 0 holds it). Returns what crossed a threshold,
+    /// in a list the next call fills again.
     /// </summary>
     public List<(DrugDef Def, Crossing Crossing)> Update(float dt, Func<DrugDef, float, float> wear) {
-        var crossed = new List<(DrugDef, Crossing)>();
-        foreach (var entry in _entries.Values.ToList()) {
+        var crossed = _crossed;
+        crossed.Clear();
+        // Removing the current entry doesn't break the enumeration.
+        foreach (var entry in _entries.Values) {
             var def = entry.Def;
             // All of it as it came in, before this step wears any off.
             var taken = entry.Level + entry.Depot;
