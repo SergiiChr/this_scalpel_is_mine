@@ -46,13 +46,16 @@ public class MemorySoakTest {
             }
             var early = Lowest(readings.GetRange(Warmup, Window));
             var late = Lowest(readings.GetRange(readings.Count - Window, Window));
-            var allowed = (Measured - Window) * AllowedBytesPerSurgery;
+            var surgeries = Measured - Window;
+            var allowed = surgeries * AllowedBytesPerSurgery;
             var report = $"from {early}\nto {late}";
             AssertBool(late.Managed - early.Managed <= allowed && late.Godot - early.Godot <= allowed)
                 .OverrideFailureMessage($"memory grows more than {AllowedBytesPerSurgery / 1024} KiB per surgery, {report}")
                 .IsTrue();
-            // Every surgery is the same, seeded one: nothing is loaded for the first time after the warm-up.
-            AssertBool(late.Objects <= early.Objects && late.Nodes <= early.Nodes && late.Resources <= early.Resources)
+            // A cache can still fill a little later on: the patient says a line for the first time, and Sfx keeps its
+            // voice loaded. Something every surgery leaves behind adds at least one a surgery.
+            AssertBool(late.Objects - early.Objects < surgeries && late.Nodes - early.Nodes < surgeries
+                    && late.Resources - early.Resources < surgeries)
                 .OverrideFailureMessage($"surgeries leave objects behind, {report}").IsTrue();
         } finally {
             RenderingServer.RenderLoopEnabled = true;
