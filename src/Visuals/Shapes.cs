@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Scalpel.Visuals;
 
 /// <summary>
@@ -51,25 +53,41 @@ public static class Shapes {
     /// submitting one fine mesh is substantially cheaper than a mesh and MeshInstance3D for every span.
     /// <paramref name="into"/>: a mesh to refill instead of making a new one, for tubes rebuilt while the game runs.
     /// A replaced mesh keeps its GPU buffers until the garbage collector gets to its wrapper.
+    /// Staples, sutures and tape are redrawn this way on every frame the skin moves, so it's built in buffers reused
+    /// from call to call: fresh ones came to about 40 KB per tube, enough garbage for a long collection every few
+    /// seconds.
     /// </summary>
     public static ArrayMesh Tubes(IEnumerable<IReadOnlyList<Vector3>> paths, float width, float height, int sides = 12,
         ArrayMesh? into = null) {
-        var vertices = new List<Vector3>();
-        var normals = new List<Vector3>();
+        var built = _tubes ??= new TubeBuffers();
+        built.Vertices.Clear();
+        built.Normals.Clear();
         foreach (var path in paths) {
-            AppendTube(vertices, normals, path, width, height, sides);
+            AppendTube(built, path, width, height, sides);
         }
         var mesh = into ?? new ArrayMesh();
         mesh.ClearSurfaces();
-        if (vertices.Count == 0) {
+        if (built.Vertices.Count == 0) {
             return mesh;
         }
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        SetPacked(arrays, Mesh.ArrayType.Vertex, vertices.ToArray());
-        SetPacked(arrays, Mesh.ArrayType.Normal, normals.ToArray());
+        SetPacked(arrays, Mesh.ArrayType.Vertex, CollectionsMarshal.AsSpan(built.Vertices));
+        SetPacked(arrays, Mesh.ArrayType.Normal, CollectionsMarshal.AsSpan(built.Normals));
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
+    }
+
+    /// <summary>What Tubes() builds a mesh in, kept for the next call. Per thread, should one build off the main
+    /// thread.</summary>
+    [ThreadStatic] private static TubeBuffers? _tubes;
+
+    private sealed class TubeBuffers {
+        public readonly List<Vector3> Vertices = [];
+        public readonly List<Vector3> Normals = [];
+        public readonly List<int> Triangles = [];
+        public Vector3[] Points = [];
+        public Vector3[] Sums = [];
     }
 
     /// <summary>Puts <paramref name="values"/> in a mesh's arrays as a packed array. The engine copies it in through
@@ -81,14 +99,24 @@ public static class Shapes {
         arrays[(int)slot] = packed;
     }
 
+    /// <summary>SetPacked() for part of a reused buffer.</summary>
+    private static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Vector3> values) {
+        using var packed = Variant.CreateFrom(values);
+        arrays[(int)slot] = packed;
+    }
+
     /// <summary>The tube's triangles, each vertex's normal the average of the faces meeting at its point, as
     /// SurfaceTool.GenerateNormals() gives: summed by the ring vertex's index, which the point's position would
     /// need a dictionary for.</summary>
-    private static void AppendTube(List<Vector3> vertices, List<Vector3> normals, IReadOnlyList<Vector3> path,
-        float width, float height, int sides) {
+    private static void AppendTube(TubeBuffers built, IReadOnlyList<Vector3> path, float width, float height, int sides) {
         var count = path.Count;
         // Points: the rings' vertices, then the two end caps' centers.
-        var points = new Vector3[count * sides + 2];
+        var pointCount = count * sides + 2;
+        if (built.Points.Length < pointCount) {
+            built.Points = new Vector3[pointCount];
+            built.Sums = new Vector3[pointCount];
+        }
+        var points = built.Points;
         for (var i = 0; i < count; i++) {
             var along = (path[Math.Min(i + 1, count - 1)] - path[Math.Max(i - 1, 0)]).Normalized();
             var side = along.Cross(Vector3.Up).Normalized();
@@ -105,21 +133,30 @@ public static class Shapes {
         var last = first + 1;
         points[first] = path[0];
         points[last] = path[count - 1];
-        var triangles = new List<int>(count * sides * 6 + sides * 6);
+        var triangles = built.Triangles;
+        triangles.Clear();
+        void Add(int a, int b, int c) {
+            triangles.Add(a);
+            triangles.Add(b);
+            triangles.Add(c);
+        }
         for (var i = 1; i < count; i++) {
             var previous = (i - 1) * sides;
             var ring = i * sides;
             for (var k = 0; k < sides; k++) {
                 var n = (k + 1) % sides;
                 // Clockwise seen from outside: Godot's front faces.
-                triangles.AddRange([previous + k, ring + n, ring + k, previous + k, previous + n, ring + n]);
+                Add(previous + k, ring + n, ring + k);
+                Add(previous + k, previous + n, ring + n);
             }
         }
         for (var k = 0; k < sides; k++) {
             var n = (k + 1) % sides;
-            triangles.AddRange([first, n, k, (count - 1) * sides + k, (count - 1) * sides + n, last]);
+            Add(first, n, k);
+            Add((count - 1) * sides + k, (count - 1) * sides + n, last);
         }
-        var sums = new Vector3[points.Length];
+        var sums = built.Sums;
+        Array.Clear(sums, 0, pointCount);
         for (var t = 0; t < triangles.Count; t += 3) {
             var normal = new Plane(points[triangles[t]], points[triangles[t + 1]], points[triangles[t + 2]]).Normal;
             sums[triangles[t]] += normal;
@@ -127,8 +164,8 @@ public static class Shapes {
             sums[triangles[t + 2]] += normal;
         }
         foreach (var v in triangles) {
-            vertices.Add(points[v]);
-            normals.Add(sums[v].Normalized());
+            built.Vertices.Add(points[v]);
+            built.Normals.Add(sums[v].Normalized());
         }
     }
 }
