@@ -688,7 +688,7 @@ internal sealed class SurfaceFilm {
             _bones = _skin is null ? [] : new int[vertices * 4];
             _boneWeights = _skin is null ? [] : new float[vertices * 4];
         }
-        if (_indices.Length != _drawn.Count * 3) { _indices = new int[_drawn.Count * 3]; }
+        Buffers.Sized(ref _indices, _drawn.Count * 3);
         for (var v = 0; v < vertices; v++) {
             var k = _drawnPoints[v];
             // Raised by its depth, tapering with the drawn coverage: a deep point beside a dry one would stand out

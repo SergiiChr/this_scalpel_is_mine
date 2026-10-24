@@ -476,14 +476,14 @@ public partial class PatientBody {
         PlaceParticles();
         _renderFold = Tissue.HoldingFold;
         _renderTurnover = Tissue.TurningFlap;
-        if (_renderMoved.Length != Tissue.Pos.Length) { _renderMoved = new Vector3[Tissue.Pos.Length]; }
+        Buffers.Sized(ref _renderMoved, Tissue.Pos.Length);
         foreach (var k in _around) {
             _renderMoved[k] = Moved(k);
             // Only lifted skin stretches its fat, and only where the layers are drawn apart from it.
             _fatStretch[k] = _renderMoved[k].Y > 0f && LayersApart(k) ? FatLift(FatGap(k, _renderMoved[k])) : 0f;
         }
         for (var layer = 0; layer < 3; layer++) {
-            if (_renderPoints[layer].Length != Tissue.Pos.Length) { _renderPoints[layer] = new Vector3[Tissue.Pos.Length]; }
+            Buffers.Sized(ref _renderPoints[layer], Tissue.Pos.Length);
             foreach (var k in _around) {
                 _renderPoints[layer][k] = layer == 0 || !LayersApart(k)
                     ? _skinOf[k]
@@ -573,11 +573,7 @@ public partial class PatientBody {
         }
         // The triangles to draw: those touching the region, none of whose corners hang off the body. Six entries
         // each: three particles, then the springs of the edges between them in order.
-        if (_cellMarked.Length != Tissue.ResX * Tissue.ResY) {
-            _cellMarked = new bool[Tissue.ResX * Tissue.ResY];
-        }
-        var marked = _cellMarked;
-        Array.Clear(marked);
+        var marked = Buffers.Cleared(ref _cellMarked, Tissue.ResX * Tissue.ResY);
         var triangles = _planTriangles;
         triangles.Clear();
         for (var k = 0; k < count; k++) {
@@ -661,9 +657,7 @@ public partial class PatientBody {
         var walls = layer != 1 || FatThickness > 0.0005f;
         // Skin taken off leaves a hole in the skin layer only: no sheet there, and no wall on the piece's side of the
         // cut.
-        if (_noneGone.Length != Tissue.Rest.Length) {
-            _noneGone = new bool[Tissue.Rest.Length];
-        }
+        Buffers.Sized(ref _noneGone, Tissue.Rest.Length);
         var gone = layer == 0 ? Tissue.Excised : _noneGone;
         var crossed = _planCrossed;
         var touched = _planTouched;
@@ -1004,8 +998,8 @@ public partial class PatientBody {
         }
         var scratch = _fillScratch[layer];
         var vertexCount = plan.Owner.Count;
-        var vertices = Sized(ref scratch.Vertices, vertexCount);
-        var normals = Sized(ref scratch.Normals, vertexCount);
+        var vertices = Buffers.Sized(ref scratch.Vertices, vertexCount);
+        var normals = Buffers.Sized(ref scratch.Normals, vertexCount);
         for (var v = 0; v < vertexCount; v++) {
             var k = plan.Owner[v];
             var p = pointOf[k];
@@ -1034,7 +1028,7 @@ public partial class PatientBody {
         }
         SmoothSheet(layer, plan, vertices);
         // Each vertex's uv as drawn: a lip's eased along with it.
-        var uvs = Sized(ref scratch.Uvs, plan.Uv.Count);
+        var uvs = Buffers.Sized(ref scratch.Uvs, plan.Uv.Count);
         plan.Uv.CopyTo(uvs);
         SmoothLips(layer, plan, vertices, uvs);
         // Smooth the sheet first so easing neighboring lips cannot round a V back into a blunt end.
@@ -1049,8 +1043,7 @@ public partial class PatientBody {
                 vertices[v] = UnderSkin(vertices[v], plan.Owner[v]);
             }
         }
-        var faceNormals = Sized(ref scratch.FaceNormals, vertexCount);
-        Array.Clear(faceNormals);
+        var faceNormals = Buffers.Cleared(ref scratch.FaceNormals, vertexCount);
         for (var t = 0; t < plan.Index.Count; t += 3) {
             var a = plan.Index[t];
             var b = plan.Index[t + 1];
@@ -1069,9 +1062,9 @@ public partial class PatientBody {
         }
         var output = scratch.NextOutput();
         var refinedCount = vertexCount + plan.Midpoints.Count + plan.Centers.Count;
-        var refinedVertices = Sized(ref output.Vertices, refinedCount);
-        var refinedNormals = Sized(ref output.Normals, refinedCount);
-        var refinedUvs = Sized(ref output.Uvs, refinedCount);
+        var refinedVertices = Buffers.Sized(ref output.Vertices, refinedCount);
+        var refinedNormals = Buffers.Sized(ref output.Normals, refinedCount);
+        var refinedUvs = Buffers.Sized(ref output.Uvs, refinedCount);
         vertices.CopyTo(refinedVertices, 0);
         normals.CopyTo(refinedNormals, 0);
         uvs.CopyTo(refinedUvs, 0);
@@ -1089,7 +1082,7 @@ public partial class PatientBody {
             refinedUvs[v] = (uvs[a] + uvs[b] + uvs[c]) / 3f;
         }
         // The midpoints and centers belong to the grid point of their first corner.
-        var refinedOwner = Sized(ref scratch.RefinedOwner, refinedVertices.Length);
+        var refinedOwner = Buffers.Sized(ref scratch.RefinedOwner, refinedVertices.Length);
         plan.Owner.CopyTo(refinedOwner);
         for (var n = 0; n < plan.Midpoints.Count; n++) {
             refinedOwner[vertexCount + n] = plan.Owner[plan.Midpoints[n].A];
@@ -1351,15 +1344,6 @@ public partial class PatientBody {
 
     private readonly FillScratch[] _fillScratch = [new(), new(), new()];
 
-    /// <summary><paramref name="array"/>, replaced by a new one unless it is <paramref name="length"/> long already
-    /// (the plan's sizes stay the same until the topology changes). Its contents are left as they were.</summary>
-    private static T[] Sized<T>(ref T[] array, int length) {
-        if (array.Length != length) {
-            array = new T[length];
-        }
-        return array;
-    }
-
     /// <summary>A filled surface's arrays, kept between the builds that use them (FillScratch.NextOutput()).</summary>
     private sealed class FillOutput {
         public Vector3[] Vertices = [];
@@ -1377,13 +1361,10 @@ public partial class PatientBody {
         public List<int> PointedIndex { get; } = [];
     }
 
-    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them (<see cref="Sized{T}"/>).
-    /// </summary>
-    private static T[] Filled<T>(ref T[] array, List<T> list) {
-        var filled = Sized(ref array, list.Count);
-        list.CopyTo(filled);
-        return filled;
-    }
+    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them
+    /// (<see cref="Buffers.Copied{T}"/>).</summary>
+    private static T[] Filled<T>(ref T[] array, List<T> list) =>
+        Buffers.Copied(ref array, CollectionsMarshal.AsSpan(list));
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
     /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>
@@ -1802,8 +1783,7 @@ public partial class PatientBody {
 
     /// <summary>Takes the tissue's current region. True when it changed.</summary>
     private bool UpdateRegion() {
-        if (_nextRegion.Length != Tissue.Rest.Length) { _nextRegion = new byte[Tissue.Rest.Length]; }
-        var region = _nextRegion;
+        var region = Buffers.Sized(ref _nextRegion, Tissue.Rest.Length);
         Tissue.Region(region);
         for (var k = 0; k < region.Length; k++) {
             if (region[k] == 0 || !_onGown[k] || Tissue.Turned(k)) { continue; }
@@ -1815,11 +1795,7 @@ public partial class PatientBody {
             return false;
         }
         (_region, _nextRegion) = (region, _region);
-        if (_regionEdge.Length != region.Length) {
-            _regionEdge = new bool[region.Length];
-        } else {
-            Array.Clear(_regionEdge);
-        }
+        Buffers.Cleared(ref _regionEdge, region.Length);
         var last = new Vector2I(Tissue.ResX, Tissue.ResY);
         for (var k = 0; k < region.Length; k++) {
             if (region[k] == 1) {

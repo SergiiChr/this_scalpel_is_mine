@@ -1663,10 +1663,7 @@ public sealed partial class TissueSim {
             return _hanging;
         }
         _hangingFor = (StepsDone, hasFloor);
-        if (_hanging.Length != Off.Length) {
-            _hanging = new bool[Off.Length];
-        }
-        Off.CopyTo(_hanging, 0);
+        Buffers.Copied(ref _hanging, Off);
         if (FloorAt is not null && Settled.Length == Pos.Length) {
             foreach (var k in _offList) {
                 if (_hanging[k] && Pos[k].DistanceSquaredTo(Settled[k]) > LiftedOff * LiftedOff) {
@@ -1692,7 +1689,7 @@ public sealed partial class TissueSim {
 
     private void FillTriangles(TissueDepth depth, int[] triangles, out int count) {
         count = 0;
-        if (_triangleOpen.Length != _springCount) { _triangleOpen = new bool[_springCount]; } else { Array.Clear(_triangleOpen); }
+        Buffers.Cleared(ref _triangleOpen, _springCount);
         foreach (var s in _severed) {
             if (DepthOf(s) >= depth && GapOf(s) > 0f) {
                 _triangleOpen[s] = true;

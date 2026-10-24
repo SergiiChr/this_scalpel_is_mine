@@ -1048,7 +1048,7 @@ public partial class BloodFlow : Node3D {
             var size = _layerSiteSize * _layerSiteToField.Basis.Scale.X;
             var nx = Math.Min(Mathf.CeilToInt(size.X / BodyBloodLayer.CellSize), MaxSiteSamples);
             var ny = Math.Min(Mathf.CeilToInt(size.Y / BodyBloodLayer.CellSize), MaxSiteSamples);
-            if (_siteCoverage.Length != nx * ny) { _siteCoverage = new float[nx * ny]; }
+            Buffers.Sized(ref _siteCoverage, nx * ny);
             var step = new Vector2(1f / nx, 1f / ny);
             for (var j = 0; j < ny; j++) {
                 for (var i = 0; i < nx; i++) {
