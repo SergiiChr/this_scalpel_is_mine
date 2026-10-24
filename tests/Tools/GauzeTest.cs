@@ -17,7 +17,7 @@ namespace Scalpel.Tests.Tools;
 [GodotArgs("--fixed-fps", "60")]
 public class GauzeTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private static readonly BudgetAllowance BudgetOverride = new("gauze preparation and bleeding simulation exceed the recorded CPU/render budget", 18f);
+    private static readonly BudgetAllowance BudgetOverride = new("gauze preparation and bleeding simulation exceed the recorded CPU/render budget; worst measured 6.7x", 9f);
 
     private readonly List<string> _toasts = [];
     private IDisposable? _debugHud;

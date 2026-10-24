@@ -24,7 +24,8 @@ public class GelpiTest {
     private const float ThighOpen = 0.025f;
     private const float Ridge = 0.008f;
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 24.5f);
+    private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget: holding the skin open rebuilds its layers, with garbage "
+        + "collection pauses; worst measured 9x", 12f);
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task GelpiSetInACutHoldsItOpenUntilTakenOut() {
