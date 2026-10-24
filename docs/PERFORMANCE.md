@@ -48,6 +48,11 @@
   Whole surgery frames, every thread's allocations, are held to measured budgets with `AllocationBudget.CheckFrames()`:
   idle, cutting and bleeding. A change that adds a third more garbage to them fails; one that removes some lowers the
   budget.
+- Leaks: `MemorySoakTest` plays short surgeries one after another in one session and fails when, after a warm-up, the
+  managed heap or Godot's own memory grows more than a small allowance per surgery, or objects, nodes or resources
+  stay behind.
+  Run it after changes to what a surgery builds or frees, or to anything that outlives a surgery (autoloads, statics,
+  signals on them).
 - Every frame budget check also reports what its frames allocated, on every thread, the garbage collections that
   caused and the longest collection pause, to find where garbage comes from.
 - Use performant algorithms and data structures wherever possible.
