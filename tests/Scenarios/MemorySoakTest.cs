@@ -48,6 +48,7 @@ public class MemorySoakTest {
             AssertBool(late.Managed - early.Managed <= allowed && late.Godot - early.Godot <= allowed)
                 .OverrideFailureMessage($"memory grows more than {AllowedBytesPerSurgery / 1024} KiB per surgery, {report}")
                 .IsTrue();
+            // Every surgery is the same, seeded one: nothing is loaded for the first time after the warm-up.
             AssertBool(late.Objects <= early.Objects && late.Nodes <= early.Nodes && late.Resources <= early.Resources)
                 .OverrideFailureMessage($"surgeries leave objects behind, {report}").IsTrue();
         } finally {
@@ -59,25 +60,27 @@ public class MemorySoakTest {
     /// cut into the tissue and bleeding, the patient signed out with the job undone and the surgery freed.</summary>
     private static async Task PlayerOperatesAndDischarges() {
         var driver = SurgeryDriver.Create();
-        await driver.Start("appendectomy");
-        SurgeryState.PatientIsAsleep(driver.Patient);
-        await driver.PlayerIncises(0.05f);
-        await Frames.Seconds(2f);
-        await driver.PlayerDischarges();
-        AssertBool(driver.Surgery.Finished).OverrideFailureMessage("the surgery ends on the signature").IsTrue();
-        await driver.Stop();
+        try {
+            await driver.Start("appendectomy");
+            SurgeryState.PatientIsAsleep(driver.Patient);
+            await driver.PlayerIncises(0.05f);
+            await Frames.Seconds(2f);
+            await driver.PlayerDischarges();
+            AssertBool(driver.Surgery.Finished).OverrideFailureMessage("the surgery ends on the signature").IsTrue();
+        } finally {
+            await driver.Stop();
+        }
     }
 
     /// <summary>Memory in use once what the surgery left has been freed: Godot's queued frees, then the managed
     /// garbage and the Godot objects its finalizers release.</summary>
     private static async Task<Usage> Settled() {
         await Frames.Process(5);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
+        // Not GC.Collect(): a compacting collection can crash on the wrappers the surgery just let go.
+        ManagedRuntime.CollectNow();
         await Frames.Process(5);
         static long Monitor(Performance.Monitor monitor) => (long)Performance.GetMonitor(monitor);
-        return new Usage(GC.GetTotalMemory(true), Monitor(Performance.Monitor.MemoryStatic),
+        return new Usage(GC.GetTotalMemory(false), Monitor(Performance.Monitor.MemoryStatic),
             Monitor(Performance.Monitor.ObjectCount), Monitor(Performance.Monitor.ObjectNodeCount),
             Monitor(Performance.Monitor.ObjectResourceCount));
     }
