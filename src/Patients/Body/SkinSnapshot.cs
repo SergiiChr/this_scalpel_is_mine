@@ -19,16 +19,11 @@ internal sealed class SkinSnapshot {
     /// the simulated skin is drawn from the body's own, and <paramref name="simulated"/> where it replaces it.</param>
     internal void Fill(ReadOnlySpan<float> heights, int side, ReadOnlySpan<float> support, ReadOnlySpan<Vector3> moved,
         ReadOnlySpan<bool> simulated, int resX, int resY, Vector2 siteSize) {
-        _heights = Copy(heights, _heights);
-        _support = Copy(support, _support);
-        _moved = Copy(moved, _moved);
-        _simulated = Copy(simulated, _simulated);
+        Buffers.Copied(ref _heights, heights);
+        Buffers.Copied(ref _support, support);
+        Buffers.Copied(ref _moved, moved);
+        Buffers.Copied(ref _simulated, simulated);
         (_side, _resX, _resY, _siteSize) = (side, resX, resY, siteSize);
-    }
-
-    private static T[] Copy<T>(ReadOnlySpan<T> from, T[] into) {
-        from.CopyTo(Buffers.Sized(ref into, from.Length));
-        return into;
     }
 
     /// <summary>Where the skin at <paramref name="uv"/> is drawn now (site space).</summary>

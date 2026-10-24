@@ -21,4 +21,11 @@ internal static class Buffers {
         }
         return array;
     }
+
+    /// <summary><paramref name="array"/>, <see cref="Sized{T}"/> to <paramref name="from"/> and holding a copy of
+    /// it.</summary>
+    internal static T[] Copied<T>(ref T[] array, ReadOnlySpan<T> from) {
+        from.CopyTo(Sized(ref array, from.Length));
+        return array;
+    }
 }

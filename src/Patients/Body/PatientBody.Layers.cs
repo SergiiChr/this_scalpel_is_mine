@@ -1361,13 +1361,10 @@ public partial class PatientBody {
         public List<int> PointedIndex { get; } = [];
     }
 
-    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them (<see cref="Buffers.Sized{T}"/>).
-    /// </summary>
-    private static T[] Filled<T>(ref T[] array, List<T> list) {
-        var filled = Buffers.Sized(ref array, list.Count);
-        list.CopyTo(filled);
-        return filled;
-    }
+    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them
+    /// (<see cref="Buffers.Copied{T}"/>).</summary>
+    private static T[] Filled<T>(ref T[] array, List<T> list) =>
+        Buffers.Copied(ref array, CollectionsMarshal.AsSpan(list));
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
     /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>

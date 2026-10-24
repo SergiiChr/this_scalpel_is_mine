@@ -1663,7 +1663,7 @@ public sealed partial class TissueSim {
             return _hanging;
         }
         _hangingFor = (StepsDone, hasFloor);
-        Off.CopyTo(Buffers.Sized(ref _hanging, Off.Length), 0);
+        Buffers.Copied(ref _hanging, Off);
         if (FloorAt is not null && Settled.Length == Pos.Length) {
             foreach (var k in _offList) {
                 if (_hanging[k] && Pos[k].DistanceSquaredTo(Settled[k]) > LiftedOff * LiftedOff) {
