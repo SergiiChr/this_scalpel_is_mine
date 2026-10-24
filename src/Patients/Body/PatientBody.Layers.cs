@@ -1060,9 +1060,11 @@ public partial class PatientBody {
                 normals[v] = normals[v].Lerp(faceNormals[v].Normalized(), plan.Other[v] >= 0 || plan.Apex.ContainsKey(v) ? 1f : moved).Normalized();
             }
         }
-        var refinedVertices = new Vector3[vertexCount + plan.Midpoints.Count + plan.Centers.Count];
-        var refinedNormals = new Vector3[refinedVertices.Length];
-        var refinedUvs = new Vector2[refinedVertices.Length];
+        var output = scratch.NextOutput();
+        var refinedCount = vertexCount + plan.Midpoints.Count + plan.Centers.Count;
+        var refinedVertices = Sized(ref output.Vertices, refinedCount);
+        var refinedNormals = Sized(ref output.Normals, refinedCount);
+        var refinedUvs = Sized(ref output.Uvs, refinedCount);
         vertices.CopyTo(refinedVertices, 0);
         normals.CopyTo(refinedNormals, 0);
         uvs.CopyTo(refinedUvs, 0);
@@ -1100,7 +1102,8 @@ public partial class PatientBody {
         }
         var index = plan.RefinedIndex;
         if (pointedFrom.Count > 0) {
-            index = new List<int>(plan.RefinedIndex.Count + pointedFrom.Count * 3);
+            index = output.PointedIndex;
+            index.Clear();
             for (var t = 0; t < plan.RefinedOf.Count; t++) {
                 // The closed end's three triangles start at an index pointedFrom holds.
                 var end = pointedFrom.Contains(t * 3) || pointedFrom.Contains(t * 3 - 3) || pointedFrom.Contains(t * 3 - 6);
@@ -1148,6 +1151,7 @@ public partial class PatientBody {
         var (wallVertices, wallNormals, wallUvs) = (scratch.WallVertices, scratch.WallNormals, scratch.WallUvs);
         var (wallColors, wallDepths, wallIndices) = (scratch.WallColors, scratch.WallDepths, scratch.WallIndices);
         var lipNormals = scratch.LipNormals;
+        var lipColumns = scratch.LipColumns;
         Vector3 WallNormal(int w) {
             var (a, b) = (plan.Wall[w], plan.Wall[w + 1]);
             var bottom = vertices[a] - Outward(layer, plan.Owner[a]) * WallThickness(plan.Owner[a]);
@@ -1212,7 +1216,23 @@ public partial class PatientBody {
                 (mid, midOut, midNormal, midThick, (swellA + swellB) * 0.5f, midUv, plan.Owner[a]),
                 (topB, outB, normalB, thickB, swellB, uvs[b], plan.Owner[b])];
             var first = wallVertices.Count;
-            foreach (var (top, outward, normal, thick, most, uv, owner) in columns) {
+            for (var column = 0; column < columns.Length; column++) {
+                // A lip vertex's column is the same down each wall beside it: made once, copied for the next.
+                var lipVertex = column == 0 ? a : column == 2 ? b : -1;
+                if (lipVertex >= 0 && lipColumns.TryGetValue(lipVertex, out var made)) {
+                    for (var row = made; row <= made + WallRows; row++) {
+                        wallVertices.Add(wallVertices[row]);
+                        wallNormals.Add(wallNormals[row]);
+                        wallUvs.Add(wallUvs[row]);
+                        wallColors.Add(wallColors[row]);
+                        wallDepths.Add(wallDepths[row]);
+                    }
+                    continue;
+                }
+                if (lipVertex >= 0) {
+                    lipColumns[lipVertex] = wallVertices.Count;
+                }
+                var (top, outward, normal, thick, most, uv, owner) = columns[column];
                 // A wall drops nearly straight down from its top: the resting skin over it is the one over its top.
                 var ceiling = RestingCeiling(top, owner);
                 for (var row = 0; row <= WallRows; row++) {
@@ -1270,14 +1290,24 @@ public partial class PatientBody {
             }
         }
         return (
-            Surface.Of(refinedVertices, refinedNormals, refinedUvs, [.. index]),
-            Surface.Of([.. wallVertices], [.. wallNormals], [.. wallUvs], [.. wallIndices], [.. wallColors], [.. wallDepths]));
+            Surface.Of(refinedVertices, refinedNormals, refinedUvs, Filled(ref output.Indices, index)),
+            Surface.Of(Filled(ref output.WallVertices, wallVertices), Filled(ref output.WallNormals, wallNormals),
+                Filled(ref output.WallUvs, wallUvs), Filled(ref output.WallIndices, wallIndices),
+                Filled(ref output.WallColors, wallColors), Filled(ref output.WallDepths, wallDepths)));
     }
 
     /// <summary>One layer's working space for FillLayer(), kept between rebuilds: a rebuild every other frame would
     /// otherwise allocate most of what the game allocates, and the collections that frees stall frames. Per layer: the
-    /// layers are filled at once. What a filled surface keeps is allocated anew.</summary>
+    /// layers are filled at once.</summary>
     private sealed class FillScratch {
+        /// <summary>The arrays a filled surface keeps, in two sets taken in turn: the one published last stays intact
+        /// for what reads the drawn tissue (ExposedAt(), the skin's sheet) while the next build fills the other. A
+        /// build is always published before the next one starts (PublishLayers()).</summary>
+        private readonly FillOutput[] _outputs = [new(), new()];
+        private int _output;
+
+        public FillOutput NextOutput() => _outputs[_output ^= 1];
+
         public Vector3[] Vertices = [];
         public Vector3[] Normals = [];
         public Vector2[] Uvs = [];
@@ -1296,6 +1326,8 @@ public partial class PatientBody {
         public Dictionary<int, Vector3> LipNormals { get; } = [];
         public Dictionary<int, (Vector3 Out, float Thick)> LipDown { get; } = [];
         public Dictionary<int, (Vector3 Out, float Thick)> EasedLipDown { get; } = [];
+        /// <summary>Where each lip vertex's column down the walls starts in the wall lists.</summary>
+        public Dictionary<int, int> LipColumns { get; } = [];
 
         public void ClearWalls() {
             WallVertices.Clear();
@@ -1306,6 +1338,7 @@ public partial class PatientBody {
             WallIndices.Clear();
             LipNormals.Clear();
             LipDown.Clear();
+            LipColumns.Clear();
         }
     }
 
@@ -1320,41 +1353,65 @@ public partial class PatientBody {
         return array;
     }
 
+    /// <summary>A filled surface's arrays, kept between the builds that use them (FillScratch.NextOutput()).</summary>
+    private sealed class FillOutput {
+        public Vector3[] Vertices = [];
+        public Vector3[] Normals = [];
+        public Vector2[] Uvs = [];
+        public int[] Indices = [];
+        public Vector3[] WallVertices = [];
+        public Vector3[] WallNormals = [];
+        public Vector2[] WallUvs = [];
+        public int[] WallIndices = [];
+        public Color[] WallColors = [];
+        public Vector2[] WallDepths = [];
+        /// <summary>The sheet's triangles where a cut's end is drawn pointed: kept with the sheet, as the skin's is
+        /// read until the next build (RememberSkinSheet()).</summary>
+        public List<int> PointedIndex { get; } = [];
+    }
+
+    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them (<see cref="Sized{T}"/>).
+    /// </summary>
+    private static T[] Filled<T>(ref T[] array, List<T> list) {
+        var filled = Sized(ref array, list.Count);
+        list.CopyTo(filled);
+        return filled;
+    }
+
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
     /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>
     private readonly ContactSurface[] _skinContacts = [new(), new()];
     private Vector3[] _skinSheet = [];
     private Vector2[] _skinSheetUv = [];
     private List<int> _skinSheetIndex = [];
-    private readonly Dictionary<Vector2I, List<int>> _skinBuckets = [];
+    private readonly CellGrid _skinBuckets = new(SkinBucket);
     private const float SkinBucket = 0.01f;
+    /// <summary>The skin's sheet in cells narrower than <see cref="SkinBucket"/>, for UnderSkin(): it runs for every
+    /// vertex under the skin and down the walls, so each looks through only a few triangles. A triangle's cells take in
+    /// how far outside it UnderSkin() still counts a point in it.</summary>
+    private readonly CellGrid _underSkinCells = new(0.0025f);
     /// <summary>How far (meters) what lies under the skin stays below the skin drawn over it.</summary>
     private const float UnderSkinAbove = 0.0003f;
+    /// <summary>How far outside a skin triangle (of its weights) UnderSkin() still keeps a point under it: where two
+    /// meet, a point on their edge is under both.</summary>
+    private const float UnderSkinOutside = 0.001f;
 
     private void RememberSkinSheet(Vector3[] vertices, Vector2[] uvs, List<int> index) {
         _skinSheet = vertices;
         _skinSheetUv = uvs;
         _skinSheetIndex = index;
-        foreach (var bucket in _skinBuckets.Values) {
-            bucket.Clear();
-        }
+        _skinBuckets.Clear();
+        _underSkinCells.Clear();
         for (var t = 0; t < index.Count; t += 3) {
             var (a, b, c) = (vertices[index[t]], vertices[index[t + 1]], vertices[index[t + 2]]);
-            var low = SkinCell(a.Min(b).Min(c));
-            var high = SkinCell(a.Max(b).Max(c));
-            for (var x = low.X; x <= high.X; x++) {
-                for (var z = low.Y; z <= high.Y; z++) {
-                    if (!_skinBuckets.TryGetValue(new Vector2I(x, z), out var bucket)) {
-                        _skinBuckets[new Vector2I(x, z)] = bucket = [];
-                    }
-                    bucket.Add(t);
-                }
-            }
+            var (min, max) = (a.Min(b).Min(c), a.Max(b).Max(c));
+            _skinBuckets.Add(min, max);
+            var outside = new Vector3(1f, 0f, 1f) * ((Mathf.Max(max.X - min.X, max.Z - min.Z) * UnderSkinOutside * 2f) + 1e-6f);
+            _underSkinCells.Add(min - outside, max + outside);
         }
+        _skinBuckets.Index();
+        _underSkinCells.Index();
     }
-
-    private static Vector2I SkinCell(Vector3 at) =>
-        new(Mathf.FloorToInt(at.X / SkinBucket), Mathf.FloorToInt(at.Z / SkinBucket));
 
     /// <summary>
     /// <paramref name="point"/> of a layer under the skin, owned by grid point <paramref name="k"/>, kept below the
@@ -1363,11 +1420,12 @@ public partial class PatientBody {
     /// over is left alone: its fat is drawn on top of it.
     /// </summary>
     private Vector3 UnderSkin(Vector3 point, int k) {
-        if (_renderTurnover || Tissue.Turned(k) || !_skinBuckets.TryGetValue(SkinCell(point), out var bucket)) {
+        if (_renderTurnover || Tissue.Turned(k)) {
             return point;
         }
         var ceiling = float.NaN;
-        foreach (var t in bucket) {
+        foreach (var face in _underSkinCells.Items(point)) {
+            var t = face * 3;
             var (a, b, c) = (_skinSheet[_skinSheetIndex[t]], _skinSheet[_skinSheetIndex[t + 1]], _skinSheet[_skinSheetIndex[t + 2]]);
             var area = (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
             if (Mathf.Abs(area) < 1e-12f) {
@@ -1376,7 +1434,7 @@ public partial class PatientBody {
             var wb = ((point.X - a.X) * (c.Z - a.Z) - (point.Z - a.Z) * (c.X - a.X)) / area;
             var wc = ((b.X - a.X) * (point.Z - a.Z) - (b.Z - a.Z) * (point.X - a.X)) / area;
             var wa = 1f - wb - wc;
-            if (wa < -0.001f || wb < -0.001f || wc < -0.001f) {
+            if (wa < -UnderSkinOutside || wb < -UnderSkinOutside || wc < -UnderSkinOutside) {
                 continue;
             }
             var height = a.Y * wa + b.Y * wb + c.Y * wc;
