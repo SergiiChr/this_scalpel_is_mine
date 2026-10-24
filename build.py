@@ -82,9 +82,9 @@ NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
 # KeyFrames.SaveViewport's line for each key frame it saved, in its case's output.
 KEY_FRAME_SAVED = re.compile(r"^\s*Key frame saved: (.+?)\s*$", re.MULTILINE)
-# A case over its time limit, as problems() or GdUnit4 (stopping it at its Timeout) report it. It isn't retried: it
-# would run as slowly the next time, and a hang would take the whole limit again.
-OVERRUN = re.compile(r"took \d+ s, longer than \d+ s\.$|The execution has timed out after")
+# A case that finished but ran over its time limit, as problems() reports it. It isn't retried: it would run as slowly
+# the next time. A case GdUnit4 stops at its Timeout may have hung, and is.
+OVERRUN = re.compile(r"took \d+ s, longer than \d+ s\.$")
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
 # Unexplained errors outside the game that now and then hit a test process, with no game code on their stack; the
@@ -536,6 +536,7 @@ class Outcome:
     # The key frames (PNGs) it saved.
     key_frames: set[Path] = field(default_factory=set)
     failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
+    overran: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     attributed: bool = False
 
 
@@ -545,6 +546,8 @@ class ProcessResult:
     executed: int = 0
     # The cases that failed (JUnit class and name), each with the key frames it saved.
     failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
+    # Those of them that failed on nothing but running over their time limit (OVERRUN), with those failures.
+    overran: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     # Every failure belongs to one of them: running them again is running all that failed.
     attributed: bool = False
     # The key frames (PNGs) it saved: the files new or rewritten while it ran. A process that takes key frames runs
@@ -634,6 +637,7 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
     if not executed:
         found.append("[ERROR] Runnable test cases were selected, but no test cases ran.")
     failed_cases: dict[tuple[str, str], set[Path]] = {}
+    overran: dict[tuple[str, str], list[str]] = {}
     for case in cases:
         name = f"{case.get('classname', '')} {case.get('name', '')}"
         before = len(found)
@@ -648,6 +652,8 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
         if len(found) > before or len(cases) == 1:
             output = "".join(element.text or "" for element in case.iter("system-out"))
             failed_cases[(case.get("classname", ""), case.get("name", ""))] = {Path(path) for path in KEY_FRAME_SAVED.findall(output)}
+            if len(found) > before and all(OVERRUN.search(line) for line in found[before:]):
+                overran[(case.get("classname", ""), case.get("name", ""))] = found[before:]
     in_cases = len(found)
     output = log.read_text(errors="replace")
     # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
@@ -660,7 +666,10 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
         found.append(f"[ERROR] Test process exited with status {status}.")
     # A process with one case fails only for it, whatever it fails on.
     attributed = bool(found) and (len(cases) == 1 or len(found) == in_cases)
-    return ProcessResult(found, executed, failed_cases if found else {}, attributed)
+    # A process with one case also fails for it on errors outside it.
+    if len(cases) == 1 and len(found) > in_cases:
+        overran.clear()
+    return ProcessResult(found, executed, failed_cases if found else {}, overran, attributed)
 
 
 def key_frame_files() -> dict[Path, int]:
@@ -794,6 +803,7 @@ def add(outcome: Outcome, result: ProcessResult) -> None:
     outcome.failures += result.failures
     outcome.executed += result.executed
     outcome.failed_cases |= result.failed_cases
+    outcome.overran |= result.overran
     outcome.attributed &= result.attributed or not result.failures
     outcome.key_frames |= result.key_frames
 
@@ -913,19 +923,22 @@ def test(arguments: list[str]) -> int:
         # A case failing in a regression for the baseline runs once more on its own, its key frames taken again in
         # place of the failed attempt's: a flaky case shouldn't cost a whole new regression.
         # A failure no case owns (an engine error between cases) runs the whole suite again.
-        # A suite that only ran over its time limits (OVERRUN) is not.
+        # Cases that only ran over their time limit (OVERRUN) are not: they would run as slowly again.
         for index, outcome in enumerate(outcomes):
-            if all(OVERRUN.search(failure) for failure in outcome.failures):
+            again = [case for case in outcome.failed_cases if case not in outcome.overran] if outcome.attributed else []
+            if not outcome.failures or outcome.attributed and not again:
                 continue
             kept = keep_attempt(outcome.log.stem)
-            again = list(outcome.failed_cases) if outcome.attributed else []
             what = f"cases {', '.join(name for _, name in again)}" if again else "suite"
             print(f"Running the failed {what} of {outcome.suite.full_name} again (first attempt kept in {kept}).", flush=True)
-            for path in {path for frames in outcome.failed_cases.values() for path in frames} if again else outcome.key_frames:
+            for path in {path for case in again for path in outcome.failed_cases[case]} if again else outcome.key_frames:
                 path.unlink(missing_ok=True)
             retry = run_cases(outcome.suite, options, again) if again else run_suite(outcome.suite, options)
             # Its folders are those of both attempts: the retry may save fewer key frames.
             retry.key_frames |= outcome.key_frames
+            # Cases left out still failed: on their time limit.
+            if again:
+                retry.failures += [line for lines in outcome.overran.values() for line in lines]
             outcomes[index] = retry
             print(report(retry), flush=True)
     pending = [
