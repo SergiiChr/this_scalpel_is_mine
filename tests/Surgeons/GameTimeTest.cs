@@ -33,4 +33,24 @@ public class GameTimeTest {
         }
         await driver.Stop();
     }
+
+    /// <summary>Game time stands still while the tree is paused, as for a key frame, and goes on by one tick a frame
+    /// after.</summary>
+    [TestCase]
+    public async Task GameTimeStopsWhilePaused() {
+        var driver = SurgeryDriver.Create();
+        await driver.Start("hand_stitch");
+        var before = GameClock.Msec;
+        Frames.Tree.Paused = true;
+        try {
+            await Frames.Physics(30);
+        } finally {
+            Frames.Tree.Paused = false;
+        }
+        AssertInt((int)(GameClock.Msec - before)).OverrideFailureMessage("30 paused ticks don't move game time").IsEqual(0);
+        await Frames.Physics(60);
+        AssertInt((int)(GameClock.Msec - before)).OverrideFailureMessage("60 ticks after the pause move it a second on")
+            .IsEqual(1000);
+        await driver.Stop();
+    }
 }
