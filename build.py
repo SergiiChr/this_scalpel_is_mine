@@ -600,6 +600,9 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
     # .NET sizes its young generation by the CPU's L3 cache. Frame times are judged as on the reference machine (an
     # i9-14900HX, 36 MB of L3): a server CPU's far bigger cache would let garbage pile up into one long pause.
     environment.setdefault("DOTNET_GCgen0size", hex(36 << 20))
+    # What the exported game's runtime config sets (TieredCompilationQuickJitForLoops in the .csproj): the editor build
+    # tests run on reads Godot's own runtime config instead.
+    environment.setdefault("DOTNET_TC_QuickJitForLoops", "0")
     if takes_key_frames(suite, options):
         environment["WITH_KEY_FRAMES"] = "1"
         # Always a virtual display and the software renderer, on a machine with a screen and a GPU too.

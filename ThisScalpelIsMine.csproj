@@ -12,6 +12,10 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <IsTestProject Condition="!$(Configuration.StartsWith('Export'))">true</IsTestProject>
+    <!-- Methods with loops are compiled optimized right away instead of starting unoptimized: the loading screen's
+         warm-up then compiles them for good. Otherwise a long loop running unoptimized is compiled again on the main
+         thread, mid-frame, each time it gets hot (on-stack replacement): 10-70 ms stalls cutting and pulling skin. -->
+    <TieredCompilationQuickJitForLoops>false</TieredCompilationQuickJitForLoops>
   </PropertyGroup>
 
   <!-- Tests build Debug: optimized, so the frame budget times the code an exported game runs, not code compiled for

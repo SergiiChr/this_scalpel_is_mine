@@ -75,7 +75,8 @@ public class RetractorTest {
         var hooked = retractor.TipPosition();
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(2f);
-        AssertThat(retractor.State).OverrideFailureMessage("let go of with Grab, the retractor stays hooked").IsEqual(ToolState.Standing);
+        AssertBool(retractor.State == ToolState.Standing)
+            .OverrideFailureMessage($"let go of with Grab, the retractor stays hooked ({retractor.State})").IsTrue();
         AssertBool(hand.Attached).OverrideFailureMessage("and the hand is free").IsFalse();
         AssertFloat((retractor.TipPosition() - hooked).Slide(Vector3.Up).Length())
             .OverrideFailureMessage("the hook stays where it held the skin").IsLess(0.002f);
@@ -384,8 +385,8 @@ public class RetractorTest {
             * (retractor.TipPosition() - driver.Body.Site.ToGlobal(origin));
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(1f);
-        AssertThat(retractor.State).OverrideFailureMessage($"retractor {number} stays hooked when let go of")
-            .IsEqual(ToolState.Standing);
+        AssertBool(retractor.State == ToolState.Standing)
+            .OverrideFailureMessage($"retractor {number} stays hooked when let go of ({retractor.State})").IsTrue();
         AssertPointsAway(retractor, driver.Body.Site.GlobalBasis * pulled);
     }
 
