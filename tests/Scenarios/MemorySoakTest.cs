@@ -25,6 +25,9 @@ public class MemorySoakTest {
     /// games. A surgery left behind is tens of MB.
     /// </summary>
     private const long AllowedBytesPerSurgery = 128 * 1024;
+    /// <summary>Real time a surgery's last sounds get to end; a sound still playing after it counts as left behind.
+    /// </summary>
+    private const ulong SoundsEndMsec = 10_000;
 
     private readonly record struct Usage(long Managed, long Godot, long Objects, long Nodes, long Resources) {
         public override string ToString() => $"managed {Managed / 1024} KiB, Godot {Godot / 1024} KiB, "
@@ -72,9 +75,15 @@ public class MemorySoakTest {
         }
     }
 
-    /// <summary>Memory in use once what the surgery left has been freed: Godot's queued frees, then the managed
-    /// garbage and the Godot objects its finalizers release.</summary>
+    /// <summary>Memory in use once what the surgery left has been freed: its last sounds, Godot's queued frees, then
+    /// the managed garbage and the Godot objects its finalizers release.</summary>
     private static async Task<Usage> Settled() {
+        // The last sounds play out on the Sfx autoload, in real time: each is a node until it ends.
+        var sounds = Frames.Root.GetNode<Sfx>("Sfx");
+        var giveUp = Time.GetTicksMsec() + SoundsEndMsec;
+        while (sounds.GetChildCount() > 0 && Time.GetTicksMsec() < giveUp) {
+            await Frames.NextProcess();
+        }
         await Frames.Process(5);
         // Not GC.Collect(): a compacting collection can crash on the wrappers the surgery just let go.
         ManagedRuntime.CollectNow();
