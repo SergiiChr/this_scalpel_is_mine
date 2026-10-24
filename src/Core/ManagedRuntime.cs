@@ -11,6 +11,8 @@ namespace Scalpel.Core;
 /// itself up the first time it's used: the first cut, the first delivery and the like each cost 10-35 ms on the main
 /// thread. So at start-up a background thread does it ahead: compiles the game's code and the library code it calls,
 /// and sets up the engine classes it uses. Code those call in turn still compiles on first use, a few ms at most.
+/// Methods with loops are compiled optimized for good here (TieredCompilationQuickJitForLoops in the .csproj): started
+/// unoptimized, each hot loop would be compiled again on the main thread mid-frame, 10-70 ms at a time.
 /// (Godot loads the game assembly from memory, which rules out precompiled ReadyToRun code.) The loading screen waits
 /// for it.
 /// </summary>

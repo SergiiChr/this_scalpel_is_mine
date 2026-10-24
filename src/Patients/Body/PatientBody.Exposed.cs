@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Scalpel.Patients;
 
 /// <summary>Where a needle coming down onto the site rests (site space): the height its tip stops at (along the
@@ -21,7 +23,8 @@ public partial class PatientBody {
     /// <see cref="BoundsSlack"/>: a point worked out from a face's corners can land a rounding error outside them.
     /// </summary>
     private readonly List<(Rect2 Across, float Top)> _drawnBounds = [];
-    private readonly Dictionary<Vector2I, List<int>> _drawnBuckets = [];
+    /// <summary><see cref="_drawnFaces"/> by bucket.</summary>
+    private readonly CellGrid _drawnBuckets = new(SkinBucket);
     /// <summary>The faces near a needle's tip (ExposedAt()), kept to fill again.</summary>
     private readonly List<int> _nearFaces = [];
     /// <summary>For each face, the last ExposedAt() query that took it near (<see cref="_nearQuery"/>): a face over
@@ -38,43 +41,39 @@ public partial class PatientBody {
     private void BucketDrawnTissue((Surface? Sheet, Surface? Walls)[] built) {
         _drawnFaces.Clear();
         _drawnBounds.Clear();
-        foreach (var bucket in _drawnBuckets.Values) {
-            bucket.Clear();
-        }
+        _drawnBuckets.Clear();
         for (var layer = 0; layer < built.Length; layer++) {
             if (!_layers[layer].Visible) {
                 continue;
             }
             var (sheet, walls) = built[layer];
-            BucketDrawnFaces(sheet, LayerDepth[layer], false);
-            BucketDrawnFaces(walls, LayerDepth[layer], true);
+            AddDrawnFaces(sheet, LayerDepth[layer], false);
+            AddDrawnFaces(walls, LayerDepth[layer], true);
         }
+        _drawnBuckets.Index();
         if (_nearIn.Length < _drawnFaces.Count) {
             _nearIn = new int[_drawnFaces.Count * 2];
             _nearQuery = 0;
         }
     }
 
-    private void BucketDrawnFaces(Surface? surface, TissueDepth depth, bool wall) {
+    private void AddDrawnFaces(Surface? surface, TissueDepth depth, bool wall) {
         if (surface is null) {
             return;
         }
         var (v, index) = (surface.Vertices, surface.Indices);
-        for (var t = 0; t < index.Length; t += 3) {
-            var face = new DrawnFace(v[index[t]], v[index[t + 1]], v[index[t + 2]], depth, wall);
-            var (min, max) = (face.A.Min(face.B).Min(face.C), face.A.Max(face.B).Max(face.C));
-            var low = SkinCell(min);
-            var high = SkinCell(max);
-            for (var x = low.X; x <= high.X; x++) {
-                for (var z = low.Y; z <= high.Y; z++) {
-                    if (!_drawnBuckets.TryGetValue(new Vector2I(x, z), out var bucket)) {
-                        _drawnBuckets[new Vector2I(x, z)] = bucket = [];
-                    }
-                    bucket.Add(_drawnFaces.Count);
-                }
-            }
-            _drawnFaces.Add(face);
-            _drawnBounds.Add((new Rect2(min.X, min.Z, max.X - min.X, max.Z - min.Z).Grow(BoundsSlack), max.Y + BoundsSlack));
+        // Thousands of faces every time the layers are published: written in place, not added one by one.
+        var (first, count) = (_drawnFaces.Count, index.Length / 3);
+        CollectionsMarshal.SetCount(_drawnFaces, first + count);
+        CollectionsMarshal.SetCount(_drawnBounds, first + count);
+        var faces = CollectionsMarshal.AsSpan(_drawnFaces)[first..];
+        var bounds = CollectionsMarshal.AsSpan(_drawnBounds)[first..];
+        for (var f = 0; f < count; f++) {
+            var (a, b, c) = (v[index[f * 3]], v[index[(f * 3) + 1]], v[index[(f * 3) + 2]]);
+            faces[f] = new DrawnFace(a, b, c, depth, wall);
+            var (min, max) = (a.Min(b).Min(c), a.Max(b).Max(c));
+            _drawnBuckets.Add(min, max);
+            bounds[f] = (new Rect2(min.X, min.Z, max.X - min.X, max.Z - min.Z).Grow(BoundsSlack), max.Y + BoundsSlack);
         }
     }
 
@@ -107,17 +106,14 @@ public partial class PatientBody {
             BucketDrawnTissue(pending);
         }
         var p = new Vector2(local.X, local.Z);
-        var low = SkinCell(local - new Vector3(WallReach, 0f, WallReach));
-        var high = SkinCell(local + new Vector3(WallReach, 0f, WallReach));
+        var low = _drawnBuckets.CellOf(local - new Vector3(WallReach, 0f, WallReach));
+        var high = _drawnBuckets.CellOf(local + new Vector3(WallReach, 0f, WallReach));
         var faces = _nearFaces;
         faces.Clear();
         _nearQuery++;
         for (var x = low.X; x <= high.X; x++) {
             for (var z = low.Y; z <= high.Y; z++) {
-                if (!_drawnBuckets.TryGetValue(new Vector2I(x, z), out var near)) {
-                    continue;
-                }
-                foreach (var f in near) {
+                foreach (var f in _drawnBuckets.Items(x, z)) {
                     if (_nearIn[f] != _nearQuery) {
                         _nearIn[f] = _nearQuery;
                         faces.Add(f);

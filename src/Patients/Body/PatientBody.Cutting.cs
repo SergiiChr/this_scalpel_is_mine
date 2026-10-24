@@ -5,8 +5,8 @@ public partial class PatientBody {
     internal Vector2 CutUv(Vector3 p) {
         var uv = LocalToUv(p);
         var nearest = float.PositiveInfinity;
-        if (!_skinBuckets.TryGetValue(SkinCell(p), out var bucket)) { return uv; }
-        foreach (var t in bucket) {
+        foreach (var face in _skinBuckets.Items(p)) {
+            var t = face * 3;
             var ia = _skinSheetIndex[t];
             var ib = _skinSheetIndex[t + 1];
             var ic = _skinSheetIndex[t + 2];
@@ -28,16 +28,15 @@ public partial class PatientBody {
     /// A hole in the rendered sheet has no supporting surface, even where the continued solver sheet has a height.</summary>
     internal bool SkinTopAt(Vector3 point, out float height) {
         height = float.NegativeInfinity;
-        if (_skinBuckets.TryGetValue(SkinCell(point), out var near)) {
-            foreach (var t in near) {
-                var a = _skinSheet[_skinSheetIndex[t]];
-                var b = _skinSheet[_skinSheetIndex[t + 1]];
-                var c = _skinSheet[_skinSheetIndex[t + 2]];
-                var w = Barycentric(new Vector2(point.X, point.Z), new Vector2(a.X, a.Z),
-                    new Vector2(b.X, b.Z), new Vector2(c.X, c.Z));
-                if (w.IsFinite() && Mathf.Min(w.X, Mathf.Min(w.Y, w.Z)) >= -0.00001f) {
-                    height = Mathf.Max(height, a.Y * w.X + b.Y * w.Y + c.Y * w.Z);
-                }
+        foreach (var face in _skinBuckets.Items(point)) {
+            var t = face * 3;
+            var a = _skinSheet[_skinSheetIndex[t]];
+            var b = _skinSheet[_skinSheetIndex[t + 1]];
+            var c = _skinSheet[_skinSheetIndex[t + 2]];
+            var w = Barycentric(new Vector2(point.X, point.Z), new Vector2(a.X, a.Z),
+                new Vector2(b.X, b.Z), new Vector2(c.X, c.Z));
+            if (w.IsFinite() && Mathf.Min(w.X, Mathf.Min(w.Y, w.Z)) >= -0.00001f) {
+                height = Mathf.Max(height, a.Y * w.X + b.Y * w.Y + c.Y * w.Z);
             }
         }
         if (float.IsFinite(height)) { return true; }
@@ -69,8 +68,8 @@ public partial class PatientBody {
         var low = placed[0];
         var high = low;
         foreach (var point in placed) { low = low.Min(point); high = high.Max(point); }
-        var firstCell = SkinCell(low);
-        var lastCell = SkinCell(high);
+        var firstCell = _skinBuckets.CellOf(low);
+        var lastCell = _skinBuckets.CellOf(high);
         var firstAt = float.PositiveInfinity;
         var lastAt = float.NegativeInfinity;
         var first = Vector3.Zero;
@@ -80,8 +79,8 @@ public partial class PatientBody {
         _bladeFacesSeen.Clear();
         for (var z = firstCell.Y; z <= lastCell.Y; z++) {
             for (var x = firstCell.X; x <= lastCell.X; x++) {
-                if (!_skinBuckets.TryGetValue(new Vector2I(x, z), out var near)) { continue; }
-                foreach (var t in near) {
+                foreach (var face in _skinBuckets.Items(x, z)) {
+                    var t = face * 3;
                     if (!_bladeFacesSeen.Add(t)) { continue; }
                     var ia = _skinSheetIndex[t];
                     var ib = _skinSheetIndex[t + 1];

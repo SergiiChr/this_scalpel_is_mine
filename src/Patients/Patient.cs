@@ -247,6 +247,8 @@ public partial class Patient : Node3D {
                 Body.AddOrgan(uv, 0.06f, radius, new Color(0.55f, 0.2f, 0.2f).Lerp(new Color(0.7f, 0.5f, 0.4f), Rng.Randf()));
             }
         }
+        // The starting wounds gape and come to rest while loading, not in the first seconds of play.
+        Body.Tissue.StepUntilAsleep();
         if (scenario.DirtyStart) {
             Body.WoundMap.Disk(WoundMap.Layer.Fluids, WoundMap.Grime, new Vector2(0.5f, 0.5f), 0.6f, 0.4f, WoundMap.Mode.Max);
         }

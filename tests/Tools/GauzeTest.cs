@@ -13,11 +13,11 @@ namespace Scalpel.Tests.Tools;
 /// needle leaves on the site before and after wiping.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
+[TestCategory("smoke"), TestCategory("slow"), TestCategory("tool_gauze"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
 [GodotArgs("--fixed-fps", "60")]
 public class GauzeTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
-    private static readonly BudgetAllowance BudgetOverride = new("gauze preparation and bleeding simulation exceed the recorded CPU/render budget", 18f);
+    private static readonly BudgetAllowance BudgetOverride = new("gauze preparation and bleeding simulation exceed the recorded CPU/render budget; worst measured 6.7x", 9f);
 
     private readonly List<string> _toasts = [];
     private IDisposable? _debugHud;
@@ -28,7 +28,7 @@ public class GauzeTest {
     [AfterTest]
     public void NoDebugHud() => _debugHud?.Dispose();
 
-    [TestCase]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task GauzeStopsABleedForAWhileThenItComesBack() {
         var session = await ToolSession.Start("appendectomy", "gauze_holds");
         var driver = session.Driver;

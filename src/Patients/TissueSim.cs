@@ -495,6 +495,14 @@ public sealed partial class TissueSim {
         _winDirty = true;
     }
 
+    /// <summary>Steps the sim until it falls asleep, at most SettleSteps steps, as play would step it.</summary>
+    internal void StepUntilAsleep() {
+        for (var step = 0; step < SettleSteps && !IsSleeping; step++) {
+            Ticks++;
+            Substep();
+        }
+    }
+
     /// <summary>Particle k is on the site's fixed border or right next to it.</summary>
     private bool AtBorder(int k) {
         var at = CellOf(k);
