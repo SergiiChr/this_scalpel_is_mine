@@ -56,8 +56,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   docs/RELEASE.md. This default smoke run and full regressions don't check frame times; focused runs (`--tag`, `--case`) do.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots. Run
   after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). A case that fails in it
-  runs once more on its own, its key frames taken again (the whole suite when a failure belongs to no case); the first
-  attempt's logs go to `build/retries/`.
+  runs once more on its own, its key frames taken again (the whole suite when a failure belongs to no case), unless
+  it only ran over its time limit; the first attempt's logs go to `build/retries/`.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow

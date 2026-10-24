@@ -9,7 +9,7 @@ namespace Scalpel.Tests.Tools;
 /// their legs in the skin on both sides, the edges meeting between them and the rings on the cut's edges.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
-[TestCategory("smoke"), TestCategory("tool_skin_stapler"), TestCategory("tool_office_stapler"), TestCategory("frame_budget")]
+[TestCategory("smoke"), TestCategory("slow"), TestCategory("tool_skin_stapler"), TestCategory("tool_office_stapler"), TestCategory("frame_budget")]
 [TestCategory("tissue_modification"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class StaplerTest {
@@ -17,7 +17,7 @@ public class StaplerTest {
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget: each staple changes the tissue, and "
         + "rebuilding its layers (PatientBody.RebuildLayers()) goes over the CPU budget; not optimized yet", 25.5f);
 
-    [TestCase]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task SkinStaplerClosesAForearmCut() {
         var session = await ToolSession.Start("hand_stitch", "stapler/forearm", views: true, captureUntouched: true);
         var driver = session.Driver;

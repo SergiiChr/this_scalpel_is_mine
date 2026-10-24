@@ -54,6 +54,8 @@ other PR, and the next run verifies a newer commit that contains them. One relea
    it.
 2. Verify. Run `./build.py screenshot_review` on that commit. A suite that still fails after its retry is an issue
    (step 4), even when CI passed.
+   It takes about 2 h in a 4-core cloud container, as long as an agent's background command may run, so start it
+   detached and check on it until it ends: `setsid nohup ./build.py screenshot_review > build/release.log 2>&1 &`.
 3. Review the listed sheets against the PRs merged into `develop` between `main` and that commit. The features
    committed their own key frames, so every listed one is unexpected: a side effect, a missing key frame or a flaky
    render.

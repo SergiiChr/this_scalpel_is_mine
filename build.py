@@ -82,6 +82,9 @@ NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
 # KeyFrames.SaveViewport's line for each key frame it saved, in its case's output.
 KEY_FRAME_SAVED = re.compile(r"^\s*Key frame saved: (.+?)\s*$", re.MULTILINE)
+# A case over its time limit, as problems() or GdUnit4 (stopping it at its Timeout) report it. It isn't retried: it
+# would run as slowly the next time, and a hang would take the whole limit again.
+OVERRUN = re.compile(r"took \d+ s, longer than \d+ s\.$|The execution has timed out after")
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
 # Unexplained errors outside the game that now and then hit a test process, with no game code on their stack; the
@@ -910,8 +913,9 @@ def test(arguments: list[str]) -> int:
         # A case failing in a regression for the baseline runs once more on its own, its key frames taken again in
         # place of the failed attempt's: a flaky case shouldn't cost a whole new regression.
         # A failure no case owns (an engine error between cases) runs the whole suite again.
+        # A suite that only ran over its time limits (OVERRUN) is not.
         for index, outcome in enumerate(outcomes):
-            if not outcome.failures:
+            if all(OVERRUN.search(failure) for failure in outcome.failures):
                 continue
             kept = keep_attempt(outcome.log.stem)
             again = list(outcome.failed_cases) if outcome.attributed else []
