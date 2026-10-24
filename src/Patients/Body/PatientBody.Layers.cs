@@ -68,7 +68,9 @@ public partial class PatientBody {
         public List<(int A, int B)> Midpoints { get; } = [];
         /// <summary>The refined vertex of each lip edge's midpoint, by its two ends (lower first).</summary>
         public Dictionary<(int, int), int> MidpointOf { get; } = [];
-        public List<int> RefinedIndex { get; } = [];
+        /// <summary>The sheet's triangles with their lips refined. The skin's is kept as drawn (RememberSkinSheet()):
+        /// a new plan starts a new list, so it stays whole until the skin is filled again.</summary>
+        public List<int> RefinedIndex { get; private set; } = [];
         public List<(int A, int B, int C)> Centers { get; } = [];
         public Dictionary<int, int> OppositeLip { get; } = [];
         public Dictionary<(int, int), int> LipInside { get; } = [];
@@ -88,6 +90,36 @@ public partial class PatientBody {
         /// <summary>Per vertex, the vertices it shares a triangle edge with (see SmoothSheet()), made on first use.
         /// </summary>
         public List<int>[]? Neighbours { get; set; }
+        /// <summary>The last plan's neighbour lists, refilled by SheetNeighbours().</summary>
+        public List<int>[] SpareNeighbours { get; private set; } = [];
+
+        /// <summary>Empties the plan for the next topology, keeping what it allocated: the layers are planned again
+        /// on every staple, stitch or cut, and fresh plans were the largest garbage of those frames.</summary>
+        public void Clear() {
+            Owner.Clear();
+            Other.Clear();
+            Share.Clear();
+            Slide.Clear();
+            Uv.Clear();
+            Index.Clear();
+            Wall.Clear();
+            Midpoints.Clear();
+            RefinedIndex = new List<int>(RefinedIndex.Count);
+            Centers.Clear();
+            CutFaces.Clear();
+            Ends.Clear();
+            EndTapers.Clear();
+            RefinedOf.Clear();
+            Lip.Clear();
+            MidpointOf.Clear();
+            OppositeLip.Clear();
+            LipInside.Clear();
+            Apex.Clear();
+            if (Neighbours is { } neighbours) {
+                SpareNeighbours = neighbours;
+                Neighbours = null;
+            }
+        }
     }
 
     private readonly List<MeshInstance3D> _layers = [];
@@ -111,9 +143,23 @@ public partial class PatientBody {
     private readonly List<LayerPlan> _plans = [];
     private int _planFor = -1;
     /// <summary>The particles the plans' vertices need.</summary>
-    private List<int> _planned = [];
+    private readonly List<int> _planned = [];
     /// <summary>The planned particles and their neighbours (for normals).</summary>
-    private List<int> _around = [];
+    private readonly List<int> _around = [];
+    // PlanLayers()'s own scratch, reused: the grid cells already looked at, the triangles to draw and the depth cut
+    // into each of their edges, nothing taken off (for the layers under the skin), and, per layer planned, the
+    // crossings and particles given a vertex, a polygon's corners and which of them are crossings, a refined
+    // triangle's boundary, and each lip crossing's vertex by its ends.
+    private bool[] _cellMarked = [];
+    private bool[] _noneGone = [];
+    private readonly List<int> _planTriangles = [];
+    private readonly List<TissueDepth> _planCutDepths = [];
+    private readonly List<int> _planCrossed = [];
+    private readonly List<int> _planTouched = [];
+    private readonly List<int> _planPolygon = [];
+    private readonly List<bool> _planCrossing = [];
+    private readonly List<int> _planBoundary = [];
+    private readonly Dictionary<(int, int), int> _planCrossingOf = [];
     // Scratch space, one entry per particle (per spring end for _xmap), reused between rebuilds: the vertex each
     // particle or crossing got in the plan being made (-1: none yet), a mark, the uv of each particle, and where each
     // planned particle's skin lies now and each layer's (one array per layer: the layers are filled at once), which way
@@ -520,8 +566,13 @@ public partial class PatientBody {
         }
         // The triangles to draw: those touching the region, none of whose corners hang off the body. Six entries
         // each: three particles, then the springs of the edges between them in order.
-        var marked = new bool[Tissue.ResX * Tissue.ResY];
-        var triangles = new List<int>();
+        if (_cellMarked.Length != Tissue.ResX * Tissue.ResY) {
+            _cellMarked = new bool[Tissue.ResX * Tissue.ResY];
+        }
+        var marked = _cellMarked;
+        Array.Clear(marked);
+        var triangles = _planTriangles;
+        triangles.Clear();
         for (var k = 0; k < count; k++) {
             if (_region[k] == 0) {
                 continue;
@@ -537,68 +588,86 @@ public partial class PatientBody {
                     var a = j * stride + i;
                     var c = a + stride;
                     if (!(hanging[a] || hanging[a + 1] || hanging[c]) && _region[a] + _region[a + 1] + _region[c] > 0) {
-                        triangles.AddRange([a, a + 1, c, Tissue.SpringRight[a], Tissue.SpringDiag[a], Tissue.SpringDown[a]]);
+                        triangles.AddRange((ReadOnlySpan<int>)[a, a + 1, c, Tissue.SpringRight[a], Tissue.SpringDiag[a], Tissue.SpringDown[a]]);
                     }
                     if (!(hanging[a + 1] || hanging[c + 1] || hanging[c]) && _region[a + 1] + _region[c + 1] + _region[c] > 0) {
-                        triangles.AddRange([a + 1, c + 1, c, Tissue.SpringDown[a + 1], Tissue.SpringRight[c], Tissue.SpringDiag[a]]);
+                        triangles.AddRange((ReadOnlySpan<int>)[a + 1, c + 1, c, Tissue.SpringDown[a + 1], Tissue.SpringRight[c], Tissue.SpringDiag[a]]);
                     }
                 }
             }
         }
-        var cutDepths = new List<TissueDepth>();
+        var cutDepths = _planCutDepths;
+        cutDepths.Clear();
         for (var t = 0; t < triangles.Count; t += 6) {
             for (var n = 0; n < 3; n++) {
                 cutDepths.Add(Tissue.CutDepth(triangles[t + 3 + n]));
             }
         }
-        _plans.Clear();
         for (var layer = 0; layer < 3; layer++) {
-            _plans.Add(PlanLayer(layer, triangles, cutDepths));
+            if (_plans.Count == layer) {
+                _plans.Add(new LayerPlan());
+            }
+            PlanLayer(_plans[layer], layer, triangles, cutDepths);
         }
         // Every particle a vertex needs, the lips' neighbours included, and the grid points around them for normals.
-        _planned = [];
-        foreach (var plan in _plans) {
-            foreach (var k in plan.Owner.Concat(plan.Other).Concat(plan.Slide)) {
+        _planned.Clear();
+        void Plan(List<int> particles) {
+            foreach (var k in particles) {
                 if (k >= 0 && !_mark[k]) {
                     _mark[k] = true;
                     _planned.Add(k);
                 }
             }
         }
-        _around = [.. _planned];
-        foreach (var k in _planned) {
-            var at = Tissue.CellOf(k);
-            foreach (var n in new[] { new Vector2I(at.X - 1, at.Y), new Vector2I(at.X + 1, at.Y), new Vector2I(at.X, at.Y - 1), new Vector2I(at.X, at.Y + 1) }) {
-                if (n.X >= 0 && n.Y >= 0 && n.X <= Tissue.ResX && n.Y <= Tissue.ResY) {
-                    var m = Tissue.Index(n.X, n.Y);
-                    if (!_mark[m]) {
-                        _mark[m] = true;
-                        _around.Add(m);
-                    }
+        foreach (var plan in _plans) {
+            Plan(plan.Owner);
+            Plan(plan.Other);
+            Plan(plan.Slide);
+        }
+        _around.Clear();
+        _around.AddRange(_planned);
+        void Around(int x, int y) {
+            if (x >= 0 && y >= 0 && x <= Tissue.ResX && y <= Tissue.ResY) {
+                var m = Tissue.Index(x, y);
+                if (!_mark[m]) {
+                    _mark[m] = true;
+                    _around.Add(m);
                 }
             }
+        }
+        foreach (var k in _planned) {
+            var at = Tissue.CellOf(k);
+            Around(at.X - 1, at.Y);
+            Around(at.X + 1, at.Y);
+            Around(at.X, at.Y - 1);
+            Around(at.X, at.Y + 1);
         }
         foreach (var k in _around) {
             _mark[k] = false;
         }
     }
 
-    /// <summary>One layer's plan (see <see cref="LayerPlan"/>).</summary>
-    private LayerPlan PlanLayer(int layer, List<int> triangles, List<TissueDepth> cutDepths) {
-        var plan = new LayerPlan();
+    /// <summary>Plans one layer into <paramref name="plan"/> (see <see cref="LayerPlan"/>).</summary>
+    private void PlanLayer(LayerPlan plan, int layer, List<int> triangles, List<TissueDepth> cutDepths) {
+        plan.Clear();
         var cutAt = LayerDepth[layer];
         var walls = layer != 1 || FatThickness > 0.0005f;
         // Skin taken off leaves a hole in the skin layer only: no sheet there, and no wall on the piece's side of the
         // cut.
-        var gone = layer == 0 ? Tissue.Excised : new bool[Tissue.Rest.Length];
-        var crossed = new List<int>();
-        var touched = new List<int>();
-        var corners = new int[3];
-        var edges = new int[3];
-        var cut = new bool[3];
-        var side = new int[3];
-        var polygon = new List<int>();
-        var crossing = new List<bool>();
+        if (_noneGone.Length != Tissue.Rest.Length) {
+            _noneGone = new bool[Tissue.Rest.Length];
+        }
+        var gone = layer == 0 ? Tissue.Excised : _noneGone;
+        var crossed = _planCrossed;
+        var touched = _planTouched;
+        crossed.Clear();
+        touched.Clear();
+        Span<int> corners = stackalloc int[3];
+        Span<int> edges = stackalloc int[3];
+        Span<bool> cut = stackalloc bool[3];
+        Span<int> side = stackalloc int[3];
+        var polygon = _planPolygon;
+        var crossing = _planCrossing;
         for (var t = 0; t < triangles.Count; t += 6) {
             var anyCut = false;
             for (var n = 0; n < 3; n++) {
@@ -625,7 +694,7 @@ public partial class PatientBody {
                 // At a cut's end only one edge is severed: the cut runs into this triangle and stops. Its lips run on
                 // from that edge and meet where the blade's path stops, so the opening narrows to a point there: a cut
                 // ends in a V, not square across the last spring it cut. Its cut faces taper to zero at that tip.
-                var edge = Array.FindIndex(cut, value => value);
+                var edge = cut.IndexOf(true);
                 if (gone[corners[0]] || gone[corners[1]] || gone[corners[2]]) {
                     continue;
                 }
@@ -636,7 +705,7 @@ public partial class PatientBody {
                 var lipB = PlanCross(plan, edges[edge], corners[(edge + 1) % 3], crossed, touched);
                 var apex = PlanApex(plan, a, b, tip, lipA, Tissue.SpringAt(edges[edge]).CutDir);
                 plan.Ends.Add((apex, plan.Index.Count, [a, lipA, apex, apex, lipB, b, a, apex, tip, apex, b, tip]));
-                plan.Index.AddRange([a, lipA, tip, lipA, lipB, tip, lipB, b, tip]);
+                plan.Index.AddRange((ReadOnlySpan<int>)[a, lipA, tip, lipA, lipB, tip, lipB, b, tip]);
                 continue;
             }
             if (!anyCut) {
@@ -673,7 +742,7 @@ public partial class PatientBody {
                     }
                 }
                 for (var n = 1; n < polygon.Count - 1; n++) {
-                    plan.Index.AddRange([polygon[0], polygon[n], polygon[n + 1]]);
+                    plan.Index.AddRange((ReadOnlySpan<int>)[polygon[0], polygon[n], polygon[n + 1]]);
                 }
                 if (!walls) {
                     continue;
@@ -682,7 +751,7 @@ public partial class PatientBody {
                 for (var n = 0; n < polygon.Count; n++) {
                     var next = (n + 1) % polygon.Count;
                     if (crossing[n] && crossing[next]) {
-                        plan.Wall.AddRange([polygon[n], polygon[next], mine]);
+                        plan.Wall.AddRange((ReadOnlySpan<int>)[polygon[n], polygon[next], mine]);
                     }
                 }
             }
@@ -697,17 +766,11 @@ public partial class PatientBody {
             var a = plan.Wall[w];
             var b = plan.Wall[w + 1];
             plan.LipInside[(Math.Min(a, b), Math.Max(a, b))] = plan.Wall[w + 2];
-            foreach (var (here, next) in new[] { (a, b), (b, a) }) {
-                if (!plan.Lip.TryGetValue(here, out var neighbours)) {
-                    neighbours = [];
-                    plan.Lip[here] = neighbours;
-                }
-                if (!neighbours.Contains(next)) {
-                    neighbours.Add(next);
-                }
-            }
+            AddLipNeighbour(plan, a, b);
+            AddLipNeighbour(plan, b, a);
         }
-        var crossingOf = new Dictionary<(int, int), int>();
+        var crossingOf = _planCrossingOf;
+        crossingOf.Clear();
         for (var t = 0; t < plan.Index.Count; t += 3) {
             var a = plan.Index[t];
             var b = plan.Index[t + 1];
@@ -745,7 +808,13 @@ public partial class PatientBody {
         foreach (var edge in plan.LipInside.Keys) {
             Midpoint(edge.Item1, edge.Item2);
         }
-        var boundary = new List<int>(6);
+        var boundary = _planBoundary;
+        void Boundary(int start, int end) {
+            boundary.Add(start);
+            if (midpointOf.TryGetValue((Math.Min(start, end), Math.Max(start, end)), out var mid)) {
+                boundary.Add(mid);
+            }
+        }
         for (var t = 0; t < plan.Index.Count; t += 3) {
             var a = plan.Index[t];
             var b = plan.Index[t + 1];
@@ -761,20 +830,27 @@ public partial class PatientBody {
                 continue;
             }
             boundary.Clear();
-            foreach (var (start, end) in new[] { (a, b), (b, c), (c, a) }) {
-                boundary.Add(start);
-                if (midpointOf.TryGetValue((Math.Min(start, end), Math.Max(start, end)), out var mid)) {
-                    boundary.Add(mid);
-                }
-            }
+            Boundary(a, b);
+            Boundary(b, c);
+            Boundary(c, a);
             var center = plan.Owner.Count + plan.Midpoints.Count + plan.Centers.Count;
             plan.Centers.Add((a, b, c));
             for (var n = 0; n < boundary.Count; n++) {
-                plan.RefinedIndex.AddRange([center, boundary[n], boundary[(n + 1) % boundary.Count]]);
+                plan.RefinedIndex.AddRange((ReadOnlySpan<int>)[center, boundary[n], boundary[(n + 1) % boundary.Count]]);
             }
             plan.RefinedOf.Add((refinedFrom, plan.RefinedIndex.Count - refinedFrom));
         }
-        return plan;
+    }
+
+    /// <summary>Notes <paramref name="next"/> as a neighbour of <paramref name="here"/> along a lip.</summary>
+    private static void AddLipNeighbour(LayerPlan plan, int here, int next) {
+        if (!plan.Lip.TryGetValue(here, out var neighbours)) {
+            neighbours = [];
+            plan.Lip[here] = neighbours;
+        }
+        if (!neighbours.Contains(next)) {
+            neighbours.Add(next);
+        }
     }
 
     private static void SetLipInside(LayerPlan plan, int a, int b, int inside) {
@@ -1417,9 +1493,16 @@ public partial class PatientBody {
     }
 
     private static List<int>[] SheetNeighbours(LayerPlan plan) {
-        var neighbours = new List<int>[plan.Owner.Count];
-        for (var v = 0; v < neighbours.Length; v++) {
-            neighbours[v] = [];
+        var neighbours = plan.SpareNeighbours;
+        if (neighbours.Length < plan.Owner.Count) {
+            var grown = neighbours.Length;
+            Array.Resize(ref neighbours, plan.Owner.Count);
+            for (var v = grown; v < neighbours.Length; v++) {
+                neighbours[v] = [];
+            }
+        }
+        for (var v = 0; v < plan.Owner.Count; v++) {
+            neighbours[v].Clear();
         }
         for (var t = 0; t < plan.Index.Count; t += 3) {
             for (var n = 0; n < 3; n++) {
