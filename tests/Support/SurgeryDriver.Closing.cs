@@ -9,6 +9,8 @@ public partial class SurgeryDriver {
     /// a running thread along each (<see cref="PlayerSews"/>), a stapler staples along it (<see cref="PlayerStaples"/>);
     /// other closures (<paramref name="toolId"/>) go segment by segment along it, paper clips pulled until they read
     /// closed, held on each until it's closed. Goes round again for anything that didn't close.
+    /// Only the first skin knot is captured (one in the muscle lies hidden under the skin), and when more were tied,
+    /// the site once all are sewn: every knot looks alike.
     /// </summary>
     public async Task PlayerClosesWounds(string toolId = "needle") {
         Note($"closes the wounds with {toolId}");
@@ -20,6 +22,14 @@ public partial class SurgeryDriver {
             }
         }
         var tool = (await PlayerRequestsItem(toolId))!;
+        var knotShown = false;
+        var knotsUnseen = false;
+        async Task Sew(Wound wound, TissueDepth layer) {
+            var capture = layer == TissueDepth.Skin && !knotShown;
+            var tied = await PlayerSews(wound, layer, captureTiedOff: capture);
+            knotShown |= tied && capture;
+            knotsUnseen |= tied && layer == TissueDepth.Skin && !capture;
+        }
         for (var round = 0; round < 4 && Patient.SkinClosure() < 0.98f; round++) {
             // Every muscle before any skin: a skin stitch near another cut can reach across it, and over its open muscle
             // it tears through.
@@ -30,7 +40,7 @@ public partial class SurgeryDriver {
                     && Body.Tissue.MuscleOpenNear(wound.BinPosition(bin), Patient.MuscleReach)).Any();
                 foreach (var wound in Patient.Wounds.Where(MuscleOpen).ToList()) {
                     for (var thread = 0; thread < 2 && MuscleOpen(wound); thread++) {
-                        await PlayerSews(wound, TissueDepth.Muscle);
+                        await Sew(wound, TissueDepth.Muscle);
                     }
                 }
             }
@@ -38,7 +48,7 @@ public partial class SurgeryDriver {
                 switch (tool.Def.Action) {
                     case "sew":
                         if (wound.Bins.Any(b => b < 1f)) {
-                            await PlayerSews(wound, TissueDepth.Skin);
+                            await Sew(wound, TissueDepth.Skin);
                         }
                         break;
                     case "staple":
@@ -52,6 +62,9 @@ public partial class SurgeryDriver {
         }
         Note($"skin closure {Patient.SkinClosure():0.00}");
         await PlayerPutsDown();
+        if (knotsUnseen) {
+            await Capture("sewn_shut", "every wound sewn shut: a tied thread runs across each between its holes and draws its edges together, under any blood pooled over it");
+        }
     }
 
     /// <summary>The scalpel drawn through the skin along a stab or bullet hole, past both its ends and at least
@@ -192,8 +205,9 @@ public partial class SurgeryDriver {
     /// active hand: holes along it (<see cref="PlayerThreads"/>), spread with a Gelpi where the layer hides, the
     /// wheel until the hand status reads closed (<see cref="PlayerPullsThread"/>), and the knot
     /// (<see cref="PlayerTiesOff"/>). <paramref name="threaded"/> runs once the thread is through the layer, before
-    /// it's pulled, the cut still spread: to look at it.</summary>
-    public async Task PlayerSews(Wound wound, TissueDepth layer, Func<Task>? threaded = null) {
+    /// it's pulled, the cut still spread: to look at it. Captures the knot unless <paramref name="captureTiedOff"/> is
+    /// false. Returns whether it tied a knot.</summary>
+    public async Task<bool> PlayerSews(Wound wound, TissueDepth layer, Func<Task>? threaded = null, bool captureTiedOff = true) {
         var needle = Me.Active;
         var other = needle == Right ? Left : Right;
         SurgicalTool? gelpi = null;
@@ -229,6 +243,7 @@ public partial class SurgeryDriver {
         // A thrashing limb moves the wound away from the needle: the free hand holds it still.
         var holds = !spreads && await PlayerHoldsThrashingSiteLimb(wound);
         var through = await PlayerThreads(wound, layer, expose: spreads ? Spread : null);
+        var tied = false;
         if (threaded is not null) {
             await threaded();
         }
@@ -241,13 +256,15 @@ public partial class SurgeryDriver {
             // Tension can finish or tear through the active thread. Only an anchored thread can be tied;
             // the operation's closure checks still decide whether the wound was actually closed.
             if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
-                await PlayerTiesOff();
+                await PlayerTiesOff(captureTiedOff ? "tied_off" : null);
+                tied = true;
             } else {
                 Note("the thread finished or tore before it could be tied off");
             }
         } else if (Me.HeldTool(Me.Active)!.Suture.Thread != 0) {
             // A thread that can't go on is tied off as it is: the next one may be in another layer.
-            await PlayerTiesOff();
+            await PlayerTiesOff(captureTiedOff ? "tied_off" : null);
+            tied = true;
         }
         if (holds) {
             await PlayerLetsGoWithFreeHand();
@@ -262,6 +279,7 @@ public partial class SurgeryDriver {
         }
         var bins = layer == TissueDepth.Muscle ? wound.Muscle : wound.Bins;
         Note($"{layer} of wound {wound.Id} closed {bins.DefaultIfEmpty(0f).Min():0.00}");
+        return tied;
     }
 
     /// <summary>How far (meters) a Gelpi spreads a cut to lay its muscle bare to sew.</summary>
@@ -465,8 +483,8 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>Holds Use tool where the needle is until the thread is tied off, then captures
-    /// <paramref name="keyFrame"/>, which should show <paramref name="description"/>.</summary>
-    public async Task PlayerTiesOff(string keyFrame = "tied_off", string description = TiedOff, Action? onTied = null) {
+    /// <paramref name="keyFrame"/> (none when null), which should show <paramref name="description"/>.</summary>
+    public async Task PlayerTiesOff(string? keyFrame = "tied_off", string description = TiedOff, Action? onTied = null) {
         var needle = Me.HeldTool(Me.Active)!;
         var thread = needle.Suture.Thread;
         var tied = false;
@@ -479,7 +497,9 @@ public partial class SurgeryDriver {
         AssertBool(tied).OverrideFailureMessage("holding Use ties off the anchored suture").IsTrue();
         onTied?.Invoke();
         await Frames.Physics(3);
-        await Capture(keyFrame, description);
+        if (keyFrame is not null) {
+            await Capture(keyFrame, description);
+        }
     }
 
     /// <summary>What a tied off suture should look like.</summary>
