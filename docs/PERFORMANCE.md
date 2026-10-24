@@ -45,6 +45,9 @@
   0 bytes with `AllocationBudget.Check()` (`tests/Support/AllocationBudget.cs`), after a warm-up. It counts the calling
   thread's allocations, so it holds on any machine and runs on CI. A new path that runs every frame or tick gets a case
   there; a path that must allocate passes its measured bytes per run as an explicit, commented budget.
+  Whole surgery frames, every thread's allocations, are held to measured budgets with `AllocationBudget.CheckFrames()`:
+  idle, cutting and bleeding. A change that adds a third more garbage to them fails; one that removes some lowers the
+  budget.
 - Every frame budget check also reports what its frames allocated, on every thread, the garbage collections that
   caused and the longest collection pause, to find where garbage comes from.
 - Use performant algorithms and data structures wherever possible.

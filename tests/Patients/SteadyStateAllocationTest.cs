@@ -2,10 +2,12 @@ namespace Scalpel.Tests.Patients;
 
 /// <summary>
 /// The patient's per-frame and per-tick simulation allocates nothing once warmed up (<see cref="AllocationBudget"/>):
-/// skin held and pulled beside a cut, paint on the wound map, and drugs wearing off.
+/// skin held and pulled beside a cut, paint on the wound map, and drugs wearing off. A whole surgery's frames stay
+/// within their measured budgets.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("allocation_budget")]
+[GodotArgs("--fixed-fps", "60")]
 public class SteadyStateAllocationTest {
     private static readonly Vector2 Mid = new(0.5f, 0.5f);
 
@@ -42,6 +44,32 @@ public class SteadyStateAllocationTest {
             ]);
             map.Disk(WoundMap.Layer.Wounds, WoundMap.Bruise, Mid, 0.02f, 0.3f, WoundMap.Mode.Max);
         });
+    }
+
+    // Measured per frame in the appendectomy: 7 KB idle, 48 KB while the cut is made (its meshes rebuilt at new sizes)
+    // and 33 KB while it bleeds (most of it the blood field growing once with the pool). The blood field is built on a
+    // worker, so how many builds land in a window varies a little with the machine.
+    private const long IdleBudget = 10 << 10, CuttingBudget = 64 << 10, BleedingBudget = 44 << 10;
+
+    /// <summary>A surgery's frames: the patient asleep before the first cut, a skin cut across the site being made
+    /// with the scalpel already in hand, then the cut bleeding.</summary>
+    [TestCase]
+    public async Task SurgeryFrames() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("appendectomy");
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        await Frames.Seconds(2f);
+        await AllocationBudget.CheckFrames("idle surgery", () => Frames.Seconds(5f), IdleBudget);
+        await driver.PlayerRequestsItem("scalpel");
+        await AllocationBudget.CheckFrames("cutting the skin",
+            () => driver.PlayerCutsSkin(new Vector2(0.3f, 0.45f), new Vector2(0.7f, 0.45f), 1), CuttingBudget);
+        AssertBool(driver.Patient.Wounds.Any(wound => wound.MadeBySurgeon)).OverrideFailureMessage("the cut was made")
+            .IsTrue();
+        await AllocationBudget.CheckFrames("the cut bleeding", () => Frames.Seconds(5f), BleedingBudget);
+        AssertFloat(driver.Patient.Vitals.BleedRate).OverrideFailureMessage("the cut was still bleeding").IsGreater(0f);
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
     }
 
     /// <summary>Two drugs soaking in, crossing into working during the warm-up, then held at their level.</summary>

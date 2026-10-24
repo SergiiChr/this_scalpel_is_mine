@@ -3,8 +3,9 @@ namespace Scalpel.Patients;
 /// <summary>
 /// Items (triangles, by the order they were added) bucketed by the cells <paramref name="cell"/> (meters) wide their
 /// extent across the site (x, z) covers. Filled again each time what it indexes moves: in two passes, counting then
-/// placing, into flat arrays it keeps, so a fill neither looks up nor grows a list per cell. Each cell holds its items
-/// in the order they were added.
+/// placing, into flat arrays it keeps, so a fill neither looks up nor grows a list per cell. The arrays only grow, to
+/// twice what a fill needs: moving skin changes the cell count every fill. Each cell holds its items in the order
+/// they were added.
 /// </summary>
 internal sealed class CellGrid(float cell) {
     private (Vector2I Low, Vector2I High)[] _spans = [];
@@ -37,11 +38,11 @@ internal sealed class CellGrid(float cell) {
         _from = from;
         _size = _count > 0 ? to - from + Vector2I.One : Vector2I.Zero;
         var cells = _size.X * _size.Y;
-        if (_start.Length != cells + 1) {
-            _start = new int[cells + 1];
+        if (_start.Length < cells + 1) {
+            _start = new int[(cells + 1) * 2];
         }
-        var start = _start;
-        Array.Clear(start);
+        var start = _start.AsSpan(0, cells + 1);
+        start.Clear();
         foreach (var (low, high) in spans) {
             for (var z = low.Y; z <= high.Y; z++) {
                 for (var x = low.X; x <= high.X; x++) {
@@ -53,7 +54,7 @@ internal sealed class CellGrid(float cell) {
             start[c] += start[c - 1];
         }
         if (_items.Length < start[^1]) {
-            _items = new int[start[^1]];
+            _items = new int[start[^1] * 2];
         }
         // Each cell's start moves past every item placed in it, then back one cell.
         for (var item = 0; item < spans.Length; item++) {
