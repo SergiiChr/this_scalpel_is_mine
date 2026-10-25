@@ -48,12 +48,6 @@ float blood_amount(float blood, float grain) {
 	return clamp(blood + (grain - 0.5) * 0.2 * smoothstep(0.0, 0.15, blood) * (1.0 - smoothstep(0.2, 0.45, blood)), 0.0, 1.0);
 }
 
-// How far blood stands off the skin, in meters.
-float blood_thickness(float blood) {
-	// A low meniscus gives a continuous sheen; tall rims turn each map stamp into a bright tick.
-	return smoothstep(0.05, 0.85, blood) * 0.0007;
-}
-
 // Tilts the view space normal along the blood's edges as if it were a raised film, so the light catches its rim
 // and it reads as liquid instead of paint. Built from screen derivatives, so it needs no tangents.
 vec3 blood_normal(vec3 normal, vec3 view_pos, float thickness) {
