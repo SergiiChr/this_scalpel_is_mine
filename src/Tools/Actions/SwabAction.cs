@@ -1,7 +1,7 @@
 namespace Scalpel.Tools;
 
-/// <summary>Lowered, gauze and swabs wipe blood away and soak it up until full, and gauze presses on the wound right
-/// under it, full or not: there's no pressure to set.
+/// <summary>Lowered, gauze and swabs wipe blood away and soak it up until full, and gauze presses on the wounds under
+/// its pad, full or not: there's no pressure to set.
 /// A cotton pad held in the glove dips and wipes like one held in forceps, spoiling the site.
 /// Either wipes blood beads off wherever it touches, on the arm too.</summary>
 public sealed class SwabAction : ToolAction {
@@ -19,6 +19,9 @@ public sealed class SwabAction : ToolAction {
             var wiped = ToolActions.Gather(tool, step.Uv, step.Dt);
             if (wiped > 0f) {
                 ToolActions.Swab(step, tool, wiped);
+            }
+            if (step.Def.Id == "gauze") {
+                step.Patient.PressWithGauze(tool, step.Zone, step.Dt);
             }
         }
     }

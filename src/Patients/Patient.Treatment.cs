@@ -32,6 +32,8 @@ public partial class Patient {
     /// <summary>How far (meters) from where a bare hand presses the patient its palm holds a cut: about half a palm.
     /// </summary>
     public const float HandPressReach = 0.04f;
+    /// <summary>Gauze presses a little past the edge of its pad: the pad's size times this.</summary>
+    public const float GauzeCoverMargin = 1.1f;
     /// <summary>How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
     /// </summary>
     public const float DeepBlock = 0.3f;
@@ -762,8 +764,9 @@ public partial class Patient {
     }
 
     /// <summary>Wipes the site with a swab that can still soak up <paramref name="room"/> ml, and returns the ml of
-    /// blood it took. A full swab no longer wipes, but gauze still presses. <paramref name="soakedIn"/>: what
-    /// the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in iodine).</summary>
+    /// blood it took. A full swab no longer wipes; gauze presses regardless (<see cref="PressWithGauze"/>).
+    /// <paramref name="soakedIn"/>: what the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in
+    /// iodine).</summary>
     public float SwabAt(SiteZone zone, Vector2 uv, ToolDef def, float dt, float room, string soakedIn = "") {
         var drug = soakedIn.Length > 0 ? soakedIn : def.Drug;
         var radius = Body.MetersToUv(def.Radius);
@@ -789,23 +792,76 @@ public partial class Patient {
                 }
             }
             PaintOps(WoundMap.Layer.Fluids, uv, radius, ops[..count]);
-            if (def.Id == "gauze" && NearestWound(uv, 0.02f, false) is { } wound) {
-                Press(wound, dt);
-            }
         } else if (zone == SiteZone.Cavity) {
             taken = Mathf.Min(CavityBloodMl, take);
             CavityBloodMl -= taken;
             taken += DrainCuts(uv, take - taken);
-            // Packed into the opening, it presses on everything it lies against: every vessel it reaches at the bottom and
-            // the edges of the cut it's in.
-            if (def.Id == "gauze") {
-                var cut = NearestWound(uv, 0.02f, false);
-                foreach (var wound in Wounds.Where(w => w == cut || (w.IsInternal && Reaches(w, uv))).ToList()) {
-                    Press(wound, dt);
-                }
-            }
         }
         return taken;
+    }
+
+    /// <summary>Gauze lowered onto the site for <paramref name="dt"/> seconds presses every cut in the skin its pad lies
+    /// on (<see cref="Covered"/>). Pushed into an opening it presses everything it lies against there too: every vessel
+    /// it reaches at the bottom.</summary>
+    public void PressWithGauze(SurgicalTool gauze, SiteZone zone, float dt) {
+        var toPad = gauze.GlobalTransform.AffineInverse();
+        var middle = Body.WorldToUv(gauze.Middle());
+        foreach (var wound in Wounds) {
+            if (wound.IsSkinCut ? Covered(gauze, toPad, wound) : wound.IsInternal && zone == SiteZone.Cavity && Reaches(wound, middle)) {
+                Press(wound, dt);
+            }
+        }
+    }
+
+    /// <summary>Some stretch of <paramref name="wound"/> lies under the pad of <paramref name="gauze"/>,
+    /// <see cref="GauzeCoverMargin"/> wider all round, seen from above the pad. <paramref name="toPad"/>: from world to
+    /// the pad's own space.</summary>
+    private bool Covered(SurgicalTool gauze, Transform3D toPad, Wound wound) {
+        var pad = gauze.Bounds;
+        var center = pad.GetCenter();
+        var half = pad.Size * 0.5f * GauzeCoverMargin;
+        var area = new Rect2(center.X - half.X, center.Z - half.Z, half.X * 2f, half.Z * 2f);
+        Vector2 OnPad(Vector2 uv) {
+            var local = toPad * Body.UvToWorld(uv);
+            return new Vector2(local.X, local.Z);
+        }
+        var points = wound.Points;
+        var from = OnPad(points[0]);
+        if (area.HasPoint(from)) {
+            return true;
+        }
+        for (var i = 1; i < points.Count; i++) {
+            var to = OnPad(points[i]);
+            if (Crosses(area, from, to)) {
+                return true;
+            }
+            from = to;
+        }
+        return false;
+    }
+
+    /// <summary>The segment from <paramref name="a"/> to <paramref name="b"/> passes through <paramref name="area"/>
+    /// (Liang-Barsky clipping).</summary>
+    private static bool Crosses(Rect2 area, Vector2 a, Vector2 b) {
+        var d = b - a;
+        var (enter, leave) = (0f, 1f);
+        Span<(float P, float Q)> sides = [
+            (-d.X, a.X - area.Position.X), (d.X, area.End.X - a.X), (-d.Y, a.Y - area.Position.Y), (d.Y, area.End.Y - a.Y)];
+        foreach (var (p, q) in sides) {
+            if (p == 0f) {
+                if (q < 0f) {
+                    return false;
+                }
+                continue;
+            }
+            var t = q / p;
+            if (p < 0f) {
+                enter = Mathf.Max(enter, t);
+            } else {
+                leave = Mathf.Min(leave, t);
+            }
+        }
+        return enter <= leave;
     }
 
     /// <summary>Takes up to <paramref name="ml"/> in all of the blood held in the cuts near <paramref name="uv"/>, and

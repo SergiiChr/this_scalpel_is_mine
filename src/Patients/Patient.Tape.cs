@@ -196,11 +196,14 @@ public partial class Patient {
                 PeelTape(id, "The tape came off with the gauze.");
                 continue;
             }
-            // On whatever cut lies under it.
+            // On every cut its pad lies on.
             foreach (var gauze in taping.Gauze) {
-                if (NearestWound(Body.WorldToUv(gauze.Middle()), Body.MetersToUv(gauze.Def.Width * 0.5f), false) is { } wound) {
-                    Press(wound, dt);
-                    SeepInto(taping, gauze, wound.LastingBleeding * dt);
+                var toPad = gauze.GlobalTransform.AffineInverse();
+                foreach (var wound in Wounds) {
+                    if (wound.IsSkinCut && Covered(gauze, toPad, wound)) {
+                        Press(wound, dt);
+                        SeepInto(taping, gauze, wound.LastingBleeding * dt);
+                    }
                 }
             }
             if (taping.Wet >= 1f && taping.Gauze.Count > 0) {
