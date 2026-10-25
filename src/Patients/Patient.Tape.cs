@@ -20,8 +20,7 @@ public partial class Patient {
     /// <summary>The share of its grip tape loses stuck on blood (0..1 on the skin), and on a cut as deep as the muscle.
     /// </summary>
     public const float WetGrip = 0.35f;
-    // At muscle depth even dry tape has no closing grip; a deep cut must not rely on surface blood to defeat it.
-    public const float DeepGrip = 1f;
+    public const float DeepGrip = 0.6f;
     /// <summary>The share of its grip that holds the edges once they're shut: they're pulled apart again only by a hand
     /// pulling on the skin or a strain, and the tape lets go at a stretch of 1 + (grip - 1) * TapeHold.</summary>
     public const float TapeHold = 0.12f;
