@@ -23,6 +23,10 @@ public class TapeTest {
     private const float CutLength = 0.03f;
     private const float Past = 0.01f;
     private const float Pull = 0.03f;
+    /// <summary>Blood on the skin (0..1) where a cut's pool has welled up over it, and how long a cut into the fat
+    /// takes to fill that far.</summary>
+    private const float PooledOnSkin = 0.95f;
+    private const float PoolSeconds = 30f;
     /// <summary>How long (meters) the gash bleeding through taped gauze is.</summary>
     private const float GashLength = 0.06f;
 
@@ -124,21 +128,21 @@ public class TapeTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>On a cut into the fat (0.65), with the skin around it bloody, the edges lie further apart than the wet
-    /// tape pulls shut: it peels straight off. Over cut muscle (0.9) it holds nothing either: the muscle holds the skin
-    /// apart.</summary>
+    /// <summary>A cut into the fat (0.65) fills with its blood until it wells up onto the skin; stuck on that, the wet
+    /// tape pulls the edges no closer and peels straight off. Over cut muscle (0.9) it holds nothing either: the muscle
+    /// holds the skin apart.</summary>
     [TestCase(0.65f)]
     [TestCase(0.9f)]
     public async Task TapeDoesNotCloseADeepCut(float depth) {
         var session = await ToolSession.Start("appendectomy", $"tape/deep_{depth * 100f:0}");
         var driver = session.Driver;
         var (cut, from, to) = await Cut(driver, depth);
-        // Blood from a cut into the fat rests on the fat, below the skin: smear it over the skin the strip goes on.
-        SurgeryState.SkinIsBloody(driver.Patient, from.Lerp(to, 0.5f), from.DistanceTo(to));
-        await Frames.Physics(2);
-        for (var sample = 0; sample <= 8; sample++) {
-            var blood = driver.Body.BloodAt(from.Lerp(to, sample / 8f));
-            AssertFloat(blood).OverrideFailureMessage($"the skin under the strip is bloody, wetting the tape ({blood:0.00})").IsGreater(0.5f);
+        if (depth < Wound.MuscleDepth) {
+            // The strip gets as wet as the bloodiest skin under it (Patient.StickStretch()).
+            float Wettest() => Enumerable.Range(0, 9).Max(sample => driver.Body.BloodAt(from.Lerp(to, sample / 8f)));
+            AssertBool(await Frames.Until(() => Wettest() >= PooledOnSkin, PoolSeconds))
+                .OverrideFailureMessage($"the cut's blood wells up onto the skin the strip goes on within {PoolSeconds} s ({Wettest():0.00})")
+                .IsTrue();
         }
         await driver.PlayerRequestsItem("surgical_tape");
         await driver.PlayerLaysTape([from, to]);
