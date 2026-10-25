@@ -11,7 +11,7 @@ public abstract record ToolHold;
 /// A hook (the retractor) pulls the skin aside or up, never down into the opening. A piece of skin cut out all round
 /// comes off when lifted. <paramref name="Hold"/>: where a self-retaining tool set down keeps it (site space).
 /// <paramref name="Offset"/>: the rendered contact relative to its held simulation particle, retained while pulling.
-/// <paramref name="Origin"/>: the physical contact when the hook took hold, in site space.</summary>
+/// <paramref name="Origin"/>: the physical contact when the tool took hold, in site space.</summary>
 public sealed record SkinHold(int Wound, Vector2 Anchor, bool Hook, bool Piece = false, Vector3? Hold = null,
     Vector3 Offset = default, Vector3? Origin = null) : ToolHold;
 

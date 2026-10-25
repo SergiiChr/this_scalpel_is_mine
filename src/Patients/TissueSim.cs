@@ -33,7 +33,7 @@ public struct Spring {
 }
 
 /// <summary>A tool holding the skin: the particle it pins and where it pulls it (site-local).</summary>
-public readonly record struct TissueGrip(int Key, int Particle, Vector3 Target);
+public readonly record struct TissueGrip(int Key, int Particle, Vector3 Target, Vector3 Origin);
 
 /// <summary>A spring that snapped on the host: its ends (uv), kind and index.</summary>
 public readonly record struct SnappedSpring(Vector2 A, Vector2 B, SpringKind Kind, int Spring);
@@ -293,6 +293,12 @@ public sealed partial class TissueSim {
     private sealed class Pin(int particle, Vector3 target) {
         public int Particle { get; } = particle;
         public Vector3 Target { get; set; } = target;
+        /// <summary>The skin's position when this grip took hold. Planar resistance and reversal share that origin,
+        /// just as the strain is measured from acquisition, rather than an anchor displaced by the wound's gape.</summary>
+        public Vector3 Origin { get; init; } = target;
+        /// <summary>Once an outward pull starts peeling, a relaxed solver step must not interrupt the lift.
+        /// Moving inward releases that resistance.</summary>
+        public bool Peeling { get; set; }
         /// <summary>How long each spring of the patch was when the grip took hold (see
         /// <see cref="StrainAt"/>), and the topology that patch was made for.</summary>
         public float[]? Unpulled { get; set; }
@@ -1147,15 +1153,25 @@ public sealed partial class TissueSim {
     /// the hand back harder the further it's pulled, the way something held does. Moves back toward the spot always go.
     /// </summary>
     public Vector3 Restrain(int key, Vector3 target) {
-        var strain = StrainAt(key);
-        if (strain <= FirmStrain) {
+        if (!_pins.TryGetValue(key, out var pin)) {
             return target;
         }
-        var home = _anchorTarget[_pins[key].Particle];
-        var now = _pins[key].Target;
+        var strain = StrainAt(key);
+        // Across the body, return to where the tool took hold, including the wound's existing gape. The height
+        // limit still belongs to the body's rest surface: pinching an already raised lip must not raise that cap.
+        var home = pin.Origin with { Y = _anchorTarget[pin.Particle].Y };
+        var now = pin.Target;
         var nowAlong = (now - home).Slide(Vector3.Up);
         var away = nowAlong.Normalized();
         var move = (target - now).Slide(Vector3.Up);
+        if (move.Dot(away) < -0.000001f) {
+            pin.Peeling = false;
+        } else if (strain >= GripStrain) {
+            pin.Peeling = true;
+        }
+        if (strain <= FirmStrain && !pin.Peeling) {
+            return target;
+        }
         // Only the part of the move away from home is held back; sideways the grip still stays within what it gave.
         var outward = nowAlong.IsZeroApprox() ? 0f : Mathf.Max(move.Dot(away), 0f);
         var give = strain >= GripStrain ? 0f : Mathf.Lerp(1f, LeastGive, Mathf.SmoothStep(FirmStrain, GripStrain, strain));
@@ -1165,7 +1181,7 @@ public sealed partial class TissueSim {
         var reach = nowAlong.Length() + outward * give;
         var kept = (nowAlong + move - away * (outward * (1f - give))).LimitLength(reach);
         var height = target.Y;
-        if (strain >= GripStrain) {
+        if (pin.Peeling) {
             // Lifted already as high as the skin peels (or higher, raised by the hand), it stays where it is.
             var lifted = Mathf.Clamp((now.Y - home.Y) / PeelLift, 0f, 1f);
             height = Mathf.Min(target.Y + outward * (1f - lifted * lifted), Mathf.Max(now.Y, home.Y + PeelLift));
@@ -1192,17 +1208,36 @@ public sealed partial class TissueSim {
     /// <summary>Every grip on the skin, for syncing to clients.</summary>
     /// <summary>Whether anything holds the sheet now: it may be moving.</summary>
     internal bool Gripped => _pins.Count > 0;
-    public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target))];
+    public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target, pin.Value.Origin))];
 
     /// <summary>The particle grip <paramref name="key"/> holds, -1 when it holds none.</summary>
     public int GrippedParticle(int key) => _pins.TryGetValue(key, out var pin) ? pin.Particle : -1;
+
+    /// <summary>Captures lift influence, fading across the cut-aware material around each lifted grip.</summary>
+    internal void CaptureGripLift(float[] footprint) {
+        Array.Clear(footprint, 0, footprint.Length);
+        foreach (var pin in _pins.Values) {
+            var particle = pin.Particle;
+            if ((uint)particle >= (uint)footprint.Length) { continue; }
+            var lift = Mathf.Max(pin.Target.Y - pin.Origin.Y, 0f);
+            footprint[particle] = 1f;
+            var patch = PatchOf(particle);
+            foreach (var held in patch.Held) { footprint[held] = 1f; }
+            var lifting = Mathf.SmoothStep(0f, LiftedOff, lift);
+            for (var n = 0; n < patch.Around.Length; n++) {
+                var other = patch.Around[n];
+                if ((uint)other >= (uint)footprint.Length) { continue; }
+                footprint[other] = Mathf.Max(footprint[other], lifting * patch.Weights[n]);
+            }
+        }
+    }
 
     /// <summary>Clients mirror the host's grips.</summary>
     public void SetGrips(IReadOnlyList<TissueGrip> grips) {
         var before = Grips();
         _pins.Clear();
         foreach (var grip in grips) {
-            _pins[grip.Key] = new Pin(grip.Particle, grip.Target) { HeldAt = StepsDone };
+            _pins[grip.Key] = new Pin(grip.Particle, grip.Target) { HeldAt = StepsDone, Origin = grip.Origin };
         }
         if (!before.Select(g => g.Key).SequenceEqual(grips.Select(g => g.Key))) {
             _winDirty = true;

@@ -321,20 +321,31 @@ public partial class SurgeryDriver {
                 }
                 return found;
             }
-            var spot = Spot();
+            // Locating the exposed layer for the next player action samples the drawn mesh across the wound many times.
+            // This test-side search is not per-frame gameplay; keep its CPU cost out of the frame budget while leaving
+            // the walk, reach, needle input and resulting checks budgeted.
+            async Task<Vector2?> FindSpot() {
+                Vector2? found = null;
+                await Unbudgeted(() => {
+                    found = Spot();
+                    return Task.CompletedTask;
+                });
+                return found;
+            }
+            var spot = await FindSpot();
             if (spot is not null) {
                 // Re-squared to each puncture: the holder's carry and its tip-pivot working pose reach differently, and
                 // standing by it keeps both sides of the bite inside the arm's range. Looked at again from there: the
                 // thread draws the tissue in as it's pulled through.
                 await PlayerWalksTo(SitePoint(spot.Value));
-                spot = Spot();
+                spot = await FindSpot();
             }
             if (spot is null && expose is not null) {
                 await expose(alongAt);
-                spot = Spot();
+                spot = await FindSpot();
                 if (spot is not null) {
                     await PlayerWalksTo(SitePoint(spot.Value));
-                    spot = Spot();
+                    spot = await FindSpot();
                 }
             }
             if (spot is null) {

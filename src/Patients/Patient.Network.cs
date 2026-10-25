@@ -33,7 +33,7 @@ public partial class Patient {
     private void BroadcastState() {
         var grips = new Godot.Collections.Array();
         foreach (var grip in Body.Tissue.Grips()) {
-            grips.Add(new Godot.Collections.Array { grip.Key, grip.Particle, grip.Target });
+            grips.Add(new Godot.Collections.Array { grip.Key, grip.Particle, grip.Target, grip.Origin });
         }
         var targets = new Godot.Collections.Array(Targets.Select(target => (Variant)target.State()));
         Rpc(MethodName.Sync, Vitals.ToVariant(), targets, Body.OrganStates(), grips, CavityBloodMl,
@@ -76,7 +76,7 @@ public partial class Patient {
         Body.ApplyOrganStates(organs);
         Body.SetCavityBlood(cavityMl / CavityFullMl);
         Body.Tissue.SetGrips([.. grips.Select(entry => entry.AsGodotArray())
-            .Select(grip => new TissueGrip(grip[0].AsInt32(), grip[1].AsInt32(), grip[2].AsVector3()))]);
+            .Select(grip => new TissueGrip(grip[0].AsInt32(), grip[1].AsInt32(), grip[2].AsVector3(), grip[3].AsVector3()))]);
     }
 
     /// <summary>Host: a spring in the tissue sim was stretched too far and snapped.</summary>

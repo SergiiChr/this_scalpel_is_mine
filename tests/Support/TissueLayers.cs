@@ -3,6 +3,62 @@ namespace Scalpel.Tests.Support;
 /// <summary>Checks on the drawn tissue layers (PatientBody.Layers): the skin, fat and muscle sheets and the walls down
 /// their cuts, as their meshes are published.</summary>
 public static class TissueLayers {
+    /// <summary>Minimum site-space distance from a point to the actual skin sheet triangles (not just their vertices).
+    /// </summary>
+    public static float DistanceToSkin(PatientBody body, Vector3 point) {
+        var skinLayer = body.Layers[0];
+        var skin = skinLayer.Mesh;
+        if (skin.GetSurfaceCount() == 0) { return float.PositiveInfinity; }
+        var arrays = skin.SurfaceGetArrays(0);
+        var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+        if (vertices.Length == 0 || indices.Length < 3) { return float.PositiveInfinity; }
+        var toSite = body.Site.GlobalTransform.AffineInverse() * skinLayer.GlobalTransform;
+        for (var v = 0; v < vertices.Length; v++) { vertices[v] = toSite * vertices[v]; }
+        return DistanceToTriangles(vertices, indices, point);
+    }
+
+    /// <summary>The skin's cut wall must meet its sheet without a visible slit along the lip.</summary>
+    public static void AssertSkinWallJoinsSheet(PatientBody body) {
+        var mesh = body.Layers[0].Mesh;
+        if (mesh.GetSurfaceCount() < 2) { return; }
+        var sheet = mesh.SurfaceGetArrays(0);
+        var vertices = sheet[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var indices = sheet[(int)Mesh.ArrayType.Index].AsInt32Array();
+        var wall = mesh.SurfaceGetArrays(1);
+        var points = wall[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        var colors = wall[(int)Mesh.ArrayType.Color].AsColorArray();
+        var worst = 0f;
+        for (var v = 0; v < points.Length; v++) {
+            if (colors[v].R > 0f) { continue; }
+            worst = Mathf.Max(worst, DistanceToTriangles(vertices, indices, points[v]));
+        }
+        AssertFloat(worst).OverrideFailureMessage($"the skin wall joins its sheet without a slit ({worst * 1000f:0.00} mm gap)")
+            .IsLess(0.0001f);
+    }
+
+    private static float DistanceToTriangles(Vector3[] vertices, int[] indices, Vector3 point) {
+        var nearest = float.PositiveInfinity;
+        for (var t = 0; t + 2 < indices.Length; t += 3) {
+            var (a, b, c) = (vertices[indices[t]], vertices[indices[t + 1]], vertices[indices[t + 2]]);
+            var normal = (b - a).Cross(c - a);
+            if (normal.LengthSquared() > 1e-16f) {
+                normal = normal.Normalized();
+                var projected = point - normal * (point - a).Dot(normal);
+                var weights = Geometry3D.GetTriangleBarycentricCoords(projected, a, b, c);
+                if (weights.X >= 0f && weights.Y >= 0f && weights.Z >= 0f) {
+                    nearest = Mathf.Min(nearest, point.DistanceTo(projected));
+                    continue;
+                }
+            }
+            nearest = Mathf.Min(nearest, Mathf.Min(
+                point.DistanceTo(Geometry3D.GetClosestPointToSegment(point, a, b)),
+                Mathf.Min(point.DistanceTo(Geometry3D.GetClosestPointToSegment(point, b, c)),
+                    point.DistanceTo(Geometry3D.GetClosestPointToSegment(point, c, a)))));
+        }
+        return nearest;
+    }
+
     /// <summary>
     /// Triangles of the skin's cut walls and of the fat and muscle (sheet and walls) passing through a triangle of the
     /// exposed skin, as "Fat wall at (u, v) through skin at (u, v)": a lip pushed over its own opening, or a wall
@@ -68,6 +124,72 @@ public static class TissueLayers {
         var through = ThroughSkin(body);
         AssertInt(through.Count)
             .OverrideFailureMessage($"the cut's walls, fat and muscle stay under the skin ({through.Count} triangles through it: {string.Join("; ", through.Take(6))})")
+            .IsEqual(0);
+    }
+
+    /// <summary>Proper non-coplanar intersections between exposed triangles on each layer's cut wall. Shared edges
+    /// and coplanar duplicates do not count as crossings.</summary>
+    public static HashSet<(string Layer, int First, int Second)> WallSelfCrossings(PatientBody body) {
+        var crossings = new HashSet<(string Layer, int First, int Second)>();
+        foreach (var layer in body.Layers) {
+            var mesh = layer.Mesh;
+            if (mesh.GetSurfaceCount() < 2) {
+                continue;
+            }
+
+            var arrays = mesh.SurfaceGetArrays(1);
+            var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            var indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            var uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            if (vertices.Length == 0 || indices.Length < 3 || uvs.Length == 0) {
+                continue;
+            }
+
+            bool Exposed(int triangle) {
+                for (var corner = 0; corner < 3; corner++) {
+                    var k = body.Tissue.Nearest(uvs[indices[triangle * 3 + corner]]);
+                    if (k < body.Tissue.Exposed.Length && body.Tissue.Exposed[k]) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            var triangleCount = indices.Length / 3;
+            var triangles = new List<(int Index, Vector3 A, Vector3 B, Vector3 C, Vector3 Low, Vector3 High)>();
+            for (var index = 0; index < triangleCount; index++) {
+                if (!Exposed(index)) { continue; }
+                var (a, b, c) = (vertices[indices[index * 3]], vertices[indices[index * 3 + 1]], vertices[indices[index * 3 + 2]]);
+                triangles.Add((index, a, b, c, a.Min(b).Min(c), a.Max(b).Max(c)));
+            }
+            triangles.Sort((left, right) => left.Low.X.CompareTo(right.Low.X));
+            for (var first = 0; first < triangles.Count; first++) {
+                var (firstIndex, a, b, c, firstLow, firstHigh) = triangles[first];
+                for (var second = first + 1; second < triangles.Count; second++) {
+                    var (secondIndex, p, q, r, secondLow, secondHigh) = triangles[second];
+                    if (secondLow.X > firstHigh.X) { break; }
+                    if (firstLow.Y > secondHigh.Y || firstHigh.Y < secondLow.Y
+                        || firstLow.Z > secondHigh.Z || firstHigh.Z < secondLow.Z) {
+                        continue;
+                    }
+
+                    if (!Crosses(a, b, p, q, r) && !Crosses(b, c, p, q, r) && !Crosses(c, a, p, q, r)
+                        && !Crosses(p, q, a, b, c) && !Crosses(q, r, a, b, c) && !Crosses(r, p, a, b, c)) {
+                        continue;
+                    }
+
+                    crossings.Add((layer.Name, Math.Min(firstIndex, secondIndex), Math.Max(firstIndex, secondIndex)));
+                }
+            }
+        }
+
+        return crossings;
+    }
+
+    /// <summary>Asserts that exposed cut walls have no proper non-coplanar self-intersections.</summary>
+    public static void AssertWallsDoNotCrossThemselves(PatientBody body) {
+        var crossings = WallSelfCrossings(body).Take(6).ToArray();
+        AssertInt(crossings.Length)
+            .OverrideFailureMessage($"cut walls do not cross themselves ({string.Join("; ", crossings.Select(pair => $"{pair.Layer} triangles {pair.First}/{pair.Second}"))})")
             .IsEqual(0);
     }
 

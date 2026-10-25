@@ -539,7 +539,7 @@ public partial class Patient : Node3D {
 
     /// <summary>How deep (meters) under the skin the first layer a cut at <paramref name="at"/> hasn't cut through lies:
     /// the blood it holds rests on it. Infinity once it's cut through the muscle, into the cavity.</summary>
-    private float CutFloor(Vector2 at) => Body.Tissue.DeepestCut(at, Body.Tissue.OpenReach * 2f) switch {
+    private float CutFloor(Vector2 at) => Body.Tissue.DeepestCut(at, Body.MetersToUv(Body.Tissue.OpenReach * 2f)) switch {
         TissueDepth.Muscle => float.PositiveInfinity,
         TissueDepth.Fat => PatientBody.SkinThickness + Body.FatThickness,
         _ => PatientBody.SkinThickness,

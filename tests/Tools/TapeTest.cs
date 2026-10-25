@@ -23,6 +23,10 @@ public class TapeTest {
     private const float CutLength = 0.03f;
     private const float Past = 0.01f;
     private const float Pull = 0.03f;
+    /// <summary>Blood on the skin (0..1) where a cut's pool has welled up over it, and how long a cut into the fat
+    /// takes to fill that far.</summary>
+    private const float PooledOnSkin = 0.95f;
+    private const float PoolSeconds = 30f;
     /// <summary>How long (meters) the gash bleeding through taped gauze is.</summary>
     private const float GashLength = 0.06f;
 
@@ -124,14 +128,22 @@ public class TapeTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>On a cut into the fat (0.65) the edges lie further apart than the tape pulls shut: it peels straight
-    /// off. Over cut muscle (0.9) it holds nothing either: the muscle holds the skin apart.</summary>
+    /// <summary>A cut into the fat (0.65) fills with its blood until it wells up onto the skin; stuck on that, the wet
+    /// tape pulls the edges no closer and peels straight off. Over cut muscle (0.9) it holds nothing either: the muscle
+    /// holds the skin apart.</summary>
     [TestCase(0.65f)]
     [TestCase(0.9f)]
     public async Task TapeDoesNotCloseADeepCut(float depth) {
         var session = await ToolSession.Start("appendectomy", $"tape/deep_{depth * 100f:0}");
         var driver = session.Driver;
         var (cut, from, to) = await Cut(driver, depth);
+        if (depth < Wound.MuscleDepth) {
+            // The strip gets as wet as the bloodiest skin under it (Patient.StickStretch()).
+            float Wettest() => Enumerable.Range(0, 9).Max(sample => driver.Body.BloodAt(from.Lerp(to, sample / 8f)));
+            AssertBool(await Frames.Until(() => Wettest() >= PooledOnSkin, PoolSeconds))
+                .OverrideFailureMessage($"the cut's blood wells up onto the skin the strip goes on within {PoolSeconds} s ({Wettest():0.00})")
+                .IsTrue();
+        }
         await driver.PlayerRequestsItem("surgical_tape");
         await driver.PlayerLaysTape([from, to]);
         await Frames.Seconds(2f);

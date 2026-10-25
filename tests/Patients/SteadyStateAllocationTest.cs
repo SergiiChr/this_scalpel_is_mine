@@ -21,11 +21,14 @@ public class SteadyStateAllocationTest {
         sim.Grip(1, new Vector2(0.5f, 0.4f));
         var held = sim.Pos[sim.Nearest(new Vector2(0.5f, 0.4f))];
         var region = new byte[sim.Rest.Length];
+        var lift = new float[sim.Rest.Length];
         var step = 0;
         AllocationBudget.Check("tissue step with a grip beside a cut", () => {
-            sim.MoveGrip(1, held + Vector3.Up * (0.004f * Mathf.Sin(step++ * 0.3f)));
+            var target = held + Vector3.Up * (0.004f * Mathf.Sin(step++ * 0.3f));
+            sim.MoveGrip(1, sim.Restrain(1, target));
             sim.Advance(TissueSim.Step);
             sim.Region(region);
+            sim.CaptureGripLift(lift);
         });
         AssertBool(region.Contains((byte)1)).OverrideFailureMessage("the cut and the grip are in the region").IsTrue();
     }

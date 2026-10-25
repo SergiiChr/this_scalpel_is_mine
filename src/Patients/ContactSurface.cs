@@ -19,8 +19,11 @@ internal sealed class ContactSurface(float cell = 0.01f) {
     internal void Index(Vector3[] vertices, IReadOnlyList<int> indices) {
         var count = indices.Count / 3;
         if (_triangles.Length < count) {
-            Array.Resize(ref _triangles, count);
-            Array.Resize(ref _seen, count);
+            // Cutting adds a few triangles at a time. Keep spare capacity instead of replacing every contact
+            // face and query stamp on each cut step; the indexes are reused for sheets and cut walls alike.
+            var capacity = Math.Max(count, Math.Max(_triangles.Length * 2, 16));
+            Array.Resize(ref _triangles, capacity);
+            Array.Resize(ref _seen, capacity);
         }
         foreach (var bucket in _faces) { bucket?.Clear(); }
         var firstCell = new Vector2I(int.MaxValue, int.MaxValue);
@@ -50,7 +53,9 @@ internal sealed class ContactSurface(float cell = 0.01f) {
         _firstCell = firstCell;
         _width = count == 0 || firstCell.X == int.MaxValue ? 0 : lastCell.X - firstCell.X + 1;
         _height = _width == 0 ? 0 : lastCell.Y - firstCell.Y + 1;
-        if (_faces.Length < _width * _height) { Array.Resize(ref _faces, _width * _height); }
+        if (_faces.Length < _width * _height) {
+            Array.Resize(ref _faces, Math.Max(_width * _height, Math.Max(_faces.Length * 2, 16)));
+        }
         for (var index = 0; index < count; index++) {
             ref readonly var face = ref _triangles[index];
             if (face.Winding == 0f) { continue; }
@@ -92,7 +97,7 @@ internal sealed class ContactSurface(float cell = 0.01f) {
         return float.IsFinite(height) ? height : float.NaN;
     }
 
-    internal void PushTriangle(Vector3[] vertices, int a, int b, int c, float gap, bool above) {
+    internal void PushTriangle(Vector3[] vertices, int a, int b, int c, float gap, bool above, bool crossingOnly = false) {
         var ab = vertices[b] - vertices[a];
         var ac = vertices[c] - vertices[a];
         var determinant = ab.X * ac.Z - ab.Z * ac.X;
@@ -142,6 +147,18 @@ internal sealed class ContactSurface(float cell = 0.01f) {
             Clip(x, y, face.Winding, ref count);
             Clip(y, z, face.Winding, ref count);
             Clip(z, x, face.Winding, ref count);
+            if (crossingOnly) {
+                // A lifted cut wall can lie wholly above another skin facet. Keep that separation; only a wall
+                // reaching through the facet from its protected side needs pushing away. Check the overlap itself,
+                // not vertices outside this face's footprint.
+                var protectedSide = false;
+                for (var n = 0; n < count; n++) {
+                    var p = _contactPolygon[n];
+                    var side = p.Y - (slopeX * p.X + slopeZ * p.Z + face.OriginY);
+                    protectedSide |= above ? side > 0.000001f : side < -0.000001f;
+                }
+                if (!protectedSide) { continue; }
+            }
             for (var n = 0; n < count; n++) {
                 var p = _contactPolygon[n];
                 var roof = slopeX * p.X + slopeZ * p.Z + originY;

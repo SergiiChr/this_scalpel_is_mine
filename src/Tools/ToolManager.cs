@@ -568,11 +568,12 @@ public partial class ToolManager : Node3D {
         var pose = tool.GlobalTransform;
         var lying = tool.Hold is SkinHold;
         if (tool.Hold is SkinHold skin) {
-            // The skin stays held where the hook lies (in the site's space, so breathing doesn't pull it), the tool
-            // lying on top of it. Held where the hand left it, over the body, the edge would stand up as a flap with
-            // the skin around it draped over the tool.
+            // Laying the handle down must not move the acquired material. The restrained tip already holds its
+            // skin contact; lowering that grip to the resting model can push the lip into the drape's skirt.
+            // SkinLift keeps the laid tool above the drawn skin without feeding that visual offset into the grip.
+            var held = Session.Patient.Body.Site.ToLocal(tool.TipPosition());
             pose = LyingFromHold(tool, skin);
-            tool.Hold = skin with { Hold = Session.Patient.Body.Site.ToLocal(pose * new Vector3(0, 0, -tool.Def.Length)) };
+            tool.Hold = skin with { Hold = held };
         }
         Rpc(MethodName.SetToolState, tool.Uid, (int)ToolState.Standing, tool.Holder, -1, pose);
         if (lying) {

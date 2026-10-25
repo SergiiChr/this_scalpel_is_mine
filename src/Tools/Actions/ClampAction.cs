@@ -59,14 +59,22 @@ public sealed class ClampAction : ToolAction {
             Pinch(step);
         } else if (tool.Hold is { } hold) {
             var power = step.Def.Power * step.Hand.Mods.Mult("grip_strength_mult");
-            tool.Hold = patient.UpdateGrip(tool.Uid, hold, step.Tip, power, step.Dt, step.Hand.Speed, out var heldAt);
+            // Tools act before the surgeon poses this frame. Mouse input has already moved the attached hand's
+            // target, while step.Tip still belongs to the previous pose. Restrain the requested skin contact and
+            // correct that same request: correcting the old tip lets each new mouse step overshoot the skin.
+            var tip = step.Tip;
+            if (hold is SkinHold && step.Surgery.Surgeons.TryGetValue(step.Hand.Peer, out var surgeon)) {
+                var hand = surgeon.Hands[tool.Slot];
+                tip = hand.EffectivePosition() + hand.TipOffset(tool.Def.Length);
+            }
+            tool.Hold = patient.UpdateGrip(tool.Uid, hold, tip, power, step.Dt, step.Hand.Speed, out var heldAt);
             if (tool.Hold is null) {
                 step.Surgery.SetAttached(step.Hand.Peer, tool.Slot, false);
             } else if (tool.Hold is CarryHold && hold is TargetHold) {
                 // Pulled free, it no longer holds the hand to the patient: it's carried wherever the surgeon goes.
                 step.Surgery.SetAttached(step.Hand.Peer, tool.Slot, false, keepHeight: true);
-            } else if (heldAt.DistanceSquaredTo(step.Tip) > HeldBack * HeldBack) {
-                step.Surgery.HoldHandBack(step.Hand.Peer, tool.Slot, heldAt - step.Tip);
+            } else if (heldAt.DistanceSquaredTo(tip) > HeldBack * HeldBack) {
+                step.Surgery.HoldHandBack(step.Hand.Peer, tool.Slot, heldAt - tip);
             }
         }
     }
