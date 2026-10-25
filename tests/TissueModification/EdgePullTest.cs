@@ -21,10 +21,9 @@ public class EdgePullTest {
     private const float Stalled = 0.00025f;
     /// <summary>How far (meters) the edge may come back toward the cut from the furthest it got.</summary>
     private const float SettleBack = 0.006f;
-    // Unchanged reference: 47.4 ms at a 3.31 ms scaled CPU limit in a visual run. Its existing overrun needs
-    // 47.4 / 3.31 * 1.3 = 18.6, rounded up to a half per PERFORMANCE.md; no global budget changes.
+    // Keep develop's allowance while measuring the extra contact work; do not enlarge it for this change.
     private static readonly BudgetAllowance BudgetOverride =
-        new("ordering and picking the tool up beside a fresh wound, and holding its edge, exceed the recorded CPU budget", 19f);
+        new("ordering and picking the tool up beside a fresh wound, and holding its edge, exceed the recorded CPU budget", 9.5f);
 
     [TestCase("appendectomy", "forceps")]
     [TestCase("appendectomy", "retractor")]
