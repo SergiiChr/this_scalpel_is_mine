@@ -207,7 +207,7 @@ public partial class Surgery : Node3D {
         }
     }
 
-    private SurgeryStatus CaptureStatus() => new(Objectives.Snapshot(), Scoring.Points, [.. Scoring.Recent],
+    private SurgeryStatus CaptureStatus() => new(Objectives.Snapshot(Patient), Scoring.Points, [.. Scoring.Recent],
         Nurse.CooldownLeft, Nurse.Current, Lab.CooldownLeft, Elapsed);
 
     /// <summary>A partner dropped out: their tools fall where they are and their surgeon leaves the room. Clients only
@@ -260,13 +260,17 @@ public partial class Surgery : Node3D {
     }
 
     /// <summary>Host: how the patient leaves the table, signed out or out of time: brought round from general anesthesia
-    /// by flumazenil (not woken by a quirk or a script), and with most of the blood wiped off the skin.</summary>
+    /// by flumazenil (not woken by a quirk or a script), with most of the blood wiped off the skin, and with the IV taken
+    /// out and the hole taped.</summary>
     private void ScoreAftercare() {
         if (Patient.WentUnder && Patient.AnesthesiaStopped && Patient.Vitals.IsAwake) {
             Scoring.Add("patient_awake");
         }
         if (_skinBloodPeak >= SkinBloodSeen && Patient.Body.SkinBlood() <= _skinBloodPeak * SkinBloodLeft) {
             Scoring.Add("clean_skin");
+        }
+        if (Room.IvLine.Tear is { Torn: false, Taped: true } && !Patient.IvSet) {
+            Scoring.Add("iv_removed");
         }
     }
 
@@ -751,6 +755,9 @@ public partial class Surgery : Node3D {
         Sound("tool_pickup", catheter.GlobalPosition);
     }
 
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void RequestIvRemoval() => Patient.RemoveIv();
+
     /// <summary>A bag in hand takes the place of the one on the IV stand and runs into the line as a full dose.
     /// Drugs pushed into the old bag go with it.
     /// Without a working line nothing changes: the bag stays in hand and the hung one keeps what it had.</summary>
@@ -830,6 +837,8 @@ public partial class Surgery : Node3D {
     public void ConnectIvLine(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvLine, surgeon.Active);
 
     public void DisconnectIvLine(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestIvUnhook, surgeon.Active);
+
+    public void RemoveIv() => RpcId(Net.HostId, MethodName.RequestIvRemoval);
 
     public void Smoke(Surgeon surgeon) => RpcId(Net.HostId, MethodName.RequestSmoke, surgeon.Active);
 

@@ -39,8 +39,8 @@ public class AllergyTest {
         await driver.AssertAndCapture(lab.Contains("Reacts to: lidocaine"),
             "the monitor's lab panel reads \"Reacts to: lidocaine\"", "lab");
         var block = surgery.Objectives.Steps.FindIndex(step => step.Type == "local_block");
-        AssertBool(surgery.Objectives.StepSubtasks[block].Any(line => line.Contains("(allergic to Lidocaine)")))
-            .OverrideFailureMessage($"once screened, the subtasks put the patient under instead, naming the allergy: {string.Join(" / ", surgery.Objectives.StepSubtasks[block])}")
+        AssertBool(surgery.Objectives.StepSubtasks[block].Any(line => line.Text.Contains("(allergic to Lidocaine)")))
+            .OverrideFailureMessage($"once screened, the subtasks put the patient under instead, naming the allergy: {string.Join(" / ", surgery.Objectives.StepSubtasks[block].Select(line => line.Text))}")
             .IsTrue();
 
         await driver.PlayerNumbsSite();

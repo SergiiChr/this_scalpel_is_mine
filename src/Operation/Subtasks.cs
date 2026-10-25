@@ -14,6 +14,10 @@ public sealed record SubtaskFacts(
     bool Nurse,
     bool AllergyUnknown = false);
 
+/// <summary>A subtask line; one with a condition (<see cref="Subtasks.Conditions"/>) is listed only while it holds.
+/// </summary>
+public readonly record struct Subtask(string Text, string When = "");
+
 /// <summary>
 /// The detailed steps under an objective step, for the "I'm just a baby" difficulty: the scenario step's own subtasks
 /// or its type's (data/objectives.cfg), with doses and tools worked out for this patient (tokens explained there).
@@ -22,7 +26,22 @@ public static partial class Subtasks {
     [GeneratedRegex(@"\{(get|dose|syringe)\.(\w+)\}")]
     private static partial Regex Token();
 
-    public static List<string> For(ObjectiveStep step, ScenarioDef scenario, SubtaskFacts facts) {
+    [GeneratedRegex(@"^\{if\.(\w+)\}\s*")]
+    private static partial Regex Condition();
+
+    /// <summary>What a line's leading "{if.name}" lists it under, checked on the host with every status.</summary>
+    internal static readonly Dictionary<string, Func<Patient, bool>> Conditions = new() {
+        ["muscle_cut"] = patient => patient.Wounds.Any(wound => wound.ThroughMuscle),
+        ["attached"] = patient => patient.Targets.Any(target => !target.Extracted && target.Anchor > 0f),
+        ["no_iv"] = patient => !patient.IvWorking,
+        ["iv_in"] = patient => patient.IvSet,
+        ["low_pressure"] = patient => patient.Vitals.Systolic < ObjectiveChecks.StableSystolic,
+        ["beating"] = patient => !patient.Vitals.IsArrested,
+        ["arrested"] = patient => patient.Vitals.IsArrested,
+        ["flat_line"] = patient => patient.Vitals.Rhythm == Rhythm.Asystole,
+    };
+
+    public static List<Subtask> For(ObjectiveStep step, ScenarioDef scenario, SubtaskFacts facts) {
         var defaults = new ConfigReader(Db.Objectives, Section(step, scenario));
         var drug = step.Parameters.String("drug", defaults.String("drug"));
         if (facts.Allergens.Contains(drug) && defaults.String("allergy_instead") is { Length: > 0 } instead) {
@@ -31,19 +50,26 @@ public static partial class Subtasks {
         return Worked(step.Subtasks ?? defaults.Strings("subtasks"), drug, scenario, facts, step.Parameters);
     }
 
-    /// <summary>The subtasks of the discharge that ends every surgery, waking a patient who was put under first.
-    /// </summary>
-    public static List<string> Discharge(ScenarioDef scenario, SubtaskFacts facts) {
-        var section = new ConfigReader(Db.Objectives, "discharge");
-        var under = scenario.Steps.Any(step => step.Type == "anesthesia" || step.Alternative?.Type == "anesthesia");
-        return Worked([.. under ? section.Strings("anesthesia_subtasks") : [], .. section.Strings("subtasks")], "",
-            scenario, facts, []);
-    }
+    /// <summary>The subtasks of waking a patient who is under, the optional task before the discharge.</summary>
+    public static List<Subtask> Wake(ScenarioDef scenario, SubtaskFacts facts) =>
+        Worked(new ConfigReader(Db.Objectives, "wake").Strings("subtasks"), "", scenario, facts, []);
 
-    private static List<string> Worked(IEnumerable<string> lines, string drug, ScenarioDef scenario, SubtaskFacts facts,
+    /// <summary>The subtasks of taking the IV out and taping the hole, the optional cleanup before the discharge.
+    /// </summary>
+    public static List<Subtask> RemoveIv(ScenarioDef scenario, SubtaskFacts facts) =>
+        Worked(new ConfigReader(Db.Objectives, "remove_iv").Strings("subtasks"), "", scenario, facts, []);
+
+    /// <summary>The texts of <paramref name="lines"/> that apply to <paramref name="patient"/> now.</summary>
+    internal static IEnumerable<string> Listed(IEnumerable<Subtask> lines, Patient patient) =>
+        lines.Where(line => line.When.Length == 0 || Conditions[line.When](patient)).Select(line => line.Text);
+
+    private static List<Subtask> Worked(IEnumerable<string> lines, string drug, ScenarioDef scenario, SubtaskFacts facts,
         GodotDictionary parameters) =>
-        [.. lines.Select(line => ManualPage.FillNumbers(Token().Replace(line, found => Fill(found, drug, facts)),
-            $"{scenario.Id} subtasks", parameters))];
+        [.. lines.Select(line => {
+            var when = Condition().Match(line);
+            var text = Token().Replace(line[when.Length..], found => Fill(found, drug, facts));
+            return new Subtask(ManualPage.FillNumbers(text, $"{scenario.Id} subtasks", parameters), when.Groups[1].Value);
+        })];
 
     /// <summary>The line naming the steps of <paramref name="open"/> that <paramref name="step"/> has to come after,
     /// none once they're all in place.</summary>

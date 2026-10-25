@@ -24,7 +24,10 @@ Required before any intravenous drug, fluid or blood product. Establish the line
 ## 2.5 Line security
 The tubing hangs loose between stand and patient. Brushing it only pushes it aside, but tubing caught on the legs or hands and walked away with tears the catheter out of the arm: the skin rips, the line is lost and must be re-sited with a new catheter. Step around the tubing, or free it before walking off.
 
-## 2.6 Fluid choice
+## 2.6 Removal
+Once the procedure is complete and the patient is awake, take the catheter out: [b]Interact[/b] with the dressing on the forearm ([b]Remove the IV[/b]). The giving set goes back on the stand. The puncture oozes until taped shut (section 6).
+
+## 2.7 Fluid choice
 • Crystalloid (saline, {drug.saline.Peak.VolumeMl} ml): restores circulating volume after moderate blood loss.
 • Blood products: see section 10. Confirm the group before connecting.
 
