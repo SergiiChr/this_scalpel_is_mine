@@ -243,17 +243,21 @@ general anesthesia for a lidocaine allergy).
 Each step's `"label"` is its main task as the HUD lists it, written for a new player: what to do and with what.
 Its subtasks, which only the easiest difficulty shows, come from its type's section of `data/objectives.cfg` (an
 `extract` step's by its target's `remove_with`), or from its own `"subtasks"` list. They're worked out for the patient
-when the surgery starts (`Subtasks.cs`, tokens explained in that file): the dose for the patient's weight in ml of the
-vial and the syringe for it, the first alternative of a drug the chart says the patient is allergic to (a section's
+when the surgery starts (`Subtasks.cs`, tokens explained in that file), and a line starting with `{if.name}` is listed
+only while that condition holds for the patient (the muscle still cut open, the heart stopped): the dose for the
+patient's weight in ml of the vial and the syringe for it, the first alternative of a drug the chart says the patient is allergic to (a section's
 `allergy_instead` gives the subtasks for it), a lab screen first for an allergy the chart doesn't name, and ordering
 from the nurse when the room has no such tool. The host sends them only for the open steps up to the next required one,
 with the steps they come `"after"` that don't hold yet. A state step shows done only once the required steps before it
 count. A drug step (`anesthesia`, `local_block`, `sedate`,
-`inject`) names its drug in `"drug"`, else its section's. Every instruction matches the manual's wording for it.
+`inject`) names its drug in `"drug"`, else its section's, and why that one in `"reason"`, shown after its dose. Every instruction matches the manual's wording for it.
 
 Difficulty (`Settings.Difficulty`, per player, asked on the first start): **I'm just a baby** lists every main task,
 optional ones marked `[optional]`, with the subtasks of the next ones to do; **Intern** the required main tasks and the hints; **MD** none.
-Both end with the discharge, which isn't a step (it ends the surgery); its subtasks wake a patient who was put under.
+Both end with the discharge, which isn't a step (it ends the surgery) and has no subtasks. Once the required steps
+count, "I'm just a baby" also lists aftercare before it as optional tasks: waking the patient with flumazenil while
+they're under (`[wake]` in `objectives.cfg`), and taking out the IV and taping the hole while either is left
+(`[remove_iv]`).
 Debug mode adds the score, the latest scored actions and the debug toasts at any difficulty.
 `anesthesia` is met once the patient is out (eyes closed) with a general anesthetic working, however deep: a right
 dose of weaker drugs counts too. A weaker patient may need more than the right dose to close their eyes (Alcoholic).
@@ -381,8 +385,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   The host then settles the outcome, score and consequences (`Surgery.Discharge()`). Signed out too early, the patient
   can still go, as a failure. Only death and the time limit end a surgery without it.
   Leaving the table (signed out or out of time) also scores aftercare: a patient who was put under and is awake again,
-  and skin with at most `Surgery.SkinBloodLeft` of the most blood it held left on it (`PatientBody.SkinBlood()`, the
-  site without its border of `PatientBody.CleanMargin`, sampled with every status).
+  the IV taken out and every hole it left taped, and skin with at most `Surgery.SkinBloodLeft` of the most blood it
+  held left on it (`PatientBody.SkinBlood()`, the site without its border of `PatientBody.CleanMargin`, sampled with
+  every status).
 - **Post-op report** (`ReportView`): the score lines, then a timeline of the surgery (`Scoring.Timeline`): each scored
   action, each step first done or spoiled (naming the step it comes after that wasn't in place), then at the discharge
   which steps counted and which were missed. It's where a player learns what the hidden objectives were. Repeats in a
@@ -410,6 +415,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   slips off. Holding the catheter the tubing is on, "Disconnect the IV line" at the stand takes the tubing off and hangs
   it back on the stand: a catheter that fell is washed and sanitized bare, then connected again and put in. An
   unsterile catheter put in scores as a dirty tool, as one on the site does, without soiling the site.
+  Interact on the dressing ("Remove the IV", `Patient.RemoveIv()`) takes the catheter out for good: the tubing goes
+  back on the stand and a small hole is left where it went in (`IvTear`, not torn), oozing like a tear until taped.
 - **IV drip** (`iv_drip` in tools.cfg): the bag on the stand is a fixed tool, 500 ml of fluid with room for 100 more.
   A syringe brought over the bag snaps its needle into the bag's middle, straight into the face on the hand's side
   and a little upward, the way the forearm rises to it (`Surgeon.SnapSpot()`); moved on, it comes out and the hand
@@ -698,8 +705,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - Taped gauze soaks up what its pressure holds back from the cut under it (`Wound.LastingBleeding`) until it's full;
   then the blood soaks through into the tape (`Patient.SoakThrough` per ml), and soaked through, the tape lets go and
   the gauze with it, pressing no more.
-- The skin a ripped-out IV catheter tore (`IvTear`) oozes (`Patient.IvTearOoze`) until a strip across it holds it
-  shut (`Patient.TapeIvTear()`). On the forearm a strip is short: a press near the tear starts it, the next sticks it
+- The hole an IV catheter left, or the skin it tore ripped out (`IvTear`), oozes (`Patient.IvTearOoze`) until a strip
+  across it holds it shut (`Patient.TapeIvTear()`); each one stays until taped. On the forearm a strip is short: a press near the tear starts it, the next sticks it
   down from there and cuts it off. It holds when its middle lies over the slit and it reaches past the torn rim on both
   sides (`IvTear.Covers()`), and is then drawn across the arm there, the blood bead under it wiped; otherwise it
   doesn't stick and takes no tape.

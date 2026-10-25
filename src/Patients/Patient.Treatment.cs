@@ -979,6 +979,21 @@ public partial class Patient {
         Rpc(MethodName.IvLineOn, Session.Tools.DropNew("iv_catheter", end).Uid);
     }
 
+    /// <summary>A surgeon takes the catheter out of the arm, the cleanup before the discharge: it's thrown away and the
+    /// tubing hung back on the stand, and the hole it leaves oozes until a strip of tape holds it shut.</summary>
+    public void RemoveIv() {
+        if (!IvSet) {
+            return;
+        }
+        IvSet = false;
+        IvInVein = false;
+        IvConnected = false;
+        if (Session.Room.IvLine.Dressing is { } dressing) {
+            Session.Sound("tool_pickup", dressing.GlobalPosition);
+        }
+        Rpc(MethodName.IvRemoved, false);
+    }
+
     /// <summary>Tapes a catheter on at <paramref name="point"/> (local to the body's root), the tubing on it if
     /// <paramref name="connected"/>. The dressing rides the forearm it's on (<see cref="PatientBody.IvSite"/>).</summary>
     private void ConnectIv(Vector3 point, bool connected) {

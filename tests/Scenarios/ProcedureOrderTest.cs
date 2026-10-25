@@ -27,7 +27,7 @@ public class ProcedureOrderTest {
         var report = surgery.Report;
         AssertBool(report?.Success == success)
             .OverrideFailureMessage($"{order} ends in {(success ? "success" : "failure")}: {report?.Reason ?? "not finished"}, "
-                + $"{string.Join(", ", objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
+                + $"{string.Join(", ", objectives.Snapshot(surgery.Patient))}. Last steps:\n{driver.Recent()}")
             .IsTrue();
         AssertBool(required.Single(pair => pair.step.Type == "close").state.Spoiled)
             .OverrideFailureMessage($"the closure is spoiled only when stitched before cleaning ({order})").IsEqual(!success);

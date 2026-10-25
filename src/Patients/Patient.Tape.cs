@@ -96,7 +96,7 @@ public partial class Patient {
             return false;
         }
         var (a, b) = (tear.OnArm(from), tear.OnArm(to));
-        if (!IvTear.Covers(a, b, def.Radius)) {
+        if (!tear.Covers(a, b, def.Radius)) {
             TearNotice("The strip didn't stick. Lay it across the tear, from one side of it to the other.");
             return false;
         }

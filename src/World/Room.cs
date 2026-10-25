@@ -689,8 +689,12 @@ public partial class Room : Node3D {
     /// <summary>A catheter taped on at <paramref name="site"/> (local to <paramref name="to"/>, see
     /// PatientBody.IvSite()) on an arm of this radius, <paramref name="connected"/>: with the tubing from the stand's
     /// drip chamber on it.</summary>
-    public void ConnectIv(Node3D to, Transform3D site, float armRadius, bool connected) =>
+    public void ConnectIv(Node3D to, Transform3D site, float armRadius, bool connected) {
         IvLine.Attach(to, site, armRadius, connected);
+        // Over the hub and film, in the dressing's space: freed with it.
+        Interactable.Create(IvLine.Dressing!, "Remove the IV", new Vector3(0.06f, 0.03f, 0.05f), new Vector3(-0.012f, 0.005f, 0f),
+            _ => Surgery.Current?.RemoveIv());
+    }
 
     /// <summary>Places a layout prop, turned by its yaw, solid if it has a footprint in <see cref="StationSolids"/>.
     /// </summary>

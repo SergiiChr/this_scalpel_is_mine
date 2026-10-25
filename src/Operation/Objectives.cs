@@ -44,13 +44,24 @@ public partial class Objectives : Node {
     public List<ObjectiveStep> Steps { get; } = [];
     public List<StepState> States { get; } = [];
     /// <summary>Each step's subtasks, worked out for this patient (<see cref="Operation.Subtasks"/>).</summary>
-    private readonly List<string[]> _subtasks = [];
-    internal IReadOnlyList<string[]> StepSubtasks => _subtasks;
-    private string[] _discharge = [];
+    private readonly List<Subtask[]> _subtasks = [];
+    internal IReadOnlyList<Subtask[]> StepSubtasks => _subtasks;
+    private Subtask[] _wake = [];
+    private Subtask[] _removeIv = [];
+    /// <summary>The parameters of the tasks that aren't steps.</summary>
+    private static readonly Godot.Collections.Dictionary NoParameters = [];
+
+    /// <summary>The optional task the HUD lists after the steps once the required ones count while the patient is under:
+    /// gone once they're awake, so it's never shown done.</summary>
+    internal const string WakeLabel = "Wake the patient with flumazenil";
+
+    /// <summary>The optional cleanup the HUD lists after the steps once the required ones count, while an IV is in or
+    /// the hole it left is open.</summary>
+    internal const string RemoveIvLabel = "Remove the IV and tape over the hole";
 
     /// <summary>The last task the HUD lists after the steps: the discharge ends the surgery, so it's never shown done.
     /// </summary>
-    internal const string DischargeLabel = "Discharge the patient: sign their card";
+    internal const string DischargeLabel = "Discharge the patient: sign the patient card";
 
     public void Setup(ScenarioDef scenario, SubtaskFacts facts) {
         foreach (var step in scenario.Steps) {
@@ -63,8 +74,9 @@ public partial class Objectives : Node {
     /// <summary>Every step's subtasks for <paramref name="facts"/>, again when they change.</summary>
     internal void WorkOutSubtasks(ScenarioDef scenario, SubtaskFacts facts) {
         _subtasks.Clear();
-        _subtasks.AddRange(Steps.Select(step => (string[])[.. Subtasks.For(step, scenario, facts)]));
-        _discharge = [.. Subtasks.Discharge(scenario, facts)];
+        _subtasks.AddRange(Steps.Select(step => (Subtask[])[.. Subtasks.For(step, scenario, facts)]));
+        _wake = [.. Subtasks.Wake(scenario, facts)];
+        _removeIv = [.. Subtasks.RemoveIv(scenario, facts)];
     }
 
     /// <summary>Every required step counts: the patient is ready to go.</summary>
@@ -124,8 +136,9 @@ public partial class Objectives : Node {
 
     /// <summary>Compact state for the HUD. A state step shows done only once the required steps before it count: a
     /// wound isn't closed before it's been opened. Subtasks go only with the open steps up to the next required one,
-    /// all the HUD lists, which keeps the status small.</summary>
-    public List<ObjectiveView> Snapshot() {
+    /// all the HUD lists, which keeps the status small, and only those that apply to <paramref name="patient"/> now.
+    /// </summary>
+    public List<ObjectiveView> Snapshot(Patient patient) {
         var views = new List<ObjectiveView>(Steps.Count);
         var settled = true;
         var ahead = true;
@@ -136,12 +149,19 @@ public partial class Objectives : Node {
             if (ahead && !done && !state.Spoiled) {
                 ahead = step.Optional;
                 // Missing() is what spoils a step: a step it comes after that doesn't hold right now.
-                subtasks = [.. _subtasks[i], .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
+                subtasks = [.. Subtasks.Listed(_subtasks[i], patient, step.Parameters), .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
             }
             settled &= step.Optional || state.Counts;
             views.Add(new ObjectiveView(step.Label, done, step.Optional, state.Spoiled, subtasks, step.Hint));
         }
-        views.Add(new ObjectiveView(DischargeLabel, false, false, false, ahead ? _discharge : []));
+        // Aftercare: not before the required steps count, or a player might wake the patient mid-operation.
+        if (settled && patient.Vitals.IsUnder) {
+            views.Add(new ObjectiveView(WakeLabel, false, true, false, [.. Subtasks.Listed(_wake, patient, NoParameters)]));
+        }
+        if (settled && (patient.IvSet || patient.IvHoleOpen)) {
+            views.Add(new ObjectiveView(RemoveIvLabel, false, true, false, [.. Subtasks.Listed(_removeIv, patient, NoParameters)]));
+        }
+        views.Add(new ObjectiveView(DischargeLabel, false, false, false, []));
         return views;
     }
 }

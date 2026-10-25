@@ -4,16 +4,18 @@ namespace Scalpel.Tests.Scenarios;
 /// How the patient leaves the table, scored at the discharge. Put under, then given flumazenil,
 /// the patient comes round and signed out awake scores; signed out still asleep doesn't. Blood wiped off the skin with
 /// gauze scores even with a smear left on the border of the site, where a swab barely reaches; left on, it doesn't.
-/// A new induction dose after the reversal puts the patient under again for good. With key frames also the toast as the
-/// reversal works.
+/// A new induction dose after the reversal puts the patient under again for good. The IV taken out leaves a hole that
+/// oozes until taped; done, it scores. With key frames also the toast as the reversal works, the hole and the strip.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_gauze"), TestCategory("tool_vial_flumazenil"), TestCategory("tool_vial_propofol"),
+ TestCategory("tool_surgical_tape"), TestCategory("tool_iv_catheter"),
  TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class AftercareTest {
     private const string Awake = "Brought the patient round from anesthesia before the discharge";
     private const string Clean = "Cleaned the blood off the skin";
+    private const string IvOut = "Took the IV out and taped the hole";
 
     [TestCase(true)]
     [TestCase(false)]
@@ -81,6 +83,57 @@ public class AftercareTest {
         await Frames.Seconds(Patient.WakeSeconds * 2f);
         AssertBool(patient.Vitals.IsUnder)
             .OverrideFailureMessage($"kept under past the wake-up time (anesthesia {patient.Vitals.Anesthesia:0.00})").IsTrue();
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    /// <summary>Interact on the dressing takes the catheter out: the tubing goes back on the stand and the small hole
+    /// it leaves oozes until a strip across it holds it shut, which scores at the discharge.</summary>
+    [TestCase]
+    public async Task IvTakenOutAndTapedBeforeTheDischargeScores() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("bullet_muscle");
+        var surgery = driver.Surgery;
+        var patient = driver.Patient;
+        var line = surgery.Room.IvLine;
+        KeyFrames? shots = null;
+        if (KeyFrames.Wanted()) {
+            shots = new KeyFrames();
+            driver.AddChild(shots);
+            shots.Begin(surgery, "aftercare");
+        }
+        SurgeryState.IvLineIsIn(patient);
+        await Frames.Physics(2);
+        AssertBool(await driver.PlayerInteracts("Remove the IV")).OverrideFailureMessage("the dressing offers to take it out")
+            .IsTrue();
+        var hole = line.Tear;
+        AssertBool(!patient.IvSet && line.Dressing is null && line.End == IvLineEnd.Clipped && hole is { Torn: false })
+            .OverrideFailureMessage($"taken out, the dressing is gone and the tubing back on the stand ({line.End})").IsTrue();
+        await Frames.Seconds(0.5f);
+        AssertFloat(patient.IvTearBleeding).OverrideFailureMessage("the hole oozes").IsGreater(0f);
+        if (shots is not null) {
+            await shots.CaptureAt("iv_hole", "a small bloodied hole on the forearm where the catheter went in, no "
+                + "dressing or tape left on the arm", hole!.Across(0f), 0.2f);
+        }
+        await driver.PlayerRequestsItem("surgical_tape");
+        await driver.PlayerSticksTapeAt(hole!.Across(-0.015f));
+        await driver.PlayerSticksTapeAt(hole.Across(0.015f), true);
+        await Frames.Seconds(0.5f);
+        AssertBool(hole.Taped && patient.IvTearBleeding == 0f)
+            .OverrideFailureMessage($"a strip across the hole stops it oozing ({patient.IvTearBleeding:0.000} ml/s)\n{driver.Recent()}")
+            .IsTrue();
+        if (shots is not null) {
+            var me = driver.Me;
+            await driver.PlayerReaches(hole.Across(0f) + ((me.GlobalPosition - hole.Across(0f)).Slide(Vector3.Up).Normalized() * 0.2f)
+                + (Vector3.Up * 0.1f));
+            await shots.CaptureAt("iv_hole_taped", "a strip of tape lying flat across the arm over the hole, neither "
+                + "sunk into the skin nor floating off it", hole.Across(0f), 0.2f);
+        }
+        await driver.PlayerDischarges();
+        AssertBool(surgery.Report!.Events.Any(entry => entry.Text == IvOut))
+            .OverrideFailureMessage("the report scores the IV taken out and the hole taped").IsTrue();
+        shots?.End();
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;
     }

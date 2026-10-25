@@ -180,7 +180,7 @@ public partial class Patient {
     }
 
     /// <summary>The catheter is out of the arm; <paramref name="torn"/>: ripped out with the tubing on it (PullIv() puts
-    /// it back on the tubing's end as a tool).</summary>
+    /// it back on the tubing's end as a tool), else taken out (RemoveIv()).</summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     internal void IvRemoved(bool torn) {
         IvSet = false;
@@ -189,7 +189,7 @@ public partial class Patient {
         Surgery.Current?.Room.IvLine.PullOut(torn);
     }
 
-    /// <summary>The skin a ripped-out IV catheter tore is taped shut with a strip across it (Patient.TapeIvTear()).
+    /// <summary>The skin an IV catheter left is taped shut with a strip across it (Patient.TapeIvTear()).
     /// </summary>
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void IvTearTaped(float z0, float z1, float halfWidth, Color color) =>

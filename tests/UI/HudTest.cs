@@ -1,7 +1,7 @@
 namespace Scalpel.Tests.UI;
 
 /// <summary>Objectives show as the difficulty tells, update immediately when their state changes and keep their layout
-/// while unchanged.</summary>
+/// while unchanged. A conditional subtask is listed only while its condition holds.</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 public class HudTest {
@@ -101,5 +101,29 @@ public class HudTest {
         AssertArray(Texts(Difficulty.Md, false)).OverrideFailureMessage("MD: no objectives").IsEmpty();
         AssertArray(Texts(Difficulty.Md, true)).OverrideFailureMessage("debug mode adds only the score")
             .IsEqual(new List<string> { "\nScore 7" });
+    }
+
+    /// <summary>The closure's muscle line is listed only once a wound goes through the muscle, the extraction's line
+    /// about cutting it free while the appendix is attached.</summary>
+    [TestCase]
+    public async Task ConditionalSubtasksShowOnlyWhileTheyApply() {
+        var driver = SurgeryDriver.Create();
+        try {
+            await driver.Start("appendectomy");
+            var objectives = driver.Surgery.Objectives;
+            var steps = objectives.Steps;
+            List<string> Listed(string type) {
+                var i = steps.FindIndex(step => step.Type == type);
+                return [.. Subtasks.Listed(objectives.StepSubtasks[i], driver.Patient, steps[i].Parameters)];
+            }
+            AssertBool(Listed("extract").Any(line => line.Contains("still attached")))
+                .OverrideFailureMessage("the appendix is attached until cut free").IsTrue();
+            bool MuscleListed() => Listed("close").Any(line => line.Contains("muscle is cut"));
+            AssertBool(MuscleListed()).OverrideFailureMessage("no muscle to sew before anything is cut").IsFalse();
+            SurgeryState.SkinIsCut(driver.Patient, new Vector2(0.45f, 0.5f), new Vector2(0.55f, 0.5f), Wound.MuscleDepth);
+            AssertBool(MuscleListed()).OverrideFailureMessage("cut through the muscle, it's sewn first").IsTrue();
+        } finally {
+            await driver.Stop();
+        }
     }
 }

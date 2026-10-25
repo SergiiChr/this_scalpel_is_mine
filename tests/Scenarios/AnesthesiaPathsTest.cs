@@ -106,7 +106,9 @@ public class AnesthesiaPathsTest {
 
     /// <summary>
     /// A patient allergic to lidocaine, put under instead as the manual (17_conditions/allergy.txt) says: "Numb the
-    /// area with lidocaine, or put the patient under" counts general anesthesia, and signed out, the surgery ends in success.
+    /// area with lidocaine, or put the patient under" counts general anesthesia. Done and still under with the IV in, the
+    /// objectives list waking them and taking the IV out before the discharge, the first until flumazenil wakes them;
+    /// signed out, the surgery ends in success.
     /// The lidocaine path is <see cref="ScenarioFlowsTest.PlaysThrough"/>.
     /// </summary>
     [TestCase("hand_stitch", Timeout = Limits.Slow)]
@@ -125,10 +127,18 @@ public class AnesthesiaPathsTest {
             AssertBool(surgery.Scoring.Entries.ContainsKey("unneeded_alternative"))
                 .OverrideFailureMessage("general anesthesia for a lidocaine allergy costs no points").IsFalse();
             await Frames.Until(() => surgery.Objectives.AllDone, 120f);
+            await Frames.Seconds(Surgery.StatusInterval + 0.1f);
+            AssertArray(surgery.Status.Objectives.TakeLast(3).Select(view => view.Label).ToList())
+                .OverrideFailureMessage("the cleanup is listed before the discharge")
+                .IsEqual(new List<string> { Objectives.WakeLabel, Objectives.RemoveIvLabel, Objectives.DischargeLabel });
+            await driver.PlayerGivesDrug("vial_flumazenil", driver.DoseMl("vial_flumazenil"), driver.IvOrVein);
+            AssertBool(await Frames.Until(() => surgery.Patient.Vitals.IsAwake
+                    && surgery.Status.Objectives.All(view => view.Label != Objectives.WakeLabel), Patient.WakeSeconds + 10f))
+                .OverrideFailureMessage($"awake, waking them is no longer listed: {driver.Recent()}").IsTrue();
             await driver.PlayerDischarges();
             AssertBool(surgery.Report?.Success == true)
                 .OverrideFailureMessage($"{scenario} ends in success under general anesthesia: "
-                    + $"{string.Join(", ", surgery.Objectives.Snapshot())}. Last steps:\n{driver.Recent()}")
+                    + $"{string.Join(", ", surgery.Objectives.Snapshot(surgery.Patient))}. Last steps:\n{driver.Recent()}")
                 .IsTrue();
             await driver.Stop();
         });

@@ -496,10 +496,10 @@ public partial class SurgeryDriver : Node {
         Note($"looks at {point}");
     }
 
-    /// <summary>Interacts with the room station whose prompt is <paramref name="prompt"/>, standing in front of it.
-    /// </summary>
+    /// <summary>Interacts with the station whose prompt is <paramref name="prompt"/>, in the room or on the patient (the
+    /// IV dressing), standing in front of it.</summary>
     public async Task<bool> PlayerInteracts(string prompt) {
-        var station = Surgery.Room.FindChildren("*", "", true, false)
+        var station = Surgery.FindChildren("*", "", true, false)
             .OfType<Interactable>()
             .FirstOrDefault(node => node.Prompt == prompt && node.OfferedTo(Me));
         if (station is null) {

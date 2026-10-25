@@ -390,7 +390,7 @@ public partial class Patient : Node3D {
                 }
             }
         }
-        IvTearBleeding = Surgery.Current?.Room.IvLine.Tear is { Taped: false } ? IvTearOoze * bleedMult : 0f;
+        IvTearBleeding = IvHoleOpen ? IvTearOoze * bleedMult : 0f;
         total += IvTearBleeding;
         lasting += IvTearBleeding;
         v.BleedRate = total;
@@ -736,6 +736,9 @@ public partial class Patient : Node3D {
 
     /// <summary>A catheter on the line is in, in a vein: drugs and fluids run through it.</summary>
     public bool IvWorking => IvSet && IvInVein && IvConnected;
+
+    /// <summary>A catheter came out and a hole it left isn't taped shut yet.</summary>
+    internal bool IvHoleOpen => Surgery.Current?.Room.IvLine.Tear is { Taped: false };
 
     /// <summary>
     /// Gives a drug. <paramref name="amount"/>: how much was given in the drug's unit (see <see cref="DrugDef.Dose"/>);

@@ -90,7 +90,7 @@ public partial class IvLine : Node3D {
     private readonly List<(Vector3 From, Vector3 To, Surgeon Surgeon)> _bodies = [];
     private readonly List<(Vector3 At, Surgeon Surgeon)> _hands = [];
     private IvDressing? _dressing;
-    private IvTear? _tear;
+    private readonly List<IvTear> _tears = [];
     private Vector3 _lastStart;
     private Vector3? _lastEnd;
     private float _stillFor;
@@ -109,8 +109,18 @@ public partial class IvLine : Node3D {
     public SurgicalTool? Catheter { get; private set; }
     /// <summary>The catheter, film and tape on the arm, null while no catheter is in.</summary>
     internal IvDressing? Dressing => _dressing;
-    /// <summary>The torn skin where a catheter was ripped out, null until one was.</summary>
-    internal IvTear? Tear => _tear;
+    /// <summary>The latest hole a catheter left that isn't taped yet, else the latest one; null until one came out.
+    /// </summary>
+    internal IvTear? Tear {
+        get {
+            for (var i = _tears.Count - 1; i >= 0; i--) {
+                if (!_tears[i].Taped) {
+                    return _tears[i];
+                }
+            }
+            return _tears.Count > 0 ? _tears[^1] : null;
+        }
+    }
     /// <summary>How many times its length the tubing is stretched (1 when it's just taut or slack).</summary>
     public float Stretch { get; private set; } = 1f;
     /// <summary>How far the point that moved most moved in the last simulated frame (meters).</summary>
@@ -187,25 +197,24 @@ public partial class IvLine : Node3D {
         Wake();
     }
 
-    /// <summary>The catheter comes out of the arm. <paramref name="torn"/>: ripped out by the tubing, tearing the skin
-    /// where it went in; the end hangs loose until the catheter goes back on it (Patient.PullIv()). A catheter that
-    /// wasn't on the tubing leaves it where it is.</summary>
+    /// <summary>The catheter comes out of the arm, leaving a hole that oozes until taped. <paramref name="torn"/>:
+    /// ripped out by the tubing, tearing the skin where it went in; the end hangs loose until the catheter goes back on
+    /// it (Patient.PullIv()). Otherwise taken out (Patient.RemoveIv()): the tubing goes back on the stand. A catheter
+    /// that wasn't on the tubing leaves it where it is.</summary>
     public void PullOut(bool torn) {
         if (_dressing is not null) {
-            if (torn) {
-                _tear?.QueueFree();
-                _tear = new IvTear { Name = "IvTear" };
-                _dressing.GetParent().AddChild(_tear);
-                _tear.Transform = _dressing.Transform;
-                _tear.Build(_dressing.ArmRadius);
-            }
+            var tear = new IvTear { Name = "IvTear" };
+            _dressing.GetParent().AddChild(tear);
+            tear.Transform = _dressing.Transform;
+            tear.Build(_dressing.ArmRadius, torn);
+            _tears.Add(tear);
             _dressing.QueueFree();
             _dressing = null;
         }
         if (End != IvLineEnd.Arm) {
             return;
         }
-        End = IvLineEnd.Loose;
+        End = torn ? IvLineEnd.Loose : IvLineEnd.Clipped;
         Catheter = null;
         Wake();
     }
