@@ -7,3 +7,5 @@ __pycache__/
 .mypy_cache/
 gdunit4_testadapter_v5/
 TestResults/
+.idea/
+*.sln.DotSettings.user
