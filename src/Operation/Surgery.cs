@@ -269,7 +269,7 @@ public partial class Surgery : Node3D {
         if (_skinBloodPeak >= SkinBloodSeen && Patient.Body.SkinBlood() <= _skinBloodPeak * SkinBloodLeft) {
             Scoring.Add("clean_skin");
         }
-        if (Room.IvLine.Tear is { Torn: false, Taped: true } && !Patient.IvSet) {
+        if (Room.IvLine.Tear is { Taped: true } && !Patient.IvSet) {
             Scoring.Add("iv_removed");
         }
     }

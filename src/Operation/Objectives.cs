@@ -48,9 +48,11 @@ public partial class Objectives : Node {
     internal IReadOnlyList<Subtask[]> StepSubtasks => _subtasks;
     private Subtask[] _wake = [];
     private Subtask[] _removeIv = [];
+    /// <summary>The parameters of the tasks that aren't steps.</summary>
+    private static readonly Godot.Collections.Dictionary NoParameters = [];
 
-    /// <summary>The optional task the HUD lists after the steps while the patient is under: gone once they're awake,
-    /// so it's never shown done.</summary>
+    /// <summary>The optional task the HUD lists after the steps once the required ones count while the patient is under:
+    /// gone once they're awake, so it's never shown done.</summary>
     internal const string WakeLabel = "Wake the patient with flumazenil";
 
     /// <summary>The optional cleanup the HUD lists after the steps once the required ones count, while an IV is in or
@@ -147,16 +149,17 @@ public partial class Objectives : Node {
             if (ahead && !done && !state.Spoiled) {
                 ahead = step.Optional;
                 // Missing() is what spoils a step: a step it comes after that doesn't hold right now.
-                subtasks = [.. Subtasks.Listed(_subtasks[i], patient), .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
+                subtasks = [.. Subtasks.Listed(_subtasks[i], patient, step.Parameters), .. Subtasks.OnlyAfter(step, Steps.Where((_, j) => !States[j].Holds || States[j].Spoiled))];
             }
             settled &= step.Optional || state.Counts;
             views.Add(new ObjectiveView(step.Label, done, step.Optional, state.Spoiled, subtasks, step.Hint));
         }
-        if (patient.Vitals.IsUnder) {
-            views.Add(new ObjectiveView(WakeLabel, false, true, false, ahead ? [.. Subtasks.Listed(_wake, patient)] : []));
+        // Aftercare: not before the required steps count, or a player might wake the patient mid-operation.
+        if (settled && patient.Vitals.IsUnder) {
+            views.Add(new ObjectiveView(WakeLabel, false, true, false, [.. Subtasks.Listed(_wake, patient, NoParameters)]));
         }
         if (settled && (patient.IvSet || patient.IvHoleOpen)) {
-            views.Add(new ObjectiveView(RemoveIvLabel, false, true, false, [.. Subtasks.Listed(_removeIv, patient)]));
+            views.Add(new ObjectiveView(RemoveIvLabel, false, true, false, [.. Subtasks.Listed(_removeIv, patient, NoParameters)]));
         }
         views.Add(new ObjectiveView(DischargeLabel, false, false, false, []));
         return views;

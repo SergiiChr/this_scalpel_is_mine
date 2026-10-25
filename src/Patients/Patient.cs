@@ -737,7 +737,7 @@ public partial class Patient : Node3D {
     /// <summary>A catheter on the line is in, in a vein: drugs and fluids run through it.</summary>
     public bool IvWorking => IvSet && IvInVein && IvConnected;
 
-    /// <summary>A catheter came out and the hole it left isn't taped shut yet.</summary>
+    /// <summary>A catheter came out and a hole it left isn't taped shut yet.</summary>
     internal bool IvHoleOpen => Surgery.Current?.Room.IvLine.Tear is { Taped: false };
 
     /// <summary>

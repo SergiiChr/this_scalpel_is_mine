@@ -1,9 +1,8 @@
 namespace Scalpel.Tests.Scenarios;
 
 /// <summary>
-/// How the patient leaves the table, scored at the discharge. Put under, the objectives list waking them as an optional
-/// task until they're awake; given flumazenil, the patient comes round and signed out awake scores; signed out still
-/// asleep doesn't. Blood wiped off the skin with
+/// How the patient leaves the table, scored at the discharge. Put under, then given flumazenil,
+/// the patient comes round and signed out awake scores; signed out still asleep doesn't. Blood wiped off the skin with
 /// gauze scores even with a smear left on the border of the site, where a swab barely reaches; left on, it doesn't.
 /// A new induction dose after the reversal puts the patient under again for good. The IV taken out leaves a hole that
 /// oozes until taped; done, it scores. With key frames also the toast as the reversal works, the hole and the strip.
@@ -33,13 +32,9 @@ public class AftercareTest {
             driver.AddChild(shots);
             shots.Begin(surgery, "aftercare");
         }
-        bool WakeListed() => surgery.Status.Objectives.Any(view => view.Label == Objectives.WakeLabel && view.Optional);
-        AssertBool(WakeListed()).OverrideFailureMessage("an awake patient needs no waking").IsFalse();
         SurgeryState.PatientIsAsleep(patient);
         AssertBool(await Frames.Until(() => patient.WentUnder && !patient.Vitals.IsAwake, 20f))
             .OverrideFailureMessage($"the patient goes under (anesthesia {patient.Vitals.Anesthesia:0.00})").IsTrue();
-        AssertBool(await Frames.Until(WakeListed, Surgery.StatusInterval + 0.5f))
-            .OverrideFailureMessage("under, waking them is listed as optional").IsTrue();
         if (reversed) {
             var toasts = new List<string>();
             surgery.Hud.Toasted += toasts.Add;
@@ -57,8 +52,6 @@ public class AftercareTest {
                 .OverrideFailureMessage($"reversed, the patient wakes within {Patient.WakeSeconds} s (anesthesia {patient.Vitals.Anesthesia:0.00})")
                 .IsTrue();
             driver.Note($"the patient woke after {surgery.Elapsed - started:0.0} s");
-            AssertBool(await Frames.Until(() => !WakeListed(), Surgery.StatusInterval + 0.5f))
-                .OverrideFailureMessage("awake, it's no longer listed").IsTrue();
         }
         await driver.PlayerDischarges();
         var report = surgery.Report!;

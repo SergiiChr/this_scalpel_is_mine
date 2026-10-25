@@ -29,16 +29,21 @@ public static partial class Subtasks {
     [GeneratedRegex(@"^\{if\.(\w+)\}\s*")]
     private static partial Regex Condition();
 
-    /// <summary>What a line's leading "{if.name}" lists it under, checked on the host with every status.</summary>
-    internal static readonly Dictionary<string, Func<Patient, bool>> Conditions = new() {
-        ["muscle_cut"] = patient => patient.Wounds.Any(wound => wound.ThroughMuscle),
-        ["attached"] = patient => patient.Targets.Any(target => !target.Extracted && target.Anchor > 0f),
-        ["no_iv"] = patient => !patient.IvWorking,
-        ["iv_in"] = patient => patient.IvSet,
-        ["low_pressure"] = patient => patient.Vitals.Systolic < ObjectiveChecks.StableSystolic,
-        ["beating"] = patient => !patient.Vitals.IsArrested,
-        ["arrested"] = patient => patient.Vitals.IsArrested,
-        ["flat_line"] = patient => patient.Vitals.Rhythm == Rhythm.Asystole,
+    /// <summary>What a line's leading "{if.name}" lists it under, checked on the host with every status against the
+    /// patient and the step's parameters.</summary>
+    internal static readonly Dictionary<string, Func<Patient, GodotDictionary, bool>> Conditions = new() {
+        ["muscle_cut"] = (patient, _) => patient.Wounds.Any(wound => wound.ThroughMuscle
+            && wound.Points.Any(point => patient.Body.Tissue.MuscleOpenNear(point, Patient.MuscleReach))),
+        ["attached"] = (patient, step) => patient.Targets.Any(target =>
+            target.Kind == step.String("target") && !target.Extracted && target.Anchor > 0f),
+        ["buried"] = (patient, step) => patient.Targets.Any(target =>
+            target.Kind == step.String("target") && !target.Extracted && !target.InReach),
+        ["no_iv"] = (patient, _) => !patient.IvWorking,
+        ["iv_in"] = (patient, _) => patient.IvSet,
+        ["low_pressure"] = (patient, _) => patient.Vitals.Systolic < ObjectiveChecks.StableSystolic,
+        ["beating"] = (patient, _) => !patient.Vitals.IsArrested,
+        ["arrested"] = (patient, _) => patient.Vitals.IsArrested,
+        ["flat_line"] = (patient, _) => patient.Vitals.Rhythm == Rhythm.Asystole,
     };
 
     public static List<Subtask> For(ObjectiveStep step, ScenarioDef scenario, SubtaskFacts facts) {
@@ -59,9 +64,10 @@ public static partial class Subtasks {
     public static List<Subtask> RemoveIv(ScenarioDef scenario, SubtaskFacts facts) =>
         Worked(new ConfigReader(Db.Objectives, "remove_iv").Strings("subtasks"), "", scenario, facts, []);
 
-    /// <summary>The texts of <paramref name="lines"/> that apply to <paramref name="patient"/> now.</summary>
-    internal static IEnumerable<string> Listed(IEnumerable<Subtask> lines, Patient patient) =>
-        lines.Where(line => line.When.Length == 0 || Conditions[line.When](patient)).Select(line => line.Text);
+    /// <summary>The texts of <paramref name="lines"/> that apply to <paramref name="patient"/> now, for the step with
+    /// these parameters.</summary>
+    internal static IEnumerable<string> Listed(IEnumerable<Subtask> lines, Patient patient, GodotDictionary step) =>
+        lines.Where(line => line.When.Length == 0 || Conditions[line.When](patient, step)).Select(line => line.Text);
 
     private static List<Subtask> Worked(IEnumerable<string> lines, string drug, ScenarioDef scenario, SubtaskFacts facts,
         GodotDictionary parameters) =>

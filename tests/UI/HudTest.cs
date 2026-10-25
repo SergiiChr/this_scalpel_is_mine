@@ -103,15 +103,22 @@ public class HudTest {
             .IsEqual(new List<string> { "\nScore 7" });
     }
 
-    /// <summary>The closure's muscle line is listed only once a wound goes through the muscle.</summary>
+    /// <summary>The closure's muscle line is listed only once a wound goes through the muscle, the extraction's line
+    /// about cutting it free while the appendix is attached.</summary>
     [TestCase]
     public async Task ConditionalSubtasksShowOnlyWhileTheyApply() {
         var driver = SurgeryDriver.Create();
         try {
             await driver.Start("appendectomy");
             var objectives = driver.Surgery.Objectives;
-            var close = objectives.StepSubtasks[objectives.Steps.FindIndex(step => step.Type == "close")];
-            bool MuscleListed() => Subtasks.Listed(close, driver.Patient).Any(line => line.Contains("through the muscle"));
+            var steps = objectives.Steps;
+            List<string> Listed(string type) {
+                var i = steps.FindIndex(step => step.Type == type);
+                return [.. Subtasks.Listed(objectives.StepSubtasks[i], driver.Patient, steps[i].Parameters)];
+            }
+            AssertBool(Listed("extract").Any(line => line.Contains("still attached")))
+                .OverrideFailureMessage("the appendix is attached until cut free").IsTrue();
+            bool MuscleListed() => Listed("close").Any(line => line.Contains("muscle is cut"));
             AssertBool(MuscleListed()).OverrideFailureMessage("no muscle to sew before anything is cut").IsFalse();
             SurgeryState.SkinIsCut(driver.Patient, new Vector2(0.45f, 0.5f), new Vector2(0.55f, 0.5f), Wound.MuscleDepth);
             AssertBool(MuscleListed()).OverrideFailureMessage("cut through the muscle, it's sewn first").IsTrue();
