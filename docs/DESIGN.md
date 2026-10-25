@@ -250,7 +250,7 @@ patient's weight in ml of the vial and the syringe for it, the first alternative
 from the nurse when the room has no such tool. The host sends them only for the open steps up to the next required one,
 with the steps they come `"after"` that don't hold yet. A state step shows done only once the required steps before it
 count. A drug step (`anesthesia`, `local_block`, `sedate`,
-`inject`) names its drug in `"drug"`, else its section's. Every instruction matches the manual's wording for it.
+`inject`) names its drug in `"drug"`, else its section's, and why that one in `"reason"`, shown after its dose. Every instruction matches the manual's wording for it.
 
 Difficulty (`Settings.Difficulty`, per player, asked on the first start): **I'm just a baby** lists every main task,
 optional ones marked `[optional]`, with the subtasks of the next ones to do; **Intern** the required main tasks and the hints; **MD** none.

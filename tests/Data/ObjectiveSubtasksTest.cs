@@ -36,6 +36,10 @@ public class ObjectiveSubtasksTest {
                 "Order the Propofol 10 mg/ml, 50 ml vial from the nurse (Drugs)",
                 "Draw 15 ml of Propofol into the 50 ml syringe: needle in the vial, wheel down pulls the plunger",
             });
+        var (thigh, ketamine) = Step("bullet_muscle", "anesthesia");
+        AssertString(Subtasks.For(ketamine, thigh, Facts(thigh))[1].Text)
+            .OverrideFailureMessage("the scenario's ketamine with the reason for it")
+            .StartsWith("Draw 3 ml of Ketamine (heavy bleeding) into ");
         var child = Facts(scenario) with { WeightKg = 22f, ToolsInRoom = ["vial_propofol"] };
         AssertArray(Texts(Subtasks.For(step, scenario, child), 0, 2))
             .OverrideFailureMessage("a 22 kg patient's dose in whole ml, from the vial in the room, in the smallest syringe that takes it")

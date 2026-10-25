@@ -73,7 +73,7 @@ public static partial class Subtasks {
         GodotDictionary parameters) =>
         [.. lines.Select(line => {
             var when = Condition().Match(line);
-            var text = Token().Replace(line[when.Length..], found => Fill(found, drug, facts));
+            var text = Token().Replace(line[when.Length..], found => Fill(found, drug, facts, parameters));
             return new Subtask(ManualPage.FillNumbers(text, $"{scenario.Id} subtasks", parameters), when.Groups[1].Value);
         })];
 
@@ -94,8 +94,8 @@ public static partial class Subtasks {
         return "extract_" + (scenario.Targets.FirstOrDefault(target => target.Kind == kind)?.RemoveWith ?? "clamp");
     }
 
-    /// <summary>One token's text; <paramref name="drug"/> is the step's.</summary>
-    private static string Fill(Match found, string drug, SubtaskFacts facts) {
+    /// <summary>One token's text; <paramref name="drug"/> is the step's, and its "reason" says why that one.</summary>
+    private static string Fill(Match found, string drug, SubtaskFacts facts, GodotDictionary parameters) {
         var id = found.Groups[2].Value switch {
             "step" => drug,
             "blood" => facts.BloodType == "Bombay" ? "blood_rare" : "blood_o_neg",
@@ -116,7 +116,7 @@ public static partial class Subtasks {
         var ml = Math.Max(notches, 1) * ToolActions.PlungerStep;
         return found.Groups[1].Value switch {
             "get" => Get(vial, facts),
-            "dose" => $"{ml:0.#} ml of {given.Name}{AllergyNote(given, allergy, facts)}",
+            "dose" => $"{ml:0.#} ml of {given.Name}{ReasonNote(given, drug, parameters)}{AllergyNote(given, allergy, facts)}",
             _ => "the " + (Db.Tools.Values.Where(tool => tool.Action == "syringe").OrderBy(tool => tool.Volume)
                 .FirstOrDefault(tool => tool.Volume >= ml) ?? Db.Tool("syringe_50")!).Name,
         };
@@ -133,6 +133,9 @@ public static partial class Subtasks {
             .FirstOrDefault(other => other is { Dose: > 0f } && !facts.Allergens.Contains(other.Id));
         return (alternative ?? drug, alternative is null ? null : drug);
     }
+
+    private static string ReasonNote(DrugDef given, string drug, GodotDictionary parameters) =>
+        given.Id == drug && parameters.String("reason") is { Length: > 0 } reason ? $" ({reason})" : "";
 
     private static string AllergyNote(DrugDef given, DrugDef? allergy, SubtaskFacts facts) =>
         allergy is not null ? $" (allergic to {allergy.Name})"
