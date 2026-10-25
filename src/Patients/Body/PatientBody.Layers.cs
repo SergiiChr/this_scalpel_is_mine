@@ -477,7 +477,8 @@ public partial class PatientBody {
         PlaceParticles();
         _renderFold = Tissue.HoldingFold;
         _renderTurnover = Tissue.TurningFlap;
-        Buffers.Sized(ref _renderMoved, Tissue.Pos.Length);
+        // Points that leave the planned region must not keep an earlier frame's lift.
+        Buffers.Cleared(ref _renderMoved, Tissue.Pos.Length);
         Buffers.Sized(ref _renderGrip, Tissue.Pos.Length);
         Tissue.CaptureGripLift(_renderGrip);
         foreach (var k in _around) {

@@ -28,6 +28,9 @@ public class MemorySoakTest {
     /// <summary>Real time a surgery's last sounds get to end; a sound still playing after it counts as left behind.
     /// </summary>
     private const ulong SoundsEndMsec = 10_000;
+    /// <summary>GdUnit 5 queues a one-second pipe-lock wait each process frame while a case runs. Accelerated
+    /// headless frames leave thousands of those temporary tasks; drain them before measuring surgery retention.</summary>
+    private const ulong RunnerDrainMsec = 1_100;
 
     private readonly record struct Usage(long Managed, long Godot, long Objects, long Nodes, long Resources) {
         public override string ToString() => $"managed {Managed / 1024} KiB, Godot {Godot / 1024} KiB, "
@@ -88,9 +91,19 @@ public class MemorySoakTest {
             await Frames.NextProcess();
         }
         await Frames.Process(5);
+        var drained = Time.GetTicksMsec() + RunnerDrainMsec;
+        while (Time.GetTicksMsec() < drained) {
+            // --fixed-fps advances game time without waiting for real time. Pace these empty frames explicitly
+            // so old runner waits expire faster than new ones are queued, without slowing the surgery itself.
+            OS.DelayMsec(16);
+            await Frames.NextProcess();
+        }
         // Not GC.Collect(): a compacting collection can crash on the wrappers the surgery just let go.
         ManagedRuntime.CollectNow();
         await Frames.Process(5);
+        // Finalizers can release native wrappers on those frames. Reclaim them and the frames' temporary garbage
+        // before sampling, rather than including fresh runner allocations in the retained managed heap.
+        ManagedRuntime.CollectNow();
         static long Monitor(Performance.Monitor monitor) => (long)Performance.GetMonitor(monitor);
         return new Usage(GC.GetTotalMemory(false), Monitor(Performance.Monitor.MemoryStatic),
             Monitor(Performance.Monitor.ObjectCount), Monitor(Performance.Monitor.ObjectNodeCount),
