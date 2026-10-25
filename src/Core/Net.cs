@@ -95,7 +95,8 @@ public partial class Net : Node {
     }
 
     public override void _Process(double delta) {
-        if (!IsOnline) {
+        // A peer still connecting, or one whose host just closed, stays ENet until its signal is handled: an RPC then fails.
+        if (!IsOnline || Multiplayer.MultiplayerPeer.GetConnectionStatus() != MultiplayerPeer.ConnectionStatus.Connected) {
             return;
         }
         _heartbeatAcc += delta;

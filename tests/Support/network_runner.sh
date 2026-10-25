@@ -28,11 +28,13 @@ fail() {
 	exit 1
 }
 
-# Godot keeps going after script errors and unhandled C# exceptions. Engine leak reports printed while quitting are noise.
+# Godot keeps going after script errors and unhandled C# exceptions. Engine leak reports printed while quitting are noise,
+# and so is the source location line Godot prints under each.
 clean_log() {
 	local errors
 	# With the lines after each: a C# exception's object name and stack follow its first line.
-	errors=$(grep -E -A 12 "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception|^FAIL:" "$1" | grep -vE "at exit|leaked")
+	errors=$(awk '/at exit|leaked/ { leak = 1; next } !(leak && /^ +at: /) { print } { leak = 0 }' "$1" |
+		grep -E -A 12 "SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception|^FAIL:")
 	[[ -z "$errors" ]] || fail "$(basename "$1"): $errors"
 }
 
@@ -158,7 +160,7 @@ sleep 2
 run NetStallDriver client net_stall_client &
 client=$!
 for _ in $(seq 1 600); do
-	grep -q "\[client\] running" "$logs/net_stall_client.log" && break
+	grep -qs "\[client\] running" "$logs/net_stall_client.log" && break
 	sleep 0.1
 done
 grep -q "\[client\] running" "$logs/net_stall_client.log" || fail "the client never got into surgery within 60 s"
