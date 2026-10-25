@@ -28,8 +28,8 @@ fail() {
 	exit 1
 }
 
-# Godot keeps going after script errors and unhandled C# exceptions. Engine leak reports printed while quitting are noise,
-# and so is the source location line Godot prints under each.
+# Godot keeps going after script errors and unhandled C# exceptions.
+# Engine leak reports printed while quitting are noise, and so is the source location line Godot prints under each.
 clean_log() {
 	local errors
 	# With the lines after each: a C# exception's object name and stack follow its first line.

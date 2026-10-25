@@ -148,6 +148,8 @@ public sealed partial class TissueSim {
     /// <summary>How high (meters) a grip pulled past what the skin gives peels its edge up off what's under it (see
     /// <see cref="Restrain"/>).</summary>
     public const float PeelLift = 0.02f;
+    /// <summary>Share of <see cref="PeelLift"/> a peeling edge rises before it gives no more along the body.</summary>
+    private const float PeeledShare = 0.25f;
 
     /// <summary>Skin starts holding a hand back at this strain: from here to <see cref="GripStrain"/> it gives less
     /// and less of each move away from where it belongs, down to <see cref="LeastGive"/> (see <see cref="Restrain"/>).
@@ -1174,7 +1176,12 @@ public sealed partial class TissueSim {
         }
         // Only the part of the move away from home is held back; sideways the grip still stays within what it gave.
         var outward = nowAlong.IsZeroApprox() ? 0f : Mathf.Max(move.Dot(away), 0f);
-        var give = strain >= GripStrain ? 0f : Mathf.Lerp(1f, LeastGive, Mathf.SmoothStep(FirmStrain, GripStrain, strain));
+        // Peeled up off its bed, the edge stays where it stopped along the body: lifting it eases the strain, and
+        // giving way sideways again would read as the skin letting go of the hand.
+        var peeled = pin.Peeling && now.Y - home.Y > PeelLift * PeeledShare;
+        var give = strain >= GripStrain || peeled
+            ? 0f
+            : Mathf.Lerp(1f, LeastGive, Mathf.SmoothStep(FirmStrain, GripStrain, strain));
         // Over the limit the grip stays where it got to rather than being drawn back: skin piling up against the
         // drape's rim reads as a brief spike in strain now and then, and drawn back on each the hand would be thrown
         // back and forth. The edge peeled up reads over the limit too: the sim's skin doesn't come off its bed.
@@ -1811,6 +1818,7 @@ public sealed partial class TissueSim {
                     Solve(s);
                 }
             }
+            KeepCutEdgesApart();
             foreach (var k in WindowParticles) {
                 // Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back. A
                 // cut's edge lifted off the body isn't drawn back along it any more either: only skin lying on it is.
@@ -2028,6 +2036,34 @@ public sealed partial class TissueSim {
                 if (length > 0.00001f) {
                     Pos[j] = p + d * (Rest[j].DistanceTo(Rest[k]) * Tension / length);
                 }
+            }
+        }
+    }
+
+    /// <summary>A cut's edges press against each other instead of sliding over: skin pushed toward a cut closes it and
+    /// then pushes its other side along, where nothing else would stop one edge passing over the other. Stitched edges
+    /// are the thread's to hold, a flap turned over lies across its cut by design, and excised skin is gone.</summary>
+    private void KeepCutEdgesApart() {
+        if (_fold.TurnedOver) {
+            return;
+        }
+        foreach (var s in _severed) {
+            ref readonly var spring = ref _springs[s];
+            var (a, b) = (spring.A, spring.B);
+            var (wa, wb) = (_free[a], _free[b]);
+            if (wa + wb == 0f || Turned(a) || Turned(b) || Excised[a] || Excised[b] || Stitched(a, b)) {
+                continue;
+            }
+            var rest = Rest[b] - Rest[a];
+            // Square to the cut, from a's side to b's: sliding along the cut doesn't bring its edges together.
+            var across = new Vector3(-spring.CutDir.Y, 0f, spring.CutDir.X);
+            if (across.Dot(rest) < 0f) {
+                across = -across;
+            }
+            var overlap = (rest - (Pos[b] - Pos[a])).Dot(across);
+            if (overlap > 0f) {
+                Pos[a] -= across * (overlap * wa / (wa + wb));
+                Pos[b] += across * (overlap * wb / (wa + wb));
             }
         }
     }

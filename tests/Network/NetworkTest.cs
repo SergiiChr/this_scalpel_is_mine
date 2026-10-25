@@ -33,7 +33,8 @@ public class NetworkTest {
     [TestCase]
     public async Task ClientConnectingToAnAbsentHostSendsNoHeartbeat() {
         var net = Net.Instance;
-        AssertThat(net.Join("127.0.0.1", Net.DefaultPort + 99)).OverrideFailureMessage("the join starts").IsEqual(Error.Ok);
+        AssertThat(net.Join("127.0.0.1", Net.DefaultPort + 99)).OverrideFailureMessage("the join starts")
+            .IsEqual(Error.Ok);
         await Frames.Seconds(4 * Net.HeartbeatInterval);
         var status = net.Multiplayer.MultiplayerPeer.GetConnectionStatus();
         net.Leave();
