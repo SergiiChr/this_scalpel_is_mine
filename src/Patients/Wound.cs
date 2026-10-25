@@ -27,7 +27,7 @@ public sealed class Wound {
     /// </summary>
     public const float SmallCut = 0.01f;
     /// <summary>Seconds of gauze pressure, without a break, that stop a small cut for good.</summary>
-    public const float SmallCutPress = 10f;
+    public const float SmallCutPress = 3f;
     /// <summary>A break in gauze pressure longer than this (seconds) starts a small cut's count over.</summary>
     public const float PressBreak = 1f;
 

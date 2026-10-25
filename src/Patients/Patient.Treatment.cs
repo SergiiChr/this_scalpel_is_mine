@@ -32,6 +32,8 @@ public partial class Patient {
     /// <summary>How far (meters) from where a bare hand presses the patient its palm holds a cut: about half a palm.
     /// </summary>
     public const float HandPressReach = 0.04f;
+    /// <summary>Gauze presses a little past the edge of its pad: the pad's size times this.</summary>
+    public const float GauzeCoverMargin = 1.1f;
     /// <summary>How much of a local block still dulls deep pain: it numbs the skin and what's under it, not the bone.
     /// </summary>
     public const float DeepBlock = 0.3f;
@@ -762,8 +764,9 @@ public partial class Patient {
     }
 
     /// <summary>Wipes the site with a swab that can still soak up <paramref name="room"/> ml, and returns the ml of
-    /// blood it took. A full swab no longer wipes, but gauze still presses. <paramref name="soakedIn"/>: what
-    /// the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in iodine).</summary>
+    /// blood it took. A full swab no longer wipes; gauze presses regardless (<see cref="PressWithGauze"/>).
+    /// <paramref name="soakedIn"/>: what the swab is soaked in, when that's not fixed by the tool (a cotton pad dipped in
+    /// iodine).</summary>
     public float SwabAt(SiteZone zone, Vector2 uv, ToolDef def, float dt, float room, string soakedIn = "") {
         var drug = soakedIn.Length > 0 ? soakedIn : def.Drug;
         var radius = Body.MetersToUv(def.Radius);
@@ -789,23 +792,36 @@ public partial class Patient {
                 }
             }
             PaintOps(WoundMap.Layer.Fluids, uv, radius, ops[..count]);
-            if (def.Id == "gauze" && NearestWound(uv, 0.02f, false) is { } wound) {
-                Press(wound, dt);
-            }
         } else if (zone == SiteZone.Cavity) {
             taken = Mathf.Min(CavityBloodMl, take);
             CavityBloodMl -= taken;
             taken += DrainCuts(uv, take - taken);
-            // Packed into the opening, it presses on everything it lies against: every vessel it reaches at the bottom and
-            // the edges of the cut it's in.
-            if (def.Id == "gauze") {
-                var cut = NearestWound(uv, 0.02f, false);
-                foreach (var wound in Wounds.Where(w => w == cut || (w.IsInternal && Reaches(w, uv))).ToList()) {
-                    Press(wound, dt);
-                }
-            }
         }
         return taken;
+    }
+
+    /// <summary>Gauze lowered onto the site for <paramref name="dt"/> seconds presses every cut in the skin its pad lies
+    /// on (<see cref="Covers"/>). Pushed into an opening it presses everything it lies against there too: every vessel
+    /// it reaches at the bottom.</summary>
+    public void PressWithGauze(SurgicalTool gauze, SiteZone zone, float dt) {
+        var middle = Body.WorldToUv(gauze.Middle());
+        foreach (var wound in Wounds) {
+            if (wound.IsSkinCut ? Covers(gauze, wound) : wound.IsInternal && zone == SiteZone.Cavity && Reaches(wound, middle)) {
+                Press(wound, dt);
+            }
+        }
+    }
+
+    /// <summary>The pad of <paramref name="gauze"/>, <see cref="GauzeCoverMargin"/> wider all round, lies over part of
+    /// <paramref name="wound"/>: the stretch of it nearest the pad's middle lies under it, seen from above the pad.
+    /// </summary>
+    private bool Covers(SurgicalTool gauze, Wound wound) {
+        var nearest = wound.ClosestPoint(Body.WorldToUv(gauze.Middle()));
+        var local = gauze.GlobalTransform.AffineInverse() * Body.UvToWorld(nearest);
+        var pad = gauze.Bounds;
+        var off = (local - pad.GetCenter()).Abs();
+        var half = pad.Size * 0.5f * GauzeCoverMargin;
+        return off.X <= half.X && off.Z <= half.Z;
     }
 
     /// <summary>Takes up to <paramref name="ml"/> in all of the blood held in the cuts near <paramref name="uv"/>, and
