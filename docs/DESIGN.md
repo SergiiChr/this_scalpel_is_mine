@@ -315,7 +315,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   Gauze pressed on a wound stops it for a while after it comes off (`Wound.PressureHold`), then the bleeding comes
   back; it stops a cut too small to sew (`Wound.SmallCut`) for good when held on it long enough without a break.
   Packed into an opening, it presses everything it lies against at once: each vessel it reaches at the bottom and the
-  edges of the cut it's in.
+  stretch of the cut's edges under its pad.
   The `stop_bleeding` objective counts only what stays stopped without gauze pressure. Debug mode toasts when a wound
   stops bleeding, `[permanently]` or `[temporarily]` (held only by gauze).
 - Drugs with onset/duration curves, direct vs IV routes, allergies, dangerous combinations, blood type matching.
@@ -437,7 +437,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   `Surgeon.AimTool()`): the wrist and forearm stay put, the tip follows the mouse and rises off what it rested on, and
   settles back down once MMB is let go.
   Tools with a range take an effort level 0-3 from the wheel (cut depth, heat, saw speed, suction), 0 does
-  nothing. Gauze and other swabs take none: lowered, they wipe right where they point, and gauze presses there.
+  nothing. Gauze and other swabs take none: lowered, they wipe right where they point, and gauze presses
+  every cut under its pad, a little past its edge (`Patient.PressWithGauze()`, `Patient.GauzeCoverMargin`), held in a
+  hand or taped down.
   Shift toggles between two zoom levels.
   A syringe has its own wheel instead: down pulls the plunger, up pushes it (see Vials and syringes). So has the
   needle: down tightens its thread, up loosens it; a click stitches and a hold ties off (see the running suture), and

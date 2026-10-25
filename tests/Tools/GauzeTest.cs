@@ -6,8 +6,8 @@ namespace Scalpel.Tests.Tools;
 /// doesn't.
 /// Packed into an incision, it holds the vessel it reaches at the bottom and the incision's edges it lies against the
 /// same way, but not a vessel further along the incision.
-/// It presses whatever lies under its pad, a little past the pad's edge, not just where it's aimed: under a tourniquet,
-/// it stops what still bleeds in the bullet thigh.
+/// It presses whatever lies under its pad, a little past the pad's edge but no further, not just where it's aimed:
+/// under a tourniquet, it stops what still bleeds in the bullet thigh for a while.
 /// Pressed long enough on a cut too small to sew, it stops that one for good.
 /// Debug mode says when a wound stops bleeding and whether for good.
 /// Gauze also wipes away the beads of blood a needle leaves.
@@ -47,8 +47,10 @@ public class GauzeTest {
         await driver.PlayerRequestsItem("gauze");
         var on = driver.SitePoint(cut.Midpoint);
         await driver.PlayerWalksTo(on);
-        // It presses where it points: lowered on the skin a few centimeters beside the cut, it doesn't stop it.
-        await driver.PlayerWorksAt(driver.SitePoint(cut.Midpoint + new Vector2(0f, 0.06f)), 0, 1f);
+        // It presses what its pad lies on: lowered on the skin with the pad clear of the cut, it doesn't stop it.
+        var gauze = driver.Me.HeldTool(driver.Me.Active)!;
+        await PressPadAt(driver, gauze, cut.Midpoint + new Vector2(0f, driver.Body.MetersToUv(0.07f)), 1f);
+        SurgeryDriver.Use(false);
         AssertFloat(cut.Bleeding).OverrideFailureMessage($"gauze beside the cut doesn't press it: {driver.Bleeders()}")
             .IsGreater(before * 0.9f);
         await driver.PlayerReaches(on);
@@ -82,13 +84,14 @@ public class GauzeTest {
     }
 
     [TestCase]
-    public async Task GauzeStopsTheThighStabWhereverItsPadCoversIt() {
+    public async Task GauzeStopsTheThighStabUnderTheEdgeOfItsPad() {
         var session = await ToolSession.Start("sidewalk_stab", "gauze_pad_covers");
         var driver = session.Driver;
         var body = driver.Body;
         var stab = driver.Patient.Wounds.Single(wound => wound.Kind == WoundKind.Puncture);
         await Frames.Seconds(1f);
         var before = stab.Bleeding;
+        AssertFloat(before).OverrideFailureMessage($"the stab bleeds: {driver.Bleeders()}").IsGreater(0.1f);
         var gauze = (await driver.PlayerRequestsItem("gauze"))!;
         var at = stab.Midpoint;
         await driver.PlayerWalksTo(driver.SitePoint(at));
@@ -129,15 +132,51 @@ public class GauzeTest {
             .OverrideFailureMessage($"the entry wound and the incision still bleed under the tourniquet "
                 + $"({patient.Vitals.BleedRate:0.00} ml/s): {driver.Bleeders()}").IsTrue();
 
-        await driver.PlayerRequestsItem("gauze");
-        var on = driver.SitePoint(gunshot.Midpoint);
-        await driver.PlayerWalksTo(on);
-        await driver.PlayerReaches(on);
-        SurgeryDriver.Use();
-        await Frames.Seconds(1f);
+        var bleeding = patient.Vitals.BleedRate;
+        var gauze = (await driver.PlayerRequestsItem("gauze"))!;
+        await driver.PlayerWalksTo(driver.SitePoint(gunshot.Midpoint));
+        await PressPadAt(driver, gauze, gunshot.Midpoint, 1f);
         await driver.AssertAndCapture(patient.Vitals.BleedRate < 0.01f,
             "gauze held on the entry wound, the incision running out from under its pad, no fresh blood round either",
             "pressed");
+        SurgeryDriver.Use(false);
+        await driver.PlayerPutsDown();
+
+        // For a while after it comes off, then it bleeds as before.
+        await Frames.Seconds(Wound.PressureHold - 3f);
+        AssertFloat(patient.Vitals.BleedRate)
+            .OverrideFailureMessage($"the pressure holds a while after the gauze comes off: {driver.Bleeders()}").IsLess(0.01f);
+        AssertBool(await Frames.Until(() => patient.Vitals.BleedRate > bleeding * 0.9f, Wound.PressureFade + 6f))
+            .OverrideFailureMessage($"then the wounds bleed as before: {driver.Bleeders()}").IsTrue();
+        await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>A short cut just past the edge of the pad, within <see cref="Patient.GauzeCoverMargin"/>, is pressed;
+    /// one further off isn't.</summary>
+    [TestCase]
+    public async Task GauzePressesACutJustPastItsPadButNotFurther() {
+        var session = await ToolSession.Start("appendectomy", "gauze_margin");
+        var driver = session.Driver;
+        var body = driver.Body;
+        var gauze = (await driver.PlayerRequestsItem("gauze"))!;
+        var halfPad = gauze.Def.Width * 0.5f;
+        var at = new Vector2(0.5f, 0.5f);
+        await driver.PlayerWalksTo(driver.SitePoint(at));
+        await PressPadAt(driver, gauze, at, 0.5f);
+
+        // Cut while the pad is held down, beside its middle along its width: one between its edge and the margin, one
+        // beyond the margin.
+        var past = halfPad * ((1f + Patient.GauzeCoverMargin) * 0.5f);
+        var beyond = halfPad * Patient.GauzeCoverMargin * 1.1f;
+        Vector2 Beside(float x) => body.WorldToUv(gauze.GlobalTransform * (gauze.Bounds.GetCenter() + new Vector3(x, 0f, 0f)));
+        var along = new Vector2(0f, body.MetersToUv(0.002f));
+        var near = SurgeryState.SkinIsCut(driver.Patient, Beside(past), Beside(past) + along, 0.3f);
+        var far = SurgeryState.SkinIsCut(driver.Patient, Beside(-beyond), Beside(-beyond) + along, 0.3f);
+        await Frames.Seconds(1f);
+        AssertBool(near.Bleeding < 0.001f && far.Bleeding > 0.01f)
+            .OverrideFailureMessage($"the cut {past * 100f:0.0} cm off the pad's middle is pressed, the one {beyond * 100f:0.0} cm off "
+                + $"isn't (pad {halfPad * 100f:0.0} cm to its edge; on the pad near {OnPad(driver, gauze, near) * 100f} cm, "
+                + $"far {OnPad(driver, gauze, far) * 100f} cm; near {near.Bleeding:0.000}, far {far.Bleeding:0.000} ml/s)").IsTrue();
         SurgeryDriver.Use(false);
         await driver.PlayerPutsDown();
         await session.Finish(BudgetOverride);
@@ -303,6 +342,12 @@ public class GauzeTest {
         toast.StartsWith("[debug] Bleeding stopped: cut", StringComparison.Ordinal) && toast.EndsWith(how, StringComparison.Ordinal));
 
     private string Toasts() => string.Join(", ", _toasts);
+
+    /// <summary>Where (meters, x and z) <paramref name="wound"/> starts in the pad's own space, from its middle.</summary>
+    private static Vector2 OnPad(SurgeryDriver driver, SurgicalTool gauze, Wound wound) {
+        var local = gauze.GlobalTransform.AffineInverse() * driver.Body.UvToWorld(wound.Points[0]) - gauze.Bounds.GetCenter();
+        return new Vector2(local.X, local.Z);
+    }
 
     /// <summary>Lowers <paramref name="gauze"/> with its pad's middle on <paramref name="uv"/> and holds it down for
     /// <paramref name="seconds"/>, still held when it returns.</summary>
