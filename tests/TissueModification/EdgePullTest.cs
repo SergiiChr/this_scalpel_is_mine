@@ -32,6 +32,8 @@ public class EdgePullTest {
     [TestCase("brain_tumor", "forceps")]
     [TestCase("slit_throat", "forceps")]
     [TestCase("leg_extension", "forceps", Timeout = Limits.Slow)]
+    [TestCase("hand_stitch", "forceps")]
+    [TestCase("ambulance_bullet", "forceps")]
     public async Task EdgePullsInStages(string scenario, string toolId) => await PullEdge(scenario, toolId);
 
     [TestCase("forceps", 20, 30, 1, Timeout = Limits.Slow)]
@@ -62,15 +64,6 @@ public class EdgePullTest {
         AssertFloat(Shake([Vector3.Zero, Vector3.Right * 0.003f, new Vector3(0.003f, 0.002f, 0)]))
             .OverrideFailureMessage("a pull changing from sideways to lifting without reversing is not wobble").IsEqual(0f);
     }
-
-    [TestCase("hand_stitch", "forceps", "stay under the skin", Description = "KNOWN ISSUE: on the narrow forearm the skin's cut wall at the "
-        + "wound's ends pokes through the skin beside them once the edge is pulled 10 mm along the body, before it lifts "
-        + "(the same before the skin held the hand back gradually).")]
-    [TestCase("ambulance_bullet", "forceps", "before it peels off the fat", Description = "KNOWN ISSUE: on the shoulder the held edge's fat and muscle "
-        + "are drawn right under its skin (PatientBody.LayersApart() is false there), so the skin never shows peeling "
-        + "off its fat.")]
-    public async Task EdgePullsInStagesToKnownIssue(string scenario, string toolId, string failure) =>
-        await KnownIssue.Expect(failure, () => PullEdge(scenario, toolId));
 
     [TestCase("gangrene_amputation", "forceps", Description = "BROKEN: on the narrow lower leg the skin's cut wall at one "
         + "of the wound's ends pokes through the skin beside it once the edge is peeled 20 mm up in a run without key "

@@ -28,6 +28,20 @@ public class NetworkTest {
     public void TenSecondClientStallKeepsSessionAndPausesInput() =>
         Run("stall", "a stalled client stays connected and its held input is paused");
 
+    /// <summary>A client still connecting has no connection to send its heartbeat over: an RPC sent then logs an error,
+    /// which fails the case. A client whose host just closed is in the same state until it hears of it.</summary>
+    [TestCase]
+    public async Task ClientConnectingToAnAbsentHostSendsNoHeartbeat() {
+        var net = Net.Instance;
+        AssertThat(net.Join("127.0.0.1", Net.DefaultPort + 99)).OverrideFailureMessage("the join starts")
+            .IsEqual(Error.Ok);
+        await Frames.Seconds(4 * Net.HeartbeatInterval);
+        var status = net.Multiplayer.MultiplayerPeer.GetConnectionStatus();
+        net.Leave();
+        AssertThat(status).OverrideFailureMessage("nobody answers, so the client is still connecting")
+            .IsEqual(MultiplayerPeer.ConnectionStatus.Connecting);
+    }
+
     /// <summary>The bleed sources and cut pools cross the network packed as floats: what the host packs, a client reads
     /// back as it was. The sync run above checks the sources that reach a real client; its cut holds no pool.</summary>
     [TestCase]

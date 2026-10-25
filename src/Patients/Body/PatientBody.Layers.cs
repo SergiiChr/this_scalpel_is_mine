@@ -501,8 +501,8 @@ public partial class PatientBody {
     /// <summary>Whether the layers under grid point k's skin are drawn where they go themselves (LayerPoint()) rather
     /// than right under the skin. They move with it where the drape's cloth pushed it (PlaceParticles()): placed from
     /// the sim alone they would come out beside or through the skin at the opening's rim. Without a drape (outside the
-    /// operating room) nothing pushes it.</summary>
-    internal bool LayersApart(int k) => RenderLift(k) && Tissue.Exposed.Length > k && Tissue.Exposed[k];
+    /// operating room) nothing pushes it, and no point is marked exposed: all of it is.</summary>
+    internal bool LayersApart(int k) => RenderLift(k) && (Tissue.Exposed.Length == 0 || Tissue.Exposed[k]);
 
     // A grip can lift before the solver starts treating it as a fold. Keep that small motion in the drawn lip,
     // while quiet skin outside the held material still fits the imported body's exact silhouette.
