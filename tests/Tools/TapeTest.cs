@@ -132,7 +132,16 @@ public class TapeTest {
         var session = await ToolSession.Start("appendectomy", $"tape/deep_{depth * 100f:0}");
         var driver = session.Driver;
         var (cut, from, to) = await Cut(driver, depth);
+        // A deep cut must exceed tape's grip even when dry. Previously a shallow, incorrectly placed blood
+        // pool wetted this fixture and hid the fact that dry tape could close the deep cut.
+        SurgeryState.WoundIsClamped(cut);
+        await Frames.Seconds(0.3f);
+        await SurgeryState.SiteIsSwabbed(driver.Patient);
         await driver.PlayerRequestsItem("surgical_tape");
+        for (var sample = 0; sample <= 8; sample++) {
+            AssertFloat(driver.Body.BloodAt(from.Lerp(to, sample / 8f)))
+                .OverrideFailureMessage("the deep-cut tape check starts on dry skin, without blood reducing its grip").IsLess(0.05f);
+        }
         await driver.PlayerLaysTape([from, to]);
         await Frames.Seconds(2f);
         AssertFloat(cut.Closure).OverrideFailureMessage($"the tape doesn't shut a cut {depth} deep ({cut.Closure:0.00})\n{driver.Recent()}")

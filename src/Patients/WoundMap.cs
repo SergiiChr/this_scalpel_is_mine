@@ -179,8 +179,7 @@ public sealed class WoundMap {
     /// <summary>The solver consumed a wipe in selected cells. The next paint preserves fine holes only where those
     /// cells contribute to the resampled physical depth.</summary>
     internal void AcknowledgeBloodFilmReduction(ReadOnlySpan<bool> reducedCells, int resolution) {
-        if (_filmReductionCells.Length != reducedCells.Length) { _filmReductionCells = new bool[reducedCells.Length]; }
-        reducedCells.CopyTo(_filmReductionCells);
+        Buffers.Copied(ref _filmReductionCells, reducedCells);
         _filmReductionResolution = resolution;
         _filmReductionAcknowledged = true;
         _filmReductionGlobal = false;
@@ -406,7 +405,7 @@ public sealed class WoundMap {
     /// Paints several channels of one disk. Each channel gets its own tight loop over the disk's rows, with the mode
     /// picked outside the loop: a wipe paints big disks every frame.
     /// </summary>
-    public void DiskOps(Layer layer, Vector2 center, float radius, IEnumerable<PaintOp> ops, bool soft = true) {
+    public void DiskOps(Layer layer, Vector2 center, float radius, ReadOnlySpan<PaintOp> ops, bool soft = true) {
         var data = _data[(int)layer];
         var painted = _painted[(int)layer];
         var c = center * Size;
@@ -483,8 +482,7 @@ public sealed class WoundMap {
     /// worker to read while this map goes on being painted.</summary>
     internal void CopyLayer(Layer layer, ref byte[] into) {
         var data = _data[(int)layer];
-        if (into.Length != data.Length) { into = new byte[data.Length]; }
-        Buffer.BlockCopy(data, 0, into, 0, data.Length);
+        Buffers.Copied(ref into, data);
     }
 
     /// <summary>Mean of one channel (0..1) over the texels in the box from <paramref name="from"/> to

@@ -130,6 +130,11 @@ public partial class SurgicalTool : RigidBody3D {
     private Transform3D _digFrom;
     private Transform3D _digTo;
     private float _dig = 1f;
+    /// <summary>How far (meters) a tool lying on the patient is raised off where it was laid (<see cref="SkinLift"/>).
+    /// </summary>
+    private float _skinLift;
+    /// <summary>How fast (meters a second) it rises and settles with the skin under it.</summary>
+    private const float SkinLiftSpeed = 0.05f;
     private Vector3? _levelRest;
 
     public int Uid { get; private set; }
@@ -197,6 +202,9 @@ public partial class SurgicalTool : RigidBody3D {
     public Node3D? Riding { get; private set; }
     /// <summary>Where it lies, in the space of the node it rides.</summary>
     public Transform3D RidingPose { get; private set; }
+    /// <summary>Where it was laid down now, under any lift onto the skin (<see cref="SkinLift"/>): where a hand takes it
+    /// back from, so the skin it holds doesn't jump up with it.</summary>
+    public Transform3D LaidPose => Riding is not null ? Riding.GlobalTransform * RidingPose : GlobalTransform;
     /// <summary>The model's box in the tool's own space (the grip at the origin).</summary>
     public Aabb Bounds { get; private set; }
     /// <summary>The band around a limb while this tool is wrapped around one (a tourniquet), see
@@ -280,6 +288,10 @@ public partial class SurgicalTool : RigidBody3D {
         _animator.Rest(lying ? (GlobalBasis.Y.Dot(Vector3.Up) >= 0f ? 1f : -1f) : 0f, dt);
         if (Riding is not null && (State == ToolState.Standing || Taped)) {
             GlobalTransform = Riding.GlobalTransform * RidingPose;
+            if (Def.SelfRetaining && Surgery.Current?.Patient.Body is { } body) {
+                _skinLift = Mathf.MoveToward(_skinLift, SkinLift(body), SkinLiftSpeed * dt);
+                GlobalTransform = GlobalTransform.Translated(Riding.GlobalBasis.Y.Normalized() * _skinLift);
+            }
         }
         if (_dig < 1f) {
             _dig = Mathf.Min(_dig + dt / DigTime, 1f);
@@ -316,6 +328,23 @@ public partial class SurgicalTool : RigidBody3D {
     public void Ride(Node3D node) {
         Riding = node;
         RidingPose = node.GlobalTransform.AffineInverse() * GlobalTransform;
+        _skinLift = 0f;
+    }
+
+    /// <summary>How far (meters) a tool laid along the body at rest (a retractor let go of) has to rise to lie on the
+    /// skin as it's drawn now: the hook's pull bunches the skin up under it, which would otherwise cover it. Laid on
+    /// the body at rest, it doesn't stand up on a bunched ridge, and it settles back down as the ridge does.</summary>
+    private float SkinLift(PatientBody body) {
+        var lift = Under(TipPosition());
+        foreach (var t in ToolManager.LyingSamples) {
+            lift = Mathf.Max(lift, Under(GlobalTransform * new Vector3(0, 0, -Def.Length * (1f - t))));
+        }
+        return lift;
+
+        float Under(Vector3 p) {
+            var uv = body.WorldToUv(p);
+            return new Rect2(0, 0, 1, 1).HasPoint(uv) && body.OnBody(uv) ? ToolManager.LyingClearance - body.HeightAboveSite(p) : 0f;
+        }
     }
 
     public Vector3 TipPosition() => GlobalTransform * new Vector3(0, 0, -Def.Length);

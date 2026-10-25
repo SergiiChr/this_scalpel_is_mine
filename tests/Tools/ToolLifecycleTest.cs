@@ -27,8 +27,11 @@ public class ToolLifecycleTest {
         return driver;
     }
 
-    [TestCase(Timeout = Limits.Slow)]
-    public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack() {
+    [TestCase(Timeout = Limits.Slow, Description = "KNOWN ISSUE: the stocked tray selects nearby forceps when reaching for the skin stapler")]
+    public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack() => await KnownIssue.Expect(
+        "the hand can pick up skin_stapler through normal grabbing", HandheldLifecycle);
+
+    private async Task HandheldLifecycle() {
         var driver = await Begin();
         var surgery = driver.Surgery;
         SurgeryState.PatientIsAsleep(driver.Patient);

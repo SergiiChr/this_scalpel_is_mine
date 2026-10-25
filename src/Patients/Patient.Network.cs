@@ -16,8 +16,11 @@ public partial class Patient {
     }
 
     /// <summary>Host: paints several channels of one disk on every peer.</summary>
-    public void PaintOps(WoundMap.Layer layer, Vector2 uv, float radius, IEnumerable<PaintOp> ops) {
-        var flat = ops.SelectMany(op => new float[] { op.Channel, op.Value, (float)op.Mode }).ToArray();
+    public void PaintOps(WoundMap.Layer layer, Vector2 uv, float radius, ReadOnlySpan<PaintOp> ops) {
+        var flat = new float[ops.Length * 3];
+        for (var i = 0; i < ops.Length; i++) {
+            (flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]) = (ops[i].Channel, ops[i].Value, (float)ops[i].Mode);
+        }
         Rpc(MethodName.PaintOpsOnPeer, (int)layer, uv, radius, flat);
     }
 
@@ -54,9 +57,9 @@ public partial class Patient {
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void PaintOpsOnPeer(int layer, Vector2 uv, float radius, float[] flat) {
-        var ops = new List<PaintOp>();
-        for (var i = 0; i + 2 < flat.Length; i += 3) {
-            ops.Add(new PaintOp((int)flat[i], flat[i + 1], (WoundMap.Mode)(int)flat[i + 2]));
+        var ops = new PaintOp[flat.Length / 3];
+        for (var i = 0; i < ops.Length; i++) {
+            ops[i] = new PaintOp((int)flat[i * 3], flat[i * 3 + 1], (WoundMap.Mode)(int)flat[i * 3 + 2]);
         }
         Body.WoundMap.DiskOps((WoundMap.Layer)layer, uv, radius, ops);
     }

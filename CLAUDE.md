@@ -56,8 +56,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   docs/RELEASE.md. This default smoke run and full regressions don't check frame times; focused runs (`--tag`, `--case`) do.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots. Run
   after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). A case that fails in it
-  runs once more on its own, its key frames taken again (the whole suite when a failure belongs to no case); the first
-  attempt's logs go to `build/retries/`.
+  runs once more on its own, its key frames taken again (the whole suite when a failure belongs to no case), unless
+  it only ran over its time limit; the first attempt's logs go to `build/retries/`.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow
@@ -130,7 +130,9 @@ These rules override any default PR or commit format a tool or agent brings.
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
 - Categories describe the test type or a feature worth rerunning: `smoke`, `slow`, `scenario`, `network`,
   `tissue_modification`, `liquids`, `tool_<id>`, `tool_all`, `core_validation`, `visual_confirmation`, `frame_budget`,
-  `broken`. `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
+  `allocation_budget`, `broken`. `allocation_budget` marks a suite that holds per-frame code to its allocation budget
+  (`AllocationBudget.Check`, see docs/PERFORMANCE.md).
+  `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
   through `ToolSession`, `SutureChecks`, `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its
   processes run alone, before the rest.
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take

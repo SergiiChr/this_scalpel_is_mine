@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Scalpel.Patients;
 
 /// <summary>Where a needle coming down onto the site rests (site space): the height its tip stops at (along the
@@ -16,9 +18,19 @@ public partial class PatientBody {
     /// <summary>Every layer's drawn sheet and walls as last published, bucketed by site x and z like the skin's sheet.
     /// </summary>
     private readonly List<DrawnFace> _drawnFaces = [];
-    private readonly Dictionary<Vector2I, List<int>> _drawnBuckets = [];
+    /// <summary>Each of <see cref="_drawnFaces"/>' extent across the site (x, z) and its highest point: no point of it
+    /// is nearer across or higher, so ExposedAt() skips the faces that can't be what a tip touches. Padded by
+    /// <see cref="BoundsSlack"/>: a point worked out from a face's corners can land a rounding error outside them.
+    /// </summary>
+    private readonly List<(Rect2 Across, float Top)> _drawnBounds = [];
+    /// <summary><see cref="_drawnFaces"/> by bucket.</summary>
+    private readonly CellGrid _drawnBuckets = new(SkinBucket);
     /// <summary>The faces near a needle's tip (ExposedAt()), kept to fill again.</summary>
-    private readonly HashSet<int> _nearFaces = [];
+    private readonly List<int> _nearFaces = [];
+    /// <summary>For each face, the last ExposedAt() query that took it near (<see cref="_nearQuery"/>): a face over
+    /// several buckets is taken once.</summary>
+    private int[] _nearIn = [];
+    private int _nearQuery;
     /// <summary>The layers last put on their meshes, bucketed only once something asks (ExposedAt()): most frames
     /// nothing does.</summary>
     private (Surface? Sheet, Surface? Walls)[]? _drawnPending;
@@ -28,37 +40,40 @@ public partial class PatientBody {
 
     private void BucketDrawnTissue((Surface? Sheet, Surface? Walls)[] built) {
         _drawnFaces.Clear();
-        foreach (var bucket in _drawnBuckets.Values) {
-            bucket.Clear();
-        }
+        _drawnBounds.Clear();
+        _drawnBuckets.Clear();
         for (var layer = 0; layer < built.Length; layer++) {
             if (!_layers[layer].Visible) {
                 continue;
             }
             var (sheet, walls) = built[layer];
-            BucketDrawnFaces(sheet, LayerDepth[layer], false);
-            BucketDrawnFaces(walls, LayerDepth[layer], true);
+            AddDrawnFaces(sheet, LayerDepth[layer], false);
+            AddDrawnFaces(walls, LayerDepth[layer], true);
+        }
+        _drawnBuckets.Index();
+        if (_nearIn.Length < _drawnFaces.Count) {
+            _nearIn = new int[_drawnFaces.Count * 2];
+            _nearQuery = 0;
         }
     }
 
-    private void BucketDrawnFaces(Surface? surface, TissueDepth depth, bool wall) {
+    private void AddDrawnFaces(Surface? surface, TissueDepth depth, bool wall) {
         if (surface is null) {
             return;
         }
         var (v, index) = (surface.Vertices, surface.Indices);
-        for (var t = 0; t < index.Length; t += 3) {
-            var face = new DrawnFace(v[index[t]], v[index[t + 1]], v[index[t + 2]], depth, wall);
-            var low = SkinCell(face.A.Min(face.B).Min(face.C));
-            var high = SkinCell(face.A.Max(face.B).Max(face.C));
-            for (var x = low.X; x <= high.X; x++) {
-                for (var z = low.Y; z <= high.Y; z++) {
-                    if (!_drawnBuckets.TryGetValue(new Vector2I(x, z), out var bucket)) {
-                        _drawnBuckets[new Vector2I(x, z)] = bucket = [];
-                    }
-                    bucket.Add(_drawnFaces.Count);
-                }
-            }
-            _drawnFaces.Add(face);
+        // Thousands of faces every time the layers are published: written in place, not added one by one.
+        var (first, count) = (_drawnFaces.Count, index.Length / 3);
+        CollectionsMarshal.SetCount(_drawnFaces, first + count);
+        CollectionsMarshal.SetCount(_drawnBounds, first + count);
+        var faces = CollectionsMarshal.AsSpan(_drawnFaces)[first..];
+        var bounds = CollectionsMarshal.AsSpan(_drawnBounds)[first..];
+        for (var f = 0; f < count; f++) {
+            var (a, b, c) = (v[index[f * 3]], v[index[(f * 3) + 1]], v[index[(f * 3) + 2]]);
+            faces[f] = new DrawnFace(a, b, c, depth, wall);
+            var (min, max) = (a.Min(b).Min(c), a.Max(b).Max(c));
+            _drawnBuckets.Add(min, max);
+            bounds[f] = (new Rect2(min.X, min.Z, max.X - min.X, max.Z - min.Z).Grow(BoundsSlack), max.Y + BoundsSlack);
         }
     }
 
@@ -72,6 +87,8 @@ public partial class PatientBody {
     private static readonly Vector3 DepthWeight = new(1f, 4f, 1f);
     /// <summary>A tip this close (meters, across) to the tissue it rests on is right over it.</summary>
     private const float OverTissue = 0.0005f;
+    /// <summary>How far (meters) a face's bounds are grown (<see cref="_drawnBounds"/>).</summary>
+    private const float BoundsSlack = 1e-6f;
     /// <summary>How far (meters) back under the lip a needle going down a cut's wall still reaches the layers below it.
     /// </summary>
     private const float UnderLip = 0.005f;
@@ -89,14 +106,18 @@ public partial class PatientBody {
             BucketDrawnTissue(pending);
         }
         var p = new Vector2(local.X, local.Z);
-        var low = SkinCell(local - new Vector3(WallReach, 0f, WallReach));
-        var high = SkinCell(local + new Vector3(WallReach, 0f, WallReach));
+        var low = _drawnBuckets.CellOf(local - new Vector3(WallReach, 0f, WallReach));
+        var high = _drawnBuckets.CellOf(local + new Vector3(WallReach, 0f, WallReach));
         var faces = _nearFaces;
         faces.Clear();
+        _nearQuery++;
         for (var x = low.X; x <= high.X; x++) {
             for (var z = low.Y; z <= high.Y; z++) {
-                if (_drawnBuckets.TryGetValue(new Vector2I(x, z), out var near)) {
-                    faces.UnionWith(near);
+                foreach (var f in _drawnBuckets.Items(x, z)) {
+                    if (_nearIn[f] != _nearQuery) {
+                        _nearIn[f] = _nearQuery;
+                        faces.Add(f);
+                    }
                 }
             }
         }
@@ -106,6 +127,11 @@ public partial class PatientBody {
         var toward = Vector2.Zero;
         ExposedTissue? under = null;
         foreach (var f in faces) {
+            var (bounds, top) = _drawnBounds[f];
+            var awayAtLeast = AcrossFrom(p, bounds);
+            if (awayAtLeast > WallReach || top - (awayAtLeast * WallSlide) <= height) {
+                continue;
+            }
             var face = _drawnFaces[f];
             var nearest = face.At(ClosestAcross(p, face));
             var across = new Vector2(nearest.X, nearest.Z) - p;
@@ -135,14 +161,18 @@ public partial class PatientBody {
         var tip = local with { Y = height };
         ExposedTissue? best = null;
         var closest = float.MaxValue;
+        var reach = toward.Length() + UnderLip;
         foreach (var f in faces) {
+            if (AcrossFrom(p, _drawnBounds[f].Across) > reach) {
+                continue;
+            }
             var face = _drawnFaces[f];
             // Nearest with height counted several times over distance across: the wall at the tip's depth, not the
             // layer over it that leans out nearer.
             var w = Closest(tip * DepthWeight, face.Scaled(DepthWeight));
             var contact = face.At(w);
             var across = new Vector2(contact.X, contact.Z) - p;
-            if (across.Dot(toward) < 0f || across.Length() > toward.Length() + UnderLip) {
+            if (across.Dot(toward) < 0f || across.Length() > reach) {
                 continue;
             }
             var distance = (contact * DepthWeight).DistanceSquaredTo(tip * DepthWeight);
@@ -172,6 +202,9 @@ public partial class PatientBody {
         }
         return touched;
     }
+
+    /// <summary>How far across the site <paramref name="p"/> is from <paramref name="bounds"/>.</summary>
+    private static float AcrossFrom(Vector2 p, Rect2 bounds) => p.Clamp(bounds.Position, bounds.End).DistanceTo(p);
 
     /// <summary>Weights of the point of <paramref name="face"/> nearest to <paramref name="p"/> across the site (x, z).
     /// </summary>

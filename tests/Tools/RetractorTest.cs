@@ -22,9 +22,9 @@ public class RetractorTest {
     private const float Middle = 0.005f;
     /// <summary>Most a retractor let go of may tilt up over the body it lies on (degrees).</summary>
     private const float LyingTilt = 8f;
-    /// <summary>How deep (meters) a retractor lying on the body may press into it at most: less than its stay's half
-    /// thickness (tools/assetgen/instruments.py), so the stay still shows. It rises and falls with a breathing belly.
-    /// </summary>
+    /// <summary>How deep (meters) a retractor lying on the body may press into the skin as it's drawn at most: less
+    /// than its stay's half thickness (tools/assetgen/instruments.py), so the stay still shows. It rises and falls with
+    /// a breathing belly and onto the skin its pull bunches up.</summary>
     private const float LyingPress = 0.002f;
     /// <summary>How far (meters) the skin along the drape's window may rise over where it rested: a grip slides it along
     /// the body there by a few millimeters, it doesn't lift it up onto the cloth.</summary>
@@ -75,7 +75,8 @@ public class RetractorTest {
         var hooked = retractor.TipPosition();
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(2f);
-        AssertThat(retractor.State).OverrideFailureMessage("let go of with Grab, the retractor stays hooked").IsEqual(ToolState.Standing);
+        AssertBool(retractor.State == ToolState.Standing)
+            .OverrideFailureMessage($"let go of with Grab, the retractor stays hooked ({retractor.State})").IsTrue();
         AssertBool(hand.Attached).OverrideFailureMessage("and the hand is free").IsFalse();
         AssertFloat((retractor.TipPosition() - hooked).Slide(Vector3.Up).Length())
             .OverrideFailureMessage("the hook stays where it held the skin").IsLess(0.002f);
@@ -94,8 +95,10 @@ public class RetractorTest {
         await Frames.Physics(10);
         AssertObject(driver.Me.HeldTool(driver.Me.Active)).OverrideFailureMessage("taken back in hand").IsEqual(retractor);
         AssertBool(retractor.Hold is SkinHold && hand.Attached).OverrideFailureMessage("still hooked").IsTrue();
-        AssertFloat(retractor.TipPosition().DistanceTo(hooked))
-            .OverrideFailureMessage("the hook stays on the skin it held as the hand takes it").IsLess(0.01f);
+        var taken = retractor.TipPosition() - hooked;
+        AssertFloat(taken.Length())
+            .OverrideFailureMessage($"the hook stays on the skin it held as the hand takes it ({taken.Length() * 1000f:0.0} mm off, {taken.Y * 1000f:0.0} mm up)")
+            .IsLess(0.01f);
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("taking it back doesn't tear").IsEqual(wounds);
 
         SurgeryDriver.Use();
@@ -376,8 +379,8 @@ public class RetractorTest {
             * (retractor.TipPosition() - driver.Body.Site.ToGlobal(origin));
         SurgeryDriver.Tap(InputActions.Grab);
         await Frames.Seconds(1f);
-        AssertThat(retractor.State).OverrideFailureMessage($"retractor {number} stays hooked when let go of")
-            .IsEqual(ToolState.Standing);
+        AssertBool(retractor.State == ToolState.Standing)
+            .OverrideFailureMessage($"retractor {number} stays hooked when let go of ({retractor.State})").IsTrue();
         AssertPointsAway(retractor, driver.Body.Site.GlobalBasis * pulled);
     }
 
@@ -428,12 +431,16 @@ public class RetractorTest {
         AssertFloat(deepest).OverrideFailureMessage($"pressed into the body at most {deepest * 1000f:0.0} mm").IsLess(LyingPress);
     }
 
-    /// <summary>How deep (meters) a retractor lying on the body presses into it at its deepest along it now.</summary>
+    /// <summary>How deep (meters) a retractor lying on the body presses into it at its deepest along it now: into the
+    /// skin as it's drawn, bunched up by the pull, where it would hide the retractor.</summary>
     private static float PressedIn(SurgeryDriver driver, SurgicalTool retractor) {
         var deepest = 0f;
         for (var i = 1; i <= 10; i++) {
             var p = retractor.TipPosition().Lerp(retractor.GlobalPosition, i / 10f);
-            if (BodyHeight(driver, p) is { } height) {
+            var uv = driver.Body.WorldToUv(p);
+            if (new Rect2(0, 0, 1, 1).HasPoint(uv) && driver.Body.OnBody(uv)) {
+                deepest = Mathf.Max(deepest, -driver.Body.HeightAboveSite(p));
+            } else if (BodyHeight(driver, p) is { } height) {
                 deepest = Mathf.Max(deepest, height - p.Y);
             }
         }

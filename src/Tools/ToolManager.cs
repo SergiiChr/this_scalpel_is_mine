@@ -22,10 +22,11 @@ public partial class ToolManager : Node3D {
     private const float StandingRoom = 0.04f;
     /// <summary>How high (meters) over the body at rest a tool lying on it rests at its tip, about half its thickness.
     /// Elsewhere it rests right on the body: breathing lifts a belly into it a little, never enough to stand it up.
-    /// </summary>
-    private const float LyingClearance = 0.0025f;
+    /// A retractor lying on skin bunched up by its pull keeps this far over that skin all along it
+    /// (SurgicalTool.SkinLift()).</summary>
+    internal const float LyingClearance = 0.0025f;
     /// <summary>Where along a lying tool (a share of its length from the tip) it's checked against the body.</summary>
-    private static readonly float[] LyingSamples = [0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1f];
+    internal static readonly float[] LyingSamples = [0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1f];
     /// <summary>How close to a dish's middle (a share of its length) a bottle has to be to pour into it, or a cotton
     /// pad to dip in it.</summary>
     private const float PourReach = 0.7f;
@@ -291,7 +292,7 @@ public partial class ToolManager : Node3D {
             return;
         }
         var wasStanding = tool.State == ToolState.Standing;
-        Rpc(MethodName.SetToolState, uid, (int)ToolState.Held, peer, hand, tool.GlobalTransform);
+        Rpc(MethodName.SetToolState, uid, (int)ToolState.Held, peer, hand, tool.LaidPose);
         // In hand again, its tip holds the skin (see LeaveStanding()).
         if (tool.Hold is SkinHold skin) {
             tool.Hold = skin with { Hold = null };
@@ -567,10 +568,12 @@ public partial class ToolManager : Node3D {
         var pose = tool.GlobalTransform;
         var lying = tool.Hold is SkinHold;
         if (tool.Hold is SkinHold skin) {
-            // The skin stays held where the hand left it (in the site's space, so breathing doesn't pull it), the tool
-            // lying on top of it.
-            tool.Hold = skin with { Hold = Session.Patient.Body.Site.ToLocal(tool.TipPosition()) };
+            // Laying the handle down must not move the acquired material. The restrained tip already holds its
+            // skin contact; lowering that grip to the resting model can push the lip into the drape's skirt.
+            // SkinLift keeps the laid tool above the drawn skin without feeding that visual offset into the grip.
+            var held = Session.Patient.Body.Site.ToLocal(tool.TipPosition());
             pose = LyingFromHold(tool, skin);
+            tool.Hold = skin with { Hold = held };
         }
         Rpc(MethodName.SetToolState, tool.Uid, (int)ToolState.Standing, tool.Holder, -1, pose);
         if (lying) {
@@ -633,8 +636,8 @@ public partial class ToolManager : Node3D {
 
     /// <summary>
     /// Where a tool holding the skin lies once let go of: its tip on the body over where it holds (the skin stays held
-    /// where the hand left it, see LeaveStanding()), and the rest of it lying along the body with its handle pointing
-    /// straight away from where it took hold: the way it pulled, or away from the cut if it wasn't pulled.
+    /// there, see LeaveStanding()), and the rest of it lying along the body with its handle pointing straight away
+    /// from where it took hold: the way it pulled, or away from the cut if it wasn't pulled.
     /// </summary>
     public Transform3D LyingFromHold(SurgicalTool tool, SkinHold hold) {
         var body = Session.Patient.Body;

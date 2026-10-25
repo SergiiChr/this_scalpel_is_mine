@@ -134,9 +134,14 @@ internal sealed class BodyBloodLayer : IDisposable {
         var width = size.X * columns;
         var height = size.Y * ((size.Z + columns - 1) / columns);
         var voxels = width * height;
-        // The image needs its exact size; the sums keep the most they ever needed.
-        if (_pixels.Length != voxels) { _pixels = new byte[voxels]; } else { Array.Clear(_pixels); }
-        if (_weighted.Length < voxels) { _weighted = new float[voxels]; _weight = new float[voxels]; _depth = new float[voxels]; } else {
+        // The image needs its exact size. The sums grow to half again what they need: a spreading pool grows the field
+        // a few voxels at a time, and arrays this big go straight to the large object heap, which only a full
+        // collection frees.
+        Buffers.Cleared(ref _pixels, voxels);
+        if (_weighted.Length < voxels) {
+            var room = voxels * 3 / 2;
+            (_weighted, _weight, _depth) = (new float[room], new float[room], new float[room]);
+        } else {
             Array.Clear(_weighted, 0, voxels); Array.Clear(_weight, 0, voxels); Array.Clear(_depth, 0, voxels);
         }
         // Plain floats in the voxel loop: it runs millions of times a field.

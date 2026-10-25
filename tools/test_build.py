@@ -158,6 +158,19 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(result.executed, 1)
         self.assertIn("gap missing", result.failures[0])
 
+    def test_only_cases_that_just_ran_over_time_are_kept_from_a_retry(self) -> None:
+        result = self.result(
+            '<testsuite><testcase classname="S" name="Slow" time="62" /><testcase classname="S" name="Cut" time="70">'
+            '<failure message="gap missing" /></testcase><testcase classname="S" name="Hung" time="61">'
+            '<failure message="The execution has timed out after 60s." /></testcase></testsuite>'
+        )
+        self.assertEqual(result.failed_cases.keys(), {("S", "Slow"), ("S", "Cut"), ("S", "Hung")})
+        self.assertEqual(result.overran, {("S", "Slow"): ["[ERROR] S Slow took 62 s, longer than 60 s."]})
+
+    def test_a_lone_case_over_time_is_retried_on_errors_outside_it(self) -> None:
+        result = self.result('<testsuite><testcase classname="S" name="Slow" time="62" /></testsuite>', QUIT + "\nERROR: at shutdown")
+        self.assertEqual(result.overran, {})
+
     def test_passing_cases_fail_when_godot_never_quits(self) -> None:
         result = self.result("<testsuite><testcase /></testsuite>", "Rebuild Godot Project ends with exit code: 0", 1)
         self.assertEqual(result.failures, ["[ERROR] Godot didn't quit cleanly after its cases (runner exit never reported)."])
@@ -279,8 +292,8 @@ class CoverageReportingTest(unittest.TestCase):
         """Only frame_budget suites run alone, so one that checks the budget without the category would fail its
         frames on contention. The helpers that check it: tests/Support/ToolSession.cs, ScenarioFlow.cs and
         tests/Scenarios/GameplaySweep.cs, and SutureChecks.cs through ToolSession; NeedleTest compares against
-        FrameBudget.Limit itself. FrameBudget.RenderingOff() alone checks nothing."""
-        checks = re.compile(r"[Bb]udget\.Check\(|FrameBudget\.(Limit|Mode)|ToolSession|ScenarioFlow|GameplaySweep|SutureChecks")
+        FrameBudget.Limit itself. FrameBudget.RenderingOff() alone checks nothing, nor does AllocationBudget.Check()."""
+        checks = re.compile(r"(?<!Allocation)[Bb]udget\.Check\(|FrameBudget\.(Limit|Mode)|ToolSession|ScenarioFlow|GameplaySweep|SutureChecks")
         with patch.object(build, "ROOT", Path(build.__file__).parent):
             suites = build.discover()
         for suite in suites:

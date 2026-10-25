@@ -19,8 +19,11 @@ internal sealed class ContactSurface(float cell = 0.01f) {
     internal void Index(Vector3[] vertices, IReadOnlyList<int> indices) {
         var count = indices.Count / 3;
         if (_triangles.Length < count) {
-            Array.Resize(ref _triangles, count);
-            Array.Resize(ref _seen, count);
+            // Cutting adds a few triangles at a time. Keep spare capacity instead of replacing every contact
+            // face and query stamp on each cut step; the indexes are reused for sheets and cut walls alike.
+            var capacity = Math.Max(count, Math.Max(_triangles.Length * 2, 16));
+            Array.Resize(ref _triangles, capacity);
+            Array.Resize(ref _seen, capacity);
         }
         foreach (var bucket in _faces) { bucket?.Clear(); }
         var firstCell = new Vector2I(int.MaxValue, int.MaxValue);
@@ -50,7 +53,9 @@ internal sealed class ContactSurface(float cell = 0.01f) {
         _firstCell = firstCell;
         _width = count == 0 || firstCell.X == int.MaxValue ? 0 : lastCell.X - firstCell.X + 1;
         _height = _width == 0 ? 0 : lastCell.Y - firstCell.Y + 1;
-        if (_faces.Length < _width * _height) { Array.Resize(ref _faces, _width * _height); }
+        if (_faces.Length < _width * _height) {
+            Array.Resize(ref _faces, Math.Max(_width * _height, Math.Max(_faces.Length * 2, 16)));
+        }
         for (var index = 0; index < count; index++) {
             ref readonly var face = ref _triangles[index];
             if (face.Winding == 0f) { continue; }
