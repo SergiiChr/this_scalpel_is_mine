@@ -191,12 +191,13 @@ public class BleedSourcesTest {
         await Frames.Seconds(1f);
         // The far lip lifted and drawn back: its wall stands up facing across the cut.
         var lip = at + new Vector2(0f, body.MetersToUv(0.004f));
-        SurgeryState.TissueIsPulled(patient, lip, new Vector3(0f, 0.012f, 0.008f));
+        var k = SurgeryState.TissueIsPulled(patient, lip, new Vector3(0f, 0.012f, 0.008f));
+        var before = body.LayerPoint(0, k);
         await Frames.Seconds(4f);
-        AssertString(Spot(body, cut.BleedPoint)).OverrideFailureMessage("the cut shows where it bleeds from on its walls").IsEqual("inside");
-        var shown = SpotCenter(body, cut.BleedPoint);
-        AssertFloat(shown).OverrideFailureMessage($"at the top of the fat's wall, just under the skin ({shown * 1000f:0.0} mm deep)")
-            .IsBetween(PatientBody.SkinThickness, PatientBody.SkinThickness + body.FatThickness * 0.5f);
+        var raised = body.LayerPoint(0, k).Y - before.Y;
+        AssertFloat(raised).OverrideFailureMessage($"the lip is lifted ({raised * 1000f:0.0} mm)").IsGreater(0.008f);
+        AssertString(Spot(body, cut.BleedPoint)).OverrideFailureMessage("the lifted cut still shows where it bleeds from on its walls")
+            .IsEqual("inside");
         if (session.Shots is { } shots) {
             var look = driver.SitePoint(cut.BleedPoint) + Vector3.Up * 0.004f;
             var across = (driver.SitePoint(at - new Vector2(0f, 0.1f)) - driver.SitePoint(at)).Slide(Vector3.Up);

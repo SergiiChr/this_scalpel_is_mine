@@ -639,7 +639,7 @@ public partial class BloodFlow : Node3D {
         margin += new Vector2(gap / body.SiteSize.X, gap / body.SiteSize.Y);
         var bounds = new Rect2(low - margin, high - low + margin * 2f).Intersection(new Rect2(Vector2.Zero, Vector2.One));
         if (!bounds.HasArea()) { return; }
-        var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
+        var depth = CutPoolDepth(floor, fill);
         var height = body.SurfaceHeight(uv) - depth;
         var inset = gap * 0.2f * (1f - Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f)));
         var cavity = floor > PatientBody.SkinThickness + body.FatThickness + 0.005f;
@@ -689,8 +689,8 @@ public partial class BloodFlow : Node3D {
             if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || _insideUvs.Contains(uv)) {
                 continue;
             }
-            // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
-            // it never runs off it.
+            // Inside, it sits on the wall of the layer it bleeds from, no bigger than that wall is high, so it never runs
+            // off it.
             var (top, thickness) = LayerAt(body, uv, depth);
             var radius = Mathf.Min(SpotMin + Mathf.Sqrt(rate) * SpotGrowth, WoundMap.MaxSpotRadius);
             if (depth > 0f) {
@@ -753,17 +753,27 @@ public partial class BloodFlow : Node3D {
     private const float PoolPeek = 0.2f;
 
     /// <summary>How deep (meters) under the skin at <paramref name="uv"/> the surface of the blood pooled in the opening
-    /// there lies: the cavity's pool, or the one held in a cut. Infinitely deep without either.</summary>
+    /// there lies: the cavity's pool where the cut reaches into the cavity, or the pool held in the cut it's in.
+    /// Infinitely deep without either.</summary>
     private float PoolSurfaceDepth(PatientBody body, Vector2 uv) {
-        var surface = body.SurfaceHeight(uv) - body.CavityPoolHeight;
-        foreach (var pool in Pools) {
-            if (pool.Uv.DistanceTo(uv) < body.MetersToUv(0.002f)) {
-                surface = Mathf.Min(surface, Mathf.Lerp(pool.Floor - CutPoolLift, Mathf.Max(pool.Floor * CutPoolBrim, CutPoolFull),
-                    Mathf.Clamp(pool.Fill, 0f, 1f)));
+        var skin = body.SurfaceHeight(uv);
+        var reach = body.MetersToUv(body.Tissue.OpenReach * 2f);
+        var surface = body.Tissue.DeepestCut(uv, reach) == TissueDepth.Muscle ? skin - body.CavityPoolHeight : float.PositiveInfinity;
+        // A cut's pool is keyed by its wound's bleed point and fills the whole cut at one height.
+        if (body.GetParent<Patient>().NearestWound(uv, reach, false) is { } wound) {
+            foreach (var pool in Pools) {
+                if (pool.Uv == wound.BleedPoint) {
+                    surface = Mathf.Min(surface, skin - body.SurfaceHeight(pool.Uv) + CutPoolDepth(pool.Floor, pool.Fill));
+                }
             }
         }
         return surface;
     }
+
+    /// <summary>How deep (meters) under the skin at its bleed point a cut's pool stands, <paramref name="fill"/> of
+    /// the way up from its <paramref name="floor"/>.</summary>
+    private static float CutPoolDepth(float floor, float fill) =>
+        Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
 
     /// <summary>Whether a spot of <paramref name="size"/> at <paramref name="uv"/> would overlap one already painted
     /// at another depth.</summary>
@@ -788,7 +798,7 @@ public partial class BloodFlow : Node3D {
             TissueDepth.Fat => 1,
             _ => 0,
         };
-        // As deep as the skin is a cut's own edge: any layer the cut reaches.
+        // A cut's own edge (as deep as the skin) shows on the fat's wall, a vessel on its own layer's.
         var lies = depth <= PatientBody.SkinThickness + body.FatThickness ? 1 : 2;
         return Math.Min(lies, cut) switch {
             0 => (0f, PatientBody.SkinThickness),

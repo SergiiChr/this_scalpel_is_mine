@@ -814,12 +814,15 @@ regenerating.
   much as it is long, gapes and is deep to that layer (`Patient.CutHolds()`); suction and swabs drain it.
   Every wound that bleeds at all shows where, as a spot like a cut vessel (blood-red middle, dark bluish rim) that
   grows with how fast it bleeds and is never too small to see. A hole (puncture, bullet) shows it on the skin; a cut
-  along a line shows none there, as the cut would split it across its lips. Inside the opening it sits in the middle of
-  the wall of the deepest layer it bleeds from, no bigger than that wall is high and never on the skin over it. Spots live in the wound map's Bleeds layer, repainted from the
-  current sources and needle punctures, so they ride the tissue wherever it's pulled and go when the bleeding stops
-  (a puncture's when it dries or is wiped). Once the cavity pool
-  covers what one sees down the cut (`Patient.SlitView`) the pool hides it: nothing stands on its surface. One
-  under skin that isn't cut spreads a bruise over itself instead.
+  along a line shows none there, as the cut would split it across its lips. Inside the opening it sits on the wall,
+  no bigger than that wall is high and never on the skin over it: a cut's own edge at the top of the fat's wall, just
+  under the skin, where a lifted lip shows it; a vessel in the middle of its own layer's wall. Its blood runs down the
+  wall below it in a narrow stream, widening a little, and blood carried onto the wall from the skin fades out within
+  a centimeter of the lip, so a standing wall shows where it bleeds from. Blood pooled over a spot (the cut's own pool,
+  or the cavity's where the cut reaches it) moves it up to the pool's surface so its top still shows, until the pool
+  brims over the lips. Spots live in the wound map's Bleeds layer, repainted from the current sources and needle
+  punctures, so they ride the tissue wherever it's pulled and go when the bleeding stops (a puncture's when it dries
+  or is wiped). One under skin that isn't cut spreads a bruise over itself instead.
   The shaders draw blood as a raised wet film: fresh red when thin, dark and glossy when thick, with a ragged edge
   whose rim catches the light.
 - **Tool effects** (`src/Visuals/ToolEffects.cs`, sent by the host through `Surgery.Effect()`): cautery and lighter

@@ -67,7 +67,7 @@ float bleed_spot(vec4 s, float depth) {
 	if (s.g < 0.15) {
 		return 2.0;
 	}
-	float r = s.b / s.g * MAX_SPOT_RADIUS;
+	float r = max(s.b / s.g * MAX_SPOT_RADIUS, 1e-5);
 	float down = depth - s.a / s.g * MAX_SPOT_DEPTH;
 	return 1.0 - s.g + down * down / max(r * r, 1e-9);
 }
