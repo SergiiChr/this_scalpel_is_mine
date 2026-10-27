@@ -48,12 +48,6 @@ float blood_amount(float blood, float grain) {
 	return clamp(blood + (grain - 0.5) * 0.2 * smoothstep(0.0, 0.15, blood) * (1.0 - smoothstep(0.2, 0.45, blood)), 0.0, 1.0);
 }
 
-// How far blood stands off the skin, in meters.
-float blood_thickness(float blood) {
-	// A low meniscus gives a continuous sheen; tall rims turn each map stamp into a bright tick.
-	return smoothstep(0.05, 0.85, blood) * 0.0007;
-}
-
 // Tilts the view space normal along the blood's edges as if it were a raised film, so the light catches its rim
 // and it reads as liquid instead of paint. Built from screen derivatives, so it needs no tangents.
 vec3 blood_normal(vec3 normal, vec3 view_pos, float thickness) {
@@ -73,9 +67,25 @@ float bleed_spot(vec4 s, float depth) {
 	if (s.g < 0.15) {
 		return 2.0;
 	}
-	float r = s.b / s.g * MAX_SPOT_RADIUS;
+	float r = max(s.b / s.g * MAX_SPOT_RADIUS, 1e-5);
 	float down = depth - s.a / s.g * MAX_SPOT_DEPTH;
 	return 1.0 - s.g + down * down / max(r * r, 1e-9);
+}
+
+// How much of a bleed's blood runs down a cut's wall at a point `depth` meters under the skin, below the spot it comes
+// from (bleed map texel s, see bleed_spot()): on a wall the blood goes down, so nothing above the spot's middle, and
+// within a narrow cone under it, no wider than the spot, its sides broken by `grain` (0..1).
+float bleed_run(vec4 s, float depth, float grain) {
+	if (s.g < 0.15) {
+		return 0.0;
+	}
+	float r = s.b / s.g * MAX_SPOT_RADIUS;
+	float down = depth - s.a / s.g * MAX_SPOT_DEPTH;
+	// Across the spot: 0 in line with its middle, 1 at its edge (the texel falls off as 1 - (d / r)^2).
+	float across = sqrt(clamp(1.0 - s.g, 0.0, 1.0));
+	// The run starts as wide as half the spot and widens to all of it four radii down.
+	float half_width = mix(0.5, 1.0, clamp(down / max(r * 4.0, 1e-6), 0.0, 1.0)) * mix(0.75, 1.0, grain);
+	return smoothstep(0.0, r * 0.5, down) * (1.0 - smoothstep(half_width * 0.7, half_width, across));
 }
 
 // The same for a bleed spot on the skin.

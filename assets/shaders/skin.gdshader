@@ -49,8 +49,8 @@ void vertex() {
 	local_pos = (site_to_model * vec4(VERTEX, 1.0)).xyz + site_lift;
 	// Not raised by bruises, burns or blood, like the body's skin (toon.gdshader): raised, this sheet would lift off
 	// the walls down its cuts and off the layers under it, which don't rise with it, and step up where it meets the
-	// body. Blood reads as standing on it from its lighting (blood_normal) alone. Cuts don't sink: the mesh itself is
-	// split along them.
+	// body. Blood reads as standing on it from parallax and lighting alone (body_blood_raised).
+	// Cuts don't sink: the mesh itself is split along them.
 	vec3 camera = (inverse(MODEL_MATRIX) * vec4(MAIN_CAM_INV_VIEW_MATRIX[3].xyz, 1.0)).xyz;
 	VERTEX += normalize(camera - VERTEX) * DEPTH_BIAS;
 }
@@ -61,9 +61,9 @@ void fragment() {
 	// Only tied sutures mark joined edges; a low-quality closure in w.a is not a seam marker.
 	w.r *= texture(seam_map, UV).r;
 	vec4 f = texture(fluid_map, UV);
-	float blood = body_blood(world_pos, mat3(INV_VIEW_MATRIX) * NORMAL);
+	float blood = body_blood_raised(world_pos, mat3(INV_VIEW_MATRIX) * NORMAL, mat3(INV_VIEW_MATRIX) * VIEW);
 	f.r = 0.0;
-	NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
+	NORMAL = blood_normal(NORMAL, VERTEX, body_blood_height(blood) * BODY_BLOOD_HEIGHT);
 	// The same pores as the body's skin around it (toon.gdshader, detail 1), so the two shade alike.
 	NORMAL = blood_normal(NORMAL, VERTEX, (noise(local_pos.xz * 900.0 + local_pos.y * 300.0) + noise(local_pos.xy * 700.0) - 1.0) * 0.00004);
 	float n = noise(local_pos.xz * 14.0) * 0.6 + noise(local_pos.xy * 6.3 + 7.0) * 0.4;

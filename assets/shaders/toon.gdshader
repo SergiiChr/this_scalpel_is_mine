@@ -124,7 +124,7 @@ void fragment() {
 		base = mix(base, vec3(0.3, 0.03, 0.04), smoothstep(edge, edge + 0.04, s) * 0.85);
 	}
 	float wet = 0.0;
-	float blood = body_blood(world_pos, mat3(INV_VIEW_MATRIX) * NORMAL);
+	float blood = body_blood_raised(world_pos, mat3(INV_VIEW_MATRIX) * NORMAL, mat3(INV_VIEW_MATRIX) * VIEW);
 	if (carve_box.x > 0.0) {
 		vec3 lp = (carve_inverse * vec4(world_pos - carve_lift, 1.0)).xyz;
 		vec2 cuv = lp.xz / (carve_box.xz * 2.0) + 0.5;
@@ -148,7 +148,7 @@ void fragment() {
 	}
 	if (body_blood_grid.x > 1.0) {
 		wet = max(wet, apply_blood(base, blood_amount(blood, noise(world_pos.xz * 120.0 + world_pos.y * 50.0))));
-		NORMAL = blood_normal(NORMAL, VERTEX, blood_thickness(blood));
+		NORMAL = blood_normal(NORMAL, VERTEX, body_blood_height(blood) * BODY_BLOOD_HEIGHT);
 	}
 	if (detail > 0) {
 		NORMAL = blood_normal(NORMAL, VERTEX, relief(local_pos) * detail_strength);
