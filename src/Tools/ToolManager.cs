@@ -646,7 +646,7 @@ public partial class ToolManager : Node3D {
     /// holds (the skin stays held there, see LeaveStanding()), and the rest of it lying along the body with its handle
     /// pointing straight away from where it took hold: the way it pulled, or away from the cut if it wasn't pulled.
     /// </summary>
-    public Transform3D LyingFromHold(SurgicalTool tool, SkinHold hold, Vector3 tip) {
+    private Transform3D LyingFromHold(SurgicalTool tool, SkinHold hold, Vector3 tip) {
         var body = Session.Patient.Body;
         tip.Y = BodyUnder(tool, tip) + LyingClearance;
         var flat = new Vector3(1, 0, 1);

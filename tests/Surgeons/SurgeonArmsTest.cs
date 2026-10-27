@@ -16,6 +16,8 @@ public class SurgeonArmsTest {
         FrameBudget.RenderingOff();
         var driver = _driver = SurgeryDriver.Create();
         await driver.Start("appendectomy");
+        // These cases zoom in themselves.
+        driver.ZoomsInToWork = false;
         var frames = _frames = new KeyFrames();
         driver.AddChild(frames);
         frames.Begin(driver.Surgery, "surgeon_arms");

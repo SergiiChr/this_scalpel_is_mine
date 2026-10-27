@@ -46,7 +46,7 @@
   thread's allocations, so it holds on any machine and runs on CI. A new path that runs every frame or tick gets a case
   there; a path that must allocate passes its measured bytes per run as an explicit, commented budget.
   Whole surgery frames, every thread's allocations, are held to measured budgets with `AllocationBudget.CheckFrames()`:
-  idle, cutting and bleeding. A change that adds a third more garbage to them fails; one that removes some lowers the
+  idle, cutting, bleeding and a lip drawn aside. A change that adds a third more garbage to them fails; one that removes some lowers the
   budget.
 - Leaks: `MemorySoakTest` plays short surgeries one after another in one session and fails when, after a warm-up, the
   managed heap or Godot's own memory grows more than a small allowance per surgery, or objects, nodes or resources

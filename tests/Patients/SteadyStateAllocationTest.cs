@@ -86,6 +86,9 @@ public class SteadyStateAllocationTest {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();
         await driver.Start("bullet_muscle");
+        // Standing, so the lip ends where the budget was measured: nearly all of it is the layers, and how much depends
+        // on where the lip ends up. Zooming in itself adds well under 1 KB a frame.
+        driver.ZoomsInToWork = false;
         SurgeryState.PatientIsAsleep(driver.Patient);
         await driver.PlayerIncises(0.05f);
         var cut = driver.Patient.Wounds.Where(wound => wound.Kind == WoundKind.Cut).MaxBy(wound => wound.LengthUv)!;

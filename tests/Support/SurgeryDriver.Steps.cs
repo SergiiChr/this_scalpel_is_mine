@@ -93,7 +93,11 @@ public partial class SurgeryDriver {
         // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
         // edge with the line while moving its actual skin contact sideways from the buried tip's path.
         var facing = BladeFacing(start, finish, Me.GlobalPosition);
-        await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
+        // Turned by the direction, not a point by the eyes: leaning in, the eyes move while the body turns.
+        var yaw = Mathf.Atan2(-facing.X, -facing.Z);
+        PlayerInput.Mouse(new Vector2(Mathf.Wrap(Me.Rotation.Y - yaw, -Mathf.Pi, Mathf.Pi) / (Surgeon.LookSensitivity * Settings.MouseSensitivity), 0f));
+        await PlayerInput.Delivered();
+        Note($"faces {facing}");
         await PlayerAimsStraight();
     }
 
@@ -624,14 +628,8 @@ public partial class SurgeryDriver {
         // Both let go before either is taken to the tray: walking off holding one would tear the tissue.
         foreach (var hand in (int[])[Left, Right]) {
             await SwitchTo(hand);
-            // Use tool is still held from taking hold: pressed again, the jaws open.
-            Use(false);
-            await Frames.Physics(3);
-            if (Me.HeldTool(hand) is { Hold: not null }) {
-                Use();
-                await Frames.Physics(3);
-                Use(false);
-                await Frames.Physics(3);
+            if (Me.HeldTool(hand) is { } held) {
+                await PlayerLetsGoOfHold(held);
             }
         }
         foreach (var hand in (int[])[Left, Right]) {

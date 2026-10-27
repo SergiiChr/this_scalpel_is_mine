@@ -25,7 +25,7 @@ public sealed record TargetHold(int Target, float StartDepth, Vector3 Offset = d
 /// space).</summary>
 public sealed record CarryHold(int Target, Vector3 Offset = default) : ToolHold;
 
-/// <summary>A bleeding vessel (internal wound by id) clamped shut.</summary>
+/// <summary>A bleeding vessel (internal wound by id), or a wound's edge deep in the opening, clamped shut.</summary>
 public sealed record VesselHold(int Wound) : ToolHold;
 
 /// <summary>An organ (by index) held aside, the tip <paramref name="Offset"/> (site space) from where it holds it.

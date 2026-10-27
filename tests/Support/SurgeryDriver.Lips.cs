@@ -1,19 +1,8 @@
 namespace Scalpel.Tests.Support;
 
 /// <summary>Holding a cut open by hand: a lip taken in forceps or hooked with a retractor and drawn aside with the
-/// mouse, a retractor left hooked, and the close view a player works in.</summary>
+/// mouse, and a retractor left hooked.</summary>
 public partial class SurgeryDriver {
-    /// <summary>Shift until the view is zoomed all the way in: the surgeon leans over what the hand works on and the
-    /// hands turn see-through.</summary>
-    public async Task PlayerZoomsIn() {
-        for (var i = 0; i < Surgeon.ZoomFov.Length && Me.Zoom != Surgeon.ZoomFov.Length - 1; i++) {
-            Tap(InputActions.Zoom);
-            await PlayerInput.Delivered();
-        }
-        // The lean eases in over a moment.
-        await Frames.Seconds(1f);
-    }
-
     /// <summary>The first skin beside the middle of <paramref name="cut"/> on <paramref name="side"/> (1 or -1, across
     /// it), and 2 mm into it so jaws close on skin (site uv).</summary>
     public Vector2 LipOf(Wound cut, int side) {
@@ -31,6 +20,8 @@ public partial class SurgeryDriver {
     public async Task<SkinHold?> PlayerTakesHoldOfLip(int hand, Vector2 lip) {
         await SwitchTo(hand);
         var tool = Me.HeldTool(hand)!;
+        // Pointing ahead, not across: the hand stays back toward the surgeon, out of the way of the opening.
+        await PlayerAimsStraight();
         await PlayerReaches(SitePoint(lip));
         Use();
         await Frames.Physics(10);
@@ -63,13 +54,6 @@ public partial class SurgeryDriver {
         }
         Note($"{tool.Def.Id} drawn {gave.Sum() * 1000f:0.0} mm for {meters * 1000f:0} mm of mouse");
         return gave;
-    }
-
-    /// <summary>Lets go of a self-retaining tool holding on (a retractor hooked in a lip): it keeps its hold.</summary>
-    public async Task PlayerLeavesHooked(int hand) {
-        await SwitchTo(hand);
-        Tap(InputActions.Grab);
-        await Frames.Seconds(1f);
     }
 
     /// <summary>A tool left hooked in the patient taken back in <paramref name="hand"/> by its tip, let go of the skin and

@@ -41,6 +41,9 @@ public partial class SurgeryDriver : Node {
     public Func<string, string, Task>? OnViewFrame { get; set; }
     /// <summary>Optional room-side restriction used by co-op flows whose surgeons must work from opposing aisles.</summary>
     public Func<Vector3, bool>? StandingConstraint { get; set; }
+    /// <summary>Zooms all the way in before reaching over the patient, as a player does to see the work (see
+    /// <see cref="PlayerReaches"/>). Off for a test of the standing view or of zooming itself.</summary>
+    public bool ZoomsInToWork { get; set; } = true;
     private bool _budgetPaused;
 
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
@@ -240,6 +243,20 @@ public partial class SurgeryDriver : Node {
         await Frames.Seconds(0.3f);
     }
 
+    /// <summary>Shift until the view is zoomed all the way in, as a player does to work on the patient: the surgeon
+    /// leans over what the hand works on and the hands turn see-through.</summary>
+    public async Task PlayerZoomsIn() {
+        if (Me.Zoom == Surgeon.ZoomFov.Length - 1) {
+            return;
+        }
+        for (var i = 0; i < Surgeon.ZoomFov.Length && Me.Zoom != Surgeon.ZoomFov.Length - 1; i++) {
+            Tap(InputActions.Zoom);
+            await PlayerInput.Delivered();
+        }
+        // The lean eases in over a moment.
+        await Frames.Seconds(1f);
+    }
+
     public Vector3 SitePoint(Vector2 uv, float depth = 0f) => Body.UvToWorld(uv, depth);
 
     // --- Moving --------------------------------------------------------------------------------------------------
@@ -386,8 +403,12 @@ public partial class SurgeryDriver : Node {
 
     /// <summary>Steers the active hand so its tool's tip (or the empty hand's fingertips) is over
     /// <paramref name="point"/>, across the floor. The game decides the height: hovering, or resting on what's under it
-    /// while Use tool is held.</summary>
+    /// while Use tool is held. Over the patient the player zooms all the way in first (<see cref="ZoomsInToWork"/>).
+    /// </summary>
     public async Task PlayerReaches(Vector3 point) {
+        if (ZoomsInToWork && Me.SurfaceBelow(point, false).Soft) {
+            await PlayerZoomsIn();
+        }
         var hand = Me.Hands[Me.Active];
         HoldHandKey(true);
         for (var i = 0; i < 8; i++) {

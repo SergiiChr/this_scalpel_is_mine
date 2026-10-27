@@ -30,6 +30,10 @@ public struct Spring {
     public bool MuscleClosed { get; set; }
     /// <summary>The subcutaneous layer has been closed: the same cut then counts as skin-only.</summary>
     public bool FatClosed { get; set; }
+    /// <summary>A stitch in a layer under the skin: it draws its ends together along the body only. The sheet's
+    /// particles are the skin's, and a lip peeled up off the muscle would otherwise drag the other lip's skin up after
+    /// it into a spike.</summary>
+    public bool Flat { get; set; }
 }
 
 /// <summary>A tool holding the skin: the particle it pins and where it pulls it (site-local).</summary>
@@ -1251,7 +1255,7 @@ public sealed partial class TissueSim {
     public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target, pin.Value.Origin))];
 
     /// <summary>Where grip <paramref name="key"/> holds its skin now (site space), null when it holds none.</summary>
-    public Vector3? GripTarget(int key) => _pins.TryGetValue(key, out var pin) ? pin.Target : null;
+    internal Vector3? GripTarget(int key) => _pins.TryGetValue(key, out var pin) ? pin.Target : null;
 
     /// <summary>The particle grip <paramref name="key"/> holds, -1 when it holds none.</summary>
     public int GrippedParticle(int key) => _pins.TryGetValue(key, out var pin) ? pin.Particle : -1;
@@ -1350,12 +1354,12 @@ public sealed partial class TissueSim {
         var last = thread.Anchors[^1];
         var stretched = Pos[last].DistanceTo(Pos[k]) / Mathf.Max(Rest[last].DistanceTo(Rest[k]), 0.0001f);
         var slack = Mathf.Clamp(stretched, LeastSlack, MostSlack);
-        // Under the skin, across a cut a spreader holds open (a Gelpi spreading it to sew the muscle), the span tugs the
-        // edges in only SpreadTug of the gap at once: drawn all the way in, it would fight the spreader and tear the skin
-        // beside its jaws. Spreader jaws grip with negative keys (Patient.SpreaderKey()).
+        // Under the skin, across a cut a spreader holds open beside it (a Gelpi spreading it to sew the muscle), the span
+        // tugs the edges in only SpreadTug of the gap at once: drawn all the way in, it would fight the spreader and tear
+        // the skin beside its jaws. Spreader jaws grip with negative keys (Patient.SpreaderKey()).
         if (thread.Layer != TissueDepth.Skin) {
-            foreach (var key in _pins.Keys) {
-                if (key < 0) {
+            foreach (var (key, pin) in _pins) {
+                if (key < 0 && Pos[pin.Particle].DistanceTo(Pos[k]) < SpreadReach) {
                     return Mathf.Max(slack, stretched * (1f - SpreadTug));
                 }
             }
@@ -1370,6 +1374,9 @@ public sealed partial class TissueSim {
     private const float MostSlack = 1.12f;
     /// <summary>Share of the gap a span laid under a spreader tugs in at once (see <see cref="ThreadSlack"/>).</summary>
     private const float SpreadTug = 0.2f;
+    /// <summary>How near (m) a spreader's jaw holds the cut where a span goes in for it to count as spreading it.
+    /// </summary>
+    private const float SpreadReach = 0.04f;
 
     /// <summary>Adds one puncture to a continuous running suture. The first puncture is only an anchor; every later
     /// one adds a span from the previous hole, <paramref name="slack"/> (see <see cref="ThreadSlack"/>) times as long
@@ -1386,7 +1393,9 @@ public sealed partial class TissueSim {
         if (thread.Anchors.Count > 0) {
             // The wheel draws in only the kept slack: a span laid loose under a spreader closes like any other.
             thread.Slack.Add(Mathf.Clamp(slack, LeastSlack, MostSlack));
-            thread.Springs.Add(AddSpring(thread.Anchors[^1], k, SpringKind.Stitch, ThreadRestScale(tension, layer) * slack, strength));
+            var span = AddSpring(thread.Anchors[^1], k, SpringKind.Stitch, ThreadRestScale(tension, layer) * slack, strength);
+            _springs[span].Flat = layer != TissueDepth.Skin;
+            thread.Springs.Add(span);
         }
         thread.Anchors.Add(k);
         thread.Holes.Add(uv);
@@ -2124,6 +2133,12 @@ public sealed partial class TissueSim {
         }
     }
 
+    /// <summary>From a spring's A end to its B end: along the body only for a <see cref="Spring.Flat"/> one.</summary>
+    private Vector3 Span(Spring spring) {
+        var d = Pos[spring.B] - Pos[spring.A];
+        return spring.Flat ? d - _restNormal[spring.A] * d.Dot(_restNormal[spring.A]) : d;
+    }
+
     /// <summary>Moves the ends of an active spring toward its rest length, by how free each end is.</summary>
     private void Solve(int s) {
         ref readonly var spring = ref _springs[s];
@@ -2135,7 +2150,7 @@ public sealed partial class TissueSim {
         if (wa + wb == 0f) {
             return;
         }
-        var d = Pos[spring.B] - Pos[spring.A];
+        var d = Span(spring);
         var length = d.Length();
         if (length < 0.00001f) {
             return;
@@ -2300,7 +2315,7 @@ public sealed partial class TissueSim {
         }
         var (a, b) = (spring.A, spring.B);
         var limit = 1f + (spring.Break - 1f) * BreakMult;
-        if (Pos[a].DistanceTo(Pos[b]) / spring.Rest <= limit) {
+        if (Span(spring).Length() / spring.Rest <= limit) {
             return;
         }
         if (spring.Kind == SpringKind.Tissue) {

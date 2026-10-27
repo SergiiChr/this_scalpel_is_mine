@@ -12,7 +12,7 @@ public sealed class TourniquetAction : ToolAction {
             return;
         }
         if (step.InSite || step.Patient.Body.RingCrossesSite(ring)) {
-            step.Surgery.Announce("The tourniquet goes on above the wound, not over it.", true);
+            step.Surgery.Tell(step.Hand.Peer, "The tourniquet goes on above the wound, not over it.");
         } else {
             step.Patient.ApplyTourniquet();
             step.Tools.Wrap(step.Tool, ring);

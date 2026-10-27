@@ -29,11 +29,15 @@ public static class TissueLayers {
         var points = wall[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         var colors = wall[(int)Mesh.ArrayType.Color].AsColorArray();
         var worst = 0f;
+        var at = Vector3.Zero;
         for (var v = 0; v < points.Length; v++) {
             if (colors[v].R > 0f) { continue; }
-            worst = Mathf.Max(worst, DistanceToTriangles(vertices, indices, points[v]));
+            var gap = DistanceToTriangles(vertices, indices, points[v]);
+            if (gap > worst) {
+                (worst, at) = (gap, points[v]);
+            }
         }
-        AssertFloat(worst).OverrideFailureMessage($"the skin wall joins its sheet without a slit ({worst * 1000f:0.00} mm gap)")
+        AssertFloat(worst).OverrideFailureMessage($"the skin wall joins its sheet without a slit ({worst * 1000f:0.00} mm gap at {at}, uv {body.WorldToUv(body.Layers[0].GlobalTransform * at)})")
             .IsLess(0.0001f);
     }
 

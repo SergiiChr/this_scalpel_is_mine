@@ -89,6 +89,8 @@ public class ThighBulletScenarioTest {
             AssertFloat(gave[0]).OverrideFailureMessage($"the {tool.Def.Id}'s lip follows the hand's first millimeter ({text} mm)").IsGreater(0.0005f);
             AssertFloat(gave.Sum()).OverrideFailureMessage($"the {tool.Def.Id} draws its lip at least 5 mm aside ({text} mm)").IsGreater(0.005f);
             AssertFloat(gave.Min()).OverrideFailureMessage($"the {tool.Def.Id}'s lip never jumps back ({text} mm)").IsGreater(-0.0005f);
+            AssertFloat(gave.TakeLast(5).Average()).OverrideFailureMessage($"the {tool.Def.Id}'s lip gives less and less ({text} mm)")
+                .IsLessEqual(gave.Take(5).Average() + 0.0001f);
         }
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("drawing both lips apart tears no skin").IsEqual(wounds);
         AssertBool(!patient.Covered(bullet) && bullet.InReach).OverrideFailureMessage("the bullet lies open between the lips").IsTrue();

@@ -66,7 +66,9 @@ public partial class Patient {
             }
         }
         var wound = NearestWound(uv, 0.03f, false);
-        var clamps = wound is not null && zone == SiteZone.Cavity && !skinOnly && down && wound.BleedRate(1f, 1f) > 0f && wound.Depth > 0.6f;
+        // Closed on a bleeding wound's edge from inside the opening, the jaws clamp it until they let go (Unclamp()).
+        var clamps = wound is not null && zone == SiteZone.Cavity && !skinOnly && down && wound.BleedRate(1f, 1f) > 0f
+            && wound.Depth > 0.6f;
         if (clamps) {
             wound!.Clamped = 0.85f;
         }
@@ -88,7 +90,8 @@ public partial class Patient {
             var offset = contact - tissue.Pos[tissue.GrippedParticle(toolUid)];
             return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset, Origin: contact, Clamps: clamps);
         }
-        return null;
+        // Deeper down, under the lip, they hold only the clamped edge.
+        return clamps ? new VesselHold(wound!.Id) : null;
     }
 
     /// <summary>

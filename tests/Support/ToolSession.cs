@@ -13,11 +13,13 @@ public sealed class ToolSession {
     /// it in view.</summary>
     public Vector3? Along { get; set; }
     private readonly Func<string, string, Task>? _previousCapture;
+    private readonly Func<string, string, Task>? _previousView;
 
     private ToolSession(SurgeryDriver driver, KeyFrames? shots) {
         Driver = driver;
         Shots = shots;
         _previousCapture = driver.OnKeyFrame;
+        _previousView = driver.OnViewFrame;
     }
 
     /// <summary>Starts <paramref name="scenarioId"/> for a case whose key frames go under
@@ -49,6 +51,7 @@ public sealed class ToolSession {
                     await shots.CaptureView(keyFrame, description);
                 }
             };
+            driver.OnViewFrame = shots.CaptureView;
             if (captureUntouched) {
                 await driver.Capture("untouched", untouchedDescription);
             }
@@ -60,15 +63,12 @@ public sealed class ToolSession {
     public void EndCaptures() {
         Shots?.End();
         Driver.OnKeyFrame = _previousCapture;
+        Driver.OnViewFrame = _previousView;
     }
 
     /// <summary>In a run with key frames, saves what the surgeon sees now as <paramref name="keyFrame"/>, which should
     /// show <paramref name="description"/>.</summary>
-    public async Task CaptureView(string keyFrame, string description) {
-        if (Shots is { } shots) {
-            await Driver.Unbudgeted(() => shots.CaptureView(keyFrame, description));
-        }
-    }
+    public Task CaptureView(string keyFrame, string description) => Driver.CaptureView(keyFrame, description);
 
     /// <summary>In a run with key frames, saves views of <paramref name="at"/> off the site from
     /// <paramref name="distance"/> away, hands left out, which should show <paramref name="description"/>.</summary>

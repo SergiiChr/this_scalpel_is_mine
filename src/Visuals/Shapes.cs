@@ -100,25 +100,25 @@ public static class Shapes {
     }
 
     /// <summary>SetPacked() for part of a reused buffer.</summary>
-    public static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Vector3> values) {
+    internal static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Vector3> values) {
         using var packed = Variant.CreateFrom(values);
         arrays[(int)slot] = packed;
     }
 
     /// <inheritdoc cref="SetPacked(Godot.Collections.Array, Mesh.ArrayType, Span{Vector3})"/>
-    public static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Vector2> values) {
+    internal static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Vector2> values) {
         using var packed = Variant.CreateFrom(values);
         arrays[(int)slot] = packed;
     }
 
     /// <inheritdoc cref="SetPacked(Godot.Collections.Array, Mesh.ArrayType, Span{Vector3})"/>
-    public static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<int> values) {
+    internal static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<int> values) {
         using var packed = Variant.CreateFrom(values);
         arrays[(int)slot] = packed;
     }
 
     /// <inheritdoc cref="SetPacked(Godot.Collections.Array, Mesh.ArrayType, Span{Vector3})"/>
-    public static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Color> values) {
+    internal static void SetPacked(Godot.Collections.Array arrays, Mesh.ArrayType slot, Span<Color> values) {
         using var packed = Variant.CreateFrom(values);
         arrays[(int)slot] = packed;
     }

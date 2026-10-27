@@ -35,6 +35,8 @@ public class AimTest {
 
     private async Task<SurgeryDriver> Begin() {
         var driver = await _scenes.Begin("aim");
+        // Aiming at the first zoom step; one case zooms in itself.
+        driver.ZoomsInToWork = false;
         driver.OnKeyFrame = null;
         SurgeryDriver.Use(false);
         SurgeryDriver.PlayerLetsGoOfAim();

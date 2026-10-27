@@ -118,6 +118,9 @@ public class PulledSkinTest {
         await session.Finish(BudgetOverride);
     }
 
+    /// <summary>Highest (meters) the lip across from a peeled one may rise while the muscle under it is sewn.</summary>
+    private const float MaxOtherLipRise = 0.004f;
+
     [TestCase]
     public async Task ForcepsPeelATightThighWoundsEdgeUpOffItsMuscleToSewIt() {
         var session = await ToolSession.Start("bullet_muscle", "skin_fold/peeled");
@@ -184,6 +187,18 @@ public class PulledSkinTest {
         var stillPeeled = body.LayerPoint(0, k).Y - body.LayerPoint(2, k).Y;
         AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage("the forceps still hold the lip").IsTrue();
         AssertFloat(stillPeeled).OverrideFailureMessage($"still peeled {stillPeeled * 1000f:0} mm up off the muscle").IsGreater(Peeled);
+        // The other lip lies where it was: the muscle stitches draw it toward the peeled one along the body, not up
+        // after it into a spike.
+        var tissue = body.Tissue;
+        var rise = 0f;
+        for (var p = 0; p < tissue.Pos.Length; p++) {
+            var uv = tissue.UvOf(p);
+            if (uv.Y < middle.Y && cut.DistanceTo(uv) < body.MetersToUv(0.015f)) {
+                rise = Mathf.Max(rise, tissue.Pos[p].Y - tissue.Rest[p].Y);
+            }
+        }
+        AssertFloat(rise).OverrideFailureMessage($"the other lip stays down while the muscle is sewn ({rise * 1000f:0.0} mm up)")
+            .IsLess(MaxOtherLipRise);
         await SurgeryState.SiteIsSwabbed(driver.Patient);
         await session.CaptureOblique("muscle_sewn", "the muscle sewn shut, the site wiped: the thread draws its cut edges together into a closed seam in the opening, the skin and fat walls round it, nothing through anything", site, under, PeelView);
         await session.Finish(BudgetOverride);

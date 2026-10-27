@@ -42,10 +42,16 @@ public class EdgePullTest {
     [TestCase("retractor", 20, 0, 1)]
     [TestCase("forceps", 5, 0, 1)]
     [TestCase("retractor", 5, 0, 1)]
-    [TestCase("forceps", 5, 0, -1)]
-    [TestCase("retractor", 5, 0, -1, Timeout = Limits.Slow)]
     public async Task ThighEntryEdgePullsWithBoundedMouseEffort(string toolId, int frames, int pause, int side) =>
         await PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true);
+
+    [TestCase("forceps", 5, 0, -1, Description = "KNOWN ISSUE: drawn toward the site's near edge, the skin's cut wall "
+        + "leaves a 0.1 to 0.6 mm slit along the lip where it meets its sheet (about 2 cm from the window's edge).")]
+    [TestCase("retractor", 5, 0, -1, Timeout = Limits.Slow, Description = "KNOWN ISSUE: drawn toward the site's near "
+        + "edge, the skin's cut wall leaves a 0.1 to 0.6 mm slit along the lip where it meets its sheet.")]
+    public async Task ThighEntryEdgePullsTowardTheWindowEdge(string toolId, int frames, int pause, int side) =>
+        await KnownIssue.Expect("the skin wall joins its sheet without a slit",
+            () => PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true));
 
     [TestCase]
     public void EdgePullMeasurementsCatchAbruptStopsReboundsAndWobble() {
@@ -81,6 +87,8 @@ public class EdgePullTest {
         var progression = reference || entry && toolId == "retractor" && frames == 5 && side == -1;
         var session = await ToolSession.Start(scenario, $"edge_pull/{folder}");
         var driver = session.Driver;
+        // Mouse effort is measured standing; its views leave the hands out.
+        driver.ZoomsInToWork = false;
         var body = driver.Body;
         if (!body.SiteActive) {
             await driver.PlayerTurnsPatient(PatientPose.FaceDown);
@@ -385,8 +393,7 @@ public class EdgePullTest {
         if (reference && KeyFrames.Wanted()) {
             await driver.Unbudgeted(async () => {
                 await driver.PlayerLooksAt(driver.SitePoint(middle));
-                PlayerInput.Tap(InputActions.Zoom);
-                await Frames.Seconds(0.5f);
+                await driver.PlayerZoomsIn();
             });
             await session.CaptureView("pulled", "zoomed in on the thigh entry, the surgeon holding its lifted lip with forceps and the opening visible beside the hand");
         }

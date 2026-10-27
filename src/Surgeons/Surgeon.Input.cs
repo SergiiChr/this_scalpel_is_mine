@@ -567,7 +567,7 @@ public partial class Surgeon {
             hand.Target = ToGlobal(_aimWrist.Value) - hand.WristOffset();
         }
         var heldAt = hand.Target.Y;
-        _strain[i] = hand.Attached && hand.Target.DistanceTo(Shoulder(i)) > Reach + 0.06f;
+        _strain[i] = hand.Attached && hand.Target.DistanceTo(Shoulder(i)) > Overreach;
         var was = hand.Target.Y;
         var snap = EaseSnap(hand, tool, delta);
         Constrain(hand);
@@ -645,7 +645,7 @@ public partial class Surgeon {
         hand.Twist = yaw - hand.Turn;
         hand.Tremor = Vector3.Zero;
         var shoulder = Shoulder(hand.Index);
-        _strain[hand.Index] = tool.GlobalPosition.DistanceTo(shoulder) > Reach + 0.06f;
+        _strain[hand.Index] = tool.GlobalPosition.DistanceTo(shoulder) > Overreach;
         hand.Target = InReach(tool.GlobalPosition, shoulder);
         hand.LocalTarget = ToLocal(hand.Target);
     }
@@ -659,7 +659,7 @@ public partial class Surgeon {
         hand.Lowered = false;
         hand.Trigger = false;
         hand.Tremor = Vector3.Zero;
-        _strain[hand.Index] = tool.GlobalPosition.DistanceTo(Shoulder(hand.Index)) > Reach + 0.06f;
+        _strain[hand.Index] = tool.GlobalPosition.DistanceTo(Shoulder(hand.Index)) > Overreach;
         hand.Target = tool.GlobalPosition;
         hand.LocalTarget = ToLocal(hand.Target);
     }

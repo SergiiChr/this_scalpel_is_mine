@@ -720,7 +720,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 ### Tourniquet
 
 - Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.LimbRing()`
-  measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off.
+  measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off. Not across
+  the surgical site on that limb (`PatientBody.RingCrossesSite()`): the player is told it goes on above the wound.
 
 ### Holding the patient
 
