@@ -72,6 +72,22 @@ float bleed_spot(vec4 s, float depth) {
 	return 1.0 - s.g + down * down / max(r * r, 1e-9);
 }
 
+// How much of a bleed's blood runs down a cut's wall at a point `depth` meters under the skin, below the spot it comes
+// from (bleed map texel s, see bleed_spot()): on a wall the blood goes down, so nothing above the spot's middle, and
+// within a narrow cone under it, no wider than the spot, its sides broken by `grain` (0..1).
+float bleed_run(vec4 s, float depth, float grain) {
+	if (s.g < 0.15) {
+		return 0.0;
+	}
+	float r = s.b / s.g * MAX_SPOT_RADIUS;
+	float down = depth - s.a / s.g * MAX_SPOT_DEPTH;
+	// Across the spot: 0 in line with its middle, 1 at its edge (the texel falls off as 1 - (d / r)^2).
+	float across = sqrt(clamp(1.0 - s.g, 0.0, 1.0));
+	// The run starts as wide as half the spot and widens to all of it four radii down.
+	float half_width = mix(0.5, 1.0, clamp(down / max(r * 4.0, 1e-6), 0.0, 1.0)) * mix(0.75, 1.0, grain);
+	return smoothstep(0.0, r * 0.5, down) * (1.0 - smoothstep(half_width * 0.7, half_width, across));
+}
+
 // The same for a bleed spot on the skin.
 float skin_spot(vec4 s) {
 	return s.r < 0.02 ? 2.0 : 1.0 - s.r;
