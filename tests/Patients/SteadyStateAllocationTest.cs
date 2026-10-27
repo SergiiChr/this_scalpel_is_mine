@@ -3,7 +3,7 @@ namespace Scalpel.Tests.Patients;
 /// <summary>
 /// The patient's per-frame and per-tick simulation allocates nothing once warmed up (<see cref="AllocationBudget"/>):
 /// skin held and pulled beside a cut, paint on the wound map, and drugs wearing off. A whole surgery's frames stay
-/// within their measured budgets.
+/// within their measured budgets, a lip drawn aside in the thigh too.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("allocation_budget")]
@@ -49,10 +49,10 @@ public class SteadyStateAllocationTest {
         });
     }
 
-    // Measured per frame in the appendectomy: 7 KB idle, 48 KB while the cut is made (its meshes rebuilt at new sizes)
-    // and 33 KB while it bleeds (most of it the blood field growing once with the pool). The blood field is built on a
+    // Measured per frame in the appendectomy: 7 KB idle, 40 KB while the cut is made (its meshes rebuilt at new sizes)
+    // and 32 KB while it bleeds (most of it the blood field growing once with the pool). The blood field is built on a
     // worker, so how many builds land in a window varies a little with the machine.
-    private const long IdleBudget = 10 << 10, CuttingBudget = 64 << 10, BleedingBudget = 44 << 10;
+    private const long IdleBudget = 10 << 10, CuttingBudget = 52 << 10, BleedingBudget = 44 << 10;
 
     /// <summary>A surgery's frames: the patient asleep before the first cut, a skin cut across the site being made
     /// with the scalpel already in hand, then the cut bleeding.</summary>
@@ -71,6 +71,32 @@ public class SteadyStateAllocationTest {
             .IsTrue();
         await AllocationBudget.CheckFrames("the cut bleeding", () => Frames.Seconds(5f), BleedingBudget);
         AssertFloat(driver.Patient.Vitals.BleedRate).OverrideFailureMessage("the cut was still bleeding").IsGreater(0f);
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    // Measured per frame in the thigh: 28 KB while a lip is drawn aside with forceps, the layers planned and filled
+    // again as the skin moves (51 KB before the layer surfaces kept their buffers).
+    private const long DrawnLipBudget = 36 << 10;
+
+    /// <summary>The widened thigh wound's lip taken in forceps and drawn aside a centimeter: the layers are planned,
+    /// filled and published again as the skin moves, into kept buffers.</summary>
+    [TestCase]
+    public async Task ThighLipDrawnAside() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("bullet_muscle");
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        await driver.PlayerIncises(0.05f);
+        var cut = driver.Patient.Wounds.Where(wound => wound.Kind == WoundKind.Cut).MaxBy(wound => wound.LengthUv)!;
+        await driver.PlayerRequestsItem("forceps");
+        await driver.PlayerWalksTo(driver.SitePoint(cut.Midpoint));
+        var lip = driver.LipOf(cut, 1);
+        AssertObject(await driver.PlayerTakesHoldOfLip(driver.Me.Active, lip)).OverrideFailureMessage("the forceps take the lip")
+            .IsNotNull();
+        var away = (driver.SitePoint(lip) - driver.SitePoint(cut.ClosestPoint(lip))).Slide(Vector3.Up).Normalized();
+        await AllocationBudget.CheckFrames("a thigh lip drawn aside",
+            () => driver.PlayerDrawsLip(driver.Me.Active, away, 0.01f), DrawnLipBudget);
         await driver.Stop();
         RenderingServer.RenderLoopEnabled = true;
     }

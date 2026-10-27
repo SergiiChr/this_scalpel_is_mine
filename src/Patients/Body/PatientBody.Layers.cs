@@ -95,6 +95,13 @@ public partial class PatientBody {
         /// <summary>The last plan's neighbour lists, refilled by SheetNeighbours().</summary>
         public List<int>[] SpareNeighbours { get; private set; } = [];
 
+        /// <summary>Lip neighbour lists the last plans used, for the next to take (<see cref="LipList"/>): the layers are
+        /// planned again as the skin moves about, a list for every lip vertex each time.</summary>
+        private readonly Stack<List<int>> _lipLists = new();
+
+        /// <summary>An empty list for a lip vertex's neighbours, one a last plan used if there is one.</summary>
+        public List<int> LipList() => _lipLists.TryPop(out var list) ? list : [];
+
         /// <summary>Empties the plan for the next topology, keeping what it allocated: the layers are planned again
         /// on every staple, stitch or cut, and fresh plans were the largest garbage of those frames.</summary>
         public void Clear() {
@@ -113,6 +120,10 @@ public partial class PatientBody {
             Ends.Clear();
             EndTapers.Clear();
             RefinedOf.Clear();
+            foreach (var lip in Lip.Values) {
+                lip.Clear();
+                _lipLists.Push(lip);
+            }
             Lip.Clear();
             MidpointOf.Clear();
             OppositeLip.Clear();
@@ -200,6 +211,8 @@ public partial class PatientBody {
     /// the model.</summary>
     private bool[] _regionEdge = [];
     private Image _regionImage = null!;
+    /// <summary>The region's texels as bytes for <see cref="_regionImage"/>, kept between uploads.</summary>
+    private byte[] _regionBytes = [];
 
     /// <summary>Where the simulated skin replaces the body model, one texel per tissue grid point.</summary>
     public ImageTexture RegionTexture { get; private set; } = null!;
@@ -535,21 +548,27 @@ public partial class PatientBody {
             instance.Visible = plan.Index.Count > 0 && (layer != 1 || FatThickness > 0.0005f);
             if (!instance.Visible) { continue; }
             var (sheet, walls) = built[layer];
-            foreach (var (surface, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) }) {
-                if (surface is null) { continue; }
-                using var arrays = surface.ToArrays();
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-                mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
-            }
+            AddLayerSurface(mesh, sheet, _layerMaterials[layer].Sheet);
+            AddLayerSurface(mesh, walls, _layerMaterials[layer].Walls);
         }
         RememberDrawnTissue(built);
         if (_regionDirty) {
             // Carve the body only when the replacement meshes are ready, so the planning frame leaves no holes.
-            _regionImage.SetData(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8,
-                [.. _region.Select(texel => (byte)(texel * 255))]);
+            var bytes = Buffers.Sized(ref _regionBytes, _region.Length);
+            for (var k = 0; k < bytes.Length; k++) {
+                bytes[k] = (byte)(_region[k] * 255);
+            }
+            _regionImage.SetData(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8, bytes);
             RegionTexture.Update(_regionImage);
             _regionDirty = false;
         }
+    }
+
+    private static void AddLayerSurface(ArrayMesh mesh, Surface? surface, Material material) {
+        if (surface is null) { return; }
+        using var arrays = surface.ToArrays();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
     }
 
     /// <summary>
@@ -854,7 +873,7 @@ public partial class PatientBody {
     /// <summary>Notes <paramref name="next"/> as a neighbour of <paramref name="here"/> along a lip.</summary>
     private static void AddLipNeighbour(LayerPlan plan, int here, int next) {
         if (!plan.Lip.TryGetValue(here, out var neighbours)) {
-            neighbours = [];
+            neighbours = plan.LipList();
             plan.Lip[here] = neighbours;
         }
         if (!neighbours.Contains(next)) {
@@ -1070,9 +1089,10 @@ public partial class PatientBody {
         }
         var output = scratch.NextOutput();
         var refinedCount = vertexCount + plan.Midpoints.Count + plan.Centers.Count;
-        var refinedVertices = Buffers.Sized(ref output.Vertices, refinedCount);
-        var refinedNormals = Buffers.Sized(ref output.Normals, refinedCount);
-        var refinedUvs = Buffers.Sized(ref output.Uvs, refinedCount);
+        // Grown, not sized: the plan, and so the count, changes as the skin moves about (UpdateRegion()).
+        var refinedVertices = Buffers.AtLeast(ref output.Vertices, refinedCount);
+        var refinedNormals = Buffers.AtLeast(ref output.Normals, refinedCount);
+        var refinedUvs = Buffers.AtLeast(ref output.Uvs, refinedCount);
         vertices.CopyTo(refinedVertices, 0);
         normals.CopyTo(refinedNormals, 0);
         uvs.CopyTo(refinedUvs, 0);
@@ -1101,7 +1121,7 @@ public partial class PatientBody {
             refinedUvs[v] = (uvs[a] + uvs[b] + uvs[c]) / 3f;
         }
         // The midpoints and centers belong to the grid point of their first corner.
-        var refinedOwner = Buffers.Sized(ref scratch.RefinedOwner, refinedVertices.Length);
+        var refinedOwner = Buffers.AtLeast(ref scratch.RefinedOwner, refinedCount);
         plan.Owner.CopyTo(refinedOwner);
         for (var n = 0; n < plan.Midpoints.Count; n++) {
             refinedOwner[vertexCount + n] = plan.Owner[plan.Midpoints[n].A];
@@ -1143,7 +1163,7 @@ public partial class PatientBody {
             // As drawn, curved lips included: what lies under the skin is kept under these triangles.
             RememberSkinSheet(refinedVertices, refinedUvs, index);
         } else {
-            for (var v = vertexCount; v < refinedVertices.Length; v++) {
+            for (var v = vertexCount; v < refinedCount; v++) {
                 refinedVertices[v] = UnderSkin(refinedVertices[v], refinedOwner[v]);
             }
         }
@@ -1298,15 +1318,16 @@ public partial class PatientBody {
             if (normal.IsZeroApprox()) { return; }
             if (normal.Dot(start - refinedVertices[inside]) < 0f) { normal = -normal; }
             var first = wallVertices.Count;
-            wallVertices.AddRange([start, end, low]);
-            wallNormals.AddRange([normal, normal, normal]);
-            wallUvs.AddRange([plan.Uv[a], plan.Uv[b], plan.Uv[lip]]);
-            wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White]);
-            wallDepths.AddRange([new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + tipThickness, 0f)]);
+            // As spans: a collection expression handed to AddRange() would be a new array each time.
+            wallVertices.AddRange((ReadOnlySpan<Vector3>)[start, end, low]);
+            wallNormals.AddRange((ReadOnlySpan<Vector3>)[normal, normal, normal]);
+            wallUvs.AddRange((ReadOnlySpan<Vector2>)[plan.Uv[a], plan.Uv[b], plan.Uv[lip]]);
+            wallColors.AddRange((ReadOnlySpan<Color>)[new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White]);
+            wallDepths.AddRange((ReadOnlySpan<Vector2>)[new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + tipThickness, 0f)]);
             if ((low - start).Cross(end - start).Dot(normal) > 0f) {
-                wallIndices.AddRange([first, first + 1, first + 2]);
+                wallIndices.AddRange((ReadOnlySpan<int>)[first, first + 1, first + 2]);
             } else {
-                wallIndices.AddRange([first, first + 2, first + 1]);
+                wallIndices.AddRange((ReadOnlySpan<int>)[first, first + 2, first + 1]);
             }
         }
         var wallPoints = Filled(ref output.WallVertices, wallVertices);
@@ -1337,9 +1358,9 @@ public partial class PatientBody {
             if ((b - a).Cross(c - a).LengthSquared() <= 1e-20f) { wallIndices.RemoveRange(t, 3); }
         }
         return (
-            Surface.Of(refinedVertices, refinedNormals, refinedUvs, Filled(ref output.Indices, index)),
-            Surface.Of(wallPoints, Filled(ref output.WallNormals, wallNormals),
-                Filled(ref output.WallUvs, wallUvs), Filled(ref output.WallIndices, wallIndices),
+            Surface.Of(refinedVertices, refinedCount, refinedNormals, refinedUvs, Filled(ref output.Indices, index), index.Count),
+            Surface.Of(wallPoints, wallVertices.Count, Filled(ref output.WallNormals, wallNormals),
+                Filled(ref output.WallUvs, wallUvs), Filled(ref output.WallIndices, wallIndices), wallIndices.Count,
                 Filled(ref output.WallColors, wallColors), Filled(ref output.WallDepths, wallDepths)));
     }
 
@@ -1409,10 +1430,10 @@ public partial class PatientBody {
         public List<int> PointedIndex { get; } = [];
     }
 
-    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them
-    /// (<see cref="Buffers.Copied{T}"/>).</summary>
+    /// <summary><paramref name="list"/>'s items at the front of <paramref name="array"/>, grown to hold them
+    /// (<see cref="Buffers.CopiedInto{T}"/>): its length changes as the walls do, from one build to the next.</summary>
     private static T[] Filled<T>(ref T[] array, List<T> list) =>
-        Buffers.Copied(ref array, CollectionsMarshal.AsSpan(list));
+        Buffers.CopiedInto(ref array, CollectionsMarshal.AsSpan(list));
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
     /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>
@@ -1726,27 +1747,29 @@ public partial class PatientBody {
     }
 
     /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays(), which
-    /// the caller disposes once the surface is added, see <see cref="Shapes.SetPacked{T}"/>).</summary>
-    private sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Vector2[] Uvs, int[] Indices, Color[]? Colors,
-        Vector2[]? Uvs2) {
+    /// the caller disposes once the surface is added, see <see cref="Shapes.SetPacked{T}"/>). The arrays are buffers
+    /// kept between builds: only the first <paramref name="VertexCount"/> vertices (with their normals, uvs, colors and
+    /// second uvs) and <paramref name="IndexCount"/> indices are the surface's.</summary>
+    private sealed record Surface(Vector3[] Vertices, int VertexCount, Vector3[] Normals, Vector2[] Uvs, int[] Indices,
+        int IndexCount, Color[]? Colors, Vector2[]? Uvs2) {
         /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
         /// them.</summary>
-        public static Surface? Of(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] indices,
-            Color[]? colors = null, Vector2[]? uvs2 = null) =>
-            indices.Length == 0 ? null : new(vertices, normals, uvs, indices, colors, uvs2);
+        public static Surface? Of(Vector3[] vertices, int vertexCount, Vector3[] normals, Vector2[] uvs, int[] indices,
+            int indexCount, Color[]? colors = null, Vector2[]? uvs2 = null) =>
+            indexCount == 0 ? null : new(vertices, vertexCount, normals, uvs, indices, indexCount, colors, uvs2);
 
         public Godot.Collections.Array ToArrays() {
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, Vertices);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, Normals);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, Uvs);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.Index, Indices);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, Vertices.AsSpan(0, VertexCount));
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, Normals.AsSpan(0, VertexCount));
+            Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, Uvs.AsSpan(0, VertexCount));
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Index, Indices.AsSpan(0, IndexCount));
             if (Colors is not null) {
-                Shapes.SetPacked(arrays, Mesh.ArrayType.Color, Colors);
+                Shapes.SetPacked(arrays, Mesh.ArrayType.Color, Colors.AsSpan(0, VertexCount));
             }
             if (Uvs2 is not null) {
-                Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, Uvs2);
+                Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, Uvs2.AsSpan(0, VertexCount));
             }
             return arrays;
         }

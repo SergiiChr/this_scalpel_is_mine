@@ -557,6 +557,14 @@ public partial class PatientBody : Node3D {
             .MinBy(ring => (p - ring!.Value.Center).Slide(ring.Value.Axis).Length() - ring.Value.Radius);
     }
 
+    /// <summary>Whether a band around <paramref name="ring"/> would run across the surgical site: the site reaches
+    /// along the limb to where the ring is, give or take the band's own thickness.</summary>
+    public bool RingCrossesSite(LimbRing ring) {
+        var along = ((Vector2[])[new(0f, 0f), new(1f, 0f), new(0f, 1f), new(1f, 1f)])
+            .Select(corner => ring.Axis.Dot(UvToWorld(corner) - ring.Center)).ToList();
+        return along.Min() < SurgicalTool.BandThickness && along.Max() > -SurgicalTool.BandThickness;
+    }
+
     /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>
     private LimbRing? RingAround(BodyPart limb, Vector3 p) {
         var axis = _bodyRoot.GlobalBasis.X.Normalized();

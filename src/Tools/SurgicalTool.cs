@@ -112,7 +112,7 @@ public partial class SurgicalTool : RigidBody3D {
     /// <summary>Smallest size (meters) a tool counts as across for how hard it is to turn, see Setup().</summary>
     private const float MinTurningSize = 0.04f;
     /// <summary>How thick a tourniquet's band is where it wraps a limb.</summary>
-    private const float BandThickness = 0.012f;
+    internal const float BandThickness = 0.012f;
     /// <summary>Seconds a spreader takes to go down into a cut once set (<see cref="DigTo"/>).</summary>
     public const float DigTime = 0.2f;
 

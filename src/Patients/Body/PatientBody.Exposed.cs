@@ -63,7 +63,7 @@ public partial class PatientBody {
         }
         var (v, index) = (surface.Vertices, surface.Indices);
         // Thousands of faces every time the layers are published: written in place, not added one by one.
-        var (first, count) = (_drawnFaces.Count, index.Length / 3);
+        var (first, count) = (_drawnFaces.Count, surface.IndexCount / 3);
         CollectionsMarshal.SetCount(_drawnFaces, first + count);
         CollectionsMarshal.SetCount(_drawnBounds, first + count);
         var faces = CollectionsMarshal.AsSpan(_drawnFaces)[first..];

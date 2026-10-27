@@ -494,15 +494,18 @@ public partial class SurgeryDriver {
         return line;
     }
 
-    /// <summary>A tourniquet pressed onto the limb above the site.</summary>
+    /// <summary>A tourniquet pressed onto the limb above the site: past the site's end toward the trunk, clear of it.
+    /// </summary>
     public async Task PlayerAppliesTourniquet() {
         Note("applies a tourniquet");
         await PlayerRequestsItem("tourniquet");
-        foreach (var v in (float[])[-0.4f, -0.2f, 0f, 1.2f]) {
+        var trunk = Body.FindChildren("*", "", true, false).OfType<BodyPart>().First(part => part.Part == "torso").GlobalPosition;
+        var proximal = SitePoint(new Vector2(1f, 0.5f)).DistanceTo(trunk) < SitePoint(new Vector2(0f, 0.5f)).DistanceTo(trunk);
+        foreach (var past in (float[])[0.2f, 0.35f, 0.5f]) {
             if (Patient.TourniquetOn) {
                 break;
             }
-            var spot = SitePoint(new Vector2(0.5f, v));
+            var spot = SitePoint(new Vector2(proximal ? 1f + past : -past, 0.5f));
             await PlayerWalksTo(spot);
             await PlayerWorksAt(spot, 0, 0.5f);
         }
@@ -618,6 +621,19 @@ public partial class SurgeryDriver {
             Note($"fragment {i} off by {target.Uv.DistanceTo(target.RestUv):0.000}");
         }
         await Frames.Seconds(time + 1f);
+        // Both let go before either is taken to the tray: walking off holding one would tear the tissue.
+        foreach (var hand in (int[])[Left, Right]) {
+            await SwitchTo(hand);
+            // Use tool is still held from taking hold: pressed again, the jaws open.
+            Use(false);
+            await Frames.Physics(3);
+            if (Me.HeldTool(hand) is { Hold: not null }) {
+                Use();
+                await Frames.Physics(3);
+                Use(false);
+                await Frames.Physics(3);
+            }
+        }
         foreach (var hand in (int[])[Left, Right]) {
             await SwitchTo(hand);
             await PlayerPutsDown();

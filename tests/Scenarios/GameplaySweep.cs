@@ -208,16 +208,17 @@ internal sealed partial class GameplaySweep {
     private IEnumerable<SurgicalTool> FreeTools() =>
         Tools.Tools.Values.Where(tool => tool.State == ToolState.Free && Me.BlockedReason(tool.Def).Length == 0);
 
-    /// <summary>A tourniquet pressed onto a thigh wraps around it: a band snug around the leg, not lying on top of it.
-    /// Taking it off loosens it again.</summary>
+    /// <summary>A tourniquet pressed onto the upper thigh wraps around it: a band snug around the leg, not lying on top of
+    /// it. Taking it off loosens it again.</summary>
     private async Task TourniquetChecks() {
         var tourniquet = Tools.ByUid(Tools.Spawn("tourniquet", _surgery.Room.TraySpots()[7]))!;
         await Frames.Physics(3);
         if (Me.BlockedReason(tourniquet.Def).Length > 0) {
             return;
         }
-        // Straight above the thigh, whichever way up the patient lies.
-        var above = Body.Root.ToGlobal(new Vector3(-0.75f, 0f, 0.1f)) + (Vector3.Up * 0.4f);
+        // Straight above the upper thigh, whichever way up the patient lies: above a thigh site (-0.6 to -0.8 along the
+        // body), where the band doesn't go over it.
+        var above = Body.Root.ToGlobal(new Vector3(-0.52f, 0f, 0.1f)) + (Vector3.Up * 0.4f);
         if (RayDown(Patient, above, 0.8f, PatientBody.SurfaceLayer) is not { } top) {
             Fail("no thigh to put the tourniquet on");
             return;

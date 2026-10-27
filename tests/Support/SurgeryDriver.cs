@@ -37,6 +37,8 @@ public partial class SurgeryDriver : Node {
     /// <summary>Called (and awaited) with a name and a description of what it should show right after a step's key
     /// interaction: a cut made, a target out. Unset: no pictures.</summary>
     public Func<string, string, Task>? OnKeyFrame { get; set; }
+    /// <summary>Like <see cref="OnKeyFrame"/>, for what the surgeon sees (<see cref="CaptureView"/>).</summary>
+    public Func<string, string, Task>? OnViewFrame { get; set; }
     /// <summary>Optional room-side restriction used by co-op flows whose surgeons must work from opposing aisles.</summary>
     public Func<Vector3, bool>? StandingConstraint { get; set; }
     private bool _budgetPaused;
@@ -169,6 +171,14 @@ public partial class SurgeryDriver : Node {
     public async Task Capture(string keyFrame, string description) {
         if (OnKeyFrame is not null) {
             await Unbudgeted(() => OnKeyFrame(keyFrame, description));
+        }
+    }
+
+    /// <summary>Key frame <paramref name="keyFrame"/> of what the surgeon sees, which should show
+    /// <paramref name="description"/>.</summary>
+    public async Task CaptureView(string keyFrame, string description) {
+        if (OnViewFrame is not null) {
+            await Unbudgeted(() => OnViewFrame(keyFrame, description));
         }
     }
 

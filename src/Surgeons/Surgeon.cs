@@ -315,6 +315,14 @@ public partial class Surgeon : CharacterBody3D {
         var dt = (float)delta;
         if (IsLocal) {
             LocalUpdate(dt);
+            // A remote surgeon's strain reaches the host with its state (SyncState()); the host's own is checked here.
+            if (Multiplayer.IsServer()) {
+                for (var i = 0; i < 2; i++) {
+                    if (_strain[i]) {
+                        Session.Overstretched(PeerId, i);
+                    }
+                }
+            }
             HandStates++;
             _syncAccumulated += dt;
             // Not after the report: the others may have left the surgery for the lobby, where a late state finds no

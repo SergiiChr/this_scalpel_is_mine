@@ -32,6 +32,7 @@ public static class ScenarioFlow {
                 driver.AddChild(shots);
                 shots.Begin(surgery, "scenarios".PathJoin(scenarioId));
                 driver.OnKeyFrame = (keyFrame, description) => shots.Capture(keyFrame, description);
+                driver.OnViewFrame = shots.CaptureView;
                 await driver.Capture("untouched", "the site as the scenario starts, before any step");
             }
             // Loading the room isn't gameplay: the frame budget counts from here.

@@ -172,13 +172,23 @@ public sealed class Wound {
     /// </summary>
     public void Cauterize(float amount, float most, Vector2 uv, float reach) {
         Cauterized = Mathf.Min(Cauterized + amount, most);
-        foreach (var bin in _reopened.Keys.Where(bin => BinPosition(bin).DistanceTo(uv) < reach).ToList()) {
+        // Listed first, as sealed ones leave the dictionary; into a kept list, as the cautery burns every frame.
+        _sealing.Clear();
+        foreach (var bin in _reopened.Keys) {
+            if (BinPosition(bin).DistanceTo(uv) < reach) {
+                _sealing.Add(bin);
+            }
+        }
+        foreach (var bin in _sealing) {
             _reopened[bin] = Mathf.Min(_reopened[bin] + amount, most);
             if (_reopened[bin] >= Cauterized) {
                 _reopened.Remove(bin);
             }
         }
     }
+
+    /// <summary>Reopened bins <see cref="Cauterize"/> reaches this time.</summary>
+    private readonly List<int> _sealing = [];
 
     /// <summary>The stroke from <paramref name="a"/> to <paramref name="b"/> follows its line: it goes along it rather
     /// than across, every point of it within <paramref name="reach"/> of the line and next to the stretch the point
