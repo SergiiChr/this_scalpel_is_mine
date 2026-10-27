@@ -118,8 +118,9 @@ public class PulledSkinTest {
         await session.Finish(BudgetOverride);
     }
 
-    /// <summary>Highest (meters) the lip across from a peeled one may rise while the muscle under it is sewn.</summary>
-    private const float MaxOtherLipRise = 0.004f;
+    /// <summary>How far (meters) the lip across from a peeled one may move while the muscle under it is sewn: only the
+    /// little less it gapes over closed muscle.</summary>
+    private const float MaxOtherLipMove = 0.004f;
 
     [TestCase]
     public async Task ForcepsPeelATightThighWoundsEdgeUpOffItsMuscleToSewIt() {
@@ -174,6 +175,13 @@ public class PulledSkinTest {
             // Close views without the hands: both are working over the seam while the other holds the lip up.
             driver.OnKeyFrame = (keyFrame, description) => session.CaptureAt(keyFrame, description, site, PeelView);
         }
+        // The other lip, beside the cut and not past its ends: the muscle stitches under it mustn't move it.
+        var tissue = body.Tissue;
+        var (start, end) = (cut.Points[0], cut.Points[^1]);
+        bool Alongside(Vector2 uv) => (uv - start).Dot(end - start) is var along && along > 0f && along < (end - start).LengthSquared();
+        var otherLip = Enumerable.Range(0, tissue.Pos.Length)
+            .Where(p => tissue.UvOf(p).Y < middle.Y && Alongside(tissue.UvOf(p)) && cut.DistanceTo(tissue.UvOf(p)) < body.MetersToUv(0.015f))
+            .ToDictionary(p => p, p => tissue.Pos[p]);
         // Close the widened incision while it is exposed. Closing the short original entry first can draw
         // its neighboring incision back beneath the held lip before the needle reaches it.
         foreach (var wound in muscle.OrderByDescending(wound => wound.LengthUv)) {
@@ -187,20 +195,14 @@ public class PulledSkinTest {
         var stillPeeled = body.LayerPoint(0, k).Y - body.LayerPoint(2, k).Y;
         AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage("the forceps still hold the lip").IsTrue();
         AssertFloat(stillPeeled).OverrideFailureMessage($"still peeled {stillPeeled * 1000f:0} mm up off the muscle").IsGreater(Peeled);
-        // The other lip lies where it was: the muscle stitches draw it toward the peeled one along the body, not up
-        // after it into a spike.
-        var tissue = body.Tissue;
-        var rise = 0f;
-        for (var p = 0; p < tissue.Pos.Length; p++) {
-            var uv = tissue.UvOf(p);
-            if (uv.Y < middle.Y && cut.DistanceTo(uv) < body.MetersToUv(0.015f)) {
-                rise = Mathf.Max(rise, tissue.Pos[p].Y - tissue.Rest[p].Y);
-            }
-        }
-        AssertFloat(rise).OverrideFailureMessage($"the other lip stays down while the muscle is sewn ({rise * 1000f:0.0} mm up)")
-            .IsLess(MaxOtherLipRise);
+        // The other lip lies where it was: drawn after the peeled one, it would slide over the muscle or rise into a
+        // spike.
+        var worst = otherLip.MaxBy(lip => tissue.Pos[lip.Key].DistanceTo(lip.Value));
+        var moved = tissue.Pos[worst.Key].DistanceTo(worst.Value);
+        AssertFloat(moved).OverrideFailureMessage($"the other lip stays where it lay while the muscle is sewn ({moved * 1000f:0.0} mm moved, {(tissue.Pos[worst.Key] - worst.Value) * 1000f} mm, at {tissue.UvOf(worst.Key)})")
+            .IsLess(MaxOtherLipMove);
         await SurgeryState.SiteIsSwabbed(driver.Patient);
-        await session.CaptureOblique("muscle_sewn", "the muscle sewn shut, the site wiped: the thread draws its cut edges together into a closed seam in the opening, the skin and fat walls round it, nothing through anything", site, under, PeelView);
+        await session.CaptureOblique("muscle_sewn", "the muscle sewn, the site wiped: stitches cross the muscle's cut under the held lip, the other lip lying flat where it was, the skin and fat walls round it, nothing through anything", site, under, PeelView);
         await session.Finish(BudgetOverride);
     }
 

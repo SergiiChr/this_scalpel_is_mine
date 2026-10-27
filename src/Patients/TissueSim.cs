@@ -1863,8 +1863,10 @@ public sealed partial class TissueSim {
             _prev[k] = p;
             _free[k] = 1f;
         }
-        foreach (var pin in _pins.Values) {
+        _handHolds = false;
+        foreach (var (key, pin) in _pins) {
             _free[pin.Particle] = 0f;
+            _handHolds |= key >= 0;
         }
         UpdateFoldState();
         TrackTurned();
@@ -2133,6 +2135,14 @@ public sealed partial class TissueSim {
         }
     }
 
+    /// <summary>Whether a hand grips the sheet this step (spreader jaws, with negative keys, don't count).</summary>
+    private bool _handHolds;
+
+    /// <summary>A deep stitch rests while a hand holds the skin: the sheet's particles are the skin's, so drawn in
+    /// under a held lip it would drag the other lip across the opening after it.
+    /// Let go, it draws the lips in like the seam under them.</summary>
+    private bool Resting(int s) => _handHolds && _springs[s].Flat;
+
     /// <summary>From a spring's A end to its B end: along the body only for a <see cref="Spring.Flat"/> one.</summary>
     private Vector3 Span(Spring spring) {
         var d = Pos[spring.B] - Pos[spring.A];
@@ -2142,7 +2152,7 @@ public sealed partial class TissueSim {
     /// <summary>Moves the ends of an active spring toward its rest length, by how free each end is.</summary>
     private void Solve(int s) {
         ref readonly var spring = ref _springs[s];
-        if (!spring.Active) {
+        if (!spring.Active || Resting(s)) {
             return;
         }
         var wa = _free[spring.A];
@@ -2310,7 +2320,7 @@ public sealed partial class TissueSim {
     /// </summary>
     private void CheckSnap(int s) {
         ref readonly var spring = ref _springs[s];
-        if (!spring.Active) {
+        if (!spring.Active || Resting(s)) {
             return;
         }
         var (a, b) = (spring.A, spring.B);

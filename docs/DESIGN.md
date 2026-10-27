@@ -753,7 +753,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - **Suture tension**: the wheel sets the needle's thread tension and paper clips' pull alike, down tighter and up
   looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through. The
   needle pulls its current thread only: without one the wheel does nothing, and each new thread starts loose
-  (`ToolActions.SutureStartTension`).
+  (`ToolActions.SutureStartTension`). A thread in the fat or muscle draws the lips in along the body only, and not at
+  all while a hand holds the skin (`TissueSim.Resting()`): the other lip stays where it lies under a held one.
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   A column beside the surgeons' cards explains this run's; the main menu's Run modifiers lists all of them, the locked
   ones hidden. A modifier unlocks the first time a run starts with it; locked ones roll all the same.
