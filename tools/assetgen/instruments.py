@@ -209,6 +209,59 @@ def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
         m.add("Button", superellipsoid((0.004, 0.003, 0.012), 0.4, (0.0, 0.006, -0.01)), "yellow_plastic")
 
 
+def _cautery(m: Model, length: float) -> None:
+    """A slim cautery pencil with a short steel electrode and a heat envelope hugging its tip."""
+    scale = length / 0.16
+
+    def z(value: float) -> float:
+        return value * scale
+
+    m.add(
+        "Body",
+        tube(
+            [(0.0, 0.0, z(0.040)), (0.0, 0.0, z(0.032)), (0.0, 0.0, z(-0.015)), (0.0, 0.0, z(-0.055))],
+            [(0.0035, 0.0045), (0.0048, 0.006), (0.005, 0.0065), (0.0048, 0.006)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add(
+        "Grip",
+        tube(
+            [(0.0, 0.0, z(-0.055)), (0.0, 0.0, z(-0.068)), (0.0, 0.0, z(-0.100))],
+            [(0.0048, 0.006), (0.0046, 0.0058), (0.0038, 0.0048)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "blue_plastic",
+    )
+    m.add(
+        "Nose",
+        tube(
+            [(0.0, 0.0, z(-0.100)), (0.0, 0.0, z(-0.112)), (0.0, 0.0, z(-0.130))],
+            [(0.0038, 0.0048), (0.0032, 0.004), (0.0017, 0.002)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add("Button", superellipsoid((0.0045, 0.0022, 0.019), 0.45, (0.0, 0.0058, z(-0.017)), detail=10), "blue_plastic")
+    electrode = extrude(
+        [(-0.0014, z(-0.144)), (0.0014, z(-0.144)), (0.0014, z(-0.158)), (0.001, z(-0.160)), (-0.001, z(-0.160)), (-0.0014, z(-0.158))],
+        0.0007,
+    )
+    electrode.vertices = electrode.vertices[:, [0, 2, 1]]
+    electrode = finish(electrode)
+    electrode.unmerge_vertices()
+    m.add("Tip", merge(cylinder(0.0012, (0.0, 0.0, z(-0.129)), (0.0, 0.0, z(-0.147)), 12), electrode), "steel", (0.0, 0.0, z(-0.130)))
+    # The glow is deliberately small and centered at the gameplay tip.
+    m.add("Glow", ellipsoid((0.0015, 0.0008, 0.002), (0.0, 0.0, z(-0.158)), subdivisions=1), "flame", (0.0, 0.0, z(-0.160)))
+
+
 # Stroke digits for printed numbers, on a 2 x 4 grid (x across, y up): crisp at a millimeter or two, like a scale print.
 DIGITS: dict[str, list[list[tuple[float, float]]]] = {
     "0": [[(0, 0), (2, 0), (2, 4), (0, 4), (0, 0)]],
@@ -562,7 +615,7 @@ def build() -> list[Model]:
         "office_stapler": lambda m, length: _pistol_stapler(m, length, True),
         "surgical_tape": lambda m, length: _tape(m, length, "fabric_white"),
         "duct_tape": lambda m, length: _tape(m, length, "dark_steel"),
-        "cautery": lambda m, length: _pen(m, length, "green_plastic", "chrome", True),
+        "cautery": _cautery,
         "marker": lambda m, length: _pen(m, length, "tint", "black_plastic", False),
         "syringe_3": partial(_syringe, radius=0.0045, volume=3.0),
         "syringe_10": partial(_syringe, radius=0.0065, volume=10.0),
