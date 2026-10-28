@@ -1133,6 +1133,12 @@ public partial class Patient {
             Body.Tissue.Cut(a, b, depth);
             map.Stroke(WoundMap.Layer.Fluids, WoundMap.Blood, a, b, 0.02f, 0.8f, WoundMap.Mode.Max, soft: true);
         }
+        if (wound.IsHole) {
+            // Too small to gape in the mesh, a hole is a round dark mark, let through where the skin's shader shows a
+            // groove (the seam map): wiped clean of blood it wouldn't show at all.
+            map.Disk(WoundMap.Layer.Wounds, WoundMap.Cut, wound.Midpoint, 0.012f, 0.7f, WoundMap.Mode.Max, soft: false);
+            map.Disk(WoundMap.Layer.Seams, WoundMap.ClosedSeam, wound.Midpoint, 0.012f, 1f, WoundMap.Mode.Max, soft: false);
+        }
         if (wound.Points.Count == 1) {
             var center = wound.Points[0];
             map.Disk(WoundMap.Layer.Wounds, WoundMap.Cut, center, 0.012f, 0.7f, WoundMap.Mode.Max, soft: false);
