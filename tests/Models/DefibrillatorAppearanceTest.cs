@@ -14,7 +14,7 @@ public class DefibrillatorAppearanceTest {
                 var hand = GripCheck.MakeHand(studio.Root, index);
                 var model = GripCheck.Hold(hand, def, Db.GripFit(def, index), studio.Root);
                 var plate = (MeshInstance3D)model.FindChild("Plate", true, false);
-                var face = Vertices(model, plate).ToArray();
+                var face = ModelStudio.Vertices(model, plate).ToArray();
                 AssertFloat(face.Min(vertex => vertex.Z)).OverrideFailureMessage("the exposed steel face reaches the gameplay contact plane")
                     .IsEqualApprox(-def.Length, 0.0001f);
                 AssertBool(face.Any(vertex => Mathf.Abs(vertex.Z + def.Length) < 0.0001f && vertex.X > 0f)
@@ -23,11 +23,11 @@ public class DefibrillatorAppearanceTest {
                 var animator = new ToolAnimator();
                 animator.Setup(model, def.Action);
                 var light = (MeshInstance3D)model.FindChild("Light", true, false);
-                AssertBool(light.Visible).IsFalse();
+                AssertBool(light.Visible).OverrideFailureMessage("the charge light is off before use").IsFalse();
                 var button = (MeshInstance3D)model.FindChild("Button", true, false);
-                AssertFloat(Vertices(model, light).Min(vertex => vertex.Z))
+                AssertFloat(ModelStudio.Vertices(model, light).Min(vertex => vertex.Z))
                     .OverrideFailureMessage("the charge indicator clears the button surface instead of being buried in the handle")
-                    .IsGreater(Vertices(model, button).Max(vertex => vertex.Z));
+                    .IsGreater(ModelStudio.Vertices(model, button).Max(vertex => vertex.Z));
                 await Frames.NextPhysics();
                 AssertInt(GripCheck.Clipped(hand)).OverrideFailureMessage($"the paddle clears glove {index}").IsEqual(0);
                 if (index == 0) {
@@ -87,7 +87,4 @@ public class DefibrillatorAppearanceTest {
             await studio.Finish();
         }
     }
-
-    private static IEnumerable<Vector3> Vertices(Node3D model, MeshInstance3D part) =>
-        part.Mesh.GetFaces().Select(vertex => model.ToLocal(part.ToGlobal(vertex)));
 }

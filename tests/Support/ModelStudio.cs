@@ -58,6 +58,10 @@ internal sealed class ModelStudio {
         }
     }
 
+    /// <summary>A part's triangle corners in the model's own space.</summary>
+    public static IEnumerable<Vector3> Vertices(Node3D model, MeshInstance3D part) =>
+        part.Mesh.GetFaces().Select(vertex => model.ToLocal(part.ToGlobal(vertex)));
+
     public async Task Finish() {
         Root.QueueFree();
         await Frames.NextProcess();

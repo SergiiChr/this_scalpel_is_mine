@@ -114,7 +114,7 @@ public class ModelsTest {
                 }
                 hand.SnapPose(GripCheck.ShoulderOf(hand));
                 var back = hand.Glove.GlobalBasis.Y.Normalized();
-                var facing = grip is "fist" or "paddle" or "stapler" ? back.Dot(outward) : back.Dot(Vector3.Up);
+                var facing = GripStyle.AcrossPalm(grip) ? back.Dot(outward) : back.Dot(Vector3.Up);
                 AssertFloat(facing)
                     .OverrideFailureMessage(
                         $"the {HandName(handIndex)} hand holding a {def.Id} at {hand.Target} is twisted (back of the "

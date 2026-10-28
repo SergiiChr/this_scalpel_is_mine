@@ -14,7 +14,7 @@ public class MalletAppearanceTest {
                 var hand = GripCheck.MakeHand(studio.Root, index);
                 var model = GripCheck.Hold(hand, def, Db.GripFit(def, index), studio.Root);
                 var head = (MeshInstance3D)model.FindChild("Head", true, false);
-                var points = head.Mesh.GetFaces().Select(vertex => model.ToLocal(head.ToGlobal(vertex))).ToArray();
+                var points = ModelStudio.Vertices(model, head).ToArray();
                 AssertFloat(points.Min(vertex => vertex.Z))
                     .OverrideFailureMessage("the forward crown reaches the mallet's gameplay plane")
                     .IsEqualApprox(-def.Length, 0.0001f);

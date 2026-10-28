@@ -2,8 +2,8 @@ namespace Scalpel.Tools;
 
 /// <summary>
 /// Moves a tool model's named parts from the holding hand's state, which every peer has. Jaws close while squeezed or
-/// holding tissue, a syringe plunger sits behind its liquid and air, triggers squeeze, saw blades reciprocate or rotate, flames and
-/// glows light up in use. Part names come from tools/assetgen/instruments.py.
+/// holding tissue, a syringe plunger sits behind its liquid and air, triggers squeeze, saw blades reciprocate or rotate,
+/// flames and glows light up in use. Part names come from tools/assetgen/instruments.py.
 /// A film bag (the IV bag, tools/assetgen/iv_bag.py) falls flat as it empties and spreads out lying down, through its
 /// EmptyBag and RestingFlat blend shapes, and sways on its rig behind the hand as it's carried.
 /// </summary>

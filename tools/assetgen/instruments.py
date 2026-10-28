@@ -228,7 +228,7 @@ def _tape(m: Model, length: float, color: str) -> None:
     m.add("Roll", moved(merge(rotated(roll, np.pi / 2, Z), tail), (0.0, 0.0, -length * 0.5)), color)
 
 
-def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
+def _pen(m: Model, length: float, body: str, tip: str) -> None:
     m.add(
         "Body",
         tube([(0.0, 0.0, 0.04), (0.0, 0.0, -length * 0.4), (0.0, 0.0, -length * 0.8)], [(0.006, 0.006), (0.0065, 0.0065), (0.005, 0.005)], ring=16),
@@ -240,9 +240,6 @@ def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
         tip,
         (0.0, 0.0, -length * 0.8),
     )
-    if glow:
-        m.add("Glow", ellipsoid((0.003, 0.003, 0.003), (0.0, 0.0, -length)), "flame", (0.0, 0.0, -length))
-        m.add("Button", superellipsoid((0.004, 0.003, 0.012), 0.4, (0.0, 0.006, -0.01)), "yellow_plastic")
 
 
 def _cautery(m: Model, length: float) -> None:
@@ -804,7 +801,7 @@ def build() -> list[Model]:
         "surgical_tape": lambda m, length: _tape(m, length, "fabric_white"),
         "duct_tape": lambda m, length: _tape(m, length, "dark_steel"),
         "cautery": _cautery,
-        "marker": lambda m, length: _pen(m, length, "tint", "black_plastic", False),
+        "marker": lambda m, length: _pen(m, length, "tint", "black_plastic"),
         "syringe_3": partial(_syringe, radius=0.0045, volume=3.0),
         "syringe_10": partial(_syringe, radius=0.0065, volume=10.0),
         "syringe_50": partial(_syringe, radius=0.013, volume=50.0),

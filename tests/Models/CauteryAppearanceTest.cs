@@ -16,7 +16,7 @@ public class CauteryAppearanceTest {
             var model = GripCheck.Hold(hand, def, Db.GripFit(def, 1), studio.Root);
             var tip = (MeshInstance3D)model.FindChild("Tip", true, false);
             var glow = (MeshInstance3D)model.FindChild("Glow", true, false);
-            var tipEnd = ModelVertices(model, tip).Min(vertex => vertex.Z);
+            var tipEnd = ModelStudio.Vertices(model, tip).Min(vertex => vertex.Z);
             AssertFloat(tipEnd).OverrideFailureMessage("the steel electrode reaches the cautery's gameplay tip")
                 .IsEqualApprox(-def.Length, 0.0001f);
             AssertFloat(tip.Mesh.GetAabb().Size.X).OverrideFailureMessage("the electrode is a narrow strip beyond the insulated nose")
@@ -33,7 +33,7 @@ public class CauteryAppearanceTest {
                 "the right glove holds the pencil without clipping its barrel or button; the nose and electrode remain exposed", -0.06f);
             animator.Animate(true, false, 1f / 60f);
             AssertBool(glow.Visible).OverrideFailureMessage("using the cautery shows its heat envelope").IsTrue();
-            var heat = ModelVertices(model, glow).ToArray();
+            var heat = ModelStudio.Vertices(model, glow).ToArray();
             AssertFloat(heat.Min(vertex => vertex.Z)).OverrideFailureMessage("heat does not extend beyond the working tip")
                 .IsGreaterEqual(-def.Length - 0.0001f);
             AssertFloat(heat.Max(vertex => vertex.Z)).OverrideFailureMessage("the heat envelope stays on the electrode's last few millimeters")
@@ -48,7 +48,4 @@ public class CauteryAppearanceTest {
             await studio.Finish();
         }
     }
-
-    private static IEnumerable<Vector3> ModelVertices(Node3D model, MeshInstance3D part) =>
-        part.Mesh.GetFaces().Select(vertex => model.ToLocal(part.ToGlobal(vertex)));
 }

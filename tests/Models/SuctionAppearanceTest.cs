@@ -14,7 +14,7 @@ public class SuctionAppearanceTest {
                 var hand = GripCheck.MakeHand(studio.Root, index);
                 var model = GripCheck.Hold(hand, def, Db.GripFit(def, index), studio.Root);
                 var bulb = (MeshInstance3D)model.FindChild("Bulb", true, false);
-                var points = Vertices(model, bulb).ToArray();
+                var points = ModelStudio.Vertices(model, bulb).ToArray();
                 AssertFloat(points.Min(vertex => vertex.Z))
                     .OverrideFailureMessage("the inlet lip reaches the suction tool's gameplay plane")
                     .IsEqualApprox(-def.Length, 0.0001f);
@@ -25,7 +25,7 @@ public class SuctionAppearanceTest {
                     .OverrideFailureMessage("the working axis opens into the inlet instead of a capped bulb")
                     .IsGreater(0.0029f);
                 var bore = (MeshInstance3D)model.FindChild("Bore", true, false);
-                AssertFloat(Vertices(model, bore).Min(vertex => vertex.Z) + def.Length)
+                AssertFloat(ModelStudio.Vertices(model, bore).Min(vertex => vertex.Z) + def.Length)
                     .OverrideFailureMessage("the dark inlet floor is recessed behind the lip").IsGreater(0.01f);
                 await Frames.NextPhysics();
                 AssertInt(GripCheck.Clipped(hand)).OverrideFailureMessage($"the suction handle clears glove {index}").IsEqual(0);
@@ -48,7 +48,4 @@ public class SuctionAppearanceTest {
             await studio.Finish();
         }
     }
-
-    private static IEnumerable<Vector3> Vertices(Node3D model, MeshInstance3D part) =>
-        part.Mesh.GetFaces().Select(vertex => model.ToLocal(part.ToGlobal(vertex)));
 }
