@@ -7,6 +7,7 @@ shader_type spatial;
 render_mode cull_disabled;
 
 #include "res://assets/shaders/wound.gdshaderinc"
+#include "res://assets/shaders/skin_light.gdshaderinc"
 
 uniform int layer = 0;
 uniform bool cut_face = false;
@@ -22,32 +23,23 @@ float hash3(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
 
+// Fine detail is baked into seamless 3D textures (tools/assetgen/tissue_textures.py) and sampled, not computed: the
+// fat's cells took 27 neighbor cells and 81 hashes per pixel.
+uniform sampler3D noise_texture : filter_linear_mipmap, repeat_enable;
+uniform sampler3D cell_texture : filter_linear_mipmap, repeat_enable;
+// How many noise lattice cells and fat cells one texture tile spans along each side.
+const float NOISE_LATTICE = 16.0;
+const float CELLS = 8.0;
+
+// Smooth value noise, one lattice cell per unit.
 float noise3(vec3 p) {
-	vec3 i = floor(p);
-	vec3 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	float a = mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), f.x);
-	float b = mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), f.x);
-	float c = mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), f.x);
-	float d = mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0)), f.x);
-	return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+	return texture(noise_texture, p / NOISE_LATTICE).r;
 }
 
-// Three-dimensional cells stay rounded on horizontal surfaces and vertical
-// incision walls; the previous XZ-only pattern stretched into columns.
+// Distance to the nearest fat cell's center, one cell per unit. Three-dimensional cells stay rounded on horizontal
+// surfaces and vertical incision walls.
 float cells3(vec3 p) {
-	vec3 i = floor(p);
-	float best = 8.0;
-	for (int z = -1; z <= 1; z++) {
-		for (int y = -1; y <= 1; y++) {
-			for (int x = -1; x <= 1; x++) {
-				vec3 cell = i + vec3(float(x), float(y), float(z));
-				vec3 center = cell + vec3(hash3(cell), hash3(cell + 17.0), hash3(cell + 41.0));
-				best = min(best, distance(p, center));
-			}
-		}
-	}
-	return best;
+	return texture(cell_texture, p / CELLS).r;
 }
 
 void vertex() {
@@ -124,8 +116,14 @@ void fragment() {
 	float spot = cut_face ? paint_spot(c, bleed_spot(bleeds, UV2.x)) : 0.0;
 	ALBEDO = c;
 	// Blood takes the broad sheen off: under the lamp straight above it, that sheen would turn it grey.
-	ROUGHNESS = mix(1.0 - max(wet, spot) * 0.82, 1.0, blood * 0.85);
+	// The film on the tissue is patchy: drier and wetter spots break up the highlight.
+	ROUGHNESS = mix(1.0 - max(wet, spot) * 0.82, 1.0, blood * 0.85) * mix(0.75, 1.3, noise3(local_pos * 110.0 + 5.0));
 	EMISSION = ALBEDO * 0.025;
+	// Fat and the skin's cut face let light through, muscle less so. A cut's wall is thinnest at the lip, where the
+	// lamp shines through it. Godot's screen-space subsurface scattering was tried too: this close it blurs the fat's
+	// cells and the bleed spots away.
+	float thin = cut_face ? 1.0 - smoothstep(0.0, 0.3, wall_depth) : 0.2;
+	BACKLIGHT = (layer == 1 ? vec3(0.6, 0.08, 0.06) : vec3(1.0, 0.45, 0.25)) * thin;
 }
 
 void light() {
@@ -133,7 +131,10 @@ void light() {
 	float wrap = layer == 2 ? 0.8 : 0.16;
 	float ndl = max((dot(NORMAL, LIGHT) + wrap) / (1.0 + wrap), 0.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * ndl * ATTENUATION / PI;
+	DIFFUSE_LIGHT += LIGHT_COLOR * translucence(NORMAL, LIGHT, VIEW, BACKLIGHT) * ATTENUATION / PI;
 	vec3 halfway = normalize(VIEW + LIGHT);
-	float broad = pow(max(dot(NORMAL, halfway), 0.0), 18.0);
-	SPECULAR_LIGHT += LIGHT_COLOR * broad * ATTENUATION * (1.0 - ROUGHNESS) * 0.32 / PI;
+	float n_dot_h = dot(NORMAL, halfway);
+	float broad = pow(max(n_dot_h, 0.0), 18.0);
+	float wet = clamp(1.0 - ROUGHNESS, 0.0, 1.0);
+	SPECULAR_LIGHT += LIGHT_COLOR * (broad * wet * 0.32 + wet_glint(n_dot_h, dot(NORMAL, VIEW), wet)) * ATTENUATION / PI;
 }

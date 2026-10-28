@@ -12,11 +12,12 @@ public enum Decor { None, Window, Door, ServicePanel, CeilingLight }
 /// <summary>
 /// How a kind of surface responds to light, so skin, gloves, steel and cloth read apart under the same lamp.
 /// Specular: highlight strength, Rim: edge light (cloth sheen), Wrap/Scatter: light past the terminator (skin),
-/// Grime: procedural dirt, Metallic: 1 for metal, Detail: fine relief. Roughness comes from the model's own material.
+/// Grime: procedural dirt, Metallic: 1 for metal, Detail: fine relief, Translucency: light through the surface where it's
+/// thin. Roughness comes from the model's own material.
 /// </summary>
 public sealed record SurfaceFamily(
     float Specular, float Rim, float Grime, float Wrap = 0f, Color? Scatter = null, float Metallic = 0f,
-    Detail Detail = Detail.None);
+    Detail Detail = Detail.None, float Translucency = 0f);
 
 /// <summary>Shared materials. Everything goes through here so the look can be tuned in one place.</summary>
 public static class Materials {
@@ -25,6 +26,8 @@ public static class Materials {
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
     public static readonly Shader Skin = GD.Load<Shader>("res://assets/shaders/skin.gdshader");
     public static readonly Shader TissueLayer = GD.Load<Shader>("res://assets/shaders/tissue_layer.gdshader");
+    private static readonly Texture3D TissueNoise = GD.Load<Texture3D>("res://assets/textures/tissue_noise.png");
+    private static readonly Texture3D FatCells = GD.Load<Texture3D>("res://assets/textures/fat_cells.png");
     private static readonly Shader BloodFilmShader = GD.Load<Shader>("res://assets/shaders/blood_film.gdshader");
     private static readonly Shader XrayShader = GD.Load<Shader>("res://assets/shaders/xray.gdshader");
     private static readonly Shader XrayFilmShader = GD.Load<Shader>("res://assets/shaders/xray_film.gdshader");
@@ -49,12 +52,13 @@ public static class Materials {
     public static readonly Color Fluorescent = new(0.88f, 1f, 0.94f);
 
     public static readonly IReadOnlyDictionary<string, SurfaceFamily> Families = new Dictionary<string, SurfaceFamily> {
-        ["skin"] = new(0.15f, 0.12f, 0.05f, Wrap: 0.35f, Scatter: new Color(1f, 0.42f, 0.32f), Detail: Detail.Pores),
+        ["skin"] = new(0.15f, 0.12f, 0.05f, Wrap: 0.35f, Scatter: new Color(1f, 0.42f, 0.32f), Detail: Detail.Pores,
+            Translucency: 0.4f),
         ["rubber"] = new(0.18f, 0.08f, 0f, Detail: Detail.Creases),
         ["cloth"] = new(0f, 0.2f, 0.12f, Wrap: 0.25f, Scatter: Colors.White, Detail: Detail.Weave),
         ["metal"] = new(0.9f, 0.04f, 0.02f, Metallic: 1f, Detail: Detail.Brushed),
         ["plastic"] = new(0.35f, 0.12f, 0.1f),
-        ["tissue"] = new(0.55f, 0.1f, 0f, Wrap: 0.4f, Scatter: new Color(1f, 0.3f, 0.25f)),
+        ["tissue"] = new(0.55f, 0.1f, 0f, Wrap: 0.4f, Scatter: new Color(1f, 0.3f, 0.25f), Translucency: 0.7f),
     };
 
     /// <summary>Model material name -> family. Names not listed are plastic.</summary>
@@ -268,6 +272,7 @@ public static class Materials {
         material.SetShaderParameter("rim_strength", family.Rim);
         material.SetShaderParameter("wrap", family.Wrap);
         material.SetShaderParameter("scatter_tint", family.Scatter ?? Colors.White);
+        material.SetShaderParameter("translucency", family.Translucency);
         material.SetShaderParameter("metallic", family.Metallic);
         material.SetShaderParameter("detail", (int)family.Detail);
         return material;
@@ -362,6 +367,7 @@ public static class Materials {
         material.SetShaderParameter("grime", family.Grime);
         material.SetShaderParameter("wrap", family.Wrap);
         material.SetShaderParameter("scatter_tint", family.Scatter ?? Colors.White);
+        material.SetShaderParameter("translucency", family.Translucency);
         material.SetShaderParameter("wound_map", woundTexture);
         material.SetShaderParameter("fluid_map", fluidTexture);
         return material;
@@ -377,6 +383,8 @@ public static class Materials {
         material.SetShaderParameter("cut_face", cutFace);
         material.SetShaderParameter("fluid_map", fluidTexture);
         material.SetShaderParameter("bleed_map", bleedTexture);
+        material.SetShaderParameter("noise_texture", TissueNoise);
+        material.SetShaderParameter("cell_texture", FatCells);
         return material;
     }
 

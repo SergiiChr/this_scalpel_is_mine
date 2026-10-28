@@ -49,6 +49,8 @@ public partial class Screenshot : Node {
             await SurgeryDriver.PlayerPutsCardBack(surgery);
             if (Has("--lighting")) {
                 await LightingViews(surgery);
+            } else if (Has("--tissue")) {
+                await TissueViews(surgery);
             } else if (Has("--anatomy")) {
                 await Anatomy(surgery);
             } else if (Has("--materials")) {

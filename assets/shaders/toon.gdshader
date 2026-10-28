@@ -20,6 +20,8 @@ uniform float roughness : hint_range(0.0, 1.0) = 0.7;
 // Light that wraps past the terminator, tinted (skin: red, like light scattered under it). 0 for hard surfaces.
 uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+// Light through the surface where it is thin (Materials.Families Translucency).
+uniform float translucency = 0.0;
 uniform float grime : hint_range(0.0, 1.0) = 0.25;
 uniform float grime_scale = 14.0;
 // Grime fixed in the world, for walls and floors that never move. Anything else carries its own, so it doesn't
@@ -179,6 +181,9 @@ void fragment() {
 	ROUGHNESS = mix(rough, 0.08, wet);
 	float pulse = 0.5 + 0.5 * sin(game_time * 4.0);
 	EMISSION = emission_color.rgb + glow + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
+	if (translucency > 0.0) {
+		BACKLIGHT = scatter_tint.rgb * translucency * 0.3;
+	}
 }
 
 void light() {
@@ -197,6 +202,12 @@ void light() {
 	// Metal highlights take the metal's color; everything else reflects the light's own.
 	vec3 spec_color = mix(vec3(1.0), ALBEDO / (1.0 - metallic * 0.4), metallic);
 	SPECULAR_LIGHT += LIGHT_COLOR * spec_color * spec * mix(specular_strength, 0.18, wet) / PI;
+	if (translucency > 0.0) {
+		// Organs (translucency over 0.5) are wet all over, skin only where blood or a cut makes it so.
+		float film = max(wet, (1.0 - ROUGHNESS) * step(0.5, translucency));
+		SPECULAR_LIGHT += LIGHT_COLOR * wet_glint(dot(NORMAL, halfway), dot(NORMAL, VIEW), film) * ATTENUATION / PI;
+		DIFFUSE_LIGHT += LIGHT_COLOR * translucence(NORMAL, LIGHT, VIEW, BACKLIGHT) * ATTENUATION / PI;
+	}
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }
