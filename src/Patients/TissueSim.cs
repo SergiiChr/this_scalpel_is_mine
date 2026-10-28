@@ -1871,7 +1871,13 @@ public sealed partial class TissueSim {
         UpdateFoldState();
         TrackTurned();
         if (_fold.Bending) { IndexSprings(); }
-        for (var iteration = 0; iteration < Iterations; iteration++) {
+        if (Xpbd) {
+            BeginXpbdStep();
+        }
+        for (var iteration = 0; iteration < Iterations && Xpbd; iteration++) {
+            XpbdIteration();
+        }
+        for (var iteration = 0; iteration < Iterations && !Xpbd; iteration++) {
             foreach (var pin in _pins.Values) {
                 DragPatch(pin);
             }
@@ -1912,13 +1918,15 @@ public sealed partial class TissueSim {
         }
         // Finish the area constraints after the last spring/anchor pass. Resolving one compressed face can move
         // its neighbour, so a single sweep would leave folds that fit the skin but not its underlying thickness.
-        SeparateFoldNeighbors();
-        FindCompressedCells();
-        for (var pass = 0; pass < 8 && _fold.Active && !_fold.TurnedOver; pass++) {
-            if (!PreserveLocalArea(pass % 2 != 0, compressedOnly: true)) { break; }
+        if (!Xpbd) {
+            SeparateFoldNeighbors();
+            FindCompressedCells();
+            for (var pass = 0; pass < 8 && _fold.Active && !_fold.TurnedOver; pass++) {
+                if (!PreserveLocalArea(pass % 2 != 0, compressedOnly: true)) { break; }
+            }
+            StayAboveFloor();
+            UpdateFoldContact();
         }
-        StayAboveFloor();
-        UpdateFoldContact();
         var moved = 0f;
         var wandered = 0f;
         var farthest = 0f;
