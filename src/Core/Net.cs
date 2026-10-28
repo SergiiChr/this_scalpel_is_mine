@@ -203,7 +203,19 @@ public partial class Net : Node {
         GetTree().ChangeSceneToFile(LobbyScene);
     }
 
-    private LobbyPlayer NewPlayer(string name) => new(name, QuirkRoller.RollSurgeon(_rng), Ready: false);
+    private LobbyPlayer NewPlayer(string name) => new(name, RollSurgeon(), Ready: false);
+
+    /// <summary>Host, debug mode: every run rolls no surgeon quirks, no run modifiers and only the scenario's fixed patient
+    /// quirks (the lobby's checkbox).</summary>
+    public bool SkipQuirks { get; private set; }
+
+    /// <summary>Host only. Skips the quirks and modifiers from now on, or rolls them again, rerolling this run.</summary>
+    public void SetSkipQuirks(bool skip) {
+        SkipQuirks = skip;
+        ChangeScenario(ScenarioId);
+    }
+
+    private List<QuirkRoll> RollSurgeon() => SkipQuirks ? [] : QuirkRoller.RollSurgeon(_rng);
 
     /// <summary>Host only. Picks a new scenario and rerolls everyone (it's a new run).</summary>
     public void ChangeScenario(string id) {
@@ -213,13 +225,16 @@ public partial class Net : Node {
         ScenarioId = id;
         RunModifiers = RollRunModifiers();
         foreach (var peer in Roster.Keys.ToList()) {
-            Roster[peer] = Roster[peer] with { Quirks = QuirkRoller.RollSurgeon(_rng), Ready = false };
+            Roster[peer] = Roster[peer] with { Quirks = RollSurgeon(), Ready = false };
         }
         SyncLobbyEverywhere();
     }
 
     /// <summary>One or two per run, never the same twice.</summary>
     private List<string> RollRunModifiers() {
+        if (SkipQuirks) {
+            return [];
+        }
         var ids = Db.RunModifiers.GetSections().ToList();
         Shuffle(ids);
         return [.. ids.Take(_rng.RandiRange(1, 2))];
@@ -263,7 +278,7 @@ public partial class Net : Node {
             return;
         }
         SessionSeed = _rng.Randi();
-        PatientQuirks = QuirkRoller.RollPatient(scenario, _rng);
+        PatientQuirks = SkipQuirks ? [.. scenario.FixedPatientQuirks] : QuirkRoller.RollPatient(scenario, _rng);
         Rpc(MethodName.Begin, SessionSeed, QuirkRoll.ToVariant(PatientQuirks), RosterToVariant(), ScenarioId,
             RunModifiersToVariant());
     }

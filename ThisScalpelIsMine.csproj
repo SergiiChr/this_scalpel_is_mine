@@ -28,6 +28,11 @@
     <PackageReference Include="Roslynator.Analyzers" Version="4.14.1" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Build output and tools' scratch work (model reviews write C# there) are never part of the game. -->
+  <ItemGroup>
+    <Compile Remove="build/**" />
+  </ItemGroup>
+
   <!-- The tests and the test framework stay out of exported games, debug exports included. -->
   <ItemGroup Condition="$(Configuration.StartsWith('Export'))">
     <Compile Remove="tests/**" />

@@ -38,7 +38,12 @@ public static class Db {
     private static readonly List<ScenarioDef> AllScenarios = LoadScenarios();
 
     /// <summary>Scenarios offered to play, in menu order.</summary>
-    public static readonly IReadOnlyList<ScenarioDef> Scenarios = [.. AllScenarios.Where(s => !s.Disabled)];
+    public static readonly IReadOnlyList<ScenarioDef> Scenarios = [.. AllScenarios.Where(s => !s.Disabled && !s.DebugOnly)];
+    /// <summary>Sandboxes offered only in debug mode (<see cref="ScenarioDef.DebugOnly"/>).</summary>
+    public static readonly IReadOnlyList<ScenarioDef> DebugScenarios = [.. AllScenarios.Where(s => !s.Disabled && s.DebugOnly)];
+
+    /// <summary>What the menu and the lobby offer: the debug sandboxes too in debug mode.</summary>
+    public static IReadOnlyList<ScenarioDef> Offered => Settings.Debug ? [.. Scenarios, .. DebugScenarios] : Scenarios;
     /// <summary>Scenarios with disabled=true: not offered to play, still found by <see cref="Scenario"/> for tests.
     /// </summary>
     public static readonly IReadOnlyList<ScenarioDef> DisabledScenarios = [.. AllScenarios.Where(s => s.Disabled)];
