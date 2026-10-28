@@ -553,11 +553,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   Air sits at the needle end and goes out first. Pushing into the patient or a surgeon gives what's pushed as it goes
   in, one notch at a time.
 - **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
-  it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
-  hand swinging round it (`Surgeon.BendNeedle()`). What the tilt can't follow (sideways, or past the tilt range)
-  stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
-  out: a short scratch, a bead of blood and pain (`Patient.NeedleTear()`). It then moves freely until Use tool is
-  let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the puncture, without
+  it went in (no tremor, no lift), and the mouse does nothing (see Needle view). Walked away from out of reach, the
+  needle tears out: a short scratch, a bead of blood and pain (`Patient.NeedleTear()`). It then moves freely until
+  Use tool is let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the puncture, without
   adding pain or a scratch (`ToolManager.RequestNeedleWithdrawal()`). Moving the hand afterward cannot tear it out.
 - **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
   its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand.ReachPlunger()`). It points a
@@ -569,8 +567,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   Use tool with a syringe zooms all the way in on its own and back out when let go.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
   beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe
-  about its length so the printed scale faces the camera. There the mouse moves the hand as seen from the camera:
-  right on screen is right, up is away from it. Use tool let go, the camera goes back and the scale turns back to the
+  about its length so the printed scale faces the camera. The view and the hand hold still there, whatever the mouse
+  does: only the wheel works the plunger. Use tool let go, the camera goes back and the scale turns back to the
   eyes.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Doses add up (`DrugLevels`, for the patient and the surgeons alike): every injection goes into a depot that soaks

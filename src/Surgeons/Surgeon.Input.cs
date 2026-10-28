@@ -9,12 +9,6 @@ public partial class Surgeon {
     private const float NeedleViewMargin = 0.025f;
     /// <summary>Zoomed all the way in, whatever they hold, the hands are this see-through.</summary>
     internal const float ZoomSeeThrough = 0.65f;
-    /// <summary>A syringe's needle in the patient (Use tool held) keeps its tip where it went in: the mouse only tilts
-    /// the syringe about it. A pull it can't follow (sideways, or past how far the hand tilts) stretches the skin by this
-    /// share of the motion.</summary>
-    private const float NeedleDrag = 0.2f;
-    /// <summary>Stretched this far (meters) the needle tears out and leaves a small wound.</summary>
-    private const float NeedleTear = 0.015f;
     /// <summary>Seconds Use tool is held before the needle counts as in: the hand comes down onto the skin first.
     /// </summary>
     private const float NeedleSettle = 0.1f;
@@ -40,8 +34,8 @@ public partial class Surgeon {
     private float _needleFraming;
     /// <summary>How far the camera has moved over to the needle view (0..1).</summary>
     internal float NeedleFraming => _needleFraming;
-    /// <summary>The needle view, set as the needle goes in and held until Use tool is let go: the mouse still moving
-    /// the hand mustn't swing the camera about. The last one, to move back from.</summary>
+    /// <summary>The needle view, set as the needle goes in and held until Use tool is let go. The last one, to move
+    /// back from.</summary>
     private Transform3D _needleView = Transform3D.Identity;
     /// <summary>Whether <see cref="_needleView"/> is set for the needle in now.</summary>
     private bool _needleViewHeld;
@@ -56,8 +50,6 @@ public partial class Surgeon {
 
     /// <summary>The needle tore out since Use tool was pressed.</summary>
     internal bool NeedleTorn => _needleTorn;
-    /// <summary>How far the skin around a needle that's in is pulled.</summary>
-    private Vector3 _needlePull;
     /// <summary>Whether the needle tore out since Use tool was pressed (it then moves freely until Use tool is let go).
     /// </summary>
     private bool _needleTorn;
@@ -160,6 +152,10 @@ public partial class Surgeon {
     }
 
     private void OnMouseMotion(Vector2 motion) {
+        // A needle in something with Use tool held stays put and so does the view on it: only the wheel works then.
+        if (_needleViewHeld || _needleAnchor is not null) {
+            return;
+        }
         if (Input.IsActionPressed(InputActions.AimTool)) {
             AimTool(motion);
         } else if (MovingHand() < 0) {
@@ -234,34 +230,13 @@ public partial class Surgeon {
     /// <summary>
     /// Moves a hand (the active one unless <paramref name="index"/> says) by a mouse motion (pixels, sensitivity
     /// applied). Zoomed in, the same motion moves it as much less as the view is magnified, so it crosses the screen at
-    /// the same speed: finer control where you're looking closely. A needle stuck in the patient tilts about its tip
-    /// instead.
+    /// the same speed: finer control where you're looking closely.
     /// </summary>
     private void SteerHand(Vector2 motion, int index = -1) {
         index = index < 0 ? Active : index;
         var magnified = Mathf.Tan(Mathf.DegToRad(ZoomFov[Zoom]) * 0.5f) / Mathf.Tan(Mathf.DegToRad(ZoomFov[0]) * 0.5f);
         var step = motion * HandSensitivity * Status.HandSpeed() * magnified;
-        var move = _needleFraming > 0.5f
-            ? ScreenToFloor(step)
-            : new Basis(Vector3.Up, Rotation.Y) * new Vector3(step.X, 0f, step.Y);
-        if (index == Active && _needleAnchor is not null) {
-            BendNeedle(move);
-        } else {
-            MoveHand(Hands[index], move);
-        }
-    }
-
-    /// <summary>A hand move (world, across the floor) with the needle stuck: along the syringe it tilts it about its tip,
-    /// the hand swinging round it. What the tilt can't take (sideways, or past its range) pulls on the skin.</summary>
-    private void BendNeedle(Vector3 move) {
-        var hand = Hands[Active];
-        var length = HeldTool(Active)!.Def.Length;
-        var back = new Basis(Vector3.Up, Rotation.Y + hand.Turn) * Vector3.Back;
-        var along = move.Dot(back);
-        var tiltBefore = hand.Tilt;
-        hand.Tilt = Mathf.Clamp(hand.Tilt + (along / length), SurgeonHand.TiltRange.X, SurgeonHand.TiltRange.Y);
-        var unbent = along - ((hand.Tilt - tiltBefore) * length);
-        _needlePull += (move - (back * along) + (back * unbent)) * NeedleDrag;
+        MoveHand(Hands[index], new Basis(Vector3.Up, Rotation.Y) * new Vector3(step.X, 0f, step.Y));
     }
 
     /// <summary>Changes a tool's working pose about its tip, so pressing it never moves the aim point away from the skin.
@@ -367,8 +342,8 @@ public partial class Surgeon {
     /// Zoomed all the way in, the hands fade so they don't hide what they work on, whatever they hold. The camera stays
     /// at the eyes, so the mouse moves the hand the way it always does while aiming. Once a syringe's needle is in
     /// something with Use tool held, the camera moves over beside it so the needle and what it's in (a vial, the dish,
-    /// the bag, the arm's vein) are both in view, and stays there whatever the mouse does; the hand rolls the syringe so
-    /// its printed scale faces the camera. Use tool let go, both go back.
+    /// the bag, the arm's vein) are both in view, and the hand rolls the syringe so its printed scale faces the camera.
+    /// Both hold still there, the mouse doing nothing (OnMouseMotion()). Use tool let go, both go back.
     /// </summary>
     private void FrameNeedle(float delta) {
         var tool = HeldTool(Active);
@@ -403,18 +378,6 @@ public partial class Surgeon {
         }
         Camera.GlobalTransform = _head.GlobalTransform.InterpolateWith(
             _needleView, Mathf.SmoothStep(0f, 1f, _needleFraming));
-    }
-
-    /// <summary>A mouse move as seen through the camera, laid flat on the floor: right moves right on screen, up moves
-    /// away. The needle view looks from the side, so moving the hand the body's way would look sideways there.</summary>
-    private Vector3 ScreenToFloor(Vector2 step) {
-        var flat = new Vector3(1f, 0f, 1f);
-        var right = Camera.GlobalBasis.X * flat;
-        var away = Camera.GlobalBasis.Y * flat;
-        if (away.Length() < 0.1f) {
-            away = -Camera.GlobalBasis.Z * flat;
-        }
-        return (right.Normalized() * step.X) - (away.Normalized() * step.Y);
     }
 
     /// <summary>Where the camera looks at a syringe or catheter from: side on and a little above (square on to it,
@@ -609,8 +572,8 @@ public partial class Surgeon {
         hand.Trail = Status.Calm * Status.Lag;
     }
 
-    /// <summary>A syringe pressed into the patient sticks where its tip went in. Pulled on too hard, or walked away from
-    /// out of reach, it tears out.</summary>
+    /// <summary>A syringe pressed into the patient sticks where its tip went in. Walked away from out of reach, it tears
+    /// out.</summary>
     private void HoldNeedle(float delta) {
         var hand = Hands[Active];
         var tool = HeldTool(Active);
@@ -626,14 +589,12 @@ public partial class Surgeon {
             if (_needlePressed >= NeedleSettle && !_needleTorn
                 && Syringe.NeedleTarget(tool!, Session.Patient) is VeinTarget or TissueTarget) {
                 _needleAnchor = tool!.TipPosition();
-                _needlePull = Vector3.Zero;
             }
             return;
         }
         var outOfReach = (anchor - hand.TipOffset(tool!.Def.Length)).DistanceTo(Shoulder(Active)) > Reach;
-        if (_needlePull.Length() > NeedleTear || outOfReach) {
-            var pulled = _needlePull.Length() > 0f ? _needlePull.Normalized() * NeedleTear : Vector3.Zero;
-            Session.Tools.RequestNeedleTear(Active, anchor, anchor + pulled);
+        if (outOfReach) {
+            Session.Tools.RequestNeedleTear(Active, anchor, anchor);
             Session.Hud.Toast("The needle tears out of the skin.");
             _needleTorn = true;
             _needleAnchor = null;
