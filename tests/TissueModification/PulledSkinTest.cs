@@ -83,8 +83,9 @@ public class PulledSkinTest {
             .IsLess(0.001f);
         var bedMovement = (body.LayerPoint(2, k) - bedUnderGrip).Length();
         AssertFloat(bedMovement)
-            .OverrideFailureMessage($"the wound's edge comes along as one block: the muscle under the grip, cut through beside it, moves with the skin ({bedMovement * 1000f:0} of {pulled.Length() * 1000f:0} mm)")
-            .IsBetween(pulled.Length() * 0.3f, pulled.Length() * 1.001f);
+            .OverrideFailureMessage("the muscle under the grip, cut through beside it, comes along only part of the way and the skin "
+                + $"slides on over it, uncovering its cut edge ({bedMovement * 1000f:0} of {pulled.Length() * 1000f:0} mm)")
+            .IsBetween(0.001f, pulled.Length() * 0.5f);
         AssertRimQuiet(body, quietRim, "the pull doesn't lift the skin at the drape's rim");
         AssertPerimeterInPlace(tissue);
         AssertFloat(body.LayerPoint(2, farBed).DistanceTo(muscleBefore))

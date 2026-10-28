@@ -15,6 +15,10 @@ public partial class PatientBody {
     /// <summary>How far (meters) the muscle rises with the skin over it before the skin and its fat come off it (see
     /// <see cref="LayerPoint"/>).</summary>
     private const float MuscleLift = 0.004f;
+    /// <summary>How far (meters) muscle cut free beside a wound slides along with the skin over it: the wound's edge
+    /// moves as one block that far, then the skin and its fat slide on over the muscle and uncover its cut edge.
+    /// </summary>
+    private const float FreedMuscleSlide = 0.012f;
     internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Movement over which the rendered skin adopts the deformed sheet's normals.</summary>
     private const float FlapMove = 0.015f;
@@ -170,6 +174,9 @@ public partial class PatientBody {
     private Vector3[] _skinOf = [];
     private Vector3[][] _pointOf = [[], [], []];
     private Vector3[] _outward = [];
+    /// <summary>Per grid point: how far its fat hangs upright rather than along the skin's normal (0..1), as captured
+    /// for the layers: under a lip lifted off the muscle (Outward()).</summary>
+    private float[] _fatUpright = [];
     private Vector3[] _normal = [];
     /// <summary>
     /// Where each grid point's skin lies on the body model (site space). The layers are drawn from these, not from where
@@ -478,6 +485,9 @@ public partial class PatientBody {
         Tissue.CaptureGripLift(_renderGrip);
         foreach (var k in _around) {
             _renderMoved[k] = Moved(k);
+            _fatUpright[k] = LayersApart(k)
+                ? Mathf.SmoothStep(0f, FatThickness, Follow(0, k, _renderMoved[k]).Rise - Follow(2, k, _renderMoved[k]).Rise)
+                : 0f;
         }
         for (var layer = 0; layer < 3; layer++) {
             Buffers.Sized(ref _renderPoints[layer], Tissue.Pos.Length);
@@ -570,6 +580,7 @@ public partial class PatientBody {
             _pointOf = [new Vector3[count], new Vector3[count], new Vector3[count]];
             _skinOf = new Vector3[count];
             _outward = new Vector3[count];
+            _fatUpright = new float[count];
             _normal = new Vector3[count];
         }
         if (_xmap.Length < Tissue.SpringCount * 2) {
@@ -1486,6 +1497,11 @@ public partial class PatientBody {
     /// </summary>
     private Vector3 Outward(int layer, int k) {
         if (_renderTurnover) { return _outward[k]; }
+        if (layer == 1 && _fatUpright[k] > 0f) {
+            // Under a lip lifted off the muscle the fat hangs upright: along the skin's normal, columns under its tight
+            // bends would converge and fold the fat over itself.
+            return _outward[k].Slerp(Vector3.Up, _fatUpright[k]).Normalized();
+        }
         return float.IsPositiveInfinity(LayerTether[layer]) ? _outward[k] : Vector3.Up;
     }
 
@@ -1749,8 +1765,8 @@ public partial class PatientBody {
     /// rests, moved as far as the sim moved it (Moved()). The skin and its fat move as one. The muscle slides along
     /// only as far as its tether lets it (LayerTether) and stays down on its bed while the skin lifts off it, so a
     /// pull on whole skin slides the skin over it. Beside a cut through it the muscle is cut free and goes with the
-    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle along the
-    /// body. Lifted, the skin and its fat come up off the muscle together, as they would along the loose plane over its
+    /// skin further (TissueSim.Freed(), <see cref="FreedMuscleSlide"/>): the wound's edge moves as one block of skin,
+    /// fat and muscle along the body. Lifted, the skin and its fat come up off the muscle together, as they would along the loose plane over its
     /// fascia: the muscle rises with them only <see cref="MuscleLift"/>, so a wound's edge held up shows the muscle's cut
     /// edge under it. A flap turned right over takes everything.
     /// </summary>
@@ -1784,7 +1800,8 @@ public partial class PatientBody {
         var turned = tethered ? TurnedAmount(k, moved, Tissue.TurningFlap) : 1f;
         var freed = tethered ? Mathf.Max(Tissue.Freed(LayerDepth[layer], k), turned) : 1f;
         var slide = moved with { Y = 0f };
-        var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
+        var tether = turned >= 0.999f || !tethered ? float.PositiveInfinity
+            : Mathf.Lerp(LayerTether[layer], FreedMuscleSlide, Tissue.Freed(LayerDepth[layer], k)) / (1f - turned);
         var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
         var rise = moved.Y * Mathf.Max(freed, follow);
         return (slide * follow, follow, Mathf.Lerp(Mathf.Min(rise, MuscleLift), rise, turned));
