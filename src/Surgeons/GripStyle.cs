@@ -31,6 +31,9 @@ public sealed record GripStyle(
         // Wrapped around a handle that runs across the palm, thumb toward the tip, knuckles on top.
         ["fist"] = new(new(new(0f, -1f, 0f), new(1f, 0f, 0f), new(0f, 0f, 1f)),
             new(0.06f, -0.026f, 0f), Vector3.Zero, [1f, 1f, 1f, 1f, 0.8f]),
+        // A paddle's bridge runs across Y behind its contact face: fingers curl toward the plate around that bridge.
+        ["paddle"] = new(new(new(0f, 0f, -1f), new(1f, 0f, 0f), new(0f, -1f, 0f)),
+            new(0.12f, -0.026f, 0f), Vector3.Zero, [1f, 1f, 1f, 1f, 0.8f], WorkTilt: -Mathf.Pi / 2f),
         // A syringe, ready to inject: the index and middle fingers hooked over its finger grip, the thumb on the plunger
         // (see SurgeonHand.ReachPlunger()). The barrel runs from the thumb across under the fingers, so the hand holds it
         // from the outer side and behind, its printed scale up toward the eyes.

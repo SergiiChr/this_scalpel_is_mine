@@ -389,11 +389,57 @@ def _thermos(m: Model, length: float) -> None:
 
 
 def _paddle(m: Model, length: float) -> None:
-    m.add("Handle", superellipsoid((0.035, 0.06, 0.05), 0.4, (0.0, 0.02, 0.0)), "black_plastic")
-    plate = superellipsoid((0.08, 0.012, 0.09), 0.25, (0.0, -0.02, -length + 0.045))
-    m.add("Plate", plate, "chrome")
-    m.add("Housing", superellipsoid((0.085, 0.025, 0.1), 0.35, (0.0, -0.005, -length + 0.05)), "yellow_plastic")
-    m.add("Light", ellipsoid((0.006, 0.004, 0.006), (0.0, 0.052, 0.0)), "flame", (0.0, 0.052, 0.0))
+    """Compact defibrillator paddle with a transverse bridge handle and a broad electrode at -length."""
+    outline = [
+        (-0.026, -0.052),
+        (0.026, -0.052),
+        (0.038, -0.046),
+        (0.043, -0.034),
+        (0.043, 0.034),
+        (0.038, 0.046),
+        (0.026, 0.052),
+        (-0.026, 0.052),
+        (-0.038, 0.046),
+        (-0.043, 0.034),
+        (-0.043, -0.034),
+        (-0.038, -0.046),
+    ]
+    plate = extrude(outline, 0.002)
+    plate.apply_translation((0.0, 0.0, -length + 0.001))
+    plate = finish(plate)
+    plate.unmerge_vertices()
+    m.add("Plate", plate, "steel")
+    m.add("Housing", superellipsoid((0.092, 0.112, 0.013), 0.22, (0.0, 0.0, -length + 0.0085), detail=16), "black_plastic")
+
+    # Two short supports leave an open finger well behind the broad plate.
+    supports = [superellipsoid((0.029, 0.025, 0.049), 0.3, (0.0, y, -length + 0.036), detail=10) for y in (-0.040, 0.040)]
+    m.add("Bridge", merge(*supports), "black_plastic")
+    m.add(
+        "Handle",
+        tube(
+            [(0.0, -0.043, 0.0), (0.0, -0.034, 0.0), (0.0, 0.034, 0.0), (0.0, 0.043, 0.0)],
+            [(0.010, 0.011), (0.012, 0.014), (0.012, 0.014), (0.010, 0.011)],
+            ring=16,
+            exponent=3.0,
+            smooth=3,
+        ),
+        "black_plastic",
+    )
+    m.add("Button", superellipsoid((0.014, 0.011, 0.004), 0.35, (0.0, 0.039, 0.016), detail=8), "orange_plastic")
+    m.add("Light", ellipsoid((0.002, 0.002, 0.001), (0.004, 0.039, 0.0195), subdivisions=1), "flame", (0.004, 0.039, 0.0195))
+    lead = [
+        (0.0, -0.046, -0.012),
+        (0.0, -0.063, -0.012),
+        (0.003, -0.078, -0.014),
+        (0.014, -0.088, -0.018),
+        (0.025, -0.087, -0.021),
+        (0.031, -0.078, -0.023),
+        (0.027, -0.071, -0.025),
+        (0.019, -0.073, -0.026),
+        (0.018, -0.081, -0.027),
+        (0.025, -0.094, -0.029),
+    ]
+    m.add("Cord", tube(lead, [(0.0023, 0.0023)] * len(lead), ring=8, smooth=3), "rubber")
 
 
 def _saw(m: Model, length: float, powered: bool) -> None:
