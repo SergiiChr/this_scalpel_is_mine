@@ -179,11 +179,47 @@ def _pistol_stapler(m: Model, length: float, office: bool) -> None:
         top = superellipsoid((0.03, 0.014, length * 0.95), 0.35, (0.0, 0.004, -length * 0.5))
         m.add("Trigger", top, "dark_steel", (0.0, 0.0, 0.0))
         return
-    body = superellipsoid((0.03, 0.05, length * 0.8), 0.4, (0.0, 0.01, -length * 0.45))
-    nose = superellipsoid((0.02, 0.018, 0.03), 0.4, (0.0, -0.005, -length + 0.012))
-    m.add("Body", merge(body, nose), "blue_plastic")
-    trigger = superellipsoid((0.018, 0.05, 0.016), 0.4, (0.0, -0.035, -0.02))
-    m.add("Trigger", trigger, "plastic", (0.0, -0.01, -0.02))
+
+    # The approved proposal is modeled at 0.12 m. Scale its Z coordinates with the configured tool length so
+    # the forming shoe stays at the gameplay endpoint when that length changes.
+    z_scale = length / 0.12
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    body = tube(
+        [(0, 0.005, 0.024), (0, 0.013, 0.012), (0, 0.014, -0.035), (0, 0.008, -0.064), (0, 0.001, -0.082)],
+        [(0.010, 0.011), (0.019, 0.022), (0.018, 0.020), (0.013, 0.014), (0.009, 0.009)],
+        ring=16,
+        exponent=3.5,
+        smooth=3,
+    )
+    m.add("Body", scaled_z(body), "plastic")
+    cartridge = superellipsoid((0.018, 0.015, 0.044), 0.23, (0, -0.0015, -0.091), detail=10)
+    m.add("Cartridge", scaled_z(cartridge), "plastic")
+    channel = superellipsoid((0.014, 0.003, 0.038), 0.2, (0, -0.008, -0.091), detail=8)
+    m.add("Channel", scaled_z(channel), "dark_steel")
+    shoe = extrude(
+        [(-0.007, -0.005), (0.007, -0.005), (0.007, 0.004), (0.003, 0.004), (0.003, -0.001), (-0.003, -0.001), (-0.003, 0.004), (-0.007, 0.004)],
+        0.003,
+    )
+    shoe = moved(finish(shoe), (0, 0, -0.1185))
+    shoe.unmerge_vertices()
+    supports = [superellipsoid((0.003, 0.009, 0.011), 0.2, (x, -0.0005, -0.112), detail=6) for x in (-0.0055, 0.0055)]
+    m.add("Anvil", scaled_z(merge(shoe, *supports)), "steel")
+    lever = tube(
+        [(0, -0.012, -0.068), (0, -0.028, -0.055), (0, -0.047, -0.015), (0, -0.044, 0.012)],
+        [(0.008, 0.005), (0.013, 0.006), (0.014, 0.007), (0.010, 0.005)],
+        ring=12,
+        exponent=3,
+        smooth=3,
+    )
+    trigger_pivot = (0, -0.010, -0.070 * z_scale)
+    m.add("Trigger", scaled_z(lever), "blue_plastic", trigger_pivot)
+    hinge = superellipsoid((0.022, 0.009, 0.010), 0.5, (0, -0.010, -0.068), detail=8)
+    m.add("Hinge", scaled_z(hinge), "blue_plastic")
+    grip = superellipsoid((0.034, 0.003, 0.039), 0.3, (0, 0.034, -0.010), detail=10)
+    m.add("GripPad", scaled_z(grip), "blue_plastic")
 
 
 def _tape(m: Model, length: float, color: str) -> None:
