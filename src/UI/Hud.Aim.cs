@@ -133,9 +133,14 @@ public partial class Hud {
         switch (action) {
             case "cut":
                 // Laid on the skin from end to end, so it shows where the edge comes down.
-                var edge = ToolActions.BladeDirection(tool!) * BladeLine * 0.5f;
+                var direction = ToolActions.BladeDirection(tool!);
+                var edge = direction * BladeLine * 0.5f;
                 var hand = me.Hands[me.Active];
                 Vector3[] line = [me.OnSurface(aim - edge), aim, me.OnSurface(aim + edge)];
+                // Where the blade will cross the skin pressed in at its level: tilted, it cuts behind its buried point.
+                if (BladeSpan(me, tool!, aim, direction) is { } span) {
+                    line = [span.From, span.From.Lerp(span.To, 0.5f), span.To];
+                }
                 // Every point must land on the patient nearby: a blade crossing an arm's edge must not
                 // stretch its mark down onto the floor or the table.
                 _blade.Visible = line.All(point => me.SurfaceBelow(point, false).Soft
@@ -161,6 +166,18 @@ public partial class Hud {
         _levels.Text = levels;
         _levels.Visible = levels.Length > 0;
         _levels.Position = at + new Vector2(14f, 12f);
+    }
+
+    /// <summary>The ends (world) of where the held blade crosses the skin, pressed in at its level (at least the first)
+    /// if it isn't yet, or null where it doesn't reach skin.</summary>
+    private (Vector3 From, Vector3 To)? BladeSpan(Surgeon me, SurgicalTool tool, Vector3 aim, Vector3 direction) {
+        var body = Surgery.Patient.Body;
+        var hand = me.Hands[me.Active];
+        var drop = hand.Lowered ? 0f : tool.TipPosition().Y - (aim.Y - Surgeon.PressDepth(Math.Max(hand.Level, 1)));
+        var pose = tool.GlobalTransform.Translated(Vector3.Down * drop);
+        return tool.Blade?.SkinSpan(body, pose, direction) is { } span
+            ? (body.Site.ToGlobal(span.From), body.Site.ToGlobal(span.To))
+            : null;
     }
 
     /// <summary>The vial a held syringe's needle is in or just over, so its label shows before drawing from it.</summary>

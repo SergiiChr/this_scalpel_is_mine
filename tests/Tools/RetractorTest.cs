@@ -51,6 +51,14 @@ public class RetractorTest {
         var lipsBefore = Lips(driver, middle);
         var wounds = patient.Wounds.Count;
 
+        // Held over the opening, the hook stays up at the lip where it can be aimed at an edge, not down inside.
+        var over = driver.SitePoint(middle);
+        var held = (await driver.PlayerRequestsItem("retractor"))!;
+        await driver.PlayerWalksTo(over);
+        await driver.PlayerReaches(over);
+        AssertFloat(held.TipPosition().Y - over.Y)
+            .OverrideFailureMessage($"held over the cut, the retractor's hook stays at its lip ({(held.TipPosition().Y - over.Y) * 1000f:0.0} mm above the skin)")
+            .IsGreater(-0.003f);
         var hookAt = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff)));
         var retractor = await Hook(driver, hookAt, "retractor");
         var hand = driver.Me.Hands[driver.Me.Active];
@@ -128,6 +136,14 @@ public class RetractorTest {
         await driver.PlayerCutsSkin(from, to, 2);
         await driver.PlayerPutsDown();
         await Frames.Seconds(1f);
+        // Held over the opening, the hook stays up at the lip where it can be aimed at an edge, not down inside.
+        var over = driver.SitePoint(middle);
+        var held = (await driver.PlayerRequestsItem("retractor"))!;
+        await driver.PlayerWalksTo(over);
+        await driver.PlayerReaches(over);
+        AssertFloat(held.TipPosition().Y - over.Y)
+            .OverrideFailureMessage($"held over the cut, the retractor's hook stays at its lip ({(held.TipPosition().Y - over.Y) * 1000f:0.0} mm above the skin)")
+            .IsGreater(-0.003f);
         var hookAt = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff)));
         var retractor = await Hook(driver, hookAt, "retractor");
         var hand = driver.Me.Hands[driver.Me.Active];

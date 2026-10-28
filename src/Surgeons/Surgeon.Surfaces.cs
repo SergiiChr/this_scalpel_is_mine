@@ -122,6 +122,9 @@ public partial class Surgeon {
     /// Rests the tool tip just above whatever is under it. Lowered onto skin, it touches and presses in by effort level.
     /// Then keeps the hand within reach: far out, or down at the floor while standing, it stops short in the air.
     /// </summary>
+    /// <summary>How far (meters) a lowered tip presses into skin at effort <paramref name="level"/>.</summary>
+    internal static float PressDepth(int level) => 0.002f + (level * 0.004f);
+
     private void Constrain(SurgeonHand hand) {
         var tool = HeldTool(hand.Index);
         var offset = tool is not null ? hand.TipOffset(tool.Def.Length) : new Vector3(0f, -0.03f, 0f);
@@ -159,13 +162,16 @@ public partial class Surgeon {
                 var gap = !hand.Lowered || tool is null ? hover
                     : tool.Def.Action == "cut" ? BladeInOpening[hand.Level]
                     : 0.001f;
+                // A hook stays up at the lip, where it takes the cut's edge: dropped onto what's inside, there'd be nowhere
+                // to aim it at the edge from.
+                var hook = tool is not null && ToolActions.SkinHooks.Contains(tool.Def.Id);
                 // Forceps held at a depth stay there, lowered or not, but never into what's inside.
-                var floor = surface.Y + gap;
+                var floor = (hook ? Mathf.Max(surface.Lip, surface.Y) : surface.Y) + gap;
                 var tip = hand.HeldDepth is { } depth ? Mathf.Max(surface.Lip - depth, floor) : floor;
                 target.Y = tip - offset.Y;
             } else if (hand.Lowered && surface.Soft) {
                 // Skin gives: a lowered tip presses into it, deeper with effort.
-                target.Y = surface.Y - 0.002f - (hand.Level * 0.004f) - offset.Y;
+                target.Y = surface.Y - PressDepth(hand.Level) - offset.Y;
             } else if (surface.Soft && IsNeedle(tool)) {
                 // A needle over skin (or a glove) rests by its tip alone: its box reaches below the thin needle and would
                 // hold the tip well off the aim.
