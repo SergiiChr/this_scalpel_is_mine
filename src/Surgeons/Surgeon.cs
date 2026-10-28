@@ -73,7 +73,7 @@ public partial class Surgeon : CharacterBody3D {
     private const float CrouchSpeed = 0.35f;
     /// <summary>Zoom steps, cycled by the zoom key: camera field of view, widest first. Hand motion scales with the
     /// magnification, so the hand crosses the screen as fast at every step.</summary>
-    public static readonly float[] ZoomFov = [70f, 35f];
+    public static readonly float[] ZoomFov = [70f, 24f];
     /// <summary>How far in front of the eyes a tool is held up to look at it (Inspect).</summary>
     private const float InspectDistance = 0.26f;
     /// <summary>Tools whose needle the last zoom step frames: a syringe and the IV catheter.</summary>

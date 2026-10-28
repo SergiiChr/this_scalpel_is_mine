@@ -9,13 +9,13 @@ namespace Scalpel.Surgeons;
 /// </summary>
 public partial class Surgeon {
     /// <summary>Farthest the torso bends forward over the patient (radians).</summary>
-    internal const float MaxLean = 0.7f;
+    internal const float MaxLean = 0.9f;
     /// <summary>Leaning in, the eyes stop this far (m, across the floor) short of right over the spot they look at: the
     /// view goes down into the opening steeply, not straight down onto the back of the hand.</summary>
-    private const float LeanSetback = 0.1f;
+    private const float LeanSetback = 0.05f;
     /// <summary>Leaning in keeps the eyes at least this far (m) above the skin they look at, clear of the drapes, the
     /// organs and the tools in an opening.</summary>
-    internal const float LeanClearance = 0.3f;
+    internal const float LeanClearance = 0.22f;
     /// <summary>The hand off the patient this long (seconds), the surgeon straightens up: a hand passing over a gap
     /// between drapes or reaching off the side for a moment doesn't bob the view.</summary>
     private const float LeanGrace = 1f;
