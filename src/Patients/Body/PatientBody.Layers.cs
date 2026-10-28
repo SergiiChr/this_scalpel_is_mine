@@ -95,13 +95,6 @@ public partial class PatientBody {
         /// <summary>The last plan's neighbour lists, refilled by SheetNeighbours().</summary>
         public List<int>[] SpareNeighbours { get; private set; } = [];
 
-        /// <summary>Lip neighbour lists the last plans used, for the next to take (<see cref="LipList"/>): the layers are
-        /// planned again as the skin moves about, a list for every lip vertex each time.</summary>
-        private readonly Stack<List<int>> _lipLists = new();
-
-        /// <summary>An empty list for a lip vertex's neighbours, one a last plan used if there is one.</summary>
-        public List<int> LipList() => _lipLists.TryPop(out var list) ? list : [];
-
         /// <summary>Empties the plan for the next topology, keeping what it allocated: the layers are planned again
         /// on every staple, stitch or cut, and fresh plans were the largest garbage of those frames.</summary>
         public void Clear() {
@@ -120,10 +113,6 @@ public partial class PatientBody {
             Ends.Clear();
             EndTapers.Clear();
             RefinedOf.Clear();
-            foreach (var lip in Lip.Values) {
-                lip.Clear();
-                _lipLists.Push(lip);
-            }
             Lip.Clear();
             MidpointOf.Clear();
             OppositeLip.Clear();
@@ -873,7 +862,7 @@ public partial class PatientBody {
     /// <summary>Notes <paramref name="next"/> as a neighbour of <paramref name="here"/> along a lip.</summary>
     private static void AddLipNeighbour(LayerPlan plan, int here, int next) {
         if (!plan.Lip.TryGetValue(here, out var neighbours)) {
-            neighbours = plan.LipList();
+            neighbours = [];
             plan.Lip[here] = neighbours;
         }
         if (!neighbours.Contains(next)) {
