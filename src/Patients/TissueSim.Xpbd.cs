@@ -15,6 +15,9 @@ public sealed partial class TissueSim {
     /// <summary>A tissue spring's compliance (m/N for a unit-mass grid): how far it gives under a pull. 0 would be
     /// inextensible; skin stretches noticeably before it tears.</summary>
     private const float XpbdStretch = 0.00002f;
+    /// <summary>A tissue spring's compliance pressed shorter: skin hardly resists being squeezed, it gathers. A cut's
+    /// lips draw back into the skin behind them, between two cuts as well.</summary>
+    private const float XpbdSqueeze = 0.002f;
     /// <summary>How readily the skin slides along its bed (compliance of each point's tether along the body), and how
     /// readily it lifts off it (along the normal): lifted, it sinks back once let go. Much softer, skin a grip pushes
     /// ahead of it buckles up off the bed in a crumple instead of sliding along it.</summary>
@@ -25,6 +28,8 @@ public sealed partial class TissueSim {
     private const float XpbdBesideCut = 36f;
     /// <summary>How far (meters) a cut's lip drawn on past where the cut settles it is still held there firmly.</summary>
     private const float XpbdLipHold = 0.003f;
+    /// <summary>How many grid steps around a stitch's ends the skin follows the stitch rather than the cut.</summary>
+    private const int XpbdSewnReach = 2;
     /// <summary>How readily the skin bends (compliance of the curvature along each row, column and diagonal of the grid):
     /// a lifted lip rises in a rounded arch, not a peak, without lifting the skin across the cut with it.</summary>
     private const float XpbdBend = 0.002f;
@@ -37,6 +42,9 @@ public sealed partial class TissueSim {
     /// <summary>Each point's bend multipliers for this step, four to a point: along its row, its column and its two
     /// diagonals.</summary>
     private float[] _bendLambda = [];
+    /// <summary>Points a stitch, staple or strip holds this step, and the skin around them: the closure, not the cut,
+    /// says where they go.</summary>
+    private bool[] _sewn = [];
 
     private void BeginXpbdStep() {
         if (_lambda.Length < _springs.Length) {
@@ -45,6 +53,21 @@ public sealed partial class TissueSim {
         if (_tetherLambda.Length != Pos.Length) {
             _tetherLambda = new Vector3[Pos.Length];
             _bendLambda = new float[Pos.Length * 4];
+            _sewn = new bool[Pos.Length];
+        }
+        Array.Clear(_sewn);
+        foreach (var s in _stitches) {
+            if (!_springs[s].Active) {
+                continue;
+            }
+            foreach (var end in (ReadOnlySpan<int>)[_springs[s].A, _springs[s].B]) {
+                var at = CellOf(end);
+                for (var j = Math.Max(at.Y - XpbdSewnReach, 0); j <= Math.Min(at.Y + XpbdSewnReach, ResY); j++) {
+                    for (var i = Math.Max(at.X - XpbdSewnReach, 0); i <= Math.Min(at.X + XpbdSewnReach, ResX); i++) {
+                        _sewn[Index(i, j)] = true;
+                    }
+                }
+            }
         }
         foreach (var s in WindowSprings) {
             _lambda[s] = 0f;
@@ -58,15 +81,16 @@ public sealed partial class TissueSim {
         }
     }
 
-    /// <summary>One XPBD iteration: grips, springs, stitches, the cut's edges, the bed.</summary>
+    /// <summary>One XPBD iteration: grips, springs, stitches, bending, the cut's edges, the bed.</summary>
     private void XpbdIteration() {
         foreach (var pin in _pins.Values) {
             DragPatch(pin);
         }
         var stretch = XpbdStretch / (Step * Step);
+        var squeeze = XpbdSqueeze / (Step * Step);
         var count = WindowSprings.Length;
         for (var n = 0; n < count; n++) {
-            SolveCompliant(WindowSprings[n], stretch);
+            SolveCompliant(WindowSprings[n], stretch, squeeze);
         }
         for (var pass = 0; pass <= StitchPasses; pass++) {
             foreach (var s in _stitches) {
@@ -80,9 +104,9 @@ public sealed partial class TissueSim {
         StayAboveFloor();
     }
 
-    /// <summary>Spring s as an XPBD distance constraint with compliance <paramref name="alpha"/> (already divided by
-    /// the step squared).</summary>
-    private void SolveCompliant(int s, float alpha) {
+    /// <summary>Spring s as an XPBD distance constraint with compliance <paramref name="alpha"/> stretched and
+    /// <paramref name="shorter"/> squeezed (both already divided by the step squared).</summary>
+    private void SolveCompliant(int s, float alpha, float shorter) {
         ref readonly var spring = ref _springs[s];
         if (!spring.Active || Resting(s)) {
             return;
@@ -98,6 +122,9 @@ public sealed partial class TissueSim {
             return;
         }
         var c = length - spring.Rest;
+        if (c < 0f) {
+            alpha = shorter;
+        }
         var delta = (-c - (alpha * _lambda[s])) / (wa + wb + alpha);
         _lambda[s] += delta;
         var correction = d * (delta / length);
@@ -186,9 +213,9 @@ public sealed partial class TissueSim {
             // it gives as readily as the skin beside it.
             var length = along.Length();
             var beside = XpbdBesideCut;
-            if (_anchor[k] > Anchor) {
+            if (_anchor[k] > Anchor && !_sewn[k]) {
                 var past = Pos[k].DistanceTo(Rest[k]) - _anchorTarget[k].DistanceTo(Rest[k]);
-                beside = Mathf.Lerp(Anchor / _anchor[k], XpbdBesideCut, Mathf.SmoothStep(0f, XpbdLipHold, past));
+                beside = Mathf.Lerp(1f, XpbdBesideCut, Mathf.SmoothStep(0f, XpbdLipHold, past));
             }
             var alpha = slide * loose * beside;
             if (length > 0.000001f) {

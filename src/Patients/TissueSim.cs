@@ -106,6 +106,8 @@ public sealed partial class TissueSim {
     public const float Anchor = 0.02f;
     /// <summary>Skin pulled this far (meters) from its spot isn't held there any more, see Substep().</summary>
     public const float AnchorReach = 0.05f;
+    /// <summary>The farthest (meters) a grip draws its skin in a solver step (XPBD).</summary>
+    private const float GripStep = 0.001f;
     /// <summary>A cut's edge lifted this far (meters) off its spot isn't drawn back from the cut any more.</summary>
     public const float LiftedOff = 0.005f;
     /// <summary>How far each edge of a cut is drawn back from it (meters) by cut depth (none, skin, fat, muscle), and
@@ -302,6 +304,9 @@ public sealed partial class TissueSim {
     private sealed class Pin(int particle, Vector3 target) {
         public int Particle { get; } = particle;
         public Vector3 Target { get; set; } = target;
+        /// <summary>Where the grip has drawn its skin to this step: on its way to Target, never further in a step than
+        /// the skin follows (see <see cref="GripStep"/>).</summary>
+        public Vector3 Drawn { get; set; } = target;
         /// <summary>The skin's position when this grip took hold. Planar resistance and reversal share that origin,
         /// just as the strain is measured from acquisition, rather than an anchor displaced by the wound's gape.</summary>
         public Vector3 Origin { get; init; } = target;
@@ -1878,6 +1883,9 @@ public sealed partial class TissueSim {
         foreach (var (key, pin) in _pins) {
             _free[pin.Particle] = 0f;
             _handHolds |= key >= 0;
+            // A grip moved a long way at once (set down elsewhere, or by the host) draws its skin there over a few steps:
+            // all at once, the skin between it and a cut's edge would carry the whole jump across the cut in one step.
+            pin.Drawn = Xpbd ? pin.Drawn.MoveToward(pin.Target, GripStep) : pin.Target;
         }
         UpdateFoldState();
         TrackTurned();
@@ -1979,14 +1987,14 @@ public sealed partial class TissueSim {
             pin.BaseAt = Pos[k];
             pin.BaseFor = TopologyVersion;
         }
-        Pos[k] = pin.Target;
-        var pull = pin.Target - _anchorTarget[k];
+        Pos[k] = pin.Drawn;
+        var pull = pin.Drawn - _anchorTarget[k];
         Hold(k);
         var drag = GripDrag * Mathf.Clamp(2f - pull.Length() / DragReach, 0f, 1f);
         if (drag <= 0f) {
             return;
         }
-        var shift = pin.Target - pin.BaseAt;
+        var shift = pin.Drawn - pin.BaseAt;
         var push = new Vector2(shift.X, shift.Z);
         var pushed = push.Length();
         var way = pushed > 0.0001f ? push / pushed : Vector2.Zero;

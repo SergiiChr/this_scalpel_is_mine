@@ -77,7 +77,7 @@ public class StaplerTest {
         AssertFloat(closedGap)
             .OverrideFailureMessage($"and its edges meet under it ({closedGap * 1000f:0.0} mm, were {gap * 1000f:0.0} mm)")
             .IsLess(gap * 0.5f);
-        AssertFloat(wound.Closure).OverrideFailureMessage("one staple closes a bit of the cut").IsBetween(0.01f, 0.5f);
+        AssertFloat(wound.Closure).OverrideFailureMessage($"one staple closes a bit of the cut ({wound.Closure:0.00})").IsBetween(0.01f, 0.5f);
         var bloodAfter = body.BloodAt(wound.Midpoint);
         AssertFloat(bloodAfter).OverrideFailureMessage(
                 $"the staple squeezes blood aside but leaves a stain on the seam ({bloodAfter:0.00}, was {bloodBefore:0.00})")
