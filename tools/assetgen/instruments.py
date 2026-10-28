@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from shapely.geometry import Polygon
 
 from .geometry import Model, cylinder, ellipsoid, extrude, finish, lathe, merge, moved, rotated, scaled, superellipsoid, torus, tube
 
@@ -178,11 +179,47 @@ def _pistol_stapler(m: Model, length: float, office: bool) -> None:
         top = superellipsoid((0.03, 0.014, length * 0.95), 0.35, (0.0, 0.004, -length * 0.5))
         m.add("Trigger", top, "dark_steel", (0.0, 0.0, 0.0))
         return
-    body = superellipsoid((0.03, 0.05, length * 0.8), 0.4, (0.0, 0.01, -length * 0.45))
-    nose = superellipsoid((0.02, 0.018, 0.03), 0.4, (0.0, -0.005, -length + 0.012))
-    m.add("Body", merge(body, nose), "blue_plastic")
-    trigger = superellipsoid((0.018, 0.05, 0.016), 0.4, (0.0, -0.035, -0.02))
-    m.add("Trigger", trigger, "plastic", (0.0, -0.01, -0.02))
+
+    # The approved proposal is modeled at 0.12 m. Scale its Z coordinates with the configured tool length so
+    # the forming shoe stays at the gameplay endpoint when that length changes.
+    z_scale = length / 0.12
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    body = tube(
+        [(0, 0.005, 0.024), (0, 0.013, 0.012), (0, 0.014, -0.035), (0, 0.008, -0.064), (0, 0.001, -0.082)],
+        [(0.010, 0.011), (0.019, 0.022), (0.018, 0.020), (0.013, 0.014), (0.009, 0.009)],
+        ring=16,
+        exponent=3.5,
+        smooth=3,
+    )
+    m.add("Body", scaled_z(body), "plastic")
+    cartridge = superellipsoid((0.018, 0.015, 0.044), 0.23, (0, -0.0015, -0.091), detail=10)
+    m.add("Cartridge", scaled_z(cartridge), "plastic")
+    channel = superellipsoid((0.014, 0.003, 0.038), 0.2, (0, -0.008, -0.091), detail=8)
+    m.add("Channel", scaled_z(channel), "dark_steel")
+    shoe = extrude(
+        [(-0.007, -0.005), (0.007, -0.005), (0.007, 0.004), (0.003, 0.004), (0.003, -0.001), (-0.003, -0.001), (-0.003, 0.004), (-0.007, 0.004)],
+        0.003,
+    )
+    shoe = moved(finish(shoe), (0, 0, -0.1185))
+    shoe.unmerge_vertices()
+    supports = [superellipsoid((0.003, 0.009, 0.011), 0.2, (x, -0.0005, -0.112), detail=6) for x in (-0.0055, 0.0055)]
+    m.add("Anvil", scaled_z(merge(shoe, *supports)), "steel")
+    lever = tube(
+        [(0, -0.012, -0.068), (0, -0.028, -0.055), (0, -0.047, -0.015), (0, -0.044, 0.012)],
+        [(0.008, 0.005), (0.013, 0.006), (0.014, 0.007), (0.010, 0.005)],
+        ring=12,
+        exponent=3,
+        smooth=3,
+    )
+    trigger_pivot = (0, -0.010, -0.070 * z_scale)
+    m.add("Trigger", scaled_z(lever), "blue_plastic", trigger_pivot)
+    hinge = superellipsoid((0.022, 0.009, 0.010), 0.5, (0, -0.010, -0.068), detail=8)
+    m.add("Hinge", scaled_z(hinge), "blue_plastic")
+    grip = superellipsoid((0.034, 0.003, 0.039), 0.3, (0, 0.034, -0.010), detail=10)
+    m.add("GripPad", scaled_z(grip), "blue_plastic")
 
 
 def _tape(m: Model, length: float, color: str) -> None:
@@ -191,7 +228,7 @@ def _tape(m: Model, length: float, color: str) -> None:
     m.add("Roll", moved(merge(rotated(roll, np.pi / 2, Z), tail), (0.0, 0.0, -length * 0.5)), color)
 
 
-def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
+def _pen(m: Model, length: float, body: str, tip: str) -> None:
     m.add(
         "Body",
         tube([(0.0, 0.0, 0.04), (0.0, 0.0, -length * 0.4), (0.0, 0.0, -length * 0.8)], [(0.006, 0.006), (0.0065, 0.0065), (0.005, 0.005)], ring=16),
@@ -203,9 +240,59 @@ def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
         tip,
         (0.0, 0.0, -length * 0.8),
     )
-    if glow:
-        m.add("Glow", ellipsoid((0.003, 0.003, 0.003), (0.0, 0.0, -length)), "flame", (0.0, 0.0, -length))
-        m.add("Button", superellipsoid((0.004, 0.003, 0.012), 0.4, (0.0, 0.006, -0.01)), "yellow_plastic")
+
+
+def _cautery(m: Model, length: float) -> None:
+    """A slim cautery pencil with a short steel electrode and a heat envelope hugging its tip."""
+    scale = length / 0.16
+
+    def z(value: float) -> float:
+        return value * scale
+
+    m.add(
+        "Body",
+        tube(
+            [(0.0, 0.0, z(0.040)), (0.0, 0.0, z(0.032)), (0.0, 0.0, z(-0.015)), (0.0, 0.0, z(-0.055))],
+            [(0.0035, 0.0045), (0.0048, 0.006), (0.005, 0.0065), (0.0048, 0.006)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add(
+        "Grip",
+        tube(
+            [(0.0, 0.0, z(-0.055)), (0.0, 0.0, z(-0.068)), (0.0, 0.0, z(-0.100))],
+            [(0.0048, 0.006), (0.0046, 0.0058), (0.0038, 0.0048)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "blue_plastic",
+    )
+    m.add(
+        "Nose",
+        tube(
+            [(0.0, 0.0, z(-0.100)), (0.0, 0.0, z(-0.112)), (0.0, 0.0, z(-0.130))],
+            [(0.0038, 0.0048), (0.0032, 0.004), (0.0017, 0.002)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add("Button", superellipsoid((0.0045, 0.0022, 0.019), 0.45, (0.0, 0.0058, z(-0.017)), detail=10), "blue_plastic")
+    electrode = extrude(
+        [(-0.0014, z(-0.144)), (0.0014, z(-0.144)), (0.0014, z(-0.158)), (0.001, z(-0.160)), (-0.001, z(-0.160)), (-0.0014, z(-0.158))],
+        0.0007,
+    )
+    electrode.vertices = electrode.vertices[:, [0, 2, 1]]
+    electrode = finish(electrode)
+    electrode.unmerge_vertices()
+    m.add("Tip", merge(cylinder(0.0012, (0.0, 0.0, z(-0.129)), (0.0, 0.0, z(-0.147)), 12), electrode), "steel", (0.0, 0.0, z(-0.130)))
+    # The glow is deliberately small and centered at the gameplay tip.
+    m.add("Glow", ellipsoid((0.0015, 0.0008, 0.002), (0.0, 0.0, z(-0.158)), subdivisions=1), "flame", (0.0, 0.0, z(-0.160)))
 
 
 # Stroke digits for printed numbers, on a 2 x 4 grid (x across, y up): crisp at a millimeter or two, like a scale print.
@@ -335,31 +422,189 @@ def _thermos(m: Model, length: float) -> None:
 
 
 def _paddle(m: Model, length: float) -> None:
-    m.add("Handle", superellipsoid((0.035, 0.06, 0.05), 0.4, (0.0, 0.02, 0.0)), "black_plastic")
-    plate = superellipsoid((0.08, 0.012, 0.09), 0.25, (0.0, -0.02, -length + 0.045))
-    m.add("Plate", plate, "chrome")
-    m.add("Housing", superellipsoid((0.085, 0.025, 0.1), 0.35, (0.0, -0.005, -length + 0.05)), "yellow_plastic")
-    m.add("Light", ellipsoid((0.006, 0.004, 0.006), (0.0, 0.052, 0.0)), "flame", (0.0, 0.052, 0.0))
+    """Compact defibrillator paddle with a transverse bridge handle and a broad electrode at -length."""
+    outline = [
+        (-0.026, -0.052),
+        (0.026, -0.052),
+        (0.038, -0.046),
+        (0.043, -0.034),
+        (0.043, 0.034),
+        (0.038, 0.046),
+        (0.026, 0.052),
+        (-0.026, 0.052),
+        (-0.038, 0.046),
+        (-0.043, 0.034),
+        (-0.043, -0.034),
+        (-0.038, -0.046),
+    ]
+    plate = extrude(outline, 0.002)
+    plate.apply_translation((0.0, 0.0, -length + 0.001))
+    plate = finish(plate)
+    plate.unmerge_vertices()
+    m.add("Plate", plate, "steel")
+    m.add("Housing", superellipsoid((0.092, 0.112, 0.013), 0.22, (0.0, 0.0, -length + 0.0085), detail=16), "black_plastic")
+
+    # Two short supports leave an open finger well behind the broad plate.
+    supports = [superellipsoid((0.029, 0.025, 0.049), 0.3, (0.0, y, -length + 0.036), detail=10) for y in (-0.040, 0.040)]
+    m.add("Bridge", merge(*supports), "black_plastic")
+    m.add(
+        "Handle",
+        tube(
+            [(0.0, -0.043, 0.0), (0.0, -0.034, 0.0), (0.0, 0.034, 0.0), (0.0, 0.043, 0.0)],
+            [(0.010, 0.011), (0.012, 0.014), (0.012, 0.014), (0.010, 0.011)],
+            ring=16,
+            exponent=3.0,
+            smooth=3,
+        ),
+        "black_plastic",
+    )
+    m.add("Button", superellipsoid((0.014, 0.011, 0.004), 0.35, (0.0, 0.039, 0.016), detail=8), "orange_plastic")
+    m.add("Light", ellipsoid((0.002, 0.002, 0.001), (0.004, 0.039, 0.0195), subdivisions=1), "flame", (0.004, 0.039, 0.0195))
+    lead = [
+        (0.0, -0.046, -0.012),
+        (0.0, -0.063, -0.012),
+        (0.003, -0.078, -0.014),
+        (0.014, -0.088, -0.018),
+        (0.025, -0.087, -0.021),
+        (0.031, -0.078, -0.023),
+        (0.027, -0.071, -0.025),
+        (0.019, -0.073, -0.026),
+        (0.018, -0.081, -0.027),
+        (0.025, -0.094, -0.029),
+    ]
+    m.add("Cord", tube(lead, [(0.0023, 0.0023)] * len(lead), ring=8, smooth=3), "rubber")
 
 
 def _saw(m: Model, length: float, powered: bool) -> None:
     if powered:
-        m.add("Body", superellipsoid((0.05, 0.06, length * 0.7), 0.4, (0.0, 0.0, -length * 0.3)), "yellow_plastic")
-        m.add("Grip", superellipsoid((0.04, 0.045, 0.1), 0.4, (0.0, -0.01, 0.03)), "rubber")
-        blade = flat([(0.0, 0.012), (-0.07, 0.012), (-0.07, -0.012), (0.0, -0.012)], 0.002, "xz")
-        teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, 0.004), (-0.006, 0.0)], 0.002, "xz"), (x, 0.0, -0.07)) for x in np.linspace(-0.011, 0.008, 5)])
-        m.add("Blade", moved(merge(blade, teeth), (0.0, 0.0, -length * 0.65)), "chrome", (0.0, 0.0, -length * 0.65))
+        body = tube(
+            [(0.0, 0.003, 0.002), (0.0, 0.008, -0.030), (0.0, 0.008, -0.105), (0.0, 0.003, -0.160), (0.0, 0.0, -0.184)],
+            [(0.022, 0.022), (0.026, 0.024), (0.024, 0.021), (0.014, 0.014), (0.012, 0.011)],
+            ring=16,
+            exponent=3.5,
+            smooth=3,
+        )
+        m.add("Body", body, "plastic")
+        m.add("MotorCap", superellipsoid((0.046, 0.046, 0.018), 0.3, (0.0, 0.003, 0.002), detail=12), "blue_plastic")
+        grip = tube(
+            [(0.0, -0.008, 0.077), (0.0, -0.008, 0.068), (0.0, -0.008, 0.040), (0.0, -0.005, 0.004)],
+            [(0.011, 0.011), (0.020, 0.016), (0.022, 0.018), (0.017, 0.016)],
+            ring=16,
+            exponent=3.0,
+            smooth=3,
+        )
+        m.add("Grip", grip, "black_plastic")
+        m.add("Button", superellipsoid((0.012, 0.006, 0.026), 0.35, (0.0, 0.0365, -0.033), detail=8), "blue_plastic")
+        carrier = tube(
+            [(0.0, 0.0, -0.181), (-0.016, 0.0, -0.204), (-0.016, 0.0, -0.255)],
+            [(0.011, 0.010), (0.008, 0.006), (0.008, 0.006)],
+            ring=12,
+            smooth=3,
+        )
+        m.add("Carrier", carrier, "steel")
+        center_z, radius = -0.255, 0.045
+        m.add("Spindle", cylinder(0.006, (-0.022, 0.0, center_z), (0.006, 0.0, center_z), 20), "dark_steel")
+        m.add("Hub", cylinder(0.009, (0.001, 0.0, center_z), (0.005, 0.0, center_z), 24), "steel")
+
+        def circular_plate(outline: list[tuple[float, float]], thickness: float, holes: list[list[tuple[float, float]]] | None = None) -> trimesh.Trimesh:
+            if holes:
+                mesh = trimesh.creation.extrude_polygon(Polygon(outline, holes), thickness)
+                mesh.apply_translation((0.0, 0.0, -thickness / 2))
+            else:
+                mesh = extrude(outline, thickness)
+            mesh.vertices = mesh.vertices[:, [2, 1, 0]]
+            mesh = finish(mesh)
+            mesh.unmerge_vertices()
+            return mesh
+
+        # The 36 tooth profiles form a continuous circular blade. Its centerline is
+        # in YZ, so the Blade node rotates around X and its forward tooth reaches
+        # the tool's established gameplay tip at z=-0.30.
+        outline: list[tuple[float, float]] = []
+        pitch = 2 * np.pi / 36
+        for angle in np.arange(36) * pitch:
+            for offset, blade_radius in ((-0.35, 0.0425), (0.0, radius), (0.25, radius), (0.55, 0.0425)):
+                t = angle + offset * pitch
+                outline.append((float(center_z - blade_radius * np.cos(t)), float(blade_radius * np.sin(t))))
+        hole = [(float(center_z + 0.0065 * np.cos(t)), float(0.0065 * np.sin(t))) for t in np.linspace(0, 2 * np.pi, 32, endpoint=False)]
+        m.add("Blade", circular_plate(outline, 0.0015, [hole]), "steel", (0.0, 0.0, center_z))
+
+        # A fixed upper/rear guard leaves the leading and lower cutting arc exposed.
+        angles = np.linspace(-0.75, 1.65, 28)
+        guard = [(float(center_z + 0.052 * np.sin(t)), float(0.052 * np.cos(t))) for t in angles]
+        guard += [(float(center_z + 0.048 * np.sin(t)), float(0.048 * np.cos(t))) for t in reversed(angles)]
+        bridge = cylinder(0.0035, (-0.018, 0.007, -0.205), (0.001, 0.007, -0.205), 12)
+        m.add("Guard", merge(circular_plate(guard, 0.007), bridge), "dark_steel")
         return
-    m.add("Grip", superellipsoid((0.03, 0.06, 0.09), 0.4, (0.0, 0.0, 0.02)), "black_plastic")
-    blade = flat([(-0.02, 0.02), (-length, 0.01), (-length, -0.02), (-0.02, -0.03)], 0.0015)
-    teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, -0.006), (-0.006, 0.0)], 0.0015), (0.0, -0.02, z)) for z in np.linspace(-0.025, -length, 22)])
-    m.add("Blade", merge(blade, teeth), "steel")
+    # The fist stays at the origin; the palm swell tapers into a steel collar.
+    grip = tube(
+        [(0.0, 0.001, 0.065), (0.0, 0.001, 0.057), (0.0, -0.001, 0.025), (0.0, -0.002, -0.006), (0.0, 0.0, -0.024)],
+        [(0.01, 0.008), (0.019, 0.014), (0.022, 0.0145), (0.018, 0.012), (0.013, 0.009)],
+        ring=16,
+        exponent=3.0,
+        smooth=3,
+    )
+    m.add("Grip", grip, "black_plastic")
+    m.add("Bolster", superellipsoid((0.022, 0.034, 0.01), 0.25, (0.0, 0.0, -0.025), detail=10), "steel")
+
+    def plate(points: list[tuple[float, float]], thickness: float) -> trimesh.Trimesh:
+        # A (Z,Y) outline extruded across X: the broad face and teeth share one vertical plane.
+        mesh = extrude(points, thickness)
+        mesh.vertices = mesh.vertices[:, [2, 1, 0]]
+        return finish(mesh)
+
+    # A continuous tooth outline replaces the detached triangles. The blunt nose reaches the gameplay tip.
+    outline = [(-0.026, 0.016), (-0.048, 0.025), (-length + 0.011, 0.025), (-length + 0.001, 0.021), (-length, 0.0), (-length + 0.005, -0.021)]
+    for z in np.linspace(-length + 0.01, -0.055, 22):
+        root = -0.021 - 0.001 * ((z + length - 0.01) / (length - 0.065))
+        outline.extend([(float(z), root), (float(z + 0.0033), root - 0.0042), (float(z + 0.0061), root)])
+    outline += [(-0.042, -0.017), (-0.026, -0.01)]
+    blade = plate(outline, 0.0015)
+    tang = plate([(-0.027, 0.01), (0.041, 0.01), (0.041, -0.009), (-0.027, -0.009)], 0.003)
+    m.add("Blade", merge(blade, tang), "steel")
+    m.add("Rivet", cylinder(0.0032, (-0.0148, 0.002, 0.032), (0.0148, 0.002, 0.032), 12), "steel")
 
 
 def _hammer(m: Model, length: float) -> None:
-    m.add("Handle", rod(0.011, 0.04, -length + 0.03, sections=14), "dark_steel")
-    m.add("Grip", rod(0.014, 0.05, -0.06, sections=14), "rubber")
-    m.add("Head", cylinder(0.022, (-0.045, 0.0, -length + 0.015), (0.045, 0.0, -length + 0.015), 20), "steel")
+    """Molded orthopedic mallet with a compact crosshead at the gameplay endpoint."""
+    z_scale = length / 0.28
+
+    part_start = len(m.parts)
+    m.add(
+        "Grip",
+        tube(
+            [(0, 0, v) for v in (0.049, 0.038, -0.015, -0.060, -0.076)],
+            [(0.010, 0.012), (0.013, 0.015), (0.012, 0.014), (0.011, 0.013), (0.008, 0.009)],
+            ring=16,
+            exponent=3,
+            smooth=3,
+        ),
+        "rubber",
+    )
+    m.add(
+        "Handle",
+        tube(
+            [(0, 0, v) for v in (-0.063, -0.087, -0.190, -0.247)],
+            [(0.008, 0.008), (0.007, 0.006), (0.0065, 0.0055), (0.009, 0.008)],
+            ring=12,
+            exponent=2.5,
+            smooth=2,
+        ),
+        "dark_steel",
+    )
+    m.add("ButtCap", cylinder(0.0115, (0, 0, 0.047), (0, 0, 0.051), 16), "steel")
+    head = tube(
+        [(-0.048, 0, -0.258), (-0.043, 0, -0.258), (0.043, 0, -0.258), (0.048, 0, -0.258)],
+        [(0.019, 0.019), (0.024, 0.024), (0.024, 0.024), (0.019, 0.019)],
+        ring=20,
+        smooth=1,
+    )
+    head = head.slice_plane((0, 0, -0.28), (0, 0, 1), cap=True)
+    m.add("Head", finish(head), "steel")
+    for side, name in [(-1, "FaceL"), (1, "FaceR")]:
+        m.add(name, cylinder(0.018, (side * 0.0475, 0, -0.258), (side * 0.052, 0, -0.258), 20), "plastic")
+    for part in m.parts[part_start:]:
+        part.mesh.vertices[:, 2] *= z_scale
 
 
 def _screwdriver(m: Model, length: float) -> None:
@@ -372,12 +617,82 @@ def _screwdriver(m: Model, length: float) -> None:
 
 
 def _suction(m: Model, length: float, straw: bool) -> None:
-    pts = [(0.0, 0.0, 0.05), (0.0, 0.0, -length * 0.5), (0.0, -0.01, -length * 0.8), (0.0, -0.03, -length)]
-    radius = 0.004 if straw else 0.006
-    m.add("Tube", tube(pts, [(radius, radius)] * 4, ring=14), "steel" if straw else "clear_plastic")
-    if not straw:
-        m.add("Bulb", ellipsoid((0.006, 0.006, 0.009), (0.0, -0.032, -length)), "clear_plastic")
-        m.add("Hose", tube([(0.0, 0.0, 0.05), (0.0, -0.02, 0.1), (0.02, -0.08, 0.14)], [(0.007, 0.007)] * 3, ring=12), "clear_plastic")
+    if straw:
+        pts = [(0.0, 0.0, 0.05), (0.0, 0.0, -length * 0.5), (0.0, -0.01, -length * 0.8), (0.0, -0.03, -length)]
+        m.add("Tube", tube(pts, [(0.004, 0.004)] * 4, ring=14), "steel")
+        return
+
+    # This geometry is modeled at 0.22 m; scale its Z coordinates with the configured length so the inlet
+    # remains at the gameplay endpoint when that value changes.
+    z_scale = length / 0.22
+
+    def z(value: float) -> float:
+        return value * z_scale
+
+    m.add(
+        "Handle",
+        tube(
+            [(0.0, 0.0, z(0.049)), (0.0, 0.0, z(0.034)), (0.0, 0.0, z(-0.024)), (0.0, 0.001, z(-0.051))],
+            [(0.006, 0.006), (0.009, 0.010), (0.008, 0.009), (0.005, 0.005)],
+            ring=16,
+            exponent=2.8,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add(
+        "Tube",
+        tube(
+            [
+                (0.0, 0.001, z(-0.045)),
+                (0.0, 0.006, z(-0.090)),
+                (0.0, 0.016, z(-0.147)),
+                (0.0, 0.015, z(-0.177)),
+                (0.0, 0.004, z(-0.198)),
+                (0.0, 0.0, z(-0.203)),
+            ],
+            [(0.0048, 0.0048), (0.0045, 0.0045), (0.0043, 0.0043), (0.0042, 0.0042), (0.004, 0.004), (0.0038, 0.0038)],
+            ring=12,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    profile = [
+        (0.0038, 0.0),
+        (0.0052, z(0.004)),
+        (0.0065, z(0.009)),
+        (0.0061, z(0.013)),
+        (0.0045, z(0.018)),
+        (0.0030, z(0.018)),
+        (0.0028, z(0.013)),
+        (0.0028, 0.0),
+        (0.0038, 0.0),
+    ]
+    m.add("Bulb", along_z(lathe(profile, 20), z(-0.202)), "plastic")
+    m.add("Bore", cylinder(0.0027, (0.0, 0.0, z(-0.205)), (0.0, 0.0, z(-0.206)), 20), "rubber")
+    vent_profile = [(0.0036, 0.0), (0.0046, 0.0008), (0.0046, 0.0018), (0.0026, 0.0018), (0.0026, 0.0), (0.0036, 0.0)]
+    m.add("Vent", moved(lathe(vent_profile, 16), (0.0, 0.0092, z(-0.008))), "blue_plastic")
+    m.add("VentWell", cylinder(0.0025, (0.0, 0.0092, z(-0.008)), (0.0, 0.0097, z(-0.008)), 16), "rubber")
+    m.add(
+        "Connector",
+        tube(
+            [(0.0, 0.0, z(0.040)), (0.0, 0.0, z(0.048)), (0.0, 0.0, z(0.058))],
+            [(0.006, 0.006), (0.007, 0.007), (0.0058, 0.0058)],
+            ring=12,
+            smooth=2,
+        ),
+        "blue_plastic",
+    )
+    m.add(
+        "Hose",
+        tube(
+            [(0.0, 0.0, z(0.054)), (0.0, -0.003, z(0.075)), (0.0, -0.018, z(0.101)), (0.012, -0.044, z(0.130))],
+            [(0.0053, 0.0053)] * 4,
+            ring=12,
+            smooth=3,
+        ),
+        "blue_plastic",
+    )
 
 
 def _swab(m: Model, length: float) -> None:
@@ -485,8 +800,8 @@ def build() -> list[Model]:
         "office_stapler": lambda m, length: _pistol_stapler(m, length, True),
         "surgical_tape": lambda m, length: _tape(m, length, "fabric_white"),
         "duct_tape": lambda m, length: _tape(m, length, "dark_steel"),
-        "cautery": lambda m, length: _pen(m, length, "green_plastic", "chrome", True),
-        "marker": lambda m, length: _pen(m, length, "tint", "black_plastic", False),
+        "cautery": _cautery,
+        "marker": lambda m, length: _pen(m, length, "tint", "black_plastic"),
         "syringe_3": partial(_syringe, radius=0.0045, volume=3.0),
         "syringe_10": partial(_syringe, radius=0.0065, volume=10.0),
         "syringe_50": partial(_syringe, radius=0.013, volume=50.0),

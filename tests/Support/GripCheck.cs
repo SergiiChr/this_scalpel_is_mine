@@ -42,7 +42,7 @@ public static class GripCheck {
         holder.AddChild(tool);
         ModelSlot.InstantiateTool(def, tool);
         tool.GlobalTransform = hand.GripTransform();
-        AddSolid(tool);
+        RebuildSolid(tool);
         return tool;
     }
 
@@ -58,8 +58,12 @@ public static class GripCheck {
             .Count(point => Inside(space, point.Position) || Near(space, point.Position, point.Radius * 0.5f));
     }
 
-    /// <summary>A static trimesh of a model where it stands, for point queries, without the liquid in it.</summary>
-    private static void AddSolid(Node3D model) {
+    /// <summary>Refreshes the model's collision mesh for grip checks, including its current animated pose.</summary>
+    internal static void RebuildSolid(Node3D model) {
+        if (model.GetNodeOrNull<StaticBody3D>("GripSolid") is { } previous) {
+            model.RemoveChild(previous);
+            previous.QueueFree();
+        }
         var faces = new List<Vector3>();
         foreach (var mesh in model.FindChildren("*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>()) {
             if (LiquidParts.Contains(mesh.Name)) {
@@ -70,7 +74,7 @@ public static class GripCheck {
         }
         var shape = new ConcavePolygonShape3D { BackfaceCollision = true };
         shape.SetFaces([.. faces]);
-        var body = new StaticBody3D { CollisionLayer = SolidLayer, CollisionMask = 0 };
+        var body = new StaticBody3D { Name = "GripSolid", CollisionLayer = SolidLayer, CollisionMask = 0 };
         body.AddChild(new CollisionShape3D { Shape = shape });
         model.AddChild(body);
     }
