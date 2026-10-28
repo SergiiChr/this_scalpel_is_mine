@@ -350,10 +350,33 @@ def _saw(m: Model, length: float, powered: bool) -> None:
         teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, 0.004), (-0.006, 0.0)], 0.002, "xz"), (x, 0.0, -0.07)) for x in np.linspace(-0.011, 0.008, 5)])
         m.add("Blade", moved(merge(blade, teeth), (0.0, 0.0, -length * 0.65)), "chrome", (0.0, 0.0, -length * 0.65))
         return
-    m.add("Grip", superellipsoid((0.03, 0.06, 0.09), 0.4, (0.0, 0.0, 0.02)), "black_plastic")
-    blade = flat([(-0.02, 0.02), (-length, 0.01), (-length, -0.02), (-0.02, -0.03)], 0.0015)
-    teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, -0.006), (-0.006, 0.0)], 0.0015), (0.0, -0.02, z)) for z in np.linspace(-0.025, -length, 22)])
-    m.add("Blade", merge(blade, teeth), "steel")
+    # The fist stays at the origin; the palm swell tapers into a steel collar.
+    grip = tube(
+        [(0.0, 0.001, 0.065), (0.0, 0.001, 0.057), (0.0, -0.001, 0.025), (0.0, -0.002, -0.006), (0.0, 0.0, -0.024)],
+        [(0.01, 0.008), (0.019, 0.014), (0.022, 0.0145), (0.018, 0.012), (0.013, 0.009)],
+        ring=16,
+        exponent=3.0,
+        smooth=3,
+    )
+    m.add("Grip", grip, "black_plastic")
+    m.add("Bolster", superellipsoid((0.022, 0.034, 0.01), 0.25, (0.0, 0.0, -0.025), detail=10), "steel")
+
+    def plate(points: list[tuple[float, float]], thickness: float) -> trimesh.Trimesh:
+        # A (Z,Y) outline extruded across X: the broad face and teeth share one vertical plane.
+        mesh = extrude(points, thickness)
+        mesh.vertices = mesh.vertices[:, [2, 1, 0]]
+        return finish(mesh)
+
+    # A continuous tooth outline replaces the detached triangles. The blunt nose reaches the gameplay tip.
+    outline = [(-0.026, 0.016), (-0.048, 0.025), (-length + 0.011, 0.025), (-length + 0.001, 0.021), (-length, 0.0), (-length + 0.005, -0.021)]
+    for z in np.linspace(-length + 0.01, -0.055, 22):
+        root = -0.021 - 0.001 * ((z + length - 0.01) / (length - 0.065))
+        outline.extend([(float(z), root), (float(z + 0.0033), root - 0.0042), (float(z + 0.0061), root)])
+    outline += [(-0.042, -0.017), (-0.026, -0.01)]
+    blade = plate(outline, 0.0015)
+    tang = plate([(-0.027, 0.01), (0.041, 0.01), (0.041, -0.009), (-0.027, -0.009)], 0.003)
+    m.add("Blade", merge(blade, tang), "steel")
+    m.add("Rivet", cylinder(0.0032, (-0.0148, 0.002, 0.032), (0.0148, 0.002, 0.032), 12), "steel")
 
 
 def _hammer(m: Model, length: float) -> None:
