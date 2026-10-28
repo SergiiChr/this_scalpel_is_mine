@@ -569,9 +569,45 @@ def _saw(m: Model, length: float, powered: bool) -> None:
 
 
 def _hammer(m: Model, length: float) -> None:
-    m.add("Handle", rod(0.011, 0.04, -length + 0.03, sections=14), "dark_steel")
-    m.add("Grip", rod(0.014, 0.05, -0.06, sections=14), "rubber")
-    m.add("Head", cylinder(0.022, (-0.045, 0.0, -length + 0.015), (0.045, 0.0, -length + 0.015), 20), "steel")
+    """Molded orthopedic mallet with a compact crosshead at the gameplay endpoint."""
+    z_scale = length / 0.28
+
+    part_start = len(m.parts)
+    m.add(
+        "Grip",
+        tube(
+            [(0, 0, v) for v in (0.049, 0.038, -0.015, -0.060, -0.076)],
+            [(0.010, 0.012), (0.013, 0.015), (0.012, 0.014), (0.011, 0.013), (0.008, 0.009)],
+            ring=16,
+            exponent=3,
+            smooth=3,
+        ),
+        "rubber",
+    )
+    m.add(
+        "Handle",
+        tube(
+            [(0, 0, v) for v in (-0.063, -0.087, -0.190, -0.247)],
+            [(0.008, 0.008), (0.007, 0.006), (0.0065, 0.0055), (0.009, 0.008)],
+            ring=12,
+            exponent=2.5,
+            smooth=2,
+        ),
+        "dark_steel",
+    )
+    m.add("ButtCap", cylinder(0.0115, (0, 0, 0.047), (0, 0, 0.051), 16), "steel")
+    head = tube(
+        [(-0.048, 0, -0.258), (-0.043, 0, -0.258), (0.043, 0, -0.258), (0.048, 0, -0.258)],
+        [(0.019, 0.019), (0.024, 0.024), (0.024, 0.024), (0.019, 0.019)],
+        ring=20,
+        smooth=1,
+    )
+    head = head.slice_plane((0, 0, -0.28), (0, 0, 1), cap=True)
+    m.add("Head", finish(head), "steel")
+    for side, name in [(-1, "FaceL"), (1, "FaceR")]:
+        m.add(name, cylinder(0.018, (side * 0.0475, 0, -0.258), (side * 0.052, 0, -0.258), 20), "plastic")
+    for part in m.parts[part_start:]:
+        part.mesh.vertices[:, 2] *= z_scale
 
 
 def _screwdriver(m: Model, length: float) -> None:
