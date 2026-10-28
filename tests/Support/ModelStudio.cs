@@ -42,14 +42,20 @@ internal sealed class ModelStudio {
     public Task Capture(Node3D model, string folder, string name, string description, float centerZ) =>
         Capture(model, folder, name, description, new Vector3(0f, 0f, centerZ), new Vector3(0.55f, 0.4f, 0.18f));
 
-    public async Task Capture(Node3D model, string folder, string name, string description, Vector3 center, Vector3 offset) {
+    public async Task Capture(Node3D model, string folder, string name, string description, Vector3 center, Vector3 offset, float? size = null) {
         if (!KeyFrames.Wanted()) {
             return;
         }
         var at = model.ToGlobal(center);
         _camera.GlobalPosition = at + model.GlobalBasis * offset;
         _camera.LookAt(at, model.GlobalBasis.Y);
-        await KeyFrames.SaveViewport(KeyFrames.Folder(folder).PathJoin(name + ".png"), description);
+        var previousSize = _camera.Size;
+        _camera.Size = size ?? previousSize;
+        try {
+            await KeyFrames.SaveViewport(KeyFrames.Folder(folder).PathJoin(name + ".png"), description);
+        } finally {
+            _camera.Size = previousSize;
+        }
     }
 
     public async Task Finish() {

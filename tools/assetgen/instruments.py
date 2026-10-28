@@ -584,12 +584,82 @@ def _screwdriver(m: Model, length: float) -> None:
 
 
 def _suction(m: Model, length: float, straw: bool) -> None:
-    pts = [(0.0, 0.0, 0.05), (0.0, 0.0, -length * 0.5), (0.0, -0.01, -length * 0.8), (0.0, -0.03, -length)]
-    radius = 0.004 if straw else 0.006
-    m.add("Tube", tube(pts, [(radius, radius)] * 4, ring=14), "steel" if straw else "clear_plastic")
-    if not straw:
-        m.add("Bulb", ellipsoid((0.006, 0.006, 0.009), (0.0, -0.032, -length)), "clear_plastic")
-        m.add("Hose", tube([(0.0, 0.0, 0.05), (0.0, -0.02, 0.1), (0.02, -0.08, 0.14)], [(0.007, 0.007)] * 3, ring=12), "clear_plastic")
+    if straw:
+        pts = [(0.0, 0.0, 0.05), (0.0, 0.0, -length * 0.5), (0.0, -0.01, -length * 0.8), (0.0, -0.03, -length)]
+        m.add("Tube", tube(pts, [(0.004, 0.004)] * 4, ring=14), "steel")
+        return
+
+    # This geometry is modeled at 0.22 m; scale its Z coordinates with the configured length so the inlet
+    # remains at the gameplay endpoint when that value changes.
+    z_scale = length / 0.22
+
+    def z(value: float) -> float:
+        return value * z_scale
+
+    m.add(
+        "Handle",
+        tube(
+            [(0.0, 0.0, z(0.049)), (0.0, 0.0, z(0.034)), (0.0, 0.0, z(-0.024)), (0.0, 0.001, z(-0.051))],
+            [(0.006, 0.006), (0.009, 0.010), (0.008, 0.009), (0.005, 0.005)],
+            ring=16,
+            exponent=2.8,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add(
+        "Tube",
+        tube(
+            [
+                (0.0, 0.001, z(-0.045)),
+                (0.0, 0.006, z(-0.090)),
+                (0.0, 0.016, z(-0.147)),
+                (0.0, 0.015, z(-0.177)),
+                (0.0, 0.004, z(-0.198)),
+                (0.0, 0.0, z(-0.203)),
+            ],
+            [(0.0048, 0.0048), (0.0045, 0.0045), (0.0043, 0.0043), (0.0042, 0.0042), (0.004, 0.004), (0.0038, 0.0038)],
+            ring=12,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    profile = [
+        (0.0038, 0.0),
+        (0.0052, z(0.004)),
+        (0.0065, z(0.009)),
+        (0.0061, z(0.013)),
+        (0.0045, z(0.018)),
+        (0.0030, z(0.018)),
+        (0.0028, z(0.013)),
+        (0.0028, 0.0),
+        (0.0038, 0.0),
+    ]
+    m.add("Bulb", along_z(lathe(profile, 20), z(-0.202)), "plastic")
+    m.add("Bore", cylinder(0.0027, (0.0, 0.0, z(-0.205)), (0.0, 0.0, z(-0.206)), 20), "rubber")
+    vent_profile = [(0.0036, 0.0), (0.0046, 0.0008), (0.0046, 0.0018), (0.0026, 0.0018), (0.0026, 0.0), (0.0036, 0.0)]
+    m.add("Vent", moved(lathe(vent_profile, 16), (0.0, 0.0092, z(-0.008))), "blue_plastic")
+    m.add("VentWell", cylinder(0.0025, (0.0, 0.0092, z(-0.008)), (0.0, 0.0097, z(-0.008)), 16), "rubber")
+    m.add(
+        "Connector",
+        tube(
+            [(0.0, 0.0, z(0.040)), (0.0, 0.0, z(0.048)), (0.0, 0.0, z(0.058))],
+            [(0.006, 0.006), (0.007, 0.007), (0.0058, 0.0058)],
+            ring=12,
+            smooth=2,
+        ),
+        "blue_plastic",
+    )
+    m.add(
+        "Hose",
+        tube(
+            [(0.0, 0.0, z(0.054)), (0.0, -0.003, z(0.075)), (0.0, -0.018, z(0.101)), (0.012, -0.044, z(0.130))],
+            [(0.0053, 0.0053)] * 4,
+            ring=12,
+            smooth=3,
+        ),
+        "blue_plastic",
+    )
 
 
 def _swab(m: Model, length: float) -> None:
