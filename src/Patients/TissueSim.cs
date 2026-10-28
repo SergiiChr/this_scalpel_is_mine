@@ -308,6 +308,8 @@ public sealed partial class TissueSim {
         /// <summary>Once an outward pull starts peeling, a relaxed solver step must not interrupt the lift.
         /// Moving inward releases that resistance.</summary>
         public bool Peeling { get; set; }
+        /// <summary>The farthest (meters, along the body) the grip has drawn its skin from where it took hold.</summary>
+        public float Farthest { get; set; }
         /// <summary>How long each spring of the patch was when the grip took hold (see
         /// <see cref="StrainAt"/>), and the topology that patch was made for.</summary>
         public float[]? Unpulled { get; set; }
@@ -1203,8 +1205,17 @@ public sealed partial class TissueSim {
         // Still where it took hold, a grip on skin already firm (the other lip drawn back by another hand) has no way
         // out yet: the move itself is its way out, or it could never take a first step.
         var away = nowAlong.IsZeroApprox() ? move.Normalized() : nowAlong.Normalized();
+        pin.Farthest = Mathf.Max(pin.Farthest, nowAlong.Length());
         if (move.Dot(away) < -0.000001f) {
             pin.Peeling = false;
+            if (pin.Farthest > 0f) {
+                // Drawn back toward its spot, an edge lifted on the way out comes down with it, all the way there. The
+                // hand it lifted stays up otherwise, and the edge held up there reads as strained, so the next pull out
+                // is held back at once. Only by how far back it's come from the farthest it got: a hand wavering at
+                // the limit leaves the edge peeled.
+                var back = Mathf.Clamp((nowAlong + move).Length() / pin.Farthest, 0f, 1f);
+                target.Y = Mathf.Min(target.Y, home.Y + (PeelLift * back));
+            }
         } else if (strain >= GripStrain) {
             pin.Peeling = true;
         }
