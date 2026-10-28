@@ -12,6 +12,9 @@ public partial class Patient {
     /// <summary>Jaws close on embedded glass with the tip over any of it that shows, or at most this far (meters)
     /// beside it: open, they straddle a blade seen edge on.</summary>
     public const float GlassReach = 0.005f;
+    /// <summary>How far (meters) from a cut's line a tip over an opening still finds that cut: as wide as a deep cut
+    /// gapes or a lip is drawn back, whatever the site's size.</summary>
+    private const float OpeningReach = 0.02f;
 
     /// <summary>
     /// Called when a clamp tool closes at the tip. Returns what it took hold of, for <see cref="UpdateGrip"/> and
@@ -22,7 +25,7 @@ public partial class Patient {
     public ToolHold? Grip(int toolUid, SiteZone zone, Vector2 uv, float depthM, bool skinOnly = false) {
         var tissue = Body.Tissue;
         if (skinOnly && zone == SiteZone.Cavity) {
-            if (NearestWound(uv, 0.03f, false) is not { } cut) {
+            if (NearestWound(uv, Body.MetersToUv(OpeningReach), false) is not { } cut) {
                 return null;
             }
             var line = cut.ClosestPoint(uv);
@@ -65,7 +68,7 @@ public partial class Patient {
                 return new OrganHold(organ, position - Body.Site.ToLocal(at));
             }
         }
-        var wound = NearestWound(uv, 0.03f, false);
+        var wound = NearestWound(uv, Body.MetersToUv(OpeningReach), false);
         // Closed on a bleeding wound's edge from inside the opening, the jaws clamp it until they let go (Unclamp()).
         var clamps = wound is not null && zone == SiteZone.Cavity && !skinOnly && down && wound.BleedRate(1f, 1f) > 0f
             && wound.Depth > 0.6f;

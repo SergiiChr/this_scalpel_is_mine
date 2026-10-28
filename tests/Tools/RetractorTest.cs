@@ -121,6 +121,31 @@ public class RetractorTest {
         await session.Finish(BudgetOverride);
     }
 
+    /// <summary>On a small site a deep cut gapes wide for its size: let down anywhere over its opening, the hook still
+    /// takes the edge on that side, not only right at the cut's line.</summary>
+    [TestCase]
+    public async Task RetractorHooksTheEdgeAnywhereOverAWideOpening() {
+        var session = await ToolSession.Start("skin_lab", "retractor/wide_opening");
+        var driver = session.Driver;
+        var body = driver.Body;
+        var middle = new Vector2(0.5f, 0.5f);
+        var half = new Vector2(body.MetersToUv(Length * 0.8f), 0f);
+        for (var level = 1; level <= 3; level++) {
+            await driver.PlayerCutsSkin(middle - half, middle + half, level);
+        }
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(0.5f);
+        foreach (var across in (float[])[0.003f, 0.005f]) {
+            var at = middle + new Vector2(0f, across / body.SiteSize.Y);
+            AssertBool(body.Probe(driver.SitePoint(at)).Zone == SiteZone.Cavity)
+                .OverrideFailureMessage($"{across * 1000f:0} mm from the cut's line is over its opening").IsTrue();
+            var retractor = await Hook(driver, driver.SitePoint(at), $"let down {across * 1000f:0} mm from the line, the retractor");
+            await driver.PlayerLetsGoOfHold(retractor);
+            await Frames.Seconds(0.5f);
+        }
+        await session.Finish(BudgetOverride);
+    }
+
     /// <summary>Skin isn't dragged across the site like rubber: pulled past what it gives, it holds the hand where it
     /// stops (<see cref="TissueSim.Restrain"/>), the way holding onto something stops a hand.</summary>
     [TestCase]
