@@ -557,13 +557,11 @@ public partial class PatientBody : Node3D {
             .MinBy(ring => (p - ring!.Value.Center).Slide(ring.Value.Axis).Length() - ring.Value.Radius);
     }
 
-    /// <summary>Whether a band around <paramref name="ring"/> would run across the surgical site: the site lies on that
-    /// limb and reaches along it to where the ring is, give or take the band's own thickness.</summary>
-    public bool RingCrossesSite(LimbRing ring) {
-        var onLimb = (UvToWorld(new Vector2(0.5f, 0.5f)) - ring.Center).Slide(ring.Axis).Length() < ring.Radius * 1.5f;
-        var along = ((Vector2[])[new(0f, 0f), new(1f, 0f), new(0f, 1f), new(1f, 1f)])
-            .Select(corner => ring.Axis.Dot(UvToWorld(corner) - ring.Center)).ToList();
-        return onLimb && along.Min() < SurgicalTool.BandThickness && along.Max() > -SurgicalTool.BandThickness;
+    /// <summary>Whether a band around <paramref name="ring"/> would lie over site point <paramref name="uv"/>: on that
+    /// limb, and nearer than <paramref name="clearance"/> (meters) to it along the limb.</summary>
+    public bool RingCovers(LimbRing ring, Vector2 uv, float clearance) {
+        var offset = UvToWorld(uv) - ring.Center;
+        return offset.Slide(ring.Axis).Length() < ring.Radius * 1.5f && Mathf.Abs(ring.Axis.Dot(offset)) < clearance;
     }
 
     /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>
