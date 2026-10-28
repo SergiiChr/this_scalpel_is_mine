@@ -112,9 +112,22 @@ public class SurgeonArmsTest {
         var puppet = SurgeryState.SurgeonHasRemoteCopy(me);
         puppet.Visible = false;
         SurgeryDriver.Tap(InputActions.Zoom);
-        for (var frame = 0; frame < 60; frame++) {
+        var elbows = me.Hands.Select(hand => hand.Elbow).ToArray();
+        var steps = new float[me.Hands.Length];
+        for (var frame = 0; frame < 120; frame++) {
             SurgeryState.SurgeonCopyHasOwnerState(me, puppet);
             await Frames.Physics(1);
+            foreach (var hand in me.Hands) {
+                // Once leaned in, the still hands' elbows stay put: turned round what's under them, they don't swing.
+                if (frame >= 90) {
+                    steps[hand.Index] = Mathf.Max(steps[hand.Index], hand.Elbow.DistanceTo(elbows[hand.Index]));
+                }
+                elbows[hand.Index] = hand.Elbow;
+            }
+        }
+        foreach (var hand in me.Hands) {
+            AssertFloat(steps[hand.Index]).OverrideFailureMessage($"leaned in and still, the {(hand.Index == 0 ? "left" : "right")} "
+                + $"elbow holds still ({steps[hand.Index] * 1000f:0.0} mm in a frame)").IsLess(0.002f);
         }
         AssertFloat(puppet.Lean).OverrideFailureMessage($"the partner sees the surgeon lean in ({puppet.Lean:0.00} rad)")
             .IsGreater(0.2f);
