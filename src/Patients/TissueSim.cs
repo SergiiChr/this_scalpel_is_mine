@@ -112,9 +112,9 @@ public sealed partial class TissueSim {
     /// how firmly. Skin gapes a little under its own tension, cut fat bulges apart, cut muscle retracts hard. The pull
     /// fades out over RetractSpread (meters) from the cut, so the stretch is shared by the skin around it, and over
     /// RetractTaper (meters) toward the cut's ends, where it stays closed: the cut opens like a lens.</summary>
-    public static readonly float[] Retract = [0f, 0.0022f, 0.0035f, 0.015f];
+    public static readonly float[] Retract = [0f, 0.004f, 0.0063f, 0.015f];
     public static readonly float[] RetractSpread = [0f, 0.03f, 0.045f, 0.04f];
-    public static readonly float[] RetractTaper = [0f, 0.008f, 0.012f, 0.03f];
+    public static readonly float[] RetractTaper = [0f, 0.004f, 0.006f, 0.03f];
     public const float GapePull = 0.03f;
     public const float MusclePull = 0.05f;
     public const float LooseAnchor = 0.006f;

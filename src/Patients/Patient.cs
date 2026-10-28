@@ -183,7 +183,7 @@ public partial class Patient : Node3D {
         Body.Tissue.BreakMult = Mods.Mult("tear_threshold_mult");
         Body.Tissue.Tearing = Multiplayer.IsServer();
         Body.Build(scenario.Site, tone, RollWeight(seed));
-        Body.Tissue.Xpbd = scenario.SkinSolver == "xpbd";
+        Body.Tissue.Xpbd = true;
         if (scenario.Environment == "or") {
             Body.AddDrape();
         }

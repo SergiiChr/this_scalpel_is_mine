@@ -23,6 +23,8 @@ public sealed partial class TissueSim {
     /// <summary>How much more readily skin beside a cut slides along its bed than skin elsewhere. Few iterations a step
     /// leave a soft tether far stiffer than its compliance says, so it takes this much for the tension to show.</summary>
     private const float XpbdBesideCut = 36f;
+    /// <summary>How far (meters) a cut's lip drawn on past where the cut settles it is still held there firmly.</summary>
+    private const float XpbdLipHold = 0.003f;
     /// <summary>How readily the skin bends (compliance of the curvature along each row, column and diagonal of the grid):
     /// a lifted lip rises in a rounded arch, not a peak, without lifting the skin across the cut with it.</summary>
     private const float XpbdBend = 0.002f;
@@ -59,8 +61,7 @@ public sealed partial class TissueSim {
     /// <summary>One XPBD iteration: grips, springs, stitches, the cut's edges, the bed.</summary>
     private void XpbdIteration() {
         foreach (var pin in _pins.Values) {
-            Pos[pin.Particle] = pin.Target;
-            Hold(pin.Particle);
+            DragPatch(pin);
         }
         var stretch = XpbdStretch / (Step * Step);
         var count = WindowSprings.Length;
@@ -180,8 +181,16 @@ public sealed partial class TissueSim {
             var up = d.Dot(normal);
             var along = d - (normal * up);
             ref var lambda = ref _tetherLambda[k];
-            var alpha = slide * loose * (_anchor[k] == Anchor ? 1f : XpbdBesideCut);
+            // Loosened beside a cut it gives way to the lips. A lip itself is held to where the cut draws it back as
+            // firmly as its pull says (GapePull, MusclePull), so the cut opens that far; drawn on past there by a hand,
+            // it gives as readily as the skin beside it.
             var length = along.Length();
+            var beside = XpbdBesideCut;
+            if (_anchor[k] > Anchor) {
+                var past = Pos[k].DistanceTo(Rest[k]) - _anchorTarget[k].DistanceTo(Rest[k]);
+                beside = Mathf.Lerp(Anchor / _anchor[k], XpbdBesideCut, Mathf.SmoothStep(0f, XpbdLipHold, past));
+            }
+            var alpha = slide * loose * beside;
             if (length > 0.000001f) {
                 var delta = (-length - (alpha * lambda.X)) / (1f + alpha);
                 lambda.X += delta;

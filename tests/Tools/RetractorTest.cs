@@ -69,7 +69,8 @@ public class RetractorTest {
         await Frames.Seconds(1f);
         var opened = tissue.GapAt(middle, Middle);
         AssertFloat(opened - ownGape)
-            .OverrideFailureMessage($"drawn {Pull * 100f:0} cm aside, the cut opens ({(opened - ownGape) * 1000f:0.0} mm wider)")
+            .OverrideFailureMessage($"drawn {Pull * 100f:0} cm aside, the cut opens ({(opened - ownGape) * 1000f:0.0} mm wider, the hook "
+                + $"drawn {(retractor.TipPosition() - hookAt).Slide(Vector3.Up).Length() * 1000f:0.0} mm, strain {tissue.StrainAt(retractor.Uid):0.00})")
             .IsGreater(Pull * 0.5f);
         var lips = Lips(driver, middle);
         var hookedMoved = lips[1] - lipsBefore[1];
