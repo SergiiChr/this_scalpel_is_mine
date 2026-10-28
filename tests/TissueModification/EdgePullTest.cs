@@ -3,8 +3,8 @@ namespace Scalpel.Tests.TissueModification;
 /// <summary>
 /// A 10 cm reference wound on each cuttable body part, and the thigh bullet's entry widened 5 cm with the scalpel,
 /// held in the middle and pulled with paused, continuous or faster mouse strokes until they give no more. The skin should give easily at
-/// first and hold the hand back more and more, never shake, and show its three stages: everything moving together,
-/// the skin lifting with the fat stretched under it, then the skin peeled off the fat.
+/// first and hold the hand back more and more, never shake, and show its two stages: everything moving together, then
+/// the skin lifting off the muscle with its fat under it.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("tissue_modification"), TestCategory("skin_pull"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
@@ -17,6 +17,8 @@ public class EdgePullTest {
     /// <summary>Frames the hand is held still after each stage to see the tool settle.</summary>
     private const int HoldFrames = 30;
     private const float MaxPull = 0.10f;
+    /// <summary>How far (meters) the skin stands above the muscle once its edge has come up off it.</summary>
+    private const float OffMuscle = 0.006f;
     /// <summary>A stage that moves the tool less than this (meters) counts as the controls not giving.</summary>
     private const float Stalled = 0.00025f;
     /// <summary>How far (meters) the edge may come back toward the cut from the furthest it got.</summary>
@@ -174,30 +176,26 @@ public class EdgePullTest {
         var requiredTravel = Mathf.Min(0.01f, length * 0.1f);
         var pixels = 0f;
         var usefulPixels = -1f;
-        var peeledPixels = -1f;
+        var raisedPixels = -1f;
         var stalled = 0;
-        var stretched = -1;
-        var peeled = -1;
+        var raised = -1;
         var samples = 0;
-        // A faster stroke can pass through the stretched-fat phase between stage endpoints. Observe each
-        // delivered input, and capture the actual transition (KeyFrames pauses physics while taking the image).
+        // Observe each delivered input, and capture the actual transition (KeyFrames pauses physics while taking the
+        // image).
         async Task ObserveLayers() {
             var rise = Rises(body, k) - rise0;
             var (skin, fat, muscle) = (rise.X, rise.Y, rise.Z);
-            if (stretched < 0 && body.LayersApart(k) && skin - muscle > PatientBody.FatStretch * 0.5f && skin - fat < 0.0015f) {
-                stretched = samples;
-                await session.CaptureOblique("fat_stretched", "the edge lifted under its blood film, its fat wall stretched up with the skin: "
-                    + "no gap between skin and fat, the skin bends smoothly, nothing pokes through it", at, facing, 0.12f, 30f);
-            }
-            if (peeled < 0 && body.LayersApart(k) && skin - fat > PatientBody.FatStretch * 0.75f) {
+            if (raised < 0 && body.LayersApart(k) && skin - muscle > OffMuscle) {
+                AssertFloat(Mathf.Abs(skin - fat)).OverrideFailureMessage("the fat comes up with the lifted skin "
+                    + $"({skin * 1000f:0.0}/{fat * 1000f:0.0} mm risen)").IsLess(0.001f);
                 if (scenario == "leg_extension") {
                     await driver.Unbudgeted(() => {
                         TissueLayers.AssertWallsDoNotCrossThemselves(body);
                         return Task.CompletedTask;
                     });
                 }
-                peeled = samples;
-                peeledPixels = pixels;
+                raised = samples;
+                raisedPixels = pixels;
                 if (entry) {
                     AssertFloat(driver.Patient.CavityBloodMl)
                         .OverrideFailureMessage("the open thigh wound is still bleeding into its cavity").IsGreater(0f);
@@ -205,8 +203,8 @@ public class EdgePullTest {
                         .OverrideFailureMessage("the thigh incision goes through muscle: its blood drains into the cavity instead of floating on a skin-depth pool")
                         .IsEqual(0);
                 }
-                await session.CaptureOblique("skin_peeled", "the skin peeled off the fat: a thin, blood-covered band of skin lifted in "
-                    + "the jaws, the fat left lying on the muscle under it, no fat or muscle through the skin and no floating blood tab inside the opening",
+                await session.CaptureOblique("edge_raised", "the edge lifted off the muscle in the jaws: skin and its fat as one thick "
+                    + "blood-covered flap, the muscle's cut edge lying below it, no fat or muscle through the skin and no floating blood tab inside the opening",
                     at, facing, 0.12f, 30f);
             }
         }
@@ -237,11 +235,11 @@ public class EdgePullTest {
                 if (scenario == "leg_extension" && (f + 1 == frames / 2 || f + 1 == frames)) {
                     // Dense local captures exposed a fat-wall pleat between the original stages. Keep the
                     // intermediate geometry checks and the views during extension, when long columns converged.
-                    if (peeled < 0) {
+                    if (raised < 0) {
                         await session.CaptureOblique($"pulling_{samples:D4}",
                             $"after {(input + stage * (f + 1) / frames) * 1000f:0.00} mm of mouse pull, the opening widens gradually "
-                            + "and the fat wall extends below the lifted skin: "
-                            + "a continuous rounded wall without a sharp inward pleat or intersecting columns before peeling",
+                            + "and the fat wall stays under the lifted skin: "
+                            + "a continuous rounded wall without a sharp inward pleat or intersecting columns before it comes off the muscle",
                             at, facing, 0.12f, 30f);
                     }
                     await driver.Unbudgeted(() => {
@@ -277,7 +275,7 @@ public class EdgePullTest {
             AssertBool(tool.Hold == grip).OverrideFailureMessage($"the {toolId} keeps hold of the same edge {when}").IsTrue();
             AssertFloat(dragShake).OverrideFailureMessage($"the hand pulling on {when} doesn't shake ({dragShake * 1000f:0.00} mm)").IsLess(0.001f);
             AssertFloat(shake).OverrideFailureMessage($"the hand held still {when} doesn't shake ({shake * 1000f:0.00} mm)").IsLess(0.001f);
-            // Peeled up, the edge comes back toward the cut a little: the skin lifted off has that much less to give.
+            // Lifted up, the edge comes back toward the cut a little: the skin lifted off has that much less to give.
             AssertFloat(nowTravel).OverrideFailureMessage($"the edge settles back toward the cut no more than {SettleBack * 1000f:0} mm "
                 + $"{when} ({nowTravel * 1000f:0.0} mm, was {travel * 1000f:0.0} mm)").IsGreater(travel - SettleBack);
             AssertInt(driver.Patient.Wounds.Count).OverrideFailureMessage($"the pull doesn't tear the skin {when}").IsEqual(wounds);
@@ -291,7 +289,7 @@ public class EdgePullTest {
                     AssertFloat(distance).OverrideFailureMessage($"the drawn skin follows the gripped material {when} "
                         + $"({distance * 1000f:0.0} mm away), before and after fold activation").IsLess(0.004f);
                 }
-                // The long thigh reference exposed a fat-wall pleat as the skin peeled. Check that regression
+                // The long thigh reference exposed a fat-wall pleat as the skin lifted. Check that regression
                 // through the whole stroke, in addition to every fixture's hard skin-intersection check.
                 if (scenario == "leg_extension") {
                     TissueLayers.AssertWallsDoNotCrossThemselves(body);
@@ -318,7 +316,7 @@ public class EdgePullTest {
             // A stop means no new reach in either direction. Torso breathing may return a held tip a little
             // within that reach; it must not masquerade as further give or prevent a stopped pull from finishing.
             var nextExtent = extent.Max(new Vector2(nowTravel, (tip - start).Y));
-            stalled = peeled > 0 && nextExtent.DistanceTo(extent) < Stalled ? stalled + 1 : 0;
+            stalled = raised > 0 && nextExtent.DistanceTo(extent) < Stalled ? stalled + 1 : 0;
             extent = nextExtent;
         }
         SurgeryDriver.Release(hand);
@@ -330,8 +328,7 @@ public class EdgePullTest {
         var initialGive = entry ? gaveFine[0] : gave[0];
         AssertFloat(initialGive).OverrideFailureMessage($"the initial unloaded input follows the hand ({initialGive:0.00}; stages {gaveText})")
             .IsGreaterEqual(0.9f);
-        AssertBool(stretched > 0 && peeled > stretched).OverrideFailureMessage("the skin lifts with the fat stretched under it "
-            + $"before it peels off the fat (stretched at sample {stretched}, peeled at sample {peeled})").IsTrue();
+        AssertInt(raised).OverrideFailureMessage("the edge lifts off the muscle").IsGreater(0);
         // Up to where the hand stops, each stage gives no more than the one before (within the solver's settling), and
         // some give part of theirs.
         AssertResistance(gave, "sideways opening", gaveFine);
@@ -357,15 +354,15 @@ public class EdgePullTest {
         AssertFloat(gapGrowth)
             .OverrideFailureMessage($"pulling the lip widens the actual skin opening by at least 6 mm ({gapGrowth * 1000f:0.00} mm)")
             .IsGreaterEqual(RequiredOpening);
-        GD.Print($"edge effort: useful opening at {usefulPixels:0.0} mouse px, peeled at {peeledPixels:0.0} px, stopped at {pixels:0.0} px");
+        GD.Print($"edge effort: useful opening at {usefulPixels:0.0} mouse px, lifted off the muscle at {raisedPixels:0.0} px, stopped at {pixels:0.0} px");
         if (entry) {
             AssertFloat(usefulPixels).OverrideFailureMessage("the 5 cm thigh incision's lip moves 5 mm within 35 mouse pixels at default sensitivity")
                 .IsBetween(0f, 35f);
-            AssertFloat(peeledPixels).OverrideFailureMessage("the thigh skin peels within 75 mouse pixels").IsBetween(0f, 75f);
+            AssertFloat(raisedPixels).OverrideFailureMessage("the thigh edge lifts off the muscle within 75 mouse pixels").IsBetween(0f, 75f);
             AssertFloat(pixels).OverrideFailureMessage("the thigh reaches its stop within 100 mouse pixels").IsLessEqual(100f);
         }
         await session.CaptureOblique("final", "the edge pulled as far as the hand goes, from above: the opening drawn "
-            + "wide, the peeled skin lifted in the jaws, fat and muscle lying evenly below it under the blood film", at, -facing, 0.2f, 70f);
+            + "wide, the skin and its fat lifted in the jaws, the muscle lying evenly below it under the blood film", at, -facing, 0.2f, 70f);
         if (entry) {
             var stopped = Contact();
             SurgeryDriver.Press(hand);
