@@ -425,7 +425,8 @@ public class ModelsTest {
         }
     }
 
-    /// <summary>Cutting blades stay rigid; saw blades oscillate in use and return to rest on release.</summary>
+    /// <summary>Cutting blades stay rigid; the manual saw reciprocates and the circular saw rotates about its fixed axle.
+    /// Every blade returns to rest on release.</summary>
     private static void BladeAnimation(Node3D holder) {
         foreach (var id in (string[])["scalpel", "switchblade", "bone_saw", "heavy_saw"]) {
             var tool = new SurgicalTool();
@@ -437,15 +438,38 @@ public class ModelsTest {
             AssertObject(blade).OverrideFailureMessage($"{id} has a blade").IsNotNull();
             var rest = blade!.Transform;
             var moved = 0f;
+            var turned = 0f;
             var orientationStable = true;
+            var axisStable = true;
+            var fixedParts = id == "heavy_saw"
+                ? ModelSlot.Parts(tool, "Guard", "Spindle", "Hub").Values.ToDictionary(part => part, part => part.Transform)
+                : new Dictionary<Node3D, Transform3D>();
+            if (id == "heavy_saw") {
+                AssertInt(fixedParts.Count).OverrideFailureMessage("the circular saw has a fixed guard, spindle and hub")
+                    .IsEqual(3);
+            }
             for (var frame = 0; frame < 120; frame++) {
                 tool.Animator.Animate(true, false, 1f / 60f);
                 moved = Mathf.Max(moved, blade.Position.DistanceTo(rest.Origin));
                 orientationStable = orientationStable && blade.Basis.IsEqualApprox(rest.Basis);
+                turned = Mathf.Max(turned, blade.Basis.Y.DistanceTo(rest.Basis.Y));
+                axisStable = axisStable && blade.Basis.X.IsEqualApprox(rest.Basis.X);
+                foreach (var (part, transform) in fixedParts) {
+                    AssertBool(part.Transform.IsEqualApprox(transform))
+                        .OverrideFailureMessage($"{part.Name} stays fixed while the circular blade rotates").IsTrue();
+                }
             }
-            AssertBool(orientationStable).OverrideFailureMessage($"{id} blade keeps its orientation throughout use")
-                .IsTrue();
-            if (tool.Def.Action == "saw") {
+            if (id == "heavy_saw") {
+                AssertFloat(moved).OverrideFailureMessage("the circular blade rotates without moving its axle")
+                    .IsLess(0.000001f);
+                AssertFloat(turned).OverrideFailureMessage("the circular blade turns visibly in use").IsGreater(0.5f);
+                AssertBool(axisStable).OverrideFailureMessage("the circular blade keeps its transverse X axle")
+                    .IsTrue();
+            } else {
+                AssertBool(orientationStable).OverrideFailureMessage($"{id} blade keeps its orientation throughout use")
+                    .IsTrue();
+            }
+            if (tool.Def.Action == "saw" && id != "heavy_saw") {
                 AssertFloat(moved).OverrideFailureMessage($"{id} blade still oscillates in use").IsGreater(0.003f);
             } else {
                 AssertFloat(moved).OverrideFailureMessage($"{id} blade stays fixed to the handle throughout use")

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from shapely.geometry import Polygon
 
 from .geometry import Model, cylinder, ellipsoid, extrude, finish, lathe, merge, moved, rotated, scaled, superellipsoid, torus, tube
 
@@ -344,11 +345,64 @@ def _paddle(m: Model, length: float) -> None:
 
 def _saw(m: Model, length: float, powered: bool) -> None:
     if powered:
-        m.add("Body", superellipsoid((0.05, 0.06, length * 0.7), 0.4, (0.0, 0.0, -length * 0.3)), "yellow_plastic")
-        m.add("Grip", superellipsoid((0.04, 0.045, 0.1), 0.4, (0.0, -0.01, 0.03)), "rubber")
-        blade = flat([(0.0, 0.012), (-0.07, 0.012), (-0.07, -0.012), (0.0, -0.012)], 0.002, "xz")
-        teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, 0.004), (-0.006, 0.0)], 0.002, "xz"), (x, 0.0, -0.07)) for x in np.linspace(-0.011, 0.008, 5)])
-        m.add("Blade", moved(merge(blade, teeth), (0.0, 0.0, -length * 0.65)), "chrome", (0.0, 0.0, -length * 0.65))
+        body = tube(
+            [(0.0, 0.003, 0.002), (0.0, 0.008, -0.030), (0.0, 0.008, -0.105), (0.0, 0.003, -0.160), (0.0, 0.0, -0.184)],
+            [(0.022, 0.022), (0.026, 0.024), (0.024, 0.021), (0.014, 0.014), (0.012, 0.011)],
+            ring=16,
+            exponent=3.5,
+            smooth=3,
+        )
+        m.add("Body", body, "plastic")
+        m.add("MotorCap", superellipsoid((0.046, 0.046, 0.018), 0.3, (0.0, 0.003, 0.002), detail=12), "blue_plastic")
+        grip = tube(
+            [(0.0, -0.008, 0.077), (0.0, -0.008, 0.068), (0.0, -0.008, 0.040), (0.0, -0.005, 0.004)],
+            [(0.011, 0.011), (0.020, 0.016), (0.022, 0.018), (0.017, 0.016)],
+            ring=16,
+            exponent=3.0,
+            smooth=3,
+        )
+        m.add("Grip", grip, "black_plastic")
+        m.add("Button", superellipsoid((0.012, 0.006, 0.026), 0.35, (0.0, 0.0365, -0.033), detail=8), "blue_plastic")
+        carrier = tube(
+            [(0.0, 0.0, -0.181), (-0.016, 0.0, -0.204), (-0.016, 0.0, -0.255)],
+            [(0.011, 0.010), (0.008, 0.006), (0.008, 0.006)],
+            ring=12,
+            smooth=3,
+        )
+        m.add("Carrier", carrier, "steel")
+        center_z, radius = -0.255, 0.045
+        m.add("Spindle", cylinder(0.006, (-0.022, 0.0, center_z), (0.006, 0.0, center_z), 20), "dark_steel")
+        m.add("Hub", cylinder(0.009, (0.001, 0.0, center_z), (0.005, 0.0, center_z), 24), "steel")
+
+        def circular_plate(outline: list[tuple[float, float]], thickness: float, holes: list[list[tuple[float, float]]] | None = None) -> trimesh.Trimesh:
+            if holes:
+                mesh = trimesh.creation.extrude_polygon(Polygon(outline, holes), thickness)
+                mesh.apply_translation((0.0, 0.0, -thickness / 2))
+            else:
+                mesh = extrude(outline, thickness)
+            mesh.vertices = mesh.vertices[:, [2, 1, 0]]
+            mesh = finish(mesh)
+            mesh.unmerge_vertices()
+            return mesh
+
+        # The 36 tooth profiles form a continuous circular blade. Its centerline is
+        # in YZ, so the Blade node rotates around X and its forward tooth reaches
+        # the tool's established gameplay tip at z=-0.30.
+        outline: list[tuple[float, float]] = []
+        pitch = 2 * np.pi / 36
+        for angle in np.arange(36) * pitch:
+            for offset, blade_radius in ((-0.35, 0.0425), (0.0, radius), (0.25, radius), (0.55, 0.0425)):
+                t = angle + offset * pitch
+                outline.append((float(center_z - blade_radius * np.cos(t)), float(blade_radius * np.sin(t))))
+        hole = [(float(center_z + 0.0065 * np.cos(t)), float(0.0065 * np.sin(t))) for t in np.linspace(0, 2 * np.pi, 32, endpoint=False)]
+        m.add("Blade", circular_plate(outline, 0.0015, [hole]), "steel", (0.0, 0.0, center_z))
+
+        # A fixed upper/rear guard leaves the leading and lower cutting arc exposed.
+        angles = np.linspace(-0.75, 1.65, 28)
+        guard = [(float(center_z + 0.052 * np.sin(t)), float(0.052 * np.cos(t))) for t in angles]
+        guard += [(float(center_z + 0.048 * np.sin(t)), float(0.048 * np.cos(t))) for t in reversed(angles)]
+        bridge = cylinder(0.0035, (-0.018, 0.007, -0.205), (0.001, 0.007, -0.205), 12)
+        m.add("Guard", merge(circular_plate(guard, 0.007), bridge), "dark_steel")
         return
     # The fist stays at the origin; the palm swell tapers into a steel collar.
     grip = tube(
