@@ -40,8 +40,11 @@ public partial class Surgeon {
     private float _needleFraming;
     /// <summary>How far the camera has moved over to the needle view (0..1).</summary>
     internal float NeedleFraming => _needleFraming;
-    /// <summary>The last needle view, to move back from.</summary>
+    /// <summary>The needle view, set as the needle goes in and held until Use tool is let go: the mouse still moving
+    /// the hand mustn't swing the camera about. The last one, to move back from.</summary>
     private Transform3D _needleView = Transform3D.Identity;
+    /// <summary>Whether <see cref="_needleView"/> is set for the needle in now.</summary>
+    private bool _needleViewHeld;
     /// <summary>The hand whose syringe the needle view rolls to show its scale to the camera (-1: none). Out of it, the
     /// syringe turns its scale back to the eyes (see UpdateHand()).</summary>
     private int _rolledHand = -1;
@@ -364,8 +367,8 @@ public partial class Surgeon {
     /// Zoomed all the way in, the hands fade so they don't hide what they work on, whatever they hold. The camera stays
     /// at the eyes, so the mouse moves the hand the way it always does while aiming. Once a syringe's needle is in
     /// something with Use tool held, the camera moves over beside it so the needle and what it's in (a vial, the dish,
-    /// the bag, the arm's vein) are both in view, and the hand rolls the syringe so its printed scale faces the camera.
-    /// Use tool let go, both go back.
+    /// the bag, the arm's vein) are both in view, and stays there whatever the mouse does; the hand rolls the syringe so
+    /// its printed scale faces the camera. Use tool let go, both go back.
     /// </summary>
     private void FrameNeedle(float delta) {
         var tool = HeldTool(Active);
@@ -385,8 +388,12 @@ public partial class Surgeon {
             }
         }
         _rolledHand = framing ? Active : -1;
+        _needleViewHeld &= framing;
         if (framing) {
-            _needleView = NeedleView(tool!);
+            if (!_needleViewHeld) {
+                _needleView = NeedleView(tool!);
+                _needleViewHeld = true;
+            }
             var facing = Hands[Active].TwistFacing(_needleView.Origin - tool!.Middle());
             Hands[Active].Twist = Mathf.LerpAngle(Hands[Active].Twist, facing, Mathf.Min(delta * 8f, 1f));
         }
