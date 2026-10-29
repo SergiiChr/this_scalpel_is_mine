@@ -22,18 +22,21 @@ public class SettingsTest {
             Frames.Root.AddChild(panel);
             await Frames.Process(2);
             var box = panel.FindChildren("*", "", true, false).OfType<CheckBox>().Single(box => box.Text == Label);
-            AssertBool(box.ButtonPressed && Settings.SubsurfaceScattering).OverrideFailureMessage("on by default").IsTrue();
+            AssertBool(box.ButtonPressed && Settings.SubsurfaceScattering)
+                .OverrideFailureMessage("on by default").IsTrue();
 
             PlayerInput.Click(box);
             await PlayerInput.Delivered();
             await Frames.Process(2);
             AssertBool(Settings.SubsurfaceScattering).OverrideFailureMessage("a click turns it off").IsFalse();
 
-            PlayerInput.Click(panel.FindChildren("*", "", true, false).OfType<Button>().Single(button => button.Text == "Save"));
+            var save = panel.FindChildren("*", "", true, false).OfType<Button>().Single(button => button.Text == "Save");
+            PlayerInput.Click(save);
             await PlayerInput.Delivered();
             Settings.SubsurfaceScattering = true;
             Settings.Load();
-            AssertBool(Settings.SubsurfaceScattering).OverrideFailureMessage("Save keeps it off for the next start").IsFalse();
+            AssertBool(Settings.SubsurfaceScattering)
+                .OverrideFailureMessage("Save keeps it off for the next start").IsFalse();
         } finally {
             panel.QueueFree();
             Settings.SubsurfaceScattering = true;

@@ -12,16 +12,19 @@ public enum Decor { None, Window, Door, ServicePanel, CeilingLight }
 /// <summary>
 /// How a kind of surface responds to light, so skin, gloves, steel and cloth read apart under the same lamp.
 /// Specular: highlight strength, Rim: edge light (cloth sheen), Wrap/Scatter: light past the terminator (skin),
-/// Grime: procedural dirt, Metallic: 1 for metal, Detail: fine relief, Translucency: light through the surface where it's
-/// thin, Subsurface: how strongly light spreads under the surface (Godot's screen-space scattering, Forward+ only). Roughness comes from the model's own material.
+/// Grime: procedural dirt, Metallic: 1 for metal, Detail: fine relief, Translucency: light through the surface where
+/// it's thin, Subsurface: how strongly light spreads under the surface (Godot's screen-space scattering, Forward+ only),
+/// WetAllOver: a wet film all over (organs). Roughness comes from the model's own material.
 /// </summary>
 public sealed record SurfaceFamily(
     float Specular, float Rim, float Grime, float Wrap = 0f, Color? Scatter = null, float Metallic = 0f,
-    Detail Detail = Detail.None, float Translucency = 0f, float Subsurface = 0f);
+    Detail Detail = Detail.None, float Translucency = 0f, float Subsurface = 0f, bool WetAllOver = false);
 
 /// <summary>Shared materials. Everything goes through here so the look can be tuned in one place.</summary>
 public static class Materials {
     public static readonly Shader Toon = GD.Load<Shader>("res://assets/shaders/toon.gdshader");
+    /// <summary>The same shading with light spread under the surface, for families with Subsurface.</summary>
+    public static readonly Shader ToonSkin = GD.Load<Shader>("res://assets/shaders/toon_skin.gdshader");
     public static readonly Shader Outline = GD.Load<Shader>("res://assets/shaders/outline.gdshader");
     public static readonly Shader Flesh = GD.Load<Shader>("res://assets/shaders/flesh.gdshader");
     public static readonly Shader Skin = GD.Load<Shader>("res://assets/shaders/skin.gdshader");
@@ -58,7 +61,8 @@ public static class Materials {
         ["cloth"] = new(0f, 0.2f, 0.12f, Wrap: 0.25f, Scatter: Colors.White, Detail: Detail.Weave),
         ["metal"] = new(0.9f, 0.04f, 0.02f, Metallic: 1f, Detail: Detail.Brushed),
         ["plastic"] = new(0.35f, 0.12f, 0.1f),
-        ["tissue"] = new(0.55f, 0.1f, 0f, Wrap: 0.4f, Scatter: new Color(1f, 0.3f, 0.25f), Translucency: 0.7f),
+        ["tissue"] = new(0.55f, 0.1f, 0f, Wrap: 0.4f, Scatter: new Color(1f, 0.3f, 0.25f), Translucency: 0.7f,
+            WetAllOver: true),
     };
 
     /// <summary>Model material name -> family. Names not listed are plastic.</summary>
@@ -272,8 +276,12 @@ public static class Materials {
         material.SetShaderParameter("rim_strength", family.Rim);
         material.SetShaderParameter("wrap", family.Wrap);
         material.SetShaderParameter("scatter_tint", family.Scatter ?? Colors.White);
+        if (family.Subsurface > 0f) {
+            material.Shader = ToonSkin;
+        }
         material.SetShaderParameter("translucency", family.Translucency);
         material.SetShaderParameter("subsurface", family.Subsurface);
+        material.SetShaderParameter("wet_all_over", family.WetAllOver);
         material.SetShaderParameter("metallic", family.Metallic);
         material.SetShaderParameter("detail", (int)family.Detail);
         return material;

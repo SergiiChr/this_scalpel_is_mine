@@ -19,8 +19,8 @@ float wet_glint(float n_dot_h, float n_dot_v, float wet) {
 	return pow(max(n_dot_h, 0.0), 320.0) * wet_fresnel(n_dot_v) * wet * 6.0;
 }
 
-// Light through thin tissue from behind (`thin` 0..1, tinted in BACKLIGHT): lit from the far side, and toward the
-// lamp when the view looks into it.
+// Light through thin tissue from behind, `backlight` being its tint times how thin the tissue is (the fragment's
+// BACKLIGHT): lit from the far side, and toward the lamp when the view looks into it.
 vec3 translucence(vec3 normal, vec3 light, vec3 view, vec3 backlight) {
 	float back = max(-dot(normal, light), 0.0);
 	float through = pow(max(dot(view, -light), 0.0), 4.0);

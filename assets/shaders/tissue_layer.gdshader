@@ -27,7 +27,8 @@ float hash3(vec3 p) {
 // fat's cells took 27 neighbor cells and 81 hashes per pixel.
 uniform sampler3D noise_texture : filter_linear_mipmap, repeat_enable;
 uniform sampler3D cell_texture : filter_linear_mipmap, repeat_enable;
-// How many noise lattice cells and fat cells one texture tile spans along each side.
+// How many noise lattice cells and fat cells one texture tile spans along each side: LATTICE and CELLS in
+// tissue_textures.py.
 const float NOISE_LATTICE = 16.0;
 const float CELLS = 8.0;
 

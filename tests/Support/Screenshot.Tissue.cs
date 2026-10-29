@@ -3,9 +3,9 @@ using System.Globalization;
 namespace Scalpel.Tests.Support;
 
 public partial class Screenshot {
-    /// <summary>An incision held wide open, seen close from above, at a cut's wall and right at the fat, with the GPU time of
-    /// each view (--tissue). Swap a tissue shader between runs to compare it: the scene is paused and the same every
-    /// run. Needs RENDERER=forward_plus for GPU timestamps.</summary>
+    /// <summary>An incision held wide open, seen close from above, at a cut's wall and right at the fat, then intact
+    /// skin close up and the whole patient (--tissue). --benchmark also times the GPU on each view: swap a shader
+    /// between runs to compare it, the scene is paused and the same every run. Needs RENDERER=forward_plus.</summary>
     private async Task TissueViews(Surgery surgery) {
         surgery.Hud.RemoveFilmGrain();
         var patient = surgery.Patient;

@@ -13,7 +13,8 @@ public enum Difficulty { Baby, Intern, Md }
 /// </summary>
 public partial class Settings : Node {
     private const string Path = "user://settings.cfg";
-    private const string ScatteringQuality = "rendering/environment/subsurface_scattering/subsurface_scattering_quality";
+    private const string ScatteringQuality =
+        "rendering/environment/subsurface_scattering/subsurface_scattering_quality";
 
     public static readonly IReadOnlyList<Vector2I> Resolutions =
     [
@@ -23,8 +24,8 @@ public partial class Settings : Node {
 
     public static Vector2I Resolution { get; set; } = new(1920, 1080);
     public static bool Fullscreen { get; set; }
-    /// <summary>Light spread under skin and fat (Godot's screen-space subsurface scattering, Forward+ only). Off skips
-    /// its pass altogether.</summary>
+    /// <summary>Light spread under skin and fat (Godot's screen-space subsurface scattering). Off skips its pass
+    /// altogether. The Compatibility renderer has no such pass, so there it changes nothing.</summary>
     public static bool SubsurfaceScattering { get; set; } = true;
     public static float MouseSensitivity { get; set; } = 1f;
     public static Dictionary<string, float> Volumes { get; } = new() {
