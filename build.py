@@ -479,7 +479,9 @@ def godot_view(suite: Suite, options: TestOptions) -> list[str]:
     """Where the suite draws: the key frame view, this machine's display without VSync (frames would wait for the
     screen) and without sound (a missing audio device would be an error), or nowhere."""
     if takes_key_frames(suite, options):
-        return KEY_FRAME_ARGS
+        # On a Wayland desktop its own driver: through X11 the game's mouse capture fails ("NO GRAB") in a window that
+        # doesn't have the pointer, while a Wayland window waits for it.
+        return [*KEY_FRAME_ARGS, *(["--display-driver", "wayland"] if has_display() and os.environ.get("WAYLAND_DISPLAY") else [])]
     return ["--disable-vsync", "--audio-driver", "Dummy"] if options.budget == "render" else ["--headless"]
 
 
