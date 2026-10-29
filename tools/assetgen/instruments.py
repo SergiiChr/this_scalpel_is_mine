@@ -924,6 +924,76 @@ def _gas_mask(m: Model, length: float) -> None:
         m.add(name, scaled(mesh, (1.0, 1.0, z_scale)), material_name)
 
 
+def _kidney_dish(m: Model, length: float) -> None:
+    """Kidney-shaped basin with a rolled lip and a fillable pool."""
+    sections = 64
+    angles = np.linspace(0.0, 2 * np.pi, sections, endpoint=False)
+    outline: NDArray[np.float64] = np.column_stack(
+        (
+            1.15 * (0.049 * np.cos(angles) - 0.035 * np.exp(-((np.sin(angles) / 0.50) ** 2)) * np.maximum(np.cos(angles), 0) ** 2),
+            0.100 * np.sin(angles),
+        )
+    )
+    outline_polygon = Polygon(outline)
+    assert outline_polygon.is_valid
+
+    def loft(rows: list[tuple[float, float]]) -> trimesh.Trimesh:
+        """Join matching contours, closing only the two floor faces to leave the basin cavity open."""
+        vertices: list[list[float]] = []
+        for size, y in rows:
+            vertices.extend([[float(x * size), y, float(z * size - 0.10)] for x, z in outline])
+        faces: list[list[int]] = []
+        for row in range(len(rows) - 1):
+            for col in range(sections):
+                a = row * sections + col
+                b = row * sections + (col + 1) % sections
+                c, d = a + sections, b + sections
+                faces.extend(([a, c, b], [b, c, d]))
+        for end, reverse in ((0, False), (len(rows) - 1, True)):
+            size, y = rows[end]
+            points, triangles = trimesh.creation.triangulate_polygon(Polygon(outline * size), engine="earcut")
+            offset = len(vertices)
+            vertices.extend([[float(x), y, float(z - 0.10)] for x, z in points])
+            for triangle in triangles:
+                oriented = triangle[::-1] if reverse else triangle
+                faces.append([int(index) + offset for index in oriented])
+        mesh = finish(trimesh.Trimesh(vertices, faces))
+        assert mesh.is_watertight
+        return mesh
+
+    # Underside, rising outer wall, rolled lip, inner wall and the broad flat basin floor.
+    dish = loft(
+        [
+            (0.82, -0.010),
+            (0.86, -0.008),
+            (0.985, 0.013),
+            (0.999, 0.0155),
+            (1.002, 0.017),
+            (0.996, 0.0185),
+            (0.982, 0.019),
+            (0.966, 0.018),
+            (0.956, 0.015),
+            (0.83, -0.005),
+            (0.70, -0.005),
+        ]
+    )
+    z_scale = length / 0.2
+    m.add("Dish", scaled(dish, (1.0, 1.0, z_scale)), "steel")
+
+    # ShowLiquid scales X/Z from 0.88 to 1 and raises the pool from the flat floor.
+    # Leave a small clearance at the wall, including after Godot mesh import and collision processing.
+    pool = loft([(0.82, -0.005), (0.925, 0.012), (0.84, 0.012)])
+    pool_pivot = (0.0, -0.005, -length * 0.5)
+    m.add("Pool", scaled(pool, (1.0, 1.0, z_scale)), "drug", pool_pivot)
+
+    # Check that the liquid contour stays inside the tapered basin throughout its fill animation.
+    for amount in (0.01, 0.25, 0.5, 0.65, 1.0):
+        top_factor = 0.925 * (0.88 + 0.12 * amount)
+        wall_factor = 0.83 + (0.956 - 0.83) * (0.017 * amount / 0.020)
+        assert top_factor < wall_factor
+        assert Polygon(outline * wall_factor).buffer(1e-9).covers(Polygon(outline * top_factor))
+
+
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
         _scalpel(m, length, True)
@@ -962,12 +1032,7 @@ def _misc(m: Model, kind: str, length: float) -> None:
     elif kind == "surgical_cap":
         m.add("Cap", superellipsoid((0.1, 0.06, 0.11), 0.7, (0.0, 0.0, -length * 0.5)), "tint")
     elif kind == "kidney_dish":
-        outer = lathe([(0.0, 0.0), (0.06, 0.0), (0.07, 0.025), (0.066, 0.026), (0.056, 0.004), (0.0, 0.004)], 32)
-        m.add("Dish", moved(scaled(outer, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "steel")
-        # Liquid squirted in from a syringe, full to just under the rim. Its origin is on the dish floor, so the game
-        # raises the level by scaling it up from there (src/Tools/SurgicalTool.cs ShowLiquid()).
-        pool = lathe([(0.0, 0.004), (0.0555, 0.004), (0.0628, 0.02), (0.0, 0.02)], 32)
-        m.add("Pool", moved(scaled(pool, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "drug", (0.0, -0.006, -length * 0.5))
+        _kidney_dish(m, length)
 
 
 def _misc_maker(kind: str, model: Model, length: float) -> None:
