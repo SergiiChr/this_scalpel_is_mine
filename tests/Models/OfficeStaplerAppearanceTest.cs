@@ -5,6 +5,7 @@ namespace Scalpel.Tests.Models;
 [TestCategory("tool_office_stapler"), TestCategory("visual_confirmation")]
 [GodotArgs("--fixed-fps", "60")]
 public class OfficeStaplerAppearanceTest {
+    private const float QueryScale = 1000f;
     [TestCase]
     public async Task UpperLeverClearsTheFixedRailAndBothGlovesThroughoutItsSqueeze() {
         var studio = new ModelStudio(0.25f);
@@ -83,14 +84,19 @@ public class OfficeStaplerAppearanceTest {
     private static void ClearsFixedParts(Node3D model, MeshInstance3D trigger, MeshInstance3D rail, MeshInstance3D anvil, float fraction, float scale) {
         var moving = ModelStudio.Vertices(model, trigger).ToArray();
         using var movingTree = new TriangleMesh();
-        AssertBool(movingTree.CreateFromFaces(moving)).OverrideFailureMessage("the imported upper lever has a queryable triangle mesh").IsTrue();
+        AssertBool(movingTree.CreateFromFaces(moving.Select(point => point * QueryScale).ToArray())).OverrideFailureMessage("the imported upper lever has a queryable triangle mesh").IsTrue();
         foreach (var (part, xs, from, to, count) in new[] {
             (rail, new[] { -0.0123f, -0.0117f, 0.0117f, 0.0123f }, -0.117f, -0.035f, 35),
             (anvil, new[] { -0.009f, -0.003f, 0.003f, 0.009f }, -0.137f, -0.125f, 10),
         }) {
             var fixedFaces = ModelStudio.Vertices(model, part).ToArray();
             using var fixedTree = new TriangleMesh();
-            AssertBool(fixedTree.CreateFromFaces(fixedFaces)).OverrideFailureMessage($"{part.Name} has a queryable triangle mesh").IsTrue();
+            AssertBool(fixedTree.CreateFromFaces(fixedFaces.Select(point => point * QueryScale).ToArray())).OverrideFailureMessage($"{part.Name} has a queryable triangle mesh").IsTrue();
+            var center = (fixedFaces[0] + fixedFaces[1] + fixedFaces[2]) / 3f;
+            var normal = (fixedFaces[1] - fixedFaces[0]).Cross(fixedFaces[2] - fixedFaces[0]).Normalized();
+            AssertBool(fixedTree.IntersectSegment((center - normal * 0.01f) * QueryScale, (center + normal * 0.01f) * QueryScale).Count > 0
+                || fixedTree.IntersectSegment((center + normal * 0.01f) * QueryScale, (center - normal * 0.01f) * QueryScale).Count > 0)
+                .OverrideFailureMessage($"the imported {part.Name} query detects a segment crossing one of its actual faces").IsTrue();
             AssertBool(!EdgesCross(moving, fixedTree) && !EdgesCross(fixedFaces, movingTree))
                 .OverrideFailureMessage($"at {fraction:P0} squeeze no imported upper-lever edge crosses {part.Name} and no {part.Name} edge crosses the lever").IsTrue();
             var checkedPoints = 0;
@@ -115,8 +121,8 @@ public class OfficeStaplerAppearanceTest {
     private static bool EdgesCross(Vector3[] faces, TriangleMesh target) {
         for (var index = 0; index < faces.Length; index += 3) {
             for (var edge = 0; edge < 3; edge++) {
-                var from = faces[index + edge];
-                var to = faces[index + (edge + 1) % 3];
+                var from = faces[index + edge] * QueryScale;
+                var to = faces[index + (edge + 1) % 3] * QueryScale;
                 if (target.IntersectSegment(from, to).Count > 0 || target.IntersectSegment(to, from).Count > 0) {
                     return true;
                 }
