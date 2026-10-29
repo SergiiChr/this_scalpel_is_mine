@@ -227,8 +227,7 @@ Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at l
 `[objectives]` the steps. The file name gives the id (`03_appendectomy.cfg` -> `appendectomy`), the number the order.
 `disabled=true` keeps a scenario out of the menu and lobby while its positive flow test is a known issue or broken; a
 comment beside it names the test. `debug_only=true` offers a sandbox (`90_skin_lab.cfg`) only in debug mode and keeps
-it out of the scenario tests; `skin_solver="xpbd"` runs its skin on the solver being tried out there. In debug mode the
-lobby's host can also tick "Skip quirks and run modifiers" (`Net.SkipQuirks`): the run then rolls no surgeon quirks, run
+it out of the scenario tests. In debug mode the lobby's host can also tick "Skip quirks and run modifiers" (`Net.SkipQuirks`): the run then rolls no surgeon quirks, run
 modifiers or patient quirks beyond the scenario's fixed ones.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):

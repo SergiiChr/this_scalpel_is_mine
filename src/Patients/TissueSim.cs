@@ -106,7 +106,7 @@ public sealed partial class TissueSim {
     public const float Anchor = 0.02f;
     /// <summary>Skin pulled this far (meters) from its spot isn't held there any more, see Substep().</summary>
     public const float AnchorReach = 0.05f;
-    /// <summary>The farthest (meters) a grip draws its skin in a solver step (XPBD).</summary>
+    /// <summary>The farthest (meters) a grip draws its skin in a solver step.</summary>
     private const float GripStep = 0.001f;
     /// <summary>A cut's edge lifted this far (meters) off its spot isn't drawn back from the cut any more.</summary>
     public const float LiftedOff = 0.005f;
@@ -142,6 +142,9 @@ public sealed partial class TissueSim {
     /// <summary>Skin bunches up to this share of its length, pushed along, before it holds the hand like
     /// <see cref="GripStrain"/> does: it piles up in front of the jaws, it doesn't pass through itself.</summary>
     public const float GripBunch = 1.6f;
+    /// <summary>The least a spring's reach along the body comes to, as a share of its rest reach, before a grip's patch
+    /// counts as folding the skin over itself (StrainAt()): 0.4 lets it tilt up to about 66 degrees.</summary>
+    internal const float UprightShare = 0.4f;
     /// <summary>Skin under the drape stays at least this far (meters) below the height folded-out skin lies at on top
     /// of it.</summary>
     public const float UnderDrape = 0.006f;
@@ -235,13 +238,7 @@ public sealed partial class TissueSim {
     /// is as still as skin that doesn't move.</summary>
     private Vector3[] _before = [];
     private float[] _anchor = [];
-    private readonly Dictionary<Vector3I, List<int>> _foldNeighbors = [];
-    private readonly List<List<int>> _usedFoldBuckets = [];
-    private Vector3[] _bend = [];
-    private readonly List<int> _foldCells = [];
-    private bool[] _foldCellMarks = [];
     private readonly FoldState _fold = new();
-    internal bool FoldContact(int k) => k < _fold.Contact.Length && _fold.Contact[k];
     internal bool HasFoldFootprint => _fold.Roots.Count > 0;
     internal bool NearFold(int k) => k < _fold.Near.Length && _fold.Near[k] > 0f;
     internal bool HoldingFold => _fold.Active && !_fold.TurnedOver;
@@ -1122,7 +1119,7 @@ public sealed partial class TissueSim {
         // Bunching counts over the grip's whole footprint: skin pushed along piles up where it meets skin that
         // stays put, at the drape's rim, rows ahead of the jaws, and the hand stops when that pile can't take more.
         // Nor may the patch fold the skin over itself: a spring whose reach along the body has shrunk to
-        // UprightShare of its rest reach (KeepUpright()) is at the limit, one row passing the next is over it.
+        // UprightShare of its rest reach is at the limit, one row passing the next is over it.
         foreach (var s in patch.Springs) {
             ref readonly var spring = ref _springs[s];
             var unpulled = pin.UnpulledAll[s];
@@ -1885,66 +1882,14 @@ public sealed partial class TissueSim {
             _handHolds |= key >= 0;
             // A grip moved a long way at once (set down elsewhere, or by the host) draws its skin there over a few steps:
             // all at once, the skin between it and a cut's edge would carry the whole jump across the cut in one step.
-            pin.Drawn = Xpbd ? pin.Drawn.MoveToward(pin.Target, GripStep) : pin.Target;
+            pin.Drawn = pin.Drawn.MoveToward(pin.Target, GripStep);
         }
         UpdateFoldState();
         TrackTurned();
         if (_fold.Bending) { IndexSprings(); }
-        if (Xpbd) {
-            BeginXpbdStep();
-        }
-        for (var iteration = 0; iteration < Iterations && Xpbd; iteration++) {
+        BeginXpbdStep();
+        for (var iteration = 0; iteration < Iterations; iteration++) {
             XpbdIteration();
-        }
-        for (var iteration = 0; iteration < Iterations && !Xpbd; iteration++) {
-            foreach (var pin in _pins.Values) {
-                DragPatch(pin);
-            }
-            // Sweeping the springs forward then backward keeps corrections from always flowing one way across the grid.
-            var count = WindowSprings.Length;
-            for (var n = 0; n < count; n++) {
-                Solve(WindowSprings[iteration % 2 == 0 ? n : count - 1 - n]);
-            }
-            for (var pass = 0; pass <= StitchPasses; pass++) {
-                foreach (var s in _stitches) {
-                    Solve(s);
-                }
-            }
-            KeepCutEdgesApart();
-            foreach (var k in WindowParticles) {
-                // Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back. A
-                // cut's edge lifted off the body isn't drawn back along it any more either: only skin lying on it is.
-                var back = _anchorTarget[k] - pos[k];
-                var hold = _anchor[k];
-                if (hold > Anchor) {
-                    hold = Mathf.Lerp(hold, LooseAnchor, Mathf.Clamp((pos[k].Y - _anchorTarget[k].Y) / LiftedOff, 0f, 1f));
-                }
-                pos[k] += back * hold * _free[k] * Mathf.Clamp(1f - back.Length() / AnchorReach, 0f, 1f);
-                // The surrounding bed stays put while a grip pulls the skin near it: on the weak anchor alone the
-                // sheet's tension would slide the whole site along, covered flanks included.
-                if (_fold.Roots.Count > 0 && !_fold.TurnedOver) {
-                    pos[k] += (_anchorTarget[k] - pos[k]) * (FoldAnchor * (1f - _fold.Near[k]) * _free[k]);
-                }
-            }
-            // Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
-            RelaxFolds();
-            KeepBendsRound();
-            KeepUpright();
-            KeepBendsRound();
-            PreserveLocalArea();
-            StayOnBody();
-            StayAboveFloor();
-        }
-        // Finish the area constraints after the last spring/anchor pass. Resolving one compressed face can move
-        // its neighbour, so a single sweep would leave folds that fit the skin but not its underlying thickness.
-        if (!Xpbd) {
-            SeparateFoldNeighbors();
-            FindCompressedCells();
-            for (var pass = 0; pass < 8 && _fold.Active && !_fold.TurnedOver; pass++) {
-                if (!PreserveLocalArea(pass % 2 != 0, compressedOnly: true)) { break; }
-            }
-            StayAboveFloor();
-            UpdateFoldContact();
         }
         var moved = 0f;
         var wandered = 0f;
@@ -2073,7 +2018,6 @@ public sealed partial class TissueSim {
         _win = window;
         _winParticleList.Clear();
         _winSpringList.Clear();
-        _winBendList.Clear();
         if (window.Size == Vector2I.Zero) {
             return;
         }
@@ -2099,7 +2043,6 @@ public sealed partial class TissueSim {
                 }
             }
         }
-        IndexBends();
         foreach (var k in WindowParticles) {
             _free[k] = 1f;
             // Skin coming back into the window starts out still, not with whatever motion it had when it left.
@@ -2239,26 +2182,6 @@ public sealed partial class TissueSim {
         var body = SettledHeightAt(Pos[k].X, Pos[k].Z);
         return Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff
             || Pos[k].DistanceSquaredTo(Settled[k]) > BodyReach * BodyReach;
-    }
-
-    /// <summary>Whether skin k lies on the drape, or is part of the contact skirt (FoldContact()) joining skin on it to
-    /// the body: its faces would otherwise cross the cloth.</summary>
-    internal bool OnClothOrSkirt(int k) {
-        if (LiesOnCloth(k)) {
-            return true;
-        }
-        if (!FoldContact(k)) {
-            return false;
-        }
-        var at = CellOf(k);
-        for (var j = Math.Max(0, at.Y - 1); j <= Math.Min(ResY, at.Y + 1); j++) {
-            for (var i = Math.Max(0, at.X - 1); i <= Math.Min(ResX, at.X + 1); i++) {
-                if (LiesOnCloth(Index(i, j))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private void StayAboveFloor() {

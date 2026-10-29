@@ -245,7 +245,7 @@ public class RetractorTest {
             var k = risen.Index;
             GD.Print($"rim peak at {body.Tissue.UvOf(k)}: before {rim.First(edge => edge.Index == k).Point}, "
                 + $"LayerPoint {body.LayerPoint(0, k)}, drawn height {drawn[k]}, sim {body.Tissue.Pos[k]}, settled {body.Tissue.Settled[k]}, "
-                + $"fold {body.Tissue.NearFold(k)}, cloth {body.Tissue.OnClothOrSkirt(k)}, exposed {body.Tissue.Exposed[k]}");
+                + $"fold {body.Tissue.NearFold(k)}, cloth {body.Tissue.LiesOnCloth(k)}, exposed {body.Tissue.Exposed[k]}");
         }
         AssertFloat(risen.Rise)
             .OverrideFailureMessage($"the skin along the window's edge stays on the body under the drape's rim, no peak: it rises {risen.Rise * 1000f:0.0} mm at uv {body.Tissue.UvOf(risen.Index)}")

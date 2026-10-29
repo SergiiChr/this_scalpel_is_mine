@@ -973,9 +973,9 @@ public partial class PatientBody {
             if (Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[a].X, _skinOf[a].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[b].X, _skinOf[b].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[c].X, _skinOf[c].Z))) { return; }
-            // Only the cloth-contact skirt may be lifted onto the cloth. A neighbouring folded corner
+            // Only skin lying on the cloth may be lifted onto it. A neighbouring folded corner
             // must not drag quiet skin from under the drape's rim up into a peak.
-            if (!Tissue.OnClothOrSkirt(a) || !Tissue.OnClothOrSkirt(b) || !Tissue.OnClothOrSkirt(c)) { return; }
+            if (!Tissue.LiesOnCloth(a) || !Tissue.LiesOnCloth(b) || !Tissue.LiesOnCloth(c)) { return; }
             _clothFaces.PushTriangle(_skinOf, a, b, c, 0.004f, above: true);
         }
     }
@@ -1777,12 +1777,12 @@ public partial class PatientBody {
         // Skin folded out over the drape lies on the cloth where it is now, not at the body's height under its old
         // spot, and the layers that come with it lie on it too; skin under the drape stays under it. A tethered
         // layer that stayed behind under exposed skin is left where it is: it's under the skin, whatever lies over.
-        if (Tissue.FloorAt is not null && (moved.LengthSquared() > 0.000001f || Tissue.FoldContact(k))) {
+        if (Tissue.FloorAt is not null && moved.LengthSquared() > 0.000001f) {
             var floorY = Tissue.FloorAt(point.X, point.Z);
             if (!float.IsNaN(floorY)) {
                 if (!Tissue.Exposed[k]) {
                     point.Y = Mathf.Min(point.Y, floorY - TissueSim.UnderDrape);
-                } else if ((layer == 0 || follow >= 0.999f) && Tissue.OnClothOrSkirt(k)) {
+                } else if ((layer == 0 || follow >= 0.999f) && Tissue.LiesOnCloth(k)) {
                     // Only where the sim lays it on the cloth: exposed skin a grip slid a few millimeters past the
                     // opening's edge stays on the body under the drape's rim, it isn't drawn up onto the cloth.
                     point.Y = Mathf.Max(point.Y, floorY);

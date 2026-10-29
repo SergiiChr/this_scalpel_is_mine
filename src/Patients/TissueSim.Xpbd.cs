@@ -1,17 +1,13 @@
 namespace Scalpel.Patients;
 
 /// <summary>
-/// The skin solver being tried out in the Skin Lab (<see cref="ScenarioDef.SkinSolver"/> "xpbd"): extended position
-/// based dynamics. Every spring is a distance constraint with a compliance (its softness in meters per newton-ish,
-/// not a share of the error fixed per pass), so how stiff the skin is no longer depends on how often it's solved, and
-/// every point is tethered to its own spot on the bed under it: it slides along the bed on a soft spring and never sinks
-/// into it. A grip pins its point and nothing more; the skin around follows by its springs alone. None of the default
-/// solver's fold, area, upright or patch passes run.
+/// The skin's solver: extended position based dynamics (XPBD). Every spring is a distance constraint with a compliance
+/// (its softness in meters per newton-ish, not a share of the error fixed per pass), so how stiff the skin is doesn't
+/// depend on how often it's solved, and every point is tethered to its own spot on the bed under it: it slides along
+/// the bed on a soft spring and never sinks into it. A grip pins its point and drags the patch around it along
+/// (DragPatch()); the skin beyond follows by its springs.
 /// </summary>
 public sealed partial class TissueSim {
-    /// <summary>Whether this sheet runs on the XPBD solver.</summary>
-    public bool Xpbd { get; set; } = true;
-
     /// <summary>A tissue spring's compliance (m/N for a unit-mass grid): how far it gives under a pull. 0 would be
     /// inextensible; skin stretches noticeably before it tears.</summary>
     private const float XpbdStretch = 0.00002f;
