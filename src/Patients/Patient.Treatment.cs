@@ -121,7 +121,8 @@ public partial class Patient {
     /// skin goes into the muscle.</summary>
     public bool Cut(long strokeKey, Vector2 a, Vector2 b, float depth, float sharpness, bool dirty, float speed) {
         var reach = Body.MetersToUv(RecutReach);
-        if (Body.IsOpen(a) && Body.IsOpen(b) && !Wounds.Any(w => w.Kind == WoundKind.Cut && w.DistanceTo(a) < reach)) {
+        var inside = Body.IsOpen(a) && Body.IsOpen(b);
+        if (inside && !Wounds.Any(w => w.Kind == WoundKind.Cut && w.DistanceTo(a) < reach)) {
             return false;
         }
         depth = Mathf.Clamp(depth - Mods.Num("fat_depth") * 0.25f, 0.1f, 1f);
@@ -138,6 +139,10 @@ public partial class Patient {
             wound = recut;
             wound.Recut(a, b, depth >= Wound.MuscleDepth);
         } else if (own is null || own.DistanceTo(a) > 0.02f) {
+            // Wholly inside an opening, the blade deepens the cut it runs along; it doesn't start one of its own there.
+            if (inside) {
+                return false;
+            }
             wound = NewWound(WoundKind.Cut, a, depth);
             wound.MadeBySurgeon = true;
             _strokeWounds[strokeKey] = wound;

@@ -176,12 +176,14 @@ public class PulledSkinTest {
             // Close views without the hands: both are working over the seam while the other holds the lip up.
             driver.OnKeyFrame = (keyFrame, description) => session.CaptureAt(keyFrame, description, site, PeelView);
         }
-        // The other lip, beside the cut and not past its ends: the muscle stitches under it mustn't move it.
+        // The other lip, beside the cut and not past its ends: the muscle stitches under it mustn't move it. The rows
+        // wholly across the cut: the hand's stroke wanders a little either side of its line, and the row it runs
+        // beside may be the pulled lip's.
         var tissue = body.Tissue;
         var (start, end) = (cut.Points[0], cut.Points[^1]);
         bool Alongside(Vector2 uv) => (uv - start).Dot(end - start) is var along && along > 0f && along < (end - start).LengthSquared();
         var otherLip = Enumerable.Range(0, tissue.Pos.Length)
-            .Where(p => tissue.UvOf(p).Y < middle.Y && Alongside(tissue.UvOf(p)) && cut.DistanceTo(tissue.UvOf(p)) < body.MetersToUv(0.015f))
+            .Where(p => tissue.UvOf(p).Y < middle.Y - 1f / tissue.ResY && Alongside(tissue.UvOf(p)) && cut.DistanceTo(tissue.UvOf(p)) < body.MetersToUv(0.015f))
             .ToDictionary(p => p, p => tissue.Pos[p]);
         // Close the widened incision while it is exposed. Closing the short original entry first can draw
         // its neighboring incision back beneath the held lip before the needle reaches it.

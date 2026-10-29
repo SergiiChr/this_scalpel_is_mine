@@ -328,6 +328,9 @@ public sealed partial class TissueSim {
         public Vector3[]? Base { get; set; }
         public Vector3 BaseAt { get; set; }
         public int BaseFor { get; set; } = -1;
+        /// <summary>Where DragPatch() last drew each of the patch's particles (<see cref="GoalOf"/>).</summary>
+        public Vector3[] Goal { get; set; } = [];
+        public int[] GoalOf { get; set; } = [];
         /// <summary>The solver step the grip took hold at: its hold settles the skin in the jaws over the next step
         /// (Hold()), and the springs are measured from after that.</summary>
         public int HeldAt { get; init; }
@@ -1043,9 +1046,23 @@ public sealed partial class TissueSim {
         return piece.Count;
     }
 
-    /// <summary>Pins the particle nearest uv to follow a tool.</summary>
+    /// <summary>Pins the particle nearest uv to follow a tool, on uv's side of any cut: a cut running between two rows
+    /// of the grid leaves the nearest one with the other lip.</summary>
     public void Grip(int key, Vector2 uv) {
         var k = Nearest(uv);
+        if (AcrossCut(uv, UvOf(k))) {
+            var at = CellOf(k);
+            var best = float.PositiveInfinity;
+            for (var j = Math.Max(at.Y - 1, 1); j <= Math.Min(at.Y + 1, ResY - 1); j++) {
+                for (var i = Math.Max(at.X - 1, 1); i <= Math.Min(at.X + 1, ResX - 1); i++) {
+                    var near = Index(i, j);
+                    if (!Excised[near] && UvOf(near).DistanceTo(uv) < best && !AcrossCut(uv, UvOf(near))) {
+                        best = UvOf(near).DistanceTo(uv);
+                        k = near;
+                    }
+                }
+            }
+        }
         _pins[key] = new Pin(k, Pos[k]) { HeldAt = StepsDone };
         _winDirty = true;
         Wake();
@@ -1609,11 +1626,21 @@ public sealed partial class TissueSim {
 
     /// <summary>True when uv lies inside an opening: between the lips of a cut at least <paramref name="depth"/> deep,
     /// pulled open.</summary>
-    public bool IsOpen(Vector2 uv, TissueDepth depth = TissueDepth.Muscle) {
-        if (depth <= TissueDepth.Skin && Excised[Nearest(uv)]) {
-            return true;
-        }
+    public bool IsOpen(Vector2 uv, TissueDepth depth = TissueDepth.Muscle) =>
+        (depth <= TissueDepth.Skin && Excised[Nearest(uv)]) || OpeningAt(uv, depth).Spring >= 0;
+
+    /// <summary>Where uv, inside an opening (IsOpen()), lies on the skin: on the cut that opened there, its lips drawn
+    /// back from it. Elsewhere, uv itself.</summary>
+    public Vector2 OntoCut(Vector2 uv, TissueDepth depth = TissueDepth.Skin) {
+        var (s, side) = OpeningAt(uv, depth);
+        return s < 0 ? uv : uv - ((UvOf(_springs[s].B) - UvOf(_springs[s].A)) * Size).Normalized() * side / Size;
+    }
+
+    /// <summary>The cut spring whose opening uv lies in, nearest its crossing across the cut, and how far across from
+    /// it (meters); -1 outside every opening.</summary>
+    private (int Spring, float Side) OpeningAt(Vector2 uv, TissueDepth depth) {
         var cell = Mathf.Max(Size.X / ResX, Size.Y / ResY);
+        var best = (Spring: -1, Side: 0f);
         foreach (var s in _severed) {
             if (DepthOf(s) < depth) {
                 continue;
@@ -1627,11 +1654,12 @@ public sealed partial class TissueSim {
             var offset = (uv - CrossingUv(s)) * Size;
             var across = ((UvOf(_springs[s].B) - UvOf(_springs[s].A)) * Size).Normalized();
             var side = offset.Dot(across);
-            if (Mathf.Abs(side) < gap * 0.5f && (offset - across * side).Length() < cell * 0.6f) {
-                return true;
+            if (Mathf.Abs(side) < gap * 0.5f && (offset - across * side).Length() < cell * 0.6f
+                && (best.Spring < 0 || Mathf.Abs(side) < Mathf.Abs(best.Side))) {
+                best = (s, side);
             }
         }
-        return false;
+        return best;
     }
 
     private readonly record struct OpeningRegion(Vector2 Center, Vector2 Across, float HalfGap, float HalfLength, TissueDepth Depth);
@@ -1936,9 +1964,18 @@ public sealed partial class TissueSim {
             // The patch is dragged from where it lay when the grip took hold (or the skin was last cut), not from
             // where its anchors would have it: skin bunched up beside a wound never gets there, and dragged from
             // there it would be strained by the grip before the hand moved at all.
-            pin.Base = [.. patch.Around.Select(j => Pos[j])];
+            // Taken again once the skin is cut or sewn, it's taken from where the patch was being drawn, not from
+            // where the skin it pulls on has sagged to since: it would creep back a little at every stitch.
+            var based = new Vector3[patch.Around.Length];
+            for (var n = 0; n < based.Length; n++) {
+                var at = Array.IndexOf(pin.GoalOf, patch.Around[n]);
+                based[n] = at >= 0 ? pin.Goal[at] : Pos[patch.Around[n]];
+            }
+            pin.Base = based;
             pin.BaseAt = Pos[k];
             pin.BaseFor = TopologyVersion;
+            pin.Goal = (Vector3[])based.Clone();
+            pin.GoalOf = patch.Around;
         }
         Pos[k] = pin.Drawn;
         var pull = pin.Drawn - _anchorTarget[k];
@@ -1960,7 +1997,8 @@ public sealed partial class TissueSim {
             var j = patch.Around[n];
             var ahead = new Vector2(Rest[j].X - Rest[k].X, Rest[j].Z - Rest[k].Z).Dot(way);
             var weight = ahead > 0f ? Mathf.Max(patch.Weights[n], 1f - ahead * falloff) : patch.Weights[n];
-            Pos[j] += (pin.Base[n] + shift * weight - Pos[j]) * drag * weight * _free[j];
+            pin.Goal[n] = pin.Base[n] + shift * weight;
+            Pos[j] += (pin.Goal[n] - Pos[j]) * drag * weight * _free[j];
         }
     }
 
