@@ -3,12 +3,12 @@
   "00_untouched_top.jpg": "the site before any tool touches it: intact skin, nothing in it",
   "01_tiny_cut_oblique.jpg": "a tiny shallow cut bleeding a little, blood puddled on the skin at it with no spot; below it a puncture, its puddle with a vein-like spot (blood-red middle, dark bluish rim) where it bleeds",
   "01_tiny_cut_top.jpg": "a tiny shallow cut bleeding a little, blood puddled on the skin at it with no spot; below it a puncture, its puddle with a vein-like spot (blood-red middle, dark bluish rim) where it bleeds",
-  "02_vessels_close_oblique.jpg": "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut",
-  "02_vessels_close_top.jpg": "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut",
+  "02_vessels_close_oblique.jpg": "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, each with a narrow run of blood down the wall under it and none above it, nothing on the skin around the cut",
+  "02_vessels_close_top.jpg": "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, each with a narrow run of blood down the wall under it and none above it, nothing on the skin around the cut",
   "03_pulled_close_oblique.jpg": "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was",
   "03_pulled_close_top.jpg": "close on the pulled edge: the middle vessel's spot on the wall of the edge that moved, nothing left where it was",
-  "04_vessel_under_pool_oblique.jpg": "the vessels covered by the pool: its surface plain dark blood, nothing standing on it",
-  "04_vessel_under_pool_top.jpg": "the vessels covered by the pool: its surface plain dark blood, nothing standing on it",
+  "04_vessel_under_pool_oblique.jpg": "the vessels covered by the pool: its surface plain dark blood, nothing standing on it, their spots' tops just showing on the walls above it",
+  "04_vessel_under_pool_top.jpg": "the vessels covered by the pool: its surface plain dark blood, nothing standing on it, their spots' tops just showing on the walls above it",
   "05_many_vessels_oblique.jpg": "every vessel bleeds into the film, the spots under the blood (unseen at )",
   "05_many_vessels_top.jpg": "every vessel bleeds into the film, the spots under the blood (unseen at )"
 }
