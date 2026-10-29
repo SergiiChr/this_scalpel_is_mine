@@ -2,6 +2,8 @@
 // Used for everything except the simulated site skin. Materials.imported() picks the settings per material family
 // (skin, rubber, cloth, metal, plastic, tissue), Materials.toon() makes the plain ones.
 shader_type spatial;
+// Light spread under skin is red: it reaches further than the other colors (only where SSS_STRENGTH is set).
+render_mode sss_mode_skin;
 
 global uniform float game_time;
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
@@ -22,6 +24,8 @@ uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 // Light through the surface where it is thin (Materials.Families Translucency).
 uniform float translucency = 0.0;
+// How strongly light spreads under the surface (Materials.Families Subsurface): Godot's screen-space scattering.
+uniform float subsurface = 0.0;
 uniform float grime : hint_range(0.0, 1.0) = 0.25;
 uniform float grime_scale = 14.0;
 // Grime fixed in the world, for walls and floors that never move. Anything else carries its own, so it doesn't
@@ -183,6 +187,9 @@ void fragment() {
 	EMISSION = emission_color.rgb + glow + reflection + vec3(0.2, 0.9, 0.2) * contamination * pulse * 0.6;
 	if (translucency > 0.0) {
 		BACKLIGHT = scatter_tint.rgb * translucency * 0.3;
+	}
+	if (subsurface > 0.0) {
+		SSS_STRENGTH = subsurface;
 	}
 }
 

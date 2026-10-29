@@ -3,6 +3,8 @@
 // Openings aren't painted: the sim pulls cut edges apart and gaping triangles are left out of the mesh,
 // so you look through the skin into the fat and muscle layers below.
 shader_type spatial;
+// Light spread under skin is red: it reaches further than the other colors (only where SSS_STRENGTH is set).
+render_mode sss_mode_skin;
 
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 uniform sampler2D wound_map : filter_linear, hint_default_black;
@@ -18,6 +20,8 @@ uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 // Light through the surface where it is thin (Materials.Families Translucency).
 uniform float translucency = 0.0;
+// How strongly light spreads under the surface (Materials.Families Subsurface): Godot's screen-space scattering.
+uniform float subsurface = 0.0;
 // Site space to the body model's own space: pores and grime are laid out where the body's are (toon.gdshader uses the
 // model's space), so they run on unbroken where this skin takes over from the body.
 uniform mat4 site_to_model;
@@ -77,6 +81,7 @@ void fragment() {
 	ALBEDO = c;
 	ROUGHNESS = mix(0.6, 0.08, wet);
 	BACKLIGHT = scatter_tint.rgb * translucency * 0.3;
+	SSS_STRENGTH = subsurface;
 }
 
 // Same light as toon.gdshader so the site blends into the rest of the body.

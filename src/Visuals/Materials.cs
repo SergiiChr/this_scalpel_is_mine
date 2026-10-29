@@ -13,11 +13,11 @@ public enum Decor { None, Window, Door, ServicePanel, CeilingLight }
 /// How a kind of surface responds to light, so skin, gloves, steel and cloth read apart under the same lamp.
 /// Specular: highlight strength, Rim: edge light (cloth sheen), Wrap/Scatter: light past the terminator (skin),
 /// Grime: procedural dirt, Metallic: 1 for metal, Detail: fine relief, Translucency: light through the surface where it's
-/// thin. Roughness comes from the model's own material.
+/// thin, Subsurface: how strongly light spreads under the surface (Godot's screen-space scattering, Forward+ only). Roughness comes from the model's own material.
 /// </summary>
 public sealed record SurfaceFamily(
     float Specular, float Rim, float Grime, float Wrap = 0f, Color? Scatter = null, float Metallic = 0f,
-    Detail Detail = Detail.None, float Translucency = 0f);
+    Detail Detail = Detail.None, float Translucency = 0f, float Subsurface = 0f);
 
 /// <summary>Shared materials. Everything goes through here so the look can be tuned in one place.</summary>
 public static class Materials {
@@ -53,7 +53,7 @@ public static class Materials {
 
     public static readonly IReadOnlyDictionary<string, SurfaceFamily> Families = new Dictionary<string, SurfaceFamily> {
         ["skin"] = new(0.15f, 0.12f, 0.05f, Wrap: 0.35f, Scatter: new Color(1f, 0.42f, 0.32f), Detail: Detail.Pores,
-            Translucency: 0.4f),
+            Translucency: 0.4f, Subsurface: 1f),
         ["rubber"] = new(0.18f, 0.08f, 0f, Detail: Detail.Creases),
         ["cloth"] = new(0f, 0.2f, 0.12f, Wrap: 0.25f, Scatter: Colors.White, Detail: Detail.Weave),
         ["metal"] = new(0.9f, 0.04f, 0.02f, Metallic: 1f, Detail: Detail.Brushed),
@@ -273,6 +273,7 @@ public static class Materials {
         material.SetShaderParameter("wrap", family.Wrap);
         material.SetShaderParameter("scatter_tint", family.Scatter ?? Colors.White);
         material.SetShaderParameter("translucency", family.Translucency);
+        material.SetShaderParameter("subsurface", family.Subsurface);
         material.SetShaderParameter("metallic", family.Metallic);
         material.SetShaderParameter("detail", (int)family.Detail);
         return material;
@@ -368,6 +369,7 @@ public static class Materials {
         material.SetShaderParameter("wrap", family.Wrap);
         material.SetShaderParameter("scatter_tint", family.Scatter ?? Colors.White);
         material.SetShaderParameter("translucency", family.Translucency);
+        material.SetShaderParameter("subsurface", family.Subsurface);
         material.SetShaderParameter("wound_map", woundTexture);
         material.SetShaderParameter("fluid_map", fluidTexture);
         return material;

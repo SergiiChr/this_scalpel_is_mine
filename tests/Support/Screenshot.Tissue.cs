@@ -31,6 +31,8 @@ public partial class Screenshot {
             ("top", mid + (up * 0.12f) + (across * 0.001f), mid),
             ("wall", mid + (up * 0.05f) + (across * 0.05f), mid - (across * 0.01f)),
             ("fat", mid + (up * 0.02f) + (across * 0.015f), mid - (across * 0.03f)),
+            ("skin", mid + (up * 0.04f) + (across * 0.13f), mid + (across * 0.07f)),
+            ("patient", mid + new Vector3(0.45f, 0.5f, 0.6f), mid),
         };
         surgery.ProcessMode = ProcessModeEnum.Pausable;
         ProcessMode = ProcessModeEnum.Always;
