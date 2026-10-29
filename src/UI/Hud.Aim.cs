@@ -44,6 +44,8 @@ public partial class Hud {
     internal bool BladeShown => _blade.Visible;
     /// <summary>The projected center of the displayed blade line.</summary>
     internal Vector2 BladeCenter => _blade.Points[1];
+    /// <summary>The center of the displayed blade line on the skin (world).</summary>
+    internal Vector3 BladeMiddle { get; private set; }
     /// <summary>The stem from an opening's lip down to the forceps' tip is shown.</summary>
     internal bool DepthShown => _depth.Visible;
     /// <summary>The text beside the aim: effort levels or forceps' depth, empty when none shows.</summary>
@@ -146,6 +148,7 @@ public partial class Hud {
                 _blade.Visible = line.All(point => me.SurfaceBelow(point, false).Soft
                     && Mathf.Abs(point.Y - aim.Y) < Surgeon.AimDrop);
                 if (_blade.Visible) {
+                    BladeMiddle = line[1];
                     DrawAim(_blade, [.. line.Select(camera.UnprojectPosition)], hand.Lowered && hand.Level > 0);
                 }
                 break;

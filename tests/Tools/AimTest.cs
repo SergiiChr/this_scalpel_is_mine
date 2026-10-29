@@ -87,12 +87,14 @@ public class AimTest {
             AssertFloat(camera.UnprojectPosition(me.AimPoint()).DistanceTo(before))
                 .OverrideFailureMessage("the changed capture camera requires a new aim projection").IsGreater(10f);
             AssertObject(Surgery.Current).OverrideFailureMessage("the active surgery is available to capture").IsSame(driver.Surgery);
-            var shifted = camera.UnprojectPosition(me.AimPoint());
+            // The blade line lies where the edge crosses the skin pressed in, under the aim point: seen from the side
+            // it moves less than the aim.
+            var shifted = camera.UnprojectPosition(driver.Surgery.Hud.BladeMiddle);
             await shots.CaptureView("camera_shifted", "the view shifted sideways: the aim dot still on the scalpel's tip");
             AssertFloat(driver.Surgery.Hud.BladeCenter.DistanceTo(shifted))
-                .OverrideFailureMessage($"the frozen capture refreshes the aim for the changed camera: drawn {driver.Surgery.Hud.BladeCenter}, expected {shifted}, now {camera.UnprojectPosition(me.AimPoint())}").IsLess(1f);
+                .OverrideFailureMessage($"the frozen capture refreshes the aim for the changed camera: drawn {driver.Surgery.Hud.BladeCenter}, expected {shifted}").IsLess(1f);
             camera.HOffset = offset;
-            var restored = camera.UnprojectPosition(me.AimPoint());
+            var restored = camera.UnprojectPosition(driver.Surgery.Hud.BladeMiddle);
             await shots.CaptureView("camera_restored", "the view back where it was: the aim dot on the scalpel's tip again");
             AssertFloat(driver.Surgery.Hud.BladeCenter.DistanceTo(restored))
                 .OverrideFailureMessage("the next capture refreshes the restored camera projection").IsLess(1f);
