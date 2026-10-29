@@ -612,12 +612,42 @@ def _hammer(m: Model, length: float) -> None:
 
 
 def _screwdriver(m: Model, length: float) -> None:
-    m.add("Handle", along_z(lathe([(0.0, 0.0), (0.014, 0.004), (0.016, 0.07), (0.01, 0.09), (0.0, 0.09)], 8), 0.06), "yellow_plastic")
-    m.add(
-        "Shaft",
-        merge(rod(0.0035, -0.05, -length + 0.008), flat([(-length + 0.008, 0.004), (-length, 0.001), (-length, -0.001), (-length + 0.008, -0.004)], 0.002)),
-        "chrome",
+    """Contoured molded handle with a collared shaft and centered flat tip."""
+    handle = lathe(
+        [
+            (0.0, 0.0),
+            (0.009, 0.002),
+            (0.0145, 0.006),
+            (0.016, 0.013),
+            (0.013, 0.025),
+            (0.0125, 0.040),
+            (0.0145, 0.055),
+            (0.0155, 0.066),
+            (0.014, 0.078),
+            (0.010, 0.088),
+            (0.0, 0.094),
+        ],
+        16,
     )
+    m.add("Handle", along_z(handle, 0.06), "yellow_plastic")
+
+    ferrule = cylinder(0.0065, (0.0, 0.0, -0.049), (0.0, 0.0, -0.029), 16)
+    m.add("Ferrule", ferrule, "chrome")
+    m.add("Shaft", rod(0.0034, -0.044, -length + 0.012, sections=16), "chrome")
+
+    # The thin plate has a square chisel edge at the configured contact plane.
+    blade = extrude(
+        [
+            (-length + 0.014, 0.004),
+            (-length, 0.004),
+            (-length, -0.004),
+            (-length + 0.014, -0.004),
+        ],
+        0.0016,
+        faceted=False,
+    )
+    blade.vertices = blade.vertices[:, [2, 1, 0]]
+    m.add("Tip", finish(blade), "chrome")
 
 
 def _suction(m: Model, length: float, straw: bool) -> None:
