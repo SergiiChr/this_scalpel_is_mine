@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from numpy.typing import NDArray
 from shapely.geometry import Polygon
 
 from .geometry import Model, cylinder, ellipsoid, extrude, finish, lathe, merge, moved, rotated, scaled, superellipsoid, torus, tube
@@ -807,6 +808,122 @@ def _tourniquet(m: Model, length: float) -> None:
     m.add("Keeper", scaled_z(superellipsoid((0.027, 0.003, 0.014), 0.3, (0.037, 0.003, -0.068), detail=8)), "plastic")
 
 
+def _gas_mask(m: Model, length: float) -> None:
+    """Shaped anesthetic mask with an open shell, hollow connector and hose."""
+    sections = 40
+
+    def contour(angle: float) -> NDArray[np.float64]:
+        return np.array([0.037 * (1 - 0.22 * np.sin(angle)) * np.cos(angle), 0.050 * np.sin(angle)])
+
+    def cushion() -> trimesh.Trimesh:
+        vertices: list[NDArray[np.float64]] = []
+        for angle in np.linspace(0.0, 2 * np.pi, sections, endpoint=False):
+            center = contour(angle)
+            epsilon = 0.00001
+            tangent = contour(angle + epsilon) - contour(angle - epsilon)
+            tangent /= np.linalg.norm(tangent)
+            outward = np.array([tangent[1], -tangent[0]])
+            # Include the front contact plane in the sampled cushion profile.
+            for around in np.linspace(-np.pi / 2, 3 * np.pi / 2, 10, endpoint=False):
+                xy = center + outward * 0.0055 * np.cos(around)
+                vertices.append(np.array([xy[0], xy[1], -0.094 + 0.006 * np.sin(around)]))
+        faces: list[list[int]] = []
+        for index in range(sections):
+            for side in range(10):
+                a = index * 10 + side
+                b = index * 10 + (side + 1) % 10
+                c = ((index + 1) % sections) * 10 + side
+                d = ((index + 1) % sections) * 10 + (side + 1) % 10
+                faces.extend(([a, c, b], [b, c, d]))
+        return finish(trimesh.Trimesh(vertices, faces))
+
+    def shell() -> trimesh.Trimesh:
+        rows = [(0.0, -0.029), (0.25, -0.038), (0.58, -0.060), (0.87, -0.080), (1.0, -0.092)]
+        vertices: list[list[float]] = []
+        for inner in (False, True):
+            for fraction, z in rows:
+                for angle in np.linspace(0.0, 2 * np.pi, sections, endpoint=False):
+                    circle = np.array([np.cos(angle), np.sin(angle)]) * 0.0105
+                    xy = circle * (1 - fraction) + contour(angle) * fraction * 0.98
+                    if inner:
+                        xy -= xy / np.linalg.norm(xy) * 0.0015
+                    vertices.append([float(xy[0]), float(xy[1]), z])
+        faces: list[list[int]] = []
+        count = len(rows) * sections
+        for side in range(2):
+            start = side * count
+            for row in range(len(rows) - 1):
+                for col in range(sections):
+                    a = start + row * sections + col
+                    b = start + row * sections + (col + 1) % sections
+                    c, d = a + sections, b + sections
+                    triangles = [[a, c, b], [b, c, d]]
+                    faces.extend(triangles if side == 0 else [triangle[::-1] for triangle in triangles])
+        for row in (0, len(rows) - 1):
+            for col in range(sections):
+                a = row * sections + col
+                b = row * sections + (col + 1) % sections
+                c, d = a + count, b + count
+                caps = [[a, b, c], [b, d, c]]
+                faces.extend(caps if row == 0 else [triangle[::-1] for triangle in caps])
+        return finish(trimesh.Trimesh(vertices, faces))
+
+    def hollow_tube(path: list[tuple[float, float, float]], radius: float, wall: float, ring: int = 12) -> trimesh.Trimesh:
+        points: list[NDArray[np.float64]] = []
+        for index in range(len(path) - 1):
+            for fraction in np.linspace(0.0, 1.0, 3, endpoint=False):
+                points.append(np.array(path[index]) * (1 - fraction) + np.array(path[index + 1]) * fraction)
+        points.append(np.array(path[-1]))
+        vertices: list[NDArray[np.float64]] = []
+        for tube_radius in (radius, radius - wall):
+            for index, point in enumerate(points):
+                tangent = points[min(index + 1, len(points) - 1)] - points[max(index - 1, 0)]
+                tangent /= np.linalg.norm(tangent)
+                first = np.array([1.0, 0.0, 0.0])
+                second = np.cross(tangent, first)
+                for angle in np.linspace(0.0, 2 * np.pi, ring, endpoint=False):
+                    vertices.append(point + first * tube_radius * np.cos(angle) + second * tube_radius * np.sin(angle))
+        faces: list[list[int]] = []
+        count = len(points) * ring
+        for side in range(2):
+            offset = side * count
+            for index in range(len(points) - 1):
+                for section in range(ring):
+                    a = offset + index * ring + section
+                    b = offset + index * ring + (section + 1) % ring
+                    c, d = a + ring, b + ring
+                    triangles = [[a, c, b], [b, c, d]]
+                    faces.extend(triangles if side == 0 else [triangle[::-1] for triangle in triangles])
+        for index in (0, len(points) - 1):
+            for section in range(ring):
+                a = index * ring + section
+                b = index * ring + (section + 1) % ring
+                c, d = a + count, b + count
+                caps = [[a, b, c], [b, d, c]]
+                faces.extend(caps if index == 0 else [triangle[::-1] for triangle in caps])
+        return finish(trimesh.Trimesh(vertices, faces))
+
+    z_scale = length / 0.1
+    parts = (
+        ("Cushion", cushion(), "plastic"),
+        ("Cup", shell(), "frosted_plastic"),
+        ("Connector", hollow_tube([(0, 0, -0.032), (0, 0, -0.010)], 0.012, 0.002), "blue_plastic"),
+        ("Elbow", hollow_tube([(0, 0, -0.014), (0, 0, 0), (0, -0.004, 0.012), (0, -0.014, 0.020), (0, -0.027, 0.022)], 0.0095, 0.0018), "plastic"),
+        (
+            "Hose",
+            hollow_tube(
+                [(0, -0.023, 0.022), (0, -0.041, 0.022), (0, -0.055, 0.032), (0, -0.060, 0.055), (0, -0.060, 0.075)],
+                0.008,
+                0.0016,
+            ),
+            "blue_plastic",
+        ),
+        ("HoseCollar", hollow_tube([(0, -0.023, 0.022), (0, -0.032, 0.022)], 0.010, 0.0022), "blue_plastic"),
+    )
+    for name, mesh, material_name in parts:
+        m.add(name, scaled(mesh, (1.0, 1.0, z_scale)), material_name)
+
+
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
         _scalpel(m, length, True)
@@ -829,9 +946,7 @@ def _misc(m: Model, kind: str, length: float) -> None:
             clips.append(moved(tube(loop, [(0.0006, 0.0006)] * len(loop), ring=6, smooth=3, caps=True), (i * 0.012 - 0.012, i * 0.0015, 0.0)))
         m.add("Clips", merge(*clips), "chrome")
     elif kind == "gas_mask":
-        mask = along_z(lathe([(0.0, 0.0), (0.012, 0.0), (0.04, 0.05), (0.045, 0.06), (0.0, 0.06)], 24), -length + 0.06)
-        m.add("Mask", mask, "clear_plastic")
-        m.add("Hose", tube([(0.0, 0.0, -length + 0.06), (0.0, 0.0, 0.0), (0.0, -0.03, 0.08)], [(0.008, 0.008)] * 3, ring=12), "blue_plastic")
+        _gas_mask(m, length)
     elif kind == "cocaine":
         m.add("Bag", superellipsoid((0.04, 0.006, length), 0.4, (0.0, 0.0, -length * 0.5)), "clear_plastic")
         m.add("Powder", superellipsoid((0.03, 0.005, length * 0.6), 0.6, (0.0, -0.001, -length * 0.55)), "cotton")
