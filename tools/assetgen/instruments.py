@@ -994,6 +994,67 @@ def _kidney_dish(m: Model, length: float) -> None:
         assert Polygon(outline * wall_factor).buffer(1e-9).covers(Polygon(outline * top_factor))
 
 
+def _iv_catheter(m: Model, length: float) -> None:
+    """Tapered peripheral catheter with wings, capped port, flash chamber and introducer."""
+    z_scale = length / 0.07
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    hub = tube(
+        [(0.0, 0.0, -0.006), (0.0, 0.0, -0.012), (0.0, 0.0, -0.027), (0.0, 0.0, -0.036)],
+        [(0.0045, 0.0045), (0.0045, 0.0045), (0.0035, 0.0035), (0.0020, 0.0020)],
+        ring=16,
+        smooth=2,
+    )
+    m.add("Hub", scaled_z(hub), "plastic")
+
+    wings = [superellipsoid((0.014, 0.002, 0.012), 0.35, (0.0, -0.003, -0.023), detail=8)]
+    for side in (-1.0, 1.0):
+        wings.append(superellipsoid((0.016, 0.0018, 0.015), 0.35, (side * 0.0105, -0.003, -0.023), detail=8))
+    m.add("Wings", scaled_z(merge(*wings)), "plastic")
+    m.add("Port", scaled_z(cylinder(0.0032, (0.0, 0.001, -0.021), (0.0, 0.009, -0.021), 16)), "plastic")
+    m.add(
+        "PortCap",
+        scaled_z(
+            tube(
+                [(0.0, 0.008, -0.021), (0.0, 0.009, -0.021), (0.0, 0.012, -0.021)],
+                [(0.0035, 0.0035), (0.0047, 0.0047), (0.0042, 0.0042)],
+                ring=16,
+                smooth=1,
+            )
+        ),
+        "yellow_plastic",
+    )
+    m.add(
+        "FlashChamber",
+        scaled_z(
+            tube(
+                [(0.0, 0.0, -0.007), (0.0, 0.0, 0.014), (0.0, 0.0, 0.018)],
+                [(0.0038, 0.0038), (0.0038, 0.0038), (0.0032, 0.0032)],
+                ring=16,
+                smooth=1,
+            )
+        ),
+        "frosted_plastic",
+    )
+    m.add("BackCap", scaled_z(cylinder(0.0043, (0.0, 0.0, 0.017), (0.0, 0.0, 0.021), 16)), "plastic")
+    m.add(
+        "Catheter",
+        scaled_z(
+            tube(
+                [(0.0, 0.0, -0.034), (0.0, 0.0, -0.040), (0.0, 0.0, -0.065), (0.0, 0.0, -0.067)],
+                [(0.0013, 0.0013), (0.0010, 0.0010), (0.00085, 0.00085), (0.0007, 0.0007)],
+                ring=12,
+                smooth=1,
+            )
+        ),
+        "plastic",
+    )
+    needle = along_z(lathe([(0.0, 0.0), (0.00052, 0.0), (0.00052, 0.032), (0.00008, 0.0348), (0.0, 0.035)], 12), -0.035)
+    m.add("Needle", scaled_z(needle), "chrome")
+
+
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
         _scalpel(m, length, True)
@@ -1023,9 +1084,7 @@ def _misc(m: Model, kind: str, length: float) -> None:
     elif kind == "tourniquet":
         _tourniquet(m, length)
     elif kind == "iv_catheter":
-        m.add("Hub", superellipsoid((0.012, 0.012, 0.02), 0.5, (0.0, 0.0, 0.0)), "tint")
-        m.add("Wings", superellipsoid((0.04, 0.002, 0.015), 0.4, (0.0, -0.004, -0.012)), "green_plastic")
-        m.add("Needle", merge(rod(0.0014, -0.01, -length + 0.01), rod(0.0005, -length + 0.01, -length)), "chrome")
+        _iv_catheter(m, length)
     elif kind == "skin_graft":
         m.add("Backing", superellipsoid((0.08, 0.002, length), 0.2, (0.0, -0.002, -length * 0.5)), "paper")
         m.add("Graft", superellipsoid((0.07, 0.0015, length * 0.9), 0.25, (0.0, 0.0005, -length * 0.5)), "skin")
