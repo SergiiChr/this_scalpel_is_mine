@@ -28,6 +28,9 @@ public sealed partial class TissueSim {
     private const float XpbdBesideCut = 36f;
     /// <summary>How far (meters) a cut's lip drawn on past where the cut settles it is still held there firmly.</summary>
     private const float XpbdLipHold = 0.003f;
+    /// <summary>A strip of tape's hold on the edges it shut (compliance): it stretches as hard as the skin beside it is
+    /// pulled, until it lets go.</summary>
+    private const float XpbdTape = 0.0001f;
     /// <summary>How many grid steps around a stitch's ends the skin follows the stitch rather than the cut.</summary>
     private const int XpbdSewnReach = 2;
     /// <summary>How readily the skin bends (compliance of the curvature along each row, column and diagonal of the grid):
@@ -45,6 +48,8 @@ public sealed partial class TissueSim {
     /// <summary>Points a stitch, staple or strip holds this step, and the skin around them: the closure, not the cut,
     /// says where they go.</summary>
     private bool[] _sewn = [];
+    /// <summary>The same around a strip of tape's edges.</summary>
+    private bool[] _taped = [];
 
     private void BeginXpbdStep() {
         if (_lambda.Length < _springs.Length) {
@@ -54,8 +59,10 @@ public sealed partial class TissueSim {
             _tetherLambda = new Vector3[Pos.Length];
             _bendLambda = new float[Pos.Length * 4];
             _sewn = new bool[Pos.Length];
+            _taped = new bool[Pos.Length];
         }
         Array.Clear(_sewn);
+        Array.Clear(_taped);
         foreach (var s in _stitches) {
             if (!_springs[s].Active) {
                 continue;
@@ -65,6 +72,7 @@ public sealed partial class TissueSim {
                 for (var j = Math.Max(at.Y - XpbdSewnReach, 0); j <= Math.Min(at.Y + XpbdSewnReach, ResY); j++) {
                     for (var i = Math.Max(at.X - XpbdSewnReach, 0); i <= Math.Min(at.X + XpbdSewnReach, ResX); i++) {
                         _sewn[Index(i, j)] = true;
+                        _taped[Index(i, j)] |= TapeOf(s) > 0;
                     }
                 }
             }
@@ -92,9 +100,14 @@ public sealed partial class TissueSim {
         for (var n = 0; n < count; n++) {
             SolveCompliant(WindowSprings[n], stretch, squeeze);
         }
+        var tape = XpbdTape / (Step * Step);
         for (var pass = 0; pass <= StitchPasses; pass++) {
             foreach (var s in _stitches) {
-                Solve(s);
+                if (TapeOf(s) > 0) {
+                    SolveCompliant(s, tape, tape);
+                } else {
+                    Solve(s);
+                }
             }
         }
         BendXpbd();
@@ -137,6 +150,8 @@ public sealed partial class TissueSim {
     /// neighbours on either side keep the bend between them (a + c - 2b, the discrete curvature) as it was at rest, in
     /// direction as well as size, where both springs to them hold. Folded back over, the curvature points the other way,
     /// so a fold is held back as firmly as a bend; along the diagonals a narrow strip between two cuts can't twist.
+    /// Under a strip of tape only its bend off the body counts: along the body it would stretch the strip whenever the
+    /// skin beside it is dragged along, and the strip would let go of a pull it holds.
     /// Across a cut there's nothing to bend, so a lip turns up freely at its edge but the skin behind it curves smoothly.
     /// </summary>
     private void BendXpbd() {
@@ -168,9 +183,16 @@ public sealed partial class TissueSim {
         }
         var (wa, wb, wc) = (_free[a], _free[b], _free[c]);
         var w = wa + wc + (4f * wb);
+        if (w == 0f) {
+            return;
+        }
+        var normal = _restNormal[b];
         var off = Pos[a] + Pos[c] - (Pos[b] * 2f) - (Rest[a] + Rest[c] - (Rest[b] * 2f));
+        if (_taped[b]) {
+            off = normal * off.Dot(normal);
+        }
         var length = off.Length();
-        if (length < 0.000001f || w == 0f) {
+        if (length < 0.000001f) {
             return;
         }
         var delta = (-length - (alpha * _bendLambda[slot])) / (w + alpha);

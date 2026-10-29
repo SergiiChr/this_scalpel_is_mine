@@ -292,17 +292,22 @@ public partial class ToolManager : Node3D {
             return;
         }
         var wasStanding = tool.State == ToolState.Standing;
+        // Measured before it's in hand: taken, the tip is where the hand is.
+        var lay = tool.TipPosition();
         Rpc(MethodName.SetToolState, uid, (int)ToolState.Held, peer, hand, tool.LaidPose);
         // In hand again, its tip holds the skin (see LeaveStanding()), from where it lay: the skin stays where the grip
         // holds it. Lying, the tip rests on the body under a lip it may hold peeled up; holding the lip from the tip's
         // own height would drop it at once, and the skin bunched beside it would pop up and tear.
         if (tool.Hold is SkinHold skin) {
             var body = Session.Patient.Body;
-            var offset = body.Tissue.GripTarget(tool.Uid) is { } grip ? body.Site.ToLocal(tool.TipPosition()) - grip : skin.Offset;
+            var offset = body.Tissue.GripTarget(tool.Uid) is { } grip ? body.Site.ToLocal(lay) - grip : skin.Offset;
             tool.Hold = skin with { Hold = null, Offset = offset };
         }
         if (wasStanding && tool.Hold is not null) {
             Session.SetAttached(peer, hand, true);
+            // The hand goes where the tip lay, not where it reached for it: over a lip held up off the opening, that's
+            // down in the opening, and the lip would be pulled down after it.
+            Session.HoldHandBack(peer, hand, lay - tool.TipPosition());
         }
         if (wasStanding && tool.Def.Action == "tourniquet") {
             Session.Patient.RemoveTourniquet();
