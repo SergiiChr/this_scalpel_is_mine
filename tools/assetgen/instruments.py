@@ -449,10 +449,89 @@ def _vial(m: Model, length: float) -> None:
 
 
 def _flask(m: Model, length: float) -> None:
-    body = superellipsoid((0.07, 0.022, length * 0.8), 0.45, (0.0, 0.0, -length * 0.4))
+    """Flattened steel hip flask with curved shoulders, a thin leather sleeve and stepped screw cap."""
+    body_length = length * 0.8
+    cap_length = length - body_length
+    # A flattened rounded-rectangle body widens through the shoulder, stays broad
+    # across the face, then narrows to the screw cap. The cross section is 70 x 22 mm.
+    body_rows = [
+        (0.00, 0.021, 0.0070),
+        (0.04, 0.027, 0.0090),
+        (0.12, 0.034, 0.0107),
+        (0.22, 0.035, 0.0110),
+        (0.73, 0.035, 0.0110),
+        (0.83, 0.032, 0.0100),
+        (0.92, 0.022, 0.0080),
+        (1.00, 0.013, 0.0065),
+    ]
+    body = tube(
+        [(0.0, 0.0, -body_length * fraction) for fraction, _, _ in body_rows],
+        [(half_depth, half_width) for _, half_width, half_depth in body_rows],
+        ring=32,
+        exponent=3.0,
+        up=(0.0, 1.0, 0.0),
+        smooth=3,
+    )
     m.add("Flask", body, "steel")
-    m.add("Wrap", superellipsoid((0.072, 0.023, length * 0.45), 0.45, (0.0, 0.0, -length * 0.42)), "leather")
-    m.add("Cap", rod(0.008, -length * 0.8, -length), "chrome")
+
+    # A thin-walled leather sleeve follows the body's constant rounded-rectangle
+    # section. Its flat end rings leave the curved steel shoulders visible.
+    wrap_segments = 32
+    wrap_contours = [
+        (-0.023, 0.0362, 0.0122),  # outer top
+        (-0.069, 0.0362, 0.0122),  # outer bottom
+        (-0.069, 0.0351, 0.0111),  # inner bottom
+        (-0.023, 0.0351, 0.0111),  # inner top
+    ]
+    wrap_angles = np.linspace(0.0, 2.0 * np.pi, wrap_segments, endpoint=False)
+    wrap_vertices: list[list[float]] = []
+    for z, half_width, half_depth in wrap_contours:
+        for angle in wrap_angles:
+            x_unit = np.cos(angle)
+            y_unit = np.sin(angle)
+            wrap_vertices.append(
+                [
+                    half_width * np.sign(x_unit) * np.abs(x_unit) ** (2.0 / 3.0),
+                    half_depth * np.sign(y_unit) * np.abs(y_unit) ** (2.0 / 3.0),
+                    z * length / 0.12,
+                ]
+            )
+    wrap_faces: list[list[int]] = []
+    for ring in range(len(wrap_contours)):
+        next_ring = (ring + 1) % len(wrap_contours)
+        for segment in range(wrap_segments):
+            next_segment = (segment + 1) % wrap_segments
+            a = ring * wrap_segments + segment
+            b = ring * wrap_segments + next_segment
+            c = next_ring * wrap_segments + segment
+            d = next_ring * wrap_segments + next_segment
+            wrap_faces.extend([[a, c, b], [b, c, d]])
+    wrap = finish(trimesh.Trimesh(wrap_vertices, wrap_faces, process=True))
+    m.add("Wrap", wrap, "leather")
+
+    # The short screw cap seats over the narrow shoulder and reaches exactly the
+    # configured -length point. Circumferential steps suggest coarse screw threads.
+    cap_profile = [
+        (0.0, 0.000),
+        (0.0120, 0.000),
+        (0.0130, 0.0015),
+        (0.0120, 0.0030),
+        (0.0105, 0.0040),
+        (0.0105, 0.0060),
+        (0.0112, 0.0070),
+        (0.0105, 0.0080),
+        (0.0105, 0.0100),
+        (0.0112, 0.0110),
+        (0.0105, 0.0120),
+        (0.0105, 0.0140),
+        (0.0112, 0.0150),
+        (0.0105, 0.0160),
+        (0.0105, cap_length - 0.0020),
+        (0.0095, cap_length - 0.0005),
+        (0.0, cap_length),
+    ]
+    cap = along_z(lathe(cap_profile, segments=32), z=-body_length)
+    m.add("Cap", cap, "chrome")
 
 
 def _thermos(m: Model, length: float) -> None:
