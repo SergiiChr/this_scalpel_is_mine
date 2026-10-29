@@ -538,37 +538,43 @@ def _thermos(m: Model, length: float) -> None:
     """Handled vacuum flask with an insulated sleeve, steel trim and a seated cup cap."""
     z_scale = length / 0.18
 
-    def turned(rows: list[tuple[float, float]]) -> trimesh.Trimesh:
-        return along_z(lathe([(radius, z * z_scale) for radius, z in rows], 48))
+    def turned(rows: list[tuple[float, float]], segments: int = 16) -> trimesh.Trimesh:
+        return along_z(lathe([(radius, z * z_scale) for radius, z in rows], segments))
 
     m.add(
         "Bottle",
         turned(
-            [(0, 0), (0.024, 0), (0.028, 0.003), (0.029, 0.009), (0.029, 0.127), (0.028, 0.134), (0.022, 0.144), (0.017, 0.148), (0.017, 0.161), (0, 0.161)]
+            [(0, 0), (0.024, 0), (0.028, 0.003), (0.029, 0.009), (0.029, 0.127), (0.028, 0.134), (0.022, 0.144), (0.017, 0.148), (0.017, 0.161), (0, 0.161)],
+            segments=24,
         ),
         "steel",
     )
-    m.add("Sleeve", turned([(0.0285, 0.020), (0.030, 0.020), (0.030, 0.120), (0.0285, 0.120), (0.0285, 0.020)]), "fabric_dark")
-    m.add("SleeveTrim", merge(*[turned([(0.0285, z), (0.0306, z), (0.0306, z + 0.003), (0.0285, z + 0.003), (0.0285, z)]) for z in (0.019, 0.118)]), "steel")
+    # Solid overlapping rings avoid hidden inner walls beneath the opaque sleeve and trim.
+    m.add("Sleeve", turned([(0, 0.020), (0.030, 0.020), (0.030, 0.120), (0, 0.120)]), "fabric_dark")
+    m.add("SleeveTrim", merge(*[turned([(0, z), (0.0306, z), (0.0306, z + 0.003), (0, z + 0.003)]) for z in (0.019, 0.118)]), "steel")
     m.add(
         "Base",
-        turned([(0, -0.001), (0.024, -0.001), (0.028, 0.001), (0.0295, 0.004), (0.0295, 0.010), (0.029, 0.013), (0.027, 0.014), (0, 0.014)]),
+        turned([(0, -0.001), (0.024, -0.001), (0.028, 0.001), (0.0295, 0.004), (0.0295, 0.010), (0.029, 0.013), (0.027, 0.014), (0, 0.014)], segments=24),
         "black_plastic",
     )
-    m.add("NeckSeal", turned([(0, 0.145), (0.018, 0.145), (0.019, 0.148), (0.019, 0.155), (0.018, 0.158), (0, 0.158)]), "black_plastic")
+    m.add("NeckSeal", turned([(0, 0.145), (0.018, 0.145), (0.019, 0.148), (0.019, 0.155), (0.018, 0.158), (0, 0.158)], segments=8), "black_plastic")
     # The stainless cup-cap widens gently toward its closed end and overlaps the neck seal.
-    m.add("Cap", turned([(0, 0.151), (0.021, 0.151), (0.024, 0.153), (0.025, 0.157), (0.026, 0.173), (0.025, 0.178), (0.023, 0.180), (0, 0.180)]), "steel")
-    m.add("CapBand", turned([(0.024, 0.157), (0.0264, 0.157), (0.0264, 0.161), (0.024, 0.161), (0.024, 0.157)]), "black_plastic")
+    m.add(
+        "Cap",
+        turned([(0, 0.151), (0.021, 0.151), (0.024, 0.153), (0.025, 0.157), (0.026, 0.173), (0.025, 0.178), (0.023, 0.180), (0, 0.180)], segments=24),
+        "steel",
+    )
+    m.add("CapBand", turned([(0, 0.157), (0.0264, 0.157), (0.0264, 0.161), (0, 0.161)]), "black_plastic")
     # An open side handle stays clear of the body and joins two short mounting pads.
     handle = tube(
         [(0.026, 0, -0.028), (0.037, 0, -0.028), (0.044, 0, -0.037), (0.045, 0, -0.105), (0.040, 0, -0.116), (0.027, 0, -0.119)],
         [(0.0045, 0.005)] * 6,
-        ring=12,
+        ring=8,
         exponent=3,
-        smooth=4,
+        smooth=2,
     )
     m.add("Handle", scaled(handle, (1, 1, z_scale)), "black_plastic")
-    mounts = [superellipsoid((0.008, 0.012, 0.012 * z_scale), 0.55, (0.030, 0, z * z_scale), detail=8) for z in (-0.028, -0.119)]
+    mounts = [superellipsoid((0.008, 0.012, 0.012 * z_scale), 0.55, (0.030, 0, z * z_scale), detail=4) for z in (-0.028, -0.119)]
     m.add("Mounts", merge(*mounts), "black_plastic")
 
 
@@ -889,7 +895,7 @@ def _iodine_bottle(m: Model, length: float) -> None:
     """Shaped amber bottle with a paper band, ribbed screw collar and open dispensing nozzle."""
     z_scale = length / 0.14
     # Rounded rectangular horizontal sections, with continuous shoulders into the neck.
-    angles = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
     outline: NDArray[np.float64] = np.column_stack(
         (np.sign(np.cos(angles)) * np.abs(np.cos(angles)) ** 0.65, np.sign(np.sin(angles)) * np.abs(np.sin(angles)) ** 0.65)
     )
@@ -932,7 +938,7 @@ def _iodine_bottle(m: Model, length: float) -> None:
         label_faces.extend([[a, c, b], [b, c, d]])
     m.add("Label", finish(trimesh.Trimesh(label_verts, label_faces)), "paper")
     # Raised amber identification stripe on the front of the paper band.
-    stripe = superellipsoid((0.0035, 0.0006, 0.027 * z_scale), 0.25, (0, 0.0195, -0.044 * z_scale), detail=8)
+    stripe = superellipsoid((0.0035, 0.0006, 0.027 * z_scale), 0.25, (0, 0.0195, -0.044 * z_scale), detail=6)
     m.add("Mark", stripe, "tint")
     collar = along_z(
         lathe(
@@ -944,13 +950,16 @@ def _iodine_bottle(m: Model, length: float) -> None:
                 (0.010, 0.124 * z_scale),
                 (0, 0.124 * z_scale),
             ],
-            32,
+            16,
         )
     )
     ridges = []
     for angle in np.linspace(0, 2 * np.pi, 16, endpoint=False):
-        x, y = 0.012 * np.cos(angle), 0.012 * np.sin(angle)
-        ridges.append(superellipsoid((0.0015, 0.0015, 0.011 * z_scale), 0.65, (x, y, -0.1155 * z_scale), detail=6))
+        # Simple radial box ribs keep the knurled silhouette while avoiding a dense rounded mesh per rib.
+        rib = trimesh.creation.box(extents=(0.0015, 0.0015, 0.011 * z_scale))
+        rib.apply_transform(trimesh.transformations.rotation_matrix(angle, (0, 0, 1)))
+        rib.apply_translation((0.012 * np.cos(angle), 0.012 * np.sin(angle), -0.1155 * z_scale))
+        ridges.append(rib)
     m.add("Collar", merge(collar, *ridges), "plastic")
     # Annular tip is genuinely open at the configured pour point.
     nozzle = along_z(
@@ -964,7 +973,7 @@ def _iodine_bottle(m: Model, length: float) -> None:
                 (0.004, 0.122 * z_scale),
                 (0.006, 0.122 * z_scale),
             ],
-            32,
+            16,
         )
     )
     m.add("Spout", nozzle, "plastic")
