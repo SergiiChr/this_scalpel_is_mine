@@ -240,7 +240,8 @@ public class TissueSimTest {
         Check(sim.GapAt(Mid) > resting + 0.005f, "pulling an edge 2 cm widens the gap");
         Check(sim.Snapped.Count == 0, "a 2 cm pull doesn't tear");
         sim.MoveGrip(1, sim.Rest[sim.Nearest(edge)] + new Vector3(0f, 0.005f, -0.08f));
-        Settle(sim);
+        // A grip draws its skin a millimeter a step.
+        Settle(sim, 120);
         Check(sim.Snapped.Count > 0, "an 8 cm pull tears");
         sim.Release(1);
         var tissue = Sim();

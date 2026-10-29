@@ -10,21 +10,22 @@ namespace Scalpel.Patients;
 /// </summary>
 public sealed partial class TissueSim {
     /// <summary>Whether this sheet runs on the XPBD solver.</summary>
-    public bool Xpbd { get; set; }
+    public bool Xpbd { get; set; } = true;
 
     /// <summary>A tissue spring's compliance (m/N for a unit-mass grid): how far it gives under a pull. 0 would be
     /// inextensible; skin stretches noticeably before it tears.</summary>
     private const float XpbdStretch = 0.00002f;
     /// <summary>A tissue spring's compliance pressed shorter: skin hardly resists being squeezed, it gathers. A cut's
     /// lips draw back into the skin behind them, between two cuts as well.</summary>
-    private const float XpbdSqueeze = 0.002f;
+    private const float XpbdSqueeze = 0.006f;
     /// <summary>How readily the skin slides along its bed (compliance of each point's tether along the body), and how
     /// readily it lifts off it (along the normal): lifted, it sinks back once let go. Much softer, skin a grip pushes
     /// ahead of it buckles up off the bed in a crumple instead of sliding along it.</summary>
     private const float XpbdSlide = 0.0004f;
     private const float XpbdLift = 0.01f;
-    /// <summary>How much more readily skin beside a cut slides along its bed than skin elsewhere. Few iterations a step
-    /// leave a soft tether far stiffer than its compliance says, so it takes this much for the tension to show.</summary>
+    /// <summary>How much more readily skin slides along its bed than a cut's lips held where it draws them back. Few
+    /// iterations a step leave a soft tether far stiffer than its compliance says, so it takes this much for the
+    /// tension to show.</summary>
     private const float XpbdBesideCut = 36f;
     /// <summary>How far (meters) a cut's lip drawn on past where the cut settles it is still held there firmly.</summary>
     private const float XpbdLipHold = 0.003f;
@@ -208,8 +209,8 @@ public sealed partial class TissueSim {
     /// <summary>
     /// Every free point drawn toward its spot on the bed (<see cref="_anchorTarget"/>, which a cut moves back from its
     /// edge so the wound gapes): along the body softly, so the skin slides a little under a pull, and off it more
-    /// softly still, so a lifted lip settles back down. It gives out over <see cref="AnchorReach"/>: skin pulled that
-    /// far has come away from its bed. It never pulls the skin down into the body (StayOnBody()).
+    /// softly still, so a lifted lip settles back down. Lifted off it, it gives out over <see cref="AnchorReach"/>: skin
+    /// pulled that far has come away from its bed. It never pulls the skin down into the body (StayOnBody()).
     /// </summary>
     private void Tether() {
         var slide = XpbdSlide / (Step * Step);
@@ -219,18 +220,19 @@ public sealed partial class TissueSim {
                 continue;
             }
             var d = Pos[k] - _anchorTarget[k];
+            var normal = _restNormal[k];
+            var up = d.Dot(normal);
+            // Only skin lifted off its bed comes away from it: dragged along it, it stays tied on, and pulled far enough
+            // it tears.
             var reach = Mathf.Clamp(1f - (d.Length() / AnchorReach), 0f, 1f);
+            reach = Mathf.Lerp(1f, reach, Mathf.Clamp(up / LiftedOff, 0f, 1f));
             if (reach <= 0f) {
                 continue;
             }
-            // Beside a cut (its anchor loosened, or its edge drawn back) it slides far more readily: the skin's own tension
-            // opens the cut there, as wide as the default solver's.
             var loose = 1f / reach;
-            var normal = _restNormal[k];
-            var up = d.Dot(normal);
             var along = d - (normal * up);
             ref var lambda = ref _tetherLambda[k];
-            // Loosened beside a cut it gives way to the lips. A lip itself is held to where the cut draws it back as
+            // The skin gives way to the lips. A lip itself is held to where the cut draws it back as
             // firmly as its pull says (GapePull, MusclePull), so the cut opens that far; drawn on past there by a hand,
             // it gives as readily as the skin beside it.
             var length = along.Length();
