@@ -173,12 +173,50 @@ def _gelpi(m: Model, length: float) -> None:
         m.add(name, merge(arm, point), "steel", (0.0, GELPI_DROP, joint))
 
 
+def _office_stapler(m: Model, length: float) -> None:
+    """Desktop stapler with a fixed rail and an upper lever that closes around its rear hinge."""
+    factor = length / 0.14
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, factor))
+
+    base = tube(
+        [(0, -0.012, 0.004), (0, -0.012, -0.004), (0, -0.012, -0.127), (0, -0.012, -0.14)],
+        [(0.004, 0.013), (0.006, 0.019), (0.006, 0.019), (0.003, 0.012)],
+        ring=16,
+        exponent=3,
+        smooth=3,
+    )
+    support = superellipsoid((0.022, 0.008, 0.016), 0.25, (0, -0.006, -0.131), detail=8)
+    m.add("Base", scaled_z(merge(base, support)), "black_plastic")
+    feet = [superellipsoid((0.028, 0.003, 0.018), 0.35, (0, -0.018, z), detail=8) for z in (-0.014, -0.119)]
+    m.add("Feet", scaled_z(merge(*feet)), "rubber")
+    # The fixed steel channel is open at the front and reveals the forming plate.
+    rail = merge(*[superellipsoid((0.0025, 0.007, 0.103), 0.2, (x, -0.003, -0.068), detail=8) for x in (-0.012, 0.012)])
+    m.add("Rail", scaled_z(rail), "steel")
+    anvil = superellipsoid((0.023, 0.003, 0.018), 0.2, (0, -0.002, -0.131), detail=8)
+    m.add("Anvil", scaled_z(anvil), "chrome")
+    # A raised top rotates down through the existing 0.35 rad runtime squeeze at the rear hinge.
+    top = tube(
+        [(0, 0.003, -0.003), (0, 0.012, -0.023), (0, 0.041, -0.097), (0, 0.054, -0.130)],
+        [(0.005, 0.012), (0.009, 0.016), (0.009, 0.016), (0.006, 0.012)],
+        ring=16,
+        exponent=3.5,
+        smooth=3,
+    )
+    top.vertices[:, 1] += (-top.vertices[:, 2] / 0.13) * 0.007 + 0.005 * (1 + top.vertices[:, 2] / 0.16)
+    m.add("Trigger", scaled_z(top), "dark_steel", (0, 0, 0))
+    pad = superellipsoid((0.025, 0.003, 0.060), 0.25, (0, 0.027, -0.062), detail=8)
+    # Follow the top's slope rather than floating a level pad above it.
+    pad.vertices[:, 1] += -pad.vertices[:, 2] * 0.38 - 0.0235 + (-pad.vertices[:, 2] / 0.13) * 0.007 + 0.005 * (1 + pad.vertices[:, 2] / 0.16)
+    m.add("GripPad", scaled_z(pad), "black_plastic", parent="Trigger")
+    hinge = cylinder(0.008, (-0.020, 0, -0.006), (0.020, 0, -0.006), 24)
+    m.add("Hinge", scaled_z(hinge), "steel")
+
+
 def _pistol_stapler(m: Model, length: float, office: bool) -> None:
     if office:
-        base = superellipsoid((0.035, 0.012, length), 0.35, (0.0, -0.012, -length * 0.5))
-        m.add("Base", base, "black_plastic")
-        top = superellipsoid((0.03, 0.014, length * 0.95), 0.35, (0.0, 0.004, -length * 0.5))
-        m.add("Trigger", top, "dark_steel", (0.0, 0.0, 0.0))
+        _office_stapler(m, length)
         return
 
     # The approved proposal is modeled at 0.12 m. Scale its Z coordinates with the configured tool length so
