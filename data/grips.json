@@ -842,7 +842,7 @@
 	},
 	"iodine_bottle": {
 		"left": {
-			"lift": 0.009,
+			"lift": 0.012,
 			"shift": 0.0,
 			"curl": [
 				1.0,
@@ -853,7 +853,7 @@
 			]
 		},
 		"right": {
-			"lift": 0.009,
+			"lift": 0.012,
 			"shift": 0.0,
 			"curl": [
 				1.0,

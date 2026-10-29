@@ -736,10 +736,88 @@ def _cotton_pad(m: Model, length: float) -> None:
 
 
 def _iodine_bottle(m: Model, length: float) -> None:
-    """Brown bottle with a pouring spout at the tip."""
-    m.add("Bottle", along_z(lathe([(0.0, 0.0), (0.024, 0.0), (0.024, length * 0.62), (0.01, length * 0.75), (0.0, length * 0.75)], 24)), "tint")
-    m.add("Label", along_z(lathe([(0.0, length * 0.15), (0.0245, length * 0.15), (0.0245, length * 0.5), (0.0, length * 0.5)], 24)), "paper")
-    m.add("Spout", along_z(lathe([(0.0, length * 0.74), (0.011, length * 0.74), (0.006, length * 0.94), (0.003, length), (0.0, length)], 16)), "plastic")
+    """Shaped amber bottle with a paper band, ribbed screw collar and open dispensing nozzle."""
+    z_scale = length / 0.14
+    # Rounded rectangular horizontal sections, with continuous shoulders into the neck.
+    angles = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    outline: NDArray[np.float64] = np.column_stack(
+        (np.sign(np.cos(angles)) * np.abs(np.cos(angles)) ** 0.65, np.sign(np.sin(angles)) * np.abs(np.sin(angles)) ** 0.65)
+    )
+    rows = [
+        (0.003, 0.020, 0.014),
+        (-0.001, 0.024, 0.018),
+        (-0.007, 0.025, 0.019),
+        (-0.075, 0.025, 0.019),
+        (-0.084, 0.024, 0.018),
+        (-0.097, 0.016, 0.013),
+        (-0.103, 0.010, 0.010),
+        (-0.116, 0.010, 0.010),
+    ]
+    verts: list[list[float]] = [[x * rx, y * ry, z * z_scale] for z, rx, ry in rows for x, y in outline]
+    faces: list[list[int]] = []
+    for i in range(len(rows) - 1):
+        for j in range(len(angles)):
+            a = i * len(angles) + j
+            b = i * len(angles) + (j + 1) % len(angles)
+            c = a + len(angles)
+            d = b + len(angles)
+            faces.extend([[a, c, b], [b, c, d]])
+    for row in [0, len(rows) - 1]:
+        center = len(verts)
+        verts.append([0, 0, rows[row][0] * z_scale])
+        for j in range(len(angles)):
+            triangle = [center, row * len(angles) + j, row * len(angles) + (j + 1) % len(angles)]
+            faces.append(triangle if row == 0 else triangle[::-1])
+    body = finish(trimesh.Trimesh(verts, faces))
+    m.add("Bottle", body, "tint")
+    # Thin wraparound paper band follows the rounded body, leaving amber visible at base and shoulders.
+    label_rows = [(-0.022, 0.02525, 0.01925), (-0.066, 0.02525, 0.01925)]
+    label_verts = np.array([[x * rx, y * ry, z * z_scale] for z, rx, ry in label_rows for x, y in outline])
+    label_faces: list[list[int]] = []
+    for j in range(len(angles)):
+        a = j
+        b = (j + 1) % len(angles)
+        c = a + len(angles)
+        d = b + len(angles)
+        label_faces.extend([[a, c, b], [b, c, d]])
+    m.add("Label", finish(trimesh.Trimesh(label_verts, label_faces)), "paper")
+    # Raised amber identification stripe on the front of the paper band.
+    stripe = superellipsoid((0.0035, 0.0006, 0.027 * z_scale), 0.25, (0, 0.0195, -0.044 * z_scale), detail=8)
+    m.add("Mark", stripe, "tint")
+    collar = along_z(
+        lathe(
+            [
+                (0, 0.107 * z_scale),
+                (0.011, 0.107 * z_scale),
+                (0.012, 0.109 * z_scale),
+                (0.012, 0.122 * z_scale),
+                (0.010, 0.124 * z_scale),
+                (0, 0.124 * z_scale),
+            ],
+            32,
+        )
+    )
+    ridges = []
+    for angle in np.linspace(0, 2 * np.pi, 16, endpoint=False):
+        x, y = 0.012 * np.cos(angle), 0.012 * np.sin(angle)
+        ridges.append(superellipsoid((0.0015, 0.0015, 0.011 * z_scale), 0.65, (x, y, -0.1155 * z_scale), detail=6))
+    m.add("Collar", merge(collar, *ridges), "plastic")
+    # Annular tip is genuinely open at the configured pour point.
+    nozzle = along_z(
+        lathe(
+            [
+                (0.006, 0.122 * z_scale),
+                (0.0055, 0.127 * z_scale),
+                (0.0035, length),
+                (0.002, length),
+                (0.002, 0.127 * z_scale),
+                (0.004, 0.122 * z_scale),
+                (0.006, 0.122 * z_scale),
+            ],
+            32,
+        )
+    )
+    m.add("Spout", nozzle, "plastic")
 
 
 def _iodine_dish(m: Model, length: float) -> None:
