@@ -117,8 +117,10 @@ void fragment() {
 	float spot = cut_face ? paint_spot(c, bleed_spot(bleeds, UV2.x)) : 0.0;
 	ALBEDO = c;
 	// Blood takes the broad sheen off: under the lamp straight above it, that sheen would turn it grey.
-	// The film on the tissue is patchy: drier and wetter spots break up the highlight.
-	ROUGHNESS = mix(1.0 - max(wet, spot) * 0.82, 1.0, blood * 0.85) * mix(0.75, 1.3, noise3(local_pos * 110.0 + 5.0));
+	// The film on the tissue is patchy: drier and wetter spots break up the highlight. Not on blood, which a wetter
+	// patch would turn grey the same way.
+	float patchy = mix(0.75, 1.3, noise3(local_pos * 110.0 + 5.0));
+	ROUGHNESS = mix((1.0 - max(wet, spot) * 0.82) * patchy, 1.0, blood * 0.85);
 	EMISSION = ALBEDO * 0.025;
 	// Only fat spreads light under its surface, softly: more blurs its cells away. Blood and bleeding vessels stay sharp,
 	// with a margin around them so the blur doesn't draw them out.
