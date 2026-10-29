@@ -79,7 +79,10 @@ RUNNER_CLASS = ROOT / "gdunit4_testadapter_v5/GdUnit4TestRunnerScene.cs"
 TEST_GODOT = ROOT / "tools/godot_for_tests.sh"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
-NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
+# The engine's leak reports as it quits, and the game's mouse capture failing in a key frame window on a desktop that
+# doesn't have the pointer: tests send their input as events, never through it. Godot's own Wayland driver would wait
+# for the pointer, but it stops drawing a window the compositor hides behind others, and a key frame never comes.
+NOISE = re.compile(r"at exit|leaked|NO GRAB", re.IGNORECASE)
 # GdUnit4's line once the Godot process running the cases has quit; missing when it hung and was killed.
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
 # Stack trace lines kept under an error: enough to show where it came from.
@@ -479,9 +482,7 @@ def godot_view(suite: Suite, options: TestOptions) -> list[str]:
     """Where the suite draws: the key frame view, this machine's display without VSync (frames would wait for the
     screen) and without sound (a missing audio device would be an error), or nowhere."""
     if takes_key_frames(suite, options):
-        # On a Wayland desktop its own driver: through X11 the game's mouse capture fails ("NO GRAB") in a window that
-        # doesn't have the pointer, while a Wayland window waits for it.
-        return [*KEY_FRAME_ARGS, *(["--display-driver", "wayland"] if has_display() and os.environ.get("WAYLAND_DISPLAY") else [])]
+        return KEY_FRAME_ARGS
     return ["--disable-vsync", "--audio-driver", "Dummy"] if options.budget == "render" else ["--headless"]
 
 
