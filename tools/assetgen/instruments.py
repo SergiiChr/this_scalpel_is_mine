@@ -743,11 +743,83 @@ def _iodine_bottle(m: Model, length: float) -> None:
 
 
 def _iodine_dish(m: Model, length: float) -> None:
-    """Round steel bowl. The game shows Liquid while there's iodine in it."""
-    bowl = lathe([(0.0, 0.0), (0.035, 0.0), (0.045, 0.022), (0.042, 0.023), (0.032, 0.004), (0.0, 0.004)], 32)
-    liquid = lathe([(0.0, 0.004), (0.031, 0.004), (0.0355, 0.012), (0.0, 0.012)], 32)
-    m.add("Dish", moved(bowl, (0.0, -0.01, -length * 0.5)), "steel")
-    m.add("Liquid", moved(liquid, (0.0, -0.01, -length * 0.5)), "iodine", (0.0, -0.006, -length * 0.5))
+    """Rounded oblong steel basin with a rolled lip and a floor-pivoted iodine pool."""
+    sections = 64
+    angles = np.linspace(0.0, 2.0 * np.pi, sections, endpoint=False)
+    exponent = 3.5
+    outline: NDArray[np.float64] = np.column_stack(
+        (
+            0.039 * np.sign(np.cos(angles)) * np.abs(np.cos(angles)) ** (2.0 / exponent),
+            0.048 * np.sign(np.sin(angles)) * np.abs(np.sin(angles)) ** (2.0 / exponent),
+        )
+    )
+    assert Polygon(outline).is_valid
+    center_z = -length * 0.5
+
+    def loft(rows: list[tuple[float, float]]) -> trimesh.Trimesh:
+        vertices: list[list[float]] = []
+        for size, y in rows:
+            vertices.extend([[float(x * size), y, float(z * size + center_z)] for x, z in outline])
+        faces: list[list[int]] = []
+        for row in range(len(rows) - 1):
+            for col in range(sections):
+                a = row * sections + col
+                b = row * sections + (col + 1) % sections
+                c, d = a + sections, b + sections
+                faces.extend(([a, c, b], [b, c, d]))
+        for end, reverse in ((0, False), (len(rows) - 1, True)):
+            size, y = rows[end]
+            points, triangles = trimesh.creation.triangulate_polygon(Polygon(outline * size), engine="earcut")
+            offset = len(vertices)
+            vertices.extend([[float(x), y, float(z + center_z)] for x, z in points])
+            for triangle in triangles:
+                oriented = triangle[::-1] if reverse else triangle
+                faces.append([int(index) + offset for index in oriented])
+        mesh = finish(trimesh.Trimesh(vertices, faces))
+        assert mesh.is_watertight
+        return mesh
+
+    # Rounded oval profile: low flat underside, shallow outer wall, rolled rim, and broad interior floor.
+    dish_rows = [
+        (0.72, -0.012),
+        (0.82, -0.011),
+        (0.96, 0.005),
+        (1.00, 0.0115),
+        (1.02, 0.013),
+        (1.025, 0.0145),
+        (1.015, 0.016),
+        (0.99, 0.016),
+        (0.97, 0.014),
+        (0.94, 0.010),
+        (0.83, -0.003),
+        (0.72, -0.006),
+    ]
+    dish = loft(dish_rows)
+    m.add("Dish", dish, "steel")
+
+    # ShowLiquid scales this mesh uniformly from its floor pivot, from 60% to full size.
+    # The upper surface stays well inside the rounded wall throughout that expansion.
+    liquid_rows = [(0.64, -0.006), (0.88, 0.006)]
+    liquid = loft(liquid_rows)
+    liquid_pivot = (0.0, -0.006, center_z)
+    m.add("Liquid", liquid, "iodine", liquid_pivot)
+
+    # Interpolate the actual inner wall contour at each transformed liquid ring height.
+    cavity = [(0.72, -0.006), (0.83, -0.003), (0.94, 0.010), (0.97, 0.014), (0.99, 0.016)]
+    cavity_y = np.array([row[1] for row in cavity])
+    cavity_size = np.array([row[0] for row in cavity])
+    amounts = (0.0, 0.01, 0.25, 0.5, 0.65, 1.0)
+    for amount in amounts:
+        runtime_scale = 0.6 + 0.4 * amount
+        for size, y in liquid_rows:
+            runtime_y = liquid_pivot[1] + (y - liquid_pivot[1]) * runtime_scale
+            wall_size = float(np.interp(runtime_y, cavity_y, cavity_size))
+            liquid_size = size * runtime_scale
+            liquid_contour = Polygon(outline * liquid_size)
+            cavity_contour = Polygon(outline * wall_size)
+            assert cavity_contour.buffer(-1e-9).covers(liquid_contour), (
+                f"liquid contour escapes cavity at {amount:.0%} fill, y={runtime_y:.6f}, pool={liquid_size:.5f}, wall={wall_size:.5f}"
+            )
 
 
 def _cig_pack(m: Model, length: float) -> None:
