@@ -1066,8 +1066,9 @@ public class SyringeTest {
             .IsTrue();
         var tornBeads = Surgery.Effects.Beads().Except(beadsBefore).ToList();
         AssertInt(tornBeads.Count).OverrideFailureMessage("needle_hand: tearing out leaves one bead").IsEqual(1);
-        AssertFloat(((tornBeads[0].GlobalPosition - wentIn) * new Vector3(1f, 0f, 1f)).Length())
-            .OverrideFailureMessage("needle_hand: even after tearing out, the bead stays at the injection point")
+        var beadOff = ((tornBeads[0].GlobalPosition - wentIn) * new Vector3(1f, 0f, 1f)).Length();
+        AssertFloat(beadOff)
+            .OverrideFailureMessage($"needle_hand: even after tearing out, the bead stays at the injection point ({beadOff * 1000f:0.0} mm off)")
             .IsLess(0.0005f);
         await _bench.Withdraw();
         await AimLands(me, hand);

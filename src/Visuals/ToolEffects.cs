@@ -269,8 +269,10 @@ public partial class ToolEffects : Node3D {
         var body = Patient.Body;
         var probe = body.Probe(at);
         if (probe.Zone == SiteZone.Site) {
-            var spot = new BloodBead(null, probe.Uv, body);
-            body.Blood.AddPuncture(probe.Uv);
+            // On the skin where it lies now, which a pull or the cut beside it may have drawn aside of where it rests.
+            var uv = body.RestSpot(TissueDepth.Skin, probe.Uv, _ => true)?.Uv ?? probe.Uv;
+            var spot = new BloodBead(null, uv, body);
+            body.Blood.AddPuncture(uv);
             _beads.Add(spot);
             var dry = CreateTween();
             dry.TweenInterval(BeadLife + BeadDrying);

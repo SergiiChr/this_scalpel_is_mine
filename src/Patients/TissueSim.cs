@@ -114,7 +114,7 @@ public sealed partial class TissueSim {
     /// how firmly. Skin gapes a little under its own tension, cut fat bulges apart, cut muscle retracts hard. The pull
     /// fades out over RetractSpread (meters) from the cut, so the stretch is shared by the skin around it, and over
     /// RetractTaper (meters) toward the cut's ends, where it stays closed: the cut opens like a lens.</summary>
-    public static readonly float[] Retract = [0f, 0.004f, 0.0063f, 0.009f];
+    public static readonly float[] Retract = [0f, 0.004f, 0.0063f, 0.0105f];
     public static readonly float[] RetractSpread = [0f, 0.03f, 0.045f, 0.04f];
     public static readonly float[] RetractTaper = [0f, 0.004f, 0.006f, 0.02f];
     public const float GapePull = 0.03f;
@@ -181,10 +181,13 @@ public sealed partial class TissueSim {
     /// <summary>Extra solver passes over the stitches each iteration. Thread is far stiffer than skin: solved as often
     /// as the skin, a stitch would give way to the stretched skin around it and the edges would never meet.</summary>
     public const int StitchPasses = 3;
-    /// <summary>Global intact-tissue elasticity, independent of suture tear-through (ThreadTear). A gentle 5 cm pull
-    /// stretches intact skin; the hard 8 cm pull still tears it. Scalpel cuts sever springs directly, without this
-    /// threshold.</summary>
+    /// <summary>Global intact-tissue elasticity, independent of suture tear-through (ThreadTear). Scalpel cuts sever
+    /// springs directly, without this threshold.</summary>
     public const float TissueBreak = 3f;
+    /// <summary>How far (meters, along the body) a grip drags its skin from where it lies before the skin tears there:
+    /// a gentle 5 cm pull stretches it, a hard 8 cm one tears it. Dragged along, the skin slides on its bed rather than
+    /// stretching to <see cref="TissueBreak"/>.</summary>
+    public const float TearReach = 0.065f;
     /// <summary>One stitch pulls together every cut spring this close to it (meters, at rest): a stitch closes a few
     /// millimeters of the cut, however fine the grid.</summary>
     public const float StitchReach = 0.005f;
@@ -328,6 +331,11 @@ public sealed partial class TissueSim {
         /// <summary>The solver step the grip took hold at: its hold settles the skin in the jaws over the next step
         /// (Hold()), and the springs are measured from after that.</summary>
         public int HeldAt { get; init; }
+        /// <summary>Whether the skin tore at the grip since it was last drawn back within TearReach.</summary>
+        public bool Tore { get; set; }
+        /// <summary>The highest (meters) the grip has lifted its skin off its bed: a flap lifted and turned back comes
+        /// away from its bed rather than tearing.</summary>
+        public float Raised { get; set; }
     }
 
     /// <summary>The skin a grip on a particle drags along: the particles, how strongly each, and the ones it holds.
@@ -2036,7 +2044,7 @@ public sealed partial class TissueSim {
         for (var j = Math.Max(window.Position.Y - 1, 0); j <= window.End.Y; j++) {
             for (var i = Math.Max(window.Position.X - 1, 0); i <= window.End.X; i++) {
                 var k = Index(i, j);
-                foreach (var s in GridSprings(k)) {
+                foreach (var s in (ReadOnlySpan<int>)[SpringRight[k], SpringDown[k], SpringDiag[k], SpringAnti[k]]) {
                     if (s >= 0) {
                         springs.Add(s);
                     }
@@ -2261,6 +2269,39 @@ public sealed partial class TissueSim {
         foreach (var s in _stitches) {
             CheckSnap(s);
         }
+        foreach (var pin in _pins.Values) {
+            TearAtGrip(pin);
+        }
+    }
+
+    /// <summary>Skin a grip drags further than <see cref="TearReach"/> along the body tears beside the jaws, once:
+    /// the most stretched spring of the patch it drags. Drawn back within reach, a further pull can tear it again.
+    /// Not once the grip has lifted it off its bed (twice <see cref="LiftedOff"/>): a flap turned back is let go of by
+    /// its bed.</summary>
+    private void TearAtGrip(Pin pin) {
+        var k = pin.Particle;
+        var off = pin.Drawn - _anchorTarget[k];
+        pin.Raised = Mathf.Max(pin.Raised, off.Dot(_restNormal[k]));
+        var pulled = off.Slide(_restNormal[k]).Length();
+        if (pulled <= TearReach * BreakMult || pin.Raised >= LiftedOff * 2f) {
+            pin.Tore = false;
+            return;
+        }
+        if (pin.Tore) {
+            return;
+        }
+        var worst = -1;
+        var most = 0f;
+        foreach (var s in PatchOf(k).Springs) {
+            if (_springs[s].Active && _springs[s].Kind == SpringKind.Tissue && Span(_springs[s]).Length() / _springs[s].Rest > most) {
+                most = Span(_springs[s]).Length() / _springs[s].Rest;
+                worst = s;
+            }
+        }
+        if (worst >= 0) {
+            pin.Tore = true;
+            Snap(worst);
+        }
     }
 
     /// <summary>
@@ -2286,6 +2327,14 @@ public sealed partial class TissueSim {
             if (!(StretchedPast(next, halfway) || StretchedPast(previous, halfway))) {
                 return;
             }
+        }
+        Snap(s);
+    }
+
+    /// <summary>Spring s lets go: a tissue one tears through the skin, a stitch comes undone.</summary>
+    private void Snap(int s) {
+        var (a, b) = (_springs[s].A, _springs[s].B);
+        if (_springs[s].Kind == SpringKind.Tissue) {
             Sever(s, TissueDepth.Skin, 0.5f);
         } else {
             _springs[s].Active = false;
