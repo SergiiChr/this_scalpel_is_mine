@@ -189,7 +189,8 @@ void fragment() {
 		BACKLIGHT = scatter_tint.rgb * translucency * 0.3;
 	}
 	if (subsurface > 0.0) {
-		SSS_STRENGTH = subsurface;
+		// Blood and wounds stay sharp: they lie on the skin, not under it.
+		SSS_STRENGTH = subsurface * (1.0 - wet);
 	}
 }
 

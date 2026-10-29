@@ -13,6 +13,7 @@ public enum Difficulty { Baby, Intern, Md }
 /// </summary>
 public partial class Settings : Node {
     private const string Path = "user://settings.cfg";
+    private const string ScatteringQuality = "rendering/environment/subsurface_scattering/subsurface_scattering_quality";
 
     public static readonly IReadOnlyList<Vector2I> Resolutions =
     [
@@ -22,6 +23,9 @@ public partial class Settings : Node {
 
     public static Vector2I Resolution { get; set; } = new(1920, 1080);
     public static bool Fullscreen { get; set; }
+    /// <summary>Light spread under skin and fat (Godot's screen-space subsurface scattering, Forward+ only). Off skips
+    /// its pass altogether.</summary>
+    public static bool SubsurfaceScattering { get; set; } = true;
     public static float MouseSensitivity { get; set; } = 1f;
     public static Dictionary<string, float> Volumes { get; } = new() {
         ["Master"] = 0.8f,
@@ -66,6 +70,7 @@ public partial class Settings : Node {
         }
         Resolution = file.GetValue("display", "resolution", Resolution).AsVector2I();
         Fullscreen = file.GetValue("display", "fullscreen", Fullscreen).AsBool();
+        SubsurfaceScattering = file.GetValue("display", "subsurface_scattering", SubsurfaceScattering).AsBool();
         MouseSensitivity = file.GetValue("input", "mouse_sensitivity", MouseSensitivity).AsSingle();
         Debug = file.GetValue("debug", "enabled", Debug).AsBool();
         // TryParse also takes a number, any number: only a named difficulty counts.
@@ -89,6 +94,7 @@ public partial class Settings : Node {
         var file = new ConfigFile();
         file.SetValue("display", "resolution", Resolution);
         file.SetValue("display", "fullscreen", Fullscreen);
+        file.SetValue("display", "subsurface_scattering", SubsurfaceScattering);
         file.SetValue("input", "mouse_sensitivity", MouseSensitivity);
         var bindings = new GodotDictionary();
         foreach (var (action, code) in Bindings) {
@@ -110,6 +116,9 @@ public partial class Settings : Node {
         foreach (var bus in Buses) {
             AudioServer.SetBusVolumeDb(AudioServer.GetBusIndex(bus), Mathf.LinearToDb(Mathf.Max(Volumes[bus], 0.0001f)));
         }
+        RenderingServer.SubSurfaceScatteringSetQuality(SubsurfaceScattering
+            ? (RenderingServer.SubSurfaceScatteringQuality)ProjectSettings.GetSetting(ScatteringQuality).AsInt32()
+            : RenderingServer.SubSurfaceScatteringQuality.Disabled);
         if (DisplayServer.GetName() == "headless") {
             return;
         }

@@ -28,6 +28,10 @@ public partial class SettingsPanel : VBoxContainer {
             Settings.Apply();
         }));
         AddChild(display);
+        AddChild(CheckBox("Subsurface scattering (soft light under skin and fat)", Settings.SubsurfaceScattering, on => {
+            Settings.SubsurfaceScattering = on;
+            Settings.Apply();
+        }));
 
         foreach (var bus in Settings.Buses) {
             AddChild(SliderRow($"{bus} volume", Settings.Volumes[bus], 0f, 1f, value => {

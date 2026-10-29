@@ -81,7 +81,8 @@ void fragment() {
 	ALBEDO = c;
 	ROUGHNESS = mix(0.6, 0.08, wet);
 	BACKLIGHT = scatter_tint.rgb * translucency * 0.3;
-	SSS_STRENGTH = subsurface;
+	// Blood and wounds stay sharp: they lie on the skin, not under it.
+	SSS_STRENGTH = subsurface * (1.0 - wet);
 }
 
 // Same light as toon.gdshader so the site blends into the rest of the body.

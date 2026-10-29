@@ -119,9 +119,11 @@ void fragment() {
 	// The film on the tissue is patchy: drier and wetter spots break up the highlight.
 	ROUGHNESS = mix(1.0 - max(wet, spot) * 0.82, 1.0, blood * 0.85) * mix(0.75, 1.3, noise3(local_pos * 110.0 + 5.0));
 	EMISSION = ALBEDO * 0.025;
+	// Only fat spreads light under its surface, softly: more blurs its cells away. Blood and bleeding vessels stay sharp,
+	// with a margin around them so the blur doesn't draw them out.
+	SSS_STRENGTH = layer == 0 ? 0.3 * (1.0 - min(max(blood, spot) * 2.0, 1.0)) : 0.0;
 	// Fat and the skin's cut face let light through, muscle less so. A cut's wall is thinnest at the lip, where the
-	// lamp shines through it. Godot's screen-space subsurface scattering was tried too: this close it blurs the fat's
-	// cells and the bleed spots away.
+	// lamp shines through it.
 	float thin = cut_face ? 1.0 - smoothstep(0.0, 0.3, wall_depth) : 0.2;
 	BACKLIGHT = (layer == 1 ? vec3(0.6, 0.08, 0.06) : vec3(1.0, 0.45, 0.25)) * thin;
 }
