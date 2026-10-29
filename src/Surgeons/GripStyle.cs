@@ -13,6 +13,10 @@ namespace Scalpel.Surgeons;
 public sealed record GripStyle(
     Basis Frame, Vector3 At, Vector3 On, float[] Curl, float Oppose = 0f, float Tilt = SurgeonHand.RestTilt,
     float? WorkTilt = null, float Turn = 0f) {
+    /// <summary>Grips wrapped around a handle across the palm: the tool can't tip against the fingers, and the back of
+    /// the hand faces out rather than up.</summary>
+    internal static bool AcrossPalm(string grip) => grip is "fist" or "paddle" or "stapler";
+
     private static readonly Basis Along = new(new(0f, 0.2f, -0.98f), new(0f, 0.98f, 0.2f), new(1f, 0f, 0f));
 
     public static readonly IReadOnlyDictionary<string, GripStyle> All = new Dictionary<string, GripStyle> {

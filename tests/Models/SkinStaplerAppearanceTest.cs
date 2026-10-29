@@ -15,7 +15,7 @@ public class SkinStaplerAppearanceTest {
                 var model = GripCheck.Hold(hand, def, Db.GripFit(def, index), studio.Root);
                 var anvil = (MeshInstance3D)model.FindChild("Anvil", true, false);
                 var trigger = (MeshInstance3D)model.FindChild("Trigger", true, false);
-                AssertFloat(Vertices(model, anvil).Min(vertex => vertex.Z))
+                AssertFloat(ModelStudio.Vertices(model, anvil).Min(vertex => vertex.Z))
                     .OverrideFailureMessage("the forming shoe reaches the stapler's gameplay working plane")
                     .IsEqualApprox(-def.Length, 0.0001f);
                 var noseRest = anvil.Transform;
@@ -69,7 +69,4 @@ public class SkinStaplerAppearanceTest {
             await studio.Finish();
         }
     }
-
-    private static IEnumerable<Vector3> Vertices(Node3D model, MeshInstance3D part) =>
-        part.Mesh.GetFaces().Select(vertex => model.ToLocal(part.ToGlobal(vertex)));
 }
