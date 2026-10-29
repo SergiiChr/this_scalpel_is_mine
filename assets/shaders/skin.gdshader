@@ -3,6 +3,8 @@
 // Openings aren't painted: the sim pulls cut edges apart and gaping triangles are left out of the mesh,
 // so you look through the skin into the fat and muscle layers below.
 shader_type spatial;
+// Light spread under skin is red: it reaches further than the other colors (only where SSS_STRENGTH is set).
+render_mode sss_mode_skin;
 
 uniform vec4 skin_color : source_color = vec4(0.84, 0.66, 0.56, 1.0);
 uniform sampler2D wound_map : filter_linear, hint_default_black;
@@ -16,6 +18,10 @@ uniform float pallor = 0.0;
 // Set from Materials.FAMILIES.skin, like the body's skin (toon.gdshader).
 uniform float wrap = 0.0;
 uniform vec4 scatter_tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+// Light through the surface where it is thin (Materials.Families Translucency).
+uniform float translucency = 0.0;
+// How strongly light spreads under the surface (Materials.Families Subsurface): Godot's screen-space scattering.
+uniform float subsurface = 0.0;
 // Site space to the body model's own space: pores and grime are laid out where the body's are (toon.gdshader uses the
 // model's space), so they run on unbroken where this skin takes over from the body.
 uniform mat4 site_to_model;
@@ -74,6 +80,9 @@ void fragment() {
 	wet = max(wet, apply_blood(c, blood_amount(blood, noise(world_pos.xz * 120.0 + world_pos.y * 50.0))));
 	ALBEDO = c;
 	ROUGHNESS = mix(0.6, 0.08, wet);
+	BACKLIGHT = scatter_tint.rgb * translucency * 0.3;
+	// Blood and wounds stay sharp: they lie on the skin, not under it.
+	SSS_STRENGTH = subsurface * (1.0 - wet);
 }
 
 // Same light as toon.gdshader so the site blends into the rest of the body.
@@ -88,6 +97,8 @@ void light() {
 	float wet = clamp((0.6 - ROUGHNESS) / 0.52, 0.0, 1.0);
 	float spec = skin_specular(dot(NORMAL, halfway), wet) * ATTENUATION;
 	SPECULAR_LIGHT += LIGHT_COLOR * spec * mix(specular_strength, 0.18, wet) / PI;
+	SPECULAR_LIGHT += LIGHT_COLOR * wet_glint(dot(NORMAL, halfway), dot(NORMAL, VIEW), wet) * ATTENUATION / PI;
+	DIFFUSE_LIGHT += LIGHT_COLOR * translucence(NORMAL, LIGHT, VIEW, BACKLIGHT) * ATTENUATION / PI;
 	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
 	DIFFUSE_LIGHT += LIGHT_COLOR * rim * rim_strength * lit / PI;
 }

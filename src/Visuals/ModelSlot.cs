@@ -84,7 +84,7 @@ public static class ModelSlot {
         var own = new List<ShaderMaterial>();
         foreach (var mesh in root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()) {
             for (var i = 0; i < mesh.GetSurfaceOverrideMaterialCount(); i++) {
-                if (mesh.GetSurfaceOverrideMaterial(i) is ShaderMaterial shared && shared.Shader == Materials.Toon) {
+                if (mesh.GetSurfaceOverrideMaterial(i) is ShaderMaterial shared && (shared.Shader == Materials.Toon || shared.Shader == Materials.ToonSkin)) {
                     var copy = (ShaderMaterial)shared.Duplicate();
                     mesh.SetSurfaceOverrideMaterial(i, copy);
                     own.Add(copy);
