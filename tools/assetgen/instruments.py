@@ -730,6 +730,83 @@ def _cig_pack(m: Model, length: float) -> None:
     m.add("Filters", merge(*filters), "iodine")
 
 
+def _tourniquet(m: Model, length: float) -> None:
+    """A fabric loop with an open buckle, windlass and retaining hardware."""
+    z_scale = length / 0.2
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    def mounted_hardware(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Hardware centered at z=-0.14 is mounted at the top by runtime, so keep it compact there."""
+        out = scaled_z(mesh)
+        out.vertices[:, 0] *= 0.65
+        mount_z = -0.14 * z_scale
+        out.vertices[:, 2] = mount_z + (out.vertices[:, 2] - mount_z) * 0.65
+        return out
+
+    vertices = []
+    for angle in np.linspace(0.0, 2 * np.pi, 64, endpoint=False):
+        center = np.array([0.038 * np.sin(angle), 0.0, -0.091 + 0.087 * np.cos(angle)])
+        normal = np.array([0.087 * np.sin(angle), 0.0, 0.038 * np.cos(angle)])
+        normal /= np.linalg.norm(normal)
+        for width, height in ((-0.015, -0.002), (0.015, -0.002), (0.015, 0.002), (-0.015, 0.002)):
+            vertices.append(center + normal * width + np.array([0.0, height, 0.0]))
+    faces: list[list[int]] = []
+    for index in range(64):
+        for side in range(4):
+            a, b = 4 * index + side, 4 * index + (side + 1) % 4
+            c, d = 4 * ((index + 1) % 64) + side, 4 * ((index + 1) % 64) + (side + 1) % 4
+            faces.extend(([a, c, b], [b, c, d]))
+    strap = finish(trimesh.Trimesh(vertices, faces))
+    m.add("Strap", scaled_z(strap), "fabric_dark")
+    m.add("Tail", scaled_z(superellipsoid((0.029, 0.004, 0.042), 0.25, (0.0, 0.003, -0.181), detail=8)), "fabric_dark")
+    m.add("PullTab", mounted_hardware(superellipsoid((0.030, 0.0045, 0.014), 0.25, (0.0, 0.0035, -0.197), detail=8)), "red_plastic")
+
+    m.add("Saddle", mounted_hardware(superellipsoid((0.076, 0.006, 0.052), 0.35, (0.0, 0.009, -0.140), detail=8)), "black_plastic")
+    rails = [superellipsoid((0.006, 0.009, 0.031), 0.3, (x, 0.007, -0.170), detail=8) for x in (-0.019, 0.019)]
+    rails.extend(superellipsoid((0.043, 0.009, 0.006), 0.3, (0.0, 0.007, z), detail=8) for z in (-0.186, -0.154))
+    m.add("Buckle", mounted_hardware(merge(*rails)), "black_plastic", parent="Saddle")
+    m.add(
+        "TensionBand",
+        mounted_hardware(
+            tube(
+                [(0.0, 0.009, -0.164), (0.0, 0.011, -0.143), (0.0, 0.016, -0.127), (0.0, 0.013, -0.110), (0.0, 0.009, -0.100)],
+                [(0.002, 0.008)] * 5,
+                ring=8,
+                exponent=5,
+                smooth=2,
+            )
+        ),
+        "fabric_dark",
+        parent="Saddle",
+    )
+    m.add(
+        "Windlass",
+        mounted_hardware(
+            tube(
+                [
+                    (-0.048, 0.022, -0.127),
+                    (-0.043, 0.022, -0.127),
+                    (-0.020, 0.022, -0.127),
+                    (0.0, 0.022, -0.127),
+                    (0.020, 0.022, -0.127),
+                    (0.043, 0.022, -0.127),
+                    (0.048, 0.022, -0.127),
+                ],
+                [(0.004, 0.004), (0.006, 0.006), (0.006, 0.006), (0.0045, 0.0045), (0.006, 0.006), (0.006, 0.006), (0.004, 0.004)],
+                ring=12,
+                smooth=1,
+            )
+        ),
+        "dark_steel",
+        parent="Saddle",
+    )
+    for x, name in ((-0.028, "RetainerL"), (0.028, "RetainerR")):
+        m.add(name, mounted_hardware(superellipsoid((0.009, 0.021, 0.016), 0.3, (x, 0.013, -0.127), detail=8)), "black_plastic", parent="Saddle")
+    m.add("Keeper", scaled_z(superellipsoid((0.027, 0.003, 0.014), 0.3, (0.037, 0.003, -0.068), detail=8)), "plastic")
+
+
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
         _scalpel(m, length, True)
@@ -759,15 +836,7 @@ def _misc(m: Model, kind: str, length: float) -> None:
         m.add("Bag", superellipsoid((0.04, 0.006, length), 0.4, (0.0, 0.0, -length * 0.5)), "clear_plastic")
         m.add("Powder", superellipsoid((0.03, 0.005, length * 0.6), 0.6, (0.0, -0.001, -length * 0.55)), "cotton")
     elif kind == "tourniquet":
-        strap = tube(
-            [(0.0, 0.0, 0.0), (0.02, 0.0, -length * 0.3), (0.0, 0.0, -length * 0.6), (-0.02, 0.0, -length * 0.3), (0.0, 0.0, 0.0)],
-            [(0.003, 0.015)] * 5,
-            ring=12,
-            exponent=6.0,
-        )
-        m.add("Strap", strap, "fabric_dark")
-        m.add("Buckle", superellipsoid((0.035, 0.01, 0.025), 0.3, (0.0, 0.0, -length)), "red_plastic")
-        m.add("Windlass", rod(0.004, -length + 0.02, -length - 0.02, 0.012), "black_plastic")
+        _tourniquet(m, length)
     elif kind == "iv_catheter":
         m.add("Hub", superellipsoid((0.012, 0.012, 0.02), 0.5, (0.0, 0.0, 0.0)), "tint")
         m.add("Wings", superellipsoid((0.04, 0.002, 0.015), 0.4, (0.0, -0.004, -0.012)), "green_plastic")
