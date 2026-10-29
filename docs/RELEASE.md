@@ -52,10 +52,10 @@ other PR, and the next run verifies a newer commit that contains them. One relea
 
 1. Pick. Take the newest `develop` commit whose CI passed. Skip while a release PR is open or `main` already contains
    it.
-2. Verify. Run `./build.py screenshot_review` on that commit. A suite that still fails after its retry is an issue
-   (step 4), even when CI passed.
-   It takes about 2 h in a 4-core cloud container, as long as an agent's background command may run, so start it
-   detached after `./build.py setup` and check on it until it ends, keeping the session alive:
+2. Verify. Run `./build.py screenshot_review` on that commit, on a machine with a display and an NVIDIA GPU: the
+   baseline is drawn by one, and a cloud container's software renderer changes nearly every key frame. A failed suite
+   is an issue (step 4), even when CI passed: the run stops there, so fix it and run again.
+   Start it detached after `./build.py setup` and check on it until it ends, keeping the session alive:
    `setsid nohup sh -c './build.py screenshot_review; echo "exit $?"' > build/release.log 2>&1 &`.
    Run no other `./build.py test` in that checkout meanwhile: it would replace the run's key frames and logs.
 3. Review the listed sheets against the PRs merged into `develop` between `main` and that commit. The features

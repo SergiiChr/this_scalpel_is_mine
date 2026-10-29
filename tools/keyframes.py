@@ -221,9 +221,8 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         "",
         {
             "passed": "Regression: passed.",
-            "failed": "Regression: FAILED, even after running the failed cases again (the run's output names them). "
-            "Review their sheets: the baseline takes them only if the case isn't visibly broken. "
-            "Key frames they didn't take show as missing below and stay in the baseline.",
+            "failed": "Regression: FAILED, stopped at the first failed suite (the run's output names it). The suites it "
+            "didn't run show their key frames as missing below; it can't become the baseline.",
             "not-run": "Regression: not run, these are the key frames of an earlier run.",
             "focused": "Focused run: only the folders it took key frames in are compared, and only missing key frames fail it.",
         }[regression],
@@ -268,8 +267,8 @@ def in_taken_folders(current: dict[tuple[str, str], KeyFrame], baseline: dict[tu
 
 def update(current_root: Path, baseline_root: Path, keep: frozenset[str] = frozenset(), focused: bool = False) -> int:
     """Writes the key frames that differ from the baseline into it and deletes the ones the run no longer takes, except
-    in the folders to keep (of failed suites, which may have stopped before taking them): there the baseline's key frames
-    and views the run didn't take stay as they are.
+    in the folders to keep (which a run may not have taken all of): there the baseline's key frames and views the run
+    didn't take stay as they are.
     Unchanged key frames keep their bytes, so they cost nothing in git; they only take the run's file name when its
     order prefix moved, which git sees as a rename.
     A focused run only adds and replaces: it may have run some of a folder's cases, so every folder it took is kept, and

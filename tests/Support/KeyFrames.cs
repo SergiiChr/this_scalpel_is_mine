@@ -14,6 +14,8 @@ public partial class KeyFrames : Node {
     /// <summary>Views of the site: from this far, above and 45° off toward the surgeon's side of the table.</summary>
     private const float Distance = 0.45f;
     private const float Fov = 35f;
+    /// <summary>The size (pixels) of every key frame.</summary>
+    private static readonly Vector2I Size = new(1280, 720);
     /// <summary>Each folder's file name to description index (see the class summary).</summary>
     private const string Descriptions = "keyframes.json";
 
@@ -61,7 +63,13 @@ public partial class KeyFrames : Node {
             RenderingServer.GlobalShaderParameterSet(ShaderParam.GameTime, 0f);
             await Frames.Process(3);
             await RenderingServer.Singleton.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            saved = Frames.Root.GetViewport().GetTexture().GetImage().SavePng(path) == Error.Ok;
+            // Every key frame the same size: a window on a desktop draws at the project's own size, where a virtual
+            // display's screen held it to this.
+            var image = Frames.Root.GetViewport().GetTexture().GetImage();
+            if (image.GetSize() != Size) {
+                image.Resize(Size.X, Size.Y, Image.Interpolation.Lanczos);
+            }
+            saved = image.SavePng(path) == Error.Ok;
         } finally {
             RenderingServer.RenderLoopEnabled = false;
             Frames.Tree.Paused = paused;
