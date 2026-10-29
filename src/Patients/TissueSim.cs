@@ -1200,13 +1200,13 @@ public sealed partial class TissueSim {
         return Mathf.Lerp(top, bottom, v - j);
     }
 
-    /// <summary>Spring s's reach along the body (its rest direction in the site plane), as a share of its rest
-    /// reach: 1 as it lay at rest, 0 standing on end, negative folded back over.</summary>
+    /// <summary>Spring s's reach along the body (its rest direction, sloping with a limb's side), as a share of its
+    /// rest length: 1 as it lay at rest, 0 standing on end, negative folded back over. Measured in the site plane,
+    /// skin drawn down a limb's side would read as standing up as it follows the slope.</summary>
     private float Along(int s) {
         ref readonly var spring = ref _springs[s];
-        var restWay = new Vector2(Rest[spring.B].X - Rest[spring.A].X, Rest[spring.B].Z - Rest[spring.A].Z);
-        var d = Pos[spring.B] - Pos[spring.A];
-        return new Vector2(d.X, d.Z).Dot(restWay) / restWay.LengthSquared();
+        var restWay = Rest[spring.B] - Rest[spring.A];
+        return (Pos[spring.B] - Pos[spring.A]).Dot(restWay) / restWay.LengthSquared();
     }
 
     /// <summary>

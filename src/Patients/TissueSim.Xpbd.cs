@@ -15,10 +15,9 @@ public sealed partial class TissueSim {
     /// lips draw back into the skin behind them, between two cuts as well.</summary>
     private const float XpbdSqueeze = 0.006f;
     /// <summary>How readily the skin slides along its bed (compliance of each point's tether along the body), and how
-    /// readily it lifts off it (along the normal): lifted, it sinks back once let go. Slid stiffer, a lip drawn back
-    /// gathers the skin behind it into a ridge a hand can't draw past; lifted much softer, skin a grip pushes ahead of
-    /// it buckles up off the bed in a crumple instead of sliding along it.</summary>
-    private const float XpbdSlide = 0.002f;
+    /// readily it lifts off it (along the normal): lifted, it sinks back once let go. Much softer, skin a grip pushes
+    /// ahead of it buckles up off the bed in a crumple instead of sliding along it.</summary>
+    private const float XpbdSlide = 0.0004f;
     private const float XpbdLift = 0.01f;
     /// <summary>How much more readily skin slides along its bed than a cut's lips held where it draws them back. Few
     /// iterations a step leave a soft tether far stiffer than its compliance says, so it takes this much for the

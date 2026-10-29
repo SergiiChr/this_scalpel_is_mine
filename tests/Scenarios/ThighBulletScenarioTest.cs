@@ -87,7 +87,7 @@ public class ThighBulletScenarioTest {
             var text = string.Join(", ", gave.Select(mm => (mm * 1000f).ToString("0.0")));
             // With the other lip already held aside, this one still follows the hand: it doesn't stand frozen.
             AssertFloat(gave[0]).OverrideFailureMessage($"the {tool.Def.Id}'s lip follows the hand's first millimeter ({text} mm)").IsGreater(0.0005f);
-            AssertFloat(gave.Sum()).OverrideFailureMessage($"the {tool.Def.Id} draws its lip at least 5 mm aside ({text} mm)").IsGreater(0.005f);
+            AssertFloat(gave.Sum()).OverrideFailureMessage($"the {tool.Def.Id} draws its lip at least 5 mm aside ({text} mm)\n{driver.Recent()}").IsGreater(0.005f);
             AssertFloat(gave.Min()).OverrideFailureMessage($"the {tool.Def.Id}'s lip never jumps back ({text} mm)").IsGreater(-0.0005f);
             AssertFloat(gave.TakeLast(5).Average()).OverrideFailureMessage($"the {tool.Def.Id}'s lip gives less and less ({text} mm)")
                 .IsLessEqual(gave.Take(5).Average() + 0.0001f);

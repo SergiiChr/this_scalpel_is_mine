@@ -83,7 +83,7 @@ public class NeedleTest {
         var torn = tissue.Thread(thread)!;
         AssertBool(torn.Springs.Concat(torn.Holds.Values).All(s => !tissue.SpringAt(s).Active))
             .OverrideFailureMessage("a torn thread lets go of every span and the edges it held").IsTrue();
-        AssertFloat(tight.Closure).OverrideFailureMessage("and holds the cut no more").IsLess(0.01f);
+        AssertFloat(tight.Closure).OverrideFailureMessage($"and holds the cut no more (closure {tight.Closure:0.000})").IsLess(0.01f);
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("it tears the skin").IsGreater(wounds);
         AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("suture_tear_through"))
             .OverrideFailureMessage("a thread torn through costs points").IsTrue();
