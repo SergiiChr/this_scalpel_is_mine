@@ -418,8 +418,41 @@ def _flask(m: Model, length: float) -> None:
 
 
 def _thermos(m: Model, length: float) -> None:
-    m.add("Bottle", along_z(lathe([(0.0, 0.0), (0.03, 0.0), (0.03, length * 0.8), (0.022, length * 0.85), (0.0, length * 0.85)], 24)), "fabric_dark")
-    m.add("Cap", rod(0.024, -length * 0.85, -length), "steel")
+    """Handled vacuum flask with an insulated sleeve, steel trim and a seated cup cap."""
+    z_scale = length / 0.18
+
+    def turned(rows: list[tuple[float, float]]) -> trimesh.Trimesh:
+        return along_z(lathe([(radius, z * z_scale) for radius, z in rows], 48))
+
+    m.add(
+        "Bottle",
+        turned(
+            [(0, 0), (0.024, 0), (0.028, 0.003), (0.029, 0.009), (0.029, 0.127), (0.028, 0.134), (0.022, 0.144), (0.017, 0.148), (0.017, 0.161), (0, 0.161)]
+        ),
+        "steel",
+    )
+    m.add("Sleeve", turned([(0.0285, 0.020), (0.030, 0.020), (0.030, 0.120), (0.0285, 0.120), (0.0285, 0.020)]), "fabric_dark")
+    m.add("SleeveTrim", merge(*[turned([(0.0285, z), (0.0306, z), (0.0306, z + 0.003), (0.0285, z + 0.003), (0.0285, z)]) for z in (0.019, 0.118)]), "steel")
+    m.add(
+        "Base",
+        turned([(0, -0.001), (0.024, -0.001), (0.028, 0.001), (0.0295, 0.004), (0.0295, 0.010), (0.029, 0.013), (0.027, 0.014), (0, 0.014)]),
+        "black_plastic",
+    )
+    m.add("NeckSeal", turned([(0, 0.145), (0.018, 0.145), (0.019, 0.148), (0.019, 0.155), (0.018, 0.158), (0, 0.158)]), "black_plastic")
+    # The stainless cup-cap widens gently toward its closed end and overlaps the neck seal.
+    m.add("Cap", turned([(0, 0.151), (0.021, 0.151), (0.024, 0.153), (0.025, 0.157), (0.026, 0.173), (0.025, 0.178), (0.023, 0.180), (0, 0.180)]), "steel")
+    m.add("CapBand", turned([(0.024, 0.157), (0.0264, 0.157), (0.0264, 0.161), (0.024, 0.161), (0.024, 0.157)]), "black_plastic")
+    # An open side handle stays clear of the body and joins two short mounting pads.
+    handle = tube(
+        [(0.026, 0, -0.028), (0.037, 0, -0.028), (0.044, 0, -0.037), (0.045, 0, -0.105), (0.040, 0, -0.116), (0.027, 0, -0.119)],
+        [(0.0045, 0.005)] * 6,
+        ring=12,
+        exponent=3,
+        smooth=4,
+    )
+    m.add("Handle", scaled(handle, (1, 1, z_scale)), "black_plastic")
+    mounts = [superellipsoid((0.008, 0.012, 0.012 * z_scale), 0.55, (0.030, 0, z * z_scale), detail=8) for z in (-0.028, -0.119)]
+    m.add("Mounts", merge(*mounts), "black_plastic")
 
 
 def _paddle(m: Model, length: float) -> None:
