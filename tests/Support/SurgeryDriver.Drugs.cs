@@ -72,6 +72,7 @@ public partial class SurgeryDriver {
     /// whenever it runs dry.</summary>
     public async Task PlayerRinsesCuts() {
         var syringe = (await PlayerRequestsItem("syringe_50"))!;
+        var tilt = Me.Hands[Me.Active].Tilt;
         var shown = false;
         foreach (var cut in Patient.Wounds.Where(wound => wound.Dirty).ToList()) {
             var need = Patient.RinseMl(cut);
@@ -91,21 +92,37 @@ public partial class SurgeryDriver {
             }
             Note($"rinsed {cut.Rinsed:0} of {need:0} ml through a cut, {(cut.Dirty ? "still dirty" : "clean")}");
         }
+        // Held flatter again: the next tool takes the hand's tilt.
+        await PlayerTilts(tilt);
         await PlayerPutsDown();
     }
 
     /// <summary>Holds <paramref name="syringe"/> over <paramref name="spot"/> and moves it until where its stream would land
-    /// is right there, as a player does watching it.</summary>
+    /// is right there, as a player does watching it. It's pointed steeply down, so the stream lands under its tip: held
+    /// flatter, it squirts far, and the hand, held up over the patient's arm beside the site or reaching past it, would
+    /// throw it short or long of the cut.</summary>
     private async Task AimsStreamAt(SurgicalTool syringe, Vector3 spot) {
         var over = spot;
         await NeedleInto(over, false);
+        await PlayerTilts(SteepTilt);
         await Steadies(syringe);
-        for (var i = 0; i < 2; i++) {
-            var lands = ToolEffects.StreamPath(Surgery, syringe.TipPosition(), syringe.TipDirection())[^1];
-            over += (spot - lands) with { Y = 0f };
+        for (var i = 0; i < 4; i++) {
+            var miss = (spot - ToolEffects.StreamPath(Surgery, syringe.TipPosition(), syringe.TipDirection())[^1]) with { Y = 0f };
+            if (miss.Length() < 0.005f) {
+                break;
+            }
+            over += miss;
             await NeedleInto(over, false);
             await Steadies(syringe);
         }
+    }
+
+    /// <summary>Pitches the active hand's tool to <paramref name="tilt"/> (<see cref="SurgeonHand.Tilt"/>) with Aim tool.
+    /// </summary>
+    private async Task PlayerTilts(float tilt) {
+        var hand = Me.Hands[Me.Active];
+        await PlayerAims(new Vector2(0f, (hand.Tilt - tilt) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
+        PlayerLetsGoOfAim();
     }
 
     /// <summary>Waits until <paramref name="tool"/>'s tip has stopped moving: a hand rises and settles at its own pace.
@@ -299,6 +316,10 @@ public partial class SurgeryDriver {
         }
         return false;
     }
+
+    /// <summary>The syringe's pitch squirting into a cut (<see cref="SurgeonHand.TiltRange"/>): nearly straight down.
+    /// </summary>
+    private const float SteepTilt = -1.4f;
 
     /// <summary>How far (meters) past a wound's end a hand holding the limb lies: the palm's half width and a little,
     /// so the needle's holes beside the wound stay clear of it.</summary>

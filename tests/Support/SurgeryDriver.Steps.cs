@@ -198,7 +198,11 @@ public partial class SurgeryDriver {
         if (await PlayerTakesHoldOf(target)) {
             var forceps = Me.HeldTool(Right)!;
             // A steady pull, a couple of centimeters up a notch at a time, held until it lets go.
-            for (var i = 0; i < 10 && Body.Site.ToLocal(forceps.TipPosition()).Y <= -target.Depth + 0.025f; i++) {
+            bool Low() {
+                var tip = Body.Site.ToLocal(forceps.TipPosition());
+                return tip.Y - Body.SurfaceHeight(Body.LocalToUv(tip)) <= -target.Depth + 0.025f;
+            }
+            for (var i = 0; i < 10 && Low(); i++) {
                 await PlayerPullsANotch();
             }
             await Frames.Until(() => target.Anchor <= 0f, 30f);

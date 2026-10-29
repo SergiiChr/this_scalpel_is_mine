@@ -51,7 +51,7 @@ public static class ScenarioFlow {
                 var state = objectives.States[index];
                 await Frames.Until(() => state.Done || surgery.Finished, hold + Settle);
                 AssertBool(state.Done)
-                    .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
+                    .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}\nWounds:\n{driver.WoundList()}")
                     .IsTrue();
                 // Action helpers capture cut/extraction/closure; internal flags have no unique site photograph.
                 if (step.Type is "sanitize" or "flip" or "irrigate") {

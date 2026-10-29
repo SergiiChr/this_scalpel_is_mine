@@ -155,7 +155,8 @@ public partial class Patient {
             case TargetHold grip:
                 var target = Targets[grip.Target];
                 var local = Body.Site.ToLocal(tip);
-                var height = local.Y;
+                // Over the skin there, as a target's depth is under it: a limb's skin lies well below the site's plane.
+                var height = local.Y - Body.SurfaceHeight(Body.LocalToUv(local));
                 if (target.Anchor > 0f) {
                     var pulled = -target.Depth - height;
                     if (pulled < -0.02f) {

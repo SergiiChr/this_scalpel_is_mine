@@ -696,6 +696,19 @@ class Process:
         return run_process(self.suite, options, self.name, self.test_filter, self.cases)
 
 
+def row_filter(case: Case, value: str) -> str:
+    """The test filter for one row of a case. GdUnit4 names a method's only row without its values, so that row can't
+    be told apart by them."""
+    by_value = value and len(case.values) > 1
+    return f"FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if by_value else "")
+
+
+def case_filter(cases: list[Case], text: str) -> str:
+    """The test filter for the rows whose names (method(values)) contain the text."""
+    rows = {row_filter(case, value) for case in cases for value in case.values or [""] if text in (f"{case.method}({value})" if value else case.method)}
+    return "|".join(f"({row})" for row in sorted(rows))
+
+
 def processes(suite: Suite, options: TestOptions) -> list[Process]:
     """The processes that run a suite's selected cases: none when no runnable case is selected."""
     base = f"FullyQualifiedName~{suite.full_name}."
@@ -706,7 +719,7 @@ def processes(suite: Suite, options: TestOptions) -> list[Process]:
     if not selected_names:
         return []
     if not suite.isolate_cases:
-        test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
+        test_filter = base + (f"&({case_filter(cases, options.case)})" if options.case else "")
         return [Process(suite, suite.name, test_filter, len(selected_names), runs_alone(suite, options))]
     found: list[Process] = []
     for case in cases:
@@ -714,9 +727,7 @@ def processes(suite: Suite, options: TestOptions) -> list[Process]:
             name = f"{case.method}({value})" if value else case.method
             if options.case not in name:
                 continue
-            # GdUnit4 names a method's only row without its values, so that row can't be told apart by them.
-            by_value = value and len(case.values) > 1
-            test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if by_value else "")
+            test_filter = f"{base}&{row_filter(case, value)}"
             # Rows that share their first value (a scenario with and without a flag) share the filter, so one process
             # runs them both; a second with the same name would write the same log and report at the same time.
             if any(process.test_filter == test_filter for process in found):

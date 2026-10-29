@@ -45,6 +45,8 @@ public partial class SurgeryDriver : Node {
     /// <see cref="PlayerReaches"/>). Off for a test of the standing view or of zooming itself.</summary>
     public bool ZoomsInToWork { get; set; } = true;
     private bool _budgetPaused;
+    /// <summary>The newest wound id <see cref="NoteNewWounds"/> has put on the trail.</summary>
+    private int _lastWound = -1;
 
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
     public static SurgeryDriver Create() {
@@ -157,7 +159,28 @@ public partial class SurgeryDriver : Node {
         if (IsInstanceValid(Surgery) && Surgery.Running && !_budgetPaused) {
             Budget.Sample(Trail.Count > 0 ? Trail[^1] : "", Surgery.Elapsed);
         }
+        NoteNewWounds();
     }
+
+    /// <summary>Every wound the patient gets goes on the trail as it opens, right after the step that made it.</summary>
+    private void NoteNewWounds() {
+        if (!IsInstanceValid(Patient)) {
+            return;
+        }
+        var wounds = Patient.Wounds;
+        for (var n = 0; n < wounds.Count; n++) {
+            if (wounds[n].Id > _lastWound) {
+                _lastWound = wounds[n].Id;
+                Note($"wound #{Describe(wounds[n])} opens");
+            }
+        }
+    }
+
+    /// <summary>Every wound as it is now, for a failure message.</summary>
+    public string WoundList() => string.Join("\n", Patient.Wounds.Select(w => $"#{Describe(w)}, {w.Closure:P0} closed"));
+
+    private static string Describe(Wound w) =>
+        $"{w.Id} {w.Kind} depth {w.Depth:0.00} from {w.Points[0]} to {w.Points[^1]}, {w.LengthUv:0.000} uv";
 
     public void Note(string text) {
         var elapsed = IsInstanceValid(Surgery) ? Surgery.Elapsed : 0f;
