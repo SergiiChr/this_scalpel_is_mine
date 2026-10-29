@@ -66,10 +66,12 @@ public static class ScenarioFlow {
             }
             AssertBool(surgery.Finished)
                 .OverrideFailureMessage($"{scenarioId}: the surgery waits for the discharge: {surgery.Report?.Reason}").IsFalse();
+            var undone = string.Join(", ", objectives.Steps.Where((step, index) => !step.Optional && !objectives.States[index].Done)
+                .Select(step => $"\"{step.Label}\""));
             await driver.PlayerDischarges();
             var report = surgery.Report;
             AssertBool(report?.Success == true)
-                .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars")
+                .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars; not done: {undone}. Last steps:\n{driver.Recent()}\nWounds:\n{driver.WoundList()}")
                 .IsTrue();
             CheckTimeline(report!, objectives.Steps);
             validate?.Invoke(driver);
