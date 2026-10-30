@@ -11,13 +11,13 @@
     It holds on any machine, with or without a GPU. Tests build optimized, so it times the code an exported game runs.
   - Render budget, `./build.py performance_test --render-budget` only: rendering on, whole frames within 16 ms on the
     real GPU.
-- Known issues: a case known to go over that can't be fixed in the current change passes an explicit commented
-  `localOverride` at its budget check: a `BudgetAllowance` with the reason and how many times this run's limit its worst
-  frame may take. Pick the factor from the worst frame measured on the machine tests usually run on, plus 30%, rounded
-  up to a half, so only a change of 30% or more fails it; a factor at or under 1.3 is no allowance. The check still
-  prints its measurements and passes an overrun within that factor, without marking the case broken; a frame past it
-  fails, runtime stalls included. Functional assertions and unlisted budget failures remain enforced; global limits do
-  not change.
+- Known issues: an overrun the current change introduces must be fixed in that change. A case that already went over and
+  can't be fixed in the current change passes an explicit commented `localOverride` at its budget check: a
+  `BudgetAllowance` with the reason and how many times this run's limit its worst frame may take. Pick the factor from
+  the worst frame measured on the machine tests usually run on, plus 30%, rounded up to a half, so only a change of 30%
+  or more fails it; a factor at or under 1.3 is no allowance. The check still prints its measurements and passes an
+  overrun within that factor, without marking the case broken; a frame past it fails, runtime stalls included.
+  Functional assertions and unlisted budget failures remain enforced; global limits do not change.
 - When frame times are checked:
   - Focused runs (`./build.py test --tag ...` or `--case ...`): a change checks the budget where it works.
   - `./build.py performance_test`: every `frame_budget` suite. A failure says whether it's a new issue or a known one
