@@ -2,7 +2,7 @@
 
 Fast changes land on `develop`; a commit of it goes through a slower, independent visual verification before `main`
 fast-forwards to it.
-Commands and test policy: [CLAUDE.md](../CLAUDE.md).
+Commands and test policy: [AGENTS.md](../AGENTS.md).
 
 ## Branches
 
@@ -42,7 +42,7 @@ accepts reach `main` with the next release.
 
 ## PR description
 
-See [PR description](../CLAUDE.md#pr-description) in CLAUDE.md.
+See [PR description](../AGENTS.md#pr-description) in AGENTS.md.
 
 ## Verification and release
 

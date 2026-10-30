@@ -31,7 +31,7 @@ Already have Godot 4.7.2 .NET? `GODOT_BIN=/path/to/godot ./build.py play`.
 Asset generation and lint need Python 3.13 (`python3.13` on Fedora). Screenshots and visual tests need Xvfb and
 xauth; headless tests need no GPU. Any C# IDE works; the repository has Rider and VS Code test settings
 (`.runsettings`).
-All agents start with [CLAUDE.md](CLAUDE.md), which links to the shared guidelines and [workflows](.claude/skills/).
+All agents start with [AGENTS.md](AGENTS.md), which links to the shared guidelines and [workflows](.claude/skills/).
 
 ```bash
 ./build.py dev      # one-time setup, see below
@@ -133,7 +133,7 @@ tests/           GdUnit4 suites by feature, and in tests/Support the test helper
 tools/assetgen/  Model, sound and manual art generator (Python)
 tools/blender/   Organic and rigged models built with Blender (Python)
 tools/keyframes.py  Key frame review report (./build.py screenshot_review)
-.claude/skills/ Shared agent workflows, indexed in CLAUDE.md
+.claude/skills/ Shared agent workflows, indexed in AGENTS.md
 ```
 
 ## Tests
@@ -143,6 +143,6 @@ The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog an
 `--with-key-frames` saves screenshots of key moments. Suites also run from the IDE's test explorer.
 CI gates the remaining functional regression and export on smoke; visual review runs locally.
 
-See [CLAUDE.md](CLAUDE.md#checking-a-change) for verification commands and test policy,
+See [AGENTS.md](AGENTS.md#checking-a-change) for verification commands and test policy,
 [review-key-frames](.claude/skills/review-key-frames/SKILL.md) for visual review and baseline updates, and
 [docs/RELEASE.md](docs/RELEASE.md) for the development and release flow.

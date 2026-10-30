@@ -3,7 +3,7 @@ using GdUnit4.Core.Execution.Exceptions;
 namespace Scalpel.Tests.Support;
 
 /// <summary>
-/// A case held back by a known issue (CLAUDE.md, Known issues). It runs with the rest and passes only when it fails
+/// A case held back by a known issue (AGENTS.md, Test structure and policy). It runs with the rest and passes only when it fails
 /// exactly where the issue says: everything before still works, and the regression still catches anything new.
 /// </summary>
 public static class KnownIssue {
