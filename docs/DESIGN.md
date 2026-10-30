@@ -408,7 +408,7 @@ A target's `scale` sizes its model (1 by default).
   History lists them (scenario, outcome, stars, score) and opens the same report.
 - **Floor dirt**: a tool that hits the floor is soiled and unsterile. Wash it at the sink, then sanitize it.
 - **IV line**: loose, flexible tubing from the drip chamber on the stand, its bare end hung on the stand across from it.
-  It hangs under gravity and is pushed aside by the floor, furniture, the patient's skin, the drape and surgeons.
+  It hangs under gravity and is pushed aside by the floor, furniture, the patient's skin, the drape and surgeons. Every peer simulates its own.
   Holding a catheter, "Connect the IV line" at the stand puts the tubing's end on it; pressed onto an arm, the catheter
   goes in and the tubing hangs from it. It has to go into the forearm vein with the tubing on it to work: beside the
   vein, or without the tubing, it still sticks, but nothing goes through, and the catheter can't be connected
@@ -772,7 +772,7 @@ inputs when regenerating.
 - The game swaps materials for the cel shader by name (`src/Visuals/ModelSlot.cs`).
 - **Patient skin**: cuts, burns, bruises, blood and iodine sit on the body model itself. Only around cuts and skin a
   tool holds is the model replaced by the simulated skin, fat and muscle layers, which hug the body as it is, whatever
-  the model becomes. Every player sees the same site. The cavity under them rises to just under the skin at the site's
+  the model becomes. Every peer measures the same model the same way, so every player sees the same site. The cavity under them rises to just under the skin at the site's
   edges, so on a round limb it stays inside the body. Nothing of the site shows where it would overhang the body or
   where the body is too thin for skin, fat and muscle (the edge of a limb or the flank), so it never sticks out past the
   body's outline.

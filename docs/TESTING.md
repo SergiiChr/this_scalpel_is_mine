@@ -8,14 +8,15 @@ Commands: [Checking a change](../AGENTS.md#checking-a-change).
 
 New tests go through one of these seams; a new seam needs the owner's confirmation first.
 
-- Player input: `Player*` steps and `tests/Support/PlayerInput.cs`. Catches whole flows as a player plays them; misses
-  number edge cases and is slow.
+- Player input: `Player*` steps and `tests/Support/PlayerInput.cs`. Results come from what the game itself reports, such
+  as its success report; `SurgeryState` only sets up what a test isn't about. Catches whole flows as a player plays
+  them; misses number edge cases and is slow.
 - Simulation classes: `TissueSim`, `DrugLevels`, `SurfaceBlood` and classes like them, called directly as their own
   interface. Catches math and boundary cases fast; misses wiring into the game.
 - Network sessions: a host and a client playing over the network (`tests/Support/NetSession.cs` and the `Net*` drivers).
   Catches desync; slow, and a busy machine disturbs it.
 
-Existing suites outside these seams, such as model and data checks, stay as they are until they are reworked.
+Existing tests, model and data checks included, change only when touched.
 Every user-visible change still needs a visual test: a seam says where a test goes, not whether one is needed.
 
 ## Test structure and policy
@@ -43,7 +44,7 @@ Every user-visible change still needs a visual test: a seam says where a test go
   name states the flow's outcome. A name that lists unrelated checks with "and" is two cases.
 - Expected values come from an independent source: a literal, a worked example or the spec. A new case never builds its
   expected value from the game constant under test. A constant may be the expected value only when the claim is that two
-  separate parts agree, such as a generated model matching its solver.
+  separate parts agree.
 - Cases that differ only in a value (every scenario) are one method with a `[TestCase(value)]` row per value.
 - A suite declares its categories with `[TestCategory("...")]` and its Godot options with
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
@@ -75,8 +76,8 @@ Every user-visible change still needs a visual test: a seam says where a test go
 - Simulated input goes through `tests/Support/PlayerInput.cs` (`Input.ParseInputEvent()`). Never call an input handler
   (`_UnhandledInput()`, `SteerHand()`, `AimTool()`) or set what it would set. Sent input arrives with the next frame:
   wait a frame before checking it.
-- Only members that form a confirmed seam's interface are `internal` (the tests build into the game's assembly), never
-  public for a test. A new test reads results through a seam, not through other members.
+- Game members stay `internal` (the tests build into the game's assembly), never public for a test. A new test touches
+  only members that form a confirmed seam's interface.
 - Known issue: if a non-trivial failure can't be fixed in the current change and fails the same way every run, wrap the
   case in `KnownIssue.Expect(failure, ...)` (`tests/Support/KnownIssue.cs`) with
   `[TestCase(..., Description = "KNOWN ISSUE: reason")]`. It runs with the rest of the regression and passes only when
