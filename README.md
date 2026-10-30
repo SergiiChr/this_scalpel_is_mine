@@ -10,7 +10,8 @@ Built with Godot 4.7.2 .NET (C#, Forward+ renderer).
 
 Everything goes through one script, `build.py` (Python 3, standard library only).
 It's written for Fedora and works on any x86_64 Linux.
-Development setup can install missing git and Python packages on Fedora with `sudo dnf`; elsewhere it tells you what to install.
+Development setup can install missing git and Python packages on Fedora with `sudo dnf`; elsewhere it tells you what to
+install.
 Visual-test dependencies are provisioned separately as described below.
 
 ### Just play
@@ -23,7 +24,8 @@ cd this_scalpel_is_mine
 ./build.py play
 ```
 
-The first run downloads Godot 4.7.2 .NET (about 70 MB) into `.tools/`, and the .NET 10 SDK too unless you have it, builds the C# and starts the game.
+The first run downloads Godot 4.7.2 .NET (about 70 MB) into `.tools/`, and the .NET 10 SDK too unless you have it,
+builds the C# and starts the game.
 Already have Godot 4.7.2 .NET?
 `GODOT_BIN=/path/to/godot ./build.py play`.
 
@@ -46,9 +48,13 @@ All agents start with [AGENTS.md](AGENTS.md), which links to the shared guidelin
 
 `./build.py dev` does, in order:
 
-1. Ensures `git` is installed and provisions Xvfb and xauth. On Fedora, missing visual dependencies are extracted into `.tools/xvfb` without sudo; `dnf download`, `rpm2cpio`, `cpio` and `/usr/bin/xkbcomp` must already be installed. Elsewhere install `xvfb` and `xauth` with the system package manager first.
-2. Downloads Godot 4.7.2 .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none) and the Linux export templates into `~/.local/share/godot/` (about 1 GB, one time).
-3. Ensures Python 3.13 is installed, creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the asset generator's libraries, Blender 5.2 as a Python module (`bpy`, about 360 MB), ruff and mypy.
+1. Ensures `git` is installed and provisions Xvfb and xauth. On Fedora, missing visual dependencies are extracted into
+   `.tools/xvfb` without sudo; `dnf download`, `rpm2cpio`, `cpio` and `/usr/bin/xkbcomp` must already be installed.
+   Elsewhere install `xvfb` and `xauth` with the system package manager first.
+2. Downloads Godot 4.7.2 .NET into `.tools/` (and the .NET 10 SDK into `.tools/dotnet` when the system has none) and the
+   Linux export templates into `~/.local/share/godot/` (about 1 GB, one time).
+3. Ensures Python 3.13 is installed, creates the Python virtualenv `.venv/` and installs `requirements-dev.txt`: the
+   asset generator's libraries, Blender 5.2 as a Python module (`bpy`, about 360 MB), ruff and mypy.
 4. Builds the C# and imports the project so the editor opens straight away.
 
 It's safe to run again; it only fetches what's missing.
@@ -56,11 +62,14 @@ It's safe to run again; it only fetches what's missing.
 ## Assets
 
 Most models and all bundled sound effects are generated from code.
-The surgeon head is a supplied model with no generator in this repository; some generated props incorporate source models in `tools/assetgen/sources/`.
+The surgeon head is a supplied model with no generator in this repository; some generated props incorporate source
+models in `tools/assetgen/sources/`.
 See [assets/models/README.md](assets/models/README.md) for provenance and model contracts.
 
-- `tools/assetgen`: props, instruments and sounds (lofted and lathed meshes exported as `.glb`, sounds synthesized from noise, oscillators and filters).
-- `tools/blender`: organic and rigged models (patient, gloves, organs) built with Blender's Python module. It renders review sheets to `build/blender_review/`.
+- `tools/assetgen`: props, instruments and sounds (lofted and lathed meshes exported as `.glb`, sounds synthesized from
+  noise, oscillators and filters).
+- `tools/blender`: organic and rigged models (patient, gloves, organs) built with Blender's Python module. It renders
+  review sheets to `build/blender_review/`.
 
 The generated files are committed, so you only need `./build.py assets` after changing a generator or its inputs.
 
@@ -96,14 +105,19 @@ Default bindings: [src/Core/InputActions.cs](src/Core/InputActions.cs).
 
 The aim shows where the tool works: a dot for point tools, a line along a blade's edge.
 A blade only cuts along that line (rotate the tool to turn it); moving it sideways just drags it.
-Drugs come in labelled vials and syringes are unlabelled: place the needle in a vial or patient, then scroll down to draw or up to push the plunger.
+Drugs come in labelled vials and syringes are unlabelled: place the needle in a vial or patient, then scroll down to
+draw or up to push the plunger.
 Doses add up, however many pushes they take.
 Work out the dose from the patient's weight and the manual.
 Don't drop syringes.
 
-How much the game tells you depends on the difficulty, picked on the first start and changed under **Settings**: **I'm just a baby** lists the scenario's main tasks with step-by-step subtasks (doses for this patient included), **Intern** only the main tasks (and an optional X-ray), and at **MD** the manual on the shelf is your only reference.
+How much the game tells you depends on the difficulty, picked on the first start and changed under **Settings**: **I'm
+just a baby** lists the scenario's main tasks with step-by-step subtasks (doses for this patient included), **Intern**
+only the main tasks (and an optional X-ray), and at **MD** the manual on the shelf is your only reference.
 F1 hides or shows the goals.
-**Settings > Debug mode** adds what the game tracks behind the scenes (the score and every scored action, objective progress, a needle that hit the vein, how many ml of what each syringe pushed where and each ml of a drug that runs down the IV line).
+**Settings > Debug mode** adds what the game tracks behind the scenes (the score and every scored action, objective
+progress, a needle that hit the vein, how many ml of what each syringe pushed where and each ml of a drug that runs down
+the IV line).
 
 ## Project layout
 
@@ -139,4 +153,6 @@ The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog an
 Suites also run from the IDE's test explorer.
 CI gates the remaining functional regression and export on smoke; visual review runs locally.
 
-See [AGENTS.md](AGENTS.md#checking-a-change) for verification commands and test policy, [review-key-frames](.claude/skills/review-key-frames/SKILL.md) for visual review and baseline updates, and [docs/RELEASE.md](docs/RELEASE.md) for the development and release flow.
+See [AGENTS.md](AGENTS.md#checking-a-change) for verification commands and test policy,
+[review-key-frames](.claude/skills/review-key-frames/SKILL.md) for visual review and baseline updates, and
+[docs/RELEASE.md](docs/RELEASE.md) for the development and release flow.

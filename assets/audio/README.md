@@ -1,6 +1,7 @@
 # Audio
 
-Every sound here is synthesized by `tools/assetgen/sounds.py` from noise, oscillators and filters (run `./build.py assets` to rebuild).
+Every sound here is synthesized by `tools/assetgen/sounds.py` from noise, oscillators and filters (run
+`./build.py assets` to rebuild).
 Ids map to files in `data/audio.cfg`; replace a file to replace a sound.
 Buses: `SFX`, `Voice`, `Music` (volume sliders in Settings).
 
@@ -10,6 +11,7 @@ Buses: `SFX`, `Voice`, `Music` (volume sliders in Settings).
 - `sfx/surgeon/`: vomit, cough, sip, bump.
 - `sfx/patient/`: groan, scream, panicked breathing (formant synthesis; spoken lines are subtitles).
 
-The patient monitor beep, flatline and alarm are generated live in `src/World/PatientMonitor.cs` (pitch follows SpO2 like a real pulse oximeter).
+The patient monitor beep, flatline and alarm are generated live in `src/World/PatientMonitor.cs` (pitch follows SpO2
+like a real pulse oximeter).
 Continuous blade, swab and suction beds are loop-safe; tool contact and movement set their live level.
 Optional recorded patient lines can go in `voice/<trigger>_<index>.ogg`, see `data/dialogue/patient_lines.cfg`.
