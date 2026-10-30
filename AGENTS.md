@@ -33,9 +33,7 @@ These rules cover code comments, docstrings and every Markdown file except the g
 
 - Say what the code or feature does instead of repeating its name.
 - Describe current behavior only: no change history or change explanations.
-- Keep lines to 120 characters, in Markdown too. Only tables, code and links that can't break may run longer.
 - In prose, start each sentence on a new line and finish it there when it fits.
-- In a list item, sentences follow each other: wrap only at the limit.
 
 ## First thing in a new session
 
