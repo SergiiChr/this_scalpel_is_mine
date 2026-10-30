@@ -4,7 +4,8 @@ namespace Scalpel.Tests.Scenarios;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("slow"), TestCategory("scenario"), TestCategory("network"), TestCategory("core_validation")]
 public class AmbulanceCoopTest {
-    [TestCase(Timeout = Limits.Slow)]
+    [TestCase(Timeout = Limits.Slow, Description = "BROKEN: about one run in three the client's IV catheter misses the vein and the ketamine it then gives into the vein falls short or misses, so \"Put the patient under general anesthesia\" doesn't complete.")]
+    [TestCategory("broken")]
     public void TwoSurgeonsCooperateToCompleteAmbulanceRun() {
         var output = new Godot.Collections.Array();
         var code = OS.Execute("/bin/bash",

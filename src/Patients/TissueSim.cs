@@ -157,10 +157,8 @@ public sealed partial class TissueSim {
     /// <summary>How high (meters) a grip pulled past what the skin gives peels its edge up off what's under it (see
     /// <see cref="Restrain"/>).</summary>
     public const float PeelLift = 0.02f;
-    /// <summary>Share of <see cref="PeelLift"/> a peeling edge rises before it gives no more along the body. Lifting it
-    /// eases the strain: until then it gives along the body again, which reads as a lip that had stopped jumping on.
-    /// </summary>
-    private const float PeeledShare = 0.1f;
+    /// <summary>Share of <see cref="PeelLift"/> a peeling edge rises before it gives no more along the body.</summary>
+    private const float PeeledShare = 0.25f;
 
     /// <summary>Skin starts holding a hand back at this strain: from here to <see cref="GripStrain"/> it gives less
     /// and less of each move away from where it belongs, down to <see cref="LeastGive"/> (see <see cref="Restrain"/>).
@@ -1202,13 +1200,18 @@ public sealed partial class TissueSim {
         return Mathf.Lerp(top, bottom, v - j);
     }
 
-    /// <summary>Spring s's reach along the body (its rest direction, sloping with a limb's side), as a share of its
-    /// rest length: 1 as it lay at rest, 0 standing on end, negative folded back over. Measured in the site plane,
-    /// skin drawn down a limb's side would read as standing up as it follows the slope.</summary>
+    /// <summary>Spring s's reach along the body, as a share of its rest reach: 1 as it lay at rest, 0 standing on end,
+    /// negative folded back over. The more of two readings: along its rest direction, sloping with a limb's side (in the
+    /// site plane, skin drawn down the side would read as standing up as it follows the slope), and in the site plane
+    /// (along the sloping rest direction, skin drawn over a shoulder's round would read as standing up as it turns).
+    /// </summary>
     private float Along(int s) {
         ref readonly var spring = ref _springs[s];
         var restWay = Rest[spring.B] - Rest[spring.A];
-        return (Pos[spring.B] - Pos[spring.A]).Dot(restWay) / restWay.LengthSquared();
+        var d = Pos[spring.B] - Pos[spring.A];
+        var flatWay = new Vector2(restWay.X, restWay.Z);
+        return Mathf.Max(d.Dot(restWay) / restWay.LengthSquared(),
+            new Vector2(d.X, d.Z).Dot(flatWay) / flatWay.LengthSquared());
     }
 
     /// <summary>

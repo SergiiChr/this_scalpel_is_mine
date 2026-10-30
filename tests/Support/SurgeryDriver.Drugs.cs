@@ -272,7 +272,7 @@ public partial class SurgeryDriver {
     }
 
     /// <summary>An awake patient (whose arm shifts as they flinch and tense up, let alone thrash about) has the forearm
-    /// held still with the free hand, by the wrist, so a needle or catheter goes in where its vein is. False when the
+    /// held still with the free hand, by the wrist, so a needle goes in where its vein is. False when the
     /// patient is asleep, another surgeon holds them still already or no hand is free.</summary>
     public async Task<bool> PlayerHoldsForearm() {
         var other = 1 - Me.Active;
@@ -280,7 +280,7 @@ public partial class SurgeryDriver {
             return false;
         }
         // Where the arm lies on the table, not where it has jerked to: the hand presses it back down there.
-        var vein = Body.Veins[0];
+        var vein = WorkingVein();
         var wrist = WhereItLies(((Forearm)vein.GetParent()).BoneName, vein.ToGlobal(vein.Line[^1]));
         await SwitchTo(other);
         await PlayerHoldsPatientAt(wrist);
@@ -453,7 +453,6 @@ public partial class SurgeryDriver {
     public async Task PlayerPutsCatheterIn(SurgicalTool catheter) {
         var hand = Me.Hands[Me.Active];
         await PlayerWalksTo(VeinPoint());
-        var holds = await PlayerHoldsForearm();
         // Following the vein (an awake patient's arm shifts as they flinch and tense up), and pushing in once the tip
         // is over it, still following it while the catheter goes in.
         for (var i = 0; i < 240 && Patient.CanSetIv(Surgery.Room.IvLine.Catheter == catheter); i++) {
@@ -466,9 +465,6 @@ public partial class SurgeryDriver {
         Use(false);
         await Frames.Physics(10);
         Note($"IV in: {Patient.IvSet}, in the vein: {Patient.IvInVein}, on the line: {Patient.IvConnected}");
-        if (holds) {
-            await PlayerLetsGoWithFreeHand();
-        }
         // The emptied hand comes back off the arm: left where the catheter went in, the tubing leaving the dressing can
         // come to rest on it, and the surgeon walking off would drag it along and rip the catheter out.
         if (Me.HeldTool(Me.Active) is null) {
