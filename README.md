@@ -153,6 +153,6 @@ The GdUnit4 (GdUnit4Net) suites under [`tests/`](tests/) are the test catalog an
 Suites also run from the IDE's test explorer.
 CI gates the remaining functional regression and export on smoke; visual review runs locally.
 
-See [AGENTS.md](AGENTS.md#checking-a-change) for verification commands and test policy,
-[review-key-frames](.claude/skills/review-key-frames/SKILL.md) for visual review and baseline updates, and
+See [AGENTS.md](AGENTS.md#checking-a-change) for verification commands, [docs/TESTING.md](docs/TESTING.md) for test
+policy, [review-key-frames](.claude/skills/review-key-frames/SKILL.md) for visual review and baseline updates, and
 [docs/RELEASE.md](docs/RELEASE.md) for the development and release flow.

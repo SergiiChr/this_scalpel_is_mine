@@ -2,7 +2,8 @@
 
 Fast changes land on `develop`; a commit of it goes through a slower, independent visual verification before `main`
 fast-forwards to it.
-Commands and test policy: [AGENTS.md](../AGENTS.md).
+Commands: [AGENTS.md](../AGENTS.md).
+Test policy: [TESTING.md](TESTING.md).
 
 ## Branches
 
@@ -31,12 +32,12 @@ The key frames a release review accepts reach `main` with the next release.
    [review-key-frames](../.claude/skills/review-key-frames/SKILL.md) and commit the accepted ones with the change.
    Changed and new ones are the evidence for the handoff. Removed key frames go at release.
 6. Run the `self-review` skill, then rerun the checks above for what it changed.
-7. Raise a PR to `develop` (see [PR description](../AGENTS.md#pr-description)).
+7. Push the branch and give the owner a PR title, a description (see [PR description](../AGENTS.md#pr-description)) and
+   the compare link to `develop`. The owner opens the PR.
 8. Hand over a summary of the change and its evidence, with the self-review summary and, for a visual change, the
-   reviewed sheets, as a prompt that asks for the merge decision.
-9. Watch the PR for merge conflicts and failing CI until it's merged: merge `develop` into the branch to resolve
-   conflicts, never rebase a branch with an open PR. On a conflict in `tests/KeyFrames`, take `develop`'s files, run the
-   focused key frames again and regenerate them.
+   reviewed sheets, and ask for the merge decision.
+9. On a merge conflict or failing CI, merge `develop` into the branch to resolve it; never rebase a branch with an open
+   PR. On a conflict in `tests/KeyFrames`, take `develop`'s files, run the focused key frames again and regenerate them.
 
 ## Verification and release
 
@@ -49,10 +50,8 @@ One release PR is open at a time.
 1. Pick. Take the newest `develop` commit whose CI passed. Skip while a release PR is open or `main` already contains
    it.
 2. Verify. Run `./build.py screenshot_review` on that commit. A suite that still fails after its retry is an issue (step
-   4), even when CI passed. It takes about 2 h in a 4-core cloud container, as long as an agent's background command may
-   run, so start it detached after `./build.py setup` and check on it until it ends, keeping the session alive:
-   `setsid nohup sh -c './build.py screenshot_review; echo "exit $?"' > build/release.log 2>&1 &`. Run no other
-   `./build.py test` in that checkout meanwhile: it would replace the run's key frames and logs.
+   4), even when CI passed. Run no other `./build.py test` in that checkout meanwhile: it would replace the run's key
+   frames and logs.
 3. Review the listed sheets against the PRs merged into `develop` between `main` and that commit. The features committed
    their own key frames, so every listed one is unexpected: a side effect, a missing key frame or a flaky render.
 4. Each problem gets an issue, and the run that opens it works it; it never opens an issue and stops. A clear-cut defect
