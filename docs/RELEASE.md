@@ -26,23 +26,16 @@ accepts reach `main` with the next release.
 3. Run the affected and newly added tests (`./build.py test --tag ... --case ...`). They check the frame budget too.
 4. Run `./build.py test` (smoke) or `--all` (full regression) locally only for a wide core change that can break
    unrelated modules. Otherwise CI covers them.
-5. For a user-visible change, take the key frames of its suites and check them against the baseline:
-   `./build.py test --tag ... --with-key-frames`, then `./build.py screenshot_review --focused`. Review the sheets in
-   `build/review/report.md` (follow [review-key-frames](../.claude/skills/review-key-frames/SKILL.md)). The comparison
-   fails on missing key frames or a missing baseline; the test run must pass separately. Changed and new
-   ones are the evidence for the handoff. Once they look right, `./build.py generate_baseline --focused` adds or
-   replaces them in `tests/KeyFrames`; commit it with the change. It never deletes: removed key frames go at release.
+5. For a user-visible change, review the key frames of its suites with
+   [review-key-frames](../.claude/skills/review-key-frames/SKILL.md) and commit the accepted ones with the change.
+   Changed and new ones are the evidence for the handoff. Removed key frames go at release.
 6. Follow [self-review](../.claude/skills/self-review/SKILL.md), then rerun the checks above for what it changed.
-7. Raise a PR to `develop` (see PR description).
+7. Raise a PR to `develop` (see [PR description](../AGENTS.md#pr-description)).
 8. Hand over a summary of the change and its evidence, with the self-review summary and, for a visual change, the
    reviewed sheets, as a prompt that asks for the merge decision.
 9. Watch the PR for merge conflicts and failing CI until it's merged: merge `develop` into the branch to resolve
    conflicts, never rebase a branch with an open PR. On a conflict in `tests/KeyFrames`, take `develop`'s files, run
    the focused key frames again and regenerate them.
-
-## PR description
-
-See [PR description](../AGENTS.md#pr-description) in AGENTS.md.
 
 ## Verification and release
 

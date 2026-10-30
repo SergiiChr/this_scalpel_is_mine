@@ -68,7 +68,7 @@ overview, the data formats designers edit and the design decisions.
   Forward+ adds SDFGI with four cascades and 10 cm cells; indoor rooms ignore sky lighting. Only the fixed room
   shell contributes to the static GI field. Gameplay meshes, including later tool deliveries and new tissue,
   receive indirect light but do not contribute static occlusion or emission. Direct lights and their shadows stay
-  live. Mobile and Compatibility retain the existing ambient fill.
+  live. Mobile and Compatibility keep a plain ambient fill.
 
 - Shading (`toon.gdshader`): smooth diffuse, soft specular, rim light, procedural grime.
   Every model material belongs to a family (`Materials.Families`, by material name): skin (light wraps past the
@@ -299,9 +299,9 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 
 ## Mechanics
 
-### In this draft
+### Core mechanics
 
-- Two-hand control, one active at a time, idle hand frozen mid-action (controls: see Controls rework).
+- Two-hand control, one active at a time, idle hand frozen mid-action (see Controls).
 - Holding tissue anchors the hand; walking away tears it.
 - Hand bumps between surgeons. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
@@ -344,7 +344,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - Manual with Divine knowledge highlights, patient card with red herrings.
 - Scoring, stars, delayed consequences, codex unlocks, 24 scenarios.
 
-### First feedback round
+### Guidance, hands and room
 
 - **Figure it out**: at the MD difficulty, no objectives, score or "done" toasts on screen, and the chart shows only the
   complaint (symptoms and history), never a plan. The manual is the one reference. Everything is still tracked
@@ -426,12 +426,12 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   port: what was pushed in and hasn't run yet first, then the bag's fluid. Holding a saline or blood bag,
   the stand offers "Swap IV bag": the held bag replaces the hung one and runs in as a full dose.
 
-### Controls rework
+### Controls
 
 - **Look by default**: the mouse looks around like a regular first person game. Holding a hand's key (Q left, E right)
   moves that hand instead and makes it the active one. Hands turn and walk with the body unless they hold onto
   something (a gripped clamp or retractor), then they stay put.
-- **One button per job** (`ToolActions.LevelNames`, `TRIGGER_NAMES`): RMB picks up and puts down. Holding LMB uses the
+- **One button per job** (`ToolActions.LevelNames`, `ToolActions.TriggerNames`): RMB picks up and puts down. Holding LMB uses the
   active tool: it lowers onto its spot and presses its single action, so clamps pinch and let go, the mallet strikes,
   the tourniquet goes on, a graft goes on, the defibrillator charges while held and shocks on release. A clamp's jaws
   close once its tip has come to rest on what's under it (`ClampAction.RestTime`), so one pressed while still coming
@@ -469,7 +469,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   retractor's tips, a ring under each of a stapler's legs. Every mark lies on the surface under the point it marks
   (`Surgeon.OnSurface()`), not in the air at the hovering tool. Aimed across a cut, a Gelpi's < and > hang down
   from the lip on each side into the wound (`Hud.JawDepth`), where its tips go in. A stapler's legs go in exactly
-  where its rings were shown when Use tool was pressed (`SurgicalTool.staple_aim`). A needle's hole goes in right
+  where its rings were shown when Use tool was pressed (`SurgicalTool.Use.StapleAim`). A needle's hole goes in right
   under its dot, between the tissue's grid points, and rides along with the one drawn nearest on its side of the cut
   (`PatientBody.RestSpot()`). A suture needle rests on the tissue as it's drawn (`PatientBody.ExposedUnder()`): moved
   out over a cut from its lip it goes down the wall beside it, through the skin's, the fat's and the muscle's cut faces,
@@ -743,7 +743,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - Like gauze it holds the cuts in the skin under the palm (`Patient.PressByHand()`, `Patient.HandPressReach`), the one
   an opening is in too, without soaking anything up or reaching what bleeds inside.
 
-### Approved mechanics (in this build)
+### More mechanics
 
 - **Pass the tool**: press Grab with a tool near your partner's empty hand to hand it over. Moving hands fumble it onto the floor.
 - **Organ handling damage**: organs held out of place for more than a few seconds, or shoved hard, bruise (they darken) and ooze.
@@ -851,15 +851,15 @@ regenerating.
     The glove's cuff has its own bone aimed down the forearm, so a bent wrist stretches the glove over the sleeve.
   - Tools (`ToolAnimator.cs`): jaws open and close, plungers push, stapler triggers squeeze, saw blades oscillate,
     lighter flame and cautery tip light up, defibrillator charge light blinks.
-- **Sounds**: 44 effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
+- **Sounds**: effects synthesized from noise, oscillators, filters and formants (tissue, tools, room tone loops,
   surgeon coughs and moans, patient groans/screams/breathing). The monitor beep is generated live, its pitch following
   SpO2 like a real pulse oximeter.
   Patient speech is subtitles; optional recorded lines can be dropped into `assets/audio/voice/`.
 
-## Known limits of this iteration
+## Known limits
 
 - Grips are four styles, not a pose per tool; a tool passes between the fingers rather than touching them exactly.
 - Physics pushing of organs runs on the host only; clients see synced positions.
-- Tilt and twist change tool orientation and tip position, but no target yet requires a specific twist.
+- Tilt and twist change tool orientation and tip position, but no target requires a specific twist.
 - Late joining mid-surgery isn't supported. Both players join in the lobby.
 - Blood films, drips and pools are simulated by each peer on its own, so they differ slightly between players.

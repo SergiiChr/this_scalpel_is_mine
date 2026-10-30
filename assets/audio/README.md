@@ -1,7 +1,7 @@
 # Audio
 
 Every sound here is synthesized by `tools/assetgen/sounds.py` from noise, oscillators and filters
-(run `python -m tools.assetgen` to rebuild). Ids map to files in `data/audio.cfg`; replace a file to replace a sound.
+(run `./build.py assets` to rebuild). Ids map to files in `data/audio.cfg`; replace a file to replace a sound.
 Buses: `SFX`, `Voice`, `Music` (volume sliders in Settings).
 
 - `sfx/tissue/`: cuts, tears, suture pulls, blood, bone cracks.
