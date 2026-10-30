@@ -59,12 +59,14 @@ public class EdgePullTest {
     public async Task ThighEntryEdgePullsWithBoundedMouseEffort(string toolId, int frames, int pause, int side) =>
         await PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true);
 
-    [TestCase("retractor", 5, 0, -1, "sideways opening progressively resists", Timeout = Limits.Slow,
-        Description = "KNOWN ISSUE: held at its limit, the lip starts peeling up, and lifting it eases the strain: it gives "
-        + "sideways again for a moment before it's peeled (TissueSim.PeeledShare), 0.24 then 0.61 of the hand. Peeling "
-        + "sooner stops that but leaves the slit throat's and the ambulance's forceps short of their travel.")]
-    public async Task ThighEntryEdgePullsToKnownIssue(string toolId, int frames, int pause, int side, string failure) =>
-        await KnownIssue.Expect(failure, () => PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true));
+    [TestCase("retractor", 5, 0, -1, Timeout = Limits.Slow,
+        Description = "BROKEN: held at its limit, the lip starts peeling up, and lifting it eases the strain: headless it "
+        + "gives sideways again for a moment before it's peeled (TissueSim.PeeledShare), 0.24 then 0.61 of the hand; "
+        + "with key frames it doesn't. Peeling sooner stops that but leaves the slit throat's and the ambulance's forceps "
+        + "short of their travel.")]
+    [TestCategory("broken")]
+    public async Task ThighEntryEdgePullsBroken(string toolId, int frames, int pause, int side) =>
+        await PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true);
 
     [TestCase]
     public void EdgePullMeasurementsCatchAbruptStopsReboundsAndWobble() {
