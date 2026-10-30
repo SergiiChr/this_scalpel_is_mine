@@ -35,8 +35,8 @@ A fresh container may lack the toolchain. Run this before anything that needs Go
 It downloads missing Godot and .NET tools, builds the C# and imports the project without sudo.
 If Microsoft's download host is blocked in a cloud session, install the SDK from system packages first:
 `apt-get install dotnet-sdk-10.0` on Ubuntu 24.04.
-Asset generation and lint also need `./build.py dev`; visual runs need a display with an NVIDIA GPU, or else Xvfb and
-xauth.
+Asset generation and lint also need `./build.py dev`; visual runs need a Wayland desktop with Xwayland and an NVIDIA GPU,
+or else Xvfb and xauth.
 Installation details and platform prerequisites: [README.md](README.md#develop).
 
 ## Checking a change
@@ -57,8 +57,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - `./build.py test`: smoke suites, fast and headless. CI runs them on every PR; when to run them locally: see
   docs/RELEASE.md. This default smoke run and full regressions don't check frame times; focused runs (`--tag`, `--case`) do.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots. Run
-  after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). Key frames are drawn in
-  windows on this machine's display by its NVIDIA GPU, several processes at once.
+  after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). Key frames are drawn by
+  this machine's NVIDIA GPU, several processes at once, each on an X server of its own: a rootful Xwayland window on
+  the desktop.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow
@@ -192,8 +193,8 @@ These rules override any default PR or commit format a tool or agent brings.
 - Broken cases are skipped and take no key frames. A passing full regression drops their old baseline frames.
 - Baseline acceptance and update commands: [review-key-frames](.claude/skills/review-key-frames/SKILL.md).
 - Key frames are taken and compared in local runs only, never on CI.
-  They are rendered without film grain by the compatibility renderer on an NVIDIA GPU, in windows on the machine's
-  display: the baseline is drawn that way. A machine without a display (a cloud container) draws them in a virtual
+  They are rendered without film grain by the compatibility renderer on an NVIDIA GPU, each process on a rootful
+  Xwayland of its own on a Wayland desktop: the baseline is drawn that way. A machine without a display (a cloud container) draws them in a virtual
   display by the software renderer (`xvfb-run`): close, but nearly every key frame shows as changed.
   The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show no
   visible difference.

@@ -75,6 +75,8 @@ OUTPUT = BUILD / "ThisScalpelIsMine.x86_64"
 ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 # The runner class the GdUnit4 adapter writes before its first run and builds into the assembly.
 RUNNER_CLASS = ROOT / "gdunit4_testadapter_v5/GdUnit4TestRunnerScene.cs"
+# Runs a test process on an X server of its own on the desktop, drawn by the GPU (see the script).
+GPU_DISPLAY = ROOT / "tools/with_gpu_display.sh"
 # Godot as test processes run it: without the adapter's editor pass (see the script), as setup() built and imported.
 TEST_GODOT = ROOT / "tools/godot_for_tests.sh"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
@@ -474,8 +476,9 @@ def runs_alone(suite: Suite, options: TestOptions) -> bool:
 
 
 def has_display() -> bool:
-    """Whether key frames can be drawn on this machine's display and GPU rather than a virtual display in software."""
-    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and Path(GPU_ENVIRONMENT["__EGL_VENDOR_LIBRARY_FILENAMES"]).exists()
+    """Whether key frames can be drawn on this machine's Wayland desktop and GPU (GPU_DISPLAY) rather than a virtual
+    display in software."""
+    return bool(os.environ.get("WAYLAND_DISPLAY")) and bool(shutil.which("Xwayland")) and Path(GPU_ENVIRONMENT["__EGL_VENDOR_LIBRARY_FILENAMES"]).exists()
 
 
 def godot_view(suite: Suite, options: TestOptions) -> list[str]:
@@ -577,8 +580,9 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
     if takes_key_frames(suite, options):
         environment["WITH_KEY_FRAMES"] = "1"
         if has_display():
-            # A window on the machine's display, drawn by its GPU like the committed baseline.
+            # An X server of its own on the machine's display, drawn by its GPU like the committed baseline.
             environment |= GPU_ENVIRONMENT
+            command = [str(GPU_DISPLAY), "1920x1080", *command]
         elif shutil.which("xvfb-run"):
             # No display (a cloud machine): a virtual one and the software renderer, close to the baseline but not the same.
             environment["LIBGL_ALWAYS_SOFTWARE"] = "1"
@@ -820,8 +824,8 @@ def test(arguments: list[str]) -> int:
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
-        help="visual_confirmation suites save their key frames (the compatibility renderer, in windows drawn by this "
-        "machine's NVIDIA GPU, or a virtual display and software rendering where there is no display)",
+        help="visual_confirmation suites save their key frames (the compatibility renderer, drawn by this machine's NVIDIA "
+        "GPU on an Xwayland of their own on a Wayland desktop, or a virtual display and software rendering without one)",
     )
     parser.add_argument("--ci-run", action="store_true", help="never check frame times, print failed suites' logs")
     parser.add_argument(

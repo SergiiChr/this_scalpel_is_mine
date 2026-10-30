@@ -52,7 +52,7 @@ other PR, and the next run verifies a newer commit that contains them. One relea
 
 1. Pick. Take the newest `develop` commit whose CI passed. Skip while a release PR is open or `main` already contains
    it.
-2. Verify. Run `./build.py screenshot_review` on that commit, on a machine with a display and an NVIDIA GPU: the
+2. Verify. Run `./build.py screenshot_review` on that commit, on a machine with a Wayland desktop and an NVIDIA GPU: the
    baseline is drawn by one, and a cloud container's software renderer changes nearly every key frame. A failed suite
    is an issue (step 4), even when CI passed: the run stops there, so fix it and run again.
    Start it detached after `./build.py setup` and check on it until it ends, keeping the session alive:

@@ -401,7 +401,7 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_key_frames_are_drawn_by_the_gpu_on_the_display(self) -> None:
         process = self.key_frame_process(display=True)
-        self.assertEqual(process.call_args.args[0][0], "dotnet")
+        self.assertEqual(process.call_args.args[0][:3], [str(build.GPU_DISPLAY), "1920x1080", "dotnet"])
         self.assertEqual(process.call_args.kwargs["env"]["__NV_PRIME_RENDER_OFFLOAD"], "1")
         self.assertNotIn("LIBGL_ALWAYS_SOFTWARE", process.call_args.kwargs["env"])
 
