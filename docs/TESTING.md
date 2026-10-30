@@ -59,6 +59,7 @@ Every user-visible change still needs a visual test: a seam says where a test go
 
 ## Player flows
 
+- Keep the target of the test visible to the player at all times: what can't be seen can hide an issue.
 - A test does what its name and messages claim. A case that says a scenario is completed plays it like a player and
   passes only on the game's own success report, never on state the test set, a shortened run or a loosened threshold. If
   the claim can't be reached, the case fails, or is a known issue or broken (below).
