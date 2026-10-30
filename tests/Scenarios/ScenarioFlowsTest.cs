@@ -59,11 +59,11 @@ public class ScenarioFlowsTest {
 
     [TestCase("bullet_near_heart", "\"Find the bullet and pull it out with forceps\" (extract) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the test driver stands too far along the table to hold the lung aside with the left hand (0.86 m from its shoulder, reach 0.72 m), so the bullet stays covered and the forceps close on nothing.")]
     [TestCase("knife_back", "\"Stitch the wound closed\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: the muscle gapes about 21 mm (TissueSim.Retract, kept wider than the fat), and the skin sewn over it while it's still open snaps its stitches into tears the needle then can't reach; it closes with the muscle drawn back 0.009, which leaves the muscle no wider open than the fat.")]
-    [TestCase("brain_tumor", "\"Stitch the scalp closed\" (close) didn't complete", Timeout = Limits.Slow, Description = "KNOWN ISSUE: sewing the muscle under the two parallel scalp incisions, gaping about 21 mm (TissueSim.Retract), tears the strip of skin between them; it closes with the muscle drawn back 0.009, which leaves the muscle no wider open than the fat.")]
     public async Task PlaysThroughToKnownIssue(string scenario, string failure) =>
         await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));
 
     [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Stitch the skin closed\" passes or fails on the random sequence.")]
+    [TestCase("brain_tumor", Timeout = Limits.Slow, Description = "BROKEN: sewing the muscle under the two parallel scalp incisions, gaping about 21 mm (TissueSim.Retract), tears the strip of skin between them: from run to run the scalp closes, or \"Stitch the scalp closed\" doesn't complete, or the tears go on past the case's time limit (42 wounds, 2 litres of blood lost). It closed every time with the muscle drawn back 0.009, which leaves the muscle no wider open than the fat.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);
 }
