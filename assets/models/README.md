@@ -1,13 +1,10 @@
 # Models
 
-Most models are generated from code; run `./build.py assets` to rebuild those models. Supplied models and generator
-inputs are identified in the table below.
-The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name,
-so a replacement `.glb` only needs the same file name, node or bone names and material names.
-`tests/Models/ModelsTest.cs` checks the names the game depends on, and that each model stays within its triangle budget:
-patient 60k (its skeleton, seen only on X-ray films, about 10k of it), surgeon parts 16k (the glove about 8k), organs 7k, targets 5k, tools 6k, props 15k.
-The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__main__.py` and `tools/blender/patient.py`);
-Godot adds LODs on import.
+Most models are generated from code; run `./build.py assets` to rebuild those models.
+Supplied models and generator inputs are identified in the table below.
+The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name, so a replacement `.glb` only needs the same file name, node or bone names and material names.
+`tests/Models/ModelsTest.cs` checks the names the game depends on, and that each model stays within its triangle budget: patient 60k (its skeleton, seen only on X-ray films, about 10k of it), surgeon parts 16k (the glove about 8k), organs 7k, targets 5k, tools 6k, props 15k.
+The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__main__.py` and `tools/blender/patient.py`); Godot adds LODs on import.
 
 | Folder | Contents | Made by | Animated (bone or node names) |
 |---|---|---|---|
@@ -22,13 +19,10 @@ Godot adds LODs on import.
 | `tools/` | `iv_bag.glb` (film, print and ports skinned) and its extracted print texture | `tools/assetgen/iv_bag.py`, from the asset pack's `tools/assetgen/sources/iv_bag_lod1.glb` | Bones: Anchor, Neck, Upper, Middle, Lower, LeftCorner, RightCorner. Blend shapes on Bag, Label, Frame and Level: EmptyBag (driven by fill), RestingFlat (lying down). Level rides the Middle bone |
 | `props/` | table, tray, IV stand, shelf, clipboard, stations, lamp, monitor, X-ray cart and print, straps, streetlight, ambulance fittings and monitor wall mount | `tools/assetgen` | X-ray `Arm` |
 
-Supplied images outside the models: the difficulty icons in `assets/icons/difficulty/` (hamster, stethoscope, scalpel),
-pixel line art cut to white on transparent; the game tints them.
+Supplied images outside the models: the difficulty icons in `assets/icons/difficulty/` (hamster, stethoscope, scalpel), pixel line art cut to white on transparent; the game tints them.
 
 Model space is the game's: Y up, and for the patient +X toward the head and +Z the patient's left.
 The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
 
-Special material names: `skin` and `gown` (cut away under the surgical site where the simulated skin layer takes over),
-`tint` (recolored per instance), `flame` (unshaded glow), `organ` (wet flesh shader), `print` (kept as imported, its
-texture's alpha cut out), `frosted_plastic` (see-through, less than `glass`).
+Special material names: `skin` and `gown` (cut away under the surgical site where the simulated skin layer takes over), `tint` (recolored per instance), `flame` (unshaded glow), `organ` (wet flesh shader), `print` (kept as imported, its texture's alpha cut out), `frosted_plastic` (see-through, less than `glass`).
 Tools: grip at the origin, tip at `(0, 0, -length)` with `length` from `data/tools.cfg`.
