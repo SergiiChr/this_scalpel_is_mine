@@ -13,6 +13,10 @@ namespace Scalpel.Surgeons;
 public sealed record GripStyle(
     Basis Frame, Vector3 At, Vector3 On, float[] Curl, float Oppose = 0f, float Tilt = SurgeonHand.RestTilt,
     float? WorkTilt = null, float Turn = 0f) {
+    /// <summary>Grips wrapped around a handle across the palm: the tool can't tip against the fingers, and the back of
+    /// the hand faces out rather than up.</summary>
+    internal static bool AcrossPalm(string grip) => grip is "fist" or "paddle" or "stapler";
+
     private static readonly Basis Along = new(new(0f, 0.2f, -0.98f), new(0f, 0.98f, 0.2f), new(1f, 0f, 0f));
 
     public static readonly IReadOnlyDictionary<string, GripStyle> All = new Dictionary<string, GripStyle> {
@@ -31,6 +35,12 @@ public sealed record GripStyle(
         // Wrapped around a handle that runs across the palm, thumb toward the tip, knuckles on top.
         ["fist"] = new(new(new(0f, -1f, 0f), new(1f, 0f, 0f), new(0f, 0f, 1f)),
             new(0.06f, -0.026f, 0f), Vector3.Zero, [1f, 1f, 1f, 1f, 0.8f]),
+        // A skin stapler sits higher in the palm so the fingers wrap its squeeze lever.
+        ["stapler"] = new(new(new(0f, -1f, 0f), new(1f, 0f, 0f), new(0f, 0f, 1f)),
+            new(0.08f, -0.026f, 0f), Vector3.Zero, [1f, 1f, 1f, 1f, 0.8f]),
+        // A paddle's bridge runs across Y behind its contact face: fingers curl toward the plate around that bridge.
+        ["paddle"] = new(new(new(0f, 0f, -1f), new(1f, 0f, 0f), new(0f, -1f, 0f)),
+            new(0.12f, -0.026f, 0f), Vector3.Zero, [1f, 1f, 1f, 1f, 0.8f], WorkTilt: -Mathf.Pi / 2f),
         // A syringe, ready to inject: the index and middle fingers hooked over its finger grip, the thumb on the plunger
         // (see SurgeonHand.ReachPlunger()). The barrel runs from the thumb across under the fingers, so the hand holds it
         // from the outer side and behind, its printed scale up toward the eyes.

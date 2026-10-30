@@ -19,9 +19,19 @@ public static class TourniquetBand {
             problems.Add($"the tourniquet lies on top of the {limb} instead of around it (center {center.Y:0.000}, skin on top {top.Y:0.000})");
         }
         // Snug: the band's inside passes just over the top of the limb.
-        var inside = center.Y + ((TorusMesh)band.Mesh).InnerRadius;
+        var vertices = band.Mesh.GetFaces();
+        var innerRadius = vertices.Min(vertex => new Vector2(vertex.X, vertex.Z).Length());
+        var inside = center.Y + innerRadius;
         if (Mathf.Abs(inside - top.Y) > 0.015f) {
             problems.Add($"the tourniquet band isn't snug on the {limb} (inside at {inside:0.000}, skin at {top.Y:0.000})");
+        }
+        if (Mathf.Abs(band.Mesh.GetAabb().Size.Y - tourniquet.Def.Width) > 0.0001f) {
+            problems.Add($"the {limb}'s band isn't the tourniquet's full fabric width");
+        }
+        foreach (var name in new[] { "Buckle", "Windlass", "Saddle" }) {
+            if (tourniquet.FindChild(name, true, false) is not MeshInstance3D hardware || !hardware.IsVisibleInTree()) {
+                problems.Add($"the {limb}'s applied tourniquet hides its {name}");
+            }
         }
         return problems;
     }

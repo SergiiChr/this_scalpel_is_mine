@@ -950,7 +950,7 @@ public partial class SurgeonHand : Node3D {
         var frame = toolBasis * Basis.FromScale(mirror) * style.Frame;
         // Pressing flat, it stays flat on what it presses, whichever way the forearm comes in.
         if (Grip != "press") {
-            frame = TurnToForearm(frame, toolBasis * Vector3.Forward, contact, elbow, Grip != "fist");
+            frame = TurnToForearm(frame, toolBasis * Vector3.Forward, contact, elbow, !GripStyle.AcrossPalm(Grip));
         }
         var wrist = contact - (frame * style.At) + (frame.Y.Normalized() * Fit.Lift) + (frame.Z.Normalized() * Fit.Shift);
         return new Transform3D(aim * frame, aimed.Origin + (aim * (wrist - aimed.Origin)));

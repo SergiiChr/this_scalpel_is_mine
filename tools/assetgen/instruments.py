@@ -16,6 +16,8 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from numpy.typing import NDArray
+from shapely.geometry import Polygon
 
 from .geometry import Model, cylinder, ellipsoid, extrude, finish, lathe, merge, moved, rotated, scaled, superellipsoid, torus, tube
 
@@ -178,11 +180,47 @@ def _pistol_stapler(m: Model, length: float, office: bool) -> None:
         top = superellipsoid((0.03, 0.014, length * 0.95), 0.35, (0.0, 0.004, -length * 0.5))
         m.add("Trigger", top, "dark_steel", (0.0, 0.0, 0.0))
         return
-    body = superellipsoid((0.03, 0.05, length * 0.8), 0.4, (0.0, 0.01, -length * 0.45))
-    nose = superellipsoid((0.02, 0.018, 0.03), 0.4, (0.0, -0.005, -length + 0.012))
-    m.add("Body", merge(body, nose), "blue_plastic")
-    trigger = superellipsoid((0.018, 0.05, 0.016), 0.4, (0.0, -0.035, -0.02))
-    m.add("Trigger", trigger, "plastic", (0.0, -0.01, -0.02))
+
+    # The approved proposal is modeled at 0.12 m. Scale its Z coordinates with the configured tool length so
+    # the forming shoe stays at the gameplay endpoint when that length changes.
+    z_scale = length / 0.12
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    body = tube(
+        [(0, 0.005, 0.024), (0, 0.013, 0.012), (0, 0.014, -0.035), (0, 0.008, -0.064), (0, 0.001, -0.082)],
+        [(0.010, 0.011), (0.019, 0.022), (0.018, 0.020), (0.013, 0.014), (0.009, 0.009)],
+        ring=16,
+        exponent=3.5,
+        smooth=3,
+    )
+    m.add("Body", scaled_z(body), "plastic")
+    cartridge = superellipsoid((0.018, 0.015, 0.044), 0.23, (0, -0.0015, -0.091), detail=10)
+    m.add("Cartridge", scaled_z(cartridge), "plastic")
+    channel = superellipsoid((0.014, 0.003, 0.038), 0.2, (0, -0.008, -0.091), detail=8)
+    m.add("Channel", scaled_z(channel), "dark_steel")
+    shoe = extrude(
+        [(-0.007, -0.005), (0.007, -0.005), (0.007, 0.004), (0.003, 0.004), (0.003, -0.001), (-0.003, -0.001), (-0.003, 0.004), (-0.007, 0.004)],
+        0.003,
+    )
+    shoe = moved(finish(shoe), (0, 0, -0.1185))
+    shoe.unmerge_vertices()
+    supports = [superellipsoid((0.003, 0.009, 0.011), 0.2, (x, -0.0005, -0.112), detail=6) for x in (-0.0055, 0.0055)]
+    m.add("Anvil", scaled_z(merge(shoe, *supports)), "steel")
+    lever = tube(
+        [(0, -0.012, -0.068), (0, -0.028, -0.055), (0, -0.047, -0.015), (0, -0.044, 0.012)],
+        [(0.008, 0.005), (0.013, 0.006), (0.014, 0.007), (0.010, 0.005)],
+        ring=12,
+        exponent=3,
+        smooth=3,
+    )
+    trigger_pivot = (0, -0.010, -0.070 * z_scale)
+    m.add("Trigger", scaled_z(lever), "blue_plastic", trigger_pivot)
+    hinge = superellipsoid((0.022, 0.009, 0.010), 0.5, (0, -0.010, -0.068), detail=8)
+    m.add("Hinge", scaled_z(hinge), "blue_plastic")
+    grip = superellipsoid((0.034, 0.003, 0.039), 0.3, (0, 0.034, -0.010), detail=10)
+    m.add("GripPad", scaled_z(grip), "blue_plastic")
 
 
 def _tape(m: Model, length: float, color: str) -> None:
@@ -191,7 +229,7 @@ def _tape(m: Model, length: float, color: str) -> None:
     m.add("Roll", moved(merge(rotated(roll, np.pi / 2, Z), tail), (0.0, 0.0, -length * 0.5)), color)
 
 
-def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
+def _pen(m: Model, length: float, body: str, tip: str) -> None:
     m.add(
         "Body",
         tube([(0.0, 0.0, 0.04), (0.0, 0.0, -length * 0.4), (0.0, 0.0, -length * 0.8)], [(0.006, 0.006), (0.0065, 0.0065), (0.005, 0.005)], ring=16),
@@ -203,9 +241,59 @@ def _pen(m: Model, length: float, body: str, tip: str, glow: bool) -> None:
         tip,
         (0.0, 0.0, -length * 0.8),
     )
-    if glow:
-        m.add("Glow", ellipsoid((0.003, 0.003, 0.003), (0.0, 0.0, -length)), "flame", (0.0, 0.0, -length))
-        m.add("Button", superellipsoid((0.004, 0.003, 0.012), 0.4, (0.0, 0.006, -0.01)), "yellow_plastic")
+
+
+def _cautery(m: Model, length: float) -> None:
+    """A slim cautery pencil with a short steel electrode and a heat envelope hugging its tip."""
+    scale = length / 0.16
+
+    def z(value: float) -> float:
+        return value * scale
+
+    m.add(
+        "Body",
+        tube(
+            [(0.0, 0.0, z(0.040)), (0.0, 0.0, z(0.032)), (0.0, 0.0, z(-0.015)), (0.0, 0.0, z(-0.055))],
+            [(0.0035, 0.0045), (0.0048, 0.006), (0.005, 0.0065), (0.0048, 0.006)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add(
+        "Grip",
+        tube(
+            [(0.0, 0.0, z(-0.055)), (0.0, 0.0, z(-0.068)), (0.0, 0.0, z(-0.100))],
+            [(0.0048, 0.006), (0.0046, 0.0058), (0.0038, 0.0048)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "blue_plastic",
+    )
+    m.add(
+        "Nose",
+        tube(
+            [(0.0, 0.0, z(-0.100)), (0.0, 0.0, z(-0.112)), (0.0, 0.0, z(-0.130))],
+            [(0.0038, 0.0048), (0.0032, 0.004), (0.0017, 0.002)],
+            ring=16,
+            exponent=2.5,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add("Button", superellipsoid((0.0045, 0.0022, 0.019), 0.45, (0.0, 0.0058, z(-0.017)), detail=10), "blue_plastic")
+    electrode = extrude(
+        [(-0.0014, z(-0.144)), (0.0014, z(-0.144)), (0.0014, z(-0.158)), (0.001, z(-0.160)), (-0.001, z(-0.160)), (-0.0014, z(-0.158))],
+        0.0007,
+    )
+    electrode.vertices = electrode.vertices[:, [0, 2, 1]]
+    electrode = finish(electrode)
+    electrode.unmerge_vertices()
+    m.add("Tip", merge(cylinder(0.0012, (0.0, 0.0, z(-0.129)), (0.0, 0.0, z(-0.147)), 12), electrode), "steel", (0.0, 0.0, z(-0.130)))
+    # The glow is deliberately small and centered at the gameplay tip.
+    m.add("Glow", ellipsoid((0.0015, 0.0008, 0.002), (0.0, 0.0, z(-0.158)), subdivisions=1), "flame", (0.0, 0.0, z(-0.160)))
 
 
 # Stroke digits for printed numbers, on a 2 x 4 grid (x across, y up): crisp at a millimeter or two, like a scale print.
@@ -335,49 +423,307 @@ def _thermos(m: Model, length: float) -> None:
 
 
 def _paddle(m: Model, length: float) -> None:
-    m.add("Handle", superellipsoid((0.035, 0.06, 0.05), 0.4, (0.0, 0.02, 0.0)), "black_plastic")
-    plate = superellipsoid((0.08, 0.012, 0.09), 0.25, (0.0, -0.02, -length + 0.045))
-    m.add("Plate", plate, "chrome")
-    m.add("Housing", superellipsoid((0.085, 0.025, 0.1), 0.35, (0.0, -0.005, -length + 0.05)), "yellow_plastic")
-    m.add("Light", ellipsoid((0.006, 0.004, 0.006), (0.0, 0.052, 0.0)), "flame", (0.0, 0.052, 0.0))
+    """Compact defibrillator paddle with a transverse bridge handle and a broad electrode at -length."""
+    outline = [
+        (-0.026, -0.052),
+        (0.026, -0.052),
+        (0.038, -0.046),
+        (0.043, -0.034),
+        (0.043, 0.034),
+        (0.038, 0.046),
+        (0.026, 0.052),
+        (-0.026, 0.052),
+        (-0.038, 0.046),
+        (-0.043, 0.034),
+        (-0.043, -0.034),
+        (-0.038, -0.046),
+    ]
+    plate = extrude(outline, 0.002)
+    plate.apply_translation((0.0, 0.0, -length + 0.001))
+    plate = finish(plate)
+    plate.unmerge_vertices()
+    m.add("Plate", plate, "steel")
+    m.add("Housing", superellipsoid((0.092, 0.112, 0.013), 0.22, (0.0, 0.0, -length + 0.0085), detail=16), "black_plastic")
+
+    # Two short supports leave an open finger well behind the broad plate.
+    supports = [superellipsoid((0.029, 0.025, 0.049), 0.3, (0.0, y, -length + 0.036), detail=10) for y in (-0.040, 0.040)]
+    m.add("Bridge", merge(*supports), "black_plastic")
+    m.add(
+        "Handle",
+        tube(
+            [(0.0, -0.043, 0.0), (0.0, -0.034, 0.0), (0.0, 0.034, 0.0), (0.0, 0.043, 0.0)],
+            [(0.010, 0.011), (0.012, 0.014), (0.012, 0.014), (0.010, 0.011)],
+            ring=16,
+            exponent=3.0,
+            smooth=3,
+        ),
+        "black_plastic",
+    )
+    m.add("Button", superellipsoid((0.014, 0.011, 0.004), 0.35, (0.0, 0.039, 0.016), detail=8), "orange_plastic")
+    m.add("Light", ellipsoid((0.002, 0.002, 0.001), (0.004, 0.039, 0.0195), subdivisions=1), "flame", (0.004, 0.039, 0.0195))
+    lead = [
+        (0.0, -0.046, -0.012),
+        (0.0, -0.063, -0.012),
+        (0.003, -0.078, -0.014),
+        (0.014, -0.088, -0.018),
+        (0.025, -0.087, -0.021),
+        (0.031, -0.078, -0.023),
+        (0.027, -0.071, -0.025),
+        (0.019, -0.073, -0.026),
+        (0.018, -0.081, -0.027),
+        (0.025, -0.094, -0.029),
+    ]
+    m.add("Cord", tube(lead, [(0.0023, 0.0023)] * len(lead), ring=8, smooth=3), "rubber")
 
 
 def _saw(m: Model, length: float, powered: bool) -> None:
     if powered:
-        m.add("Body", superellipsoid((0.05, 0.06, length * 0.7), 0.4, (0.0, 0.0, -length * 0.3)), "yellow_plastic")
-        m.add("Grip", superellipsoid((0.04, 0.045, 0.1), 0.4, (0.0, -0.01, 0.03)), "rubber")
-        blade = flat([(0.0, 0.012), (-0.07, 0.012), (-0.07, -0.012), (0.0, -0.012)], 0.002, "xz")
-        teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, 0.004), (-0.006, 0.0)], 0.002, "xz"), (x, 0.0, -0.07)) for x in np.linspace(-0.011, 0.008, 5)])
-        m.add("Blade", moved(merge(blade, teeth), (0.0, 0.0, -length * 0.65)), "chrome", (0.0, 0.0, -length * 0.65))
+        body = tube(
+            [(0.0, 0.003, 0.002), (0.0, 0.008, -0.030), (0.0, 0.008, -0.105), (0.0, 0.003, -0.160), (0.0, 0.0, -0.184)],
+            [(0.022, 0.022), (0.026, 0.024), (0.024, 0.021), (0.014, 0.014), (0.012, 0.011)],
+            ring=16,
+            exponent=3.5,
+            smooth=3,
+        )
+        m.add("Body", body, "plastic")
+        m.add("MotorCap", superellipsoid((0.046, 0.046, 0.018), 0.3, (0.0, 0.003, 0.002), detail=12), "blue_plastic")
+        grip = tube(
+            [(0.0, -0.008, 0.077), (0.0, -0.008, 0.068), (0.0, -0.008, 0.040), (0.0, -0.005, 0.004)],
+            [(0.011, 0.011), (0.020, 0.016), (0.022, 0.018), (0.017, 0.016)],
+            ring=16,
+            exponent=3.0,
+            smooth=3,
+        )
+        m.add("Grip", grip, "black_plastic")
+        m.add("Button", superellipsoid((0.012, 0.006, 0.026), 0.35, (0.0, 0.0365, -0.033), detail=8), "blue_plastic")
+        carrier = tube(
+            [(0.0, 0.0, -0.181), (-0.016, 0.0, -0.204), (-0.016, 0.0, -0.255)],
+            [(0.011, 0.010), (0.008, 0.006), (0.008, 0.006)],
+            ring=12,
+            smooth=3,
+        )
+        m.add("Carrier", carrier, "steel")
+        center_z, radius = -0.255, 0.045
+        m.add("Spindle", cylinder(0.006, (-0.022, 0.0, center_z), (0.006, 0.0, center_z), 20), "dark_steel")
+        m.add("Hub", cylinder(0.009, (0.001, 0.0, center_z), (0.005, 0.0, center_z), 24), "steel")
+
+        def circular_plate(outline: list[tuple[float, float]], thickness: float, holes: list[list[tuple[float, float]]] | None = None) -> trimesh.Trimesh:
+            if holes:
+                mesh = trimesh.creation.extrude_polygon(Polygon(outline, holes), thickness)
+                mesh.apply_translation((0.0, 0.0, -thickness / 2))
+            else:
+                mesh = extrude(outline, thickness)
+            mesh.vertices = mesh.vertices[:, [2, 1, 0]]
+            mesh = finish(mesh)
+            mesh.unmerge_vertices()
+            return mesh
+
+        # The 36 tooth profiles form a continuous circular blade. Its centerline is
+        # in YZ, so the Blade node rotates around X and its forward tooth reaches
+        # the tool's established gameplay tip at z=-0.30.
+        outline: list[tuple[float, float]] = []
+        pitch = 2 * np.pi / 36
+        for angle in np.arange(36) * pitch:
+            for offset, blade_radius in ((-0.35, 0.0425), (0.0, radius), (0.25, radius), (0.55, 0.0425)):
+                t = angle + offset * pitch
+                outline.append((float(center_z - blade_radius * np.cos(t)), float(blade_radius * np.sin(t))))
+        hole = [(float(center_z + 0.0065 * np.cos(t)), float(0.0065 * np.sin(t))) for t in np.linspace(0, 2 * np.pi, 32, endpoint=False)]
+        m.add("Blade", circular_plate(outline, 0.0015, [hole]), "steel", (0.0, 0.0, center_z))
+
+        # A fixed upper/rear guard leaves the leading and lower cutting arc exposed.
+        angles = np.linspace(-0.75, 1.65, 28)
+        guard = [(float(center_z + 0.052 * np.sin(t)), float(0.052 * np.cos(t))) for t in angles]
+        guard += [(float(center_z + 0.048 * np.sin(t)), float(0.048 * np.cos(t))) for t in reversed(angles)]
+        bridge = cylinder(0.0035, (-0.018, 0.007, -0.205), (0.001, 0.007, -0.205), 12)
+        m.add("Guard", merge(circular_plate(guard, 0.007), bridge), "dark_steel")
         return
-    m.add("Grip", superellipsoid((0.03, 0.06, 0.09), 0.4, (0.0, 0.0, 0.02)), "black_plastic")
-    blade = flat([(-0.02, 0.02), (-length, 0.01), (-length, -0.02), (-0.02, -0.03)], 0.0015)
-    teeth = merge(*[moved(flat([(0.0, 0.0), (-0.003, -0.006), (-0.006, 0.0)], 0.0015), (0.0, -0.02, z)) for z in np.linspace(-0.025, -length, 22)])
-    m.add("Blade", merge(blade, teeth), "steel")
+    # The fist stays at the origin; the palm swell tapers into a steel collar.
+    grip = tube(
+        [(0.0, 0.001, 0.065), (0.0, 0.001, 0.057), (0.0, -0.001, 0.025), (0.0, -0.002, -0.006), (0.0, 0.0, -0.024)],
+        [(0.01, 0.008), (0.019, 0.014), (0.022, 0.0145), (0.018, 0.012), (0.013, 0.009)],
+        ring=16,
+        exponent=3.0,
+        smooth=3,
+    )
+    m.add("Grip", grip, "black_plastic")
+    m.add("Bolster", superellipsoid((0.022, 0.034, 0.01), 0.25, (0.0, 0.0, -0.025), detail=10), "steel")
+
+    def plate(points: list[tuple[float, float]], thickness: float) -> trimesh.Trimesh:
+        # A (Z,Y) outline extruded across X: the broad face and teeth share one vertical plane.
+        mesh = extrude(points, thickness)
+        mesh.vertices = mesh.vertices[:, [2, 1, 0]]
+        return finish(mesh)
+
+    # A continuous tooth outline replaces the detached triangles. The blunt nose reaches the gameplay tip.
+    outline = [(-0.026, 0.016), (-0.048, 0.025), (-length + 0.011, 0.025), (-length + 0.001, 0.021), (-length, 0.0), (-length + 0.005, -0.021)]
+    for z in np.linspace(-length + 0.01, -0.055, 22):
+        root = -0.021 - 0.001 * ((z + length - 0.01) / (length - 0.065))
+        outline.extend([(float(z), root), (float(z + 0.0033), root - 0.0042), (float(z + 0.0061), root)])
+    outline += [(-0.042, -0.017), (-0.026, -0.01)]
+    blade = plate(outline, 0.0015)
+    tang = plate([(-0.027, 0.01), (0.041, 0.01), (0.041, -0.009), (-0.027, -0.009)], 0.003)
+    m.add("Blade", merge(blade, tang), "steel")
+    m.add("Rivet", cylinder(0.0032, (-0.0148, 0.002, 0.032), (0.0148, 0.002, 0.032), 12), "steel")
 
 
 def _hammer(m: Model, length: float) -> None:
-    m.add("Handle", rod(0.011, 0.04, -length + 0.03, sections=14), "dark_steel")
-    m.add("Grip", rod(0.014, 0.05, -0.06, sections=14), "rubber")
-    m.add("Head", cylinder(0.022, (-0.045, 0.0, -length + 0.015), (0.045, 0.0, -length + 0.015), 20), "steel")
+    """Molded orthopedic mallet with a compact crosshead at the gameplay endpoint."""
+    z_scale = length / 0.28
+
+    part_start = len(m.parts)
+    m.add(
+        "Grip",
+        tube(
+            [(0, 0, v) for v in (0.049, 0.038, -0.015, -0.060, -0.076)],
+            [(0.010, 0.012), (0.013, 0.015), (0.012, 0.014), (0.011, 0.013), (0.008, 0.009)],
+            ring=16,
+            exponent=3,
+            smooth=3,
+        ),
+        "rubber",
+    )
+    m.add(
+        "Handle",
+        tube(
+            [(0, 0, v) for v in (-0.063, -0.087, -0.190, -0.247)],
+            [(0.008, 0.008), (0.007, 0.006), (0.0065, 0.0055), (0.009, 0.008)],
+            ring=12,
+            exponent=2.5,
+            smooth=2,
+        ),
+        "dark_steel",
+    )
+    m.add("ButtCap", cylinder(0.0115, (0, 0, 0.047), (0, 0, 0.051), 16), "steel")
+    head = tube(
+        [(-0.048, 0, -0.258), (-0.043, 0, -0.258), (0.043, 0, -0.258), (0.048, 0, -0.258)],
+        [(0.019, 0.019), (0.024, 0.024), (0.024, 0.024), (0.019, 0.019)],
+        ring=20,
+        smooth=1,
+    )
+    head = head.slice_plane((0, 0, -0.28), (0, 0, 1), cap=True)
+    m.add("Head", finish(head), "steel")
+    for side, name in [(-1, "FaceL"), (1, "FaceR")]:
+        m.add(name, cylinder(0.018, (side * 0.0475, 0, -0.258), (side * 0.052, 0, -0.258), 20), "plastic")
+    for part in m.parts[part_start:]:
+        part.mesh.vertices[:, 2] *= z_scale
 
 
 def _screwdriver(m: Model, length: float) -> None:
-    m.add("Handle", along_z(lathe([(0.0, 0.0), (0.014, 0.004), (0.016, 0.07), (0.01, 0.09), (0.0, 0.09)], 8), 0.06), "yellow_plastic")
-    m.add(
-        "Shaft",
-        merge(rod(0.0035, -0.05, -length + 0.008), flat([(-length + 0.008, 0.004), (-length, 0.001), (-length, -0.001), (-length + 0.008, -0.004)], 0.002)),
-        "chrome",
+    """Contoured molded handle with a collared shaft and centered flat tip."""
+    handle = lathe(
+        [
+            (0.0, 0.0),
+            (0.009, 0.002),
+            (0.0145, 0.006),
+            (0.016, 0.013),
+            (0.013, 0.025),
+            (0.0125, 0.040),
+            (0.0145, 0.055),
+            (0.0155, 0.066),
+            (0.014, 0.078),
+            (0.010, 0.088),
+            (0.0, 0.094),
+        ],
+        16,
     )
+    m.add("Handle", along_z(handle, 0.06), "yellow_plastic")
+
+    ferrule = cylinder(0.0065, (0.0, 0.0, -0.049), (0.0, 0.0, -0.029), 16)
+    m.add("Ferrule", ferrule, "chrome")
+    m.add("Shaft", rod(0.0034, -0.044, -length + 0.012, sections=16), "chrome")
+
+    # The thin plate has a square chisel edge at the configured contact plane.
+    blade = extrude(
+        [
+            (-length + 0.014, 0.004),
+            (-length, 0.004),
+            (-length, -0.004),
+            (-length + 0.014, -0.004),
+        ],
+        0.0016,
+        faceted=False,
+    )
+    blade.vertices = blade.vertices[:, [2, 1, 0]]
+    m.add("Tip", finish(blade), "chrome")
 
 
 def _suction(m: Model, length: float, straw: bool) -> None:
-    pts = [(0.0, 0.0, 0.05), (0.0, 0.0, -length * 0.5), (0.0, -0.01, -length * 0.8), (0.0, -0.03, -length)]
-    radius = 0.004 if straw else 0.006
-    m.add("Tube", tube(pts, [(radius, radius)] * 4, ring=14), "steel" if straw else "clear_plastic")
-    if not straw:
-        m.add("Bulb", ellipsoid((0.006, 0.006, 0.009), (0.0, -0.032, -length)), "clear_plastic")
-        m.add("Hose", tube([(0.0, 0.0, 0.05), (0.0, -0.02, 0.1), (0.02, -0.08, 0.14)], [(0.007, 0.007)] * 3, ring=12), "clear_plastic")
+    if straw:
+        pts = [(0.0, 0.0, 0.05), (0.0, 0.0, -length * 0.5), (0.0, -0.01, -length * 0.8), (0.0, -0.03, -length)]
+        m.add("Tube", tube(pts, [(0.004, 0.004)] * 4, ring=14), "steel")
+        return
+
+    # This geometry is modeled at 0.22 m; scale its Z coordinates with the configured length so the inlet
+    # remains at the gameplay endpoint when that value changes.
+    z_scale = length / 0.22
+
+    def z(value: float) -> float:
+        return value * z_scale
+
+    m.add(
+        "Handle",
+        tube(
+            [(0.0, 0.0, z(0.049)), (0.0, 0.0, z(0.034)), (0.0, 0.0, z(-0.024)), (0.0, 0.001, z(-0.051))],
+            [(0.006, 0.006), (0.009, 0.010), (0.008, 0.009), (0.005, 0.005)],
+            ring=16,
+            exponent=2.8,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    m.add(
+        "Tube",
+        tube(
+            [
+                (0.0, 0.001, z(-0.045)),
+                (0.0, 0.006, z(-0.090)),
+                (0.0, 0.016, z(-0.147)),
+                (0.0, 0.015, z(-0.177)),
+                (0.0, 0.004, z(-0.198)),
+                (0.0, 0.0, z(-0.203)),
+            ],
+            [(0.0048, 0.0048), (0.0045, 0.0045), (0.0043, 0.0043), (0.0042, 0.0042), (0.004, 0.004), (0.0038, 0.0038)],
+            ring=12,
+            smooth=3,
+        ),
+        "plastic",
+    )
+    profile = [
+        (0.0038, 0.0),
+        (0.0052, z(0.004)),
+        (0.0065, z(0.009)),
+        (0.0061, z(0.013)),
+        (0.0045, z(0.018)),
+        (0.0030, z(0.018)),
+        (0.0028, z(0.013)),
+        (0.0028, 0.0),
+        (0.0038, 0.0),
+    ]
+    m.add("Bulb", along_z(lathe(profile, 20), z(-0.202)), "plastic")
+    m.add("Bore", cylinder(0.0027, (0.0, 0.0, z(-0.205)), (0.0, 0.0, z(-0.206)), 20), "rubber")
+    vent_profile = [(0.0036, 0.0), (0.0046, 0.0008), (0.0046, 0.0018), (0.0026, 0.0018), (0.0026, 0.0), (0.0036, 0.0)]
+    m.add("Vent", moved(lathe(vent_profile, 16), (0.0, 0.0092, z(-0.008))), "blue_plastic")
+    m.add("VentWell", cylinder(0.0025, (0.0, 0.0092, z(-0.008)), (0.0, 0.0097, z(-0.008)), 16), "rubber")
+    m.add(
+        "Connector",
+        tube(
+            [(0.0, 0.0, z(0.040)), (0.0, 0.0, z(0.048)), (0.0, 0.0, z(0.058))],
+            [(0.006, 0.006), (0.007, 0.007), (0.0058, 0.0058)],
+            ring=12,
+            smooth=2,
+        ),
+        "blue_plastic",
+    )
+    m.add(
+        "Hose",
+        tube(
+            [(0.0, 0.0, z(0.054)), (0.0, -0.003, z(0.075)), (0.0, -0.018, z(0.101)), (0.012, -0.044, z(0.130))],
+            [(0.0053, 0.0053)] * 4,
+            ring=12,
+            smooth=3,
+        ),
+        "blue_plastic",
+    )
 
 
 def _swab(m: Model, length: float) -> None:
@@ -412,6 +758,330 @@ def _cig_pack(m: Model, length: float) -> None:
     m.add("Filters", merge(*filters), "iodine")
 
 
+def _tourniquet(m: Model, length: float) -> None:
+    """A fabric loop with an open buckle, windlass and retaining hardware."""
+    z_scale = length / 0.2
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    def mounted_hardware(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Hardware centered at z=-0.14 is mounted at the top by runtime, so keep it compact there."""
+        out = scaled_z(mesh)
+        out.vertices[:, 0] *= 0.65
+        mount_z = -0.14 * z_scale
+        out.vertices[:, 2] = mount_z + (out.vertices[:, 2] - mount_z) * 0.65
+        return out
+
+    vertices = []
+    for angle in np.linspace(0.0, 2 * np.pi, 64, endpoint=False):
+        center = np.array([0.038 * np.sin(angle), 0.0, -0.091 + 0.087 * np.cos(angle)])
+        normal = np.array([0.087 * np.sin(angle), 0.0, 0.038 * np.cos(angle)])
+        normal /= np.linalg.norm(normal)
+        for width, height in ((-0.015, -0.002), (0.015, -0.002), (0.015, 0.002), (-0.015, 0.002)):
+            vertices.append(center + normal * width + np.array([0.0, height, 0.0]))
+    faces: list[list[int]] = []
+    for index in range(64):
+        for side in range(4):
+            a, b = 4 * index + side, 4 * index + (side + 1) % 4
+            c, d = 4 * ((index + 1) % 64) + side, 4 * ((index + 1) % 64) + (side + 1) % 4
+            faces.extend(([a, c, b], [b, c, d]))
+    strap = finish(trimesh.Trimesh(vertices, faces))
+    m.add("Strap", scaled_z(strap), "fabric_dark")
+    m.add("Tail", scaled_z(superellipsoid((0.029, 0.004, 0.042), 0.25, (0.0, 0.003, -0.181), detail=8)), "fabric_dark")
+    m.add("PullTab", mounted_hardware(superellipsoid((0.030, 0.0045, 0.014), 0.25, (0.0, 0.0035, -0.197), detail=8)), "red_plastic")
+
+    m.add("Saddle", mounted_hardware(superellipsoid((0.076, 0.006, 0.052), 0.35, (0.0, 0.009, -0.140), detail=8)), "black_plastic")
+    rails = [superellipsoid((0.006, 0.009, 0.031), 0.3, (x, 0.007, -0.170), detail=8) for x in (-0.019, 0.019)]
+    rails.extend(superellipsoid((0.043, 0.009, 0.006), 0.3, (0.0, 0.007, z), detail=8) for z in (-0.186, -0.154))
+    m.add("Buckle", mounted_hardware(merge(*rails)), "black_plastic", parent="Saddle")
+    m.add(
+        "TensionBand",
+        mounted_hardware(
+            tube(
+                [(0.0, 0.009, -0.164), (0.0, 0.011, -0.143), (0.0, 0.016, -0.127), (0.0, 0.013, -0.110), (0.0, 0.009, -0.100)],
+                [(0.002, 0.008)] * 5,
+                ring=8,
+                exponent=5,
+                smooth=2,
+            )
+        ),
+        "fabric_dark",
+        parent="Saddle",
+    )
+    m.add(
+        "Windlass",
+        mounted_hardware(
+            tube(
+                [
+                    (-0.048, 0.022, -0.127),
+                    (-0.043, 0.022, -0.127),
+                    (-0.020, 0.022, -0.127),
+                    (0.0, 0.022, -0.127),
+                    (0.020, 0.022, -0.127),
+                    (0.043, 0.022, -0.127),
+                    (0.048, 0.022, -0.127),
+                ],
+                [(0.004, 0.004), (0.006, 0.006), (0.006, 0.006), (0.0045, 0.0045), (0.006, 0.006), (0.006, 0.006), (0.004, 0.004)],
+                ring=12,
+                smooth=1,
+            )
+        ),
+        "dark_steel",
+        parent="Saddle",
+    )
+    for x, name in ((-0.028, "RetainerL"), (0.028, "RetainerR")):
+        m.add(name, mounted_hardware(superellipsoid((0.009, 0.021, 0.016), 0.3, (x, 0.013, -0.127), detail=8)), "black_plastic", parent="Saddle")
+    m.add("Keeper", scaled_z(superellipsoid((0.027, 0.003, 0.014), 0.3, (0.037, 0.003, -0.068), detail=8)), "plastic")
+
+
+def _gas_mask(m: Model, length: float) -> None:
+    """Shaped anesthetic mask with an open shell, hollow connector and hose."""
+    sections = 40
+
+    def contour(angle: float) -> NDArray[np.float64]:
+        return np.array([0.037 * (1 - 0.22 * np.sin(angle)) * np.cos(angle), 0.050 * np.sin(angle)])
+
+    def cushion() -> trimesh.Trimesh:
+        vertices: list[NDArray[np.float64]] = []
+        for angle in np.linspace(0.0, 2 * np.pi, sections, endpoint=False):
+            center = contour(angle)
+            epsilon = 0.00001
+            tangent = contour(angle + epsilon) - contour(angle - epsilon)
+            tangent /= np.linalg.norm(tangent)
+            outward = np.array([tangent[1], -tangent[0]])
+            # Include the front contact plane in the sampled cushion profile.
+            for around in np.linspace(-np.pi / 2, 3 * np.pi / 2, 10, endpoint=False):
+                xy = center + outward * 0.0055 * np.cos(around)
+                vertices.append(np.array([xy[0], xy[1], -0.094 + 0.006 * np.sin(around)]))
+        faces: list[list[int]] = []
+        for index in range(sections):
+            for side in range(10):
+                a = index * 10 + side
+                b = index * 10 + (side + 1) % 10
+                c = ((index + 1) % sections) * 10 + side
+                d = ((index + 1) % sections) * 10 + (side + 1) % 10
+                faces.extend(([a, c, b], [b, c, d]))
+        return finish(trimesh.Trimesh(vertices, faces))
+
+    def shell() -> trimesh.Trimesh:
+        rows = [(0.0, -0.029), (0.25, -0.038), (0.58, -0.060), (0.87, -0.080), (1.0, -0.092)]
+        vertices: list[list[float]] = []
+        for inner in (False, True):
+            for fraction, z in rows:
+                for angle in np.linspace(0.0, 2 * np.pi, sections, endpoint=False):
+                    circle = np.array([np.cos(angle), np.sin(angle)]) * 0.0105
+                    xy = circle * (1 - fraction) + contour(angle) * fraction * 0.98
+                    if inner:
+                        xy -= xy / np.linalg.norm(xy) * 0.0015
+                    vertices.append([float(xy[0]), float(xy[1]), z])
+        faces: list[list[int]] = []
+        count = len(rows) * sections
+        for side in range(2):
+            start = side * count
+            for row in range(len(rows) - 1):
+                for col in range(sections):
+                    a = start + row * sections + col
+                    b = start + row * sections + (col + 1) % sections
+                    c, d = a + sections, b + sections
+                    triangles = [[a, c, b], [b, c, d]]
+                    faces.extend(triangles if side == 0 else [triangle[::-1] for triangle in triangles])
+        for row in (0, len(rows) - 1):
+            for col in range(sections):
+                a = row * sections + col
+                b = row * sections + (col + 1) % sections
+                c, d = a + count, b + count
+                caps = [[a, b, c], [b, d, c]]
+                faces.extend(caps if row == 0 else [triangle[::-1] for triangle in caps])
+        return finish(trimesh.Trimesh(vertices, faces))
+
+    def hollow_tube(path: list[tuple[float, float, float]], radius: float, wall: float, ring: int = 12) -> trimesh.Trimesh:
+        points: list[NDArray[np.float64]] = []
+        for index in range(len(path) - 1):
+            for fraction in np.linspace(0.0, 1.0, 3, endpoint=False):
+                points.append(np.array(path[index]) * (1 - fraction) + np.array(path[index + 1]) * fraction)
+        points.append(np.array(path[-1]))
+        vertices: list[NDArray[np.float64]] = []
+        for tube_radius in (radius, radius - wall):
+            for index, point in enumerate(points):
+                tangent = points[min(index + 1, len(points) - 1)] - points[max(index - 1, 0)]
+                tangent /= np.linalg.norm(tangent)
+                first = np.array([1.0, 0.0, 0.0])
+                second = np.cross(tangent, first)
+                for angle in np.linspace(0.0, 2 * np.pi, ring, endpoint=False):
+                    vertices.append(point + first * tube_radius * np.cos(angle) + second * tube_radius * np.sin(angle))
+        faces: list[list[int]] = []
+        count = len(points) * ring
+        for side in range(2):
+            offset = side * count
+            for index in range(len(points) - 1):
+                for section in range(ring):
+                    a = offset + index * ring + section
+                    b = offset + index * ring + (section + 1) % ring
+                    c, d = a + ring, b + ring
+                    triangles = [[a, c, b], [b, c, d]]
+                    faces.extend(triangles if side == 0 else [triangle[::-1] for triangle in triangles])
+        for index in (0, len(points) - 1):
+            for section in range(ring):
+                a = index * ring + section
+                b = index * ring + (section + 1) % ring
+                c, d = a + count, b + count
+                caps = [[a, b, c], [b, d, c]]
+                faces.extend(caps if index == 0 else [triangle[::-1] for triangle in caps])
+        return finish(trimesh.Trimesh(vertices, faces))
+
+    z_scale = length / 0.1
+    parts = (
+        ("Cushion", cushion(), "plastic"),
+        ("Cup", shell(), "frosted_plastic"),
+        ("Connector", hollow_tube([(0, 0, -0.032), (0, 0, -0.010)], 0.012, 0.002), "blue_plastic"),
+        ("Elbow", hollow_tube([(0, 0, -0.014), (0, 0, 0), (0, -0.004, 0.012), (0, -0.014, 0.020), (0, -0.027, 0.022)], 0.0095, 0.0018), "plastic"),
+        (
+            "Hose",
+            hollow_tube(
+                [(0, -0.023, 0.022), (0, -0.041, 0.022), (0, -0.055, 0.032), (0, -0.060, 0.055), (0, -0.060, 0.075)],
+                0.008,
+                0.0016,
+            ),
+            "blue_plastic",
+        ),
+        ("HoseCollar", hollow_tube([(0, -0.023, 0.022), (0, -0.032, 0.022)], 0.010, 0.0022), "blue_plastic"),
+    )
+    for name, mesh, material_name in parts:
+        m.add(name, scaled(mesh, (1.0, 1.0, z_scale)), material_name)
+
+
+def _kidney_dish(m: Model, length: float) -> None:
+    """Kidney-shaped basin with a rolled lip and a fillable pool."""
+    sections = 64
+    angles = np.linspace(0.0, 2 * np.pi, sections, endpoint=False)
+    outline: NDArray[np.float64] = np.column_stack(
+        (
+            1.15 * (0.049 * np.cos(angles) - 0.035 * np.exp(-((np.sin(angles) / 0.50) ** 2)) * np.maximum(np.cos(angles), 0) ** 2),
+            0.100 * np.sin(angles),
+        )
+    )
+    outline_polygon = Polygon(outline)
+    assert outline_polygon.is_valid
+
+    def loft(rows: list[tuple[float, float]]) -> trimesh.Trimesh:
+        """Join matching contours, closing only the two floor faces to leave the basin cavity open."""
+        vertices: list[list[float]] = []
+        for size, y in rows:
+            vertices.extend([[float(x * size), y, float(z * size - 0.10)] for x, z in outline])
+        faces: list[list[int]] = []
+        for row in range(len(rows) - 1):
+            for col in range(sections):
+                a = row * sections + col
+                b = row * sections + (col + 1) % sections
+                c, d = a + sections, b + sections
+                faces.extend(([a, c, b], [b, c, d]))
+        for end, reverse in ((0, False), (len(rows) - 1, True)):
+            size, y = rows[end]
+            points, triangles = trimesh.creation.triangulate_polygon(Polygon(outline * size), engine="earcut")
+            offset = len(vertices)
+            vertices.extend([[float(x), y, float(z - 0.10)] for x, z in points])
+            for triangle in triangles:
+                oriented = triangle[::-1] if reverse else triangle
+                faces.append([int(index) + offset for index in oriented])
+        mesh = finish(trimesh.Trimesh(vertices, faces))
+        assert mesh.is_watertight
+        return mesh
+
+    # Underside, rising outer wall, rolled lip, inner wall and the broad flat basin floor.
+    dish = loft(
+        [
+            (0.82, -0.010),
+            (0.86, -0.008),
+            (0.985, 0.013),
+            (0.999, 0.0155),
+            (1.002, 0.017),
+            (0.996, 0.0185),
+            (0.982, 0.019),
+            (0.966, 0.018),
+            (0.956, 0.015),
+            (0.83, -0.005),
+            (0.70, -0.005),
+        ]
+    )
+    z_scale = length / 0.2
+    m.add("Dish", scaled(dish, (1.0, 1.0, z_scale)), "steel")
+
+    # ShowLiquid scales X/Z from 0.88 to 1 and raises the pool from the flat floor.
+    # Leave a small clearance at the wall, including after Godot mesh import and collision processing.
+    pool = loft([(0.82, -0.005), (0.925, 0.012), (0.84, 0.012)])
+    pool_pivot = (0.0, -0.005, -length * 0.5)
+    m.add("Pool", scaled(pool, (1.0, 1.0, z_scale)), "drug", pool_pivot)
+
+    # Check that the liquid contour stays inside the tapered basin throughout its fill animation.
+    for amount in (0.01, 0.25, 0.5, 0.65, 1.0):
+        top_factor = 0.925 * (0.88 + 0.12 * amount)
+        wall_factor = 0.83 + (0.956 - 0.83) * (0.017 * amount / 0.020)
+        assert top_factor < wall_factor
+        assert Polygon(outline * wall_factor).buffer(1e-9).covers(Polygon(outline * top_factor))
+
+
+def _iv_catheter(m: Model, length: float) -> None:
+    """Tapered peripheral catheter with wings, capped port, flash chamber and introducer."""
+    z_scale = length / 0.07
+
+    def scaled_z(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        return scaled(mesh, (1.0, 1.0, z_scale))
+
+    hub = tube(
+        [(0.0, 0.0, -0.006), (0.0, 0.0, -0.012), (0.0, 0.0, -0.027), (0.0, 0.0, -0.036)],
+        [(0.0045, 0.0045), (0.0045, 0.0045), (0.0035, 0.0035), (0.0020, 0.0020)],
+        ring=16,
+        smooth=2,
+    )
+    m.add("Hub", scaled_z(hub), "plastic")
+
+    wings = [superellipsoid((0.014, 0.002, 0.012), 0.35, (0.0, -0.003, -0.023), detail=8)]
+    for side in (-1.0, 1.0):
+        wings.append(superellipsoid((0.016, 0.0018, 0.015), 0.35, (side * 0.0105, -0.003, -0.023), detail=8))
+    m.add("Wings", scaled_z(merge(*wings)), "plastic")
+    m.add("Port", scaled_z(cylinder(0.0032, (0.0, 0.001, -0.021), (0.0, 0.009, -0.021), 16)), "plastic")
+    m.add(
+        "PortCap",
+        scaled_z(
+            tube(
+                [(0.0, 0.008, -0.021), (0.0, 0.009, -0.021), (0.0, 0.012, -0.021)],
+                [(0.0035, 0.0035), (0.0047, 0.0047), (0.0042, 0.0042)],
+                ring=16,
+                smooth=1,
+            )
+        ),
+        "yellow_plastic",
+    )
+    m.add(
+        "FlashChamber",
+        scaled_z(
+            tube(
+                [(0.0, 0.0, -0.007), (0.0, 0.0, 0.014), (0.0, 0.0, 0.018)],
+                [(0.0038, 0.0038), (0.0038, 0.0038), (0.0032, 0.0032)],
+                ring=16,
+                smooth=1,
+            )
+        ),
+        "frosted_plastic",
+    )
+    m.add("BackCap", scaled_z(cylinder(0.0043, (0.0, 0.0, 0.017), (0.0, 0.0, 0.021), 16)), "plastic")
+    m.add(
+        "Catheter",
+        scaled_z(
+            tube(
+                [(0.0, 0.0, -0.034), (0.0, 0.0, -0.040), (0.0, 0.0, -0.065), (0.0, 0.0, -0.067)],
+                [(0.0013, 0.0013), (0.0010, 0.0010), (0.00085, 0.00085), (0.0007, 0.0007)],
+                ring=12,
+                smooth=1,
+            )
+        ),
+        "plastic",
+    )
+    needle = along_z(lathe([(0.0, 0.0), (0.00052, 0.0), (0.00052, 0.032), (0.00008, 0.0348), (0.0, 0.035)], 12), -0.035)
+    m.add("Needle", scaled_z(needle), "chrome")
+
+
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
         _scalpel(m, length, True)
@@ -434,38 +1104,21 @@ def _misc(m: Model, kind: str, length: float) -> None:
             clips.append(moved(tube(loop, [(0.0006, 0.0006)] * len(loop), ring=6, smooth=3, caps=True), (i * 0.012 - 0.012, i * 0.0015, 0.0)))
         m.add("Clips", merge(*clips), "chrome")
     elif kind == "gas_mask":
-        mask = along_z(lathe([(0.0, 0.0), (0.012, 0.0), (0.04, 0.05), (0.045, 0.06), (0.0, 0.06)], 24), -length + 0.06)
-        m.add("Mask", mask, "clear_plastic")
-        m.add("Hose", tube([(0.0, 0.0, -length + 0.06), (0.0, 0.0, 0.0), (0.0, -0.03, 0.08)], [(0.008, 0.008)] * 3, ring=12), "blue_plastic")
+        _gas_mask(m, length)
     elif kind == "cocaine":
         m.add("Bag", superellipsoid((0.04, 0.006, length), 0.4, (0.0, 0.0, -length * 0.5)), "clear_plastic")
         m.add("Powder", superellipsoid((0.03, 0.005, length * 0.6), 0.6, (0.0, -0.001, -length * 0.55)), "cotton")
     elif kind == "tourniquet":
-        strap = tube(
-            [(0.0, 0.0, 0.0), (0.02, 0.0, -length * 0.3), (0.0, 0.0, -length * 0.6), (-0.02, 0.0, -length * 0.3), (0.0, 0.0, 0.0)],
-            [(0.003, 0.015)] * 5,
-            ring=12,
-            exponent=6.0,
-        )
-        m.add("Strap", strap, "fabric_dark")
-        m.add("Buckle", superellipsoid((0.035, 0.01, 0.025), 0.3, (0.0, 0.0, -length)), "red_plastic")
-        m.add("Windlass", rod(0.004, -length + 0.02, -length - 0.02, 0.012), "black_plastic")
+        _tourniquet(m, length)
     elif kind == "iv_catheter":
-        m.add("Hub", superellipsoid((0.012, 0.012, 0.02), 0.5, (0.0, 0.0, 0.0)), "tint")
-        m.add("Wings", superellipsoid((0.04, 0.002, 0.015), 0.4, (0.0, -0.004, -0.012)), "green_plastic")
-        m.add("Needle", merge(rod(0.0014, -0.01, -length + 0.01), rod(0.0005, -length + 0.01, -length)), "chrome")
+        _iv_catheter(m, length)
     elif kind == "skin_graft":
         m.add("Backing", superellipsoid((0.08, 0.002, length), 0.2, (0.0, -0.002, -length * 0.5)), "paper")
         m.add("Graft", superellipsoid((0.07, 0.0015, length * 0.9), 0.25, (0.0, 0.0005, -length * 0.5)), "skin")
     elif kind == "surgical_cap":
         m.add("Cap", superellipsoid((0.1, 0.06, 0.11), 0.7, (0.0, 0.0, -length * 0.5)), "tint")
     elif kind == "kidney_dish":
-        outer = lathe([(0.0, 0.0), (0.06, 0.0), (0.07, 0.025), (0.066, 0.026), (0.056, 0.004), (0.0, 0.004)], 32)
-        m.add("Dish", moved(scaled(outer, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "steel")
-        # Liquid squirted in from a syringe, full to just under the rim. Its origin is on the dish floor, so the game
-        # raises the level by scaling it up from there (src/Tools/SurgicalTool.cs ShowLiquid()).
-        pool = lathe([(0.0, 0.004), (0.0555, 0.004), (0.0628, 0.02), (0.0, 0.02)], 32)
-        m.add("Pool", moved(scaled(pool, (0.7, 1.0, 1.5)), (0.0, -0.01, -length * 0.5)), "drug", (0.0, -0.006, -length * 0.5))
+        _kidney_dish(m, length)
 
 
 def _misc_maker(kind: str, model: Model, length: float) -> None:
@@ -485,8 +1138,8 @@ def build() -> list[Model]:
         "office_stapler": lambda m, length: _pistol_stapler(m, length, True),
         "surgical_tape": lambda m, length: _tape(m, length, "fabric_white"),
         "duct_tape": lambda m, length: _tape(m, length, "dark_steel"),
-        "cautery": lambda m, length: _pen(m, length, "green_plastic", "chrome", True),
-        "marker": lambda m, length: _pen(m, length, "tint", "black_plastic", False),
+        "cautery": _cautery,
+        "marker": lambda m, length: _pen(m, length, "tint", "black_plastic"),
         "syringe_3": partial(_syringe, radius=0.0045, volume=3.0),
         "syringe_10": partial(_syringe, radius=0.0065, volume=10.0),
         "syringe_50": partial(_syringe, radius=0.013, volume=50.0),

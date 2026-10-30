@@ -444,6 +444,10 @@ public partial class SurgeryDriver {
         Note($"{prompt}: {Surgery.Room.IvLine.End}");
     }
 
+    /// <summary>How far (meters) the hand comes back toward the surgeon once the catheter is in: clear of the tubing.
+    /// </summary>
+    private const float HandBack = 0.15f;
+
     /// <summary>Puts the catheter in hand into the forearm vein, following it over and pushing in once the tip is over
     /// it.</summary>
     public async Task PlayerPutsCatheterIn(SurgicalTool catheter) {
@@ -464,6 +468,11 @@ public partial class SurgeryDriver {
         Note($"IV in: {Patient.IvSet}, in the vein: {Patient.IvInVein}, on the line: {Patient.IvConnected}");
         if (holds) {
             await PlayerLetsGoWithFreeHand();
+        }
+        // The emptied hand comes back off the arm: left where the catheter went in, the tubing leaving the dressing can
+        // come to rest on it, and the surgeon walking off would drag it along and rip the catheter out.
+        if (Me.HeldTool(Me.Active) is null) {
+            await PlayerReaches(Tip(hand) + ((Me.GlobalPosition - Tip(hand)).Slide(Vector3.Up).Normalized() * HandBack));
         }
         await PlayerPutsDown();
     }
