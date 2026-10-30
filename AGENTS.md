@@ -1,6 +1,6 @@
 # This Scalpel Is Mine
 
-Instructions for every agent in this repository; `CLAUDE.md` only imports this file.
+Instructions for every agent in this repository.
 Keep repository-wide instructions here and specialized guidance in the linked documents.
 
 ## Documentation and workflows
