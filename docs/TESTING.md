@@ -2,7 +2,8 @@
 
 Read this before writing, changing or reviewing tests.
 It adds to the agent's own testing guidelines and wins where they differ.
-It describes the target: new tests follow it, and existing tests move to it when touched.
+It describes the target: new tests follow it, and existing tests move with their migration step in
+[DESIGN.md](DESIGN.md) or when touched.
 Commands: [Checking a change](../AGENTS.md#checking-a-change).
 
 ## Strategy
@@ -19,11 +20,11 @@ A small number of player flows prove the parts are wired together.
 | Visual | Key frames taken in a player flow or view | What only a picture shows | Local only |
 | Budgets | `frame_budget` and `allocation_budget` suites | Frame time, garbage and leaks | See [PERFORMANCE.md](PERFORMANCE.md) |
 
-These seams are confirmed.
+The simulation, player flow and network seams are confirmed.
 A new seam needs the owner's confirmation first.
 What each one misses: the simulation tier misses wiring, player flows miss number edge cases and are slow, and network
 runs are disturbed by a busy machine.
-Data file mistakes fail when `Db` loads them, so they need no test of their own.
+Data file mistakes fail when `Db` loads them, so one test that loads every data file covers them.
 Every user-visible change still needs a visual test: a seam says where a test goes, not whether one is needed.
 
 ## Writing a test
@@ -33,7 +34,8 @@ Every user-visible change still needs a visual test: a seam says where a test go
 - Watch a new test fail before writing the code. After it passes, break the rule on purpose once to see the test catch
   it.
 - A test reads results through its seam's interface. The simulation's public members are that interface; nothing becomes
-  `public` or `internal` only for a test.
+  `public` or `internal` only for a test. Player flow support (`SurgeryState`, `SurgeryDriver`) is the one exception: it
+  may use `internal` members to set up what a flow isn't about.
 - A case's name states the capability it proves, as a spec line. A flow's name states its outcome. A name that lists
   unrelated checks with "and" is two cases.
 - Expected values come from an independent source: a literal, a worked example or the spec. Never build one from the
@@ -46,7 +48,8 @@ Every user-visible change still needs a visual test: a seam says where a test go
 - Test files hold only test cases. Helpers and reusable steps live in `tests/Support/`.
 - Replace only external boundaries in a test: the clock, randomness, disk and the network. Pass a fixed step and seed;
   never wait on elapsed time.
-- A test that passes or fails from run to run is a bug to fix, not a run to repeat.
+- A test that passes or fails from run to run is a bug to fix. A pass on the automatic retry counts as a flake to fix,
+  not a pass to accept.
 
 ## Simulation tests
 
@@ -83,8 +86,8 @@ Every user-visible change still needs a visual test: a seam says where a test go
 
 ## Suites and categories
 
-- Suites live in `tests/<Feature>/<Name>Test.cs` (namespace `Scalpel.Tests.<Feature>`), with
-  `[TestSuite, RequireGodotRuntime]` on the class and `[TestCase]` on each case.
+- Suites live in `tests/<Feature>/<Name>Test.cs` (namespace `Scalpel.Tests.<Feature>`), with `[TestSuite]` on the class
+  and `[TestCase]` on each case. Only suites above the simulation tier add `[RequireGodotRuntime]`.
 - A suite declares its categories with `[TestCategory("...")]` and its Godot options with
   `[GodotArgs("--fixed-fps", "60")]`; `[IsolateCases]` gives every case its own Godot process.
 - Categories describe the test type or a feature worth rerunning: `smoke`, `slow`, `scenario`, `network`,
@@ -95,8 +98,8 @@ Every user-visible change still needs a visual test: a seam says where a test go
   `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its processes run alone, before the rest.
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take
   `[TestCase(Timeout = Limits.Slow)]`.
-- `smoke` cases are headless and programmatic, each under a minute. They may take key frames only when their assertions
-  fully validate the behavior without them.
+- `smoke` cases are headless and programmatic, each under a minute, so a `slow` suite isn't smoke. They may take key
+  frames only when their assertions fully validate the behavior without them.
 
 ## Failures that can't be fixed now
 

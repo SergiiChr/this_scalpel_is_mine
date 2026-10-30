@@ -1,7 +1,8 @@
 # Design
 
 This file describes the target architecture.
-New code follows it, and existing code moves to it when touched.
+New code follows it.
+Existing code moves to it in the migration steps below, and a fix elsewhere doesn't force a move.
 Code that doesn't match yet is not a pattern to copy.
 
 How the game plays: [MECHANICS.md](MECHANICS.md).
@@ -29,12 +30,15 @@ In order of priority:
 | Presentation | Godot nodes: models, shaders, HUD, sound, input reading | Session, Simulation (read-only), Data |
 
 Dependencies only point down the table: the simulation knows nothing about the layers above it.
+Simulation code lives in `*.Simulation` namespaces, so a build check can hold it to these rules.
 
 Simulation is plain C#.
-It uses no nodes, scene tree, input, rendering, sound, RPCs, `Engine` or `GD` calls.
-Godot math types such as `Vector3` and `Transform3D` are fine.
-Anything it needs from the engine, such as a ray against the body mesh, comes through a small interface the session
-implements.
+It uses no nodes, scene tree, input, rendering, sound, RPCs, `Engine` or `GD` calls, and nothing native: no
+`GodotObject`, `Geometry2D`, `Geometry3D`, `Image` or Godot collections.
+Pure Godot math structs such as `Vector3` and `Transform3D` and `Mathf` are fine.
+It never queries the engine.
+Before a step, presentation samples what the rules need, such as hand poses and ray hits against the body mesh, into
+that step's commands, as `ToolStep.Probe` does today.
 
 Layers are a dependency rule, not a folder layout: folders stay by feature.
 A feature with both layers has separate classes for them, such as `Patient` for the rules and `PatientView` for the
@@ -42,15 +46,17 @@ node.
 
 ## One simulation step
 
-1. Presentation reads input and sends a command, such as "use tool here at effort 2".
-2. The session passes the commands of this step to the simulation, with the time step.
-3. The simulation applies them, updates its state and returns events, such as "wound opened" or "patient spoke".
+1. Presentation reads input and samples the scene into a command: a hand's pose and what it's doing, such as "using this
+   tool here at effort 2". A remote peer's synced hand state is the same command.
+2. The session passes the latest command of each hand to the simulation, with the fixed time step of the physics tick. A
+   late message takes effect on the step it arrives.
+3. The simulation applies them, updates its state and writes events, such as "wound opened" or "patient spoke", to a
+   buffer the session owns, so a step allocates nothing.
 4. Presentation draws the state and plays the events.
 
 The simulation never calls upward: a sound, toast or effect is an event.
 Time always comes in as the step, never from a clock.
-Randomness comes from generators seeded from the session seed, one per system, so one system's rolls can't shift
-another's.
+Randomness is `System.Random` seeded from the session seed, one per system, so one system's rolls can't shift another's.
 
 ## Networking
 
@@ -72,7 +78,10 @@ another's.
   surgery runs. A client that loses the host goes back to the menu with the reason shown.
 
 RPCs live only in the session layer and carry typed messages.
-The simulation doesn't know whether it runs on a host, a client or alone.
+The session gives the simulation a role: the authority runs the rules, and a replica applies broadcasts and steps its
+own tissue and blood.
+Solo is the authority with no peers.
+Rules never check for a network.
 
 ## Dependencies
 
@@ -84,19 +93,21 @@ The simulation doesn't know whether it runs on a host, a client or alone.
 ## Workers
 
 A heavy simulation step runs on a worker at a fixed rate.
-Presentation reads its last finished result and never waits for one.
-What a worker hands over can't change afterward.
+The session joins the worker before the next step, so rules always read finished state.
+Handover uses reused buffers, and nothing else writes them while the worker runs.
 
 ## Migration
 
 Each step leaves the game working and moves its rule tests down to the simulation tier as it goes.
 
-1. Test runner: a tier that runs without starting Godot.
-2. Time and randomness passed in, replacing `GameClock` and `GD.Rand*` in game rules.
-3. Objectives, scoring, nurse, lab and events become plain classes.
-4. Tool rules: `ToolActions` and `src/Tools/Actions` take the simulation they act on, and tool actions become a closed
+1. Test runner: a tier that runs without starting Godot, proving first that the allowed math structs work there.
+2. A check that fails the build when `*.Simulation` code uses something the layer forbids.
+3. `Db` parses `data/` with plain C#, with no `res://` or Godot file types.
+4. Time and randomness passed in, replacing `GameClock`, `GD.Rand*` and `RandomNumberGenerator` in game rules.
+5. Tissue, wounds, vitals and drugs drop their native engine calls.
+6. `Patient` and `PatientBody` split into rules and view.
+7. The session class grows out of `Surgery`, sets the role, and takes over the RPCs.
+8. Tool rules: `ToolActions` and `src/Tools/Actions` take the simulation they act on, and tool actions become a closed
    type.
-5. `Patient` splits into rules and view, and its RPCs move to the session.
-6. `TissueSim` and blood: their rules drop every engine dependency.
-7. `PatientBody` and `Surgeon` split by feature, into rules and view.
-8. A check that fails the build when simulation code uses something the layer forbids.
+9. Objectives, scoring, nurse, lab and events become plain classes.
+10. `Surgeon` splits into rules and view.

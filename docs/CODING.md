@@ -1,14 +1,16 @@
 # Coding
 
 Project rules for this repository, on top of the agent's own coding guidelines.
-They describe the target: new code follows them, and existing code moves to them when touched.
+They describe the target: new code follows them, and existing code moves to them in the migration steps of
+[DESIGN.md](DESIGN.md).
 The structure they serve is in [DESIGN.md](DESIGN.md), performance rules are in [PERFORMANCE.md](PERFORMANCE.md).
 
 ## Structure
 
 - Group code by feature. A new file goes in the folder of the feature it serves.
 - Game rules go in plain C# simulation classes; a node only shows state and forwards input.
-- A class has one job. Keep it under 500 lines, and split one over 1,000 lines when you change it.
+- A class has one job. Keep a new class under 500 lines. Existing large classes split in their migration step, not on
+  any fix.
 - Partial files don't split a class: split it by moving a job into a class of its own.
 - Prefer a small type that owns its data and rules over a static helper that takes the data as arguments.
 
@@ -23,9 +25,11 @@ The structure they serve is in [DESIGN.md](DESIGN.md), performance rules are in 
 
 ## Dependencies
 
-- Pass what a class needs through its constructor or method. Nothing new reads a global other than `Db`.
-- Time comes in as the step and randomness as a seeded generator.
-- The simulation reports through returned events. It never calls the HUD, sound, effects or the network.
+- Pass what a class needs through its constructor or method. Nothing new reads a global other than `Db`. A scene node
+  has no constructor arguments, so it gets its dependencies in `Setup()` from the session before entering the tree.
+- Time comes in as the step and randomness as a seeded `System.Random`.
+- The simulation reports through events in a buffer the session owns. It never calls the HUD, sound, effects or the
+  network.
 - Nothing becomes `public` or `internal` only so a test can reach it.
 
 ## Errors

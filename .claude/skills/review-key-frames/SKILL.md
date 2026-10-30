@@ -41,7 +41,7 @@ Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and run
   and, in their folders, keeps the baseline's key frames and views they didn't take. This exception permits reviewed
   frames from a failed full regression; it does not make the test run pass or the change ready for handoff. Focused
   baseline updates always require a passing run. A case that can't be fixed in this change follows the known-issue or
-  broken policy in [docs/TESTING.md](../../../docs/TESTING.md#test-structure-and-policy).
+  broken policy in [docs/TESTING.md](../../../docs/TESTING.md#failures-that-cant-be-fixed-now).
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
 - If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is off
   (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is the
