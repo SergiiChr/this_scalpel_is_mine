@@ -28,7 +28,7 @@ These rules cover code comments, docstrings and every Markdown file except the g
 
 - Say what the code or feature does instead of repeating its name.
 - Describe current behavior only: no change history or change explanations.
-- Start each sentence on a new line and finish it on that line. Markdown has no line limit.
+- Start each sentence on a new line and finish it there: always in Markdown, which has no line limit, and in code when it fits.
 - Keep all sentences of a list item on the item's line.
 
 ## First thing in a new session
