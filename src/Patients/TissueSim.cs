@@ -157,8 +157,10 @@ public sealed partial class TissueSim {
     /// <summary>How high (meters) a grip pulled past what the skin gives peels its edge up off what's under it (see
     /// <see cref="Restrain"/>).</summary>
     public const float PeelLift = 0.02f;
-    /// <summary>Share of <see cref="PeelLift"/> a peeling edge rises before it gives no more along the body.</summary>
-    private const float PeeledShare = 0.25f;
+    /// <summary>Share of <see cref="PeelLift"/> a peeling edge rises before it gives no more along the body. Lifting it
+    /// eases the strain: until then it gives along the body again, which reads as a lip that had stopped jumping on.
+    /// </summary>
+    private const float PeeledShare = 0.1f;
 
     /// <summary>Skin starts holding a hand back at this strain: from here to <see cref="GripStrain"/> it gives less
     /// and less of each move away from where it belongs, down to <see cref="LeastGive"/> (see <see cref="Restrain"/>).

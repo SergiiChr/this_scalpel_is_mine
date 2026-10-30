@@ -108,9 +108,10 @@ public class WoundLiquidTest {
     }
 
     // The same live tissue-pull fixture exceeds the calibrated 6 ms CPU limit even with blood processing
-    // disabled (6.9 ms). Its combined worst frame was 10.6 ms, including at most 1.35 ms of liquid work.
+    // disabled (6.9 ms). Its combined worst frame was 10.6 ms, including at most 1.35 ms of liquid work; with the
+    // skin on XPBD it's 13.7 to 15.4 ms (5.9 ms limit on this machine).
     // Keep this pre-existing tissue update bounded with 30% headroom rounded to a half-factor.
-    private static readonly BudgetAllowance TissuePullAllowance = new("live tissue-pull scene exceeds CPU budget without liquid processing", 2.5f);
+    private static readonly BudgetAllowance TissuePullAllowance = new("live tissue-pull scene exceeds CPU budget without liquid processing", 3.5f);
 
     [TestCase(Timeout = Limits.Slow)]
     public async Task WoundLiquidsRefreshForGeometryChangesRatherThanSolverTicks() {
