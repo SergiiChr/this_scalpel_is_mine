@@ -1,6 +1,6 @@
 namespace Scalpel.Tests.Scenarios;
 
-/// <summary>Objective steps with an "or" alternative (DESIGN.md, Scenarios).</summary>
+/// <summary>Objective steps with an "or" alternative (docs/DATA.md, Scenarios).</summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 [GodotArgs("--fixed-fps", "60")]

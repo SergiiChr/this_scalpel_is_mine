@@ -88,7 +88,8 @@ Design lives in plain files; the game reads them at startup, so change the file,
 | In-game manual | [data/manual/](data/manual) |
 | Tested cases | Executable GdUnit4 suites under [`tests/`](tests/) |
 | Model names, parts and bones the game expects | [assets/models/README.md](assets/models/README.md) |
-| Architecture, data formats, mechanics list | [docs/DESIGN.md](docs/DESIGN.md) |
+| Target architecture, code rules | [docs/DESIGN.md](docs/DESIGN.md), [docs/CODING.md](docs/CODING.md) |
+| Game mechanics, data formats | [docs/MECHANICS.md](docs/MECHANICS.md), [docs/DATA.md](docs/DATA.md) |
 
 ## Multiplayer
 

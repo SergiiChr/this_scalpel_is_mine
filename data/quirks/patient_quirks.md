@@ -11,7 +11,7 @@ Format rules:
 - `icon` is a relative markdown link, ctrl+click it in most editors to open the image.
 - `effects` is what the game actually reads: `key=value` pairs separated by commas.
   Keys ending in `_mult` multiply, other numbers add up, text values are names (use `|` for lists).
-  See `docs/DESIGN.md` for every effect key the code understands.
+  See `docs/DATA.md` for every effect key the code understands.
 - `card` is what shows up on the patient card. `red_herring` quirks show a card line with no gameplay effect.
 - `sites` (optional) limits the quirk to scenarios on those surgical sites.
 
