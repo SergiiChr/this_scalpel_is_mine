@@ -104,14 +104,16 @@ Every user-visible change still needs a visual test: a seam says where a test go
 
 ## Failures that can't be fixed now
 
-- Known issue: if a non-trivial failure can't be fixed in the current change and fails the same way every run, wrap the
-  case in `KnownIssue.Expect(failure, ...)` (`tests/Support/KnownIssue.cs`) with
+- A failure the current change introduces must be fixed in that change. The two rules below apply only to failures that
+  already existed.
+- Known issue: if a non-trivial existing failure can't be fixed in the current change and fails the same way every run,
+  wrap the case in `KnownIssue.Expect(failure, ...)` (`tests/Support/KnownIssue.cs`) with
   `[TestCase(..., Description = "KNOWN ISSUE: reason")]`. It runs with the rest of the regression and passes only when
   it fails with a message containing `failure`: pick the part that says where it breaks (the objective that doesn't
   complete), so everything before it is still checked. Another failure fails it as usual, and once it passes it fails
   until it's made an ordinary case again.
-- Broken: a failure that can't be pinned that way (it passes or fails from run to run, or shows only in a key frame
-  review) moves its case to its own method with `[TestCategory("broken")]` and
+- Broken: an existing failure that can't be pinned that way (it passes or fails from run to run, or shows only in a key
+  frame review) moves its case to its own method with `[TestCategory("broken")]` and
   `[TestCase(..., Description = "BROKEN: reason")]` (GdUnit's own ignore doesn't work with the adapter). It's skipped:
   `build.py` lists it as pending, and `RUN_BROKEN=1` runs it.
 - Disable any scenario that relies on a known issue or a broken case (`disabled=true` in its cfg, with a comment naming
