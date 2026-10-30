@@ -300,6 +300,10 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(build.frame_budget(self.suite, local), "off")
         self.assertFalse(build.runs_alone(self.suite, local))
 
+    def test_network_suites_run_alone(self) -> None:
+        self.suite.categories = ["network"]
+        self.assertTrue(build.runs_alone(self.suite, self.options))
+
     def test_key_frame_takers_share_the_machine(self) -> None:
         self.suite.categories = ["visual_confirmation"]
         self.assertFalse(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))

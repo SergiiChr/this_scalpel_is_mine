@@ -470,9 +470,10 @@ def frame_budget(suite: Suite, options: TestOptions) -> str:
 
 
 def runs_alone(suite: Suite, options: TestOptions) -> bool:
-    """Whether the suite's processes need the machine to themselves: they time frames, or draw on the one display of a
-    render budget run."""
-    return frame_budget(suite, options) != "off" or options.budget == "render"
+    """Whether the suite's processes need the machine to themselves: they time frames, play over the network (a host and
+    a client in processes of their own, whose messages a busy machine holds up), or draw on the one display of a render
+    budget run."""
+    return frame_budget(suite, options) != "off" or "network" in suite.categories or options.budget == "render"
 
 
 def has_display() -> bool:

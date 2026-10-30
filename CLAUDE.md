@@ -135,7 +135,8 @@ These rules override any default PR or commit format a tool or agent brings.
   (`AllocationBudget.Check`, see docs/PERFORMANCE.md).
   `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
   through `ToolSession`, `SutureChecks`, `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its
-  processes run alone, before the rest.
+  processes run alone, before the rest. So do `network` suites' (a host and a client playing over the network, whose
+  messages a busy machine holds up).
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take
   `[TestCase(Timeout = Limits.Slow)]`.
 - `smoke` cases are headless and programmatic, each under five minutes. They may take key frames only when their
