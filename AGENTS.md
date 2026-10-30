@@ -21,6 +21,14 @@ Read their Markdown instructions with ordinary file tools; if a workflow calls f
 image, use the equivalent tool available to your agent.
 Add new workflows here with a description of when to use them so discovery does not depend on an agent's loader.
 
+## Target and existing code
+
+[docs/DESIGN.md](docs/DESIGN.md), [docs/CODING.md](docs/CODING.md) and [docs/TESTING.md](docs/TESTING.md) describe the
+target.
+All new code is expected to follow them.
+Old code may not.
+Flag every mismatch you find while updating code: name the file and the rule in the handoff, even when you don't fix it.
+
 ## Project
 
 Co-op surgery game in Godot 4.7.2 .NET (C#, nullable on, analyzers as errors).
