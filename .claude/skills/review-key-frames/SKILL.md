@@ -12,6 +12,9 @@ A feature branch reviews only its own suites: `./build.py test --tag ... --with-
 `./build.py screenshot_review --focused`, which fails on missing key frames or a missing baseline.
 The focused test run must pass separately; a successful comparison does not certify the run. Steps 2 to 6 follow, with
 `./build.py generate_baseline --focused` in step 5: it adds or replaces the run's key frames and deletes none.
+Drawn in software (a cloud container), a focused run is compared against the same run on the commit the branch started
+from, drawn the same way: the first review takes it, which runs the suites again there. Only the key frames that differ
+from it are listed and written.
 Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and runs every step.
 
 1. Run `./build.py screenshot_review` on a commit whose CI passed. It runs the same full regression as
@@ -39,9 +42,9 @@ Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and run
   [CLAUDE.md](../../../CLAUDE.md#test-structure-and-policy).
   Broken cases are skipped and take no key frames; a passing full regression drops their old baseline frames.
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
-- If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is
-  off (no baseline committed yet, another renderer: a machine without a display draws in software, not on the GPU the
-  baseline was drawn on). Stop and report that. Don't generate a baseline unless that is
+- If the review fails for lack of a baseline, or a full review lists nearly every key frame as changed, the
+  comparison itself is off (no baseline committed yet, another renderer: a machine without a display draws in software,
+  not on the GPU the baseline was drawn on). Stop and report that. Don't generate a baseline unless that is
   the task, and don't skip the review of the key frames your change touches.
 - On a merge conflict in `tests/KeyFrames`, take `develop`'s files, then take the key frames and generate again.
 

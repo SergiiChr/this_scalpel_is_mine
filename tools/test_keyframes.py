@@ -106,6 +106,21 @@ class KeyFramesTest(unittest.TestCase):
         descriptions = json.loads((self.baseline / "scalpel" / keyframes.DESCRIPTIONS).read_text())
         self.assertIn("00_cut_top.jpg", descriptions, "a key frame the run didn't take keeps its description")
 
+    def test_update_with_a_reference_writes_only_what_differs_from_it(self) -> None:
+        self.take("00_cut")
+        self.take("01_stitch")
+        keyframes.update(self.run_frames, self.baseline)
+        gpu = (self.baseline / "scalpel" / "00_cut_top.jpg").read_bytes()
+        # Drawn another way (in software), every key frame differs from the baseline; the base commit's run is drawn the
+        # same way, and only the stitch differs from it.
+        shutil.copytree(self.run_frames, self.root / "reference")
+        for path in (self.root / "reference").glob("scalpel/*.png"):
+            scene(path, shift=5)
+        self.take("00_cut", shift=5)
+        self.take("01_stitch", line=3, shift=5)
+        self.assertEqual(keyframes.update(self.run_frames, self.baseline, focused=True, reference=self.root / "reference"), 1)
+        self.assertEqual((self.baseline / "scalpel" / "00_cut_top.jpg").read_bytes(), gpu)
+
     def test_update_writes_only_what_differs(self) -> None:
         self.take("00_cut")
         self.take("01_close")

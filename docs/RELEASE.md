@@ -35,6 +35,8 @@ accepts reach `main` with the next release.
    fails on missing key frames or a missing baseline; the test run must pass separately. Changed and new
    ones are the evidence for the handoff. Once they look right, `./build.py generate_baseline --focused` adds or
    replaces them in `tests/KeyFrames`; commit it with the change. It never deletes: removed key frames go at release.
+   In a cloud container, which draws in software, both compare against the same run on the commit the branch started
+   from, drawn the same way, so only what the change did shows and is written.
 6. Follow [self-review](../.claude/skills/self-review/SKILL.md), then rerun the checks above for what it changed.
 7. Raise a PR to `develop` (see PR description).
 8. Hand over a summary of the change and its evidence, with the self-review summary and, for a visual change, the

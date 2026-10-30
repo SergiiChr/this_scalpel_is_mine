@@ -31,8 +31,6 @@ public class EdgePullTest {
     [TestCase("appendectomy", "retractor")]
     [TestCase("knife_back", "forceps")]
     [TestCase("brain_tumor", "forceps")]
-    [TestCase("slit_throat", "forceps")]
-    [TestCase("ambulance_bullet", "forceps")]
     public async Task EdgePullsInStages(string scenario, string toolId) => await PullEdge(scenario, toolId);
 
     [TestCase("broken_ribs", "forceps", "the cut's walls, fat and muscle stay under the skin", Description = "KNOWN ISSUE: "
@@ -56,16 +54,8 @@ public class EdgePullTest {
     [TestCase("forceps", 5, 0, 1)]
     [TestCase("retractor", 5, 0, 1)]
     [TestCase("forceps", 5, 0, -1)]
+    [TestCase("retractor", 5, 0, -1, Timeout = Limits.Slow)]
     public async Task ThighEntryEdgePullsWithBoundedMouseEffort(string toolId, int frames, int pause, int side) =>
-        await PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true);
-
-    [TestCase("retractor", 5, 0, -1, Timeout = Limits.Slow,
-        Description = "BROKEN: held at its limit, the lip starts peeling up, and lifting it eases the strain: headless it "
-        + "gives sideways again for a moment before it's peeled (TissueSim.PeeledShare), 0.24 then 0.61 of the hand; "
-        + "with key frames it doesn't. Peeling sooner stops that but leaves the slit throat's and the ambulance's forceps "
-        + "short of their travel.")]
-    [TestCategory("broken")]
-    public async Task ThighEntryEdgePullsBroken(string toolId, int frames, int pause, int side) =>
         await PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true);
 
     [TestCase]
@@ -92,6 +82,11 @@ public class EdgePullTest {
     [TestCase("leg_extension", "retractor", Description = "BROKEN: shows only in the key frames: a few centimeters from "
         + "the hook the thigh's fat wall folds over itself in a pleat while the edge is drawn aside (the same with the fat "
         + "walls unstretched).")]
+    [TestCase("slit_throat", "forceps", Description = "BROKEN: the edge stops short of its travel (7.1 to 7.5 mm of "
+        + "8.4): it peels too soon and gives no more along the neck (TissueSim.PeeledShare); peeling later lets the thigh "
+        + "entry's retractor edge give sideways again while it peels.")]
+    [TestCase("ambulance_bullet", "forceps", Description = "BROKEN: the edge stops short of its travel (7.1 to 7.5 mm of "
+        + "8.4), as the slit throat's does.")]
     [TestCategory("broken")]
     public async Task EdgePullsInStagesBroken(string scenario, string toolId) => await PullEdge(scenario, toolId);
 

@@ -264,13 +264,18 @@ def in_taken_folders(current: dict[tuple[str, str], KeyFrame], baseline: dict[tu
     return {key: frame for key, frame in baseline.items() if key[0] in taken}
 
 
-def update(current_root: Path, baseline_root: Path, focused: bool = False) -> int:
+def update(current_root: Path, baseline_root: Path, focused: bool = False, reference: Path | None = None) -> int:
     """Writes the key frames that differ from the baseline into it and deletes the ones the run no longer takes.
     Unchanged key frames keep their bytes, so they cost nothing in git; they only take the run's file name when its
     order prefix moved, which git sees as a rename.
     A focused run only adds and replaces: it may have run some of a folder's cases, so in every folder it took the
-    baseline's key frames and views it didn't take stay as they are, and the others aren't touched. Returns how many key frames were written or deleted."""
+    baseline's key frames and views it didn't take stay as they are, and the others aren't touched. Returns how many key frames were written or deleted.
+    With a reference (the same run on the base commit, drawn the same way), only the key frames that differ from it are
+    written: drawn in software, every key frame differs from a baseline drawn on the GPU."""
     current, baseline = key_frames(current_root), key_frames(baseline_root)
+    if reference is not None:
+        drawn_alike = key_frames(reference)
+        current = {key: frame for key, frame in current.items() if state(frame, drawn_alike.get(key))[0] != "unchanged"}
     keep: set[str] = set()
     if focused:
         baseline = in_taken_folders(current, baseline)
@@ -333,12 +338,13 @@ def main() -> int:
         command.add_argument("current", type=Path, help="screenshot folder of the run")
         command.add_argument("baseline", type=Path, help="baseline folder, may be missing")
     updating.add_argument("--focused", action="store_true", help="add and replace only, in the folders the run took")
+    updating.add_argument("--reference", type=Path, help="write only the key frames that differ from these")
     review.add_argument("out", type=Path, help="report folder, emptied first")
     review.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     review.add_argument("--regression", choices=("passed", "failed", "not-run", "focused"), default="not-run", help="how the run went, for the report")
     parsed = parser.parse_args()
     if parsed.command == "update":
-        written = update(parsed.current, parsed.baseline, parsed.focused)
+        written = update(parsed.current, parsed.baseline, parsed.focused, parsed.reference)
         print(f"Baseline: {written} key frames written or deleted in {parsed.baseline}.")
         return 0
     # A run that failed before its first key frame still reports the baseline's as missing.

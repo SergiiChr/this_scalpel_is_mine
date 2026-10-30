@@ -67,7 +67,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   [review-key-frames](.claude/skills/review-key-frames/SKILL.md).
   `--focused` reviews the last focused run with key frames instead, only in the folders it took; changed and new
   frames are expected; missing frames or a missing baseline fail that comparison. The test run must pass separately.
-  `generate_baseline --focused` adds or replaces its reviewed key frames in the baseline.
+  `generate_baseline --focused` adds or replaces its reviewed key frames in the baseline. A focused run drawn in
+  software (a cloud container) is compared against the same run on the commit the branch started from instead, taken
+  once in a checkout of its own under `build/reference`, and only the key frames that differ from it are written.
 - `./build.py generate_baseline`: the same full regression, then writes the key frames that differ into the baseline
   (every key frame the first time); unchanged ones keep their files. A regression that failed leaves the baseline as
   it was. `--use-latest-set` takes the key frames of the last run instead of running again (see Visual verification).
@@ -197,8 +199,9 @@ These rules override any default PR or commit format a tool or agent brings.
 - Key frames are taken and compared in local runs only, never on CI.
   They are rendered without film grain by the compatibility renderer on an NVIDIA GPU, each process on a rootful
   Xwayland of its own on a Wayland desktop: the baseline is drawn that way. A machine without one (a cloud container)
-  draws them in a virtual display by the software renderer (`xvfb-run`): close, but nearly every key frame shows as
-  changed.
+  draws them in a virtual display by the software renderer (`xvfb-run`): close, but nearly every key frame differs
+  from the baseline. A focused review there compares against the base commit drawn the same way (above); the frames it
+  commits are drawn in software until the next release regenerates them.
   The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show no
   visible difference.
 

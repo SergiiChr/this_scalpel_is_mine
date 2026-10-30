@@ -425,6 +425,7 @@ class CoverageReportingTest(unittest.TestCase):
         process = self.key_frame_process(display=True)
         self.assertEqual(process.call_args.args[0][:3], [str(build.GPU_DISPLAY), "1920x1080", "dotnet"])
         self.assertEqual(process.call_args.kwargs["env"]["__NV_PRIME_RENDER_OFFLOAD"], "1")
+        self.assertEqual(process.call_args.kwargs["env"]["__GL_SYNC_TO_VBLANK"], "0", "a window behind others draws as fast")
         self.assertNotIn("LIBGL_ALWAYS_SOFTWARE", process.call_args.kwargs["env"])
 
     def test_key_frames_fall_back_to_a_virtual_display_without_one(self) -> None:
@@ -465,6 +466,40 @@ class CoverageReportingTest(unittest.TestCase):
             (taken / build.FOCUSED).touch()
             self.assertEqual(build.generate_baseline(["--focused"]), 0)
         self.assertIn("--focused", tool.call_args.args)
+
+    def test_software_focused_run_is_compared_against_the_base_commit(self) -> None:
+        taken, _ = self.key_frames(passed=False)
+        (taken / build.FOCUSED).touch()
+        (taken / build.SOFTWARE).touch()
+        reference = self.root / "reference"
+        with patch.object(build, "software_reference", return_value=reference), patch.object(build, "keyframes_tool", return_value=0) as tool:
+            self.assertEqual(build.screenshot_review(["--focused"]), 0)
+            self.assertEqual(tool.call_args.args[2], reference.relative_to(self.root))
+            self.assertEqual(build.generate_baseline(["--focused"]), 0)
+            self.assertEqual(tool.call_args.args[-2:], ("--reference", reference.relative_to(self.root)))
+
+    def test_reference_is_taken_once_per_base_commit_and_selection(self) -> None:
+        taken, _ = self.key_frames(passed=False)
+        (taken / build.KEY_FRAMES_OF).write_text("--tag scalpel --with-key-frames")
+        patch.object(build, "REFERENCE", self.root / "reference").start()
+        patch.object(build, "TOOLS", self.root / "tools").start()
+        (self.root / ".godot").mkdir()
+
+        def git(*arguments: str | Path) -> str:
+            if arguments[:2] == ("worktree", "add"):
+                Path(arguments[3]).mkdir(parents=True)
+            return "base" if arguments[0] == "merge-base" else ""
+
+        def runs_on_base(command: list[str | Path], cwd: Path, check: bool) -> None:
+            (cwd / "build" / "test-artifacts" / "screenshots").mkdir(parents=True)
+
+        with patch.object(build, "git", side_effect=git), patch("subprocess.run", side_effect=runs_on_base) as run:
+            with contextlib.redirect_stdout(io.StringIO()):
+                frames = build.software_reference()
+                self.assertEqual(run.call_args.args[0][2:], ["test", "--tag", "scalpel", "--with-key-frames"])
+                self.assertTrue(frames.is_dir())
+                self.assertEqual(build.software_reference(), frames)
+            self.assertEqual(run.call_count, 1, "the same selection on the same commit isn't taken again")
 
     def test_baseline_run_that_fails_leaves_the_baseline_alone(self) -> None:
         taken, _ = self.key_frames(passed=True)

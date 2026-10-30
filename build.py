@@ -320,6 +320,8 @@ GPU_ENVIRONMENT = {
     "__NV_PRIME_RENDER_OFFLOAD": "1",
     "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
     "__EGL_VENDOR_LIBRARY_FILENAMES": "/usr/share/glvnd/egl_vendor.d/10_nvidia.json",
+    # A window behind others gets a frame a second from the desktop if it waits for one: the driver mustn't.
+    "__GL_SYNC_TO_VBLANK": "0",
 }
 
 
@@ -838,7 +840,7 @@ def test(arguments: list[str]) -> int:
     suites = selected(discover(), options)
     # What the last run with these options passed: a resumed run leaves those suites out and keeps their key frames, as
     # long as no run with other options (a check on a suite alone) has taken key frames since and cleared them.
-    selection = " ".join(argument for argument in arguments if argument != "--resume")
+    selection = shlex.join(argument for argument in arguments if argument != "--resume")
     runs: dict[str, list[str]] = json.loads(LAST_RUN.read_text()) if LAST_RUN.exists() else {}
     frames_of = KEY_FRAMES / KEY_FRAMES_OF
     frames_kept = not options.key_frames or frames_of.exists() and frames_of.read_text() == selection
@@ -865,6 +867,8 @@ def test(arguments: list[str]) -> int:
         shutil.rmtree(KEY_FRAMES, ignore_errors=True)
         KEY_FRAMES.mkdir(parents=True)
         frames_of.write_text(selection)
+        if not has_display():
+            (KEY_FRAMES / SOFTWARE).touch()
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
@@ -910,6 +914,13 @@ BASELINE = ROOT / "tests" / "KeyFrames"
 PASSED = "passed"
 # Left by a focused run with key frames that passed: a feature branch may add or replace its key frames in the baseline.
 FOCUSED = "focused"
+# Left by a run whose key frames were drawn in software: a focused one is compared against REFERENCE, not the baseline.
+SOFTWARE = "software"
+# The last focused run's selection run again on the commit the branch started from, in a checkout of its own, drawn in
+# software too: what the branch changed shows against it, as it can't against a baseline drawn on a GPU.
+REFERENCE = BUILD / "reference"
+# The base branch, whose merge base with HEAD the reference is taken on.
+BASE_BRANCH = "origin/develop"
 REVIEW = BUILD / "review"
 
 
@@ -928,6 +939,36 @@ def key_frame_run() -> int:
     return status
 
 
+def git(*arguments: str | Path) -> str:
+    return subprocess.run(["git", *map(str, arguments)], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def software_reference() -> Path:
+    """The key frames of the last focused run's selection on the merge base with BASE_BRANCH, taken once per selection
+    and base commit."""
+    selection = (KEY_FRAMES / KEY_FRAMES_OF).read_text()
+    base = git("merge-base", "HEAD", BASE_BRANCH)
+    frames, taken = REFERENCE / "screenshots", REFERENCE / "taken"
+    if taken.exists() and taken.read_text() == f"{base} {selection}":
+        return frames
+    print(f"Taking the reference key frames on {base[:10]}, {BASE_BRANCH}'s commit this branch started from.", flush=True)
+    checkout = REFERENCE / "checkout"
+    shutil.rmtree(REFERENCE, ignore_errors=True)
+    git("worktree", "prune")
+    git("worktree", "add", "--detach", checkout, base)
+    try:
+        # The same tools, and the import so far, which Godot then only brings up to date.
+        (checkout / ".tools").symlink_to(TOOLS)
+        shutil.copytree(ROOT / ".godot", checkout / ".godot", symlinks=True)
+        # Its suites may fail where the branch fixed them: their key frames still show what changed.
+        subprocess.run([sys.executable, checkout / "build.py", "test", *shlex.split(selection)], cwd=checkout, check=False)
+        shutil.move(checkout / "build" / "test-artifacts" / "screenshots", frames)
+    finally:
+        git("worktree", "remove", "--force", checkout)
+    taken.write_text(f"{base} {selection}")
+    return frames
+
+
 def keyframes_tool(*arguments: str | Path) -> int:
     command: list[str | Path] = [pillow_python(), "-m", "tools.keyframes", *arguments]
     return subprocess.run(command, cwd=ROOT, check=False).returncode
@@ -941,13 +982,19 @@ def generate_baseline(arguments: list[str]) -> int:
         "keep their files. A regression that failed leaves the baseline as it was.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression")
-    parser.add_argument("--focused", action="store_true", help="add or replace the key frames of the last focused run that passed")
+    parser.add_argument(
+        "--focused",
+        action="store_true",
+        help="add or replace the key frames of the last focused run that passed; drawn in software, only those that differ from "
+        "the same run on the commit the branch started from",
+    )
     parsed = parser.parse_args(arguments)
     if parsed.focused:
         if not (KEY_FRAMES / FOCUSED).exists():
             print("[ERROR] The baseline is left as it was: the last run wasn't a focused run with key frames that passed.", file=sys.stderr)
             return 1
-        return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), "--focused")
+        reference: list[str | Path] = ["--reference", software_reference().relative_to(ROOT)] if (KEY_FRAMES / SOFTWARE).exists() else []
+        return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), "--focused", *reference)
     if not parsed.use_latest_set:
         key_frame_run()
     # Key frames of a partial run never become what later reviews compare against.
@@ -983,21 +1030,28 @@ def screenshot_review(arguments: list[str]) -> int:
         "the report.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="review the key frames of the last run")
-    parser.add_argument("--focused", action="store_true", help="review the last focused run with key frames, only in the folders it took")
+    parser.add_argument(
+        "--focused",
+        action="store_true",
+        help="review the last focused run with key frames, only in the folders it took; drawn in software, against the same "
+        "run on the commit the branch started from instead of the baseline",
+    )
     parser.add_argument("--all", action="store_true", help="sheets for unchanged key frames too")
     parsed = parser.parse_args(arguments)
-    status, regression = 0, "not-run"
+    status, regression, before = 0, "not-run", BASELINE
     if parsed.focused:
         regression = "focused"
         if not has_key_frames(KEY_FRAMES):
             print("[ERROR] The last run took no key frames: run the suites with test --with-key-frames first.", file=sys.stderr)
             return 1
+        if (KEY_FRAMES / SOFTWARE).exists():
+            before = software_reference()
     elif not parsed.use_latest_set:
         status = key_frame_run()
         regression = "failed" if status else "passed"
     flags = [*(["--all"] if parsed.all else []), "--regression", regression]
     # The report comes first: it helps most when the regression failed.
-    report_status = keyframes_tool("report", *(path.relative_to(ROOT) for path in (KEY_FRAMES, BASELINE, REVIEW)), *flags)
+    report_status = keyframes_tool("report", *(path.relative_to(ROOT) for path in (KEY_FRAMES, before, REVIEW)), *flags)
     if not has_key_frames(BASELINE):
         print(f"[ERROR] No baseline in {BASELINE.relative_to(ROOT)}, run ./build.py generate_baseline first.", file=sys.stderr)
         return 1
