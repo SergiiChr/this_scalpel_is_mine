@@ -289,8 +289,11 @@ public static class SurgeryState {
             }
         }
         var bad = BadTraySpots.GetOrCreateValue(surgery);
-        bool Crowded(Vector3 at) => surgery.Tools.Tools.Values.Any(tool =>
-            tool.State == ToolState.Free && (tool.Middle() - at).Slide(Vector3.Up).Length() < 0.08f);
+        // Measured to the whole length of a lying tool, not its middle: a tool laid by a long one's end would lie
+        // across that end, and a hand reaching for either would take the other.
+        bool Crowded(Vector3 at) => surgery.Tools.Tools.Values.Any(tool => tool.State == ToolState.Free
+            && Geometry3D.GetClosestPointToSegment(at, tool.GlobalPosition, tool.TipPosition()).Slide(Vector3.Up)
+                .DistanceTo(at.Slide(Vector3.Up)) < 0.08f);
         return spots.FirstOrDefault(at => !bad.Contains(at) && !Crowded(at), spots[0]);
     }
 
