@@ -34,7 +34,8 @@ public class ToolLifecycleTest {
         SurgeryState.PatientIsAsleep(driver.Patient);
         var site = driver.SitePoint(new Vector2(0.5f, 0.5f));
         foreach (var id in Db.Tools.Keys.Where(id => !Db.Tool(id)!.Fixed).Order(StringComparer.Ordinal)) {
-            // A fully stocked tray: whatever isn't on it is laid in its clear strip, and taken away again after.
+            // A fully stocked tray: whatever isn't on it is laid in its clear strip.
+            // Every tool is taken away after its turn, or the ones put back crowd the tray and lie on its next ones.
             var extra = driver.FreeTools(id).Count == 0;
             if (extra) {
                 SurgeryState.ToolIsOnTray(surgery, id);
@@ -80,10 +81,8 @@ public class ToolLifecycleTest {
                 AssertBool(driver.LiesOnTray(tool))
                     .OverrideFailureMessage($"{id} is put back on the tray ({tool.Middle()})\n{driver.Recent(4)}").IsTrue();
             }
-            if (extra) {
-                surgery.Tools.Consume(tool);
-                await Frames.Physics(2);
-            }
+            surgery.Tools.Consume(tool);
+            await Frames.Physics(2);
         }
         await _scenes.Complete();
     }
