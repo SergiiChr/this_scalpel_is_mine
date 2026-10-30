@@ -75,6 +75,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   it was. `--use-latest-set` takes the key frames of the last run instead of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
+  `--case` matches test case names, not suite names. Focused runs check frame times, so their suites run one at a time
+  and can't show a problem that needs processes running side by side.
 - `./build.py performance_test`: every `frame_budget` suite with its frame times checked; a failure is a new issue or
   a known one grown by 30% or more (see docs/PERFORMANCE.md). Takes `test` options. `--render-budget` checks whole
   frames against 16 ms on this machine's display and GPU, rendering on: only on a machine with a GPU, never in a cloud
