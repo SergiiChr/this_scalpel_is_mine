@@ -324,9 +324,13 @@ class CoverageReportingTest(unittest.TestCase):
         self.suite.categories = ["network"]
         self.assertTrue(build.runs_alone(self.suite, self.options))
 
-    def test_key_frame_takers_share_the_machine(self) -> None:
+    def test_key_frame_takers_run_alone_only_on_the_gpu(self) -> None:
         self.suite.categories = ["visual_confirmation"]
-        self.assertFalse(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))
+        options = dataclasses.replace(self.options, key_frames=True)
+        with patch.object(build, "has_display", return_value=True):
+            self.assertTrue(build.runs_alone(self.suite, options))
+        with patch.object(build, "has_display", return_value=False):
+            self.assertFalse(build.runs_alone(self.suite, options))
 
     def test_capacity_is_one_process_per_core_within_memory(self) -> None:
         with patch.object(os, "sched_getaffinity", return_value=set(range(8))), patch.object(os, "sysconf", side_effect=[3 << 30, 1]):

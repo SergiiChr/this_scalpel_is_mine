@@ -59,7 +59,7 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   docs/RELEASE.md. This default smoke run and full regressions don't check frame times; focused runs (`--tag`, `--case`) do.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots. Run
   after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). Key frames are drawn by
-  this machine's NVIDIA GPU, several processes at once, each on an X server of its own: a rootful Xwayland window on
+  this machine's NVIDIA GPU, one process at a time, each on an X server of its own: a rootful Xwayland window on
   the desktop.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
@@ -141,7 +141,7 @@ These rules override any default PR or commit format a tool or agent brings.
   `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
   through `ToolSession`, `SutureChecks`, `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its
   processes run alone, before the rest. So do `network` suites' (a host and a client playing over the network, whose
-  messages a busy machine holds up).
+  messages a busy machine holds up), and those of suites taking key frames on the GPU.
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take
   `[TestCase(Timeout = Limits.Slow)]`.
 - `smoke` cases are headless and programmatic, each under five minutes. They may take key frames only when their
